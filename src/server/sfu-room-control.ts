@@ -1,7 +1,10 @@
 import { RoomServiceClient, ServerError } from "livekit-server-sdk";
 
 import { MAX_VIEWERS_PER_ROOM_LIMIT } from "../shared/protocol.js";
-import type { SfuResourceFence } from "./sfu-resource-admission.js";
+import type {
+  SfuResourceFence,
+  SfuSubscriptionFence,
+} from "./sfu-resource-admission.js";
 
 const MANAGED_ROOM_PREFIX = "screener-v1.";
 const ROOM_ID_PATTERN = /^[1-9]\d{0,11}$/;
@@ -25,12 +28,14 @@ export interface LiveKitRoomService {
   listRooms(names?: string[]): Promise<LiveKitRoomRecord[]>;
   deleteRoom(room: string): Promise<void>;
   listParticipants(room: string): Promise<LiveKitParticipantRecord[]>;
+  removeParticipant(room: string, identity: string): Promise<void>;
 }
 
 export interface SfuRoomControl {
   initialize(): Promise<void>;
   createRoom(fence: SfuResourceFence): Promise<void>;
   deleteRoom(fence: SfuResourceFence): Promise<void>;
+  drainSubscription(fence: SfuSubscriptionFence): Promise<void>;
   hostParticipantExists(fence: SfuResourceFence): Promise<boolean>;
 }
 
@@ -112,20 +117,28 @@ export class LiveKitSfuRoomControl implements SfuRoomControl {
     });
   }
 
-  hostParticipantExists(fence: SfuResourceFence): Promise<boolean> {
+  drainSubscription(fence: SfuSubscriptionFence): Promise<void> {
     const roomName = managedSfuRoomName(fence);
+    const identity = managedSfuViewerIdentity(fence.viewerPeerId);
     return this.serialize(roomName, async () => {
       try {
-        return (await this.roomService.listParticipants(roomName)).some(
-          (participant) => participant.identity === "host",
-        );
+        await this.roomService.removeParticipant(roomName, identity);
       } catch (error) {
-        if (isNotFound(error)) {
-          return false;
+        if (!isNotFound(error)) {
+          throw error;
         }
-        throw error;
+      }
+      if (await this.participantExists(roomName, identity)) {
+        throw new Error("Managed LiveKit participant removal was not confirmed");
       }
     });
+  }
+
+  hostParticipantExists(fence: SfuResourceFence): Promise<boolean> {
+    const roomName = managedSfuRoomName(fence);
+    return this.serialize(roomName, () =>
+      this.participantExists(roomName, "host"),
+    );
   }
 
   private async deleteRoomByName(roomName: string): Promise<void> {
@@ -135,6 +148,22 @@ export class LiveKitSfuRoomControl implements SfuRoomControl {
       if (!isNotFound(error)) {
         throw error;
       }
+    }
+  }
+
+  private async participantExists(
+    roomName: string,
+    identity: string,
+  ): Promise<boolean> {
+    try {
+      return (await this.roomService.listParticipants(roomName)).some(
+        (participant) => participant.identity === identity,
+      );
+    } catch (error) {
+      if (isNotFound(error)) {
+        return false;
+      }
+      throw error;
     }
   }
 
@@ -167,6 +196,13 @@ export function managedSfuRoomName(fence: SfuResourceFence): string {
     throw new Error("Managed LiveKit room fence is invalid");
   }
   return `${MANAGED_ROOM_PREFIX}${fence.roomId}.${fence.shareGeneration}.${fence.publicationGeneration}`;
+}
+
+function managedSfuViewerIdentity(peerId: string): string {
+  if (!OPAQUE_ID_PATTERN.test(peerId)) {
+    throw new Error("Managed LiveKit Viewer identity is invalid");
+  }
+  return `viewer:${peerId}`;
 }
 
 export function isManagedSfuRoomName(roomName: string): boolean {

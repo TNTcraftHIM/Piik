@@ -59,7 +59,8 @@ route stays active until the exact candidate child decodes a first new frame;
 ICE connected alone is not commit proof. Availability repair may instead use the
 explicit bounded-gap plan defined by ADR-0005 when no overlap slot exists.
 Failure or stale authority releases the candidate and preserves unaffected
-branches.
+branches. An operation's purpose is immutable; availability work preempts a
+background operation by replacing it rather than changing its meaning.
 
 Direct peers receive the first bounded opportunity, with SFU used for
 availability when direct paths cannot provide media. Remaining direct paths may
@@ -97,7 +98,10 @@ configures no TURN, ICE/TCP, media TCP, or TLS-relayed media path. HTTPS/WSS is 
 separate control transport and remains TLS/TCP.
 
 SFU resources remain bounded throughout reservation, use, and cleanup; stale
-credentials cannot recreate off-ledger media. ADR-0005 owns that lifecycle.
+credentials cannot recreate off-ledger media. Grant revocation, Viewer leave,
+and SFU-to-P2P replacement remove the exact LiveKit Viewer and confirm absence,
+but the subscription remains charged until its publication generation drains.
+ADR-0005 owns that lifecycle.
 
 ## Quality And Privacy Boundaries
 
@@ -107,8 +111,9 @@ per-share convergence gate is enabled, Screener uses an exact persistent native
 sender limitation only to trigger one measured experiment through the existing
 serial operation. The same Viewer must then prove a P2P candidate strictly
 improves delivered pixel area or rounded FPS without regressing either dimension
-or producing a freeze/pause across three fresh paired windows. Ordinary quality
-moves remain Peer-to-Peer. SFU may
+or producing a freeze/pause across three fresh paired windows. A persistently
+limited exact candidate sender cannot commit. Ordinary quality moves remain
+Peer-to-Peer. SFU may
 join quality work only as Host fanout relief when every current Host-origin Peer
 edge, with at least two such edges, is persistently degraded; one Viewer moves
 before the controller observes the new topology again. During that overlap, the

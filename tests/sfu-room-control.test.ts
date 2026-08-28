@@ -17,6 +17,7 @@ class FakeRoomService implements LiveKitRoomService {
   readonly createOptions: Array<{ name: string; maxParticipants: number }> = [];
   createBarrier?: Promise<void>;
   retainDeletedRoom = false;
+  retainRemovedParticipant = false;
 
   async createRoom(options: { name: string; maxParticipants: number }) {
     this.operations.push(`create:${options.name}`);
@@ -52,6 +53,17 @@ class FakeRoomService implements LiveKitRoomService {
       throw new ServerError("Not Found", "missing", 404, "not_found");
     }
     return [...participants].map((identity) => ({ identity }));
+  }
+
+  async removeParticipant(room: string, identity: string): Promise<void> {
+    this.operations.push(`remove:${room}:${identity}`);
+    const participants = this.rooms.get(room);
+    if (!participants?.has(identity)) {
+      throw new ServerError("Not Found", "missing", 404, "not_found");
+    }
+    if (!this.retainRemovedParticipant) {
+      participants.delete(identity);
+    }
   }
 
   join(room: string, identity: string): boolean {
@@ -176,6 +188,44 @@ describe("LiveKitSfuRoomControl", () => {
     await expect(
       roomControl.hostParticipantExists(resourceFence),
     ).resolves.toBe(false);
+  });
+
+  it("removes and confirms only the exact Viewer subscription", async () => {
+    const roomService = new FakeRoomService();
+    const roomControl = control(roomService);
+    const resourceFence = fence();
+    await roomControl.createRoom(resourceFence);
+    const roomName = managedSfuRoomName(resourceFence);
+    const viewerPeerId = "viewer_peer_12345678";
+    expect(roomService.join(roomName, "host")).toBe(true);
+    expect(roomService.join(roomName, `viewer:${viewerPeerId}`)).toBe(true);
+    expect(roomService.join(roomName, "viewer:other_peer_12345678")).toBe(true);
+
+    const subscriptionFence = { ...resourceFence, viewerPeerId };
+    await expect(
+      roomControl.drainSubscription(subscriptionFence),
+    ).resolves.toBeUndefined();
+    expect(roomService.rooms.get(roomName)).toEqual(
+      new Set(["host", "viewer:other_peer_12345678"]),
+    );
+    await expect(
+      roomControl.drainSubscription(subscriptionFence),
+    ).resolves.toBeUndefined();
+  });
+
+  it("rejects an unconfirmed Viewer participant drain", async () => {
+    const roomService = new FakeRoomService();
+    const roomControl = control(roomService);
+    const resourceFence = fence();
+    await roomControl.createRoom(resourceFence);
+    const roomName = managedSfuRoomName(resourceFence);
+    const viewerPeerId = "viewer_peer_12345678";
+    roomService.join(roomName, `viewer:${viewerPeerId}`);
+    roomService.retainRemovedParticipant = true;
+
+    await expect(
+      roomControl.drainSubscription({ ...resourceFence, viewerPeerId }),
+    ).rejects.toThrow("removal was not confirmed");
   });
 
   it("keeps the tracked deployment unable to auto-create rooms", () => {

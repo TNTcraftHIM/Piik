@@ -57,7 +57,10 @@ remain separate.
 
 Rotating or revoking the Viewer grant is a strong authorization change. The new
 generation is committed before old Viewers, signaling grace, routes, and sender
-edges are closed. Changing code-entry policy or password affects later
+edges are closed. An affected SFU Viewer is removed by its exact LiveKit
+identity and confirmed absent. This does not revoke an already issued
+self-hosted LiveKit token: its subscription stays charged until that publication
+generation drains. Changing code-entry policy or password affects later
 code-only attempts and does not silently revoke invitations.
 
 ## Persistence Modes

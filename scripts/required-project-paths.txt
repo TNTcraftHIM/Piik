@@ -15,7 +15,6 @@ tsconfig.json
 .githooks/pre-commit
 .github/pull_request_template.md
 .github/workflows/repository-hygiene.yml
-.github/workflows/native-sender-package.yml
 docs/README.md
 docs/project-memory.md
 docs/status.md
@@ -44,7 +43,6 @@ scripts/required-project-paths.txt
 scripts/check-project-state.sh
 scripts/check-project-state.ps1
 scripts/check-docs.mjs
-scripts/package-native-sender.ps1
 scripts/install-hooks.sh
 scripts/install-hooks.ps1
 deploy/coturn/turnserver.conf.example

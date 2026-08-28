@@ -1849,6 +1849,30 @@ describe("ViewerRelay downstream ownership", () => {
     relay.dispose();
   });
 
+  it("reconciles a reauthenticated endpoint cap without rebuilding retained children", async () => {
+    const relay = new ViewerRelay(
+      { iceServers: [] },
+      QUALITY_PROFILES["720p30"],
+      { sendSignal: () => true },
+      3,
+    );
+    relay.setStream(createStream(createTrack("video", "cap-update-video"), null));
+    relay.setChildren(["child-0", "child-1", "child-2"]);
+    await vi.waitFor(() => expect(FakePeerConnection.instances).toHaveLength(3));
+    const retained = FakePeerConnection.instances.slice(0, 2);
+    const removed = FakePeerConnection.instances[2]!;
+    retained.forEach((connection) => {
+      connection.connectionState = "connected";
+    });
+
+    relay.updateCapacity(2);
+
+    expect(FakePeerConnection.instances.slice(0, 2)).toEqual(retained);
+    expect(removed.connectionState).toBe("closed");
+    expect(FakePeerConnection.activeCount).toBe(2);
+    relay.dispose();
+  });
+
   it("exposes a defensive snapshot of current downstream send metrics", async () => {
     const relay = new ViewerRelay(
       { iceServers: [] },

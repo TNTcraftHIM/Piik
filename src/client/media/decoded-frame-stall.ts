@@ -37,7 +37,12 @@ export class DecodedFrameStallDetector {
       this.reported = false;
       return false;
     }
-    if ((framesDecodedDelta ?? 0) > 0) {
+    if (framesDecodedDelta === null) {
+      this.lastDecodedAt = nowMs;
+      this.reported = false;
+      return false;
+    }
+    if (framesDecodedDelta > 0) {
       this.lastDecodedAt = nowMs;
       this.reported = false;
       return false;

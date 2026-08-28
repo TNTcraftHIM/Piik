@@ -106,11 +106,26 @@ function activeAfter(
     );
 }
 
+function deferred(): {
+  promise: Promise<void>;
+  resolve: () => void;
+  reject: (reason?: unknown) => void;
+} {
+  let resolve!: () => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<void>((settle, fail) => {
+    resolve = settle;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
+
 function harness(
   endpointMediaCopyCapacity: 1 | 2 | 3,
   withSfu = false,
   prepareTimeoutMs?: number,
   sfuIngressCapacity = 2,
+  drainRetryMs?: number,
 ) {
   const store = createStore();
   const sent = new Map<string, ServerMessage[]>();
@@ -134,6 +149,7 @@ function harness(
             admission,
             roomControl,
             ...(prepareTimeoutMs ? { prepareTimeoutMs } : {}),
+            ...(drainRetryMs ? { drainRetryMs } : {}),
             tokenIssuer: {
               async issueToken({ peerId }) {
                 if (nextTokenIssueError) {
@@ -218,6 +234,113 @@ async function establishSfuRoom(
 }
 
 describe("HybridMediaRouter v9 runtime", () => {
+  it("maps an exact Host active failure to its committed direct edge", async () => {
+    const { store, sent, router } = harness(2);
+    try {
+      const room = await store.createRoom();
+      const host = connectHost(store, room);
+      complete(router, host);
+      const viewer = connectViewer(store, room, "host-edge-failure");
+      complete(router, viewer);
+      await vi.waitFor(() =>
+        expect(preparedFor(sent, viewer.sessionId)).toBeDefined(),
+      );
+      const prepared = preparedFor(sent, viewer.sessionId)!;
+      router.handleRouteReady(viewer, {
+        type: "route-ready",
+        revision: prepared.revision,
+        phase: "prepare",
+      });
+      const active = router.resolveActiveViewerMediaEdge(
+        room.roomId,
+        viewer.peerId,
+      )!;
+
+      router.handleRouteFailed(host, {
+        type: "route-failed",
+        revision: active.revision,
+        phase: "active",
+        connectionId: active.connectionId,
+      });
+
+      await vi.waitFor(() =>
+        expect(
+          sent
+            .get(viewer.sessionId)
+            ?.findLast((message) => message.type === "route-status"),
+        ).toMatchObject({
+          state: "failed",
+          reason: "route-exhausted",
+        }),
+      );
+    } finally {
+      await router.close();
+    }
+  });
+
+  it("accepts active failure for a direct connection adopted during rebuild", async () => {
+    const { store, sent, router } = harness(2);
+    try {
+      const room = await store.createRoom();
+      const host = connectHost(store, room);
+      complete(router, host);
+      const viewer = connectViewer(store, room, "rebuilt-edge-failure");
+      complete(router, viewer);
+      await vi.waitFor(() =>
+        expect(preparedFor(sent, viewer.sessionId)).toBeDefined(),
+      );
+      const prepared = preparedFor(sent, viewer.sessionId)!;
+      router.handleRouteReady(viewer, {
+        type: "route-ready",
+        revision: prepared.revision,
+        phase: "prepare",
+      });
+      const active = router.resolveActiveViewerMediaEdge(
+        room.roomId,
+        viewer.peerId,
+      )!;
+      const rebuiltConnectionId = "rebuilt_connection_12345678";
+      expect(
+        router.peerSignalAuthorization({
+          roomId: room.roomId,
+          sourcePeerId: host.peerId,
+          sourceSessionId: host.sessionId,
+          targetPeerId: viewer.peerId,
+          targetSessionId: viewer.sessionId,
+          connectionId: rebuiltConnectionId,
+          signalKind: "description",
+          descriptionType: "offer",
+        }),
+      ).toBe(true);
+      expect(
+        router.resolveActiveViewerMediaEdge(room.roomId, viewer.peerId),
+      ).toMatchObject({
+        revision: active.revision,
+        connectionId: rebuiltConnectionId,
+      });
+
+      router.handleRouteFailed(viewer, {
+        type: "route-failed",
+        revision: active.revision,
+        phase: "active",
+        connectionId: rebuiltConnectionId,
+      });
+
+      await vi.waitFor(() =>
+        expect(
+          sent
+            .get(viewer.sessionId)
+            ?.findLast((message) => message.type === "route-status"),
+        ).toMatchObject({
+          state: "failed",
+          reason: "route-exhausted",
+        }),
+      );
+    } finally {
+      await router.close();
+    }
+  });
+
   it("commits P2P quality convergence after client relative approval", async () => {
     const { store, sent, router } = harness(2);
     try {
@@ -912,8 +1035,14 @@ describe("HybridMediaRouter v9 runtime", () => {
     }
   });
 
-  it("does not wake admission waiters when a subscription remains charged for drain", async () => {
-    const { store, sent, admission, router } = harness(1, true, undefined, 2);
+  it("physically removes an exact subscription without releasing its generation charge", async () => {
+    const { store, sent, admission, roomControl, router } = harness(
+      1,
+      true,
+      undefined,
+      2,
+    );
+    let closed = false;
     try {
       const activeRoom = await store.createRoom();
       const active = await establishSfuRoom(
@@ -957,6 +1086,8 @@ describe("HybridMediaRouter v9 runtime", () => {
         ).toMatchObject({ state: "waiting", reason: "sfu-admission" }),
       );
       const attemptsBeforeRelease = reservePublication.mock.calls.length;
+      const drainGate = deferred();
+      roomControl!.subscriptionDrainBarrier = drainGate.promise;
 
       store.disconnectParticipant(
         activeRoom.roomId,
@@ -972,12 +1103,27 @@ describe("HybridMediaRouter v9 runtime", () => {
       await vi.waitFor(() =>
         expect(router.routeDiagnosticSnapshot(activeRoom.roomId).children).toHaveLength(1),
       );
-      await Promise.resolve();
+      await vi.waitFor(() =>
+        expect(roomControl?.subscriptionDrainAttempts).toContainEqual(
+          expect.objectContaining({ viewerPeerId: active.first.peerId }),
+        ),
+      );
+      expect(admission?.usage()).toEqual({ ingress: 2, egress: 2 });
+      drainGate.resolve();
+      await vi.waitFor(() =>
+        expect(roomControl?.drainedSubscriptions).toContainEqual(
+          expect.objectContaining({ viewerPeerId: active.first.peerId }),
+        ),
+      );
 
       expect(admission?.usage()).toEqual({ ingress: 2, egress: 2 });
       expect(reservePublication).toHaveBeenCalledTimes(attemptsBeforeRelease);
-    } finally {
+
       await router.close();
+      closed = true;
+      expect(admission?.usage()).toEqual({ ingress: 0, egress: 0 });
+    } finally {
+      if (!closed) await router.close();
     }
   });
 
@@ -1150,8 +1296,14 @@ describe("HybridMediaRouter v9 runtime", () => {
     }
   });
 
-  it("keeps SFU Viewer and downstream Peer evidence identities separate", async () => {
-    const { store, sent, router } = harness(1, true, 1_000);
+  it("retries a failed physical drain before reusing the exact SFU identity", async () => {
+    const { store, sent, admission, roomControl, router } = harness(
+      1,
+      true,
+      1_000,
+      2,
+      10,
+    );
     try {
       const room = await store.createRoom();
       const { first } = await establishSfuRoom(store, sent, router, room);
@@ -1194,6 +1346,10 @@ describe("HybridMediaRouter v9 runtime", () => {
         ),
       );
       const directPrepare = preparedFor(sent, child.sessionId)!;
+      const drainGate = deferred();
+      const drainSubscription = vi
+        .spyOn(roomControl!, "drainSubscription")
+        .mockImplementationOnce(() => drainGate.promise);
       router.handleRouteReady(child, {
         type: "route-ready",
         revision: directPrepare.revision,
@@ -1205,6 +1361,49 @@ describe("HybridMediaRouter v9 runtime", () => {
             ?.upstream,
         ).toEqual({ kind: "peer", peerId: first.peerId }),
       );
+      await vi.waitFor(() =>
+        expect(drainSubscription).toHaveBeenCalledWith(
+          expect.objectContaining({ viewerPeerId: child.peerId }),
+        ),
+      );
+      expect(admission?.usage()).toEqual({ ingress: 1, egress: 3 });
+
+      router.handleRouteFailed(child, {
+        type: "route-failed",
+        revision: directPrepare.revision,
+        phase: "active",
+        connectionId: directPrepare.candidate.connectionId,
+      });
+      await vi.waitFor(() =>
+        expect(router.routeDiagnosticSnapshot(room.roomId).operation).not.toBeNull(),
+      );
+      expect(preparedFor(sent, child.sessionId)?.revision).toBe(
+        directPrepare.revision,
+      );
+
+      drainGate.reject(new Error("transient participant drain failure"));
+      await vi.waitFor(() => expect(drainSubscription).toHaveBeenCalledTimes(2));
+      const reusedSfu = await vi.waitFor(() => {
+        const prepared = preparedFor(sent, child.sessionId);
+        expect(prepared?.revision).toBeGreaterThan(directPrepare.revision);
+        expect(prepared?.candidate.transport).toBe("sfu");
+        return prepared!;
+      });
+      router.handleRouteReady(child, {
+        type: "route-ready",
+        revision: reusedSfu.revision,
+        phase: "prepare",
+      });
+      await vi.waitFor(() =>
+        expect(
+          router.resolveActiveViewerMediaEdge(room.roomId, child.peerId)
+            ?.upstream,
+        ).toEqual({ kind: "sfu" }),
+      );
+      expect(roomControl!.drainedSubscriptions).toContainEqual(
+        expect.objectContaining({ viewerPeerId: child.peerId }),
+      );
+      expect(admission?.usage()).toEqual({ ingress: 1, egress: 3 });
       expect(
         router.resolveActiveViewerMediaEdge(room.roomId, first.peerId)
           ?.upstream,

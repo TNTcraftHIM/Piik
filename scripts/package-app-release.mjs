@@ -36,6 +36,30 @@ function run(command, args, cwd) {
   return result.stdout.trim();
 }
 
+function buildRuntime(cwd) {
+  if (process.platform === "win32") {
+    run(
+      process.env.ComSpec || "cmd.exe",
+      ["/d", "/s", "/c", "npm run build"],
+      cwd,
+    );
+    return;
+  }
+  run("npm", ["run", "build"], cwd);
+}
+
+function assertCleanRevision(repositoryRoot, expectedRevision) {
+  const revision = run("git", ["rev-parse", "HEAD"], repositoryRoot).toLowerCase();
+  if (!/^[0-9a-f]{40}$/.test(revision)) fail("Git did not return a full revision");
+  if (expectedRevision && revision !== expectedRevision) {
+    fail("Repository revision changed during release packaging");
+  }
+  if (run("git", ["status", "--porcelain"], repositoryRoot) !== "") {
+    fail("Application releases require a clean Git checkout");
+  }
+  return revision;
+}
+
 function sha256(path) {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
@@ -155,13 +179,14 @@ if (relativeOutput === "" || (!relativeOutput.startsWith("..") && !isAbsolute(re
 }
 if (existsSync(outputRoot)) fail("Output directory must not already exist");
 
-const revision = run("git", ["rev-parse", "HEAD"], repositoryRoot).toLowerCase();
-if (!/^[0-9a-f]{40}$/.test(revision)) fail("Git did not return a full revision");
-if (run("git", ["status", "--porcelain"], repositoryRoot) !== "") {
-  fail("Application releases require a clean Git checkout");
-}
+const revision = assertCleanRevision(repositoryRoot);
 
-for (const required of ["package.json", "package-lock.json", "dist/client", "dist/server"]) {
+for (const required of ["package.json", "package-lock.json"]) {
+  if (!existsSync(join(repositoryRoot, required))) fail(`Missing release input: ${required}`);
+}
+buildRuntime(repositoryRoot);
+assertCleanRevision(repositoryRoot, revision);
+for (const required of ["dist/client", "dist/server"]) {
   if (!existsSync(join(repositoryRoot, required))) fail(`Missing built runtime path: ${required}`);
 }
 
@@ -179,6 +204,7 @@ try {
   ]) {
     copyRuntimeFile(repositoryRoot, runtimeRoot, source);
   }
+  assertCleanRevision(repositoryRoot, revision);
   writeFileSync(join(runtimeRoot, "REVISION"), `${revision}\n`, "ascii");
 
   const records = recordsFor(runtimeRoot);
