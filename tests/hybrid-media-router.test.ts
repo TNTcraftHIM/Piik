@@ -234,6 +234,123 @@ async function establishSfuRoom(
 }
 
 describe("HybridMediaRouter v9 runtime", () => {
+  it("projects exact endpoint copy context from the current snapshot", async () => {
+    const { router } = harness(2);
+    const internal = router as unknown as {
+      qualityCopyContext(
+        snapshot: unknown,
+        hostPeerId: string,
+        observedPeerId: string,
+        endpointCapacity: number,
+        sample: unknown,
+      ): Record<string, unknown>;
+    };
+    const edge = (parentPeerId: string, connectionId: string) => ({
+      kind: "peer", childSessionId: "child-session", parentPeerId,
+      parentSessionId: "parent-session", transport: "direct", connectionId,
+      usable: true, physicalActive: true,
+    });
+    const operation = (tuple: unknown, transition: unknown) => ({
+      childPeerId: "candidate", childSessionId: "candidate-session",
+      demandPeerId: "candidate", reason: "quality-convergence",
+      baseRevision: 7, factVersion: 1, candidates: [{ tuple, endpointTransition: transition }],
+      cursor: 0, deadlineAtMs: 20_000, wakeAtMs: 20_000,
+      current: { tuple, revision: 8, connectionId: "candidate-connection" },
+    });
+    const snapshot = (
+      upstreamByViewer: Map<string, unknown>,
+      op?: unknown,
+      hostPublication: unknown = null,
+    ) => ({
+      revision: 7, paused: false, factVersion: 1, upstreamByViewer,
+      hostPublication, ...(op ? { operation: op } : {}),
+    });
+    const project = (
+      state: unknown,
+      observedPeerId: string,
+      endpointCapacity: number,
+      sample: unknown,
+    ) => internal.qualityCopyContext(
+      state, "host", observedPeerId, endpointCapacity, sample,
+    );
+    const hostEdges = new Map<string, unknown>([
+      ["a", edge("host", "a-connection")],
+      ["b", edge("host", "b-connection")],
+    ]);
+    const peerCandidate = {
+      kind: "peer", parentPeerId: "host", transport: "direct",
+    };
+    const sfuSample = {
+      kind: "sfu", routeRevision: 8,
+      publicationGeneration: "publication", hostSessionId: "host-session",
+    };
+    const publication = {
+      generation: "publication", hostSessionId: "host-session",
+      connectionId: "publication-connection", usable: true,
+      physicalActive: true, resource: {},
+    };
+
+    try {
+      expect(project(
+        snapshot(hostEdges, operation(peerCandidate, {
+          kind: "overlap", producerPeerId: "host",
+        })),
+        "host", 2,
+        { kind: "peer", childPeerId: "candidate", routeRevision: 8,
+          connectionId: "candidate-connection" },
+      )).toMatchObject({
+        committedCopies: 2, candidateReservedCopies: 1, possibleCopies: 3,
+        endpointCapacity: 2, operationReason: "quality-convergence",
+        candidateTransition: "overlap", sampleRole: "candidate",
+      });
+
+      const oneHostEdge = new Map<string, unknown>([
+        ["a", edge("host", "a-connection")],
+      ]);
+      const sfuCases = [
+        {
+          state: snapshot(hostEdges, operation(
+            { kind: "sfu", publication: "create" },
+            { kind: "overlap", producerPeerId: "host" },
+          )),
+          expected: { committedCopies: 2, candidateReservedCopies: 1,
+            possibleCopies: 3, candidateTransition: "overlap" },
+        },
+        {
+          state: snapshot(oneHostEdge, operation(
+            { kind: "sfu", publication: "reuse" }, { kind: "none" },
+          ), publication),
+          expected: { committedCopies: 2, candidateReservedCopies: 0,
+            possibleCopies: 2, candidateTransition: "none" },
+        },
+      ];
+      for (const testCase of sfuCases) {
+        expect(project(testCase.state, "host", 2, sfuSample)).toMatchObject({
+          ...testCase.expected, sampleRole: "candidate",
+        });
+      }
+
+      const relayEdges = new Map<string, unknown>([
+        ["a", edge("relay", "relay-a")],
+        ["b", edge("relay", "relay-b")],
+      ]);
+      const relaySample = {
+        kind: "peer", childPeerId: "a", routeRevision: 7,
+        connectionId: "relay-a",
+      };
+      expect(project(snapshot(relayEdges), "relay", 3, relaySample)).toMatchObject({
+        committedCopies: 2, candidateReservedCopies: 0, possibleCopies: 2,
+        endpointCapacity: 3, sampleRole: "active",
+      });
+      expect(project(
+        snapshot(relayEdges), "relay", 3,
+        { ...relaySample, routeRevision: 6 },
+      ).sampleRole).toBe("unknown");
+    } finally {
+      await router.close();
+    }
+  });
+
   it("keeps the controller diagnostic label until a departed relay is pruned", async () => {
     const { store, sent, router } = harness(2);
     try {
@@ -487,12 +604,22 @@ describe("HybridMediaRouter v9 runtime", () => {
         revision: secondPrepare.revision,
         phase: "prepare",
       });
-      router.setViewerRelayCapacity(second, 2);
+      router.setViewerRelayCapacity(second, 3);
 
       const firstEdge = router.resolveActiveViewerMediaEdge(room.roomId, first.peerId)!;
       const secondEdge = router.resolveActiveViewerMediaEdge(room.roomId, second.peerId)!;
       expect(firstEdge.upstream).toEqual({ kind: "peer", peerId: host.peerId });
       expect(secondEdge.upstream).toEqual({ kind: "peer", peerId: host.peerId });
+      const debug = vi.spyOn(
+        router as unknown as {
+          debug(
+            roomId: string,
+            event: string,
+            details: Record<string, unknown>,
+          ): void;
+        },
+        "debug",
+      );
       expect(
         router.observeSenderQualityEvidence(host, {
           type: "sender-quality-evidence",
@@ -506,6 +633,20 @@ describe("HybridMediaRouter v9 runtime", () => {
           diagnostics: senderDiagnostics("healthy"),
         }),
       ).toBe(true);
+      expect(debug).toHaveBeenCalledWith(
+        room.roomId,
+        "sender-quality-evidence",
+        expect.objectContaining({
+          routeRevision: secondEdge.revision,
+          committedCopies: 2,
+          candidateReservedCopies: 0,
+          possibleCopies: 2,
+          endpointCapacity: 2,
+          operationReason: null,
+          candidateTransition: null,
+          sampleRole: "active",
+        }),
+      );
       expect(
         router.observeSenderQualityEvidence(host, {
           type: "sender-quality-evidence",
@@ -542,6 +683,33 @@ describe("HybridMediaRouter v9 runtime", () => {
       );
       const qualityPrepare = preparedFor(sent, first.sessionId)!;
       expect(qualityPrepare.candidate.qualityProbe).toBe(true);
+      expect(
+        router.observeSenderQualityEvidence(second, {
+          type: "sender-quality-evidence",
+          childPeerId: first.peerId,
+          connectionId: qualityPrepare.candidate.connectionId,
+          rtpStatsId: "candidate-rtp",
+          trackIdentifier: "track",
+          sampleTimestampMs: 200,
+          routeRevision: qualityPrepare.revision,
+          state: "healthy",
+          diagnostics: senderDiagnostics("healthy"),
+        }),
+      ).toBe(true);
+      expect(debug).toHaveBeenCalledWith(
+        room.roomId,
+        "sender-quality-evidence",
+        expect.objectContaining({
+          routeRevision: qualityPrepare.revision,
+          committedCopies: 0,
+          candidateReservedCopies: 1,
+          possibleCopies: 1,
+          endpointCapacity: 2,
+          operationReason: "quality-convergence",
+          candidateTransition: "none",
+          sampleRole: "candidate",
+        }),
+      );
       router.handleRouteReady(first, {
         type: "route-ready",
         revision: qualityPrepare.revision,
