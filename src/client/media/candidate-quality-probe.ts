@@ -125,6 +125,7 @@ class ConsecutiveCandidateQualityProbe {
   private lastCandidateTimestampMs: number | null = null;
   private lastCurrentTimestampMs: number | null = null;
   private consecutiveApprovedWindows = 0;
+  private consecutiveRejectedWindows = 0;
 
   constructor(
     private readonly compare: (
@@ -136,12 +137,12 @@ class ConsecutiveCandidateQualityProbe {
   observe(
     current: ConnectionMetrics | null,
     candidate: ConnectionMetrics,
-  ): boolean {
+  ): CandidateQualityProbeResult {
     if (
       candidate.sampleTimestampMs === null ||
       candidate.sampleTimestampMs === this.lastCandidateTimestampMs
     ) {
-      return false;
+      return "pending";
     }
     this.lastCandidateTimestampMs = candidate.sampleTimestampMs;
     if (
@@ -150,26 +151,47 @@ class ConsecutiveCandidateQualityProbe {
       (this.lastCurrentTimestampMs !== null &&
         current.sampleTimestampMs <= this.lastCurrentTimestampMs)
     ) {
-      this.consecutiveApprovedWindows = 0;
-      return false;
+      this.resetRuns();
+      return "pending";
     }
     this.lastCurrentTimestampMs = current.sampleTimestampMs;
     const approved = this.compare(current, candidate);
-    this.consecutiveApprovedWindows = approved
-      ? this.consecutiveApprovedWindows + 1
-      : 0;
-    return (
-      this.consecutiveApprovedWindows >=
+    if (approved === null) {
+      this.resetRuns();
+      return "pending";
+    }
+    if (approved) {
+      this.consecutiveApprovedWindows += 1;
+      this.consecutiveRejectedWindows = 0;
+      return this.consecutiveApprovedWindows >=
+        PERSISTENT_NATIVE_EDGE_DEGRADED_WINDOWS
+        ? "approved"
+        : "pending";
+    }
+    this.consecutiveApprovedWindows = 0;
+    this.consecutiveRejectedWindows += 1;
+    return this.consecutiveRejectedWindows >=
       PERSISTENT_NATIVE_EDGE_DEGRADED_WINDOWS
-    );
+      ? "rejected"
+      : "pending";
   }
 
   reset(): void {
     this.lastCandidateTimestampMs = null;
     this.lastCurrentTimestampMs = null;
+    this.resetRuns();
+  }
+
+  private resetRuns(): void {
     this.consecutiveApprovedWindows = 0;
+    this.consecutiveRejectedWindows = 0;
   }
 }
+
+export type CandidateQualityProbeResult =
+  | "pending"
+  | "approved"
+  | "rejected";
 
 export class SfuQualityProbe extends ConsecutiveCandidateQualityProbe {
   constructor() {

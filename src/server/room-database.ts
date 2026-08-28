@@ -216,14 +216,28 @@ export class RoomDatabase {
   }
 
   deleteRoom(roomId: string, hostTokenDigest: Buffer): void {
-    assertRoomIdentity(roomId, hostTokenDigest);
+    this.deleteRooms([{ roomId, hostTokenDigest }]);
+  }
+
+  deleteRooms(
+    rooms: readonly { roomId: string; hostTokenDigest: Buffer }[],
+  ): void {
+    for (const room of rooms) {
+      assertRoomIdentity(room.roomId, room.hostTokenDigest);
+    }
+    if (rooms.length === 0) {
+      return;
+    }
     this.transaction((database) => {
-      const changes = database
-        .prepare(
-          "DELETE FROM rooms WHERE room_id = ? AND host_token_digest = ?",
-        )
-        .run(roomId, hostTokenDigest).changes;
-      assertSingleChange(changes, "delete");
+      const statement = database.prepare(
+        "DELETE FROM rooms WHERE room_id = ? AND host_token_digest = ?",
+      );
+      for (const room of rooms) {
+        assertSingleChange(
+          statement.run(room.roomId, room.hostTokenDigest).changes,
+          "delete",
+        );
+      }
     });
   }
 

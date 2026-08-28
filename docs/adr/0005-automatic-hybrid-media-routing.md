@@ -1,6 +1,6 @@
 # ADR-0005: Automatic Hybrid Media Routing
 
-- Status: accepted and deployed; native-edge convergence defaults on per share
+- Status: Accepted
 - Date: 2026-08-20
 - Last updated: 2026-08-28
 
@@ -62,11 +62,13 @@ itself reparented while its descendants remain attached.
 
 ### Deterministic Candidates
 
-Each child operation owns one candidate list and cursor, one current candidate
-and reservations, one route-demand owner, one fact version, and one total
-deadline. Candidate creation first rejects stale sessions, unreachable sources,
-cycles, insufficient steady/overlap capacity, tuples already consumed by that
-operation, and unavailable SFU resources.
+Each child operation owns one immutable purpose, one candidate list and cursor,
+one current candidate and reservations, one route-demand owner, one fact version,
+and one total deadline. Availability work preempts a background operation by
+aborting it and creating the required operation; the old operation is never
+relabelled. Candidate creation first rejects stale sessions, unreachable
+sources, cycles, insufficient steady/overlap capacity, tuples already consumed
+by that operation, and unavailable SFU resources.
 
 Eligible Peer parents are ordered by:
 
@@ -87,8 +89,12 @@ root. A fresh healthy candidate sender proof is required before make-before-brea
 commit. Success moves one branch toward even fanout; failure consumes that one-shot intent. No timer,
 continuous rebalance or general load score is introduced.
 
-A failed exact tuple is consumed only for its current operation. A later external
-fact may make it eligible again; there is no persistent parent blacklist.
+A failed tuple is consumed for its exact candidate opportunity: tuple, relevant
+endpoint sessions or publication generation, and endpoint-transition strength.
+Only a new session or generation, or a strictly better transition, makes that
+opportunity new. Candidate removal, worsening, reordering, and unrelated facts
+do not retry it. An external SFU-resource wake may reopen SFU opportunities but
+never Peer opportunities. There is no persistent parent blacklist.
 
 ### Prepare, Commit, And Rollback
 
@@ -155,6 +161,12 @@ ceiling derives from the fixed room-code space, and egress derives from that
 space times the per-room Viewer limit; neither has an independent tuning key.
 Exact publication and subscription handles remain charged while reserved,
 committed, or draining. Reactivating the same handle does not double-charge it.
+
+Grant revocation, Viewer leave, and SFU-to-P2P replacement remove the exact
+LiveKit Viewer participant and confirm its absence. This control-plane drain is
+not token revocation or ledger release: an already issued self-hosted LiveKit
+token remains usable until expiry, so that subscription's egress stays charged
+until the whole publication generation is deleted and confirmed absent.
 
 The application explicitly creates a managed LiveKit room before issuing media
 tokens. Replacement, abort, timeout, confirmed media-participant loss, share
@@ -225,9 +237,13 @@ candidate receive windows. A P2P candidate commits only after first decoded
 frame and three consecutive windows with no freeze/pause, no lower pixel area or
 rounded FPS, and a strict improvement in at least one of those dimensions.
 Bitrate does not rank P2P candidates because codec and content phase make it
-non-monotonic. Old-edge recovery, missing/incomparable evidence, authority
-change, or deadline aborts the experiment. A successful commit clears and
-rebaselines the affected subtree.
+non-monotonic. Three consecutive comparable non-improving windows reject the
+candidate and advance the existing cursor without resetting the deadline. A
+persistently limited exact candidate sender is also vetoed even when receiver
+comparison approves it. Unknown or incomparable evidence waits only within the
+existing deadline; none of these outcomes creates a score. Old-edge recovery,
+authority change, or deadline aborts the experiment. A successful commit clears
+and rebaselines the affected subtree.
 
 The same rule supplies both active parent change and relay abdication. A bad
 relay ingress reparents that relay while retaining its subtree. A bad exact

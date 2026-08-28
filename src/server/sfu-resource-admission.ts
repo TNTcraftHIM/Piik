@@ -147,7 +147,7 @@ export class SfuResourceAdmission {
     return true;
   }
 
-  releaseSubscription(fence: SfuSubscriptionFence): boolean {
+  beginSubscriptionDrain(fence: SfuSubscriptionFence): boolean {
     assertSubscriptionFence(fence);
     const publication = this.publication(fence);
     const subscription = publication?.subscriptions.get(fence.viewerPeerId);
@@ -158,11 +158,7 @@ export class SfuResourceAdmission {
     ) {
       return false;
     }
-    if (subscription.state === "reserved") {
-      subscription.state = "draining";
-      return true;
-    }
-    if (subscription.state === "committed") {
+    if (subscription.state !== "draining") {
       subscription.state = "draining";
     }
     return true;

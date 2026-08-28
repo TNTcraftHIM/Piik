@@ -288,7 +288,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     useState<HostCreationProfile>(readCreationProfile);
   const creationProfileRef = useRef(creationProfile);
   const [roomMutation, setRoomMutation] = useState<
-    "access" | "replacement" | null
+    "access" | "replacement" | "sharing" | null
   >(null);
   const roomMutating = roomMutation !== null;
   const [viewerPasswordEnabled, setViewerPasswordEnabled] = useState(
@@ -332,7 +332,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const hostClientIdRef = useRef<string | null>(null);
   const iceConfigRef = useRef<IceConfig | null>(null);
   const peersRef = useRef(new Map<string, HostPeer>());
-  const retiredConnectionsRef = useRef(new Map<string, string>());
   const hostProvisionalChildRef = useRef<HostProvisionalChild | null>(null);
   const activeHostChildPeerIdsRef = useRef<string[]>([]);
   const endpointMediaCopyCapacityRef = useRef(MAX_ENDPOINT_MEDIA_CHILDREN);
@@ -458,7 +457,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       signalRef.current?.stop();
       peersRef.current.forEach((peer) => peer.dispose());
       peersRef.current.clear();
-      retiredConnectionsRef.current.clear();
       hostProvisionalChildRef.current?.discard();
       hostProvisionalChildRef.current = null;
       activeHostChildPeerIdsRef.current = [];
@@ -485,6 +483,16 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     return (
       generationRef.current === generation &&
       activeGenerationRef.current === generation
+    );
+  }
+
+  function isCurrentShare(
+    generation: number,
+    shareGeneration: string,
+  ): boolean {
+    return (
+      isCurrentGeneration(generation) &&
+      shareGenerationRef.current === shareGeneration
     );
   }
 
@@ -615,7 +623,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     shareGenerationRef.current = null;
     peersRef.current.forEach((peer) => peer.dispose());
     peersRef.current.clear();
-    retiredConnectionsRef.current.clear();
     hostProvisionalChildRef.current?.discard();
     hostProvisionalChildRef.current = null;
     activeHostChildPeerIdsRef.current = [];
@@ -671,7 +678,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   }
 
   function beginRoomMutation(
-    kind: "access" | "replacement",
+    kind: "access" | "replacement" | "sharing",
   ): object | null {
     if (roomMutationRef.current) {
       return null;
@@ -1087,7 +1094,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     clearViewerQualityEvidence(peerId);
     const peer = peersRef.current.get(peerId);
     if (peer) {
-      retiredConnectionsRef.current.set(peerId, peer.connectionId);
       peer.dispose();
     }
     peersRef.current.delete(peerId);
@@ -1265,6 +1271,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       started = await peer.start();
     } catch (error) {
       if (peersRef.current.get(peerId) === peer) {
+        const connectionId = peer.connectionId;
+        reportHostChildFailure(peerId, connectionId, generation);
         removePeer(peerId);
       }
       throw error;
@@ -1273,10 +1281,13 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       return;
     }
 
-    removePeer(peerId);
+    const connectionId = peer.connectionId;
     if (peerAssistedRef.current || attempt >= 1) {
+      reportHostChildFailure(peerId, connectionId, generation);
+      removePeer(peerId);
       return;
     }
+    removePeer(peerId);
     window.setTimeout(() => {
       if (
         isCurrentGeneration(generation) &&
@@ -1357,6 +1368,24 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           }
         });
       },
+    );
+  }
+
+  function reportHostChildFailure(
+    peerId: string,
+    connectionId: string,
+    generation: number,
+  ): boolean {
+    return Boolean(
+      isCurrentGeneration(generation) &&
+        peerAssistedRef.current &&
+        hostChildIsAssigned(peerId) &&
+        signalRef.current?.send({
+          type: "route-failed",
+          revision: activeRouteRevisionRef.current,
+          phase: "active",
+          connectionId,
+        }),
     );
   }
 
@@ -1607,10 +1636,16 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     if (
       phase === "starting" ||
       phase === "live" ||
-      activeGenerationRef.current !== null
+      activeGenerationRef.current !== null ||
+      roomMutationRef.current !== null
     ) {
       return;
     }
+    const mutation = beginRoomMutation("sharing");
+    if (!mutation) {
+      return;
+    }
+    try {
     const generation = generationRef.current + 1;
     const shareGeneration = createOpaqueId();
     generationRef.current = generation;
@@ -1625,7 +1660,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       // This must remain the first awaited operation in the button gesture.
       captured = await captureDisplay(qualitySettingsRef.current);
     } catch (error) {
-      if (!isCurrentGeneration(generation)) {
+      if (!isCurrentShare(generation, shareGeneration)) {
         return;
       }
       activeGenerationRef.current = null;
@@ -1635,7 +1670,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       return;
     }
 
-    if (!isCurrentGeneration(generation)) {
+    if (!isCurrentShare(generation, shareGeneration)) {
       captured.getTracks().forEach((track) => track.stop());
       return;
     }
@@ -1647,7 +1682,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
 
     videoCodecRef.current = await resolveStreamVideoCodec(captured);
     setResolvedVideoCodec(videoCodecRef.current.primary);
-    if (!isCurrentGeneration(generation)) {
+    if (!isCurrentShare(generation, shareGeneration)) {
       captured.getTracks().forEach((track) => track.stop());
       return;
     }
@@ -1655,7 +1690,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     let createdRoom: HostRoomState | null = null;
     let claimedRoom = false;
     try {
-      let reusableRoom = room;
+      const reusableRoom = roomRef.current;
       createdRoom = reusableRoom ?? hostRoomFromStored(readHostRoom());
       if (!createdRoom) {
         const response = await createRoom(
@@ -1664,15 +1699,17 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           readPreferredRoomId(),
         );
         createdRoom = hostRoomFromCreated(response);
-        if (!isCurrentGeneration(generation)) {
+        if (!isCurrentShare(generation, shareGeneration)) {
           captured.getTracks().forEach((track) => track.stop());
           closeAbandonedRoom(createdRoom);
           return;
         }
         writeHostRoom(createdRoom);
+        roomRef.current = createdRoom;
         setRoom(createdRoom);
         claimedRoom = true;
       } else {
+        roomRef.current = createdRoom;
         setRoom(createdRoom);
         claimedRoom = true;
       }
@@ -1703,7 +1740,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           {
             onStatus: (status) => {
               if (
-                isCurrentGeneration(generation) &&
+                isCurrentShare(generation, shareGeneration) &&
                 signalRef.current === signal
               ) {
                 setSignalStatus(status);
@@ -1711,7 +1748,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
             },
             onTerminated: (reason) => {
               if (
-                isCurrentGeneration(generation) &&
+                isCurrentShare(generation, shareGeneration) &&
                 signalRef.current === signal
               ) {
                 endSharing(hostTerminationMessage(reason), false);
@@ -1719,7 +1756,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
             },
             onAccessRequired: () => {
               if (
-                isCurrentGeneration(generation) &&
+                isCurrentShare(generation, shareGeneration) &&
                 signalRef.current === signal
               ) {
                 endSharing("站点访问已失效，请重新验证", false);
@@ -1728,7 +1765,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
             },
             onMessage: (message) => {
               if (
-                !isCurrentGeneration(generation) ||
+                !isCurrentShare(generation, shareGeneration) ||
                 signalRef.current !== signal
               ) {
                 return;
@@ -1787,18 +1824,19 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
             readPreferredRoomId(),
           );
           const replacement = hostRoomFromCreated(response);
-          if (!isCurrentGeneration(generation)) {
+          if (!isCurrentShare(generation, shareGeneration)) {
             captured.getTracks().forEach((track) => track.stop());
             closeAbandonedRoom(replacement);
             return;
           }
           writeHostRoom(replacement);
+          roomRef.current = replacement;
           setRoom(replacement);
           const replacementSignal = connectSignal(replacement);
           signalRef.current = replacementSignal;
           replacementSignal.start();
         } catch (error) {
-          if (!isCurrentGeneration(generation)) {
+          if (!isCurrentShare(generation, shareGeneration)) {
             return;
           }
           activeGenerationRef.current = null;
@@ -1819,7 +1857,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       signalRef.current = signal;
       signal.start();
     } catch (error) {
-      if (!isCurrentGeneration(generation)) {
+      if (!isCurrentShare(generation, shareGeneration)) {
         captured.getTracks().forEach((track) => track.stop());
         if (createdRoom && !claimedRoom) {
           closeAbandonedRoom(createdRoom);
@@ -1838,6 +1876,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       }
       setNotice(readableError(error, "room"));
       setPhase("error");
+    }
+    } finally {
+      finishRoomMutation(mutation);
     }
   }
 
@@ -2392,6 +2433,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                 )}
                 <StageEntryActions
                   joiningRoom={joiningRoom}
+                  startSharingDisabled={roomMutating}
                   onStartSharing={() => {
                     setJoiningRoom(false);
                     void startSharing();

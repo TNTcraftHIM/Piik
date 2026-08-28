@@ -107,10 +107,10 @@ interface Participant {
   departureConfirmed: boolean;
   joinOrder: number;
   effectiveDownstreamCapacity: number;
-  blockedAtFactVersion?: number;
-  bootstrapFailureAtFactVersion?: number;
+  availabilityExhausted: boolean;
+  consumedCandidateOpportunities: Map<string, number>;
+  bootstrapFailureReported?: boolean;
   sfuFirstAtNextRoute?: boolean;
-  failedTuple?: { key: string; factVersion: number };
 }
 
 interface Attempt<Resource> {
@@ -129,6 +129,7 @@ interface Attempt<Resource> {
   senderQualityState?: "healthy" | "degraded";
   senderQualityAcceptedAtMs?: number;
   senderQualityConsecutiveHealthyWindows?: number;
+  senderQualityConsecutiveDegradedWindows?: number;
   senderQualitySampleTimestampMs?: number;
   senderQualityIdentity?: string;
 }
@@ -138,7 +139,7 @@ interface ChildOperation<Resource> {
   childSessionId: string;
   demandPeerId: string;
   demandSessionId: string;
-  reason: RouteDemandReason;
+  readonly reason: RouteDemandReason;
   baseRevision: number;
   candidates: CandidatePlan[];
   cursor: number;
@@ -158,8 +159,6 @@ interface DirectContinuation {
 interface SfuBootstrapIntent {
   demandPeerId: string;
   demandSessionId: string;
-  factVersion: number;
-  triedCarrierPeerIds: Set<string>;
 }
 
 interface SfuBootstrapCarrier {
@@ -356,7 +355,10 @@ export class RoomRouteController<Resource = unknown> {
   private readonly qualityBaselinesPending = new Set<string>();
   private readonly directContinuations = new Map<string, DirectContinuation>();
   private sfuBootstrapIntent?: SfuBootstrapIntent;
-  private sfuBootstrapExhaustedAtFactVersion?: number;
+  private readonly consumedSfuBootstrapOpportunities = new Map<
+    string,
+    number
+  >();
   private rootConvergenceRootPeerId?: string;
 
   constructor(private readonly options: ControllerOptions) {
@@ -477,6 +479,7 @@ export class RoomRouteController<Resource = unknown> {
       let changed = false;
       const previousSessionId = current.sessionId;
       if (previousSessionId !== input.sessionId) {
+        this.clearOpportunitiesForSessionChange(input.peerId, input.role);
         this.clearQualityForParticipant(input.peerId);
         const revisionBefore = this.revision;
         if (this.operationUsesParticipantSession(input.peerId)) {
@@ -500,9 +503,6 @@ export class RoomRouteController<Resource = unknown> {
         current.effectiveDownstreamCapacity = capacity;
         changed = true;
       }
-      if (changed && current.blockedAtFactVersion !== undefined) {
-        current.blockedAtFactVersion = undefined;
-      }
       if (changed) {
         this.touchFacts();
         this.debug("participant-updated", {
@@ -525,6 +525,8 @@ export class RoomRouteController<Resource = unknown> {
         effectiveDownstreamCapacity: capacity,
         departureConfirmed: false,
         joinOrder: this.nextJoinOrder++,
+        availabilityExhausted: false,
+        consumedCandidateOpportunities: new Map(),
       });
       this.debug("participant-joined", {
         participant: this.debugPeer(input.peerId),
@@ -542,6 +544,7 @@ export class RoomRouteController<Resource = unknown> {
   disconnectSession(peerId: string, sessionId: string): boolean {
     const participant = this.participants.get(peerId);
     if (!participant || participant.sessionId !== sessionId) return false;
+    this.clearOpportunitiesForSessionChange(peerId, participant.role);
     participant.sessionId = null;
     this.clearQualityForParticipant(peerId);
     this.directContinuations.delete(peerId);
@@ -559,6 +562,7 @@ export class RoomRouteController<Resource = unknown> {
     this.routeTimings.delete(peerId);
     if (participant.departureConfirmed && participant.sessionId === null &&
         participant.effectiveDownstreamCapacity === 0) return true;
+    this.clearOpportunitiesForSessionChange(peerId, participant.role);
     participant.sessionId = null;
     this.clearQualityForParticipant(peerId);
     participant.departureConfirmed = true;
@@ -589,7 +593,6 @@ export class RoomRouteController<Resource = unknown> {
     const changed = participant.effectiveDownstreamCapacity !== capacity;
     if (!changed) return true;
     participant.effectiveDownstreamCapacity = capacity;
-    participant.blockedAtFactVersion = undefined;
     if (nowMs !== undefined) {
       for (const childPeerId of this.overflowPeerChildren(peerId)) {
         this.recordDemand(childPeerId, nowMs, "capacity-reduction");
@@ -604,6 +607,8 @@ export class RoomRouteController<Resource = unknown> {
   }
 
   touchExternalFacts(): void {
+    this.clearSfuCandidateOpportunities();
+    this.sfuBootstrapIntent = undefined;
     this.touchFacts();
   }
 
@@ -654,20 +659,48 @@ export class RoomRouteController<Resource = unknown> {
       return false;
     }
     if (edge.usable) {
+      this.consumeActiveEdgeOpportunity(child, edge);
       this.clearQualityForParticipant(guard.childPeerId);
       edge.usable = false;
       this.directContinuations.delete(guard.childPeerId);
-      child.blockedAtFactVersion = undefined;
+      child.availabilityExhausted = false;
+      child.bootstrapFailureReported = undefined;
       this.touchFacts();
-      child.failedTuple = {
-        key: edgeTupleKey(edge),
-        factVersion: this.factVersion,
-      };
       if (nowMs !== undefined) {
         this.recordDemand(guard.childPeerId, nowMs, "edge-unavailable");
       }
     }
     return true;
+  }
+
+  invalidateDirectEdgeFromParent(
+    input: {
+      parentPeerId: string;
+      parentSessionId: string;
+      routeRevision: number;
+      connectionId: string;
+    },
+    nowMs?: number,
+  ): boolean {
+    const match = [...this.upstreamByViewer].find(
+      ([, edge]) =>
+        edge.kind === "peer" &&
+        edge.parentPeerId === input.parentPeerId &&
+        edge.parentSessionId === input.parentSessionId &&
+        edge.connectionId === input.connectionId,
+    );
+    if (!match) return false;
+    const [childPeerId, edge] = match;
+    return this.invalidateEdge(
+      {
+        childPeerId,
+        childSessionId: edge.childSessionId,
+        parentSessionId: input.parentSessionId,
+        routeRevision: input.routeRevision,
+        connectionId: input.connectionId,
+      },
+      nowMs,
+    );
   }
 
   invalidateHostPublication(guard: {
@@ -686,7 +719,6 @@ export class RoomRouteController<Resource = unknown> {
       publication.usable = false;
       this.directContinuations.clear();
       this.sfuBootstrapIntent = undefined;
-      this.sfuBootstrapExhaustedAtFactVersion = undefined;
       if (nowMs !== undefined) {
         for (const [childPeerId, edge] of this.upstreamByViewer) {
           if (edge.kind === "sfu") {
@@ -720,10 +752,7 @@ export class RoomRouteController<Resource = unknown> {
     this.clearQualityForParticipant(input.childPeerId);
     edge.connectionId = input.newConnectionId;
     const child = this.participants.get(input.childPeerId);
-    if (child) {
-      child.blockedAtFactVersion = undefined;
-      child.failedTuple = undefined;
-    }
+    if (child) child.availabilityExhausted = false;
     this.touchFacts();
     return true;
   }
@@ -740,7 +769,7 @@ export class RoomRouteController<Resource = unknown> {
     edge.physicalActive = false;
     edge.usable = false;
     this.clearQualityForParticipant(guard.childPeerId);
-    child.blockedAtFactVersion = undefined;
+    child.availabilityExhausted = false;
     this.revision = this.allocateRevision();
     if (this.operation) this.operation.baseRevision = this.revision;
     this.touchFacts();
@@ -944,7 +973,8 @@ export class RoomRouteController<Resource = unknown> {
     const operation = this.operation;
     const attempt = operation?.current;
     if (
-      operation?.reason === "root-convergence" &&
+      (operation?.reason === "root-convergence" ||
+        operation?.reason === "quality-convergence") &&
       attempt?.tuple.kind === "peer" &&
       operation.childPeerId === input.childPeerId &&
       operation.childSessionId === child.sessionId &&
@@ -1292,6 +1322,7 @@ export class RoomRouteController<Resource = unknown> {
       attempt.senderQualityState = undefined;
       attempt.senderQualityAcceptedAtMs = undefined;
       attempt.senderQualityConsecutiveHealthyWindows = undefined;
+      attempt.senderQualityConsecutiveDegradedWindows = undefined;
       attempt.senderQualitySampleTimestampMs = undefined;
       return {
         accepted: true,
@@ -1343,13 +1374,15 @@ export class RoomRouteController<Resource = unknown> {
         released: [],
       };
     }
+    const sameFreshState =
+      attempt.senderQualityAcceptedAtMs !== undefined &&
+      acceptedAtMs <
+        attempt.senderQualityAcceptedAtMs +
+          VIEWER_QUALITY_EVIDENCE_EXPIRY_MS;
     const consecutiveHealthyWindows =
       attempt.tuple.kind === "sfu" && state === "healthy"
         ? attempt.senderQualityState === "healthy" &&
-          attempt.senderQualityAcceptedAtMs !== undefined &&
-          acceptedAtMs <
-            attempt.senderQualityAcceptedAtMs +
-              VIEWER_QUALITY_EVIDENCE_EXPIRY_MS
+          sameFreshState
           ? safeAdd(
               attempt.senderQualityConsecutiveHealthyWindows ?? 0,
               1,
@@ -1358,10 +1391,21 @@ export class RoomRouteController<Resource = unknown> {
         : state === "healthy"
           ? 1
           : 0;
+    const consecutiveDegradedWindows =
+      state === "degraded"
+        ? attempt.senderQualityState === "degraded" && sameFreshState
+          ? safeAdd(
+              attempt.senderQualityConsecutiveDegradedWindows ?? 0,
+              1,
+            )
+          : 1
+        : 0;
     attempt.senderQualityState = state;
     attempt.senderQualityAcceptedAtMs = acceptedAtMs;
     attempt.senderQualityConsecutiveHealthyWindows =
       consecutiveHealthyWindows;
+    attempt.senderQualityConsecutiveDegradedWindows =
+      consecutiveDegradedWindows;
     attempt.senderQualitySampleTimestampMs = sampleTimestampMs;
     attempt.senderQualityIdentity = senderIdentity;
     const guard = {
@@ -1370,8 +1414,15 @@ export class RoomRouteController<Resource = unknown> {
       revision: attempt.revision,
       connectionId: attempt.connectionId,
     };
+    const persistentQualityPeerDegradation =
+      operation.reason === "quality-convergence" &&
+      attempt.tuple.kind === "peer" &&
+      consecutiveDegradedWindows >= PERSISTENT_NATIVE_EDGE_DEGRADED_WINDOWS;
     const settled =
-      state === "degraded"
+      state === "degraded" &&
+      (attempt.tuple.kind !== "peer" ||
+        operation.reason !== "quality-convergence" ||
+        persistentQualityPeerDegradation)
         ? this.candidateFailed(guard, acceptedAtMs)
         : attempt.mediaReady &&
             (attempt.tuple.kind !== "sfu" ||
@@ -1412,12 +1463,14 @@ export class RoomRouteController<Resource = unknown> {
     const operation = this.operation;
     const attempt = operation?.current;
     const ownsCandidate =
-      this.operationRequiresNativeCandidateProof(operation) &&
       attempt &&
       (attempt.tuple.kind === "peer"
-        ? attempt.tuple.parentPeerId === parentPeerId &&
+        ? (operation?.reason === "root-convergence" ||
+            operation?.reason === "quality-convergence") &&
+          attempt.tuple.parentPeerId === parentPeerId &&
           attempt.parentSessionId === parentSessionId
-        : parentPeerId === this.options.hostPeerId &&
+        : this.operationRequiresNativeCandidateProof(operation) &&
+          parentPeerId === this.options.hostPeerId &&
           attempt.hostSessionId === parentSessionId);
     return ownsCandidate ? this.abortOperation(nowMs, "aborted") : [];
   }
@@ -1541,7 +1594,7 @@ export class RoomRouteController<Resource = unknown> {
           this.revision = this.allocateRevision();
           this.touchFacts();
         }
-        child.blockedAtFactVersion = this.factVersion;
+        child.availabilityExhausted = true;
         this.finishTiming(
           demandPeerId,
           nowMs,
@@ -1609,7 +1662,7 @@ export class RoomRouteController<Resource = unknown> {
       };
     }
     const plan = operation.candidates[operation.cursor];
-    if (!plan || !this.candidateValid(operation.childPeerId, plan)) {
+    if (!plan || !this.operationCandidateValid(operation, plan)) {
       return {
         accepted: false,
         released: [...validation.released, ...reservationResources(input.reservation)],
@@ -1714,6 +1767,12 @@ export class RoomRouteController<Resource = unknown> {
       };
     }
     if (bucket === "candidate-failed") {
+      if (this.isAvailabilityOperation(operation.reason)) {
+        this.consumeCandidateOpportunity(
+          operation.childPeerId,
+          operation.candidates[operation.cursor]!,
+        );
+      }
       this.promoteNextDirectWithinHeadStart(operation, nowMs);
     }
     this.consumeDirectContinuationCandidate(operation);
@@ -1847,6 +1906,12 @@ export class RoomRouteController<Resource = unknown> {
       operation.reason === "quality-convergence" &&
       attempt.tuple.kind === "peer" &&
       !relativeP2pApproved;
+    if (
+      relativeP2pApproved &&
+      this.candidateSenderPersistentlyDegraded(attempt, nowMs)
+    ) {
+      return this.candidateFailed(guard, nowMs);
+    }
     const nativeCandidateProof =
       this.operationRequiresNativeCandidateProof(operation);
     if (relativeP2pApproved || relativeP2pPending || nativeCandidateProof) {
@@ -1922,6 +1987,12 @@ export class RoomRouteController<Resource = unknown> {
       }
     }
     if (!commitReservation(attempt.reservation)) {
+      if (this.isAvailabilityOperation(operation.reason)) {
+        this.consumeCandidateOpportunity(
+          operation.childPeerId,
+          operation.candidates[operation.cursor]!,
+        );
+      }
       this.debug("candidate-commit-rejected", {
         child: this.debugPeer(operation.childPeerId),
         candidate: this.debugTuple(attempt.tuple),
@@ -2013,6 +2084,12 @@ export class RoomRouteController<Resource = unknown> {
       operation?.current &&
       this.guardMatches(guard, operation, operation.current)
     ) {
+      if (this.isAvailabilityOperation(operation.reason)) {
+        this.consumeCandidateOpportunity(
+          operation.childPeerId,
+          operation.candidates[operation.cursor]!,
+        );
+      }
       this.debug("candidate-failed", {
         child: this.debugPeer(operation.childPeerId),
         candidate: this.debugTuple(operation.current.tuple),
@@ -2086,7 +2163,7 @@ export class RoomRouteController<Resource = unknown> {
     this.routeTimings.clear();
     this.directContinuations.clear();
     this.sfuBootstrapIntent = undefined;
-    this.sfuBootstrapExhaustedAtFactVersion = undefined;
+    this.consumedSfuBootstrapOpportunities.clear();
     this.rootConvergenceRootPeerId = undefined;
     this.paused = true;
     return [...resources];
@@ -2157,17 +2234,23 @@ export class RoomRouteController<Resource = unknown> {
             operation.childPeerId,
             nowMs,
             factsChanged ? "stale" : "operation-deadline",
+            operation.candidates[
+              Math.min(operation.cursor, operation.candidates.length - 1)
+            ],
           )
         : undefined;
       const bootstrapAvailable =
         !backgroundConvergence &&
         !sfuBootstrap &&
-        !factsChanged &&
         this.bootstrapCandidateAvailable(operation.demandPeerId);
+      if (bootstrapAvailable) {
+        this.consumeCurrentAvailabilityOpportunity(operation);
+      } else {
+        this.consumeAvailabilityOperation(operation);
+      }
       const exhausted = sfuBootstrap
         ? failedBootstrapDemand !== undefined
         : !backgroundConvergence &&
-          !factsChanged &&
           !bootstrapAvailable;
       if (bootstrapAvailable) this.stageSfuBootstrap(operation);
       if (!sfuBootstrap) {
@@ -2193,8 +2276,7 @@ export class RoomRouteController<Resource = unknown> {
       this.blockAndClear(
         operation,
         !backgroundConvergence &&
-          !sfuBootstrap &&
-          !factsChanged,
+          !sfuBootstrap,
         released,
         revisionAdvanced,
       );
@@ -2247,7 +2329,7 @@ export class RoomRouteController<Resource = unknown> {
           !guardFailed &&
           !peerNoProgressExpired &&
           plan &&
-          this.candidateValid(operation.childPeerId, plan, attempt)
+          this.operationCandidateValid(operation, plan, attempt)
         ) {
           return result;
         }
@@ -2272,7 +2354,7 @@ export class RoomRouteController<Resource = unknown> {
         this.replanRemaining(operation);
       }
       while (operation.cursor < operation.candidates.length &&
-             !this.candidateValid(operation.childPeerId, operation.candidates[operation.cursor]!)) {
+             !this.operationCandidateValid(operation, operation.candidates[operation.cursor]!)) {
         this.noteRejection(operation.demandPeerId, "stale");
         if (operation.reason === "direct-convergence") {
           this.consumeDirectContinuationCandidate(operation);
@@ -2299,17 +2381,19 @@ export class RoomRouteController<Resource = unknown> {
             operation.childPeerId,
             nowMs,
             rejectionBucket,
+            operation.candidates[
+              Math.min(operation.cursor, operation.candidates.length - 1)
+            ],
           )
         : undefined;
       const bootstrapAvailable =
         !backgroundConvergence &&
         !sfuBootstrap &&
-        !factsChanged &&
         this.bootstrapCandidateAvailable(operation.demandPeerId);
+      if (!bootstrapAvailable) this.consumeAvailabilityOperation(operation);
       const exhausted = sfuBootstrap
         ? failedBootstrapDemand !== undefined
         : !backgroundConvergence &&
-          !factsChanged &&
           !bootstrapAvailable;
       if (bootstrapAvailable) this.stageSfuBootstrap(operation);
       if (!sfuBootstrap) {
@@ -2335,8 +2419,7 @@ export class RoomRouteController<Resource = unknown> {
       this.blockAndClear(
         operation,
         !backgroundConvergence &&
-          !sfuBootstrap &&
-          !factsChanged,
+          !sfuBootstrap,
         released,
         this.revision !== activeRevisionAtStart,
       );
@@ -2454,10 +2537,11 @@ export class RoomRouteController<Resource = unknown> {
     }
     const participant = this.participants.get(operation.childPeerId);
     if (participant) {
-      participant.blockedAtFactVersion = undefined;
-      participant.failedTuple = undefined;
+      participant.availabilityExhausted = false;
+      participant.bootstrapFailureReported = undefined;
     }
     if (old?.kind === "sfu" && !this.hasSfuSubscribers() && this.hostPublication) {
+      this.clearSfuCandidateOpportunities();
       this.hostPublication = null;
     }
     if (
@@ -2469,7 +2553,7 @@ export class RoomRouteController<Resource = unknown> {
         demand.sfuFirstAtNextRoute = true;
       }
       this.sfuBootstrapIntent = undefined;
-      this.sfuBootstrapExhaustedAtFactVersion = undefined;
+      this.consumedSfuBootstrapOpportunities.clear();
     } else if (this.usableRoute(operation.demandPeerId)) {
       this.clearSfuBootstrapForDemand(operation.demandPeerId);
     }
@@ -2491,10 +2575,16 @@ export class RoomRouteController<Resource = unknown> {
     childPeerId: string,
     sfuOnly: boolean,
   ): CandidatePlan[] {
-    const child = this.participants.get(childPeerId)!;
-    const failedKey = child.failedTuple?.factVersion === this.factVersion
-      ? child.failedTuple.key
-      : undefined;
+    return this.buildCandidatePlans(childPeerId, sfuOnly).filter(
+      (candidate) =>
+        this.candidateOpportunityAvailable(childPeerId, candidate),
+    );
+  }
+
+  private buildCandidatePlans(
+    childPeerId: string,
+    sfuOnly: boolean,
+  ): CandidatePlan[] {
     const descendants = this.descendantsOf(childPeerId);
     const parents = [...this.participants.values()]
       .filter((parent) => parent.sessionId && !parent.departureConfirmed && parent.peerId !== childPeerId &&
@@ -2526,11 +2616,93 @@ export class RoomRouteController<Resource = unknown> {
             ? [directCandidates[0]!, sfuCandidate, ...directCandidates.slice(1)]
             : [sfuCandidate]
         : [...directCandidates, ...(sfuCandidate ? [sfuCandidate] : [])];
-    return candidates.filter((candidate, index, all) => tupleKey(candidate) !== failedKey &&
+    return candidates.filter((candidate, index, all) =>
       all.findIndex((other) => tupleKey(other) === tupleKey(candidate)) === index)
       .map((candidate) => this.planCandidate(childPeerId, candidate))
       .filter((candidate): candidate is CandidatePlan => candidate !== null &&
         this.candidateValid(childPeerId, candidate));
+  }
+
+  private candidateOpportunityAvailable(
+    childPeerId: string,
+    plan: CandidatePlan,
+  ): boolean {
+    const consumed = this.participants
+      .get(childPeerId)
+      ?.consumedCandidateOpportunities.get(
+        this.candidateOpportunityBase(childPeerId, plan),
+      );
+    return (
+      consumed === undefined ||
+      endpointTransitionRank(plan.endpointTransition) < consumed
+    );
+  }
+
+  private candidateOpportunityBase(
+    childPeerId: string,
+    plan: CandidatePlan,
+  ): string {
+    const childSessionId =
+      this.participants.get(childPeerId)?.sessionId ?? "";
+    if (plan.tuple.kind === "peer") {
+      return `${tupleKey(plan.tuple)}\0${childSessionId}\0${
+        this.participants.get(plan.tuple.parentPeerId)?.sessionId ?? ""
+      }`;
+    }
+    const publicationGeneration =
+      plan.tuple.publication === "create"
+        ? ""
+        : (this.hostPublication?.generation ?? "");
+    return `${tupleKey(plan.tuple)}\0${childSessionId}\0${
+      this.participants.get(this.options.hostPeerId)?.sessionId ?? ""
+    }\0${publicationGeneration}`;
+  }
+
+  private consumeCandidateOpportunity(
+    childPeerId: string,
+    plan: CandidatePlan,
+  ): void {
+    const consumed = this.participants.get(
+      childPeerId,
+    )?.consumedCandidateOpportunities;
+    if (!consumed) return;
+    consumeOpportunity(
+      consumed,
+      this.candidateOpportunityBase(childPeerId, plan),
+      endpointTransitionRank(plan.endpointTransition),
+    );
+  }
+
+  private consumeActiveEdgeOpportunity(
+    child: Participant,
+    edge: CommittedEdge<Resource>,
+  ): void {
+    const base =
+      edge.kind === "peer"
+        ? `peer:${edge.parentPeerId}\0${child.sessionId ?? ""}\0${
+            edge.parentSessionId
+          }`
+        : `sfu:reuse\0${child.sessionId ?? ""}\0${
+            this.hostPublication?.hostSessionId ?? ""
+          }\0${edge.publicationGeneration}`;
+    consumeOpportunity(child.consumedCandidateOpportunities, base, 0);
+  }
+
+  private consumeAvailabilityOperation(
+    operation: ChildOperation<Resource>,
+  ): void {
+    if (!this.isAvailabilityOperation(operation.reason)) return;
+    for (const plan of operation.candidates) {
+      this.consumeCandidateOpportunity(operation.childPeerId, plan);
+    }
+  }
+
+  private consumeCurrentAvailabilityOpportunity(
+    operation: ChildOperation<Resource>,
+  ): void {
+    if (!this.isAvailabilityOperation(operation.reason)) return;
+    const plan = operation.candidates[operation.cursor];
+    if (plan) this.consumeCandidateOpportunity(operation.childPeerId, plan);
   }
 
   private senderQualityState(
@@ -2553,6 +2725,21 @@ export class RoomRouteController<Resource = unknown> {
       this.sourceUsableForQuality(edge)
       ? observation.state
       : "unknown";
+  }
+
+  private candidateSenderPersistentlyDegraded(
+    attempt: Attempt<Resource>,
+    nowMs: number,
+  ): boolean {
+    return Boolean(
+      attempt.senderQualityState === "degraded" &&
+        attempt.senderQualityAcceptedAtMs !== undefined &&
+        nowMs <
+          attempt.senderQualityAcceptedAtMs +
+            VIEWER_QUALITY_EVIDENCE_EXPIRY_MS &&
+        (attempt.senderQualityConsecutiveDegradedWindows ?? 0) >=
+          PERSISTENT_NATIVE_EDGE_DEGRADED_WINDOWS,
+    );
   }
 
   private sfuPublisherQualityState(
@@ -2634,7 +2821,7 @@ export class RoomRouteController<Resource = unknown> {
       return [];
     }
     const currentKey = edgeTupleKey(current);
-    const candidates = this.buildCandidates(childPeerId, false).filter(
+    const candidates = this.buildCandidatePlans(childPeerId, false).filter(
       (candidate) =>
         candidate.endpointTransition.kind !== "bounded-gap" &&
         tupleKey(candidate.tuple) !== currentKey &&
@@ -2943,6 +3130,10 @@ export class RoomRouteController<Resource = unknown> {
     );
   }
 
+  private isAvailabilityOperation(reason: RouteDemandReason): boolean {
+    return reason !== "sfu-bootstrap" && !this.isBackgroundConvergence(reason);
+  }
+
   private operationRequiresNativeCandidateProof(
     operation: ChildOperation<Resource> | undefined,
   ): operation is ChildOperation<Resource> {
@@ -2983,7 +3174,6 @@ export class RoomRouteController<Resource = unknown> {
     if (!intent) return undefined;
     const carrierPeerId = this.safeSfuBootstrapCarriers(
       intent.demandPeerId,
-      intent.triedCarrierPeerIds,
     )[0];
     return carrierPeerId
       ? {
@@ -2995,71 +3185,51 @@ export class RoomRouteController<Resource = unknown> {
   }
 
   private hasSfuBootstrapWork(): boolean {
-    if (
-      this.sfuBootstrapExhaustedAtFactVersion === this.factVersion
-    ) {
-      return this.availableViewers(true).some(
-        (viewer) =>
-          viewer.blockedAtFactVersion === this.factVersion &&
-          viewer.bootstrapFailureAtFactVersion !== this.factVersion,
-      );
-    }
-    return this.currentSfuBootstrapIntent() !== undefined;
+    if (this.currentSfuBootstrapIntent()) return true;
+    return this.availableViewers(true).some(
+      (viewer) =>
+        viewer.availabilityExhausted &&
+        this.sfuBootstrapNeeded(viewer.peerId) &&
+        (this.safeSfuBootstrapCarriers(viewer.peerId).length > 0 ||
+          viewer.bootstrapFailureReported !== true),
+    );
   }
 
   private takeSfuBootstrapCarrier(
     nowMs: number,
     failedPeerIds: string[],
   ): SfuBootstrapCarrier | undefined {
-    if (
-      this.sfuBootstrapExhaustedAtFactVersion === this.factVersion &&
-      this.sfuBootstrapGloballyNeeded()
-    ) {
-      this.reportSfuBootstrapFailures(nowMs, failedPeerIds);
-      return undefined;
-    }
+    if (!this.sfuBootstrapGloballyNeeded()) return undefined;
     const carrier = this.peekSfuBootstrapCarrier();
     if (carrier) return carrier;
-    if (!this.currentSfuBootstrapIntent()) return undefined;
     this.sfuBootstrapIntent = undefined;
-    this.sfuBootstrapExhaustedAtFactVersion = this.factVersion;
     this.reportSfuBootstrapFailures(nowMs, failedPeerIds);
     return undefined;
   }
 
   private currentSfuBootstrapIntent(): SfuBootstrapIntent | undefined {
-    if (
-      this.sfuBootstrapExhaustedAtFactVersion !== undefined &&
-      this.sfuBootstrapExhaustedAtFactVersion !== this.factVersion
-    ) {
-      this.sfuBootstrapExhaustedAtFactVersion = undefined;
-    }
-    if (this.sfuBootstrapExhaustedAtFactVersion === this.factVersion) {
-      return undefined;
-    }
     const current = this.sfuBootstrapIntent;
     if (current) {
       const demand = this.participants.get(current.demandPeerId);
       if (
         this.sfuBootstrapNeeded(current.demandPeerId) &&
-        demand?.sessionId === current.demandSessionId
+        demand?.sessionId === current.demandSessionId &&
+        this.safeSfuBootstrapCarriers(current.demandPeerId).length > 0
       ) {
-        current.factVersion = this.factVersion;
         return current;
       }
       this.sfuBootstrapIntent = undefined;
     }
     const demand = this.availableViewers(true).find(
       (viewer) =>
-        viewer.blockedAtFactVersion === this.factVersion &&
-        this.sfuBootstrapNeeded(viewer.peerId),
+        viewer.availabilityExhausted &&
+        this.sfuBootstrapNeeded(viewer.peerId) &&
+        this.safeSfuBootstrapCarriers(viewer.peerId).length > 0,
     );
     if (!demand?.sessionId) return undefined;
     const created: SfuBootstrapIntent = {
       demandPeerId: demand.peerId,
       demandSessionId: demand.sessionId,
-      factVersion: this.factVersion,
-      triedCarrierPeerIds: new Set(),
     };
     this.sfuBootstrapIntent = created;
     return created;
@@ -3078,13 +3248,9 @@ export class RoomRouteController<Resource = unknown> {
     ) {
       return false;
     }
-    if (intent.factVersion !== this.factVersion) {
-      intent.factVersion = this.factVersion;
-    }
-    return this.safeSfuBootstrapCarriers(
-      operation.demandPeerId,
-      intent.triedCarrierPeerIds,
-    ).includes(operation.childPeerId);
+    return this.safeSfuBootstrapCarriers(operation.demandPeerId).includes(
+      operation.childPeerId,
+    );
   }
 
   private sfuBootstrapNeeded(demandPeerId: string): boolean {
@@ -3105,16 +3271,18 @@ export class RoomRouteController<Resource = unknown> {
 
   private safeSfuBootstrapCarriers(
     demandPeerId: string,
-    triedCarrierPeerIds?: ReadonlySet<string>,
   ): string[] {
     if (!this.sfuBootstrapNeeded(demandPeerId)) return [];
+    return this.sfuBootstrapCarriers();
+  }
+
+  private sfuBootstrapCarriers(): string[] {
     const tuple: Extract<CandidateTuple, { kind: "sfu" }> = {
       kind: "sfu",
       publication: "create",
     };
     return this.childrenOf(this.options.hostPeerId)
       .filter((peerId) => {
-        if (triedCarrierPeerIds?.has(peerId)) return false;
         const participant = this.participants.get(peerId);
         const edge = this.upstreamByViewer.get(peerId);
         const plan = this.planCandidate(peerId, tuple);
@@ -3125,7 +3293,11 @@ export class RoomRouteController<Resource = unknown> {
             edge.usable &&
             edge.physicalActive &&
             plan &&
-            plan.endpointTransition.kind !== "bounded-gap",
+            plan.endpointTransition.kind !== "bounded-gap" &&
+            this.sfuBootstrapOpportunityAvailable(
+              peerId,
+              plan,
+            ),
         );
       })
       .sort((left, right) =>
@@ -3136,33 +3308,67 @@ export class RoomRouteController<Resource = unknown> {
       );
   }
 
+  private sfuBootstrapOpportunityAvailable(
+    carrierPeerId: string,
+    plan: CandidatePlan,
+  ): boolean {
+    const consumed = this.consumedSfuBootstrapOpportunities.get(
+      this.sfuBootstrapOpportunityBase(carrierPeerId, plan),
+    );
+    return (
+      consumed === undefined ||
+      endpointTransitionRank(plan.endpointTransition) < consumed
+    );
+  }
+
+  private sfuBootstrapOpportunityBase(
+    carrierPeerId: string,
+    plan: CandidatePlan,
+  ): string {
+    return `${carrierPeerId}\0${this.candidateOpportunityBase(
+      carrierPeerId,
+      plan,
+    )}`;
+  }
+
+  private consumeSfuBootstrapOpportunity(
+    carrierPeerId: string,
+    plan: CandidatePlan,
+  ): void {
+    consumeOpportunity(
+      this.consumedSfuBootstrapOpportunities,
+      this.sfuBootstrapOpportunityBase(carrierPeerId, plan),
+      endpointTransitionRank(plan.endpointTransition),
+    );
+  }
+
   private completeSfuBootstrapCarrier(
     carrierPeerId: string,
     nowMs: number,
     bucket: RouteDiagnosticRejectionBucket,
+    attemptedPlan?: CandidatePlan,
   ): string | undefined {
     const intent = this.sfuBootstrapIntent;
-    if (
-      !intent ||
-      intent.factVersion !== this.factVersion
-    ) {
-      return undefined;
+    if (!intent) return undefined;
+    const plan = attemptedPlan ?? this.planCandidate(carrierPeerId, {
+      kind: "sfu",
+      publication: "create",
+    });
+    if (plan) {
+      this.consumeSfuBootstrapOpportunity(
+        carrierPeerId,
+        plan,
+      );
+      this.consumeCandidateOpportunity(carrierPeerId, plan);
     }
-    intent.triedCarrierPeerIds.add(carrierPeerId);
-    if (
-      this.safeSfuBootstrapCarriers(
-        intent.demandPeerId,
-        intent.triedCarrierPeerIds,
-      ).length > 0
-    ) {
+    if (this.safeSfuBootstrapCarriers(intent.demandPeerId).length > 0) {
       return undefined;
     }
     const demand = this.participants.get(intent.demandPeerId);
-    if (demand) demand.blockedAtFactVersion = this.factVersion;
+    if (demand) demand.availabilityExhausted = true;
     this.finishTiming(intent.demandPeerId, nowMs, "failed", bucket);
-    if (demand) demand.bootstrapFailureAtFactVersion = this.factVersion;
+    if (demand) demand.bootstrapFailureReported = true;
     this.sfuBootstrapIntent = undefined;
-    this.sfuBootstrapExhaustedAtFactVersion = this.factVersion;
     return intent.demandPeerId;
   }
 
@@ -3172,13 +3378,14 @@ export class RoomRouteController<Resource = unknown> {
   ): void {
     for (const demand of this.availableViewers(true)) {
       if (
-        demand.blockedAtFactVersion !== this.factVersion ||
+        !demand.availabilityExhausted ||
+        !this.sfuBootstrapNeeded(demand.peerId) ||
         this.usableRoute(demand.peerId) ||
-        demand.bootstrapFailureAtFactVersion === this.factVersion
+        demand.bootstrapFailureReported === true
       ) {
         continue;
       }
-      demand.bootstrapFailureAtFactVersion = this.factVersion;
+      demand.bootstrapFailureReported = true;
       this.finishTiming(demand.peerId, nowMs, "failed", "candidate-failed");
       failedPeerIds.push(demand.peerId);
     }
@@ -3188,15 +3395,8 @@ export class RoomRouteController<Resource = unknown> {
     if (!this.sfuBootstrapNeeded(demandPeerId)) return;
     const demand = this.participants.get(demandPeerId);
     if (!demand?.sessionId) return;
-    if (
-      this.sfuBootstrapExhaustedAtFactVersion === this.factVersion
-    ) {
-      demand.bootstrapFailureAtFactVersion = this.factVersion;
-      return;
-    }
-    demand.bootstrapFailureAtFactVersion = this.factVersion;
+    demand.bootstrapFailureReported = true;
     this.sfuBootstrapIntent = undefined;
-    this.sfuBootstrapExhaustedAtFactVersion = this.factVersion;
   }
 
   private stageSfuBootstrap(
@@ -3204,20 +3404,17 @@ export class RoomRouteController<Resource = unknown> {
   ): void {
     const demand = this.participants.get(operation.demandPeerId);
     if (!demand?.sessionId || !this.sfuBootstrapNeeded(demand.peerId)) return;
-    if (this.sfuBootstrapExhaustedAtFactVersion === this.factVersion) return;
+    if (this.safeSfuBootstrapCarriers(demand.peerId).length === 0) return;
     const current = this.sfuBootstrapIntent;
     if (
       current?.demandPeerId === demand.peerId &&
-      current.demandSessionId === demand.sessionId &&
-      current.factVersion === this.factVersion
+      current.demandSessionId === demand.sessionId
     ) {
       return;
     }
     this.sfuBootstrapIntent = {
       demandPeerId: demand.peerId,
       demandSessionId: demand.sessionId,
-      factVersion: this.factVersion,
-      triedCarrierPeerIds: new Set(),
     };
   }
 
@@ -3229,10 +3426,17 @@ export class RoomRouteController<Resource = unknown> {
     }
   }
 
+  private participantBlocked(participant: Participant): boolean {
+    return Boolean(
+      participant.availabilityExhausted &&
+        this.buildCandidates(participant.peerId, false).length === 0,
+    );
+  }
+
   private availableViewers(includeBlocked = false): Participant[] {
     return [...this.participants.values()].filter((participant) => participant.role === "viewer" &&
       participant.sessionId && !participant.departureConfirmed &&
-      (includeBlocked || participant.blockedAtFactVersion !== this.factVersion))
+      (includeBlocked || !this.participantBlocked(participant)))
       .sort(compareParticipant);
   }
 
@@ -3241,7 +3445,8 @@ export class RoomRouteController<Resource = unknown> {
     for (const parent of this.participants.values()) {
       const overflow = this.overflowPeerChildren(parent.peerId).filter((id) => {
         const child = this.participants.get(id);
-        return child?.sessionId && !child.departureConfirmed && child.blockedAtFactVersion !== this.factVersion;
+        return child?.sessionId && !child.departureConfirmed &&
+          !this.participantBlocked(child);
       });
       result.push(...overflow.reverse());
     }
@@ -3291,6 +3496,18 @@ export class RoomRouteController<Resource = unknown> {
     }
     const currentPlan = this.planCandidate(childPeerId, tuple);
     return Boolean(currentPlan && endpointTransitionEquals(currentPlan.endpointTransition, plan.endpointTransition));
+  }
+
+  private operationCandidateValid(
+    operation: ChildOperation<Resource>,
+    plan: CandidatePlan,
+    attempt?: Attempt<Resource>,
+  ): boolean {
+    return (
+      this.candidateValid(operation.childPeerId, plan, attempt) &&
+      (!this.isAvailabilityOperation(operation.reason) ||
+        this.candidateOpportunityAvailable(operation.childPeerId, plan))
+    );
   }
 
   private planCandidate(childPeerId: string, tuple: CandidateTuple): CandidatePlan | null {
@@ -3381,6 +3598,7 @@ export class RoomRouteController<Resource = unknown> {
       if (!this.hasSfuSubscribers() && this.hostPublication) {
         this.clearSfuQuality();
         if (this.hostPublication.physicalActive) released.push(this.hostPublication.resource);
+        this.clearSfuCandidateOpportunities();
         this.hostPublication = null;
       }
       this.revision = this.allocateRevision();
@@ -3460,7 +3678,7 @@ export class RoomRouteController<Resource = unknown> {
       this.touchFacts();
     }
     if (!block || !child) return;
-    child.blockedAtFactVersion = this.factVersion;
+    child.availabilityExhausted = true;
   }
 
   private retireInvalidOperationEdge(childPeerId: string, released: Resource[]): boolean {
@@ -3506,7 +3724,10 @@ export class RoomRouteController<Resource = unknown> {
     }
     const replanned = tuples
       .map((tuple) => this.planCandidate(operation.childPeerId, tuple))
-      .filter((plan): plan is CandidatePlan => plan !== null);
+      .filter(
+        (plan): plan is CandidatePlan =>
+          plan !== null && this.operationCandidateValid(operation, plan),
+      );
     operation.candidates = [...prefix, ...replanned];
     operation.builtAtFactVersion = this.factVersion;
   }
@@ -3549,6 +3770,12 @@ export class RoomRouteController<Resource = unknown> {
       : null;
     if (operation.current) {
       this.noteRejection(operation.demandPeerId, "first-frame-timeout");
+      if (this.isAvailabilityOperation(operation.reason)) {
+        this.consumeCandidateOpportunity(
+          operation.childPeerId,
+          operation.candidates[operation.cursor]!,
+        );
+      }
       released.push(...reservationResources(operation.current.reservation));
       this.advanceActiveRevision(operation);
       operation.current = undefined;
@@ -3641,11 +3868,6 @@ export class RoomRouteController<Resource = unknown> {
   }
 
   private bootstrapCandidateAvailable(demandPeerId: string): boolean {
-    if (
-      this.sfuBootstrapExhaustedAtFactVersion === this.factVersion
-    ) {
-      return false;
-    }
     return this.safeSfuBootstrapCarriers(demandPeerId).length > 0;
   }
 
@@ -3871,6 +4093,51 @@ export class RoomRouteController<Resource = unknown> {
     });
   }
 
+  private clearOpportunitiesForSessionChange(
+    peerId: string,
+    role: Participant["role"],
+  ): void {
+    const participant = this.participants.get(peerId);
+    if (participant) {
+      participant.consumedCandidateOpportunities.clear();
+      participant.availabilityExhausted = false;
+      participant.bootstrapFailureReported = undefined;
+    }
+    const parentPrefix = `peer:${peerId}\0`;
+    for (const child of this.participants.values()) {
+      for (const key of child.consumedCandidateOpportunities.keys()) {
+        if (
+          key.startsWith(parentPrefix) ||
+          (role === "host" && key.startsWith("sfu:"))
+        ) {
+          child.consumedCandidateOpportunities.delete(key);
+        }
+      }
+    }
+    if (role === "host") {
+      this.consumedSfuBootstrapOpportunities.clear();
+    } else {
+      const carrierPrefix = `${peerId}\0`;
+      for (const key of this.consumedSfuBootstrapOpportunities.keys()) {
+        if (key.startsWith(carrierPrefix)) {
+          this.consumedSfuBootstrapOpportunities.delete(key);
+        }
+      }
+    }
+  }
+
+  private clearSfuCandidateOpportunities(): void {
+    for (const participant of this.participants.values()) {
+      for (const key of participant.consumedCandidateOpportunities.keys()) {
+        if (key.startsWith("sfu:")) {
+          participant.consumedCandidateOpportunities.delete(key);
+        }
+      }
+      participant.bootstrapFailureReported = undefined;
+    }
+    this.consumedSfuBootstrapOpportunities.clear();
+  }
+
   private requireSenderQualityBaseline(
     peerId: string,
     suppressFact = false,
@@ -3906,10 +4173,6 @@ export class RoomRouteController<Resource = unknown> {
       finalRoute: "waiting",
       rejectionBucket: "none",
     };
-    if (this.operation?.demandPeerId === childPeerId) {
-      this.operation.reason = reason;
-      record.operationStartedAtMs = nowMs;
-    }
     this.routeTimings.set(childPeerId, record);
   }
 
@@ -4044,6 +4307,7 @@ export class RoomRouteController<Resource = unknown> {
       if (this.hostPublication.physicalActive) released.push(this.hostPublication.resource);
       this.hostPublication = null;
     }
+    this.clearSfuCandidateOpportunities();
     return released;
   }
 
@@ -4162,6 +4426,23 @@ function tupleKey(tuple: CandidateTuple): string {
 
 function edgeTupleKey<Resource>(edge: CommittedEdge<Resource>): string {
   return edge.kind === "peer" ? `peer:${edge.parentPeerId}` : "sfu:reuse";
+}
+
+function endpointTransitionRank(transition: EndpointTransition): number {
+  return transition.kind === "none"
+    ? 0
+    : transition.kind === "overlap"
+      ? 1
+      : 2;
+}
+
+function consumeOpportunity(
+  consumed: Map<string, number>,
+  base: string,
+  rank: number,
+): void {
+  const previous = consumed.get(base);
+  if (previous === undefined || rank < previous) consumed.set(base, rank);
 }
 
 function cloneCandidatePlan(plan: CandidatePlan): CandidatePlan {

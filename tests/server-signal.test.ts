@@ -1819,6 +1819,47 @@ describe("WebSocket signaling", () => {
     expect(authenticated.role).toBe("host");
   });
 
+  it("keeps a pre-Host Viewer session current after the Host clears the room lease", async () => {
+    let now = Date.UTC(2026, 7, 20, 12);
+    const harness = await startHarness({ now: () => now });
+    const viewer = await openClient(harness.webSocketUrl);
+    await authenticate(
+      viewer,
+      harness.room,
+      "viewer",
+      "pre-host-lease-viewer",
+      1,
+      undefined,
+      { displayName: "Before" },
+    );
+    const host = await openClient(harness.webSocketUrl);
+    await authenticate(
+      host,
+      harness.room,
+      "host",
+      "pre-host-lease-host",
+      1,
+      undefined,
+      { viewerPresence: true },
+    );
+    await nextViewerPresenceMatching(host, (message) =>
+      viewerPresenceEntries(message).some(
+        (participant) => participant.displayName === "Before",
+      ),
+    );
+
+    now += 86_400_001;
+    viewer.socket.send(
+      JSON.stringify({ type: "set-display-name", displayName: "After" }),
+    );
+    const updated = await nextViewerPresenceMatching(host, (message) =>
+      viewerPresenceEntries(message).some(
+        (participant) => participant.displayName === "After",
+      ),
+    );
+    expect(viewerPresenceEntries(updated)).toHaveLength(1);
+  });
+
   it("leaves established authorization and media untouched when a grant update fails", async () => {
     const harness = await startHarness();
     const host = await openClient(harness.webSocketUrl);

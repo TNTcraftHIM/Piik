@@ -74,6 +74,19 @@ This is the current execution index. Git history owns completed timelines;
   pagehide no longer triggers LiveKit's automatic disconnect. Native Viewer
   controls still own playback, and manual reconnect stays on the current route.
 
+## Source/Production Delta
+
+- Current source replaces aggregate route-fact retries with exact session,
+  publication and transition opportunities; advances proved non-improving
+  candidates; binds stall and recovery reports to physical media identities;
+  and removes exact retired LiveKit Viewers while retaining generation-owned
+  resource charges.
+- Current source also keeps lease authority in `RoomStore`, batches stable-room
+  expiry persistence, serializes share start with room replacement, binds Web
+  release artifacts to their source revision, and retains Native sender code as
+  research rather than a distribution surface. These corrections are not
+  deployed; production remains exact release `24cb780` above.
+
 ## Current Milestone
 
 Measured route convergence, generation-owned Viewer presentation and
@@ -97,5 +110,6 @@ subscribers back to P2P, and retired the Host SFU publication.
 
 ## Current Hold
 
-No source or deployment P0/P1 is open. Sanitized route logging remains enabled
-for the pre-release canary.
+No source P0/P1 is known. Production does not contain the current source
+corrections until an explicitly authorized deployment. Sanitized route logging
+remains enabled for the pre-release canary.

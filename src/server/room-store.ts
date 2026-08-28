@@ -651,13 +651,20 @@ export class RoomStore {
 
   expireRooms(nowMs = this.now()): ClosedRoom[] {
     this.ensureInitialized();
-    const expired: ClosedRoom[] = [];
-    for (const [roomId, room] of this.rooms) {
-      if (!roomIsExpired(room, nowMs)) {
-        continue;
-      }
-      this.options.database?.deleteRoom(roomId, room.hostTokenDigest);
-      expired.push({ roomId, sessionIds: connectedSessionIds(room) });
+    const expiredRooms = [...this.rooms].filter(([, room]) =>
+      roomIsExpired(room, nowMs),
+    );
+    this.options.database?.deleteRooms(
+      expiredRooms.map(([roomId, room]) => ({
+        roomId,
+        hostTokenDigest: room.hostTokenDigest,
+      })),
+    );
+    const expired = expiredRooms.map(([roomId, room]) => ({
+      roomId,
+      sessionIds: connectedSessionIds(room),
+    }));
+    for (const [roomId] of expiredRooms) {
       this.rooms.delete(roomId);
       this.releaseRoomCode(roomId);
     }
