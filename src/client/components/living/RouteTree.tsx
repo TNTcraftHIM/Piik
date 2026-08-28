@@ -1,6 +1,7 @@
 // The connection topology as a real tree: host (crowned) roots direct P2P
 // viewers and the SFU node; relay children hang off their parent viewer.
 // Data comes from deriveParticipantTopology.
+import { memo } from "react";
 import { PawnSvg, pawnColor } from "./Couch";
 import { useCopy } from "../../ui/copy";
 import type { LabeledViewerPresence } from "../../lib/viewer-presence";
@@ -23,7 +24,7 @@ function xForDepth(depth: number): number {
   return HOST_X + (depth + 1) * COLUMN_GAP;
 }
 
-export function RouteTree({
+export const RouteTree = memo(function RouteTree({
   hostPeerId,
   hostLabel,
   viewers,
@@ -318,4 +319,4 @@ export function RouteTree({
       ) : null}
     </div>
   );
-}
+});
