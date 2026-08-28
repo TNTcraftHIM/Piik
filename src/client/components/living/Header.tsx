@@ -65,7 +65,7 @@ export function HeaderControls() {
       <span className="lr-lang" role="group" aria-label={t("mode.language")}>
         {option("zh", "中", "mode.zh")}
         {option("en", "EN", "mode.en")}
-        {option("vis", vis ? "✦" : "视", "mode.vis")}
+        {option("vis", "✦", "mode.vis")}
       </span>
       {vis ? (
         <ComicTooltip kind="hint-theme" place="below" align="end">
