@@ -1535,16 +1535,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       }
       return;
     }
-    if (message.type === "media-assignment") {
-      if (peerAssistedRef.current && !hostSfuRouteRef.current) {
-        discardPreparedHostChild();
-        reconcileHostChildren(
-          message.mediaAssignment.childPeerIds,
-          generation,
-        );
-      }
-      return;
-    }
     if (message.type === "peer-joined") {
       if (peerAssistedRef.current) {
         return;

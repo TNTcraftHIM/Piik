@@ -1,7 +1,9 @@
 import { runInNewContext } from "node:vm";
 import { describe, expect, it, vi } from "vitest";
+import { WebSocketServer } from "ws";
 
 import {
+  CdpConnection,
   activeVideoEdgeCount,
   buildBenchmarkFailureEvidence,
   buildBenchmarkInitScript,
@@ -245,6 +247,28 @@ function markSfuMedia(observation: ReturnType<typeof page>): void {
 }
 
 describe("peer topology loopback configuration", () => {
+  it("bounds a CDP command that never receives a response", async () => {
+    const server = new WebSocketServer({ port: 0 });
+    await new Promise<void>((resolveListening) => {
+      server.once("listening", resolveListening);
+    });
+    const address = server.address();
+    if (!address || typeof address === "string") {
+      throw new Error("Unexpected WebSocket address");
+    }
+    const cdp = await CdpConnection.connect(
+      `ws://127.0.0.1:${address.port}`,
+      500,
+    );
+    await expect(cdp.call("Never.responds")).rejects.toThrow(
+      "CDP command timed out: Never.responds",
+    );
+    await cdp.close();
+    await new Promise<void>((resolveClose, rejectClose) => {
+      server.close((error) => error ? rejectClose(error) : resolveClose());
+    });
+  });
+
   it("keeps the real-relay canary opt-in", () => {
     expect(parseBenchmarkCanaryMode(undefined)).toBe("none");
     expect(parseBenchmarkCanaryMode("viewer-mbb")).toBe("viewer-mbb");
@@ -1374,13 +1398,6 @@ describe("peer topology loopback observations", () => {
       revision: 5,
       phase: "active",
       assignment: activeRoute,
-    });
-    owner.emitMessage({
-      type: "media-assignment",
-      mediaAssignment: {
-        parentPeerId: null,
-        childPeerIds: ["legacy_child_01"],
-      },
     });
     expect(observer.snapshot()).toMatchObject({
       routeRevision: 5,

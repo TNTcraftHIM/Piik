@@ -103,19 +103,14 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
 }
 
 describe("LiveKitSfuRoomControl", () => {
-  it("drains current and legacy managed rooms before startup", async () => {
+  it("drains current managed rooms before startup", async () => {
     const roomService = new FakeRoomService();
     const current = managedSfuRoomName(fence());
-    const legacy = "screener-7-publication_12345678";
     roomService.rooms.set(current, new Set(["host"]));
-    roomService.rooms.set(legacy, new Set(["host"]));
 
     await expect(control(roomService).initialize()).resolves.toBeUndefined();
     expect(roomService.rooms.size).toBe(0);
-    expect(roomService.operations).toEqual([
-      `delete:${current}`,
-      `delete:${legacy}`,
-    ]);
+    expect(roomService.operations).toEqual([`delete:${current}`]);
   });
 
   it("rejects a shared instance and an unconfirmed startup drain", async () => {

@@ -19,7 +19,6 @@ import {
   MAX_VIEWER_PASSWORD_LENGTH,
   viewerPasswordSchema,
   type IceConfig,
-  type MediaAssignment,
   type ParticipantPresenceEntry,
   type ParticipantRouteAssignment,
   type ServerMessage,
@@ -90,6 +89,7 @@ import type {
 import {
   limitMediaAssignment,
   MAX_ENDPOINT_MEDIA_CHILDREN,
+  type MediaAssignment,
   viewerRestartMessage,
   viewerSignalMessage,
 } from "../webrtc/media-assignment";
@@ -1579,12 +1579,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       if (message.type === "sfu-config") {
         if (peerAssisted) {
           await ensureViewerSfuRoute().acceptConfig(message);
-        }
-        return;
-      }
-      if (message.type === "media-assignment") {
-        if (peerAssisted && !viewerSfuRoute) {
-          applyMediaAssignment(message.mediaAssignment);
         }
         return;
       }

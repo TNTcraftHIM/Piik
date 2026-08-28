@@ -19,9 +19,9 @@
   "include": [
     "vite.config.ts",
     "vitest.config.ts",
+    "scripts/access-privacy-gate.ts",
     "scripts/native-one-viewer-gate.ts",
     "scripts/native-one-viewer-ledger.ts",
-    "scripts/browser-codec-preflight.ts",
     "tests"
   ]
 }

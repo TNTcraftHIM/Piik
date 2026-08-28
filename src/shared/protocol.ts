@@ -336,16 +336,6 @@ export type PreparedRouteCandidate = z.infer<
   typeof preparedRouteCandidateSchema
 >;
 
-export const mediaAssignmentSchema = z
-  .object({
-    parentPeerId: opaqueIdSchema.nullable(),
-    childPeerIds: z
-      .array(opaqueIdSchema)
-      .max(MAX_ENDPOINT_MEDIA_COPY_CAPACITY),
-  })
-  .strict();
-export type MediaAssignment = z.infer<typeof mediaAssignmentSchema>;
-
 export const mediaRouteRevisionSchema = z
   .number()
   .int()
@@ -943,7 +933,6 @@ const authenticatedViewerMessageShape = {
 const peerAssistedAuthenticatedShape = {
   mediaMode: z.literal("peer-assisted"),
   shareGeneration: opaqueIdSchema.nullable(),
-  mediaAssignment: mediaAssignmentSchema,
   routeRevision: mediaRouteRevisionSchema,
   routeAssignment: participantRouteAssignmentSchema,
   qualitySettings: qualitySettingsSchema,
@@ -1007,12 +996,6 @@ export const serverMessageSchema = z.union([
       fromPeerId: opaqueIdSchema,
       connectionId: opaqueIdSchema,
       rebuild: z.boolean(),
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("media-assignment"),
-      mediaAssignment: mediaAssignmentSchema,
     })
     .strict(),
   z.discriminatedUnion("phase", [

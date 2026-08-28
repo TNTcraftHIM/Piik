@@ -6,11 +6,10 @@ import { dirname, extname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const repositoryFiles = execFileSync(
-  "git",
-  ["ls-files", "--cached", "--others", "--exclude-standard"],
-  { cwd: root, encoding: "utf8" },
-)
+const repositoryFiles = execFileSync("git", ["ls-files", "--cached"], {
+  cwd: root,
+  encoding: "utf8",
+})
   .trim()
   .split(/\r?\n/u)
   .filter((file) => file && existsSync(resolve(root, file)));

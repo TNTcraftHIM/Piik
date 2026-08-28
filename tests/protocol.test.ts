@@ -1404,10 +1404,6 @@ describe("server signaling protocol", () => {
       ...authenticatedMessage(8),
       mediaMode: "peer-assisted",
       shareGeneration: "share_generation_12345678",
-      mediaAssignment: {
-        parentPeerId: null,
-        childPeerIds: ["viewer_12345678", "viewer_87654321"],
-      },
       routeRevision: 0,
       routeAssignment: {
         upstream: { kind: "none" },
@@ -1427,12 +1423,6 @@ describe("server signaling protocol", () => {
     ).toBe(true);
     expect(
       serverMessageSchema.safeParse({
-        type: "media-assignment",
-        mediaAssignment: peerAssisted.mediaAssignment,
-      }).success,
-    ).toBe(true);
-    expect(
-      serverMessageSchema.safeParse({
         ...authenticatedMessage(8),
         mediaMode: "peer-assisted",
         routeRevision: 0,
@@ -1442,18 +1432,9 @@ describe("server signaling protocol", () => {
     ).toBe(false);
     expect(
       serverMessageSchema.safeParse({
-        ...authenticatedMessage(8),
-        mediaMode: "peer-assisted",
-        mediaAssignment: peerAssisted.mediaAssignment,
-        routeRevision: 0,
-        routeAssignment: peerAssisted.routeAssignment,
-      }).success,
-    ).toBe(false);
-    expect(
-      serverMessageSchema.safeParse({
         ...peerAssisted,
-        mediaAssignment: {
-          parentPeerId: null,
+        routeAssignment: {
+          ...peerAssisted.routeAssignment,
           childPeerIds: [
             "viewer_12345678",
             "viewer_87654321",
