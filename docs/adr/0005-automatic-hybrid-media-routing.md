@@ -89,12 +89,16 @@ root. A fresh healthy candidate sender proof is required before make-before-brea
 commit. Success moves one branch toward even fanout; failure consumes that one-shot intent. No timer,
 continuous rebalance or general load score is introduced.
 
-A failed tuple is consumed for its exact candidate opportunity: tuple, relevant
-endpoint sessions or publication generation, and endpoint-transition strength.
-Only a new session or generation, or a strictly better transition, makes that
-opportunity new. Candidate removal, worsening, reordering, and unrelated facts
-do not retry it. An external SFU-resource wake may reopen SFU opportunities but
-never Peer opportunities. There is no persistent parent blacklist.
+A failed Peer tuple is consumed for its exact parent and endpoint sessions plus
+endpoint-transition strength. SFU create, reuse, and replace are resource
+actions for one logical SFU opportunity keyed by the child and Host sessions;
+the publication generation remains a physical fence, not retry authority.
+Controller-owned publication creation, replacement, or teardown cannot make the
+same failed opportunity new. Only a relevant session, an external SFU-resource
+wake, or a strictly better transition reopens it. Candidate removal, worsening,
+reordering, and unrelated facts do not retry it. An external SFU-resource wake
+may reopen SFU opportunities but never Peer opportunities. There is no
+persistent parent blacklist.
 
 ### Prepare, Commit, And Rollback
 

@@ -60,7 +60,9 @@ ICE connected alone is not commit proof. Availability repair may instead use the
 explicit bounded-gap plan defined by ADR-0005 when no overlap slot exists.
 Failure or stale authority releases the candidate and preserves unaffected
 branches. An operation's purpose is immutable; availability work preempts a
-background operation by replacing it rather than changing its meaning.
+background operation by replacing it rather than changing its meaning. An
+internally created or retired SFU publication does not by itself reopen an
+exhausted media route.
 
 Direct peers receive the first bounded opportunity, with SFU used for
 availability when direct paths cannot provide media. Remaining direct paths may
