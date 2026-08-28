@@ -1,6 +1,6 @@
 # ADR-0005: Automatic Hybrid Media Routing
 
-- Status: accepted; route model deployed; default-on policy pending release
+- Status: accepted and deployed; native-edge convergence defaults on per share
 - Date: 2026-08-20
 - Last updated: 2026-08-28
 
