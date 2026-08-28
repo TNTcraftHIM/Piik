@@ -1,4 +1,4 @@
-import { basename, dirname, resolve } from "node:path";
+import type { CleanupResult } from "./browser-gate-harness";
 
 export interface ViewerIdentityEvidence {
   socketCount: number;
@@ -48,14 +48,6 @@ export interface OneViewerIdentity {
   trackOrdinal: number;
   pionSlot: number;
   pionEdgeGeneration: number;
-}
-
-export interface CleanupResult {
-  browserExited: boolean;
-  nativeExited: boolean;
-  serverClosed: boolean;
-  portsClosed: boolean;
-  profileRemoved: boolean;
 }
 
 interface FinalizableReport {
@@ -130,62 +122,6 @@ export async function verifyFinalSenderEvidence<T extends CriticalSenderEvidence
   }
 }
 
-export function withDeadline<T>(
-  operation: () => Promise<T>,
-  deadline: number,
-  now: () => number = Date.now,
-): Promise<T> {
-  const remaining = Math.max(0, deadline - now());
-  return new Promise<T>((resolveValue, rejectValue) => {
-    const timeout = setTimeout(() => rejectValue(new Error("Operation deadline exceeded")), remaining);
-    Promise.resolve().then(operation).then(
-      (value) => { clearTimeout(timeout); resolveValue(value); },
-      (error: unknown) => { clearTimeout(timeout); rejectValue(error); },
-    );
-  });
-}
-
-type JsonFetch = (
-  input: string,
-  init: { signal: AbortSignal },
-) => Promise<{ ok: boolean; json(): Promise<unknown> }>;
-
-export async function fetchJsonBefore<T>(
-  url: string,
-  deadline: number,
-  fetcher: JsonFetch = fetch,
-): Promise<T> {
-  const controller = new AbortController();
-  const abort = setTimeout(() => controller.abort(), Math.max(0, deadline - Date.now()));
-  try {
-    const response = await withDeadline(
-      () => fetcher(url, { signal: controller.signal }),
-      deadline,
-    );
-    if (!response.ok) throw new Error("HTTP response was not successful");
-    return await withDeadline(() => response.json() as Promise<T>, deadline);
-  } finally {
-    clearTimeout(abort);
-    controller.abort();
-  }
-}
-
-export async function waitForSample<T>(
-  sample: (deadline: number) => Promise<T>,
-  retainAndAccept: (value: T) => boolean,
-  timeoutMs: number,
-  pollMs = 100,
-): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    let value: T | undefined;
-    try { value = await withDeadline(() => sample(deadline), deadline); } catch {}
-    if (value !== undefined && retainAndAccept(value)) return;
-    await new Promise((resolveDelay) => setTimeout(resolveDelay, Math.min(pollMs, Math.max(0, deadline - Date.now()))));
-  }
-  throw new Error("Bounded browser stage timed out");
-}
-
 export async function finalizeGate(
   report: FinalizableReport,
   gateSucceeded: boolean,
@@ -207,13 +143,4 @@ export async function finalizeGate(
     report.status = "failed";
     report.failedStage = "cleanup";
   }
-}
-
-export function isExactGateProfile(profile: string, systemTemp: string): boolean {
-  const candidate = resolve(profile);
-  const temp = resolve(systemTemp);
-  const same = process.platform === "win32"
-    ? dirname(candidate).toLowerCase() === temp.toLowerCase()
-    : dirname(candidate) === temp;
-  return same && /^screener-(?:native-one-viewer|access-privacy)-[A-Za-z0-9_-]{6}$/.test(basename(candidate));
 }

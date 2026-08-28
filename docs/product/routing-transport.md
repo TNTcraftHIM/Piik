@@ -111,7 +111,7 @@ per-share convergence gate is enabled, Screener uses an exact persistent native
 sender limitation only to trigger one measured experiment through the existing
 serial operation. The same Viewer must then prove a P2P candidate strictly
 improves delivered pixel area or rounded FPS without regressing either dimension
-or producing a freeze/pause across three fresh paired windows. A persistently
+or producing a freeze/pause across three fresh overlapping windows. A persistently
 limited exact candidate sender cannot commit. Ordinary quality moves remain
 Peer-to-Peer. SFU may
 join quality work only as Host fanout relief when every current Host-origin Peer

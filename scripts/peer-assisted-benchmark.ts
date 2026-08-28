@@ -287,27 +287,45 @@ class BoundedLog {
   }
 }
 
-class CdpConnection {
+export class CdpConnection {
   private nextId = 1;
   private readonly pending = new Map<
     number,
-    { resolve: (value: unknown) => void; reject: (error: Error) => void }
+    {
+      resolve: (value: unknown) => void;
+      reject: (error: Error) => void;
+      timeout: NodeJS.Timeout;
+    }
   >();
   private closed = false;
 
-  private constructor(private readonly socket: WebSocket) {
+  private constructor(
+    private readonly socket: WebSocket,
+    private readonly commandTimeoutMs: number,
+  ) {
     socket.on("message", (raw) => this.onMessage(raw.toString()));
     socket.on("close", () => this.onClose(new Error("CDP connection closed")));
     socket.on("error", (error) => this.onClose(error));
   }
 
-  static async connect(url: string): Promise<CdpConnection> {
+  static async connect(
+    url: string,
+    commandTimeoutMs: number,
+  ): Promise<CdpConnection> {
     const socket = new WebSocket(url, { maxPayload: 64 * 1024 * 1024 });
     await new Promise<void>((resolveOpen, rejectOpen) => {
-      socket.once("open", resolveOpen);
-      socket.once("error", rejectOpen);
+      const timeout = setTimeout(() => {
+        socket.terminate();
+        rejectOpen(new Error("CDP connection timed out"));
+      }, commandTimeoutMs);
+      const finish = (callback: () => void) => {
+        clearTimeout(timeout);
+        callback();
+      };
+      socket.once("open", () => finish(resolveOpen));
+      socket.once("error", (error) => finish(() => rejectOpen(error)));
     });
-    return new CdpConnection(socket);
+    return new CdpConnection(socket, commandTimeoutMs);
   }
 
   call<T = Record<string, unknown>>(
@@ -320,11 +338,28 @@ class CdpConnection {
     }
     const id = this.nextId++;
     return new Promise<T>((resolveCall, rejectCall) => {
+      const timeout = setTimeout(() => {
+        this.pending.delete(id);
+        rejectCall(new Error(`CDP command timed out: ${method}`));
+      }, this.commandTimeoutMs);
       this.pending.set(id, {
-        resolve: (value) => resolveCall(value as T),
-        reject: rejectCall,
+        resolve: (value) => {
+          clearTimeout(timeout);
+          resolveCall(value as T);
+        },
+        reject: (error) => {
+          clearTimeout(timeout);
+          rejectCall(error);
+        },
+        timeout,
       });
-      this.socket.send(JSON.stringify({ id, method, params, sessionId }));
+      try {
+        this.socket.send(JSON.stringify({ id, method, params, sessionId }));
+      } catch (error) {
+        clearTimeout(timeout);
+        this.pending.delete(id);
+        rejectCall(error instanceof Error ? error : new Error("CDP send failed"));
+      }
     });
   }
 
@@ -372,6 +407,7 @@ class CdpConnection {
     }
     this.closed = true;
     for (const pending of this.pending.values()) {
+      clearTimeout(pending.timeout);
       pending.reject(error);
     }
     this.pending.clear();
@@ -3075,7 +3111,10 @@ export async function main(): Promise<number> {
       webSocketDebuggerUrl: string;
       [key: string]: unknown;
     };
-    cdp = await CdpConnection.connect(version.webSocketDebuggerUrl);
+    cdp = await CdpConnection.connect(
+      version.webSocketDebuggerUrl,
+      config.connectionTimeoutMs,
+    );
     report.chromium = await cdp.call("Browser.getVersion");
 
     const viewerCounts = config.canaryMode === "viewer-mbb" ? [3] : config.viewerCounts;

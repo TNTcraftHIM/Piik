@@ -7,10 +7,16 @@ import { pathToFileURL } from "node:url";
 import { createRoomResponseSchema } from "../src/shared/protocol";
 import { createScreenerServer, type ScreenerServer } from "../src/server/app";
 import type { ServerConfig } from "../src/server/config";
-import { CdpConnection, cleanupRun, createPage, evaluate, reservePort, waitForVersion } from "./native-one-viewer-gate";
+import {
+  CdpConnection,
+  cleanupRun,
+  createPage,
+  evaluate,
+  reservePort,
+  waitForVersion,
+} from "./browser-gate-harness";
 const root = resolve(import.meta.dirname, "..");
 const nginxConfigPath = resolve(root, "deploy/nginx/share.bonfire.icu.conf.example");
-const teardownTest = "strongly rotates and revokes every Viewer generation and media edge";
 const fragmentProbe = `(() => {
   let domContentLoaded = false;
   const state = { fragmentAtStart: location.hash.length > 0, replaced: false, beforeDomContentLoaded: false };
@@ -32,7 +38,7 @@ interface GateReport {
   cookieGrantMatches: number; resourceGrantMatches: number;
   requestLeakCount: number; nginxLogLeakCount: number; nginxConfigSafe: boolean;
   appLogLeakCount: number; persistentRoomFileCount: number; leakAuditCompleted: boolean;
-  rotateRevokeCasePresent: boolean; cleanupPassed: boolean;
+  cleanupPassed: boolean;
 }
 interface BrowserAudit {
   fragmentSeenAtDocumentStart: boolean; fragmentReplaceObserved: boolean;
@@ -65,8 +71,7 @@ async function main(): Promise<void> {
     otherSessionGrantMatches: 0, localGrantMatches: 0, cookieGrantMatches: 0,
     resourceGrantMatches: 0, requestLeakCount: 0, nginxLogLeakCount: 0,
     nginxConfigSafe: false, appLogLeakCount: 0, persistentRoomFileCount: 0,
-    leakAuditCompleted: false, rotateRevokeCasePresent: false,
-    cleanupPassed: false,
+    leakAuditCompleted: false, cleanupPassed: false,
   };
   const chromePath = process.env.CHROME_PATH?.trim() ?? "";
   const sitePassword = secret();
@@ -84,9 +89,6 @@ async function main(): Promise<void> {
 
   console.error = (...values: unknown[]) => { appLogs.push(diagnosticText(values)); };
   try {
-    report.rotateRevokeCasePresent = (await readFile(
-      resolve(root, "tests/server-signal.test.ts"), "utf8",
-    )).includes(teardownTest);
     await access(chromePath);
     appPort = await reservePort();
     do { debugPort = await reservePort(); } while (debugPort === appPort);
@@ -197,7 +199,7 @@ async function main(): Promise<void> {
     report.leakAuditCompleted && report.requestLeakCount === 0 &&
     report.nginxLogLeakCount === 0 && report.nginxConfigSafe &&
     report.appLogLeakCount === 0 && report.persistentRoomFileCount === 0 &&
-    report.rotateRevokeCasePresent && report.cleanupPassed;
+    report.cleanupPassed;
   process.stdout.write(`${JSON.stringify(report)}\n`);
   process.exitCode = report.passed ? 0 : 1;
 }

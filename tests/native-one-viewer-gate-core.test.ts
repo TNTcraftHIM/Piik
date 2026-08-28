@@ -4,24 +4,26 @@ import { runInNewContext } from "node:vm";
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  captureOneViewerIdentity,
   fetchJsonBefore,
+  isExactGateProfile,
+  profileCleanupScript,
+  waitForSample,
+  type CleanupResult,
+} from "../scripts/browser-gate-harness";
+import {
+  captureOneViewerIdentity,
   finalizeGate,
   hasNoCriticalSenderErrors,
   hasOneViewerPionProof,
-  isExactGateProfile,
   retainsFirstBridgeSend,
   retainsOneViewerIdentity,
-  waitForSample,
   verifyFinalSenderEvidence,
-  type CleanupResult,
   type SenderIdentityEvidence,
   type ViewerIdentityEvidence,
 } from "../scripts/native-one-viewer-gate-core";
 import {
   animatedSourceUrl,
   parseGateMode,
-  profileCleanupScript,
   senderProbe,
 } from "../scripts/native-one-viewer-gate";
 

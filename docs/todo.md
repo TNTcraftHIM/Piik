@@ -11,23 +11,6 @@ No implementation task is currently authorized. The audit root-cause
 corrections are integrated and verified in current source but remain undeployed;
 deployment requires explicit authority.
 
-## Parked Repository Work
-
-1. **Bounded mechanism simplification.** Remove only the proved zero-consumer or
-   duplicate owners: coarse `mediaAssignment` wire residue, legacy SFU room-name
-   acceptance, orphan `scripts/browser-codec-preflight.ts`, and the access gate's
-   test-title scan. The same bounded pass may remove the unused SFU publisher
-   snapshot callback, test-only production helpers, unused SFU token allowlist
-   input, debug ordinals after participant retirement, and share-unowned sender
-   evidence caches. Keep the production
-   `src/client/webrtc/video-codec-preflight.ts`, live internal media-assignment
-   helpers, and destructive-path safety gates.
-2. **Tooling ownership correction.** Give every CDP call a deadline, move shared
-   Browser harness code out of the Native owner, type-check the access/privacy
-   gate, run repository hygiene under the pinned Node version, ignore untracked
-   drafts in canonical-document gates, and scope rejected Native checks to
-   Native changes or explicit research runs.
-
 ## Parked Product Work
 
 1. **Broader quality optimization.** Weighted/global optimization,
