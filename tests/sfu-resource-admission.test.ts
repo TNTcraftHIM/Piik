@@ -80,9 +80,9 @@ describe("SfuResourceAdmission", () => {
     expect(admission.commitSubscription(subscription(active, "viewer_b"))).toBe(
       false,
     );
-    expect(admission.releaseSubscription(subscription(active, "viewer_b"))).toBe(
-      false,
-    );
+    expect(
+      admission.beginSubscriptionDrain(subscription(active, "viewer_b")),
+    ).toBe(false);
     expect(admission.beginDrain(stale)).toBe(false);
   });
 
@@ -145,8 +145,8 @@ describe("SfuResourceAdmission", () => {
 
     expect(admission.reserveSubscription(candidate)).toBe(true);
     expect(admission.usage()).toEqual({ ingress: 1, egress: 2 });
-    expect(admission.releaseSubscription(candidate)).toBe(true);
-    expect(admission.releaseSubscription(candidate)).toBe(true);
+    expect(admission.beginSubscriptionDrain(candidate)).toBe(true);
+    expect(admission.beginSubscriptionDrain(candidate)).toBe(true);
     expect(admission.commitSubscription(candidate)).toBe(false);
     expect(admission.usage()).toEqual({ ingress: 1, egress: 2 });
     expect(
@@ -157,7 +157,7 @@ describe("SfuResourceAdmission", () => {
     expect(admission.usage()).toEqual({ ingress: 0, egress: 0 });
   });
 
-  it("reactivates a draining subscription in the current generation without double charging", () => {
+  it("reactivates an exact draining subscription without double charging", () => {
     const admission = new SfuResourceAdmission({
       ingressCapacity: 1,
       egressCapacity: 1,
@@ -167,13 +167,13 @@ describe("SfuResourceAdmission", () => {
     expect(admission.reservePublication(active)).toBe(true);
     expect(admission.reserveSubscription(viewer)).toBe(true);
     expect(admission.commitPublication(active)).toEqual([]);
-    expect(admission.releaseSubscription(viewer)).toBe(true);
+    expect(admission.beginSubscriptionDrain(viewer)).toBe(true);
     expect(admission.usage()).toEqual({ ingress: 1, egress: 1 });
 
     expect(admission.reserveSubscription(viewer)).toBe(true);
     expect(admission.reserveSubscription(viewer)).toBe(true);
     expect(admission.usage()).toEqual({ ingress: 1, egress: 1 });
-    expect(admission.releaseSubscription(viewer)).toBe(true);
+    expect(admission.beginSubscriptionDrain(viewer)).toBe(true);
     expect(
       admission.reserveSubscription(subscription(active, "viewer_b")),
     ).toBe(false);
@@ -192,7 +192,7 @@ describe("SfuResourceAdmission", () => {
     expect(admission.reservePublication(active)).toBe(true);
     expect(admission.reserveSubscription(viewer)).toBe(true);
     expect(admission.commitPublication(active)).toEqual([]);
-    expect(admission.releaseSubscription(viewer)).toBe(true);
+    expect(admission.beginSubscriptionDrain(viewer)).toBe(true);
     expect(
       admission.reserveSubscription(subscription(active, "viewer_b")),
     ).toBe(false);

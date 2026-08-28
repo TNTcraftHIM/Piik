@@ -57,4 +57,17 @@ describe("Host stage entry layout", () => {
       /\.room-code-entry\.is-inline\s*\{[\s\S]*?width:\s*min\(520px, calc\(100% - 20px\)\);[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\) 44px;/,
     );
   });
+
+  it("disables share start while room authority is mutating", () => {
+    const markup = renderToStaticMarkup(
+      createElement(StageEntryActions, {
+        joiningRoom: false,
+        startSharingDisabled: true,
+        onJoinToggle: () => undefined,
+        onStartSharing: () => undefined,
+      }),
+    );
+
+    expect(markup).toMatch(/<button[^>]*disabled=""[^>]*>/);
+  });
 });

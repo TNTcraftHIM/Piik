@@ -33,12 +33,11 @@ Start from a clean exact revision with Node.js 24 and npm 11:
 ```sh
 npm ci
 npm run check
-npm run build
 node scripts/package-app-release.mjs <output-directory-outside-repository>
 ```
 
-The packager refuses a dirty tree, records the full revision, emits a runtime
-archive plus path/size/SHA-256 manifest and release descriptor, and
+The packager refuses a dirty tree, builds from that exact revision, records the
+full revision, emits a runtime archive plus path/size/SHA-256 manifest and release descriptor, and
 extracts its own artifact to verify it. Upload the archive, manifest, and
 descriptor together to `/opt/screener/uploads`.
 

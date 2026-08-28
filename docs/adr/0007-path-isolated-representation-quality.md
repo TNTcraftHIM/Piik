@@ -1,8 +1,8 @@
 # ADR-0007: Framework-Owned Media Quality Adaptation
 
-- Status: Accepted; adaptive gate and local selector deployed
+- Status: Accepted
 - Date: 2026-08-19
-- Last reviewed: 2026-08-26
+- Last reviewed: 2026-08-28
 
 ## Context
 
@@ -61,11 +61,11 @@ it does not need a second bitrate, resolution, FPS, or layer-control system.
    remains disabled because a Viewer may relay its received track to peer
    children; local DOM size or visibility cannot represent that downstream
    demand.
-8. Quality measurements are diagnostic. Bitrate, resolution, FPS, RTT, jitter,
-   loss, freeze counters, codec, and limitation reason do not trigger parent
-   selection, relay abdication, periodic rebalancing, or route changes. Only
-   hard connection failure, the existing non-paused decoded-frame stall, parent
-   departure, or capacity invalidation can make an active edge unusable.
+8. WebRTC and LiveKit remain the media-adaptation owners. ADR-0005's deployed
+   native-edge convergence may consume only a persistent categorical limitation
+   from the exact sender and comparative delivery proof from the same Viewer over
+   a real prepared candidate. It does not set bitrate, resolution, FPS, or layer,
+   infer a physical bottleneck, or combine quality measurements into a score.
 9. A healthy decoded route remains sticky. Manual media reconnect rebuilds the
    current exact P2P parent or current SFU subscription; it does not search for
    a better parent. If current-route recovery genuinely exhausts, ADR-0005's
@@ -109,8 +109,9 @@ LiveKit HIGH+LOW publication without backup codec.
 - A Host may need to lower its explicit share profile when encoder or uplink
   capacity is insufficient; Screener does not silently remove constrained
   Viewer support.
-- ADR-0005's native-edge local convergence remains unimplemented. Weighted or
-  global topology optimization still requires another route-model decision.
+- ADR-0005's native-edge local convergence is deployed and performs bounded
+  real-candidate comparisons without owning media adaptation. Weighted or global
+  topology optimization still requires another route-model decision.
 
 ## Stop Lines
 

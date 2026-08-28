@@ -1,4 +1,7 @@
-import type { SfuResourceFence } from "../src/server/sfu-resource-admission.ts";
+import type {
+  SfuResourceFence,
+  SfuSubscriptionFence,
+} from "../src/server/sfu-resource-admission.ts";
 import {
   managedSfuRoomName,
   type SfuRoomControl,
@@ -8,12 +11,15 @@ export class FakeSfuRoomControl implements SfuRoomControl {
   readonly rooms = new Map<string, Set<string>>();
   readonly created: SfuResourceFence[] = [];
   readonly deleted: SfuResourceFence[] = [];
+  readonly subscriptionDrainAttempts: SfuSubscriptionFence[] = [];
+  readonly drainedSubscriptions: SfuSubscriptionFence[] = [];
   readonly startupDeletedRoomNames: string[] = [];
   initializeCalls = 0;
   initializeBarrier?: Promise<void>;
   initializeError?: Error;
   createBarrier?: Promise<void>;
   deleteBarrier?: Promise<void>;
+  subscriptionDrainBarrier?: Promise<void>;
   failDelete = false;
   failHostCheck = false;
 
@@ -44,6 +50,15 @@ export class FakeSfuRoomControl implements SfuRoomControl {
     }
     this.rooms.delete(managedSfuRoomName(fence));
     this.deleted.push({ ...fence });
+  }
+
+  async drainSubscription(fence: SfuSubscriptionFence): Promise<void> {
+    this.subscriptionDrainAttempts.push({ ...fence });
+    await this.subscriptionDrainBarrier;
+    this.rooms
+      .get(managedSfuRoomName(fence))
+      ?.delete(`viewer:${fence.viewerPeerId}`);
+    this.drainedSubscriptions.push({ ...fence });
   }
 
   async hostParticipantExists(fence: SfuResourceFence): Promise<boolean> {

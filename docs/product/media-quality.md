@@ -94,10 +94,10 @@ are the observable result. Connection detail may show actual path, codec,
 resolution, FPS, bitrate, loss, jitter, RTT, and encode/decode behavior when the
 Browser exposes them; missing or reset counters remain unknown.
 
-The current quality shadow accepts only current foreground presentation evidence
-and never changes routes or media settings. ADR-0005 accepts native-edge local
-topology convergence that is not implemented or deployed; weighted/global
-optimization remains parked in [TODO](../todo.md).
+WebRTC and LiveKit remain the media-adaptation owners. ADR-0005's deployed
+native-edge convergence consumes only a persistent categorical sender limitation
+and proof from the same Viewer over a real prepared candidate; it does not turn
+quality metrics into media settings or a weighted/global route score.
 
 Web pages cannot guarantee Host background capture, mobile background playback,
 or relay execution after Browser/OS suspension. Those remain physical lifecycle

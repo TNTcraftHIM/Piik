@@ -52,7 +52,6 @@ interface AuthenticatedSession {
   roomId: string;
   role: Role;
   peerId: string;
-  roomExpiresAtMs: number | null;
   shareGeneration: string | null;
   displayName: string | null;
   viewerPresence: boolean;
@@ -428,13 +427,6 @@ export class SignalingServer {
       return;
     }
 
-    if (
-      state.authenticated.roomExpiresAtMs !== null &&
-      this.now() >= state.authenticated.roomExpiresAtMs
-    ) {
-      this.expireRooms();
-      return;
-    }
     if (!this.isCurrentSession(state)) {
       socket.close(SIGNAL_CLOSE_CODES.sessionReplaced, "Session replaced");
       return;
@@ -616,10 +608,6 @@ export class SignalingServer {
       roomId: participant.roomId,
       role: participant.role,
       peerId: participant.peerId,
-      roomExpiresAtMs:
-        participant.expiresAt === null
-          ? null
-          : Date.parse(participant.expiresAt),
       shareGeneration,
       displayName:
         message.role === "host"

@@ -130,42 +130,62 @@ describe("SFU quality probe", () => {
         frameHeight: 720,
         framesPerSecond: 30,
       });
-    expect(probe.observe(current(1_000), candidate(1_100))).toBe(false);
-    expect(probe.observe(current(3_000), candidate(3_100))).toBe(false);
-    expect(probe.observe(current(5_000), candidate(5_100))).toBe(true);
+    expect(probe.observe(current(1_000), candidate(1_100))).toBe("pending");
+    expect(probe.observe(current(3_000), candidate(3_100))).toBe("pending");
+    expect(probe.observe(current(5_000), candidate(5_100))).toBe("approved");
     probe.reset();
-    expect(probe.observe(current(7_000), candidate(7_100))).toBe(false);
+    expect(probe.observe(current(7_000), candidate(7_100))).toBe("pending");
+  });
+
+  it("rejects after three comparable non-improving P2P windows", () => {
+    const probe = new P2pQualityProbe();
+    expect(probe.observe(metrics(1_000), metrics(1_100))).toBe("pending");
+    expect(probe.observe(metrics(3_000), metrics(3_100))).toBe("pending");
+    expect(probe.observe(metrics(5_000), metrics(5_100))).toBe("rejected");
+  });
+
+  it("keeps unknown evidence pending instead of counting it as rejection", () => {
+    const probe = new P2pQualityProbe();
+    expect(probe.observe(metrics(1_000), metrics(1_100))).toBe("pending");
+    expect(probe.observe(metrics(3_000), metrics(3_100))).toBe("pending");
+    expect(
+      probe.observe(
+        metrics(5_000),
+        metrics(5_100, { intervalFreezeCount: null }),
+      ),
+    ).toBe("pending");
+    expect(probe.observe(metrics(7_000), metrics(7_100))).toBe("pending");
   });
 
   it("requires three consecutive windows and resets after a regression", () => {
     const probe = new SfuQualityProbe();
-    expect(probe.observe(metrics(1_000), metrics(1_100))).toBe(false);
-    expect(probe.observe(metrics(3_000), metrics(3_100))).toBe(false);
+    expect(probe.observe(metrics(1_000), metrics(1_100))).toBe("pending");
+    expect(probe.observe(metrics(3_000), metrics(3_100))).toBe("pending");
     expect(
       probe.observe(metrics(5_000), metrics(5_100, { framesPerSecond: 30 })),
-    ).toBe(false);
-    expect(probe.observe(metrics(7_000), metrics(7_100))).toBe(false);
-    expect(probe.observe(metrics(9_000), metrics(9_100))).toBe(false);
-    expect(probe.observe(metrics(11_000), metrics(11_100))).toBe(true);
+    ).toBe("pending");
+    expect(probe.observe(metrics(7_000), metrics(7_100))).toBe("pending");
+    expect(probe.observe(metrics(9_000), metrics(9_100))).toBe("pending");
+    expect(probe.observe(metrics(11_000), metrics(11_100))).toBe("approved");
   });
 
   it("resets when either side lacks a new comparable window", () => {
     const probe = new SfuQualityProbe();
-    expect(probe.observe(metrics(1_000), metrics(1_100))).toBe(false);
-    expect(probe.observe(metrics(3_000), metrics(3_100))).toBe(false);
-    expect(probe.observe(metrics(3_000), metrics(5_100))).toBe(false);
-    expect(probe.observe(metrics(7_000), metrics(7_100))).toBe(false);
-    expect(probe.observe(metrics(9_000), metrics(9_100))).toBe(false);
-    expect(probe.observe(metrics(11_000), metrics(11_100))).toBe(true);
+    expect(probe.observe(metrics(1_000), metrics(1_100))).toBe("pending");
+    expect(probe.observe(metrics(3_000), metrics(3_100))).toBe("pending");
+    expect(probe.observe(metrics(3_000), metrics(5_100))).toBe("pending");
+    expect(probe.observe(metrics(7_000), metrics(7_100))).toBe("pending");
+    expect(probe.observe(metrics(9_000), metrics(9_100))).toBe("pending");
+    expect(probe.observe(metrics(11_000), metrics(11_100))).toBe("approved");
 
     probe.reset();
-    expect(probe.observe(metrics(13_000), metrics(13_100))).toBe(false);
+    expect(probe.observe(metrics(13_000), metrics(13_100))).toBe("pending");
     expect(
       probe.observe(
         metrics(15_000),
         metrics(15_100, { intervalFreezeDurationMs: null }),
       ),
-    ).toBe(false);
-    expect(probe.observe(metrics(17_000), metrics(17_100))).toBe(false);
+    ).toBe("pending");
+    expect(probe.observe(metrics(17_000), metrics(17_100))).toBe("pending");
   });
 });

@@ -49,7 +49,7 @@ export class ViewerRelay {
     private iceConfig: IceConfig,
     private desiredProfile: QualityProfile,
     private readonly events: ViewerRelayEvents,
-    private readonly maxMediaEdges = MAX_ENDPOINT_MEDIA_CHILDREN,
+    private maxMediaEdges = MAX_ENDPOINT_MEDIA_CHILDREN,
   ) {}
 
   getSnapshot(childPeerId?: string): PeerSnapshot | null {
@@ -156,6 +156,17 @@ export class ViewerRelay {
 
   setChildren(childPeerIds: readonly string[]): void {
     this.reconcileChildren(childPeerIds, null);
+  }
+
+  updateCapacity(maxMediaEdges: number): void {
+    if (this.disposed || this.maxMediaEdges === maxMediaEdges) {
+      return;
+    }
+    this.maxMediaEdges = maxMediaEdges;
+    if (this.plannedChildPeerIds.length > maxMediaEdges) {
+      this.discardPreparedChild();
+    }
+    this.reconcileChildren(this.childPeerIds, null);
   }
 
   private reconcileChildren(

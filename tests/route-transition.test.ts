@@ -518,14 +518,18 @@ describe("minimal route transition contracts", () => {
     const decodedSamples: Array<{
       framesDecodedDelta: number | null;
       revision: number;
+      mediaIdentity: string;
     }> = [];
     const subscribers: ReturnType<typeof createFakeSubscriber>[] = [];
     const route = new ViewerSfuRoute("viewer_12345678", {
       activatePeer: () => true,
       reconcileSfuChildren: () => undefined,
       onSfuStream: (stream) => streams.push(stream),
-      onSfuDecodedFrameSample: (framesDecodedDelta, revision) =>
-        decodedSamples.push({ framesDecodedDelta, revision }),
+      onSfuDecodedFrameSample: (
+        framesDecodedDelta,
+        revision,
+        mediaIdentity,
+      ) => decodedSamples.push({ framesDecodedDelta, revision, mediaIdentity }),
       send: (message) => {
         messages.push(message);
         return true;
@@ -552,7 +556,13 @@ describe("minimal route transition contracts", () => {
     subscribers[0]?.events.onFirstDecodedFrame();
     await vi.waitFor(() => expect(streams).toEqual([firstStream]));
     subscribers[0]?.events.onDecodedFrameSample(3);
-    expect(decodedSamples).toEqual([{ framesDecodedDelta: 3, revision: 1 }]);
+    expect(decodedSamples).toEqual([
+      {
+        framesDecodedDelta: 3,
+        revision: 1,
+        mediaIdentity: expect.stringContaining("publication_generation_12345678:"),
+      },
+    ]);
 
     route.accept({
       revision: 2,
@@ -568,7 +578,7 @@ describe("minimal route transition contracts", () => {
     } as ConnectionMetrics);
     subscribers[1]?.events.onDecodedFrameSample(null);
     expect(messages.filter((message) => message.type === "route-ready")).toEqual([]);
-    expect(decodedSamples).toEqual([{ framesDecodedDelta: 3, revision: 1 }]);
+    expect(decodedSamples).toHaveLength(1);
 
     subscribers[1]?.events.onFirstDecodedFrame();
     subscribers[1]?.events.onFirstDecodedFrame();
@@ -585,10 +595,14 @@ describe("minimal route transition contracts", () => {
     await vi.waitFor(() => expect(streams).toEqual([firstStream, pendingStream]));
     subscribers[1]?.events.onDecodedFrameSample(null);
     subscribers[0]?.events.onDecodedFrameSample(9);
-    expect(decodedSamples).toEqual([
-      { framesDecodedDelta: 3, revision: 1 },
-      { framesDecodedDelta: null, revision: 2 },
-    ]);
+    expect(decodedSamples).toHaveLength(2);
+    expect(decodedSamples[1]).toMatchObject({
+      framesDecodedDelta: null,
+      revision: 2,
+    });
+    expect(decodedSamples[1]!.mediaIdentity).not.toBe(
+      decodedSamples[0]!.mediaIdentity,
+    );
     expect(subscribers[0]?.deactivate).toHaveBeenCalledOnce();
     expect(subscribers[0]?.disconnect).toHaveBeenCalledOnce();
   });
@@ -663,6 +677,68 @@ describe("minimal route transition contracts", () => {
     expect(messages.filter((message) => message.type === "route-ready")).toEqual([
       { type: "route-ready", revision: 2, phase: "prepare" },
     ]);
+  });
+
+  it("rejects a quality SFU candidate after three comparable regressions", async () => {
+    const messages: ClientMessage[] = [];
+    const subscribers: ReturnType<typeof createFakeSubscriber>[] = [];
+    let currentMetrics = receiveMetrics(1_000);
+    const route = new ViewerSfuRoute("viewer_12345678", {
+      activatePeer: () => true,
+      reconcileSfuChildren: () => undefined,
+      onSfuStream: () => undefined,
+      currentPeerMetrics: () => currentMetrics,
+      qualityProbeEligible: () => true,
+      send: (message) => {
+        messages.push(message);
+        return true;
+      },
+      createSubscriber: (events) => {
+        const subscriber = createFakeSubscriber(events, [], "candidate");
+        subscribers.push(subscriber);
+        return subscriber;
+      },
+    });
+
+    route.accept({
+      revision: 1,
+      phase: "active",
+      assignment: peerAssignment("parent_12345678"),
+    });
+    route.accept({
+      revision: 2,
+      phase: "prepare",
+      assignment: viewerSfuAssignment(),
+      candidate: candidate(
+        2,
+        "viewer_12345678",
+        "sfu",
+        "candidate_2_12345678",
+        true,
+      ),
+    });
+    await route.acceptConfig(sfuConfig(2));
+    const subscriber = subscribers[0]!;
+    subscriber.events.onStream({} as MediaStream);
+    subscriber.events.onFirstDecodedFrame();
+
+    for (const timestampMs of [1_100, 3_100, 5_100]) {
+      currentMetrics = receiveMetrics(timestampMs - 100);
+      subscriber.events.onStats(
+        receiveMetrics(timestampMs, { framesPerSecond: 30 }),
+      );
+    }
+
+    expect(messages.at(-1)).toEqual({
+      type: "route-failed",
+      revision: 2,
+      phase: "prepare",
+      connectionId: null,
+    });
+    expect(subscriber.disconnect).toHaveBeenCalledOnce();
+    expect(
+      messages.filter((message) => message.type === "route-ready"),
+    ).toEqual([]);
   });
 
   it("reconnects only the active SFU subscriber on the current route", async () => {

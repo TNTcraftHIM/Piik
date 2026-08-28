@@ -4,12 +4,14 @@ import { RoomCodeEntry } from "./RoomCodeEntry";
 
 interface StageEntryActionsProps {
   joiningRoom: boolean;
+  startSharingDisabled?: boolean;
   onJoinToggle: () => void;
   onStartSharing: () => void;
 }
 
 export function StageEntryActions({
   joiningRoom,
+  startSharingDisabled = false,
   onJoinToggle,
   onStartSharing,
 }: StageEntryActionsProps) {
@@ -19,6 +21,7 @@ export function StageEntryActions({
         <button
           className="entry-action"
           type="button"
+          disabled={startSharingDisabled}
           title="开始分享屏幕"
           onClick={onStartSharing}
         >

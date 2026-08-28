@@ -66,11 +66,14 @@ type RouteResource =
   | SfuPublicationRouteResource
   | OverlapRouteResource;
 
-interface SfuDrainTask {
-  fence: SfuResourceFence;
+type SfuDrainTarget =
+  | { kind: "publication"; fence: SfuResourceFence }
+  | { kind: "subscription"; fence: SfuSubscriptionFence };
+
+type SfuDrainTask = SfuDrainTarget & {
   operation?: Promise<void>;
   retryTimer?: NodeJS.Timeout;
-}
+};
 
 interface HostOfflineCheck {
   hostPeerId: string;
@@ -178,7 +181,9 @@ export class HybridMediaRouter {
     this.hostOfflineChecks.clear();
     const fallback = this.options.sfuFallback;
     if (!fallback) return;
-    for (const fence of fallback.admission.beginDrainAll()) this.scheduleSfuDrain(fence);
+    for (const fence of fallback.admission.beginDrainAll()) {
+      this.scheduleSfuPublicationDrain(fence);
+    }
     for (const [key, task] of [...this.sfuDrainTasks]) {
       if (task.retryTimer) clearTimeout(task.retryTimer);
       if (task.operation) await task.operation;
@@ -820,6 +825,21 @@ export class HybridMediaRouter {
 
     if (snapshot.revision !== message.revision) return;
     if (participant.role === "host") {
+      if (
+        message.connectionId &&
+        controller.invalidateDirectEdgeFromParent(
+          {
+            parentPeerId: participant.peerId,
+            parentSessionId: participant.sessionId,
+            routeRevision: snapshot.revision,
+            connectionId: message.connectionId,
+          },
+          this.now(),
+        )
+      ) {
+        this.requestPump(participant.roomId);
+        return;
+      }
       const publication = snapshot.hostPublication;
       if (
         !publication ||
@@ -1219,7 +1239,7 @@ export class HybridMediaRouter {
         ...publication.resource.fence,
         viewerPeerId: operation.childPeerId,
       };
-      if (!fallback.admission.reserveSubscription(fence)) {
+      if (!(await this.reserveSfuSubscription(fence))) {
         return { kind: "denied", rejectionBucket: "sfu-admission" };
       }
       const currentEdge = snapshot.upstreamByViewer.get(operation.childPeerId);
@@ -1300,7 +1320,7 @@ export class HybridMediaRouter {
     }
     if (!fallback.admission.reserveSubscription(subscriptionFence)) {
       fallback.admission.beginDrain(publicationFence);
-      this.scheduleSfuDrain(publicationFence);
+      this.scheduleSfuPublicationDrain(publicationFence);
       return { kind: "denied", rejectionBucket: "sfu-admission" };
     }
     const subscription = subscriptionResource(subscriptionFence);
@@ -1617,7 +1637,7 @@ export class HybridMediaRouter {
       reservation.publication.fence,
     );
     if (!draining) return false;
-    for (const fence of draining) this.scheduleSfuDrain(fence);
+    for (const fence of draining) this.scheduleSfuPublicationDrain(fence);
     return true;
   }
 
@@ -1626,7 +1646,7 @@ export class HybridMediaRouter {
   }
 
   private releaseResources(resources: readonly RouteResource[]): void {
-    // Generation drain owns physical release; its child handles stay charged until absence.
+    // Publication drains own accounting; subscription drains only remove exact participants.
     for (const resource of resources) {
       if (resource.kind === "sfu-publication") this.releaseResource(resource);
     }
@@ -1644,19 +1664,39 @@ export class HybridMediaRouter {
       return;
     }
     if (this.options.sfuFallback?.admission.beginDrain(resource.fence)) {
-      this.scheduleSfuDrain(resource.fence);
+      this.scheduleSfuPublicationDrain(resource.fence);
     }
   }
 
   private releaseSubscription(fence: SfuSubscriptionFence): boolean {
     const admission = this.options.sfuFallback?.admission;
     if (!admission) return false;
-    const beforeEgress = admission.usage().egress;
-    const accepted = admission.releaseSubscription(fence);
-    if (accepted && admission.usage().egress < beforeEgress) {
-      this.wakeResourceWaiters();
-    }
+    const accepted = admission.beginSubscriptionDrain(fence);
+    if (accepted) this.scheduleSfuSubscriptionDrain(fence);
     return accepted;
+  }
+
+  private async reserveSfuSubscription(
+    fence: SfuSubscriptionFence,
+  ): Promise<boolean> {
+    const fallback = this.options.sfuFallback;
+    if (!fallback) return false;
+    const key = sfuDrainKey({ kind: "subscription", fence });
+    const pending = this.sfuDrainTasks.get(key);
+    if (pending?.operation) {
+      try {
+        await pending.operation;
+      } catch {
+        return false;
+      }
+      if (this.sfuDrainTasks.get(key) === pending) return false;
+    }
+    const task = this.sfuDrainTasks.get(key);
+    if (task?.kind === "subscription") {
+      if (task.retryTimer) clearTimeout(task.retryTimer);
+      this.sfuDrainTasks.delete(key);
+    }
+    return fallback.admission.reserveSubscription(fence);
   }
 
   private wakeResourceWaiters(): void {
@@ -1827,12 +1867,34 @@ export class HybridMediaRouter {
     this.hostOfflineChecks.delete(roomId);
   }
 
-  private scheduleSfuDrain(fence: SfuResourceFence): void {
+  private scheduleSfuPublicationDrain(fence: SfuResourceFence): void {
+    const roomName = managedSfuRoomName(fence);
+    for (const [key, task] of this.sfuDrainTasks) {
+      if (
+        task.kind === "subscription" &&
+        managedSfuRoomName(task.fence) === roomName
+      ) {
+        if (task.retryTimer) clearTimeout(task.retryTimer);
+        this.sfuDrainTasks.delete(key);
+      }
+    }
+    this.scheduleSfuDrain({ kind: "publication", fence });
+  }
+
+  private scheduleSfuSubscriptionDrain(fence: SfuSubscriptionFence): void {
+    if (this.sfuDrainTasks.has(managedSfuRoomName(fence))) return;
+    this.scheduleSfuDrain({ kind: "subscription", fence });
+  }
+
+  private scheduleSfuDrain(target: SfuDrainTarget): void {
     if (!this.options.sfuFallback) return;
-    const key = managedSfuRoomName(fence);
+    const key = sfuDrainKey(target);
     let task = this.sfuDrainTasks.get(key);
     if (!task) {
-      task = { fence: { ...fence } };
+      task =
+        target.kind === "publication"
+          ? { kind: "publication", fence: { ...target.fence } }
+          : { kind: "subscription", fence: { ...target.fence } };
       this.sfuDrainTasks.set(key, task);
     }
     if (!task.operation && !task.retryTimer) {
@@ -1847,13 +1909,24 @@ export class HybridMediaRouter {
     let tracked!: Promise<void>;
     tracked = (async () => {
       try {
-        await fallback.roomControl.deleteRoom(task.fence);
+        if (task.kind === "publication") {
+          await fallback.roomControl.deleteRoom(task.fence);
+        } else {
+          await fallback.roomControl.drainSubscription(task.fence);
+        }
         if (this.sfuDrainTasks.get(key) !== task) return;
-        if (!fallback.admission.completeDrain(task.fence)) {
+        if (
+          task.kind === "publication" &&
+          !fallback.admission.completeDrain(task.fence)
+        ) {
           throw new Error("LiveKit drain has no matching resource generation");
         }
         this.sfuDrainTasks.delete(key);
-        this.wakeResourceWaiters();
+        if (task.kind === "publication") {
+          this.wakeResourceWaiters();
+        } else {
+          this.requestPump(task.fence.roomId);
+        }
       } catch (error) {
         if (this.sfuDrainTasks.get(key) !== task) return;
         if (this.closing) throw error;
@@ -1882,7 +1955,7 @@ export class HybridMediaRouter {
     this.rooms.delete(roomId);
     this.resourceWaiters.delete(roomId);
     for (const fence of this.options.sfuFallback?.admission.beginDrainRoom(roomId) ?? []) {
-      this.scheduleSfuDrain(fence);
+      this.scheduleSfuPublicationDrain(fence);
     }
   }
 
@@ -1988,6 +2061,13 @@ function preparedRouteCandidate(
 
 function opaqueId(): string {
   return randomBytes(16).toString("base64url");
+}
+
+function sfuDrainKey(target: SfuDrainTarget): string {
+  const roomName = managedSfuRoomName(target.fence);
+  return target.kind === "publication"
+    ? roomName
+    : `${roomName}\u0000viewer:${target.fence.viewerPeerId}`;
 }
 
 function overlapResource(endpointPeerId: string): OverlapRouteResource {

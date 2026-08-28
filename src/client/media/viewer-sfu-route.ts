@@ -8,7 +8,10 @@ import type {
 import { SfuSubscriber } from "../sfu/subscriber";
 import type { ConnectionMetrics } from "../types";
 import type { SfuConnectionConfig } from "../sfu/publisher";
-import { SfuQualityProbe } from "./candidate-quality-probe";
+import {
+  SfuQualityProbe,
+  type CandidateQualityProbeResult,
+} from "./candidate-quality-probe";
 import {
   MediaRouteTransition,
   reportActivePeerRouteFailure,
@@ -27,6 +30,7 @@ interface ViewerSubscriberTransport {
 }
 
 interface ViewerSubscriberSlot {
+  mediaIdentity: string;
   revision: number;
   phase: MediaRoutePhase;
   publicationGeneration: string;
@@ -38,7 +42,7 @@ interface ViewerSubscriberSlot {
   decodedFrame: boolean;
   readySent: boolean;
   qualityProbe: SfuQualityProbe | null;
-  qualityApproved: boolean;
+  qualityResult: CandidateQualityProbeResult;
   failed: boolean;
   activationToken: RouteOperationToken | null;
 }
@@ -77,6 +81,7 @@ interface ViewerSfuRouteEvents {
   onSfuDecodedFrameSample?: (
     framesDecodedDelta: number | null,
     revision: number,
+    mediaIdentity: string,
   ) => void;
   onSfuState?: (
     state: "connected" | "reconnecting",
@@ -106,6 +111,7 @@ export class ViewerSfuRoute {
   private resyncGeneration = 0;
   private resyncing = false;
   private manualReconnectRevision: number | null = null;
+  private subscriberGeneration = 0;
   private paused = false;
   private closed = false;
 
@@ -260,7 +266,7 @@ export class ViewerSfuRoute {
     if (paused) {
       this.pending?.qualityProbe?.reset();
       if (this.pending) {
-        this.pending.qualityApproved = false;
+        this.pending.qualityResult = "pending";
       }
     }
     if (paused) {
@@ -271,7 +277,7 @@ export class ViewerSfuRoute {
   resetQualityProbe(): void {
     this.pending?.qualityProbe?.reset();
     if (this.pending) {
-      this.pending.qualityApproved = false;
+      this.pending.qualityResult = "pending";
     }
   }
 
@@ -464,15 +470,20 @@ export class ViewerSfuRoute {
         ) {
           if (this.events.qualityProbeEligible?.() === false) {
             slot.qualityProbe.reset();
-            slot.qualityApproved = false;
-          } else if (
-            slot.qualityProbe.observe(
+            slot.qualityResult = "pending";
+          } else {
+            slot.qualityResult = slot.qualityProbe.observe(
               this.events.currentPeerMetrics?.() ?? null,
               metrics,
-            )
-          ) {
-            slot.qualityApproved = true;
-            this.sendPendingReady(slot);
+            );
+            if (slot.qualityResult === "approved") {
+              this.sendPendingReady(slot);
+            } else if (
+              slot.qualityResult === "rejected" &&
+              this.routeFailed(slot.revision, "prepare")
+            ) {
+              this.clearPending();
+            }
           }
         }
       },
@@ -481,6 +492,7 @@ export class ViewerSfuRoute {
           this.events.onSfuDecodedFrameSample?.(
             framesDecodedDelta,
             slot.revision,
+            slot.mediaIdentity,
           );
         }
       },
@@ -497,6 +509,7 @@ export class ViewerSfuRoute {
       new SfuSubscriber(subscriberEvents);
     const preparedCandidate = this.route.getPreparedCandidate();
     slot = {
+      mediaIdentity: `${publicationGeneration}:${++this.subscriberGeneration}`,
       revision: message.revision,
       phase,
       publicationGeneration,
@@ -512,7 +525,7 @@ export class ViewerSfuRoute {
         preparedCandidate.qualityProbe
           ? new SfuQualityProbe()
           : null,
-      qualityApproved: false,
+      qualityResult: "pending",
       failed: false,
       activationToken: null,
     };
@@ -778,7 +791,7 @@ export class ViewerSfuRoute {
       slot.failed ||
       slot.readySent ||
       !slot.decodedFrame ||
-      (slot.qualityProbe !== null && !slot.qualityApproved) ||
+      (slot.qualityProbe !== null && slot.qualityResult !== "approved") ||
       (slot.qualityProbe !== null &&
         this.events.qualityProbeEligible?.() === false) ||
       this.route.getPhase() !== "prepare" ||
@@ -999,8 +1012,8 @@ export class ViewerSfuRoute {
       : null;
   }
 
-  private routeFailed(revision: number, phase: MediaRoutePhase): void {
-    this.events.send({
+  private routeFailed(revision: number, phase: MediaRoutePhase): boolean {
+    return this.events.send({
       type: "route-failed",
       revision,
       phase,

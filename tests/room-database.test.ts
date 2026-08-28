@@ -292,6 +292,35 @@ describe("SQLite stable room authority", () => {
     expect(replacement.viewerGrant).not.toBe(room.viewerGrant);
   });
 
+  it("rolls back a batch expiry when any exact room authority is stale", async () => {
+    const path = databasePath();
+    const clock = { nowMs: 10 };
+    const first = stableStore(path, clock);
+    await first.createRoom("open", null, "4321");
+    await first.createRoom("open", null, "5678");
+    closeStore(first);
+
+    const database = new RoomDatabase(path);
+    const restored = database.initialize(clock.nowMs, 1_010);
+    expect(restored).toHaveLength(2);
+    expect(() =>
+      database.deleteRooms([
+        {
+          roomId: restored[0]!.roomId,
+          hostTokenDigest: restored[0]!.hostTokenDigest,
+        },
+        {
+          roomId: restored[1]!.roomId,
+          hostTokenDigest: Buffer.alloc(32),
+        },
+      ]),
+    ).toThrow("Room database delete did not match current authority");
+    database.close();
+
+    const second = stableStore(path, clock);
+    expect(second.size).toBe(2);
+  });
+
   it("persists room replacement as one authority transition", async () => {
     const path = databasePath();
     const clock = { nowMs: 10 };
