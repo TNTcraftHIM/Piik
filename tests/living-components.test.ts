@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { Couch } from "../src/client/components/living/Couch.tsx";
+import { ComicTooltip } from "../src/client/components/living/ComicTooltip.tsx";
 import { StageOverlay } from "../src/client/components/living/Stage.tsx";
 import { NameTag } from "../src/client/components/living/primitives.tsx";
 import { setCopy } from "../src/client/ui/copy.ts";
@@ -51,5 +52,21 @@ describe("living-room presentation", () => {
 
     expect(html).toContain(">TNT<");
     expect(html).not.toContain("visually-hidden");
+  });
+
+  it("leaves hidden tooltip artwork out of the initial markup", () => {
+    const html = renderToStaticMarkup(
+      createElement(
+        ComicTooltip,
+        {
+          kind: "hint-share-start",
+          children: createElement("button", { type: "button" }, "Share"),
+        },
+      ),
+    );
+
+    expect(html).toContain("lr-comic-tip");
+    expect(html).toContain(">Share</button>");
+    expect(html).not.toContain('viewBox="0 0 320 96"');
   });
 });

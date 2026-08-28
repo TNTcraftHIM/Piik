@@ -6,7 +6,7 @@
 // completeness at compile time. JSX-free shell: this module is also loaded
 // by the tsx preview harness, which uses the classic JSX runtime.
 
-import { createElement, type CSSProperties, type ReactNode } from "react";
+import { createElement, memo, type CSSProperties, type ReactNode } from "react";
 import type { ComicTheme } from "../Comic";
 import { SET1_SCENES } from "./set1";
 import { SET2_SCENES } from "./set2";
@@ -102,7 +102,7 @@ export function isHintKind(kind: string): kind is HintKind {
 }
 
 /** All hint scenes are paper idioms: they float on a paper tooltip. */
-export function HintComic({
+export const HintComic = memo(function HintComic({
   kind,
   size,
 }: {
@@ -125,4 +125,4 @@ export function HintComic({
     },
     HINT_SCENES[kind]({ theme: "paper" }),
   );
-}
+});
