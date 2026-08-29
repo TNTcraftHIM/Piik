@@ -654,6 +654,7 @@ html[data-theme="dark"] .lr-viewer-host-slot svg { color: #9bb0c5; }
   color: var(--ink);
   font-family: var(--mono);
   font-size: 11px;
+  text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
   user-select: all;

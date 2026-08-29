@@ -2981,7 +2981,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                 />
               </RowGroup>
               {room.inviteUrl ? (
-                <code className="lr-invite-url" title={room.inviteUrl}>
+                <code className="lr-invite-url" dir="ltr" title={room.inviteUrl}>
                   {room.inviteUrl}
                 </code>
               ) : null}
