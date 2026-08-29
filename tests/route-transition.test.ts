@@ -393,6 +393,144 @@ describe("minimal route transition contracts", () => {
     expect(publishers[1]?.disconnect).not.toHaveBeenCalled();
   });
 
+  it("reports and retires an exact active SFU source replacement failure", async () => {
+    const messages: ClientMessage[] = [];
+    const publishers: ReturnType<typeof createFakePublisher>[] = [];
+    const route = new HostSfuRoute({
+      getStream: () => ({}) as MediaStream,
+      getProfile: () => QUALITY_PROFILES["720p30"],
+      getVideoCodec: () => "vp8",
+      reconcileChildren: () => undefined,
+      send: (message) => {
+        messages.push(message);
+        return true;
+      },
+      createPublisher: () => {
+        const publisher = createFakePublisher([], "publisher-active");
+        publishers.push(publisher);
+        return publisher;
+      },
+    });
+
+    await route.acceptAndWait({
+      revision: 1,
+      phase: "active",
+      assignment: hostAssignment("publication-active"),
+    });
+    await route.acceptConfig(sfuConfig(1));
+    publishers[0]!.replaceStream.mockResolvedValue(false);
+
+    await expect(route.replaceStream({} as MediaStream)).resolves.toBe(false);
+    expect(publishers[0]!.disconnect).toHaveBeenCalledOnce();
+    expect(messages).toContainEqual({ type: "refresh-sfu", revision: 1 });
+  });
+
+  it("retires a failed pending source without invalidating healthy active SFU", async () => {
+    const messages: ClientMessage[] = [];
+    const publishers: ReturnType<typeof createFakePublisher>[] = [];
+    const route = new HostSfuRoute({
+      getStream: () => ({}) as MediaStream,
+      getProfile: () => QUALITY_PROFILES["720p30"],
+      getVideoCodec: () => "vp8",
+      reconcileChildren: () => undefined,
+      send: (message) => {
+        messages.push(message);
+        return true;
+      },
+      createPublisher: () => {
+        const publisher = createFakePublisher(
+          [],
+          `publisher-${publishers.length + 1}`,
+        );
+        publishers.push(publisher);
+        return publisher;
+      },
+    });
+
+    await route.acceptAndWait({
+      revision: 1,
+      phase: "active",
+      assignment: hostAssignment("publication-active"),
+    });
+    await route.acceptConfig(sfuConfig(1));
+    route.accept({
+      revision: 2,
+      phase: "prepare",
+      assignment: hostAssignment("publication-pending"),
+      candidate: candidate(2, "viewer_12345678", "sfu"),
+    });
+    await route.acceptConfig(sfuConfig(2));
+    publishers[1]!.replaceStream.mockResolvedValue(false);
+
+    await expect(route.replaceStream({} as MediaStream)).resolves.toBe(true);
+    expect(publishers[0]!.disconnect).not.toHaveBeenCalled();
+    expect(publishers[1]!.disconnect).toHaveBeenCalledOnce();
+    expect(messages).toContainEqual({
+      type: "route-failed",
+      revision: 2,
+      phase: "prepare",
+      connectionId: null,
+    });
+  });
+
+  it("reports success when a pending SFU promotion supersedes an old failure", async () => {
+    const publishers: ReturnType<typeof createFakePublisher>[] = [];
+    const route = new HostSfuRoute({
+      getStream: () => ({}) as MediaStream,
+      getProfile: () => QUALITY_PROFILES["720p30"],
+      getVideoCodec: () => "vp8",
+      reconcileChildren: () => undefined,
+      send: () => true,
+      createPublisher: () => {
+        const publisher = createFakePublisher(
+          [],
+          `publisher-${publishers.length + 1}`,
+        );
+        publishers.push(publisher);
+        return publisher;
+      },
+    });
+
+    await route.acceptAndWait({
+      revision: 1,
+      phase: "active",
+      assignment: hostAssignment("publication-old"),
+    });
+    await route.acceptConfig(sfuConfig(1));
+    route.accept({
+      revision: 2,
+      phase: "prepare",
+      assignment: hostAssignment("publication-new"),
+      candidate: candidate(2, "viewer_12345678", "sfu"),
+    });
+    await route.acceptConfig(sfuConfig(2));
+
+    let resolveOldReplacement!: (replaced: boolean) => void;
+    publishers[0]!.replaceStream.mockImplementation(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveOldReplacement = resolve;
+        }),
+    );
+    const oldReplacementCalls = publishers[0]!.replaceStream.mock.calls.length;
+    const replacing = route.replaceStream({} as MediaStream);
+    await vi.waitFor(() =>
+      expect(publishers[0]!.replaceStream).toHaveBeenCalledTimes(
+        oldReplacementCalls + 1,
+      ),
+    );
+
+    await route.acceptAndWait({
+      revision: 2,
+      phase: "active",
+      assignment: hostAssignment("publication-new"),
+    });
+    resolveOldReplacement(false);
+
+    await expect(replacing).resolves.toBe(true);
+    expect(publishers[1]!.disconnect).not.toHaveBeenCalled();
+  });
+
 
 
   it("reconciles paused Host active truth by exact SFU publication", async () => {
@@ -508,6 +646,147 @@ describe("minimal route transition contracts", () => {
 
     expect(publishers[0]?.disconnect).not.toHaveBeenCalled();
     expect(publishers[1]?.disconnect).toHaveBeenCalled();
+  });
+
+  it("ignores a retired publisher failure after same-generation resync", async () => {
+    let releaseOldConnect!: () => void;
+    const oldConnectGate = new Promise<void>((resolve) => {
+      releaseOldConnect = resolve;
+    });
+    const messages: ClientMessage[] = [];
+    const publishers: ReturnType<typeof createFakePublisher>[] = [];
+    const route = new HostSfuRoute({
+      getStream: () => ({}) as MediaStream,
+      getProfile: () => QUALITY_PROFILES["720p30"],
+      getVideoCodec: () => "vp8",
+      reconcileChildren: () => undefined,
+      send: (message) => {
+        messages.push(message);
+        return true;
+      },
+      createPublisher: () => {
+        const publisher = createFakePublisher(
+          [],
+          `publisher-${publishers.length + 1}`,
+        );
+        if (publishers.length === 1) {
+          publisher.connect.mockImplementation(async () => {
+            await oldConnectGate;
+            throw new Error("retired publisher");
+          });
+        }
+        publishers.push(publisher);
+        return publisher;
+      },
+    });
+
+    await route.acceptAndWait({
+      revision: 1,
+      phase: "active",
+      assignment: hostAssignment("publication-old"),
+    });
+    await route.acceptConfig(sfuConfig(1));
+    route.accept({
+      revision: 2,
+      phase: "prepare",
+      assignment: hostAssignment("publication-new"),
+      candidate: candidate(2, "viewer_12345678", "sfu"),
+    });
+    const stale = route.acceptConfig(sfuConfig(2));
+    await vi.waitFor(() => expect(publishers[1]?.connect).toHaveBeenCalledOnce());
+
+    await route.resyncAuthoritative({
+      revision: 1,
+      phase: "active",
+      assignment: hostAssignment("publication-old"),
+    });
+    route.accept({
+      revision: 2,
+      phase: "prepare",
+      assignment: hostAssignment("publication-new"),
+      candidate: candidate(2, "viewer_12345678", "sfu"),
+    });
+    const current = route.acceptConfig(sfuConfig(2));
+    await vi.waitFor(() => expect(publishers).toHaveLength(3));
+    releaseOldConnect();
+    await Promise.all([stale, current]);
+
+    expect(messages.filter((message) => message.type === "route-failed")).toEqual(
+      [],
+    );
+    expect(publishers[2]?.activate).toHaveBeenCalledOnce();
+  });
+
+  it("ignores a retired subscriber failure after same-generation resync", async () => {
+    let releaseOldConnect!: () => void;
+    const oldConnectGate = new Promise<void>((resolve) => {
+      releaseOldConnect = resolve;
+    });
+    const messages: ClientMessage[] = [];
+    const subscribers: ReturnType<typeof createFakeSubscriber>[] = [];
+    const route = new ViewerSfuRoute("viewer_12345678", {
+      activatePeer: () => true,
+      reconcileSfuChildren: () => undefined,
+      onSfuStream: () => undefined,
+      send: (message) => {
+        messages.push(message);
+        return true;
+      },
+      createSubscriber: (events) => {
+        const subscriber = createFakeSubscriber(
+          events,
+          [],
+          `subscriber-${subscribers.length + 1}`,
+        );
+        if (subscribers.length === 1) {
+          subscriber.connect.mockImplementation(async () => {
+            await oldConnectGate;
+            throw new Error("retired subscriber");
+          });
+        }
+        subscribers.push(subscriber);
+        return subscriber;
+      },
+    });
+
+    route.accept({
+      revision: 1,
+      phase: "active",
+      assignment: viewerSfuAssignment([], "publication-old"),
+    });
+    await route.acceptConfig(sfuConfig(1));
+    route.accept({
+      revision: 2,
+      phase: "prepare",
+      assignment: viewerSfuAssignment([], "publication-new"),
+      candidate: candidate(2, "viewer_12345678", "sfu"),
+    });
+    const stale = route.acceptConfig(sfuConfig(2));
+    await vi.waitFor(() => expect(subscribers[1]?.connect).toHaveBeenCalledOnce());
+
+    await route.resyncAuthoritative(
+      {
+        revision: 1,
+        phase: "active",
+        assignment: viewerSfuAssignment([], "publication-old"),
+      },
+      "viewer_12345678",
+    );
+    route.accept({
+      revision: 2,
+      phase: "prepare",
+      assignment: viewerSfuAssignment([], "publication-new"),
+      candidate: candidate(2, "viewer_12345678", "sfu"),
+    });
+    const current = route.acceptConfig(sfuConfig(2));
+    await vi.waitFor(() => expect(subscribers).toHaveLength(3));
+    releaseOldConnect();
+    await Promise.all([stale, current]);
+
+    expect(messages.filter((message) => message.type === "route-failed")).toEqual(
+      [],
+    );
+    expect(subscribers[2]?.activate).toHaveBeenCalledOnce();
   });
 
 

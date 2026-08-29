@@ -1208,9 +1208,9 @@ describe("client signaling recovery policy", () => {
     });
     advance(2_000);
 
-    expect(sockets).toHaveLength(2);
-    expect(sockets[0]!.close).toHaveBeenCalledWith(4002, "signaling timeout");
-    expect(statuses.at(-1)).toBe("reconnecting");
+    expect(sockets).toHaveLength(1);
+    expect(sockets[0]!.close).not.toHaveBeenCalled();
+    expect(statuses.at(-1)).toBe("connected");
     expect(onTerminated).not.toHaveBeenCalled();
     expect(
       sockets[0]!.send.mock.calls
@@ -1218,27 +1218,18 @@ describe("client signaling recovery policy", () => {
         .includes("route-failed"),
     ).toBe(false);
 
+    advance(3_000);
+    const next = JSON.parse(String(sockets[0]!.send.mock.calls.at(-1)![0]));
+    expect(next).toEqual({ type: "signaling-challenge", sequence: 3 });
     receive(sockets[0]!, {
       type: "signaling-challenge-response",
-      sequence: confirm.sequence,
-    });
-    const oldClose = new Event("close");
-    Object.defineProperties(oldClose, {
-      code: { value: 4002 },
-      reason: { value: "signaling timeout" },
-    });
-    sockets[0]!.dispatchEvent(oldClose);
-    authenticate(sockets[1]!);
-    advance(5_000);
-    const healthy = JSON.parse(String(sockets[1]!.send.mock.calls.at(-1)![0]));
-    receive(sockets[1]!, {
-      type: "signaling-challenge-response",
-      sequence: healthy.sequence,
+      sequence: next.sequence,
     });
     advance(2_000);
 
-    expect(sockets).toHaveLength(2);
-    expect(onMessage).toHaveBeenCalledTimes(2);
+    expect(sockets).toHaveLength(1);
+    expect(confirm.sequence).toBe(2);
+    expect(onMessage).toHaveBeenCalledTimes(1);
     signal.stop();
   });
 

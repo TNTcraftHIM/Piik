@@ -234,11 +234,11 @@ export class HostSfuRoute {
     let slot: HostPublisherSlot;
     const publisher =
       this.events.createPublisher?.(
-        () => this.handleFailure(slot),
+        () => this.failPublisherSlot(slot),
         (metrics) => this.handlePublisherStats(slot, metrics),
       ) ??
       new SfuPublisher({
-        onDisconnected: () => this.handleFailure(slot),
+        onDisconnected: () => this.failPublisherSlot(slot),
         onStats: (metrics) => this.handlePublisherStats(slot, metrics),
       });
     slot = {
@@ -258,11 +258,20 @@ export class HostSfuRoute {
       if (!connected) {
         if (this.pending === slot && this.route.owns(token)) {
           this.handleFailure(slot);
+        } else {
+          if (this.pending === slot) {
+            this.pending = null;
+          }
+          slot.failed = true;
         }
         await disconnectPublisher(publisher);
         return;
       }
       if (this.pending !== slot || !this.route.owns(token)) {
+        if (this.pending === slot) {
+          this.pending = null;
+        }
+        slot.failed = true;
         await disconnectPublisher(publisher);
         return;
       }
@@ -273,6 +282,7 @@ export class HostSfuRoute {
           if (this.pending === slot) {
             this.pending = null;
           }
+          slot.failed = true;
           await disconnectPublisher(publisher);
           return;
         }
@@ -285,8 +295,8 @@ export class HostSfuRoute {
         await this.queueActivation(token);
       }
     } catch {
+      this.failPublisherSlot(slot);
       await disconnectPublisher(publisher);
-      this.handleFailure(slot);
     }
   }
 
@@ -319,15 +329,39 @@ export class HostSfuRoute {
       : null;
   }
 
-  replaceStream(stream: MediaStream): Promise<boolean> {
+  async replaceStream(stream: MediaStream): Promise<boolean> {
     const slots = this.publishingSlots();
-    return slots.length === 0
-      ? Promise.resolve(true)
-      : Promise.all(
-          slots.map((slot) =>
-            slot.publisher.replaceStream(stream).catch(() => false),
-          ),
-        ).then((results) => results.every(Boolean));
+    const initialActive = this.active;
+    if (slots.length === 0) {
+      return true;
+    }
+
+    const results = await Promise.all(
+      slots.map((slot) => slot.publisher.replaceStream(stream).catch(() => false)),
+    );
+    let replaced = true;
+    await this.queueTransition(async () => {
+      const currentActive = this.active;
+      if (currentActive) {
+        const activeIndex = slots.indexOf(currentActive);
+        replaced = activeIndex < 0 || results[activeIndex] === true;
+      } else if (initialActive) {
+        const activeIndex = slots.indexOf(initialActive);
+        const stillPlanned =
+          this.route.getPlannedAssignment()?.sfuPublicationGeneration ===
+          initialActive.publicationGeneration;
+        replaced =
+          activeIndex < 0 || results[activeIndex] === true || !stillPlanned;
+      }
+
+      for (const [index, slot] of slots.entries()) {
+        if (results[index] === false) {
+          this.failPublisherSlot(slot);
+          await disconnectPublisher(slot.publisher);
+        }
+      }
+    });
+    return replaced;
   }
 
   private publishingSlots(): HostPublisherSlot[] {
@@ -335,18 +369,6 @@ export class HostSfuRoute {
       (slot): slot is HostPublisherSlot =>
         slot !== null && slot.active && !slot.failed,
     );
-  }
-
-  async failActivePublisher(): Promise<void> {
-    await this.queueTransition(async () => {
-      const slot = this.active;
-      if (!slot) {
-        return;
-      }
-      this.active = null;
-      await disconnectPublisher(slot.publisher);
-      this.handleFailure(slot);
-    });
   }
 
   async disconnect(): Promise<void> {
@@ -363,6 +385,12 @@ export class HostSfuRoute {
       const active = this.active;
       this.pending = null;
       this.active = null;
+      if (pending) {
+        pending.failed = true;
+      }
+      if (active) {
+        active.failed = true;
+      }
       if (active?.active) {
         await active.publisher.deactivate().catch(() => false);
       }
@@ -455,12 +483,14 @@ export class HostSfuRoute {
     this.active = pending;
     if (!this.route.markMediaActive(token)) {
       this.active = previous;
+      pending.failed = true;
       await disconnectPublisher(pending.publisher);
       return;
     }
     this.lastFailureStage = null;
     this.recovery = null;
     if (previous && previous !== pending) {
+      previous.failed = true;
       if (previous.active) {
         await previous.publisher.deactivate().catch(() => false);
       }
@@ -473,12 +503,12 @@ export class HostSfuRoute {
     const profile = this.events.getProfile();
     const videoCodec = this.events.getVideoCodec();
     if (!stream) {
-      this.handleFailure(slot);
+      this.failPublisherSlot(slot);
       return false;
     }
     try {
       if (!(await slot.publisher.activate(stream, profile, videoCodec))) {
-        this.handleFailure(slot);
+        this.failPublisherSlot(slot);
         await disconnectPublisher(slot.publisher);
         return false;
       }
@@ -493,7 +523,7 @@ export class HostSfuRoute {
         latestStream !== stream &&
         !(await slot.publisher.replaceStream(latestStream))
       ) {
-        this.handleFailure(slot);
+        this.failPublisherSlot(slot);
         await disconnectPublisher(slot.publisher);
         return false;
       }
@@ -502,13 +532,13 @@ export class HostSfuRoute {
         !qualitySettingsEqual(latestProfile, profile) &&
         !(await slot.publisher.updateProfile(latestProfile))
       ) {
-        this.handleFailure(slot);
+        this.failPublisherSlot(slot);
         await disconnectPublisher(slot.publisher);
         return false;
       }
       return this.pending === slot && this.ownsPublisherSlot(slot);
     } catch {
-      this.handleFailure(slot);
+      this.failPublisherSlot(slot);
       await disconnectPublisher(slot.publisher);
       return false;
     }
@@ -536,6 +566,7 @@ export class HostSfuRoute {
     }
     const pending = this.pending;
     this.pending = null;
+    pending.failed = true;
     void disconnectPublisher(pending.publisher);
   }
 
@@ -545,6 +576,7 @@ export class HostSfuRoute {
     }
     const active = this.active;
     this.active = null;
+    active.failed = true;
     await this.disconnectRetiredPublisher(active);
   }
 
@@ -559,6 +591,7 @@ export class HostSfuRoute {
     }
     const active = this.active;
     this.active = null;
+    active.failed = true;
     return active;
   }
 
@@ -577,15 +610,16 @@ export class HostSfuRoute {
     }
     const wasActive = this.active === slot;
     const wasPending = this.pending === slot;
+    if (!wasActive && !wasPending) {
+      slot.failed = true;
+      return;
+    }
     const assignment = this.route.getPlannedAssignment();
     const revision = this.route.getRevision();
     const phase = this.route.getPhase();
     const matchesPlannedRoute =
       revision === slot.revision &&
       assignment?.sfuPublicationGeneration === slot.publicationGeneration;
-    if (!wasActive && !wasPending && !matchesPlannedRoute) {
-      return;
-    }
     this.lastFailureStage = slot.publisher.getFailureStage?.() ?? "transport";
     slot.failed = true;
     if (wasPending) {
@@ -608,6 +642,14 @@ export class HostSfuRoute {
       return;
     }
     this.requestRecovery(revision);
+  }
+
+  private failPublisherSlot(slot: HostPublisherSlot): void {
+    if (this.pending !== slot && this.active !== slot) {
+      slot.failed = true;
+      return;
+    }
+    this.handleFailure(slot);
   }
 
   private requestRecovery(revision: number): void {

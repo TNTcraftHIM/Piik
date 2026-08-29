@@ -278,7 +278,10 @@ export class SfuSubscriber {
             }
           }
           this.desiredTrackSids.clear();
-          this.clearMedia(true);
+          // LiveKit full reconnect removes participants before it emits
+          // Reconnecting. Keep any route-owned proof intent until the route is
+          // deactivated or the subscriber terminates.
+          this.clearMedia(true, true);
         }
       },
     );
@@ -290,6 +293,7 @@ export class SfuSubscriber {
     room.on(sdk.RoomEvent.Reconnected, () => {
       if (this.owns(room, generation) && this.state === "active") {
         this.reconcileHostSubscriptions(room, sdk, generation);
+        this.startDecodedFrameProof();
         this.events.onState?.("connected");
         void this.updateStats();
       }
@@ -625,10 +629,14 @@ export class SfuSubscriber {
     this.audioStatsInFlight = null;
   }
 
-  private clearMedia(notify: boolean): void {
+  private clearMedia(notify: boolean, preserveDecodedFrameProof = false): void {
     const hadStream = this.streamEmitted;
     const hadVideo = this.video !== null;
-    this.stopDecodedFrameProof();
+    if (preserveDecodedFrameProof) {
+      this.cancelDecodedFrameObserver();
+    } else {
+      this.stopDecodedFrameProof();
+    }
     if (this.state !== "active") {
       this.stopStats();
     }

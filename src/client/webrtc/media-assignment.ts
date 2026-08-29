@@ -79,3 +79,26 @@ export function viewerRestartMessage(
       }
     : { type: "restart-request", connectionId, rebuild };
 }
+
+export function createOwnedViewerRestartSender(
+  peerAssisted: boolean,
+  ownsActivePeer: (targetPeerId: string, connectionId: string) => boolean,
+  send: (
+    message: Extract<ClientMessage, { type: "restart-request" }>,
+  ) => boolean,
+): (
+  targetPeerId: string,
+  connectionId: string,
+  rebuild: boolean,
+) => boolean {
+  return (targetPeerId, connectionId, rebuild) =>
+    ownsActivePeer(targetPeerId, connectionId) &&
+    send(
+      viewerRestartMessage(
+        peerAssisted,
+        targetPeerId,
+        connectionId,
+        rebuild,
+      ),
+    );
+}

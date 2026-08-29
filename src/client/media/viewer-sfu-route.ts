@@ -502,7 +502,7 @@ export class ViewerSfuRoute {
           this.events.onSfuState?.(state, slot.revision);
         }
       },
-      onDisconnected: () => this.handleFailure(slot),
+      onDisconnected: () => this.failSubscriberSlot(slot),
     };
     const subscriber =
       this.events.createSubscriber?.(subscriberEvents) ??
@@ -540,19 +540,28 @@ export class ViewerSfuRoute {
         if (this.pending === slot && currentToken) {
           slot.revision = currentToken.revision;
           this.handleFailure(slot);
+        } else {
+          if (this.pending === slot) {
+            this.pending = null;
+          }
+          slot.failed = true;
         }
         await disconnectSubscriber(subscriber);
         return;
       }
       const currentToken = this.currentPendingToken(slot, token);
       if (this.pending !== slot || !currentToken) {
+        if (this.pending === slot) {
+          this.pending = null;
+        }
+        slot.failed = true;
         await disconnectSubscriber(subscriber);
         return;
       }
       slot.revision = currentToken.revision;
       slot.connected = true;
       if (!subscriber.activate()) {
-        this.handleFailure(slot);
+        this.failSubscriberSlot(slot);
         await disconnectSubscriber(subscriber);
         return;
       }
@@ -564,8 +573,8 @@ export class ViewerSfuRoute {
         await this.queueActiveRoute(currentToken, true);
       }
     } catch {
+      this.failSubscriberSlot(slot);
       await disconnectSubscriber(subscriber);
-      this.handleFailure(slot);
     }
   }
 
@@ -596,6 +605,12 @@ export class ViewerSfuRoute {
       const active = this.active;
       this.pending = null;
       this.active = null;
+      if (pending) {
+        pending.failed = true;
+      }
+      if (active) {
+        active.failed = true;
+      }
       this.events.onSfuUpdate?.(
         null,
         active?.revision ?? pending?.revision ?? this.route.getRevision() ?? 0,
@@ -826,6 +841,7 @@ export class ViewerSfuRoute {
     this.active = slot;
     if (!this.route.markMediaActive(token)) {
       this.active = previous;
+      slot.failed = true;
       await disconnectSubscriber(slot.subscriber);
       return;
     }
@@ -836,6 +852,7 @@ export class ViewerSfuRoute {
     slot.mediaAvailable = true;
     this.events.onSfuStream(slot.stream, assignment, true, slot.revision);
     if (previous && previous !== slot) {
+      previous.failed = true;
       try {
         previous.subscriber.deactivate();
       } catch {
@@ -880,6 +897,7 @@ export class ViewerSfuRoute {
     }
     const pending = this.pending;
     this.pending = null;
+    pending.failed = true;
     void disconnectSubscriber(pending.subscriber);
   }
 
@@ -889,6 +907,7 @@ export class ViewerSfuRoute {
     }
     const active = this.active;
     this.active = null;
+    active.failed = true;
     this.events.onSfuUpdate?.(null, active.revision);
     await this.disconnectRetiredSubscriber(active);
   }
@@ -908,6 +927,7 @@ export class ViewerSfuRoute {
     }
     const active = this.active;
     this.active = null;
+    active.failed = true;
     this.events.onSfuUpdate?.(null, active.revision);
     return active;
   }
@@ -930,8 +950,13 @@ export class ViewerSfuRoute {
       return;
     }
     const wasActive = this.active === slot;
+    const wasPending = this.pending === slot;
+    if (!wasActive && !wasPending) {
+      slot.failed = true;
+      return;
+    }
     const failedManualReconnect =
-      this.pending === slot &&
+      wasPending &&
       this.manualReconnectRevision === slot.revision &&
       this.active?.publicationGeneration === slot.publicationGeneration &&
       this.active.activated &&
@@ -978,6 +1003,14 @@ export class ViewerSfuRoute {
       return;
     }
     this.requestRecovery(revision);
+  }
+
+  private failSubscriberSlot(slot: ViewerSubscriberSlot): void {
+    if (this.pending !== slot && this.active !== slot) {
+      slot.failed = true;
+      return;
+    }
+    this.handleFailure(slot);
   }
 
   private requestRecovery(revision: number): void {

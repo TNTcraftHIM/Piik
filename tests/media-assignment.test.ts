@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { SignalPayload } from "../src/shared/protocol.ts";
 import {
+  createOwnedViewerRestartSender,
   limitMediaAssignment,
   MAX_ENDPOINT_MEDIA_CHILDREN,
   reconcileBoundedMediaChildren,
@@ -115,5 +116,42 @@ describe("peer-assisted client assignment", () => {
       connectionId: "connection_12345678",
       rebuild: false,
     });
+  });
+
+  it("allows a pending peer restart closure only after exact promotion", () => {
+    let active = false;
+    const messages: unknown[] = [];
+    const sendRestart = createOwnedViewerRestartSender(
+      true,
+      (targetPeerId, connectionId) =>
+        active &&
+        targetPeerId === "parent_12345678" &&
+        connectionId === "connection_12345678",
+      (message) => {
+        messages.push(message);
+        return true;
+      },
+    );
+
+    expect(
+      sendRestart("parent_12345678", "connection_12345678", false),
+    ).toBe(false);
+    expect(messages).toEqual([]);
+
+    active = true;
+    expect(
+      sendRestart("parent_12345678", "connection_12345678", true),
+    ).toBe(true);
+    expect(messages).toEqual([
+      {
+        type: "restart-request",
+        targetPeerId: "parent_12345678",
+        connectionId: "connection_12345678",
+        rebuild: true,
+      },
+    ]);
+    expect(sendRestart("other-parent", "connection_12345678", true)).toBe(
+      false,
+    );
   });
 });
