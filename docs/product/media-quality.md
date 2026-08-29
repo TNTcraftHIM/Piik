@@ -66,16 +66,21 @@ specific MFT, NVENC, AMF, or QSV implementation.
 
 ## Framework-Owned Adaptation
 
-Each direct or relay PeerConnection keeps its own stock WebRTC congestion and
-quality adaptation. The Host's one SFU publication uses the share-generation
-codec and selected ceiling but no application-defined simulcast ladder or backup
-codec. Pinned LiveKit defaults construct representations; Dynacast aggregates
-demand and server send-side BWE selects subscriber forwarding. AdaptiveStream
-stays disabled because any Viewer may relay its received track.
+Each direct or relay PeerConnection owns stock WebRTC congestion control and
+sender adaptation. This does not provide full source isolation: when several
+senders consume the same capture or received track, libwebrtc can aggregate
+source wants before per-sender encoder adaptation, so one constrained sender can
+partially reduce frames available to siblings. Sibling outputs may still differ;
+Screener does not impose a room-wide minimum. The Host's one SFU publication
+uses the share-generation codec and selected ceiling but no application-defined
+simulcast ladder or backup codec. Pinned LiveKit defaults construct
+representations; Dynacast aggregates demand and server send-side BWE selects
+subscriber forwarding. AdaptiveStream stays disabled because any Viewer may
+relay its received track.
 
 Screener does not maintain an application bitrate/resolution ladder, scene
-detector, periodic quality controller, manual SFU layer selector, or whole-room
-lowest-common-denominator target.
+detector, periodic quality controller, manual SFU layer selector, or
+application-defined whole-room lowest-common-denominator target.
 
 ## Screen Audio
 

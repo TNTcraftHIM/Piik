@@ -45,7 +45,10 @@ it does not need a second bitrate, resolution, FPS, or layer-control system.
 4. Direct and peer paths leave media adaptation to each `RTCPeerConnection`.
    After accepting an answer, the Host reapplies the current video profile to
    the negotiated sender because the browser may replace or rewrite encoding
-   parameters during negotiation.
+   parameters during negotiation. Per-PeerConnection ownership does not imply
+   source isolation when several senders consume one track; framework
+   source-wants aggregation remains upstream of each sender's own encoder
+   adaptation.
 5. Auto direct and Browser-relay offers with a proved sender order H.264 before
    VP8 in one standard codec-preference list; endpoints select their first common
    codec without a parallel media connection. Failed Auto or manual VP8 offers

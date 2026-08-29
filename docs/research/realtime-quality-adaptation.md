@@ -81,6 +81,15 @@ fps while the healthy sender stayed near 960x540 at 28-30 fps in both arms; both
 returned to 720p30 after the constrained sender closed. Clone stop did not stop
 the original capture, but source cloning is not an accepted resource remedy.
 
+Production room evidence showed the same partial coupling at larger scale. One
+Host sender remained bandwidth-limited while both same-track Host outputs fell
+near 320x180 at 7-10 fps, even when its sibling reported no native limitation
+and materially higher outgoing BWE. After the constrained edge departed, the
+surviving path recovered through high-resolution, full-cadence windows. Together
+with the controlled clone A/B, this supports partial shared-source coupling; it
+does not establish a universal all-senders minimum or quantify its share
+relative to uplink contention.
+
 ## H.264 Root Cause And Gate
 
 Chromium's `has_trusted_rate_controller` is encoder coordination, not a Windows
@@ -251,8 +260,13 @@ Its cumulative `qualityLimitationDurations` can prove a same-identity interval
 spent in `none`, `bandwidth`, or `cpu`; missing or reset values remain unknown.
 This supplies a categorical native edge state rather than an application score.
 One report is still not a future guarantee, so a candidate must carry real media
-while the working route remains and prove a complete healthy delta before
-commit. Failure remains inconclusive without cutting the old route.
+while the working route remains. A P2P candidate needs fresh healthy evidence
+from its exact sender plus clean overlapping same-Viewer receive windows that do
+not regress delivered dimensions or frame rate. Requiring an immediate strict
+gain can deadlock while the retained and candidate senders still share source
+adaptation. An expired one-shot relative proof rejects that candidate rather than
+holding the operation until its deadline. Failure remains inconclusive without
+cutting the old route.
 
 Production observation on 2026-08-27 showed that one two-second degraded delta
 could move an otherwise usable Host Peer edge to an already-active SFU whose
@@ -324,6 +338,7 @@ percentages, and tuning loops are not adopted for this Browser product.
 - [MediaStreamTrack Content Hints](https://www.w3.org/TR/mst-content-hint/)
 - [Screen Capture](https://www.w3.org/TR/screen-capture/)
 - [libwebrtc adaptation](https://webrtc.googlesource.com/src/+/HEAD/video/g3doc/adaptation.md)
+- [libwebrtc source-wants aggregation](https://webrtc.googlesource.com/src/+/refs/heads/main/api/video/video_broadcaster.cc)
 - [libwebrtc VP8 encoder](https://webrtc.googlesource.com/src/+/refs/heads/main/modules/video_coding/codecs/vp8/libvpx_vp8_encoder.cc)
 - [libwebrtc startup frame dropper](https://webrtc.googlesource.com/src/+/f20ebb8adbf4fa781830e4384c61f732bd28a217/video/adaptation/video_stream_encoder_resource_manager.cc)
 - [Chromium WebRTC encoder factory](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/third_party/blink/renderer/platform/peerconnection/rtc_video_encoder_factory.cc)

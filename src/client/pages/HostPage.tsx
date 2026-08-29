@@ -2487,7 +2487,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     const viewerState = connected
       ? "connected"
       : (snapshot?.connectionState ?? "routing");
-    const detailMetrics = hasMatchingQualityEvidence
+    const detailMetrics = hasCurrentQualityEvidence
       ? metricsFromQualityEvidence(qualityEvidence)
       : snapshot && hasPeerRouteEvidence(snapshot)
         ? snapshot.metrics
@@ -2500,7 +2500,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
             : "sfu"
           : null,
       metrics: detailMetrics,
-      direction: hasMatchingQualityEvidence ? "receive" : "send",
+      direction: hasCurrentQualityEvidence ? "receive" : "send",
       tag: connected
         ? undefined
         : {

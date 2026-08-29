@@ -129,7 +129,7 @@ export function sfuCandidateDoesNotRegress(
   );
 }
 
-export function p2pCandidateStrictlyImproves(
+export function p2pCandidateDoesNotRegress(
   current: ConnectionMetrics,
   candidate: ConnectionMetrics,
 ): boolean | null {
@@ -142,9 +142,7 @@ export function p2pCandidateStrictlyImproves(
     candidate.intervalPauseCount === 0 &&
     candidate.intervalPauseDurationMs === 0 &&
     candidateVideo.pixels >= currentVideo.pixels &&
-    candidateVideo.framesPerSecond >= currentVideo.framesPerSecond &&
-    (candidateVideo.pixels > currentVideo.pixels ||
-      candidateVideo.framesPerSecond > currentVideo.framesPerSecond)
+    candidateVideo.framesPerSecond >= currentVideo.framesPerSecond
   );
 }
 
@@ -241,6 +239,6 @@ export class SfuQualityProbe extends ConsecutiveCandidateQualityProbe {
 
 export class P2pQualityProbe extends ConsecutiveCandidateQualityProbe {
   constructor() {
-    super(p2pCandidateStrictlyImproves);
+    super(p2pCandidateDoesNotRegress);
   }
 }

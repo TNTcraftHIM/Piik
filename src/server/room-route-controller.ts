@@ -133,6 +133,7 @@ interface Attempt<Resource> {
   senderQualityConsecutiveDegradedWindows?: number;
   senderQualitySampleTimestampMs?: number;
   senderQualityIdentity?: string;
+  relativeQualityApprovedAtMs?: number;
 }
 
 interface ChildOperation<Resource> {
@@ -1152,11 +1153,8 @@ export class RoomRouteController<Resource = unknown> {
       previous !== undefined &&
       input.acceptedAtMs <
         previous.lastAcceptedAtMs + VIEWER_QUALITY_EVIDENCE_EXPIRY_MS;
-    const senderIdentityChanged =
-      sameIdentity && previous?.senderIdentity !== input.senderIdentity;
-    const baselineRequired = this.senderQualityBaselines.has(
-      input.childPeerId,
-    );
+    const baselineRequired =
+      this.senderQualityBaselines.get(input.childPeerId) === true;
     if (input.state === "healthy") {
       this.senderQualityBaselines.delete(input.childPeerId);
     }
@@ -1177,8 +1175,7 @@ export class RoomRouteController<Resource = unknown> {
       lastSampleTimestampMs: input.sampleTimestampMs,
       lastAcceptedAtMs: input.acceptedAtMs,
       consumedAtFactVersion:
-        (baselineRequired || senderIdentityChanged) &&
-        input.state === "degraded"
+        baselineRequired && input.state === "degraded"
           ? this.factVersion
           : sameSenderIdentity &&
               previous?.state === "degraded" &&
@@ -1539,14 +1536,22 @@ export class RoomRouteController<Resource = unknown> {
     if (parent?.sessionId !== parentSessionId) {
       return [];
     }
+    const children = new Set(this.childrenOf(parentPeerId));
     for (const [childPeerId, observation] of this.senderQualityObservations) {
       if (
         observation.parentPeerId === parentPeerId &&
         observation.parentSessionId === parentSessionId
       ) {
-        this.senderQualityObservations.delete(childPeerId);
-        this.senderQualityBaselines.set(childPeerId, true);
+        children.add(childPeerId);
       }
+    }
+    for (const childPeerId of children) {
+      this.senderQualityObservations.delete(childPeerId);
+      // Reset means the next exact sender sequence is a new observation
+      // window. A quality/root commit still installs the explicit rearm latch
+      // below; a visibility or source reset must not deadlock a persistently
+      // limited edge waiting for a healthy sample.
+      this.senderQualityBaselines.delete(childPeerId);
     }
     if (parentPeerId === this.options.hostPeerId) {
       this.sfuPublisherQualityObservation = undefined;
@@ -1989,10 +1994,24 @@ export class RoomRouteController<Resource = unknown> {
         released: validation.released,
       };
     }
-    const relativeP2pApproved =
+    const relativeP2pProof =
       operation.reason === "quality-convergence" &&
       attempt.tuple.kind === "peer" &&
       proof.relativeQualityApproved === true;
+    if (relativeP2pProof && attempt.relativeQualityApprovedAtMs === undefined) {
+      attempt.relativeQualityApprovedAtMs = nowMs;
+    }
+    const relativeP2pApproved =
+      operation.reason === "quality-convergence" &&
+      attempt.tuple.kind === "peer" &&
+      attempt.relativeQualityApprovedAtMs !== undefined &&
+      nowMs <
+        attempt.relativeQualityApprovedAtMs + VIEWER_QUALITY_EVIDENCE_EXPIRY_MS;
+    const relativeP2pExpired =
+      operation.reason === "quality-convergence" &&
+      attempt.tuple.kind === "peer" &&
+      attempt.relativeQualityApprovedAtMs !== undefined &&
+      !relativeP2pApproved;
     const relativeP2pPending =
       operation.reason === "quality-convergence" &&
       attempt.tuple.kind === "peer" &&
@@ -2031,7 +2050,29 @@ export class RoomRouteController<Resource = unknown> {
         };
       }
     }
+    if (relativeP2pExpired) {
+      // A one-shot client proof cannot be renewed by a late sender sample.
+      // Release this candidate so the existing bounded cursor can try the
+      // next route instead of waiting for the whole operation deadline.
+      return this.candidateFailed(guard, nowMs);
+    }
     if (relativeP2pPending) {
+      return {
+        accepted: true,
+        committed: false,
+        failedPeerIds: failedPeerIdsFrom(validation),
+        activeRevision: this.revision,
+        released: validation.released,
+      };
+    }
+    if (
+      relativeP2pApproved &&
+      (attempt.senderQualityState !== "healthy" ||
+        attempt.senderQualityAcceptedAtMs === undefined ||
+        nowMs >=
+          attempt.senderQualityAcceptedAtMs +
+            VIEWER_QUALITY_EVIDENCE_EXPIRY_MS)
+    ) {
       return {
         accepted: true,
         committed: false,
@@ -2622,7 +2663,11 @@ export class RoomRouteController<Resource = unknown> {
       }
     }
     this.requireSenderQualityBaseline(operation.childPeerId, true);
-    this.senderQualityBaselines.set(operation.childPeerId, false);
+    this.senderQualityBaselines.set(
+      operation.childPeerId,
+      operation.reason === "quality-convergence" ||
+        operation.reason === "root-convergence",
+    );
     this.revision = attempt.revision;
     this.operation = undefined;
     this.pruneRetiringSfuAnchors();
@@ -2958,6 +3003,7 @@ export class RoomRouteController<Resource = unknown> {
         const observation = this.senderQualityObservations.get(peerId);
         return Boolean(
           edge?.kind === "peer" &&
+            this.senderQualityBaselines.get(peerId) !== true &&
             observation?.consumedAtFactVersion !== this.factVersion &&
             this.senderQualityPersistentlyDegraded(peerId, edge, nowMs),
         );
