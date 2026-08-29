@@ -89,6 +89,7 @@ export class SignalingClient {
   private watchdogTimer: number | null = null;
   private watchdogDeadlineMs = 0;
   private pendingChallenge: PendingSignalingChallenge | null = null;
+  private previousChallenge: PendingSignalingChallenge | null = null;
   private visibilityListenerAttached = false;
   private hostQualityIntent: HostQualityIntent | null = null;
 
@@ -507,6 +508,9 @@ export class SignalingClient {
         : this.challengeSequence + 1;
     const sequence = this.challengeSequence;
     socket.send(JSON.stringify({ type: "signaling-challenge", sequence }));
+    this.previousChallenge = this.pendingChallenge?.generation === generation
+      ? this.pendingChallenge
+      : null;
     this.pendingChallenge = { generation, sequence, confirm };
     this.armSignalingWatchdog(SIGNALING_CHALLENGE_TIMEOUT_MS);
   }
@@ -516,10 +520,14 @@ export class SignalingClient {
     generation: number,
   ): void {
     const pending = this.pendingChallenge;
+    const previous = this.previousChallenge;
     if (
-      !pending ||
-      pending.generation !== generation ||
-      pending.sequence !== sequence ||
+      ![pending, previous].some(
+        (challenge) =>
+          challenge !== null &&
+          challenge.generation === generation &&
+          challenge.sequence === sequence,
+      ) ||
       generation !== this.socketGeneration
     ) {
       return;
@@ -553,6 +561,7 @@ export class SignalingClient {
 
   private clearSignalingWatchdog(): void {
     this.pendingChallenge = null;
+    this.previousChallenge = null;
     if (this.watchdogTimer !== null) {
       window.clearTimeout(this.watchdogTimer);
       this.watchdogTimer = null;

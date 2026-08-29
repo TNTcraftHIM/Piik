@@ -720,6 +720,7 @@ describe("SfuPublisher", () => {
 
     const room = livekit.state.rooms[0];
     expect(room.options).toEqual({
+      disconnectOnPageLeave: false,
       dynacast: true,
       stopLocalTrackOnUnpublish: false,
     });
@@ -1654,6 +1655,73 @@ describe("SfuSubscriber", () => {
     framesDecoded = 9;
     await vi.advanceTimersByTimeAsync(500);
     expect(proofs).toEqual([8]);
+  });
+
+  it("retains pending frame proof through LiveKit full reconnect order", async () => {
+    vi.useFakeTimers();
+    const proofs = vi.fn(() => true);
+    const subscriber = new SfuSubscriber({
+      onStream: vi.fn(),
+      onFirstDecodedFrame: proofs,
+    });
+    await subscriber.connect(connection);
+    const room = livekit.state.rooms[0];
+    const oldHost = new livekit.FakeRemoteParticipant("host");
+    const oldPublication = new livekit.FakeRemotePublication(
+      "host-video-before-reconnect",
+      Track.Source.ScreenShare,
+    );
+    oldHost.add(oldPublication);
+    room.remoteParticipants.set("host", oldHost);
+    expect(subscriber.activate()).toBe(true);
+    subscriber.armDecodedFrameProof();
+
+    let releaseOldRead!: () => void;
+    const oldRead = new Promise<void>((resolve) => {
+      releaseOldRead = resolve;
+    });
+    room.emit(
+      RoomEvent.TrackSubscribed,
+      remoteTrack(track("video", "video-before-reconnect"), async () => {
+        await oldRead;
+        return statsReport([]);
+      }),
+      oldPublication,
+      oldHost,
+    );
+
+    room.remoteParticipants.delete("host");
+    room.emit(RoomEvent.ParticipantDisconnected, oldHost);
+    room.emit(RoomEvent.Reconnecting);
+
+    const newHost = new livekit.FakeRemoteParticipant("host");
+    const newPublication = new livekit.FakeRemotePublication(
+      "host-video-after-reconnect",
+      Track.Source.ScreenShare,
+    );
+    newHost.add(newPublication);
+    room.remoteParticipants.set("host", newHost);
+    room.emit(RoomEvent.Reconnected);
+    room.emit(
+      RoomEvent.TrackSubscribed,
+      remoteTrack(track("video", "video-after-reconnect"), async () =>
+        statsReport([
+          {
+            id: "video-after-reconnect",
+            type: "inbound-rtp",
+            timestamp: 1,
+            kind: "video",
+            framesDecoded: 1,
+          },
+        ]),
+      ),
+      newPublication,
+      newHost,
+    );
+
+    await vi.waitFor(() => expect(proofs).toHaveBeenCalledOnce());
+    releaseOldRead();
+    expect(subscriber.deactivate()).toBe(true);
   });
 
   it("reconciles a Host publication announced while connect is pending", async () => {

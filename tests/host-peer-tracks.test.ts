@@ -958,6 +958,38 @@ describe("HostPeer source replacement", () => {
     expect(videoSender.appliedMaxBitrates).toEqual([3_000_000, 8_000_000]);
   });
 
+  it("replays the desired profile only after a connected peer reconnects", async () => {
+    const peer = createPeer(
+      createStream(
+        createTrack("video", "video"),
+        createTrack("audio", "audio"),
+      ),
+    );
+
+    await expect(peer.start()).resolves.toBe(true);
+    await acceptPeerAnswer(peer);
+    const connection = FakePeerConnection.latest!;
+    const videoSender = connection.senders[0]!;
+    const audioSender = connection.senders[1]!;
+    const videoCalls = videoSender.setParameters.mock.calls.length;
+    const audioCalls = audioSender.setParameters.mock.calls.length;
+
+    connection.dispatchEvent(new Event("connectionstatechange"));
+    await Promise.resolve();
+    expect(videoSender.setParameters).toHaveBeenCalledTimes(videoCalls);
+    expect(audioSender.setParameters).toHaveBeenCalledTimes(audioCalls);
+
+    connection.connectionState = "disconnected";
+    connection.dispatchEvent(new Event("connectionstatechange"));
+    connection.connectionState = "connected";
+    connection.dispatchEvent(new Event("connectionstatechange"));
+
+    await vi.waitFor(() =>
+      expect(videoSender.setParameters).toHaveBeenCalledTimes(videoCalls + 1),
+    );
+    expect(audioSender.setParameters).toHaveBeenCalledTimes(audioCalls + 1);
+  });
+
   it("continues queued profile updates after initial configuration rejects", async () => {
     const updates: PeerSnapshot[] = [];
     const peer = createPeer(

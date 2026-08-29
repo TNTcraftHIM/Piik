@@ -136,6 +136,7 @@ export class SfuPublisher {
       }
 
       const room = new sdk.Room({
+        disconnectOnPageLeave: false,
         dynacast: true,
         stopLocalTrackOnUnpublish: false,
       });
@@ -441,6 +442,7 @@ export class SfuPublisher {
         if (!this.owns(room, generation)) {
           return false;
         }
+        this.failureStage = "source";
         const failureWarning = say("host.fail.sfuSwitch");
 
         // A rejected publish/unpublish may have changed server state without

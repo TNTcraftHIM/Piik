@@ -74,6 +74,8 @@ export class HostPeer {
   private senderMutationTail: Promise<void> = Promise.resolve();
   private negotiationTail: Promise<void> = Promise.resolve();
   private startupVideoProfilePending: boolean;
+  private connectedOnce = false;
+  private awaitingReconnect = false;
   private snapshot: PeerSnapshot;
 
   constructor(
@@ -360,6 +362,20 @@ export class HostPeer {
       });
     });
     this.connection.addEventListener("connectionstatechange", () => {
+      const state = this.connection.connectionState;
+      if (state === "connected") {
+        const replayProfile = this.awaitingReconnect;
+        this.connectedOnce = true;
+        this.awaitingReconnect = false;
+        if (replayProfile) {
+          this.appliedVideoProfile = null;
+          this.appliedAudioQuality = null;
+          this.appliedAudioSenderParameters = null;
+          void this.updateProfile(this.desiredProfile);
+        }
+      } else if (this.connectedOnce && state !== "closed") {
+        this.awaitingReconnect = true;
+      }
       this.emit();
     });
     this.connection.addEventListener("iceconnectionstatechange", () => this.emit());

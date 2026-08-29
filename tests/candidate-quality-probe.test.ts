@@ -233,3 +233,107 @@ describe("SFU quality probe", () => {
     expect(probe.observe(metrics(17_000), metrics(17_100))).toBe("pending");
   });
 });
+
+describe("zero-frame current route", () => {
+  const zeroFrames = (timestampMs: number) =>
+    metrics(timestampMs, { intervalFramesDecoded: 0 });
+  const degraded = (timestampMs: number) =>
+    metrics(timestampMs, {
+      frameWidth: 320,
+      frameHeight: 180,
+      framesPerSecond: 10,
+    });
+
+  it("approves clean delivery on both candidate route types", () => {
+    for (const probe of [new P2pQualityProbe(), new SfuQualityProbe()]) {
+      expect(probe.observe(zeroFrames(1_000), metrics(1_100))).toBe("pending");
+      expect(probe.observe(zeroFrames(3_000), metrics(3_100))).toBe("pending");
+      expect(probe.observe(zeroFrames(5_000), metrics(5_100))).toBe("approved");
+    }
+  });
+
+  it("continues a real improvement when the current route then stops decoding", () => {
+    const probe = new P2pQualityProbe();
+    expect(probe.observe(degraded(1_000), metrics(1_100))).toBe("pending");
+    expect(probe.observe(zeroFrames(3_000), metrics(3_100))).toBe("pending");
+    expect(probe.observe(zeroFrames(5_000), metrics(5_100))).toBe("approved");
+  });
+
+  it("never approves when both routes stop decoding", () => {
+    for (const probe of [new P2pQualityProbe(), new SfuQualityProbe()]) {
+      for (let index = 0; index < 15; index += 1) {
+        const timestampMs = 1_000 + index * 2_000;
+        expect(
+          probe.observe(zeroFrames(timestampMs), zeroFrames(timestampMs + 100)),
+        ).toBe("pending");
+      }
+    }
+  });
+
+  it("rejects a candidate that decodes only with freezes", () => {
+    for (const probe of [new P2pQualityProbe(), new SfuQualityProbe()]) {
+      for (const timestampMs of [1_000, 3_000]) {
+        expect(
+          probe.observe(
+            zeroFrames(timestampMs),
+            metrics(timestampMs + 100, { intervalFreezeCount: 1 }),
+          ),
+        ).toBe("pending");
+      }
+      expect(
+        probe.observe(
+          zeroFrames(5_000),
+          metrics(5_100, { intervalFreezeCount: 1 }),
+        ),
+      ).toBe("rejected");
+    }
+  });
+
+  it("keeps incomplete and non-overlapping candidates unknown", () => {
+    const incomplete = new SfuQualityProbe();
+    for (const timestampMs of [1_000, 3_000, 5_000]) {
+      expect(
+        incomplete.observe(
+          zeroFrames(timestampMs),
+          metrics(timestampMs + 100, { bitrateKbps: null }),
+        ),
+      ).toBe("pending");
+    }
+
+    const nonOverlapping = new P2pQualityProbe();
+    for (const timestampMs of [1_000, 4_000, 7_000]) {
+      expect(
+        nonOverlapping.observe(
+          zeroFrames(timestampMs),
+          metrics(timestampMs + 2_100),
+        ),
+      ).toBe("pending");
+    }
+  });
+
+  it("clears accumulated evidence when the current window is missing", () => {
+    const probe = new P2pQualityProbe();
+    expect(probe.observe(degraded(1_000), metrics(1_100))).toBe("pending");
+    expect(probe.observe(degraded(3_000), metrics(3_100))).toBe("pending");
+    expect(probe.observe(null, metrics(5_100))).toBe("pending");
+    expect(probe.observe(degraded(7_000), metrics(7_100))).toBe("pending");
+    expect(probe.observe(degraded(9_000), metrics(9_100))).toBe("pending");
+    expect(probe.observe(degraded(11_000), metrics(11_100))).toBe("approved");
+  });
+
+  it("ignores a duplicate timestamp but clears a late candidate window", () => {
+    const probe = new P2pQualityProbe();
+    expect(probe.observe(degraded(1_000), metrics(1_100))).toBe("pending");
+    expect(probe.observe(degraded(3_000), metrics(3_100))).toBe("pending");
+    expect(probe.observe(degraded(5_000), metrics(3_100))).toBe("pending");
+    expect(probe.observe(degraded(7_000), metrics(7_100))).toBe("approved");
+
+    probe.reset();
+    expect(probe.observe(degraded(9_000), metrics(9_100))).toBe("pending");
+    expect(probe.observe(degraded(11_000), metrics(11_100))).toBe("pending");
+    expect(probe.observe(degraded(13_000), metrics(10_100))).toBe("pending");
+    expect(probe.observe(degraded(15_000), metrics(15_100))).toBe("pending");
+    expect(probe.observe(degraded(17_000), metrics(17_100))).toBe("pending");
+    expect(probe.observe(degraded(19_000), metrics(19_100))).toBe("approved");
+  });
+});

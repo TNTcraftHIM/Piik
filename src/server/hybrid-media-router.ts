@@ -77,6 +77,8 @@ type SfuDrainTask = SfuDrainTarget & {
 interface HostOfflineCheck {
   hostPeerId: string;
   fence: SfuResourceFence;
+  hostSessionId: string;
+  connectionId: string;
   timer: NodeJS.Timeout;
 }
 
@@ -216,6 +218,21 @@ export class HybridMediaRouter {
   connectParticipant(input: AuthenticatedRouteParticipant): HybridAuthenticationState {
     const room = this.room(input.roomId);
     if (input.role === "host") {
+      if (room.controller && room.hostPeerId !== input.peerId) {
+        this.clearDeadline(room);
+        for (const viewerPeerId of this.options.roomStore.getViewerPeerIds(
+          input.roomId,
+        )) {
+          this.options.deleteConnectionId(input.roomId, viewerPeerId);
+        }
+        this.releaseResources(
+          room.controller.rebindHostIdentity(
+            input.peerId,
+            input.sessionId,
+            this.now(),
+          ),
+        );
+      }
       room.hostPeerId = input.peerId;
       this.cancelHostOfflineCheck(input.roomId);
       if (!room.controller) this.createController(input.roomId, room, input);
@@ -1181,6 +1198,7 @@ export class HybridMediaRouter {
         route: this.debugTuple(roomId, plan.tuple),
         cursor: operation.cursor,
       });
+      let beginGuard = guard;
       let currentOperation = controller.snapshot().operation;
       if (plan.endpointTransition.kind === "bounded-gap") {
         const beforeGap = controller.snapshot().revision;
@@ -1197,14 +1215,15 @@ export class HybridMediaRouter {
         }
         if (controller.snapshot().revision !== beforeGap) this.broadcastActive(roomId, room);
         currentOperation = controller.snapshot().operation;
-      }
-      const currentPlan = currentOperation?.candidates[currentOperation.cursor];
-      if (!currentOperation || !currentPlan) {
-        this.releaseReservation(preparation.prepared.reservation);
-        continue;
+        const currentPlan = currentOperation?.candidates[currentOperation.cursor];
+        if (!currentOperation || !currentPlan) {
+          this.releaseReservation(preparation.prepared.reservation);
+          continue;
+        }
+        beginGuard = cursorGuard(currentOperation, currentPlan);
       }
       const begun = controller.beginCurrentCandidate({
-        guard: cursorGuard(currentOperation, currentPlan),
+        guard: beginGuard,
         nowMs: this.now(),
         connectionId: preparation.prepared.connectionId,
         reservation: preparation.prepared.reservation,
@@ -1841,23 +1860,34 @@ export class HybridMediaRouter {
     });
   }
 
-  private activeSfuFence(roomId: string): SfuResourceFence | null {
+  private activeHostPublication(
+    roomId: string,
+  ): Omit<HostOfflineCheck, "hostPeerId" | "timer"> | null {
     const publication = this.rooms.get(roomId)?.controller?.snapshot().hostPublication;
-    return publication?.physicalActive && publication.resource.kind === "sfu-publication"
-      ? publication.resource.fence
+    return publication?.physicalActive &&
+      publication.resource.kind === "sfu-publication"
+      ? {
+          fence: publication.resource.fence,
+          hostSessionId: publication.hostSessionId,
+          connectionId: publication.connectionId,
+        }
       : null;
   }
 
   private scheduleHostOfflineCheck(roomId: string, hostPeerId: string): void {
     this.cancelHostOfflineCheck(roomId);
     const fallback = this.options.sfuFallback;
-    const fence = this.activeSfuFence(roomId);
-    if (!fallback || !fence || this.closing) return;
+    const publication = this.activeHostPublication(roomId);
+    if (!fallback || !publication || this.closing) return;
     const timer = setTimeout(() => {
       void this.checkHostOffline(roomId).catch(() => undefined);
     }, fallback.hostOfflineCheckMs ?? DEFAULT_HOST_OFFLINE_CHECK_MS);
     timer.unref();
-    this.hostOfflineChecks.set(roomId, { hostPeerId, fence, timer });
+    this.hostOfflineChecks.set(roomId, {
+      hostPeerId,
+      ...publication,
+      timer,
+    });
   }
 
   private async checkHostOffline(roomId: string): Promise<void> {
@@ -1872,6 +1902,7 @@ export class HybridMediaRouter {
     try {
       exists = await fallback.roomControl.hostParticipantExists(check.fence);
     } catch {
+      if (this.hostOfflineChecks.get(roomId) !== check) return;
       this.hostOfflineChecks.delete(roomId);
       this.scheduleHostOfflineCheck(roomId, check.hostPeerId);
       return;
@@ -1887,6 +1918,22 @@ export class HybridMediaRouter {
     const snapshot = controller?.snapshot();
     const publication = snapshot?.hostPublication;
     if (!room || !controller || !snapshot || !publication) return;
+    if (
+      publication.resource.kind !== "sfu-publication" ||
+      publication.resource.fence.roomId !== check.fence.roomId ||
+      publication.resource.fence.shareGeneration !==
+        check.fence.shareGeneration ||
+      publication.resource.fence.publicationGeneration !==
+        check.fence.publicationGeneration ||
+      publication.generation !== check.fence.publicationGeneration ||
+      publication.hostSessionId !== check.hostSessionId ||
+      publication.connectionId !== check.connectionId ||
+      !publication.physicalActive
+    ) {
+      this.scheduleHostOfflineCheck(roomId, check.hostPeerId);
+      return;
+    }
+    const beforeRevision = snapshot.revision;
     controller.invalidateHostPublication({
       hostSessionId: publication.hostSessionId,
       routeRevision: snapshot.revision,
@@ -1902,6 +1949,19 @@ export class HybridMediaRouter {
         connectionId: publication.connectionId,
       }),
     );
+    const afterRetirement = controller.snapshot().hostPublication;
+    if (
+      afterRetirement?.generation === publication.generation &&
+      afterRetirement.connectionId === publication.connectionId &&
+      afterRetirement.physicalActive
+    ) {
+      if (controller.snapshot().revision !== beforeRevision) {
+        this.broadcastActive(roomId, room);
+      }
+      this.scheduleHostOfflineCheck(roomId, check.hostPeerId);
+      this.requestPump(roomId);
+      return;
+    }
     this.broadcastActive(roomId, room);
     this.requestPump(roomId);
   }
