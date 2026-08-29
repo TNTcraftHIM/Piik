@@ -652,11 +652,12 @@ html[data-theme="dark"] .lr-viewer-host-slot svg { color: #9bb0c5; }
   border-radius: 8px;
   background: var(--wall-2);
   color: var(--ink);
+  cursor: text;
   font-family: var(--mono);
   font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  user-select: all;
+  outline: 0;
+  text-align: left;
+  user-select: text;
 }
 html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #33465c; }
 .lr-status-text {
