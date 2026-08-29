@@ -54,7 +54,7 @@ const PATHS: Record<string, { body: ReactNode; solid?: boolean }> = {
   star: { body: (<><path pathLength={1} d="m12 3 2.7 5.7 6.3.8-4.6 4.3 1.2 6.2-5.6-3-5.6 3 1.2-6.2L3 9.5l6.3-.8L12 3Z"/></>) },
   zap: { body: (<><path pathLength={1} d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></>) },
   sparkles: { body: (<><path pathLength={1} d="m12 4 1.6 4.4L18 10l-4.4 1.6L12 16l-1.6-4.4L6 10l4.4-1.6L12 4Z"/><path pathLength={1} d="m18.5 15.5.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2Z"/></>) },
-  cast: { body: (<><path pathLength={1} d="M2 16.1A5 5 0 0 1 5.9 20M2 12.05A9.95 9.95 0 0 1 9.95 20M2 8a14 14 0 0 1 14 14"/><circle pathLength={1} cx="3" cy="20" r="1.2" fill="currentColor" stroke="none"/><rect pathLength={1} x="2" y="4" width="20" height="15" rx="2"/></>) },
+  cast: { body: (<><path pathLength={1} d="M4 16a4 4 0 0 1 4 4M4 12a8 8 0 0 1 8 8"/><circle pathLength={1} cx="4" cy="20" r="1.2" fill="currentColor" stroke="none"/><path pathLength={1} d="M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5"/></>) },
   sun: { body: (<><circle pathLength={1} cx="12" cy="12" r="4"/><path pathLength={1} d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></>) },
 };
 

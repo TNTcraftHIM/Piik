@@ -293,6 +293,7 @@ describe("client session identity", () => {
       roomId: "1234",
       hostToken: "a".repeat(32),
       canonicalUrl: "https://share.test/r/1234",
+      inviteUrl: `https://share.test/r/1234#v=${"b".repeat(21)}A`,
       expiresAt: null,
       roomLeaseSeconds: 3_600,
     });
@@ -302,10 +303,10 @@ describe("client session identity", () => {
         hostToken: "a".repeat(32),
         expiresAt: null,
         roomLeaseSeconds: 3_600,
-        inviteUrl: "https://share.test/r/1234",
+        inviteUrl: `https://share.test/r/1234#v=${"b".repeat(21)}A`,
       }),
     );
-    expect([...values.values()].join(" ")).not.toContain(`${"b".repeat(21)}A`);
+    expect([...values.values()].join(" ")).toContain(`${"b".repeat(21)}A`);
     clearHostRoom();
     expect(readHostRoom()).toBeNull();
   });
@@ -335,6 +336,7 @@ describe("client session identity", () => {
       roomId: "1234",
       hostToken: "h".repeat(32),
       canonicalUrl: "https://share.test/r/1234",
+      inviteUrl: null,
       expiresAt: null,
       roomLeaseSeconds: 3_600,
     });
@@ -354,6 +356,7 @@ describe("client session identity", () => {
       roomId: "1234",
       hostToken: "b".repeat(32),
       canonicalUrl: "https://share.test/r/1234",
+      inviteUrl: null,
       expiresAt: "2026-08-18T00:00:00.000Z",
       roomLeaseSeconds: 3_600,
     };

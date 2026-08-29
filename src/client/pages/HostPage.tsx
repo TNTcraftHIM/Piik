@@ -313,6 +313,9 @@ function hostRoomFromStored(room: HostRoomIdentity | null): HostRoomState | null
   if (!room) {
     return null;
   }
+  if (room.inviteUrl) {
+    replaceViewerInvite(room.roomId, room.inviteUrl);
+  }
   const viewerGrant = readViewerGrant(room.roomId);
   const inviteUrl = new URL(room.canonicalUrl);
   if (viewerGrant) {
@@ -321,7 +324,7 @@ function hostRoomFromStored(room: HostRoomIdentity | null): HostRoomState | null
   return {
     ...room,
     codeEntryPolicy: null,
-    inviteUrl: viewerGrant ? inviteUrl.toString() : null,
+    inviteUrl: room.inviteUrl ?? (viewerGrant ? inviteUrl.toString() : null),
   };
 }
 
