@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-08-29
+Last updated: 2026-08-30
 
 This is the current execution index. Git history owns completed timelines;
 [verification status](./verification-status.md) owns evidence boundaries.
@@ -8,15 +8,15 @@ This is the current execution index. Git history owns completed timelines;
 ## Production
 
 - `https://share.bonfire.icu` runs exact application/runtime revision
-  `9b213739b274b5c1a8f87eb1d2946edc144b9ad2`, release `9b21373`, wire
-  `screener-v17`, from `/opt/screener/releases/9b21373`. The immutable runtime
+  `2f35f3e161f6f2b64d666d49b67a900085801002`, release `2f35f3e`, wire
+  `screener-v17`, from `/opt/screener/releases/2f35f3e`. The immutable runtime
   tar SHA-256 is
-  `667f5c7e65420e9dff792c472af7869219ad0133770e4ec344bb25faca67c07e`;
+  `aa8dff19223a6b578cfc3a47cd9b67277ca38335a0d7d6820d85a66cac884756`;
   its 41-file manifest SHA-256 is
-  `b389a2bddf4b0620b0eb3b18fec22dfc497c026088533a9ce86bc1b4c04b3f8e`.
-- The served Browser entry references `assets/index-BmE4pIwS.js`; the public
+  `d239c2c3ce7405a88466c279edb75a9d79fc724e303d3abbc1d1e6e1544fd004`.
+- The served Browser entry references `assets/index-BhnNfn9V.js`; the public
   asset SHA-256 is
-  `70875bbd57d8bd3bacebaf2d41f4a0d433dfce227ffd5cdd5cff38d64db84863`.
+  `bf5fc2768e38b9700b0ff57c11ebc3159544b26ec09cebc9d42da290055e2342`.
   Public `/healthz` returns 200. The release postflight found Screener, LiveKit,
   coturn, and nginx active with zero restarts.
 - Production enables SQLite room authority at
@@ -65,22 +65,27 @@ This is the current execution index. Git history owns completed timelines;
   provides working media before finite background direct convergence. Healthy
   decoded edges remain sticky. A connected Viewer's advertised effective
   capacity survives sharing-generation graph replacement and is cleared only
-  when that Viewer departs or the room is deleted.
+  when that Viewer departs or the room is deleted. A replacement Host identity
+  resets physical route ownership without discarding Viewer capacity. Retiring
+  SFU roots remain only as inactive anchors while Peer descendants reassign.
 - WebRTC/LiveKit own media adaptation. With the per-share convergence gate
   enabled, one fresh degraded native edge may enter the existing serial route
   operation after availability work. A P2P candidate commits only after the same
   Viewer sees first-frame readiness plus three fresh windows that strictly
-  improve delivered resolution or rounded FPS without regressing either. Peer
-  candidates stay first; bounded SFU is only the suffix for whole-Host-root
+  improve delivered resolution or rounded FPS without regressing either. A
+  complete zero-frame incumbent is zero delivery only against a clean,
+  overlapping candidate that actually decodes video. Peer candidates stay
+  first; bounded SFU is only the suffix for whole-Host-root
   degradation and retains native publication proof. The gate defaults on in
   source and remains a locked pre-share opt-out.
 - Screener has no custom SFU layer list, quality score, layer selector,
   all-pairs probe, parent-wide prediction or periodic rebalancing. P2P and SFU
   still recover their current route before actual failure enters reassignment.
 - Viewer hidden/freeze/pagehide suppress decoded-stall routing authority;
-  visible/resume/pageshow rebaseline and rearm current-frame proof. SFU
-  pagehide no longer triggers LiveKit's automatic disconnect. Native Viewer
-  controls still own playback, and manual reconnect stays on the current route.
+  visible/resume/pageshow rebaseline and rearm current-frame proof. Host and
+  Viewer SFU clients disable LiveKit page-leave auto-disconnect, so SFU recovery
+  cannot stop Host-owned capture. Native Viewer controls still own playback,
+  and manual reconnect stays on the current route.
 - Host, Viewer, join, and access surfaces share the living-room presentation
   model. Room codes, invitation URLs, the current display name, selected
   participant details, route labels, and metrics remain visible in visual mode;
@@ -90,14 +95,8 @@ This is the current execution index. Git history owns completed timelines;
 ## Source/Production Delta
 
 - Production application code is exact revision
-  `9b213739b274b5c1a8f87eb1d2946edc144b9ad2`; the following truth checkpoint
+  `2f35f3e161f6f2b64d666d49b67a900085801002`; the following truth checkpoint
   changes documentation only.
-
-## Current Milestone
-
-The living-room Host/Viewer presentation, expression modes, diagnostics, and
-responsive identity topology are deployed on the measured route,
-generation-owned presentation, and endpoint-capacity model.
 
 ## Active Boundaries
 
