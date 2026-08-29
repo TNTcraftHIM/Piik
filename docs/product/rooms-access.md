@@ -39,13 +39,12 @@ Three independent authorities exist:
    Viewer grant. It authorizes only the Viewer role for that exact room
    incarnation and bypasses site access and code-entry policy.
 
-The Host stores the current complete invitation URL with its local room
-ownership record, so an unexpired room keeps its default link across Host page
-and Browser restarts. Replacement, rotation, and revocation update or clear
-that local value with the same room incarnation. A Viewer receives the grant in
-the URL fragment, removes it from the address bar on first read, and retains it
-only in room-scoped `sessionStorage`. The grant has no independent TTL and ends
-with the room or when the Host rotates or revokes it.
+The invitation grant is carried in the URL fragment, removed from the address
+bar on first read, and retained only in room-scoped `sessionStorage`. Refreshing
+the same tab preserves it. It is not intentionally persisted across independent
+tabs or Browser sessions; tab duplication and opener initialization remain
+Browser behavior. The grant has no independent TTL and ends with the room or
+when the Host rotates or revokes it.
 
 Code-only admission is independent of invitations:
 

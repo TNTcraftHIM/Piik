@@ -27,10 +27,11 @@ const hostRoomPreferenceSchema = z
 export type HostRoomIdentity = Pick<
   CreateRoomResponse,
   "roomId" | "hostToken" | "expiresAt" | "roomLeaseSeconds"
-> & { canonicalUrl: string; inviteUrl: string | null };
+> & { canonicalUrl: string };
 
 export interface HostRoomState extends HostRoomIdentity {
   codeEntryPolicy: CodeEntryPolicy | null;
+  inviteUrl: string | null;
 }
 
 export interface ViewerRoute {
@@ -109,10 +110,6 @@ export function readHostRoom(): HostRoomIdentity | null {
       expiresAt: parsed.data.expiresAt,
       roomLeaseSeconds: parsed.data.roomLeaseSeconds,
       canonicalUrl: canonicalViewerUrl(parsed.data.inviteUrl),
-      inviteUrl: validViewerInviteUrl(
-        parsed.data.roomId,
-        parsed.data.inviteUrl,
-      ),
     };
     return room;
   } catch {
@@ -174,8 +171,6 @@ export function writeHostRoom(
       "canonicalUrl" in room
         ? room.canonicalUrl
         : canonicalViewerUrl(room.inviteUrl);
-    const inviteUrl =
-      "canonicalUrl" in room ? room.inviteUrl ?? canonicalUrl : room.inviteUrl;
     window.localStorage.setItem(
       HOST_ROOM_STORAGE_KEY,
       JSON.stringify({
@@ -183,7 +178,7 @@ export function writeHostRoom(
         hostToken: room.hostToken,
         expiresAt: room.expiresAt,
         roomLeaseSeconds: room.roomLeaseSeconds,
-        inviteUrl,
+        inviteUrl: canonicalUrl,
       }),
     );
   } catch {
@@ -196,22 +191,6 @@ function canonicalViewerUrl(inviteUrl: string): string {
   parsed.hash = "";
   parsed.search = "";
   return parsed.toString();
-}
-
-function validViewerInviteUrl(roomId: string, inviteUrl: string): string | null {
-  try {
-    const parsed = new URL(inviteUrl);
-    const route = parseAppRoute(parsed.pathname);
-    const grant = parsed.hash.match(/^#v=(.+)$/)?.[1];
-    return route.kind === "viewer" &&
-      route.roomId === roomId &&
-      grant !== undefined &&
-      isValidViewerGrant(grant)
-      ? parsed.toString()
-      : null;
-  } catch {
-    return null;
-  }
 }
 
 function readSessionValue(key: string): string | null {
@@ -271,11 +250,22 @@ export function replaceViewerInvite(
     clearViewerGrant(roomId);
     return;
   }
-  const validInvite = validViewerInviteUrl(roomId, inviteUrl);
-  const viewerGrant = validInvite
-    ? new URL(validInvite).hash.match(/^#v=(.+)$/)?.[1]
-    : null;
-  if (viewerGrant) {
+  let parsed: URL;
+  try {
+    parsed = new URL(inviteUrl);
+  } catch {
+    clearViewerGrant(roomId);
+    return;
+  }
+  const inviteRoute = parseAppRoute(parsed.pathname);
+  const match = parsed.hash.match(/^#v=(.+)$/);
+  const viewerGrant = match?.[1];
+  if (
+    inviteRoute.kind === "viewer" &&
+    inviteRoute.roomId === roomId &&
+    viewerGrant &&
+    isValidViewerGrant(viewerGrant)
+  ) {
     writeSessionValue(viewerGrantStorageKey(roomId), viewerGrant);
     return;
   }
