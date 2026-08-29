@@ -2981,9 +2981,17 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                 />
               </RowGroup>
               {room.inviteUrl ? (
-                <code className="lr-invite-url" title={room.inviteUrl}>
-                  {room.inviteUrl}
-                </code>
+                <input
+                  className="lr-invite-url"
+                  type="text"
+                  dir="ltr"
+                  value={room.inviteUrl}
+                  readOnly
+                  spellCheck={false}
+                  aria-label={t("host.invite")}
+                  title={room.inviteUrl}
+                  onFocus={(event) => event.currentTarget.select()}
+                />
               ) : null}
               <span className="lr-divider" aria-hidden="true" />
               <RowGroup>
