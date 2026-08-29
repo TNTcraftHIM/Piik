@@ -1,6 +1,7 @@
 // App header: brand mark, LED connection state, language-mode pill
 // (中文 / EN / 纯视觉), and theme toggle.
 import { VisGlyph } from "./primitives";
+import { BrandMark } from "./BrandMark";
 import { ComicTooltip } from "./ComicTooltip";
 import { useCopy, type Lang } from "../../ui/copy";
 import { useTheme } from "../../ui/theme";
@@ -82,8 +83,13 @@ export function AppHeader({ led }: { led?: React.ReactNode }) {
   const { t, vis } = useCopy();
   return (
     <header className="lr-top">
-      <a className="lr-brand" href="/" aria-label={t("brand.home")} title={vis ? undefined : t("brand.home")}>
-        <VisGlyph name="tv" size={24} />
+      <a
+        className="lr-brand"
+        href="/"
+        aria-label={t("brand.home")}
+        title={vis ? undefined : t("brand.home")}
+      >
+        <BrandMark size={34} motion="once" />
       </a>
       <span className="lr-top-right">
         {led}
