@@ -26,6 +26,16 @@ interface TreeNode {
 
 const ROW_BASE = 40;
 const NARROW_TOPOLOGY_QUERY = "(max-width: 640px)";
+const PAWN_CENTER_X = 20;
+const HOST_SCALE = 0.85;
+const ROOT_SCALE = 0.72;
+const CHILD_SCALE = 0.52;
+const ROOT_LABEL_OFFSET_Y = 36;
+const CHILD_LABEL_OFFSET_Y = 20;
+
+function centeredPawnX(centerX: number, scale: number): number {
+  return centerX - PAWN_CENTER_X * scale;
+}
 
 function subscribeToNarrowViewport(listener: () => void): () => void {
   if (typeof window === "undefined" || !window.matchMedia) return () => {};
@@ -122,7 +132,7 @@ export const RouteTree = memo(function RouteTree({
     else add(null, node);
   }
 
-  const spacing = nodes.length > 10 ? 42 : 44;
+  const spacing = nodes.length > 10 ? 58 : 60;
   let row = 0;
   const pos = new Map<string, { x: number; y: number }>();
   function layout(node: TreeNode, depth: number): void {
@@ -171,7 +181,7 @@ export const RouteTree = memo(function RouteTree({
     ...pendingPos.map((point) => point.y),
   ];
   const hostPos = {
-    x: layoutConfig.hostX,
+    x: rootYs.length > 0 ? layoutConfig.hostX : layoutConfig.baseWidth / 2,
     y:
       rootYs.length > 0
         ? rootYs.reduce((sum, y) => sum + y, 0) / rootYs.length
@@ -303,13 +313,13 @@ export const RouteTree = memo(function RouteTree({
 
         <g
           className="lr-route-node is-host"
-          transform={`translate(${hostPos.x - 4}, ${hostPos.y - 20}) scale(0.85)`}
+          transform={`translate(${centeredPawnX(hostPos.x, HOST_SCALE)}, ${hostPos.y - 20}) scale(${HOST_SCALE})`}
         >
           <PawnSvg color="var(--couch)" crown />
         </g>
         <text
           className="lr-route-label is-host"
-          x={hostPos.x + 14}
+          x={hostPos.x}
           y={hostPos.y + 30}
           textAnchor="middle"
         >
@@ -343,11 +353,12 @@ export const RouteTree = memo(function RouteTree({
           const point = pos.get(node.key)!;
           const child = node.via !== null && !node.sfu;
           const selected = selectedPeerId === node.key;
+          const scale = child ? CHILD_SCALE : ROOT_SCALE;
           return (
             <g
               key={node.key}
               className={`lr-route-node${node.ready ? "" : " is-recovering"}${selected ? " is-selected" : ""}`}
-              transform={`translate(${point.x - 14}, ${point.y - 15}) scale(${child ? 0.52 : 0.72})`}
+              transform={`translate(${centeredPawnX(point.x, scale)}, ${point.y - 15}) scale(${scale})`}
             >
               <PawnSvg color={pawnColor(node.key, node.you)} />
               {selected ? (
@@ -364,7 +375,7 @@ export const RouteTree = memo(function RouteTree({
           <g
             key={`pending-${point.viewer.peerId}`}
             className={`lr-route-node is-recovering${selectedPeerId === point.viewer.peerId ? " is-selected" : ""}`}
-            transform={`translate(${point.x - 14}, ${point.y - 15}) scale(0.72)`}
+            transform={`translate(${centeredPawnX(point.x, ROOT_SCALE)}, ${point.y - 15}) scale(${ROOT_SCALE})`}
           >
             <PawnSvg
               color={pawnColor(
@@ -388,8 +399,11 @@ export const RouteTree = memo(function RouteTree({
             <text
               key={`label-${node.key}`}
               className={`lr-route-label${selectedPeerId === node.key ? " is-selected" : ""}`}
-              x={point.x + 4}
-              y={point.y + (child ? 20 : 26)}
+              x={point.x}
+              y={
+                point.y +
+                (child ? CHILD_LABEL_OFFSET_Y : ROOT_LABEL_OFFSET_Y)
+              }
               textAnchor="middle"
             >
               {compactVisibleLabel(
@@ -403,8 +417,8 @@ export const RouteTree = memo(function RouteTree({
           <text
             key={`label-pending-${point.viewer.peerId}`}
             className={`lr-route-label is-recovering${selectedPeerId === point.viewer.peerId ? " is-selected" : ""}`}
-            x={point.x + 4}
-            y={point.y + 26}
+            x={point.x}
+            y={point.y + ROOT_LABEL_OFFSET_Y}
             textAnchor="middle"
           >
             {compactVisibleLabel(

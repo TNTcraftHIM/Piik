@@ -291,7 +291,7 @@ describe("RouteTree", () => {
     expect(html).toContain(`style="width:${width}px;max-width:none"`);
     expect(
       new Set(
-        [...html.matchAll(/translate\((\d+),/g)].map((match) => match[1]),
+        [...html.matchAll(/translate\(([\d.]+),/g)].map((match) => match[1]),
       ).size,
     ).toBeGreaterThanOrEqual(6);
   });

@@ -3,6 +3,11 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { Couch } from "../src/client/components/living/Couch.tsx";
+import {
+  BrandLoader,
+  BrandMark,
+} from "../src/client/components/living/BrandMark.tsx";
+import { Comic } from "../src/client/components/living/Comic.tsx";
 import { ComicTooltip } from "../src/client/components/living/ComicTooltip.tsx";
 import { StageOverlay } from "../src/client/components/living/Stage.tsx";
 import { NameTag } from "../src/client/components/living/primitives.tsx";
@@ -23,6 +28,45 @@ describe("living-room presentation", () => {
     expect(html).toContain('role="status"');
     expect(html).toContain('aria-label="Media connection recovering"');
     expect(html).not.toContain("lr-tv-msg");
+  });
+
+  it("uses one static brand shape and an aria-hidden animated loading variant", () => {
+    const mark = renderToStaticMarkup(createElement(BrandMark, { size: 32 }));
+    const loader = renderToStaticMarkup(createElement(BrandLoader));
+
+    expect(mark).toContain('class="lr-brand-mark"');
+    expect(mark).toContain("lr-brand-eye-wink");
+    expect(mark).not.toContain("is-animated");
+    expect(loader).toContain('class="lr-brand-loader"');
+    expect(loader).toContain("lr-brand-mark is-animated");
+    expect(loader).toContain('aria-hidden="true"');
+  });
+
+  it("uses the animated brand for transient stage states", () => {
+    const html = renderToStaticMarkup(
+      createElement(StageOverlay, {
+        icon: "loader",
+        transition: true,
+        message: "Allocating media route",
+      }),
+    );
+
+    expect(html).toContain('role="status"');
+    expect(html).toContain("lr-brand-loader");
+    expect(html).not.toContain("lr-tv-big");
+  });
+
+  it("ends the exhausted-route comic with a failed fallback", () => {
+    const html = renderToStaticMarkup(
+      createElement(Comic, { kind: "route-failed", size: 320 }),
+    );
+
+    expect(html).toContain("vls-rf-fallback-x");
+    expect(html).toContain("vls-rf-fallback");
+    expect(html).toContain("vlsRfFailurePulse");
+    expect(html).toContain("vlsRfFailureX");
+    expect(html).not.toContain("vls-rf-green");
+    expect(html).not.toContain("vls-rf-star");
   });
 
   it("announces the supplied state for a Viewer without committed media", () => {

@@ -188,6 +188,9 @@ export function ComicTooltip({
       }}
       onPointerDown={(event) => {
         if (event.pointerType !== "touch") return;
+        // A suppression token belongs only to the click synthesized for the
+        // completed long-press. A later touch starts a new, actionable gesture.
+        longPressed.current = false;
         cancelPress();
         pressPoint.current = { x: event.clientX, y: event.clientY };
         pressTimer.current = window.setTimeout(() => {
@@ -240,6 +243,7 @@ export function ComicTooltip({
       onClickCapture={(event) => {
         // The synthetic click after a long-press must not fire the control.
         if (longPressed.current) {
+          longPressed.current = false;
           event.preventDefault();
           event.stopPropagation();
         }

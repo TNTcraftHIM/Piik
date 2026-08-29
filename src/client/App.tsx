@@ -10,6 +10,7 @@ import { HostPage } from "./pages/HostPage";
 import { JoinPage } from "./pages/JoinPage";
 import { ViewerPage } from "./pages/ViewerPage";
 import { AppHeader } from "./components/living/Header";
+import { BrandLoader } from "./components/living/BrandMark";
 import { Btn, Pill } from "./components/living/primitives";
 import { ComicTooltip } from "./components/living/ComicTooltip";
 import { Glyph, type GlyphName } from "./ui/icons";
@@ -206,8 +207,12 @@ function SiteAccessGate({
       <AppHeader />
       <main className="lr-join">
         {access.kind === "checking" ? (
-          <div className="lr-loading" role="status">
-            <Glyph name="loader" size={22} className="lr-spin" />
+          <div
+            className="lr-loading"
+            role="status"
+            aria-label={t("gate.checking")}
+          >
+            <BrandLoader />
             {vis ? null : (
               <span className="lr-tv-msg" style={{ color: "var(--ink)", textShadow: "none" }}>
                 {t("gate.checking")}
