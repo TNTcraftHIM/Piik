@@ -9,6 +9,30 @@ interface DeliveredVideoSample {
   bitrateKbps: number | null;
 }
 
+function deliveredNothingSample(
+  metrics: ConnectionMetrics,
+): DeliveredVideoSample | null {
+  const { sampleTimestampMs, sampleWindowMs, intervalFramesDecoded } = metrics;
+  if (
+    sampleTimestampMs === null ||
+    sampleWindowMs === null ||
+    !Number.isFinite(sampleTimestampMs) ||
+    !Number.isFinite(sampleWindowMs) ||
+    sampleWindowMs < 1_000 ||
+    sampleWindowMs > 5_000 ||
+    intervalFramesDecoded !== 0
+  ) {
+    return null;
+  }
+  return {
+    timestampMs: sampleTimestampMs,
+    windowMs: sampleWindowMs,
+    pixels: 0,
+    framesPerSecond: 0,
+    bitrateKbps: 0,
+  };
+}
+
 function deliveredVideoSample(
   metrics: ConnectionMetrics,
 ): DeliveredVideoSample | null {
@@ -60,7 +84,9 @@ function comparableSamples(
   current: ConnectionMetrics,
   candidate: ConnectionMetrics,
 ): [DeliveredVideoSample, DeliveredVideoSample] | null {
-  const currentVideo = deliveredVideoSample(current);
+  // A dead incumbent is comparable only when the candidate actually delivers.
+  const currentVideo =
+    deliveredVideoSample(current) ?? deliveredNothingSample(current);
   const candidateVideo = deliveredVideoSample(candidate);
   if (
     !currentVideo ||
@@ -139,16 +165,29 @@ class ConsecutiveCandidateQualityProbe {
     current: ConnectionMetrics | null,
     candidate: ConnectionMetrics,
   ): CandidateQualityProbeResult {
+    const candidateTimestampMs = candidate.sampleTimestampMs;
     if (
-      candidate.sampleTimestampMs === null ||
-      candidate.sampleTimestampMs === this.lastCandidateTimestampMs
+      candidateTimestampMs === null ||
+      !Number.isFinite(candidateTimestampMs)
     ) {
+      this.resetRuns();
       return "pending";
     }
-    this.lastCandidateTimestampMs = candidate.sampleTimestampMs;
+    if (candidateTimestampMs === this.lastCandidateTimestampMs) {
+      return "pending";
+    }
+    if (
+      this.lastCandidateTimestampMs !== null &&
+      candidateTimestampMs < this.lastCandidateTimestampMs
+    ) {
+      this.resetRuns();
+      return "pending";
+    }
+    this.lastCandidateTimestampMs = candidateTimestampMs;
     if (
       !current ||
       current.sampleTimestampMs === null ||
+      !Number.isFinite(current.sampleTimestampMs) ||
       (this.lastCurrentTimestampMs !== null &&
         current.sampleTimestampMs <= this.lastCurrentTimestampMs)
     ) {

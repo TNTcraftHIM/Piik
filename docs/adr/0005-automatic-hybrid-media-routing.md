@@ -181,6 +181,12 @@ the LiveKit namespace to Screener and complete startup ownership/cleanup before
 accepting traffic; [self-hosting operations](../operations/self-hosting.md) owns
 that procedure.
 
+Retiring a publication generation releases every physical SFU handle. An old
+SFU root that still carries Peer descendants remains only as an inactive graph
+anchor until those descendants are reassigned; a childless old root is removed
+immediately. This preserves one source-reachable transition graph without
+keeping old media active.
+
 Only confirmed LiveKit media-participant absence retires an abandoned Host
 publication. A Host signaling disconnect keeps the generation charged while the
 exact LiveKit Host participant remains; one bounded control-plane check releases
@@ -240,6 +246,12 @@ time and the old route keeps playing. The same Viewer compares fresh,
 overlapping old and candidate receive windows. A P2P candidate commits only after first decoded
 frame and three consecutive windows with no freeze/pause, no lower pixel area or
 rounded FPS, and a strict improvement in at least one of those dimensions.
+An otherwise complete current-route window with zero decoded frames is compared
+as zero delivered pixels, FPS, and bitrate. It can approve only a temporally
+overlapping candidate window that actually decoded video and satisfies the same
+freeze, pause, and P2P/SFU partial-order checks. If both routes decode nothing,
+the source may be stalled, so the window remains unknown and cannot justify a
+move.
 Bitrate does not rank P2P candidates because codec and content phase make it
 non-monotonic. Three consecutive comparable non-improving windows reject the
 candidate and advance the existing cursor without resetting the deadline. A
