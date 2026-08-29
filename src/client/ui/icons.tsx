@@ -4,7 +4,8 @@
 // render pass, which would restart the draw-in animation on unrelated state
 // changes; reconciled children stay put, so the draw only replays on a true
 // icon swap). pathLength={1} on every shape paces the draw-in evenly.
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
+import { bindSvgReplayOnPointerEnter } from "./animation";
 
 const PATHS: Record<string, { body: ReactNode; solid?: boolean }> = {
   copy: { body: (<><rect pathLength={1} x="9" y="9" width="12" height="12" rx="2"/><path pathLength={1} d="M5 15V5a2 2 0 0 1 2-2h10"/></>) },
@@ -69,14 +70,8 @@ export function Glyph({
   size?: number;
   className?: string;
   /**
-   * Declares this icon a draw-in SPOT (the value is the spot's stable id,
-   * used for documentation only). Spots are state-beat positions the author
-   * chose deliberately: theatrical mounts (entry cast/door, stage overlay,
-   * join/gate doors) and toggle icons whose form changes (pause↔play,
-   * copy↔check, moon↔sun, eye↔eyeOff). The draw replays exactly when the
-   * icon's innerHTML changes — a swap at the spot, or a genuine re-entry
-   * remount. No runtime inference: icons without a spot never draw, so list
-   * reconciliation and StrictMode can never cause a false trigger.
+   * Declares an explicit draw-in spot. Marked icons replay on state swaps,
+   * genuine remounts, and pointer entry; unmarked icons stay static.
    */
   draw?: string;
 }) {
@@ -89,8 +84,16 @@ export function Glyph({
   ]
     .filter(Boolean)
     .join(" ");
+  const graphicRef = useRef<SVGSVGElement>(null);
+
+  useEffect(() => {
+    if (!draw || !graphicRef.current) return;
+    return bindSvgReplayOnPointerEnter(graphicRef.current);
+  }, [draw]);
+
   return (
     <svg
+      ref={graphicRef}
       width={size}
       height={size}
       viewBox="0 0 24 24"

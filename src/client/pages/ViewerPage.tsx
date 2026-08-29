@@ -36,6 +36,7 @@ import {
   StageTv,
   type ChinState,
 } from "../components/living/Stage";
+import { BrandLoader } from "../components/living/BrandMark";
 import {
   Btn,
   FieldCap,
@@ -182,8 +183,9 @@ function stageOverlayComic(
     case "recovering":
       return "recovering";
     case "route-failed":
-    case "server-error":
       return "route-failed";
+    case "server-error":
+      return "warning";
     case "playback-failed":
       return "playback-failed";
     case "host-offline":
@@ -2064,11 +2066,11 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           {accessState === "checking" ? (
             <div className="lr-join-panel">
               <span
-                className="lr-tv-big lr-spin"
+                className="lr-viewer-entry-brand"
                 role="status"
                 aria-label={t(presentation.messageKey)}
               >
-                <Glyph name="loader" size={30} />
+                <BrandLoader />
               </span>
               {vis ? null : (
                 <span className="lr-tv-msg">{t(presentation.messageKey)}</span>
@@ -2280,7 +2282,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               <StageOverlay
                 dim
                 icon={overlayGlyph.icon}
-                spin={overlayGlyph.spin}
+                transition={overlayGlyph.spin}
                 comic={overlayComic}
                 message={t(presentation.messageKey)}
               />
@@ -2304,9 +2306,9 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
                 <StageOverlay
                   dim
                   icon={overlayGlyph.icon}
-                  spin={overlayGlyph.spin}
                   comic={overlayComic}
                   message={t(presentation.messageKey)}
+                  spin={overlayGlyph.spin}
                 />
               )}
           </StageTv>
@@ -2377,7 +2379,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             >
               {editingDisplayName ? (
                 <>
-                  <span className="lr-input" style={{ minWidth: 150 }}>
+                  <span className="lr-input lr-name-editor">
                     <input
                       id="viewer-display-name"
                       type="text"
@@ -2483,10 +2485,10 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           ) : null}
           {routePresentation.evidence === peerSnapshot &&
           peerSnapshot?.error ? (
-            <Pill icon="alert" tone="bad" label={t("viewer.error.p2p")} comic="route-failed" />
+            <Pill icon="alert" tone="bad" label={t("viewer.error.p2p")} comic="warning" />
           ) : null}
           {relaySnapshot?.error ? (
-            <Pill icon="alert" tone="bad" label={t("viewer.error.relay")} comic="route-failed" />
+            <Pill icon="alert" tone="bad" label={t("viewer.error.relay")} comic="warning" />
           ) : null}
           {qualityLimitation ? (
             <Pill icon="alert" label={qualityLimitation} comic="warning" />

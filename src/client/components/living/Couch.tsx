@@ -21,7 +21,7 @@ export function PawnSvg({ color, crown }: { color: string; crown?: boolean }) {
     <svg viewBox="0 0 40 48" width="40" height="48" aria-hidden="true">
       {crown ? (
         <path
-          d="M11 12.5 L8.5 2 L14 6.5 L17 0 L20 6.5 L25.5 2 L23 12.5 Z"
+          d="M14 12.5 L11.5 2 L17 6.5 L20 0 L23 6.5 L28.5 2 L26 12.5 Z"
           fill="var(--pawn-2)"
         />
       ) : null}

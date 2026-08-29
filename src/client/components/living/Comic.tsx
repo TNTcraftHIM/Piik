@@ -722,7 +722,7 @@ ${rmBlock(
   );
 }
 
-/** 7. route-failed: 4 panels, one-shot 3.6s entrance + idle green flow. */
+/** 7. route-failed: 4 panels, direct and SFU paths both end unavailable. */
 function SceneRouteFailed({ theme }: { theme: ComicTheme }) {
   return (
     <>
@@ -733,25 +733,26 @@ function SceneRouteFailed({ theme }: { theme: ComicTheme }) {
 .vls-rf-x{transform-box:fill-box;transform-origin:center;animation:vlsRfX 3.6s ease-out both}
 .vls-rf-spark{animation:vlsRfSpark 3.6s ease-out both}
 .vls-rf-dot{animation:vlsRfDot 3.6s ease-in-out both}
-.vls-rf-green{stroke-dasharray:5 5;animation:vlsRfGreen 3.6s ease-out both,vlsRfFlow 1.1s linear 3.6s infinite}
+.vls-rf-fallback{stroke-dasharray:5 5;animation:vlsRfFallback 3.6s ease-out both,vlsRfFailurePulse 2.6s ease-in-out 3.6s infinite}
+.vls-rf-fallback-x{transform-box:fill-box;transform-origin:center;animation:vlsRfFallbackX 3.6s ease-out both,vlsRfFailureX 2.6s ease-in-out 3.6s infinite}
 .vls-rf-slots{animation:vlsRfSlots 3.6s ease-out both}
-.vls-rf-star{transform-box:fill-box;transform-origin:center;animation:vlsRfStar 3.6s cubic-bezier(.3,1.5,.5,1) both}
 .vls-rf-grey{animation:vlsRfGrey 3.6s ease-out both}
 @keyframes vlsRfIn{from{opacity:0;transform:translateY(6px) scale(.9)}}
 @keyframes vlsRfMarch{from{stroke-dashoffset:0}to{stroke-dashoffset:-16}}
 @keyframes vlsRfX{0%,32%{opacity:0;transform:scale(1.7) rotate(8deg)}40%,100%{opacity:1;transform:scale(1) rotate(8deg)}}
 @keyframes vlsRfSpark{0%,32%{opacity:0}35%{opacity:1}44%,100%{opacity:0}}
 @keyframes vlsRfDot{0%,44%{transform:translate(0,0);opacity:0}46%{opacity:1}54%{transform:translate(2px,-31px)}60%{transform:translate(18px,-31px)}70%,100%{transform:translate(28px,-11px);opacity:0}}
-@keyframes vlsRfGreen{0%,72%{opacity:0}80%,100%{opacity:1}}
-@keyframes vlsRfFlow{to{stroke-dashoffset:-20}}
+@keyframes vlsRfFallback{0%,72%{opacity:0}80%,100%{opacity:.42}}
+@keyframes vlsRfFallbackX{0%,78%{opacity:0;transform:scale(1.6) rotate(8deg)}86%,100%{opacity:1;transform:scale(1) rotate(8deg)}}
+@keyframes vlsRfFailurePulse{0%,100%{opacity:.42;stroke-dashoffset:0}50%{opacity:.72;stroke-dashoffset:-8}}
+@keyframes vlsRfFailureX{0%,100%{opacity:1}50%{opacity:.58}}
 @keyframes vlsRfSlots{0%,60%{opacity:0}66%,100%{opacity:1}}
-@keyframes vlsRfStar{0%,82%{opacity:0;transform:scale(0)}90%{opacity:1;transform:scale(1.25)}96%,100%{opacity:1;transform:scale(1)}}
 @keyframes vlsRfGrey{0%{opacity:.9}70%{opacity:.9}82%,100%{opacity:.15}}
 ${rmBlock(
-  ["vls-rf-panel", "vls-rf-march", "vls-rf-x", "vls-rf-spark", "vls-rf-dot", "vls-rf-green", "vls-rf-slots", "vls-rf-star", "vls-rf-grey"],
+  ["vls-rf-panel", "vls-rf-march", "vls-rf-x", "vls-rf-spark", "vls-rf-dot", "vls-rf-fallback", "vls-rf-fallback-x", "vls-rf-slots", "vls-rf-grey"],
   [
-    [".vls-rf-green", "stroke-dasharray:none;opacity:1"],
-    [".vls-rf-slots,.vls-rf-star", "opacity:1"],
+    [".vls-rf-fallback", "stroke-dasharray:none;opacity:.42"],
+    [".vls-rf-fallback-x,.vls-rf-slots", "opacity:1;transform:none"],
     [".vls-rf-spark,.vls-rf-dot", "opacity:0"],
     [".vls-rf-grey", "opacity:.15"],
   ],
@@ -800,21 +801,27 @@ ${rmBlock(
         <circle className="vls-rf-dot" cx={188} cy={47} r={2.5} fill={MINT} opacity={0} />
       </g>
       <g className="vls-rf-panel vls-rf-p4">
-        <Frame x={244} w={72} theme={theme} accent={LIVE} />
+        <Frame x={244} w={72} theme={theme} />
         <path d="M249 68 c0-12 5-17 11-17 s11 5 11 17 Z" fill={YOU} />
         <circle cx={260} cy={42} r={6.5} fill={YOU} />
         <circle cx={257.5} cy={41} r={1.1} fill="#101a2c" />
         <circle cx={262.5} cy={41} r={1.1} fill="#101a2c" />
         <rect x={287} y={36} width={18} height={13} rx={2.5} fill={TV_BODY} stroke={TV_EDGE} strokeWidth={1.5} />
-        <path d="M292 39 L300 42.5 L292 46 Z" fill={MINT} />
-        <circle cx={296} cy={54} r={2} fill={LIVE} />
-        <rect x={272} y={10} width={16} height={12} rx={2.5} fill="#0d1526" stroke={LIVE} strokeWidth={2} />
-        <path d="M275 14 h10 M275 18 h10" stroke={LIVE} strokeWidth={2} strokeLinecap="round" />
-        <g className="vls-rf-green" opacity={0} stroke={LIVE} strokeWidth={2.5} fill="none">
+        <circle cx={296} cy={54} r={2} fill={DANGER} />
+        <rect x={272} y={10} width={16} height={12} rx={2.5} fill="#0d1526" stroke={LINE} strokeWidth={2} />
+        <path d="M275 14 h10 M275 18 h10" stroke={LINE} strokeWidth={2} strokeLinecap="round" />
+        <g className="vls-rf-fallback" opacity={0} stroke={LINE} strokeWidth={2.5} fill="none">
           <path d="M268 47 L272 16" />
           <path d="M288 16 L296 34" />
         </g>
-        <Star x={296} y={26} className="vls-rf-star" baseOpacity={0} />
+        <path
+          className="vls-rf-fallback-x"
+          d="M288 25 L298 35 M298 25 L288 35"
+          stroke={DANGER}
+          strokeWidth={3}
+          strokeLinecap="round"
+          fill="none"
+        />
       </g>
     </>
   );

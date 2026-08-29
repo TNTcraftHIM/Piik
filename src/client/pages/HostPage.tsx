@@ -857,8 +857,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       return;
     }
     const wasSharing = activeGenerationRef.current !== null;
+    const profile = creationProfileRef.current;
     try {
-      const profile = creationProfileRef.current;
       const response = await replaceOwnedRoom(
         activeRoom.roomId,
         activeRoom.hostToken,
@@ -884,6 +884,43 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       setPhase(wasSharing ? "ended" : "idle");
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) {
+        if (!wasSharing) {
+          // A lease can disappear while the host is idle (for example after a
+          // server restart). Creation is the canonical recovery path; do not
+          // clear the visible room before it succeeds.
+          try {
+            const response = await createRoom(
+              profile.codeEntryPolicy,
+              profile.roomPassword,
+              readPreferredRoomId(),
+            );
+            const replacement = hostRoomFromCreated(response);
+            if (
+              roomMutationRef.current !== mutation ||
+              !isCurrentRoomAuthority(activeRoom)
+            ) {
+              closeAbandonedRoom(replacement);
+              return;
+            }
+            if (replacement.roomId !== activeRoom.roomId) {
+              replaceViewerInvite(activeRoom.roomId, null);
+            }
+            writeHostRoom(replacement);
+            writePreferredRoom(replacement.roomId);
+            roomRef.current = replacement;
+            setRoom(replacement);
+            setCopied(false);
+            setViewerPasswordEnabled(profile.roomPassword !== null);
+            setViewerPasswordDraft(profile.roomPassword ?? "");
+            setViewerPasswordVisible(false);
+            setNoticeKey("host.roomReplaced");
+            setPhase("idle");
+            return;
+          } catch (replacementError) {
+            setNoticeError(replacementError, "room");
+            return;
+          }
+        }
         if (forgetRoom(activeRoom)) {
           endSharing({ key: "host.roomInvalid" }, false);
         }
@@ -2711,7 +2748,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                   role="status"
                   aria-label={t("host.starting")}
                 >
-                  <StoryBoard step={1} />
+                  <StoryBoard step={1} showBrand={stream !== null} />
                 </div>
               </>
             ) : stream && localPreviewPaused ? (
@@ -2798,7 +2835,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                     commitDisplayName();
                   }}
                 >
-                  <span className="lr-input" style={{ minWidth: 150 }}>
+                  <span className="lr-input lr-name-editor">
                     <input
                       id="host-display-name"
                       type="text"

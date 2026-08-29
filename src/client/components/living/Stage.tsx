@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { Glyph, type GlyphName } from "../../ui/icons";
 import { useCopy, type CopyKey } from "../../ui/copy";
 import { Comic, type ComicKind } from "./Comic";
+import { BrandLoader, BrandMark } from "./BrandMark";
 
 export type ChinState = "off" | "on" | "warn" | "bad" | "busy";
 
@@ -41,7 +42,13 @@ export function StaticNoise() {
   return <div className="lr-tv-static" aria-hidden="true" />;
 }
 
-export function StoryBoard({ step }: { step: 0 | 1 | 2 }) {
+export function StoryBoard({
+  step,
+  showBrand = false,
+}: {
+  step: 0 | 1 | 2;
+  showBrand?: boolean;
+}) {
   const { vis, t } = useCopy();
   const panels: [GlyphName, CopyKey][] = [
     ["door", "story.room"],
@@ -49,24 +56,27 @@ export function StoryBoard({ step }: { step: 0 | 1 | 2 }) {
     ["tv", "story.show"],
   ];
   return (
-    <div className="lr-story" role="status" aria-label={t("host.starting")}>
-      {panels.map(([icon, key], index) => (
-        <span key={key} style={{ display: "contents" }}>
-          {index > 0 ? (
-            <span className={`lr-story-link${step > index - 1 ? " is-done" : ""}`} />
-          ) : null}
-          <span
-            className={`lr-story-item${step > index ? " is-done" : step === index ? " is-now" : ""}`}
-          >
+    <div className="lr-storyboard" role="status" aria-label={t("host.starting")}>
+      {showBrand ? <BrandMark size={40} motion="loop" /> : null}
+      <div className="lr-story" aria-hidden="true">
+        {panels.map(([icon, key], index) => (
+          <span key={key} style={{ display: "contents" }}>
+            {index > 0 ? (
+              <span className={`lr-story-link${step > index - 1 ? " is-done" : ""}`} />
+            ) : null}
             <span
-              className={`lr-story-panel${step > index ? " is-done" : step === index ? " is-now" : ""}`}
+              className={`lr-story-item${step > index ? " is-done" : step === index ? " is-now" : ""}`}
             >
-              <Glyph name={step > index ? "check" : icon} size={22} />
+              <span
+                className={`lr-story-panel${step > index ? " is-done" : step === index ? " is-now" : ""}`}
+              >
+                <Glyph name={step > index ? "check" : icon} size={22} />
+              </span>
+              {vis ? null : <span className="lr-story-cap">{t(key)}</span>}
             </span>
-            {vis ? null : <span className="lr-story-cap">{t(key)}</span>}
           </span>
-        </span>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }
@@ -75,6 +85,7 @@ export function StageOverlay({
   icon,
   message,
   dim,
+  transition,
   spin,
   comic,
   onActivate,
@@ -82,6 +93,7 @@ export function StageOverlay({
   icon: GlyphName;
   message: string;
   dim?: boolean;
+  transition?: boolean;
   spin?: boolean;
   comic?: ComicKind;
   onActivate?: () => void;
@@ -90,9 +102,13 @@ export function StageOverlay({
   const content = (
     <>
       {vis && comic ? <Comic kind={comic} theme="stage" /> : null}
-      <span className={`lr-tv-big${spin ? " lr-spin" : ""}${onActivate ? " is-action is-ripple" : ""}`}>
-        <Glyph name={icon} size={30} draw="stage-overlay" />
-      </span>
+      {transition ? (
+        <BrandLoader />
+      ) : (
+        <span className={`lr-tv-big${spin ? " lr-spin" : ""}${onActivate ? " is-action is-ripple" : ""}`}>
+          <Glyph name={icon} size={30} draw="stage-overlay" />
+        </span>
+      )}
       {vis ? null : <span className="lr-tv-msg">{message}</span>}
     </>
   );
