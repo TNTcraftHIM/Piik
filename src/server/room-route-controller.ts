@@ -355,6 +355,7 @@ export class RoomRouteController<Resource = unknown> {
   private sfuPublisherQualityObservation?: SfuPublisherQualityObservation;
   private readonly qualityBaselinesPending = new Set<string>();
   private readonly directContinuations = new Map<string, DirectContinuation>();
+  private readonly retiringPublicationGenerations = new Set<string>();
   private sfuBootstrapIntent?: SfuBootstrapIntent;
   private readonly consumedSfuBootstrapOpportunities = new Map<
     string,
@@ -544,6 +545,78 @@ export class RoomRouteController<Resource = unknown> {
     }
     this.touchFacts();
     return released;
+  }
+
+  rebindHostIdentity(
+    peerId: string,
+    sessionId: string,
+    nowMs?: number,
+  ): readonly Resource[] {
+    const previousPeerId = this.options.hostPeerId;
+    if (peerId === previousPeerId) {
+      return this.upsertParticipant({
+        peerId,
+        role: "host",
+        sessionId,
+        effectiveDownstreamCapacity: this.options.endpointMediaCopyCapacity,
+      }, nowMs);
+    }
+    if (this.participants.has(peerId)) {
+      throw new Error("Route Host identity collides with another participant");
+    }
+    const host = this.participants.get(previousPeerId);
+    if (!host || host.role !== "host") {
+      throw new Error("Route Host identity is unavailable");
+    }
+
+    const released = new Set(
+      this.operation ? this.abortOperation(nowMs, "stale") : [],
+    );
+    for (const edge of this.upstreamByViewer.values()) {
+      if (edge.kind === "sfu" && edge.physicalActive) {
+        released.add(edge.resource);
+      }
+    }
+    if (this.hostPublication?.physicalActive) {
+      released.add(this.hostPublication.resource);
+    }
+    this.upstreamByViewer.clear();
+    this.hostPublication = null;
+    this.routeTimings.clear();
+    this.qualityObservations.clear();
+    this.senderQualityObservations.clear();
+    this.senderQualityBaselines.clear();
+    this.qualityBaselinesPending.clear();
+    this.sfuPublisherQualityObservation = undefined;
+    this.directContinuations.clear();
+    this.retiringPublicationGenerations.clear();
+    this.sfuBootstrapIntent = undefined;
+    this.consumedSfuBootstrapOpportunities.clear();
+    this.rootConvergenceRootPeerId = undefined;
+    for (const participant of this.participants.values()) {
+      participant.availabilityExhausted = false;
+      participant.bootstrapFailureReported = undefined;
+      participant.sfuFirstAtNextRoute = undefined;
+      participant.consumedCandidateOpportunities.clear();
+      if (
+        participant.role === "viewer" &&
+        participant.sessionId !== null &&
+        nowMs !== undefined
+      ) {
+        this.recordDemand(participant.peerId, nowMs, "edge-unavailable");
+      }
+    }
+
+    this.participants.delete(previousPeerId);
+    host.peerId = peerId;
+    host.sessionId = sessionId;
+    host.departureConfirmed = false;
+    this.participants.set(peerId, host);
+    this.options.hostPeerId = peerId;
+    this.revision = this.allocateRevision();
+    this.touchFacts();
+    this.assertGraph();
+    return [...released];
   }
 
   disconnectSession(peerId: string, sessionId: string): boolean {
@@ -771,14 +844,20 @@ export class RoomRouteController<Resource = unknown> {
         (edge.kind === "peer" && edge.parentSessionId !== guard.parentSessionId)) {
       return [];
     }
-    edge.physicalActive = false;
-    edge.usable = false;
+    const released: Resource[] = [];
+    if (edge.kind === "sfu") {
+      this.retireSfuEdge(guard.childPeerId, edge, released);
+      this.pruneRetiringSfuAnchors();
+    } else {
+      edge.physicalActive = false;
+      edge.usable = false;
+    }
     this.clearQualityForParticipant(guard.childPeerId);
     child.availabilityExhausted = false;
     this.revision = this.allocateRevision();
     if (this.operation) this.operation.baseRevision = this.revision;
     this.touchFacts();
-    return edge.transport === "direct" ? [] : [edge.resource];
+    return released;
   }
 
   retireHostPublication(guard: {
@@ -793,13 +872,24 @@ export class RoomRouteController<Resource = unknown> {
         publication.hostSessionId !== guard.hostSessionId ||
         publication.generation !== guard.generation ||
         publication.connectionId !== guard.connectionId) return [];
+    const released: Resource[] = [];
+    for (const [viewerPeerId, edge] of this.upstreamByViewer) {
+      if (
+        edge.kind === "sfu" &&
+        edge.publicationGeneration === publication.generation
+      ) {
+        this.retireSfuEdge(viewerPeerId, edge, released);
+      }
+    }
     publication.physicalActive = false;
     publication.usable = false;
     this.clearSfuQuality();
     this.revision = this.allocateRevision();
     if (this.operation) this.operation.baseRevision = this.revision;
     this.touchFacts();
-    return [publication.resource];
+    released.push(publication.resource);
+    this.pruneRetiringSfuAnchors();
+    return released;
   }
 
   setPaused(paused: boolean, nowMs?: number): readonly Resource[] {
@@ -1020,10 +1110,6 @@ export class RoomRouteController<Resource = unknown> {
         });
       }
       this.senderQualityObservations.delete(input.childPeerId);
-      this.senderQualityBaselines.set(
-        input.childPeerId,
-        this.senderQualityBaselines.get(input.childPeerId) ?? true,
-      );
       const released =
         operation?.reason === "quality-convergence" &&
         operation.childPeerId === input.childPeerId
@@ -1968,7 +2054,7 @@ export class RoomRouteController<Resource = unknown> {
           attempt.tuple.publication === "reuse" ||
           (attempt.senderQualityConsecutiveHealthyWindows ?? 0) >=
             PERSISTENT_NATIVE_EDGE_DEGRADED_WINDOWS);
-      if (!candidateQualityReady && candidateQualityState === "unknown") {
+      if (!candidateQualityReady && candidateQualityState !== "degraded") {
         return {
           accepted: true,
           committed: false,
@@ -2032,7 +2118,9 @@ export class RoomRouteController<Resource = unknown> {
         ? [...this.upstreamByViewer]
             .filter(
               ([childPeerId, edge]) =>
-                childPeerId !== operation.childPeerId && edge.kind === "sfu",
+                childPeerId !== operation.childPeerId &&
+                edge.kind === "sfu" &&
+                edge.physicalActive,
             )
             .map(([childPeerId]) => childPeerId)
         : [];
@@ -2167,6 +2255,7 @@ export class RoomRouteController<Resource = unknown> {
     this.participants.clear();
     this.routeTimings.clear();
     this.directContinuations.clear();
+    this.retiringPublicationGenerations.clear();
     this.sfuBootstrapIntent = undefined;
     this.consumedSfuBootstrapOpportunities.clear();
     this.rootConvergenceRootPeerId = undefined;
@@ -2536,6 +2625,7 @@ export class RoomRouteController<Resource = unknown> {
     this.senderQualityBaselines.set(operation.childPeerId, false);
     this.revision = attempt.revision;
     this.operation = undefined;
+    this.pruneRetiringSfuAnchors();
     this.touchFacts();
     if (createsHostRoot) {
       this.stageRootConvergence(operation.childPeerId);
@@ -3595,8 +3685,11 @@ export class RoomRouteController<Resource = unknown> {
       for (const participant of this.participants.values()) {
         if (participant.role !== "viewer" || !participant.departureConfirmed || this.childrenOf(participant.peerId).length > 0) continue;
         const edge = this.upstreamByViewer.get(participant.peerId);
-        if (edge && edge.transport !== "direct" && edge.physicalActive) released.push(edge.resource);
-        this.upstreamByViewer.delete(participant.peerId);
+        if (edge?.kind === "sfu") {
+          this.retireSfuEdge(participant.peerId, edge, released, false);
+        } else {
+          this.upstreamByViewer.delete(participant.peerId);
+        }
         this.clearQualityForParticipant(participant.peerId);
         this.participants.delete(participant.peerId);
         this.routeTimings.delete(participant.peerId);
@@ -3614,6 +3707,7 @@ export class RoomRouteController<Resource = unknown> {
       }
       this.revision = this.allocateRevision();
       this.touchFacts();
+      this.pruneRetiringSfuAnchors();
     }
     return removed;
   }
@@ -3695,9 +3789,13 @@ export class RoomRouteController<Resource = unknown> {
   private retireInvalidOperationEdge(childPeerId: string, released: Resource[]): boolean {
     const edge = this.upstreamByViewer.get(childPeerId);
     if (!edge || !this.edgeRequiresMove(childPeerId, edge)) return false;
-    if (edge.kind === "sfu" && edge.physicalActive) released.push(edge.resource);
-    edge.physicalActive = false;
-    edge.usable = false;
+    if (edge.kind === "sfu") {
+      this.retireSfuEdge(childPeerId, edge, released);
+      this.pruneRetiringSfuAnchors();
+    } else {
+      edge.physicalActive = false;
+      edge.usable = false;
+    }
     if (edge.kind === "sfu" && !this.hasSfuSubscribers() && this.hostPublication) {
       if (this.hostPublication.physicalActive) released.push(this.hostPublication.resource);
       this.hostPublication.physicalActive = false;
@@ -4313,15 +4411,61 @@ export class RoomRouteController<Resource = unknown> {
     const released: Resource[] = [];
     for (const [viewerPeerId, edge] of this.upstreamByViewer) {
       if (edge.kind !== "sfu" || edge.publicationGeneration !== generation) continue;
-      if (edge.physicalActive) released.push(edge.resource);
-      this.clearQualityForParticipant(viewerPeerId);
-      this.upstreamByViewer.delete(viewerPeerId);
+      this.retireSfuEdge(viewerPeerId, edge, released);
     }
     if (this.hostPublication?.generation === generation) {
       if (this.hostPublication.physicalActive) released.push(this.hostPublication.resource);
       this.hostPublication = null;
     }
+    this.pruneRetiringSfuAnchors();
     return released;
+  }
+
+  private retireSfuEdge(
+    viewerPeerId: string,
+    edge: Extract<CommittedEdge<Resource>, { kind: "sfu" }>,
+    released: Resource[],
+    retainAnchor = this.childrenOf(viewerPeerId).length > 0,
+  ): void {
+    if (edge.physicalActive) released.push(edge.resource);
+    this.clearQualityForParticipant(viewerPeerId);
+    if (retainAnchor) {
+      edge.usable = false;
+      edge.physicalActive = false;
+      this.retiringPublicationGenerations.add(edge.publicationGeneration);
+    } else {
+      this.upstreamByViewer.delete(viewerPeerId);
+    }
+  }
+
+  private pruneRetiringSfuAnchors(): void {
+    let removed = true;
+    while (removed) {
+      removed = false;
+      for (const [viewerPeerId, edge] of this.upstreamByViewer) {
+        if (
+          edge.kind === "sfu" &&
+          !edge.physicalActive &&
+          this.retiringPublicationGenerations.has(
+            edge.publicationGeneration,
+          ) &&
+          this.childrenOf(viewerPeerId).length === 0
+        ) {
+          this.upstreamByViewer.delete(viewerPeerId);
+          removed = true;
+        }
+      }
+    }
+    for (const generation of this.retiringPublicationGenerations) {
+      if (![...this.upstreamByViewer.values()].some(
+        (edge) =>
+          edge.kind === "sfu" &&
+          !edge.physicalActive &&
+          edge.publicationGeneration === generation,
+      )) {
+        this.retiringPublicationGenerations.delete(generation);
+      }
+    }
   }
 
   private assertGraph(): void {
@@ -4330,7 +4474,20 @@ export class RoomRouteController<Resource = unknown> {
     for (const [child, edge] of this.upstreamByViewer) {
       this.assertViewer(child);
       if (edge.kind === "peer" && !this.participants.has(edge.parentPeerId)) throw new Error("Route parent is missing");
-      if (edge.kind === "sfu" && this.hostPublication?.generation !== edge.publicationGeneration) throw new Error("SFU publication is stale");
+      if (
+        edge.kind === "sfu" &&
+        edge.physicalActive &&
+        this.hostPublication?.generation !== edge.publicationGeneration
+      ) {
+        throw new Error("SFU publication is stale");
+      }
+      if (
+        edge.kind === "sfu" &&
+        !edge.physicalActive &&
+        !this.retiringPublicationGenerations.has(edge.publicationGeneration)
+      ) {
+        throw new Error("Retiring SFU publication is unknown");
+      }
       const seen = new Set<string>();
       let current = child;
       while (current !== this.options.hostPeerId) {
@@ -4338,12 +4495,33 @@ export class RoomRouteController<Resource = unknown> {
         seen.add(current);
         const currentEdge = this.upstreamByViewer.get(current);
         if (!currentEdge) throw new Error("Route is not source-reachable");
-        if (currentEdge.kind === "sfu") break;
+        if (currentEdge.kind === "sfu") {
+          if (
+            currentEdge.physicalActive
+              ? this.hostPublication?.generation !== currentEdge.publicationGeneration
+              : !this.retiringPublicationGenerations.has(
+                  currentEdge.publicationGeneration,
+                )
+          ) {
+            throw new Error("Route terminates at an unknown SFU publication");
+          }
+          break;
+        }
         current = currentEdge.parentPeerId;
       }
     }
     for (const participant of this.participants.values()) if (this.usedSlots(participant.peerId) > this.options.endpointMediaCopyCapacity) {
       throw new Error("Committed route exceeds endpoint capacity");
+    }
+    for (const generation of this.retiringPublicationGenerations) {
+      if (![...this.upstreamByViewer.values()].some(
+        (edge) =>
+          edge.kind === "sfu" &&
+          !edge.physicalActive &&
+          edge.publicationGeneration === generation,
+      )) {
+        throw new Error("Retiring SFU publication has no anchor");
+      }
     }
   }
 

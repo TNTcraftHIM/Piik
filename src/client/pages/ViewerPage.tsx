@@ -94,10 +94,10 @@ import type {
   PeerSnapshot,
 } from "../types";
 import {
+  createOwnedViewerRestartSender,
   limitMediaAssignment,
   MAX_ENDPOINT_MEDIA_CHILDREN,
   type MediaAssignment,
-  viewerRestartMessage,
   viewerSignalMessage,
 } from "../webrtc/media-assignment";
 import { ViewerPeer } from "../webrtc/viewer-peer";
@@ -1243,7 +1243,20 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         {
           sendSignal: (targetPeerId, payload) =>
             signal.send(viewerSignalMessage(peerAssisted, targetPeerId, payload)),
-          sendRestartRequest: () => false,
+          sendRestartRequest: createOwnedViewerRestartSender(
+            peerAssisted,
+            (targetPeerId, connectionId) => {
+              const identity = peer.getConnectionIdentity();
+              return (
+                active &&
+                pendingPeer !== probe &&
+                peerRef.current === peer &&
+                identity?.parentPeerId === targetPeerId &&
+                identity.connectionId === connectionId
+              );
+            },
+            (message) => signal.send(message),
+          ),
           onStream: (stream) => {
             if (pendingPeer === probe) {
               probe.stream = stream;
@@ -1357,15 +1370,19 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             signal.send(
               viewerSignalMessage(peerAssisted, targetPeerId, payload),
             ),
-          sendRestartRequest: (targetPeerId, connectionId, rebuild) =>
-            signal.send(
-              viewerRestartMessage(
-                peerAssisted,
-                targetPeerId,
-                connectionId,
-                rebuild,
-              ),
-            ),
+          sendRestartRequest: createOwnedViewerRestartSender(
+            peerAssisted,
+            (targetPeerId, connectionId) => {
+              const identity = peer.getConnectionIdentity();
+              return (
+                active &&
+                peerRef.current === peer &&
+                identity?.parentPeerId === targetPeerId &&
+                identity.connectionId === connectionId
+              );
+            },
+            (message) => signal.send(message),
+          ),
           onStream: (nextStream) => {
             if (active) {
               bindRemoteStream(nextStream, currentRouteRevision);

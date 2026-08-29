@@ -2146,14 +2146,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         activeSfuRoute && hostSfuRouteRef.current === activeSfuRoute
           ? activeSfuRoute.getQualityWarning()
           : null;
-      if (
-        !sfuReplaced &&
-        activeSfuRoute &&
-        hostSfuRouteRef.current === activeSfuRoute
-      ) {
-        await activeSfuRoute.failActivePublisher();
-      }
-
       previousStream.getTracks().forEach((track) => track.stop());
       if (retiringStreamRef.current === previousStream) {
         retiringStreamRef.current = null;

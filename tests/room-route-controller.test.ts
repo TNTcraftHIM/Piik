@@ -388,6 +388,60 @@ describe("RoomRouteController", () => {
     expect(routes.diagnosticParticipantLabel(C)).not.toBe(label);
   });
 
+  it("clears an unknown sender run without rearming its healthy baseline", () => {
+    const routes = controller(2, { qualityConvergenceEnabled: true });
+    addViewer(routes, A, 2);
+    addViewer(routes, B, 2);
+    routes.hydrateEdge(A, peerEdge(HOST, "a_from_host"));
+    routes.hydrateEdge(B, peerEdge(HOST, "b_from_host"));
+    for (const childPeerId of [A, B]) {
+      expect(
+        observeSenderState(routes, {
+          childPeerId,
+          connectionId: `${childPeerId === A ? "a" : "b"}_from_host`,
+          state: "healthy",
+          acceptedAtMs: 0,
+        }).accepted,
+      ).toBe(true);
+    }
+    expect(
+      observeSenderState(routes, {
+        childPeerId: A,
+        connectionId: "a_from_host",
+        state: "degraded",
+        acceptedAtMs: 1,
+      }).accepted,
+    ).toBe(true);
+    expect(
+      routes.observeSenderQualityEvidence({
+        parentPeerId: HOST,
+        parentSessionId: "host_session",
+        childPeerId: A,
+        routeRevision: routes.snapshot().revision,
+        connectionId: "a_from_host",
+        senderIdentity: null,
+        sampleTimestampMs: null,
+        state: "unknown",
+        acceptedAtMs: 2,
+      }).accepted,
+    ).toBe(true);
+
+    for (const acceptedAtMs of [3, 4, 5]) {
+      expect(
+        observeSenderState(routes, {
+          childPeerId: A,
+          connectionId: "a_from_host",
+          state: "degraded",
+          acceptedAtMs,
+        }).accepted,
+      ).toBe(true);
+    }
+    expect(routes.reconcile(6).operation).toMatchObject({
+      childPeerId: A,
+      reason: "quality-convergence",
+    });
+  });
+
   it("keeps isolated limitation windows diagnostic", () => {
     const routes = controller(2, { qualityConvergenceEnabled: true });
     addViewer(routes, A, 2);
@@ -1307,28 +1361,119 @@ describe("RoomRouteController", () => {
       hostSessionId: "host_session",
     });
     const current = begin.operation!.current!;
+    const guard: CandidateGuard = {
+      childPeerId,
+      childSessionId: `${childPeerId}_session`,
+      revision: current.revision,
+      connectionId: "quality_sfu_candidate",
+    };
+    expect(
+      routes.candidateReady(guard, 112),
+    ).toMatchObject({ accepted: true, committed: false });
+    for (const acceptedAtMs of [113, 114]) {
+      expect(
+        routes.observeSfuPublisherQualityEvidence({
+          hostPeerId: HOST,
+          hostSessionId: "host_session",
+          publicationGeneration: "publication_generation_12345678",
+          routeRevision: current.revision,
+          state: "healthy",
+          sampleTimestampMs: acceptedAtMs,
+          acceptedAtMs,
+        }),
+      ).toMatchObject({ accepted: true, committed: false });
+      expect(routes.candidateReady(guard, acceptedAtMs)).toMatchObject({
+        accepted: true,
+        committed: false,
+      });
+    }
+    expect(
+      routes.observeSfuPublisherQualityEvidence({
+        hostPeerId: HOST,
+        hostSessionId: "host_session",
+        publicationGeneration: "publication_generation_12345678",
+        routeRevision: current.revision,
+        state: "healthy",
+        sampleTimestampMs: 115,
+        acceptedAtMs: 115,
+      }).committed,
+    ).toBe(true);
+    expect(routes.snapshot().upstreamByViewer.get(childPeerId)).toMatchObject({
+      kind: "sfu",
+      connectionId: "quality_sfu_candidate",
+    });
+  });
+
+  it("rejects an SFU quality candidate on degraded publisher evidence", () => {
+    const routes = controller(2, {
+      sfuEnabled: true,
+      qualityConvergenceEnabled: true,
+    });
+    addViewer(routes, A, 1);
+    addViewer(routes, B, 0);
+    routes.hydrateEdge(A, peerEdge(HOST, "a_from_host"));
+    routes.hydrateEdge(B, peerEdge(HOST, "b_from_host"));
+    observePersistentDegraded(routes, A, "a_from_host", 99);
+    expect(routes.reconcile(103).operation).toBeUndefined();
+    observePersistentDegraded(routes, B, "b_from_host", 104);
+    const operation = routes.reconcile(108).operation!;
+    const childPeerId = operation.childPeerId;
+    const peerAttempt = beginCandidate(routes, {
+      nowMs: 109,
+      connectionId: "quality_peer_candidate",
+      reservation: { kind: "direct" },
+    }).operation!;
+    expect(
+      routes.candidateFailed(
+        {
+          childPeerId,
+          childSessionId: `${childPeerId}_session`,
+          revision: peerAttempt.current!.revision,
+          connectionId: "quality_peer_candidate",
+        },
+        110,
+      ).accepted,
+    ).toBe(true);
+    const sfuAttempt = beginCandidate(routes, {
+      nowMs: 111,
+      connectionId: "quality_sfu_degraded",
+      reservation: {
+        kind: "sfu-create",
+        edge: "sfu-edge",
+        publication: "sfu-publication",
+        overlap: "host-overlap",
+      },
+      publicationGeneration: "publication_generation_degraded",
+      publicationConnectionId: "publication_connection_degraded",
+      hostSessionId: "host_session",
+    }).operation!;
+    const current = sfuAttempt.current!;
     expect(
       routes.candidateReady(
         {
           childPeerId,
           childSessionId: `${childPeerId}_session`,
           revision: current.revision,
-          connectionId: "quality_sfu_candidate",
+          connectionId: current.connectionId,
         },
         112,
       ),
     ).toMatchObject({ accepted: true, committed: false });
     expect(
-      observePersistentSfuHealthy(
-        routes,
-        "publication_generation_12345678",
-        current.revision,
-        113,
-      ).committed,
-    ).toBe(true);
+      routes.observeSfuPublisherQualityEvidence({
+        hostPeerId: HOST,
+        hostSessionId: "host_session",
+        publicationGeneration: "publication_generation_degraded",
+        routeRevision: current.revision,
+        state: "degraded",
+        sampleTimestampMs: 113,
+        acceptedAtMs: 113,
+      }),
+    ).toMatchObject({ accepted: true, committed: false });
+    expect(routes.snapshot().operation).toBeUndefined();
     expect(routes.snapshot().upstreamByViewer.get(childPeerId)).toMatchObject({
-      kind: "sfu",
-      connectionId: "quality_sfu_candidate",
+      kind: "peer",
+      parentPeerId: HOST,
     });
   });
 
@@ -3229,12 +3374,18 @@ describe("RoomRouteController", () => {
   });
 
 
-  it("replaces one publication and makes every old subscriber waiting", () => {
+  it("keeps only old SFU roots that still anchor peer descendants", () => {
     const routes = controller(1, { sfuEnabled: true });
     addViewer(routes, A, 0);
-    addViewer(routes, B, 0);
+    addViewer(routes, B, 1);
+    addViewer(routes, C, 0);
+    addViewer(routes, D, 0);
     routes.hydrateHostPublication("publication_1", "publication_resource_1");
-    for (const [peerId, resource] of [[A, "subscription_a"], [B, "subscription_b"]] as const) {
+    for (const [peerId, resource] of [
+      [A, "subscription_a"],
+      [B, "subscription_b"],
+      [D, "subscription_d"],
+    ] as const) {
       routes.hydrateEdge(peerId, {
         kind: "sfu",
         publicationGeneration: "publication_1",
@@ -3245,6 +3396,7 @@ describe("RoomRouteController", () => {
         resource,
       });
     }
+    routes.hydrateEdge(C, peerEdge(B, "c_from_b"));
     expect(routes.invalidateHostPublication({
       hostSessionId: "host_session",
       routeRevision: 0,
@@ -3276,17 +3428,27 @@ describe("RoomRouteController", () => {
       connectionId: "a_sfu_2",
     }, 22);
     expect(settled.accepted).toBe(true);
-    expect(settled.released).toHaveLength(4);
     expect(settled.released).toEqual(expect.arrayContaining([
       "publication_overlap",
       "subscription_a",
       "subscription_b",
+      "subscription_d",
       "publication_resource_1",
     ]));
     expect(routes.snapshot().upstreamByViewer.get(A)).toMatchObject({
       publicationGeneration: "publication_2",
     });
-    expect(routes.snapshot().upstreamByViewer.has(B)).toBe(false);
+    expect(routes.snapshot().upstreamByViewer.get(B)).toMatchObject({
+      kind: "sfu",
+      publicationGeneration: "publication_1",
+      usable: false,
+      physicalActive: false,
+    });
+    expect(routes.snapshot().upstreamByViewer.get(C)).toMatchObject({
+      kind: "peer",
+      parentPeerId: B,
+    });
+    expect(routes.snapshot().upstreamByViewer.has(D)).toBe(false);
     expect(routes.routeDiagnosticSnapshot(22).children[1]).toMatchObject({
       demandAgeMs: 12,
       finalRoute: "waiting",

@@ -33,19 +33,21 @@ function connectHost(
   store: RoomStore,
   room: CreatedRoom,
   routePolicy?: RoutePolicy,
+  clientId = "host_client_12345678",
+  sessionId = "host_session_12345678",
 ) {
   const connected = store.connectParticipant({
     roomId: room.roomId,
     role: "host",
     token: room.hostToken,
-    clientId: "host_client_12345678",
-    sessionId: "host_session_12345678",
+    clientId,
+    sessionId,
   });
   return {
     roomId: room.roomId,
     role: "host" as const,
     peerId: connected.peerId,
-    sessionId: "host_session_12345678",
+    sessionId,
     ...(routePolicy ? { routePolicy } : {}),
   };
 }
@@ -120,12 +122,24 @@ function deferred(): {
   return { promise, resolve, reject };
 }
 
+function deferredValue<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+} {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((settle) => {
+    resolve = settle;
+  });
+  return { promise, resolve };
+}
+
 function harness(
   endpointMediaCopyCapacity: 1 | 2 | 3,
   withSfu = false,
   prepareTimeoutMs?: number,
   sfuIngressCapacity = 2,
   drainRetryMs?: number,
+  hostOfflineCheckMs?: number,
 ) {
   const store = createStore();
   const sent = new Map<string, ServerMessage[]>();
@@ -150,6 +164,7 @@ function harness(
             roomControl,
             ...(prepareTimeoutMs ? { prepareTimeoutMs } : {}),
             ...(drainRetryMs ? { drainRetryMs } : {}),
+            ...(hostOfflineCheckMs ? { hostOfflineCheckMs } : {}),
             tokenIssuer: {
               async issueToken({ peerId }) {
                 if (nextTokenIssueError) {
@@ -183,6 +198,7 @@ function harness(
   return {
     store,
     sent,
+    connections,
     admission,
     roomControl,
     onRoutesChanged,
@@ -508,6 +524,70 @@ describe("HybridMediaRouter v9 runtime", () => {
           reason: "route-exhausted",
         }),
       );
+    } finally {
+      await router.close();
+    }
+  });
+
+  it("rebinds a replacement Host and clears offline Viewer media ownership", async () => {
+    const { store, sent, connections, router } = harness(2);
+    try {
+      const room = await store.createRoom();
+      const previousHost = connectHost(store, room);
+      complete(router, previousHost);
+      const viewer = connectViewer(store, room, "host-rebind-offline-viewer");
+      complete(router, viewer);
+      const prepared = await vi.waitFor(() => {
+        const message = preparedFor(sent, viewer.sessionId);
+        expect(message).toBeDefined();
+        return message!;
+      });
+      router.handleRouteReady(viewer, {
+        type: "route-ready",
+        revision: prepared.revision,
+        phase: "prepare",
+      });
+      router.setViewerRelayCapacity(viewer, 1);
+      await vi.waitFor(() =>
+        expect(connections.has(`${room.roomId}:${viewer.peerId}`)).toBe(true),
+      );
+
+      store.disconnectParticipant(room.roomId, viewer.peerId, viewer.sessionId);
+      router.disconnectParticipant(room.roomId, viewer.peerId, viewer.sessionId);
+      store.disconnectParticipant(
+        room.roomId,
+        previousHost.peerId,
+        previousHost.sessionId,
+      );
+      router.disconnectParticipant(
+        room.roomId,
+        previousHost.peerId,
+        previousHost.sessionId,
+      );
+
+      const resumedHost = connectHost(
+        store,
+        room,
+        undefined,
+        "replacement-host-client",
+        "replacement-host-session",
+      );
+      expect(resumedHost.peerId).not.toBe(previousHost.peerId);
+      complete(router, resumedHost);
+      expect(connections.has(`${room.roomId}:${viewer.peerId}`)).toBe(false);
+
+      const reconnectedViewer = connectViewer(
+        store,
+        room,
+        "host-rebind-offline-viewer",
+      );
+      expect(reconnectedViewer.peerId).toBe(viewer.peerId);
+      router.connectParticipant(reconnectedViewer);
+      expect(
+        router
+          .routeDiagnosticSnapshot(room.roomId)
+          .children.find((child) => child.effectiveCapacity === 1),
+      ).toBeDefined();
     } finally {
       await router.close();
     }
@@ -1702,6 +1782,206 @@ describe("HybridMediaRouter v9 runtime", () => {
       ?.filter((message) => message.type === "sfu-config");
     expect(hostConfigs).toHaveLength(1);
     await router.close();
+  });
+
+  it("discards an SFU preparation whose cursor becomes stale while awaiting LiveKit", async () => {
+    const { store, sent, admission, roomControl, router } = harness(1, true);
+    try {
+      const room = await store.createRoom();
+      const host = connectHost(store, room);
+      complete(router, host);
+      const root = connectViewer(store, room, "prepare-stale-root");
+      complete(router, root);
+      const direct = await vi.waitFor(() => {
+        const prepared = preparedFor(sent, root.sessionId);
+        expect(prepared?.candidate.transport).toBe("direct");
+        return prepared!;
+      });
+      router.handleRouteReady(root, {
+        type: "route-ready",
+        revision: direct.revision,
+        phase: "prepare",
+      });
+      const gate = deferred();
+      roomControl!.createBarrier = gate.promise;
+      router.setViewerRelayCapacity(root, 0);
+      const waiting = connectViewer(store, room, "prepare-stale-waiting");
+      complete(router, waiting);
+      await vi.waitFor(() =>
+        expect(admission?.usage().ingress).toBe(1),
+      );
+      store.disconnectParticipant(room.roomId, root.peerId, root.sessionId);
+      router.disconnectParticipant(room.roomId, root.peerId, root.sessionId);
+      gate.resolve();
+      await vi.waitFor(() =>
+        expect(admission?.usage()).toEqual({ ingress: 0, egress: 0 }),
+      );
+      expect(router.routeDiagnosticSnapshot(room.roomId).operation).toBeNull();
+    } finally {
+      await router.close();
+    }
+  });
+
+  it("reschedules the regular Host-offline check after a read error", async () => {
+    const { store, sent, admission, roomControl, router } = harness(
+      1,
+      true,
+      undefined,
+      2,
+      undefined,
+      10,
+    );
+    try {
+      const room = await store.createRoom();
+      const { host } = await establishSfuRoom(store, sent, router, room);
+      const retry = deferredValue<boolean>();
+      const hostCheck = vi
+        .spyOn(roomControl!, "hostParticipantExists")
+        .mockRejectedValueOnce(new Error("temporary LiveKit read failure"))
+        .mockReturnValueOnce(retry.promise);
+      store.disconnectParticipant(room.roomId, host.peerId, host.sessionId);
+      router.disconnectParticipant(room.roomId, host.peerId, host.sessionId);
+
+      await vi.waitFor(() => expect(hostCheck).toHaveBeenCalledTimes(2));
+      expect(admission?.usage()).toEqual({ ingress: 1, egress: 2 });
+    } finally {
+      await router.close();
+    }
+  });
+
+  it("rechecks Host-offline retirement after a live route operation", async () => {
+    const { store, sent, admission, roomControl, router } = harness(
+      1,
+      true,
+      undefined,
+      2,
+      undefined,
+      10,
+    );
+    try {
+      const room = await store.createRoom();
+      const { host, first, second } = await establishSfuRoom(
+        store,
+        sent,
+        router,
+        room,
+      );
+      router.setViewerRelayCapacity(second, 1);
+      const active = router.resolveActiveViewerMediaEdge(
+        room.roomId,
+        first.peerId,
+      )!;
+      router.handleRouteFailed(first, {
+        type: "route-failed",
+        revision: active.revision,
+        phase: "active",
+        connectionId: active.connectionId,
+      });
+      await vi.waitFor(() => {
+        const prepared = preparedFor(sent, first.sessionId);
+        expect(prepared?.revision).toBeGreaterThan(active.revision);
+        expect(prepared?.candidate.transport).toBe("direct");
+        return prepared!;
+      });
+      const retry = deferredValue<boolean>();
+      const hostCheck = vi
+        .spyOn(roomControl!, "hostParticipantExists")
+        .mockResolvedValueOnce(false)
+        .mockReturnValueOnce(retry.promise);
+      store.disconnectParticipant(room.roomId, host.peerId, host.sessionId);
+      router.disconnectParticipant(room.roomId, host.peerId, host.sessionId);
+
+      await vi.waitFor(() => expect(hostCheck).toHaveBeenCalledTimes(2));
+      expect(
+        router.resolveActiveViewerMediaEdge(room.roomId, first.peerId),
+      ).toBeUndefined();
+      retry.resolve(false);
+      await vi.waitFor(() =>
+        expect(admission?.usage()).toEqual({ ingress: 0, egress: 0 }),
+      );
+      expect(hostCheck).toHaveBeenCalledTimes(2);
+    } finally {
+      await router.close();
+    }
+  });
+
+  it("ignores an old Host-offline result after a new SFU generation commits", async () => {
+    const { store, sent, admission, roomControl, router } = harness(
+      1,
+      true,
+      undefined,
+      2,
+      undefined,
+      10,
+    );
+    try {
+      const room = await store.createRoom();
+      const { host, first, second } = await establishSfuRoom(
+        store,
+        sent,
+        router,
+        room,
+      );
+      const oldRevision = Math.max(
+        router.resolveActiveViewerMediaEdge(room.roomId, first.peerId)!.revision,
+        router.resolveActiveViewerMediaEdge(room.roomId, second.peerId)!.revision,
+      );
+      const delayed = deferredValue<boolean>();
+      const hostCheck = vi
+        .spyOn(roomControl!, "hostParticipantExists")
+        .mockReturnValueOnce(delayed.promise);
+      store.disconnectParticipant(room.roomId, host.peerId, host.sessionId);
+      router.disconnectParticipant(room.roomId, host.peerId, host.sessionId);
+      await vi.waitFor(() => expect(hostCheck).toHaveBeenCalledTimes(1));
+
+      const replacementHost = connectHost(
+        store,
+        room,
+        undefined,
+        "new-physical-host-client",
+        "new-physical-host-session",
+      );
+      complete(router, replacementHost);
+      const handled = new Set<string>();
+      for (let index = 0; index < 3; index += 1) {
+        const next = await vi.waitFor(() => {
+          const prepared = [first, second]
+            .map((viewer) => ({
+              viewer,
+              prepared: preparedFor(sent, viewer.sessionId),
+            }))
+            .find(
+              ({ prepared }) =>
+                prepared &&
+                prepared.revision > oldRevision &&
+                !handled.has(prepared.candidate.connectionId),
+            );
+          expect(prepared).toBeDefined();
+          return prepared!;
+        });
+        handled.add(next.prepared!.candidate.connectionId);
+        router.handleRouteReady(next.viewer, {
+          type: "route-ready",
+          revision: next.prepared!.revision,
+          phase: "prepare",
+        });
+      }
+      await vi.waitFor(() =>
+        expect(admission?.usage()).toEqual({ ingress: 1, egress: 2 }),
+      );
+      const currentFence = roomControl!.created.at(-1)!;
+      expect(currentFence.publicationGeneration).not.toBe(
+        roomControl!.created[0]!.publicationGeneration,
+      );
+
+      delayed.resolve(false);
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(admission?.usage()).toEqual({ ingress: 1, egress: 2 });
+      expect(roomControl!.deleted).not.toContainEqual(currentFence);
+    } finally {
+      await router.close();
+    }
   });
 
   it("resolves exact direct and peer-relayed Viewer evidence sources", async () => {
