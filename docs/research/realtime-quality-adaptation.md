@@ -110,6 +110,27 @@ with the controlled experiments, this supports partial shared-source coupling
 and track-generation retention; it does not establish a universal all-senders
 minimum or quantify its share relative to uplink contention.
 
+### Same-edge generation recovery
+
+On 2026-08-30, a production single-Viewer room provided a controlled comparison.
+The Host capture stayed at about 30 fps while one live P2P sender remained at
+480x270 and 14-16 fps after its available-outgoing estimate returned above
+5 Mbps. The route controller observed three persistent native limited windows,
+but had no different Peer candidate and therefore could not start a quality
+operation. A Viewer page refresh created a new connection and sender-owned clone
+on the same physical path; it climbed from the same source to 1920x1080 and
+30 fps within the following windows. This confirms that a live sender generation
+can remain adapted after network capacity recovers and that full connection
+replacement is the observed escape. The degradation onset occurred while
+application evidence was unavailable, so this record does not assign a trigger
+to a specific preceding event.
+
+The accepted route change reuses that existing connection lifecycle: a persistent
+limited edge may try one same-parent candidate after ordinary Peer candidates,
+retaining the old edge until first-frame and comparative proof. It adds no media
+setting, score, periodic rebalance, or new transport. Physical public-network
+success rates and long-run retry behavior remain open evidence.
+
 ## H.264 Root Cause And Gate
 
 Chromium's `has_trusted_rate_controller` is encoder coordination, not a Windows

@@ -76,7 +76,10 @@ This is the current execution index. Git history owns completed timelines;
   clean receive windows that do not regress resolution or rounded FPS. A zero-
   frame incumbent is zero delivery only against an overlapping candidate that
   decodes video. Peer candidates stay first; bounded SFU remains only the whole-
-  Host-root suffix. The pre-share gate defaults on and locks while sharing.
+  Host-root suffix; when no different Peer is eligible, the same operation may
+  append one same-parent connection-regeneration candidate. Its old edge remains
+  until proof, and its exact post-commit sender identity damps only another
+  same-edge regeneration. The pre-share gate defaults on and locks while sharing.
 - Every direct, Browser-relay, and Host SFU video sender owns one clone of its
   source track; the original remains presentation and source authority only.
   Replacement, rollback, unpublish, physical LiveKit sender recreation, and
@@ -112,9 +115,9 @@ This is the current execution index. Git history owns completed timelines;
   screening did not reproduce a Host-page drop; accepted Viewer lifecycle work
   prevents frozen JavaScript wall time from becoming an immediate route failure
   but is not capture keepalive.
-- Current-path quality can drive local convergence in source and production.
-  Both default it on with a pre-share Host opt-out. Weighted/global optimization
-  remains parked.
+- Current-path quality can drive local convergence in source and production,
+  including bounded same-edge connection regeneration. Both default it on with a
+  pre-share Host opt-out. Weighted/global optimization remains parked.
 - Repository simplification does not change or deploy product behavior beyond
   deleting proven dead private surfaces.
 - Native/executable senders, shared encode, and distribution packages remain

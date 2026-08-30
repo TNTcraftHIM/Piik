@@ -14,7 +14,13 @@ import {
 import { assertEndpointMediaCopyCapacity } from "../shared/media-copy-accounting.js";
 
 export type CandidateTuple =
-  | { kind: "peer"; parentPeerId: string; transport: "direct" }
+  | {
+      kind: "peer";
+      parentPeerId: string;
+      transport: "direct";
+      /** Rebuild this exact edge with a fresh connection and media generation. */
+      regenerate?: true;
+    }
   | { kind: "sfu"; publication: "reuse" | "create" | "replace" };
 
 export type CandidateReservation<Resource> =
@@ -264,6 +270,14 @@ interface SenderQualityObservation {
   consumedAtFactVersion?: number;
 }
 
+interface SenderQualityRegenerationBlock {
+  childSessionId: string;
+  parentPeerId: string;
+  parentSessionId: string;
+  connectionId: string;
+  senderIdentity: string;
+}
+
 export interface SenderQualityEvidenceInput {
   parentPeerId: string;
   parentSessionId: string;
@@ -353,6 +367,10 @@ export class RoomRouteController<Resource = unknown> {
     SenderQualityObservation
   >();
   private readonly senderQualityBaselines = new Map<string, boolean>();
+  private readonly senderQualityRegenerationBlocks = new Map<
+    string,
+    SenderQualityRegenerationBlock
+  >();
   private sfuPublisherQualityObservation?: SfuPublisherQualityObservation;
   private readonly qualityBaselinesPending = new Set<string>();
   private readonly directContinuations = new Map<string, DirectContinuation>();
@@ -587,6 +605,7 @@ export class RoomRouteController<Resource = unknown> {
     this.qualityObservations.clear();
     this.senderQualityObservations.clear();
     this.senderQualityBaselines.clear();
+    this.senderQualityRegenerationBlocks.clear();
     this.qualityBaselinesPending.clear();
     this.sfuPublisherQualityObservation = undefined;
     this.directContinuations.clear();
@@ -902,6 +921,7 @@ export class RoomRouteController<Resource = unknown> {
       this.qualityBaselinesPending.clear();
       this.senderQualityObservations.clear();
       this.senderQualityBaselines.clear();
+      this.senderQualityRegenerationBlocks.clear();
       this.sfuPublisherQualityObservation = undefined;
     }
     this.touchFacts();
@@ -1148,6 +1168,24 @@ export class RoomRouteController<Resource = unknown> {
         activeRevision: this.revision,
         released: [],
       };
+    }
+    const regenerationBlock = this.senderQualityRegenerationBlocks.get(
+      input.childPeerId,
+    );
+    if (
+      regenerationBlock &&
+      !senderQualityRegenerationBlockMatches(
+        regenerationBlock,
+        child.sessionId,
+        input,
+      )
+    ) {
+      // A new connection or sender identity is a new generation. Do not carry
+      // a same-edge regeneration latch across that identity fence.
+      this.senderQualityRegenerationBlocks.delete(input.childPeerId);
+    }
+    if (input.state === "healthy") {
+      this.senderQualityRegenerationBlocks.delete(input.childPeerId);
     }
     const sameFreshSenderIdentity =
       sameSenderIdentity &&
@@ -1553,6 +1591,7 @@ export class RoomRouteController<Resource = unknown> {
       // below; a visibility or source reset must not deadlock a persistently
       // limited edge waiting for a healthy sample.
       this.senderQualityBaselines.delete(childPeerId);
+      this.senderQualityRegenerationBlocks.delete(childPeerId);
     }
     if (parentPeerId === this.options.hostPeerId) {
       this.sfuPublisherQualityObservation = undefined;
@@ -2292,6 +2331,7 @@ export class RoomRouteController<Resource = unknown> {
     this.qualityBaselinesPending.clear();
     this.senderQualityObservations.clear();
     this.senderQualityBaselines.clear();
+    this.senderQualityRegenerationBlocks.clear();
     this.sfuPublisherQualityObservation = undefined;
     this.hostPublication = null;
     this.participants.clear();
@@ -2574,6 +2614,12 @@ export class RoomRouteController<Resource = unknown> {
   private commitAttempt(operation: ChildOperation<Resource>, attempt: Attempt<Resource>): Resource[] {
     const beforeResources = new Set(this.committedResources());
     const old = this.upstreamByViewer.get(operation.childPeerId);
+    const sameParentRegeneration =
+      operation.reason === "quality-convergence" &&
+      attempt.tuple.kind === "peer" &&
+      attempt.tuple.regenerate === true &&
+      old?.kind === "peer" &&
+      old.parentPeerId === attempt.tuple.parentPeerId;
     const createsHostRoot =
       attempt.tuple.kind === "peer" &&
       attempt.tuple.parentPeerId === this.options.hostPeerId &&
@@ -2666,9 +2712,27 @@ export class RoomRouteController<Resource = unknown> {
     this.requireSenderQualityBaseline(operation.childPeerId, true);
     this.senderQualityBaselines.set(
       operation.childPeerId,
-      operation.reason === "quality-convergence" ||
-        operation.reason === "root-convergence",
+      sameParentRegeneration
+        ? false
+        : operation.reason === "quality-convergence" ||
+            operation.reason === "root-convergence",
     );
+    if (
+      sameParentRegeneration &&
+      attempt.tuple.kind === "peer" &&
+      attempt.parentSessionId &&
+      attempt.senderQualityIdentity
+    ) {
+      this.senderQualityRegenerationBlocks.set(operation.childPeerId, {
+        childSessionId: operation.childSessionId,
+        parentPeerId: attempt.tuple.parentPeerId,
+        parentSessionId: attempt.parentSessionId,
+        connectionId: attempt.connectionId,
+        senderIdentity: attempt.senderQualityIdentity,
+      });
+    } else {
+      this.senderQualityRegenerationBlocks.delete(operation.childPeerId);
+    }
     this.revision = attempt.revision;
     this.operation = undefined;
     this.pruneRetiringSfuAnchors();
@@ -2867,6 +2931,31 @@ export class RoomRouteController<Resource = unknown> {
       : "unknown";
   }
 
+  private senderQualityRegenerationBlocked(
+    childPeerId: string,
+    edge: Extract<CommittedEdge<Resource>, { kind: "peer" }>,
+  ): boolean {
+    const block = this.senderQualityRegenerationBlocks.get(childPeerId);
+    if (!block) {
+      return false;
+    }
+    const observation = this.senderQualityObservations.get(childPeerId);
+    if (observation && observation.senderIdentity !== block.senderIdentity) {
+      this.senderQualityRegenerationBlocks.delete(childPeerId);
+      return false;
+    }
+    if (
+      block.childSessionId !== edge.childSessionId ||
+      block.parentPeerId !== edge.parentPeerId ||
+      block.parentSessionId !== edge.parentSessionId ||
+      block.connectionId !== edge.connectionId
+    ) {
+      this.senderQualityRegenerationBlocks.delete(childPeerId);
+      return false;
+    }
+    return true;
+  }
+
   private candidateSenderPersistentlyDegraded(
     attempt: Attempt<Resource>,
     nowMs: number,
@@ -2991,7 +3080,23 @@ export class RoomRouteController<Resource = unknown> {
       this.hostFanoutNeedsSfuRelief(nowMs)
         ? candidates.filter((candidate) => candidate.tuple.kind === "sfu")
         : [];
-    return [...clearPeers, ...remainingPeers, ...sfu];
+    const regenerationTuple: CandidateTuple = {
+      kind: "peer",
+      parentPeerId: current.parentPeerId,
+      transport: "direct",
+      regenerate: true,
+    };
+    const regenerationPlan =
+      this.senderQualityRegenerationBlocked(childPeerId, current)
+        ? null
+        : this.planCandidate(childPeerId, regenerationTuple);
+    const regeneration =
+      regenerationPlan &&
+      regenerationPlan.endpointTransition.kind !== "bounded-gap" &&
+      this.candidateValid(childPeerId, regenerationPlan)
+        ? [regenerationPlan]
+        : [];
+    return [...clearPeers, ...remainingPeers, ...sfu, ...regeneration];
   }
 
   private selectQualityChild(nowMs: number): string | undefined {
@@ -3803,7 +3908,16 @@ export class RoomRouteController<Resource = unknown> {
         operation.current.tuple.kind === "peer"
           ? operation.current.tuple.parentPeerId
           : this.options.hostPeerId;
+      const regeneratingChild =
+        operation.current.tuple.kind === "peer" &&
+        operation.current.tuple.regenerate === true;
       for (const childPeerId of this.childrenOf(producerPeerId)) {
+        if (regeneratingChild && childPeerId === operation.childPeerId) {
+          // A failed same-edge trial must not turn the retained sender into a
+          // global baseline block. The operation's consumed fact version
+          // already supplies one-shot retry damping.
+          continue;
+        }
         this.senderQualityObservations.delete(childPeerId);
         this.senderQualityBaselines.set(childPeerId, true);
       }
@@ -4241,6 +4355,7 @@ export class RoomRouteController<Resource = unknown> {
       this.qualityObservations.delete(childPeerId);
       this.senderQualityObservations.delete(childPeerId);
       this.senderQualityBaselines.delete(childPeerId);
+      this.senderQualityRegenerationBlocks.delete(childPeerId);
       if (this.upstreamByViewer.has(childPeerId)) {
         this.qualityBaselinesPending.add(childPeerId);
         this.senderQualityBaselines.set(childPeerId, true);
@@ -4588,7 +4703,9 @@ export class RoomRouteController<Resource = unknown> {
 
   private debugTuple(tuple: CandidateTuple): string {
     return tuple.kind === "peer"
-      ? `p2p:${this.debugPeer(tuple.parentPeerId)}`
+      ? `p2p:${this.debugPeer(tuple.parentPeerId)}${
+          tuple.regenerate ? ":regenerate" : ""
+        }`
       : `sfu:${tuple.publication}`;
   }
 
@@ -4661,7 +4778,23 @@ function safeAdd(total: number, delta: number): number {
 }
 
 function tupleKey(tuple: CandidateTuple): string {
-  return tuple.kind === "peer" ? `peer:${tuple.parentPeerId}` : `sfu:${tuple.publication}`;
+  return tuple.kind === "peer"
+    ? `peer:${tuple.parentPeerId}${tuple.regenerate ? ":regenerate" : ""}`
+    : `sfu:${tuple.publication}`;
+}
+
+function senderQualityRegenerationBlockMatches(
+  block: SenderQualityRegenerationBlock,
+  childSessionId: string,
+  input: SenderQualityEvidenceInput,
+): boolean {
+  return (
+    block.childSessionId === childSessionId &&
+    block.parentPeerId === input.parentPeerId &&
+    block.parentSessionId === input.parentSessionId &&
+    block.connectionId === input.connectionId &&
+    block.senderIdentity === input.senderIdentity
+  );
 }
 
 function edgeTupleKey<Resource>(edge: CommittedEdge<Resource>): string {
