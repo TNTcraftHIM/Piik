@@ -52,13 +52,17 @@ until their stated boundary is met.
 11. **Native Host and shared encode.** Revisit Windows first only after capture,
    hardware encode, audio, RTP feedback, resources, packaging, licensing, and
    Browser interoperability are proved.
-12. **Platform output.** Revisit AirPlay/Cast only when a target Browser and
-    physical receiver prove the live `MediaStream` contract.
+12. **Platform output.** System/tab mirroring needs no product adapter, while
+    Remote Playback, default Cast and AirPlay do not provide a portable live
+    `MediaStream` output contract. Reopen only for a registered custom receiver
+    acting as an ordinary Viewer after a named Browser and physical receiver
+    pass the [platform-output gate](./research/platform-output.md).
 13. **NAT inference and predictive candidates.** Keep multi-STUN observations
     diagnostic until controlled Browser and target-network evidence proves a
     connection-scoped classifier with bounded false rejection. Do not hard-skip
     Peer candidates from a participant-wide NAT label or inject predicted ports
-    into production ICE without a new accepted decision and a measured gate.
+    into production ICE without a new accepted decision and a measured gate. See
+    [Browser NAT traversal](./research/nat-traversal.md).
 14. **Unresolved route-state ownership claims.** Reopen lower-revision
     reauthentication, active SFU failure during an unrelated prepare, and
     multi-child relay-evidence ownership only from an exact current-wire

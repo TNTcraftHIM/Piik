@@ -60,6 +60,8 @@ Media and platform:
 - [Realtime quality and codecs](./research/realtime-quality-adaptation.md)
 - [Browser background capture](./research/browser-background-capture.md)
 - [Browser screen audio](./research/browser-screen-audio-quality.md)
+- [Browser NAT traversal](./research/nat-traversal.md)
+- [Browser platform output](./research/platform-output.md)
 - [Native sender and shared encode](./research/native-sender.md)
 
 Rooms and repository practice:
