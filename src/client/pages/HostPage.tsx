@@ -213,9 +213,16 @@ const AUDIO_QUALITY_CAPTIONS: Record<ScreenAudioQuality, CopyKey> = {
   "very-high": "host.advanced.audio.veryHigh",
 };
 
-const PEER_STATE_CAPTIONS: Record<string, CopyKey> = {
+type PresentedPeerState =
+  | RTCPeerConnectionState
+  | "routing"
+  | "waiting"
+  | "reconnecting";
+
+const PEER_STATE_CAPTIONS: Record<PresentedPeerState, CopyKey> = {
   new: "state.peer.new",
   connecting: "state.peer.connecting",
+  connected: "state.peer.connected",
   routing: "state.peer.routing",
   waiting: "state.peer.waiting",
   reconnecting: "state.peer.reconnecting",
