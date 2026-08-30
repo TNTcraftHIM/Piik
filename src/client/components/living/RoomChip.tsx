@@ -1,9 +1,10 @@
 // LCD room code chip with copy and in-place room replacement confirmation.
 import { useEffect, useRef, useState } from "react";
+import type { CodeEntryPolicy } from "../../../shared/protocol";
 import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
 import { copyRoomCode } from "../room-code";
-import { Btn } from "./primitives";
+import { Btn, Pill } from "./primitives";
 import { ComicTooltip } from "./ComicTooltip";
 
 export function Lcd({ code }: { code: string }) {
@@ -149,5 +150,44 @@ export function RoomChip({
         )
       ) : null}
     </>
+  );
+}
+
+export function RoomAdmissionBadge({
+  policy,
+  passwordEnabled,
+}: {
+  policy: CodeEntryPolicy;
+  passwordEnabled: boolean;
+}) {
+  const { t } = useCopy();
+  const presentation =
+    policy === "open"
+      ? {
+          icon: "globe" as const,
+          label: "host.policy.currentOpen" as const,
+          tone: "good" as const,
+          comic: "hint-policy-open" as const,
+        }
+      : passwordEnabled
+        ? {
+            icon: "key" as const,
+            label: "host.policy.currentPassword" as const,
+            tone: "good" as const,
+            comic: "hint-password" as const,
+          }
+        : {
+            icon: "lock" as const,
+            label: "host.policy.currentInvite" as const,
+            tone: undefined,
+            comic: "hint-policy-private" as const,
+          };
+  return (
+    <Pill
+      icon={presentation.icon}
+      tone={presentation.tone}
+      label={t(presentation.label)}
+      comic={presentation.comic}
+    />
   );
 }

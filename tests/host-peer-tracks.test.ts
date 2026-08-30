@@ -1511,10 +1511,12 @@ describe("HostPeer source replacement", () => {
     expect(updates.at(-1)?.qualityWarning).toBe(
       "当前连接带宽受限，画质已自动降低",
     );
+    expect(updates.at(-1)?.qualityWarningKind).toBe("bandwidth");
     expect(sender.setParameters).toHaveBeenCalledTimes(2);
 
     await sample();
     expect(updates.at(-1)?.qualityWarning).toBeNull();
+    expect(updates.at(-1)?.qualityWarningKind).toBeNull();
     expect(sender.setParameters).toHaveBeenCalledTimes(2);
   });
 
@@ -1546,6 +1548,7 @@ describe("HostPeer source replacement", () => {
     expect(updates.at(-1)?.qualityWarning).toBe(
       "浏览器持续报告未分类的画质限制",
     );
+    expect(updates.at(-1)?.qualityWarningKind).toBe("other");
   });
 
   it("rolls the first sender back when the second replacement fails", async () => {

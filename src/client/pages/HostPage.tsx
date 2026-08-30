@@ -26,7 +26,10 @@ import { AppHeader, LedStrip, type LedState } from "../components/living/Header"
 import { Couch, type CouchEntry } from "../components/living/Couch";
 import { useMetricsExpanded } from "../components/living/Metrics";
 import { PawnDetail } from "../components/living/PawnDetail";
-import { RoomChip } from "../components/living/RoomChip";
+import {
+  RoomAdmissionBadge,
+  RoomChip,
+} from "../components/living/RoomChip";
 import { RouteTree } from "../components/living/RouteTree";
 import {
   ViewerOverview,
@@ -2634,6 +2637,11 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           <LedStrip
             state={SIGNAL_LED_STATE[signalStatus]}
             label={t(SIGNAL_LED_LABEL[signalStatus])}
+            comic={
+              signalStatus === "reconnecting" || signalStatus === "offline"
+                ? "recovering"
+                : undefined
+            }
           />
         }
       />
@@ -2863,6 +2871,12 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                   onReplace={replaceCurrentRoom}
                   replaceDisabled={phase === "starting" || roomMutating}
                 />
+                {activeCodeEntryPolicy ? (
+                  <RoomAdmissionBadge
+                    policy={activeCodeEntryPolicy}
+                    passwordEnabled={viewerPasswordEnabled}
+                  />
+                ) : null}
               </RowGroup>
             ) : null}
             <RowGroup>
@@ -2871,7 +2885,17 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                 <Pill icon="speaker" label={t("host.noAudio")} comic="no-audio" />
               ) : null}
               {qualityLimitation ? (
-                <Pill icon="alert" label={qualityLimitation} comic="warning" />
+                <Pill
+                  icon="alert"
+                  label={qualityLimitation.message}
+                  comic={
+                    qualityLimitation.kind === "bandwidth"
+                      ? "bandwidth-limited"
+                      : qualityLimitation.kind === "cpu"
+                        ? "encoder-limited"
+                        : "warning"
+                  }
+                />
               ) : null}
               {noticeText && (vis || noticeText !== phaseLine) ? (
                 <Pill
@@ -3353,6 +3377,12 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                           ? "host.invite.emptyPassword"
                           : "host.invite.emptyPrivate",
                     )}
+                    comic={
+                      activeCodeEntryPolicy === "private" &&
+                      !viewerPasswordEnabled
+                        ? "invalid-invite"
+                        : undefined
+                    }
                   />
                 ) : null}
               </RowGroup>

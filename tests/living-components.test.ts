@@ -11,6 +11,7 @@ import {
 import { Comic } from "../src/client/components/living/Comic.tsx";
 import { ComicTooltip } from "../src/client/components/living/ComicTooltip.tsx";
 import { HintComic } from "../src/client/components/living/hints/index.tsx";
+import { RoomAdmissionBadge } from "../src/client/components/living/RoomChip.tsx";
 import { StageOverlay } from "../src/client/components/living/Stage.tsx";
 import { ViewerOverview } from "../src/client/components/living/ViewerOverview.tsx";
 import { Btn, NameTag } from "../src/client/components/living/primitives.tsx";
@@ -193,6 +194,41 @@ describe("living-room presentation", () => {
     expect(html).toContain("vls-priv-card");
     expect(html).toContain("vlsPrivDoor");
     expect(html).toContain("vlsPrivLock");
+  });
+
+  it.each([
+    ["open", false, "host.policy.currentOpen", true],
+    ["private", true, "host.policy.currentPassword", true],
+    ["private", false, "host.policy.currentInvite", false],
+  ] as const)(
+    "renders %s/%s admission from one policy fact",
+    (policy, passwordEnabled, labelKey, good) => {
+      setCopy({ lang: "en", vis: true });
+      const html = renderToStaticMarkup(
+        createElement(RoomAdmissionBadge, { policy, passwordEnabled }),
+      );
+
+      expect(html).toContain(
+        `<span class="visually-hidden">${t("en", labelKey)}</span>`,
+      );
+      expect(html).toContain("lr-comic-tip-wrap");
+      expect(html).toContain("visually-hidden");
+      expect(html.includes("lr-pill is-good")).toBe(good);
+    },
+  );
+
+  it("uses distinct native quality-limit comics", () => {
+    const bandwidth = renderToStaticMarkup(
+      createElement(Comic, { kind: "bandwidth-limited", size: 320 }),
+    );
+    const encoder = renderToStaticMarkup(
+      createElement(Comic, { kind: "encoder-limited", size: 320 }),
+    );
+
+    expect(bandwidth).toContain("vls-bw-throat");
+    expect(bandwidth).toContain("vlsBwSmall");
+    expect(encoder).toContain("vls-en-drop");
+    expect(encoder).toContain("vlsEnHeat");
   });
 
   it("keeps the Host-offline comic free of the waiting-room moon", () => {
