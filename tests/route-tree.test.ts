@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { RouteTree } from "../src/client/components/living/RouteTree.tsx";
 import { participantColor } from "../src/client/components/living/participant-color.ts";
-import { topologyLayoutForViewport } from "../src/client/components/living/route-tree-layout.ts";
+import { topologyLayoutForWidth } from "../src/client/components/living/route-tree-layout.ts";
 import { labelParticipantSnapshot } from "../src/client/lib/viewer-presence.ts";
 import { setCopy } from "../src/client/ui/copy.ts";
 
@@ -34,8 +34,8 @@ describe("RouteTree", () => {
   });
 
   it("uses real-size narrow coordinates without compressing deep trees", () => {
-    const narrow = topologyLayoutForViewport(true);
-    const desktop = topologyLayoutForViewport(false);
+    const narrow = topologyLayoutForWidth(260);
+    const desktop = topologyLayoutForWidth(640);
 
     expect(narrow).toEqual({
       baseWidth: 260,
@@ -52,6 +52,14 @@ describe("RouteTree", () => {
     ).toBeGreaterThan(narrow.baseWidth);
     expect(desktop.baseWidth).toBe(640);
     expect(desktop.columnGap).toBe(220);
+  });
+
+  it("keeps topology geometry continuous across the former viewport breakpoint", () => {
+    const atBreakpoint = topologyLayoutForWidth(640);
+    const afterBreakpoint = topologyLayoutForWidth(641);
+
+    expect(afterBreakpoint).toEqual(atBreakpoint);
+    expect(topologyLayoutForWidth(390).baseWidth).toBe(390);
   });
 
   it("disambiguates names without exposing complete peer IDs", () => {
@@ -290,6 +298,9 @@ describe("RouteTree", () => {
     expect(html).toContain('class="lr-route-edge is-pending"');
     expect(html).toContain(
       'class="lr-route-node is-recovering is-selected"',
+    );
+    expect(html).toContain(
+      'class="lr-route-selection" x="1" y="2" width="38" height="46" rx="8"',
     );
     expect(html).toContain("Recovering");
     expect(html).toContain("← Host");

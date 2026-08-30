@@ -1,7 +1,7 @@
 // The connection topology as a real tree: host (crowned) roots direct P2P
 // viewers and the SFU node; relay children hang off their parent viewer.
 // Data comes from deriveParticipantTopology.
-import { memo, useSyncExternalStore } from "react";
+import { memo, useLayoutEffect, useRef, useState } from "react";
 
 import type { LabeledViewerPresence } from "../../lib/viewer-presence";
 import {
@@ -12,7 +12,7 @@ import { useCopy } from "../../ui/copy";
 import { PawnSvg } from "./Couch";
 import { participantColor } from "./participant-color";
 import {
-  topologyLayoutForViewport,
+  topologyLayoutForWidth,
   type TopologyLayout,
 } from "./route-tree-layout";
 
@@ -26,37 +26,34 @@ interface TreeNode {
 }
 
 const ROW_BASE = 40;
-const NARROW_TOPOLOGY_QUERY = "(max-width: 640px)";
+const DEFAULT_TOPOLOGY_WIDTH = 640;
 const PAWN_CENTER_X = 20;
-const HOST_SCALE = 0.85;
-const ROOT_SCALE = 0.72;
-const CHILD_SCALE = 0.52;
-const ROOT_LABEL_OFFSET_Y = 36;
-const CHILD_LABEL_OFFSET_Y = 20;
+const PAWN_SCALE = 0.72;
+const PAWN_CENTER_Y = 24;
+const LABEL_GAP = 12;
 
 function centeredPawnX(centerX: number, scale: number): number {
   return centerX - PAWN_CENTER_X * scale;
 }
 
-function subscribeToNarrowViewport(listener: () => void): () => void {
-  if (typeof window === "undefined" || !window.matchMedia) return () => {};
-  const query = window.matchMedia(NARROW_TOPOLOGY_QUERY);
-  query.addEventListener("change", listener);
-  return () => query.removeEventListener("change", listener);
+function centeredPawnY(centerY: number, scale: number): number {
+  return centerY - PAWN_CENTER_Y * scale;
 }
 
-function narrowViewportSnapshot(): boolean {
+function pawnLabelY(centerY: number, scale: number): number {
+  return centerY + PAWN_CENTER_Y * scale + LABEL_GAP;
+}
+
+function PawnOutline({ className }: { className: string }) {
   return (
-    typeof window !== "undefined" &&
-    Boolean(window.matchMedia?.(NARROW_TOPOLOGY_QUERY).matches)
-  );
-}
-
-function useNarrowViewport(): boolean {
-  return useSyncExternalStore(
-    subscribeToNarrowViewport,
-    narrowViewportSnapshot,
-    () => false,
+    <rect
+      className={className}
+      x="1"
+      y="2"
+      width="38"
+      height="46"
+      rx="8"
+    />
   );
 }
 
@@ -104,8 +101,30 @@ export const RouteTree = memo(function RouteTree({
   onSelectPeer?: (peerId: string) => void;
 }) {
   const { t } = useCopy();
-  const narrowViewport = useNarrowViewport();
-  const layoutConfig = topologyLayoutForViewport(narrowViewport);
+  const routeRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(
+    DEFAULT_TOPOLOGY_WIDTH,
+  );
+  const [hoveredPeerId, setHoveredPeerId] = useState<string | null>(null);
+  useLayoutEffect(() => {
+    const route = routeRef.current;
+    if (!route) return;
+    const updateWidth = () => {
+      const width = Math.round(route.getBoundingClientRect().width);
+      if (width > 0) {
+        setContainerWidth((current) => (current === width ? current : width));
+      }
+    };
+    updateWidth();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", updateWidth);
+      return () => window.removeEventListener("resize", updateWidth);
+    }
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(route);
+    return () => observer.disconnect();
+  }, []);
+  const layoutConfig = topologyLayoutForWidth(containerWidth);
   const topology = deriveParticipantTopology(hostPeerId, viewers);
   const selectable = new Set(
     selectablePeerIds ?? (onSelectPeer ? viewers.map((viewer) => viewer.peerId) : []),
@@ -245,6 +264,7 @@ export const RouteTree = memo(function RouteTree({
 
   return (
     <div
+      ref={routeRef}
       className="lr-route"
       role="group"
       aria-labelledby={topologyTitleId}
@@ -260,7 +280,7 @@ export const RouteTree = memo(function RouteTree({
         aria-label={onSelectPeer ? t("host.topology") : undefined}
         focusable={onSelectPeer ? undefined : "false"}
         style={
-          narrowViewport || scrollableCanvas
+          scrollableCanvas
             ? { width, maxWidth: "none" }
             : {
                 width: "100%",
@@ -325,14 +345,14 @@ export const RouteTree = memo(function RouteTree({
 
         <g
           className="lr-route-node is-host"
-          transform={`translate(${centeredPawnX(hostPos.x, HOST_SCALE)}, ${hostPos.y - 20}) scale(${HOST_SCALE})`}
+          transform={`translate(${centeredPawnX(hostPos.x, PAWN_SCALE)}, ${centeredPawnY(hostPos.y, PAWN_SCALE)}) scale(${PAWN_SCALE})`}
         >
           <PawnSvg color={participantColor(hostPeerId ?? "host-pending")} crown />
         </g>
         <text
           className="lr-route-label is-host"
           x={hostPos.x}
-          y={hostPos.y + 30}
+          y={pawnLabelY(hostPos.y, PAWN_SCALE)}
           textAnchor="middle"
         >
           {compactVisibleLabel(
@@ -363,56 +383,59 @@ export const RouteTree = memo(function RouteTree({
 
         {nodes.map((node) => {
           const point = pos.get(node.key)!;
-          const child = node.via !== null && !node.sfu;
           const selected = selectedPeerId === node.key;
-          const scale = child ? CHILD_SCALE : ROOT_SCALE;
+          const hovered = hoveredPeerId === node.key;
           return (
             <g
               key={node.key}
-              className={`lr-route-node${node.ready ? "" : " is-recovering"}${selected ? " is-selected" : ""}`}
-              transform={`translate(${centeredPawnX(point.x, scale)}, ${point.y - 15}) scale(${scale})`}
+              className={`lr-route-node${node.ready ? "" : " is-recovering"}${hovered ? " is-hovered" : ""}${selected ? " is-selected" : ""}`}
+              transform={`translate(${centeredPawnX(point.x, PAWN_SCALE)}, ${centeredPawnY(point.y, PAWN_SCALE)}) scale(${PAWN_SCALE})`}
             >
               <PawnSvg color={participantColor(node.key)} />
+              {hovered && !selected ? (
+                <PawnOutline className="lr-route-hover" />
+              ) : null}
               {selected ? (
-                <circle className="lr-route-selection" cx="20" cy="26" r="25" />
+                <PawnOutline className="lr-route-selection" />
               ) : null}
               {node.you ? (
-                <circle className="lr-route-you" cx="20" cy="26" r="21" />
+                <PawnOutline className="lr-route-you" />
               ) : null}
             </g>
           );
         })}
 
-        {pendingPos.map((point) => (
-          <g
-            key={`pending-${point.viewer.peerId}`}
-            className={`lr-route-node is-recovering${selectedPeerId === point.viewer.peerId ? " is-selected" : ""}`}
-            transform={`translate(${centeredPawnX(point.x, ROOT_SCALE)}, ${point.y - 15}) scale(${ROOT_SCALE})`}
-          >
-            <PawnSvg
-              color={participantColor(point.viewer.peerId)}
-            />
-            {selectedPeerId === point.viewer.peerId ? (
-              <circle className="lr-route-selection" cx="20" cy="26" r="25" />
-            ) : null}
-            {selfPeerId === point.viewer.peerId ? (
-              <circle className="lr-route-you" cx="20" cy="26" r="21" />
-            ) : null}
-          </g>
-        ))}
+        {pendingPos.map((point) => {
+          const selected = selectedPeerId === point.viewer.peerId;
+          const hovered = hoveredPeerId === point.viewer.peerId;
+          return (
+            <g
+              key={`pending-${point.viewer.peerId}`}
+              className={`lr-route-node is-recovering${hovered ? " is-hovered" : ""}${selected ? " is-selected" : ""}`}
+              transform={`translate(${centeredPawnX(point.x, PAWN_SCALE)}, ${centeredPawnY(point.y, PAWN_SCALE)}) scale(${PAWN_SCALE})`}
+            >
+              <PawnSvg color={participantColor(point.viewer.peerId)} />
+              {hovered && !selected ? (
+                <PawnOutline className="lr-route-hover" />
+              ) : null}
+              {selected ? (
+                <PawnOutline className="lr-route-selection" />
+              ) : null}
+              {selfPeerId === point.viewer.peerId ? (
+                <PawnOutline className="lr-route-you" />
+              ) : null}
+            </g>
+          );
+        })}
 
         {nodes.map((node) => {
           const point = pos.get(node.key)!;
-          const child = node.via !== null && !node.sfu;
           return (
             <text
               key={`label-${node.key}`}
-              className={`lr-route-label${selectedPeerId === node.key ? " is-selected" : ""}`}
+              className={`lr-route-label${hoveredPeerId === node.key ? " is-hovered" : ""}${selectedPeerId === node.key ? " is-selected" : ""}`}
               x={point.x}
-              y={
-                point.y +
-                (child ? CHILD_LABEL_OFFSET_Y : ROOT_LABEL_OFFSET_Y)
-              }
+              y={pawnLabelY(point.y, PAWN_SCALE)}
               textAnchor="middle"
             >
               {compactVisibleLabel(
@@ -425,9 +448,9 @@ export const RouteTree = memo(function RouteTree({
         {pendingPos.map((point) => (
           <text
             key={`label-pending-${point.viewer.peerId}`}
-            className={`lr-route-label is-recovering${selectedPeerId === point.viewer.peerId ? " is-selected" : ""}`}
+            className={`lr-route-label is-recovering${hoveredPeerId === point.viewer.peerId ? " is-hovered" : ""}${selectedPeerId === point.viewer.peerId ? " is-selected" : ""}`}
             x={point.x}
-            y={point.y + ROOT_LABEL_OFFSET_Y}
+            y={pawnLabelY(point.y, PAWN_SCALE)}
             textAnchor="middle"
           >
             {compactVisibleLabel(
@@ -458,7 +481,22 @@ export const RouteTree = memo(function RouteTree({
                 role="button"
                 tabIndex={0}
                 aria-label={`${node.label} · ${t("host.details")}`}
-                onClick={() => selectPeer(node.key)}
+                onPointerEnter={() => setHoveredPeerId(node.key)}
+                onPointerLeave={() =>
+                  setHoveredPeerId((current) =>
+                    current === node.key ? null : current,
+                  )
+                }
+                onFocus={() => setHoveredPeerId(node.key)}
+                onBlur={() =>
+                  setHoveredPeerId((current) =>
+                    current === node.key ? null : current,
+                  )
+                }
+                onClick={(event) => {
+                  selectPeer(node.key);
+                  if (event.detail !== 0) event.currentTarget.blur();
+                }}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
