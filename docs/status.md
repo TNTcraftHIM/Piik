@@ -68,16 +68,17 @@ This is the current execution index. Git history owns completed timelines;
   when that Viewer departs or the room is deleted. A replacement Host identity
   resets physical route ownership without discarding Viewer capacity. Retiring
   SFU roots remain only as inactive anchors while Peer descendants reassign.
-- WebRTC/LiveKit own media adaptation. With the per-share convergence gate
-  enabled, one fresh degraded native edge may enter the existing serial route
-  operation after availability work. A P2P candidate commits only after the same
-  Viewer sees first-frame readiness plus three fresh windows that strictly
-  improve delivered resolution or rounded FPS without regressing either. A
-  complete zero-frame incumbent is zero delivery only against a clean,
-  overlapping candidate that actually decodes video. Peer candidates stay
-  first; bounded SFU is only the suffix for whole-Host-root
-  degradation and retains native publication proof. The gate defaults on in
-  source and remains a locked pre-share opt-out.
+- WebRTC/LiveKit own media adaptation. After availability work, one persistently
+  degraded native edge may use the existing serial operation. A P2P candidate
+  needs first-frame readiness, fresh native healthy sender evidence, and three
+  clean receive windows that do not regress resolution or rounded FPS. A zero-
+  frame incumbent is zero delivery only against an overlapping candidate that
+  decodes video. Peer candidates stay first; bounded SFU remains only the whole-
+  Host-root suffix. The pre-share gate defaults on and locks while sharing.
+- Every direct, Browser-relay, and Host SFU video sender owns one clone of its
+  source track; the original remains presentation and source authority only.
+  Replacement, rollback, unpublish, physical LiveKit sender recreation, and
+  teardown retire that clone. Sibling clones may still share source pressure.
 - Screener has no custom SFU layer list, quality score, layer selector,
   all-pairs probe, parent-wide prediction or periodic rebalancing. P2P and SFU
   still recover their current route before actual failure enters reassignment.
@@ -94,9 +95,9 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Source/Production Delta
 
-- Production application code is exact revision
-  `2f35f3e161f6f2b64d666d49b67a900085801002`; the following truth checkpoint
-  changes documentation only.
+- Production remains exact revision `2f35f3e161f6f2b64d666d49b67a900085801002`;
+  current source fixes degraded-edge eligibility, bounds relative quality proof,
+  rejects stale metrics, and owns one track generation per outbound video sender.
 
 ## Active Boundaries
 

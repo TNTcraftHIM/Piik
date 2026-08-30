@@ -111,13 +111,19 @@ WebRTC and LiveKit own ICE, consent, congestion control, bitrate, frame rate,
 resolution, retransmission, reconnect, and SFU layer selection. When the
 per-share convergence gate is enabled, Screener uses an exact persistent native
 sender limitation only to trigger one measured experiment through the existing
-serial operation. The same Viewer must then prove a P2P candidate strictly
-improves delivered pixel area or rounded FPS without regressing either dimension
-or producing a freeze/pause across three fresh overlapping windows. A complete
+serial operation. Three fresh complete limited deltas from one exact sender may
+trigger that experiment on a newly committed availability or direct-convergence
+edge without a preceding clear delta. A quality- or root-convergence result must
+recover clear before it can rearm. The same Viewer must then prove three fresh
+overlapping P2P candidate windows with no freeze or pause and no lower delivered
+pixel area or rounded FPS, while the exact candidate sender has fresh clear
+native evidence at commit. The candidate need not show a strict gain before the
+retained sender closes. A complete
 zero-frame current window counts as zero delivery only when an overlapping
 candidate actually decodes clean video; two zero-frame paths remain unknown. A
-persistently limited exact candidate sender cannot commit. Ordinary quality
-moves remain Peer-to-Peer. SFU may
+missing or limited exact candidate sender cannot commit; an expired one-shot
+relative proof rejects that candidate. Ordinary quality moves remain
+Peer-to-Peer. SFU may
 join quality work only as Host fanout relief when every current Host-origin Peer
 edge, with at least two such edges, is persistently degraded; one Viewer moves
 before the controller observes the new topology again. During that overlap, the

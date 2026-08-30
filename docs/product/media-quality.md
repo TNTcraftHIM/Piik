@@ -13,14 +13,15 @@ adaptation decision.
 - Share and source-switch requests ask the Browser for available audio by
   default. Missing audio is reported clearly but does not block video-only
   sharing.
-- Authoritative pause disables all current capture tracks while retaining the
-  room and established routes. Black frames, track mute, or network failure are
-  not interpreted as a user pause.
+- Authoritative pause disables the current source and sender-owned tracks while
+  retaining the room and established routes. Black frames, track mute, or
+  network failure are not interpreted as a user pause.
 - The Host preview displays the capture stream directly and creates no Viewer or
   media route. Hiding the page may pause only that local video element; it must
   not intentionally stop capture, encoding, or upload.
-- Live quality changes update the current capture constraints and sender
-  ceilings without reopening source selection or replacing a healthy route.
+- Live quality changes update the current capture and Host sender-track
+  constraints plus sender ceilings without reopening source selection or
+  replacing a healthy route.
 
 ## Video Profiles
 
@@ -66,16 +67,27 @@ specific MFT, NVENC, AMF, or QSV implementation.
 
 ## Framework-Owned Adaptation
 
-Each direct or relay PeerConnection keeps its own stock WebRTC congestion and
-quality adaptation. The Host's one SFU publication uses the share-generation
-codec and selected ceiling but no application-defined simulcast ladder or backup
-codec. Pinned LiveKit defaults construct representations; Dynacast aggregates
-demand and server send-side BWE selects subscriber forwarding. AdaptiveStream
-stays disabled because any Viewer may relay its received track.
+Each direct, relay, or SFU video sender owns one clone of its capture or received
+source track. The original track remains a source and local presentation track;
+it is never attached directly to an outbound sender. Replacing or retiring a
+sender also stops its clone, so native adaptation state cannot survive by being
+inherited through the original track. Host pause and live capture constraints
+are propagated to current Host-owned clones.
+
+Each PeerConnection still owns stock WebRTC congestion control and sender
+adaptation. Clones share one underlying media source and therefore do not provide
+complete simultaneous isolation: framework source-wants aggregation may still
+partially reduce frames available to sibling clones. Sibling outputs may differ;
+Screener does not impose a room-wide minimum. The Host's one SFU publication uses
+the share-generation codec and selected ceiling but no application-defined
+simulcast ladder or backup codec. Pinned LiveKit defaults construct
+representations; Dynacast aggregates demand and server send-side BWE selects
+subscriber forwarding. AdaptiveStream stays disabled because any Viewer may
+relay its received track.
 
 Screener does not maintain an application bitrate/resolution ladder, scene
-detector, periodic quality controller, manual SFU layer selector, or whole-room
-lowest-common-denominator target.
+detector, periodic quality controller, manual SFU layer selector, or
+application-defined whole-room lowest-common-denominator target.
 
 ## Screen Audio
 

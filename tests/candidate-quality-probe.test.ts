@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   P2pQualityProbe,
   SfuQualityProbe,
-  p2pCandidateStrictlyImproves,
+  p2pCandidateDoesNotRegress,
   sfuCandidateDoesNotRegress,
 } from "../src/client/media/candidate-quality-probe.ts";
 import {
@@ -68,7 +68,7 @@ describe("SFU quality probe", () => {
     ).toBeNull();
   });
 
-  it("requires a strict P2P receive improvement without a tradeoff", () => {
+  it("accepts clean P2P receive windows that do not regress", () => {
     const current = metrics(2_000, {
       frameWidth: 320,
       frameHeight: 180,
@@ -76,7 +76,7 @@ describe("SFU quality probe", () => {
       bitrateKbps: 200,
     });
     expect(
-      p2pCandidateStrictlyImproves(
+      p2pCandidateDoesNotRegress(
         current,
         metrics(2_100, {
           frameWidth: 1_280,
@@ -87,7 +87,7 @@ describe("SFU quality probe", () => {
       ),
     ).toBe(true);
     expect(
-      p2pCandidateStrictlyImproves(
+      p2pCandidateDoesNotRegress(
         { ...current, bitrateKbps: null },
         metrics(2_100, {
           frameWidth: 1_280,
@@ -97,9 +97,9 @@ describe("SFU quality probe", () => {
         }),
       ),
     ).toBe(true);
-    expect(p2pCandidateStrictlyImproves(current, { ...current })).toBe(false);
+    expect(p2pCandidateDoesNotRegress(current, { ...current })).toBe(true);
     expect(
-      p2pCandidateStrictlyImproves(
+      p2pCandidateDoesNotRegress(
         current,
         metrics(2_100, {
           frameWidth: 1_280,
@@ -109,7 +109,17 @@ describe("SFU quality probe", () => {
       ),
     ).toBe(false);
     expect(
-      p2pCandidateStrictlyImproves(
+      p2pCandidateDoesNotRegress(
+        current,
+        metrics(2_100, {
+          frameWidth: 160,
+          frameHeight: 90,
+          framesPerSecond: 60,
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      p2pCandidateDoesNotRegress(
         current,
         metrics(2_100, { intervalFreezeCount: 1 }),
       ),
@@ -134,7 +144,7 @@ describe("SFU quality probe", () => {
       });
 
     expect(
-      p2pCandidateStrictlyImproves(current(10_000), candidate(11_100)),
+      p2pCandidateDoesNotRegress(current(10_000), candidate(11_100)),
     ).toBeNull();
     for (const timestampMs of [10_000, 13_000, 16_000]) {
       expect(
@@ -143,7 +153,7 @@ describe("SFU quality probe", () => {
     }
   });
 
-  it("keeps the original comparison for overlapping samples", () => {
+  it("compares overlapping samples", () => {
     const current = metrics(10_000, {
       sampleWindowMs: 1_000,
       frameWidth: 320,
@@ -157,35 +167,25 @@ describe("SFU quality probe", () => {
       framesPerSecond: 30,
     });
 
-    expect(p2pCandidateStrictlyImproves(current, candidate)).toBe(true);
+    expect(p2pCandidateDoesNotRegress(current, candidate)).toBe(true);
   });
 
-  it("requires three consecutive strict P2P improvements", () => {
-    const probe = new P2pQualityProbe();
-    const current = (timestampMs: number) =>
-      metrics(timestampMs, {
-        frameWidth: 320,
-        frameHeight: 180,
-        framesPerSecond: 10,
-      });
-    const candidate = (timestampMs: number) =>
-      metrics(timestampMs, {
-        frameWidth: 1_280,
-        frameHeight: 720,
-        framesPerSecond: 30,
-      });
-    expect(probe.observe(current(1_000), candidate(1_100))).toBe("pending");
-    expect(probe.observe(current(3_000), candidate(3_100))).toBe("pending");
-    expect(probe.observe(current(5_000), candidate(5_100))).toBe("approved");
-    probe.reset();
-    expect(probe.observe(current(7_000), candidate(7_100))).toBe("pending");
-  });
-
-  it("rejects after three comparable non-improving P2P windows", () => {
+  it("requires three consecutive non-regressing P2P windows", () => {
     const probe = new P2pQualityProbe();
     expect(probe.observe(metrics(1_000), metrics(1_100))).toBe("pending");
     expect(probe.observe(metrics(3_000), metrics(3_100))).toBe("pending");
-    expect(probe.observe(metrics(5_000), metrics(5_100))).toBe("rejected");
+    expect(probe.observe(metrics(5_000), metrics(5_100))).toBe("approved");
+    probe.reset();
+    expect(probe.observe(metrics(7_000), metrics(7_100))).toBe("pending");
+  });
+
+  it("rejects after three comparable regressing P2P windows", () => {
+    const probe = new P2pQualityProbe();
+    const candidate = (timestampMs: number) =>
+      metrics(timestampMs, { framesPerSecond: 30 });
+    expect(probe.observe(metrics(1_000), candidate(1_100))).toBe("pending");
+    expect(probe.observe(metrics(3_000), candidate(3_100))).toBe("pending");
+    expect(probe.observe(metrics(5_000), candidate(5_100))).toBe("rejected");
   });
 
   it("keeps unknown evidence pending instead of counting it as rejection", () => {

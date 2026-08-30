@@ -31,6 +31,7 @@ interface HostPublisherTransport {
   deactivate(): Promise<boolean>;
   replaceStream(stream: MediaStream): Promise<boolean>;
   updateProfile(profile: QualityProfile): Promise<boolean>;
+  setPaused(paused: boolean): void;
   getQualityWarning?(): string | null;
   getFailureStage?(): SfuPublisherFailureStage | null;
   disconnect(): Promise<void>;
@@ -302,6 +303,9 @@ export class HostSfuRoute {
 
   setPaused(paused: boolean): void {
     this.paused = paused;
+    for (const slot of this.publishingSlots()) {
+      slot.publisher.setPaused(paused);
+    }
     if (paused) {
       this.clearPending();
     }

@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-08-29
+Last reviewed: 2026-08-30
 
 Only **Now** is executable. Observations, old branches, experiments, and parked
 topics are not implementation authority.
@@ -13,9 +13,12 @@ until their stated boundary is met.
 ## Parked Product Work
 
 1. **Broader quality optimization.** Weighted/global optimization,
-   parent-wide prediction, startup-limited inference, and alternative SFU
-   policies remain unaccepted. Reopen only from exact path evidence; do not add
-   a score, all-pairs probe, periodic rebalancer, or ordinary SFU preference.
+   parent-wide prediction, startup-limited inference, complete cross-clone
+   source isolation, and alternative SFU policies remain unaccepted. Reopen only
+   from exact path evidence; do not add a score, all-pairs probe, periodic
+   rebalancer, or ordinary SFU preference. Validate whether a quality move merely
+   shifts residual shared-source pressure to the new parent's siblings before
+   widening it.
 2. **Startup codec budget.** Reconcile the bounded Auto codec probe with the
    first-frame target from measured Browser evidence; do not silently weaken
    Auto or move an unproved result into the availability path.

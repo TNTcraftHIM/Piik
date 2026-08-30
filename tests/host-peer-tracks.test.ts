@@ -368,7 +368,21 @@ function withOutboundAudio(
 }
 
 function createTrack(kind: "video" | "audio", id: string): MediaStreamTrack {
-  return { id, kind } as MediaStreamTrack;
+  const track = Object.assign(new EventTarget(), {
+    id,
+    kind,
+    contentHint: "",
+    enabled: true,
+    getSettings: () => ({}),
+    applyConstraints: vi.fn(async () => undefined),
+    stop: vi.fn(),
+  }) as unknown as MediaStreamTrack;
+  track.clone = vi.fn(() => {
+    const clone = createTrack(kind, id);
+    clone.getSettings = track.getSettings.bind(track);
+    return clone;
+  });
+  return track;
 }
 
 function createConfiguredVideoTrack(
@@ -377,11 +391,12 @@ function createConfiguredVideoTrack(
   height: number,
   frameRate: number,
 ): MediaStreamTrack {
-  return {
-    id,
-    kind: "video",
-    getSettings: () => ({ width, height, frameRate }),
-  } as unknown as MediaStreamTrack;
+  const track = createTrack("video", id);
+  track.getSettings = () => ({ width, height, frameRate });
+  track.clone = vi.fn(() =>
+    createConfiguredVideoTrack(id, width, height, frameRate),
+  );
+  return track;
 }
 
 function createStream(
@@ -713,6 +728,8 @@ describe("HostPeer source replacement", () => {
     await expect(peer.start()).resolves.toBe(true);
     await acceptPeerAnswer(peer);
     const connection = FakePeerConnection.latest!;
+    const oldSenderVideo = connection.senders[0]!.track!;
+    expect(oldSenderVideo).not.toBe(oldVideo);
     expect(connection.transceiverInputs).toHaveLength(2);
     expect(connection.transceiverInputs.map(({ init }) => init?.direction)).toEqual([
       "sendonly",
@@ -725,14 +742,58 @@ describe("HostPeer source replacement", () => {
       peer.replaceStream(createStream(nextVideo, nextAudio)),
     ).resolves.toBe(true);
 
-    expect(connection.senders[0]?.track).toBe(nextVideo);
+    const nextSenderVideo = connection.senders[0]?.track;
+    expect(nextSenderVideo).not.toBe(nextVideo);
+    expect(nextSenderVideo?.id).toBe(nextVideo.id);
     expect(connection.senders[1]?.track).toBe(nextAudio);
+    expect(oldVideo.stop).not.toHaveBeenCalled();
+    expect(oldSenderVideo.stop).toHaveBeenCalledOnce();
     expect(connection.transceiverInputs).toHaveLength(2);
     expect(connection.senders[0]?.setParameters).toHaveBeenCalledTimes(3);
     expect(connection.senders[1]?.appliedMaxBitrates).toEqual([
       192_000,
       192_000,
     ]);
+    peer.dispose();
+    expect(nextVideo.stop).not.toHaveBeenCalled();
+    expect(nextSenderVideo?.stop).toHaveBeenCalledOnce();
+  });
+
+  it("keeps capture controls on the sender-owned video clone", async () => {
+    const sourceVideo = createConfiguredVideoTrack(
+      "capture-video",
+      1920,
+      1080,
+      30,
+    );
+    sourceVideo.contentHint = "motion";
+    const sourceAudio = createTrack("audio", "capture-audio");
+    const peer = createPeer(createStream(sourceVideo, sourceAudio));
+
+    await expect(peer.start()).resolves.toBe(true);
+    const senderVideo = FakePeerConnection.latest!.senders[0]!.track!;
+    expect(senderVideo).not.toBe(sourceVideo);
+    expect(senderVideo.contentHint).toBe("motion");
+
+    peer.setPaused(true);
+    expect(senderVideo.enabled).toBe(false);
+    expect(sourceVideo.enabled).toBe(true);
+    peer.setPaused(false);
+    expect(senderVideo.enabled).toBe(true);
+
+    await expect(
+      peer.updateCaptureProfile(QUALITY_PROFILES["1080p60"]),
+    ).resolves.toBe(true);
+    expect(senderVideo.applyConstraints).toHaveBeenLastCalledWith({
+      width: { ideal: 1920, max: 1920 },
+      height: { ideal: 1080, max: 1080 },
+      frameRate: { ideal: 60, max: 60 },
+    });
+    expect(sourceVideo.applyConstraints).not.toHaveBeenCalled();
+
+    peer.dispose();
+    expect(senderVideo.stop).toHaveBeenCalledOnce();
+    expect(sourceVideo.stop).not.toHaveBeenCalled();
   });
 
   it("fills a pre-negotiated audio sender that started without a track", async () => {
@@ -912,7 +973,8 @@ describe("HostPeer source replacement", () => {
 
     expect(connection.remoteDescription?.type).toBe("answer");
     expect(connection.addedIceCandidates).toEqual([pendingCandidate]);
-    expect(connection.senders[0]?.track).toBe(video);
+    expect(connection.senders[0]?.track).not.toBe(video);
+    expect(connection.senders[0]?.track?.id).toBe(video.id);
     expect(connection.senders[0]?.setParameters).toHaveBeenCalledOnce();
 
     connection.connectionState = "connected";
@@ -1125,11 +1187,8 @@ describe("HostPeer source replacement", () => {
       height: 1080,
       frameRate: 59.94,
     }));
-    const videoTrack = {
-      id: "capture-video",
-      kind: "video",
-      getSettings,
-    } as unknown as MediaStreamTrack;
+    const videoTrack = createTrack("video", "capture-video");
+    videoTrack.getSettings = getSettings;
     const updates: PeerSnapshot[] = [];
     const peer = createPeer(
       createStream(videoTrack, null),
@@ -1294,6 +1353,7 @@ describe("HostPeer source replacement", () => {
     const connection = FakePeerConnection.latest!;
     const videoSender = connection.senders[0]!;
     const audioSender = connection.senders[1]!;
+    const initialSenderVideo = videoSender.track;
     connection.statsReports.push(
       sendStatsReport({
         bytesSent: 500_000,
@@ -1339,7 +1399,12 @@ describe("HostPeer source replacement", () => {
     videoSender.releaseDeferredReplaceTrack();
     await expect(replacing).resolves.toBe(result);
     const committedVideo = committed === "old" ? oldVideo : nextVideo;
-    expect(videoSender.track).toBe(committedVideo);
+    if (committed === "old") {
+      expect(videoSender.track).toBe(initialSenderVideo);
+    } else {
+      expect(videoSender.track).not.toBe(nextVideo);
+      expect(videoSender.track?.id).toBe(nextVideo.id);
+    }
     expect(updates.at(-1)?.metrics.sampleTimestampMs).toBe(
       committed === "old" ? 500 : null,
     );
@@ -1459,6 +1524,7 @@ describe("HostPeer source replacement", () => {
     const connection = FakePeerConnection.latest!;
     const videoSender = connection.senders[0]!;
     const audioSender = connection.senders[1]!;
+    const oldSenderVideo = videoSender.track;
     audioSender.failNextReplace = true;
 
     const nextVideo = createTrack("video", "next-video");
@@ -1467,11 +1533,16 @@ describe("HostPeer source replacement", () => {
       peer.replaceStream(createStream(nextVideo, nextAudio)),
     ).resolves.toBe(false);
 
-    expect(videoSender.replaceTrack).toHaveBeenNthCalledWith(1, nextVideo);
-    expect(videoSender.replaceTrack).toHaveBeenNthCalledWith(2, oldVideo);
+    const nextSenderVideo = videoSender.replaceTrack.mock.calls[0]?.[0];
+    expect(nextSenderVideo).not.toBe(nextVideo);
+    expect(nextSenderVideo?.id).toBe(nextVideo.id);
+    expect(videoSender.replaceTrack).toHaveBeenNthCalledWith(2, oldSenderVideo);
     expect(audioSender.replaceTrack).toHaveBeenNthCalledWith(1, nextAudio);
     expect(audioSender.replaceTrack).toHaveBeenNthCalledWith(2, oldAudio);
-    expect(videoSender.track).toBe(oldVideo);
+    expect(videoSender.track).toBe(oldSenderVideo);
+    expect(nextSenderVideo?.stop).toHaveBeenCalledOnce();
+    expect(oldSenderVideo?.stop).not.toHaveBeenCalled();
+    expect(oldVideo.stop).not.toHaveBeenCalled();
     expect(audioSender.track).toBe(oldAudio);
   });
 });
@@ -1620,7 +1691,8 @@ describe("Host provisional child runtime ownership", () => {
     await expect(
       owner.replaceStream(createStream(replacement, null)),
     ).resolves.toBe(true);
-    expect(connection.senders[0]!.track).toBe(replacement);
+    expect(connection.senders[0]!.track).not.toBe(replacement);
+    expect(connection.senders[0]!.track?.id).toBe(replacement.id);
 
     const activation = owner.activate({
       revision: input.revision,
@@ -1637,6 +1709,34 @@ describe("Host provisional child runtime ownership", () => {
 });
 
 describe("ViewerRelay downstream ownership", () => {
+  it("gives each downstream sender its own video clone", async () => {
+    const sourceVideo = createTrack("video", "relay-source");
+    const relay = new ViewerRelay(
+      { iceServers: [] },
+      QUALITY_PROFILES["720p30"],
+      { sendSignal: () => true },
+    );
+
+    relay.setChildren(["child-one", "child-two"]);
+    relay.setStream(createStream(sourceVideo, null));
+    await vi.waitFor(() =>
+      expect(FakePeerConnection.instances).toHaveLength(2),
+    );
+    const [firstTrack, secondTrack] = FakePeerConnection.instances.map(
+      (connection) => connection.senders[0]!.track!,
+    );
+    expect(firstTrack).not.toBe(sourceVideo);
+    expect(secondTrack).not.toBe(sourceVideo);
+    expect(firstTrack).not.toBe(secondTrack);
+    expect(firstTrack.contentHint).toBe("motion");
+    expect(secondTrack.contentHint).toBe("motion");
+
+    relay.stop();
+    expect(firstTrack.stop).toHaveBeenCalledOnce();
+    expect(secondTrack.stop).toHaveBeenCalledOnce();
+    expect(sourceVideo.stop).not.toHaveBeenCalled();
+  });
+
   const routeCandidate = (
     revision: number,
     childPeerId: string,
@@ -1800,7 +1900,7 @@ describe("ViewerRelay downstream ownership", () => {
     const replacementVideo = createTrack("video", "replacement-video");
     relay.setStream(createStream(replacementVideo, null));
     await vi.waitFor(() =>
-      expect(preparedConnection.senders[0]!.track).toBe(replacementVideo),
+      expect(preparedConnection.senders[0]!.track?.id).toBe(replacementVideo.id),
     );
     expect(FakePeerConnection.instances).toHaveLength(instanceCount);
     preparedConnection.connectionState = "connected";
@@ -2154,7 +2254,10 @@ describe("ViewerRelay downstream ownership", () => {
     const nextVideo = createTrack("video", "next-video");
     const nextAudio = createTrack("audio", "next-audio");
     relay.setStream(createStream(nextVideo, nextAudio));
-    await vi.waitFor(() => expect(connection.senders[0]?.track).toBe(nextVideo));
+    await vi.waitFor(() =>
+      expect(connection.senders[0]?.track?.id).toBe(nextVideo.id),
+    );
+    expect(connection.senders[0]?.track).not.toBe(nextVideo);
 
     expect(FakePeerConnection.latest).toBe(connection);
     expect(connection.senders[1]?.track).toBe(nextAudio);
