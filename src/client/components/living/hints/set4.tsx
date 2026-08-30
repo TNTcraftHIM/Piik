@@ -11,6 +11,7 @@ import {
   Frame,
   LIVE,
   MINT,
+  MiniTv,
   Pawn,
   RedX,
   SKY,
@@ -311,6 +312,69 @@ ${rmBlock(
   </>
 );
 
+function TheaterHint({
+  theme,
+  exit,
+}: {
+  theme: Parameters<HintScene>[0]["theme"];
+  exit: boolean;
+}) {
+  const motion = exit ? "vlsThExit" : "vlsThEnter";
+  return (
+    <>
+      <style>{`
+.vls-th-stage{transform-box:fill-box;transform-origin:center;animation:${motion} 3.2s cubic-bezier(.3,1.25,.5,1) infinite}
+.vls-th-arrows{animation:vlsThArrows 3.2s ease-in-out infinite}
+@keyframes vlsThEnter{0%,8%{transform:scale(.72)}28%,100%{transform:scale(1)}}
+@keyframes vlsThExit{0%,8%{transform:scale(1.28)}28%,100%{transform:scale(1)}}
+@keyframes vlsThArrows{0%,8%{opacity:0}20%,44%{opacity:1}58%,100%{opacity:.38}}
+${rmBlock(
+  ["vls-th-stage", "vls-th-arrows"],
+  [
+    [".vls-th-stage", "transform:none"],
+    [".vls-th-arrows", "opacity:.38"],
+  ],
+)}
+`}</style>
+      <Frame x={4} w={152} theme={theme} />
+      <Frame x={164} w={152} theme={theme} accent={LIVE} />
+      {exit ? (
+        <>
+          <MiniTv x={16} y={10} w={132} h={72} />
+          <g className="vls-th-stage">
+            <MiniTv x={204} y={22} w={72} h={44} />
+            <path d="M190 72H290" stroke={INK} strokeWidth={2.5} strokeLinecap="round" />
+            <rect x={218} y={73} width={44} height={9} rx={4.5} fill="var(--couch)" />
+          </g>
+          <g className="vls-th-arrows" stroke={LIVE} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" fill="none">
+            <path d="M184 20l13 13m0-10v10h-10M296 20l-13 13m0-10v10h10M184 78l13-13m0 10V65h-10M296 78l-13-13m0 10V65h10" />
+          </g>
+        </>
+      ) : (
+        <>
+          <MiniTv x={44} y={22} w={72} h={44} />
+          <path d="M30 72H130" stroke={INK} strokeWidth={2.5} strokeLinecap="round" />
+          <rect x={58} y={73} width={44} height={9} rx={4.5} fill="var(--couch)" />
+          <g className="vls-th-stage">
+            <MiniTv x={176} y={10} w={132} h={72} />
+          </g>
+          <g className="vls-th-arrows" stroke={LIVE} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" fill="none">
+            <path d="M204 34l-14-14m0 10V20h10M276 34l14-14m0 10V20h-10M204 62l-14 14m0-10v10h10M276 62l14 14m0-10v10h-10" />
+          </g>
+        </>
+      )}
+    </>
+  );
+}
+
+const HintTheater: HintScene = ({ theme }) => (
+  <TheaterHint theme={theme} exit={false} />
+);
+
+const HintTheaterExit: HintScene = ({ theme }) => (
+  <TheaterHint theme={theme} exit />
+);
+
 /* hint-route-p2p: [two pawns apart] → [direct live-green arc pawn→pawn,
    live dot on the apex]. Loop 3.2s: arc draws 6-28%, both pawns hop 30-42%,
    panel-1 pair blinks at 64%; rest ~58%. */
@@ -436,6 +500,8 @@ export const SET4_SCENES: Record<Set4Kind, HintScene> = {
   "hint-rename": HintRename,
   "hint-theme": HintTheme,
   "hint-join-go": HintJoinGo,
+  "hint-theater": HintTheater,
+  "hint-theater-exit": HintTheaterExit,
   "hint-route-p2p": HintRouteP2p,
   "hint-route-sfu": HintRouteSfu,
 };
