@@ -2,15 +2,21 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { Couch } from "../src/client/components/living/Couch.tsx";
+import {
+  Couch,
+  pawnColor,
+} from "../src/client/components/living/Couch.tsx";
 import {
   BrandLoader,
   BrandMark,
 } from "../src/client/components/living/BrandMark.tsx";
 import { Comic } from "../src/client/components/living/Comic.tsx";
 import { ComicTooltip } from "../src/client/components/living/ComicTooltip.tsx";
+import { HintComic } from "../src/client/components/living/hints/index.tsx";
 import { StageOverlay } from "../src/client/components/living/Stage.tsx";
+import { ViewerOverview } from "../src/client/components/living/ViewerOverview.tsx";
 import { NameTag } from "../src/client/components/living/primitives.tsx";
+import { EMPTY_METRICS } from "../src/client/types.ts";
 import { setCopy } from "../src/client/ui/copy.ts";
 
 describe("living-room presentation", () => {
@@ -115,6 +121,18 @@ describe("living-room presentation", () => {
     expect(html).not.toContain('viewBox="0 0 320 96"');
   });
 
+  it("animates the private-room hint around its door and lock", () => {
+    const html = renderToStaticMarkup(
+      createElement(HintComic, { kind: "hint-policy-private", size: 240 }),
+    );
+
+    expect(html).toContain("vls-priv-door");
+    expect(html).toContain("vls-priv-lock");
+    expect(html).toContain("vls-priv-card");
+    expect(html).toContain("vlsPrivDoor");
+    expect(html).toContain("vlsPrivLock");
+  });
+
   it("keeps every crowded and relay Viewer name visible in visual mode", () => {
     setCopy({ lang: "en", vis: true });
     const html = renderToStaticMarkup(
@@ -126,15 +144,77 @@ describe("living-room presentation", () => {
               ? "Relay Viewer With A Full Name"
               : `Viewer ${index}`,
           connected: true,
-          child: index === 11,
         })),
       }),
     );
 
     expect(html).toContain("lr-pawns is-crowded");
     expect(html).toContain(
-      '<span class="lr-pawn-name is-mini">Relay Viewer With A Full Name</span>',
+      '<span class="lr-pawn-name">Relay Viewer With A Full Name</span>',
     );
     expect(html).not.toContain("max-width:72px");
+  });
+
+  it("derives every participant color only from the peer identity", () => {
+    const peerId = "viewer-stable-identity";
+    const color = pawnColor(peerId);
+    const html = renderToStaticMarkup(
+      createElement(Couch, {
+        entries: [
+          {
+            key: peerId,
+            name: "Self",
+            connected: true,
+            you: true,
+          },
+        ],
+      }),
+    );
+
+    expect(pawnColor(peerId)).toBe(color);
+    expect(html).toContain(color);
+    expect(html).not.toContain("var(--you)");
+  });
+
+  it("shows all Viewer primary metrics in one compact selectable overview", () => {
+    const html = renderToStaticMarkup(
+      createElement(ViewerOverview, {
+        entries: [
+          {
+            key: "viewer-a",
+            name: "Alice",
+            connected: true,
+            statusLabel: "Connected",
+            route: "p2p",
+            metrics: {
+              ...EMPTY_METRICS,
+              resolution: "1920x1080",
+              framesPerSecond: 59.8,
+              bitrateKbps: 5120,
+              packetLossPercent: 0.4,
+              rttMs: 18,
+            },
+          },
+          {
+            key: "viewer-b",
+            name: "Bob",
+            connected: false,
+            statusLabel: "Routing",
+            route: null,
+            metrics: null,
+          },
+        ],
+        selectedKey: "viewer-a",
+        onSelect: () => undefined,
+      }),
+    );
+
+    expect(html).toContain("lr-viewer-overview-row is-selected");
+    expect(html).toContain("Alice");
+    expect(html).toContain("1920x1080");
+    expect(html).toContain("59.8");
+    expect(html).toContain("5120");
+    expect(html).toContain("18 ms");
+    expect(html).toContain("Bob");
   });
 });

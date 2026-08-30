@@ -28,6 +28,10 @@ import { useMetricsExpanded } from "../components/living/Metrics";
 import { PawnDetail } from "../components/living/PawnDetail";
 import { RoomChip } from "../components/living/RoomChip";
 import { RouteTree } from "../components/living/RouteTree";
+import {
+  ViewerOverview,
+  type ViewerOverviewEntry,
+} from "../components/living/ViewerOverview";
 import type { ComicKind } from "../components/living/Comic";
 import { ComicTooltip } from "../components/living/ComicTooltip";
 import type { HintKind } from "../components/living/hints";
@@ -68,8 +72,10 @@ import { createOpaqueId } from "../lib/opaque-id";
 import {
   defaultHostDisplayName,
   readDisplayName,
+  readStoredDisplayName,
   saveDisplayName,
 } from "../lib/display-name";
+import { useDocumentTitle } from "../ui/document-title";
 import {
   clearHostRoom,
   getStableClientId,
@@ -357,6 +363,7 @@ interface HostPageProps {
 }
 
 export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
+  const { lang, vis, t, titleFrames } = useCopy();
   const [qualitySettings, setQualitySettings] = useState<QualitySettings>(
     DEFAULT_QUALITY_SETTINGS,
   );
@@ -407,7 +414,12 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const [participantPresence, setParticipantPresence] = useState<
     ParticipantPresenceEntry[]
   >([]);
-  const [displayName, setDisplayName] = useState(() => readDisplayName());
+  const [hasCustomDisplayName, setHasCustomDisplayName] = useState(
+    () => readStoredDisplayName() !== null,
+  );
+  const [displayName, setDisplayName] = useState(() =>
+    readDisplayName(defaultHostDisplayName("", vis)),
+  );
   const [displayNameDraft, setDisplayNameDraft] = useState(displayName);
   const [displayNameError, setDisplayNameError] = useState<string | null>(null);
   const [editingDisplayName, setEditingDisplayName] = useState(false);
@@ -444,7 +456,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const [showConnectionDetails, setShowConnectionDetails] = useState(false);
   const [showTopology, setShowTopology] = useState(false);
   const [joiningRoom, setJoiningRoom] = useState(false);
-  const { vis, t } = useCopy();
   const [selectedPawn, setSelectedPawn] = useState<string | null>(null);
   const [joinRoomCode, setJoinRoomCode] = useState("");
   const [joinRoomError, setJoinRoomError] = useState(false);
@@ -457,6 +468,18 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const signalRef = useRef<SignalingClient | null>(null);
   const displayNameRef = useRef(displayName);
   const hostClientIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (hasCustomDisplayName) return;
+    const fallback = defaultHostDisplayName(
+      hostClientIdRef.current ?? "",
+      vis,
+    );
+    if (displayNameRef.current === fallback) return;
+    displayNameRef.current = fallback;
+    setDisplayName(fallback);
+    if (!editingDisplayName) setDisplayNameDraft(fallback);
+    signalRef.current?.setDisplayName(fallback);
+  }, [hasCustomDisplayName, lang, vis]);
   const iceConfigRef = useRef<IceConfig | null>(null);
   const peersRef = useRef(new Map<string, HostPeer>());
   const hostProvisionalChildRef = useRef<HostProvisionalChild | null>(null);
@@ -1891,7 +1914,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         let authenticated = false;
         const hostClientId = getStableClientId("host", activeRoom.roomId);
         hostClientIdRef.current = hostClientId;
-        const hostFallback = defaultHostDisplayName(hostClientId);
+        const hostFallback = defaultHostDisplayName(hostClientId, vis);
         const initialDisplayName = readDisplayName(hostFallback);
         displayNameRef.current = initialDisplayName;
         setDisplayName(initialDisplayName);
@@ -2397,8 +2420,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
 
   function commitDisplayName(): void {
     const hostFallback = hostClientIdRef.current
-      ? defaultHostDisplayName(hostClientIdRef.current)
-      : defaultHostDisplayName("");
+      ? defaultHostDisplayName(hostClientIdRef.current, vis)
+      : defaultHostDisplayName("", vis);
     const saved = saveDisplayName(displayNameDraft, hostFallback);
     if (!saved) {
       setDisplayNameError(say("host.nameError"));
@@ -2409,6 +2432,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     setDisplayNameDraft(saved);
     setDisplayNameError(null);
     setEditingDisplayName(false);
+    setHasCustomDisplayName(readStoredDisplayName() !== null);
     if (!signalRef.current?.setDisplayName(saved)) {
       setNoticeKey("host.nameOffline");
     }
@@ -2458,32 +2482,26 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     };
   });
 
-  const selectedViewer = selectedPawn
-    ? (viewers.find((viewer) => viewer.peerId === selectedPawn) ?? null)
-    : null;
-  let selectedDetail: {
+  type ViewerDetail = {
     route: "p2p" | "sfu" | null;
     metrics: ConnectionMetrics | null;
     direction: "send" | "receive";
     tag?: { icon: "loader"; label: string };
     error: string | null;
-  } | null = null;
-  if (selectedViewer) {
+  };
+  const detailForViewer = (viewer: (typeof viewers)[number]): ViewerDetail => {
     const snapshot =
-      selectedViewer.upstream.kind === "peer" &&
-      selectedViewer.upstream.peerId === hostPeerId
-        ? peerSnapshots.get(selectedViewer.peerId)
+      viewer.upstream.kind === "peer" && viewer.upstream.peerId === hostPeerId
+        ? peerSnapshots.get(viewer.peerId)
         : undefined;
-    const qualityPresentation = viewerQualityEvidence.get(
-      selectedViewer.peerId,
-    );
+    const qualityPresentation = viewerQualityEvidence.get(viewer.peerId);
     const qualityEvidence = qualityPresentation?.evidence;
     const hasMatchingQualityEvidence =
       qualityEvidence !== undefined &&
-      qualityEvidenceUpstreamMatches(qualityEvidence, selectedViewer.upstream);
+      qualityEvidenceUpstreamMatches(qualityEvidence, viewer.upstream);
     const hasCurrentQualityEvidence =
       hasMatchingQualityEvidence && qualityPresentation?.fresh === true;
-    const hasCommittedMedia = selectedViewer.mediaReady === true;
+    const hasCommittedMedia = viewer.mediaReady === true;
     const hasCurrentRouteEvidence =
       hasPeerRouteEvidence(snapshot) ||
       hasCurrentQualityEvidence ||
@@ -2500,10 +2518,10 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       : snapshot && hasPeerRouteEvidence(snapshot)
         ? snapshot.metrics
         : null;
-    selectedDetail = {
+    return {
       route:
-        hasCurrentRouteEvidence && selectedViewer.upstream.kind !== "none"
-          ? selectedViewer.upstream.kind === "peer"
+        hasCurrentRouteEvidence && viewer.upstream.kind !== "none"
+          ? viewer.upstream.kind === "peer"
             ? "p2p"
             : "sfu"
           : null,
@@ -2519,7 +2537,27 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           },
       error: snapshot?.error ?? null,
     };
-  }
+  };
+  const viewerDetails = new Map(
+    viewers.map((viewer) => [viewer.peerId, detailForViewer(viewer)] as const),
+  );
+  const selectedViewer = selectedPawn
+    ? (viewers.find((viewer) => viewer.peerId === selectedPawn) ?? null)
+    : null;
+  const selectedDetail = selectedViewer
+    ? (viewerDetails.get(selectedViewer.peerId) ?? null)
+    : null;
+  const viewerOverviewEntries: ViewerOverviewEntry[] = couchEntries.map(
+    (entry) => {
+      const detail = viewerDetails.get(entry.key);
+      return {
+        ...entry,
+        statusLabel: entry.statusLabel ?? t("state.peer.connecting"),
+        route: detail?.route ?? null,
+        metrics: detail?.metrics ?? null,
+      };
+    },
+  );
 
   const noticeText = noticeValue
     ? noticeValue.kind === "text"
@@ -2540,6 +2578,20 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           : room
             ? t("host.roomReady")
             : t("host.notStarted");
+  const titleFrameKey =
+    phase === "live"
+      ? sharingPaused
+        ? "paused"
+        : "hostActive"
+      : phase === "starting"
+        ? "hostStarting"
+        : phase === "ended"
+          ? "hostEnded"
+          : room
+            ? "hostReady"
+            : "hostIdle";
+  const titleContent = titleFrames(titleFrameKey);
+  useDocumentTitle([room?.roomId, titleContent[0]], titleContent.slice(1));
 
   // Vis mode swaps native title tooltips for 2-panel hint comics; text modes
   // render the trigger unchanged, so markup structure stays identical.
@@ -2773,6 +2825,17 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         </div>
 
         <div className="lr-deck">
+          {showConnectionDetails && viewerOverviewEntries.length > 0 ? (
+            <ViewerOverview
+              entries={viewerOverviewEntries}
+              selectedKey={selectedPawn}
+              onSelect={(peerId) =>
+                setSelectedPawn((current) =>
+                  current === peerId ? null : peerId,
+                )
+              }
+            />
+          ) : null}
           {selectedViewer && selectedDetail ? (
             <PawnDetail
               pawnKey={selectedViewer.peerId}
@@ -3525,8 +3588,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                   title={showConnectionDetails ? "host.details.hide" : "host.details"}
                   tone={showConnectionDetails ? "on" : undefined}
                   expanded={showConnectionDetails}
-                  controls="host-details-panel"
-                  disabled={!details || !stream}
+                  controls="host-details-panel host-viewer-overview"
+                  disabled={(!details || !stream) && viewers.length === 0}
                   onClick={() => setShowConnectionDetails((current) => !current)}
                 />,
                 "start",
@@ -3647,6 +3710,11 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                 hostLabel={labeledHostPresence?.label ?? displayName}
                 viewers={viewers}
                 selectedPeerId={selectedPawn}
+                onSelectPeer={(peerId) =>
+                  setSelectedPawn((current) =>
+                    current === peerId ? null : peerId,
+                  )
+                }
               />
             </Row>
           ) : null}

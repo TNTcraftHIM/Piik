@@ -91,17 +91,27 @@ export const RouteTree = memo(function RouteTree({
   viewers,
   selfPeerId,
   selectedPeerId,
+  selectablePeerIds,
+  onSelectPeer,
 }: {
   hostPeerId: string | null;
   hostLabel: string;
   viewers: readonly LabeledViewerPresence[];
   selfPeerId?: string | null;
   selectedPeerId?: string | null;
+  selectablePeerIds?: readonly string[];
+  onSelectPeer?: (peerId: string) => void;
 }) {
   const { t } = useCopy();
   const narrowViewport = useNarrowViewport();
   const layoutConfig = topologyLayoutForViewport(narrowViewport);
   const topology = deriveParticipantTopology(hostPeerId, viewers);
+  const selectable = new Set(
+    selectablePeerIds ?? (onSelectPeer ? viewers.map((viewer) => viewer.peerId) : []),
+  );
+  const selectPeer = (peerId: string): void => {
+    if (selectable.has(peerId)) onSelectPeer?.(peerId);
+  };
 
   const nodes: TreeNode[] = [];
   const collect = (branch: TopologyBranch, via: string | null, sfu: boolean) => {
@@ -245,8 +255,9 @@ export const RouteTree = memo(function RouteTree({
       </span>
       <svg
         viewBox={`0 0 ${width} ${height}`}
-        aria-hidden="true"
-        focusable="false"
+        aria-hidden={onSelectPeer ? undefined : true}
+        aria-label={onSelectPeer ? t("host.topology") : undefined}
+        focusable={onSelectPeer ? undefined : "false"}
         style={
           narrowViewport || scrollableCanvas
             ? { width, maxWidth: "none" }
@@ -360,7 +371,7 @@ export const RouteTree = memo(function RouteTree({
               className={`lr-route-node${node.ready ? "" : " is-recovering"}${selected ? " is-selected" : ""}`}
               transform={`translate(${centeredPawnX(point.x, scale)}, ${point.y - 15}) scale(${scale})`}
             >
-              <PawnSvg color={pawnColor(node.key, node.you)} />
+              <PawnSvg color={pawnColor(node.key)} />
               {selected ? (
                 <circle className="lr-route-selection" cx="20" cy="26" r="25" />
               ) : null}
@@ -378,10 +389,7 @@ export const RouteTree = memo(function RouteTree({
             transform={`translate(${centeredPawnX(point.x, ROOT_SCALE)}, ${point.y - 15}) scale(${ROOT_SCALE})`}
           >
             <PawnSvg
-              color={pawnColor(
-                point.viewer.peerId,
-                selfPeerId === point.viewer.peerId,
-              )}
+              color={pawnColor(point.viewer.peerId)}
             />
             {selectedPeerId === point.viewer.peerId ? (
               <circle className="lr-route-selection" cx="20" cy="26" r="25" />
@@ -427,6 +435,38 @@ export const RouteTree = memo(function RouteTree({
             )}
           </text>
         ))}
+        {[...nodes, ...pendingPos.map(({ viewer }) => ({
+          key: viewer.peerId,
+          label: viewer.label,
+        }))]
+          .filter((node) => selectable.has(node.key))
+          .map((node) => {
+            const point = pos.get(node.key) ?? pendingPos.find(
+              (pending) => pending.viewer.peerId === node.key,
+            );
+            if (!point) return null;
+            return (
+              <rect
+                key={`hit-${node.key}`}
+                className="lr-route-hit"
+                x={point.x - 48}
+                y={point.y - 28}
+                width={96}
+                height={72}
+                rx={12}
+                role="button"
+                tabIndex={0}
+                aria-label={`${node.label} · ${t("host.details")}`}
+                onClick={() => selectPeer(node.key)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    selectPeer(node.key);
+                  }
+                }}
+              />
+            );
+          })}
       </svg>
 
       <ul className="visually-hidden">
