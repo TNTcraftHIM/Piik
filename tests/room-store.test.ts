@@ -350,6 +350,22 @@ describe("RoomStore", () => {
     );
   });
 
+  it("keeps password-gate saturation distinct from invalid credentials", async () => {
+    const { store: roomStore } = store();
+    const room = await roomStore.createRoom("private", "room-password");
+
+    await expect(
+      withSaturatedPasswordGate(roomStore, () =>
+        roomStore.connectViewerWithPassword({
+          roomId: room.roomId,
+          password: "room-password",
+          clientId: "busy-password-client",
+          sessionId: "busy-password-session",
+        }),
+      ),
+    ).rejects.toEqual(new RoomStoreError("ROOM_BUSY"));
+  });
+
   it("keeps room replacement and password updates unchanged when busy", async () => {
     const { store: roomStore } = store({
       maxRooms: 3,
@@ -439,7 +455,14 @@ describe("RoomStore", () => {
           result.status === "rejected" &&
           result.reason.code === "INVALID_TOKEN",
       ),
-    ).toHaveLength(38);
+    ).toHaveLength(16);
+    expect(
+      results.filter(
+        (result) =>
+          result.status === "rejected" &&
+          result.reason.code === "ROOM_BUSY",
+      ),
+    ).toHaveLength(22);
   });
 
   it("rotates and revokes Viewer grants without changing code entry", async () => {

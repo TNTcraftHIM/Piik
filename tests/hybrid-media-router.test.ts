@@ -656,6 +656,93 @@ describe("HybridMediaRouter v9 runtime", () => {
     }
   });
 
+  it("keeps committed-edge signaling authorized during another Peer candidate", async () => {
+    const { store, sent, router } = harness(2);
+    try {
+      const room = await store.createRoom();
+      const host = connectHost(store, room);
+      complete(router, host);
+
+      const roots = [
+        connectViewer(store, room, "stable-root-a"),
+        connectViewer(store, room, "stable-root-b"),
+      ];
+      for (const root of roots) {
+        complete(router, root);
+        await vi.waitFor(() => expect(preparedFor(sent, root.sessionId)).toBeDefined());
+        const prepared = preparedFor(sent, root.sessionId)!;
+        router.handleRouteReady(root, {
+          type: "route-ready",
+          revision: prepared.revision,
+          phase: "prepare",
+        });
+        router.setViewerRelayCapacity(root, 1);
+      }
+
+      const candidateChild = connectViewer(store, room, "candidate-child");
+      complete(router, candidateChild);
+      const prepared = await vi.waitFor(() => {
+        const update = preparedFor(sent, candidateChild.sessionId);
+        expect(update?.assignment.upstream.kind).toBe("peer");
+        return update!;
+      });
+      const candidateParentPeerId =
+        prepared.assignment.upstream.kind === "peer"
+          ? prepared.assignment.upstream.peerId
+          : "";
+      const candidateParent = roots.find(
+        (root) => root.peerId === candidateParentPeerId,
+      )!;
+      const activeParentEdge = router.resolveActiveViewerMediaEdge(
+        room.roomId,
+        candidateParent.peerId,
+      )!;
+
+      expect(
+        router.peerSignalAuthorization({
+          roomId: room.roomId,
+          sourcePeerId: host.peerId,
+          sourceSessionId: host.sessionId,
+          targetPeerId: candidateParent.peerId,
+          targetSessionId: candidateParent.sessionId,
+          connectionId: activeParentEdge.connectionId,
+          signalKind: "description",
+          descriptionType: "offer",
+        }),
+      ).toBe(true);
+      expect(
+        router.peerSignalAuthorization({
+          roomId: room.roomId,
+          sourcePeerId: candidateParent.peerId,
+          sourceSessionId: candidateParent.sessionId,
+          targetPeerId: candidateChild.peerId,
+          targetSessionId: candidateChild.sessionId,
+          connectionId: prepared.candidate.connectionId,
+          signalKind: "description",
+          descriptionType: "offer",
+        }),
+      ).toBe("probe");
+
+      const unrelatedRoot = roots.find(
+        (root) => root.peerId !== candidateParent.peerId,
+      )!;
+      expect(
+        router.peerSignalAuthorization({
+          roomId: room.roomId,
+          sourcePeerId: unrelatedRoot.peerId,
+          sourceSessionId: unrelatedRoot.sessionId,
+          targetPeerId: candidateChild.peerId,
+          targetSessionId: candidateChild.sessionId,
+          connectionId: prepared.candidate.connectionId,
+          signalKind: "description",
+          descriptionType: "offer",
+        }),
+      ).toBeUndefined();
+    } finally {
+      await router.close();
+    }
+  });
+
   it("commits P2P quality convergence after client relative approval", async () => {
     const { store, sent, router } = harness(2);
     try {
