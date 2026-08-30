@@ -76,6 +76,7 @@ function createFakePublisher(log: string[], label: string) {
     }),
     replaceStream: vi.fn(async () => true),
     updateProfile: vi.fn(async () => true),
+    setPaused: vi.fn(),
     disconnect: vi.fn(async () => {
       log.push(`${label}:disconnect`);
     }),
@@ -559,6 +560,7 @@ describe("minimal route transition contracts", () => {
     });
     await route.acceptConfig(sfuConfig(1));
     route.setPaused(true);
+    expect(publishers[0]?.setPaused).toHaveBeenCalledWith(true);
 
     await route.acceptAndWait({
       revision: 2,

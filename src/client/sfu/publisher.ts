@@ -8,6 +8,8 @@ import type {
 
 import {
   audioSenderParameterWarning,
+  applyVideoCaptureProfile,
+  cloneSenderVideoTrack,
   configureScreenAudioSender,
   configureVideoSender,
   needsStartupVideoProfile,
@@ -58,7 +60,9 @@ export type SfuPublisherFailureStage =
 
 interface PublishedTrack {
   publication: LocalTrackPublication;
+  sourceTrack: MediaStreamTrack;
   rawTrack: MediaStreamTrack;
+  stopOnRelease: boolean;
 }
 
 interface PublishedVideoConfiguration {
@@ -205,73 +209,82 @@ export class SfuPublisher {
         const audioTrack = stream.getAudioTracks()[0] ?? null;
 
         failureStage = "video-publish";
-        const video = await publishTrack(
+        const video = await publishVideoTrack(
           room,
           videoTrack,
+          profile,
           sdk.Track.Source.ScreenShare,
           videoPublishOptions(effectiveVideoProfile, videoCodec),
         );
-        if (!this.owns(room, generation)) {
-          return false;
-        }
-        failureStage = "sender-config";
-        const videoConfiguration = await configurePublishedVideo(
-          video,
-          effectiveVideoProfile,
-          () => this.owns(room, generation),
-        );
-        if (!videoConfiguration || !this.owns(room, generation)) {
-          return false;
-        }
-
-        let audio: PublishedTrack | null = null;
-        let audioConfiguration: PublishedAudioConfiguration | null = null;
-        let audioWarning: string | null = null;
-        if (audioTrack) {
-          failureStage = "audio-publish";
-          audio = await publishTrack(
-            room,
-            audioTrack,
-            sdk.Track.Source.ScreenShareAudio,
-            audioPublishOptions(sdk, profile.screenAudioQuality),
-          );
+        let adoptedVideo = false;
+        try {
           if (!this.owns(room, generation)) {
             return false;
           }
-          retainPublishedAudioOptions(audio, profile, sdk);
-          try {
-            const audioSender = publishedAudioSender(audio);
-            audioConfiguration = await configurePublishedAudio(
-              audio,
-              audioSender,
-              profile,
-              () => this.owns(room, generation),
+          failureStage = "sender-config";
+          const videoConfiguration = await configurePublishedVideo(
+            video,
+            effectiveVideoProfile,
+            () => this.owns(room, generation),
+          );
+          if (!videoConfiguration || !this.owns(room, generation)) {
+            return false;
+          }
+
+          let audio: PublishedTrack | null = null;
+          let audioConfiguration: PublishedAudioConfiguration | null = null;
+          let audioWarning: string | null = null;
+          if (audioTrack) {
+            failureStage = "audio-publish";
+            audio = await publishTrack(
+              room,
+              audioTrack,
+              sdk.Track.Source.ScreenShareAudio,
+              audioPublishOptions(sdk, profile.screenAudioQuality),
             );
-            if (!audioConfiguration || !this.owns(room, generation)) {
-              return false;
-            }
-            audioWarning = audioConfiguration.warning;
-          } catch (error) {
             if (!this.owns(room, generation)) {
               return false;
             }
-            audioWarning = audioSenderFailureWarning(error);
+            retainPublishedAudioOptions(audio, profile, sdk);
+            try {
+              const audioSender = publishedAudioSender(audio);
+              audioConfiguration = await configurePublishedAudio(
+                audio,
+                audioSender,
+                profile,
+                () => this.owns(room, generation),
+              );
+              if (!audioConfiguration || !this.owns(room, generation)) {
+                return false;
+              }
+              audioWarning = audioConfiguration.warning;
+            } catch (error) {
+              if (!this.owns(room, generation)) {
+                return false;
+              }
+              audioWarning = audioSenderFailureWarning(error);
+            }
+          }
+
+          this.video = video;
+          this.audio = audio;
+          adoptedVideo = true;
+          this.appliedVideoProfile = effectiveVideoProfile;
+          this.retainSenderParameters(
+            videoConfiguration,
+            audioConfiguration?.readback ?? null,
+            audioWarning,
+            audioConfiguration?.sender ?? null,
+          );
+          this.failureStage = null;
+          this.state = "active";
+          this.startStats(video);
+          return true;
+        } finally {
+          if (!adoptedVideo) {
+            releasePublishedTrack(video);
           }
         }
-
-        this.video = video;
-        this.audio = audio;
-        this.appliedVideoProfile = effectiveVideoProfile;
-        this.retainSenderParameters(
-          videoConfiguration,
-          audioConfiguration?.readback ?? null,
-          audioWarning,
-          audioConfiguration?.sender ?? null,
-        );
-        this.failureStage = null;
-        this.state = "active";
-        this.startStats(video);
-        return true;
       } catch (error) {
         if (this.owns(room, generation)) {
           this.failureStage = failureStage;
@@ -348,9 +361,19 @@ export class SfuPublisher {
       }
       const effectiveVideoProfile = startupVideoProfile(profile);
 
-      const nextVideoTrack = requiredVideoTrack(stream);
+      const nextVideoSource = requiredVideoTrack(stream);
+      const nextVideoTrack = cloneSenderVideoTrack(nextVideoSource);
+      try {
+        await applyVideoCaptureProfile(nextVideoTrack, profile);
+      } catch {
+        nextVideoTrack.stop();
+        this.failureStage = "source";
+        return false;
+      }
       const nextAudioTrack = stream.getAudioTracks()[0] ?? null;
       const previousAudio = this.audio;
+      const previousVideoTrack = previousVideo.rawTrack;
+      let retainedNextVideoTrack = false;
       let videoReplaceAttempted = false;
       let audioReplaceAttempted = false;
       let audioConfiguration: PublishedAudioConfiguration | null = null;
@@ -421,6 +444,9 @@ export class SfuPublisher {
           return false;
         }
         previousVideo.rawTrack = nextVideoTrack;
+        previousVideo.sourceTrack = nextVideoSource;
+        retainedNextVideoTrack = true;
+        previousVideoTrack.stop();
         if (previousAudio && nextAudioTrack) {
           previousAudio.rawTrack = nextAudioTrack;
         }
@@ -463,7 +489,7 @@ export class SfuPublisher {
             }
           }
           if (videoReplaceAttempted) {
-            await replacePublishedTrack(previousVideo, previousVideo.rawTrack);
+            await replacePublishedTrack(previousVideo, previousVideoTrack);
             if (!this.owns(room, generation)) {
               return false;
             }
@@ -489,6 +515,10 @@ export class SfuPublisher {
             await this.failClosed(room, generation);
           }
           throw rollbackError;
+        }
+      } finally {
+        if (!retainedNextVideoTrack) {
+          nextVideoTrack.stop();
         }
       }
     });
@@ -565,6 +595,7 @@ export class SfuPublisher {
       let videoSucceeded = true;
       if (updateVideo) {
         try {
+          await applyVideoCaptureProfile(video.rawTrack, profile);
           const configured = await configurePublishedVideo(
             video,
             effectiveVideoProfile,
@@ -596,6 +627,10 @@ export class SfuPublisher {
           videoSucceeded = false;
           const failureWarning = say("host.fail.sfuParams");
           try {
+            await applyVideoCaptureProfile(
+              video.rawTrack,
+              previousVideoProfile,
+            );
             const rolledBack = await configurePublishedVideo(
               video,
               previousVideoProfile,
@@ -736,6 +771,15 @@ export class SfuPublisher {
     return this.audioSenderParameters;
   }
 
+  setPaused(paused: boolean): void {
+    if (this.video) {
+      this.video.rawTrack.enabled = !paused;
+    }
+    if (this.audio) {
+      this.audio.rawTrack.enabled = !paused;
+    }
+  }
+
   private reapplyAudioAfterReconnect(room: Room, generation: number): void {
     void this.enqueue(async () => {
       if (!this.owns(room, generation) || this.state !== "active") {
@@ -756,7 +800,7 @@ export class SfuPublisher {
         ? currentPublishedTrack(
             room,
             sdk.Track.Source.ScreenShare,
-            previousVideo.rawTrack,
+            previousVideo,
           )
         : null;
       const videoSender = currentVideo?.publication.videoTrack?.sender ?? null;
@@ -769,7 +813,7 @@ export class SfuPublisher {
         ? currentPublishedTrack(
             room,
             sdk.Track.Source.ScreenShareAudio,
-            previousAudio.rawTrack,
+            previousAudio,
           )
         : null;
       const audioSender = currentAudio?.publication.audioTrack?.sender ?? null;
@@ -788,6 +832,33 @@ export class SfuPublisher {
       const audio = audioChanged ? currentAudio : previousAudio;
       if (videoChanged) {
         this.stopStats();
+        const profile = this.desiredProfile;
+        if (!profile) {
+          this.failureStage = "transport";
+          await this.failClosed(room, generation);
+          return false;
+        }
+        const previousRawTrack = video.rawTrack;
+        const nextRawTrack = cloneSenderVideoTrack(video.sourceTrack);
+        let retainedNextTrack = false;
+        try {
+          await applyVideoCaptureProfile(nextRawTrack, profile);
+          await replacePublishedTrack(video, nextRawTrack);
+          if (!this.owns(room, generation)) {
+            return false;
+          }
+          video.rawTrack = nextRawTrack;
+          retainedNextTrack = true;
+          previousRawTrack.stop();
+        } catch {
+          this.failureStage = "transport";
+          await this.failClosed(room, generation);
+          return false;
+        } finally {
+          if (!retainedNextTrack) {
+            nextRawTrack.stop();
+          }
+        }
       }
       this.video = video;
       this.audio = audio;
@@ -940,6 +1011,7 @@ export class SfuPublisher {
     this.stopStats();
     this.state = "disconnected";
     const room = this.room;
+    releasePublishedTrack(this.video);
     this.room = null;
     this.sdk = null;
     this.video = null;
@@ -1148,7 +1220,32 @@ async function publishTrack(
   if (!publication.track) {
     throw new Error("SFU did not retain the published track");
   }
-  return { publication, rawTrack };
+  return {
+    publication,
+    sourceTrack: rawTrack,
+    rawTrack,
+    stopOnRelease: false,
+  };
+}
+
+async function publishVideoTrack(
+  room: Room,
+  sourceTrack: MediaStreamTrack,
+  profile: QualityProfile,
+  source: Track.Source,
+  options: TrackPublishOptions,
+): Promise<PublishedTrack> {
+  const rawTrack = cloneSenderVideoTrack(sourceTrack);
+  try {
+    await applyVideoCaptureProfile(rawTrack, profile);
+    const published = await publishTrack(room, rawTrack, source, options);
+    published.sourceTrack = sourceTrack;
+    published.stopOnRelease = true;
+    return published;
+  } catch (error) {
+    rawTrack.stop();
+    throw error;
+  }
 }
 
 async function replacePublishedTrack(
@@ -1163,11 +1260,23 @@ async function replacePublishedTrack(
 }
 
 async function unpublishTrack(room: Room, published: PublishedTrack): Promise<void> {
-  const localTrack = published.publication.track;
-  if (!localTrack) {
-    throw new Error("SFU publication has no local track");
+  try {
+    const localTrack = published.publication.track;
+    if (!localTrack) {
+      throw new Error("SFU publication has no local track");
+    }
+    await room.localParticipant.unpublishTrack(localTrack, false);
+  } finally {
+    releasePublishedTrack(published);
   }
-  await room.localParticipant.unpublishTrack(localTrack, false);
+}
+
+function releasePublishedTrack(published: PublishedTrack | null): void {
+  if (!published?.stopOnRelease) {
+    return;
+  }
+  published.stopOnRelease = false;
+  published.rawTrack.stop();
 }
 
 async function configurePublishedVideo(
@@ -1245,18 +1354,23 @@ function publishedAudioSender(published: PublishedTrack): RTCRtpSender {
 function currentPublishedTrack(
   room: Room,
   source: Track.Source,
-  expectedRawTrack: MediaStreamTrack,
+  expected: PublishedTrack,
 ): PublishedTrack | null {
   const publication = room.localParticipant.getTrackPublication(source);
   const rawTrack = publication?.track?.mediaStreamTrack;
   if (
     !publication ||
     !rawTrack ||
-    rawTrack !== expectedRawTrack
+    rawTrack !== expected.rawTrack
   ) {
     return null;
   }
-  return { publication, rawTrack };
+  return {
+    publication,
+    sourceTrack: expected.sourceTrack,
+    rawTrack,
+    stopOnRelease: expected.stopOnRelease,
+  };
 }
 
 function retainPublishedAudioOptions(

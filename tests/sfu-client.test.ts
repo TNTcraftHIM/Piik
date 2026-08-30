@@ -326,11 +326,21 @@ const qualityProfile = {
 } as const;
 
 function track(kind: "video" | "audio", id: string): MediaStreamTrack {
-  return Object.assign(new EventTarget(), {
+  const mediaTrack = Object.assign(new EventTarget(), {
     id,
     kind,
+    contentHint: "",
+    enabled: true,
     getSettings: () => ({}),
-  }) as MediaStreamTrack;
+    applyConstraints: vi.fn(async () => undefined),
+    stop: vi.fn(),
+  }) as unknown as MediaStreamTrack;
+  mediaTrack.clone = vi.fn(() => {
+    const clone = track(kind, id);
+    clone.getSettings = mediaTrack.getSettings.bind(mediaTrack);
+    return clone;
+  });
+  return mediaTrack;
 }
 
 function remoteTrack(
@@ -758,7 +768,10 @@ describe("SfuPublisher", () => {
 
     const room = livekit.state.rooms[0];
     const sender = room.localParticipant.publications[0].track.sender;
-    expect(room.localParticipant.publishTrack).toHaveBeenNthCalledWith(1, video, {
+    const publishedVideo = room.localParticipant.publishTrack.mock.calls[0]?.[0];
+    expect(publishedVideo).not.toBe(video);
+    expect(publishedVideo?.id).toBe(video.id);
+    expect(room.localParticipant.publishTrack).toHaveBeenNthCalledWith(1, publishedVideo, {
       source: Track.Source.ScreenShare,
       backupCodec: false,
       videoCodec: "vp8",
@@ -807,7 +820,39 @@ describe("SfuPublisher", () => {
 
     await expect(publisher.deactivate()).resolves.toBe(true);
     expect(room.localParticipant.unpublishTrack).toHaveBeenCalledTimes(2);
+    expect(publishedVideo?.stop).toHaveBeenCalledOnce();
+    expect(video.stop).not.toHaveBeenCalled();
     expect(room.disconnect).not.toHaveBeenCalled();
+  });
+
+  it("owns SFU video clone controls without stopping the capture source", async () => {
+    const publisher = new SfuPublisher();
+    const sourceVideo = track("video", "capture-video");
+    sourceVideo.contentHint = "motion";
+    await publisher.connect(connection);
+    await publisher.activate(stream(sourceVideo), qualityProfile);
+    const publishedVideo = livekit.state.rooms[0].localParticipant.publications[0]
+      .rawTrack;
+
+    expect(publishedVideo).not.toBe(sourceVideo);
+    expect(publishedVideo.contentHint).toBe("motion");
+    publisher.setPaused(true);
+    expect(publishedVideo.enabled).toBe(false);
+    expect(sourceVideo.enabled).toBe(true);
+    publisher.setPaused(false);
+
+    await expect(
+      publisher.updateProfile(QUALITY_PROFILES["720p30"]),
+    ).resolves.toBe(true);
+    expect(publishedVideo.applyConstraints).toHaveBeenLastCalledWith({
+      width: { ideal: 1280, max: 1280 },
+      height: { ideal: 720, max: 720 },
+      frameRate: { ideal: 30, max: 30 },
+    });
+
+    await publisher.disconnect();
+    expect(publishedVideo.stop).toHaveBeenCalledOnce();
+    expect(sourceVideo.stop).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -841,13 +886,18 @@ describe("SfuPublisher", () => {
   it("fails closed when initial sender configuration is rejected", async () => {
     const disconnected = vi.fn();
     const publisher = new SfuPublisher({ onDisconnected: disconnected });
+    const sourceVideo = track("video", "video-1");
     await publisher.connect(connection);
     livekit.state.nextSenderParameterError = new Error("parameters rejected");
 
     await expect(
-      publisher.activate(stream(track("video", "video-1")), qualityProfile),
+      publisher.activate(stream(sourceVideo), qualityProfile),
     ).rejects.toThrow("parameters rejected");
 
+    const publishedVideo = livekit.state.rooms[0].localParticipant.publications[0]
+      .rawTrack;
+    expect(publishedVideo.stop).toHaveBeenCalledOnce();
+    expect(sourceVideo.stop).not.toHaveBeenCalled();
     expect(livekit.state.rooms[0].disconnect).toHaveBeenCalledWith(false);
     expect(disconnected).toHaveBeenCalledOnce();
     expect(publisher.getSenderParameters()).toBeNull();
@@ -1085,9 +1135,10 @@ describe("SfuPublisher", () => {
 
   it("rebinds republished tracks after a full reconnect", async () => {
     const publisher = new SfuPublisher();
+    const sourceVideo = track("video", "video-1");
     await publisher.connect(connection);
     await publisher.activate(
-      stream(track("video", "video-1"), track("audio", "audio-1")),
+      stream(sourceVideo, track("audio", "audio-1")),
       { ...qualityProfile, screenAudioQuality: "music" },
     );
     await expect(
@@ -1099,6 +1150,7 @@ describe("SfuPublisher", () => {
     const room = livekit.state.rooms[0];
     const oldVideoPublication = room.localParticipant.publications[0];
     const oldAudioPublication = room.localParticipant.publications[1];
+    const oldPublishedVideo = oldVideoPublication.rawTrack;
 
     await room.localParticipant.republishForReconnect();
     const videoPublication = room.localParticipant.getTrackPublication(
@@ -1113,8 +1165,12 @@ describe("SfuPublisher", () => {
     room.emit(RoomEvent.Reconnected);
 
     await vi.waitFor(() =>
-      expect(publisher.getAudioSenderParameters()).not.toBeNull(),
+      expect(videoPublication.track.currentTrack).not.toBe(oldPublishedVideo),
     );
+    expect(publisher.getAudioSenderParameters()).not.toBeNull();
+    expect(videoPublication.track.currentTrack.id).toBe(sourceVideo.id);
+    expect(oldPublishedVideo.stop).toHaveBeenCalledOnce();
+    expect(sourceVideo.stop).not.toHaveBeenCalled();
     expect(audioPublication.track.sender.setParameters).not.toHaveBeenCalled();
     expect(audioPublication.track.sender.parameters.encodings[0]?.maxBitrate).toBe(
       192_000,
@@ -1485,6 +1541,7 @@ describe("SfuPublisher", () => {
     await publisher.connect(connection);
     await publisher.activate(stream(previousVideo), qualityProfile);
     const localTrack = livekit.state.rooms[0].localParticipant.publications[0].track;
+    const previousPublishedVideo = localTrack.currentTrack;
     localTrack.replaceTrack.mockImplementationOnce(async (replacement) => {
       localTrack.currentTrack = replacement;
       throw new Error("sender swap failed after applying");
@@ -1492,9 +1549,16 @@ describe("SfuPublisher", () => {
 
     await expect(publisher.replaceStream(stream(nextVideo))).resolves.toBe(false);
 
-    expect(localTrack.replaceTrack).toHaveBeenNthCalledWith(1, nextVideo);
-    expect(localTrack.replaceTrack).toHaveBeenNthCalledWith(2, previousVideo);
-    expect(localTrack.currentTrack).toBe(previousVideo);
+    const nextPublishedVideo = localTrack.replaceTrack.mock.calls[0]?.[0];
+    expect(nextPublishedVideo).not.toBe(nextVideo);
+    expect(nextPublishedVideo?.id).toBe(nextVideo.id);
+    expect(localTrack.replaceTrack).toHaveBeenNthCalledWith(
+      2,
+      previousPublishedVideo,
+    );
+    expect(localTrack.currentTrack).toBe(previousPublishedVideo);
+    expect(nextPublishedVideo?.stop).toHaveBeenCalledOnce();
+    expect(previousPublishedVideo.stop).not.toHaveBeenCalled();
   });
 
   it("uses the screen audio preset when a replacement adds audio", async () => {
@@ -1544,6 +1608,7 @@ describe("SfuPublisher", () => {
     await publisher.connect(connection);
     await publisher.activate(stream(previousVideo), qualityProfile);
     const localTrack = livekit.state.rooms[0].localParticipant.publications[0].track;
+    const previousPublishedVideo = localTrack.currentTrack;
     localTrack.sender.setParameters.mockRejectedValueOnce(
       new Error("replacement parameters rejected"),
     );
@@ -1553,7 +1618,7 @@ describe("SfuPublisher", () => {
     ).resolves.toBe(false);
 
     expect(localTrack.replaceTrack).toHaveBeenCalledTimes(2);
-    expect(localTrack.currentTrack).toBe(previousVideo);
+    expect(localTrack.currentTrack).toBe(previousPublishedVideo);
     expect(localTrack.sender.setParameters).toHaveBeenCalledTimes(3);
     expect(publisher.getSenderParameters()?.applied.maxBitrate).toBe(8_000_000);
     expect(publisher.getQualityWarning()).toBe("切换 SFU 分享来源失败");

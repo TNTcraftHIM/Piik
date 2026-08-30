@@ -168,7 +168,11 @@ export class HostProvisionalChild {
 
   updateProfile(profile: QualityProfile): Promise<boolean> {
     const peer = this.livePeer();
-    return peer ? peer.updateProfile(profile) : Promise.resolve(true);
+    return peer ? peer.updateCaptureProfile(profile) : Promise.resolve(true);
+  }
+
+  setPaused(paused: boolean): void {
+    this.livePeer()?.setPaused(paused);
   }
 
   async replaceStream(stream: MediaStream): Promise<boolean> {
