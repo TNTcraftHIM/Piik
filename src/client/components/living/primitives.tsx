@@ -207,7 +207,7 @@ export function Pill({
   tone?: "bad" | "good";
   label: string;
   alert?: boolean;
-  comic?: ComicKind;
+  comic?: ComicKind | HintKind;
 }) {
   const { vis } = useCopy();
   const wrapped = vis && comic;

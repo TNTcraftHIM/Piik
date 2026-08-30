@@ -4,9 +4,16 @@ import {
   formatPacketLossPercent,
   qualityLimitationSummary,
 } from "../src/client/components/connection-details.ts";
-import { EMPTY_METRICS, type PeerSnapshot } from "../src/client/types.ts";
+import {
+  EMPTY_METRICS,
+  type PeerSnapshot,
+  type QualityWarningKind,
+} from "../src/client/types.ts";
 
-function snapshot(qualityWarning: string | null): PeerSnapshot {
+function snapshot(
+  qualityWarning: string | null,
+  qualityWarningKind: QualityWarningKind | null = null,
+): PeerSnapshot {
   return {
     peerId: "viewer-1",
     connectionId: "connection-1",
@@ -15,6 +22,7 @@ function snapshot(qualityWarning: string | null): PeerSnapshot {
     metrics: { ...EMPTY_METRICS, qualityLimitationReason: "bandwidth" },
     error: null,
     qualityWarning,
+    qualityWarningKind,
   };
 }
 
@@ -23,10 +31,13 @@ describe("progressive connection details", () => {
     expect(
       qualityLimitationSummary([
         snapshot(null),
-        snapshot("当前连接带宽受限，画质已自动降低"),
-        snapshot("编码性能受限，画质已自动降低"),
+        snapshot("当前连接带宽受限，画质已自动降低", "bandwidth"),
+        snapshot("编码性能受限，画质已自动降低", "cpu"),
       ]),
-    ).toBe("当前连接带宽受限，画质已自动降低");
+    ).toEqual({
+      message: "当前连接带宽受限，画质已自动降低",
+      kind: "bandwidth",
+    });
     expect(qualityLimitationSummary([snapshot(null)])).toBeNull();
   });
 

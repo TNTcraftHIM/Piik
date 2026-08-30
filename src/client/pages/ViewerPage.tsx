@@ -2499,8 +2499,14 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               {qualityLimitation ? (
                 <Pill
                   icon="alert"
-                  label={qualityLimitation}
-                  comic="warning"
+                  label={qualityLimitation.message}
+                  comic={
+                    qualityLimitation.kind === "bandwidth"
+                      ? "bandwidth-limited"
+                      : qualityLimitation.kind === "cpu"
+                        ? "encoder-limited"
+                        : "warning"
+                  }
                 />
               ) : null}
             </div>
@@ -2533,22 +2539,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           />
         </div>
         <div className="lr-deck">
-          {selectedPawn !== null && selectedChildEvidence ? (
-            <PawnDetail
-              pawnKey={selectedPawn}
-              name={
-                viewers.find((viewer) => viewer.peerId === selectedPawn)
-                  ?.label ?? selectedPawn
-              }
-              route={null}
-              metrics={metricsFromQualityEvidence(selectedChildEvidence.evidence)}
-              direction="receive"
-              tag={{ icon: "arrowUp", label: t("stats.downstream") }}
-              expanded={pawnMetricsExpanded}
-              onToggleMetrics={setPawnMetricsExpanded}
-              onClose={() => setSelectedPawn(null)}
-            />
-          ) : null}
           <div className="lr-row lr-viewer-summary-row">
             <div className="lr-row-group lr-viewer-room-slot">
               <FieldCap k="common.roomCode" />
@@ -2753,6 +2743,22 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
                 onToggle={setDownstreamMetricsExpanded}
               />
             </Row>
+          ) : null}
+          {selectedPawn !== null && selectedChildEvidence ? (
+            <PawnDetail
+              pawnKey={selectedPawn}
+              name={
+                viewers.find((viewer) => viewer.peerId === selectedPawn)
+                  ?.label ?? selectedPawn
+              }
+              route={null}
+              metrics={metricsFromQualityEvidence(selectedChildEvidence.evidence)}
+              direction="receive"
+              tag={{ icon: "arrowUp", label: t("stats.downstream") }}
+              expanded={pawnMetricsExpanded}
+              onToggleMetrics={setPawnMetricsExpanded}
+              onClose={() => setSelectedPawn(null)}
+            />
           ) : null}
           {showTopology && labeledHostPresence ? (
             <Row sub>

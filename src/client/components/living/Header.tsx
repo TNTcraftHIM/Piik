@@ -3,20 +3,44 @@
 import { VisGlyph } from "./primitives";
 import { BrandMark } from "./BrandMark";
 import { ComicTooltip } from "./ComicTooltip";
+import type { ComicKind } from "./Comic";
 import { useCopy, type Lang } from "../../ui/copy";
 import { useTheme } from "../../ui/theme";
 
 export type LedState = "live" | "busy" | "warn" | "bad" | "off";
 
-export function LedStrip({ state, label }: { state: LedState; label: string }) {
+export function LedStrip({
+  state,
+  label,
+  comic,
+}: {
+  state: LedState;
+  label: string;
+  comic?: ComicKind;
+}) {
   const { vis } = useCopy();
-  return (
-    <span className="lr-leds" data-state={state} role="status" title={vis ? undefined : label} aria-label={label}>
+  const wrapped = vis && comic;
+  const strip = (
+    <span
+      className="lr-leds"
+      data-state={state}
+      role="status"
+      title={vis ? undefined : label}
+      aria-label={label}
+      tabIndex={wrapped ? 0 : undefined}
+    >
       <i />
       <i />
       <i />
       {vis ? null : <span className="lr-leds-label">{label}</span>}
     </span>
+  );
+  return wrapped ? (
+    <ComicTooltip kind={wrapped} place="below" align="start">
+      {strip}
+    </ComicTooltip>
+  ) : (
+    strip
   );
 }
 

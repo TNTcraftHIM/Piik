@@ -1,4 +1,9 @@
-import type { PeerSnapshot } from "../types";
+import type { PeerSnapshot, QualityWarningKind } from "../types";
+
+export interface QualityLimitationSummary {
+  message: string;
+  kind: QualityWarningKind;
+}
 
 export function formatPacketLossPercent(
   value: number | null,
@@ -11,10 +16,13 @@ export function formatPacketLossPercent(
 
 export function qualityLimitationSummary(
   snapshots: readonly PeerSnapshot[],
-): string | null {
+): QualityLimitationSummary | null {
   for (const snapshot of snapshots) {
     if (snapshot.qualityWarning) {
-      return snapshot.qualityWarning;
+      return {
+        message: snapshot.qualityWarning,
+        kind: snapshot.qualityWarningKind ?? "other",
+      };
     }
   }
   return null;
