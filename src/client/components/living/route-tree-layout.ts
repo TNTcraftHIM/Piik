@@ -6,22 +6,29 @@ export interface TopologyLayout {
   maxVisibleLabelCodePoints: number;
 }
 
-const DESKTOP_LAYOUT: TopologyLayout = {
-  baseWidth: 640,
-  hostX: 170,
-  columnGap: 220,
-  rightLabelReserve: 170,
-  maxVisibleLabelCodePoints: 16,
-};
+const MIN_LAYOUT_WIDTH = 260;
+const MAX_LAYOUT_WIDTH = 640;
 
-const NARROW_LAYOUT: TopologyLayout = {
-  baseWidth: 260,
-  hostX: 54,
-  columnGap: 130,
-  rightLabelReserve: 65,
-  maxVisibleLabelCodePoints: 10,
-};
+function interpolate(start: number, end: number, progress: number): number {
+  return Math.round(start + (end - start) * progress);
+}
 
-export function topologyLayoutForViewport(narrow: boolean): TopologyLayout {
-  return narrow ? NARROW_LAYOUT : DESKTOP_LAYOUT;
+export function topologyLayoutForWidth(containerWidth: number): TopologyLayout {
+  const finiteWidth = Number.isFinite(containerWidth)
+    ? containerWidth
+    : MAX_LAYOUT_WIDTH;
+  const baseWidth = Math.round(
+    Math.min(MAX_LAYOUT_WIDTH, Math.max(MIN_LAYOUT_WIDTH, finiteWidth)),
+  );
+  const progress =
+    (baseWidth - MIN_LAYOUT_WIDTH) /
+    (MAX_LAYOUT_WIDTH - MIN_LAYOUT_WIDTH);
+  return {
+    baseWidth,
+    hostX: interpolate(54, 170, progress),
+    columnGap: interpolate(130, 220, progress),
+    rightLabelReserve: interpolate(65, 170, progress),
+    maxVisibleLabelCodePoints:
+      baseWidth < 420 ? 10 : baseWidth < 560 ? 13 : 16,
+  };
 }

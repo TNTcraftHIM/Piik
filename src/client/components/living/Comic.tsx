@@ -198,10 +198,9 @@ export function Moon({
   k?: number;
 }) {
   return (
-    <g transform={`translate(${r2(x - 229 * k)} ${r2(y - 48 * k)}) scale(${k})`}>
+    <g transform={`translate(${r2(x)} ${r2(y)}) scale(${k})`}>
       <path
-        fillRule="evenodd"
-        d="M229 39.5a8.5 8.5 0 1 1 0 17 8.5 8.5 0 1 1 0-17ZM232.5 42.3a6.3 6.3 0 1 0 0 11.4 6.3 6.3 0 1 0 0-11.4Z"
+        d="M0 -8.5A8.5 8.5 0 1 0 0 8.5A6.2 8.5 0 0 1 0 -8.5Z"
         fill="#f2e9c9"
       />
     </g>
@@ -471,11 +470,7 @@ ${rmBlock(
       <rect x={206} y={28} width={64} height={42} rx={8} fill={TV_BODY} stroke={TV_EDGE} strokeWidth={2} />
       <rect x={212} y={34} width={52} height={28} rx={4} fill={TV_SCREEN} />
       <g className="vls-wf-moon">
-        <path
-          fillRule="evenodd"
-          d="M229 39.5a8.5 8.5 0 1 1 0 17 8.5 8.5 0 1 1 0-17ZM232.5 42.3a6.3 6.3 0 1 0 0 11.4 6.3 6.3 0 1 0 0-11.4Z"
-          fill="#f2e9c9"
-        />
+        <Moon x={229} y={48} />
       </g>
       <g stroke="#a9bcd4" strokeWidth={2} strokeLinecap="round" fill="none">
         <path className="vls-wf-z1" opacity={0.55} d="M244 51h6l-6 4h6" />

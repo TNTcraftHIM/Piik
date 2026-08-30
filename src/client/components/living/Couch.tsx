@@ -1,5 +1,5 @@
 // The couch: the roster as pawns watching the TV. Joining pawns hop in,
-// self carries the green pointer, the host wears a crown (topology only).
+// self carries the green pointer, and the host wears a crown.
 import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
 import { participantColor } from "./participant-color";
@@ -30,19 +30,30 @@ export interface CouchEntry {
   selectable?: boolean;
 }
 
+export interface CouchHostEntry {
+  key: string;
+  name: string;
+  you?: boolean;
+  selected?: boolean;
+  controls?: string;
+  onSelect?: () => void;
+}
+
 export function Couch({
+  host,
   entries,
   selectedKey,
   onSelect,
   emptyHint,
 }: {
+  host?: CouchHostEntry | null;
   entries: CouchEntry[];
   selectedKey?: string | null;
   onSelect?: (key: string) => void;
   emptyHint?: string;
 }) {
   const { vis, t } = useCopy();
-  const crowded = entries.length > 10;
+  const crowded = entries.length + (host ? 1 : 0) > 10;
 
   return (
     <div className="lr-couch">
@@ -59,8 +70,37 @@ export function Couch({
         <div
           className={`lr-pawns${crowded ? " is-crowded" : ""}`}
           role="group"
-          aria-label={t("common.viewers")}
+          aria-label={`${t("common.host")} · ${t("common.viewers")}`}
         >
+          {host
+            ? host.onSelect
+              ? (
+                  <button
+                    type="button"
+                    className={`lr-pawn is-host${host.you ? " is-you" : ""}${host.selected ? " is-selected" : ""}`}
+                    title={host.name}
+                    aria-label={`${host.name} · ${t("common.host")}`}
+                    aria-pressed={host.selected}
+                    aria-controls={host.controls}
+                    onClick={host.onSelect}
+                  >
+                    <PawnSvg color={participantColor(host.key)} crown />
+                    <i className="lr-pawn-led" aria-hidden="true" />
+                    <span className="lr-pawn-name">{host.name}</span>
+                  </button>
+                )
+              : (
+                  <span
+                    className={`lr-pawn is-host is-static${host.you ? " is-you" : ""}`}
+                    title={host.name}
+                    aria-label={`${host.name} · ${t("common.host")}`}
+                  >
+                    <PawnSvg color={participantColor(host.key)} crown />
+                    <i className="lr-pawn-led" aria-hidden="true" />
+                    <span className="lr-pawn-name">{host.name}</span>
+                  </span>
+                )
+            : null}
           {entries.map((entry, index) => {
             const stateLabel = entry.connected
               ? t("state.peer.connected")
@@ -124,7 +164,7 @@ export function Couch({
         <Glyph name="users" size={14} />
         <b>{entries.length}</b>
       </span>
-      {entries.length === 0 ? (
+      {entries.length === 0 && !host ? (
         <div
           className="lr-couch-empty"
           title={vis ? undefined : (emptyHint ?? t("host.viewers.empty"))}

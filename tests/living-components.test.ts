@@ -93,6 +93,47 @@ describe("living-room presentation", () => {
     expect(html).toContain('aria-label="Viewers 1"');
   });
 
+  it("shows the Host as a stable couch participant without counting it as a Viewer", () => {
+    const hostKey = "host-stable-identity";
+    const html = renderToStaticMarkup(
+      createElement(Couch, {
+        host: { key: hostKey, name: "Host", you: true },
+        entries: [],
+      }),
+    );
+
+    expect(html).toContain("lr-pawn is-host is-static is-you");
+    expect(html).toContain(participantColor(hostKey));
+    expect(html).toContain("Host · 分享者");
+    expect(html).toContain('aria-label="分享者 · 观看者"');
+    expect(html).toContain('aria-label="观看者 0"');
+    expect(html).not.toContain("lr-couch-empty");
+  });
+
+  it("lets the Host pawn own the existing connection-details control", () => {
+    const html = renderToStaticMarkup(
+      createElement(Couch, {
+        host: {
+          key: "host-interactive",
+          name: "Host",
+          selected: true,
+          controls: "host-details-panel host-viewer-overview",
+          onSelect: () => undefined,
+        },
+        entries: [
+          { key: "viewer-after-host", name: "Viewer", connected: true },
+        ],
+      }),
+    );
+
+    expect(html).toContain("lr-pawn is-host is-selected");
+    expect(html).toContain('aria-pressed="true"');
+    expect(html).toContain(
+      'aria-controls="host-details-panel host-viewer-overview"',
+    );
+    expect(html.indexOf("Host")).toBeLessThan(html.indexOf("Viewer"));
+  });
+
   it("keeps the current display name visible in visual mode", () => {
     setCopy({ lang: "en", vis: true });
     const identity = "viewer-name-tag";
@@ -160,6 +201,18 @@ describe("living-room presentation", () => {
     );
 
     expect(html).not.toContain("M229 39.5a8.5");
+  });
+
+  it("draws the waiting moon as one open crescent instead of nested circles", () => {
+    const html = renderToStaticMarkup(
+      createElement(Comic, { kind: "waiting-for-host", theme: "stage" }),
+    );
+
+    expect(html).toContain(
+      "M0 -8.5A8.5 8.5 0 1 0 0 8.5A6.2 8.5 0 0 1 0 -8.5Z",
+    );
+    expect(html).not.toContain("M229 39.5a8.5");
+    expect(html).not.toContain('fill-rule="evenodd"');
   });
 
   it("keeps every crowded and relay Viewer name visible in visual mode", () => {

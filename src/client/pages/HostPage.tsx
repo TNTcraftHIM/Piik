@@ -2562,6 +2562,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       };
     },
   );
+  const hostDiagnosticsAvailable = Boolean(
+    (details && stream) || viewerOverviewEntries.length > 0,
+  );
 
   const noticeText = noticeValue
     ? noticeValue.kind === "text"
@@ -2817,6 +2820,28 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
           </StageTv>
           <div className="lr-shelf" aria-hidden="true" />
           <Couch
+            host={{
+              key: hostPeerId ?? hostClientIdRef.current ?? "host-local",
+              name: hostPresence?.displayName ?? displayName,
+              you: true,
+              selected:
+                hostDiagnosticsAvailable &&
+                showConnectionDetails &&
+                selectedPawn === null,
+              controls: hostDiagnosticsAvailable
+                ? "host-details-panel host-viewer-overview"
+                : undefined,
+              onSelect: hostDiagnosticsAvailable
+                ? () => {
+                    if (selectedPawn !== null) {
+                      setSelectedPawn(null);
+                      setShowConnectionDetails(true);
+                      return;
+                    }
+                    setShowConnectionDetails((current) => !current);
+                  }
+                : undefined,
+            }}
             entries={couchEntries}
             selectedKey={selectedPawn}
             onSelect={(key) =>
@@ -2829,6 +2854,213 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         </div>
 
         <div className="lr-deck">
+          <Row>
+            {room ? (
+              <RowGroup>
+                <FieldCap k="common.roomCode" />
+                <RoomChip
+                  roomId={room.roomId}
+                  onReplace={replaceCurrentRoom}
+                  replaceDisabled={phase === "starting" || roomMutating}
+                />
+              </RowGroup>
+            ) : null}
+            <RowGroup>
+              <StatusText>{phaseLine}</StatusText>
+              {!details?.hasAudio && stream ? (
+                <Pill icon="speaker" label={t("host.noAudio")} comic="no-audio" />
+              ) : null}
+              {qualityLimitation ? (
+                <Pill icon="alert" label={qualityLimitation} comic="warning" />
+              ) : null}
+              {noticeText && (vis || noticeText !== phaseLine) ? (
+                <Pill
+                  icon={noticeComic ? "alert" : "check"}
+                  tone={noticeComic ? undefined : "good"}
+                  label={noticeText}
+                  comic={noticeComic ?? undefined}
+                />
+              ) : null}
+            </RowGroup>
+            <span className="lr-spacer" />
+            <div className="lr-host-personal-controls">
+              <div className="lr-row-group lr-group-name lr-host-identity-slot">
+                {editingDisplayName ? (
+                  <form
+                    style={{ display: "contents" }}
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      commitDisplayName();
+                    }}
+                  >
+                    <span className="lr-input lr-name-editor">
+                      <input
+                        id="host-display-name"
+                        type="text"
+                        value={displayNameDraft}
+                        maxLength={96}
+                        autoComplete="nickname"
+                        autoFocus
+                        aria-label={t("host.name")}
+                        aria-invalid={displayNameError ? "true" : undefined}
+                        onChange={(event) => {
+                          setDisplayNameDraft(event.target.value);
+                          setDisplayNameError(null);
+                        }}
+                      />
+                    </span>
+                    <Btn
+                      icon="check"
+                      title="host.nameSave"
+                      hint="hint-rename"
+                      type="submit"
+                      disabled={displayNameDraft === displayName}
+                    />
+                    {hintWrap(
+                      "hint-close",
+                      <Btn
+                        icon="x"
+                        title="host.nameCancel"
+                        onClick={() => {
+                          setDisplayNameDraft(displayName);
+                          setDisplayNameError(null);
+                          setEditingDisplayName(false);
+                        }}
+                      />,
+                      "end",
+                    )}
+                  </form>
+                ) : (
+                  <>
+                    <NameTag
+                      name={hostPresence?.displayName ?? displayName}
+                      identity={
+                        hostPeerId ?? hostClientIdRef.current ?? "host-pending"
+                      }
+                    />
+                    {hintWrap(
+                      "hint-rename",
+                      <Btn
+                        icon="pencil"
+                        cap="common.edit"
+                        title="host.nameEdit"
+                        onClick={() => {
+                          setDisplayNameDraft(displayName);
+                          setDisplayNameError(null);
+                          setEditingDisplayName(true);
+                        }}
+                      />,
+                      "end",
+                    )}
+                  </>
+                )}
+                {displayNameError ? (
+                  <Pill
+                    icon="alert"
+                    tone="bad"
+                    label={displayNameError}
+                    alert
+                    comic="warning"
+                  />
+                ) : null}
+              </div>
+              <div className="lr-row-group lr-group-actions lr-host-diagnostics-slot">
+                {hintWrap(
+                  "hint-details",
+                  <Btn
+                    icon="gauge"
+                    cap={
+                      showConnectionDetails
+                        ? "host.details.hide"
+                        : "host.details"
+                    }
+                    title={
+                      showConnectionDetails
+                        ? "host.details.hide"
+                        : "host.details"
+                    }
+                    tone={showConnectionDetails ? "on" : undefined}
+                    expanded={showConnectionDetails}
+                    controls="host-details-panel host-viewer-overview"
+                    disabled={!hostDiagnosticsAvailable}
+                    onClick={() =>
+                      setShowConnectionDetails((current) => !current)
+                    }
+                  />,
+                  "start",
+                )}
+                {hintWrap(
+                  "hint-topology",
+                  <Btn
+                    icon="network"
+                    cap="host.topology"
+                    title={
+                      showTopology
+                        ? "host.topology.hide"
+                        : "host.topology.show"
+                    }
+                    tone={showTopology ? "on" : undefined}
+                    expanded={showTopology}
+                    controls="room-topology"
+                    onClick={() => setShowTopology((current) => !current)}
+                  />,
+                  "end",
+                )}
+              </div>
+              {phase === "live" || phase === "starting" ? (
+                <div className="lr-row-group lr-group-actions lr-host-share-slot">
+                  {phase === "live" ? (
+                    <>
+                      <Btn
+                        icon={sharingPaused ? "play" : "pause"}
+                        cap={sharingPaused ? "host.resume" : "host.pause"}
+                        title={sharingPaused ? "host.resume" : "host.pause"}
+                        hint={sharingPaused ? "hint-resume" : "hint-pause"}
+                        draw="host-share-toggle"
+                        disabled={switchingSource || changingQuality}
+                        onClick={toggleSharingPause}
+                      />
+                      {hintWrap(
+                        "hint-switch-source",
+                        <Btn
+                          icon="switchSource"
+                          cap={switchingSource ? "host.switching" : "host.switchSource"}
+                          title="host.switchSource"
+                          disabled={switchingSource || changingQuality}
+                          onClick={() => void switchSource()}
+                        />,
+                        "end",
+                      )}
+                      {hintWrap(
+                        "hint-share-stop",
+                        <Btn
+                          icon="stop"
+                          tone="danger"
+                          cap="host.stop"
+                          title="host.stop"
+                          onClick={() => endSharing({ key: "host.stopNotice" })}
+                        />,
+                        "end",
+                      )}
+                    </>
+                  ) : (
+                    hintWrap(
+                      "hint-share-stop",
+                      <Btn
+                        icon="x"
+                        tone="danger"
+                        cap="host.cancelStart"
+                        title="host.cancelStart"
+                        onClick={() => endSharing({ key: "host.startCancelled" })}
+                      />,
+                      "end",
+                    )
+                  )}
+                </div>
+              ) : null}
+            </div>
+          </Row>
+
           {showConnectionDetails && details && stream ? (
             <Row sub>
               <div id="host-details-panel" style={{ display: "contents" }}>
@@ -2934,169 +3166,46 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
               </div>
             </Row>
           ) : null}
-          <Row>
-            {room ? (
-              <RowGroup>
-                <FieldCap k="common.roomCode" />
-                <RoomChip
-                  roomId={room.roomId}
-                  onReplace={replaceCurrentRoom}
-                  replaceDisabled={phase === "starting" || roomMutating}
-                />
-              </RowGroup>
-            ) : null}
-            <RowGroup>
-              <StatusText>{phaseLine}</StatusText>
-              {!details?.hasAudio && stream ? (
-                <Pill icon="speaker" label={t("host.noAudio")} comic="no-audio" />
-              ) : null}
-              {qualityLimitation ? (
-                <Pill icon="alert" label={qualityLimitation} comic="warning" />
-              ) : null}
-              {noticeText && (vis || noticeText !== phaseLine) ? (
-                <Pill
-                  icon={noticeComic ? "alert" : "check"}
-                  tone={noticeComic ? undefined : "good"}
-                  label={noticeText}
-                  comic={noticeComic ?? undefined}
-                />
-              ) : null}
-            </RowGroup>
-            <span className="lr-spacer" />
-            <div
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                alignItems: "center",
-                gap: 12,
-                minWidth: 0,
-              }}
-            >
-            <RowGroup>
-              {editingDisplayName ? (
-                <form
-                  style={{ display: "contents" }}
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    commitDisplayName();
-                  }}
-                >
-                  <span className="lr-input lr-name-editor">
-                    <input
-                      id="host-display-name"
-                      type="text"
-                      value={displayNameDraft}
-                      maxLength={96}
-                      autoComplete="nickname"
-                      autoFocus
-                      aria-label={t("host.name")}
-                      aria-invalid={displayNameError ? "true" : undefined}
-                      onChange={(event) => {
-                        setDisplayNameDraft(event.target.value);
-                        setDisplayNameError(null);
-                      }}
-                    />
-                  </span>
-                  <Btn
-                    icon="check"
-                    title="host.nameSave"
-                    hint="hint-rename"
-                    type="submit"
-                    disabled={displayNameDraft === displayName}
-                  />
-                  {hintWrap(
-                    "hint-close",
-                    <Btn
-                      icon="x"
-                      title="host.nameCancel"
-                      onClick={() => {
-                        setDisplayNameDraft(displayName);
-                        setDisplayNameError(null);
-                        setEditingDisplayName(false);
-                      }}
-                    />,
-                    "end",
-                  )}
-                </form>
-              ) : (
-                <>
-                  <NameTag
-                    name={hostPresence?.displayName ?? displayName}
-                    identity={
-                      hostPeerId ?? hostClientIdRef.current ?? "host-pending"
-                    }
-                  />
-                  {hintWrap(
-                    "hint-rename",
-                    <Btn
-                      icon="pencil"
-                      cap="common.edit"
-                      title="host.nameEdit"
-                      onClick={() => {
-                        setDisplayNameDraft(displayName);
-                        setDisplayNameError(null);
-                        setEditingDisplayName(true);
-                      }}
-                    />,
-                    "end",
-                  )}
-                </>
-              )}
-              {displayNameError ? (
-                <Pill icon="alert" tone="bad" label={displayNameError} alert comic="warning" />
-              ) : null}
-            </RowGroup>
-            <RowGroup actions>
-              {phase === "live" ? (
-                <>
-                  <Btn
-                    icon={sharingPaused ? "play" : "pause"}
-                    cap={sharingPaused ? "host.resume" : "host.pause"}
-                    title={sharingPaused ? "host.resume" : "host.pause"}
-                    hint={sharingPaused ? "hint-resume" : "hint-pause"}
-                    draw="host-share-toggle"
-                    disabled={switchingSource || changingQuality}
-                    onClick={toggleSharingPause}
-                  />
-                  {hintWrap(
-                    "hint-switch-source",
-                    <Btn
-                      icon="switchSource"
-                      cap={switchingSource ? "host.switching" : "host.switchSource"}
-                      title="host.switchSource"
-                      disabled={switchingSource || changingQuality}
-                      onClick={() => void switchSource()}
-                    />,
-                    "end",
-                  )}
-                  {hintWrap(
-                    "hint-share-stop",
-                    <Btn
-                      icon="stop"
-                      tone="danger"
-                      cap="host.stop"
-                      title="host.stop"
-                      onClick={() => endSharing({ key: "host.stopNotice" })}
-                    />,
-                    "end",
-                  )}
-                </>
-              ) : phase === "starting" ? (
-                hintWrap(
-                  "hint-share-stop",
-                  <Btn
-                    icon="x"
-                    tone="danger"
-                    cap="host.cancelStart"
-                    title="host.cancelStart"
-                    onClick={() => endSharing({ key: "host.startCancelled" })}
-                  />,
-                  "end",
+          {showConnectionDetails && viewerOverviewEntries.length > 0 ? (
+            <ViewerOverview
+              entries={viewerOverviewEntries}
+              selectedKey={selectedPawn}
+              onSelect={(peerId) =>
+                setSelectedPawn((current) =>
+                  current === peerId ? null : peerId,
                 )
-              ) : null}
-            </RowGroup>
-            </div>
-          </Row>
+              }
+            />
+          ) : null}
+          {selectedViewer && selectedDetail ? (
+            <PawnDetail
+              pawnKey={selectedViewer.peerId}
+              name={selectedViewer.label}
+              route={selectedDetail.route}
+              metrics={selectedDetail.metrics}
+              direction={selectedDetail.direction}
+              tag={selectedDetail.tag}
+              error={selectedDetail.error}
+              expanded={metricsExpanded}
+              onToggleMetrics={setMetricsExpanded}
+              onClose={() => setSelectedPawn(null)}
+            />
+          ) : null}
+          {showTopology ? (
+            <Row sub>
+              <RouteTree
+                hostPeerId={hostPeerId}
+                hostLabel={labeledHostPresence?.label ?? displayName}
+                viewers={viewers}
+                selectedPeerId={selectedPawn}
+                onSelectPeer={(peerId) =>
+                  setSelectedPawn((current) =>
+                    current === peerId ? null : peerId,
+                  )
+                }
+              />
+            </Row>
+          ) : null}
 
           {room ? (
             <Row label={t("host.invite")}>
@@ -3666,77 +3775,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
             </div>
           </div>
 
-          {showConnectionDetails && viewerOverviewEntries.length > 0 ? (
-            <ViewerOverview
-              entries={viewerOverviewEntries}
-              selectedKey={selectedPawn}
-              onSelect={(peerId) =>
-                setSelectedPawn((current) =>
-                  current === peerId ? null : peerId,
-                )
-              }
-            />
-          ) : null}
-          {selectedViewer && selectedDetail ? (
-            <PawnDetail
-              pawnKey={selectedViewer.peerId}
-              name={selectedViewer.label}
-              route={selectedDetail.route}
-              metrics={selectedDetail.metrics}
-              direction={selectedDetail.direction}
-              tag={selectedDetail.tag}
-              error={selectedDetail.error}
-              expanded={metricsExpanded}
-              onToggleMetrics={setMetricsExpanded}
-              onClose={() => setSelectedPawn(null)}
-            />
-          ) : null}
-          {showTopology ? (
-            <Row sub>
-              <RouteTree
-                hostPeerId={hostPeerId}
-                hostLabel={labeledHostPresence?.label ?? displayName}
-                viewers={viewers}
-                selectedPeerId={selectedPawn}
-                onSelectPeer={(peerId) =>
-                  setSelectedPawn((current) =>
-                    current === peerId ? null : peerId,
-                  )
-                }
-              />
-            </Row>
-          ) : null}
-          <Row label={t("host.details")}>
-            <RowGroup actions>
-              {hintWrap(
-                "hint-details",
-                <Btn
-                  icon="gauge"
-                  cap={showConnectionDetails ? "host.details.hide" : "host.details"}
-                  title={showConnectionDetails ? "host.details.hide" : "host.details"}
-                  tone={showConnectionDetails ? "on" : undefined}
-                  expanded={showConnectionDetails}
-                  controls="host-details-panel host-viewer-overview"
-                  disabled={(!details || !stream) && viewers.length === 0}
-                  onClick={() => setShowConnectionDetails((current) => !current)}
-                />,
-                "start",
-              )}
-              {hintWrap(
-                "hint-topology",
-                <Btn
-                  icon="network"
-                  cap="host.topology"
-                  title={showTopology ? "host.topology.hide" : "host.topology.show"}
-                  tone={showTopology ? "on" : undefined}
-                  expanded={showTopology}
-                  controls="room-topology"
-                  onClick={() => setShowTopology((current) => !current)}
-                />,
-                "end",
-              )}
-            </RowGroup>
-          </Row>
         </div>
       </main>
     </div>
