@@ -8,12 +8,12 @@ This is the current execution index. Git history owns completed timelines;
 ## Production
 
 - `https://share.bonfire.icu` runs exact application/runtime revision
-  `3281997a76e5915bb6df7372c112db1c54197f28`, release `3281997`, wire
-  `screener-v17`, from `/opt/screener/releases/3281997`. The immutable runtime
+  `abe73b735c5458cc99931d2fcaadfc83044c6174`, release `abe73b7`, wire
+  `screener-v17`, from `/opt/screener/releases/abe73b7`. The immutable runtime
   tar SHA-256 is
-  `a1f0618ae4db6fee9783d4dfab57727aa77f16dab7e716045a3a5cab12447ca0`;
+  `ba5865a9f2c71f45fb07b42ac45591702a3bfb157a05ac9268b8011ee5d6b218`;
   its 41-file manifest SHA-256 is
-  `751ae8e99da212ef42c1fec377815ae9bb58c3d5eb4f7cbe388d24ce953bace7`.
+  `c26d4f82871661a22bb460ac2da72fdf1dbce937fc4fe7d79424a59f5c180167`.
 - The served Browser entry references `assets/index-V5imDqPj.js`; the public
   asset SHA-256 is
   `13a8fefb4dc84bbcd718b950f19d64371ce2b8c536281fcb39e53342e1ad7da0`.
@@ -107,7 +107,8 @@ This is the current execution index. Git history owns completed timelines;
 ## Source/Production Delta
 
 - Production application code and canonical source are exact revision
-  `3281997a76e5915bb6df7372c112db1c54197f28`; this checkpoint changes docs only.
+  `abe73b735c5458cc99931d2fcaadfc83044c6174`; the deployed release is the
+  merged same-parent regeneration change documented above.
 
 ## Active Boundaries
 
