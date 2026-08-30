@@ -8,18 +8,19 @@ This is the current execution index. Git history owns completed timelines;
 ## Production
 
 - `https://share.bonfire.icu` runs exact application/runtime revision
-  `65e5061079c7cd1bfc7101c6dc5144987a614db3`, release `65e5061`, wire
-  `screener-v17`, from `/opt/screener/releases/65e5061`. The immutable runtime
+  `3281997a76e5915bb6df7372c112db1c54197f28`, release `3281997`, wire
+  `screener-v17`, from `/opt/screener/releases/3281997`. The immutable runtime
   tar SHA-256 is
-  `e09246618e1b52fad21dd71418de4728712a10f9d3853e978f2483313e066b38`;
+  `a1f0618ae4db6fee9783d4dfab57727aa77f16dab7e716045a3a5cab12447ca0`;
   its 41-file manifest SHA-256 is
-  `5b62240a49ecd4e74cf9099a6d5481fb89e7cf02b212096013f6fae3399ec630`.
-- The served Browser entry references `assets/index-Civ5gC8H.js`; the public
+  `751ae8e99da212ef42c1fec377815ae9bb58c3d5eb4f7cbe388d24ce953bace7`.
+- The served Browser entry references `assets/index-V5imDqPj.js`; the public
   asset SHA-256 is
-  `38275198d85f0e771a844196acefdd8eb030bb9e1599fd4b21daf58d714bece0`.
+  `13a8fefb4dc84bbcd718b950f19d64371ce2b8c536281fcb39e53342e1ad7da0`.
   Public `/healthz` returns 200. The release postflight found Screener, LiveKit,
-  coturn, and nginx active with zero restarts; site-access authentication and
-  open-room creation passed.
+  coturn, and nginx active with zero restarts. Existing SQLite room authority,
+  Host capture, P2P and SFU routes recovered after the application restart;
+  current SFU Viewer diagnostics resumed without a page refresh.
 - Production enables SQLite room authority at
   `/var/lib/screener/rooms.sqlite`; live participants, routes and media remain
   process-only. A controlled restart retained the room authority and Host-owned
@@ -88,6 +89,12 @@ This is the current execution index. Git history owns completed timelines;
   Viewer SFU clients disable LiveKit page-leave auto-disconnect, so SFU recovery
   cannot stop Host-owned capture. Native Viewer controls still own playback,
   and manual reconnect stays on the current route.
+- Viewer presentation derives access, Host, route, playback, and runtime state
+  from separate owners. An exact media generation plus monotonic proof epoch
+  owns visible-frame truth; every invalidation rearms proof, while stale epochs
+  and replaced generations cannot clear or revive the current result. Viewer
+  diagnostics continue through incomplete presentation windows, but those
+  windows remain ineligible for route-quality convergence.
 - Host, Viewer, join, and access surfaces share the living-room presentation
   model. Room codes, invitation URLs, the current display name, selected
   participant details, route labels, and metrics remain visible in visual mode;
@@ -96,8 +103,8 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Source/Production Delta
 
-- Production application code is exact revision
-  `65e5061079c7cd1bfc7101c6dc5144987a614db3`; this checkpoint changes docs only.
+- Production application code and canonical source are exact revision
+  `3281997a76e5915bb6df7372c112db1c54197f28`; this checkpoint changes docs only.
 
 ## Active Boundaries
 
