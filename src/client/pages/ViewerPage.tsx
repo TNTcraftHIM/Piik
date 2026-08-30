@@ -730,6 +730,17 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           !video.ended,
       );
     }
+    function committedTransportConnected(): boolean {
+      if (currentRouteAssignment?.upstream.kind === "peer") {
+        return (
+          peerRef.current?.isConnected() === true &&
+          peerRef.current.isRecovering() === false
+        );
+      }
+      return currentRouteAssignment?.upstream.kind === "sfu"
+        ? sfuTransportConnected
+        : false;
+    }
     function offerPeerQualityEvidence(
       snapshot: PeerSnapshot,
       peer: ViewerPeer,
@@ -1172,7 +1183,8 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           }
         },
         currentPeerMetrics: () => activePeerMetrics,
-        qualityProbeEligible: () => !pageSuspended,
+        qualityProbeEligible: () =>
+          qualityPresentationEligible(committedTransportConnected()),
         onSfuState: (state, revision) => {
           if (active && viewerSfuRoute === route) {
             const connected = state === "connected";
@@ -1193,7 +1205,13 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           }
         },
         onSfuVideoAvailability: (available, revision) => {
-          if (!active || viewerSfuRoute !== route || available) {
+          if (!active || viewerSfuRoute !== route) {
+            return;
+          }
+          if (available) {
+            setSfuUpstream((current) =>
+              current ? { ...current, connectionState: "connected" } : current,
+            );
             return;
           }
           invalidatePresentedMedia();
@@ -1408,7 +1426,9 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               dispatchPresentation({
                 type: "connection",
                 revision: currentRouteRevision,
-                connection: connectionFact(snapshot.connectionState),
+                connection: peer.isRecovering()
+                  ? "reconnecting"
+                  : connectionFact(snapshot.connectionState),
               });
             }
           },
@@ -1931,12 +1951,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         return;
       }
       if (message.type === "error") {
-        if (message.code === "PEER_NOT_FOUND" && !currentHostOnline) {
-          clearPeerState();
-          clearHostPresence(false);
-          dispatchPresentation({ type: "host", host: "offline" });
-          return;
-        }
         if (
           [
             "AUTH_REQUIRED",

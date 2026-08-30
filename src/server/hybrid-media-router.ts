@@ -1104,11 +1104,17 @@ export class HybridMediaRouter {
   private async pumpRoom(roomId: string, room: RoomRuntime): Promise<void> {
     const controller = room.controller;
     if (!controller) return;
+    let broadcastRevision = controller.snapshot().revision;
+    const broadcastRevisionChange = (): void => {
+      const revision = controller.snapshot().revision;
+      if (revision === broadcastRevision) return;
+      this.broadcastActive(roomId, room);
+      broadcastRevision = revision;
+    };
     for (;;) {
-      const beforeRevision = controller.snapshot().revision;
       const reconciled = controller.reconcile(this.now());
       this.releaseResources(reconciled.released);
-      if (controller.snapshot().revision !== beforeRevision) this.broadcastActive(roomId, room);
+      broadcastRevisionChange();
       this.sendRouteFailures(
         roomId,
         reconciled.failedPeerIds,
@@ -1203,7 +1209,6 @@ export class HybridMediaRouter {
       let beginGuard = guard;
       let currentOperation = controller.snapshot().operation;
       if (plan.endpointTransition.kind === "bounded-gap") {
-        const beforeGap = controller.snapshot().revision;
         const gap = controller.retireCurrentCandidateProducer(guard, this.now());
         this.releaseResources(gap.released);
         this.sendRouteFailures(
@@ -1215,7 +1220,7 @@ export class HybridMediaRouter {
           this.releaseReservation(preparation.prepared.reservation);
           continue;
         }
-        if (controller.snapshot().revision !== beforeGap) this.broadcastActive(roomId, room);
+        broadcastRevisionChange();
         currentOperation = controller.snapshot().operation;
         const currentPlan = currentOperation?.candidates[currentOperation.cursor];
         if (!currentOperation || !currentPlan) {
@@ -1313,17 +1318,18 @@ export class HybridMediaRouter {
         ...publication.resource.fence,
         viewerPeerId: operation.childPeerId,
       };
-      if (!(await this.reserveSfuSubscription(fence))) {
-        return { kind: "denied", rejectionBucket: "sfu-admission" };
-      }
       const currentEdge = snapshot.upstreamByViewer.get(operation.childPeerId);
-      const edge =
+      const borrowedEdge =
         currentEdge?.kind === "sfu" &&
         currentEdge.publicationGeneration === publication.generation &&
         currentEdge.resource.kind === "sfu-subscription" &&
         !currentEdge.resource.released
           ? currentEdge.resource
-          : subscriptionResource(fence);
+          : null;
+      if (!borrowedEdge && !(await this.reserveSfuSubscription(fence))) {
+        return { kind: "denied", rejectionBucket: "sfu-admission" };
+      }
+      const edge = borrowedEdge ?? subscriptionResource(fence);
       try {
         const token = await fallback.tokenIssuer.issueToken({
           roomId,
@@ -1340,6 +1346,7 @@ export class HybridMediaRouter {
             reservation: {
               kind: "sfu-reuse",
               edge,
+              ...(borrowedEdge ? { borrowed: true as const } : {}),
               ...(overlap ? { overlap } : {}),
             },
             publicationGeneration: publication.generation,
@@ -1352,7 +1359,7 @@ export class HybridMediaRouter {
           },
         };
       } catch {
-        this.releaseSubscription(fence);
+        if (!borrowedEdge) this.releaseResource(edge);
         return { kind: "denied", rejectionBucket: "candidate-failed" };
       }
     }
@@ -2273,7 +2280,12 @@ function reservationResources(
   reservation: CandidateReservation<RouteResource>,
 ): RouteResource[] {
   const resources: RouteResource[] = [];
-  if ("edge" in reservation) resources.push(reservation.edge);
+  if (
+    "edge" in reservation &&
+    (reservation.kind !== "sfu-reuse" || !reservation.borrowed)
+  ) {
+    resources.push(reservation.edge);
+  }
   if ("publication" in reservation) resources.push(reservation.publication);
   if ("overlap" in reservation && reservation.overlap) {
     resources.push(reservation.overlap);

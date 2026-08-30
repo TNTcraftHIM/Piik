@@ -1616,6 +1616,44 @@ describe("SfuPublisher", () => {
     expect(previousPublishedVideo.stop).not.toHaveBeenCalled();
   });
 
+  it("applies pause authority to an SFU source replacement while it is in flight", async () => {
+    const publisher = new SfuPublisher();
+    const previousAudio = track("audio", "audio-1");
+    const nextVideo = track("video", "video-2");
+    const nextAudio = track("audio", "audio-2");
+    await publisher.connect(connection);
+    await publisher.activate(
+      stream(track("video", "video-1"), previousAudio),
+      qualityProfile,
+    );
+    const room = livekit.state.rooms[0];
+    const videoPublication = room.localParticipant.publications[0].track;
+    const replaceGate = deferred();
+    videoPublication.replaceTrack.mockImplementationOnce(
+      async (replacement: MediaStreamTrack) => {
+        await replaceGate.promise;
+        videoPublication.currentTrack = replacement;
+        videoPublication.sender.track = replacement;
+      },
+    );
+
+    const replacing = publisher.replaceStream(stream(nextVideo, nextAudio));
+    await vi.waitFor(() =>
+      expect(videoPublication.replaceTrack).toHaveBeenCalledOnce(),
+    );
+    const replacementVideo = videoPublication.replaceTrack.mock.calls[0]![0]!;
+    publisher.setPaused(true);
+    expect(replacementVideo.enabled).toBe(false);
+    expect(nextAudio.enabled).toBe(false);
+
+    replaceGate.resolve();
+    await expect(replacing).resolves.toBe(true);
+    expect(videoPublication.currentTrack.enabled).toBe(false);
+    expect(room.localParticipant.publications[1].track.currentTrack.enabled).toBe(
+      false,
+    );
+  });
+
   it("uses the screen audio preset when a replacement adds audio", async () => {
     const publisher = new SfuPublisher();
     const audio = track("audio", "audio-2");

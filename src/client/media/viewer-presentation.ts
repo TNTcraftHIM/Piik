@@ -268,11 +268,7 @@ export function reduceViewerPresentation(
         connection: action.connection,
       };
     case "media-bound": {
-      if (
-        (state.media && action.generation <= state.media.generation) ||
-        (state.routeStatus?.revision === action.revision &&
-          state.routeStatus.state === "failed")
-      ) {
+      if (state.media && action.generation <= state.media.generation) {
         return state;
       }
       return {
@@ -283,7 +279,7 @@ export function reduceViewerPresentation(
           proofEpoch: 0,
           framePresented: false,
         },
-        retainedFrame: state.retainedFrame || hasCurrentFrame(state),
+        retainedFrame: false,
         autoplayBlockedGeneration: null,
         playbackFailedGeneration: null,
       };

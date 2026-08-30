@@ -1437,8 +1437,11 @@ describe("WebSocket signaling", () => {
     await host.inbox.expectNone(30);
   });
 
-  it("rotates a grant without disturbing code-admitted Viewer media", async () => {
-    const harness = await startHarness();
+  it("rotates a grant and promotes the waiting code-admitted Viewer", async () => {
+    const harness = await startHarness({
+      endpointMediaCopyCapacity: 1,
+      maxViewersPerRoom: 2,
+    });
     const host = await openClient(harness.webSocketUrl);
     const hostAuth = await authenticate(
       host,
@@ -1476,10 +1479,10 @@ describe("WebSocket signaling", () => {
       undefined,
       { codeOnly: true, displayName: "房间号观众" },
     );
-    await host.inbox.next("peer-joined");
     expect(
       viewerPresenceEntries(await host.inbox.next("viewer-presence")),
     ).toHaveLength(2);
+    expect((await host.inbox.next("peer-waiting")).peerId).toBe(codeAuth.peerId);
 
     const grantClosed = new Promise<number>((resolve) =>
       grantViewer.socket.once("close", (code) => resolve(code)),
@@ -1488,6 +1491,7 @@ describe("WebSocket signaling", () => {
     await grantViewer.inbox.next("viewer-grant-revoked");
     expect(await grantClosed).toBe(4004);
     expect((await host.inbox.next("peer-left")).peerId).toBe(grantAuth.peerId);
+    expect((await host.inbox.next("peer-joined")).peerId).toBe(codeAuth.peerId);
 
     const remaining = viewerPresenceEntries(
       await host.inbox.next("viewer-presence"),
