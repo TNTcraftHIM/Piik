@@ -22,6 +22,8 @@ export type ComicKind =
   | "access-denied"
   | "invalid-invite"
   | "room-full"
+  | "bandwidth-limited"
+  | "encoder-limited"
   | "warning";
 
 export const COMIC_KINDS: readonly ComicKind[] = [
@@ -39,6 +41,8 @@ export const COMIC_KINDS: readonly ComicKind[] = [
   "access-denied",
   "invalid-invite",
   "room-full",
+  "bandwidth-limited",
+  "encoder-limited",
   "warning",
 ];
 
@@ -60,6 +64,8 @@ const DEFAULT_THEME: Record<ComicKind, ComicTheme> = {
   "access-denied": "paper",
   "invalid-invite": "paper",
   "room-full": "paper",
+  "bandwidth-limited": "paper",
+  "encoder-limited": "paper",
   warning: "paper",
 };
 
@@ -1192,7 +1198,126 @@ ${rmBlock(
   );
 }
 
-/** 15. warning: 1 wide panel, loop 2.6s. Persistent condition: the you-pawn
+/** Native bandwidth adaptation: a roomy path narrows, then the delivered
+ * picture shrinks. The route owner is deliberately absent; this describes the
+ * Browser report without guessing which physical link is responsible. */
+function SceneBandwidthLimited({ theme }: { theme: ComicTheme }) {
+  return (
+    <>
+      <style>{`
+.vls-bw-flow-a{animation:vlsBwFlowA 2.8s ease-in-out infinite}
+.vls-bw-flow-b{animation:vlsBwFlowB 2.8s ease-in-out infinite}
+.vls-bw-throat{transform-box:fill-box;transform-origin:center;animation:vlsBwThroat 2.8s ease-in-out infinite}
+.vls-bw-small{transform-box:fill-box;transform-origin:center;animation:vlsBwSmall 2.8s ease-in-out infinite}
+@keyframes vlsBwFlowA{0%,12%{transform:translateX(-8px);opacity:0}26%,58%{transform:none;opacity:1}72%,100%{transform:translateX(8px);opacity:0}}
+@keyframes vlsBwFlowB{0%,32%{transform:translateX(-7px);opacity:0}48%,72%{transform:none;opacity:1}86%,100%{transform:translateX(5px);opacity:0}}
+@keyframes vlsBwThroat{0%,30%,100%{transform:scaleY(1)}48%,76%{transform:scaleY(.62)}}
+@keyframes vlsBwSmall{0%,42%{transform:scale(1)}58%,100%{transform:scale(.82)}}
+${rmBlock(
+  ["vls-bw-flow-a", "vls-bw-flow-b", "vls-bw-throat", "vls-bw-small"],
+  [
+    [".vls-bw-flow-a,.vls-bw-flow-b", "opacity:1;transform:none"],
+    [".vls-bw-throat", "transform:scaleY(.62)"],
+    [".vls-bw-small", "transform:scale(.82)"],
+  ],
+)}
+`}</style>
+      <Frame x={4} w={152} theme={theme} />
+      <Frame x={164} w={152} theme={theme} accent={WARN} />
+      <Floor x1={18} x2={142} />
+      <Floor x1={178} x2={302} />
+      <Pawn x={28} yb={76} s={7} eyes />
+      <path d="M45 48H90" stroke={SKY} strokeWidth={8} strokeLinecap="round" />
+      <g className="vls-bw-flow-a" fill={MINT}>
+        <circle cx={55} cy={48} r={3.5} />
+        <circle cx={68} cy={48} r={3.5} />
+        <circle cx={81} cy={48} r={3.5} />
+      </g>
+      <MiniTv x={94} y={28} w={44} h={36} />
+      <path
+        className="vls-bw-throat"
+        d="M181 38H208L226 45V53L208 60H181"
+        fill="none"
+        stroke={WARN}
+        strokeWidth={3}
+        strokeLinejoin="round"
+      />
+      <path d="M226 49H250" stroke={WARN} strokeWidth={4} strokeLinecap="round" />
+      <g className="vls-bw-flow-b" fill={STAR_GOLD}>
+        <circle cx={192} cy={49} r={3.2} />
+        <circle cx={207} cy={49} r={3.2} />
+        <circle cx={239} cy={49} r={2.6} />
+      </g>
+      <g className="vls-bw-small">
+        <MiniTv x={254} y={37} w={34} h={28} />
+      </g>
+      <Pawn x={298} yb={76} s={6.5} eyes color={WARN} />
+    </>
+  );
+}
+
+/** Native CPU adaptation: frames queue at the encoder, one falls away, and
+ * the delivered picture shrinks. */
+function SceneEncoderLimited({ theme }: { theme: ComicTheme }) {
+  return (
+    <>
+      <style>{`
+.vls-en-frame-a{animation:vlsEnFlow 2.9s ease-in-out infinite}
+.vls-en-frame-b{animation:vlsEnFlow 2.9s ease-in-out .3s infinite}
+.vls-en-drop{transform-box:fill-box;transform-origin:center;animation:vlsEnDrop 2.9s ease-in infinite}
+.vls-en-heat{animation:vlsEnHeat 2.9s ease-out infinite}
+.vls-en-small{transform-box:fill-box;transform-origin:center;animation:vlsEnSmall 2.9s ease-in-out infinite}
+@keyframes vlsEnFlow{0%,12%{transform:translateX(-7px);opacity:0}28%,60%{transform:none;opacity:1}76%,100%{transform:translateX(8px);opacity:0}}
+@keyframes vlsEnDrop{0%,42%{transform:none;opacity:1}64%,100%{transform:translateY(16px) rotate(12deg);opacity:0}}
+@keyframes vlsEnHeat{0%,34%{transform:translateY(3px);opacity:0}48%,72%{transform:none;opacity:1}86%,100%{opacity:0}}
+@keyframes vlsEnSmall{0%,46%{transform:scale(1)}62%,100%{transform:scale(.82)}}
+${rmBlock(
+  ["vls-en-frame-a", "vls-en-frame-b", "vls-en-drop", "vls-en-heat", "vls-en-small"],
+  [
+    [".vls-en-frame-a,.vls-en-frame-b,.vls-en-heat", "opacity:1;transform:none"],
+    [".vls-en-drop", "opacity:0;transform:translateY(16px)"],
+    [".vls-en-small", "transform:scale(.82)"],
+  ],
+)}
+`}</style>
+      <Frame x={4} w={152} theme={theme} />
+      <Frame x={164} w={152} theme={theme} accent={WARN} />
+      <Floor x1={18} x2={142} />
+      <Floor x1={178} x2={302} />
+      <Pawn x={27} yb={76} s={6.5} eyes />
+      <g fill="none" stroke={SKY} strokeWidth={2.5}>
+        <rect x={52} y={34} width={36} height={28} rx={5} />
+        <path d="M58 30v4m8-4v4m8-4v4m8-4v4M58 62v4m8-4v4m8-4v4m8-4v4" />
+      </g>
+      <g className="vls-en-frame-a" fill={MINT}>
+        <rect x={96} y={38} width={8} height={8} rx={1.5} />
+        <rect x={108} y={38} width={8} height={8} rx={1.5} />
+      </g>
+      <MiniTv x={119} y={30} w={28} h={30} />
+      <g fill="none" stroke={WARN} strokeWidth={2.5}>
+        <rect x={184} y={34} width={38} height={28} rx={5} />
+        <path d="M190 30v4m8-4v4m8-4v4m8-4v4M190 62v4m8-4v4m8-4v4m8-4v4" />
+      </g>
+      <g className="vls-en-heat" stroke={WARN} strokeWidth={2} strokeLinecap="round">
+        <path d="M191 26l-3-6m13 6v-7m10 7l4-6" />
+      </g>
+      <g className="vls-en-frame-b" fill={STAR_GOLD}>
+        <rect x={229} y={35} width={8} height={8} rx={1.5} />
+        <rect x={241} y={35} width={8} height={8} rx={1.5} />
+      </g>
+      <g className="vls-en-drop">
+        <rect x={241} y={49} width={8} height={8} rx={1.5} fill={DANGER} />
+        <RedX cx={245} cy={53} arm={3} />
+      </g>
+      <g className="vls-en-small">
+        <MiniTv x={258} y={37} w={34} h={28} />
+      </g>
+      <Pawn x={301} yb={76} s={6} eyes color={WARN} />
+    </>
+  );
+}
+
+/** Generic warning: 1 wide panel, loop 2.6s. Persistent condition: the you-pawn
  * stands beside the big Hearth coal-bowl warning glyph; heat-rays rise in a
  * staggered 0-55% window, the pawn blinks at 70%, rest >=50%. */
 function SceneWarning({ theme }: { theme: ComicTheme }) {
@@ -1260,6 +1385,8 @@ const SCENES: Record<ComicKind, (props: { theme: ComicTheme }) => ReactNode> = {
   "access-denied": SceneAccessDenied,
   "invalid-invite": SceneInvalidInvite,
   "room-full": SceneRoomFull,
+  "bandwidth-limited": SceneBandwidthLimited,
+  "encoder-limited": SceneEncoderLimited,
   warning: SceneWarning,
 };
 

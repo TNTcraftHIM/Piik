@@ -25,6 +25,7 @@ import {
 import {
   EMPTY_METRICS,
   type PeerSnapshot,
+  type QualityWarningKind,
 } from "../types";
 import {
   captureMetrics,
@@ -114,6 +115,7 @@ export class HostPeer {
       senderParameters: null,
       audioSenderParameters: null,
       qualityWarning: null,
+      qualityWarningKind: null,
     };
     this.bindConnectionEvents();
   }
@@ -638,8 +640,7 @@ export class HostPeer {
       this.snapshot = {
         ...this.snapshot,
         metrics,
-        qualityWarning:
-          this.combinedSenderWarning() ?? this.persistentLimitationWarning(),
+        ...this.qualityWarningSnapshot(),
       };
       this.emit();
     } catch {
@@ -736,8 +737,7 @@ export class HostPeer {
       ...this.snapshot,
       senderParameters,
       audioSenderParameters: this.appliedAudioSenderParameters,
-      qualityWarning:
-        this.combinedSenderWarning() ?? this.persistentLimitationWarning(),
+      ...this.qualityWarningSnapshot(),
     };
     this.emit();
     return videoSucceeded && audioSucceeded;
@@ -783,6 +783,30 @@ export class HostPeer {
           ? say("host.warn.unclassified")
           : null;
     }
+  }
+
+  private qualityWarningSnapshot(): {
+    qualityWarning: string | null;
+    qualityWarningKind: QualityWarningKind | null;
+  } {
+    const configurationWarning = this.combinedSenderWarning();
+    if (configurationWarning) {
+      return {
+        qualityWarning: configurationWarning,
+        qualityWarningKind: "configuration",
+      };
+    }
+    const qualityWarning = this.persistentLimitationWarning();
+    if (!qualityWarning) {
+      return { qualityWarning: null, qualityWarningKind: null };
+    }
+    return {
+      qualityWarning,
+      qualityWarningKind:
+        this.limitationReason === "bandwidth" || this.limitationReason === "cpu"
+          ? this.limitationReason
+          : "other",
+    };
   }
 
   private emit(): void {
