@@ -54,6 +54,11 @@ until their stated boundary is met.
    Browser interoperability are proved.
 12. **Platform output.** Revisit AirPlay/Cast only when a target Browser and
     physical receiver prove the live `MediaStream` contract.
+13. **NAT inference and predictive candidates.** Keep multi-STUN observations
+    diagnostic until controlled Browser and target-network evidence proves a
+    connection-scoped classifier with bounded false rejection. Do not hard-skip
+    Peer candidates from a participant-wide NAT label or inject predicted ports
+    into production ICE without a new accepted decision and a measured gate.
 
 ## Decision Needed
 
