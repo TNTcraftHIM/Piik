@@ -108,8 +108,8 @@ This is the current execution index. Git history owns completed timelines;
 ## Source/Production Delta
 
 - Production application code matches canonical source application revision
-  `ba8c62f7138bfe6f4a15ec45fbbe0d7b18af11ed`; current `main` adds only this
-  status-record checkpoint after that application revision.
+  `ba8c62f7138bfe6f4a15ec45fbbe0d7b18af11ed`; current `main` adds only
+  documentation checkpoints after that application revision.
 
 ## Active Boundaries
 
