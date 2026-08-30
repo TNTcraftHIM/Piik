@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-08-30
+Last updated: 2026-08-31
 
 This is the current execution index. Git history owns completed timelines;
 [verification status](./verification-status.md) owns evidence boundaries.
@@ -8,19 +8,19 @@ This is the current execution index. Git history owns completed timelines;
 ## Production
 
 - `https://share.bonfire.icu` runs exact application/runtime revision
-  `abe73b735c5458cc99931d2fcaadfc83044c6174`, release `abe73b7`, wire
-  `screener-v17`, from `/opt/screener/releases/abe73b7`. The immutable runtime
+  `11614c3820061a29aa053254bae5af2e4b27c36f`, release `11614c3`, wire
+  `screener-v17`, from `/opt/screener/releases/11614c3`. The immutable runtime
   tar SHA-256 is
-  `ba5865a9f2c71f45fb07b42ac45591702a3bfb157a05ac9268b8011ee5d6b218`;
+  `c5c3f7bc187e6e45372c7cd8e7708a3a8c7b998954c2fb1cd9fc7551162a3c1c`;
   its 41-file manifest SHA-256 is
-  `c26d4f82871661a22bb460ac2da72fdf1dbce937fc4fe7d79424a59f5c180167`.
-- The served Browser entry references `assets/index-V5imDqPj.js`; the public
+  `b68ea94212598d4bbb2924f5c3c177ad30e3862f72de458a0f46cd16b55d3b41`.
+- The served Browser entry references `assets/index-DePSo8m_.js`; the public
   asset SHA-256 is
-  `13a8fefb4dc84bbcd718b950f19d64371ce2b8c536281fcb39e53342e1ad7da0`.
+  `64bbdaa981e48d2839bff3741dfc91565670bface51c5650e3699192fed05470`.
   Public `/healthz` returns 200. The release postflight found Screener, LiveKit,
-  coturn, and nginx active with zero restarts. Existing SQLite room authority,
-  Host capture, P2P and SFU routes recovered after the application restart;
-  current SFU Viewer diagnostics resumed without a page refresh.
+  coturn, and nginx active with zero restarts. Controlled application restarts
+  have retained SQLite room authority and Host capture while P2P/SFU routes and
+  Viewer diagnostics recovered without a page refresh.
 - Production enables SQLite room authority at
   `/var/lib/screener/rooms.sqlite`; live participants, routes and media remain
   process-only. A controlled restart retained the room authority and Host-owned
@@ -46,9 +46,9 @@ This is the current execution index. Git history owns completed timelines;
   gated by current media connection state.
 - The living-room presentation is deployed with Chinese, English, and
   pure-visual modes, light/dark themes, one Host/Viewer stage language,
-  progressive per-Viewer diagnostics, responsive identity topology, and
-  reduced-motion behavior. Fresh Browsers start in visual mode; explicit
-  choices persist locally.
+  a Host-first identity roster, progressive per-Viewer diagnostics,
+  container-responsive topology, and reduced-motion behavior. Fresh Browsers
+  start in visual mode; explicit choices persist locally.
 - Native-edge local convergence defaults on for each new share and remains a
   pre-share Host opt-out. The adjacent default-off peer-only policy excludes all
   SFU paths for that share generation. Both policies lock while sharing.
@@ -101,13 +101,13 @@ This is the current execution index. Git history owns completed timelines;
 - Host, Viewer, join, and access surfaces share the living-room presentation
   model. Room codes, invitation URLs, the current display name, selected
   participant details, route labels, and metrics remain visible in visual mode;
-  couch and topology identities remain visible across expression modes and
-  bounded deep trees scroll within their own surface.
+  Host and Viewer couch/topology identities stay consistent across expression
+  modes, and bounded deep trees scroll within their own surface.
 
 ## Source/Production Delta
 
 - Production application code matches canonical source application revision
-  `abe73b735c5458cc99931d2fcaadfc83044c6174`; current `main` adds only this
+  `11614c3820061a29aa053254bae5af2e4b27c36f`; current `main` adds only this
   status-record checkpoint after that application revision.
 
 ## Active Boundaries
