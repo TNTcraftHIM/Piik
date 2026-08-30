@@ -1843,6 +1843,53 @@ describe("ViewerRelay downstream ownership", () => {
     relay.dispose();
   });
 
+  it("replaces one active child with a same-parent prepared connection", async () => {
+    const signals: Array<{ peerId: string; connectionId: string }> = [];
+    const relay = new ViewerRelay(
+      { iceServers: [] },
+      QUALITY_PROFILES["720p30"],
+      {
+        sendSignal: (peerId, payload) => {
+          signals.push({ peerId, connectionId: payload.connectionId });
+          return true;
+        },
+      },
+    );
+    relay.setStream(createStream(createTrack("video", "same-parent-video"), null));
+    expect(relay.prepareChild(1, routeCandidate(1, "same-child"), ["same-child"])).toBe(true);
+    await vi.waitFor(() => expect(signals).toHaveLength(1));
+    const firstConnection = FakePeerConnection.latest!;
+    await relay.acceptSignal("same-child", {
+      kind: "description",
+      connectionId: signals[0]!.connectionId,
+      description: { type: "answer", sdp: "first-answer" },
+    }, 1);
+    firstConnection.connectionState = "connected";
+    relay.activateChildren(1, ["same-child"]);
+    expect(relay.getSnapshot("same-child")?.connectionId).toBe(
+      signals[0]!.connectionId,
+    );
+
+    expect(relay.prepareChild(2, routeCandidate(2, "same-child"), ["same-child"])).toBe(true);
+    await vi.waitFor(() => expect(signals).toHaveLength(2));
+    const secondConnection = FakePeerConnection.latest!;
+    expect(firstConnection.connectionState).toBe("connected");
+    await relay.acceptSignal("same-child", {
+      kind: "description",
+      connectionId: signals[1]!.connectionId,
+      description: { type: "answer", sdp: "second-answer" },
+    }, 2);
+    secondConnection.connectionState = "connected";
+    relay.activateChildren(2, ["same-child"]);
+
+    expect(firstConnection.connectionState).toBe("closed");
+    expect(secondConnection.connectionState).toBe("connected");
+    expect(relay.getSnapshot("same-child")?.connectionId).toBe(
+      signals[1]!.connectionId,
+    );
+    relay.dispose();
+  });
+
   it("cleans prepared children on failure, replacement, rollback, session reset, and share stop", async () => {
     const relay = new ViewerRelay(
       { iceServers: [] },

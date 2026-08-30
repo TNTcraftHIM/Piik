@@ -2159,7 +2159,9 @@ export class HybridMediaRouter {
 
   private debugTuple(roomId: string, tuple: CandidateTuple): string {
     return tuple.kind === "peer"
-      ? `p2p:${this.debugPeer(roomId, tuple.parentPeerId)}`
+      ? `p2p:${this.debugPeer(roomId, tuple.parentPeerId)}${
+          tuple.regenerate ? ":regenerate" : ""
+        }`
       : `sfu:${tuple.publication}`;
   }
 

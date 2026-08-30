@@ -899,6 +899,87 @@ describe("HybridMediaRouter v9 runtime", () => {
     }
   });
 
+  it("prepares a same-parent connection regeneration after persistent degradation", async () => {
+    const { store, sent, router } = harness(2);
+    try {
+      const room = await store.createRoom();
+      const host = connectHost(store, room, {
+        peerOnly: false,
+        topologyOptimization: true,
+      });
+      complete(router, host);
+      const viewer = connectViewer(store, room, "quality-regeneration");
+      complete(router, viewer);
+      await vi.waitFor(() =>
+        expect(preparedFor(sent, viewer.sessionId)).toBeDefined(),
+      );
+      const initial = preparedFor(sent, viewer.sessionId)!;
+      expect(initial.assignment.upstream).toEqual({
+        kind: "peer",
+        peerId: host.peerId,
+      });
+      router.handleRouteReady(viewer, {
+        type: "route-ready",
+        revision: initial.revision,
+        phase: "prepare",
+      });
+      const edge = router.resolveActiveViewerMediaEdge(
+        room.roomId,
+        viewer.peerId,
+      )!;
+
+      router.observeSenderQualityEvidence(host, {
+        type: "sender-quality-evidence",
+        childPeerId: viewer.peerId,
+        connectionId: edge.connectionId,
+        rtpStatsId: "old-sender-rtp",
+        trackIdentifier: "old-track",
+        sampleTimestampMs: 100,
+        routeRevision: edge.revision,
+        state: "healthy",
+        diagnostics: senderDiagnostics("healthy"),
+      });
+      for (const sampleTimestampMs of [101, 102, 103]) {
+        router.observeSenderQualityEvidence(host, {
+          type: "sender-quality-evidence",
+          childPeerId: viewer.peerId,
+          connectionId: edge.connectionId,
+          rtpStatsId: "old-sender-rtp",
+          trackIdentifier: "old-track",
+          sampleTimestampMs,
+          routeRevision: edge.revision,
+          state: "degraded",
+          diagnostics: senderDiagnostics("degraded"),
+        });
+      }
+
+      await vi.waitFor(() => {
+        const prepared = preparedFor(sent, viewer.sessionId);
+        expect(prepared?.revision).toBeGreaterThan(edge.revision);
+      });
+      const regeneration = preparedFor(sent, viewer.sessionId)!;
+      expect(regeneration.candidate).toMatchObject({
+        transport: "direct",
+        qualityProbe: true,
+      });
+      expect(regeneration.assignment.upstream).toEqual({
+        kind: "peer",
+        peerId: host.peerId,
+      });
+      expect(preparedFor(sent, host.sessionId)?.candidate.connectionId).toBe(
+        regeneration.candidate.connectionId,
+      );
+      expect(
+        router.resolveActiveViewerMediaEdge(room.roomId, viewer.peerId),
+      ).toMatchObject({
+        connectionId: edge.connectionId,
+        upstream: { kind: "peer", peerId: host.peerId },
+      });
+    } finally {
+      await router.close();
+    }
+  });
+
   it("keeps peer-only shares out of configured SFU fallback", async () => {
     const { store, sent, router } = harness(1, true);
     try {

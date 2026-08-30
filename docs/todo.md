@@ -12,7 +12,8 @@ until their stated boundary is met.
 
 ## Parked Product Work
 
-1. **Broader quality optimization.** Weighted/global optimization,
+1. **Broader quality optimization.** Same-edge connection regeneration is now
+   part of the bounded local convergence path. Weighted/global optimization,
    parent-wide prediction, startup-limited inference, complete cross-clone
    source isolation, and alternative SFU policies remain unaccepted. Reopen only
    from exact path evidence; do not add a score, all-pairs probe, periodic

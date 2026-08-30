@@ -41,8 +41,11 @@ implementation and routine UI detail.
   layers. Current source defaults persistent native-edge local P2P convergence
   on, with a pre-share Host opt-out. SFU quality work is limited to multi-root
   Host fanout relief and each Viewer must prove its own candidate non-regression
-  before commit. No weighted score, all-pairs probe, general parent-wide
-  prediction, or periodic rebalance is accepted.
+  before commit. A persistently limited edge with no different Peer parent may
+  use one same-parent connection regeneration through that same operation; its
+  exact post-commit sender identity damps only another same-edge regeneration.
+  No weighted score, all-pairs probe, general parent-wide prediction, or
+  periodic rebalance is accepted.
 - Browser video uses `motion`; each share chooses H.264 with VP8 fallback through
   an actual sender probe unless the Host explicitly selects VP8 or H264. Screen
   audio uses 64/128/192 kbps ceilings with 128 default.
