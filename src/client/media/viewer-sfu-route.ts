@@ -37,7 +37,6 @@ interface ViewerSubscriberSlot {
   subscriber: ViewerSubscriberTransport;
   connected: boolean;
   activated: boolean;
-  mediaAvailable: boolean;
   stream: MediaStream | null;
   decodedFrame: boolean;
   readySent: boolean;
@@ -126,9 +125,10 @@ export class ViewerSfuRoute {
     }
     const previousRevision = this.route.getRevision();
     const previousMediaAssignment = this.route.getMediaAssignment();
-    const sameCommittedMedia =
-      update.phase === "active" &&
-      sameUpstream(previousMediaAssignment, update.assignment);
+    const sameCommittedMedia = sameUpstream(
+      previousMediaAssignment,
+      update.assignment,
+    );
     const continuingRecovery =
       previousRevision !== update.revision && sameCommittedMedia
         ? this.manualReconnectRevision !== null
@@ -243,7 +243,10 @@ export class ViewerSfuRoute {
       return result;
     }
     const transition = this.queueActiveRoute(token, acknowledge, this.paused);
-    if (continuingRecovery === "manual" && this.pending === null) {
+    if (
+      this.manualReconnectRevision === update.revision &&
+      this.pending === null
+    ) {
       void transition.then(() => {
         if (
           this.closed ||
@@ -521,7 +524,6 @@ export class ViewerSfuRoute {
       subscriber,
       connected: false,
       activated: false,
-      mediaAvailable: false,
       stream: null,
       decodedFrame: false,
       readySent: false,
@@ -771,7 +773,6 @@ export class ViewerSfuRoute {
     if (this.active === slot) {
       const assignment = this.route.getMediaAssignment();
       if (assignment?.upstream.kind === "sfu") {
-        slot.mediaAvailable = true;
         this.events.onSfuStream(stream, assignment, false, slot.revision);
       }
       return;
@@ -854,7 +855,6 @@ export class ViewerSfuRoute {
     if (manualReconnect) {
       this.manualReconnectRevision = null;
     }
-    slot.mediaAvailable = true;
     this.events.onSfuStream(slot.stream, assignment, true, slot.revision);
     if (previous && previous !== slot) {
       previous.failed = true;
@@ -883,10 +883,7 @@ export class ViewerSfuRoute {
     ) {
       return;
     }
-    const changed = slot.mediaAvailable !== available;
-    slot.mediaAvailable = available;
     this.events.onSfuVideoAvailability?.(available, slot.revision);
-    if (!changed || this.paused) return;
   }
 
   private commitMedia(token: RouteOperationToken): void {
@@ -1023,8 +1020,8 @@ export class ViewerSfuRoute {
       this.recovery = { revision, refreshed: false };
     }
     if (!this.recovery.refreshed) {
-      this.recovery.refreshed = true;
       if (this.events.send({ type: "refresh-sfu", revision })) {
+        this.recovery.refreshed = true;
         return;
       }
     }

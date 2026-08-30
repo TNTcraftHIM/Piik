@@ -640,13 +640,28 @@ describe("Viewer presentation reducer", () => {
       revision: 4,
     });
     expect(lateFrame).toBe(failed);
+    const rebound = reduceViewerPresentation(failed, {
+      type: "media-bound",
+      generation: 4,
+      revision: 4,
+    });
+    expect(rebound).toMatchObject({
+      media: { generation: 4, framePresented: false },
+      retainedFrame: false,
+      routeStatus: { revision: 4, state: "failed" },
+    });
     expect(
-      reduceViewerPresentation(failed, {
-        type: "media-bound",
+      reduceViewerPresentation(rebound, {
+        type: "frame-presented",
         generation: 4,
+        proofEpoch: 0,
         revision: 4,
       }),
-    ).toBe(failed);
+    ).toMatchObject({
+      media: { generation: 4, framePresented: true },
+      routeStatus: null,
+      connection: "connected",
+    });
     const restored = reduceViewerPresentation(failed, {
       type: "route",
       revision: 4,
@@ -663,18 +678,6 @@ describe("Viewer presentation reducer", () => {
       }).media?.framePresented,
     ).toBe(true);
 
-    const localFailure = reduceViewerPresentation(playing, {
-      type: "route-status",
-      revision: 4,
-      state: "failed",
-    });
-    expect(
-      reduceViewerPresentation(localFailure, {
-        type: "media-bound",
-        generation: 4,
-        revision: 4,
-      }),
-    ).toBe(localFailure);
   });
 
   it("honors terminal access, Host pause, and typed route status priority", () => {

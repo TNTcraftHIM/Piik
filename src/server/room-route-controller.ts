@@ -25,7 +25,7 @@ export type CandidateTuple =
 
 export type CandidateReservation<Resource> =
   | { kind: "direct"; overlap?: Resource }
-  | { kind: "sfu-reuse"; edge: Resource; overlap?: Resource }
+  | { kind: "sfu-reuse"; edge: Resource; borrowed?: true; overlap?: Resource }
   | { kind: "sfu-create"; edge: Resource; publication: Resource; overlap?: Resource };
 
 export type EndpointRetirement =
@@ -1668,8 +1668,7 @@ export class RoomRouteController<Resource = unknown> {
             ? "quality-convergence"
             : rootConvergence
               ? "root-convergence"
-              : (this.routeTimings.get(childPeerId)?.reason ??
-                this.routeDemandReason(childPeerId));
+              : this.routeDemandReason(childPeerId);
       const demandPeerId = bootstrap?.demandPeerId ?? childPeerId;
       const demand = this.participants.get(demandPeerId)!;
       this.ensureDemand(demandPeerId, nowMs, reason);
@@ -1977,7 +1976,8 @@ export class RoomRouteController<Resource = unknown> {
           transport: edge.transport,
         };
       }
-      this.upstreamByViewer.delete(retirement.childPeerId);
+      edge.usable = false;
+      edge.physicalActive = false;
     } else {
       const publication = this.hostPublication;
       if (!publication || !publication.physicalActive ||
@@ -4860,7 +4860,12 @@ function endpointTransitionEquals(left: EndpointTransition, right: EndpointTrans
 
 function reservationResources<Resource>(reservation: CandidateReservation<Resource>): Resource[] {
   const resources: Resource[] = [];
-  if ("edge" in reservation) resources.push(reservation.edge);
+  if (
+    "edge" in reservation &&
+    (reservation.kind !== "sfu-reuse" || !reservation.borrowed)
+  ) {
+    resources.push(reservation.edge);
+  }
   if ("publication" in reservation) resources.push(reservation.publication);
   if ("overlap" in reservation && reservation.overlap !== undefined) resources.push(reservation.overlap);
   return resources;

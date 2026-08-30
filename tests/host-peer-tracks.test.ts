@@ -796,6 +796,38 @@ describe("HostPeer source replacement", () => {
     expect(sourceVideo.stop).not.toHaveBeenCalled();
   });
 
+  it("applies pause authority to a source replacement while it is in flight", async () => {
+    const peer = createPeer(
+      createStream(
+        createTrack("video", "old-video"),
+        createTrack("audio", "old-audio"),
+      ),
+    );
+    await expect(peer.start()).resolves.toBe(true);
+    const connection = FakePeerConnection.latest!;
+    const videoSender = connection.senders[0]!;
+    const nextVideo = createTrack("video", "next-video");
+    const nextAudio = createTrack("audio", "next-audio");
+    videoSender.deferReplaceCall = 1;
+
+    const replacing = peer.replaceStream(createStream(nextVideo, nextAudio));
+    await vi.waitFor(() =>
+      expect(videoSender.replaceTrack).toHaveBeenCalledOnce(),
+    );
+    const replacementVideo = videoSender.replaceTrack.mock.calls[0]![0]!;
+    peer.setPaused(true);
+    expect(replacementVideo.enabled).toBe(false);
+    expect(nextAudio.enabled).toBe(false);
+
+    videoSender.releaseDeferredReplaceTrack();
+    await expect(replacing).resolves.toBe(true);
+    expect(videoSender.track?.enabled).toBe(false);
+    expect(connection.senders[1]!.track?.enabled).toBe(false);
+    peer.setPaused(false);
+    expect(videoSender.track?.enabled).toBe(true);
+    expect(connection.senders[1]!.track?.enabled).toBe(true);
+  });
+
   it("fills a pre-negotiated audio sender that started without a track", async () => {
     const peer = createPeer(
       createStream(createTrack("video", "old-video"), null),

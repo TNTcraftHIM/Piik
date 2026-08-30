@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-08-30
+Last reviewed: 2026-08-31
 
 Only **Now** is executable. Observations, old branches, experiments, and parked
 topics are not implementation authority.
@@ -59,6 +59,11 @@ until their stated boundary is met.
     connection-scoped classifier with bounded false rejection. Do not hard-skip
     Peer candidates from a participant-wide NAT label or inject predicted ports
     into production ICE without a new accepted decision and a measured gate.
+14. **Unresolved route-state ownership claims.** Reopen lower-revision
+    reauthentication, active SFU failure during an unrelated prepare, and
+    multi-child relay-evidence ownership only from an exact current-wire
+    reproduction. Do not add a second revision namespace, parallel failure
+    state, or generalized evidence map from static possibility alone.
 
 ## Decision Needed
 

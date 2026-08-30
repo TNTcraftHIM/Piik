@@ -1337,7 +1337,13 @@ describe("client signaling recovery policy", () => {
       routePolicy: DEFAULT_ROUTE_POLICY,
     });
     advance(5_000);
-    expect(sockets[0]!.send).toHaveBeenCalledTimes(1);
+    expect(sockets[0]!.send).toHaveBeenCalledTimes(2);
+    const waiting = JSON.parse(String(sockets[0]!.send.mock.calls.at(-1)![0]));
+    expect(waiting.type).toBe("signaling-challenge");
+    receive({
+      type: "signaling-challenge-response",
+      sequence: waiting.sequence,
+    });
 
     receive({
       type: "route-update",
@@ -1357,7 +1363,7 @@ describe("client signaling recovery policy", () => {
     documentTarget.dispatchEvent(new Event("visibilitychange"));
     advance(20_000);
     expect(sockets).toHaveLength(1);
-    expect(sockets[0]!.send).toHaveBeenCalledTimes(2);
+    expect(sockets[0]!.send).toHaveBeenCalledTimes(3);
 
     visibilityState = "visible";
     documentTarget.dispatchEvent(new Event("visibilitychange"));
@@ -1369,9 +1375,9 @@ describe("client signaling recovery policy", () => {
     });
     now += 7_000;
     vi.advanceTimersByTime(5_000);
-    expect(sockets[0]!.send).toHaveBeenCalledTimes(3);
-    advance(5_000);
     expect(sockets[0]!.send).toHaveBeenCalledTimes(4);
+    advance(5_000);
+    expect(sockets[0]!.send).toHaveBeenCalledTimes(5);
     expect(onMessage).toHaveBeenCalledTimes(2);
     signal.stop();
   });

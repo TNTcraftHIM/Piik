@@ -47,12 +47,11 @@ export function observeCompositedVideoFrame(
       return;
     }
     const currentDecodedFrames = decodedFrameCount(target);
-    if (
-      (baselineDecodedFrames !== null &&
-        currentDecodedFrames !== null &&
-        currentDecodedFrames > baselineDecodedFrames) ||
-      video.currentTime > baselineCurrentTime
-    ) {
+    const decodedFrameAdvanced =
+      baselineDecodedFrames !== null && currentDecodedFrames !== null
+        ? currentDecodedFrames > baselineDecodedFrames
+        : null;
+    if (decodedFrameAdvanced ?? (video.currentTime > baselineCurrentTime)) {
       finish();
     }
   }
