@@ -232,10 +232,12 @@ Viewer's continuing decoded progress. Screener does not combine loss, RTT,
 jitter, bitrate, FPS, resolution, or freezes into a weighted route score.
 
 Routing degradation requires three consecutive complete degraded deltas for the
-same sender identity. Healthy, unknown, stale, reset, source change, or identity
-change clears that run. This is the same persistence semantic used by the Host
-quality warning; a single native limitation interval remains diagnostic.
-
+same exact sender identity. Unknown, stale, reset, source change, or identity
+change clears that run. A newly committed availability or direct-convergence
+edge may establish a new run without first reporting healthy. Quality- and
+root-convergence commits remain disarmed until the new active identity reports
+a fresh healthy delta; an explicit sender reset clears the old latch and starts a
+new sequence. A single native limitation interval remains diagnostic.
 When the current sender remains persistently limited, the controller
 considers the shallowest affected child first and uses the existing
 deterministic candidate filters, ordering, cursor, reservations, and total
@@ -243,9 +245,11 @@ deadline. Candidate Peer parents need a usable source path and available steady
 capacity; clear native paths are tried before the remaining deterministic Peer
 candidates but are not a hard eligibility tier. Only one candidate runs at a
 time and the old route keeps playing. The same Viewer compares fresh,
-overlapping old and candidate receive windows. A P2P candidate commits only after first decoded
-frame and three consecutive windows with no freeze/pause, no lower pixel area or
-rounded FPS, and a strict improvement in at least one of those dimensions.
+overlapping old and candidate receive windows. A P2P candidate commits only
+after first decoded frame, one fresh healthy delta from its exact candidate
+sender, and three consecutive windows with no freeze/pause and no lower pixel
+area or rounded FPS. Strict improvement during overlap is not required because
+shared source adaptation can hide recovery until the old sender closes.
 An otherwise complete current-route window with zero decoded frames is compared
 as zero delivered pixels, FPS, and bitrate. It can approve only a temporally
 overlapping candidate window that actually decoded video and satisfies the same
@@ -253,14 +257,12 @@ freeze, pause, and P2P/SFU partial-order checks. If both routes decode nothing,
 the source may be stalled, so the window remains unknown and cannot justify a
 move.
 Bitrate does not rank P2P candidates because codec and content phase make it
-non-monotonic. Three consecutive comparable non-improving windows reject the
-candidate and advance the existing cursor without resetting the deadline. A
-persistently limited exact candidate sender is also vetoed even when receiver
-comparison approves it. Unknown or incomparable evidence waits only within the
-existing deadline; none of these outcomes creates a score. Old-edge recovery,
-authority change, or deadline aborts the experiment. A successful commit clears
-and rebaselines the affected subtree.
-
+non-monotonic. Three consecutive comparable regressing windows reject the
+candidate and advance the existing cursor without resetting the deadline.
+Unknown candidate-sender evidence waits within the existing deadline; a stale
+relative proof rejects that candidate and advances the existing cursor, while a
+degraded candidate sender cannot commit. None creates a score. Old-edge
+recovery, authority change, or deadline aborts the experiment. A successful commit clears and rebaselines the affected subtree.
 The same rule supplies both active parent change and relay abdication. A bad
 relay ingress reparents that relay while retaining its subtree. A bad exact
 parent-to-child sender moves only that child. If several senders on one parent
@@ -290,12 +292,13 @@ Host-to-SFU ingress proof and each exact SFU-to-Viewer subscription proof remain
 separate. A successful Viewer canary cannot authorize any other Viewer, and a
 new publication generation invalidates all prior ingress authority.
 
-After commit, the new active identity starts from unknown and must establish a
-fresh healthy delta before a later degradation can trigger another move. There
-is no periodic wake, weighted prediction, global optimizer, persistent parent
-blacklist, custom congestion controller, or manual SFU layer selection. The
-result converges gradually to a local stable topology: no current degraded edge
-has a proved healthy candidate under the current graph and resource facts. It
+After a quality- or root-convergence commit, the new active identity starts from
+unknown and must establish a fresh healthy delta before another degradation can
+trigger a move. There is no periodic wake, weighted prediction, global
+optimizer, persistent parent blacklist, custom congestion controller, or manual
+SFU layer selection. The result converges gradually to a local stable topology:
+no current degraded edge has a proved healthy candidate under the current graph
+and resource facts. It
 does not promise a static mathematical global optimum.
 
 Two pre-share gates constrain this same controller. Peer-only policy removes

@@ -1,6 +1,6 @@
 # Realtime Screen-Share Quality Evidence
 
-- Reviewed: 2026-08-29
+- Reviewed: 2026-08-30
 - Scope: Browser game capture, codecs, startup adaptation, relay, and LiveKit
 - Status: current evidence; product behavior is owned by
   [media quality](../product/media-quality.md) and
@@ -75,11 +75,40 @@ deriving endpoint capacity from one RTCStats field. A low-motion control also
 sustained 29.8 fps while using only about 0.24 Mbps, so payload bitrate alone is
 not a quality measure.
 
-An additional same-track versus per-sender `MediaStreamTrack.clone()` A/B gave
-no material isolation benefit. A constrained sender fell near 320x180 at 9-10
-fps while the healthy sender stayed near 960x540 at 28-30 fps in both arms; both
-returned to 720p30 after the constrained sender closed. Clone stop did not stop
-the original capture, but source cloning is not an accepted resource remedy.
+An initial same-track versus `MediaStreamTrack.clone()` A/B left a sender on the
+original track in both arms. A constrained sender fell near 320x180 at 9-10 fps
+while the healthier sender stayed near 960x540 at 28-30 fps; both returned to
+720p30 after the constrained sender closed. That experiment established partial
+coupling and correctly rejected a bare clone added alongside an original-track
+sender. It did not test sender-owned clone generations with a preview-only
+original track.
+
+A later Chrome 151 display-capture experiment tested that missing ownership
+boundary. The original track fed only local preview; two PeerConnections each
+owned a separate clone. Constraining one sender to 120 kbps still caused some
+transient cross-clone frame-rate and resolution disturbance, so clones do not
+provide complete simultaneous isolation. The constrained sender then remained
+limited after its budget returned to 5 Mbps. Closing that sender and stopping
+its clone, followed by a new sender with a fresh clone, restored both paths to
+1768x938 at about 30 fps for the full 24-second observation. Reusing the original
+track instead had repeatedly created a low-resolution replacement sender.
+
+This establishes a Chrome 151 generation-ratchet and a standards-based escape:
+an outbound video sender can own one independently constrained clone and retire
+the adapted track with the sender. It does not establish complete source
+isolation, cross-Browser behavior, or a new congestion controller. Any product
+implementation must also preserve live capture-profile changes, `contentHint`,
+Host pause/resume, source replacement rollback, and explicit clone disposal.
+
+Production room evidence showed the same partial coupling and ratchet shape at
+larger scale. One Host sender remained bandwidth-limited while both same-track
+Host outputs fell
+near 320x180 at 7-10 fps, even when its sibling reported no native limitation
+and materially higher outgoing BWE. After the constrained edge departed, the
+surviving path recovered through high-resolution, full-cadence windows. Together
+with the controlled experiments, this supports partial shared-source coupling
+and track-generation retention; it does not establish a universal all-senders
+minimum or quantify its share relative to uplink contention.
 
 ## H.264 Root Cause And Gate
 
@@ -251,8 +280,13 @@ Its cumulative `qualityLimitationDurations` can prove a same-identity interval
 spent in `none`, `bandwidth`, or `cpu`; missing or reset values remain unknown.
 This supplies a categorical native edge state rather than an application score.
 One report is still not a future guarantee, so a candidate must carry real media
-while the working route remains and prove a complete healthy delta before
-commit. Failure remains inconclusive without cutting the old route.
+while the working route remains. A P2P candidate needs fresh healthy evidence
+from its exact sender plus clean overlapping same-Viewer receive windows that do
+not regress delivered dimensions or frame rate. Requiring an immediate strict
+gain can deadlock while the retained and candidate senders still share source
+adaptation. An expired one-shot relative proof rejects that candidate rather than
+holding the operation until its deadline. Failure remains inconclusive without
+cutting the old route.
 
 Production observation on 2026-08-27 showed that one two-second degraded delta
 could move an otherwise usable Host Peer edge to an already-active SFU whose
@@ -324,6 +358,7 @@ percentages, and tuning loops are not adopted for this Browser product.
 - [MediaStreamTrack Content Hints](https://www.w3.org/TR/mst-content-hint/)
 - [Screen Capture](https://www.w3.org/TR/screen-capture/)
 - [libwebrtc adaptation](https://webrtc.googlesource.com/src/+/HEAD/video/g3doc/adaptation.md)
+- [libwebrtc source-wants aggregation](https://webrtc.googlesource.com/src/+/refs/heads/main/api/video/video_broadcaster.cc)
 - [libwebrtc VP8 encoder](https://webrtc.googlesource.com/src/+/refs/heads/main/modules/video_coding/codecs/vp8/libvpx_vp8_encoder.cc)
 - [libwebrtc startup frame dropper](https://webrtc.googlesource.com/src/+/f20ebb8adbf4fa781830e4384c61f732bd28a217/video/adaptation/video_stream_encoder_resource_manager.cc)
 - [Chromium WebRTC encoder factory](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/third_party/blink/renderer/platform/peerconnection/rtc_video_encoder_factory.cc)

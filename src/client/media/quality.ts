@@ -213,7 +213,23 @@ export async function applyCaptureProfile(
   if (!videoTrack) {
     throw new Error(say("host.capture.noSource"));
   }
-  await videoTrack.applyConstraints(captureConstraints(profile));
+  await applyVideoCaptureProfile(videoTrack, profile);
+}
+
+export function cloneSenderVideoTrack(
+  source: MediaStreamTrack,
+): MediaStreamTrack {
+  const clone = source.clone();
+  clone.contentHint = source.contentHint || "motion";
+  clone.enabled = source.enabled;
+  return clone;
+}
+
+export async function applyVideoCaptureProfile(
+  track: MediaStreamTrack,
+  profile: QualityProfile,
+): Promise<void> {
+  await track.applyConstraints(captureConstraints(profile));
 }
 
 export function setMediaPaused(stream: MediaStream, paused: boolean): boolean {

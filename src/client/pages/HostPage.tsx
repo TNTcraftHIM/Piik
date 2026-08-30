@@ -1164,7 +1164,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         Promise.all(
           [
             ...[...peersRef.current.values()].map((peer) =>
-              peer.updateProfile(nextProfile),
+              peer.updateCaptureProfile(nextProfile),
             ),
             ...(hostProvisionalChildRef.current
               ? [hostProvisionalChildRef.current.updateProfile(nextProfile)]
@@ -1237,9 +1237,13 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         setNoticeKey("host.pause.noTracksResume");
         return;
       }
+      for (const peer of peersRef.current.values()) peer.setPaused(false);
+      hostProvisionalChildRef.current?.setPaused(false);
       hostSfuRouteRef.current?.setPaused(false);
       if (signalRef.current?.setSharingPaused(false) !== true) {
         setMediaPaused(activeStream, true);
+        for (const peer of peersRef.current.values()) peer.setPaused(true);
+        hostProvisionalChildRef.current?.setPaused(true);
         hostSfuRouteRef.current?.setPaused(true);
         signalRef.current?.confirmSharingPaused();
         setNoticeKey("host.pause.signalRecovering");
@@ -1254,6 +1258,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       setNoticeKey("host.pause.noTracksPause");
       return;
     }
+    for (const peer of peersRef.current.values()) peer.setPaused(true);
+    hostProvisionalChildRef.current?.setPaused(true);
     sharingPausedRef.current = true;
     setSharingPaused(true);
     hostSfuRouteRef.current?.setPaused(true);
@@ -1661,6 +1667,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       if (activeStream) {
         setMediaPaused(activeStream, true);
       }
+      for (const peer of peersRef.current.values()) peer.setPaused(true);
+      hostProvisionalChildRef.current?.setPaused(true);
       hostSfuRouteRef.current?.setPaused(true);
       sharingPausedRef.current = true;
       setSharingPaused(true);
@@ -2487,7 +2495,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     const viewerState = connected
       ? "connected"
       : (snapshot?.connectionState ?? "routing");
-    const detailMetrics = hasMatchingQualityEvidence
+    const detailMetrics = hasCurrentQualityEvidence
       ? metricsFromQualityEvidence(qualityEvidence)
       : snapshot && hasPeerRouteEvidence(snapshot)
         ? snapshot.metrics
@@ -2500,7 +2508,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
             : "sfu"
           : null,
       metrics: detailMetrics,
-      direction: hasMatchingQualityEvidence ? "receive" : "send",
+      direction: hasCurrentQualityEvidence ? "receive" : "send",
       tag: connected
         ? undefined
         : {

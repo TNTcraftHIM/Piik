@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-08-19
-- Last reviewed: 2026-08-28
+- Last reviewed: 2026-08-30
 
 ## Context
 
@@ -42,8 +42,13 @@ it does not need a second bitrate, resolution, FPS, or layer-control system.
 3. The three recommended profiles and advanced controls supply capture and
    sender ceilings plus `degradationPreference`. Every sender reads back the
    parameters that the browser actually accepted.
-4. Direct and peer paths leave media adaptation to each `RTCPeerConnection`.
-   After accepting an answer, the Host reapplies the current video profile to
+4. Every direct, Browser-relay, and Host SFU video sender owns one
+   `MediaStreamTrack` clone. The original capture or received track remains a
+   source and local presentation track and is never attached directly to an
+   outbound sender. The sender owner retains the game-motion content intent and
+   current enabled state, applies live Host capture constraints to Host-owned
+   clones, and stops the clone on replacement, rollback, failure, unpublish, or
+   teardown. After accepting an answer, the Host still reapplies the current video profile to
    the negotiated sender because the browser may replace or rewrite encoding
    parameters during negotiation.
 5. Auto direct and Browser-relay offers with a proved sender order H.264 before
@@ -52,10 +57,10 @@ it does not need a second bitrate, resolution, FPS, or layer-control system.
    VP8 only; manual H264 offers H.264 mode 1 only. Existing edges are not
    renegotiated when a later relay gate completes; its result applies to future
    children.
-6. The SFU publisher uses the Host source decision for its one publication,
-   disables backup codec, sets the selected HIGH ceiling and degradation
-   preference, but does not set `screenShareSimulcastLayers`, mutate lower
-   encodings, or select a subscriber layer. Pinned LiveKit defaults own the
+6. The SFU publisher uses the Host source decision and one sender-owned clone for
+   its publication, disables backup codec, sets the selected HIGH ceiling and
+   degradation preference, but does not set `screenShareSimulcastLayers`, mutate
+   lower encodings, or select a subscriber layer. Pinned LiveKit defaults own the
    selected codec's representation set and source-replacement/republish behavior.
 7. LiveKit Dynacast and server send-side BWE remain enabled. AdaptiveStream
    remains disabled because a Viewer may relay its received track to peer
@@ -96,6 +101,14 @@ versus encoded-frame progress separated them. Chrome 153 then sustained the
 same H.264 path with two senders, Browser relay re-encoding, and one pinned
 LiveKit HIGH+LOW publication without backup codec.
 
+A separate Chrome 151 display-capture experiment distinguished bare cloning
+from sender-owned clone generations. With a preview-only original track, a
+constrained sender could remain adapted after its bitrate budget recovered, but
+retiring that sender and its clone let a new clone return immediately to about
+30 fps at high resolution. Simultaneous clones still showed transient shared-
+source interference, so this decision prevents adaptation inheritance rather
+than claiming complete source isolation.
+
 ## Consequences
 
 - Screener owns fewer media mechanisms and follows the pinned frameworks'
@@ -106,6 +119,10 @@ LiveKit HIGH+LOW publication without backup codec.
 - A constrained Viewer may receive a lower LiveKit representation without
   lowering every subscriber, subject to the publisher and network actually
   sustaining the framework contract.
+- A retired sender cannot leave its adapted video track attached to the source
+  generation used by a replacement sender. Cloning adds one track adapter per
+  outbound video sender but no additional capture or encoder beyond the sender
+  that already exists.
 - A Host may need to lower its explicit share profile when encoder or uplink
   capacity is insufficient; Screener does not silently remove constrained
   Viewer support.
@@ -124,11 +141,13 @@ LiveKit HIGH+LOW publication without backup codec.
 - No quality score, all-pairs probing, periodic rebalancing, or parent switching
   outside ADR-0005's native-edge operation.
 - No AdaptiveStream while a subscriber can relay the track.
+- No claim that track clones isolate their shared underlying media source.
 - No quality or hardware claim from configured options alone.
 
 ## References
 
 - [MediaStreamTrack Content Hints](https://www.w3.org/TR/mst-content-hint/)
+- [Media Capture and Streams](https://www.w3.org/TR/mediacapture-streams/)
 - [WebRTC](https://www.w3.org/TR/webrtc/)
 - [WebRTC Statistics](https://www.w3.org/TR/webrtc-stats/)
 - [LiveKit video simulcast and Dynacast](https://docs.livekit.io/transport/media/advanced/)

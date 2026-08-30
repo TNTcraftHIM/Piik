@@ -7,6 +7,8 @@ import {
 import { createOpaqueId } from "../lib/opaque-id";
 import {
   audioSenderParameterWarning,
+  applyVideoCaptureProfile,
+  cloneSenderVideoTrack,
   configureScreenAudioSender,
   configureVideoSender,
   needsStartupVideoProfile,
@@ -53,6 +55,7 @@ export class HostPeer {
   private readonly connection: RTCPeerConnection;
   private readonly pendingCandidates: SignalCandidate[] = [];
   private statsAccumulator = createStatsAccumulator();
+  private senderVideoTrack: MediaStreamTrack | null;
   private videoSender: RTCRtpSender | null = null;
   private audioSender: RTCRtpSender | null = null;
   private statsTimer: number | null = null;
@@ -89,6 +92,10 @@ export class HostPeer {
     connectionId = createOpaqueId(),
   ) {
     this.connectionId = connectionId;
+    const sourceVideoTrack = stream.getVideoTracks()[0] ?? null;
+    this.senderVideoTrack = sourceVideoTrack
+      ? cloneSenderVideoTrack(sourceVideoTrack)
+      : null;
     this.startupVideoProfilePending = needsStartupVideoProfile(desiredProfile);
     this.connection = new RTCPeerConnection({
       iceServers: iceConfig.iceServers,
@@ -108,7 +115,7 @@ export class HostPeer {
   }
 
   async start(): Promise<boolean> {
-    const videoTrack = this.stream.getVideoTracks()[0];
+    const videoTrack = this.senderVideoTrack;
     if (!videoTrack) {
       this.setError(new Error(say("host.capture.noSource")), say("host.err.createConnection"));
       return false;
@@ -149,20 +156,27 @@ export class HostPeer {
   }
 
   async replaceStream(nextStream: MediaStream): Promise<boolean> {
-    const nextVideoTrack = nextStream.getVideoTracks()[0];
-    if (this.disposed || !nextVideoTrack) {
+    const nextSourceVideoTrack = nextStream.getVideoTracks()[0];
+    if (this.disposed || !nextSourceVideoTrack) {
       return false;
     }
 
     return this.enqueueSenderMutation(async () => {
       const videoSender = this.videoSender;
       const audioSender = this.audioSender;
-      if (this.disposed || !videoSender || !audioSender) {
+      const previousVideoTrack = this.senderVideoTrack;
+      if (
+        this.disposed ||
+        !videoSender ||
+        !audioSender ||
+        !previousVideoTrack
+      ) {
         return false;
       }
 
+      const nextVideoTrack = cloneSenderVideoTrack(nextSourceVideoTrack);
+      let retainedNextVideoTrack = false;
       const nextAudioTrack = nextStream.getAudioTracks()[0] ?? null;
-      const previousVideoTrack = videoSender.track;
       const previousAudioTrack = audioSender.track;
       this.statsSamplingBlocked = true;
       this.statsAccumulator = createStatsAccumulator();
@@ -172,10 +186,13 @@ export class HostPeer {
           await videoSender.replaceTrack(nextVideoTrack);
           await audioSender.replaceTrack(nextAudioTrack);
         } catch (error) {
-          await Promise.allSettled([
+          const [videoRollback] = await Promise.allSettled([
             videoSender.replaceTrack(previousVideoTrack),
             audioSender.replaceTrack(previousAudioTrack),
           ]);
+          if (videoRollback.status === "rejected") {
+            this.dispose();
+          }
           this.setError(error, say("host.fail.source"));
           return false;
         }
@@ -183,7 +200,10 @@ export class HostPeer {
         if (this.disposed) {
           return false;
         }
+        this.senderVideoTrack = nextVideoTrack;
         this.stream = nextStream;
+        retainedNextVideoTrack = true;
+        previousVideoTrack.stop();
         this.startupVideoProfilePending = needsStartupVideoProfile(
           this.desiredProfile,
         );
@@ -200,6 +220,9 @@ export class HostPeer {
         this.emit();
         return true;
       } finally {
+        if (!retainedNextVideoTrack) {
+          nextVideoTrack.stop();
+        }
         this.statsAccumulator = createStatsAccumulator();
         this.statsSamplingBlocked = false;
       }
@@ -207,6 +230,27 @@ export class HostPeer {
   }
 
   updateProfile(profile: QualityProfile): Promise<boolean> {
+    return this.updateOwnedProfile(profile, false);
+  }
+
+  updateCaptureProfile(profile: QualityProfile): Promise<boolean> {
+    return this.updateOwnedProfile(profile, true);
+  }
+
+  setPaused(paused: boolean): void {
+    if (this.senderVideoTrack) {
+      this.senderVideoTrack.enabled = !paused;
+    }
+    const audioTrack = this.audioSender?.track;
+    if (audioTrack) {
+      audioTrack.enabled = !paused;
+    }
+  }
+
+  private updateOwnedProfile(
+    profile: QualityProfile,
+    updateCaptureConstraints: boolean,
+  ): Promise<boolean> {
     if (this.disposed) {
       return Promise.resolve(false);
     }
@@ -231,13 +275,25 @@ export class HostPeer {
     return this.enqueueSenderMutation(async () => {
       const videoSender = this.videoSender;
       const audioSender = this.audioSender;
+      const videoTrack = this.senderVideoTrack;
       if (
         this.disposed ||
         !videoSender ||
         !audioSender ||
+        !videoTrack ||
         requestedRevision !== this.profileRevision
       ) {
         return false;
+      }
+      if (updateCaptureConstraints) {
+        await applyVideoCaptureProfile(videoTrack, profile);
+        if (
+          this.disposed ||
+          this.senderVideoTrack !== videoTrack ||
+          requestedRevision !== this.profileRevision
+        ) {
+          return false;
+        }
       }
       const updateVideo =
         this.connection.connectionState === "connected" &&
@@ -344,6 +400,8 @@ export class HostPeer {
       this.statsTimer = null;
     }
     this.connection.close();
+    this.senderVideoTrack?.stop();
+    this.senderVideoTrack = null;
   }
 
   private bindConnectionEvents(): void {
@@ -517,11 +575,11 @@ export class HostPeer {
     ) {
       return;
     }
-    const captureTrack = this.videoSender?.track ?? null;
+    const captureTrack = this.senderVideoTrack;
     const captureAudioTrack = this.audioSender?.track ?? null;
     if (
       !captureTrack ||
-      this.stream.getVideoTracks()[0] !== captureTrack ||
+      this.videoSender?.track !== captureTrack ||
       (this.stream.getAudioTracks()[0] ?? null) !== captureAudioTrack
     ) {
       return;
@@ -544,8 +602,8 @@ export class HostPeer {
         this.disposed ||
         this.statsSamplingBlocked ||
         this.statsAccumulator !== statsAccumulator ||
+        this.senderVideoTrack !== captureTrack ||
         this.videoSender?.track !== captureTrack ||
-        this.stream.getVideoTracks()[0] !== captureTrack ||
         (this.audioSender?.track ?? null) !== captureAudioTrack ||
         (this.stream.getAudioTracks()[0] ?? null) !== captureAudioTrack ||
         (metrics.trackIdentifier !== null &&
