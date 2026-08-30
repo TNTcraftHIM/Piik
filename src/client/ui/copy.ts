@@ -89,11 +89,15 @@ if (typeof window !== "undefined") {
 // Non-React setter (used by the mode pill and by tests).
 export const setCopy = commit;
 
+export function isCopyKey(value: string): value is CopyKey {
+  return Object.prototype.hasOwnProperty.call(catalogs.zh, value);
+}
+
 export function t(lang: Lang, key: CopyKey, vars?: Record<string, string>): string {
   let value = catalogs[lang][key];
   if (vars) {
     for (const [name, replacement] of Object.entries(vars)) {
-      value = value.replace(`{${name}}`, replacement);
+      value = value.replace(`{${name}}`, () => replacement);
     }
   }
   return value;

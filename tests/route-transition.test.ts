@@ -587,6 +587,48 @@ describe("minimal route transition contracts", () => {
     expect(reconciledChildren.at(-1)).toEqual(["retained-child"]);
   });
 
+  it("rebuilds a failed Host SFU publisher while sharing is paused", async () => {
+    const messages: ClientMessage[] = [];
+    const publishers: ReturnType<typeof createFakePublisher>[] = [];
+    const disconnects: Array<() => void> = [];
+    const route = new HostSfuRoute({
+      getStream: () => ({}) as MediaStream,
+      getProfile: () => QUALITY_PROFILES["720p30"],
+      getVideoCodec: () => "vp8",
+      reconcileChildren: () => undefined,
+      send: (message) => {
+        messages.push(message);
+        return true;
+      },
+      createPublisher: (onDisconnected) => {
+        disconnects.push(onDisconnected);
+        const publisher = createFakePublisher(
+          [],
+          `publisher-${publishers.length + 1}`,
+        );
+        publishers.push(publisher);
+        return publisher;
+      },
+    });
+
+    await route.acceptAndWait({
+      revision: 1,
+      phase: "active",
+      assignment: hostAssignment("publication-paused"),
+    });
+    await route.acceptConfig(sfuConfig(1));
+    route.setPaused(true);
+    disconnects[0]!();
+    expect(messages).toContainEqual({ type: "refresh-sfu", revision: 1 });
+
+    await route.acceptConfig({ ...sfuConfig(1), token: "recovery-token" });
+    expect(publishers).toHaveLength(2);
+    expect(publishers[1]!.setPaused).toHaveBeenCalledWith(true);
+
+    route.setPaused(false);
+    expect(publishers[1]!.setPaused).toHaveBeenLastCalledWith(false);
+  });
+
   it("does not activate a fresh SFU publisher after its exact route becomes stale", async () => {
     let releaseFreshPublisher!: () => void;
     const freshPublisherGate = new Promise<void>((resolve) => {
@@ -1240,6 +1282,51 @@ describe("minimal route transition contracts", () => {
     subscriber.events.onStream({} as MediaStream);
     subscriber.events.onFirstDecodedFrame();
     expect(messages.filter((message) => message.type === "route-ready")).toEqual([]);
+  });
+
+  it("rebuilds a failed Viewer SFU subscriber while sharing is paused", async () => {
+    const messages: ClientMessage[] = [];
+    const streams: MediaStream[] = [];
+    const subscribers: ReturnType<typeof createFakeSubscriber>[] = [];
+    const route = new ViewerSfuRoute("viewer_12345678", {
+      activatePeer: () => true,
+      reconcileSfuChildren: () => undefined,
+      onSfuStream: (stream) => streams.push(stream),
+      send: (message) => {
+        messages.push(message);
+        return true;
+      },
+      createSubscriber: (events) => {
+        const subscriber = createFakeSubscriber(
+          events,
+          [],
+          `subscriber-${subscribers.length + 1}`,
+        );
+        subscribers.push(subscriber);
+        return subscriber;
+      },
+    });
+
+    route.accept({
+      revision: 7,
+      phase: "active",
+      assignment: viewerSfuAssignment(),
+    });
+    await route.acceptConfig(sfuConfig(7));
+    subscribers[0]!.events.onStream({} as MediaStream);
+    subscribers[0]!.events.onFirstDecodedFrame();
+    await vi.waitFor(() => expect(streams).toHaveLength(1));
+
+    route.setPaused(true);
+    subscribers[0]!.events.onDisconnected();
+    expect(messages).toContainEqual({ type: "refresh-sfu", revision: 7 });
+
+    await route.acceptConfig({ ...sfuConfig(7), token: "recovery-token" });
+    expect(subscribers).toHaveLength(2);
+    expect(subscribers[1]!.armDecodedFrameProof).not.toHaveBeenCalled();
+
+    route.setPaused(false);
+    expect(subscribers[1]!.armDecodedFrameProof).toHaveBeenCalledOnce();
   });
 
 

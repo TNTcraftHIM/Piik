@@ -2,10 +2,8 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  Couch,
-  pawnColor,
-} from "../src/client/components/living/Couch.tsx";
+import { Couch } from "../src/client/components/living/Couch.tsx";
+import { participantColor } from "../src/client/components/living/participant-color.ts";
 import {
   BrandLoader,
   BrandMark,
@@ -15,9 +13,9 @@ import { ComicTooltip } from "../src/client/components/living/ComicTooltip.tsx";
 import { HintComic } from "../src/client/components/living/hints/index.tsx";
 import { StageOverlay } from "../src/client/components/living/Stage.tsx";
 import { ViewerOverview } from "../src/client/components/living/ViewerOverview.tsx";
-import { NameTag } from "../src/client/components/living/primitives.tsx";
+import { Btn, NameTag } from "../src/client/components/living/primitives.tsx";
 import { EMPTY_METRICS } from "../src/client/types.ts";
-import { setCopy } from "../src/client/ui/copy.ts";
+import { setCopy, t } from "../src/client/ui/copy.ts";
 
 describe("living-room presentation", () => {
   afterEach(() => setCopy({ lang: "zh", vis: false }));
@@ -97,11 +95,13 @@ describe("living-room presentation", () => {
 
   it("keeps the current display name visible in visual mode", () => {
     setCopy({ lang: "en", vis: true });
+    const identity = "viewer-name-tag";
     const html = renderToStaticMarkup(
-      createElement(NameTag, { name: "TNT" }),
+      createElement(NameTag, { name: "TNT", identity }),
     );
 
     expect(html).toContain(">TNT<");
+    expect(html).toContain(participantColor(identity));
     expect(html).not.toContain("visually-hidden");
   });
 
@@ -121,6 +121,27 @@ describe("living-room presentation", () => {
     expect(html).not.toContain('viewBox="0 0 320 96"');
   });
 
+  it("keeps a hint-wrapped disabled control explainable by keyboard", () => {
+    setCopy({ lang: "en", vis: true });
+    const html = renderToStaticMarkup(
+      createElement(
+        ComicTooltip,
+        {
+          kind: "hint-join-go",
+          children: createElement(Btn, {
+            icon: "refresh",
+            title: "viewer.reconnect",
+            disabled: true,
+          }),
+        },
+      ),
+    );
+
+    expect(html).toContain('class="lr-comic-tip-wrap is-disabled-trigger"');
+    expect(html).toContain('tabindex="0"');
+    expect(html).toContain(`aria-label="${t("en", "viewer.reconnect")}"`);
+  });
+
   it("animates the private-room hint around its door and lock", () => {
     const html = renderToStaticMarkup(
       createElement(HintComic, { kind: "hint-policy-private", size: 240 }),
@@ -131,6 +152,14 @@ describe("living-room presentation", () => {
     expect(html).toContain("vls-priv-card");
     expect(html).toContain("vlsPrivDoor");
     expect(html).toContain("vlsPrivLock");
+  });
+
+  it("keeps the Host-offline comic free of the waiting-room moon", () => {
+    const html = renderToStaticMarkup(
+      createElement(Comic, { kind: "host-offline", theme: "stage" }),
+    );
+
+    expect(html).not.toContain("M229 39.5a8.5");
   });
 
   it("keeps every crowded and relay Viewer name visible in visual mode", () => {
@@ -152,12 +181,13 @@ describe("living-room presentation", () => {
     expect(html).toContain(
       '<span class="lr-pawn-name">Relay Viewer With A Full Name</span>',
     );
+    expect(html).toContain('title="Relay Viewer With A Full Name"');
     expect(html).not.toContain("max-width:72px");
   });
 
   it("derives every participant color only from the peer identity", () => {
     const peerId = "viewer-stable-identity";
-    const color = pawnColor(peerId);
+    const color = participantColor(peerId);
     const html = renderToStaticMarkup(
       createElement(Couch, {
         entries: [
@@ -171,7 +201,7 @@ describe("living-room presentation", () => {
       }),
     );
 
-    expect(pawnColor(peerId)).toBe(color);
+    expect(participantColor(peerId)).toBe(color);
     expect(html).toContain(color);
     expect(html).not.toContain("var(--you)");
   });
@@ -216,5 +246,28 @@ describe("living-room presentation", () => {
     expect(html).toContain("5120");
     expect(html).toContain("18 ms");
     expect(html).toContain("Bob");
+  });
+
+  it("uses route glyphs without visible route text in visual mode", () => {
+    setCopy({ lang: "en", vis: true });
+    const html = renderToStaticMarkup(
+      createElement(ViewerOverview, {
+        entries: [
+          {
+            key: "viewer-p2p",
+            name: "Alice",
+            connected: true,
+            statusLabel: "Connected",
+            route: "p2p",
+            metrics: null,
+          },
+        ],
+        selectedKey: null,
+        onSelect: () => undefined,
+      }),
+    );
+
+    expect(html).not.toContain("<b>P2P</b>");
+    expect(html).toContain(t("en", "state.route.p2p"));
   });
 });

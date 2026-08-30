@@ -397,9 +397,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     "access" | "replacement" | "sharing" | null
   >(null);
   const roomMutating = roomMutation !== null;
-  const [viewerPasswordEnabled, setViewerPasswordEnabled] = useState(
-    creationProfile.roomPassword !== null,
-  );
+  const [viewerPasswordEnabled, setViewerPasswordEnabled] = useState(false);
   useEffect(() => {
     creationProfileRef.current = creationProfile;
   }, [creationProfile]);
@@ -2265,12 +2263,12 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   }
 
   async function changeCodeEntryPolicy(policy: CodeEntryPolicy): Promise<void> {
-    if (policy === activeCodeEntryPolicy) {
-      setNotice(null);
-      return;
-    }
     const activeRoom = roomRef.current;
     if (!activeRoom) {
+      return;
+    }
+    if (activeRoom.codeEntryPolicy === policy) {
+      setNotice(null);
       return;
     }
     const mutation = beginRoomMutation("access");
@@ -2448,8 +2446,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     window.location.assign(route);
   }
 
-  const activeCodeEntryPolicy =
-    room?.codeEntryPolicy ?? creationProfile.codeEntryPolicy;
+  const activeCodeEntryPolicy = room?.codeEntryPolicy ?? null;
   const hostPeerId = hostPresence?.peerId ?? hostPeerIdRef.current;
 
   const couchEntries: CouchEntry[] = viewers.map((viewer) => {
@@ -2825,32 +2822,111 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         </div>
 
         <div className="lr-deck">
-          {showConnectionDetails && viewerOverviewEntries.length > 0 ? (
-            <ViewerOverview
-              entries={viewerOverviewEntries}
-              selectedKey={selectedPawn}
-              onSelect={(peerId) =>
-                setSelectedPawn((current) =>
-                  current === peerId ? null : peerId,
-                )
-              }
-            />
+          {showConnectionDetails && details && stream ? (
+            <Row sub>
+              <div id="host-details-panel" style={{ display: "contents" }}>
+                <span
+                  className="lr-meter-tag"
+                  title={vis ? undefined : t("host.captureAria")}
+                >
+                  <Glyph name="arrowUp" size={17} />
+                  {vis ? null : (
+                    <span className="lr-cap">{t("stats.capture")}</span>
+                  )}
+                </span>
+                <div
+                  className="lr-meter"
+                  role="group"
+                  aria-label={t("host.captureAria")}
+                >
+                  <span
+                    className="lr-meter-cell"
+                    title={vis ? undefined : t("stats.resolution")}
+                  >
+                    <Glyph name="expand" size={16} />
+                    <b>
+                      {details.resolution ?? (vis ? "—" : t("stats.unknown"))}
+                    </b>
+                    {vis ? (
+                      <span className="visually-hidden">
+                        {t("stats.resolution")}
+                      </span>
+                    ) : null}
+                  </span>
+                  <span
+                    className="lr-meter-cell"
+                    title={vis ? undefined : t("stats.fps")}
+                  >
+                    <Glyph name="wave" size={16} />
+                    <b>
+                      {details.frameRate
+                        ? `${details.frameRate.toFixed(0)} fps`
+                        : vis
+                          ? "—"
+                          : t("host.capture.fpsUnknown")}
+                    </b>
+                    {vis ? (
+                      <span className="visually-hidden">{t("stats.fps")}</span>
+                    ) : null}
+                  </span>
+                  <span
+                    className="lr-meter-cell"
+                    title={vis ? undefined : t("stats.codec")}
+                  >
+                    <Glyph name="cpu" size={16} />
+                    <b>
+                      {resolvedVideoCodec?.toUpperCase() ??
+                        (vis ? "—" : t("host.capture.codecPending"))}
+                    </b>
+                    {vis ? (
+                      <span className="visually-hidden">{t("stats.codec")}</span>
+                    ) : null}
+                  </span>
+                  <span
+                    className="lr-meter-cell"
+                    title={vis ? undefined : t("stats.audio")}
+                  >
+                    {vis ? (
+                      <span
+                        style={{ position: "relative", display: "inline-flex" }}
+                      >
+                        <Glyph name="speaker" size={16} />
+                        {details.hasAudio ? null : (
+                          <span
+                            aria-hidden="true"
+                            style={{
+                              position: "absolute",
+                              top: -3,
+                              bottom: -3,
+                              left: "50%",
+                              width: 2.5,
+                              borderRadius: 2,
+                              background: "currentColor",
+                              transform: "translateX(-50%) rotate(45deg)",
+                            }}
+                          />
+                        )}
+                        <span className="visually-hidden">
+                          {details.hasAudio
+                            ? t("host.capture.hasAudio")
+                            : t("host.capture.noAudio")}
+                        </span>
+                      </span>
+                    ) : (
+                      <>
+                        <Glyph name="speaker" size={16} />
+                        <b>
+                          {details.hasAudio
+                            ? t("host.capture.hasAudio")
+                            : t("host.capture.noAudio")}
+                        </b>
+                      </>
+                    )}
+                  </span>
+                </div>
+              </div>
+            </Row>
           ) : null}
-          {selectedViewer && selectedDetail ? (
-            <PawnDetail
-              pawnKey={selectedViewer.peerId}
-              name={selectedViewer.label}
-              route={selectedDetail.route}
-              metrics={selectedDetail.metrics}
-              direction={selectedDetail.direction}
-              tag={selectedDetail.tag}
-              error={selectedDetail.error}
-              expanded={metricsExpanded}
-              onToggleMetrics={setMetricsExpanded}
-              onClose={() => setSelectedPawn(null)}
-            />
-          ) : null}
-
           <Row>
             {room ? (
               <RowGroup>
@@ -2937,7 +3013,12 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                 </form>
               ) : (
                 <>
-                  <NameTag name={hostPresence?.displayName ?? displayName} />
+                  <NameTag
+                    name={hostPresence?.displayName ?? displayName}
+                    identity={
+                      hostPeerId ?? hostClientIdRef.current ?? "host-pending"
+                    }
+                  />
                   {hintWrap(
                     "hint-rename",
                     <Btn
@@ -2973,7 +3054,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                   {hintWrap(
                     "hint-switch-source",
                     <Btn
-                      icon="refresh"
+                      icon="switchSource"
                       cap={switchingSource ? "host.switching" : "host.switchSource"}
                       title="host.switchSource"
                       disabled={switchingSource || changingQuality}
@@ -3578,6 +3659,46 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
             </div>
           </div>
 
+          {showConnectionDetails && viewerOverviewEntries.length > 0 ? (
+            <ViewerOverview
+              entries={viewerOverviewEntries}
+              selectedKey={selectedPawn}
+              onSelect={(peerId) =>
+                setSelectedPawn((current) =>
+                  current === peerId ? null : peerId,
+                )
+              }
+            />
+          ) : null}
+          {selectedViewer && selectedDetail ? (
+            <PawnDetail
+              pawnKey={selectedViewer.peerId}
+              name={selectedViewer.label}
+              route={selectedDetail.route}
+              metrics={selectedDetail.metrics}
+              direction={selectedDetail.direction}
+              tag={selectedDetail.tag}
+              error={selectedDetail.error}
+              expanded={metricsExpanded}
+              onToggleMetrics={setMetricsExpanded}
+              onClose={() => setSelectedPawn(null)}
+            />
+          ) : null}
+          {showTopology ? (
+            <Row sub>
+              <RouteTree
+                hostPeerId={hostPeerId}
+                hostLabel={labeledHostPresence?.label ?? displayName}
+                viewers={viewers}
+                selectedPeerId={selectedPawn}
+                onSelectPeer={(peerId) =>
+                  setSelectedPawn((current) =>
+                    current === peerId ? null : peerId,
+                  )
+                }
+              />
+            </Row>
+          ) : null}
           <Row label={t("host.details")}>
             <RowGroup actions>
               {hintWrap(
@@ -3609,115 +3730,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
               )}
             </RowGroup>
           </Row>
-          {showConnectionDetails && details && stream ? (
-            <Row sub>
-              <div id="host-details-panel" style={{ display: "contents" }}>
-              <span
-                className="lr-meter-tag"
-                title={vis ? undefined : t("host.captureAria")}
-              >
-                <Glyph name="arrowUp" size={17} />
-                {vis ? null : (
-                  <span className="lr-cap">{t("stats.capture")}</span>
-                )}
-              </span>
-              <div
-                className="lr-meter"
-                role="group"
-                aria-label={t("host.captureAria")}
-              >
-                <span
-                  className="lr-meter-cell"
-                  title={vis ? undefined : t("stats.resolution")}
-                >
-                  <Glyph name="expand" size={16} />
-                  <b>
-                    {details.resolution ?? (vis ? "—" : t("stats.unknown"))}
-                  </b>
-                </span>
-                <span
-                  className="lr-meter-cell"
-                  title={vis ? undefined : t("stats.fps")}
-                >
-                  <Glyph name="wave" size={16} />
-                  <b>
-                    {details.frameRate
-                      ? `${details.frameRate.toFixed(0)} fps`
-                      : vis
-                        ? "—"
-                        : t("host.capture.fpsUnknown")}
-                  </b>
-                </span>
-                <span
-                  className="lr-meter-cell"
-                  title={vis ? undefined : t("stats.codec")}
-                >
-                  <Glyph name="cpu" size={16} />
-                  <b>
-                    {resolvedVideoCodec?.toUpperCase() ??
-                      (vis ? "—" : t("host.capture.codecPending"))}
-                  </b>
-                </span>
-                <span
-                  className="lr-meter-cell"
-                  title={vis ? undefined : t("stats.audio")}
-                >
-                  {vis ? (
-                    <span
-                      style={{ position: "relative", display: "inline-flex" }}
-                    >
-                      <Glyph name="speaker" size={16} />
-                      {details.hasAudio ? null : (
-                        <span
-                          aria-hidden="true"
-                          style={{
-                            position: "absolute",
-                            top: -3,
-                            bottom: -3,
-                            left: "50%",
-                            width: 2.5,
-                            borderRadius: 2,
-                            background: "currentColor",
-                            transform: "translateX(-50%) rotate(45deg)",
-                          }}
-                        />
-                      )}
-                      <span className="visually-hidden">
-                        {details.hasAudio
-                          ? t("host.capture.hasAudio")
-                          : t("host.capture.noAudio")}
-                      </span>
-                    </span>
-                  ) : (
-                    <>
-                      <Glyph name="speaker" size={16} />
-                      <b>
-                        {details.hasAudio
-                          ? t("host.capture.hasAudio")
-                          : t("host.capture.noAudio")}
-                      </b>
-                    </>
-                  )}
-                </span>
-              </div>
-              </div>
-            </Row>
-          ) : null}
-          {showTopology ? (
-            <Row sub>
-              <RouteTree
-                hostPeerId={hostPeerId}
-                hostLabel={labeledHostPresence?.label ?? displayName}
-                viewers={viewers}
-                selectedPeerId={selectedPawn}
-                onSelectPeer={(peerId) =>
-                  setSelectedPawn((current) =>
-                    current === peerId ? null : peerId,
-                  )
-                }
-              />
-            </Row>
-          ) : null}
         </div>
       </main>
     </div>

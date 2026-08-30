@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   getTitleFrames,
+  isCopyKey,
   say,
   setCopy,
   t,
@@ -20,6 +21,8 @@ describe("copy catalog", () => {
     expect(t("en", "join.title")).toBe("Join a room");
     expect(t("zh", "host.advanced.route.peerOnly")).toBe("隐私模式");
     expect(t("en", "host.advanced.route.peerOnly")).toBe("Privacy mode");
+    expect(isCopyKey("viewer.reconnect")).toBe(true);
+    expect(isCopyKey("Reconnect media")).toBe(false);
   });
 
   it("interpolates variables", () => {
@@ -27,6 +30,7 @@ describe("copy catalog", () => {
     expect(t("en", "host.onlineCount", { n: "4", max: "20" })).toBe(
       "4 / 20 online",
     );
+    expect(t("zh", "viewer.title", { name: "$&" })).toBe("$& 的屏幕");
   });
 
   it("keeps zh and en key sets identical", () => {

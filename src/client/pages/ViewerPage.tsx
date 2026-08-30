@@ -85,10 +85,12 @@ import {
   deriveViewerPresentation,
   reduceViewerPresentation,
   viewerFailureFromServerCode,
+  type ViewerNoticeKey,
   type ViewerPresentationAction,
   type ViewerRouteKind,
   type ViewerStage,
 } from "../media/viewer-presentation";
+import { prepareViewerPlayback } from "../media/viewer-playback";
 import {
   isAutoplayPolicyRejection,
   observeCompositedVideoFrame,
@@ -154,6 +156,9 @@ function stageOverlayGlyph(stage: ViewerStage): { icon: GlyphName; spin: boolean
     case "route-failed":
     case "playback-failed":
     case "server-error":
+    case "stale-client":
+    case "session-replaced":
+    case "signal-terminated":
       return { icon: "alert", spin: false };
     case "recovering":
     case "waiting-sfu":
@@ -191,6 +196,9 @@ function stageOverlayComic(
     case "route-failed":
       return "route-failed";
     case "server-error":
+    case "stale-client":
+    case "session-replaced":
+    case "signal-terminated":
       return "warning";
     case "playback-failed":
       return "playback-failed";
@@ -201,6 +209,19 @@ function stageOverlayComic(
       return route === "sfu" ? "connecting-sfu" : "connecting-p2p";
     default:
       return undefined;
+  }
+}
+
+function viewerNoticeVisual(
+  noticeKey: ViewerNoticeKey,
+): { icon: GlyphName; comic: ComicKind } {
+  switch (noticeKey) {
+    case "viewer.notice.hostOffline":
+      return { icon: "wifiOff", comic: "host-offline" };
+    case "viewer.notice.signalRecovering":
+      return { icon: "wifiOff", comic: "recovering" };
+    case "viewer.notice.mediaRecovering":
+      return { icon: "refresh", comic: "recovering" };
   }
 }
 
@@ -277,6 +298,9 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
   const [participantPresence, setParticipantPresence] = useState<
     ParticipantPresenceEntry[] | null
   >(null);
+  const [lastHostDisplayName, setLastHostDisplayName] = useState<string | null>(
+    null,
+  );
   const [viewerPasswordDraft, setViewerPasswordDraft] = useState("");
   const [viewerPasswordError, setViewerPasswordError] = useState<CopyKey | null>(
     null,
@@ -286,7 +310,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     sequence: number;
   } | null>(null);
   const [viewerPasswordExpanded, setViewerPasswordExpanded] = useState(false);
-  const [frameProofEpoch, setFrameProofEpoch] = useState(0);
   // Presentation-only: which couch pawn is drilled into, and this viewer's
   // own peer id (mirrors the authenticated message for couch/route-tree).
   const [selectedPawn, setSelectedPawn] = useState<string | null>(null);
@@ -297,6 +320,8 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     useMetricsExpanded();
   const [pawnMetricsExpanded, setPawnMetricsExpanded] = useMetricsExpanded();
 
+  const mediaProofGeneration = presentationState.media?.generation ?? null;
+  const mediaProofEpoch = presentationState.media?.proofEpoch ?? null;
   useEffect(() => {
     if (!theaterMode) return;
     const exitOnEscape = (event: KeyboardEvent) => {
@@ -323,7 +348,8 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     () => labelParticipantSnapshot(participantPresence ?? []),
     [participantPresence],
   );
-  const hostDisplayName = labeledHostPresence?.label ?? null;
+  const currentHostDisplayName = labeledHostPresence?.label ?? null;
+  const hostDisplayName = currentHostDisplayName ?? lastHostDisplayName;
   const titleFrameKey =
     presentationState.host === "paused"
       ? "paused"
@@ -341,12 +367,16 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
 
   function clearParticipantPresence(): void {
     setParticipantPresence(null);
+    setLastHostDisplayName(null);
   }
 
-  function clearHostPresence(): void {
+  function clearHostPresence(forgetDisplayName = true): void {
     setParticipantPresence((current) =>
       current?.filter((participant) => participant.role !== "host") ?? null,
     );
+    if (forgetDisplayName) {
+      setLastHostDisplayName(null);
+    }
   }
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -441,6 +471,17 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       type: "frame-proof-reset",
       generation: binding.generation,
       revision: binding.boundAtRevision,
+    });
+  }
+
+  function rearmCurrentFrameProof(): void {
+    const binding = remoteMediaRef.current;
+    if (!binding) {
+      return;
+    }
+    dispatchPresentation({
+      type: "frame-proof-rearm",
+      generation: binding.generation,
     });
   }
 
@@ -580,7 +621,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       syncDecodedFrameStallPause();
       if (pageSuspended) return;
       decodedFrameStall.rebaseline();
-      setFrameProofEpoch((current) => current + 1);
     };
     const handleVisibilityChange = (): void => {
       if (document.visibilityState === "visible") {
@@ -685,7 +725,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           binding &&
           qualityFrameProofGenerationRef.current === binding.generation &&
           state.routeStatus?.state !== "failed" &&
-          state.failure !== "ROUTE_EXHAUSTED" &&
           video &&
           !video.paused &&
           !video.ended,
@@ -701,7 +740,9 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         qualityPresentationEligible(connectionHealthy);
       if (!connectionHealthy) {
         invalidatePresentedMedia();
-      } else if (!qualityEligible) {
+        return;
+      }
+      if (!qualityEligible) {
         invalidateQualityPresentation();
       }
       qualityEvidenceReporter.offer(
@@ -1114,7 +1155,8 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               if (
                 currentRouteAssignment?.upstream.kind === "sfu" &&
                 currentRouteConnectionId &&
-                revision === currentRouteRevision
+                revision === currentRouteRevision &&
+                sfuTransportConnected
               ) {
                 qualityEvidenceReporter.offerMetrics(
                   currentRouteConnectionId,
@@ -1460,10 +1502,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
                   snapshot.connectionState === "closed")
               ) {
                 clearPeerState();
-                dispatchPresentation({
-                  type: "media-invalidated",
-                  revision: currentRouteRevision,
-                });
+                invalidatePresentedMedia();
                 return;
               }
               setPeerSnapshot(snapshot);
@@ -1489,9 +1528,9 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             }
             invalidateQualityPresentation();
             dispatchPresentation({
-              type: "failure",
-              failure: "ROUTE_EXHAUSTED",
+              type: "route-status",
               revision: currentRouteRevision,
+              state: "failed",
             });
             return true;
           },
@@ -1828,6 +1867,10 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         return;
       }
       if (message.type === "viewer-presence") {
+        const hostLabel = labelParticipantSnapshot(message.viewers).host?.label;
+        if (hostLabel) {
+          setLastHostDisplayName(hostLabel);
+        }
         setParticipantPresence(message.viewers);
         return;
       }
@@ -1890,7 +1933,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       if (message.type === "error") {
         if (message.code === "PEER_NOT_FOUND" && !currentHostOnline) {
           clearPeerState();
-          clearHostPresence();
+          clearHostPresence(false);
           dispatchPresentation({ type: "host", host: "offline" });
           return;
         }
@@ -1931,10 +1974,8 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           return;
         }
         const failure = viewerFailureFromServerCode(message.code);
-        if (failure) {
-          dispatchPresentation({ type: "failure", failure });
-        } else if (message.code !== "PEER_NOT_FOUND") {
-          dispatchPresentation({ type: "failure", failure: "SERVER_ERROR" });
+        if (failure === "SERVER_ERROR") {
+          dispatchPresentation({ type: "server-error" });
         }
       }
     }
@@ -1981,15 +2022,13 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       }
       return;
     }
-    const streamChanged = video.srcObject !== remoteMedia.stream;
-    if (streamChanged) {
-      video.srcObject = remoteMedia.stream;
-    }
-    if (presentationState.host === "paused") {
-      video.pause();
-      return;
-    }
-    if (streamChanged) {
+    if (
+      prepareViewerPlayback(
+        video,
+        remoteMedia.stream,
+        presentationState.host === "paused",
+      )
+    ) {
       attemptPlayback(video, remoteMedia);
     }
   }, [remoteMedia]);
@@ -2019,22 +2058,42 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
 
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || !remoteMedia) {
+    const mediaFact = presentationState.media;
+    if (
+      !video ||
+      !remoteMedia ||
+      !mediaFact ||
+      mediaFact.generation !== remoteMedia.generation ||
+      presentationState.host === "paused" ||
+      document.visibilityState !== "visible"
+    ) {
       return;
     }
     const binding = remoteMedia;
+    const proofEpoch = mediaFact.proofEpoch;
     return observeCompositedVideoFrame(video, binding.stream, () => {
-      if (!mediaBindingIsCurrent(binding)) {
+      const currentMedia = presentationStateRef.current.media;
+      if (
+        !mediaBindingIsCurrent(binding) ||
+        currentMedia?.generation !== binding.generation ||
+        currentMedia.proofEpoch !== proofEpoch
+      ) {
         return;
       }
       qualityFrameProofGenerationRef.current = binding.generation;
       dispatchPresentation({
         type: "frame-presented",
         generation: binding.generation,
+        proofEpoch,
         revision: binding.boundAtRevision,
       });
     });
-  }, [frameProofEpoch, presentationState.connection, remoteMedia]);
+  }, [
+    mediaProofEpoch,
+    mediaProofGeneration,
+    presentationState.host,
+    remoteMedia,
+  ]);
 
   function retryConnection(): void {
     if (reconnectRoute === "sfu") {
@@ -2085,43 +2144,44 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
   }
 
   if (accessState !== "ready") {
+    const failureCode = presentation.failureCode;
     const codeOnlyDenied =
-      !viewerGrant && presentationState.failure === "ROOM_ACCESS_DENIED";
+      !viewerGrant && failureCode === "ROOM_ACCESS_DENIED";
     const canRefresh = [
       "STALE_CLIENT",
       "SERVER_ERROR",
       "SESSION_REPLACED",
       "SIGNAL_TERMINATED",
-    ].includes(presentationState.failure ?? "");
+    ].includes(failureCode ?? "");
     const deniedComic: ComicKind =
-      presentationState.failure === "ROOM_FULL"
+      failureCode === "ROOM_FULL"
         ? "room-full"
         : codeOnlyDenied
           ? "access-denied"
-          : presentationState.failure === "INVALID_TOKEN"
+          : failureCode === "INVALID_TOKEN"
             ? "invalid-invite"
-            : presentationState.failure === "ROOM_NOT_FOUND" ||
-                presentationState.failure === "ROOM_EXPIRED" ||
-                presentationState.failure === "ROOM_CLOSED"
+            : failureCode === "ROOM_NOT_FOUND" ||
+                failureCode === "ROOM_EXPIRED" ||
+                failureCode === "ROOM_CLOSED"
               ? "room-not-found"
               : "warning";
     const deniedIcon: GlyphName =
-      presentationState.failure === "ROOM_NOT_FOUND" ||
-      presentationState.failure === "ROOM_EXPIRED" ||
-      presentationState.failure === "ROOM_CLOSED"
+      failureCode === "ROOM_NOT_FOUND" ||
+      failureCode === "ROOM_EXPIRED" ||
+      failureCode === "ROOM_CLOSED"
         ? "door"
-        : presentationState.failure === "ROOM_ACCESS_DENIED"
+        : failureCode === "ROOM_ACCESS_DENIED"
           ? "lock"
-          : presentationState.failure === "ROOM_FULL"
+          : failureCode === "ROOM_FULL"
             ? "users"
             : "alert";
     const deniedHintKey: CopyKey = codeOnlyDenied
       ? "viewer.hint.denied"
-      : presentationState.failure === "ROOM_NOT_FOUND" ||
-          presentationState.failure === "ROOM_EXPIRED" ||
-          presentationState.failure === "ROOM_CLOSED"
+      : failureCode === "ROOM_NOT_FOUND" ||
+          failureCode === "ROOM_EXPIRED" ||
+          failureCode === "ROOM_CLOSED"
         ? "viewer.hint.notFound"
-        : presentationState.failure === "INVALID_TOKEN"
+        : failureCode === "INVALID_TOKEN"
           ? "viewer.hint.invite"
           : "viewer.hint.generic";
     return (
@@ -2153,7 +2213,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
                 <>
                   <Comic kind={deniedComic} theme="paper" />
                   <span className="visually-hidden" role="alert">
-                    {t(presentation.messageKey)}
+                    {t(presentation.messageKey)} · {t(deniedHintKey)}
                   </span>
                 </>
               ) : (
@@ -2171,9 +2231,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
                 <Glyph name={deniedIcon} size={30} />
               </span>
               )}
-              {vis ? (
-                <Pill icon="alert" tone="bad" label={t(deniedHintKey)} />
-              ) : (
+              {vis ? null : (
                 <div className="lr-access-text">
                   <h1>{t(presentation.messageKey)}</h1>
                   <p>{t(deniedHintKey)}</p>
@@ -2254,6 +2312,9 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     presentation.stage,
     assignedRouteKind,
   );
+  const noticeVisual = presentation.noticeKey
+    ? viewerNoticeVisual(presentation.noticeKey)
+    : null;
   const selectedChildEvidence =
     selectedPawn !== null &&
     selectedPawn !== selfPeerId &&
@@ -2341,10 +2402,11 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
                 (presentation.stage === "receiving" &&
                   presentation.hasRetainedFrame)
               }
+              controlsList={theaterMode ? "nofullscreen" : undefined}
               playsInline
               onPlay={() => {
                 invalidateQualityPresentation();
-                setFrameProofEpoch((current) => current + 1);
+                rearmCurrentFrameProof();
                 const binding = remoteMediaRef.current;
                 if (binding) {
                   dispatchPresentation({
@@ -2390,6 +2452,45 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
                 />
               )}
           </StageTv>
+          {(presentation.noticeKey ||
+            (routePresentation.evidence === peerSnapshot &&
+              peerSnapshot?.error) ||
+            relaySnapshot?.error ||
+            qualityLimitation) && (
+            <div className="lr-stage-notices">
+              {presentation.noticeKey && noticeVisual ? (
+                <Pill
+                  icon={noticeVisual.icon}
+                  label={t(presentation.noticeKey)}
+                  comic={noticeVisual.comic}
+                />
+              ) : null}
+              {routePresentation.evidence === peerSnapshot &&
+              peerSnapshot?.error ? (
+                <Pill
+                  icon="alert"
+                  tone="bad"
+                  label={t("viewer.error.p2p")}
+                  comic="warning"
+                />
+              ) : null}
+              {relaySnapshot?.error ? (
+                <Pill
+                  icon="alert"
+                  tone="bad"
+                  label={t("viewer.error.relay")}
+                  comic="warning"
+                />
+              ) : null}
+              {qualityLimitation ? (
+                <Pill
+                  icon="alert"
+                  label={qualityLimitation}
+                  comic="warning"
+                />
+              ) : null}
+            </div>
+          )}
           {theaterMode ? (
             <div className="lr-theater-exit">
               <Btn
@@ -2444,138 +2545,154 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             <div className="lr-row-group lr-viewer-state-slot">
               <StatusText>{t(presentation.messageKey)}</StatusText>
             </div>
-            <form
-              className="lr-row-group lr-group-name lr-viewer-self-slot"
-              onSubmit={(event) => {
-                event.preventDefault();
-                commitDisplayName();
-              }}
-            >
-              {editingDisplayName ? (
-                <>
-                  <span className="lr-input lr-name-editor">
-                    <input
-                      id="viewer-display-name"
-                      type="text"
-                      value={displayNameDraft}
-                      maxLength={96}
-                      autoComplete="nickname"
-                      autoFocus
-                      aria-label={t("host.name")}
-                      aria-invalid={displayNameError ? "true" : undefined}
-                      onChange={(event) => {
-                        setDisplayNameDraft(event.target.value);
-                        setDisplayNameError(false);
-                      }}
-                    />
-                  </span>
-                  <Btn
-                    icon="check"
-                    title="host.nameSave"
-                    type="submit"
-                    disabled={displayNameDraft === displayName}
-                  />
-                  <Btn
-                    icon="x"
-                    title="host.nameCancel"
-                    onClick={() => {
-                      setDisplayNameDraft(displayName);
-                      setDisplayNameError(false);
-                      setEditingDisplayName(false);
-                    }}
-                  />
-                </>
-              ) : (
-                <>
-                  <NameTag name={displayName} />
-                  {hintWrap(
-                    "hint-rename",
+            <div className="lr-viewer-personal-controls">
+              <form
+                className="lr-row-group lr-group-name lr-viewer-self-slot"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  commitDisplayName();
+                }}
+              >
+                {editingDisplayName ? (
+                  <>
+                    <span className="lr-input lr-name-editor">
+                      <input
+                        id="viewer-display-name"
+                        type="text"
+                        value={displayNameDraft}
+                        maxLength={96}
+                        autoComplete="nickname"
+                        autoFocus
+                        aria-label={t("host.name")}
+                        aria-invalid={displayNameError ? "true" : undefined}
+                        onChange={(event) => {
+                          setDisplayNameDraft(event.target.value);
+                          setDisplayNameError(false);
+                        }}
+                      />
+                    </span>
                     <Btn
-                      icon="pencil"
-                      cap="common.edit"
-                      title="host.nameEdit"
+                      icon="check"
+                      title="host.nameSave"
+                      type="submit"
+                      disabled={displayNameDraft === displayName}
+                    />
+                    <Btn
+                      icon="x"
+                      title="host.nameCancel"
                       onClick={() => {
                         setDisplayNameDraft(displayName);
                         setDisplayNameError(false);
-                        setEditingDisplayName(true);
+                        setEditingDisplayName(false);
                       }}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <NameTag
+                      name={displayName}
+                      identity={selfPeerId ?? viewerClientId}
+                    />
+                    {hintWrap(
+                      "hint-rename",
+                      <Btn
+                        icon="pencil"
+                        cap="common.edit"
+                        title="host.nameEdit"
+                        onClick={() => {
+                          setDisplayNameDraft(displayName);
+                          setDisplayNameError(false);
+                          setEditingDisplayName(true);
+                        }}
+                      />,
+                      "end",
+                    )}
+                  </>
+                )}
+                {displayNameError && (
+                  <Pill
+                    icon="alert"
+                    tone="bad"
+                    label={t("host.nameError")}
+                    alert
+                    comic="warning"
+                  />
+                )}
+              </form>
+              <div className="lr-row-group lr-group-actions lr-viewer-actions-slot">
+                <span className="lr-viewer-action-cluster">
+                  <Btn
+                    icon={theaterMode ? "contract" : "expand"}
+                    cap={theaterMode ? "viewer.theater.exit" : "viewer.theater"}
+                    title={
+                      theaterMode ? "viewer.theater.exit" : "viewer.theater"
+                    }
+                    tone={theaterMode ? "on" : undefined}
+                    pressed={theaterMode}
+                    controls="viewer-stage"
+                    onClick={() => setTheaterMode((current) => !current)}
+                  />
+                  {hintWrap(
+                    "hint-reconnect",
+                    <Btn
+                      icon="refresh"
+                      cap="viewer.reconnect"
+                      title="viewer.reconnect"
+                      disabled={!reconnectAvailable}
+                      onClick={retryConnection}
                     />,
                     "end",
                   )}
-                </>
-              )}
-              {displayNameError && (
-                <Pill icon="alert" tone="bad" label={t("host.nameError")} alert />
-              )}
-            </form>
-            <div className="lr-row-group lr-group-actions lr-viewer-actions-slot">
-              <Btn
-                icon={theaterMode ? "contract" : "expand"}
-                cap={theaterMode ? "viewer.theater.exit" : "viewer.theater"}
-                title={theaterMode ? "viewer.theater.exit" : "viewer.theater"}
-                tone={theaterMode ? "on" : undefined}
-                pressed={theaterMode}
-                controls="viewer-stage"
-                onClick={() => setTheaterMode((current) => !current)}
-              />
-              {labeledHostPresence
-                ? hintWrap(
-                    "hint-topology",
-                    <Btn
-                      icon="network"
-                      cap="host.topology"
-                      title={
-                        showTopology ? "host.topology.hide" : "host.topology.show"
-                      }
-                      tone={showTopology ? "on" : undefined}
-                      expanded={showTopology}
-                      controls="room-topology"
-                      onClick={() => setShowTopology((current) => !current)}
-                    />,
-                    "start",
-                  )
-                : null}
-              {hintWrap(
-                "hint-reconnect",
-                <Btn
-                  icon="refresh"
-                  cap="viewer.reconnect"
-                  title="viewer.reconnect"
-                  disabled={!reconnectAvailable}
-                  onClick={retryConnection}
-                />,
-                "end",
-              )}
-              <Btn
-                icon="gauge"
-                cap="host.details"
-                title={showConnectionDetails ? "host.details.hide" : "host.details"}
-                hint="hint-details"
-                tone={showConnectionDetails ? "on" : undefined}
-                expanded={showConnectionDetails}
-                controls="viewer-details-panel"
-                disabled={
-                  !routePresentation.route &&
-                  !relaySnapshot &&
-                  !relayChildEvidence
-                }
-                onClick={() => setShowConnectionDetails((current) => !current)}
-              />
+                </span>
+                <span
+                  className="lr-viewer-action-separator"
+                  aria-hidden="true"
+                />
+                <span className="lr-viewer-action-cluster">
+                  <Btn
+                    icon="gauge"
+                    cap="host.details"
+                    title={
+                      showConnectionDetails ? "host.details.hide" : "host.details"
+                    }
+                    hint="hint-details"
+                    tone={showConnectionDetails ? "on" : undefined}
+                    expanded={showConnectionDetails}
+                    controls="viewer-details-panel"
+                    disabled={
+                      !routePresentation.route &&
+                      !relaySnapshot &&
+                      !relayChildEvidence
+                    }
+                    onClick={() =>
+                      setShowConnectionDetails((current) => !current)
+                    }
+                  />
+                  {labeledHostPresence
+                    ? hintWrap(
+                        "hint-topology",
+                        <Btn
+                          icon="network"
+                          cap="host.topology"
+                          title={
+                            showTopology
+                              ? "host.topology.hide"
+                              : "host.topology.show"
+                          }
+                          tone={showTopology ? "on" : undefined}
+                          expanded={showTopology}
+                          controls="room-topology"
+                          onClick={() =>
+                            setShowTopology((current) => !current)
+                          }
+                        />,
+                        "start",
+                      )
+                    : null}
+                </span>
+              </div>
             </div>
           </div>
-          {presentation.noticeKey ? (
-            <Pill icon="alert" label={t(presentation.noticeKey)} />
-          ) : null}
-          {routePresentation.evidence === peerSnapshot &&
-          peerSnapshot?.error ? (
-            <Pill icon="alert" tone="bad" label={t("viewer.error.p2p")} comic="warning" />
-          ) : null}
-          {relaySnapshot?.error ? (
-            <Pill icon="alert" tone="bad" label={t("viewer.error.relay")} comic="warning" />
-          ) : null}
-          {qualityLimitation ? (
-            <Pill icon="alert" label={qualityLimitation} comic="warning" />
-          ) : null}
           {showConnectionDetails && routePresentation.route ? (
             <Row sub>
               <div id="viewer-details-panel" style={{ display: "contents" }}>

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { QUALITY_PROFILES } from "../src/client/media/quality.ts";
+import { sfuPublisherQualityEvidenceFromMetrics } from "../src/client/media/sender-quality-evidence.ts";
 import { SfuPublisher } from "../src/client/sfu/publisher.ts";
 import { SfuSubscriber } from "../src/client/sfu/subscriber.ts";
 import type { ConnectionMetrics } from "../src/client/types.ts";
@@ -546,8 +547,26 @@ describe("SfuPublisher", () => {
 
     await vi.advanceTimersByTimeAsync(2_000);
     expect(updates.at(-1)?.bitrateKbps).toBeNull();
+    expect(
+      sfuPublisherQualityEvidenceFromMetrics(
+        updates.at(-1)!,
+        7,
+        "simulcast_publication_12345678",
+      ),
+    ).toMatchObject({ state: "unknown", sampleTimestampMs: null });
     await vi.advanceTimersByTimeAsync(2_000);
     expect(updates.at(-1)?.bitrateKbps).toBe(2_400);
+    expect(updates.at(-1)?.sampleTimestampMs).toBe(3_000);
+    expect(
+      sfuPublisherQualityEvidenceFromMetrics(
+        updates.at(-1)!,
+        7,
+        "simulcast_publication_12345678",
+      ),
+    ).toMatchObject({
+      state: "healthy",
+      sampleTimestampMs: 3_000,
+    });
   });
 
   it("enables balanced SFU adaptation after startup frames", async () => {
@@ -1180,6 +1199,42 @@ describe("SfuPublisher", () => {
     );
     expect(publisher.getSenderParameters()).toBeNull();
     expect(publisher.getQualityWarning()).toBeNull();
+  });
+
+  it("reconciles pause state onto a video clone committed after reconnect", async () => {
+    const publisher = new SfuPublisher();
+    const sourceVideo = track("video", "video-pause-race");
+    await publisher.connect(connection);
+    await publisher.activate(stream(sourceVideo), qualityProfile);
+    publisher.setPaused(true);
+    sourceVideo.enabled = false;
+
+    const room = livekit.state.rooms[0];
+    await room.localParticipant.republishForReconnect();
+    const publication = room.localParticipant.getTrackPublication(
+      Track.Source.ScreenShare,
+    )!;
+    const replaceGate = deferred();
+    publication.track.replaceTrack.mockImplementationOnce(
+      async (nextTrack: MediaStreamTrack) => {
+        await replaceGate.promise;
+        publication.track.currentTrack = nextTrack;
+        publication.track.sender.track = nextTrack;
+      },
+    );
+
+    room.emit(RoomEvent.Reconnected);
+    await vi.waitFor(() =>
+      expect(publication.track.replaceTrack).toHaveBeenCalledOnce(),
+    );
+    sourceVideo.enabled = true;
+    publisher.setPaused(false);
+    replaceGate.resolve();
+
+    await vi.waitFor(() =>
+      expect(publication.track.currentTrack).not.toBe(publication.rawTrack),
+    );
+    expect(publication.track.currentTrack.enabled).toBe(true);
   });
 
   it("retains video sender readback across a signal-only reconnect", async () => {
