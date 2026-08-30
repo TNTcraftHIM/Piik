@@ -374,8 +374,22 @@ const ScenePolicyPrivate: HintScene = ({ theme }) => (
   <>
     <style>{`
 .vls-priv-eyes{transform-box:fill-box;transform-origin:center;animation:vlsPrivBlink 3s ease-in-out infinite}
+.vls-priv-card{transform-box:fill-box;transform-origin:center;animation:vlsPrivCard 3s ease-in-out infinite}
+.vls-priv-door{transform-box:fill-box;transform-origin:0% 50%;animation:vlsPrivDoor 3s cubic-bezier(.3,.8,.35,1) infinite}
+.vls-priv-lock{transform-box:fill-box;transform-origin:center;animation:vlsPrivLock 3s cubic-bezier(.3,1.4,.45,1) infinite}
+.vls-priv-click{transform-box:fill-box;transform-origin:center;animation:vlsPrivClick 3s ease-out infinite}
 @keyframes vlsPrivBlink{0%,52%,60%,100%{transform:scaleY(1)}56%{transform:scaleY(.12)}}
-${rmBlock(["vls-priv-eyes"], [])}
+@keyframes vlsPrivCard{0%,8%{transform:translateY(2px) rotate(-3deg)}18%{transform:translateY(-3px) rotate(4deg)}28%,100%{transform:none}}
+@keyframes vlsPrivDoor{0%,10%{transform:scaleX(.18);opacity:.45}28%,100%{transform:scaleX(1);opacity:1}}
+@keyframes vlsPrivLock{0%,24%{transform:translateY(-6px);opacity:0}34%{transform:translateY(1px);opacity:1}40%,100%{transform:none;opacity:1}}
+@keyframes vlsPrivClick{0%,32%{opacity:0;transform:scale(.45)}38%{opacity:1;transform:scale(1.12)}48%,100%{opacity:0;transform:scale(1)}}
+${rmBlock(
+  ["vls-priv-eyes", "vls-priv-card", "vls-priv-door", "vls-priv-lock", "vls-priv-click"],
+  [
+    [".vls-priv-card,.vls-priv-door,.vls-priv-lock", "transform:none;opacity:1"],
+    [".vls-priv-click", "opacity:.65;transform:none"],
+  ],
+)}
 `}</style>
     <Frame x={4} w={152} theme={theme} />
     <Frame x={164} w={152} theme={theme} />
@@ -385,43 +399,48 @@ ${rmBlock(["vls-priv-eyes"], [])}
       <circle cx={201.8} cy={60} r={0.9} />
       <circle cx={206.2} cy={60} r={0.9} />
     </g>
-    <g transform="rotate(-10 202 44)">
-      <rect
-        x={195}
-        y={39}
-        width={14}
-        height={10}
-        rx={2}
-        fill="var(--paper)"
-        stroke="var(--ink)"
-        strokeWidth={1.5}
-      />
+    <g className="vls-priv-card">
+      <g transform="rotate(-10 202 44)">
+        <rect
+          x={195}
+          y={39}
+          width={14}
+          height={10}
+          rx={2}
+          fill="var(--paper)"
+          stroke="var(--ink)"
+          strokeWidth={1.5}
+        />
+        <path
+          d="M197.5 42.5 h4 M197.5 45.5 h6"
+          stroke="var(--ink)"
+          strokeWidth={1.2}
+          strokeLinecap="round"
+        />
+      </g>
+    </g>
+    <Door x={224} y={18} className="vls-priv-door" />
+    <g className="vls-priv-lock">
       <path
-        d="M197.5 42.5 h4 M197.5 45.5 h6"
+        d="M235 38 v-5 a5.5 5.5 0 0 1 11 0 v5"
         stroke="var(--ink)"
-        strokeWidth={1.2}
+        strokeWidth={2.5}
+        fill="none"
         strokeLinecap="round"
       />
+      <rect
+        x={232}
+        y={38}
+        width={16}
+        height={13}
+        rx={3}
+        fill={STAR_GOLD}
+        stroke="var(--ink)"
+        strokeWidth={2}
+      />
+      <circle cx={240} cy={44} r={1.8} fill="var(--ink)" />
     </g>
-    <Door x={224} y={18} />
-    <path
-      d="M235 38 v-5 a5.5 5.5 0 0 1 11 0 v5"
-      stroke="var(--ink)"
-      strokeWidth={2.5}
-      fill="none"
-      strokeLinecap="round"
-    />
-    <rect
-      x={232}
-      y={38}
-      width={16}
-      height={13}
-      rx={3}
-      fill={STAR_GOLD}
-      stroke="var(--ink)"
-      strokeWidth={2}
-    />
-    <circle cx={240} cy={44} r={1.8} fill="var(--ink)" />
+    <Spark x={253} y={35} className="vls-priv-click" />
   </>
 );
 

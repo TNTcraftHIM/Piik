@@ -7,10 +7,8 @@ const PAWN_COLORS = [
   "var(--pawn-1)", "var(--pawn-2)", "var(--pawn-3)", "var(--pawn-4)",
   "var(--pawn-5)", "var(--pawn-6)", "var(--pawn-7)", "var(--pawn-8)",
 ];
-const YOU_COLOR = "var(--you)";
 
-export function pawnColor(key: string, you = false): string {
-  if (you) return YOU_COLOR;
+export function pawnColor(key: string): string {
   let hash = 0;
   for (const char of key) hash = (hash * 31 + char.charCodeAt(0)) | 0;
   return PAWN_COLORS[Math.abs(hash) % PAWN_COLORS.length]!;
@@ -39,7 +37,6 @@ export interface CouchEntry {
   connected: boolean;
   statusLabel?: string;
   you?: boolean;
-  child?: boolean;
   selectable?: boolean;
 }
 
@@ -83,14 +80,12 @@ export function Couch({
               : `${entry.name} · ${stateLabel}`;
             const inner = (
               <>
-                <PawnSvg color={pawnColor(entry.key, entry.you)} />
+                <PawnSvg color={pawnColor(entry.key)} />
                 <i
                   className={`lr-pawn-led${entry.connected ? "" : " is-wait"}`}
                   aria-hidden="true"
                 />
-                <span
-                  className={`lr-pawn-name${entry.child ? " is-mini" : ""}`}
-                >
+                <span className="lr-pawn-name">
                   {entry.name}
                 </span>
               </>
@@ -99,7 +94,7 @@ export function Couch({
             const style = {
               animationDelay: `${Math.min(index, 12) * 70}ms`,
             };
-            const className = `lr-pawn${entry.you ? " is-you" : ""}${entry.child ? " is-child" : ""}${
+            const className = `lr-pawn${entry.you ? " is-you" : ""}${
               entry.selectable === false ? " is-static" : ""
             }${selectedKey === entry.key ? " is-selected" : ""}`;
             if (entry.selectable === false) {

@@ -10,6 +10,28 @@ import { setCopy } from "../src/client/ui/copy.ts";
 afterEach(() => setCopy({ lang: "zh", vis: false }));
 
 describe("RouteTree", () => {
+  it("sorts every Viewer by stable peer identity", () => {
+    const { viewers } = labelParticipantSnapshot([
+      {
+        role: "viewer",
+        peerId: "viewer-z",
+        displayName: "Z",
+        upstream: { kind: "none" },
+      },
+      {
+        role: "viewer",
+        peerId: "viewer-a",
+        displayName: "A",
+        upstream: { kind: "none" },
+      },
+    ]);
+
+    expect(viewers.map((viewer) => viewer.peerId)).toEqual([
+      "viewer-a",
+      "viewer-z",
+    ]);
+  });
+
   it("uses real-size narrow coordinates without compressing deep trees", () => {
     const narrow = topologyLayoutForViewport(true);
     const desktop = topologyLayoutForViewport(false);
@@ -256,6 +278,45 @@ describe("RouteTree", () => {
     );
     expect(html).toContain("Recovering");
     expect(html).toContain("← Host");
+  });
+
+  it("exposes only authorized topology nodes as detail controls", () => {
+    const { host, viewers } = labelParticipantSnapshot([
+      {
+        role: "host",
+        peerId: "host",
+        displayName: "Host",
+        upstream: { kind: "none" },
+      },
+      {
+        role: "viewer",
+        peerId: "viewer-a",
+        displayName: "Alice",
+        upstream: { kind: "peer", peerId: "host" },
+        mediaReady: true,
+      },
+      {
+        role: "viewer",
+        peerId: "viewer-b",
+        displayName: "Bob",
+        upstream: { kind: "peer", peerId: "host" },
+        mediaReady: true,
+      },
+    ]);
+    const html = renderToStaticMarkup(
+      createElement(RouteTree, {
+        hostPeerId: host?.peerId ?? null,
+        hostLabel: host?.label ?? "Host",
+        viewers,
+        selectablePeerIds: ["viewer-b"],
+        onSelectPeer: () => undefined,
+      }),
+    );
+
+    expect(html.match(/class="lr-route-hit"/g)).toHaveLength(1);
+    expect(html).toContain('role="button"');
+    expect(html).toContain('aria-label="Bob · 显示连接详情"');
+    expect(html).not.toContain('aria-label="Alice · 显示连接详情"');
   });
 
   it("gives every reachable depth its own horizontal column", () => {

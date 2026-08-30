@@ -896,7 +896,7 @@ describe("WebSocket signaling", () => {
     expect(viewerPresenceEntries(full).map((viewer) => viewer.displayName)).toEqual([
       "阿明",
       "阿青",
-      "访客",
+      "观众",
     ]);
     expect(
       viewerPresenceEntries(full).filter(

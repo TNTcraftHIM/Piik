@@ -1,6 +1,6 @@
 // Per-viewer drill-down: name, route glyph, primary metrics, expandable
-// detailed metrics. Host sees every viewer; a viewer sees itself and its
-// relay children (matching what the wire actually delivers).
+// detailed metrics. Host sees every Viewer; a Viewer uses this only for relay
+// children because its own route already has the canonical details panel.
 import { PawnSvg, pawnColor } from "./Couch";
 import { Glyph } from "../../ui/icons";
 import { ComicTooltip } from "./ComicTooltip";
@@ -46,7 +46,6 @@ export function RouteGlyph({ route }: { route: "p2p" | "sfu" }) {
 export function PawnDetail({
   pawnKey,
   name,
-  you = false,
   route,
   metrics,
   direction,
@@ -58,7 +57,6 @@ export function PawnDetail({
 }: {
   pawnKey: string;
   name: string;
-  you?: boolean;
   route: "p2p" | "sfu" | null;
   metrics?: ConnectionMetrics | null;
   direction: "send" | "receive";
@@ -72,7 +70,7 @@ export function PawnDetail({
   return (
     <div className="lr-row is-sub lr-pawn-detail" role="group" aria-label={name}>
       <span className="lr-pawn-mini">
-        <PawnSvg color={pawnColor(pawnKey, you)} />
+        <PawnSvg color={pawnColor(pawnKey)} />
       </span>
       {vis ? (
         <span className="visually-hidden">{name}</span>
