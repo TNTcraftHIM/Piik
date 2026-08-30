@@ -8,15 +8,15 @@ This is the current execution index. Git history owns completed timelines;
 ## Production
 
 - `https://share.bonfire.icu` runs exact application/runtime revision
-  `1eee2e371a4a65df642beb545cc0ea8d261bfecb`, release `1eee2e3`, wire
-  `screener-v17`, from `/opt/screener/releases/1eee2e3`. The immutable runtime
+  `ba8c62f7138bfe6f4a15ec45fbbe0d7b18af11ed`, release `ba8c62f`, wire
+  `screener-v17`, from `/opt/screener/releases/ba8c62f`. The immutable runtime
   tar SHA-256 is
-  `5b90d056902d7c1788d752550aef913e01539a4ffeb351a9abe7c27d09bbf4db`;
+  `867f46cf4f1bc0c2f8cee62277e529d318f5f12c687f77d6ec7ba9227525b000`;
   its 41-file manifest SHA-256 is
-  `80c481f5d2ec9b637f3c4332649f5187d43455a4a6adc0beaeefa3b2a46bd6b2`.
-- The served Browser entry references `assets/index-DLrgxytr.js`; the public
+  `89a76c81c9b8699ad0f346a5211bec8f0caa7d0d777a5a82b421a40ec52a63e5`.
+- The served Browser entry references `assets/index-CdSt50et.js`; the public
   asset SHA-256 is
-  `a4950a53ba814bd0cbf5691d7c792db61d9bf88bc6c2bd372c88adca94613643`.
+  `1dba253607230094d1f4bb1ae30e5fc1436275ea2210365803cf4fa5901accb6`.
   Public `/healthz` returns 200. The release postflight found Screener, LiveKit,
   coturn, and nginx active with zero restarts. Controlled application restarts
   have retained SQLite room authority and Host capture while P2P/SFU routes and
@@ -77,9 +77,10 @@ This is the current execution index. Git history owns completed timelines;
   frame incumbent is zero delivery only against an overlapping candidate that
   decodes video. Peer candidates stay first; bounded SFU remains only the whole-
   Host-root suffix; when no different Peer is eligible, the same operation may
-  append one same-parent connection-regeneration candidate. Its old edge remains
-  until proof, and its exact post-commit sender identity damps only another
-  same-edge regeneration. The pre-share gate defaults on and locks while sharing.
+  append one same-parent connection-regeneration candidate. Inconclusive current-
+  sender windows retain the bounded Peer operation; failed exact candidates stay
+  consumed until the sender or candidate opportunity changes. The pre-share gate
+  defaults on and locks while sharing.
 - Every direct, Browser-relay, and Host SFU video sender owns one clone of its
   source track; the original remains presentation and source authority only.
   Replacement, rollback, unpublish, physical LiveKit sender recreation, and
@@ -107,7 +108,7 @@ This is the current execution index. Git history owns completed timelines;
 ## Source/Production Delta
 
 - Production application code matches canonical source application revision
-  `1eee2e371a4a65df642beb545cc0ea8d261bfecb`; current `main` adds only this
+  `ba8c62f7138bfe6f4a15ec45fbbe0d7b18af11ed`; current `main` adds only this
   status-record checkpoint after that application revision.
 
 ## Active Boundaries
