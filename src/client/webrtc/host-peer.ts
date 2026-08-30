@@ -56,6 +56,8 @@ export class HostPeer {
   private readonly pendingCandidates: SignalCandidate[] = [];
   private statsAccumulator = createStatsAccumulator();
   private senderVideoTrack: MediaStreamTrack | null;
+  private replacementVideoTrack: MediaStreamTrack | null = null;
+  private replacementAudioTrack: MediaStreamTrack | null = null;
   private videoSender: RTCRtpSender | null = null;
   private audioSender: RTCRtpSender | null = null;
   private statsTimer: number | null = null;
@@ -79,6 +81,7 @@ export class HostPeer {
   private startupVideoProfilePending: boolean;
   private connectedOnce = false;
   private awaitingReconnect = false;
+  private paused = false;
   private snapshot: PeerSnapshot;
 
   constructor(
@@ -93,6 +96,7 @@ export class HostPeer {
   ) {
     this.connectionId = connectionId;
     const sourceVideoTrack = stream.getVideoTracks()[0] ?? null;
+    this.paused = sourceVideoTrack?.enabled === false;
     this.senderVideoTrack = sourceVideoTrack
       ? cloneSenderVideoTrack(sourceVideoTrack)
       : null;
@@ -177,6 +181,9 @@ export class HostPeer {
       const nextVideoTrack = cloneSenderVideoTrack(nextSourceVideoTrack);
       let retainedNextVideoTrack = false;
       const nextAudioTrack = nextStream.getAudioTracks()[0] ?? null;
+      this.replacementVideoTrack = nextVideoTrack;
+      this.replacementAudioTrack = nextAudioTrack;
+      this.applyPausedState(nextVideoTrack, nextAudioTrack);
       const previousAudioTrack = audioSender.track;
       this.statsSamplingBlocked = true;
       this.statsAccumulator = createStatsAccumulator();
@@ -200,6 +207,7 @@ export class HostPeer {
         if (this.disposed) {
           return false;
         }
+        this.applyPausedState(nextVideoTrack, nextAudioTrack);
         this.senderVideoTrack = nextVideoTrack;
         this.stream = nextStream;
         retainedNextVideoTrack = true;
@@ -223,6 +231,10 @@ export class HostPeer {
         if (!retainedNextVideoTrack) {
           nextVideoTrack.stop();
         }
+        if (this.replacementVideoTrack === nextVideoTrack) {
+          this.replacementVideoTrack = null;
+          this.replacementAudioTrack = null;
+        }
         this.statsAccumulator = createStatsAccumulator();
         this.statsSamplingBlocked = false;
       }
@@ -238,13 +250,17 @@ export class HostPeer {
   }
 
   setPaused(paused: boolean): void {
-    if (this.senderVideoTrack) {
-      this.senderVideoTrack.enabled = !paused;
-    }
-    const audioTrack = this.audioSender?.track;
-    if (audioTrack) {
-      audioTrack.enabled = !paused;
-    }
+    this.paused = paused;
+    this.applyPausedState(this.senderVideoTrack, this.audioSender?.track ?? null);
+    this.applyPausedState(this.replacementVideoTrack, this.replacementAudioTrack);
+  }
+
+  private applyPausedState(
+    videoTrack: MediaStreamTrack | null,
+    audioTrack: MediaStreamTrack | null,
+  ): void {
+    if (videoTrack) videoTrack.enabled = !this.paused;
+    if (audioTrack) audioTrack.enabled = !this.paused;
   }
 
   private updateOwnedProfile(

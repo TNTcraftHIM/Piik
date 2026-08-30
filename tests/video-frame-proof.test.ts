@@ -10,7 +10,7 @@ interface FakeVideo extends EventTarget {
   readyState: number;
   currentTime: number;
   decodedFrames: number;
-  getVideoPlaybackQuality: () => { totalVideoFrames: number };
+  getVideoPlaybackQuality?: () => { totalVideoFrames: number };
   requestVideoFrameCallback?: (callback: () => void) => number;
   cancelVideoFrameCallback?: (handle: number) => void;
 }
@@ -104,6 +104,41 @@ describe("composited video frame proof", () => {
     expect(onFrame).toHaveBeenCalledOnce();
 
     video.decodedFrames = 2;
+    video.dispatchEvent(new Event("timeupdate"));
+    expect(onFrame).toHaveBeenCalledOnce();
+    cancel();
+  });
+
+  it("does not substitute media time for an available decoded-frame count", () => {
+    const stream = {} as MediaStream;
+    const video = fakeVideo(stream);
+    const onFrame = vi.fn();
+    const cancel = observeCompositedVideoFrame(
+      video as unknown as HTMLVideoElement,
+      stream,
+      onFrame,
+    );
+
+    video.readyState = 2;
+    video.currentTime = 1;
+    video.dispatchEvent(new Event("timeupdate"));
+    expect(onFrame).not.toHaveBeenCalled();
+    cancel();
+  });
+
+  it("uses media time only when decoded-frame count is unavailable", () => {
+    const stream = {} as MediaStream;
+    const video = fakeVideo(stream);
+    delete video.getVideoPlaybackQuality;
+    const onFrame = vi.fn();
+    const cancel = observeCompositedVideoFrame(
+      video as unknown as HTMLVideoElement,
+      stream,
+      onFrame,
+    );
+
+    video.readyState = 2;
+    video.currentTime = 1;
     video.dispatchEvent(new Event("timeupdate"));
     expect(onFrame).toHaveBeenCalledOnce();
     cancel();

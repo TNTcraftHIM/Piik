@@ -243,6 +243,21 @@ export class SignalingServer {
       clearTimeout(timer);
     }
     this.viewerGraceTimers.clear();
+    for (const state of this.socketStates.values()) {
+      clearTimeout(state.authenticationTimer);
+    }
+    const closed = new Promise<void>((resolve) => {
+      this.webSocketServer.close(() => resolve());
+    });
+    for (const socket of this.webSocketServer.clients) {
+      socket.close(SIGNAL_CLOSE_CODES.serviceRestart, "Service restart");
+    }
+    const forceCloseTimer = setTimeout(() => {
+      for (const socket of this.webSocketServer.clients) {
+        socket.terminate();
+      }
+    }, SERVICE_RESTART_CLOSE_GRACE_MS);
+    forceCloseTimer.unref();
     let routeCloseError: unknown;
     try {
       await this.hybridMediaRouter?.close();
@@ -256,18 +271,6 @@ export class SignalingServer {
     this.shareGenerationsByRoom.clear();
     this.pausedShareGenerationsByRoom.clear();
     this.ordinaryActiveHostChildrenByRoom.clear();
-    const closed = new Promise<void>((resolve) => {
-      this.webSocketServer.close(() => resolve());
-    });
-    for (const socket of this.webSocketServer.clients) {
-      socket.close(SIGNAL_CLOSE_CODES.serviceRestart, "Service restart");
-    }
-    const forceCloseTimer = setTimeout(() => {
-      for (const socket of this.webSocketServer.clients) {
-        socket.terminate();
-      }
-    }, SERVICE_RESTART_CLOSE_GRACE_MS);
-    forceCloseTimer.unref();
     await closed;
     clearTimeout(forceCloseTimer);
     if (routeCloseError) {
@@ -1140,11 +1143,18 @@ export class SignalingServer {
           }
         } else {
           const host = this.options.roomStore.getConnectedHost(roomId);
+          const promotedPeerIds = this.fillOrdinaryHostChildren(roomId);
           if (host) {
             for (const viewer of update.revokedViewers) {
               this.sendToSession(host.sessionId, {
                 type: "peer-left",
                 peerId: viewer.peerId,
+              });
+            }
+            for (const peerId of promotedPeerIds) {
+              this.sendToSession(host.sessionId, {
+                type: "peer-joined",
+                peerId,
               });
             }
           }
@@ -1679,6 +1689,7 @@ export class SignalingServer {
     this.qualitySettingsByRoom.delete(roomId);
     this.routePolicyByRoom.delete(roomId);
     this.pausedShareGenerationsByRoom.delete(roomId);
+    this.ordinaryActiveHostChildrenByRoom.delete(roomId);
     this.clearRoomConnectionIds(roomId);
     if (this.isHybridMediaEnabled()) {
       this.hybridMediaRouter!.stopRoom(roomId);

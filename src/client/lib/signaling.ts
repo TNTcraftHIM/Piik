@@ -83,8 +83,6 @@ export class SignalingClient {
   private terminalTimer: number | null = null;
   private terminalMessage: ClientMessage | null = null;
   private socketGeneration = 0;
-  private hostOnline = false;
-  private authoritativeRoute = false;
   private challengeSequence = 0;
   private watchdogTimer: number | null = null;
   private watchdogDeadlineMs = 0;
@@ -297,8 +295,16 @@ export class SignalingClient {
           }
         }
         this.events.onStatus("connected");
+        this.refreshSignalingWatchdog();
       }
-      this.updateAuthoritativeActivity(message);
+      if (
+        message.type === "host-status" &&
+        this.identity.role === "host" &&
+        message.online &&
+        !message.paused
+      ) {
+        this.identity.sharingPaused = false;
+      }
       this.events.onMessage(message);
       if (message.type === "authenticated") {
         this.reconcileHostQualityIntent(message);
@@ -314,8 +320,6 @@ export class SignalingClient {
       }
       this.socket = null;
       this.authenticated = false;
-      this.hostOnline = false;
-      this.authoritativeRoute = false;
       this.clearSignalingWatchdog();
       this.clearAuthenticationTimer();
       if (!this.stopped && shouldReconnectSignaling(event.code)) {
@@ -422,40 +426,6 @@ export class SignalingClient {
     }
   }
 
-  private updateAuthoritativeActivity(message: ServerMessage): void {
-    if (message.type === "authenticated") {
-      this.hostOnline = message.hostOnline;
-      this.authoritativeRoute =
-        this.identity.role === "host" ||
-        !("mediaMode" in message) ||
-        message.routeAssignment.upstream.kind !== "none";
-    } else if (message.type === "host-status") {
-      this.hostOnline = message.online;
-      if (
-        this.identity.role === "host" &&
-        message.online &&
-        !message.paused
-      ) {
-        this.identity.sharingPaused = false;
-      }
-    } else if (
-      message.type === "route-update" &&
-      message.phase === "active" &&
-      this.identity.role === "viewer"
-    ) {
-      this.authoritativeRoute = message.assignment.upstream.kind !== "none";
-    } else if (
-      message.type === "sharing-stopped" ||
-      message.type === "room-closed"
-    ) {
-      this.hostOnline = false;
-      this.authoritativeRoute = false;
-    } else {
-      return;
-    }
-    this.refreshSignalingWatchdog();
-  }
-
   private refreshSignalingWatchdog(): void {
     if (!this.isWatchdogEligible()) {
       this.clearSignalingWatchdog();
@@ -543,8 +513,6 @@ export class SignalingClient {
     }
     this.socket = null;
     this.authenticated = false;
-    this.hostOnline = false;
-    this.authoritativeRoute = false;
     this.clearAuthenticationTimer();
     this.clearSignalingWatchdog();
     this.events.onStatus("reconnecting");
@@ -597,8 +565,6 @@ export class SignalingClient {
   private isWatchdogEligible(): boolean {
     return (
       this.authenticated &&
-      this.hostOnline &&
-      this.authoritativeRoute &&
       this.isDocumentVisible() &&
       this.socket?.readyState === WebSocket.OPEN
     );

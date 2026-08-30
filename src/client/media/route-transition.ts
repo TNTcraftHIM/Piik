@@ -190,6 +190,7 @@ function sameAssignment(
   left: ParticipantRouteAssignment,
   right: ParticipantRouteAssignment,
 ): boolean {
+  const rightChildren = new Set(right.childPeerIds);
   return (
     left.upstream.kind === right.upstream.kind &&
     (left.upstream.kind !== "peer" ||
@@ -197,7 +198,7 @@ function sameAssignment(
         left.upstream.peerId === right.upstream.peerId)) &&
     left.sfuPublicationGeneration === right.sfuPublicationGeneration &&
     left.childPeerIds.length === right.childPeerIds.length &&
-    left.childPeerIds.every((peerId, index) => peerId === right.childPeerIds[index])
+    left.childPeerIds.every((peerId) => rightChildren.has(peerId))
   );
 }
 

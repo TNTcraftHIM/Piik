@@ -122,6 +122,8 @@ export class SfuPublisher {
   private statsTimer: ReturnType<typeof setInterval> | null = null;
   private startupVideoProfilePending = false;
   private paused = false;
+  private replacementVideoTrack: MediaStreamTrack | null = null;
+  private replacementAudioTrack: MediaStreamTrack | null = null;
 
   constructor(private readonly events: PublisherEvents = {}) {}
 
@@ -372,6 +374,9 @@ export class SfuPublisher {
         return false;
       }
       const nextAudioTrack = stream.getAudioTracks()[0] ?? null;
+      this.replacementVideoTrack = nextVideoTrack;
+      this.replacementAudioTrack = nextAudioTrack;
+      this.applyPausedState(nextVideoTrack, nextAudioTrack);
       const previousAudio = this.audio;
       const previousVideoTrack = previousVideo.rawTrack;
       let retainedNextVideoTrack = false;
@@ -444,6 +449,7 @@ export class SfuPublisher {
         if (!videoConfiguration || !this.owns(room, generation)) {
           return false;
         }
+        this.applyPausedState(nextVideoTrack, nextAudioTrack);
         previousVideo.rawTrack = nextVideoTrack;
         previousVideo.sourceTrack = nextVideoSource;
         retainedNextVideoTrack = true;
@@ -520,6 +526,10 @@ export class SfuPublisher {
       } finally {
         if (!retainedNextVideoTrack) {
           nextVideoTrack.stop();
+        }
+        if (this.replacementVideoTrack === nextVideoTrack) {
+          this.replacementVideoTrack = null;
+          this.replacementAudioTrack = null;
         }
       }
     });
@@ -774,12 +784,19 @@ export class SfuPublisher {
 
   setPaused(paused: boolean): void {
     this.paused = paused;
-    if (this.video) {
-      this.video.rawTrack.enabled = !paused;
-    }
-    if (this.audio) {
-      this.audio.rawTrack.enabled = !paused;
-    }
+    this.applyPausedState(
+      this.video?.rawTrack ?? null,
+      this.audio?.rawTrack ?? null,
+    );
+    this.applyPausedState(this.replacementVideoTrack, this.replacementAudioTrack);
+  }
+
+  private applyPausedState(
+    videoTrack: MediaStreamTrack | null,
+    audioTrack: MediaStreamTrack | null,
+  ): void {
+    if (videoTrack) videoTrack.enabled = !this.paused;
+    if (audioTrack) audioTrack.enabled = !this.paused;
   }
 
   private reapplyAudioAfterReconnect(room: Room, generation: number): void {
