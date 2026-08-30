@@ -121,6 +121,7 @@ export class SfuPublisher {
   private statsInFlight: PublisherStatsIdentity | null = null;
   private statsTimer: ReturnType<typeof setInterval> | null = null;
   private startupVideoProfilePending = false;
+  private paused = false;
 
   constructor(private readonly events: PublisherEvents = {}) {}
 
@@ -772,6 +773,7 @@ export class SfuPublisher {
   }
 
   setPaused(paused: boolean): void {
+    this.paused = paused;
     if (this.video) {
       this.video.rawTrack.enabled = !paused;
     }
@@ -843,10 +845,12 @@ export class SfuPublisher {
         let retainedNextTrack = false;
         try {
           await applyVideoCaptureProfile(nextRawTrack, profile);
+          nextRawTrack.enabled = !this.paused;
           await replacePublishedTrack(video, nextRawTrack);
           if (!this.owns(room, generation)) {
             return false;
           }
+          nextRawTrack.enabled = !this.paused;
           video.rawTrack = nextRawTrack;
           retainedNextTrack = true;
           previousRawTrack.stop();
@@ -1162,6 +1166,7 @@ export class SfuPublisher {
           : {
               qualityLimitationReason:
                 nativeQuality.qualityLimitationReason,
+              sampleTimestampMs: nativeQuality.sampleTimestampMs,
               sampleWindowMs: nativeQuality.sampleWindowMs,
               intervalFramesEncoded: nativeQuality.intervalFramesEncoded,
             }),

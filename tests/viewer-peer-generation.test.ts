@@ -629,6 +629,31 @@ describe("ViewerPeer connection generations", () => {
     peer.dispose();
   });
 
+  it("retires the recovery deadline when a rebuilt connection is answered", async () => {
+    const exhausted: string[] = [];
+    const peer = new ViewerPeer(
+      { iceServers: [] },
+      {
+        sendSignal: () => true,
+        sendRestartRequest: () => true,
+        onStream: () => undefined,
+        onUpdate: () => undefined,
+        onRecoveryExhausted: (_peerId, connectionId) => {
+          exhausted.push(connectionId);
+          return true;
+        },
+      },
+    );
+
+    await peer.acceptSignal("relay-parent", offer("connection-before-rebuild"));
+    expect(peer.requestRecovery(true)).toBe(true);
+    await peer.acceptSignal("relay-parent", offer("connection-after-rebuild"));
+
+    expect([...timeoutDelays.values()]).toEqual([15_000]);
+    expect(exhausted).toEqual([]);
+    peer.dispose();
+  });
+
   it("does not send an old answer or candidate after replacing the connection", async () => {
     const oldLocalDescription = createDeferred<void>();
     FakePeerConnection.plans.push({

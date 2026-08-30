@@ -2,7 +2,8 @@ import type { ConnectionMetrics } from "../../types";
 import { formatPacketLossPercent } from "../connection-details";
 import { Glyph, type GlyphName } from "../../ui/icons";
 import { useCopy, type CopyKey } from "../../ui/copy";
-import { PawnSvg, pawnColor } from "./Couch";
+import { PawnSvg } from "./Couch";
+import { participantColor } from "./participant-color";
 
 export interface ViewerOverviewEntry {
   key: string;
@@ -83,7 +84,7 @@ export function ViewerOverview({
               >
                 <span className="lr-viewer-overview-person" title={entry.statusLabel}>
                   <span className="lr-viewer-overview-pawn">
-                    <PawnSvg color={pawnColor(entry.key)} />
+                    <PawnSvg color={participantColor(entry.key)} />
                     <i className={entry.connected ? "" : "is-wait"} aria-hidden="true" />
                   </span>
                   <span className="lr-viewer-overview-person-copy">
@@ -102,7 +103,19 @@ export function ViewerOverview({
                     }
                     size={14}
                   />
-                  <b>{route}</b>
+                  {vis ? (
+                    <span className="visually-hidden">
+                      {t(
+                        entry.route === "sfu"
+                          ? "state.route.sfu"
+                          : entry.route === "p2p"
+                            ? "state.route.p2p"
+                            : "state.peer.connecting",
+                      )}
+                    </span>
+                  ) : (
+                    <b>{route}</b>
+                  )}
                 </span>
                 <span>{resolution}</span>
                 <span>{fps}</span>

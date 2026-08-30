@@ -271,6 +271,12 @@ export class ViewerSfuRoute {
     }
     if (paused) {
       this.discardPending();
+      return;
+    }
+    for (const slot of new Set([this.active, this.pending])) {
+      if (slot?.activated && !slot.failed) {
+        slot.subscriber.armDecodedFrameProof();
+      }
     }
   }
 
@@ -406,8 +412,7 @@ export class ViewerSfuRoute {
   ): Promise<void> {
     if (
       this.closed ||
-      !this.route.acceptsConfig(message.revision) ||
-      this.paused
+      !this.route.acceptsConfig(message.revision)
     ) {
       return;
     }

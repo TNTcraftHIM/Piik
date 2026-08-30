@@ -9,7 +9,8 @@ import {
   type TopologyBranch,
 } from "../../lib/participant-topology";
 import { useCopy } from "../../ui/copy";
-import { PawnSvg, pawnColor } from "./Couch";
+import { PawnSvg } from "./Couch";
+import { participantColor } from "./participant-color";
 import {
   topologyLayoutForViewport,
   type TopologyLayout,
@@ -326,7 +327,7 @@ export const RouteTree = memo(function RouteTree({
           className="lr-route-node is-host"
           transform={`translate(${centeredPawnX(hostPos.x, HOST_SCALE)}, ${hostPos.y - 20}) scale(${HOST_SCALE})`}
         >
-          <PawnSvg color="var(--couch)" crown />
+          <PawnSvg color={participantColor(hostPeerId ?? "host-pending")} crown />
         </g>
         <text
           className="lr-route-label is-host"
@@ -371,7 +372,7 @@ export const RouteTree = memo(function RouteTree({
               className={`lr-route-node${node.ready ? "" : " is-recovering"}${selected ? " is-selected" : ""}`}
               transform={`translate(${centeredPawnX(point.x, scale)}, ${point.y - 15}) scale(${scale})`}
             >
-              <PawnSvg color={pawnColor(node.key)} />
+              <PawnSvg color={participantColor(node.key)} />
               {selected ? (
                 <circle className="lr-route-selection" cx="20" cy="26" r="25" />
               ) : null}
@@ -389,7 +390,7 @@ export const RouteTree = memo(function RouteTree({
             transform={`translate(${centeredPawnX(point.x, ROOT_SCALE)}, ${point.y - 15}) scale(${ROOT_SCALE})`}
           >
             <PawnSvg
-              color={pawnColor(point.viewer.peerId)}
+              color={participantColor(point.viewer.peerId)}
             />
             {selectedPeerId === point.viewer.peerId ? (
               <circle className="lr-route-selection" cx="20" cy="26" r="25" />

@@ -899,7 +899,6 @@ ${rmBlock(
       <Frame x={164} w={152} theme={theme} />
       <rect x={30} y={22} width={70} height={44} rx={8} fill={TV_BODY} stroke={TV_EDGE} strokeWidth={2} />
       <rect x={36} y={28} width={58} height={30} rx={4} fill="#0a101c" />
-      <Moon x={72} y={43} k={0.55} />
       <path d="M65 66 c0 6 -4 8 -8 10" stroke={TV_EDGE} strokeWidth={2.5} fill="none" strokeLinecap="round" />
       <Plug x={57} y={76} className="vls-ho-plug" />
       <Floor x1={176} x2={304} y={78} />

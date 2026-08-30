@@ -3668,6 +3668,52 @@ describe("RoomRouteController", () => {
     expect(bootstrap.reconcile(4).operation?.childPeerId).toBe(B);
   });
 
+  it("reopens SFU bootstrap after the physical publication retires", () => {
+    const routes = controller(2, { sfuEnabled: true });
+    addViewer(routes, A, 0);
+    routes.hydrateHostPublication("retired_publication", "publication_resource");
+    routes.hydrateEdge(A, {
+      kind: "sfu",
+      publicationGeneration: "retired_publication",
+      transport: "sfu",
+      connectionId: "a_from_sfu",
+      usable: true,
+      physicalActive: true,
+      resource: "a_subscription",
+    });
+
+    const publication = routes.snapshot().hostPublication!;
+    expect(
+      routes.retireHostPublication({
+        hostSessionId: publication.hostSessionId,
+        routeRevision: routes.snapshot().revision,
+        generation: publication.generation,
+        connectionId: publication.connectionId,
+      }),
+    ).toEqual(expect.arrayContaining(["a_subscription", "publication_resource"]));
+    expect(routes.snapshot().hostPublication).toBeNull();
+
+    for (const [peerId, connectionId] of [
+      [B, "b_from_host"],
+      [C, "c_from_host"],
+    ] as const) {
+      addViewer(routes, peerId, 0);
+      routes.hydrateEdge(peerId, peerEdge(HOST, connectionId));
+    }
+    expect(routes.reconcile(1)).toMatchObject({
+      failedPeerIds: [],
+      operation: {
+        demandPeerId: A,
+        reason: "sfu-bootstrap",
+        candidates: [
+          {
+            tuple: { kind: "sfu", publication: "create" },
+          },
+        ],
+      },
+    });
+  });
+
   it("binds reserve and skip results to the exact candidate cursor", () => {
     const reserve = controller(2);
     addViewer(reserve, A, 2);

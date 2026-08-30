@@ -16,6 +16,7 @@ lock='/opt/screener/deploy.lock'
 public_origin="${SCREENER_PUBLIC_ORIGIN:-}"
 descriptor="$(realpath -e -- "$1")"
 stage=''
+release_owned=0
 cutover_started=0
 old_release=''
 
@@ -72,6 +73,29 @@ cleanup_stage() {
   rm -rf --one-file-system -- "$resolved"
 }
 
+cleanup_release() {
+  if [ "$release_owned" -ne 1 ] || { [ ! -e "$release" ] && [ ! -L "$release" ]; }; then
+    return
+  fi
+  if [ -n "$stage" ] && [ -e "$stage" ]; then
+    return
+  fi
+  local resolved parent base active
+  resolved="$(realpath -m -- "$release")"
+  parent="$(dirname -- "$resolved")"
+  base="$(basename -- "$resolved")"
+  active="$(readlink -f -- "$current" 2>/dev/null || true)"
+  if [ "$parent" != "$release_root" ] || [ "$base" != "$release_id" ] || \
+      [ "$active" = "$resolved" ] || [ -L "$release" ] || [ ! -d "$release" ]; then
+    printf 'refusing to remove unexpected release: %s\n' "$resolved" >&2
+    return 1
+  fi
+  if ! rm -rf --one-file-system -- "$resolved"; then
+    return 1
+  fi
+  release_owned=0
+}
+
 wait_for_health() {
   local body=''
   for _ in $(seq 1 120); do
@@ -101,6 +125,9 @@ recover() {
     test "$(readlink -f -- "$current" 2>/dev/null)" = "$old_release" || ok=0
     systemctl start screener.service || ok=0
     wait_for_health || ok=0
+  fi
+  if [ "$ok" -eq 1 ]; then
+    cleanup_release || ok=0
   fi
   cleanup_stage
   printf 'deployment_failed=%s recovery_ok=%s current=%s active=%s\n' \
@@ -267,6 +294,7 @@ old_asset="$(OLD_RELEASE="$old_release" "$node" --input-type=module --eval '
   process.stdout.write(match[1]);
 ')"
 
+release_owned=1
 mv -- "$stage" "$release"
 stage=''
 test -d "$release"
@@ -310,6 +338,7 @@ fi
 test -z "$(journalctl -u screener.service --since "$cutover_since" -p warning --no-pager --output=cat)"
 
 asset_sha="$(sha256sum "$release/dist/client/$main_asset" | awk '{print $1}')"
+release_owned=0
 cutover_started=0
 trap - ERR HUP INT TERM EXIT
 printf 'deployment=ok revision=%s release=%s previous=%s artifact_sha=%s manifest_sha=%s asset=%s asset_sha=%s health_ms=%s firewall_sha=%s\n' \

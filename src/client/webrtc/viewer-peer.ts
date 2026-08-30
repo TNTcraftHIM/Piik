@@ -309,6 +309,7 @@ export class ViewerPeer {
       })) {
         throw new Error(say("viewer.msg.serverError"));
       }
+      this.clearRecoveryTimer();
       this.offerRecoveryAttempts = 0;
       this.scheduleInitialConnectionDeadline(connection, connectionId);
     } catch (error) {

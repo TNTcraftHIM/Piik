@@ -197,8 +197,7 @@ export class HostSfuRoute {
   ): Promise<void> {
     if (
       this.closed ||
-      !this.route.acceptsConfig(message.revision) ||
-      this.paused
+      !this.route.acceptsConfig(message.revision)
     ) {
       return;
     }
@@ -516,6 +515,7 @@ export class HostSfuRoute {
         await disconnectPublisher(slot.publisher);
         return false;
       }
+      slot.publisher.setPaused(this.paused);
       if (this.pending !== slot || !this.ownsPublisherSlot(slot)) {
         await disconnectPublisher(slot.publisher);
         return false;

@@ -611,18 +611,20 @@ export class HybridMediaRouter {
       const childToParent =
         input.sourcePeerId === operation.childPeerId &&
         input.targetPeerId === current.tuple.parentPeerId;
-      return Boolean(
-        parent &&
-          child &&
-          parent.sessionId === (parentToChild ? input.sourceSessionId : input.targetSessionId) &&
-          child.sessionId === (childToParent ? input.sourceSessionId : input.targetSessionId) &&
-          input.connectionId === current.connectionId &&
-          (input.signalKind === "candidate" ||
-            (parentToChild && input.descriptionType === "offer") ||
-            (childToParent && input.descriptionType === "answer")),
-      )
-        ? "probe"
-        : false;
+      if (parentToChild || childToParent) {
+        return Boolean(
+          parent &&
+            child &&
+            parent.sessionId === (parentToChild ? input.sourceSessionId : input.targetSessionId) &&
+            child.sessionId === (childToParent ? input.sourceSessionId : input.targetSessionId) &&
+            input.connectionId === current.connectionId &&
+            (input.signalKind === "candidate" ||
+              (parentToChild && input.descriptionType === "offer") ||
+              (childToParent && input.descriptionType === "answer")),
+        )
+          ? "probe"
+          : false;
+      }
     }
 
     const childPeerId = this.childForPair(snapshot, input.sourcePeerId, input.targetPeerId);

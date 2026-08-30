@@ -71,11 +71,13 @@ interface ViewerRouteStatusFact {
 interface ViewerMediaFact {
   generation: number;
   boundAtRevision: number;
+  proofEpoch: number;
   framePresented: boolean;
 }
 
 export interface ViewerPresentationState {
   access: "checking" | "ready" | "denied";
+  accessFailure: ViewerFailureCode | null;
   signal: SignalConnectionState;
   host: ViewerHostState;
   revision: number | null;
@@ -90,7 +92,8 @@ export interface ViewerPresentationState {
   media: ViewerMediaFact | null;
   retainedFrame: boolean;
   autoplayBlockedGeneration: number | null;
-  failure: ViewerFailureCode | null;
+  playbackFailedGeneration: number | null;
+  runtimeFailure: "SERVER_ERROR" | null;
 }
 
 export type ViewerPresentationAction =
@@ -118,19 +121,20 @@ export type ViewerPresentationAction =
       connection: ViewerPresentationState["connection"];
     }
   | { type: "media-bound"; generation: number; revision: number }
-  | { type: "frame-presented"; generation: number; revision: number }
+  | {
+      type: "frame-presented";
+      generation: number;
+      proofEpoch: number;
+      revision: number;
+    }
   | { type: "frame-proof-reset"; generation: number; revision: number }
+  | { type: "frame-proof-rearm"; generation: number }
   | { type: "autoplay-blocked"; generation: number; revision: number }
   | { type: "autoplay-cleared"; generation: number }
   | { type: "playback-failed"; generation: number; revision: number }
-  | { type: "media-invalidated"; revision: number }
   | { type: "media-cleared" }
   | { type: "sharing-stopped" }
-  | {
-      type: "failure";
-      failure: ViewerFailureCode | null;
-      revision?: number;
-    };
+  | { type: "server-error" };
 
 export interface ViewerPresentation {
   stage: ViewerStage;
@@ -148,6 +152,7 @@ export interface ViewerPresentation {
 
 export const INITIAL_VIEWER_PRESENTATION_STATE: ViewerPresentationState = {
   access: "checking",
+  accessFailure: null,
   signal: "offline",
   host: "unknown",
   revision: null,
@@ -157,7 +162,8 @@ export const INITIAL_VIEWER_PRESENTATION_STATE: ViewerPresentationState = {
   media: null,
   retainedFrame: false,
   autoplayBlockedGeneration: null,
-  failure: null,
+  playbackFailedGeneration: null,
+  runtimeFailure: null,
 };
 
 export function reduceViewerPresentation(
@@ -169,35 +175,22 @@ export function reduceViewerPresentation(
       return {
         ...state,
         access: action.access,
-        failure:
+        accessFailure:
           action.failure !== undefined
             ? action.failure
             : action.access === "ready"
               ? null
-              : state.failure,
+              : state.accessFailure,
+        runtimeFailure:
+          action.access === "ready" ? null : state.runtimeFailure,
       };
     case "signal":
-      return {
-        ...state,
-        signal: action.signal,
-        failure:
-          action.signal === "connected" &&
-          (state.failure === "SIGNAL_TERMINATED" ||
-            state.failure === "SESSION_REPLACED")
-            ? null
-            : state.failure,
-      };
+      return { ...state, signal: action.signal };
     case "host": {
-      const failure =
-        action.host === "offline"
-          ? "HOST_OFFLINE"
-          : action.host === "stopped"
-            ? "HOST_STOPPED"
-            : state.failure === "HOST_OFFLINE" ||
-                state.failure === "HOST_STOPPED"
-              ? null
-              : state.failure;
-      return { ...state, host: action.host, failure };
+      if (action.host === "offline" && state.host === "stopped") {
+        return state;
+      }
+      return { ...state, host: action.host };
     }
     case "route": {
       if (state.revision !== null && action.revision < state.revision) {
@@ -206,9 +199,7 @@ export function reduceViewerPresentation(
       const revisionChanged = state.revision !== action.revision;
       const committedRoute = action.phase === "active" && action.kind !== "none";
       const reactivatingTerminalRoute =
-        committedRoute &&
-        (state.routeStatus?.state === "failed" ||
-          state.failure === "ROUTE_EXHAUSTED");
+        committedRoute && state.routeStatus?.state === "failed";
       return {
         ...state,
         revision: action.revision,
@@ -230,10 +221,6 @@ export function reduceViewerPresentation(
               ? "idle"
               : "connecting"
             : state.connection,
-        failure:
-          committedRoute && state.failure === "ROUTE_EXHAUSTED"
-            ? null
-            : state.failure,
       };
     }
     case "route-status": {
@@ -245,7 +232,11 @@ export function reduceViewerPresentation(
       const currentFrame = hasCurrentFrame(state);
       const currentMedia =
         terminal && state.media
-          ? { ...state.media, framePresented: false }
+          ? {
+              ...state.media,
+              proofEpoch: state.media.proofEpoch + 1,
+              framePresented: false,
+            }
           : state.media;
       return {
         ...state,
@@ -264,17 +255,7 @@ export function reduceViewerPresentation(
           ? null
           : state.autoplayBlockedGeneration,
         retainedFrame:
-          state.retainedFrame ||
-          ((revisionChanged || terminal) && currentFrame),
-        failure:
-          action.state === "failed"
-            ? "ROUTE_EXHAUSTED"
-            : revisionChanged &&
-                (state.failure === "ROUTE_EXHAUSTED" ||
-                  state.failure === "AUTOPLAY_BLOCKED" ||
-                  state.failure === "PLAYBACK_FAILED")
-              ? null
-              : state.failure,
+          state.retainedFrame || (terminal && currentFrame),
       };
     }
     case "connection":
@@ -290,9 +271,7 @@ export function reduceViewerPresentation(
       if (
         (state.media && action.generation <= state.media.generation) ||
         (state.routeStatus?.revision === action.revision &&
-          state.routeStatus.state === "failed") ||
-        (state.revision === action.revision &&
-          state.failure === "ROUTE_EXHAUSTED")
+          state.routeStatus.state === "failed")
       ) {
         return state;
       }
@@ -301,24 +280,20 @@ export function reduceViewerPresentation(
         media: {
           generation: action.generation,
           boundAtRevision: action.revision,
+          proofEpoch: 0,
           framePresented: false,
         },
         retainedFrame: state.retainedFrame || hasCurrentFrame(state),
         autoplayBlockedGeneration: null,
-        failure:
-          state.failure === "AUTOPLAY_BLOCKED" ||
-          state.failure === "PLAYBACK_FAILED" ||
-          state.failure === "ROUTE_EXHAUSTED"
-            ? null
-            : state.failure,
+        playbackFailedGeneration: null,
       };
     }
     case "frame-presented":
       if (
         !state.media ||
         state.media.generation !== action.generation ||
-        state.routeStatus?.state === "failed" ||
-        state.failure === "ROUTE_EXHAUSTED"
+        state.media.proofEpoch !== action.proofEpoch ||
+        state.media.framePresented
       ) {
         return state;
       }
@@ -328,21 +303,31 @@ export function reduceViewerPresentation(
         media: { ...state.media, framePresented: true },
         retainedFrame: false,
         routeStatus: null,
-        failure:
-          state.failure === "PLAYBACK_FAILED" ? null : state.failure,
+        playbackFailedGeneration: null,
       };
     case "frame-proof-reset":
-      if (
-        !state.media ||
-        state.media.generation !== action.generation ||
-        !state.media.framePresented
-      ) {
+      if (!state.media || state.media.generation !== action.generation) {
         return state;
       }
       return {
         ...state,
-        media: { ...state.media, framePresented: false },
-        retainedFrame: true,
+        media: {
+          ...state.media,
+          proofEpoch: state.media.proofEpoch + 1,
+          framePresented: false,
+        },
+        retainedFrame: state.retainedFrame || state.media.framePresented,
+      };
+    case "frame-proof-rearm":
+      if (!state.media || state.media.generation !== action.generation) {
+        return state;
+      }
+      return {
+        ...state,
+        media: {
+          ...state.media,
+          proofEpoch: state.media.proofEpoch + 1,
+        },
       };
     case "autoplay-blocked":
       if (
@@ -354,7 +339,6 @@ export function reduceViewerPresentation(
       return {
         ...state,
         autoplayBlockedGeneration: action.generation,
-        failure: "AUTOPLAY_BLOCKED",
       };
     case "autoplay-cleared":
       if (state.autoplayBlockedGeneration !== action.generation) {
@@ -363,8 +347,6 @@ export function reduceViewerPresentation(
       return {
         ...state,
         autoplayBlockedGeneration: null,
-        failure:
-          state.failure === "AUTOPLAY_BLOCKED" ? null : state.failure,
       };
     case "playback-failed":
       if (
@@ -373,23 +355,14 @@ export function reduceViewerPresentation(
       ) {
         return state;
       }
-      return { ...state, failure: "PLAYBACK_FAILED" };
-    case "media-invalidated":
-      if (state.revision !== action.revision) {
-        return state;
-      }
-      return {
-        ...state,
-        media: null,
-        retainedFrame: state.retainedFrame || hasCurrentFrame(state),
-        autoplayBlockedGeneration: null,
-      };
+      return { ...state, playbackFailedGeneration: action.generation };
     case "media-cleared":
       return {
         ...state,
         media: null,
         retainedFrame: false,
         autoplayBlockedGeneration: null,
+        playbackFailedGeneration: null,
       };
     case "sharing-stopped":
       return {
@@ -402,36 +375,11 @@ export function reduceViewerPresentation(
         media: null,
         retainedFrame: false,
         autoplayBlockedGeneration: null,
-        failure: "HOST_STOPPED",
+        playbackFailedGeneration: null,
+        runtimeFailure: null,
       };
-    case "failure":
-      if (
-        action.revision !== undefined &&
-        state.revision !== null &&
-        action.revision < state.revision
-      ) {
-        return state;
-      }
-      const terminalRoute = action.failure === "ROUTE_EXHAUSTED";
-      const terminalMedia =
-        terminalRoute && state.media
-          ? { ...state.media, framePresented: false }
-          : state.media;
-      return {
-        ...state,
-        revision:
-          action.revision === undefined
-            ? state.revision
-            : Math.max(state.revision ?? 0, action.revision),
-        media: terminalMedia,
-        connection: terminalRoute ? "failed" : state.connection,
-        retainedFrame:
-          state.retainedFrame || (terminalRoute && hasCurrentFrame(state)),
-        autoplayBlockedGeneration: terminalRoute
-          ? null
-          : state.autoplayBlockedGeneration,
-        failure: action.failure,
-      };
+    case "server-error":
+      return { ...state, runtimeFailure: "SERVER_ERROR" };
   }
 }
 
@@ -446,7 +394,7 @@ export function deriveViewerPresentation(
     return presentation("joining", "viewer.msg.joining", "blocking", state);
   }
   if (state.access === "denied") {
-    switch (state.failure) {
+    switch (state.accessFailure) {
       case "ROOM_NOT_FOUND":
         return presentation(
           "room-not-found",
@@ -519,7 +467,13 @@ export function deriveViewerPresentation(
     state.autoplayBlockedGeneration === state.media.generation &&
     state.connection === "connected"
   ) {
-    return presentation("needs-play", "viewer.msg.needsPlay", "status", state);
+    return presentation(
+      "needs-play",
+      "viewer.msg.needsPlay",
+      "status",
+      state,
+      "AUTOPLAY_BLOCKED",
+    );
   }
 
   if (currentFrame) {
@@ -542,6 +496,7 @@ export function deriveViewerPresentation(
         : mediaRecovering
           ? "viewer.notice.mediaRecovering"
           : null,
+      failureCode: state.host === "offline" ? "HOST_OFFLINE" : null,
     };
   }
 
@@ -551,66 +506,50 @@ export function deriveViewerPresentation(
       "viewer.msg.routeFailed",
       frameOverlay,
       state,
+      "ROUTE_EXHAUSTED",
     );
   }
 
-  switch (state.failure) {
-    case "ROUTE_EXHAUSTED":
-      return presentation(
-        "route-failed",
-        "viewer.msg.routeFailed",
-        frameOverlay,
-        state,
-      );
-    case "PLAYBACK_FAILED":
-      return presentation(
-        "playback-failed",
-        "viewer.msg.playbackFailed",
-        frameOverlay,
-        state,
-      );
-    case "SERVER_ERROR":
-      return presentation(
-        "server-error",
-        "viewer.msg.serverError",
-        frameOverlay,
-        state,
-      );
-    case "STALE_CLIENT":
-      return presentation(
-        "stale-client",
-        "viewer.msg.stale",
-        frameOverlay,
-        state,
-      );
-    case "SESSION_REPLACED":
-      return presentation(
-        "session-replaced",
-        "viewer.msg.sessionReplaced",
-        frameOverlay,
-        state,
-      );
-    case "SIGNAL_TERMINATED":
-      return presentation(
-        "signal-terminated",
-        "viewer.msg.signalTerminated",
-        frameOverlay,
-        state,
-      );
-    case "HOST_OFFLINE":
-      return presentation(
-        "host-offline",
-        "viewer.msg.hostOffline",
-        frameOverlay,
-        state,
-      );
-    case "HOST_STOPPED":
-      return presentation(
-        "waiting-host",
-        "viewer.msg.waitingHost",
-        frameOverlay,
-        state,
-      );
+  if (
+    state.media &&
+    state.playbackFailedGeneration === state.media.generation
+  ) {
+    return presentation(
+      "playback-failed",
+      "viewer.msg.playbackFailed",
+      frameOverlay,
+      state,
+      "PLAYBACK_FAILED",
+    );
+  }
+
+  if (state.runtimeFailure === "SERVER_ERROR") {
+    return presentation(
+      "server-error",
+      "viewer.msg.serverError",
+      frameOverlay,
+      state,
+      "SERVER_ERROR",
+    );
+  }
+
+  if (state.host === "stopped" || state.host === "unknown") {
+    return presentation(
+      "waiting-host",
+      "viewer.msg.waitingHost",
+      frameOverlay,
+      state,
+      state.host === "stopped" ? "HOST_STOPPED" : null,
+    );
+  }
+  if (state.host === "offline") {
+    return presentation(
+      "host-offline",
+      "viewer.msg.hostOffline",
+      frameOverlay,
+      state,
+      "HOST_OFFLINE",
+    );
   }
 
   if (state.routeStatus?.state === "waiting") {
@@ -645,22 +584,6 @@ export function deriveViewerPresentation(
     return presentation(
       state.route.kind === "sfu" ? "preparing-sfu" : "preparing-p2p",
       state.route.kind === "sfu" ? "viewer.msg.preparingSfu" : "viewer.msg.preparingP2p",
-      frameOverlay,
-      state,
-    );
-  }
-  if (state.host === "stopped" || state.host === "unknown") {
-    return presentation(
-      "waiting-host",
-      "viewer.msg.waitingHost",
-      frameOverlay,
-      state,
-    );
-  }
-  if (state.host === "offline") {
-    return presentation(
-      "host-offline",
-      "viewer.msg.hostOffline",
       frameOverlay,
       state,
     );
@@ -720,6 +643,8 @@ function presentation(
   messageKey: ViewerMessageKey,
   overlay: ViewerPresentation["overlay"],
   state: ViewerPresentationState,
+  failureCode: ViewerFailureCode | null =
+    state.access === "denied" ? state.accessFailure : null,
 ): ViewerPresentation {
   return {
     stage,
@@ -728,7 +653,7 @@ function presentation(
     overlay,
     hasCurrentFrame: hasCurrentFrame(state),
     hasRetainedFrame: state.retainedFrame,
-    failureCode: state.failure,
+    failureCode,
     connectionState:
       state.connection === "idle"
         ? state.host === "online" || state.host === "paused"

@@ -170,7 +170,10 @@ export function MetricCells({
     <span className="lr-meter-cell" title={vis ? undefined : title ?? t(label)} key={label + display}>
       <Glyph name={icon} size={16} />
       {vis ? (
-        <b>{display}</b>
+        <>
+          <b>{display}</b>
+          <span className="visually-hidden">{t(label)}</span>
+        </>
       ) : (
         <span className="lr-meter-text">
           <b>{display}</b>

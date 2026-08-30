@@ -11,9 +11,16 @@
 // Styling in styles.css under "comic tooltip" / "glyph draw-in". SSR-safe:
 // handlers only run in the browser.
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  isValidElement,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Comic, type ComicKind } from "./Comic";
 import { HintComic, isHintKind, type HintKind } from "./hints";
+import { isCopyKey, say } from "../../ui/copy";
 
 const LONG_PRESS_MS = 500;
 const TOUCH_HIDE_MS = 1500;
@@ -49,6 +56,23 @@ export function ComicTooltip({
   const [comicMounted, setComicMounted] = useState(false);
   const [liveAlign, setLiveAlign] = useState<Align | null>(null);
   const interactionOpen = hoverOpen || focusOpen || touchOpen;
+  const disabledTrigger =
+    isValidElement<{
+      disabled?: boolean;
+      "aria-label"?: string;
+      label?: string;
+      title?: string;
+    }>(children) &&
+    children.props.disabled === true;
+  const rawDisabledTriggerLabel = disabledTrigger
+    ? children.props["aria-label"] ??
+      children.props.label ??
+      children.props.title
+    : undefined;
+  const disabledTriggerLabel =
+    rawDisabledTriggerLabel && isCopyKey(rawDisabledTriggerLabel)
+      ? say(rawDisabledTriggerLabel)
+      : rawDisabledTriggerLabel;
 
   const mountComic = () => {
     if (comicUnmountTimer.current !== null) {
@@ -163,7 +187,9 @@ export function ComicTooltip({
   return (
     <span
       ref={wrapRef}
-      className={`lr-comic-tip-wrap${touchOpen ? " is-tip-open" : ""}`}
+      className={`lr-comic-tip-wrap${disabledTrigger ? " is-disabled-trigger" : ""}${hoverOpen ? " is-hover-open" : ""}${focusOpen ? " is-focus-open" : ""}${touchOpen ? " is-tip-open" : ""}`}
+      tabIndex={disabledTrigger ? 0 : undefined}
+      aria-label={disabledTriggerLabel}
       onPointerEnter={(event) => {
         pickAlign();
         if (event.pointerType !== "touch") {
@@ -250,9 +276,9 @@ export function ComicTooltip({
       }}
       onKeyDown={(event) => {
         if (event.key === "Escape") {
+          setHoverOpen(false);
           setTouchOpen(false);
           setFocusOpen(false);
-          (document.activeElement as HTMLElement | null)?.blur?.();
         } else if ((event.target as HTMLElement).matches(":focus-visible")) {
           mountComic();
           setFocusOpen(true);

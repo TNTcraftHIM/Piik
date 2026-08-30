@@ -427,7 +427,10 @@ export class RoomStore {
       expectedSalt,
       mayConnect,
     );
-    if (derived.kind !== "value") {
+    if (derived.kind === "busy") {
+      throw new RoomStoreError("ROOM_BUSY");
+    }
+    if (derived.kind === "cancelled") {
       throw new RoomStoreError("INVALID_TOKEN");
     }
     const matches = timingSafeEqual(derived.value, expectedVerifier);
