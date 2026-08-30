@@ -224,6 +224,27 @@ A LiveKit H.264 publication may use more than one hardware encoder for its
 representations. Reducing Host network copies to one publication does not by
 itself prove lower Host encode cost.
 
+Production room 8489 separated an SFU delivery problem from route churn. SFU
+roots showed synchronized freeze windows and frequent 1920-to-960 representation
+changes before any quality-convergence operation existed, while a brief direct
+Peer Viewer remained near 1080p and full cadence. Later, the Host publication
+also reported sustained native bandwidth limitation. This excludes quality
+probing as the initial trigger and does not support a Host-wide capture or encode
+failure, but it does not isolate one SFU cause.
+
+Pinned LiveKit server 1.13.5 delays Dynacast layer downgrades by five seconds,
+reenables demanded layers immediately, and then relies on keyframe acquisition;
+its forwarder grace and individual PLI retry intervals are shorter than that
+delay. Those mechanics
+can explain several-second stalls during representation churn, but the retained
+warning-level logs contain no subscribed-quality or publisher-layer transition,
+so Dynacast disablement is not established as the cause of each freeze. SFU
+publisher diagnostics therefore keep aggregate bitrate and native limitation
+across all active representations while reporting dimensions and cadence from
+the highest active representation. A future event can distinguish publisher
+layer disablement from subscriber-only forwarding changes without altering the
+LiveKit adaptation policy.
+
 ## Host And Page Cost Boundaries
 
 Each ordinary Browser child is an independent PeerConnection and normally an
@@ -370,6 +391,9 @@ percentages, and tuning loops are not adopted for this Browser product.
 - Codec cost and quality after stock BWE reaches steady state.
 - Mixed P2P/SFU public-network quality, long-running thermals, A/V sync, mobile
   lifecycle, and 20-Viewer resource admission.
+- Controlled and production correlation of Host SFU active representations,
+  subscribed-quality changes, keyframe reacquisition, and Viewer freezes before
+  changing Dynacast policy or its delay.
 
 ## Primary Sources
 
@@ -395,6 +419,9 @@ percentages, and tuning loops are not adopted for this Browser product.
 - [Chrome timer throttling](https://developer.chrome.com/blog/timer-throttling-in-chrome-88)
 - [Chrome Page Lifecycle](https://developer.chrome.com/docs/web-platform/page-lifecycle-api)
 - [LiveKit server forwarder](https://github.com/livekit/livekit/blob/v1.13.5/pkg/sfu/forwarder.go)
+- [LiveKit server defaults](https://github.com/livekit/livekit/blob/v1.13.5/pkg/config/config.go)
+- [LiveKit Dynacast manager](https://github.com/livekit/livekit/blob/v1.13.5/pkg/rtc/dynacast/dynacastmanagervideo.go)
+- [LiveKit keyframe requests](https://github.com/livekit/livekit/blob/v1.13.5/pkg/sfu/downtrack.go)
 - [LiveKit connection-quality protocol](https://github.com/livekit/protocol/blob/main/protobufs/livekit_rtc.proto)
 - [Screego codec ordering](https://github.com/screego/server/blob/v1.12.4/ui/src/useRoom.ts)
 - [Screego VP9 regression](https://github.com/screego/server/pull/132)
