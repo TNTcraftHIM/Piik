@@ -8,17 +8,18 @@ This is the current execution index. Git history owns completed timelines;
 ## Production
 
 - `https://share.bonfire.icu` runs exact application/runtime revision
-  `b1d52721a77fd99e39b755dd7734b1c665dec3c5`, release `b1d5272`, wire
-  `screener-v17`, from `/opt/screener/releases/b1d5272`. The immutable runtime
+  `65e5061079c7cd1bfc7101c6dc5144987a614db3`, release `65e5061`, wire
+  `screener-v17`, from `/opt/screener/releases/65e5061`. The immutable runtime
   tar SHA-256 is
-  `f1caf2c047e37a4f3a75c70049d6c6f85baca6cee2099a30786338c02f176a85`;
+  `e09246618e1b52fad21dd71418de4728712a10f9d3853e978f2483313e066b38`;
   its 41-file manifest SHA-256 is
-  `bf5c484c5cd788d658b7adbac90b97e9d2b8b2835e21063f39b4e9e9e712e285`.
-- The served Browser entry references `assets/index-vOESwStF.js`; the public
+  `5b62240a49ecd4e74cf9099a6d5481fb89e7cf02b212096013f6fae3399ec630`.
+- The served Browser entry references `assets/index-Civ5gC8H.js`; the public
   asset SHA-256 is
-  `226b61f4309f44ca0503f45b38d71331d486cd099fd091d600fe0e388b6cdf2f`.
+  `38275198d85f0e771a844196acefdd8eb030bb9e1599fd4b21daf58d714bece0`.
   Public `/healthz` returns 200. The release postflight found Screener, LiveKit,
-  coturn, and nginx active with zero restarts; site-access authentication passed.
+  coturn, and nginx active with zero restarts; site-access authentication and
+  open-room creation passed.
 - Production enables SQLite room authority at
   `/var/lib/screener/rooms.sqlite`; live participants, routes and media remain
   process-only. A controlled restart retained the room authority and Host-owned
@@ -96,7 +97,7 @@ This is the current execution index. Git history owns completed timelines;
 ## Source/Production Delta
 
 - Production application code is exact revision
-  `b1d52721a77fd99e39b755dd7734b1c665dec3c5`; this checkpoint changes docs only.
+  `65e5061079c7cd1bfc7101c6dc5144987a614db3`; this checkpoint changes docs only.
 
 ## Active Boundaries
 
