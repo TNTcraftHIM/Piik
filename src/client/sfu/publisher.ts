@@ -33,6 +33,7 @@ import {
   collectNativeSenderQualityFromReport,
   createNativeSenderQualityAccumulator,
   createStatsAccumulator,
+  highestActiveVideoRid,
   maxEncodedVideoFrames,
   mergeStatsReports,
   type StatsAccumulator,
@@ -1170,13 +1171,14 @@ export class SfuPublisher {
         identity.accumulator,
         {
           trackIdentifier: identity.videoTrack.id,
+          rid: highestActiveVideoRid(report, identity.videoTrack.id),
           audioTrackIdentifier: identity.audioTrack?.id ?? null,
         },
       );
       const metrics = {
         ...connectionMetrics,
         bitrateKbps:
-          connectionMetrics.bitrateKbps ?? nativeQuality.bitrateKbps,
+          nativeQuality.bitrateKbps ?? connectionMetrics.bitrateKbps,
         nativeEdgeQualityState: nativeQuality.nativeEdgeQualityState,
         ...(nativeQuality.nativeEdgeQualityState === "unknown"
           ? {}

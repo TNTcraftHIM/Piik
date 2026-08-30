@@ -46,7 +46,10 @@ content intent, startup-quality workaround, LiveKit-owned SFU adaptation, native
 edge convergence, and same-edge connection regeneration invariants. The
 2026-08-30 production comparison confirms recovery on a fresh same-route sender,
 but does not establish its quality or resource benefit on heterogeneous public
-networks. See [media quality](./product/media-quality.md)
+networks. Room 8489 confirms synchronized SFU stalls and representation churn,
+but retained logs do not prove whether Dynacast layer disablement, subscriber
+forwarding, or keyframe reacquisition owned each freeze. See
+[media quality](./product/media-quality.md)
 and [realtime quality research](./research/realtime-quality-adaptation.md).
 
 ## Browser Lifecycle
