@@ -429,15 +429,29 @@ function simulcastSenderReport(
   timestamp: number,
   lowBytesSent: number,
   highBytesSent: number,
+  highActive = true,
 ): RTCStatsReport {
-  const layer = (id: string, bytesSent: number, framesEncoded: number) => ({
+  const layer = (
+    id: string,
+    rid: string,
+    width: number,
+    height: number,
+    bytesSent: number,
+    framesEncoded: number,
+    active = true,
+  ) => ({
     id,
     type: "outbound-rtp",
     timestamp,
     kind: "video",
+    rid,
+    active,
     mediaSourceId: "video-source",
     bytesSent,
     framesEncoded,
+    framesPerSecond: active ? 30 : 0,
+    frameWidth: width,
+    frameHeight: height,
     qualityLimitationReason: "none",
     qualityLimitationDurations: {
       none: timestamp / 1_000,
@@ -447,8 +461,16 @@ function simulcastSenderReport(
     },
   });
   return statsReport([
-    layer("video-low", lowBytesSent, timestamp / 40),
-    layer("video-high", highBytesSent, timestamp / 20),
+    layer("video-low", "q", 960, 540, lowBytesSent, timestamp / 40),
+    layer(
+      "video-high",
+      "f",
+      1920,
+      1080,
+      highBytesSent,
+      timestamp / 20,
+      highActive,
+    ),
     {
       id: "video-source",
       type: "media-source",
@@ -547,6 +569,11 @@ describe("SfuPublisher", () => {
 
     await vi.advanceTimersByTimeAsync(2_000);
     expect(updates.at(-1)?.bitrateKbps).toBeNull();
+    expect(updates.at(-1)).toMatchObject({
+      rtpRid: "f",
+      frameWidth: 1920,
+      frameHeight: 1080,
+    });
     expect(
       sfuPublisherQualityEvidenceFromMetrics(
         updates.at(-1)!,
@@ -566,6 +593,30 @@ describe("SfuPublisher", () => {
     ).toMatchObject({
       state: "healthy",
       sampleTimestampMs: 3_000,
+    });
+  });
+
+  it("reports the highest active SFU representation", async () => {
+    vi.useFakeTimers();
+    const updates: Array<ConnectionMetrics | null> = [];
+    const publisher = new SfuPublisher({
+      onStats: (metrics) => updates.push(metrics),
+    });
+    const video = track("video", "video-1");
+    await publisher.connect(connection);
+    await publisher.activate(stream(video), qualityProfile);
+    const sender = livekit.state.rooms[0].localParticipant.publications[0].track
+      .sender;
+    sender.getStats.mockResolvedValueOnce(
+      simulcastSenderReport(video.id, 1_000, 100_000, 200_000, false),
+    );
+
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(updates.at(-1)).toMatchObject({
+      rtpRid: "q",
+      frameWidth: 960,
+      frameHeight: 540,
     });
   });
 

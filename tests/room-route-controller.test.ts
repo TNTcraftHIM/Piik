@@ -758,6 +758,163 @@ describe("RoomRouteController", () => {
     expect(committed.released).toContain("a_overlap");
   });
 
+  it("keeps one quality experiment through inconclusive current windows", () => {
+    const routes = controller(2, { qualityConvergenceEnabled: true });
+    addViewer(routes, A, 2);
+    addViewer(routes, B, 2);
+    routes.hydrateEdge(A, peerEdge(HOST, "a_from_host"));
+    routes.hydrateEdge(B, peerEdge(HOST, "b_from_host"));
+    observeSenderState(routes, {
+      childPeerId: B,
+      connectionId: "b_from_host",
+      state: "healthy",
+      acceptedAtMs: 9,
+    });
+    observePersistentDegraded(routes, A, "a_from_host", 10);
+
+    const operation = routes.reconcile(14).operation!;
+    expect(operation.candidates.map((candidate) => candidate.tuple)).toEqual([
+      { kind: "peer", parentPeerId: B, transport: "direct" },
+      {
+        kind: "peer",
+        parentPeerId: HOST,
+        transport: "direct",
+        regenerate: true,
+      },
+    ]);
+    beginCandidate(routes, {
+      nowMs: 15,
+      connectionId: "a_from_b_failed",
+      reservation: { kind: "direct" },
+    });
+
+    const currentRevision = routes.snapshot().revision;
+    expect(
+      routes.observeSenderQualityEvidence({
+        parentPeerId: HOST,
+        parentSessionId: "host_session",
+        childPeerId: A,
+        routeRevision: currentRevision,
+        connectionId: "a_from_host",
+        senderIdentity: null,
+        sampleTimestampMs: null,
+        state: "unknown",
+        acceptedAtMs: 16,
+      }).accepted,
+    ).toBe(true);
+    expect(routes.snapshot().operation).toMatchObject({
+      reason: "quality-convergence",
+      cursor: 0,
+    });
+
+    const afterFirst = routes.operationExpired(
+      routes.snapshot().operation!.wakeAtMs,
+    );
+    expect(afterFirst.accepted).toBe(true);
+    expect(routes.snapshot().operation).toMatchObject({
+      reason: "quality-convergence",
+      cursor: 1,
+    });
+    const regeneration = beginCandidate(routes, {
+      nowMs: 20,
+      connectionId: "a_regeneration_failed",
+      reservation: { kind: "direct", overlap: "a_regeneration_overlap" },
+    }).operation!;
+    expect(
+      routes.candidateFailed(
+        {
+          childPeerId: A,
+          childSessionId: `${A}_session`,
+          revision: regeneration.current!.revision,
+          connectionId: "a_regeneration_failed",
+        },
+        21,
+      ).accepted,
+    ).toBe(true);
+    expect(routes.snapshot().operation).toBeUndefined();
+
+    for (const acceptedAtMs of [22, 23, 24]) {
+      expect(
+        observeSenderState(routes, {
+          childPeerId: A,
+          connectionId: "a_from_host",
+          state: "degraded",
+          acceptedAtMs,
+        }).accepted,
+      ).toBe(true);
+    }
+    expect(routes.reconcile(25).operation).toBeUndefined();
+    routes.touchExternalFacts();
+    expect(routes.reconcile(26).operation).toBeUndefined();
+
+    addViewer(routes, C, 2);
+    routes.hydrateEdge(C, peerEdge(B, "c_from_b"));
+    observeSenderState(routes, {
+      childPeerId: C,
+      connectionId: "c_from_b",
+      parentPeerId: B,
+      state: "healthy",
+      acceptedAtMs: 27,
+    });
+    const newOpportunity = routes.reconcile(28).operation;
+    expect(newOpportunity).toMatchObject({
+      childPeerId: A,
+      reason: "quality-convergence",
+    });
+    expect(newOpportunity?.candidates.map((candidate) => candidate.tuple)).toEqual([
+      { kind: "peer", parentPeerId: C, transport: "direct" },
+    ]);
+  });
+
+  it("does not restart a quality candidate set after its total deadline", () => {
+    const routes = controller(2, { qualityConvergenceEnabled: true });
+    addViewer(routes, A, 2);
+    addViewer(routes, B, 2);
+    routes.hydrateEdge(A, peerEdge(HOST, "a_from_host"));
+    routes.hydrateEdge(B, peerEdge(HOST, "b_from_host"));
+    observeSenderState(routes, {
+      childPeerId: B,
+      connectionId: "b_from_host",
+      state: "healthy",
+      acceptedAtMs: 9,
+    });
+    observePersistentDegraded(routes, A, "a_from_host", 10);
+
+    const operation = routes.reconcile(14).operation!;
+    beginCandidate(routes, {
+      nowMs: 15,
+      connectionId: "a_from_b_pending",
+      reservation: { kind: "direct" },
+    });
+    expect(routes.operationExpired(operation.deadlineAtMs).accepted).toBe(true);
+    expect(routes.snapshot().operation).toBeUndefined();
+    expect(routes.reconcile(operation.deadlineAtMs + 1).operation).toBeUndefined();
+    routes.touchExternalFacts();
+    expect(routes.reconcile(operation.deadlineAtMs + 2).operation).toBeUndefined();
+
+    observeSenderState(routes, {
+      childPeerId: A,
+      connectionId: "a_from_host",
+      state: "healthy",
+      acceptedAtMs: operation.deadlineAtMs + 3,
+    });
+    for (const acceptedAtMs of [
+      operation.deadlineAtMs + 4,
+      operation.deadlineAtMs + 5,
+      operation.deadlineAtMs + 6,
+    ]) {
+      observeSenderState(routes, {
+        childPeerId: A,
+        connectionId: "a_from_host",
+        state: "degraded",
+        acceptedAtMs,
+      });
+    }
+    expect(
+      routes.reconcile(operation.deadlineAtMs + 7).operation?.reason,
+    ).toBe("quality-convergence");
+  });
+
   it("keeps isolated limitation windows diagnostic", () => {
     const routes = controller(2, { qualityConvergenceEnabled: true });
     addViewer(routes, A, 2);
@@ -1895,18 +2052,14 @@ describe("RoomRouteController", () => {
         105,
       ).accepted,
     ).toBe(true);
+    expect(routes.setEffectiveCapacity(B, `${B}_session`, 1)).toBe(true);
     observePersistentDegraded(routes, B, "b_from_host", 104);
     const operation = routes.reconcile(108).operation!;
     const childPeerId = operation.childPeerId;
+    expect(childPeerId).toBe(A);
     expect(operation.candidates.map((candidate) => candidate.tuple)).toEqual([
-      { kind: "peer", parentPeerId: A, transport: "direct" },
+      { kind: "peer", parentPeerId: B, transport: "direct" },
       { kind: "sfu", publication: "create" },
-      {
-        kind: "peer",
-        parentPeerId: HOST,
-        transport: "direct",
-        regenerate: true,
-      },
     ]);
     const direct = beginCandidate(routes, {
       nowMs: 109,
@@ -2014,9 +2167,11 @@ describe("RoomRouteController", () => {
         105,
       ).accepted,
     ).toBe(true);
+    expect(routes.setEffectiveCapacity(B, `${B}_session`, 1)).toBe(true);
     observePersistentDegraded(routes, B, "b_from_host", 104);
     const operation = routes.reconcile(108).operation!;
     const childPeerId = operation.childPeerId;
+    expect(childPeerId).toBe(A);
     const peerAttempt = beginCandidate(routes, {
       nowMs: 109,
       connectionId: "quality_peer_candidate",

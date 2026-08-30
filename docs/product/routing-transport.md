@@ -122,11 +122,15 @@ retained sender closes. A complete
 zero-frame current window counts as zero delivery only when an overlapping
 candidate actually decodes clean video; two zero-frame paths remain unknown. A
 missing or limited exact candidate sender cannot commit; an expired one-shot
- relative proof rejects that candidate. When no different Peer parent is
- eligible, the same operation may append one same-parent connection regeneration
- candidate; it uses the same first-frame, overlap, and proof rules and is damped
- by its exact post-commit sender identity. Ordinary quality moves remain
- Peer-to-Peer. SFU may
+relative proof rejects that candidate. An unknown current-sender window clears
+the trigger run but does not cancel an already-started bounded Peer experiment;
+healthy recovery, explicit reset, or identity change does. Failed candidates are
+not retried for the same exact sender sequence merely because an unrelated route
+fact changed, while a new parent or improved capacity transition remains a new
+opportunity. When no different Peer parent is eligible, the same operation may
+append one same-parent connection regeneration candidate; it uses the same
+first-frame, overlap, and proof rules and is damped by its exact post-commit
+sender identity. Ordinary quality moves remain Peer-to-Peer. SFU may
 join quality work only as Host fanout relief when every current Host-origin Peer
 edge, with at least two such edges, is persistently degraded; one Viewer moves
 before the controller observes the new topology again. During that overlap, the

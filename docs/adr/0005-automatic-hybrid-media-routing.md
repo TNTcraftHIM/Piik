@@ -237,7 +237,11 @@ change clears that run. A newly committed availability or direct-convergence
 edge may establish a new run without first reporting healthy. Quality- and
 root-convergence commits remain disarmed until the new active identity reports
 a fresh healthy delta; an explicit sender reset clears the old latch and starts a
-new sequence. A single native limitation interval remains diagnostic.
+new sequence. A single native limitation interval remains diagnostic. Once a
+Peer quality experiment starts, a later unknown current-sender window remains
+inconclusive inside that bounded operation; it does not cancel the candidate.
+Fresh healthy evidence, an explicit reset, or an edge/sender identity change
+still ends the experiment.
 When the current sender remains persistently limited, the controller
 considers the shallowest affected child first and uses the existing
 deterministic candidate filters, ordering, cursor, reservations, and total
@@ -262,7 +266,12 @@ candidate and advance the existing cursor without resetting the deadline.
 Unknown candidate-sender evidence waits within the existing deadline; a stale
 relative proof rejects that candidate and advances the existing cursor, while a
 degraded candidate sender cannot commit. None creates a score. Old-edge
-recovery, authority change, or deadline aborts the experiment. A successful commit clears and rebaselines the affected subtree.
+recovery, authority change, or deadline ends the experiment. A failed candidate
+opportunity is consumed for that exact current sender sequence; an unrelated
+route revision cannot reopen it. A newly eligible parent, a less disruptive
+capacity transition, healthy recovery, or an edge/sender identity change is a
+new opportunity. A successful commit clears and rebaselines the affected
+subtree.
 The same rule supplies both active parent change and relay abdication. A bad
 relay ingress reparents that relay while retaining its subtree. A bad exact
 parent-to-child sender moves only that child. If several senders on one parent

@@ -502,6 +502,38 @@ export function maxEncodedVideoFrames(
   return frames;
 }
 
+export function highestActiveVideoRid(
+  report: RTCStatsReport,
+  trackIdentifier: string,
+): string | null {
+  let selectedRid: string | null = null;
+  let selectedPixels = -1;
+  report.forEach((raw) => {
+    const record = raw as StatsRecord;
+    if (
+      record.type !== "outbound-rtp" ||
+      record.kind !== "video" ||
+      record.isRemote === true ||
+      record.active === false ||
+      mediaTrackIdentifier(report, record, "send") !== trackIdentifier
+    ) {
+      return;
+    }
+    const rid = stringValue(record, "rid");
+    const width = numberValue(record, "frameWidth");
+    const height = numberValue(record, "frameHeight");
+    if (!rid || width === null || height === null || width <= 0 || height <= 0) {
+      return;
+    }
+    const pixels = width * height;
+    if (pixels > selectedPixels) {
+      selectedRid = rid;
+      selectedPixels = pixels;
+    }
+  });
+  return selectedRid;
+}
+
 function transportRecord(
   report: RTCStatsReport,
   media: StatsRecord | null,
