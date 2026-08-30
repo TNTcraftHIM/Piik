@@ -8,17 +8,17 @@ This is the current execution index. Git history owns completed timelines;
 ## Production
 
 - `https://share.bonfire.icu` runs exact application/runtime revision
-  `2f35f3e161f6f2b64d666d49b67a900085801002`, release `2f35f3e`, wire
-  `screener-v17`, from `/opt/screener/releases/2f35f3e`. The immutable runtime
+  `b1d52721a77fd99e39b755dd7734b1c665dec3c5`, release `b1d5272`, wire
+  `screener-v17`, from `/opt/screener/releases/b1d5272`. The immutable runtime
   tar SHA-256 is
-  `aa8dff19223a6b578cfc3a47cd9b67277ca38335a0d7d6820d85a66cac884756`;
+  `f1caf2c047e37a4f3a75c70049d6c6f85baca6cee2099a30786338c02f176a85`;
   its 41-file manifest SHA-256 is
-  `d239c2c3ce7405a88466c279edb75a9d79fc724e303d3abbc1d1e6e1544fd004`.
-- The served Browser entry references `assets/index-BhnNfn9V.js`; the public
+  `bf5c484c5cd788d658b7adbac90b97e9d2b8b2835e21063f39b4e9e9e712e285`.
+- The served Browser entry references `assets/index-vOESwStF.js`; the public
   asset SHA-256 is
-  `bf5fc2768e38b9700b0ff57c11ebc3159544b26ec09cebc9d42da290055e2342`.
+  `226b61f4309f44ca0503f45b38d71331d486cd099fd091d600fe0e388b6cdf2f`.
   Public `/healthz` returns 200. The release postflight found Screener, LiveKit,
-  coturn, and nginx active with zero restarts.
+  coturn, and nginx active with zero restarts; site-access authentication passed.
 - Production enables SQLite room authority at
   `/var/lib/screener/rooms.sqlite`; live participants, routes and media remain
   process-only. A controlled restart retained the room authority and Host-owned
@@ -95,9 +95,8 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Source/Production Delta
 
-- Production remains exact revision `2f35f3e161f6f2b64d666d49b67a900085801002`;
-  current source fixes degraded-edge eligibility, bounds relative quality proof,
-  rejects stale metrics, and owns one track generation per outbound video sender.
+- Production application code is exact revision
+  `b1d52721a77fd99e39b755dd7734b1c665dec3c5`; this checkpoint changes docs only.
 
 ## Active Boundaries
 
