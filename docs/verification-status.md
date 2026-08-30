@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-08-27
+Last updated: 2026-08-30
 
 This file owns only cross-module physical evidence that still changes how the
 current product may be described. [Status](./status.md) owns exact source and
@@ -42,9 +42,11 @@ Still required:
   admission at the 20-Viewer bound.
 
 Current controlled Browser evidence supports the H.264/VP8 gate, `motion`
-content intent, startup-quality workaround, LiveKit-owned SFU adaptation, and
-the native-edge convergence invariants. It does not establish their quality or
-resource benefit on heterogeneous public networks. See [media quality](./product/media-quality.md)
+content intent, startup-quality workaround, LiveKit-owned SFU adaptation, native
+edge convergence, and same-edge connection regeneration invariants. The
+2026-08-30 production comparison confirms recovery on a fresh same-route sender,
+but does not establish its quality or resource benefit on heterogeneous public
+networks. See [media quality](./product/media-quality.md)
 and [realtime quality research](./research/realtime-quality-adaptation.md).
 
 ## Browser Lifecycle

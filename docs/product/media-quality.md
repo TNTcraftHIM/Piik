@@ -85,6 +85,10 @@ representations; Dynacast aggregates demand and server send-side BWE selects
 subscriber forwarding. AdaptiveStream stays disabled because any Viewer may
 relay its received track.
 
+When a live native sender remains persistently limited after capacity recovers,
+the route controller may rebuild that exact edge with a fresh connection and
+clone; media adaptation still stays entirely framework-owned.
+
 Screener does not maintain an application bitrate/resolution ladder, scene
 detector, periodic quality controller, manual SFU layer selector, or
 application-defined whole-room lowest-common-denominator target.

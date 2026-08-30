@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-08-20
-- Last updated: 2026-08-28
+- Last updated: 2026-08-30
 
 ## Context
 
@@ -270,6 +270,13 @@ are degraded, one child moves and all remaining native states are observed
 again; relief can cancel the remaining work without a parent score or explicit
 capacity penalty.
 
+If a persistently limited edge has no eligible different Peer parent, the same
+quality operation appends one same-parent regeneration candidate at the end of
+its existing cursor. It creates a new connection and sender generation while
+retaining the old edge until first-frame and comparative proof; the candidate
+uses the existing steady or one-slot overlap reservation. This is connection
+regeneration, not an in-place sender reset and not a new operation reason.
+
 The Host capture/source is a separate fact. A stalled source cannot be repaired
 by topology. One limited Host-origin edge may try the same measured Peer move. SFU
 becomes a quality suffix only when every current Host-origin Peer edge, with a
@@ -292,9 +299,13 @@ Host-to-SFU ingress proof and each exact SFU-to-Viewer subscription proof remain
 separate. A successful Viewer canary cannot authorize any other Viewer, and a
 new publication generation invalidates all prior ingress authority.
 
-After a quality- or root-convergence commit, the new active identity starts from
-unknown and must establish a fresh healthy delta before another degradation can
-trigger a move. There is no periodic wake, weighted prediction, global
+After a quality- or root-convergence reparent commit, the new active identity
+starts from unknown and must establish a fresh healthy delta before another
+degradation can trigger a move. A same-parent regeneration commit instead
+records the exact new sender identity as a same-edge regeneration latch. A
+healthy sample or an identity/session change clears that latch; while it is set,
+only another same-edge regeneration is suppressed, while different-parent
+candidates remain eligible. There is no periodic wake, weighted prediction, global
 optimizer, persistent parent blacklist, custom congestion controller, or manual
 SFU layer selection. The result converges gradually to a local stable topology:
 no current degraded edge has a proved healthy candidate under the current graph
