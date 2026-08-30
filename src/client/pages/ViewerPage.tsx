@@ -2517,6 +2517,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
                 icon="contract"
                 cap="viewer.theater.exit"
                 title="viewer.theater.exit"
+                hint="hint-theater-exit"
                 onClick={() => setTheaterMode(false)}
               />
             </div>
@@ -2638,6 +2639,9 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
                     cap={theaterMode ? "viewer.theater.exit" : "viewer.theater"}
                     title={
                       theaterMode ? "viewer.theater.exit" : "viewer.theater"
+                    }
+                    hint={
+                      theaterMode ? "hint-theater-exit" : "hint-theater"
                     }
                     tone={theaterMode ? "on" : undefined}
                     pressed={theaterMode}

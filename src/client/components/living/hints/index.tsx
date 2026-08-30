@@ -48,6 +48,8 @@ export type Set4Kind =
   | "hint-rename"
   | "hint-theme"
   | "hint-join-go"
+  | "hint-theater"
+  | "hint-theater-exit"
   | "hint-route-p2p"
   | "hint-route-sfu";
 
@@ -82,6 +84,8 @@ export const HINT_KINDS: readonly HintKind[] = [
   "hint-rename",
   "hint-theme",
   "hint-join-go",
+  "hint-theater",
+  "hint-theater-exit",
   "hint-route-p2p",
   "hint-route-sfu",
 ];

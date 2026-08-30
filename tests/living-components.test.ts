@@ -196,6 +196,20 @@ describe("living-room presentation", () => {
     expect(html).toContain("vlsPrivLock");
   });
 
+  it("uses opposite motion for entering and leaving theater mode", () => {
+    const entering = renderToStaticMarkup(
+      createElement(HintComic, { kind: "hint-theater", size: 240 }),
+    );
+    const leaving = renderToStaticMarkup(
+      createElement(HintComic, { kind: "hint-theater-exit", size: 240 }),
+    );
+
+    expect(entering).toContain("animation:vlsThEnter");
+    expect(leaving).toContain("animation:vlsThExit");
+    expect(entering).toContain("vls-th-arrows");
+    expect(leaving).toContain("vls-th-arrows");
+  });
+
   it.each([
     ["open", false, "host.policy.currentOpen", true],
     ["private", true, "host.policy.currentPassword", true],
