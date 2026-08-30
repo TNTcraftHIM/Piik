@@ -2503,6 +2503,14 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           ) : null}
           <div className="lr-shelf" aria-hidden="true" />
           <Couch
+            host={
+              labeledHostPresence
+                ? {
+                    key: labeledHostPresence.peerId,
+                    name: labeledHostPresence.label,
+                  }
+                : null
+            }
             entries={couchEntries}
             selectedKey={selectedPawn}
             onSelect={(key) =>
@@ -2668,27 +2676,28 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
                       setShowConnectionDetails((current) => !current)
                     }
                   />
-                  {labeledHostPresence
-                    ? hintWrap(
-                        "hint-topology",
-                        <Btn
-                          icon="network"
-                          cap="host.topology"
-                          title={
-                            showTopology
-                              ? "host.topology.hide"
-                              : "host.topology.show"
-                          }
-                          tone={showTopology ? "on" : undefined}
-                          expanded={showTopology}
-                          controls="room-topology"
-                          onClick={() =>
-                            setShowTopology((current) => !current)
-                          }
-                        />,
-                        "start",
-                      )
-                    : null}
+                  {hintWrap(
+                    "hint-topology",
+                    <Btn
+                      icon="network"
+                      cap="host.topology"
+                      title={
+                        labeledHostPresence && showTopology
+                          ? "host.topology.hide"
+                          : "host.topology.show"
+                      }
+                      tone={
+                        labeledHostPresence && showTopology ? "on" : undefined
+                      }
+                      expanded={Boolean(labeledHostPresence && showTopology)}
+                      controls="room-topology"
+                      disabled={!labeledHostPresence}
+                      onClick={() =>
+                        setShowTopology((current) => !current)
+                      }
+                    />,
+                    "start",
+                  )}
                 </span>
               </div>
             </div>

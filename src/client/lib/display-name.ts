@@ -42,7 +42,7 @@ export function defaultViewerDisplayName(
   visual: boolean,
 ): DisplayName {
   return visual
-    ? suffixedDefaultName("👀", clientId)
+    ? suffixedDefaultName("👤", clientId)
     : (say("common.name.viewerDefault") as DisplayName);
 }
 
@@ -51,7 +51,7 @@ export function defaultHostDisplayName(
   visual = false,
 ): DisplayName {
   return suffixedDefaultName(
-    visual ? "📺" : say("common.name.hostDefault"),
+    visual ? "👑" : say("common.name.hostDefault"),
     clientId,
   );
 }

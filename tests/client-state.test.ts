@@ -71,8 +71,8 @@ describe("browser-local display name", () => {
     expect(defaultViewerDisplayName("viewer-abcdef", false)).toBe("Viewer");
     expect(defaultHostDisplayName("host-abcdef", false)).toBe("Host-abcdef");
 
-    expect(defaultViewerDisplayName("viewer-abcdef", true)).toBe("👀-abcdef");
-    expect(defaultHostDisplayName("host-abcdef", true)).toBe("📺-abcdef");
+    expect(defaultViewerDisplayName("viewer-abcdef", true)).toBe("👤-abcdef");
+    expect(defaultHostDisplayName("host-abcdef", true)).toBe("👑-abcdef");
   });
 
   it("stores only the canonical preference and falls back when cleared", () => {
