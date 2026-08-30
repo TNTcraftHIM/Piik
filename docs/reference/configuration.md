@@ -21,12 +21,6 @@ service secret store or an untracked access-restricted environment file.
 | `ENDPOINT_MEDIA_COPY_CAPACITY` | Shared endpoint steady-copy cap `1..3`, default `2`. |
 | `STUN_URLS` | Comma-separated `stun:` URLs; at least one is required in production. |
 
-Each configured STUN operator can observe the client's public mapping metadata,
-but STUN never carries media. A deployment may retain its self-hosted IPv4
-endpoint and append one dual-stack endpoint to gather IPv6 srflx candidates on
-capable client networks. Multiple endpoints remain one bounded standard ICE
-configuration; they are not a NAT classification or routing policy.
-
 Automatic SFU fallback is enabled only when `PEER_ASSISTED_MEDIA=true` and all
 four values below are present:
 

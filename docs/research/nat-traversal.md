@@ -8,46 +8,69 @@ WebRTC ICE with STUN discovery and bounded SFU fallback.
 
 ## Confirmed Boundaries
 
-- ICE already gathers IPv4 and IPv6 candidates when the Browser and configured
-  STUN service can use those address families. STUN discovers addresses; it
-  does not carry media.
-- Host candidates may be concealed behind mDNS names. The mDNS ICE design sends
-  normal STUN requests for both address families and produces IP-valued srflx
-  candidates, so a reachable dual-stack STUN endpoint preserves cross-network
-  IPv6 discovery even when a host address is concealed.
+- STUN discovers mapped addresses for ICE; it does not carry media.
 - Chromium's shared UDP port sends to multiple configured STUN servers. Its
   tests retain two srflx candidates when the servers report different mapped
   addresses and deduplicate the result when they report the same address.
 - A STUN operator observes the client's source address, source port, request
   time and protocol metadata. It never receives the DTLS-SRTP media path. An
   external STUN endpoint is therefore a metadata dependency, not a media relay.
-- The flagship server currently has no global IPv6 address or AAAA record. Its
-  `inet` firewall already permits UDP 3478 for both families, coturn already
-  supports AF_INET6 and binds `::1`, and the existing `STUN_URLS` wire accepts a
-  bounded list. Self-hosted dual-stack discovery is blocked only by cloud ENI,
-  public IPv6, DNS and cloud-security-group provisioning.
+- The current `STUN_URLS` wire already accepts a bounded list. Adding an
+  auxiliary STUN destination needs no client compatibility surface, but it has
+  no product value until a valid Browser observation or prediction consumer
+  exists.
 
 On 2026-08-31, Chrome 151 on Windows gathered a host plus IPv4 srflx candidate
 through the self-hosted STUN endpoint and independently through Cloudflare's
 official STUN endpoint while the machine used TUN and fake-IP DNS. With both
 configured, Chromium emitted one deduplicated srflx candidate. No raw address or
-port was retained. This proves reachability and the no-duplicate EIM behavior;
-it does not prove an IPv6 candidate or an IPv6 Peer connection on the target
-networks.
+port was retained. This proves endpoint reachability and candidate
+deduplication; it does not classify the NAT or prove another direct path.
 
 ## Current Decision
 
-Retain the self-hosted IPv4 STUN endpoint and add Cloudflare's official
-dual-stack STUN endpoint in the flagship deployment. Cloudflare documents that
-this STUN service is free and does not operate from its China Network, so the
-self-hosted endpoint remains an independent local-region discovery path.
-Trickle ICE allows either endpoint to contribute candidates without waiting for
-the other to finish. Removing the external URL is the complete rollback.
+Do not change the flagship STUN configuration in this phase. A second endpoint
+does not itself traverse a hard NAT and does not justify a permanent external
+metadata dependency. The self-hosted STUN endpoint remains the production
+discovery service.
 
-A fully self-hosted dual-stack endpoint remains preferable once the cloud ENI
-has private IPv6, an EIPv6 is bound, the AAAA record exists, and UDP 3478 is
-admitted by the cloud security group. The coturn and host-firewall templates do
-not need another media port or TURN configuration for that transition.
+The Browser-only alternatives do not yet have an accepted implementation:
+
+- WebRTC ICE already exchanges observed candidates and performs coordinated
+  connectivity checks. libp2p's mature hole-punching specification explicitly
+  keeps private Browser peers on WebRTC because Browser code cannot own or
+  reuse the underlying UDP, QUIC or TCP socket.
+- Tailscale compares mappings observed by different STUN destinations, but
+  keeps `MappingVariesByDestIP` as a tri-state network report. It retains an
+  additional mapped endpoint only after repeated observation; it does not turn
+  one NAT label into hard connection rejection or a predicted port.
+- A second STUN destination supplies an observation, not a new path through an
+  endpoint-dependent NAT. Deploying it without a consumer adds metadata
+  exposure and candidate traffic without proving more direct connections.
+
+The Browser API is also weaker than the raw-socket netcheck model:
+
+- Different srflx endpoints prove only that the current Browser socket's mapping
+  varied by destination. An identical endpoint is deduplicated before the
+  application sees it, so one emitted candidate cannot distinguish stable
+  mapping from a second STUN destination that did not answer.
+- Candidate events expose response completion order, not a specified STUN send
+  or NAT allocation order. Sorting by configured URL or event time cannot turn
+  observed ports into a standards-backed sequential delta.
+- ICE restart creates a new generation and may use a new socket. Network
+  interface, VPN/TUN route and CGNAT allocation traffic can all change between
+  generations.
+
+Consequently Browser observations can support a positive `varies` diagnostic,
+but cannot produce the proposed `eim | edm-sequential | edm-random` participant
+fact. They cannot safely remove a Peer candidate or save its five-second window.
+
+Port prediction remains the only reachable Browser experiment that might add
+direct paths beyond stock ICE. It requires a controlled sequential/random NAT
+matrix and two real Browser ICE agents before any product design. No such
+controlled Browser matrix is currently available, and the production server is
+not an acceptable network-emulation lab. No candidate injection ships without
+that gate.
 
 ## Rejected Product Inference
 
@@ -64,7 +87,9 @@ type:
   VPN/TUN routes and physical network changes that own different sockets.
 
 Therefore NAT samples must not skip a P2P candidate, alter the committed graph,
-or become a persistent participant capability. Port prediction and synthetic
+or become a persistent participant capability. Successful `addIceCandidate()`
+parsing would prove only candidate syntax; it would not prove that a predicted
+mapping receives authenticated ICE checks. Port prediction and synthetic
 candidate injection remain experiments until controlled Browser and target-
 network measurements prove both benefit and bounded false rejection. They do
 not enter the current protocol or controller.
@@ -78,11 +103,12 @@ a new Peer route.
 ## Primary Sources
 
 - [RFC 8445: Interactive Connectivity Establishment](https://datatracker.ietf.org/doc/html/rfc8445)
+- [RFC 4787: UDP NAT behavioral requirements](https://datatracker.ietf.org/doc/html/rfc4787)
 - [RFC 5780: NAT Behavior Discovery Using STUN](https://datatracker.ietf.org/doc/html/rfc5780)
-- [RFC 8828: WebRTC IP Address Handling Requirements](https://datatracker.ietf.org/doc/html/rfc8828)
-- [IETF mDNS ICE candidate design](https://datatracker.ietf.org/doc/html/draft-ietf-mmusic-mdns-ice-candidates-03)
+- [IETF symmetric NAT prediction draft](https://datatracker.ietf.org/doc/html/draft-takeda-symmetric-nat-traversal-00)
 - [W3C WebRTC candidate model](https://www.w3.org/TR/webrtc/)
 - [Chromium shared-socket STUN tests](https://webrtc.googlesource.com/src/+/refs/heads/main/p2p/base/stun_port_unittest.cc)
+- [Tailscale netcheck mapping observations](https://github.com/tailscale/tailscale/blob/main/net/netcheck/netcheck.go)
+- [libp2p Browser and DCUtR hole-punching boundary](https://github.com/libp2p/specs/blob/master/connections/hole-punching.md)
 - [coturn listener and auxiliary endpoint reference](https://github.com/coturn/coturn/blob/master/examples/etc/turnserver.conf)
 - [Cloudflare Realtime STUN service](https://developers.cloudflare.com/realtime/turn/)
-- [Tencent Cloud EIPv6 binding API](https://cloud.tencent.com/document/product/215/113678)
