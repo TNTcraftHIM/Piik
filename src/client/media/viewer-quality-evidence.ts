@@ -246,25 +246,21 @@ export class ViewerQualityEvidenceReporter {
       return false;
     }
     this.lastSampleTimestampMs = sampleTimestampMs;
-    if (!presentationEligible) {
-      if (this.presentationEligible) {
-        this.invalidatePresentation();
-      }
-      return false;
-    }
-    if (!this.presentationEligible) {
-      this.presentationEligible = true;
-      this.baselinePending = true;
-    }
     const decodedProgress =
       metrics.intervalFramesDecoded !== null &&
       metrics.intervalFramesDecoded > 0;
-    if (!decodedProgress) {
-      return false;
+    let routingEligible = presentationEligible && decodedProgress;
+    if (!routingEligible) {
+      if (this.presentationEligible) {
+        this.invalidatePresentation();
+      }
+    } else if (!this.presentationEligible) {
+      this.presentationEligible = true;
+      this.baselinePending = true;
     }
-    if (this.baselinePending) {
+    if (routingEligible && this.baselinePending) {
       this.baselinePending = false;
-      return false;
+      routingEligible = false;
     }
     if (this.sequence > Number.MAX_SAFE_INTEGER) {
       return false;
@@ -286,7 +282,7 @@ export class ViewerQualityEvidenceReporter {
         presentationEpoch: this.presentationEpoch,
       },
       sequence: this.sequence,
-      ...window,
+      ...(routingEligible ? window : diagnosticOnlyWindow(window)),
     };
     const parsed = viewerQualityEvidenceMessageSchema.safeParse(message);
     if (
@@ -324,6 +320,21 @@ export class ViewerQualityEvidenceReporter {
     this.lastSentAtMs = null;
     this.lastSampleTimestampMs = null;
   }
+}
+
+function diagnosticOnlyWindow(
+  window: ViewerQualityEvidenceWindow,
+): ViewerQualityEvidenceWindow {
+  return {
+    ...window,
+    metrics: {
+      ...window.metrics,
+      freezeCountDelta: null,
+      freezeDurationMsDelta: null,
+      pauseCountDelta: null,
+      pauseDurationMsDelta: null,
+    },
+  };
 }
 
 function sameViewerQualityEvidenceIdentity(

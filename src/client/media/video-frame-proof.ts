@@ -1,8 +1,11 @@
-type VideoWithFrameCallback = HTMLVideoElement & {
+interface OptionalVideoFrameCallbacks {
   requestVideoFrameCallback?: (
     callback: (now: DOMHighResTimeStamp) => void,
   ) => number;
   cancelVideoFrameCallback?: (handle: number) => void;
+}
+
+type VideoWithFrameCallback = HTMLVideoElement & {
   webkitDecodedFrameCount?: number;
 };
 
@@ -21,6 +24,9 @@ export function observeCompositedVideoFrame(
   onFrame: () => void,
 ): () => void {
   const target = video as VideoWithFrameCallback;
+  const frameCallbacks = video as unknown as OptionalVideoFrameCallbacks;
+  const requestVideoFrameCallback =
+    frameCallbacks.requestVideoFrameCallback?.bind(video);
   let active = true;
   let frameCallbackHandle: number | null = null;
   const fallbackEvents = ["loadeddata", "timeupdate", "playing"] as const;
@@ -51,25 +57,43 @@ export function observeCompositedVideoFrame(
     }
   }
 
-  function finish(): void {
-    if (
-      !active ||
-      video.srcObject !== expectedStream ||
-      video.readyState < 2
-    ) {
-      return;
+  function finish(): boolean {
+    if (!active) {
+      return true;
+    }
+    if (video.srcObject !== expectedStream) {
+      active = false;
+      removeFallbackListeners();
+      return true;
+    }
+    if (video.readyState < 2) {
+      return false;
     }
     active = false;
     removeFallbackListeners();
     onFrame();
+    return true;
   }
 
-  if (target.requestVideoFrameCallback) {
-    frameCallbackHandle = target.requestVideoFrameCallback(() => finish());
+  function requestNextFrame(): void {
+    frameCallbackHandle =
+      requestVideoFrameCallback?.(() => {
+        frameCallbackHandle = null;
+        if (!finish()) {
+          requestNextFrame();
+        }
+      }) ?? null;
+  }
+
+  if (requestVideoFrameCallback) {
+    requestNextFrame();
     return () => {
       active = false;
       if (frameCallbackHandle !== null) {
-        target.cancelVideoFrameCallback?.(frameCallbackHandle);
+        frameCallbacks.cancelVideoFrameCallback?.call(
+          video,
+          frameCallbackHandle,
+        );
       }
     };
   }

@@ -80,6 +80,7 @@ export function collectNativeSenderQualityFromReport(
   accumulator: NativeSenderQualityAccumulator,
 ): Pick<
   ConnectionMetrics,
+  | "sampleTimestampMs"
   | "nativeEdgeQualityState"
   | "qualityLimitationReason"
   | "sampleWindowMs"
@@ -145,7 +146,14 @@ export function collectNativeSenderQualityFromReport(
     } else {
       accumulator.previousByStatsId.delete(record.id);
     }
-    return { state, reason, windowMs, intervalFramesEncoded, bitrateKbps };
+    return {
+      timestamp,
+      state,
+      reason,
+      windowMs,
+      intervalFramesEncoded,
+      bitrateKbps,
+    };
   });
   const bitrateKbps =
     samples.length > 0 && samples.every((sample) => sample.bitrateKbps !== null)
@@ -156,11 +164,13 @@ export function collectNativeSenderQualityFromReport(
     samples.some(
       (sample) =>
         sample.state === "unknown" ||
+        sample.timestamp === null ||
         sample.windowMs === null ||
         sample.intervalFramesEncoded === null,
     )
   ) {
     return {
+      sampleTimestampMs: null,
       nativeEdgeQualityState: "unknown",
       qualityLimitationReason: null,
       sampleWindowMs: null,
@@ -170,6 +180,7 @@ export function collectNativeSenderQualityFromReport(
   }
   const degraded = samples.filter((sample) => sample.state === "degraded");
   return {
+    sampleTimestampMs: Math.min(...samples.map((sample) => sample.timestamp!)),
     nativeEdgeQualityState: degraded.length > 0 ? "degraded" : "healthy",
     qualityLimitationReason:
       degraded.some((sample) => sample.reason === "bandwidth")

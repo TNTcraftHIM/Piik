@@ -1,7 +1,8 @@
 // Per-viewer drill-down: name, route glyph, primary metrics, expandable
 // detailed metrics. Host sees every Viewer; a Viewer uses this only for relay
 // children because its own route already has the canonical details panel.
-import { PawnSvg, pawnColor } from "./Couch";
+import { PawnSvg } from "./Couch";
+import { participantColor } from "./participant-color";
 import { Glyph } from "../../ui/icons";
 import { ComicTooltip } from "./ComicTooltip";
 import { useCopy } from "../../ui/copy";
@@ -31,7 +32,13 @@ export function RouteGlyph({ route }: { route: "p2p" | "sfu" }) {
           <path d="M7 8h22" />
         </svg>
       )}
-      <b>{route === "sfu" ? "SFU" : "P2P"}</b>
+      {vis ? (
+        <span className="visually-hidden">
+          {t(route === "sfu" ? "state.route.sfu" : "state.route.p2p")}
+        </span>
+      ) : (
+        <b>{route === "sfu" ? "SFU" : "P2P"}</b>
+      )}
     </span>
   );
   return vis ? (
@@ -70,7 +77,7 @@ export function PawnDetail({
   return (
     <div className="lr-row is-sub lr-pawn-detail" role="group" aria-label={name}>
       <span className="lr-pawn-mini">
-        <PawnSvg color={pawnColor(pawnKey)} />
+        <PawnSvg color={participantColor(pawnKey)} />
       </span>
       {vis ? (
         <span className="visually-hidden">{name}</span>

@@ -2,17 +2,7 @@
 // self carries the green pointer, the host wears a crown (topology only).
 import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
-
-const PAWN_COLORS = [
-  "var(--pawn-1)", "var(--pawn-2)", "var(--pawn-3)", "var(--pawn-4)",
-  "var(--pawn-5)", "var(--pawn-6)", "var(--pawn-7)", "var(--pawn-8)",
-];
-
-export function pawnColor(key: string): string {
-  let hash = 0;
-  for (const char of key) hash = (hash * 31 + char.charCodeAt(0)) | 0;
-  return PAWN_COLORS[Math.abs(hash) % PAWN_COLORS.length]!;
-}
+import { participantColor } from "./participant-color";
 
 export function PawnSvg({ color, crown }: { color: string; crown?: boolean }) {
   return (
@@ -80,7 +70,7 @@ export function Couch({
               : `${entry.name} · ${stateLabel}`;
             const inner = (
               <>
-                <PawnSvg color={pawnColor(entry.key)} />
+                <PawnSvg color={participantColor(entry.key)} />
                 <i
                   className={`lr-pawn-led${entry.connected ? "" : " is-wait"}`}
                   aria-hidden="true"
@@ -103,7 +93,7 @@ export function Couch({
                   key={entry.key}
                   className={className}
                   style={style}
-                  title={vis ? undefined : label}
+                  title={entry.name}
                   aria-label={label}
                 >
                   {inner}
@@ -116,7 +106,7 @@ export function Couch({
                 type="button"
                 className={className}
                 style={style}
-                title={vis ? undefined : label}
+                title={entry.name}
                 aria-label={label}
                 aria-pressed={selectedKey === entry.key}
                 onClick={() => onSelect?.(entry.key)}

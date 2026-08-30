@@ -57,7 +57,32 @@ describe("composited video frame proof", () => {
     expect(onFrame).not.toHaveBeenCalled();
 
     cancel();
-    expect(video.cancelVideoFrameCallback).toHaveBeenCalledWith(7);
+    expect(video.cancelVideoFrameCallback).not.toHaveBeenCalled();
+  });
+
+  it("keeps observing when the first composited callback arrives before readiness", () => {
+    const stream = {} as MediaStream;
+    const video = fakeVideo(stream);
+    const callbacks: Array<() => void> = [];
+    video.requestVideoFrameCallback = (callback) => {
+      callbacks.push(callback);
+      return callbacks.length;
+    };
+    const onFrame = vi.fn();
+    const cancel = observeCompositedVideoFrame(
+      video as unknown as HTMLVideoElement,
+      stream,
+      onFrame,
+    );
+
+    callbacks[0]!();
+    expect(onFrame).not.toHaveBeenCalled();
+    expect(callbacks).toHaveLength(2);
+
+    video.readyState = 2;
+    callbacks[1]!();
+    expect(onFrame).toHaveBeenCalledOnce();
+    cancel();
   });
 
   it("uses decoded progress plus readiness in the event fallback", () => {

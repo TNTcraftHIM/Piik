@@ -211,27 +211,27 @@ ul { margin: 0; padding: 0; list-style: none; }
   to { opacity: 1; transform: scale(1); }
 }
 @keyframes lr-brand-eye-open {
-  0%, 24%, 34%, 100% { opacity: 0; transform: scaleY(.15); }
-  27%, 30% { opacity: 1; transform: scale(1); }
+  0%, 34% { opacity: 1; transform: scale(1); }
+  38%, 100% { opacity: 0; transform: scaleY(.15); }
 }
 @keyframes lr-brand-eye-wink {
-  0%, 24%, 35%, 100% { opacity: 1; stroke-dasharray: 1; stroke-dashoffset: 0; }
-  27%, 30% { opacity: 0; stroke-dasharray: 1; stroke-dashoffset: 1; }
-  32% { opacity: 1; stroke-dasharray: 1; stroke-dashoffset: 1; }
+  0%, 34% { opacity: 0; stroke-dasharray: 1; stroke-dashoffset: 1; }
+  38% { opacity: 1; stroke-dasharray: 1; stroke-dashoffset: 1; }
+  44%, 100% { opacity: 1; stroke-dasharray: 1; stroke-dashoffset: 0; }
 }
 @keyframes lr-brand-sparkle {
-  0%, 30% { opacity: 0; transform: translate(-1px, 2px) scale(.12) rotate(-20deg); }
-  36% { opacity: 1; transform: translate(0, 0) scale(.85) rotate(0); }
-  52% { opacity: .9; transform: translate(5px, -5px) scale(1) rotate(18deg); }
-  70% { opacity: .35; transform: translate(9px, -9px) scale(.55) rotate(34deg); }
-  78%, 100% { opacity: 0; transform: translate(12px, -12px) scale(.2) rotate(48deg); }
+  0%, 42% { opacity: 0; transform: translate(-1px, 2px) scale(.12) rotate(-20deg); }
+  48% { opacity: 1; transform: translate(0, 0) scale(.85) rotate(0); }
+  60% { opacity: .9; transform: translate(5px, -5px) scale(1) rotate(18deg); }
+  74% { opacity: .35; transform: translate(9px, -9px) scale(.55) rotate(34deg); }
+  82%, 100% { opacity: 0; transform: translate(12px, -12px) scale(.2) rotate(48deg); }
 }
 @keyframes lr-brand-sparkle-alt {
-  0%, 30% { opacity: 0; transform: translate(-1px, -1px) scale(.12) rotate(18deg); }
-  36% { opacity: .95; transform: translate(0, 0) scale(.75) rotate(0); }
-  52% { opacity: .8; transform: translate(4px, 4px) scale(.95) rotate(-16deg); }
-  70% { opacity: .3; transform: translate(8px, 8px) scale(.5) rotate(-30deg); }
-  78%, 100% { opacity: 0; transform: translate(11px, 11px) scale(.18) rotate(-42deg); }
+  0%, 42% { opacity: 0; transform: translate(-1px, -1px) scale(.12) rotate(18deg); }
+  48% { opacity: .95; transform: translate(0, 0) scale(.75) rotate(0); }
+  60% { opacity: .8; transform: translate(4px, 4px) scale(.95) rotate(-16deg); }
+  74% { opacity: .3; transform: translate(8px, 8px) scale(.5) rotate(-30deg); }
+  82%, 100% { opacity: 0; transform: translate(11px, 11px) scale(.18) rotate(-42deg); }
 }
 .lr-brand-sparkles { stroke: #d08a22; }
 html[data-theme="dark"] .lr-brand-sparkles { stroke: #f4c14d; }
@@ -582,6 +582,7 @@ body.lr-theater-open { overflow: hidden; }
 .lr-pawns.is-crowded .lr-pawn svg { width: 29px; height: 35px; }
 .lr-pawns.is-crowded .lr-pawn-led { width: 8px; height: 8px; }
 .lr-pawn-name {
+  max-width: 112px;
   margin-top: -4px;
   padding: 1px 6px;
   border-radius: 7px;
@@ -589,9 +590,12 @@ body.lr-theater-open { overflow: hidden; }
   color: var(--ink);
   font-size: 10px;
   font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
   box-shadow: 0 1px 0 rgba(0, 0, 0, .12);
 }
+.lr-pawns.is-crowded .lr-pawn-name { max-width: 80px; }
 .lr-couch-count {
   position: absolute;
   right: 4%;
@@ -651,7 +655,8 @@ body.lr-theater-open { overflow: hidden; }
 }
 .lr-viewer-room-slot { flex: 0 0 auto; }
 .lr-viewer-host-slot {
-  flex: 0 1 auto;
+  flex: 0 1 180px;
+  min-width: min(96px, 30vw);
   max-width: 180px;
   flex-wrap: nowrap;
   font-size: 13px;
@@ -672,11 +677,32 @@ html[data-theme="dark"] .lr-viewer-host-slot svg { color: #9bb0c5; }
   flex: 0 1 auto;
   align-items: center;
   gap: 8px;
+  margin-left: 0;
+}
+.lr-viewer-personal-controls {
+  display: flex;
+  min-width: 0;
   margin-left: auto;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 .lr-viewer-actions-slot {
   flex: 0 0 auto;
   margin-left: 0;
+}
+.lr-viewer-action-cluster {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+.lr-viewer-action-separator {
+  width: 2.5px;
+  align-self: stretch;
+  border-radius: 2px;
+  background: var(--wall-2);
 }
 .lr-viewer-self-slot .lr-name-tag { flex: 0 1 auto; width: auto; }
 .lr-spacer { flex: 1; }
@@ -923,13 +949,23 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  padding: 8px 13px;
+  height: 40px;
+  padding: 0 13px;
+  box-sizing: border-box;
   border: 2.5px solid var(--ink);
   border-radius: 999px;
   background: var(--paper);
   font-size: 13.5px;
   font-weight: 700;
   max-width: 100%;
+}
+.lr-stage-notices {
+  display: flex;
+  width: min(960px, 100%);
+  margin: 10px auto 0;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
 }
 .lr-name-tag i { width: 9px; height: 9px; border-radius: 50%; background: var(--you); flex: 0 0 auto; }
 .lr-name-tag span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1331,10 +1367,26 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
   .lr-row-group { width: 100%; gap: 9px; }
   .lr-viewer-summary-row { flex-direction: row; align-items: center; }
   .lr-viewer-summary-row .lr-row-group { width: auto; }
-  .lr-viewer-host-slot { flex: 0 1 auto; max-width: 180px; }
+  .lr-viewer-host-slot {
+    flex: 0 1 180px;
+    min-width: min(96px, 30vw);
+    max-width: 180px;
+  }
   .lr-viewer-state-slot { flex: 1 1 120px; }
   .lr-viewer-self-slot { flex: 1 1 auto; gap: 6px; margin-left: 0; }
+  .lr-viewer-personal-controls {
+    width: 100%;
+    margin-left: 0;
+  }
   .lr-viewer-actions-slot { flex: 1 1 100%; margin-left: 0; }
+  .lr-viewer-action-cluster { flex: 1 1 220px; }
+  .lr-viewer-action-cluster > .lr-btn,
+  .lr-viewer-action-cluster > .lr-comic-tip-wrap {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .lr-viewer-action-cluster > .lr-comic-tip-wrap .lr-btn { width: 100%; }
+  .lr-viewer-action-separator { display: none; }
   .lr-input.lr-name-editor { width: min(136px, 40vw); }
   .lr-group-actions { display: flex; width: 100%; gap: 8px; min-width: 0; }
   .lr-group-actions .lr-btn { flex: 1 1 0; min-width: 0; min-height: 52px; padding: 4px 5px; gap: 6px; }
@@ -1355,6 +1407,16 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
   .lr-tv-big { width: 72px; height: 72px; }
   .lr-leds-label { display: none; }
   .lr-header-controls .lr-btn .lr-cap { display: none; }
+}
+
+.lr-room.is-theater .lr-stage-notices {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  bottom: max(18px, env(safe-area-inset-bottom));
+  width: min(92vw, 720px);
+  margin: 0;
+  transform: translateX(-50%);
 }
 @media (max-width: 360px) {
   .lr-top { gap: 6px; padding-inline: 10px; }
@@ -1389,16 +1451,15 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
 
 /* ---------- comic tooltip ---------- */
 
-/* Pure-CSS hover/focus panel carrying a paper Comic above its trigger. The
-   trigger inside the wrapper stays the focusable element (touch = focus), so
-   no tabindex here. Enter is delayed ~120ms, exit is immediate. Under
+/* Stateful hover/focus panel carrying a paper Comic above its trigger. The
+   trigger stays focusable; when it is natively disabled, the wrapper owns the
+   explanation focus instead. Enter is delayed ~120ms, exit is immediate. Under
    prefers-reduced-motion the global block collapses the transition to instant
    and the comic's own RM block pins its final frame. */
-/* Visibility is three-channel: hover on fine pointers only (touch would
-   leave sticky-hover stuck), keyboard focus via :has(:focus-visible) (touch
-   taps never match, so no stuck tooltip after activation), and .is-tip-open
-   from the component's Material-style long-press handling. */
+/* Visibility is three-channel state owned by ComicTooltip: fine-pointer hover,
+   keyboard focus-visible, and Material-style touch long-press. */
 .lr-comic-tip-wrap { position: relative; display: inline-flex; }
+.lr-comic-tip-wrap.is-disabled-trigger > :disabled { pointer-events: none; }
 .lr-comic-tip {
   position: absolute;
   bottom: calc(100% + 8px);
@@ -1444,12 +1505,12 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
 
 /* channel 1: fine-pointer hover */
 @media (hover: hover) and (pointer: fine) {
-  .lr-comic-tip-wrap:hover .lr-comic-tip { opacity: 1; transform: translateX(-50%) translateY(0); transition-delay: .12s; }
-  .lr-comic-tip-wrap:hover .lr-comic-tip * { animation-play-state: running !important; }
-  .lr-comic-tip-wrap:hover .lr-comic-tip.is-below { transform: translateX(-50%) translateY(0); }
-  .lr-comic-tip-wrap:hover .lr-comic-tip.is-start,
-  .lr-comic-tip-wrap:hover .lr-comic-tip.is-end { transform: translateX(0) translateY(0); }
-  .lr-comic-tip-wrap:hover::before { opacity: 1; transform: rotate(45deg) scale(1); transition-delay: .12s; }
+  .lr-comic-tip-wrap.is-hover-open .lr-comic-tip { opacity: 1; transform: translateX(-50%) translateY(0); transition-delay: .12s; }
+  .lr-comic-tip-wrap.is-hover-open .lr-comic-tip * { animation-play-state: running !important; }
+  .lr-comic-tip-wrap.is-hover-open .lr-comic-tip.is-below { transform: translateX(-50%) translateY(0); }
+  .lr-comic-tip-wrap.is-hover-open .lr-comic-tip.is-start,
+  .lr-comic-tip-wrap.is-hover-open .lr-comic-tip.is-end { transform: translateX(0) translateY(0); }
+  .lr-comic-tip-wrap.is-hover-open::before { opacity: 1; transform: rotate(45deg) scale(1); transition-delay: .12s; }
 
   /* Panel mutex: keyboard focus (channel 2) can hold one wrap's panel open
      while the pointer hovers a neighboring trigger, and two 320px panels at
@@ -1458,38 +1519,38 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
      hover-open on the others; the suppressed wrap re-arms the moment focus
      moves, so keyboard and pointer handoff stays a clean one-panel relay.
      Scoped to the containers that hold adjacent wrapped triggers; the guard
-     keys on focus-visible inside a wrap, so plain mouse clicks (no panel
+     keys on the component-owned focus state, so plain mouse clicks (no panel
      held open) never suppress anything. */
-  :is(.lr-row-group, .lr-pawn-detail, .lr-entry-actions):has(.lr-comic-tip-wrap:has(:focus-visible))
-    .lr-comic-tip-wrap:not(:has(:focus-visible)):hover .lr-comic-tip {
+  :is(.lr-row-group, .lr-pawn-detail, .lr-entry-actions):has(.lr-comic-tip-wrap.is-focus-open)
+    .lr-comic-tip-wrap:not(.is-focus-open).is-hover-open .lr-comic-tip {
     opacity: 0;
     transition-delay: 0s;
   }
-  :is(.lr-row-group, .lr-pawn-detail, .lr-entry-actions):has(.lr-comic-tip-wrap:has(:focus-visible))
-    .lr-comic-tip-wrap:not(:has(:focus-visible)):hover::before {
+  :is(.lr-row-group, .lr-pawn-detail, .lr-entry-actions):has(.lr-comic-tip-wrap.is-focus-open)
+    .lr-comic-tip-wrap:not(.is-focus-open).is-hover-open::before {
     opacity: 0;
     transition-delay: 0s;
   }
 }
 
 /* channels 2+3: keyboard focus-visible and touch long-press */
-.lr-comic-tip-wrap:has(:focus-visible) .lr-comic-tip,
+.lr-comic-tip-wrap.is-focus-open .lr-comic-tip,
 .lr-comic-tip-wrap.is-tip-open .lr-comic-tip {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
   transition-delay: .12s;
 }
-.lr-comic-tip-wrap:has(:focus-visible) .lr-comic-tip *,
+.lr-comic-tip-wrap.is-focus-open .lr-comic-tip *,
 .lr-comic-tip-wrap.is-tip-open .lr-comic-tip * {
   animation-play-state: running !important;
 }
-.lr-comic-tip-wrap:has(:focus-visible) .lr-comic-tip.is-below,
+.lr-comic-tip-wrap.is-focus-open .lr-comic-tip.is-below,
 .lr-comic-tip-wrap.is-tip-open .lr-comic-tip.is-below { transform: translateX(-50%) translateY(0); }
-.lr-comic-tip-wrap:has(:focus-visible) .lr-comic-tip.is-start,
-.lr-comic-tip-wrap:has(:focus-visible) .lr-comic-tip.is-end,
+.lr-comic-tip-wrap.is-focus-open .lr-comic-tip.is-start,
+.lr-comic-tip-wrap.is-focus-open .lr-comic-tip.is-end,
 .lr-comic-tip-wrap.is-tip-open .lr-comic-tip.is-start,
 .lr-comic-tip-wrap.is-tip-open .lr-comic-tip.is-end { transform: translateX(0) translateY(0); }
-.lr-comic-tip-wrap:has(:focus-visible)::before,
+.lr-comic-tip-wrap.is-focus-open::before,
 .lr-comic-tip-wrap.is-tip-open::before {
   opacity: 1;
   transform: rotate(45deg) scale(1);

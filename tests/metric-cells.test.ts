@@ -1,15 +1,16 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { MetricCells } from "../src/client/components/living/Metrics.tsx";
-import { setCopy } from "../src/client/ui/copy.ts";
+import { setCopy, t } from "../src/client/ui/copy.ts";
 import {
   EMPTY_METRICS,
   type ConnectionMetrics,
 } from "../src/client/types.ts";
 
 setCopy({ lang: "zh", vis: false });
+afterEach(() => setCopy({ lang: "zh", vis: false }));
 
 const metrics = {
   ...EMPTY_METRICS,
@@ -44,6 +45,24 @@ const metrics = {
 } satisfies ConnectionMetrics;
 
 describe("MetricCells progressive disclosure", () => {
+  it("keeps visual metric names available to assistive technology", () => {
+    setCopy({ lang: "en", vis: true });
+    const html = renderToStaticMarkup(
+      createElement(MetricCells, {
+        metrics,
+        direction: "receive",
+        expanded: true,
+        onToggle: () => undefined,
+      }),
+    );
+
+    for (const key of ["stats.resolution", "stats.fps", "stats.loss", "stats.rtt"] as const) {
+      expect(html).toContain(
+        `<span class="visually-hidden">${t("en", key)}</span>`,
+      );
+    }
+  });
+
   it("keeps one-glance picture results above an accessible detail expansion", () => {
     const collapsed = renderToStaticMarkup(
       createElement(MetricCells, {

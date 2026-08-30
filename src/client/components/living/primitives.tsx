@@ -2,6 +2,7 @@
 // title/aria; text modes add a visible caption from the same catalog.
 import type { CSSProperties, MouseEvent, ReactNode } from "react";
 import { ComicTooltip } from "./ComicTooltip";
+import { participantColor } from "./participant-color";
 import type { ComicKind } from "./Comic";
 import type { HintKind } from "./hints";
 import { Glyph, type GlyphName } from "../../ui/icons";
@@ -281,11 +282,14 @@ export function SwitchItem({
   );
 }
 
-export function NameTag({ name }: { name: string }) {
+export function NameTag({ name, identity }: { name: string; identity: string }) {
   const { t, vis } = useCopy();
   return (
     <span className="lr-name-tag" title={vis ? undefined : t("host.name")}>
-      <i aria-hidden="true" />
+      <i
+        aria-hidden="true"
+        style={{ backgroundColor: participantColor(identity) }}
+      />
       <span>{name}</span>
     </span>
   );

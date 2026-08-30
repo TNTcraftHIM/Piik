@@ -18,6 +18,7 @@ const PATHS: Record<string, { body: ReactNode; solid?: boolean }> = {
   pause: { solid: true, body: (<><rect pathLength={1} x="6" y="4" width="4.2" height="16" rx="1.2"/><rect pathLength={1} x="13.8" y="4" width="4.2" height="16" rx="1.2"/></>) },
   stop: { solid: true, body: (<><rect pathLength={1} x="6" y="6" width="12" height="12" rx="2"/></>) },
   share: { body: (<><rect pathLength={1} x="2" y="4" width="20" height="13" rx="2"/><path pathLength={1} d="M12 17v-7m0 0-3 3m3-3 3 3"/><path pathLength={1} d="M8 21h8"/></>) },
+  switchSource: { body: (<><rect pathLength={1} x="2" y="4" width="20" height="14" rx="2"/><path pathLength={1} d="M7 9h9m0 0-2.5-2.5M16 9l-2.5 2.5M17 13H8m0 0 2.5-2.5M8 13l2.5 2.5"/><path pathLength={1} d="M8 22h8M12 18v4"/></>) },
   hash: { body: (<><path pathLength={1} d="M9 3 7 21M17 3l-2 18M4 8h17M3 16h17"/></>) },
   users: { body: (<><circle pathLength={1} cx="9" cy="8" r="3.5"/><path pathLength={1} d="M2.5 20c.8-3.2 3.4-5 6.5-5s5.7 1.8 6.5 5"/><circle pathLength={1} cx="17" cy="9" r="2.5"/><path pathLength={1} d="M16.2 15.2c2.5.4 4.6 1.8 5.3 4.8"/></>) },
   network: { body: (<><rect pathLength={1} x="9" y="2" width="6" height="6" rx="1.5"/><rect pathLength={1} x="2" y="16" width="6" height="6" rx="1.5"/><rect pathLength={1} x="16" y="16" width="6" height="6" rx="1.5"/><path pathLength={1} d="M12 8v3.5M12 11.5 5.5 16M12 11.5l6.5 4.5"/></>) },

@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { RouteTree } from "../src/client/components/living/RouteTree.tsx";
+import { participantColor } from "../src/client/components/living/participant-color.ts";
 import { topologyLayoutForViewport } from "../src/client/components/living/route-tree-layout.ts";
 import { labelParticipantSnapshot } from "../src/client/lib/viewer-presence.ts";
 import { setCopy } from "../src/client/ui/copy.ts";
@@ -193,6 +194,20 @@ describe("RouteTree", () => {
     expect(html).toContain(">Alice</text>");
     expect(html).toContain(">Bob</text>");
     expect(html).not.toContain("<title");
+  });
+
+  it("uses the Host identity color in the topology", () => {
+    const hostPeerId = "host-color-identity";
+    const html = renderToStaticMarkup(
+      createElement(RouteTree, {
+        hostPeerId,
+        hostLabel: "Host",
+        viewers: [],
+      }),
+    );
+
+    expect(html).toContain(participantColor(hostPeerId));
+    expect(html).not.toContain('fill="var(--couch)"');
   });
 
   it("fits a one-Viewer topology inside a narrow container", () => {

@@ -884,6 +884,7 @@ export class RoomRouteController<Resource = unknown> {
     }
     publication.physicalActive = false;
     publication.usable = false;
+    this.hostPublication = null;
     this.clearSfuQuality();
     this.revision = this.allocateRevision();
     if (this.operation) this.operation.baseRevision = this.revision;
@@ -3843,9 +3844,11 @@ export class RoomRouteController<Resource = unknown> {
       edge.usable = false;
     }
     if (edge.kind === "sfu" && !this.hasSfuSubscribers() && this.hostPublication) {
-      if (this.hostPublication.physicalActive) released.push(this.hostPublication.resource);
-      this.hostPublication.physicalActive = false;
-      this.hostPublication.usable = false;
+      const publication = this.hostPublication;
+      if (publication.physicalActive) released.push(publication.resource);
+      publication.physicalActive = false;
+      publication.usable = false;
+      this.hostPublication = null;
     }
     return true;
   }
