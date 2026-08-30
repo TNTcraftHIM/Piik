@@ -391,7 +391,7 @@ describe("client signaling protocol", () => {
         displayName: " Cafe\u0301 ",
       }).success,
     ).toBe(false);
-    expect(DEFAULT_VIEWER_DISPLAY_NAME).toBe("访客");
+    expect(DEFAULT_VIEWER_DISPLAY_NAME).toBe("观众");
   });
 
   it("accepts only canonical bounded Viewer grants and access actions", () => {

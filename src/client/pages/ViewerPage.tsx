@@ -47,7 +47,13 @@ import {
 } from "../components/living/primitives";
 import { Glyph, type GlyphName } from "../ui/icons";
 import { useCopy, type CopyKey } from "../ui/copy";
-import { readDisplayName, saveDisplayName } from "../lib/display-name";
+import {
+  defaultViewerDisplayName,
+  readDisplayName,
+  readStoredDisplayName,
+  saveDisplayName,
+} from "../lib/display-name";
+import { useDocumentTitle } from "../ui/document-title";
 import { clearViewerGrant, getStableClientId } from "../lib/session";
 import { SignalingClient } from "../lib/signaling";
 import { labelParticipantSnapshot } from "../lib/viewer-presence";
@@ -231,7 +237,11 @@ function MeterTag({ icon, label }: { icon: GlyphName; label: string }) {
 }
 
 export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
-  const { t, vis } = useCopy();
+  const { lang, t, vis, titleFrames } = useCopy();
+  const viewerClientId = useMemo(
+    () => getStableClientId("viewer", roomId),
+    [roomId],
+  );
   const [presentationState, dispatchPresentationState] = useReducer(
     reduceViewerPresentation,
     INITIAL_VIEWER_PRESENTATION_STATE,
@@ -254,7 +264,13 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     useState<ViewerQualityEvidencePresentation | null>(null);
   const [showConnectionDetails, setShowConnectionDetails] = useState(false);
   const [showTopology, setShowTopology] = useState(false);
-  const [displayName, setDisplayName] = useState(() => readDisplayName());
+  const [theaterMode, setTheaterMode] = useState(false);
+  const [hasCustomDisplayName, setHasCustomDisplayName] = useState(
+    () => readStoredDisplayName() !== null,
+  );
+  const [displayName, setDisplayName] = useState(() =>
+    readDisplayName(defaultViewerDisplayName(viewerClientId, vis)),
+  );
   const [displayNameDraft, setDisplayNameDraft] = useState(displayName);
   const [displayNameError, setDisplayNameError] = useState(false);
   const [editingDisplayName, setEditingDisplayName] = useState(false);
@@ -281,6 +297,19 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     useMetricsExpanded();
   const [pawnMetricsExpanded, setPawnMetricsExpanded] = useMetricsExpanded();
 
+  useEffect(() => {
+    if (!theaterMode) return;
+    const exitOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setTheaterMode(false);
+    };
+    document.body.classList.add("lr-theater-open");
+    window.addEventListener("keydown", exitOnEscape);
+    return () => {
+      document.body.classList.remove("lr-theater-open");
+      window.removeEventListener("keydown", exitOnEscape);
+    };
+  }, [theaterMode]);
+
   const qualityLimitation = useMemo(
     () =>
       qualityLimitationSummary(
@@ -295,6 +324,20 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     [participantPresence],
   );
   const hostDisplayName = labeledHostPresence?.label ?? null;
+  const titleFrameKey =
+    presentationState.host === "paused"
+      ? "paused"
+      : presentation.hasCurrentFrame
+        ? "viewerActive"
+        : "viewerWaiting";
+  const titleContent = titleFrames(titleFrameKey);
+  useDocumentTitle(
+    [
+      accessState === "ready" ? roomId : null,
+      accessState === "ready" ? titleContent[0] : null,
+    ],
+    accessState === "ready" ? titleContent.slice(1) : [],
+  );
 
   function clearParticipantPresence(): void {
     setParticipantPresence(null);
@@ -323,6 +366,15 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     useRef<ViewerQualityEvidenceReporter | null>(null);
   const qualityFrameProofGenerationRef = useRef<number | null>(null);
   const displayNameRef = useRef(displayName);
+  useEffect(() => {
+    if (hasCustomDisplayName) return;
+    const fallback = defaultViewerDisplayName(viewerClientId, vis);
+    if (displayNameRef.current === fallback) return;
+    displayNameRef.current = fallback;
+    setDisplayName(fallback);
+    if (!editingDisplayName) setDisplayNameDraft(fallback);
+    signalRef.current?.setViewerDisplayName(fallback);
+  }, [hasCustomDisplayName, lang, vis, viewerClientId]);
   const remoteMediaRef = useRef<RemoteMediaBinding | null>(null);
   const mediaGenerationRef = useRef(0);
   const hostPlaybackPauseRef = useRef({ active: false, resume: false });
@@ -557,7 +609,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       {
         roomId,
         role: "viewer",
-        clientId: getStableClientId("viewer", roomId),
+        clientId: viewerClientId,
         ...(viewerGrant ? { viewerGrant } : {}),
         ...(!viewerGrant && viewerPasswordAttempt
           ? { viewerPassword: viewerPasswordAttempt.password }
@@ -1999,7 +2051,8 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
   }
 
   function commitDisplayName(): void {
-    const saved = saveDisplayName(displayNameDraft);
+    const fallback = defaultViewerDisplayName(viewerClientId, vis);
+    const saved = saveDisplayName(displayNameDraft, fallback);
     if (!saved) {
       setDisplayNameError(true);
       return;
@@ -2009,6 +2062,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     setDisplayNameDraft(saved);
     setDisplayNameError(false);
     setEditingDisplayName(false);
+    setHasCustomDisplayName(readStoredDisplayName() !== null);
     signalRef.current?.setViewerDisplayName(saved);
   }
 
@@ -2225,10 +2279,17 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             : "state.peer.connecting",
       ),
       you: isSelf,
-      child: isChild,
-      selectable: isSelf || isChild ? undefined : false,
+      selectable: isChild ? undefined : false,
     };
   });
+  const selectableRelayChildren = viewers
+    .filter(
+      (viewer) =>
+        selfPeerId !== null &&
+        viewer.upstream.kind === "peer" &&
+        viewer.upstream.peerId === selfPeerId,
+    )
+    .map((viewer) => viewer.peerId);
 
   // Vis mode swaps native title tooltips for 2-panel hint comics; text modes
   // render the trigger unchanged, so markup structure stays identical. Edge
@@ -2257,13 +2318,13 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       <AppHeader
         led={<LedStrip state={ledState} label={t(presentation.messageKey)} />}
       />
-      <main className="lr-room">
+      <main className={`lr-room${theaterMode ? " is-theater" : ""}`}>
         <h1 className="visually-hidden">
           {hostDisplayName
             ? t("viewer.title", { name: hostDisplayName })
             : t("viewer.titleFallback")}
         </h1>
-        <div className="lr-scene">
+        <div className="lr-scene" id="viewer-stage">
           <StageTv
             chin={chin}
             live={presentation.stage === "playing"}
@@ -2329,6 +2390,16 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
                 />
               )}
           </StageTv>
+          {theaterMode ? (
+            <div className="lr-theater-exit">
+              <Btn
+                icon="contract"
+                cap="viewer.theater.exit"
+                title="viewer.theater.exit"
+                onClick={() => setTheaterMode(false)}
+              />
+            </div>
+          ) : null}
           <div className="lr-shelf" aria-hidden="true" />
           <Couch
             entries={couchEntries}
@@ -2339,20 +2410,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           />
         </div>
         <div className="lr-deck">
-          {selectedPawn !== null &&
-          selectedPawn === selfPeerId ? (
-            <PawnDetail
-              pawnKey={selectedPawn}
-              name={vis ? displayName : `${displayName} · ${t("common.you")}`}
-              you
-              route={routePresentation.route}
-              metrics={routeMetrics}
-              direction="receive"
-              expanded={pawnMetricsExpanded}
-              onToggleMetrics={setPawnMetricsExpanded}
-              onClose={() => setSelectedPawn(null)}
-            />
-          ) : null}
           {selectedPawn !== null && selectedChildEvidence ? (
             <PawnDetail
               pawnKey={selectedPawn}
@@ -2452,6 +2509,15 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               )}
             </form>
             <div className="lr-row-group lr-group-actions lr-viewer-actions-slot">
+              <Btn
+                icon={theaterMode ? "contract" : "expand"}
+                cap={theaterMode ? "viewer.theater.exit" : "viewer.theater"}
+                title={theaterMode ? "viewer.theater.exit" : "viewer.theater"}
+                tone={theaterMode ? "on" : undefined}
+                pressed={theaterMode}
+                controls="viewer-stage"
+                onClick={() => setTheaterMode((current) => !current)}
+              />
               {labeledHostPresence
                 ? hintWrap(
                     "hint-topology",
@@ -2556,6 +2622,12 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
                 viewers={viewers}
                 selfPeerId={selfPeerId}
                 selectedPeerId={selectedPawn}
+                selectablePeerIds={selectableRelayChildren}
+                onSelectPeer={(peerId) =>
+                  setSelectedPawn((current) =>
+                    current === peerId ? null : peerId,
+                  )
+                }
               />
             </Row>
           ) : null}

@@ -43,6 +43,7 @@ const PATHS: Record<string, { body: ReactNode; solid?: boolean }> = {
   gauge: { body: (<><path pathLength={1} d="M4 14.5a8 8 0 1 1 16 0"/><path pathLength={1} d="m12 14 3.5-4"/><path pathLength={1} d="M3.5 17.5h17"/></>) },
   drop: { body: (<><path pathLength={1} d="M12 3s6 6.4 6 11a6 6 0 0 1-12 0c0-4.6 6-11 6-11Z"/></>) },
   expand: { body: (<><path pathLength={1} d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></>) },
+  contract: { body: (<><path pathLength={1} d="M8 3v5H3m13-5v5h5M8 21v-5H3m13 5v-5h5"/></>) },
   wave: { body: (<><path pathLength={1} d="M2 12c1.7 0 1.7-2.5 3.4-2.5S7 12 8.7 12s1.6-2.5 3.3-2.5S13.6 12 15.3 12s1.7-2.5 3.4-2.5S20.3 12 22 12"/></>) },
   speaker: { body: (<><path pathLength={1} d="M4 9v6h4l5 4V5L8 9H4Z"/><path pathLength={1} d="M16 9a4.2 4.2 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/></>) },
   sliders: { body: (<><path pathLength={1} d="M3 6h9m4 0h5M3 12h3m4 0h11M3 18h12m4 0h2"/><circle pathLength={1} cx="14" cy="6" r="2"/><circle pathLength={1} cx="8" cy="12" r="2"/><circle pathLength={1} cx="17" cy="18" r="2"/></>) },

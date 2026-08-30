@@ -26,6 +26,13 @@ export interface LabeledParticipantSnapshot {
 
 const MIN_PEER_ID_SUFFIX_LENGTH = 6;
 
+function comparePeerIdentity(
+  left: PresenceIdentity,
+  right: PresenceIdentity,
+): number {
+  return left.peerId < right.peerId ? -1 : left.peerId > right.peerId ? 1 : 0;
+}
+
 function labelPresence<T extends PresenceIdentity>(
   entries: readonly T[],
 ): LabeledPresence<T>[] {
@@ -89,7 +96,7 @@ function labelPresence<T extends PresenceIdentity>(
 export function labelViewerPresence(
   viewers: readonly ViewerPresenceEntry[],
 ): LabeledViewerPresence[] {
-  return labelPresence(viewers);
+  return labelPresence(viewers).sort(comparePeerIdentity);
 }
 
 export function labelParticipantSnapshot(
@@ -102,10 +109,12 @@ export function labelParticipantSnapshot(
         (participant): participant is LabeledHostPresence =>
           participant.role === "host",
       ) ?? null,
-    viewers: labeled.filter(
-      (participant): participant is LabeledViewerPresence =>
-        participant.role === "viewer",
-    ),
+    viewers: labeled
+      .filter(
+        (participant): participant is LabeledViewerPresence =>
+          participant.role === "viewer",
+      )
+      .sort(comparePeerIdentity),
   };
 }
 

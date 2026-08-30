@@ -14,9 +14,12 @@ import {
   replaceOwnedRoom,
 } from "../src/client/lib/api.ts";
 import {
+  defaultHostDisplayName,
+  defaultViewerDisplayName,
   readDisplayName,
   saveDisplayName,
 } from "../src/client/lib/display-name.ts";
+import { setCopy } from "../src/client/ui/copy.ts";
 import {
   clearHostRoom,
   getStableClientId,
@@ -55,9 +58,23 @@ import {
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  setCopy({ lang: "zh", vis: false });
 });
 
 describe("browser-local display name", () => {
+  it("localizes text defaults and uses visual emoji identities", () => {
+    setCopy({ lang: "zh", vis: false });
+    expect(defaultViewerDisplayName("viewer-abcdef", false)).toBe("观众");
+    expect(defaultHostDisplayName("host-abcdef", false)).toBe("分享者-abcdef");
+
+    setCopy({ lang: "en", vis: false });
+    expect(defaultViewerDisplayName("viewer-abcdef", false)).toBe("Viewer");
+    expect(defaultHostDisplayName("host-abcdef", false)).toBe("Host-abcdef");
+
+    expect(defaultViewerDisplayName("viewer-abcdef", true)).toBe("👀-abcdef");
+    expect(defaultHostDisplayName("host-abcdef", true)).toBe("📺-abcdef");
+  });
+
   it("stores only the canonical preference and falls back when cleared", () => {
     const values = new Map<string, string>();
     vi.stubGlobal("window", {
@@ -73,8 +90,8 @@ describe("browser-local display name", () => {
     expect(saveDisplayName("\u202ehidden")).toBeNull();
     expect(saveDisplayName("\n")).toBeNull();
     expect(readDisplayName()).toBe("Café 玩家");
-    expect(saveDisplayName("   ")).toBe("访客");
-    expect(readDisplayName()).toBe("访客");
+    expect(saveDisplayName("   ")).toBe("观众");
+    expect(readDisplayName()).toBe("观众");
   });
 
   it("extends only colliding room-scoped peer ID suffixes", () => {
@@ -241,8 +258,8 @@ describe("browser-local display name", () => {
       "viewer_sfu_child",
     );
     expect(topology.pending.map((entry) => entry.peerId)).toEqual([
-      "viewer_pending",
       "viewer_orphan",
+      "viewer_pending",
     ]);
   });
 });
