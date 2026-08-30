@@ -106,9 +106,9 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Source/Production Delta
 
-- Production application code and canonical source are exact revision
-  `abe73b735c5458cc99931d2fcaadfc83044c6174`; the deployed release is the
-  merged same-parent regeneration change documented above.
+- Production application code matches canonical source application revision
+  `abe73b735c5458cc99931d2fcaadfc83044c6174`; current `main` adds only this
+  status-record checkpoint after that application revision.
 
 ## Active Boundaries
 
