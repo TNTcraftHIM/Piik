@@ -12,6 +12,8 @@ Git own completed implementation evidence.
 Still required on representative public networks:
 
 - direct Host-to-Viewer P2P;
+- direct IPv6 P2P through a configured dual-stack STUN endpoint, with IPv4
+  regression control;
 - Peer-fed and SFU-fed Browser relay, including a second-level child;
 - Host and Viewer TUN/VPN cases;
 - relay-ingress failure with subtree retention;
