@@ -28,7 +28,7 @@ interface TreeNode {
 const ROW_BASE = 40;
 const DEFAULT_TOPOLOGY_WIDTH = 640;
 const PAWN_CENTER_X = 20;
-const PAWN_SCALE = 0.72;
+const PAWN_SCALE = 0.82;
 const PAWN_CENTER_Y = 24;
 const LABEL_GAP = 12;
 
@@ -73,6 +73,20 @@ function compactVisibleLabel(label: string, maximumCodePoints: number): string {
   }
 
   return `${codePoints.slice(0, maximumCodePoints - 1).join("")}…`;
+}
+
+function topologyVisibleLabel(
+  label: string,
+  peerId: string | null,
+  maximumCodePoints: number,
+): string {
+  const peerIdSuffix = peerId?.slice(-6) ?? "";
+  const withoutRedundantRole =
+    peerIdSuffix &&
+    (label === `👑-${peerIdSuffix}` || label === `👤-${peerIdSuffix}`)
+      ? peerIdSuffix
+      : label;
+  return compactVisibleLabel(withoutRedundantRole, maximumCodePoints);
 }
 
 function xForDepth(depth: number, layout: TopologyLayout): number {
@@ -355,8 +369,9 @@ export const RouteTree = memo(function RouteTree({
           y={pawnLabelY(hostPos.y, PAWN_SCALE)}
           textAnchor="middle"
         >
-          {compactVisibleLabel(
+          {topologyVisibleLabel(
             hostLabel,
+            hostPeerId,
             layoutConfig.maxVisibleLabelCodePoints,
           )}
         </text>
@@ -438,8 +453,9 @@ export const RouteTree = memo(function RouteTree({
               y={pawnLabelY(point.y, PAWN_SCALE)}
               textAnchor="middle"
             >
-              {compactVisibleLabel(
+              {topologyVisibleLabel(
                 node.label,
+                node.key,
                 layoutConfig.maxVisibleLabelCodePoints,
               )}
             </text>
@@ -453,8 +469,9 @@ export const RouteTree = memo(function RouteTree({
             y={pawnLabelY(point.y, PAWN_SCALE)}
             textAnchor="middle"
           >
-            {compactVisibleLabel(
+            {topologyVisibleLabel(
               point.viewer.label,
+              point.viewer.peerId,
               layoutConfig.maxVisibleLabelCodePoints,
             )}
           </text>
