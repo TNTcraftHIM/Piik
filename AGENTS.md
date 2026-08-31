@@ -76,6 +76,10 @@
 
 ## Engineering Defaults
 
+- Judge a change by evidenced user value against its full implementation,
+  maintenance, compatibility, and failure cost. A large measured gain may
+  justify broad or breaking work; a small or speculative gain does not justify
+  material complexity or risk.
 - Use primary sources for non-trivial design and bugs. Add focused tests in
   proportion to risk; batch full browser/network/endurance checks at acceptance.
 - Keep scripts deterministic, fast, cross-platform, and CI-runnable. Support

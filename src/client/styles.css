@@ -865,6 +865,12 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
 .lr-chip.is-selected { background: var(--ink); color: var(--paper); animation: lr-pop .2s var(--spring); }
 .lr-chip .lr-cap { font-family: var(--font); letter-spacing: 0; }
 .lr-chip small { margin-left: 5px; font-size: 10.5px; opacity: .6; }
+.lr-chip .lr-audio-rate {
+  min-width: 3ch;
+  margin-left: 0;
+  text-align: center;
+  letter-spacing: 0;
+}
 .lr-chip-dot {
   display: inline-block;
   width: 7px; height: 7px;

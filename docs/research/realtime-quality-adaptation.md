@@ -367,6 +367,35 @@ Host media-source cadence averaged 14.93 fps, so this arm validates bounded
 topology and diagnostic rendering rather than representative distributed media
 headroom.
 
+The benchmark now groups exact committed receive metrics by Peer depth and
+keeps SFU as a separate cohort. Three fresh 1080p30 Auto runs after the Host GPU
+selection changed all resolved to H.264. Host and relay senders sustained
+29-30 fps at roughly 7 ms encode time per frame; depth-one and depth-two Viewers
+kept the same 1280x720 delivered size with no freeze windows. Depth-two jitter
+buffer delay was 9.6-36.6 ms average versus 3.5-5.4 ms at depth one. The clean
+loopback therefore shows no generational cadence or resolution loss, while the
+extra receive-buffer/decode/encode hop retains an inherent latency cost. It does
+not justify changing endpoint capacity, degradation policy or jitter targets.
+
+A 20-Viewer 720p30/VP8 stress arm retained all seven topology and media checks,
+zero unresolved route samples and the fixed endpoint cap of two. With all 21
+pages sharing one Chrome/GPU, delivered cadence declined from 23.5 fps at depth
+one to 20.3 fps at depth four, cumulative freeze counts rose from 3 to 28, and
+average jitter-buffer delay rose from 28.6 ms to 88.8 ms. This intentionally
+amplified process is not a production quality estimate, but it confirms that
+each Browser receive-buffer/decode/encode hop has cumulative cost. Removing that
+cost requires encoded forwarding or fewer hops; it is not grounds to change the
+accepted capacity, SFU, bitrate or degradation settings.
+
+Static route loading was the remaining proven application-level duplication.
+The old entry parsed Host, Viewer and Join pages for every route. Immediate
+route-specific prefetch plus React lazy execution reduced the common JavaScript
+asset from 717.36 KB / 193.03 KB gzip to 454.53 KB / 123.71 KB gzip. Host and
+Viewer then load only their own page plus the shared codec chunk; Join adds a
+1.97 KB chunk. A three-Viewer media gate retained all route, capacity, quality
+and decoded-frame checks. This changes download, parse and retained module work,
+not media behavior or settings.
+
 The current stage decisions are therefore deliberately narrow:
 
 | Stage | Current owner and decision |
@@ -377,6 +406,7 @@ The current stage decisions are therefore deliberately narrow:
 | SFU publication | Keep pinned LiveKit's two representations, Dynacast and send-side BWE. Observe total/active encoding counts before changing layer policy. |
 | Receive latency | Keep the Browser jitter buffer and A/V synchronizer; no fixed `jitterBufferTarget` without a loss/latency A/B. |
 | Presentation | Coalesce only Host diagnostic React commits. Media evidence, freshness and route control stay immediate. |
+| Application loading | Prefetch and execute only the current Host, Viewer or Join page; retain the same loading and access behavior. |
 | Native boundary | OS capture fallback, virtual display, shared/zero-copy encode and driver-specific capability caching require a separately accepted native product surface. |
 
 ### Mature Product Boundaries
