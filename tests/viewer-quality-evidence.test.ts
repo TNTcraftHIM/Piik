@@ -16,6 +16,7 @@ import {
   qualityEvidenceWindowFromMetrics,
   reconcileViewerQualityEvidencePresentation,
   refreshViewerQualityEvidencePresentation,
+  retainPresentViewerQualityEvidence,
   type ViewerQualityEvidence,
   ViewerQualityEvidenceReporter,
 } from "../src/client/media/viewer-quality-evidence.ts";
@@ -807,6 +808,36 @@ describe("viewer quality evidence", () => {
     expect(
       reconcileViewerQualityEvidencePresentation(presentation, null),
     ).toBeNull();
+  });
+
+  it("retains evidence only for Viewers in the authoritative presence", () => {
+    const first = presentViewerQualityEvidence(
+      null,
+      serverEvidence({ viewerPeerId: "viewer_first_12345678" }),
+      0,
+    );
+    const second = presentViewerQualityEvidence(
+      null,
+      serverEvidence({ viewerPeerId: "viewer_second_12345678" }),
+      0,
+    );
+    const presentations = new Map([
+      [first.evidence.viewerPeerId, first],
+      [second.evidence.viewerPeerId, second],
+    ]);
+
+    expect(
+      retainPresentViewerQualityEvidence(
+        presentations,
+        new Set(presentations.keys()),
+      ),
+    ).toBe(presentations);
+    const retained = retainPresentViewerQualityEvidence(
+      presentations,
+      new Set([second.evidence.viewerPeerId]),
+    );
+    expect([...retained.keys()]).toEqual([second.evidence.viewerPeerId]);
+    expect(presentations.size).toBe(2);
   });
 
 });

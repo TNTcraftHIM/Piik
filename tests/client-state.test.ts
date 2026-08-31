@@ -814,6 +814,92 @@ describe("client signaling recovery policy", () => {
     signal.stop();
   });
 
+  it("retains a terminal command until an authenticated socket accepts it", () => {
+    vi.useFakeTimers();
+    const sockets: FakeWebSocket[] = [];
+    class FakeWebSocket extends EventTarget {
+      static readonly OPEN = 1;
+      static readonly CLOSING = 2;
+      readyState = FakeWebSocket.OPEN;
+      readonly send = vi.fn();
+      readonly close = vi.fn(() => {
+        this.readyState = FakeWebSocket.CLOSING;
+      });
+
+      constructor(readonly url: string) {
+        super();
+        sockets.push(this);
+      }
+    }
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    vi.stubGlobal("window", {
+      location: new URL("https://share.test/r/1234"),
+      setTimeout: globalThis.setTimeout,
+      clearTimeout: globalThis.clearTimeout,
+    });
+    const signal = new SignalingClient(
+      {
+        roomId: "1234",
+        role: "viewer",
+        clientId: "viewer-client",
+      },
+      {
+        onMessage: () => undefined,
+        onStatus: () => undefined,
+        onTerminated: () => undefined,
+        onAccessRequired: () => undefined,
+      },
+    );
+    const receiveAuthenticated = (socket: FakeWebSocket) => {
+      const event = new Event("message");
+      Object.defineProperty(event, "data", {
+        value: JSON.stringify({
+          type: "authenticated",
+          protocol: SIGNALING_PROTOCOL,
+          role: "viewer",
+          peerId: "viewer_12345678",
+          roomExpiresAt: null,
+          maxViewers: 8,
+          endpointMediaCopyCapacity: 2,
+          hostOnline: true,
+          connectionId: null,
+          viewerPeerIds: [],
+          iceConfig: { iceServers: [] },
+          codeEntryPolicy: "open",
+          viewerAuthorizationGeneration: "viewer_generation_12345678",
+        }),
+      });
+      socket.dispatchEvent(event);
+    };
+
+    signal.start();
+    signal.sendThenStop({ type: "abandon-room" });
+    sockets[0]!.dispatchEvent(new Event("open"));
+    sockets[0]!.readyState = FakeWebSocket.CLOSING;
+    receiveAuthenticated(sockets[0]!);
+    expect(sockets[0]!.send).toHaveBeenCalledOnce();
+
+    const closed = new Event("close");
+    Object.defineProperties(closed, {
+      code: { value: 1006 },
+      reason: { value: "network interrupted" },
+    });
+    sockets[0]!.dispatchEvent(closed);
+    vi.advanceTimersByTime(750);
+    sockets[1]!.dispatchEvent(new Event("open"));
+    receiveAuthenticated(sockets[1]!);
+
+    expect(
+      sockets[1]!.send.mock.calls.map(([value]) =>
+        JSON.parse(String(value)),
+      ),
+    ).toEqual([
+      expect.objectContaining({ type: "authenticate" }),
+      { type: "abandon-room" },
+    ]);
+    expect(sockets[1]!.close).toHaveBeenCalledWith(1000, "client closed");
+  });
+
   it("classifies a close-only authentication failure without claiming replacement", () => {
     const sockets: FakeWebSocket[] = [];
     class FakeWebSocket extends EventTarget {

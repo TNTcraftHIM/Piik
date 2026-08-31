@@ -288,8 +288,8 @@ export class SignalingClient {
         this.clearAuthenticationTimer();
         if (this.terminalMessage) {
           const terminalMessage = this.terminalMessage;
-          this.terminalMessage = null;
           if (this.send(terminalMessage)) {
+            this.terminalMessage = null;
             this.stop();
             return;
           }
