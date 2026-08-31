@@ -302,6 +302,17 @@ bandwidth estimate stayed near 13 Mbps while the sender media-source cadence
 fell to about 1 fps. That interval is a capture/source-production boundary, not
 an RTX-recovery result, and the LiveKit patch does not address it.
 
+Chrome 151 exposed `fractionLost`, `packetsLost`, jitter, and RTT on the linked
+`remote-inbound-rtp` sender report, but not the newer inherited
+`packetsReceived` field. The previous sender percentage therefore remained
+structurally unknown even when RTT proved that the report was linked. Current
+source consumes the normalized `fractionLost` value once for each newer exact
+RTCP report; a first report, repeated report timestamp, identity change,
+timestamp rollback, missing field, or out-of-range value stays unknown. Viewer
+route diagnostics also retain the already-authorized receive/loss deltas, RTT,
+and jitter in the sanitized event. These fields remain observability only and
+do not enter native quality classification, candidate comparison, or routing.
+
 ## Host And Page Cost Boundaries
 
 Each ordinary Browser child is an independent PeerConnection and normally an

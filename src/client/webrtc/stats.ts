@@ -2,6 +2,7 @@ import {
   EMPTY_METRICS,
   type ConnectionMetrics,
 } from "../types";
+import { packetLossPercentFromDeltas } from "../../shared/packet-loss";
 import { deriveVideoCodecEvidence } from "../../shared/video-codec-evidence";
 
 type StatsRecord = Record<string, unknown> & {
@@ -20,6 +21,7 @@ export interface StatsAccumulator {
   ssrc: number | null;
   trackIdentifier: string | null;
   lossSourceId: string | null;
+  lossReportTimestamp: number | null;
   bytes: number | null;
   frames: number | null;
   timestamp: number | null;
@@ -227,6 +229,7 @@ export function createStatsAccumulator(): StatsAccumulator {
     ssrc: null,
     trackIdentifier: null,
     lossSourceId: null,
+    lossReportTimestamp: null,
     bytes: null,
     frames: null,
     timestamp: null,
@@ -307,24 +310,6 @@ function intervalAverageMs(
   return frameDelta > 0 && timeDelta >= 0
     ? (timeDelta / frameDelta) * 1_000
     : null;
-}
-
-export function packetLossPercentFromDeltas(
-  packetsReceivedDelta: number | null,
-  packetsLostDelta: number | null,
-): number | null {
-  if (
-    packetsReceivedDelta === null ||
-    packetsLostDelta === null ||
-    !Number.isFinite(packetsReceivedDelta) ||
-    !Number.isFinite(packetsLostDelta) ||
-    packetsReceivedDelta < 0 ||
-    packetsLostDelta < 0
-  ) {
-    return null;
-  }
-  const packetDelta = packetsReceivedDelta + packetsLostDelta;
-  return packetDelta > 0 ? (packetsLostDelta / packetDelta) * 100 : null;
 }
 
 function percentOfInterval(
@@ -706,6 +691,7 @@ export function collectConnectionMetricsFromReport(
     direction === "send" ? linkedRemoteInbound(report, media) : null;
   const lossSource = direction === "send" ? remoteInbound : media;
   const lossSourceId = lossSource?.id ?? null;
+  const lossReportTimestamp = numberValue(lossSource, "timestamp");
   const sameMedia =
     mediaId !== null &&
     mediaId === previous.mediaId &&
@@ -725,6 +711,7 @@ export function collectConnectionMetricsFromReport(
   const packetsSent = numberValue(media, "packetsSent");
   const packetsReceived = numberValue(lossSource, "packetsReceived");
   const packetsLost = numberValue(lossSource, "packetsLost");
+  const fractionLost = numberValue(remoteInbound, "fractionLost");
   const totalEncodeTime = numberValue(media, "totalEncodeTime");
   const totalDecodeTime = numberValue(media, "totalDecodeTime");
   const framesDropped = numberValue(media, "framesDropped");
@@ -830,6 +817,19 @@ export function collectConnectionMetricsFromReport(
           sampleWindowMs !== null && sameLossSource,
         )
       : null;
+  // RTCP already defines fractionLost over its own report interval. Consume a
+  // report once instead of mixing that remote interval with local send deltas.
+  const senderPacketLossPercent =
+    direction === "send" &&
+    sameLossSource &&
+    lossReportTimestamp !== null &&
+    previous.lossReportTimestamp !== null &&
+    lossReportTimestamp > previous.lossReportTimestamp &&
+    fractionLost !== null &&
+    fractionLost >= 0 &&
+    fractionLost <= 1
+      ? fractionLost * 100
+      : null;
   const intervalFramesDecoded =
     direction === "receive"
       ? intervalDelta(
@@ -898,6 +898,7 @@ export function collectConnectionMetricsFromReport(
   previous.ssrc = ssrc;
   previous.trackIdentifier = trackIdentifier;
   previous.lossSourceId = lossSourceId;
+  previous.lossReportTimestamp = lossReportTimestamp;
   previous.bytes = bytes;
   previous.frames = frames;
   previous.timestamp = timestamp;
@@ -1094,10 +1095,13 @@ export function collectConnectionMetricsFromReport(
     intervalPacketsSent,
     intervalPacketsReceived,
     intervalPacketsLost,
-    packetLossPercent: packetLossPercentFromDeltas(
-      lossPacketsReceivedDelta,
-      intervalPacketsLost,
-    ),
+    packetLossPercent:
+      direction === "send"
+        ? senderPacketLossPercent
+        : packetLossPercentFromDeltas(
+            lossPacketsReceivedDelta,
+            intervalPacketsLost,
+          ),
     jitterMs:
       numberValue(direction === "send" ? remoteInbound : media, "jitter") !== null
         ? numberValue(direction === "send" ? remoteInbound : media, "jitter")! *
