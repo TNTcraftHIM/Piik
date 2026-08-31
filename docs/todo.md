@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-08-31
+Last reviewed: 2026-09-01
 
 Only **Now** is executable. Observations, old branches, experiments, and parked
 topics are not implementation authority.
@@ -62,8 +62,9 @@ until their stated boundary is met.
 8. **Representative network acceptance.** Complete public-network direct,
    Browser relay, SFU, recovery, Pause/Resume, screen-audio, real-game A/V,
    two-room SFU, 20-Viewer endurance, and all-UDP-blocked bounded failure.
-   Correlate SFU freezes with publisher encoding counts before changing
-   Dynacast or representation policy.
+   Validate LiveKit Server 1.13.6 simulcast retransmission under controlled loss
+   and correlate any remaining SFU freezes with publisher encoding counts before
+   changing Dynacast or representation policy.
 9. **Client-input security review.** Audit HTTP/WebSocket schema, auth,
    authorization, rate/body/resource bounds, errors, logs, and secrets without
    adding a parallel security framework.

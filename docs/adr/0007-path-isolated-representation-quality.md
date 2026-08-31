@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-08-19
-- Last reviewed: 2026-08-30
+- Last reviewed: 2026-09-01
 
 ## Context
 
@@ -152,5 +152,6 @@ than claiming complete source isolation.
 - [WebRTC Statistics](https://www.w3.org/TR/webrtc-stats/)
 - [LiveKit video simulcast and Dynacast](https://docs.livekit.io/transport/media/advanced/)
 - [LiveKit selective subscription](https://docs.livekit.io/transport/media/subscribe/)
-- [LiveKit client 2.22.0 encoding construction](https://github.com/livekit/client-sdk-js/blob/v2.22.0/src/room/participant/publishUtils.ts)
-- [LiveKit server 1.13.5 layer forwarding](https://github.com/livekit/livekit/blob/v1.13.5/pkg/sfu/forwarder.go)
+- [LiveKit client 2.22.1 encoding construction](https://github.com/livekit/client-sdk-js/blob/v2.22.1/src/room/participant/publishUtils.ts)
+- [LiveKit server 1.13.6 layer forwarding](https://github.com/livekit/livekit/blob/v1.13.6/pkg/sfu/forwarder.go)
+- [LiveKit server 1.13.6 simulcast RTX repair](https://github.com/livekit/livekit/pull/4800)
