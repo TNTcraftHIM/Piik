@@ -112,6 +112,10 @@ export class SignalingServer {
   private readonly socketsBySessionId = new Map<string, WebSocket>();
   private readonly viewerGraceTimers = new Map<string, NodeJS.Timeout>();
   private readonly connectionIdsByViewer = new Map<string, string>();
+  private readonly ordinaryReadyConnectionIdsByViewer = new Map<
+    string,
+    string
+  >();
   private readonly viewerQualityEvidenceGates = new Map<
     string,
     ViewerQualityEvidenceGate
@@ -271,6 +275,7 @@ export class SignalingServer {
     this.shareGenerationsByRoom.clear();
     this.pausedShareGenerationsByRoom.clear();
     this.ordinaryActiveHostChildrenByRoom.clear();
+    this.ordinaryReadyConnectionIdsByViewer.clear();
     await closed;
     clearTimeout(forceCloseTimer);
     if (routeCloseError) {
@@ -1462,6 +1467,18 @@ export class SignalingServer {
       fromPeerId: source.peerId,
       payload: message.payload,
     });
+    const connectionKey = viewerConnectionKey(source.roomId, source.peerId);
+    if (
+      description?.type === "answer" &&
+      this.connectionIdsByViewer.get(connectionKey) ===
+        message.payload.connectionId
+    ) {
+      this.ordinaryReadyConnectionIdsByViewer.set(
+        connectionKey,
+        message.payload.connectionId,
+      );
+      this.sendViewerPresence(source.roomId);
+    }
   }
 
   private routePeerAssistedSignal(
@@ -1934,13 +1951,19 @@ export class SignalingServer {
             viewer.peerId,
           )
         : undefined;
-      const mediaReady =
-        activeEdge !== undefined &&
-        upstream.kind !== "none" &&
-        (activeEdge.upstream.kind === "sfu"
-          ? upstream.kind === "sfu"
-          : upstream.kind === "peer" &&
-            activeEdge.upstream.peerId === upstream.peerId);
+      const connectionKey = viewerConnectionKey(roomId, viewer.peerId);
+      const mediaReady = this.isHybridMediaEnabled()
+        ? activeEdge !== undefined &&
+          upstream.kind !== "none" &&
+          (activeEdge.upstream.kind === "sfu"
+            ? upstream.kind === "sfu"
+            : upstream.kind === "peer" &&
+              activeEdge.upstream.peerId === upstream.peerId)
+        : upstream.kind === "peer" &&
+          this.connectionIdsByViewer.has(connectionKey) &&
+          this.ordinaryReadyConnectionIdsByViewer.get(
+            connectionKey,
+          ) === this.connectionIdsByViewer.get(connectionKey);
       viewers.push({
         role: "viewer",
         peerId: viewer.peerId,
@@ -2081,6 +2104,11 @@ export class SignalingServer {
         this.connectionIdsByViewer.delete(key);
       }
     }
+    for (const key of this.ordinaryReadyConnectionIdsByViewer.keys()) {
+      if (key.startsWith(prefix)) {
+        this.ordinaryReadyConnectionIdsByViewer.delete(key);
+      }
+    }
     for (const key of this.viewerQualityEvidenceGates.keys()) {
       if (key.startsWith(prefix)) {
         this.viewerQualityEvidenceGates.delete(key);
@@ -2100,6 +2128,7 @@ export class SignalingServer {
   ): void {
     const key = viewerConnectionKey(roomId, viewerPeerId);
     if (this.connectionIdsByViewer.get(key) !== connectionId) {
+      this.ordinaryReadyConnectionIdsByViewer.delete(key);
       this.viewerQualityEvidenceGates.delete(key);
       this.viewerQualityEvidenceAttemptAtMs.delete(key);
     }
@@ -2112,6 +2141,7 @@ export class SignalingServer {
   ): void {
     const key = viewerConnectionKey(roomId, viewerPeerId);
     this.connectionIdsByViewer.delete(key);
+    this.ordinaryReadyConnectionIdsByViewer.delete(key);
     this.viewerQualityEvidenceGates.delete(key);
     this.viewerQualityEvidenceAttemptAtMs.delete(key);
   }
