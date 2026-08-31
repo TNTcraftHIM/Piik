@@ -390,7 +390,7 @@ accepted capacity, SFU, bitrate or degradation settings.
 Static route loading was the remaining proven application-level duplication.
 The old entry parsed Host, Viewer and Join pages for every route. Immediate
 route-specific prefetch plus React lazy execution reduced the common JavaScript
-asset from 717.36 KB / 193.03 KB gzip to 454.50 KB / 123.67 KB gzip. Host and
+asset from 717.36 KB / 193.03 KB gzip to 454.53 KB / 123.71 KB gzip. Host and
 Viewer then load only their own page plus the shared codec chunk; Join adds a
 1.97 KB chunk. A three-Viewer media gate retained all route, capacity, quality
 and decoded-frame checks. This changes download, parse and retained module work,
