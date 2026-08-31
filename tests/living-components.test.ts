@@ -43,7 +43,7 @@ describe("living-room presentation", () => {
     expect(mark).toContain("lr-brand-eye-wink");
     expect(mark).not.toContain("is-animated");
     expect(loader).toContain('class="lr-brand-loader"');
-    expect(loader).toContain("lr-brand-mark is-animated");
+    expect(loader).toContain("lr-brand-mark is-animated is-loop-intro");
     expect(loader).toContain('aria-hidden="true"');
   });
 
