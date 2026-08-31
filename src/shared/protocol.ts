@@ -649,6 +649,12 @@ const senderQualityDiagnosticsSchema = z
     mediaSourceFramesPerSecond: nullableEvidenceNumber(240).optional(),
     width: nullableEvidenceInteger(16_384).optional(),
     height: nullableEvidenceInteger(16_384).optional(),
+    videoEncodingCount: nullableEvidenceInteger(
+      Number.MAX_SAFE_INTEGER,
+    ).optional(),
+    activeVideoEncodingCount: nullableEvidenceInteger(
+      Number.MAX_SAFE_INTEGER,
+    ).optional(),
     availableOutgoingKbps: nullableEvidenceNumber(100_000).optional(),
     rttMs: nullableEvidenceNumber(60_000).optional(),
     packetLossPercent: nullableEvidenceNumber(100).optional(),

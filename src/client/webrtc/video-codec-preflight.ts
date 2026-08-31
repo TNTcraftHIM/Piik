@@ -285,19 +285,6 @@ function delay(milliseconds: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-async function waitForIceGathering(
-  connection: RTCPeerConnection,
-  deadline: number,
-  signal?: AbortSignal,
-): Promise<void> {
-  while (connection.iceGatheringState !== "complete") {
-    if (Date.now() >= deadline) {
-      throw new Error("H.264 preflight timed out");
-    }
-    await delay(PREFLIGHT_POLL_MS, signal);
-  }
-}
-
 async function runH264Probe(
   track: MediaStreamTrack,
   profile: QualityProfile,
@@ -305,6 +292,39 @@ async function runH264Probe(
 ): Promise<boolean> {
   const senderConnection = new RTCPeerConnection({ iceServers: [] });
   const receiverConnection = new RTCPeerConnection({ iceServers: [] });
+  // This in-process probe can start encoding as soon as one local pair works;
+  // gathering every candidate must not extend the codec decision.
+  const senderCandidates: RTCIceCandidate[] = [];
+  const receiverCandidates: RTCIceCandidate[] = [];
+  let senderRemoteReady = false;
+  let receiverRemoteReady = false;
+  let iceFailed = false;
+  const addCandidate = async (
+    target: RTCPeerConnection,
+    candidate: RTCIceCandidate,
+  ): Promise<void> => {
+    try {
+      await target.addIceCandidate(candidate);
+    } catch {
+      iceFailed = true;
+    }
+  };
+  senderConnection.addEventListener("icecandidate", (event) => {
+    if (!event.candidate) return;
+    if (receiverRemoteReady) {
+      void addCandidate(receiverConnection, event.candidate);
+    } else {
+      senderCandidates.push(event.candidate);
+    }
+  });
+  receiverConnection.addEventListener("icecandidate", (event) => {
+    if (!event.candidate) return;
+    if (senderRemoteReady) {
+      void addCandidate(senderConnection, event.candidate);
+    } else {
+      receiverCandidates.push(event.candidate);
+    }
+  });
   const abort = () => {
     senderConnection.close();
     receiverConnection.close();
@@ -325,22 +345,32 @@ async function runH264Probe(
     await senderConnection.setLocalDescription(
       await senderConnection.createOffer(),
     );
-    await waitForIceGathering(senderConnection, deadline, signal);
     await receiverConnection.setRemoteDescription(
       senderConnection.localDescription!,
+    );
+    receiverRemoteReady = true;
+    await Promise.all(
+      senderCandidates.splice(0).map((candidate) =>
+        addCandidate(receiverConnection, candidate),
+      ),
     );
     await receiverConnection.setLocalDescription(
       await receiverConnection.createAnswer(),
     );
-    await waitForIceGathering(receiverConnection, deadline, signal);
     await senderConnection.setRemoteDescription(
       receiverConnection.localDescription!,
+    );
+    senderRemoteReady = true;
+    await Promise.all(
+      receiverCandidates.splice(0).map((candidate) =>
+        addCandidate(senderConnection, candidate),
+      ),
     );
 
     let warmupBaseline: H264ProbeSample | null = null;
     let measurementBaseline: H264ProbeSample | null = null;
     while (Date.now() < deadline) {
-      if (signal?.aborted || track.readyState === "ended") {
+      if (signal?.aborted || track.readyState === "ended" || iceFailed) {
         return false;
       }
       const sample = readH264ProbeSample(

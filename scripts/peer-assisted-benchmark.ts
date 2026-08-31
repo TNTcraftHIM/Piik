@@ -34,6 +34,7 @@ import {
 const PROFILE_SETTINGS = QUALITY_PROFILES;
 type ProfileId = QualityProfileId;
 type PageRole = "host" | "viewer";
+export type BenchmarkCodecMode = "vp8" | "auto" | "h264";
 export type BenchmarkCanaryMode = "none" | "viewer-mbb";
 
 const ROUTE_TIMING_KEYS = [
@@ -74,6 +75,7 @@ export interface BenchmarkConfig {
   viewerCounts: number[];
   expectedEndpointCap: number;
   profileId: ProfileId;
+  codecMode: BenchmarkCodecMode;
   durationMs: number;
   settleMs: number;
   sampleIntervalMs: number;
@@ -109,6 +111,15 @@ interface ConnectionObservation {
   error?: string;
 }
 
+export interface PagePerformanceSample {
+  timestampSeconds: number;
+  taskDurationSeconds: number;
+  scriptDurationSeconds: number;
+  layoutDurationSeconds: number;
+  recalcStyleDurationSeconds: number;
+  jsHeapUsedBytes: number;
+}
+
 interface PageObservation {
   label: string;
   role: PageRole;
@@ -117,6 +128,7 @@ interface PageObservation {
   peerId: string | null;
   authenticatedAtEpochMs: number | null;
   authenticateSentAtEpochMs: number | null;
+  shareRequestedAtEpochMs?: number | null;
   signalingConnected: boolean;
   qualitySettings: QualitySettings | null;
   routeRevision: number | null;
@@ -127,6 +139,7 @@ interface PageObservation {
   firstRenderedAtEpochMs: number | null;
   renderedFrames: number;
   connections: ConnectionObservation[];
+  performance?: PagePerformanceSample | null;
 }
 
 interface FailurePageEvidence {
@@ -217,7 +230,7 @@ interface BenchmarkRun {
 }
 
 interface BenchmarkReport {
-  schemaVersion: 3;
+  schemaVersion: 4;
   startedAt: string;
   completedAt: string | null;
   gitCommit: string | null;
@@ -563,6 +576,14 @@ export function parseBenchmarkCanaryMode(value: string | undefined): BenchmarkCa
   throw new Error("BENCHMARK_CANARY must be none or viewer-mbb");
 }
 
+export function parseBenchmarkCodecMode(
+  value: string | undefined,
+): BenchmarkCodecMode {
+  const mode = value?.trim().toLowerCase() || "auto";
+  if (mode === "vp8" || mode === "auto" || mode === "h264") return mode;
+  throw new Error("BENCHMARK_CODEC_MODE must be vp8, auto, or h264");
+}
+
 export function parseExpectedEndpointCap(value: string | undefined): number {
   const parsed = value?.trim()
     ? Number(value)
@@ -626,6 +647,7 @@ export function parseBenchmarkConfig(
       environment.BENCHMARK_EXPECTED_ENDPOINT_CAP,
     ),
     profileId,
+    codecMode: parseBenchmarkCodecMode(environment.BENCHMARK_CODEC_MODE),
     durationMs:
       parseNumber(
         environment.BENCHMARK_DURATION_SECONDS,
@@ -828,6 +850,51 @@ function inspectSfuPublication(pages: readonly PageObservation[]) {
   return { observed: true, rootCount: sfuViewers.length, coherent };
 }
 
+const PAGE_PERFORMANCE_METRICS = {
+  Timestamp: "timestampSeconds",
+  TaskDuration: "taskDurationSeconds",
+  ScriptDuration: "scriptDurationSeconds",
+  LayoutDuration: "layoutDurationSeconds",
+  RecalcStyleDuration: "recalcStyleDurationSeconds",
+  JSHeapUsedSize: "jsHeapUsedBytes",
+} as const satisfies Record<string, keyof PagePerformanceSample>;
+
+export function parsePagePerformanceMetrics(
+  rawMetrics: unknown,
+): PagePerformanceSample | null {
+  if (!Array.isArray(rawMetrics)) return null;
+  const values = new Map<keyof PagePerformanceSample, number>();
+  for (const raw of rawMetrics) {
+    if (!raw || typeof raw !== "object") continue;
+    const { name, value } = raw as Record<string, unknown>;
+    if (
+      typeof name !== "string" ||
+      !Object.hasOwn(PAGE_PERFORMANCE_METRICS, name)
+    ) {
+      continue;
+    }
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+      return null;
+    }
+    const key = PAGE_PERFORMANCE_METRICS[
+      name as keyof typeof PAGE_PERFORMANCE_METRICS
+    ];
+    if (values.has(key)) return null;
+    values.set(key, value);
+  }
+  if (values.size !== Object.keys(PAGE_PERFORMANCE_METRICS).length) {
+    return null;
+  }
+  return {
+    timestampSeconds: values.get("timestampSeconds")!,
+    taskDurationSeconds: values.get("taskDurationSeconds")!,
+    scriptDurationSeconds: values.get("scriptDurationSeconds")!,
+    layoutDurationSeconds: values.get("layoutDurationSeconds")!,
+    recalcStyleDurationSeconds: values.get("recalcStyleDurationSeconds")!,
+    jsHeapUsedBytes: values.get("jsHeapUsedBytes")!,
+  };
+}
+
 export function summarizeSamples(samples: TimedSample[], viewerCount: number) {
   let maxHostActiveMediaEdges = 0;
   let maxHostAssignedChildren = 0;
@@ -939,6 +1006,14 @@ export function summarizeSamples(samples: TimedSample[], viewerCount: number) {
       ? []
       : [frame.decodedAfterAuthenticateMs],
   );
+  const finalHost = finalPages.find((page) => page.role === "host");
+  const shareToAuthenticateMs =
+    finalHost?.shareRequestedAtEpochMs !== null &&
+    finalHost?.shareRequestedAtEpochMs !== undefined &&
+    finalHost.authenticateSentAtEpochMs !== null
+      ? finalHost.authenticateSentAtEpochMs -
+        finalHost.shareRequestedAtEpochMs
+      : null;
   return {
     maxHostActiveMediaEdges,
     maxHostAssignedChildren,
@@ -951,12 +1026,16 @@ export function summarizeSamples(samples: TimedSample[], viewerCount: number) {
     firstFrames,
     maxFirstDecodedAfterAuthenticateMs:
       decodedDelays.length === viewerCount ? Math.max(...decodedDelays) : null,
+    hostStartup: {
+      shareToAuthenticateMs,
+    },
     senderEvidence: {
       scope: "connected outbound video with stable page, connection, and RTP identities",
       host: summarizeSenderEvidence(samples, "host"),
       relay: summarizeSenderEvidence(samples, "viewer"),
     },
     browserProcessResources: summarizeBrowserProcessResources(samples),
+    pageRuntimeResources: summarizePageRuntimeResources(samples),
     finalTopology: finalPages.map((page) => ({
       label: page.label,
       role: page.role,
@@ -1007,11 +1086,19 @@ function numericSummary(values: number[]) {
 function summarizeSenderEvidence(samples: TimedSample[], role: PageRole) {
   const identities = new Set<string>();
   const bitrateKbps: number[] = [], framesPerSecond: number[] = [];
+  const captureFramesPerSecond: number[] = [];
+  const mediaSourceFramesPerSecond: number[] = [];
   const availableOutgoingKbps: number[] = [];
   const resolutions = new Set<string>();
+  const codecs = new Set<string>();
+  const encoderImplementations = new Set<string>();
+  const scalabilityModes = new Set<string>();
   const qualityLimitationReasonSamples: Record<string, number> = {};
   let unknownIdentitySamples = 0;
   let unknownQualityLimitationSamples = 0;
+  let powerEfficientEncoderTrueSamples = 0;
+  let powerEfficientEncoderFalseSamples = 0;
+  let powerEfficientEncoderUnknownSamples = 0;
   let encodeIntervalCount = 0, framesEncoded = 0, encodeTimeMs = 0;
   const finite = (value: unknown): value is number =>
     typeof value === "number" && Number.isFinite(value);
@@ -1028,8 +1115,20 @@ function summarizeSenderEvidence(samples: TimedSample[], role: PageRole) {
         identities.add(`${page.label}:${connection.createdAtEpochMs}:${connection.connectionId ?? connection.index}:${rtpStatsId}`);
         if (finite(connection.send.bitrateKbps)) bitrateKbps.push(connection.send.bitrateKbps);
         if (finite(connection.send.framesPerSecond)) framesPerSecond.push(connection.send.framesPerSecond);
+        if (finite(connection.send.captureFramesPerSecond)) captureFramesPerSecond.push(connection.send.captureFramesPerSecond);
+        if (finite(connection.send.mediaSourceFramesPerSecond)) mediaSourceFramesPerSecond.push(connection.send.mediaSourceFramesPerSecond);
         if (finite(connection.send.availableOutgoingKbps)) availableOutgoingKbps.push(connection.send.availableOutgoingKbps);
         if (typeof connection.send.resolution === "string" && /^\d+x\d+$/.test(connection.send.resolution)) resolutions.add(connection.send.resolution);
+        if (typeof connection.send.codec === "string" && connection.send.codec.length > 0) codecs.add(connection.send.codec);
+        if (typeof connection.send.encoderImplementation === "string" && connection.send.encoderImplementation.length > 0) encoderImplementations.add(connection.send.encoderImplementation);
+        if (typeof connection.send.scalabilityMode === "string" && connection.send.scalabilityMode.length > 0) scalabilityModes.add(connection.send.scalabilityMode);
+        if (connection.send.powerEfficientEncoder === true) {
+          powerEfficientEncoderTrueSamples += 1;
+        } else if (connection.send.powerEfficientEncoder === false) {
+          powerEfficientEncoderFalseSamples += 1;
+        } else {
+          powerEfficientEncoderUnknownSamples += 1;
+        }
         const reason = connection.send.qualityLimitationReason;
         if (typeof reason === "string" && reason.length > 0) {
           qualityLimitationReasonSamples[reason] = (qualityLimitationReasonSamples[reason] ?? 0) + 1;
@@ -1051,7 +1150,21 @@ function summarizeSenderEvidence(samples: TimedSample[], role: PageRole) {
     unknownIdentitySamples,
     bitrateKbps: numericSummary(bitrateKbps),
     framesPerSecond: numericSummary(framesPerSecond),
+    captureFramesPerSecond: numericSummary(captureFramesPerSecond),
+    mediaSourceFramesPerSecond: numericSummary(mediaSourceFramesPerSecond),
     resolutions: resolutions.size > 0 ? [...resolutions].sort() : null,
+    codecs: codecs.size > 0 ? [...codecs].sort() : null,
+    encoderImplementations:
+      encoderImplementations.size > 0
+        ? [...encoderImplementations].sort()
+        : null,
+    scalabilityModes:
+      scalabilityModes.size > 0 ? [...scalabilityModes].sort() : null,
+    powerEfficientEncoderSamples: {
+      true: powerEfficientEncoderTrueSamples,
+      false: powerEfficientEncoderFalseSamples,
+      unknown: powerEfficientEncoderUnknownSamples,
+    },
     availableOutgoingKbps: numericSummary(availableOutgoingKbps),
     encodeIntervals: {
       sampleCount: encodeIntervalCount,
@@ -1106,6 +1219,141 @@ function summarizeBrowserProcessResources(samples: TimedSample[]) {
       ? (measuredCpuTimeSeconds / measuredWallTimeSeconds) * 100 : null,
     peakIntervalCpuUtilizationPercent,
     peakResidentSetBytes: null,
+  };
+}
+
+type PageRuntimeRole = "host" | "viewer" | "relay";
+
+interface PageRuntimeAccumulator {
+  validIntervals: number;
+  invalidIntervals: number;
+  wallSeconds: number;
+  taskSeconds: number;
+  scriptSeconds: number;
+  layoutSeconds: number;
+  recalcStyleSeconds: number;
+  peakTaskUtilizationPercent: number | null;
+  peakJsHeapUsedBytes: number | null;
+}
+
+function pageRuntimeRole(page: PageObservation): PageRuntimeRole {
+  if (page.role === "host") return "host";
+  return activeVideoEdgeCount(page, "send") > 0 ? "relay" : "viewer";
+}
+
+function emptyPageRuntimeAccumulator(): PageRuntimeAccumulator {
+  return {
+    validIntervals: 0,
+    invalidIntervals: 0,
+    wallSeconds: 0,
+    taskSeconds: 0,
+    scriptSeconds: 0,
+    layoutSeconds: 0,
+    recalcStyleSeconds: 0,
+    peakTaskUtilizationPercent: null,
+    peakJsHeapUsedBytes: null,
+  };
+}
+
+function finishPageRuntime(accumulator: PageRuntimeAccumulator) {
+  return {
+    validIntervals: accumulator.validIntervals,
+    invalidIntervals: accumulator.invalidIntervals,
+    measuredWallTimeSeconds:
+      accumulator.validIntervals > 0 ? accumulator.wallSeconds : null,
+    taskTimeSeconds:
+      accumulator.validIntervals > 0 ? accumulator.taskSeconds : null,
+    averageTaskUtilizationPercent:
+      accumulator.wallSeconds > 0
+        ? (accumulator.taskSeconds / accumulator.wallSeconds) * 100
+        : null,
+    peakTaskUtilizationPercent: accumulator.peakTaskUtilizationPercent,
+    scriptTimeSeconds:
+      accumulator.validIntervals > 0 ? accumulator.scriptSeconds : null,
+    layoutTimeSeconds:
+      accumulator.validIntervals > 0 ? accumulator.layoutSeconds : null,
+    recalcStyleTimeSeconds:
+      accumulator.validIntervals > 0
+        ? accumulator.recalcStyleSeconds
+        : null,
+    peakJsHeapUsedBytes: accumulator.peakJsHeapUsedBytes,
+  };
+}
+
+export function summarizePageRuntimeResources(samples: TimedSample[]) {
+  const accumulators: Record<PageRuntimeRole, PageRuntimeAccumulator> = {
+    host: emptyPageRuntimeAccumulator(),
+    viewer: emptyPageRuntimeAccumulator(),
+    relay: emptyPageRuntimeAccumulator(),
+  };
+  for (const sample of samples) {
+    for (const page of sample.pages) {
+      const heap = page.performance?.jsHeapUsedBytes;
+      if (heap === undefined) continue;
+      const accumulator = accumulators[pageRuntimeRole(page)];
+      accumulator.peakJsHeapUsedBytes = Math.max(
+        accumulator.peakJsHeapUsedBytes ?? 0,
+        heap,
+      );
+    }
+  }
+  for (let index = 1; index < samples.length; index += 1) {
+    const previous = samples[index - 1]!;
+    const current = samples[index]!;
+    const previousPages = new Map(
+      previous.pages.map((page) => [page.label, page]),
+    );
+    for (const page of current.pages) {
+      const role = pageRuntimeRole(page);
+      const accumulator = accumulators[role];
+      const before = previousPages.get(page.label)?.performance;
+      const after = page.performance;
+      if (!before && !after) continue;
+      const wallSeconds =
+        before && after
+          ? after.timestampSeconds - before.timestampSeconds
+          : null;
+      const deltas = before && after
+        ? {
+            task: after.taskDurationSeconds - before.taskDurationSeconds,
+            script: after.scriptDurationSeconds - before.scriptDurationSeconds,
+            layout: after.layoutDurationSeconds - before.layoutDurationSeconds,
+            recalc:
+              after.recalcStyleDurationSeconds -
+              before.recalcStyleDurationSeconds,
+          }
+        : null;
+      if (
+        wallSeconds === null ||
+        !Number.isFinite(wallSeconds) ||
+        wallSeconds <= 0 ||
+        !deltas ||
+        Object.values(deltas).some(
+          (value) => !Number.isFinite(value) || value < 0,
+        )
+      ) {
+        accumulator.invalidIntervals += 1;
+        continue;
+      }
+      accumulator.validIntervals += 1;
+      accumulator.wallSeconds += wallSeconds;
+      accumulator.taskSeconds += deltas.task;
+      accumulator.scriptSeconds += deltas.script;
+      accumulator.layoutSeconds += deltas.layout;
+      accumulator.recalcStyleSeconds += deltas.recalc;
+      accumulator.peakTaskUtilizationPercent = Math.max(
+        accumulator.peakTaskUtilizationPercent ?? 0,
+        (deltas.task / wallSeconds) * 100,
+      );
+    }
+  }
+  return {
+    source: "CDP Performance.getMetrics",
+    scope:
+      "Host plus one representative plain Viewer and relay per sample; relay means a Viewer page with active outbound video",
+    host: finishPageRuntime(accumulators.host),
+    viewer: finishPageRuntime(accumulators.viewer),
+    relay: finishPageRuntime(accumulators.relay),
   };
 }
 
@@ -1218,6 +1466,7 @@ export function buildBenchmarkInitScript(options: {
       peerId: null,
       authenticatedAtEpochMs: null,
       authenticateSentAtEpochMs: null,
+      shareRequestedAtEpochMs: null,
       signalingConnected: false,
       qualitySettings: null,
       routeRevision: null,
@@ -1735,9 +1984,12 @@ export function buildBenchmarkInitScript(options: {
     function sendViewerQualityEvidence(message) {
       return message?.type === "viewer-quality-evidence" && sendCanaryMessage(message);
     }
+    function markShareRequested() {
+      state.shareRequestedAtEpochMs = Date.now();
+    }
     Object.defineProperty(globalThis, "__SCREENER_BENCHMARK__", {
       configurable: false,
-      value: { sample, progress, snapshot, canarySnapshot, sendViewerQualityEvidence, requestRouteDiagnosticSnapshot, routeDiagnosticTimingSamples, stop: () => clearInterval(videoObserver) },
+      value: { sample, progress, snapshot, canarySnapshot, sendViewerQualityEvidence, markShareRequested, requestRouteDiagnosticSnapshot, routeDiagnosticTimingSamples, stop: () => clearInterval(videoObserver) },
     });
   })();`;
 }
@@ -1883,6 +2135,7 @@ export async function createPage(
     await Promise.all([
       cdp.call("Page.enable", {}, page.sessionId),
       cdp.call("Runtime.enable", {}, page.sessionId),
+      cdp.call("Performance.enable", {}, page.sessionId),
     ]);
     await cdp.call(
       "Page.addScriptToEvaluateOnNewDocument",
@@ -2012,6 +2265,7 @@ async function startHost(
   cdp: CdpConnection,
   page: PageHandle,
   profileId: ProfileId,
+  codecMode: BenchmarkCodecMode,
   timeoutMs: number,
   signal: AbortSignal,
 ): Promise<PageObservation> {
@@ -2024,6 +2278,40 @@ async function startHost(
     "host controls",
     signal,
   );
+  if (codecMode !== "auto") {
+    await evaluate(
+      cdp,
+      page,
+      `(() => {
+        const advanced = document.querySelector('button[aria-controls="host-advanced-door"]');
+        if (!(advanced instanceof HTMLButtonElement)) throw new Error('Advanced settings button missing');
+        advanced.click();
+        return true;
+      })()`,
+    );
+    await waitForPage(
+      cdp,
+      page,
+      `Array.from(document.querySelectorAll('#host-advanced-door button')).some(
+        (button) => button instanceof HTMLButtonElement && button.getAttribute('aria-label')?.startsWith('${codecMode.toUpperCase()}')
+      )`,
+      5_000,
+      `${codecMode} codec control`,
+      signal,
+    );
+    await evaluate(
+      cdp,
+      page,
+      `(() => {
+        const button = Array.from(document.querySelectorAll('#host-advanced-door button')).find(
+          (candidate) => candidate instanceof HTMLButtonElement && candidate.getAttribute('aria-label')?.startsWith('${codecMode.toUpperCase()}')
+        );
+        if (!(button instanceof HTMLButtonElement)) throw new Error('Codec mode button missing');
+        button.click();
+        return true;
+      })()`,
+    );
+  }
   await evaluate(
     cdp,
     page,
@@ -2034,6 +2322,7 @@ async function startHost(
       profile.click();
       const start = document.querySelector('.lr-entry-actions button.lr-tv-big.is-action[aria-label]');
       if (!(start instanceof HTMLButtonElement)) throw new Error('Start button missing');
+      globalThis.__SCREENER_BENCHMARK__.markShareRequested();
       start.click();
       return true;
     })()`,
@@ -2115,16 +2404,52 @@ async function samplePages(
   startedAtMs: number,
 ): Promise<TimedSample> {
   const atEpochMs = Date.now();
-  const [observations, browserProcesses] = await Promise.all([
-    Promise.all(pages.map((page) => detailedSample(cdp, page))),
-    sampleBrowserProcesses(cdp),
-  ]);
+  const browserProcessesPromise = sampleBrowserProcesses(cdp);
+  const observations: PageObservation[] = [];
+  let sampledViewerRuntime = false;
+  let sampledRelayRuntime = false;
+  for (const page of pages) {
+    let observation: PageObservation;
+    try {
+      observation = await detailedSample(cdp, page);
+    } catch (error) {
+      throw new Error(`${page.label} sample failed: ${errorMessage(error)}`);
+    }
+    const runtimeRole = pageRuntimeRole(observation);
+    const sampleRuntime: boolean =
+      runtimeRole === "host" ||
+      (runtimeRole === "viewer" && !sampledViewerRuntime) ||
+      (runtimeRole === "relay" && !sampledRelayRuntime);
+    const performance = sampleRuntime
+      ? await samplePagePerformance(cdp, page)
+      : null;
+    sampledViewerRuntime ||= runtimeRole === "viewer" && sampleRuntime;
+    sampledRelayRuntime ||= runtimeRole === "relay" && sampleRuntime;
+    observations.push({ ...observation, performance });
+  }
+  const browserProcesses = await browserProcessesPromise;
   return {
     atEpochMs,
     elapsedMs: atEpochMs - startedAtMs,
     pages: observations,
     browserProcesses,
   };
+}
+
+async function samplePagePerformance(
+  cdp: CdpConnection,
+  page: PageHandle,
+): Promise<PagePerformanceSample | null> {
+  try {
+    const result = await cdp.call<{ metrics: unknown }>(
+      "Performance.getMetrics",
+      {},
+      page.sessionId,
+    );
+    return parsePagePerformanceMetrics(result.metrics);
+  } catch {
+    return null;
+  }
 }
 
 async function sampleBrowserProcesses(cdp: CdpConnection): Promise<BrowserProcessSample | null> {
@@ -2753,6 +3078,7 @@ async function runCase(
       cdp,
       hostPage,
       config.profileId,
+      config.codecMode,
       config.connectionTimeoutMs,
       signal,
     );
@@ -2997,7 +3323,7 @@ export async function main(): Promise<number> {
   const profile = PROFILE_SETTINGS[config.profileId];
   const profileResolution = QUALITY_RESOLUTIONS[profile.resolution];
   const report: BenchmarkReport = {
-    schemaVersion: 3,
+    schemaVersion: 4,
     startedAt: new Date().toISOString(),
     completedAt: null,
     gitCommit: await gitCommit(),
@@ -3012,6 +3338,7 @@ export async function main(): Promise<number> {
       viewerCounts: config.viewerCounts,
       expectedEndpointCap: config.expectedEndpointCap,
       profileId: config.profileId,
+      codecMode: config.codecMode,
       durationMs: config.durationMs,
       settleMs: config.settleMs,
       sampleIntervalMs: config.sampleIntervalMs,
