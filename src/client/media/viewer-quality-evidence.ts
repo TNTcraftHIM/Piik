@@ -460,6 +460,19 @@ export function freshViewerQualityEvidence(
   return presentation?.fresh ? presentation.evidence : null;
 }
 
+export function retainPresentViewerQualityEvidence(
+  presentations: Map<string, ViewerQualityEvidencePresentation>,
+  presentPeerIds: ReadonlySet<string>,
+): Map<string, ViewerQualityEvidencePresentation> {
+  let retained: Map<string, ViewerQualityEvidencePresentation> | null = null;
+  for (const peerId of presentations.keys()) {
+    if (presentPeerIds.has(peerId)) continue;
+    retained ??= new Map(presentations);
+    retained.delete(peerId);
+  }
+  return retained ?? presentations;
+}
+
 export function classifyHostViewerQualityEvidence(
   evidence: ViewerQualityEvidence,
   hostPeerId: string | null,

@@ -2216,6 +2216,100 @@ describe("WebSocket signaling", () => {
     });
   });
 
+  it("marks an ordinary Host edge ready after its exact SDP handshake", async () => {
+    const harness = await startHarness({ peerAssistedMedia: false });
+    const host = await openClient(harness.webSocketUrl);
+    const hostAuth = await authenticate(
+      host,
+      harness.room,
+      "host",
+      "ordinary-ready-host",
+      1,
+      undefined,
+      { viewerPresence: true },
+    );
+    await host.inbox.next("viewer-presence");
+    const viewer = await openClient(harness.webSocketUrl);
+    const viewerAuth = await authenticate(
+      viewer,
+      harness.room,
+      "viewer",
+      "ordinary-ready-viewer",
+      1,
+      undefined,
+      { viewerPresence: true },
+    );
+    expect((await host.inbox.next("peer-joined")).peerId).toBe(
+      viewerAuth.peerId,
+    );
+    const assigned = await nextViewerPresenceMatching(
+      host,
+      (message) =>
+        viewerPresenceEntries(message).some(
+          (entry) => entry.peerId === viewerAuth.peerId,
+        ),
+    );
+    expect(viewerPresenceEntries(assigned)[0]).not.toHaveProperty("mediaReady");
+
+    const connectionId = "ordinary_ready_connection_12345678";
+    host.socket.send(
+      JSON.stringify({
+        type: "signal",
+        targetPeerId: viewerAuth.peerId,
+        payload: {
+          kind: "description",
+          connectionId,
+          description: { type: "offer", sdp: "v=0\r\n" },
+        },
+      }),
+    );
+    expect(await viewer.inbox.next("signal")).toMatchObject({
+      fromPeerId: hostAuth.peerId,
+      payload: { connectionId, description: { type: "offer" } },
+    });
+    host.socket.send(
+      JSON.stringify({
+        type: "set-display-name",
+        displayName: "等待应答",
+      }),
+    );
+    const offered = await nextViewerPresenceMatching(
+      host,
+      (message) =>
+        viewerPresenceEntries(message).some(
+          (entry) => entry.peerId === viewerAuth.peerId,
+        ),
+    );
+    expect(viewerPresenceEntries(offered)[0]).not.toHaveProperty("mediaReady");
+    viewer.socket.send(
+      JSON.stringify({
+        type: "signal",
+        payload: {
+          kind: "description",
+          connectionId,
+          description: { type: "answer", sdp: "v=0\r\n" },
+        },
+      }),
+    );
+    expect(await host.inbox.next("signal")).toMatchObject({
+      fromPeerId: viewerAuth.peerId,
+      payload: { connectionId, description: { type: "answer" } },
+    });
+    const ready = await nextViewerPresenceMatching(
+      host,
+      (message) =>
+        viewerPresenceEntries(message).some(
+          (entry) =>
+            entry.peerId === viewerAuth.peerId && entry.mediaReady === true,
+        ),
+    );
+    expect(viewerPresenceEntries(ready)[0]).toMatchObject({
+      peerId: viewerAuth.peerId,
+      upstream: { kind: "peer", peerId: hostAuth.peerId },
+      mediaReady: true,
+    });
+  });
+
   it("binds new-share quality and preserves active-share quality across reconnect", async () => {
     const harness = await startHarness({ peerAssistedMedia: true });
     const initialSettings: QualitySettings = {

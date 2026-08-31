@@ -134,6 +134,7 @@ import {
   qualityEvidenceUpstreamMatches,
   reconcileViewerQualityEvidencePresentation,
   refreshViewerQualityEvidencePresentation,
+  retainPresentViewerQualityEvidence,
   type ViewerQualityEvidencePresentation,
 } from "../media/viewer-quality-evidence";
 import type {
@@ -436,6 +437,9 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   >(() => new Map());
   const [noticeValue, setNoticeValue] = useState<NoticeValue | null>(null);
   const [noticeComic, setNoticeComic] = useState<ComicKind | null>(null);
+  const [hostSfuQualityWarning, setHostSfuQualityWarning] = useState<
+    string | null
+  >(null);
   function setNotice(value: string | null, comic: ComicKind | null = null): void {
     setNoticeValue(value ? { kind: "text", text: value } : null);
     setNoticeComic(comic);
@@ -729,6 +733,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   function clearHostSfuRoute(): void {
     const route = hostSfuRouteRef.current;
     hostSfuRouteRef.current = null;
+    setHostSfuQualityWarning(null);
     sfuStandbyPrewarmerRef.current?.setUrl(null);
     void route?.disconnect();
   }
@@ -742,19 +747,19 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     sfuStandbyPrewarmerRef.current.setUrl(url);
   }
 
-  function showHostSfuQualityWarning(
+  function syncHostSfuQualityWarning(
     route: HostSfuRoute,
     generation: number,
-  ): void {
+  ): string | null {
     if (
-      isCurrentGeneration(generation) &&
-      hostSfuRouteRef.current === route
+      !isCurrentGeneration(generation) ||
+      hostSfuRouteRef.current !== route
     ) {
-      const warning = route.getQualityWarning();
-      if (warning) {
-        setNotice(warning, "route-failed");
-      }
+      return null;
     }
+    const warning = route.getQualityWarning();
+    setHostSfuQualityWarning(warning);
+    return warning;
   }
 
   function disposeResources(notifyServer: boolean): void {
@@ -765,6 +770,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     codecProbeAbortRef.current = null;
     videoCodecRef.current = VP8_ONLY_VIDEO_CODEC;
     setResolvedVideoCodec(null);
+    setHostSfuQualityWarning(null);
     const signal = signalRef.current;
     if (signal) {
       if (notifyServer) {
@@ -1032,6 +1038,30 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     commitViewerQualityEvidence(peerId, null);
   }
 
+  function retainViewerQualityEvidenceForPresence(
+    entries: readonly ParticipantPresenceEntry[],
+  ): void {
+    const presentPeerIds = new Set(
+      entries
+        .filter((entry) => entry.role === "viewer")
+        .map((entry) => entry.peerId),
+    );
+    const current = viewerQualityEvidenceRef.current;
+    const retained = retainPresentViewerQualityEvidence(
+      current,
+      presentPeerIds,
+    );
+    if (retained === current) return;
+    for (const peerId of current.keys()) {
+      if (retained.has(peerId)) continue;
+      const timer = viewerQualityEvidenceTimersRef.current.get(peerId);
+      if (timer !== undefined) window.clearTimeout(timer);
+      viewerQualityEvidenceTimersRef.current.delete(peerId);
+    }
+    viewerQualityEvidenceRef.current = retained;
+    setViewerQualityEvidence(retained);
+  }
+
   function acceptViewerQualityEvidence(evidence: ViewerQualityEvidence): void {
     const peer = peersRef.current.get(evidence.viewerPeerId);
     const directSnapshot = peer?.getSnapshot() ?? null;
@@ -1211,14 +1241,13 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       ) {
         const failed = results.filter((updated) => !updated).length;
         const sfuWarning =
-          hostSfuRouteRef.current === activeSfuRoute
-            ? (activeSfuRoute?.getQualityWarning() ?? null)
+          activeSfuRoute && hostSfuRouteRef.current === activeSfuRoute
+            ? syncHostSfuQualityWarning(activeSfuRoute, generation)
             : null;
         const connectionWarning =
           failed > 0 || !sfuUpdated
             ? say("host.notice.partialApply")
             : null;
-        const warning = sfuWarning ?? connectionWarning;
         const successNotice =
           audioChanged && !videoChanged
             ? say("host.notice.audioSet", { label: say(AUDIO_QUALITY_CAPTIONS[resolveScreenAudioQuality(nextProfile.screenAudioQuality)]) })
@@ -1227,7 +1256,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
               : say("host.notice.qualitySet", {
                   label: qualitySettingsLabel(nextProfile),
                 });
-        setNotice(warning || successNotice);
+        setNotice(connectionWarning ?? (sfuWarning ? null : successNotice));
       }
     } catch (error) {
       if (
@@ -1676,7 +1705,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
             if (reauthenticated && hostSfuRouteRef.current === route) {
               await route.updateProfile(currentQualitySettings);
             }
-            showHostSfuQualityWarning(route, generation);
+            syncHostSfuQualityWarning(route, generation);
           });
         return;
       }
@@ -1687,6 +1716,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       return;
     }
     if (message.type === "viewer-presence") {
+      retainViewerQualityEvidenceForPresence(message.viewers);
       setParticipantPresence(message.viewers);
       return;
     }
@@ -1732,7 +1762,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         ) {
           activeRouteRevisionRef.current = message.revision;
         }
-        showHostSfuQualityWarning(route, generation);
+        syncHostSfuQualityWarning(route, generation);
       }
       return;
     }
@@ -1745,7 +1775,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         const route = ensureHostSfuRoute(generation);
         void route
           .acceptConfig(message)
-          .then(() => showHostSfuQualityWarning(route, generation));
+          .then(() => syncHostSfuQualityWarning(route, generation));
       }
       return;
     }
@@ -2183,7 +2213,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       }
       const sfuWarning =
         activeSfuRoute && hostSfuRouteRef.current === activeSfuRoute
-          ? activeSfuRoute.getQualityWarning()
+          ? syncHostSfuQualityWarning(activeSfuRoute, generation)
           : null;
       previousStream.getTracks().forEach((track) => track.stop());
       if (retiringStreamRef.current === previousStream) {
@@ -2216,13 +2246,18 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         isCurrentGeneration(generation) &&
         sourceSwitchRef.current === token
       ) {
+        const sourceNotice =
+          sfuReplaced && sfuWarning && failedPeerIds.length === 0
+            ? null
+            : sourceSwitchNotice({
+                failedPeerCount: failedPeerIds.length,
+                sfuReplaced,
+                sfuWarning: null,
+              });
         setNotice(
-          sourceSwitchNotice({
-            failedPeerCount: failedPeerIds.length,
-            sfuReplaced,
-            sfuWarning,
-          }),
-          sfuWarning || !sfuReplaced || failedPeerIds.length > 0
+          sourceNotice,
+          sourceNotice &&
+            (sfuWarning || !sfuReplaced || failedPeerIds.length > 0)
             ? "warning"
             : null,
         );
@@ -2895,6 +2930,14 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                         ? "encoder-limited"
                         : "warning"
                   }
+                />
+              ) : null}
+              {hostSfuQualityWarning &&
+              hostSfuQualityWarning !== noticeText ? (
+                <Pill
+                  icon="alert"
+                  label={hostSfuQualityWarning}
+                  comic="route-failed"
                 />
               ) : null}
               {noticeText && (vis || noticeText !== phaseLine) ? (
