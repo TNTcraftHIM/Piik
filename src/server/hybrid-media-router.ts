@@ -1,6 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { debuglog } from "node:util";
 
+import { packetLossPercentFromDeltas } from "../shared/packet-loss.js";
+
 import type {
   ClientMessage,
   MediaRouteUpstream,
@@ -9,6 +11,7 @@ import type {
   RoutePolicy,
   Role,
   ServerMessage,
+  ViewerQualityEvidenceMetrics,
 } from "../shared/protocol.js";
 import { assertEndpointMediaCopyCapacity } from "../shared/media-copy-accounting.js";
 import type { SfuTokenIssuer } from "./livekit-token.js";
@@ -305,7 +308,10 @@ export class HybridMediaRouter {
   }
 
   observeQualityEvidence(
-    input: RouteQualityEvidenceInput & { roomId: string },
+    input: Omit<RouteQualityEvidenceInput, "metrics"> & {
+      roomId: string;
+      metrics: ViewerQualityEvidenceMetrics;
+    },
   ): RouteQualityEvidenceResult {
     const { roomId, ...evidence } = input;
     const result =
@@ -325,6 +331,14 @@ export class HybridMediaRouter {
         framesDecoded: input.metrics.framesDecodedDelta,
         freezes: input.metrics.freezeCountDelta,
         pauses: input.metrics.pauseCountDelta,
+        packetsReceivedDelta: input.metrics.packetsReceivedDelta,
+        packetsLostDelta: input.metrics.packetsLostDelta,
+        packetLossPercent: packetLossPercentFromDeltas(
+          input.metrics.packetsReceivedDelta,
+          input.metrics.packetsLostDelta,
+        ),
+        rttMs: input.metrics.rttMs,
+        jitterMs: input.metrics.jitterMs,
       });
     }
     return result;
