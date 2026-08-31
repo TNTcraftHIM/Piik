@@ -26,6 +26,7 @@ import {
   summarizeBenchmarkRouteTiming,
   summarizePageRuntimeResources,
   summarizeSamples,
+  summarizeViewerExperienceByDepth,
 } from "../scripts/peer-assisted-benchmark";
 import { MAX_VIEWERS_PER_ROOM_LIMIT } from "../src/shared/protocol";
 import type {
@@ -849,6 +850,113 @@ describe("peer topology loopback observations", () => {
     expect(summary.host.scriptTimeSeconds).toBeCloseTo(0.15);
     expect(summary.host.layoutTimeSeconds).toBeCloseTo(0.02);
     expect(summary.host.recalcStyleTimeSeconds).toBeCloseTo(0.02);
+  });
+
+  it("groups exact committed receive quality by Peer depth and SFU route", () => {
+    const host = page("host", "host", 1, 0);
+    const root = page("viewer", "viewer-1", 1, 1);
+    const leaf = page("viewer", "viewer-2", 0, 1);
+    const sfu = page("viewer", "viewer-3", 0, 1);
+    const unresolved = page("viewer", "viewer-4", 0, 1);
+    root.routeAssignment.upstream = {
+      kind: "peer",
+      peerId: host.peerId,
+    };
+    leaf.routeAssignment.upstream = {
+      kind: "peer",
+      peerId: root.peerId,
+    };
+    sfu.routeAssignment = {
+      upstream: { kind: "sfu" },
+      childPeerIds: [],
+      sfuPublicationGeneration: "sfu-generation",
+    };
+    unresolved.routeAssignment.upstream = {
+      kind: "peer",
+      peerId: "missing-peer",
+    };
+    const receive = (
+      entry: ReturnType<typeof page>,
+      remotePeerId: string | null,
+      metrics: Record<string, unknown>,
+    ) => {
+      const connection = entry.connections.find(
+        (candidate) => candidate.hasInboundVideo,
+      )!;
+      connection.remotePeerId = remotePeerId;
+      connection.connectionId = remotePeerId ? connection.connectionId : null;
+      connection.receive = metrics;
+    };
+    receive(root, host.peerId, {
+      framesPerSecond: 30,
+      bitrateKbps: 3_000,
+      frameWidth: 1280,
+      frameHeight: 720,
+      intervalFreezeCount: 0,
+      intervalFreezeDurationMs: 0,
+      intervalDecodeMs: 2,
+      videoJitterBufferDelayMs: 20,
+      codec: "video/VP8",
+    });
+    receive(leaf, root.peerId, {
+      framesPerSecond: 20,
+      bitrateKbps: 1_800,
+      frameWidth: 960,
+      frameHeight: 540,
+      intervalFreezeCount: 1,
+      intervalFreezeDurationMs: 120,
+      intervalDecodeMs: 4,
+      videoJitterBufferDelayMs: 35,
+      codec: "video/VP8",
+    });
+    receive(sfu, null, {
+      framesPerSecond: 25,
+      bitrateKbps: 2_400,
+      frameWidth: 1280,
+      frameHeight: 720,
+      intervalFreezeCount: 0,
+      intervalFreezeDurationMs: 0,
+      codec: "video/H264",
+    });
+
+    const summary = summarizeViewerExperienceByDepth([
+      {
+        atEpochMs: 2_000,
+        elapsedMs: 0,
+        pages: [host, root, leaf, sfu, unresolved],
+      },
+    ]);
+    expect(summary.unresolvedRouteSamples).toBe(1);
+    expect(summary.cohorts).toMatchObject([
+      {
+        route: "peer",
+        depth: 1,
+        viewerCount: 1,
+        routeSampleCount: 1,
+        metricSampleCount: 1,
+        missingMetricSamples: 0,
+        framesPerSecond: { mean: 30 },
+        resolutions: ["1280x720"],
+        freezeCount: 0,
+      },
+      {
+        route: "peer",
+        depth: 2,
+        viewerCount: 1,
+        framesPerSecond: { mean: 20 },
+        resolutions: ["960x540"],
+        freezeWindows: 1,
+        freezeCount: 1,
+        freezeDurationMs: 120,
+      },
+      {
+        route: "sfu",
+        depth: null,
+        viewerCount: 1,
+        framesPerSecond: { mean: 25 },
+        codecs: ["video/H264"],
+      },
+    ]);
   });
 
   it("checks one endpoint cap for Host and Viewer senders", () => {

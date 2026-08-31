@@ -1,4 +1,10 @@
-import { useEffect, useState, type FormEvent } from "react";
+import {
+  Suspense,
+  lazy,
+  useEffect,
+  useState,
+  type FormEvent,
+} from "react";
 import {
   ApiError,
   authenticateSiteAccess,
@@ -6,9 +12,6 @@ import {
   type SiteAccessStatus,
 } from "./lib/api";
 import { parseAppRoute, readViewerRoute } from "./lib/session";
-import { HostPage } from "./pages/HostPage";
-import { JoinPage } from "./pages/JoinPage";
-import { ViewerPage } from "./pages/ViewerPage";
 import { AppHeader } from "./components/living/Header";
 import { BrandLoader } from "./components/living/BrandMark";
 import { Btn, Pill } from "./components/living/primitives";
@@ -18,6 +21,22 @@ import { useCopy } from "./ui/copy";
 
 const appRoute = parseAppRoute(window.location.pathname);
 const viewerRoute = appRoute.kind === "viewer" ? readViewerRoute() : null;
+const hostPageModule =
+  appRoute.kind === "host" ? import("./pages/HostPage") : null;
+const joinPageModule =
+  appRoute.kind === "join" ? import("./pages/JoinPage") : null;
+const viewerPageModule =
+  appRoute.kind === "viewer" ? import("./pages/ViewerPage") : null;
+const HostPage = lazy(async () => ({
+  default: (await (hostPageModule ?? import("./pages/HostPage"))).HostPage,
+}));
+const JoinPage = lazy(async () => ({
+  default: (await (joinPageModule ?? import("./pages/JoinPage"))).JoinPage,
+}));
+const ViewerPage = lazy(async () => ({
+  default: (await (viewerPageModule ?? import("./pages/ViewerPage")))
+    .ViewerPage,
+}));
 const SITE_ACCESS_RENEWAL_INTERVAL_MS = 60 * 60 * 1_000;
 
 type AccessState =
@@ -37,6 +56,14 @@ function readableError(error: unknown, t: (key: "gate.connectFailed") => string)
 }
 
 export function App() {
+  return (
+    <Suspense fallback={<RouteLoader />}>
+      <AppRoute />
+    </Suspense>
+  );
+}
+
+function AppRoute() {
   if (appRoute.kind === "viewer" && viewerRoute) {
     return viewerRoute.viewerGrant ? (
       <ViewerPage {...viewerRoute} />
@@ -54,6 +81,32 @@ export function App() {
     <StaticRoute icon="door" titleKey="gate.malformed" hintKey="gate.malformedHint" />
   ) : (
     <StaticRoute icon="alert" titleKey="gate.unavailableRoute" />
+  );
+}
+
+function RouteLoader() {
+  const { t, vis } = useCopy();
+  return (
+    <div className="lr-app">
+      <AppHeader />
+      <main className="lr-join">
+        <div
+          className="lr-loading"
+          role="status"
+          aria-label={t("gate.checking")}
+        >
+          <BrandLoader />
+          {vis ? null : (
+            <span
+              className="lr-tv-msg"
+              style={{ color: "var(--ink)", textShadow: "none" }}
+            >
+              {t("gate.checking")}
+            </span>
+          )}
+        </div>
+      </main>
+    </div>
   );
 }
 
