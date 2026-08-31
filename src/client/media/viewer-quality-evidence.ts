@@ -10,12 +10,12 @@ import {
   type ServerMessage,
   type ViewerQualityEvidenceMetrics,
 } from "../../shared/protocol";
+import { packetLossPercentFromDeltas } from "../../shared/packet-loss";
 import {
   EMPTY_METRICS,
   type ConnectionMetrics,
   type PeerSnapshot,
 } from "../types";
-import { packetLossPercentFromDeltas } from "../webrtc/stats";
 
 export type ViewerQualityEvidence = Extract<
   ServerMessage,
