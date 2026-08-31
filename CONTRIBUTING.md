@@ -19,9 +19,15 @@ Use this path only when the owner explicitly requests it or when closing a major
 2. Update only the single durable owner for changed semantics and any materially changed current snapshot. If semantics remain disputed, record a hold and stop dependent work.
 3. Implement and run repository hygiene, `npm run check`, the relevant browser/network gates, and review in proportion to the whole acceptance boundary.
 4. Merge an accepted truth checkpoint before dependent candidates. Rebase or rebuild a retained candidate from that exact `main` once, preserving main's owning truth on conflicts and transplanting only approved scoped code, tests, and new facts.
-5. Open the pull request, resolve required review/checks, merge, deploy when authorized, perform scoped postflight, then audit references and reparse safety before cleanup.
+5. Open the pull request, resolve required review/checks, squash-merge the coherent phase once, deploy that merged revision when authorized, perform scoped postflight, then audit references and reparse safety before cleanup.
 
-Prefer squash merge for one coherent change and preserve separate commits only when they carry independently useful history.
+One coherent phase should leave one meaningful squash commit on `main`. Include
+its source, tests, owned semantic documentation, and materially changed status
+snapshot in that boundary. Do not open a follow-up pull request whose only
+purpose is to copy the deployed revision, asset name, or artifact hashes into
+the repository. Exact deployment identity belongs to the immutable release
+descriptor, runtime `REVISION`, and deployment record. Preserve separate commits
+only when they carry independently useful history.
 
 Direct commits to `main` are reserved for an explicit user-approved exception. Never force-push shared branches or rewrite shared history without explicit approval.
 

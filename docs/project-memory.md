@@ -58,12 +58,13 @@ implementation and routine UI detail.
 Canonical source uses the strict `screener-v17` Browser/server contract with
 committed media readiness, bounded candidate-relative progress and one-shot
 Host-root convergence. It retains optional SQLite room authority and the
-H.264/VP8 sender gate. [Status](./status.md) owns exact source and production
-identity.
+H.264/VP8 sender gate. [Status](./status.md) owns the compact current execution
+snapshot rather than duplicating per-release identity.
 
 Current work is owned by the [TODO ledger](./todo.md). Open physical evidence is
 owned by [verification status](./verification-status.md). Environment and initial
 services are owned by [configuration](./reference/configuration.md) and
 [self-hosting](./operations/self-hosting.md); application release is owned by
-[deployment](./deployment.md).
+[deployment](./deployment.md), with exact deployed identity retained in the
+release descriptor and deployment record.
 Git history and pull requests own completed timelines.

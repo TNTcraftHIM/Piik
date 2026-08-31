@@ -477,6 +477,10 @@ export class HybridMediaRouter {
           message.diagnostics.mediaSourceFramesPerSecond ?? null,
         width: message.diagnostics.width ?? null,
         height: message.diagnostics.height ?? null,
+        videoEncodingCount:
+          message.diagnostics.videoEncodingCount ?? null,
+        activeVideoEncodingCount:
+          message.diagnostics.activeVideoEncodingCount ?? null,
         availableOutgoingKbps:
           message.diagnostics.availableOutgoingKbps ?? null,
         rttMs: message.diagnostics.rttMs ?? null,

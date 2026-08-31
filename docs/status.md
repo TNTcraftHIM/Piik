@@ -7,20 +7,13 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Production
 
-- `https://share.bonfire.icu` runs exact application/runtime revision
-  `718b30cd91a505918ea772ed0dd8075c6caa4232`, release `718b30c`, wire
-  `screener-v17`, from `/opt/screener/releases/718b30c`. The immutable runtime
-  tar SHA-256 is
-  `672dd8a4573290b9201e3d09f1350a46cea3dcc9861b4ad825ecf5bf5f3c7a49`;
-  its 41-file manifest SHA-256 is
-  `f078a28c5440882dfbca40dcd714ca65c21630cd57657ee7567f562a9373a8cf`.
-- The served Browser entry references `assets/index-Bsb-88DT.js`; the public
-  asset SHA-256 is
-  `2190502fd8091efad910690f692658c750ed1088901e39052303016d1949d444`.
-  Public `/healthz` returns 200. The release postflight found Screener, LiveKit,
-  coturn, and nginx active with zero restarts. Controlled application restarts
-  have retained SQLite room authority and Host capture while P2P/SFU routes and
-  Viewer diagnostics recovered without a page refresh.
+- `https://share.bonfire.icu` runs the strict `screener-v17` Browser/server
+  contract. Exact revision, release, artifact, manifest, and asset identity are
+  retained by the immutable release descriptor, runtime `REVISION`, and
+  deployment record rather than copied into this source snapshot.
+- The latest scoped postflight found public health and the immutable Browser
+  asset available, with Screener, LiveKit, coturn, and nginx active and without
+  restarts.
 - Production enables SQLite room authority at
   `/var/lib/screener/rooms.sqlite`; live participants, routes and media remain
   process-only. A controlled restart retained the room authority and Host-owned
@@ -105,27 +98,22 @@ This is the current execution index. Git history owns completed timelines;
   Host and Viewer couch/topology identities stay consistent across expression
   modes, and bounded deep trees scroll within their own surface.
 
-## Source/Production Delta
+## Source/Production Relationship
 
-- Production application code matches canonical source revision
-  `718b30cd91a505918ea772ed0dd8075c6caa4232` exactly.
+- The deployment record owns exact source/release comparison. Routine releases
+  change this file only when its semantic or operational snapshot changes.
 
 ## Active Boundaries
 
-- Desktop Host background capture remains unconfirmed. The current-browser
-  screening did not reproduce a Host-page drop; accepted Viewer lifecycle work
-  prevents frozen JavaScript wall time from becoming an immediate route failure
-  but is not capture keepalive.
+- Desktop Host background capture remains unconfirmed. Current Browser screening
+  did not reproduce a drop; Viewer lifecycle work prevents frozen JavaScript
+  wall time from becoming route-failure evidence but is not capture keepalive.
 - Current-path quality can drive local convergence in source and production,
   including bounded same-edge connection regeneration. Both default it on with a
   pre-share Host opt-out. Weighted/global optimization remains parked.
-- Repository simplification does not change or deploy product behavior beyond
-  deleting proven dead private surfaces.
 - Native/executable senders, shared encode, and distribution packages remain
-  outside the current release. Current UI refinement is presentation-only and
-  does not authorize route or media-model changes.
+  outside the current release.
 
 ## Current Hold
 
-No source or deployment P0/P1 is open. Sanitized route logging remains enabled
-for the pre-release canary.
+No source or deployment P0/P1 is open; sanitized route logging remains enabled.

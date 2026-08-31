@@ -1175,8 +1175,16 @@ export class SfuPublisher {
           audioTrackIdentifier: identity.audioTrack?.id ?? null,
         },
       );
+      const videoEncodings = identity.videoSender.getParameters().encodings;
       const metrics = {
         ...connectionMetrics,
+        videoEncodingCount:
+          videoEncodings.length > 0 ? videoEncodings.length : null,
+        activeVideoEncodingCount:
+          videoEncodings.length > 0
+            ? videoEncodings.filter((encoding) => encoding.active !== false)
+                .length
+            : null,
         bitrateKbps:
           nativeQuality.bitrateKbps ?? connectionMetrics.bitrateKbps,
         nativeEdgeQualityState: nativeQuality.nativeEdgeQualityState,
