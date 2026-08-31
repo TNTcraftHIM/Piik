@@ -27,6 +27,36 @@ configured, Chromium emitted one deduplicated srflx candidate. No raw address or
 port was retained. This proves endpoint reachability and candidate
 deduplication; it does not classify the NAT or prove another direct path.
 
+## Browser Prediction Preflight
+
+A 2026-09-01 Chrome 151 preflight repeated the combined self-hosted plus
+Cloudflare STUN gathering in six fresh PeerConnections. Each STUN destination
+produced an srflx candidate when tested alone, while every combined run exposed
+only one deduplicated srflx endpoint. The only valid mapping result remained
+`unknown`; individual reachability does not make a single combined candidate
+positive evidence of EIM.
+
+One ICE restart exposed a different srflx endpoint in that environment, and a
+synthetic standards-shaped remote srflx candidate using a documentation address
+was accepted by `addIceCandidate()`. The first observation proves only that a
+new mapping can occur: WebRTC specifies new ICE credentials and a new gathering
+phase, not a new socket or mapping on every implementation and network. The
+second proves candidate syntax only; it does not prove that a predicted NAT
+mapping receives an authenticated connectivity check. The probe retained no raw
+address or port.
+
+This preflight also leaves the proposed field mapper without an ordered port
+delta. Candidate events expose response completion, while configured STUN order
+does not specify the NAT allocation order. A Browser-only mapper may retain a
+positive varies-by-destination observation and unordered port gaps, but cannot
+label a signed `P + d` sequence without controlled external evidence. Trying
+both signs consumes more checklist budget and still needs the same lab gate.
+
+The full prediction gate therefore remains unrun. It requires a disposable
+Linux runner with network namespaces and packet-filter authority, controlled
+STUN destinations, and two real Browser ICE agents. The production host is not
+that runner, and an unexecuted nftables script is not accepted evidence.
+
 ## Current Decision
 
 Do not change the flagship STUN configuration in this phase. A second endpoint
