@@ -122,6 +122,8 @@ export function Chip({
   onClick,
   title,
   hint,
+  name,
+  value,
   children,
 }: {
   selected: boolean;
@@ -130,6 +132,8 @@ export function Chip({
   title: string;
   /** Vis mode: 2-panel hint comic on hover/focus; native title stays off. */
   hint?: HintKind;
+  name?: string;
+  value?: string;
   children: ReactNode;
 }) {
   const { vis } = useCopy();
@@ -139,6 +143,8 @@ export function Chip({
     <button
       type="button"
       className={`lr-chip${selected ? " is-selected" : ""}`}
+      name={name}
+      value={value}
       aria-pressed={selected}
       disabled={disabled && !softDisabled}
       aria-disabled={softDisabled || undefined}

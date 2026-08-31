@@ -230,7 +230,7 @@ interface BenchmarkRun {
 }
 
 interface BenchmarkReport {
-  schemaVersion: 4;
+  schemaVersion: 5;
   startedAt: string;
   completedAt: string | null;
   gitCommit: string | null;
@@ -1036,6 +1036,7 @@ export function summarizeSamples(samples: TimedSample[], viewerCount: number) {
     },
     browserProcessResources: summarizeBrowserProcessResources(samples),
     pageRuntimeResources: summarizePageRuntimeResources(samples),
+    viewerExperienceByDepth: summarizeViewerExperienceByDepth(samples),
     finalTopology: finalPages.map((page) => ({
       label: page.label,
       role: page.role,
@@ -1080,6 +1081,209 @@ function numericSummary(values: number[]) {
     mean: values.length > 0
       ? values.reduce((total, value) => total + value, 0) / values.length
       : null,
+  };
+}
+
+type ViewerExperienceRoute = "peer" | "sfu";
+
+interface ViewerExperienceAccumulator {
+  route: ViewerExperienceRoute;
+  depth: number | null;
+  viewers: Set<string>;
+  routeSamples: number;
+  metricSamples: number;
+  framesPerSecond: number[];
+  bitrateKbps: number[];
+  pixelArea: number[];
+  rttMs: number[];
+  packetLossPercent: number[];
+  jitterMs: number[];
+  decodeMs: number[];
+  jitterBufferDelayMs: number[];
+  resolutions: Set<string>;
+  codecs: Set<string>;
+  freezeWindows: number;
+  freezeCount: number;
+  freezeDurationMs: number;
+}
+
+function peerDepths(pages: readonly PageObservation[]): Map<string, number> {
+  const byPeer = new Map(
+    pages.flatMap((page) => (page.peerId ? [[page.peerId, page] as const] : [])),
+  );
+  const depths = new Map<string, number>();
+  const resolveDepth = (peerId: string, visiting: Set<string>): number | null => {
+    const known = depths.get(peerId);
+    if (known !== undefined) return known;
+    const page = byPeer.get(peerId);
+    if (!page || visiting.has(peerId)) return null;
+    if (page.role === "host") {
+      depths.set(peerId, 0);
+      return 0;
+    }
+    const upstream = page.routeAssignment?.upstream;
+    if (upstream?.kind !== "peer") return null;
+    const nextVisiting = new Set(visiting).add(peerId);
+    const parentDepth = resolveDepth(upstream.peerId, nextVisiting);
+    if (parentDepth === null) return null;
+    const depth = parentDepth + 1;
+    depths.set(peerId, depth);
+    return depth;
+  };
+  for (const peerId of byPeer.keys()) resolveDepth(peerId, new Set());
+  return depths;
+}
+
+function committedReceiveMetrics(
+  page: PageObservation,
+): Record<string, unknown> | null {
+  const upstream = page.routeAssignment?.upstream;
+  if (!upstream || upstream.kind === "none") return null;
+  const matching = page.connections.filter(
+    (connection) =>
+      connection.hasInboundVideo &&
+      connection.connectionState === "connected" &&
+      connection.receive !== null &&
+      (upstream.kind === "peer"
+        ? connection.remotePeerId === upstream.peerId
+        : connection.connectionId === null && connection.remotePeerId === null),
+  );
+  return matching.length === 1 ? matching[0]!.receive : null;
+}
+
+function emptyViewerExperienceAccumulator(
+  route: ViewerExperienceRoute,
+  depth: number | null,
+): ViewerExperienceAccumulator {
+  return {
+    route,
+    depth,
+    viewers: new Set(),
+    routeSamples: 0,
+    metricSamples: 0,
+    framesPerSecond: [],
+    bitrateKbps: [],
+    pixelArea: [],
+    rttMs: [],
+    packetLossPercent: [],
+    jitterMs: [],
+    decodeMs: [],
+    jitterBufferDelayMs: [],
+    resolutions: new Set(),
+    codecs: new Set(),
+    freezeWindows: 0,
+    freezeCount: 0,
+    freezeDurationMs: 0,
+  };
+}
+
+function finiteMetric(metrics: Record<string, unknown>, key: string): number | null {
+  const value = metrics[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+export function summarizeViewerExperienceByDepth(samples: TimedSample[]) {
+  const cohorts = new Map<string, ViewerExperienceAccumulator>();
+  let unresolvedRouteSamples = 0;
+  const cohort = (route: ViewerExperienceRoute, depth: number | null) => {
+    const key = route === "peer" ? `peer:${depth}` : "sfu";
+    let current = cohorts.get(key);
+    if (!current) {
+      current = emptyViewerExperienceAccumulator(route, depth);
+      cohorts.set(key, current);
+    }
+    return current;
+  };
+
+  for (const sample of samples) {
+    const depths = peerDepths(sample.pages);
+    for (const page of sample.pages) {
+      if (page.role !== "viewer") continue;
+      const upstream = page.routeAssignment?.upstream;
+      let current: ViewerExperienceAccumulator | null = null;
+      if (upstream?.kind === "peer" && page.peerId) {
+        const depth = depths.get(page.peerId) ?? null;
+        if (depth !== null && depth > 0) current = cohort("peer", depth);
+      } else if (upstream?.kind === "sfu") {
+        current = cohort("sfu", null);
+      }
+      if (!current) {
+        unresolvedRouteSamples += 1;
+        continue;
+      }
+      current.routeSamples += 1;
+      current.viewers.add(page.label);
+      const metrics = committedReceiveMetrics(page);
+      if (!metrics) continue;
+      current.metricSamples += 1;
+
+      const numericFields = [
+        ["framesPerSecond", current.framesPerSecond],
+        ["bitrateKbps", current.bitrateKbps],
+        ["rttMs", current.rttMs],
+        ["packetLossPercent", current.packetLossPercent],
+        ["jitterMs", current.jitterMs],
+        ["intervalDecodeMs", current.decodeMs],
+        ["videoJitterBufferDelayMs", current.jitterBufferDelayMs],
+      ] as const;
+      for (const [key, target] of numericFields) {
+        const value = finiteMetric(metrics, key);
+        if (value !== null) target.push(value);
+      }
+      const width = finiteMetric(metrics, "frameWidth");
+      const height = finiteMetric(metrics, "frameHeight");
+      if (width !== null && height !== null && width > 0 && height > 0) {
+        current.pixelArea.push(width * height);
+        current.resolutions.add(`${width}x${height}`);
+      }
+      const codec = metrics.codec;
+      if (typeof codec === "string" && codec.length > 0) {
+        current.codecs.add(codec);
+      }
+      const freezeCount = finiteMetric(metrics, "intervalFreezeCount");
+      if (freezeCount !== null && freezeCount > 0) {
+        current.freezeWindows += 1;
+        current.freezeCount += freezeCount;
+      }
+      const freezeDuration = finiteMetric(metrics, "intervalFreezeDurationMs");
+      if (freezeDuration !== null && freezeDuration > 0) {
+        current.freezeDurationMs += freezeDuration;
+      }
+    }
+  }
+
+  return {
+    scope:
+      "exact committed Viewer receive metrics grouped by Peer depth; SFU is a separate route cohort",
+    unresolvedRouteSamples,
+    cohorts: [...cohorts.values()]
+      .sort((left, right) => {
+        if (left.route !== right.route) return left.route === "peer" ? -1 : 1;
+        return (left.depth ?? Number.MAX_SAFE_INTEGER) -
+          (right.depth ?? Number.MAX_SAFE_INTEGER);
+      })
+      .map((current) => ({
+        route: current.route,
+        depth: current.depth,
+        viewerCount: current.viewers.size,
+        routeSampleCount: current.routeSamples,
+        metricSampleCount: current.metricSamples,
+        missingMetricSamples: current.routeSamples - current.metricSamples,
+        framesPerSecond: numericSummary(current.framesPerSecond),
+        bitrateKbps: numericSummary(current.bitrateKbps),
+        pixelArea: numericSummary(current.pixelArea),
+        rttMs: numericSummary(current.rttMs),
+        packetLossPercent: numericSummary(current.packetLossPercent),
+        jitterMs: numericSummary(current.jitterMs),
+        decodeMs: numericSummary(current.decodeMs),
+        jitterBufferDelayMs: numericSummary(current.jitterBufferDelayMs),
+        resolutions:
+          current.resolutions.size > 0 ? [...current.resolutions].sort() : null,
+        codecs: current.codecs.size > 0 ? [...current.codecs].sort() : null,
+        freezeWindows: current.freezeWindows,
+        freezeCount: current.freezeCount,
+        freezeDurationMs: current.freezeDurationMs,
+      })),
   };
 }
 
@@ -1830,7 +2034,7 @@ export function buildBenchmarkInitScript(options: {
     const observedVideos = new WeakSet();
     const videoObserver = setInterval(() => {
       if (options.role !== "viewer") return;
-      const video = document.querySelector(".remote-stage video");
+      const video = document.querySelector("#viewer-stage video");
       if (!video || observedVideos.has(video)) return;
       observedVideos.add(video);
       if (typeof video.requestVideoFrameCallback === "function") {
@@ -1981,6 +2185,17 @@ export function buildBenchmarkInitScript(options: {
     function canarySnapshot() {
       return { ...canary, connectionCount: connections.length, maxActiveOutboundMediaEdges: state.maxActiveOutboundMediaEdges };
     }
+    function senderDegradationPreferences() {
+      return connections.flatMap(({ connection }) => {
+        if (
+          connection.connectionState === "closed" ||
+          connection.connectionState === "failed"
+        ) return [];
+        return connection.getSenders()
+          .filter((sender) => sender.track?.kind === "video")
+          .map((sender) => sender.getParameters().degradationPreference ?? null);
+      });
+    }
     function sendViewerQualityEvidence(message) {
       return message?.type === "viewer-quality-evidence" && sendCanaryMessage(message);
     }
@@ -1989,7 +2204,7 @@ export function buildBenchmarkInitScript(options: {
     }
     Object.defineProperty(globalThis, "__SCREENER_BENCHMARK__", {
       configurable: false,
-      value: { sample, progress, snapshot, canarySnapshot, sendViewerQualityEvidence, markShareRequested, requestRouteDiagnosticSnapshot, routeDiagnosticTimingSamples, stop: () => clearInterval(videoObserver) },
+      value: { sample, progress, snapshot, canarySnapshot, senderDegradationPreferences, sendViewerQualityEvidence, markShareRequested, requestRouteDiagnosticSnapshot, routeDiagnosticTimingSamples, stop: () => clearInterval(videoObserver) },
     });
   })();`;
 }
@@ -2491,19 +2706,38 @@ function peerConnectionFingerprint(pages: PageObservation[]): string {
 async function applyQualityPreference(
   cdp: CdpConnection,
   hostPage: PageHandle,
-  label: "平衡" | "清晰优先",
+  preference: QualitySettings["degradationPreference"],
   signal: AbortSignal,
 ): Promise<void> {
-  const serializedLabel = JSON.stringify(label);
+  const serializedPreference = JSON.stringify(preference);
   await evaluate(
     cdp,
     hostPage,
     `(() => {
-      const details = document.querySelector('.advanced-quality');
-      if (!(details instanceof HTMLDetailsElement)) return false;
-      details.open = true;
-      const button = Array.from(document.querySelectorAll('.quality-priority button'))
-        .find((item) => item.textContent?.trim() === ${serializedLabel});
+      const toggle = document.querySelector('[aria-controls="host-advanced-door"]');
+      if (!(toggle instanceof HTMLButtonElement)) return false;
+      if (toggle.getAttribute('aria-expanded') !== 'true') toggle.click();
+      return true;
+    })()`,
+  );
+  const buttonPredicate =
+    `Array.from(document.querySelectorAll('button[name="degradationPreference"]'))` +
+    `.some((item) => item.value === ${serializedPreference})`;
+  await waitForPage(
+    cdp,
+    hostPage,
+    buttonPredicate,
+    5_000,
+    "advanced quality controls",
+    signal,
+  );
+  await evaluate(
+    cdp,
+    hostPage,
+    `(() => {
+      const button = Array.from(
+        document.querySelectorAll('button[name="degradationPreference"]'),
+      ).find((item) => item.value === ${serializedPreference});
       if (!(button instanceof HTMLButtonElement)) return false;
       button.click();
       return true;
@@ -2512,21 +2746,10 @@ async function applyQualityPreference(
   await waitForPage(
     cdp,
     hostPage,
-    `Array.from(document.querySelectorAll('.quality-priority button.is-selected')).some((item) => item.textContent?.trim() === ${serializedLabel})`,
+    `Array.from(document.querySelectorAll('button[name="degradationPreference"]')).some((item) => item.value === ${serializedPreference} && item.getAttribute('aria-pressed') === 'true')`,
     5_000,
-    `${label} advanced quality selection`,
+    `${preference} advanced quality selection`,
     signal,
-  );
-  await evaluate(
-    cdp,
-    hostPage,
-    `(() => {
-      const button = Array.from(document.querySelectorAll('.advanced-quality-grid > button'))
-        .find((item) => item.textContent?.includes('应用视频设置'));
-      if (!(button instanceof HTMLButtonElement)) return false;
-      button.click();
-      return true;
-    })()`,
   );
 }
 
@@ -2550,6 +2773,10 @@ async function runQualityControlSmoke(
   const balanced = {
     ...initialSettings,
     degradationPreference: "balanced",
+  } as const satisfies QualitySettings;
+  const clarity = {
+    ...initialSettings,
+    degradationPreference: "maintain-resolution",
   } as const satisfies QualitySettings;
 
   const waitForSettings = async (settings: QualitySettings): Promise<boolean> => {
@@ -2581,39 +2808,23 @@ async function runQualityControlSmoke(
   const sendingPages = pages.filter(
     (page) => (activeSenderCounts.get(page.label) ?? 0) > 0,
   );
-  await Promise.all(
-    sendingPages.map((page) =>
-      evaluate(
-        cdp,
-        page,
-        `(() => {
-          const toggle = document.querySelector('.connection-details-toggle input');
-          if (!(toggle instanceof HTMLInputElement)) return false;
-          if (!toggle.checked) toggle.click();
-          return true;
-        })()`,
-      ),
-    ),
-  );
   const waitForReadback = async (
-    label: "平衡" | "清晰",
+    preference: QualitySettings["degradationPreference"],
   ): Promise<boolean> => {
     const matched = await Promise.all(
       sendingPages.map(async (page) => {
         const expectedCount = activeSenderCounts.get(page.label) ?? 0;
-        const expected = JSON.stringify(`${label} / ${label}`);
         const predicate = `(() => {
-          const values = Array.from(document.querySelectorAll('.metric'))
-            .filter((metric) => metric.querySelector('dt')?.textContent?.trim() === '请求 / 应用优先级')
-            .map((metric) => metric.querySelector('dd')?.textContent?.trim());
-          return values.length === ${expectedCount} && values.every((value) => value === ${expected});
+          const values = globalThis.__SCREENER_BENCHMARK__.senderDegradationPreferences();
+          return values.length === ${expectedCount} &&
+            values.every((value) => value === ${JSON.stringify(preference)});
         })()`;
         await waitForPage(
           cdp,
           page,
           predicate,
           10_000,
-          `${label} sender parameter readback`,
+          `${preference} sender parameter readback`,
           signal,
         );
         return evaluate<boolean>(cdp, page, `Boolean(${predicate})`);
@@ -2648,8 +2859,7 @@ async function runQualityControlSmoke(
   };
 
   const runStep = async (
-    label: "平衡" | "清晰优先",
-    readbackLabel: "平衡" | "清晰",
+    preference: QualitySettings["degradationPreference"],
     settings: QualitySettings,
   ): Promise<{
     settingsPropagated: boolean;
@@ -2657,9 +2867,9 @@ async function runQualityControlSmoke(
     viewersAdvanced: boolean;
   }> => {
     await cdp.call("Page.bringToFront", {}, hostPage.sessionId);
-    await applyQualityPreference(cdp, hostPage, label, signal);
+    await applyQualityPreference(cdp, hostPage, preference, signal);
     const settingsPropagated = await waitForSettings(settings);
-    const senderReadbacksMatched = await waitForReadback(readbackLabel);
+    const senderReadbacksMatched = await waitForReadback(preference);
     const viewersAdvanced = await waitForViewerProgress();
     return {
       settingsPropagated,
@@ -2668,8 +2878,8 @@ async function runQualityControlSmoke(
     };
   };
 
-  const balancedResult = await runStep("平衡", "平衡", balanced);
-  const clarityResult = await runStep("清晰优先", "清晰", initialSettings);
+  const clarityResult = await runStep("maintain-resolution", clarity);
+  const balancedResult = await runStep("balanced", balanced);
 
   const final = await Promise.all(pages.map((page) => quickSnapshot(cdp, page)));
 
@@ -3323,7 +3533,7 @@ export async function main(): Promise<number> {
   const profile = PROFILE_SETTINGS[config.profileId];
   const profileResolution = QUALITY_RESOLUTIONS[profile.resolution];
   const report: BenchmarkReport = {
-    schemaVersion: 4,
+    schemaVersion: 5,
     startedAt: new Date().toISOString(),
     completedAt: null,
     gitCommit: await gitCommit(),

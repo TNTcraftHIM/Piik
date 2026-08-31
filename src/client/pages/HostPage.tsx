@@ -552,6 +552,10 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     () => qualityLimitationSummary(mediaViewers),
     [mediaViewers],
   );
+  const displayedVideoCodecMode =
+    videoCodecMode === "auto" && phase === "live" && resolvedVideoCodec
+      ? resolvedVideoCodec
+      : videoCodecMode;
 
   useEffect(() => {
     if (videoRef.current) {
@@ -3721,6 +3725,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                       ).map((preference) => (
                         <Chip
                           key={preference}
+                          name="degradationPreference"
+                          value={preference}
                           selected={
                             advancedQuality.degradationPreference === preference
                           }
@@ -3778,7 +3784,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                           onClick={() => changeScreenAudioQuality(audioQuality)}
                         >
                           <Cap k={AUDIO_QUALITY_CAPTIONS[audioQuality]} />
-                          <small>
+                          <small className="lr-audio-rate">
                             {SCREEN_AUDIO_BITRATES[audioQuality] / 1_000}
                           </small>
                         </Chip>
@@ -3832,7 +3838,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                       {(["vp8", "auto", "h264"] as const).map((mode) => (
                         <Chip
                           key={mode}
-                          selected={videoCodecMode === mode}
+                          selected={displayedVideoCodecMode === mode}
                           disabled={phase === "starting" || phase === "live"}
                           title={
                             mode === "auto"
@@ -3849,16 +3855,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                           onClick={() => changeVideoCodecMode(mode)}
                         >
                           {mode.toUpperCase()}
-                          {mode === "auto" && resolvedVideoCodec ? (
-                            <i
-                              className="lr-chip-dot"
-                              title={
-                                vis
-                                  ? undefined
-                                  : resolvedVideoCodec.toUpperCase()
-                              }
-                            />
-                          ) : null}
                         </Chip>
                       ))}
                     </div>
