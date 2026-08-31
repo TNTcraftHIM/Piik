@@ -1,5 +1,5 @@
-# Minimal single-node LiveKit capacity for Screener's optional automatic SFU
-# fallback. Copy this file to an untracked service-owned location such as
+# Minimal single-node LiveKit 1.13.6 capacity for Screener's optional automatic
+# SFU fallback. Copy this file to an untracked service-owned location such as
 # /etc/livekit/livekit.yaml. Store only the generated key mapping in
 # /etc/livekit/keys.yaml, owned by the livekit service user with mode 0600.
 

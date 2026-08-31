@@ -284,6 +284,24 @@ selection. A future event can therefore distinguish publisher layer disablement
 from subscriber-only forwarding changes without altering the LiveKit adaptation
 policy.
 
+A 2026-09-01 production comparison separated server capacity from packet-loss
+recovery. One two-Viewer SFU room kept its Host publication healthy with no
+zero-frame publisher window, while a later room on the same node repeatedly
+lost both Viewer outputs together. In the latter room the Host-to-SFU native
+bandwidth estimate fell from about 12 Mbps to about 0.22 Mbps while capture
+settings remained at 30 fps; the server process, kernel queues, and network
+device reported no contemporaneous resource or drop pressure. The deployed
+LiveKit Server 1.13.5 also predates the upstream simulcast RTX pairing repair:
+under the affected Pion integration, repair streams were not paired and
+retransmissions were silently dropped. LiveKit Server 1.13.6 is therefore the
+accepted patch baseline. This repairs loss recovery; it does not claim to
+prevent loss on the Host-to-SFU UDP path.
+
+The same later room also contained a separate interval in which the native
+bandwidth estimate stayed near 13 Mbps while the sender media-source cadence
+fell to about 1 fps. That interval is a capture/source-production boundary, not
+an RTX-recovery result, and the LiveKit patch does not address it.
+
 ## Host And Page Cost Boundaries
 
 Each ordinary Browser child is an independent PeerConnection and normally an

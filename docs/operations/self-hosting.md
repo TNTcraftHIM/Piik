@@ -16,8 +16,10 @@ Screener -------- private RoomService -----> LiveKit :7880
 ```
 
 The tracked public baseline uses Node.js 24, nginx, a valid Web TLS
-certificate, time synchronization, and coturn 4.17.2 or a newer patched release.
-LiveKit is required for the accepted SFU fallback and tracked release wrapper.
+certificate, time synchronization, coturn 4.17.2 or a newer patched release,
+and LiveKit Server 1.13.6. LiveKit is required for the accepted SFU fallback
+and tracked release wrapper. Keep the accepted patch pinned until its
+replacement passes the same Browser/SFU acceptance boundary.
 Web and STUN may use different DNS names on the same public IP. Another proxy or
 P2P-only service shape needs its own matching updater and recovery checks.
 
@@ -42,7 +44,7 @@ domains, certificates, users, and resource limits required by the host.
 ## Initial Setup
 
 1. Configure DNS and TLS for the Web origin and STUN name.
-2. Install Node.js, nginx, coturn, and pinned-compatible LiveKit.
+2. Install Node.js, nginx, coturn, and the pinned LiveKit Server patch.
 3. Create an unprivileged `screener` service account, `/opt/screener/releases`,
    `/opt/screener/uploads`, and an access-restricted environment file.
 4. Provision one verified initial immutable release and atomically point
