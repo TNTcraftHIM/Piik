@@ -173,6 +173,8 @@ export function sfuPublisherQualityEvidenceFromMetrics(
       mediaSourceFramesPerSecond: metrics.mediaSourceFramesPerSecond,
       width: metrics.frameWidth,
       height: metrics.frameHeight,
+      videoEncodingCount: metrics.videoEncodingCount,
+      activeVideoEncodingCount: metrics.activeVideoEncodingCount,
       availableOutgoingKbps: metrics.availableOutgoingKbps,
       rttMs: metrics.rttMs,
       packetLossPercent: metrics.packetLossPercent,

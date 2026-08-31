@@ -559,6 +559,10 @@ describe("SfuPublisher", () => {
     await publisher.activate(stream(video), qualityProfile);
     const sender = livekit.state.rooms[0].localParticipant.publications[0].track
       .sender;
+    sender.parameters.encodings = [
+      { rid: "q", active: true },
+      { rid: "f", active: true },
+    ];
     sender.getStats
       .mockResolvedValueOnce(
         simulcastSenderReport(video.id, 1_000, 100_000, 200_000),
@@ -573,6 +577,8 @@ describe("SfuPublisher", () => {
       rtpRid: "f",
       frameWidth: 1920,
       frameHeight: 1080,
+      videoEncodingCount: 2,
+      activeVideoEncodingCount: 2,
     });
     expect(
       sfuPublisherQualityEvidenceFromMetrics(
@@ -593,6 +599,10 @@ describe("SfuPublisher", () => {
     ).toMatchObject({
       state: "healthy",
       sampleTimestampMs: 3_000,
+      diagnostics: {
+        videoEncodingCount: 2,
+        activeVideoEncodingCount: 2,
+      },
     });
   });
 
@@ -607,6 +617,10 @@ describe("SfuPublisher", () => {
     await publisher.activate(stream(video), qualityProfile);
     const sender = livekit.state.rooms[0].localParticipant.publications[0].track
       .sender;
+    sender.parameters.encodings = [
+      { rid: "q", active: true },
+      { rid: "f", active: false },
+    ];
     sender.getStats.mockResolvedValueOnce(
       simulcastSenderReport(video.id, 1_000, 100_000, 200_000, false),
     );
@@ -617,6 +631,8 @@ describe("SfuPublisher", () => {
       rtpRid: "q",
       frameWidth: 960,
       frameHeight: 540,
+      videoEncodingCount: 2,
+      activeVideoEncodingCount: 1,
     });
   });
 

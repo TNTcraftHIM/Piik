@@ -2,8 +2,10 @@
 
 This file owns routine immutable application releases. Initial service setup is
 in [self-hosting operations](./operations/self-hosting.md); environment and ports
-are in [configuration reference](./reference/configuration.md); exact current
-production identity is owned only by [status](./status.md).
+are in [configuration reference](./reference/configuration.md). Exact production
+identity is owned by the immutable release descriptor, runtime `REVISION`, and
+deployment record. [Status](./status.md) owns only the compact current product
+and operational snapshot; it is not a per-release ledger.
 
 The tracked `release-app.sh` is the updater for the current bare-metal nginx,
 LiveKit, coturn, nftables, and local-port-8787 deployment. It requires an
@@ -40,6 +42,10 @@ The packager refuses a dirty tree, builds from that exact revision, records the
 full revision, emits a runtime archive plus path/size/SHA-256 manifest and release descriptor, and
 extracts its own artifact to verify it. Upload the archive, manifest, and
 descriptor together to `/opt/screener/uploads`.
+
+Retain the descriptor and successful deployment output as release metadata. Do
+not create a follow-up source commit solely to duplicate their revision, asset,
+or hashes.
 
 Do not build or run the full repository check on a constrained production host.
 The release wrapper installs only production dependencies in a transient,

@@ -504,6 +504,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const viewerQualityEvidenceTimersRef = useRef(
     new Map<string, number>(),
   );
+  const viewerQualityEvidenceRenderFrameRef = useRef<number | null>(null);
   const peerAssistedRef = useRef(false);
   const activeRouteRevisionRef = useRef(0);
   const generationRef = useRef(0);
@@ -629,6 +630,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       );
       viewerQualityEvidenceTimersRef.current.clear();
       viewerQualityEvidenceRef.current.clear();
+      cancelViewerQualityEvidenceRender();
       activeRouteRevisionRef.current = 0;
       void hostSfuRouteRef.current?.disconnect();
       hostSfuRouteRef.current = null;
@@ -810,6 +812,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       window.clearTimeout(timer),
     );
     viewerQualityEvidenceTimersRef.current.clear();
+    cancelViewerQualityEvidenceRender();
     viewerQualityEvidenceRef.current = new Map();
     setViewerQualityEvidence(new Map());
     activeRouteRevisionRef.current = 0;
@@ -1007,7 +1010,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         next.set(peerId, presentation);
       }
       viewerQualityEvidenceRef.current = next;
-      setViewerQualityEvidence(next);
+      scheduleViewerQualityEvidenceRender();
     }
     if (presentation === null) {
       return;
@@ -1038,6 +1041,23 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     commitViewerQualityEvidence(peerId, null);
   }
 
+  function scheduleViewerQualityEvidenceRender(): void {
+    if (viewerQualityEvidenceRenderFrameRef.current !== null) return;
+    viewerQualityEvidenceRenderFrameRef.current = window.requestAnimationFrame(
+      () => {
+        viewerQualityEvidenceRenderFrameRef.current = null;
+        setViewerQualityEvidence(viewerQualityEvidenceRef.current);
+      },
+    );
+  }
+
+  function cancelViewerQualityEvidenceRender(): void {
+    const frame = viewerQualityEvidenceRenderFrameRef.current;
+    if (frame === null) return;
+    window.cancelAnimationFrame(frame);
+    viewerQualityEvidenceRenderFrameRef.current = null;
+  }
+
   function retainViewerQualityEvidenceForPresence(
     entries: readonly ParticipantPresenceEntry[],
   ): void {
@@ -1059,7 +1079,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       viewerQualityEvidenceTimersRef.current.delete(peerId);
     }
     viewerQualityEvidenceRef.current = retained;
-    setViewerQualityEvidence(retained);
+    scheduleViewerQualityEvidenceRender();
   }
 
   function acceptViewerQualityEvidence(evidence: ViewerQualityEvidence): void {

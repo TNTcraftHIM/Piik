@@ -173,6 +173,26 @@ their first child. The Host's one SFU publication uses the same resolved codec
 and disables backup codec. A static real capture cannot make the decision
 inconclusive because probe motion is independent.
 
+Chrome 151.0.7922.175 synthetic 1080p30 startup screening used a fresh process
+for each arm. Manual VP8 sent Host authentication 99-116 ms after the share
+click. Auto took 3088-3127 ms and correctly fell back to VP8 in all three arms.
+Replacing the probe's serial wait-for-complete ICE exchange with standard local
+Trickle ICE retained the same codec outcome and cadence proof while repeated
+Auto arms fell to 2764-2791 ms, roughly 0.33 seconds faster. The remaining
+roughly 2.8 seconds is dominated by full-target warmup and measurement; it is
+not grounds to shorten the proof window or silently weaken Auto.
+
+The same machine also validates why the gate measures delivered cadence instead
+of trusting codec support or `qualityLimitationReason`. With forced H.264 at
+1080p30, one sender received a roughly 30 fps media source and 6.1-8.6 Mbps of
+estimated outgoing bandwidth but encoded only 13-19 fps, averaging 15 fps, while
+Chromium reported `none` for every limitation sample. In the three-Viewer arm,
+the two Host H.264 senders averaged 14.71 fps; the otherwise equivalent VP8 arm
+averaged 28.64 fps at the same 1920x1080 output. The stats exposed neither an
+encoder implementation nor a power-efficiency flag, so the result proves only
+that this current Browser/device/profile H.264 path is unsuitable. It does not
+support a GPU-vendor rule or a hardware/software inference.
+
 VP9, AV1, and H.265 remain unsupported product candidates: Browser codec support
 does not prove the desired hardware profile, cross-Browser relay compatibility,
 or better real-time cadence. Screego's VP9 default was reverted after a frame-
@@ -210,6 +230,22 @@ default screen-share publication can expose original and lower representations,
 and server BWE can forward a lower representation to a constrained subscriber
 while another receives the highest available representation.
 
+Calling the pinned client's own encoding calculator with Screener's exact
+publish options produces two VP8 encodings for every accepted profile:
+
+| Profile | Lower representation | Original representation |
+| --- | --- | --- |
+| 720p30 | 1/2 scale, 750 kbps, 30 fps | 3 Mbps, 30 fps |
+| 1080p30 | 1/2 scale, 1.25 Mbps, 30 fps | 5 Mbps, 30 fps |
+| 1080p60 | 1/2 scale, 2 Mbps, 60 fps | 8 Mbps, 60 fps |
+
+Both encodings start without an explicit RTP `priority` because Screener's
+custom `screenShareEncoding` replaces LiveKit's priority-bearing preset while
+retaining its default `simulcast: true`. The audio encoding is `high` priority.
+Priority can only redistribute bandwidth within that PeerConnection and request
+packet marking; it cannot reserve encoder CPU or coordinate independent P2P
+connections. This is an A/B input, not evidence to raise video priority.
+
 Forcing a lower encoding permanently consumed the same Host-to-SFU congestion
 budget and reduced HIGH performance. Publishing only HIGH abandoned constrained
 subscribers. Current ownership is therefore:
@@ -241,9 +277,12 @@ warning-level logs contain no subscribed-quality or publisher-layer transition,
 so Dynacast disablement is not established as the cause of each freeze. SFU
 publisher diagnostics therefore keep aggregate bitrate and native limitation
 across all active representations while reporting dimensions and cadence from
-the highest active representation. A future event can distinguish publisher
-layer disablement from subscriber-only forwarding changes without altering the
-LiveKit adaptation policy.
+the highest active representation. They also report the total and currently
+active sender-encoding counts read from the existing publisher parameters. The
+counts contain no RID or participant identity and do not affect routing or layer
+selection. A future event can therefore distinguish publisher layer disablement
+from subscriber-only forwarding changes without altering the LiveKit adaptation
+policy.
 
 ## Host And Page Cost Boundaries
 
@@ -259,6 +298,15 @@ mobile suspension, page reclamation, and relay survival remain platform evidence
 in [background capture research](./browser-background-capture.md), not Web
 keepalive features.
 
+The Media Capture specification copies a track's constraints when it is cloned,
+then lets each clone change constraints independently. Current Host Peer senders
+trust those copied constraints when constructed, while the SFU publisher applies
+the same profile again immediately after creating an equivalent clone. Removing
+only that initial duplicate application should preserve constraints; clearing
+clone constraints altogether would change the source/sink contract and requires
+an A/B across live profile changes, sibling pressure, source replacement and
+same-edge regeneration.
+
 Web content has no supported API for raising capture, encoder, renderer-process,
 GPU, or operating-system scheduling priority. WebRTC sender `priority` allocates
 bandwidth relative to other RTP senders and `networkPriority` requests DSCP;
@@ -271,6 +319,89 @@ The mature resource choices remain bounded Browser P2P copies, one bounded SFU
 publication when its accepted route condition applies, or a future native/shared
 encoder. LiveKit Dynacast can stop unused SFU representations; it cannot combine
 independent P2P encoders.
+
+### Current Pipeline Screening
+
+Chrome 151.0.7922.175 headless loopbacks on 2026-08-31 used one isolated
+Browser process, deterministic high-motion canvas capture and three Viewer
+pages on the same machine. They exercise real capture tracks, PeerConnections,
+VP8 encode/decode and the deployed Peer topology, but deliberately amplify
+shared Browser/GPU/CPU contention and are not a distributed-network claim.
+
+| Profile and topology | Host encode | Host cadence | Browser CPU | Receive result |
+| --- | ---: | ---: | ---: | --- |
+| 720p30, 3 Viewers | 3.62 ms/frame | 29.93 fps | 163% average | 30.06 fps; no freeze |
+| 1080p30, 3 Viewers, run 1 | 10.83 ms/frame | 29.25 fps | 353% average | 28.87 fps; no freeze |
+| 1080p30, 3 Viewers, run 2 | 11.00 ms/frame | 28.92 fps | 374% average | 28.53 fps; no freeze |
+| 1080p30, 3 Viewers, run 3 | 19.71 ms/frame | 25.25 fps | 450% average | 25.40 fps; 7 freezes / 3.38 s |
+
+Each repeat launched a fresh Chrome process. The spread proves a resource cliff
+and run-to-run system sensitivity, not a deterministic three-Viewer limit. A
+prior 1-to-2-to-3 sequence in one Browser process produced a similarly poor
+last arm even though every page was closed between cases; cross-arm Browser
+state and a 250 ms cleanup gap make that sequence unsuitable for performance
+comparison. Future arms must use independent processes, repeated/randomized
+order, actual output resolution, and system-load context. Aggregate
+`qualityLimitationReason` alone did not describe the worst arm.
+
+The same harness then added per-page CDP `TaskDuration`, script, layout, style
+and heap deltas using each page's own monotonic timestamp. In a 20-Viewer
+720p30 burst, all route checks passed and every Viewer decoded, but the Host
+page used 36.35% of one main thread on average and briefly approached a full
+thread; almost all measured work was script, not layout or style. This validates
+the existing Host-only diagnostic-rendering gate without attributing the
+same-machine media CPU to production.
+
+The accepted implementation keeps every quality-evidence ref update and
+freshness timer immediate while coalescing only the React presentation commit
+to at most one animation frame. Two independent after-runs retained all seven
+route checks and every Viewer decode while Host main-thread task utilization was
+20.89% and 25.09%, with a 31.41% maximum interval. The change adds no media
+sampling interval, route delay or quality threshold.
+
+A final 20-Viewer acceptance run sampled the Host plus one plain Viewer and one
+relay while retaining full-page topology and decode checks. All seven checks
+passed, every Viewer decoded, and Host task utilization was 22.22% average and
+34.48% peak. The isolated same-machine Browser consumed 738% aggregate CPU and
+Host media-source cadence averaged 14.93 fps, so this arm validates bounded
+topology and diagnostic rendering rather than representative distributed media
+headroom.
+
+The current stage decisions are therefore deliberately narrow:
+
+| Stage | Current owner and decision |
+| --- | --- |
+| Capture | Keep native `getDisplayMedia`, profile constraints and `motion`; no JS video preprocessing or synthetic keepalive. |
+| Codec startup | Keep the real full-profile cadence gate; use local Trickle ICE, but do not shorten its proof or cache a device-wide verdict. |
+| Peer and relay encode | Keep one isolated clone and stock WebRTC adaptation per sender under the existing endpoint cap. Browser relay still decodes and re-encodes. |
+| SFU publication | Keep pinned LiveKit's two representations, Dynacast and send-side BWE. Observe total/active encoding counts before changing layer policy. |
+| Receive latency | Keep the Browser jitter buffer and A/V synchronizer; no fixed `jitterBufferTarget` without a loss/latency A/B. |
+| Presentation | Coalesce only Host diagnostic React commits. Media evidence, freshness and route control stay immediate. |
+| Native boundary | OS capture fallback, virtual display, shared/zero-copy encode and driver-specific capability caching require a separately accepted native product surface. |
+
+### Mature Product Boundaries
+
+Discord documents a multi-process capture/encode/transport/decode pipeline,
+OS-specific capture fallback, hardware codec selection, WebRTC bandwidth
+estimation, and joint monitoring of cadence, latency, visual quality, network,
+CPU and memory. Its desktop client uses native capture and codec integration;
+that result is evidence for a future native boundary, not a Browser API recipe.
+Discord also reported a real frame-drop ratchet where reconfiguring an encoder
+to its already-reduced cadence increased bits per frame and compounded drops.
+
+A signed local NetEase UU Remote 4.38.3 installation separates UI, service,
+streamer, codec detector, virtual-display and audio components. Its non-sensitive
+capability caches contain 41 encoder and 74 decoder entries keyed by codec,
+adapter/device, dimensions, frame rate, implementation, chroma sampling and bit
+depth. This supports profile-scoped capability caching and process isolation as
+mature native practices; enum meanings and proprietary algorithms were not
+inferred, and the detector was not executed.
+
+KOOK's official 1080p60 guidance requires substantial CPU/GPU headroom and its
+troubleshooting explicitly notes that hardware acceleration can worsen some
+systems. Oopz treats VPN/accelerator changes as an independent network-path
+diagnostic. Together these support measured fallback and stage-specific
+diagnosis rather than a universal hardware, codec or transport switch.
 
 Production room 4521 supplied a separate network/source boundary. It used one
 stable Host-to-Viewer P2P edge with no reparent or SFU activity, yet Chromium
@@ -394,6 +525,10 @@ percentages, and tuning loops are not adopted for this Browser product.
 - Controlled and production correlation of Host SFU active representations,
   subscribed-quality changes, keyframe reacquisition, and Viewer freezes before
   changing Dynacast policy or its delay.
+- Current-Browser A/B of the duplicate initial SFU clone constraint application,
+  source-only versus independently constrained clones across live profile
+  changes, and default two-layer screen-share publication versus any proposed
+  representation or priority change.
 
 ## Primary Sources
 
@@ -418,6 +553,11 @@ percentages, and tuning loops are not adopted for this Browser product.
 - [Picture-in-Picture](https://www.w3.org/TR/picture-in-picture/)
 - [Chrome timer throttling](https://developer.chrome.com/blog/timer-throttling-in-chrome-88)
 - [Chrome Page Lifecycle](https://developer.chrome.com/docs/web-platform/page-lifecycle-api)
+- [Discord Go Live pipeline](https://discord.com/blog/how-it-all-goes-live-an-overview-of-discords-streaming-technology)
+- [Discord AMD encoder ratchet](https://discord.com/blog/from-blocky-to-brilliant-improving-video-quality-on-discord-go-live-on-amd-gpus)
+- [KOOK screen-share requirements](https://support.kookapp.cn/7ff3/b671)
+- [KOOK resource troubleshooting](https://help.kookapp.cn/6a2f/8525)
+- [Oopz network-path troubleshooting](https://help.oopz.cn/fa71/694b)
 - [LiveKit server forwarder](https://github.com/livekit/livekit/blob/v1.13.5/pkg/sfu/forwarder.go)
 - [LiveKit server defaults](https://github.com/livekit/livekit/blob/v1.13.5/pkg/config/config.go)
 - [LiveKit Dynacast manager](https://github.com/livekit/livekit/blob/v1.13.5/pkg/rtc/dynacast/dynacastmanagervideo.go)

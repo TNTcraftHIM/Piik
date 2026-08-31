@@ -28,10 +28,10 @@ until their stated boundary is met.
    prove a self-hosted stale-token revocation boundary before independently
    releasing subscription egress; do not introduce accounts, polling, risk
    scoring, or an independent policy framework.
-4. **Client ownership and diagnostic rendering.** Batch Host-only diagnostic
-   snapshots when a 20-Viewer measurement proves rendering cost, and extract
-   media-session owners from the Host/Viewer pages only alongside reachable
-   behavior work. File length alone does not authorize a page rewrite.
+4. **Client ownership.** Extract media-session owners from the Host/Viewer pages
+   only alongside reachable behavior work. File length alone does not authorize
+   a page rewrite; Host diagnostic presentation is already coalesced without
+   delaying media evidence or route control.
 5. **C=3 structural intent retention.** Revisit multiple simultaneous one-shot
    Host-root convergence intents only with an exact C=3 reproduction; do not add
    periodic balancing or another topology queue for the default path.
@@ -41,6 +41,8 @@ until their stated boundary is met.
 7. **Representative network acceptance.** Complete public-network direct,
    Browser relay, SFU, recovery, Pause/Resume, screen-audio, real-game A/V,
    two-room SFU, 20-Viewer endurance, and all-UDP-blocked bounded failure.
+   Correlate SFU freezes with publisher encoding counts before changing
+   Dynacast or representation policy.
 8. **Client-input security review.** Audit HTTP/WebSocket schema, auth,
    authorization, rate/body/resource bounds, errors, logs, and secrets without
    adding a parallel security framework.

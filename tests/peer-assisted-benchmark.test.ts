@@ -17,11 +17,14 @@ import {
   joinViewerBurst,
   mergeRecoveryHostPeaks,
   parseBenchmarkCanaryMode,
+  parseBenchmarkCodecMode,
   parseBenchmarkConfig,
   parseExpectedEndpointCap,
+  parsePagePerformanceMetrics,
   parseViewerCounts,
   sanitizeFailurePageEvidence,
   summarizeBenchmarkRouteTiming,
+  summarizePageRuntimeResources,
   summarizeSamples,
 } from "../scripts/peer-assisted-benchmark";
 import { MAX_VIEWERS_PER_ROOM_LIMIT } from "../src/shared/protocol";
@@ -442,6 +445,15 @@ describe("peer topology loopback configuration", () => {
     }
   });
 
+  it("uses one explicit benchmark codec mode", () => {
+    expect(parseBenchmarkCodecMode(undefined)).toBe("auto");
+    expect(parseBenchmarkCodecMode("VP8")).toBe("vp8");
+    expect(parseBenchmarkCodecMode("h264")).toBe("h264");
+    expect(() => parseBenchmarkCodecMode("vp9")).toThrow(
+      /vp8, auto, or h264/,
+    );
+  });
+
   it("requires a relay-sized case for the optional quality control smoke", () => {
     expect(() =>
       parseBenchmarkConfig({
@@ -717,7 +729,13 @@ describe("peer topology loopback observations", () => {
         rtpStatsId: "host-rtp",
         bitrateKbps: bitrate,
         framesPerSecond: fps,
+        captureFramesPerSecond: 30,
+        mediaSourceFramesPerSecond: 29,
         resolution: fps === 25 ? "640x360" : "1280x720",
+        codec: "video/VP8",
+        encoderImplementation: "test-encoder",
+        powerEfficientEncoder: true,
+        scalabilityMode: "L1T2",
         availableOutgoingKbps: bitrate * 4,
         intervalFramesEncoded: intervalFrames,
         intervalEncodeTimeMs: intervalTime,
@@ -747,7 +765,13 @@ describe("peer topology loopback observations", () => {
       unknownIdentitySamples: 0,
       bitrateKbps: { sampleCount: 3, min: 1_000, max: 1_400, mean: 1_200 },
       framesPerSecond: { sampleCount: 3, min: 25, max: 30 },
+      captureFramesPerSecond: { sampleCount: 3, min: 30, max: 30 },
+      mediaSourceFramesPerSecond: { sampleCount: 3, min: 29, max: 29 },
       resolutions: ["1280x720", "640x360"],
+      codecs: ["video/VP8"],
+      encoderImplementations: ["test-encoder"],
+      scalabilityModes: ["L1T2"],
+      powerEfficientEncoderSamples: { true: 3, false: 0, unknown: 0 },
       encodeIntervals: { sampleCount: 2, framesEncoded: 50, encodeTimeMs: 115 },
       qualityLimitationReasonSamples: { none: 2, cpu: 1 },
     });
@@ -761,6 +785,70 @@ describe("peer topology loopback observations", () => {
     });
     expect(summary.browserProcessResources.measuredCpuTimeSeconds).toBeCloseTo(1);
     expect(summary.browserProcessResources.averageCpuUtilizationPercent).toBeCloseTo(50);
+  });
+
+  it("parses and summarizes per-page main-thread resource deltas", () => {
+    const metrics = (
+      timestamp: number,
+      task: number,
+      script: number,
+      layout: number,
+      recalc: number,
+      heap: number,
+    ) => ({
+      timestampSeconds: timestamp,
+      taskDurationSeconds: task,
+      scriptDurationSeconds: script,
+      layoutDurationSeconds: layout,
+      recalcStyleDurationSeconds: recalc,
+      jsHeapUsedBytes: heap,
+    });
+    expect(
+      parsePagePerformanceMetrics([
+        { name: "TaskDuration", value: 1 },
+        { name: "Timestamp", value: 10 },
+        { name: "ScriptDuration", value: 0.4 },
+        { name: "LayoutDuration", value: 0.1 },
+        { name: "RecalcStyleDuration", value: 0.05 },
+        { name: "JSHeapUsedSize", value: 10_000 },
+        { name: "UnrelatedMetric", value: 99 },
+      ]),
+    ).toEqual(metrics(10, 1, 0.4, 0.1, 0.05, 10_000));
+    expect(parsePagePerformanceMetrics([])).toBeNull();
+
+    const before = [
+      {
+        ...page("host", "host", 2, 0),
+        performance: metrics(10, 1, 0.4, 0.1, 0.05, 10_000),
+      },
+      {
+        ...page("viewer", "viewer-1", 0, 1),
+        performance: metrics(10, 2, 0.8, 0.2, 0.1, 20_000),
+      },
+      {
+        ...page("viewer", "viewer-2", 1, 1),
+        performance: metrics(10, 3, 1.2, 0.3, 0.15, 30_000),
+      },
+      { ...page("viewer", "viewer-3", 0, 1), performance: null },
+    ];
+    const after = structuredClone(before);
+    after[0]!.performance = metrics(12, 1.4, 0.55, 0.12, 0.07, 12_000);
+    after[1]!.performance = metrics(12, 2.1, 0.84, 0.21, 0.11, 22_000);
+    after[2]!.performance = metrics(12, 3.3, 1.3, 0.33, 0.17, 33_000);
+
+    const summary = summarizePageRuntimeResources([
+      { atEpochMs: 2_000, elapsedMs: 0, pages: before },
+      { atEpochMs: 4_000, elapsedMs: 2_000, pages: after },
+    ]);
+    expect(summary.host.validIntervals).toBe(1);
+    expect(summary.host.averageTaskUtilizationPercent).toBeCloseTo(20);
+    expect(summary.host.peakJsHeapUsedBytes).toBe(12_000);
+    expect(summary.viewer.averageTaskUtilizationPercent).toBeCloseTo(5);
+    expect(summary.viewer.invalidIntervals).toBe(0);
+    expect(summary.relay.averageTaskUtilizationPercent).toBeCloseTo(15);
+    expect(summary.host.scriptTimeSeconds).toBeCloseTo(0.15);
+    expect(summary.host.layoutTimeSeconds).toBeCloseTo(0.02);
+    expect(summary.host.recalcStyleTimeSeconds).toBeCloseTo(0.02);
   });
 
   it("checks one endpoint cap for Host and Viewer senders", () => {
