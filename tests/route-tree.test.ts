@@ -39,7 +39,7 @@ describe("RouteTree", () => {
 
     expect(narrow).toEqual({
       baseWidth: 260,
-      hostX: 54,
+      hostX: 65,
       columnGap: 130,
       rightLabelReserve: 65,
       maxVisibleLabelCodePoints: 10,
@@ -51,7 +51,19 @@ describe("RouteTree", () => {
       narrow.hostX + narrow.columnGap * 3 + narrow.rightLabelReserve,
     ).toBeGreaterThan(narrow.baseWidth);
     expect(desktop.baseWidth).toBe(640);
+    expect(desktop.hostX).toBe(210);
     expect(desktop.columnGap).toBe(220);
+    expect(desktop.rightLabelReserve).toBe(210);
+  });
+
+  it("derives symmetric topology insets at every responsive width", () => {
+    for (const width of [260, 390, 520, 640]) {
+      const layout = topologyLayoutForWidth(width);
+      expect(layout.hostX).toBe(layout.rightLabelReserve);
+      expect(
+        layout.hostX * 2 + layout.columnGap,
+      ).toBe(layout.baseWidth);
+    }
   });
 
   it("keeps topology geometry continuous across the former viewport breakpoint", () => {
@@ -202,6 +214,48 @@ describe("RouteTree", () => {
     expect(html).toContain(">Alice</text>");
     expect(html).toContain(">Bob</text>");
     expect(html).not.toContain("<title");
+  });
+
+  it("centers visual default IDs without repeating the pawn role", () => {
+    const hostPeerId = "host-abc123";
+    const viewerPeerId = "viewer-def456";
+    const { host, viewers } = labelParticipantSnapshot([
+      {
+        role: "host",
+        peerId: hostPeerId,
+        displayName: "👑-abc123",
+        upstream: { kind: "none" },
+      },
+      {
+        role: "viewer",
+        peerId: viewerPeerId,
+        displayName: "👤-def456",
+        upstream: { kind: "peer", peerId: hostPeerId },
+        mediaReady: true,
+      },
+      {
+        role: "viewer",
+        peerId: "viewer-custom789",
+        displayName: "👤-custom",
+        upstream: { kind: "peer", peerId: hostPeerId },
+        mediaReady: true,
+      },
+    ]);
+
+    const html = renderToStaticMarkup(
+      createElement(RouteTree, {
+        hostPeerId: host?.peerId ?? null,
+        hostLabel: host?.label ?? "Host",
+        viewers,
+      }),
+    );
+
+    expect(html).toContain(">abc123</text>");
+    expect(html).toContain(">def456</text>");
+    expect(html).toContain(">👤-custom</text>");
+    expect(html).not.toContain(">👑-abc123</text>");
+    expect(html).not.toContain(">👤-def456</text>");
+    expect(html).toContain("scale(0.82)");
   });
 
   it("uses the Host identity color in the topology", () => {
@@ -374,7 +428,7 @@ describe("RouteTree", () => {
     );
     const width = Number(html.match(/viewBox="0 0 (\d+) /)?.[1]);
 
-    expect(width).toBeGreaterThan(640);
+    expect(width).toBe(1_520);
     expect(html).toContain(`style="width:${width}px;max-width:none"`);
     expect(
       new Set(

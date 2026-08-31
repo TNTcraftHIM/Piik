@@ -2633,6 +2633,10 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
                 )}
               </form>
               <div className="lr-row-group lr-group-actions lr-viewer-actions-slot">
+                <span
+                  className="lr-viewer-action-separator"
+                  aria-hidden="true"
+                />
                 <span className="lr-viewer-action-cluster">
                   <Btn
                     icon={theaterMode ? "contract" : "expand"}

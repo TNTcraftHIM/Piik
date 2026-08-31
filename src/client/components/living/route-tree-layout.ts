@@ -23,11 +23,13 @@ export function topologyLayoutForWidth(containerWidth: number): TopologyLayout {
   const progress =
     (baseWidth - MIN_LAYOUT_WIDTH) /
     (MAX_LAYOUT_WIDTH - MIN_LAYOUT_WIDTH);
+  const columnGap = interpolate(130, 220, progress);
+  const hostX = (baseWidth - columnGap) / 2;
   return {
     baseWidth,
-    hostX: interpolate(54, 170, progress),
-    columnGap: interpolate(130, 220, progress),
-    rightLabelReserve: interpolate(65, 170, progress),
+    hostX,
+    columnGap,
+    rightLabelReserve: hostX,
     maxVisibleLabelCodePoints:
       baseWidth < 420 ? 10 : baseWidth < 560 ? 13 : 16,
   };
