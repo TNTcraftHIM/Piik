@@ -23,10 +23,11 @@ This is the current execution index. Git history owns completed timelines;
 - Site access uses a stateless 24-hour rolling idle cookie. An active
   site-authorized page renews it hourly through the existing status request;
   Viewer-grant admission remains independent and cannot create or renew it.
-- Public media listeners remain STUN-only UDP 3478 and LiveKit UDP 7882. Web
-  ingress is TCP 80/443; Node 8787 and LiveKit control/signaling 7880 are
-  private. TURN, ICE/TCP, media TCP, TLS relay, port 5349, and relay ranges are
-  disabled.
+- Public media listeners remain STUN-only UDP 3478 and LiveKit UDP 7882. During
+  the approved NAT survey, coturn also exposes auxiliary STUN-only UDP 3479
+  and 3480; ordinary `STUN_URLS` and media routes remain unchanged. Web ingress
+  is TCP 80/443; Node 8787 and LiveKit control/signaling 7880 are private. TURN,
+  ICE/TCP, media TCP, TLS relay, port 5349, and relay ranges are disabled.
 - Browser video uses the content-independent H.264 sender gate with VP8
   fallback, plus the locked pre-share `VP8 | Auto | H264` Host selector and
   resolved codec display. Video retains `contentHint = "motion"`; audio uses
