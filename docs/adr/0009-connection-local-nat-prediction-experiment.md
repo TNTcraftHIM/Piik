@@ -35,10 +35,11 @@ state, or media path.
    candidates and cannot enter the arithmetic sequence. If three or more
    distinct survey candidates for one media section and public address form an
    arithmetic port sequence, the adapter appends at most eight bounded
-   candidates around the sequence's high endpoint. Every ordinary candidate
-   keeps normal Trickle ICE timing; no ordinary candidate is delayed, rejected,
-   or replaced. A Browser that does not expose candidate source URLs keeps
-   ordinary ICE but does not mix independent observations into prediction.
+   candidates outward from both sequence endpoints: four above the high endpoint
+   and four below the low endpoint. Every ordinary candidate keeps normal
+   Trickle ICE timing; no ordinary candidate is delayed, rejected, or replaced.
+   A Browser that does not expose candidate source URLs keeps ordinary ICE but
+   does not mix independent observations into prediction.
 4. Candidate observations remain in memory for that connection only. No NAT
    label, raw address, port, score, hard candidate skip, periodic probe, or
    route-controller branch is introduced. Sanitized diagnostics record only
