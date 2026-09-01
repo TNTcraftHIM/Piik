@@ -86,10 +86,13 @@ until their stated boundary is met.
     connection-scoped classifier with bounded false rejection. Do not hard-skip
     Peer candidates from a participant-wide NAT label or inject predicted ports
     into production ICE without a new accepted decision and a measured gate. See
-    [Browser NAT traversal](./research/nat-traversal.md). The Browser preflight
-    proves only positive mapping variation and synthetic-candidate syntax; the
-    next executable gate requires an isolated Linux namespace runner with two
-    real Browser ICE agents.
+    [Browser NAT traversal](./research/nat-traversal.md). The isolated namespace
+    lab now proves that bounded prediction can recover sequential EDM paths, but
+    also proves that response order cannot supply allocation direction and that
+    sequential-to-sequential recovery depends on candidate scheduling. Reopen
+    product design only after an explicitly approved, aggregate-only field
+    survey shows stable sequential allocation is common enough to justify that
+    complexity.
 15. **Unresolved route-state ownership claims.** Reopen lower-revision
     reauthentication, active SFU failure during an unrelated prepare, and
     multi-child relay-evidence ownership only from an exact current-wire

@@ -1,6 +1,6 @@
 # Browser NAT Traversal
 
-Last reviewed: 2026-08-31
+Last reviewed: 2026-09-01
 
 This document owns evidence for improving direct Browser ICE without adding a
 new relay or a custom transport. The current product contract remains standard
@@ -52,10 +52,74 @@ positive varies-by-destination observation and unordered port gaps, but cannot
 label a signed `P + d` sequence without controlled external evidence. Trying
 both signs consumes more checklist budget and still needs the same lab gate.
 
-The full prediction gate therefore remains unrun. It requires a disposable
-Linux runner with network namespaces and packet-filter authority, controlled
-STUN destinations, and two real Browser ICE agents. The production host is not
-that runner, and an unexecuted nftables script is not accepted evidence.
+This preflight justified a controlled lab rather than product code. The lab was
+subsequently executed as described below.
+
+## Controlled Browser Lab
+
+On 2026-09-01 a disposable Alpine VM ran two real Chromium 152 ICE agents in
+separate Linux network namespaces. nftables provided four measured behaviors:
+full-cone EIM, port-restricted EIM, sequential endpoint-dependent mapping, and
+random endpoint-dependent mapping. Three STUN-only coturn listeners and the
+HTTP signaling harness lived on an isolated documentation-address WAN. No
+production listener, route, credential, user endpoint, or media path
+participated.
+
+Port-restricted filtering had to reject unopened remote UDP endpoints before
+conntrack. A normal forward-chain drop was invalid: conntrack first created an
+inbound tuple and could consume the port that EIM should preserve, manufacturing
+a false endpoint-dependent mapping. The accepted lab records exact outbound
+remote endpoints in a 30-second dynamic nftables set and drops other inbound UDP
+at raw priority. This detail is part of the lab's validity, not a product design.
+
+The 4 by 4 baseline ran each directed pair three times. Every pair involving
+the full-cone side succeeded, port-restricted EIM to itself succeeded, and every
+endpoint-dependent pair against port-restricted EIM or another endpoint-
+dependent side failed. All 48 runs matched the RFC 4787 reachability model.
+Sequential mappings exposed two adjacent srflx ports; random mappings exposed
+large, unstable signed gaps.
+
+Prediction calibration compared 1, 4, 16, 24, and 32 candidates:
+
+- Sequential to port-restricted EIM improved from 0/3 at baseline to 14/15
+  across the prediction sweep. A single correctly directed candidate was
+  enough when no unrelated allocation intervened; larger idle-path windows
+  showed no added benefit.
+- Sequential to sequential remained 0/15 when normal candidates entered the
+  checklist first. Adding the same predictions first while retaining every
+  normal candidate produced 14/15. Candidate ordering, not window size, was the
+  controlling variable.
+- The one failure in each otherwise successful sweep coincided with Chromium
+  delivering the two STUN responses in reverse completion order. The NAT still
+  allocated upward, but an event-ordered signed delta reported `-1`. Candidate
+  event order therefore cannot establish allocation direction.
+- Random-to-restricted and sequential-to-random negative controls remained 0/6.
+  Random mappings were never predicted. A known-reachable sequential-to-cone
+  control remained 3/3 with the largest window.
+- A 32-candidate window offered no observed gain and can create 105 pairs from
+  three local candidates and 35 remote candidates, beyond the assumed 100-pair
+  checklist budget. The data supports no large spray window.
+
+An explicit jitter gate then inserted unrelated UDP mappings after both
+Browsers completed gathering and before candidate release. For sequential to
+port-restricted EIM, one intervening allocation required a two-candidate window,
+four required five, and eight required nine. The immediately smaller window
+failed in every boundary check; successful elapsed time grew from about 190 ms
+to 430 ms and 630 ms. This establishes a mechanical `intervening allocations +
+1` window for that pairing rather than a tunable quality threshold. By contrast,
+sequential to sequential still failed with a 16-candidate prediction-first
+window after only one intervening allocation on each side. Each new check moved
+the actual source mapping and predicted destination together, preserving their
+offset. A wider consecutive window is therefore not a general jitter solution
+for two endpoint-dependent sides.
+
+The same harness includes a local field-mapper prototype. It serially gathers
+six fresh PeerConnections through two or three STUN destinations, keeps raw
+endpoints only in Browser memory, and reports mapping-shape, delta-stability,
+and direction enums. Across five controlled runs per profile, sequential was
+5/5 `sequential-shape/stable/increasing`, random was 5/5
+`unstable/unstable/unknown`, and both EIM variants remained `unknown` in 10/10
+runs. Two-destination controls produced the same sequential/random distinction.
 
 ## Current Decision
 
@@ -95,12 +159,13 @@ Consequently Browser observations can support a positive `varies` diagnostic,
 but cannot produce the proposed `eim | edm-sequential | edm-random` participant
 fact. They cannot safely remove a Peer candidate or save its five-second window.
 
-Port prediction remains the only reachable Browser experiment that might add
-direct paths beyond stock ICE. It requires a controlled sequential/random NAT
-matrix and two real Browser ICE agents before any product design. No such
-controlled Browser matrix is currently available, and the production server is
-not an acceptable network-emulation lab. No candidate injection ships without
-that gate.
+Port prediction remains the only tested Browser experiment that added a direct
+path beyond stock ICE, but the product gate is still closed. The controlled lab
+proves a mechanism, not its field prevalence. Real-network measurement must show
+that stable sequential EDM is common enough to matter, and a future design must
+resolve allocation direction and candidate scheduling without removing normal
+ICE candidates or turning a connection observation into participant state.
+Until then no predicted candidate ships.
 
 ## Rejected Product Inference
 
@@ -142,3 +207,4 @@ a new Peer route.
 - [libp2p Browser and DCUtR hole-punching boundary](https://github.com/libp2p/specs/blob/master/connections/hole-punching.md)
 - [coturn listener and auxiliary endpoint reference](https://github.com/coturn/coturn/blob/master/examples/etc/turnserver.conf)
 - [Cloudflare Realtime STUN service](https://developers.cloudflare.com/realtime/turn/)
+- [nftables NAT and number-generator reference](https://netfilter.org/projects/nftables/manpage.html)
