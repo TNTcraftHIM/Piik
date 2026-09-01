@@ -73,6 +73,29 @@ Coturn runs `stun-only`, `no-tcp`, and `no-tls`. It must answer STUN binding and
 reject TURN allocation. Avoid verbose STUN/ICE logging because infrastructure
 necessarily observes client IP addresses.
 
+## Temporary NAT Survey
+
+Enable the auxiliary listeners only for an approved aggregate-only survey. Add
+the following to the service-owned coturn configuration, using the local
+address already bound by the main listener:
+
+```ini
+aux-server=<PRIVATE_LISTEN_IP>:3479
+aux-server=<PRIVATE_LISTEN_IP>:3480
+```
+
+Keep `stun-only`, `no-tcp`, and `no-tls` unchanged. Allow UDP 3479 and 3480 in
+both the cloud security group and the existing nftables input rule, validate
+the complete ruleset with `nft -c -f /etc/nftables.conf`, then restart only
+`coturn.service`. Verify `ss -lunp` shows all three UDP listeners and that an
+ordinary STUN Binding succeeds on each; do not add these URLs to production
+`STUN_URLS` or inject predicted ICE candidates. Remove the two `aux-server`
+lines and firewall ports after the survey, validate again, and restart coturn.
+
+These same-IP auxiliary ports measure destination-port mapping behavior. They
+are not a full RFC 5780 alternate-address deployment; that requires a second
+public IPv4.
+
 ## Operational Verification
 
 - `/healthz` returns `{"status":"ok"}` locally and through the public origin.

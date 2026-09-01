@@ -88,8 +88,11 @@ until their stated boundary is met.
     into production ICE without a new accepted decision and a measured gate. See
     [Browser NAT traversal](./research/nat-traversal.md). The Browser preflight
     proves only positive mapping variation and synthetic-candidate syntax; the
-    next executable gate requires an isolated Linux namespace runner with two
-    real Browser ICE agents.
+    isolated Linux namespace lab now covers the controlled Browser gate. A
+    self-hosted same-IP two/three-port endpoint is available for an approved
+    aggregate-only field survey; keep observations diagnostic until stable
+    sequential allocation is common enough to justify a new decision. Do not
+    inject predicted candidates yet.
 15. **Unresolved route-state ownership claims.** Reopen lower-revision
     reauthentication, active SFU failure during an unrelated prepare, and
     multi-child relay-evidence ownership only from an exact current-wire
