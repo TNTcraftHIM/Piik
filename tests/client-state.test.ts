@@ -864,7 +864,7 @@ describe("client signaling recovery policy", () => {
           hostOnline: true,
           connectionId: null,
           viewerPeerIds: [],
-          iceConfig: { iceServers: [] },
+          iceConfig: { iceServers: [], natPredictionStunUrls: [] },
           codeEntryPolicy: "open",
           viewerAuthorizationGeneration: "viewer_generation_12345678",
         }),
@@ -1008,7 +1008,7 @@ describe("client signaling recovery policy", () => {
         hostPaused: true,
         connectionId: null,
         viewerPeerIds: [],
-        iceConfig: { iceServers: [] },
+        iceConfig: { iceServers: [], natPredictionStunUrls: [] },
         codeEntryPolicy: "open",
         viewerPasswordEnabled: false,
         viewerAuthorizationGeneration: "viewer_generation_12345678",
@@ -1044,7 +1044,7 @@ describe("client signaling recovery policy", () => {
       hostPaused: true,
       connectionId: null,
       viewerPeerIds: [],
-      iceConfig: { iceServers: [] },
+      iceConfig: { iceServers: [], natPredictionStunUrls: [] },
       codeEntryPolicy: "open",
       viewerPasswordEnabled: false,
       viewerAuthorizationGeneration: "viewer_generation_12345678",
@@ -1157,7 +1157,7 @@ describe("client signaling recovery policy", () => {
           hostPaused: false,
           connectionId: null,
           viewerPeerIds: [],
-          iceConfig: { iceServers: [] },
+          iceConfig: { iceServers: [], natPredictionStunUrls: [] },
           codeEntryPolicy: "open",
           viewerPasswordEnabled: false,
           viewerAuthorizationGeneration: "viewer_generation_12345678",
@@ -1285,7 +1285,7 @@ describe("client signaling recovery policy", () => {
         hostOnline: true,
         connectionId: null,
         viewerPeerIds: [],
-        iceConfig: { iceServers: [] },
+        iceConfig: { iceServers: [], natPredictionStunUrls: [] },
         codeEntryPolicy: "open",
         viewerPasswordEnabled: false,
         viewerAuthorizationGeneration: "viewer_generation_12345678",
@@ -1402,7 +1402,7 @@ describe("client signaling recovery policy", () => {
       hostOnline: true,
       connectionId: "connection_12345678",
       viewerPeerIds: [],
-      iceConfig: { iceServers: [] },
+      iceConfig: { iceServers: [], natPredictionStunUrls: [] },
       codeEntryPolicy: "open",
       viewerAuthorizationGeneration: "viewer_generation_12345678",
       mediaMode: "peer-assisted",
@@ -1483,7 +1483,7 @@ describe("client signaling recovery policy", () => {
       hostOnline: true,
       connectionId: null,
       viewerPeerIds: [],
-      iceConfig: { iceServers: [] },
+      iceConfig: { iceServers: [], natPredictionStunUrls: [] },
     }),
   ])(
     "terminates once when a server payload is incompatible with the current wire",
@@ -1710,6 +1710,7 @@ describe("WebRTC stats parsing", () => {
       }),
       entry("remote-candidate-a", "remote-candidate", {
         candidateType: "srflx",
+        foundation: "sp1",
         protocol: "udp",
         address: "2001:db8::10",
         port: 50_001,
@@ -1804,6 +1805,7 @@ describe("WebRTC stats parsing", () => {
       mediaSourceFramesPerSecond: 58.5,
       selectedCandidatePairId: "pair-a",
       path: "direct",
+      natTraversalPath: "predicted",
       iceProtocol: "udp",
       localCandidateAddress: "192.0.2.10",
       localCandidatePort: 50_000,
@@ -1840,6 +1842,12 @@ describe("WebRTC stats parsing", () => {
     });
     report.get("remote-candidate-a")!.address = "2001:db8::10";
     report.get("remote-candidate-a")!.port = 50_001;
+    report.get("remote-candidate-a")!.foundation = "ordinary";
+    expect(
+      await collectConnectionMetrics(connection, "send", accumulator, {
+        trackIdentifier: "capture-track-a",
+      }),
+    ).toMatchObject({ natTraversalPath: "ordinary" });
 
     report.get("transport-a")!.selectedCandidatePairId = "pair-z";
     const wrongTransportPair = await collectConnectionMetrics(

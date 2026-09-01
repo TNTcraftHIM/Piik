@@ -34,8 +34,11 @@ share generation:
   availability routing is unchanged;
 - the default-off NAT traversal experiment augments direct ICE candidates on
   every Browser P2P edge in that share. It is not a participant capability,
-  route score, or SFU preference. [ADR-0009](../adr/0009-connection-local-nat-prediction-experiment.md)
-  owns its bounded behavior and evidence boundary.
+  route score, or SFU preference. A deployment may add a bounded independent
+  STUN observation list only inside that experiment. Candidate generation and
+  selected-pair diagnostics retain only `ordinary | predicted | unknown`
+  provenance. [ADR-0009](../adr/0009-connection-local-nat-prediction-experiment.md)
+  owns the bounded behavior and evidence boundary.
 
 These are route-policy gates, not new routing algorithms. Changing any
 policy requires stopping the current share and starting another generation.

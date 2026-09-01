@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { debuglog } from "node:util";
 
 import { packetLossPercentFromDeltas } from "../shared/packet-loss.js";
+import type { CandidateSignalOrigin } from "../shared/nat-candidate.js";
 
 import type {
   ClientMessage,
@@ -324,6 +325,7 @@ export class HybridMediaRouter {
           input.upstream.kind === "peer"
             ? `p2p:${this.debugPeer(roomId, input.upstream.peerId)}`
             : "sfu",
+        natTraversalPath: input.metrics.natTraversalPath,
         framesPerSecond: input.metrics.framesPerSecond,
         bitrateKbps: input.metrics.bitrateKbps,
         width: input.metrics.width,
@@ -397,6 +399,7 @@ export class HybridMediaRouter {
         routeRevision: message.routeRevision,
         ...copyContext,
         state: message.state,
+        natTraversalPath: message.diagnostics.natTraversalPath,
         reason: message.diagnostics.reason,
         framesPerSecond: message.diagnostics.framesPerSecond,
         bitrateKbps: message.diagnostics.bitrateKbps,
@@ -683,6 +686,7 @@ export class HybridMediaRouter {
     sourcePeerId: string;
     targetPeerId: string;
     signalKind: "candidate" | "description";
+    candidateOrigin?: CandidateSignalOrigin;
     descriptionType?: "offer" | "answer";
     authorization: boolean | "probe" | undefined;
   }): void {
@@ -690,6 +694,7 @@ export class HybridMediaRouter {
       source: this.debugPeer(input.roomId, input.sourcePeerId),
       target: this.debugPeer(input.roomId, input.targetPeerId),
       signalKind: input.signalKind,
+      candidateOrigin: input.candidateOrigin ?? null,
       descriptionType: input.descriptionType ?? null,
       authorization:
         input.authorization === undefined ? "assignment" : input.authorization,

@@ -14,6 +14,7 @@ import { preferScreenAudioStereo } from "./screen-audio-sdp";
 import { observeDecodedFrameProof } from "../media/decoded-frame-proof";
 import {
   iceServersWithNatPrediction,
+  natPredictionSurveyUrls,
   NatPredictionCandidateEmitter,
 } from "./nat-prediction";
 
@@ -21,7 +22,9 @@ const MAX_PENDING_CANDIDATES = 64;
 const MAX_AUTOMATIC_RECOVERY_REQUESTS = 2;
 const INITIAL_CONNECTION_TIMEOUT_MS = 15_000;
 const AUTOMATIC_RECOVERY_TIMEOUT_MS = 3_000;
-type PeerIceConfig = Pick<RTCConfiguration, "iceServers">;
+type PeerIceConfig = Pick<RTCConfiguration, "iceServers"> & {
+  natPredictionStunUrls?: readonly string[];
+};
 type SignalCandidate = Extract<
   SignalPayload,
   { kind: "candidate" }
@@ -124,8 +127,14 @@ export class ViewerPeer {
         iceServers: iceServersWithNatPrediction(
           iceConfig.iceServers,
           this.natPredictionEnabled,
+          iceConfig.natPredictionStunUrls,
         ),
       });
+      this.localIceCandidates?.setSurveyUrls(
+        natPredictionSurveyUrls(
+          iceConfig.iceServers,
+        ),
+      );
     } catch (error) {
       this.setError(error, say("host.fail.connection"));
     }
@@ -225,6 +234,7 @@ export class ViewerPeer {
       iceServers: iceServersWithNatPrediction(
         this.currentIceConfig.iceServers,
         this.natPredictionEnabled,
+        this.currentIceConfig.natPredictionStunUrls,
       ),
     });
     const localIceCandidates = new NatPredictionCandidateEmitter(
@@ -239,6 +249,9 @@ export class ViewerPeer {
           candidate,
         });
       },
+      natPredictionSurveyUrls(
+        this.currentIceConfig.iceServers,
+      ),
     );
     this.connection = connection;
     this.localIceCandidates = localIceCandidates;

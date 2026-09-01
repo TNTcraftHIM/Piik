@@ -33,6 +33,7 @@ function receiveMetrics(
       ...EMPTY_METRICS,
       sampleTimestampMs: 10_000,
       sampleWindowMs: 2_000,
+      natTraversalPath: "predicted",
     framesPerSecond: 60,
     frameWidth: 1_920,
     frameHeight: 1_080,
@@ -116,6 +117,7 @@ describe("viewer quality evidence", () => {
     expect(qualityEvidenceWindowFromMetrics(receiveMetrics())).toEqual({
       windowMs: 2_000,
       metrics: {
+        natTraversalPath: "predicted",
         width: 1_920,
         height: 1_080,
         framesPerSecond: 60,
@@ -175,6 +177,7 @@ describe("viewer quality evidence", () => {
       }),
     );
     expect(bounded?.metrics).toMatchObject({
+      natTraversalPath: "predicted",
       width: null,
       height: null,
       bitrateKbps: null,
