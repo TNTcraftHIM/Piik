@@ -50,6 +50,7 @@ Peer IDs, SDP, ICE candidates, tokens or media credentials.
 | ---: | --- | --- |
 | TCP 80/443 | public | HTTP redirect and HTTPS/WSS reverse proxy |
 | UDP 3478 | public | STUN-only coturn |
+| UDP 3479/3480 | temporary public during approved NAT survey | auxiliary STUN-only coturn listeners |
 | UDP 7882 | public when SFU enabled | LiveKit WebRTC media |
 | TCP 8787 | private | Screener application |
 | TCP 7880 | private when SFU enabled | LiveKit signaling/control |
@@ -57,6 +58,15 @@ Peer IDs, SDP, ICE candidates, tokens or media credentials.
 TCP 3478, TCP/TLS 5349, TURN relay ranges, LiveKit media TCP, and other media
 ports remain closed. HTTPS/WSS transport is independent of the UDP-only media
 contract.
+
+The optional NAT survey uses `stun:<same-hostname>:3479` and `:3480` in a
+diagnostic page only. It does not change `STUN_URLS`, ordinary Peer ICE, or any
+media route, and it needs both cloud security-group rules and the host's
+`/etc/nftables.conf` rule. Coturn must bind the auxiliary listeners to the
+host's local address with `aux-server`; opening a cloud port without a listener
+has no effect. No new DNS record is required. Same-IP ports measure destination
+port allocation behavior; a full RFC 5780 alternate-address test requires a
+second public IPv4.
 
 ## Bounds
 
