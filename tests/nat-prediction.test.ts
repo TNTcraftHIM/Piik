@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
+  addRemoteIceCandidate,
   iceServersWithNatPrediction,
   MAX_NAT_PREDICTION_CANDIDATES,
   NatPredictionCandidateBatch,
@@ -42,6 +43,30 @@ function rtcCandidate(port: number): RTCIceCandidate {
 }
 
 describe("NAT prediction ICE adapter", () => {
+  it("ignores only rejected predicted candidates", async () => {
+    const error = new Error("candidate rejected");
+    const connection = {
+      addIceCandidate: vi.fn(async () => {
+        throw error;
+      }),
+    } as unknown as RTCPeerConnection;
+    const predicted = candidate(40_000);
+    if (predicted) {
+      predicted.candidate = predicted.candidate.replace(
+        "candidate:base",
+        "candidate:sp1",
+      );
+    }
+
+    await expect(
+      addRemoteIceCandidate(connection, predicted),
+    ).resolves.toBeUndefined();
+    await expect(
+      addRemoteIceCandidate(connection, candidate(40_000)),
+    ).rejects.toBe(error);
+    await expect(addRemoteIceCandidate(connection, null)).rejects.toBe(error);
+  });
+
   it("leaves the configured servers unchanged when disabled", () => {
     const servers = [
       { urls: ["stun:share.example.test:3478"] },

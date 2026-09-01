@@ -1,4 +1,5 @@
 import type { SignalPayload } from "../../shared/protocol";
+import { candidateSignalOrigin } from "../../shared/nat-candidate";
 
 export type SignalCandidate = Extract<
   SignalPayload,
@@ -14,6 +15,21 @@ const MAX_PREDICTABLE_PORT = 65_535;
 /** Keep the experiment bounded so normal ICE candidates retain their budget. */
 export const NAT_PREDICTION_STEPS = 4;
 export const MAX_NAT_PREDICTION_CANDIDATES = NAT_PREDICTION_STEPS * 2;
+
+export async function addRemoteIceCandidate(
+  connection: RTCPeerConnection,
+  candidate: SignalCandidate,
+): Promise<void> {
+  try {
+    await connection.addIceCandidate(candidate);
+  } catch (error) {
+    if (
+      candidateSignalOrigin(candidate?.candidate ?? null) !== "predicted"
+    ) {
+      throw error;
+    }
+  }
+}
 
 interface SrflxObservation {
   candidate: SignalCandidate;

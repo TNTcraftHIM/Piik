@@ -38,6 +38,7 @@ import {
   VP8_ONLY_VIDEO_CODEC,
 } from "./video-codec";
 import {
+  addRemoteIceCandidate,
   iceServersWithNatPrediction,
   natPredictionSurveyUrls,
   NatPredictionCandidateEmitter,
@@ -384,7 +385,7 @@ export class HostPeer {
         }
         await this.enqueueNegotiation(() => this.acceptAnswer(payload));
       } else if (this.connection.remoteDescription) {
-        await this.connection.addIceCandidate(payload.candidate);
+        await addRemoteIceCandidate(this.connection, payload.candidate);
       } else if (this.pendingCandidates.length < MAX_PENDING_CANDIDATES) {
         this.pendingCandidates.push(payload.candidate);
       }
@@ -573,7 +574,7 @@ export class HostPeer {
   private async flushCandidates(): Promise<void> {
     const candidates = this.pendingCandidates.splice(0);
     for (const candidate of candidates) {
-      await this.connection.addIceCandidate(candidate);
+      await addRemoteIceCandidate(this.connection, candidate);
     }
   }
 

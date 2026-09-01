@@ -88,7 +88,10 @@ until their stated boundary is met.
     Keep injected candidates additive and diagnostic; do not make them a
     participant-wide NAT label, hard candidate skip, route score, or SFU
     preference. Validate selected predicted paths and bounded resource impact
-    before recommending it as a default for other deployments.
+    before recommending it as a default for other deployments. Direct
+    convergence currently consumes each deferred Peer parent once; add no
+    cross-generation retry budget until field evidence proves that fresh ICE
+    generations expose a repeatable prediction opportunity.
 15. **Unresolved route-state ownership claims.** Reopen lower-revision
     reauthentication, active SFU failure during an unrelated prepare, and
     multi-child relay-evidence ownership only from an exact current-wire

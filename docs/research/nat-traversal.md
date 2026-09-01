@@ -96,6 +96,13 @@ remained independent. The flagship deployment enables the bounded capability
 to continue attributable field observation without claiming a demonstrated
 reachability gain.
 
+After an SFU commit, the current route controller gives each deferred Peer
+parent one full direct-convergence attempt and then consumes that continuation.
+Further generations come from a new participant session, publication, or share,
+not a periodic retry loop. This bounds current field exposure. A fixed repeat
+budget remains unjustified until attributable runs show that fresh generations
+repeatedly recover a usable arithmetic shape.
+
 The Browser-only alternatives do not yet have an accepted implementation:
 
 - WebRTC ICE already exchanges observed candidates and performs coordinated

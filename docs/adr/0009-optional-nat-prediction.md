@@ -36,7 +36,9 @@ media path, or third-party STUN dependency.
    endpoints: four above the high endpoint and four below the low endpoint.
    Every ordinary candidate keeps normal Trickle ICE timing; no ordinary
    candidate is delayed, rejected, or replaced. A Browser that does not expose
-   candidate source URLs keeps ordinary ICE without prediction.
+   candidate source URLs keeps ordinary ICE without prediction. Rejection of a
+   predicted remote candidate discards only that optional candidate; ordinary
+   candidate errors retain their normal connection error semantics.
 4. Candidate observations remain in memory for that connection only. No NAT
    label, raw address, port, score, hard candidate skip, periodic probe, or
    route-controller branch is introduced. Sanitized diagnostics record only
