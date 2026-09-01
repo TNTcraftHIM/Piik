@@ -31,15 +31,13 @@ share generation:
   failure; and
 - native-edge topology convergence is enabled by default. The Host may disable
   it before sharing; when disabled, quality evidence stays diagnostic and
-  availability routing is unchanged.
+  availability routing is unchanged;
+- the default-off NAT traversal experiment augments direct ICE candidates on
+  every Browser P2P edge in that share. It is not a participant capability,
+  route score, or SFU preference. [ADR-0009](../adr/0009-connection-local-nat-prediction-experiment.md)
+  owns its bounded behavior and evidence boundary.
 
-Host Advanced settings also contain an independent, default-off NAT traversal
-experiment. It only augments Host-originated direct ICE candidates for the
-current share generation; it is not a route policy, participant capability, or
-SFU preference. [ADR-0009](../adr/0009-connection-local-nat-prediction-experiment.md)
-owns its bounded behavior and evidence boundary.
-
-These are route-policy gates, not new routing algorithms. Changing either
+These are route-policy gates, not new routing algorithms. Changing any
 policy requires stopping the current share and starting another generation.
 
 ## Endpoint And Server Capacity

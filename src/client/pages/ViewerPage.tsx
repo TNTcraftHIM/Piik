@@ -890,6 +890,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           },
         },
         endpointMediaCopyCapacity,
+        currentRoutePolicy.natPrediction,
       );
       viewerRelay.setChildren(currentAssignment.childPeerIds);
       return viewerRelay;
@@ -1465,6 +1466,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               : true;
           },
         },
+        currentRoutePolicy.natPrediction,
       );
       probe.peer = peer;
       return peer;
@@ -1555,6 +1557,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             return true;
           },
         },
+        currentRoutePolicy.natPrediction,
       );
       peerRef.current = peer;
       return peer;
@@ -1579,6 +1582,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         viewerRelay?.updateCapacity(endpointMediaCopyCapacity);
         viewerAuthorizationGeneration =
           message.viewerAuthorizationGeneration;
+        currentRoutePolicy = message.routePolicy;
         setSfuStandbyUrl(
           "sfuStandbyUrl" in message ? message.sfuStandbyUrl : null,
         );
@@ -1644,7 +1648,6 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         });
         if (nextPeerAssisted && "qualitySettings" in message) {
           currentQualitySettings = message.qualitySettings;
-          currentRoutePolicy = message.routePolicy;
           currentShareGeneration = message.shareGeneration;
           void viewerRelay?.updateProfile(currentQualitySettings);
           const route = ensureViewerSfuRoute();
@@ -1783,9 +1786,8 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       }
       if (message.type === "route-policy") {
         if (
-          peerAssisted &&
-          (currentShareGeneration === null ||
-            currentShareGeneration === message.shareGeneration)
+          currentShareGeneration === null ||
+          currentShareGeneration === message.shareGeneration
         ) {
           currentShareGeneration = message.shareGeneration;
           currentRoutePolicy = message.routePolicy;

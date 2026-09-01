@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 
 import {
+  DEFAULT_ROUTE_POLICY,
   MAX_SIGNAL_BYTES,
   SIGNALING_PROTOCOL,
   decodeServerMessage,
@@ -477,6 +478,7 @@ describe("WebSocket signaling", () => {
     const routePolicy = {
       peerOnly: true,
       topologyOptimization: true,
+      natPrediction: true,
     } as const;
     const authenticated = peerAssisted(
       await authenticate(
@@ -496,6 +498,48 @@ describe("WebSocket signaling", () => {
       shareGeneration: "route_policy_share_generation_12345678",
       routePolicy,
     });
+  });
+
+  it("broadcasts the NAT experiment policy in lightweight rooms", async () => {
+    const harness = await startHarness({ peerAssistedMedia: false });
+    const waitingViewer = await openClient(harness.webSocketUrl);
+    const waiting = await authenticate(
+      waitingViewer,
+      harness.room,
+      "viewer",
+      "ordinary-nat-waiting-viewer",
+      null,
+    );
+    expect(waiting.routePolicy.natPrediction).toBe(false);
+
+    const host = await openClient(harness.webSocketUrl);
+    const routePolicy = {
+      ...DEFAULT_ROUTE_POLICY,
+      natPrediction: true,
+    };
+    const hostAuth = await authenticate(
+      host,
+      harness.room,
+      "host",
+      "ordinary-nat-host",
+      null,
+      "ordinary_nat_share_generation_12345678",
+      { routePolicy },
+    );
+    expect(hostAuth.routePolicy).toEqual(routePolicy);
+    expect(await waitingViewer.inbox.next("route-policy")).toMatchObject({
+      routePolicy,
+    });
+
+    const joiningViewer = await openClient(harness.webSocketUrl);
+    const joined = await authenticate(
+      joiningViewer,
+      harness.room,
+      "viewer",
+      "ordinary-nat-joining-viewer",
+      null,
+    );
+    expect(joined.routePolicy).toEqual(routePolicy);
   });
 
   it("rebuilds a route when a Viewer reconnects before the Host after restart", async () => {

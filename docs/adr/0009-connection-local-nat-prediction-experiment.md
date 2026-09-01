@@ -12,19 +12,20 @@ receives a small set of adjacent server-reflexive candidates. The result is
 network- and generation-specific; it is not a reliable NAT type or participant
 capability.
 
-The current WebRTC signaling contract already carries ICE candidates. A safe
-experiment therefore needs no new message shape, route state, or media path.
+The existing route-policy and ICE candidate owners are sufficient. Making the
+experiment room-wide requires one strict protocol revision for the added policy
+field, but no new message type, route-controller state, or media path.
 
 ## Decision
 
 1. Host Advanced settings exposes `NAT traversal experiment`, disabled by
-   default and locked while sharing. The choice is local to that page and is
-   read when each new connection is created; it is not persisted or broadcast
-   as a room policy.
-2. When enabled, Host-originated direct `HostPeer` connections add ports 3479
-   and 3480 for the same STUN authority already supplied by the server. The
-   server-provided STUN entries remain unchanged. SFU, ViewerPeer, and Viewer
-   relay connections keep the stock ICE configuration.
+   default and locked while sharing. It is part of the current share's room
+   policy and is broadcast to every authenticated Viewer; it is not persisted
+   beyond that share generation.
+2. When enabled, every Browser P2P connection adds ports 3479 and 3480 for the
+   same STUN authority already supplied by the server. This covers Host direct,
+   Viewer upstream, and Viewer relay connections. SFU PeerConnections remain
+   unchanged.
 3. For one ICE gathering generation, the adapter observes only UDP `srflx`
    candidates. If three or more distinct candidates for one media section and
    public address form an arithmetic port sequence, it appends at most eight
@@ -51,8 +52,8 @@ Negative:
 
 - the Browser may still reject synthetic candidates or the NAT may not have a
   matching mapping; and
-- the current implementation covers Host-originated direct edges only. It does
-  not claim to improve Viewer relay edges or two endpoint-dependent NATs.
+- two endpoint-dependent NATs remain sensitive to candidate scheduling and
+  intervening mappings, so room-wide coverage is not a success guarantee.
 
 The controlled lab result (14/15 sequential-to-restricted runs with a bounded
 prediction set) is mechanism evidence, not a production success guarantee.

@@ -60,6 +60,7 @@ class FakePeerConnection extends EventTarget {
   readonly configurations: RTCConfiguration[] = [];
   connectionState: RTCPeerConnectionState = "new";
   iceConnectionState: RTCIceConnectionState = "new";
+  iceGatheringState: RTCIceGatheringState = "new";
   remoteDescription: RTCSessionDescription | null = null;
   localDescription: RTCSessionDescription | null = null;
   statsGate: Promise<RTCStatsReport> | null = null;
@@ -173,6 +174,7 @@ function createPeer(
   snapshots: PeerSnapshot[],
   signalPeers: string[] = [],
   iceConfig: IceConfig = { iceServers: [] },
+  natPrediction = false,
 ): ViewerPeer {
   return new ViewerPeer(
     iceConfig,
@@ -186,6 +188,7 @@ function createPeer(
       onStream: () => undefined,
       onUpdate: (snapshot) => snapshots.push(snapshot),
     },
+    natPrediction,
   );
 }
 
@@ -331,6 +334,61 @@ describe("ViewerPeer connection generations", () => {
         ),
       ).toBe(true);
     }
+  });
+
+  it("uses the room NAT policy for Viewer-originated ICE candidates", async () => {
+    const signals: SignalPayload[] = [];
+    const peer = createPeer(
+      signals,
+      [],
+      [],
+      { iceServers: [{ urls: "stun:share.example.test:3478" }] },
+      true,
+    );
+    await peer.acceptSignal("host", offer("nat-room-policy"));
+    const connection = FakePeerConnection.instances[0]!;
+    expect(connection.configurations[0]?.iceServers).toEqual([
+      { urls: "stun:share.example.test:3478" },
+      { urls: "stun:share.example.test:3479" },
+      { urls: "stun:share.example.test:3480" },
+    ]);
+
+    const emitCandidate = (port: number): void => {
+      const event = new Event("icecandidate");
+      Object.defineProperty(event, "candidate", {
+        value: {
+          candidate:
+            `candidate:base 1 udp 2122260223 203.0.113.7 ${port} ` +
+            "typ srflx raddr 192.0.2.7 rport 50000 generation 0 ufrag test",
+          sdpMid: "0",
+          sdpMLineIndex: 0,
+          usernameFragment: "test",
+        },
+      });
+      connection.dispatchEvent(event);
+    };
+    emitCandidate(40_000);
+    emitCandidate(40_003);
+    emitCandidate(40_006);
+    connection.iceGatheringState = "complete";
+    connection.dispatchEvent(new Event("icegatheringstatechange"));
+
+    const candidates = signals.filter(
+      (signal): signal is Extract<SignalPayload, { kind: "candidate" }> =>
+        signal.kind === "candidate",
+    );
+    expect(
+      candidates.some((signal) =>
+        signal.candidate?.candidate.startsWith("candidate:sp"),
+      ),
+    ).toBe(true);
+    expect(
+      candidates.filter((signal) =>
+        signal.candidate?.candidate.startsWith("candidate:base"),
+      ),
+    ).toHaveLength(3);
+    expect(candidates.filter((signal) => signal.candidate === null)).toHaveLength(1);
+    peer.dispose();
   });
 
   it("restarts ICE when an answered initial connection stays stuck", async () => {

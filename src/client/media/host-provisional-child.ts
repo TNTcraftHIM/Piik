@@ -23,7 +23,7 @@ interface HostProvisionalPrepareInput extends HostProvisionalInput {
   stream: MediaStream;
   profile: QualityProfile;
   videoCodec: BrowserVideoCodecPreference;
-  natPredictionEnabled?: boolean;
+  natPredictionEnabled: boolean;
 }
 
 interface HostProvisionalChildEvents {
@@ -128,7 +128,7 @@ export class HostProvisionalChild {
       },
       input.videoCodec,
       candidate.connectionId,
-      input.natPredictionEnabled ?? false,
+      input.natPredictionEnabled,
     );
     this.signalingPeer = peer;
     this.prepared = {

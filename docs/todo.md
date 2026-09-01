@@ -81,14 +81,13 @@ until their stated boundary is met.
     `MediaStream` output contract. Reopen only for a registered custom receiver
     acting as an ordinary Viewer after a named Browser and physical receiver
     pass the [platform-output gate](./research/platform-output.md).
-14. **NAT inference and predictive candidates.** The default-off Host-only
+14. **NAT inference and predictive candidates.** The default-off room-wide,
     connection-local experiment is accepted under
     [ADR-0009](./adr/0009-connection-local-nat-prediction-experiment.md). Keep
     multi-STUN observations and injected candidates additive and diagnostic;
     do not make them a participant-wide NAT label, hard candidate skip, route
     score, or SFU preference. Validate target-network success, candidate
-    direction, and bounded resource impact before enabling it by default or
-    extending it to Viewer relay edges.
+    direction, and bounded resource impact before enabling it by default.
 15. **Unresolved route-state ownership claims.** Reopen lower-revision
     reauthentication, active SFU failure during an unrelated prepare, and
     multi-child relay-evidence ownership only from an exact current-wire

@@ -7,7 +7,7 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Production
 
-- `https://share.bonfire.icu` runs the strict `screener-v17` Browser/server
+- `https://share.bonfire.icu` runs the strict `screener-v18` Browser/server
   contract. Exact revision, release, artifact, manifest, and asset identity are
   retained by the immutable release descriptor, runtime `REVISION`, and
   deployment record rather than copied into this source snapshot.
@@ -49,7 +49,7 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Current Source
 
-- Canonical source uses the strict `screener-v17` Browser/server contract.
+- Canonical source uses the strict `screener-v18` Browser/server contract.
   Optional SQLite stable authority, non-expiring local preferred code, atomic
   room replacement and the Host codec selector remain implemented; production
   selects stable storage. Graceful restart, crash, timeout and network loss use
@@ -75,9 +75,9 @@ This is the current execution index. Git history owns completed timelines;
   sender windows retain the bounded Peer operation; failed exact candidates stay
   consumed until the sender or candidate opportunity changes. The pre-share gate
   defaults on and locks while sharing.
-- Host Advanced settings include a default-off, Host-originated NAT traversal
-  experiment. It adds only bounded, connection-local predicted ICE candidates;
-  ordinary candidates and the existing SFU fallback remain unchanged.
+- Host Advanced settings include a default-off, per-share NAT traversal
+  experiment. Every Browser P2P role uses the same bounded, connection-local
+  candidate adapter; ordinary candidates and SFU fallback remain unchanged.
 - Every direct, Browser-relay, and Host SFU video sender owns one clone of its
   source track; the original remains presentation and source authority only.
   Replacement, rollback, unpublish, physical LiveKit sender recreation, and

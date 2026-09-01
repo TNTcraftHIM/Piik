@@ -4,6 +4,7 @@ export type SignalCandidate = Extract<
   SignalPayload,
   { kind: "candidate" }
 >["candidate"];
+type ConcreteSignalCandidate = NonNullable<SignalCandidate>;
 
 const BASE_STUN_PORT = 3478;
 const AUXILIARY_STUN_PORTS = [3479, 3480] as const;
@@ -296,5 +297,80 @@ export class NatPredictionCandidateBatch {
     for (const candidate of this.pendingSrflx.splice(0)) {
       this.send(candidate);
     }
+  }
+}
+
+function signalCandidate(candidate: RTCIceCandidate): ConcreteSignalCandidate {
+  return {
+    candidate: candidate.candidate,
+    sdpMid: candidate.sdpMid,
+    sdpMLineIndex: candidate.sdpMLineIndex,
+    usernameFragment: candidate.usernameFragment,
+  };
+}
+
+/** Own one local ICE candidate generation for any Browser P2P role. */
+export class NatPredictionCandidateEmitter {
+  private batch: NatPredictionCandidateBatch | null = null;
+  private usernameFragment: string | null = null;
+  private endSent = false;
+
+  constructor(
+    private readonly enabled: boolean,
+    private readonly send: (candidate: SignalCandidate | null) => void,
+  ) {}
+
+  add(candidate: RTCIceCandidate | null): void {
+    if (!this.enabled) {
+      this.send(candidate ? signalCandidate(candidate) : null);
+      return;
+    }
+    if (!candidate) {
+      this.completeBatch();
+      if (!this.endSent) {
+        this.send(null);
+        this.endSent = true;
+      }
+      return;
+    }
+
+    const next = signalCandidate(candidate);
+    if (
+      this.batch &&
+      this.usernameFragment &&
+      next.usernameFragment &&
+      next.usernameFragment !== this.usernameFragment
+    ) {
+      this.completeBatch();
+    }
+    if (!this.batch) {
+      this.usernameFragment = next.usernameFragment ?? null;
+      this.endSent = false;
+      this.batch = new NatPredictionCandidateBatch(this.send);
+    }
+    this.batch.add(next);
+  }
+
+  gatheringComplete(): void {
+    if (this.enabled) {
+      this.completeBatch();
+    }
+  }
+
+  discard(): void {
+    this.batch?.discard();
+    this.batch = null;
+    this.usernameFragment = null;
+    this.endSent = false;
+  }
+
+  private completeBatch(): void {
+    if (!this.batch) {
+      return;
+    }
+    this.batch.complete();
+    this.batch = null;
+    this.usernameFragment = null;
+    this.endSent = true;
   }
 }

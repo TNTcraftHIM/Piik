@@ -97,7 +97,7 @@ describe("client signaling protocol", () => {
       "utf8",
     );
 
-    expect(SIGNALING_PROTOCOL).toBe("screener-v17");
+    expect(SIGNALING_PROTOCOL).toBe("screener-v18");
     expect(nativeWire).toMatch(/signalingProtocol\s*=\s*"screener-v6"/);
   });
 
@@ -276,6 +276,7 @@ describe("client signaling protocol", () => {
     expect(DEFAULT_ROUTE_POLICY).toEqual({
       peerOnly: false,
       topologyOptimization: true,
+      natPrediction: false,
     });
     expect(
       decodeClientMessage(
@@ -320,6 +321,7 @@ describe("client signaling protocol", () => {
       routePolicy: {
         peerOnly: false,
         topologyOptimization: true,
+        natPrediction: false,
       },
     });
     expect(

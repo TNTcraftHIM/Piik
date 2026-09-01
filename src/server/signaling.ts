@@ -671,6 +671,9 @@ export class SignalingServer {
     if (!this.isHybridMediaEnabled()) {
       this.fillOrdinaryHostChildren(participant.roomId);
     }
+    const routePolicy =
+      this.routePolicyByRoom.get(participant.roomId) ?? DEFAULT_ROUTE_POLICY;
+    const hasRoutePolicy = this.routePolicyByRoom.has(participant.roomId);
 
     const authenticatedMessageBase = {
       type: "authenticated" as const,
@@ -694,6 +697,7 @@ export class SignalingServer {
           ? [...this.ordinaryHostChildPeerIds(participant.roomId)]
           : [...participant.viewerPeerIds],
       iceConfig: this.iceConfig(),
+      routePolicy,
       codeEntryPolicy: participant.codeEntryPolicy,
       viewerAuthorizationGeneration:
         participant.viewerAuthorizationGeneration,
@@ -712,9 +716,6 @@ export class SignalingServer {
             ...authenticatedMessageBase,
             role: "viewer" as const,
           };
-    const routePolicy =
-      this.routePolicyByRoom.get(participant.roomId) ?? DEFAULT_ROUTE_POLICY;
-    const hasRoutePolicy = this.routePolicyByRoom.has(participant.roomId);
     if (hybridState) {
       this.send(socket, {
         ...authenticatedMessage,
@@ -726,7 +727,6 @@ export class SignalingServer {
         qualitySettings:
           this.qualitySettingsByRoom.get(participant.roomId) ??
           DEFAULT_QUALITY_SETTINGS,
-        routePolicy,
         ...(this.options.sfuFallback && hasRoutePolicy && !routePolicy.peerOnly
           ? { sfuStandbyUrl: this.options.sfuFallback.url }
           : {}),

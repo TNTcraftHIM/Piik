@@ -750,6 +750,7 @@ describe("HybridMediaRouter v9 runtime", () => {
       const host = connectHost(store, room, {
         peerOnly: false,
         topologyOptimization: true,
+        natPrediction: false,
       });
       complete(router, host);
       const first = connectViewer(store, room, "quality-first");
@@ -906,6 +907,7 @@ describe("HybridMediaRouter v9 runtime", () => {
       const host = connectHost(store, room, {
         peerOnly: false,
         topologyOptimization: true,
+        natPrediction: false,
       });
       complete(router, host);
       const viewer = connectViewer(store, room, "quality-regeneration");
@@ -987,6 +989,7 @@ describe("HybridMediaRouter v9 runtime", () => {
       const host = connectHost(store, room, {
         peerOnly: true,
         topologyOptimization: false,
+        natPrediction: false,
       });
       complete(router, host);
       const first = connectViewer(store, room, "peer-only-first");
@@ -1035,6 +1038,7 @@ describe("HybridMediaRouter v9 runtime", () => {
       const host = connectHost(store, room, {
         peerOnly: false,
         topologyOptimization: true,
+        natPrediction: false,
       });
       complete(router, host);
       const viewer = connectViewer(store, room, "quality-sfu-denied");
