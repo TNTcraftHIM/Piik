@@ -492,6 +492,52 @@ ${rmBlock(
   </>
 );
 
+/* hint-nat-prediction: [one direct path] -> [a small bounded fan of
+   alternate direct paths]. The dots stay lightweight so the scene describes
+   extra ICE chances without suggesting a media relay. */
+const HintNatPrediction: HintScene = ({ theme }) => (
+  <>
+    <style>{`
+.vls-nat-path{stroke-dasharray:1;animation:vlsNatPath 3.2s ease-in-out infinite}
+.vls-nat-dots{animation:vlsNatDots 3.2s ease-in-out infinite}
+@keyframes vlsNatPath{0%,8%{stroke-dashoffset:1}30%,100%{stroke-dashoffset:0}}
+@keyframes vlsNatDots{0%,32%,100%{opacity:.35}44%{opacity:1}}
+${rmBlock(
+  ["vls-nat-path", "vls-nat-dots"],
+  [[".vls-nat-path", "stroke-dashoffset:0"], [".vls-nat-dots", "opacity:1"]],
+)}
+`}</style>
+    <Frame x={4} w={152} theme={theme} />
+    <Frame x={164} w={152} theme={theme} accent={LIVE} />
+    <Pawn x={42} yb={76} s={9} />
+    <Pawn x={118} yb={76} s={9} color={SKY} />
+    <path
+      d="M51 60 Q80 42 109 60"
+      stroke={FAINT}
+      strokeWidth={2.5}
+      strokeLinecap="round"
+      fill="none"
+    />
+    <g className="vls-nat-dots" fill={FAINT}>
+      <circle cx={71} cy={52} r={2} />
+      <circle cx={82} cy={48} r={2} />
+      <circle cx={93} cy={52} r={2} />
+    </g>
+    <Pawn x={202} yb={76} s={9} eyes />
+    <Pawn x={278} yb={76} s={9} color={SKY} eyes />
+    <g className="vls-nat-path" fill="none" stroke={LIVE} strokeWidth={2.5} strokeLinecap="round">
+      <path d="M211 60 Q240 35 269 60" pathLength={1} />
+      <path d="M211 64 Q240 52 269 64" pathLength={1} />
+    </g>
+    <g className="vls-nat-dots" fill={STAR_GOLD}>
+      <circle cx={226} cy={48} r={2} />
+      <circle cx={240} cy={39} r={2.5} />
+      <circle cx={254} cy={48} r={2} />
+    </g>
+    <Spark x={240} y={26} />
+  </>
+);
+
 export const SET4_SCENES: Record<Set4Kind, HintScene> = {
   "hint-topology": HintTopology,
   "hint-close": HintClose,
@@ -504,4 +550,5 @@ export const SET4_SCENES: Record<Set4Kind, HintScene> = {
   "hint-theater-exit": HintTheaterExit,
   "hint-route-p2p": HintRouteP2p,
   "hint-route-sfu": HintRouteSfu,
+  "hint-nat-prediction": HintNatPrediction,
 };

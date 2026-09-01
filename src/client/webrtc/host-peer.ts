@@ -37,13 +37,14 @@ import {
   type BrowserVideoCodecPreference,
   VP8_ONLY_VIDEO_CODEC,
 } from "./video-codec";
+import {
+  iceServersWithNatPrediction,
+  NatPredictionCandidateBatch,
+  type SignalCandidate,
+} from "./nat-prediction";
 
 const MAX_PENDING_CANDIDATES = 64;
 type PeerIceConfig = Pick<RTCConfiguration, "iceServers">;
-type SignalCandidate = Extract<
-  SignalPayload,
-  { kind: "candidate" }
->["candidate"];
 
 interface HostPeerEvents {
   sendSignal: (peerId: string, payload: SignalPayload) => boolean;
@@ -55,6 +56,10 @@ export class HostPeer {
 
   private readonly connection: RTCPeerConnection;
   private readonly pendingCandidates: SignalCandidate[] = [];
+  private readonly natPredictionEnabled: boolean;
+  private natCandidateBatch: NatPredictionCandidateBatch | null = null;
+  private natCandidateUsernameFragment: string | null = null;
+  private natCandidateEndSent = false;
   private statsAccumulator = createStatsAccumulator();
   private senderVideoTrack: MediaStreamTrack | null;
   private replacementVideoTrack: MediaStreamTrack | null = null;
@@ -94,8 +99,10 @@ export class HostPeer {
     private readonly videoCodec: BrowserVideoCodecPreference =
       VP8_ONLY_VIDEO_CODEC,
     connectionId = createOpaqueId(),
+    natPredictionEnabled = false,
   ) {
     this.connectionId = connectionId;
+    this.natPredictionEnabled = natPredictionEnabled;
     const sourceVideoTrack = stream.getVideoTracks()[0] ?? null;
     this.paused = sourceVideoTrack?.enabled === false;
     this.senderVideoTrack = sourceVideoTrack
@@ -103,7 +110,10 @@ export class HostPeer {
       : null;
     this.startupVideoProfilePending = needsStartupVideoProfile(desiredProfile);
     this.connection = new RTCPeerConnection({
-      iceServers: iceConfig.iceServers,
+      iceServers: iceServersWithNatPrediction(
+        iceConfig.iceServers,
+        this.natPredictionEnabled,
+      ),
     });
     this.snapshot = {
       peerId,
@@ -399,7 +409,10 @@ export class HostPeer {
     }
     try {
       this.connection.setConfiguration({
-        iceServers: iceConfig.iceServers,
+        iceServers: iceServersWithNatPrediction(
+          iceConfig.iceServers,
+          this.natPredictionEnabled,
+        ),
       });
     } catch (error) {
       this.setError(error, say("host.err.createConnection"));
@@ -418,24 +431,61 @@ export class HostPeer {
       this.statsTimer = null;
     }
     this.connection.close();
+    this.natCandidateBatch?.discard();
+    this.natCandidateBatch = null;
+    this.natCandidateUsernameFragment = null;
+    this.natCandidateEndSent = false;
     this.senderVideoTrack?.stop();
     this.senderVideoTrack = null;
   }
 
   private bindConnectionEvents(): void {
     this.connection.addEventListener("icecandidate", (event) => {
-      this.events.sendSignal(this.peerId, {
-        kind: "candidate",
-        connectionId: this.connectionId,
-        candidate: event.candidate
-          ? {
-              candidate: event.candidate.candidate,
-              sdpMid: event.candidate.sdpMid,
-              sdpMLineIndex: event.candidate.sdpMLineIndex,
-              usernameFragment: event.candidate.usernameFragment,
-            }
-          : null,
-      });
+      const candidate = event.candidate
+        ? {
+            candidate: event.candidate.candidate,
+            sdpMid: event.candidate.sdpMid,
+            sdpMLineIndex: event.candidate.sdpMLineIndex,
+            usernameFragment: event.candidate.usernameFragment,
+          }
+        : null;
+      if (!this.natPredictionEnabled) {
+        this.sendIceCandidate(candidate);
+        return;
+      }
+      if (candidate === null) {
+        this.completeNatCandidateBatch();
+        if (!this.natCandidateEndSent) {
+          this.sendIceCandidate(null);
+          this.natCandidateEndSent = true;
+        }
+        return;
+      }
+      if (
+        this.natCandidateBatch &&
+        this.natCandidateUsernameFragment &&
+        candidate.usernameFragment &&
+        candidate.usernameFragment !== this.natCandidateUsernameFragment
+      ) {
+        this.natCandidateBatch.complete();
+        this.natCandidateBatch = null;
+      }
+      if (!this.natCandidateBatch) {
+        this.natCandidateUsernameFragment = candidate.usernameFragment ?? null;
+        this.natCandidateEndSent = false;
+        this.natCandidateBatch = new NatPredictionCandidateBatch((next) =>
+          this.sendIceCandidate(next),
+        );
+      }
+      this.natCandidateBatch.add(candidate);
+    });
+    this.connection.addEventListener("icegatheringstatechange", () => {
+      if (
+        this.natPredictionEnabled &&
+        this.connection.iceGatheringState === "complete"
+      ) {
+        this.completeNatCandidateBatch();
+      }
     });
     this.connection.addEventListener("connectionstatechange", () => {
       const state = this.connection.connectionState;
@@ -455,6 +505,23 @@ export class HostPeer {
       this.emit();
     });
     this.connection.addEventListener("iceconnectionstatechange", () => this.emit());
+  }
+
+  private sendIceCandidate(candidate: SignalCandidate | null): void {
+    this.events.sendSignal(this.peerId, {
+      kind: "candidate",
+      connectionId: this.connectionId,
+      candidate,
+    });
+  }
+
+  private completeNatCandidateBatch(): void {
+    if (this.natCandidateBatch) {
+      this.natCandidateBatch.complete();
+      this.natCandidateBatch = null;
+      this.natCandidateUsernameFragment = null;
+      this.natCandidateEndSent = true;
+    }
   }
 
   private enqueueSenderMutation<T>(operation: () => Promise<T>): Promise<T> {

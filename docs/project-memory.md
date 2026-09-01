@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-08-28
+Last updated: 2026-09-01
 
 Screener is private, low-latency game screen sharing for one Host and up to 20
 authenticated friends. The current product surface is Web Host, Web Viewer, and
@@ -30,9 +30,11 @@ implementation and routine UI detail.
   lease. Production enables optional SQLite stable room authority; live
   participants, routes, and media remain process-only.
 - Media is automatic and distributed. Ordinary peers are STUN-only and prefer
-  direct/peer UDP. The only application fallback is one bounded LiveKit SFU/UDP
-  publication; Screener configures no TURN or TCP media route. A pre-share
-  peer-only policy can exclude that SFU suffix for one share generation.
+  direct/peer UDP. Host may opt into a bounded, connection-local NAT candidate
+  experiment; the default path remains stock ICE. The only application
+  fallback is one bounded LiveKit SFU/UDP publication; Screener configures no
+  TURN or TCP media route. A pre-share peer-only policy can exclude that SFU
+  suffix for one share generation.
 - Every endpoint shares one steady outbound-copy cap, default `2` and limited to
   `1..3`. One room controller owns one committed graph, one reconcile loop, and
   one serial child operation. First decoded frame commits availability work;

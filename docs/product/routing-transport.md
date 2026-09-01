@@ -33,6 +33,12 @@ share generation:
   it before sharing; when disabled, quality evidence stays diagnostic and
   availability routing is unchanged.
 
+Host Advanced settings also contain an independent, default-off NAT traversal
+experiment. It only augments Host-originated direct ICE candidates for the
+current share generation; it is not a route policy, participant capability, or
+SFU preference. [ADR-0009](../adr/0009-connection-local-nat-prediction-experiment.md)
+owns its bounded behavior and evidence boundary.
+
 These are route-policy gates, not new routing algorithms. Changing either
 policy requires stopping the current share and starting another generation.
 
