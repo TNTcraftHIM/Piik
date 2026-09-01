@@ -45,6 +45,8 @@ ordinary implementation and UI detail.
   owned media adaptation.
 - [ADR-0008](./adr/0008-window-scoped-audio-capture.md): Browser/native window
   audio boundary.
+- [ADR-0009](./adr/0009-connection-local-nat-prediction-experiment.md): opt-in
+  connection-local NAT candidate experiment.
 
 ## Evidence
 

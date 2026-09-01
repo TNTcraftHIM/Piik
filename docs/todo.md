@@ -81,18 +81,14 @@ until their stated boundary is met.
     `MediaStream` output contract. Reopen only for a registered custom receiver
     acting as an ordinary Viewer after a named Browser and physical receiver
     pass the [platform-output gate](./research/platform-output.md).
-14. **NAT inference and predictive candidates.** Keep multi-STUN observations
-    diagnostic until controlled Browser and target-network evidence proves a
-    connection-scoped classifier with bounded false rejection. Do not hard-skip
-    Peer candidates from a participant-wide NAT label or inject predicted ports
-    into production ICE without a new accepted decision and a measured gate. See
-    [Browser NAT traversal](./research/nat-traversal.md). The Browser preflight
-    proves only positive mapping variation and synthetic-candidate syntax; the
-    isolated Linux namespace lab now covers the controlled Browser gate. A
-    self-hosted same-IP two/three-port endpoint is available for an approved
-    aggregate-only field survey; keep observations diagnostic until stable
-    sequential allocation is common enough to justify a new decision. Do not
-    inject predicted candidates yet.
+14. **NAT inference and predictive candidates.** The default-off Host-only
+    connection-local experiment is accepted under
+    [ADR-0009](./adr/0009-connection-local-nat-prediction-experiment.md). Keep
+    multi-STUN observations and injected candidates additive and diagnostic;
+    do not make them a participant-wide NAT label, hard candidate skip, route
+    score, or SFU preference. Validate target-network success, candidate
+    direction, and bounded resource impact before enabling it by default or
+    extending it to Viewer relay edges.
 15. **Unresolved route-state ownership claims.** Reopen lower-revision
     reauthentication, active SFU failure during an unrelated prepare, and
     multi-child relay-evidence ownership only from an exact current-wire

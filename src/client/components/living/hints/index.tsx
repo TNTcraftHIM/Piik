@@ -51,7 +51,8 @@ export type Set4Kind =
   | "hint-theater"
   | "hint-theater-exit"
   | "hint-route-p2p"
-  | "hint-route-sfu";
+  | "hint-route-sfu"
+  | "hint-nat-prediction";
 
 export type HintKind = Set1Kind | Set2Kind | Set3Kind | Set4Kind;
 
@@ -88,6 +89,7 @@ export const HINT_KINDS: readonly HintKind[] = [
   "hint-theater-exit",
   "hint-route-p2p",
   "hint-route-sfu",
+  "hint-nat-prediction",
 ];
 
 export type HintScene = (props: { theme: ComicTheme }) => ReactNode;
