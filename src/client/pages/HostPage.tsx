@@ -384,7 +384,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const [routePolicy, setRoutePolicy] = useState<RoutePolicy>(
     DEFAULT_ROUTE_POLICY,
   );
-  const [natPredictionEnabled, setNatPredictionEnabled] = useState(false);
   const [videoCodecMode, setVideoCodecMode] =
     useState<BrowserVideoCodecMode>("auto");
   const [resolvedVideoCodec, setResolvedVideoCodec] =
@@ -515,7 +514,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const pendingQualityChangeRef = useRef<QualitySettings | null>(null);
   const qualitySettingsRef = useRef<QualitySettings>(DEFAULT_QUALITY_SETTINGS);
   const routePolicyRef = useRef<RoutePolicy>(DEFAULT_ROUTE_POLICY);
-  const natPredictionEnabledRef = useRef(false);
   const advancedQualityRef = useRef<QualitySettings>(advancedQuality);
   const videoCodecModeRef = useRef<BrowserVideoCodecMode>(videoCodecMode);
   const roomMutationRef = useRef<object | null>(null);
@@ -1174,14 +1172,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     setRoutePolicy(next);
   }
 
-  function changeNatPrediction(enabled: boolean): void {
-    if (phase === "starting" || phase === "live") {
-      return;
-    }
-    natPredictionEnabledRef.current = enabled;
-    setNatPredictionEnabled(enabled);
-  }
-
   function changeAdvancedQuality(
     patch: Partial<QualitySettings>,
   ): void {
@@ -1463,7 +1453,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       stream,
       profile: qualitySettingsRef.current,
       videoCodec: videoCodecRef.current,
-      natPredictionEnabled: natPredictionEnabledRef.current,
+      natPredictionEnabled: routePolicyRef.current.natPrediction,
     });
   }
 
@@ -1541,7 +1531,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       },
       videoCodecRef.current,
       undefined,
-      natPredictionEnabledRef.current,
+      routePolicyRef.current.natPrediction,
     );
     peersRef.current.set(peerId, peer);
     let started: boolean;
@@ -1697,6 +1687,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         "sfuStandbyUrl" in message ? message.sfuStandbyUrl : null,
       );
       setMaxViewers(message.maxViewers);
+      routePolicyRef.current = { ...message.routePolicy };
+      setRoutePolicy({ ...message.routePolicy });
       setRoom((current) =>
         mergeAuthenticatedHostRoom(
           current,
@@ -1709,8 +1701,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         "mediaMode" in message &&
         message.mediaMode === "peer-assisted"
       ) {
-        routePolicyRef.current = { ...message.routePolicy };
-        setRoutePolicy({ ...message.routePolicy });
         const currentQualitySettings =
           pendingQualitySettings ?? message.qualitySettings;
         activeRouteRevisionRef.current = message.routeRevision;
@@ -3834,9 +3824,11 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                         hint="hint-route-p2p"
                       />
                       <SwitchItem
-                        checked={natPredictionEnabled}
+                        checked={routePolicy.natPrediction}
                         disabled={phase === "starting" || phase === "live"}
-                        onChange={changeNatPrediction}
+                        onChange={(checked) =>
+                          changeRoutePolicy({ natPrediction: checked })
+                        }
                         label={t("host.advanced.route.natPrediction")}
                         note={t("host.advanced.route.natPredictionHint")}
                         hint="hint-nat-prediction"

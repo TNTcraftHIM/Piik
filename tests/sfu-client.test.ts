@@ -6,6 +6,7 @@ import { SfuPublisher } from "../src/client/sfu/publisher.ts";
 import { SfuSubscriber } from "../src/client/sfu/subscriber.ts";
 import type { ConnectionMetrics } from "../src/client/types.ts";
 import { mergeStatsReports } from "../src/client/webrtc/stats.ts";
+import { setCopy } from "../src/client/ui/copy.ts";
 
 type EventHandler = (...args: unknown[]) => void;
 
@@ -535,6 +536,7 @@ function deferred(): {
 }
 
 beforeEach(() => {
+  setCopy({ lang: "zh", vis: false });
   livekit.state.rooms.length = 0;
   livekit.state.connectGate = null;
   livekit.state.nextSenderParameterError = null;

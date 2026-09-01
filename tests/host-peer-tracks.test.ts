@@ -14,6 +14,7 @@ import {
   VP8_ONLY_VIDEO_CODEC,
 } from "../src/client/webrtc/video-codec.ts";
 import { ViewerRelay } from "../src/client/webrtc/viewer-relay.ts";
+import { setCopy } from "../src/client/ui/copy.ts";
 import type {
   IceConfig,
   ParticipantRouteAssignment,
@@ -473,6 +474,7 @@ async function completeVideoStartup(
 }
 
 beforeEach(() => {
+  setCopy({ lang: "zh", vis: false });
   codecPreflight.probe.mockReset();
   codecPreflight.probe.mockResolvedValue("vp8");
   FakePeerConnection.latest = null;
@@ -1699,6 +1701,7 @@ function hostProvisionalInput(
     stream,
     profile: QUALITY_PROFILES["720p30"],
     videoCodec: VP8_ONLY_VIDEO_CODEC,
+    natPredictionEnabled: false,
   };
 }
 
@@ -1823,6 +1826,28 @@ describe("Host provisional child runtime ownership", () => {
 });
 
 describe("ViewerRelay downstream ownership", () => {
+  it("applies the room NAT policy to downstream Peer connections", async () => {
+    const relay = new ViewerRelay(
+      { iceServers: [{ urls: "stun:share.example.test:3478" }] },
+      QUALITY_PROFILES["720p30"],
+      { sendSignal: () => true },
+      2,
+      true,
+    );
+
+    relay.setChildren(["nat-child"]);
+    relay.setStream(
+      createStream(createTrack("video", "nat-relay-source"), null),
+    );
+    await vi.waitFor(() => expect(FakePeerConnection.latest).not.toBeNull());
+    expect(FakePeerConnection.latest!.configurations[0]?.iceServers).toEqual([
+      { urls: "stun:share.example.test:3478" },
+      { urls: "stun:share.example.test:3479" },
+      { urls: "stun:share.example.test:3480" },
+    ]);
+    relay.dispose();
+  });
+
   it("gives each downstream sender its own video clone", async () => {
     const sourceVideo = createTrack("video", "relay-source");
     const relay = new ViewerRelay(

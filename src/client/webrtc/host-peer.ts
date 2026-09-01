@@ -39,7 +39,7 @@ import {
 } from "./video-codec";
 import {
   iceServersWithNatPrediction,
-  NatPredictionCandidateBatch,
+  NatPredictionCandidateEmitter,
   type SignalCandidate,
 } from "./nat-prediction";
 
@@ -57,9 +57,7 @@ export class HostPeer {
   private readonly connection: RTCPeerConnection;
   private readonly pendingCandidates: SignalCandidate[] = [];
   private readonly natPredictionEnabled: boolean;
-  private natCandidateBatch: NatPredictionCandidateBatch | null = null;
-  private natCandidateUsernameFragment: string | null = null;
-  private natCandidateEndSent = false;
+  private readonly localIceCandidates: NatPredictionCandidateEmitter;
   private statsAccumulator = createStatsAccumulator();
   private senderVideoTrack: MediaStreamTrack | null;
   private replacementVideoTrack: MediaStreamTrack | null = null;
@@ -115,6 +113,10 @@ export class HostPeer {
         this.natPredictionEnabled,
       ),
     });
+    this.localIceCandidates = new NatPredictionCandidateEmitter(
+      this.natPredictionEnabled,
+      (candidate) => this.sendIceCandidate(candidate),
+    );
     this.snapshot = {
       peerId,
       connectionId: this.connectionId,
@@ -431,60 +433,21 @@ export class HostPeer {
       this.statsTimer = null;
     }
     this.connection.close();
-    this.natCandidateBatch?.discard();
-    this.natCandidateBatch = null;
-    this.natCandidateUsernameFragment = null;
-    this.natCandidateEndSent = false;
+    this.localIceCandidates.discard();
     this.senderVideoTrack?.stop();
     this.senderVideoTrack = null;
   }
 
   private bindConnectionEvents(): void {
     this.connection.addEventListener("icecandidate", (event) => {
-      const candidate = event.candidate
-        ? {
-            candidate: event.candidate.candidate,
-            sdpMid: event.candidate.sdpMid,
-            sdpMLineIndex: event.candidate.sdpMLineIndex,
-            usernameFragment: event.candidate.usernameFragment,
-          }
-        : null;
-      if (!this.natPredictionEnabled) {
-        this.sendIceCandidate(candidate);
-        return;
-      }
-      if (candidate === null) {
-        this.completeNatCandidateBatch();
-        if (!this.natCandidateEndSent) {
-          this.sendIceCandidate(null);
-          this.natCandidateEndSent = true;
-        }
-        return;
-      }
-      if (
-        this.natCandidateBatch &&
-        this.natCandidateUsernameFragment &&
-        candidate.usernameFragment &&
-        candidate.usernameFragment !== this.natCandidateUsernameFragment
-      ) {
-        this.natCandidateBatch.complete();
-        this.natCandidateBatch = null;
-      }
-      if (!this.natCandidateBatch) {
-        this.natCandidateUsernameFragment = candidate.usernameFragment ?? null;
-        this.natCandidateEndSent = false;
-        this.natCandidateBatch = new NatPredictionCandidateBatch((next) =>
-          this.sendIceCandidate(next),
-        );
-      }
-      this.natCandidateBatch.add(candidate);
+      this.localIceCandidates.add(event.candidate);
     });
     this.connection.addEventListener("icegatheringstatechange", () => {
       if (
         this.natPredictionEnabled &&
         this.connection.iceGatheringState === "complete"
       ) {
-        this.completeNatCandidateBatch();
+        this.localIceCandidates.gatheringComplete();
       }
     });
     this.connection.addEventListener("connectionstatechange", () => {
@@ -513,15 +476,6 @@ export class HostPeer {
       connectionId: this.connectionId,
       candidate,
     });
-  }
-
-  private completeNatCandidateBatch(): void {
-    if (this.natCandidateBatch) {
-      this.natCandidateBatch.complete();
-      this.natCandidateBatch = null;
-      this.natCandidateUsernameFragment = null;
-      this.natCandidateEndSent = true;
-    }
   }
 
   private enqueueSenderMutation<T>(operation: () => Promise<T>): Promise<T> {

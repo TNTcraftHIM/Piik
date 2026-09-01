@@ -58,14 +58,15 @@ supports an opt-in mechanism, not a default or a participant-wide classifier.
 
 The flagship STUN configuration remains unchanged. The self-hosted endpoint is
 still the ordinary discovery service; ports 3479 and 3480 are optional
-STUN-only listeners for an explicitly enabled Host experiment.
+STUN-only listeners for an explicitly enabled room experiment.
 
 The accepted experiment is deliberately connection-local and additive. It
 derives the two auxiliary ports from the existing STUN authority, waits for a
 clear three-point arithmetic `srflx` shape in one ICE generation, and appends a
 small two-sided candidate window. All ordinary candidates remain available;
 there is no NAT label, hard candidate skip, route-controller input, or SFU
-preference. The UI switch is default off and locks while sharing. Its exact
+preference. The Host switch is default off, locks while sharing, and applies to
+Host, Viewer upstream, and Viewer relay P2P connections. Its exact
 scope is recorded in [ADR-0009](../adr/0009-connection-local-nat-prediction-experiment.md).
 
 The Browser-only alternatives do not yet have an accepted implementation:
@@ -102,8 +103,8 @@ fact. They cannot safely remove a Peer candidate or save its five-second window.
 Port prediction remains an experiment rather than a default path. The
 controlled namespace matrix supports the bounded mechanism, but field
 prevalence, direction, and resource impact are not established. The experiment
-therefore stays opt-in, Host-only, and additive until target-network evidence
-justifies a wider decision.
+therefore stays opt-in and additive until target-network evidence justifies
+enabling it by default.
 
 ## Rejected Product Inference
 
