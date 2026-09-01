@@ -244,23 +244,21 @@ function stableStep(observations: readonly SrflxObservation[]): number | null {
   return step;
 }
 
-function predictedFrom(
-  anchor: SrflxObservation,
+function predictedAround(
+  low: SrflxObservation,
+  high: SrflxObservation,
   step: number,
-  occupiedPorts: ReadonlySet<number>,
 ): SignalCandidate[] {
   const predicted: SignalCandidate[] = [];
-  const seenPorts = new Set(occupiedPorts);
-  for (const direction of [1, -1] as const) {
+  for (const [anchor, direction] of [
+    [high, 1],
+    [low, -1],
+  ] as const) {
     for (let index = 1; index <= NAT_PREDICTION_STEPS; index += 1) {
       const port = anchor.port + direction * step * index;
       if (port < MIN_PREDICTABLE_PORT || port > MAX_PREDICTABLE_PORT) {
         continue;
       }
-      if (seenPorts.has(port)) {
-        continue;
-      }
-      seenPorts.add(port);
       const fields = [...anchor.fields];
       fields[0] = `candidate:s${direction > 0 ? "p" : "m"}${index}`;
       fields[5] = String(port);
@@ -298,14 +296,11 @@ export function predictSrflxCandidates(
     if (step === null) {
       continue;
     }
-    const anchor = distinct.reduce((latest, observation) =>
-      observation.port > latest.port ? observation : latest,
+    const ordered = [...distinct].sort((left, right) => left.port - right.port);
+    return predictedAround(ordered[0]!, ordered.at(-1)!, step).slice(
+      0,
+      MAX_NAT_PREDICTION_CANDIDATES,
     );
-    return predictedFrom(
-      anchor,
-      step,
-      new Set(distinct.map((observation) => observation.port)),
-    ).slice(0, MAX_NAT_PREDICTION_CANDIDATES);
   }
   return [];
 }
