@@ -4,6 +4,8 @@ import {
   iceServersWithNatPrediction,
   MAX_NAT_PREDICTION_CANDIDATES,
   NatPredictionCandidateBatch,
+  NatPredictionCandidateEmitter,
+  natPredictionSurveyUrls,
   predictSrflxCandidates,
   type SignalCandidate,
 } from "../src/client/webrtc/nat-prediction.ts";
@@ -33,6 +35,12 @@ function portOf(value: SignalCandidate): number {
   return Number(value?.candidate.trim().split(/\s+/)[5]);
 }
 
+function rtcCandidate(port: number): RTCIceCandidate {
+  return {
+    ...candidate(port),
+  } as unknown as RTCIceCandidate;
+}
+
 describe("NAT prediction ICE adapter", () => {
   it("leaves the configured servers unchanged when disabled", () => {
     const servers = [
@@ -40,7 +48,42 @@ describe("NAT prediction ICE adapter", () => {
       { urls: "stun:other.example.test:5349" },
     ];
 
-    expect(iceServersWithNatPrediction(servers, false)).toEqual(servers);
+    expect(
+      iceServersWithNatPrediction(
+        servers,
+        false,
+        ["stun:observer.example.test:3478"],
+      ),
+    ).toEqual(servers);
+  });
+
+  it("adds independent observers only inside the enabled experiment", () => {
+    const servers = [{ urls: "stun:share.example.test:3478" }];
+
+    expect(
+      iceServersWithNatPrediction(servers, true, [
+        "stun:observer.example.test:3478",
+      ]),
+    ).toEqual([
+      ...servers,
+      { urls: "stun:share.example.test:3479" },
+      { urls: "stun:share.example.test:3480" },
+      { urls: "stun:observer.example.test:3478" },
+    ]);
+    expect(
+      natPredictionSurveyUrls(servers),
+    ).toEqual(
+      new Set([
+        "stun:share.example.test:3478",
+        "stun:share.example.test:3479",
+        "stun:share.example.test:3480",
+      ]),
+    );
+    expect(
+      natPredictionSurveyUrls([
+        { urls: "stun:share.example.test:5349" },
+      ]),
+    ).toEqual(new Set());
   });
 
   it("derives only the two optional same-host survey listeners", () => {
@@ -157,5 +200,44 @@ describe("NAT prediction ICE adapter", () => {
     batch.add(first);
 
     expect(sent).toEqual([first]);
+  });
+
+  it("retains independent observations without using them as sequence evidence", () => {
+    const sent: Array<SignalCandidate | null> = [];
+    const batch = new NatPredictionCandidateBatch((value) => sent.push(value));
+    const external = candidate(50_000);
+
+    batch.add(external, false);
+    batch.add(candidate(40_000));
+    batch.add(candidate(40_003));
+    batch.add(candidate(40_006));
+
+    expect(sent[0]).toEqual(external);
+    expect(
+      sent.some((value) => value?.candidate.startsWith("candidate:sp")),
+    ).toBe(true);
+  });
+
+  it("does not predict when the Browser omits candidate source URLs", () => {
+    const sent: Array<SignalCandidate | null> = [];
+    const emitter = new NatPredictionCandidateEmitter(
+      true,
+      (value) => sent.push(value),
+      new Set([
+        "stun:share.example.test:3478",
+        "stun:share.example.test:3479",
+        "stun:share.example.test:3480",
+      ]),
+    );
+
+    emitter.add(rtcCandidate(40_000));
+    emitter.add(rtcCandidate(40_003));
+    emitter.add(rtcCandidate(40_006));
+    emitter.gatheringComplete();
+
+    expect(
+      sent.some((value) => value?.candidate.startsWith("candidate:sp")),
+    ).toBe(false);
+    expect(sent.filter((value) => value !== null)).toHaveLength(3);
   });
 });

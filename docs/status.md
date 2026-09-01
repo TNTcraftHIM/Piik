@@ -7,7 +7,7 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Production
 
-- `https://share.bonfire.icu` runs the strict `screener-v18` Browser/server
+- `https://share.bonfire.icu` runs the strict `screener-v19` Browser/server
   contract. Exact revision, release, artifact, manifest, and asset identity are
   retained by the immutable release descriptor, runtime `REVISION`, and
   deployment record rather than copied into this source snapshot.
@@ -23,9 +23,9 @@ This is the current execution index. Git history owns completed timelines;
 - Site access uses a stateless 24-hour rolling idle cookie. An active
   site-authorized page renews it hourly through the existing status request;
   Viewer-grant admission remains independent and cannot create or renew it.
-- Public media listeners remain STUN-only UDP 3478 and LiveKit UDP 7882. During
-  the approved NAT survey, coturn also exposes auxiliary STUN-only UDP 3479
-  and 3480; ordinary `STUN_URLS` and media routes remain unchanged. Web ingress
+- Public media listeners remain STUN-only UDP 3478 and LiveKit UDP 7882. The
+  optional NAT experiment also uses auxiliary STUN-only UDP 3479 and 3480;
+  ordinary `STUN_URLS` and media routes remain unchanged. Web ingress
   is TCP 80/443; Node 8787 and LiveKit control/signaling 7880 are private. TURN,
   ICE/TCP, media TCP, TLS relay, port 5349, and relay ranges are disabled.
 - Browser video uses the content-independent H.264 sender gate with VP8
@@ -49,7 +49,7 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Current Source
 
-- Canonical source uses the strict `screener-v18` Browser/server contract.
+- Canonical source uses the strict `screener-v19` Browser/server contract.
   Optional SQLite stable authority, non-expiring local preferred code, atomic
   room replacement and the Host codec selector remain implemented; production
   selects stable storage. Graceful restart, crash, timeout and network loss use
@@ -77,7 +77,10 @@ This is the current execution index. Git history owns completed timelines;
   defaults on and locks while sharing.
 - Host Advanced settings include a default-off, per-share NAT traversal
   experiment. Every Browser P2P role uses the same bounded, connection-local
-  candidate adapter; ordinary candidates and SFU fallback remain unchanged.
+  candidate adapter. At most two deployment-supplied independent STUN
+  observations are contacted only inside opted-in rooms; candidate and selected
+  path logs retain anonymous `ordinary | predicted | unknown` provenance.
+  Ordinary candidates and SFU fallback remain unchanged.
 - Every direct, Browser-relay, and Host SFU video sender owns one clone of its
   source track; the original remains presentation and source authority only.
   Replacement, rollback, unpublish, physical LiveKit sender recreation, and

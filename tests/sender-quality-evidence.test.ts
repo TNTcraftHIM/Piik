@@ -182,6 +182,7 @@ describe("native sender quality evidence", () => {
       routeRevision: 7,
       state: "healthy",
       sampleTimestampMs: 2_000,
+      diagnostics: { natTraversalPath: "unknown" },
     });
     invalidateSenderQualityEvidence();
     expect(senderQualityEvidenceFromSnapshot(nextSnapshot, 7)).toMatchObject({

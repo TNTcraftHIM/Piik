@@ -14,6 +14,7 @@ const SHARE_GENERATION = "share_generation_12345678";
 
 function senderDiagnostics(state: "unknown" | "healthy" | "degraded") {
   return {
+    natTraversalPath: "unknown",
     reason:
       state === "unknown" ? null : state === "healthy" ? "none" : "bandwidth",
     framesPerSecond: null,
@@ -250,6 +251,41 @@ async function establishSfuRoom(
 }
 
 describe("HybridMediaRouter v9 runtime", () => {
+  it("logs only aggregate candidate origin for route signals", async () => {
+    const { router } = harness(2);
+    const debug = vi.spyOn(
+      router as unknown as {
+        debug(
+          roomId: string,
+          event: string,
+          details: Record<string, unknown>,
+        ): void;
+      },
+      "debug",
+    );
+    try {
+      router.debugPeerSignal({
+        roomId: "1234",
+        sourcePeerId: "source_12345678",
+        targetPeerId: "target_12345678",
+        signalKind: "candidate",
+        candidateOrigin: "predicted",
+        authorization: "probe",
+      });
+      expect(debug).toHaveBeenCalledWith(
+        "1234",
+        "peer-signal",
+        expect.objectContaining({
+          candidateOrigin: "predicted",
+          signalKind: "candidate",
+          authorization: "probe",
+        }),
+      );
+    } finally {
+      await router.close();
+    }
+  });
+
   it("projects exact endpoint copy context from the current snapshot", async () => {
     const { router } = harness(2);
     const internal = router as unknown as {

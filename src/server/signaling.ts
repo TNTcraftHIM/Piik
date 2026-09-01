@@ -25,6 +25,7 @@ import {
   type ServerMessage,
   type ParticipantPresenceEntry,
 } from "../shared/protocol.js";
+import { candidateSignalOrigin } from "../shared/nat-candidate.js";
 import { assertEndpointMediaCopyCapacity } from "../shared/media-copy-accounting.js";
 import {
   RoomStore,
@@ -1534,6 +1535,13 @@ export class SignalingServer {
       sourcePeerId: source.peerId,
       targetPeerId: target.peerId,
       signalKind: message.payload.kind,
+      ...(message.payload.kind === "candidate"
+        ? {
+            candidateOrigin: candidateSignalOrigin(
+              message.payload.candidate?.candidate ?? null,
+            ),
+          }
+        : {}),
       ...(description ? { descriptionType: description.type } : {}),
       authorization: candidateAuthorized,
     });

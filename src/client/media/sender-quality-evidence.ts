@@ -102,6 +102,7 @@ export function senderQualityEvidenceFromSnapshot(
     routeRevision,
     state,
     diagnostics: {
+      natTraversalPath: snapshot.metrics.natTraversalPath,
       reason: state === "unknown" ? null : snapshot.metrics.qualityLimitationReason,
       framesPerSecond: snapshot.metrics.framesPerSecond,
       bitrateKbps: snapshot.metrics.bitrateKbps,
@@ -166,6 +167,7 @@ export function sfuPublisherQualityEvidenceFromMetrics(
     state,
     sampleTimestampMs,
     diagnostics: {
+      natTraversalPath: metrics.natTraversalPath,
       reason: state === "unknown" ? null : metrics.qualityLimitationReason,
       framesPerSecond: metrics.framesPerSecond,
       bitrateKbps: metrics.bitrateKbps,

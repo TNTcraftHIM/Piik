@@ -2,6 +2,7 @@ import { isAbsolute } from "node:path";
 
 import {
   MAX_ICE_SERVER_URLS,
+  MAX_NAT_PREDICTION_STUN_URLS,
   MAX_VIEWERS_PER_ROOM_LIMIT,
   stunUrlSchema,
 } from "../shared/protocol.js";
@@ -56,6 +57,7 @@ export interface ServerConfig {
   endpointMediaCopyCapacity: number;
   livekitFallback?: LiveKitFallbackConfig;
   stunUrls: readonly string[];
+  natPredictionStunUrls: readonly string[];
 }
 
 function parseBoolean(
@@ -228,11 +230,14 @@ function parseUrlList(value: string | undefined, name: string): string[] {
   });
 }
 
-function parseStunUrlList(value: string | undefined): string[] {
-  const name = "STUN_URLS";
+function parseStunUrlList(
+  value: string | undefined,
+  name: string,
+  maximum = MAX_ICE_SERVER_URLS,
+): string[] {
   const values = parseUrlList(value, name);
-  if (values.length > MAX_ICE_SERVER_URLS) {
-    throw new Error(`${name} must contain at most ${MAX_ICE_SERVER_URLS} URLs`);
+  if (values.length > maximum) {
+    throw new Error(`${name} must contain at most ${maximum} URLs`);
   }
   return values.map((value) => {
     if (!stunUrlSchema.safeParse(value).success) {
@@ -317,7 +322,20 @@ export function loadConfig(
   const roomDatabasePath = parseRoomDatabasePath(
     environment.ROOM_DATABASE_PATH,
   );
-  const stunUrls = parseStunUrlList(environment.STUN_URLS);
+  const stunUrls = parseStunUrlList(environment.STUN_URLS, "STUN_URLS");
+  const natPredictionStunUrls = parseStunUrlList(
+    environment.NAT_PREDICTION_STUN_URLS,
+    "NAT_PREDICTION_STUN_URLS",
+    MAX_NAT_PREDICTION_STUN_URLS,
+  );
+  if (
+    stunUrls.length + natPredictionStunUrls.length >
+    MAX_ICE_SERVER_URLS
+  ) {
+    throw new Error(
+      `STUN_URLS and NAT_PREDICTION_STUN_URLS must contain at most ${MAX_ICE_SERVER_URLS} URLs together`,
+    );
+  }
   const maxViewersPerRoom = parseBoundedInteger(
     environment.MAX_VIEWERS_PER_ROOM,
     DEFAULT_MAX_VIEWERS_PER_ROOM,
@@ -392,5 +410,6 @@ export function loadConfig(
     endpointMediaCopyCapacity,
     livekitFallback,
     stunUrls,
+    natPredictionStunUrls,
   };
 }

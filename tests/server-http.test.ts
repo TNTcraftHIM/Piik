@@ -57,6 +57,7 @@ function testConfig(overrides: Partial<ServerConfig> = {}): ServerConfig {
     peerAssistedMedia: false,
     endpointMediaCopyCapacity: 2,
     stunUrls: [],
+    natPredictionStunUrls: [],
     ...overrides,
   };
 }

@@ -86,8 +86,9 @@ until their stated boundary is met.
     [ADR-0009](./adr/0009-connection-local-nat-prediction-experiment.md). Keep
     multi-STUN observations and injected candidates additive and diagnostic;
     do not make them a participant-wide NAT label, hard candidate skip, route
-    score, or SFU preference. Validate target-network success, candidate
-    direction, and bounded resource impact before enabling it by default.
+    score, or SFU preference. Candidate generation and selected-path provenance
+    are now observable without endpoint data. Validate target-network success,
+    candidate direction, and bounded resource impact before enabling it by default.
 15. **Unresolved route-state ownership claims.** Reopen lower-revision
     reauthentication, active SFU failure during an unrelated prepare, and
     multi-child relay-evidence ownership only from an exact current-wire
