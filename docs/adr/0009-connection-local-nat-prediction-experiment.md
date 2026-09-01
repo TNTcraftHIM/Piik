@@ -29,10 +29,10 @@ field, but no new message type, route-controller state, or media path.
 3. For one ICE gathering generation, the adapter observes only UDP `srflx`
    candidates. If three or more distinct candidates for one media section and
    public address form an arithmetic port sequence, it appends at most eight
-   bounded candidates around the latest observation (four in each direction).
-   Every ordinary candidate is retained; no ordinary candidate is rejected or
-   replaced. A failed or inconclusive experiment uses the existing ICE and SFU
-   fallback unchanged.
+   bounded candidates around the sequence's high endpoint (four in each
+   direction). Every ordinary candidate keeps normal Trickle ICE timing; no
+   ordinary candidate is delayed, rejected, or replaced. A failed or
+   inconclusive experiment uses the existing ICE and SFU fallback unchanged.
 4. Candidate observations remain in memory for that connection only. No NAT
    label, raw address, port, score, hard candidate skip, periodic probe, or
    route-controller branch is introduced.
@@ -43,8 +43,9 @@ Positive:
 
 - operators can test the measured hole-punching mechanism without changing the
   default media path;
-- normal ICE remains available, so an unsuccessful prediction cannot remove
-  the existing direct or SFU fallback; and
+- normal ICE remains immediately available, so an unavailable auxiliary STUN
+  listener or unsuccessful prediction cannot delay the existing direct or SFU
+  fallback; and
 - the experiment is bounded to one connection generation and one small
   candidate set.
 
