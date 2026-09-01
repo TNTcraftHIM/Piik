@@ -1211,7 +1211,7 @@ describe("RoomRouteController", () => {
     expect(routes.reconcile(25).operation?.reason).toBe("quality-convergence");
   });
 
-  it("gives each unconnected Peer candidate its own bounded progress window", () => {
+  it("advances a silent Peer only when another bounded candidate remains", () => {
     const routes = controller(2, { operationTimeoutMs: 20_000 });
     addViewer(routes, B, 2);
     addViewer(routes, C, 2);
@@ -1233,10 +1233,40 @@ describe("RoomRouteController", () => {
       connectionId: "second_silent_candidate",
       reservation: { kind: "direct" },
     });
-    expect(routes.snapshot().operation?.wakeAtMs).toBe(10_200);
+    expect(routes.snapshot().operation?.wakeAtMs).toBe(
+      operation.deadlineAtMs,
+    );
     expect(routes.snapshot().operation?.deadlineAtMs).toBe(
       operation.deadlineAtMs,
     );
+    expect(routes.operationExpired(10_200).accepted).toBe(false);
+    expect(routes.snapshot().operation?.current?.connectionId).toBe(
+      "second_silent_candidate",
+    );
+  });
+
+  it("retains a peer-only direct attempt through the total operation deadline", () => {
+    const routes = controller(1, { operationTimeoutMs: 20_000 });
+    addViewer(routes, A, 0, 0);
+
+    const operation = routes.reconcile(0).operation!;
+    beginCandidate(routes, {
+      nowMs: 100,
+      connectionId: "only_direct_candidate",
+      reservation: { kind: "direct" },
+    });
+
+    expect(routes.snapshot().operation?.wakeAtMs).toBe(
+      operation.deadlineAtMs,
+    );
+    expect(routes.operationExpired(5_100).accepted).toBe(false);
+    expect(routes.snapshot().operation?.current?.connectionId).toBe(
+      "only_direct_candidate",
+    );
+    expect(routes.operationExpired(operation.deadlineAtMs)).toMatchObject({
+      accepted: true,
+      failedPeerIds: [A],
+    });
   });
 
   it("keeps only fresh exact-edge quality shadow aggregates", () => {
@@ -3294,6 +3324,9 @@ describe("RoomRouteController", () => {
       connectionId: "a_from_b",
       reservation: { kind: "direct" },
     }).operation!;
+    expect(routes.snapshot().operation?.wakeAtMs).toBe(
+      convergence.deadlineAtMs,
+    );
     expect(routes.snapshot().upstreamByViewer.get(A)).toMatchObject({
       kind: "sfu",
       connectionId: "a_sfu_reuse",

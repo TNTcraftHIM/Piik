@@ -781,8 +781,9 @@ describe("HostPeer source replacement", () => {
     const ordinaryIndex = candidateSignals.findIndex((signal) =>
       signal.candidate?.candidate.startsWith("candidate:base"),
     );
+    expect(ordinaryIndex).toBe(0);
     expect(predictionIndex).toBeGreaterThanOrEqual(0);
-    expect(predictionIndex).toBeLessThan(ordinaryIndex);
+    expect(predictionIndex).toBeGreaterThan(ordinaryIndex);
     expect(
       candidateSignals.filter((signal) =>
         signal.candidate?.candidate.startsWith("candidate:base"),

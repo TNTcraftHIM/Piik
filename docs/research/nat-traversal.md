@@ -63,11 +63,13 @@ STUN-only listeners for an explicitly enabled room experiment.
 The accepted experiment is deliberately connection-local and additive. It
 derives the two auxiliary ports from the existing STUN authority, waits for a
 clear three-point arithmetic `srflx` shape in one ICE generation, and appends a
-small two-sided candidate window. All ordinary candidates remain available;
-there is no NAT label, hard candidate skip, route-controller input, or SFU
-preference. The Host switch is default off, locks while sharing, and applies to
-Host, Viewer upstream, and Viewer relay P2P connections. Its exact
-scope is recorded in [ADR-0009](../adr/0009-connection-local-nat-prediction-experiment.md).
+small two-sided candidate window from the observed port-sequence endpoint.
+Ordinary candidates trickle immediately, so unavailable auxiliary listeners
+cannot hold back stock ICE. There is no NAT label, hard candidate skip,
+route-controller input, or SFU preference. The Host switch is default off,
+locks while sharing, and applies to Host, Viewer upstream, and Viewer relay P2P
+connections. Its exact scope is recorded in
+[ADR-0009](../adr/0009-connection-local-nat-prediction-experiment.md).
 
 The Browser-only alternatives do not yet have an accepted implementation:
 
@@ -98,7 +100,8 @@ The Browser API is also weaker than the raw-socket netcheck model:
 
 Consequently Browser observations can support a positive `varies` diagnostic,
 but cannot produce the proposed `eim | edm-sequential | edm-random` participant
-fact. They cannot safely remove a Peer candidate or save its five-second window.
+fact. They cannot safely remove a Peer candidate or alter route ordering and
+deadlines.
 
 Port prediction remains an experiment rather than a default path. The
 controlled namespace matrix supports the bounded mechanism, but field
