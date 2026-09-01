@@ -6,7 +6,7 @@ import { isCanonicalVideoCodecEvidence } from "./video-codec-evidence.js";
 export const MAX_VIEWERS_PER_ROOM_LIMIT = 20;
 export const MAX_PARTICIPANTS_PER_ROOM_LIMIT = MAX_VIEWERS_PER_ROOM_LIMIT + 1;
 export const MAX_SIGNAL_BYTES = 64 * 1024;
-export const SIGNALING_PROTOCOL = "screener-v17";
+export const SIGNALING_PROTOCOL = "screener-v18";
 export const SIGNAL_CLOSE_CODES = {
   serviceRestart: 1012,
   sessionReplaced: 4001,
@@ -218,12 +218,14 @@ export const routePolicySchema = z
   .object({
     peerOnly: z.boolean(),
     topologyOptimization: z.boolean(),
+    natPrediction: z.boolean(),
   })
   .strict();
 export type RoutePolicy = z.infer<typeof routePolicySchema>;
 export const DEFAULT_ROUTE_POLICY = {
   peerOnly: false,
   topologyOptimization: true,
+  natPrediction: false,
 } as const satisfies RoutePolicy;
 
 export const relayDownstreamEdgesSchema = z
@@ -921,6 +923,7 @@ const authenticatedMessageShape = {
   connectionId: opaqueIdSchema.nullable(),
   viewerPeerIds: z.array(opaqueIdSchema).max(MAX_VIEWERS_PER_ROOM_LIMIT),
   iceConfig: iceConfigSchema,
+  routePolicy: routePolicySchema.default(DEFAULT_ROUTE_POLICY),
   codeEntryPolicy: codeEntryPolicySchema,
   viewerAuthorizationGeneration: opaqueIdSchema,
 };
@@ -942,7 +945,6 @@ const peerAssistedAuthenticatedShape = {
   routeRevision: mediaRouteRevisionSchema,
   routeAssignment: participantRouteAssignmentSchema,
   qualitySettings: qualitySettingsSchema,
-  routePolicy: routePolicySchema,
   sfuStandbyUrl: liveKitWebSocketUrlSchema.optional(),
 };
 

@@ -50,6 +50,7 @@ export class ViewerRelay {
     private desiredProfile: QualityProfile,
     private readonly events: ViewerRelayEvents,
     private maxMediaEdges = MAX_ENDPOINT_MEDIA_CHILDREN,
+    private readonly natPredictionEnabled = false,
   ) {}
 
   getSnapshot(childPeerId?: string): PeerSnapshot | null {
@@ -549,6 +550,7 @@ export class ViewerRelay {
       },
       this.videoCodec,
       connectionId,
+      this.natPredictionEnabled,
     );
     return peer;
   }

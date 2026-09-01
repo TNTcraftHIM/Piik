@@ -12,6 +12,10 @@ import {
 } from "./stats";
 import { preferScreenAudioStereo } from "./screen-audio-sdp";
 import { observeDecodedFrameProof } from "../media/decoded-frame-proof";
+import {
+  iceServersWithNatPrediction,
+  NatPredictionCandidateEmitter,
+} from "./nat-prediction";
 
 const MAX_PENDING_CANDIDATES = 64;
 const MAX_AUTOMATIC_RECOVERY_REQUESTS = 2;
@@ -60,12 +64,14 @@ export class ViewerPeer {
   private recoveryExhaustedReported = false;
   private disposed = false;
   private currentIceConfig: PeerIceConfig;
+  private localIceCandidates: NatPredictionCandidateEmitter | null = null;
   private snapshot: PeerSnapshot | null = null;
   private descriptionTail: Promise<void> = Promise.resolve();
 
   constructor(
     iceConfig: PeerIceConfig,
     private readonly events: ViewerPeerEvents,
+    private readonly natPredictionEnabled = false,
   ) {
     this.currentIceConfig = iceConfig;
   }
@@ -106,7 +112,10 @@ export class ViewerPeer {
     }
     try {
       this.connection.setConfiguration({
-        iceServers: iceConfig.iceServers,
+        iceServers: iceServersWithNatPrediction(
+          iceConfig.iceServers,
+          this.natPredictionEnabled,
+        ),
       });
     } catch (error) {
       this.setError(error, say("host.fail.connection"));
@@ -193,9 +202,26 @@ export class ViewerPeer {
     this.statsAccumulator = createStatsAccumulator();
 
     const connection = new RTCPeerConnection({
-      iceServers: this.currentIceConfig.iceServers,
+      iceServers: iceServersWithNatPrediction(
+        this.currentIceConfig.iceServers,
+        this.natPredictionEnabled,
+      ),
     });
+    const localIceCandidates = new NatPredictionCandidateEmitter(
+      this.natPredictionEnabled,
+      (candidate) => {
+        if (this.connection !== connection) {
+          return;
+        }
+        this.events.sendSignal(parentPeerId, {
+          kind: "candidate",
+          connectionId,
+          candidate,
+        });
+      },
+    );
     this.connection = connection;
+    this.localIceCandidates = localIceCandidates;
     this.snapshot = {
       peerId: parentPeerId,
       connectionId,
@@ -206,21 +232,18 @@ export class ViewerPeer {
     };
 
     connection.addEventListener("icecandidate", (event) => {
-      if (!this.parentPeerId || this.connection !== connection) {
+      if (this.connection !== connection) {
         return;
       }
-      this.events.sendSignal(parentPeerId, {
-        kind: "candidate",
-        connectionId,
-        candidate: event.candidate
-          ? {
-              candidate: event.candidate.candidate,
-              sdpMid: event.candidate.sdpMid,
-              sdpMLineIndex: event.candidate.sdpMLineIndex,
-              usernameFragment: event.candidate.usernameFragment,
-            }
-          : null,
-      });
+      localIceCandidates.add(event.candidate);
+    });
+    connection.addEventListener("icegatheringstatechange", () => {
+      if (
+        this.connection === connection &&
+        connection.iceGatheringState === "complete"
+      ) {
+        localIceCandidates.gatheringComplete();
+      }
     });
     connection.addEventListener("track", (event) => {
       if (this.connection !== connection) {
@@ -608,6 +631,8 @@ export class ViewerPeer {
       window.clearInterval(this.statsTimer);
       this.statsTimer = null;
     }
+    this.localIceCandidates?.discard();
+    this.localIceCandidates = null;
     this.connection?.close();
     this.connection = null;
     this.connectionId = null;

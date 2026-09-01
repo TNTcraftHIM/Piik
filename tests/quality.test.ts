@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   audioSenderParameterWarning,
@@ -16,6 +16,7 @@ import {
   setMediaPaused,
   startupVideoProfile,
 } from "../src/client/media/quality.ts";
+import { setCopy } from "../src/client/ui/copy.ts";
 
 function createVideoStream() {
   const videoTrack = {
@@ -35,6 +36,10 @@ function createVideoStream() {
   } as unknown as MediaStream;
   return { stream, videoTrack, audioTrack };
 }
+
+beforeEach(() => {
+  setCopy({ lang: "zh", vis: false });
+});
 
 afterEach(() => {
   vi.unstubAllGlobals();
