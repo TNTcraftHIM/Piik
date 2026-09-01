@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-08-31
+Last updated: 2026-09-01
 
 This is the current execution index. Git history owns completed timelines;
 [verification status](./verification-status.md) owns evidence boundaries.
@@ -75,6 +75,9 @@ This is the current execution index. Git history owns completed timelines;
   sender windows retain the bounded Peer operation; failed exact candidates stay
   consumed until the sender or candidate opportunity changes. The pre-share gate
   defaults on and locks while sharing.
+- Host Advanced settings include a default-off, Host-originated NAT traversal
+  experiment. It adds only bounded, connection-local predicted ICE candidates;
+  ordinary candidates and the existing SFU fallback remain unchanged.
 - Every direct, Browser-relay, and Host SFU video sender owns one clone of its
   source track; the original remains presentation and source authority only.
   Replacement, rollback, unpublish, physical LiveKit sender recreation, and

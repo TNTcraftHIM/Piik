@@ -1,6 +1,6 @@
 # Browser NAT Traversal
 
-Last reviewed: 2026-08-31
+Last reviewed: 2026-09-01
 
 This document owns evidence for improving direct Browser ICE without adding a
 new relay or a custom transport. The current product contract remains standard
@@ -45,24 +45,28 @@ second proves candidate syntax only; it does not prove that a predicted NAT
 mapping receives an authenticated connectivity check. The probe retained no raw
 address or port.
 
-This preflight also leaves the proposed field mapper without an ordered port
+This preflight also leaves the Browser-only mapper without an ordered port
 delta. Candidate events expose response completion, while configured STUN order
-does not specify the NAT allocation order. A Browser-only mapper may retain a
-positive varies-by-destination observation and unordered port gaps, but cannot
-label a signed `P + d` sequence without controlled external evidence. Trying
-both signs consumes more checklist budget and still needs the same lab gate.
-
-The full prediction gate therefore remains unrun. It requires a disposable
-Linux runner with network namespaces and packet-filter authority, controlled
-STUN destinations, and two real Browser ICE agents. The production host is not
-that runner, and an unexecuted nftables script is not accepted evidence.
+does not specify the NAT allocation order. A disposable namespace matrix then
+provided the controlled gate: its four-by-four baseline matched the expected
+reachability classes, and bounded prediction improved sequential-to-restricted
+connectivity in 14/15 runs. Sequential-to-sequential pairs still depended on
+candidate ordering and remained sensitive to intervening mappings. The result
+supports an opt-in mechanism, not a default or a participant-wide classifier.
 
 ## Current Decision
 
-Do not change the flagship STUN configuration in this phase. A second endpoint
-does not itself traverse a hard NAT and does not justify a permanent external
-metadata dependency. The self-hosted STUN endpoint remains the production
-discovery service.
+The flagship STUN configuration remains unchanged. The self-hosted endpoint is
+still the ordinary discovery service; ports 3479 and 3480 are optional
+STUN-only listeners for an explicitly enabled Host experiment.
+
+The accepted experiment is deliberately connection-local and additive. It
+derives the two auxiliary ports from the existing STUN authority, waits for a
+clear three-point arithmetic `srflx` shape in one ICE generation, and appends a
+small two-sided candidate window. All ordinary candidates remain available;
+there is no NAT label, hard candidate skip, route-controller input, or SFU
+preference. The UI switch is default off and locks while sharing. Its exact
+scope is recorded in [ADR-0009](../adr/0009-connection-local-nat-prediction-experiment.md).
 
 The Browser-only alternatives do not yet have an accepted implementation:
 
@@ -95,12 +99,11 @@ Consequently Browser observations can support a positive `varies` diagnostic,
 but cannot produce the proposed `eim | edm-sequential | edm-random` participant
 fact. They cannot safely remove a Peer candidate or save its five-second window.
 
-Port prediction remains the only reachable Browser experiment that might add
-direct paths beyond stock ICE. It requires a controlled sequential/random NAT
-matrix and two real Browser ICE agents before any product design. No such
-controlled Browser matrix is currently available, and the production server is
-not an acceptable network-emulation lab. No candidate injection ships without
-that gate.
+Port prediction remains an experiment rather than a default path. The
+controlled namespace matrix supports the bounded mechanism, but field
+prevalence, direction, and resource impact are not established. The experiment
+therefore stays opt-in, Host-only, and additive until target-network evidence
+justifies a wider decision.
 
 ## Rejected Product Inference
 
@@ -118,11 +121,10 @@ type:
 
 Therefore NAT samples must not skip a P2P candidate, alter the committed graph,
 or become a persistent participant capability. Successful `addIceCandidate()`
-parsing would prove only candidate syntax; it would not prove that a predicted
-mapping receives authenticated ICE checks. Port prediction and synthetic
-candidate injection remain experiments until controlled Browser and target-
-network measurements prove both benefit and bounded false rejection. They do
-not enter the current protocol or controller.
+parsing proves only candidate syntax; it does not prove that a predicted mapping
+receives authenticated ICE checks. The accepted experiment keeps this boundary:
+it adds no protocol fields or controller state and falls back to ordinary ICE
+when its shape test is inconclusive.
 
 QUIC on UDP 443 does not change this Browser boundary. WebRTC's ICE agent owns
 its UDP sockets and candidate checks; the Web application cannot replace that

@@ -17,6 +17,7 @@ import { ViewerRelay } from "../src/client/webrtc/viewer-relay.ts";
 import type {
   IceConfig,
   ParticipantRouteAssignment,
+  SignalPayload,
 } from "../src/shared/protocol.ts";
 
 const codecPreflight = vi.hoisted(() => ({
@@ -109,12 +110,16 @@ class FakePeerConnection {
   private releaseRemoteDescription: (() => void) | null = null;
   connectionState: RTCPeerConnectionState = "new";
   iceConnectionState: RTCIceConnectionState = "new";
+  iceGatheringState: RTCIceGatheringState = "new";
   signalingState: RTCSignalingState = "stable";
   localDescription: RTCSessionDescription | null = null;
   remoteDescription: RTCSessionDescription | null = null;
   readonly addedIceCandidates: Array<RTCIceCandidateInit | null> = [];
   readonly statsReports: Array<RTCStatsReport | Promise<RTCStatsReport>> = [];
-  private readonly eventListeners = new Map<string, Array<() => void>>();
+  private readonly eventListeners = new Map<
+    string,
+    Array<(event: Event) => void>
+  >();
 
   constructor(configuration?: RTCConfiguration) {
     FakePeerConnection.latest = this;
@@ -160,7 +165,7 @@ class FakePeerConnection {
     } as unknown as RTCRtpTransceiver;
   }
 
-  addEventListener(type: string, listener: () => void): void {
+  addEventListener(type: string, listener: (event: Event) => void): void {
     const listeners = this.eventListeners.get(type) ?? [];
     listeners.push(listener);
     this.eventListeners.set(type, listeners);
@@ -168,7 +173,7 @@ class FakePeerConnection {
 
   dispatchEvent(event: Event): boolean {
     for (const listener of this.eventListeners.get(event.type) ?? []) {
-      listener();
+      listener(event);
     }
     return true;
   }
@@ -417,6 +422,7 @@ function createPeer(
   iceConfig: IceConfig = { iceServers: [] },
   profile: QualityProfile = QUALITY_PROFILES["720p30"],
   videoCodec: BrowserVideoCodecPreference = VP8_ONLY_VIDEO_CODEC,
+  natPredictionEnabled = false,
 ): HostPeer {
   return new HostPeer(
     "viewer-peer",
@@ -428,6 +434,8 @@ function createPeer(
       onUpdate,
     },
     videoCodec,
+    undefined,
+    natPredictionEnabled,
   );
 }
 
@@ -710,6 +718,77 @@ describe("HostPeer source replacement", () => {
         ),
       ).toBe(true);
     }
+  });
+
+  it("keeps ordinary candidates while opting into bounded NAT predictions", () => {
+    const signals: SignalPayload[] = [];
+    const peer = new HostPeer(
+      "viewer-peer",
+      { iceServers: [{ urls: "stun:share.example.test:3478" }] },
+      createStream(createTrack("video", "video"), null),
+      QUALITY_PROFILES["720p30"],
+      {
+        sendSignal: (_peerId, payload) => {
+          signals.push(payload);
+          return true;
+        },
+        onUpdate: () => undefined,
+      },
+      VP8_ONLY_VIDEO_CODEC,
+      undefined,
+      true,
+    );
+    const connection = FakePeerConnection.latest!;
+    expect(connection.configurations[0]?.iceServers).toEqual([
+      { urls: "stun:share.example.test:3478" },
+      { urls: "stun:share.example.test:3479" },
+      { urls: "stun:share.example.test:3480" },
+    ]);
+
+    const emitCandidate = (port: number | null): void => {
+      const event = new Event("icecandidate");
+      Object.defineProperty(event, "candidate", {
+        value:
+          port === null
+            ? null
+            : {
+                candidate:
+                  `candidate:base 1 udp 2122260223 203.0.113.7 ${port} ` +
+                  "typ srflx raddr 192.0.2.7 rport 50000 generation 0 ufrag test",
+                sdpMid: "0",
+                sdpMLineIndex: 0,
+                usernameFragment: "test",
+              },
+      });
+      connection.dispatchEvent(event);
+    };
+    emitCandidate(40_000);
+    emitCandidate(40_003);
+    emitCandidate(40_006);
+    connection.iceGatheringState = "complete";
+    connection.dispatchEvent(new Event("icegatheringstatechange"));
+    emitCandidate(null);
+
+    const candidateSignals = signals.filter(
+      (signal): signal is Extract<SignalPayload, { kind: "candidate" }> =>
+        signal.kind === "candidate",
+    );
+    const predictionIndex = candidateSignals.findIndex((signal) =>
+      signal.candidate?.candidate.includes("candidate:s"),
+    );
+    const ordinaryIndex = candidateSignals.findIndex((signal) =>
+      signal.candidate?.candidate.startsWith("candidate:base"),
+    );
+    expect(predictionIndex).toBeGreaterThanOrEqual(0);
+    expect(predictionIndex).toBeLessThan(ordinaryIndex);
+    expect(
+      candidateSignals.filter((signal) =>
+        signal.candidate?.candidate.startsWith("candidate:base"),
+      ),
+    ).toHaveLength(3);
+    expect(candidateSignals.at(-1)?.candidate).toBeNull();
+    expect(candidateSignals.filter((signal) => signal.candidate === null)).toHaveLength(1);
+    peer.dispose();
   });
 
   it("reserves send-only video and audio senders and replaces both tracks", async () => {

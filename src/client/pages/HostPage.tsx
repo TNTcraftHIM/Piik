@@ -384,6 +384,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const [routePolicy, setRoutePolicy] = useState<RoutePolicy>(
     DEFAULT_ROUTE_POLICY,
   );
+  const [natPredictionEnabled, setNatPredictionEnabled] = useState(false);
   const [videoCodecMode, setVideoCodecMode] =
     useState<BrowserVideoCodecMode>("auto");
   const [resolvedVideoCodec, setResolvedVideoCodec] =
@@ -514,6 +515,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const pendingQualityChangeRef = useRef<QualitySettings | null>(null);
   const qualitySettingsRef = useRef<QualitySettings>(DEFAULT_QUALITY_SETTINGS);
   const routePolicyRef = useRef<RoutePolicy>(DEFAULT_ROUTE_POLICY);
+  const natPredictionEnabledRef = useRef(false);
   const advancedQualityRef = useRef<QualitySettings>(advancedQuality);
   const videoCodecModeRef = useRef<BrowserVideoCodecMode>(videoCodecMode);
   const roomMutationRef = useRef<object | null>(null);
@@ -1172,6 +1174,14 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     setRoutePolicy(next);
   }
 
+  function changeNatPrediction(enabled: boolean): void {
+    if (phase === "starting" || phase === "live") {
+      return;
+    }
+    natPredictionEnabledRef.current = enabled;
+    setNatPredictionEnabled(enabled);
+  }
+
   function changeAdvancedQuality(
     patch: Partial<QualitySettings>,
   ): void {
@@ -1453,6 +1463,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
       stream,
       profile: qualitySettingsRef.current,
       videoCodec: videoCodecRef.current,
+      natPredictionEnabled: natPredictionEnabledRef.current,
     });
   }
 
@@ -1529,6 +1540,8 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
         },
       },
       videoCodecRef.current,
+      undefined,
+      natPredictionEnabledRef.current,
     );
     peersRef.current.set(peerId, peer);
     let started: boolean;
@@ -3819,6 +3832,14 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                         label={t("host.advanced.route.peerOnly")}
                         note={t("host.advanced.route.peerOnlyHint")}
                         hint="hint-route-p2p"
+                      />
+                      <SwitchItem
+                        checked={natPredictionEnabled}
+                        disabled={phase === "starting" || phase === "live"}
+                        onChange={changeNatPrediction}
+                        label={t("host.advanced.route.natPrediction")}
+                        note={t("host.advanced.route.natPredictionHint")}
+                        hint="hint-nat-prediction"
                       />
                     </div>
                   </div>
