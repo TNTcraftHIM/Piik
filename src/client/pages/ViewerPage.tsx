@@ -1050,10 +1050,12 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               return false;
             }
             const previousPeer = peerRef.current;
-            probe.peer.stopDecodedFrameProof();
+            const activatedPeer = probe.peer;
+            activatedPeer.stopDecodedFrameProof();
             pendingPeer = null;
             prepareParent(null);
-            peerRef.current = probe.peer;
+            peerRef.current = activatedPeer;
+            activatedPeer.activatePreparedRoute();
             previousPeer?.dispose();
             applyMediaAssignment(
               {
@@ -1466,7 +1468,10 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               : true;
           },
         },
-        currentRoutePolicy.natPrediction,
+        {
+          natPredictionEnabled: currentRoutePolicy.natPrediction,
+          recoveryOwner: "route",
+        },
       );
       probe.peer = peer;
       return peer;
@@ -1557,7 +1562,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             return true;
           },
         },
-        currentRoutePolicy.natPrediction,
+        { natPredictionEnabled: currentRoutePolicy.natPrediction },
       );
       peerRef.current = peer;
       return peer;

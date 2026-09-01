@@ -83,6 +83,9 @@ Transport-connected progress also retains a candidate through that deadline.
 Consequently a working SFU route can carry media while its one-candidate direct
 convergence uses the full background operation, and peer-only acquisition does
 not abandon its only possible route at the foreground boundary.
+The pending Viewer transport reports an actual Browser failure but installs no
+shorter initial or disconnected-state deadline. Viewer-owned reconnect timing
+begins only after that exact candidate commits as the active route.
 
 When a newly committed Host-root Viewer exposes unused downstream capacity while
 another Host root has at least two direct children, the same background operation may

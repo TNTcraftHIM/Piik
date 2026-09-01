@@ -43,6 +43,11 @@ interface ViewerPeerEvents {
   ) => boolean;
 }
 
+interface ViewerPeerOptions {
+  natPredictionEnabled?: boolean;
+  recoveryOwner?: "viewer" | "route";
+}
+
 export class ViewerPeer {
   private connection: RTCPeerConnection | null = null;
   private connectionId: string | null = null;
@@ -67,13 +72,17 @@ export class ViewerPeer {
   private localIceCandidates: NatPredictionCandidateEmitter | null = null;
   private snapshot: PeerSnapshot | null = null;
   private descriptionTail: Promise<void> = Promise.resolve();
+  private readonly natPredictionEnabled: boolean;
+  private recoveryOwner: "viewer" | "route";
 
   constructor(
     iceConfig: PeerIceConfig,
     private readonly events: ViewerPeerEvents,
-    private readonly natPredictionEnabled = false,
+    options: ViewerPeerOptions = {},
   ) {
     this.currentIceConfig = iceConfig;
+    this.natPredictionEnabled = options.natPredictionEnabled ?? false;
+    this.recoveryOwner = options.recoveryOwner ?? "viewer";
   }
 
   async acceptSignal(
@@ -124,6 +133,7 @@ export class ViewerPeer {
 
   requestRecovery(rebuild = false): boolean {
     if (
+      this.recoveryOwner !== "viewer" ||
       this.recoveryTimer !== null ||
       !this.connection ||
       !this.connectionId ||
@@ -175,6 +185,16 @@ export class ViewerPeer {
   stopDecodedFrameProof(): void {
     this.stopDecodedFrameObserver?.();
     this.stopDecodedFrameObserver = null;
+  }
+
+  activatePreparedRoute(): void {
+    if (this.recoveryOwner === "viewer") {
+      return;
+    }
+    this.recoveryOwner = "viewer";
+    if (this.connection) {
+      this.handleConnectionState(this.connection.connectionState);
+    }
   }
 
   dispose(): void {
@@ -384,6 +404,13 @@ export class ViewerPeer {
       this.resetAutomaticRecovery();
       return;
     }
+    if (this.recoveryOwner === "route") {
+      this.clearDisconnectTimer();
+      if (state === "failed") {
+        this.reportRecoveryExhausted();
+      }
+      return;
+    }
     if (state === "failed") {
       this.clearDisconnectTimer();
       this.attemptAutomaticRecovery();
@@ -434,7 +461,10 @@ export class ViewerPeer {
     connection: RTCPeerConnection,
     connectionId: string,
   ): void {
-    if (!this.isCurrentConnection(connection, connectionId)) {
+    if (
+      this.recoveryOwner !== "viewer" ||
+      !this.isCurrentConnection(connection, connectionId)
+    ) {
       return;
     }
     this.clearInitialConnectionTimer();

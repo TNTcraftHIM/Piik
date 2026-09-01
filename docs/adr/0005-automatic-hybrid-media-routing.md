@@ -147,6 +147,10 @@ or only Peer candidate remains until the unchanged total operation deadline;
 exact transport progress also retains it until media proof or that deadline.
 After SFU commits, each one-candidate direct continuation therefore uses its
 full background operation while working media stays authoritative.
+The pending Viewer transport has no second initial-connection or transient-
+disconnect deadline. It reports an actual Browser terminal failure immediately;
+only after commit does the active Viewer edge take ownership of its existing
+reconnect timers.
 
 If the Host is full and no publication exists, one bounded SFU-bootstrap intent
 owns the original waiting demand and a finite cursor of eligible Host-direct
