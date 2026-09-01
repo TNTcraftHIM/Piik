@@ -8,9 +8,11 @@ import {
 import {
   ApiError,
   authenticateSiteAccess,
+  getRuntimeCapabilities,
   getSiteAccess,
   type SiteAccessStatus,
 } from "./lib/api";
+import type { RuntimeCapabilities } from "../shared/protocol";
 import { parseAppRoute, readViewerRoute } from "./lib/session";
 import { AppHeader } from "./components/living/Header";
 import { BrandLoader } from "./components/living/BrandMark";
@@ -157,13 +159,24 @@ function SiteAccessGate({
 }) {
   const { t, vis } = useCopy();
   const [access, setAccess] = useState<AccessState>({ kind: "checking" });
+  const [capabilities, setCapabilities] =
+    useState<RuntimeCapabilities | null>(null);
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     let active = true;
-    void getSiteAccess().then(
-      (status) => active && setAccess(stateFromStatus(status)),
+    void Promise.all([
+      getSiteAccess(),
+      surface === "host"
+        ? getRuntimeCapabilities()
+        : Promise.resolve<RuntimeCapabilities>({ natPrediction: false }),
+    ]).then(
+      ([status, nextCapabilities]) => {
+        if (!active) return;
+        setCapabilities(nextCapabilities);
+        setAccess(stateFromStatus(status));
+      },
       (error: unknown) =>
         active &&
         setAccess({ kind: "unavailable", message: readableError(error, t) }),
@@ -206,7 +219,14 @@ function SiteAccessGate({
   async function retry(): Promise<void> {
     setAccess({ kind: "checking" });
     try {
-      setAccess(stateFromStatus(await getSiteAccess()));
+      const [status, nextCapabilities] = await Promise.all([
+        getSiteAccess(),
+        surface === "host"
+          ? getRuntimeCapabilities()
+          : Promise.resolve<RuntimeCapabilities>({ natPrediction: false }),
+      ]);
+      setCapabilities(nextCapabilities);
+      setAccess(stateFromStatus(status));
     } catch (error) {
       setAccess({ kind: "unavailable", message: readableError(error, t) });
     }
@@ -248,6 +268,7 @@ function SiteAccessGate({
     }
     return (
       <HostPage
+        natPredictionAvailable={capabilities?.natPrediction === true}
         onAuthorizationRequired={() =>
           setAccess({ kind: "required", error: t("gate.expired") })
         }

@@ -122,6 +122,7 @@ export class HostPeer {
       (candidate) => this.sendIceCandidate(candidate),
       natPredictionSurveyUrls(
         iceConfig.iceServers,
+        iceConfig.natPredictionStunUrls,
       ),
     );
     this.snapshot = {
@@ -427,6 +428,7 @@ export class HostPeer {
       this.localIceCandidates.setSurveyUrls(
         natPredictionSurveyUrls(
           iceConfig.iceServers,
+          iceConfig.natPredictionStunUrls,
         ),
       );
     } catch (error) {

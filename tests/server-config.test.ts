@@ -18,7 +18,7 @@ describe("server configuration", () => {
     expect(config.allowedOrigins).toEqual(new Set(["http://localhost:9123"]));
     expect(config.roomDatabasePath).toBeUndefined();
     expect(config.stunUrls).toEqual([]);
-    expect(config.natPredictionStunUrls).toEqual([]);
+    expect(config.natPredictionEnabled).toBe(false);
     expect(config.maxViewersPerRoom).toBe(8);
     expect(config.peerAssistedMedia).toBe(false);
     expect(config.endpointMediaCopyCapacity).toBe(2);
@@ -327,28 +327,29 @@ describe("server configuration", () => {
     ).toEqual(["STUN:[2001:db8::1]:3478"]);
   });
 
-  it("accepts a bounded independent NAT prediction STUN list", () => {
+  it("enables bounded NAT prediction only with a base STUN listener", () => {
     expect(
       loadConfig({
-        NAT_PREDICTION_STUN_URLS:
-          "stun:observer-a.test:3478, stun:observer-b.test:3478",
-      }).natPredictionStunUrls,
-    ).toEqual([
-      "stun:observer-a.test:3478",
-      "stun:observer-b.test:3478",
-    ]);
-  });
-
-  it("rejects invalid or excessive NAT prediction STUN URLs", () => {
+        STUN_URLS: "stun:share.test:3478",
+        NAT_PREDICTION_ENABLED: "true",
+      }).natPredictionEnabled,
+    ).toBe(true);
     expect(() =>
-      loadConfig({ NAT_PREDICTION_STUN_URLS: "turn:observer.test:3478" }),
-    ).toThrow("NAT_PREDICTION_STUN_URLS contains an invalid STUN URL");
+      loadConfig({ NAT_PREDICTION_ENABLED: "true" }),
+    ).toThrow(
+      "NAT_PREDICTION_ENABLED requires a STUN_URLS entry on UDP 3478",
+    );
     expect(() =>
       loadConfig({
-        NAT_PREDICTION_STUN_URLS:
-          "stun:a.test:3478,stun:b.test:3478,stun:c.test:3478",
+        STUN_URLS: "stun:share.test:5349",
+        NAT_PREDICTION_ENABLED: "true",
       }),
-    ).toThrow("NAT_PREDICTION_STUN_URLS must contain at most 2 URLs");
+    ).toThrow(
+      "NAT_PREDICTION_ENABLED requires a STUN_URLS entry on UDP 3478",
+    );
+    expect(() =>
+      loadConfig({ NAT_PREDICTION_ENABLED: "sometimes" }),
+    ).toThrow("NAT_PREDICTION_ENABLED must be true or false");
   });
 
   it.each([
@@ -402,18 +403,17 @@ describe("server configuration", () => {
     ).toThrow("STUN_URLS must contain at most 8 URLs");
   });
 
-  it("bounds ordinary and NAT prediction STUN URLs together", () => {
+  it("reserves two ICE URL slots for configured NAT prediction", () => {
     expect(() =>
       loadConfig({
         STUN_URLS: Array.from(
           { length: 7 },
           (_, index) => `stun:ordinary-${index}.test:3478`,
         ).join(","),
-        NAT_PREDICTION_STUN_URLS:
-          "stun:observer-a.test:3478,stun:observer-b.test:3478",
+        NAT_PREDICTION_ENABLED: "true",
       }),
     ).toThrow(
-      "STUN_URLS and NAT_PREDICTION_STUN_URLS must contain at most 8 URLs together",
+      "STUN_URLS must contain at most 6 URLs when NAT_PREDICTION_ENABLED=true",
     );
   });
 

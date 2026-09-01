@@ -133,6 +133,7 @@ export class ViewerPeer {
       this.localIceCandidates?.setSurveyUrls(
         natPredictionSurveyUrls(
           iceConfig.iceServers,
+          iceConfig.natPredictionStunUrls,
         ),
       );
     } catch (error) {
@@ -251,6 +252,7 @@ export class ViewerPeer {
       },
       natPredictionSurveyUrls(
         this.currentIceConfig.iceServers,
+        this.currentIceConfig.natPredictionStunUrls,
       ),
     );
     this.connection = connection;

@@ -19,7 +19,7 @@ export const ROOM_CODE_LENGTH = 4;
 export const MAX_MEDIA_ROUTE_REVISION = Number.MAX_SAFE_INTEGER;
 export const MAX_SFU_TOKEN_LENGTH = 8 * 1024;
 export const MAX_ICE_SERVER_URLS = 8;
-export const MAX_NAT_PREDICTION_STUN_URLS = 2;
+export const MAX_NAT_PREDICTION_AUXILIARY_STUN_URLS = 2;
 export const MAX_VIEWER_QUALITY_EVIDENCE_BYTES = 2 * 1024;
 export const VIEWER_QUALITY_EVIDENCE_INTERVAL_MS = 2_000;
 export const VIEWER_QUALITY_EVIDENCE_EXPIRY_MS = 5_000;
@@ -230,6 +230,13 @@ export const DEFAULT_ROUTE_POLICY = {
   natPrediction: false,
 } as const satisfies RoutePolicy;
 
+export const runtimeCapabilitiesSchema = z
+  .object({
+    natPrediction: z.boolean(),
+  })
+  .strict();
+export type RuntimeCapabilities = z.infer<typeof runtimeCapabilitiesSchema>;
+
 export const relayDownstreamEdgesSchema = z
   .number()
   .int()
@@ -292,7 +299,7 @@ export const iceConfigSchema = z
     iceServers: z.array(iceServerSchema).max(8),
     natPredictionStunUrls: z
       .array(stunUrlSchema)
-      .max(MAX_NAT_PREDICTION_STUN_URLS),
+      .max(MAX_NAT_PREDICTION_AUXILIARY_STUN_URLS),
   })
   .strict();
 export type WireIceConfig = z.infer<typeof iceConfigSchema>;

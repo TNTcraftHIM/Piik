@@ -2,10 +2,12 @@ import { say } from "../ui/copy";
 import {
   createRoomResponseSchema,
   roomAccessUpdateResponseSchema,
+  runtimeCapabilitiesSchema,
   type CreateRoomResponse,
   type CodeEntryPolicy,
   type RoomAccessUpdateRequest,
   type RoomAccessUpdateResponse,
+  type RuntimeCapabilities,
 } from "../../shared/protocol";
 
 export interface SiteAccessStatus {
@@ -64,6 +66,24 @@ export async function getSiteAccess(): Promise<SiteAccessStatus> {
     );
   }
   return parseSiteAccessStatus(body);
+}
+
+export async function getRuntimeCapabilities(): Promise<RuntimeCapabilities> {
+  const response = await fetch("/api/capabilities", {
+    headers: { Accept: "application/json" },
+  });
+  const body = await responseBody(response);
+  if (!response.ok) {
+    throw new ApiError(
+      say("gate.serviceUnavailable", { status: String(response.status) }),
+      response.status,
+    );
+  }
+  const parsed = runtimeCapabilitiesSchema.safeParse(body);
+  if (!parsed.success) {
+    throw new ApiError(say("host.err.serverError"), 502);
+  }
+  return parsed.data;
 }
 
 export async function authenticateSiteAccess(

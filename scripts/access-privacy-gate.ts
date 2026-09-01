@@ -99,7 +99,7 @@ async function main(): Promise<void> {
       publicBaseUrl: new URL(baseUrl), allowedOrigins: new Set([baseUrl]),
       siteAccessPassword: sitePassword, roomLeaseMs: 86_400_000,
       maxViewersPerRoom: 2, endpointMediaCopyCapacity: 2,
-      peerAssistedMedia: false, stunUrls: [], natPredictionStunUrls: [],
+      peerAssistedMedia: false, stunUrls: [], natPredictionEnabled: false,
     };
     server = await createScreenerServer({ config, staticDirectory: resolve(root, "dist/client") });
     server.httpServer.prependListener("request", (request, response) => {

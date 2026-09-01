@@ -83,6 +83,16 @@ interface SenderQualityRateWindow {
   count: number;
 }
 
+function configuredRoutePolicy(
+  policy: RoutePolicy,
+  natPredictionEnabled: boolean,
+): RoutePolicy {
+  return {
+    ...policy,
+    natPrediction: natPredictionEnabled && policy.natPrediction,
+  };
+}
+
 export interface SignalingOptions {
   server: HttpServer;
   roomStore: RoomStore;
@@ -583,9 +593,10 @@ export class SignalingServer {
         currentGeneration !== shareGeneration ||
         !this.routePolicyByRoom.has(participant.roomId)
       ) {
-        const routePolicy = {
-          ...(message.routePolicy ?? DEFAULT_ROUTE_POLICY),
-        };
+        const routePolicy = configuredRoutePolicy(
+          message.routePolicy ?? DEFAULT_ROUTE_POLICY,
+          this.options.ice.natPredictionEnabled,
+        );
         this.routePolicyByRoom.set(participant.roomId, routePolicy);
         for (const viewer of this.options.roomStore.getConnectedViewers(
           participant.roomId,

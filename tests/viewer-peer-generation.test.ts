@@ -344,7 +344,10 @@ describe("ViewerPeer connection generations", () => {
       [],
       {
         iceServers: [{ urls: "stun:share.example.test:3478" }],
-        natPredictionStunUrls: ["stun:observer.example.test:3478"],
+        natPredictionStunUrls: [
+          "stun:share.example.test:3479",
+          "stun:share.example.test:3480",
+        ],
       },
       true,
     );
@@ -354,7 +357,6 @@ describe("ViewerPeer connection generations", () => {
       { urls: "stun:share.example.test:3478" },
       { urls: "stun:share.example.test:3479" },
       { urls: "stun:share.example.test:3480" },
-      { urls: "stun:observer.example.test:3478" },
     ]);
 
     const surveyUrls = [

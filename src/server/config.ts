@@ -2,7 +2,6 @@ import { isAbsolute } from "node:path";
 
 import {
   MAX_ICE_SERVER_URLS,
-  MAX_NAT_PREDICTION_STUN_URLS,
   MAX_VIEWERS_PER_ROOM_LIMIT,
   stunUrlSchema,
 } from "../shared/protocol.js";
@@ -10,6 +9,7 @@ import {
   DEFAULT_ENDPOINT_MEDIA_COPY_CAPACITY,
   MAX_ENDPOINT_MEDIA_COPY_CAPACITY,
 } from "../shared/media-copy-accounting.js";
+import { natPredictionStunUrls } from "./ice.js";
 
 export type RuntimeEnvironment = "development" | "test" | "production";
 
@@ -57,7 +57,7 @@ export interface ServerConfig {
   endpointMediaCopyCapacity: number;
   livekitFallback?: LiveKitFallbackConfig;
   stunUrls: readonly string[];
-  natPredictionStunUrls: readonly string[];
+  natPredictionEnabled: boolean;
 }
 
 function parseBoolean(
@@ -323,17 +323,22 @@ export function loadConfig(
     environment.ROOM_DATABASE_PATH,
   );
   const stunUrls = parseStunUrlList(environment.STUN_URLS, "STUN_URLS");
-  const natPredictionStunUrls = parseStunUrlList(
-    environment.NAT_PREDICTION_STUN_URLS,
-    "NAT_PREDICTION_STUN_URLS",
-    MAX_NAT_PREDICTION_STUN_URLS,
+  const natPredictionEnabled = parseBoolean(
+    environment.NAT_PREDICTION_ENABLED,
+    false,
+    "NAT_PREDICTION_ENABLED",
   );
   if (
-    stunUrls.length + natPredictionStunUrls.length >
-    MAX_ICE_SERVER_URLS
+    natPredictionEnabled &&
+    natPredictionStunUrls(stunUrls).length === 0
   ) {
     throw new Error(
-      `STUN_URLS and NAT_PREDICTION_STUN_URLS must contain at most ${MAX_ICE_SERVER_URLS} URLs together`,
+      "NAT_PREDICTION_ENABLED requires a STUN_URLS entry on UDP 3478",
+    );
+  }
+  if (natPredictionEnabled && stunUrls.length + 2 > MAX_ICE_SERVER_URLS) {
+    throw new Error(
+      `STUN_URLS must contain at most ${MAX_ICE_SERVER_URLS - 2} URLs when NAT_PREDICTION_ENABLED=true`,
     );
   }
   const maxViewersPerRoom = parseBoundedInteger(
@@ -410,6 +415,6 @@ export function loadConfig(
     endpointMediaCopyCapacity,
     livekitFallback,
     stunUrls,
-    natPredictionStunUrls,
+    natPredictionEnabled,
   };
 }

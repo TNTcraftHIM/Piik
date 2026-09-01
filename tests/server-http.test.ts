@@ -57,7 +57,7 @@ function testConfig(overrides: Partial<ServerConfig> = {}): ServerConfig {
     peerAssistedMedia: false,
     endpointMediaCopyCapacity: 2,
     stunUrls: [],
-    natPredictionStunUrls: [],
+    natPredictionEnabled: false,
     ...overrides,
   };
 }
@@ -166,6 +166,33 @@ async function replaceRoom(
     body: JSON.stringify(body),
   });
 }
+
+describe("runtime capabilities", () => {
+  it("keeps NAT prediction absent by default", async () => {
+    const baseUrl = await start();
+    const response = await fetch(`${baseUrl}/api/capabilities`);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ natPrediction: false });
+  });
+
+  it("reports optional NAT prediction without exposing configuration", async () => {
+    const baseUrl = await start(
+      testConfig({
+        stunUrls: ["stun:share.example.test:3478"],
+        natPredictionEnabled: true,
+      }),
+    );
+    const response = await fetch(`${baseUrl}/api/capabilities`);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(await response.json()).toEqual({ natPrediction: true });
+    expect(
+      (await fetch(`${baseUrl}/api/capabilities`, { method: "POST" })).status,
+    ).toBe(405);
+  });
+});
 
 describe("site access", () => {
   it("reports status and issues a stateless 24-hour cookie", async () => {

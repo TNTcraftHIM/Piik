@@ -155,9 +155,9 @@ export const zh = {
   "host.advanced.route.peerOnly": "隐私模式",
   "host.advanced.route.peerOnlyHint":
     "仅使用 P2P 路线，不经过媒体服务器；无可用 P2P 路线时无法观看",
-  "host.advanced.route.natPrediction": "NAT 打洞实验",
+  "host.advanced.route.natPrediction": "NAT 穿透",
   "host.advanced.route.natPredictionHint":
-    "为直连尝试额外的自托管 STUN 候选；失败时仍使用普通连接",
+    "使用自建 STUN 增加有限的直连尝试；普通连接不受影响",
   "host.advanced.codec": "视频编码",
   "host.advanced.codec.auto": "自动",
   "host.advanced.codec.autoHint": "自动选择",

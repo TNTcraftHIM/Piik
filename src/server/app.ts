@@ -105,7 +105,7 @@ export async function createScreenerServer(
   });
   const iceOptions = {
     stunUrls: config.stunUrls,
-    natPredictionStunUrls: config.natPredictionStunUrls,
+    natPredictionEnabled: config.natPredictionEnabled,
   };
 
   let frontendHandler: FrontendHandler | undefined;
@@ -338,6 +338,20 @@ async function handleRequest(
       return;
     }
     sendJson(response, 200, { status: "ok" });
+    return;
+  }
+
+  if (url.pathname === "/api/capabilities") {
+    response.setHeader("Cache-Control", "no-store");
+    response.setHeader("X-Content-Type-Options", "nosniff");
+    if (request.method !== "GET") {
+      response.setHeader("Allow", "GET");
+      sendJson(response, 405, { error: "Method not allowed" });
+      return;
+    }
+    sendJson(response, 200, {
+      natPrediction: config.natPredictionEnabled,
+    });
     return;
   }
 
