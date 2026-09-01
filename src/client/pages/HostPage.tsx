@@ -370,10 +370,14 @@ function hostTerminationKey(reason: SignalingTerminationReason): CopyKey {
 }
 
 interface HostPageProps {
+  natPredictionAvailable?: boolean;
   onAuthorizationRequired?: () => void;
 }
 
-export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
+export function HostPage({
+  natPredictionAvailable = false,
+  onAuthorizationRequired,
+}: HostPageProps = {}) {
   const { lang, vis, t, titleFrames } = useCopy();
   const [qualitySettings, setQualitySettings] = useState<QualitySettings>(
     DEFAULT_QUALITY_SETTINGS,
@@ -382,7 +386,10 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
     DEFAULT_QUALITY_SETTINGS,
   );
   const [routePolicy, setRoutePolicy] = useState<RoutePolicy>(
-    DEFAULT_ROUTE_POLICY,
+    () => ({
+      ...DEFAULT_ROUTE_POLICY,
+      natPrediction: natPredictionAvailable,
+    }),
   );
   const [videoCodecMode, setVideoCodecMode] =
     useState<BrowserVideoCodecMode>("auto");
@@ -513,7 +520,7 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
   const qualityChangeRef = useRef<object | null>(null);
   const pendingQualityChangeRef = useRef<QualitySettings | null>(null);
   const qualitySettingsRef = useRef<QualitySettings>(DEFAULT_QUALITY_SETTINGS);
-  const routePolicyRef = useRef<RoutePolicy>(DEFAULT_ROUTE_POLICY);
+  const routePolicyRef = useRef<RoutePolicy>(routePolicy);
   const advancedQualityRef = useRef<QualitySettings>(advancedQuality);
   const videoCodecModeRef = useRef<BrowserVideoCodecMode>(videoCodecMode);
   const roomMutationRef = useRef<object | null>(null);
@@ -3813,6 +3820,18 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                         note={t("host.advanced.route.topoHint")}
                         hint="hint-topology"
                       />
+                      {natPredictionAvailable ? (
+                        <SwitchItem
+                          checked={routePolicy.natPrediction}
+                          disabled={phase === "starting" || phase === "live"}
+                          onChange={(checked) =>
+                            changeRoutePolicy({ natPrediction: checked })
+                          }
+                          label={t("host.advanced.route.natPrediction")}
+                          note={t("host.advanced.route.natPredictionHint")}
+                          hint="hint-nat-prediction"
+                        />
+                      ) : null}
                       <SwitchItem
                         checked={routePolicy.peerOnly}
                         disabled={phase === "starting" || phase === "live"}
@@ -3822,16 +3841,6 @@ export function HostPage({ onAuthorizationRequired }: HostPageProps = {}) {
                         label={t("host.advanced.route.peerOnly")}
                         note={t("host.advanced.route.peerOnlyHint")}
                         hint="hint-route-p2p"
-                      />
-                      <SwitchItem
-                        checked={routePolicy.natPrediction}
-                        disabled={phase === "starting" || phase === "live"}
-                        onChange={(checked) =>
-                          changeRoutePolicy({ natPrediction: checked })
-                        }
-                        label={t("host.advanced.route.natPrediction")}
-                        note={t("host.advanced.route.natPredictionHint")}
-                        hint="hint-nat-prediction"
                       />
                     </div>
                   </div>

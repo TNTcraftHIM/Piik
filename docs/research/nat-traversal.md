@@ -1,6 +1,6 @@
 # Browser NAT Traversal
 
-Last reviewed: 2026-09-01
+Last reviewed: 2026-09-02
 
 This document owns evidence for improving direct Browser ICE without adding a
 new relay or a custom transport. The current product contract remains standard
@@ -56,20 +56,20 @@ supports an opt-in mechanism, not a default or a participant-wide classifier.
 
 ## Current Decision
 
-The flagship STUN configuration remains unchanged. The self-hosted endpoint is
-still the ordinary discovery service; ports 3479 and 3480 are optional
-STUN-only listeners for an explicitly enabled room experiment.
+The ordinary self-hosted endpoint remains the discovery service. NAT prediction
+is absent by default; a deployment may enable same-host STUN-only listeners on
+3479 and 3480. Enabled deployments expose a per-share Host switch that defaults
+on and remains locked while sharing.
 
-The accepted experiment is deliberately connection-local and additive. It
+The accepted adapter is deliberately connection-local and additive. It
 derives the two auxiliary ports from the existing STUN authority, waits for a
 clear three-point arithmetic `srflx` shape in one ICE generation, and appends a
 small two-sided candidate window from the observed port-sequence endpoint.
 Ordinary candidates trickle immediately, so unavailable auxiliary listeners
 cannot hold back stock ICE. There is no NAT label, hard candidate skip,
-route-controller input, or SFU preference. The Host switch is default off,
-locks while sharing, and applies to Host, Viewer upstream, and Viewer relay P2P
-connections. Its exact scope is recorded in
-[ADR-0009](../adr/0009-connection-local-nat-prediction-experiment.md).
+route-controller input, or SFU preference. The switch applies to Host, Viewer
+upstream, and Viewer relay P2P connections. Its exact scope is recorded in
+[ADR-0009](../adr/0009-optional-nat-prediction.md).
 
 ### Independent Observation And Attribution Preflight
 
@@ -77,9 +77,9 @@ On 2026-09-01, Chrome 151 on the flagship Windows network gathered one `srflx`
 candidate independently from the self-hosted endpoint, Xiaomi, Bilibili, and
 Cloudflare within a five-second bound. `stun.qq.com:3478` produced none in the
 same ordered run. Candidate events and local candidate stats preserved the exact
-STUN `url`, so independent destinations can remain ordinary candidates while
-only self-hosted 3478/3479/3480 observations feed prediction. These are measured
-reachability results, not third-party availability commitments.
+STUN `url`, but the destinations supplied no selected-path benefit. They remain
+research evidence only; the product has no independent or third-party STUN
+configuration.
 
 A second real-Chrome loopback rewrote only one remote candidate foundation to
 `sp1`, established the data channel, and read `sp1` from the selected remote
@@ -87,6 +87,21 @@ candidate stats. The product can therefore report `predicted | ordinary |
 unknown` selection without retaining or uploading addresses, ports, foundations,
 or STUN URLs. Field acceptance still requires target-network outcomes; this
 preflight proves the attribution mechanism, not prediction prevalence.
+
+The first flagship field runs emitted six predicted candidates in one 8545
+generation and selected none. Later 8545 and 5643 generations did not form the
+required arithmetic survey shape, so no prediction was emitted. This is
+negative prevalence evidence, not a regression: ordinary ICE and SFU fallback
+remained independent. The flagship deployment enables the bounded capability
+to continue attributable field observation without claiming a demonstrated
+reachability gain.
+
+After an SFU commit, the current route controller gives each deferred Peer
+parent one full direct-convergence attempt and then consumes that continuation.
+Further generations come from a new participant session, publication, or share,
+not a periodic retry loop. This bounds current field exposure. A fixed repeat
+budget remains unjustified until attributable runs show that fresh generations
+repeatedly recover a usable arithmetic shape.
 
 The Browser-only alternatives do not yet have an accepted implementation:
 
@@ -120,11 +135,11 @@ but cannot produce the proposed `eim | edm-sequential | edm-random` participant
 fact. They cannot safely remove a Peer candidate or alter route ordering and
 deadlines.
 
-Port prediction remains an experiment rather than a default path. The
-controlled namespace matrix supports the bounded mechanism, but field
-prevalence, direction, and resource impact are not established. The experiment
-therefore stays opt-in and additive until target-network evidence justifies
-enabling it by default.
+Port prediction remains additive rather than an assumed path. The controlled
+namespace matrix supports the bounded mechanism, but field prevalence,
+direction, and resource impact are not established. Configuration therefore
+stays off by default even though the flagship deployment explicitly enables its
+field rollout.
 
 ## Rejected Product Inference
 

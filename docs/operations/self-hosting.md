@@ -73,10 +73,10 @@ Coturn runs `stun-only`, `no-tcp`, and `no-tls`. It must answer STUN binding and
 reject TURN allocation. Avoid verbose STUN/ICE logging because infrastructure
 necessarily observes client IP addresses.
 
-## Optional NAT Prediction Experiment
+## Optional NAT Prediction
 
-Rooms can use the default-off NAT prediction experiment only while both
-auxiliary STUN-only listeners are reachable. Add the following to the
+Set `NAT_PREDICTION_ENABLED=true` only while both auxiliary STUN-only listeners
+are reachable. Add the following to the
 service-owned coturn configuration, using the local address already bound by
 the main listener:
 
@@ -91,20 +91,13 @@ the complete ruleset with `nft -c -f /etc/nftables.conf`, then restart only
 `coturn.service`. Verify `ss -lunp` shows all three UDP listeners and that an
 ordinary STUN Binding succeeds on each. Do not add these URLs to production
 `STUN_URLS`; enabled Browser connections derive them from the ordinary STUN
-authority. Keep both listeners and firewall rules for as long as the room
-experiment is offered. Disable the experiment before removing both
+authority. Keep both listeners and firewall rules for as long as the capability
+is enabled. Set `NAT_PREDICTION_ENABLED=false` before removing both
 `aux-server` lines and both firewall rules, validate again, and restart coturn.
 
 These same-IP auxiliary ports measure destination-port mapping behavior. They
 are not a full RFC 5780 alternate-address deployment; that requires a second
 public IPv4.
-
-An operator may configure at most two independent observation URLs through
-`NAT_PREDICTION_STUN_URLS`. They are contacted only by Browser P2P connections
-in an opted-in room, remain ordinary ICE candidates, and require no local
-listener or firewall change. Verify them with a real Browser from the target
-network before use. DNS resolution alone is not a STUN availability check, and
-an unaffiliated public endpoint has no implied SLA.
 
 ## Operational Verification
 

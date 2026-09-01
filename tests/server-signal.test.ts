@@ -137,7 +137,7 @@ function testConfig(): ServerConfig {
     peerAssistedMedia: false,
     endpointMediaCopyCapacity: 2,
     stunUrls: [],
-    natPredictionStunUrls: [],
+    natPredictionEnabled: false,
   };
 }
 
@@ -152,7 +152,7 @@ async function startHarness(
     peerAssistedMedia?: boolean;
     endpointMediaCopyCapacity?: number;
     stunUrls?: readonly string[];
-    natPredictionStunUrls?: readonly string[];
+    natPredictionEnabled?: boolean;
     now?: () => number;
     roomStore?: RoomStore;
     room?: CreatedRoom;
@@ -164,7 +164,7 @@ async function startHarness(
   config.endpointMediaCopyCapacity =
     overrides.endpointMediaCopyCapacity ?? 2;
   config.stunUrls = overrides.stunUrls ?? [];
-  config.natPredictionStunUrls = overrides.natPredictionStunUrls ?? [];
+  config.natPredictionEnabled = overrides.natPredictionEnabled ?? false;
   const maxViewersPerRoom = overrides.maxViewersPerRoom ?? 8;
   config.maxViewersPerRoom = maxViewersPerRoom;
   const roomStore =
@@ -466,7 +466,11 @@ async function closeClient(client: TestClient): Promise<void> {
 
 describe("WebSocket signaling", () => {
   it("echoes the exact per-share route policy authority", async () => {
-    const harness = await startHarness({ peerAssistedMedia: true });
+    const harness = await startHarness({
+      peerAssistedMedia: true,
+      stunUrls: ["stun:share.example.test:3478"],
+      natPredictionEnabled: true,
+    });
     const viewer = await openClient(harness.webSocketUrl);
     const waiting = peerAssisted(
       await authenticate(
@@ -504,8 +508,12 @@ describe("WebSocket signaling", () => {
     });
   });
 
-  it("broadcasts the NAT experiment policy in lightweight rooms", async () => {
-    const harness = await startHarness({ peerAssistedMedia: false });
+  it("broadcasts configured NAT prediction in lightweight rooms", async () => {
+    const harness = await startHarness({
+      peerAssistedMedia: false,
+      stunUrls: ["stun:share.example.test:3478"],
+      natPredictionEnabled: true,
+    });
     const waitingViewer = await openClient(harness.webSocketUrl);
     const waiting = await authenticate(
       waitingViewer,
@@ -546,23 +554,47 @@ describe("WebSocket signaling", () => {
     expect(joined.routePolicy).toEqual(routePolicy);
   });
 
-  it("delivers independent NAT experiment STUN without changing ordinary ICE", async () => {
+  it("clamps NAT prediction off when the server capability is disabled", async () => {
+    const harness = await startHarness({ peerAssistedMedia: false });
+    const host = await openClient(harness.webSocketUrl);
+    const authenticated = await authenticate(
+      host,
+      harness.room,
+      "host",
+      "disabled-nat-host",
+      null,
+      "disabled_nat_share_generation_12345678",
+      {
+        routePolicy: {
+          ...DEFAULT_ROUTE_POLICY,
+          natPrediction: true,
+        },
+      },
+    );
+
+    expect(authenticated.routePolicy.natPrediction).toBe(false);
+  });
+
+  it("delivers only self-hosted auxiliary NAT STUN endpoints", async () => {
     const harness = await startHarness({
       stunUrls: ["stun:ordinary.example.test:3478"],
-      natPredictionStunUrls: ["stun:observer.example.test:3478"],
+      natPredictionEnabled: true,
     });
     const viewer = await openClient(harness.webSocketUrl);
     const authenticated = await authenticate(
       viewer,
       harness.room,
       "viewer",
-      "nat-observer-viewer",
+      "nat-auxiliary-viewer",
       null,
     );
 
     expect(authenticated.iceConfig).toEqual({
       iceServers: [{ urls: ["stun:ordinary.example.test:3478"] }],
-      natPredictionStunUrls: ["stun:observer.example.test:3478"],
+      natPredictionStunUrls: [
+        "stun:ordinary.example.test:3479",
+        "stun:ordinary.example.test:3480",
+      ],
     });
   });
 

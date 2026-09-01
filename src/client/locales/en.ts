@@ -157,9 +157,9 @@ export const en: Record<CopyKey, string> = {
   "host.advanced.route.peerOnly": "Privacy mode",
   "host.advanced.route.peerOnlyHint":
     "Use P2P routes only; viewers without a P2P path cannot watch",
-  "host.advanced.route.natPrediction": "NAT traversal experiment",
+  "host.advanced.route.natPrediction": "NAT traversal",
   "host.advanced.route.natPredictionHint":
-    "Try extra self-hosted STUN candidates for direct links; ordinary ICE remains available",
+    "Use self-hosted STUN for a bounded set of extra direct attempts; ordinary ICE is unchanged",
   "host.advanced.codec": "Video codec",
   "host.advanced.codec.auto": "Auto",
   "host.advanced.codec.autoHint": "Pick automatically",

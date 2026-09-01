@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-09-01
+Last updated: 2026-09-02
 
 This is the current execution index. Git history owns completed timelines;
 [verification status](./verification-status.md) owns evidence boundaries.
@@ -23,11 +23,12 @@ This is the current execution index. Git history owns completed timelines;
 - Site access uses a stateless 24-hour rolling idle cookie. An active
   site-authorized page renews it hourly through the existing status request;
   Viewer-grant admission remains independent and cannot create or renew it.
-- Public media listeners remain STUN-only UDP 3478 and LiveKit UDP 7882. The
-  optional NAT experiment also uses auxiliary STUN-only UDP 3479 and 3480;
-  ordinary `STUN_URLS` and media routes remain unchanged. Web ingress
-  is TCP 80/443; Node 8787 and LiveKit control/signaling 7880 are private. TURN,
-  ICE/TCP, media TCP, TLS relay, port 5349, and relay ranges are disabled.
+- Public media listeners remain STUN-only UDP 3478 and LiveKit UDP 7882.
+  Production enables optional NAT prediction with self-hosted STUN-only UDP
+  3479 and 3480; ordinary `STUN_URLS` and media routes remain unchanged. Web
+  ingress is TCP 80/443; Node 8787 and LiveKit control/signaling 7880 are
+  private. TURN, ICE/TCP, media TCP, TLS relay, port 5349, and relay ranges are
+  disabled.
 - Browser video uses the content-independent H.264 sender gate with VP8
   fallback, plus the locked pre-share `VP8 | Auto | H264` Host selector and
   resolved codec display. Video retains `contentHint = "motion"`; audio uses
@@ -75,12 +76,13 @@ This is the current execution index. Git history owns completed timelines;
   sender windows retain the bounded Peer operation; failed exact candidates stay
   consumed until the sender or candidate opportunity changes. The pre-share gate
   defaults on and locks while sharing.
-- Host Advanced settings include a default-off, per-share NAT traversal
-  experiment. Every Browser P2P role uses the same bounded, connection-local
-  candidate adapter. At most two deployment-supplied independent STUN
-  observations are contacted only inside opted-in rooms; candidate and selected
-  path logs retain anonymous `ordinary | predicted | unknown` provenance.
-  Ordinary candidates and SFU fallback remain unchanged.
+- Source keeps NAT prediction deployment-gated and disabled by default. When a
+  deployment enables it, Host Advanced settings shows a per-share switch that
+  defaults on. Every Browser P2P role uses the same bounded, connection-local
+  adapter with only the deployment's self-hosted 3478/3479/3480 STUN endpoints;
+  candidate and selected-path logs retain anonymous
+  `ordinary | predicted | unknown` provenance. Ordinary candidates and SFU
+  fallback remain unchanged.
 - Every direct, Browser-relay, and Host SFU video sender owns one clone of its
   source track; the original remains presentation and source authority only.
   Replacement, rollback, unpublish, physical LiveKit sender recreation, and
