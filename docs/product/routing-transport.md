@@ -75,10 +75,14 @@ without discarding its subtree; departure and capacity changes move only affecte
 children. ADR-0005 owns filtering, ordering, cursor, revision, reservation, and
 rollback mechanics.
 
-Every unconnected Peer candidate gets the same five-second no-progress window.
-Transport-connected progress retains it through the operation deadline. This
-applies to join, recovery, direct convergence, quality convergence and structural
-convergence; candidate order never resets the total deadline.
+Five seconds is a scheduling window only while another bounded candidate or SFU
+fallback remains. It advances a silent Peer candidate instead of delaying the
+next available route; it is not interpreted as terminal ICE failure. The final
+or only Peer candidate remains until the unchanged total operation deadline.
+Transport-connected progress also retains a candidate through that deadline.
+Consequently a working SFU route can carry media while its one-candidate direct
+convergence uses the full background operation, and peer-only acquisition does
+not abandon its only possible route at the foreground boundary.
 
 When a newly committed Host-root Viewer exposes unused downstream capacity while
 another Host root has at least two direct children, the same background operation may

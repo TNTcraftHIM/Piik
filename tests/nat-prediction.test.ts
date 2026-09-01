@@ -84,6 +84,18 @@ describe("NAT prediction ICE adapter", () => {
     expect(predictions.every((value) => value?.sdpMid === "0")).toBe(true);
   });
 
+  it("anchors on the port sequence extreme when responses arrive reversed", () => {
+    const predictions = predictSrflxCandidates([
+      candidate(40_006),
+      candidate(40_003),
+      candidate(40_000),
+    ]);
+
+    expect(predictions.map(portOf)).toEqual(
+      expect.arrayContaining([40_009, 39_997]),
+    );
+  });
+
   it("does not predict an unstable or incomplete mapping shape", () => {
     expect(predictSrflxCandidates([candidate(40_000), candidate(40_001)])).toEqual(
       [],
@@ -97,7 +109,7 @@ describe("NAT prediction ICE adapter", () => {
     ).toEqual([]);
   });
 
-  it("sends predictions before held srflx candidates while retaining every one", () => {
+  it("appends predictions without delaying or replacing ordinary candidates", () => {
     const sent: Array<SignalCandidate | null> = [];
     const batch = new NatPredictionCandidateBatch((value) => sent.push(value));
     const first = candidate(40_000);
@@ -107,17 +119,17 @@ describe("NAT prediction ICE adapter", () => {
     batch.add(hostCandidate());
     batch.add(first);
     batch.add(second);
+    expect(sent).toEqual([hostCandidate(), first, second]);
     batch.add(third);
     batch.complete();
     batch.complete();
 
     expect(sent[0]).toEqual(hostCandidate());
-    const firstOriginal = sent.indexOf(first);
     const firstPrediction = sent.findIndex(
       (value) => value?.candidate.includes("candidate:s") ?? false,
     );
-    expect(firstPrediction).toBeGreaterThanOrEqual(1);
-    expect(firstPrediction).toBeLessThan(firstOriginal);
+    expect(firstPrediction).toBeGreaterThan(sent.indexOf(second));
+    expect(firstPrediction).toBeLessThan(sent.indexOf(third));
     expect(sent.filter((value) => value === first)).toHaveLength(1);
     expect(sent.filter((value) => value === second)).toHaveLength(1);
     expect(sent.filter((value) => value === third)).toHaveLength(1);
@@ -135,5 +147,15 @@ describe("NAT prediction ICE adapter", () => {
     batch.complete();
 
     expect(sent).toEqual([first, second, null]);
+  });
+
+  it("does not wait for auxiliary gathering before sending stock srflx", () => {
+    const sent: Array<SignalCandidate | null> = [];
+    const batch = new NatPredictionCandidateBatch((value) => sent.push(value));
+    const first = candidate(40_000);
+
+    batch.add(first);
+
+    expect(sent).toEqual([first]);
   });
 });

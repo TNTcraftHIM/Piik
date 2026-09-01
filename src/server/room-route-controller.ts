@@ -2293,6 +2293,7 @@ export class RoomRouteController<Resource = unknown> {
       const noProgress =
         current?.tuple.kind === "peer" &&
         !current.transportConnected &&
+        this.peerCandidateHasSuccessor(this.operation) &&
         nowMs >= current.startedAtMs + this.directHeadStartMs() &&
         nowMs < this.operation.deadlineAtMs;
       this.debug(noProgress ? "candidate-no-progress" : "operation-deadline", {
@@ -2492,6 +2493,7 @@ export class RoomRouteController<Resource = unknown> {
         const peerNoProgressExpired =
           attempt.tuple.kind === "peer" &&
           !attempt.transportConnected &&
+          this.peerCandidateHasSuccessor(operation) &&
           nowMs >= attempt.startedAtMs + this.directHeadStartMs();
         if (
           !guardFailed &&
@@ -4168,7 +4170,8 @@ export class RoomRouteController<Resource = unknown> {
     }
     if (
       operation.current?.tuple.kind === "peer" &&
-      !operation.current.transportConnected
+      !operation.current.transportConnected &&
+      this.peerCandidateHasSuccessor(operation)
     ) {
       return Math.min(
         operation.deadlineAtMs,
@@ -4176,6 +4179,15 @@ export class RoomRouteController<Resource = unknown> {
       );
     }
     return operation.deadlineAtMs;
+  }
+
+  private peerCandidateHasSuccessor(
+    operation: ChildOperation<Resource>,
+  ): boolean {
+    return (
+      operation.cursor + 1 < operation.candidates.length ||
+      this.foregroundSfuIndex(operation) > operation.cursor
+    );
   }
 
   private directHeadStartDeadlineAt(

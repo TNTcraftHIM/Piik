@@ -231,7 +231,9 @@ export function predictSrflxCandidates(
     if (step === null) {
       continue;
     }
-    const anchor = distinct.at(-1)!;
+    const anchor = distinct.reduce((latest, observation) =>
+      observation.port > latest.port ? observation : latest,
+    );
     return predictedFrom(
       anchor,
       step,
@@ -242,12 +244,12 @@ export function predictSrflxCandidates(
 }
 
 /**
- * Holds only srflx candidates until the mapping shape is known, then emits
- * predictions before the held ordinary candidates. Non-srflx candidates keep
- * their normal trickle timing. A new instance belongs to one ICE generation.
+ * Emits every ordinary candidate at normal trickle timing. Once one ICE
+ * generation proves a predictable srflx shape, the bounded predictions are
+ * appended without delaying or replacing stock ICE.
  */
 export class NatPredictionCandidateBatch {
-  private readonly pendingSrflx: SignalCandidate[] = [];
+  private readonly observedSrflx: SignalCandidate[] = [];
   private predictionsSent = false;
   private completed = false;
 
@@ -261,8 +263,9 @@ export class NatPredictionCandidateBatch {
       this.send(candidate);
       return;
     }
-    this.pendingSrflx.push(candidate);
+    this.observedSrflx.push(candidate);
     this.trySendPredictions();
+    this.send(candidate);
   }
 
   complete(): void {
@@ -270,23 +273,20 @@ export class NatPredictionCandidateBatch {
       return;
     }
     this.trySendPredictions();
-    for (const candidate of this.pendingSrflx.splice(0)) {
-      this.send(candidate);
-    }
     this.send(null);
     this.completed = true;
   }
 
   discard(): void {
     this.completed = true;
-    this.pendingSrflx.length = 0;
+    this.observedSrflx.length = 0;
   }
 
   private trySendPredictions(): void {
     if (this.predictionsSent) {
       return;
     }
-    const predictions = predictSrflxCandidates(this.pendingSrflx);
+    const predictions = predictSrflxCandidates(this.observedSrflx);
     if (predictions.length === 0) {
       return;
     }
@@ -294,9 +294,6 @@ export class NatPredictionCandidateBatch {
       this.send(candidate);
     }
     this.predictionsSent = true;
-    for (const candidate of this.pendingSrflx.splice(0)) {
-      this.send(candidate);
-    }
   }
 }
 

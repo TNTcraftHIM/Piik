@@ -140,10 +140,13 @@ Peer candidates converge behind working media, one at a time and round-robin
 across SFU Viewers. New join or repair work preempts this background convergence.
 Exhausting direct candidates simply keeps the working SFU route.
 
-The five-second no-transport-progress window is candidate-relative across every
-Peer operation. A new candidate receives its own window within the unchanged
-total operation deadline; exact transport progress retains it until media proof
-or that deadline.
+The five-second no-transport-progress window advances a silent Peer only while
+another bounded candidate or SFU fallback remains. It is a route scheduling
+boundary, not evidence that Browser ICE has reached a terminal state. The final
+or only Peer candidate remains until the unchanged total operation deadline;
+exact transport progress also retains it until media proof or that deadline.
+After SFU commits, each one-candidate direct continuation therefore uses its
+full background operation while working media stays authoritative.
 
 If the Host is full and no publication exists, one bounded SFU-bootstrap intent
 owns the original waiting demand and a finite cursor of eligible Host-direct
