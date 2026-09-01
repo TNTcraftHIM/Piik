@@ -118,12 +118,17 @@ describe("NAT prediction ICE adapter", () => {
       candidate(40_006),
     ]);
 
-    expect(predictions.length).toBeLessThanOrEqual(
-      MAX_NAT_PREDICTION_CANDIDATES,
-    );
-    expect(predictions.map(portOf)).toEqual(
-      expect.arrayContaining([40_009, 39_997]),
-    );
+    expect(predictions).toHaveLength(MAX_NAT_PREDICTION_CANDIDATES);
+    expect(predictions.map(portOf)).toEqual([
+      40_009,
+      40_012,
+      40_015,
+      40_018,
+      39_997,
+      39_994,
+      39_991,
+      39_988,
+    ]);
     expect(predictions.every((value) => value?.sdpMid === "0")).toBe(true);
   });
 
@@ -134,9 +139,16 @@ describe("NAT prediction ICE adapter", () => {
       candidate(40_000),
     ]);
 
-    expect(predictions.map(portOf)).toEqual(
-      expect.arrayContaining([40_009, 39_997]),
-    );
+    expect(predictions.map(portOf)).toEqual([
+      40_009,
+      40_012,
+      40_015,
+      40_018,
+      39_997,
+      39_994,
+      39_991,
+      39_988,
+    ]);
   });
 
   it("does not predict an unstable or incomplete mapping shape", () => {
