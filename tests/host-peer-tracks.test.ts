@@ -728,7 +728,10 @@ describe("HostPeer source replacement", () => {
       "viewer-peer",
       {
         iceServers: [{ urls: "stun:share.example.test:3478" }],
-        natPredictionStunUrls: ["stun:observer.example.test:3478"],
+        natPredictionStunUrls: [
+          "stun:share.example.test:3479",
+          "stun:share.example.test:3480",
+        ],
       },
       createStream(createTrack("video", "video"), null),
       QUALITY_PROFILES["720p30"],
@@ -748,7 +751,6 @@ describe("HostPeer source replacement", () => {
       { urls: "stun:share.example.test:3478" },
       { urls: "stun:share.example.test:3479" },
       { urls: "stun:share.example.test:3480" },
-      { urls: "stun:observer.example.test:3478" },
     ]);
 
     const surveyUrls = [
@@ -774,7 +776,6 @@ describe("HostPeer source replacement", () => {
       });
       connection.dispatchEvent(event);
     };
-    emitCandidate(50_000, "stun:observer.example.test:3478");
     emitCandidate(40_000, surveyUrls[0]);
     emitCandidate(40_003, surveyUrls[1]);
     emitCandidate(40_006, surveyUrls[2]);
@@ -799,7 +800,7 @@ describe("HostPeer source replacement", () => {
       candidateSignals.filter((signal) =>
         signal.candidate?.candidate.startsWith("candidate:base"),
       ),
-    ).toHaveLength(4);
+    ).toHaveLength(3);
     expect(candidateSignals.at(-1)?.candidate).toBeNull();
     expect(candidateSignals.filter((signal) => signal.candidate === null)).toHaveLength(1);
     peer.dispose();
@@ -1840,7 +1841,13 @@ describe("Host provisional child runtime ownership", () => {
 describe("ViewerRelay downstream ownership", () => {
   it("applies the room NAT policy to downstream Peer connections", async () => {
     const relay = new ViewerRelay(
-      { iceServers: [{ urls: "stun:share.example.test:3478" }] },
+      {
+        iceServers: [{ urls: "stun:share.example.test:3478" }],
+        natPredictionStunUrls: [
+          "stun:share.example.test:3479",
+          "stun:share.example.test:3480",
+        ],
+      },
       QUALITY_PROFILES["720p30"],
       { sendSignal: () => true },
       2,

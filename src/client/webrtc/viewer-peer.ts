@@ -13,6 +13,7 @@ import {
 import { preferScreenAudioStereo } from "./screen-audio-sdp";
 import { observeDecodedFrameProof } from "../media/decoded-frame-proof";
 import {
+  addRemoteIceCandidate,
   iceServersWithNatPrediction,
   natPredictionSurveyUrls,
   NatPredictionCandidateEmitter,
@@ -133,6 +134,7 @@ export class ViewerPeer {
       this.localIceCandidates?.setSurveyUrls(
         natPredictionSurveyUrls(
           iceConfig.iceServers,
+          iceConfig.natPredictionStunUrls,
         ),
       );
     } catch (error) {
@@ -251,6 +253,7 @@ export class ViewerPeer {
       },
       natPredictionSurveyUrls(
         this.currentIceConfig.iceServers,
+        this.currentIceConfig.natPredictionStunUrls,
       ),
     );
     this.connection = connection;
@@ -402,7 +405,7 @@ export class ViewerPeer {
     const connection = this.connection;
     const connectionId = payload.connectionId;
     try {
-      await connection.addIceCandidate(payload.candidate);
+      await addRemoteIceCandidate(connection, payload.candidate);
     } catch (error) {
       if (this.isCurrentConnection(connection, connectionId)) {
         this.setError(error, say("host.fail.connection"));
@@ -569,7 +572,7 @@ export class ViewerPeer {
     const candidates = this.pendingByConnection.get(connectionId) ?? [];
     this.pendingByConnection.delete(connectionId);
     for (const candidate of candidates) {
-      await connection.addIceCandidate(candidate);
+      await addRemoteIceCandidate(connection, candidate);
       if (!this.isCurrentConnection(connection, connectionId)) {
         return;
       }

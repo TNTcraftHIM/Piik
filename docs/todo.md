@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-09-01
+Last reviewed: 2026-09-02
 
 Only **Now** is executable. Observations, old branches, experiments, and parked
 topics are not implementation authority.
@@ -81,14 +81,17 @@ until their stated boundary is met.
     `MediaStream` output contract. Reopen only for a registered custom receiver
     acting as an ordinary Viewer after a named Browser and physical receiver
     pass the [platform-output gate](./research/platform-output.md).
-14. **NAT inference and predictive candidates.** The default-off room-wide,
-    connection-local experiment is accepted under
-    [ADR-0009](./adr/0009-connection-local-nat-prediction-experiment.md). Keep
-    multi-STUN observations and injected candidates additive and diagnostic;
-    do not make them a participant-wide NAT label, hard candidate skip, route
-    score, or SFU preference. Candidate generation and selected-path provenance
-    are now observable without endpoint data. Validate target-network success,
-    candidate direction, and bounded resource impact before enabling it by default.
+14. **NAT inference and predictive candidates.** The deployment-gated,
+    connection-local capability is accepted under
+    [ADR-0009](./adr/0009-optional-nat-prediction.md). Production enables its
+    self-hosted field rollout; the general configuration default stays off.
+    Keep injected candidates additive and diagnostic; do not make them a
+    participant-wide NAT label, hard candidate skip, route score, or SFU
+    preference. Validate selected predicted paths and bounded resource impact
+    before recommending it as a default for other deployments. Direct
+    convergence currently consumes each deferred Peer parent once; add no
+    cross-generation retry budget until field evidence proves that fresh ICE
+    generations expose a repeatable prediction opportunity.
 15. **Unresolved route-state ownership claims.** Reopen lower-revision
     reauthentication, active SFU failure during an unrelated prepare, and
     multi-child relay-evidence ownership only from an exact current-wire

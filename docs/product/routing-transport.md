@@ -32,13 +32,14 @@ share generation:
 - native-edge topology convergence is enabled by default. The Host may disable
   it before sharing; when disabled, quality evidence stays diagnostic and
   availability routing is unchanged;
-- the default-off NAT traversal experiment augments direct ICE candidates on
-  every Browser P2P edge in that share. It is not a participant capability,
-  route score, or SFU preference. A deployment may add a bounded independent
-  STUN observation list only inside that experiment. Candidate generation and
-  selected-pair diagnostics retain only `ordinary | predicted | unknown`
-  provenance. [ADR-0009](../adr/0009-connection-local-nat-prediction-experiment.md)
-  owns the bounded behavior and evidence boundary.
+- NAT traversal is absent unless the deployment enables its self-hosted
+  auxiliary STUN capability. When available, its Host switch defaults on and
+  augments every Browser P2P edge in that share; the Host may disable it before
+  sharing. It is not a participant capability, route score, or SFU preference.
+  Candidate generation and selected-pair diagnostics retain only
+  `ordinary | predicted | unknown` provenance.
+  [ADR-0009](../adr/0009-optional-nat-prediction.md) owns the bounded behavior
+  and evidence boundary.
 
 These are route-policy gates, not new routing algorithms. Changing any
 policy requires stopping the current share and starting another generation.

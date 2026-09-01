@@ -1,7 +1,5 @@
-import {
-  MAX_NAT_PREDICTION_STUN_URLS,
-  type SignalPayload,
-} from "../../shared/protocol";
+import type { SignalPayload } from "../../shared/protocol";
+import { candidateSignalOrigin } from "../../shared/nat-candidate";
 
 export type SignalCandidate = Extract<
   SignalPayload,
@@ -17,6 +15,21 @@ const MAX_PREDICTABLE_PORT = 65_535;
 /** Keep the experiment bounded so normal ICE candidates retain their budget. */
 export const NAT_PREDICTION_STEPS = 4;
 export const MAX_NAT_PREDICTION_CANDIDATES = NAT_PREDICTION_STEPS * 2;
+
+export async function addRemoteIceCandidate(
+  connection: RTCPeerConnection,
+  candidate: SignalCandidate,
+): Promise<void> {
+  try {
+    await connection.addIceCandidate(candidate);
+  } catch (error) {
+    if (
+      candidateSignalOrigin(candidate?.candidate ?? null) !== "predicted"
+    ) {
+      throw error;
+    }
+  }
+}
 
 interface SrflxObservation {
   candidate: SignalCandidate;
@@ -104,19 +117,30 @@ function normalizedStunUrl(url: string): string | null {
 /** URLs whose same-socket observations may form the controlled port sequence. */
 export function natPredictionSurveyUrls(
   iceServers: readonly RTCIceServer[] | undefined,
+  auxiliaryStunUrls: readonly string[] = [],
 ): ReadonlySet<string> {
+  const configuredAuxiliaryUrls = new Set(
+    auxiliaryStunUrls.flatMap((url) => {
+      const normalized = normalizedStunUrl(url);
+      return normalized ? [normalized] : [];
+    }),
+  );
   for (const server of iceServers ?? []) {
     for (const url of urlsOf(server)) {
       const auxiliaryUrls = auxiliaryUrlsFor(url);
       const baseUrl = normalizedStunUrl(url);
-      if (baseUrl && auxiliaryUrls.length > 0) {
-        return new Set([
-          baseUrl,
-          ...auxiliaryUrls.flatMap((entry) => {
-            const normalized = normalizedStunUrl(entry);
-            return normalized ? [normalized] : [];
-          }),
-        ]);
+      const normalizedAuxiliaryUrls = auxiliaryUrls.flatMap((entry) => {
+        const normalized = normalizedStunUrl(entry);
+        return normalized ? [normalized] : [];
+      });
+      if (
+        baseUrl &&
+        normalizedAuxiliaryUrls.length === AUXILIARY_STUN_PORTS.length &&
+        normalizedAuxiliaryUrls.every((entry) =>
+          configuredAuxiliaryUrls.has(entry),
+        )
+      ) {
+        return new Set([baseUrl, ...normalizedAuxiliaryUrls]);
       }
     }
   }
@@ -130,7 +154,7 @@ export function natPredictionSurveyUrls(
 export function iceServersWithNatPrediction(
   iceServers: readonly RTCIceServer[] | undefined,
   enabled: boolean,
-  externalStunUrls: readonly string[] = [],
+  auxiliaryStunUrls: readonly string[] = [],
 ): RTCIceServer[] {
   const base = (iceServers ?? []).map(cloneIceServer);
   if (!enabled) {
@@ -143,25 +167,7 @@ export function iceServersWithNatPrediction(
       .flatMap((server) => urlsOf(server))
       .map((url) => normalizedStunUrl(url) ?? url),
   );
-  for (const server of iceServers ?? []) {
-    for (const url of urlsOf(server)) {
-      for (const auxiliaryUrl of auxiliaryUrlsFor(url)) {
-        const normalized = normalizedStunUrl(auxiliaryUrl) ?? auxiliaryUrl;
-        if (!existing.has(normalized)) {
-          additions.add(auxiliaryUrl);
-          existing.add(normalized);
-        }
-      }
-      if (additions.size >= AUXILIARY_STUN_PORTS.length) {
-        break;
-      }
-    }
-    if (additions.size >= AUXILIARY_STUN_PORTS.length) {
-      break;
-    }
-  }
-
-  for (const url of externalStunUrls.slice(0, MAX_NAT_PREDICTION_STUN_URLS)) {
+  for (const url of auxiliaryStunUrls) {
     const normalized = normalizedStunUrl(url);
     if (normalized && !existing.has(normalized)) {
       additions.add(url);

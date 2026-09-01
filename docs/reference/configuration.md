@@ -20,7 +20,7 @@ service secret store or an untracked access-restricted environment file.
 | `PEER_ASSISTED_MEDIA` | Enables the all-room bounded Peer/SFU controller. |
 | `ENDPOINT_MEDIA_COPY_CAPACITY` | Shared endpoint steady-copy cap `1..3`, default `2`. |
 | `STUN_URLS` | Comma-separated `stun:` URLs; at least one is required in production. |
-| `NAT_PREDICTION_STUN_URLS` | Optional comma-separated independent `stun:` observations, maximum `2`; used only by rooms that enable the default-off NAT experiment. |
+| `NAT_PREDICTION_ENABLED` | Optional bounded NAT prediction capability, default `false`; requires an ordinary `STUN_URLS` endpoint on UDP 3478 plus reachable same-host UDP 3479/3480 listeners. |
 
 Automatic SFU fallback is enabled only when `PEER_ASSISTED_MEDIA=true` and all
 four values below are present:
@@ -51,7 +51,7 @@ Peer IDs, SDP, ICE candidates, tokens or media credentials.
 | ---: | --- | --- |
 | TCP 80/443 | public | HTTP redirect and HTTPS/WSS reverse proxy |
 | UDP 3478 | public | STUN-only coturn |
-| UDP 3479/3480 | public while the optional NAT experiment is offered | auxiliary STUN-only coturn listeners |
+| UDP 3479/3480 | public when NAT prediction is enabled | auxiliary STUN-only coturn listeners |
 | UDP 7882 | public when SFU enabled | LiveKit WebRTC media |
 | TCP 8787 | private | Screener application |
 | TCP 7880 | private when SFU enabled | LiveKit signaling/control |
@@ -60,20 +60,16 @@ TCP 3478, TCP/TLS 5349, TURN relay ranges, LiveKit media TCP, and other media
 ports remain closed. HTTPS/WSS transport is independent of the UDP-only media
 contract.
 
-The default-off NAT experiment derives `stun:<same-hostname>:3479` and `:3480`
-from the ordinary STUN authority for enabled Browser P2P connections. It does
-not change `STUN_URLS` or add a media route, and it needs both cloud
-security-group rules and the host's `/etc/nftables.conf` rule. Coturn must bind
-the auxiliary listeners to the host's local address with `aux-server`; opening
-a cloud port without a listener has no effect. No new DNS record is required.
-Keep both listeners available while the experiment is offered and remove them
-only after disabling it. Same-IP ports expose destination-port allocation
-behavior; a full RFC 5780 alternate-address test requires a second public IPv4.
-Optional `NAT_PREDICTION_STUN_URLS` add independent ordinary candidates without
-changing `STUN_URLS`. Their operators receive client address, port, time, and
-protocol metadata when the Host enables the experiment. They need no inbound
-server port or DNS change, but should be omitted when that dependency is not
-accepted.
+When `NAT_PREDICTION_ENABLED=true`, the server derives
+`stun:<same-hostname>:3479` and `:3480` from the first ordinary STUN authority
+on UDP 3478. The Host sees a pre-share switch that defaults on and may disable
+it. The capability adds no media route or third-party service. It needs both
+cloud security-group rules and the host's `/etc/nftables.conf` rule; coturn must
+bind both auxiliary listeners with `aux-server`. Opening a cloud port without a
+listener has no effect, and no new DNS record is required. Disable the
+capability before removing either listener or firewall rule. Same-IP ports
+expose destination-port allocation behavior; a full RFC 5780 alternate-address
+test requires a second public IPv4.
 
 ## Bounds
 

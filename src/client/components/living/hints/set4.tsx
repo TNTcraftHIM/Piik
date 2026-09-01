@@ -493,8 +493,8 @@ ${rmBlock(
 );
 
 /* hint-nat-prediction: [one direct path] -> [a small bounded fan of
-   alternate direct paths]. The dots stay lightweight so the scene describes
-   extra ICE chances without suggesting a media relay. */
+   alternate direct paths]. The scene describes extra direct chances without
+   suggesting a media relay. */
 const HintNatPrediction: HintScene = ({ theme }) => (
   <>
     <style>{`
