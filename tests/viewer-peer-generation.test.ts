@@ -188,7 +188,7 @@ function createPeer(
       onStream: () => undefined,
       onUpdate: (snapshot) => snapshots.push(snapshot),
     },
-    natPrediction,
+    { natPredictionEnabled: natPrediction },
   );
 }
 
@@ -422,6 +422,72 @@ describe("ViewerPeer connection generations", () => {
       },
     ]);
     expect(timeoutDelays.get(2)).toBe(3_000);
+  });
+
+  it("leaves a pending route candidate under the route deadline", async () => {
+    const restartRequests: string[] = [];
+    const exhausted: string[] = [];
+    const peer = new ViewerPeer(
+      { iceServers: [] },
+      {
+        sendSignal: () => true,
+        sendRestartRequest: (_peerId, connectionId) => {
+          restartRequests.push(connectionId);
+          return true;
+        },
+        onStream: () => undefined,
+        onUpdate: () => undefined,
+        onRecoveryExhausted: (_peerId, connectionId) => {
+          exhausted.push(connectionId);
+          return true;
+        },
+      },
+      { recoveryOwner: "route" },
+    );
+
+    await peer.acceptSignal("host", offer("route-candidate"));
+    const connection = FakePeerConnection.instances[0]!;
+    connection.connectionState = "disconnected";
+    connection.dispatchEvent(new Event("connectionstatechange"));
+
+    expect(timeoutDelays).toEqual(new Map());
+    expect(restartRequests).toEqual([]);
+    expect(exhausted).toEqual([]);
+
+    connection.connectionState = "failed";
+    connection.dispatchEvent(new Event("connectionstatechange"));
+    expect(restartRequests).toEqual([]);
+    expect(exhausted).toEqual(["route-candidate"]);
+  });
+
+  it("transfers recovery ownership when a prepared route fails during commit", async () => {
+    const restartRequests: Array<{
+      connectionId: string;
+      rebuild: boolean;
+    }> = [];
+    const peer = new ViewerPeer(
+      { iceServers: [] },
+      {
+        sendSignal: () => true,
+        sendRestartRequest: (_peerId, connectionId, rebuild) => {
+          restartRequests.push({ connectionId, rebuild });
+          return true;
+        },
+        onStream: () => undefined,
+        onUpdate: () => undefined,
+      },
+      { recoveryOwner: "route" },
+    );
+
+    await peer.acceptSignal("host", offer("committed-candidate"));
+    const connection = FakePeerConnection.instances[0]!;
+    connection.connectionState = "failed";
+    peer.activatePreparedRoute();
+
+    expect(restartRequests).toEqual([
+      { connectionId: "committed-candidate", rebuild: false },
+    ]);
+    expect([...timeoutDelays.values()]).toEqual([3_000]);
   });
 
   it("cancels the initial deadline after connecting", async () => {
