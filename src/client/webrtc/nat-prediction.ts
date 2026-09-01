@@ -1,4 +1,7 @@
-import type { SignalPayload } from "../../shared/protocol";
+import {
+  MAX_NAT_PREDICTION_STUN_URLS,
+  type SignalPayload,
+} from "../../shared/protocol";
 
 export type SignalCandidate = Extract<
   SignalPayload,
@@ -69,6 +72,57 @@ function auxiliaryUrlsFor(url: string): readonly string[] {
   );
 }
 
+function normalizedStunUrl(url: string): string | null {
+  if (!/^stun:/i.test(url)) {
+    return null;
+  }
+  const authority = url.slice(url.indexOf(":") + 1);
+  let parsed: URL;
+  try {
+    parsed = new URL(`http://${authority}`);
+  } catch {
+    return null;
+  }
+  if (
+    !parsed.hostname ||
+    parsed.username ||
+    parsed.password ||
+    parsed.pathname !== "/" ||
+    parsed.search ||
+    parsed.hash
+  ) {
+    return null;
+  }
+  const hostname = parsed.hostname.startsWith("[")
+    ? parsed.hostname.toLowerCase()
+    : parsed.hostname.includes(":")
+      ? `[${parsed.hostname.toLowerCase()}]`
+      : parsed.hostname.toLowerCase();
+  return `stun:${hostname}:${parsed.port || BASE_STUN_PORT}`;
+}
+
+/** URLs whose same-socket observations may form the controlled port sequence. */
+export function natPredictionSurveyUrls(
+  iceServers: readonly RTCIceServer[] | undefined,
+): ReadonlySet<string> {
+  for (const server of iceServers ?? []) {
+    for (const url of urlsOf(server)) {
+      const auxiliaryUrls = auxiliaryUrlsFor(url);
+      const baseUrl = normalizedStunUrl(url);
+      if (baseUrl && auxiliaryUrls.length > 0) {
+        return new Set([
+          baseUrl,
+          ...auxiliaryUrls.flatMap((entry) => {
+            const normalized = normalizedStunUrl(entry);
+            return normalized ? [normalized] : [];
+          }),
+        ]);
+      }
+    }
+  }
+  return new Set();
+}
+
 /**
  * Add the two optional same-host survey listeners without changing the
  * server-provided STUN list. The caller opts into this per connection.
@@ -76,6 +130,7 @@ function auxiliaryUrlsFor(url: string): readonly string[] {
 export function iceServersWithNatPrediction(
   iceServers: readonly RTCIceServer[] | undefined,
   enabled: boolean,
+  externalStunUrls: readonly string[] = [],
 ): RTCIceServer[] {
   const base = (iceServers ?? []).map(cloneIceServer);
   if (!enabled) {
@@ -84,13 +139,17 @@ export function iceServersWithNatPrediction(
 
   const additions = new Set<string>();
   const existing = new Set(
-    (iceServers ?? []).flatMap((server) => urlsOf(server)),
+    (iceServers ?? [])
+      .flatMap((server) => urlsOf(server))
+      .map((url) => normalizedStunUrl(url) ?? url),
   );
   for (const server of iceServers ?? []) {
     for (const url of urlsOf(server)) {
       for (const auxiliaryUrl of auxiliaryUrlsFor(url)) {
-        if (!existing.has(auxiliaryUrl)) {
+        const normalized = normalizedStunUrl(auxiliaryUrl) ?? auxiliaryUrl;
+        if (!existing.has(normalized)) {
           additions.add(auxiliaryUrl);
+          existing.add(normalized);
         }
       }
       if (additions.size >= AUXILIARY_STUN_PORTS.length) {
@@ -99,6 +158,14 @@ export function iceServersWithNatPrediction(
     }
     if (additions.size >= AUXILIARY_STUN_PORTS.length) {
       break;
+    }
+  }
+
+  for (const url of externalStunUrls.slice(0, MAX_NAT_PREDICTION_STUN_URLS)) {
+    const normalized = normalizedStunUrl(url);
+    if (normalized && !existing.has(normalized)) {
+      additions.add(url);
+      existing.add(normalized);
     }
   }
 
@@ -255,7 +322,7 @@ export class NatPredictionCandidateBatch {
 
   constructor(private readonly send: (candidate: SignalCandidate | null) => void) {}
 
-  add(candidate: SignalCandidate): void {
+  add(candidate: SignalCandidate, predictionEligible = true): void {
     if (this.completed) {
       return;
     }
@@ -263,8 +330,10 @@ export class NatPredictionCandidateBatch {
       this.send(candidate);
       return;
     }
-    this.observedSrflx.push(candidate);
-    this.trySendPredictions();
+    if (predictionEligible) {
+      this.observedSrflx.push(candidate);
+      this.trySendPredictions();
+    }
     this.send(candidate);
   }
 
@@ -311,11 +380,24 @@ export class NatPredictionCandidateEmitter {
   private batch: NatPredictionCandidateBatch | null = null;
   private usernameFragment: string | null = null;
   private endSent = false;
+  private surveyUrls = new Set<string>();
 
   constructor(
     private readonly enabled: boolean,
     private readonly send: (candidate: SignalCandidate | null) => void,
-  ) {}
+    surveyUrls: ReadonlySet<string> = new Set(),
+  ) {
+    this.setSurveyUrls(surveyUrls);
+  }
+
+  setSurveyUrls(urls: ReadonlySet<string>): void {
+    this.surveyUrls = new Set(
+      [...urls].flatMap((url) => {
+        const normalized = normalizedStunUrl(url);
+        return normalized ? [normalized] : [];
+      }),
+    );
+  }
 
   add(candidate: RTCIceCandidate | null): void {
     if (!this.enabled) {
@@ -345,7 +427,16 @@ export class NatPredictionCandidateEmitter {
       this.endSent = false;
       this.batch = new NatPredictionCandidateBatch(this.send);
     }
-    this.batch.add(next);
+    const serverUrl = (
+      candidate as RTCIceCandidate & { readonly url?: string | null }
+    ).url;
+    const candidateUrl = serverUrl
+      ? normalizedStunUrl(serverUrl)
+      : null;
+    this.batch.add(
+      next,
+      candidateUrl !== null && this.surveyUrls.has(candidateUrl),
+    );
   }
 
   gatheringComplete(): void {

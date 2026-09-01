@@ -18,6 +18,7 @@ describe("server configuration", () => {
     expect(config.allowedOrigins).toEqual(new Set(["http://localhost:9123"]));
     expect(config.roomDatabasePath).toBeUndefined();
     expect(config.stunUrls).toEqual([]);
+    expect(config.natPredictionStunUrls).toEqual([]);
     expect(config.maxViewersPerRoom).toBe(8);
     expect(config.peerAssistedMedia).toBe(false);
     expect(config.endpointMediaCopyCapacity).toBe(2);
@@ -326,6 +327,30 @@ describe("server configuration", () => {
     ).toEqual(["STUN:[2001:db8::1]:3478"]);
   });
 
+  it("accepts a bounded independent NAT prediction STUN list", () => {
+    expect(
+      loadConfig({
+        NAT_PREDICTION_STUN_URLS:
+          "stun:observer-a.test:3478, stun:observer-b.test:3478",
+      }).natPredictionStunUrls,
+    ).toEqual([
+      "stun:observer-a.test:3478",
+      "stun:observer-b.test:3478",
+    ]);
+  });
+
+  it("rejects invalid or excessive NAT prediction STUN URLs", () => {
+    expect(() =>
+      loadConfig({ NAT_PREDICTION_STUN_URLS: "turn:observer.test:3478" }),
+    ).toThrow("NAT_PREDICTION_STUN_URLS contains an invalid STUN URL");
+    expect(() =>
+      loadConfig({
+        NAT_PREDICTION_STUN_URLS:
+          "stun:a.test:3478,stun:b.test:3478,stun:c.test:3478",
+      }),
+    ).toThrow("NAT_PREDICTION_STUN_URLS must contain at most 2 URLs");
+  });
+
   it.each([
     "stun:stun.test/path",
     "stun:stun.test?transport=udp",
@@ -375,6 +400,21 @@ describe("server configuration", () => {
         ).join(","),
       }),
     ).toThrow("STUN_URLS must contain at most 8 URLs");
+  });
+
+  it("bounds ordinary and NAT prediction STUN URLs together", () => {
+    expect(() =>
+      loadConfig({
+        STUN_URLS: Array.from(
+          { length: 7 },
+          (_, index) => `stun:ordinary-${index}.test:3478`,
+        ).join(","),
+        NAT_PREDICTION_STUN_URLS:
+          "stun:observer-a.test:3478,stun:observer-b.test:3478",
+      }),
+    ).toThrow(
+      "STUN_URLS and NAT_PREDICTION_STUN_URLS must contain at most 8 URLs together",
+    );
   });
 
   it("requires and accepts a bounded production site access password", () => {

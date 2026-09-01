@@ -56,6 +56,7 @@ const qualityEvidence = {
   sequence: 0,
   windowMs: 2_000,
   metrics: {
+    natTraversalPath: "ordinary",
     width: 1_920,
     height: 1_080,
     framesPerSecond: 59.8,
@@ -97,7 +98,7 @@ describe("client signaling protocol", () => {
       "utf8",
     );
 
-    expect(SIGNALING_PROTOCOL).toBe("screener-v18");
+    expect(SIGNALING_PROTOCOL).toBe("screener-v19");
     expect(nativeWire).toMatch(/signalingProtocol\s*=\s*"screener-v6"/);
   });
 
@@ -768,6 +769,14 @@ describe("client signaling protocol", () => {
 
   it("accepts only strict, bounded viewer quality evidence", () => {
     expect(clientMessageSchema.safeParse(qualityEvidence).success).toBe(true);
+    const { natTraversalPath: _path, ...legacyMetrics } =
+      qualityEvidence.metrics;
+    expect(
+      clientMessageSchema.safeParse({
+        ...qualityEvidence,
+        metrics: legacyMetrics,
+      }).success,
+    ).toBe(false);
     expect(
       clientMessageSchema.safeParse({
         ...qualityEvidence,
@@ -883,12 +892,21 @@ describe("client signaling protocol", () => {
       routeRevision: 3,
       state: "degraded",
       diagnostics: {
+        natTraversalPath: "ordinary",
         reason: "bandwidth",
         framesPerSecond: 24,
         bitrateKbps: 1_500,
       },
     } as const;
     expect(clientMessageSchema.safeParse(sender).success).toBe(true);
+    const { natTraversalPath: _senderPath, ...legacyDiagnostics } =
+      sender.diagnostics;
+    expect(
+      clientMessageSchema.safeParse({
+        ...sender,
+        diagnostics: legacyDiagnostics,
+      }).success,
+    ).toBe(false);
     expect(
       clientMessageSchema.safeParse({
         ...sender,
@@ -911,6 +929,7 @@ describe("client signaling protocol", () => {
         state: "healthy",
         sampleTimestampMs: 2_000,
         diagnostics: {
+          natTraversalPath: "ordinary",
           reason: "none",
           framesPerSecond: 30,
           bitrateKbps: 2_000,
@@ -1253,6 +1272,7 @@ describe("server signaling protocol", () => {
       viewerAuthorizationGeneration: "viewer_generation_12345678",
       iceConfig: {
         iceServers: [],
+        natPredictionStunUrls: [],
       },
     };
   }
@@ -1273,6 +1293,18 @@ describe("server signaling protocol", () => {
     expect(serverMessageSchema.safeParse(viewer).success).toBe(true);
     viewer.viewerPasswordEnabled = true;
     expect(serverMessageSchema.safeParse(viewer).success).toBe(false);
+  });
+
+  it("requires the v19 NAT observation configuration", () => {
+    const message = authenticatedMessage(8);
+    const { natPredictionStunUrls: _urls, ...legacyIceConfig } =
+      message.iceConfig;
+    expect(
+      serverMessageSchema.safeParse({
+        ...message,
+        iceConfig: legacyIceConfig,
+      }).success,
+    ).toBe(false);
   });
 
   it("accepts dynamic viewer limits within the protocol boundary", () => {

@@ -4,6 +4,7 @@ import {
 } from "../types";
 import { packetLossPercentFromDeltas } from "../../shared/packet-loss";
 import { deriveVideoCodecEvidence } from "../../shared/video-codec-evidence";
+import { isPredictedCandidateFoundation } from "../../shared/nat-candidate";
 
 type StatsRecord = Record<string, unknown> & {
   id: string;
@@ -675,6 +676,13 @@ export function collectConnectionMetricsFromReport(
   }
   const localType = stringValue(localCandidate, "candidateType");
   const remoteType = stringValue(remoteCandidate, "candidateType");
+  const remoteFoundation = stringValue(remoteCandidate, "foundation");
+  const natTraversalPath =
+    remoteFoundation === null
+      ? "unknown"
+      : isPredictedCandidateFoundation(remoteFoundation)
+        ? "predicted"
+        : "ordinary";
   const path =
     localType === "relay" || remoteType === "relay"
       ? "unknown"
@@ -1068,6 +1076,7 @@ export function collectConnectionMetricsFromReport(
     trackIdentifier,
     selectedCandidatePairId: pair?.id ?? null,
     path,
+    natTraversalPath,
     iceProtocol,
     localCandidateType: localType,
     remoteCandidateType: remoteType,

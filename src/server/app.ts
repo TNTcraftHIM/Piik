@@ -105,6 +105,7 @@ export async function createScreenerServer(
   });
   const iceOptions = {
     stunUrls: config.stunUrls,
+    natPredictionStunUrls: config.natPredictionStunUrls,
   };
 
   let frontendHandler: FrontendHandler | undefined;

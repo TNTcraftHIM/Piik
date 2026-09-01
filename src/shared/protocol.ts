@@ -2,11 +2,12 @@ import { z } from "zod";
 
 import { MAX_ENDPOINT_MEDIA_COPY_CAPACITY } from "./media-copy-accounting.js";
 import { isCanonicalVideoCodecEvidence } from "./video-codec-evidence.js";
+import { NAT_TRAVERSAL_PATHS } from "./nat-candidate.js";
 
 export const MAX_VIEWERS_PER_ROOM_LIMIT = 20;
 export const MAX_PARTICIPANTS_PER_ROOM_LIMIT = MAX_VIEWERS_PER_ROOM_LIMIT + 1;
 export const MAX_SIGNAL_BYTES = 64 * 1024;
-export const SIGNALING_PROTOCOL = "screener-v18";
+export const SIGNALING_PROTOCOL = "screener-v19";
 export const SIGNAL_CLOSE_CODES = {
   serviceRestart: 1012,
   sessionReplaced: 4001,
@@ -18,6 +19,7 @@ export const ROOM_CODE_LENGTH = 4;
 export const MAX_MEDIA_ROUTE_REVISION = Number.MAX_SAFE_INTEGER;
 export const MAX_SFU_TOKEN_LENGTH = 8 * 1024;
 export const MAX_ICE_SERVER_URLS = 8;
+export const MAX_NAT_PREDICTION_STUN_URLS = 2;
 export const MAX_VIEWER_QUALITY_EVIDENCE_BYTES = 2 * 1024;
 export const VIEWER_QUALITY_EVIDENCE_INTERVAL_MS = 2_000;
 export const VIEWER_QUALITY_EVIDENCE_EXPIRY_MS = 5_000;
@@ -288,9 +290,16 @@ const iceServerSchema = z
 export const iceConfigSchema = z
   .object({
     iceServers: z.array(iceServerSchema).max(8),
+    natPredictionStunUrls: z
+      .array(stunUrlSchema)
+      .max(MAX_NAT_PREDICTION_STUN_URLS),
   })
   .strict();
-export type IceConfig = z.infer<typeof iceConfigSchema>;
+export type WireIceConfig = z.infer<typeof iceConfigSchema>;
+export type IceConfig = {
+  iceServers: Array<z.infer<typeof iceServerSchema>>;
+  natPredictionStunUrls?: string[];
+};
 
 const sessionDescriptionSchema = z
   .object({
@@ -565,6 +574,7 @@ const nullableSafeEvidenceInteger = z
 
 export const viewerQualityEvidenceMetricsSchema = z
   .object({
+    natTraversalPath: z.enum(NAT_TRAVERSAL_PATHS),
     width: z.number().int().min(1).max(16_384).nullable(),
     height: z.number().int().min(1).max(16_384).nullable(),
     framesPerSecond: nullableEvidenceNumber(240),
@@ -644,6 +654,7 @@ const viewerQualityEvidenceWindowShape = {
 
 const senderQualityDiagnosticsSchema = z
   .object({
+    natTraversalPath: z.enum(NAT_TRAVERSAL_PATHS),
     reason: z.enum(["none", "bandwidth", "cpu"]).nullable(),
     framesPerSecond: nullableEvidenceNumber(240),
     bitrateKbps: nullableEvidenceNumber(100_000),

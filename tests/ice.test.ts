@@ -10,6 +10,7 @@ describe("ordinary ICE configuration", () => {
           "stun:stun-a.example.test:3478",
           "stun:stun-b.example.test:3478",
         ],
+        natPredictionStunUrls: ["stun:observer.example.test:3478"],
       }),
     ).toEqual({
       iceServers: [
@@ -20,10 +21,13 @@ describe("ordinary ICE configuration", () => {
           ],
         },
       ],
+      natPredictionStunUrls: ["stun:observer.example.test:3478"],
     });
   });
 
   it("keeps local development explicit when STUN is absent", () => {
-    expect(createIceConfig({ stunUrls: [] })).toEqual({ iceServers: [] });
+    expect(
+      createIceConfig({ stunUrls: [], natPredictionStunUrls: [] }),
+    ).toEqual({ iceServers: [], natPredictionStunUrls: [] });
   });
 });

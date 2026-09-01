@@ -137,6 +137,7 @@ function testConfig(): ServerConfig {
     peerAssistedMedia: false,
     endpointMediaCopyCapacity: 2,
     stunUrls: [],
+    natPredictionStunUrls: [],
   };
 }
 
@@ -151,6 +152,7 @@ async function startHarness(
     peerAssistedMedia?: boolean;
     endpointMediaCopyCapacity?: number;
     stunUrls?: readonly string[];
+    natPredictionStunUrls?: readonly string[];
     now?: () => number;
     roomStore?: RoomStore;
     room?: CreatedRoom;
@@ -162,6 +164,7 @@ async function startHarness(
   config.endpointMediaCopyCapacity =
     overrides.endpointMediaCopyCapacity ?? 2;
   config.stunUrls = overrides.stunUrls ?? [];
+  config.natPredictionStunUrls = overrides.natPredictionStunUrls ?? [];
   const maxViewersPerRoom = overrides.maxViewersPerRoom ?? 8;
   config.maxViewersPerRoom = maxViewersPerRoom;
   const roomStore =
@@ -420,6 +423,7 @@ function viewerQualityEvidenceMessage(
     sequence,
     windowMs: 2_000,
     metrics: {
+      natTraversalPath: "ordinary",
       width: 1_920,
       height: 1_080,
       framesPerSecond: 60,
@@ -540,6 +544,26 @@ describe("WebSocket signaling", () => {
       null,
     );
     expect(joined.routePolicy).toEqual(routePolicy);
+  });
+
+  it("delivers independent NAT experiment STUN without changing ordinary ICE", async () => {
+    const harness = await startHarness({
+      stunUrls: ["stun:ordinary.example.test:3478"],
+      natPredictionStunUrls: ["stun:observer.example.test:3478"],
+    });
+    const viewer = await openClient(harness.webSocketUrl);
+    const authenticated = await authenticate(
+      viewer,
+      harness.room,
+      "viewer",
+      "nat-observer-viewer",
+      null,
+    );
+
+    expect(authenticated.iceConfig).toEqual({
+      iceServers: [{ urls: ["stun:ordinary.example.test:3478"] }],
+      natPredictionStunUrls: ["stun:observer.example.test:3478"],
+    });
   });
 
   it("rebuilds a route when a Viewer reconnects before the Host after restart", async () => {

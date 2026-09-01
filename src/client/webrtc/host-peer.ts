@@ -39,12 +39,15 @@ import {
 } from "./video-codec";
 import {
   iceServersWithNatPrediction,
+  natPredictionSurveyUrls,
   NatPredictionCandidateEmitter,
   type SignalCandidate,
 } from "./nat-prediction";
 
 const MAX_PENDING_CANDIDATES = 64;
-type PeerIceConfig = Pick<RTCConfiguration, "iceServers">;
+type PeerIceConfig = Pick<RTCConfiguration, "iceServers"> & {
+  natPredictionStunUrls?: readonly string[];
+};
 
 interface HostPeerEvents {
   sendSignal: (peerId: string, payload: SignalPayload) => boolean;
@@ -111,11 +114,15 @@ export class HostPeer {
       iceServers: iceServersWithNatPrediction(
         iceConfig.iceServers,
         this.natPredictionEnabled,
+        iceConfig.natPredictionStunUrls,
       ),
     });
     this.localIceCandidates = new NatPredictionCandidateEmitter(
       this.natPredictionEnabled,
       (candidate) => this.sendIceCandidate(candidate),
+      natPredictionSurveyUrls(
+        iceConfig.iceServers,
+      ),
     );
     this.snapshot = {
       peerId,
@@ -414,8 +421,14 @@ export class HostPeer {
         iceServers: iceServersWithNatPrediction(
           iceConfig.iceServers,
           this.natPredictionEnabled,
+          iceConfig.natPredictionStunUrls,
         ),
       });
+      this.localIceCandidates.setSurveyUrls(
+        natPredictionSurveyUrls(
+          iceConfig.iceServers,
+        ),
+      );
     } catch (error) {
       this.setError(error, say("host.err.createConnection"));
     }

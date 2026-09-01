@@ -71,6 +71,23 @@ locks while sharing, and applies to Host, Viewer upstream, and Viewer relay P2P
 connections. Its exact scope is recorded in
 [ADR-0009](../adr/0009-connection-local-nat-prediction-experiment.md).
 
+### Independent Observation And Attribution Preflight
+
+On 2026-09-01, Chrome 151 on the flagship Windows network gathered one `srflx`
+candidate independently from the self-hosted endpoint, Xiaomi, Bilibili, and
+Cloudflare within a five-second bound. `stun.qq.com:3478` produced none in the
+same ordered run. Candidate events and local candidate stats preserved the exact
+STUN `url`, so independent destinations can remain ordinary candidates while
+only self-hosted 3478/3479/3480 observations feed prediction. These are measured
+reachability results, not third-party availability commitments.
+
+A second real-Chrome loopback rewrote only one remote candidate foundation to
+`sp1`, established the data channel, and read `sp1` from the selected remote
+candidate stats. The product can therefore report `predicted | ordinary |
+unknown` selection without retaining or uploading addresses, ports, foundations,
+or STUN URLs. Field acceptance still requires target-network outcomes; this
+preflight proves the attribution mechanism, not prediction prevalence.
+
 The Browser-only alternatives do not yet have an accepted implementation:
 
 - WebRTC ICE already exchanges observed candidates and performs coordinated
@@ -148,3 +165,4 @@ a new Peer route.
 - [libp2p Browser and DCUtR hole-punching boundary](https://github.com/libp2p/specs/blob/master/connections/hole-punching.md)
 - [coturn listener and auxiliary endpoint reference](https://github.com/coturn/coturn/blob/master/examples/etc/turnserver.conf)
 - [Cloudflare Realtime STUN service](https://developers.cloudflare.com/realtime/turn/)
+- [WebRTC selected candidate stats](https://www.w3.org/TR/webrtc-stats/#dom-rtcicecandidatestats-foundation)

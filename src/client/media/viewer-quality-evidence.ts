@@ -97,6 +97,7 @@ export function qualityEvidenceWindowFromMetrics(
       ? { width, height }
       : { width: null, height: null };
   const candidate: ViewerQualityEvidenceMetrics = {
+    natTraversalPath: metrics.natTraversalPath,
     ...dimensions,
     framesPerSecond: boundedNumber(metrics.framesPerSecond, 240),
     bitrateKbps: boundedNumber(metrics.bitrateKbps, 100_000),
@@ -502,6 +503,7 @@ export function metricsFromQualityEvidence(
   const metrics = evidence.metrics;
   return {
     ...EMPTY_METRICS,
+    natTraversalPath: metrics.natTraversalPath,
     sampleWindowMs: evidence.windowMs,
     framesPerSecond: metrics.framesPerSecond,
     frameWidth: metrics.width,

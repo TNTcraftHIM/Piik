@@ -31,8 +31,10 @@ implementation and routine UI detail.
   participants, routes, and media remain process-only.
 - Media is automatic and distributed. Ordinary peers are STUN-only and prefer
   direct/peer UDP. Host may opt the current share into a bounded, room-wide,
-  connection-local NAT candidate experiment; the default path remains stock
-  ICE. The only application fallback is one bounded LiveKit SFU/UDP
+  connection-local NAT candidate experiment; a deployment may add two
+  independent observation STUN URLs only inside that experiment, and anonymous
+  provenance distinguishes ordinary from predicted selected paths. The default
+  path remains stock ICE. The only application fallback is one bounded LiveKit SFU/UDP
   publication; Screener configures no TURN or TCP media route. A pre-share
   peer-only policy can exclude that SFU suffix for one share generation.
 - Every endpoint shares one steady outbound-copy cap, default `2` and limited to
@@ -57,7 +59,7 @@ implementation and routine UI detail.
 
 ## Current Snapshot
 
-Canonical source uses the strict `screener-v18` Browser/server contract with
+Canonical source uses the strict `screener-v19` Browser/server contract with
 committed media readiness, bounded candidate-relative progress and one-shot
 Host-root convergence. It retains optional SQLite room authority and the
 H.264/VP8 sender gate. [Status](./status.md) owns the compact current execution

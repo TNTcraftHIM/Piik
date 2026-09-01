@@ -99,6 +99,13 @@ These same-IP auxiliary ports measure destination-port mapping behavior. They
 are not a full RFC 5780 alternate-address deployment; that requires a second
 public IPv4.
 
+An operator may configure at most two independent observation URLs through
+`NAT_PREDICTION_STUN_URLS`. They are contacted only by Browser P2P connections
+in an opted-in room, remain ordinary ICE candidates, and require no local
+listener or firewall change. Verify them with a real Browser from the target
+network before use. DNS resolution alone is not a STUN availability check, and
+an unaffiliated public endpoint has no implied SLA.
+
 ## Operational Verification
 
 - `/healthz` returns `{"status":"ok"}` locally and through the public origin.

@@ -1,3 +1,5 @@
+import type { NatTraversalPath } from "../shared/nat-candidate";
+
 export type SignalConnectionState =
   | "connecting"
   | "connected"
@@ -28,6 +30,7 @@ export interface ConnectionMetrics {
   captureFramesPerSecond: number | null;
   mediaSourceFramesPerSecond: number | null;
   path: MediaPath;
+  natTraversalPath: NatTraversalPath;
   iceProtocol: string | null;
   localCandidateType: string | null;
   remoteCandidateType: string | null;
@@ -114,6 +117,7 @@ export const EMPTY_METRICS: ConnectionMetrics = {
   captureFramesPerSecond: null,
   mediaSourceFramesPerSecond: null,
   path: "unknown",
+  natTraversalPath: "unknown",
   iceProtocol: null,
   localCandidateType: null,
   remoteCandidateType: null,
