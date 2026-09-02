@@ -29,9 +29,12 @@ docs/deployment.md
 docs/operations/self-hosting.md
 docs/reference/configuration.md
 scripts/package-app-release.mjs
+scripts/assemble-client.mjs
 deploy/release-app.sh
 docs/adr/0001-p2p-first-media-topology.md
+docs/adr/0010-cross-platform-client-runtime.md
 docs/research/agent-context-governance.md
+docs/research/cross-platform-client-runtime.md
 docs/research/webrtc-p2p-screen-sharing.md
 native/sender/README.md
 native/window-capture-helper/README.md

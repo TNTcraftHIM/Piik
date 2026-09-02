@@ -120,8 +120,16 @@ This is the current execution index. Git history owns completed timelines;
 - Current-path quality can drive local convergence in source and production,
   including bounded same-edge connection regeneration. Both default it on with a
   pre-share Host opt-out. Weighted/global optimization remains parked.
-- Native/executable senders, shared encode, and distribution packages remain
-  outside the current release.
+- Source contains the cross-platform Client and Local composition outside the
+  current Web release. One Go entry stores an optional Site origin and generated
+  Local access password, opens the system Browser, supervises the bundled Node
+  process in Local mode, and exposes the internal loopback `hello`/`ping`
+  service. Local reuses the TypeScript room, signaling, and route core with
+  memory state, peer-assisted media, and no SQLite, SFU, STUN, or NAT prediction.
+  Windows Chrome gates prove automatic Host access, LAN invitation construction,
+  a Host-plus-three-Viewer relay tree, Site LNA behavior, and complete cleanup.
+  Native media and cross-platform package acceptance remain outside the current
+  release.
 
 ## Current Hold
 

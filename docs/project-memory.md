@@ -5,8 +5,12 @@ Last updated: 2026-09-02
 Screener is private, low-latency game screen sharing for one Host and up to 20
 authenticated friends. The current product surface is Web Host, Web Viewer, and
 Browser relay; desktop and mobile Browsers are Viewer targets. It is not a
-public broadcast service. Native capture, shared encoding, distributable
-packages, and broader platform output remain later work.
+public broadcast service. Source includes a cross-platform Client that reuses
+the TypeScript product core in a self-contained Local deployment or opens one
+configured Site through the system Browser. Its Go entry supervises Local Node
+and acts as the Site-facing Helper when needed. Native capture, shared encoding,
+cross-platform package acceptance, and broader platform output remain later
+gates.
 
 ## Product Map
 

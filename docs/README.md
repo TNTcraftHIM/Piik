@@ -47,6 +47,8 @@ ordinary implementation and UI detail.
   audio boundary.
 - [ADR-0009](./adr/0009-optional-nat-prediction.md): optional connection-local
   NAT prediction.
+- [ADR-0010](./adr/0010-cross-platform-client-runtime.md): cross-platform Client
+  runtime and self-contained package boundary.
 
 ## Evidence
 
@@ -65,6 +67,7 @@ Media and platform:
 - [Browser NAT traversal](./research/nat-traversal.md)
 - [Browser platform output](./research/platform-output.md)
 - [Native sender and shared encode](./research/native-sender.md)
+- [Cross-platform Client runtime](./research/cross-platform-client-runtime.md)
 
 Rooms and repository practice:
 

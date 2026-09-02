@@ -89,6 +89,11 @@ export interface BenchmarkConfig {
   canaryMode: BenchmarkCanaryMode;
 }
 
+interface ExternalServerTarget {
+  origin: string;
+  accessPassword: string | null;
+}
+
 interface MediaTotals {
   id: string;
   framesTotal: number | null;
@@ -701,6 +706,33 @@ export function parseBenchmarkConfig(
     ),
     qualityControlSmoke,
     canaryMode,
+  };
+}
+
+export function parseExternalServerTarget(
+  environment: NodeJS.ProcessEnv = process.env,
+): ExternalServerTarget | null {
+  const value = environment.BENCHMARK_SERVER_URL?.trim();
+  if (!value) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error("BENCHMARK_SERVER_URL must be an HTTP or HTTPS origin");
+  }
+  if (
+    (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+    parsed.username ||
+    parsed.password ||
+    parsed.pathname !== "/" ||
+    parsed.search ||
+    parsed.hash
+  ) {
+    throw new Error("BENCHMARK_SERVER_URL must be an HTTP or HTTPS origin");
+  }
+  return {
+    origin: parsed.origin,
+    accessPassword: environment.BENCHMARK_SITE_ACCESS_PASSWORD?.trim() || null,
   };
 }
 
@@ -1684,7 +1716,7 @@ export function buildBenchmarkInitScript(options: {
     const connections = [];
     const descriptions = [];
     const accumulators = new WeakMap();
-    const statsModule = import("/src/client/webrtc/stats.ts");
+    const detailedStatsModule = import("/src/client/webrtc/stats.ts").catch(() => null);
     let signalingSocket = null;
     let peerAssisted = false;
     let transitionRevision = -1;
@@ -2081,24 +2113,24 @@ export function buildBenchmarkInitScript(options: {
       const hasInboundVideo = connection.getReceivers().some((receiver) => receiver.track && receiver.track.kind === "video");
       const identity = identify(connection);
       try {
-        let accumulator = accumulators.get(connection);
-        const module = await statsModule;
-        if (!accumulator) {
-          accumulator = { send: module.createStatsAccumulator(), receive: module.createStatsAccumulator() };
-          accumulators.set(connection, accumulator);
-        }
-        const send = hasOutboundVideo
-          ? await module.collectConnectionMetrics(connection, "send", accumulator.send)
-          : null;
-        const receive = hasInboundVideo
-          ? await module.collectConnectionMetrics(connection, "receive", accumulator.receive)
-          : null;
         const report = await connection.getStats();
         const sendTotals = totals(report, "outbound-rtp");
         const receiveTotals = totals(report, "inbound-rtp");
         if (receiveTotals && receiveTotals.framesTotal > 0 && state.firstDecodedAtEpochMs === null) {
           state.firstDecodedAtEpochMs = Date.now();
         }
+        let accumulator = accumulators.get(connection);
+        const module = await detailedStatsModule;
+        if (module && !accumulator) {
+          accumulator = { send: module.createStatsAccumulator(), receive: module.createStatsAccumulator() };
+          accumulators.set(connection, accumulator);
+        }
+        const send = module && accumulator && hasOutboundVideo
+          ? await module.collectConnectionMetrics(connection, "send", accumulator.send)
+          : null;
+        const receive = module && accumulator && hasInboundVideo
+          ? await module.collectConnectionMetrics(connection, "receive", accumulator.receive)
+          : null;
         return {
           index: record.index,
           createdAtEpochMs: record.createdAtEpochMs,
@@ -3520,10 +3552,50 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+async function authenticateExternalServer(
+  cdp: CdpConnection,
+  target: ExternalServerTarget,
+  signal: AbortSignal,
+): Promise<void> {
+  const page = await createPage(cdp, target.origin, {
+    width: 320,
+    height: 180,
+    frameRate: 1,
+    expectedEndpointCap: 1,
+    label: "external-server-access",
+    role: "host",
+    viewerIndex: null,
+    clearHostRoom: false,
+  }, signal);
+  try {
+    const status = await evaluate<{ required: boolean; authenticated: boolean }>(
+      cdp,
+      page,
+      "fetch('/api/site-access').then((response) => response.json())",
+    );
+    if (!status.required || status.authenticated) return;
+    if (!target.accessPassword) {
+      throw new Error("External benchmark server requires site access");
+    }
+    const authenticated = await evaluate<boolean>(
+      cdp,
+      page,
+      `fetch('/api/site-access', { method: 'POST', headers: { Authorization: 'Bearer ' + ${JSON.stringify(target.accessPassword)} } }).then((response) => response.ok)`,
+    );
+    if (!authenticated) {
+      throw new Error("External benchmark server rejected site access");
+    }
+  } finally {
+    await closePage(cdp, page);
+  }
+}
+
 export async function main(): Promise<number> {
   let config: BenchmarkConfig;
+  let externalServer: ExternalServerTarget | null;
   try {
     config = parseBenchmarkConfig();
+    externalServer = parseExternalServerTarget();
     await access(config.chromePath);
   } catch (error) {
     process.stderr.write(`${errorMessage(error)}\n`);
@@ -3575,7 +3647,9 @@ export async function main(): Promise<number> {
       "Timing values never determine this loopback gate's status; the exact 20-Viewer route snapshot and four complete current-child distributions are required without a duration threshold.",
       "CDP process CPU covers the isolated Chromium instance, not a specific Host or relay page; identity changes or counter resets make that interval unknown, and multicore utilization may exceed 100%.",
       "CDP SystemInfo exposes no resident-set field, so peakResidentSetBytes is null; GPU, NIC, glass-to-glass latency, generational visual quality, mobile browsers, and SFU require other measurement.",
-      "The local runner does not start LiveKit; SFU consistency is reported only when an SFU route is actually observed.",
+      externalServer
+        ? "The external server target is exercised as configured; the gate does not infer unavailable transports."
+        : "The local runner does not start LiveKit; SFU consistency is reported only when an SFU route is actually observed.",
       "The harness emits raw gate fields and simple invariants; it does not implement a route score or runtime policy.",
       "BENCHMARK_CANARY=viewer-mbb injects only sanitized control counters; it does not claim detector quality or network performance. Host-candidate and signaling-blackhole canaries remain deferred.",
     ],
@@ -3594,33 +3668,36 @@ export async function main(): Promise<number> {
   process.on("SIGTERM", onSignal);
 
   try {
-    const appPort = await reservePort();
+    const appPort = externalServer ? null : await reservePort();
     const debugPort = await reservePort();
-    const baseUrl = `http://127.0.0.1:${appPort}`;
+    const baseUrl = externalServer?.origin ?? `http://127.0.0.1:${appPort}`;
     profileDirectory = await mkdtemp(join(tmpdir(), "screener-peer-benchmark-"));
-    const serverConfig = loadConfig({
-      NODE_ENV: "development",
-      PORT: String(appPort),
-      LISTEN_HOST: "127.0.0.1",
-      PUBLIC_BASE_URL: baseUrl,
-      ALLOWED_ORIGINS: baseUrl,
-      PEER_ASSISTED_MEDIA: "true",
-      ENDPOINT_MEDIA_COPY_CAPACITY: String(config.expectedEndpointCap),
-      MAX_VIEWERS_PER_ROOM: String(Math.max(
-        ...config.viewerCounts,
-        config.canaryMode === "viewer-mbb" ? 3 : 1,
-      )),
-      STUN_URLS: "",
-    });
-    server = await createScreenerServer({
-      config: serverConfig,
-      roomStore: new RoomStore({
-        leaseMs: serverConfig.roomLeaseMs,
-        maxRooms: ROOM_CAPACITY,
-        maxViewersPerRoom: serverConfig.maxViewersPerRoom,
-      }),
-    });
-    await server.listen(appPort, "127.0.0.1");
+    if (appPort !== null) {
+      const serverConfig = loadConfig({
+        NODE_ENV: "development",
+        PORT: String(appPort),
+        LISTEN_HOST: "127.0.0.1",
+        PUBLIC_BASE_URL: baseUrl,
+        ALLOWED_ORIGINS: baseUrl,
+        PEER_ASSISTED_MEDIA: "true",
+        ENDPOINT_MEDIA_COPY_CAPACITY: String(config.expectedEndpointCap),
+        MAX_VIEWERS_PER_ROOM: String(Math.max(
+          ...config.viewerCounts,
+          config.canaryMode === "viewer-mbb" ? 3 : 1,
+        )),
+        STUN_URLS: "",
+      });
+      server = await createScreenerServer({
+        config: serverConfig,
+        frontend: { mode: "development" },
+        roomStore: new RoomStore({
+          leaseMs: serverConfig.roomLeaseMs,
+          maxRooms: ROOM_CAPACITY,
+          maxViewersPerRoom: serverConfig.maxViewersPerRoom,
+        }),
+      });
+      await server.listen(appPort, "127.0.0.1");
+    }
 
     const chromeArgs = [
       `--remote-debugging-port=${debugPort}`,
@@ -3653,6 +3730,9 @@ export async function main(): Promise<number> {
       config.connectionTimeoutMs,
     );
     report.chromium = await cdp.call("Browser.getVersion");
+    if (externalServer) {
+      await authenticateExternalServer(cdp, externalServer, abortController.signal);
+    }
 
     const viewerCounts = config.canaryMode === "viewer-mbb" ? [3] : config.viewerCounts;
     for (const viewerCount of viewerCounts) {

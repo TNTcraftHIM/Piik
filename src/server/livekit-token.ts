@@ -7,7 +7,7 @@ import {
   MAX_VIEWERS_PER_ROOM_LIMIT,
   type Role,
 } from "../shared/protocol.js";
-import { managedSfuRoomName } from "./sfu-room-control.js";
+import { managedSfuRoomName } from "./sfu-resource-admission.js";
 
 const LIVEKIT_TOKEN_TTL_SECONDS = 5 * 60;
 const ROOM_ID_PATTERN = /^[1-9]\d{0,11}$/;

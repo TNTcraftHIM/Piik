@@ -31,7 +31,7 @@ import {
 } from "./room-route-controller.js";
 import type { RoomStore } from "./room-store.js";
 import type { SfuRoomControl } from "./sfu-room-control.js";
-import { managedSfuRoomName } from "./sfu-room-control.js";
+import { managedSfuRoomName } from "./sfu-resource-admission.js";
 import type {
   SfuResourceAdmission,
   SfuResourceFence,

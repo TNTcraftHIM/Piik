@@ -22,6 +22,8 @@
     "scripts/access-privacy-gate.ts",
     "scripts/native-one-viewer-gate.ts",
     "scripts/native-one-viewer-ledger.ts",
+    "scripts/client-loopback-gate.ts",
+    "scripts/client-local-gate.ts",
     "tests"
   ]
 }

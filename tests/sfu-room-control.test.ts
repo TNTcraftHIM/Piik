@@ -3,11 +3,13 @@ import { readFileSync } from "node:fs";
 import { ServerError } from "livekit-server-sdk";
 import { describe, expect, it, vi } from "vitest";
 
-import type { SfuResourceFence } from "../src/server/sfu-resource-admission.ts";
 import {
-  LiveKitSfuRoomControl,
   isManagedSfuRoomName,
   managedSfuRoomName,
+  type SfuResourceFence,
+} from "../src/server/sfu-resource-admission.ts";
+import {
+  LiveKitSfuRoomControl,
   type LiveKitRoomService,
 } from "../src/server/sfu-room-control.ts";
 

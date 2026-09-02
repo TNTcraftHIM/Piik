@@ -26,10 +26,9 @@ import {
 import { SignalingServer, type SignalingOptions } from "./signaling.js";
 
 export interface CreateServerOptions {
+  frontend: FrontendComposition;
   config?: ServerConfig;
   roomStore?: RoomStore;
-  serveFrontend?: boolean;
-  staticDirectory?: string;
   now?: () => number;
   authenticationTimeoutMs?: number;
   viewerDisconnectGraceMs?: number;
@@ -42,17 +41,23 @@ export interface CreateServerOptions {
   sfuRoomControl?: SfuRoomControl;
 }
 
+export type FrontendComposition =
+  | { mode: "development" }
+  | { mode: "static"; directory?: string }
+  | { mode: "none" };
+
 export interface ScreenerServer {
   readonly httpServer: ReturnType<typeof createServer>;
   readonly roomStore: RoomStore;
   listen(port?: number, host?: string): Promise<number>;
   close(): Promise<void>;
+  end(): Promise<void>;
 }
 
 type FrontendHandler = (request: IncomingMessage, response: ServerResponse) => void;
 
 export async function createScreenerServer(
-  options: CreateServerOptions = {},
+  options: CreateServerOptions,
 ): Promise<ScreenerServer> {
   const config = options.config ?? loadConfig();
   const now = options.now ?? Date.now;
@@ -159,50 +164,103 @@ export async function createScreenerServer(
     maxConnections: options.maxSignalConnections,
     maxUnauthenticatedConnections:
       options.maxUnauthenticatedSignalConnections,
-    passThroughUnknownUpgrades:
-      config.nodeEnv === "development" && options.serveFrontend !== false,
+    passThroughUnknownUpgrades: options.frontend.mode === "development",
   };
   let signaling: SignalingServer | undefined;
   let startupOperation: Promise<number> | undefined;
+  let shutdownOperation: Promise<void> | undefined;
   let closing = false;
 
-  if (options.serveFrontend !== false) {
-    if (config.nodeEnv === "development") {
-      const { createServer: createViteServer } = await import("vite");
-      vite = await createViteServer({
-        appType: "spa",
-        server: {
-          middlewareMode: true,
-          hmr: { server: httpServer },
-        },
+  if (options.frontend.mode === "development") {
+    const { createServer: createViteServer } = await import("vite");
+    vite = await createViteServer({
+      appType: "spa",
+      server: {
+        middlewareMode: true,
+        hmr: { server: httpServer },
+      },
+    });
+    frontendHandler = (request, response) => {
+      vite?.middlewares(request, response, () => {
+        sendJson(response, 404, { error: "Not found" });
       });
-      frontendHandler = (request, response) => {
-        vite?.middlewares(request, response, () => {
-          sendJson(response, 404, { error: "Not found" });
-        });
-      };
-    } else if (config.nodeEnv === "production") {
-      const staticDirectory =
-        options.staticDirectory ??
-        fileURLToPath(new URL("../../client/", import.meta.url));
-      const serve = sirv(staticDirectory, {
-        single: true,
-        setHeaders(response) {
-          response.setHeader("X-Content-Type-Options", "nosniff");
-          response.setHeader("Referrer-Policy", "no-referrer");
-        },
+    };
+  } else if (options.frontend.mode === "static") {
+    const staticDirectory =
+      options.frontend.directory ??
+      fileURLToPath(new URL("../../client/", import.meta.url));
+    const serve = sirv(staticDirectory, {
+      single: true,
+      setHeaders(response) {
+        response.setHeader("X-Content-Type-Options", "nosniff");
+        response.setHeader("Referrer-Policy", "no-referrer");
+      },
+    });
+    frontendHandler = (request, response) => {
+      serve(request, response, () => {
+        sendJson(response, 404, { error: "Not found" });
       });
-      frontendHandler = (request, response) => {
-        serve(request, response, () => {
-          sendJson(response, 404, { error: "Not found" });
-        });
-      };
-    }
+    };
   }
 
   httpServer.requestTimeout = 10_000;
   httpServer.headersTimeout = 15_000;
   httpServer.keepAliveTimeout = 5_000;
+
+  async function shutdown(endRooms: boolean): Promise<void> {
+    if (shutdownOperation) {
+      return await shutdownOperation;
+    }
+    shutdownOperation = (async () => {
+      acceptingTraffic = false;
+      closing = true;
+      const errors: unknown[] = [];
+      try {
+        await startupOperation;
+      } catch {
+        // The listen caller owns the startup error; shutdown still closes resources.
+      }
+      if (endRooms) {
+        try {
+          if (signaling) {
+            signaling.endAllRooms();
+          } else {
+            roomStore.abandonAllRooms();
+          }
+        } catch (error) {
+          errors.push(error);
+        }
+      }
+      try {
+        await signaling?.close();
+      } catch (error) {
+        errors.push(error);
+      }
+      try {
+        if (httpServer.listening) {
+          await new Promise<void>((resolve, reject) => {
+            httpServer.close((error) => (error ? reject(error) : resolve()));
+          });
+        }
+      } catch (error) {
+        errors.push(error);
+      }
+      try {
+        await vite?.close();
+      } catch (error) {
+        errors.push(error);
+      }
+      try {
+        roomStore.close();
+      } catch (error) {
+        errors.push(error);
+      }
+      if (errors.length > 0) {
+        throw new AggregateError(errors, "Screener server shutdown failed");
+      }
+    })();
+    return await shutdownOperation;
+  }
 
   return {
     httpServer,
@@ -247,43 +305,8 @@ export async function createScreenerServer(
       })();
       return await startupOperation;
     },
-    async close() {
-      acceptingTraffic = false;
-      closing = true;
-      const errors: unknown[] = [];
-      try {
-        await startupOperation;
-      } catch {
-        // The listen caller owns the startup error; shutdown still closes resources.
-      }
-      try {
-        await signaling?.close();
-      } catch (error) {
-        errors.push(error);
-      }
-      try {
-        if (httpServer.listening) {
-          await new Promise<void>((resolve, reject) => {
-            httpServer.close((error) => (error ? reject(error) : resolve()));
-          });
-        }
-      } catch (error) {
-        errors.push(error);
-      }
-      try {
-        await vite?.close();
-      } catch (error) {
-        errors.push(error);
-      }
-      try {
-        roomStore.close();
-      } catch (error) {
-        errors.push(error);
-      }
-      if (errors.length > 0) {
-        throw new AggregateError(errors, "Screener server shutdown failed");
-      }
-    },
+    close: () => shutdown(false),
+    end: () => shutdown(true),
   };
 }
 

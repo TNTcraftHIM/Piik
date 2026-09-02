@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-08-30
+Last updated: 2026-09-02
 
 This file owns only cross-module physical evidence that still changes how the
 current product may be described. [Status](./status.md) owns exact source and
@@ -69,6 +69,27 @@ current-production real game. Web code cannot promise OS background execution,
 page retention, or capture keepalive. See
 [presentation and lifecycle](./product/presentation-lifecycle.md) and
 [background capture research](./research/browser-background-capture.md).
+
+## Screener Client
+
+The Go Client has unit coverage for persistent Local/Site configuration, LAN
+address selection, Browser launch commands, bounded Node supervision, its
+loopback port/Origin/Host/session contract, and exact package revision. The same
+source cross-builds for Windows amd64, macOS arm64, and Linux amd64.
+
+On Windows, Chrome for Testing 151.0.7922.138 completed the built Local page's
+fragment access, Host surface, LAN invitation, and clean Client/Node/Browser
+shutdown. A separate synthetic run formed a P2P-only Host-plus-three-Viewer tree
+with one Browser relay and advancing frames at every Viewer. The Hosted Site
+completed loopback `hello`/`ping` after CDP granted `loopback-network`; without
+that permission Chrome blocked it as expected.
+The exact clean-revision Windows package assembled with Node 24.19.0 passed both
+Client gates; changing `app/REVISION` made it fail before opening a listener.
+
+Still required are physical second-device LAN playback, first-run LNA prompt,
+no-STUN mDNS behavior, and equivalent macOS/Linux package, capture, audio,
+firewall, and process-lifecycle tests. No native capture, audio, encode, Pion
+media, or production integration is claimed.
 
 ## Interpretation Rules
 

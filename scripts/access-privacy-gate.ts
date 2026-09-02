@@ -101,7 +101,10 @@ async function main(): Promise<void> {
       maxViewersPerRoom: 2, endpointMediaCopyCapacity: 2,
       peerAssistedMedia: false, stunUrls: [], natPredictionEnabled: false,
     };
-    server = await createScreenerServer({ config, staticDirectory: resolve(root, "dist/client") });
+    server = await createScreenerServer({
+      config,
+      frontend: { mode: "static", directory: resolve(root, "dist/client") },
+    });
     server.httpServer.prependListener("request", (request, response) => {
       const target = request.url ?? "";
       const record = `${request.method ?? ""} ${target} ${request.headers.referer ?? ""}`;

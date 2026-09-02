@@ -43,6 +43,21 @@ full revision, emits a runtime archive plus path/size/SHA-256 manifest and relea
 extracts its own artifact to verify it. Upload the archive, manifest, and
 descriptor together to `/opt/screener/uploads`.
 
+The same application descriptor is also the Client assembly input. On each
+target platform, provide that platform's Node executable and Go toolchain:
+
+```sh
+SCREENER_GO=/path/to/go node scripts/assemble-client.mjs \
+  /outside/repository/app-release/screener-<revision>.release.json \
+  /path/to/node \
+  /outside/repository/Screener-Client
+```
+
+Assembly refuses a dirty or different revision and emits one directory with
+the Client executable, pinned Node runtime, application release, production
+dependencies, and matching `REVISION`. It does not create an installer,
+auto-updater, release tag, or compatibility bundle.
+
 Retain the descriptor and successful deployment output as release metadata. Do
 not create a follow-up source commit solely to duplicate their revision, asset,
 or hashes.

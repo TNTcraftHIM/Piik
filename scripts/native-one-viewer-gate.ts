@@ -303,7 +303,11 @@ async function main(): Promise<void> {
       maxRooms: ROOM_CAPACITY,
       maxViewersPerRoom: config.maxViewersPerRoom,
     }, () => senderLedger.record({ hostWssAuthenticated: true }));
-    server = await createScreenerServer({ config, roomStore });
+    server = await createScreenerServer({
+      config,
+      roomStore,
+      frontend: { mode: "none" },
+    });
     observeNodeStages(server, senderLedger);
     await server.listen(appPort, "127.0.0.1");
 

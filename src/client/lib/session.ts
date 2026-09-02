@@ -9,6 +9,7 @@ import { z } from "zod";
 import { createOpaqueId } from "./opaque-id";
 
 const CLIENT_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
+const CLIENT_ACCESS_BOOTSTRAP_PATTERN = /^[A-Za-z0-9_-]{32}$/;
 const HOST_ROOM_STORAGE_KEY = "screener:host-room:v1";
 const HOST_ROOM_PREFERENCE_STORAGE_KEY = "screener:host-room-preference:v1";
 const hostRoomStorageSchema = createRoomResponseSchema.pick({
@@ -77,6 +78,20 @@ export function parseAppRoute(pathname: string): AppRoute {
     return { kind: "malformed-room" };
   }
   return { kind: "unknown" };
+}
+
+export function takeClientAccessBootstrap(): string | null {
+  const prefix = "#client-access=";
+  if (!window.location.hash.startsWith(prefix)) {
+    return null;
+  }
+  const value = window.location.hash.slice(prefix.length);
+  window.history.replaceState(
+    window.history.state,
+    "",
+    `${window.location.pathname}${window.location.search}`,
+  );
+  return CLIENT_ACCESS_BOOTSTRAP_PATTERN.test(value) ? value : null;
 }
 
 export function clearHostRoom(): void {

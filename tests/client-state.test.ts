@@ -33,6 +33,7 @@ import {
   replaceViewerInvite,
   roomRouteForExplicitEntry,
   roomRouteFromInput,
+  takeClientAccessBootstrap,
   writeHostRoom,
   writePreferredRoom,
 } from "../src/client/lib/session.ts";
@@ -754,6 +755,36 @@ describe("room codes", () => {
       expect(parseAppRoute(pathname)).toEqual({ kind: "malformed-room" });
     }
     expect(parseAppRoute("/other")).toEqual({ kind: "unknown" });
+  });
+
+  it("consumes one exact Client access bootstrap without retaining it in the URL", () => {
+    const replaceState = vi.fn();
+    vi.stubGlobal("window", {
+      location: {
+        hash: `#client-access=${"a".repeat(32)}`,
+        pathname: "/",
+        search: "?mode=local",
+      },
+      history: { state: { current: true }, replaceState },
+    });
+
+    expect(takeClientAccessBootstrap()).toBe("a".repeat(32));
+    expect(replaceState).toHaveBeenCalledWith(
+      { current: true },
+      "",
+      "/?mode=local",
+    );
+  });
+
+  it("removes a malformed Client bootstrap without authenticating it", () => {
+    const replaceState = vi.fn();
+    vi.stubGlobal("window", {
+      location: { hash: "#client-access=short", pathname: "/", search: "" },
+      history: { state: null, replaceState },
+    });
+
+    expect(takeClientAccessBootstrap()).toBeNull();
+    expect(replaceState).toHaveBeenCalledWith(null, "", "/");
   });
 });
 

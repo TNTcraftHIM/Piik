@@ -162,3 +162,9 @@ Direct P2P exposes endpoint network addresses to the trusted peer. SFU media is
 encrypted hop-by-hop with DTLS-SRTP but terminates at the SFU; the product does
 not claim operator-blind media without a separately accepted application E2EE
 design. All-UDP-blocked networks currently end in bounded failure.
+
+Client Local mode runs this same graph with peer-assisted media enabled and no
+SFU, STUN, or NAT prediction. Reachable LAN peers may form the ordinary Browser
+relay tree; an unreachable pairing fails within the existing bounded route
+operation. Local mode adds no route type, score, or fallback. Selecting a Site
+uses that deployment's current transport configuration instead.

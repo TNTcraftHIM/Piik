@@ -13,7 +13,11 @@ import {
   type SiteAccessStatus,
 } from "./lib/api";
 import type { RuntimeCapabilities } from "../shared/protocol";
-import { parseAppRoute, readViewerRoute } from "./lib/session";
+import {
+  parseAppRoute,
+  readViewerRoute,
+  takeClientAccessBootstrap,
+} from "./lib/session";
 import { AppHeader } from "./components/living/Header";
 import { BrandLoader } from "./components/living/BrandMark";
 import { Btn, Pill } from "./components/living/primitives";
@@ -22,6 +26,8 @@ import { Glyph, type GlyphName } from "./ui/icons";
 import { useCopy } from "./ui/copy";
 
 const appRoute = parseAppRoute(window.location.pathname);
+const clientAccessBootstrap =
+  appRoute.kind === "host" ? takeClientAccessBootstrap() : null;
 const viewerRoute = appRoute.kind === "viewer" ? readViewerRoute() : null;
 const hostPageModule =
   appRoute.kind === "host" ? import("./pages/HostPage") : null;
@@ -167,7 +173,9 @@ function SiteAccessGate({
   useEffect(() => {
     let active = true;
     void Promise.all([
-      getSiteAccess(),
+      clientAccessBootstrap
+        ? authenticateSiteAccess(clientAccessBootstrap)
+        : getSiteAccess(),
       surface === "host"
         ? getRuntimeCapabilities()
         : Promise.resolve<RuntimeCapabilities>({ natPrediction: false }),

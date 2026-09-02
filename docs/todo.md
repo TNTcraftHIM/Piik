@@ -7,8 +7,14 @@ topics are not implementation authority.
 
 ## Now
 
-No executable product work is currently accepted. Items below remain parked
-until their stated boundary is met.
+1. **Native Client media boundary.** Starting from the accepted Client/Local
+   composition in [ADR-0010](./adr/0010-cross-platform-client-runtime.md), gate
+   one synthetic Pion media edge through the current Browser-owned route and
+   signaling generation. Then prove one Windows native capture and hardware
+   encode edge before any fanout, NAT, Viewer relay, macOS, or Linux work. The
+   Browser remains the only room and route authority; stop on duplicate capture,
+   stale generation, missing codec/RTCP evidence, unbounded resources, or system
+   instability.
 
 ## Parked Product Work
 
@@ -70,18 +76,18 @@ until their stated boundary is met.
    adding a parallel security framework.
 10. **Public-server package.** Package the exact Web/signaling, STUN/SFU, proxy,
    secrets, health, and recovery contract for a user-owned server.
-11. **Fully local package.** Package Host capture, application server, and local
-   state for Windows/macOS/Linux with honest TLS, gateway, NAT, and firewall
-   limits.
-12. **Native Host and shared encode.** Revisit Windows first only after capture,
-   hardware encode, audio, RTP feedback, resources, packaging, licensing, and
-   Browser interoperability are proved.
-13. **Platform output.** System/tab mirroring needs no product adapter, while
+11. **Native Host and shared encode.** Revisit platform adapters only after the
+   local control gate: synthetic media, WGC/ScreenCaptureKit/PipeWire, explicit
+   audio scope, one hardware encoder, current-wire delivery, then two
+   independent transports. Preserve Browser or local-mode authority and stop
+   on the first failed capture, RTP feedback, resource, packaging, licensing,
+   or interoperability gate.
+12. **Platform output.** System/tab mirroring needs no product adapter, while
     Remote Playback, default Cast and AirPlay do not provide a portable live
     `MediaStream` output contract. Reopen only for a registered custom receiver
     acting as an ordinary Viewer after a named Browser and physical receiver
     pass the [platform-output gate](./research/platform-output.md).
-14. **NAT inference and predictive candidates.** The deployment-gated,
+13. **NAT inference and predictive candidates.** The deployment-gated,
     connection-local capability is accepted under
     [ADR-0009](./adr/0009-optional-nat-prediction.md). Production enables its
     self-hosted field rollout; the general configuration default stays off.
@@ -92,11 +98,18 @@ until their stated boundary is met.
     convergence currently consumes each deferred Peer parent once; add no
     cross-generation retry budget until field evidence proves that fresh ICE
     generations expose a repeatable prediction opportunity.
-15. **Unresolved route-state ownership claims.** Reopen lower-revision
+14. **Unresolved route-state ownership claims.** Reopen lower-revision
     reauthentication, active SFU failure during an unrelated prepare, and
     multi-child relay-evidence ownership only from an exact current-wire
     reproduction. Do not add a second revision namespace, parallel failure
     state, or generalized evidence map from static possibility alone.
+15. **Unified release and update surface.** Build Client packages, Server
+    runtime, future OCI images, and deployment bundles from one intentionally
+    triggered immutable application release identified by its full commit SHA.
+    Start with a non-blocking Client update notice and an operator-invoked Server
+    check; do not add automatic install, container self-update, Watchtower,
+    compatibility ranges, or active-share interruption before distribution and
+    rollback evidence requires them.
 
 ## Decision Needed
 
