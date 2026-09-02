@@ -25,6 +25,7 @@ const (
 	maxSTUNURLBytes   = 512
 	maxICEServers     = 8
 	maxURLsPerServer  = 8
+	maxEdgeCapacity   = 3
 )
 
 var identityPattern = regexp.MustCompile("^[A-Za-z0-9_-]{8,256}$")
@@ -68,8 +69,8 @@ func (session *Session) Handle(_ context.Context, payload []byte) (any, error) {
 	switch envelope.Type {
 	case "capture-options":
 		var request captureOptionsRequest
-		if err := decodeStrict(payload, &request); err != nil {
-			return nil, err
+		if err := decodeStrict(payload, &request); err != nil || request.Type != envelope.Type {
+			return nil, errors.New("native capture-options request is invalid")
 		}
 		return captureOptionsResponse{
 			responseEnvelope: response(envelope, "capture-options"),
@@ -77,8 +78,8 @@ func (session *Session) Handle(_ context.Context, payload []byte) (any, error) {
 		}, nil
 	case "list-windows":
 		var request listWindowsRequest
-		if err := decodeStrict(payload, &request); err != nil {
-			return nil, err
+		if err := decodeStrict(payload, &request); err != nil || request.Type != envelope.Type {
+			return nil, errors.New("native list-windows request is invalid")
 		}
 		targets, err := nativecapture.ListWindows(session.ctx, session.captureProcess)
 		if err != nil {
@@ -91,13 +92,16 @@ func (session *Session) Handle(_ context.Context, payload []byte) (any, error) {
 	case "start-share":
 		var request startShareRequest
 		if err := decodeStrict(payload, &request); err != nil ||
-			!identityPattern.MatchString(request.ShareID) {
+			request.Type != envelope.Type ||
+			!identityPattern.MatchString(request.ShareID) ||
+			request.EdgeCapacity < 1 || request.EdgeCapacity > maxEdgeCapacity {
 			return nil, errors.New("native start-share request is invalid")
 		}
 		return session.startShare(envelope, request)
 	case "prepare-edge":
 		var request prepareEdgeRequest
 		if err := decodeStrict(payload, &request); err != nil ||
+			request.Type != envelope.Type ||
 			!validIdentities(request.ShareID, request.ConnectionID) {
 			return nil, errors.New("native prepare-edge request is invalid")
 		}
@@ -105,6 +109,7 @@ func (session *Session) Handle(_ context.Context, payload []byte) (any, error) {
 	case "edge-answer":
 		var request edgeAnswerRequest
 		if err := decodeStrict(payload, &request); err != nil ||
+			request.Type != envelope.Type ||
 			!validIdentities(request.ShareID, request.ConnectionID) ||
 			len(request.SDP) == 0 || len(request.SDP) > maxSDPBytes {
 			return nil, errors.New("native edge-answer request is invalid")
@@ -123,6 +128,7 @@ func (session *Session) Handle(_ context.Context, payload []byte) (any, error) {
 	case "edge-candidate":
 		var request edgeCandidateRequest
 		if err := decodeStrict(payload, &request); err != nil ||
+			request.Type != envelope.Type ||
 			!validIdentities(request.ShareID, request.ConnectionID) ||
 			!validCandidate(request.Candidate) {
 			return nil, errors.New("native edge-candidate request is invalid")
@@ -138,6 +144,7 @@ func (session *Session) Handle(_ context.Context, payload []byte) (any, error) {
 	case "close-edge":
 		var request closeEdgeRequest
 		if err := decodeStrict(payload, &request); err != nil ||
+			request.Type != envelope.Type ||
 			!validIdentities(request.ShareID, request.ConnectionID) {
 			return nil, errors.New("native close-edge request is invalid")
 		}
@@ -150,6 +157,7 @@ func (session *Session) Handle(_ context.Context, payload []byte) (any, error) {
 	case "stop-share":
 		var request stopShareRequest
 		if err := decodeStrict(payload, &request); err != nil ||
+			request.Type != envelope.Type ||
 			!identityPattern.MatchString(request.ShareID) {
 			return nil, errors.New("native stop-share request is invalid")
 		}
@@ -157,6 +165,19 @@ func (session *Session) Handle(_ context.Context, payload []byte) (any, error) {
 			return nil, err
 		}
 		return response(envelope, "share-stopped"), nil
+	case "pause-share":
+		var request pauseShareRequest
+		if err := decodeStrict(payload, &request); err != nil ||
+			request.Type != envelope.Type ||
+			!validIdentities(request.ShareID) {
+			return nil, errors.New("native pause-share request is invalid")
+		}
+		host := session.current(request.ShareID)
+		if host == nil {
+			return nil, errors.New("native share does not exist")
+		}
+		host.SetPaused(request.Paused)
+		return response(envelope, "share-paused"), nil
 	default:
 		return nil, errors.New("native control message is unsupported")
 	}

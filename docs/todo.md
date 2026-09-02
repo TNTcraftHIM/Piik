@@ -7,17 +7,13 @@ topics are not implementation authority.
 
 ## Now
 
-1. **Native Client media boundary.** The Windows capture/hardware-H.264 process,
-   one shared Pion source, two bounded independent transports, PLI recovery,
-   Chrome decode, and self-hosted/public STUN candidate gathering now pass their
-   staged gates. Next connect that exact edge to the current Browser-owned Site
-   route and signaling generation. Do not expose it in the Host UI until current
-   quality profiles, process audio, native SFU fallback, teardown, and categorical
-   evidence have explicit outcomes. An actual public-network peer remains the
-   acceptance boundary; single-machine `srflx` is not NAT traversal proof.
-   No-Site Internet mode then needs one lightweight rendezvous owner. Public
-   STUN may be its optional address-discovery dependency, but cannot replace
-   signaling or an SFU/TURN fallback.
+1. **Native Client media boundary.** Windows native Host video now runs through
+   the current Browser-owned room and route contract. Local Client startup,
+   hardware-H.264 capture, bounded Pion fanout, and a remote `srflx`-to-`srflx`
+   video gate now pass. Finish the native boundary only with process audio, native
+   SFU behavior, native quality evidence, teardown under failure, and a clean
+   packaged Site run. No-Site Internet mode still needs a lightweight
+   rendezvous owner; STUN cannot replace signaling or an SFU/TURN fallback.
 
 ## Parked Product Work
 
@@ -79,12 +75,10 @@ topics are not implementation authority.
    adding a parallel security framework.
 10. **Public-server package.** Package the exact Web/signaling, STUN/SFU, proxy,
    secrets, health, and recovery contract for a user-owned server.
-11. **Native Host and shared encode.** Revisit platform adapters only after the
-   local control gate: synthetic media, WGC/ScreenCaptureKit/PipeWire, explicit
-   audio scope, one hardware encoder, current-wire delivery, then two
-   independent transports. Preserve Browser or local-mode authority and stop
-   on the first failed capture, RTP feedback, resource, packaging, licensing,
-   or interoperability gate.
+11. **Native media completion.** Extend the proven Windows native Host video
+    boundary with process audio, native SFU behavior, native categorical quality
+    evidence, and failure/endurance coverage. Preserve Browser/server authority;
+    do not create a second room or media policy.
 12. **Platform output.** System/tab mirroring needs no product adapter, while
     Remote Playback, default Cast and AirPlay do not provide a portable live
     `MediaStream` output contract. Reopen only for a registered custom receiver

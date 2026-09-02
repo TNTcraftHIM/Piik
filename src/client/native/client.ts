@@ -215,6 +215,14 @@ export class NativeClient {
     );
   }
 
+  async setPaused(shareId: string, paused: boolean): Promise<void> {
+    await this.request(
+      "pause-share",
+      { shareId, paused },
+      nativeAckResponseSchema,
+    );
+  }
+
   close(): void {
     if (this.closed) return;
     this.closed = true;

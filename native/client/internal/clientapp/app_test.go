@@ -1,6 +1,7 @@
 package clientapp
 
 import (
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -31,6 +32,30 @@ func TestPackagePathsRequireTheExactPackagedRevision(t *testing.T) {
 	}
 	if _, _, err := packagePaths(nodePath, appDirectory); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestLaunchURLCarriesNativeSelectionWithoutChangingOrigin(t *testing.T) {
+	value := launchURL("https://share.example/", Options{
+		Native:             true,
+		NativeWindowTitle:  "My Game",
+		NativeAdapterIndex: 2,
+		NativeEncoderIndex: 1,
+	})
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Scheme != "https" || parsed.Host != "share.example" ||
+		parsed.Query().Get("screener-native") != "1" ||
+		parsed.Query().Get("screener-native-window") != "My Game" ||
+		parsed.Query().Get("screener-native-adapter") != "2" ||
+		parsed.Query().Get("screener-native-encoder") != "1" {
+		t.Fatalf("launch URL = %q, %v", value, err)
+	}
+}
+
+func TestLaunchURLLeavesOrdinaryClientURLUntouched(t *testing.T) {
+	const original = "http://localhost:8787/#client-access=secret"
+	if actual := launchURL(original, Options{}); actual != original {
+		t.Fatalf("ordinary launch URL = %q", actual)
 	}
 }
 

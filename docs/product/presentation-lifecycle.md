@@ -124,7 +124,8 @@ button or a raw stats dump.
 
 Current Browser scope includes Web Host, Web Viewer, and Browser relay. Desktop
 and mobile Browsers are Viewer targets; mobile Web capture, reliable background
-relay, native sender, and packaged capture helpers remain later platform work.
+relay, native Client audio/SFU, and non-Windows capture remain later platform
+work.
 
 ## Primary References
 

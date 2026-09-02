@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -24,16 +25,20 @@ const DefaultLocalPort = 8787
 var BuildRevision = "development"
 
 type Options struct {
-	Site           string
-	SiteSet        bool
-	Local          bool
-	NodePath       string
-	AppDirectory   string
-	ConfigPath     string
-	LANAddress     string
-	Port           int
-	DisableBrowser bool
-	CaptureProcess string
+	Site               string
+	SiteSet            bool
+	Local              bool
+	NodePath           string
+	AppDirectory       string
+	ConfigPath         string
+	LANAddress         string
+	Port               int
+	DisableBrowser     bool
+	CaptureProcess     string
+	Native             bool
+	NativeWindowTitle  string
+	NativeAdapterIndex int
+	NativeEncoderIndex int
 }
 
 func Run(ctx context.Context, options Options) error {
@@ -66,13 +71,16 @@ func Run(ctx context.Context, options Options) error {
 		}
 	}
 	nativeMedia := discoverNativeMedia(ctx, options.CaptureProcess)
+	if options.Native && !nativeMedia.available() {
+		return errors.New("Screener Client native capture is unavailable")
+	}
 	if config.Site != "" {
-		return runSite(ctx, config.Site, options.DisableBrowser, nativeMedia)
+		return runSite(ctx, config.Site, options, nativeMedia)
 	}
 	return runLocal(ctx, options, config, nativeMedia)
 }
 
-func runSite(ctx context.Context, site string, disableBrowser bool,
+func runSite(ctx context.Context, site string, options Options,
 	nativeMedia nativeRuntime,
 ) error {
 	client, err := loopback.Start(ctx, loopback.Options{
@@ -87,8 +95,8 @@ func runSite(ctx context.Context, site string, disableBrowser bool,
 	if err = printEndpoint(client.Endpoint()); err != nil {
 		return err
 	}
-	if !disableBrowser {
-		if err = browser.Open(site); err != nil {
+	if !options.DisableBrowser {
+		if err = browser.Open(launchURL(site, options)); err != nil {
 			return errors.New("Screener Client could not open the Site")
 		}
 	}
@@ -144,11 +152,11 @@ func runLocal(ctx context.Context, options Options, config clientconfig.Config,
 	fmt.Printf("Local access password: %s\n", config.LocalAccessPassword)
 	fmt.Printf("LAN invitation origin: http://%s:%d\n", selectedAddress, options.Port)
 	if !options.DisableBrowser {
-		launchURL := fmt.Sprintf(
+		launchURL := launchURL(fmt.Sprintf(
 			"http://localhost:%d/#client-access=%s",
 			options.Port,
 			config.LocalAccessPassword,
-		)
+		), options)
 		if err = browser.Open(launchURL); err != nil {
 			return errors.New("Screener Client could not open the Local page")
 		}
@@ -170,15 +178,42 @@ func runLocal(ctx context.Context, options Options, config clientconfig.Config,
 	}
 }
 
+func launchURL(raw string, options Options) string {
+	if !options.Native {
+		return raw
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return raw
+	}
+	query := parsed.Query()
+	query.Set("screener-native", "1")
+	if value := strings.TrimSpace(options.NativeWindowTitle); value != "" {
+		query.Set("screener-native-window", value)
+	}
+	if options.NativeAdapterIndex >= 0 {
+		query.Set("screener-native-adapter", fmt.Sprint(options.NativeAdapterIndex))
+	}
+	if options.NativeEncoderIndex >= 0 {
+		query.Set("screener-native-encoder", fmt.Sprint(options.NativeEncoderIndex))
+	}
+	parsed.RawQuery = query.Encode()
+	return parsed.String()
+}
+
 type nativeRuntime struct {
 	capabilities   loopback.NativeMediaCapabilities
 	capture        nativecapture.Capabilities
 	captureProcess string
 }
 
+func (runtime nativeRuntime) available() bool {
+	return runtime.capabilities.WindowVideo && runtime.capabilities.HardwareH264 &&
+		runtime.captureProcess != ""
+}
+
 func (runtime nativeRuntime) newControl() loopback.ControlSession {
-	if !runtime.capabilities.WindowVideo || !runtime.capabilities.HardwareH264 ||
-		runtime.captureProcess == "" {
+	if !runtime.available() {
 		return nil
 	}
 	return nativecontrol.New(runtime.captureProcess, runtime.capture)

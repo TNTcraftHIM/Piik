@@ -38,6 +38,14 @@ type stopShareRequest struct {
 	ShareID string `json:"shareId"`
 }
 
+type pauseShareRequest struct {
+	Version int    `json:"version"`
+	ID      string `json:"id"`
+	Type    string `json:"type"`
+	ShareID string `json:"shareId"`
+	Paused  bool   `json:"paused"`
+}
+
 type iceServer struct {
 	URLs []string `json:"urls"`
 }

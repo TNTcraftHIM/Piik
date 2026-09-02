@@ -13,8 +13,8 @@ application. Sharing a system mix can unintentionally include calls or
 notifications.
 
 Windows offers a narrower native primitive through WASAPI application loopback
-for one selected process tree, but that capability belongs to the unreleased
-native sender candidate rather than the current Web product.
+for one selected process tree, but that capability remains outside the current
+Browser product and the native Client video boundary.
 
 ## Decision
 
@@ -32,10 +32,9 @@ native sender candidate rather than the current Web product.
    native media element.
 5. Do not describe generic Browser system audio as application-isolated. UI and
    documentation must leave source scope to the Browser's actual result.
-6. Windows process-tree audio, WGC/MF video, helper protocols, and evaluation
-   packaging remain Native research. Their product stop line is
-   [ADR-0006](./0006-fixed-high-native-sender-canary.md); measurements are in
-   [native sender evidence](../research/native-sender.md).
+6. Windows process-tree audio remains Native research. WGC/MF video and the
+   Client media boundary are owned by [ADR-0010](./0010-cross-platform-client-runtime.md);
+   measurements are in [Native Client media](../research/native-client-media.md).
 
 ## Consequences
 

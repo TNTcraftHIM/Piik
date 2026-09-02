@@ -75,10 +75,14 @@ function checkCore() {
       { os: "darwin", arch: "arm64", name: "screener-client-darwin-arm64" },
       { os: "linux", arch: "amd64", name: "screener-client-linux-amd64" },
     ]) {
-      run(go, ["build", "-trimpath", "-o", join(buildRoot, target.name), "./cmd/screener-client"], {
-        cwd: clientRoot,
-        env: { ...process.env, GOOS: target.os, GOARCH: target.arch, CGO_ENABLED: "0" },
-      });
+      for (const command of ["screener-client", "screener-peer-gate"]) {
+        const suffix = command === "screener-client" ? target.name :
+          target.name.replace("screener-client", "screener-peer-gate");
+        run(go, ["build", "-trimpath", "-o", join(buildRoot, suffix), `./cmd/${command}`], {
+          cwd: clientRoot,
+          env: { ...process.env, GOOS: target.os, GOARCH: target.arch, CGO_ENABLED: "0" },
+        });
+      }
     }
   } finally {
     removeTemporaryRoot(buildRoot);

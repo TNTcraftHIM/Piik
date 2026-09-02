@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-09-02
+Last updated: 2026-09-03
 
 This file owns only cross-module physical evidence that still changes how the
 current product may be described. [Status](./status.md) owns exact source and
@@ -89,9 +89,12 @@ Client gates; changing `app/REVISION` made it fail before opening a listener.
 Still required are physical second-device LAN playback, first-run LNA prompt,
 no-STUN mDNS behavior, and equivalent macOS/Linux package, capture, audio,
 firewall, and process-lifecycle tests. Windows native capture, hardware H.264,
-one shared Pion source feeding two Chrome transports, and STUN candidate
-gathering have one bounded physical gate. Current Site routing, actual cross-NAT delivery, audio,
-native SFU publication, and production integration remain unproved.
+one shared Pion source feeding two Chrome transports, STUN candidate gathering,
+and a Local Client Host path have bounded physical gates. A remote Pion gate
+also received 30 video packets over a selected `srflx`-to-`srflx` pair; its
+signaling used a temporary reverse SSH test path. Native audio, native SFU
+publication, native quality evidence, and production package integration
+remain unproved.
 
 ## Interpretation Rules
 

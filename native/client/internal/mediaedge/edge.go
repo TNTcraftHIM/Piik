@@ -204,7 +204,7 @@ func (edge *Edge) readRTCP() {
 		for _, packet := range packets {
 			switch packet.(type) {
 			case *rtcp.PictureLossIndication, *rtcp.FullIntraRequest:
-				edge.source.requestRecoveryFrame()
+				edge.source.RequestRecoveryFrame()
 			}
 		}
 	}

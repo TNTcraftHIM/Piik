@@ -78,7 +78,7 @@ func (source *Source) detach(edge *Edge) {
 	source.mu.Unlock()
 }
 
-func (source *Source) requestRecoveryFrame() {
+func (source *Source) RequestRecoveryFrame() {
 	if source.requestKeyFrame != nil {
 		source.requestKeyFrame()
 	}

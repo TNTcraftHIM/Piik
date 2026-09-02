@@ -17,6 +17,9 @@ import {
 
 const ROOT = resolve(import.meta.dirname, "..");
 const SOURCE_TITLE = "Screener Native Gate Source";
+const GATE_STUN_URL =
+  process.env.SCREENER_CLIENT_GATE_STUN_URL?.trim() ||
+  "stun:share.bonfire.icu:3478";
 
 interface Probe {
   protocol: number;
@@ -222,6 +225,7 @@ async function readEndpoint(child: ChildProcessWithoutNullStreams): Promise<Endp
 async function browserMediaGate(input: {
   endpoint: Endpoint;
   sourceTitle: string;
+  stunUrl: string;
 }): Promise<MediaEvidence> {
   let socket: WebSocket | null = null;
   const peers: RTCPeerConnection[] = [];
@@ -320,7 +324,9 @@ async function browserMediaGate(input: {
         result.remoteType = message.remoteType;
       } else if (message.type === "edge-candidate") {
         const candidate = message.candidate as RTCIceCandidateInit | null;
-        const fields = candidate?.candidate.split(/\s+/) ?? [];
+        const fields = typeof candidate?.candidate === "string"
+          ? candidate.candidate.split(/\s+/)
+          : [];
         const typeIndex = fields.indexOf("typ");
         if (typeIndex >= 0 && fields[typeIndex + 1] &&
             !result.nativeCandidateTypes.includes(fields[typeIndex + 1]!)) {
@@ -403,10 +409,7 @@ async function browserMediaGate(input: {
       const offer = await request("prepare-edge", {
         shareId,
         connectionId: nextConnectionId,
-        iceServers: [{ urls: [
-          "stun:share.bonfire.icu:3478",
-          "stun:stun.cloudflare.com:3478",
-        ] }],
+        iceServers: [{ urls: [input.stunUrl] }],
       });
       await peer.setRemoteDescription({ type: "offer", sdp: offer.sdp });
       edge.remoteDescriptionSet = true;
@@ -622,6 +625,7 @@ async function main(): Promise<void> {
       "((__name) => (" + browserMediaGate.toString() + ")(" + JSON.stringify({
         endpoint,
         sourceTitle: SOURCE_TITLE,
+        stunUrl: GATE_STUN_URL,
       }) + "))((target) => target)",
       Date.now() + 35_000,
     );

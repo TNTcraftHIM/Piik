@@ -64,6 +64,7 @@ type Session struct {
 
 	mu     sync.Mutex
 	edges  map[string]*mediaedge.Edge
+	paused bool
 	closed bool
 }
 
@@ -202,6 +203,20 @@ func (session *Session) AddCandidate(
 	return edge.AddRemoteCandidate(candidate)
 }
 
+func (session *Session) SetPaused(paused bool) {
+	session.mu.Lock()
+	if session.closed {
+		session.mu.Unlock()
+		return
+	}
+	session.paused = paused
+	source := session.source
+	session.mu.Unlock()
+	if !paused {
+		source.RequestRecoveryFrame()
+	}
+}
+
 func (session *Session) CloseEdge(connectionID string) {
 	session.mu.Lock()
 	edge := session.edges[connectionID]
@@ -286,7 +301,12 @@ func (session *Session) run() {
 		case nativecapture.FrameH264:
 			// Pion writes every binding before returning a per-binding error. Edge
 			// state owns that failure; one retired edge must not stop healthy siblings.
-			_ = session.source.WriteH264(frame.Data, frame.Duration)
+			session.mu.Lock()
+			paused := session.paused
+			session.mu.Unlock()
+			if !paused {
+				_ = session.source.WriteH264(frame.Data, frame.Duration)
+			}
 		default:
 			result = errors.New("native video process emitted a non-video frame")
 			return

@@ -1,6 +1,6 @@
 # ADR-0006: Fixed-HIGH Native Sender Canary
 
-- Status: rejected product candidate; evidence retained for later revalidation
+- Status: superseded; historical evidence retained
 - Date: 2026-08-19
 - Last updated: 2026-09-02
 
@@ -13,9 +13,9 @@ current room, signaling, routing, audio, packaging, and Browser Viewer contract.
 
 ## Decision
 
-Do not integrate or ship the fixed-HIGH native sender. The current product
-surface remains Web Host/Viewer/relay, and stale experimental wires receive no
-compatibility reader.
+The fixed-HIGH native sender candidate is not a product surface and its private
+wire remains deleted. The current native Client boundary is defined by
+[ADR-0010](./0010-cross-platform-client-runtime.md).
 
 The deleted one-Viewer loopback proved that a fixed 1280x720@30 source could
 authenticate, negotiate one independent Pion leg, and deliver decoded/rendered

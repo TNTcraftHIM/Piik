@@ -18,6 +18,7 @@ import {
   type ParticipantPresenceEntry,
   type PreparedRouteCandidate,
   type ServerMessage,
+  type SignalPayload,
   type CodeEntryPolicy,
   type RoutePolicy,
 } from "../../shared/protocol";
@@ -142,7 +143,9 @@ import type {
   PeerSnapshot,
   SignalConnectionState,
 } from "../types";
-import { HostPeer } from "../webrtc/host-peer";
+import { HostPeer, type HostMediaPeer } from "../webrtc/host-peer";
+import { NativeClient } from "../native/client";
+import { NativeHostPeer } from "../native/native-host-peer";
 import {
   MAX_ENDPOINT_MEDIA_CHILDREN,
   reconcileBoundedMediaChildren,
@@ -374,10 +377,33 @@ interface HostPageProps {
   onAuthorizationRequired?: () => void;
 }
 
+interface NativeLaunchOptions {
+  requested: boolean;
+  windowTitle: string | null;
+  adapterIndex: number | null;
+  encoderIndex: number | null;
+}
+
+function nativeLaunchOptions(): NativeLaunchOptions {
+  const params = new URLSearchParams(window.location.search);
+  const parseIndex = (value: string | null): number | null => {
+    if (!value || !/^[0-9]+$/.test(value)) return null;
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
+  };
+  return {
+    requested: params.get("screener-native") === "1",
+    windowTitle: params.get("screener-native-window")?.trim() || null,
+    adapterIndex: parseIndex(params.get("screener-native-adapter")),
+    encoderIndex: parseIndex(params.get("screener-native-encoder")),
+  };
+}
+
 export function HostPage({
   natPredictionAvailable = false,
   onAuthorizationRequired,
 }: HostPageProps = {}) {
+  const nativeLaunch = useMemo(nativeLaunchOptions, []);
   const { lang, vis, t, titleFrames } = useCopy();
   const [qualitySettings, setQualitySettings] = useState<QualitySettings>(
     DEFAULT_QUALITY_SETTINGS,
@@ -400,6 +426,7 @@ export function HostPage({
   const [signalStatus, setSignalStatus] =
     useState<SignalConnectionState>("offline");
   const [stream, setStream] = useState<MediaStream | null>(null);
+  const [nativeActive, setNativeActive] = useState(false);
   const [details, setDetails] = useState<CaptureDetails | null>(null);
   const [room, setRoom] = useState<HostRoomState | null>(() =>
     hostRoomFromStored(readHostRoom()),
@@ -500,7 +527,7 @@ export function HostPage({
     signalRef.current?.setDisplayName(fallback);
   }, [hasCustomDisplayName, lang, vis]);
   const iceConfigRef = useRef<IceConfig | null>(null);
-  const peersRef = useRef(new Map<string, HostPeer>());
+  const peersRef = useRef(new Map<string, HostMediaPeer>());
   const hostProvisionalChildRef = useRef<HostProvisionalChild | null>(null);
   const activeHostChildPeerIdsRef = useRef<string[]>([]);
   const endpointMediaCopyCapacityRef = useRef(MAX_ENDPOINT_MEDIA_CHILDREN);
@@ -532,6 +559,10 @@ export function HostPage({
   const retiringStreamRef = useRef<MediaStream | null>(null);
   const hostSfuRouteRef = useRef<HostSfuRoute | null>(null);
   const sfuStandbyPrewarmerRef = useRef<SfuStandbyPrewarmer | null>(null);
+  const nativeClientRef = useRef<NativeClient | null>(null);
+  const nativeShareGenerationRef = useRef<string | null>(null);
+  const nativeEventCleanupRef = useRef<(() => void) | null>(null);
+  const nativeModeRef = useRef(false);
 
   const mediaViewers = useMemo(
     () => Array.from(peerSnapshots.values()),
@@ -646,6 +677,7 @@ export function HostPage({
       void hostSfuRouteRef.current?.disconnect();
       hostSfuRouteRef.current = null;
       sfuStandbyPrewarmerRef.current?.dispose();
+      disposeNativeShare();
       streamRef.current?.getTracks().forEach((track) => track.stop());
       retiringStreamRef.current?.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
@@ -798,6 +830,7 @@ export function HostPage({
     }
     signalRef.current = null;
     shareGenerationRef.current = null;
+    disposeNativeShare();
     peersRef.current.forEach((peer) => peer.dispose());
     peersRef.current.clear();
     hostProvisionalChildRef.current?.discard();
@@ -1135,6 +1168,116 @@ export function HostPage({
     );
   }
 
+  async function startNativeShare(
+    generation: number,
+    shareGeneration: string,
+  ): Promise<boolean> {
+    if (!nativeLaunch.requested) {
+      return false;
+    }
+    const client = await NativeClient.connect();
+    if (!client) {
+      throw new Error("Screener Client is not available");
+    }
+    try {
+      if (
+        !client.health.nativeMedia.windowVideo ||
+        !client.health.nativeMedia.hardwareH264
+      ) {
+        throw new Error("Screener Client has no native H.264 capture");
+      }
+      const adapters = await client.captureOptions();
+      const adapter =
+        (nativeLaunch.adapterIndex === null
+          ? null
+          : adapters.find(
+              (candidate) => candidate.index === nativeLaunch.adapterIndex,
+            )) ?? adapters.find((candidate) => candidate.hardwareH264.length > 0);
+      const encoder = adapter?.hardwareH264.find(
+        (candidate) =>
+          nativeLaunch.encoderIndex === null ||
+          candidate.index === nativeLaunch.encoderIndex,
+      );
+      if (!adapter || !encoder) {
+        throw new Error("Screener Client has no usable H.264 encoder");
+      }
+      const windows = await client.windows();
+      const target = nativeLaunch.windowTitle
+        ? windows.find((candidate) =>
+            candidate.title.includes(nativeLaunch.windowTitle!),
+          )
+        : windows.find(
+            (candidate) => !candidate.title.toLowerCase().includes("screener"),
+          );
+      if (!target) {
+        throw new Error("Screener Client could not find a capture window");
+      }
+      await client.startShare({
+        shareId: shareGeneration,
+        window: target,
+        adapterIndex: adapter.index,
+        encoderIndex: encoder.index,
+        edgeCapacity: MAX_ENDPOINT_MEDIA_CHILDREN,
+      });
+      if (!isCurrentShare(generation, shareGeneration)) {
+        await client.stopShare(shareGeneration).catch(() => undefined);
+        client.close();
+        return false;
+      }
+      nativeClientRef.current = client;
+      nativeShareGenerationRef.current = shareGeneration;
+      nativeModeRef.current = true;
+      setNativeActive(true);
+      nativeEventCleanupRef.current = client.onEvent((event) => {
+        if (
+          event.type === "share-ended" &&
+          event.shareId === shareGeneration &&
+          isCurrentShare(generation, shareGeneration)
+        ) {
+          endSharing(
+            { key: event.failed ? "host.shareEnded" : "host.stopNotice" },
+            false,
+          );
+        }
+      });
+      setDetails({
+        resolution: "1280x720",
+        frameRate: 30,
+        // The current native generation carries video only; process-audio
+        // capability is advertised for the next media-session boundary.
+        hasAudio: false,
+      });
+      videoCodecRef.current = manualVideoCodecPreference("h264");
+      setResolvedVideoCodec("h264");
+      return true;
+    } catch (error) {
+      client.close();
+      throw error;
+    }
+  }
+
+  function disposeNativeShare(): void {
+    const client = nativeClientRef.current;
+    const shareGeneration = nativeShareGenerationRef.current;
+    nativeEventCleanupRef.current?.();
+    nativeEventCleanupRef.current = null;
+    nativeClientRef.current = null;
+    nativeShareGenerationRef.current = null;
+    nativeModeRef.current = false;
+    setNativeActive(false);
+    if (!client) {
+      return;
+    }
+    if (shareGeneration) {
+      void client
+        .stopShare(shareGeneration)
+        .catch(() => undefined)
+        .finally(() => client.close());
+    } else {
+      client.close();
+    }
+  }
+
   function finishSourceSwitch(token: object): void {
     if (sourceSwitchRef.current !== token) {
       return;
@@ -1191,6 +1334,11 @@ export function HostPage({
   async function changeQuality(nextProfile: QualitySettings): Promise<void> {
     advancedQualityRef.current = nextProfile;
     setAdvancedQuality(nextProfile);
+    if (phase === "live" && nativeModeRef.current) {
+      advancedQualityRef.current = qualitySettingsRef.current;
+      setAdvancedQuality(qualitySettingsRef.current);
+      return;
+    }
     if (phase !== "live") {
       if (qualitySettingsEqual(qualitySettingsRef.current, nextProfile)) {
         return;
@@ -1320,7 +1468,39 @@ export function HostPage({
 
   function toggleSharingPause(): void {
     const activeStream = streamRef.current;
-    if (phase !== "live" || !activeStream) {
+    const nativeClient = nativeClientRef.current;
+    const nativeShareGeneration = nativeShareGenerationRef.current;
+    if (
+      phase !== "live" ||
+      (!activeStream && (!nativeClient || !nativeShareGeneration))
+    ) {
+      return;
+    }
+    if (!activeStream && nativeClient && nativeShareGeneration) {
+      const generation = activeGenerationRef.current;
+      if (generation === null) return;
+      const nextPaused = !sharingPausedRef.current;
+      void nativeClient
+        .setPaused(nativeShareGeneration, nextPaused)
+        .then(() => {
+          if (!isCurrentGeneration(generation)) return;
+          if (signalRef.current?.setSharingPaused(nextPaused) !== true) {
+            void nativeClient.setPaused(nativeShareGeneration, !nextPaused);
+            setNoticeKey("host.pause.signalRecovering");
+            return;
+          }
+          sharingPausedRef.current = nextPaused;
+          setSharingPaused(nextPaused);
+          setNoticeKey(nextPaused ? "host.pauseNotice" : "host.resumeNotice");
+        })
+        .catch((error: unknown) => {
+          if (isCurrentGeneration(generation)) {
+            setNoticeError(error, "connection");
+          }
+        });
+      return;
+    }
+    if (!activeStream) {
       return;
     }
     if (sharingPausedRef.current) {
@@ -1409,11 +1589,13 @@ export function HostPage({
     generation: number,
   ): boolean {
     const stream = streamRef.current;
+    const nativeClient = nativeClientRef.current;
+    const nativeShareGeneration = nativeShareGenerationRef.current;
     const iceConfig = iceConfigRef.current;
     const signal = signalRef.current;
     if (
       !isCurrentGeneration(generation) ||
-      !stream ||
+      (!stream && !nativeModeRef.current) ||
       !iceConfig ||
       !signal
     ) {
@@ -1449,6 +1631,18 @@ export function HostPage({
           reportSenderQuality(snapshot, revision);
         }
       },
+      createPeer:
+        nativeModeRef.current && nativeClient && nativeShareGeneration
+          ? (candidate, _input, events) =>
+              new NativeHostPeer(
+                candidate.childPeerId,
+                candidate.connectionId,
+                nativeShareGeneration,
+                iceConfig!,
+                nativeClient,
+                events,
+              )
+          : undefined,
     });
     return hostProvisionalChildRef.current.prepare({
       revision,
@@ -1505,41 +1699,61 @@ export function HostPage({
       removePeer(peerId);
     }
     const activeStream = streamRef.current;
+    const nativeClient = nativeClientRef.current;
+    const nativeShareGeneration = nativeShareGenerationRef.current;
+    const useNative = nativeModeRef.current &&
+      nativeClient !== null && nativeShareGeneration !== null;
     const iceConfig = iceConfigRef.current;
     const signal = signalRef.current;
-    if (!activeStream || !iceConfig || !signal) {
+    if ((!activeStream && !useNative) || !iceConfig || !signal) {
       return;
     }
 
-    let peer: HostPeer;
-    peer = new HostPeer(
-      peerId,
-      iceConfig,
-      activeStream,
-      qualitySettingsRef.current,
-      {
-        sendSignal: (targetPeerId, payload) =>
-          targetPeerId === peerId &&
+    let peer: HostMediaPeer;
+    const peerEvents: {
+      sendSignal: (
+        targetPeerId: string,
+        payload: Extract<SignalPayload, { kind: "description" | "candidate" }>,
+      ) => boolean;
+      onUpdate: (snapshot: PeerSnapshot) => void;
+    } = {
+      sendSignal: (targetPeerId, payload) =>
+        targetPeerId === peerId &&
+        isCurrentGeneration(generation) &&
+        hostChildIsAssigned(peerId) &&
+        peersRef.current.get(peerId) === peer &&
+        signalRef.current === signal
+          ? signal.send({ type: "signal", targetPeerId, payload })
+          : false,
+      onUpdate: (snapshot) => {
+        if (
           isCurrentGeneration(generation) &&
-          hostChildIsAssigned(peerId) &&
-          peersRef.current.get(peerId) === peer &&
-          signalRef.current === signal
-            ? signal.send({ type: "signal", targetPeerId, payload })
-            : false,
-        onUpdate: (snapshot) => {
-          if (
-            isCurrentGeneration(generation) &&
-            peersRef.current.get(peerId) === peer
-          ) {
-            updatePeerSnapshot(snapshot);
-            reportSenderQuality(snapshot, activeRouteRevisionRef.current);
-          }
-        },
+          peersRef.current.get(peerId) === peer
+        ) {
+          updatePeerSnapshot(snapshot);
+          reportSenderQuality(snapshot, activeRouteRevisionRef.current);
+        }
       },
-      videoCodecRef.current,
-      undefined,
-      routePolicyRef.current.natPrediction,
-    );
+    };
+    peer = useNative
+      ? new NativeHostPeer(
+          peerId,
+          createOpaqueId(),
+          nativeShareGeneration!,
+          iceConfig,
+          nativeClient,
+          peerEvents,
+        )
+      : new HostPeer(
+          peerId,
+          iceConfig,
+          activeStream!,
+          qualitySettingsRef.current,
+          peerEvents,
+          videoCodecRef.current,
+          undefined,
+          routePolicyRef.current.natPrediction,
+        );
     peersRef.current.set(peerId, peer);
     let started: boolean;
     try {
@@ -1923,12 +2137,19 @@ export function HostPage({
     setCopied(false);
     setPhase("starting");
 
-    let captured: MediaStream;
+    let captured: MediaStream | null = null;
+    let nativeStarted = false;
     try {
-      // This must remain the first awaited operation in the button gesture.
-      captured = await captureDisplay(qualitySettingsRef.current);
+      if (nativeLaunch.requested) {
+        nativeStarted = await startNativeShare(generation, shareGeneration);
+      }
+      if (!nativeStarted) {
+        // This must remain the first awaited operation in the button gesture.
+        captured = await captureDisplay(qualitySettingsRef.current);
+      }
     } catch (error) {
       if (!isCurrentShare(generation, shareGeneration)) {
+        disposeNativeShare();
         return;
       }
       activeGenerationRef.current = null;
@@ -1939,19 +2160,27 @@ export function HostPage({
     }
 
     if (!isCurrentShare(generation, shareGeneration)) {
-      captured.getTracks().forEach((track) => track.stop());
+      captured?.getTracks().forEach((track) => track.stop());
+      if (nativeStarted) disposeNativeShare();
       return;
     }
+    if (nativeStarted) {
+      const nativePolicy = { ...routePolicyRef.current, peerOnly: true };
+      routePolicyRef.current = nativePolicy;
+      setRoutePolicy(nativePolicy);
+    }
 
-    streamRef.current = captured;
-    setStream(captured);
-    setDetails(captureDetails(captured));
-    watchCaptureEnd(captured, generation);
-
-    videoCodecRef.current = await resolveStreamVideoCodec(captured);
-    setResolvedVideoCodec(videoCodecRef.current.primary);
+    if (captured) {
+      streamRef.current = captured;
+      setStream(captured);
+      setDetails(captureDetails(captured));
+      watchCaptureEnd(captured, generation);
+      videoCodecRef.current = await resolveStreamVideoCodec(captured);
+      setResolvedVideoCodec(videoCodecRef.current.primary);
+    }
     if (!isCurrentShare(generation, shareGeneration)) {
-      captured.getTracks().forEach((track) => track.stop());
+      captured?.getTracks().forEach((track) => track.stop());
+      if (nativeStarted) disposeNativeShare();
       return;
     }
 
@@ -1968,7 +2197,8 @@ export function HostPage({
         );
         createdRoom = hostRoomFromCreated(response);
         if (!isCurrentShare(generation, shareGeneration)) {
-          captured.getTracks().forEach((track) => track.stop());
+          captured?.getTracks().forEach((track) => track.stop());
+          if (nativeStarted) disposeNativeShare();
           closeAbandonedRoom(createdRoom);
           return;
         }
@@ -2093,7 +2323,8 @@ export function HostPage({
           );
           const replacement = hostRoomFromCreated(response);
           if (!isCurrentShare(generation, shareGeneration)) {
-            captured.getTracks().forEach((track) => track.stop());
+            captured?.getTracks().forEach((track) => track.stop());
+            disposeNativeShare();
             closeAbandonedRoom(replacement);
             return;
           }
@@ -2105,6 +2336,7 @@ export function HostPage({
           replacementSignal.start();
         } catch (error) {
           if (!isCurrentShare(generation, shareGeneration)) {
+            if (nativeStarted) disposeNativeShare();
             return;
           }
           activeGenerationRef.current = null;
@@ -2126,7 +2358,8 @@ export function HostPage({
       signal.start();
     } catch (error) {
       if (!isCurrentShare(generation, shareGeneration)) {
-        captured.getTracks().forEach((track) => track.stop());
+        captured?.getTracks().forEach((track) => track.stop());
+        if (nativeStarted) disposeNativeShare();
         if (createdRoom && !claimedRoom) {
           closeAbandonedRoom(createdRoom);
         }
@@ -2159,6 +2392,9 @@ export function HostPage({
       sourceSwitchRef.current ||
       qualityChangeRef.current
     ) {
+      return;
+    }
+    if (nativeModeRef.current) {
       return;
     }
 
@@ -2635,7 +2871,7 @@ export function HostPage({
     },
   );
   const hostDiagnosticsAvailable = Boolean(
-    (details && stream) || viewerOverviewEntries.length > 0,
+    (details && (stream || nativeActive)) || viewerOverviewEntries.length > 0,
   );
 
   const noticeText = noticeValue
@@ -2738,6 +2974,11 @@ export function HostPage({
           >
             {stream ? (
               <video ref={videoRef} autoPlay muted playsInline />
+            ) : null}
+            {nativeActive && phase === "live" ? (
+              <div className="lr-tv-overlay" role="status" aria-label={t("host.starting")}>
+                <VisGlyph name="cast" size={42} draw="native-live" />
+              </div>
             ) : null}
             {!stream &&
             (phase === "idle" || phase === "ended" || phase === "error") ? (
@@ -2884,7 +3125,7 @@ export function HostPage({
                   role="status"
                   aria-label={t("host.starting")}
                 >
-                  <StoryBoard step={1} showBrand={stream !== null} />
+                  <StoryBoard step={1} showBrand={stream !== null || nativeActive} />
                 </div>
               </>
             ) : stream && localPreviewPaused ? (
@@ -3127,7 +3368,7 @@ export function HostPage({
                           icon="switchSource"
                           cap={switchingSource ? "host.switching" : "host.switchSource"}
                           title="host.switchSource"
-                          disabled={switchingSource || changingQuality}
+                          disabled={nativeActive || switchingSource || changingQuality}
                           onClick={() => void switchSource()}
                         />,
                         "end",
@@ -3162,7 +3403,7 @@ export function HostPage({
             </div>
           </Row>
 
-          {showConnectionDetails && details && stream ? (
+          {showConnectionDetails && details && (stream || nativeActive) ? (
             <Row sub>
               <div id="host-details-panel" style={{ display: "contents" }}>
                 <span
@@ -3571,7 +3812,7 @@ export function HostPage({
                                 })
                           }
                           aria-label={t(QUALITY_PROFILE_CAPTIONS[id])}
-                          disabled={phase === "starting" || switchingSource}
+                          disabled={nativeActive || phase === "starting" || switchingSource}
                           onClick={() =>
                             void changeQuality({
                               ...QUALITY_PROFILES[id],
@@ -3648,7 +3889,7 @@ export function HostPage({
                         <Chip
                           key={resolution}
                           selected={advancedQuality.resolution === resolution}
-                          disabled={phase === "starting" || switchingSource}
+                          disabled={nativeActive || phase === "starting" || switchingSource}
                           title={QUALITY_RESOLUTIONS[resolution].label}
                           hint="hint-quality"
                           onClick={() =>
@@ -3675,7 +3916,7 @@ export function HostPage({
                         max={60}
                         step={5}
                         value={advancedQuality.maxFramerate}
-                        disabled={phase === "starting" || switchingSource}
+                        disabled={nativeActive || phase === "starting" || switchingSource}
                         aria-label={t("host.advanced.framerate")}
                         onChange={(event) =>
                           changeAdvancedQuality({
@@ -3701,7 +3942,7 @@ export function HostPage({
                         max={12000000}
                         step={500000}
                         value={advancedQuality.maxBitrate}
-                        disabled={phase === "starting" || switchingSource}
+                        disabled={nativeActive || phase === "starting" || switchingSource}
                         aria-label={t("host.advanced.bitrate")}
                         onChange={(event) =>
                           changeAdvancedQuality({
@@ -3740,7 +3981,7 @@ export function HostPage({
                           selected={
                             advancedQuality.degradationPreference === preference
                           }
-                          disabled={phase !== "live" || switchingSource}
+                          disabled={nativeActive || phase !== "live" || switchingSource}
                           title={`${t(PREFERENCE_PRESENTATION[preference].cap)} · ${t(PREFERENCE_PRESENTATION[preference].hint)}`}
                           hint="hint-degrade-pref"
                           onClick={() =>
@@ -3783,7 +4024,7 @@ export function HostPage({
                               advancedQuality.screenAudioQuality,
                             ) === audioQuality
                           }
-                          disabled={phase === "starting" || switchingSource}
+                          disabled={nativeActive || phase === "starting" || switchingSource}
                           title={t("host.audio.title", {
                             label: t(AUDIO_QUALITY_CAPTIONS[audioQuality]),
                             kbps: String(

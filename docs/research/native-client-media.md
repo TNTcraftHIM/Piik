@@ -1,8 +1,9 @@
 # Native Client Media Evidence
 
-- Reviewed: 2026-09-02
+- Reviewed: 2026-09-03
 - Scope: Windows capture, one shared H.264 source, Pion transport, Browser decode
-- Status: two-edge foundation passed; product and public-network gates remain
+- Status: native Host and cross-NAT video gates passed; audio and other platform
+  media remain outside the boundary
 
 ## Result
 
@@ -10,6 +11,12 @@ Screener Client can own one process-isolated Windows capture and hardware H.264
 encoder, feed its Annex-B access units into one Pion source, and deliver that
 source through independent WebRTC transports to unmodified Chrome receivers.
 The Browser remains the room, route, and signaling authority.
+
+The same Client can run the Local authority, open the normal Host page, and
+attach that native source to the current route. A remote Pion Viewer then
+received 30 packets over a selected `srflx`-to-`srflx` pair. The validation
+session carried signaling through a temporary reverse SSH path only; media was
+negotiated directly by ICE.
 
 The opt-in `gate:client-media` run proved, in order:
 
@@ -20,26 +27,26 @@ The opt-in `gate:client-media` run proved, in order:
   hardware-H.264 capability booleans before control connected;
 - two Pion ICE/DTLS/SRTP edges each delivered 30+ decoded 1280x720 frames
   to Chrome from that one encoded source;
-- self-hosted and Cloudflare STUN produced ordinary `host` and `srflx`
+- the self-hosted STUN endpoint produced ordinary `host` and `srflx`
   candidates; and
 - Client, capture, Browser, ports, and the isolated profile all closed.
 
 Unit coverage separately enforces the supplied edge capacity and forwards
-PLI/FIR to the shared source. Neither gate proves heterogeneous congestion
-behavior.
+PLI/FIR to the shared source. The cross-NAT result proves reachability and RTP
+delivery, not heterogeneous congestion behavior or a no-rendezvous Internet
+mode.
 
 ## Current Boundary
 
-The result does not yet prove current Site route-generation integration, an
-actual peer across NATs, native SFU publication, process audio delivery, live
-quality-profile changes, native quality evidence, macOS/Linux capture, or
-endurance. Native media therefore remains unavailable in the product UI.
+The result does not yet prove native SFU publication, process audio delivery,
+live quality-profile changes, native quality evidence, macOS/Linux capture, or
+endurance. Native Host video is exposed only through the explicit Client
+`--native` launch; these other capabilities remain unavailable there.
 
 No-Site Internet use still needs a lightweight rendezvous service. Public STUN
-is a reasonable optional address-discovery dependency for users without a
-server; its operator sees endpoint metadata but never carries DTLS-SRTP media.
-STUN alone does not exchange peer descriptions and cannot replace SFU/TURN on a
-restricted pair.
+is an optional address-discovery dependency; its operator sees endpoint
+metadata but never carries DTLS-SRTP media. STUN alone does not exchange peer
+descriptions and cannot replace SFU/TURN on a restricted pair.
 
 The next native-only NAT gate is an optional PCP/NAT-PMP/UPnP mapping for the
 same Pion UDP port, following Tailscale/libp2p practice. It is not implemented
@@ -56,8 +63,8 @@ track an unreleased commit or recreate ICE internals.
 - `nativehost` composes one capture generation with its bounded edges.
 - `nativecontrol` maps only local share/edge commands to the loopback v2 wire.
 
-The deleted `native/sender` application, UI, room client, and old wire are not
-compatibility inputs. Historical measurements remain in
+The deleted sender application, UI, room client, and old wire are not
+compatibility inputs. Historical measurements remain in the separately marked
 [native sender evidence](./native-sender.md).
 
 ## Primary Sources
@@ -70,5 +77,4 @@ compatibility inputs. Historical measurements remain in
 - [Pion single-port ICE](https://github.com/pion/webrtc/tree/master/examples/ice-single-port)
 - [Tailscale port mapper](https://github.com/tailscale/tailscale/tree/main/net/portmapper)
 - [libp2p NAT port mapping](https://github.com/libp2p/go-libp2p/blob/master/options.go)
-- [Cloudflare STUN](https://developers.cloudflare.com/realtime/turn/)
 - [WebRTC signaling and ICE](https://webrtc.org/getting-started/peer-connections)

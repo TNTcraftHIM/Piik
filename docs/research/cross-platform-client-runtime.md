@@ -1,8 +1,9 @@
 # Cross-Platform Client Runtime Research
 
-- Reviewed: 2026-09-02
+- Reviewed: 2026-09-03
 - Scope: loopback control and self-contained packaging boundary
-- Status: Client and Local composition implemented; one Windows native edge proved
+- Status: Client and Local composition implemented; Windows native Host video
+  and a cross-NAT media gate proved
 
 ## Reusable Evidence
 
@@ -30,14 +31,14 @@ unrelated listener. It is visible through health and stdout and is not an
 authentication secret. Host and Origin checks plus Chromium's Local Network
 Access permission form the Browser boundary.
 
-The current protocol intentionally advertises no capture, audio, codec, ICE,
-shared-encode, build, room, or shutdown capability. A field is added only with
-the feature that consumes it.
+The current protocol advertises only the native capabilities and
+generation-fenced media commands that have consumers. It carries no room
+credentials or route policy; those stay in the Browser/server protocol.
 
 ## Client Composition
 
-The existing TypeScript server already owns the room and route contract. A local
-package should therefore compose three artifacts behind one user entry:
+The existing TypeScript server owns the room and route contract. A local package
+therefore composes three artifacts behind one user entry:
 
 ```text
 screener-client
@@ -48,8 +49,8 @@ app/dist
 The Client's Go entry starts and supervises the pinned Node runtime in Local
 mode; Node serves the same Screener application with explicit local
 configuration. In Site mode the system Browser opens the saved Site while the
-same Go process remains its loopback Helper. Go later owns only native media
-adapters. The system Browser remains the UI.
+same Go process remains its loopback native-media owner. The system Browser
+remains the UI.
 
 Official Go process APIs require every started child to be waited and provide a
 bounded `WaitDelay` for cancellation and stuck I/O. The current supervisor uses
@@ -107,6 +108,9 @@ On Windows with Chrome for Testing 151.0.7922.138:
   from the same full revision; that packaged directory passed the Local and Site
   gates, while a deliberately mismatched `app/REVISION` was rejected before a
   listener started.
+- the native Host path created a Local room and a remote Pion Viewer received
+  30 packets over a selected `srflx`-to-`srflx` pair; the reverse SSH link in
+  that gate carried signaling only.
 
 The peer topology gate now treats native `getStats()` RTP identity and frame
 totals as its portable core proof. Detailed Screener quality metrics enrich a
@@ -119,8 +123,9 @@ deployment no longer erases valid native RTCStats.
 - Prove a physical second-device LAN Viewer on desktop, Android, and iOS.
 - Prove first-run Browser local-network permission outside CDP automation.
 - Record no-STUN mDNS behavior on ordinary and AP-isolated LANs.
-- Integrate the proved native edge with the current Site route generation before
-  exposing it in the Host UI; native quality evidence remains undefined.
+- Exercise the native Host on a configured Site and representative Browsers;
+  native quality evidence, audio, SFU publication, and non-Windows capture
+  remain undefined.
 
 ## Sources
 

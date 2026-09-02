@@ -10,7 +10,7 @@ room store, signaling protocol, or route controller.
   mode and opens `http://localhost:<port>` in the system Browser.
 - `--site <origin>` saves a Site and opens it on later launches. The Site owns
   rooms, persistence, routing, and SFU; the Client remains available through its
-  loopback service for future native media.
+  loopback service for native media.
 - `--local` clears the saved Site choice and returns to the self-contained Local
   authority.
 
@@ -18,6 +18,12 @@ Local mode uses memory-only rooms, Browser P2P relay, no LiveKit, and no NAT
 prediction. It works on a reachable LAN; a difficult Internet path has no SFU
 fallback. The Client chooses a sole private LAN IPv4 automatically. Use
 `--lan-address <address>` only when multiple real LAN interfaces are active.
+
+For a native Host, add `--native`. The system Browser remains the Host UI; the
+Client selects one Windows Graphics Capture target and one hardware H.264
+encoder and supplies that video to the same room route. Native media is
+currently video-only and P2P-only, so omitting `--native` keeps the ordinary
+Browser capture path.
 
 The first Local launch creates one random access password in the user
 configuration directory. The Client passes it to its own Host page in a URL
@@ -89,6 +95,13 @@ app/node_modules
 The Client executable and application must contain the same full Git revision.
 No compatibility reader accepts a mismatched private build.
 
+For a native Host smoke run, start the Client with `--native` and optionally
+`--native-window-title <text>`. The Client opens the normal Host page with a
+one-share native capture request; the page still creates the room and sends
+the current SDP/ICE through the configured Site. A configured Site is required
+for cross-network viewers. Without a Site, the bundled Local authority is
+reachable only where its invitation address is reachable (normally the LAN).
+
 ## Gates
 
 The Local gate starts the packaged process, loads a real built page in Chromium,
@@ -114,10 +127,28 @@ npm run probe:client-loopback
 SCREENER_CLIENT_MEDIA_GATE=true \
 CHROME_PATH=/path/to/chrome \
 npm run gate:client-media
+
+SCREENER_CLIENT_NATIVE_HOST_GATE=true \
+CHROME_PATH=/path/to/chrome \
+SCREENER_GO=/path/to/go \
+npm run gate:client-native-host
+
+SCREENER_CLIENT_NATIVE_HOST_GATE=true \
+SCREENER_CLIENT_CROSS_NAT_GATE=true \
+CHROME_PATH=/path/to/chrome \
+SCREENER_GO=/path/to/go \
+SCREENER_REMOTE_HOST=<public-test-host> \
+SCREENER_REMOTE_USER=<ssh-user> \
+SCREENER_REMOTE_SSH_KEY=/path/to/key \
+SCREENER_CLIENT_GATE_STUN_URLS=stun:<stun-host>:3478 \
+npm run gate:client-cross-nat
 ```
 
 The loopback health response reports window-video, process-audio, and hardware
 H.264 availability separately. The Windows media gate proves one hardware-H.264
 capture generation, shared Pion source, Browser decode, PLI recovery, and STUN
-candidate gathering. Product selection, current Site routing, native SFU,
-audio, and an actual public-network peer remain gated.
+candidate gathering. The native Host gate proves room creation and native video
+delivery through the current route. The cross-NAT variant uses a temporary
+reverse SSH path for signaling only and requires a selected `srflx` or `prflx`
+media pair; media never travels through SSH. Native audio, native SFU, native
+quality evidence, and macOS/Linux capture remain gated.

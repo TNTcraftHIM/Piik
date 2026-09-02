@@ -116,6 +116,7 @@ export const nativeAckResponseSchema = z
       "edge-candidate-accepted",
       "edge-closed",
       "share-stopped",
+      "share-paused",
     ]),
   })
   .strict();

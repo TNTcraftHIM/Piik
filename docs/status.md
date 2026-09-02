@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-09-02
+Last updated: 2026-09-03
 
 This is the current execution index. Git history owns completed timelines;
 [verification status](./verification-status.md) owns evidence boundaries.
@@ -123,15 +123,15 @@ This is the current execution index. Git history owns completed timelines;
 - Source contains the cross-platform Client and Local composition outside the
   current Web release. One Go entry stores an optional Site origin and generated
   Local access password, opens the system Browser, supervises the bundled Node
-  process in Local mode, and exposes the internal loopback `hello`/`ping`
-  service. Local reuses the TypeScript room, signaling, and route core with
-  memory state, peer-assisted media, and no SQLite, SFU, STUN, or NAT prediction.
-  Windows Chrome gates prove automatic Host access, LAN invitation construction,
-  a Host-plus-three-Viewer relay tree, Site LNA behavior, and complete cleanup.
-  A branch-local Windows gate now also proves process-isolated WGC/hardware
-  H.264, one shared Pion source feeding two Chrome transports, PLI recovery,
-  and ordinary `srflx` gathering. Current Site route integration, cross-NAT delivery, native
-  audio/SFU, and cross-platform package acceptance remain outside the release.
+  process in Local mode, and exposes the internal loopback control service. Local
+  reuses the TypeScript room, signaling, and route core with memory state,
+  peer-assisted media, and no SQLite, SFU, or NAT prediction by default. Windows
+  gates prove automatic Host access, LAN invitation construction, a
+  Host-plus-three-Viewer relay tree, Site LNA behavior, and complete cleanup.
+  The native Host gate additionally proves process-isolated WGC/hardware H.264,
+  one shared Pion source feeding two Chrome transports, PLI recovery, and a
+  remote `srflx`-to-`srflx` video path. Native audio/SFU, cross-platform capture,
+  and package acceptance remain outside the release.
 
 ## Current Hold
 

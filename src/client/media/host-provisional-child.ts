@@ -5,7 +5,7 @@ import type {
   SignalPayload,
 } from "../../shared/protocol";
 import { countEndpointMediaCopies } from "../../shared/media-copy-accounting";
-import { HostPeer } from "../webrtc/host-peer";
+import { HostPeer, type HostMediaPeer } from "../webrtc/host-peer";
 import type { BrowserVideoCodecPreference } from "../webrtc/video-codec";
 import type { PeerSnapshot } from "../types";
 import type { QualityProfile } from "./quality";
@@ -20,7 +20,7 @@ interface HostProvisionalInput {
 interface HostProvisionalPrepareInput extends HostProvisionalInput {
   candidate: PreparedRouteCandidate;
   iceConfig: IceConfig;
-  stream: MediaStream;
+  stream: MediaStream | null;
   profile: QualityProfile;
   videoCodec: BrowserVideoCodecPreference;
   natPredictionEnabled: boolean;
@@ -29,23 +29,31 @@ interface HostProvisionalPrepareInput extends HostProvisionalInput {
 interface HostProvisionalChildEvents {
   sendSignal: (peerId: string, payload: SignalPayload) => boolean;
   activeConnectionId?: (peerId: string) => string | null;
-  onPromotedStreamFailure?: (peer: HostPeer) => void;
+  createPeer?: (
+    candidate: PreparedRouteCandidate,
+    input: HostProvisionalPrepareInput,
+    events: {
+      sendSignal: (peerId: string, payload: SignalPayload) => boolean;
+      onUpdate: (snapshot: PeerSnapshot) => void;
+    },
+  ) => HostMediaPeer;
+  onPromotedStreamFailure?: (peer: HostMediaPeer) => void;
   onPreparedUpdate?: (
-    peer: HostPeer,
+    peer: HostMediaPeer,
     snapshot: PeerSnapshot,
     revision: number,
   ) => void;
-  onPromotedUpdate?: (peer: HostPeer, snapshot: PeerSnapshot) => void;
+  onPromotedUpdate?: (peer: HostMediaPeer, snapshot: PeerSnapshot) => void;
 }
 
 export type HostPreparedChildActivation =
   | { kind: "ordinary" }
-  | { kind: "promote"; peerId: string; peer: HostPeer };
+  | { kind: "promote"; peerId: string; peer: HostMediaPeer };
 
 interface PreparedHostChild {
   revision: number;
   candidate: PreparedRouteCandidate;
-  peer: HostPeer;
+  peer: HostMediaPeer;
   failed: boolean;
   replacesConnectionId: string | null;
 }
@@ -55,8 +63,8 @@ export class HostProvisionalChild {
   private preparedRevision: number | null = null;
   private preparedCandidate: PreparedRouteCandidate | null = null;
   private plannedChildPeerIds: string[] = [];
-  private promotedPeer: HostPeer | null = null;
-  private signalingPeer: HostPeer | null = null;
+  private promotedPeer: HostMediaPeer | null = null;
+  private signalingPeer: HostMediaPeer | null = null;
 
   constructor(private readonly events: HostProvisionalChildEvents) {}
 
@@ -94,42 +102,44 @@ export class HostProvisionalChild {
   private startPrepared(
     revision: number,
     candidate: PreparedRouteCandidate,
-    input: Pick<
-      HostProvisionalPrepareInput,
-      "iceConfig" | "stream" | "profile" | "videoCodec"
-      | "natPredictionEnabled"
-    >,
+    input: HostProvisionalPrepareInput,
   ): void {
-    let peer: HostPeer;
-    peer = new HostPeer(
-      candidate.childPeerId,
-      input.iceConfig,
-      input.stream,
-      input.profile,
-      {
-        sendSignal: (targetPeerId, payload) =>
-          this.signalingPeer === peer &&
-          targetPeerId === candidate.childPeerId &&
-          payload.connectionId === candidate.connectionId
-            ? this.events.sendSignal(targetPeerId, payload)
-            : false,
-        onUpdate: (snapshot) => {
-          if (this.prepared?.peer === peer) {
-            if (snapshot.connectionState === "failed") {
-              this.fail(peer);
-            }
-            this.events.onPreparedUpdate?.(peer, snapshot, revision);
-            return;
+    if (!this.events.createPeer && !input.stream) {
+      return;
+    }
+    const peerEvents = {
+      sendSignal: (targetPeerId: string, payload: SignalPayload) =>
+        this.signalingPeer === peer &&
+        targetPeerId === candidate.childPeerId &&
+        payload.connectionId === candidate.connectionId
+          ? this.events.sendSignal(targetPeerId, payload)
+          : false,
+      onUpdate: (snapshot: PeerSnapshot) => {
+        if (this.prepared?.peer === peer) {
+          if (snapshot.connectionState === "failed") {
+            this.fail(peer);
           }
-          if (this.promotedPeer === peer) {
-            this.events.onPromotedUpdate?.(peer, snapshot);
-          }
-        },
+          this.events.onPreparedUpdate?.(peer, snapshot, revision);
+          return;
+        }
+        if (this.promotedPeer === peer) {
+          this.events.onPromotedUpdate?.(peer, snapshot);
+        }
       },
-      input.videoCodec,
-      candidate.connectionId,
-      input.natPredictionEnabled,
-    );
+    };
+    let peer: HostMediaPeer;
+    peer = this.events.createPeer
+      ? this.events.createPeer(candidate, input, peerEvents)
+      : new HostPeer(
+          candidate.childPeerId,
+          input.iceConfig,
+          input.stream!,
+          input.profile,
+          peerEvents,
+          input.videoCodec,
+          candidate.connectionId,
+          input.natPredictionEnabled,
+        );
     this.signalingPeer = peer;
     this.prepared = {
       revision,
@@ -242,13 +252,13 @@ export class HostProvisionalChild {
     prepared?.peer.dispose();
   }
 
-  private livePeer(): HostPeer | null {
+  private livePeer(): HostMediaPeer | null {
     return this.prepared && !this.prepared.failed
       ? this.prepared.peer
       : null;
   }
 
-  private fail(peer: HostPeer): void {
+  private fail(peer: HostMediaPeer): void {
     if (this.prepared?.peer !== peer) {
       return;
     }

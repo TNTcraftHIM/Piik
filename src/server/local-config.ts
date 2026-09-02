@@ -1,6 +1,10 @@
 import { isIP } from "node:net";
 
-import { MAX_VIEWERS_PER_ROOM_LIMIT } from "../shared/protocol.js";
+import {
+  MAX_ICE_SERVER_URLS,
+  MAX_VIEWERS_PER_ROOM_LIMIT,
+  stunUrlSchema,
+} from "../shared/protocol.js";
 import { DEFAULT_ENDPOINT_MEDIA_COPY_CAPACITY } from "../shared/media-copy-accounting.js";
 import type { ServerConfig } from "./config.js";
 
@@ -13,6 +17,7 @@ export interface LocalServerConfigOptions {
   publicAddress: string;
   allowedAddresses?: readonly string[];
   siteAccessPassword: string;
+  stunUrls?: readonly string[];
 }
 
 export function createLocalServerConfig(
@@ -36,6 +41,13 @@ export function createLocalServerConfig(
       localIPv4(address, "allowed address"),
     ),
   ]);
+  const stunUrls = [...(options.stunUrls ?? [])];
+  if (
+    stunUrls.length > MAX_ICE_SERVER_URLS ||
+    stunUrls.some((url) => !stunUrlSchema.safeParse(url).success)
+  ) {
+    throw new Error("Local STUN URLs are invalid");
+  }
   const origin = (host: string) => `http://${host}:${port}`;
 
   return {
@@ -53,7 +65,7 @@ export function createLocalServerConfig(
     maxViewersPerRoom: MAX_VIEWERS_PER_ROOM_LIMIT,
     peerAssistedMedia: true,
     endpointMediaCopyCapacity: DEFAULT_ENDPOINT_MEDIA_COPY_CAPACITY,
-    stunUrls: [],
+    stunUrls,
     natPredictionEnabled: false,
   };
 }
@@ -74,11 +86,16 @@ export function loadLocalServerConfig(
     ?.split(",")
     .map((address) => address.trim())
     .filter(Boolean);
+  const stunUrls = environment.STUN_URLS
+    ?.split(",")
+    .map((url) => url.trim())
+    .filter(Boolean);
   return createLocalServerConfig({
     ...(port === undefined ? {} : { port }),
     publicAddress,
     ...(allowedAddresses ? { allowedAddresses } : {}),
     siteAccessPassword,
+    ...(stunUrls ? { stunUrls } : {}),
   });
 }
 

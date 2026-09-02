@@ -1,7 +1,7 @@
 # ADR-0010: Cross-Platform Client Runtime
 
-- Status: accepted Client/Local foundation and gated native-media boundary
-- Date: 2026-09-02
+- Status: accepted Client/Local foundation and Windows native Host video boundary
+- Date: 2026-09-03
 
 ## Context
 
@@ -73,19 +73,19 @@ Hosted and Local deployments diverge without improving the media path.
 ## Consequences
 
 Hosted and Local operation share one product contract and one route model. The
-Go runtime acts as an internal Helper when a Site page discovers it, but it is
-not a separate user-facing product. It stays small until a proven native
-capability needs a protocol field. The local package may contain two internal
-processes while presenting one user entry; the supervisor, not a compatibility
-protocol, owns their lifetime.
+Go runtime acts as the Client's native-media owner when a Site or Local page
+discovers it, but it is not a second room product. It stays small until a
+proven native capability needs a protocol field. The local package may contain
+two internal processes while presenting one user entry; the supervisor, not a
+compatibility protocol, owns their lifetime.
 
 Windows gates prove loopback discovery, Local static startup, automatic Host
 access, LAN invitation construction, a three-Viewer Browser relay tree, two
 process-isolated hardware-H.264/Pion edges sharing one encoded source and
-decoded by Chrome, and bounded process cleanup. Current Site route integration,
-a physical public-network peer,
-cross-platform native media, and no-Site Internet rendezvous remain separate
-gates.
+decoded by Chrome, and bounded process cleanup. The native Host path now uses
+the current Browser route and a remote Pion gate has received video over a
+direct `srflx`-to-`srflx` pair. Native audio/SFU/quality evidence, other
+platform capture, and no-Site Internet rendezvous remain separate gates.
 
 ## Primary Sources
 

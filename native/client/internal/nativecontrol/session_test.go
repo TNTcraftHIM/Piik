@@ -9,8 +9,8 @@ import (
 
 func TestSTUNURLsUseTheCurrentBoundedWire(t *testing.T) {
 	servers, err := pionICEServers([]iceServer{{URLs: []string{
-		"stun:share.bonfire.icu:3478",
-		"stun:stun.cloudflare.com:3478",
+		"stun:example.test:3478",
+		"stun:example.test:3479",
 	}}})
 	if err != nil || len(servers) != 1 || len(servers[0].URLs) != 2 {
 		t.Fatalf("servers = %+v, %v", servers, err)
