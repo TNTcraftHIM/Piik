@@ -20,13 +20,17 @@ import (
 	"github.com/TNTcraftHIM/Screener/native/client/internal/supervisor"
 )
 
-const DefaultLocalPort = 8787
+const (
+	DefaultLocalPort  = 8787
+	DefaultPublicSite = "https://share.bonfire.icu"
+)
 
 var BuildRevision = "development"
 
 type Options struct {
 	Site               string
 	SiteSet            bool
+	Public             bool
 	Local              bool
 	NodePath           string
 	AppDirectory       string
@@ -42,9 +46,6 @@ type Options struct {
 }
 
 func Run(ctx context.Context, options Options) error {
-	if options.SiteSet && options.Local {
-		return errors.New("choose either --site or --local")
-	}
 	configPath := strings.TrimSpace(options.ConfigPath)
 	if configPath == "" {
 		var err error
@@ -57,15 +58,11 @@ func Run(ctx context.Context, options Options) error {
 	if err != nil {
 		return errors.New("Screener Client configuration is unavailable")
 	}
-	if options.SiteSet {
-		config.Site, err = clientconfig.NormalizeSite(options.Site)
-		if err != nil || config.Site == "" {
-			return errors.New("Screener Site must be an HTTP or HTTPS origin")
-		}
-	} else if options.Local {
-		config.Site = ""
+	config, err = applyMode(config, options)
+	if err != nil {
+		return err
 	}
-	if options.SiteSet || options.Local {
+	if options.Public || options.SiteSet || options.Local {
 		if err = clientconfig.Save(configPath, config); err != nil {
 			return errors.New("Screener Client configuration is unavailable")
 		}
@@ -78,6 +75,27 @@ func Run(ctx context.Context, options Options) error {
 		return runSite(ctx, config.Site, options, nativeMedia)
 	}
 	return runLocal(ctx, options, config, nativeMedia)
+}
+
+func applyMode(config clientconfig.Config, options Options) (clientconfig.Config, error) {
+	if (options.SiteSet && options.Local) ||
+		(options.Public && (options.SiteSet || options.Local)) {
+		return clientconfig.Config{}, errors.New("choose one of --site, --public, or --local")
+	}
+	if options.Public {
+		config.Site = DefaultPublicSite
+		return config, nil
+	}
+	if options.SiteSet {
+		var err error
+		config.Site, err = clientconfig.NormalizeSite(options.Site)
+		if err != nil || config.Site == "" {
+			return clientconfig.Config{}, errors.New("Screener Site must be an HTTP or HTTPS origin")
+		}
+	} else if options.Local {
+		config.Site = ""
+	}
+	return config, nil
 }
 
 func runSite(ctx context.Context, site string, options Options,

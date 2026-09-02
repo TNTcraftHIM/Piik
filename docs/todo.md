@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-09-02
+Last reviewed: 2026-09-03
 
 Only **Now** is executable. Observations, old branches, experiments, and parked
 topics are not implementation authority.
@@ -13,7 +13,8 @@ topics are not implementation authority.
    video gate now pass. Finish the native boundary only with process audio, native
    SFU behavior, native quality evidence, teardown under failure, and a clean
    packaged Site run. No-Site Internet mode still needs a lightweight
-   rendezvous owner; STUN cannot replace signaling or an SFU/TURN fallback.
+   rendezvous owner; the Client's built-in public mode uses the official Site,
+   while STUN still cannot replace signaling or an SFU/TURN fallback.
 
 ## Parked Product Work
 

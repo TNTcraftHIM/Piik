@@ -131,7 +131,9 @@ This is the current execution index. Git history owns completed timelines;
   The native Host gate additionally proves process-isolated WGC/hardware H.264,
   one shared Pion source feeding two Chrome transports, PLI recovery, and a
   remote `srflx`-to-`srflx` video path. Native audio/SFU, cross-platform capture,
-  and package acceptance remain outside the release.
+  and package acceptance remain outside the release. `--public` selects the
+  official Site without a typed origin; `--local` remains the no-central-service
+  LAN mode.
 
 ## Current Hold
 
