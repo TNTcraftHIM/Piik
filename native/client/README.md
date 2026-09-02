@@ -39,15 +39,30 @@ go run ./cmd/screener-client \
   --app /path/to/Screener
 ```
 
+The repository-level entry used locally and by CI is:
+
+```sh
+npm run check:client
+```
+
+It runs Go formatting, unit tests, vet, and the three supported cross-builds.
+On Windows it also compiles the isolated capture process and validates its
+bounded capability response. Real capture, GPU attribution, Browser decode, and
+public-network paths remain explicit physical gates rather than environment-
+dependent unit tests.
+
 The loopback service binds IPv4 loopback on the first available port from
 `39721` through `39730`. `/health` discovers the current process; `/control`
-accepts one strict `hello` session and `ping`. Its public `instanceToken`
-distinguishes the discovered process but is not authentication.
+accepts one strict v2 session. After `hello`, an available Windows Client may
+list local capture choices and own one generation-fenced share's SDP/ICE edges.
+Its public `instanceToken` distinguishes the discovered process but is not
+authentication; room authority and remote signaling remain in the Browser.
 
 ## Packaging
 
 Build one application release, then assemble a platform Client from that exact
-descriptor and a matching platform Node executable:
+descriptor and a matching platform Node executable. A Windows package may add
+the independently built capture process as the final argument:
 
 ```sh
 node scripts/package-app-release.mjs /outside/repository/app-release
@@ -55,7 +70,8 @@ SCREENER_GO=/path/to/go \
   node scripts/assemble-client.mjs \
   /outside/repository/app-release/screener-<sha>.release.json \
   /path/to/node \
-  /outside/repository/Screener-Client
+  /outside/repository/Screener-Client \
+  /outside/repository/screener-client-capture.exe
 ```
 
 The result contains:
@@ -64,6 +80,7 @@ The result contains:
 screener-client[.exe]
 REVISION
 runtime/node/node[.exe]
+runtime/native/screener-client-capture.exe # Windows native-media package only
 app/REVISION
 app/dist
 app/node_modules
@@ -93,8 +110,14 @@ SCREENER_CLIENT_LOOPBACK_GATE=true \
 CHROME_PATH=/path/to/chrome \
 SCREENER_CLIENT_EXE=/path/to/screener-client \
 npm run probe:client-loopback
+
+SCREENER_CLIENT_MEDIA_GATE=true \
+CHROME_PATH=/path/to/chrome \
+npm run gate:client-media
 ```
 
-This stage still uses Browser capture, encoding, and WebRTC. Native capture,
-shared encode, Pion media, and native quality evidence remain the next gated
-phase.
+The loopback health response reports window-video, process-audio, and hardware
+H.264 availability separately. The Windows media gate proves one hardware-H.264
+capture generation, shared Pion source, Browser decode, PLI recovery, and STUN
+candidate gathering. Product selection, current Site routing, native SFU,
+audio, and an actual public-network peer remain gated.

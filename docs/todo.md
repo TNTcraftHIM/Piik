@@ -7,14 +7,17 @@ topics are not implementation authority.
 
 ## Now
 
-1. **Native Client media boundary.** Starting from the accepted Client/Local
-   composition in [ADR-0010](./adr/0010-cross-platform-client-runtime.md), gate
-   one synthetic Pion media edge through the current Browser-owned route and
-   signaling generation. Then prove one Windows native capture and hardware
-   encode edge before any fanout, NAT, Viewer relay, macOS, or Linux work. The
-   Browser remains the only room and route authority; stop on duplicate capture,
-   stale generation, missing codec/RTCP evidence, unbounded resources, or system
-   instability.
+1. **Native Client media boundary.** The Windows capture/hardware-H.264 process,
+   one shared Pion source, two bounded independent transports, PLI recovery,
+   Chrome decode, and self-hosted/public STUN candidate gathering now pass their
+   staged gates. Next connect that exact edge to the current Browser-owned Site
+   route and signaling generation. Do not expose it in the Host UI until current
+   quality profiles, process audio, native SFU fallback, teardown, and categorical
+   evidence have explicit outcomes. An actual public-network peer remains the
+   acceptance boundary; single-machine `srflx` is not NAT traversal proof.
+   No-Site Internet mode then needs one lightweight rendezvous owner. Public
+   STUN may be its optional address-discovery dependency, but cannot replace
+   signaling or an SFU/TURN fallback.
 
 ## Parked Product Work
 

@@ -1,0 +1,166 @@
+package nativecapture
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"time"
+)
+
+const (
+	probeProtocol       = 1
+	probeTimeout        = 3 * time.Second
+	maxProbeOutputBytes = 64 * 1024
+	maxProbeErrorBytes  = 4 * 1024
+	maxAdapters         = 64
+	maxEncoders         = 64
+	maxIdentityBytes    = 512
+)
+
+type Encoder struct {
+	Index uint32 `json:"index"`
+	Name  string `json:"name"`
+	CLSID string `json:"clsid"`
+}
+
+type Adapter struct {
+	Index        uint32    `json:"index"`
+	Name         string    `json:"name"`
+	LUID         string    `json:"luid"`
+	HardwareH264 []Encoder `json:"hardwareH264"`
+}
+
+type Capabilities struct {
+	Protocol      int       `json:"protocol"`
+	WindowsBuild  uint32    `json:"windowsBuild"`
+	WindowCapture bool      `json:"windowCapture"`
+	ProcessAudio  bool      `json:"processAudio"`
+	Adapters      []Adapter `json:"adapters"`
+}
+
+type Summary struct {
+	WindowVideo  bool
+	ProcessAudio bool
+	HardwareH264 bool
+}
+
+func (capabilities Capabilities) Summary() Summary {
+	summary := Summary{
+		WindowVideo:  capabilities.WindowCapture,
+		ProcessAudio: capabilities.ProcessAudio,
+	}
+	for _, adapter := range capabilities.Adapters {
+		if len(adapter.HardwareH264) > 0 {
+			summary.HardwareH264 = true
+			break
+		}
+	}
+	return summary
+}
+
+func Discover(parent context.Context, executable string) (Capabilities, error) {
+	if strings.TrimSpace(executable) == "" {
+		return Capabilities{}, nil
+	}
+	if _, err := os.Stat(executable); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return Capabilities{}, nil
+		}
+		return Capabilities{}, fmt.Errorf("inspect native capture process: %w", err)
+	}
+	ctx, cancel := context.WithTimeout(parent, probeTimeout)
+	defer cancel()
+	stdout := &boundedBuffer{limit: maxProbeOutputBytes}
+	stderr := &boundedBuffer{limit: maxProbeErrorBytes}
+	command := exec.CommandContext(ctx, executable, "--probe")
+	command.Stdout = stdout
+	command.Stderr = stderr
+	if err := command.Run(); err != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return Capabilities{}, errors.New("native capture probe timed out")
+		}
+		return Capabilities{}, fmt.Errorf("native capture probe failed: %w", err)
+	}
+	return decodeProbe(stdout.Bytes())
+}
+
+func PackagedExecutable() string {
+	if runtime.GOOS != "windows" {
+		return ""
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(filepath.Dir(executable), "runtime", "native",
+		"screener-client-capture.exe")
+}
+
+func decodeProbe(payload []byte) (Capabilities, error) {
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.DisallowUnknownFields()
+	var capabilities Capabilities
+	if err := decoder.Decode(&capabilities); err != nil {
+		return Capabilities{}, errors.New("native capture probe returned invalid JSON")
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return Capabilities{}, errors.New("native capture probe returned trailing data")
+	}
+	if capabilities.Protocol != probeProtocol || capabilities.WindowsBuild == 0 ||
+		len(capabilities.Adapters) > maxAdapters {
+		return Capabilities{}, errors.New("native capture probe returned an invalid contract")
+	}
+	adapterIndexes := make(map[uint32]struct{}, len(capabilities.Adapters))
+	for _, adapter := range capabilities.Adapters {
+		if len(adapter.Name) == 0 || len(adapter.Name) > maxIdentityBytes ||
+			len(adapter.LUID) == 0 || len(adapter.LUID) > maxIdentityBytes ||
+			len(adapter.HardwareH264) > maxEncoders {
+			return Capabilities{}, errors.New("native capture probe returned an invalid adapter")
+		}
+		if _, exists := adapterIndexes[adapter.Index]; exists {
+			return Capabilities{}, errors.New("native capture probe returned duplicate adapters")
+		}
+		adapterIndexes[adapter.Index] = struct{}{}
+		encoderIndexes := make(map[uint32]struct{}, len(adapter.HardwareH264))
+		for _, encoder := range adapter.HardwareH264 {
+			if len(encoder.Name) == 0 || len(encoder.Name) > maxIdentityBytes ||
+				len(encoder.CLSID) == 0 || len(encoder.CLSID) > maxIdentityBytes {
+				return Capabilities{}, errors.New("native capture probe returned an invalid encoder")
+			}
+			if _, exists := encoderIndexes[encoder.Index]; exists {
+				return Capabilities{}, errors.New("native capture probe returned duplicate encoders")
+			}
+			encoderIndexes[encoder.Index] = struct{}{}
+		}
+	}
+	return capabilities, nil
+}
+
+type boundedBuffer struct {
+	buffer bytes.Buffer
+	limit  int
+}
+
+func (buffer *boundedBuffer) Write(payload []byte) (int, error) {
+	remaining := buffer.limit - buffer.buffer.Len()
+	if remaining <= 0 {
+		return 0, errors.New("native capture probe output exceeded its bound")
+	}
+	if len(payload) > remaining {
+		_, _ = buffer.buffer.Write(payload[:remaining])
+		return remaining, errors.New("native capture probe output exceeded its bound")
+	}
+	return buffer.buffer.Write(payload)
+}
+
+func (buffer *boundedBuffer) Bytes() []byte {
+	return buffer.buffer.Bytes()
+}

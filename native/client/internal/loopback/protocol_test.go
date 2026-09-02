@@ -6,8 +6,8 @@ import (
 
 func TestDecodeRequestAcceptsOnlyTheCurrentShape(t *testing.T) {
 	valid := []string{
-		`{"version":1,"id":"request_hello","type":"hello"}`,
-		`{"version":1,"id":"request_ping","type":"ping"}`,
+		`{"version":2,"id":"request_hello","type":"hello"}`,
+		`{"version":2,"id":"request_ping","type":"ping"}`,
 	}
 	for _, payload := range valid {
 		if _, err := decodeRequest([]byte(payload)); err != nil {
@@ -15,11 +15,11 @@ func TestDecodeRequestAcceptsOnlyTheCurrentShape(t *testing.T) {
 		}
 	}
 	invalid := []string{
-		`{"version":2,"id":"request_ping","type":"ping"}`,
-		`{"version":1,"id":"short","type":"ping"}`,
-		`{"version":1,"id":"request_ping","type":"ping","extra":true}`,
-		`{"version":1,"id":"request_hello","type":"hello","nonce":"obsolete"}`,
-		`{"version":1,"id":"request_ping","type":"ping"} trailing`,
+		`{"version":1,"id":"request_ping","type":"ping"}`,
+		`{"version":2,"id":"short","type":"ping"}`,
+		`{"version":2,"id":"request_ping","type":"ping","extra":true}`,
+		`{"version":2,"id":"request_hello","type":"hello","nonce":"obsolete"}`,
+		`{"version":2,"id":"request_ping","type":"ping"} trailing`,
 	}
 	for _, payload := range invalid {
 		if _, err := decodeRequest([]byte(payload)); err == nil {
@@ -34,14 +34,25 @@ func TestValidateMessagesRequireTheExpectedPhase(t *testing.T) {
 		t.Fatalf("validateHello = %v", err)
 	}
 	ping := controlMessage{Version: ProtocolVersion, ID: "request_ping", Type: "ping"}
-	if err := validateReadyRequest(ping); err != nil {
+	if err := validatePing(ping); err != nil {
 		t.Fatal(err)
 	}
-	if err := validateReadyRequest(hello); err == nil {
-		t.Fatal("validateReadyRequest accepted hello")
+	if err := validatePing(hello); err == nil {
+		t.Fatal("validatePing accepted hello")
 	}
 	if err := validateHello(ping); err == nil {
 		t.Fatal("validateHello accepted ping")
+	}
+}
+
+func TestEnvelopeAllowsAnExtensionToOwnItsStrictShape(t *testing.T) {
+	payload := []byte(`{"version":2,"id":"request_extension","type":"extension","value":1}`)
+	message, err := decodeEnvelope(payload)
+	if err != nil || message.Type != "extension" {
+		t.Fatalf("extension envelope = %+v, %v", message, err)
+	}
+	if _, err = decodeRequest(payload); err == nil {
+		t.Fatal("base message decoder accepted extension fields")
 	}
 }
 

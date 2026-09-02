@@ -128,8 +128,10 @@ This is the current execution index. Git history owns completed timelines;
   memory state, peer-assisted media, and no SQLite, SFU, STUN, or NAT prediction.
   Windows Chrome gates prove automatic Host access, LAN invitation construction,
   a Host-plus-three-Viewer relay tree, Site LNA behavior, and complete cleanup.
-  Native media and cross-platform package acceptance remain outside the current
-  release.
+  A branch-local Windows gate now also proves process-isolated WGC/hardware
+  H.264, one shared Pion source feeding two Chrome transports, PLI recovery,
+  and ordinary `srflx` gathering. Current Site route integration, cross-NAT delivery, native
+  audio/SFU, and cross-platform package acceptance remain outside the release.
 
 ## Current Hold
 

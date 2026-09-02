@@ -2,7 +2,7 @@
 
 - Status: rejected product candidate; evidence retained for later revalidation
 - Date: 2026-08-19
-- Last updated: 2026-08-27
+- Last updated: 2026-09-02
 
 ## Context
 
@@ -17,7 +17,7 @@ Do not integrate or ship the fixed-HIGH native sender. The current product
 surface remains Web Host/Viewer/relay, and stale experimental wires receive no
 compatibility reader.
 
-The retained one-Viewer loopback proved that a fixed 1280x720@30 source could
+The deleted one-Viewer loopback proved that a fixed 1280x720@30 source could
 authenticate, negotiate one independent Pion leg, and deliver decoded/rendered
 Browser frames. Later Windows WGC/Media Foundation work proved one attributed
 hardware H.264 path. Those are bounded functional facts, not evidence for two
@@ -48,8 +48,8 @@ must remain owned by ADR-0005.
 ## Consequences
 
 - No native candidate constrains the current Browser product or route model.
-- Existing native source and fixtures remain research/evaluation code, not a
-  production runtime.
+- The obsolete sender runtime and private wire are deleted. Git owns that
+  history; only the isolated capture fixture and measured evidence remain.
 - Revalidation cost is explicit and cannot be hidden by preserving deprecated
   protocol or packaging surfaces.
 

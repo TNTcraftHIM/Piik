@@ -96,9 +96,9 @@ function assertOutsideRepository(repositoryRoot, outputRoot) {
   }
 }
 
-if (process.argv.length !== 5) {
+if (process.argv.length !== 5 && process.argv.length !== 6) {
   fail(
-    "Usage: node scripts/assemble-client.mjs <app-release.json> <node-executable> <new-output-directory>",
+    "Usage: node scripts/assemble-client.mjs <app-release.json> <node-executable> <new-output-directory> [windows-capture-executable]",
   );
 }
 
@@ -106,8 +106,12 @@ const repositoryRoot = realpathSync(resolve(dirname(fileURLToPath(import.meta.ur
 const descriptorPath = realpathSync(resolve(process.argv[2]));
 const nodePath = realpathSync(resolve(process.argv[3]));
 const outputRoot = resolve(process.cwd(), process.argv[4]);
+const capturePath = process.argv[5] ? realpathSync(resolve(process.argv[5])) : null;
 assertOutsideRepository(repositoryRoot, outputRoot);
 if (!lstatSync(nodePath).isFile()) fail("Node runtime must be a regular file");
+if (capturePath && (process.platform !== "win32" || !lstatSync(capturePath).isFile())) {
+  fail("Windows capture runtime must be a regular file on Windows");
+}
 
 const descriptor = readDescriptor(descriptorPath);
 const revision = run("git", ["rev-parse", "HEAD"], repositoryRoot).toLowerCase();
@@ -140,6 +144,15 @@ try {
   copyFileSync(nodePath, packagedNode);
   chmodSync(packagedNode, 0o755);
 
+  let packagedCapture = null;
+  if (capturePath) {
+    const nativeRoot = join(packageRoot, "runtime", "native");
+    mkdirSync(nativeRoot, { recursive: true });
+    packagedCapture = join(nativeRoot, "screener-client-capture.exe");
+    copyFileSync(capturePath, packagedCapture);
+    chmodSync(packagedCapture, 0o755);
+  }
+
   const clientName = process.platform === "win32" ? "screener-client.exe" : "screener-client";
   const clientPath = join(packageRoot, clientName);
   const goCommand = process.env.SCREENER_GO?.trim() || "go";
@@ -167,6 +180,7 @@ try {
     arch: process.arch,
     client: clientName,
     node: `runtime/node/${nodeName}`,
+    nativeCapture: packagedCapture ? "runtime/native/screener-client-capture.exe" : null,
     app: "app",
   })}\n`);
 } finally {

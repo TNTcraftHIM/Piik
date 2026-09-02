@@ -14,6 +14,8 @@ import (
 	"github.com/TNTcraftHIM/Screener/native/client/internal/clientconfig"
 	"github.com/TNTcraftHIM/Screener/native/client/internal/lan"
 	"github.com/TNTcraftHIM/Screener/native/client/internal/loopback"
+	"github.com/TNTcraftHIM/Screener/native/client/internal/nativecapture"
+	"github.com/TNTcraftHIM/Screener/native/client/internal/nativecontrol"
 	"github.com/TNTcraftHIM/Screener/native/client/internal/supervisor"
 )
 
@@ -31,6 +33,7 @@ type Options struct {
 	LANAddress     string
 	Port           int
 	DisableBrowser bool
+	CaptureProcess string
 }
 
 func Run(ctx context.Context, options Options) error {
@@ -62,14 +65,21 @@ func Run(ctx context.Context, options Options) error {
 			return errors.New("Screener Client configuration is unavailable")
 		}
 	}
+	nativeMedia := discoverNativeMedia(ctx, options.CaptureProcess)
 	if config.Site != "" {
-		return runSite(ctx, config.Site, options.DisableBrowser)
+		return runSite(ctx, config.Site, options.DisableBrowser, nativeMedia)
 	}
-	return runLocal(ctx, options, config)
+	return runLocal(ctx, options, config, nativeMedia)
 }
 
-func runSite(ctx context.Context, site string, disableBrowser bool) error {
-	client, err := loopback.Start(ctx, loopback.Options{AllowedOrigin: site})
+func runSite(ctx context.Context, site string, disableBrowser bool,
+	nativeMedia nativeRuntime,
+) error {
+	client, err := loopback.Start(ctx, loopback.Options{
+		AllowedOrigin: site,
+		NativeMedia:   nativeMedia.capabilities,
+		NewControl:    nativeMedia.newControl,
+	})
 	if err != nil {
 		return errors.New("Screener Client could not start")
 	}
@@ -88,7 +98,9 @@ func runSite(ctx context.Context, site string, disableBrowser bool) error {
 	return nil
 }
 
-func runLocal(ctx context.Context, options Options, config clientconfig.Config) error {
+func runLocal(ctx context.Context, options Options, config clientconfig.Config,
+	nativeMedia nativeRuntime,
+) error {
 	addresses, err := lan.Addresses()
 	if err != nil {
 		return err
@@ -103,6 +115,8 @@ func runLocal(ctx context.Context, options Options, config clientconfig.Config) 
 	}
 	client, err := loopback.Start(ctx, loopback.Options{
 		AllowedOrigin: fmt.Sprintf("http://localhost:%d", options.Port),
+		NativeMedia:   nativeMedia.capabilities,
+		NewControl:    nativeMedia.newControl,
 	})
 	if err != nil {
 		return errors.New("Screener Client could not start")
@@ -153,6 +167,42 @@ func runLocal(ctx context.Context, options Options, config clientconfig.Config) 
 			return errors.New("Screener Client runtime stopped unexpectedly")
 		}
 		return nil
+	}
+}
+
+type nativeRuntime struct {
+	capabilities   loopback.NativeMediaCapabilities
+	capture        nativecapture.Capabilities
+	captureProcess string
+}
+
+func (runtime nativeRuntime) newControl() loopback.ControlSession {
+	if !runtime.capabilities.WindowVideo || !runtime.capabilities.HardwareH264 ||
+		runtime.captureProcess == "" {
+		return nil
+	}
+	return nativecontrol.New(runtime.captureProcess, runtime.capture)
+}
+
+func discoverNativeMedia(ctx context.Context, configuredPath string) nativeRuntime {
+	path := strings.TrimSpace(configuredPath)
+	if path == "" {
+		path = nativecapture.PackagedExecutable()
+	}
+	capabilities, err := nativecapture.Discover(ctx, path)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Screener Client native capture is unavailable")
+		return nativeRuntime{}
+	}
+	summary := capabilities.Summary()
+	return nativeRuntime{
+		captureProcess: path,
+		capture:        capabilities,
+		capabilities: loopback.NativeMediaCapabilities{
+			WindowVideo:  summary.WindowVideo,
+			ProcessAudio: summary.ProcessAudio,
+			HardwareH264: summary.HardwareH264,
+		},
 	}
 }
 

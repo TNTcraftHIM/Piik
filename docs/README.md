@@ -67,6 +67,7 @@ Media and platform:
 - [Browser NAT traversal](./research/nat-traversal.md)
 - [Browser platform output](./research/platform-output.md)
 - [Native sender and shared encode](./research/native-sender.md)
+- [Native Client media](./research/native-client-media.md)
 - [Cross-platform Client runtime](./research/cross-platform-client-runtime.md)
 
 Rooms and repository practice:

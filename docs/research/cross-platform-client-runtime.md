@@ -2,7 +2,7 @@
 
 - Reviewed: 2026-09-02
 - Scope: loopback control and self-contained packaging boundary
-- Status: Client and Local composition implemented; native media remains unproved
+- Status: Client and Local composition implemented; one Windows native edge proved
 
 ## Reusable Evidence
 
@@ -119,7 +119,8 @@ deployment no longer erases valid native RTCStats.
 - Prove a physical second-device LAN Viewer on desktop, Android, and iOS.
 - Prove first-run Browser local-network permission outside CDP automation.
 - Record no-STUN mDNS behavior on ordinary and AP-isolated LANs.
-- Define native media and native quality evidence before extending the protocol.
+- Integrate the proved native edge with the current Site route generation before
+  exposing it in the Host UI; native quality evidence remains undefined.
 
 ## Sources
 

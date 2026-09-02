@@ -88,8 +88,10 @@ Client gates; changing `app/REVISION` made it fail before opening a listener.
 
 Still required are physical second-device LAN playback, first-run LNA prompt,
 no-STUN mDNS behavior, and equivalent macOS/Linux package, capture, audio,
-firewall, and process-lifecycle tests. No native capture, audio, encode, Pion
-media, or production integration is claimed.
+firewall, and process-lifecycle tests. Windows native capture, hardware H.264,
+one shared Pion source feeding two Chrome transports, and STUN candidate
+gathering have one bounded physical gate. Current Site routing, actual cross-NAT delivery, audio,
+native SFU publication, and production integration remain unproved.
 
 ## Interpretation Rules
 

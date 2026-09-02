@@ -1,6 +1,6 @@
 # ADR-0010: Cross-Platform Client Runtime
 
-- Status: accepted Client and Local foundation; native media remains gated
+- Status: accepted Client/Local foundation and gated native-media boundary
 - Date: 2026-09-02
 
 ## Context
@@ -28,21 +28,25 @@ Hosted and Local deployments diverge without improving the media path.
    echoes it so the Browser connects to the process it discovered. This value is
    public process identity, not authentication. Origin and Host validation plus
    the Browser's local-network permission own the current Browser boundary.
-4. The current control protocol contains only a strict, versioned `hello`
-   handshake and `ping`. It carries no room credentials, capability promises,
-   media, RTP, SDP, ICE, or remote signaling.
-5. A future platform package contains the Go entry, a pinned Node runtime, and
-   the same server/client build used by Hosted Screener. The Go entry supervises
-   the Node child with bounded lifetime. Platform packaging is metadata around
-   that entry, not another long-running wrapper or UI.
+4. Loopback v2 starts with a strict `hello` handshake. Health discovery reports
+   only separately probed native capture booleans. An active control session may
+   list local capture choices and own one share's generation-fenced SDP/ICE
+   edges; it carries no room password, Host token, Viewer grant, or route policy.
+   The Browser forwards current Site signaling and remains the participant.
+5. A platform package contains the Go entry, a pinned Node runtime, and the same
+   server/client build used by Hosted Screener. A Windows package may also carry
+   one process-isolated capture binary. The Go entry supervises child processes
+   with bounded lifetime. Platform packaging is metadata around that entry, not
+   another long-running wrapper or UI.
 6. The system Browser remains the UI. Browser extensions, userscripts, Electron,
    Tauri, and resident services need new evidence before they can replace this
    smaller boundary.
 7. A self-contained local deployment may serve reachable LAN peers without a
    central Screener service. Public-Internet use still needs persistent
    signaling and a reachable ICE path; removing a server does not create either.
-8. Native media is a later gate and is selected for an entire Host share
-   generation. Native quality evidence must either map real encoder/transport
+8. Native media is selected for an entire Host share generation. One isolated
+   platform capture feeds one encoded source and bounded independent Pion
+   transports. Native quality evidence must either map real encoder/transport
    observations into the existing categorical contract or remain ineligible for
    quality convergence. It does not introduce a custom score.
 9. The Client currently uses the system Browser as its only UI. With no saved
@@ -76,9 +80,12 @@ processes while presenting one user entry; the supervisor, not a compatibility
 protocol, owns their lifetime.
 
 Windows gates prove loopback discovery, Local static startup, automatic Host
-access, LAN invitation construction, a three-Viewer Browser relay tree, and
-bounded process cleanup in Chromium 151. Cross-platform packaging, physical LAN
-devices, native media, and serverless WAN operation remain separate gates.
+access, LAN invitation construction, a three-Viewer Browser relay tree, two
+process-isolated hardware-H.264/Pion edges sharing one encoded source and
+decoded by Chrome, and bounded process cleanup. Current Site route integration,
+a physical public-network peer,
+cross-platform native media, and no-Site Internet rendezvous remain separate
+gates.
 
 ## Primary Sources
 
@@ -91,3 +98,4 @@ devices, native media, and serverless WAN operation remain separate gates.
 - [LocalSend protocol](https://github.com/localsend/protocol/blob/main/README.md)
 - [Sunshine local Web UI](https://docs.lizardbyte.dev/projects/sunshine/latest/)
 - [Syncthing local GUI/API](https://docs.syncthing.net/users/config.html)
+- [Native Client media evidence](../research/native-client-media.md)

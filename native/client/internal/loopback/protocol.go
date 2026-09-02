@@ -9,9 +9,9 @@ import (
 )
 
 const (
-	ProtocolVersion        = 1
+	ProtocolVersion        = 2
 	ServiceName            = "screener-client"
-	ControlSubprotocol     = "screener-client-v1"
+	ControlSubprotocol     = "screener-client-v2"
 	MaxControlMessageBytes = 64 << 10
 	DefaultPortStart       = 39721
 	DefaultPortEnd         = 39730
@@ -26,6 +26,17 @@ type controlMessage struct {
 	Version int    `json:"version"`
 	ID      string `json:"id"`
 	Type    string `json:"type"`
+}
+
+func decodeEnvelope(payload []byte) (controlMessage, error) {
+	var message controlMessage
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	if decoder.Decode(&message) != nil || decoder.Decode(&struct{}{}) != io.EOF ||
+		message.Version != ProtocolVersion || !requestIDPattern.MatchString(message.ID) ||
+		message.Type == "" {
+		return controlMessage{}, errInvalidMessage
+	}
+	return message, nil
 }
 
 func decodeRequest(payload []byte) (controlMessage, error) {
@@ -46,7 +57,7 @@ func validateHello(message controlMessage) error {
 	return nil
 }
 
-func validateReadyRequest(message controlMessage) error {
+func validatePing(message controlMessage) error {
 	if message.Type != "ping" {
 		return errInvalidMessage
 	}

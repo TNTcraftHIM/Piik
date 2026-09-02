@@ -3,6 +3,7 @@ package loopback
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net"
 	"net/http"
 	"strconv"
@@ -17,7 +18,13 @@ import (
 const testOrigin = "https://share.bonfire.icu"
 
 func TestStartServesHealthAndStrictControlHandshake(t *testing.T) {
-	server := startTestServer(t, testOrigin)
+	expectedMedia := NativeMediaCapabilities{
+		WindowVideo: true, ProcessAudio: false, HardwareH264: true,
+	}
+	server := startTestServerWithOptions(t, Options{
+		AllowedOrigin: testOrigin,
+		NativeMedia:   expectedMedia,
+	})
 	endpoint := server.Endpoint()
 
 	var health Health
@@ -30,7 +37,8 @@ func TestStartServesHealthAndStrictControlHandshake(t *testing.T) {
 	}
 	response.Body.Close()
 	if health.Protocol != ProtocolVersion || health.Service != ServiceName ||
-		health.Port != endpoint.Port || health.InstanceToken != endpoint.InstanceToken {
+		health.Port != endpoint.Port || health.InstanceToken != endpoint.InstanceToken ||
+		health.NativeMedia != expectedMedia {
 		t.Fatalf("health = %+v", health)
 	}
 
@@ -96,6 +104,42 @@ func TestOnlyOneControlSessionIsClaimed(t *testing.T) {
 	}
 }
 
+func TestControlSessionSharesOneBoundedSocketForResponsesAndEvents(t *testing.T) {
+	extension := &testControlSession{
+		events: make(chan any, 1),
+		closed: make(chan struct{}),
+	}
+	server := startTestServerWithOptions(t, Options{
+		AllowedOrigin: testOrigin,
+		NewControl: func() ControlSession {
+			return extension
+		},
+	})
+	connection := dialControl(t, server.Endpoint(), server.Endpoint().InstanceToken, testOrigin)
+	writeControl(t, connection, requestJSON("request_hello", "hello"))
+	var ready controlMessage
+	readControl(t, connection, &ready)
+	extension.events <- controlMessage{
+		Version: ProtocolVersion, ID: "event_123456", Type: "extension-event",
+	}
+	writeControl(t, connection, requestJSON("request_extension", "extension"))
+	received := map[string]bool{}
+	for len(received) < 2 {
+		var message controlMessage
+		readControl(t, connection, &message)
+		received[message.Type] = true
+	}
+	if !received["extension-event"] || !received["extension-response"] {
+		t.Fatalf("control messages = %+v", received)
+	}
+	connection.CloseNow()
+	select {
+	case <-extension.closed:
+	case <-time.After(time.Second):
+		t.Fatal("control extension was not closed with its socket")
+	}
+}
+
 func TestStartAlwaysBindsToIPv4Loopback(t *testing.T) {
 	server := startTestServer(t, testOrigin)
 	host, _, err := net.SplitHostPort(server.Endpoint().Host)
@@ -136,12 +180,15 @@ func TestUnexpectedServeFailureIsReported(t *testing.T) {
 
 func startTestServer(t *testing.T, origin string) *Server {
 	t.Helper()
+	return startTestServerWithOptions(t, Options{AllowedOrigin: origin})
+}
+
+func startTestServerWithOptions(t *testing.T, options Options) *Server {
+	t.Helper()
 	port := freePort(t)
-	server, err := Start(context.Background(), Options{
-		PortStart:     port,
-		PortEnd:       port,
-		AllowedOrigin: origin,
-	})
+	options.PortStart = port
+	options.PortEnd = port
+	server, err := Start(context.Background(), options)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,4 +261,32 @@ func requestJSON(id, messageType string) map[string]any {
 		"id":      id,
 		"type":    messageType,
 	}
+}
+
+type testControlSession struct {
+	events chan any
+	closed chan struct{}
+}
+
+func (session *testControlSession) Handle(_ context.Context, payload []byte) (any, error) {
+	message, err := decodeEnvelope(payload)
+	if err != nil || message.Type != "extension" {
+		return nil, errors.New("unexpected extension request")
+	}
+	return controlMessage{
+		Version: ProtocolVersion, ID: message.ID, Type: "extension-response",
+	}, nil
+}
+
+func (session *testControlSession) Events() <-chan any {
+	return session.events
+}
+
+func (session *testControlSession) Close() error {
+	select {
+	case <-session.closed:
+	default:
+		close(session.closed)
+	}
+	return nil
 }

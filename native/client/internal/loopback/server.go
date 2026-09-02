@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	"github.com/coder/websocket/wsjson"
 )
 
 const (
@@ -29,6 +28,14 @@ type Options struct {
 	PortStart     int
 	PortEnd       int
 	AllowedOrigin string
+	NativeMedia   NativeMediaCapabilities
+	NewControl    func() ControlSession
+}
+
+type ControlSession interface {
+	Handle(context.Context, []byte) (any, error)
+	Events() <-chan any
+	Close() error
 }
 
 type Endpoint struct {
@@ -39,10 +46,17 @@ type Endpoint struct {
 }
 
 type Health struct {
-	Protocol      int    `json:"protocol"`
-	Service       string `json:"service"`
-	Port          int    `json:"port"`
-	InstanceToken string `json:"instanceToken"`
+	Protocol      int                     `json:"protocol"`
+	Service       string                  `json:"service"`
+	Port          int                     `json:"port"`
+	InstanceToken string                  `json:"instanceToken"`
+	NativeMedia   NativeMediaCapabilities `json:"nativeMedia"`
+}
+
+type NativeMediaCapabilities struct {
+	WindowVideo  bool `json:"windowVideo"`
+	ProcessAudio bool `json:"processAudio"`
+	HardwareH264 bool `json:"hardwareH264"`
 }
 
 type Server struct {
@@ -52,6 +66,8 @@ type Server struct {
 	httpServer    *http.Server
 	endpoint      Endpoint
 	allowedOrigin string
+	nativeMedia   NativeMediaCapabilities
+	newControl    func() ControlSession
 	done          chan error
 
 	mu         sync.Mutex
@@ -89,6 +105,8 @@ func Start(parent context.Context, options Options) (*Server, error) {
 			InstanceToken: instanceToken,
 		},
 		allowedOrigin: strings.TrimSpace(options.AllowedOrigin),
+		nativeMedia:   options.NativeMedia,
+		newControl:    options.NewControl,
 		done:          make(chan error, 1),
 	}
 	server.httpServer = &http.Server{
@@ -170,6 +188,7 @@ func (server *Server) handleHealth(response http.ResponseWriter, request *http.R
 		Service:       ServiceName,
 		Port:          server.endpoint.Port,
 		InstanceToken: server.endpoint.InstanceToken,
+		NativeMedia:   server.nativeMedia,
 	})
 }
 
@@ -217,24 +236,78 @@ func (server *Server) handleControl(response http.ResponseWriter, request *http.
 		closeControl(connection, "hello required")
 		return
 	}
-	if err = wsjson.Write(server.ctx, connection, controlMessage{
+	var writeMutex sync.Mutex
+	write := func(ctx context.Context, value any) error {
+		encoded, encodeErr := encodeMessage(value)
+		if encodeErr != nil {
+			return encodeErr
+		}
+		writeMutex.Lock()
+		defer writeMutex.Unlock()
+		return connection.Write(ctx, websocket.MessageText, encoded)
+	}
+	if err = write(server.ctx, controlMessage{
 		Version: ProtocolVersion, ID: message.ID, Type: "ready",
 	}); err != nil {
 		return
 	}
+	controlContext, cancelControl := context.WithCancel(server.ctx)
+	defer cancelControl()
+	var extension ControlSession
+	if server.newControl != nil {
+		extension = server.newControl()
+	}
+	if extension != nil {
+		defer extension.Close()
+		go func() {
+			for {
+				select {
+				case event, open := <-extension.Events():
+					if !open {
+						return
+					}
+					if write(controlContext, event) != nil {
+						cancelControl()
+						return
+					}
+				case <-controlContext.Done():
+					return
+				}
+			}
+		}()
+	}
 	for {
-		messageType, payload, err = connection.Read(server.ctx)
+		messageType, payload, err = connection.Read(controlContext)
 		if err != nil || messageType != websocket.MessageText {
 			closeControl(connection, "control frame required")
 			return
 		}
-		message, err = decodeRequest(payload)
-		if err != nil || validateReadyRequest(message) != nil {
+		message, err = decodeEnvelope(payload)
+		if err != nil {
 			closeControl(connection, "invalid control message")
 			return
 		}
-		response := controlMessage{Version: ProtocolVersion, ID: message.ID, Type: "pong"}
-		if err = wsjson.Write(server.ctx, connection, response); err != nil {
+		if message.Type == "ping" {
+			strict, strictErr := decodeRequest(payload)
+			if strictErr != nil || validatePing(strict) != nil ||
+				write(controlContext, controlMessage{
+					Version: ProtocolVersion, ID: message.ID, Type: "pong",
+				}) != nil {
+				closeControl(connection, "invalid control message")
+				return
+			}
+			continue
+		}
+		if extension == nil {
+			closeControl(connection, "unsupported control message")
+			return
+		}
+		value, handleErr := extension.Handle(controlContext, payload)
+		if handleErr != nil || value == nil {
+			closeControl(connection, "invalid control message")
+			return
+		}
+		if err = write(controlContext, value); err != nil {
 			return
 		}
 	}
