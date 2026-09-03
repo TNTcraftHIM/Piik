@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-09-03
+Last reviewed: 2026-09-04
 
 Only **Now** is executable. Observations, old branches, experiments, and parked
 topics are not implementation authority.
@@ -25,8 +25,11 @@ topics are not implementation authority.
    Wayland-only Portal/PipeWire sidecar only with a real desktop/GPU gate and a
    decision to reuse system GStreamer without bundling it; do not add a second
    RTC, X11 capture stack, or hand-built DMA-BUF/encoder matrix.
-   Before a user-facing Client release, replace command-line native window
-   selection with one Browser-owned explicit picker; never guess among targets.
+   The system-Browser launcher now owns Local, temporary public-link, and Site
+   selection, and the Host explicitly chooses Browser capture or an exact
+   Client-owned window without command-line target input. Its Windows physical
+   gate passes first capture, source end, same-room reselection, and restored
+   Viewer delivery.
    No-Site Internet mode now has one ordinary public invitation link that retains
    the Host's Local authority and passes remote control-path and independent
    Linux Pion media gates. Prove decoded one-link Browser media on a physical

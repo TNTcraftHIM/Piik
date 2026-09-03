@@ -251,10 +251,8 @@ async function main(): Promise<void> {
     result.stage = "client";
     client = spawn(clientBinary, [
       "--site", origin,
-      "--native",
       "--capture-process", captureBinary,
       "--config", configPath,
-      "--native-window-title", SOURCE_TITLE,
     ], {
       stdio: "pipe",
       windowsHide: true,

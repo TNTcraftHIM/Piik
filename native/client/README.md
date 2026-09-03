@@ -6,37 +6,37 @@ room store, signaling protocol, or route controller.
 
 ## Modes
 
-- With no saved Site, the Client starts the bundled TypeScript server in Local
-  mode and opens `http://localhost:<port>` in the system Browser.
-- `--site <origin>` saves a Site and opens it on later launches. The Site owns
-  rooms, persistence, routing, and SFU; the Client remains available through its
-  loopback service for native media.
-- `--local` clears the saved Site choice and returns to the self-contained Local
-  authority.
-- `--link` starts a temporary public HTTPS link for that Local authority without
-  changing the saved Site choice. The Host copies the ordinary room invitation;
-  a Viewer needs only a Browser.
+- With no mode argument, the Client opens a small launcher in the system
+  Browser. It selects Local, a temporary public HTTPS invitation, or a saved
+  Site, then enters the normal Host page.
+- The launcher remembers the Site address but keeps the per-run mode choice
+  separate. Local and one-link modes retain the self-contained authority; a
+  configured Site owns rooms, persistence, routing, and SFU.
+- `--site`, `--local`, and `--link` remain deterministic automation inputs for
+  CI and development. They are not required for normal use.
 
 Local mode uses memory-only rooms, Browser P2P relay, no LiveKit, and no NAT
-prediction. Ordinary Local works on a reachable LAN. `--link` runs the packaged
-Cloudflare Tunnel sidecar for the existing HTTP/WebSocket control surface and
+prediction. Ordinary Local works on a reachable LAN. The **Public invite** mode
+runs the packaged Cloudflare Tunnel sidecar for the existing HTTP/WebSocket
+control surface and
 uses Cloudflare's public STUN for ordinary Browser media edges. Media does not
 travel through the HTTP tunnel, and a difficult media path still has no SFU or
 TURN fallback. The Client chooses a sole private LAN IPv4 automatically. Use
 `--lan-address <address>` only when multiple real LAN interfaces are active.
 
-For a native Host, add `--native`. The system Browser remains the Host UI; the
-Client selects one platform capture target and one hardware H.264 encoder. The
-current Windows sidecar uses Graphics Capture and, on supported builds, captures
-that process's audio with WASAPI. Video and audio share the same room route and
-PeerConnection. Native
-media in Site or one-link mode also attempts one bounded PCP, UPnP, or NAT-PMP
+The system Browser remains the Host UI. A Client-launched Host offers the
+Browser's standard capture picker and a list of exact platform capture targets;
+the user selects one explicitly. The Client selects one available hardware
+H.264 path. The current Windows sidecar uses Graphics Capture and, on supported
+builds, captures that process's audio with WASAPI. Video and audio share the
+same room route and PeerConnection. Native media in Site or one-link mode also
+attempts one bounded PCP, UPnP, or NAT-PMP
 mapping for its sole Pion UDP socket; pure LAN Local mode does not. Routers
 without a mapping service continue with ordinary ICE/STUN. The mapping does not
 create a relay or carry media through the Client control link. A configured Site
 may route the native source through its existing Browser LiveKit publisher;
-Local and one-link modes remain P2P-only. Omitting `--native` keeps the ordinary
-Browser capture path. `--local --native` is the self-contained LAN form.
+Local and one-link modes remain P2P-only. An ordinary Web Host keeps the
+Browser capture path without probing the Client.
 
 Native P2P edges negotiate transport-wide feedback. Once Pion GCC has real
 feedback and the source has produced frames, the Client reports whether that
@@ -54,9 +54,9 @@ Press Enter in the Client console to end Local rooms and stop the bundled
 server and any temporary public link. A Site-loaded Browser tab does not own the
 Client process.
 
-For one-link Internet sharing, start the Host with `--link`, create a room in the
-opened Browser, and send its normal invitation link. The random
-`trycloudflare.com` origin lasts only for that Client run. Cloudflare Quick
+For one-link Internet sharing, open the Client launcher, choose **Public invite**,
+create a room in the opened Browser, and send its normal invitation link. The
+random `trycloudflare.com` origin lasts only for that Client run. Cloudflare Quick
 Tunnels provide no uptime guarantee; use a configured Site when persistent
 control availability or SFU fallback matters.
 
@@ -137,14 +137,12 @@ app/node_modules
 The Client executable and application must contain the same full Git revision.
 No compatibility reader accepts a mismatched private build.
 
-For a native Host smoke run, start the Client with `--native`. If more than one
-non-Screener window is available, also pass unique
-`--native-window-title <text>`. The Client never guesses among multiple targets.
-It opens the normal Host page with a
-one-share native capture request; the page still creates the room and sends
-the current SDP/ICE through the selected authority. A configured Site supplies
-its normal Internet routing and SFU fallback. Without a Site, `--link` exposes
-the Local control surface while media remains P2P-only.
+For a native Host smoke run, launch the Client and select a window in the Host
+page. The Client never guesses among multiple targets. The page still creates
+the room and sends the current SDP/ICE through the selected authority. A
+configured Site supplies its normal Internet routing and SFU fallback. Without
+a Site, the **Public invite** choice exposes the Local control surface while
+media remains P2P-only.
 
 ## Gates
 

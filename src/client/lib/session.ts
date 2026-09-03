@@ -41,6 +41,7 @@ export interface ViewerRoute {
 }
 
 export type AppRoute =
+  | { kind: "client" }
   | { kind: "host" }
   | { kind: "join" }
   | { kind: "viewer"; roomId: string }
@@ -64,6 +65,9 @@ export function roomRouteForExplicitEntry(value: string): string | null {
 }
 
 export function parseAppRoute(pathname: string): AppRoute {
+  if (/^\/client\/?$/.test(pathname)) {
+    return { kind: "client" };
+  }
   if (pathname === "/") {
     return { kind: "host" };
   }
@@ -80,45 +84,25 @@ export function parseAppRoute(pathname: string): AppRoute {
   return { kind: "unknown" };
 }
 
-export interface NativeLaunchOptions {
-  requested: boolean;
-  windowTitle: string | null;
-  adapterIndex: number | null;
-  encoderIndex: number | null;
-}
-
 export interface ClientLaunchBootstrap {
   accessToken: string | null;
-  native: NativeLaunchOptions;
+  launchedByClient: boolean;
 }
 
 export function takeClientLaunchBootstrap(): ClientLaunchBootstrap {
   const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
   const keys = [
     "client-access",
-    "screener-native",
-    "screener-native-window",
-    "screener-native-adapter",
-    "screener-native-encoder",
+    "screener-client",
   ] as const;
   const present = keys.some((key) => params.has(key));
   const accessValue = params.get("client-access");
-  const parseIndex = (value: string | null): number | null => {
-    if (!value || !/^[0-9]+$/.test(value)) return null;
-    const parsed = Number(value);
-    return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
-  };
   const result: ClientLaunchBootstrap = {
     accessToken:
       accessValue && CLIENT_ACCESS_BOOTSTRAP_PATTERN.test(accessValue)
         ? accessValue
         : null,
-    native: {
-      requested: params.get("screener-native") === "1",
-      windowTitle: params.get("screener-native-window")?.trim() || null,
-      adapterIndex: parseIndex(params.get("screener-native-adapter")),
-      encoderIndex: parseIndex(params.get("screener-native-encoder")),
-    },
+    launchedByClient: params.get("screener-client") === "1",
   };
   if (present) {
     for (const key of keys) params.delete(key);

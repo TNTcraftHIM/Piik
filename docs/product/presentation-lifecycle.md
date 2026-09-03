@@ -17,11 +17,12 @@ room identity, current state, roster, and one manual media-reconnect action.
 Controls and text must remain usable without overlap or horizontal overflow on
 desktop and mobile viewports.
 
-Screener Client opens this same application in the system Browser. Local and
-Site modes do not have a second desktop UI: Local loads localhost, while Site
-mode opens the selected origin in the Browser's existing profile. A reproduced
-Browser-window, capture, or background failure is required before introducing
-an embedded Web runtime.
+Screener Client opens this same application in the system Browser. Its small
+startup surface selects Local, temporary public invitation, or a configured
+Site before entering the Host workspace. Starting a share there offers the
+Browser picker and any exact Client-owned native windows. It never chooses a
+window automatically. A reproduced Browser-window, capture, or background
+failure is required before introducing an embedded Web runtime.
 
 ## Visual Language
 

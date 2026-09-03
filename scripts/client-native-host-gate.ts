@@ -17,6 +17,7 @@ import {
   createPage,
   evaluate,
   reservePort,
+  type PageHandle,
   waitForVersion,
   withDeadline,
 } from "./browser-gate-harness";
@@ -123,6 +124,29 @@ async function stopChild(child: ChildProcessWithoutNullStreams | ChildProcess | 
     }
   }
   return child.exitCode !== null || child.signalCode !== null;
+}
+
+async function selectNativeWindow(
+  cdp: CdpConnection,
+  page: PageHandle,
+  title: string,
+): Promise<void> {
+  await waitForValue(
+    (deadline) => evaluate<boolean>(
+      cdp,
+      page,
+      `([...document.querySelectorAll('button[data-native-window]')].some((button) => button.textContent?.includes(${JSON.stringify(title)})))`,
+      deadline,
+    ),
+    Boolean,
+    15_000,
+  );
+  await evaluate<void>(
+    cdp,
+    page,
+    `([...document.querySelectorAll('button[data-native-window]')].find((button) => button.textContent?.includes(${JSON.stringify(title)})))?.click()`,
+    Date.now() + 5_000,
+  );
 }
 
 function remoteOptions(): RemoteGateOptions {
@@ -526,7 +550,6 @@ async function main(): Promise<void> {
     stage = "client-start";
     client = spawn(clientBinary, [
       mode === "one-link" ? "--link" : "--local",
-      "--native",
       ...(mode === "one-link"
         ? ["--tunnel-process", tunnel]
         : []),
@@ -535,7 +558,6 @@ async function main(): Promise<void> {
       "--app", ROOT,
       "--config", clientConfig,
       "--port", String(appPort),
-      "--native-window-title", SOURCE_TITLE,
     ], {
       stdio: "pipe",
       windowsHide: true,
@@ -609,7 +631,7 @@ async function main(): Promise<void> {
     const host = await createPage(
       cdp,
       "http://localhost:" + appPort + "/#client-access=" + clientInfo.password +
-        "&screener-native=1&screener-native-window=" + encodeURIComponent(SOURCE_TITLE),
+        "&screener-client=1",
       undefined,
       true,
     );
@@ -630,6 +652,7 @@ async function main(): Promise<void> {
       "document.querySelector('button.lr-tv-big.is-action')?.click()",
       Date.now() + 5_000,
     );
+    await selectNativeWindow(cdp, host, SOURCE_TITLE);
     stage = "host-native-share";
     let hostState: { invite: string | null; native: boolean };
     try {
@@ -777,6 +800,7 @@ async function main(): Promise<void> {
         "document.querySelector('button.lr-tv-big.is-action')?.click()",
         Date.now() + 5_000,
       );
+      await selectNativeWindow(cdp, host, SOURCE_TITLE);
       await waitForValue(
         (deadline) => evaluate<boolean>(
           cdp!,

@@ -14,6 +14,7 @@ import (
 	"github.com/TNTcraftHIM/Screener/native/client/internal/browser"
 	"github.com/TNTcraftHIM/Screener/native/client/internal/clientconfig"
 	"github.com/TNTcraftHIM/Screener/native/client/internal/lan"
+	"github.com/TNTcraftHIM/Screener/native/client/internal/launcher"
 	"github.com/TNTcraftHIM/Screener/native/client/internal/loopback"
 	"github.com/TNTcraftHIM/Screener/native/client/internal/nativecapture"
 	"github.com/TNTcraftHIM/Screener/native/client/internal/nativecontrol"
@@ -29,22 +30,19 @@ const (
 var BuildRevision = "development"
 
 type Options struct {
-	Site               string
-	SiteSet            bool
-	Local              bool
-	Link               bool
-	NodePath           string
-	AppDirectory       string
-	ConfigPath         string
-	LANAddress         string
-	Port               int
-	DisableBrowser     bool
-	CaptureProcess     string
-	TunnelProcess      string
-	Native             bool
-	NativeWindowTitle  string
-	NativeAdapterIndex int
-	NativeEncoderIndex int
+	Site           string
+	SiteSet        bool
+	Local          bool
+	Link           bool
+	NodePath       string
+	AppDirectory   string
+	ConfigPath     string
+	LANAddress     string
+	Port           int
+	DisableBrowser bool
+	CaptureProcess string
+	TunnelProcess  string
+	Ready          func(string)
 }
 
 func Run(ctx context.Context, options Options) error {
@@ -72,14 +70,110 @@ func Run(ctx context.Context, options Options) error {
 			return errors.New("Screener Client configuration is unavailable")
 		}
 	}
-	nativeMedia, err := nativeRuntimeForOptions(ctx, options)
-	if err != nil {
-		return err
+	nativeMedia := discoverNativeMedia(ctx, options.CaptureProcess)
+	if !explicitMode(options) {
+		return runLauncher(ctx, options, configPath, config, nativeMedia)
 	}
-	if config.Site != "" && !options.Link {
+	return runConfigured(ctx, options, config, nativeMedia)
+}
+
+func explicitMode(options Options) bool {
+	return options.SiteSet || options.Local || options.Link || options.DisableBrowser
+}
+
+func runConfigured(
+	ctx context.Context,
+	options Options,
+	config clientconfig.Config,
+	nativeMedia nativeRuntime,
+) error {
+	if config.Site != "" && !options.Local && !options.Link {
 		return runSite(ctx, config.Site, options, nativeMedia)
 	}
 	return runLocal(ctx, options, config, nativeMedia)
+}
+
+func runLauncher(
+	ctx context.Context,
+	options Options,
+	configPath string,
+	config clientconfig.Config,
+	nativeMedia nativeRuntime,
+) error {
+	_, appDirectory, err := packagePaths(options.NodePath, options.AppDirectory)
+	if err != nil {
+		return err
+	}
+	launch, err := launcher.Start(
+		ctx,
+		filepath.Join(appDirectory, "dist", "client"),
+		config.Site,
+	)
+	if err != nil {
+		return err
+	}
+	defer launch.Close()
+	fmt.Printf("Screener Client launcher: %s\n", launch.URL())
+	if err = browser.Open(launch.URL()); err != nil {
+		return errors.New("Screener Client could not open its launcher")
+	}
+
+	var selection launcher.Selection
+	select {
+	case selection = <-launch.Selection():
+	case <-ctx.Done():
+		return nil
+	case err = <-launch.Done():
+		if err != nil {
+			return errors.New("Screener Client launcher stopped unexpectedly")
+		}
+		return nil
+	}
+	if selection.Mode == launcher.ModeSite {
+		config.Site = selection.Site
+	}
+	if err = clientconfig.Save(configPath, config); err != nil {
+		launch.SetResult("", err)
+		<-launch.Handled()
+		return errors.New("Screener Client configuration is unavailable")
+	}
+	options.SiteSet = false
+	options.Local = selection.Mode == launcher.ModeLocal
+	options.Link = selection.Mode == launcher.ModeLink
+	options.DisableBrowser = true
+	ready := make(chan string, 1)
+	options.Ready = func(target string) { ready <- target }
+	runtimeDone := make(chan error, 1)
+	go func() {
+		runtimeDone <- runConfigured(ctx, options, config, nativeMedia)
+	}()
+
+	select {
+	case target := <-ready:
+		launch.SetResult(target, nil)
+	case err = <-runtimeDone:
+		launch.SetResult("", err)
+		<-launch.Handled()
+		return err
+	case <-ctx.Done():
+		launch.SetResult("", ctx.Err())
+		return nil
+	}
+
+	select {
+	case <-launch.Handled():
+		_ = launch.Close()
+	case err = <-runtimeDone:
+		return err
+	case <-ctx.Done():
+		return nil
+	}
+	select {
+	case err = <-runtimeDone:
+		return err
+	case <-ctx.Done():
+		return nil
+	}
 }
 
 func applyMode(config clientconfig.Config, options Options) (clientconfig.Config, error) {
@@ -121,9 +215,11 @@ func runSite(ctx context.Context, site string, options Options,
 		return err
 	}
 	if !options.DisableBrowser {
-		if err = browser.Open(launchURL(site, options)); err != nil {
+		if err = browser.Open(clientLaunchURL(site)); err != nil {
 			return errors.New("Screener Client could not open the Site")
 		}
+	} else if options.Ready != nil {
+		options.Ready(clientLaunchURL(site))
 	}
 	if err = <-client.Done(); err != nil {
 		return errors.New("Screener Client stopped unexpectedly")
@@ -205,15 +301,17 @@ func runLocal(ctx context.Context, options Options, config clientconfig.Config,
 	} else {
 		fmt.Printf("LAN invitation origin: http://%s:%d\n", selectedAddress, options.Port)
 	}
+	launchURL := clientLaunchURL(fmt.Sprintf(
+		"http://localhost:%d/#client-access=%s",
+		options.Port,
+		config.LocalAccessPassword,
+	))
 	if !options.DisableBrowser {
-		launchURL := launchURL(fmt.Sprintf(
-			"http://localhost:%d/#client-access=%s",
-			options.Port,
-			config.LocalAccessPassword,
-		), options)
 		if err = browser.Open(launchURL); err != nil {
 			return errors.New("Screener Client could not open the Local page")
 		}
+	} else if options.Ready != nil {
+		options.Ready(launchURL)
 	}
 	var tunnelDone <-chan struct{}
 	if tunnel != nil {
@@ -238,10 +336,7 @@ func runLocal(ctx context.Context, options Options, config clientconfig.Config,
 	}
 }
 
-func launchURL(raw string, options Options) string {
-	if !options.Native {
-		return raw
-	}
+func clientLaunchURL(raw string) string {
 	parsed, err := url.Parse(raw)
 	if err != nil {
 		return raw
@@ -250,16 +345,7 @@ func launchURL(raw string, options Options) string {
 	if err != nil {
 		return raw
 	}
-	fragment.Set("screener-native", "1")
-	if value := strings.TrimSpace(options.NativeWindowTitle); value != "" {
-		fragment.Set("screener-native-window", value)
-	}
-	if options.NativeAdapterIndex >= 0 {
-		fragment.Set("screener-native-adapter", fmt.Sprint(options.NativeAdapterIndex))
-	}
-	if options.NativeEncoderIndex >= 0 {
-		fragment.Set("screener-native-encoder", fmt.Sprint(options.NativeEncoderIndex))
-	}
+	fragment.Set("screener-client", "1")
 	parsed.Fragment = fragment.Encode()
 	return parsed.String()
 }
@@ -284,17 +370,6 @@ func (runtime nativeRuntime) controlFactory(portMapping bool) func() loopback.Co
 	}
 }
 
-func nativeRuntimeForOptions(ctx context.Context, options Options) (nativeRuntime, error) {
-	if !options.Native {
-		return nativeRuntime{}, nil
-	}
-	runtime := discoverNativeMedia(ctx, options.CaptureProcess)
-	if !runtime.available() {
-		return nativeRuntime{}, errors.New("Screener Client native capture is unavailable")
-	}
-	return runtime, nil
-}
-
 func discoverNativeMedia(ctx context.Context, configuredPath string) nativeRuntime {
 	path := strings.TrimSpace(configuredPath)
 	if path == "" {
@@ -302,7 +377,6 @@ func discoverNativeMedia(ctx context.Context, configuredPath string) nativeRunti
 	}
 	capabilities, err := nativecapture.Discover(ctx, path)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "Screener Client native capture is unavailable")
 		return nativeRuntime{}
 	}
 	summary := capabilities.Summary()

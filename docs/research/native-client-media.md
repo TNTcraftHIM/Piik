@@ -66,7 +66,7 @@ requires Go 1.25; Client CI uses Go 1.26.6.
 
 The result does not yet prove live native quality-profile changes, macOS/Linux
 capture, or endurance. Native Host media is exposed only through the explicit
-Client `--native` launch; these other capabilities remain unavailable there.
+Client-launched Host selection; these other capabilities remain unavailable there.
 
 Native code does not publish directly to LiveKit. One local Pion edge gives the
 system Browser a remote `MediaStreamTrack`; WebRTC requires that remote track to

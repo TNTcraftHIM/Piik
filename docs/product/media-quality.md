@@ -10,6 +10,10 @@ adaptation decision.
 
 - The Web Host may share a display, application window, or Browser tab and may
   stop, synchronously pause/resume audio and video, or switch source.
+- A Client-launched Host explicitly chooses either that Browser capture path or
+  one native window enumerated by the packaged platform capture boundary. The
+  latter uses one available hardware H.264 path and never infers a target from
+  a title. An ordinary Web Host does not probe localhost.
 - Share and source-switch requests ask the Browser for available audio by
   default. Missing audio is reported clearly but does not block video-only
   sharing.

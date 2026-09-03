@@ -66,15 +66,17 @@ Hosted and Local deployments diverge without improving the media path.
    edge supplies Host preview and the existing Browser LiveKit publisher. It
    neither consumes route-copy capacity nor starts port mapping; an assigned SFU
    publication still consumes its existing route copy. Native code does not
-   implement LiveKit or another representation policy. Unless the user starts
-   the Client with explicit native media, health advertises no native capability
-   and no native control session exists. One-shot target choices travel only in
-   the URL fragment and are removed by the Browser bootstrap, never sent to the
-   configured Site.
-9. The Client currently uses the system Browser as its only UI. With no saved
-   Site it supervises the same TypeScript server in Local mode; with a saved
-   Site it opens that origin while retaining the loopback runtime. An embedded
-   shell requires a reproduced product failure and one comparative decision.
+   implement LiveKit or another representation policy. The Client discovers
+   packaged capture capability at startup. Its Host page offers the Browser's
+   standard picker and each exact Client-owned window; the user must select one
+   and the Client never guesses a target. Only a consumed Client-launch marker
+   travels in the URL fragment. Exact target identity travels over loopback.
+9. The Client uses the system Browser as its only UI. A lightweight loopback
+   launcher selects Local, one-link, or a saved Site before starting that
+   composition, then navigates into the same application. Command-line mode
+   selectors remain automation inputs rather than the normal interface. An
+   embedded shell requires a reproduced product failure and one comparative
+   decision.
 10. Local mode is one explicit server composition: static current assets,
     memory-only rooms, peer-assisted media, no SQLite, no SFU, no NAT prediction,
     and localhost plus current LAN IPv4 origins. It uses no STUN by default;
@@ -113,7 +115,9 @@ Windows gates prove loopback discovery, Local static startup, automatic Host
 access, LAN invitation construction, a three-Viewer Browser relay tree, two
 process-isolated hardware-H.264/Pion edges sharing one encoded source and
 decoded by Chrome, and bounded process cleanup. The native Host path uses the
-current Browser route and a remote Pion gate has received video over a direct
+current Browser route; its explicit in-page window picker also passes source
+end, same-room reselection, and restored Viewer delivery. A remote Pion gate has
+received video over a direct
 `srflx`-to-`srflx` pair. A Windows Browser gate also receives process-loopback
 Opus on both native edges. A separate remote gate proves that `--link` generates
 the ordinary public invitation and carries the unchanged Viewer page and

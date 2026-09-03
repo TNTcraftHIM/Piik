@@ -27,10 +27,6 @@ func main() {
 	flag.StringVar(&options.ConfigPath, "config", "", "path to the Client configuration file")
 	flag.StringVar(&options.LANAddress, "lan-address", "", "LAN IPv4 address used in Local invitations")
 	flag.IntVar(&options.Port, "port", clientapp.DefaultLocalPort, "Local Screener server port")
-	flag.BoolVar(&options.Native, "native", false, "use the Client's native capture and encoder")
-	flag.StringVar(&options.NativeWindowTitle, "native-window-title", "", "capture a window whose title contains this text")
-	flag.IntVar(&options.NativeAdapterIndex, "native-adapter-index", -1, "native hardware adapter index")
-	flag.IntVar(&options.NativeEncoderIndex, "native-encoder-index", -1, "native hardware encoder index")
 	flag.Parse()
 	options.DisableBrowser = os.Getenv("SCREENER_CLIENT_GATE_NO_BROWSER") == "true"
 

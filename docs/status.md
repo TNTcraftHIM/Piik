@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-09-03
+Last updated: 2026-09-04
 
 This is the current execution index. Git history owns completed timelines;
 [verification status](./verification-status.md) owns evidence boundaries.
@@ -121,8 +121,10 @@ This is the current execution index. Git history owns completed timelines;
   including bounded same-edge connection regeneration. Both default it on with a
   pre-share Host opt-out. Weighted/global optimization remains parked.
 - Source contains the cross-platform Client outside the current Web release.
-  One Go entry opens the system Browser, supervises the same Node application in
-  memory-only Local mode, and owns loopback native media. Windows gates prove
+  One Go entry opens a lightweight system-Browser launcher for Local, temporary
+  public-link, or Site operation, supervises the same Node application when
+  needed, and owns loopback native media. The same Host UI explicitly selects
+  Browser capture or an exact native window. Windows gates prove
   packaged Local/Site operation, WGC hardware-H.264 plus process audio, bounded
   shared-encode P2P, and cleanup. An explicit target assembler also produces a
   Linux amd64 package with proved Local/one-link runtime and a structurally

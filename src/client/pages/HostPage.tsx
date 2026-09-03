@@ -25,6 +25,10 @@ import {
 import { qualityLimitationSummary } from "../components/connection-details";
 import { AppHeader, LedStrip, type LedState } from "../components/living/Header";
 import { Couch, type CouchEntry } from "../components/living/Couch";
+import {
+  CaptureSourcePicker,
+  type NativeSourceList,
+} from "../components/living/CaptureSourcePicker";
 import { useMetricsExpanded } from "../components/living/Metrics";
 import { PawnDetail } from "../components/living/PawnDetail";
 import {
@@ -85,7 +89,6 @@ import {
   getStableClientId,
   type HostRoomIdentity,
   type HostRoomState,
-  type NativeLaunchOptions,
   mergeAuthenticatedHostRoom,
   readHostRoom,
   readPreferredRoomId,
@@ -149,9 +152,10 @@ import { NativeClient } from "../native/client";
 import { NativeHostPeer } from "../native/native-host-peer";
 import { NativeMediaBridge } from "../native/media-bridge";
 import {
-  selectNativeCaptureAdapter,
-  selectNativeWindowTarget,
+  defaultNativeCapturePath,
+  type NativeCapturePath,
 } from "../native/capture-selection";
+import type { NativeWindowTarget } from "../native/wire";
 import {
   MAX_ENDPOINT_MEDIA_CHILDREN,
   reconcileBoundedMediaChildren,
@@ -380,20 +384,22 @@ function hostTerminationKey(reason: SignalingTerminationReason): CopyKey {
 
 interface HostPageProps {
   natPredictionAvailable?: boolean;
-  nativeLaunch?: NativeLaunchOptions;
+  launchedByClient?: boolean;
   onAuthorizationRequired?: () => void;
 }
 
-const NO_NATIVE_LAUNCH: NativeLaunchOptions = {
-  requested: false,
-  windowTitle: null,
-  adapterIndex: null,
-  encoderIndex: null,
-};
+type ShareSourceSelection =
+  | { kind: "browser" }
+  | {
+      kind: "native";
+      client: NativeClient;
+      target: NativeWindowTarget;
+      path: NativeCapturePath;
+    };
 
 export function HostPage({
   natPredictionAvailable = false,
-  nativeLaunch = NO_NATIVE_LAUNCH,
+  launchedByClient = false,
   onAuthorizationRequired,
 }: HostPageProps = {}) {
   const { lang, vis, t, titleFrames } = useCopy();
@@ -419,6 +425,8 @@ export function HostPage({
     useState<SignalConnectionState>("offline");
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [nativeActive, setNativeActive] = useState(false);
+  const [nativeSources, setNativeSources] =
+    useState<NativeSourceList | null>(null);
   const [details, setDetails] = useState<CaptureDetails | null>(null);
   const [room, setRoom] = useState<HostRoomState | null>(() =>
     hostRoomFromStored(readHostRoom()),
@@ -556,6 +564,9 @@ export function HostPage({
   const nativeMediaBridgeRef = useRef<NativeMediaBridge | null>(null);
   const nativeEventCleanupRef = useRef<(() => void) | null>(null);
   const nativeModeRef = useRef(false);
+  const nativeSourceRequestRef = useRef<object | null>(null);
+  const nativeSourceClientRef = useRef<NativeClient | null>(null);
+  const nativeSourcePathRef = useRef<NativeCapturePath | null>(null);
 
   const mediaViewers = useMemo(
     () => Array.from(peerSnapshots.values()),
@@ -670,6 +681,10 @@ export function HostPage({
       void hostSfuRouteRef.current?.disconnect();
       hostSfuRouteRef.current = null;
       sfuStandbyPrewarmerRef.current?.dispose();
+      nativeSourceRequestRef.current = null;
+      nativeSourceClientRef.current?.close();
+      nativeSourceClientRef.current = null;
+      nativeSourcePathRef.current = null;
       disposeNativeShare();
       streamRef.current?.getTracks().forEach((track) => track.stop());
       retiringStreamRef.current?.getTracks().forEach((track) => track.stop());
@@ -1164,44 +1179,15 @@ export function HostPage({
   async function startNativeShare(
     generation: number,
     shareGeneration: string,
+    selection: Extract<ShareSourceSelection, { kind: "native" }>,
   ): Promise<MediaStream | null> {
-    if (!nativeLaunch.requested) {
-      return null;
-    }
-    const client = await NativeClient.connect();
-    if (!client) {
-      throw new Error("Screener Client is not available");
-    }
+    const { client, target, path } = selection;
     try {
-      if (
-        !client.health.nativeMedia.windowVideo ||
-        !client.health.nativeMedia.hardwareH264
-      ) {
-        throw new Error("Screener Client has no native H.264 capture");
-      }
-      const adapters = await client.captureOptions();
-      const adapter = selectNativeCaptureAdapter(
-        adapters,
-        nativeLaunch.adapterIndex,
-      );
-      const encoder = adapter?.hardwareH264.find(
-        (candidate) =>
-          nativeLaunch.encoderIndex === null ||
-          candidate.index === nativeLaunch.encoderIndex,
-      );
-      if (!adapter || !encoder) {
-        throw new Error("Screener Client has no usable H.264 encoder");
-      }
-      const windows = await client.windows();
-      const target = selectNativeWindowTarget(windows, nativeLaunch.windowTitle);
-      if (!target) {
-        throw new Error("Screener Client needs one matching capture window");
-      }
       await client.startShare({
         shareId: shareGeneration,
         window: target,
-        adapterIndex: adapter.index,
-        encoderIndex: encoder.index,
+        adapterIndex: path.adapterIndex,
+        encoderIndex: path.encoderIndex,
         edgeCapacity: MAX_ENDPOINT_MEDIA_CHILDREN,
       });
       const bridge = new NativeMediaBridge(
@@ -1244,6 +1230,88 @@ export function HostPage({
       client.close();
       throw error;
     }
+  }
+
+  function closeCaptureSourcePicker(): void {
+    nativeSourceRequestRef.current = null;
+    nativeSourceClientRef.current?.close();
+    nativeSourceClientRef.current = null;
+    nativeSourcePathRef.current = null;
+    setNativeSources(null);
+  }
+
+  async function openCaptureSourcePicker(): Promise<void> {
+    const request = {};
+    nativeSourceRequestRef.current = request;
+    nativeSourceClientRef.current?.close();
+    nativeSourceClientRef.current = null;
+    nativeSourcePathRef.current = null;
+    setNativeSources({ kind: "loading" });
+
+    const client = await NativeClient.connect();
+    if (nativeSourceRequestRef.current !== request) {
+      client?.close();
+      return;
+    }
+    if (
+      !client ||
+      !client.health.nativeMedia.windowVideo ||
+      !client.health.nativeMedia.hardwareH264
+    ) {
+      client?.close();
+      setNativeSources({ kind: "unavailable" });
+      return;
+    }
+    try {
+      const [adapters, windows] = await Promise.all([
+        client.captureOptions(),
+        client.windows(),
+      ]);
+      const path = defaultNativeCapturePath(adapters);
+      if (nativeSourceRequestRef.current !== request) {
+        client.close();
+        return;
+      }
+      if (!path) {
+        client.close();
+        setNativeSources({ kind: "unavailable" });
+        return;
+      }
+      nativeSourceClientRef.current = client;
+      nativeSourcePathRef.current = path;
+      setNativeSources({ kind: "ready", windows });
+    } catch {
+      client.close();
+      if (nativeSourceRequestRef.current === request) {
+        setNativeSources({ kind: "unavailable" });
+      }
+    }
+  }
+
+  function requestSharing(): void {
+    setJoiningRoom(false);
+    if (!launchedByClient) {
+      void startSharing({ kind: "browser" });
+      return;
+    }
+    void openCaptureSourcePicker();
+  }
+
+  function startBrowserShareFromPicker(): void {
+    closeCaptureSourcePicker();
+    void startSharing({ kind: "browser" });
+  }
+
+  function startNativeShareFromPicker(target: NativeWindowTarget): void {
+    if (nativeSources?.kind !== "ready") return;
+    const client = nativeSourceClientRef.current;
+    const path = nativeSourcePathRef.current;
+    if (!client || !path) return;
+    nativeSourceRequestRef.current = null;
+    nativeSourceClientRef.current = null;
+    nativeSourcePathRef.current = null;
+    setNativeSources(null);
+    void startSharing({ kind: "native", client, target, path });
   }
 
   function disposeNativeShare(): void {
@@ -2117,7 +2185,7 @@ export function HostPage({
     }
   }
 
-  async function startSharing(): Promise<void> {
+  async function startSharing(selection: ShareSourceSelection): Promise<void> {
     if (
       phase === "starting" ||
       phase === "live" ||
@@ -2143,11 +2211,14 @@ export function HostPage({
     let captured: MediaStream | null = null;
     let nativeStarted = false;
     try {
-      if (nativeLaunch.requested) {
-        captured = await startNativeShare(generation, shareGeneration);
-        nativeStarted = captured !== null;
-      }
-      if (!nativeStarted) {
+      if (selection.kind === "native") {
+        captured = await startNativeShare(
+          generation,
+          shareGeneration,
+          selection,
+        );
+        nativeStarted = true;
+      } else {
         // This must remain the first awaited operation in the button gesture.
         captured = await captureDisplay(qualitySettingsRef.current);
       }
@@ -2987,8 +3058,15 @@ export function HostPage({
                 <VisGlyph name="cast" size={42} draw="native-live" />
               </div>
             ) : null}
-            {!stream &&
-            (phase === "idle" || phase === "ended" || phase === "error") ? (
+            {!stream && nativeSources ? (
+              <CaptureSourcePicker
+                nativeSources={nativeSources}
+                onBrowser={startBrowserShareFromPicker}
+                onNative={startNativeShareFromPicker}
+                onCancel={closeCaptureSourcePicker}
+              />
+            ) : !stream &&
+              (phase === "idle" || phase === "ended" || phase === "error") ? (
               <div className="lr-tv-overlay">
                 {vis ? null : (
                   <div className="lr-entry-text">
@@ -3009,10 +3087,7 @@ export function HostPage({
                         title={vis ? undefined : t("host.start")}
                         aria-label={t("host.start")}
                         disabled={roomMutating}
-                        onClick={() => {
-                          setJoiningRoom(false);
-                          void startSharing();
-                        }}
+                        onClick={requestSharing}
                       >
                         <VisGlyph name="cast" size={34} draw="entry-cast" />
                       </button>,

@@ -1,24 +1,22 @@
 import type { NativeAdapter, NativeWindowTarget } from "./wire";
 
-export function selectNativeCaptureAdapter(
-  adapters: NativeAdapter[],
-  requestedIndex: number | null,
-): NativeAdapter | null {
-  return (
-    (requestedIndex === null
-      ? adapters.find((candidate) => candidate.hardwareH264.length > 0)
-      : adapters.find((candidate) => candidate.index === requestedIndex)) ?? null
-  );
+export interface NativeCapturePath {
+  adapterIndex: number;
+  encoderIndex: number;
 }
 
-export function selectNativeWindowTarget(
-  windows: NativeWindowTarget[],
-  requestedTitle: string | null,
-): NativeWindowTarget | null {
-  const candidates = requestedTitle
-    ? windows.filter((candidate) => candidate.title.includes(requestedTitle))
-    : windows.filter(
-        (candidate) => !candidate.title.toLowerCase().includes("screener"),
-      );
-  return candidates.length === 1 ? candidates[0]! : null;
+export function defaultNativeCapturePath(
+  adapters: NativeAdapter[],
+): NativeCapturePath | null {
+  for (const adapter of adapters) {
+    const encoder = adapter.hardwareH264[0];
+    if (encoder) {
+      return { adapterIndex: adapter.index, encoderIndex: encoder.index };
+    }
+  }
+  return null;
+}
+
+export function nativeWindowKey(target: NativeWindowTarget): string {
+  return `${target.windowHandle}:${target.pid}:${target.creationTime}`;
 }

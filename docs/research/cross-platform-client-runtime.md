@@ -88,7 +88,9 @@ public STUN and remains P2P-only.
 ## UI Runtime Boundary
 
 The current Client opens the system Browser rather than embedding another Web
-runtime. This keeps the existing UI, Site cookies, WebRTC behavior, Browser
+runtime. A lightweight launcher chooses the authority mode, then navigates to
+the same Host page, where a Client-launched Host can select an exact native
+window. This keeps the existing UI, Site cookies, WebRTC behavior, Browser
 updates, and permission model intact. Syncthing and Sunshine establish this as a
 practical native-process plus Browser-UI deployment shape.
 
@@ -167,6 +169,11 @@ deployment no longer erases valid native RTCStats.
 - [Cloudflare Tunnel WebSockets](https://developers.cloudflare.com/cloudflare-one/faq/cloudflare-tunnels-faq/)
 - [cloudflared releases](https://github.com/cloudflare/cloudflared/releases/tag/2026.8.3)
 - [RFC 6455](https://www.rfc-editor.org/rfc/rfc6455.html)
+- [W3C Screen Capture](https://www.w3.org/TR/screen-capture/)
+- [Microsoft Windows Graphics Capture](https://learn.microsoft.com/en-us/windows/apps/develop/media-authoring-processing/screen-capture)
+- [Apple SCContentSharingPicker](https://developer.apple.com/documentation/screencapturekit/sccontentsharingpicker)
+- [XDG ScreenCast portal](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.ScreenCast.html)
+- [OBS window-capture source](https://github.com/obsproject/obs-studio/blob/master/plugins/win-capture/window-capture.c)
 - [Chrome Local Network Access](https://developer.chrome.com/blog/local-network-access)
 - [Discord RPC](https://docs.discord.com/developers/topics/rpc)
 - [OBS WebSocket](https://github.com/obsproject/obs-websocket/blob/master/docs/generated/protocol.md)

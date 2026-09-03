@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  selectNativeCaptureAdapter,
-  selectNativeWindowTarget,
+  defaultNativeCapturePath,
+  nativeWindowKey,
 } from "../src/client/native/capture-selection";
 import type {
   NativeAdapter,
@@ -20,21 +20,12 @@ function target(title: string, windowHandle: string): NativeWindowTarget {
 
 describe("native capture window selection", () => {
   const game = target("My Game", "1");
-  const chat = target("Friends", "2");
-  const screener = target("Screener", "3");
 
-  it("accepts only one unambiguous eligible window", () => {
-    expect(selectNativeWindowTarget([screener, game], null)).toBe(game);
-    expect(selectNativeWindowTarget([screener], null)).toBeNull();
-    expect(selectNativeWindowTarget([game, chat], null)).toBeNull();
-  });
-
-  it("requires a requested title to resolve to exactly one window", () => {
-    expect(selectNativeWindowTarget([game, chat], "My Game")).toBe(game);
-    expect(selectNativeWindowTarget([game, chat], "Missing")).toBeNull();
+  it("uses the complete window identity as the UI key", () => {
+    expect(nativeWindowKey(game)).toBe("1:10:123456");
     expect(
-      selectNativeWindowTarget([game, target("My Game - Settings", "4")], "My Game"),
-    ).toBeNull();
+      nativeWindowKey({ ...game, creationTime: "654321" }),
+    ).not.toBe(nativeWindowKey(game));
   });
 });
 
@@ -49,9 +40,11 @@ describe("native adapter selection", () => {
     },
   ];
 
-  it("defaults only when no adapter was requested", () => {
-    expect(selectNativeCaptureAdapter(adapters, null)).toBe(adapters[1]);
-    expect(selectNativeCaptureAdapter(adapters, 0)).toBe(adapters[0]);
-    expect(selectNativeCaptureAdapter(adapters, 2)).toBeNull();
+  it("selects the first complete hardware path for UI capture", () => {
+    expect(defaultNativeCapturePath(adapters)).toEqual({
+      adapterIndex: 1,
+      encoderIndex: 0,
+    });
+    expect(defaultNativeCapturePath([adapters[0]!])).toBeNull();
   });
 });

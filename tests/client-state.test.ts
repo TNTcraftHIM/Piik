@@ -731,6 +731,8 @@ describe("room codes", () => {
   });
 
   it("classifies routes without normalizing malformed room input", () => {
+    expect(parseAppRoute("/client")).toEqual({ kind: "client" });
+    expect(parseAppRoute("/client/")).toEqual({ kind: "client" });
     expect(parseAppRoute("/")).toEqual({ kind: "host" });
     expect(parseAppRoute("/join")).toEqual({ kind: "join" });
     expect(parseAppRoute("/join/")).toEqual({ kind: "join" });
@@ -770,7 +772,7 @@ describe("room codes", () => {
 
     expect(takeClientLaunchBootstrap()).toMatchObject({
       accessToken: "a".repeat(32),
-      native: { requested: false },
+      launchedByClient: false,
     });
     expect(replaceState).toHaveBeenCalledWith(
       { current: true },
@@ -790,11 +792,11 @@ describe("room codes", () => {
     expect(replaceState).toHaveBeenCalledWith(null, "", "/");
   });
 
-  it("consumes native Client choices from a server-private fragment", () => {
+  it("consumes the Client launch marker from a server-private fragment", () => {
     const replaceState = vi.fn();
     vi.stubGlobal("window", {
       location: {
-        hash: `#client-access=${"a".repeat(32)}&screener-native=1&screener-native-window=My+Game&screener-native-adapter=2&screener-native-encoder=1&retained=yes`,
+        hash: `#client-access=${"a".repeat(32)}&screener-client=1&retained=yes`,
         pathname: "/",
         search: "?room=6020",
       },
@@ -803,12 +805,7 @@ describe("room codes", () => {
 
     expect(takeClientLaunchBootstrap()).toEqual({
       accessToken: "a".repeat(32),
-      native: {
-        requested: true,
-        windowTitle: "My Game",
-        adapterIndex: 2,
-        encoderIndex: 1,
-      },
+      launchedByClient: true,
     });
     expect(replaceState).toHaveBeenCalledWith(
       null,
