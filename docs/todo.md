@@ -10,10 +10,10 @@ topics are not implementation authority.
 1. **Native Client media boundary.** Windows native Host video now runs through
    the current Browser-owned room and route contract. Local Client startup,
    hardware-H.264 capture, bounded Pion fanout, and a remote `srflx`-to-`srflx`
-   video gate now pass. Process-loopback audio is wired to the same
-   PeerConnection with a video-only fallback; finish this boundary with a
-   physical audio gate, native SFU behavior, native quality evidence, teardown
-   under failure, and a clean packaged Site run. No-Site Internet mode still
+   video gate now pass. Process-loopback audio passes the Windows Browser gate
+   on the same PeerConnection with a video-only fallback; finish this boundary
+   with native SFU behavior, native quality evidence, teardown under failure,
+   and a clean packaged Site run. No-Site Internet mode still
    needs a lightweight rendezvous owner; the Client's built-in public mode uses
    the official Site, while STUN still cannot replace signaling or an SFU/TURN
    fallback.
@@ -79,9 +79,9 @@ topics are not implementation authority.
 10. **Public-server package.** Package the exact Web/signaling, STUN/SFU, proxy,
    secrets, health, and recovery contract for a user-owned server.
 11. **Native media completion.** Extend the proven Windows native Host video
-    boundary with a physical process-audio gate, native SFU behavior, native
-    categorical quality evidence, and failure/endurance coverage. Preserve
-    Browser/server authority; do not create a second room or media policy.
+    and process-audio boundary with native SFU behavior, native categorical
+    quality evidence, and failure/endurance coverage. Preserve Browser/server
+    authority; do not create a second room or media policy.
 12. **Platform output.** System/tab mirroring needs no product adapter, while
     Remote Playback, default Cast and AirPlay do not provide a portable live
     `MediaStream` output contract. Reopen only for a registered custom receiver

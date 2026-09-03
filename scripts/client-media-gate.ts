@@ -58,6 +58,9 @@ interface MediaEvidence {
   connectedEdges: number;
   frames: number;
   edgeFrames: number[];
+  audioPackets: number;
+  edgeAudioPackets: number[];
+  audioAvailable: boolean;
   width: number;
   height: number;
   localType: string | null;
@@ -230,12 +233,17 @@ async function browserMediaGate(input: {
 }): Promise<MediaEvidence> {
   let socket: WebSocket | null = null;
   const peers: RTCPeerConnection[] = [];
+  let audioContext: AudioContext | null = null;
+  let audioOscillator: OscillatorNode | null = null;
   const result: MediaEvidence = {
     captureActive: false,
     connected: false,
     connectedEdges: 0,
     frames: 0,
     edgeFrames: [],
+    audioPackets: 0,
+    edgeAudioPackets: [],
+    audioAvailable: false,
     width: 0,
     height: 0,
     localType: null,
@@ -258,6 +266,7 @@ async function browserMediaGate(input: {
     ) {
       throw new Error("Native Client health is not ready");
     }
+    result.audioAvailable = health.nativeMedia.processAudio === true;
 
     socket = new WebSocket(
       "ws://127.0.0.1:" + input.endpoint.port + "/control",
@@ -370,17 +379,38 @@ async function browserMediaGate(input: {
 
     const shareId = "share_gate_0001";
     const connectionId = "edge_gate_0001";
-    await request("start-share", {
+    const started = await request("start-share", {
       shareId,
       window: target,
       adapterIndex: adapter.index,
       encoderIndex: encoder.index,
       edgeCapacity: 2,
     });
+    if (started.shareId !== shareId || started.audio !== result.audioAvailable) {
+      throw new Error("Native share audio capability was not reported consistently");
+    }
+
+    if (result.audioAvailable) {
+      try {
+        audioContext = new AudioContext();
+        await audioContext.resume();
+        const gain = audioContext.createGain();
+        gain.gain.value = 0.01;
+        audioOscillator = audioContext.createOscillator();
+        audioOscillator.frequency.value = 440;
+        audioOscillator.connect(gain).connect(audioContext.destination);
+        audioOscillator.start();
+      } catch {
+        throw new Error("Browser could not create the audio gate source");
+      }
+    }
 
     const connectEdge = async (nextConnectionId: string) => {
       const peer = new RTCPeerConnection();
       peers.push(peer);
+      if (result.audioAvailable) {
+        peer.addTransceiver("audio", { direction: "recvonly" });
+      }
       const video = document.createElement("video");
       video.autoplay = true;
       video.muted = true;
@@ -395,8 +425,10 @@ async function browserMediaGate(input: {
       };
       edges.set(nextConnectionId, edge);
       peer.ontrack = (event) => {
-        video.srcObject = event.streams[0] ?? new MediaStream([event.track]);
-        void video.play();
+        if (event.track.kind === "video") {
+          video.srcObject = event.streams[0] ?? new MediaStream([event.track]);
+          void video.play();
+        }
       };
       peer.onicecandidate = (event) => {
         void request("edge-candidate", {
@@ -439,6 +471,20 @@ async function browserMediaGate(input: {
         (edge) => edge.video.getVideoPlaybackQuality().totalVideoFrames,
       );
       result.frames = Math.min(...result.edgeFrames);
+      result.edgeAudioPackets = [];
+      for (const edge of edges.values()) {
+        let packets = 0;
+        for (const [, report] of await edge.peer.getStats()) {
+          if (report.type === "inbound-rtp" &&
+              (report.kind === "audio" || report.mediaType === "audio")) {
+            packets = Math.max(packets, Number(report.packetsReceived) || 0);
+          }
+        }
+        result.edgeAudioPackets.push(packets);
+      }
+      result.audioPackets = result.edgeAudioPackets.length > 0
+        ? Math.min(...result.edgeAudioPackets)
+        : 0;
       const videos = [...edges.values()].map((edge) => edge.video);
       result.width = videos.every((video) => video.videoWidth === 1280) ? 1280 : 0;
       result.height = videos.every((video) => video.videoHeight === 720) ? 720 : 0;
@@ -446,6 +492,7 @@ async function browserMediaGate(input: {
         result.captureActive &&
         result.connected &&
         result.frames >= 30 &&
+        (!result.audioAvailable || result.audioPackets > 10) &&
         result.width === 1280 &&
         result.height === 720 &&
         result.nativeCandidateTypes.includes("srflx")
@@ -458,6 +505,7 @@ async function browserMediaGate(input: {
       !result.captureActive ||
       !result.connected ||
       result.frames < 30 ||
+      (result.audioAvailable && result.audioPackets <= 10) ||
       result.width !== 1280 ||
       result.height !== 720 ||
       !result.nativeCandidateTypes.includes("srflx")
@@ -467,6 +515,8 @@ async function browserMediaGate(input: {
   } catch (error) {
     result.error = error instanceof Error ? error.message : String(error);
   } finally {
+    audioOscillator?.stop();
+    await audioContext?.close().catch(() => undefined);
     for (const peer of peers) peer.close();
     socket?.close(1000, "gate complete");
   }
@@ -517,6 +567,9 @@ async function main(): Promise<void> {
     remoteType: null,
     nativeCandidateTypes: [],
     error: "not run",
+    audioPackets: 0,
+    edgeAudioPackets: [],
+    audioAvailable: false,
   };
   let error: string | null = null;
   let cleanup = {
@@ -651,6 +704,7 @@ async function main(): Promise<void> {
     evidence.frames >= 30 && evidence.recoveryFrame && media.error === null &&
     media.captureActive && media.connected && media.frames >= 30 &&
     media.connectedEdges === 2 && media.edgeFrames.length === 2 &&
+    (!media.audioAvailable || media.audioPackets > 10) &&
     media.width === 1280 && media.height === 720 &&
     media.nativeCandidateTypes.includes("srflx") &&
     cleanup.browserExited && cleanup.nativeExited && cleanup.serverClosed &&

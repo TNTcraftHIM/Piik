@@ -11,9 +11,8 @@ configured Site through the system Browser. Its Go entry supervises Local Node
 and owns the explicit native Host media path. The Client can select the official
 Site without a typed origin for public signaling, while Local remains a
 serverless-LAN mode. Windows capture, hardware H.264, and a direct cross-NAT
-video gate are proven; native process audio is wired behind the same media edge
-but awaits a physical gate, while native SFU, other platforms, and broader
-package acceptance remain later gates.
+video and Windows process-audio gates are proven through the same media edge;
+native SFU, other platforms, and broader package acceptance remain later gates.
 
 ## Product Map
 

@@ -1,6 +1,6 @@
 # ADR-0010: Cross-Platform Client Runtime
 
-- Status: accepted Client/Local foundation and Windows native Host video boundary
+- Status: accepted Client/Local foundation and Windows native Host media boundary
 - Date: 2026-09-03
 
 ## Context
@@ -49,7 +49,8 @@ Hosted and Local deployments diverge without improving the media path.
    composition.
 8. Native media is selected for an entire Host share generation. One isolated
    platform capture feeds one encoded source and bounded independent Pion
-   transports. Native quality evidence must either map real encoder/transport
+   transports, with process-loopback audio sharing the same PeerConnection when
+   available. Native quality evidence must either map real encoder/transport
    observations into the existing categorical contract or remain ineligible for
    quality convergence. It does not introduce a custom score.
 9. The Client currently uses the system Browser as its only UI. With no saved
@@ -86,9 +87,11 @@ Windows gates prove loopback discovery, Local static startup, automatic Host
 access, LAN invitation construction, a three-Viewer Browser relay tree, two
 process-isolated hardware-H.264/Pion edges sharing one encoded source and
 decoded by Chrome, and bounded process cleanup. The native Host path now uses
-the current Browser route and a remote Pion gate has received video over a
-direct `srflx`-to-`srflx` pair. Native audio/SFU/quality evidence, other
-platform capture, and no-Site Internet rendezvous remain separate gates.
+  the current Browser route and a remote Pion gate has received video over a
+  direct `srflx`-to-`srflx` pair. A Windows Browser gate also receives
+  process-loopback Opus on both native edges. Native SFU/quality evidence,
+  other platform capture, and no-Site Internet rendezvous remain separate
+  gates.
 
 ## Primary Sources
 

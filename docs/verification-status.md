@@ -92,9 +92,10 @@ firewall, and process-lifecycle tests. Windows native capture, hardware H.264,
 one shared Pion source feeding two Chrome transports, STUN candidate gathering,
 and a Local Client Host path have bounded physical gates. A remote Pion gate
 also received 30 video packets over a selected `srflx`-to-`srflx` pair; its
-signaling used a temporary reverse SSH test path. Native audio, native SFU
-publication, native quality evidence, and production package integration
-remain unproved.
+signaling used a temporary reverse SSH test path. The Windows media gate now
+also receives process-loopback Opus on both native edges (66 packets per edge
+in the 2026-09-03 run). Native SFU publication, native quality evidence, and
+production package integration remain unproved.
 
 ## Interpretation Rules
 

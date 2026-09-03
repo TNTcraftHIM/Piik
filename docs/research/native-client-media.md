@@ -3,9 +3,8 @@
 - Reviewed: 2026-09-03
 - Scope: Windows capture, one shared H.264/Opus source, Pion transport, Browser
   decode
-- Status: native Host and cross-NAT video gates passed; native audio is wired and
-  unit/build verified, while physical audio, SFU, quality evidence, and other
-  platform media remain outside the boundary
+- Status: native Host, cross-NAT video, and Windows process-audio gates passed;
+  SFU, quality evidence, and other platform media remain outside the boundary
 
 ## Result
 
@@ -30,7 +29,9 @@ The opt-in `gate:client-media` run proved, in order:
 - two Pion ICE/DTLS/SRTP edges each delivered 30+ decoded 1280x720 frames
   to Chrome from that one encoded source;
 - the self-hosted STUN endpoint produced ordinary `host` and `srflx`
-  candidates; and
+  candidates;
+- process-loopback audio produced Opus RTP on both native edges (66 packets per
+  edge in the bounded run;
 - Client, capture, Browser, ports, and the isolated profile all closed.
 
 Unit coverage separately enforces the supplied edge capacity, forwards PLI/FIR
@@ -49,10 +50,10 @@ requires Go 1.25; Client CI uses Go 1.26.6.
 
 ## Current Boundary
 
-The result does not yet prove physical process-audio delivery, native SFU
-publication, live quality-profile changes, native quality evidence, macOS/Linux
-capture, or endurance. Native Host media is exposed only through the explicit
-Client `--native` launch; these other capabilities remain unavailable there.
+The result does not yet prove native SFU publication, live quality-profile
+changes, native quality evidence, macOS/Linux capture, or endurance. Native Host
+media is exposed only through the explicit Client `--native` launch; these other
+capabilities remain unavailable there.
 
 No-Site Internet use still needs a lightweight rendezvous service. Public STUN
 is an optional address-discovery dependency; its operator sees endpoint
@@ -86,6 +87,7 @@ compatibility inputs. Historical measurements remain in the separately marked
 - [Media Foundation hardware MFTs](https://learn.microsoft.com/en-us/windows/win32/medfound/hardware-mfts)
 - [Pion WebRTC](https://github.com/pion/webrtc)
 - [Pion single-port ICE](https://github.com/pion/webrtc/tree/master/examples/ice-single-port)
+- [gopus pure-Go Opus codec](https://github.com/thesyncim/gopus)
 - [Tailscale port mapper](https://github.com/tailscale/tailscale/tree/main/net/portmapper)
 - [libp2p NAT port mapping](https://github.com/libp2p/go-libp2p/blob/master/options.go)
 - [WebRTC signaling and ICE](https://webrtc.org/getting-started/peer-connections)

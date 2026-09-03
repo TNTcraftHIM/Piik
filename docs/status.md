@@ -130,9 +130,9 @@ This is the current execution index. Git history owns completed timelines;
   Host-plus-three-Viewer relay tree, Site LNA behavior, and complete cleanup.
   The native Host gate additionally proves process-isolated WGC/hardware H.264,
   one shared Pion source feeding two Chrome transports, PLI recovery, and a
-  remote `srflx`-to-`srflx` video path. Native process audio is wired through
-  the same PeerConnection when the Windows capability probe permits it, but its
-  physical gate, native SFU, cross-platform capture, and package acceptance
+  remote `srflx`-to-`srflx` video path. Native process audio passes the bounded
+  Windows Browser gate through the same PeerConnection when the capability
+  probe permits it. Native SFU, cross-platform capture, and package acceptance
   remain outside the release. `--public` selects the
   official Site without a typed origin; `--local` remains the no-central-service
   LAN mode.

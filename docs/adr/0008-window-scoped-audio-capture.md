@@ -1,6 +1,6 @@
 # ADR-0008: Browser Screen-Audio Scope
 
-- Status: accepted for Browser capture; Native process audio remains research
+- Status: accepted for Browser capture and the Windows Client process-audio path
 - Date: 2026-08-21
 - Last updated: 2026-08-27
 
@@ -32,9 +32,10 @@ Browser product and the native Client video boundary.
    native media element.
 5. Do not describe generic Browser system audio as application-isolated. UI and
    documentation must leave source scope to the Browser's actual result.
-6. Windows process-tree audio remains Native research. WGC/MF video and the
-   Client media boundary are owned by [ADR-0010](./0010-cross-platform-client-runtime.md);
-   measurements are in [Native Client media](../research/native-client-media.md).
+6. Windows process-tree audio is a Client capability when the platform probe and
+   physical gate pass. WGC/MF video and the Client media boundary are owned by
+   [ADR-0010](./0010-cross-platform-client-runtime.md); measurements are in
+   [Native Client media](../research/native-client-media.md).
 
 ## Consequences
 
@@ -48,7 +49,8 @@ Negative:
 
 - Browser/system combinations remain inconsistent;
 - Web cannot promise per-process isolation; and
-- strict application-audio capture requires a later native product decision.
+- other platform application-audio capture requires separate native platform
+  gates.
 
 ## Primary Sources
 
