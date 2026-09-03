@@ -119,7 +119,10 @@ the selected process/window generation, receives change-driven
 `CMSampleBuffer`s, and requires VideoToolbox constrained-baseline hardware H.264.
 It retains one latest pixel buffer so an existing PLI/FIR can encode a fresh IDR
 even while the screen is unchanged; capture timestamps drive the shared Pion RTP
-clock. This source still requires compilation and execution on a macOS runner.
+clock. A GitHub `macos-15` arm64 runner compiled the sidecar, created the same
+hardware-only encoder, and encoded an in-memory 420v frame into a validated
+`42c01f` SPS/PPS/IDR. ScreenCaptureKit permission, real capture, static-frame
+recovery, and endurance still require a physical Mac.
 
 Linux native capture remains no-go for the current stage. The XDG ScreenCast
 Portal owns a user-selected session and restricted PipeWire file descriptor, not

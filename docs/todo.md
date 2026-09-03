@@ -19,8 +19,9 @@ topics are not implementation authority.
    Capture-source failure now has a physical end/restart gate through the same
    room and Viewer. Clean-revision Windows and Linux packages pass their Local
    runtime gates; Linux also passes one-link startup and shutdown. The macOS
-   arm64 package is assembled; compile and physically run its ScreenCaptureKit/
-   VideoToolbox sidecar on macOS. Linux retains Browser capture. Reopen a
+   arm64 sidecar passes hosted compilation and a synthetic VideoToolbox hardware-
+   H.264 IDR gate; physically run ScreenCaptureKit capture and recovery on macOS.
+   Linux retains Browser capture. Reopen a
    Wayland-only Portal/PipeWire sidecar only with a real desktop/GPU gate and a
    decision to reuse system GStreamer without bundling it; do not add a second
    RTC, X11 capture stack, or hand-built DMA-BUF/encoder matrix.

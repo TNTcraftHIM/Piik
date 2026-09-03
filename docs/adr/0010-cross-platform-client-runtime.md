@@ -114,7 +114,13 @@ the ordinary public invitation and carries the unchanged Viewer page and
 WebSocket control path, then disappears when the Client exits. An isolated
 LiveKit gate also proves native capture through the loopback Browser bridge and
 the existing SFU publisher to 1280x720 Viewer playback with complete cleanup.
-Other platform capture and one-link Browser media remain separate gates.
+Physical macOS capture, Linux native capture, and one-link Browser media remain
+separate gates.
+
+The macOS arm64 capture sidecar compiles on GitHub `macos-15` and its
+permission-free VideoToolbox self-test produces a constrained-baseline SPS/PPS/
+IDR. Real ScreenCaptureKit permission, source lifecycle, static-screen recovery,
+and endurance remain physical acceptance gates.
 
 The v4 loopback gate also proves that a real Chrome receiver produces Pion
 transport feedback and that a non-unknown native sender-quality window reaches
