@@ -160,31 +160,43 @@ async function verifyLocalPackage(root, target, temporaryRoot) {
   });
   let spawnFailure = null;
   let stderr = "";
+  let stdout = "";
+  let clientReady = false;
   child.once("error", (error) => {
     spawnFailure = error;
   });
   child.stdin.on("error", () => undefined);
-  child.stdout.resume();
+  child.stdout.on("data", (chunk) => {
+    stdout = `${stdout}${chunk.toString()}`.slice(-2_048);
+    if (stdout.includes("Local access password: ")) {
+      clientReady = true;
+      stdout = "";
+    }
+  });
   child.stderr.on("data", (chunk) => {
     stderr = `${stderr}${chunk.toString()}`.slice(-4_096);
   });
   try {
     const deadline = Date.now() + 15_000;
-    let ready = false;
+    let healthReady = false;
     while (Date.now() < deadline) {
       if (spawnFailure) break;
       if (child.exitCode !== null || child.signalCode !== null) break;
-      try {
-        const response = await fetch(healthURL, {
-          headers: { Connection: "close" },
-          signal: AbortSignal.timeout(500),
-        });
-        ready = response.ok && (await response.json())?.status === "ok";
-        if (ready) break;
-      } catch {}
+      if (!healthReady) {
+        try {
+          const response = await fetch(healthURL, {
+            headers: { Connection: "close" },
+            signal: AbortSignal.timeout(500),
+          });
+          healthReady = response.ok && (await response.json())?.status === "ok";
+        } catch {}
+      }
+      if (healthReady && clientReady) break;
       await delay(100);
     }
-    if (!ready) fail("Packaged Client Local health did not become ready");
+    if (!healthReady || !clientReady) {
+      fail("Packaged Client Local health did not become ready");
+    }
     child.stdin.write("\n");
     const exitCode = await waitForExit(child, 10_000);
     if (exitCode !== 0) {
