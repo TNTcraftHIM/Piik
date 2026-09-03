@@ -31,12 +31,13 @@ type AudioSource struct {
 	encoder  *nativeaudio.Encoder
 	capacity int
 
-	mu           sync.Mutex
-	encodeMu     sync.Mutex
-	edges        map[*Edge]struct{}
-	reservations int
-	closed       bool
-	bytes        atomic.Uint64
+	mu               sync.Mutex
+	encodeMu         sync.Mutex
+	edges            map[*Edge]bool
+	reservations     int
+	localReservation bool
+	closed           bool
+	bytes            atomic.Uint64
 }
 
 func (engine *Engine) NewAudioSource(capacity, bitrate int) (*AudioSource, error) {
@@ -62,7 +63,7 @@ func (engine *Engine) NewAudioSource(capacity, bitrate int) (*AudioSource, error
 	}
 	return &AudioSource{
 		engine: engine, track: track, encoder: encoder,
-		capacity: capacity, edges: make(map[*Edge]struct{}),
+		capacity: capacity, edges: make(map[*Edge]bool),
 	}, nil
 }
 
@@ -93,35 +94,57 @@ func (source *AudioSource) snapshotBytes() uint64 {
 	return source.bytes.Load()
 }
 
-func (source *AudioSource) reserve() error {
+func (source *AudioSource) reserve(local bool) error {
 	source.mu.Lock()
 	defer source.mu.Unlock()
 	if source.closed {
 		return errors.New("native audio source is closed")
 	}
-	if len(source.edges)+source.reservations >= source.capacity {
+	if local {
+		if source.localReservation {
+			return ErrSourceCapacity
+		}
+		for _, existingLocal := range source.edges {
+			if existingLocal {
+				return ErrSourceCapacity
+			}
+		}
+		source.localReservation = true
+		return nil
+	}
+	routeEdges := 0
+	for _, existingLocal := range source.edges {
+		if !existingLocal {
+			routeEdges++
+		}
+	}
+	if routeEdges+source.reservations >= source.capacity {
 		return ErrSourceCapacity
 	}
 	source.reservations++
 	return nil
 }
 
-func (source *AudioSource) attach(edge *Edge) error {
+func (source *AudioSource) attach(edge *Edge, local bool) error {
 	source.mu.Lock()
 	defer source.mu.Unlock()
-	if source.reservations > 0 {
+	if local {
+		source.localReservation = false
+	} else if source.reservations > 0 {
 		source.reservations--
 	}
 	if source.closed {
 		return errors.New("native audio source is closed")
 	}
-	source.edges[edge] = struct{}{}
+	source.edges[edge] = local
 	return nil
 }
 
-func (source *AudioSource) releaseReservation() {
+func (source *AudioSource) releaseReservation(local bool) {
 	source.mu.Lock()
-	if source.reservations > 0 {
+	if local {
+		source.localReservation = false
+	} else if source.reservations > 0 {
 		source.reservations--
 	}
 	source.mu.Unlock()

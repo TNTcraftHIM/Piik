@@ -2,10 +2,10 @@
 
 - Reviewed: 2026-09-03
 - Scope: Windows capture, one shared H.264/Opus source, Pion transport, Browser
-  decode
+  decode, and Browser-mediated SFU fallback
 - Status: native Host, cross-NAT video, Windows process audio, capture-failure
-  restart, and native P2P quality-evidence gates passed; SFU and other platform
-  media remain outside the boundary
+  restart, native P2P quality-evidence, and native-source SFU gates passed;
+  other platform media remain outside the boundary
 
 ## Result
 
@@ -24,6 +24,11 @@ The one-link form carried the current signaling protocol through its temporary
 public WSS origin to an independent Linux Pion Viewer. Repeated runs delivered
 30+ packets over selected direct paths using a reflexive candidate; the Quick
 Tunnel carried no media.
+
+An isolated LiveKit 1.13.6 gate carried the same native source through one
+reserved local Pion edge into the existing Browser `SfuPublisher`; an ordinary
+LiveKit Viewer then received 30 consecutive 1280x720 frames. The direct native
+P2P path, Browser, Client, LiveKit process, ports, and profiles all cleaned up.
 
 The opt-in `gate:client-media` run proved, in order:
 
@@ -59,16 +64,18 @@ requires Go 1.25; Client CI uses Go 1.26.6.
 
 ## Current Boundary
 
-The result does not yet prove native SFU publication, live quality-profile
-changes, macOS/Linux capture, or endurance. Native Host media is exposed only
-through the explicit Client `--native` launch; these other capabilities remain
-unavailable there.
+The result does not yet prove live native quality-profile changes, macOS/Linux
+capture, or endurance. Native Host media is exposed only through the explicit
+Client `--native` launch; these other capabilities remain unavailable there.
 
-LiveKit Go SDK v2.18.1 speaks protocol 17 and accepts a Pion `TrackLocal`, so SDK
-connectivity is not the native SFU blocker. The current native source has one
-fixed H.264 representation; publishing it directly would discard the accepted
-HIGH+LOW/Dynacast behavior. Native SFU and encoded relay therefore wait for one
-shared representation decision rather than shipping a single-layer exception.
+Native code does not publish directly to LiveKit. One local Pion edge gives the
+system Browser a remote `MediaStreamTrack`; WebRTC requires that remote track to
+reject capture constraints, so native capture keeps source ownership while the
+existing SFU publisher owns sender parameters, simulcast, Dynacast, and recovery.
+The bridge adds one local decode for Host preview and a Browser encode only when
+SFU publication is active. Direct P2P children continue to reuse the one native
+H.264 encode. This preserves the accepted SFU behavior without another LiveKit
+SDK or media policy.
 Native P2P edges negotiate transport-wide feedback and use Pion's send-side GCC
 with its immediate no-op pacer. The pacer neither queues nor applies one edge's
 estimate to the shared encoder. Once real feedback and source frames exist, the
@@ -107,14 +114,21 @@ The product therefore observes GCC for routing but does not yet apply one edge's
 target globally to the shared encoder.
 
 Non-Windows capture keeps the existing process/frame boundary and replaces only
-the platform sidecar. On macOS, ScreenCaptureKit supplies system source
-selection and `CMSampleBuffer` output, while VideoToolbox can require and report
-hardware H.264. On Wayland Linux, the XDG ScreenCast Portal owns source consent
-and returns PipeWire streams; portal version 6 clients identify streams by
-`pipewire-serial` rather than a reusable node ID. These platform contracts rule
-out a fake common window handle. macOS uses the system sharing picker and Linux
-uses the portal picker, while both feed the same native Host media edge after
-encoding.
+the platform sidecar. The macOS candidate enumerates `SCShareableContent`, fences
+the selected process/window generation, receives change-driven
+`CMSampleBuffer`s, and requires VideoToolbox constrained-baseline hardware H.264.
+It retains one latest pixel buffer so an existing PLI/FIR can encode a fresh IDR
+even while the screen is unchanged; capture timestamps drive the shared Pion RTP
+clock. This source still requires compilation and execution on a macOS runner.
+
+Linux native capture remains no-go for the current stage. The XDG ScreenCast
+Portal owns a user-selected session and restricted PipeWire file descriptor, not
+the Windows-style pre-enumerated window target or an encoded stream. A thin
+future Wayland-only gate may dynamically use the distribution's GStreamer for
+`pipewiresrc`, one bounded queue, one proved hardware H.264 element, `h264parse`,
+and `appsink`; it must not ship GStreamer, add `webrtcbin`, implement X11 capture,
+or pretend that the portal provides target-process audio. Without that system
+runtime, direct DMA-BUF import plus VAAPI/Vulkan encoding is not a small adapter.
 
 ## Implementation Boundary
 
@@ -123,7 +137,7 @@ encoding.
   and independent PeerConnections.
 - `nativehost` composes one capture generation with its bounded edges.
 - `nativecontrol` maps only local share/edge commands and exact native sender
-  quality windows to the loopback v3 wire.
+  quality windows to the loopback v4 wire.
 
 The deleted sender application, UI, room client, and old wire are not
 compatibility inputs. Historical measurements remain in the separately marked
@@ -140,7 +154,7 @@ compatibility inputs. Historical measurements remain in the separately marked
 - [Pion bandwidth-estimation example](https://github.com/pion/webrtc/tree/v4.2.18/examples/bandwidth-estimation-from-disk)
 - [WebRTC Stats target bitrate and limitation semantics](https://www.w3.org/TR/webrtc-stats/)
 - [Pion no-op pacer RTX issue](https://github.com/pion/interceptor/issues/406)
-- [LiveKit Go SDK](https://github.com/livekit/server-sdk-go/tree/v2.18.1)
+- [WebRTC remote-track constraints](https://www.w3.org/TR/webrtc/#mediastreamtrack-network-use)
 - [Pion single-port ICE](https://github.com/pion/webrtc/tree/master/examples/ice-single-port)
 - [gopus pure-Go Opus codec](https://github.com/thesyncim/gopus)
 - [Tailscale port mapper](https://github.com/tailscale/tailscale/tree/main/net/portmapper)
@@ -148,5 +162,8 @@ compatibility inputs. Historical measurements remain in the separately marked
 - [NetBird standalone Go NAT](https://github.com/netbirdio/go-nat)
 - [WebRTC signaling and ICE](https://webrtc.org/getting-started/peer-connections)
 - [Apple ScreenCaptureKit](https://developer.apple.com/documentation/screencapturekit)
+- [ScreenCaptureKit idle frames](https://developer.apple.com/documentation/screencapturekit/scframestatus/idle)
 - [Apple VideoToolbox hardware encoder requirement](https://developer.apple.com/documentation/videotoolbox/kvtvideoencoderspecification_requirehardwareacceleratedvideoencoder)
 - [XDG ScreenCast Portal](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.ScreenCast.html)
+- [PipeWire DMA-BUF contract](https://docs.pipewire.org/devel/page_dma_buf.html)
+- [GStreamer PipeWire source](https://gstreamer.freedesktop.org/documentation/pipewire/pipewiresrc.html)

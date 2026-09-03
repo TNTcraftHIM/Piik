@@ -13,15 +13,17 @@ topics are not implementation authority.
    video gate now pass. Process-loopback audio passes the Windows Browser gate
    on the same PeerConnection with a video-only fallback. Pion TWCC/GCC now
    supplies exact native P2P sender-quality evidence through the existing route
-   windows without a custom score; finish this boundary with a representation-
-   compatible native SFU.
+   windows without a custom score. A reserved local bridge also passes the
+   native-source SFU gate through the existing Browser LiveKit publisher and
+   its existing representation policy.
    Capture-source failure now has a physical end/restart gate through the same
    room and Viewer. Clean-revision Windows and Linux packages pass their Local
    runtime gates; Linux also passes one-link startup and shutdown. The macOS
-   arm64 package is assembled but still needs execution on macOS. Add macOS
-   ScreenCaptureKit/VideoToolbox and Linux Portal/PipeWire capture as thin
-   platform sidecars behind the current native media boundary; do not add a
-   second RTC or cross-platform media framework.
+   arm64 package is assembled; compile and physically run its ScreenCaptureKit/
+   VideoToolbox sidecar on macOS. Linux retains Browser capture. Reopen a
+   Wayland-only Portal/PipeWire sidecar only with a real desktop/GPU gate and a
+   decision to reuse system GStreamer without bundling it; do not add a second
+   RTC, X11 capture stack, or hand-built DMA-BUF/encoder matrix.
    No-Site Internet mode now has one ordinary public invitation link that retains
    the Host's Local authority and passes remote control-path and independent
    Linux Pion media gates. Prove decoded one-link Browser media on a physical
@@ -90,12 +92,10 @@ topics are not implementation authority.
    adding a parallel security framework.
 10. **Public-server package.** Package the exact Web/signaling, STUN/SFU, proxy,
    secrets, health, and recovery contract for a user-owned server.
-11. **Native media completion.** Extend the proven Windows native Host video,
-    process-audio, and P2P quality-evidence boundary with native SFU behavior
-    and failure/endurance coverage. A single fixed H.264 layer
-    is not a substitute for the accepted HIGH+LOW SFU behavior, and raw Pion
-    loss/RTT must not become a custom quality score. Preserve Browser/server
-    authority; do not create a second room or media policy.
+11. **Native media endurance.** Exercise long-lived native P2P and Browser-
+    mediated SFU recovery after the platform capture boundary passes. Preserve
+    Browser/server authority and the existing LiveKit representation policy; do
+    not create a second room or media policy.
 12. **Platform output.** System/tab mirroring needs no product adapter, while
     Remote Playback, default Cast and AirPlay do not provide a portable live
     `MediaStream` output contract. Reopen only for a registered custom receiver

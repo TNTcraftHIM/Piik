@@ -100,7 +100,7 @@ async function browserHandshake(
             });
             if (!response.ok) continue;
             const health = await response.json();
-            if (health.protocol === 3 && health.service === "screener-client" &&
+            if (health.protocol === 4 && health.service === "screener-client" &&
                 health.port === port && typeof health.instanceToken === "string") {
               return { port, instanceToken: health.instanceToken };
             }
@@ -115,7 +115,7 @@ async function browserHandshake(
           result.health = endpoint.port === expected.expectedPort;
           const socket = new WebSocket(
             "ws://" + expected.host + ":" + endpoint.port + "/control",
-            ["screener-client-v3." + endpoint.instanceToken],
+            ["screener-client-v4." + endpoint.instanceToken],
           );
           let settled = false;
           const settle = () => {
@@ -126,7 +126,7 @@ async function browserHandshake(
           };
           const timer = setTimeout(() => { result.events.push("timeout"); result.error = "control timeout"; socket.close(); settle(); }, 8000);
           socket.onopen = () => {
-            const expectedProtocol = "screener-client-v3." + endpoint.instanceToken;
+            const expectedProtocol = "screener-client-v4." + endpoint.instanceToken;
             result.events.push(socket.protocol === expectedProtocol ? "open" : "protocol-mismatch");
             if (socket.protocol !== expectedProtocol) {
               result.error = "control protocol mismatch";
@@ -134,7 +134,7 @@ async function browserHandshake(
               settle();
               return;
             }
-            socket.send(JSON.stringify({ version: 3, id: "request_hello", type: "hello" }));
+            socket.send(JSON.stringify({ version: 4, id: "request_hello", type: "hello" }));
           };
           socket.onclose = (event) => { result.events.push("close:" + event.code); if (!settled && !result.error) result.error = "control closed"; settle(); };
           socket.onmessage = (event) => {
@@ -142,7 +142,7 @@ async function browserHandshake(
             result.events.push("message:" + message.type);
             result.responses.push(message.type);
             if (message.type === "ready") {
-              try { socket.send(JSON.stringify({ version: 3, id: "request_ping", type: "ping" })); } catch (error) { result.error = String(error?.message || error); settle(); }
+              try { socket.send(JSON.stringify({ version: 4, id: "request_ping", type: "ping" })); } catch (error) { result.error = String(error?.message || error); settle(); }
             } else if (message.type === "pong") {
               socket.close(1000, "gate complete");
               settle();

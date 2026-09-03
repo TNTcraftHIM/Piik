@@ -26,15 +26,17 @@ TURN fallback. The Client chooses a sole private LAN IPv4 automatically. Use
 `--lan-address <address>` only when multiple real LAN interfaces are active.
 
 For a native Host, add `--native`. The system Browser remains the Host UI; the
-Client selects one Windows Graphics Capture target and one hardware H.264
-encoder, and on supported Windows builds captures that process's audio with
-WASAPI. Video and audio share the same room route and PeerConnection. Native
+Client selects one platform capture target and one hardware H.264 encoder. The
+current Windows sidecar uses Graphics Capture and, on supported builds, captures
+that process's audio with WASAPI. Video and audio share the same room route and
+PeerConnection. Native
 media in Site or one-link mode also attempts one bounded PCP, UPnP, or NAT-PMP
 mapping for its sole Pion UDP socket; pure LAN Local mode does not. Routers
 without a mapping service continue with ordinary ICE/STUN. The mapping does not
-create a relay or carry media through the Client control link. Native media is
-currently P2P-only; omitting `--native` keeps the ordinary Browser capture path.
-`--local --native` is the self-contained LAN form.
+create a relay or carry media through the Client control link. A configured Site
+may route the native source through its existing Browser LiveKit publisher;
+Local and one-link modes remain P2P-only. Omitting `--native` keeps the ordinary
+Browser capture path. `--local --native` is the self-contained LAN form.
 
 Native P2P edges negotiate transport-wide feedback. Once Pion GCC has real
 feedback and the source has produced frames, the Client reports whether that
@@ -81,17 +83,19 @@ the next run. This keeps the executable identity stable for the system firewall;
 the files are local build output and are never packaged or committed.
 
 It runs Go formatting, unit tests, vet, and the three supported cross-builds.
-On Windows it also compiles the isolated capture process and validates its
-bounded capability response. Real capture, GPU attribution, Browser decode, and
+On Windows and macOS it also compiles the matching isolated capture process and
+validates its bounded capability response; macOS additionally encodes one
+in-memory hardware H.264 IDR. Real capture, GPU attribution, Browser decode, and
 public-network paths remain explicit physical gates rather than environment-
 dependent unit tests.
 
 The loopback service binds IPv4 loopback on the first available port from
 `39721` through `39730`. `/health` discovers the current process; `/control`
-accepts one strict v2 session. After `hello`, an available Windows Client may
-list local capture choices and own one generation-fenced share's SDP/ICE edges.
-Its public `instanceToken` distinguishes the discovered process but is not
-authentication; room authority and remote signaling remain in the Browser.
+accepts one strict v4 session. After `hello`, an available Client may list local
+capture choices and own one generation-fenced share's SDP/ICE edges, including
+one reserved local Browser bridge. Its public `instanceToken` distinguishes the
+discovered process but is not authentication; room authority and remote
+signaling remain in the Browser.
 
 ## Packaging
 
@@ -113,8 +117,9 @@ SCREENER_GO=/path/to/go \
 
 Supported targets are `windows-amd64`, `linux-amd64`, and `darwin-arm64`.
 `--target` controls the Go cross-build and packaged executable names; the Node,
-capture, and tunnel inputs must already match that target. Only Windows accepts
-the current native-capture input.
+capture, and tunnel inputs must already match that target. Windows and macOS
+accept their matching native-capture input; Linux currently retains Browser
+capture.
 
 The result contains:
 
@@ -122,7 +127,7 @@ The result contains:
 screener-client[.exe]
 REVISION
 runtime/node/node[.exe]
-runtime/native/screener-client-capture.exe # Windows native-media package only
+runtime/native/screener-client-capture[.exe] # supported native-media packages
 runtime/tunnel/cloudflared[.exe] # packages that support --link
 app/REVISION
 app/dist
@@ -208,5 +213,6 @@ probe and target OS support it. The cross-NAT variant uses a temporary reverse
 SSH path for signaling only and requires a selected `srflx` or `prflx` media pair;
 media never travels through SSH. The one-link media variant instead carries the
 same signaling through the Client's temporary public origin and requires direct
-media delivery to an independent Linux peer. Native SFU, native quality
-evidence, and macOS/Linux capture remain gated.
+media delivery to an independent Linux peer. Native P2P quality evidence and the
+Browser-mediated SFU path have dedicated gates. macOS capture still requires a
+native runner gate; Linux native capture remains unaccepted.

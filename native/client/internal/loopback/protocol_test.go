@@ -6,8 +6,8 @@ import (
 
 func TestDecodeRequestAcceptsOnlyTheCurrentShape(t *testing.T) {
 	valid := []string{
-		`{"version":3,"id":"request_hello","type":"hello"}`,
-		`{"version":3,"id":"request_ping","type":"ping"}`,
+		`{"version":4,"id":"request_hello","type":"hello"}`,
+		`{"version":4,"id":"request_ping","type":"ping"}`,
 	}
 	for _, payload := range valid {
 		if _, err := decodeRequest([]byte(payload)); err != nil {
@@ -15,11 +15,11 @@ func TestDecodeRequestAcceptsOnlyTheCurrentShape(t *testing.T) {
 		}
 	}
 	invalid := []string{
-		`{"version":2,"id":"request_ping","type":"ping"}`,
-		`{"version":3,"id":"short","type":"ping"}`,
-		`{"version":3,"id":"request_ping","type":"ping","extra":true}`,
-		`{"version":3,"id":"request_hello","type":"hello","nonce":"obsolete"}`,
-		`{"version":3,"id":"request_ping","type":"ping"} trailing`,
+		`{"version":3,"id":"request_ping","type":"ping"}`,
+		`{"version":4,"id":"short","type":"ping"}`,
+		`{"version":4,"id":"request_ping","type":"ping","extra":true}`,
+		`{"version":4,"id":"request_hello","type":"hello","nonce":"obsolete"}`,
+		`{"version":4,"id":"request_ping","type":"ping"} trailing`,
 	}
 	for _, payload := range invalid {
 		if _, err := decodeRequest([]byte(payload)); err == nil {
@@ -46,7 +46,7 @@ func TestValidateMessagesRequireTheExpectedPhase(t *testing.T) {
 }
 
 func TestEnvelopeAllowsAnExtensionToOwnItsStrictShape(t *testing.T) {
-	payload := []byte(`{"version":3,"id":"request_extension","type":"extension","value":1}`)
+	payload := []byte(`{"version":4,"id":"request_extension","type":"extension","value":1}`)
 	message, err := decodeEnvelope(payload)
 	if err != nil || message.Type != "extension" {
 		t.Fatalf("extension envelope = %+v, %v", message, err)

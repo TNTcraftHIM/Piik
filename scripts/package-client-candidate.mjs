@@ -86,7 +86,7 @@ function verifyPackage(root, target, revision) {
   if (target.captureName) {
     const capture = join(root, "runtime", "native", target.captureName);
     const probe = JSON.parse(run(capture, ["--probe"], root));
-    if (probe?.protocol !== 1) fail("Packaged native capture probe is invalid");
+    if (probe?.protocol !== 2) fail("Packaged native capture probe is invalid");
   }
 }
 

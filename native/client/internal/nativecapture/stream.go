@@ -74,7 +74,7 @@ func StartVideo(parent context.Context, executable string, options VideoOptions)
 		strconv.FormatUint(uint64(options.AdapterIndex), 10),
 		"--mft-index",
 		strconv.FormatUint(uint64(options.EncoderIndex), 10),
-		"--protocol-v1",
+		"--protocol-v2",
 	})
 }
 

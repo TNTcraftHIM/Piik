@@ -1715,7 +1715,7 @@ ProductArguments ParseProductArguments(int count, wchar_t** values) {
   } else if (count == 10 && std::wstring(values[1]) == L"--capture-video" &&
              std::wstring(values[5]) == L"--adapter-index" &&
              std::wstring(values[7]) == L"--mft-index" &&
-             std::wstring(values[9]) == L"--protocol-v1") {
+             std::wstring(values[9]) == L"--protocol-v2") {
     arguments.mode = ProductArguments::Mode::video;
     arguments.window_handle = ParseUint64(values[4], "argument-window");
     arguments.adapter_index = ParseIndex(values[6], "argument-adapter");
@@ -1781,7 +1781,8 @@ void WriteCapabilityProbe() {
 
   std::vector<Adapter> adapters = EnumerateAdapters();
   std::ostringstream output;
-  output << "{\"protocol\":1,\"windowsBuild\":" << build
+  output << "{\"protocol\":2,\"platform\":\"windows\",\"platformBuild\":"
+         << JSONString(std::to_string(build))
          << ",\"windowCapture\":" << (window_capture ? "true" : "false")
          << ",\"processAudio\":"
          << (build >= kProcessLoopbackMinimumBuild ? "true" : "false")
@@ -1793,7 +1794,7 @@ void WriteCapabilityProbe() {
     ActivationList encoders = EnumerateHardwareEncoders(adapter, false);
     output << "{\"index\":" << adapter.index << ",\"name\":"
            << JSONString(NarrowAscii(adapter.description.Description))
-           << ",\"luid\":"
+           << ",\"identity\":"
            << JSONString(LuidString(adapter.description.AdapterLuid))
            << ",\"hardwareH264\":[";
     for (UINT32 encoder_index = 0; encoder_index < encoders.count;
@@ -1806,7 +1807,7 @@ void WriteCapabilityProbe() {
       Check(encoder->GetGUID(MFT_TRANSFORM_CLSID_Attribute, &clsid),
             "mft-probe-clsid");
       output << "{\"index\":" << encoder_index << ",\"name\":"
-             << JSONString(NarrowAscii(name)) << ",\"clsid\":"
+             << JSONString(NarrowAscii(name)) << ",\"identity\":"
              << JSONString(GuidString(clsid)) << '}';
     }
     output << "]}";
@@ -1905,12 +1906,12 @@ void RunVideoCapture(const ProductArguments& arguments) {
              << "\"adapterIndex\":" << adapter.index
              << ",\"adapterName\":"
              << JSONString(NarrowAscii(adapter.description.Description))
-             << ",\"adapterLuid\":"
+             << ",\"adapterIdentity\":"
              << JSONString(LuidString(adapter.description.AdapterLuid))
-             << ",\"mftIndex\":" << arguments.mft_index
-             << ",\"mftName\":"
+             << ",\"encoderIndex\":" << arguments.mft_index
+             << ",\"encoderName\":"
              << JSONString(encoder.selected().name)
-             << ",\"mftClsid\":"
+             << ",\"encoderIdentity\":"
              << JSONString(encoder.selected().clsid) << '}';
     Check(writer.WriteStatus(starting.str()), "capture-status-starting");
     capture_session.StartCapture();

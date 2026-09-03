@@ -85,6 +85,11 @@ representations; Dynacast aggregates demand and server send-side BWE selects
 subscriber forwarding. AdaptiveStream stays disabled because any Viewer may
 relay its received track.
 
+Tracks received from a PeerConnection do not own capture constraints. Native
+capture therefore retains source resolution and frame-rate ownership across its
+loopback Browser bridge; the existing Browser SFU publisher applies only sender
+parameters and LiveKit's representation policy to that remote source.
+
 When a live native sender remains persistently limited after capacity recovers,
 the route controller may rebuild that exact edge with a fresh connection and
 clone; media adaptation still stays entirely framework-owned.

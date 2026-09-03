@@ -36,7 +36,7 @@ export const CLIENT_PACKAGE_TARGETS = [
     clientName: "screener-client",
     nodeName: "node",
     tunnelName: "cloudflared",
-    captureName: null,
+    captureName: "screener-client-capture",
     tunnelAsset: "cloudflared-darwin-arm64.tgz",
     tunnelSha256: "40c9144d86df8937c5b43293a1f7d2d2107029aa74725023dd46b1b27154352f",
     tunnelArchive: true,

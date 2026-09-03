@@ -52,3 +52,16 @@ func TestResponseKeepsTheRequestIdentity(t *testing.T) {
 		t.Fatalf("response = %+v", value)
 	}
 }
+
+func TestPrepareLocalEdgeOwnsOneStrictRequestShape(t *testing.T) {
+	session := New("missing-capture-process", nativecapture.Capabilities{}, false)
+	t.Cleanup(func() { _ = session.Close() })
+	valid := `{"version":4,"id":"request_local_edge","type":"prepare-local-edge","shareId":"share_123456","connectionId":"edge_1234567"}`
+	if _, err := session.Handle(t.Context(), []byte(valid)); err == nil || err.Error() != "native share does not exist" {
+		t.Fatalf("valid local-edge request stopped at wrong boundary: %v", err)
+	}
+	invalid := `{"version":4,"id":"request_local_edge","type":"prepare-local-edge","shareId":"share_123456","connectionId":"edge_1234567","iceServers":[]}`
+	if _, err := session.Handle(t.Context(), []byte(invalid)); err == nil || err.Error() != "native prepare-local-edge request is invalid" {
+		t.Fatalf("extended local-edge request was accepted: %v", err)
+	}
+}

@@ -22,6 +22,8 @@
     "scripts/access-privacy-gate.ts",
     "scripts/client-media-gate.ts",
     "scripts/client-native-host-gate.ts",
+    "scripts/client-native-sfu-gate.ts",
+    "scripts/client-native-sfu-page.ts",
     "scripts/client-loopback-gate.ts",
     "scripts/client-local-gate.ts",
     "tests"

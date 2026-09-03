@@ -105,48 +105,74 @@ function runClientTests(go) {
   }
 }
 
-function checkWindowsCapture() {
-  if (process.platform !== "win32") {
+function checkPlatformCapture() {
+  if (process.platform !== "win32" && process.platform !== "darwin") {
     if (mode === "--capture-only") {
-      throw new Error("The Windows capture check requires Windows");
+      throw new Error("No native capture check exists for this platform");
     }
     return;
   }
   const buildRoot = join(root, "build", "client-check");
   mkdirSync(buildRoot, { recursive: true });
-  const systemPowerShell = join(
-    process.env.SystemRoot || "C:\\Windows",
-    "System32",
-    "WindowsPowerShell",
-    "v1.0",
-    "powershell.exe",
-  );
-  const powershell = process.env.SCREENER_POWERSHELL?.trim() ||
-    (existsSync(systemPowerShell) ? systemPowerShell : "pwsh");
-  run(powershell, [
-    "-NoProfile",
-    "-ExecutionPolicy",
-    "Bypass",
-    "-File",
-    join(clientRoot, "platform", "windows", "capture", "build.ps1"),
-    "-OutputDirectory",
-    buildRoot,
-  ]);
-  const executable = join(buildRoot, "screener-client-capture.exe");
+  let executable;
+  if (process.platform === "win32") {
+    const systemPowerShell = join(
+      process.env.SystemRoot || "C:\\Windows",
+      "System32",
+      "WindowsPowerShell",
+      "v1.0",
+      "powershell.exe",
+    );
+    const powershell = process.env.SCREENER_POWERSHELL?.trim() ||
+      (existsSync(systemPowerShell) ? systemPowerShell : "pwsh");
+    run(powershell, [
+      "-NoProfile",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-File",
+      join(clientRoot, "platform", "windows", "capture", "build.ps1"),
+      "-OutputDirectory",
+      buildRoot,
+    ]);
+    executable = join(buildRoot, "screener-client-capture.exe");
+  } else {
+    run("sh", [
+      join(clientRoot, "platform", "darwin", "capture", "build.sh"),
+      buildRoot,
+    ]);
+    executable = join(buildRoot, "screener-client-capture");
+  }
   if (!existsSync(executable)) {
-    throw new Error("Windows capture build did not produce its executable");
+    throw new Error("Native capture build did not produce its executable");
+  }
+  if (process.platform === "darwin") {
+    run(executable, ["--self-test"]);
   }
   const raw = run(executable, ["--probe"], { capture: true });
   const probe = JSON.parse(raw);
+  const expectedPlatform = process.platform === "win32" ? "windows" : "darwin";
   if (
-    probe?.protocol !== 1 ||
-    !Number.isInteger(probe.windowsBuild) ||
+    probe?.protocol !== 2 ||
+    probe.platform !== expectedPlatform ||
+    typeof probe.platformBuild !== "string" ||
     typeof probe.windowCapture !== "boolean" ||
     typeof probe.processAudio !== "boolean" ||
-    !Array.isArray(probe.adapters)
+    !Array.isArray(probe.adapters) ||
+    probe.adapters.some((adapter) =>
+      !Number.isInteger(adapter?.index) ||
+      typeof adapter?.name !== "string" ||
+      typeof adapter?.identity !== "string" ||
+      !Array.isArray(adapter?.hardwareH264) ||
+      adapter.hardwareH264.some((encoder) =>
+        !Number.isInteger(encoder?.index) ||
+        typeof encoder?.name !== "string" ||
+        typeof encoder?.identity !== "string"
+      )
+    )
   ) {
-    throw new Error("Windows capture probe returned an invalid contract");
+    throw new Error("Native capture probe returned an invalid contract");
   }
+  if (process.platform !== "win32") return;
   const windows = JSON.parse(run(executable, ["--list"], { capture: true }));
   if (!Array.isArray(windows) || windows.some((target) =>
     !/^[1-9][0-9]{0,19}$/.test(target?.windowHandle) ||
@@ -159,5 +185,5 @@ function checkWindowsCapture() {
 }
 
 if (mode !== "--capture-only") checkCore();
-if (mode !== "--core") checkWindowsCapture();
+if (mode !== "--core") checkPlatformCapture();
 process.stdout.write("Screener Client checks passed.\n");

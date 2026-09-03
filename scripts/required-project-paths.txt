@@ -45,6 +45,9 @@ native/client/platform/windows/capture/build.ps1
 native/client/platform/windows/capture/main.cpp
 native/client/platform/windows/capture/process_audio.cpp
 native/client/platform/windows/capture/process_audio.h
+native/client/platform/darwin/capture/README.md
+native/client/platform/darwin/capture/build.sh
+native/client/platform/darwin/capture/main.swift
 scripts/required-project-paths.txt
 scripts/check-project-state.sh
 scripts/check-project-state.ps1

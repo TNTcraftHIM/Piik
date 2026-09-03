@@ -59,6 +59,14 @@ type prepareEdgeRequest struct {
 	ICEServers   []iceServer `json:"iceServers"`
 }
 
+type prepareLocalEdgeRequest struct {
+	Version      int    `json:"version"`
+	ID           string `json:"id"`
+	Type         string `json:"type"`
+	ShareID      string `json:"shareId"`
+	ConnectionID string `json:"connectionId"`
+}
+
 type edgeAnswerRequest struct {
 	Version      int    `json:"version"`
 	ID           string `json:"id"`

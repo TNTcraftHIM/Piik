@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	probeProtocol       = 1
+	probeProtocol       = 2
 	probeTimeout        = 3 * time.Second
 	maxProbeOutputBytes = 64 * 1024
 	maxProbeErrorBytes  = 4 * 1024
@@ -26,21 +26,22 @@ const (
 )
 
 type Encoder struct {
-	Index uint32 `json:"index"`
-	Name  string `json:"name"`
-	CLSID string `json:"clsid"`
+	Index    uint32 `json:"index"`
+	Name     string `json:"name"`
+	Identity string `json:"identity"`
 }
 
 type Adapter struct {
 	Index        uint32    `json:"index"`
 	Name         string    `json:"name"`
-	LUID         string    `json:"luid"`
+	Identity     string    `json:"identity"`
 	HardwareH264 []Encoder `json:"hardwareH264"`
 }
 
 type Capabilities struct {
 	Protocol      int       `json:"protocol"`
-	WindowsBuild  uint32    `json:"windowsBuild"`
+	Platform      string    `json:"platform"`
+	PlatformBuild string    `json:"platformBuild"`
 	WindowCapture bool      `json:"windowCapture"`
 	ProcessAudio  bool      `json:"processAudio"`
 	Adapters      []Adapter `json:"adapters"`
@@ -89,19 +90,31 @@ func Discover(parent context.Context, executable string) (Capabilities, error) {
 		}
 		return Capabilities{}, fmt.Errorf("native capture probe failed: %w", err)
 	}
-	return decodeProbe(stdout.Bytes())
+	capabilities, err := decodeProbe(stdout.Bytes())
+	if err != nil {
+		return Capabilities{}, err
+	}
+	if capabilities.Platform != runtime.GOOS {
+		return Capabilities{}, errors.New("native capture platform does not match the Client")
+	}
+	return capabilities, nil
 }
 
 func PackagedExecutable() string {
-	if runtime.GOOS != "windows" {
-		return ""
-	}
 	executable, err := os.Executable()
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(filepath.Dir(executable), "runtime", "native",
-		"screener-client-capture.exe")
+	name := ""
+	switch runtime.GOOS {
+	case "windows":
+		name = "screener-client-capture.exe"
+	case "darwin":
+		name = "screener-client-capture"
+	default:
+		return ""
+	}
+	return filepath.Join(filepath.Dir(executable), "runtime", "native", name)
 }
 
 func decodeProbe(payload []byte) (Capabilities, error) {
@@ -114,14 +127,18 @@ func decodeProbe(payload []byte) (Capabilities, error) {
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		return Capabilities{}, errors.New("native capture probe returned trailing data")
 	}
-	if capabilities.Protocol != probeProtocol || capabilities.WindowsBuild == 0 ||
+	if capabilities.Protocol != probeProtocol ||
+		(capabilities.Platform != "windows" && capabilities.Platform != "darwin" &&
+			capabilities.Platform != "linux") ||
+		len(capabilities.PlatformBuild) == 0 ||
+		len(capabilities.PlatformBuild) > maxIdentityBytes ||
 		len(capabilities.Adapters) > maxAdapters {
 		return Capabilities{}, errors.New("native capture probe returned an invalid contract")
 	}
 	adapterIndexes := make(map[uint32]struct{}, len(capabilities.Adapters))
 	for _, adapter := range capabilities.Adapters {
 		if len(adapter.Name) == 0 || len(adapter.Name) > maxIdentityBytes ||
-			len(adapter.LUID) == 0 || len(adapter.LUID) > maxIdentityBytes ||
+			len(adapter.Identity) == 0 || len(adapter.Identity) > maxIdentityBytes ||
 			len(adapter.HardwareH264) > maxEncoders {
 			return Capabilities{}, errors.New("native capture probe returned an invalid adapter")
 		}
@@ -132,7 +149,7 @@ func decodeProbe(payload []byte) (Capabilities, error) {
 		encoderIndexes := make(map[uint32]struct{}, len(adapter.HardwareH264))
 		for _, encoder := range adapter.HardwareH264 {
 			if len(encoder.Name) == 0 || len(encoder.Name) > maxIdentityBytes ||
-				len(encoder.CLSID) == 0 || len(encoder.CLSID) > maxIdentityBytes {
+				len(encoder.Identity) == 0 || len(encoder.Identity) > maxIdentityBytes {
 				return Capabilities{}, errors.New("native capture probe returned an invalid encoder")
 			}
 			if _, exists := encoderIndexes[encoder.Index]; exists {

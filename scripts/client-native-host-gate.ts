@@ -9,6 +9,7 @@ import { createServer } from "node:http";
 import { mkdir, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import {
   CdpConnection,
@@ -22,7 +23,7 @@ import {
 
 const ROOT = resolve(import.meta.dirname, "..");
 const BUILD_ROOT = join(ROOT, "build", "client-check");
-const SOURCE_TITLE = "Screener Native Gate Source";
+export const SOURCE_TITLE = "Screener Native Gate Source";
 
 interface Endpoint {
   url: string;
@@ -249,7 +250,7 @@ async function runRemotePeerGate(
   }
 }
 
-function powershell(): string {
+export function powershell(): string {
   return process.env.SCREENER_POWERSHELL?.trim() || join(
     process.env.SystemRoot || "C:\\Windows",
     "System32",
@@ -271,7 +272,7 @@ function sourceHTML(): string {
   ].join("");
 }
 
-async function sourceServer(port: number): Promise<{ close(): Promise<void> }> {
+export async function sourceServer(port: number): Promise<{ close(): Promise<void> }> {
   const server = createServer((_request, response) => {
     response.writeHead(200, {
       "Content-Type": "text/html; charset=utf-8",
@@ -290,7 +291,7 @@ async function sourceServer(port: number): Promise<{ close(): Promise<void> }> {
   };
 }
 
-async function startSourceBrowser(
+export async function startSourceBrowser(
   chromePath: string,
   profile: string,
   debugPort: number,
@@ -319,7 +320,7 @@ async function startSourceBrowser(
   return { child, cdp };
 }
 
-async function closeSourceBrowser(
+export async function closeSourceBrowser(
   child: ChildProcessWithoutNullStreams,
   cdp: CdpConnection,
 ): Promise<boolean> {
@@ -335,7 +336,7 @@ async function closeSourceBrowser(
   }
 }
 
-async function waitForCaptureWindow(captureBinary: string): Promise<void> {
+export async function waitForCaptureWindow(captureBinary: string): Promise<void> {
   await waitForValue(
     async () => JSON.parse(run(captureBinary, ["--list"])) as Array<{
       title?: unknown;
@@ -833,6 +834,13 @@ async function main(): Promise<void> {
     if (remoteTunnel) {
       result.reverseSignalTunnelClosed = await stopChild(remoteTunnel);
     }
+    if (sourceChrome && sourceCdp) {
+      await closeSourceBrowser(sourceChrome, sourceCdp);
+      sourceChrome = null;
+      sourceCdp = null;
+    } else if (sourceChrome && sourceChrome.exitCode === null) {
+      sourceChrome.kill();
+    }
     result.cleanup = await cleanupRun({
       cdp,
       native: client,
@@ -841,22 +849,19 @@ async function main(): Promise<void> {
       profile,
       ports: [sourcePort, appPort, debugPort, ...(clientPort ? [clientPort] : [])],
     });
-    if (sourceChrome && sourceCdp) {
-      await closeSourceBrowser(sourceChrome, sourceCdp);
-      sourceChrome = null;
-      sourceCdp = null;
-    } else if (sourceChrome && sourceChrome.exitCode === null) {
-      sourceChrome.kill();
-    }
     if (sourceProfile) {
-      await cleanupRun({
+      const sourceCleanup = await cleanupRun({
         cdp: null,
         native: sourceChrome,
         chrome: null,
         server: null,
         profile: sourceProfile,
-        ports: [sourcePort, sourceDebugPort],
+        ports: [sourceDebugPort],
       });
+      result.cleanup.profileRemoved =
+        result.cleanup.profileRemoved && sourceCleanup.profileRemoved;
+      result.cleanup.portsClosed =
+        result.cleanup.portsClosed && sourceCleanup.portsClosed;
     }
   }
   result.passed = result.error === null && result.hostNativeActive &&
@@ -878,4 +883,9 @@ async function main(): Promise<void> {
   if (!result.passed) process.exitCode = 1;
 }
 
-await main();
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(resolve(process.argv[1])).href
+) {
+  await main();
+}

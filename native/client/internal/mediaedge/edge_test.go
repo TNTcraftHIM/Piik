@@ -49,13 +49,18 @@ func TestOneEncodedSourceFeedsTwoIndependentEdges(t *testing.T) {
 	if _, err = engine.NewEdge(source, EdgeOptions{ConnectionID: "edge-c"}); !errors.Is(err, ErrSourceCapacity) {
 		t.Fatalf("third edge error = %v", err)
 	}
+	select {
+	case <-keyFrames:
+	case <-time.After(3 * time.Second):
+		t.Fatal("connected edge did not request a recovery frame")
+	}
 
 	accessUnit := []byte{
 		0, 0, 0, 1, 0x67, 0x42, 0xc0, 0x1f, 0x96, 0x54, 0x05, 0x01,
 		0, 0, 0, 1, 0x68, 0xce, 0x3c, 0x80,
 		0, 0, 0, 1, 0x65, 0x88, 0x84, 0x00,
 	}
-	if err = source.WriteH264(accessUnit, time.Second/30); err != nil {
+	if err = source.WriteH264(accessUnit, time.Second, time.Second/30); err != nil {
 		t.Fatal(err)
 	}
 	first := waitPacket(t, packetA)
@@ -112,6 +117,95 @@ func TestRemoteCandidatesAreBoundedUntilTheAnswer(t *testing.T) {
 	}
 }
 
+func TestCaptureTimestampsDriveTheRTPClock(t *testing.T) {
+	engine, err := NewEngine(EngineOptions{
+		BindAddress: "127.0.0.1:0", IncludeLoopback: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = engine.Close() })
+	source, err := engine.NewSource(1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = source.Close() })
+	_, receiver, packets := connectedReceiver(t, engine, source, "timed-edge")
+	t.Cleanup(func() { _ = receiver.Close() })
+	accessUnit := []byte{0, 0, 0, 1, 0x65, 0x88, 0x84, 0x00}
+	start := 10 * time.Second
+	frameDuration := time.Second / 30
+
+	if err = source.WriteH264(accessUnit, start, frameDuration); err != nil {
+		t.Fatal(err)
+	}
+	first := waitPacket(t, packets)
+	if err = source.WriteH264(accessUnit, start+frameDuration, frameDuration); err != nil {
+		t.Fatal(err)
+	}
+	second := waitPacket(t, packets)
+	if got := second.Timestamp - first.Timestamp; got < 2_999 || got > 3_001 {
+		t.Fatalf("steady timestamp delta = %d", got)
+	}
+	if err = source.WriteH264(accessUnit, start+5*time.Second, frameDuration); err != nil {
+		t.Fatal(err)
+	}
+	third := waitPacket(t, packets)
+	if got := third.Timestamp - second.Timestamp; got < 446_999 || got > 447_001 {
+		t.Fatalf("sparse timestamp delta = %d", got)
+	}
+}
+
+func TestOneLocalBridgeDoesNotConsumeRouteCapacity(t *testing.T) {
+	engine, err := NewEngine(EngineOptions{
+		BindAddress: "127.0.0.1:0", IncludeLoopback: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = engine.Close() })
+	source, err := engine.NewSource(1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	audio, err := engine.NewAudioSource(1, 128_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = audio.Close() })
+	local, err := engine.NewEdge(source, EdgeOptions{
+		ConnectionID: "local-preview", Local: true, Audio: audio,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	route, err := engine.NewEdge(source, EdgeOptions{
+		ConnectionID: "route-edge", Audio: audio,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = engine.NewEdge(source, EdgeOptions{
+		ConnectionID: "second-local", Local: true,
+	}); !errors.Is(err, ErrSourceCapacity) {
+		t.Fatalf("second local edge error = %v", err)
+	}
+	if _, err = engine.NewEdge(source, EdgeOptions{
+		ConnectionID: "second-route",
+	}); !errors.Is(err, ErrSourceCapacity) {
+		t.Fatalf("second route edge error = %v", err)
+	}
+	_ = local.Close()
+	_ = route.Close()
+	if replacement, replaceErr := engine.NewEdge(source, EdgeOptions{
+		ConnectionID: "replacement-local", Local: true, Audio: audio,
+	}); replaceErr != nil {
+		t.Fatalf("released local slot was not reusable: %v", replaceErr)
+	} else {
+		_ = replacement.Close()
+	}
+}
+
 func TestBandwidthObserverReceivesTransportFeedbackWithoutPacing(t *testing.T) {
 	engine, err := NewEngine(EngineOptions{
 		BindAddress: "127.0.0.1:0", IncludeLoopback: true,
@@ -141,10 +235,16 @@ func TestBandwidthObserverReceivesTransportFeedbackWithoutPacing(t *testing.T) {
 		0, 0, 0, 1, 0x65, 0x88, 0x84, 0x00,
 	}
 	deadline := time.Now().Add(5 * time.Second)
+	captureTimestamp := time.Second
 	for time.Now().Before(deadline) {
-		if err = source.WriteH264(accessUnit, time.Second/30); err != nil {
+		if err = source.WriteH264(
+			accessUnit,
+			captureTimestamp,
+			time.Second/30,
+		); err != nil {
 			t.Fatal(err)
 		}
+		captureTimestamp += time.Second / 30
 		select {
 		case <-packets:
 		default:

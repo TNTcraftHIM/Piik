@@ -137,8 +137,10 @@ This is the current execution index. Git history owns completed timelines;
   changing ICE when no gateway accepts it; pure LAN Local mode does not.
   Native P2P edges now negotiate TWCC and send Pion GCC's target-versus-source
   payload category through the existing sender-quality evidence path without
-  pacing or changing the shared encode. Native SFU and non-Windows capture
-  remain outside the release.
+  pacing or changing the shared encode. A local bridge now supplies native Host
+  media to the existing Browser LiveKit publisher; an isolated LiveKit gate
+  proves 1280x720 delivery and complete cleanup without a second SFU client.
+  Non-Windows capture remains outside the release.
 
 ## Current Hold
 

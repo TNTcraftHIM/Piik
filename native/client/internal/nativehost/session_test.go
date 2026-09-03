@@ -4,7 +4,7 @@ import "testing"
 
 func TestCaptureStateKeepsStartingAndActiveContractsDistinct(t *testing.T) {
 	starting, err := decodeCaptureState([]byte(
-		`{"state":"starting","hardwareOnly":true,"adapterIndex":0,"adapterName":"GPU","adapterLuid":"0:1","mftIndex":0,"mftName":"H264","mftClsid":"encoder"}`,
+		`{"state":"starting","hardwareOnly":true,"adapterIndex":0,"adapterName":"GPU","adapterIdentity":"0:1","encoderIndex":0,"encoderName":"H264","encoderIdentity":"encoder"}`,
 	))
 	if err != nil || starting.State != "starting" || starting.AdapterIndex == nil {
 		t.Fatalf("starting = %+v, %v", starting, err)

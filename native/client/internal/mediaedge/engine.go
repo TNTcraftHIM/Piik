@@ -8,6 +8,8 @@ import (
 	"github.com/TNTcraftHIM/Screener/native/client/internal/portmapping"
 	"github.com/pion/interceptor"
 	"github.com/pion/logging"
+	"github.com/pion/rtp"
+	"github.com/pion/rtp/codecs"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -66,7 +68,7 @@ func NewEngine(options EngineOptions) (*Engine, error) {
 	mediaEngine := &webrtc.MediaEngine{}
 	if err = mediaEngine.RegisterCodec(webrtc.RTPCodecParameters{
 		RTPCodecCapability: h264Capability,
-		PayloadType:        102,
+		PayloadType:        h264PayloadType,
 	}, webrtc.RTPCodecTypeVideo); err != nil {
 		_ = mux.Close()
 		return nil, err
@@ -118,7 +120,7 @@ func (engine *Engine) NewSource(capacity int, requestKeyFrame func()) (*Source, 
 	if engine.closed {
 		return nil, errors.New("native media engine is closed")
 	}
-	track, err := webrtc.NewTrackLocalStaticSample(
+	track, err := webrtc.NewTrackLocalStaticRTP(
 		h264Capability,
 		"screen",
 		"screener-native",
@@ -127,11 +129,19 @@ func (engine *Engine) NewSource(capacity int, requestKeyFrame func()) (*Source, 
 		return nil, err
 	}
 	return &Source{
-		engine:          engine,
-		track:           track,
+		engine: engine,
+		track:  track,
+		packetizer: rtp.NewPacketizer(
+			h264PacketMTU,
+			h264PayloadType,
+			0,
+			&codecs.H264Payloader{},
+			rtp.NewRandomSequencer(),
+			h264ClockRate,
+		),
 		capacity:        capacity,
 		requestKeyFrame: requestKeyFrame,
-		edges:           make(map[*Edge]struct{}),
+		edges:           make(map[*Edge]bool),
 	}, nil
 }
 

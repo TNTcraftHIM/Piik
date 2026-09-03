@@ -20,6 +20,7 @@ type EdgeOptions struct {
 	ConnectionID string
 	ICEServers   []webrtc.ICEServer
 	Audio        *AudioSource
+	Local        bool
 	Events       EdgeEvents
 }
 
@@ -50,15 +51,15 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (*Edge, error
 	if options.Audio != nil && options.Audio.engine != engine {
 		return nil, errors.New("native audio edge source belongs to another engine")
 	}
-	if engine.portMapping != nil {
+	if engine.portMapping != nil && !options.Local {
 		engine.portMapping.Prepare()
 	}
-	if err := source.reserve(); err != nil {
+	if err := source.reserve(options.Local); err != nil {
 		return nil, err
 	}
 	if options.Audio != nil {
-		if err := options.Audio.reserve(); err != nil {
-			source.releaseReservation()
+		if err := options.Audio.reserve(options.Local); err != nil {
+			source.releaseReservation(options.Local)
 			return nil, err
 		}
 	}
@@ -66,17 +67,17 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (*Edge, error
 		ICEServers: options.ICEServers,
 	})
 	if err != nil {
-		source.releaseReservation()
+		source.releaseReservation(options.Local)
 		if options.Audio != nil {
-			options.Audio.releaseReservation()
+			options.Audio.releaseReservation(options.Local)
 		}
 		return nil, err
 	}
 	bandwidth := engine.bandwidth.take(connection.ID())
 	if bandwidth == nil {
-		source.releaseReservation()
+		source.releaseReservation(options.Local)
 		if options.Audio != nil {
-			options.Audio.releaseReservation()
+			options.Audio.releaseReservation(options.Local)
 		}
 		_ = connection.Close()
 		return nil, errors.New("native media bandwidth observer is unavailable")
@@ -91,23 +92,23 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (*Edge, error
 		events:       options.Events,
 	}
 	if err = engine.register(edge); err != nil {
-		source.releaseReservation()
+		source.releaseReservation(options.Local)
 		if options.Audio != nil {
-			options.Audio.releaseReservation()
+			options.Audio.releaseReservation(options.Local)
 		}
 		_ = connection.Close()
 		return nil, err
 	}
-	if err = source.attach(edge); err != nil {
+	if err = source.attach(edge, options.Local); err != nil {
 		if options.Audio != nil {
-			options.Audio.releaseReservation()
+			options.Audio.releaseReservation(options.Local)
 		}
 		engine.remove(edge)
 		_ = connection.Close()
 		return nil, err
 	}
 	if options.Audio != nil {
-		if err = options.Audio.attach(edge); err != nil {
+		if err = options.Audio.attach(edge, options.Local); err != nil {
 			source.detach(edge)
 			engine.remove(edge)
 			_ = connection.Close()
@@ -139,6 +140,9 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (*Edge, error
 		}
 	})
 	connection.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+		if state == webrtc.PeerConnectionStateConnected {
+			edge.source.RequestRecoveryFrame()
+		}
 		if edge.events.ConnectionState != nil {
 			var selected *SelectedPair
 			if state == webrtc.PeerConnectionStateConnected {

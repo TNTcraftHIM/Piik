@@ -229,6 +229,15 @@ export async function applyVideoCaptureProfile(
   track: MediaStreamTrack,
   profile: QualityProfile,
 ): Promise<void> {
+  const capabilities = track.getCapabilities?.();
+  if (
+    capabilities &&
+    !("width" in capabilities) &&
+    !("height" in capabilities) &&
+    !("frameRate" in capabilities)
+  ) {
+    return;
+  }
   await track.applyConstraints(captureConstraints(profile));
 }
 

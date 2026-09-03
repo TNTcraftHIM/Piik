@@ -178,6 +178,24 @@ export class NativeClient {
     return { type: "offer", sdp: response.sdp };
   }
 
+  async prepareLocalEdge(
+    shareId: string,
+    connectionId: string,
+  ): Promise<RTCSessionDescriptionInit> {
+    const response = await this.request(
+      "prepare-local-edge",
+      { shareId, connectionId },
+      edgeOfferResponseSchema,
+    );
+    if (
+      response.shareId !== shareId ||
+      response.connectionId !== connectionId
+    ) {
+      throw new Error("Native local edge identity changed");
+    }
+    return { type: "offer", sdp: response.sdp };
+  }
+
   async acceptSignal(
     shareId: string,
     connectionId: string,

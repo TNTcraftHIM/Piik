@@ -1,9 +1,9 @@
 import { z } from "zod";
 
-export const NATIVE_CLIENT_PROTOCOL = 3;
+export const NATIVE_CLIENT_PROTOCOL = 4;
 export const NATIVE_CLIENT_PORT_START = 39_721;
 export const NATIVE_CLIENT_PORT_END = 39_730;
-export const NATIVE_CLIENT_SUBPROTOCOL = "screener-client-v3";
+export const NATIVE_CLIENT_SUBPROTOCOL = "screener-client-v4";
 
 const decimalIdentifierSchema = z.string().regex(/^[1-9]\d{0,19}$/);
 const opaqueIdentifierSchema = z
@@ -43,7 +43,7 @@ const nativeEncoderSchema = z
   .object({
     index: z.number().int().nonnegative().max(0xffff_ffff),
     name: z.string().min(1).max(512),
-    clsid: z.string().min(1).max(512),
+    identity: z.string().min(1).max(512),
   })
   .strict();
 
@@ -51,7 +51,7 @@ const nativeAdapterSchema = z
   .object({
     index: z.number().int().nonnegative().max(0xffff_ffff),
     name: z.string().min(1).max(512),
-    luid: z.string().min(1).max(512),
+    identity: z.string().min(1).max(512),
     hardwareH264: z.array(nativeEncoderSchema).max(64),
   })
   .strict();

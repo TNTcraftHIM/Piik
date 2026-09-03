@@ -258,7 +258,7 @@ async function browserMediaGate(input: {
     } as RequestInit);
     const health = await healthResponse.json();
     if (
-      health.protocol !== 3 ||
+      health.protocol !== 4 ||
       health.service !== "screener-client" ||
       health.instanceToken !== input.endpoint.instanceToken ||
       health.nativeMedia?.windowVideo !== true ||
@@ -270,7 +270,7 @@ async function browserMediaGate(input: {
 
     socket = new WebSocket(
       "ws://127.0.0.1:" + input.endpoint.port + "/control",
-      ["screener-client-v3." + input.endpoint.instanceToken],
+      ["screener-client-v4." + input.endpoint.instanceToken],
     );
     await new Promise<void>((resolveOpen, rejectOpen) => {
       const timer = window.setTimeout(
@@ -310,7 +310,7 @@ async function browserMediaGate(input: {
           rejectRequest(new Error("Native request timed out: " + type));
         }, 8_000);
         pending.set(id, { resolve: resolveRequest, reject: rejectRequest, timer });
-        socket!.send(JSON.stringify({ version: 3, id, type, ...fields }));
+        socket!.send(JSON.stringify({ version: 4, id, type, ...fields }));
       });
     };
     socket.onmessage = (event) => {
@@ -593,7 +593,7 @@ async function main(): Promise<void> {
     const probe = JSON.parse(run(executable, ["--probe"])) as Probe;
     const adapter = probe.adapters.find((candidate) => candidate.hardwareH264.length > 0);
     const encoder = adapter?.hardwareH264[0];
-    if (probe.protocol !== 1 || !adapter || !encoder) {
+    if (probe.protocol !== 2 || !adapter || !encoder) {
       throw new Error("No hardware H264 capture path is available");
     }
 
@@ -630,7 +630,7 @@ async function main(): Promise<void> {
       String(adapter.index),
       "--mft-index",
       String(encoder.index),
-      "--protocol-v1",
+      "--protocol-v2",
     ], { stdio: "pipe", windowsHide: true });
     capture.stderr.resume();
     observeCapture(capture, evidence);

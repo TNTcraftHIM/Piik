@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   audioSenderParameterWarning,
   applyCaptureProfile,
+  applyVideoCaptureProfile,
   captureDisplay,
   configureScreenAudioSender,
   configureVideoSender,
@@ -114,6 +115,15 @@ describe("realtime quality controls", () => {
       height: { ideal: 1440, max: 1440 },
       frameRate: { ideal: 45, max: 45 },
     });
+  });
+
+  it("leaves capture constraints with the owner of a remote track", async () => {
+    const { videoTrack } = createVideoStream();
+    videoTrack.getCapabilities = vi.fn(() => ({}));
+
+    await applyVideoCaptureProfile(videoTrack, QUALITY_PROFILES["1080p30"]);
+
+    expect(videoTrack.applyConstraints).not.toHaveBeenCalled();
   });
 
   it("defaults every recommended profile to balanced", () => {

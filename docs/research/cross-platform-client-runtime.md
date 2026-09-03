@@ -152,8 +152,8 @@ deployment no longer erases valid native RTCStats.
 - Prove first-run Browser local-network permission outside CDP automation.
 - Record no-STUN mDNS behavior on ordinary and AP-isolated LANs.
 - Exercise the native Host on a configured Site and representative Browsers;
-  native quality evidence, audio, SFU publication, and non-Windows capture
-  remain undefined.
+  the local SFU bridge is proved in isolation, while full Site recovery,
+  representative audio, and non-Windows capture remain undefined.
 - Exercise one-link Browser media on a physical second device; the current gate
   proves the complete public control path and independent Pion media, not
   decoded Browser frames.

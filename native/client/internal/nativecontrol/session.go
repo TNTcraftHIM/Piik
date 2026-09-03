@@ -112,6 +112,14 @@ func (session *Session) Handle(_ context.Context, payload []byte) (any, error) {
 			return nil, errors.New("native prepare-edge request is invalid")
 		}
 		return session.prepareEdge(envelope, request)
+	case "prepare-local-edge":
+		var request prepareLocalEdgeRequest
+		if err := decodeStrict(payload, &request); err != nil ||
+			request.Type != envelope.Type ||
+			!validIdentities(request.ShareID, request.ConnectionID) {
+			return nil, errors.New("native prepare-local-edge request is invalid")
+		}
+		return session.prepareLocalEdge(envelope, request)
 	case "edge-answer":
 		var request edgeAnswerRequest
 		if err := decodeStrict(payload, &request); err != nil ||
@@ -261,6 +269,26 @@ func (session *Session) prepareEdge(
 		return nil, errors.New("native share does not exist")
 	}
 	offer, err := host.PrepareEdge(request.ConnectionID, servers)
+	if err != nil {
+		return nil, err
+	}
+	return edgeOfferResponse{
+		responseEnvelope: response(envelope, "edge-offer"),
+		ShareID:          request.ShareID,
+		ConnectionID:     request.ConnectionID,
+		SDP:              offer.SDP,
+	}, nil
+}
+
+func (session *Session) prepareLocalEdge(
+	envelope requestEnvelope,
+	request prepareLocalEdgeRequest,
+) (any, error) {
+	host := session.current(request.ShareID)
+	if host == nil {
+		return nil, errors.New("native share does not exist")
+	}
+	offer, err := host.PrepareLocalEdge(request.ConnectionID)
 	if err != nil {
 		return nil, err
 	}

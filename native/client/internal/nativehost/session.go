@@ -19,18 +19,18 @@ const startTimeout = 5 * time.Second
 const qualitySamplePeriod = 2 * time.Second
 
 type CaptureState struct {
-	State          string  `json:"state"`
-	HardwareOnly   bool    `json:"hardwareOnly"`
-	AdapterIndex   *uint32 `json:"adapterIndex,omitempty"`
-	AdapterName    string  `json:"adapterName,omitempty"`
-	AdapterLUID    string  `json:"adapterLuid,omitempty"`
-	EncoderIndex   *uint32 `json:"mftIndex,omitempty"`
-	EncoderName    string  `json:"mftName,omitempty"`
-	EncoderCLSID   string  `json:"mftClsid,omitempty"`
-	ProfileLevelID string  `json:"profileLevelId,omitempty"`
-	Width          uint32  `json:"width,omitempty"`
-	Height         uint32  `json:"height,omitempty"`
-	FPS            uint32  `json:"fps,omitempty"`
+	State           string  `json:"state"`
+	HardwareOnly    bool    `json:"hardwareOnly"`
+	AdapterIndex    *uint32 `json:"adapterIndex,omitempty"`
+	AdapterName     string  `json:"adapterName,omitempty"`
+	AdapterIdentity string  `json:"adapterIdentity,omitempty"`
+	EncoderIndex    *uint32 `json:"encoderIndex,omitempty"`
+	EncoderName     string  `json:"encoderName,omitempty"`
+	EncoderIdentity string  `json:"encoderIdentity,omitempty"`
+	ProfileLevelID  string  `json:"profileLevelId,omitempty"`
+	Width           uint32  `json:"width,omitempty"`
+	Height          uint32  `json:"height,omitempty"`
+	FPS             uint32  `json:"fps,omitempty"`
 }
 
 type Event struct {
@@ -83,8 +83,9 @@ func Start(parent context.Context, options Options) (*Session, error) {
 		return nil, errors.New("native share identity is invalid")
 	}
 	engine, err := mediaedge.NewEngine(mediaedge.EngineOptions{
-		BindAddress: options.BindAddress,
-		PortMapping: options.PortMapping,
+		BindAddress:     options.BindAddress,
+		IncludeLoopback: true,
+		PortMapping:     options.PortMapping,
 	})
 	if err != nil {
 		return nil, err
@@ -167,6 +168,20 @@ func (session *Session) PrepareEdge(
 	connectionID string,
 	iceServers []webrtc.ICEServer,
 ) (webrtc.SessionDescription, error) {
+	return session.prepareEdge(connectionID, iceServers, false)
+}
+
+func (session *Session) PrepareLocalEdge(
+	connectionID string,
+) (webrtc.SessionDescription, error) {
+	return session.prepareEdge(connectionID, nil, true)
+}
+
+func (session *Session) prepareEdge(
+	connectionID string,
+	iceServers []webrtc.ICEServer,
+	local bool,
+) (webrtc.SessionDescription, error) {
 	session.mu.Lock()
 	if session.closed || session.edges[connectionID] != nil {
 		session.mu.Unlock()
@@ -177,6 +192,7 @@ func (session *Session) PrepareEdge(
 		ConnectionID: connectionID,
 		ICEServers:   iceServers,
 		Audio:        session.audioSource,
+		Local:        local,
 		Events: mediaedge.EdgeEvents{
 			LocalCandidate: func(candidate *webrtc.ICECandidateInit) {
 				session.emit(Event{
@@ -382,7 +398,14 @@ func (session *Session) runVideo() error {
 			paused := session.paused
 			session.mu.Unlock()
 			if !paused {
-				_ = session.source.WriteH264(frame.Data, frame.Duration)
+				writeErr := session.source.WriteH264(
+					frame.Data,
+					frame.Timestamp,
+					frame.Duration,
+				)
+				if errors.Is(writeErr, mediaedge.ErrInvalidVideoTimestamp) {
+					return fail(writeErr)
+				}
 			}
 		case nativecapture.FramePCM:
 			return fail(errors.New("native video process emitted audio"))
@@ -459,8 +482,8 @@ func decodeCaptureState(payload []byte) (CaptureState, error) {
 	}
 	if state.State == "starting" &&
 		(state.AdapterIndex == nil || state.EncoderIndex == nil ||
-			state.AdapterName == "" || state.AdapterLUID == "" ||
-			state.EncoderName == "" || state.EncoderCLSID == "") {
+			state.AdapterName == "" || state.AdapterIdentity == "" ||
+			state.EncoderName == "" || state.EncoderIdentity == "") {
 		return CaptureState{}, errors.New("native capture starting state is incomplete")
 	}
 	if state.State == "active" &&

@@ -146,6 +146,7 @@ import type {
 import { HostPeer, type HostMediaPeer } from "../webrtc/host-peer";
 import { NativeClient } from "../native/client";
 import { NativeHostPeer } from "../native/native-host-peer";
+import { NativeMediaBridge } from "../native/media-bridge";
 import {
   MAX_ENDPOINT_MEDIA_CHILDREN,
   reconcileBoundedMediaChildren,
@@ -561,6 +562,7 @@ export function HostPage({
   const sfuStandbyPrewarmerRef = useRef<SfuStandbyPrewarmer | null>(null);
   const nativeClientRef = useRef<NativeClient | null>(null);
   const nativeShareGenerationRef = useRef<string | null>(null);
+  const nativeMediaBridgeRef = useRef<NativeMediaBridge | null>(null);
   const nativeEventCleanupRef = useRef<(() => void) | null>(null);
   const nativeModeRef = useRef(false);
 
@@ -1171,9 +1173,9 @@ export function HostPage({
   async function startNativeShare(
     generation: number,
     shareGeneration: string,
-  ): Promise<boolean> {
+  ): Promise<MediaStream | null> {
     if (!nativeLaunch.requested) {
-      return false;
+      return null;
     }
     const client = await NativeClient.connect();
     if (!client) {
@@ -1212,20 +1214,35 @@ export function HostPage({
       if (!target) {
         throw new Error("Screener Client could not find a capture window");
       }
-      const started = await client.startShare({
+      await client.startShare({
         shareId: shareGeneration,
         window: target,
         adapterIndex: adapter.index,
         encoderIndex: encoder.index,
         edgeCapacity: MAX_ENDPOINT_MEDIA_CHILDREN,
       });
+      const bridge = new NativeMediaBridge(
+        shareGeneration,
+        client,
+        () => {
+          if (
+            nativeMediaBridgeRef.current === bridge &&
+            isCurrentShare(generation, shareGeneration)
+          ) {
+            endSharing({ key: "host.shareEnded" });
+          }
+        },
+      );
+      const stream = await bridge.start();
       if (!isCurrentShare(generation, shareGeneration)) {
+        bridge.dispose();
         await client.stopShare(shareGeneration).catch(() => undefined);
         client.close();
-        return false;
+        return null;
       }
       nativeClientRef.current = client;
       nativeShareGenerationRef.current = shareGeneration;
+      nativeMediaBridgeRef.current = bridge;
       nativeModeRef.current = true;
       setNativeActive(true);
       nativeEventCleanupRef.current = client.onEvent((event) => {
@@ -1234,20 +1251,12 @@ export function HostPage({
           event.shareId === shareGeneration &&
           isCurrentShare(generation, shareGeneration)
         ) {
-          endSharing(
-            { key: event.failed ? "host.shareEnded" : "host.stopNotice" },
-            false,
-          );
+          endSharing({
+            key: event.failed ? "host.shareEnded" : "host.stopNotice",
+          });
         }
       });
-      setDetails({
-        resolution: "1280x720",
-        frameRate: 30,
-        hasAudio: started.audio,
-      });
-      videoCodecRef.current = manualVideoCodecPreference("h264");
-      setResolvedVideoCodec("h264");
-      return true;
+      return stream;
     } catch (error) {
       client.close();
       throw error;
@@ -1257,6 +1266,8 @@ export function HostPage({
   function disposeNativeShare(): void {
     const client = nativeClientRef.current;
     const shareGeneration = nativeShareGenerationRef.current;
+    nativeMediaBridgeRef.current?.dispose();
+    nativeMediaBridgeRef.current = null;
     nativeEventCleanupRef.current?.();
     nativeEventCleanupRef.current = null;
     nativeClientRef.current = null;
@@ -1474,7 +1485,7 @@ export function HostPage({
     ) {
       return;
     }
-    if (!activeStream && nativeClient && nativeShareGeneration) {
+    if (nativeClient && nativeShareGeneration) {
       const generation = activeGenerationRef.current;
       if (generation === null) return;
       const nextPaused = !sharingPausedRef.current;
@@ -1487,6 +1498,10 @@ export function HostPage({
             setNoticeKey("host.pause.signalRecovering");
             return;
           }
+          if (activeStream) {
+            setMediaPaused(activeStream, nextPaused);
+          }
+          hostSfuRouteRef.current?.setPaused(nextPaused);
           sharingPausedRef.current = nextPaused;
           setSharingPaused(nextPaused);
           setNoticeKey(nextPaused ? "host.pauseNotice" : "host.resumeNotice");
@@ -1971,6 +1986,13 @@ export function HostPage({
         return;
       }
       const activeStream = streamRef.current;
+      const nativeClient = nativeClientRef.current;
+      const nativeShareGeneration = nativeShareGenerationRef.current;
+      if (nativeClient && nativeShareGeneration) {
+        void nativeClient
+          .setPaused(nativeShareGeneration, true)
+          .catch(() => undefined);
+      }
       if (activeStream) {
         setMediaPaused(activeStream, true);
       }
@@ -2139,7 +2161,8 @@ export function HostPage({
     let nativeStarted = false;
     try {
       if (nativeLaunch.requested) {
-        nativeStarted = await startNativeShare(generation, shareGeneration);
+        captured = await startNativeShare(generation, shareGeneration);
+        nativeStarted = captured !== null;
       }
       if (!nativeStarted) {
         // This must remain the first awaited operation in the button gesture.
@@ -2162,18 +2185,21 @@ export function HostPage({
       if (nativeStarted) disposeNativeShare();
       return;
     }
-    if (nativeStarted) {
-      const nativePolicy = { ...routePolicyRef.current, peerOnly: true };
-      routePolicyRef.current = nativePolicy;
-      setRoutePolicy(nativePolicy);
-    }
-
     if (captured) {
       streamRef.current = captured;
       setStream(captured);
-      setDetails(captureDetails(captured));
       watchCaptureEnd(captured, generation);
-      videoCodecRef.current = await resolveStreamVideoCodec(captured);
+      if (nativeStarted) {
+        setDetails({
+          resolution: "1280x720",
+          frameRate: 30,
+          hasAudio: captured.getAudioTracks().length > 0,
+        });
+        videoCodecRef.current = manualVideoCodecPreference("h264");
+      } else {
+        setDetails(captureDetails(captured));
+        videoCodecRef.current = await resolveStreamVideoCodec(captured);
+      }
       setResolvedVideoCodec(videoCodecRef.current.primary);
     }
     if (!isCurrentShare(generation, shareGeneration)) {
@@ -2973,7 +2999,7 @@ export function HostPage({
             {stream ? (
               <video ref={videoRef} autoPlay muted playsInline />
             ) : null}
-            {nativeActive && phase === "live" ? (
+            {nativeActive && !stream && phase === "live" ? (
               <div className="lr-tv-overlay" role="status" aria-label={t("host.starting")}>
                 <VisGlyph name="cast" size={42} draw="native-live" />
               </div>

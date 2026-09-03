@@ -170,3 +170,10 @@ STUN to the same ordinary Browser media edges. Reachable peers may form the
 ordinary Browser relay tree; an unreachable media path fails without adding a
 route type, score, or fallback. Selecting a Site uses that deployment's current
 transport configuration instead.
+
+A native Host reserves one additional loopback media edge for its system-
+Browser preview and existing Browser SFU publisher. That local edge neither
+consumes endpoint route-copy capacity nor starts gateway port mapping. Direct
+children still use the native shared encode; if the controller assigns SFU,
+the ordinary SFU publication consumes its existing route copy and retains the
+same LiveKit representation and recovery policy as Browser capture.

@@ -10,7 +10,7 @@ describe("native Client private wire", () => {
   it("keeps public discovery capability-only", () => {
     expect(
       nativeHealthSchema.parse({
-        protocol: 3,
+        protocol: 4,
         service: "screener-client",
         port: 39_721,
         instanceToken: "a".repeat(43),
@@ -23,7 +23,7 @@ describe("native Client private wire", () => {
     ).toMatchObject({ nativeMedia: { processAudio: false } });
     expect(
       nativeHealthSchema.safeParse({
-        protocol: 3,
+        protocol: 4,
         service: "screener-client",
         port: 39_721,
         instanceToken: "a".repeat(43),
@@ -58,7 +58,7 @@ describe("native Client private wire", () => {
 
   it("fences native events by share and connection identity", () => {
     const event = {
-      version: 3,
+      version: 4,
       type: "edge-state",
       shareId: "share_123456",
       connectionId: "edge_1234567",
@@ -75,7 +75,7 @@ describe("native Client private wire", () => {
 
   it("accepts only internally consistent native quality evidence", () => {
     const event = {
-      version: 3,
+      version: 4,
       type: "edge-quality",
       shareId: "share_123456",
       connectionId: "edge_1234567",
