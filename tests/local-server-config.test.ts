@@ -43,11 +43,17 @@ describe("local server configuration", () => {
       SCREENER_CLIENT_LAN_ADDRESS: "192.168.50.4",
       SCREENER_CLIENT_ALLOWED_LAN_ADDRESSES: "192.168.50.4, 10.10.0.4",
       SCREENER_CLIENT_LOCAL_PASSWORD: "persistent-local-password",
+      SCREENER_CLIENT_PUBLIC_ORIGIN: "https://small-bright-room.trycloudflare.com",
       STUN_URLS: "stun:stun.example:3478, stun:stun.example:3479",
     });
 
     expect(config.port).toBe(9234);
-    expect(config.publicBaseUrl.origin).toBe("http://192.168.50.4:9234");
+    expect(config.publicBaseUrl.origin).toBe(
+      "https://small-bright-room.trycloudflare.com",
+    );
+    expect(config.allowedOrigins).toContain(
+      "https://small-bright-room.trycloudflare.com",
+    );
     expect(config.allowedOrigins).toContain("http://10.10.0.4:9234");
     expect(config.stunUrls).toEqual([
       "stun:stun.example:3478",
@@ -65,5 +71,17 @@ describe("local server configuration", () => {
       publicAddress,
       siteAccessPassword: password,
     })).toThrow();
+  });
+
+  it.each([
+    "http://public.example",
+    "https://public.example/path",
+    "https://user@public.example",
+  ])("rejects invalid public origin %s", (publicOrigin) => {
+    expect(() => createLocalServerConfig({
+      publicAddress: "192.168.1.2",
+      publicOrigin,
+      siteAccessPassword: "valid-password",
+    })).toThrow("Local public origin must be an HTTPS origin");
   });
 });

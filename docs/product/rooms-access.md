@@ -78,11 +78,11 @@ code-only attempts and does not silently revoke invitations.
 
 The Client opens its own localhost Host page with that password in a fragment.
 The page removes the fragment and uses the existing SiteAccess endpoint; this
-does not create a fourth admission authority. LAN Viewers normally use the
-existing invitation grant. A manually paired Internet Viewer receives that same
-room-scoped grant through the Client connection; the Host's Local RoomStore
-remains the only authority. Selecting a Site moves room authority wholly to that
-Site rather than synchronizing two stores.
+does not create a fourth admission authority. LAN and one-link Internet Viewers
+use the same room-scoped invitation grant; its fragment never enters the public
+tunnel request, and the Host's Local RoomStore remains the only authority.
+Selecting a Site moves room authority wholly to that Site rather than
+synchronizing two stores.
 
 Stable mode does not persist participants, signaling sessions, sharing state,
 routes, codec decisions, quality evidence, or SFU state. After restart, clients

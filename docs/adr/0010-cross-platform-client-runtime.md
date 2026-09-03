@@ -34,25 +34,22 @@ Hosted and Local deployments diverge without improving the media path.
    edges; it carries no room password, Host token, Viewer grant, or route policy.
    The Browser forwards current Site signaling and remains the participant.
 5. A platform package contains the Go entry, a pinned Node runtime, and the same
-   server/client build used by Hosted Screener. A Windows package may also carry
-   one process-isolated capture binary. The Go entry supervises child processes
-   with bounded lifetime. Platform packaging is metadata around that entry, not
-   another long-running wrapper or UI.
+   server/client build used by Hosted Screener. It may also carry one process-
+   isolated capture binary and the pinned `cloudflared` sidecar. The Go entry
+   supervises child processes with bounded lifetime. Platform packaging is
+   metadata around that entry, not another long-running wrapper or UI.
 6. The system Browser remains the UI. Browser extensions, userscripts, Electron,
    Tauri, and resident services need new evidence before they can replace this
    smaller boundary.
-7. A self-contained local deployment may serve reachable LAN peers without a
-   central Screener service. Public-Internet use still needs persistent
-   signaling and a reachable ICE path; removing a server does not create either.
-   Explicit Client-to-Client pairing keeps the Host's Local Node as the sole
-   room authority. The users manually exchange one WebRTC offer and answer; the
-   resulting DTLS/SCTP association maps each Viewer-local TCP connection to one
-   reliable ordered DataChannel and forwards it to the Host's loopback Node.
-   This carries the unchanged HTTP and WebSocket control surface rather than
-   reimplementing either protocol. The invitation path is delivered after DTLS,
-   and both Browsers use the same localhost port so existing Origin and Viewer-
-   grant authority remains unchanged. A configured Site remains a different
-   deployment mode.
+7. A self-contained Local deployment serves reachable LAN peers without a
+   central Screener service. Its explicit `--link` mode starts one accountless
+   Cloudflare Quick Tunnel for the same Node HTTP/WebSocket surface, injects the
+   resulting HTTPS origin before Node starts, and otherwise retains the same
+   memory RoomStore, Browser UI, Viewer grant, signaling, and route controller.
+   The Host sends the ordinary invitation link and the Viewer needs only a
+   Browser. Cloudflare terminates this temporary control path; WebRTC media stays
+   P2P and uses public STUN. The link ends with the Client and is not a persistent
+   Site, SFU, or TURN fallback.
 8. Native media is selected for an entire Host share generation. One isolated
    platform capture feeds one encoded source and bounded independent Pion
    transports, with process-loopback audio sharing the same PeerConnection when
@@ -66,9 +63,9 @@ Hosted and Local deployments diverge without improving the media path.
 10. Local mode is one explicit server composition: static current assets,
     memory-only rooms, peer-assisted media, no SQLite, no SFU, no NAT prediction,
     and localhost plus current LAN IPv4 origins. It uses no STUN by default;
-    explicit Client pairing supplies one public or user-selected STUN URL to the
-    pairing association and existing Browser media edges. It changes no Hosted
-    shutdown or persistence behavior.
+    `--link` adds its exact temporary HTTPS origin and Cloudflare's public STUN
+    to existing Browser media edges. It changes no Hosted shutdown or
+    persistence behavior.
 11. One Client configuration owns the optional Site origin and a generated
     Local access password. The Client bootstraps its own Host page through a
     fragment that is consumed before authentication; friends use the existing
@@ -97,16 +94,18 @@ process-isolated hardware-H.264/Pion edges sharing one encoded source and
 decoded by Chrome, and bounded process cleanup. The native Host path uses the
 current Browser route and a remote Pion gate has received video over a direct
 `srflx`-to-`srflx` pair. A Windows Browser gate also receives process-loopback
-Opus on both native edges. A separate Windows-to-Linux gate proves manual
-Client pairing and the unchanged HTTP, Viewer-page, and WebSocket control path.
-Native SFU/quality evidence, other platform capture, and paired Browser media
-remain separate gates.
+Opus on both native edges. A separate remote gate proves that `--link` generates
+the ordinary public invitation and carries the unchanged Viewer page and
+WebSocket control path, then disappears when the Client exits. Native SFU and
+quality evidence, other platform capture, and one-link Browser media remain
+separate gates.
 
 ## Primary Sources
 
 - [Go child-process lifecycle](https://pkg.go.dev/os/exec)
 - [WebRTC peer connections and signaling](https://webrtc.org/getting-started/peer-connections)
-- [Pion detached DataChannels](https://github.com/pion/webrtc/tree/master/examples/data-channels-detach-create)
+- [Cloudflare Quick Tunnels](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/trycloudflare/)
+- [Cloudflare Tunnel WebSocket support](https://developers.cloudflare.com/cloudflare-one/faq/cloudflare-tunnels-faq/)
 - [RFC 6455 WebSocket Origin model](https://www.rfc-editor.org/rfc/rfc6455.html)
 - [Chrome Local Network Access](https://developer.chrome.com/blog/local-network-access)
 - [Discord local RPC](https://docs.discord.com/developers/topics/rpc)

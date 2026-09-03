@@ -79,10 +79,6 @@ function runClientTests(go) {
     .filter(Boolean);
   const stableNetworkPackages = [
     {
-      package: "github.com/TNTcraftHIM/Screener/native/client/internal/directpair",
-      binary: "directpair.test.exe",
-    },
-    {
       package: "github.com/TNTcraftHIM/Screener/native/client/internal/mediaedge",
       binary: "mediaedge.test.exe",
     },

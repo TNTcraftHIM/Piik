@@ -96,21 +96,44 @@ function assertOutsideRepository(repositoryRoot, outputRoot) {
   }
 }
 
-if (process.argv.length !== 5 && process.argv.length !== 6) {
+const positional = process.argv.slice(2, 5);
+const options = process.argv.slice(5);
+if (positional.length !== 3 || options.length % 2 !== 0) {
   fail(
-    "Usage: node scripts/assemble-client.mjs <app-release.json> <node-executable> <new-output-directory> [windows-capture-executable]",
+    "Usage: node scripts/assemble-client.mjs <app-release.json> <node-executable> <new-output-directory> [--capture <executable>] [--tunnel <executable>]",
   );
 }
 
+let captureArgument = null;
+let tunnelArgument = null;
+for (let index = 0; index < options.length; index += 2) {
+  const name = options[index];
+  const value = options[index + 1];
+  if (!value || (name !== "--capture" && name !== "--tunnel")) {
+    fail("Client package option is invalid");
+  }
+  if (name === "--capture" && captureArgument === null) {
+    captureArgument = value;
+  } else if (name === "--tunnel" && tunnelArgument === null) {
+    tunnelArgument = value;
+  } else {
+    fail("Client package option is duplicated");
+  }
+}
+
 const repositoryRoot = realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), ".."));
-const descriptorPath = realpathSync(resolve(process.argv[2]));
-const nodePath = realpathSync(resolve(process.argv[3]));
-const outputRoot = resolve(process.cwd(), process.argv[4]);
-const capturePath = process.argv[5] ? realpathSync(resolve(process.argv[5])) : null;
+const descriptorPath = realpathSync(resolve(positional[0]));
+const nodePath = realpathSync(resolve(positional[1]));
+const outputRoot = resolve(process.cwd(), positional[2]);
+const capturePath = captureArgument ? realpathSync(resolve(captureArgument)) : null;
+const tunnelPath = tunnelArgument ? realpathSync(resolve(tunnelArgument)) : null;
 assertOutsideRepository(repositoryRoot, outputRoot);
 if (!lstatSync(nodePath).isFile()) fail("Node runtime must be a regular file");
 if (capturePath && (process.platform !== "win32" || !lstatSync(capturePath).isFile())) {
   fail("Windows capture runtime must be a regular file on Windows");
+}
+if (tunnelPath && !lstatSync(tunnelPath).isFile()) {
+  fail("Public tunnel runtime must be a regular file");
 }
 
 const descriptor = readDescriptor(descriptorPath);
@@ -153,6 +176,16 @@ try {
     chmodSync(packagedCapture, 0o755);
   }
 
+  let packagedTunnel = null;
+  if (tunnelPath) {
+    const tunnelRoot = join(packageRoot, "runtime", "tunnel");
+    mkdirSync(tunnelRoot, { recursive: true });
+    const tunnelName = process.platform === "win32" ? "cloudflared.exe" : "cloudflared";
+    packagedTunnel = join(tunnelRoot, tunnelName);
+    copyFileSync(tunnelPath, packagedTunnel);
+    chmodSync(packagedTunnel, 0o755);
+  }
+
   const clientName = process.platform === "win32" ? "screener-client.exe" : "screener-client";
   const clientPath = join(packageRoot, clientName);
   const goCommand = process.env.SCREENER_GO?.trim() || "go";
@@ -181,6 +214,9 @@ try {
     client: clientName,
     node: `runtime/node/${nodeName}`,
     nativeCapture: packagedCapture ? "runtime/native/screener-client-capture.exe" : null,
+    publicTunnel: packagedTunnel
+      ? `runtime/tunnel/${process.platform === "win32" ? "cloudflared.exe" : "cloudflared"}`
+      : null,
     app: "app",
   })}\n`);
 } finally {

@@ -67,11 +67,12 @@ request was blocked. The gate checks both expected outcomes.
 A self-contained LAN room uses a localhost Host URL and a selected LAN IPv4
 Viewer URL backed by the same local TypeScript process. Its generated access
 password is persisted once and passed only to the Client's Host page in a
-consumed fragment. For explicit Internet pairing, Pion's detached DataChannel
-API exposes each SCTP stream as an `io.ReadWriteCloser`; mapping one Browser TCP
-connection to one reliable ordered DataChannel preserves the existing HTTP and
-WebSocket implementation without another multiplexer or application protocol.
-The Host's Local Node remains the sole room and signaling authority.
+consumed fragment. Explicit `--link` mode launches the packaged Cloudflare Quick
+Tunnel against that same local HTTP server and supplies its random HTTPS origin
+to Node before startup. The public path therefore reuses the exact frontend,
+WebSocket signaling, RoomStore, and Viewer grant instead of adding a rendezvous
+or second client protocol. Cloudflare carries control traffic; WebRTC media uses
+public STUN and remains P2P-only.
 
 ## UI Runtime Boundary
 
@@ -112,10 +113,14 @@ On Windows with Chrome for Testing 151.0.7922.138:
 - the native Host path created a Local room and a remote Pion Viewer received
   30 packets over a selected `srflx`-to-`srflx` pair; the reverse SSH link in
   that gate carried signaling only.
-- a Windows Host Client and Linux Viewer Client manually exchanged gathered SDP,
-  selected a public-Internet Pion path, and carried the existing `/healthz`,
-  Viewer page, and `/signal` WebSocket upgrade through that direct association;
-  no Hosted room or signaling service participated.
+- a Windows Client created an accountless Quick Tunnel, generated its ordinary
+  invitation on that origin, and served the Viewer page plus `/signal` WebSocket
+  upgrade to an independent Linux host; stopping the Client closed the URL.
+
+The one-link gate used the official Windows amd64 `cloudflared` 2026.8.3 asset
+with SHA-256 `83e726ed18ea78c5ad5213c4c3a3a27051393950d2bc8ed4de69bec12d14eaae`.
+The sidecar remains an explicit package input rather than a linked Client
+dependency.
 
 The peer topology gate now treats native `getStats()` RTP identity and frame
 totals as its portable core proof. Detailed Screener quality metrics enrich a
@@ -131,15 +136,17 @@ deployment no longer erases valid native RTCStats.
 - Exercise the native Host on a configured Site and representative Browsers;
   native quality evidence, audio, SFU publication, and non-Windows capture
   remain undefined.
-- Exercise paired Browser media on a physical second device; the current paired
-  gate proves the complete control path, not decoded Browser frames.
+- Exercise one-link Browser media on a physical second device; the current gate
+  proves the complete public control path, not decoded Browser frames.
 
 ## Sources
 
 - [Go `os/exec`](https://pkg.go.dev/os/exec)
 - [WebRTC peer connections](https://webrtc.org/getting-started/peer-connections)
-- [Pion detached DataChannels](https://github.com/pion/webrtc/tree/master/examples/data-channels-detach-create)
 - [Cloudflare public STUN endpoint](https://developers.cloudflare.com/realtime/turn/)
+- [Cloudflare Quick Tunnels](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/trycloudflare/)
+- [Cloudflare Tunnel WebSockets](https://developers.cloudflare.com/cloudflare-one/faq/cloudflare-tunnels-faq/)
+- [cloudflared releases](https://github.com/cloudflare/cloudflared/releases/tag/2026.8.3)
 - [RFC 6455](https://www.rfc-editor.org/rfc/rfc6455.html)
 - [Chrome Local Network Access](https://developer.chrome.com/blog/local-network-access)
 - [Discord RPC](https://docs.discord.com/developers/topics/rpc)

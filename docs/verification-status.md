@@ -97,11 +97,10 @@ also receives process-loopback Opus on both native edges (66 packets per edge
 in the 2026-09-03 run). Native SFU publication, native quality evidence, and
 production package integration remain unproved.
 
-The manual Client-pair gate connected a Windows Host Client to a Linux Viewer
-Client over public ICE without a Hosted room or signaling service. Through that
-association the remote endpoint received the current health response and Viewer
-page and completed the existing `/signal` WebSocket upgrade. The gate also
-proved bounded process and remote-artifact cleanup. It does not yet prove decoded
+The one-link gate started a session-scoped public origin from a Windows Client,
+confirmed that its ordinary invitation used that origin, and served the Viewer
+page plus the existing `/signal` WebSocket upgrade to an independent Linux host.
+Client exit stopped Node and the public link. It does not yet prove decoded
 Browser media on a physical second device.
 
 The same clean revision assembled into a self-contained Windows package with a

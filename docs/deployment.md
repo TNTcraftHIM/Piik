@@ -50,13 +50,15 @@ target platform, provide that platform's Node executable and Go toolchain:
 SCREENER_GO=/path/to/go node scripts/assemble-client.mjs \
   /outside/repository/app-release/screener-<revision>.release.json \
   /path/to/node \
-  /outside/repository/Screener-Client
+  /outside/repository/Screener-Client \
+  --capture /path/to/platform-capture \
+  --tunnel /path/to/cloudflared
 ```
 
 Assembly refuses a dirty or different revision and emits one directory with
-the Client executable, pinned Node runtime, application release, production
-dependencies, and matching `REVISION`. It does not create an installer,
-auto-updater, release tag, or compatibility bundle.
+the Client executable, pinned Node runtime, application release, selected
+sidecars, production dependencies, and matching `REVISION`. It does not create
+an installer, auto-updater, release tag, or compatibility bundle.
 
 Retain the descriptor and successful deployment output as release metadata. Do
 not create a follow-up source commit solely to duplicate their revision, asset,

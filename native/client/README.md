@@ -13,15 +13,16 @@ room store, signaling protocol, or route controller.
   loopback service for native media.
 - `--local` clears the saved Site choice and returns to the self-contained Local
   authority.
-- `--pair-host` starts that Local authority with public STUN and accepts manually
-  paired Internet Viewers without changing the saved Site choice. A Viewer runs
-  `--pair-viewer`; the two users exchange the printed offer and answer once.
+- `--link` starts a temporary public HTTPS link for that Local authority without
+  changing the saved Site choice. The Host copies the ordinary room invitation;
+  a Viewer needs only a Browser.
 
 Local mode uses memory-only rooms, Browser P2P relay, no LiveKit, and no NAT
-prediction. Ordinary Local works on a reachable LAN. Manual pairing tunnels the
-same HTTP and WebSocket control surface directly between two Clients and uses
-STUN for both that tunnel and the existing Browser media edges; a difficult path
-still has no SFU or TURN fallback. The Client chooses a sole private LAN IPv4 automatically. Use
+prediction. Ordinary Local works on a reachable LAN. `--link` runs the packaged
+Cloudflare Tunnel sidecar for the existing HTTP/WebSocket control surface and
+uses Cloudflare's public STUN for ordinary Browser media edges. Media does not
+travel through the HTTP tunnel, and a difficult media path still has no SFU or
+TURN fallback. The Client chooses a sole private LAN IPv4 automatically. Use
 `--lan-address <address>` only when multiple real LAN interfaces are active.
 
 For a native Host, add `--native`. The system Browser remains the Host UI; the
@@ -38,16 +39,14 @@ fragment before continuing. Viewer invitations keep using the existing
 room-scoped grant.
 
 Press Enter in the Client console to end Local rooms and stop the bundled
-server. In pairing modes the console carries the offer/answer exchange, so use
-Ctrl+C to stop it. A Site-loaded Browser tab does not own the Client process.
+server and any temporary public link. A Site-loaded Browser tab does not own the
+Client process.
 
-For a manually paired room, start the Host with `--pair-host`, create a room in
-the opened Browser, and paste its Viewer invitation into the Client console.
-Send the printed offer to a friend. That friend starts the same executable with
-`--pair-viewer`, pastes the offer, and returns the printed answer. The Viewer
-page opens after the Host pastes that answer. `--pair-stun <stun-url>` replaces
-the default public `stun:stun.cloudflare.com:3478` discovery service for that
-Host run.
+For one-link Internet sharing, start the Host with `--link`, create a room in the
+opened Browser, and send its normal invitation link. The random
+`trycloudflare.com` origin lasts only for that Client run. Cloudflare Quick
+Tunnels provide no uptime guarantee; use a configured Site when persistent
+control availability or SFU fallback matters.
 
 ## Development
 
@@ -87,8 +86,8 @@ authentication; room authority and remote signaling remain in the Browser.
 ## Packaging
 
 Build one application release, then assemble a platform Client from that exact
-descriptor and a matching platform Node executable. A Windows package may add
-the independently built capture process as the final argument:
+descriptor and a matching platform Node executable. Native capture and the
+public-link sidecar are explicit package inputs:
 
 ```sh
 node scripts/package-app-release.mjs /outside/repository/app-release
@@ -97,7 +96,8 @@ SCREENER_GO=/path/to/go \
   /outside/repository/app-release/screener-<sha>.release.json \
   /path/to/node \
   /outside/repository/Screener-Client \
-  /outside/repository/screener-client-capture.exe
+  --capture /outside/repository/screener-client-capture.exe \
+  --tunnel /outside/repository/cloudflared.exe
 ```
 
 The result contains:
@@ -107,6 +107,7 @@ screener-client[.exe]
 REVISION
 runtime/node/node[.exe]
 runtime/native/screener-client-capture.exe # Windows native-media package only
+runtime/tunnel/cloudflared[.exe] # packages that support --link
 app/REVISION
 app/dist
 app/node_modules
@@ -119,8 +120,8 @@ For a native Host smoke run, start the Client with `--native` and optionally
 `--native-window-title <text>`. The Client opens the normal Host page with a
 one-share native capture request; the page still creates the room and sends
 the current SDP/ICE through the selected authority. A configured Site supplies
-its normal Internet routing and SFU fallback. Without a Site, `--pair-host`
-provides the explicit Client-to-Client P2P-only Internet path described above.
+its normal Internet routing and SFU fallback. Without a Site, `--link` exposes
+the Local control surface while media remains P2P-only.
 
 ## Gates
 
@@ -163,12 +164,13 @@ SCREENER_REMOTE_SSH_KEY=/path/to/key \
 SCREENER_CLIENT_GATE_STUN_URLS=stun:<stun-host>:3478 \
 npm run gate:client-cross-nat
 
-SCREENER_CLIENT_PAIR_GATE=true \
+SCREENER_CLIENT_LINK_GATE=true \
 SCREENER_GO=/path/to/go \
+SCREENER_CLOUDFLARED=/path/to/cloudflared \
 SCREENER_REMOTE_HOST=<public-test-host> \
 SCREENER_REMOTE_USER=<ssh-user> \
 SCREENER_REMOTE_SSH_KEY=/path/to/key \
-npm run gate:client-pair
+npm run gate:client-link
 ```
 
 The loopback health response reports window-video, process-audio, and hardware

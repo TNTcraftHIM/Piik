@@ -124,9 +124,10 @@ This is the current execution index. Git history owns completed timelines;
   One Go entry opens the system Browser, supervises the same Node application in
   memory-only Local mode, and owns loopback native media. Windows gates prove
   packaged Local/Site operation, WGC hardware-H.264 plus process audio, bounded
-  shared-encode P2P, and cleanup. Manual Windows-to-Linux pairing preserves the
-  Host Local authority and carries its HTTP/WebSocket control path without a
-  Hosted room service; paired Browser media remains unproved. Native SFU,
+  shared-encode P2P, and cleanup. One-link mode preserves the Host Local
+  authority while exposing its ordinary invitation and HTTP/WebSocket control
+  path through a session-scoped Quick Tunnel; remote Browser media remains
+  unproved. Native SFU,
   non-Windows capture, and other-platform packages remain outside the release.
 
 ## Current Hold

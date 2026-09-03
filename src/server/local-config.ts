@@ -15,6 +15,7 @@ const VISIBLE_ASCII_PATTERN = /^[\x21-\x7e]{8,128}$/;
 export interface LocalServerConfigOptions {
   port?: number;
   publicAddress: string;
+  publicOrigin?: string;
   allowedAddresses?: readonly string[];
   siteAccessPassword: string;
   stunUrls?: readonly string[];
@@ -49,16 +50,20 @@ export function createLocalServerConfig(
     throw new Error("Local STUN URLs are invalid");
   }
   const origin = (host: string) => `http://${host}:${port}`;
+  const publicBaseUrl = options.publicOrigin
+    ? publicHTTPSOrigin(options.publicOrigin)
+    : new URL(origin(publicAddress));
 
   return {
     nodeEnv: "production",
     port,
     listenHost: "0.0.0.0",
-    publicBaseUrl: new URL(origin(publicAddress)),
+    publicBaseUrl,
     allowedOrigins: new Set([
       origin("localhost"),
       origin("127.0.0.1"),
       ...[...allowedAddresses].map(origin),
+      publicBaseUrl.origin,
     ]),
     siteAccessPassword: options.siteAccessPassword,
     roomLeaseMs: LOCAL_ROOM_LEASE_MS,
@@ -90,13 +95,35 @@ export function loadLocalServerConfig(
     ?.split(",")
     .map((url) => url.trim())
     .filter(Boolean);
+  const publicOrigin = environment.SCREENER_CLIENT_PUBLIC_ORIGIN?.trim();
   return createLocalServerConfig({
     ...(port === undefined ? {} : { port }),
     publicAddress,
+    ...(publicOrigin ? { publicOrigin } : {}),
     ...(allowedAddresses ? { allowedAddresses } : {}),
     siteAccessPassword,
     ...(stunUrls ? { stunUrls } : {}),
   });
+}
+
+function publicHTTPSOrigin(value: string): URL {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error("Local public origin must be an HTTPS origin");
+  }
+  if (
+    parsed.protocol !== "https:" ||
+    parsed.username ||
+    parsed.password ||
+    parsed.pathname !== "/" ||
+    parsed.search ||
+    parsed.hash
+  ) {
+    throw new Error("Local public origin must be an HTTPS origin");
+  }
+  return parsed;
 }
 
 function localIPv4(value: string, name: string): string {

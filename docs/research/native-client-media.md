@@ -65,11 +65,10 @@ for this externally encoded Track. Converting packet loss, RTT, or an optional
 bandwidth estimator into `healthy | limited` would add an unaccepted custom
 quality threshold, so native sender quality remains `unknown`.
 
-No-Site Internet control can use the explicit manual dual-Client pairing owned
-by ADR-0010; its remote gate does not yet prove decoded Browser media. Public
-STUN is an address-discovery dependency in that mode; its operator sees endpoint
-metadata but never carries DTLS-SRTP media. STUN alone cannot replace SFU/TURN
-on a restricted pair.
+No-Site Internet control can use the one-link mode owned by ADR-0010; its remote
+gate does not yet prove decoded Browser media. Cloudflare carries HTTPS/WebSocket
+control and provides public STUN, while DTLS-SRTP media remains direct. STUN
+alone cannot replace SFU/TURN on a restricted pair.
 
 The next native-only NAT gate is an optional PCP/NAT-PMP/UPnP mapping for the
 same Pion UDP port, following Tailscale/libp2p practice. It is not implemented

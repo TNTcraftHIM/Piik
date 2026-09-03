@@ -62,24 +62,21 @@ func TestLaunchURLLeavesOrdinaryClientURLUntouched(t *testing.T) {
 	}
 }
 
-func TestPairModesKeepOneAuthority(t *testing.T) {
+func TestLinkModeKeepsOneLocalAuthority(t *testing.T) {
 	config := clientconfig.Config{
 		Version:             1,
 		LocalAccessPassword: "abcdefghijklmnopqrstuvwxyzABCDEF",
 		Site:                "https://example.test",
 	}
-	selected, err := applyMode(config, Options{PairHost: true})
+	selected, err := applyMode(config, Options{Link: true})
 	if err != nil || selected.Site != config.Site {
-		t.Fatalf("pair Host mode = %+v, %v", selected, err)
+		t.Fatalf("link mode = %+v, %v", selected, err)
 	}
-	if err = validateMode(Options{PairHost: true, SiteSet: true}); err == nil {
-		t.Fatal("pair Host accepted a separate Site")
+	if err = validateMode(Options{Link: true, SiteSet: true}); err == nil {
+		t.Fatal("link mode accepted a separate Site")
 	}
-	if err = validateMode(Options{PairViewer: true, Native: true}); err == nil {
-		t.Fatal("pair Viewer accepted Host capture")
-	}
-	if err = validateMode(Options{PairHost: true, PairSTUN: "turn:example.test:3478"}); err == nil {
-		t.Fatal("pair Host accepted a non-STUN discovery service")
+	if err = validateMode(Options{Link: true, Local: true}); err == nil {
+		t.Fatal("link mode accepted a second Local selector")
 	}
 }
 
@@ -90,16 +87,25 @@ func TestLocalEnvironmentOwnsItsSTUNConfiguration(t *testing.T) {
 		"192.168.1.2",
 		[]string{"192.168.1.2"},
 		"abcdefghijklmnopqrstuvwxyzABCDEF",
-		[]string{"stun:pair.example:3478"},
+		[]string{"stun:public.example:3478"},
+		"https://small-bright-room.trycloudflare.com",
 	)
 	stunEntries := []string{}
+	publicEntries := []string{}
 	for _, entry := range environment {
 		if strings.HasPrefix(entry, "STUN_URLS=") {
 			stunEntries = append(stunEntries, entry)
 		}
+		if strings.HasPrefix(entry, "SCREENER_CLIENT_PUBLIC_ORIGIN=") {
+			publicEntries = append(publicEntries, entry)
+		}
 	}
-	if len(stunEntries) != 1 || stunEntries[0] != "STUN_URLS=stun:pair.example:3478" {
+	if len(stunEntries) != 1 || stunEntries[0] != "STUN_URLS=stun:public.example:3478" {
 		t.Fatalf("Local STUN environment = %v", stunEntries)
+	}
+	if len(publicEntries) != 1 ||
+		publicEntries[0] != "SCREENER_CLIENT_PUBLIC_ORIGIN=https://small-bright-room.trycloudflare.com" {
+		t.Fatalf("Local public environment = %v", publicEntries)
 	}
 }
 

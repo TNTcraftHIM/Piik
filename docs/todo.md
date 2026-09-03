@@ -14,10 +14,10 @@ topics are not implementation authority.
    on the same PeerConnection with a video-only fallback; finish this boundary
    with a representation-compatible native SFU, native quality evidence, and
    teardown under failure. A clean revision package passes Local and Site
-   gates. No-Site Internet mode now has explicit dual-
-   Client pairing that retains the Host's Local authority and passes its remote
-   control-path gate. Prove decoded paired Browser media on a physical second
-   device; STUN still cannot provide an SFU/TURN fallback for a restricted pair.
+   gates. No-Site Internet mode now has one ordinary public invitation link that
+   retains the Host's Local authority and passes its remote control-path gate.
+   Prove decoded one-link Browser media on a physical second device; public STUN
+   still cannot provide an SFU/TURN fallback for a restricted pair.
 
 ## Parked Product Work
 
