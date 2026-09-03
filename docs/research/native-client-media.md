@@ -1,9 +1,9 @@
 # Native Client Media Evidence
 
-- Reviewed: 2026-09-03
+- Reviewed: 2026-09-04
 - Scope: Windows capture, one shared H.264/Opus source, Pion transport, Browser
   decode, and Browser-mediated SFU fallback
-- Status: native Host, cross-NAT video, Windows process audio, capture-failure
+- Status: native Host, cross-NAT video, Windows process/system audio, capture-failure
   restart, native P2P quality-evidence, and native-source SFU gates passed;
   other platform media remain outside the boundary
 
@@ -35,14 +35,15 @@ The opt-in `gate:client-media` run proved, in order:
 - WGC capture and adapter-bound Media Foundation H.264 became active;
 - 30+ encoded 1280x720 frames crossed the bounded process protocol;
 - a PLI caused a later recovery unit;
-- the packaged Client exposed only separately probed video, process-audio, and
-  hardware-H.264 capability booleans before control connected;
+- the packaged Client exposed only separately probed video, process-audio,
+  system-audio, and hardware-H.264 capability booleans before control connected;
 - two Pion ICE/DTLS/SRTP edges each delivered 30+ decoded 1280x720 frames
   to Chrome from that one encoded source;
 - the self-hosted STUN endpoint produced ordinary `host` and `srflx`
   candidates;
-- process-loopback audio produced Opus RTP on both native edges (66 packets per
-  edge in the bounded run);
+- process-loopback audio produced non-zero PCM, Opus RTP, and non-zero decoded
+  audio energy on both native edges; the same checks pass for a display using
+  system loopback;
 - closing the captured source ended its share, released the old media path, and
   a second capture generation in the same room delivered a different media
   object plus 30 new frames to the existing Viewer;
@@ -51,10 +52,10 @@ The opt-in `gate:client-media` run proved, in order:
 Unit coverage separately enforces the supplied edge capacity, forwards PLI/FIR
 to the shared video source, validates the same PeerConnection's Opus section,
 and bounds the pure-Go Opus encoder's steady-state allocations. The native Host
-session starts process-loopback audio only when the capture probe advertises it;
-an audio start or read failure leaves the video session alive. The cross-NAT
-result proves reachability and RTP delivery, not heterogeneous congestion
-behavior or a paired no-Site Browser media session.
+session starts the target-appropriate loopback audio only when the capture probe
+advertises it; an audio start failure leaves the video session alive. The
+cross-NAT result proves reachability and RTP delivery, not heterogeneous
+congestion behavior or a paired no-Site Browser media session.
 
 The audio adapter uses `github.com/thesyncim/gopus` behind the private
 `nativeaudio` boundary. It accepts fixed 48 kHz stereo PCM16/20 ms frames,
@@ -113,6 +114,12 @@ before this probe, so the evidence is not a cross-vendor dynamic-rate contract.
 The product therefore observes GCC for routing but does not yet apply one edge's
 target globally to the shared encoder.
 
+The Windows source boundary now enumerates displays and windows and returns a
+bounded best-effort preview. A display uses WGC plus default render-device
+loopback audio; a window uses WGC plus process-tree loopback when that actual
+capability probe succeeds. Preview failure is advisory and cannot tear down
+the control session.
+
 Non-Windows capture keeps the existing process/frame boundary and replaces only
 the platform sidecar. The macOS candidate enumerates `SCShareableContent`, fences
 the selected process/window generation, receives change-driven
@@ -135,12 +142,12 @@ runtime, direct DMA-BUF import plus VAAPI/Vulkan encoding is not a small adapter
 
 ## Implementation Boundary
 
-- `nativecapture` owns the child process and bounded frame protocol.
+- `nativecapture` owns the child process, source identity, and bounded frame protocol.
 - `mediaedge` owns the stable Pion API, one UDP mux, shared H.264/Opus sources,
   and independent PeerConnections.
 - `nativehost` composes one capture generation with its bounded edges.
-- `nativecontrol` maps only local share/edge commands and exact native sender
-  quality windows to the loopback v4 wire.
+- `nativecontrol` maps only local source/share/edge commands and exact native
+  sender quality windows to the loopback v5 wire.
 
 The deleted sender application, UI, room client, and old wire are not
 compatibility inputs. Historical measurements remain in the separately marked
@@ -151,6 +158,7 @@ compatibility inputs. Historical measurements remain in the separately marked
 - [Windows Graphics Capture](https://learn.microsoft.com/en-us/windows/apps/develop/media-authoring-processing/screen-capture)
 - [WGC `CreateForWindow`](https://learn.microsoft.com/en-us/windows/win32/api/windows.graphics.capture.interop/nf-windows-graphics-capture-interop-igraphicscaptureiteminterop-createforwindow)
 - [WASAPI process loopback](https://learn.microsoft.com/en-us/samples/microsoft/windows-classic-samples/applicationloopbackaudio-sample/)
+- [OBS application-audio capture guide](https://obsproject.com/kb/application-audio-capture-guide/)
 - [Media Foundation hardware MFTs](https://learn.microsoft.com/en-us/windows/win32/medfound/hardware-mfts)
 - [Pion v4.2.18 stats implementation](https://github.com/pion/webrtc/blob/v4.2.18/stats.go)
 - [Pion Google congestion control](https://github.com/pion/interceptor/tree/v0.1.47/pkg/gcc)

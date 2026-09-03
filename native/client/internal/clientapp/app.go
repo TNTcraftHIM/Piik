@@ -108,6 +108,7 @@ func runLauncher(
 		ctx,
 		filepath.Join(appDirectory, "dist", "client"),
 		config.Site,
+		BuildRevision,
 	)
 	if err != nil {
 		return err
@@ -357,7 +358,7 @@ type nativeRuntime struct {
 }
 
 func (runtime nativeRuntime) available() bool {
-	return runtime.capabilities.WindowVideo && runtime.capabilities.HardwareH264 &&
+	return runtime.capabilities.Video && runtime.capabilities.HardwareH264 &&
 		runtime.captureProcess != ""
 }
 
@@ -384,8 +385,9 @@ func discoverNativeMedia(ctx context.Context, configuredPath string) nativeRunti
 		captureProcess: path,
 		capture:        capabilities,
 		capabilities: loopback.NativeMediaCapabilities{
-			WindowVideo:  summary.WindowVideo,
+			Video:        summary.Video,
 			ProcessAudio: summary.ProcessAudio,
+			SystemAudio:  summary.SystemAudio,
 			HardwareH264: summary.HardwareH264,
 		},
 	}

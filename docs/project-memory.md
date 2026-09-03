@@ -13,7 +13,7 @@ the explicit native Host media path selected in the same Host UI. Local remains
 a serverless-LAN mode by default; explicit one-link mode exposes that same
 authority through a session-scoped public control tunnel while media remains
 P2P. Windows capture,
-hardware H.264, direct cross-NAT video, Windows process audio, and best-effort
+hardware H.264, direct cross-NAT video, Windows process/system audio, and best-effort
 mapping of the native edge's sole UDP socket are implemented through the same
 media boundary. Native P2P edges feed Pion GCC's categorical payload-capacity
 result into the existing route evidence windows. One reserved loopback edge

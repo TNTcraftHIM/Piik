@@ -5,7 +5,7 @@ import Foundation
 import ScreenCaptureKit
 import VideoToolbox
 
-private let captureProtocol = 2
+private let captureProtocol = 3
 private let width = 1280
 private let height = 720
 private let frameRate: Int32 = 30
@@ -32,16 +32,35 @@ private struct Probe: Codable {
     let `protocol`: Int
     let platform: String
     let platformBuild: String
-    let windowCapture: Bool
+    let videoCapture: Bool
     let processAudio: Bool
+    let systemAudio: Bool
     let adapters: [AdapterProbe]
 }
 
-private struct WindowTarget: Codable {
-    let windowHandle: String
-    let pid: UInt32
-    let creationTime: String
+private struct CaptureTarget: Codable {
+    let kind: String
+    let sourceId: String
+    let pid: UInt32?
+    let creationTime: String?
     let title: String
+
+    enum CodingKeys: String, CodingKey {
+        case kind
+        case sourceId
+        case pid
+        case creationTime
+        case title
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(sourceId, forKey: .sourceId)
+        try container.encodeIfPresent(pid, forKey: .pid)
+        try container.encodeIfPresent(creationTime, forKey: .creationTime)
+        try container.encode(title, forKey: .title)
+    }
 }
 
 private struct StartingStatus: Codable {
@@ -103,7 +122,7 @@ private func processCreationTime(_ pid: pid_t) -> String? {
     return String(seconds * 1_000_000 + microseconds)
 }
 
-private func target(for window: SCWindow) -> WindowTarget? {
+private func target(for window: SCWindow) -> CaptureTarget? {
     guard let application = window.owningApplication,
           application.processID > 0,
           let created = processCreationTime(application.processID),
@@ -111,19 +130,33 @@ private func target(for window: SCWindow) -> WindowTarget? {
           !title.isEmpty else {
         return nil
     }
-    return WindowTarget(
-        windowHandle: String(window.windowID),
+    return CaptureTarget(
+        kind: "window",
+        sourceId: String(window.windowID),
         pid: UInt32(application.processID),
         creationTime: created,
         title: title
     )
 }
 
-private func shareableWindows() async throws -> [(SCWindow, WindowTarget)] {
-    let content = try await SCShareableContent.excludingDesktopWindows(
+private func target(for display: SCDisplay) -> CaptureTarget {
+    CaptureTarget(
+        kind: "display",
+        sourceId: String(display.displayID),
+        pid: nil,
+        creationTime: nil,
+        title: "Display \(display.displayID)"
+    )
+}
+
+private func shareableContent() async throws -> SCShareableContent {
+    try await SCShareableContent.excludingDesktopWindows(
         false,
         onScreenWindowsOnly: true
     )
+}
+
+private func shareableWindows(_ content: SCShareableContent) -> [(SCWindow, CaptureTarget)] {
     return content.windows.compactMap { window in
         guard let value = target(for: window) else { return nil }
         return (window, value)
@@ -163,18 +196,22 @@ private func probe() throws {
         protocol: captureProtocol,
         platform: "darwin",
         platformBuild: ProcessInfo.processInfo.operatingSystemVersionString,
-        windowCapture: true,
+        videoCapture: true,
         processAudio: false,
+        systemAudio: false,
         adapters: adapters
     ))
 }
 
-private func listWindows() async throws {
-    let available = try await shareableWindows()
-    let windows = available.map { $0.1 }.sorted {
+private func listSources() async throws {
+    let content = try await shareableContent()
+    let displays = content.displays.map { target(for: $0) }.sorted {
         $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
     }
-    try writeJSON(windows)
+    let windows = shareableWindows(content).map { $0.1 }.sorted {
+        $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+    }
+    try writeJSON(displays + windows)
 }
 
 private final class StopSignal {
@@ -661,22 +698,38 @@ private final class CaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
 }
 
 private func capture(_ arguments: [String]) async throws {
-    guard arguments.count == 10,
+    guard arguments.count == 11,
           arguments[1] == "--capture-video",
-          let pid = UInt32(arguments[2]), pid > 0,
-          let windowID = UInt32(arguments[4]), windowID > 0,
-          arguments[5] == "--adapter-index", arguments[6] == "0",
-          arguments[7] == "--mft-index", arguments[8] == "0",
-          arguments[9] == "--protocol-v2" else {
+          let sourceID = UInt32(arguments[3]), sourceID > 0,
+          let pid = UInt32(arguments[4]),
+          arguments[6] == "--adapter-index", arguments[7] == "0",
+          arguments[8] == "--mft-index", arguments[9] == "0",
+          arguments[10] == "--protocol-v3" else {
         throw CaptureFailure(description: "invalid capture arguments")
     }
-    let creationTime = arguments[3]
-    let windows = try await shareableWindows()
-    guard let selected = windows.first(where: {
-        $0.0.windowID == windowID && $0.1.pid == pid &&
-            $0.1.creationTime == creationTime
-    })?.0 else {
-        throw CaptureFailure(description: "capture target identity changed")
+    let kind = arguments[2]
+    let creationTime = arguments[5]
+    let content = try await shareableContent()
+    let filter: SCContentFilter
+    if kind == "window" {
+        guard pid > 0, creationTime != "0",
+              let selected = shareableWindows(content).first(where: {
+                $0.0.windowID == sourceID && $0.1.pid == pid &&
+                    $0.1.creationTime == creationTime
+              })?.0 else {
+            throw CaptureFailure(description: "capture target identity changed")
+        }
+        filter = SCContentFilter(desktopIndependentWindow: selected)
+    } else if kind == "display" {
+        guard pid == 0, creationTime == "0",
+              let selected = content.displays.first(where: {
+                $0.displayID == sourceID
+              }) else {
+            throw CaptureFailure(description: "capture target identity changed")
+        }
+        filter = SCContentFilter(display: selected, excludingWindows: [])
+    } else {
+        throw CaptureFailure(description: "capture target kind is unsupported")
     }
 
     let writer = ProtocolWriter()
@@ -697,7 +750,7 @@ private func capture(_ arguments: [String]) async throws {
     configuration.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
     configuration.showsCursor = true
     let stream = SCStream(
-        filter: SCContentFilter(desktopIndependentWindow: selected),
+        filter: filter,
         configuration: configuration,
         delegate: output
     )
@@ -748,7 +801,7 @@ private struct ScreenerCapture {
             } else if arguments.count == 2, arguments[1] == "--self-test" {
                 try selfTest()
             } else if arguments.count == 2, arguments[1] == "--list" {
-                try await listWindows()
+                try await listSources()
             } else {
                 try await capture(arguments)
             }

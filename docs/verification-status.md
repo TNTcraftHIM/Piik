@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-09-03
+Last updated: 2026-09-04
 
 This file owns only cross-module physical evidence that still changes how the
 current product may be described. [Status](./status.md) owns exact source and
@@ -89,7 +89,9 @@ The same explicit-target assembly produced a Linux amd64 package that ran its
 bundled Node application and loopback runtime on an independent Ubuntu host.
 Its full package also created a public link reachable from another network and
 closed that link and all local ports on exit. The macOS arm64 output contains
-matching Mach-O arm64 Client and Node binaries, but has not run on macOS.
+matching Mach-O arm64 Client and Node binaries; its capture sidecar compiles on
+the macOS runner and passes the synthetic hardware-H.264 IDR self-test, but the
+full package and ScreenCaptureKit path have not run on a physical Mac.
 
 Still required are physical second-device LAN playback, first-run LNA prompt,
 no-STUN mDNS behavior, macOS package execution, and equivalent non-Windows
@@ -98,10 +100,12 @@ one shared Pion source feeding two Chrome transports, STUN candidate gathering,
 and a Local Client Host path have bounded physical gates. A remote Pion gate
 also received 30 video packets over a selected `srflx`-to-`srflx` pair; its
 signaling used a temporary reverse SSH test path. The Windows media gate now
-also receives process-loopback Opus on both native edges (66 packets per edge
-in the 2026-09-03 run). The native Host gate also closes the captured source,
-observes the current share end, restarts capture in the same room, and requires
-the existing Viewer to receive a different media object plus 30 new frames.
+also receives non-zero process/system-loopback Opus on both native edges and
+verifies decoded audio energy. The native Host gate passes display and window
+source selection and bounded previews; its window arm closes the captured
+source, observes the current share end, restarts capture in the same room, and
+requires the existing Viewer to receive a different media object plus 30 new
+frames. Display-source lifecycle is not claimed by that arm.
 Native P2P quality evidence and the Browser-mediated native-source SFU happy
 path now have bounded gates. Production package integration, SFU recovery and
 endurance, and physical non-Windows capture remain unproved.

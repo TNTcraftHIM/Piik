@@ -1,7 +1,7 @@
 # ADR-0010: Cross-Platform Client Runtime
 
 - Status: accepted Client/Local foundation and Windows native Host media boundary
-- Date: 2026-09-03
+- Date: 2026-09-04
 
 ## Context
 
@@ -28,9 +28,9 @@ Hosted and Local deployments diverge without improving the media path.
    echoes it so the Browser connects to the process it discovered. This value is
    public process identity, not authentication. Origin and Host validation plus
    the Browser's local-network permission own the current Browser boundary.
-4. Loopback v4 starts with a strict `hello` handshake. Health discovery reports
+4. Loopback v5 starts with a strict `hello` handshake. Health discovery reports
    only separately probed native capture booleans. An active control session may
-   list local capture choices and own one share's generation-fenced SDP/ICE
+   list local screen/window choices, request bounded previews, and own one share's generation-fenced SDP/ICE
    edges, including at most one loopback media bridge outside route-copy
    capacity; it carries no room password, Host token, Viewer grant, or route
    policy. The Browser forwards current Site signaling and remains the
@@ -54,8 +54,8 @@ Hosted and Local deployments diverge without improving the media path.
    Site, SFU, or TURN fallback.
 8. Native media is selected for an entire Host share generation. One isolated
    platform capture feeds one encoded source and bounded independent Pion
-   transports, with process-loopback audio sharing the same PeerConnection when
-   available. Each Site or one-link share makes one bounded, best-effort PCP,
+   transports, with process-loopback audio for windows or system-loopback audio
+   for screens sharing the same PeerConnection when available. Each Site or one-link share makes one bounded, best-effort PCP,
    UPnP, or NAT-PMP mapping for that same Pion UDP socket before its first edge
    gathers ICE; pure LAN Local mode does not. Absence or rejection leaves
    ordinary ICE/STUN unchanged. Native P2P quality uses Pion's transport-wide
@@ -68,7 +68,7 @@ Hosted and Local deployments diverge without improving the media path.
    publication still consumes its existing route copy. Native code does not
    implement LiveKit or another representation policy. The Client discovers
    packaged capture capability at startup. Its Host page offers the Browser's
-   standard picker and each exact Client-owned window; the user must select one
+   standard picker and each exact Client-owned screen/window; the user must select one
    and the Client never guesses a target. Only a consumed Client-launch marker
    travels in the URL fragment. Exact target identity travels over loopback.
 9. The Client uses the system Browser as its only UI. A lightweight loopback
@@ -130,9 +130,11 @@ separate gates.
 The macOS arm64 capture sidecar compiles on GitHub `macos-15` and its
 permission-free VideoToolbox self-test produces a constrained-baseline SPS/PPS/
 IDR. Real ScreenCaptureKit permission, source lifecycle, static-screen recovery,
-and endurance remain physical acceptance gates.
+and endurance remain physical acceptance gates. Source previews are best-effort;
+the current macOS sidecar falls back to its source glyph until a physical
+ScreenCaptureKit preview gate justifies a platform-specific implementation.
 
-The v4 loopback gate also proves that a real Chrome receiver produces Pion
+The v5 loopback gate also proves that a real Chrome receiver produces Pion
 transport feedback and that a non-unknown native sender-quality window reaches
 the existing route controller. Unknown feedback and stopped-source windows stay
 ineligible.

@@ -20,6 +20,10 @@ class FakeMediaStream {
   getVideoTracks(): MediaStreamTrack[] {
     return this.tracks.filter((track) => track.kind === "video");
   }
+
+  getAudioTracks(): MediaStreamTrack[] {
+    return this.tracks.filter((track) => track.kind === "audio");
+  }
 }
 
 class FakePeerConnection extends EventTarget {
@@ -45,7 +49,10 @@ class FakePeerConnection extends EventTarget {
   }
 }
 
-function fixture(options: { hangPreparation?: boolean } = {}) {
+function fixture(options: {
+  hangPreparation?: boolean;
+  expectedAudio?: boolean;
+} = {}) {
   let listener: ((event: NativeClientEvent) => void) | null = null;
   let peer: FakePeerConnection | null = null;
   vi.stubGlobal("window", globalThis);
@@ -60,7 +67,7 @@ function fixture(options: { hangPreparation?: boolean } = {}) {
     NativeMediaBridgeControl["prepareLocalEdge"]
   >(async (_shareId, connectionId) => {
       listener?.({
-        version: 4,
+        version: 5,
         type: "edge-candidate",
         shareId: "share_123456",
         connectionId,
@@ -85,7 +92,12 @@ function fixture(options: { hangPreparation?: boolean } = {}) {
     }),
   };
   const onFailed = vi.fn();
-  const bridge = new NativeMediaBridge("share_123456", control, onFailed);
+  const bridge = new NativeMediaBridge(
+    "share_123456",
+    control,
+    onFailed,
+    options.expectedAudio,
+  );
   return {
     bridge,
     control,
@@ -146,6 +158,33 @@ describe("native media bridge", () => {
     expect(current.control.closeEdge).toHaveBeenCalledOnce();
   });
 
+  it("does not publish a declared audio share before its audio track arrives", async () => {
+    const current = fixture({ expectedAudio: true });
+    const starting = current.bridge.start();
+    let resolved = false;
+    void starting.then(() => {
+      resolved = true;
+    });
+    await vi.waitFor(() => {
+      expect(current.peer().setLocalDescription).toHaveBeenCalledOnce();
+    });
+    current.peer().emitTrack({
+      kind: "video",
+      stop: vi.fn(),
+    } as unknown as MediaStreamTrack);
+    current.peer().setState("connected");
+    await Promise.resolve();
+    expect(resolved).toBe(false);
+
+    current.peer().emitTrack({
+      kind: "audio",
+      stop: vi.fn(),
+    } as unknown as MediaStreamTrack);
+
+    await expect(starting).resolves.toBe(current.bridge.stream);
+    expect(current.bridge.stream.getAudioTracks()).toHaveLength(1);
+  });
+
   it("reports an active native failure once and retires its edge", async () => {
     const current = fixture();
     const starting = current.bridge.start();
@@ -160,14 +199,14 @@ describe("native media bridge", () => {
     await starting;
 
     current.emit({
-      version: 4,
+      version: 5,
       type: "edge-state",
       shareId: "share_123456",
       connectionId: current.bridge.connectionId,
       state: "failed",
     });
     current.emit({
-      version: 4,
+      version: 5,
       type: "edge-state",
       shareId: "share_123456",
       connectionId: current.bridge.connectionId,

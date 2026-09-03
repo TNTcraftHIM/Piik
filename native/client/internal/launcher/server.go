@@ -43,6 +43,7 @@ type Server struct {
 	static      http.Handler
 	indexPath   string
 	site        string
+	revision    string
 	selection   chan Selection
 	resultReady chan struct{}
 	handled     chan struct{}
@@ -59,7 +60,7 @@ type Server struct {
 	handledOnce sync.Once
 }
 
-func Start(parent context.Context, staticDirectory, site string) (*Server, error) {
+func Start(parent context.Context, staticDirectory, site, revision string) (*Server, error) {
 	if parent == nil {
 		parent = context.Background()
 	}
@@ -84,6 +85,7 @@ func Start(parent context.Context, staticDirectory, site string) (*Server, error
 		static:      http.FileServer(http.Dir(staticDirectory)),
 		indexPath:   indexPath,
 		site:        site,
+		revision:    strings.TrimSpace(revision),
 		selection:   make(chan Selection, 1),
 		resultReady: make(chan struct{}),
 		handled:     make(chan struct{}),
@@ -182,7 +184,8 @@ func (server *Server) handleState(response http.ResponseWriter, request *http.Re
 		return
 	}
 	writeJSON(response, http.StatusOK, map[string]any{
-		"site": server.site,
+		"site":     server.site,
+		"revision": server.revision,
 		"defaultMode": func() Mode {
 			if server.site != "" {
 				return ModeSite

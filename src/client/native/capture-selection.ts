@@ -1,4 +1,4 @@
-import type { NativeAdapter, NativeWindowTarget } from "./wire";
+import type { NativeAdapter, NativeCaptureTarget } from "./wire";
 
 export interface NativeCapturePath {
   adapterIndex: number;
@@ -17,6 +17,8 @@ export function defaultNativeCapturePath(
   return null;
 }
 
-export function nativeWindowKey(target: NativeWindowTarget): string {
-  return `${target.windowHandle}:${target.pid}:${target.creationTime}`;
+export function nativeCaptureTargetKey(target: NativeCaptureTarget): string {
+  return target.kind === "window"
+    ? `window:${target.sourceId}:${target.pid}:${target.creationTime}`
+    : `display:${target.sourceId}`;
 }

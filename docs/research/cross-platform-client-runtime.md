@@ -1,6 +1,6 @@
 # Cross-Platform Client Runtime Research
 
-- Reviewed: 2026-09-03
+- Reviewed: 2026-09-04
 - Scope: loopback control and self-contained packaging boundary
 - Status: Client and Local composition implemented; Windows native Host video
   and a cross-NAT media gate proved
@@ -31,11 +31,12 @@ application data was copied or inspected.
 
 ## Current Control Boundary
 
-The Helper binds IPv4 loopback on a bounded range (`39721`-`39730`). `/health`
+The Client binds IPv4 loopback on a bounded range (`39721`-`39730`). `/health`
 returns the protocol version, service identity, selected port, and an
 `instanceToken`. `/control` admits one WebSocket session whose subprotocol
-contains that same value. The first frame must be `hello`; the only subsequent
-request is `ping`.
+contains that same value. The first frame must be `hello`; subsequent requests
+are limited to capability discovery, source preview, and one generation-fenced
+share's media controls.
 
 The instance token distinguishes a newly discovered process from a stale or
 unrelated listener. It is visible through health and stdout and is not an

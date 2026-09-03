@@ -18,17 +18,25 @@ type responseEnvelope struct {
 }
 
 type captureOptionsRequest requestEnvelope
-type listWindowsRequest requestEnvelope
+type listSourcesRequest requestEnvelope
+
+type sourcePreviewRequest struct {
+	Version int                         `json:"version"`
+	ID      string                      `json:"id"`
+	Type    string                      `json:"type"`
+	Source  nativecapture.CaptureTarget `json:"source"`
+}
 
 type startShareRequest struct {
-	Version      int                        `json:"version"`
-	ID           string                     `json:"id"`
-	Type         string                     `json:"type"`
-	ShareID      string                     `json:"shareId"`
-	Window       nativecapture.WindowTarget `json:"window"`
-	AdapterIndex uint32                     `json:"adapterIndex"`
-	EncoderIndex uint32                     `json:"encoderIndex"`
-	EdgeCapacity int                        `json:"edgeCapacity"`
+	Version      int                         `json:"version"`
+	ID           string                      `json:"id"`
+	Type         string                      `json:"type"`
+	ShareID      string                      `json:"shareId"`
+	Source       nativecapture.CaptureTarget `json:"source"`
+	Audio        bool                        `json:"audio"`
+	AdapterIndex uint32                      `json:"adapterIndex"`
+	EncoderIndex uint32                      `json:"encoderIndex"`
+	EdgeCapacity int                         `json:"edgeCapacity"`
 }
 
 type stopShareRequest struct {
@@ -93,9 +101,16 @@ type closeEdgeRequest struct {
 	ConnectionID string `json:"connectionId"`
 }
 
-type windowListResponse struct {
+type sourceListResponse struct {
 	responseEnvelope
-	Windows []nativecapture.WindowTarget `json:"windows"`
+	Sources []nativecapture.CaptureTarget `json:"sources"`
+}
+
+type sourcePreviewResponse struct {
+	responseEnvelope
+	SourceKey string `json:"sourceKey"`
+	Mime      string `json:"mime"`
+	Data      string `json:"data"`
 }
 
 type captureOptionsResponse struct {

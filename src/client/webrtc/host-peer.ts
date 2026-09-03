@@ -84,6 +84,7 @@ export class HostPeer {
   private replacementVideoTrack: MediaStreamTrack | null = null;
   private replacementAudioTrack: MediaStreamTrack | null = null;
   private videoSender: RTCRtpSender | null = null;
+  private audioTransceiver: RTCRtpTransceiver | null = null;
   private audioSender: RTCRtpSender | null = null;
   private statsTimer: number | null = null;
   private statsInFlight = false;
@@ -174,10 +175,11 @@ export class HostPeer {
       return false;
     }
     this.videoSender = videoTransceiver.sender;
-    this.audioSender = this.connection.addTransceiver(audioTrack ?? "audio", {
-      direction: "sendonly",
+    this.audioTransceiver = this.connection.addTransceiver(audioTrack ?? "audio", {
+      direction: audioTrack ? "sendonly" : "inactive",
       streams: [this.stream],
-    }).sender;
+    });
+    this.audioSender = this.audioTransceiver.sender;
     await this.enqueueSenderMutation(async () => {
       if (this.disposed || !this.videoSender || !this.audioSender) {
         return false;
@@ -208,11 +210,13 @@ export class HostPeer {
     return this.enqueueSenderMutation(async () => {
       const videoSender = this.videoSender;
       const audioSender = this.audioSender;
+      const audioTransceiver = this.audioTransceiver;
       const previousVideoTrack = this.senderVideoTrack;
       if (
         this.disposed ||
         !videoSender ||
         !audioSender ||
+        !audioTransceiver ||
         !previousVideoTrack
       ) {
         return false;
@@ -221,6 +225,10 @@ export class HostPeer {
       const nextVideoTrack = cloneSenderVideoTrack(nextSourceVideoTrack);
       let retainedNextVideoTrack = false;
       const nextAudioTrack = nextStream.getAudioTracks()[0] ?? null;
+      const nextAudioDirection = nextAudioTrack ? "sendonly" : "inactive";
+      const audioDirectionChanged =
+        audioTransceiver.direction !== nextAudioDirection;
+      const previousAudioDirection = audioTransceiver.direction;
       this.replacementVideoTrack = nextVideoTrack;
       this.replacementAudioTrack = nextAudioTrack;
       this.applyPausedState(nextVideoTrack, nextAudioTrack);
@@ -232,11 +240,17 @@ export class HostPeer {
         try {
           await videoSender.replaceTrack(nextVideoTrack);
           await audioSender.replaceTrack(nextAudioTrack);
+          if (audioDirectionChanged) {
+            audioTransceiver.direction = nextAudioDirection;
+          }
         } catch (error) {
           const [videoRollback] = await Promise.allSettled([
             videoSender.replaceTrack(previousVideoTrack),
             audioSender.replaceTrack(previousAudioTrack),
           ]);
+          if (audioDirectionChanged) {
+            audioTransceiver.direction = previousAudioDirection;
+          }
           if (videoRollback.status === "rejected") {
             this.dispose();
           }
@@ -266,7 +280,7 @@ export class HostPeer {
         });
         this.snapshot = { ...this.snapshot, error: null };
         this.emit();
-        return true;
+        return !audioDirectionChanged || (await this.createOffer(false));
       } finally {
         if (!retainedNextVideoTrack) {
           nextVideoTrack.stop();
@@ -469,6 +483,7 @@ export class HostPeer {
     this.localIceCandidates.discard();
     this.senderVideoTrack?.stop();
     this.senderVideoTrack = null;
+    this.audioTransceiver = null;
   }
 
   private bindConnectionEvents(): void {

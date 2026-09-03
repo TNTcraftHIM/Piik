@@ -6,6 +6,10 @@ import { AppHeader } from "../components/living/Header";
 import { Btn, Pill } from "../components/living/primitives";
 import { Glyph, type GlyphName } from "../ui/icons";
 import { useCopy, type CopyKey } from "../ui/copy";
+import {
+  checkReleaseUpdate,
+  type ReleaseUpdateNotice,
+} from "../lib/release-update";
 
 type ClientMode = "local" | "link" | "site";
 
@@ -13,6 +17,7 @@ const launcherStateSchema = z
   .object({
     site: z.string(),
     defaultMode: z.enum(["local", "site"]),
+    revision: z.string(),
   })
   .strict();
 const launcherResultSchema = z.object({ target: z.string().url() }).strict();
@@ -50,6 +55,7 @@ export function ClientLauncherPage() {
   const [mode, setMode] = useState<ClientMode>("local");
   const [site, setSite] = useState("");
   const [error, setError] = useState(false);
+  const [update, setUpdate] = useState<ReleaseUpdateNotice | null>(null);
 
   useEffect(() => {
     let current = true;
@@ -63,6 +69,9 @@ export function ClientLauncherPage() {
         setMode(state.defaultMode);
         setSite(state.site);
         setLoading(false);
+        void checkReleaseUpdate(state.revision).then((notice) => {
+          if (current && notice) setUpdate(notice);
+        }).catch(() => undefined);
       })
       .catch(() => {
         if (!current) return;
@@ -122,6 +131,26 @@ export function ClientLauncherPage() {
                 <p>{t("client.launch.hint")}</p>
               </header>
             )}
+
+            {update ? (
+              <a
+                className="lr-client-update"
+                href={update.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={t("client.update.available")}
+                title={vis ? undefined : t("client.update.available")}
+              >
+                <Glyph name="arrowUp" size={17} />
+                {vis ? (
+                  <span className="visually-hidden">
+                    {t("client.update.available")}
+                  </span>
+                ) : (
+                  <span>{t("client.update.available")}</span>
+                )}
+              </a>
+            ) : null}
 
             <div
               className="lr-client-modes"

@@ -143,6 +143,7 @@ interface RemoteMediaBinding {
   generation: number;
   boundAtRevision: number;
   videoTrackKey: string;
+  audioTrackKey: string;
 }
 
 function stageOverlayGlyph(stage: ViewerStage): { icon: GlyphName; spin: boolean } {
@@ -432,10 +433,16 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       .map((track) => track.id)
       .sort()
       .join(":");
+    const audioTrackKey = stream
+      .getAudioTracks()
+      .map((track) => track.id)
+      .sort()
+      .join(":");
     const current = remoteMediaRef.current;
     if (
       current?.stream === stream &&
-      current.videoTrackKey === videoTrackKey
+      current.videoTrackKey === videoTrackKey &&
+      current.audioTrackKey === audioTrackKey
     ) {
       return;
     }
@@ -443,6 +450,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       stream,
       boundAtRevision: revision,
       videoTrackKey,
+      audioTrackKey,
       generation: ++mediaGenerationRef.current,
     };
     invalidateQualityPresentation();

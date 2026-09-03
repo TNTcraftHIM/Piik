@@ -91,6 +91,35 @@ Do not build or run the full repository check on a constrained production host.
 The release wrapper installs only production dependencies in a transient,
 CPU/memory/time-bounded unit.
 
+## Update Check
+
+The application, Server deployment, and platform Client all use the full Git
+revision as their release identity. A formal GitHub Release must use that exact
+40-character revision as its tag and keep the corresponding release URL. The
+current CI workflow produces short-lived candidates but does not publish a
+GitHub Release; publication remains an explicit distribution decision.
+
+The default Client launcher starts immediately, then performs one background
+request to the official Screener GitHub Releases API. It shows a link only when
+the latest release has a valid full revision different from the packaged one.
+The request sends no current revision, credentials, room data, or media data;
+network errors, private-repository responses, and missing releases are treated
+as no notice. It never downloads, replaces, or interrupts a running share.
+
+An operator can perform the corresponding read-only Server check:
+
+```sh
+SCREENER_NODE=/usr/local/bin/node bash deploy/check-release.sh
+```
+
+The command reads `/opt/screener/current/REVISION` and prints one JSON result.
+Exit status `0` means the deployed revision is current, `10` means a newer
+release is available, and `20` means the check could not establish a valid
+release identity. For a private repository, inject a short-lived `GITHUB_TOKEN`
+through the operator environment; never place it in the repository or command
+line. The command does not mutate files, services, containers, or persistent
+state. A different current-revision file may be supplied as its only argument.
+
 ## Atomic Cutover
 
 Run the tracked server entry with the uploaded descriptor:

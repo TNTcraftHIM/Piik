@@ -124,9 +124,11 @@ This is the current execution index. Git history owns completed timelines;
   One Go entry opens a lightweight system-Browser launcher for Local, temporary
   public-link, or Site operation, supervises the same Node application when
   needed, and owns loopback native media. The same Host UI explicitly selects
-  Browser capture or an exact native window. Windows gates prove
-  packaged Local/Site operation, WGC hardware-H.264 plus process audio, bounded
-  shared-encode P2P, and cleanup. An explicit target assembler also produces a
+  Browser capture or an exact native screen/window. Windows gates prove
+  packaged Local/Site operation, WGC hardware-H.264 plus process/system audio, bounded
+  shared-encode P2P, and cleanup. The window arm also proves source end and
+  same-room reselection; display-source lifecycle remains a separate physical
+  gate. An explicit target assembler also produces a
   Linux amd64 package with proved Local/one-link runtime and a structurally
   verified but unexecuted macOS arm64 package; its capture sidecar now passes an
   arm64 compile plus hardware-H.264 IDR self-test. Client-scoped pull requests
@@ -143,7 +145,10 @@ This is the current execution index. Git history owns completed timelines;
   pacing or changing the shared encode. A local bridge now supplies native Host
   media to the existing Browser LiveKit publisher; an isolated LiveKit gate
   proves 1280x720 delivery and complete cleanup without a second SFU client.
-  Non-Windows capture remains outside the release.
+  Non-Windows capture remains outside the release. The default packaged Client
+  launcher performs a non-blocking official GitHub Release check and the
+  deployment tree provides a read-only operator check against the same full-SHA
+  release identity; neither installs or interrupts a running share.
 
 ## Current Hold
 

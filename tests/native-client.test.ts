@@ -3,33 +3,36 @@ import { describe, expect, it } from "vitest";
 import {
   nativeEventSchema,
   nativeHealthSchema,
-  nativeWindowTargetSchema,
+  nativeCaptureTargetSchema,
+  sourcePreviewResponseSchema,
 } from "../src/client/native/wire";
 
 describe("native Client private wire", () => {
   it("keeps public discovery capability-only", () => {
     expect(
       nativeHealthSchema.parse({
-        protocol: 4,
+        protocol: 5,
         service: "screener-client",
         port: 39_721,
         instanceToken: "a".repeat(43),
         nativeMedia: {
-          windowVideo: true,
+          video: true,
           processAudio: false,
+          systemAudio: true,
           hardwareH264: true,
         },
       }),
     ).toMatchObject({ nativeMedia: { processAudio: false } });
     expect(
       nativeHealthSchema.safeParse({
-        protocol: 4,
+        protocol: 5,
         service: "screener-client",
         port: 39_721,
         instanceToken: "a".repeat(43),
         nativeMedia: {
-          windowVideo: true,
+          video: true,
           processAudio: true,
+          systemAudio: true,
           hardwareH264: true,
         },
         adapters: ["private"],
@@ -39,26 +42,35 @@ describe("native Client private wire", () => {
 
   it("keeps 64-bit Windows identities as exact decimal strings", () => {
     expect(
-      nativeWindowTargetSchema.safeParse({
-        windowHandle: "12345678901234567890",
+      nativeCaptureTargetSchema.safeParse({
+        kind: "window",
+        sourceId: "12345678901234567890",
         pid: 1234,
         creationTime: "134327999999999999",
         title: "Game",
       }).success,
     ).toBe(true);
     expect(
-      nativeWindowTargetSchema.safeParse({
-        windowHandle: 12345678901234567890,
+      nativeCaptureTargetSchema.safeParse({
+        kind: "window",
+        sourceId: 12345678901234567890,
         pid: 1234,
         creationTime: 134327999999999999,
         title: "Game",
       }).success,
     ).toBe(false);
+    expect(
+      nativeCaptureTargetSchema.safeParse({
+        kind: "display",
+        sourceId: "65537",
+        title: "Display 1",
+      }).success,
+    ).toBe(true);
   });
 
   it("fences native events by share and connection identity", () => {
     const event = {
-      version: 4,
+      version: 5,
       type: "edge-state",
       shareId: "share_123456",
       connectionId: "edge_1234567",
@@ -73,9 +85,21 @@ describe("native Client private wire", () => {
     ).toBe(false);
   });
 
+  it("keeps an unavailable preview advisory instead of treating it as media failure", () => {
+    const preview = {
+      version: 5,
+      id: "request_preview",
+      type: "source-preview",
+      sourceKey: "display:65537",
+      mime: "image/bmp",
+      data: "",
+    };
+    expect(sourcePreviewResponseSchema.safeParse(preview).success).toBe(true);
+  });
+
   it("accepts only internally consistent native quality evidence", () => {
     const event = {
-      version: 4,
+      version: 5,
       type: "edge-quality",
       shareId: "share_123456",
       connectionId: "edge_1234567",

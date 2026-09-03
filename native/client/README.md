@@ -14,6 +14,9 @@ room store, signaling protocol, or route controller.
   configured Site owns rooms, persistence, routing, and SFU.
 - `--site`, `--local`, and `--link` remain deterministic automation inputs for
   CI and development. They are not required for normal use.
+- The default launcher checks the official GitHub Releases metadata after it
+  opens and shows a notice when a newer full-SHA release exists. The check is
+  best-effort and never installs or replaces the Client.
 
 Local mode uses memory-only rooms, Browser P2P relay, no LiveKit, and no NAT
 prediction. Ordinary Local works on a reachable LAN. The **Public invite** mode
@@ -91,7 +94,7 @@ dependent unit tests.
 
 The loopback service binds IPv4 loopback on the first available port from
 `39721` through `39730`. `/health` discovers the current process; `/control`
-accepts one strict v4 session. After `hello`, an available Client may list local
+accepts one strict v5 session. After `hello`, an available Client may list local
 capture choices and own one generation-fenced share's SDP/ICE edges, including
 one reserved local Browser bridge. Its public `instanceToken` distinguishes the
 discovered process but is not authentication; room authority and remote
@@ -204,8 +207,8 @@ SCREENER_REMOTE_SSH_KEY=/path/to/key \
 npm run gate:client-link
 ```
 
-The loopback health response reports window-video, process-audio, and hardware
-H.264 availability separately. The Windows media gate proves one hardware-H.264
+The loopback health response reports video, process-audio, system-audio, and
+hardware H.264 availability separately. The Windows media gate proves one hardware-H.264
 capture generation, shared Pion source, Browser decode, PLI recovery, and STUN
 candidate gathering. The native Host gate proves room creation and native video
 delivery through the current route; native audio is included when the capability

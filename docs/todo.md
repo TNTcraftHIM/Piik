@@ -27,9 +27,11 @@ topics are not implementation authority.
    RTC, X11 capture stack, or hand-built DMA-BUF/encoder matrix.
    The system-Browser launcher now owns Local, temporary public-link, and Site
    selection, and the Host explicitly chooses Browser capture or an exact
-   Client-owned window without command-line target input. Its Windows physical
-   gate passes first capture, source end, same-room reselection, and restored
-   Viewer delivery.
+   Client-owned screen/window without command-line target input. Its Windows
+   physical gates pass window and display capture, bounded source previews,
+   process/system audio, and restored Viewer delivery. The window arm also
+   proves source end and same-room reselection; display-source lifecycle remains
+   a separate physical gate.
    No-Site Internet mode now has one ordinary public invitation link that retains
    the Host's Local authority and passes remote control-path and independent
    Linux Pion media gates. Prove decoded one-link Browser media on a physical
@@ -127,11 +129,13 @@ topics are not implementation authority.
     runtime, future OCI images, and deployment bundles from one intentionally
     triggered immutable application release identified by its full commit SHA.
     A validated `main` push now produces that application release and three
-    native-runner Client candidates with SHA-256 metadata. Next add a
-    non-blocking Client update notice and an operator-invoked Server check; do
-    not add automatic install, container self-update, Watchtower, compatibility
-    ranges, or active-share interruption before distribution and rollback
-    evidence requires them.
+    native-runner Client candidates with SHA-256 metadata. The default Client
+    launcher now performs a non-blocking GitHub Releases check and the tracked
+    deployment tree provides an operator-invoked read-only Server check. Formal
+    GitHub Release publication, future OCI images, and deployment bundles remain
+    explicit distribution work; do not add automatic install, container
+    self-update, Watchtower, compatibility ranges, or active-share interruption
+    before distribution and rollback evidence requires them.
 16. **Go server consolidation.** Revisit replacing the sole TypeScript/Node
     server owner with Go only after the Client feature and physical acceptance
     boundaries are complete. First measure package, startup, and maintenance

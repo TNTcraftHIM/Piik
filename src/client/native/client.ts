@@ -2,6 +2,7 @@ import type { z } from "zod";
 
 import type { IceConfig, SignalPayload } from "../../shared/protocol";
 import { createOpaqueId } from "../lib/opaque-id";
+import { nativeCaptureTargetKey } from "./capture-selection";
 import {
   captureOptionsResponseSchema,
   edgeOfferResponseSchema,
@@ -15,11 +16,12 @@ import {
   pongResponseSchema,
   readyResponseSchema,
   shareStartedResponseSchema,
-  windowListResponseSchema,
+  sourceListResponseSchema,
+  sourcePreviewResponseSchema,
   type NativeAdapter,
   type NativeClientEvent,
   type NativeHealth,
-  type NativeWindowTarget,
+  type NativeCaptureTarget,
 } from "./wire";
 
 const DISCOVERY_TIMEOUT_MS = 400;
@@ -34,7 +36,8 @@ interface PendingRequest<T = unknown> {
 
 export interface NativeShareInput {
   shareId: string;
-  window: NativeWindowTarget;
+  source: NativeCaptureTarget;
+  audio: boolean;
   adapterIndex: number;
   encoderIndex: number;
   edgeCapacity: number;
@@ -136,13 +139,25 @@ export class NativeClient {
     return response.adapters;
   }
 
-  async windows(): Promise<NativeWindowTarget[]> {
+  async sources(): Promise<NativeCaptureTarget[]> {
     const response = await this.request(
-      "list-windows",
+      "list-sources",
       {},
-      windowListResponseSchema,
+      sourceListResponseSchema,
     );
-    return response.windows;
+    return response.sources;
+  }
+
+  async sourcePreview(target: NativeCaptureTarget): Promise<string | null> {
+    const response = await this.request(
+      "source-preview",
+      { source: target },
+      sourcePreviewResponseSchema,
+    );
+    if (response.sourceKey !== nativeCaptureTargetKey(target)) {
+      throw new Error("Native capture preview identity changed");
+    }
+    return response.data ? `data:${response.mime};base64,${response.data}` : null;
   }
 
   async startShare(input: NativeShareInput): Promise<{ audio: boolean }> {

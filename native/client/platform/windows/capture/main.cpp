@@ -28,6 +28,7 @@
 #include <winrt/Windows.Graphics.DirectX.h>
 #include <winrt/base.h>
 
+#include "capture_target.h"
 #include "process_audio.h"
 
 #include <algorithm>
@@ -1619,6 +1620,18 @@ winrt::Windows::Graphics::Capture::GraphicsCaptureItem CreateCaptureItem(
   return item;
 }
 
+winrt::Windows::Graphics::Capture::GraphicsCaptureItem CreateCaptureItem(
+    HMONITOR monitor) {
+  using winrt::Windows::Graphics::Capture::GraphicsCaptureItem;
+  auto interop = winrt::get_activation_factory<GraphicsCaptureItem,
+                                                IGraphicsCaptureItemInterop>();
+  GraphicsCaptureItem item{nullptr};
+  Check(interop->CreateForMonitor(monitor, winrt::guid_of<GraphicsCaptureItem>(),
+                                  winrt::put_abi(item)),
+        "capture-item-display");
+  return item;
+}
+
 ComPtr<ID3D11Texture2D> CaptureTexture(
     const winrt::Windows::Graphics::Capture::Direct3D11CaptureFrame& frame) {
   auto access = frame.Surface().as<
@@ -1694,11 +1707,33 @@ UINT64 ParseUint64(const wchar_t* value, const std::string& stage) {
   }
 }
 
+UINT64 ParseNonNegativeUint64(const wchar_t* value, const std::string& stage) {
+  try {
+    size_t consumed = 0;
+    unsigned long long parsed = std::stoull(value, &consumed, 10);
+    if (value[consumed] != L'\0') {
+      Fail(stage, "value is not a bounded integer");
+    }
+    return static_cast<UINT64>(parsed);
+  } catch (const std::exception&) {
+    Fail(stage, "value is not a bounded integer");
+  }
+}
+
+screener::capture::TargetKind ParseTargetKind(const wchar_t* value) {
+  const std::wstring kind(value);
+  if (kind == L"window") return screener::capture::TargetKind::window;
+  if (kind == L"display") return screener::capture::TargetKind::display;
+  Fail("argument-target-kind", "capture target kind is unsupported");
+}
+
 struct ProductArguments final {
-  enum class Mode { list, probe, audio, video } mode = Mode::list;
+  enum class Mode { list, probe, preview, audio, video } mode = Mode::list;
+  screener::capture::TargetKind target_kind =
+      screener::capture::TargetKind::window;
   DWORD pid = 0;
   UINT64 creation_time = 0;
-  UINT64 window_handle = 0;
+  UINT64 source_id = 0;
   UINT adapter_index = 0;
   UINT mft_index = 0;
 };
@@ -1710,25 +1745,51 @@ ProductArguments ParseProductArguments(int count, wchar_t** values) {
     arguments.mode = ProductArguments::Mode::probe;
     return arguments;
   }
-  if (count == 4 && std::wstring(values[1]) == L"--capture-audio") {
+  if (count == 6 && std::wstring(values[1]) == L"--preview") {
+    arguments.mode = ProductArguments::Mode::preview;
+    arguments.target_kind = ParseTargetKind(values[2]);
+    arguments.source_id = ParseUint64(values[3], "argument-source");
+    UINT64 pid = ParseNonNegativeUint64(values[4], "argument-pid");
+    if (pid > std::numeric_limits<DWORD>::max()) {
+      Fail("argument-pid", "PID is outside the Windows process range");
+    }
+    arguments.pid = static_cast<DWORD>(pid);
+    arguments.creation_time =
+        ParseNonNegativeUint64(values[5], "argument-creation-time");
+    return arguments;
+  }
+  if (count == 5 && std::wstring(values[1]) == L"--capture-audio") {
     arguments.mode = ProductArguments::Mode::audio;
-  } else if (count == 10 && std::wstring(values[1]) == L"--capture-video" &&
-             std::wstring(values[5]) == L"--adapter-index" &&
-             std::wstring(values[7]) == L"--mft-index" &&
-             std::wstring(values[9]) == L"--protocol-v2") {
+    arguments.target_kind = ParseTargetKind(values[2]);
+  } else if (count == 11 && std::wstring(values[1]) == L"--capture-video" &&
+             std::wstring(values[6]) == L"--adapter-index" &&
+             std::wstring(values[8]) == L"--mft-index" &&
+             std::wstring(values[10]) == L"--protocol-v3") {
     arguments.mode = ProductArguments::Mode::video;
-    arguments.window_handle = ParseUint64(values[4], "argument-window");
-    arguments.adapter_index = ParseIndex(values[6], "argument-adapter");
-    arguments.mft_index = ParseIndex(values[8], "argument-mft");
+    arguments.target_kind = ParseTargetKind(values[2]);
+    arguments.source_id = ParseUint64(values[3], "argument-source");
+    arguments.adapter_index = ParseIndex(values[7], "argument-adapter");
+    arguments.mft_index = ParseIndex(values[9], "argument-mft");
   } else {
     Fail("arguments", "unsupported or incomplete command-line argument");
   }
-  UINT64 pid = ParseUint64(values[2], "argument-pid");
+  const int pid_index = arguments.mode == ProductArguments::Mode::audio ? 3 : 4;
+  const int creation_index = pid_index + 1;
+  UINT64 pid = ParseNonNegativeUint64(values[pid_index], "argument-pid");
   if (pid > std::numeric_limits<DWORD>::max()) {
     Fail("argument-pid", "PID is outside the Windows process range");
   }
   arguments.pid = static_cast<DWORD>(pid);
-  arguments.creation_time = ParseUint64(values[3], "argument-creation-time");
+  arguments.creation_time =
+      ParseNonNegativeUint64(values[creation_index], "argument-creation-time");
+  if (arguments.target_kind == screener::capture::TargetKind::window &&
+      (arguments.pid == 0 || arguments.creation_time == 0)) {
+    Fail("argument-window-identity", "window identity is incomplete");
+  }
+  if (arguments.target_kind == screener::capture::TargetKind::display &&
+      (arguments.pid != 0 || arguments.creation_time != 0)) {
+    Fail("argument-display-identity", "display identity is invalid");
+  }
   return arguments;
 }
 
@@ -1736,14 +1797,22 @@ HRESULT RunAudioCapture(const ProductArguments& arguments) {
   UniqueHandle stop(CreateEventW(nullptr, TRUE, FALSE, nullptr));
   if (stop.get() == nullptr) return HRESULT_FROM_WIN32(GetLastError());
   ProtocolWriter writer;
+  auto ready = [&writer]() {
+    return writer.WriteStatus("{\"state\":\"active\",\"audio\":true}");
+  };
+  auto pcm = [&writer](UINT64 timestamp100ns, const BYTE* data, DWORD size) {
+    return writer.Write(OutputKind::pcm, 0, timestamp100ns,
+                        screener::capture::kAudioChunkDuration100ns, data,
+                        size);
+  };
+  if (arguments.target_kind == screener::capture::TargetKind::display) {
+    return screener::capture::CaptureSystemAudio(
+        stop.get(), []() { return ConsumeControlSignal().stop; }, ready, pcm);
+  }
   return screener::capture::CaptureProcessAudio(
       arguments.pid, arguments.creation_time, stop.get(),
       []() { return ConsumeControlSignal().stop; },
-      [&writer](UINT64 timestamp100ns, const BYTE* data, DWORD size) {
-        return writer.Write(OutputKind::pcm, 0, timestamp100ns,
-                            screener::capture::kAudioChunkDuration100ns, data,
-                            size);
-      });
+      ready, pcm);
 }
 
 UINT32 WindowsBuild() {
@@ -1767,7 +1836,7 @@ UINT32 WindowsBuild() {
 
 void WriteCapabilityProbe() {
   constexpr UINT32 kCreateForWindowMinimumBuild = 18'362;
-  constexpr UINT32 kProcessLoopbackMinimumBuild = 20'348;
+  constexpr UINT32 kProcessLoopbackMinimumBuild = 19'041;
   const UINT32 build = WindowsBuild();
   bool window_capture = false;
   if (build >= kCreateForWindowMinimumBuild) {
@@ -1778,14 +1847,19 @@ void WriteCapabilityProbe() {
       window_capture = false;
     }
   }
+  const bool process_audio =
+      build >= kProcessLoopbackMinimumBuild &&
+      screener::capture::ProcessAudioAvailable();
+  const bool system_audio = screener::capture::SystemAudioAvailable();
 
   std::vector<Adapter> adapters = EnumerateAdapters();
   std::ostringstream output;
-  output << "{\"protocol\":2,\"platform\":\"windows\",\"platformBuild\":"
+  output << "{\"protocol\":3,\"platform\":\"windows\",\"platformBuild\":"
          << JSONString(std::to_string(build))
-         << ",\"windowCapture\":" << (window_capture ? "true" : "false")
+         << ",\"videoCapture\":" << (window_capture ? "true" : "false")
          << ",\"processAudio\":"
-         << (build >= kProcessLoopbackMinimumBuild ? "true" : "false")
+         << (process_audio ? "true" : "false")
+         << ",\"systemAudio\":" << (system_audio ? "true" : "false")
          << ",\"adapters\":[";
   for (size_t adapter_index = 0; adapter_index < adapters.size();
        ++adapter_index) {
@@ -1820,8 +1894,14 @@ void WriteCapabilityProbe() {
 }
 
 void RunVideoCapture(const ProductArguments& arguments) {
-  HRESULT identity = screener::capture::ValidateWindowTarget(
-      arguments.window_handle, arguments.pid, arguments.creation_time);
+  const bool window_target =
+      arguments.target_kind == screener::capture::TargetKind::window;
+  HRESULT identity = window_target
+                         ? screener::capture::ValidateWindowTarget(
+                               arguments.source_id, arguments.pid,
+                               arguments.creation_time)
+                         : screener::capture::ValidateDisplayTarget(
+                               arguments.source_id);
   Check(identity, "target-identity");
 
   std::vector<Adapter> adapters = EnumerateAdapters();
@@ -1839,19 +1919,27 @@ void RunVideoCapture(const ProductArguments& arguments) {
   if (!GraphicsCaptureSession::IsSupported()) {
     Fail("capture-support", "Windows Graphics Capture is unavailable");
   }
-  UniqueHandle process(OpenProcess(SYNCHRONIZE, FALSE, arguments.pid));
-  if (process.get() == nullptr) {
+  UniqueHandle process(window_target
+                           ? OpenProcess(SYNCHRONIZE, FALSE, arguments.pid)
+                           : nullptr);
+  if (window_target && process.get() == nullptr) {
     Check(HRESULT_FROM_WIN32(GetLastError()), "target-process-handle");
   }
-  Check(screener::capture::ValidateWindowTarget(
-            arguments.window_handle, arguments.pid, arguments.creation_time),
+  Check(window_target
+            ? screener::capture::ValidateWindowTarget(
+                  arguments.source_id, arguments.pid, arguments.creation_time)
+            : screener::capture::ValidateDisplayTarget(arguments.source_id),
         "target-identity-before-capture");
-  HWND window = reinterpret_cast<HWND>(
-      static_cast<UINT_PTR>(arguments.window_handle));
   auto capture_device = CreateCaptureDevice(device.device.Get());
-  GraphicsCaptureItem item = CreateCaptureItem(window);
-  Check(screener::capture::ValidateWindowTarget(
-            arguments.window_handle, arguments.pid, arguments.creation_time),
+  GraphicsCaptureItem item = window_target
+                                 ? CreateCaptureItem(reinterpret_cast<HWND>(
+                                       static_cast<UINT_PTR>(arguments.source_id)))
+                                 : CreateCaptureItem(reinterpret_cast<HMONITOR>(
+                                       static_cast<UINT_PTR>(arguments.source_id)));
+  Check(window_target
+            ? screener::capture::ValidateWindowTarget(
+                  arguments.source_id, arguments.pid, arguments.creation_time)
+            : screener::capture::ValidateDisplayTarget(arguments.source_id),
         "target-identity-after-item");
   auto initial_size = item.Size();
   if (initial_size.Width <= 0 || initial_size.Height <= 0) {
@@ -1920,22 +2008,30 @@ void RunVideoCapture(const ProductArguments& arguments) {
     UINT64 encoded_frames = 0;
     bool active_status_written = false;
     auto pool_size = initial_size;
-    const HANDLE waits[] = {process.get(), shutdown.get(), frame_ready.get()};
+    const HANDLE window_waits[] = {
+        process.get(), shutdown.get(), frame_ready.get()};
+    const HANDLE display_waits[] = {shutdown.get(), frame_ready.get()};
     for (;;) {
-      DWORD wait = WaitForMultipleObjects(3, waits, FALSE, 5'000);
-      if (wait == WAIT_OBJECT_0) {
+      DWORD wait = window_target
+                       ? WaitForMultipleObjects(3, window_waits, FALSE, 5'000)
+                       : WaitForMultipleObjects(2, display_waits, FALSE, 5'000);
+      if (window_target && wait == WAIT_OBJECT_0) {
         Fail("target-exited", "selected target process exited");
       }
-      if (wait == WAIT_OBJECT_0 + 1) {
+      const DWORD shutdown_index =
+          window_target ? WAIT_OBJECT_0 + 1 : WAIT_OBJECT_0;
+      const DWORD frame_index =
+          window_target ? WAIT_OBJECT_0 + 2 : WAIT_OBJECT_0 + 1;
+      if (wait == shutdown_index) {
         if (item_closed.load()) {
-          Fail("capture-closed", "selected window stopped capture");
+          Fail("capture-closed", "selected source stopped capture");
         }
-        Fail("capture-stopped", "window capture stopped");
+        Fail("capture-stopped", "source capture stopped");
       }
       if (wait == WAIT_TIMEOUT) {
         Fail("capture-frame-timeout", "selected window produced no frame in five seconds");
       }
-      if (wait != WAIT_OBJECT_0 + 2) {
+      if (wait != frame_index) {
         Check(HRESULT_FROM_WIN32(GetLastError()), "capture-wait");
       }
 
@@ -2134,7 +2230,7 @@ int wmain(int argc, wchar_t** argv) {
   try {
     ProductArguments arguments = ParseProductArguments(argc, argv);
     if (arguments.mode == ProductArguments::Mode::list) {
-      return screener::capture::WriteWindowList();
+      return screener::capture::WriteSourceList();
     }
     if (arguments.mode == ProductArguments::Mode::probe) {
       Runtime runtime;
@@ -2143,6 +2239,13 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (_setmode(_fileno(stdout), _O_BINARY) == -1) {
       Fail("stdout-binary", "could not switch stdout to binary mode");
+    }
+    if (arguments.mode == ProductArguments::Mode::preview) {
+      Check(screener::capture::WriteSourcePreview(
+                arguments.target_kind, arguments.source_id, arguments.pid,
+                arguments.creation_time),
+            "capture-preview");
+      return 0;
     }
     if (arguments.mode == ProductArguments::Mode::audio) {
       Check(RunAudioCapture(arguments), "process-audio-capture");

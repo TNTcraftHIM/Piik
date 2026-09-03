@@ -54,8 +54,9 @@ type Health struct {
 }
 
 type NativeMediaCapabilities struct {
-	WindowVideo  bool `json:"windowVideo"`
+	Video        bool `json:"video"`
 	ProcessAudio bool `json:"processAudio"`
+	SystemAudio  bool `json:"systemAudio"`
 	HardwareH264 bool `json:"hardwareH264"`
 }
 

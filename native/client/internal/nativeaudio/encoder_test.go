@@ -1,7 +1,11 @@
 package nativeaudio
 
 import (
+	"encoding/binary"
+	"math"
 	"testing"
+
+	gopus "github.com/thesyncim/gopus"
 )
 
 func TestEncodeProducesAReusableOpusPacket(t *testing.T) {
@@ -37,6 +41,47 @@ func TestEncodeRejectsNonFrameSizedPCM(t *testing.T) {
 	}
 	if _, err = encoder.Encode(make([]byte, FrameBytes+2)); err == nil {
 		t.Fatal("long PCM frame was accepted")
+	}
+}
+
+func TestEncodePreservesAudiblePCM(t *testing.T) {
+	encoder, err := NewEncoder(DefaultBitrate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pcm := make([]byte, FrameBytes)
+	for frame := 0; frame < FrameSamples; frame++ {
+		sample := int16(math.Sin(2*math.Pi*440*float64(frame)/SampleRate) * 8_000)
+		for channel := 0; channel < Channels; channel++ {
+			binary.LittleEndian.PutUint16(
+				pcm[(frame*Channels+channel)*2:],
+				uint16(sample),
+			)
+		}
+	}
+	packet, err := encoder.Encode(pcm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoder, err := gopus.NewDecoder(gopus.DefaultDecoderConfig(SampleRate, Channels))
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded := make([]int16, FrameSamples*Channels)
+	samples, err := decoder.DecodeInt16(packet, decoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	energy := int64(0)
+	for _, sample := range decoded[:samples*Channels] {
+		if sample < 0 {
+			energy -= int64(sample)
+		} else {
+			energy += int64(sample)
+		}
+	}
+	if energy == 0 {
+		t.Fatal("Opus round trip produced silence")
 	}
 }
 

@@ -51,6 +51,10 @@ class FakeMediaStream {
   getVideoTracks(): MediaStreamTrack[] {
     return this.tracks.filter((track) => track.kind === "video");
   }
+
+  getAudioTracks(): MediaStreamTrack[] {
+    return this.tracks.filter((track) => track.kind === "audio");
+  }
 }
 
 class FakePeerConnection extends EventTarget {
@@ -125,6 +129,12 @@ class FakePeerConnection extends EventTarget {
 
   close(): void {
     this.connectionState = "closed";
+  }
+
+  emitTrack(track: MediaStreamTrack, streams: MediaStream[] = []): void {
+    this.dispatchEvent(
+      Object.assign(new Event("track"), { track, streams }),
+    );
   }
 }
 
@@ -231,6 +241,31 @@ afterEach(() => {
 });
 
 describe("ViewerPeer connection generations", () => {
+  it("keeps separately delivered audio and video on one remote stream", async () => {
+    const streams: MediaStream[] = [];
+    const peer = new ViewerPeer(
+      { iceServers: [] },
+      {
+        sendSignal: () => true,
+        sendRestartRequest: () => true,
+        onStream: (stream) => streams.push(stream),
+        onUpdate: () => undefined,
+      },
+    );
+    await peer.acceptSignal("host", offer("separate-tracks"));
+    const connection = FakePeerConnection.instances[0]!;
+    const video = { id: "remote-video", kind: "video" } as MediaStreamTrack;
+    const audio = { id: "remote-audio", kind: "audio" } as MediaStreamTrack;
+    connection.emitTrack(video, [{} as MediaStream]);
+    connection.emitTrack(audio, [{} as MediaStream]);
+
+    expect(streams).toHaveLength(2);
+    expect(streams[0]).toBe(streams[1]);
+    expect(streams[1]!.getVideoTracks()).toEqual([video]);
+    expect(streams[1]!.getAudioTracks()).toEqual([audio]);
+    peer.dispose();
+  });
+
   it("proves a fresh exact connection from its first cumulative decoded frame", async () => {
     FakePeerConnection.plans.push({
       statsGate: Promise.resolve(decodedReport(1)),

@@ -126,16 +126,23 @@ async function stopChild(child: ChildProcessWithoutNullStreams | ChildProcess | 
   return child.exitCode !== null || child.signalCode !== null;
 }
 
-async function selectNativeWindow(
+async function selectNativeSource(
   cdp: CdpConnection,
   page: PageHandle,
-  title: string,
+  kind: "window" | "display",
+  title?: string,
 ): Promise<void> {
+  const selector = kind === "display"
+    ? "button[data-native-source^='display:']"
+    : "button[data-native-source]";
+  const predicate = title
+    ? `(button) => button.textContent?.includes(${JSON.stringify(title)})`
+    : "() => true";
   await waitForValue(
     (deadline) => evaluate<boolean>(
       cdp,
       page,
-      `([...document.querySelectorAll('button[data-native-window]')].some((button) => button.textContent?.includes(${JSON.stringify(title)})))`,
+      `([...document.querySelectorAll(${JSON.stringify(selector)})].some(${predicate}))`,
       deadline,
     ),
     Boolean,
@@ -144,7 +151,7 @@ async function selectNativeWindow(
   await evaluate<void>(
     cdp,
     page,
-    `([...document.querySelectorAll('button[data-native-window]')].find((button) => button.textContent?.includes(${JSON.stringify(title)})))?.click()`,
+    `([...document.querySelectorAll(${JSON.stringify(selector)})].find(${predicate}))?.click()`,
     Date.now() + 5_000,
   );
 }
@@ -453,6 +460,10 @@ async function main(): Promise<void> {
     throw new Error("Cross-NAT and one-link gate modes are mutually exclusive");
   }
   const mode: GateMode = linkMedia ? "one-link" : crossNat ? "cross-nat" : "local";
+  const sourceKind: "window" | "display" =
+    process.env.SCREENER_CLIENT_NATIVE_HOST_SOURCE === "display"
+      ? "display"
+      : "window";
   const remote = mode === "local" ? null : remoteOptions();
   const chromePath = process.env.CHROME_PATH?.trim();
   if (!chromePath) throw new Error("CHROME_PATH is required");
@@ -652,7 +663,12 @@ async function main(): Promise<void> {
       "document.querySelector('button.lr-tv-big.is-action')?.click()",
       Date.now() + 5_000,
     );
-    await selectNativeWindow(cdp, host, SOURCE_TITLE);
+    await selectNativeSource(
+      cdp,
+      host,
+      sourceKind,
+      sourceKind === "window" ? SOURCE_TITLE : undefined,
+    );
     stage = "host-native-share";
     let hostState: { invite: string | null; native: boolean };
     try {
@@ -675,7 +691,7 @@ async function main(): Promise<void> {
       const diagnostic = await evaluate<unknown>(
         cdp!,
         host,
-        "({body: document.body.innerText.slice(0, 1000), buttons: [...document.querySelectorAll('button')].map((button) => ({label: button.getAttribute('aria-label'), text: button.textContent, disabled: button.disabled})), invites: [...document.querySelectorAll('input')].map((input) => ({className: input.className, value: input.value}))})",
+        "({buttons: [...document.querySelectorAll('button')].map((button) => ({label: button.getAttribute('aria-label'), text: button.textContent?.slice(0, 120), disabled: button.disabled})), inputs: [...document.querySelectorAll('input')].map((input) => ({className: input.className, type: input.type, disabled: input.disabled}))})",
         Date.now() + 2_000,
       ).catch(() => null);
       throw new Error("native host stage failed: " +
@@ -767,6 +783,7 @@ async function main(): Promise<void> {
         })()`,
         Date.now() + 5_000,
       );
+      if (sourceKind === "window") {
       stage = "source-failure";
       if (!sourceChrome || !sourceCdp ||
           !(await closeSourceBrowser(sourceChrome, sourceCdp))) {
@@ -800,7 +817,12 @@ async function main(): Promise<void> {
         "document.querySelector('button.lr-tv-big.is-action')?.click()",
         Date.now() + 5_000,
       );
-      await selectNativeWindow(cdp, host, SOURCE_TITLE);
+      await selectNativeSource(
+        cdp,
+        host,
+        sourceKind,
+        sourceKind === "window" ? SOURCE_TITLE : undefined,
+      );
       await waitForValue(
         (deadline) => evaluate<boolean>(
           cdp!,
@@ -841,6 +863,13 @@ async function main(): Promise<void> {
         })`,
         Date.now() + 10_000,
       );
+      } else {
+        // A display remains available while the test Browser is open, so this
+        // arm does not claim source-end or same-room reselection evidence.
+        result.sourceFailureEndedShare = null;
+        result.replacementViewerConnected = null;
+        result.replacementViewerFrames = null;
+      }
     }
   } catch (error) {
     // Client stderr can contain implementation diagnostics or URLs; keep gate
@@ -890,9 +919,10 @@ async function main(): Promise<void> {
       : result.viewerConnected && result.viewerFrames >= 30 &&
         result.viewerWidth === 1280 && result.viewerHeight === 720 &&
         result.nativeQualityEvidence &&
-        result.sourceFailureEndedShare === true &&
-        result.replacementViewerConnected === true &&
-        (result.replacementViewerFrames ?? 0) >= 30) &&
+        (sourceKind === "display" ||
+          (result.sourceFailureEndedShare === true &&
+            result.replacementViewerConnected === true &&
+            (result.replacementViewerFrames ?? 0) >= 30))) &&
     result.cleanup.browserExited && result.cleanup.nativeExited &&
     result.cleanup.serverClosed && result.cleanup.portsClosed &&
     result.cleanup.profileRemoved;

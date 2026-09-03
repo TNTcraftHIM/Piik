@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	probeProtocol       = 2
+	probeProtocol       = 3
 	probeTimeout        = 3 * time.Second
 	maxProbeOutputBytes = 64 * 1024
 	maxProbeErrorBytes  = 4 * 1024
@@ -42,21 +42,24 @@ type Capabilities struct {
 	Protocol      int       `json:"protocol"`
 	Platform      string    `json:"platform"`
 	PlatformBuild string    `json:"platformBuild"`
-	WindowCapture bool      `json:"windowCapture"`
+	VideoCapture  bool      `json:"videoCapture"`
 	ProcessAudio  bool      `json:"processAudio"`
+	SystemAudio   bool      `json:"systemAudio"`
 	Adapters      []Adapter `json:"adapters"`
 }
 
 type Summary struct {
-	WindowVideo  bool
+	Video        bool
 	ProcessAudio bool
+	SystemAudio  bool
 	HardwareH264 bool
 }
 
 func (capabilities Capabilities) Summary() Summary {
 	summary := Summary{
-		WindowVideo:  capabilities.WindowCapture,
+		Video:        capabilities.VideoCapture,
 		ProcessAudio: capabilities.ProcessAudio,
+		SystemAudio:  capabilities.SystemAudio,
 	}
 	for _, adapter := range capabilities.Adapters {
 		if len(adapter.HardwareH264) > 0 {
@@ -65,6 +68,13 @@ func (capabilities Capabilities) Summary() Summary {
 		}
 	}
 	return summary
+}
+
+func (summary Summary) AudioFor(kind string) bool {
+	if kind == "window" {
+		return summary.ProcessAudio
+	}
+	return kind == "display" && summary.SystemAudio
 }
 
 func Discover(parent context.Context, executable string) (Capabilities, error) {
@@ -84,6 +94,7 @@ func Discover(parent context.Context, executable string) (Capabilities, error) {
 	command := exec.CommandContext(ctx, executable, "--probe")
 	command.Stdout = stdout
 	command.Stderr = stderr
+	hideWindow(command)
 	if err := command.Run(); err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			return Capabilities{}, errors.New("native capture probe timed out")

@@ -3,6 +3,7 @@ package nativecontrol
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -82,18 +83,38 @@ func (session *Session) Handle(_ context.Context, payload []byte) (any, error) {
 			responseEnvelope: response(envelope, "capture-options"),
 			Adapters:         session.capabilities.Adapters,
 		}, nil
-	case "list-windows":
-		var request listWindowsRequest
+	case "list-sources":
+		var request listSourcesRequest
 		if err := decodeStrict(payload, &request); err != nil || request.Type != envelope.Type {
-			return nil, errors.New("native list-windows request is invalid")
+			return nil, errors.New("native list-sources request is invalid")
 		}
-		targets, err := nativecapture.ListWindows(session.ctx, session.captureProcess)
+		targets, err := nativecapture.ListSources(session.ctx, session.captureProcess)
 		if err != nil {
 			return nil, err
 		}
-		return windowListResponse{
-			responseEnvelope: response(envelope, "window-list"),
-			Windows:          targets,
+		return sourceListResponse{
+			responseEnvelope: response(envelope, "source-list"),
+			Sources:          targets,
+		}, nil
+	case "source-preview":
+		var request sourcePreviewRequest
+		if err := decodeStrict(payload, &request); err != nil || request.Type != envelope.Type {
+			return nil, errors.New("native source-preview request is invalid")
+		}
+		preview, err := nativecapture.PreviewSource(
+			session.ctx,
+			session.captureProcess,
+			request.Source,
+		)
+		data := ""
+		if err == nil {
+			data = base64.StdEncoding.EncodeToString(preview)
+		}
+		return sourcePreviewResponse{
+			responseEnvelope: response(envelope, "source-preview"),
+			SourceKey:        captureTargetKey(request.Source),
+			Mime:             "image/bmp",
+			Data:             data,
 		}, nil
 	case "start-share":
 		var request startShareRequest
@@ -228,14 +249,16 @@ func (session *Session) startShare(
 		ShareID:        request.ShareID,
 		CaptureProcess: session.captureProcess,
 		Video: nativecapture.VideoOptions{
-			Target:       request.Window,
+			Target:       request.Source,
 			AdapterIndex: request.AdapterIndex,
 			EncoderIndex: request.EncoderIndex,
 		},
 		EdgeCapacity: request.EdgeCapacity,
-		AudioEnabled: session.capabilities.Summary().ProcessAudio,
-		PortMapping:  session.portMapping,
-		Events:       session.hostEvents,
+		AudioEnabled: request.Audio && session.capabilities.Summary().AudioFor(
+			request.Source.Kind,
+		),
+		PortMapping: session.portMapping,
+		Events:      session.hostEvents,
 	})
 	if err != nil {
 		return nil, err
@@ -458,6 +481,14 @@ func validIdentities(values ...string) bool {
 		}
 	}
 	return true
+}
+
+func captureTargetKey(target nativecapture.CaptureTarget) string {
+	if target.Kind == "window" {
+		return "window:" + target.SourceID + ":" +
+			strconv.FormatUint(uint64(target.PID), 10) + ":" + target.CreationTime
+	}
+	return "display:" + target.SourceID
 }
 
 func decodeEnvelope(payload []byte, envelope *requestEnvelope) error {

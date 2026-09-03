@@ -97,7 +97,11 @@ func Start(parent context.Context, options Options) (*Session, error) {
 	}
 	var audioStream *nativecapture.Stream
 	if options.AudioEnabled {
-		audioStream, _ = nativecapture.StartAudio(parent, options.CaptureProcess, options.Video.Target)
+		if options.Video.Target.Kind == "display" {
+			audioStream, _ = nativecapture.StartSystemAudio(parent, options.CaptureProcess)
+		} else {
+			audioStream, _ = nativecapture.StartAudio(parent, options.CaptureProcess, options.Video.Target)
+		}
 	}
 	ctx, cancel := context.WithCancel(parent)
 	session := &Session{

@@ -28,6 +28,8 @@ const GATE_STUN_URL =
 
 interface Probe {
   protocol: number;
+  processAudio: boolean;
+  systemAudio: boolean;
   adapters: Array<{
     index: number;
     hardwareH264: Array<{ index: number }>;
@@ -35,9 +37,10 @@ interface Probe {
 }
 
 interface WindowTarget {
-  windowHandle: string;
-  pid: number;
-  creationTime: string;
+  kind: "window" | "display";
+  sourceId: string;
+  pid?: number;
+  creationTime?: string;
   title: string;
 }
 
@@ -47,6 +50,9 @@ interface CaptureEvidence {
   frames: number;
   keyFrameRequested: boolean;
   recoveryFrame: boolean;
+  audioReady: boolean;
+  audioFrames: number;
+  audioNonZeroSamples: number;
 }
 
 interface MediaEvidence {
@@ -57,6 +63,12 @@ interface MediaEvidence {
   edgeFrames: number[];
   audioPackets: number;
   edgeAudioPackets: number[];
+  audioEnergy: number;
+  edgeAudioEnergy: number[];
+  audioSamples: number;
+  edgeAudioSamples: number[];
+  audioBytes: number;
+  edgeAudioBytes: number[];
   audioAvailable: boolean;
   width: number;
   height: number;
@@ -176,6 +188,45 @@ function observeCapture(
   });
 }
 
+function observeAudioCapture(
+  child: ChildProcessWithoutNullStreams,
+  evidence: CaptureEvidence,
+): void {
+  let buffered = Buffer.alloc(0);
+  child.stdout.on("data", (chunk: Buffer) => {
+    buffered = Buffer.concat([buffered, chunk]);
+    while (buffered.length >= 28) {
+      if (buffered.subarray(0, 4).toString("ascii") !== "SMED" || buffered[4] !== 1) {
+        child.kill();
+        return;
+      }
+      const kind = buffered[5]!;
+      const size = buffered.readUInt32BE(24);
+      const maximum = kind === 3 ? 4 * 1024 : 1024 * 1024;
+      if (size === 0 || size > maximum || buffered.length < 28 + size) {
+        if (size === 0 || size > maximum) child.kill();
+        return;
+      }
+      const payload = buffered.subarray(28, 28 + size);
+      buffered = buffered.subarray(28 + size);
+      if (kind === 3) {
+        const state = JSON.parse(payload.toString("utf8")) as {
+          state?: string;
+          audio?: boolean;
+        };
+        evidence.audioReady ||= state.state === "active" && state.audio === true;
+      } else if (kind === 1) {
+        evidence.audioFrames += 1;
+        for (let offset = 0; offset + 1 < payload.length; offset += 2) {
+          if (payload.readInt16LE(offset) !== 0) {
+            evidence.audioNonZeroSamples += 1;
+          }
+        }
+      }
+    }
+  });
+}
+
 async function stopCapture(child: ChildProcessWithoutNullStreams): Promise<void> {
   if (child.exitCode !== null) {
     if (child.exitCode !== 0) throw new Error("Native capture exited unsuccessfully");
@@ -217,12 +268,11 @@ async function readEndpoint(child: ChildProcessWithoutNullStreams): Promise<Endp
 async function browserMediaGate(input: {
   endpoint: Endpoint;
   sourceTitle: string;
+  sourceKind: "window" | "display";
   stunUrl: string;
 }): Promise<MediaEvidence> {
   let socket: WebSocket | null = null;
   const peers: RTCPeerConnection[] = [];
-  let audioContext: AudioContext | null = null;
-  let audioOscillator: OscillatorNode | null = null;
   const result: MediaEvidence = {
     captureActive: false,
     connected: false,
@@ -231,6 +281,12 @@ async function browserMediaGate(input: {
     edgeFrames: [],
     audioPackets: 0,
     edgeAudioPackets: [],
+    audioEnergy: 0,
+    edgeAudioEnergy: [],
+    audioSamples: 0,
+    edgeAudioSamples: [],
+    audioBytes: 0,
+    edgeAudioBytes: [],
     audioAvailable: false,
     width: 0,
     height: 0,
@@ -246,19 +302,21 @@ async function browserMediaGate(input: {
     } as RequestInit);
     const health = await healthResponse.json();
     if (
-      health.protocol !== 4 ||
+      health.protocol !== 5 ||
       health.service !== "screener-client" ||
       health.instanceToken !== input.endpoint.instanceToken ||
-      health.nativeMedia?.windowVideo !== true ||
+      health.nativeMedia?.video !== true ||
       health.nativeMedia?.hardwareH264 !== true
     ) {
       throw new Error("Native Client health is not ready");
     }
-    result.audioAvailable = health.nativeMedia.processAudio === true;
+    result.audioAvailable = input.sourceKind === "window"
+      ? health.nativeMedia.processAudio === true
+      : health.nativeMedia.systemAudio === true;
 
     socket = new WebSocket(
       "ws://127.0.0.1:" + input.endpoint.port + "/control",
-      ["screener-client-v4." + input.endpoint.instanceToken],
+      ["screener-client-v5." + input.endpoint.instanceToken],
     );
     await new Promise<void>((resolveOpen, rejectOpen) => {
       const timer = window.setTimeout(
@@ -280,6 +338,7 @@ async function browserMediaGate(input: {
     const edges = new Map<string, {
       peer: RTCPeerConnection;
       video: HTMLVideoElement;
+      stream: MediaStream;
       connected: boolean;
       remoteDescriptionSet: boolean;
       queuedCandidates: Array<RTCIceCandidateInit | null>;
@@ -298,7 +357,7 @@ async function browserMediaGate(input: {
           rejectRequest(new Error("Native request timed out: " + type));
         }, 8_000);
         pending.set(id, { resolve: resolveRequest, reject: rejectRequest, timer });
-        socket!.send(JSON.stringify({ version: 4, id, type, ...fields }));
+        socket!.send(JSON.stringify({ version: 5, id, type, ...fields }));
       });
     };
     socket.onmessage = (event) => {
@@ -357,9 +416,12 @@ async function browserMediaGate(input: {
       (candidate: { hardwareH264?: unknown[] }) => candidate.hardwareH264?.length,
     );
     const encoder = adapter?.hardwareH264?.[0];
-    const windows = await request("list-windows");
-    const target = windows.windows?.find(
-      (candidate: { title?: string }) => candidate.title?.includes(input.sourceTitle),
+    const sources = await request("list-sources");
+    const target = sources.sources?.find(
+      (candidate: { kind?: string; title?: string }) =>
+        candidate.kind === input.sourceKind &&
+        (input.sourceKind === "display" ||
+          candidate.title?.includes(input.sourceTitle)),
     );
     if (!adapter || !encoder || !target) {
       throw new Error("Native capture selection is unavailable");
@@ -369,28 +431,14 @@ async function browserMediaGate(input: {
     const connectionId = "edge_gate_0001";
     const started = await request("start-share", {
       shareId,
-      window: target,
+      source: target,
+      audio: result.audioAvailable,
       adapterIndex: adapter.index,
       encoderIndex: encoder.index,
       edgeCapacity: 2,
     });
     if (started.shareId !== shareId || started.audio !== result.audioAvailable) {
       throw new Error("Native share audio capability was not reported consistently");
-    }
-
-    if (result.audioAvailable) {
-      try {
-        audioContext = new AudioContext();
-        await audioContext.resume();
-        const gain = audioContext.createGain();
-        gain.gain.value = 0.01;
-        audioOscillator = audioContext.createOscillator();
-        audioOscillator.frequency.value = 440;
-        audioOscillator.connect(gain).connect(audioContext.destination);
-        audioOscillator.start();
-      } catch {
-        throw new Error("Browser could not create the audio gate source");
-      }
     }
 
     const connectEdge = async (nextConnectionId: string) => {
@@ -401,22 +449,25 @@ async function browserMediaGate(input: {
       }
       const video = document.createElement("video");
       video.autoplay = true;
-      video.muted = true;
+      video.volume = 0.001;
       video.playsInline = true;
       document.body.append(video);
+      const stream = new MediaStream();
+      video.srcObject = stream;
       const edge = {
         peer,
         video,
+        stream,
         connected: false,
         remoteDescriptionSet: false,
         queuedCandidates: [] as Array<RTCIceCandidateInit | null>,
       };
       edges.set(nextConnectionId, edge);
       peer.ontrack = (event) => {
-        if (event.track.kind === "video") {
-          video.srcObject = event.streams[0] ?? new MediaStream([event.track]);
-          void video.play();
+        if (!stream.getTrackById(event.track.id)) {
+          stream.addTrack(event.track);
         }
+        void video.play();
       };
       peer.onicecandidate = (event) => {
         void request("edge-candidate", {
@@ -460,18 +511,39 @@ async function browserMediaGate(input: {
       );
       result.frames = Math.min(...result.edgeFrames);
       result.edgeAudioPackets = [];
+      result.edgeAudioEnergy = [];
+      result.edgeAudioSamples = [];
+      result.edgeAudioBytes = [];
       for (const edge of edges.values()) {
         let packets = 0;
+        let energy = 0;
+        let samples = 0;
+        let bytes = 0;
         for (const [, report] of await edge.peer.getStats()) {
           if (report.type === "inbound-rtp" &&
               (report.kind === "audio" || report.mediaType === "audio")) {
             packets = Math.max(packets, Number(report.packetsReceived) || 0);
+            energy = Math.max(energy, Number(report.totalAudioEnergy) || 0);
+            samples = Math.max(samples, Number(report.totalSamplesReceived) || 0);
+            bytes = Math.max(bytes, Number(report.bytesReceived) || 0);
           }
         }
         result.edgeAudioPackets.push(packets);
+        result.edgeAudioEnergy.push(energy);
+        result.edgeAudioSamples.push(samples);
+        result.edgeAudioBytes.push(bytes);
       }
       result.audioPackets = result.edgeAudioPackets.length > 0
         ? Math.min(...result.edgeAudioPackets)
+        : 0;
+      result.audioEnergy = result.edgeAudioEnergy.length > 0
+        ? Math.min(...result.edgeAudioEnergy)
+        : 0;
+      result.audioSamples = result.edgeAudioSamples.length > 0
+        ? Math.min(...result.edgeAudioSamples)
+        : 0;
+      result.audioBytes = result.edgeAudioBytes.length > 0
+        ? Math.min(...result.edgeAudioBytes)
         : 0;
       const videos = [...edges.values()].map((edge) => edge.video);
       result.width = videos.every((video) => video.videoWidth === 1280) ? 1280 : 0;
@@ -480,7 +552,8 @@ async function browserMediaGate(input: {
         result.captureActive &&
         result.connected &&
         result.frames >= 30 &&
-        (!result.audioAvailable || result.audioPackets > 10) &&
+        (!result.audioAvailable ||
+          (result.audioPackets > 10 && result.audioEnergy > 0)) &&
         result.width === 1280 &&
         result.height === 720 &&
         result.nativeCandidateTypes.includes("srflx")
@@ -493,7 +566,8 @@ async function browserMediaGate(input: {
       !result.captureActive ||
       !result.connected ||
       result.frames < 30 ||
-      (result.audioAvailable && result.audioPackets <= 10) ||
+      (result.audioAvailable &&
+        (result.audioPackets <= 10 || result.audioEnergy <= 0)) ||
       result.width !== 1280 ||
       result.height !== 720 ||
       !result.nativeCandidateTypes.includes("srflx")
@@ -503,8 +577,6 @@ async function browserMediaGate(input: {
   } catch (error) {
     result.error = error instanceof Error ? error.message : String(error);
   } finally {
-    audioOscillator?.stop();
-    await audioContext?.close().catch(() => undefined);
     for (const peer of peers) peer.close();
     socket?.close(1000, "gate complete");
   }
@@ -532,6 +604,7 @@ async function main(): Promise<void> {
   let server: Awaited<ReturnType<typeof startPageServer>> | null = null;
   let chrome: ChildProcessWithoutNullStreams | null = null;
   let capture: ChildProcessWithoutNullStreams | null = null;
+  let audioCapture: ChildProcessWithoutNullStreams | null = null;
   let client: ChildProcessWithoutNullStreams | null = null;
   let cdp: CdpConnection | null = null;
   let clientPort = 0;
@@ -542,6 +615,9 @@ async function main(): Promise<void> {
     frames: 0,
     keyFrameRequested: false,
     recoveryFrame: false,
+    audioReady: false,
+    audioFrames: 0,
+    audioNonZeroSamples: 0,
   };
   let media: MediaEvidence = {
     captureActive: false,
@@ -557,6 +633,12 @@ async function main(): Promise<void> {
     error: "not run",
     audioPackets: 0,
     edgeAudioPackets: [],
+    audioEnergy: 0,
+    edgeAudioEnergy: [],
+    audioSamples: 0,
+    edgeAudioSamples: [],
+    audioBytes: 0,
+    edgeAudioBytes: [],
     audioAvailable: false,
   };
   let error: string | null = null;
@@ -581,7 +663,7 @@ async function main(): Promise<void> {
     const probe = JSON.parse(run(executable, ["--probe"])) as Probe;
     const adapter = probe.adapters.find((candidate) => candidate.hardwareH264.length > 0);
     const encoder = adapter?.hardwareH264[0];
-    if (probe.protocol !== 2 || !adapter || !encoder) {
+    if (probe.protocol !== 3 || !adapter || !encoder) {
       throw new Error("No hardware H264 capture path is available");
     }
 
@@ -604,21 +686,53 @@ async function main(): Promise<void> {
     const version = await waitForVersion(debugPort, chrome);
     browser = version.Browser;
     cdp = await CdpConnection.connect(version.webSocketDebuggerUrl, Date.now() + 10_000);
-    await createPage(cdp, "http://127.0.0.1:" + pagePort + "/source", undefined, true);
+    const sourcePage = await createPage(
+      cdp,
+      "http://127.0.0.1:" + pagePort + "/source",
+      undefined,
+      true,
+    );
+    const audioState = await evaluate<string>(
+      cdp,
+      sourcePage,
+      `(() => {
+        const context = new AudioContext();
+        const gain = context.createGain();
+        gain.gain.value = 0.05;
+        const oscillator = context.createOscillator();
+        oscillator.frequency.value = 440;
+        oscillator.connect(gain).connect(context.destination);
+        oscillator.start();
+        globalThis.__screenerAudioGate = { context, oscillator };
+        return context.resume().then(() => context.state);
+      })()`,
+      Date.now() + 5_000,
+    );
+    if (audioState !== "running") {
+      throw new Error("Browser could not start the selected-window audio source");
+    }
     const targets = JSON.parse(run(executable, ["--list"])) as WindowTarget[];
-    const target = targets.find((candidate) => candidate.title.includes(SOURCE_TITLE));
+    const sourceKind: "window" | "display" =
+      process.env.SCREENER_CLIENT_MEDIA_SOURCE === "display"
+        ? "display"
+        : "window";
+    const target = targets.find(
+      (candidate) => candidate.kind === sourceKind &&
+        (sourceKind === "display" || candidate.title.includes(SOURCE_TITLE)),
+    );
     if (!target) throw new Error("The animated capture target was not enumerated");
 
     capture = spawn(executable, [
       "--capture-video",
-      String(target.pid),
-      target.creationTime,
-      target.windowHandle,
+      target.kind,
+      target.sourceId,
+      String(target.pid ?? 0),
+      target.creationTime ?? "0",
       "--adapter-index",
       String(adapter.index),
       "--mft-index",
       String(encoder.index),
-      "--protocol-v2",
+      "--protocol-v3",
     ], { stdio: "pipe", windowsHide: true });
     capture.stderr.resume();
     observeCapture(capture, evidence);
@@ -631,6 +745,29 @@ async function main(): Promise<void> {
     );
     await stopCapture(capture);
     capture = null;
+
+    const audioAvailable = sourceKind === "window"
+      ? probe.processAudio
+      : probe.systemAudio;
+    if (audioAvailable) {
+      audioCapture = spawn(executable, [
+        "--capture-audio",
+        target.kind,
+        String(target.pid ?? 0),
+        target.creationTime ?? "0",
+      ], { stdio: "pipe", windowsHide: true });
+      audioCapture.stderr.resume();
+      observeAudioCapture(audioCapture, evidence);
+      await waitForSample(
+        async () => ({ ...evidence }),
+        (sample) =>
+          sample.audioReady && sample.audioFrames >= 10 &&
+          sample.audioNonZeroSamples > 0,
+        10_000,
+      );
+      await stopCapture(audioCapture);
+      audioCapture = null;
+    }
 
     const packageRoot = join(buildRoot, "media-package");
     const nativeRoot = join(packageRoot, "runtime", "native");
@@ -671,6 +808,7 @@ async function main(): Promise<void> {
       "((__name) => (" + browserMediaGate.toString() + ")(" + JSON.stringify({
         endpoint,
         sourceTitle: SOURCE_TITLE,
+        sourceKind,
         stunUrl: GATE_STUN_URL,
       }) + "))((target) => target)",
       Date.now() + 35_000,
@@ -681,7 +819,7 @@ async function main(): Promise<void> {
   } finally {
     cleanup = await cleanupRun({
       cdp,
-      native: client ?? capture,
+      native: client ?? capture ?? audioCapture,
       chrome,
       server,
       profile,
@@ -690,9 +828,11 @@ async function main(): Promise<void> {
   }
   const passed = error === null && evidence.starting && evidence.active &&
     evidence.frames >= 30 && evidence.recoveryFrame && media.error === null &&
+    (evidence.audioFrames === 0 || evidence.audioNonZeroSamples > 0) &&
     media.captureActive && media.connected && media.frames >= 30 &&
     media.connectedEdges === 2 && media.edgeFrames.length === 2 &&
-    (!media.audioAvailable || media.audioPackets > 10) &&
+    (!media.audioAvailable ||
+      (media.audioPackets > 10 && media.audioEnergy > 0)) &&
     media.width === 1280 && media.height === 720 &&
     media.nativeCandidateTypes.includes("srflx") &&
     cleanup.browserExited && cleanup.nativeExited && cleanup.serverClosed &&

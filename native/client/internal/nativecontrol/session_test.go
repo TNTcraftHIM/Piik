@@ -31,9 +31,9 @@ func TestControlMessagesRejectUnknownFieldsAndStaleVersions(t *testing.T) {
 	session := New("missing-capture-process", nativecapture.Capabilities{}, false)
 	t.Cleanup(func() { _ = session.Close() })
 	for _, payload := range []string{
-		`{"version":2,"id":"request_sources","type":"list-windows","extra":true}`,
-		`{"version":1,"id":"request_sources","type":"list-windows"}`,
-		`{"version":2,"id":"short","type":"stop-share","shareId":"share_123456"}`,
+		`{"version":5,"id":"request_sources","type":"list-sources","extra":true}`,
+		`{"version":4,"id":"request_sources","type":"list-sources"}`,
+		`{"version":5,"id":"short","type":"stop-share","shareId":"share_123456"}`,
 	} {
 		if _, err := session.Handle(t.Context(), []byte(payload)); err == nil {
 			t.Fatalf("invalid control message accepted: %s", payload)
@@ -56,12 +56,27 @@ func TestResponseKeepsTheRequestIdentity(t *testing.T) {
 func TestPrepareLocalEdgeOwnsOneStrictRequestShape(t *testing.T) {
 	session := New("missing-capture-process", nativecapture.Capabilities{}, false)
 	t.Cleanup(func() { _ = session.Close() })
-	valid := `{"version":4,"id":"request_local_edge","type":"prepare-local-edge","shareId":"share_123456","connectionId":"edge_1234567"}`
+	valid := `{"version":5,"id":"request_local_edge","type":"prepare-local-edge","shareId":"share_123456","connectionId":"edge_1234567"}`
 	if _, err := session.Handle(t.Context(), []byte(valid)); err == nil || err.Error() != "native share does not exist" {
 		t.Fatalf("valid local-edge request stopped at wrong boundary: %v", err)
 	}
-	invalid := `{"version":4,"id":"request_local_edge","type":"prepare-local-edge","shareId":"share_123456","connectionId":"edge_1234567","iceServers":[]}`
+	invalid := `{"version":5,"id":"request_local_edge","type":"prepare-local-edge","shareId":"share_123456","connectionId":"edge_1234567","iceServers":[]}`
 	if _, err := session.Handle(t.Context(), []byte(invalid)); err == nil || err.Error() != "native prepare-local-edge request is invalid" {
 		t.Fatalf("extended local-edge request was accepted: %v", err)
+	}
+}
+
+func TestPreviewFailureReturnsAnAdvisoryResponse(t *testing.T) {
+	session := New("missing-capture-process", nativecapture.Capabilities{}, false)
+	t.Cleanup(func() { _ = session.Close() })
+	value, err := session.Handle(t.Context(), []byte(
+		`{"version":5,"id":"request_preview","type":"source-preview","source":{"kind":"display","sourceId":"65537","title":"Display 1"}}`,
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, ok := value.(sourcePreviewResponse)
+	if !ok || response.Data != "" || response.SourceKey != "display:65537" {
+		t.Fatalf("preview response = %#v", value)
 	}
 }

@@ -35,6 +35,7 @@ export class NativeMediaBridge {
     private readonly shareId: string,
     private readonly control: NativeMediaBridgeControl,
     private readonly onFailed: () => void,
+    private readonly expectedAudio = false,
   ) {}
 
   async start(): Promise<MediaStream> {
@@ -52,7 +53,8 @@ export class NativeMediaBridge {
         if (
           !this.ready &&
           this.peer.connectionState === "connected" &&
-          this.stream.getVideoTracks().length > 0
+          this.stream.getVideoTracks().length > 0 &&
+          (!this.expectedAudio || this.stream.getAudioTracks().length > 0)
         ) {
           this.ready = true;
           this.clearStartTimer();

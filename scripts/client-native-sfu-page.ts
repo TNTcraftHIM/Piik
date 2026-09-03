@@ -26,21 +26,28 @@ export async function startNativeSfuHost(input: {
     const adapters = await client.captureOptions();
     const adapter = adapters.find((candidate) => candidate.hardwareH264.length > 0);
     const encoder = adapter?.hardwareH264[0];
-    const windows = await client.windows();
-    const target = windows.find((candidate) =>
+    const sources = await client.sources();
+    const target = sources.find((candidate) =>
+      candidate.kind === "window" &&
       candidate.title.includes(input.sourceTitle)
     );
     if (!adapter || !encoder || !target) {
       throw new Error("native capture path is unavailable");
     }
-    await client.startShare({
+    const started = await client.startShare({
       shareId,
-      window: target,
+      source: target,
+      audio: true,
       adapterIndex: adapter.index,
       encoderIndex: encoder.index,
       edgeCapacity: 3,
     });
-    bridge = new NativeMediaBridge(shareId, client, () => undefined);
+    bridge = new NativeMediaBridge(
+      shareId,
+      client,
+      () => undefined,
+      started.audio,
+    );
     const stream = await bridge.start();
     publisher = new SfuPublisher();
     if (!(await publisher.connect({ url: input.url, token: input.token }))) {

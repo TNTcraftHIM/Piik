@@ -51,11 +51,65 @@ func TestReadFrameRejectsInvalidKindsFlagsAndBounds(t *testing.T) {
 	}
 }
 
-func TestWindowListRejectsPrivateProtocolDrift(t *testing.T) {
-	var targets []WindowTarget
+func TestSourceListRejectsPrivateProtocolDrift(t *testing.T) {
+	var targets []CaptureTarget
 	if err := decodeStrictJSON([]byte(
-		`[{"windowHandle":"1","pid":2,"creationTime":"3","title":"Game","extra":true}]`,
+		`[{"kind":"window","sourceId":"1","pid":2,"creationTime":"3","title":"Game","extra":true}]`,
 	), &targets); err == nil {
-		t.Fatal("unknown window-list field was accepted")
+		t.Fatal("unknown source-list field was accepted")
+	}
+}
+
+func TestAudioReadyStateIsStrictAndExplicit(t *testing.T) {
+	if err := validateAudioReadyFrame(Frame{
+		Kind: FrameStatus,
+		Data: []byte(`{"state":"active","audio":true}`),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, payload := range []string{
+		`{"state":"active","audio":false}`,
+		`{"state":"starting","audio":true}`,
+		`{"state":"active","audio":true,"extra":true}`,
+	} {
+		if err := validateAudioReadyFrame(Frame{
+			Kind: FrameStatus,
+			Data: []byte(payload),
+		}); err == nil {
+			t.Fatalf("invalid audio state was accepted: %s", payload)
+		}
+	}
+	if err := validateAudioReadyFrame(Frame{
+		Kind: FramePCM,
+		Data: []byte(`{"state":"active","audio":true}`),
+	}); err == nil {
+		t.Fatal("audio PCM was accepted as a ready frame")
+	}
+}
+
+func TestCaptureTargetIdentityAndAudioScope(t *testing.T) {
+	window := CaptureTarget{
+		Kind: "window", SourceID: "123", PID: 42,
+		CreationTime: "456", Title: "Game",
+	}
+	display := CaptureTarget{Kind: "display", SourceID: "789", Title: "Display 1"}
+	if !validCaptureTarget(window) || !validCaptureTarget(display) {
+		t.Fatal("valid capture targets were rejected")
+	}
+	for _, invalid := range []CaptureTarget{
+		{Kind: "window", SourceID: "123", PID: 42, Title: "Game"},
+		{Kind: "display", SourceID: "789", PID: 42, Title: "Display 1"},
+		{Kind: "display", SourceID: "789", CreationTime: "456", Title: "Display 1"},
+		{Kind: "other", SourceID: "789", Title: "Display 1"},
+	} {
+		if validCaptureTarget(invalid) {
+			t.Fatalf("invalid capture target was accepted: %+v", invalid)
+		}
+	}
+	audio := Summary{ProcessAudio: true, SystemAudio: true}
+	windowWithoutProcess := Summary{SystemAudio: true}
+	if !audio.AudioFor("window") || !audio.AudioFor("display") ||
+		windowWithoutProcess.AudioFor("window") {
+		t.Fatal("capture audio scope was not separated by target kind")
 	}
 }

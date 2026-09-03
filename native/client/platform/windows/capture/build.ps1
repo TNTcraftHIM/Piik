@@ -25,16 +25,19 @@ if ([string]::IsNullOrWhiteSpace($installationPath)) {
 $developerCommand = Join-Path $installationPath 'Common7\Tools\VsDevCmd.bat'
 $mainSourcePath = Join-Path $helperDirectory 'main.cpp'
 $audioSourcePath = Join-Path $helperDirectory 'process_audio.cpp'
+$targetSourcePath = Join-Path $helperDirectory 'capture_target.cpp'
 $executablePath = Join-Path $outputPath 'screener-client-capture.exe'
 $mainObjectPath = Join-Path $outputPath 'window-capture.obj'
 $audioObjectPath = Join-Path $outputPath 'process-audio.obj'
+$targetObjectPath = Join-Path $outputPath 'capture-target.obj'
 New-Item -ItemType Directory -Path $outputPath -Force | Out-Null
 
 $compile = @(
     'call "{0}" -arch=x64 -host_arch=x64 >nul' -f $developerCommand
     'cl.exe /nologo /c /std:c++20 /EHsc /W4 /WX /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN /D_WIN32_WINNT=0x0A00 /DNTDDI_VERSION=0x0A00000A "{0}" /Fo:"{1}"' -f $mainSourcePath, $mainObjectPath
     'cl.exe /nologo /c /std:c++20 /EHsc /W4 /WX /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN /D_WIN32_WINNT=0x0A00 /DNTDDI_VERSION=0x0A00000A "{0}" /Fo:"{1}"' -f $audioSourcePath, $audioObjectPath
-    'link.exe /nologo /out:"{0}" "{1}" "{2}" ole32.lib mmdevapi.lib runtimeobject.lib user32.lib mfplat.lib mf.lib mfuuid.lib d3d11.lib dxgi.lib dxguid.lib evr.lib oleaut32.lib windowsapp.lib' -f $executablePath, $mainObjectPath, $audioObjectPath
+    'cl.exe /nologo /c /std:c++20 /EHsc /W4 /WX /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN /D_WIN32_WINNT=0x0A00 /DNTDDI_VERSION=0x0A00000A "{0}" /Fo:"{1}"' -f $targetSourcePath, $targetObjectPath
+    'link.exe /nologo /out:"{0}" "{1}" "{2}" "{3}" ole32.lib mmdevapi.lib runtimeobject.lib user32.lib gdi32.lib mfplat.lib mf.lib mfuuid.lib d3d11.lib dxgi.lib dxguid.lib evr.lib oleaut32.lib windowsapp.lib' -f $executablePath, $mainObjectPath, $audioObjectPath, $targetObjectPath
 ) -join ' && '
 
 & cmd.exe /d /s /c $compile

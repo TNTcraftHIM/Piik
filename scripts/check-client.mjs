@@ -152,11 +152,12 @@ function checkPlatformCapture() {
   const probe = JSON.parse(raw);
   const expectedPlatform = process.platform === "win32" ? "windows" : "darwin";
   if (
-    probe?.protocol !== 2 ||
+    probe?.protocol !== 3 ||
     probe.platform !== expectedPlatform ||
     typeof probe.platformBuild !== "string" ||
-    typeof probe.windowCapture !== "boolean" ||
+    typeof probe.videoCapture !== "boolean" ||
     typeof probe.processAudio !== "boolean" ||
+    typeof probe.systemAudio !== "boolean" ||
     !Array.isArray(probe.adapters) ||
     probe.adapters.some((adapter) =>
       !Number.isInteger(adapter?.index) ||
@@ -173,14 +174,18 @@ function checkPlatformCapture() {
     throw new Error("Native capture probe returned an invalid contract");
   }
   if (process.platform !== "win32") return;
-  const windows = JSON.parse(run(executable, ["--list"], { capture: true }));
-  if (!Array.isArray(windows) || windows.some((target) =>
-    !/^[1-9][0-9]{0,19}$/.test(target?.windowHandle) ||
-    !Number.isInteger(target?.pid) ||
-    !/^[1-9][0-9]{0,19}$/.test(target?.creationTime) ||
-    typeof target?.title !== "string"
+  const sources = JSON.parse(run(executable, ["--list"], { capture: true }));
+  if (!Array.isArray(sources) || sources.some((target) =>
+    !["window", "display"].includes(target?.kind) ||
+    !/^[1-9][0-9]{0,19}$/.test(target?.sourceId) ||
+    typeof target?.title !== "string" ||
+    (target.kind === "window" &&
+      (!Number.isInteger(target?.pid) ||
+        !/^[1-9][0-9]{0,19}$/.test(target?.creationTime))) ||
+    (target.kind === "display" &&
+      (target?.pid !== undefined || target?.creationTime !== undefined))
   )) {
-    throw new Error("Windows capture process returned an invalid window list");
+    throw new Error("Windows capture process returned an invalid source list");
   }
 }
 

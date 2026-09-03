@@ -155,7 +155,7 @@ import {
   defaultNativeCapturePath,
   type NativeCapturePath,
 } from "../native/capture-selection";
-import type { NativeWindowTarget } from "../native/wire";
+import type { NativeCaptureTarget } from "../native/wire";
 import {
   MAX_ENDPOINT_MEDIA_CHILDREN,
   reconcileBoundedMediaChildren,
@@ -393,7 +393,8 @@ type ShareSourceSelection =
   | {
       kind: "native";
       client: NativeClient;
-      target: NativeWindowTarget;
+      target: NativeCaptureTarget;
+      audio: boolean;
       path: NativeCapturePath;
     };
 
@@ -1181,16 +1182,20 @@ export function HostPage({
     shareGeneration: string,
     selection: Extract<ShareSourceSelection, { kind: "native" }>,
   ): Promise<MediaStream | null> {
-    const { client, target, path } = selection;
+    const { client, target, audio, path } = selection;
+    let bridge: NativeMediaBridge | null = null;
+    let shareStarted = false;
     try {
-      await client.startShare({
+      const started = await client.startShare({
         shareId: shareGeneration,
-        window: target,
+        source: target,
+        audio,
         adapterIndex: path.adapterIndex,
         encoderIndex: path.encoderIndex,
         edgeCapacity: MAX_ENDPOINT_MEDIA_CHILDREN,
       });
-      const bridge = new NativeMediaBridge(
+      shareStarted = true;
+      bridge = new NativeMediaBridge(
         shareGeneration,
         client,
         () => {
@@ -1201,14 +1206,10 @@ export function HostPage({
             endSharing({ key: "host.shareEnded" });
           }
         },
+        started.audio,
       );
-      const stream = await bridge.start();
-      if (!isCurrentShare(generation, shareGeneration)) {
-        bridge.dispose();
-        await client.stopShare(shareGeneration).catch(() => undefined);
-        client.close();
-        return null;
-      }
+      // Register ownership before waiting for the local bridge. A native edge
+      // may fail immediately after becoming ready.
       nativeClientRef.current = client;
       nativeShareGenerationRef.current = shareGeneration;
       nativeMediaBridgeRef.current = bridge;
@@ -1218,16 +1219,33 @@ export function HostPage({
         if (
           event.type === "share-ended" &&
           event.shareId === shareGeneration &&
-          isCurrentShare(generation, shareGeneration)
+          isCurrentShare(generation, shareGeneration) &&
+          nativeClientRef.current === client
         ) {
           endSharing({
             key: event.failed ? "host.shareEnded" : "host.stopNotice",
           });
         }
       });
+      const stream = await bridge.start();
+      if (!isCurrentShare(generation, shareGeneration)) {
+        disposeNativeShare();
+        return null;
+      }
       return stream;
     } catch (error) {
-      client.close();
+      if (
+        nativeClientRef.current === client &&
+        nativeShareGenerationRef.current === shareGeneration
+      ) {
+        disposeNativeShare();
+      } else {
+        bridge?.dispose();
+        if (shareStarted) {
+          await client.stopShare(shareGeneration).catch(() => undefined);
+        }
+        client.close();
+      }
       throw error;
     }
   }
@@ -1255,7 +1273,7 @@ export function HostPage({
     }
     if (
       !client ||
-      !client.health.nativeMedia.windowVideo ||
+      !client.health.nativeMedia.video ||
       !client.health.nativeMedia.hardwareH264
     ) {
       client?.close();
@@ -1263,9 +1281,9 @@ export function HostPage({
       return;
     }
     try {
-      const [adapters, windows] = await Promise.all([
+      const [adapters, sources] = await Promise.all([
         client.captureOptions(),
-        client.windows(),
+        client.sources(),
       ]);
       const path = defaultNativeCapturePath(adapters);
       if (nativeSourceRequestRef.current !== request) {
@@ -1279,7 +1297,12 @@ export function HostPage({
       }
       nativeSourceClientRef.current = client;
       nativeSourcePathRef.current = path;
-      setNativeSources({ kind: "ready", windows });
+      setNativeSources({
+        kind: "ready",
+        sources,
+        processAudio: client.health.nativeMedia.processAudio,
+        systemAudio: client.health.nativeMedia.systemAudio,
+      });
     } catch {
       client.close();
       if (nativeSourceRequestRef.current === request) {
@@ -1302,7 +1325,23 @@ export function HostPage({
     void startSharing({ kind: "browser" });
   }
 
-  function startNativeShareFromPicker(target: NativeWindowTarget): void {
+  async function loadNativeSourcePreview(
+    target: NativeCaptureTarget,
+  ): Promise<string | null> {
+    const client = nativeSourceClientRef.current;
+    if (!client || nativeSources?.kind !== "ready") return null;
+    try {
+      const preview = await client.sourcePreview(target);
+      return nativeSourceClientRef.current === client ? preview : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function startNativeShareFromPicker(
+    target: NativeCaptureTarget,
+    audio: boolean,
+  ): void {
     if (nativeSources?.kind !== "ready") return;
     const client = nativeSourceClientRef.current;
     const path = nativeSourcePathRef.current;
@@ -1311,7 +1350,7 @@ export function HostPage({
     nativeSourceClientRef.current = null;
     nativeSourcePathRef.current = null;
     setNativeSources(null);
-    void startSharing({ kind: "native", client, target, path });
+    void startSharing({ kind: "native", client, target, audio, path });
   }
 
   function disposeNativeShare(): void {
@@ -3063,6 +3102,7 @@ export function HostPage({
                 nativeSources={nativeSources}
                 onBrowser={startBrowserShareFromPicker}
                 onNative={startNativeShareFromPicker}
+                onPreview={loadNativeSourcePreview}
                 onCancel={closeCaptureSourcePicker}
               />
             ) : !stream &&

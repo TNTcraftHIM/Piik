@@ -1,9 +1,9 @@
 import { z } from "zod";
 
-export const NATIVE_CLIENT_PROTOCOL = 4;
+export const NATIVE_CLIENT_PROTOCOL = 5;
 export const NATIVE_CLIENT_PORT_START = 39_721;
 export const NATIVE_CLIENT_PORT_END = 39_730;
-export const NATIVE_CLIENT_SUBPROTOCOL = "screener-client-v4";
+export const NATIVE_CLIENT_SUBPROTOCOL = "screener-client-v5";
 
 const decimalIdentifierSchema = z.string().regex(/^[1-9]\d{0,19}$/);
 const opaqueIdentifierSchema = z
@@ -20,8 +20,9 @@ export const nativeHealthSchema = z
     instanceToken: z.string().length(43).regex(/^[A-Za-z0-9_-]+$/),
     nativeMedia: z
       .object({
-        windowVideo: z.boolean(),
+        video: z.boolean(),
         processAudio: z.boolean(),
+        systemAudio: z.boolean(),
         hardwareH264: z.boolean(),
       })
       .strict(),
@@ -29,15 +30,29 @@ export const nativeHealthSchema = z
   .strict();
 export type NativeHealth = z.infer<typeof nativeHealthSchema>;
 
-export const nativeWindowTargetSchema = z
+const nativeWindowTargetSchema = z
   .object({
-    windowHandle: decimalIdentifierSchema,
+    kind: z.literal("window"),
+    sourceId: decimalIdentifierSchema,
     pid: z.number().int().positive().max(0xffff_ffff),
     creationTime: decimalIdentifierSchema,
     title: z.string().min(1).max(4096),
   })
   .strict();
-export type NativeWindowTarget = z.infer<typeof nativeWindowTargetSchema>;
+
+const nativeDisplayTargetSchema = z
+  .object({
+    kind: z.literal("display"),
+    sourceId: decimalIdentifierSchema,
+    title: z.string().min(1).max(4096),
+  })
+  .strict();
+
+export const nativeCaptureTargetSchema = z.discriminatedUnion("kind", [
+  nativeWindowTargetSchema,
+  nativeDisplayTargetSchema,
+]);
+export type NativeCaptureTarget = z.infer<typeof nativeCaptureTargetSchema>;
 
 const nativeEncoderSchema = z
   .object({
@@ -84,11 +99,20 @@ export const captureOptionsResponseSchema = z
     adapters: z.array(nativeAdapterSchema).max(64),
   })
   .strict();
-export const windowListResponseSchema = z
+export const sourceListResponseSchema = z
   .object({
     ...responseBase,
-    type: z.literal("window-list"),
-    windows: z.array(nativeWindowTargetSchema).max(1024),
+    type: z.literal("source-list"),
+    sources: z.array(nativeCaptureTargetSchema).max(1024),
+  })
+  .strict();
+export const sourcePreviewResponseSchema = z
+  .object({
+    ...responseBase,
+    type: z.literal("source-preview"),
+    sourceKey: z.string().min(8).max(256),
+    mime: z.literal("image/bmp"),
+    data: z.string().max(64 * 1024),
   })
   .strict();
 export const shareStartedResponseSchema = z

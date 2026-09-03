@@ -9,8 +9,10 @@
 #include <wrl.h>
 #include <wrl/implements.h>
 
+#include "capture_target.h"
 #include "process_audio.h"
 
+#include <array>
 #include <cstdint>
 #include <iostream>
 #include <limits>
@@ -26,8 +28,6 @@ using Microsoft::WRL::ClassicCom;
 
 namespace screener::capture {
 namespace {
-constexpr size_t kMaxWindows = 100;
-
 class ActivationHandler final : public RuntimeClass<
     RuntimeClassFlags<ClassicCom>, FtmBase, IActivateAudioInterfaceCompletionHandler> {
  public:
@@ -52,110 +52,8 @@ class ActivationHandler final : public RuntimeClass<
   ComPtr<IAudioClient> client_;
 };
 
-struct WindowTarget {
-  UINT64 windowHandle;
-  DWORD pid;
-  UINT64 creationTime;
-  std::string title;
-};
-
-HRESULT ReadProcessCreationTime(HANDLE process, UINT64* creationTime) {
-  FILETIME created{}, exited{}, kernel{}, user{};
-  if (!GetProcessTimes(process, &created, &exited, &kernel, &user)) {
-    return HRESULT_FROM_WIN32(GetLastError());
-  }
-  ULARGE_INTEGER value{};
-  value.LowPart = created.dwLowDateTime;
-  value.HighPart = created.dwHighDateTime;
-  if (value.QuadPart == 0) return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
-  *creationTime = value.QuadPart;
-  return S_OK;
-}
-
-std::string Utf8(const std::wstring& value) {
-  if (value.empty()) return {};
-  const int size = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, value.data(),
-                                      static_cast<int>(value.size()), nullptr, 0, nullptr, nullptr);
-  if (size <= 0) return {};
-  std::string result(static_cast<size_t>(size), '\0');
-  if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, value.data(),
-                          static_cast<int>(value.size()), result.data(), size, nullptr, nullptr) != size) {
-    return {};
-  }
-  return result;
-}
-
-std::string JsonString(const std::string& value) {
-  static constexpr char hex[] = "0123456789abcdef";
-  std::string result = "\"";
-  for (const unsigned char character : value) {
-    switch (character) {
-      case '\\': result += "\\\\"; break;
-      case '"': result += "\\\""; break;
-      case '\b': result += "\\b"; break;
-      case '\f': result += "\\f"; break;
-      case '\n': result += "\\n"; break;
-      case '\r': result += "\\r"; break;
-      case '\t': result += "\\t"; break;
-      default:
-        if (character < 0x20) {
-          result += "\\u00";
-          result += hex[character >> 4];
-          result += hex[character & 0xf];
-        } else {
-          result.push_back(static_cast<char>(character));
-        }
-    }
-  }
-  result += '"';
-  return result;
-}
-
-BOOL CALLBACK CollectWindow(HWND window, LPARAM parameter) {
-  auto* targets = reinterpret_cast<std::vector<WindowTarget>*>(parameter);
-  if (targets->size() >= kMaxWindows) return TRUE;
-  if (!IsWindowVisible(window) || GetWindow(window, GW_OWNER) != nullptr) return TRUE;
-  const int length = GetWindowTextLengthW(window);
-  if (length <= 0 || length > 512) return TRUE;
-  DWORD pid = 0;
-  GetWindowThreadProcessId(window, &pid);
-  if (pid == 0 || pid == GetCurrentProcessId()) return TRUE;
-  std::wstring title(static_cast<size_t>(length) + 1, L'\0');
-  const int copied = GetWindowTextW(window, title.data(), length + 1);
-  if (copied <= 0) return TRUE;
-  title.resize(static_cast<size_t>(copied));
-  std::string utf8 = Utf8(title);
-  if (utf8.empty()) return TRUE;
-  HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
-  if (process == nullptr) return TRUE;
-  UINT64 creationTime = 0;
-  const HRESULT result = ReadProcessCreationTime(process, &creationTime);
-  CloseHandle(process);
-  if (SUCCEEDED(result)) {
-    targets->push_back({static_cast<UINT64>(reinterpret_cast<UINT_PTR>(window)),
-                        pid, creationTime, std::move(utf8)});
-  }
-  return TRUE;
-}
-
-}  // namespace
-
-int WriteWindowList() {
-  std::vector<WindowTarget> targets;
-  if (!EnumWindows(CollectWindow, reinterpret_cast<LPARAM>(&targets))) return 2;
-  std::cout << '[';
-  for (size_t index = 0; index < targets.size(); ++index) {
-    if (index != 0) std::cout << ',';
-    std::cout << "{\"windowHandle\":\"" << targets[index].windowHandle
-              << "\",\"pid\":" << targets[index].pid << ",\"creationTime\":\""
-              << targets[index].creationTime << "\",\"title\":"
-              << JsonString(targets[index].title) << '}';
-  }
-  std::cout << ']';
-  return std::cout.good() ? 0 : 2;
-}
-
-HRESULT ActivateProcessLoopback(DWORD pid, HANDLE completed, ComPtr<IAudioClient>* client) {
+HRESULT ActivateProcessLoopback(DWORD pid, HANDLE completed,
+                                ComPtr<IAudioClient>* client) {
   AUDIOCLIENT_ACTIVATION_PARAMS parameters{};
   parameters.ActivationType = AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK;
   parameters.ProcessLoopbackParams.TargetProcessId = pid;
@@ -179,60 +77,34 @@ HRESULT ActivateProcessLoopback(DWORD pid, HANDLE completed, ComPtr<IAudioClient
   return result;
 }
 
-HRESULT ValidateWindowTarget(UINT64 window_handle, DWORD pid,
-                             UINT64 expected_creation_time) {
-  if (window_handle == 0 || pid == 0 || expected_creation_time == 0 ||
-      window_handle > static_cast<UINT64>(std::numeric_limits<UINT_PTR>::max())) {
-    return HRESULT_FROM_WIN32(ERROR_INVALID_PARAMETER);
+HRESULT ActivateSystemLoopback(ComPtr<IAudioClient>* client) {
+  ComPtr<IMMDeviceEnumerator> enumerator;
+  HRESULT result = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr,
+                                    CLSCTX_ALL, IID_PPV_ARGS(&enumerator));
+  ComPtr<IMMDevice> device;
+  if (SUCCEEDED(result)) {
+    result = enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device);
   }
-  HWND window = reinterpret_cast<HWND>(static_cast<UINT_PTR>(window_handle));
-  DWORD window_pid = 0;
-  if (!IsWindow(window) || GetWindowThreadProcessId(window, &window_pid) == 0 ||
-      window_pid != pid) {
-    return HRESULT_FROM_WIN32(ERROR_INVALID_WINDOW_HANDLE);
-  }
-  HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
-  if (process == nullptr) return HRESULT_FROM_WIN32(GetLastError());
-  UINT64 actual_creation_time = 0;
-  HRESULT result = ReadProcessCreationTime(process, &actual_creation_time);
-  CloseHandle(process);
-  if (SUCCEEDED(result) && actual_creation_time != expected_creation_time) {
-    result = HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
+  if (SUCCEEDED(result)) {
+    result = device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr,
+                              reinterpret_cast<void**>(client->GetAddressOf()));
   }
   return result;
 }
 
-HRESULT CaptureProcessAudio(DWORD pid, UINT64 expectedCreationTime,
-                            HANDLE stop_event, const StopProbe& stop_probe,
-                            const PCMWriter& writer) {
-  if (stop_event == nullptr || !stop_probe || !writer) {
+HRESULT CaptureLoopbackAudio(ComPtr<IAudioClient> client, HANDLE process,
+                             HANDLE stop_event, const StopProbe& stop_probe,
+                             const ReadyWriter& ready_writer,
+                             const PCMWriter& writer) {
+  if (stop_event == nullptr || !stop_probe || !ready_writer || !writer) {
     return HRESULT_FROM_WIN32(ERROR_INVALID_PARAMETER);
   }
-  HRESULT com_result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-  if (FAILED(com_result)) return com_result;
-  HANDLE process = OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
-  if (process == nullptr) {
-    HRESULT result = HRESULT_FROM_WIN32(GetLastError());
-    CoUninitialize();
-    return result;
-  }
-  HANDLE completed = CreateEventW(nullptr, FALSE, FALSE, nullptr);
   HANDLE sampleReady = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-  if (completed == nullptr || sampleReady == nullptr) {
+  if (sampleReady == nullptr) {
     const HRESULT result = HRESULT_FROM_WIN32(GetLastError());
-    if (completed != nullptr) CloseHandle(completed);
-    if (sampleReady != nullptr) CloseHandle(sampleReady);
-    CloseHandle(process);
-    CoUninitialize();
     return result;
   }
-  UINT64 creationTime = 0;
-  HRESULT result = ReadProcessCreationTime(process, &creationTime);
-  if (SUCCEEDED(result) && creationTime != expectedCreationTime) {
-    result = HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
-  }
-  ComPtr<IAudioClient> client;
-  if (SUCCEEDED(result)) result = ActivateProcessLoopback(pid, completed, &client);
+  HRESULT result = S_OK;
   ComPtr<IAudioCaptureClient> capture;
   WAVEFORMATEX format{};
   format.wFormatTag = WAVE_FORMAT_PCM;
@@ -250,27 +122,41 @@ HRESULT CaptureProcessAudio(DWORD pid, UINT64 expectedCreationTime,
   if (SUCCEEDED(result)) result = client->GetService(IID_PPV_ARGS(&capture));
   if (SUCCEEDED(result)) result = client->SetEventHandle(sampleReady);
   if (SUCCEEDED(result)) result = client->Start();
+  if (SUCCEEDED(result)) result = ready_writer();
+  if (SUCCEEDED(result)) {
+    std::array<BYTE, kAudioBytesPerChunk> silence{};
+    result = writer(0, silence.data(), static_cast<DWORD>(silence.size()));
+  }
 
   std::vector<BYTE> pending;
   size_t consumed = 0;
   UINT64 nextTimestamp = 0;
-  const HANDLE waits[] = {process, sampleReady, stop_event};
+  const HANDLE process_waits[] = {process, sampleReady, stop_event};
+  const HANDLE system_waits[] = {sampleReady, stop_event};
   while (SUCCEEDED(result)) {
     if (stop_probe()) {
       result = S_OK;
       break;
     }
-    const DWORD wait = WaitForMultipleObjects(3, waits, FALSE, 1'000);
-    if (wait == WAIT_OBJECT_0) {
+    const DWORD wait = process != nullptr
+                           ? WaitForMultipleObjects(3, process_waits, FALSE,
+                                                    1'000)
+                           : WaitForMultipleObjects(2, system_waits, FALSE,
+                                                    1'000);
+    if (process != nullptr && wait == WAIT_OBJECT_0) {
       result = HRESULT_FROM_WIN32(ERROR_PROCESS_ABORTED);
       break;
     }
     if (wait == WAIT_TIMEOUT) continue;
-    if (wait == WAIT_OBJECT_0 + 2) {
+    const DWORD sample_index = process != nullptr ? WAIT_OBJECT_0 + 1
+                                                  : WAIT_OBJECT_0;
+    const DWORD stop_index = process != nullptr ? WAIT_OBJECT_0 + 2
+                                                : WAIT_OBJECT_0 + 1;
+    if (wait == stop_index) {
       result = S_OK;
       break;
     }
-    if (wait != WAIT_OBJECT_0 + 1) {
+    if (wait != sample_index) {
       result = HRESULT_FROM_WIN32(GetLastError());
       break;
     }
@@ -318,8 +204,68 @@ HRESULT CaptureProcessAudio(DWORD pid, UINT64 expectedCreationTime,
   }
   if (client) client->Stop();
   CloseHandle(sampleReady);
+  return result;
+}
+
+}  // namespace
+
+bool ProcessAudioAvailable() {
+  HANDLE completed = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+  if (completed == nullptr) return false;
+  ComPtr<IAudioClient> client;
+  const HRESULT result =
+      ActivateProcessLoopback(GetCurrentProcessId(), completed, &client);
   CloseHandle(completed);
-  CloseHandle(process);
+  return SUCCEEDED(result) && client != nullptr;
+}
+
+bool SystemAudioAvailable() {
+  ComPtr<IAudioClient> client;
+  return SUCCEEDED(ActivateSystemLoopback(&client)) && client != nullptr;
+}
+
+HRESULT CaptureProcessAudio(DWORD pid, UINT64 expectedCreationTime,
+                            HANDLE stop_event, const StopProbe& stop_probe,
+                            const ReadyWriter& ready_writer,
+                            const PCMWriter& writer) {
+  HRESULT com_result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+  if (FAILED(com_result)) return com_result;
+  HRESULT result = ValidateProcessTarget(pid, expectedCreationTime);
+  HANDLE process = nullptr;
+  HANDLE completed = nullptr;
+  ComPtr<IAudioClient> client;
+  if (SUCCEEDED(result)) {
+    process = OpenProcess(SYNCHRONIZE, FALSE, pid);
+    if (process == nullptr) result = HRESULT_FROM_WIN32(GetLastError());
+  }
+  if (SUCCEEDED(result)) {
+    completed = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    if (completed == nullptr) result = HRESULT_FROM_WIN32(GetLastError());
+  }
+  if (SUCCEEDED(result)) {
+    result = ActivateProcessLoopback(pid, completed, &client);
+  }
+  if (SUCCEEDED(result)) {
+    result = CaptureLoopbackAudio(client, process, stop_event, stop_probe,
+                                  ready_writer, writer);
+  }
+  if (completed != nullptr) CloseHandle(completed);
+  if (process != nullptr) CloseHandle(process);
+  CoUninitialize();
+  return result;
+}
+
+HRESULT CaptureSystemAudio(HANDLE stop_event, const StopProbe& stop_probe,
+                           const ReadyWriter& ready_writer,
+                           const PCMWriter& writer) {
+  HRESULT com_result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+  if (FAILED(com_result)) return com_result;
+  ComPtr<IAudioClient> client;
+  HRESULT result = ActivateSystemLoopback(&client);
+  if (SUCCEEDED(result)) {
+    result = CaptureLoopbackAudio(client, nullptr, stop_event, stop_probe,
+                                  ready_writer, writer);
+  }
   CoUninitialize();
   return result;
 }

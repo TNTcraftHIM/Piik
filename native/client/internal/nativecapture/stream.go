@@ -11,17 +11,26 @@ import (
 	"time"
 )
 
-const captureStopTimeout = time.Second
+const (
+	captureStopTimeout = time.Second
+	maxPreviewBytes    = 48 * 1024
+)
 
-type WindowTarget struct {
-	WindowHandle string `json:"windowHandle"`
-	PID          uint32 `json:"pid"`
-	CreationTime string `json:"creationTime"`
+type audioCaptureState struct {
+	State string `json:"state"`
+	Audio bool   `json:"audio"`
+}
+
+type CaptureTarget struct {
+	Kind         string `json:"kind"`
+	SourceID     string `json:"sourceId"`
+	PID          uint32 `json:"pid,omitempty"`
+	CreationTime string `json:"creationTime,omitempty"`
 	Title        string `json:"title"`
 }
 
 type VideoOptions struct {
-	Target       WindowTarget
+	Target       CaptureTarget
 	AdapterIndex uint32
 	EncoderIndex uint32
 }
@@ -35,7 +44,7 @@ type Stream struct {
 	closeOnce sync.Once
 }
 
-func ListWindows(parent context.Context, executable string) ([]WindowTarget, error) {
+func ListSources(parent context.Context, executable string) ([]CaptureTarget, error) {
 	ctx, cancel := context.WithTimeout(parent, probeTimeout)
 	defer cancel()
 	stdout := &boundedBuffer{limit: maxProbeOutputBytes}
@@ -44,49 +53,147 @@ func ListWindows(parent context.Context, executable string) ([]WindowTarget, err
 	command.Stderr = &boundedBuffer{limit: maxProbeErrorBytes}
 	hideWindow(command)
 	if err := command.Run(); err != nil {
-		return nil, errors.New("native window list is unavailable")
+		return nil, errors.New("native capture source list is unavailable")
 	}
-	var targets []WindowTarget
+	var targets []CaptureTarget
 	if err := decodeStrictJSON(stdout.Bytes(), &targets); err != nil || len(targets) > 1024 {
-		return nil, errors.New("native window list is invalid")
+		return nil, errors.New("native capture source list is invalid")
 	}
 	for _, target := range targets {
-		if !positiveDecimal(target.WindowHandle) || target.PID == 0 ||
-			!positiveDecimal(target.CreationTime) ||
-			len(target.Title) == 0 || len(target.Title) > 4096 {
-			return nil, errors.New("native window target is invalid")
+		if !validCaptureTarget(target) {
+			return nil, errors.New("native capture target is invalid")
 		}
 	}
 	return targets, nil
 }
 
+func PreviewSource(parent context.Context, executable string, target CaptureTarget) ([]byte, error) {
+	if !validCaptureTarget(target) {
+		return nil, errors.New("native preview target is invalid")
+	}
+	ctx, cancel := context.WithTimeout(parent, probeTimeout)
+	defer cancel()
+	stdout := &boundedBuffer{limit: maxPreviewBytes}
+	command := exec.CommandContext(ctx, executable,
+		"--preview",
+		target.Kind,
+		target.SourceID,
+		strconv.FormatUint(uint64(target.PID), 10),
+		zeroWhenEmpty(target.CreationTime),
+	)
+	command.Stdout = stdout
+	command.Stderr = &boundedBuffer{limit: maxProbeErrorBytes}
+	hideWindow(command)
+	if err := command.Run(); err != nil {
+		return nil, errors.New("native capture preview is unavailable")
+	}
+	preview := stdout.Bytes()
+	if len(preview) < 54 || preview[0] != 'B' || preview[1] != 'M' {
+		return nil, errors.New("native capture preview is invalid")
+	}
+	return append([]byte(nil), preview...), nil
+}
+
 func StartVideo(parent context.Context, executable string, options VideoOptions) (*Stream, error) {
-	if !positiveDecimal(options.Target.WindowHandle) || options.Target.PID == 0 ||
-		!positiveDecimal(options.Target.CreationTime) {
+	if !validCaptureTarget(options.Target) {
 		return nil, errors.New("native video target is invalid")
 	}
 	return startStream(parent, executable, []string{
 		"--capture-video",
+		options.Target.Kind,
+		options.Target.SourceID,
 		strconv.FormatUint(uint64(options.Target.PID), 10),
-		options.Target.CreationTime,
-		options.Target.WindowHandle,
+		zeroWhenEmpty(options.Target.CreationTime),
 		"--adapter-index",
 		strconv.FormatUint(uint64(options.AdapterIndex), 10),
 		"--mft-index",
 		strconv.FormatUint(uint64(options.EncoderIndex), 10),
-		"--protocol-v2",
+		"--protocol-v3",
 	})
 }
 
-func StartAudio(parent context.Context, executable string, target WindowTarget) (*Stream, error) {
-	if target.PID == 0 || !positiveDecimal(target.CreationTime) {
+func StartAudio(parent context.Context, executable string, target CaptureTarget) (*Stream, error) {
+	if !validCaptureTarget(target) {
 		return nil, errors.New("native audio target is invalid")
 	}
-	return startStream(parent, executable, []string{
+	return startAudioStream(parent, executable, []string{
 		"--capture-audio",
+		target.Kind,
 		strconv.FormatUint(uint64(target.PID), 10),
-		target.CreationTime,
+		zeroWhenEmpty(target.CreationTime),
 	})
+}
+
+func StartSystemAudio(parent context.Context, executable string) (*Stream, error) {
+	return startAudioStream(parent, executable, []string{
+		"--capture-audio", "display", "0", "0",
+	})
+}
+
+func startAudioStream(parent context.Context, executable string, arguments []string) (*Stream, error) {
+	if parent == nil {
+		parent = context.Background()
+	}
+	stream, err := startStream(parent, executable, arguments)
+	if err != nil {
+		return nil, err
+	}
+	ready := make(chan error, 1)
+	go func() {
+		frame, readErr := stream.Read()
+		if readErr != nil {
+			ready <- errors.New("native audio capture did not become ready")
+			return
+		}
+		ready <- validateAudioReadyFrame(frame)
+	}()
+	timer := time.NewTimer(probeTimeout)
+	defer timer.Stop()
+	select {
+	case readyErr := <-ready:
+		if readyErr == nil {
+			return stream, nil
+		}
+		_ = stream.Close()
+		return nil, readyErr
+	case <-timer.C:
+		_ = stream.Close()
+		return nil, errors.New("native audio capture timed out during startup")
+	case <-parent.Done():
+		_ = stream.Close()
+		return nil, parent.Err()
+	}
+}
+
+func validCaptureTarget(target CaptureTarget) bool {
+	if !positiveDecimal(target.SourceID) || len(target.Title) == 0 ||
+		len(target.Title) > 4096 {
+		return false
+	}
+	switch target.Kind {
+	case "window":
+		return target.PID > 0 && positiveDecimal(target.CreationTime)
+	case "display":
+		return target.PID == 0 && target.CreationTime == ""
+	default:
+		return false
+	}
+}
+
+func zeroWhenEmpty(value string) string {
+	if value == "" {
+		return "0"
+	}
+	return value
+}
+
+func validateAudioReadyFrame(frame Frame) error {
+	var state audioCaptureState
+	if frame.Kind != FrameStatus || decodeStrictJSON(frame.Data, &state) != nil ||
+		state.State != "active" || !state.Audio {
+		return errors.New("native audio capture returned an invalid ready state")
+	}
+	return nil
 }
 
 func positiveDecimal(value string) bool {

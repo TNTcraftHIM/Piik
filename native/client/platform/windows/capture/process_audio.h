@@ -17,13 +17,17 @@ constexpr UINT64 kAudioChunkDuration100ns = 200'000;
 
 using PCMWriter =
     std::function<HRESULT(UINT64 timestamp100ns, const BYTE* data, DWORD size)>;
+using ReadyWriter = std::function<HRESULT()>;
 using StopProbe = std::function<bool()>;
 
-int WriteWindowList();
-HRESULT ValidateWindowTarget(UINT64 window_handle, DWORD pid,
-                             UINT64 expected_creation_time);
+bool ProcessAudioAvailable();
+bool SystemAudioAvailable();
 HRESULT CaptureProcessAudio(DWORD pid, UINT64 expected_creation_time,
                             HANDLE stop_event, const StopProbe& stop_probe,
+                            const ReadyWriter& ready_writer,
                             const PCMWriter& writer);
+HRESULT CaptureSystemAudio(HANDLE stop_event, const StopProbe& stop_probe,
+                           const ReadyWriter& ready_writer,
+                           const PCMWriter& writer);
 
 }  // namespace screener::capture

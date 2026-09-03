@@ -83,6 +83,9 @@
   maintenance, compatibility, and failure cost. A large measured gain may
   justify broad or breaking work; a small or speculative gain does not justify
   material complexity or risk.
+- After completing a material module, run one ablation pass and remove every new
+  component, state, dependency, or branch that is not needed for the verified
+  result or an accepted contract.
 - Use primary sources for non-trivial design and bugs. Add focused tests in
   proportion to risk; batch full browser/network/endurance checks at acceptance.
 - Keep scripts deterministic, fast, cross-platform, and CI-runnable. Support

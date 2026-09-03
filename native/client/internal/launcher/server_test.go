@@ -23,9 +23,11 @@ func TestLauncherServesStateAndCompletesOneSelection(t *testing.T) {
 	var state struct {
 		Site        string `json:"site"`
 		DefaultMode Mode   `json:"defaultMode"`
+		Revision    string `json:"revision"`
 	}
 	if response.StatusCode != http.StatusOK || json.NewDecoder(response.Body).Decode(&state) != nil ||
-		state.Site != "https://share.example" || state.DefaultMode != ModeSite {
+		state.Site != "https://share.example" || state.DefaultMode != ModeSite ||
+		state.Revision != "" {
 		t.Fatalf("launcher state = %d, %+v", response.StatusCode, state)
 	}
 
@@ -70,6 +72,24 @@ func TestLauncherServesStateAndCompletesOneSelection(t *testing.T) {
 	}
 }
 
+func TestLauncherIncludesTheInjectedBuildRevision(t *testing.T) {
+	const revision = "0123456789abcdef0123456789abcdef01234567"
+	server := startFixtureWithRevision(t, "", revision)
+	origin := strings.TrimSuffix(server.URL(), "/client")
+	response, err := http.Get(origin + "/api/client-launcher")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	var state struct {
+		Revision string `json:"revision"`
+	}
+	if response.StatusCode != http.StatusOK || json.NewDecoder(response.Body).Decode(&state) != nil ||
+		state.Revision != revision {
+		t.Fatalf("launcher revision = %d, %+v", response.StatusCode, state)
+	}
+}
+
 func TestLauncherRejectsAnInvalidSavedSite(t *testing.T) {
 	directory := t.TempDir()
 	if err := os.WriteFile(
@@ -79,7 +99,7 @@ func TestLauncherRejectsAnInvalidSavedSite(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Start(t.Context(), directory, "https://example.test/path"); err == nil {
+	if _, err := Start(t.Context(), directory, "https://example.test/path", ""); err == nil {
 		t.Fatal("launcher accepted a Site path")
 	}
 }
@@ -156,6 +176,10 @@ func TestLauncherRejectsCrossOriginControl(t *testing.T) {
 }
 
 func startFixture(t *testing.T, site string) *Server {
+	return startFixtureWithRevision(t, site, "")
+}
+
+func startFixtureWithRevision(t *testing.T, site, revision string) *Server {
 	t.Helper()
 	directory := t.TempDir()
 	if err := os.WriteFile(
@@ -165,7 +189,7 @@ func startFixture(t *testing.T, site string) *Server {
 	); err != nil {
 		t.Fatal(err)
 	}
-	server, err := Start(t.Context(), directory, site)
+	server, err := Start(t.Context(), directory, site, revision)
 	if err != nil {
 		t.Fatal(err)
 	}

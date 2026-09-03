@@ -19,7 +19,7 @@ const testOrigin = "https://share.bonfire.icu"
 
 func TestStartServesHealthAndStrictControlHandshake(t *testing.T) {
 	expectedMedia := NativeMediaCapabilities{
-		WindowVideo: true, ProcessAudio: false, HardwareH264: true,
+		Video: true, ProcessAudio: false, SystemAudio: true, HardwareH264: true,
 	}
 	server := startTestServerWithOptions(t, Options{
 		AllowedOrigin: testOrigin,
