@@ -97,10 +97,10 @@ async function browserHandshake(
             const health = await response.json();
             if (health.protocol === ${NATIVE_PROTOCOL} && health.service === "screener-client" &&
                 health.port === port && typeof health.instanceToken === "string" &&
-                health.nativeMedia?.video === false &&
-                health.nativeMedia?.processAudio === false &&
-                health.nativeMedia?.systemAudio === false &&
-                health.nativeMedia?.hardwareH264 === false) {
+                typeof health.nativeMedia?.video === "boolean" &&
+                typeof health.nativeMedia?.processAudio === "boolean" &&
+                typeof health.nativeMedia?.systemAudio === "boolean" &&
+                typeof health.nativeMedia?.hardwareH264 === "boolean") {
               return { port, instanceToken: health.instanceToken };
             }
           } catch {} finally {
