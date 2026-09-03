@@ -159,12 +159,15 @@ async function verifyLocalPackage(root, target, temporaryRoot) {
     windowsHide: true,
   });
   let spawnFailure = null;
+  let stderr = "";
   child.once("error", (error) => {
     spawnFailure = error;
   });
   child.stdin.on("error", () => undefined);
   child.stdout.resume();
-  child.stderr.resume();
+  child.stderr.on("data", (chunk) => {
+    stderr = `${stderr}${chunk.toString()}`.slice(-4_096);
+  });
   try {
     const deadline = Date.now() + 15_000;
     let ready = false;
@@ -180,8 +183,16 @@ async function verifyLocalPackage(root, target, temporaryRoot) {
     }
     if (!ready) fail("Packaged Client Local health did not become ready");
     child.stdin.write("\n");
-    if (await waitForExit(child, 10_000) !== 0) {
-      fail("Packaged Client did not stop cleanly");
+    const exitCode = await waitForExit(child, 10_000);
+    if (exitCode !== 0) {
+      const detail = stderr
+        .trim()
+        .replace(/https?:\/\/\S+/g, "<url>")
+        .replace(/\s+/g, " ")
+        .slice(-1_000);
+      fail(
+        `Packaged Client did not stop cleanly (${exitCode ?? child.signalCode ?? "unknown"})${detail ? `: ${detail}` : ""}`,
+      );
     }
     const closeDeadline = Date.now() + 5_000;
     while (Date.now() < closeDeadline) {
