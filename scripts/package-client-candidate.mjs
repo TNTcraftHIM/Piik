@@ -175,7 +175,10 @@ async function verifyLocalPackage(root, target, temporaryRoot) {
       if (spawnFailure) break;
       if (child.exitCode !== null || child.signalCode !== null) break;
       try {
-        const response = await fetch(healthURL, { signal: AbortSignal.timeout(500) });
+        const response = await fetch(healthURL, {
+          headers: { Connection: "close" },
+          signal: AbortSignal.timeout(500),
+        });
         ready = response.ok && (await response.json())?.status === "ok";
         if (ready) break;
       } catch {}
@@ -197,7 +200,10 @@ async function verifyLocalPackage(root, target, temporaryRoot) {
     const closeDeadline = Date.now() + 5_000;
     while (Date.now() < closeDeadline) {
       try {
-        await fetch(healthURL, { signal: AbortSignal.timeout(300) });
+        await fetch(healthURL, {
+          headers: { Connection: "close" },
+          signal: AbortSignal.timeout(300),
+        });
       } catch {
         return;
       }
