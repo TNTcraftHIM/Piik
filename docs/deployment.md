@@ -126,7 +126,7 @@ Run the tracked server entry with the uploaded descriptor:
 
 ```sh
 sudo env SCREENER_PUBLIC_ORIGIN=https://share.example.com \
-  /path/to/repository/deploy/release-app.sh \
+  bash /path/to/repository/deploy/release-app.sh \
   /opt/screener/uploads/screener-<revision>.release.json
 ```
 
