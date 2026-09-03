@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -80,7 +80,7 @@ async function start(
     ...options,
     ...(sfuRoomControl ? { sfuRoomControl } : {}),
     config,
-    serveFrontend: false,
+    frontend: { mode: "none" },
   });
   const port = await runningServer.listen(0, "127.0.0.1");
   return `http://127.0.0.1:${port}`;
@@ -857,6 +857,22 @@ describe("room HTTP API", () => {
 });
 
 describe("server HTTP listener and health", () => {
+  it("serves an explicit static frontend independently of NODE_ENV", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "screener-static-frontend-"));
+    temporaryDirectories.push(directory);
+    writeFileSync(join(directory, "index.html"), "<main>local-static</main>");
+    runningServer = await createScreenerServer({
+      config: testConfig({ nodeEnv: "test" }),
+      frontend: { mode: "static", directory },
+    });
+    const port = await runningServer.listen(0, "127.0.0.1");
+
+    const response = await fetch(`http://127.0.0.1:${port}/local-route`);
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("<main>local-static</main>");
+  });
+
   it("restores stable room authority across an application restart", async () => {
     const roomDatabasePath = temporaryRoomDatabasePath();
     let nowMs = 100;
@@ -867,7 +883,7 @@ describe("server HTTP listener and health", () => {
     });
     const first = await createScreenerServer({
       config,
-      serveFrontend: false,
+      frontend: { mode: "none" },
       now: () => nowMs,
     });
     let second: ScreenerServer | undefined;
@@ -883,7 +899,7 @@ describe("server HTTP listener and health", () => {
       nowMs = 200;
       second = await createScreenerServer({
         config,
-        serveFrontend: false,
+        frontend: { mode: "none" },
         now: () => nowMs,
       });
       const secondPort = await second.listen(0, "127.0.0.1");
@@ -975,7 +991,7 @@ describe("server HTTP listener and health", () => {
           apiSecret: "s".repeat(32),
         },
       }),
-      serveFrontend: false,
+      frontend: { mode: "none" },
       sfuRoomControl: roomControl,
       sfuTokenIssuer: {
         issueToken: async () => "unused-test-token",
@@ -1007,7 +1023,7 @@ describe("server HTTP listener and health", () => {
   it("makes no LiveKit call when another process owns the listener", async () => {
     const owner = await createScreenerServer({
       config: testConfig(),
-      serveFrontend: false,
+      frontend: { mode: "none" },
     });
     const ownerPort = await owner.listen(0, "127.0.0.1");
     const unavailableDatabasePath = join(
@@ -1027,7 +1043,7 @@ describe("server HTTP listener and health", () => {
           apiSecret: "s".repeat(32),
         },
       }),
-      serveFrontend: false,
+      frontend: { mode: "none" },
       sfuRoomControl: roomControl,
       sfuTokenIssuer: {
         issueToken: async () => "unused-test-token",
@@ -1050,7 +1066,7 @@ describe("server HTTP listener and health", () => {
     const roomDatabasePath = temporaryRoomDatabasePath();
     const owner = await createScreenerServer({
       config: testConfig({ roomDatabasePath }),
-      serveFrontend: false,
+      frontend: { mode: "none" },
     });
     await owner.listen(0, "127.0.0.1");
     const roomControl = new FakeSfuRoomControl();
@@ -1065,7 +1081,7 @@ describe("server HTTP listener and health", () => {
           apiSecret: "s".repeat(32),
         },
       }),
-      serveFrontend: false,
+      frontend: { mode: "none" },
       sfuRoomControl: roomControl,
       sfuTokenIssuer: {
         issueToken: async () => "unused-test-token",
@@ -1102,7 +1118,7 @@ describe("server HTTP listener and health", () => {
           apiSecret: "s".repeat(32),
         },
       }),
-      serveFrontend: false,
+      frontend: { mode: "none" },
       sfuRoomControl: roomControl,
       sfuTokenIssuer: {
         issueToken: async () => "unused-test-token",
@@ -1135,7 +1151,7 @@ describe("server HTTP listener and health", () => {
           apiSecret: "s".repeat(32),
         },
       }),
-      serveFrontend: false,
+      frontend: { mode: "none" },
       sfuRoomControl: roomControl,
       sfuTokenIssuer: {
         issueToken: async () => "unused-test-token",
@@ -1165,7 +1181,7 @@ describe("server HTTP listener and health", () => {
           apiSecret: "s".repeat(32),
         },
       }),
-      serveFrontend: false,
+      frontend: { mode: "none" },
       sfuRoomControl: roomControl,
       sfuTokenIssuer: {
         issueToken: async () => "unused-test-token",
@@ -1191,7 +1207,7 @@ describe("server HTTP listener and health", () => {
 
     const contender = await createScreenerServer({
       config: testConfig(),
-      serveFrontend: false,
+      frontend: { mode: "none" },
     });
     try {
       await expect(
@@ -1221,7 +1237,7 @@ describe("server HTTP listener and health", () => {
           apiSecret: "s".repeat(32),
         },
       }),
-      serveFrontend: false,
+      frontend: { mode: "none" },
       sfuRoomControl: roomControl,
       sfuTokenIssuer: {
         issueToken: async () => "unused-test-token",
@@ -1239,7 +1255,7 @@ describe("server HTTP listener and health", () => {
   it("uses the configured listen host by default", async () => {
     runningServer = await createScreenerServer({
       config: testConfig(),
-      serveFrontend: false,
+      frontend: { mode: "none" },
     });
     await runningServer.listen(0);
     const address = runningServer.httpServer.address();

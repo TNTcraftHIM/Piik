@@ -1,12 +1,25 @@
 # Project Memory
 
-Last updated: 2026-09-02
+Last updated: 2026-09-04
 
 Screener is private, low-latency game screen sharing for one Host and up to 20
 authenticated friends. The current product surface is Web Host, Web Viewer, and
 Browser relay; desktop and mobile Browsers are Viewer targets. It is not a
-public broadcast service. Native capture, shared encoding, distributable
-packages, and broader platform output remain later work.
+public broadcast service. Source includes a cross-platform Client that reuses
+the TypeScript product core in a self-contained Local deployment or opens one
+configured Site through the system Browser. Its Go entry presents Local,
+temporary public-link, and Site startup choices, supervises Local Node, and owns
+the explicit native Host media path selected in the same Host UI. Local remains
+a serverless-LAN mode by default; explicit one-link mode exposes that same
+authority through a session-scoped public control tunnel while media remains
+P2P. Windows capture,
+hardware H.264, direct cross-NAT video, Windows process/system audio, and best-effort
+mapping of the native edge's sole UDP socket are implemented through the same
+media boundary. Native P2P edges feed Pion GCC's categorical payload-capacity
+result into the existing route evidence windows. One reserved loopback edge
+gives the system Browser a preview and lets native Host media reuse the existing
+LiveKit publisher when SFU fallback is assigned; other platform capture and
+broader package acceptance remain later gates.
 
 ## Product Map
 

@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-08-30
+Last updated: 2026-09-04
 
 This file owns only cross-module physical evidence that still changes how the
 current product may be described. [Status](./status.md) owns exact source and
@@ -69,6 +69,59 @@ current-production real game. Web code cannot promise OS background execution,
 page retention, or capture keepalive. See
 [presentation and lifecycle](./product/presentation-lifecycle.md) and
 [background capture research](./research/browser-background-capture.md).
+
+## Screener Client
+
+The Go Client has unit coverage for persistent Local/Site configuration, LAN
+address selection, Browser launch commands, bounded Node supervision, its
+loopback port/Origin/Host/session contract, and exact package revision. The same
+source cross-builds for Windows amd64, macOS arm64, and Linux amd64.
+
+On Windows, Chrome for Testing 151.0.7922.138 completed the built Local page's
+fragment access, Host surface, LAN invitation, and clean Client/Node/Browser
+shutdown. A separate synthetic run formed a P2P-only Host-plus-three-Viewer tree
+with one Browser relay and advancing frames at every Viewer. The Hosted Site
+completed loopback `hello`/`ping` after CDP granted `loopback-network`; without
+that permission Chrome blocked it as expected.
+The exact clean-revision Windows package assembled with Node 24.19.0 passed both
+Client gates; changing `app/REVISION` made it fail before opening a listener.
+The same explicit-target assembly produced a Linux amd64 package that ran its
+bundled Node application and loopback runtime on an independent Ubuntu host.
+Its full package also created a public link reachable from another network and
+closed that link and all local ports on exit. The macOS arm64 output contains
+matching Mach-O arm64 Client and Node binaries; its capture sidecar compiles on
+the macOS runner and passes the synthetic hardware-H.264 IDR self-test, but the
+full package and ScreenCaptureKit path have not run on a physical Mac.
+
+Still required are physical second-device LAN playback, first-run LNA prompt,
+no-STUN mDNS behavior, macOS package execution, and equivalent non-Windows
+capture, audio, firewall, and process-lifecycle tests. Windows native capture, hardware H.264,
+one shared Pion source feeding two Chrome transports, STUN candidate gathering,
+and a Local Client Host path have bounded physical gates. A remote Pion gate
+also received 30 video packets over a selected `srflx`-to-`srflx` pair; its
+signaling used a temporary reverse SSH test path. The Windows media gate now
+also receives non-zero process/system-loopback Opus on both native edges and
+verifies decoded audio energy. The native Host gate passes display and window
+source selection and bounded previews; its window arm closes the captured
+source, observes the current share end, restarts capture in the same room, and
+requires the existing Viewer to receive a different media object plus 30 new
+frames. Display-source lifecycle is not claimed by that arm.
+Native P2P quality evidence and the Browser-mediated native-source SFU happy
+path now have bounded gates. Production package integration, SFU recovery and
+endurance, and physical non-Windows capture remain unproved.
+
+The one-link gate started a session-scoped public origin from a Windows Client,
+confirmed that its ordinary invitation used that origin, and served the Viewer
+page plus the existing `/signal` WebSocket upgrade to an independent Linux host.
+A native Host then used that public signaling path with an independent Linux
+Pion Viewer; repeated runs delivered 30+ H.264 RTP packets over selected direct
+paths using a reflexive candidate. Client exit stopped Node and the public link.
+This still does not prove decoded Browser media on a physical second device.
+
+The same clean revision assembled into a self-contained Windows package with a
+matching Node runtime, application tree, and native capture process. Chrome 151
+passed the package's Local startup gate and both Site loopback-permission arms;
+revision mismatch remains fail-closed before a listener starts.
 
 ## Interpretation Rules
 

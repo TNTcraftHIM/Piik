@@ -13,7 +13,11 @@ import {
   type SiteAccessStatus,
 } from "./lib/api";
 import type { RuntimeCapabilities } from "../shared/protocol";
-import { parseAppRoute, readViewerRoute } from "./lib/session";
+import {
+  parseAppRoute,
+  readViewerRoute,
+  takeClientLaunchBootstrap,
+} from "./lib/session";
 import { AppHeader } from "./components/living/Header";
 import { BrandLoader } from "./components/living/BrandMark";
 import { Btn, Pill } from "./components/living/primitives";
@@ -22,6 +26,9 @@ import { Glyph, type GlyphName } from "./ui/icons";
 import { useCopy } from "./ui/copy";
 
 const appRoute = parseAppRoute(window.location.pathname);
+const clientLaunchBootstrap =
+  appRoute.kind === "host" ? takeClientLaunchBootstrap() : null;
+const clientAccessBootstrap = clientLaunchBootstrap?.accessToken ?? null;
 const viewerRoute = appRoute.kind === "viewer" ? readViewerRoute() : null;
 const hostPageModule =
   appRoute.kind === "host" ? import("./pages/HostPage") : null;
@@ -29,6 +36,8 @@ const joinPageModule =
   appRoute.kind === "join" ? import("./pages/JoinPage") : null;
 const viewerPageModule =
   appRoute.kind === "viewer" ? import("./pages/ViewerPage") : null;
+const clientLauncherPageModule =
+  appRoute.kind === "client" ? import("./pages/ClientLauncherPage") : null;
 const HostPage = lazy(async () => ({
   default: (await (hostPageModule ?? import("./pages/HostPage"))).HostPage,
 }));
@@ -38,6 +47,11 @@ const JoinPage = lazy(async () => ({
 const ViewerPage = lazy(async () => ({
   default: (await (viewerPageModule ?? import("./pages/ViewerPage")))
     .ViewerPage,
+}));
+const ClientLauncherPage = lazy(async () => ({
+  default: (await (
+    clientLauncherPageModule ?? import("./pages/ClientLauncherPage")
+  )).ClientLauncherPage,
 }));
 const SITE_ACCESS_RENEWAL_INTERVAL_MS = 60 * 60 * 1_000;
 
@@ -66,6 +80,9 @@ export function App() {
 }
 
 function AppRoute() {
+  if (appRoute.kind === "client") {
+    return <ClientLauncherPage />;
+  }
   if (appRoute.kind === "viewer" && viewerRoute) {
     return viewerRoute.viewerGrant ? (
       <ViewerPage {...viewerRoute} />
@@ -167,7 +184,9 @@ function SiteAccessGate({
   useEffect(() => {
     let active = true;
     void Promise.all([
-      getSiteAccess(),
+      clientAccessBootstrap
+        ? authenticateSiteAccess(clientAccessBootstrap)
+        : getSiteAccess(),
       surface === "host"
         ? getRuntimeCapabilities()
         : Promise.resolve<RuntimeCapabilities>({ natPrediction: false }),
@@ -268,6 +287,7 @@ function SiteAccessGate({
     }
     return (
       <HostPage
+        launchedByClient={clientLaunchBootstrap?.launchedByClient}
         natPredictionAvailable={capabilities?.natPrediction === true}
         onAuthorizationRequired={() =>
           setAccess({ kind: "required", error: t("gate.expired") })

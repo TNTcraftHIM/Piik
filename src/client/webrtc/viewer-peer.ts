@@ -285,10 +285,10 @@ export class ViewerPeer {
       if (this.connection !== connection) {
         return;
       }
-      const sourceStream = event.streams[0];
-      if (sourceStream) {
-        this.remoteStream = sourceStream;
-      } else if (!this.remoteStream.getTrackById(event.track.id)) {
+      // Browsers may associate audio and video with different stream objects.
+      // Keep one Peer-owned stream so a late audio track cannot replace the
+      // already-presented video stream.
+      if (!this.remoteStream.getTrackById(event.track.id)) {
         this.remoteStream.addTrack(event.track);
       }
       this.events.onStream(this.remoteStream);

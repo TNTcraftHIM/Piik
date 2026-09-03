@@ -8,6 +8,10 @@ export interface SfuSubscriptionFence extends SfuResourceFence {
   viewerPeerId: string;
 }
 
+const MANAGED_ROOM_PREFIX = "screener-v1.";
+const ROOM_ID_PATTERN = /^[1-9]\d{0,11}$/;
+const OPAQUE_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
+
 export interface SfuResourceAdmissionOptions {
   readonly ingressCapacity: number;
   readonly egressCapacity: number;
@@ -292,4 +296,28 @@ function assertPositiveSafeInteger(value: number, name: string): void {
   if (!Number.isSafeInteger(value) || value <= 0) {
     throw new Error(`${name} must be a positive safe integer`);
   }
+}
+
+export function managedSfuRoomName(fence: SfuResourceFence): string {
+  if (
+    !ROOM_ID_PATTERN.test(fence.roomId) ||
+    !OPAQUE_ID_PATTERN.test(fence.shareGeneration) ||
+    !OPAQUE_ID_PATTERN.test(fence.publicationGeneration)
+  ) {
+    throw new Error("Managed LiveKit room fence is invalid");
+  }
+  return `${MANAGED_ROOM_PREFIX}${fence.roomId}.${fence.shareGeneration}.${fence.publicationGeneration}`;
+}
+
+export function isManagedSfuRoomName(roomName: string): boolean {
+  if (!roomName.startsWith(MANAGED_ROOM_PREFIX)) {
+    return false;
+  }
+  const parts = roomName.slice(MANAGED_ROOM_PREFIX.length).split(".");
+  return (
+    parts.length === 3 &&
+    ROOM_ID_PATTERN.test(parts[0] ?? "") &&
+    OPAQUE_ID_PATTERN.test(parts[1] ?? "") &&
+    OPAQUE_ID_PATTERN.test(parts[2] ?? "")
+  );
 }

@@ -1,14 +1,44 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-09-02
+Last reviewed: 2026-09-04
 
 Only **Now** is executable. Observations, old branches, experiments, and parked
 topics are not implementation authority.
 
 ## Now
 
-No executable product work is currently accepted. Items below remain parked
-until their stated boundary is met.
+1. **Native Client media boundary.** Windows native Host video now runs through
+   the current Browser-owned room and route contract. Local Client startup,
+   hardware-H.264 capture, bounded Pion fanout, and a remote `srflx`-to-`srflx`
+   video gate now pass. Process-loopback audio passes the Windows Browser gate
+   on the same PeerConnection with a video-only fallback. Pion TWCC/GCC now
+   supplies exact native P2P sender-quality evidence through the existing route
+   windows without a custom score. A reserved local bridge also passes the
+   native-source SFU gate through the existing Browser LiveKit publisher and
+   its existing representation policy.
+   Capture-source failure now has a physical end/restart gate through the same
+   room and Viewer. Clean-revision Windows and Linux packages pass their Local
+   runtime gates; Linux also passes one-link startup and shutdown. The macOS
+   arm64 sidecar passes hosted compilation and a synthetic VideoToolbox hardware-
+   H.264 IDR gate; physically run ScreenCaptureKit capture and recovery on macOS.
+   Linux retains Browser capture. Reopen a
+   Wayland-only Portal/PipeWire sidecar only with a real desktop/GPU gate and a
+   decision to reuse system GStreamer without bundling it; do not add a second
+   RTC, X11 capture stack, or hand-built DMA-BUF/encoder matrix.
+   The system-Browser launcher now owns Local, temporary public-link, and Site
+   selection, and the Host explicitly chooses Browser capture or an exact
+   Client-owned screen/window without command-line target input. Its Windows
+   physical gates pass window and display capture, bounded source previews,
+   process/system audio, and restored Viewer delivery. The window arm also
+   proves source end and same-room reselection; display-source lifecycle remains
+   a separate physical gate.
+   No-Site Internet mode now has one ordinary public invitation link that retains
+   the Host's Local authority and passes remote control-path and independent
+   Linux Pion media gates. Prove decoded one-link Browser media on a physical
+   second device and a selected mapped path on a pair that public STUN alone
+   cannot connect. Port mapping is implemented and physically creates/releases
+   a router mapping, but it cannot replace an SFU/TURN fallback for a restricted
+   pair.
 
 ## Parked Product Work
 
@@ -70,18 +100,16 @@ until their stated boundary is met.
    adding a parallel security framework.
 10. **Public-server package.** Package the exact Web/signaling, STUN/SFU, proxy,
    secrets, health, and recovery contract for a user-owned server.
-11. **Fully local package.** Package Host capture, application server, and local
-   state for Windows/macOS/Linux with honest TLS, gateway, NAT, and firewall
-   limits.
-12. **Native Host and shared encode.** Revisit Windows first only after capture,
-   hardware encode, audio, RTP feedback, resources, packaging, licensing, and
-   Browser interoperability are proved.
-13. **Platform output.** System/tab mirroring needs no product adapter, while
+11. **Native media endurance.** Exercise long-lived native P2P and Browser-
+    mediated SFU recovery after the platform capture boundary passes. Preserve
+    Browser/server authority and the existing LiveKit representation policy; do
+    not create a second room or media policy.
+12. **Platform output.** System/tab mirroring needs no product adapter, while
     Remote Playback, default Cast and AirPlay do not provide a portable live
     `MediaStream` output contract. Reopen only for a registered custom receiver
     acting as an ordinary Viewer after a named Browser and physical receiver
     pass the [platform-output gate](./research/platform-output.md).
-14. **NAT inference and predictive candidates.** The deployment-gated,
+13. **NAT inference and predictive candidates.** The deployment-gated,
     connection-local capability is accepted under
     [ADR-0009](./adr/0009-optional-nat-prediction.md). Production enables its
     self-hosted field rollout; the general configuration default stays off.
@@ -92,11 +120,28 @@ until their stated boundary is met.
     convergence currently consumes each deferred Peer parent once; add no
     cross-generation retry budget until field evidence proves that fresh ICE
     generations expose a repeatable prediction opportunity.
-15. **Unresolved route-state ownership claims.** Reopen lower-revision
+14. **Unresolved route-state ownership claims.** Reopen lower-revision
     reauthentication, active SFU failure during an unrelated prepare, and
     multi-child relay-evidence ownership only from an exact current-wire
     reproduction. Do not add a second revision namespace, parallel failure
     state, or generalized evidence map from static possibility alone.
+15. **Unified release and update surface.** Build Client packages, Server
+    runtime, future OCI images, and deployment bundles from one intentionally
+    triggered immutable application release identified by its full commit SHA.
+    A validated `main` push now produces that application release and three
+    native-runner Client candidates with SHA-256 metadata. The default Client
+    launcher now performs a non-blocking GitHub Releases check and the tracked
+    deployment tree provides an operator-invoked read-only Server check. Formal
+    GitHub Release publication, future OCI images, and deployment bundles remain
+    explicit distribution work; do not add automatic install, container
+    self-update, Watchtower, compatibility ranges, or active-share interruption
+    before distribution and rollback evidence requires them.
+16. **Go server consolidation.** Revisit replacing the sole TypeScript/Node
+    server owner with Go only after the Client feature and physical acceptance
+    boundaries are complete. First measure package, startup, and maintenance
+    gains. If accepted, migrate Hosted and Local together and delete the Node
+    server in the same boundary; do not create or retain two room, signaling,
+    persistence, or route-controller implementations.
 
 ## Decision Needed
 

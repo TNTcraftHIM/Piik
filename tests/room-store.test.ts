@@ -111,6 +111,21 @@ describe("RoomStore", () => {
     );
   });
 
+  it("abandons every current room as one authority shutdown", async () => {
+    const { store: roomStore } = store({ maxRooms: 3 });
+    const first = await roomStore.createRoom();
+    const second = await roomStore.createRoom();
+    roomStore.connectParticipant(
+      hostInput(first.roomId, first.hostToken),
+    );
+
+    expect(roomStore.abandonAllRooms()).toEqual(expect.arrayContaining([
+      { roomId: first.roomId, sessionIds: ["host-session"] },
+      { roomId: second.roomId, sessionIds: [] },
+    ]));
+    expect(roomStore.size).toBe(0);
+  });
+
   it("atomically replaces a room with different authority", async () => {
     const { store: roomStore } = store();
     const original = await roomStore.createRoom(

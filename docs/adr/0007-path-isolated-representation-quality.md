@@ -70,7 +70,13 @@ it does not need a second bitrate, resolution, FPS, or layer-control system.
    native-edge convergence may consume only a persistent categorical limitation
    from the exact sender and comparative delivery proof from the same Viewer over
    a real prepared candidate. It does not set bitrate, resolution, FPS, or layer,
-   infer a physical bottleneck, or combine quality measurements into a score.
+   infer a physical bottleneck, or combine quality measurements into a score. A
+   native Client P2P edge obtains that category from Pion GCC: after real
+   transport feedback and encoded-frame progress, a target payload bitrate below
+   the source's measured H.264 plus Opus payload is `bandwidth`; sufficient
+   target payload is `none`; missing feedback or source progress is `unknown`.
+   Pion observes through an immediate no-queue pacer and does not rewrite the
+   shared encoder or own another adaptation policy.
 9. A healthy decoded route remains sticky. Manual media reconnect rebuilds the
    current exact P2P parent or current SFU subscription; it does not search for
    a better parent. If current-route recovery genuinely exhausts, ADR-0005's

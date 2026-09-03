@@ -1,6 +1,3 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-
 import { describe, expect, it } from "vitest";
 
 import {
@@ -89,17 +86,8 @@ const qualityEvidence = {
 } as const;
 
 describe("client signaling protocol", () => {
-  it("keeps executable senders outside the Browser-only v12 checkpoint", () => {
-    const nativeWire = readFileSync(
-      join(
-        import.meta.dirname,
-        "../native/sender/internal/remote/wire.go",
-      ),
-      "utf8",
-    );
-
+  it("uses the current strict signaling generation", () => {
     expect(SIGNALING_PROTOCOL).toBe("screener-v19");
-    expect(nativeWire).toMatch(/signalingProtocol\s*=\s*"screener-v6"/);
   });
 
   it("keeps signaling challenges strict and sequence-only", () => {

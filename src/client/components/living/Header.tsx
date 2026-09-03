@@ -103,13 +103,19 @@ export function HeaderControls() {
   );
 }
 
-export function AppHeader({ led }: { led?: React.ReactNode }) {
+export function AppHeader({
+  led,
+  homeHref = "/",
+}: {
+  led?: React.ReactNode;
+  homeHref?: string;
+}) {
   const { t, vis } = useCopy();
   return (
     <header className="lr-top">
       <a
         className="lr-brand"
-        href="/"
+        href={homeHref}
         aria-label={t("brand.home")}
         title={vis ? undefined : t("brand.home")}
       >

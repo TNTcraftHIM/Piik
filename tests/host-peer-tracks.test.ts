@@ -100,6 +100,7 @@ class FakePeerConnection {
 
   readonly configurations: RTCConfiguration[] = [];
   readonly senders: FakeSender[] = [];
+  readonly transceivers: RTCRtpTransceiver[] = [];
   readonly transceiverInputs: Array<{
     trackOrKind: MediaStreamTrack | string;
     init?: RTCRtpTransceiverInit;
@@ -150,8 +151,9 @@ class FakePeerConnection {
     );
     this.senders.push(sender);
     this.transceiverInputs.push({ trackOrKind, init });
-    return {
+    const transceiver = {
       sender,
+      direction: init?.direction ?? "sendrecv",
       ...(FakePeerConnection.omitCodecPreferenceSetter
         ? {}
         : {
@@ -164,6 +166,8 @@ class FakePeerConnection {
             },
           }),
     } as unknown as RTCRtpTransceiver;
+    this.transceivers.push(transceiver);
+    return transceiver;
   }
 
   addEventListener(type: string, listener: (event: Event) => void): void {
@@ -922,7 +926,7 @@ describe("HostPeer source replacement", () => {
     expect(connection.senders[1]!.track?.enabled).toBe(true);
   });
 
-  it("fills a pre-negotiated audio sender that started without a track", async () => {
+  it("keeps a pre-negotiated audio sender inactive until a real track exists", async () => {
     const peer = createPeer(
       createStream(createTrack("video", "old-video"), null),
     );
@@ -931,6 +935,7 @@ describe("HostPeer source replacement", () => {
     const connection = FakePeerConnection.latest!;
     expect(connection.transceiverInputs[1]?.trackOrKind).toBe("audio");
     expect(connection.senders[1]?.track).toBeNull();
+    expect(connection.transceivers[1]?.direction).toBe("inactive");
     expect(connection.senders[1]?.appliedMaxBitrates).toEqual([]);
 
     const nextAudio = createTrack("audio", "next-audio");
@@ -940,10 +945,12 @@ describe("HostPeer source replacement", () => {
       ),
     ).resolves.toBe(true);
     expect(connection.senders[1]?.track).toBe(nextAudio);
+    expect(connection.transceivers[1]?.direction).toBe("sendonly");
+    expect(connection.createOfferCallCount).toBe(2);
     expect(connection.senders[1]?.appliedMaxBitrates).toEqual([128_000]);
   });
 
-  it("stops sending audio without renegotiating when the new source has none", async () => {
+  it("retires an absent audio track from the negotiated direction", async () => {
     const peer = createPeer(
       createStream(
         createTrack("video", "old-video"),
@@ -960,6 +967,8 @@ describe("HostPeer source replacement", () => {
     ).resolves.toBe(true);
 
     expect(connection.senders[1]?.track).toBeNull();
+    expect(connection.transceivers[1]?.direction).toBe("inactive");
+    expect(connection.createOfferCallCount).toBe(2);
     expect(connection.senders[1]?.appliedMaxBitrates).toEqual([128_000]);
   });
 

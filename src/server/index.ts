@@ -12,7 +12,15 @@ try {
 }
 
 const config = loadConfig();
-const server = await createScreenerServer({ config });
+const server = await createScreenerServer({
+  config,
+  frontend:
+    config.nodeEnv === "development"
+      ? { mode: "development" }
+      : config.nodeEnv === "production"
+        ? { mode: "static" }
+        : { mode: "none" },
+});
 const port = await server.listen();
 
 console.log(

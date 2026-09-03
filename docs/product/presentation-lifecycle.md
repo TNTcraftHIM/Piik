@@ -17,6 +17,13 @@ room identity, current state, roster, and one manual media-reconnect action.
 Controls and text must remain usable without overlap or horizontal overflow on
 desktop and mobile viewports.
 
+Screener Client opens this same application in the system Browser. Its small
+startup surface selects Local, temporary public invitation, or a configured
+Site before entering the Host workspace. Starting a share there offers the
+Browser picker and any exact Client-owned native windows. It never chooses a
+window automatically. A reproduced Browser-window, capture, or background
+failure is required before introducing an embedded Web runtime.
+
 ## Visual Language
 
 The interface presents one small shared living room rather than an operations
@@ -118,7 +125,8 @@ button or a raw stats dump.
 
 Current Browser scope includes Web Host, Web Viewer, and Browser relay. Desktop
 and mobile Browsers are Viewer targets; mobile Web capture, reliable background
-relay, native sender, and packaged capture helpers remain later platform work.
+relay, native Client audio/SFU, and non-Windows capture remain later platform
+work.
 
 ## Primary References
 

@@ -10,9 +10,14 @@ adaptation decision.
 
 - The Web Host may share a display, application window, or Browser tab and may
   stop, synchronously pause/resume audio and video, or switch source.
+- A Client-launched Host explicitly chooses either that Browser capture path or
+  one native screen/window enumerated by the packaged platform capture boundary. The
+  latter uses one available hardware H.264 path and never infers a target from
+  a title. An ordinary Web Host does not probe localhost.
 - Share and source-switch requests ask the Browser for available audio by
   default. Missing audio is reported clearly but does not block video-only
-  sharing.
+  sharing. Native screen capture can include system playback audio and native
+  window capture can include selected-process audio when the platform exposes it.
 - Authoritative pause disables the current source and sender-owned tracks while
   retaining the room and established routes. Black frames, track mute, or
   network failure are not interpreted as a user pause.
@@ -84,6 +89,11 @@ simulcast ladder or backup codec. Pinned LiveKit defaults construct
 representations; Dynacast aggregates demand and server send-side BWE selects
 subscriber forwarding. AdaptiveStream stays disabled because any Viewer may
 relay its received track.
+
+Tracks received from a PeerConnection do not own capture constraints. Native
+capture therefore retains source resolution and frame-rate ownership across its
+loopback Browser bridge; the existing Browser SFU publisher applies only sender
+parameters and LiveKit's representation policy to that remote source.
 
 When a live native sender remains persistently limited after capacity recovers,
 the route controller may rebuild that exact edge with a fresh connection and
