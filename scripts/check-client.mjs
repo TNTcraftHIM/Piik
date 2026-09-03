@@ -3,6 +3,7 @@
 import { spawnSync } from "node:child_process";
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   realpathSync,
   rmSync,
@@ -65,7 +66,7 @@ function checkCore() {
   if (unformatted) {
     throw new Error(`Go source is not formatted:\n${unformatted}`);
   }
-  run(go, ["test", "./..."], { cwd: clientRoot });
+  runClientTests(go);
   run(go, ["vet", "./..."], { cwd: clientRoot });
 
   const buildRoot = temporaryRoot("screener-client-check-");
@@ -87,6 +88,33 @@ function checkCore() {
   } finally {
     removeTemporaryRoot(buildRoot);
   }
+}
+
+function runClientTests(go) {
+  if (process.platform !== "win32") {
+    run(go, ["test", "./..."], { cwd: clientRoot });
+    return;
+  }
+
+  // Windows associates its listen prompt with the test executable path. Keep
+  // the one UDP integration package at a stable path so repeated checks do not
+  // create a new firewall rule for every Go build directory.
+  const packages = run(go, ["list", "./..."], { cwd: clientRoot, capture: true })
+    .split(/\r?\n/)
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const mediaedgePackage = "github.com/TNTcraftHIM/Screener/native/client/internal/mediaedge";
+  const otherPackages = packages.filter((value) => value !== mediaedgePackage);
+  if (otherPackages.length > 0) {
+    run(go, ["test", ...otherPackages], { cwd: clientRoot });
+  }
+  const stableRoot = join(tmpdir(), "screener-client-test-binaries");
+  mkdirSync(stableRoot, { recursive: true });
+  const binary = join(stableRoot, "mediaedge.test.exe");
+  run(go, ["test", "-c", "-o", binary, "./internal/mediaedge"], {
+    cwd: clientRoot,
+  });
+  run(binary, ["-test.v"], { cwd: clientRoot });
 }
 
 function checkWindowsCapture() {

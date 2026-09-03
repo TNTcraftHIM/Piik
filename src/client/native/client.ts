@@ -145,11 +145,12 @@ export class NativeClient {
     return response.windows;
   }
 
-  async startShare(input: NativeShareInput): Promise<void> {
+  async startShare(input: NativeShareInput): Promise<{ audio: boolean }> {
     const response = await this.request("start-share", input, shareStartedResponseSchema);
     if (response.shareId !== input.shareId) {
       throw new Error("Native share identity changed");
     }
+    return { audio: response.audio };
   }
 
   async prepareEdge(

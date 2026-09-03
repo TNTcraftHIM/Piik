@@ -1719,6 +1719,7 @@ HRESULT RunAudioCapture(const ProductArguments& arguments) {
   ProtocolWriter writer;
   return screener::capture::CaptureProcessAudio(
       arguments.pid, arguments.creation_time, stop.get(),
+      []() { return ConsumeControlSignal().stop; },
       [&writer](UINT64 timestamp100ns, const BYTE* data, DWORD size) {
         return writer.Write(OutputKind::pcm, 0, timestamp100ns,
                             screener::capture::kAudioChunkDuration100ns, data,

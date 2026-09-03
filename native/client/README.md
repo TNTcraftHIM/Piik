@@ -23,10 +23,11 @@ fallback. The Client chooses a sole private LAN IPv4 automatically. Use
 
 For a native Host, add `--native`. The system Browser remains the Host UI; the
 Client selects one Windows Graphics Capture target and one hardware H.264
-encoder and supplies that video to the same room route. Native media is
-currently video-only and P2P-only, so omitting `--native` keeps the ordinary
-Browser capture path. `--public --native` uses the built-in Site for public
-signaling; `--local --native` is the self-contained LAN form.
+encoder, and on supported Windows builds captures that process's audio with
+WASAPI. Video and audio share the same room route and PeerConnection. Native
+media is currently P2P-only; omitting `--native` keeps the ordinary Browser
+capture path. `--public --native` uses the built-in Site for public signaling;
+`--local --native` is the self-contained LAN form.
 
 The first Local launch creates one random access password in the user
 configuration directory. The Client passes it to its own Host page in a URL
@@ -151,7 +152,8 @@ The loopback health response reports window-video, process-audio, and hardware
 H.264 availability separately. The Windows media gate proves one hardware-H.264
 capture generation, shared Pion source, Browser decode, PLI recovery, and STUN
 candidate gathering. The native Host gate proves room creation and native video
-delivery through the current route. The cross-NAT variant uses a temporary
-reverse SSH path for signaling only and requires a selected `srflx` or `prflx`
-media pair; media never travels through SSH. Native audio, native SFU, native
-quality evidence, and macOS/Linux capture remain gated.
+delivery through the current route; native audio is included when the capability
+probe and target OS support it. The cross-NAT variant uses a temporary reverse
+SSH path for signaling only and requires a selected `srflx` or `prflx` media pair;
+media never travels through SSH. Native SFU, native quality evidence, and
+macOS/Linux capture remain gated.

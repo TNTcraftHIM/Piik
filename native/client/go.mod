@@ -1,6 +1,6 @@
 module github.com/TNTcraftHIM/Screener/native/client
 
-go 1.24.0
+go 1.25.0
 
 require (
 	github.com/coder/websocket v1.8.15
@@ -9,6 +9,7 @@ require (
 	github.com/pion/rtcp v1.2.17
 	github.com/pion/rtp v1.10.5
 	github.com/pion/webrtc/v4 v4.2.18
+	github.com/thesyncim/gopus v0.1.1
 )
 
 require (

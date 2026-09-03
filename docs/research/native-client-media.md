@@ -1,9 +1,11 @@
 # Native Client Media Evidence
 
 - Reviewed: 2026-09-03
-- Scope: Windows capture, one shared H.264 source, Pion transport, Browser decode
-- Status: native Host and cross-NAT video gates passed; audio and other platform
-  media remain outside the boundary
+- Scope: Windows capture, one shared H.264/Opus source, Pion transport, Browser
+  decode
+- Status: native Host and cross-NAT video gates passed; native audio is wired and
+  unit/build verified, while physical audio, SFU, quality evidence, and other
+  platform media remain outside the boundary
 
 ## Result
 
@@ -31,17 +33,26 @@ The opt-in `gate:client-media` run proved, in order:
   candidates; and
 - Client, capture, Browser, ports, and the isolated profile all closed.
 
-Unit coverage separately enforces the supplied edge capacity and forwards
-PLI/FIR to the shared source. The cross-NAT result proves reachability and RTP
-delivery, not heterogeneous congestion behavior or a no-rendezvous Internet
-mode.
+Unit coverage separately enforces the supplied edge capacity, forwards PLI/FIR
+to the shared video source, validates the same PeerConnection's Opus section,
+and bounds the pure-Go Opus encoder's steady-state allocations. The native Host
+session starts process-loopback audio only when the capture probe advertises it;
+an audio start or read failure leaves the video session alive. The cross-NAT
+result proves reachability and RTP delivery, not heterogeneous congestion
+behavior or a no-rendezvous Internet mode.
+
+The audio adapter uses `github.com/thesyncim/gopus` behind the private
+`nativeaudio` boundary. It accepts fixed 48 kHz stereo PCM16/20 ms frames,
+encodes into a caller-owned Opus buffer, and can be replaced without changing
+the media edge or control wire. The dependency is BSD-3-Clause licensed and
+requires Go 1.25; Client CI uses Go 1.26.6.
 
 ## Current Boundary
 
-The result does not yet prove native SFU publication, process audio delivery,
-live quality-profile changes, native quality evidence, macOS/Linux capture, or
-endurance. Native Host video is exposed only through the explicit Client
-`--native` launch; these other capabilities remain unavailable there.
+The result does not yet prove physical process-audio delivery, native SFU
+publication, live quality-profile changes, native quality evidence, macOS/Linux
+capture, or endurance. Native Host media is exposed only through the explicit
+Client `--native` launch; these other capabilities remain unavailable there.
 
 No-Site Internet use still needs a lightweight rendezvous service. Public STUN
 is an optional address-discovery dependency; its operator sees endpoint
@@ -58,8 +69,8 @@ track an unreleased commit or recreate ICE internals.
 ## Implementation Boundary
 
 - `nativecapture` owns the child process and bounded frame protocol.
-- `mediaedge` owns the stable Pion API, one UDP mux, shared H.264 source, and
-  independent PeerConnections.
+- `mediaedge` owns the stable Pion API, one UDP mux, shared H.264/Opus sources,
+  and independent PeerConnections.
 - `nativehost` composes one capture generation with its bounded edges.
 - `nativecontrol` maps only local share/edge commands to the loopback v2 wire.
 

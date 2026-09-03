@@ -19,6 +19,7 @@ type EdgeEvents struct {
 type EdgeOptions struct {
 	ConnectionID string
 	ICEServers   []webrtc.ICEServer
+	Audio        *AudioSource
 	Events       EdgeEvents
 }
 
@@ -26,8 +27,10 @@ type Edge struct {
 	connectionID string
 	engine       *Engine
 	source       *Source
+	audioSource  *AudioSource
 	connection   *webrtc.PeerConnection
 	sender       *webrtc.RTPSender
+	audioSender  *webrtc.RTPSender
 	events       EdgeEvents
 
 	mu                   sync.Mutex
@@ -44,29 +47,57 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (*Edge, error
 	if err := source.reserve(); err != nil {
 		return nil, err
 	}
+	if options.Audio != nil {
+		if options.Audio.engine != engine {
+			source.releaseReservation()
+			return nil, errors.New("native audio edge source belongs to another engine")
+		}
+		if err := options.Audio.reserve(); err != nil {
+			source.releaseReservation()
+			return nil, err
+		}
+	}
 	connection, err := engine.api.NewPeerConnection(webrtc.Configuration{
 		ICEServers: options.ICEServers,
 	})
 	if err != nil {
 		source.releaseReservation()
+		if options.Audio != nil {
+			options.Audio.releaseReservation()
+		}
 		return nil, err
 	}
 	edge := &Edge{
 		connectionID: options.ConnectionID,
 		engine:       engine,
 		source:       source,
+		audioSource:  options.Audio,
 		connection:   connection,
 		events:       options.Events,
 	}
 	if err = engine.register(edge); err != nil {
 		source.releaseReservation()
+		if options.Audio != nil {
+			options.Audio.releaseReservation()
+		}
 		_ = connection.Close()
 		return nil, err
 	}
 	if err = source.attach(edge); err != nil {
+		if options.Audio != nil {
+			options.Audio.releaseReservation()
+		}
 		engine.remove(edge)
 		_ = connection.Close()
 		return nil, err
+	}
+	if options.Audio != nil {
+		if err = options.Audio.attach(edge); err != nil {
+			source.detach(edge)
+			engine.remove(edge)
+			_ = connection.Close()
+			return nil, err
+		}
 	}
 	sender, err := connection.AddTrack(source.track)
 	if err != nil {
@@ -74,6 +105,14 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (*Edge, error
 		return nil, err
 	}
 	edge.sender = sender
+	if options.Audio != nil {
+		audioSender, audioErr := connection.AddTrack(options.Audio.track)
+		if audioErr != nil {
+			_ = edge.Close()
+			return nil, audioErr
+		}
+		edge.audioSender = audioSender
+	}
 	connection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
 		if edge.events.LocalCandidate != nil {
 			if candidate == nil {
@@ -95,7 +134,10 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (*Edge, error
 			edge.events.ConnectionState(state, selected)
 		}
 	})
-	go edge.readRTCP()
+	go edge.readRTCP(edge.sender, edge.source)
+	if edge.audioSender != nil {
+		go edge.readRTCP(edge.audioSender, nil)
+	}
 	return edge, nil
 }
 
@@ -188,13 +230,16 @@ func (edge *Edge) Close() error {
 	edge.pendingCandidates = nil
 	edge.mu.Unlock()
 	edge.source.detach(edge)
+	if edge.audioSource != nil {
+		edge.audioSource.detach(edge)
+	}
 	edge.engine.remove(edge)
 	return edge.connection.Close()
 }
 
-func (edge *Edge) readRTCP() {
+func (edge *Edge) readRTCP(sender *webrtc.RTPSender, videoSource *Source) {
 	for {
-		packets, _, err := edge.sender.ReadRTCP()
+		packets, _, err := sender.ReadRTCP()
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
 				return
@@ -204,7 +249,9 @@ func (edge *Edge) readRTCP() {
 		for _, packet := range packets {
 			switch packet.(type) {
 			case *rtcp.PictureLossIndication, *rtcp.FullIntraRequest:
-				edge.source.RequestRecoveryFrame()
+				if videoSource != nil {
+					videoSource.RequestRecoveryFrame()
+				}
 			}
 		}
 	}

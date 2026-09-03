@@ -98,6 +98,7 @@ type captureOptionsResponse struct {
 type shareStartedResponse struct {
 	responseEnvelope
 	ShareID string `json:"shareId"`
+	Audio   bool   `json:"audio"`
 }
 
 type edgeOfferResponse struct {

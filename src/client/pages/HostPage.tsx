@@ -1212,7 +1212,7 @@ export function HostPage({
       if (!target) {
         throw new Error("Screener Client could not find a capture window");
       }
-      await client.startShare({
+      const started = await client.startShare({
         shareId: shareGeneration,
         window: target,
         adapterIndex: adapter.index,
@@ -1243,9 +1243,7 @@ export function HostPage({
       setDetails({
         resolution: "1280x720",
         frameRate: 30,
-        // The current native generation carries video only; process-audio
-        // capability is advertised for the next media-session boundary.
-        hasAudio: false,
+        hasAudio: started.audio,
       });
       videoCodecRef.current = manualVideoCodecPreference("h264");
       setResolvedVideoCodec("h264");

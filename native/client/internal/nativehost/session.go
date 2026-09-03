@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/TNTcraftHIM/Screener/native/client/internal/mediaedge"
+	"github.com/TNTcraftHIM/Screener/native/client/internal/nativeaudio"
 	"github.com/TNTcraftHIM/Screener/native/client/internal/nativecapture"
 	"github.com/pion/webrtc/v4"
 )
@@ -45,17 +46,20 @@ type Options struct {
 	ShareID        string
 	CaptureProcess string
 	Video          nativecapture.VideoOptions
+	AudioEnabled   bool
 	EdgeCapacity   int
 	BindAddress    string
 	Events         chan<- Event
 }
 
 type Session struct {
-	shareID string
-	stream  *nativecapture.Stream
-	engine  *mediaedge.Engine
-	source  *mediaedge.Source
-	events  chan<- Event
+	shareID     string
+	stream      *nativecapture.Stream
+	audioStream *nativecapture.Stream
+	engine      *mediaedge.Engine
+	source      *mediaedge.Source
+	audioSource *mediaedge.AudioSource
+	events      chan<- Event
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -86,17 +90,22 @@ func Start(parent context.Context, options Options) (*Session, error) {
 		_ = engine.Close()
 		return nil, err
 	}
+	var audioStream *nativecapture.Stream
+	if options.AudioEnabled {
+		audioStream, _ = nativecapture.StartAudio(parent, options.CaptureProcess, options.Video.Target)
+	}
 	ctx, cancel := context.WithCancel(parent)
 	session := &Session{
-		shareID: options.ShareID,
-		stream:  stream,
-		engine:  engine,
-		events:  options.Events,
-		ctx:     ctx,
-		cancel:  cancel,
-		done:    make(chan error, 1),
-		ready:   make(chan error, 1),
-		edges:   make(map[string]*mediaedge.Edge),
+		shareID:     options.ShareID,
+		stream:      stream,
+		audioStream: audioStream,
+		engine:      engine,
+		events:      options.Events,
+		ctx:         ctx,
+		cancel:      cancel,
+		done:        make(chan error, 1),
+		ready:       make(chan error, 1),
+		edges:       make(map[string]*mediaedge.Edge),
 	}
 	source, err := engine.NewSource(options.EdgeCapacity, func() {
 		_ = stream.RequestKeyFrame()
@@ -104,10 +113,25 @@ func Start(parent context.Context, options Options) (*Session, error) {
 	if err != nil {
 		cancel()
 		_ = stream.Close()
+		if audioStream != nil {
+			_ = audioStream.Close()
+		}
 		_ = engine.Close()
 		return nil, err
 	}
 	session.source = source
+	if audioStream != nil {
+		audioSource, audioErr := engine.NewAudioSource(
+			options.EdgeCapacity, nativeaudio.DefaultBitrate,
+		)
+		if audioErr != nil {
+			_ = audioStream.Close()
+			audioStream = nil
+			session.audioStream = nil
+		} else {
+			session.audioSource = audioSource
+		}
+	}
 	go session.run()
 	select {
 	case err = <-session.ready:
@@ -129,6 +153,12 @@ func (session *Session) ShareID() string {
 	return session.shareID
 }
 
+func (session *Session) HasAudio() bool {
+	session.mu.Lock()
+	defer session.mu.Unlock()
+	return !session.closed && session.audioSource != nil
+}
+
 func (session *Session) PrepareEdge(
 	connectionID string,
 	iceServers []webrtc.ICEServer,
@@ -142,6 +172,7 @@ func (session *Session) PrepareEdge(
 	created, err := session.engine.NewEdge(session.source, mediaedge.EdgeOptions{
 		ConnectionID: connectionID,
 		ICEServers:   iceServers,
+		Audio:        session.audioSource,
 		Events: mediaedge.EdgeEvents{
 			LocalCandidate: func(candidate *webrtc.ICECandidateInit) {
 				session.emit(Event{
@@ -250,7 +281,13 @@ func (session *Session) Close() error {
 		_ = edge.Close()
 	}
 	_ = session.stream.Close()
+	if session.audioStream != nil {
+		_ = session.audioStream.Close()
+	}
 	_ = session.source.Close()
+	if session.audioSource != nil {
+		_ = session.audioSource.Close()
+	}
 	_ = session.engine.Close()
 	_, _ = <-session.done
 	return nil
@@ -266,32 +303,59 @@ func (session *Session) edge(connectionID string) *mediaedge.Edge {
 }
 
 func (session *Session) run() {
-	var result error
-	ready := false
+	videoDone := make(chan error, 1)
+	go func() {
+		videoDone <- session.runVideo()
+	}()
+	audioDone := make(chan struct{})
+	if session.audioStream == nil {
+		close(audioDone)
+	} else {
+		go func() {
+			session.runAudio()
+			close(audioDone)
+		}()
+	}
+	result := <-videoDone
+	session.cancel()
+	if session.audioStream != nil {
+		_ = session.audioStream.Close()
+	}
+	<-audioDone
 	defer func() {
-		if !ready {
-			session.ready <- result
-		}
 		_ = session.source.Close()
+		if session.audioSource != nil {
+			_ = session.audioSource.Close()
+		}
 		_ = session.engine.Close()
 		_ = session.stream.Close()
+		if session.audioStream != nil {
+			_ = session.audioStream.Close()
+		}
 		session.done <- result
 		close(session.done)
 	}()
+	return
+}
+
+func (session *Session) runVideo() error {
+	ready := false
+	fail := func(err error) error {
+		if !ready {
+			session.ready <- err
+		}
+		return err
+	}
 	for {
 		frame, err := session.stream.Read()
 		if err != nil {
-			if session.ctx.Err() == nil {
-				result = errors.New("native capture process stopped unexpectedly")
-			}
-			return
+			return fail(errors.New("native capture process stopped unexpectedly"))
 		}
 		switch frame.Kind {
 		case nativecapture.FrameStatus:
 			status, statusErr := decodeCaptureState(frame.Data)
 			if statusErr != nil {
-				result = statusErr
-				return
+				return fail(statusErr)
 			}
 			session.emit(Event{Type: "capture-state", ShareID: session.shareID, State: status.State})
 			if !ready {
@@ -307,8 +371,30 @@ func (session *Session) run() {
 			if !paused {
 				_ = session.source.WriteH264(frame.Data, frame.Duration)
 			}
+		case nativecapture.FramePCM:
+			return fail(errors.New("native video process emitted audio"))
 		default:
-			result = errors.New("native video process emitted a non-video frame")
+			return fail(errors.New("native video process emitted an unknown frame"))
+		}
+	}
+}
+
+func (session *Session) runAudio() {
+	for {
+		frame, err := session.audioStream.Read()
+		if err != nil || session.ctx.Err() != nil {
+			return
+		}
+		if frame.Kind != nativecapture.FramePCM {
+			return
+		}
+		session.mu.Lock()
+		paused := session.paused
+		session.mu.Unlock()
+		if paused {
+			continue
+		}
+		if err = session.audioSource.WritePCM(frame.Data, frame.Duration); err != nil {
 			return
 		}
 	}

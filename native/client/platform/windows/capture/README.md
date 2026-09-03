@@ -14,8 +14,9 @@ supports window capture but not process-loopback audio therefore keeps video
 available and reports audio unavailable instead of failing the whole source.
 
 It has no whole-system audio, software encoder, alternate codec, or network
-fallback. It is not yet connected to the Client runtime. Build it outside the
-repository for a bounded capability run:
+fallback. The Client consumes the process-audio stream through its native media
+edge when the capability probe reports support. Build it outside the repository
+for a bounded capability run:
 
 ```powershell
 $out = Join-Path ([IO.Path]::GetTempPath()) 'screener-native-capture'

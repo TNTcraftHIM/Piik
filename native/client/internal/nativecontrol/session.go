@@ -219,6 +219,7 @@ func (session *Session) startShare(
 			EncoderIndex: request.EncoderIndex,
 		},
 		EdgeCapacity: request.EdgeCapacity,
+		AudioEnabled: session.capabilities.Summary().ProcessAudio,
 		Events:       session.hostEvents,
 	})
 	if err != nil {
@@ -236,6 +237,7 @@ func (session *Session) startShare(
 	return shareStartedResponse{
 		responseEnvelope: response(envelope, "share-started"),
 		ShareID:          request.ShareID,
+		Audio:            host.HasAudio(),
 	}, nil
 }
 

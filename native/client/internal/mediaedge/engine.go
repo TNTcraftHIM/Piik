@@ -66,6 +66,13 @@ func NewEngine(options EngineOptions) (*Engine, error) {
 		_ = mux.Close()
 		return nil, err
 	}
+	if err = mediaEngine.RegisterCodec(webrtc.RTPCodecParameters{
+		RTPCodecCapability: opusCapability,
+		PayloadType:        111,
+	}, webrtc.RTPCodecTypeAudio); err != nil {
+		_ = mux.Close()
+		return nil, err
+	}
 	registry := &interceptor.Registry{}
 	if err = webrtc.RegisterDefaultInterceptors(mediaEngine, registry); err != nil {
 		_ = mux.Close()

@@ -203,8 +203,9 @@ HRESULT ValidateWindowTarget(UINT64 window_handle, DWORD pid,
 }
 
 HRESULT CaptureProcessAudio(DWORD pid, UINT64 expectedCreationTime,
-                            HANDLE stop_event, const PCMWriter& writer) {
-  if (stop_event == nullptr || !writer) {
+                            HANDLE stop_event, const StopProbe& stop_probe,
+                            const PCMWriter& writer) {
+  if (stop_event == nullptr || !stop_probe || !writer) {
     return HRESULT_FROM_WIN32(ERROR_INVALID_PARAMETER);
   }
   HRESULT com_result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
@@ -255,6 +256,10 @@ HRESULT CaptureProcessAudio(DWORD pid, UINT64 expectedCreationTime,
   UINT64 nextTimestamp = 0;
   const HANDLE waits[] = {process, sampleReady, stop_event};
   while (SUCCEEDED(result)) {
+    if (stop_probe()) {
+      result = S_OK;
+      break;
+    }
     const DWORD wait = WaitForMultipleObjects(3, waits, FALSE, 1'000);
     if (wait == WAIT_OBJECT_0) {
       result = HRESULT_FROM_WIN32(ERROR_PROCESS_ABORTED);
@@ -262,7 +267,7 @@ HRESULT CaptureProcessAudio(DWORD pid, UINT64 expectedCreationTime,
     }
     if (wait == WAIT_TIMEOUT) continue;
     if (wait == WAIT_OBJECT_0 + 2) {
-      result = HRESULT_FROM_WIN32(ERROR_CANCELLED);
+      result = S_OK;
       break;
     }
     if (wait != WAIT_OBJECT_0 + 1) {

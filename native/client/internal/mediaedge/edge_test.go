@@ -2,10 +2,14 @@ package mediaedge
 
 import (
 	"errors"
+	"net"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/TNTcraftHIM/Screener/native/client/internal/nativeaudio"
 	"github.com/pion/interceptor"
+	"github.com/pion/logging"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4"
@@ -105,6 +109,92 @@ func TestRemoteCandidatesAreBoundedUntilTheAnswer(t *testing.T) {
 	}
 }
 
+func TestAudioUsesTheSamePeerConnectionAndCapacityAsVideo(t *testing.T) {
+	engine, err := NewEngine(EngineOptions{BindAddress: "127.0.0.1:0", IncludeLoopback: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = engine.Close() })
+	video, err := engine.NewSource(1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	audio, err := engine.NewAudioSource(1, 128_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = video.Close(); _ = audio.Close() })
+	edge, err := engine.NewEdge(video, EdgeOptions{
+		ConnectionID: "audio-edge",
+		Audio:        audio,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = edge.Close() })
+	if edge.audioSender == nil {
+		t.Fatal("audio sender was not attached")
+	}
+	if _, err = engine.NewEdge(video, EdgeOptions{ConnectionID: "video-only"}); !errors.Is(err, ErrSourceCapacity) {
+		t.Fatalf("video capacity was not shared: %v", err)
+	}
+	if _, err = engine.NewEdge(video, EdgeOptions{ConnectionID: "audio-only", Audio: audio}); !errors.Is(err, ErrSourceCapacity) {
+		t.Fatalf("audio capacity was not shared: %v", err)
+	}
+	offer, err := edge.CreateOffer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(offer.SDP, "m=audio") || !strings.Contains(offer.SDP, "opus/48000") {
+		t.Fatalf("same connection offer has no Opus section: %s", offer.SDP)
+	}
+}
+
+func TestAudioSourceDeliversOpusOnTheVideoPeerConnection(t *testing.T) {
+	engine, err := NewEngine(EngineOptions{BindAddress: "127.0.0.1:0", IncludeLoopback: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = engine.Close() })
+	video, err := engine.NewSource(1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	audio, err := engine.NewAudioSource(1, 128_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	edge, err := engine.NewEdge(video, EdgeOptions{ConnectionID: "audio-edge", Audio: audio})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = edge.Close(); _ = video.Close(); _ = audio.Close() })
+	receiver := newAudioReceiver(t)
+	t.Cleanup(func() { _ = receiver.Close() })
+	audioPackets := make(chan *rtp.Packet, 1)
+	receiver.OnTrack(func(track *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
+		if track.Kind() != webrtc.RTPCodecTypeAudio {
+			return
+		}
+		packet, _, readErr := track.ReadRTP()
+		if readErr == nil {
+			audioPackets <- packet
+		}
+	})
+	connectEdgeToReceiver(t, edge, receiver)
+	if err = audio.WritePCM(make([]byte, nativeaudio.FrameBytes), 20*time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case packet := <-audioPackets:
+		if packet.PayloadType != 111 || len(packet.Payload) == 0 {
+			t.Fatalf("unexpected Opus RTP packet: payload type %d, %d bytes", packet.PayloadType, len(packet.Payload))
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for Opus RTP")
+	}
+}
+
 func connectedReceiver(
 	t *testing.T,
 	engine *Engine,
@@ -126,12 +216,22 @@ func connectedReceiver(
 		}
 	})
 
+	connectEdgeToReceiver(t, edge, receiver)
+	return edge, receiver, packets
+}
+
+func connectEdgeToReceiver(
+	t *testing.T,
+	edge *Edge,
+	receiver *webrtc.PeerConnection,
+) {
+	t.Helper()
 	gatherOffer := webrtc.GatheringCompletePromise(edge.connection)
-	if _, err = edge.CreateOffer(); err != nil {
+	if _, err := edge.CreateOffer(); err != nil {
 		t.Fatal(err)
 	}
 	waitSignal(t, gatherOffer, "offer ICE gathering")
-	if err = receiver.SetRemoteDescription(*edge.connection.LocalDescription()); err != nil {
+	if err := receiver.SetRemoteDescription(*edge.connection.LocalDescription()); err != nil {
 		t.Fatal(err)
 	}
 	gatherAnswer := webrtc.GatheringCompletePromise(receiver)
@@ -153,10 +253,17 @@ func connectedReceiver(
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	return edge, receiver, packets
 }
 
 func newReceiver(t *testing.T) *webrtc.PeerConnection {
+	return newReceiverWithAudio(t, false)
+}
+
+func newAudioReceiver(t *testing.T) *webrtc.PeerConnection {
+	return newReceiverWithAudio(t, true)
+}
+
+func newReceiverWithAudio(t *testing.T, includeAudio bool) *webrtc.PeerConnection {
 	t.Helper()
 	mediaEngine := &webrtc.MediaEngine{}
 	if err := mediaEngine.RegisterCodec(webrtc.RTPCodecParameters{
@@ -165,12 +272,28 @@ func newReceiver(t *testing.T) *webrtc.PeerConnection {
 	}, webrtc.RTPCodecTypeVideo); err != nil {
 		t.Fatal(err)
 	}
+	if includeAudio {
+		if err := mediaEngine.RegisterCodec(webrtc.RTPCodecParameters{
+			RTPCodecCapability: opusCapability,
+			PayloadType:        111,
+		}, webrtc.RTPCodecTypeAudio); err != nil {
+			t.Fatal(err)
+		}
+	}
 	registry := &interceptor.Registry{}
 	if err := webrtc.RegisterDefaultInterceptors(mediaEngine, registry); err != nil {
 		t.Fatal(err)
 	}
 	settings := webrtc.SettingEngine{}
 	settings.SetIncludeLoopbackCandidate(true)
+	settings.SetNetworkTypes([]webrtc.NetworkType{webrtc.NetworkTypeUDP4})
+	udp, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.ParseIP("127.0.0.1")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := webrtc.NewICEUDPMux(logging.NewDefaultLoggerFactory().NewLogger("mediaedge-test"), udp)
+	settings.SetICEUDPMux(mux)
+	t.Cleanup(func() { _ = mux.Close() })
 	api := webrtc.NewAPI(
 		webrtc.WithMediaEngine(mediaEngine),
 		webrtc.WithInterceptorRegistry(registry),
@@ -179,6 +302,14 @@ func newReceiver(t *testing.T) *webrtc.PeerConnection {
 	connection, err := api.NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if includeAudio {
+		if _, err = connection.AddTransceiverFromKind(
+			webrtc.RTPCodecTypeAudio,
+			webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionRecvonly},
+		); err != nil {
+			t.Fatal(err)
+		}
 	}
 	return connection
 }

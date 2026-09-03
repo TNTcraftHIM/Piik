@@ -96,6 +96,7 @@ export const shareStartedResponseSchema = z
     ...responseBase,
     type: z.literal("share-started"),
     shareId: opaqueIdentifierSchema,
+    audio: z.boolean(),
   })
   .strict();
 export const edgeOfferResponseSchema = z
