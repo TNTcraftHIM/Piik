@@ -103,8 +103,10 @@ integration remain unproved.
 The one-link gate started a session-scoped public origin from a Windows Client,
 confirmed that its ordinary invitation used that origin, and served the Viewer
 page plus the existing `/signal` WebSocket upgrade to an independent Linux host.
-Client exit stopped Node and the public link. It does not yet prove decoded
-Browser media on a physical second device.
+A native Host then used that public signaling path with an independent Linux
+Pion Viewer; repeated runs delivered 30+ H.264 RTP packets over selected direct
+paths using a reflexive candidate. Client exit stopped Node and the public link.
+This still does not prove decoded Browser media on a physical second device.
 
 The same clean revision assembled into a self-contained Windows package with a
 matching Node runtime, application tree, and native capture process. Chrome 151

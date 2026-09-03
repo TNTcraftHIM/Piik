@@ -20,6 +20,11 @@ received 30 packets over a selected `srflx`-to-`srflx` pair. The validation
 session carried signaling through a temporary reverse SSH path only; media was
 negotiated directly by ICE.
 
+The one-link form carried the current signaling protocol through its temporary
+public WSS origin to an independent Linux Pion Viewer. Repeated runs delivered
+30+ packets over selected direct paths using a reflexive candidate; the Quick
+Tunnel carried no media.
+
 The opt-in `gate:client-media` run proved, in order:
 
 - WGC capture and adapter-bound Media Foundation H.264 became active;
@@ -69,10 +74,11 @@ for this externally encoded Track. Converting packet loss, RTT, or an optional
 bandwidth estimator into `healthy | limited` would add an unaccepted custom
 quality threshold, so native sender quality remains `unknown`.
 
-No-Site Internet control can use the one-link mode owned by ADR-0010; its remote
-gate does not yet prove decoded Browser media. Cloudflare carries HTTPS/WebSocket
-control and provides public STUN, while DTLS-SRTP media remains direct. STUN
-alone cannot replace SFU/TURN on a restricted pair.
+No-Site Internet control can use the one-link mode owned by ADR-0010. Its remote
+Pion gate proves public signaling plus direct media, but not decoded Browser
+media on a physical second device. Cloudflare carries HTTPS/WebSocket control
+and provides public STUN, while DTLS-SRTP media remains direct. STUN alone
+cannot replace SFU/TURN on a restricted pair.
 
 The next native-only NAT gate is an optional PCP/NAT-PMP/UPnP mapping for the
 same Pion UDP port, following Tailscale/libp2p practice. It is not implemented

@@ -16,9 +16,10 @@ topics are not implementation authority.
    Capture-source failure now has a physical end/restart gate through the same
    room and Viewer. A clean revision package passes Local and Site gates.
    No-Site Internet mode now has one ordinary public invitation link that retains
-   the Host's Local authority and passes its remote control-path gate. Prove
-   decoded one-link Browser media on a physical second device; public STUN still
-   cannot provide an SFU/TURN fallback for a restricted pair.
+   the Host's Local authority and passes remote control-path and independent
+   Linux Pion media gates. Prove decoded one-link Browser media on a physical
+   second device; public STUN still cannot provide an SFU/TURN fallback for a
+   restricted pair.
 
 ## Parked Product Work
 

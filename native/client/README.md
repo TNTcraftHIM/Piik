@@ -164,6 +164,16 @@ SCREENER_REMOTE_SSH_KEY=/path/to/key \
 SCREENER_CLIENT_GATE_STUN_URLS=stun:<stun-host>:3478 \
 npm run gate:client-cross-nat
 
+SCREENER_CLIENT_NATIVE_HOST_GATE=true \
+SCREENER_CLIENT_LINK_MEDIA_GATE=true \
+CHROME_PATH=/path/to/chrome \
+SCREENER_GO=/path/to/go \
+SCREENER_CLOUDFLARED=/path/to/cloudflared \
+SCREENER_REMOTE_HOST=<public-test-host> \
+SCREENER_REMOTE_USER=<ssh-user> \
+SCREENER_REMOTE_SSH_KEY=/path/to/key \
+npm run gate:client-link-media
+
 SCREENER_CLIENT_LINK_GATE=true \
 SCREENER_GO=/path/to/go \
 SCREENER_CLOUDFLARED=/path/to/cloudflared \
@@ -180,5 +190,7 @@ candidate gathering. The native Host gate proves room creation and native video
 delivery through the current route; native audio is included when the capability
 probe and target OS support it. The cross-NAT variant uses a temporary reverse
 SSH path for signaling only and requires a selected `srflx` or `prflx` media pair;
-media never travels through SSH. Native SFU, native quality evidence, and
-macOS/Linux capture remain gated.
+media never travels through SSH. The one-link media variant instead carries the
+same signaling through the Client's temporary public origin and requires direct
+media delivery to an independent Linux peer. Native SFU, native quality
+evidence, and macOS/Linux capture remain gated.

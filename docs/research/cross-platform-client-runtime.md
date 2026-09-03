@@ -115,7 +115,9 @@ On Windows with Chrome for Testing 151.0.7922.138:
   that gate carried signaling only.
 - a Windows Client created an accountless Quick Tunnel, generated its ordinary
   invitation on that origin, and served the Viewer page plus `/signal` WebSocket
-  upgrade to an independent Linux host; stopping the Client closed the URL.
+  upgrade to an independent Linux host; a native Host then repeatedly delivered
+  30+ H.264 RTP packets to a Linux Pion Viewer over selected direct paths using
+  a reflexive candidate. Stopping the Client closed the URL.
 
 The one-link gate used the official Windows amd64 `cloudflared` 2026.8.3 asset
 with SHA-256 `83e726ed18ea78c5ad5213c4c3a3a27051393950d2bc8ed4de69bec12d14eaae`.
@@ -137,7 +139,8 @@ deployment no longer erases valid native RTCStats.
   native quality evidence, audio, SFU publication, and non-Windows capture
   remain undefined.
 - Exercise one-link Browser media on a physical second device; the current gate
-  proves the complete public control path, not decoded Browser frames.
+  proves the complete public control path and independent Pion media, not
+  decoded Browser frames.
 
 ## Sources
 

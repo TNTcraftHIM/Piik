@@ -100,10 +100,12 @@ function remoteOptions(): {
 }
 
 function transportArgs(key: string): string[] {
+  const bindAddress = process.env.SCREENER_REMOTE_BIND_ADDRESS?.trim();
   return [
     "-o", "BatchMode=yes",
     "-o", "StrictHostKeyChecking=yes",
     "-o", "ConnectTimeout=10",
+    ...(bindAddress ? ["-o", `BindAddress=${bindAddress}`] : []),
     "-i", key,
   ];
 }
@@ -273,30 +275,28 @@ async function main(): Promise<void> {
     result.remotePage = page.includes('<div id="root"></div>');
 
     result.stage = "remote-websocket";
-    const portText = invite.port || "443";
     const websocketProbe = [
-      'const tls=require("node:tls");',
-      `const socket=tls.connect(443,${JSON.stringify(invite.hostname)},`,
-      `{servername:${JSON.stringify(invite.hostname)},family:4},()=>socket.write(`,
-      JSON.stringify(
-        `GET /signal HTTP/1.1\r\nHost: ${invite.hostname}:${portText}\r\n` +
-          `Origin: ${publicOrigin}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n` +
-          "Sec-WebSocket-Version: 13\r\n" +
-          "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n",
-      ),
-      "));",
-      'let response="";',
-      'socket.on("data",chunk=>{response+=chunk;',
-      'if(response.includes("\\r\\n\\r\\n")){',
-      'console.log(response.split("\\r\\n",1)[0]);socket.destroy();}});',
-      'socket.setTimeout(5000,()=>{socket.destroy();process.exitCode=2;});',
-    ].join("");
-    const upgrade = run(remote.ssh, [
-      ...transport,
-      destination,
-      `node -e '${websocketProbe}'`,
-    ]);
-    result.remoteWebSocket = upgrade.includes("101 Switching Protocols");
+      "curl --http1.1 --include --silent --no-buffer --max-time 5",
+      `--header ${JSON.stringify(`Origin:${publicOrigin}`)}`,
+      `--header ${JSON.stringify("Upgrade:websocket")}`,
+      `--header ${JSON.stringify("Connection:Upgrade")}`,
+      `--header ${JSON.stringify("Sec-WebSocket-Version:13")}`,
+      `--header ${JSON.stringify("Sec-WebSocket-Key:dGhlIHNhbXBsZSBub25jZQ==")}`,
+      JSON.stringify(new URL("/signal", publicOrigin).toString()),
+      "2>/dev/null || true",
+    ].join(" ");
+    const websocketDeadline = Date.now() + 20_000;
+    while (Date.now() < websocketDeadline && !result.remoteWebSocket) {
+      const upgrade = run(remote.ssh, [
+        ...transport,
+        destination,
+        websocketProbe,
+      ]);
+      result.remoteWebSocket = upgrade.includes("101 Switching Protocols");
+      if (!result.remoteWebSocket) {
+        await new Promise((resolveWait) => setTimeout(resolveWait, 250));
+      }
+    }
     result.passed = result.linkCreated && result.invitationUsesLink &&
       result.remotePage && result.remoteWebSocket;
     if (!result.passed) throw new Error("one-link control path was incomplete");

@@ -31,6 +31,8 @@ interface Endpoint {
   instanceToken: string;
 }
 
+type GateMode = "local" | "cross-nat" | "one-link";
+
 interface GateResult {
   passed: boolean;
   hostNativeActive: boolean;
@@ -44,12 +46,12 @@ interface GateResult {
   remoteLocalCandidateType: string;
   remoteRemoteCandidateType: string;
   remoteNatPath: boolean;
-  remotePeerExited: boolean;
-  remoteTunnelClosed: boolean;
-  sourceFailureEndedShare: boolean;
-  replacementViewerConnected: boolean;
-  replacementViewerFrames: number;
-  crossNat: boolean;
+  remotePeerExited: boolean | null;
+  reverseSignalTunnelClosed: boolean | null;
+  sourceFailureEndedShare: boolean | null;
+  replacementViewerConnected: boolean | null;
+  replacementViewerFrames: number | null;
+  mode: GateMode;
   cleanup: Awaited<ReturnType<typeof cleanupRun>>;
   error: string | null;
   stage?: string;
@@ -60,6 +62,7 @@ interface RemoteGateOptions {
   user: string;
   key: string;
   signalPort: number;
+  bindAddress: string | null;
 }
 
 interface RemoteGateResult {
@@ -134,12 +137,31 @@ function remoteOptions(): RemoteGateOptions {
       "SCREENER_REMOTE_HOST, SCREENER_REMOTE_SSH_KEY, and a valid SCREENER_REMOTE_SIGNAL_PORT are required",
     );
   }
-  return { host, user, key, signalPort };
+  return {
+    host,
+    user,
+    key,
+    signalPort,
+    bindAddress: process.env.SCREENER_REMOTE_BIND_ADDRESS?.trim() || null,
+  };
+}
+
+function remoteTransportOptions(options: RemoteGateOptions): string[] {
+  return [
+    "-o", "BatchMode=yes",
+    "-o", "StrictHostKeyChecking=yes",
+    "-o", "ConnectTimeout=10",
+    ...(options.bindAddress
+      ? ["-o", `BindAddress=${options.bindAddress}`]
+      : []),
+    "-i", options.key,
+  ];
 }
 
 async function runRemotePeerGate(
   binary: string,
   options: RemoteGateOptions,
+  signalUrl: string,
   roomId: string,
   viewerGrant: string,
   origin: string,
@@ -148,12 +170,7 @@ async function runRemotePeerGate(
   const scp = process.env.SCREENER_SCP?.trim() || "scp";
   const destination = `${options.user}@${options.host}`;
   const remotePath = `/tmp/screener-peer-gate-${randomBytes(8).toString("hex")}`;
-  const transportOptions = [
-    "-o", "BatchMode=yes",
-    "-o", "StrictHostKeyChecking=yes",
-    "-o", "ConnectTimeout=10",
-    "-i", options.key,
-  ];
+  const transportOptions = remoteTransportOptions(options);
   try {
     run(scp, [...transportOptions, binary, `${destination}:${remotePath}`]);
     run(ssh, [...transportOptions, destination, "chmod", "700", remotePath]);
@@ -175,7 +192,7 @@ async function runRemotePeerGate(
     });
     remote.stderr.resume();
     remote.stdin.end(JSON.stringify({
-      signalUrl: `ws://127.0.0.1:${options.signalPort}/signal`,
+      signalUrl,
       origin,
       roomId,
       viewerGrant,
@@ -347,9 +364,13 @@ async function waitForValue<T>(
   throw new Error("Native Host gate timed out");
 }
 
-async function readClientEndpoint(child: ChildProcessWithoutNullStreams): Promise<{
+async function readClientEndpoint(
+  child: ChildProcessWithoutNullStreams,
+  requirePublicOrigin = false,
+): Promise<{
   endpoint: Endpoint;
   password: string;
+  publicOrigin: string | null;
 }> {
   let buffered = "";
   const lines: string[] = [];
@@ -375,11 +396,16 @@ async function readClientEndpoint(child: ChildProcessWithoutNullStreams): Promis
             // Informational lines are printed after the endpoint.
           }
           const passwordLine = lines.find((entry) => entry.startsWith("Local access password: "));
-          if (endpoint && passwordLine) {
+          const publicOriginLine = lines.find((entry) =>
+            entry.startsWith("Public invitation origin: ")
+          );
+          if (endpoint && passwordLine && (!requirePublicOrigin || publicOriginLine)) {
             child.stdout.off("data", onData);
             resolveEndpoint({
               endpoint,
               password: passwordLine.slice("Local access password: ".length),
+              publicOrigin:
+                publicOriginLine?.slice("Public invitation origin: ".length) ?? null,
             });
             return;
           }
@@ -403,11 +429,20 @@ async function main(): Promise<void> {
     throw new Error("SCREENER_CLIENT_NATIVE_HOST_GATE=true is required");
   }
   const crossNat = process.env.SCREENER_CLIENT_CROSS_NAT_GATE === "true";
-  const remote = crossNat ? remoteOptions() : null;
+  const linkMedia = process.env.SCREENER_CLIENT_LINK_MEDIA_GATE === "true";
+  if (crossNat && linkMedia) {
+    throw new Error("Cross-NAT and one-link gate modes are mutually exclusive");
+  }
+  const mode: GateMode = linkMedia ? "one-link" : crossNat ? "cross-nat" : "local";
+  const remote = mode === "local" ? null : remoteOptions();
   const chromePath = process.env.CHROME_PATH?.trim();
   if (!chromePath) throw new Error("CHROME_PATH is required");
   const go = process.env.SCREENER_GO?.trim() || "go";
   const node = process.env.SCREENER_NODE?.trim() || process.execPath;
+  const tunnel = process.env.SCREENER_CLOUDFLARED?.trim() || join(
+    BUILD_ROOT,
+    "cloudflared.exe",
+  );
   const profile = await mkdtemp(join(tmpdir(), "screener-client-media-"));
   const sourceProfile = await mkdtemp(join(tmpdir(), "screener-client-media-"));
   await mkdir(BUILD_ROOT, { recursive: true });
@@ -442,12 +477,12 @@ async function main(): Promise<void> {
     remoteLocalCandidateType: "",
     remoteRemoteCandidateType: "",
     remoteNatPath: false,
-    remotePeerExited: !crossNat,
-    remoteTunnelClosed: !crossNat,
-    sourceFailureEndedShare: crossNat,
-    replacementViewerConnected: crossNat,
-    replacementViewerFrames: 0,
-    crossNat,
+    remotePeerExited: null,
+    reverseSignalTunnelClosed: mode === "cross-nat" ? false : null,
+    sourceFailureEndedShare: mode === "local" ? false : null,
+    replacementViewerConnected: mode === "local" ? false : null,
+    replacementViewerFrames: mode === "local" ? 0 : null,
+    mode,
     cleanup: {
       browserExited: false,
       nativeExited: false,
@@ -470,7 +505,7 @@ async function main(): Promise<void> {
     run(go, [
       "build", "-trimpath", "-o", clientBinary, "./cmd/screener-client",
     ], join(ROOT, "native", "client"));
-    if (crossNat) {
+    if (remote) {
       stage = "remote-peer-build";
       run(
         go,
@@ -489,7 +524,11 @@ async function main(): Promise<void> {
     await waitForCaptureWindow(captureBinary);
     stage = "client-start";
     client = spawn(clientBinary, [
-      "--local", "--native",
+      mode === "one-link" ? "--link" : "--local",
+      "--native",
+      ...(mode === "one-link"
+        ? ["--tunnel-process", tunnel]
+        : []),
       "--capture-process", captureBinary,
       "--node", node,
       "--app", ROOT,
@@ -503,7 +542,7 @@ async function main(): Promise<void> {
         ...process.env,
         PEER_ASSISTED_MEDIA: "true",
         SCREENER_CLIENT_GATE_NO_BROWSER: "true",
-        ...(crossNat
+        ...(mode === "cross-nat"
           ? {
               STUN_URLS:
                 process.env.SCREENER_CLIENT_GATE_STUN_URLS?.trim() ||
@@ -514,19 +553,16 @@ async function main(): Promise<void> {
     });
     client.stderr.resume();
     stage = "client-ready";
-    const clientInfo = await readClientEndpoint(client);
+    const clientInfo = await readClientEndpoint(client, mode === "one-link");
     clientPort = clientInfo.endpoint.port;
-    if (crossNat && remote) {
+    if (mode === "cross-nat" && remote) {
       stage = "signaling-tunnel";
       const tunnel = spawn(
         process.env.SCREENER_SSH?.trim() || "ssh",
         [
           "-N", "-T",
-          "-o", "BatchMode=yes",
-          "-o", "StrictHostKeyChecking=yes",
+          ...remoteTransportOptions(remote),
           "-o", "ExitOnForwardFailure=yes",
-          "-o", "ConnectTimeout=10",
-          "-i", remote.key,
           "-R", `127.0.0.1:${remote.signalPort}:127.0.0.1:${appPort}`,
           `${remote.user}@${remote.host}`,
         ],
@@ -628,14 +664,21 @@ async function main(): Promise<void> {
     if (!roomMatch || !viewerGrant) {
       throw new Error("Host invitation is not a room grant");
     }
-    if (crossNat && remote) {
+    if (remote) {
       stage = "remote-viewer";
+      const signalUrl = mode === "one-link"
+        ? new URL("/signal", clientInfo.publicOrigin!).toString().replace(/^http/, "ws")
+        : `ws://127.0.0.1:${remote.signalPort}/signal`;
+      const signalOrigin = mode === "one-link"
+        ? clientInfo.publicOrigin!
+        : `http://localhost:${appPort}`;
       const remoteResult = await runRemotePeerGate(
         remoteBinary,
         remote,
+        signalUrl,
         roomMatch[1],
         viewerGrant,
-        `http://localhost:${appPort}`,
+        signalOrigin,
       );
       result.remoteViewerConnected = remoteResult.passed;
       result.remoteViewerPackets = remoteResult.packets;
@@ -770,9 +813,8 @@ async function main(): Promise<void> {
     result.error = error instanceof Error ? error.message : String(error);
     result.stage = stage;
   } finally {
-    result.remotePeerExited = result.remotePeerExited || !crossNat;
     if (remoteTunnel) {
-      result.remoteTunnelClosed = await stopChild(remoteTunnel);
+      result.reverseSignalTunnelClosed = await stopChild(remoteTunnel);
     }
     result.cleanup = await cleanupRun({
       cdp,
@@ -802,13 +844,15 @@ async function main(): Promise<void> {
   }
   result.passed = result.error === null && result.hostNativeActive &&
     result.hostInvite &&
-    (crossNat
+    (mode !== "local"
       ? result.remoteViewerConnected && result.remoteViewerPackets >= 30 &&
-        result.remoteNatPath && result.remotePeerExited && result.remoteTunnelClosed
+        result.remoteNatPath && result.remotePeerExited === true &&
+        (mode !== "cross-nat" || result.reverseSignalTunnelClosed === true)
       : result.viewerConnected && result.viewerFrames >= 30 &&
         result.viewerWidth === 1280 && result.viewerHeight === 720 &&
-        result.sourceFailureEndedShare && result.replacementViewerConnected &&
-        result.replacementViewerFrames >= 30) &&
+        result.sourceFailureEndedShare === true &&
+        result.replacementViewerConnected === true &&
+        (result.replacementViewerFrames ?? 0) >= 30) &&
     result.cleanup.browserExited && result.cleanup.nativeExited &&
     result.cleanup.serverClosed && result.cleanup.portsClosed &&
     result.cleanup.profileRemoved;

@@ -126,8 +126,9 @@ This is the current execution index. Git history owns completed timelines;
   packaged Local/Site operation, WGC hardware-H.264 plus process audio, bounded
   shared-encode P2P, and cleanup. One-link mode preserves the Host Local
   authority while exposing its ordinary invitation and HTTP/WebSocket control
-  path through a session-scoped Quick Tunnel; remote Browser media remains
-  unproved. Native SFU,
+  path through a session-scoped Quick Tunnel. An independent Linux Pion Viewer
+  has received that native media over a direct ICE pair; remote Browser media
+  remains unproved. Native SFU,
   non-Windows capture, and other-platform packages remain outside the release.
 
 ## Current Hold
