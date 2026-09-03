@@ -12,8 +12,9 @@ topics are not implementation authority.
    hardware-H.264 capture, bounded Pion fanout, and a remote `srflx`-to-`srflx`
    video gate now pass. Process-loopback audio passes the Windows Browser gate
    on the same PeerConnection with a video-only fallback; finish this boundary
-   with native SFU behavior, native quality evidence, teardown under failure,
-   and a clean packaged Site run. No-Site Internet mode now has explicit dual-
+   with a representation-compatible native SFU, native quality evidence, and
+   teardown under failure. A clean revision package passes Local and Site
+   gates. No-Site Internet mode now has explicit dual-
    Client pairing that retains the Host's Local authority and passes its remote
    control-path gate. Prove decoded paired Browser media on a physical second
    device; STUN still cannot provide an SFU/TURN fallback for a restricted pair.
@@ -80,7 +81,9 @@ topics are not implementation authority.
    secrets, health, and recovery contract for a user-owned server.
 11. **Native media completion.** Extend the proven Windows native Host video
     and process-audio boundary with native SFU behavior, native categorical
-    quality evidence, and failure/endurance coverage. Preserve Browser/server
+    quality evidence, and failure/endurance coverage. A single fixed H.264 layer
+    is not a substitute for the accepted HIGH+LOW SFU behavior, and raw Pion
+    loss/RTT must not become a custom quality score. Preserve Browser/server
     authority; do not create a second room or media policy.
 12. **Platform output.** System/tab mirroring needs no product adapter, while
     Remote Playback, default Cast and AirPlay do not provide a portable live

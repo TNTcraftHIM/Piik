@@ -55,6 +55,16 @@ changes, native quality evidence, macOS/Linux capture, or endurance. Native Host
 media is exposed only through the explicit Client `--native` launch; these other
 capabilities remain unavailable there.
 
+LiveKit Go SDK v2.18.1 speaks protocol 17 and accepts a Pion `TrackLocal`, so SDK
+connectivity is not the native SFU blocker. The current native source has one
+fixed H.264 representation; publishing it directly would discard the accepted
+HIGH+LOW/Dynacast behavior. Native SFU and encoded relay therefore wait for one
+shared representation decision rather than shipping a single-layer exception.
+Pion v4.2.18 defines WebRTC quality-limitation fields but does not populate them
+for this externally encoded Track. Converting packet loss, RTT, or an optional
+bandwidth estimator into `healthy | limited` would add an unaccepted custom
+quality threshold, so native sender quality remains `unknown`.
+
 No-Site Internet control can use the explicit manual dual-Client pairing owned
 by ADR-0010; its remote gate does not yet prove decoded Browser media. Public
 STUN is an address-discovery dependency in that mode; its operator sees endpoint
@@ -86,7 +96,8 @@ compatibility inputs. Historical measurements remain in the separately marked
 - [WGC `CreateForWindow`](https://learn.microsoft.com/en-us/windows/win32/api/windows.graphics.capture.interop/nf-windows-graphics-capture-interop-igraphicscaptureiteminterop-createforwindow)
 - [WASAPI process loopback](https://learn.microsoft.com/en-us/samples/microsoft/windows-classic-samples/applicationloopbackaudio-sample/)
 - [Media Foundation hardware MFTs](https://learn.microsoft.com/en-us/windows/win32/medfound/hardware-mfts)
-- [Pion WebRTC](https://github.com/pion/webrtc)
+- [Pion v4.2.18 stats implementation](https://github.com/pion/webrtc/blob/v4.2.18/stats.go)
+- [LiveKit Go SDK](https://github.com/livekit/server-sdk-go/tree/v2.18.1)
 - [Pion single-port ICE](https://github.com/pion/webrtc/tree/master/examples/ice-single-port)
 - [gopus pure-Go Opus codec](https://github.com/thesyncim/gopus)
 - [Tailscale port mapper](https://github.com/tailscale/tailscale/tree/main/net/portmapper)

@@ -104,6 +104,11 @@ page and completed the existing `/signal` WebSocket upgrade. The gate also
 proved bounded process and remote-artifact cleanup. It does not yet prove decoded
 Browser media on a physical second device.
 
+The same clean revision assembled into a self-contained Windows package with a
+matching Node runtime, application tree, and native capture process. Chrome 151
+passed the package's Local startup gate and both Site loopback-permission arms;
+revision mismatch remains fail-closed before a listener starts.
+
 ## Interpretation Rules
 
 - Configuration, unit tests, loopback, and synthetic signaling prove invariants,

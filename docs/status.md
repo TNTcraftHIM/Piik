@@ -120,24 +120,14 @@ This is the current execution index. Git history owns completed timelines;
 - Current-path quality can drive local convergence in source and production,
   including bounded same-edge connection regeneration. Both default it on with a
   pre-share Host opt-out. Weighted/global optimization remains parked.
-- Source contains the cross-platform Client and Local composition outside the
-  current Web release. One Go entry stores an optional Site origin and generated
-  Local access password, opens the system Browser, supervises the bundled Node
-  process in Local mode, and exposes the internal loopback control service. Local
-  reuses the TypeScript room, signaling, and route core with memory state,
-  peer-assisted media, and no SQLite, SFU, or NAT prediction by default. Windows
-  gates prove automatic Host access, LAN invitation construction, a
-  Host-plus-three-Viewer relay tree, Site LNA behavior, and complete cleanup.
-  The native Host gate additionally proves process-isolated WGC/hardware H.264,
-  one shared Pion source feeding two Chrome transports, PLI recovery, and a
-  remote `srflx`-to-`srflx` video path. Native process audio passes the bounded
-  Windows Browser gate through the same PeerConnection when the capability
-  probe permits it. Manual Client pairing now preserves the Host Local authority
-  and passes an Internet Windows-to-Linux HTTP/WebSocket tunnel gate without a
-  Hosted room service; paired Browser media remains a physical gate. Native SFU,
-  cross-platform capture, and package acceptance remain outside the release.
-  `--local` remains LAN-only by default; `--site` explicitly selects a hosted
-  Site.
+- Source contains the cross-platform Client outside the current Web release.
+  One Go entry opens the system Browser, supervises the same Node application in
+  memory-only Local mode, and owns loopback native media. Windows gates prove
+  packaged Local/Site operation, WGC hardware-H.264 plus process audio, bounded
+  shared-encode P2P, and cleanup. Manual Windows-to-Linux pairing preserves the
+  Host Local authority and carries its HTTP/WebSocket control path without a
+  Hosted room service; paired Browser media remains unproved. Native SFU,
+  non-Windows capture, and other-platform packages remain outside the release.
 
 ## Current Hold
 
