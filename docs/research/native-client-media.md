@@ -3,8 +3,9 @@
 - Reviewed: 2026-09-03
 - Scope: Windows capture, one shared H.264/Opus source, Pion transport, Browser
   decode
-- Status: native Host, cross-NAT video, and Windows process-audio gates passed;
-  SFU, quality evidence, and other platform media remain outside the boundary
+- Status: native Host, cross-NAT video, Windows process audio, and capture-
+  failure restart gates passed; SFU, quality evidence, and other platform media
+  remain outside the boundary
 
 ## Result
 
@@ -32,6 +33,9 @@ The opt-in `gate:client-media` run proved, in order:
   candidates;
 - process-loopback audio produced Opus RTP on both native edges (66 packets per
   edge in the bounded run);
+- closing the captured source ended its share, released the old media path, and
+  a second capture generation in the same room delivered a different media
+  object plus 30 new frames to the existing Viewer;
 - Client, capture, Browser, ports, and the isolated profile all closed.
 
 Unit coverage separately enforces the supplied edge capacity, forwards PLI/FIR

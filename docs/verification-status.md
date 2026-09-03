@@ -94,8 +94,11 @@ and a Local Client Host path have bounded physical gates. A remote Pion gate
 also received 30 video packets over a selected `srflx`-to-`srflx` pair; its
 signaling used a temporary reverse SSH test path. The Windows media gate now
 also receives process-loopback Opus on both native edges (66 packets per edge
-in the 2026-09-03 run). Native SFU publication, native quality evidence, and
-production package integration remain unproved.
+in the 2026-09-03 run). The native Host gate also closes the captured source,
+observes the current share end, restarts capture in the same room, and requires
+the existing Viewer to receive a different media object plus 30 new frames.
+Native SFU publication, native quality evidence, and production package
+integration remain unproved.
 
 The one-link gate started a session-scoped public origin from a Windows Client,
 confirmed that its ordinary invitation used that origin, and served the Viewer

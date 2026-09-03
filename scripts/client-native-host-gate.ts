@@ -46,6 +46,9 @@ interface GateResult {
   remoteNatPath: boolean;
   remotePeerExited: boolean;
   remoteTunnelClosed: boolean;
+  sourceFailureEndedShare: boolean;
+  replacementViewerConnected: boolean;
+  replacementViewerFrames: number;
   crossNat: boolean;
   cleanup: Awaited<ReturnType<typeof cleanupRun>>;
   error: string | null;
@@ -269,6 +272,63 @@ async function sourceServer(port: number): Promise<{ close(): Promise<void> }> {
   };
 }
 
+async function startSourceBrowser(
+  chromePath: string,
+  profile: string,
+  debugPort: number,
+  sourcePort: number,
+): Promise<{
+  child: ChildProcessWithoutNullStreams;
+  cdp: CdpConnection;
+}> {
+  const child = spawn(chromePath, [
+    "--remote-debugging-port=" + debugPort,
+    "--user-data-dir=" + profile,
+    "--no-first-run", "--no-default-browser-check",
+    "--disable-extensions", "--disable-logging",
+    "--disable-background-timer-throttling",
+    "--disable-backgrounding-occluded-windows",
+    "--disable-renderer-backgrounding",
+    "--app=http://127.0.0.1:" + sourcePort + "/",
+  ], { stdio: "pipe", windowsHide: true });
+  child.stdout.resume();
+  child.stderr.resume();
+  const version = await waitForVersion(debugPort, child);
+  const cdp = await CdpConnection.connect(
+    version.webSocketDebuggerUrl,
+    Date.now() + 10_000,
+  );
+  return { child, cdp };
+}
+
+async function closeSourceBrowser(
+  child: ChildProcessWithoutNullStreams,
+  cdp: CdpConnection,
+): Promise<boolean> {
+  try {
+    await cdp.call("Browser.close", {}, undefined, Date.now() + 2_000);
+  } catch {}
+  cdp.close();
+  try {
+    await waitForChild(child, 5_000);
+    return true;
+  } catch {
+    return stopChild(child);
+  }
+}
+
+async function waitForCaptureWindow(captureBinary: string): Promise<void> {
+  await waitForValue(
+    async () => JSON.parse(run(captureBinary, ["--list"])) as Array<{
+      title?: unknown;
+    }>,
+    (targets) => targets.some((target) =>
+      typeof target.title === "string" && target.title.includes(SOURCE_TITLE)
+    ),
+    10_000,
+  );
+}
+
 async function waitForValue<T>(
   sample: (deadline: number) => Promise<T>,
   accept: (value: T) => boolean,
@@ -354,6 +414,7 @@ async function main(): Promise<void> {
   const sourcePort = await reservePort();
   const appPort = await reservePort();
   const debugPort = await reservePort();
+  const sourceDebugPort = await reservePort();
   const clientConfig = join(profile, "client.json");
   const captureBuild = BUILD_ROOT;
   const clientBinary = join(BUILD_ROOT, "screener-client.exe");
@@ -362,6 +423,7 @@ async function main(): Promise<void> {
   let source: { close(): Promise<void> } | null = null;
   let client: ChildProcessWithoutNullStreams | null = null;
   let sourceChrome: ChildProcessWithoutNullStreams | null = null;
+  let sourceCdp: CdpConnection | null = null;
   let chrome: ChildProcessWithoutNullStreams | null = null;
   let cdp: CdpConnection | null = null;
   let clientPort = 0;
@@ -382,6 +444,9 @@ async function main(): Promise<void> {
     remoteNatPath: false,
     remotePeerExited: !crossNat,
     remoteTunnelClosed: !crossNat,
+    sourceFailureEndedShare: crossNat,
+    replacementViewerConnected: crossNat,
+    replacementViewerFrames: 0,
     crossNat,
     cleanup: {
       browserExited: false,
@@ -415,17 +480,13 @@ async function main(): Promise<void> {
       );
     }
     stage = "source-browser";
-    sourceChrome = spawn(chromePath, [
-      "--user-data-dir=" + sourceProfile,
-      "--no-first-run", "--no-default-browser-check",
-      "--disable-extensions", "--disable-logging",
-      "--disable-background-timer-throttling",
-      "--disable-backgrounding-occluded-windows",
-      "--disable-renderer-backgrounding",
-      "--app=http://127.0.0.1:" + sourcePort + "/",
-    ], { stdio: "pipe", windowsHide: true });
-    sourceChrome.stdout.resume();
-    sourceChrome.stderr.resume();
+    ({ child: sourceChrome, cdp: sourceCdp } = await startSourceBrowser(
+      chromePath,
+      sourceProfile,
+      sourceDebugPort,
+      sourcePort,
+    ));
+    await waitForCaptureWindow(captureBinary);
     stage = "client-start";
     client = spawn(clientBinary, [
       "--local", "--native",
@@ -617,6 +678,91 @@ async function main(): Promise<void> {
       result.viewerFrames = viewerState.frames;
       result.viewerWidth = viewerState.width;
       result.viewerHeight = viewerState.height;
+
+      await evaluate<boolean>(
+        cdp,
+        viewer,
+        `(() => {
+          const video = document.querySelector('video');
+          if (!video) return false;
+          window.__screenerGateMedia = video.srcObject;
+          return window.__screenerGateMedia !== null;
+        })()`,
+        Date.now() + 5_000,
+      );
+      stage = "source-failure";
+      if (!sourceChrome || !sourceCdp ||
+          !(await closeSourceBrowser(sourceChrome, sourceCdp))) {
+        throw new Error("captured source did not close");
+      }
+      sourceChrome = null;
+      sourceCdp = null;
+      stage = "host-source-failure";
+      result.sourceFailureEndedShare = await waitForValue(
+        (deadline) => evaluate<boolean>(
+          cdp!,
+          host,
+          "Boolean(document.querySelector('button.lr-tv-big.is-action'))",
+          deadline,
+        ),
+        Boolean,
+        20_000,
+      );
+      stage = "source-restart";
+      ({ child: sourceChrome, cdp: sourceCdp } = await startSourceBrowser(
+        chromePath,
+        sourceProfile,
+        sourceDebugPort,
+        sourcePort,
+      ));
+      await waitForCaptureWindow(captureBinary);
+      stage = "host-restart";
+      await evaluate<void>(
+        cdp,
+        host,
+        "document.querySelector('button.lr-tv-big.is-action')?.click()",
+        Date.now() + 5_000,
+      );
+      await waitForValue(
+        (deadline) => evaluate<boolean>(
+          cdp!,
+          host,
+          "Boolean(document.querySelector('.lr-tv-overlay[role=\"status\"]'))",
+          deadline,
+        ),
+        Boolean,
+        40_000,
+      );
+      stage = "viewer-replacement-media";
+      result.replacementViewerConnected = await waitForValue(
+        (deadline) => evaluate<boolean>(
+          cdp!,
+          viewer,
+          `(() => {
+            const video = document.querySelector('video');
+            return Boolean(video && video.srcObject &&
+              video.srcObject !== window.__screenerGateMedia &&
+              video.videoWidth === 1280 && video.videoHeight === 720);
+          })()`,
+          deadline,
+        ),
+        Boolean,
+        40_000,
+      );
+      result.replacementViewerFrames = await evaluate<number>(
+        cdp,
+        viewer,
+        `new Promise((resolve) => {
+          const video = document.querySelector('video');
+          let frames = 0;
+          const next = () => video.requestVideoFrameCallback(() => {
+            frames += 1;
+            if (frames >= 30) resolve(frames); else next();
+          });
+          next();
+        })`,
+        Date.now() + 10_000,
+      );
     }
   } catch (error) {
     // Client stderr can contain implementation diagnostics or URLs; keep gate
@@ -636,7 +782,11 @@ async function main(): Promise<void> {
       profile,
       ports: [sourcePort, appPort, debugPort, ...(clientPort ? [clientPort] : [])],
     });
-    if (sourceChrome && sourceChrome.exitCode === null) {
+    if (sourceChrome && sourceCdp) {
+      await closeSourceBrowser(sourceChrome, sourceCdp);
+      sourceChrome = null;
+      sourceCdp = null;
+    } else if (sourceChrome && sourceChrome.exitCode === null) {
       sourceChrome.kill();
     }
     if (sourceProfile) {
@@ -646,7 +796,7 @@ async function main(): Promise<void> {
         chrome: null,
         server: null,
         profile: sourceProfile,
-        ports: [sourcePort],
+        ports: [sourcePort, sourceDebugPort],
       });
     }
   }
@@ -656,7 +806,9 @@ async function main(): Promise<void> {
       ? result.remoteViewerConnected && result.remoteViewerPackets >= 30 &&
         result.remoteNatPath && result.remotePeerExited && result.remoteTunnelClosed
       : result.viewerConnected && result.viewerFrames >= 30 &&
-        result.viewerWidth === 1280 && result.viewerHeight === 720) &&
+        result.viewerWidth === 1280 && result.viewerHeight === 720 &&
+        result.sourceFailureEndedShare && result.replacementViewerConnected &&
+        result.replacementViewerFrames >= 30) &&
     result.cleanup.browserExited && result.cleanup.nativeExited &&
     result.cleanup.serverClosed && result.cleanup.portsClosed &&
     result.cleanup.profileRemoved;

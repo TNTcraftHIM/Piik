@@ -12,12 +12,13 @@ topics are not implementation authority.
    hardware-H.264 capture, bounded Pion fanout, and a remote `srflx`-to-`srflx`
    video gate now pass. Process-loopback audio passes the Windows Browser gate
    on the same PeerConnection with a video-only fallback; finish this boundary
-   with a representation-compatible native SFU, native quality evidence, and
-   teardown under failure. A clean revision package passes Local and Site
-   gates. No-Site Internet mode now has one ordinary public invitation link that
-   retains the Host's Local authority and passes its remote control-path gate.
-   Prove decoded one-link Browser media on a physical second device; public STUN
-   still cannot provide an SFU/TURN fallback for a restricted pair.
+   with a representation-compatible native SFU and native quality evidence.
+   Capture-source failure now has a physical end/restart gate through the same
+   room and Viewer. A clean revision package passes Local and Site gates.
+   No-Site Internet mode now has one ordinary public invitation link that retains
+   the Host's Local authority and passes its remote control-path gate. Prove
+   decoded one-link Browser media on a physical second device; public STUN still
+   cannot provide an SFU/TURN fallback for a restricted pair.
 
 ## Parked Product Work
 
@@ -113,6 +114,12 @@ topics are not implementation authority.
     check; do not add automatic install, container self-update, Watchtower,
     compatibility ranges, or active-share interruption before distribution and
     rollback evidence requires them.
+16. **Go server consolidation.** Revisit replacing the sole TypeScript/Node
+    server owner with Go only after the Client feature and physical acceptance
+    boundaries are complete. First measure package, startup, and maintenance
+    gains. If accepted, migrate Hosted and Local together and delete the Node
+    server in the same boundary; do not create or retain two room, signaling,
+    persistence, or route-controller implementations.
 
 ## Decision Needed
 
