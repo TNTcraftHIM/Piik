@@ -55,6 +55,7 @@ jobs:
             if [ -n "$base" ] && ! git diff --quiet "$base" HEAD -- \
               native/client \
               scripts/assemble-client.mjs \
+              scripts/client-package-targets.mjs \
               scripts/check-client.mjs \
               scripts/client-local-gate.ts \
               scripts/client-loopback-gate.ts \

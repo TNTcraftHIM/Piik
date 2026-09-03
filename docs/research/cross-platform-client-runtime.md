@@ -110,6 +110,11 @@ On Windows with Chrome for Testing 151.0.7922.138:
   from the same full revision; that packaged directory passed the Local and Site
   gates, while a deliberately mismatched `app/REVISION` was rejected before a
   listener started.
+- the explicit target assembler produced Windows amd64, Linux amd64, and macOS
+  arm64 outputs from one clean revision. The Linux package ran its bundled Node
+  Local authority on Ubuntu, and its full package exposed and then closed a
+  public link reachable from another network. The macOS Client and Node inputs
+  are both Mach-O arm64; execution there remains unproved.
 - the native Host path created a Local room and a remote Pion Viewer received
   30 packets over a selected `srflx`-to-`srflx` pair; the reverse SSH link in
   that gate carried signaling only.
@@ -131,7 +136,7 @@ deployment no longer erases valid native RTCStats.
 
 ## Remaining Gates
 
-- Assemble and run the exact clean-revision package on macOS and Linux.
+- Run the exact clean-revision package on macOS; Linux amd64 is proved.
 - Prove a physical second-device LAN Viewer on desktop, Android, and iOS.
 - Prove first-run Browser local-network permission outside CDP automation.
 - Record no-STUN mDNS behavior on ordinary and AP-isolated LANs.

@@ -85,10 +85,15 @@ completed loopback `hello`/`ping` after CDP granted `loopback-network`; without
 that permission Chrome blocked it as expected.
 The exact clean-revision Windows package assembled with Node 24.19.0 passed both
 Client gates; changing `app/REVISION` made it fail before opening a listener.
+The same explicit-target assembly produced a Linux amd64 package that ran its
+bundled Node application and loopback runtime on an independent Ubuntu host.
+Its full package also created a public link reachable from another network and
+closed that link and all local ports on exit. The macOS arm64 output contains
+matching Mach-O arm64 Client and Node binaries, but has not run on macOS.
 
 Still required are physical second-device LAN playback, first-run LNA prompt,
-no-STUN mDNS behavior, and equivalent macOS/Linux package, capture, audio,
-firewall, and process-lifecycle tests. Windows native capture, hardware H.264,
+no-STUN mDNS behavior, macOS package execution, and equivalent non-Windows
+capture, audio, firewall, and process-lifecycle tests. Windows native capture, hardware H.264,
 one shared Pion source feeding two Chrome transports, STUN candidate gathering,
 and a Local Client Host path have bounded physical gates. A remote Pion gate
 also received 30 video packets over a selected `srflx`-to-`srflx` pair; its

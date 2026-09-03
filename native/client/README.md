@@ -96,9 +96,15 @@ SCREENER_GO=/path/to/go \
   /outside/repository/app-release/screener-<sha>.release.json \
   /path/to/node \
   /outside/repository/Screener-Client \
+  --target windows-amd64 \
   --capture /outside/repository/screener-client-capture.exe \
   --tunnel /outside/repository/cloudflared.exe
 ```
+
+Supported targets are `windows-amd64`, `linux-amd64`, and `darwin-arm64`.
+`--target` controls the Go cross-build and packaged executable names; the Node,
+capture, and tunnel inputs must already match that target. Only Windows accepts
+the current native-capture input.
 
 The result contains:
 

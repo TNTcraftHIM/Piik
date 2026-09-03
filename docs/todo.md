@@ -14,7 +14,9 @@ topics are not implementation authority.
    on the same PeerConnection with a video-only fallback; finish this boundary
    with a representation-compatible native SFU and native quality evidence.
    Capture-source failure now has a physical end/restart gate through the same
-   room and Viewer. A clean revision package passes Local and Site gates.
+   room and Viewer. Clean-revision Windows and Linux packages pass their Local
+   runtime gates; Linux also passes one-link startup and shutdown. The macOS
+   arm64 package is assembled but still needs execution on macOS.
    No-Site Internet mode now has one ordinary public invitation link that retains
    the Host's Local authority and passes remote control-path and independent
    Linux Pion media gates. Prove decoded one-link Browser media on a physical

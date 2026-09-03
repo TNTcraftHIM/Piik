@@ -9,6 +9,8 @@ import {
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { CLIENT_PACKAGE_TARGETS } from "./client-package-targets.mjs";
+
 const root = realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), ".."));
 const clientRoot = join(root, "native", "client");
 const mode = process.argv[2] ?? "--all";
@@ -48,17 +50,19 @@ function checkCore() {
 
   const buildRoot = join(root, "build", "client-check");
   mkdirSync(buildRoot, { recursive: true });
-  for (const target of [
-    { os: "windows", arch: "amd64", name: "screener-client.exe" },
-    { os: "darwin", arch: "arm64", name: "screener-client-darwin-arm64" },
-    { os: "linux", arch: "amd64", name: "screener-client-linux-amd64" },
-  ]) {
+  for (const target of CLIENT_PACKAGE_TARGETS) {
     for (const command of ["screener-client", "screener-peer-gate"]) {
-      const suffix = command === "screener-client" ? target.name :
-        target.name.replace("screener-client", "screener-peer-gate");
-      run(go, ["build", "-trimpath", "-o", join(buildRoot, suffix), `./cmd/${command}`], {
+      const outputName = target.goos === "windows"
+        ? `${command}.exe`
+        : `${command}-${target.id}`;
+      run(go, ["build", "-trimpath", "-o", join(buildRoot, outputName), `./cmd/${command}`], {
         cwd: clientRoot,
-        env: { ...process.env, GOOS: target.os, GOARCH: target.arch, CGO_ENABLED: "0" },
+        env: {
+          ...process.env,
+          GOOS: target.goos,
+          GOARCH: target.goarch,
+          CGO_ENABLED: "0",
+        },
       });
     }
   }

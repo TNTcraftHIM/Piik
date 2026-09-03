@@ -51,14 +51,17 @@ SCREENER_GO=/path/to/go node scripts/assemble-client.mjs \
   /outside/repository/app-release/screener-<revision>.release.json \
   /path/to/node \
   /outside/repository/Screener-Client \
+  --target windows-amd64 \
   --capture /path/to/platform-capture \
   --tunnel /path/to/cloudflared
 ```
 
 Assembly refuses a dirty or different revision and emits one directory with
 the Client executable, pinned Node runtime, application release, selected
-sidecars, production dependencies, and matching `REVISION`. It does not create
-an installer, auto-updater, release tag, or compatibility bundle.
+sidecars, production dependencies, and matching `REVISION`. Its required target
+is one of `windows-amd64`, `linux-amd64`, or `darwin-arm64`; every supplied
+runtime must match it. It does not create an installer, auto-updater, release
+tag, or compatibility bundle.
 
 Retain the descriptor and successful deployment output as release metadata. Do
 not create a follow-up source commit solely to duplicate their revision, asset,
