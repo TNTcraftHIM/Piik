@@ -25,6 +25,8 @@ topics are not implementation authority.
    Wayland-only Portal/PipeWire sidecar only with a real desktop/GPU gate and a
    decision to reuse system GStreamer without bundling it; do not add a second
    RTC, X11 capture stack, or hand-built DMA-BUF/encoder matrix.
+   Before a user-facing Client release, replace command-line native window
+   selection with one Browser-owned explicit picker; never guess among targets.
    No-Site Internet mode now has one ordinary public invitation link that retains
    the Host's Local authority and passes remote control-path and independent
    Linux Pion media gates. Prove decoded one-link Browser media on a physical

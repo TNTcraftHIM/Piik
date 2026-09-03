@@ -127,9 +127,9 @@ This is the current execution index. Git history owns completed timelines;
   shared-encode P2P, and cleanup. An explicit target assembler also produces a
   Linux amd64 package with proved Local/one-link runtime and a structurally
   verified but unexecuted macOS arm64 package; its capture sidecar now passes an
-  arm64 compile plus hardware-H.264 IDR self-test. A validated `main` push emits
-  the application release and all three native-runner Client candidates as
-  short-lived Actions artifacts. One-link mode preserves the Host Local
+  arm64 compile plus hardware-H.264 IDR self-test. Client-scoped pull requests
+  build and Local-smoke all three candidates before merge; a validated `main`
+  push emits them as short-lived Actions artifacts. One-link mode preserves the Host Local
   authority while exposing its ordinary invitation and HTTP/WebSocket control
   path through a session-scoped Quick Tunnel. An independent Linux Pion Viewer
   has received that native media over a direct ICE pair; remote Browser media

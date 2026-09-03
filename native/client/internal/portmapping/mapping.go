@@ -34,12 +34,13 @@ type Mapping struct {
 	cancel    context.CancelFunc
 	ready     chan struct{}
 
-	mu         sync.Mutex
-	gateway    gateway
-	attempted  bool
-	mapped     bool
-	renewAfter time.Time
-	closed     bool
+	mu             sync.Mutex
+	gateway        gateway
+	attempted      bool
+	mapped         bool
+	deleteRequired bool
+	renewAfter     time.Time
+	closed         bool
 }
 
 func Start(localPort int) *Mapping {
@@ -77,10 +78,11 @@ func (mapping *Mapping) Close() {
 	}
 	mapping.closed = true
 	gateway := mapping.gateway
-	mapped := mapping.mapped
+	deleteRequired := mapping.deleteRequired
 	mapping.mapped = false
+	mapping.deleteRequired = false
 	mapping.mu.Unlock()
-	if gateway == nil || !mapped {
+	if gateway == nil || !deleteRequired {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), deleteTimeout)
@@ -115,5 +117,6 @@ func (mapping *Mapping) mapPortLocked(ctx context.Context) {
 		return
 	}
 	mapping.mapped = true
+	mapping.deleteRequired = true
 	mapping.renewAfter = time.Now().Add(leaseDuration / 2)
 }

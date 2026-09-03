@@ -12,15 +12,12 @@ import {
   waitForVersion,
   withDeadline,
 } from "./browser-gate-harness";
+import {
+  decodeClientEndpoint,
+  type ClientEndpoint as Endpoint,
+} from "./client-gate-endpoint";
 
 const PAGE_URL = "https://share.bonfire.icu/";
-
-interface Endpoint {
-  url: string;
-  host: string;
-  port: number;
-  instanceToken: string;
-}
 
 interface GateReport {
   passed: boolean;
@@ -52,12 +49,7 @@ async function readEndpoint(
         if (newline < 0) return;
         client.stdout.off("data", onData);
         try {
-          const value = JSON.parse(buffered.slice(0, newline)) as Partial<Endpoint>;
-          if (typeof value.url !== "string" || typeof value.host !== "string" ||
-              typeof value.port !== "number" || typeof value.instanceToken !== "string") {
-            throw new Error("Client endpoint is invalid");
-          }
-          resolveEndpoint(value as Endpoint);
+          resolveEndpoint(decodeClientEndpoint(buffered.slice(0, newline)));
         } catch (error) {
           rejectEndpoint(error instanceof Error ? error : new Error("Client endpoint is invalid"));
         }
@@ -101,7 +93,10 @@ async function browserHandshake(
             if (!response.ok) continue;
             const health = await response.json();
             if (health.protocol === 4 && health.service === "screener-client" &&
-                health.port === port && typeof health.instanceToken === "string") {
+                health.port === port && typeof health.instanceToken === "string" &&
+                health.nativeMedia?.windowVideo === false &&
+                health.nativeMedia?.processAudio === false &&
+                health.nativeMedia?.hardwareH264 === false) {
               return { port, instanceToken: health.instanceToken };
             }
           } catch {} finally {

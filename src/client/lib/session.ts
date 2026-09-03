@@ -80,18 +80,56 @@ export function parseAppRoute(pathname: string): AppRoute {
   return { kind: "unknown" };
 }
 
-export function takeClientAccessBootstrap(): string | null {
-  const prefix = "#client-access=";
-  if (!window.location.hash.startsWith(prefix)) {
-    return null;
+export interface NativeLaunchOptions {
+  requested: boolean;
+  windowTitle: string | null;
+  adapterIndex: number | null;
+  encoderIndex: number | null;
+}
+
+export interface ClientLaunchBootstrap {
+  accessToken: string | null;
+  native: NativeLaunchOptions;
+}
+
+export function takeClientLaunchBootstrap(): ClientLaunchBootstrap {
+  const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  const keys = [
+    "client-access",
+    "screener-native",
+    "screener-native-window",
+    "screener-native-adapter",
+    "screener-native-encoder",
+  ] as const;
+  const present = keys.some((key) => params.has(key));
+  const accessValue = params.get("client-access");
+  const parseIndex = (value: string | null): number | null => {
+    if (!value || !/^[0-9]+$/.test(value)) return null;
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
+  };
+  const result: ClientLaunchBootstrap = {
+    accessToken:
+      accessValue && CLIENT_ACCESS_BOOTSTRAP_PATTERN.test(accessValue)
+        ? accessValue
+        : null,
+    native: {
+      requested: params.get("screener-native") === "1",
+      windowTitle: params.get("screener-native-window")?.trim() || null,
+      adapterIndex: parseIndex(params.get("screener-native-adapter")),
+      encoderIndex: parseIndex(params.get("screener-native-encoder")),
+    },
+  };
+  if (present) {
+    for (const key of keys) params.delete(key);
+    const remaining = params.toString();
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${window.location.pathname}${window.location.search}${remaining ? `#${remaining}` : ""}`,
+    );
   }
-  const value = window.location.hash.slice(prefix.length);
-  window.history.replaceState(
-    window.history.state,
-    "",
-    `${window.location.pathname}${window.location.search}`,
-  );
-  return CLIENT_ACCESS_BOOTSTRAP_PATTERN.test(value) ? value : null;
+  return result;
 }
 
 export function clearHostRoom(): void {

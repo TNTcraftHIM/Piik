@@ -33,7 +33,7 @@ import {
   replaceViewerInvite,
   roomRouteForExplicitEntry,
   roomRouteFromInput,
-  takeClientAccessBootstrap,
+  takeClientLaunchBootstrap,
   writeHostRoom,
   writePreferredRoom,
 } from "../src/client/lib/session.ts";
@@ -768,7 +768,10 @@ describe("room codes", () => {
       history: { state: { current: true }, replaceState },
     });
 
-    expect(takeClientAccessBootstrap()).toBe("a".repeat(32));
+    expect(takeClientLaunchBootstrap()).toMatchObject({
+      accessToken: "a".repeat(32),
+      native: { requested: false },
+    });
     expect(replaceState).toHaveBeenCalledWith(
       { current: true },
       "",
@@ -783,8 +786,35 @@ describe("room codes", () => {
       history: { state: null, replaceState },
     });
 
-    expect(takeClientAccessBootstrap()).toBeNull();
+    expect(takeClientLaunchBootstrap().accessToken).toBeNull();
     expect(replaceState).toHaveBeenCalledWith(null, "", "/");
+  });
+
+  it("consumes native Client choices from a server-private fragment", () => {
+    const replaceState = vi.fn();
+    vi.stubGlobal("window", {
+      location: {
+        hash: `#client-access=${"a".repeat(32)}&screener-native=1&screener-native-window=My+Game&screener-native-adapter=2&screener-native-encoder=1&retained=yes`,
+        pathname: "/",
+        search: "?room=6020",
+      },
+      history: { state: null, replaceState },
+    });
+
+    expect(takeClientLaunchBootstrap()).toEqual({
+      accessToken: "a".repeat(32),
+      native: {
+        requested: true,
+        windowTitle: "My Game",
+        adapterIndex: 2,
+        encoderIndex: 1,
+      },
+    });
+    expect(replaceState).toHaveBeenCalledWith(
+      null,
+      "",
+      "/?room=6020#retained=yes",
+    );
   });
 });
 

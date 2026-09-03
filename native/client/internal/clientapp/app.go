@@ -72,9 +72,9 @@ func Run(ctx context.Context, options Options) error {
 			return errors.New("Screener Client configuration is unavailable")
 		}
 	}
-	nativeMedia := discoverNativeMedia(ctx, options.CaptureProcess)
-	if options.Native && !nativeMedia.available() {
-		return errors.New("Screener Client native capture is unavailable")
+	nativeMedia, err := nativeRuntimeForOptions(ctx, options)
+	if err != nil {
+		return err
 	}
 	if config.Site != "" && !options.Link {
 		return runSite(ctx, config.Site, options, nativeMedia)
@@ -246,18 +246,21 @@ func launchURL(raw string, options Options) string {
 	if err != nil {
 		return raw
 	}
-	query := parsed.Query()
-	query.Set("screener-native", "1")
+	fragment, err := url.ParseQuery(parsed.Fragment)
+	if err != nil {
+		return raw
+	}
+	fragment.Set("screener-native", "1")
 	if value := strings.TrimSpace(options.NativeWindowTitle); value != "" {
-		query.Set("screener-native-window", value)
+		fragment.Set("screener-native-window", value)
 	}
 	if options.NativeAdapterIndex >= 0 {
-		query.Set("screener-native-adapter", fmt.Sprint(options.NativeAdapterIndex))
+		fragment.Set("screener-native-adapter", fmt.Sprint(options.NativeAdapterIndex))
 	}
 	if options.NativeEncoderIndex >= 0 {
-		query.Set("screener-native-encoder", fmt.Sprint(options.NativeEncoderIndex))
+		fragment.Set("screener-native-encoder", fmt.Sprint(options.NativeEncoderIndex))
 	}
-	parsed.RawQuery = query.Encode()
+	parsed.Fragment = fragment.Encode()
 	return parsed.String()
 }
 
@@ -273,12 +276,23 @@ func (runtime nativeRuntime) available() bool {
 }
 
 func (runtime nativeRuntime) controlFactory(portMapping bool) func() loopback.ControlSession {
+	if !runtime.available() {
+		return nil
+	}
 	return func() loopback.ControlSession {
-		if !runtime.available() {
-			return nil
-		}
 		return nativecontrol.New(runtime.captureProcess, runtime.capture, portMapping)
 	}
+}
+
+func nativeRuntimeForOptions(ctx context.Context, options Options) (nativeRuntime, error) {
+	if !options.Native {
+		return nativeRuntime{}, nil
+	}
+	runtime := discoverNativeMedia(ctx, options.CaptureProcess)
+	if !runtime.available() {
+		return nativeRuntime{}, errors.New("Screener Client native capture is unavailable")
+	}
+	return runtime, nil
 }
 
 func discoverNativeMedia(ctx context.Context, configuredPath string) nativeRuntime {

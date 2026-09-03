@@ -53,8 +53,20 @@ jobs:
                 ;;
             esac
             if [ -n "$base" ] && ! git diff --quiet "$base" HEAD -- \
+              .github/workflows/repository-hygiene.yml \
+              .node-version \
+              index.html \
               native/client \
+              package.json \
+              package-lock.json \
+              public \
+              src \
+              tsconfig.json \
+              tsconfig.app.json \
+              tsconfig.server.json \
+              vite.config.ts \
               scripts/assemble-client.mjs \
+              scripts/package-app-release.mjs \
               scripts/package-client-candidate.mjs \
               scripts/client-package-targets.mjs \
               scripts/check-client.mjs \
@@ -79,29 +91,11 @@ jobs:
       - name: Type-check, test, and build
         run: npm run check
 
-  client-capture:
-    needs: validate
-    if: needs.validate.outputs.client_scope == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        runner:
-          - windows-latest
-          - macos-15
-    runs-on: ${{ matrix.runner }}
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version-file: .node-version
-      - name: Build native capture process
-        run: npm run check:client-capture
-
   release-application:
     needs: validate
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      needs.validate.outputs.client_scope == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -128,7 +122,9 @@ jobs:
     needs:
       - validate
       - release-application
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      needs.validate.outputs.client_scope == 'true'
     strategy:
       fail-fast: false
       matrix:

@@ -29,15 +29,13 @@ import {
   startSourceBrowser,
   waitForCaptureWindow,
 } from "./client-native-host-gate";
+import {
+  decodeClientEndpoint,
+  type ClientEndpoint as Endpoint,
+} from "./client-gate-endpoint";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const BUILD_ROOT = join(ROOT, "build", "client-check");
-
-interface Endpoint {
-  url: string;
-  port: number;
-  instanceToken: string;
-}
 
 function run(command: string, args: string[], cwd = ROOT): void {
   const result = spawnSync(command, args, {
@@ -92,17 +90,11 @@ async function readEndpoint(
         const line = buffered.slice(0, newline).trim();
         buffered = buffered.slice(newline + 1);
         try {
-          const value = JSON.parse(line) as Partial<Endpoint>;
-          if (
-            typeof value.url === "string" &&
-            typeof value.port === "number" &&
-            typeof value.instanceToken === "string"
-          ) {
-            clearTimeout(timer);
-            process.stdout.off("data", onData);
-            resolveEndpoint(value as Endpoint);
-            return;
-          }
+          const value = decodeClientEndpoint(line);
+          clearTimeout(timer);
+          process.stdout.off("data", onData);
+          resolveEndpoint(value);
+          return;
         } catch {
           // Ignore non-JSON informational output.
         }

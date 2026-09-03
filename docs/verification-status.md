@@ -102,8 +102,9 @@ also receives process-loopback Opus on both native edges (66 packets per edge
 in the 2026-09-03 run). The native Host gate also closes the captured source,
 observes the current share end, restarts capture in the same room, and requires
 the existing Viewer to receive a different media object plus 30 new frames.
-Native SFU publication, native quality evidence, and production package
-integration remain unproved.
+Native P2P quality evidence and the Browser-mediated native-source SFU happy
+path now have bounded gates. Production package integration, SFU recovery and
+endurance, and physical non-Windows capture remain unproved.
 
 The one-link gate started a session-scoped public origin from a Windows Client,
 confirmed that its ordinary invitation used that origin, and served the Viewer

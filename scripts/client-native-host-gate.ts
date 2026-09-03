@@ -20,17 +20,14 @@ import {
   waitForVersion,
   withDeadline,
 } from "./browser-gate-harness";
+import {
+  decodeClientEndpoint,
+  type ClientEndpoint as Endpoint,
+} from "./client-gate-endpoint";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const BUILD_ROOT = join(ROOT, "build", "client-check");
 export const SOURCE_TITLE = "Screener Native Gate Source";
-
-interface Endpoint {
-  url: string;
-  host: string;
-  port: number;
-  instanceToken: string;
-}
 
 type GateMode = "local" | "cross-nat" | "one-link";
 
@@ -389,11 +386,7 @@ async function readClientEndpoint(
           if (!line) continue;
           lines.push(line);
           try {
-            const value = JSON.parse(line) as Partial<Endpoint>;
-            if (typeof value.url === "string" && typeof value.port === "number" &&
-                typeof value.instanceToken === "string") {
-              endpoint = value as Endpoint;
-            }
+            endpoint = decodeClientEndpoint(line);
           } catch {
             // Informational lines are printed after the endpoint.
           }
@@ -615,8 +608,8 @@ async function main(): Promise<void> {
     stage = "host-page";
     const host = await createPage(
       cdp,
-      "http://localhost:" + appPort + "/?screener-native=1&screener-native-window=" +
-        encodeURIComponent(SOURCE_TITLE) + "#client-access=" + clientInfo.password,
+      "http://localhost:" + appPort + "/#client-access=" + clientInfo.password +
+        "&screener-native=1&screener-native-window=" + encodeURIComponent(SOURCE_TITLE),
       undefined,
       true,
     );

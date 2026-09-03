@@ -85,6 +85,7 @@ import {
   getStableClientId,
   type HostRoomIdentity,
   type HostRoomState,
+  type NativeLaunchOptions,
   mergeAuthenticatedHostRoom,
   readHostRoom,
   readPreferredRoomId,
@@ -147,6 +148,10 @@ import { HostPeer, type HostMediaPeer } from "../webrtc/host-peer";
 import { NativeClient } from "../native/client";
 import { NativeHostPeer } from "../native/native-host-peer";
 import { NativeMediaBridge } from "../native/media-bridge";
+import {
+  selectNativeCaptureAdapter,
+  selectNativeWindowTarget,
+} from "../native/capture-selection";
 import {
   MAX_ENDPOINT_MEDIA_CHILDREN,
   reconcileBoundedMediaChildren,
@@ -375,36 +380,22 @@ function hostTerminationKey(reason: SignalingTerminationReason): CopyKey {
 
 interface HostPageProps {
   natPredictionAvailable?: boolean;
+  nativeLaunch?: NativeLaunchOptions;
   onAuthorizationRequired?: () => void;
 }
 
-interface NativeLaunchOptions {
-  requested: boolean;
-  windowTitle: string | null;
-  adapterIndex: number | null;
-  encoderIndex: number | null;
-}
-
-function nativeLaunchOptions(): NativeLaunchOptions {
-  const params = new URLSearchParams(window.location.search);
-  const parseIndex = (value: string | null): number | null => {
-    if (!value || !/^[0-9]+$/.test(value)) return null;
-    const parsed = Number(value);
-    return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
-  };
-  return {
-    requested: params.get("screener-native") === "1",
-    windowTitle: params.get("screener-native-window")?.trim() || null,
-    adapterIndex: parseIndex(params.get("screener-native-adapter")),
-    encoderIndex: parseIndex(params.get("screener-native-encoder")),
-  };
-}
+const NO_NATIVE_LAUNCH: NativeLaunchOptions = {
+  requested: false,
+  windowTitle: null,
+  adapterIndex: null,
+  encoderIndex: null,
+};
 
 export function HostPage({
   natPredictionAvailable = false,
+  nativeLaunch = NO_NATIVE_LAUNCH,
   onAuthorizationRequired,
 }: HostPageProps = {}) {
-  const nativeLaunch = useMemo(nativeLaunchOptions, []);
   const { lang, vis, t, titleFrames } = useCopy();
   const [qualitySettings, setQualitySettings] = useState<QualitySettings>(
     DEFAULT_QUALITY_SETTINGS,
@@ -1189,12 +1180,10 @@ export function HostPage({
         throw new Error("Screener Client has no native H.264 capture");
       }
       const adapters = await client.captureOptions();
-      const adapter =
-        (nativeLaunch.adapterIndex === null
-          ? null
-          : adapters.find(
-              (candidate) => candidate.index === nativeLaunch.adapterIndex,
-            )) ?? adapters.find((candidate) => candidate.hardwareH264.length > 0);
+      const adapter = selectNativeCaptureAdapter(
+        adapters,
+        nativeLaunch.adapterIndex,
+      );
       const encoder = adapter?.hardwareH264.find(
         (candidate) =>
           nativeLaunch.encoderIndex === null ||
@@ -1204,15 +1193,9 @@ export function HostPage({
         throw new Error("Screener Client has no usable H.264 encoder");
       }
       const windows = await client.windows();
-      const target = nativeLaunch.windowTitle
-        ? windows.find((candidate) =>
-            candidate.title.includes(nativeLaunch.windowTitle!),
-          )
-        : windows.find(
-            (candidate) => !candidate.title.toLowerCase().includes("screener"),
-          );
+      const target = selectNativeWindowTarget(windows, nativeLaunch.windowTitle);
       if (!target) {
-        throw new Error("Screener Client could not find a capture window");
+        throw new Error("Screener Client needs one matching capture window");
       }
       await client.startShare({
         shareId: shareGeneration,

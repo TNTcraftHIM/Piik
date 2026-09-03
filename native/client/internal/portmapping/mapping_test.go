@@ -97,6 +97,32 @@ func TestMappingFailureIsNotRetriedForEveryEdge(t *testing.T) {
 	}
 }
 
+func TestRenewalFailureKeepsTheOriginalMappingOwnedUntilClose(t *testing.T) {
+	original := discoverGateway
+	t.Cleanup(func() { discoverGateway = original })
+	fake := &fakeGateway{}
+	discoverGateway = func(context.Context) (gateway, error) {
+		return fake, nil
+	}
+
+	mapping := Start(43210)
+	mapping.Prepare()
+	mapping.mu.Lock()
+	mapping.renewAfter = time.Now().Add(-time.Second)
+	mapping.mu.Unlock()
+	fake.mu.Lock()
+	fake.addErr = errors.New("renewal rejected")
+	fake.mu.Unlock()
+	mapping.Prepare()
+	mapping.Close()
+
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	if len(fake.added) != 2 || len(fake.deleted) != 1 || fake.deleted[0] != 43210 {
+		t.Fatalf("mapping calls = add %v delete %v", fake.added, fake.deleted)
+	}
+}
+
 func TestMappingDiscoveryStopsWithTheShare(t *testing.T) {
 	original := discoverGateway
 	t.Cleanup(func() { discoverGateway = original })

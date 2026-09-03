@@ -178,6 +178,13 @@ const capturePath = captureArgument ? realpathSync(resolve(captureArgument)) : n
 const tunnelPath = tunnelArgument ? realpathSync(resolve(tunnelArgument)) : null;
 assertOutsideRepository(repositoryRoot, outputRoot);
 assertTargetExecutable(nodePath, target, "Node runtime");
+const expectedNodeVersion = `v${readFileSync(
+  join(repositoryRoot, ".node-version"),
+  "ascii",
+).trim()}`;
+if (run(nodePath, ["--version"], repositoryRoot) !== expectedNodeVersion) {
+  fail(`Node runtime must be ${expectedNodeVersion}`);
+}
 if (capturePath && !target.captureName) {
   fail("Capture runtime is invalid for the Client package target");
 }

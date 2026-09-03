@@ -15,13 +15,12 @@ import {
   waitForVersion,
   withDeadline,
 } from "./browser-gate-harness";
+import {
+  decodeClientEndpoint,
+  type ClientEndpoint as Endpoint,
+} from "./client-gate-endpoint";
 
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
-
-interface Endpoint {
-  port: number;
-  instanceToken: string;
-}
 
 interface GateReport {
   passed: boolean;
@@ -67,11 +66,7 @@ async function readEndpoint(
         if (newline < 0) return;
         client.stdout.off("data", onData);
         try {
-          const value = JSON.parse(buffered.slice(0, newline)) as Partial<Endpoint>;
-          if (typeof value.port !== "number" || typeof value.instanceToken !== "string") {
-            throw new Error("Client endpoint is invalid");
-          }
-          resolveEndpoint(value as Endpoint);
+          resolveEndpoint(decodeClientEndpoint(buffered.slice(0, newline)));
         } catch (error) {
           rejectEndpoint(error);
         }

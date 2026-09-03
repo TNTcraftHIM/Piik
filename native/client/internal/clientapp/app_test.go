@@ -1,6 +1,7 @@
 package clientapp
 
 import (
+	"context"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -47,11 +48,29 @@ func TestLaunchURLCarriesNativeSelectionWithoutChangingOrigin(t *testing.T) {
 	})
 	parsed, err := url.Parse(value)
 	if err != nil || parsed.Scheme != "https" || parsed.Host != "share.example" ||
-		parsed.Query().Get("screener-native") != "1" ||
-		parsed.Query().Get("screener-native-window") != "My Game" ||
-		parsed.Query().Get("screener-native-adapter") != "2" ||
-		parsed.Query().Get("screener-native-encoder") != "1" {
+		parsed.RawQuery != "" {
 		t.Fatalf("launch URL = %q, %v", value, err)
+	}
+	fragment, err := url.ParseQuery(parsed.Fragment)
+	if err != nil || fragment.Get("screener-native") != "1" ||
+		fragment.Get("screener-native-window") != "My Game" ||
+		fragment.Get("screener-native-adapter") != "2" ||
+		fragment.Get("screener-native-encoder") != "1" {
+		t.Fatalf("native launch fragment = %q, %v", parsed.Fragment, err)
+	}
+}
+
+func TestNativeRuntimeRequiresTheExplicitLaunchMode(t *testing.T) {
+	runtime, err := nativeRuntimeForOptions(t.Context(), Options{
+		CaptureProcess: "missing-capture-process",
+	})
+	if err != nil || runtime.available() || runtime.controlFactory(false) != nil {
+		t.Fatalf("ordinary Client exposed native runtime: %+v, %v", runtime, err)
+	}
+	if _, err = nativeRuntimeForOptions(context.Background(), Options{
+		Native: true, CaptureProcess: "missing-capture-process",
+	}); err == nil {
+		t.Fatal("explicit native mode accepted a missing capture process")
 	}
 }
 
@@ -59,6 +78,21 @@ func TestLaunchURLLeavesOrdinaryClientURLUntouched(t *testing.T) {
 	const original = "http://localhost:8787/#client-access=secret"
 	if actual := launchURL(original, Options{}); actual != original {
 		t.Fatalf("ordinary launch URL = %q", actual)
+	}
+}
+
+func TestLaunchURLPreservesLocalAccessInsideThePrivateFragment(t *testing.T) {
+	value := launchURL("http://localhost:8787/#client-access=secret", Options{
+		Native: true, NativeWindowTitle: "My Game",
+	})
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.RawQuery != "" {
+		t.Fatalf("local native launch URL = %q, %v", value, err)
+	}
+	fragment, err := url.ParseQuery(parsed.Fragment)
+	if err != nil || fragment.Get("client-access") != "secret" ||
+		fragment.Get("screener-native-window") != "My Game" {
+		t.Fatalf("local native launch fragment = %q, %v", parsed.Fragment, err)
 	}
 }
 

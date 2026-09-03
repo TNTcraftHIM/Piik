@@ -22,7 +22,7 @@ func main() {
 	flag.BoolVar(&options.Link, "link", false, "create one public Viewer invitation link")
 	flag.StringVar(&options.NodePath, "node", "", "path to the bundled Node runtime")
 	flag.StringVar(&options.AppDirectory, "app", "", "path to the bundled Screener application")
-	flag.StringVar(&options.CaptureProcess, "capture-process", "", "path to the Windows native capture process")
+	flag.StringVar(&options.CaptureProcess, "capture-process", "", "path to the platform native capture process")
 	flag.StringVar(&options.TunnelProcess, "tunnel-process", "", "path to the packaged public tunnel process")
 	flag.StringVar(&options.ConfigPath, "config", "", "path to the Client configuration file")
 	flag.StringVar(&options.LANAddress, "lan-address", "", "LAN IPv4 address used in Local invitations")

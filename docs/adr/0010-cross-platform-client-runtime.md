@@ -66,7 +66,11 @@ Hosted and Local deployments diverge without improving the media path.
    edge supplies Host preview and the existing Browser LiveKit publisher. It
    neither consumes route-copy capacity nor starts port mapping; an assigned SFU
    publication still consumes its existing route copy. Native code does not
-   implement LiveKit or another representation policy.
+   implement LiveKit or another representation policy. Unless the user starts
+   the Client with explicit native media, health advertises no native capability
+   and no native control session exists. One-shot target choices travel only in
+   the URL fragment and are removed by the Browser bootstrap, never sent to the
+   configured Site.
 9. The Client currently uses the system Browser as its only UI. With no saved
    Site it supervises the same TypeScript server in Local mode; with a saved
    Site it opens that origin while retaining the loopback runtime. An embedded
@@ -88,7 +92,9 @@ Hosted and Local deployments diverge without improving the media path.
 13. Client assembly consumes the immutable Web/Server application release from
    the same full Git revision and an explicit supported target. The Go binary,
    matching target Node runtime, and `app/REVISION` form one package; revision
-   mismatch fails rather than loading a stale private contract.
+   mismatch fails rather than loading a stale private contract. Client-scoped
+   pull requests build every target and must start the assembled Local authority,
+   pass `/healthz`, and stop it cleanly before the candidate is accepted.
 14. The root package manifest is the single build/runtime dependency contract:
     Browser-only libraries stay in `devDependencies`, while release and Client
     assembly install the same manifest with `--omit=dev` for the server runtime.

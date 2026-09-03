@@ -14,6 +14,10 @@ import {
   waitForVersion,
   withDeadline,
 } from "./browser-gate-harness";
+import {
+  decodeClientEndpoint,
+  type ClientEndpoint as Endpoint,
+} from "./client-gate-endpoint";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const BUILD_ROOT = join(ROOT, "build", "client-check");
@@ -43,13 +47,6 @@ interface CaptureEvidence {
   frames: number;
   keyFrameRequested: boolean;
   recoveryFrame: boolean;
-}
-
-interface Endpoint {
-  url: string;
-  host: string;
-  port: number;
-  instanceToken: string;
 }
 
 interface MediaEvidence {
@@ -202,16 +199,7 @@ async function readEndpoint(child: ChildProcessWithoutNullStreams): Promise<Endp
         if (newline < 0) return;
         child.stdout.off("data", onData);
         try {
-          const value = JSON.parse(buffered.slice(0, newline)) as Partial<Endpoint>;
-          if (
-            typeof value.url !== "string" ||
-            typeof value.host !== "string" ||
-            typeof value.port !== "number" ||
-            typeof value.instanceToken !== "string"
-          ) {
-            throw new Error("Client endpoint is invalid");
-          }
-          resolveEndpoint(value as Endpoint);
+          resolveEndpoint(decodeClientEndpoint(buffered.slice(0, newline)));
         } catch (error) {
           rejectEndpoint(error);
         }

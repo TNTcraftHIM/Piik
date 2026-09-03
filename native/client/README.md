@@ -137,8 +137,10 @@ app/node_modules
 The Client executable and application must contain the same full Git revision.
 No compatibility reader accepts a mismatched private build.
 
-For a native Host smoke run, start the Client with `--native` and optionally
-`--native-window-title <text>`. The Client opens the normal Host page with a
+For a native Host smoke run, start the Client with `--native`. If more than one
+non-Screener window is available, also pass unique
+`--native-window-title <text>`. The Client never guesses among multiple targets.
+It opens the normal Host page with a
 one-share native capture request; the page still creates the room and sends
 the current SDP/ICE through the selected authority. A configured Site supplies
 its normal Internet routing and SFU fallback. Without a Site, `--link` exposes

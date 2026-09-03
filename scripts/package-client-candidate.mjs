@@ -1,20 +1,20 @@
 #!/usr/bin/env node
 
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   chmodSync,
   createWriteStream,
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
   readdirSync,
   realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
+import { networkInterfaces, tmpdir } from "node:os";
+import { createServer } from "node:net";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -72,14 +72,148 @@ async function download(url, path) {
   await pipeline(Readable.fromWeb(response.body), createWriteStream(path));
 }
 
-function verifyPackage(root, target, revision) {
+function delay(ms) {
+  return new Promise((resolveDelay) => setTimeout(resolveDelay, ms));
+}
+
+async function reservePort() {
+  const server = createServer();
+  return await new Promise((resolvePort, rejectPort) => {
+    server.once("error", rejectPort);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        rejectPort(new Error("Client smoke port reservation failed"));
+        return;
+      }
+      server.close((error) =>
+        error ? rejectPort(error) : resolvePort(address.port),
+      );
+    });
+  });
+}
+
+function smokeLANAddress() {
+  const addresses = Object.values(networkInterfaces())
+    .flatMap((entries) => entries ?? [])
+    .filter((entry) => entry.family === "IPv4" && !entry.internal)
+    .map((entry) => entry.address)
+    .sort();
+  if (addresses.length === 0) fail("Client smoke has no active LAN IPv4 address");
+  return addresses[0];
+}
+
+async function waitForExit(child, timeoutMs) {
+  if (child.exitCode !== null || child.signalCode !== null) return child.exitCode;
+  return await new Promise((resolveExit, rejectExit) => {
+    const timer = setTimeout(() => {
+      child.off("exit", onExit);
+      rejectExit(new Error("Packaged Client did not stop"));
+    }, timeoutMs);
+    const onExit = (code) => {
+      clearTimeout(timer);
+      resolveExit(code);
+    };
+    child.once("exit", onExit);
+  });
+}
+
+async function stopSmokeChild(child) {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  try {
+    child.stdin.write("\n");
+  } catch {}
+  try {
+    await waitForExit(child, 5_000);
+    return;
+  } catch {}
+  if (process.platform === "win32" && child.pid !== undefined) {
+    spawnSync("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], {
+      stdio: "ignore",
+      windowsHide: true,
+    });
+  } else {
+    child.kill("SIGTERM");
+  }
+  try {
+    await waitForExit(child, 3_000);
+    return;
+  } catch {}
+  child.kill("SIGKILL");
+  await waitForExit(child, 5_000).catch(() => undefined);
+}
+
+async function verifyLocalPackage(root, target, temporaryRoot) {
+  const client = join(root, target.clientName);
+  const port = await reservePort();
+  const healthURL = `http://127.0.0.1:${port}/healthz`;
+  const child = spawn(client, [
+    "--local",
+    "--config", join(temporaryRoot, "smoke-client.json"),
+    "--lan-address", smokeLANAddress(),
+    "--port", String(port),
+  ], {
+    cwd: root,
+    env: { ...process.env, SCREENER_CLIENT_GATE_NO_BROWSER: "true" },
+    stdio: "pipe",
+    windowsHide: true,
+  });
+  let spawnFailure = null;
+  child.once("error", (error) => {
+    spawnFailure = error;
+  });
+  child.stdin.on("error", () => undefined);
+  child.stdout.resume();
+  child.stderr.resume();
+  try {
+    const deadline = Date.now() + 15_000;
+    let ready = false;
+    while (Date.now() < deadline) {
+      if (spawnFailure) break;
+      if (child.exitCode !== null || child.signalCode !== null) break;
+      try {
+        const response = await fetch(healthURL, { signal: AbortSignal.timeout(500) });
+        ready = response.ok && (await response.json())?.status === "ok";
+        if (ready) break;
+      } catch {}
+      await delay(100);
+    }
+    if (!ready) fail("Packaged Client Local health did not become ready");
+    child.stdin.write("\n");
+    if (await waitForExit(child, 10_000) !== 0) {
+      fail("Packaged Client did not stop cleanly");
+    }
+    const closeDeadline = Date.now() + 5_000;
+    while (Date.now() < closeDeadline) {
+      try {
+        await fetch(healthURL, { signal: AbortSignal.timeout(300) });
+      } catch {
+        return;
+      }
+      await delay(100);
+    }
+    fail("Packaged Client left its Local server listening");
+  } finally {
+    await stopSmokeChild(child);
+  }
+}
+
+async function verifyPackage(
+  root,
+  target,
+  revision,
+  expectedNodeVersion,
+  temporaryRoot,
+) {
   const packagedRevision = readFileSync(join(root, "REVISION"), "ascii").trim();
   if (packagedRevision !== revision) fail("Client package revision mismatch");
 
   const node = join(root, "runtime", "node", target.nodeName);
   const client = join(root, target.clientName);
   const tunnel = join(root, "runtime", "tunnel", target.tunnelName);
-  run(node, ["--version"], root);
+  if (run(node, ["--version"], root) !== expectedNodeVersion) {
+    fail(`Packaged Node runtime must be ${expectedNodeVersion}`);
+  }
   run(client, ["--help"], root);
   run(tunnel, ["--version"], root);
 
@@ -88,6 +222,7 @@ function verifyPackage(root, target, revision) {
     const probe = JSON.parse(run(capture, ["--probe"], root));
     if (probe?.protocol !== 2) fail("Packaged native capture probe is invalid");
   }
+  await verifyLocalPackage(root, target, temporaryRoot);
 }
 
 if (process.argv.length !== 5) {
@@ -107,7 +242,13 @@ if (process.platform !== target.nodePlatform || process.arch !== target.nodeArch
 assertOutsideRepository(repositoryRoot, outputRoot);
 
 const revision = run("git", ["rev-parse", "HEAD"], repositoryRoot).toLowerCase();
-const temporaryRoot = mkdtempSync(join(tmpdir(), `screener-client-release-${target.id}-`));
+const expectedNodeVersion = `v${readFileSync(
+  join(repositoryRoot, ".node-version"),
+  "ascii",
+).trim()}`;
+const temporaryRoot = join(tmpdir(), "screener-client-candidate", target.id);
+rmSync(temporaryRoot, { recursive: true, force: true });
+mkdirSync(temporaryRoot, { recursive: true, mode: 0o700 });
 try {
   const tunnelDownload = join(temporaryRoot, target.tunnelAsset);
   await download(
@@ -149,7 +290,13 @@ try {
   ];
   if (capture) assembleArguments.push("--capture", capture);
   run(process.execPath, assembleArguments, repositoryRoot);
-  verifyPackage(packageRoot, target, revision);
+  await verifyPackage(
+    packageRoot,
+    target,
+    revision,
+    expectedNodeVersion,
+    temporaryRoot,
+  );
 
   mkdirSync(outputRoot, { recursive: false, mode: 0o700 });
   const shortRevision = revision.slice(0, 7);

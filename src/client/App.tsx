@@ -16,7 +16,7 @@ import type { RuntimeCapabilities } from "../shared/protocol";
 import {
   parseAppRoute,
   readViewerRoute,
-  takeClientAccessBootstrap,
+  takeClientLaunchBootstrap,
 } from "./lib/session";
 import { AppHeader } from "./components/living/Header";
 import { BrandLoader } from "./components/living/BrandMark";
@@ -26,8 +26,9 @@ import { Glyph, type GlyphName } from "./ui/icons";
 import { useCopy } from "./ui/copy";
 
 const appRoute = parseAppRoute(window.location.pathname);
-const clientAccessBootstrap =
-  appRoute.kind === "host" ? takeClientAccessBootstrap() : null;
+const clientLaunchBootstrap =
+  appRoute.kind === "host" ? takeClientLaunchBootstrap() : null;
+const clientAccessBootstrap = clientLaunchBootstrap?.accessToken ?? null;
 const viewerRoute = appRoute.kind === "viewer" ? readViewerRoute() : null;
 const hostPageModule =
   appRoute.kind === "host" ? import("./pages/HostPage") : null;
@@ -276,6 +277,7 @@ function SiteAccessGate({
     }
     return (
       <HostPage
+        nativeLaunch={clientLaunchBootstrap?.native}
         natPredictionAvailable={capabilities?.natPrediction === true}
         onAuthorizationRequired={() =>
           setAccess({ kind: "required", error: t("gate.expired") })
