@@ -21,7 +21,7 @@ const (
 	maxSDPBytes         = 64 * 1024
 	maxSTUNURLs         = 4
 	maxSTUNURLBytes     = 512
-	DefaultSTUNURL      = "stun:share.bonfire.icu:3478"
+	DefaultSTUNURL      = "stun:stun.cloudflare.com:3478"
 	controlChannelLabel = "screener-pair-control-v1"
 	streamChannelLabel  = "screener-pair-stream-v1"
 )

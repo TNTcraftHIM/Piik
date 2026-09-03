@@ -46,7 +46,8 @@ the opened Browser, and paste its Viewer invitation into the Client console.
 Send the printed offer to a friend. That friend starts the same executable with
 `--pair-viewer`, pastes the offer, and returns the printed answer. The Viewer
 page opens after the Host pastes that answer. `--pair-stun <stun-url>` replaces
-the default `stun:share.bonfire.icu:3478` discovery service for that Host run.
+the default public `stun:stun.cloudflare.com:3478` discovery service for that
+Host run.
 
 ## Development
 
