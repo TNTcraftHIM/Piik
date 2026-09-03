@@ -201,13 +201,17 @@ async function main(): Promise<void> {
   const transport = transportArgs(remote.key);
   const destination = `${remote.user}@${remote.host}`;
   const go = process.env.SCREENER_GO?.trim() || "go";
+  const configuredClient = process.env.SCREENER_CLIENT_EXE?.trim();
+  const node = process.env.SCREENER_CLIENT_NODE?.trim() || process.execPath;
+  const app = process.env.SCREENER_CLIENT_APP?.trim() || ROOT;
   const tunnel = process.env.SCREENER_CLOUDFLARED?.trim() ||
     join(BUILD_ROOT, process.platform === "win32" ? "cloudflared.exe" : "cloudflared");
   const profile = await mkdtemp(join(tmpdir(), "screener-client-link-"));
   const port = await reservePort();
-  const clientBinary = join(BUILD_ROOT, process.platform === "win32"
-    ? "screener-client.exe"
-    : "screener-client");
+  const clientBinary = configuredClient || join(
+    BUILD_ROOT,
+    process.platform === "win32" ? "screener-client.exe" : "screener-client",
+  );
   let client: ChildProcessWithoutNullStreams | null = null;
   let publicOrigin = "";
   const result: GateResult = {
@@ -224,13 +228,15 @@ async function main(): Promise<void> {
   await mkdir(BUILD_ROOT, { recursive: true });
   try {
     result.stage = "build";
-    run(go, ["build", "-trimpath", "-o", clientBinary, "./cmd/screener-client"],
-      join(ROOT, "native", "client"));
+    if (!configuredClient) {
+      run(go, ["build", "-trimpath", "-o", clientBinary, "./cmd/screener-client"],
+        join(ROOT, "native", "client"));
+    }
     result.stage = "client-start";
     client = spawn(clientBinary, [
       "--link",
-      "--node", process.execPath,
-      "--app", ROOT,
+      "--node", node,
+      "--app", app,
       "--config", join(profile, "client.json"),
       "--port", String(port),
       "--lan-address", localLANAddress(),
