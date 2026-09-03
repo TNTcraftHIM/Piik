@@ -110,6 +110,12 @@ Native P2P quality evidence and the Browser-mediated native-source SFU happy
 path now have bounded gates. Production package integration, SFU recovery and
 endurance, and physical non-Windows capture remain unproved.
 
+A five-second headless topology run with 20 Viewers passed the existing route
+capacity, no-orphan-publication, quality-propagation, and decoded-frame checks;
+it is topology evidence, not a long-running or public-network quality claim.
+An isolated LiveKit Server 1.13.6 run also delivered 30 decoded 1280x720 native
+frames through the existing Browser SFU publisher and completed cleanup.
+
 The one-link gate started a session-scoped public origin from a Windows Client,
 confirmed that its ordinary invitation used that origin, and served the Viewer
 page plus the existing `/signal` WebSocket upgrade to an independent Linux host.
