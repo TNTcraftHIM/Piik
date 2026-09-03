@@ -44,9 +44,9 @@ Hosted and Local deployments diverge without improving the media path.
 7. A self-contained local deployment may serve reachable LAN peers without a
    central Screener service. Public-Internet use still needs persistent
    signaling and a reachable ICE path; removing a server does not create either.
-   The Client may select the official Site as a built-in public rendezvous so a
-   user need not enter an origin, while `--local` remains the serverless-LAN
-   composition.
+   Cross-network Local use requires either explicit Client-to-Client pairing or
+   an independently accepted rendezvous; a configured Site remains a different
+   deployment mode.
 8. Native media is selected for an entire Host share generation. One isolated
    platform capture feeds one encoded source and bounded independent Pion
    transports, with process-loopback audio sharing the same PeerConnection when

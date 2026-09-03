@@ -11,8 +11,6 @@ room store, signaling protocol, or route controller.
 - `--site <origin>` saves a Site and opens it on later launches. The Site owns
   rooms, persistence, routing, and SFU; the Client remains available through its
   loopback service for native media.
-- `--public` selects the built-in official Site without requiring the user to
-  type an origin; it uses the same persisted Site path as `--site`.
 - `--local` clears the saved Site choice and returns to the self-contained Local
   authority.
 
@@ -26,8 +24,7 @@ Client selects one Windows Graphics Capture target and one hardware H.264
 encoder, and on supported Windows builds captures that process's audio with
 WASAPI. Video and audio share the same room route and PeerConnection. Native
 media is currently P2P-only; omitting `--native` keeps the ordinary Browser
-capture path. `--public --native` uses the built-in Site for public signaling;
-`--local --native` is the self-contained LAN form.
+capture path. `--local --native` is the self-contained LAN form.
 
 The first Local launch creates one random access password in the user
 configuration directory. The Client passes it to its own Host page in a URL

@@ -19,7 +19,6 @@ func main() {
 		return nil
 	})
 	flag.BoolVar(&options.Local, "local", false, "use the self-contained Local room authority")
-	flag.BoolVar(&options.Public, "public", false, "use the official public Screener Site")
 	flag.StringVar(&options.NodePath, "node", "", "path to the bundled Node runtime")
 	flag.StringVar(&options.AppDirectory, "app", "", "path to the bundled Screener application")
 	flag.StringVar(&options.CaptureProcess, "capture-process", "", "path to the Windows native capture process")

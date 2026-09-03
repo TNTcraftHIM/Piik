@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
-
-	"github.com/TNTcraftHIM/Screener/native/client/internal/clientconfig"
 )
 
 func TestPackagePathsValidateAnExplicitPackage(t *testing.T) {
@@ -58,17 +56,6 @@ func TestLaunchURLLeavesOrdinaryClientURLUntouched(t *testing.T) {
 	const original = "http://localhost:8787/#client-access=secret"
 	if actual := launchURL(original, Options{}); actual != original {
 		t.Fatalf("ordinary launch URL = %q", actual)
-	}
-}
-
-func TestPublicOptionUsesTheBuiltInRendezvousSite(t *testing.T) {
-	config := clientconfig.Config{Version: 1, LocalAccessPassword: "abcdefghijklmnopqrstuvwxyzABCDEF"}
-	selected, err := applyMode(config, Options{Public: true})
-	if err != nil || selected.Site != DefaultPublicSite {
-		t.Fatalf("public mode = %+v, %v", selected, err)
-	}
-	if _, err = applyMode(config, Options{Public: true, Local: true}); err == nil {
-		t.Fatal("public and local modes were accepted together")
 	}
 }
 

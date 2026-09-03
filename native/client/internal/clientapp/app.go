@@ -20,17 +20,13 @@ import (
 	"github.com/TNTcraftHIM/Screener/native/client/internal/supervisor"
 )
 
-const (
-	DefaultLocalPort  = 8787
-	DefaultPublicSite = "https://share.bonfire.icu"
-)
+const DefaultLocalPort = 8787
 
 var BuildRevision = "development"
 
 type Options struct {
 	Site               string
 	SiteSet            bool
-	Public             bool
 	Local              bool
 	NodePath           string
 	AppDirectory       string
@@ -62,7 +58,7 @@ func Run(ctx context.Context, options Options) error {
 	if err != nil {
 		return err
 	}
-	if options.Public || options.SiteSet || options.Local {
+	if options.SiteSet || options.Local {
 		if err = clientconfig.Save(configPath, config); err != nil {
 			return errors.New("Screener Client configuration is unavailable")
 		}
@@ -78,13 +74,8 @@ func Run(ctx context.Context, options Options) error {
 }
 
 func applyMode(config clientconfig.Config, options Options) (clientconfig.Config, error) {
-	if (options.SiteSet && options.Local) ||
-		(options.Public && (options.SiteSet || options.Local)) {
-		return clientconfig.Config{}, errors.New("choose one of --site, --public, or --local")
-	}
-	if options.Public {
-		config.Site = DefaultPublicSite
-		return config, nil
+	if options.SiteSet && options.Local {
+		return clientconfig.Config{}, errors.New("choose either --site or --local")
 	}
 	if options.SiteSet {
 		var err error

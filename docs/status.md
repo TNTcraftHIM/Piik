@@ -132,10 +132,9 @@ This is the current execution index. Git history owns completed timelines;
   one shared Pion source feeding two Chrome transports, PLI recovery, and a
   remote `srflx`-to-`srflx` video path. Native process audio passes the bounded
   Windows Browser gate through the same PeerConnection when the capability
-  probe permits it. Native SFU, cross-platform capture, and package acceptance
-  remain outside the release. `--public` selects the
-  official Site without a typed origin; `--local` remains the no-central-service
-  LAN mode.
+  probe permits it. Native SFU, cross-platform capture, Client-to-Client public
+  pairing, and package acceptance remain outside the release. `--local` remains
+  the no-central-service LAN mode; `--site` explicitly selects a hosted Site.
 
 ## Current Hold
 

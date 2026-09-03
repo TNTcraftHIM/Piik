@@ -8,10 +8,11 @@ Browser relay; desktop and mobile Browsers are Viewer targets. It is not a
 public broadcast service. Source includes a cross-platform Client that reuses
 the TypeScript product core in a self-contained Local deployment or opens one
 configured Site through the system Browser. Its Go entry supervises Local Node
-and owns the explicit native Host media path. The Client can select the official
-Site without a typed origin for public signaling, while Local remains a
-serverless-LAN mode. Windows capture, hardware H.264, and a direct cross-NAT
-video and Windows process-audio gates are proven through the same media edge;
+and owns the explicit native Host media path. Local remains a serverless-LAN
+mode; cross-network Local use requires an explicit Client pairing path rather
+than silently selecting a hosted Site. Windows capture, hardware H.264, and
+direct cross-NAT video and Windows process-audio gates are proven through the
+same media edge;
 native SFU, other platforms, and broader package acceptance remain later gates.
 
 ## Product Map
