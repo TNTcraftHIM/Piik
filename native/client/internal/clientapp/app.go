@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/TNTcraftHIM/Screener/native/client/internal/browser"
 	"github.com/TNTcraftHIM/Screener/native/client/internal/clientconfig"
+	"github.com/TNTcraftHIM/Screener/native/client/internal/directpair"
 	"github.com/TNTcraftHIM/Screener/native/client/internal/lan"
 	"github.com/TNTcraftHIM/Screener/native/client/internal/loopback"
 	"github.com/TNTcraftHIM/Screener/native/client/internal/nativecapture"
@@ -20,7 +22,11 @@ import (
 	"github.com/TNTcraftHIM/Screener/native/client/internal/supervisor"
 )
 
-const DefaultLocalPort = 8787
+const (
+	DefaultLocalPort   = 8787
+	DefaultPairSTUNURL = directpair.DefaultSTUNURL
+	maxDirectPairs     = 20
+)
 
 var BuildRevision = "development"
 
@@ -28,6 +34,9 @@ type Options struct {
 	Site               string
 	SiteSet            bool
 	Local              bool
+	PairHost           bool
+	PairViewer         bool
+	PairSTUN           string
 	NodePath           string
 	AppDirectory       string
 	ConfigPath         string
@@ -39,9 +48,17 @@ type Options struct {
 	NativeWindowTitle  string
 	NativeAdapterIndex int
 	NativeEncoderIndex int
+	Input              io.Reader
+	Output             io.Writer
 }
 
 func Run(ctx context.Context, options Options) error {
+	if err := validateMode(options); err != nil {
+		return err
+	}
+	if options.PairViewer {
+		return runPairViewer(ctx, options)
+	}
 	configPath := strings.TrimSpace(options.ConfigPath)
 	if configPath == "" {
 		var err error
@@ -67,7 +84,7 @@ func Run(ctx context.Context, options Options) error {
 	if options.Native && !nativeMedia.available() {
 		return errors.New("Screener Client native capture is unavailable")
 	}
-	if config.Site != "" {
+	if config.Site != "" && !options.PairHost {
 		return runSite(ctx, config.Site, options, nativeMedia)
 	}
 	return runLocal(ctx, options, config, nativeMedia)
@@ -87,6 +104,22 @@ func applyMode(config clientconfig.Config, options Options) (clientconfig.Config
 		config.Site = ""
 	}
 	return config, nil
+}
+
+func validateMode(options Options) error {
+	if options.PairHost && options.PairViewer {
+		return errors.New("choose either --pair-host or --pair-viewer")
+	}
+	if options.PairHost && options.SiteSet {
+		return errors.New("--pair-host uses the self-contained Local authority")
+	}
+	if options.PairViewer && (options.SiteSet || options.Local || options.Native) {
+		return errors.New("--pair-viewer cannot start a Site, Local authority, or Host capture")
+	}
+	if options.PairHost && directpair.ValidateSTUNURL(pairSTUNURL(options)) != nil {
+		return errors.New("--pair-stun must be one valid UDP STUN URL")
+	}
+	return nil
 }
 
 func runSite(ctx context.Context, site string, options Options,
@@ -144,14 +177,24 @@ func runLocal(ctx context.Context, options Options, config clientconfig.Config,
 	}
 
 	entry := filepath.Join(appDirectory, "dist", "server", "server", "local-index.js")
+	stunURLs := []string(nil)
+	if options.PairHost {
+		stunURLs = []string{pairSTUNURL(options)}
+	}
 	localServer, err := supervisor.Start(ctx, supervisor.Command{
-		Path:        nodePath,
-		Args:        []string{entry},
-		Directory:   appDirectory,
-		Environment: localEnvironment(options.Port, selectedAddress, addresses, config.LocalAccessPassword),
-		Stdout:      os.Stdout,
-		Stderr:      os.Stderr,
-		HealthURL:   fmt.Sprintf("http://127.0.0.1:%d/healthz", options.Port),
+		Path:      nodePath,
+		Args:      []string{entry},
+		Directory: appDirectory,
+		Environment: localEnvironment(
+			options.Port,
+			selectedAddress,
+			addresses,
+			config.LocalAccessPassword,
+			stunURLs,
+		),
+		Stdout:    os.Stdout,
+		Stderr:    os.Stderr,
+		HealthURL: fmt.Sprintf("http://127.0.0.1:%d/healthz", options.Port),
 	})
 	if err != nil {
 		return err
@@ -170,6 +213,14 @@ func runLocal(ctx context.Context, options Options, config clientconfig.Config,
 			return errors.New("Screener Client could not open the Local page")
 		}
 	}
+	var pairDone <-chan error
+	if options.PairHost {
+		done := make(chan error, 1)
+		pairDone = done
+		go func() {
+			done <- runPairHost(ctx, options)
+		}()
+	}
 
 	select {
 	case <-ctx.Done():
@@ -184,6 +235,8 @@ func runLocal(ctx context.Context, options Options, config clientconfig.Config,
 			return errors.New("Screener Client runtime stopped unexpectedly")
 		}
 		return nil
+	case err = <-pairDone:
+		return err
 	}
 }
 
@@ -286,12 +339,19 @@ func packagePaths(nodePath, appDirectory string) (string, string, error) {
 	return nodePath, appDirectory, nil
 }
 
-func localEnvironment(port int, publicAddress string, addresses []string, password string) []string {
+func localEnvironment(
+	port int,
+	publicAddress string,
+	addresses []string,
+	password string,
+	stunURLs []string,
+) []string {
 	overrides := map[string]string{
 		"SCREENER_CLIENT_PORT":                  fmt.Sprint(port),
 		"SCREENER_CLIENT_LAN_ADDRESS":           publicAddress,
 		"SCREENER_CLIENT_ALLOWED_LAN_ADDRESSES": strings.Join(addresses, ","),
 		"SCREENER_CLIENT_LOCAL_PASSWORD":        password,
+		"STUN_URLS":                             strings.Join(stunURLs, ","),
 	}
 	result := make([]string, 0, len(os.Environ())+len(overrides))
 	for _, entry := range os.Environ() {

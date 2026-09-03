@@ -13,9 +13,10 @@ topics are not implementation authority.
    video gate now pass. Process-loopback audio passes the Windows Browser gate
    on the same PeerConnection with a video-only fallback; finish this boundary
    with native SFU behavior, native quality evidence, teardown under failure,
-   and a clean packaged Site run. No-Site Internet mode uses explicit dual-Client
-   pairing while retaining the Host's Local authority; STUN still cannot replace
-   signaling or an SFU/TURN fallback.
+   and a clean packaged Site run. No-Site Internet mode now has explicit dual-
+   Client pairing that retains the Host's Local authority and passes its remote
+   control-path gate. Prove decoded paired Browser media on a physical second
+   device; STUN still cannot provide an SFU/TURN fallback for a restricted pair.
 
 ## Parked Product Work
 

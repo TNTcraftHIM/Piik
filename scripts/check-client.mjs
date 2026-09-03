@@ -77,18 +77,32 @@ function runClientTests(go) {
     .split(/\r?\n/)
     .map((value) => value.trim())
     .filter(Boolean);
-  const mediaedgePackage = "github.com/TNTcraftHIM/Screener/native/client/internal/mediaedge";
-  const otherPackages = packages.filter((value) => value !== mediaedgePackage);
+  const stableNetworkPackages = [
+    {
+      package: "github.com/TNTcraftHIM/Screener/native/client/internal/directpair",
+      binary: "directpair.test.exe",
+    },
+    {
+      package: "github.com/TNTcraftHIM/Screener/native/client/internal/mediaedge",
+      binary: "mediaedge.test.exe",
+    },
+  ];
+  const stablePackageNames = new Set(
+    stableNetworkPackages.map((entry) => entry.package),
+  );
+  const otherPackages = packages.filter((value) => !stablePackageNames.has(value));
   if (otherPackages.length > 0) {
     run(go, ["test", ...otherPackages], { cwd: clientRoot });
   }
   const stableRoot = join(root, "build", "client-check");
   mkdirSync(stableRoot, { recursive: true });
-  const binary = join(stableRoot, "mediaedge.test.exe");
-  run(go, ["test", "-c", "-o", binary, "./internal/mediaedge"], {
-    cwd: clientRoot,
-  });
-  run(binary, ["-test.v"], { cwd: clientRoot });
+  for (const entry of stableNetworkPackages) {
+    const binary = join(stableRoot, entry.binary);
+    run(go, ["test", "-c", "-o", binary, entry.package], {
+      cwd: clientRoot,
+    });
+    run(binary, ["-test.v"], { cwd: clientRoot });
+  }
 }
 
 function checkWindowsCapture() {

@@ -13,10 +13,15 @@ room store, signaling protocol, or route controller.
   loopback service for native media.
 - `--local` clears the saved Site choice and returns to the self-contained Local
   authority.
+- `--pair-host` starts that Local authority with public STUN and accepts manually
+  paired Internet Viewers without changing the saved Site choice. A Viewer runs
+  `--pair-viewer`; the two users exchange the printed offer and answer once.
 
 Local mode uses memory-only rooms, Browser P2P relay, no LiveKit, and no NAT
-prediction. It works on a reachable LAN; a difficult Internet path has no SFU
-fallback. The Client chooses a sole private LAN IPv4 automatically. Use
+prediction. Ordinary Local works on a reachable LAN. Manual pairing tunnels the
+same HTTP and WebSocket control surface directly between two Clients and uses
+STUN for both that tunnel and the existing Browser media edges; a difficult path
+still has no SFU or TURN fallback. The Client chooses a sole private LAN IPv4 automatically. Use
 `--lan-address <address>` only when multiple real LAN interfaces are active.
 
 For a native Host, add `--native`. The system Browser remains the Host UI; the
@@ -33,7 +38,15 @@ fragment before continuing. Viewer invitations keep using the existing
 room-scoped grant.
 
 Press Enter in the Client console to end Local rooms and stop the bundled
-server. A Site-loaded Browser tab does not own the Client process.
+server. In pairing modes the console carries the offer/answer exchange, so use
+Ctrl+C to stop it. A Site-loaded Browser tab does not own the Client process.
+
+For a manually paired room, start the Host with `--pair-host`, create a room in
+the opened Browser, and paste its Viewer invitation into the Client console.
+Send the printed offer to a friend. That friend starts the same executable with
+`--pair-viewer`, pastes the offer, and returns the printed answer. The Viewer
+page opens after the Host pastes that answer. `--pair-stun <stun-url>` replaces
+the default `stun:share.bonfire.icu:3478` discovery service for that Host run.
 
 ## Development
 
@@ -104,9 +117,9 @@ No compatibility reader accepts a mismatched private build.
 For a native Host smoke run, start the Client with `--native` and optionally
 `--native-window-title <text>`. The Client opens the normal Host page with a
 one-share native capture request; the page still creates the room and sends
-the current SDP/ICE through the configured Site. A configured Site is required
-for cross-network viewers. Without a Site, the bundled Local authority is
-reachable only where its invitation address is reachable (normally the LAN).
+the current SDP/ICE through the selected authority. A configured Site supplies
+its normal Internet routing and SFU fallback. Without a Site, `--pair-host`
+provides the explicit Client-to-Client P2P-only Internet path described above.
 
 ## Gates
 
@@ -148,6 +161,13 @@ SCREENER_REMOTE_USER=<ssh-user> \
 SCREENER_REMOTE_SSH_KEY=/path/to/key \
 SCREENER_CLIENT_GATE_STUN_URLS=stun:<stun-host>:3478 \
 npm run gate:client-cross-nat
+
+SCREENER_CLIENT_PAIR_GATE=true \
+SCREENER_GO=/path/to/go \
+SCREENER_REMOTE_HOST=<public-test-host> \
+SCREENER_REMOTE_USER=<ssh-user> \
+SCREENER_REMOTE_SSH_KEY=/path/to/key \
+npm run gate:client-pair
 ```
 
 The loopback health response reports window-video, process-audio, and hardware

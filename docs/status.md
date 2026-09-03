@@ -132,9 +132,12 @@ This is the current execution index. Git history owns completed timelines;
   one shared Pion source feeding two Chrome transports, PLI recovery, and a
   remote `srflx`-to-`srflx` video path. Native process audio passes the bounded
   Windows Browser gate through the same PeerConnection when the capability
-  probe permits it. Native SFU, cross-platform capture, Client-to-Client public
-  pairing, and package acceptance remain outside the release. `--local` remains
-  the no-central-service LAN mode; `--site` explicitly selects a hosted Site.
+  probe permits it. Manual Client pairing now preserves the Host Local authority
+  and passes an Internet Windows-to-Linux HTTP/WebSocket tunnel gate without a
+  Hosted room service; paired Browser media remains a physical gate. Native SFU,
+  cross-platform capture, and package acceptance remain outside the release.
+  `--local` remains LAN-only by default; `--site` explicitly selects a hosted
+  Site.
 
 ## Current Hold
 

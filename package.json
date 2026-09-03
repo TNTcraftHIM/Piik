@@ -19,6 +19,7 @@
     "gate:client-media": "tsx scripts/client-media-gate.ts",
     "gate:client-native-host": "tsx scripts/client-native-host-gate.ts",
     "gate:client-cross-nat": "tsx scripts/client-native-host-gate.ts",
+    "gate:client-pair": "tsx scripts/client-pair-gate.ts",
     "start": "node dist/server/server/index.js",
     "gate:peer-topology-loopback": "tsx scripts/peer-assisted-benchmark.ts",
     "gate:sfu-admission": "vitest run tests/room-route-controller.test.ts tests/hybrid-media-router.test.ts tests/sfu-resource-admission.test.ts tests/sfu-room-control.test.ts tests/livekit-token.test.ts tests/sfu-client.test.ts tests/route-transition.test.ts tests/server-config.test.ts tests/server-http.test.ts tests/server-signal.test.ts",

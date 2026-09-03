@@ -164,7 +164,9 @@ not claim operator-blind media without a separately accepted application E2EE
 design. All-UDP-blocked networks currently end in bounded failure.
 
 Client Local mode runs this same graph with peer-assisted media enabled and no
-SFU, STUN, or NAT prediction. Reachable LAN peers may form the ordinary Browser
-relay tree; an unreachable pairing fails within the existing bounded route
-operation. Local mode adds no route type, score, or fallback. Selecting a Site
-uses that deployment's current transport configuration instead.
+SFU or NAT prediction. It uses no STUN by default. Explicit Client pairing adds
+one public or user-selected STUN service to the direct Client control association
+and the same ordinary Browser media edges. Reachable peers may form the ordinary
+Browser relay tree; an unreachable pairing fails without adding a route type,
+score, or fallback. Selecting a Site uses that deployment's current transport
+configuration instead.

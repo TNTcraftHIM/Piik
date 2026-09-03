@@ -44,8 +44,14 @@ Hosted and Local deployments diverge without improving the media path.
 7. A self-contained local deployment may serve reachable LAN peers without a
    central Screener service. Public-Internet use still needs persistent
    signaling and a reachable ICE path; removing a server does not create either.
-   Cross-network Local use requires either explicit Client-to-Client pairing or
-   an independently accepted rendezvous; a configured Site remains a different
+   Explicit Client-to-Client pairing keeps the Host's Local Node as the sole
+   room authority. The users manually exchange one WebRTC offer and answer; the
+   resulting DTLS/SCTP association maps each Viewer-local TCP connection to one
+   reliable ordered DataChannel and forwards it to the Host's loopback Node.
+   This carries the unchanged HTTP and WebSocket control surface rather than
+   reimplementing either protocol. The invitation path is delivered after DTLS,
+   and both Browsers use the same localhost port so existing Origin and Viewer-
+   grant authority remains unchanged. A configured Site remains a different
    deployment mode.
 8. Native media is selected for an entire Host share generation. One isolated
    platform capture feeds one encoded source and bounded independent Pion
@@ -58,9 +64,11 @@ Hosted and Local deployments diverge without improving the media path.
    Site it opens that origin while retaining the loopback runtime. An embedded
    shell requires a reproduced product failure and one comparative decision.
 10. Local mode is one explicit server composition: static current assets,
-    memory-only rooms, peer-assisted media, no SQLite, no SFU, no STUN/NAT
-    prediction, and localhost plus current LAN IPv4 origins. It changes no
-    Hosted shutdown or persistence behavior.
+    memory-only rooms, peer-assisted media, no SQLite, no SFU, no NAT prediction,
+    and localhost plus current LAN IPv4 origins. It uses no STUN by default;
+    explicit Client pairing supplies one public or user-selected STUN URL to the
+    pairing association and existing Browser media edges. It changes no Hosted
+    shutdown or persistence behavior.
 11. One Client configuration owns the optional Site origin and a generated
     Local access password. The Client bootstraps its own Host page through a
     fragment that is consumed before authentication; friends use the existing
@@ -86,17 +94,19 @@ compatibility protocol, owns their lifetime.
 Windows gates prove loopback discovery, Local static startup, automatic Host
 access, LAN invitation construction, a three-Viewer Browser relay tree, two
 process-isolated hardware-H.264/Pion edges sharing one encoded source and
-decoded by Chrome, and bounded process cleanup. The native Host path now uses
-  the current Browser route and a remote Pion gate has received video over a
-  direct `srflx`-to-`srflx` pair. A Windows Browser gate also receives
-  process-loopback Opus on both native edges. Native SFU/quality evidence,
-  other platform capture, and no-Site Internet rendezvous remain separate
-  gates.
+decoded by Chrome, and bounded process cleanup. The native Host path uses the
+current Browser route and a remote Pion gate has received video over a direct
+`srflx`-to-`srflx` pair. A Windows Browser gate also receives process-loopback
+Opus on both native edges. A separate Windows-to-Linux gate proves manual
+Client pairing and the unchanged HTTP, Viewer-page, and WebSocket control path.
+Native SFU/quality evidence, other platform capture, and paired Browser media
+remain separate gates.
 
 ## Primary Sources
 
 - [Go child-process lifecycle](https://pkg.go.dev/os/exec)
 - [WebRTC peer connections and signaling](https://webrtc.org/getting-started/peer-connections)
+- [Pion detached DataChannels](https://github.com/pion/webrtc/tree/master/examples/data-channels-detach-create)
 - [RFC 6455 WebSocket Origin model](https://www.rfc-editor.org/rfc/rfc6455.html)
 - [Chrome Local Network Access](https://developer.chrome.com/blog/local-network-access)
 - [Discord local RPC](https://docs.discord.com/developers/topics/rpc)

@@ -67,10 +67,11 @@ request was blocked. The gate checks both expected outcomes.
 A self-contained LAN room uses a localhost Host URL and a selected LAN IPv4
 Viewer URL backed by the same local TypeScript process. Its generated access
 password is persisted once and passed only to the Client's Host page in a
-consumed fragment. Internet use still requires persistent signaling and a
-reachable ICE path. Multicast discovery,
-DHT, manual SDP, port mapping, and rendezvous services are not prerequisites for
-the LAN composition and remain separate decisions.
+consumed fragment. For explicit Internet pairing, Pion's detached DataChannel
+API exposes each SCTP stream as an `io.ReadWriteCloser`; mapping one Browser TCP
+connection to one reliable ordered DataChannel preserves the existing HTTP and
+WebSocket implementation without another multiplexer or application protocol.
+The Host's Local Node remains the sole room and signaling authority.
 
 ## UI Runtime Boundary
 
@@ -111,6 +112,10 @@ On Windows with Chrome for Testing 151.0.7922.138:
 - the native Host path created a Local room and a remote Pion Viewer received
   30 packets over a selected `srflx`-to-`srflx` pair; the reverse SSH link in
   that gate carried signaling only.
+- a Windows Host Client and Linux Viewer Client manually exchanged gathered SDP,
+  selected a public-Internet Pion path, and carried the existing `/healthz`,
+  Viewer page, and `/signal` WebSocket upgrade through that direct association;
+  no Hosted room or signaling service participated.
 
 The peer topology gate now treats native `getStats()` RTP identity and frame
 totals as its portable core proof. Detailed Screener quality metrics enrich a
@@ -126,11 +131,14 @@ deployment no longer erases valid native RTCStats.
 - Exercise the native Host on a configured Site and representative Browsers;
   native quality evidence, audio, SFU publication, and non-Windows capture
   remain undefined.
+- Exercise paired Browser media on a physical second device; the current paired
+  gate proves the complete control path, not decoded Browser frames.
 
 ## Sources
 
 - [Go `os/exec`](https://pkg.go.dev/os/exec)
 - [WebRTC peer connections](https://webrtc.org/getting-started/peer-connections)
+- [Pion detached DataChannels](https://github.com/pion/webrtc/tree/master/examples/data-channels-detach-create)
 - [RFC 6455](https://www.rfc-editor.org/rfc/rfc6455.html)
 - [Chrome Local Network Access](https://developer.chrome.com/blog/local-network-access)
 - [Discord RPC](https://docs.discord.com/developers/topics/rpc)

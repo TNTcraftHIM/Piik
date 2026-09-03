@@ -97,6 +97,13 @@ also receives process-loopback Opus on both native edges (66 packets per edge
 in the 2026-09-03 run). Native SFU publication, native quality evidence, and
 production package integration remain unproved.
 
+The manual Client-pair gate connected a Windows Host Client to a Linux Viewer
+Client over public ICE without a Hosted room or signaling service. Through that
+association the remote endpoint received the current health response and Viewer
+page and completed the existing `/signal` WebSocket upgrade. The gate also
+proved bounded process and remote-artifact cleanup. It does not yet prove decoded
+Browser media on a physical second device.
+
 ## Interpretation Rules
 
 - Configuration, unit tests, loopback, and synthetic signaling prove invariants,

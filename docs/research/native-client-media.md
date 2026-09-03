@@ -31,7 +31,7 @@ The opt-in `gate:client-media` run proved, in order:
 - the self-hosted STUN endpoint produced ordinary `host` and `srflx`
   candidates;
 - process-loopback audio produced Opus RTP on both native edges (66 packets per
-  edge in the bounded run;
+  edge in the bounded run);
 - Client, capture, Browser, ports, and the isolated profile all closed.
 
 Unit coverage separately enforces the supplied edge capacity, forwards PLI/FIR
@@ -40,7 +40,7 @@ and bounds the pure-Go Opus encoder's steady-state allocations. The native Host
 session starts process-loopback audio only when the capture probe advertises it;
 an audio start or read failure leaves the video session alive. The cross-NAT
 result proves reachability and RTP delivery, not heterogeneous congestion
-behavior or a no-rendezvous Internet mode.
+behavior or a paired no-Site Browser media session.
 
 The audio adapter uses `github.com/thesyncim/gopus` behind the private
 `nativeaudio` boundary. It accepts fixed 48 kHz stereo PCM16/20 ms frames,
@@ -55,10 +55,11 @@ changes, native quality evidence, macOS/Linux capture, or endurance. Native Host
 media is exposed only through the explicit Client `--native` launch; these other
 capabilities remain unavailable there.
 
-No-Site Internet use still needs a lightweight rendezvous service. Public STUN
-is an optional address-discovery dependency; its operator sees endpoint
-metadata but never carries DTLS-SRTP media. STUN alone does not exchange peer
-descriptions and cannot replace SFU/TURN on a restricted pair.
+No-Site Internet control can use the explicit manual dual-Client pairing owned
+by ADR-0010; its remote gate does not yet prove decoded Browser media. Public
+STUN is an address-discovery dependency in that mode; its operator sees endpoint
+metadata but never carries DTLS-SRTP media. STUN alone cannot replace SFU/TURN
+on a restricted pair.
 
 The next native-only NAT gate is an optional PCP/NAT-PMP/UPnP mapping for the
 same Pion UDP port, following Tailscale/libp2p practice. It is not implemented
