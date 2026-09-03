@@ -75,9 +75,13 @@ Hosted and Local deployments diverge without improving the media path.
     Node stdin, waits, and applies one bounded process timeout. It does not
     restart a vanished authority.
 13. Client assembly consumes the immutable Web/Server application release from
-    the same full Git revision. The Go binary, bundled Node runtime, and
-    `app/REVISION` form one package; revision mismatch fails rather than loading
-    a stale private contract.
+   the same full Git revision. The Go binary, bundled Node runtime, and
+   `app/REVISION` form one package; revision mismatch fails rather than loading
+   a stale private contract.
+14. The root package manifest is the single build/runtime dependency contract:
+    Browser-only libraries stay in `devDependencies`, while release and Client
+    assembly install the same manifest with `--omit=dev` for the server runtime.
+    No second Client dependency list or post-install package surgery is used.
 
 ## Consequences
 

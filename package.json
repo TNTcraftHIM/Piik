@@ -32,11 +32,7 @@
     "check": "npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
-    "livekit-client": "2.22.1",
     "livekit-server-sdk": "2.18.0",
-    "react": "19.2.8",
-    "react-dom": "19.2.8",
-    "sdp-transform": "3.0.0",
     "sirv": "3.0.2",
     "ws": "8.21.3",
     "zod": "4.4.3"
@@ -48,6 +44,10 @@
     "@types/sdp-transform": "3.0.0",
     "@types/ws": "8.18.1",
     "@vitejs/plugin-react": "6.0.5",
+    "livekit-client": "2.22.1",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "sdp-transform": "3.0.0",
     "tsx": "4.23.12",
     "typescript": "~6.0.3",
     "vite": "8.2.1",
