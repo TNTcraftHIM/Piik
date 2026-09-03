@@ -6,7 +6,7 @@ import {
 } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { createServer } from "node:http";
-import { mkdtemp } from "node:fs/promises";
+import { mkdir, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -21,6 +21,7 @@ import {
 } from "./browser-gate-harness";
 
 const ROOT = resolve(import.meta.dirname, "..");
+const BUILD_ROOT = join(ROOT, "build", "client-check");
 const SOURCE_TITLE = "Screener Native Gate Source";
 
 interface Endpoint {
@@ -349,14 +350,15 @@ async function main(): Promise<void> {
   const node = process.env.SCREENER_NODE?.trim() || process.execPath;
   const profile = await mkdtemp(join(tmpdir(), "screener-client-media-"));
   const sourceProfile = await mkdtemp(join(tmpdir(), "screener-client-media-"));
+  await mkdir(BUILD_ROOT, { recursive: true });
   const sourcePort = await reservePort();
   const appPort = await reservePort();
   const debugPort = await reservePort();
   const clientConfig = join(profile, "client.json");
-  const captureBuild = join(profile, "capture");
-  const clientBinary = join(profile, "screener-client.exe");
+  const captureBuild = BUILD_ROOT;
+  const clientBinary = join(BUILD_ROOT, "screener-client.exe");
   const captureBinary = join(captureBuild, "screener-client-capture.exe");
-  const remoteBinary = join(profile, "screener-peer-gate-linux");
+  const remoteBinary = join(BUILD_ROOT, "screener-peer-gate-linux");
   let source: { close(): Promise<void> } | null = null;
   let client: ChildProcessWithoutNullStreams | null = null;
   let sourceChrome: ChildProcessWithoutNullStreams | null = null;

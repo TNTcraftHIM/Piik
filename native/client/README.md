@@ -55,6 +55,11 @@ The repository-level entry used locally and by CI is:
 npm run check:client
 ```
 
+On Windows, its generated Client, capture, and media-test executables are
+written to the ignored repository `build/client-check` directory and reused on
+the next run. This keeps the executable identity stable for the system firewall;
+the files are local build output and are never packaged or committed.
+
 It runs Go formatting, unit tests, vet, and the three supported cross-builds.
 On Windows it also compiles the isolated capture process and validates its
 bounded capability response. Real capture, GPU attribution, Browser decode, and

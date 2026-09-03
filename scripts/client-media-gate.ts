@@ -16,6 +16,7 @@ import {
 } from "./browser-gate-harness";
 
 const ROOT = resolve(import.meta.dirname, "..");
+const BUILD_ROOT = join(ROOT, "build", "client-check");
 const SOURCE_TITLE = "Screener Native Gate Source";
 const GATE_STUN_URL =
   process.env.SCREENER_CLIENT_GATE_STUN_URL?.trim() ||
@@ -483,7 +484,11 @@ async function main(): Promise<void> {
   if (!chromePath) throw new Error("CHROME_PATH is required");
 
   const profile = await mkdtemp(join(tmpdir(), "screener-client-media-"));
-  const buildRoot = join(profile, "capture");
+  // Keep network-capable binaries at a stable repository path. Windows
+  // associates its firewall decision with the full executable path; the
+  // disposable Browser profile remains in the system temp directory.
+  const buildRoot = BUILD_ROOT;
+  await mkdir(buildRoot, { recursive: true });
   const pagePort = await reservePort();
   const debugPort = await reservePort();
   let server: Awaited<ReturnType<typeof startPageServer>> | null = null;
@@ -586,7 +591,7 @@ async function main(): Promise<void> {
     await stopCapture(capture);
     capture = null;
 
-    const packageRoot = join(profile, "client");
+    const packageRoot = join(buildRoot, "media-package");
     const nativeRoot = join(packageRoot, "runtime", "native");
     await mkdir(nativeRoot, { recursive: true });
     await copyFile(
