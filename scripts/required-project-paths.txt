@@ -30,6 +30,7 @@ docs/operations/self-hosting.md
 docs/reference/configuration.md
 scripts/package-app-release.mjs
 scripts/assemble-client.mjs
+scripts/package-client-candidate.mjs
 scripts/check-client.mjs
 scripts/client-native-host-gate.ts
 native/client/cmd/screener-peer-gate/main.go

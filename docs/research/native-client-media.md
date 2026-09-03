@@ -87,6 +87,25 @@ and release. Pion v4.2.18 can mux host candidates; its STUN-on-the-same-socket
 Universal UDP mux API is not yet in that stable release, so Screener does not
 track an unreleased commit or recreate ICE internals.
 
+Pion's already-linked interceptor module includes transport-wide feedback,
+pacing, and Google congestion control. Its send-side estimator exposes target
+bitrate changes and controller state; this is the mature input for future native
+edge evidence. It is not yet wired because Screener's current hardware encoder
+produces one shared representation while each edge owns a different estimator.
+Applying one edge's target globally would recreate the weak-Viewer coupling the
+native path is meant to avoid. The next gate must first prove a bounded queue and
+encoder-control policy; raw loss, RTT, or an application score remains rejected.
+
+Non-Windows capture keeps the existing process/frame boundary and replaces only
+the platform sidecar. On macOS, ScreenCaptureKit supplies system source
+selection and `CMSampleBuffer` output, while VideoToolbox can require and report
+hardware H.264. On Wayland Linux, the XDG ScreenCast Portal owns source consent
+and returns PipeWire streams; portal version 6 clients identify streams by
+`pipewire-serial` rather than a reusable node ID. These platform contracts rule
+out a fake common window handle. macOS uses the system sharing picker and Linux
+uses the portal picker, while both feed the same native Host media edge after
+encoding.
+
 ## Implementation Boundary
 
 - `nativecapture` owns the child process and bounded frame protocol.
@@ -106,9 +125,14 @@ compatibility inputs. Historical measurements remain in the separately marked
 - [WASAPI process loopback](https://learn.microsoft.com/en-us/samples/microsoft/windows-classic-samples/applicationloopbackaudio-sample/)
 - [Media Foundation hardware MFTs](https://learn.microsoft.com/en-us/windows/win32/medfound/hardware-mfts)
 - [Pion v4.2.18 stats implementation](https://github.com/pion/webrtc/blob/v4.2.18/stats.go)
+- [Pion Google congestion control](https://github.com/pion/interceptor/tree/v0.1.47/pkg/gcc)
+- [Pion bandwidth-estimation example](https://github.com/pion/webrtc/tree/v4.2.18/examples/bandwidth-estimation-from-disk)
 - [LiveKit Go SDK](https://github.com/livekit/server-sdk-go/tree/v2.18.1)
 - [Pion single-port ICE](https://github.com/pion/webrtc/tree/master/examples/ice-single-port)
 - [gopus pure-Go Opus codec](https://github.com/thesyncim/gopus)
 - [Tailscale port mapper](https://github.com/tailscale/tailscale/tree/main/net/portmapper)
 - [libp2p NAT port mapping](https://github.com/libp2p/go-libp2p/blob/master/options.go)
 - [WebRTC signaling and ICE](https://webrtc.org/getting-started/peer-connections)
+- [Apple ScreenCaptureKit](https://developer.apple.com/documentation/screencapturekit)
+- [Apple VideoToolbox hardware encoder requirement](https://developer.apple.com/documentation/videotoolbox/kvtvideoencoderspecification_requirehardwareacceleratedvideoencoder)
+- [XDG ScreenCast Portal](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.ScreenCast.html)

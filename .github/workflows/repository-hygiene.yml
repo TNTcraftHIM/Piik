@@ -55,6 +55,7 @@ jobs:
             if [ -n "$base" ] && ! git diff --quiet "$base" HEAD -- \
               native/client \
               scripts/assemble-client.mjs \
+              scripts/package-client-candidate.mjs \
               scripts/client-package-targets.mjs \
               scripts/check-client.mjs \
               scripts/client-local-gate.ts \
@@ -91,3 +92,77 @@ jobs:
           node-version-file: .node-version
       - name: Build Windows capture process
         run: npm run check:client-capture
+
+  release-application:
+    needs: validate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Package application release
+        run: node scripts/package-app-release.mjs "$RUNNER_TEMP/app-release"
+      - name: Upload application release
+        uses: actions/upload-artifact@v7
+        with:
+          name: screener-app-${{ github.sha }}
+          path: ${{ runner.temp }}/app-release/*
+          if-no-files-found: error
+          retention-days: 14
+
+  release-clients:
+    needs:
+      - validate
+      - release-application
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: windows-amd64
+            runner: windows-latest
+          - target: linux-amd64
+            runner: ubuntu-latest
+          - target: darwin-arm64
+            runner: macos-15
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: 1.26.6
+          cache-dependency-path: native/client/go.sum
+      - name: Download application release
+        uses: actions/download-artifact@v8
+        with:
+          name: screener-app-${{ github.sha }}
+          path: ${{ runner.temp }}/app-release
+      - name: Build and verify Client candidate
+        run: >-
+          node scripts/package-client-candidate.mjs
+          "${{ runner.temp }}/app-release"
+          "${{ matrix.target }}"
+          "${{ runner.temp }}/client-release"
+      - name: Upload Client release candidate
+        uses: actions/upload-artifact@v7
+        with:
+          name: screener-client-${{ matrix.target }}-${{ github.sha }}
+          path: ${{ runner.temp }}/client-release/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14

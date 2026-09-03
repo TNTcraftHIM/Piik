@@ -63,9 +63,29 @@ is one of `windows-amd64`, `linux-amd64`, or `darwin-arm64`; every supplied
 runtime must match it. It does not create an installer, auto-updater, release
 tag, or compatibility bundle.
 
+CI and local release-candidate builds use the same wrapper on the target's
+native operating system:
+
+```sh
+node scripts/package-client-candidate.mjs \
+  /outside/repository/app-release \
+  windows-amd64 \
+  /outside/repository/client-candidate
+```
+
+The wrapper downloads the pinned public-link sidecar, verifies its digest,
+builds the target Client and available capture process, executes every packaged
+runtime, and emits one `tar.gz` plus its SHA-256 file.
+
 Retain the descriptor and successful deployment output as release metadata. Do
 not create a follow-up source commit solely to duplicate their revision, asset,
 or hashes.
+
+After `validate` succeeds on a push to `main`, CI packages this application
+release once and uses it to assemble Windows amd64, Linux amd64, and macOS arm64
+Client candidates on native runners. Each Client artifact contains one native
+archive and its SHA-256 file; Actions retains candidates for 14 days. This is
+automatic build output, not a tag, public GitHub Release, or deployment.
 
 Do not build or run the full repository check on a constrained production host.
 The release wrapper installs only production dependencies in a transient,

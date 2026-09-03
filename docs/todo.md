@@ -16,7 +16,10 @@ topics are not implementation authority.
    Capture-source failure now has a physical end/restart gate through the same
    room and Viewer. Clean-revision Windows and Linux packages pass their Local
    runtime gates; Linux also passes one-link startup and shutdown. The macOS
-   arm64 package is assembled but still needs execution on macOS.
+   arm64 package is assembled but still needs execution on macOS. Add macOS
+   ScreenCaptureKit/VideoToolbox and Linux Portal/PipeWire capture as thin
+   platform sidecars behind the current native media boundary; do not add a
+   second RTC or cross-platform media framework.
    No-Site Internet mode now has one ordinary public invitation link that retains
    the Host's Local authority and passes remote control-path and independent
    Linux Pion media gates. Prove decoded one-link Browser media on a physical
@@ -113,10 +116,12 @@ topics are not implementation authority.
 15. **Unified release and update surface.** Build Client packages, Server
     runtime, future OCI images, and deployment bundles from one intentionally
     triggered immutable application release identified by its full commit SHA.
-    Start with a non-blocking Client update notice and an operator-invoked Server
-    check; do not add automatic install, container self-update, Watchtower,
-    compatibility ranges, or active-share interruption before distribution and
-    rollback evidence requires them.
+    A validated `main` push now produces that application release and three
+    native-runner Client candidates with SHA-256 metadata. Next add a
+    non-blocking Client update notice and an operator-invoked Server check; do
+    not add automatic install, container self-update, Watchtower, compatibility
+    ranges, or active-share interruption before distribution and rollback
+    evidence requires them.
 16. **Go server consolidation.** Revisit replacing the sole TypeScript/Node
     server owner with Go only after the Client feature and physical acceptance
     boundaries are complete. First measure package, startup, and maintenance

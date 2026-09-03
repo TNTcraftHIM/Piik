@@ -18,6 +18,17 @@
 These are architecture references only. No implementation or copyleft source is
 copied.
 
+A read-only inventory of locally installed streaming clients adds one practical
+constraint. GameViewer separates its UI, supervised media service, codec
+capability detector, streamer, health process, and updater. Discord keeps its
+Chromium UI separate from a native voice/media module and updater. Oopz ships
+Flutter, a second WebView, FFmpeg, Agora RTC, and Tencent LiteAV together; that
+stack is substantially larger and duplicates media ownership. Screener follows
+the first two products' process separation but not their UI runtimes, and avoids
+Oopz's parallel RTC stacks: one Go supervisor, one Pion media core, and one thin
+system capture sidecar per platform remain sufficient. No binary code or private
+application data was copied or inspected.
+
 ## Current Control Boundary
 
 The Helper binds IPv4 loopback on a bounded range (`39721`-`39730`). `/health`
@@ -162,6 +173,8 @@ deployment no longer erases valid native RTCStats.
 - [LocalSend protocol](https://github.com/localsend/protocol/blob/main/README.md)
 - [Sunshine](https://docs.lizardbyte.dev/projects/sunshine/latest/)
 - [Syncthing GUI configuration](https://docs.syncthing.net/users/config.html)
+- [GameViewer product](https://uuyc.163.com/)
+- [Discord desktop architecture](https://discord.com/blog/how-discord-maintains-performance-while-adding-features)
 - [WebView2 Evergreen runtime](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/evergreen-vs-fixed-version)
 - [WebView2 screen capture](https://learn.microsoft.com/en-us/microsoft-edge/webview2/reference/win32/icorewebview2screencapturestartingeventargs)
 - [WebKitGTK multimedia](https://docs.webkit.org/Ports/WebKitGTK%20and%20WPE%20WebKit/Multimedia.html)
