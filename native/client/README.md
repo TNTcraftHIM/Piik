@@ -29,8 +29,12 @@ For a native Host, add `--native`. The system Browser remains the Host UI; the
 Client selects one Windows Graphics Capture target and one hardware H.264
 encoder, and on supported Windows builds captures that process's audio with
 WASAPI. Video and audio share the same room route and PeerConnection. Native
-media is currently P2P-only; omitting `--native` keeps the ordinary Browser
-capture path. `--local --native` is the self-contained LAN form.
+media in Site or one-link mode also attempts one bounded PCP, UPnP, or NAT-PMP
+mapping for its sole Pion UDP socket; pure LAN Local mode does not. Routers
+without a mapping service continue with ordinary ICE/STUN. The mapping does not
+create a relay or carry media through the Client control link. Native media is
+currently P2P-only; omitting `--native` keeps the ordinary Browser capture path.
+`--local --native` is the self-contained LAN form.
 
 The first Local launch creates one random access password in the user
 configuration directory. The Client passes it to its own Host page in a URL

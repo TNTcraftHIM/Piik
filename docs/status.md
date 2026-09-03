@@ -132,8 +132,10 @@ This is the current execution index. Git history owns completed timelines;
   authority while exposing its ordinary invitation and HTTP/WebSocket control
   path through a session-scoped Quick Tunnel. An independent Linux Pion Viewer
   has received that native media over a direct ICE pair; remote Browser media
-  remains unproved. Native SFU and non-Windows capture remain outside the
-  release.
+  remains unproved. Site and one-link native shares also make one bounded
+  best-effort PCP/UPnP/NAT-PMP mapping for their sole UDP socket without
+  changing ICE when no gateway accepts it; pure LAN Local mode does not.
+  Native SFU and non-Windows capture remain outside the release.
 
 ## Current Hold
 

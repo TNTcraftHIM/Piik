@@ -111,7 +111,7 @@ func runSite(ctx context.Context, site string, options Options,
 	client, err := loopback.Start(ctx, loopback.Options{
 		AllowedOrigin: site,
 		NativeMedia:   nativeMedia.capabilities,
-		NewControl:    nativeMedia.newControl,
+		NewControl:    nativeMedia.controlFactory(true),
 	})
 	if err != nil {
 		return errors.New("Screener Client could not start")
@@ -149,7 +149,7 @@ func runLocal(ctx context.Context, options Options, config clientconfig.Config,
 	client, err := loopback.Start(ctx, loopback.Options{
 		AllowedOrigin: fmt.Sprintf("http://localhost:%d", options.Port),
 		NativeMedia:   nativeMedia.capabilities,
-		NewControl:    nativeMedia.newControl,
+		NewControl:    nativeMedia.controlFactory(options.Link),
 	})
 	if err != nil {
 		return errors.New("Screener Client could not start")
@@ -272,11 +272,13 @@ func (runtime nativeRuntime) available() bool {
 		runtime.captureProcess != ""
 }
 
-func (runtime nativeRuntime) newControl() loopback.ControlSession {
-	if !runtime.available() {
-		return nil
+func (runtime nativeRuntime) controlFactory(portMapping bool) func() loopback.ControlSession {
+	return func() loopback.ControlSession {
+		if !runtime.available() {
+			return nil
+		}
+		return nativecontrol.New(runtime.captureProcess, runtime.capture, portMapping)
 	}
-	return nativecontrol.New(runtime.captureProcess, runtime.capture)
 }
 
 func discoverNativeMedia(ctx context.Context, configuredPath string) nativeRuntime {

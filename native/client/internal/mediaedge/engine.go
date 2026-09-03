@@ -5,6 +5,7 @@ import (
 	"net"
 	"sync"
 
+	"github.com/TNTcraftHIM/Screener/native/client/internal/portmapping"
 	"github.com/pion/interceptor"
 	"github.com/pion/logging"
 	"github.com/pion/webrtc/v4"
@@ -27,12 +28,14 @@ var h264Capability = webrtc.RTPCodecCapability{
 type EngineOptions struct {
 	BindAddress     string
 	IncludeLoopback bool
+	PortMapping     bool
 }
 
 type Engine struct {
 	api           *webrtc.API
 	mux           interface{ Close() error }
 	listenAddress string
+	portMapping   *portmapping.Mapping
 
 	mu     sync.Mutex
 	edges  map[*Edge]struct{}
@@ -78,7 +81,7 @@ func NewEngine(options EngineOptions) (*Engine, error) {
 		_ = mux.Close()
 		return nil, err
 	}
-	return &Engine{
+	engine := &Engine{
 		api: webrtc.NewAPI(
 			webrtc.WithMediaEngine(mediaEngine),
 			webrtc.WithInterceptorRegistry(registry),
@@ -87,7 +90,11 @@ func NewEngine(options EngineOptions) (*Engine, error) {
 		mux:           mux,
 		listenAddress: connection.LocalAddr().String(),
 		edges:         make(map[*Edge]struct{}),
-	}, nil
+	}
+	if options.PortMapping {
+		engine.portMapping = portmapping.Start(connection.LocalAddr().(*net.UDPAddr).Port)
+	}
+	return engine, nil
 }
 
 func (engine *Engine) ListenAddress() string {
@@ -150,6 +157,9 @@ func (engine *Engine) Close() error {
 	engine.mu.Unlock()
 	for _, edge := range edges {
 		_ = edge.Close()
+	}
+	if engine.portMapping != nil {
+		engine.portMapping.Close()
 	}
 	return engine.mux.Close()
 }

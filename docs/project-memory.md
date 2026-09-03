@@ -11,9 +11,10 @@ configured Site through the system Browser. Its Go entry supervises Local Node
 and owns the explicit native Host media path. Local remains a serverless-LAN
 mode by default; explicit one-link mode exposes that same authority through a
 session-scoped public control tunnel while media remains P2P. Windows capture,
-hardware H.264, direct cross-NAT video, and Windows process audio are proven
-through the same media edge; native SFU, other platforms, and broader package
-acceptance remain later gates.
+hardware H.264, direct cross-NAT video, Windows process audio, and best-effort
+mapping of the native edge's sole UDP socket are implemented through the same
+media boundary; native SFU, other platforms, and broader package acceptance
+remain later gates.
 
 ## Product Map
 

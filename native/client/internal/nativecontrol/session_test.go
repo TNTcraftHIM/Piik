@@ -28,7 +28,7 @@ func TestSTUNURLsUseTheCurrentBoundedWire(t *testing.T) {
 }
 
 func TestControlMessagesRejectUnknownFieldsAndStaleVersions(t *testing.T) {
-	session := New("missing-capture-process", nativecapture.Capabilities{})
+	session := New("missing-capture-process", nativecapture.Capabilities{}, false)
 	t.Cleanup(func() { _ = session.Close() })
 	for _, payload := range []string{
 		`{"version":2,"id":"request_sources","type":"list-windows","extra":true}`,

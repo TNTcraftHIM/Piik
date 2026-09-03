@@ -53,7 +53,11 @@ Hosted and Local deployments diverge without improving the media path.
 8. Native media is selected for an entire Host share generation. One isolated
    platform capture feeds one encoded source and bounded independent Pion
    transports, with process-loopback audio sharing the same PeerConnection when
-   available. Native quality evidence must either map real encoder/transport
+   available. Each Site or one-link share makes one bounded, best-effort PCP,
+   UPnP, or NAT-PMP mapping for that same Pion UDP socket before its first edge
+   gathers ICE; pure LAN Local mode does not. Absence or rejection leaves
+   ordinary ICE/STUN unchanged. Native quality
+   evidence must either map real encoder/transport
    observations into the existing categorical contract or remain ineligible for
    quality convergence. It does not introduce a custom score.
 9. The Client currently uses the system Browser as its only UI. With no saved
@@ -103,6 +107,12 @@ the ordinary public invitation and carries the unchanged Viewer page and
 WebSocket control path, then disappears when the Client exits. Native SFU and
 quality evidence, other platform capture, and one-link Browser media remain
 separate gates.
+
+A physical home-router gate created and removed a UPnP mapping for an ephemeral
+UDP listener. The integrated native Host gate still passed capture, two-edge
+delivery, source restart, and cleanup with mapping enabled. A selected mapped
+path across a pair that fails with STUN alone remains field evidence rather than
+an architectural claim.
 
 ## Primary Sources
 

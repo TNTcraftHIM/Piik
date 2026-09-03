@@ -44,14 +44,16 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (*Edge, error
 		len(options.ConnectionID) > 256 {
 		return nil, errors.New("native media edge input is invalid")
 	}
+	if options.Audio != nil && options.Audio.engine != engine {
+		return nil, errors.New("native audio edge source belongs to another engine")
+	}
+	if engine.portMapping != nil {
+		engine.portMapping.Prepare()
+	}
 	if err := source.reserve(); err != nil {
 		return nil, err
 	}
 	if options.Audio != nil {
-		if options.Audio.engine != engine {
-			source.releaseReservation()
-			return nil, errors.New("native audio edge source belongs to another engine")
-		}
 		if err := options.Audio.reserve(); err != nil {
 			source.releaseReservation()
 			return nil, err

@@ -33,6 +33,7 @@ var identityPattern = regexp.MustCompile("^[A-Za-z0-9_-]{8,256}$")
 type Session struct {
 	captureProcess string
 	capabilities   nativecapture.Capabilities
+	portMapping    bool
 	ctx            context.Context
 	cancel         context.CancelFunc
 	events         chan any
@@ -43,11 +44,16 @@ type Session struct {
 	closed bool
 }
 
-func New(captureProcess string, capabilities nativecapture.Capabilities) *Session {
+func New(
+	captureProcess string,
+	capabilities nativecapture.Capabilities,
+	portMapping bool,
+) *Session {
 	ctx, cancel := context.WithCancel(context.Background())
 	session := &Session{
 		captureProcess: captureProcess,
 		capabilities:   capabilities,
+		portMapping:    portMapping,
 		ctx:            ctx,
 		cancel:         cancel,
 		events:         make(chan any, 256),
@@ -220,6 +226,7 @@ func (session *Session) startShare(
 		},
 		EdgeCapacity: request.EdgeCapacity,
 		AudioEnabled: session.capabilities.Summary().ProcessAudio,
+		PortMapping:  session.portMapping,
 		Events:       session.hostEvents,
 	})
 	if err != nil {

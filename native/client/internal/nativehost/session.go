@@ -49,6 +49,7 @@ type Options struct {
 	AudioEnabled   bool
 	EdgeCapacity   int
 	BindAddress    string
+	PortMapping    bool
 	Events         chan<- Event
 }
 
@@ -81,6 +82,7 @@ func Start(parent context.Context, options Options) (*Session, error) {
 	}
 	engine, err := mediaedge.NewEngine(mediaedge.EngineOptions{
 		BindAddress: options.BindAddress,
+		PortMapping: options.PortMapping,
 	})
 	if err != nil {
 		return nil, err

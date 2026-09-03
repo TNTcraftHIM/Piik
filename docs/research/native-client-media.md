@@ -80,12 +80,16 @@ media on a physical second device. Cloudflare carries HTTPS/WebSocket control
 and provides public STUN, while DTLS-SRTP media remains direct. STUN alone
 cannot replace SFU/TURN on a restricted pair.
 
-The next native-only NAT gate is an optional PCP/NAT-PMP/UPnP mapping for the
-same Pion UDP port, following Tailscale/libp2p practice. It is not implemented
-until a small dependency and a real router can prove create, advertise, renew,
-and release. Pion v4.2.18 can mux host candidates; its STUN-on-the-same-socket
-Universal UDP mux API is not yet in that stable release, so Screener does not
-track an unreleased commit or recreate ICE internals.
+Native shares use the same Pion UDP socket for all edges. Site and one-link
+shares make one bounded, best-effort PCP, UPnP, or NAT-PMP mapping through
+NetBird's standalone Go NAT package; pure LAN Local mode does not. A physical
+router created and removed an ephemeral UPnP mapping; the Apache-2.0 dependency
+added about 0.38 MiB to the stripped Windows Client. Mapping begins
+with the share, is awaited before the first PeerConnection, refreshes only when
+a later edge arrives after half the requested lease, and is removed with the
+engine. Failure is cached for that share and leaves ordinary ICE/STUN unchanged.
+This proves lifecycle and non-regression, not that a mapped candidate has yet
+rescued a pair that public STUN alone could not connect.
 
 Pion's already-linked interceptor module includes transport-wide feedback,
 pacing, and Google congestion control. Its send-side estimator exposes target
@@ -132,6 +136,7 @@ compatibility inputs. Historical measurements remain in the separately marked
 - [gopus pure-Go Opus codec](https://github.com/thesyncim/gopus)
 - [Tailscale port mapper](https://github.com/tailscale/tailscale/tree/main/net/portmapper)
 - [libp2p NAT port mapping](https://github.com/libp2p/go-libp2p/blob/master/options.go)
+- [NetBird standalone Go NAT](https://github.com/netbirdio/go-nat)
 - [WebRTC signaling and ICE](https://webrtc.org/getting-started/peer-connections)
 - [Apple ScreenCaptureKit](https://developer.apple.com/documentation/screencapturekit)
 - [Apple VideoToolbox hardware encoder requirement](https://developer.apple.com/documentation/videotoolbox/kvtvideoencoderspecification_requirehardwareacceleratedvideoencoder)
