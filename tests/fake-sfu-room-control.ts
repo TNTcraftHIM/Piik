@@ -2,8 +2,8 @@ import type {
   SfuResourceFence,
   SfuSubscriptionFence,
 } from "../src/server/sfu-resource-admission.ts";
+import { managedSfuRoomName } from "../src/server/sfu-resource-admission.ts";
 import {
-  managedSfuRoomName,
   type SfuRoomControl,
 } from "../src/server/sfu-room-control.ts";
 

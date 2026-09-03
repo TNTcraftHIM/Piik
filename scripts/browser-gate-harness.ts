@@ -464,7 +464,7 @@ $root = [IO.Path]::GetFullPath($env:SCREENER_GATE_PROFILE_TO_REMOVE)
 $temp = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd([IO.Path]::DirectorySeparatorChar)
 $parent = [IO.Path]::GetDirectoryName($root).TrimEnd([IO.Path]::DirectorySeparatorChar)
 $name = [IO.Path]::GetFileName($root)
-if ($parent -ine $temp -or $name -notmatch '^screener-(native-one-viewer|access-privacy)-[A-Za-z0-9_-]{6}$') { exit 31 }
+if ($parent -ine $temp -or $name -notmatch '^screener-(access-privacy|client-loopback|client-media)-[A-Za-z0-9_-]{6}$') { exit 31 }
 $rootEntries = @([IO.Directory]::EnumerateFileSystemEntries($parent, $name, [IO.SearchOption]::TopDirectoryOnly))
 if ($rootEntries.Count -eq 0) { exit 0 }
 if ($rootEntries.Count -ne 1) { exit 34 }
@@ -499,7 +499,7 @@ export function isExactGateProfile(
     ? dirname(candidate).toLowerCase() === temp.toLowerCase()
     : dirname(candidate) === temp;
   return same &&
-    /^screener-(?:native-one-viewer|access-privacy)-[A-Za-z0-9_-]{6}$/.test(
+    /^screener-(?:access-privacy|client-loopback|client-media)-[A-Za-z0-9_-]{6}$/.test(
       basename(candidate),
     );
 }

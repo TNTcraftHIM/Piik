@@ -1,7 +1,8 @@
 # Media Foundation H.264 Hardware Fixture
 
 This is an offline Windows-only decision fixture. Its build compiles the same
-Media Foundation encoder source used by `native/window-capture-helper`, under a
+Media Foundation encoder source used by Screener Client's Windows capture
+process, under a
 fixture-only macro for synthetic input and telemetry. The generated fixture is
 not linked into the sender and does not contact a room, signaling service,
 Viewer, or production endpoint.
@@ -16,6 +17,8 @@ fallback. Exit code zero requires all of these checks in one 360-frame run:
   readback, plus Baseline media-type request/readback and output-order
   no-reordering checks;
 - 360 GPU-surface NV12 inputs and 360 ordered outputs;
+- one live `3 Mbps -> 1.5 Mbps -> 3 Mbps` rate change whose three equal phases
+  lower and then restore actual encoded bytes without recreating the MFT;
 - Annex-B SPS/PPS/IDR at frames 0, 60, 120, 180, 240, and 300;
 - an SPS `profile-level-id` exactly present in the fixture's default Pion
   mode-1 fmtp set; and

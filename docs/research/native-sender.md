@@ -2,7 +2,7 @@
 
 - Reviewed: 2026-08-27
 - Scope: Windows capture, one hardware H.264 encoder, bounded WebRTC fanout
-- Status: later product candidate; one-Viewer functional/hardware evidence only
+- Status: historical evidence; obsolete sender implementation deleted
 
 Current product scope is owned by [media quality](../product/media-quality.md).
 [ADR-0006](../adr/0006-fixed-high-native-sender-canary.md) owns the stop line.
@@ -14,7 +14,7 @@ independent WebRTC transports. Shared encoding can reduce capture/encode work;
 it cannot remove each child's RTP, congestion, retransmission, encryption, and
 network copy.
 
-The retained evidence proves:
+The retained measurements prove:
 
 - Pion can fan one encoded source into two independent transport bindings;
 - one WebCodecs encoder object fed two Browser sessions in a bounded fixture;
@@ -30,7 +30,7 @@ or distribution licensing. Native remains outside the current release.
 
 ## Candidate Shape
 
-The smallest retained Windows architecture is:
+The smallest measured Windows pipeline was:
 
 ```text
 opaque window target

@@ -652,6 +652,14 @@ export class RoomStore {
     return { roomId, sessionIds };
   }
 
+  abandonAllRooms(): ClosedRoom[] {
+    this.ensureInitialized();
+    return [...this.rooms.keys()].flatMap((roomId) => {
+      const closed = this.abandonRoom(roomId);
+      return closed ? [closed] : [];
+    });
+  }
+
   expireRooms(nowMs = this.now()): ClosedRoom[] {
     this.ensureInitialized();
     const expiredRooms = [...this.rooms].filter(([, room]) =>

@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-09-02
+Last updated: 2026-09-04
 
 This is the current execution index. Git history owns completed timelines;
 [verification status](./verification-status.md) owns evidence boundaries.
@@ -120,8 +120,35 @@ This is the current execution index. Git history owns completed timelines;
 - Current-path quality can drive local convergence in source and production,
   including bounded same-edge connection regeneration. Both default it on with a
   pre-share Host opt-out. Weighted/global optimization remains parked.
-- Native/executable senders, shared encode, and distribution packages remain
-  outside the current release.
+- Source contains the cross-platform Client outside the current Web release.
+  One Go entry opens a lightweight system-Browser launcher for Local, temporary
+  public-link, or Site operation, supervises the same Node application when
+  needed, and owns loopback native media. The same Host UI explicitly selects
+  Browser capture or an exact native screen/window. Windows gates prove
+  packaged Local/Site operation, WGC hardware-H.264 plus process/system audio, bounded
+  shared-encode P2P, and cleanup. The window arm also proves source end and
+  same-room reselection; display-source lifecycle remains a separate physical
+  gate. An explicit target assembler also produces a
+  Linux amd64 package with proved Local/one-link runtime and a structurally
+  verified but unexecuted macOS arm64 package; its capture sidecar now passes an
+  arm64 compile plus hardware-H.264 IDR self-test. Client-scoped pull requests
+  build and Local-smoke all three candidates before merge; a validated `main`
+  push emits them as short-lived Actions artifacts. One-link mode preserves the Host Local
+  authority while exposing its ordinary invitation and HTTP/WebSocket control
+  path through a session-scoped Quick Tunnel. An independent Linux Pion Viewer
+  has received that native media over a direct ICE pair; remote Browser media
+  remains unproved. Site and one-link native shares also make one bounded
+  best-effort PCP/UPnP/NAT-PMP mapping for their sole UDP socket without
+  changing ICE when no gateway accepts it; pure LAN Local mode does not.
+  Native P2P edges now negotiate TWCC and send Pion GCC's target-versus-source
+  payload category through the existing sender-quality evidence path without
+  pacing or changing the shared encode. A local bridge now supplies native Host
+  media to the existing Browser LiveKit publisher; an isolated LiveKit gate
+  proves 1280x720 delivery and complete cleanup without a second SFU client.
+  Non-Windows capture remains outside the release. The default packaged Client
+  launcher performs a non-blocking official GitHub Release check and the
+  deployment tree provides a read-only operator check against the same full-SHA
+  release identity; neither installs or interrupts a running share.
 
 ## Current Hold
 

@@ -20,6 +20,7 @@ import {
   parseBenchmarkCodecMode,
   parseBenchmarkConfig,
   parseExpectedEndpointCap,
+  parseExternalServerTarget,
   parsePagePerformanceMetrics,
   parseViewerCounts,
   sanitizeFailurePageEvidence,
@@ -480,6 +481,26 @@ describe("peer topology loopback configuration", () => {
       parseBenchmarkConfig({ CHROME_PATH: "chrome", BENCHMARK_OUTPUT: "-" })
         .outputPath,
     ).toBeNull();
+  });
+
+  it("accepts one plain external server origin without exposing its access value", () => {
+    expect(parseExternalServerTarget({
+      BENCHMARK_SERVER_URL: "http://localhost:8787/",
+      BENCHMARK_SITE_ACCESS_PASSWORD: "local-access-password",
+    })).toEqual({
+      origin: "http://localhost:8787",
+      accessPassword: "local-access-password",
+    });
+    expect(parseExternalServerTarget({})).toBeNull();
+    for (const value of [
+      "file:///tmp/screener",
+      "https://user:pass@share.test",
+      "https://share.test/room",
+    ]) {
+      expect(() => parseExternalServerTarget({
+        BENCHMARK_SERVER_URL: value,
+      })).toThrow(/HTTP or HTTPS origin/);
+    }
   });
 });
 

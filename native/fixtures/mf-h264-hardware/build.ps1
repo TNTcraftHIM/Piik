@@ -28,7 +28,7 @@ if ([string]::IsNullOrWhiteSpace($installationPath)) {
 }
 
 $developerCommand = Join-Path $installationPath 'Common7\Tools\VsDevCmd.bat'
-$sourcePath = Join-Path $fixtureDirectory '..\..\window-capture-helper\main.cpp'
+$sourcePath = Join-Path $fixtureDirectory '..\..\client\platform\windows\capture\main.cpp'
 $executablePath = Join-Path $outputPath 'screener-mf-h264-fixture.exe'
 $objectPath = Join-Path $outputPath 'main.obj'
 

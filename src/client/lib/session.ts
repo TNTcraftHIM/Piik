@@ -9,6 +9,7 @@ import { z } from "zod";
 import { createOpaqueId } from "./opaque-id";
 
 const CLIENT_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
+const CLIENT_ACCESS_BOOTSTRAP_PATTERN = /^[A-Za-z0-9_-]{32}$/;
 const HOST_ROOM_STORAGE_KEY = "screener:host-room:v1";
 const HOST_ROOM_PREFERENCE_STORAGE_KEY = "screener:host-room-preference:v1";
 const hostRoomStorageSchema = createRoomResponseSchema.pick({
@@ -40,6 +41,7 @@ export interface ViewerRoute {
 }
 
 export type AppRoute =
+  | { kind: "client" }
   | { kind: "host" }
   | { kind: "join" }
   | { kind: "viewer"; roomId: string }
@@ -63,6 +65,9 @@ export function roomRouteForExplicitEntry(value: string): string | null {
 }
 
 export function parseAppRoute(pathname: string): AppRoute {
+  if (/^\/client\/?$/.test(pathname)) {
+    return { kind: "client" };
+  }
   if (pathname === "/") {
     return { kind: "host" };
   }
@@ -77,6 +82,38 @@ export function parseAppRoute(pathname: string): AppRoute {
     return { kind: "malformed-room" };
   }
   return { kind: "unknown" };
+}
+
+export interface ClientLaunchBootstrap {
+  accessToken: string | null;
+  launchedByClient: boolean;
+}
+
+export function takeClientLaunchBootstrap(): ClientLaunchBootstrap {
+  const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  const keys = [
+    "client-access",
+    "screener-client",
+  ] as const;
+  const present = keys.some((key) => params.has(key));
+  const accessValue = params.get("client-access");
+  const result: ClientLaunchBootstrap = {
+    accessToken:
+      accessValue && CLIENT_ACCESS_BOOTSTRAP_PATTERN.test(accessValue)
+        ? accessValue
+        : null,
+    launchedByClient: params.get("screener-client") === "1",
+  };
+  if (present) {
+    for (const key of keys) params.delete(key);
+    const remaining = params.toString();
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${window.location.pathname}${window.location.search}${remaining ? `#${remaining}` : ""}`,
+    );
+  }
+  return result;
 }
 
 export function clearHostRoom(): void {

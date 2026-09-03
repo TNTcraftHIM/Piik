@@ -72,6 +72,17 @@ code-only attempts and does not silently revoke invitations.
   memory and all rooms disappear on restart.
 - **Stable mode:** with an explicit SQLite path, one exact-schema owner persists
   room authority across application restart.
+- **Client Local mode:** the packaged Client composes the same memory RoomStore
+  and ends every room when its local authority exits. It persists only its Site
+  choice and generated Local site-access password, not rooms or media state.
+
+The Client opens its own localhost Host page with that password in a fragment.
+The page removes the fragment and uses the existing SiteAccess endpoint; this
+does not create a fourth admission authority. LAN and one-link Internet Viewers
+use the same room-scoped invitation grant; its fragment never enters the public
+tunnel request, and the Host's Local RoomStore remains the only authority.
+Selecting a Site moves room authority wholly to that Site rather than
+synchronizing two stores.
 
 Stable mode does not persist participants, signaling sessions, sharing state,
 routes, codec decisions, quality evidence, or SFU state. After restart, clients

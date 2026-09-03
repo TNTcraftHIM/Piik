@@ -49,6 +49,22 @@ Clean up worktrees and branches only after semantic review and integration are c
 - Review licenses before copying implementation code. A useful reference is not automatically a compatible dependency.
 - Until the project license and distribution model are decided, treat GPL/AGPL implementation sources as study-only.
 
+## Verification Entrypoints
+
+- `npm run check` owns deterministic Web/Server type-check, unit, and build
+  acceptance.
+- `npm run check:client` owns Go formatting, unit tests, vet, three-platform
+  builds, and the Windows capture compile/probe when run on Windows. CI invokes
+  these same package commands rather than rebuilding their steps in YAML.
+- `gate:*` commands are explicit physical or network acceptance. They must use
+  isolated profiles, bounded deadlines, shared cleanup helpers, and a structured
+  result. A manual diagnostic may locate a failure, but is not retained as pass
+  evidence.
+- A Client-scoped pull request builds and smoke-tests all three platform
+  candidates before merge. A validated push to `main` uploads those short-lived
+  Server and Client candidates. Publishing a tag or GitHub Release remains an
+  explicit release decision rather than a side effect of every merge.
+
 ## Pull Request Scope
 
 A pull request should explain the problem, the chosen design, verification performed, user-visible or operational effects, and remaining risks.

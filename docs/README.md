@@ -39,14 +39,16 @@ ordinary implementation and UI detail.
   experiment.
 - [ADR-0005](./adr/0005-automatic-hybrid-media-routing.md): current automatic
   route and SFU resource model.
-- [ADR-0006](./adr/0006-fixed-high-native-sender-canary.md): native sender
-  canary stop line.
+- [ADR-0006](./adr/0006-fixed-high-native-sender-canary.md): historical native
+  sender canary evidence (superseded by ADR-0010).
 - [ADR-0007](./adr/0007-path-isolated-representation-quality.md): framework-
   owned media adaptation.
 - [ADR-0008](./adr/0008-window-scoped-audio-capture.md): Browser/native window
   audio boundary.
 - [ADR-0009](./adr/0009-optional-nat-prediction.md): optional connection-local
   NAT prediction.
+- [ADR-0010](./adr/0010-cross-platform-client-runtime.md): cross-platform Client
+  runtime and self-contained package boundary.
 
 ## Evidence
 
@@ -64,7 +66,9 @@ Media and platform:
 - [Browser screen audio](./research/browser-screen-audio-quality.md)
 - [Browser NAT traversal](./research/nat-traversal.md)
 - [Browser platform output](./research/platform-output.md)
-- [Native sender and shared encode](./research/native-sender.md)
+- [Historical native sender and shared encode evidence](./research/native-sender.md)
+- [Native Client media](./research/native-client-media.md)
+- [Cross-platform Client runtime](./research/cross-platform-client-runtime.md)
 
 Rooms and repository practice:
 

@@ -43,13 +43,82 @@ full revision, emits a runtime archive plus path/size/SHA-256 manifest and relea
 extracts its own artifact to verify it. Upload the archive, manifest, and
 descriptor together to `/opt/screener/uploads`.
 
+The same application descriptor is also the Client assembly input. On each
+target platform, provide that platform's Node executable and Go toolchain:
+
+```sh
+SCREENER_GO=/path/to/go node scripts/assemble-client.mjs \
+  /outside/repository/app-release/screener-<revision>.release.json \
+  /path/to/node \
+  /outside/repository/Screener-Client \
+  --target windows-amd64 \
+  --capture /path/to/platform-capture \
+  --tunnel /path/to/cloudflared
+```
+
+Assembly refuses a dirty or different revision and emits one directory with
+the Client executable, pinned Node runtime, application release, selected
+sidecars, production dependencies, and matching `REVISION`. Its required target
+is one of `windows-amd64`, `linux-amd64`, or `darwin-arm64`; every supplied
+runtime must match it. It does not create an installer, auto-updater, release
+tag, or compatibility bundle.
+
+CI and local release-candidate builds use the same wrapper on the target's
+native operating system:
+
+```sh
+node scripts/package-client-candidate.mjs \
+  /outside/repository/app-release \
+  windows-amd64 \
+  /outside/repository/client-candidate
+```
+
+The wrapper downloads the pinned public-link sidecar, verifies its digest,
+builds the target Client and available capture process, executes every packaged
+runtime, and emits one `tar.gz` plus its SHA-256 file.
+
 Retain the descriptor and successful deployment output as release metadata. Do
 not create a follow-up source commit solely to duplicate their revision, asset,
 or hashes.
 
+After `validate` succeeds on a push to `main`, CI packages this application
+release once and uses it to assemble Windows amd64, Linux amd64, and macOS arm64
+Client candidates on native runners. Each Client artifact contains one native
+archive and its SHA-256 file; Actions retains candidates for 14 days. This is
+automatic build output, not a tag, public GitHub Release, or deployment.
+
 Do not build or run the full repository check on a constrained production host.
 The release wrapper installs only production dependencies in a transient,
 CPU/memory/time-bounded unit.
+
+## Update Check
+
+The application, Server deployment, and platform Client all use the full Git
+revision as their release identity. A formal GitHub Release must use that exact
+40-character revision as its tag and keep the corresponding release URL. The
+current CI workflow produces short-lived candidates but does not publish a
+GitHub Release; publication remains an explicit distribution decision.
+
+The default Client launcher starts immediately, then performs one background
+request to the official Screener GitHub Releases API. It shows a link only when
+the latest release has a valid full revision different from the packaged one.
+The request sends no current revision, credentials, room data, or media data;
+network errors, private-repository responses, and missing releases are treated
+as no notice. It never downloads, replaces, or interrupts a running share.
+
+An operator can perform the corresponding read-only Server check:
+
+```sh
+SCREENER_NODE=/usr/local/bin/node bash deploy/check-release.sh
+```
+
+The command reads `/opt/screener/current/REVISION` and prints one JSON result.
+Exit status `0` means the deployed revision is current, `10` means a newer
+release is available, and `20` means the check could not establish a valid
+release identity. For a private repository, inject a short-lived `GITHUB_TOKEN`
+through the operator environment; never place it in the repository or command
+line. The command does not mutate files, services, containers, or persistent
+state. A different current-revision file may be supplied as its only argument.
 
 ## Atomic Cutover
 

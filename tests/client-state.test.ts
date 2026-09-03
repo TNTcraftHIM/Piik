@@ -33,6 +33,7 @@ import {
   replaceViewerInvite,
   roomRouteForExplicitEntry,
   roomRouteFromInput,
+  takeClientLaunchBootstrap,
   writeHostRoom,
   writePreferredRoom,
 } from "../src/client/lib/session.ts";
@@ -730,6 +731,8 @@ describe("room codes", () => {
   });
 
   it("classifies routes without normalizing malformed room input", () => {
+    expect(parseAppRoute("/client")).toEqual({ kind: "client" });
+    expect(parseAppRoute("/client/")).toEqual({ kind: "client" });
     expect(parseAppRoute("/")).toEqual({ kind: "host" });
     expect(parseAppRoute("/join")).toEqual({ kind: "join" });
     expect(parseAppRoute("/join/")).toEqual({ kind: "join" });
@@ -754,6 +757,61 @@ describe("room codes", () => {
       expect(parseAppRoute(pathname)).toEqual({ kind: "malformed-room" });
     }
     expect(parseAppRoute("/other")).toEqual({ kind: "unknown" });
+  });
+
+  it("consumes one exact Client access bootstrap without retaining it in the URL", () => {
+    const replaceState = vi.fn();
+    vi.stubGlobal("window", {
+      location: {
+        hash: `#client-access=${"a".repeat(32)}`,
+        pathname: "/",
+        search: "?mode=local",
+      },
+      history: { state: { current: true }, replaceState },
+    });
+
+    expect(takeClientLaunchBootstrap()).toMatchObject({
+      accessToken: "a".repeat(32),
+      launchedByClient: false,
+    });
+    expect(replaceState).toHaveBeenCalledWith(
+      { current: true },
+      "",
+      "/?mode=local",
+    );
+  });
+
+  it("removes a malformed Client bootstrap without authenticating it", () => {
+    const replaceState = vi.fn();
+    vi.stubGlobal("window", {
+      location: { hash: "#client-access=short", pathname: "/", search: "" },
+      history: { state: null, replaceState },
+    });
+
+    expect(takeClientLaunchBootstrap().accessToken).toBeNull();
+    expect(replaceState).toHaveBeenCalledWith(null, "", "/");
+  });
+
+  it("consumes the Client launch marker from a server-private fragment", () => {
+    const replaceState = vi.fn();
+    vi.stubGlobal("window", {
+      location: {
+        hash: `#client-access=${"a".repeat(32)}&screener-client=1&retained=yes`,
+        pathname: "/",
+        search: "?room=6020",
+      },
+      history: { state: null, replaceState },
+    });
+
+    expect(takeClientLaunchBootstrap()).toEqual({
+      accessToken: "a".repeat(32),
+      launchedByClient: true,
+    });
+    expect(replaceState).toHaveBeenCalledWith(
+      null,
+      "",
+      "/?room=6020#retained=yes",
+    );
   });
 });
 

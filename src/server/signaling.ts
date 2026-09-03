@@ -294,6 +294,12 @@ export class SignalingServer {
     }
   }
 
+  endAllRooms(): void {
+    for (const closed of this.options.roomStore.abandonAllRooms()) {
+      this.closeRoom(closed);
+    }
+  }
+
   async updateRoomAccess(
     roomId: string,
     hostToken: string,

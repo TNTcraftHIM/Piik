@@ -179,7 +179,7 @@ async function startHarness(
   runningServer = await createScreenerServer({
     config,
     roomStore,
-    serveFrontend: false,
+    frontend: { mode: "none" },
     now: overrides.now,
     authenticationTimeoutMs: overrides.authenticationTimeoutMs ?? 500,
     viewerDisconnectGraceMs: overrides.viewerDisconnectGraceMs ?? 50,
@@ -703,6 +703,47 @@ describe("WebSocket signaling", () => {
       reason: "Service restart",
     });
     await shutdown;
+  });
+
+  it("ends every room before a local authority stops", async () => {
+    const harness = await startHarness();
+    const host = await openClient(harness.webSocketUrl);
+    await authenticate(host, harness.room, "host", "ending-host");
+    const viewer = await openClient(harness.webSocketUrl);
+    await authenticate(viewer, harness.room, "viewer", "ending-viewer");
+    const hostClosed = new Promise<{ code: number; reason: string }>((resolve) =>
+      host.socket.once("close", (code, reason) =>
+        resolve({ code, reason: reason.toString() }),
+      ),
+    );
+    const viewerClosed = new Promise<{ code: number; reason: string }>((resolve) =>
+      viewer.socket.once("close", (code, reason) =>
+        resolve({ code, reason: reason.toString() }),
+      ),
+    );
+    const server = runningServer!;
+    runningServer = undefined;
+
+    const shutdown = server.end();
+
+    await expect(host.inbox.next("room-closed")).resolves.toEqual({
+      type: "room-closed",
+      reason: "host-ended",
+    });
+    await expect(viewer.inbox.next("room-closed")).resolves.toEqual({
+      type: "room-closed",
+      reason: "host-ended",
+    });
+    await expect(hostClosed).resolves.toEqual({
+      code: 1000,
+      reason: "Room abandoned",
+    });
+    await expect(viewerClosed).resolves.toEqual({
+      code: 1000,
+      reason: "Room abandoned",
+    });
+    await shutdown;
+    expect(harness.roomStore.size).toBe(0);
   });
 
   it("answers only opted-in current sockets and rate-limits each socket", async () => {
