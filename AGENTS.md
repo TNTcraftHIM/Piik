@@ -76,6 +76,9 @@
 
 ## Engineering Defaults
 
+- Prefer the simplest cohesive design that is easy to use and maintain. Reuse
+  mature components, keep ownership explicit, and remove superseded paths in
+  the same change instead of retaining speculative flexibility or technical debt.
 - Judge a change by evidenced user value against its full implementation,
   maintenance, compatibility, and failure cost. A large measured gain may
   justify broad or breaking work; a small or speculative gain does not justify

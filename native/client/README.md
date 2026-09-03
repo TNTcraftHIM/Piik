@@ -36,6 +36,12 @@ create a relay or carry media through the Client control link. Native media is
 currently P2P-only; omitting `--native` keeps the ordinary Browser capture path.
 `--local --native` is the self-contained LAN form.
 
+Native P2P edges negotiate transport-wide feedback. Once Pion GCC has real
+feedback and the source has produced frames, the Client reports whether that
+edge's target payload bitrate can carry the measured shared H.264 plus Opus
+payload. The existing route controller owns persistence and any replacement;
+the Client does not pace, score, or globally lower the shared encoder.
+
 The first Local launch creates one random access password in the user
 configuration directory. The Client passes it to its own Host page in a URL
 fragment; the page uses the existing SiteAccess endpoint and removes the

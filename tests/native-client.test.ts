@@ -10,7 +10,7 @@ describe("native Client private wire", () => {
   it("keeps public discovery capability-only", () => {
     expect(
       nativeHealthSchema.parse({
-        protocol: 2,
+        protocol: 3,
         service: "screener-client",
         port: 39_721,
         instanceToken: "a".repeat(43),
@@ -23,7 +23,7 @@ describe("native Client private wire", () => {
     ).toMatchObject({ nativeMedia: { processAudio: false } });
     expect(
       nativeHealthSchema.safeParse({
-        protocol: 2,
+        protocol: 3,
         service: "screener-client",
         port: 39_721,
         instanceToken: "a".repeat(43),
@@ -58,7 +58,7 @@ describe("native Client private wire", () => {
 
   it("fences native events by share and connection identity", () => {
     const event = {
-      version: 2,
+      version: 3,
       type: "edge-state",
       shareId: "share_123456",
       connectionId: "edge_1234567",
@@ -70,6 +70,31 @@ describe("native Client private wire", () => {
     ).toBe(false);
     expect(
       nativeEventSchema.safeParse({ ...event, routeRevision: 1 }).success,
+    ).toBe(false);
+  });
+
+  it("accepts only internally consistent native quality evidence", () => {
+    const event = {
+      version: 3,
+      type: "edge-quality",
+      shareId: "share_123456",
+      connectionId: "edge_1234567",
+      sampleTimestampMs: 10_000,
+      sampleWindowMs: 2_000,
+      rtpStatsId: "pc_12345678",
+      trackIdentifier: "screen",
+      state: "degraded",
+      reason: "bandwidth",
+      intervalFramesEncoded: 60,
+      framesPerSecond: 30,
+      bitrateKbps: 3_000,
+      availableOutgoingKbps: 1_000,
+      width: 1280,
+      height: 720,
+    };
+    expect(nativeEventSchema.safeParse(event).success).toBe(true);
+    expect(
+      nativeEventSchema.safeParse({ ...event, reason: "none" }).success,
     ).toBe(false);
   });
 });

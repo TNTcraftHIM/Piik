@@ -37,6 +37,7 @@ interface GateResult {
   passed: boolean;
   hostNativeActive: boolean;
   hostInvite: boolean;
+  nativeQualityEvidence: boolean;
   viewerConnected: boolean;
   viewerFrames: number;
   viewerWidth: number;
@@ -462,12 +463,14 @@ async function main(): Promise<void> {
   let chrome: ChildProcessWithoutNullStreams | null = null;
   let cdp: CdpConnection | null = null;
   let clientPort = 0;
+  let clientDiagnostics = "";
   let remoteTunnel: ChildProcess | null = null;
   let stage = "setup";
   const result: GateResult = {
     passed: false,
     hostNativeActive: false,
     hostInvite: false,
+    nativeQualityEvidence: false,
     viewerConnected: false,
     viewerFrames: 0,
     viewerWidth: 0,
@@ -493,6 +496,10 @@ async function main(): Promise<void> {
     error: null,
   };
   try {
+    stage = "application-build";
+    run(process.env.ComSpec || "cmd.exe", [
+      "/d", "/s", "/c", "npm run build",
+    ]);
     stage = "source-server";
     source = await sourceServer(sourcePort);
     stage = "capture-build";
@@ -540,6 +547,7 @@ async function main(): Promise<void> {
       windowsHide: true,
       env: {
         ...process.env,
+        NODE_DEBUG: "screener-route",
         PEER_ASSISTED_MEDIA: "true",
         SCREENER_CLIENT_GATE_NO_BROWSER: "true",
         ...(mode === "cross-nat"
@@ -551,7 +559,9 @@ async function main(): Promise<void> {
           : {}),
       },
     });
-    client.stderr.resume();
+    client.stderr.on("data", (chunk: Buffer) => {
+      clientDiagnostics = (clientDiagnostics + chunk.toString()).slice(-262_144);
+    });
     stage = "client-ready";
     const clientInfo = await readClientEndpoint(client, mode === "one-link");
     clientPort = clientInfo.endpoint.port;
@@ -721,6 +731,13 @@ async function main(): Promise<void> {
       result.viewerFrames = viewerState.frames;
       result.viewerWidth = viewerState.width;
       result.viewerHeight = viewerState.height;
+      stage = "native-quality-evidence";
+      result.nativeQualityEvidence = await waitForValue(
+        async () => /"event":"sender-quality-evidence"[^\n]*"state":"(healthy|degraded)"/
+          .test(clientDiagnostics),
+        Boolean,
+        12_000,
+      );
 
       await evaluate<boolean>(
         cdp,
@@ -850,6 +867,7 @@ async function main(): Promise<void> {
         (mode !== "cross-nat" || result.reverseSignalTunnelClosed === true)
       : result.viewerConnected && result.viewerFrames >= 30 &&
         result.viewerWidth === 1280 && result.viewerHeight === 720 &&
+        result.nativeQualityEvidence &&
         result.sourceFailureEndedShare === true &&
         result.replacementViewerConnected === true &&
         (result.replacementViewerFrames ?? 0) >= 30) &&

@@ -16,6 +16,7 @@ import (
 )
 
 const startTimeout = 5 * time.Second
+const qualitySamplePeriod = 2 * time.Second
 
 type CaptureState struct {
 	State          string  `json:"state"`
@@ -40,6 +41,7 @@ type Event struct {
 	State        string
 	LocalType    string
 	RemoteType   string
+	Quality      *mediaedge.QualitySample
 }
 
 type Options struct {
@@ -310,6 +312,11 @@ func (session *Session) run() {
 		videoDone <- session.runVideo()
 	}()
 	audioDone := make(chan struct{})
+	qualityDone := make(chan struct{})
+	go func() {
+		session.runQuality()
+		close(qualityDone)
+	}()
 	if session.audioStream == nil {
 		close(audioDone)
 	} else {
@@ -324,6 +331,7 @@ func (session *Session) run() {
 		_ = session.audioStream.Close()
 	}
 	<-audioDone
+	<-qualityDone
 	defer func() {
 		_ = session.source.Close()
 		if session.audioSource != nil {
@@ -360,6 +368,9 @@ func (session *Session) runVideo() error {
 				return fail(statusErr)
 			}
 			session.emit(Event{Type: "capture-state", ShareID: session.shareID, State: status.State})
+			if status.State == "active" {
+				session.source.SetFormat(status.Width, status.Height)
+			}
 			if !ready {
 				ready = true
 				session.ready <- nil
@@ -377,6 +388,32 @@ func (session *Session) runVideo() error {
 			return fail(errors.New("native video process emitted audio"))
 		default:
 			return fail(errors.New("native video process emitted an unknown frame"))
+		}
+	}
+}
+
+func (session *Session) runQuality() {
+	ticker := time.NewTicker(qualitySamplePeriod)
+	defer ticker.Stop()
+	for {
+		select {
+		case now := <-ticker.C:
+			session.mu.Lock()
+			edges := make([]*mediaedge.Edge, 0, len(session.edges))
+			for _, edge := range session.edges {
+				edges = append(edges, edge)
+			}
+			session.mu.Unlock()
+			for _, edge := range edges {
+				if sample, ok := edge.QualitySample(now); ok {
+					session.emit(Event{
+						Type: "edge-quality", ShareID: session.shareID,
+						ConnectionID: edge.ConnectionID(), Quality: &sample,
+					})
+				}
+			}
+		case <-session.ctx.Done():
+			return
 		}
 	}
 }

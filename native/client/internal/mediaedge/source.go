@@ -3,6 +3,7 @@ package mediaedge
 import (
 	"errors"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pion/webrtc/v4"
@@ -23,6 +24,9 @@ type Source struct {
 	edges        map[*Edge]struct{}
 	reservations int
 	closed       bool
+	frames       atomic.Uint64
+	bytes        atomic.Uint64
+	format       atomic.Uint64
 }
 
 func (source *Source) WriteH264(accessUnit []byte, duration time.Duration) error {
@@ -35,7 +39,30 @@ func (source *Source) WriteH264(accessUnit []byte, duration time.Duration) error
 	if closed {
 		return errors.New("native media source is closed")
 	}
+	source.frames.Add(1)
+	source.bytes.Add(uint64(len(accessUnit)))
 	return source.track.WriteSample(media.Sample{Data: accessUnit, Duration: duration})
+}
+
+func (source *Source) SetFormat(width, height uint32) {
+	source.format.Store(uint64(width)<<32 | uint64(height))
+}
+
+type sourceSnapshot struct {
+	frames uint64
+	bytes  uint64
+	width  uint32
+	height uint32
+}
+
+func (source *Source) snapshot() sourceSnapshot {
+	format := source.format.Load()
+	return sourceSnapshot{
+		frames: source.frames.Load(),
+		bytes:  source.bytes.Load(),
+		width:  uint32(format >> 32),
+		height: uint32(format),
+	}
 }
 
 func (source *Source) reserve() error {

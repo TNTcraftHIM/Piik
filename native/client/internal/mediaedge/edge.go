@@ -31,12 +31,15 @@ type Edge struct {
 	connection   *webrtc.PeerConnection
 	sender       *webrtc.RTPSender
 	audioSender  *webrtc.RTPSender
+	bandwidth    *bandwidthObserver
 	events       EdgeEvents
 
 	mu                   sync.Mutex
 	pendingCandidates    []webrtc.ICECandidateInit
 	remoteDescriptionSet bool
 	closed               bool
+	qualityMu            sync.Mutex
+	qualityBaseline      qualityBaseline
 }
 
 func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (*Edge, error) {
@@ -69,12 +72,22 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (*Edge, error
 		}
 		return nil, err
 	}
+	bandwidth := engine.bandwidth.take(connection.ID())
+	if bandwidth == nil {
+		source.releaseReservation()
+		if options.Audio != nil {
+			options.Audio.releaseReservation()
+		}
+		_ = connection.Close()
+		return nil, errors.New("native media bandwidth observer is unavailable")
+	}
 	edge := &Edge{
 		connectionID: options.ConnectionID,
 		engine:       engine,
 		source:       source,
 		audioSource:  options.Audio,
 		connection:   connection,
+		bandwidth:    bandwidth,
 		events:       options.Events,
 	}
 	if err = engine.register(edge); err != nil {

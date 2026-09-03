@@ -135,7 +135,10 @@ This is the current execution index. Git history owns completed timelines;
   remains unproved. Site and one-link native shares also make one bounded
   best-effort PCP/UPnP/NAT-PMP mapping for their sole UDP socket without
   changing ICE when no gateway accepts it; pure LAN Local mode does not.
-  Native SFU and non-Windows capture remain outside the release.
+  Native P2P edges now negotiate TWCC and send Pion GCC's target-versus-source
+  payload category through the existing sender-quality evidence path without
+  pacing or changing the shared encode. Native SFU and non-Windows capture
+  remain outside the release.
 
 ## Current Hold
 

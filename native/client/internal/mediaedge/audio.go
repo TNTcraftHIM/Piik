@@ -3,6 +3,7 @@ package mediaedge
 import (
 	"errors"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/TNTcraftHIM/Screener/native/client/internal/nativeaudio"
@@ -17,6 +18,9 @@ var opusCapability = webrtc.RTPCodecCapability{
 	ClockRate:   nativeaudio.SampleRate,
 	Channels:    nativeaudio.Channels,
 	SDPFmtpLine: opusSDPFmtpLine,
+	RTCPFeedback: []webrtc.RTCPFeedback{
+		{Type: webrtc.TypeRTCPFBTransportCC},
+	},
 }
 
 // AudioSource owns one encoded Opus source and the same bounded edge capacity
@@ -32,6 +36,7 @@ type AudioSource struct {
 	edges        map[*Edge]struct{}
 	reservations int
 	closed       bool
+	bytes        atomic.Uint64
 }
 
 func (engine *Engine) NewAudioSource(capacity, bitrate int) (*AudioSource, error) {
@@ -77,7 +82,15 @@ func (source *AudioSource) WritePCM(pcm []byte, duration time.Duration) error {
 	if err != nil {
 		return err
 	}
+	source.bytes.Add(uint64(len(packet)))
 	return source.track.WriteSample(media.Sample{Data: packet, Duration: duration})
+}
+
+func (source *AudioSource) snapshotBytes() uint64 {
+	if source == nil {
+		return 0
+	}
+	return source.bytes.Load()
 }
 
 func (source *AudioSource) reserve() error {

@@ -17,6 +17,8 @@ fallback. Exit code zero requires all of these checks in one 360-frame run:
   readback, plus Baseline media-type request/readback and output-order
   no-reordering checks;
 - 360 GPU-surface NV12 inputs and 360 ordered outputs;
+- one live `3 Mbps -> 1.5 Mbps -> 3 Mbps` rate change whose three equal phases
+  lower and then restore actual encoded bytes without recreating the MFT;
 - Annex-B SPS/PPS/IDR at frames 0, 60, 120, 180, 240, and 300;
 - an SPS `profile-level-id` exactly present in the fixture's default Pion
   mode-1 fmtp set; and

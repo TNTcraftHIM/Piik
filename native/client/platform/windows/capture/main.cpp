@@ -66,6 +66,8 @@ constexpr UINT32 kMaxEventsPerPump = 64;
 constexpr DWORD kMaxEncodedSampleBytes = 4 * 1024 * 1024;
 #ifdef SCREENER_H264_FIXTURE
 constexpr UINT32 kFrameCount = 360;
+constexpr UINT32 kRateProbeBitRate = kBitRate / 2;
+constexpr UINT32 kRateProbeFrames = kFrameCount / 3;
 constexpr UINT32 kMaxInFlight = 8;
 constexpr DWORD kMaxPdhArrayBytes = 4 * 1024 * 1024;
 constexpr DWORD kMaxPdhArrayItems = 16 * 1024;
@@ -869,6 +871,7 @@ struct RunEvidence final {
   UINT32 max_in_flight = 0;
   UINT32 recovery_units = 0;
   UINT64 output_bytes = 0;
+  std::array<UINT64, 3> rate_phase_bytes{};
   std::vector<double> latencies_ms;
   std::vector<double> video_encode;
   std::string profile_level_id;
@@ -1074,6 +1077,8 @@ RunEvidence RunEncoder(const Adapter& adapter, const DeviceContext& device,
           received[frame] = true;
           ++evidence.outputs;
           evidence.output_bytes += bytes.size();
+          evidence.rate_phase_bytes[std::min<UINT32>(
+              frame / kRateProbeFrames, 2)] += bytes.size();
           auto now = std::chrono::steady_clock::now();
           evidence.latencies_ms.push_back(
               std::chrono::duration<double, std::milli>(now - submitted[frame])
@@ -1090,6 +1095,13 @@ RunEvidence RunEncoder(const Adapter& adapter, const DeviceContext& device,
           evidence.inputs - evidence.outputs < kMaxInFlight &&
           now >= next_input) {
         UINT32 frame = evidence.inputs;
+        if (frame == kRateProbeFrames) {
+          SetU32(selected.codec.Get(), CODECAPI_AVEncCommonMeanBitRate,
+                 kRateProbeBitRate, "codec-runtime-bitrate-low");
+        } else if (frame == kRateProbeFrames * 2) {
+          SetU32(selected.codec.Get(), CODECAPI_AVEncCommonMeanBitRate,
+                 kBitRate, "codec-runtime-bitrate-high");
+        }
         if (IsRecoveryFrame(frame)) {
           ForceKeyFrame(selected.codec.Get());
         }
@@ -1163,6 +1175,12 @@ RunEvidence RunEncoder(const Adapter& adapter, const DeviceContext& device,
             << "evidence_recovery_units=" << evidence.recovery_units << '\n'
             << "evidence_max_in_flight=" << evidence.max_in_flight << '\n'
             << "evidence_output_bytes=" << evidence.output_bytes << '\n'
+            << "evidence_rate_phase_high_1_bytes="
+            << evidence.rate_phase_bytes[0] << '\n'
+            << "evidence_rate_phase_low_bytes="
+            << evidence.rate_phase_bytes[1] << '\n'
+            << "evidence_rate_phase_high_2_bytes="
+            << evidence.rate_phase_bytes[2] << '\n'
             << "evidence_profile_level_id=" << evidence.profile_level_id << '\n'
             << std::fixed << std::setprecision(3)
             << "evidence_latency_p95_ms="
@@ -1180,13 +1198,14 @@ RunEvidence RunEncoder(const Adapter& adapter, const DeviceContext& device,
     Fail("videoencode-attribution",
          "no process-and-adapter-attributed VideoEncode activity was observed");
   }
-  constexpr const char* default_pion_fmtp[] = {
-      "42001f", "42e01f", "4d001f", "64001f",
-  };
-  if (std::find(std::begin(default_pion_fmtp), std::end(default_pion_fmtp),
-                *observed_profile) == std::end(default_pion_fmtp)) {
+  if (!(evidence.rate_phase_bytes[1] < evidence.rate_phase_bytes[0] &&
+        evidence.rate_phase_bytes[2] > evidence.rate_phase_bytes[1])) {
+    Fail("codec-runtime-bitrate-effect",
+         "live bitrate update did not lower and restore encoded output");
+  }
+  if (*observed_profile != "42c01f") {
     Fail("bitstream-pinned-fmtp",
-         "SPS profile-level-id is not in the default Pion mode-1 fmtp set");
+         "SPS profile-level-id differs from the native media contract");
   }
   return evidence;
 }

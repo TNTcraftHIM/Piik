@@ -11,8 +11,10 @@ topics are not implementation authority.
    the current Browser-owned room and route contract. Local Client startup,
    hardware-H.264 capture, bounded Pion fanout, and a remote `srflx`-to-`srflx`
    video gate now pass. Process-loopback audio passes the Windows Browser gate
-   on the same PeerConnection with a video-only fallback; finish this boundary
-   with a representation-compatible native SFU and native quality evidence.
+   on the same PeerConnection with a video-only fallback. Pion TWCC/GCC now
+   supplies exact native P2P sender-quality evidence through the existing route
+   windows without a custom score; finish this boundary with a representation-
+   compatible native SFU.
    Capture-source failure now has a physical end/restart gate through the same
    room and Viewer. Clean-revision Windows and Linux packages pass their Local
    runtime gates; Linux also passes one-link startup and shutdown. The macOS
@@ -88,9 +90,9 @@ topics are not implementation authority.
    adding a parallel security framework.
 10. **Public-server package.** Package the exact Web/signaling, STUN/SFU, proxy,
    secrets, health, and recovery contract for a user-owned server.
-11. **Native media completion.** Extend the proven Windows native Host video
-    and process-audio boundary with native SFU behavior, native categorical
-    quality evidence, and failure/endurance coverage. A single fixed H.264 layer
+11. **Native media completion.** Extend the proven Windows native Host video,
+    process-audio, and P2P quality-evidence boundary with native SFU behavior
+    and failure/endurance coverage. A single fixed H.264 layer
     is not a substitute for the accepted HIGH+LOW SFU behavior, and raw Pion
     loss/RTT must not become a custom quality score. Preserve Browser/server
     authority; do not create a second room or media policy.

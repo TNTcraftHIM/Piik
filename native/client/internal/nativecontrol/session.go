@@ -346,6 +346,23 @@ func eventMessage(event nativehost.Event) any {
 			LocalType:     event.LocalType,
 			RemoteType:    event.RemoteType,
 		}
+	case "edge-quality":
+		quality := event.Quality
+		return edgeQualityEvent{
+			eventEnvelope:         base,
+			SampleTimestampMs:     quality.SampleTimestampMs,
+			SampleWindowMs:        quality.SampleWindowMs,
+			RTPStatsID:            quality.RTPStatsID,
+			TrackIdentifier:       quality.TrackIdentifier,
+			State:                 quality.State,
+			Reason:                quality.Reason,
+			IntervalFramesEncoded: quality.IntervalFramesEncoded,
+			FramesPerSecond:       quality.FramesPerSecond,
+			BitrateKbps:           quality.BitrateKbps,
+			AvailableOutgoingKbps: quality.AvailableOutgoingKbps,
+			Width:                 quality.Width,
+			Height:                quality.Height,
+		}
 	default:
 		return captureStateEvent{eventEnvelope: base, State: event.State}
 	}

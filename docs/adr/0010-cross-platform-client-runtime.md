@@ -28,7 +28,7 @@ Hosted and Local deployments diverge without improving the media path.
    echoes it so the Browser connects to the process it discovered. This value is
    public process identity, not authentication. Origin and Host validation plus
    the Browser's local-network permission own the current Browser boundary.
-4. Loopback v2 starts with a strict `hello` handshake. Health discovery reports
+4. Loopback v3 starts with a strict `hello` handshake. Health discovery reports
    only separately probed native capture booleans. An active control session may
    list local capture choices and own one share's generation-fenced SDP/ICE
    edges; it carries no room password, Host token, Viewer grant, or route policy.
@@ -56,10 +56,11 @@ Hosted and Local deployments diverge without improving the media path.
    available. Each Site or one-link share makes one bounded, best-effort PCP,
    UPnP, or NAT-PMP mapping for that same Pion UDP socket before its first edge
    gathers ICE; pure LAN Local mode does not. Absence or rejection leaves
-   ordinary ICE/STUN unchanged. Native quality
-   evidence must either map real encoder/transport
-   observations into the existing categorical contract or remain ineligible for
-   quality convergence. It does not introduce a custom score.
+   ordinary ICE/STUN unchanged. Native P2P quality uses Pion's transport-wide
+   GCC estimate only after feedback and source-frame progress, comparing its
+   target payload bitrate with the measured encoded payload supplied to that
+   edge. The existing route evidence windows own persistence; no custom score,
+   second adaptation policy, or queued pacer is introduced.
 9. The Client currently uses the system Browser as its only UI. With no saved
    Site it supervises the same TypeScript server in Local mode; with a saved
    Site it opens that origin while retaining the loopback runtime. An embedded
@@ -104,9 +105,13 @@ current Browser route and a remote Pion gate has received video over a direct
 `srflx`-to-`srflx` pair. A Windows Browser gate also receives process-loopback
 Opus on both native edges. A separate remote gate proves that `--link` generates
 the ordinary public invitation and carries the unchanged Viewer page and
-WebSocket control path, then disappears when the Client exits. Native SFU and
-quality evidence, other platform capture, and one-link Browser media remain
-separate gates.
+WebSocket control path, then disappears when the Client exits. Native SFU,
+other platform capture, and one-link Browser media remain separate gates.
+
+The v3 loopback gate also proves that a real Chrome receiver produces Pion
+transport feedback and that a non-unknown native sender-quality window reaches
+the existing route controller. Unknown feedback and stopped-source windows stay
+ineligible.
 
 A physical home-router gate created and removed a UPnP mapping for an ephemeral
 UDP listener. The integrated native Host gate still passed capture, two-edge

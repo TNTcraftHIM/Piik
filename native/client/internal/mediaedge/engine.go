@@ -19,6 +19,7 @@ var h264Capability = webrtc.RTPCodecCapability{
 	SDPFmtpLine: "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=" + H264ProfileLevelID,
 	RTCPFeedback: []webrtc.RTCPFeedback{
 		{Type: "goog-remb"},
+		{Type: webrtc.TypeRTCPFBTransportCC},
 		{Type: "ccm", Parameter: "fir"},
 		{Type: "nack"},
 		{Type: "nack", Parameter: "pli"},
@@ -36,6 +37,7 @@ type Engine struct {
 	mux           interface{ Close() error }
 	listenAddress string
 	portMapping   *portmapping.Mapping
+	bandwidth     *bandwidthObservers
 
 	mu     sync.Mutex
 	edges  map[*Edge]struct{}
@@ -77,6 +79,11 @@ func NewEngine(options EngineOptions) (*Engine, error) {
 		return nil, err
 	}
 	registry := &interceptor.Registry{}
+	bandwidth, err := configureBandwidthObservers(mediaEngine, registry)
+	if err != nil {
+		_ = mux.Close()
+		return nil, err
+	}
 	if err = webrtc.RegisterDefaultInterceptors(mediaEngine, registry); err != nil {
 		_ = mux.Close()
 		return nil, err
@@ -89,6 +96,7 @@ func NewEngine(options EngineOptions) (*Engine, error) {
 		),
 		mux:           mux,
 		listenAddress: connection.LocalAddr().String(),
+		bandwidth:     bandwidth,
 		edges:         make(map[*Edge]struct{}),
 	}
 	if options.PortMapping {

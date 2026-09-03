@@ -22,6 +22,9 @@ interface NativeHostEdgeEvents {
   sendSignal: (peerId: string, payload: SignalPayload) => boolean;
   onState: (state: RTCPeerConnectionState) => void;
   onPath?: (local: RTCIceCandidateType, remote: RTCIceCandidateType) => void;
+  onQuality?: (
+    quality: Extract<NativeClientEvent, { type: "edge-quality" }>,
+  ) => void;
 }
 
 export class NativeHostEdge {
@@ -142,6 +145,10 @@ export class NativeHostEdge {
     }
     if (event.type === "edge-path") {
       this.events.onPath?.(event.localType, event.remoteType);
+      return;
+    }
+    if (event.type === "edge-quality") {
+      this.events.onQuality?.(event);
     }
   }
 }

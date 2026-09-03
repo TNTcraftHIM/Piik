@@ -1,9 +1,9 @@
 import { z } from "zod";
 
-export const NATIVE_CLIENT_PROTOCOL = 2;
+export const NATIVE_CLIENT_PROTOCOL = 3;
 export const NATIVE_CLIENT_PORT_START = 39_721;
 export const NATIVE_CLIENT_PORT_END = 39_730;
-export const NATIVE_CLIENT_SUBPROTOCOL = "screener-client-v2";
+export const NATIVE_CLIENT_SUBPROTOCOL = "screener-client-v3";
 
 const decimalIdentifierSchema = z.string().regex(/^[1-9]\d{0,19}$/);
 const opaqueIdentifierSchema = z
@@ -167,6 +167,38 @@ export const nativeEventSchema = z.discriminatedUnion("type", [
       remoteType: z.enum(["host", "srflx", "prflx", "relay"]),
     })
     .strict(),
+  z
+    .object({
+      ...eventBase,
+      type: z.literal("edge-quality"),
+      connectionId: opaqueIdentifierSchema,
+      sampleTimestampMs: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+      sampleWindowMs: z.number().int().min(1_000).max(5_000),
+      rtpStatsId: z.string().min(1).max(256),
+      trackIdentifier: z.string().min(1).max(256),
+      state: z.enum(["unknown", "healthy", "degraded"]),
+      reason: z.enum(["none", "bandwidth"]).nullable(),
+      intervalFramesEncoded: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+      framesPerSecond: z.number().finite().nonnegative().max(240),
+      bitrateKbps: z.number().finite().nonnegative().max(100_000),
+      availableOutgoingKbps: z.number().finite().nonnegative().max(100_000),
+      width: z.number().int().nonnegative().max(16_384),
+      height: z.number().int().nonnegative().max(16_384),
+    })
+    .strict()
+    .superRefine((event, context) => {
+      if (
+        (event.state === "unknown" && event.reason !== null) ||
+        (event.state === "healthy" && event.reason !== "none") ||
+        (event.state === "degraded" && event.reason !== "bandwidth")
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "Native edge quality reason does not match its state",
+          path: ["reason"],
+        });
+      }
+    }),
   z
     .object({
       ...eventBase,

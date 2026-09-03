@@ -136,6 +136,22 @@ type edgePathEvent struct {
 	RemoteType string `json:"remoteType"`
 }
 
+type edgeQualityEvent struct {
+	eventEnvelope
+	SampleTimestampMs     int64   `json:"sampleTimestampMs"`
+	SampleWindowMs        int64   `json:"sampleWindowMs"`
+	RTPStatsID            string  `json:"rtpStatsId"`
+	TrackIdentifier       string  `json:"trackIdentifier"`
+	State                 string  `json:"state"`
+	Reason                *string `json:"reason"`
+	IntervalFramesEncoded uint64  `json:"intervalFramesEncoded"`
+	FramesPerSecond       float64 `json:"framesPerSecond"`
+	BitrateKbps           float64 `json:"bitrateKbps"`
+	AvailableOutgoingKbps float64 `json:"availableOutgoingKbps"`
+	Width                 uint32  `json:"width"`
+	Height                uint32  `json:"height"`
+}
+
 type shareEndedEvent struct {
 	Version int    `json:"version"`
 	Type    string `json:"type"`

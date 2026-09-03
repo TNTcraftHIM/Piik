@@ -258,7 +258,7 @@ async function browserMediaGate(input: {
     } as RequestInit);
     const health = await healthResponse.json();
     if (
-      health.protocol !== 2 ||
+      health.protocol !== 3 ||
       health.service !== "screener-client" ||
       health.instanceToken !== input.endpoint.instanceToken ||
       health.nativeMedia?.windowVideo !== true ||
@@ -270,7 +270,7 @@ async function browserMediaGate(input: {
 
     socket = new WebSocket(
       "ws://127.0.0.1:" + input.endpoint.port + "/control",
-      ["screener-client-v2." + input.endpoint.instanceToken],
+      ["screener-client-v3." + input.endpoint.instanceToken],
     );
     await new Promise<void>((resolveOpen, rejectOpen) => {
       const timer = window.setTimeout(
@@ -310,7 +310,7 @@ async function browserMediaGate(input: {
           rejectRequest(new Error("Native request timed out: " + type));
         }, 8_000);
         pending.set(id, { resolve: resolveRequest, reject: rejectRequest, timer });
-        socket!.send(JSON.stringify({ version: 2, id, type, ...fields }));
+        socket!.send(JSON.stringify({ version: 3, id, type, ...fields }));
       });
     };
     socket.onmessage = (event) => {

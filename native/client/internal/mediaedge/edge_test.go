@@ -43,6 +43,9 @@ func TestOneEncodedSourceFeedsTwoIndependentEdges(t *testing.T) {
 	if edgeA.connection == edgeB.connection || engine.ListenAddress() == "" {
 		t.Fatal("media edges did not keep independent transports")
 	}
+	if edgeA.bandwidth == edgeB.bandwidth {
+		t.Fatal("media edges shared one bandwidth estimator")
+	}
 	if _, err = engine.NewEdge(source, EdgeOptions{ConnectionID: "edge-c"}); !errors.Is(err, ErrSourceCapacity) {
 		t.Fatalf("third edge error = %v", err)
 	}
@@ -107,6 +110,60 @@ func TestRemoteCandidatesAreBoundedUntilTheAnswer(t *testing.T) {
 	}); err == nil {
 		t.Fatal("unbounded candidate queue was accepted")
 	}
+}
+
+func TestBandwidthObserverReceivesTransportFeedbackWithoutPacing(t *testing.T) {
+	engine, err := NewEngine(EngineOptions{
+		BindAddress: "127.0.0.1:0", IncludeLoopback: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = engine.Close() })
+	source, err := engine.NewSource(1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	edge, receiver, packets := connectedReceiver(t, engine, source, "quality-edge")
+	t.Cleanup(func() { _ = receiver.Close() })
+	if !strings.Contains(edge.connection.LocalDescription().SDP, "transport-cc") {
+		t.Fatal("native media offer did not negotiate transport feedback")
+	}
+	source.SetFormat(1280, 720)
+	started := time.Now()
+	if _, ok := edge.QualitySample(started); ok {
+		t.Fatal("first quality sample did not establish a baseline")
+	}
+
+	accessUnit := []byte{
+		0, 0, 0, 1, 0x67, 0x42, 0xc0, 0x1f, 0x96, 0x54, 0x05, 0x01,
+		0, 0, 0, 1, 0x68, 0xce, 0x3c, 0x80,
+		0, 0, 0, 1, 0x65, 0x88, 0x84, 0x00,
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if err = source.WriteH264(accessUnit, time.Second/30); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case <-packets:
+		default:
+		}
+		if bitrate, observed := edge.bandwidth.targetBitrate(); observed && time.Since(started) >= time.Second {
+			if bitrate <= 0 {
+				t.Fatalf("observed target bitrate = %d", bitrate)
+			}
+			sample, ok := edge.QualitySample(time.Now())
+			if !ok || sample.State != "healthy" || sample.Reason == nil ||
+				*sample.Reason != "none" || sample.IntervalFramesEncoded == 0 ||
+				sample.RTPStatsID == "" || sample.TrackIdentifier == "" {
+				t.Fatalf("quality sample = %+v, %v", sample, ok)
+			}
+			return
+		}
+		time.Sleep(time.Second / 30)
+	}
+	t.Fatal("transport feedback did not produce a bandwidth estimate")
 }
 
 func TestAudioUsesTheSamePeerConnectionAndCapacityAsVideo(t *testing.T) {
@@ -210,10 +267,18 @@ func connectedReceiver(
 	receiver := newReceiver(t)
 	packets := make(chan *rtp.Packet, 1)
 	receiver.OnTrack(func(track *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
-		packet, _, readErr := track.ReadRTP()
-		if readErr == nil {
-			packets <- packet
-		}
+		go func() {
+			for {
+				packet, _, readErr := track.ReadRTP()
+				if readErr != nil {
+					return
+				}
+				select {
+				case packets <- packet:
+				default:
+				}
+			}
+		}()
 	})
 
 	connectEdgeToReceiver(t, edge, receiver)
@@ -281,6 +346,9 @@ func newReceiverWithAudio(t *testing.T, includeAudio bool) *webrtc.PeerConnectio
 		}
 	}
 	registry := &interceptor.Registry{}
+	if err := webrtc.ConfigureTWCCSender(mediaEngine, registry); err != nil {
+		t.Fatal(err)
+	}
 	if err := webrtc.RegisterDefaultInterceptors(mediaEngine, registry); err != nil {
 		t.Fatal(err)
 	}

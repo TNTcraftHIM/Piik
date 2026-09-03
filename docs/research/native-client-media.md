@@ -3,9 +3,9 @@
 - Reviewed: 2026-09-03
 - Scope: Windows capture, one shared H.264/Opus source, Pion transport, Browser
   decode
-- Status: native Host, cross-NAT video, Windows process audio, and capture-
-  failure restart gates passed; SFU, quality evidence, and other platform media
-  remain outside the boundary
+- Status: native Host, cross-NAT video, Windows process audio, capture-failure
+  restart, and native P2P quality-evidence gates passed; SFU and other platform
+  media remain outside the boundary
 
 ## Result
 
@@ -60,19 +60,26 @@ requires Go 1.25; Client CI uses Go 1.26.6.
 ## Current Boundary
 
 The result does not yet prove native SFU publication, live quality-profile
-changes, native quality evidence, macOS/Linux capture, or endurance. Native Host
-media is exposed only through the explicit Client `--native` launch; these other
-capabilities remain unavailable there.
+changes, macOS/Linux capture, or endurance. Native Host media is exposed only
+through the explicit Client `--native` launch; these other capabilities remain
+unavailable there.
 
 LiveKit Go SDK v2.18.1 speaks protocol 17 and accepts a Pion `TrackLocal`, so SDK
 connectivity is not the native SFU blocker. The current native source has one
 fixed H.264 representation; publishing it directly would discard the accepted
 HIGH+LOW/Dynacast behavior. Native SFU and encoded relay therefore wait for one
 shared representation decision rather than shipping a single-layer exception.
-Pion v4.2.18 defines WebRTC quality-limitation fields but does not populate them
-for this externally encoded Track. Converting packet loss, RTT, or an optional
-bandwidth estimator into `healthy | limited` would add an unaccepted custom
-quality threshold, so native sender quality remains `unknown`.
+Native P2P edges negotiate transport-wide feedback and use Pion's send-side GCC
+with its immediate no-op pacer. The pacer neither queues nor applies one edge's
+estimate to the shared encoder. Once real feedback and source frames exist, the
+edge compares GCC's target payload bitrate with the H.264 plus Opus payload
+actually produced in the same window. A lower target is `degraded/bandwidth`, a
+sufficient target is `healthy/none`, and absent feedback or source progress is
+`unknown`. The existing two-second evidence cadence and three-window route rule
+own persistence. This is a direct capacity relation, not a loss/RTT score or a
+new adaptation ladder. The known Pion no-op-pacer issue concerns separately
+negotiated RTX SSRCs; the current native H.264 contract has no RTX codec and must
+reopen that choice before adding one.
 
 No-Site Internet control can use the one-link mode owned by ADR-0010. Its remote
 Pion gate proves public signaling plus direct media, but not decoded Browser
@@ -91,14 +98,13 @@ engine. Failure is cached for that share and leaves ordinary ICE/STUN unchanged.
 This proves lifecycle and non-regression, not that a mapped candidate has yet
 rescued a pair that public STUN alone could not connect.
 
-Pion's already-linked interceptor module includes transport-wide feedback,
-pacing, and Google congestion control. Its send-side estimator exposes target
-bitrate changes and controller state; this is the mature input for future native
-edge evidence. It is not yet wired because Screener's current hardware encoder
-produces one shared representation while each edge owns a different estimator.
-Applying one edge's target globally would recreate the weak-Viewer coupling the
-native path is meant to avoid. The next gate must first prove a bounded queue and
-encoder-control policy; raw loss, RTT, or an application score remains rejected.
+The retained hardware fixture also changed one live NVIDIA MFT through
+`3 Mbps -> 1.5 Mbps -> 3 Mbps` without recreating it. Equal 120-frame phases
+produced about `1.00 MB -> 0.68 MB -> 0.97 MB`, while ordered 30 fps output and
+the pinned profile remained intact. Both AMD MFT candidates failed activation
+before this probe, so the evidence is not a cross-vendor dynamic-rate contract.
+The product therefore observes GCC for routing but does not yet apply one edge's
+target globally to the shared encoder.
 
 Non-Windows capture keeps the existing process/frame boundary and replaces only
 the platform sidecar. On macOS, ScreenCaptureKit supplies system source
@@ -116,7 +122,8 @@ encoding.
 - `mediaedge` owns the stable Pion API, one UDP mux, shared H.264/Opus sources,
   and independent PeerConnections.
 - `nativehost` composes one capture generation with its bounded edges.
-- `nativecontrol` maps only local share/edge commands to the loopback v2 wire.
+- `nativecontrol` maps only local share/edge commands and exact native sender
+  quality windows to the loopback v3 wire.
 
 The deleted sender application, UI, room client, and old wire are not
 compatibility inputs. Historical measurements remain in the separately marked
@@ -131,6 +138,8 @@ compatibility inputs. Historical measurements remain in the separately marked
 - [Pion v4.2.18 stats implementation](https://github.com/pion/webrtc/blob/v4.2.18/stats.go)
 - [Pion Google congestion control](https://github.com/pion/interceptor/tree/v0.1.47/pkg/gcc)
 - [Pion bandwidth-estimation example](https://github.com/pion/webrtc/tree/v4.2.18/examples/bandwidth-estimation-from-disk)
+- [WebRTC Stats target bitrate and limitation semantics](https://www.w3.org/TR/webrtc-stats/)
+- [Pion no-op pacer RTX issue](https://github.com/pion/interceptor/issues/406)
 - [LiveKit Go SDK](https://github.com/livekit/server-sdk-go/tree/v2.18.1)
 - [Pion single-port ICE](https://github.com/pion/webrtc/tree/master/examples/ice-single-port)
 - [gopus pure-Go Opus codec](https://github.com/thesyncim/gopus)
