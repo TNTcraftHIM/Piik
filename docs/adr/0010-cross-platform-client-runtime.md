@@ -33,8 +33,10 @@ Hosted and Local deployments diverge without improving the media path.
    list local screen/window choices, request bounded previews, and own one share's generation-fenced SDP/ICE
    edges, including at most one loopback media bridge outside route-copy
    capacity; it carries no room password, Host token, Viewer grant, or route
-   policy. The Browser forwards current Site signaling and remains the
-   participant.
+   policy. A Host tab opens this connection lazily on its first native action,
+   reuses it across successive share generations, and closes it with the page;
+   an individual picker or share does not own the socket. The Browser forwards
+   current Site signaling and remains the participant.
 5. A platform package contains the Go entry, a pinned Node runtime, and the same
    server/client build used by Hosted Screener. It may also carry one process-
    isolated capture binary and the pinned `cloudflared` sidecar. The Go entry

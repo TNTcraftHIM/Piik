@@ -333,18 +333,6 @@ export class NativeClient {
     }
   }
 
-  closeAndWait(): Promise<void> {
-    if (this.socket.readyState === WebSocket.CLOSED) {
-      this.close();
-      return Promise.resolve();
-    }
-    const closed = new Promise<void>((resolveClose) => {
-      this.socket.addEventListener("close", () => resolveClose(), { once: true });
-    });
-    this.close();
-    return closed;
-  }
-
   private request<T>(
     type: string,
     fields: object,
