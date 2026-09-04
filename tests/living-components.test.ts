@@ -211,6 +211,17 @@ describe("living-room presentation", () => {
   });
 
   it.each([
+    ["hint-client-local", "vls-p2p-arc", "M173 20"],
+    ["hint-client-link", "vls-cinv-fly", 'cx="180"'],
+    ["hint-client-site", "vls-sfu-a1", 'x="173"'],
+  ] as const)("keeps the Client hint grounded in its base scene: %s", (kind, baseClass, marker) => {
+    const html = renderToStaticMarkup(createElement(HintComic, { kind, size: 240 }));
+
+    expect(html).toContain(baseClass);
+    expect(html).toContain(marker);
+  });
+
+  it.each([
     ["open", false, "host.policy.currentOpen", true],
     ["private", true, "host.policy.currentPassword", true],
     ["private", false, "host.policy.currentInvite", false],

@@ -492,6 +492,31 @@ ${rmBlock(
   </>
 );
 
+// Client launcher variants keep the mature route scenes intact and add only a
+// small destination mark. The mark carries the mode's meaning without adding
+// another animation or duplicating the scene's motion logic.
+const HintClientLocal: HintScene = ({ theme }) => (
+  <>
+    <HintRouteP2p theme={theme} />
+    <g fill="none" stroke={LIVE} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M173 20 180 14 187 20v7h-14Z" />
+      <path d="M178 27v-5h4v5" />
+    </g>
+  </>
+);
+
+const HintClientSite: HintScene = ({ theme }) => (
+  <>
+    <HintRouteSfu theme={theme} />
+    <g fill="none" stroke={LIVE} strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
+      <rect x={173} y={11} width={19} height={15} rx={2} />
+      <path d="M173 16h19" />
+      <circle cx={177} cy={13.5} r={.8} fill={LIVE} stroke="none" />
+      <path d="M179 20h9M179 23h6" />
+    </g>
+  </>
+);
+
 /* hint-nat-prediction: [one direct path] -> [a small bounded fan of
    alternate direct paths]. The scene describes extra direct chances without
    suggesting a media relay. */
@@ -551,4 +576,6 @@ export const SET4_SCENES: Record<Set4Kind, HintScene> = {
   "hint-route-p2p": HintRouteP2p,
   "hint-route-sfu": HintRouteSfu,
   "hint-nat-prediction": HintNatPrediction,
+  "hint-client-local": HintClientLocal,
+  "hint-client-site": HintClientSite,
 };

@@ -37,21 +37,21 @@ const MODES: Array<{
     icon: "users",
     label: "client.launch.local",
     hint: "client.launch.localHint",
-    comic: "hint-route-p2p",
+    comic: "hint-client-local",
   },
   {
     mode: "link",
     icon: "globe",
     label: "client.launch.link",
     hint: "client.launch.linkHint",
-    comic: "hint-copy-invite",
+    comic: "hint-client-link",
   },
   {
     mode: "site",
     icon: "server",
     label: "client.launch.site",
     hint: "client.launch.siteHint",
-    comic: "hint-route-sfu",
+    comic: "hint-client-site",
   },
 ];
 
