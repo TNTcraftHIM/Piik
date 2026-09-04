@@ -37,21 +37,21 @@ const MODES: Array<{
     icon: "users",
     label: "client.launch.local",
     hint: "client.launch.localHint",
-    comic: "hint-client-local",
+    comic: "hint-route-p2p",
   },
   {
     mode: "link",
     icon: "globe",
     label: "client.launch.link",
     hint: "client.launch.linkHint",
-    comic: "hint-client-link",
+    comic: "hint-copy-invite",
   },
   {
     mode: "site",
     icon: "server",
     label: "client.launch.site",
     hint: "client.launch.siteHint",
-    comic: "hint-client-site",
+    comic: "hint-route-sfu",
   },
 ];
 
@@ -214,7 +214,7 @@ export function ClientLauncherPage() {
                   </button>
                 );
                 return vis ? (
-                  <ComicTooltip key={choice.mode} kind={choice.comic} size={280}>
+                  <ComicTooltip key={choice.mode} kind={choice.comic}>
                     {button}
                   </ComicTooltip>
                 ) : (
@@ -244,7 +244,7 @@ export function ClientLauncherPage() {
 
             {mode !== "site" ? (
               vis ? (
-                <ComicTooltip kind="hint-client-access" size={280}>
+                <ComicTooltip kind="hint-password">
                   {accessField}
                 </ComicTooltip>
               ) : (

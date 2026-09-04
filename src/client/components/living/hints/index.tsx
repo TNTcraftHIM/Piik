@@ -52,11 +52,7 @@ export type Set4Kind =
   | "hint-theater-exit"
   | "hint-route-p2p"
   | "hint-route-sfu"
-  | "hint-nat-prediction"
-  | "hint-client-local"
-  | "hint-client-link"
-  | "hint-client-site"
-  | "hint-client-access";
+  | "hint-nat-prediction";
 
 export type HintKind = Set1Kind | Set2Kind | Set3Kind | Set4Kind;
 
@@ -94,10 +90,6 @@ export const HINT_KINDS: readonly HintKind[] = [
   "hint-route-p2p",
   "hint-route-sfu",
   "hint-nat-prediction",
-  "hint-client-local",
-  "hint-client-link",
-  "hint-client-site",
-  "hint-client-access",
 ];
 
 export type HintScene = (props: { theme: ComicTheme }) => ReactNode;
