@@ -120,12 +120,17 @@ topics are not implementation authority.
     convergence currently consumes each deferred Peer parent once; add no
     cross-generation retry budget until field evidence proves that fresh ICE
     generations expose a repeatable prediction opportunity.
-14. **Unresolved route-state ownership claims.** Reopen lower-revision
+14. **Native quality presentation.** The current Native Host contract is fixed
+    at `1280x720@30` H.264 and correctly rejects Browser profile updates while
+    live. Align the disabled control display with that actual capability, or
+    add variable native profiles only after a proven capture/encoder contract;
+    do not claim Browser quality settings apply to the fixed native path.
+15. **Unresolved route-state ownership claims.** Reopen lower-revision
     reauthentication, active SFU failure during an unrelated prepare, and
     multi-child relay-evidence ownership only from an exact current-wire
     reproduction. Do not add a second revision namespace, parallel failure
     state, or generalized evidence map from static possibility alone.
-15. **Unified release and update surface.** Build Client packages, Server
+16. **Unified release and update surface.** Build Client packages, Server
     runtime, future OCI images, and deployment bundles from one intentionally
     triggered immutable application release identified by its full commit SHA.
     A validated `main` push now produces that application release and three
@@ -136,7 +141,7 @@ topics are not implementation authority.
     explicit distribution work; do not add automatic install, container
     self-update, Watchtower, compatibility ranges, or active-share interruption
     before distribution and rollback evidence requires them.
-16. **Go server consolidation.** Revisit replacing the sole TypeScript/Node
+17. **Go server consolidation.** Revisit replacing the sole TypeScript/Node
     server owner with Go only after the Client feature and physical acceptance
     boundaries are complete. First measure package, startup, and maintenance
     gains. If accepted, migrate Hosted and Local together and delete the Node
