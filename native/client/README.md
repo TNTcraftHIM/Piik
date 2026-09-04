@@ -30,9 +30,11 @@ TURN fallback. The Client chooses a sole private LAN IPv4 automatically. Use
 The system Browser remains the Host UI. A Client-launched Host offers the
 Browser's standard capture picker and a list of exact platform capture targets;
 the user selects one explicitly. The Client selects one available hardware
-H.264 path. The current Windows sidecar uses Graphics Capture and, on supported
-builds, captures that process's audio with WASAPI. Video and audio share the
-same room route and PeerConnection. Native capture starts with the Host's
+H.264 path. Windows uses Graphics Capture, Media Foundation, and WASAPI; macOS
+uses ScreenCaptureKit, VideoToolbox, and AudioToolbox; Linux delegates selection
+to the ScreenCast Portal and uses the system PipeWire/GStreamer hardware path.
+Video and audio share the same room route and PeerConnection. Native capture
+starts with the Host's
 current resolution, frame-rate, video/audio bitrate, and quality preference;
 live changes replace only the capture/encoder generation behind those stable
 connections. Native media in Site or one-link mode also
@@ -44,11 +46,16 @@ may route the native source through its existing Browser LiveKit publisher;
 Local and one-link modes remain P2P-only. An ordinary Web Host keeps the
 Browser capture path without probing the Client.
 
-Native P2P edges negotiate transport-wide feedback. Once Pion GCC has real
-feedback and the source has produced frames, the Client reports whether that
+Native P2P edges normally reuse that one encoded source and negotiate transport-
+wide feedback. Once Pion GCC has real feedback and the source has produced
+frames, the Client reports whether that
 edge's target payload bitrate can carry the measured shared H.264 plus Opus
 payload. The existing route controller owns persistence and any replacement;
-the Client does not pace, score, or globally lower the shared encoder.
+the Client does not pace, score, or globally lower the shared encoder. If one
+Native Host edge remains persistently degraded, the existing quality operation
+may test a stock Browser WebRTC sender for that edge through the local bridge.
+Existing Viewer evidence commits or rolls back the candidate; healthy Native
+edges continue sharing the hardware encode.
 
 The Client configuration keeps an optional Local site-access password. Leave it
 blank for an open Local site, or set a visible-ASCII password (8 to 128 bytes)
@@ -90,11 +97,11 @@ the next run. This keeps the executable identity stable for the system firewall;
 the files are local build output and are never packaged or committed.
 
 It runs Go formatting, unit tests, vet, and the three supported cross-builds.
-On Windows and macOS it also compiles the matching isolated capture process and
-validates its bounded capability response; macOS additionally encodes one
-in-memory hardware H.264 IDR. Real capture, GPU attribution, Browser decode, and
-public-network paths remain explicit physical gates rather than environment-
-dependent unit tests.
+Each target compiles its isolated capture process and validates its bounded
+capability response. macOS additionally encodes one in-memory hardware H.264
+IDR; Linux probes the Portal/PipeWire/GStreamer adapter. Real capture, GPU
+attribution, Browser decode, and public-network paths remain explicit physical
+gates rather than environment-dependent unit tests.
 
 The loopback service binds IPv4 loopback on the first available port from
 `39721` through `39730`. `/health` discovers the current process; `/control`
@@ -124,9 +131,8 @@ SCREENER_GO=/path/to/go \
 
 Supported targets are `windows-amd64`, `linux-amd64`, and `darwin-arm64`.
 `--target` controls the Go cross-build and packaged executable names; the Node,
-capture, and tunnel inputs must already match that target. Windows and macOS
-accept their matching native-capture input; Linux currently retains Browser
-capture.
+capture, and tunnel inputs must already match that target. Each target accepts
+its matching native-capture input.
 
 The result contains:
 
@@ -228,5 +234,6 @@ SSH path for signaling only and requires a selected `srflx` or `prflx` media pai
 media never travels through SSH. The one-link media variant instead carries the
 same signaling through the Client's temporary public origin and requires direct
 media delivery to an independent Linux peer. Native P2P quality evidence and the
-Browser-mediated SFU path have dedicated gates. macOS capture still requires a
-native runner gate; Linux native capture remains unaccepted.
+Browser-mediated SFU path have dedicated gates. macOS and Linux capture still
+require physical desktop/media gates; CI compilation and package smoke do not
+substitute for them.

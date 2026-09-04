@@ -1,4 +1,8 @@
-import type { IceConfig, SignalPayload } from "../../shared/protocol";
+import type {
+  IceConfig,
+  PreparedRouteCandidate,
+  SignalPayload,
+} from "../../shared/protocol";
 import { EMPTY_METRICS, type PeerSnapshot } from "../types";
 import type { HostMediaPeer } from "../webrtc/host-peer";
 import { NativeHostEdge, type NativeEdgeControl } from "./host-edge";
@@ -170,11 +174,11 @@ export class NativeHostPeer implements HostMediaPeer {
   updateProfile(_profile: Parameters<HostMediaPeer["updateProfile"]>[0]): Promise<boolean> {
     // The share-level native owner updates the one encoded source before its
     // Pion edges. An individual edge cannot own or repeat that operation.
-    return Promise.resolve(false);
+    return Promise.resolve(true);
   }
 
   updateCaptureProfile(_profile: Parameters<HostMediaPeer["updateCaptureProfile"]>[0]): Promise<boolean> {
-    return Promise.resolve(false);
+    return Promise.resolve(true);
   }
 
   setPaused(_paused: boolean): void {
@@ -190,4 +194,11 @@ export class NativeHostPeer implements HostMediaPeer {
     this.disposed = true;
     this.edge.dispose();
   }
+}
+
+export function shouldUseBrowserQualityCandidate(
+  current: HostMediaPeer | undefined,
+  candidate: PreparedRouteCandidate,
+): boolean {
+  return candidate.qualityProbe && current instanceof NativeHostPeer;
 }

@@ -290,6 +290,13 @@ function verifyPlatformAssets(root, target) {
     if (!readFileSync(icon).subarray(0, 4).equals(Buffer.from("icns"))) {
       fail("macOS Client icon is not ICNS");
     }
+    const plistText = readFileSync(plist, "utf8");
+    if (
+      !plistText.includes("<key>NSScreenCaptureUsageDescription</key>") ||
+      !plistText.includes("<key>NSAudioCaptureUsageDescription</key>")
+    ) {
+      fail("macOS Client capture usage descriptions are missing");
+    }
     if (process.platform === "darwin") run(launcher, ["--help"], root);
   }
 }

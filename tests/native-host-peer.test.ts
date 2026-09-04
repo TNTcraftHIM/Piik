@@ -4,7 +4,10 @@ import {
   invalidateSenderQualityEvidence,
   senderQualityEvidenceFromSnapshot,
 } from "../src/client/media/sender-quality-evidence";
-import { NativeHostPeer } from "../src/client/native/native-host-peer";
+import {
+  NativeHostPeer,
+  shouldUseBrowserQualityCandidate,
+} from "../src/client/native/native-host-peer";
 import type { NativeEdgeControl } from "../src/client/native/host-edge";
 import type { NativeClientEvent } from "../src/client/native/wire";
 import type { PeerSnapshot } from "../src/client/types";
@@ -40,6 +43,24 @@ describe("native Host peer quality", () => {
       },
     );
     expect(await peer.start()).toBe(true);
+    expect(shouldUseBrowserQualityCandidate(peer, {
+      childPeerId: "viewer_123456",
+      connectionId: "candidate_123456",
+      transport: "direct",
+      qualityProbe: true,
+    })).toBe(true);
+    expect(shouldUseBrowserQualityCandidate(peer, {
+      childPeerId: "viewer_123456",
+      connectionId: "candidate_123456",
+      transport: "direct",
+      qualityProbe: false,
+    })).toBe(false);
+    expect(shouldUseBrowserQualityCandidate(undefined, {
+      childPeerId: "viewer_123456",
+      connectionId: "candidate_123456",
+      transport: "direct",
+      qualityProbe: true,
+    })).toBe(false);
     listener({
       version: 7,
       type: "edge-state",

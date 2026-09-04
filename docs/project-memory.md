@@ -12,16 +12,17 @@ temporary public-link, and Site startup choices, supervises Local Node, and owns
 the explicit native Host media path selected in the same Host UI. Local remains
 a serverless-LAN mode by default; explicit one-link mode exposes that same
 authority through a session-scoped public control tunnel while media remains
-P2P. Windows capture,
-hardware H.264, direct cross-NAT video, Windows process/system audio, and best-effort
-mapping of the native edge's sole UDP socket are implemented through the same
-media boundary. Native capture consumes the same room quality settings and
-applies live changes behind its stable encoded source and connections. Native
-P2P edges feed Pion GCC's categorical payload-capacity
-result into the existing route evidence windows. One reserved loopback edge
-gives the system Browser a preview and lets native Host media reuse the existing
-LiveKit publisher when SFU fallback is assigned; other platform capture and
-broader package acceptance remain later gates.
+P2P. Minimal Windows, macOS, and Linux adapters terminate at one encoded-frame
+boundary; only Windows has completed physical native-media acceptance, while
+the other two compile and package. Native capture consumes the same room quality
+settings and applies live quality or source changes behind its stable encoded
+source and connections. Native P2P edges feed Pion GCC's categorical payload-
+capacity result into the existing route evidence windows. Healthy Native Host
+edges share one hardware encode; the existing quality operation may test one
+stock Browser sender for a persistently degraded edge without lowering the
+shared source. One reserved loopback edge gives the system Browser a preview and
+lets native Host media reuse the existing LiveKit publisher when SFU fallback is
+assigned; broader package acceptance remains a later gate.
 The Local launcher keeps an optional user-chosen site-access password; leaving it
 blank keeps the self-contained site open.
 

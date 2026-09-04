@@ -1,6 +1,6 @@
 # ADR-0010: Cross-Platform Client Runtime
 
-- Status: accepted Client/Local foundation and Windows native Host media boundary
+- Status: accepted Client/Local foundation and platform native Host media boundary
 - Date: 2026-09-04
 
 ## Context
@@ -71,10 +71,20 @@ Hosted and Local deployments diverge without improving the media path.
    standard picker and each exact Client-owned screen/window; the user must select one
    and the Client never guesses a target. The same room quality settings select
    native capture size, frame rate, video/audio bitrate, and the platform
-   encoder's quality-versus-speed hint. A live change prepares a replacement
-   capture/encoder generation and swaps it behind the existing Pion source;
-   room, route, and PeerConnections do not change. Only a consumed Client-launch marker
-   travels in the URL fragment. Exact target identity travels over loopback.
+   encoder's quality-versus-speed hint. A live quality or source change prepares
+   a replacement capture/encoder generation and swaps it behind the existing
+   Pion source; room, route, and PeerConnections do not change. Windows uses
+   Graphics Capture, Media Foundation, and WASAPI; macOS uses ScreenCaptureKit,
+   VideoToolbox, and AudioToolbox; Linux uses the ScreenCast Portal, PipeWire,
+   and an installed GStreamer hardware-H.264 element. These adapters end at the
+   same bounded encoded-frame protocol and do not own WebRTC or product state.
+   The shared Native encode is the normal path. For a persistently degraded
+   Native Host edge, the existing quality operation may prepare an overlapping
+   stock Browser sender from the stable local bridge; existing evidence alone
+   decides commit or rollback, and a later operation may return to Native. No
+   extra threshold, timer, score, route operation, or representation ladder is
+   added. Only a consumed Client-launch marker travels in the URL fragment.
+   Exact target identity travels over loopback.
 9. The Client uses the system Browser as its only UI. A lightweight loopback
    launcher selects Local, one-link, or a saved Site before starting that
    composition, then navigates into the same application. Command-line mode
@@ -132,16 +142,14 @@ WebSocket control path, then disappears when the Client exits. An isolated
 LiveKit gate also proves native capture through the loopback Browser bridge and
 the existing SFU publisher, including a live 1080p-to-480p profile change and
 complete cleanup.
-Physical macOS capture, Linux native capture, and one-link Browser media remain
-separate gates.
-
-The prior fixed-profile macOS arm64 capture baseline compiled on GitHub
-`macos-15`, and its permission-free VideoToolbox self-test produced a
-constrained-baseline SPS/PPS/IDR. The current variable-profile sidecar and real
-ScreenCaptureKit permission, source lifecycle, static-screen recovery, and
-endurance remain physical acceptance gates. Source previews are best-effort;
-the current macOS sidecar falls back to its source glyph until a physical
-ScreenCaptureKit preview gate justifies a platform-specific implementation.
+One-link Browser media and physical non-Windows capture remain separate gates.
+GitHub runners compile all three platform adapters. The macOS arm64 sidecar also
+creates a hardware-only VideoToolbox encoder and produces a constrained-baseline
+SPS/PPS/IDR; its ScreenCaptureKit video/audio permission, source lifecycle,
+static-screen recovery, and endurance still require a physical Mac. The Linux
+candidate probes and packages its Portal/PipeWire/GStreamer adapter, while a
+real desktop, hardware encoder, system audio, and lifecycle still require a
+physical Linux gate. Source previews remain best-effort on both platforms.
 
 The v7 loopback gate also proves that a real Chrome receiver produces Pion
 transport feedback and that a non-unknown native sender-quality window reaches

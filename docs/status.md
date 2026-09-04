@@ -130,34 +130,42 @@ This is the current execution index. Git history owns completed timelines;
   same-room reselection; display-source lifecycle remains a separate physical
   gate. An explicit target assembler also produces a
   Linux amd64 package with proved Local/one-link runtime and a structurally
-  verified macOS arm64 package; its capture sidecar now passes an arm64 compile
-  plus hardware-H.264 IDR self-test, but the package and capture path remain
-  unrun on a physical Mac. Client-scoped pull requests build and run the
-  scripted Local smoke on all three candidates before merge; a validated `main`
-  push emits them as short-lived Actions artifacts. One-link mode preserves the Host Local
-  authority while exposing its ordinary invitation and HTTP/WebSocket control
-  path through a session-scoped Quick Tunnel. An independent Linux Pion Viewer
+  verified macOS arm64 package. Its capture sidecar passes an arm64 compile,
+  hardware-H.264 IDR self-test, and audio-adapter build, but the package and
+  capture path remain unrun on a physical Mac. The Linux package now includes a
+  thin Portal/PipeWire/GStreamer hardware-H.264 capture adapter and passes its
+  compile, probe, package, startup, and shutdown checks; real desktop capture,
+  system audio, and recovery remain unproved. Client-scoped pull requests build
+  and run the scripted Local smoke on all three candidates before merge; a
+  validated `main` push emits them as short-lived Actions artifacts. One-link
+  mode preserves the Host Local authority while exposing its ordinary invitation
+  and HTTP/WebSocket control path through a session-scoped Quick Tunnel. An
+  independent Linux Pion Viewer
   has received that native media over a direct ICE pair; remote Browser media
   remains unproved. Site and one-link native shares also make one bounded
   best-effort PCP/UPnP/NAT-PMP mapping for their sole UDP socket without
   changing ICE when no gateway accepts it; pure LAN Local mode does not.
   Native P2P edges now negotiate TWCC and send Pion GCC's target-versus-source
   payload category through the existing sender-quality evidence path without
-  pacing or changing the shared encode. A local bridge now supplies native Host
-  media to the existing Browser LiveKit publisher; an isolated LiveKit gate
-  proves 1280x720 delivery and complete cleanup without a second SFU client.
+  pacing or changing the shared encode. The existing quality operation may test
+  a Browser sender for one persistently degraded Native edge without lowering
+  healthy shared edges. A local bridge supplies native Host media to the existing
+  Browser LiveKit publisher; an isolated LiveKit gate
+  proves default 1080p delivery, a live change to 480p, and complete cleanup
+  without a second SFU client.
   Native control treats malformed/stale/repeated per-edge signaling as disposable;
   unexpected Client close reaches the Host through the existing fence. Windows
   retains one converted frame for quiet-source keyframe recovery. Its live
   profile gate keeps two PeerConnections while moving the hardware source from
   720p30 to 1440p60, then to 480p15 while paused, and resumes both Viewers;
-  current static and crash gates pass, while cross-version capture remains open.
+  current source-switch, static, and crash gates pass, while cross-version
+  capture remains open.
   Local Client access is open by default and can be protected with a user-chosen
   password from the Browser launcher; Hosted Site access is unchanged.
-  Non-Windows capture remains outside the release. The default packaged Client
-  launcher performs a non-blocking official GitHub Release check and the
-  deployment tree provides a read-only operator check against the same full-SHA
-  release identity; neither installs or interrupts a running share.
+  Non-Windows native media remains outside physical acceptance. The default
+  packaged Client launcher performs a non-blocking official GitHub Release check;
+  the deployment tree provides a read-only operator check against the same full-
+  SHA release identity. Neither installs or interrupts a running share.
 
 ## Current Hold
 

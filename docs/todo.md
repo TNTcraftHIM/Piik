@@ -21,19 +21,23 @@ topics are not implementation authority.
    Capture-source failure now has a physical end/restart gate through the same
    room and Viewer. Clean-revision Windows and Linux packages pass their Local
    runtime gates; Linux also passes one-link startup and shutdown. The macOS
-   arm64 sidecar passes hosted compilation and a synthetic VideoToolbox hardware-
-   H.264 IDR gate; physically run ScreenCaptureKit capture and recovery on macOS.
-   Linux retains Browser capture. Reopen a
-   Wayland-only Portal/PipeWire sidecar only with a real desktop/GPU gate and a
-   decision to reuse system GStreamer without bundling it; do not add a second
-   RTC, X11 capture stack, or hand-built DMA-BUF/encoder matrix.
+   arm64 sidecar passes hosted compilation, its AudioToolbox adapter build, and a
+   synthetic VideoToolbox hardware-H.264 IDR gate; physically run
+   ScreenCaptureKit video/audio, source switching, and recovery on macOS. The
+   Linux Portal/PipeWire/system-GStreamer hardware-H.264 adapter passes compile,
+   probe, package, startup, and shutdown gates; run its real desktop/GPU, system-
+   audio, source-switch, and recovery gate. Do not add a second RTC, X11 capture
+   stack, bundled media runtime, or hand-built DMA-BUF/encoder matrix.
    The system-Browser launcher now owns Local, temporary public-link, and Site
    selection, and the Host explicitly chooses Browser capture or an exact
    Client-owned screen/window without command-line target input. Its Windows
    physical gates pass window and display capture, bounded source previews,
-   process/system audio, and restored Viewer delivery. The window arm also
-   proves source end and same-room reselection; display-source lifecycle remains
-   a separate physical gate.
+   process/system audio, live source switching, and restored Viewer delivery.
+   The window arm also proves source end and same-room reselection; display-
+   source lifecycle remains a separate physical gate. Run one controlled weak-
+   path gate proving that a persistently degraded shared Native edge prepares a
+   Browser sender candidate, commits only on existing Viewer quality proof, and
+   can later return to Native without disturbing healthy Native edges.
    No-Site Internet mode now has one ordinary public invitation link that retains
    the Host's Local authority and passes remote control-path and independent
    Linux Pion media gates. Prove decoded one-link Browser media on a physical

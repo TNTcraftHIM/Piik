@@ -137,6 +137,8 @@ function writeMacAssets(packageRoot, revision, entries) {
       "<key>CFBundleName</key><string>Screener Client</string>",
       "<key>CFBundlePackageType</key><string>APPL</string>",
       "<key>CFBundleShortVersionString</key><string>1.0</string>",
+      "<key>NSScreenCaptureUsageDescription</key><string>Share a screen or application selected by you.</string>",
+      "<key>NSAudioCaptureUsageDescription</key><string>Share sound from the selected screen or application.</string>",
       `<key>CFBundleVersion</key><string>${revision}</string>`,
       "</dict></plist>",
       "",

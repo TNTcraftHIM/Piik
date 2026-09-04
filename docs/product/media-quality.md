@@ -102,9 +102,14 @@ capture therefore retains source resolution and frame-rate ownership across its
 loopback Browser bridge; the existing Browser SFU publisher applies only sender
 parameters and LiveKit's representation policy to that remote source.
 
-When a live native sender remains persistently limited after capacity recovers,
-the route controller may rebuild that exact edge with a fresh connection and
-clone; media adaptation still stays entirely framework-owned.
+Native Host edges normally reuse one hardware-encoded source. When an edge is
+persistently degraded, the existing quality operation may prepare a Browser
+WebRTC sender from the stable local bridge as that edge's candidate. The old
+edge stays live until the Viewer proves the candidate is better; a failed
+candidate rolls back, and a later operation may return the edge to the shared
+native source. This gives one difficult path stock per-sender adaptation without
+lowering the shared representation for healthy paths. It adds no quality score,
+timer, or room-wide media setting.
 
 Screener does not maintain an application bitrate/resolution ladder, scene
 detector, periodic quality controller, manual SFU layer selector, or

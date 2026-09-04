@@ -92,9 +92,11 @@ bundled Node application and loopback runtime on an independent Ubuntu host.
 Its full package also created a public link reachable from another network and
 closed that link and all local ports on exit. The macOS arm64 output contains
 matching Mach-O arm64 Client and Node binaries. Its prior fixed-profile capture
-baseline compiled on the macOS runner and passed the synthetic hardware-H.264
-IDR self-test; the current variable-profile sidecar, full package, and
-ScreenCaptureKit path have not run on a physical Mac.
+baseline and current variable-profile/audio sidecar compile on the macOS runner;
+the latter passes the synthetic hardware-H.264 IDR self-test. The full package
+and ScreenCaptureKit video/audio path have not run on a physical Mac. Linux CI
+also compiles, probes, packages, starts, and stops its Portal/PipeWire/system-
+GStreamer hardware-H.264 adapter; it has not captured on a physical desktop.
 
 Still required are physical second-device LAN playback, first-run LNA prompt,
 no-STUN mDNS behavior, macOS package execution, and equivalent non-Windows
@@ -114,8 +116,11 @@ media object through the Host UI. A separate two-Viewer media gate changes
 720p30 to 1440p60, then changes to 480p15 while paused and resumes both
 connections. Display-source lifecycle is not claimed by that arm.
 Native P2P quality evidence and the Browser-mediated native-source SFU happy
-path now have bounded gates. Production package integration, SFU recovery and
-endurance, and physical non-Windows capture remain unproved.
+path now have bounded gates. A focused unit gate proves that a quality candidate
+from a current Native Host edge selects the stock Browser sender, while ordinary
+candidates remain Native. Controlled weak-path commit/rollback, production
+package integration, SFU recovery and endurance, and physical non-Windows
+capture remain unproved.
 
 A five-second headless topology run with 20 Viewers passed the existing route
 capacity, no-orphan-publication, quality-propagation, and decoded-frame checks;

@@ -1,11 +1,10 @@
 # Native Client Media Evidence
 
 - Reviewed: 2026-09-04
-- Scope: Windows capture, one shared H.264/Opus source, Pion transport, Browser
+- Scope: platform capture, one shared H.264/Opus source, Pion transport, Browser
   decode, and Browser-mediated SFU fallback
-- Status: native Host, cross-NAT video, Windows process/system audio, capture-failure
-  restart, native P2P quality-evidence, and native-source SFU gates passed;
-  other platform media remain outside the boundary
+- Status: Windows physical native Host gates passed; macOS and Linux adapters
+  compile and package but still require physical media gates
 
 ## Result
 
@@ -70,9 +69,10 @@ The Windows Browser gate now also keeps two native PeerConnections alive while
 the source changes from 720p30 to 1440p60, then changes to 480p15 while paused
 and resumes both Viewers. It proves the same Pion source survives two hardware
 capture/encoder generations; direct capture probes also produced every current
-resolution/FPS extreme. The result does not yet prove macOS/Linux capture or
-endurance. Native Host media is exposed only through the explicit
-Client-launched Host selection; these other capabilities remain unavailable there.
+resolution/FPS extreme, and the same route survives an explicit native source
+switch. The result does not yet prove macOS/Linux physical capture or endurance.
+Native Host media is exposed only through an explicit Client-launched Host
+selection; an ordinary Web Host retains Browser capture.
 
 Native code does not publish directly to LiveKit. One local Pion edge gives the
 system Browser a remote `MediaStreamTrack`; WebRTC requires that remote track to
@@ -82,6 +82,16 @@ The bridge adds one local decode for Host preview and a Browser encode only when
 SFU publication is active. Direct P2P children continue to reuse the one native
 H.264 encode. This preserves the accepted SFU behavior without another LiveKit
 SDK or media policy.
+
+A shared encode cannot independently adapt one bitstream for unequal paths.
+Rather than lower every Native child, a quality operation originating from a
+persistently degraded Native Host edge may prepare one Browser WebRTC sender
+from the stable local bridge. The existing overlapping candidate comparison
+alone commits or rolls it back, and a later quality operation can return that
+edge to Native. Healthy Native edges keep sharing the hardware encode. This is
+implemented without a new route reason, timer, score, or representation ladder;
+controlled weak-path physical acceptance remains open.
+
 Native P2P edges negotiate transport-wide feedback and use Pion's send-side GCC
 with its immediate no-op pacer. The pacer neither queues nor applies one edge's
 estimate to the shared encoder. Once real feedback and source frames exist, the
@@ -126,24 +136,28 @@ capability probe succeeds. Preview failure is advisory and cannot tear down
 the control session.
 
 Non-Windows capture keeps the existing process/frame boundary and replaces only
-the platform sidecar. The macOS candidate enumerates `SCShareableContent`, fences
+the platform sidecar. The macOS adapter enumerates `SCShareableContent`, fences
 the selected process/window generation, receives change-driven
 `CMSampleBuffer`s, and requires VideoToolbox constrained-baseline hardware H.264.
 It retains one latest pixel buffer so an existing PLI/FIR can encode a fresh IDR
 even while the screen is unchanged; capture timestamps drive the shared Pion RTP
 clock. A GitHub `macos-15` arm64 runner compiled the sidecar, created the same
 hardware-only encoder, and encoded an in-memory 420v frame into a validated
-`42c01f` SPS/PPS/IDR. ScreenCaptureKit permission, real capture, static-frame
-recovery, and endurance still require a physical Mac.
+`42c01f` SPS/PPS/IDR. The current adapter also emits ScreenCaptureKit application
+or display audio through the common PCM boundary. ScreenCaptureKit permissions,
+real video/audio capture, static-frame recovery, and endurance still require a
+physical Mac.
 
-Linux native capture remains no-go for the current stage. The XDG ScreenCast
-Portal owns a user-selected session and restricted PipeWire file descriptor, not
-the Windows-style pre-enumerated window target or an encoded stream. A thin
-future Wayland-only gate may dynamically use the distribution's GStreamer for
-`pipewiresrc`, one bounded queue, one proved hardware H.264 element, `h264parse`,
-and `appsink`; it must not ship GStreamer, add `webrtcbin`, implement X11 capture,
-or pretend that the portal provides target-process audio. Without that system
-runtime, direct DMA-BUF import plus VAAPI/Vulkan encoding is not a small adapter.
+The Linux adapter lets the XDG ScreenCast Portal own source selection, consumes
+its restricted PipeWire stream through one bounded GStreamer pipeline, and
+requires an installed element classified as a hardware H.264 encoder. It emits
+the same Annex-B protocol and can use the PulseAudio-compatible default monitor
+for system audio; it does not claim per-process audio. GitHub Linux CI compiles,
+probes, packages, starts, and stops the candidate. A real Portal desktop,
+hardware encoder, audio source, Browser decode, and recovery still require a
+physical Linux gate. GStreamer stays a system dependency: bundling another RTC
+or an 80+ MB media runtime would defeat the thin-adapter boundary, while an
+unavailable dependency cleanly leaves Browser capture available.
 
 ## Implementation Boundary
 
@@ -179,8 +193,10 @@ compatibility inputs. Historical measurements remain in the separately marked
 - [NetBird standalone Go NAT](https://github.com/netbirdio/go-nat)
 - [WebRTC signaling and ICE](https://webrtc.org/getting-started/peer-connections)
 - [Apple ScreenCaptureKit](https://developer.apple.com/documentation/screencapturekit)
+- [ScreenCaptureKit audio output](https://developer.apple.com/documentation/screencapturekit/scstreamoutputtype/audio)
 - [ScreenCaptureKit idle frames](https://developer.apple.com/documentation/screencapturekit/scframestatus/idle)
 - [Apple VideoToolbox hardware encoder requirement](https://developer.apple.com/documentation/videotoolbox/kvtvideoencoderspecification_requirehardwareacceleratedvideoencoder)
 - [XDG ScreenCast Portal](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.ScreenCast.html)
+- [libportal](https://libportal.org/libportal.html)
 - [PipeWire DMA-BUF contract](https://docs.pipewire.org/devel/page_dma_buf.html)
 - [GStreamer PipeWire source](https://gstreamer.freedesktop.org/documentation/pipewire/pipewiresrc.html)

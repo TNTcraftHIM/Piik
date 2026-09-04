@@ -149,7 +149,10 @@ import type {
 } from "../types";
 import { HostPeer, type HostMediaPeer } from "../webrtc/host-peer";
 import { NativeClient } from "../native/client";
-import { NativeHostPeer } from "../native/native-host-peer";
+import {
+  NativeHostPeer,
+  shouldUseBrowserQualityCandidate,
+} from "../native/native-host-peer";
 import { NativeMediaBridge } from "../native/media-bridge";
 import {
   defaultNativeCapturePath,
@@ -1555,22 +1558,20 @@ export function HostPage({
       }
       const activeSfuRoute = hostSfuRouteRef.current;
       const [results, sfuUpdated] = await Promise.all([
-        nativeUpdate
-          ? Promise.resolve([])
-          : Promise.all(
-              [
-                ...[...peersRef.current.values()].map((peer) =>
-                  peer.updateCaptureProfile(appliedProfile),
-                ),
-                ...(hostProvisionalChildRef.current
-                  ? [
-                      hostProvisionalChildRef.current.updateProfile(
-                        appliedProfile,
-                      ),
-                    ]
-                  : []),
-              ],
+        Promise.all(
+          [
+            ...[...peersRef.current.values()].map((peer) =>
+              peer.updateCaptureProfile(appliedProfile),
             ),
+            ...(hostProvisionalChildRef.current
+              ? [
+                  hostProvisionalChildRef.current.updateProfile(
+                    appliedProfile,
+                  ),
+                ]
+              : []),
+          ],
+        ),
         activeSfuRoute?.updateProfile(appliedProfile) ??
           Promise.resolve(true),
       ]);
@@ -1652,6 +1653,10 @@ export function HostPage({
           if (activeStream) {
             setMediaPaused(activeStream, nextPaused);
           }
+          for (const peer of peersRef.current.values()) {
+            peer.setPaused(nextPaused);
+          }
+          hostProvisionalChildRef.current?.setPaused(nextPaused);
           hostSfuRouteRef.current?.setPaused(nextPaused);
           sharingPausedRef.current = nextPaused;
           setSharingPaused(nextPaused);
@@ -1797,15 +1802,32 @@ export function HostPage({
       },
       createPeer:
         nativeModeRef.current && nativeClient && nativeShareGeneration
-          ? (candidate, _input, events) =>
-              new NativeHostPeer(
+          ? (candidate, input, events) => {
+              const current = peersRef.current.get(candidate.childPeerId);
+              if (
+                shouldUseBrowserQualityCandidate(current, candidate) &&
+                input.stream
+              ) {
+                return new HostPeer(
+                  candidate.childPeerId,
+                  input.iceConfig,
+                  input.stream,
+                  input.profile,
+                  events,
+                  input.videoCodec,
+                  candidate.connectionId,
+                  input.natPredictionEnabled,
+                );
+              }
+              return new NativeHostPeer(
                 candidate.childPeerId,
                 candidate.connectionId,
                 nativeShareGeneration,
                 iceConfig!,
                 nativeClient,
                 events,
-              )
+              );
+            }
           : undefined,
     });
     return hostProvisionalChildRef.current.prepare({
