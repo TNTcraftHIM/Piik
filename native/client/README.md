@@ -141,6 +141,10 @@ app/node_modules
 The Client executable and application must contain the same full Git revision.
 No compatibility reader accepts a mismatched private build.
 
+The Windows Client embeds the shared Screener mark through the
+`cmd/screener-client/screener_windows_amd64.syso` resource; the platform
+suffix keeps that Windows resource out of Linux and macOS builds.
+
 For a native Host smoke run, launch the Client and select a window in the Host
 page. The Client never guesses among multiple targets. The page still creates
 the room and sends the current SDP/ICE through the selected authority. A

@@ -620,7 +620,7 @@ body.lr-theater-open { overflow: hidden; }
   display: flex;
   min-width: 0;
   min-height: 58px;
-  flex: 1 1 210px;
+  flex: 1 1 330px;
   align-items: center;
   gap: 10px;
   padding: 9px 12px;
@@ -645,8 +645,9 @@ body.lr-theater-open { overflow: hidden; }
   background: rgba(255, 255, 255, .1);
 }
 .lr-source-option-preview {
-  width: 104px;
-  height: 58px;
+  width: clamp(120px, 24vw, 160px);
+  aspect-ratio: 16 / 9;
+  height: auto;
   overflow: hidden;
   border-radius: 8px;
   background: rgba(255, 255, 255, .1);
@@ -655,7 +656,7 @@ body.lr-theater-open { overflow: hidden; }
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
   background: #0a101c;
 }
 .lr-source-option-copy { flex: 1; }
@@ -1799,8 +1800,8 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
   .lr-source-picker-mark { width: 36px; height: 36px; }
   .lr-source-picker-guide-flow { width: 42px; }
   .lr-source-picker-list { max-height: 170px; }
-  .lr-source-option-preview { width: 80px; height: 45px; }
-  .lr-source-option { min-height: 50px; flex-basis: 100%; padding: 6px 8px; }
+  .lr-source-option-preview { width: clamp(96px, 32vw, 128px); }
+  .lr-source-option { min-height: 78px; flex-basis: 100%; padding: 6px 8px; }
   .lr-source-picker.is-visual .lr-source-option.is-browser {
     min-width: 50px;
     flex-basis: 50px;
