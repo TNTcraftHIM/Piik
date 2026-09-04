@@ -214,7 +214,7 @@ export function ClientLauncherPage() {
                   </button>
                 );
                 return vis ? (
-                  <ComicTooltip key={choice.mode} kind={choice.comic}>
+                  <ComicTooltip key={choice.mode} kind={choice.comic} size={280}>
                     {button}
                   </ComicTooltip>
                 ) : (
@@ -244,7 +244,7 @@ export function ClientLauncherPage() {
 
             {mode !== "site" ? (
               vis ? (
-                <ComicTooltip kind="hint-client-access">
+                <ComicTooltip kind="hint-client-access" size={280}>
                   {accessField}
                 </ComicTooltip>
               ) : (

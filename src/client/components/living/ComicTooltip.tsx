@@ -34,6 +34,7 @@ export function ComicTooltip({
   kind,
   place = "above",
   align = "center",
+  size = 240,
   children,
 }: {
   kind: ComicKind | HintKind;
@@ -41,6 +42,8 @@ export function ComicTooltip({
   place?: "above" | "below";
   /** Preferred alignment; re-picked at open time if it would clip off-screen. */
   align?: Align;
+  /** Optional artwork size for dense controls; the default preserves existing hints. */
+  size?: number;
   children: ReactNode;
 }) {
   const wrapRef = useRef<HTMLSpanElement | null>(null);
@@ -289,8 +292,8 @@ export function ComicTooltip({
       <span ref={tipRef} className={`lr-comic-tip${placeClass}${alignClass}`} role="note">
         {comicMounted
           ? isHintKind(kind)
-            ? <HintComic kind={kind} size={240} />
-            : <Comic kind={kind} theme="paper" size={240} />
+            ? <HintComic kind={kind} size={size} />
+            : <Comic kind={kind} theme="paper" size={size} />
           : null}
       </span>
     </span>

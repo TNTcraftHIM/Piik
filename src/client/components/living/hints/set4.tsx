@@ -28,6 +28,19 @@ const INK = "var(--ink)";
 const WALL2 = "var(--wall-2)";
 const EYE = "#101a2c";
 
+function TransitionArrow() {
+  return (
+    <path
+      d="M156 48h8m-4-4 4 4-4 4"
+      fill="none"
+      stroke={STAR_GOLD}
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  );
+}
+
 /* hint-topology: [one crowned pawn alone] → [crowned pawn with two leaf
    pawns on live-green edges]. Loop 3.2s: leaves hop in turn (8-20%, 26-38%),
    everyone blinks at 62%; rest >=55%. */
@@ -547,7 +560,7 @@ const HintClientLocal: HintScene = ({ theme }) => (
 .vls-clocal-arc{stroke-dasharray:1;animation:vlsClocalArc 3.2s ease-in-out infinite}
 .vls-clocal-hop{transform-box:fill-box;transform-origin:50% 100%;animation:vlsClocalHop 3.2s ease-in-out infinite}
 .vls-clocal-eyes{transform-box:fill-box;transform-origin:center;animation:vlsClocalBlink 3.2s ease-in-out infinite}
-@keyframes vlsClocalArc{0%,8%{stroke-dashoffset:1}30%,100%{stroke-dashoffset:0}}
+@keyframes vlsClocalArc{0%,8%{stroke-dashoffset:.25;opacity:.58}30%,100%{stroke-dashoffset:0;opacity:1}}
 @keyframes vlsClocalHop{0%,32%{transform:translateY(0)}38%{transform:translateY(-4px)}44%,100%{transform:translateY(0)}}
 @keyframes vlsClocalBlink{0%,58%,66%,100%{transform:scaleY(1)}62%{transform:scaleY(.12)}}
 ${rmBlock(
@@ -560,21 +573,26 @@ ${rmBlock(
 `}</style>
     <Frame x={4} w={152} theme={theme} />
     <Frame x={164} w={152} theme={theme} accent={LIVE} />
-    <rect x={16} y={14} width={128} height={68} rx={12} fill="none" stroke={FAINT} strokeWidth={2} strokeDasharray="5 4" />
-    <MiniTv x={25} y={28} w={42} h={30} />
+    <TransitionArrow />
+    <path d="M17 43 80 15l63 28v38H17Z" fill="none" stroke={FAINT} strokeWidth={2} strokeDasharray="5 4" strokeLinejoin="round" />
+    <MiniTv x={24} y={27} w={44} h={31} />
     <Crown x={48} y={22} k={0.55} />
-    <Pawn x={48} yb={78} s={8} />
-    <Pawn x={116} yb={78} s={8} color={SKY} />
+    <Pawn x={48} yb={78} s={9} />
+    <Pawn x={116} yb={78} s={9} color={SKY} />
     <g className="vls-clocal-eyes" fill={EYE}>
-      <circle cx={45.8} cy={65} r={0.85} />
-      <circle cx={50.2} cy={65} r={0.85} />
+      <circle cx={45.5} cy={57.3} r={0.9} />
+      <circle cx={50.5} cy={57.3} r={0.9} />
     </g>
-    <path d="M68 57H96" stroke={FAINT} strokeWidth={2.5} strokeLinecap="round" strokeDasharray="4 4" />
-    <MiniTv x={180} y={28} w={42} h={30} />
-    <Crown x={203} y={22} k={0.55} />
-    <Pawn x={203} yb={78} s={8} eyes />
+    <g fill="none" stroke={FAINT} strokeWidth={2} strokeLinecap="round">
+      <path d="M89 31q8-7 16 0" />
+      <path d="M92 25q5-4 10 0" />
+    </g>
+    <path d="M183 43 240 15l57 28v38H183Z" fill="none" stroke={LIVE} strokeWidth={2.5} strokeLinejoin="round" />
+    <MiniTv x={197} y={30} w={40} h={29} />
+    <Crown x={218} y={25} k={0.52} />
+    <Pawn x={218} yb={78} s={9} eyes />
     <g className="vls-clocal-hop">
-      <Pawn x={278} yb={78} s={8} color={SKY} eyes />
+      <Pawn x={278} yb={78} s={9} color={SKY} eyes />
     </g>
     <path
       className="vls-clocal-arc"
@@ -585,7 +603,11 @@ ${rmBlock(
       strokeLinecap="round"
       fill="none"
     />
-    <circle cx={240} cy={39} r={3} fill={LIVE} />
+    <g fill="none" stroke={LIVE} strokeWidth={2.2} strokeLinecap="round">
+      <path d="M245 29q9-8 18 0" />
+      <path d="M248 23q6-5 12 0" />
+    </g>
+    <circle cx={255} cy={18} r={2.5} fill={LIVE} />
   </>
 );
 
@@ -595,32 +617,35 @@ const HintClientLink: HintScene = ({ theme }) => (
 .vls-clink-path{stroke-dasharray:1;animation:vlsClinkPath 3.2s ease-in-out infinite}
 .vls-clink-globe{transform-box:view-box;transform-origin:240px 44px;animation:vlsClinkGlobe 3.2s ease-in-out infinite}
 .vls-clink-hop{transform-box:fill-box;transform-origin:50% 100%;animation:vlsClinkHop 3.2s ease-in-out infinite}
-@keyframes vlsClinkPath{0%,8%{stroke-dashoffset:1}32%,100%{stroke-dashoffset:0}}
+.vls-clink-plane{transform-box:view-box;transform-origin:80px 50px;animation:vlsClinkPlane 3.2s ease-in-out infinite}
+@keyframes vlsClinkPath{0%,8%{stroke-dashoffset:.25;opacity:.58}32%,100%{stroke-dashoffset:0;opacity:1}}
 @keyframes vlsClinkGlobe{0%,28%{transform:rotate(0)}42%{transform:rotate(10deg)}56%,100%{transform:rotate(0)}}
 @keyframes vlsClinkHop{0%,34%{transform:translateY(0)}40%{transform:translateY(-4px)}46%,100%{transform:translateY(0)}}
+@keyframes vlsClinkPlane{0%,8%{transform:translate(0,4px);opacity:.85}20%{transform:translate(4px,0);opacity:1}34%{transform:translate(10px,-5px);opacity:1}46%,100%{transform:translate(10px,-5px);opacity:.85}}
 ${rmBlock(
-  ["vls-clink-path", "vls-clink-globe", "vls-clink-hop"],
+  ["vls-clink-path", "vls-clink-globe", "vls-clink-hop", "vls-clink-plane"],
   [
     [".vls-clink-path", "stroke-dashoffset:0"],
-    [".vls-clink-globe,.vls-clink-hop", "transform:none"],
+    [".vls-clink-globe,.vls-clink-hop,.vls-clink-plane", "transform:none"],
+    [".vls-clink-plane", "opacity:1"],
   ],
 )}
 `}</style>
     <Frame x={4} w={152} theme={theme} />
     <Frame x={164} w={152} theme={theme} accent={LIVE} />
+    <TransitionArrow />
     <MiniTv x={18} y={28} w={38} h={29} />
     <Pawn x={116} yb={78} s={8} color={SKY} />
-    <path d="M57 55H96" stroke={FAINT} strokeWidth={2.5} strokeLinecap="round" strokeDasharray="4 4" />
-    <g fill="none" stroke={STAR_GOLD} strokeWidth={2.5} strokeLinecap="round">
-      <path d="M69 46l-4-4a7 7 0 0 0-10 10l4 4a7 7 0 0 0 10 0l4-4" />
-      <path d="M83 46l4-4a7 7 0 0 1 10 10l-4 4a7 7 0 0 1-10 0l-4-4" />
-      <path d="M63 51h26" />
+    <path d="M57 55H104" stroke={FAINT} strokeWidth={2.5} strokeLinecap="round" strokeDasharray="4 4" />
+    <g className="vls-clink-plane" fill={STAR_GOLD} stroke={STAR_GOLD} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M67 49 98 39 83 60 78 52Z" />
+      <path d="m78 52 20-13" />
     </g>
     <MiniTv x={174} y={28} w={38} h={29} />
     <g className="vls-clink-globe" fill="none" stroke={LIVE} strokeWidth={2}>
-      <circle cx={240} cy={44} r={15} />
-      <path d="M225 44h30M240 29c5 5 5 25 0 30M240 29c-5 5-5 25 0 30" />
-      <path d="M229 36c6 3 16 3 22 0M229 52c6-3 16-3 22 0" />
+      <circle cx={240} cy={44} r={20} />
+      <path d="M220 44h40M240 24c7 7 7 33 0 40M240 24c-7 7-7 33 0 40" />
+      <path d="M222 34c10 4 26 4 36 0M222 54c10-4 26-4 36 0" />
     </g>
     <g className="vls-clink-path" fill="none" stroke={LIVE} strokeWidth={2.8} strokeLinecap="round">
       <path d="M212 55 Q221 48 225 46" pathLength={1} />
@@ -639,7 +664,7 @@ const HintClientSite: HintScene = ({ theme }) => (
 .vls-csite-path{stroke-dasharray:1;animation:vlsCsitePath 3.2s ease-in-out infinite}
 .vls-csite-slots{animation:vlsCsiteSlots 3.2s ease-in-out infinite}
 .vls-csite-pulse{animation:vlsCsitePulse 3.2s ease-in-out infinite}
-@keyframes vlsCsitePath{0%,8%{stroke-dashoffset:1}30%,100%{stroke-dashoffset:0}}
+@keyframes vlsCsitePath{0%,8%{stroke-dashoffset:.25;opacity:.58}30%,100%{stroke-dashoffset:0;opacity:1}}
 @keyframes vlsCsiteSlots{0%,30%,100%{opacity:.35}44%{opacity:1}}
 @keyframes vlsCsitePulse{0%,28%,100%{opacity:.35}44%{opacity:1}}
 ${rmBlock(
@@ -653,21 +678,24 @@ ${rmBlock(
 `}</style>
     <Frame x={4} w={152} theme={theme} />
     <Frame x={164} w={152} theme={theme} accent={LIVE} />
-    <MiniTv x={22} y={27} w={46} h={32} />
-    <rect x={78} y={34} width={38} height={22} rx={4} fill={WALL2} stroke={INK} strokeWidth={2.5} />
-    <path d="M84 42h26M84 48h18" stroke={FAINT} strokeWidth={2} strokeLinecap="round" />
-    <path d="M68 51H78" stroke={FAINT} strokeWidth={2.5} strokeDasharray="4 4" />
-    <rect x={181} y={22} width={47} height={39} rx={5} fill={TV_SCREEN} stroke={INK} strokeWidth={2.5} />
-    <path d="M181 31H228" stroke={INK} strokeWidth={2} />
-    <circle cx={188} cy={26.5} r={1.5} fill={STAR_GOLD} />
-    <path d="M190 44h28M190 50h21" stroke={FAINT} strokeWidth={2} strokeLinecap="round" />
-    <ServerBox x={263} y={32} w={30} h={23} lit slotsClass="vls-csite-slots" />
+    <TransitionArrow />
+    <rect x={17} y={18} width={55} height={45} rx={5} fill={TV_SCREEN} stroke={FAINT} strokeWidth={2.5} />
+    <path d="M17 30H72" stroke={FAINT} strokeWidth={2} />
+    <circle cx={24} cy={24.5} r={1.5} fill={STAR_GOLD} />
+    <rect x={31} y={22} width={34} height={6} rx={3} fill={FAINT} opacity={0.45} />
+    <path d="M27 43h35M27 51h25" stroke={FAINT} strokeWidth={2} strokeLinecap="round" />
+    <path d="M73 42H101" stroke={FAINT} strokeWidth={2.5} strokeDasharray="4 4" />
+    <ServerBox x={104} y={29} w={38} h={29} />
+    <rect x={177} y={18} width={55} height={45} rx={5} fill={TV_SCREEN} stroke={INK} strokeWidth={2.5} />
+    <path d="M177 30H232" stroke={INK} strokeWidth={2} />
+    <circle cx={185} cy={24.5} r={1.5} fill={LIVE} />
+    <path d="M188 43h34M188 51h26" stroke={FAINT} strokeWidth={2} strokeLinecap="round" />
+    <ServerBox x={258} y={29} w={38} h={29} lit slotsClass="vls-csite-slots" />
     <g className="vls-csite-path" fill="none" stroke={LIVE} strokeWidth={2.8} strokeLinecap="round">
       <path d="M229 42H260" pathLength={1} />
       <path d="M229 50H260" pathLength={1} />
     </g>
     <circle className="vls-csite-pulse" cx={245} cy={46} r={3} fill={LIVE} />
-    <Crown x={204} y={72} k={0.5} />
   </>
 );
 
@@ -678,8 +706,8 @@ const HintClientAccess: HintScene = ({ theme }) => (
 .vls-caccess-lock{transform-box:view-box;transform-origin:228px 47px;animation:vlsCaccessLock 3.2s ease-in-out infinite}
 .vls-caccess-key{transform-box:fill-box;transform-origin:center;animation:vlsCaccessKey 3.2s ease-in-out infinite}
 @keyframes vlsCaccessPawn{0%,8%{transform:translateX(-7px)}22%{transform:translateX(0)}34%,100%{transform:translateX(0)}}
-@keyframes vlsCaccessLock{0%,28%{transform:translateY(5px);opacity:0}40%{transform:translateY(0);opacity:1}54%,100%{transform:translateY(0);opacity:1}}
-@keyframes vlsCaccessKey{0%,34%{transform:translateX(-14px) rotate(-18deg);opacity:0}44%{transform:translateX(0) rotate(0);opacity:1}58%,100%{transform:translateX(0) rotate(0);opacity:1}}
+@keyframes vlsCaccessLock{0%,28%{transform:translateY(2px);opacity:.55}40%{transform:translateY(0);opacity:1}54%,100%{transform:translateY(0);opacity:1}}
+@keyframes vlsCaccessKey{0%,34%{transform:translateX(-8px) rotate(-12deg);opacity:.45}44%{transform:translateX(0) rotate(0);opacity:1}58%,100%{transform:translateX(0) rotate(0);opacity:1}}
 ${rmBlock(
   ["vls-caccess-pawn", "vls-caccess-lock", "vls-caccess-key"],
   [
@@ -691,6 +719,7 @@ ${rmBlock(
 `}</style>
     <Frame x={4} w={152} theme={theme} />
     <Frame x={164} w={152} theme={theme} accent={LIVE} />
+    <TransitionArrow />
     <path d="M28 76V24h44v52" fill="none" stroke={INK} strokeWidth={2.5} strokeLinejoin="round" />
     <path d="M35 72V33l24 6v33Z" fill={WALL2} stroke={INK} strokeWidth={2.5} strokeLinejoin="round" />
     <circle cx={55} cy={54} r={2} fill={INK} />
@@ -708,7 +737,12 @@ ${rmBlock(
       <circle cx={182} cy={69} r={4.5} fill="var(--paper)" stroke={INK} strokeWidth={2.2} />
       <path d="M186 69h15m-5 0v4m5-4v4" stroke={INK} strokeWidth={2.2} strokeLinecap="round" />
     </g>
-    <Star x={286} y={24} r={5} />
+    <g fill={STAR_GOLD}>
+      <circle cx={270} cy={22} r={1.8} />
+      <circle cx={277} cy={22} r={1.8} />
+      <circle cx={284} cy={22} r={1.8} />
+    </g>
+    <Star x={298} y={18} r={5} />
   </>
 );
 
