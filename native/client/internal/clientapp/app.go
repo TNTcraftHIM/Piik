@@ -115,7 +115,7 @@ func runLauncher(
 		return err
 	}
 	defer launch.Close()
-	fmt.Printf("Screener Client launcher: %s\n", launch.URL())
+	fmt.Printf("One-time Screener Client setup: %s\n", launch.URL())
 	if err = browser.Open(launch.URL()); err != nil {
 		return errors.New("Screener Client could not open its launcher")
 	}
@@ -167,6 +167,7 @@ func runLauncher(
 	select {
 	case <-launch.Handled():
 		_ = launch.Close()
+		fmt.Println("Setup complete. Continue in the opened Browser; press Enter to stop Screener Client.")
 	case err = <-runtimeDone:
 		return err
 	case <-ctx.Done():
@@ -218,6 +219,7 @@ func runSite(ctx context.Context, site string, options Options,
 	if err = printEndpoint(client.Endpoint()); err != nil {
 		return err
 	}
+	fmt.Printf("Screener Site: %s\n", site)
 	if !options.DisableBrowser {
 		if err = browser.Open(clientLaunchURL(site)); err != nil {
 			return errors.New("Screener Client could not open the Site")

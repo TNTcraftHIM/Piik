@@ -809,6 +809,7 @@ describe("room codes", () => {
 
   it("consumes the Client launch marker from a server-private fragment", () => {
     const replaceState = vi.fn();
+    const session = new Map<string, string>();
     vi.stubGlobal("window", {
       location: {
         hash: `#client-access=${"a".repeat(32)}&screener-client=1&retained=yes`,
@@ -816,6 +817,10 @@ describe("room codes", () => {
         search: "?room=6020",
       },
       history: { state: null, replaceState },
+      sessionStorage: {
+        getItem: (key: string) => session.get(key) ?? null,
+        setItem: (key: string, value: string) => session.set(key, value),
+      },
     });
 
     expect(takeClientLaunchBootstrap()).toEqual({
@@ -827,6 +832,12 @@ describe("room codes", () => {
       "",
       "/?room=6020#retained=yes",
     );
+
+    window.location.hash = "";
+    expect(takeClientLaunchBootstrap()).toEqual({
+      accessToken: null,
+      launchedByClient: true,
+    });
   });
 });
 
