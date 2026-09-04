@@ -1,3 +1,4 @@
+import AudioToolbox
 import CoreMedia
 import CoreVideo
 import Darwin
@@ -106,6 +107,11 @@ private struct ActiveStatus: Codable {
     let width: Int
     let height: Int
     let fps: Int32
+}
+
+private struct AudioStatus: Codable {
+    let state = "active"
+    let audio = true
 }
 
 private struct CaptureFailure: Error, CustomStringConvertible {
@@ -222,8 +228,8 @@ private func probe() throws {
         platform: "darwin",
         platformBuild: ProcessInfo.processInfo.operatingSystemVersionString,
         videoCapture: true,
-        processAudio: false,
-        systemAudio: false,
+        processAudio: true,
+        systemAudio: true,
         adapters: adapters
     ))
 }
@@ -297,6 +303,20 @@ private final class ProtocolWriter {
         try write(
             kind: 2,
             flags: keyFrame ? 1 : 0,
+            timestamp: timestamp,
+            duration: duration,
+            payload: payload
+        )
+    }
+
+    func writePCM(
+        _ payload: Data,
+        timestamp: UInt64,
+        duration: UInt64
+    ) throws {
+        try write(
+            kind: 1,
+            flags: 0,
             timestamp: timestamp,
             duration: duration,
             payload: payload
@@ -697,6 +717,188 @@ private func selfTest() throws {
     }
 }
 
+private final class AudioCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
+    private let writer: ProtocolWriter
+    private let done: StopSignal
+    private var pending = Data()
+    private var nextTimestamp: UInt64?
+    private var active = false
+
+    init(writer: ProtocolWriter, done: StopSignal) {
+        self.writer = writer
+        self.done = done
+        pending.reserveCapacity(960 * 2 * MemoryLayout<Int16>.size * 2)
+    }
+
+    private func append(_ sample: Float32) {
+        let clipped = max(-1, min(1, sample))
+        var value = Int16((clipped * Float32(Int16.max)).rounded()).littleEndian
+        Swift.withUnsafeBytes(of: &value) { pending.append(contentsOf: $0) }
+    }
+
+    private func sample(
+        _ buffer: AudioBuffer,
+        index: Int,
+        floatingPoint: Bool
+    ) throws -> Float32 {
+        guard let data = buffer.mData else {
+            throw CaptureFailure(description: "audio buffer has no samples")
+        }
+        if floatingPoint {
+            let count = Int(buffer.mDataByteSize) / MemoryLayout<Float32>.size
+            guard index >= 0, index < count else {
+                throw CaptureFailure(description: "audio float buffer is truncated")
+            }
+            return data.assumingMemoryBound(to: Float32.self)[index]
+        }
+        let count = Int(buffer.mDataByteSize) / MemoryLayout<Int16>.size
+        guard index >= 0, index < count else {
+            throw CaptureFailure(description: "audio integer buffer is truncated")
+        }
+        return Float32(data.assumingMemoryBound(to: Int16.self)[index]) /
+            Float32(Int16.max)
+    }
+
+    private func append(_ sampleBuffer: CMSampleBuffer) throws {
+        guard let description = CMSampleBufferGetFormatDescription(sampleBuffer),
+              let formatPointer = CMAudioFormatDescriptionGetStreamBasicDescription(
+                description
+              ) else {
+            throw CaptureFailure(description: "audio format is unavailable")
+        }
+        let format = formatPointer.pointee
+        let channels = Int(format.mChannelsPerFrame)
+        let floatingPoint = format.mFormatFlags &
+            kAudioFormatFlagIsFloat != 0
+        let signedInteger = format.mFormatFlags &
+            kAudioFormatFlagIsSignedInteger != 0
+        let nonInterleaved = format.mFormatFlags &
+            kAudioFormatFlagIsNonInterleaved != 0
+        guard format.mFormatID == kAudioFormatLinearPCM,
+              format.mSampleRate == 48_000,
+              channels > 0,
+              format.mFormatFlags & kAudioFormatFlagIsBigEndian == 0,
+              (floatingPoint && format.mBitsPerChannel == 32) ||
+                (signedInteger && format.mBitsPerChannel == 16) else {
+            throw CaptureFailure(description: "audio format is outside the PCM contract")
+        }
+
+        var requiredSize = 0
+        try require(
+            CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
+                sampleBuffer,
+                bufferListSizeNeededOut: &requiredSize,
+                bufferListOut: nil,
+                bufferListSize: 0,
+                blockBufferAllocator: nil,
+                blockBufferMemoryAllocator: nil,
+                flags: kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment,
+                blockBufferOut: nil
+            ),
+            "audio-buffer-size"
+        )
+        guard requiredSize >= MemoryLayout<AudioBufferList>.size else {
+            throw CaptureFailure(description: "audio buffer list is invalid")
+        }
+        let storage = UnsafeMutableRawPointer.allocate(
+            byteCount: requiredSize,
+            alignment: MemoryLayout<AudioBufferList>.alignment
+        )
+        defer { storage.deallocate() }
+        let list = storage.bindMemory(to: AudioBufferList.self, capacity: 1)
+        var blockBuffer: CMBlockBuffer?
+        try require(
+            CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
+                sampleBuffer,
+                bufferListSizeNeededOut: nil,
+                bufferListOut: list,
+                bufferListSize: requiredSize,
+                blockBufferAllocator: nil,
+                blockBufferMemoryAllocator: nil,
+                flags: kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment,
+                blockBufferOut: &blockBuffer
+            ),
+            "audio-buffer-list"
+        )
+        let buffers = UnsafeMutableAudioBufferListPointer(list)
+        let frames = CMSampleBufferGetNumSamples(sampleBuffer)
+        guard frames > 0,
+              (!nonInterleaved && buffers.count == 1) ||
+                (nonInterleaved && buffers.count >= channels) else {
+            throw CaptureFailure(description: "audio channel layout is invalid")
+        }
+        if nextTimestamp == nil {
+            let time = CMTimeGetSeconds(
+                CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+            )
+            nextTimestamp = time.isFinite && time >= 0
+                ? UInt64(time * 10_000_000)
+                : 0
+        }
+        for frame in 0..<frames {
+            let left: Float32
+            let right: Float32
+            if nonInterleaved {
+                left = try sample(buffers[0], index: frame, floatingPoint: floatingPoint)
+                right = channels > 1
+                    ? try sample(buffers[1], index: frame, floatingPoint: floatingPoint)
+                    : left
+            } else {
+                left = try sample(
+                    buffers[0],
+                    index: frame * channels,
+                    floatingPoint: floatingPoint
+                )
+                right = channels > 1
+                    ? try sample(
+                        buffers[0],
+                        index: frame * channels + 1,
+                        floatingPoint: floatingPoint
+                    )
+                    : left
+            }
+            append(left)
+            append(right)
+        }
+    }
+
+    private func flushFrames() throws {
+        let frameBytes = 960 * 2 * MemoryLayout<Int16>.size
+        while pending.count >= frameBytes {
+            if !active {
+                try writer.writeStatus(AudioStatus())
+                active = true
+            }
+            let payload = pending.prefix(frameBytes)
+            try writer.writePCM(
+                Data(payload),
+                timestamp: nextTimestamp ?? 0,
+                duration: 200_000
+            )
+            pending.removeFirst(frameBytes)
+            nextTimestamp = (nextTimestamp ?? 0) + 200_000
+        }
+    }
+
+    func stream(
+        _ stream: SCStream,
+        didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
+        of outputType: SCStreamOutputType
+    ) {
+        guard outputType == .audio, sampleBuffer.isValid else { return }
+        do {
+            try append(sampleBuffer)
+            try flushFrames()
+        } catch {
+            done.signal(error)
+        }
+    }
+
+    func stream(_ stream: SCStream, didStopWithError error: Error) {
+        done.signal(error)
+    }
+}
+
 private final class CaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
     private let encoder: HardwareEncoder
     private let done: StopSignal
@@ -779,6 +981,35 @@ private final class CaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
     }
 }
 
+private func captureFilter(
+    kind: String,
+    sourceID: UInt32,
+    pid: UInt32,
+    creationTime: String
+) async throws -> SCContentFilter {
+    let content = try await shareableContent()
+    if kind == "window" {
+        guard pid > 0, creationTime != "0",
+              let selected = shareableWindows(content).first(where: {
+                $0.0.windowID == sourceID && $0.1.pid == pid &&
+                    $0.1.creationTime == creationTime
+              })?.0 else {
+            throw CaptureFailure(description: "capture target identity changed")
+        }
+        return SCContentFilter(desktopIndependentWindow: selected)
+    }
+    if kind == "display" {
+        guard pid == 0, creationTime == "0",
+              let selected = content.displays.first(where: {
+                $0.displayID == sourceID
+              }) else {
+            throw CaptureFailure(description: "capture target identity changed")
+        }
+        return SCContentFilter(display: selected, excludingWindows: [])
+    }
+    throw CaptureFailure(description: "capture target kind is unsupported")
+}
+
 private func videoProfile(_ arguments: [String]) throws -> VideoProfile {
     guard arguments.count == 21,
           arguments[10] == "--width", let width = Int(arguments[11]),
@@ -820,28 +1051,12 @@ private func capture(_ arguments: [String]) async throws {
     let profile = try videoProfile(arguments)
     let kind = arguments[2]
     let creationTime = arguments[5]
-    let content = try await shareableContent()
-    let filter: SCContentFilter
-    if kind == "window" {
-        guard pid > 0, creationTime != "0",
-              let selected = shareableWindows(content).first(where: {
-                $0.0.windowID == sourceID && $0.1.pid == pid &&
-                    $0.1.creationTime == creationTime
-              })?.0 else {
-            throw CaptureFailure(description: "capture target identity changed")
-        }
-        filter = SCContentFilter(desktopIndependentWindow: selected)
-    } else if kind == "display" {
-        guard pid == 0, creationTime == "0",
-              let selected = content.displays.first(where: {
-                $0.displayID == sourceID
-              }) else {
-            throw CaptureFailure(description: "capture target identity changed")
-        }
-        filter = SCContentFilter(display: selected, excludingWindows: [])
-    } else {
-        throw CaptureFailure(description: "capture target kind is unsupported")
-    }
+    let filter = try await captureFilter(
+        kind: kind,
+        sourceID: sourceID,
+        pid: pid,
+        creationTime: creationTime
+    )
 
     let writer = ProtocolWriter()
     let done = StopSignal()
@@ -903,6 +1118,70 @@ private func capture(_ arguments: [String]) async throws {
     encoder.close()
 }
 
+private func captureAudio(_ arguments: [String]) async throws {
+    guard arguments.count == 5,
+          arguments[1] == "--capture-audio",
+          let pid = UInt32(arguments[3]) else {
+        throw CaptureFailure(description: "invalid audio capture arguments")
+    }
+    let kind = arguments[2]
+    let creationTime = arguments[4]
+    let content = try await shareableContent()
+    let filter: SCContentFilter
+    if kind == "window" {
+        guard pid > 0, creationTime != "0",
+              let selected = shareableWindows(content).first(where: {
+                $0.1.pid == pid && $0.1.creationTime == creationTime
+              })?.0 else {
+            throw CaptureFailure(description: "audio target identity changed")
+        }
+        filter = SCContentFilter(desktopIndependentWindow: selected)
+    } else if kind == "display" {
+        guard pid == 0, creationTime == "0",
+              let selected = content.displays.first else {
+            throw CaptureFailure(description: "audio display is unavailable")
+        }
+        filter = SCContentFilter(display: selected, excludingWindows: [])
+    } else {
+        throw CaptureFailure(description: "audio target kind is unsupported")
+    }
+    let writer = ProtocolWriter()
+    let done = StopSignal()
+    let output = AudioCaptureOutput(writer: writer, done: done)
+    let configuration = SCStreamConfiguration()
+    configuration.capturesAudio = true
+    configuration.excludesCurrentProcessAudio = true
+    configuration.sampleRate = 48_000
+    configuration.channelCount = 2
+    let queue = DispatchQueue(label: "screener.capture.audio")
+    let stream = SCStream(
+        filter: filter,
+        configuration: configuration,
+        delegate: output
+    )
+    try stream.addStreamOutput(output, type: .audio, sampleHandlerQueue: queue)
+
+    DispatchQueue.global(qos: .userInitiated).async {
+        while true {
+            let data = FileHandle.standardInput.readData(ofLength: 64)
+            if data.isEmpty || data.contains(81) || data.contains(10) ||
+                data.contains(13) {
+                done.signal()
+                return
+            }
+        }
+    }
+
+    try await stream.startCapture()
+    do {
+        try done.wait()
+    } catch {
+        try? await stream.stopCapture()
+        throw error
+    }
+    try await stream.stopCapture()
+}
+
 @main
 private struct ScreenerCapture {
     static func main() async {
@@ -914,6 +1193,8 @@ private struct ScreenerCapture {
                 try selfTest()
             } else if arguments.count == 2, arguments[1] == "--list" {
                 try await listSources()
+            } else if arguments.count > 1, arguments[1] == "--capture-audio" {
+                try await captureAudio(arguments)
             } else {
                 try await capture(arguments)
             }
