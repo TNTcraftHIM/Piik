@@ -21,15 +21,21 @@ export function CaptureSourcePicker({
   onNative,
   onPreview,
   onCancel,
+  browserAvailable = true,
+  initialAudio = true,
+  audioLocked = false,
 }: {
   nativeSources: NativeSourceList;
   onBrowser: () => void;
   onNative: (target: NativeCaptureTarget, audio: boolean) => void;
   onPreview: (target: NativeCaptureTarget) => Promise<string | null>;
   onCancel: () => void;
+  browserAvailable?: boolean;
+  initialAudio?: boolean;
+  audioLocked?: boolean;
 }) {
   const { vis, t } = useCopy();
-  const [shareAudio, setShareAudio] = useState(true);
+  const [shareAudio, setShareAudio] = useState(initialAudio);
 
   useEffect(() => {
     const cancelOnEscape = (event: KeyboardEvent) => {
@@ -97,27 +103,29 @@ export function CaptureSourcePicker({
         ) : null}
 
         <div className="lr-source-picker-list">
-          <button
-            type="button"
-            className="lr-source-option is-browser"
-            aria-label={t("host.sourcePicker.browser")}
-            onClick={onBrowser}
-            autoFocus
-          >
-            <span className="lr-source-option-icon" aria-hidden="true">
-              <Glyph name="globe" size={23} />
-            </span>
-            {vis ? (
-              <span className="visually-hidden">
-                {t("host.sourcePicker.browser")}
+          {browserAvailable ? (
+            <button
+              type="button"
+              className="lr-source-option is-browser"
+              aria-label={t("host.sourcePicker.browser")}
+              onClick={onBrowser}
+              autoFocus
+            >
+              <span className="lr-source-option-icon" aria-hidden="true">
+                <Glyph name="globe" size={23} />
               </span>
-            ) : (
-              <span className="lr-source-option-copy">
-                <strong>{t("host.sourcePicker.browser")}</strong>
-                <small>{t("host.sourcePicker.browserHint")}</small>
-              </span>
-            )}
-          </button>
+              {vis ? (
+                <span className="visually-hidden">
+                  {t("host.sourcePicker.browser")}
+                </span>
+              ) : (
+                <span className="lr-source-option-copy">
+                  <strong>{t("host.sourcePicker.browser")}</strong>
+                  <small>{t("host.sourcePicker.browserHint")}</small>
+                </span>
+              )}
+            </button>
+          ) : null}
 
           {nativeSources.kind === "ready"
             ? nativeSources.sources.map((target) => (
@@ -125,6 +133,9 @@ export function CaptureSourcePicker({
                   key={nativeCaptureTargetKey(target)}
                   target={target}
                   audio={shareAudio && supportsAudio(target)}
+                  disabled={
+                    audioLocked && shareAudio && !supportsAudio(target)
+                  }
                   onPreview={onPreview}
                   onSelect={() =>
                     onNative(target, shareAudio && supportsAudio(target))
@@ -147,7 +158,7 @@ export function CaptureSourcePicker({
               aria-checked={shareAudio && anyNativeAudio}
               aria-label={t("host.sourcePicker.audio")}
               title={vis ? undefined : t("host.sourcePicker.audioHint")}
-              disabled={!anyNativeAudio}
+              disabled={audioLocked || !anyNativeAudio}
               onClick={() => setShareAudio((current) => !current)}
             />
           </div>
@@ -175,11 +186,13 @@ export function CaptureSourcePicker({
 function CaptureSourceOption({
   target,
   audio,
+  disabled,
   onPreview,
   onSelect,
 }: {
   target: NativeCaptureTarget;
   audio: boolean;
+  disabled: boolean;
   onPreview: (target: NativeCaptureTarget) => Promise<string | null>;
   onSelect: () => void;
 }) {
@@ -236,6 +249,7 @@ function CaptureSourceOption({
       data-native-source={nativeCaptureTargetKey(target)}
       title={title}
       aria-label={action}
+      disabled={disabled}
       onMouseEnter={requestPreview}
       onFocus={requestPreview}
       onClick={onSelect}

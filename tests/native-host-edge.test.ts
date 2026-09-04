@@ -55,7 +55,7 @@ describe("native Host edge adapter", () => {
     const prepare = vi.mocked(current.control.prepareEdge);
     prepare.mockImplementationOnce(async () => {
       current.emit({
-        version: 6,
+        version: 7,
         type: "edge-candidate",
         shareId: "share_1234567",
         connectionId: "edge_12345678",
@@ -76,7 +76,7 @@ describe("native Host edge adapter", () => {
     const current = fixture();
     expect(await current.edge.start()).toBe(true);
     current.emit({
-      version: 6,
+      version: 7,
       type: "edge-state",
       shareId: "share_1234567",
       connectionId: "edge_12345678",

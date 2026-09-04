@@ -41,6 +41,7 @@ interface GateResult {
   liveQualityChanged: boolean;
   pausedQualityChanged: boolean;
   mediaObjectPreserved: boolean;
+  nativeSourceChanged: boolean;
   nativeQualityEvidence: boolean;
   viewerConnected: boolean;
   viewerFrames: number;
@@ -519,6 +520,7 @@ async function main(): Promise<void> {
     liveQualityChanged: false,
     pausedQualityChanged: false,
     mediaObjectPreserved: false,
+    nativeSourceChanged: false,
     nativeQualityEvidence: false,
     viewerConnected: false,
     viewerFrames: 0,
@@ -1015,6 +1017,66 @@ async function main(): Promise<void> {
       result.mediaObjectPreserved = resumed.sameMedia;
       result.viewerWidth = resumed.width;
       result.viewerHeight = resumed.height;
+      stage = "native-source-picker";
+      await waitForValue(
+        (deadline) => evaluate<boolean>(
+          cdp!,
+          host,
+          `Boolean([...document.querySelectorAll('button')].find((candidate) =>
+            /^(Switch source|切换来源)$/.test(candidate.getAttribute('aria-label') || '') &&
+            !candidate.disabled && candidate.getAttribute('aria-disabled') !== 'true'
+          ))`,
+          deadline,
+        ),
+        Boolean,
+        10_000,
+      );
+      await evaluate<void>(
+        cdp,
+        host,
+        `(() => {
+          const button = [...document.querySelectorAll('button')].find((candidate) =>
+            /^(Switch source|切换来源)$/.test(candidate.getAttribute('aria-label') || '')
+          );
+          button?.click();
+        })()`,
+        Date.now() + 5_000,
+      );
+      await waitForValue(
+        (deadline) => evaluate<boolean>(
+          cdp!,
+          host,
+          `Boolean(document.querySelector('[role="dialog"] button[data-native-source]'))`,
+          deadline,
+        ),
+        Boolean,
+        10_000,
+      );
+      const framesBeforeSourceChange = resumed.frames;
+      await evaluate<void>(
+        cdp,
+        host,
+        `document.querySelector('[role="dialog"] button[data-native-source]')?.click()`,
+        Date.now() + 5_000,
+      );
+      stage = "native-source-replaced";
+      result.nativeSourceChanged = await waitForValue(
+        (deadline) => evaluate<boolean>(
+          cdp!,
+          viewer,
+          `(() => {
+            const video = document.querySelector('video');
+            return Boolean(
+              video && video.srcObject === window.__screenerGateMedia &&
+              video.videoWidth === 854 && video.videoHeight === 480 &&
+              video.getVideoPlaybackQuality().totalVideoFrames >= ${framesBeforeSourceChange + 10}
+            );
+          })()`,
+          deadline,
+        ),
+        Boolean,
+        20_000,
+      );
       stage = "native-quality-evidence";
       result.nativeQualityEvidence = await waitForValue(
         async () => /"event":"sender-quality-evidence"[^\n]*"state":"(healthy|degraded)"/
@@ -1176,6 +1238,7 @@ async function main(): Promise<void> {
       : result.viewerConnected && result.viewerFrames >= 30 &&
         result.qualityControlsEnabled && result.liveQualityChanged &&
         result.pausedQualityChanged && result.mediaObjectPreserved &&
+        result.nativeSourceChanged &&
         result.viewerWidth === 854 && result.viewerHeight === 480 &&
         result.nativeQualityEvidence &&
         (crashGate

@@ -98,7 +98,7 @@ dependent unit tests.
 
 The loopback service binds IPv4 loopback on the first available port from
 `39721` through `39730`. `/health` discovers the current process; `/control`
-accepts one strict v6 session. After `hello`, an available Client may list local
+accepts one strict v7 session. After `hello`, an available Client may list local
 capture choices and own one generation-fenced share's SDP/ICE edges, including
 one reserved local Browser bridge. Its public `instanceToken` distinguishes the
 discovered process but is not authentication; room authority and remote

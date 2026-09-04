@@ -152,7 +152,8 @@ runtime, direct DMA-BUF import plus VAAPI/Vulkan encoding is not a small adapter
   and independent PeerConnections.
 - `nativehost` owns the current capture generation and its bounded stable edges.
 - `nativecontrol` maps only local source/share/edge commands and exact native
-  sender quality windows and live profile updates to the loopback v6 wire.
+  sender quality windows, live profile updates, and source replacement to the
+  loopback v7 wire.
 
 The deleted sender application, UI, room client, and old wire are not
 compatibility inputs. Historical measurements remain in the separately marked

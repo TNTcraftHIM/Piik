@@ -6,7 +6,10 @@ import type {
   SignalPayload,
 } from "../../shared/protocol";
 import { createOpaqueId } from "../lib/opaque-id";
-import { nativeCaptureTargetKey } from "./capture-selection";
+import {
+  nativeCaptureTargetKey,
+  type NativeCapturePath,
+} from "./capture-selection";
 import {
   captureOptionsResponseSchema,
   edgeOfferResponseSchema,
@@ -20,6 +23,7 @@ import {
   pongResponseSchema,
   readyResponseSchema,
   shareStartedResponseSchema,
+  shareSourceReplacedResponseSchema,
   shareUpdatedResponseSchema,
   sourceListResponseSchema,
   sourcePreviewResponseSchema,
@@ -200,6 +204,29 @@ export class NativeClient {
       { shareId, profile },
       shareUpdatedResponseSchema,
       null,
+    );
+    if (response.shareId !== shareId) {
+      throw new Error("Native share identity changed");
+    }
+  }
+
+  async replaceShareSource(
+    shareId: string,
+    source: NativeCaptureTarget,
+    audio: boolean,
+    path: NativeCapturePath,
+  ): Promise<void> {
+    const response = await this.request(
+      "replace-share-source",
+      {
+        shareId,
+        source,
+        audio,
+        adapterIndex: path.adapterIndex,
+        encoderIndex: path.encoderIndex,
+      },
+      shareSourceReplacedResponseSchema,
+      source.kind === "picker" ? null : REQUEST_TIMEOUT_MS,
     );
     if (response.shareId !== shareId) {
       throw new Error("Native share identity changed");

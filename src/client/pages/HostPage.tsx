@@ -1279,7 +1279,10 @@ export function HostPage({
 
   function closeCaptureSourcePicker(): void {
     nativeSourceRequestRef.current = null;
-    nativeSourceClientRef.current?.close();
+    const client = nativeSourceClientRef.current;
+    if (client && client !== nativeClientRef.current) {
+      client.close();
+    }
     nativeSourceClientRef.current = null;
     nativeSourcePathRef.current = null;
     setNativeSources(null);
@@ -1288,14 +1291,20 @@ export function HostPage({
   async function openCaptureSourcePicker(): Promise<void> {
     const request = {};
     nativeSourceRequestRef.current = request;
-    nativeSourceClientRef.current?.close();
+    const previousClient = nativeSourceClientRef.current;
+    if (previousClient && previousClient !== nativeClientRef.current) {
+      previousClient.close();
+    }
     nativeSourceClientRef.current = null;
     nativeSourcePathRef.current = null;
     setNativeSources({ kind: "loading" });
 
-    const client = await NativeClient.connect();
+    const activeClient = nativeModeRef.current
+      ? nativeClientRef.current
+      : null;
+    const client = activeClient ?? (await NativeClient.connect());
     if (nativeSourceRequestRef.current !== request) {
-      client?.close();
+      if (client && client !== nativeClientRef.current) client.close();
       return;
     }
     if (
@@ -1303,7 +1312,7 @@ export function HostPage({
       !client.health.nativeMedia.video ||
       !client.health.nativeMedia.hardwareH264
     ) {
-      client?.close();
+      if (client && client !== nativeClientRef.current) client.close();
       setNativeSources({ kind: "unavailable" });
       return;
     }
@@ -1314,11 +1323,11 @@ export function HostPage({
       ]);
       const path = defaultNativeCapturePath(adapters);
       if (nativeSourceRequestRef.current !== request) {
-        client.close();
+        if (client !== nativeClientRef.current) client.close();
         return;
       }
       if (!path) {
-        client.close();
+        if (client !== nativeClientRef.current) client.close();
         setNativeSources({ kind: "unavailable" });
         return;
       }
@@ -1331,7 +1340,7 @@ export function HostPage({
         systemAudio: client.health.nativeMedia.systemAudio,
       });
     } catch {
-      client.close();
+      if (client !== nativeClientRef.current) client.close();
       if (nativeSourceRequestRef.current === request) {
         setNativeSources({ kind: "unavailable" });
       }
@@ -1373,6 +1382,11 @@ export function HostPage({
     const client = nativeSourceClientRef.current;
     const path = nativeSourcePathRef.current;
     if (!client || !path) return;
+    if (phase === "live" && nativeModeRef.current) {
+      closeCaptureSourcePicker();
+      void switchNativeSource(client, target, audio, path);
+      return;
+    }
     nativeSourceRequestRef.current = null;
     nativeSourceClientRef.current = null;
     nativeSourcePathRef.current = null;
@@ -2545,6 +2559,70 @@ export function HostPage({
     }
   }
 
+  async function switchNativeSource(
+    client: NativeClient,
+    target: NativeCaptureTarget,
+    audio: boolean,
+    path: NativeCapturePath,
+  ): Promise<void> {
+    const generation = activeGenerationRef.current;
+    const shareGeneration = nativeShareGenerationRef.current;
+    if (
+      phase !== "live" ||
+      generation === null ||
+      !shareGeneration ||
+      !isCurrentGeneration(generation) ||
+      nativeClientRef.current !== client ||
+      sourceSwitchRef.current ||
+      qualityChangeRef.current
+    ) {
+      return;
+    }
+    const token = {};
+    sourceSwitchRef.current = token;
+    setSwitchingSource(true);
+    setNotice(null);
+    try {
+      await client.replaceShareSource(
+        shareGeneration,
+        target,
+        audio,
+        path,
+      );
+      if (
+        !isCurrentGeneration(generation) ||
+        sourceSwitchRef.current !== token ||
+        nativeClientRef.current !== client
+      ) {
+        return;
+      }
+      invalidateSenderQualityEvidence();
+      if (routePolicyRef.current.topologyOptimization) {
+        signalRef.current?.send({ type: "reset-sender-quality" });
+      }
+      const activeStream = streamRef.current;
+      if (activeStream) {
+        setDetails(
+          nativeCaptureDetails(qualitySettingsRef.current, activeStream),
+        );
+      }
+      setNotice(sourceSwitchNotice({
+        failedPeerCount: 0,
+        sfuReplaced: true,
+        sfuWarning: null,
+      }));
+    } catch (error) {
+      if (
+        isCurrentGeneration(generation) &&
+        sourceSwitchRef.current === token
+      ) {
+        setNoticeError(error, "source");
+      }
+    } finally {
+      finishSourceSwitch(token);
+    }
+  }
+
   async function switchSource(): Promise<void> {
     const generation = activeGenerationRef.current;
     if (
@@ -2557,6 +2635,7 @@ export function HostPage({
       return;
     }
     if (nativeModeRef.current) {
+      await openCaptureSourcePicker();
       return;
     }
 
@@ -3142,13 +3221,20 @@ export function HostPage({
                 <VisGlyph name="cast" size={42} draw="native-live" />
               </div>
             ) : null}
-            {!stream && nativeSources ? (
+            {nativeSources ? (
               <CaptureSourcePicker
                 nativeSources={nativeSources}
                 onBrowser={startBrowserShareFromPicker}
                 onNative={startNativeShareFromPicker}
                 onPreview={loadNativeSourcePreview}
                 onCancel={closeCaptureSourcePicker}
+                browserAvailable={!nativeActive}
+                initialAudio={
+                  nativeActive
+                    ? (streamRef.current?.getAudioTracks().length ?? 0) > 0
+                    : true
+                }
+                audioLocked={nativeActive}
               />
             ) : !stream &&
               (phase === "idle" || phase === "ended" || phase === "error") ? (
@@ -3535,7 +3621,7 @@ export function HostPage({
                           icon="switchSource"
                           cap={switchingSource ? "host.switching" : "host.switchSource"}
                           title="host.switchSource"
-                          disabled={nativeActive || switchingSource || changingQuality}
+                          disabled={switchingSource || changingQuality}
                           onClick={() => void switchSource()}
                         />,
                         "end",

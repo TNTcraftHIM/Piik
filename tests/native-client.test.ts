@@ -6,6 +6,7 @@ import {
   nativeEventSchema,
   nativeHealthSchema,
   nativeCaptureTargetSchema,
+  shareSourceReplacedResponseSchema,
   shareStartedResponseSchema,
   shareUpdatedResponseSchema,
   sourcePreviewResponseSchema,
@@ -24,7 +25,7 @@ describe("native Client private wire", () => {
       static readonly CLOSING = 2;
       static readonly CLOSED = 3;
       readyState = FakeWebSocket.OPEN;
-      protocol = `screener-client-v6.${token}`;
+      protocol = `screener-client-v7.${token}`;
       readonly close = vi.fn(() => {
         this.readyState = FakeWebSocket.CLOSING;
       });
@@ -42,7 +43,7 @@ describe("native Client private wire", () => {
           const event = new Event("message");
           Object.defineProperty(event, "data", {
             value: JSON.stringify({
-              version: 6,
+              version: 7,
               id: request.id,
               type: "ready",
             }),
@@ -63,7 +64,7 @@ describe("native Client private wire", () => {
     });
     vi.stubGlobal("fetch", vi.fn(async () =>
       new Response(JSON.stringify({
-        protocol: 6,
+        protocol: 7,
         service: "screener-client",
         port: 39_721,
         instanceToken: token,
@@ -96,7 +97,7 @@ describe("native Client private wire", () => {
   it("keeps public discovery capability-only", () => {
     expect(
       nativeHealthSchema.parse({
-        protocol: 6,
+        protocol: 7,
         service: "screener-client",
         port: 39_721,
         instanceToken: "a".repeat(43),
@@ -110,7 +111,7 @@ describe("native Client private wire", () => {
     ).toMatchObject({ nativeMedia: { processAudio: false } });
     expect(
       nativeHealthSchema.safeParse({
-        protocol: 6,
+        protocol: 7,
         service: "screener-client",
         port: 39_721,
         instanceToken: "a".repeat(43),
@@ -162,7 +163,7 @@ describe("native Client private wire", () => {
 
   it("fences native events by share and connection identity", () => {
     const event = {
-      version: 6,
+      version: 7,
       type: "edge-state",
       shareId: "share_123456",
       connectionId: "edge_1234567",
@@ -179,7 +180,7 @@ describe("native Client private wire", () => {
 
   it("keeps an unavailable preview advisory instead of treating it as media failure", () => {
     const preview = {
-      version: 6,
+      version: 7,
       id: "request_preview",
       type: "source-preview",
       sourceKey: "display:65537",
@@ -198,20 +199,26 @@ describe("native Client private wire", () => {
       screenAudioQuality: "very-high",
     };
     expect(shareStartedResponseSchema.safeParse({
-      version: 6,
+      version: 7,
       id: "request_start",
       type: "share-started",
       shareId: "share_123456",
       audio: true,
     }).success).toBe(true);
     expect(shareUpdatedResponseSchema.safeParse({
-      version: 6,
+      version: 7,
       id: "request_update",
       type: "share-updated",
       shareId: "share_123456",
     }).success).toBe(true);
+    expect(shareSourceReplacedResponseSchema.safeParse({
+      version: 7,
+      id: "request_source",
+      type: "share-source-replaced",
+      shareId: "share_123456",
+    }).success).toBe(true);
     expect(shareUpdatedResponseSchema.safeParse({
-      version: 6,
+      version: 7,
       id: "request_update",
       type: "share-updated",
       shareId: "share_123456",
@@ -221,7 +228,7 @@ describe("native Client private wire", () => {
 
   it("accepts only internally consistent native quality evidence", () => {
     const event = {
-      version: 6,
+      version: 7,
       type: "edge-quality",
       shareId: "share_123456",
       connectionId: "edge_1234567",

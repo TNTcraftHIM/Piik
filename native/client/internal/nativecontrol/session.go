@@ -145,6 +145,31 @@ func (session *Session) Handle(_ context.Context, payload []byte) (any, error) {
 			responseEnvelope: response(envelope, "share-updated"),
 			ShareID:          request.ShareID,
 		}, nil
+	case "replace-share-source":
+		var request replaceShareSourceRequest
+		if err := decodeStrict(payload, &request); err != nil ||
+			request.Type != envelope.Type ||
+			!validIdentities(request.ShareID) {
+			return nil, errors.New("native replace-share-source request is invalid")
+		}
+		host := session.current(request.ShareID)
+		if host == nil {
+			return nil, errors.New("native share does not exist")
+		}
+		audio := request.Audio && session.capabilities.Summary().AudioFor(
+			request.Source.Kind,
+		)
+		if err := host.ReplaceSource(nativecapture.VideoOptions{
+			Target:       request.Source,
+			AdapterIndex: request.AdapterIndex,
+			EncoderIndex: request.EncoderIndex,
+		}, audio); err != nil {
+			return nil, err
+		}
+		return shareSourceReplacedResponse{
+			responseEnvelope: response(envelope, "share-source-replaced"),
+			ShareID:          request.ShareID,
+		}, nil
 	case "prepare-edge":
 		var request prepareEdgeRequest
 		if err := decodeStrict(payload, &request); err != nil ||

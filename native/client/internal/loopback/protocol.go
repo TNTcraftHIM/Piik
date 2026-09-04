@@ -9,9 +9,9 @@ import (
 )
 
 const (
-	ProtocolVersion        = 6
+	ProtocolVersion        = 7
 	ServiceName            = "screener-client"
-	ControlSubprotocol     = "screener-client-v6"
+	ControlSubprotocol     = "screener-client-v7"
 	MaxControlMessageBytes = 64 << 10
 	DefaultPortStart       = 39721
 	DefaultPortEnd         = 39730

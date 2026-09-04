@@ -56,6 +56,17 @@ type updateShareRequest struct {
 	Profile qualitySettings `json:"profile"`
 }
 
+type replaceShareSourceRequest struct {
+	Version      int                         `json:"version"`
+	ID           string                      `json:"id"`
+	Type         string                      `json:"type"`
+	ShareID      string                      `json:"shareId"`
+	Source       nativecapture.CaptureTarget `json:"source"`
+	Audio        bool                        `json:"audio"`
+	AdapterIndex uint32                      `json:"adapterIndex"`
+	EncoderIndex uint32                      `json:"encoderIndex"`
+}
+
 type stopShareRequest struct {
 	Version int    `json:"version"`
 	ID      string `json:"id"`
@@ -142,6 +153,11 @@ type shareStartedResponse struct {
 }
 
 type shareUpdatedResponse struct {
+	responseEnvelope
+	ShareID string `json:"shareId"`
+}
+
+type shareSourceReplacedResponse struct {
 	responseEnvelope
 	ShareID string `json:"shareId"`
 }

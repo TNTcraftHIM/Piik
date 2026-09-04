@@ -108,11 +108,11 @@ func Start(parent context.Context, options Options) (*Session, error) {
 	}
 	var audioStream *nativecapture.Stream
 	if options.AudioEnabled {
-		if options.Video.Target.Kind == "display" {
-			audioStream, _ = nativecapture.StartSystemAudio(parent, options.CaptureProcess)
-		} else {
-			audioStream, _ = nativecapture.StartAudio(parent, options.CaptureProcess, options.Video.Target)
-		}
+		audioStream, _ = startAudioCapture(
+			parent,
+			options.CaptureProcess,
+			options.Video.Target,
+		)
 	}
 	ctx, cancel := context.WithCancel(parent)
 	session := &Session{
@@ -333,22 +333,8 @@ func (session *Session) UpdateProfile(profile QualityProfile) error {
 		return nil
 	}
 
-	replacement, err := nativecapture.StartVideo(
-		session.ctx,
-		session.captureProcess,
-		options,
-	)
+	replacement, state, err := session.prepareVideo(options)
 	if err != nil {
-		return errors.New("native capture profile could not start")
-	}
-	state, err := waitForCaptureProfile(
-		session.ctx,
-		replacement,
-		profile.Video,
-		options.Target.Kind == "picker",
-	)
-	if err != nil {
-		_ = replacement.Close()
 		return err
 	}
 	if session.audioSource != nil && profile.AudioBitrate != previousProfile.AudioBitrate {
@@ -358,17 +344,123 @@ func (session *Session) UpdateProfile(profile QualityProfile) error {
 		}
 	}
 
+	return session.commitCapture(
+		options,
+		profile,
+		replacement,
+		state,
+		nil,
+		false,
+	)
+}
+
+func (session *Session) ReplaceSource(
+	options nativecapture.VideoOptions,
+	audioEnabled bool,
+) error {
+	session.updateMu.Lock()
+	defer session.updateMu.Unlock()
+
+	session.mu.Lock()
+	if session.closed {
+		session.mu.Unlock()
+		return errors.New("native share is unavailable")
+	}
+	profile := session.profile
+	hasAudio := session.audioSource != nil && session.audioStream != nil
+	session.mu.Unlock()
+	if audioEnabled != hasAudio {
+		return errors.New("native source audio availability cannot change while sharing")
+	}
+	options.Profile = profile.Video
+	options.RestoreToken = ""
+	replacement, state, err := session.prepareVideo(options)
+	if err != nil {
+		return err
+	}
+	var replacementAudio *nativecapture.Stream
+	if hasAudio {
+		replacementAudio, err = startAudioCapture(
+			session.ctx,
+			session.captureProcess,
+			options.Target,
+		)
+		if err != nil {
+			_ = replacement.Close()
+			return errors.New("native source audio could not start")
+		}
+	}
+	return session.commitCapture(
+		options,
+		profile,
+		replacement,
+		state,
+		replacementAudio,
+		hasAudio,
+	)
+}
+
+func startAudioCapture(
+	ctx context.Context,
+	captureProcess string,
+	target nativecapture.CaptureTarget,
+) (*nativecapture.Stream, error) {
+	if target.Kind == "display" || target.Kind == "picker" {
+		return nativecapture.StartSystemAudio(ctx, captureProcess)
+	}
+	return nativecapture.StartAudio(ctx, captureProcess, target)
+}
+
+func (session *Session) prepareVideo(
+	options nativecapture.VideoOptions,
+) (*nativecapture.Stream, CaptureState, error) {
+	replacement, err := nativecapture.StartVideo(
+		session.ctx,
+		session.captureProcess,
+		options,
+	)
+	if err != nil {
+		return nil, CaptureState{}, errors.New("native capture could not start")
+	}
+	state, err := waitForCaptureProfile(
+		session.ctx,
+		replacement,
+		options.Profile,
+		options.Target.Kind == "picker",
+	)
+	if err != nil {
+		_ = replacement.Close()
+		return nil, CaptureState{}, err
+	}
+	return replacement, state, nil
+}
+
+func (session *Session) commitCapture(
+	options nativecapture.VideoOptions,
+	profile QualityProfile,
+	replacement *nativecapture.Stream,
+	state CaptureState,
+	replacementAudio *nativecapture.Stream,
+	replaceAudio bool,
+) error {
 	session.mu.Lock()
 	if session.closed {
 		session.mu.Unlock()
 		_ = replacement.Close()
+		if replacementAudio != nil {
+			_ = replacementAudio.Close()
+		}
 		return errors.New("native share is unavailable")
 	}
 	previous := session.stream
+	previousAudio := session.audioStream
 	if state.RestoreToken != "" {
 		options.RestoreToken = state.RestoreToken
 	}
 	session.stream = replacement
+	if replaceAudio {
+		session.audioStream = replacementAudio
+	}
 	session.videoOptions = options
 	session.profile = profile
 	session.source.SetFormat(state.Width, state.Height)
@@ -379,6 +471,9 @@ func (session *Session) UpdateProfile(profile QualityProfile) error {
 	})
 	_ = replacement.RequestKeyFrame()
 	_ = previous.Close()
+	if replaceAudio && previousAudio != nil {
+		_ = previousAudio.Close()
+	}
 	return nil
 }
 
@@ -411,6 +506,7 @@ func (session *Session) Close() error {
 		edges = append(edges, edge)
 	}
 	stream := session.stream
+	audioStream := session.audioStream
 	session.edges = make(map[string]*mediaedge.Edge)
 	session.mu.Unlock()
 	session.cancel()
@@ -418,8 +514,8 @@ func (session *Session) Close() error {
 		_ = edge.Close()
 	}
 	_ = stream.Close()
-	if session.audioStream != nil {
-		_ = session.audioStream.Close()
+	if audioStream != nil {
+		_ = audioStream.Close()
 	}
 	_ = session.source.Close()
 	if session.audioSource != nil {
@@ -460,8 +556,11 @@ func (session *Session) run() {
 	}
 	result := <-videoDone
 	session.cancel()
-	if session.audioStream != nil {
-		_ = session.audioStream.Close()
+	session.mu.Lock()
+	audioStream := session.audioStream
+	session.mu.Unlock()
+	if audioStream != nil {
+		_ = audioStream.Close()
 	}
 	<-audioDone
 	<-qualityDone
@@ -473,10 +572,11 @@ func (session *Session) run() {
 		_ = session.engine.Close()
 		session.mu.Lock()
 		stream := session.stream
+		audioStream := session.audioStream
 		session.mu.Unlock()
 		_ = stream.Close()
-		if session.audioStream != nil {
-			_ = session.audioStream.Close()
+		if audioStream != nil {
+			_ = audioStream.Close()
 		}
 		session.done <- result
 		close(session.done)
@@ -650,10 +750,20 @@ func (session *Session) runQuality() {
 }
 
 func (session *Session) runAudio() {
-	for {
-		frame, err := session.audioStream.Read()
-		if err != nil || session.ctx.Err() != nil {
+	current := session.currentAudioStream()
+	for current != nil {
+		frame, err := current.Read()
+		if err != nil {
+			next := session.currentAudioStream()
+			if next != nil && next != current {
+				current = next
+				continue
+			}
 			return
+		}
+		if next := session.currentAudioStream(); next != current {
+			current = next
+			continue
 		}
 		if frame.Kind != nativecapture.FramePCM {
 			return
@@ -668,6 +778,15 @@ func (session *Session) runAudio() {
 			return
 		}
 	}
+}
+
+func (session *Session) currentAudioStream() *nativecapture.Stream {
+	session.mu.Lock()
+	defer session.mu.Unlock()
+	if session.closed {
+		return nil
+	}
+	return session.audioStream
 }
 
 func (session *Session) emit(event Event) {

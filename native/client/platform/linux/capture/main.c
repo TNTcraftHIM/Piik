@@ -757,7 +757,9 @@ static int capture_video(int count, char **values) {
 
 static int capture_audio(int count, char **values) {
   if (count != 5 || strcmp(values[1], "--capture-audio") != 0 ||
-      strcmp(values[2], "picker") != 0 || strcmp(values[3], "0") != 0 ||
+      (strcmp(values[2], "picker") != 0 &&
+       strcmp(values[2], "display") != 0) ||
+      strcmp(values[3], "0") != 0 ||
       strcmp(values[4], "0") != 0 || !audio_stack_available()) {
     return 2;
   }

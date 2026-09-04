@@ -28,7 +28,7 @@ Hosted and Local deployments diverge without improving the media path.
    echoes it so the Browser connects to the process it discovered. This value is
    public process identity, not authentication. Origin and Host validation plus
    the Browser's local-network permission own the current Browser boundary.
-4. Loopback v6 starts with a strict `hello` handshake. Health discovery reports
+4. Loopback v7 starts with a strict `hello` handshake. Health discovery reports
    only separately probed native capture booleans. An active control session may
    list local screen/window choices, request bounded previews, and own one share's generation-fenced SDP/ICE
    edges, including at most one loopback media bridge outside route-copy
@@ -143,7 +143,7 @@ endurance remain physical acceptance gates. Source previews are best-effort;
 the current macOS sidecar falls back to its source glyph until a physical
 ScreenCaptureKit preview gate justifies a platform-specific implementation.
 
-The v6 loopback gate also proves that a real Chrome receiver produces Pion
+The v7 loopback gate also proves that a real Chrome receiver produces Pion
 transport feedback and that a non-unknown native sender-quality window reaches
 the existing route controller. Unknown feedback and stopped-source windows stay
 ineligible.
