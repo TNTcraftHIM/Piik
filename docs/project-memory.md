@@ -15,7 +15,9 @@ authority through a session-scoped public control tunnel while media remains
 P2P. Windows capture,
 hardware H.264, direct cross-NAT video, Windows process/system audio, and best-effort
 mapping of the native edge's sole UDP socket are implemented through the same
-media boundary. Native P2P edges feed Pion GCC's categorical payload-capacity
+media boundary. Native capture consumes the same room quality settings and
+applies live changes behind its stable encoded source and connections. Native
+P2P edges feed Pion GCC's categorical payload-capacity
 result into the existing route evidence windows. One reserved loopback edge
 gives the system Browser a preview and lets native Host media reuse the existing
 LiveKit publisher when SFU fallback is assigned; other platform capture and

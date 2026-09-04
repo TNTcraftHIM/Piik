@@ -148,8 +148,10 @@ This is the current execution index. Git history owns completed timelines;
   proves 1280x720 delivery and complete cleanup without a second SFU client.
   Native control treats malformed/stale/repeated per-edge signaling as disposable;
   unexpected Client close reaches the Host through the existing fence. Windows
-  retains one converted frame for quiet-source keyframe recovery; current static
-  and crash gates pass, while cross-version capture remains open.
+  retains one converted frame for quiet-source keyframe recovery. Its live
+  profile gate keeps two PeerConnections while moving the hardware source from
+  720p30 to 1440p60, then to 480p15 while paused, and resumes both Viewers;
+  current static and crash gates pass, while cross-version capture remains open.
   Local Client access is open by default and can be protected with a user-chosen
   password from the Browser launcher; Hosted Site access is unchanged.
   Non-Windows capture remains outside the release. The default packaged Client

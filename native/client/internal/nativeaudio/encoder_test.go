@@ -93,6 +93,21 @@ func TestNewEncoderRejectsOutOfRangeBitrate(t *testing.T) {
 	}
 }
 
+func TestEncoderUpdatesBitrateWithinTheSameGeneration(t *testing.T) {
+	encoder, err := NewEncoder(DefaultBitrate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, bitrate := range []int{64_000, 192_000, DefaultBitrate} {
+		if err = encoder.SetBitrate(bitrate); err != nil {
+			t.Fatalf("SetBitrate(%d) = %v", bitrate, err)
+		}
+	}
+	if err = encoder.SetBitrate(0); err == nil {
+		t.Fatal("invalid live bitrate was accepted")
+	}
+}
+
 func TestEncodeSteadyStateAllocationIsBounded(t *testing.T) {
 	encoder, err := NewEncoder(DefaultBitrate)
 	if err != nil {

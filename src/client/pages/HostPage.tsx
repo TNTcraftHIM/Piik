@@ -308,6 +308,18 @@ function captureDetails(stream: MediaStream): CaptureDetails {
   };
 }
 
+function nativeCaptureDetails(
+  settings: QualitySettings,
+  stream: MediaStream,
+): CaptureDetails {
+  const resolution = QUALITY_RESOLUTIONS[settings.resolution];
+  return {
+    resolution: `${resolution.width}x${resolution.height}`,
+    frameRate: settings.maxFramerate,
+    hasAudio: stream.getAudioTracks().length > 0,
+  };
+}
+
 function readableError(error: unknown, action: HostAction): string {
   return error instanceof ApiError
     ? error.message
@@ -1193,6 +1205,7 @@ export function HostPage({
         adapterIndex: path.adapterIndex,
         encoderIndex: path.encoderIndex,
         edgeCapacity: MAX_ENDPOINT_MEDIA_CHILDREN,
+        profile: qualitySettingsRef.current,
       });
       shareStarted = true;
       bridge = new NativeMediaBridge(
@@ -1447,11 +1460,6 @@ export function HostPage({
   async function changeQuality(nextProfile: QualitySettings): Promise<void> {
     advancedQualityRef.current = nextProfile;
     setAdvancedQuality(nextProfile);
-    if (phase === "live" && nativeModeRef.current) {
-      advancedQualityRef.current = qualitySettingsRef.current;
-      setAdvancedQuality(qualitySettingsRef.current);
-      return;
-    }
     if (phase !== "live") {
       if (qualitySettingsEqual(qualitySettingsRef.current, nextProfile)) {
         return;
@@ -1494,7 +1502,24 @@ export function HostPage({
       resolveScreenAudioQuality(previousProfile.screenAudioQuality) !==
       resolveScreenAudioQuality(nextProfile.screenAudioQuality);
     try {
-      if (captureChanged) {
+      const nativeClient = nativeClientRef.current;
+      const nativeShareGeneration = nativeShareGenerationRef.current;
+      const nativeUpdate = nativeModeRef.current
+        ? nativeClient && nativeShareGeneration
+          ? { client: nativeClient, shareGeneration: nativeShareGeneration }
+          : null
+        : undefined;
+      if (nativeUpdate === null) {
+        throw new Error("Native share is unavailable");
+      }
+      if (nativeUpdate) {
+        await nativeUpdate.client.updateShare(
+          nativeUpdate.shareGeneration,
+          nextProfile,
+        );
+      }
+      const appliedProfile = nextProfile;
+      if (!nativeUpdate && captureChanged) {
         await applyCaptureProfile(activeStream, nextProfile);
       }
       if (
@@ -1505,26 +1530,34 @@ export function HostPage({
         return;
       }
 
-      commitQuality(nextProfile);
-      if (captureChanged) {
+      commitQuality(appliedProfile);
+      if (nativeUpdate) {
+        setDetails(nativeCaptureDetails(appliedProfile, activeStream));
+      } else if (captureChanged) {
         setDetails(captureDetails(activeStream));
       }
       if (peerAssistedRef.current) {
-        signalRef.current?.setHostQualitySettings(nextProfile);
+        signalRef.current?.setHostQualitySettings(appliedProfile);
       }
       const activeSfuRoute = hostSfuRouteRef.current;
       const [results, sfuUpdated] = await Promise.all([
-        Promise.all(
-          [
-            ...[...peersRef.current.values()].map((peer) =>
-              peer.updateCaptureProfile(nextProfile),
+        nativeUpdate
+          ? Promise.resolve([])
+          : Promise.all(
+              [
+                ...[...peersRef.current.values()].map((peer) =>
+                  peer.updateCaptureProfile(appliedProfile),
+                ),
+                ...(hostProvisionalChildRef.current
+                  ? [
+                      hostProvisionalChildRef.current.updateProfile(
+                        appliedProfile,
+                      ),
+                    ]
+                  : []),
+              ],
             ),
-            ...(hostProvisionalChildRef.current
-              ? [hostProvisionalChildRef.current.updateProfile(nextProfile)]
-              : []),
-          ],
-        ),
-        activeSfuRoute?.updateProfile(nextProfile) ??
+        activeSfuRoute?.updateProfile(appliedProfile) ??
           Promise.resolve(true),
       ]);
       if (
@@ -1546,7 +1579,7 @@ export function HostPage({
             : videoChanged && audioChanged
               ? say("host.notice.qualityApplied")
               : say("host.notice.qualitySet", {
-                  label: qualitySettingsLabel(nextProfile),
+                  label: qualitySettingsLabel(appliedProfile),
                 });
         setNotice(connectionWarning ?? (sfuWarning ? null : successNotice));
       }
@@ -2297,11 +2330,9 @@ export function HostPage({
       setStream(captured);
       watchCaptureEnd(captured, generation);
       if (nativeStarted) {
-        setDetails({
-          resolution: "1280x720",
-          frameRate: 30,
-          hasAudio: captured.getAudioTracks().length > 0,
-        });
+        setDetails(
+          nativeCaptureDetails(qualitySettingsRef.current, captured),
+        );
         videoCodecRef.current = manualVideoCodecPreference("h264");
       } else {
         setDetails(captureDetails(captured));
@@ -3948,7 +3979,7 @@ export function HostPage({
                                 })
                           }
                           aria-label={t(QUALITY_PROFILE_CAPTIONS[id])}
-                          disabled={nativeActive || phase === "starting" || switchingSource}
+                          disabled={phase === "starting" || switchingSource}
                           onClick={() =>
                             void changeQuality({
                               ...QUALITY_PROFILES[id],
@@ -4025,7 +4056,7 @@ export function HostPage({
                         <Chip
                           key={resolution}
                           selected={advancedQuality.resolution === resolution}
-                          disabled={nativeActive || phase === "starting" || switchingSource}
+                          disabled={phase === "starting" || switchingSource}
                           title={QUALITY_RESOLUTIONS[resolution].label}
                           hint="hint-quality"
                           onClick={() =>
@@ -4052,7 +4083,7 @@ export function HostPage({
                         max={60}
                         step={5}
                         value={advancedQuality.maxFramerate}
-                        disabled={nativeActive || phase === "starting" || switchingSource}
+                        disabled={phase === "starting" || switchingSource}
                         aria-label={t("host.advanced.framerate")}
                         onChange={(event) =>
                           changeAdvancedQuality({
@@ -4078,7 +4109,7 @@ export function HostPage({
                         max={12000000}
                         step={500000}
                         value={advancedQuality.maxBitrate}
-                        disabled={nativeActive || phase === "starting" || switchingSource}
+                        disabled={phase === "starting" || switchingSource}
                         aria-label={t("host.advanced.bitrate")}
                         onChange={(event) =>
                           changeAdvancedQuality({
@@ -4117,7 +4148,7 @@ export function HostPage({
                           selected={
                             advancedQuality.degradationPreference === preference
                           }
-                          disabled={nativeActive || phase !== "live" || switchingSource}
+                          disabled={phase === "starting" || switchingSource}
                           title={`${t(PREFERENCE_PRESENTATION[preference].cap)} · ${t(PREFERENCE_PRESENTATION[preference].hint)}`}
                           hint="hint-degrade-pref"
                           onClick={() =>
@@ -4160,7 +4191,7 @@ export function HostPage({
                               advancedQuality.screenAudioQuality,
                             ) === audioQuality
                           }
-                          disabled={nativeActive || phase === "starting" || switchingSource}
+                          disabled={phase === "starting" || switchingSource}
                           title={t("host.audio.title", {
                             label: t(AUDIO_QUALITY_CAPTIONS[audioQuality]),
                             kbps: String(

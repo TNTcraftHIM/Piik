@@ -33,6 +33,29 @@ type VideoOptions struct {
 	Target       CaptureTarget
 	AdapterIndex uint32
 	EncoderIndex uint32
+	Profile      VideoProfile
+}
+
+type VideoProfile struct {
+	Width      uint32
+	Height     uint32
+	Framerate  uint32
+	Bitrate    uint32
+	Preference string
+}
+
+func (profile VideoProfile) Valid() bool {
+	validResolution :=
+		(profile.Width == 854 && profile.Height == 480) ||
+			(profile.Width == 1280 && profile.Height == 720) ||
+			(profile.Width == 1920 && profile.Height == 1080) ||
+			(profile.Width == 2560 && profile.Height == 1440)
+	validPreference := profile.Preference == "maintain-resolution" ||
+		profile.Preference == "balanced" ||
+		profile.Preference == "maintain-framerate"
+	return validResolution && profile.Framerate >= 15 && profile.Framerate <= 60 &&
+		profile.Bitrate >= 2_000_000 && profile.Bitrate <= 12_000_000 &&
+		validPreference
 }
 
 type Stream struct {
@@ -95,7 +118,7 @@ func PreviewSource(parent context.Context, executable string, target CaptureTarg
 }
 
 func StartVideo(parent context.Context, executable string, options VideoOptions) (*Stream, error) {
-	if !validCaptureTarget(options.Target) {
+	if !validCaptureTarget(options.Target) || !options.Profile.Valid() {
 		return nil, errors.New("native video target is invalid")
 	}
 	return startStream(parent, executable, []string{
@@ -108,7 +131,17 @@ func StartVideo(parent context.Context, executable string, options VideoOptions)
 		strconv.FormatUint(uint64(options.AdapterIndex), 10),
 		"--mft-index",
 		strconv.FormatUint(uint64(options.EncoderIndex), 10),
-		"--protocol-v3",
+		"--width",
+		strconv.FormatUint(uint64(options.Profile.Width), 10),
+		"--height",
+		strconv.FormatUint(uint64(options.Profile.Height), 10),
+		"--fps",
+		strconv.FormatUint(uint64(options.Profile.Framerate), 10),
+		"--bitrate",
+		strconv.FormatUint(uint64(options.Profile.Bitrate), 10),
+		"--preference",
+		options.Profile.Preference,
+		"--protocol-v4",
 	})
 }
 

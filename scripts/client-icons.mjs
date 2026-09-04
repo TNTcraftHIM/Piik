@@ -55,7 +55,7 @@ function writeIcns(entries, output) {
   const kinds = [
     [16, "icp4"],
     [32, "icp5"],
-    [48, "icp6"],
+    [64, "icp6"],
     [128, "ic07"],
     [256, "ic08"],
   ];

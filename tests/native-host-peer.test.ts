@@ -41,7 +41,7 @@ describe("native Host peer quality", () => {
     );
     expect(await peer.start()).toBe(true);
     listener({
-      version: 5,
+      version: 6,
       type: "edge-state",
       shareId: "share_1234567",
       connectionId: "edge_12345678",
@@ -49,7 +49,7 @@ describe("native Host peer quality", () => {
     });
 
     const quality = {
-      version: 5 as const,
+      version: 6 as const,
       type: "edge-quality" as const,
       shareId: "share_1234567",
       connectionId: "edge_12345678",

@@ -113,3 +113,26 @@ func TestCaptureTargetIdentityAndAudioScope(t *testing.T) {
 		t.Fatal("capture audio scope was not separated by target kind")
 	}
 }
+
+func TestVideoProfileUsesTheProductBounds(t *testing.T) {
+	for _, profile := range []VideoProfile{
+		{Width: 854, Height: 480, Framerate: 15, Bitrate: 2_000_000, Preference: "maintain-resolution"},
+		{Width: 1280, Height: 720, Framerate: 30, Bitrate: 3_000_000, Preference: "balanced"},
+		{Width: 1920, Height: 1080, Framerate: 60, Bitrate: 8_000_000, Preference: "maintain-framerate"},
+		{Width: 2560, Height: 1440, Framerate: 60, Bitrate: 12_000_000, Preference: "balanced"},
+	} {
+		if !profile.Valid() {
+			t.Fatalf("valid profile rejected: %+v", profile)
+		}
+	}
+	for _, profile := range []VideoProfile{
+		{Width: 1920, Height: 1200, Framerate: 30, Bitrate: 5_000_000, Preference: "balanced"},
+		{Width: 1920, Height: 1080, Framerate: 14, Bitrate: 5_000_000, Preference: "balanced"},
+		{Width: 1920, Height: 1080, Framerate: 30, Bitrate: 12_000_001, Preference: "balanced"},
+		{Width: 1920, Height: 1080, Framerate: 30, Bitrate: 5_000_000, Preference: "unknown"},
+	} {
+		if profile.Valid() {
+			t.Fatalf("invalid profile accepted: %+v", profile)
+		}
+	}
+}

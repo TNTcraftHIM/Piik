@@ -87,6 +87,21 @@ func (source *AudioSource) WritePCM(pcm []byte, duration time.Duration) error {
 	return source.track.WriteSample(media.Sample{Data: packet, Duration: duration})
 }
 
+func (source *AudioSource) SetBitrate(bitrate int) error {
+	if source == nil || source.encoder == nil {
+		return errors.New("native audio source is unavailable")
+	}
+	source.encodeMu.Lock()
+	defer source.encodeMu.Unlock()
+	source.mu.Lock()
+	closed := source.closed
+	source.mu.Unlock()
+	if closed {
+		return errors.New("native audio source is closed")
+	}
+	return source.encoder.SetBitrate(bitrate)
+}
+
 func (source *AudioSource) snapshotBytes() uint64 {
 	if source == nil {
 		return 0

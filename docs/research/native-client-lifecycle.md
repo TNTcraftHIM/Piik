@@ -30,7 +30,7 @@
 
 ## Scope Decisions
 
-- Keep the existing loopback v5 wire and one-share/one-session fence.
+- Keep one strict loopback wire and one-share/one-session fence.
 - Do not change room, route, SFU, codec, NAT, or browser-only behavior.
 - Do not add a tunnel watchdog, local-process authentication scheme, custom
   quality score, or compatibility alias in this phase.
@@ -48,7 +48,8 @@ runtime change for either is claimed here.
   arrives; source-close and target-process signals remain the end conditions.
 - Native Pion candidate input is syntax-checked with the existing ICE parser,
   bounded before queuing, and discarded when malformed, stale, or over capacity.
-  Repeated answers for an edge are idempotent. The loopback v5 wire is unchanged.
+  Repeated answers for an edge are idempotent. Profile updates remain fenced to
+  that same share session in the current loopback v6 wire.
 - An unexpected Browser control-socket close now notifies the active Host owner;
   intentional user cleanup remains silent and uses the existing share fence.
 

@@ -105,9 +105,9 @@ export class NativeHostPeer implements HostMediaPeer {
                   ? `${quality.width}x${quality.height}`
                   : null,
               codec: "video/H264",
-              codecProfile: "42c01f",
+              codecProfile: "42c033",
               codecParameters:
-                "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42c01f",
+                "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42c033",
               powerEfficientEncoder: true,
               intervalFramesEncoded: quality.intervalFramesEncoded,
               qualityLimitationReason: quality.reason,
@@ -168,9 +168,8 @@ export class NativeHostPeer implements HostMediaPeer {
   }
 
   updateProfile(_profile: Parameters<HostMediaPeer["updateProfile"]>[0]): Promise<boolean> {
-    // The current native generation has a fixed 1280x720 H.264 source. A
-    // profile change requires a new capture generation, so report unsupported
-    // instead of claiming that the sender changed.
+    // The share-level native owner updates the one encoded source before its
+    // Pion edges. An individual edge cannot own or repeat that operation.
     return Promise.resolve(false);
   }
 

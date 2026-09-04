@@ -36,6 +36,11 @@ interface GateResult {
   passed: boolean;
   hostNativeActive: boolean;
   hostInvite: boolean;
+  preSharePreferenceEnabled: boolean;
+  qualityControlsEnabled: boolean;
+  liveQualityChanged: boolean;
+  pausedQualityChanged: boolean;
+  mediaObjectPreserved: boolean;
   nativeQualityEvidence: boolean;
   viewerConnected: boolean;
   viewerFrames: number;
@@ -509,6 +514,11 @@ async function main(): Promise<void> {
     passed: false,
     hostNativeActive: false,
     hostInvite: false,
+    preSharePreferenceEnabled: false,
+    qualityControlsEnabled: false,
+    liveQualityChanged: false,
+    pausedQualityChanged: false,
+    mediaObjectPreserved: false,
     nativeQualityEvidence: false,
     viewerConnected: false,
     viewerFrames: 0,
@@ -670,6 +680,32 @@ async function main(): Promise<void> {
       Boolean,
       15_000,
     );
+    stage = "pre-share-quality-controls";
+    await evaluate<void>(
+      cdp,
+      host,
+      `document.querySelector('button[aria-controls="host-advanced-door"]')?.click()`,
+      Date.now() + 5_000,
+    );
+    result.preSharePreferenceEnabled = await waitForValue(
+      (deadline) => evaluate<boolean>(
+        cdp!,
+        host,
+        `(() => {
+          const preference = document.querySelector('button[name="degradationPreference"][value="maintain-resolution"]');
+          return Boolean(preference && !preference.disabled);
+        })()`,
+        deadline,
+      ),
+      Boolean,
+      5_000,
+    );
+    await evaluate<void>(
+      cdp,
+      host,
+      `document.querySelector('button[aria-controls="host-advanced-door"]')?.click()`,
+      Date.now() + 5_000,
+    );
     stage = "host-click";
     await evaluate<void>(
       cdp,
@@ -771,21 +807,13 @@ async function main(): Promise<void> {
           deadline,
         ),
         (state) => state.connected && state.frames >= 30 &&
-          state.width === 1280 && state.height === 720,
+          state.width === 1920 && state.height === 1080,
         40_000,
       );
       result.viewerConnected = viewerState.connected;
       result.viewerFrames = viewerState.frames;
       result.viewerWidth = viewerState.width;
       result.viewerHeight = viewerState.height;
-      stage = "native-quality-evidence";
-      result.nativeQualityEvidence = await waitForValue(
-        async () => /"event":"sender-quality-evidence"[^\n]*"state":"(healthy|degraded)"/
-          .test(clientDiagnostics),
-        Boolean,
-        12_000,
-      );
-
       await evaluate<boolean>(
         cdp,
         viewer,
@@ -797,6 +825,204 @@ async function main(): Promise<void> {
         })()`,
         Date.now() + 5_000,
       );
+      stage = "native-quality-controls";
+      await evaluate<void>(
+        cdp,
+        host,
+        `document.querySelector('button[aria-controls="host-advanced-door"]')?.click()`,
+        Date.now() + 5_000,
+      );
+      await waitForValue(
+        (deadline) => evaluate<boolean>(
+          cdp!,
+          host,
+          `Boolean(document.querySelector('button.lr-chip[aria-label="1440p"]'))`,
+          deadline,
+        ),
+        Boolean,
+        5_000,
+      );
+      result.qualityControlsEnabled = await evaluate<boolean>(
+        cdp,
+        host,
+        `(() => {
+          const resolution = document.querySelector('button.lr-chip[aria-label="1440p"]');
+          const preference = document.querySelector('button[name="degradationPreference"][value="maintain-framerate"]');
+          const sliders = [...document.querySelectorAll('.lr-slider input[type="range"]')];
+          return Boolean(
+            resolution && preference && !resolution.disabled && !preference.disabled &&
+            sliders.length === 2 && sliders.every((slider) => !slider.disabled)
+          );
+        })()`,
+        Date.now() + 5_000,
+      );
+      if (!result.qualityControlsEnabled) {
+        throw new Error("Native quality controls remained disabled");
+      }
+      await evaluate<void>(
+        cdp,
+        host,
+        `document.querySelector('button.lr-chip[aria-label="1440p"]')?.click()`,
+        Date.now() + 5_000,
+      );
+      result.liveQualityChanged = await waitForValue(
+        (deadline) => evaluate<boolean>(
+          cdp!,
+          viewer,
+          `(() => { const video = document.querySelector('video'); return Boolean(
+            video && video.videoWidth === 2560 && video.videoHeight === 1440 &&
+            video.getVideoPlaybackQuality().totalVideoFrames >= ${viewerState.frames + 10}
+          ); })()`,
+          deadline,
+        ),
+        Boolean,
+        20_000,
+      );
+      if (!result.liveQualityChanged) {
+        throw new Error("Native quality change did not reach the Viewer");
+      }
+      result.viewerWidth = 2560;
+      result.viewerHeight = 1440;
+      const framesBeforePreference = await evaluate<number>(
+        cdp,
+        viewer,
+        `document.querySelector('video')?.getVideoPlaybackQuality().totalVideoFrames ?? 0`,
+        Date.now() + 5_000,
+      );
+      await evaluate<void>(
+        cdp,
+        host,
+        `document.querySelector('button[name="degradationPreference"][value="maintain-framerate"]')?.click()`,
+        Date.now() + 5_000,
+      );
+      await waitForValue(
+        (deadline) => evaluate<number>(
+          cdp!,
+          viewer,
+          `document.querySelector('video')?.getVideoPlaybackQuality().totalVideoFrames ?? 0`,
+          deadline,
+        ),
+        (frames) => frames >= framesBeforePreference + 10,
+        15_000,
+      );
+      stage = "native-pause-ready";
+      await waitForValue(
+        (deadline) => evaluate<boolean>(
+          cdp!,
+          host,
+          `Boolean([...document.querySelectorAll('button')].find((candidate) =>
+            /^(Pause sharing|暂停分享)$/.test(candidate.getAttribute('aria-label') || '') &&
+            !candidate.disabled && candidate.getAttribute('aria-disabled') !== 'true'
+          ))`,
+          deadline,
+        ),
+        Boolean,
+        10_000,
+      );
+      await evaluate<void>(
+        cdp,
+        host,
+        `(() => {
+          const button = [...document.querySelectorAll('button')].find((candidate) =>
+            /^(Pause sharing|暂停分享)$/.test(candidate.getAttribute('aria-label') || '')
+          );
+          button?.click();
+        })()`,
+        Date.now() + 5_000,
+      );
+      stage = "native-pause-applied";
+      await waitForValue(
+        (deadline) => evaluate<boolean>(
+          cdp!,
+          host,
+          `Boolean([...document.querySelectorAll('button')].find((candidate) =>
+            /^(Resume sharing|恢复分享)$/.test(candidate.getAttribute('aria-label') || '')
+          ))`,
+          deadline,
+        ),
+        Boolean,
+        5_000,
+      );
+      await evaluate<void>(
+        cdp,
+        host,
+        `document.querySelector('button.lr-chip[aria-label="480p"]')?.click()`,
+        Date.now() + 5_000,
+      );
+      stage = "native-paused-profile";
+      await waitForValue(
+        (deadline) => evaluate<boolean>(
+          cdp!,
+          host,
+          `(() => {
+            const resolution = document.querySelector('button.lr-chip[aria-label="480p"]');
+            const resume = [...document.querySelectorAll('button')].find((candidate) =>
+              /^(Resume sharing|恢复分享)$/.test(candidate.getAttribute('aria-label') || '')
+            );
+            return Boolean(
+              resolution?.getAttribute('aria-pressed') === 'true' && resume &&
+              !resume.disabled && resume.getAttribute('aria-disabled') !== 'true'
+            );
+          })()`,
+          deadline,
+        ),
+        Boolean,
+        10_000,
+      );
+      const framesBeforeResume = await evaluate<number>(
+        cdp,
+        viewer,
+        `document.querySelector('video')?.getVideoPlaybackQuality().totalVideoFrames ?? 0`,
+        Date.now() + 5_000,
+      );
+      await evaluate<void>(
+        cdp,
+        host,
+        `(() => {
+          const button = [...document.querySelectorAll('button')].find((candidate) =>
+            /^(Resume sharing|恢复分享)$/.test(candidate.getAttribute('aria-label') || '')
+          );
+          button?.click();
+        })()`,
+        Date.now() + 5_000,
+      );
+      stage = "native-resumed-profile";
+      const resumed = await waitForValue(
+        (deadline) => evaluate<{
+          frames: number;
+          width: number;
+          height: number;
+          sameMedia: boolean;
+        }>(
+          cdp!,
+          viewer,
+          `(() => {
+            const video = document.querySelector('video');
+            return {
+              frames: video?.getVideoPlaybackQuality().totalVideoFrames ?? 0,
+              width: video?.videoWidth ?? 0,
+              height: video?.videoHeight ?? 0,
+              sameMedia: Boolean(video && video.srcObject === window.__screenerGateMedia),
+            };
+          })()`,
+          deadline,
+        ),
+        (value) => value.frames >= framesBeforeResume + 10 &&
+          value.width === 854 && value.height === 480,
+        20_000,
+      );
+      result.pausedQualityChanged = resumed.width === 854 && resumed.height === 480;
+      result.mediaObjectPreserved = resumed.sameMedia;
+      result.viewerWidth = resumed.width;
+      result.viewerHeight = resumed.height;
+      stage = "native-quality-evidence";
+      result.nativeQualityEvidence = await waitForValue(
+        async () => /"event":"sender-quality-evidence"[^\n]*"state":"(healthy|degraded)"/
+          .test(clientDiagnostics),
+        Boolean,
+        12_000,
+      );
+
       if (crashGate) {
         stage = "client-crash";
         if (!client || !(await stopChild(client))) {
@@ -872,7 +1098,7 @@ async function main(): Promise<void> {
             const video = document.querySelector('video');
             return Boolean(video && video.srcObject &&
               video.srcObject !== window.__screenerGateMedia &&
-              video.videoWidth === 1280 && video.videoHeight === 720);
+              video.videoWidth === 854 && video.videoHeight === 480);
           })()`,
           deadline,
         ),
@@ -940,14 +1166,17 @@ async function main(): Promise<void> {
         result.cleanup.portsClosed && sourceCleanup.portsClosed;
     }
   }
-  result.passed = result.error === null && result.hostNativeActive &&
+  result.passed = result.error === null && result.preSharePreferenceEnabled &&
+    result.hostNativeActive &&
     result.hostInvite &&
     (mode !== "local"
       ? result.remoteViewerConnected && result.remoteViewerPackets >= 30 &&
         result.remoteNatPath && result.remotePeerExited === true &&
         (mode !== "cross-nat" || result.reverseSignalTunnelClosed === true)
       : result.viewerConnected && result.viewerFrames >= 30 &&
-        result.viewerWidth === 1280 && result.viewerHeight === 720 &&
+        result.qualityControlsEnabled && result.liveQualityChanged &&
+        result.pausedQualityChanged && result.mediaObjectPreserved &&
+        result.viewerWidth === 854 && result.viewerHeight === 480 &&
         result.nativeQualityEvidence &&
         (crashGate
           ? result.clientCrashEndedShare === true

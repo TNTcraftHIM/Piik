@@ -10,6 +10,10 @@ its PID and process creation time, and has independent modes for:
   H.264 output (`--capture-video`).
 - bounded 160x90 BMP source previews (`--preview`).
 
+The video command receives the current product resolution, frame-rate, bitrate,
+and quality preference. A replacement process applies live changes while the Go
+session retains its Pion source and connections.
+
 Video and audio run as separate bounded child processes. A source whose audio
 loopback cannot be initialized keeps video available and reports audio
 unavailable instead of failing the whole source. Process loopback is probed by

@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	probeProtocol       = 3
+	probeProtocol       = 4
 	probeTimeout        = 3 * time.Second
 	maxProbeOutputBytes = 64 * 1024
 	maxProbeErrorBytes  = 4 * 1024

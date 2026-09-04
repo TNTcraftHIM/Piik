@@ -28,6 +28,12 @@ adaptation decision.
 - Live quality changes update the current capture and Host sender-track
   constraints plus sender ceilings without reopening source selection or
   replacing a healthy route.
+- Native quality changes use the same room settings. The Client prepares a new
+  platform capture/encoder generation, then replaces the old generation behind
+  the same encoded source and PeerConnections; audio-only changes update the
+  current Opus encoder directly. Platform quality preference uses the hardware
+  encoder's standard quality-versus-speed hint, while Pion/WebRTC still own
+  transport estimation and route evidence.
 
 ## Video Profiles
 

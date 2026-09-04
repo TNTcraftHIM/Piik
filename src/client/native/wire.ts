@@ -1,9 +1,9 @@
 import { z } from "zod";
 
-export const NATIVE_CLIENT_PROTOCOL = 5;
+export const NATIVE_CLIENT_PROTOCOL = 6;
 export const NATIVE_CLIENT_PORT_START = 39_721;
 export const NATIVE_CLIENT_PORT_END = 39_730;
-export const NATIVE_CLIENT_SUBPROTOCOL = "screener-client-v5";
+export const NATIVE_CLIENT_SUBPROTOCOL = "screener-client-v6";
 
 const decimalIdentifierSchema = z.string().regex(/^[1-9]\d{0,19}$/);
 const opaqueIdentifierSchema = z
@@ -121,6 +121,13 @@ export const shareStartedResponseSchema = z
     type: z.literal("share-started"),
     shareId: opaqueIdentifierSchema,
     audio: z.boolean(),
+  })
+  .strict();
+export const shareUpdatedResponseSchema = z
+  .object({
+    ...responseBase,
+    type: z.literal("share-updated"),
+    shareId: opaqueIdentifierSchema,
   })
   .strict();
 export const edgeOfferResponseSchema = z

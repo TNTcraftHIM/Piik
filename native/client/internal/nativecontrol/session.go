@@ -121,10 +121,30 @@ func (session *Session) Handle(_ context.Context, payload []byte) (any, error) {
 		if err := decodeStrict(payload, &request); err != nil ||
 			request.Type != envelope.Type ||
 			!identityPattern.MatchString(request.ShareID) ||
-			request.EdgeCapacity < 1 || request.EdgeCapacity > maxEdgeCapacity {
+			request.EdgeCapacity < 1 || request.EdgeCapacity > maxEdgeCapacity ||
+			!validQualitySettings(request.Profile) {
 			return nil, errors.New("native start-share request is invalid")
 		}
 		return session.startShare(envelope, request)
+	case "update-share":
+		var request updateShareRequest
+		if err := decodeStrict(payload, &request); err != nil ||
+			request.Type != envelope.Type ||
+			!validIdentities(request.ShareID) ||
+			!validQualitySettings(request.Profile) {
+			return nil, errors.New("native update-share request is invalid")
+		}
+		host := session.current(request.ShareID)
+		if host == nil {
+			return nil, errors.New("native share does not exist")
+		}
+		if err := host.UpdateProfile(nativeQualityProfile(request.Profile)); err != nil {
+			return nil, err
+		}
+		return shareUpdatedResponse{
+			responseEnvelope: response(envelope, "share-updated"),
+			ShareID:          request.ShareID,
+		}, nil
 	case "prepare-edge":
 		var request prepareEdgeRequest
 		if err := decodeStrict(payload, &request); err != nil ||
@@ -245,6 +265,7 @@ func (session *Session) startShare(
 		return nil, errors.New("native share is already active")
 	}
 	session.mu.Unlock()
+	profile := nativeQualityProfile(request.Profile)
 	host, err := nativehost.Start(session.ctx, nativehost.Options{
 		ShareID:        request.ShareID,
 		CaptureProcess: session.captureProcess,
@@ -252,7 +273,9 @@ func (session *Session) startShare(
 			Target:       request.Source,
 			AdapterIndex: request.AdapterIndex,
 			EncoderIndex: request.EncoderIndex,
+			Profile:      profile.Video,
 		},
+		Profile:      profile,
 		EdgeCapacity: request.EdgeCapacity,
 		AudioEnabled: request.Audio && session.capabilities.Summary().AudioFor(
 			request.Source.Kind,
@@ -277,6 +300,43 @@ func (session *Session) startShare(
 		ShareID:          request.ShareID,
 		Audio:            host.HasAudio(),
 	}, nil
+}
+
+func validQualitySettings(settings qualitySettings) bool {
+	return nativeQualityProfile(settings).Valid()
+}
+
+func nativeQualityProfile(settings qualitySettings) nativehost.QualityProfile {
+	width, height := uint32(0), uint32(0)
+	switch settings.Resolution {
+	case "480p":
+		width, height = 854, 480
+	case "720p":
+		width, height = 1280, 720
+	case "1080p":
+		width, height = 1920, 1080
+	case "1440p":
+		width, height = 2560, 1440
+	}
+	audioBitrate := 0
+	switch settings.ScreenAudioQuality {
+	case "", "music":
+		audioBitrate = 128_000
+	case "saver":
+		audioBitrate = 64_000
+	case "very-high":
+		audioBitrate = 192_000
+	}
+	return nativehost.QualityProfile{
+		Video: nativecapture.VideoProfile{
+			Width:      width,
+			Height:     height,
+			Framerate:  settings.MaxFramerate,
+			Bitrate:    settings.MaxBitrate,
+			Preference: settings.DegradationPreference,
+		},
+		AudioBitrate: audioBitrate,
+	}
 }
 
 func (session *Session) prepareEdge(

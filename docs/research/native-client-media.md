@@ -27,8 +27,9 @@ Tunnel carried no media.
 
 An isolated LiveKit 1.13.6 gate carried the same native source through one
 reserved local Pion edge into the existing Browser `SfuPublisher`; an ordinary
-LiveKit Viewer then received 30 consecutive 1280x720 frames. The direct native
-P2P path, Browser, Client, LiveKit process, ports, and profiles all cleaned up.
+LiveKit Viewer received the default 1080p source, then 15 consecutive 854x480
+frames after one live Native/SFU profile change. The direct native P2P path,
+Browser, Client, LiveKit process, ports, and profiles all cleaned up.
 
 The opt-in `gate:client-media` run proved, in order:
 
@@ -65,8 +66,12 @@ requires Go 1.25; Client CI uses Go 1.26.6.
 
 ## Current Boundary
 
-The result does not yet prove live native quality-profile changes, macOS/Linux
-capture, or endurance. Native Host media is exposed only through the explicit
+The Windows Browser gate now also keeps two native PeerConnections alive while
+the source changes from 720p30 to 1440p60, then changes to 480p15 while paused
+and resumes both Viewers. It proves the same Pion source survives two hardware
+capture/encoder generations; direct capture probes also produced every current
+resolution/FPS extreme. The result does not yet prove macOS/Linux capture or
+endurance. Native Host media is exposed only through the explicit
 Client-launched Host selection; these other capabilities remain unavailable there.
 
 Native code does not publish directly to LiveKit. One local Pion edge gives the
@@ -145,9 +150,9 @@ runtime, direct DMA-BUF import plus VAAPI/Vulkan encoding is not a small adapter
 - `nativecapture` owns the child process, source identity, and bounded frame protocol.
 - `mediaedge` owns the stable Pion API, one UDP mux, shared H.264/Opus sources,
   and independent PeerConnections.
-- `nativehost` composes one capture generation with its bounded edges.
+- `nativehost` owns the current capture generation and its bounded stable edges.
 - `nativecontrol` maps only local source/share/edge commands and exact native
-  sender quality windows to the loopback v5 wire.
+  sender quality windows and live profile updates to the loopback v6 wire.
 
 The deleted sender application, UI, room client, and old wire are not
 compatibility inputs. Historical measurements remain in the separately marked

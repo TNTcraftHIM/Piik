@@ -91,9 +91,10 @@ The same explicit-target assembly produced a Linux amd64 package that ran its
 bundled Node application and loopback runtime on an independent Ubuntu host.
 Its full package also created a public link reachable from another network and
 closed that link and all local ports on exit. The macOS arm64 output contains
-matching Mach-O arm64 Client and Node binaries; its capture sidecar compiles on
-the macOS runner and passes the synthetic hardware-H.264 IDR self-test, but the
-full package and ScreenCaptureKit path have not run on a physical Mac.
+matching Mach-O arm64 Client and Node binaries. Its prior fixed-profile capture
+baseline compiled on the macOS runner and passed the synthetic hardware-H.264
+IDR self-test; the current variable-profile sidecar, full package, and
+ScreenCaptureKit path have not run on a physical Mac.
 
 Still required are physical second-device LAN playback, first-run LNA prompt,
 no-STUN mDNS behavior, macOS package execution, and equivalent non-Windows
@@ -107,7 +108,11 @@ verifies decoded audio energy. The native Host gate passes display and window
 source selection and bounded previews; its window arm closes the captured
 source, observes the current share end, restarts capture in the same room, and
 requires the existing Viewer to receive a different media object plus 30 new
-frames. Display-source lifecycle is not claimed by that arm.
+frames. The same product gate changes a live Native Host from default 1080p30
+to 1440p30, then changes resolution while paused and resumes the same Viewer
+media object through the Host UI. A separate two-Viewer media gate changes
+720p30 to 1440p60, then changes to 480p15 while paused and resumes both
+connections. Display-source lifecycle is not claimed by that arm.
 Native P2P quality evidence and the Browser-mediated native-source SFU happy
 path now have bounded gates. Production package integration, SFU recovery and
 endurance, and physical non-Windows capture remain unproved.
@@ -115,8 +120,9 @@ endurance, and physical non-Windows capture remain unproved.
 A five-second headless topology run with 20 Viewers passed the existing route
 capacity, no-orphan-publication, quality-propagation, and decoded-frame checks;
 it is topology evidence, not a long-running or public-network quality claim.
-An isolated LiveKit Server 1.13.6 run also delivered 30 decoded 1280x720 native
-frames through the existing Browser SFU publisher and completed cleanup.
+An isolated LiveKit Server 1.13.6 run also delivered default 1080p native media,
+then 15 decoded 854x480 frames after a live source/publisher profile change,
+through the existing Browser SFU publisher and completed cleanup.
 
 The one-link gate started a session-scoped public origin from a Windows Client,
 confirmed that its ordinary invitation used that origin, and served the Viewer

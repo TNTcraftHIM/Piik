@@ -5,15 +5,40 @@ import Foundation
 import ScreenCaptureKit
 import VideoToolbox
 
-private let captureProtocol = 3
+private let captureProtocol = 4
 private let width = 1280
 private let height = 720
 private let frameRate: Int32 = 30
 private let bitrate = 3_000_000
-private let frameDuration100ns: UInt64 = 10_000_000 / UInt64(frameRate)
-private let frameInterval = CMTime(value: 1, timescale: frameRate)
-private let timestampStep = CMTime(value: 1, timescale: 90_000)
 private let maxPayloadBytes = 1_048_576
+private let supportedH264Levels: Set<UInt8> = [
+    0x1e, 0x1f, 0x20, 0x28, 0x29, 0x2a, 0x32, 0x33,
+]
+
+private enum DegradationPreference: String {
+    case resolution = "maintain-resolution"
+    case balanced
+    case framerate = "maintain-framerate"
+}
+
+private struct VideoProfile {
+    let width: Int
+    let height: Int
+    let frameRate: Int32
+    let bitrate: Int
+    let preference: DegradationPreference
+
+    var frameInterval: CMTime { CMTime(value: 1, timescale: frameRate) }
+    var timestampStep: CMTime { CMTime(value: 1, timescale: 90_000) }
+}
+
+private let defaultVideoProfile = VideoProfile(
+    width: width,
+    height: height,
+    frameRate: frameRate,
+    bitrate: bitrate,
+    preference: .balanced
+)
 
 private struct EncoderProbe: Codable {
     let index: UInt32
@@ -77,10 +102,10 @@ private struct StartingStatus: Codable {
 private struct ActiveStatus: Codable {
     let state = "active"
     let hardwareOnly = true
-    let profileLevelId = "42c01f"
-    let width = 1280
-    let height = 720
-    let fps = 30
+    let profileLevelId: String
+    let width: Int
+    let height: Int
+    let fps: Int32
 }
 
 private struct CaptureFailure: Error, CustomStringConvertible {
@@ -263,12 +288,17 @@ private final class ProtocolWriter {
                   payload: JSONEncoder().encode(status))
     }
 
-    func writeH264(_ payload: Data, keyFrame: Bool, timestamp: UInt64) throws {
+    func writeH264(
+        _ payload: Data,
+        keyFrame: Bool,
+        timestamp: UInt64,
+        duration: UInt64
+    ) throws {
         try write(
             kind: 2,
             flags: keyFrame ? 1 : 0,
             timestamp: timestamp,
-            duration: frameDuration100ns,
+            duration: duration,
             payload: payload
         )
     }
@@ -342,8 +372,9 @@ private func h264ParameterSets(_ format: CMFormatDescription) throws -> [Data] {
         result.append(Data(bytes: pointer, count: size))
     }
     let sps = result[0]
-    guard sps.count >= 4, sps[1] == 0x42, sps[2] == 0xc0, sps[3] == 0x1f else {
-        throw CaptureFailure(description: "H.264 profile differs from 42c01f")
+    guard sps.count >= 4, sps[1] == 0x42, sps[2] == 0xc0,
+          supportedH264Levels.contains(sps[3]) else {
+        throw CaptureFailure(description: "H.264 profile is outside the product envelope")
     }
     return result
 }
@@ -396,6 +427,23 @@ private func annexB(_ sample: CMSampleBuffer, keyFrame: Bool) throws -> Data {
     return output
 }
 
+private func h264ProfileLevelID(_ payload: Data) -> String? {
+    let bytes = [UInt8](payload)
+    guard bytes.count >= 8 else { return nil }
+    for index in 0...(bytes.count - 8) where
+        bytes[index] == 0 && bytes[index + 1] == 0 &&
+        bytes[index + 2] == 0 && bytes[index + 3] == 1 &&
+        bytes[index + 4] & 0x1f == 7 {
+        return String(
+            format: "%02x%02x%02x",
+            bytes[index + 5],
+            bytes[index + 6],
+            bytes[index + 7]
+        )
+    }
+    return nil
+}
+
 private final class HardwareEncoder {
     private let writer: ProtocolWriter
     private let done: StopSignal
@@ -403,10 +451,17 @@ private final class HardwareEncoder {
     private var session: VTCompressionSession?
     private var forceKeyFrame = true
     private var active = false
+    private var profileLevelId: String?
+    private let profile: VideoProfile
 
-    init(writer: ProtocolWriter, done: StopSignal) throws {
+    init(
+        writer: ProtocolWriter,
+        done: StopSignal,
+        profile: VideoProfile = defaultVideoProfile
+    ) throws {
         self.writer = writer
         self.done = done
+        self.profile = profile
         let specification = [
             kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder as String: true,
         ] as CFDictionary
@@ -414,8 +469,8 @@ private final class HardwareEncoder {
         try require(
             VTCompressionSessionCreate(
                 allocator: nil,
-                width: Int32(width),
-                height: Int32(height),
+                width: Int32(profile.width),
+                height: Int32(profile.height),
                 codecType: kCMVideoCodecType_H264,
                 encoderSpecification: specification,
                 imageBufferAttributes: nil,
@@ -434,9 +489,16 @@ private final class HardwareEncoder {
         try set(kVTCompressionPropertyKey_AllowFrameReordering, kCFBooleanFalse)
         try set(kVTCompressionPropertyKey_ProfileLevel,
                 kVTProfileLevel_H264_ConstrainedBaseline_AutoLevel)
-        try set(kVTCompressionPropertyKey_AverageBitRate, NSNumber(value: bitrate))
-        try set(kVTCompressionPropertyKey_ExpectedFrameRate, NSNumber(value: frameRate))
-        try set(kVTCompressionPropertyKey_MaxKeyFrameInterval, NSNumber(value: 60))
+        try set(kVTCompressionPropertyKey_AverageBitRate, NSNumber(value: profile.bitrate))
+        try set(kVTCompressionPropertyKey_ExpectedFrameRate, NSNumber(value: profile.frameRate))
+        try set(kVTCompressionPropertyKey_MaximumRealTimeFrameRate, NSNumber(value: profile.frameRate))
+        try set(kVTCompressionPropertyKey_MaxKeyFrameInterval, NSNumber(value: profile.frameRate * 2))
+        if profile.preference != .balanced {
+            try? set(
+                kVTCompressionPropertyKey_PrioritizeEncodingSpeedOverQuality,
+                profile.preference == .framerate ? kCFBooleanTrue : kCFBooleanFalse
+            )
+        }
         try require(VTCompressionSessionPrepareToEncodeFrames(created),
                     "videotoolbox-prepare")
     }
@@ -470,7 +532,7 @@ private final class HardwareEncoder {
             session,
             imageBuffer: image,
             presentationTimeStamp: timestamp,
-            duration: CMTime(value: 1, timescale: frameRate),
+            duration: profile.frameInterval,
             frameProperties: properties,
             infoFlagsOut: &synchronousFlags
         ) { [weak self] status, flags, sample in
@@ -493,6 +555,9 @@ private final class HardwareEncoder {
                 lock.unlock()
                 if needsFirstKeyFrame { return }
                 let payload = try annexB(sample, keyFrame: keyFrame)
+                let observedProfileLevelId = keyFrame
+                    ? h264ProfileLevelID(payload)
+                    : nil
                 let seconds = CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(sample))
                 guard seconds.isFinite, seconds >= 0 else {
                     throw CaptureFailure(description: "invalid H.264 timestamp")
@@ -500,14 +565,29 @@ private final class HardwareEncoder {
                 try writer.writeH264(
                     payload,
                     keyFrame: keyFrame,
-                    timestamp: UInt64(seconds * 10_000_000)
+                    timestamp: UInt64(seconds * 10_000_000),
+                    duration: 10_000_000 / UInt64(profile.frameRate)
                 )
                 lock.lock()
+                if let observedProfileLevelId {
+                    profileLevelId = observedProfileLevelId
+                }
                 let publishActive = !active
-                active = true
+                let activeProfileLevelId = profileLevelId
+                if activeProfileLevelId != nil {
+                    active = true
+                }
                 lock.unlock()
                 if publishActive {
-                    try writer.writeStatus(ActiveStatus())
+                    guard let activeProfileLevelId else {
+                        throw CaptureFailure(description: "H.264 key frame has no SPS profile")
+                    }
+                    try writer.writeStatus(ActiveStatus(
+                        profileLevelId: activeProfileLevelId,
+                        width: profile.width,
+                        height: profile.height,
+                        fps: profile.frameRate
+                    ))
                 }
             } catch {
                 done.signal(error)
@@ -622,6 +702,7 @@ private final class CaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
     private let encoder: HardwareEncoder
     private let done: StopSignal
     private let queue: DispatchQueue
+    private let profile: VideoProfile
     private var lastImage: CVImageBuffer?
     private var lastTimestamp = CMTime.invalid
     private var lastRecoveryTime = CMTime.invalid
@@ -629,11 +710,13 @@ private final class CaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
     init(
         encoder: HardwareEncoder,
         done: StopSignal,
-        queue: DispatchQueue
+        queue: DispatchQueue,
+        profile: VideoProfile
     ) {
         self.encoder = encoder
         self.done = done
         self.queue = queue
+        self.profile = profile
     }
 
     func requestKeyFrame() {
@@ -646,7 +729,7 @@ private final class CaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
             if lastRecoveryTime.isValid,
                CMTimeCompare(
                 now,
-                CMTimeAdd(lastRecoveryTime, frameInterval)
+                    CMTimeAdd(lastRecoveryTime, profile.frameInterval)
                ) < 0 {
                 return
             }
@@ -654,7 +737,7 @@ private final class CaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
             let next = lastTimestamp.isValid
                 ? later(
                     now,
-                    CMTimeAdd(lastTimestamp, timestampStep)
+                    CMTimeAdd(lastTimestamp, profile.timestampStep)
                 )
                 : now
             lastTimestamp = next
@@ -684,7 +767,7 @@ private final class CaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
         let timestamp = lastTimestamp.isValid
             ? later(
                 capturedTimestamp,
-                CMTimeAdd(lastTimestamp, timestampStep)
+                CMTimeAdd(lastTimestamp, profile.timestampStep)
             )
             : capturedTimestamp
         lastImage = image
@@ -697,16 +780,45 @@ private final class CaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
     }
 }
 
+private func videoProfile(_ arguments: [String]) throws -> VideoProfile {
+    guard arguments.count == 21,
+          arguments[10] == "--width", let width = Int(arguments[11]),
+          arguments[12] == "--height", let height = Int(arguments[13]),
+          arguments[14] == "--fps", let frameRate = Int32(arguments[15]),
+          arguments[16] == "--bitrate", let bitrate = Int(arguments[17]),
+          arguments[18] == "--preference",
+          let preference = DegradationPreference(rawValue: arguments[19]),
+          arguments[20] == "--protocol-v4" else {
+        throw CaptureFailure(description: "invalid video profile arguments")
+    }
+    let validResolution =
+        (width == 854 && height == 480) ||
+        (width == 1280 && height == 720) ||
+        (width == 1920 && height == 1080) ||
+        (width == 2560 && height == 1440)
+    guard validResolution, frameRate >= 15, frameRate <= 60,
+          bitrate >= 2_000_000, bitrate <= 12_000_000 else {
+        throw CaptureFailure(description: "video profile is outside the product bounds")
+    }
+    return VideoProfile(
+        width: width,
+        height: height,
+        frameRate: frameRate,
+        bitrate: bitrate,
+        preference: preference
+    )
+}
+
 private func capture(_ arguments: [String]) async throws {
-    guard arguments.count == 11,
+    guard arguments.count == 21,
           arguments[1] == "--capture-video",
           let sourceID = UInt32(arguments[3]), sourceID > 0,
           let pid = UInt32(arguments[4]),
           arguments[6] == "--adapter-index", arguments[7] == "0",
-          arguments[8] == "--mft-index", arguments[9] == "0",
-          arguments[10] == "--protocol-v3" else {
+          arguments[8] == "--mft-index", arguments[9] == "0" else {
         throw CaptureFailure(description: "invalid capture arguments")
     }
+    let profile = try videoProfile(arguments)
     let kind = arguments[2]
     let creationTime = arguments[5]
     let content = try await shareableContent()
@@ -734,18 +846,19 @@ private func capture(_ arguments: [String]) async throws {
 
     let writer = ProtocolWriter()
     let done = StopSignal()
-    let encoder = try HardwareEncoder(writer: writer, done: done)
+    let encoder = try HardwareEncoder(writer: writer, done: done, profile: profile)
     defer { encoder.close() }
     let captureQueue = DispatchQueue(label: "screener.capture.video")
     let output = CaptureOutput(
         encoder: encoder,
         done: done,
-        queue: captureQueue
+        queue: captureQueue,
+        profile: profile
     )
     let configuration = SCStreamConfiguration()
-    configuration.width = width
-    configuration.height = height
-    configuration.minimumFrameInterval = CMTime(value: 1, timescale: frameRate)
+    configuration.width = profile.width
+    configuration.height = profile.height
+    configuration.minimumFrameInterval = profile.frameInterval
     configuration.queueDepth = 5
     configuration.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
     configuration.showsCursor = true

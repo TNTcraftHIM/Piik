@@ -1,6 +1,10 @@
 import type { z } from "zod";
 
-import type { IceConfig, SignalPayload } from "../../shared/protocol";
+import type {
+  IceConfig,
+  QualitySettings,
+  SignalPayload,
+} from "../../shared/protocol";
 import { createOpaqueId } from "../lib/opaque-id";
 import { nativeCaptureTargetKey } from "./capture-selection";
 import {
@@ -16,6 +20,7 @@ import {
   pongResponseSchema,
   readyResponseSchema,
   shareStartedResponseSchema,
+  shareUpdatedResponseSchema,
   sourceListResponseSchema,
   sourcePreviewResponseSchema,
   type NativeAdapter,
@@ -41,6 +46,7 @@ export interface NativeShareInput {
   adapterIndex: number;
   encoderIndex: number;
   edgeCapacity: number;
+  profile: QualitySettings;
 }
 
 export async function discoverNativeHealth(): Promise<NativeHealth | null> {
@@ -170,12 +176,28 @@ export class NativeClient {
     return response.data ? `data:${response.mime};base64,${response.data}` : null;
   }
 
-  async startShare(input: NativeShareInput): Promise<{ audio: boolean }> {
+  async startShare(
+    input: NativeShareInput,
+  ): Promise<{ audio: boolean }> {
     const response = await this.request("start-share", input, shareStartedResponseSchema);
     if (response.shareId !== input.shareId) {
       throw new Error("Native share identity changed");
     }
     return { audio: response.audio };
+  }
+
+  async updateShare(
+    shareId: string,
+    profile: QualitySettings,
+  ): Promise<void> {
+    const response = await this.request(
+      "update-share",
+      { shareId, profile },
+      shareUpdatedResponseSchema,
+    );
+    if (response.shareId !== shareId) {
+      throw new Error("Native share identity changed");
+    }
   }
 
   async prepareEdge(

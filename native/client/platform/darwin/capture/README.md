@@ -2,9 +2,11 @@
 
 This process keeps the native Client media boundary used on Windows while
 replacing only the platform implementation. It lists current ScreenCaptureKit
-displays and windows, captures one exact source at 1280x720 and 30 fps, requires a
-VideoToolbox hardware H.264 encoder, and writes Annex-B Baseline H.264 through
-the bounded `SMED` protocol. It advertises no native process-audio capability.
+displays and windows, captures one exact source with the current product profile,
+requires a VideoToolbox hardware H.264 encoder, and writes Annex-B Baseline H.264
+through the bounded `SMED` protocol. The Go session applies live profile changes
+by replacing that capture generation behind the same Pion source. It advertises
+no native process-audio capability.
 
 Build on Apple Silicon macOS 13 or newer:
 

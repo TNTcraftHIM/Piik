@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/TNTcraftHIM/Screener/native/client/internal/mediaedge"
-	"github.com/TNTcraftHIM/Screener/native/client/internal/nativeaudio"
 	"github.com/TNTcraftHIM/Screener/native/client/internal/nativecapture"
 	"github.com/pion/webrtc/v4"
 )
@@ -48,6 +47,7 @@ type Options struct {
 	ShareID        string
 	CaptureProcess string
 	Video          nativecapture.VideoOptions
+	Profile        QualityProfile
 	AudioEnabled   bool
 	EdgeCapacity   int
 	BindAddress    string
@@ -56,23 +56,27 @@ type Options struct {
 }
 
 type Session struct {
-	shareID     string
-	stream      *nativecapture.Stream
-	audioStream *nativecapture.Stream
-	engine      *mediaedge.Engine
-	source      *mediaedge.Source
-	audioSource *mediaedge.AudioSource
-	events      chan<- Event
+	shareID        string
+	captureProcess string
+	videoOptions   nativecapture.VideoOptions
+	profile        QualityProfile
+	stream         *nativecapture.Stream
+	audioStream    *nativecapture.Stream
+	engine         *mediaedge.Engine
+	source         *mediaedge.Source
+	audioSource    *mediaedge.AudioSource
+	events         chan<- Event
 
 	ctx    context.Context
 	cancel context.CancelFunc
 	done   chan error
 	ready  chan error
 
-	mu     sync.Mutex
-	edges  map[string]*mediaedge.Edge
-	paused bool
-	closed bool
+	mu       sync.Mutex
+	updateMu sync.Mutex
+	edges    map[string]*mediaedge.Edge
+	paused   bool
+	closed   bool
 }
 
 func Start(parent context.Context, options Options) (*Session, error) {
@@ -82,10 +86,14 @@ func Start(parent context.Context, options Options) (*Session, error) {
 	if options.ShareID == "" || len(options.ShareID) > 256 {
 		return nil, errors.New("native share identity is invalid")
 	}
+	if !options.Profile.Valid() || options.Video.Profile != options.Profile.Video {
+		return nil, errors.New("native share profile is invalid")
+	}
 	engine, err := mediaedge.NewEngine(mediaedge.EngineOptions{
 		BindAddress:     options.BindAddress,
 		IncludeLoopback: true,
 		PortMapping:     options.PortMapping,
+		InitialBitrate:  int(options.Profile.Video.Bitrate),
 	})
 	if err != nil {
 		return nil, err
@@ -105,19 +113,24 @@ func Start(parent context.Context, options Options) (*Session, error) {
 	}
 	ctx, cancel := context.WithCancel(parent)
 	session := &Session{
-		shareID:     options.ShareID,
-		stream:      stream,
-		audioStream: audioStream,
-		engine:      engine,
-		events:      options.Events,
-		ctx:         ctx,
-		cancel:      cancel,
-		done:        make(chan error, 1),
-		ready:       make(chan error, 1),
-		edges:       make(map[string]*mediaedge.Edge),
+		shareID:        options.ShareID,
+		captureProcess: options.CaptureProcess,
+		videoOptions:   options.Video,
+		profile:        options.Profile,
+		stream:         stream,
+		audioStream:    audioStream,
+		engine:         engine,
+		events:         options.Events,
+		ctx:            ctx,
+		cancel:         cancel,
+		done:           make(chan error, 1),
+		ready:          make(chan error, 1),
+		edges:          make(map[string]*mediaedge.Edge),
 	}
 	source, err := engine.NewSource(options.EdgeCapacity, func() {
-		_ = stream.RequestKeyFrame()
+		if current := session.currentStream(); current != nil {
+			_ = current.RequestKeyFrame()
+		}
 	})
 	if err != nil {
 		cancel()
@@ -131,7 +144,7 @@ func Start(parent context.Context, options Options) (*Session, error) {
 	session.source = source
 	if audioStream != nil {
 		audioSource, audioErr := engine.NewAudioSource(
-			options.EdgeCapacity, nativeaudio.DefaultBitrate,
+			options.EdgeCapacity, options.Profile.AudioBitrate,
 		)
 		if audioErr != nil {
 			_ = audioStream.Close()
@@ -274,6 +287,83 @@ func (session *Session) SetPaused(paused bool) {
 	}
 }
 
+func (session *Session) UpdateProfile(profile QualityProfile) error {
+	if !profile.Valid() {
+		return errors.New("native share profile is invalid")
+	}
+	session.updateMu.Lock()
+	defer session.updateMu.Unlock()
+
+	session.mu.Lock()
+	if session.closed {
+		session.mu.Unlock()
+		return errors.New("native share is unavailable")
+	}
+	if session.profile == profile {
+		session.mu.Unlock()
+		return nil
+	}
+	previousProfile := session.profile
+	options := session.videoOptions
+	options.Profile = profile.Video
+	session.mu.Unlock()
+	if profile.Video == previousProfile.Video {
+		if session.audioSource != nil && profile.AudioBitrate != previousProfile.AudioBitrate {
+			if err := session.audioSource.SetBitrate(profile.AudioBitrate); err != nil {
+				return err
+			}
+		}
+		session.mu.Lock()
+		if session.closed {
+			session.mu.Unlock()
+			return errors.New("native share is unavailable")
+		}
+		session.profile = profile
+		session.mu.Unlock()
+		return nil
+	}
+
+	replacement, err := nativecapture.StartVideo(
+		session.ctx,
+		session.captureProcess,
+		options,
+	)
+	if err != nil {
+		return errors.New("native capture profile could not start")
+	}
+	state, err := waitForCaptureProfile(session.ctx, replacement, profile.Video)
+	if err != nil {
+		_ = replacement.Close()
+		return err
+	}
+	if session.audioSource != nil && profile.AudioBitrate != previousProfile.AudioBitrate {
+		if err = session.audioSource.SetBitrate(profile.AudioBitrate); err != nil {
+			_ = replacement.Close()
+			return err
+		}
+	}
+
+	session.mu.Lock()
+	if session.closed {
+		session.mu.Unlock()
+		_ = replacement.Close()
+		return errors.New("native share is unavailable")
+	}
+	previous := session.stream
+	session.stream = replacement
+	session.videoOptions = options
+	session.profile = profile
+	session.source.SetFormat(state.Width, state.Height)
+	session.mu.Unlock()
+
+	session.emit(Event{
+		Type: "capture-state", ShareID: session.shareID, State: "active",
+	})
+	_ = replacement.RequestKeyFrame()
+	_ = previous.Close()
+	return nil
+}
+
 func (session *Session) CloseEdge(connectionID string) {
 	session.mu.Lock()
 	edge := session.edges[connectionID]
@@ -289,6 +379,8 @@ func (session *Session) Done() <-chan error {
 }
 
 func (session *Session) Close() error {
+	session.updateMu.Lock()
+	defer session.updateMu.Unlock()
 	session.mu.Lock()
 	if session.closed {
 		session.mu.Unlock()
@@ -300,13 +392,14 @@ func (session *Session) Close() error {
 	for _, edge := range session.edges {
 		edges = append(edges, edge)
 	}
+	stream := session.stream
 	session.edges = make(map[string]*mediaedge.Edge)
 	session.mu.Unlock()
 	session.cancel()
 	for _, edge := range edges {
 		_ = edge.Close()
 	}
-	_ = session.stream.Close()
+	_ = stream.Close()
 	if session.audioStream != nil {
 		_ = session.audioStream.Close()
 	}
@@ -360,7 +453,10 @@ func (session *Session) run() {
 			_ = session.audioSource.Close()
 		}
 		_ = session.engine.Close()
-		_ = session.stream.Close()
+		session.mu.Lock()
+		stream := session.stream
+		session.mu.Unlock()
+		_ = stream.Close()
 		if session.audioStream != nil {
 			_ = session.audioStream.Close()
 		}
@@ -378,10 +474,19 @@ func (session *Session) runVideo() error {
 		}
 		return err
 	}
-	for {
-		frame, err := session.stream.Read()
+	current := session.currentStream()
+	for current != nil {
+		frame, err := current.Read()
 		if err != nil {
+			next := session.currentStream()
+			if next != nil && next != current {
+				current = next
+				continue
+			}
 			return fail(errors.New("native capture process stopped unexpectedly"))
+		}
+		if session.currentStream() != current {
+			continue
 		}
 		switch frame.Kind {
 		case nativecapture.FrameStatus:
@@ -391,6 +496,13 @@ func (session *Session) runVideo() error {
 			}
 			session.emit(Event{Type: "capture-state", ShareID: session.shareID, State: status.State})
 			if status.State == "active" {
+				session.mu.Lock()
+				profile := session.videoOptions.Profile
+				session.mu.Unlock()
+				if status.Width != profile.Width || status.Height != profile.Height ||
+					status.FPS != profile.Framerate {
+					return fail(errors.New("native capture profile was not applied"))
+				}
 				session.source.SetFormat(status.Width, status.Height)
 			}
 			if !ready {
@@ -418,6 +530,64 @@ func (session *Session) runVideo() error {
 		default:
 			return fail(errors.New("native video process emitted an unknown frame"))
 		}
+	}
+	return fail(errors.New("native capture process stopped unexpectedly"))
+}
+
+func (session *Session) currentStream() *nativecapture.Stream {
+	session.mu.Lock()
+	defer session.mu.Unlock()
+	if session.closed {
+		return nil
+	}
+	return session.stream
+}
+
+func waitForCaptureProfile(
+	ctx context.Context,
+	stream *nativecapture.Stream,
+	profile nativecapture.VideoProfile,
+) (CaptureState, error) {
+	type result struct {
+		state CaptureState
+		err   error
+	}
+	ready := make(chan result, 1)
+	go func() {
+		for {
+			frame, err := stream.Read()
+			if err != nil {
+				ready <- result{err: errors.New("native capture profile did not become ready")}
+				return
+			}
+			if frame.Kind != nativecapture.FrameStatus {
+				continue
+			}
+			state, err := decodeCaptureState(frame.Data)
+			if err != nil {
+				ready <- result{err: err}
+				return
+			}
+			if state.State == "active" {
+				if state.Width != profile.Width || state.Height != profile.Height ||
+					state.FPS != profile.Framerate {
+					ready <- result{err: errors.New("native capture profile was not applied")}
+					return
+				}
+				ready <- result{state: state}
+				return
+			}
+		}
+	}()
+	timer := time.NewTimer(startTimeout)
+	defer timer.Stop()
+	select {
+	case value := <-ready:
+		return value.state, value.err
+	case <-timer.C:
+		return CaptureState{}, errors.New("native capture profile timed out")
+	case <-ctx.Done():
+		return CaptureState{}, errors.New("native share stopped")
 	}
 }
 
@@ -493,9 +663,18 @@ func decodeCaptureState(payload []byte) (CaptureState, error) {
 		return CaptureState{}, errors.New("native capture starting state is incomplete")
 	}
 	if state.State == "active" &&
-		(state.ProfileLevelID != mediaedge.H264ProfileLevelID ||
+		(!validH264ProfileLevelID(state.ProfileLevelID) ||
 			state.Width == 0 || state.Height == 0 || state.FPS == 0) {
 		return CaptureState{}, errors.New("native capture active state is incomplete")
 	}
 	return state, nil
+}
+
+func validH264ProfileLevelID(value string) bool {
+	switch value {
+	case "42c01e", "42c01f", "42c020", "42c028", "42c029", "42c02a", "42c032", "42c033":
+		return true
+	default:
+		return false
+	}
 }

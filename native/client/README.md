@@ -32,7 +32,10 @@ Browser's standard capture picker and a list of exact platform capture targets;
 the user selects one explicitly. The Client selects one available hardware
 H.264 path. The current Windows sidecar uses Graphics Capture and, on supported
 builds, captures that process's audio with WASAPI. Video and audio share the
-same room route and PeerConnection. Native media in Site or one-link mode also
+same room route and PeerConnection. Native capture starts with the Host's
+current resolution, frame-rate, video/audio bitrate, and quality preference;
+live changes replace only the capture/encoder generation behind those stable
+connections. Native media in Site or one-link mode also
 attempts one bounded PCP, UPnP, or NAT-PMP
 mapping for its sole Pion UDP socket; pure LAN Local mode does not. Routers
 without a mapping service continue with ordinary ICE/STUN. The mapping does not
@@ -95,7 +98,7 @@ dependent unit tests.
 
 The loopback service binds IPv4 loopback on the first available port from
 `39721` through `39730`. `/health` discovers the current process; `/control`
-accepts one strict v5 session. After `hello`, an available Client may list local
+accepts one strict v6 session. After `hello`, an available Client may list local
 capture choices and own one generation-fenced share's SDP/ICE edges, including
 one reserved local Browser bridge. Its public `instanceToken` distinguishes the
 discovered process but is not authentication; room authority and remote

@@ -10,9 +10,7 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
-// This bootstraps GCC at the current fixed native encoder rate. Classification
-// starts only after real feedback and uses measured payload, not this value.
-const nativeSourceInitialBitrate = 3_000_000
+const defaultNativeSourceInitialBitrate = 3_000_000
 
 type targetBitrateEstimator interface {
 	GetTargetBitrate() int
@@ -126,11 +124,15 @@ type bandwidthObservers struct {
 func configureBandwidthObservers(
 	media *webrtc.MediaEngine,
 	registry *interceptor.Registry,
+	initialBitrate int,
 ) (*bandwidthObservers, error) {
+	if initialBitrate <= 0 {
+		initialBitrate = defaultNativeSourceInitialBitrate
+	}
 	observers := &bandwidthObservers{pending: make(map[string]*bandwidthObserver)}
 	factory, err := cc.NewInterceptor(func() (cc.BandwidthEstimator, error) {
 		return gcc.NewSendSideBWE(
-			gcc.SendSideBWEInitialBitrate(nativeSourceInitialBitrate),
+			gcc.SendSideBWEInitialBitrate(initialBitrate),
 			gcc.SendSideBWEPacer(gcc.NewNoOpPacer()),
 		)
 	})

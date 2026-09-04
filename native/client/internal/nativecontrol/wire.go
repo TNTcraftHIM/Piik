@@ -27,6 +27,14 @@ type sourcePreviewRequest struct {
 	Source  nativecapture.CaptureTarget `json:"source"`
 }
 
+type qualitySettings struct {
+	Resolution            string `json:"resolution"`
+	MaxFramerate          uint32 `json:"maxFramerate"`
+	MaxBitrate            uint32 `json:"maxBitrate"`
+	DegradationPreference string `json:"degradationPreference"`
+	ScreenAudioQuality    string `json:"screenAudioQuality,omitempty"`
+}
+
 type startShareRequest struct {
 	Version      int                         `json:"version"`
 	ID           string                      `json:"id"`
@@ -37,6 +45,15 @@ type startShareRequest struct {
 	AdapterIndex uint32                      `json:"adapterIndex"`
 	EncoderIndex uint32                      `json:"encoderIndex"`
 	EdgeCapacity int                         `json:"edgeCapacity"`
+	Profile      qualitySettings             `json:"profile"`
+}
+
+type updateShareRequest struct {
+	Version int             `json:"version"`
+	ID      string          `json:"id"`
+	Type    string          `json:"type"`
+	ShareID string          `json:"shareId"`
+	Profile qualitySettings `json:"profile"`
 }
 
 type stopShareRequest struct {
@@ -122,6 +139,11 @@ type shareStartedResponse struct {
 	responseEnvelope
 	ShareID string `json:"shareId"`
 	Audio   bool   `json:"audio"`
+}
+
+type shareUpdatedResponse struct {
+	responseEnvelope
+	ShareID string `json:"shareId"`
 }
 
 type edgeOfferResponse struct {

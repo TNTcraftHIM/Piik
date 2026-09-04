@@ -13,7 +13,7 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
-const H264ProfileLevelID = "42c01f"
+const H264ProfileLevelID = "42c033"
 
 var h264Capability = webrtc.RTPCodecCapability{
 	MimeType:    webrtc.MimeTypeH264,
@@ -32,6 +32,7 @@ type EngineOptions struct {
 	BindAddress     string
 	IncludeLoopback bool
 	PortMapping     bool
+	InitialBitrate  int
 }
 
 type Engine struct {
@@ -81,7 +82,11 @@ func NewEngine(options EngineOptions) (*Engine, error) {
 		return nil, err
 	}
 	registry := &interceptor.Registry{}
-	bandwidth, err := configureBandwidthObservers(mediaEngine, registry)
+	bandwidth, err := configureBandwidthObservers(
+		mediaEngine,
+		registry,
+		options.InitialBitrate,
+	)
 	if err != nil {
 		_ = mux.Close()
 		return nil, err

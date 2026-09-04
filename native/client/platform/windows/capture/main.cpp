@@ -76,6 +76,50 @@ constexpr DWORD kMaxPdhArrayItems = 16 * 1024;
 
 constexpr LONGLONG kFrameDuration100ns = 10'000'000 / kFrameRate;
 
+enum class DegradationPreference {
+  resolution,
+  balanced,
+  framerate,
+};
+
+struct VideoProfile final {
+  UINT32 width = kWidth;
+  UINT32 height = kHeight;
+  UINT32 frame_rate = kFrameRate;
+  UINT32 bit_rate = kBitRate;
+  DegradationPreference preference = DegradationPreference::balanced;
+
+  UINT32 vbv_bytes() const { return bit_rate / frame_rate / 8; }
+  UINT32 gop_frames() const { return frame_rate * 2; }
+  LONGLONG frame_duration_100ns() const {
+    return 10'000'000 / static_cast<LONGLONG>(frame_rate);
+  }
+  UINT32 quality_vs_speed() const {
+    if (preference == DegradationPreference::resolution) return 100;
+    if (preference == DegradationPreference::framerate) return 0;
+    return 50;
+  }
+  UINT32 h264_level() const {
+    const UINT64 macroblocks =
+        ((static_cast<UINT64>(width) + 15) / 16) *
+        ((static_cast<UINT64>(height) + 15) / 16);
+    const UINT64 macroblocks_per_second = macroblocks * frame_rate;
+    if (macroblocks <= 3'600 && macroblocks_per_second <= 108'000) return 31;
+    if (macroblocks <= 8'192 && macroblocks_per_second <= 245'760) return 40;
+    if (macroblocks <= 8'704 && macroblocks_per_second <= 522'240) return 42;
+    if (macroblocks <= 22'080 && macroblocks_per_second <= 589'824) return 50;
+    return 51;
+  }
+  std::string profile_level_id() const {
+    std::ostringstream output;
+    output << "42c0" << std::hex << std::setfill('0') << std::setw(2)
+           << h264_level();
+    return output.str();
+  }
+};
+
+constexpr VideoProfile kDefaultVideoProfile{};
+
 class GateFailure final : public std::runtime_error {
  public:
   GateFailure(std::string stage, std::string detail, HRESULT result = S_OK)
@@ -464,31 +508,47 @@ void SetBool(ICodecAPI* codec, const GUID& key, bool expected,
   }
 }
 
-void ConfigureCodec(ICodecAPI* codec) {
+void SetOptionalU32(ICodecAPI* codec, const GUID& key, UINT32 value) {
+  if (codec->IsSupported(&key) != S_OK) return;
+  VARIANT requested;
+  VariantInit(&requested);
+  requested.vt = VT_UI4;
+  requested.ulVal = value;
+  (void)codec->SetValue(&key, &requested);
+  VariantClear(&requested);
+}
+
+void ConfigureCodec(
+    ICodecAPI* codec,
+    const VideoProfile& profile = kDefaultVideoProfile) {
   SetU32(codec, CODECAPI_AVEncCommonRateControlMode,
          eAVEncCommonRateControlMode_CBR, "codec-cbr");
   SetBool(codec, CODECAPI_AVLowLatencyMode, true, "codec-low-latency");
-  SetU32(codec, CODECAPI_AVEncCommonMeanBitRate, kBitRate,
+  SetU32(codec, CODECAPI_AVEncCommonMeanBitRate, profile.bit_rate,
          "codec-mean-bitrate");
-  SetU32(codec, CODECAPI_AVEncCommonBufferSize, kVbvBytes,
+  SetU32(codec, CODECAPI_AVEncCommonBufferSize, profile.vbv_bytes(),
          "codec-vbv-bytes");
-  SetU32(codec, CODECAPI_AVEncMPVGOPSize, kGopFrames, "codec-gop");
+  SetU32(codec, CODECAPI_AVEncMPVGOPSize, profile.gop_frames(), "codec-gop");
+  SetOptionalU32(codec, CODECAPI_AVEncCommonQualityVsSpeed,
+                 profile.quality_vs_speed());
   RequireProperty(codec, CODECAPI_AVEncVideoForceKeyFrame,
                   "codec-force-keyframe");
 }
 
-ComPtr<IMFMediaType> CreateOutputType() {
+ComPtr<IMFMediaType> CreateOutputType(
+    const VideoProfile& profile = kDefaultVideoProfile) {
   ComPtr<IMFMediaType> type;
   Check(MFCreateMediaType(&type), "output-type-create");
   Check(type->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video),
         "output-type-major");
   Check(type->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_H264),
         "output-type-subtype");
-  Check(type->SetUINT32(MF_MT_AVG_BITRATE, kBitRate),
+  Check(type->SetUINT32(MF_MT_AVG_BITRATE, profile.bit_rate),
         "output-type-bitrate");
-  Check(MFSetAttributeSize(type.Get(), MF_MT_FRAME_SIZE, kWidth, kHeight),
+  Check(MFSetAttributeSize(type.Get(), MF_MT_FRAME_SIZE, profile.width,
+                           profile.height),
         "output-type-size");
-  Check(MFSetAttributeRatio(type.Get(), MF_MT_FRAME_RATE, kFrameRate, 1),
+  Check(MFSetAttributeRatio(type.Get(), MF_MT_FRAME_RATE, profile.frame_rate, 1),
         "output-type-framerate");
   Check(MFSetAttributeRatio(type.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1),
         "output-type-pixel-aspect");
@@ -497,27 +557,30 @@ ComPtr<IMFMediaType> CreateOutputType() {
         "output-type-interlace");
   Check(type->SetUINT32(MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_Base),
         "output-type-profile");
-  Check(type->SetUINT32(MF_MT_MPEG2_LEVEL, 31), "output-type-level");
+  Check(type->SetUINT32(MF_MT_MPEG2_LEVEL, profile.h264_level()),
+        "output-type-level");
   return type;
 }
 
-ComPtr<IMFMediaType> CreateInputType() {
+ComPtr<IMFMediaType> CreateInputType(
+    const VideoProfile& profile = kDefaultVideoProfile) {
   ComPtr<IMFMediaType> type;
   Check(MFCreateMediaType(&type), "input-type-create");
   Check(type->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video),
         "input-type-major");
   Check(type->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_NV12),
         "input-type-subtype");
-  Check(MFSetAttributeSize(type.Get(), MF_MT_FRAME_SIZE, kWidth, kHeight),
+  Check(MFSetAttributeSize(type.Get(), MF_MT_FRAME_SIZE, profile.width,
+                           profile.height),
         "input-type-size");
-  Check(MFSetAttributeRatio(type.Get(), MF_MT_FRAME_RATE, kFrameRate, 1),
+  Check(MFSetAttributeRatio(type.Get(), MF_MT_FRAME_RATE, profile.frame_rate, 1),
         "input-type-framerate");
   Check(MFSetAttributeRatio(type.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1),
         "input-type-pixel-aspect");
   Check(type->SetUINT32(MF_MT_INTERLACE_MODE,
                         MFVideoInterlace_Progressive),
         "input-type-interlace");
-  Check(type->SetUINT32(MF_MT_DEFAULT_STRIDE, kWidth),
+  Check(type->SetUINT32(MF_MT_DEFAULT_STRIDE, profile.width),
         "input-type-stride");
   return type;
 }
@@ -531,7 +594,9 @@ void RequireTypeU32(IMFAttributes* type, const GUID& key, UINT32 expected,
   }
 }
 
-void ValidateMediaTypes(IMFTransform* transform) {
+void ValidateMediaTypes(
+    IMFTransform* transform,
+    const VideoProfile& profile = kDefaultVideoProfile) {
   ComPtr<IMFMediaType> output;
   Check(transform->GetOutputCurrentType(0, &output),
         "output-type-current");
@@ -540,17 +605,18 @@ void ValidateMediaTypes(IMFTransform* transform) {
   if (subtype != MFVideoFormat_H264) {
     Fail("output-type-subtype-weakened", "output is not H264");
   }
-  RequireTypeU32(output.Get(), MF_MT_AVG_BITRATE, kBitRate,
+  RequireTypeU32(output.Get(), MF_MT_AVG_BITRATE, profile.bit_rate,
                  "output-type-bitrate");
   RequireTypeU32(output.Get(), MF_MT_MPEG2_PROFILE,
                  eAVEncH264VProfile_Base, "output-type-profile");
-  RequireTypeU32(output.Get(), MF_MT_MPEG2_LEVEL, 31, "output-type-level");
+  RequireTypeU32(output.Get(), MF_MT_MPEG2_LEVEL, profile.h264_level(),
+                 "output-type-level");
 
   UINT32 width = 0;
   UINT32 height = 0;
   Check(MFGetAttributeSize(output.Get(), MF_MT_FRAME_SIZE, &width, &height),
         "output-type-size-readback");
-  if (width != kWidth || height != kHeight) {
+  if (width != profile.width || height != profile.height) {
     Fail("output-type-size-weakened", "output dimensions changed");
   }
   UINT32 numerator = 0;
@@ -558,20 +624,23 @@ void ValidateMediaTypes(IMFTransform* transform) {
   Check(MFGetAttributeRatio(output.Get(), MF_MT_FRAME_RATE, &numerator,
                             &denominator),
         "output-type-framerate-readback");
-  if (numerator != kFrameRate || denominator != 1) {
+  if (numerator != profile.frame_rate || denominator != 1) {
     Fail("output-type-framerate-weakened", "output frame rate changed");
   }
 }
 
-void ValidateCodecReadback(ICodecAPI* codec) {
+void ValidateCodecReadback(
+    ICodecAPI* codec,
+    const VideoProfile& profile = kDefaultVideoProfile) {
   if (ReadU32(codec, CODECAPI_AVEncCommonRateControlMode, "codec-cbr") !=
           eAVEncCommonRateControlMode_CBR ||
       !ReadBool(codec, CODECAPI_AVLowLatencyMode, "codec-low-latency") ||
       ReadU32(codec, CODECAPI_AVEncCommonMeanBitRate,
-              "codec-mean-bitrate") != kBitRate ||
+              "codec-mean-bitrate") != profile.bit_rate ||
       ReadU32(codec, CODECAPI_AVEncCommonBufferSize, "codec-vbv-bytes") !=
-          kVbvBytes ||
-      ReadU32(codec, CODECAPI_AVEncMPVGOPSize, "codec-gop") != kGopFrames) {
+          profile.vbv_bytes() ||
+      ReadU32(codec, CODECAPI_AVEncMPVGOPSize, "codec-gop") !=
+          profile.gop_frames()) {
     Fail("codec-final-readback", "one or more codec properties were weakened");
   }
 }
@@ -1228,9 +1297,6 @@ UINT ParseIndex(const wchar_t* value, const std::string& stage) {
 #ifndef SCREENER_H264_FIXTURE
 constexpr DWORD kMaxProductAccessUnitBytes = 1 * 1024 * 1024;
 constexpr DWORD kMaxStatusBytes = 4 * 1024;
-constexpr UINT64 kEnvelopeFrameDuration100ns =
-    (static_cast<UINT64>(kFrameDuration100ns) / 10) * 10;
-
 enum class OutputKind : UINT8 {
   pcm = 1,
   h264 = 2,
@@ -1343,17 +1409,19 @@ struct EncodedAccessUnit final {
 
 class LiveEncoder final {
  public:
-  explicit LiveEncoder(SelectedTransform selected)
-      : selected_(std::move(selected)) {
-    ConfigureCodec(selected_.codec.Get());
-    ComPtr<IMFMediaType> output_type = CreateOutputType();
+  explicit LiveEncoder(
+      SelectedTransform selected,
+      VideoProfile profile = kDefaultVideoProfile)
+      : selected_(std::move(selected)), profile_(profile) {
+    ConfigureCodec(selected_.codec.Get(), profile_);
+    ComPtr<IMFMediaType> output_type = CreateOutputType(profile_);
     Check(selected_.transform->SetOutputType(0, output_type.Get(), 0),
           "mft-set-output-type");
-    ComPtr<IMFMediaType> input_type = CreateInputType();
+    ComPtr<IMFMediaType> input_type = CreateInputType(profile_);
     Check(selected_.transform->SetInputType(0, input_type.Get(), 0),
           "mft-set-input-type");
-    ValidateMediaTypes(selected_.transform.Get());
-    ValidateCodecReadback(selected_.codec.Get());
+    ValidateMediaTypes(selected_.transform.Get(), profile_);
+    ValidateCodecReadback(selected_.codec.Get(), profile_);
     Check(selected_.transform->GetOutputStreamInfo(0, &output_info_),
           "mft-output-stream-info");
     Check(selected_.transform->ProcessMessage(
@@ -1382,7 +1450,8 @@ class LiveEncoder final {
     WaitForInput();
     if (force_key_frame) ForceKeyFrame(selected_.codec.Get());
     ComPtr<IMFSample> sample = CreateSurfaceSample(
-        texture, static_cast<LONGLONG>(timestamp100ns), kFrameDuration100ns);
+        texture, static_cast<LONGLONG>(timestamp100ns),
+        profile_.frame_duration_100ns());
     Check(selected_.transform->ProcessInput(0, sample.Get(), 0),
           "mft-process-input");
     --input_requests_;
@@ -1410,8 +1479,8 @@ class LiveEncoder final {
         Fail("bitstream-annexb", "live output is not Annex-B H264");
       }
       if (nal.profile_level_id) {
-        if (*nal.profile_level_id != "42c01f") {
-          Fail("bitstream-profile", "hardware MFT did not emit profile-level-id 42c01f");
+        if (*nal.profile_level_id != profile_.profile_level_id()) {
+          Fail("bitstream-profile", "hardware MFT changed the requested H.264 profile level");
         }
         if (profile_level_id_ && *profile_level_id_ != *nal.profile_level_id) {
           Fail("bitstream-profile-change", "hardware MFT changed SPS profile");
@@ -1466,6 +1535,7 @@ class LiveEncoder final {
   }
 
   SelectedTransform selected_;
+  VideoProfile profile_;
   MFT_OUTPUT_STREAM_INFO output_info_ = {};
   UINT32 input_requests_ = 0;
   std::optional<std::string> profile_level_id_;
@@ -1474,7 +1544,10 @@ class LiveEncoder final {
 
 class FrameConverter final {
  public:
-  explicit FrameConverter(ID3D11Device* device) : device_(device) {
+  explicit FrameConverter(
+      ID3D11Device* device,
+      VideoProfile profile = kDefaultVideoProfile)
+      : device_(device), profile_(profile) {
     Check(device_->QueryInterface(IID_PPV_ARGS(&video_device_)),
           "video-processor-device");
     ComPtr<ID3D11DeviceContext> context;
@@ -1493,8 +1566,8 @@ class FrameConverter final {
     }
 
     D3D11_TEXTURE2D_DESC output_description = {};
-    output_description.Width = kWidth;
-    output_description.Height = kHeight;
+    output_description.Width = profile_.width;
+    output_description.Height = profile_.height;
     output_description.MipLevels = 1;
     output_description.ArraySize = 1;
     output_description.Format = DXGI_FORMAT_NV12;
@@ -1525,19 +1598,19 @@ class FrameConverter final {
 
     RECT source_rect = {0, 0, static_cast<LONG>(width),
                         static_cast<LONG>(height)};
-    double scale = std::min(static_cast<double>(kWidth) / width,
-                            static_cast<double>(kHeight) / height);
+    double scale = std::min(static_cast<double>(profile_.width) / width,
+                            static_cast<double>(profile_.height) / height);
     LONG target_width = std::max<LONG>(
         2, static_cast<LONG>(std::llround(width * scale)) & ~1L);
     LONG target_height = std::max<LONG>(
         2, static_cast<LONG>(std::llround(height * scale)) & ~1L);
-    target_width = std::min<LONG>(target_width, kWidth);
-    target_height = std::min<LONG>(target_height, kHeight);
-    LONG left = (static_cast<LONG>(kWidth) - target_width) / 2;
-    LONG top = (static_cast<LONG>(kHeight) - target_height) / 2;
+    target_width = std::min<LONG>(target_width, profile_.width);
+    target_height = std::min<LONG>(target_height, profile_.height);
+    LONG left = (static_cast<LONG>(profile_.width) - target_width) / 2;
+    LONG top = (static_cast<LONG>(profile_.height) - target_height) / 2;
     RECT target_rect = {left, top, left + target_width, top + target_height};
-    RECT output_rect = {0, 0, static_cast<LONG>(kWidth),
-                        static_cast<LONG>(kHeight)};
+    RECT output_rect = {0, 0, static_cast<LONG>(profile_.width),
+                        static_cast<LONG>(profile_.height)};
 
     D3D11_VIDEO_COLOR background = {};
     background.RGBA.A = 1.0f;
@@ -1566,12 +1639,12 @@ class FrameConverter final {
   void Configure(UINT32 width, UINT32 height) {
     D3D11_VIDEO_PROCESSOR_CONTENT_DESC description = {};
     description.InputFrameFormat = D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE;
-    description.InputFrameRate = {kFrameRate, 1};
+    description.InputFrameRate = {profile_.frame_rate, 1};
     description.InputWidth = width;
     description.InputHeight = height;
-    description.OutputFrameRate = {kFrameRate, 1};
-    description.OutputWidth = kWidth;
-    description.OutputHeight = kHeight;
+    description.OutputFrameRate = {profile_.frame_rate, 1};
+    description.OutputWidth = profile_.width;
+    description.OutputHeight = profile_.height;
     description.Usage = D3D11_VIDEO_USAGE_PLAYBACK_NORMAL;
     ComPtr<ID3D11VideoProcessorEnumerator> enumerator;
     Check(video_device_->CreateVideoProcessorEnumerator(&description,
@@ -1587,6 +1660,7 @@ class FrameConverter final {
   }
 
   ComPtr<ID3D11Device> device_;
+  VideoProfile profile_;
   ComPtr<ID3D11VideoDevice> video_device_;
   ComPtr<ID3D11VideoContext> video_context_;
   ComPtr<ID3D11VideoProcessorEnumerator> enumerator_;
@@ -1736,7 +1810,32 @@ struct ProductArguments final {
   UINT64 source_id = 0;
   UINT adapter_index = 0;
   UINT mft_index = 0;
+  VideoProfile profile;
 };
+
+DegradationPreference ParseDegradationPreference(const wchar_t* value) {
+  const std::wstring preference(value);
+  if (preference == L"maintain-resolution") {
+    return DegradationPreference::resolution;
+  }
+  if (preference == L"balanced") return DegradationPreference::balanced;
+  if (preference == L"maintain-framerate") {
+    return DegradationPreference::framerate;
+  }
+  Fail("argument-preference", "degradation preference is invalid");
+}
+
+void ValidateVideoProfile(const VideoProfile& profile) {
+  const bool valid_resolution =
+      (profile.width == 854 && profile.height == 480) ||
+      (profile.width == 1280 && profile.height == 720) ||
+      (profile.width == 1920 && profile.height == 1080) ||
+      (profile.width == 2560 && profile.height == 1440);
+  if (!valid_resolution || profile.frame_rate < 15 || profile.frame_rate > 60 ||
+      profile.bit_rate < 2'000'000 || profile.bit_rate > 12'000'000) {
+    Fail("argument-profile", "video profile is outside the product bounds");
+  }
+}
 
 ProductArguments ParseProductArguments(int count, wchar_t** values) {
   ProductArguments arguments;
@@ -1761,15 +1860,26 @@ ProductArguments ParseProductArguments(int count, wchar_t** values) {
   if (count == 5 && std::wstring(values[1]) == L"--capture-audio") {
     arguments.mode = ProductArguments::Mode::audio;
     arguments.target_kind = ParseTargetKind(values[2]);
-  } else if (count == 11 && std::wstring(values[1]) == L"--capture-video" &&
+  } else if (count == 21 && std::wstring(values[1]) == L"--capture-video" &&
              std::wstring(values[6]) == L"--adapter-index" &&
              std::wstring(values[8]) == L"--mft-index" &&
-             std::wstring(values[10]) == L"--protocol-v3") {
+             std::wstring(values[10]) == L"--width" &&
+             std::wstring(values[12]) == L"--height" &&
+             std::wstring(values[14]) == L"--fps" &&
+             std::wstring(values[16]) == L"--bitrate" &&
+             std::wstring(values[18]) == L"--preference" &&
+             std::wstring(values[20]) == L"--protocol-v4") {
     arguments.mode = ProductArguments::Mode::video;
     arguments.target_kind = ParseTargetKind(values[2]);
     arguments.source_id = ParseUint64(values[3], "argument-source");
     arguments.adapter_index = ParseIndex(values[7], "argument-adapter");
     arguments.mft_index = ParseIndex(values[9], "argument-mft");
+    arguments.profile.width = ParseIndex(values[11], "argument-width");
+    arguments.profile.height = ParseIndex(values[13], "argument-height");
+    arguments.profile.frame_rate = ParseIndex(values[15], "argument-fps");
+    arguments.profile.bit_rate = ParseIndex(values[17], "argument-bitrate");
+    arguments.profile.preference = ParseDegradationPreference(values[19]);
+    ValidateVideoProfile(arguments.profile);
   } else {
     Fail("arguments", "unsupported or incomplete command-line argument");
   }
@@ -1854,7 +1964,7 @@ void WriteCapabilityProbe() {
 
   std::vector<Adapter> adapters = EnumerateAdapters();
   std::ostringstream output;
-  output << "{\"protocol\":3,\"platform\":\"windows\",\"platformBuild\":"
+  output << "{\"protocol\":4,\"platform\":\"windows\",\"platformBuild\":"
          << JSONString(std::to_string(build))
          << ",\"videoCapture\":" << (window_capture ? "true" : "false")
          << ",\"processAudio\":"
@@ -1910,8 +2020,8 @@ void RunVideoCapture(const ProductArguments& arguments) {
   ActivationList activations = EnumerateHardwareEncoders(adapter);
   SelectedTransform selected = ActivateTransform(
       activations, arguments.mft_index, device.manager.Get());
-  LiveEncoder encoder(std::move(selected));
-  FrameConverter converter(device.device.Get());
+  LiveEncoder encoder(std::move(selected), arguments.profile);
+  FrameConverter converter(device.device.Get(), arguments.profile);
   ProtocolWriter writer;
 
   using namespace winrt::Windows::Graphics::Capture;
@@ -1989,6 +2099,9 @@ void RunVideoCapture(const ProductArguments& arguments) {
   };
 
   try {
+    const UINT64 frame_duration = static_cast<UINT64>(
+        arguments.profile.frame_duration_100ns());
+    const UINT64 envelope_frame_duration = (frame_duration / 10) * 10;
     std::ostringstream starting;
     starting << "{\"state\":\"starting\",\"hardwareOnly\":true,"
              << "\"adapterIndex\":" << adapter.index
@@ -2020,18 +2133,21 @@ void RunVideoCapture(const ProductArguments& arguments) {
       }
       UINT64 wire_timestamp = (access_unit.timestamp100ns / 10) * 10;
       Check(writer.Write(OutputKind::h264, access_unit.key_frame ? 1 : 0,
-                         wire_timestamp, kEnvelopeFrameDuration100ns,
+                         wire_timestamp, envelope_frame_duration,
                          access_unit.bytes.data(),
                          static_cast<DWORD>(access_unit.bytes.size())),
             "capture-video-output");
       previous_timestamp = timestamp;
       ++encoded_frames;
       if (!active_status_written) {
-        std::string active =
-            "{\"state\":\"active\",\"hardwareOnly\":true,"
-            "\"profileLevelId\":\"42c01f\",\"width\":1280,"
-            "\"height\":720,\"fps\":30}";
-        Check(writer.WriteStatus(active), "capture-status-active");
+        std::ostringstream active;
+        active << "{\"state\":\"active\",\"hardwareOnly\":true,"
+               << "\"profileLevelId\":\""
+               << arguments.profile.profile_level_id() << "\",\"width\":"
+               << arguments.profile.width << ",\"height\":"
+               << arguments.profile.height << ",\"fps\":"
+               << arguments.profile.frame_rate << '}';
+        Check(writer.WriteStatus(active.str()), "capture-status-active");
         active_status_written = true;
       }
     };
@@ -2068,7 +2184,7 @@ void RunVideoCapture(const ProductArguments& arguments) {
         if (pending_key_frame && latest_nv12) {
           const UINT64 timestamp = previous_timestamp == 0
                                        ? latest_timestamp
-                                       : previous_timestamp + kFrameDuration100ns;
+                                       : previous_timestamp + frame_duration;
           write_encoded(latest_nv12.Get(), timestamp, true);
           pending_key_frame = false;
         }
@@ -2093,7 +2209,7 @@ void RunVideoCapture(const ProductArguments& arguments) {
       if (previous_timestamp != 0 && timestamp <= previous_timestamp) continue;
       if (previous_timestamp != 0 &&
           timestamp - previous_timestamp <
-              static_cast<UINT64>(kFrameDuration100ns) * 19 / 20) {
+              frame_duration * 19 / 20) {
         continue;
       }
       auto content_size = latest.ContentSize();
@@ -2127,7 +2243,8 @@ void RunVideoCapture(const ProductArguments& arguments) {
         return;
       }
       pending_key_frame = pending_key_frame || control.key_frame;
-      bool key_frame = encoded_frames == 0 || encoded_frames % kGopFrames == 0 ||
+      bool key_frame = encoded_frames == 0 ||
+                       encoded_frames % arguments.profile.gop_frames() == 0 ||
                        pending_key_frame;
       write_encoded(nv12.Get(), timestamp, key_frame);
       pending_key_frame = false;
