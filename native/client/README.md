@@ -47,11 +47,12 @@ edge's target payload bitrate can carry the measured shared H.264 plus Opus
 payload. The existing route controller owns persistence and any replacement;
 the Client does not pace, score, or globally lower the shared encoder.
 
-The first Local launch creates one random access password in the user
-configuration directory. The Client passes it to its own Host page in a URL
-fragment; the page uses the existing SiteAccess endpoint and removes the
-fragment before continuing. Viewer invitations keep using the existing
-room-scoped grant.
+The Client configuration keeps an optional Local site-access password. Leave it
+blank for an open Local site, or set a visible-ASCII password (8 to 128 bytes)
+in the launcher before starting. When present, the Client passes it to its own
+Host page in a URL fragment; the page uses the existing SiteAccess endpoint and
+removes the fragment before continuing. Viewer invitations keep using the
+existing room-scoped grant.
 
 Press Enter in the Client console to end Local rooms and stop the bundled
 server and any temporary public link. A Site-loaded Browser tab does not own the

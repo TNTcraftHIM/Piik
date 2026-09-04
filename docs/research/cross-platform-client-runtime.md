@@ -77,9 +77,10 @@ its `loopback-network` permission; without that permission the cross-origin
 request was blocked. The gate checks both expected outcomes.
 
 A self-contained LAN room uses a localhost Host URL and a selected LAN IPv4
-Viewer URL backed by the same local TypeScript process. Its generated access
-password is persisted once and passed only to the Client's Host page in a
-consumed fragment. Explicit `--link` mode launches the packaged Cloudflare Quick
+Viewer URL backed by the same local TypeScript process. The Client persists an
+optional user-chosen access password and passes it only to its Host page in a
+consumed fragment; a blank value leaves the Local site open. Explicit `--link`
+mode launches the packaged Cloudflare Quick
 Tunnel against that same local HTTP server and supplies its random HTTPS origin
 to Node before startup. The public path therefore reuses the exact frontend,
 WebSocket signaling, RoomStore, and Viewer grant instead of adding a rendezvous

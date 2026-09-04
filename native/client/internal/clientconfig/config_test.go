@@ -3,6 +3,7 @@ package clientconfig
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -17,8 +18,21 @@ func TestLoadOrCreatePersistsOneValidConfiguration(t *testing.T) {
 		t.Fatal(err)
 	}
 	if first != second || first.Version != currentVersion ||
-		!passwordPattern.MatchString(first.LocalAccessPassword) {
+		first.LocalAccessPassword != "" {
 		t.Fatalf("persisted configuration = %+v, %+v", first, second)
+	}
+}
+
+func TestUserChosenLocalAccessPasswordIsBounded(t *testing.T) {
+	for _, value := range []string{"", "valid-local-password", strings.Repeat("x", 128)} {
+		if normalized, err := NormalizeLocalAccessPassword(value); err != nil || normalized != value {
+			t.Fatalf("NormalizeLocalAccessPassword(%q) = %q, %v", value, normalized, err)
+		}
+	}
+	for _, value := range []string{"short", strings.Repeat("x", 129), "has space"} {
+		if _, err := NormalizeLocalAccessPassword(value); err == nil {
+			t.Fatalf("invalid local password accepted: %q", value)
+		}
 	}
 }
 

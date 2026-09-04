@@ -61,6 +61,25 @@ describe("local server configuration", () => {
     ]);
   });
 
+  it("leaves the Local site open when no password is supplied", () => {
+    const config = createLocalServerConfig({
+      port: 9235,
+      publicAddress: "192.168.1.10",
+    });
+
+    expect(config.siteAccessPassword).toBeUndefined();
+  });
+
+  it("accepts an empty Client password from the process environment", () => {
+    const config = loadLocalServerConfig({
+      SCREENER_CLIENT_PORT: "9236",
+      SCREENER_CLIENT_LAN_ADDRESS: "192.168.50.4",
+      SCREENER_CLIENT_LOCAL_PASSWORD: "",
+    });
+
+    expect(config.siteAccessPassword).toBeUndefined();
+  });
+
   it.each([
     { publicAddress: "localhost", password: "valid-password" },
     { publicAddress: "127.0.0.1", password: "valid-password" },

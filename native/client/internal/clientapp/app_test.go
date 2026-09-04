@@ -71,6 +71,32 @@ func TestLaunchURLPreservesLocalAccessInsideThePrivateFragment(t *testing.T) {
 	}
 }
 
+func TestLaunchURLEncodesAndClearsOptionalLocalAccess(t *testing.T) {
+	value := clientLaunchURLWithLocalAccess(
+		"http://localhost:8787/#retained=yes&client-access=old",
+		"a+b&c?d=e",
+	)
+	parsed, err := url.Parse(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fragment, err := url.ParseQuery(parsed.Fragment)
+	if err != nil || fragment.Get("client-access") != "a+b&c?d=e" ||
+		fragment.Get("screener-client") != "1" || fragment.Get("retained") != "yes" {
+		t.Fatalf("encoded local launch fragment = %q, %v", parsed.Fragment, err)
+	}
+
+	open := clientLaunchURLWithLocalAccess("http://localhost:8787/#client-access=old", "")
+	parsed, err = url.Parse(open)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fragment, err = url.ParseQuery(parsed.Fragment)
+	if err != nil || fragment.Get("client-access") != "" || fragment.Get("screener-client") != "1" {
+		t.Fatalf("open local launch fragment = %q, %v", parsed.Fragment, err)
+	}
+}
+
 func TestLinkModeKeepsOneLocalAuthority(t *testing.T) {
 	config := clientconfig.Config{
 		Version:             1,

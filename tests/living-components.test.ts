@@ -211,6 +211,17 @@ describe("living-room presentation", () => {
   });
 
   it.each([
+    ["hint-client-local", "vls-clocal-arc"],
+    ["hint-client-link", "vls-clink-globe"],
+    ["hint-client-site", "vls-csite-path"],
+    ["hint-client-access", "vls-caccess-lock"],
+  ] as const)("renders a semantic Client hint for %s", (kind, marker) => {
+    const html = renderToStaticMarkup(createElement(HintComic, { kind, size: 240 }));
+    expect(html).toContain(marker);
+    expect(html).toContain('viewBox="0 0 320 96"');
+  });
+
+  it.each([
     ["open", false, "host.policy.currentOpen", true],
     ["private", true, "host.policy.currentPassword", true],
     ["private", false, "host.policy.currentInvite", false],

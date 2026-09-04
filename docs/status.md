@@ -150,6 +150,8 @@ This is the current execution index. Git history owns completed timelines;
   unexpected Client close reaches the Host through the existing fence. Windows
   retains one converted frame for quiet-source keyframe recovery; current static
   and crash gates pass, while cross-version capture remains open.
+  Local Client access is open by default and can be protected with a user-chosen
+  password from the Browser launcher; Hosted Site access is unchanged.
   Non-Windows capture remains outside the release. The default packaged Client
   launcher performs a non-blocking official GitHub Release check and the
   deployment tree provides a read-only operator check against the same full-SHA

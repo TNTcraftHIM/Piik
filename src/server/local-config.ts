@@ -17,7 +17,7 @@ export interface LocalServerConfigOptions {
   publicAddress: string;
   publicOrigin?: string;
   allowedAddresses?: readonly string[];
-  siteAccessPassword: string;
+  siteAccessPassword?: string;
   stunUrls?: readonly string[];
 }
 
@@ -32,7 +32,13 @@ export function createLocalServerConfig(
   if (publicAddress === "0.0.0.0" || publicAddress.startsWith("127.")) {
     throw new Error("Local server public address must be reachable from the LAN");
   }
-  if (!VISIBLE_ASCII_PATTERN.test(options.siteAccessPassword)) {
+  const siteAccessPassword = options.siteAccessPassword?.trim() ?? "";
+  if (
+    siteAccessPassword &&
+    (!VISIBLE_ASCII_PATTERN.test(siteAccessPassword) ||
+      Buffer.byteLength(siteAccessPassword) < 8 ||
+      Buffer.byteLength(siteAccessPassword) > 128)
+  ) {
     throw new Error("Local access password must contain 8 to 128 visible ASCII bytes");
   }
 
@@ -65,7 +71,7 @@ export function createLocalServerConfig(
       ...[...allowedAddresses].map(origin),
       publicBaseUrl.origin,
     ]),
-    siteAccessPassword: options.siteAccessPassword,
+    siteAccessPassword: siteAccessPassword || undefined,
     roomLeaseMs: LOCAL_ROOM_LEASE_MS,
     maxViewersPerRoom: MAX_VIEWERS_PER_ROOM_LIMIT,
     peerAssistedMedia: true,
@@ -79,12 +85,10 @@ export function loadLocalServerConfig(
   environment: NodeJS.ProcessEnv = process.env,
 ): ServerConfig {
   const publicAddress = environment.SCREENER_CLIENT_LAN_ADDRESS?.trim();
-  const siteAccessPassword = environment.SCREENER_CLIENT_LOCAL_PASSWORD;
-  if (!publicAddress || !siteAccessPassword) {
-    throw new Error(
-      "SCREENER_CLIENT_LAN_ADDRESS and SCREENER_CLIENT_LOCAL_PASSWORD are required",
-    );
+  if (!publicAddress) {
+    throw new Error("SCREENER_CLIENT_LAN_ADDRESS is required");
   }
+  const siteAccessPassword = environment.SCREENER_CLIENT_LOCAL_PASSWORD?.trim() ?? "";
   const portText = environment.SCREENER_CLIENT_PORT?.trim();
   const port = portText ? Number(portText) : undefined;
   const allowedAddresses = environment.SCREENER_CLIENT_ALLOWED_LAN_ADDRESSES
@@ -101,7 +105,7 @@ export function loadLocalServerConfig(
     publicAddress,
     ...(publicOrigin ? { publicOrigin } : {}),
     ...(allowedAddresses ? { allowedAddresses } : {}),
-    siteAccessPassword,
+    ...(siteAccessPassword ? { siteAccessPassword } : {}),
     ...(stunUrls ? { stunUrls } : {}),
   });
 }

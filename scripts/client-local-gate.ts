@@ -49,7 +49,8 @@ const LOCAL_PAGE_STATE = `fetch('/api/site-access')
   .then((response) => response.json())
   .catch(() => null)
   .then((access) => ({
-  bootstrapPresent: location.hash.startsWith('#client-access='),
+  bootstrapPresent: ['client-access', 'screener-client']
+    .some((key) => new URLSearchParams(location.hash.slice(1)).has(key)),
   access,
   hostReady: Boolean(document.querySelector('.lr-host-personal-controls')),
 }))`;
@@ -151,6 +152,11 @@ async function main(): Promise<void> {
     if (typeof config.localAccessPassword !== "string") {
       throw new Error("Client access bootstrap is unavailable");
     }
+    const localAccessPassword = config.localAccessPassword;
+    const bootstrap = new URLSearchParams({
+      ...(localAccessPassword ? { "client-access": localAccessPassword } : {}),
+      "screener-client": "1",
+    }).toString();
 
     browser = spawn(browserPath, [
       `--remote-debugging-port=${debugPort}`,
@@ -171,11 +177,11 @@ async function main(): Promise<void> {
     cdp = await CdpConnection.connect(version.webSocketDebuggerUrl, Date.now() + 10_000);
     const page = await createPage(
       cdp,
-      `http://localhost:${appPort}/#client-access=${config.localAccessPassword}`,
+      `http://localhost:${appPort}/#${bootstrap}`,
     );
     const readState = (deadline: number) =>
       evaluate<LocalPageState>(cdp!, page, LOCAL_PAGE_STATE, deadline).then((value) => {
-        report.bootstrapAuthenticated = value.access?.required === true &&
+        report.bootstrapAuthenticated = value.access?.required === Boolean(localAccessPassword) &&
           value.access.authenticated;
         report.bootstrapRemoved = !value.bootstrapPresent;
         report.hostReady = value.hostReady;

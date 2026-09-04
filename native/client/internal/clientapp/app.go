@@ -109,6 +109,7 @@ func runLauncher(
 		filepath.Join(appDirectory, "dist", "client"),
 		config.Site,
 		BuildRevision,
+		config.LocalAccessPassword,
 	)
 	if err != nil {
 		return err
@@ -132,6 +133,8 @@ func runLauncher(
 	}
 	if selection.Mode == launcher.ModeSite {
 		config.Site = selection.Site
+	} else {
+		config.LocalAccessPassword = selection.LocalAccessPassword
 	}
 	if err = clientconfig.Save(configPath, config); err != nil {
 		launch.SetResult("", err)
@@ -296,17 +299,20 @@ func runLocal(ctx context.Context, options Options, config clientconfig.Config,
 	}
 	defer localServer.Close()
 
-	fmt.Printf("Local access password: %s\n", config.LocalAccessPassword)
+	if config.LocalAccessPassword == "" {
+		fmt.Println("Local access: open")
+	} else {
+		fmt.Printf("Local access password: %s\n", config.LocalAccessPassword)
+	}
 	if publicOrigin != "" {
 		fmt.Printf("Public invitation origin: %s\n", publicOrigin)
 	} else {
 		fmt.Printf("LAN invitation origin: http://%s:%d\n", selectedAddress, options.Port)
 	}
-	launchURL := clientLaunchURL(fmt.Sprintf(
-		"http://localhost:%d/#client-access=%s",
-		options.Port,
+	launchURL := clientLaunchURLWithLocalAccess(
+		fmt.Sprintf("http://localhost:%d/", options.Port),
 		config.LocalAccessPassword,
-	))
+	)
 	if !options.DisableBrowser {
 		if err = browser.Open(launchURL); err != nil {
 			return errors.New("Screener Client could not open the Local page")
@@ -345,6 +351,24 @@ func clientLaunchURL(raw string) string {
 	fragment, err := url.ParseQuery(parsed.Fragment)
 	if err != nil {
 		return raw
+	}
+	fragment.Set("screener-client", "1")
+	parsed.Fragment = fragment.Encode()
+	return parsed.String()
+}
+
+func clientLaunchURLWithLocalAccess(raw, password string) string {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return raw
+	}
+	fragment, err := url.ParseQuery(parsed.Fragment)
+	if err != nil {
+		return clientLaunchURL(raw)
+	}
+	fragment.Del("client-access")
+	if password != "" {
+		fragment.Set("client-access", password)
 	}
 	fragment.Set("screener-client", "1")
 	parsed.Fragment = fragment.Encode()

@@ -9,7 +9,7 @@ import { z } from "zod";
 import { createOpaqueId } from "./opaque-id";
 
 const CLIENT_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
-const CLIENT_ACCESS_BOOTSTRAP_PATTERN = /^[A-Za-z0-9_-]{32}$/;
+const CLIENT_ACCESS_BOOTSTRAP_PATTERN = /^[\x21-\x7e]{8,128}$/;
 const HOST_ROOM_STORAGE_KEY = "screener:host-room:v1";
 const HOST_ROOM_PREFERENCE_STORAGE_KEY = "screener:host-room-preference:v1";
 const hostRoomStorageSchema = createRoomResponseSchema.pick({

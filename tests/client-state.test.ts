@@ -792,6 +792,21 @@ describe("room codes", () => {
     expect(replaceState).toHaveBeenCalledWith(null, "", "/");
   });
 
+  it("accepts a bounded user-chosen Client access value", () => {
+    const replaceState = vi.fn();
+    vi.stubGlobal("window", {
+      location: {
+        hash: "#client-access=a%2Bb%26c%3Fd%3De",
+        pathname: "/",
+        search: "",
+      },
+      history: { state: null, replaceState },
+    });
+
+    expect(takeClientLaunchBootstrap().accessToken).toBe("a+b&c?d=e");
+    expect(replaceState).toHaveBeenCalledWith(null, "", "/");
+  });
+
   it("consumes the Client launch marker from a server-private fragment", () => {
     const replaceState = vi.fn();
     vi.stubGlobal("window", {

@@ -423,14 +423,18 @@ async function readClientEndpoint(
             // Informational lines are printed after the endpoint.
           }
           const passwordLine = lines.find((entry) => entry.startsWith("Local access password: "));
+          const openAccessLine = lines.find((entry) => entry === "Local access: open");
           const publicOriginLine = lines.find((entry) =>
             entry.startsWith("Public invitation origin: ")
           );
-          if (endpoint && passwordLine && (!requirePublicOrigin || publicOriginLine)) {
+          if (endpoint && (passwordLine || openAccessLine) &&
+            (!requirePublicOrigin || publicOriginLine)) {
             child.stdout.off("data", onData);
             resolveEndpoint({
               endpoint,
-              password: passwordLine.slice("Local access password: ".length),
+              password: passwordLine
+                ? passwordLine.slice("Local access password: ".length)
+                : "",
               publicOrigin:
                 publicOriginLine?.slice("Public invitation origin: ".length) ?? null,
             });
@@ -645,11 +649,14 @@ async function main(): Promise<void> {
     stage = "host-cdp";
     const version = await waitForVersion(debugPort, chrome);
     cdp = await CdpConnection.connect(version.webSocketDebuggerUrl, Date.now() + 10_000);
+    const hostBootstrap = new URLSearchParams({
+      ...(clientInfo.password ? { "client-access": clientInfo.password } : {}),
+      "screener-client": "1",
+    }).toString();
     stage = "host-page";
     const host = await createPage(
       cdp,
-      "http://localhost:" + appPort + "/#client-access=" + clientInfo.password +
-        "&screener-client=1",
+      "http://localhost:" + appPort + "/#" + hostBootstrap,
       undefined,
       true,
     );

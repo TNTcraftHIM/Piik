@@ -20,6 +20,8 @@ result into the existing route evidence windows. One reserved loopback edge
 gives the system Browser a preview and lets native Host media reuse the existing
 LiveKit publisher when SFU fallback is assigned; other platform capture and
 broader package acceptance remain later gates.
+The Local launcher keeps an optional user-chosen site-access password; leaving it
+blank keeps the self-contained site open.
 
 ## Product Map
 

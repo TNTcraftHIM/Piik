@@ -538,6 +538,180 @@ ${rmBlock(
   </>
 );
 
+/* Client launcher hints. Each scene names the actual choice rather than
+   borrowing a route/status metaphor: local peers, a public link, a saved
+   Site, and the optional local access gate. */
+const HintClientLocal: HintScene = ({ theme }) => (
+  <>
+    <style>{`
+.vls-clocal-arc{stroke-dasharray:1;animation:vlsClocalArc 3.2s ease-in-out infinite}
+.vls-clocal-hop{transform-box:fill-box;transform-origin:50% 100%;animation:vlsClocalHop 3.2s ease-in-out infinite}
+.vls-clocal-eyes{transform-box:fill-box;transform-origin:center;animation:vlsClocalBlink 3.2s ease-in-out infinite}
+@keyframes vlsClocalArc{0%,8%{stroke-dashoffset:1}30%,100%{stroke-dashoffset:0}}
+@keyframes vlsClocalHop{0%,32%{transform:translateY(0)}38%{transform:translateY(-4px)}44%,100%{transform:translateY(0)}}
+@keyframes vlsClocalBlink{0%,58%,66%,100%{transform:scaleY(1)}62%{transform:scaleY(.12)}}
+${rmBlock(
+  ["vls-clocal-arc", "vls-clocal-hop", "vls-clocal-eyes"],
+  [
+    [".vls-clocal-arc", "stroke-dashoffset:0"],
+    [".vls-clocal-hop,.vls-clocal-eyes", "transform:none"],
+  ],
+)}
+`}</style>
+    <Frame x={4} w={152} theme={theme} />
+    <Frame x={164} w={152} theme={theme} accent={LIVE} />
+    <rect x={16} y={14} width={128} height={68} rx={12} fill="none" stroke={FAINT} strokeWidth={2} strokeDasharray="5 4" />
+    <MiniTv x={25} y={28} w={42} h={30} />
+    <Crown x={48} y={22} k={0.55} />
+    <Pawn x={48} yb={78} s={8} />
+    <Pawn x={116} yb={78} s={8} color={SKY} />
+    <g className="vls-clocal-eyes" fill={EYE}>
+      <circle cx={45.8} cy={65} r={0.85} />
+      <circle cx={50.2} cy={65} r={0.85} />
+    </g>
+    <path d="M68 57H96" stroke={FAINT} strokeWidth={2.5} strokeLinecap="round" strokeDasharray="4 4" />
+    <MiniTv x={180} y={28} w={42} h={30} />
+    <Crown x={203} y={22} k={0.55} />
+    <Pawn x={203} yb={78} s={8} eyes />
+    <g className="vls-clocal-hop">
+      <Pawn x={278} yb={78} s={8} color={SKY} eyes />
+    </g>
+    <path
+      className="vls-clocal-arc"
+      d="M212 56 Q240 24 270 56"
+      pathLength={1}
+      stroke={LIVE}
+      strokeWidth={3}
+      strokeLinecap="round"
+      fill="none"
+    />
+    <circle cx={240} cy={39} r={3} fill={LIVE} />
+  </>
+);
+
+const HintClientLink: HintScene = ({ theme }) => (
+  <>
+    <style>{`
+.vls-clink-path{stroke-dasharray:1;animation:vlsClinkPath 3.2s ease-in-out infinite}
+.vls-clink-globe{transform-box:view-box;transform-origin:240px 44px;animation:vlsClinkGlobe 3.2s ease-in-out infinite}
+.vls-clink-hop{transform-box:fill-box;transform-origin:50% 100%;animation:vlsClinkHop 3.2s ease-in-out infinite}
+@keyframes vlsClinkPath{0%,8%{stroke-dashoffset:1}32%,100%{stroke-dashoffset:0}}
+@keyframes vlsClinkGlobe{0%,28%{transform:rotate(0)}42%{transform:rotate(10deg)}56%,100%{transform:rotate(0)}}
+@keyframes vlsClinkHop{0%,34%{transform:translateY(0)}40%{transform:translateY(-4px)}46%,100%{transform:translateY(0)}}
+${rmBlock(
+  ["vls-clink-path", "vls-clink-globe", "vls-clink-hop"],
+  [
+    [".vls-clink-path", "stroke-dashoffset:0"],
+    [".vls-clink-globe,.vls-clink-hop", "transform:none"],
+  ],
+)}
+`}</style>
+    <Frame x={4} w={152} theme={theme} />
+    <Frame x={164} w={152} theme={theme} accent={LIVE} />
+    <MiniTv x={18} y={28} w={38} h={29} />
+    <Pawn x={116} yb={78} s={8} color={SKY} />
+    <path d="M57 55H96" stroke={FAINT} strokeWidth={2.5} strokeLinecap="round" strokeDasharray="4 4" />
+    <g fill="none" stroke={STAR_GOLD} strokeWidth={2.5} strokeLinecap="round">
+      <path d="M69 46l-4-4a7 7 0 0 0-10 10l4 4a7 7 0 0 0 10 0l4-4" />
+      <path d="M83 46l4-4a7 7 0 0 1 10 10l-4 4a7 7 0 0 1-10 0l-4-4" />
+      <path d="M63 51h26" />
+    </g>
+    <MiniTv x={174} y={28} w={38} h={29} />
+    <g className="vls-clink-globe" fill="none" stroke={LIVE} strokeWidth={2}>
+      <circle cx={240} cy={44} r={15} />
+      <path d="M225 44h30M240 29c5 5 5 25 0 30M240 29c-5 5-5 25 0 30" />
+      <path d="M229 36c6 3 16 3 22 0M229 52c6-3 16-3 22 0" />
+    </g>
+    <g className="vls-clink-path" fill="none" stroke={LIVE} strokeWidth={2.8} strokeLinecap="round">
+      <path d="M212 55 Q221 48 225 46" pathLength={1} />
+      <path d="M255 46 Q265 49 274 56" pathLength={1} />
+    </g>
+    <g className="vls-clink-hop">
+      <Pawn x={280} yb={78} s={8} color={SKY} eyes />
+    </g>
+    <Spark x={240} y={18} />
+  </>
+);
+
+const HintClientSite: HintScene = ({ theme }) => (
+  <>
+    <style>{`
+.vls-csite-path{stroke-dasharray:1;animation:vlsCsitePath 3.2s ease-in-out infinite}
+.vls-csite-slots{animation:vlsCsiteSlots 3.2s ease-in-out infinite}
+.vls-csite-pulse{animation:vlsCsitePulse 3.2s ease-in-out infinite}
+@keyframes vlsCsitePath{0%,8%{stroke-dashoffset:1}30%,100%{stroke-dashoffset:0}}
+@keyframes vlsCsiteSlots{0%,30%,100%{opacity:.35}44%{opacity:1}}
+@keyframes vlsCsitePulse{0%,28%,100%{opacity:.35}44%{opacity:1}}
+${rmBlock(
+  ["vls-csite-path", "vls-csite-slots", "vls-csite-pulse"],
+  [
+    [".vls-csite-path", "stroke-dashoffset:0"],
+    [".vls-csite-slots", "opacity:1"],
+    [".vls-csite-pulse", "opacity:1"],
+  ],
+)}
+`}</style>
+    <Frame x={4} w={152} theme={theme} />
+    <Frame x={164} w={152} theme={theme} accent={LIVE} />
+    <MiniTv x={22} y={27} w={46} h={32} />
+    <rect x={78} y={34} width={38} height={22} rx={4} fill={WALL2} stroke={INK} strokeWidth={2.5} />
+    <path d="M84 42h26M84 48h18" stroke={FAINT} strokeWidth={2} strokeLinecap="round" />
+    <path d="M68 51H78" stroke={FAINT} strokeWidth={2.5} strokeDasharray="4 4" />
+    <rect x={181} y={22} width={47} height={39} rx={5} fill={TV_SCREEN} stroke={INK} strokeWidth={2.5} />
+    <path d="M181 31H228" stroke={INK} strokeWidth={2} />
+    <circle cx={188} cy={26.5} r={1.5} fill={STAR_GOLD} />
+    <path d="M190 44h28M190 50h21" stroke={FAINT} strokeWidth={2} strokeLinecap="round" />
+    <ServerBox x={263} y={32} w={30} h={23} lit slotsClass="vls-csite-slots" />
+    <g className="vls-csite-path" fill="none" stroke={LIVE} strokeWidth={2.8} strokeLinecap="round">
+      <path d="M229 42H260" pathLength={1} />
+      <path d="M229 50H260" pathLength={1} />
+    </g>
+    <circle className="vls-csite-pulse" cx={245} cy={46} r={3} fill={LIVE} />
+    <Crown x={204} y={72} k={0.5} />
+  </>
+);
+
+const HintClientAccess: HintScene = ({ theme }) => (
+  <>
+    <style>{`
+.vls-caccess-pawn{transform-box:fill-box;transform-origin:50% 100%;animation:vlsCaccessPawn 3.2s cubic-bezier(.3,1.3,.5,1) infinite}
+.vls-caccess-lock{transform-box:view-box;transform-origin:228px 47px;animation:vlsCaccessLock 3.2s ease-in-out infinite}
+.vls-caccess-key{transform-box:fill-box;transform-origin:center;animation:vlsCaccessKey 3.2s ease-in-out infinite}
+@keyframes vlsCaccessPawn{0%,8%{transform:translateX(-7px)}22%{transform:translateX(0)}34%,100%{transform:translateX(0)}}
+@keyframes vlsCaccessLock{0%,28%{transform:translateY(5px);opacity:0}40%{transform:translateY(0);opacity:1}54%,100%{transform:translateY(0);opacity:1}}
+@keyframes vlsCaccessKey{0%,34%{transform:translateX(-14px) rotate(-18deg);opacity:0}44%{transform:translateX(0) rotate(0);opacity:1}58%,100%{transform:translateX(0) rotate(0);opacity:1}}
+${rmBlock(
+  ["vls-caccess-pawn", "vls-caccess-lock", "vls-caccess-key"],
+  [
+    [".vls-caccess-pawn", "transform:none"],
+    [".vls-caccess-lock", "opacity:1;transform:none"],
+    [".vls-caccess-key", "opacity:1;transform:none"],
+  ],
+)}
+`}</style>
+    <Frame x={4} w={152} theme={theme} />
+    <Frame x={164} w={152} theme={theme} accent={LIVE} />
+    <path d="M28 76V24h44v52" fill="none" stroke={INK} strokeWidth={2.5} strokeLinejoin="round" />
+    <path d="M35 72V33l24 6v33Z" fill={WALL2} stroke={INK} strokeWidth={2.5} strokeLinejoin="round" />
+    <circle cx={55} cy={54} r={2} fill={INK} />
+    <g className="vls-caccess-pawn">
+      <Pawn x={104} yb={78} s={8} color={SKY} eyes />
+    </g>
+    <path d="M112 58H132" stroke={LIVE} strokeWidth={2.5} strokeLinecap="round" />
+    <Door x={212} y={24} />
+    <g className="vls-caccess-lock">
+      <path d="M220 48v-5a8 8 0 0 1 16 0v5" fill="none" stroke={STAR_GOLD} strokeWidth={2.5} strokeLinecap="round" />
+      <rect x={217} y={48} width={22} height={17} rx={3} fill={STAR_GOLD} stroke={INK} strokeWidth={2} />
+      <circle cx={228} cy={56} r={2} fill={INK} />
+    </g>
+    <g className="vls-caccess-key">
+      <circle cx={182} cy={69} r={4.5} fill="var(--paper)" stroke={INK} strokeWidth={2.2} />
+      <path d="M186 69h15m-5 0v4m5-4v4" stroke={INK} strokeWidth={2.2} strokeLinecap="round" />
+    </g>
+    <Star x={286} y={24} r={5} />
+  </>
+);
+
 export const SET4_SCENES: Record<Set4Kind, HintScene> = {
   "hint-topology": HintTopology,
   "hint-close": HintClose,
@@ -551,4 +725,8 @@ export const SET4_SCENES: Record<Set4Kind, HintScene> = {
   "hint-route-p2p": HintRouteP2p,
   "hint-route-sfu": HintRouteSfu,
   "hint-nat-prediction": HintNatPrediction,
+  "hint-client-local": HintClientLocal,
+  "hint-client-link": HintClientLink,
+  "hint-client-site": HintClientSite,
+  "hint-client-access": HintClientAccess,
 };

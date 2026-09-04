@@ -168,7 +168,7 @@ async function verifyLocalPackage(root, target, temporaryRoot) {
   child.stdin.on("error", () => undefined);
   child.stdout.on("data", (chunk) => {
     stdout = `${stdout}${chunk.toString()}`.slice(-2_048);
-    if (stdout.includes("Local access password: ")) {
+    if (stdout.includes("Local access password: ") || stdout.includes("Local access: open")) {
       clientReady = true;
       stdout = "";
     }

@@ -83,10 +83,12 @@ Hosted and Local deployments diverge without improving the media path.
     `--link` adds its exact temporary HTTPS origin and Cloudflare's public STUN
     to existing Browser media edges. It changes no Hosted shutdown or
     persistence behavior.
-11. One Client configuration owns the optional Site origin and a generated
-    Local access password. The Client bootstraps its own Host page through a
-    fragment that is consumed before authentication; friends use the existing
-    room invitation grant. No Client-specific authorization system is added.
+11. One Client configuration owns the optional Site origin and an optional,
+    user-chosen Local access password. A blank value leaves the Local site open;
+    a value gates that site through the existing SiteAccess authority. The
+    Client bootstraps its own Host page through a fragment that is consumed
+    before authentication; friends use the existing room invitation grant. No
+    Client-specific authorization system is added.
 12. Local authority shutdown first ends every in-memory room through the current
     `room-closed` path, then closes signaling and HTTP. The Go supervisor closes
     Node stdin, waits, and applies one bounded process timeout. It does not

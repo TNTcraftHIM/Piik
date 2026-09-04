@@ -1542,6 +1542,11 @@ html[data-theme="dark"] .lr-door-glyph { color: #7d92a8; }
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
 }
+.lr-client-modes > .lr-comic-tip-wrap {
+  width: 100%;
+  min-width: 0;
+}
+.lr-client-modes > .lr-comic-tip-wrap > .lr-client-mode { width: 100%; }
 .lr-client-mode {
   display: grid;
   min-width: 0;
@@ -1568,6 +1573,18 @@ html[data-theme="dark"] .lr-door-glyph { color: #7d92a8; }
 .lr-client-mode strong { font-size: 14px; }
 .lr-client-mode small { font-size: 11px; opacity: .66; }
 .lr-client-site { width: min(460px, 100%); }
+.lr-client-access {
+  width: min(460px, 100%);
+}
+.lr-client-access input {
+  min-width: 0;
+}
+.lr-client-launch-panel > .lr-comic-tip-wrap {
+  width: min(460px, 100%);
+}
+.lr-client-launch-panel > .lr-comic-tip-wrap > .lr-client-access {
+  width: 100%;
+}
 
 .lr-join {
   flex: 1;
