@@ -66,6 +66,7 @@ jobs:
               tsconfig.server.json \
               vite.config.ts \
               scripts/assemble-client.mjs \
+              scripts/client-icons.mjs \
               scripts/package-app-release.mjs \
               scripts/package-client-candidate.mjs \
               scripts/client-package-targets.mjs \
