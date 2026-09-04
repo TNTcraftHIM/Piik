@@ -149,7 +149,7 @@ static gboolean factory_supports_constrained_baseline(
   for (const GList *item = templates; item != NULL; item = item->next) {
     const GstStaticPadTemplate *pad = item->data;
     if (pad->direction != GST_PAD_SRC) continue;
-    GstCaps *caps = gst_static_caps_get(&pad->static_caps);
+    GstCaps *caps = gst_static_caps_get((GstStaticCaps *)&pad->static_caps);
     supported = gst_caps_can_intersect(caps, required);
     gst_caps_unref(caps);
     if (supported) break;

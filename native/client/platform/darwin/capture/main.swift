@@ -491,7 +491,6 @@ private final class HardwareEncoder {
                 kVTProfileLevel_H264_ConstrainedBaseline_AutoLevel)
         try set(kVTCompressionPropertyKey_AverageBitRate, NSNumber(value: profile.bitrate))
         try set(kVTCompressionPropertyKey_ExpectedFrameRate, NSNumber(value: profile.frameRate))
-        try set(kVTCompressionPropertyKey_MaximumRealTimeFrameRate, NSNumber(value: profile.frameRate))
         try set(kVTCompressionPropertyKey_MaxKeyFrameInterval, NSNumber(value: profile.frameRate * 2))
         if profile.preference != .balanced {
             try? set(
