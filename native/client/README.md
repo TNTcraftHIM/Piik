@@ -9,20 +9,24 @@ room store, signaling protocol, or route controller.
 - With no mode argument, the Client opens a small launcher in the system
   Browser. It selects Local, a temporary public HTTPS invitation, or a saved
   Site, then enters the normal Host page.
-- The launcher remembers the Site address but keeps the per-run mode choice
-  separate. Local and one-link modes retain the self-contained authority; a
-  configured Site owns rooms, persistence, routing, and SFU.
+- The launcher remembers the Site address but keeps the per-run room source
+  separate. The Client RPC starts before this choice and accepts the saved Site
+  alongside the Local Host origin, so Local or Public invite does not disable
+  Site enhancement. A Client-opened Site remembers the opt-in in that Browser
+  origin; later manually opened Host pages may reuse the running Client.
 - `--site`, `--local`, and `--link` remain deterministic automation inputs for
   CI and development. They are not required for normal use.
 - The default launcher checks the official GitHub Releases metadata after it
   opens and shows a notice when a newer full-SHA release exists. The check is
   best-effort and never installs or replaces the Client.
 
-Local mode uses memory-only rooms, Browser P2P relay, no LiveKit, and no NAT
-prediction. Ordinary Local works on a reachable LAN. The **Public invite** mode
+Local mode uses memory-only rooms, Browser P2P relay, no LiveKit, and no public
+discovery. Ordinary Local works on a reachable LAN. The **Public invite** mode
 runs the packaged Cloudflare Tunnel sidecar for the existing HTTP/WebSocket
 control surface and
-uses Cloudflare's public STUN for ordinary Browser media edges. Media does not
+uses one ordinary public STUN destination plus two bounded public survey
+destinations. Browser and Native edges share the same prediction rule; Native
+STUN, ICE checks, and media use one Pion UDP mux. Media does not
 travel through the HTTP tunnel, and a difficult media path still has no SFU or
 TURN fallback. The Client chooses a sole private LAN IPv4 automatically. Use
 `--lan-address <address>` only when multiple real LAN interfaces are active.
@@ -37,9 +41,8 @@ Video and audio share the same room route and PeerConnection. Native capture
 starts with the Host's
 current resolution, frame-rate, video/audio bitrate, and quality preference;
 live changes replace only the capture/encoder generation behind those stable
-connections. Native media in Site or one-link mode also
-attempts one bounded PCP, UPnP, or NAT-PMP
-mapping for its sole Pion UDP socket; pure LAN Local mode does not. Routers
+connections. A Native edge with public STUN also attempts one bounded PCP,
+UPnP, or NAT-PMP mapping for its Pion UDP socket; pure LAN does not. Routers
 without a mapping service continue with ordinary ICE/STUN. The mapping does not
 create a relay or carry media through the Client control link. A configured Site
 may route the native source through its existing Browser LiveKit publisher;

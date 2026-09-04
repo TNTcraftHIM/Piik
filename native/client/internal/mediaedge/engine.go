@@ -1,19 +1,26 @@
 package mediaedge
 
 import (
+	"context"
 	"errors"
 	"net"
+	"strconv"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/TNTcraftHIM/Screener/native/client/internal/portmapping"
+	"github.com/pion/ice/v4"
 	"github.com/pion/interceptor"
 	"github.com/pion/logging"
 	"github.com/pion/rtp"
 	"github.com/pion/rtp/codecs"
+	"github.com/pion/stun/v3"
 	"github.com/pion/webrtc/v4"
 )
 
 const H264ProfileLevelID = "42c033"
+const stunSurveyTimeout = 5 * time.Second
 
 var h264Capability = webrtc.RTPCodecCapability{
 	MimeType:    webrtc.MimeTypeH264,
@@ -37,10 +44,13 @@ type EngineOptions struct {
 
 type Engine struct {
 	api           *webrtc.API
-	mux           interface{ Close() error }
+	mux           *ice.UniversalUDPMuxDefault
 	listenAddress string
+	localPort     int
 	portMapping   *portmapping.Mapping
 	bandwidth     *bandwidthObservers
+	ctx           context.Context
+	cancel        context.CancelFunc
 
 	mu     sync.Mutex
 	edges  map[*Edge]struct{}
@@ -61,7 +71,10 @@ func NewEngine(options EngineOptions) (*Engine, error) {
 		return nil, errors.New("native media UDP socket is unavailable")
 	}
 	loggerFactory := logging.NewDefaultLoggerFactory()
-	mux := webrtc.NewICEUDPMux(loggerFactory.NewLogger("screener-ice"), connection)
+	mux := ice.NewUniversalUDPMuxDefault(ice.UniversalUDPMuxParams{
+		Logger:  loggerFactory.NewLogger("screener-ice"),
+		UDPConn: connection,
+	})
 	settingEngine := webrtc.SettingEngine{LoggerFactory: loggerFactory}
 	settingEngine.SetICEUDPMux(mux)
 	settingEngine.SetIncludeLoopbackCandidate(options.IncludeLoopback)
@@ -95,6 +108,7 @@ func NewEngine(options EngineOptions) (*Engine, error) {
 		_ = mux.Close()
 		return nil, err
 	}
+	ctx, cancel := context.WithCancel(context.Background())
 	engine := &Engine{
 		api: webrtc.NewAPI(
 			webrtc.WithMediaEngine(mediaEngine),
@@ -103,13 +117,81 @@ func NewEngine(options EngineOptions) (*Engine, error) {
 		),
 		mux:           mux,
 		listenAddress: connection.LocalAddr().String(),
+		localPort:     connection.LocalAddr().(*net.UDPAddr).Port,
 		bandwidth:     bandwidth,
+		ctx:           ctx,
+		cancel:        cancel,
 		edges:         make(map[*Edge]struct{}),
 	}
 	if options.PortMapping {
 		engine.portMapping = portmapping.Start(connection.LocalAddr().(*net.UDPAddr).Port)
 	}
 	return engine, nil
+}
+
+type mappedAddress struct {
+	address string
+	port    int
+}
+
+func (engine *Engine) surveySTUN(
+	ctx context.Context,
+	servers []webrtc.ICEServer,
+	emit func(mappedAddress),
+) {
+	seen := map[string]struct{}{}
+	for _, server := range servers {
+		for _, rawURL := range server.URLs {
+			uri, err := stun.ParseURI(rawURL)
+			if err != nil || uri.Scheme != stun.SchemeTypeSTUN ||
+				uri.Proto != stun.ProtoTypeUDP {
+				continue
+			}
+			addresses, err := net.DefaultResolver.LookupNetIP(ctx, "ip4", uri.Host)
+			if err != nil || len(addresses) == 0 {
+				continue
+			}
+			serverAddress, err := net.ResolveUDPAddr(
+				"udp4",
+				net.JoinHostPort(addresses[0].String(), strconv.Itoa(uri.Port)),
+			)
+			if err != nil {
+				continue
+			}
+			mapped, err := engine.mux.GetXORMappedAddrContext(
+				ctx,
+				serverAddress,
+				stunSurveyTimeout,
+			)
+			if err != nil || mapped == nil || mapped.IP.To4() == nil ||
+				mapped.Port < 1 || mapped.Port > 65_535 {
+				continue
+			}
+			value := mappedAddress{address: mapped.IP.String(), port: mapped.Port}
+			key := value.address + ":" + strconv.Itoa(value.port)
+			if _, found := seen[key]; found {
+				continue
+			}
+			seen[key] = struct{}{}
+			emit(value)
+		}
+	}
+}
+
+func stunServers(servers []webrtc.ICEServer) []webrtc.ICEServer {
+	result := make([]webrtc.ICEServer, 0, len(servers))
+	for _, server := range servers {
+		urls := make([]string, 0, len(server.URLs))
+		for _, rawURL := range server.URLs {
+			if strings.HasPrefix(strings.ToLower(rawURL), "stun:") {
+				urls = append(urls, rawURL)
+			}
+		}
+		if len(urls) > 0 {
+			result = append(result, webrtc.ICEServer{URLs: urls})
+		}
+	}
+	return result
 }
 
 func (engine *Engine) ListenAddress() string {
@@ -173,6 +255,7 @@ func (engine *Engine) Close() error {
 		return nil
 	}
 	engine.closed = true
+	engine.cancel()
 	edges := make([]*Edge, 0, len(engine.edges))
 	for edge := range engine.edges {
 		edges = append(edges, edge)

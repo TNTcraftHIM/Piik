@@ -26,6 +26,7 @@ export class NativeHostPeer implements HostMediaPeer {
     connectionId: string,
     shareId: string,
     iceConfig: IceConfig,
+    natPredictionEnabled: boolean,
     control: NativeEdgeControl,
     events: NativeHostPeerEvents,
   ) {
@@ -47,6 +48,7 @@ export class NativeHostPeer implements HostMediaPeer {
       connectionId,
       shareId,
       iceConfig,
+      natPredictionEnabled,
       control,
       {
         sendSignal: events.sendSignal,

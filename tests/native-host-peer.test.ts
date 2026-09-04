@@ -36,6 +36,7 @@ describe("native Host peer quality", () => {
       "edge_12345678",
       "share_1234567",
       { iceServers: [], natPredictionStunUrls: [] },
+      false,
       control,
       {
         sendSignal: () => true,

@@ -19,6 +19,7 @@ export interface LocalServerConfigOptions {
   allowedAddresses?: readonly string[];
   siteAccessPassword?: string;
   stunUrls?: readonly string[];
+  natPredictionStunUrls?: readonly string[];
 }
 
 export function createLocalServerConfig(
@@ -49,9 +50,17 @@ export function createLocalServerConfig(
     ),
   ]);
   const stunUrls = [...(options.stunUrls ?? [])];
+  const natPredictionStunUrls = [
+    ...(options.natPredictionStunUrls ?? []),
+  ];
   if (
-    stunUrls.length > MAX_ICE_SERVER_URLS ||
-    stunUrls.some((url) => !stunUrlSchema.safeParse(url).success)
+    stunUrls.length + natPredictionStunUrls.length > MAX_ICE_SERVER_URLS ||
+    stunUrls.some((url) => !stunUrlSchema.safeParse(url).success) ||
+    natPredictionStunUrls.some(
+      (url) => !stunUrlSchema.safeParse(url).success,
+    ) ||
+    ![0, 2].includes(natPredictionStunUrls.length) ||
+    (natPredictionStunUrls.length > 0 && stunUrls.length === 0)
   ) {
     throw new Error("Local STUN URLs are invalid");
   }
@@ -77,7 +86,8 @@ export function createLocalServerConfig(
     peerAssistedMedia: true,
     endpointMediaCopyCapacity: DEFAULT_ENDPOINT_MEDIA_COPY_CAPACITY,
     stunUrls,
-    natPredictionEnabled: false,
+    natPredictionEnabled: natPredictionStunUrls.length === 2,
+    natPredictionStunUrls,
   };
 }
 
@@ -99,6 +109,11 @@ export function loadLocalServerConfig(
     ?.split(",")
     .map((url) => url.trim())
     .filter(Boolean);
+  const natPredictionStunUrls =
+    environment.SCREENER_CLIENT_NAT_PREDICTION_STUN_URLS
+      ?.split(",")
+      .map((url) => url.trim())
+      .filter(Boolean);
   const publicOrigin = environment.SCREENER_CLIENT_PUBLIC_ORIGIN?.trim();
   return createLocalServerConfig({
     ...(port === undefined ? {} : { port }),
@@ -107,6 +122,7 @@ export function loadLocalServerConfig(
     ...(allowedAddresses ? { allowedAddresses } : {}),
     ...(siteAccessPassword ? { siteAccessPassword } : {}),
     ...(stunUrls ? { stunUrls } : {}),
+    ...(natPredictionStunUrls ? { natPredictionStunUrls } : {}),
   });
 }
 

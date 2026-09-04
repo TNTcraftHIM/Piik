@@ -7,44 +7,25 @@ topics are not implementation authority.
 
 ## Now
 
-1. **Native Client media boundary.** Windows native Host video now runs through
-   the current Browser-owned room and route contract. Local Client startup,
-   hardware-H.264 capture, bounded Pion fanout, and a remote `srflx`-to-`srflx`
-   video gate now pass. Process-loopback audio passes the Windows Browser gate
-   on the same PeerConnection with a video-only fallback. Pion TWCC/GCC now
-   supplies exact native P2P sender-quality evidence through the existing route
-   windows without a custom score. A reserved local bridge also passes the
-   native-source SFU gate through the existing Browser LiveKit publisher and
-   its existing representation policy.
-   The Windows Browser gate also proves live and paused quality changes across
-   720p30, 1440p60, and 480p15 without replacing either Viewer connection.
-   Capture-source failure now has a physical end/restart gate through the same
-   room and Viewer. Clean-revision Windows and Linux packages pass their Local
-   runtime gates; Linux also passes one-link startup and shutdown. The macOS
-   arm64 sidecar passes hosted compilation, its AudioToolbox adapter build, and a
-   synthetic VideoToolbox hardware-H.264 IDR gate; physically run
-   ScreenCaptureKit video/audio, source switching, and recovery on macOS. The
-   Linux Portal/PipeWire/system-GStreamer hardware-H.264 adapter passes compile,
-   probe, package, startup, and shutdown gates; run its real desktop/GPU, system-
-   audio, source-switch, and recovery gate. Do not add a second RTC, X11 capture
-   stack, bundled media runtime, or hand-built DMA-BUF/encoder matrix.
-   The system-Browser launcher now owns Local, temporary public-link, and Site
-   selection, and the Host explicitly chooses Browser capture or an exact
-   Client-owned screen/window without command-line target input. Its Windows
-   physical gates pass window and display capture, bounded source previews,
-   process/system audio, live source switching, and restored Viewer delivery.
-   The window arm also proves source end and same-room reselection; display-
-   source lifecycle remains a separate physical gate. Run one controlled weak-
-   path gate proving that a persistently degraded shared Native edge prepares a
-   Browser sender candidate, commits only on existing Viewer quality proof, and
-   can later return to Native without disturbing healthy Native edges.
-   No-Site Internet mode now has one ordinary public invitation link that retains
-   the Host's Local authority and passes remote control-path and independent
-   Linux Pion media gates. Prove decoded one-link Browser media on a physical
-   second device and a selected mapped path on a pair that public STUN alone
-   cannot connect. Port mapping is implemented and physically creates/releases
-   a router mapping, but it cannot replace an SFU/TURN fallback for a restricted
-   pair.
+1. **Client capability provider and NAT.** Keep the current three-choice Browser
+   control center, but start one process-level RPC before selection. Persist one
+   optional Site origin, allow it alongside Local while any room source runs,
+   and activate discovery only after that Site was opened from the Client. Finish
+   the shared Site/public-link Native NAT path using the existing room switch,
+   same-socket STUN survey, bounded prediction, port mapping, and ordinary ICE
+   fallback. Do not add a Client-specific route policy or second NAT score.
+2. **Mixed Native endpoint adapter.** Preserve one Browser-owned participant and
+   route contract while adding Native Viewer receive/relay. Each room node must
+   independently use Browser or Native media, interoperate over standard WebRTC,
+   and retain Browser fallback. Native should reuse encoded media where the
+   negotiated representation is compatible; downstream experience remains more
+   important than forcing one encode.
+3. **Client acceptance and test ablation.** Physically validate macOS and Linux
+   capture/audio/recovery, a decoded public-link Browser Viewer, and a NAT case
+   rescued beyond ordinary STUN. Then consolidate the repository tests: retain
+   protocol, ownership, resource-bound, algorithm, and a small number of real
+   integration gates; delete duplicate implementation-mirror and stale-history
+   coverage before this phase merges.
 
 ## Parked Product Work
 

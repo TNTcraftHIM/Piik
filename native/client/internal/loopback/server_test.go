@@ -22,8 +22,8 @@ func TestStartServesHealthAndStrictControlHandshake(t *testing.T) {
 		Video: true, ProcessAudio: false, SystemAudio: true, HardwareH264: true,
 	}
 	server := startTestServerWithOptions(t, Options{
-		AllowedOrigin: testOrigin,
-		NativeMedia:   expectedMedia,
+		AllowedOrigins: []string{testOrigin},
+		NativeMedia:    expectedMedia,
 	})
 	endpoint := server.Endpoint()
 
@@ -110,7 +110,7 @@ func TestControlSessionSharesOneBoundedSocketForResponsesAndEvents(t *testing.T)
 		closed: make(chan struct{}),
 	}
 	server := startTestServerWithOptions(t, Options{
-		AllowedOrigin: testOrigin,
+		AllowedOrigins: []string{testOrigin},
 		NewControl: func() ControlSession {
 			return extension
 		},
@@ -180,7 +180,7 @@ func TestUnexpectedServeFailureIsReported(t *testing.T) {
 
 func startTestServer(t *testing.T, origin string) *Server {
 	t.Helper()
-	return startTestServerWithOptions(t, Options{AllowedOrigin: origin})
+	return startTestServerWithOptions(t, Options{AllowedOrigins: []string{origin}})
 }
 
 func startTestServerWithOptions(t *testing.T, options Options) *Server {

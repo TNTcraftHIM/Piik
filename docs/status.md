@@ -76,10 +76,9 @@ This is the current execution index. Git history owns completed timelines;
   sender windows retain the bounded Peer operation; failed exact candidates stay
   consumed until the sender or candidate opportunity changes. The pre-share gate
   defaults on and locks while sharing.
-- Source keeps NAT prediction deployment-gated and disabled by default. When a
-  deployment enables it, Host Advanced settings shows a per-share switch that
-  defaults on. Every Browser P2P role uses the same bounded, connection-local
-  adapter with only the deployment's self-hosted 3478/3479/3480 STUN endpoints;
+- NAT prediction stays authority-gated and defaults on only when offered. Browser
+  and Native P2P use one connection-local rule with Site or Public-Link survey
+  endpoints; pure LAN, route scoring, and SFU preference remain unchanged.
   candidate and selected-path logs retain anonymous
   `ordinary | predicted | unknown` provenance. Ordinary candidates and SFU
   fallback remain unchanged.
@@ -121,9 +120,10 @@ This is the current execution index. Git history owns completed timelines;
   including bounded same-edge connection regeneration. Both default it on with a
   pre-share Host opt-out. Weighted/global optimization remains parked.
 - Source contains the cross-platform Client outside the current Web release.
-  One Go entry opens a lightweight system-Browser launcher for Local, temporary
-  public-link, or Site operation, supervises the same Node application when
-  needed, and owns loopback native media. The same Host UI explicitly selects
+  One Go entry starts a process-level loopback capability service, then opens the
+  current system-Browser launcher for Local, temporary public-link, or saved-Site
+  operation. The saved Site remains allowed while another room source runs; the
+  same Host UI explicitly selects
   Browser capture or an exact native screen/window. Windows gates prove
   packaged Local/Site operation, WGC hardware-H.264 plus process/system audio, bounded
   shared-encode P2P, and cleanup. The window arm also proves source end and
@@ -143,8 +143,9 @@ This is the current execution index. Git history owns completed timelines;
   independent Linux Pion Viewer
   has received that native media over a direct ICE pair; remote Browser media
   remains unproved. Site and one-link native shares also make one bounded
-  best-effort PCP/UPnP/NAT-PMP mapping for their sole UDP socket without
-  changing ICE when no gateway accepts it; pure LAN Local mode does not.
+  best-effort PCP/UPnP/NAT-PMP mapping and Pion Universal-UDP-mux STUN discovery
+  on their media socket. A public-link run delivered 35 H.264 packets to an
+  independent Linux Viewer; no predicted-path win is yet claimed.
   Native P2P edges now negotiate TWCC and send Pion GCC's target-versus-source
   payload category through the existing sender-quality evidence path without
   pacing or changing the shared encode. The existing quality operation may test

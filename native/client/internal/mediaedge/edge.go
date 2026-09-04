@@ -1,8 +1,10 @@
 package mediaedge
 
 import (
+	"context"
 	"errors"
 	"io"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -37,13 +39,20 @@ type Edge struct {
 	bandwidth    *bandwidthObserver
 	events       EdgeEvents
 
-	mu                   sync.Mutex
-	pendingCandidates    []webrtc.ICECandidateInit
-	remoteDescriptionSet bool
-	closed               bool
-	qualityMu            sync.Mutex
-	qualityBaseline      qualityBaseline
-	answerMu             sync.Mutex
+	mu                    sync.Mutex
+	pendingCandidates     []webrtc.ICECandidateInit
+	remoteDescriptionSet  bool
+	closed                bool
+	qualityMu             sync.Mutex
+	qualityBaseline       qualityBaseline
+	answerMu              sync.Mutex
+	surveyServers         []webrtc.ICEServer
+	surveyOnce            sync.Once
+	pionGatheringDone     bool
+	surveyDone            bool
+	localCandidateEndSent bool
+	surveyContext         context.Context
+	cancelSurvey          context.CancelFunc
 }
 
 func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (*Edge, error) {
@@ -54,7 +63,7 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (*Edge, error
 	if options.Audio != nil && options.Audio.engine != engine {
 		return nil, errors.New("native audio edge source belongs to another engine")
 	}
-	if engine.portMapping != nil && !options.Local {
+	if engine.portMapping != nil && !options.Local && len(options.ICEServers) > 0 {
 		engine.portMapping.Prepare()
 	}
 	if err := source.reserve(options.Local); err != nil {
@@ -66,9 +75,8 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (*Edge, error
 			return nil, err
 		}
 	}
-	connection, err := engine.api.NewPeerConnection(webrtc.Configuration{
-		ICEServers: options.ICEServers,
-	})
+	surveyServers := stunServers(options.ICEServers)
+	connection, err := engine.api.NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
 		source.releaseReservation(options.Local)
 		if options.Audio != nil {
@@ -86,13 +94,15 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (*Edge, error
 		return nil, errors.New("native media bandwidth observer is unavailable")
 	}
 	edge := &Edge{
-		connectionID: options.ConnectionID,
-		engine:       engine,
-		source:       source,
-		audioSource:  options.Audio,
-		connection:   connection,
-		bandwidth:    bandwidth,
-		events:       options.Events,
+		connectionID:  options.ConnectionID,
+		engine:        engine,
+		source:        source,
+		audioSource:   options.Audio,
+		connection:    connection,
+		bandwidth:     bandwidth,
+		events:        options.Events,
+		surveyServers: surveyServers,
+		surveyDone:    len(surveyServers) == 0,
 	}
 	if err = engine.register(edge); err != nil {
 		source.releaseReservation(options.Local)
@@ -133,14 +143,12 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (*Edge, error
 		edge.audioSender = audioSender
 	}
 	connection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
-		if edge.events.LocalCandidate != nil {
-			if candidate == nil {
-				edge.events.LocalCandidate(nil)
-				return
-			}
-			value := candidate.ToJSON()
-			edge.events.LocalCandidate(&value)
+		if candidate == nil {
+			edge.completePionGathering()
+			return
 		}
+		value := candidate.ToJSON()
+		edge.emitLocalCandidate(&value)
 	})
 	connection.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
 		if state == webrtc.PeerConnectionStateConnected {
@@ -160,6 +168,7 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (*Edge, error
 	if edge.audioSender != nil {
 		go edge.readRTCP(edge.audioSender, nil)
 	}
+	edge.surveyContext, edge.cancelSurvey = context.WithCancel(engine.ctx)
 	return edge, nil
 }
 
@@ -175,7 +184,68 @@ func (edge *Edge) CreateOffer() (webrtc.SessionDescription, error) {
 	if err = edge.connection.SetLocalDescription(offer); err != nil {
 		return webrtc.SessionDescription{}, err
 	}
+	edge.surveyOnce.Do(func() {
+		go edge.surveyMappedAddresses()
+	})
 	return offer, nil
+}
+
+func (edge *Edge) surveyMappedAddresses() {
+	index := 0
+	edge.engine.surveySTUN(edge.surveyContext, edge.surveyServers, func(mapped mappedAddress) {
+		index++
+		mid := "0"
+		line := uint16(0)
+		candidate := webrtc.ICECandidateInit{
+			Candidate: "candidate:ns" + strconv.Itoa(index) +
+				" 1 udp 1694498815 " + mapped.address + " " +
+				strconv.Itoa(mapped.port) + " typ srflx raddr 0.0.0.0 rport " +
+				strconv.Itoa(edge.engine.localPort),
+			SDPMid:        &mid,
+			SDPMLineIndex: &line,
+		}
+		edge.emitLocalCandidate(&candidate)
+	})
+	edge.completeSTUNSurvey()
+}
+
+func (edge *Edge) emitLocalCandidate(candidate *webrtc.ICECandidateInit) {
+	edge.mu.Lock()
+	closed := edge.closed
+	edge.mu.Unlock()
+	if !closed && edge.events.LocalCandidate != nil {
+		edge.events.LocalCandidate(candidate)
+	}
+}
+
+func (edge *Edge) completePionGathering() {
+	edge.mu.Lock()
+	edge.pionGatheringDone = true
+	sendEnd := edge.finishLocalCandidatesLocked()
+	edge.mu.Unlock()
+	if sendEnd {
+		edge.events.LocalCandidate(nil)
+	}
+}
+
+func (edge *Edge) completeSTUNSurvey() {
+	edge.mu.Lock()
+	edge.surveyDone = true
+	sendEnd := edge.finishLocalCandidatesLocked()
+	edge.mu.Unlock()
+	if sendEnd {
+		edge.events.LocalCandidate(nil)
+	}
+}
+
+func (edge *Edge) finishLocalCandidatesLocked() bool {
+	if edge.closed || edge.localCandidateEndSent ||
+		!edge.pionGatheringDone || !edge.surveyDone ||
+		edge.events.LocalCandidate == nil {
+		return false
+	}
+	edge.localCandidateEndSent = true
+	return true
 }
 
 func (edge *Edge) SetAnswer(answer webrtc.SessionDescription) error {
@@ -279,6 +349,9 @@ func (edge *Edge) Close() error {
 		return nil
 	}
 	edge.closed = true
+	if edge.cancelSurvey != nil {
+		edge.cancelSurvey()
+	}
 	edge.pendingCandidates = nil
 	edge.mu.Unlock()
 	edge.source.detach(edge)

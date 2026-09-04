@@ -25,11 +25,11 @@ const (
 )
 
 type Options struct {
-	PortStart     int
-	PortEnd       int
-	AllowedOrigin string
-	NativeMedia   NativeMediaCapabilities
-	NewControl    func() ControlSession
+	PortStart      int
+	PortEnd        int
+	AllowedOrigins []string
+	NativeMedia    NativeMediaCapabilities
+	NewControl     func() ControlSession
 }
 
 type ControlSession interface {
@@ -61,15 +61,15 @@ type NativeMediaCapabilities struct {
 }
 
 type Server struct {
-	ctx           context.Context
-	cancel        context.CancelFunc
-	listener      net.Listener
-	httpServer    *http.Server
-	endpoint      Endpoint
-	allowedOrigin string
-	nativeMedia   NativeMediaCapabilities
-	newControl    func() ControlSession
-	done          chan error
+	ctx            context.Context
+	cancel         context.CancelFunc
+	listener       net.Listener
+	httpServer     *http.Server
+	endpoint       Endpoint
+	allowedOrigins []string
+	nativeMedia    NativeMediaCapabilities
+	newControl     func() ControlSession
+	done           chan error
 
 	mu         sync.Mutex
 	activeConn *websocket.Conn
@@ -105,10 +105,10 @@ func Start(parent context.Context, options Options) (*Server, error) {
 			Port:          address.Port,
 			InstanceToken: instanceToken,
 		},
-		allowedOrigin: strings.TrimSpace(options.AllowedOrigin),
-		nativeMedia:   options.NativeMedia,
-		newControl:    options.NewControl,
-		done:          make(chan error, 1),
+		allowedOrigins: normalizedOrigins(options.AllowedOrigins),
+		nativeMedia:    options.NativeMedia,
+		newControl:     options.NewControl,
+		done:           make(chan error, 1),
 	}
 	server.httpServer = &http.Server{
 		Handler:           server,
@@ -129,6 +129,12 @@ func (server *Server) Endpoint() Endpoint {
 
 func (server *Server) Done() <-chan error {
 	return server.done
+}
+
+func (server *Server) SetAllowedOrigins(origins []string) {
+	server.mu.Lock()
+	server.allowedOrigins = normalizedOrigins(origins)
+	server.mu.Unlock()
 }
 
 func (server *Server) Close() error {
@@ -315,9 +321,14 @@ func (server *Server) handleControl(response http.ResponseWriter, request *http.
 }
 
 func (server *Server) originPatterns() []string {
-	patterns := make([]string, 0, 3)
-	if parsed, err := url.Parse(server.allowedOrigin); err == nil && parsed.Host != "" {
-		patterns = append(patterns, parsed.Scheme+"://"+parsed.Host)
+	server.mu.Lock()
+	origins := append([]string(nil), server.allowedOrigins...)
+	server.mu.Unlock()
+	patterns := make([]string, 0, len(origins)+2)
+	for _, origin := range origins {
+		if parsed, err := url.Parse(origin); err == nil && parsed.Host != "" {
+			patterns = append(patterns, parsed.Scheme+"://"+parsed.Host)
+		}
 	}
 	port := strconv.Itoa(server.endpoint.Port)
 	patterns = append(patterns, "http://localhost:"+port, "http://127.0.0.1:"+port)
@@ -330,7 +341,7 @@ func closeControl(connection *websocket.Conn, reason string) {
 
 func (server *Server) requestAllowed(response http.ResponseWriter, request *http.Request) bool {
 	origin := strings.TrimSpace(request.Header.Get("Origin"))
-	if origin != "" && !sameOrigin(origin, server.allowedOrigin) && !server.localOrigin(origin) {
+	if origin != "" && !server.allowedOrigin(origin) && !server.localOrigin(origin) {
 		http.Error(response, "forbidden", http.StatusForbidden)
 		return false
 	}
@@ -343,6 +354,17 @@ func (server *Server) requestAllowed(response http.ResponseWriter, request *http
 		response.Header().Add("Vary", "Origin")
 	}
 	return true
+}
+
+func (server *Server) allowedOrigin(origin string) bool {
+	server.mu.Lock()
+	defer server.mu.Unlock()
+	for _, allowed := range server.allowedOrigins {
+		if sameOrigin(origin, allowed) {
+			return true
+		}
+	}
+	return false
 }
 
 func (server *Server) hostAllowed(host string) bool {
@@ -421,6 +443,23 @@ func normalizePortRange(start, end int) (int, int) {
 
 func sameOrigin(actual, expected string) bool {
 	return strings.EqualFold(strings.TrimRight(actual, "/"), strings.TrimRight(expected, "/"))
+}
+
+func normalizedOrigins(origins []string) []string {
+	result := make([]string, 0, len(origins))
+	seen := make(map[string]struct{}, len(origins))
+	for _, origin := range origins {
+		origin = strings.TrimRight(strings.TrimSpace(origin), "/")
+		if origin == "" {
+			continue
+		}
+		if _, found := seen[strings.ToLower(origin)]; found {
+			continue
+		}
+		seen[strings.ToLower(origin)] = struct{}{}
+		result = append(result, origin)
+	}
+	return result
 }
 
 func newInstanceToken() (string, error) {

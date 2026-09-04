@@ -45,6 +45,8 @@ describe("local server configuration", () => {
       SCREENER_CLIENT_LOCAL_PASSWORD: "persistent-local-password",
       SCREENER_CLIENT_PUBLIC_ORIGIN: "https://small-bright-room.trycloudflare.com",
       STUN_URLS: "stun:stun.example:3478, stun:stun.example:3479",
+      SCREENER_CLIENT_NAT_PREDICTION_STUN_URLS:
+        "stun:survey-a.example:3478, stun:survey-b.example:3478",
     });
 
     expect(config.port).toBe(9234);
@@ -58,6 +60,11 @@ describe("local server configuration", () => {
     expect(config.stunUrls).toEqual([
       "stun:stun.example:3478",
       "stun:stun.example:3479",
+    ]);
+    expect(config.natPredictionEnabled).toBe(true);
+    expect(config.natPredictionStunUrls).toEqual([
+      "stun:survey-a.example:3478",
+      "stun:survey-b.example:3478",
     ]);
   });
 

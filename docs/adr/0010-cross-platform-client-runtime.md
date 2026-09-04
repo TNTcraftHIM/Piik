@@ -1,6 +1,6 @@
 # ADR-0010: Cross-Platform Client Runtime
 
-- Status: accepted Client/Local foundation and platform native Host media boundary
+- Status: accepted capability-provider architecture and native Host media boundary
 - Date: 2026-09-04
 
 ## Context
@@ -14,29 +14,36 @@ Existing Screener room, admission, signaling, and routing behavior already has
 one TypeScript implementation. Rewriting that behavior in the Helper would make
 Hosted and Local deployments diverge without improving the media path.
 
+Room authority and local media capability are independent choices. A room may
+come from Local, a temporary public link, or a configured Site while each
+participant independently uses Browser media or available Client capability.
+Binding these choices into exclusive Client modes prevents mixed Browser/Native
+topologies and makes a saved Site unavailable while another room source runs.
+
 ## Decision
 
 1. The TypeScript/Node core remains the sole owner of HTTP, room authority,
    admission, signaling, and routing in every deployment. A future local package
    runs that same server and the same built Browser assets with local
    configuration; Go does not reimplement the product core.
-2. The packaged product is Screener Client. Its Go process is the one
-   cross-platform user entry and future native-media owner.
-   Its current process exposes `/health` and one `/control` WebSocket on IPv4
-   loopback within ports `39721` through `39730`.
+2. The packaged product is Screener Client. Its Go process is the cross-platform
+   entry and native capability provider. It starts `/health` and one `/control`
+   WebSocket on IPv4 loopback within ports `39721` through `39730` before room-
+   source selection and retains them until the process exits.
 3. Discovery returns a per-process `instanceToken`. The WebSocket subprotocol
    echoes it so the Browser connects to the process it discovered. This value is
-   public process identity, not authentication. Origin and Host validation plus
-   the Browser's local-network permission own the current Browser boundary.
+   public process identity, not authentication. The listener accepts the current
+   Local Host origin and the one user-saved Site origin. Origin and Host
+   validation plus the Browser's local-network permission own this boundary.
 4. Loopback v7 starts with a strict `hello` handshake. Health discovery reports
    only separately probed native capture booleans. An active control session may
    list local screen/window choices, request bounded previews, and own one share's generation-fenced SDP/ICE
    edges, including at most one loopback media bridge outside route-copy
    capacity; it carries no room password, Host token, Viewer grant, or route
-   policy. A Host tab opens this connection lazily on its first native action,
-   reuses it across successive share generations, and closes it with the page;
-   an individual picker or share does not own the socket. The Browser forwards
-   current Site signaling and remains the participant.
+   policy. An activated participant tab opens this connection lazily on its first
+   native action, reuses it across successive media generations, and closes it
+   with the page; a picker, share, or room source does not own the socket. The
+   Browser forwards current signaling and remains the participant.
 5. A platform package contains the Go entry, a pinned Node runtime, and the same
    server/client build used by Hosted Screener. It may also carry one process-
    isolated capture binary and the pinned `cloudflared` sidecar. The Go entry
@@ -44,7 +51,11 @@ Hosted and Local deployments diverge without improving the media path.
    metadata around that entry, not another long-running wrapper or UI.
 6. The system Browser remains the UI. Browser extensions, userscripts, Electron,
    Tauri, and resident services need new evidence before they can replace this
-   smaller boundary.
+   smaller boundary. A Client-opened Site stores a non-secret opt-in at that
+   exact Browser origin, so later manually opened pages may discover the running
+   Client. Pages without that opt-in do not probe localhost or request local-
+   network permission. Clearing Site data simply requires opening it from the
+   Client again.
 7. A self-contained Local deployment serves reachable LAN peers without a
    central Screener service. Its explicit `--link` mode starts one accountless
    Cloudflare Quick Tunnel for the same Node HTTP/WebSocket surface, injects the
@@ -54,7 +65,12 @@ Hosted and Local deployments diverge without improving the media path.
    Browser. Cloudflare terminates this temporary control path; WebRTC media stays
    P2P and uses public STUN. The link ends with the Client and is not a persistent
    Site, SFU, or TURN fallback.
-8. Native media is selected for an entire Host share generation. One isolated
+8. Browser and Native are local media adapters beneath the same authenticated
+   participant, connection identity, copy capacity, and committed route graph.
+   Browser-to-Browser, Native-to-Browser, and Native-to-Native edges use the same
+   WebRTC signaling contract. Native media currently covers the Host adapter;
+   Viewer receive/relay follows the same boundary rather than adding a second
+   participant or route protocol. One isolated
    platform capture feeds one encoded source and bounded independent Pion
    transports, with process-loopback audio for windows or system-loopback audio
    for screens sharing the same PeerConnection when available. Each Site or one-link share makes one bounded, best-effort PCP,
@@ -87,24 +103,28 @@ Hosted and Local deployments diverge without improving the media path.
    extra threshold, timer, score, route operation, or representation ladder is
    added. Only a consumed Client-launch marker travels in the URL fragment.
    Exact target identity travels over loopback.
-9. The Client uses the system Browser as its only UI. A lightweight loopback
-   launcher selects Local, one-link, or a saved Site before starting that
-   composition, then navigates into the same application. Command-line mode
+9. The Client uses the system Browser as its only UI. On every launch, the current
+   lightweight control center offers Local, public link, and Site. The Site value
+   is stored in Client configuration and remains one click on later launches;
+   selecting Local or public link does not disable background RPC access for the
+   saved Site. Command-line mode
    selectors remain automation inputs rather than the normal interface. An
    embedded shell requires a reproduced product failure and one comparative
    decision.
 10. Local mode is one explicit server composition: static current assets,
-    memory-only rooms, peer-assisted media, no SQLite, no SFU, no NAT prediction,
-    and localhost plus current LAN IPv4 origins. It uses no STUN by default;
-    `--link` adds its exact temporary HTTPS origin and Cloudflare's public STUN
-    to existing Browser media edges. It changes no Hosted shutdown or
-    persistence behavior.
+    memory-only rooms, peer-assisted media, no SQLite or SFU, and localhost plus
+    current LAN IPv4 origins. It uses no public discovery by default. Public-link
+    mode adds its temporary HTTPS origin, one ordinary public STUN destination,
+    and two bounded public survey destinations. Site mode consumes that Site's
+    configured STUN survey. Both feed the same connection-local prediction
+    adapter; Native additionally owns its UDP socket and best-effort port mapping.
 11. One Client configuration owns the optional Site origin and an optional,
     user-chosen Local access password. A blank value leaves the Local site open;
     a value gates that site through the existing SiteAccess authority. The
-    Client bootstraps its own Host page through a fragment that is consumed
-    before authentication; friends use the existing room invitation grant. No
-    Client-specific authorization system is added.
+    Client bootstraps a selected page through a fragment consumed before
+    authentication; the page retains only the non-secret Client opt-in at its
+    origin. Friends use the existing room invitation grant. No Client-specific
+    room authorization system is added.
 12. Local authority shutdown first ends every in-memory room through the current
     `room-closed` path, then closes signaling and HTTP. The Go supervisor closes
     Node stdin, waits, and applies one bounded process timeout. It does not
@@ -123,8 +143,9 @@ Hosted and Local deployments diverge without improving the media path.
 ## Consequences
 
 Hosted and Local operation share one product contract and one route model. The
-Go runtime acts as the Client's native-media owner when a Site or Local page
-discovers it, but it is not a second room product. It stays small until a
+Go runtime acts as an optional capability provider when an activated Site or
+Local page discovers it, but it is not a second room product. A mixed room does
+not expose endpoint implementation to routing policy. The runtime stays small until a
 proven native capability needs a protocol field. The local package may contain
 two internal processes while presenting one user entry; the supervisor, not a
 compatibility protocol, owns their lifetime.

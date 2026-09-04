@@ -8,7 +8,6 @@ export type SignalCandidate = Extract<
 type ConcreteSignalCandidate = NonNullable<SignalCandidate>;
 
 const BASE_STUN_PORT = 3478;
-const AUXILIARY_STUN_PORTS = [3479, 3480] as const;
 const MIN_PREDICTABLE_PORT = 1;
 const MAX_PREDICTABLE_PORT = 65_535;
 
@@ -48,41 +47,6 @@ function cloneIceServer(server: RTCIceServer): RTCIceServer {
     ...server,
     urls: Array.isArray(server.urls) ? [...server.urls] : server.urls,
   };
-}
-
-function auxiliaryUrlsFor(url: string): readonly string[] {
-  if (!/^stun:/i.test(url)) {
-    return [];
-  }
-  const authority = url.slice(url.indexOf(":") + 1);
-  let parsed: URL;
-  try {
-    parsed = new URL(`http://${authority}`);
-  } catch {
-    return [];
-  }
-  if (
-    !parsed.hostname ||
-    parsed.username ||
-    parsed.password ||
-    parsed.pathname !== "/" ||
-    parsed.search ||
-    parsed.hash
-  ) {
-    return [];
-  }
-  const port = parsed.port ? Number(parsed.port) : BASE_STUN_PORT;
-  if (port !== BASE_STUN_PORT) {
-    return [];
-  }
-  const hostname = parsed.hostname.startsWith("[")
-    ? parsed.hostname
-    : parsed.hostname.includes(":")
-      ? `[${parsed.hostname}]`
-      : parsed.hostname;
-  return AUXILIARY_STUN_PORTS.map(
-    (auxiliaryPort) => `stun:${hostname}:${auxiliaryPort}`,
-  );
 }
 
 function normalizedStunUrl(url: string): string | null {
@@ -125,22 +89,17 @@ export function natPredictionSurveyUrls(
       return normalized ? [normalized] : [];
     }),
   );
+  if (configuredAuxiliaryUrls.size !== 2) {
+    return new Set();
+  }
   for (const server of iceServers ?? []) {
     for (const url of urlsOf(server)) {
-      const auxiliaryUrls = auxiliaryUrlsFor(url);
       const baseUrl = normalizedStunUrl(url);
-      const normalizedAuxiliaryUrls = auxiliaryUrls.flatMap((entry) => {
-        const normalized = normalizedStunUrl(entry);
-        return normalized ? [normalized] : [];
-      });
-      if (
-        baseUrl &&
-        normalizedAuxiliaryUrls.length === AUXILIARY_STUN_PORTS.length &&
-        normalizedAuxiliaryUrls.every((entry) =>
-          configuredAuxiliaryUrls.has(entry),
-        )
-      ) {
-        return new Set([baseUrl, ...normalizedAuxiliaryUrls]);
+      if (baseUrl?.endsWith(`:${BASE_STUN_PORT}`)) {
+        const surveyUrls = new Set([baseUrl, ...configuredAuxiliaryUrls]);
+        if (surveyUrls.size === 3) {
+          return surveyUrls;
+        }
       }
     }
   }
@@ -148,8 +107,8 @@ export function natPredictionSurveyUrls(
 }
 
 /**
- * Add the two optional same-host survey listeners without changing the
- * server-provided STUN list. The caller opts into this per connection.
+ * Add two optional survey destinations without changing the server-provided
+ * ordinary STUN list. The caller opts into this per connection.
  */
 export function iceServersWithNatPrediction(
   iceServers: readonly RTCIceServer[] | undefined,

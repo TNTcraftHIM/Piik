@@ -137,6 +137,14 @@ Pion Viewer; repeated runs delivered 30+ H.264 RTP packets over selected direct
 paths using a reflexive candidate. Client exit stopped Node and the public link.
 This still does not prove decoded Browser media on a physical second device.
 
+On 2026-09-05, a Native preflight showed that Pion's ordinary srflx gatherer
+used three temporary local ports for three public STUN destinations. The current
+Universal UDP mux adapter instead emitted an srflx observation related to the
+Engine's sole media port. A public-link run then delivered 35 H.264 RTP packets
+from that Windows Native Host to the independent Linux Pion Viewer over a
+selected direct host-to-srflx pair. The active TUN path exposed only one distinct
+mapping, so this proves shared-socket discovery and transport, not prediction.
+
 On 2026-09-04, a bounded Windows physical check held a static Notepad source
 open beyond seven seconds, produced a requested recovery keyframe from its
 retained image, and exited cleanly. The Native Host crash gate also terminated the

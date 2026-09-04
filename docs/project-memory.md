@@ -8,8 +8,12 @@ Browser relay; desktop and mobile Browsers are Viewer targets. It is not a
 public broadcast service. Source includes a cross-platform Client that reuses
 the TypeScript product core in a self-contained Local deployment or opens one
 configured Site through the system Browser. Its Go entry presents Local,
-temporary public-link, and Site startup choices, supervises Local Node, and owns
-the explicit native Host media path selected in the same Host UI. Local remains
+temporary public-link, and saved-Site choices on every launch, starts one process-
+level loopback capability service, supervises Local Node when selected, and owns
+the explicit native media path chosen in the same Web UI. Room source and media
+implementation are independent: a topology may mix Browser and Native peers
+without changing participant, signaling, capacity, or route identity. Native
+Host media is current; Native Viewer receive/relay is the next adapter. Local remains
 a serverless-LAN mode by default; explicit one-link mode exposes that same
 authority through a session-scoped public control tunnel while media remains
 P2P. Minimal Windows, macOS, and Linux adapters terminate at one encoded-frame

@@ -1826,6 +1826,7 @@ export function HostPage({
                 candidate.connectionId,
                 nativeShareGeneration,
                 iceConfig!,
+                input.natPredictionEnabled,
                 nativeClient,
                 events,
               );
@@ -1929,6 +1930,7 @@ export function HostPage({
           createOpaqueId(),
           nativeShareGeneration!,
           iceConfig,
+          routePolicyRef.current.natPrediction,
           nativeClient,
           peerEvents,
         )

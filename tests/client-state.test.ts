@@ -269,7 +269,7 @@ describe("client session identity", () => {
   it("works without secure-context-only crypto.randomUUID", () => {
     const values = new Map<string, string>();
     vi.stubGlobal("window", {
-      sessionStorage: {
+      localStorage: {
         getItem: (key: string) => values.get(key) ?? null,
         setItem: (key: string, value: string) => values.set(key, value),
       },
@@ -817,7 +817,7 @@ describe("room codes", () => {
         search: "?room=6020",
       },
       history: { state: null, replaceState },
-      sessionStorage: {
+      localStorage: {
         getItem: (key: string) => session.get(key) ?? null,
         setItem: (key: string, value: string) => session.set(key, value),
       },

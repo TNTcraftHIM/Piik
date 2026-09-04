@@ -53,7 +53,7 @@ func TestClientLaunchURLMarksThePageWithoutChangingOrigin(t *testing.T) {
 
 func TestMissingNativeRuntimeLeavesBrowserCaptureAvailable(t *testing.T) {
 	runtime := discoverNativeMedia(t.Context(), "missing-capture-process")
-	if runtime.available() || runtime.controlFactory(false) != nil {
+	if runtime.available() || runtime.controlFactory() != nil {
 		t.Fatalf("missing native runtime = %+v", runtime)
 	}
 }
@@ -123,13 +123,18 @@ func TestLocalEnvironmentOwnsItsSTUNConfiguration(t *testing.T) {
 		[]string{"192.168.1.2"},
 		"abcdefghijklmnopqrstuvwxyzABCDEF",
 		[]string{"stun:public.example:3478"},
+		[]string{"stun:survey-a.example:3478", "stun:survey-b.example:3478"},
 		"https://small-bright-room.trycloudflare.com",
 	)
 	stunEntries := []string{}
+	surveyEntries := []string{}
 	publicEntries := []string{}
 	for _, entry := range environment {
 		if strings.HasPrefix(entry, "STUN_URLS=") {
 			stunEntries = append(stunEntries, entry)
+		}
+		if strings.HasPrefix(entry, "SCREENER_CLIENT_NAT_PREDICTION_STUN_URLS=") {
+			surveyEntries = append(surveyEntries, entry)
 		}
 		if strings.HasPrefix(entry, "SCREENER_CLIENT_PUBLIC_ORIGIN=") {
 			publicEntries = append(publicEntries, entry)
@@ -137,6 +142,10 @@ func TestLocalEnvironmentOwnsItsSTUNConfiguration(t *testing.T) {
 	}
 	if len(stunEntries) != 1 || stunEntries[0] != "STUN_URLS=stun:public.example:3478" {
 		t.Fatalf("Local STUN environment = %v", stunEntries)
+	}
+	if len(surveyEntries) != 1 ||
+		surveyEntries[0] != "SCREENER_CLIENT_NAT_PREDICTION_STUN_URLS=stun:survey-a.example:3478,stun:survey-b.example:3478" {
+		t.Fatalf("Local NAT survey environment = %v", surveyEntries)
 	}
 	if len(publicEntries) != 1 ||
 		publicEntries[0] != "SCREENER_CLIENT_PUBLIC_ORIGIN=https://small-bright-room.trycloudflare.com" {

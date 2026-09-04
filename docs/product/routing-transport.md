@@ -32,11 +32,12 @@ share generation:
 - native-edge topology convergence is enabled by default. The Host may disable
   it before sharing; when disabled, quality evidence stays diagnostic and
   availability routing is unchanged;
-- NAT traversal is absent unless the deployment enables its self-hosted
-  auxiliary STUN capability. When available, its Host switch defaults on and
-  augments every Browser P2P edge in that share; the Host may disable it before
-  sharing. It is not a participant capability, route score, or SFU preference.
-  Candidate generation and selected-pair diagnostics retain only
+- NAT traversal requires an exact three-destination STUN survey: a Site may use
+  self-hosted 3478/3479/3480, Public Link uses its bounded public survey, and
+  pure LAN supplies none. Its default-on Host switch augments Browser and Native
+  P2P edges; Native also uses its media socket and best-effort gateway mapping.
+  It is not a participant capability, route score, or SFU preference. Candidate
+  generation and selected-pair diagnostics retain only
   `ordinary | predicted | unknown` provenance.
   [ADR-0009](../adr/0009-optional-nat-prediction.md) owns the bounded behavior
   and evidence boundary.

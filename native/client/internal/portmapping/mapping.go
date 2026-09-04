@@ -104,7 +104,6 @@ func (mapping *Mapping) discover(parent context.Context) {
 		return
 	}
 	mapping.gateway = gateway
-	mapping.mapPortLocked(ctx)
 }
 
 func (mapping *Mapping) mapPortLocked(ctx context.Context) {
