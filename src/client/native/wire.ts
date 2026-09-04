@@ -48,9 +48,18 @@ const nativeDisplayTargetSchema = z
   })
   .strict();
 
+const nativePickerTargetSchema = z
+  .object({
+    kind: z.literal("picker"),
+    sourceId: decimalIdentifierSchema,
+    title: z.string().min(1).max(4096),
+  })
+  .strict();
+
 export const nativeCaptureTargetSchema = z.discriminatedUnion("kind", [
   nativeWindowTargetSchema,
   nativeDisplayTargetSchema,
+  nativePickerTargetSchema,
 ]);
 export type NativeCaptureTarget = z.infer<typeof nativeCaptureTargetSchema>;
 

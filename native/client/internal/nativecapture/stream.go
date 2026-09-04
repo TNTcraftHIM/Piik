@@ -5,10 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 const (
@@ -34,6 +37,7 @@ type VideoOptions struct {
 	AdapterIndex uint32
 	EncoderIndex uint32
 	Profile      VideoProfile
+	RestoreToken string
 }
 
 type VideoProfile struct {
@@ -118,10 +122,16 @@ func PreviewSource(parent context.Context, executable string, target CaptureTarg
 }
 
 func StartVideo(parent context.Context, executable string, options VideoOptions) (*Stream, error) {
-	if !validCaptureTarget(options.Target) || !options.Profile.Valid() {
+	if !validCaptureTarget(options.Target) || !options.Profile.Valid() ||
+		len(options.RestoreToken) > 4096 || !utf8.ValidString(options.RestoreToken) ||
+		strings.ContainsRune(options.RestoreToken, 0) {
 		return nil, errors.New("native video target is invalid")
 	}
-	return startStream(parent, executable, []string{
+	environment := []string(nil)
+	if options.RestoreToken != "" {
+		environment = []string{"SCREENER_XDP_RESTORE_TOKEN=" + options.RestoreToken}
+	}
+	return startStreamWithEnvironment(parent, executable, []string{
 		"--capture-video",
 		options.Target.Kind,
 		options.Target.SourceID,
@@ -142,7 +152,7 @@ func StartVideo(parent context.Context, executable string, options VideoOptions)
 		"--preference",
 		options.Profile.Preference,
 		"--protocol-v4",
-	})
+	}, environment)
 }
 
 func StartAudio(parent context.Context, executable string, target CaptureTarget) (*Stream, error) {
@@ -208,6 +218,8 @@ func validCaptureTarget(target CaptureTarget) bool {
 		return target.PID > 0 && positiveDecimal(target.CreationTime)
 	case "display":
 		return target.PID == 0 && target.CreationTime == ""
+	case "picker":
+		return target.PID == 0 && target.CreationTime == ""
 	default:
 		return false
 	}
@@ -243,6 +255,15 @@ func positiveDecimal(value string) bool {
 }
 
 func startStream(parent context.Context, executable string, arguments []string) (*Stream, error) {
+	return startStreamWithEnvironment(parent, executable, arguments, nil)
+}
+
+func startStreamWithEnvironment(
+	parent context.Context,
+	executable string,
+	arguments []string,
+	environment []string,
+) (*Stream, error) {
 	if parent == nil {
 		parent = context.Background()
 	}
@@ -251,6 +272,9 @@ func startStream(parent context.Context, executable string, arguments []string) 
 	}
 	ctx, cancel := context.WithCancel(parent)
 	command := exec.CommandContext(ctx, executable, arguments...)
+	if len(environment) > 0 {
+		command.Env = append(os.Environ(), environment...)
+	}
 	stdout, err := command.StdoutPipe()
 	if err != nil {
 		cancel()

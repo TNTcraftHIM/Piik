@@ -77,6 +77,8 @@ export const en: Record<CopyKey, string> = {
   "host.sourcePicker.nativeVideo": "Client · picture only",
   "host.sourcePicker.window": "Share window: {title}",
   "host.sourcePicker.display": "Share screen: {title}",
+  "host.sourcePicker.system": "System screen or window picker",
+  "host.sourcePicker.systemAction": "Choose a screen or window with the system picker",
   "host.sourcePicker.audio": "Share sound",
   "host.sourcePicker.audioHint": "Application sound for windows; system sound for screens",
   "host.sourcePicker.loading": "Finding local screens and windows",

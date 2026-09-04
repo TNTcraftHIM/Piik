@@ -189,7 +189,7 @@ function CaptureSourceOption({
   const mountedRef = useRef(true);
   const [preview, setPreview] = useState<string | null>(null);
   const requestPreview = useCallback(() => {
-    if (requestedRef.current) return;
+    if (target.kind === "picker" || requestedRef.current) return;
     requestedRef.current = true;
     void onPreview(target).then((value) => {
       if (mountedRef.current && value) setPreview(value);
@@ -216,19 +216,26 @@ function CaptureSourceOption({
     return () => observer.disconnect();
   }, [requestPreview]);
 
+  const title =
+    target.kind === "picker" ? t("host.sourcePicker.system") : target.title;
+  const action =
+    target.kind === "picker"
+      ? t("host.sourcePicker.systemAction")
+      : t(
+          target.kind === "display"
+            ? "host.sourcePicker.display"
+            : "host.sourcePicker.window",
+          { title },
+        );
+
   return (
     <button
       ref={buttonRef}
       type="button"
       className="lr-source-option"
       data-native-source={nativeCaptureTargetKey(target)}
-      title={target.title}
-      aria-label={t(
-        target.kind === "display"
-          ? "host.sourcePicker.display"
-          : "host.sourcePicker.window",
-        { title: target.title },
-      )}
+      title={title}
+      aria-label={action}
       onMouseEnter={requestPreview}
       onFocus={requestPreview}
       onClick={onSelect}
@@ -237,11 +244,11 @@ function CaptureSourceOption({
         {preview ? (
           <img src={preview} alt="" />
         ) : (
-          <Glyph name={target.kind === "display" ? "tv" : "share"} size={23} />
+          <Glyph name={target.kind === "window" ? "share" : "tv"} size={23} />
         )}
       </span>
       <span className="lr-source-option-copy">
-        <strong>{target.title}</strong>
+        <strong>{title}</strong>
         {vis ? null : (
           <small>
             {t(

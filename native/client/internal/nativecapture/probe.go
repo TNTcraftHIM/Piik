@@ -74,7 +74,7 @@ func (summary Summary) AudioFor(kind string) bool {
 	if kind == "window" {
 		return summary.ProcessAudio
 	}
-	return kind == "display" && summary.SystemAudio
+	return (kind == "display" || kind == "picker") && summary.SystemAudio
 }
 
 func Discover(parent context.Context, executable string) (Capabilities, error) {
@@ -121,6 +121,8 @@ func PackagedExecutable() string {
 	case "windows":
 		name = "screener-client-capture.exe"
 	case "darwin":
+		name = "screener-client-capture"
+	case "linux":
 		name = "screener-client-capture"
 	default:
 		return ""

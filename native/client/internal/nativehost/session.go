@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/TNTcraftHIM/Screener/native/client/internal/mediaedge"
 	"github.com/TNTcraftHIM/Screener/native/client/internal/nativecapture"
@@ -30,6 +32,7 @@ type CaptureState struct {
 	Width           uint32  `json:"width,omitempty"`
 	Height          uint32  `json:"height,omitempty"`
 	FPS             uint32  `json:"fps,omitempty"`
+	RestoreToken    string  `json:"restoreToken,omitempty"`
 }
 
 type Event struct {
@@ -155,6 +158,13 @@ func Start(parent context.Context, options Options) (*Session, error) {
 		}
 	}
 	go session.run()
+	var timeout <-chan time.Time
+	var timer *time.Timer
+	if options.Video.Target.Kind != "picker" {
+		timer = time.NewTimer(startTimeout)
+		timeout = timer.C
+		defer timer.Stop()
+	}
 	select {
 	case err = <-session.ready:
 		if err != nil {
@@ -162,7 +172,7 @@ func Start(parent context.Context, options Options) (*Session, error) {
 			return nil, err
 		}
 		return session, nil
-	case <-time.After(startTimeout):
+	case <-timeout:
 		_ = session.Close()
 		return nil, errors.New("native capture did not start in time")
 	case <-parent.Done():
@@ -331,7 +341,12 @@ func (session *Session) UpdateProfile(profile QualityProfile) error {
 	if err != nil {
 		return errors.New("native capture profile could not start")
 	}
-	state, err := waitForCaptureProfile(session.ctx, replacement, profile.Video)
+	state, err := waitForCaptureProfile(
+		session.ctx,
+		replacement,
+		profile.Video,
+		options.Target.Kind == "picker",
+	)
 	if err != nil {
 		_ = replacement.Close()
 		return err
@@ -350,6 +365,9 @@ func (session *Session) UpdateProfile(profile QualityProfile) error {
 		return errors.New("native share is unavailable")
 	}
 	previous := session.stream
+	if state.RestoreToken != "" {
+		options.RestoreToken = state.RestoreToken
+	}
 	session.stream = replacement
 	session.videoOptions = options
 	session.profile = profile
@@ -480,12 +498,17 @@ func (session *Session) runVideo() error {
 		if err != nil {
 			next := session.currentStream()
 			if next != nil && next != current {
+				session.source.BeginGeneration()
 				current = next
 				continue
 			}
 			return fail(errors.New("native capture process stopped unexpectedly"))
 		}
-		if session.currentStream() != current {
+		if next := session.currentStream(); next != current {
+			if next != nil {
+				session.source.BeginGeneration()
+				current = next
+			}
 			continue
 		}
 		switch frame.Kind {
@@ -498,6 +521,9 @@ func (session *Session) runVideo() error {
 			if status.State == "active" {
 				session.mu.Lock()
 				profile := session.videoOptions.Profile
+				if status.RestoreToken != "" {
+					session.videoOptions.RestoreToken = status.RestoreToken
+				}
 				session.mu.Unlock()
 				if status.Width != profile.Width || status.Height != profile.Height ||
 					status.FPS != profile.Framerate {
@@ -547,6 +573,7 @@ func waitForCaptureProfile(
 	ctx context.Context,
 	stream *nativecapture.Stream,
 	profile nativecapture.VideoProfile,
+	interactive bool,
 ) (CaptureState, error) {
 	type result struct {
 		state CaptureState
@@ -579,12 +606,17 @@ func waitForCaptureProfile(
 			}
 		}
 	}()
-	timer := time.NewTimer(startTimeout)
-	defer timer.Stop()
+	var timeout <-chan time.Time
+	var timer *time.Timer
+	if !interactive {
+		timer = time.NewTimer(startTimeout)
+		timeout = timer.C
+		defer timer.Stop()
+	}
 	select {
 	case value := <-ready:
 		return value.state, value.err
-	case <-timer.C:
+	case <-timeout:
 		return CaptureState{}, errors.New("native capture profile timed out")
 	case <-ctx.Done():
 		return CaptureState{}, errors.New("native share stopped")
@@ -664,7 +696,9 @@ func decodeCaptureState(payload []byte) (CaptureState, error) {
 	}
 	if state.State == "active" &&
 		(!validH264ProfileLevelID(state.ProfileLevelID) ||
-			state.Width == 0 || state.Height == 0 || state.FPS == 0) {
+			state.Width == 0 || state.Height == 0 || state.FPS == 0 ||
+			len(state.RestoreToken) > 4096 || !utf8.ValidString(state.RestoreToken) ||
+			strings.ContainsRune(state.RestoreToken, 0)) {
 		return CaptureState{}, errors.New("native capture active state is incomplete")
 	}
 	return state, nil

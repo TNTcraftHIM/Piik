@@ -20,5 +20,5 @@ export function defaultNativeCapturePath(
 export function nativeCaptureTargetKey(target: NativeCaptureTarget): string {
   return target.kind === "window"
     ? `window:${target.sourceId}:${target.pid}:${target.creationTime}`
-    : `display:${target.sourceId}`;
+    : `${target.kind}:${target.sourceId}`;
 }

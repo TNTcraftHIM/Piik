@@ -36,7 +36,7 @@ interface PendingRequest<T = unknown> {
   schema: z.ZodType<T>;
   resolve: (value: T) => void;
   reject: (error: Error) => void;
-  timer: number;
+  timer: number | null;
 }
 
 export interface NativeShareInput {
@@ -179,7 +179,12 @@ export class NativeClient {
   async startShare(
     input: NativeShareInput,
   ): Promise<{ audio: boolean }> {
-    const response = await this.request("start-share", input, shareStartedResponseSchema);
+    const response = await this.request(
+      "start-share",
+      input,
+      shareStartedResponseSchema,
+      input.source.kind === "picker" ? null : REQUEST_TIMEOUT_MS,
+    );
     if (response.shareId !== input.shareId) {
       throw new Error("Native share identity changed");
     }
@@ -194,6 +199,7 @@ export class NativeClient {
       "update-share",
       { shareId, profile },
       shareUpdatedResponseSchema,
+      null,
     );
     if (response.shareId !== shareId) {
       throw new Error("Native share identity changed");
@@ -304,16 +310,19 @@ export class NativeClient {
     type: string,
     fields: object,
     schema: z.ZodType<T>,
+    timeoutMs: number | null = REQUEST_TIMEOUT_MS,
   ): Promise<T> {
     if (this.closed || this.socket.readyState !== WebSocket.OPEN) {
       return Promise.reject(new Error("Screener Client is unavailable"));
     }
     const id = createOpaqueId();
     return new Promise<T>((resolveRequest, rejectRequest) => {
-      const timer = window.setTimeout(() => {
-        this.pending.delete(id);
-        rejectRequest(new Error("Screener Client request timed out"));
-      }, REQUEST_TIMEOUT_MS);
+      const timer = timeoutMs === null
+        ? null
+        : window.setTimeout(() => {
+            this.pending.delete(id);
+            rejectRequest(new Error("Screener Client request timed out"));
+          }, timeoutMs);
       this.pending.set(id, {
         schema,
         resolve: resolveRequest as (value: unknown) => void,
@@ -328,7 +337,7 @@ export class NativeClient {
           ...fields,
         }));
       } catch {
-        window.clearTimeout(timer);
+        if (timer !== null) window.clearTimeout(timer);
         this.pending.delete(id);
         rejectRequest(new Error("Screener Client request failed"));
       }
@@ -348,7 +357,7 @@ export class NativeClient {
       const pending = this.pending.get(id);
       if (!pending) return;
       this.pending.delete(id);
-      window.clearTimeout(pending.timer);
+      if (pending.timer !== null) window.clearTimeout(pending.timer);
       const parsed = pending.schema.safeParse(value);
       if (parsed.success) {
         pending.resolve(parsed.data);
@@ -386,7 +395,7 @@ export class NativeClient {
 
   private rejectPending(): void {
     for (const request of this.pending.values()) {
-      window.clearTimeout(request.timer);
+      if (request.timer !== null) window.clearTimeout(request.timer);
       request.reject(new Error("Screener Client disconnected"));
     }
     this.pending.clear();

@@ -151,6 +151,13 @@ describe("native Client private wire", () => {
         title: "Display 1",
       }).success,
     ).toBe(true);
+    expect(
+      nativeCaptureTargetSchema.safeParse({
+        kind: "picker",
+        sourceId: "1",
+        title: "System picker",
+      }).success,
+    ).toBe(true);
   });
 
   it("fences native events by share and connection identity", () => {

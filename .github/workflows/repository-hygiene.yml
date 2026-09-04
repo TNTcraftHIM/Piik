@@ -150,6 +150,16 @@ jobs:
         with:
           go-version: 1.26.6
           cache-dependency-path: native/client/go.sum
+      - name: Install Linux native capture dependencies
+        if: matrix.target == 'linux-amd64'
+        run: >-
+          sudo apt-get update && sudo apt-get install -y
+          libportal-dev
+          libgstreamer1.0-dev
+          libgstreamer-plugins-base1.0-dev
+          gstreamer1.0-pipewire
+          gstreamer1.0-plugins-bad
+          gstreamer1.0-pulseaudio
       - name: Download application release
         uses: actions/download-artifact@v8
         with:

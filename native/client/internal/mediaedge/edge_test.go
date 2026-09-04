@@ -191,6 +191,34 @@ func TestCaptureTimestampsDriveTheRTPClock(t *testing.T) {
 	}
 }
 
+func TestNewCaptureGenerationKeepsTheRTPClockContinuous(t *testing.T) {
+	engine, err := NewEngine(EngineOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = engine.Close() })
+	source, err := engine.NewSource(1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, receiver, packets := connectedReceiver(t, engine, source, "generation-edge")
+	t.Cleanup(func() { _ = receiver.Close() })
+	accessUnit := []byte{0, 0, 0, 1, 0x65, 0x88, 0x84, 0x00}
+	frameDuration := time.Second / 30
+	if err = source.WriteH264(accessUnit, 50*time.Second, frameDuration); err != nil {
+		t.Fatal(err)
+	}
+	first := waitPacket(t, packets)
+	source.BeginGeneration()
+	if err = source.WriteH264(accessUnit, 100*time.Millisecond, frameDuration); err != nil {
+		t.Fatal(err)
+	}
+	second := waitPacket(t, packets)
+	if got := second.Timestamp - first.Timestamp; got < 2_999 || got > 3_001 {
+		t.Fatalf("generation timestamp delta = %d", got)
+	}
+}
+
 func TestOneLocalBridgeDoesNotConsumeRouteCapacity(t *testing.T) {
 	engine, err := NewEngine(EngineOptions{
 		BindAddress: "127.0.0.1:0", IncludeLoopback: true,

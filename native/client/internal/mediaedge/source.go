@@ -34,6 +34,9 @@ type Source struct {
 	hasTimestamp       bool
 	lastTimestamp      time.Duration
 	timestampRemainder float64
+	rebasePending      bool
+	rebaseInput        time.Duration
+	rebaseOutput       time.Duration
 	frames             atomic.Uint64
 	bytes              atomic.Uint64
 	format             atomic.Uint64
@@ -55,6 +58,17 @@ func (source *Source) WriteH264(
 	source.mu.Unlock()
 	if closed {
 		return errors.New("native media source is closed")
+	}
+	if source.rebasePending {
+		source.rebasePending = false
+		source.rebaseInput = timestamp
+		source.rebaseOutput = source.lastTimestamp + duration
+		timestamp = source.rebaseOutput
+	} else if source.rebaseOutput > 0 {
+		if timestamp < source.rebaseInput {
+			return ErrInvalidVideoTimestamp
+		}
+		timestamp = source.rebaseOutput + timestamp - source.rebaseInput
 	}
 	if source.hasTimestamp {
 		if timestamp <= source.lastTimestamp {
@@ -80,6 +94,14 @@ func (source *Source) WriteH264(
 		result = errors.Join(result, source.track.WriteRTP(packet))
 	}
 	return result
+}
+
+func (source *Source) BeginGeneration() {
+	source.writeMu.Lock()
+	source.rebasePending = true
+	source.rebaseInput = 0
+	source.rebaseOutput = 0
+	source.writeMu.Unlock()
 }
 
 func (source *Source) SetFormat(width, height uint32) {

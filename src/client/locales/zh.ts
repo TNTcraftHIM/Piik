@@ -75,6 +75,8 @@ export const zh = {
   "host.sourcePicker.nativeVideo": "Client · 仅画面",
   "host.sourcePicker.window": "分享窗口：{title}",
   "host.sourcePicker.display": "分享屏幕：{title}",
+  "host.sourcePicker.system": "系统屏幕与窗口选择器",
+  "host.sourcePicker.systemAction": "使用系统选择器选择屏幕或窗口",
   "host.sourcePicker.audio": "分享声音",
   "host.sourcePicker.audioHint": "窗口分享应用声音，整屏分享系统声音",
   "host.sourcePicker.loading": "正在查找本机屏幕和窗口",

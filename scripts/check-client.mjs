@@ -106,7 +106,7 @@ function runClientTests(go) {
 }
 
 function checkPlatformCapture() {
-  if (process.platform !== "win32" && process.platform !== "darwin") {
+  if (!["win32", "darwin", "linux"].includes(process.platform)) {
     if (mode === "--capture-only") {
       throw new Error("No native capture check exists for this platform");
     }
@@ -135,9 +135,15 @@ function checkPlatformCapture() {
       buildRoot,
     ]);
     executable = join(buildRoot, "screener-client-capture.exe");
-  } else {
+  } else if (process.platform === "darwin") {
     run("sh", [
       join(clientRoot, "platform", "darwin", "capture", "build.sh"),
+      buildRoot,
+    ]);
+    executable = join(buildRoot, "screener-client-capture");
+  } else {
+    run("sh", [
+      join(clientRoot, "platform", "linux", "capture", "build.sh"),
       buildRoot,
     ]);
     executable = join(buildRoot, "screener-client-capture");
@@ -150,7 +156,7 @@ function checkPlatformCapture() {
   }
   const raw = run(executable, ["--probe"], { capture: true });
   const probe = JSON.parse(raw);
-  const expectedPlatform = process.platform === "win32" ? "windows" : "darwin";
+  const expectedPlatform = process.platform === "win32" ? "windows" : process.platform;
   if (
     probe?.protocol !== 4 ||
     probe.platform !== expectedPlatform ||
@@ -173,16 +179,17 @@ function checkPlatformCapture() {
   ) {
     throw new Error("Native capture probe returned an invalid contract");
   }
-  if (process.platform !== "win32") return;
   const sources = JSON.parse(run(executable, ["--list"], { capture: true }));
   if (!Array.isArray(sources) || sources.some((target) =>
-    !["window", "display"].includes(target?.kind) ||
+    !["window", "display", "picker"].includes(target?.kind) ||
     !/^[1-9][0-9]{0,19}$/.test(target?.sourceId) ||
     typeof target?.title !== "string" ||
     (target.kind === "window" &&
       (!Number.isInteger(target?.pid) ||
         !/^[1-9][0-9]{0,19}$/.test(target?.creationTime))) ||
     (target.kind === "display" &&
+      (target?.pid !== undefined || target?.creationTime !== undefined)) ||
+    (target.kind === "picker" &&
       (target?.pid !== undefined || target?.creationTime !== undefined))
   )) {
     throw new Error("Windows capture process returned an invalid source list");
