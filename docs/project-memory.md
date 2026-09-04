@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-09-04
+Last updated: 2026-09-05
 
 Screener is private, low-latency game screen sharing for one Host and up to 20
 authenticated friends. The current product surface is Web Host, Web Viewer, and
@@ -13,7 +13,8 @@ level loopback capability service, supervises Local Node when selected, and owns
 the explicit native media path chosen in the same Web UI. Room source and media
 implementation are independent: a topology may mix Browser and Native peers
 without changing participant, signaling, capacity, or route identity. Native
-Host media is current; Native Viewer receive/relay is the next adapter. Local remains
+Host and H.264 Viewer receive/relay adapters share the same Pion media edge;
+unsupported Viewer media falls back to Browser. Local remains
 a serverless-LAN mode by default; explicit one-link mode exposes that same
 authority through a session-scoped public control tunnel while media remains
 P2P. Minimal Windows, macOS, and Linux adapters terminate at one encoded-frame
@@ -21,7 +22,7 @@ boundary; only Windows has completed physical native-media acceptance, while
 the other two compile and package. Native capture consumes the same room quality
 settings and applies live quality or source changes behind its stable encoded
 source and connections. Native P2P edges feed Pion GCC's categorical payload-
-capacity result into the existing route evidence windows. Healthy Native Host
+capacity result into the existing route evidence windows. Healthy Native sender
 edges share one hardware encode; the existing quality operation may test one
 stock Browser sender for a persistently degraded edge without lowering the
 shared source. One reserved loopback edge gives the system Browser a preview and

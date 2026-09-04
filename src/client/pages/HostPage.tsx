@@ -150,9 +150,9 @@ import type {
 import { HostPeer, type HostMediaPeer } from "../webrtc/host-peer";
 import { NativeClient } from "../native/client";
 import {
-  NativeHostPeer,
+  NativeSenderPeer,
   shouldUseBrowserQualityCandidate,
-} from "../native/native-host-peer";
+} from "../native/native-sender-peer";
 import { NativeMediaBridge } from "../native/media-bridge";
 import {
   defaultNativeCapturePath,
@@ -1821,7 +1821,7 @@ export function HostPage({
                   input.natPredictionEnabled,
                 );
               }
-              return new NativeHostPeer(
+              return new NativeSenderPeer(
                 candidate.childPeerId,
                 candidate.connectionId,
                 nativeShareGeneration,
@@ -1925,7 +1925,7 @@ export function HostPage({
       },
     };
     peer = useNative
-      ? new NativeHostPeer(
+      ? new NativeSenderPeer(
           peerId,
           createOpaqueId(),
           nativeShareGeneration!,

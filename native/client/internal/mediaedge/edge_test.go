@@ -128,6 +128,18 @@ func TestRemoteCandidatesAreBoundedUntilTheAnswer(t *testing.T) {
 	}
 }
 
+func TestSelectedNatTraversalPathKeepsOnlyAnonymousProvenance(t *testing.T) {
+	if got := selectedNatTraversalPath("ordinary", "sp3"); got != "predicted" {
+		t.Fatalf("predicted path = %q", got)
+	}
+	if got := selectedNatTraversalPath("ordinary", "remote"); got != "ordinary" {
+		t.Fatalf("ordinary path = %q", got)
+	}
+	if got := selectedNatTraversalPath("", ""); got != "unknown" {
+		t.Fatalf("unknown path = %q", got)
+	}
+}
+
 func TestRepeatedAnswerIsIdempotent(t *testing.T) {
 	engine, err := NewEngine(EngineOptions{
 		BindAddress: "127.0.0.1:0", IncludeLoopback: true,

@@ -27,7 +27,9 @@ import { useCopy } from "./ui/copy";
 
 const appRoute = parseAppRoute(window.location.pathname);
 const clientLaunchBootstrap =
-  appRoute.kind === "host" ? takeClientLaunchBootstrap() : null;
+  appRoute.kind === "host" || appRoute.kind === "viewer"
+    ? takeClientLaunchBootstrap()
+    : null;
 const clientAccessBootstrap = clientLaunchBootstrap?.accessToken ?? null;
 const viewerRoute = appRoute.kind === "viewer" ? readViewerRoute() : null;
 const hostPageModule =
@@ -85,7 +87,10 @@ function AppRoute() {
   }
   if (appRoute.kind === "viewer" && viewerRoute) {
     return viewerRoute.viewerGrant ? (
-      <ViewerPage {...viewerRoute} />
+      <ViewerPage
+        {...viewerRoute}
+        launchedByClient={clientLaunchBootstrap?.launchedByClient}
+      />
     ) : (
       <SiteAccessGate surface="viewer" />
     );
@@ -280,7 +285,12 @@ function SiteAccessGate({
 
   if (access.kind === "ready") {
     if (surface === "viewer" && viewerRoute) {
-      return <ViewerPage {...viewerRoute} />;
+      return (
+        <ViewerPage
+          {...viewerRoute}
+          launchedByClient={clientLaunchBootstrap?.launchedByClient}
+        />
+      );
     }
     if (surface === "join") {
       return <JoinPage />;

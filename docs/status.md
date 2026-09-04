@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-09-04
+Last updated: 2026-09-05
 
 This is the current execution index. Git history owns completed timelines;
 [verification status](./verification-status.md) owns evidence boundaries.
@@ -93,7 +93,10 @@ This is the current execution index. Git history owns completed timelines;
   visible/resume/pageshow rebaseline and rearm current-frame proof. Host and
   Viewer SFU clients disable LiveKit page-leave auto-disconnect, so SFU recovery
   cannot stop Host-owned capture. Native Viewer controls still own playback,
-  and manual reconnect stays on the current route.
+  and manual reconnect stays on the current route. A Client-launched Viewer can
+  receive H.264/Opus through a native encoded source, bridge one local Browser
+  preview, and reuse that source for compatible P2P children; unsupported codec
+  or failed bridge returns to the Browser peer.
 - Viewer presentation derives access, Host, route, playback, and runtime state
   from separate owners. An exact media generation plus monotonic proof epoch
   owns visible-frame truth; every invalidation rearms proof, while stale epochs
@@ -154,8 +157,11 @@ This is the current execution index. Git history owns completed timelines;
   Browser LiveKit publisher; an isolated LiveKit gate
   proves default 1080p delivery, a live change to 480p, and complete cleanup
   without a second SFU client.
+  A Windows gate proves Browser Host to Client-native Viewer delivery and Chrome
+  decode; an RTP gate covers bounded H.264/Opus child relay and cleanup.
   Native control treats malformed/stale/repeated per-edge signaling as disposable;
-  unexpected Client close reaches the Host through the existing fence. Windows
+  unexpected Client close reaches the current Browser participant through the
+  existing fence. Windows
   retains one converted frame for quiet-source keyframe recovery. Its live
   profile gate keeps two PeerConnections while moving the hardware source from
   720p30 to 1440p60, then to 480p15 while paused, and resumes both Viewers;

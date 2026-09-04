@@ -87,20 +87,57 @@ type iceServer struct {
 }
 
 type prepareEdgeRequest struct {
+	Version            int         `json:"version"`
+	ID                 string      `json:"id"`
+	Type               string      `json:"type"`
+	ShareID            string      `json:"shareId"`
+	ConnectionID       string      `json:"connectionId"`
+	SourceConnectionID string      `json:"sourceConnectionId,omitempty"`
+	ICEServers         []iceServer `json:"iceServers"`
+}
+
+type prepareLocalEdgeRequest struct {
+	Version            int    `json:"version"`
+	ID                 string `json:"id"`
+	Type               string `json:"type"`
+	ShareID            string `json:"shareId"`
+	ConnectionID       string `json:"connectionId"`
+	SourceConnectionID string `json:"sourceConnectionId,omitempty"`
+}
+
+type receiveOfferRequest struct {
 	Version      int         `json:"version"`
 	ID           string      `json:"id"`
 	Type         string      `json:"type"`
 	ShareID      string      `json:"shareId"`
 	ConnectionID string      `json:"connectionId"`
+	EdgeCapacity int         `json:"edgeCapacity"`
 	ICEServers   []iceServer `json:"iceServers"`
+	SDP          string      `json:"sdp"`
 }
 
-type prepareLocalEdgeRequest struct {
+type receiveCandidateRequest struct {
+	Version      int                      `json:"version"`
+	ID           string                   `json:"id"`
+	Type         string                   `json:"type"`
+	ShareID      string                   `json:"shareId"`
+	ConnectionID string                   `json:"connectionId"`
+	Candidate    *webrtc.ICECandidateInit `json:"candidate"`
+}
+
+type closeReceiverRequest struct {
 	Version      int    `json:"version"`
 	ID           string `json:"id"`
 	Type         string `json:"type"`
 	ShareID      string `json:"shareId"`
 	ConnectionID string `json:"connectionId"`
+}
+
+type stopReceiveRequest struct {
+	Version int    `json:"version"`
+	ID      string `json:"id"`
+	Type    string `json:"type"`
+	ShareID string `json:"shareId"`
 }
 
 type edgeAnswerRequest struct {
@@ -169,6 +206,14 @@ type edgeOfferResponse struct {
 	SDP          string `json:"sdp"`
 }
 
+type receiveAnswerResponse struct {
+	responseEnvelope
+	ShareID      string `json:"shareId"`
+	ConnectionID string `json:"connectionId"`
+	SDP          string `json:"sdp"`
+	Audio        bool   `json:"audio"`
+}
+
 type eventEnvelope struct {
 	Version      int    `json:"version"`
 	Type         string `json:"type"`
@@ -193,8 +238,9 @@ type edgeStateEvent struct {
 
 type edgePathEvent struct {
 	eventEnvelope
-	LocalType  string `json:"localType"`
-	RemoteType string `json:"remoteType"`
+	LocalType        string `json:"localType"`
+	RemoteType       string `json:"remoteType"`
+	NatTraversalPath string `json:"natTraversalPath"`
 }
 
 type edgeQualityEvent struct {

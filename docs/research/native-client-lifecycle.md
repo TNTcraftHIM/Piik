@@ -49,7 +49,7 @@ runtime change for either is claimed here.
 - Native Pion candidate input is syntax-checked with the existing ICE parser,
   bounded before queuing, and discarded when malformed, stale, or over capacity.
   Repeated answers for an edge are idempotent. Profile updates remain fenced to
-  that same share session in the current loopback v7 wire.
+  that same share session in the current loopback v8 wire.
 - An unexpected Browser control-socket close now notifies the active Host owner;
   intentional user cleanup remains silent and uses the existing share fence.
 

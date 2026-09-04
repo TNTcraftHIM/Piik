@@ -96,6 +96,40 @@ func (source *Source) WriteH264(
 	return result
 }
 
+// WriteRTP forwards one already encoded H.264 packet without decoding or
+// re-encoding it. TrackLocalStaticRTP rewrites the negotiated SSRC and payload
+// type independently for every bound edge.
+func (source *Source) WriteRTP(packet *rtp.Packet) error {
+	if packet == nil || len(packet.Payload) == 0 {
+		return errors.New("native H264 RTP packet is invalid")
+	}
+	source.writeMu.Lock()
+	defer source.writeMu.Unlock()
+	source.mu.Lock()
+	closed := source.closed
+	source.mu.Unlock()
+	if closed {
+		return errors.New("native media source is closed")
+	}
+	if packet.Marker {
+		source.frames.Add(1)
+	}
+	source.bytes.Add(uint64(len(packet.Payload)))
+	forwarded := connectionNeutralRTP(packet)
+	return source.track.WriteRTP(&forwarded)
+}
+
+func connectionNeutralRTP(packet *rtp.Packet) rtp.Packet {
+	forwarded := *packet
+	forwarded.Header = packet.Header
+	// Header extensions are negotiated per PeerConnection. The outbound Pion
+	// interceptors add fresh TWCC using that edge's negotiated ID.
+	forwarded.Extension = false
+	forwarded.ExtensionProfile = 0
+	forwarded.Extensions = nil
+	return forwarded
+}
+
 func (source *Source) BeginGeneration() {
 	source.writeMu.Lock()
 	source.rebasePending = true

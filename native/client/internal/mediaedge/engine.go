@@ -139,7 +139,12 @@ func (engine *Engine) surveySTUN(
 	servers []webrtc.ICEServer,
 	emit func(mappedAddress),
 ) {
-	seen := map[string]struct{}{}
+	surveyContext, cancel := context.WithTimeout(ctx, stunSurveyTimeout)
+	defer cancel()
+	type surveyTarget struct {
+		address *net.UDPAddr
+	}
+	targets := make([]surveyTarget, 0)
 	for _, server := range servers {
 		for _, rawURL := range server.URLs {
 			uri, err := stun.ParseURI(rawURL)
@@ -155,25 +160,44 @@ func (engine *Engine) surveySTUN(
 				"udp4",
 				net.JoinHostPort(addresses[0].String(), strconv.Itoa(uri.Port)),
 			)
-			if err != nil {
-				continue
+			if err == nil {
+				targets = append(targets, surveyTarget{address: serverAddress})
 			}
+		}
+	}
+	if len(targets) == 0 {
+		return
+	}
+	results := make(chan mappedAddress, len(targets))
+	for _, target := range targets {
+		go func(address *net.UDPAddr) {
 			mapped, err := engine.mux.GetXORMappedAddrContext(
-				ctx,
-				serverAddress,
+				surveyContext,
+				address,
 				stunSurveyTimeout,
 			)
 			if err != nil || mapped == nil || mapped.IP.To4() == nil ||
 				mapped.Port < 1 || mapped.Port > 65_535 {
-				continue
+				return
 			}
-			value := mappedAddress{address: mapped.IP.String(), port: mapped.Port}
+			select {
+			case results <- mappedAddress{address: mapped.IP.String(), port: mapped.Port}:
+			case <-surveyContext.Done():
+			}
+		}(target.address)
+	}
+	seen := map[string]struct{}{}
+	for remaining := len(targets); remaining > 0; remaining-- {
+		select {
+		case value := <-results:
 			key := value.address + ":" + strconv.Itoa(value.port)
 			if _, found := seen[key]; found {
 				continue
 			}
 			seen[key] = struct{}{}
 			emit(value)
+		case <-surveyContext.Done():
+			return
 		}
 	}
 }

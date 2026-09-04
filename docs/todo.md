@@ -7,25 +7,9 @@ topics are not implementation authority.
 
 ## Now
 
-1. **Client capability provider and NAT.** Keep the current three-choice Browser
-   control center, but start one process-level RPC before selection. Persist one
-   optional Site origin, allow it alongside Local while any room source runs,
-   and activate discovery only after that Site was opened from the Client. Finish
-   the shared Site/public-link Native NAT path using the existing room switch,
-   same-socket STUN survey, bounded prediction, port mapping, and ordinary ICE
-   fallback. Do not add a Client-specific route policy or second NAT score.
-2. **Mixed Native endpoint adapter.** Preserve one Browser-owned participant and
-   route contract while adding Native Viewer receive/relay. Each room node must
-   independently use Browser or Native media, interoperate over standard WebRTC,
-   and retain Browser fallback. Native should reuse encoded media where the
-   negotiated representation is compatible; downstream experience remains more
-   important than forcing one encode.
-3. **Client acceptance and test ablation.** Physically validate macOS and Linux
+1. **Client physical acceptance.** Physically validate macOS and Linux
    capture/audio/recovery, a decoded public-link Browser Viewer, and a NAT case
-   rescued beyond ordinary STUN. Then consolidate the repository tests: retain
-   protocol, ownership, resource-bound, algorithm, and a small number of real
-   integration gates; delete duplicate implementation-mirror and stale-history
-   coverage before this phase merges.
+   rescued beyond ordinary STUN, plus one mixed Browser/Native Viewer relay.
 
 ## Parked Product Work
 

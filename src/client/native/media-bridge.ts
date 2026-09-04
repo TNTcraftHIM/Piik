@@ -1,5 +1,11 @@
 import type { SignalPayload } from "../../shared/protocol";
 import { createOpaqueId } from "../lib/opaque-id";
+import type { ConnectionMetrics } from "../types";
+import {
+  collectConnectionMetrics,
+  decodedVideoFrames,
+  type StatsAccumulator,
+} from "../webrtc/stats";
 import type { NativeClientEvent } from "./wire";
 
 const BRIDGE_TIMEOUT_MS = 8_000;
@@ -9,6 +15,7 @@ export interface NativeMediaBridgeControl {
   prepareLocalEdge(
     shareId: string,
     connectionId: string,
+    sourceConnectionId?: string,
   ): Promise<RTCSessionDescriptionInit>;
   acceptSignal(
     shareId: string,
@@ -36,7 +43,20 @@ export class NativeMediaBridge {
     private readonly control: NativeMediaBridgeControl,
     private readonly onFailed: () => void,
     private readonly expectedAudio = false,
+    private readonly sourceConnectionId?: string,
   ) {}
+
+  collectMetrics(accumulator: StatsAccumulator): Promise<ConnectionMetrics> {
+    return collectConnectionMetrics(this.peer, "receive", accumulator);
+  }
+
+  async decodedVideoFrames(): Promise<number | null> {
+    const track = this.stream.getVideoTracks()[0];
+    return decodedVideoFrames(
+      await this.peer.getStats(),
+      track ? { trackIdentifier: track.id } : null,
+    );
+  }
 
   async start(): Promise<MediaStream> {
     if (this.disposed || this.unsubscribe) {
@@ -132,6 +152,7 @@ export class NativeMediaBridge {
       const offer = await this.control.prepareLocalEdge(
         this.shareId,
         this.connectionId,
+        this.sourceConnectionId,
       );
       await this.peer.setRemoteDescription(offer);
       this.remoteDescriptionSet = true;

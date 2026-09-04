@@ -14,6 +14,7 @@ export interface NativeEdgeControl {
     shareId: string,
     connectionId: string,
     iceConfig: IceConfig,
+    sourceConnectionId?: string,
   ): Promise<RTCSessionDescriptionInit>;
   acceptSignal(
     shareId: string,
@@ -24,16 +25,20 @@ export interface NativeEdgeControl {
   onEvent(listener: (event: NativeClientEvent) => void): () => void;
 }
 
-interface NativeHostEdgeEvents {
+interface NativeSenderEdgeEvents {
   sendSignal: (peerId: string, payload: SignalPayload) => boolean;
   onState: (state: RTCPeerConnectionState) => void;
-  onPath?: (local: RTCIceCandidateType, remote: RTCIceCandidateType) => void;
+  onPath?: (
+    local: RTCIceCandidateType,
+    remote: RTCIceCandidateType,
+    natTraversalPath: "unknown" | "ordinary" | "predicted",
+  ) => void;
   onQuality?: (
     quality: Extract<NativeClientEvent, { type: "edge-quality" }>,
   ) => void;
 }
 
-export class NativeHostEdge {
+export class NativeSenderEdge {
   private readonly pendingCandidates: SignalPayload[] = [];
   private readonly localIceCandidates: NatPredictionCandidateBatch | null;
   private readonly iceConfig: IceConfig;
@@ -49,7 +54,8 @@ export class NativeHostEdge {
     iceConfig: IceConfig,
     natPredictionEnabled: boolean,
     private readonly control: NativeEdgeControl,
-    private readonly events: NativeHostEdgeEvents,
+    private readonly events: NativeSenderEdgeEvents,
+    private readonly sourceConnectionId?: string,
   ) {
     const predictionEnabled =
       natPredictionEnabled &&
@@ -80,6 +86,7 @@ export class NativeHostEdge {
         this.shareId,
         this.connectionId,
         this.iceConfig,
+        this.sourceConnectionId,
       );
       if (
         this.disposed ||
@@ -165,7 +172,11 @@ export class NativeHostEdge {
       return;
     }
     if (event.type === "edge-path") {
-      this.events.onPath?.(event.localType, event.remoteType);
+      this.events.onPath?.(
+        event.localType,
+        event.remoteType,
+        event.natTraversalPath,
+      );
       return;
     }
     if (event.type === "edge-quality") {

@@ -19,7 +19,8 @@ desktop and mobile viewports.
 
 Screener Client opens this same application in the system Browser. Its small
 startup surface selects Local, temporary public invitation, or a configured
-Site before entering the Host workspace. Starting a share there offers the
+Site before entering the Host workspace. Viewer links opened at that activated
+origin may use the same running Client without changing the Viewer UI. Starting a share offers the
 Browser picker and any exact Client-owned native windows. It never chooses a
 window automatically. A reproduced Browser-window, capture, or background
 failure is required before introducing an embedded Web runtime.
@@ -123,10 +124,10 @@ that owns that PeerConnection and are never uploaded, persisted, or used for
 identity or route selection. The product does not offer a diagnostic-download
 button or a raw stats dump.
 
-Current Browser scope includes Web Host, Web Viewer, and Browser relay. Desktop
-and mobile Browsers are Viewer targets; mobile Web capture, reliable background
-relay, native Client audio/SFU, and non-Windows capture remain later platform
-work.
+Current scope includes Web Host, Web Viewer, Browser relay, and optional Native
+Host/Viewer media beneath those same pages. Desktop and mobile Browsers are
+Viewer targets; mobile Web capture, reliable background relay, Client-owned SFU,
+and physical non-Windows native acceptance remain later platform work.
 
 ## Primary References
 

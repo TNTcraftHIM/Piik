@@ -5,16 +5,26 @@ import type {
 } from "../../shared/protocol";
 import { EMPTY_METRICS, type PeerSnapshot } from "../types";
 import type { HostMediaPeer } from "../webrtc/host-peer";
-import { NativeHostEdge, type NativeEdgeControl } from "./host-edge";
+import { NativeSenderEdge, type NativeEdgeControl } from "./native-sender-edge";
 
-interface NativeHostPeerEvents {
+interface NativeSenderPeerEvents {
   sendSignal: (peerId: string, payload: SignalPayload) => boolean;
   onUpdate: (snapshot: PeerSnapshot) => void;
 }
 
-export class NativeHostPeer implements HostMediaPeer {
+export interface NativeSourceFormat {
+  width: number | null;
+  height: number | null;
+}
+
+export interface NativeSenderSource {
+  connectionId: string;
+  format?: () => NativeSourceFormat;
+}
+
+export class NativeSenderPeer implements HostMediaPeer {
   readonly connectionId: string;
-  private readonly edge: NativeHostEdge;
+  private readonly edge: NativeSenderEdge;
   private disposed = false;
   private state: RTCPeerConnectionState = "new";
   private localCandidateType: string | null = null;
@@ -28,7 +38,8 @@ export class NativeHostPeer implements HostMediaPeer {
     iceConfig: IceConfig,
     natPredictionEnabled: boolean,
     control: NativeEdgeControl,
-    events: NativeHostPeerEvents,
+    events: NativeSenderPeerEvents,
+    private readonly source?: NativeSenderSource,
   ) {
     this.connectionId = connectionId;
     this.snapshot = {
@@ -43,7 +54,7 @@ export class NativeHostPeer implements HostMediaPeer {
       qualityWarning: null,
       qualityWarningKind: null,
     };
-    this.edge = new NativeHostEdge(
+    this.edge = new NativeSenderEdge(
       peerId,
       connectionId,
       shareId,
@@ -69,7 +80,7 @@ export class NativeHostPeer implements HostMediaPeer {
           };
           events.onUpdate(this.getSnapshot());
         },
-        onPath: (local, remote) => {
+        onPath: (local, remote, natTraversalPath) => {
           this.localCandidateType = local;
           this.remoteCandidateType = remote;
           this.snapshot = {
@@ -78,13 +89,16 @@ export class NativeHostPeer implements HostMediaPeer {
               ...this.snapshot.metrics,
               localCandidateType: local,
               remoteCandidateType: remote,
-              natTraversalPath: "ordinary",
+              natTraversalPath,
             },
           };
           events.onUpdate(this.getSnapshot());
         },
         onQuality: (quality) => {
           const known = quality.state !== "unknown";
+          const format = this.source?.format?.();
+          const width = quality.width || format?.width || null;
+          const height = quality.height || format?.height || null;
           this.snapshot = {
             ...this.snapshot,
             metrics: {
@@ -95,8 +109,8 @@ export class NativeHostPeer implements HostMediaPeer {
               trackIdentifier: quality.trackIdentifier,
               videoEncodingCount: 1,
               activeVideoEncodingCount: this.isConnected() ? 1 : 0,
-              captureWidth: quality.width || null,
-              captureHeight: quality.height || null,
+              captureWidth: width,
+              captureHeight: height,
               captureFramesPerSecond: quality.framesPerSecond,
               mediaSourceFramesPerSecond: quality.framesPerSecond,
               bitrateKbps: quality.bitrateKbps,
@@ -104,11 +118,11 @@ export class NativeHostPeer implements HostMediaPeer {
                 ? quality.availableOutgoingKbps
                 : null,
               framesPerSecond: quality.framesPerSecond,
-              frameWidth: quality.width || null,
-              frameHeight: quality.height || null,
+              frameWidth: width,
+              frameHeight: height,
               resolution:
-                quality.width > 0 && quality.height > 0
-                  ? `${quality.width}x${quality.height}`
+                width !== null && height !== null
+                  ? `${width}x${height}`
                   : null,
               codec: "video/H264",
               codecProfile: "42c033",
@@ -123,11 +137,12 @@ export class NativeHostPeer implements HostMediaPeer {
           events.onUpdate(this.getSnapshot());
         },
       },
+      this.source?.connectionId,
     );
     this.events = events;
   }
 
-  private readonly events: NativeHostPeerEvents;
+  private readonly events: NativeSenderPeerEvents;
 
   start(): Promise<boolean> {
     return this.edge.start();
@@ -188,7 +203,9 @@ export class NativeHostPeer implements HostMediaPeer {
   }
 
   replaceStream(_stream: MediaStream): Promise<boolean> {
-    return Promise.resolve(false);
+    // A received native source is independent of its Browser preview stream.
+    // A capture-backed Host source is replaced by its share-level owner.
+    return Promise.resolve(this.source !== undefined);
   }
 
   dispose(): void {
@@ -202,5 +219,5 @@ export function shouldUseBrowserQualityCandidate(
   current: HostMediaPeer | undefined,
   candidate: PreparedRouteCandidate,
 ): boolean {
-  return candidate.qualityProbe && current instanceof NativeHostPeer;
+  return candidate.qualityProbe && current instanceof NativeSenderPeer;
 }

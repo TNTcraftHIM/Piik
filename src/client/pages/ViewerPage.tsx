@@ -55,6 +55,7 @@ import {
 } from "../lib/display-name";
 import { useDocumentTitle } from "../ui/document-title";
 import { clearViewerGrant, getStableClientId } from "../lib/session";
+import { createOpaqueId } from "../lib/opaque-id";
 import { SignalingClient } from "../lib/signaling";
 import { labelParticipantSnapshot } from "../lib/viewer-presence";
 import {
@@ -108,12 +109,26 @@ import {
   type MediaAssignment,
   viewerSignalMessage,
 } from "../webrtc/media-assignment";
+import type {
+  ViewerMediaPeer,
+  ViewerPeerEvents,
+  ViewerPeerOptions,
+} from "../webrtc/viewer-peer";
 import { ViewerPeer } from "../webrtc/viewer-peer";
-import { ViewerRelay } from "../webrtc/viewer-relay";
+import {
+  ViewerRelay,
+  type ViewerRelayPeerFactory,
+} from "../webrtc/viewer-relay";
+import { NativeClient } from "../native/client";
+import {
+  NativeCapableViewerPeer,
+} from "../native/native-viewer-peer";
+import { NativeSenderPeer } from "../native/native-sender-peer";
 
 interface ViewerPageProps {
   roomId: string;
   viewerGrant?: string;
+  launchedByClient?: boolean;
 }
 
 type ViewerQualityEvidence = Extract<
@@ -127,7 +142,7 @@ interface SfuUpstreamState {
 interface PendingPeerRoute {
   revision: number;
   parentPeerId: string;
-  peer: ViewerPeer | null;
+  peer: ViewerMediaPeer | null;
   decodedFrame: boolean;
   connectedSent: boolean;
   readySent: boolean;
@@ -258,7 +273,11 @@ function MeterTag({ icon, label }: { icon: GlyphName; label: string }) {
   );
 }
 
-export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
+export function ViewerPage({
+  roomId,
+  viewerGrant,
+  launchedByClient = false,
+}: ViewerPageProps) {
   const { lang, t, vis, titleFrames } = useCopy();
   const viewerClientId = useMemo(
     () => getStableClientId("viewer", roomId),
@@ -381,7 +400,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
   }
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const peerRef = useRef<ViewerPeer | null>(null);
+  const peerRef = useRef<ViewerMediaPeer | null>(null);
   const viewerSfuRouteRef = useRef<ViewerSfuRoute | null>(null);
   const signalRef = useRef<SignalingClient | null>(null);
   const presentationStateRef = useRef(presentationState);
@@ -590,6 +609,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       childPeerIds: [],
     };
     let viewerRelay: ViewerRelay | null = null;
+    let viewerRelaySourceKey: string | null = null;
     let viewerSfuRoute: ViewerSfuRoute | null = null;
     let preparedParentPeerId: string | null = null;
     let preparedParentSignals: Array<
@@ -603,6 +623,32 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       null;
     let relayChildEvidenceTimer: number | null = null;
     let sfuTransportConnected = false;
+    let nativeClientPromise: Promise<NativeClient | null> | null = null;
+    const nativeViewerSessionId = createOpaqueId();
+
+    const acquireNativeClient = (): Promise<NativeClient | null> => {
+      if (!launchedByClient) return Promise.resolve(null);
+      nativeClientPromise ??= NativeClient.connect();
+      return nativeClientPromise;
+    };
+
+    function createViewerMediaPeer(
+      iceConfig: IceConfig,
+      events: ViewerPeerEvents,
+      options: ViewerPeerOptions,
+    ): ViewerMediaPeer {
+      if (!launchedByClient) {
+        return new ViewerPeer(iceConfig, events, options);
+      }
+      return new NativeCapableViewerPeer(
+        iceConfig,
+        events,
+        options,
+        acquireNativeClient(),
+        nativeViewerSessionId,
+        endpointMediaCopyCapacity,
+      );
+    }
 
     let pageSuspended = document.visibilityState !== "visible";
     const syncDecodedFrameStallPause = (): void => {
@@ -751,7 +797,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     }
     function offerPeerQualityEvidence(
       snapshot: PeerSnapshot,
-      peer: ViewerPeer,
+      peer: ViewerMediaPeer,
     ): void {
       const connectionHealthy =
         snapshot.connectionState === "connected" && !peer.isRecovering();
@@ -844,13 +890,68 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       );
     }
 
-    function ensureViewerRelay(): ViewerRelay | null {
-      if (viewerRelay) {
-        return viewerRelay;
-      }
+    function ensureViewerRelay(
+      upstreamKind = currentRouteAssignment?.upstream.kind,
+    ): ViewerRelay | null {
       if (!peerAssisted || !currentIceConfig) {
         return null;
       }
+      const source =
+        upstreamKind === "peer" &&
+        peerRef.current instanceof NativeCapableViewerPeer
+          ? peerRef.current.nativeSource
+          : null;
+      // Wait until the upstream media identity is known. This lets a native
+      // Viewer choose the encoded relay source before any child edge exists.
+      if (!remoteMediaRef.current?.stream) {
+        return null;
+      }
+      const sourceKey = source
+        ? `native:${source.sessionId}:${source.connectionId}:${source.generation}`
+        : "browser";
+      if (viewerRelay && viewerRelaySourceKey === sourceKey) {
+        return viewerRelay;
+      }
+      if (viewerRelay) {
+        viewerRelay.dispose();
+        viewerRelay = null;
+        viewerRelaySourceKey = null;
+      }
+      const peerFactory: ViewerRelayPeerFactory | null = source
+        ? {
+            requiresStream: false,
+            create: (childPeerId, connectionId, peerEvents, candidate) =>
+              candidate?.qualityProbe
+                ? null
+                : new NativeSenderPeer(
+                    childPeerId,
+                    connectionId ?? createOpaqueId(),
+                    source.sessionId,
+                    currentIceConfig!,
+                    currentRoutePolicy.natPrediction,
+                    source.client,
+                    peerEvents,
+                    {
+                      connectionId: source.connectionId,
+                      format: () => {
+                        const settings = remoteMediaRef.current?.stream
+                          .getVideoTracks()[0]
+                          ?.getSettings();
+                        return {
+                          width:
+                            typeof settings?.width === "number"
+                              ? settings.width
+                              : null,
+                          height:
+                            typeof settings?.height === "number"
+                              ? settings.height
+                              : null,
+                        };
+                      },
+                    },
+                  ),
+          }
+        : null;
       viewerRelay = new ViewerRelay(
         currentIceConfig,
         currentQualitySettings,
@@ -899,7 +1000,9 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
         },
         endpointMediaCopyCapacity,
         currentRoutePolicy.natPrediction,
+        peerFactory,
       );
+      viewerRelaySourceKey = sourceKey;
       viewerRelay.setChildren(currentAssignment.childPeerIds);
       return viewerRelay;
     }
@@ -935,7 +1038,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
     function reportActivePeerFailure(
       parentPeerId: string,
       connectionId: string,
-      peer: ViewerPeer,
+      peer: ViewerMediaPeer,
     ): boolean {
       if (
         currentRouteAssignment?.upstream.kind !== "peer" ||
@@ -991,7 +1094,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
 
     function pendingPeerHasDecodedFrame(
       probe: PendingPeerRoute,
-    ): probe is PendingPeerRoute & { peer: ViewerPeer; snapshot: PeerSnapshot } {
+    ): probe is PendingPeerRoute & { peer: ViewerMediaPeer; snapshot: PeerSnapshot } {
       const { snapshot } = probe;
       return (
         snapshot !== null &&
@@ -1072,8 +1175,8 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
               },
               true,
             );
-            ensureViewerRelay()?.setStream(probe.stream);
             bindRemoteStream(probe.stream, revision);
+            ensureViewerRelay("peer")?.setStream(probe.stream);
             setPeerSnapshot(probe.snapshot);
             setSfuUpstream(null);
             return true;
@@ -1250,9 +1353,9 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
             endpointMediaCopyCapacity,
           );
           reconcileRelayChildren(previousChildPeerIds);
-          const relay = ensureViewerRelay();
-          relay?.setStream(nextStream);
           bindRemoteStream(nextStream, revision);
+          const relay = ensureViewerRelay("sfu");
+          relay?.setStream(nextStream);
           if (initialVideoStream) {
             sfuTransportConnected = true;
           }
@@ -1357,11 +1460,11 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       reconcileRelayChildren(previousChildPeerIds);
     }
 
-    function ensurePendingPeerRoute(): ViewerPeer | null {
+    function ensurePendingPeerRoute(): ViewerMediaPeer | null {
       const probe = pendingPeer;
       if (!probe || !currentIceConfig) return null;
       if (probe.peer) return probe.peer;
-      const peer: ViewerPeer = new ViewerPeer(
+      const peer = createViewerMediaPeer(
         currentIceConfig,
         {
           sendSignal: (targetPeerId, payload) =>
@@ -1485,14 +1588,14 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       return peer;
     }
 
-    function ensurePeer(): ViewerPeer | null {
+    function ensurePeer(): ViewerMediaPeer | null {
       if (peerRef.current) {
         return peerRef.current;
       }
       if (!currentIceConfig) {
         return null;
       }
-      const peer: ViewerPeer = new ViewerPeer(
+      const peer = createViewerMediaPeer(
         currentIceConfig,
         {
           sendSignal: (targetPeerId, payload) =>
@@ -1606,6 +1709,7 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
           clearPeerState();
           viewerRelay?.dispose();
           viewerRelay = null;
+          viewerRelaySourceKey = null;
           currentAssignment = { parentPeerId: null, childPeerIds: [] };
         }
         peerAssisted = nextPeerAssisted;
@@ -2040,8 +2144,14 @@ export function ViewerPage({ roomId, viewerGrant }: ViewerPageProps) {
       peerRef.current = null;
       viewerRelay?.dispose();
       viewerRelay = null;
+      viewerRelaySourceKey = null;
+      void nativeClientPromise?.then(async (client) => {
+        if (!client) return;
+        await client.stopReceive(nativeViewerSessionId).catch(() => undefined);
+        client.close();
+      });
     };
-  }, [roomId, viewerGrant, viewerPasswordAttempt]);
+  }, [roomId, viewerGrant, viewerPasswordAttempt, launchedByClient]);
 
   useEffect(() => {
     const video = videoRef.current;

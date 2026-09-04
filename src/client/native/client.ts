@@ -21,6 +21,7 @@ import {
   NATIVE_CLIENT_PROTOCOL,
   NATIVE_CLIENT_SUBPROTOCOL,
   pongResponseSchema,
+  receiveAnswerResponseSchema,
   readyResponseSchema,
   shareStartedResponseSchema,
   shareSourceReplacedResponseSchema,
@@ -31,6 +32,7 @@ import {
   type NativeClientEvent,
   type NativeHealth,
   type NativeCaptureTarget,
+  type NativeIceCandidate,
 } from "./wire";
 
 const DISCOVERY_TIMEOUT_MS = 400;
@@ -237,12 +239,14 @@ export class NativeClient {
     shareId: string,
     connectionId: string,
     iceConfig: IceConfig,
+    sourceConnectionId?: string,
   ): Promise<RTCSessionDescriptionInit> {
     const response = await this.request(
       "prepare-edge",
       {
         shareId,
         connectionId,
+        ...(sourceConnectionId ? { sourceConnectionId } : {}),
         iceServers: iceConfig.iceServers.map((server) => ({
           urls: Array.isArray(server.urls) ? server.urls : [server.urls],
         })),
@@ -261,10 +265,15 @@ export class NativeClient {
   async prepareLocalEdge(
     shareId: string,
     connectionId: string,
+    sourceConnectionId?: string,
   ): Promise<RTCSessionDescriptionInit> {
     const response = await this.request(
       "prepare-local-edge",
-      { shareId, connectionId },
+      {
+        shareId,
+        connectionId,
+        ...(sourceConnectionId ? { sourceConnectionId } : {}),
+      },
       edgeOfferResponseSchema,
     );
     if (
@@ -274,6 +283,72 @@ export class NativeClient {
       throw new Error("Native local edge identity changed");
     }
     return { type: "offer", sdp: response.sdp };
+  }
+
+  async receiveOffer(
+    shareId: string,
+    connectionId: string,
+    offer: RTCSessionDescriptionInit,
+    iceConfig: IceConfig,
+    edgeCapacity: number,
+  ): Promise<{
+    answer: { type: "answer"; sdp: string };
+    audio: boolean;
+  }> {
+    if (offer.type !== "offer" || !offer.sdp) {
+      throw new Error("Native receiver requires an SDP offer");
+    }
+    const response = await this.request(
+      "receive-offer",
+      {
+        shareId,
+        connectionId,
+        edgeCapacity,
+        iceServers: iceConfig.iceServers.map((server) => ({
+          urls: Array.isArray(server.urls) ? server.urls : [server.urls],
+        })),
+        sdp: offer.sdp,
+      },
+      receiveAnswerResponseSchema,
+    );
+    if (
+      response.shareId !== shareId ||
+      response.connectionId !== connectionId
+    ) {
+      throw new Error("Native receiver identity changed");
+    }
+    return {
+      answer: { type: "answer", sdp: response.sdp },
+      audio: response.audio,
+    };
+  }
+
+  async addReceiveCandidate(
+    shareId: string,
+    connectionId: string,
+    candidate: NativeIceCandidate | null,
+  ): Promise<void> {
+    await this.request(
+      "receive-candidate",
+      { shareId, connectionId, candidate },
+      nativeAckResponseSchema,
+    );
+  }
+
+  async closeReceiver(shareId: string, connectionId: string): Promise<void> {
+    await this.request(
+      "close-receiver",
+      { shareId, connectionId },
+      nativeAckResponseSchema,
+    );
+  }
+
+  async stopReceive(shareId: string): Promise<void> {
+    await this.request(
+      "stop-receive",
+      { shareId },
+      nativeAckResponseSchema,
+    );
   }
 
   async acceptSignal(

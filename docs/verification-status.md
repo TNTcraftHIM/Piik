@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-09-04
+Last updated: 2026-09-05
 
 This file owns only cross-module physical evidence that still changes how the
 current product may be described. [Status](./status.md) owns exact source and
@@ -77,16 +77,16 @@ address selection, Browser launch commands, bounded Node supervision, its
 loopback port/Origin/Host/session contract, and exact package revision. The same
 source cross-builds for Windows amd64, macOS arm64, and Linux amd64.
 
-On Windows, Chrome for Testing 151.0.7922.138 completed the built Local page's
+On Windows, Chrome 151.0.7922.175 completed the built Local page's
 fragment access, Host surface, LAN invitation, and clean Client/Node/Browser
 shutdown. A separate synthetic run formed a P2P-only Host-plus-three-Viewer tree
 with one Browser relay and advancing frames at every Viewer. The Hosted Site
-completed loopback `hello`/`ping` after CDP granted `loopback-network`; without
+completed v8 loopback `hello`/`ping` after CDP granted `loopback-network`; without
 that permission Chrome blocked it as expected.
-The exact clean-revision Windows package assembled with Node 24.19.0 passed the
+The current clean-revision Windows package assembled with Node 24.19.0 passed the
 package checks recorded for that revision; changing `app/REVISION` made it fail
-before opening a listener. The later loopback-gate correction requires a fresh
-package run before this result is reused as current evidence.
+before opening a listener. Its fresh Site loopback gate closed the Client,
+Browser, port, and temporary profile.
 The same explicit-target assembly produced a Linux amd64 package that ran its
 bundled Node application and loopback runtime on an independent Ubuntu host.
 Its full package also created a public link reachable from another network and
@@ -117,7 +117,7 @@ media object through the Host UI. A separate two-Viewer media gate changes
 connections. Display-source lifecycle is not claimed by that arm.
 Native P2P quality evidence and the Browser-mediated native-source SFU happy
 path now have bounded gates. A focused unit gate proves that a quality candidate
-from a current Native Host edge selects the stock Browser sender, while ordinary
+from a current Native sender edge selects the stock Browser sender, while ordinary
 candidates remain Native. Controlled weak-path commit/rollback, production
 package integration, SFU recovery and endurance, and physical non-Windows
 capture remain unproved.
@@ -136,6 +136,13 @@ A native Host then used that public signaling path with an independent Linux
 Pion Viewer; repeated runs delivered 30+ H.264 RTP packets over selected direct
 paths using a reflexive candidate. Client exit stopped Node and the public link.
 This still does not prove decoded Browser media on a physical second device.
+
+On 2026-09-05, a local Windows gate proved a Browser Host feeding a Client-
+activated Native Viewer: the Viewer held the v8 control session while Chrome
+decoded 621 frames at 1280x720. A separate Pion integration gate proves that the
+same inbound source forwards H.264 and Opus RTP to one downstream edge without
+re-encoding. A physical mixed-device relay and public-link Browser Viewer remain
+open.
 
 On 2026-09-05, a Native preflight showed that Pion's ordinary srflx gatherer
 used three temporary local ports for three public STUN destinations. The current

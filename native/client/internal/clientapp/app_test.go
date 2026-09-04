@@ -51,11 +51,16 @@ func TestClientLaunchURLMarksThePageWithoutChangingOrigin(t *testing.T) {
 	}
 }
 
-func TestMissingNativeRuntimeLeavesBrowserCaptureAvailable(t *testing.T) {
-	runtime := discoverNativeMedia(t.Context(), "missing-capture-process")
-	if runtime.available() || runtime.controlFactory() != nil {
-		t.Fatalf("missing native runtime = %+v", runtime)
+func TestMissingCaptureKeepsViewerControlAvailable(t *testing.T) {
+	native := discoverNativeMedia(t.Context(), "missing-capture-process")
+	if native.capabilities.Video || native.capabilities.HardwareH264 {
+		t.Fatalf("missing native capture = %+v", native)
 	}
+	control := native.controlFactory()()
+	if control == nil {
+		t.Fatal("missing capture disabled the native Viewer control")
+	}
+	_ = control.Close()
 }
 
 func TestLaunchURLPreservesLocalAccessInsideThePrivateFragment(t *testing.T) {

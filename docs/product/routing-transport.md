@@ -164,17 +164,16 @@ encrypted hop-by-hop with DTLS-SRTP but terminates at the SFU; the product does
 not claim operator-blind media without a separately accepted application E2EE
 design. All-UDP-blocked networks currently end in bounded failure.
 
-Client Local mode runs this same graph with peer-assisted media enabled and no
-SFU or NAT prediction. It uses no STUN by default. Explicit one-link mode carries
-only HTTP/WebSocket control through a temporary public tunnel and adds public
-STUN to the same ordinary Browser media edges. Reachable peers may form the
-ordinary Browser relay tree; an unreachable media path fails without adding a
-route type, score, or fallback. Selecting a Site uses that deployment's current
-transport configuration instead.
+Client Local mode runs this graph without SFU, NAT prediction, or default STUN.
+One-link mode tunnels only HTTP/WebSocket control and adds public STUN to the
+same Browser/Native P2P edges. Reachable peers form one mixed relay tree; an
+unreachable path adds no route type or score. Site mode uses Site transport.
 
-A native Host reserves one additional loopback media edge for its system-
-Browser preview and existing Browser SFU publisher. That local edge neither
-consumes endpoint route-copy capacity nor starts gateway port mapping. Direct
-children still use the native shared encode; if the controller assigns SFU,
-the ordinary SFU publication consumes its existing route copy and retains the
-same LiveKit representation and recovery policy as Browser capture.
+A native Host reserves one loopback edge for Browser preview and the existing
+SFU publisher; it consumes no route-copy capacity or gateway mapping. Direct
+children share the native encode, while assigned SFU keeps the Browser LiveKit
+representation and recovery policy.
+
+A native Viewer terminates only its P2P upstream, reserves one Browser playback
+edge, and reuses compatible H.264/Opus for bounded children. Browser keeps SFU,
+route revisions, frame proof, and fallback.

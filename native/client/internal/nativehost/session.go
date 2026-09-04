@@ -36,14 +36,15 @@ type CaptureState struct {
 }
 
 type Event struct {
-	Type         string
-	ShareID      string
-	ConnectionID string
-	Candidate    *webrtc.ICECandidateInit
-	State        string
-	LocalType    string
-	RemoteType   string
-	Quality      *mediaedge.QualitySample
+	Type             string
+	ShareID          string
+	ConnectionID     string
+	Candidate        *webrtc.ICECandidateInit
+	State            string
+	LocalType        string
+	RemoteType       string
+	NatTraversalPath string
+	Quality          *mediaedge.QualitySample
 }
 
 type Options struct {
@@ -235,8 +236,10 @@ func (session *Session) prepareEdge(
 				if pair != nil {
 					session.emit(Event{
 						Type: "edge-path", ShareID: session.shareID,
-						ConnectionID: connectionID,
-						LocalType:    pair.Local.String(), RemoteType: pair.Remote.String(),
+						ConnectionID:     connectionID,
+						LocalType:        pair.Local.String(),
+						RemoteType:       pair.Remote.String(),
+						NatTraversalPath: pair.NatTraversalPath,
 					})
 				}
 			},

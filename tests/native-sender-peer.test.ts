@@ -5,10 +5,10 @@ import {
   senderQualityEvidenceFromSnapshot,
 } from "../src/client/media/sender-quality-evidence";
 import {
-  NativeHostPeer,
+  NativeSenderPeer,
   shouldUseBrowserQualityCandidate,
-} from "../src/client/native/native-host-peer";
-import type { NativeEdgeControl } from "../src/client/native/host-edge";
+} from "../src/client/native/native-sender-peer";
+import type { NativeEdgeControl } from "../src/client/native/native-sender-edge";
 import type { NativeClientEvent } from "../src/client/native/wire";
 import type { PeerSnapshot } from "../src/client/types";
 
@@ -31,7 +31,7 @@ describe("native Host peer quality", () => {
       }),
     };
     const snapshots: PeerSnapshot[] = [];
-    const peer = new NativeHostPeer(
+    const peer = new NativeSenderPeer(
       "viewer_123456",
       "edge_12345678",
       "share_1234567",
@@ -63,7 +63,7 @@ describe("native Host peer quality", () => {
       qualityProbe: true,
     })).toBe(false);
     listener({
-      version: 7,
+      version: 8,
       type: "edge-state",
       shareId: "share_1234567",
       connectionId: "edge_12345678",
@@ -71,7 +71,7 @@ describe("native Host peer quality", () => {
     });
 
     const quality = {
-      version: 7 as const,
+      version: 8 as const,
       type: "edge-quality" as const,
       shareId: "share_1234567",
       connectionId: "edge_12345678",

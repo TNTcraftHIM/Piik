@@ -1,7 +1,7 @@
 # ADR-0010: Cross-Platform Client Runtime
 
-- Status: accepted capability-provider architecture and native Host media boundary
-- Date: 2026-09-04
+- Status: accepted capability-provider architecture and native endpoint media boundary
+- Date: 2026-09-05
 
 ## Context
 
@@ -35,8 +35,9 @@ topologies and makes a saved Site unavailable while another room source runs.
    public process identity, not authentication. The listener accepts the current
    Local Host origin and the one user-saved Site origin. Origin and Host
    validation plus the Browser's local-network permission own this boundary.
-4. Loopback v7 starts with a strict `hello` handshake. Health discovery reports
-   only separately probed native capture booleans. An active control session may
+4. Loopback v8 starts with a strict `hello` handshake. Health discovery reports
+   only separately probed native capture booleans. Native Viewer receive/NAT
+   remains available when capture or hardware encode is absent. An active control session may
    list local screen/window choices, request bounded previews, and own one share's generation-fenced SDP/ICE
    edges, including at most one loopback media bridge outside route-copy
    capacity; it carries no room password, Host token, Viewer grant, or route
@@ -69,8 +70,12 @@ topologies and makes a saved Site unavailable while another room source runs.
    participant, connection identity, copy capacity, and committed route graph.
    Browser-to-Browser, Native-to-Browser, and Native-to-Native edges use the same
    WebRTC signaling contract. Native media currently covers the Host adapter;
-   Viewer receive/relay follows the same boundary rather than adding a second
-   participant or route protocol. One isolated
+    Viewer receive/relay follows the same boundary rather than adding a second
+    participant or route protocol. A Native Viewer accepts only a negotiated
+    H.264/Opus offer, forwards encoded RTP into bounded local sources, and uses
+    the existing Browser bridge for playback; compatible child edges reuse those
+    sources. Unsupported media or a failed native bridge falls back to the
+    existing Browser peer. One isolated
    platform capture feeds one encoded source and bounded independent Pion
    transports, with process-loopback audio for windows or system-loopback audio
    for screens sharing the same PeerConnection when available. Each Site or one-link share makes one bounded, best-effort PCP,
@@ -97,7 +102,7 @@ topologies and makes a saved Site unavailable while another room source runs.
    and an installed GStreamer hardware-H.264 element. These adapters end at the
    same bounded encoded-frame protocol and do not own WebRTC or product state.
    The shared Native encode is the normal path. For a persistently degraded
-   Native Host edge, the existing quality operation may prepare an overlapping
+   Native sender edge, the existing quality operation may prepare an overlapping
    stock Browser sender from the stable local bridge; existing evidence alone
    decides commit or rollback, and a later operation may return to Native. No
    extra threshold, timer, score, route operation, or representation ladder is
@@ -165,6 +170,9 @@ WebSocket control path, then disappears when the Client exits. An isolated
 LiveKit gate also proves native capture through the loopback Browser bridge and
 the existing SFU publisher, including a live 1080p-to-480p profile change and
 complete cleanup.
+A Browser-Host-to-Native-Viewer gate additionally proves that the Viewer claims
+the v8 Client control session and Chrome decodes the 1280x720 source; the encoded
+downstream edge has a separate H.264/Opus RTP integration gate.
 One-link Browser media and physical non-Windows capture remain separate gates.
 GitHub runners compile all three platform adapters. The macOS arm64 sidecar also
 creates a hardware-only VideoToolbox encoder and produces a constrained-baseline
@@ -174,7 +182,7 @@ candidate probes and packages its Portal/PipeWire/GStreamer adapter, while a
 real desktop, hardware encoder, system audio, and lifecycle still require a
 physical Linux gate. Source previews remain best-effort on both platforms.
 
-The v7 loopback gate also proves that a real Chrome receiver produces Pion
+The v8 loopback gate also proves that a real Chrome receiver produces Pion
 transport feedback and that a non-unknown native sender-quality window reaches
 the existing route controller. Unknown feedback and stopped-source windows stay
 ineligible.

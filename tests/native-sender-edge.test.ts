@@ -2,9 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { SignalPayload } from "../src/shared/protocol";
 import {
-  NativeHostEdge,
+  NativeSenderEdge,
   type NativeEdgeControl,
-} from "../src/client/native/host-edge";
+} from "../src/client/native/native-sender-edge";
 import type { NativeClientEvent } from "../src/client/native/wire";
 
 function fixture(natPrediction = false) {
@@ -26,7 +26,7 @@ function fixture(natPrediction = false) {
   };
   const sent: SignalPayload[] = [];
   const states: RTCPeerConnectionState[] = [];
-  const edge = new NativeHostEdge(
+  const edge = new NativeSenderEdge(
     "viewer_123456",
     "edge_12345678",
     "share_1234567",
@@ -58,13 +58,13 @@ function fixture(natPrediction = false) {
   };
 }
 
-describe("native Host edge adapter", () => {
+describe("native sender edge adapter", () => {
   it("sends the offer before candidates gathered during preparation", async () => {
     const current = fixture();
     const prepare = vi.mocked(current.control.prepareEdge);
     prepare.mockImplementationOnce(async () => {
       current.emit({
-        version: 7,
+        version: 8,
         type: "edge-candidate",
         shareId: "share_1234567",
         connectionId: "edge_12345678",
@@ -85,7 +85,7 @@ describe("native Host edge adapter", () => {
     const current = fixture();
     expect(await current.edge.start()).toBe(true);
     current.emit({
-      version: 7,
+      version: 8,
       type: "edge-state",
       shareId: "share_1234567",
       connectionId: "edge_12345678",
@@ -113,7 +113,7 @@ describe("native Host edge adapter", () => {
       .toHaveLength(3);
     for (const port of [40_000, 40_003, 40_006]) {
       current.emit({
-        version: 7,
+        version: 8,
         type: "edge-candidate",
         shareId: "share_1234567",
         connectionId: "edge_12345678",

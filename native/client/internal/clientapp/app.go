@@ -381,15 +381,7 @@ type nativeRuntime struct {
 	captureProcess string
 }
 
-func (runtime nativeRuntime) available() bool {
-	return runtime.capabilities.Video && runtime.capabilities.HardwareH264 &&
-		runtime.captureProcess != ""
-}
-
 func (runtime nativeRuntime) controlFactory() func() loopback.ControlSession {
-	if !runtime.available() {
-		return nil
-	}
 	return func() loopback.ControlSession {
 		return nativecontrol.New(runtime.captureProcess, runtime.capture, true)
 	}

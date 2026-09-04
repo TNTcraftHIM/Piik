@@ -320,7 +320,7 @@ async function browserMediaGate(input: {
 
     socket = new WebSocket(
       "ws://127.0.0.1:" + input.endpoint.port + "/control",
-      ["screener-client-v7." + input.endpoint.instanceToken],
+      ["screener-client-v8." + input.endpoint.instanceToken],
     );
     await new Promise<void>((resolveOpen, rejectOpen) => {
       const timer = window.setTimeout(
@@ -361,7 +361,7 @@ async function browserMediaGate(input: {
           rejectRequest(new Error("Native request timed out: " + type));
         }, 8_000);
         pending.set(id, { resolve: resolveRequest, reject: rejectRequest, timer });
-        socket!.send(JSON.stringify({ version: 7, id, type, ...fields }));
+        socket!.send(JSON.stringify({ version: 8, id, type, ...fields }));
       });
     };
     socket.onmessage = (event) => {

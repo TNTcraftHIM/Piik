@@ -55,7 +55,7 @@ frames, the Client reports whether that
 edge's target payload bitrate can carry the measured shared H.264 plus Opus
 payload. The existing route controller owns persistence and any replacement;
 the Client does not pace, score, or globally lower the shared encoder. If one
-Native Host edge remains persistently degraded, the existing quality operation
+Native sender edge remains persistently degraded, the existing quality operation
 may test a stock Browser WebRTC sender for that edge through the local bridge.
 Existing Viewer evidence commits or rolls back the candidate; healthy Native
 edges continue sharing the hardware encode.
@@ -108,11 +108,12 @@ gates rather than environment-dependent unit tests.
 
 The loopback service binds IPv4 loopback on the first available port from
 `39721` through `39730`. `/health` discovers the current process; `/control`
-accepts one strict v7 session. After `hello`, an available Client may list local
-capture choices and own one generation-fenced share's SDP/ICE edges, including
-one reserved local Browser bridge. Its public `instanceToken` distinguishes the
-discovered process but is not authentication; room authority and remote
-signaling remain in the Browser.
+accepts one strict v8 session. After `hello`, an available Client may list local
+capture choices, own one generation-fenced Host share, or receive one native
+Viewer source and its bounded encoded child edges. Its public `instanceToken`
+distinguishes the discovered process but is not authentication; room authority
+and remote signaling remain in the Browser. Viewer receive/relay remains
+available even when this machine has no accepted native capture encoder.
 
 ## Packaging
 

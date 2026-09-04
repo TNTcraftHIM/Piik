@@ -1,9 +1,9 @@
 # Native Client Media Evidence
 
-- Reviewed: 2026-09-04
+- Reviewed: 2026-09-05
 - Scope: platform capture, one shared H.264/Opus source, Pion transport, Browser
   decode, and Browser-mediated SFU fallback
-- Status: Windows physical native Host gates passed; macOS and Linux adapters
+- Status: Windows physical native Host and Viewer gates passed; macOS and Linux adapters
   compile and package but still require physical media gates
 
 ## Result
@@ -18,6 +18,15 @@ attach that native source to the current route. A remote Pion Viewer then
 received 30 packets over a selected `srflx`-to-`srflx` pair. The validation
 session carried signaling through a temporary reverse SSH path only; media was
 negotiated directly by ICE.
+
+On 2026-09-05, a separate Windows Local gate used a Browser Host with synthetic
+1280x720 motion and a Client-activated Viewer. The Viewer exclusively claimed
+the v8 loopback control session and real Chrome decoded 621 frames at 1280x720.
+This proves the Browser-to-Native receive/local-bridge path rather than a silent
+Browser fallback. A Pion integration gate separately forwards the same H.264
+and Opus payload from one inbound receiver source to a bounded downstream edge,
+while dropping upstream connection-local extensions so each outbound Pion
+interceptor writes its own negotiated TWCC header.
 
 The one-link form carried the current signaling protocol through its temporary
 public WSS origin to an independent Linux Pion Viewer. Repeated runs delivered
@@ -85,7 +94,7 @@ SDK or media policy.
 
 A shared encode cannot independently adapt one bitstream for unequal paths.
 Rather than lower every Native child, a quality operation originating from a
-persistently degraded Native Host edge may prepare one Browser WebRTC sender
+    persistently degraded Native sender edge may prepare one Browser WebRTC sender
 from the stable local bridge. The existing overlapping candidate comparison
 alone commits or rolls it back, and a later quality operation can return that
 edge to Native. Healthy Native edges keep sharing the hardware encode. This is
@@ -165,9 +174,11 @@ unavailable dependency cleanly leaves Browser capture available.
 - `mediaedge` owns the stable Pion API, one UDP mux, shared H.264/Opus sources,
   and independent PeerConnections.
 - `nativehost` owns the current capture generation and its bounded stable edges.
-- `nativecontrol` maps only local source/share/edge commands and exact native
+- `nativeviewer` owns one native inbound H.264/Opus source and its encoded child
+  edges; it does not own room or route state.
+- `nativecontrol` maps local source/share/receive/edge commands and exact native
   sender quality windows, live profile updates, and source replacement to the
-  loopback v7 wire.
+  loopback v8 wire.
 
 The deleted sender application, UI, room client, and old wire are not
 compatibility inputs. Historical measurements remain in the separately marked
@@ -187,6 +198,7 @@ compatibility inputs. Historical measurements remain in the separately marked
 - [Pion no-op pacer RTX issue](https://github.com/pion/interceptor/issues/406)
 - [WebRTC remote-track constraints](https://www.w3.org/TR/webrtc/#mediastreamtrack-network-use)
 - [Pion single-port ICE](https://github.com/pion/webrtc/tree/master/examples/ice-single-port)
+- [Pion broadcast relay](https://github.com/pion/webrtc/tree/master/examples/broadcast)
 - [gopus pure-Go Opus codec](https://github.com/thesyncim/gopus)
 - [Tailscale port mapper](https://github.com/tailscale/tailscale/tree/main/net/portmapper)
 - [libp2p NAT port mapping](https://github.com/libp2p/go-libp2p/blob/master/options.go)

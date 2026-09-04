@@ -1,6 +1,6 @@
 # Capture, Audio, And Media Quality
 
-This file owns the current Browser media contract. Detailed measurements and
+This file owns the current Browser and Client media contract. Detailed measurements and
 platform limits live in [realtime quality research](../research/realtime-quality-adaptation.md)
 and [screen-audio research](../research/browser-screen-audio-quality.md).
 [ADR-0007](../adr/0007-path-isolated-representation-quality.md) owns the SFU
@@ -102,7 +102,9 @@ capture therefore retains source resolution and frame-rate ownership across its
 loopback Browser bridge; the existing Browser SFU publisher applies only sender
 parameters and LiveKit's representation policy to that remote source.
 
-Native Host edges normally reuse one hardware-encoded source. When an edge is
+Native sender edges normally reuse one encoded source. A Native Viewer forwards
+compatible H.264/Opus payload without decoding or re-encoding it; each outbound
+PeerConnection owns its RTP identity and transport feedback. When an edge is
 persistently degraded, the existing quality operation may prepare a Browser
 WebRTC sender from the stable local bridge as that edge's candidate. The old
 edge stays live until the Viewer proves the candidate is better; a failed
