@@ -70,6 +70,14 @@
 - Canonical root must be clean current `main` at audit/integration boundaries.
   Create branches/worktrees from that exact commit; old branches and worktrees
   are never truth sources.
+- `main` is a low-frequency integration branch, never a workbench. Keep work on
+  branches/worktrees and merge only one complete, user-accepted phase per PR,
+  after its related implementation, tests, documentation, and acceptance are
+  complete. Use one squash commit and leave `main` unchanged between phases.
+  Do not merge intermediate checkpoints, release records, metadata-only edits,
+  or follow-up cleanup; fold them into the next phase. A P0/P1 emergency may
+  bypass batching only when the user explicitly authorizes it, still through
+  one coherent PR.
 - Preserve user work. Branch, truth-checkpoint, PR, release, recovery, and
   cleanup rules are owned by [CONTRIBUTING.md](./CONTRIBUTING.md); do not mirror
   that workflow here.

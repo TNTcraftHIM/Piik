@@ -15,11 +15,19 @@ Do not automatically create a truth checkpoint, edit status/memory, run `npm run
 
 Use this path only when the owner explicitly requests it or when closing a major phase or changing a public contract, route/security model, infrastructure, persistent/irreversible state, or release boundary.
 
+`main` is intentionally low-frequency. It is not a staging branch: all
+intermediate implementation, experiments, evidence collection, release notes,
+and cleanup stay in branches/worktrees. One complete, user-accepted phase lands
+through one squash PR after its related checks and acceptance are finished;
+leave `main` alone until the next material phase. Only a user-authorized P0/P1
+emergency may use a separate PR, and that PR must still contain one coherent
+fix.
+
 1. Create one short-lived branch/worktree from exact canonical `main`; use `feat/`, `fix/`, `docs/`, `refactor/`, `test/`, `chore/`, or `spike/` followed by a short description.
 2. Update only the single durable owner for changed semantics and any materially changed current snapshot. If semantics remain disputed, record a hold and stop dependent work.
 3. Implement and run repository hygiene, `npm run check`, the relevant browser/network gates, and review in proportion to the whole acceptance boundary.
-4. Merge an accepted truth checkpoint before dependent candidates. Rebase or rebuild a retained candidate from that exact `main` once, preserving main's owning truth on conflicts and transplanting only approved scoped code, tests, and new facts.
-5. Open the pull request, resolve required review/checks, squash-merge the coherent phase once, deploy that merged revision when authorized, perform scoped postflight, then audit references and reparse safety before cleanup.
+4. Keep accepted truth checkpoints and dependent candidates on branches until the phase is complete. Rebase or rebuild a retained candidate from exact `main` only when starting a new phase, preserving main's owning truth on conflicts and transplanting only approved scoped code, tests, and new facts.
+5. Open one pull request for the complete phase, resolve required review/checks, squash-merge it once, deploy that merged revision when authorized, perform scoped postflight, then audit references and reparse safety before cleanup.
 
 One coherent phase should leave one meaningful squash commit on `main`. Include
 its source, tests, owned semantic documentation, and materially changed status
