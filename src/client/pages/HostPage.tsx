@@ -583,6 +583,7 @@ export function HostPage({
   const nativeSourceRequestRef = useRef<object | null>(null);
   const nativeSourceClientRef = useRef<NativeClient | null>(null);
   const nativeSourcePathRef = useRef<NativeCapturePath | null>(null);
+  const nativeClientReleaseRef = useRef<Promise<void>>(Promise.resolve());
 
   const mediaViewers = useMemo(
     () => Array.from(peerSnapshots.values()),
@@ -1271,20 +1272,33 @@ export function HostPage({
         disposeNativeShare();
       } else {
         bridge?.dispose();
-        if (shareStarted) {
-          await client.stopShare(shareGeneration).catch(() => undefined);
-        }
-        client.close();
+        releaseNativeClient(client, shareStarted ? shareGeneration : null);
       }
       throw error;
     }
+  }
+
+  function releaseNativeClient(
+    client: NativeClient,
+    shareGeneration: string | null = null,
+  ): void {
+    const release = async (): Promise<void> => {
+      if (shareGeneration) {
+        await client.stopShare(shareGeneration).catch(() => undefined);
+      }
+      await client.closeAndWait();
+    };
+    nativeClientReleaseRef.current = Promise.all([
+      nativeClientReleaseRef.current,
+      release(),
+    ]).then(() => undefined);
   }
 
   function closeCaptureSourcePicker(): void {
     nativeSourceRequestRef.current = null;
     const client = nativeSourceClientRef.current;
     if (client && client !== nativeClientRef.current) {
-      client.close();
+      releaseNativeClient(client);
     }
     nativeSourceClientRef.current = null;
     nativeSourcePathRef.current = null;
@@ -1296,18 +1310,25 @@ export function HostPage({
     nativeSourceRequestRef.current = request;
     const previousClient = nativeSourceClientRef.current;
     if (previousClient && previousClient !== nativeClientRef.current) {
-      previousClient.close();
+      releaseNativeClient(previousClient);
     }
     nativeSourceClientRef.current = null;
     nativeSourcePathRef.current = null;
     setNativeSources({ kind: "loading" });
+
+    await nativeClientReleaseRef.current;
+    if (nativeSourceRequestRef.current !== request) {
+      return;
+    }
 
     const activeClient = nativeModeRef.current
       ? nativeClientRef.current
       : null;
     const client = activeClient ?? (await NativeClient.connect());
     if (nativeSourceRequestRef.current !== request) {
-      if (client && client !== nativeClientRef.current) client.close();
+      if (client && client !== nativeClientRef.current) {
+        releaseNativeClient(client);
+      }
       return;
     }
     if (
@@ -1315,7 +1336,9 @@ export function HostPage({
       !client.health.nativeMedia.video ||
       !client.health.nativeMedia.hardwareH264
     ) {
-      if (client && client !== nativeClientRef.current) client.close();
+      if (client && client !== nativeClientRef.current) {
+        releaseNativeClient(client);
+      }
       setNativeSources({ kind: "unavailable" });
       return;
     }
@@ -1326,11 +1349,11 @@ export function HostPage({
       ]);
       const path = defaultNativeCapturePath(adapters);
       if (nativeSourceRequestRef.current !== request) {
-        if (client !== nativeClientRef.current) client.close();
+        if (client !== nativeClientRef.current) releaseNativeClient(client);
         return;
       }
       if (!path) {
-        if (client !== nativeClientRef.current) client.close();
+        if (client !== nativeClientRef.current) releaseNativeClient(client);
         setNativeSources({ kind: "unavailable" });
         return;
       }
@@ -1343,7 +1366,7 @@ export function HostPage({
         systemAudio: client.health.nativeMedia.systemAudio,
       });
     } catch {
-      if (client !== nativeClientRef.current) client.close();
+      if (client !== nativeClientRef.current) releaseNativeClient(client);
       if (nativeSourceRequestRef.current === request) {
         setNativeSources({ kind: "unavailable" });
       }
@@ -1411,14 +1434,7 @@ export function HostPage({
     if (!client) {
       return;
     }
-    if (shareGeneration) {
-      void client
-        .stopShare(shareGeneration)
-        .catch(() => undefined)
-        .finally(() => client.close());
-    } else {
-      client.close();
-    }
+    releaseNativeClient(client, shareGeneration);
   }
 
   function finishSourceSwitch(token: object): void {

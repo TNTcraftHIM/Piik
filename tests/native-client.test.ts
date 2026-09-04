@@ -89,8 +89,16 @@ describe("native Client private wire", () => {
     expect(cleanClient).not.toBeNull();
     const intentional = vi.fn();
     cleanClient!.onClose(intentional);
-    cleanClient!.close();
+    const closed = cleanClient!.closeAndWait();
+    let closeCompleted = false;
+    void closed.then(() => {
+      closeCompleted = true;
+    });
+    await Promise.resolve();
+    expect(closeCompleted).toBe(false);
     sockets[1]!.emitUnexpectedClose();
+    await closed;
+    expect(closeCompleted).toBe(true);
     expect(intentional).not.toHaveBeenCalled();
   });
 
