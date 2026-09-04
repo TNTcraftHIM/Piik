@@ -23,6 +23,7 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { clientPackageTarget } from "./client-package-targets.mjs";
+import { writeClientPlatformAssets } from "./client-icons.mjs";
 
 function fail(message) {
   throw new Error(message);
@@ -259,6 +260,19 @@ try {
     CGO_ENABLED: "0",
   });
   chmodSync(clientPath, 0o755);
+  const platformAssets = writeClientPlatformAssets({
+    packageRoot,
+    target,
+    revision,
+    iconPath: join(
+      repositoryRoot,
+      "native",
+      "client",
+      "cmd",
+      "screener-client",
+      "screener.ico",
+    ),
+  });
   writeFileSync(join(packageRoot, "REVISION"), `${revision}\n`, "ascii");
 
   cpSync(packageRoot, outputRoot, {
@@ -278,6 +292,7 @@ try {
     publicTunnel: packagedTunnel
       ? `runtime/tunnel/${target.tunnelName}`
       : null,
+    platformAssets,
     app: "app",
   })}\n`);
 } finally {

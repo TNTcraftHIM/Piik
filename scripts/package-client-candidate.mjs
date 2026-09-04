@@ -245,6 +245,7 @@ async function verifyPackage(
   }
   run(client, ["--help"], root);
   run(tunnel, ["--version"], root);
+  verifyPlatformAssets(root, target);
 
   if (target.captureName) {
     const capture = join(root, "runtime", "native", target.captureName);
@@ -252,6 +253,45 @@ async function verifyPackage(
     if (probe?.protocol !== 3) fail("Packaged native capture probe is invalid");
   }
   await verifyLocalPackage(root, target, temporaryRoot);
+}
+
+function verifyPlatformAssets(root, target) {
+  if (target.goos === "linux") {
+    const desktop = join(root, "share", "applications", "screener-client.desktop");
+    const icon = join(
+      root,
+      "share",
+      "icons",
+      "hicolor",
+      "256x256",
+      "apps",
+      "screener-client.png",
+    );
+    if (!existsSync(desktop) || !existsSync(icon)) {
+      fail("Linux Client icon assets are missing");
+    }
+    if (!readFileSync(desktop, "utf8").includes("Icon=screener-client\n")) {
+      fail("Linux desktop entry does not name its icon");
+    }
+    if (!readFileSync(icon).subarray(0, 8).equals(Buffer.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    ]))) {
+      fail("Linux Client icon is not PNG");
+    }
+  }
+  if (target.goos === "darwin") {
+    const bundle = join(root, "Screener Client.app");
+    const launcher = join(bundle, "Contents", "MacOS", "Launcher");
+    const plist = join(bundle, "Contents", "Info.plist");
+    const icon = join(bundle, "Contents", "Resources", "screener.icns");
+    if (!existsSync(launcher) || !existsSync(plist) || !existsSync(icon)) {
+      fail("macOS Client app icon assets are missing");
+    }
+    if (!readFileSync(icon).subarray(0, 4).equals(Buffer.from("icns"))) {
+      fail("macOS Client icon is not ICNS");
+    }
+    if (process.platform === "darwin") run(launcher, ["--help"], root);
+  }
 }
 
 if (process.argv.length !== 5) {

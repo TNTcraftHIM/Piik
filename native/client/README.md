@@ -144,6 +144,9 @@ No compatibility reader accepts a mismatched private build.
 The Windows Client embeds the shared Screener mark through the
 `cmd/screener-client/screener_windows_amd64.syso` resource; the platform
 suffix keeps that Windows resource out of Linux and macOS builds.
+Linux packages include the standard `share/applications` desktop entry and
+hicolor icon. macOS packages include a thin `Screener Client.app` launcher
+with an ICNS resource; the raw Go executable remains available beside it.
 
 For a native Host smoke run, launch the Client and select a window in the Host
 page. The Client never guesses among multiple targets. The page still creates
