@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { NativeClient } from "../src/client/native/client";
 
 import {
   nativeEventSchema,
@@ -7,7 +9,88 @@ import {
   sourcePreviewResponseSchema,
 } from "../src/client/native/wire";
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 describe("native Client private wire", () => {
+  it("notifies the owner once on an unexpected close and stays silent on cleanup", async () => {
+    const sockets: FakeWebSocket[] = [];
+    const token = "a".repeat(43);
+    class FakeWebSocket extends EventTarget {
+      static readonly OPEN = 1;
+      static readonly CLOSING = 2;
+      static readonly CLOSED = 3;
+      readyState = FakeWebSocket.OPEN;
+      protocol = `screener-client-v5.${token}`;
+      readonly close = vi.fn(() => {
+        this.readyState = FakeWebSocket.CLOSING;
+      });
+
+      constructor(readonly url: string, readonly protocols: string[]) {
+        super();
+        sockets.push(this);
+        queueMicrotask(() => this.dispatchEvent(new Event("open")));
+      }
+
+      send(payload: string): void {
+        const request = JSON.parse(payload) as { id: string; type: string };
+        if (request.type !== "hello") return;
+        queueMicrotask(() => {
+          const event = new Event("message");
+          Object.defineProperty(event, "data", {
+            value: JSON.stringify({
+              version: 5,
+              id: request.id,
+              type: "ready",
+            }),
+          });
+          this.dispatchEvent(event);
+        });
+      }
+
+      emitUnexpectedClose(): void {
+        this.readyState = FakeWebSocket.CLOSED;
+        this.dispatchEvent(new Event("close"));
+      }
+    }
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    vi.stubGlobal("window", {
+      setTimeout: globalThis.setTimeout,
+      clearTimeout: globalThis.clearTimeout,
+    });
+    vi.stubGlobal("fetch", vi.fn(async () =>
+      new Response(JSON.stringify({
+        protocol: 5,
+        service: "screener-client",
+        port: 39_721,
+        instanceToken: token,
+        nativeMedia: {
+          video: true,
+          processAudio: false,
+          systemAudio: false,
+          hardwareH264: true,
+        },
+      }), { status: 200 }),
+    ));
+
+    const client = await NativeClient.connect();
+    expect(client).not.toBeNull();
+    const unexpected = vi.fn();
+    client!.onClose(unexpected);
+    sockets[0]!.emitUnexpectedClose();
+    sockets[0]!.emitUnexpectedClose();
+    expect(unexpected).toHaveBeenCalledOnce();
+
+    const cleanClient = await NativeClient.connect();
+    expect(cleanClient).not.toBeNull();
+    const intentional = vi.fn();
+    cleanClient!.onClose(intentional);
+    cleanClient!.close();
+    sockets[1]!.emitUnexpectedClose();
+    expect(intentional).not.toHaveBeenCalled();
+  });
+
   it("keeps public discovery capability-only", () => {
     expect(
       nativeHealthSchema.parse({

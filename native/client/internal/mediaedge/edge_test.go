@@ -103,6 +103,14 @@ func TestRemoteCandidatesAreBoundedUntilTheAnswer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err = edge.AddRemoteCandidate(&webrtc.ICECandidateInit{
+		Candidate: "candidate:garbage",
+	}); err != nil {
+		t.Fatalf("malformed candidate escaped the edge boundary: %v", err)
+	}
+	if len(edge.pendingCandidates) != 0 {
+		t.Fatalf("malformed candidate was queued: %d", len(edge.pendingCandidates))
+	}
 	for index := 0; index < maxPendingCandidates; index++ {
 		if err = edge.AddRemoteCandidate(&webrtc.ICECandidateInit{
 			Candidate: "candidate:1 1 udp 1 127.0.0.1 9 typ host",
@@ -112,8 +120,35 @@ func TestRemoteCandidatesAreBoundedUntilTheAnswer(t *testing.T) {
 	}
 	if err = edge.AddRemoteCandidate(&webrtc.ICECandidateInit{
 		Candidate: "candidate:1 1 udp 1 127.0.0.1 9 typ host",
-	}); err == nil {
-		t.Fatal("unbounded candidate queue was accepted")
+	}); err != nil {
+		t.Fatalf("excess candidate was not discarded: %v", err)
+	}
+	if len(edge.pendingCandidates) != maxPendingCandidates {
+		t.Fatalf("candidate queue grew beyond the bound: %d", len(edge.pendingCandidates))
+	}
+}
+
+func TestRepeatedAnswerIsIdempotent(t *testing.T) {
+	engine, err := NewEngine(EngineOptions{
+		BindAddress: "127.0.0.1:0", IncludeLoopback: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = engine.Close() })
+	source, err := engine.NewSource(1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = source.Close() })
+	edge, receiver, _ := connectedReceiver(t, engine, source, "repeat-answer")
+	t.Cleanup(func() { _ = receiver.Close() })
+	answer := receiver.LocalDescription()
+	if answer == nil {
+		t.Fatal("receiver did not retain its answer")
+	}
+	if err = edge.SetAnswer(*answer); err != nil {
+		t.Fatalf("repeated answer was not idempotent: %v", err)
 	}
 }
 

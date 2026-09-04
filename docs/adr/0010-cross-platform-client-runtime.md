@@ -117,8 +117,9 @@ process-isolated hardware-H.264/Pion edges sharing one encoded source and
 decoded by Chrome, and bounded process cleanup. The native Host path uses the
 current Browser route; its explicit in-page window picker also passes source
 end, same-room reselection, and restored Viewer delivery. A remote Pion gate has
-received video over a direct
-`srflx`-to-`srflx` pair. A Windows Browser gate also receives process-loopback
+received 30+ H.264 RTP packets over a selected direct
+`srflx`-to-`srflx` pair; this proves packet delivery, not decoded Browser video.
+A Windows Browser gate also receives process-loopback
 Opus on both native edges. A separate remote gate proves that `--link` generates
 the ordinary public invitation and carries the unchanged Viewer page and
 WebSocket control path, then disappears when the Client exits. An isolated
@@ -138,6 +139,9 @@ The v5 loopback gate also proves that a real Chrome receiver produces Pion
 transport feedback and that a non-unknown native sender-quality window reaches
 the existing route controller. Unknown feedback and stopped-source windows stay
 ineligible.
+
+The local trust boundary is intentionally per-user: the instance token identifies
+the running Client but is not authentication against another local process.
 
 A physical home-router gate created and removed a UPnP mapping for an ephemeral
 UDP listener. The integrated native Host gate still passed capture, two-edge

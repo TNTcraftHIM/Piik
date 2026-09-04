@@ -26,6 +26,7 @@
     "scripts/client-native-sfu-page.ts",
     "scripts/client-loopback-gate.ts",
     "scripts/client-local-gate.ts",
+    "scripts/client-link-gate.ts",
     "tests"
   ]
 }

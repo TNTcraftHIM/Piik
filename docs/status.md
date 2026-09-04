@@ -130,9 +130,10 @@ This is the current execution index. Git history owns completed timelines;
   same-room reselection; display-source lifecycle remains a separate physical
   gate. An explicit target assembler also produces a
   Linux amd64 package with proved Local/one-link runtime and a structurally
-  verified but unexecuted macOS arm64 package; its capture sidecar now passes an
-  arm64 compile plus hardware-H.264 IDR self-test. Client-scoped pull requests
-  build and Local-smoke all three candidates before merge; a validated `main`
+  verified macOS arm64 package; its capture sidecar now passes an arm64 compile
+  plus hardware-H.264 IDR self-test, but the package and capture path remain
+  unrun on a physical Mac. Client-scoped pull requests build and run the
+  scripted Local smoke on all three candidates before merge; a validated `main`
   push emits them as short-lived Actions artifacts. One-link mode preserves the Host Local
   authority while exposing its ordinary invitation and HTTP/WebSocket control
   path through a session-scoped Quick Tunnel. An independent Linux Pion Viewer
@@ -145,6 +146,10 @@ This is the current execution index. Git history owns completed timelines;
   pacing or changing the shared encode. A local bridge now supplies native Host
   media to the existing Browser LiveKit publisher; an isolated LiveKit gate
   proves 1280x720 delivery and complete cleanup without a second SFU client.
+  Native control treats malformed/stale/repeated per-edge signaling as disposable;
+  unexpected Client close reaches the Host through the existing fence. Windows
+  retains one converted frame for quiet-source keyframe recovery; current static
+  and crash gates pass, while cross-version capture remains open.
   Non-Windows capture remains outside the release. The default packaged Client
   launcher performs a non-blocking official GitHub Release check and the
   deployment tree provides a read-only operator check against the same full-SHA

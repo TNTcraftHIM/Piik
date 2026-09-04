@@ -51,6 +51,7 @@ interface GateResult {
   sourceFailureEndedShare: boolean | null;
   replacementViewerConnected: boolean | null;
   replacementViewerFrames: number | null;
+  clientCrashEndedShare: boolean | null;
   mode: GateMode;
   cleanup: Awaited<ReturnType<typeof cleanupRun>>;
   error: string | null;
@@ -460,6 +461,11 @@ async function main(): Promise<void> {
     throw new Error("Cross-NAT and one-link gate modes are mutually exclusive");
   }
   const mode: GateMode = linkMedia ? "one-link" : crossNat ? "cross-nat" : "local";
+  const crashGate =
+    process.env.SCREENER_CLIENT_NATIVE_HOST_CRASH_GATE === "true";
+  if (crashGate && mode !== "local") {
+    throw new Error("Client crash gate requires local mode");
+  }
   const sourceKind: "window" | "display" =
     process.env.SCREENER_CLIENT_NATIVE_HOST_SOURCE === "display"
       ? "display"
@@ -514,6 +520,7 @@ async function main(): Promise<void> {
     sourceFailureEndedShare: mode === "local" ? false : null,
     replacementViewerConnected: mode === "local" ? false : null,
     replacementViewerFrames: mode === "local" ? 0 : null,
+    clientCrashEndedShare: crashGate ? false : null,
     mode,
     cleanup: {
       browserExited: false,
@@ -783,7 +790,23 @@ async function main(): Promise<void> {
         })()`,
         Date.now() + 5_000,
       );
-      if (sourceKind === "window") {
+      if (crashGate) {
+        stage = "client-crash";
+        if (!client || !(await stopChild(client))) {
+          throw new Error("Client did not terminate for crash gate");
+        }
+        client = null;
+        result.clientCrashEndedShare = await waitForValue(
+          (deadline) => evaluate<boolean>(
+            cdp!,
+            host,
+            "Boolean(document.querySelector('button.lr-tv-big.is-action'))",
+            deadline,
+          ),
+          Boolean,
+          5_000,
+        );
+      } else if (sourceKind === "window") {
       stage = "source-failure";
       if (!sourceChrome || !sourceCdp ||
           !(await closeSourceBrowser(sourceChrome, sourceCdp))) {
@@ -919,10 +942,12 @@ async function main(): Promise<void> {
       : result.viewerConnected && result.viewerFrames >= 30 &&
         result.viewerWidth === 1280 && result.viewerHeight === 720 &&
         result.nativeQualityEvidence &&
-        (sourceKind === "display" ||
-          (result.sourceFailureEndedShare === true &&
-            result.replacementViewerConnected === true &&
-            (result.replacementViewerFrames ?? 0) >= 30))) &&
+        (crashGate
+          ? result.clientCrashEndedShare === true
+          : sourceKind === "display" ||
+            (result.sourceFailureEndedShare === true &&
+              result.replacementViewerConnected === true &&
+              (result.replacementViewerFrames ?? 0) >= 30))) &&
     result.cleanup.browserExited && result.cleanup.nativeExited &&
     result.cleanup.serverClosed && result.cleanup.portsClosed &&
     result.cleanup.profileRemoved;

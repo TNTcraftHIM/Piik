@@ -1,6 +1,7 @@
 package loopback
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -25,6 +26,21 @@ func TestDecodeRequestAcceptsOnlyTheCurrentShape(t *testing.T) {
 		if _, err := decodeRequest([]byte(payload)); err == nil {
 			t.Fatalf("decodeRequest accepted %s", payload)
 		}
+	}
+}
+
+func TestDecodeRequestUsesTheSharedIdentifierBoundary(t *testing.T) {
+	identifier := "request_" + strings.Repeat("a", 248)
+	if len(identifier) != 256 {
+		t.Fatalf("test identifier length = %d", len(identifier))
+	}
+	payload := []byte(`{"version":5,"id":"` + identifier + `","type":"ping"}`)
+	if _, err := decodeRequest(payload); err != nil {
+		t.Fatalf("maximum identifier was rejected: %v", err)
+	}
+	tooLong := []byte(`{"version":5,"id":"` + identifier + `a","type":"ping"}`)
+	if _, err := decodeRequest(tooLong); err == nil {
+		t.Fatal("identifier beyond the boundary was accepted")
 	}
 }
 

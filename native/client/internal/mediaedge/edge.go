@@ -3,8 +3,10 @@ package mediaedge
 import (
 	"errors"
 	"io"
+	"strings"
 	"sync"
 
+	"github.com/pion/ice/v4"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v4"
 )
@@ -41,6 +43,7 @@ type Edge struct {
 	closed               bool
 	qualityMu            sync.Mutex
 	qualityBaseline      qualityBaseline
+	answerMu             sync.Mutex
 }
 
 func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (*Edge, error) {
@@ -176,9 +179,24 @@ func (edge *Edge) CreateOffer() (webrtc.SessionDescription, error) {
 }
 
 func (edge *Edge) SetAnswer(answer webrtc.SessionDescription) error {
+	edge.answerMu.Lock()
+	defer edge.answerMu.Unlock()
 	if answer.Type != webrtc.SDPTypeAnswer {
 		return errors.New("native media edge requires an SDP answer")
 	}
+	edge.mu.Lock()
+	if edge.closed {
+		edge.mu.Unlock()
+		return errors.New("native media edge is closed")
+	}
+	if edge.remoteDescriptionSet {
+		// The connection identity fences the answer to one edge. A repeated
+		// answer is a retransmission; the first applied description remains
+		// authoritative.
+		edge.mu.Unlock()
+		return nil
+	}
+	edge.mu.Unlock()
 	if err := edge.connection.SetRemoteDescription(answer); err != nil {
 		return err
 	}
@@ -188,14 +206,17 @@ func (edge *Edge) SetAnswer(answer webrtc.SessionDescription) error {
 	edge.pendingCandidates = nil
 	edge.mu.Unlock()
 	for _, candidate := range pending {
-		if err := edge.connection.AddICECandidate(candidate); err != nil {
-			return err
-		}
+		// Candidates are disposable edge input. The connection state callback
+		// remains the authority for a real media failure.
+		_ = edge.connection.AddICECandidate(candidate)
 	}
 	return nil
 }
 
 func (edge *Edge) AddRemoteCandidate(candidate *webrtc.ICECandidateInit) error {
+	if malformedRemoteCandidate(candidate) {
+		return nil
+	}
 	value := webrtc.ICECandidateInit{}
 	if candidate != nil {
 		value = *candidate
@@ -203,19 +224,31 @@ func (edge *Edge) AddRemoteCandidate(candidate *webrtc.ICECandidateInit) error {
 	edge.mu.Lock()
 	if edge.closed {
 		edge.mu.Unlock()
-		return errors.New("native media edge is closed")
+		return nil
 	}
 	if !edge.remoteDescriptionSet {
 		if len(edge.pendingCandidates) >= maxPendingCandidates {
 			edge.mu.Unlock()
-			return errors.New("native media ICE candidate queue is full")
+			return nil
 		}
 		edge.pendingCandidates = append(edge.pendingCandidates, value)
 		edge.mu.Unlock()
 		return nil
 	}
 	edge.mu.Unlock()
-	return edge.connection.AddICECandidate(value)
+	// A candidate may become stale between validation and delivery. Dropping
+	// that one edge input keeps the shared control session alive; ICE state
+	// events still report whether the edge itself can connect.
+	_ = edge.connection.AddICECandidate(value)
+	return nil
+}
+
+func malformedRemoteCandidate(candidate *webrtc.ICECandidateInit) bool {
+	if candidate == nil || candidate.Candidate == "" {
+		return false
+	}
+	_, err := ice.UnmarshalCandidate(strings.TrimPrefix(candidate.Candidate, "candidate:"))
+	return err != nil
 }
 
 type SelectedPair struct {

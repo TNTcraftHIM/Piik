@@ -18,7 +18,7 @@ const (
 )
 
 var (
-	requestIDPattern  = regexp.MustCompile(`^[A-Za-z0-9_-]{8,64}$`)
+	requestIDPattern  = regexp.MustCompile(`^[A-Za-z0-9_-]{8,256}$`)
 	errInvalidMessage = errors.New("loopback control message is invalid")
 )
 

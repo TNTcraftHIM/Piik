@@ -18,9 +18,10 @@ adaptation decision.
   default. Missing audio is reported clearly but does not block video-only
   sharing. Native screen capture can include system playback audio and native
   window capture can include selected-process audio when the platform exposes it.
-- Authoritative pause disables the current source and sender-owned tracks while
-  retaining the room and established routes. Black frames, track mute, or
-  network failure are not interpreted as a user pause.
+- Authoritative Browser pause disables the current source and sender-owned tracks
+  while retaining the room and established routes. Native pause keeps capture
+  alive but stops session output through the same owner. Black frames, track
+  mute, or network failure are not interpreted as a user pause.
 - The Host preview displays the capture stream directly and creates no Viewer or
   media route. Hiding the page may pause only that local video element; it must
   not intentionally stop capture, encoding, or upload.

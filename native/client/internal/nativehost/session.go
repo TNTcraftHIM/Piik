@@ -253,7 +253,9 @@ func (session *Session) AddCandidate(
 ) error {
 	edge := session.edge(connectionID)
 	if edge == nil {
-		return errors.New("native media edge does not exist")
+		// Candidates can arrive after an edge has been retired. They are
+		// disposable input, not a reason to tear down the share session.
+		return nil
 	}
 	return edge.AddRemoteCandidate(candidate)
 }

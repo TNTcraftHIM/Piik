@@ -28,3 +28,10 @@ func TestCaptureStateRejectsUnknownOrUnattributedState(t *testing.T) {
 		}
 	}
 }
+
+func TestCandidateForRetiredEdgeIsIgnored(t *testing.T) {
+	session := &Session{}
+	if err := session.AddCandidate("retired-edge", nil); err != nil {
+		t.Fatalf("stale candidate stopped the session: %v", err)
+	}
+}

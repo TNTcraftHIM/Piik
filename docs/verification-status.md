@@ -83,8 +83,10 @@ shutdown. A separate synthetic run formed a P2P-only Host-plus-three-Viewer tree
 with one Browser relay and advancing frames at every Viewer. The Hosted Site
 completed loopback `hello`/`ping` after CDP granted `loopback-network`; without
 that permission Chrome blocked it as expected.
-The exact clean-revision Windows package assembled with Node 24.19.0 passed both
-Client gates; changing `app/REVISION` made it fail before opening a listener.
+The exact clean-revision Windows package assembled with Node 24.19.0 passed the
+package checks recorded for that revision; changing `app/REVISION` made it fail
+before opening a listener. The later loopback-gate correction requires a fresh
+package run before this result is reused as current evidence.
 The same explicit-target assembly produced a Linux amd64 package that ran its
 bundled Node application and loopback runtime on an independent Ubuntu host.
 Its full package also created a public link reachable from another network and
@@ -124,6 +126,12 @@ Pion Viewer; repeated runs delivered 30+ H.264 RTP packets over selected direct
 paths using a reflexive candidate. Client exit stopped Node and the public link.
 This still does not prove decoded Browser media on a physical second device.
 
+On 2026-09-04, a bounded Windows physical check held a static Notepad source
+open beyond seven seconds, produced a requested recovery keyframe from its
+retained image, and exited cleanly. The Native Host crash gate also terminated the
+Client process and observed the Host return to its start-share control within
+the bounded check. These results cover the current Windows build only.
+
 The same clean revision assembled into a self-contained Windows package with a
 matching Node runtime, application tree, and native capture process. Chrome 151
 passed the package's Local startup gate and both Site loopback-permission arms;
@@ -133,6 +141,8 @@ revision mismatch remains fail-closed before a listener starts.
 
 - Configuration, unit tests, loopback, and synthetic signaling prove invariants,
   not target-network or device behavior.
+- An automated/package gate is evidence from its scripted runner; a physical
+  gate requires the named target device, network, or desktop environment.
 - Missing RTCStats fields are unknown, not zero.
 - Requested quality values are ceilings; actual sender/receiver stats are truth.
 - A page-lifecycle correction is recovery logic, not a keepalive guarantee.

@@ -78,6 +78,7 @@ export async function discoverNativeHealth(): Promise<NativeHealth | null> {
 export class NativeClient {
   private readonly pending = new Map<string, PendingRequest>();
   private readonly listeners = new Set<(event: NativeClientEvent) => void>();
+  private readonly closeListeners = new Set<() => void>();
   private closed = false;
 
   private constructor(
@@ -124,6 +125,15 @@ export class NativeClient {
   onEvent(listener: (event: NativeClientEvent) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  onClose(listener: () => void): () => void {
+    if (this.closed) {
+      listener();
+      return () => undefined;
+    }
+    this.closeListeners.add(listener);
+    return () => this.closeListeners.delete(listener);
   }
 
   async ping(): Promise<void> {
@@ -262,6 +272,7 @@ export class NativeClient {
     this.closed = true;
     this.rejectPending();
     this.listeners.clear();
+    this.closeListeners.clear();
     if (this.socket.readyState < WebSocket.CLOSING) {
       this.socket.close(1000, "page closed");
     }
@@ -339,6 +350,9 @@ export class NativeClient {
     this.closed = true;
     this.rejectPending();
     this.listeners.clear();
+    const listeners = [...this.closeListeners];
+    this.closeListeners.clear();
+    for (const listener of listeners) listener();
   }
 
   private failConnection(): void {

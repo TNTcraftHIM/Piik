@@ -2008,6 +2008,33 @@ void RunVideoCapture(const ProductArguments& arguments) {
     UINT64 encoded_frames = 0;
     bool active_status_written = false;
     auto pool_size = initial_size;
+    ComPtr<ID3D11Texture2D> latest_nv12;
+    UINT64 latest_timestamp = 0;
+    bool pending_key_frame = false;
+    auto write_encoded = [&](ID3D11Texture2D* texture, UINT64 timestamp,
+                             bool force_key_frame) {
+      EncodedAccessUnit access_unit =
+          encoder.Encode(texture, timestamp, force_key_frame);
+      if (access_unit.bytes.size() > kMaxProductAccessUnitBytes) {
+        Fail("output-buffer-bounds", "live H264 access unit exceeded one MiB");
+      }
+      UINT64 wire_timestamp = (access_unit.timestamp100ns / 10) * 10;
+      Check(writer.Write(OutputKind::h264, access_unit.key_frame ? 1 : 0,
+                         wire_timestamp, kEnvelopeFrameDuration100ns,
+                         access_unit.bytes.data(),
+                         static_cast<DWORD>(access_unit.bytes.size())),
+            "capture-video-output");
+      previous_timestamp = timestamp;
+      ++encoded_frames;
+      if (!active_status_written) {
+        std::string active =
+            "{\"state\":\"active\",\"hardwareOnly\":true,"
+            "\"profileLevelId\":\"42c01f\",\"width\":1280,"
+            "\"height\":720,\"fps\":30}";
+        Check(writer.WriteStatus(active), "capture-status-active");
+        active_status_written = true;
+      }
+    };
     const HANDLE window_waits[] = {
         process.get(), shutdown.get(), frame_ready.get()};
     const HANDLE display_waits[] = {shutdown.get(), frame_ready.get()};
@@ -2029,7 +2056,23 @@ void RunVideoCapture(const ProductArguments& arguments) {
         Fail("capture-stopped", "source capture stopped");
       }
       if (wait == WAIT_TIMEOUT) {
-        Fail("capture-frame-timeout", "selected window produced no frame in five seconds");
+        // A quiet source is not a capture-end signal. The item/process wait
+        // handles remain the terminal signals; a pending keyframe can reuse
+        // the latest converted image.
+        ControlSignal control = ConsumeControlSignal();
+        if (control.stop) {
+          cleanup();
+          return;
+        }
+        pending_key_frame = pending_key_frame || control.key_frame;
+        if (pending_key_frame && latest_nv12) {
+          const UINT64 timestamp = previous_timestamp == 0
+                                       ? latest_timestamp
+                                       : previous_timestamp + kFrameDuration100ns;
+          write_encoded(latest_nv12.Get(), timestamp, true);
+          pending_key_frame = false;
+        }
+        continue;
       }
       if (wait != frame_index) {
         Check(HRESULT_FROM_WIN32(GetLastError()), "capture-wait");
@@ -2059,6 +2102,8 @@ void RunVideoCapture(const ProductArguments& arguments) {
           content_size.Height != pool_size.Height) {
         latest.Close();
         latest = nullptr;
+        latest_nv12 = nullptr;
+        latest_timestamp = 0;
         pool.Recreate(capture_device,
                       DirectXPixelFormat::B8G8R8A8UIntNormalized, 2,
                       content_size);
@@ -2074,34 +2119,18 @@ void RunVideoCapture(const ProductArguments& arguments) {
           source_description.Height, static_cast<UINT32>(content_size.Height));
       ComPtr<ID3D11Texture2D> nv12 = converter.Convert(
           source.Get(), content_width, content_height);
+      latest_nv12 = nv12;
+      latest_timestamp = timestamp;
       ControlSignal control = ConsumeControlSignal();
       if (control.stop) {
         cleanup();
         return;
       }
+      pending_key_frame = pending_key_frame || control.key_frame;
       bool key_frame = encoded_frames == 0 || encoded_frames % kGopFrames == 0 ||
-                       control.key_frame;
-      EncodedAccessUnit access_unit = encoder.Encode(nv12.Get(), timestamp,
-                                                      key_frame);
-      if (access_unit.bytes.size() > kMaxProductAccessUnitBytes) {
-        Fail("output-buffer-bounds", "live H264 access unit exceeded one MiB");
-      }
-      UINT64 wire_timestamp = (access_unit.timestamp100ns / 10) * 10;
-      Check(writer.Write(OutputKind::h264, access_unit.key_frame ? 1 : 0,
-                         wire_timestamp, kEnvelopeFrameDuration100ns,
-                         access_unit.bytes.data(),
-                         static_cast<DWORD>(access_unit.bytes.size())),
-            "capture-video-output");
-      previous_timestamp = timestamp;
-      ++encoded_frames;
-      if (!active_status_written) {
-        std::string active =
-            "{\"state\":\"active\",\"hardwareOnly\":true,"
-            "\"profileLevelId\":\"42c01f\",\"width\":1280,"
-            "\"height\":720,\"fps\":30}";
-        Check(writer.WriteStatus(active), "capture-status-active");
-        active_status_written = true;
-      }
+                       pending_key_frame;
+      write_encoded(nv12.Get(), timestamp, key_frame);
+      pending_key_frame = false;
     }
   } catch (...) {
     cleanup();

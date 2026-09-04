@@ -1215,7 +1215,7 @@ export function HostPage({
       nativeMediaBridgeRef.current = bridge;
       nativeModeRef.current = true;
       setNativeActive(true);
-      nativeEventCleanupRef.current = client.onEvent((event) => {
+      const nativeEventCleanup = client.onEvent((event) => {
         if (
           event.type === "share-ended" &&
           event.shareId === shareGeneration &&
@@ -1225,6 +1225,20 @@ export function HostPage({
           endSharing({
             key: event.failed ? "host.shareEnded" : "host.stopNotice",
           });
+        }
+      });
+      let nativeCloseCleanup: () => void = () => undefined;
+      nativeEventCleanupRef.current = () => {
+        nativeEventCleanup();
+        nativeCloseCleanup();
+      };
+      nativeCloseCleanup = client.onClose(() => {
+        if (
+          nativeClientRef.current === client &&
+          nativeShareGenerationRef.current === shareGeneration &&
+          isCurrentShare(generation, shareGeneration)
+        ) {
+          endSharing({ key: "host.shareEnded" });
         }
       });
       const stream = await bridge.start();
