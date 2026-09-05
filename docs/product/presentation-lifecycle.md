@@ -41,9 +41,10 @@ and sequences, and literal scene objects for people, rooms, and media. Glyphs do
 not form sentences. Universal digits, transport symbols, URLs, and measured
 values remain literal when users need the data.
 
-Motion explains entry, transition, progress, and control feedback. Stable state
-stays still; ambient animation and motion added only for ornament are outside
-the language. All meaning remains available with reduced motion. Functional
+Motion explains entry, transition, progress, and control feedback. Operational
+status stays still; ambient motion is limited to the Client brand mark's
+occasional idle wink.
+All meaning remains available with reduced motion. Functional
 controls remain native buttons or inputs with localized accessible names, and
 hover, keyboard focus, and touch receive equivalent guidance.
 

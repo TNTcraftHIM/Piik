@@ -74,6 +74,8 @@ The terminal starts in visual mode and shows the current mode, working entry
 links and startup state. Its language follows the launcher and Client-enabled
 pages; a block television uses the terminal foreground with golden sparkles,
 falling back to ASCII without color support or in very narrow windows.
+Visual mode depicts the selected mode and startup state with small scenes;
+the television rests with one eye closed and occasionally winks while idle.
 Press `o` to reopen the Browser, or `q` / Ctrl+C to end Local
 rooms and stop the bundled server and temporary public link. Plain-text output
 uses Ctrl+C. A Site-loaded Browser tab does not own the Client process.

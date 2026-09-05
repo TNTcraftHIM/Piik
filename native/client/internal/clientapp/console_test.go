@@ -63,8 +63,24 @@ func TestConsolePresentationAndShutdown(t *testing.T) {
 			}
 		}
 	}
-	if !strings.Contains(consoleTV(5, true, false), "^ |  *") || consoleTV(8, false, false) != consoleTV(0, false, false) {
+	if !strings.Contains(consoleTV(5, true, false), "- |  *") ||
+		!strings.Contains(consoleTV(0, false, false), "o     -") ||
+		!strings.Contains(consoleBlockTV(0, false), "\u2584\u2584") ||
+		consoleTV(8, false, false) != consoleTV(0, false, false) {
 		t.Fatal("mascot wink or static state changed")
+	}
+	model.frame = 16
+	updated, cmd := model.Update(consoleIdleWink{})
+	waking := updated.(consoleModel)
+	if !waking.animating() || waking.frame != 8 || cmd == nil {
+		t.Fatal("idle wink did not resume without redrawing the shell")
+	}
+	for range 8 {
+		updated, _ = waking.Update(consoleTick{})
+		waking = updated.(consoleModel)
+	}
+	if waking.animating() || !waking.idlePending {
+		t.Fatal("idle wink did not return to rest")
 	}
 	var output bytes.Buffer
 	program := tea.NewProgram(model, tea.WithInput(nil), tea.WithOutput(&output), tea.WithoutSignalHandler(), tea.WithoutRenderer())
@@ -87,7 +103,7 @@ func TestConsolePresentationAndShutdown(t *testing.T) {
 		program.Kill()
 		t.Fatal("console did not finish after application cleanup")
 	}
-	updated, _ := model.Update(consoleFinished{})
+	updated, _ = model.Update(consoleFinished{})
 	if text := updated.(consoleModel).content(false); strings.Contains(text, "http") {
 		t.Fatal("stopped console retained a live entry")
 	}

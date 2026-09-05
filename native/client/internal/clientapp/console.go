@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net/url"
 	"os"
 	"strings"
@@ -27,6 +28,7 @@ type consoleView struct {
 type consoleLanguage string
 type consoleFinished struct{ err error }
 type consoleTick struct{}
+type consoleIdleWink struct{}
 type consoleOpenResult struct{ err error }
 type consoleDiagnostic string
 
@@ -38,6 +40,8 @@ type consoleModel struct {
 	colors      bool
 	frame       int
 	tickPending bool
+	idlePending bool
+	idleWink    bool
 	finished    bool
 	cancel      context.CancelFunc
 }
@@ -53,22 +57,22 @@ type clientConsole struct {
 
 var consoleCopy = map[string][3]string{
 	"mode":       {"Mode", "模式", ""},
-	"local":      {"Local network", "局域网", "[PC]---[PC]"},
-	"link":       {"Public link", "公网链接", "[PC]---(www)---[PC]"},
-	"site":       {"Screener Site", "Screener 站点", "[PC]---[S]"},
-	"setup":      {"Choose a mode in the browser", "在浏览器中选择模式", "[o] -> [www]"},
-	"starting":   {"Starting", "正在启动", ""},
-	"ready":      {"Ready", "已就绪", "[+]"},
-	"stopping":   {"Stopping", "正在退出", "..."},
-	"stopped":    {"Stopped", "已停止", "[ ]"},
-	"failed":     {"Could not continue", "运行失败", "[!]"},
-	"entry":      {"Open in browser", "打开网页", "->"},
-	"invite":     {"Site address", "站点地址", "www"},
+	"local":      {"Local network", "局域网", "    /\\   \n .-/  \\-.\n |[_]-[_]|\n '-------'"},
+	"link":       {"Public link", "公网链接", " o           o \n/|\\ ()=() > /|\\\n/ \\         / \\"},
+	"site":       {"Screener Site", "Screener 站点", ".----.   .---.\n|www |---| = |\n'----'   '---'"},
+	"setup":      {"Choose a mode in the browser", "在浏览器中选择模式", ".o.o--------.\n| [] [] [] <|\n'-----------'"},
+	"starting":   {"Starting", "正在启动", "\\---/\n > < \n/---\\"},
+	"ready":      {"Ready", "已就绪", "    /\n\\  / \n \\/  "},
+	"stopping":   {"Stopping", "正在退出", " __  \n| o|>\n|__| "},
+	"stopped":    {"Stopped", "已停止", ".---.\n| x |\n'---'"},
+	"failed":     {"Could not continue", "运行失败", " /!\\ \n/   \\\n-----"},
+	"entry":      {"Open in browser", "打开网页", "[o]"},
+	"invite":     {"Site address", "站点地址", "()=()"},
 	"access":     {"Site access", "站点准入", ""},
-	"open":       {"Open", "开放", "[_]"},
-	"password":   {"Password protected", "已设置密码", "[#]"},
+	"open":       {"Open", "开放", "  __ \n /   \n|___|"},
+	"password":   {"Password protected", "已设置密码", " ___ \n|   |\n|_*_|"},
 	"error":      {"Details", "详情", "[!]"},
-	"exit":       {"quit", "退出", "[x]"},
+	"exit":       {"quit", "退出", "    __ \n--> |o|\n    |_|"},
 	"openFailed": {"Could not open the browser; use the address above.", "无法打开浏览器，请使用上方地址。", "[!] -> www"},
 }
 
@@ -162,6 +166,14 @@ func (model consoleModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case consoleTick:
 		model.tickPending = false
 		model.frame++
+		if model.frame >= 16 {
+			model.idleWink = false
+		}
+	case consoleIdleWink:
+		model.idlePending = false
+		if model.view.state == "ready" || model.view.state == "setup" {
+			model.frame, model.idleWink = 8, true
+		}
 	case consoleOpenResult:
 		if value.err != nil {
 			model.view.problem = model.text("openFailed")
@@ -185,12 +197,21 @@ func (model consoleModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
-	if !model.finished && model.view.state != "stopping" &&
-		(model.view.state == "starting" || model.frame < 8) && !model.tickPending {
+	if model.animating() && !model.tickPending {
 		model.tickPending = true
 		return model, tea.Tick(200*time.Millisecond, func(time.Time) tea.Msg { return consoleTick{} })
 	}
+	if !model.finished && !model.animating() && !model.idlePending &&
+		(model.view.state == "ready" || model.view.state == "setup") {
+		model.idlePending = true
+		return model, tea.Tick(time.Duration(8+rand.IntN(13))*time.Second, func(time.Time) tea.Msg { return consoleIdleWink{} })
+	}
 	return model, nil
+}
+
+func (model consoleModel) animating() bool {
+	return !model.finished && model.view.state != "stopping" &&
+		(model.view.state == "starting" || model.frame < 8 || model.idleWink)
 }
 
 func (model consoleModel) text(key string) string {
@@ -214,6 +235,7 @@ func (model consoleModel) View() tea.View {
 func (model consoleModel) content(styled bool) string {
 	width := max(12, min(model.width-2, 74))
 	compact := model.height > 0 && model.height < 24
+	visual := model.language == "vis"
 	accent, muted, link := lipgloss.NewStyle(), lipgloss.NewStyle(), lipgloss.NewStyle()
 	if styled {
 		accent = accent.Bold(true)
@@ -226,7 +248,7 @@ func (model consoleModel) content(styled bool) string {
 	}
 	var out strings.Builder
 	heading := "Screener\nClient\n" + muted.Render(revision)
-	animated := styled && !model.finished && (model.view.state == "starting" || model.frame < 8)
+	animated := styled && model.animating()
 	mascot := accent.Render(consoleTV(model.frame, animated, compact || width < 34))
 	if styled && model.colors && width >= 36 {
 		mascot = consoleBlockTV(model.frame, animated)
@@ -234,16 +256,31 @@ func (model consoleModel) content(styled bool) string {
 	fmt.Fprintln(&out, lipgloss.JoinHorizontal(lipgloss.Center, mascot, heading))
 	fmt.Fprintln(&out)
 	state := model.text(model.view.state)
-	if model.view.state == "starting" {
+	if model.view.state == "starting" && !visual {
 		dots := 3
 		if styled {
 			dots = model.frame%3 + 1
 		}
 		state += strings.Repeat(".", dots)
 	}
-	fmt.Fprintln(&out, accent.Render(state))
-	if model.view.mode != "" {
-		fmt.Fprintf(&out, "%s  %s\n", muted.Render(model.text("mode")), model.text(model.view.mode))
+	if visual {
+		stateStyle := accent
+		if styled && model.colors {
+			switch model.view.state {
+			case "ready":
+				stateStyle = stateStyle.Foreground(lipgloss.Color("#3fb97a"))
+			case "starting", "stopping":
+				stateStyle = stateStyle.Foreground(lipgloss.Color("#e8a33d"))
+			case "failed":
+				stateStyle = stateStyle.Foreground(lipgloss.Color("#e25a52"))
+			}
+		}
+		fmt.Fprintln(&out, lipgloss.JoinHorizontal(lipgloss.Center, accent.Render(model.text(model.view.mode)), " ", stateStyle.Render(state)))
+	} else {
+		fmt.Fprintln(&out, accent.Render(state))
+		if model.view.mode != "" {
+			fmt.Fprintf(&out, "%s  %s\n", muted.Render(model.text("mode")), model.text(model.view.mode))
+		}
 	}
 	for _, item := range [][2]string{{"entry", model.view.entry}, {"invite", model.view.invite}} {
 		if item[1] == "" || compact && item[0] == "invite" {
@@ -258,14 +295,27 @@ func (model consoleModel) content(styled bool) string {
 			}
 			style = style.Hyperlink(target)
 		}
-		fmt.Fprintf(&out, "\n%s\n%s\n", muted.Render(model.text(item[0])), style.Render(address))
+		if visual {
+			label := model.text(item[0])
+			if !styled && item[0] == "entry" {
+				label = "www"
+			}
+			fmt.Fprintf(&out, "\n%s %s\n", label, style.Render(address))
+		} else {
+			fmt.Fprintf(&out, "\n%s\n%s\n", muted.Render(model.text(item[0])), style.Render(address))
+		}
 	}
+	accessPicture := ""
 	if !compact && model.view.entry != "" && (model.view.mode == "local" || model.view.mode == "link") {
 		access := "open"
 		if model.view.protected {
 			access = "password"
 		}
-		fmt.Fprintf(&out, "\n%s  %s\n", muted.Render(model.text("access")), model.text(access))
+		if visual {
+			accessPicture = model.text(access) + "   "
+		} else {
+			fmt.Fprintf(&out, "\n%s  %s\n", muted.Render(model.text("access")), model.text(access))
+		}
 	}
 	if model.view.problem != "" {
 		lines := strings.Split(ansi.Hardwrap(ansi.Strip(model.view.problem), width-4, true), "\n")
@@ -275,14 +325,21 @@ func (model consoleModel) content(styled bool) string {
 		fmt.Fprintf(&out, "\n%s\n%s\n", model.text("error"), strings.Join(lines, "\n"))
 	}
 	if !model.finished {
-		help := "[q / Ctrl+C] " + model.text("exit")
+		keys := "[q / Ctrl+C]"
 		if !styled {
-			help = "Ctrl+C  " + model.text("exit")
+			keys = "Ctrl+C"
 		}
-		if model.view.entry != "" && styled {
+		help := keys + " " + model.text("exit")
+		if visual {
+			help = lipgloss.JoinHorizontal(lipgloss.Center, accessPicture, keys+" ", model.text("exit"))
+		} else if model.view.entry != "" && styled {
 			help = "[o] " + model.text("entry") + "    " + help
 		}
-		fmt.Fprintf(&out, "\n%s", muted.Render(help))
+		if visual {
+			fmt.Fprintf(&out, "\n%s", accent.Render(help))
+		} else {
+			fmt.Fprintf(&out, "\n%s", muted.Render(help))
+		}
 	}
 	content := ansi.Hardwrap(out.String(), width-4, true)
 	if !styled {
@@ -303,11 +360,8 @@ func consoleTV(frame int, animated, compact bool) string {
 		phase = frame % 8
 	}
 	eye := "o"
-	if phase == 4 {
+	if !animated || phase >= 4 {
 		eye = "-"
-	}
-	if phase == 5 || phase == 6 {
-		eye = "^"
 	}
 	if compact {
 		return "  \\ /     \n [o  " + eye + "]   \n  /  \\     "
@@ -354,7 +408,7 @@ func consoleBlockTV(frame int, animated bool) string {
 			case 's':
 				line.WriteString("  ")
 			case 'e':
-				if column == len(row)-3 && phase >= 4 && phase <= 6 {
+				if column == len(row)-3 && (!animated || phase >= 4) {
 					line.WriteString("\u2584\u2584")
 				} else {
 					line.WriteString(shell.Render("  "))
