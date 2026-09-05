@@ -6,7 +6,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"os"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -606,6 +608,9 @@ func (session *Session) stopViewer(shareID string) {
 
 func (session *Session) watchHost(host *nativehost.Session) {
 	err, open := <-host.Done()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "screener-client native share error: %v\n", err)
+	}
 	session.mu.Lock()
 	if session.host == host {
 		session.host = nil
@@ -625,6 +630,12 @@ func (session *Session) relayEvents() {
 	for {
 		select {
 		case event := <-session.hostEvents:
+			if event.Type == "edge-state" &&
+				(event.State == "failed" || event.State == "closed") {
+				fmt.Fprintf(os.Stderr,
+					"screener-client native edge state: state=%s\n",
+					event.State)
+			}
 			session.emit(eventMessage(event))
 		case event := <-session.viewerEvents:
 			session.emit(viewerEventMessage(event))
