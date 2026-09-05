@@ -20,6 +20,7 @@ export function CaptureSourcePicker({
   onBrowser,
   onNative,
   onPreview,
+  onRefresh,
   onCancel,
   browserAvailable = true,
   initialAudio = true,
@@ -29,6 +30,7 @@ export function CaptureSourcePicker({
   onBrowser: () => void;
   onNative: (target: NativeCaptureTarget, audio: boolean) => void;
   onPreview: (target: NativeCaptureTarget) => Promise<string | null>;
+  onRefresh: () => void;
   onCancel: () => void;
   browserAvailable?: boolean;
   initialAudio?: boolean;
@@ -75,6 +77,22 @@ export function CaptureSourcePicker({
               <small>{t("host.sourcePicker.hint")}</small>
             </span>
           )}
+          <button
+            type="button"
+            className="lr-source-picker-refresh"
+            title={vis ? undefined : t("host.sourcePicker.refresh")}
+            aria-label={t("host.sourcePicker.refresh")}
+            disabled={nativeSources.kind === "loading"}
+            onClick={onRefresh}
+          >
+            <Glyph
+              name="refresh"
+              size={18}
+              className={
+                nativeSources.kind === "loading" ? "lr-spin" : undefined
+              }
+            />
+          </button>
           <button
             type="button"
             className="lr-source-picker-close"

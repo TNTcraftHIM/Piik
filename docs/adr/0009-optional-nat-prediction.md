@@ -33,7 +33,9 @@ media path.
    candidates belonging to the exact three-destination survey set. Browser
    candidates are matched by their reported STUN URL. Native Pion uses its
    `UniversalUDPMux` to perform the survey on the media socket and emits standard
-   srflx-shaped observations. If three or more distinct survey candidates for
+   srflx-shaped observations marked with an `ns` foundation. Only those explicit
+   survey observations feed prediction; port-mapped candidates remain ordinary
+   ICE inputs. If three or more distinct survey candidates for
    one media section and public address form an arithmetic port sequence, the
    adapter appends at most eight bounded candidates outward from both sequence
    endpoints: four above the high endpoint and four below the low endpoint.

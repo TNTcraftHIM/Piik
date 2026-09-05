@@ -114,7 +114,7 @@ func (source *AudioSource) WritePCM(pcm []byte, duration time.Duration) error {
 }
 
 func (source *AudioSource) WriteRTP(packet *rtp.Packet) error {
-	if source == nil || source.packets == nil || packet == nil || len(packet.Payload) == 0 {
+	if source == nil || source.packets == nil || packet == nil {
 		return errors.New("native Opus RTP packet is invalid")
 	}
 	source.mu.Lock()

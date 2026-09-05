@@ -100,7 +100,7 @@ func (source *Source) WriteH264(
 // re-encoding it. TrackLocalStaticRTP rewrites the negotiated SSRC and payload
 // type independently for every bound edge.
 func (source *Source) WriteRTP(packet *rtp.Packet) error {
-	if packet == nil || len(packet.Payload) == 0 {
+	if packet == nil {
 		return errors.New("native H264 RTP packet is invalid")
 	}
 	source.writeMu.Lock()
@@ -111,7 +111,8 @@ func (source *Source) WriteRTP(packet *rtp.Packet) error {
 	if closed {
 		return errors.New("native media source is closed")
 	}
-	if packet.Marker {
+	// Forward RTP padding to preserve sequence continuity without counting it as video.
+	if packet.Marker && len(packet.Payload) > 0 {
 		source.frames.Add(1)
 	}
 	source.bytes.Add(uint64(len(packet.Payload)))

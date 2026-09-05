@@ -1,6 +1,7 @@
 import type { IceConfig, SignalPayload } from "../../shared/protocol";
 import {
   iceServersWithNatPrediction,
+  isNativeNatSurveyCandidate,
   NatPredictionCandidateBatch,
   natPredictionSurveyUrls,
   type SignalCandidate,
@@ -157,7 +158,10 @@ export class NativeSenderEdge {
     if (event.type === "edge-candidate") {
       if (this.localIceCandidates) {
         if (event.candidate) {
-          this.localIceCandidates.add(event.candidate);
+          this.localIceCandidates.add(
+            event.candidate,
+            isNativeNatSurveyCandidate(event.candidate),
+          );
         } else {
           this.localIceCandidates.complete();
         }

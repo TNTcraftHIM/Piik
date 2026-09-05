@@ -7,6 +7,12 @@ export type SignalCandidate = Extract<
 >["candidate"];
 type ConcreteSignalCandidate = NonNullable<SignalCandidate>;
 
+export function isNativeNatSurveyCandidate(
+  candidate: SignalCandidate,
+): boolean {
+  return candidate !== null && /^candidate:ns\d+\s/i.test(candidate.candidate);
+}
+
 const BASE_STUN_PORT = 3478;
 const MIN_PREDICTABLE_PORT = 1;
 const MAX_PREDICTABLE_PORT = 65_535;

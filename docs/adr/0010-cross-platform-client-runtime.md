@@ -80,8 +80,10 @@ topologies and makes a saved Site unavailable while another room source runs.
    transports, with process-loopback audio for windows or system-loopback audio
    for screens sharing the same PeerConnection when available. Each Site or one-link share makes one bounded, best-effort PCP,
    UPnP, or NAT-PMP mapping for that same Pion UDP socket before its first edge
-   gathers ICE; pure LAN Local mode does not. Absence or rejection leaves
-   ordinary ICE/STUN unchanged. Native P2P quality uses Pion's transport-wide
+   gathers ICE; pure LAN Local mode does not. Once ordinary STUN observes a
+   public address, Native advertises the mapped port as one lower-priority,
+   srflx-shaped candidate on that address. Absence or rejection leaves ordinary
+   ICE/STUN unchanged. Native P2P quality uses Pion's transport-wide
    GCC estimate only after feedback and source-frame progress, comparing its
    target payload bitrate with the measured encoded payload supplied to that
    edge. The existing route evidence windows own persistence; no custom score,
@@ -192,9 +194,10 @@ the running Client but is not authentication against another local process.
 
 A physical home-router gate created and removed a UPnP mapping for an ephemeral
 UDP listener. The integrated native Host gate still passed capture, two-edge
-delivery, source restart, and cleanup with mapping enabled. A selected mapped
-path across a pair that fails with STUN alone remains field evidence rather than
-an architectural claim.
+delivery, source restart, and cleanup with mapping enabled. The mapped port is
+now advertised on the observed public address; a selected mapped path across a
+pair that fails with STUN alone remains field evidence rather than an
+architectural claim.
 
 ## Primary Sources
 

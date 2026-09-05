@@ -69,9 +69,10 @@ Ordinary candidates trickle immediately, so unavailable auxiliary listeners
 cannot hold back stock ICE. There is no NAT label, hard candidate skip,
 route-controller input, or SFU preference. Browser candidates are filtered by
 their reported STUN URL. Native Pion performs the same survey through its
-`UniversalUDPMux`, so every mapping and subsequent media packet uses one socket;
-its srflx observations feed the same prediction function. The switch applies to Host, Viewer
-upstream, and Viewer relay P2P connections. Its exact scope is recorded in
+`UniversalUDPMux`, so every observation and subsequent media packet uses one
+socket. Only explicitly marked Native survey observations feed prediction;
+the independently mapped-port candidate does not. The switch applies to Host,
+Viewer upstream, and Viewer relay P2P connections. Its exact scope is recorded in
 [ADR-0009](../adr/0009-optional-nat-prediction.md).
 
 ### Native Shared-Socket Preflight
@@ -89,6 +90,15 @@ while the Quick Tunnel carried signaling only. The active TUN network yielded
 one distinct mapped endpoint across the public survey, so no port sequence or
 prediction was claimed. The result proves shared-socket discovery and transport,
 not public-survey availability or a predicted-path success rate.
+
+Native Site and public-link shares also request one PCP, UPnP, or NAT-PMP
+mapping for that same socket. The returned port is advertised as a
+lower-priority candidate using a public address already observed by ordinary
+STUN. This is additive and bounded; a VPN, double NAT, or absent mapping service
+can make it unusable without delaying or replacing ordinary ICE.
+A local UDP-forwarding gate then withheld every ordinary Host candidate and
+connected Pion ICE/DTLS in 1.26 seconds through the advertised `mp1` endpoint.
+That proves the same-socket ICE mechanism, not rescue through a physical NAT.
 
 ### Independent Observation And Attribution Preflight
 

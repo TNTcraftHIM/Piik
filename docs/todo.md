@@ -10,6 +10,10 @@ topics are not implementation authority.
 1. **Client physical acceptance.** Physically validate macOS and Linux
    capture/audio/recovery, a decoded public-link Browser Viewer, and a NAT case
    rescued beyond ordinary STUN, plus one mixed Browser/Native Viewer relay.
+2. **Client owner acceptance.** Review the current package's Browser capture
+   through Native fanout, live controls and Client-exit recovery before merging.
+   Confirm weak-path convergence with effective media throttling; a DevTools
+   command succeeding without limiting RTP is not a weak-path pass.
 
 ## Parked Product Work
 
@@ -29,22 +33,10 @@ topics are not implementation authority.
    Auto or move an unproved result into the availability path. Validate whether
    H.264 qualification can choose a slower VP8 fallback under mixed GPU/CPU load
    before adding comparative or dual-codec probing.
-3. **Browser encoded-frame reuse.** After the current Browser experience release,
-   gate one narrow video-edge adapter that preserves signaling, routing,
-   ICE/TURN, DTLS, DataChannel congestion control, upstream WebRTC playback and
-   SFU fallback while reusing one encoded representation across every compatible
-   P2P descendant. First determine whether current Browser APIs or a mature
-   module can preserve per-edge adaptation without re-encoding; do not accept a
-   standard-WebRTC weak-edge fallback as the default merely because it is easy.
-   Compare one layered SVC encode with a small room-wide simulcast set before any
-   per-edge encoder; select layers from current edge capacity rather than
-   classifying Viewers into permanent strong/weak groups.
-   A strong/weak two-child gate must keep the strong path at full quality,
-   recover the weak path without globally lowering the shared representation,
-   bound queues and temporary copies, and measure CPU, bytes, latency, keyframe
-   recovery, A/V timing and supported mobile Browsers. Reuse existing quality
-   evidence and route operations; add no custom score, global worst-viewer rule,
-   periodic ladder or unproved codec representation.
+3. **Browser encoded reuse.** Pure Browser operation keeps normal WebRTC
+   senders; users can use Client to reduce repeated encoding. Revisit Browser
+   reuse only for a small mature adapter that preserves adaptation and media
+   quality without an application-owned transport or layer controller.
 4. **Control-plane resource fairness.** Calibrate one deployment-wide LiveKit
    control queue and simple HTTP/WebSocket ingress budgets before implementation;
    prove a self-hosted stale-token revocation boundary before independently
@@ -87,7 +79,8 @@ topics are not implementation authority.
     Keep injected candidates additive and diagnostic; do not make them a
     participant-wide NAT label, hard candidate skip, route score, or SFU
     preference. Validate selected predicted paths and bounded resource impact
-    before recommending it as a default for other deployments. Direct
+    plus one selected Native mapped-port path that fails with STUN alone before
+    recommending either as a default for other deployments. Direct
     convergence currently consumes each deferred Peer parent once; add no
     cross-generation retry budget until field evidence proves that fresh ICE
     generations expose a repeatable prediction opportunity.
@@ -112,7 +105,10 @@ topics are not implementation authority.
     boundaries are complete. First measure package, startup, and maintenance
     gains. If accepted, migrate Hosted and Local together and delete the Node
     server in the same boundary; do not create or retain two room, signaling,
-    persistence, or route-controller implementations.
+    persistence, or route-controller implementations. The
+    [consolidation draft](./research/server-consolidation.md) identifies the two
+    preparatory simplifications, the routing-mode product choice, and the shared
+    module and concurrency model; implementation follows Client acceptance.
 
 ## Decision Needed
 

@@ -92,7 +92,7 @@ func (edge *Edge) QualitySample(now time.Time) (QualitySample, bool) {
 	}
 	target, observed := edge.bandwidth.targetBitrate()
 	if edge.State() != webrtc.PeerConnectionStateConnected || !observed ||
-		frames == 0 || bytes == 0 || video.width == 0 || video.height == 0 {
+		frames == 0 || bytes == 0 {
 		return sample, true
 	}
 	sample.AvailableOutgoingKbps = float64(target) / 1000

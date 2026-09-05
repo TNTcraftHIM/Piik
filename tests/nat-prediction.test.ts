@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   addRemoteIceCandidate,
   iceServersWithNatPrediction,
+  isNativeNatSurveyCandidate,
   MAX_NAT_PREDICTION_CANDIDATES,
   NatPredictionCandidateBatch,
   NatPredictionCandidateEmitter,
@@ -43,6 +44,20 @@ function rtcCandidate(port: number): RTCIceCandidate {
 }
 
 describe("NAT prediction ICE adapter", () => {
+  it("uses only explicit Native survey candidates as prediction evidence", () => {
+    const survey = candidate(40_000);
+    if (survey) {
+      survey.candidate = survey.candidate.replace(
+        "candidate:base",
+        "candidate:ns1",
+      );
+    }
+
+    expect(isNativeNatSurveyCandidate(survey)).toBe(true);
+    expect(isNativeNatSurveyCandidate(candidate(40_000))).toBe(false);
+    expect(isNativeNatSurveyCandidate(hostCandidate())).toBe(false);
+  });
+
   it("ignores only rejected predicted candidates", async () => {
     const error = new Error("candidate rejected");
     const connection = {

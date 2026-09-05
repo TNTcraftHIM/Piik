@@ -17,6 +17,7 @@ import {
 } from "../webrtc/viewer-peer";
 import {
   iceServersWithNatPrediction,
+  isNativeNatSurveyCandidate,
   NatPredictionCandidateBatch,
   natPredictionSurveyUrls,
   type SignalCandidate,
@@ -463,8 +464,12 @@ class NativeViewerPeer implements ViewerMediaPeer {
     }
     if (event.type === "edge-candidate") {
       if (this.localCandidates) {
-        if (event.candidate) this.localCandidates.add(event.candidate);
-        else this.localCandidates.complete();
+        if (event.candidate) {
+          this.localCandidates.add(
+            event.candidate,
+            isNativeNatSurveyCandidate(event.candidate),
+          );
+        } else this.localCandidates.complete();
       } else if (this.parentPeerId && this.connectionId) {
         this.events.sendSignal(this.parentPeerId, {
           kind: "candidate",

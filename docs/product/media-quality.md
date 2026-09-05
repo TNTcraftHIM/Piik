@@ -34,6 +34,12 @@ adaptation decision.
   current Opus encoder directly. Platform quality preference uses the hardware
   encoder's standard quality-versus-speed hint, while Pion/WebRTC still own
   transport estimation and route evidence.
+- With Client available, Browser H.264 capture can use one local sender and the
+  existing Native encoded fanout while topology optimization is enabled. The
+  Browser still owns preview, pause, capture settings, and source selection.
+  Loss of that optional ingress retains capture and rebuilds the assigned
+  Browser edges. [ADR-0011](../adr/0011-browser-assisted-native-fanout.md) owns
+  this composition; pure Browser and VP8 sharing retain their normal senders.
 
 ## Video Profiles
 

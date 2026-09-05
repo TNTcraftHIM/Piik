@@ -127,8 +127,11 @@ added about 0.38 MiB to the stripped Windows Client. Mapping begins
 with the share, is awaited before the first PeerConnection, refreshes only when
 a later edge arrives after half the requested lease, and is removed with the
 engine. Failure is cached for that share and leaves ordinary ICE/STUN unchanged.
-This proves lifecycle and non-regression, not that a mapped candidate has yet
-rescued a pair that public STUN alone could not connect.
+The returned port is advertised once per observed public address as a
+lower-priority candidate. Only the three explicit same-socket survey candidates
+feed NAT prediction; the mapped candidate does not. This proves lifecycle and
+signaling, not that the mapped candidate has yet rescued a pair that public STUN
+alone could not connect.
 
 The retained hardware fixture also changed one live NVIDIA MFT through
 `3 Mbps -> 1.5 Mbps -> 3 Mbps` without recreating it. Equal 120-frame phases
@@ -143,6 +146,28 @@ bounded best-effort preview. A display uses WGC plus default render-device
 loopback audio; a window uses WGC plus process-tree loopback when that actual
 capability probe succeeds. Preview failure is advisory and cannot tear down
 the control session.
+
+A controlled 144 fps window on Windows build 26200 exposed two capture-cadence
+failures: WGC's zero `MinUpdateInterval` delivered 48 fps, and sampling from the
+last emitted timestamp reduced 48 fps input to 24 fps for a 30 fps profile.
+Using WGC's supported non-zero interval plus a phase-continuous output cadence
+delivered 29.99 fps and 60.00 fps from the same source. Older Windows versions
+without the optional session interface retain their existing WGC behavior.
+
+A Browser-capture/Pion fanout gate exposed a separate RTP input defect:
+payload-empty padding was rejected and ended the video or audio reader. Chrome
+then fell to a 30 kbps video target even at zero media loss and about 1 ms RTT.
+Discarding padding kept the reader alive but introduced downstream sequence
+gaps, NACKs and reduced decoded cadence. Forwarding valid padding through Pion's
+existing `WriteRTP`, while excluding it from media-frame counts, restored two
+1080p Viewers to about 30 fps with zero packet loss. The same gate passed live
+quality, pause/resume, audio-presence source changes and Client-exit fallback.
+Native payload-capacity evidence does not require decoded dimensions; encoded
+receivers can supply real transport evidence without opening a decoder.
+
+DevTools accepted weak-network emulation commands in this loopback run, but RTP
+traffic exceeded the requested limit without the requested loss. That run does
+not establish weak-network quality or automatic fallback performance.
 
 Non-Windows capture keeps the existing process/frame boundary and replaces only
 the platform sidecar. The macOS adapter enumerates `SCShareableContent`, fences
@@ -187,6 +212,8 @@ compatibility inputs. Historical measurements remain in the separately marked
 ## Primary Sources
 
 - [Windows Graphics Capture](https://learn.microsoft.com/en-us/windows/apps/develop/media-authoring-processing/screen-capture)
+- [WGC `MinUpdateInterval`](https://learn.microsoft.com/en-us/uwp/api/windows.graphics.capture.graphicscapturesession.minupdateinterval)
+- [Sunshine WGC update interval](https://github.com/LizardByte/Sunshine/blob/master/src/platform/windows/display_wgc.cpp)
 - [WGC `CreateForWindow`](https://learn.microsoft.com/en-us/windows/win32/api/windows.graphics.capture.interop/nf-windows-graphics-capture-interop-igraphicscaptureiteminterop-createforwindow)
 - [WASAPI process loopback](https://learn.microsoft.com/en-us/samples/microsoft/windows-classic-samples/applicationloopbackaudio-sample/)
 - [OBS application-audio capture guide](https://obsproject.com/kb/application-audio-capture-guide/)

@@ -111,14 +111,14 @@ describe("native sender edge adapter", () => {
     expect(await current.edge.start()).toBe(true);
     expect(vi.mocked(current.control.prepareEdge).mock.calls[0]?.[2].iceServers)
       .toHaveLength(3);
-    for (const port of [40_000, 40_003, 40_006]) {
+    for (const [index, port] of [40_000, 40_003, 40_006].entries()) {
       current.emit({
         version: 8,
         type: "edge-candidate",
         shareId: "share_1234567",
         connectionId: "edge_12345678",
         candidate: {
-          candidate: `candidate:base 1 udp 1 203.0.113.7 ${port} typ srflx`,
+          candidate: `candidate:ns${index + 1} 1 udp 1 203.0.113.7 ${port} typ srflx`,
         },
       });
     }

@@ -50,8 +50,9 @@ func (engine *Engine) NewReceiver(options ReceiverOptions) (*Receiver, webrtc.Se
 	if err != nil || !hasVideo {
 		return nil, webrtc.SessionDescription{}, errors.New("native media receiver offer has no video")
 	}
+	mappedPort := 0
 	if engine.portMapping != nil && len(options.ICEServers) > 0 {
-		engine.portMapping.Prepare()
+		mappedPort = engine.portMapping.Prepare()
 	}
 	connection, err := engine.api.NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
@@ -77,6 +78,7 @@ func (engine *Engine) NewReceiver(options ReceiverOptions) (*Receiver, webrtc.Se
 	receiver.localCandidates = newLocalCandidateGathering(
 		engine,
 		options.ICEServers,
+		mappedPort,
 		options.Events.LocalCandidate,
 	)
 	connection.OnICECandidate(receiver.localCandidates.addPion)
@@ -221,9 +223,8 @@ func (receiver *Receiver) consumeTrack(track *webrtc.TrackRemote, _ *webrtc.RTPR
 				}
 				return
 			}
-			if err = receiver.source.WriteRTP(packet); err != nil {
-				return
-			}
+			// Pion completes all bindings; each edge owns its write failure.
+			_ = receiver.source.WriteRTP(packet)
 		}
 	}
 	if track.Kind() == webrtc.RTPCodecTypeAudio && receiver.audioSource != nil &&
@@ -233,9 +234,7 @@ func (receiver *Receiver) consumeTrack(track *webrtc.TrackRemote, _ *webrtc.RTPR
 			if err != nil {
 				return
 			}
-			if err = receiver.audioSource.WriteRTP(packet); err != nil {
-				return
-			}
+			_ = receiver.audioSource.WriteRTP(packet)
 		}
 	}
 }

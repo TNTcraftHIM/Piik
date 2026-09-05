@@ -19,6 +19,7 @@
     "check:client-capture": "node scripts/check-client.mjs --capture-only",
     "gate:client-media": "tsx scripts/client-media-gate.ts",
     "gate:client-native-host": "tsx scripts/client-native-host-gate.ts",
+    "gate:client-browser-fanout": "tsx scripts/client-browser-fanout-gate.ts",
     "gate:client-cross-nat": "tsx scripts/client-native-host-gate.ts",
     "gate:client-link-media": "tsx scripts/client-native-host-gate.ts",
     "gate:client-native-sfu": "tsx scripts/client-native-sfu-gate.ts",

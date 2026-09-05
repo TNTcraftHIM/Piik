@@ -55,12 +55,27 @@
 
 using Microsoft::WRL::ComPtr;
 
+#ifndef ____x_ABI_CWindows_CGraphics_CCapture_CIGraphicsCaptureSession5_INTERFACE_DEFINED__
+#define ____x_ABI_CWindows_CGraphics_CCapture_CIGraphicsCaptureSession5_INTERFACE_DEFINED__
+namespace ABI::Windows::Graphics::Capture {
+MIDL_INTERFACE("67C0EA62-1F85-5061-925A-239BE0AC09CB")
+IGraphicsCaptureSession5 : public IInspectable {
+ public:
+  IFACEMETHOD(get_MinUpdateInterval)(
+      ABI::Windows::Foundation::TimeSpan* value) = 0;
+  IFACEMETHOD(put_MinUpdateInterval)(
+      ABI::Windows::Foundation::TimeSpan value) = 0;
+};
+}  // namespace ABI::Windows::Graphics::Capture
+#endif
+
 namespace {
 
 constexpr UINT32 kWidth = 1280;
 constexpr UINT32 kHeight = 720;
 constexpr UINT32 kFrameRate = 30;
 constexpr UINT32 kBitRate = 3'000'000;
+constexpr LONGLONG kFastCaptureUpdateInterval100ns = 40'000;
 constexpr UINT32 kVbvBytes = kBitRate / kFrameRate / 8;
 constexpr UINT32 kGopFrames = 60;
 constexpr UINT32 kMaxEventsPerPump = 64;
@@ -140,6 +155,18 @@ class GateFailure final : public std::runtime_error {
 void Check(HRESULT result, const std::string& stage) {
   if (FAILED(result)) {
     throw GateFailure(stage, "Windows API returned a failing HRESULT", result);
+  }
+}
+
+void EnableFastCaptureUpdates(
+    const winrt::Windows::Graphics::Capture::GraphicsCaptureSession& session) {
+  ComPtr<ABI::Windows::Graphics::Capture::IGraphicsCaptureSession5> session5;
+  auto* inspectable = reinterpret_cast<IInspectable*>(winrt::get_abi(session));
+  if (SUCCEEDED(inspectable->QueryInterface(IID_PPV_ARGS(&session5)))) {
+    // Zero is not an unlimited rate on current Windows. Keep WGC faster than
+    // every supported profile and let the output cadence own the exact cap.
+    ABI::Windows::Foundation::TimeSpan interval{kFastCaptureUpdateInterval100ns};
+    (void)session5->put_MinUpdateInterval(interval);
   }
 }
 
@@ -2059,6 +2086,7 @@ void RunVideoCapture(const ProductArguments& arguments) {
       capture_device, DirectXPixelFormat::B8G8R8A8UIntNormalized, 2,
       initial_size);
   GraphicsCaptureSession capture_session = pool.CreateCaptureSession(item);
+  EnableFastCaptureUpdates(capture_session);
 
   UniqueHandle shutdown(CreateEventW(nullptr, TRUE, FALSE, nullptr));
   UniqueHandle frame_ready(CreateEventW(nullptr, FALSE, FALSE, nullptr));
@@ -2118,6 +2146,7 @@ void RunVideoCapture(const ProductArguments& arguments) {
     capture_session.StartCapture();
 
     UINT64 previous_timestamp = 0;
+    UINT64 next_output_timestamp = 0;
     UINT64 encoded_frames = 0;
     bool active_status_written = false;
     auto pool_size = initial_size;
@@ -2207,9 +2236,9 @@ void RunVideoCapture(const ProductArguments& arguments) {
       }
       UINT64 timestamp = static_cast<UINT64>(signed_timestamp);
       if (previous_timestamp != 0 && timestamp <= previous_timestamp) continue;
-      if (previous_timestamp != 0 &&
-          timestamp - previous_timestamp <
-              frame_duration * 19 / 20) {
+      const UINT64 timing_tolerance = frame_duration / 20;
+      if (next_output_timestamp != 0 && timestamp < next_output_timestamp &&
+          next_output_timestamp - timestamp > timing_tolerance) {
         continue;
       }
       auto content_size = latest.ContentSize();
@@ -2235,6 +2264,15 @@ void RunVideoCapture(const ProductArguments& arguments) {
           source_description.Height, static_cast<UINT32>(content_size.Height));
       ComPtr<ID3D11Texture2D> nv12 = converter.Convert(
           source.Get(), content_width, content_height);
+      if (next_output_timestamp == 0) {
+        next_output_timestamp = timestamp + frame_duration;
+      } else {
+        const UINT64 elapsed = timestamp > next_output_timestamp
+                                   ? timestamp - next_output_timestamp
+                                   : 0;
+        next_output_timestamp +=
+            (elapsed / frame_duration + 1) * frame_duration;
+      }
       latest_nv12 = nv12;
       latest_timestamp = timestamp;
       ControlSignal control = ConsumeControlSignal();

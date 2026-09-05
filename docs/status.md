@@ -159,6 +159,11 @@ This is the current execution index. Git history owns completed timelines;
   without a second SFU client.
   A Windows gate proves Browser Host to Client-native Viewer delivery and Chrome
   decode; an RTP gate covers bounded H.264/Opus child relay and cleanup.
+  Client-assisted Browser H.264 capture now reuses one local sender for Native
+  fanout while quality convergence is enabled. Its two-Viewer gate covers
+  cadence, live controls and Client-exit recovery; weak-network acceptance
+  remains open. Native RTP forwarding preserves padding and its sequence
+  continuity without requiring decoded dimensions for capacity evidence.
   Native control treats malformed/stale/repeated per-edge signaling as disposable;
   unexpected Client close reaches the current Browser participant through the
   existing fence. Windows

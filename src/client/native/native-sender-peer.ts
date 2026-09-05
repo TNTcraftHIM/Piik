@@ -128,7 +128,7 @@ export class NativeSenderPeer implements HostMediaPeer {
               codecProfile: "42c033",
               codecParameters:
                 "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42c033",
-              powerEfficientEncoder: true,
+              powerEfficientEncoder: this.source ? null : true,
               intervalFramesEncoded: quality.intervalFramesEncoded,
               qualityLimitationReason: quality.reason,
               nativeEdgeQualityState: quality.state,

@@ -79,6 +79,7 @@ export const zh = {
   "host.sourcePicker.systemAction": "使用系统选择器选择屏幕或窗口",
   "host.sourcePicker.audio": "分享声音",
   "host.sourcePicker.audioHint": "窗口分享应用声音，整屏分享系统声音",
+  "host.sourcePicker.refresh": "刷新屏幕和窗口",
   "host.sourcePicker.loading": "正在查找本机屏幕和窗口",
   "host.sourcePicker.unavailable": "本机捕获暂不可用，仍可使用浏览器选择器",
   "host.join": "加入房间",

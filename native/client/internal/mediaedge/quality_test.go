@@ -32,7 +32,7 @@ func TestQualitySampleUsesEstimatorCapacityAgainstEncodedPayload(t *testing.T) {
 	edge, receiver, _ := connectedReceiver(t, engine, source, "limited-edge")
 	t.Cleanup(func() { _ = receiver.Close() })
 	edge.bandwidth = newBandwidthObserver(fixedTargetEstimator{target: 100_000})
-	source.SetFormat(1280, 720)
+	// Encoded relay sources need no decoded dimensions to compare payload and capacity.
 	started := time.Now()
 	if _, ok := edge.QualitySample(started); ok {
 		t.Fatal("first quality sample did not establish a baseline")

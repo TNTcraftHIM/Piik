@@ -152,6 +152,31 @@ func TestReceiverForwardsEncodedVideoToANativeEdge(t *testing.T) {
 		gotAudio.GetExtension(9) != nil {
 		t.Fatalf("forwarded audio packet = %#v", gotAudio)
 	}
+	for index, input := range []struct {
+		track   *webrtc.TrackLocalStaticRTP
+		media   *rtp.Packet
+		packets <-chan *rtp.Packet
+	}{{track, want, packets}, {audioTrack, wantAudio, audioPackets}} {
+		padding := &rtp.Packet{Header: input.media.Header, PaddingSize: 4}
+		padding.Padding = true
+		padding.SequenceNumber++
+		padding.Marker = false
+		if err = input.track.WriteRTP(padding); err != nil {
+			t.Fatal(err)
+		}
+		if packet := waitPacket(t, input.packets); !packet.Padding || packet.PaddingSize != padding.PaddingSize || len(packet.Payload) != 0 {
+			t.Fatalf("stream %d lost RTP padding continuity", index)
+		}
+		next := input.media.Clone()
+		next.SequenceNumber += 2
+		next.Timestamp += 3_000
+		if err = input.track.WriteRTP(next); err != nil {
+			t.Fatal(err)
+		}
+		if packet := waitPacket(t, input.packets); string(packet.Payload) != string(next.Payload) {
+			t.Fatalf("stream %d stopped delivering media after padding", index)
+		}
+	}
 }
 
 func connectedReceiverForSources(

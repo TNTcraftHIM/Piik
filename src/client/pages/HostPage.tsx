@@ -154,6 +154,7 @@ import {
   shouldUseBrowserQualityCandidate,
 } from "../native/native-sender-peer";
 import { NativeMediaBridge } from "../native/media-bridge";
+import { NativeMediaIngress } from "../native/media-ingress";
 import {
   defaultNativeCapturePath,
   type NativeCapturePath,
@@ -576,8 +577,10 @@ export function HostPage({
   const hostSfuRouteRef = useRef<HostSfuRoute | null>(null);
   const sfuStandbyPrewarmerRef = useRef<SfuStandbyPrewarmer | null>(null);
   const nativeClientRef = useRef<NativeClient | null>(null);
+  const nativeClientConnectRef = useRef<Promise<NativeClient | null> | null>(null);
   const nativeShareGenerationRef = useRef<string | null>(null);
   const nativeMediaBridgeRef = useRef<NativeMediaBridge | null>(null);
+  const nativeMediaIngressRef = useRef<NativeMediaIngress | null>(null);
   const nativeEventCleanupRef = useRef<(() => void) | null>(null);
   const nativeClientCloseCleanupRef = useRef<(() => void) | null>(null);
   const nativeModeRef = useRef(false);
@@ -703,6 +706,7 @@ export function HostPage({
       disposeNativeShare();
       nativeClientCloseCleanupRef.current?.();
       nativeClientCloseCleanupRef.current = null;
+      nativeClientConnectRef.current = null;
       nativeClientRef.current?.close();
       nativeClientRef.current = null;
       streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -1281,7 +1285,9 @@ export function HostPage({
       if (nativeClientRef.current !== client) return;
       nativeClientRef.current = null;
       nativeClientCloseCleanupRef.current = null;
-      if (nativeModeRef.current && activeGenerationRef.current !== null) {
+      if (nativeMediaIngressRef.current) {
+        recoverBrowserFanout(nativeMediaIngressRef.current);
+      } else if (nativeModeRef.current && activeGenerationRef.current !== null) {
         endSharing({ key: "host.shareEnded" });
       }
     });
@@ -1300,9 +1306,19 @@ export function HostPage({
     await nativeShareCleanupRef.current;
     const current = nativeClientRef.current;
     if (current) return current;
-    const client = await NativeClient.connect();
-    if (client) ownNativeClient(client);
-    return client;
+    if (nativeClientConnectRef.current) return nativeClientConnectRef.current;
+    const connecting = NativeClient.connect().then((client) => {
+      if (nativeClientConnectRef.current !== connecting) {
+        client?.close();
+        return null;
+      }
+      if (client) ownNativeClient(client);
+      return client;
+    }).finally(() => {
+      if (nativeClientConnectRef.current === connecting) nativeClientConnectRef.current = null;
+    });
+    nativeClientConnectRef.current = connecting;
+    return connecting;
   }
 
   function closeCaptureSourcePicker(): void {
@@ -1359,6 +1375,46 @@ export function HostPage({
     }
   }
 
+  async function startBrowserNativeIngress(
+    generation: number,
+    shareGeneration: string,
+    captured: MediaStream,
+  ): Promise<void> {
+    if (!launchedByClient || videoCodecRef.current.primary !== "h264" ||
+      !routePolicyRef.current.topologyOptimization) return;
+    const client = await acquireNativeClient();
+    if (!client || !isCurrentShare(generation, shareGeneration)) return;
+    const ingress = new NativeMediaIngress(shareGeneration, client, () => {
+      recoverBrowserFanout(ingress);
+    });
+    nativeMediaIngressRef.current = ingress;
+    nativeShareGenerationRef.current = shareGeneration;
+    try {
+      await ingress.start(captured, qualitySettingsRef.current);
+      if (!isCurrentShare(generation, shareGeneration)) {
+        ingress.dispose();
+        return;
+      }
+    } catch {
+      if (nativeMediaIngressRef.current === ingress) disposeNativeShare();
+    }
+  }
+
+  function recoverBrowserFanout(ingress: NativeMediaIngress): void {
+    if (nativeMediaIngressRef.current !== ingress) return;
+    disposeNativeShare();
+    discardPreparedHostChild();
+    const generation = activeGenerationRef.current;
+    if (generation === null || !streamRef.current) return;
+    for (const [peerId, peer] of peersRef.current) {
+      if (!(peer instanceof NativeSenderPeer)) continue;
+      removePeer(peerId);
+      void startPeer(peerId, generation).catch((error: unknown) => {
+        if (isCurrentGeneration(generation)) setNoticeError(error, "connection");
+      });
+    }
+  }
+
   function requestSharing(): void {
     setJoiningRoom(false);
     if (!launchedByClient) {
@@ -1408,8 +1464,11 @@ export function HostPage({
   function disposeNativeShare(): void {
     const client = nativeClientRef.current;
     const shareGeneration = nativeShareGenerationRef.current;
+    const ingress = nativeMediaIngressRef.current;
+    nativeMediaIngressRef.current = null;
     nativeMediaBridgeRef.current?.dispose();
     nativeMediaBridgeRef.current = null;
+    ingress?.dispose();
     nativeEventCleanupRef.current?.();
     nativeEventCleanupRef.current = null;
     nativeShareGenerationRef.current = null;
@@ -1418,8 +1477,9 @@ export function HostPage({
     if (!client || !shareGeneration) {
       return;
     }
-    nativeShareCleanupRef.current = client
-      .stopShare(shareGeneration)
+    nativeShareCleanupRef.current = (ingress
+      ? client.stopReceive(shareGeneration)
+      : client.stopShare(shareGeneration))
       .catch(() => discardNativeClient(client));
   }
 
@@ -1541,6 +1601,10 @@ export function HostPage({
       if (!nativeUpdate && captureChanged) {
         await applyCaptureProfile(activeStream, nextProfile);
       }
+      const ingress = nativeMediaIngressRef.current;
+      if (ingress && !(await ingress.updateProfile(nextProfile))) {
+        throw new Error("Native media ingress is unavailable");
+      }
       if (
         !isCurrentGeneration(generation) ||
         qualityChangeRef.current !== token ||
@@ -1639,7 +1703,7 @@ export function HostPage({
     ) {
       return;
     }
-    if (nativeClient && nativeShareGeneration) {
+    if (nativeModeRef.current && nativeClient && nativeShareGeneration) {
       const generation = activeGenerationRef.current;
       if (generation === null) return;
       const nextPaused = !sharingPausedRef.current;
@@ -1679,11 +1743,13 @@ export function HostPage({
         setNoticeKey("host.pause.noTracksResume");
         return;
       }
+      nativeMediaIngressRef.current?.setPaused(false);
       for (const peer of peersRef.current.values()) peer.setPaused(false);
       hostProvisionalChildRef.current?.setPaused(false);
       hostSfuRouteRef.current?.setPaused(false);
       if (signalRef.current?.setSharingPaused(false) !== true) {
         setMediaPaused(activeStream, true);
+        nativeMediaIngressRef.current?.setPaused(true);
         for (const peer of peersRef.current.values()) peer.setPaused(true);
         hostProvisionalChildRef.current?.setPaused(true);
         hostSfuRouteRef.current?.setPaused(true);
@@ -1700,6 +1766,7 @@ export function HostPage({
       setNoticeKey("host.pause.noTracksPause");
       return;
     }
+    nativeMediaIngressRef.current?.setPaused(true);
     for (const peer of peersRef.current.values()) peer.setPaused(true);
     hostProvisionalChildRef.current?.setPaused(true);
     sharingPausedRef.current = true;
@@ -1803,7 +1870,7 @@ export function HostPage({
         }
       },
       createPeer:
-        nativeModeRef.current && nativeClient && nativeShareGeneration
+        nativeClient && nativeShareGeneration
           ? (candidate, input, events) => {
               const current = peersRef.current.get(candidate.childPeerId);
               if (
@@ -1829,6 +1896,7 @@ export function HostPage({
                 input.natPredictionEnabled,
                 nativeClient,
                 events,
+                nativeMediaIngressRef.current?.source,
               );
             }
           : undefined,
@@ -1890,8 +1958,7 @@ export function HostPage({
     const activeStream = streamRef.current;
     const nativeClient = nativeClientRef.current;
     const nativeShareGeneration = nativeShareGenerationRef.current;
-    const useNative = nativeModeRef.current &&
-      nativeClient !== null && nativeShareGeneration !== null;
+    const useNative = nativeClient !== null && nativeShareGeneration !== null;
     const iceConfig = iceConfigRef.current;
     const signal = signalRef.current;
     if ((!activeStream && !useNative) || !iceConfig || !signal) {
@@ -1933,6 +2000,7 @@ export function HostPage({
           routePolicyRef.current.natPrediction,
           nativeClient,
           peerEvents,
+          nativeMediaIngressRef.current?.source,
         )
       : new HostPeer(
           peerId,
@@ -2165,7 +2233,7 @@ export function HostPage({
       const activeStream = streamRef.current;
       const nativeClient = nativeClientRef.current;
       const nativeShareGeneration = nativeShareGenerationRef.current;
-      if (nativeClient && nativeShareGeneration) {
+      if (nativeModeRef.current && nativeClient && nativeShareGeneration) {
         void nativeClient
           .setPaused(nativeShareGeneration, true)
           .catch(() => undefined);
@@ -2173,6 +2241,7 @@ export function HostPage({
       if (activeStream) {
         setMediaPaused(activeStream, true);
       }
+      nativeMediaIngressRef.current?.setPaused(true);
       for (const peer of peersRef.current.values()) peer.setPaused(true);
       hostProvisionalChildRef.current?.setPaused(true);
       hostSfuRouteRef.current?.setPaused(true);
@@ -2369,7 +2438,7 @@ export function HostPage({
       streamRef.current = captured;
       setStream(captured);
       watchCaptureEnd(captured, generation);
-      if (nativeStarted) {
+      if (selection.kind === "native") {
         setDetails(
           nativeCaptureDetails(qualitySettingsRef.current, captured),
         );
@@ -2377,6 +2446,10 @@ export function HostPage({
       } else {
         setDetails(captureDetails(captured));
         videoCodecRef.current = await resolveStreamVideoCodec(captured);
+        if (isCurrentShare(generation, shareGeneration)) {
+          await startBrowserNativeIngress(generation, shareGeneration, captured);
+          nativeStarted = nativeMediaIngressRef.current !== null;
+        }
       }
       setResolvedVideoCodec(videoCodecRef.current.primary);
     }
@@ -2713,6 +2786,42 @@ export function HostPage({
     watchCaptureEnd(captured, generation);
 
     try {
+      const ingress = nativeMediaIngressRef.current;
+      const reboundPeerIds: string[] = [];
+      if (ingress) {
+        try {
+          if (ingress.hasAudio !== (captured.getAudioTracks().length > 0)) {
+            const client = nativeClientRef.current;
+            if (!client) throw new Error("Native media ingress is unavailable");
+            const replacement = new NativeMediaIngress(ingress.shareId, client, () => {
+              recoverBrowserFanout(replacement);
+            });
+            try {
+              await replacement.start(captured, qualitySettingsRef.current);
+              if (!isCurrentGeneration(generation) || nativeMediaIngressRef.current !== ingress) {
+                replacement.dispose();
+                return;
+              }
+              replacement.setPaused(sharingPausedRef.current);
+              nativeMediaIngressRef.current = replacement;
+            } catch (error) {
+              replacement.dispose();
+              throw error;
+            }
+            discardPreparedHostChild();
+            for (const [peerId, peer] of peersRef.current) {
+              if (!(peer instanceof NativeSenderPeer)) continue;
+              removePeer(peerId);
+              reboundPeerIds.push(peerId);
+            }
+            ingress.dispose();
+          } else if (!(await ingress.replaceStream(captured))) {
+            throw new Error("Native media ingress could not replace its source");
+          }
+        } catch {
+          recoverBrowserFanout(ingress);
+        }
+      }
       const activeSfuRoute = hostSfuRouteRef.current;
       const provisional = hostProvisionalChildRef.current;
       const [replacements, , sfuReplaced] = await Promise.all([
@@ -2741,7 +2850,7 @@ export function HostPage({
         return;
       }
 
-      const failedPeerIds: string[] = [];
+      const failedPeerIds: string[] = [...reboundPeerIds];
       for (const { peerId, peer, replaced } of replacements) {
         if (!replaced && peersRef.current.get(peerId) === peer) {
           removePeer(peerId);
@@ -3253,6 +3362,7 @@ export function HostPage({
                 onBrowser={startBrowserShareFromPicker}
                 onNative={startNativeShareFromPicker}
                 onPreview={loadNativeSourcePreview}
+                onRefresh={openCaptureSourcePicker}
                 onCancel={closeCaptureSourcePicker}
                 browserAvailable={!nativeActive}
                 initialAudio={

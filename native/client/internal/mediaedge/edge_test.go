@@ -15,6 +15,32 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
+func TestPortMappingCandidateUsesObservedPublicAddress(t *testing.T) {
+	var emitted []*webrtc.ICECandidateInit
+	gathering := &localCandidateGathering{
+		engine:           &Engine{localPort: 43210},
+		mappedPort:       43211,
+		mappedCandidates: make(map[string]struct{}),
+		emit: func(candidate *webrtc.ICECandidateInit) {
+			emitted = append(emitted, candidate)
+		},
+	}
+	mapped := mappedAddress{address: "203.0.113.7", port: 41000}
+	gathering.emitMappedCandidate(mapped)
+	gathering.emitMappedCandidate(mapped)
+
+	if len(emitted) != 1 {
+		t.Fatalf("emitted candidates = %d, want one mapped", len(emitted))
+	}
+	fields := strings.Fields(emitted[0].Candidate)
+	if len(fields) < 8 || fields[0] != "candidate:mp1" ||
+		fields[3] != "1694498559" ||
+		fields[4] != "203.0.113.7" || fields[5] != "43211" ||
+		fields[7] != "srflx" {
+		t.Fatalf("mapped candidate = %q", emitted[0].Candidate)
+	}
+}
+
 func TestOneEncodedSourceFeedsTwoIndependentEdges(t *testing.T) {
 	engine, err := NewEngine(EngineOptions{
 		BindAddress:     "127.0.0.1:0",

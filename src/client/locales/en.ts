@@ -81,6 +81,7 @@ export const en: Record<CopyKey, string> = {
   "host.sourcePicker.systemAction": "Choose a screen or window with the system picker",
   "host.sourcePicker.audio": "Share sound",
   "host.sourcePicker.audioHint": "Application sound for windows; system sound for screens",
+  "host.sourcePicker.refresh": "Refresh screens and windows",
   "host.sourcePicker.loading": "Finding local screens and windows",
   "host.sourcePicker.unavailable": "Client capture is unavailable; the Browser picker still works",
   "host.join": "Join a room",
