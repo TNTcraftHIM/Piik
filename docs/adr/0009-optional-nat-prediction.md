@@ -58,6 +58,11 @@ connection acquisition reuses the route controller's existing opportunity ledger
    the remaining attempts behind a working SFU route. A new connection can
    provide another mapping opportunity, not guaranteed independent randomness:
    in particular, Native connections may retain the same shared UDP socket.
+   When prediction is enabled, that route-owned Browser P2P edge may also use
+   the existing bounded automatic-recovery budget (two ICE restarts) before
+   reporting the edge failed. Each restart creates a fresh ICE gathering
+   generation without adding a route candidate, SFU fallback, or second retry
+   state; unsuccessful recovery follows the normal route-failed path.
 
 ## Consequences
 

@@ -98,6 +98,10 @@ begins only after that exact candidate commits as the active route.
 When NAT traversal is enabled, another operation may use the remaining
 connection-attempt budget after rollback. The waiting display uses the actual
 server-issued attempt ordinal; it never counts time as an attempted connection.
+When NAT prediction is enabled, a route-owned P2P candidate may also use its
+existing bounded automatic-recovery budget (two ICE restarts) before it reports
+that failure; each restart creates a fresh mapping generation without reopening
+the route candidate or introducing a second reconciliation loop.
 
 When a newly committed Host-root Viewer exposes unused downstream capacity while
 another Host root has at least two direct children, the same background operation may

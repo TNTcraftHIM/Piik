@@ -440,7 +440,14 @@ export class ViewerPeer implements ViewerMediaPeer {
     if (this.recoveryOwner === "route") {
       this.clearDisconnectTimer();
       if (state === "failed") {
-        this.reportRecoveryExhausted();
+        if (
+          this.natPredictionEnabled &&
+          this.automaticRecoveryRequests < VIEWER_MAX_AUTOMATIC_RECOVERY_REQUESTS
+        ) {
+          this.attemptAutomaticRecovery();
+        } else {
+          this.reportRecoveryExhausted();
+        }
       }
       return;
     }
@@ -475,7 +482,10 @@ export class ViewerPeer implements ViewerMediaPeer {
       this.reportRecoveryExhausted();
       return;
     }
-    const rebuild = this.automaticRecoveryRequests > 0;
+    const rebuild =
+      this.recoveryOwner === "route"
+        ? false
+        : this.automaticRecoveryRequests > 0;
     if (
       !this.events.sendRestartRequest(
         this.parentPeerId,
