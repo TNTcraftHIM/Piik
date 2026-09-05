@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -311,6 +312,9 @@ func (server *Server) handleControl(response http.ResponseWriter, request *http.
 		}
 		value, handleErr := extension.Handle(controlContext, payload)
 		if handleErr != nil || value == nil {
+			if handleErr != nil {
+				fmt.Fprintf(os.Stderr, "screener-client control error: %v\n", handleErr)
+			}
 			closeControl(connection, "invalid control message")
 			return
 		}
