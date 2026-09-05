@@ -93,7 +93,7 @@ func Discover(parent context.Context, executable string) (Capabilities, error) {
 	stderr := &boundedBuffer{limit: maxProbeErrorBytes}
 	command := exec.CommandContext(ctx, executable, "--probe")
 	command.Stdout = stdout
-	command.Stderr = stderr
+	command.Stderr = io.MultiWriter(os.Stderr, stderr)
 	hideWindow(command)
 	if err := command.Run(); err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {

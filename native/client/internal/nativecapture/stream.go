@@ -75,9 +75,10 @@ func ListSources(parent context.Context, executable string) ([]CaptureTarget, er
 	ctx, cancel := context.WithTimeout(parent, probeTimeout)
 	defer cancel()
 	stdout := &boundedBuffer{limit: maxProbeOutputBytes}
+	stderr := &boundedBuffer{limit: maxProbeErrorBytes}
 	command := exec.CommandContext(ctx, executable, "--list")
 	command.Stdout = stdout
-	command.Stderr = &boundedBuffer{limit: maxProbeErrorBytes}
+	command.Stderr = io.MultiWriter(os.Stderr, stderr)
 	hideWindow(command)
 	if err := command.Run(); err != nil {
 		return nil, errors.New("native capture source list is unavailable")
@@ -101,6 +102,7 @@ func PreviewSource(parent context.Context, executable string, target CaptureTarg
 	ctx, cancel := context.WithTimeout(parent, probeTimeout)
 	defer cancel()
 	stdout := &boundedBuffer{limit: maxPreviewBytes}
+	stderr := &boundedBuffer{limit: maxProbeErrorBytes}
 	command := exec.CommandContext(ctx, executable,
 		"--preview",
 		target.Kind,
@@ -109,7 +111,7 @@ func PreviewSource(parent context.Context, executable string, target CaptureTarg
 		zeroWhenEmpty(target.CreationTime),
 	)
 	command.Stdout = stdout
-	command.Stderr = &boundedBuffer{limit: maxProbeErrorBytes}
+	command.Stderr = io.MultiWriter(os.Stderr, stderr)
 	hideWindow(command)
 	if err := command.Run(); err != nil {
 		return nil, errors.New("native capture preview is unavailable")
@@ -285,7 +287,7 @@ func startStreamWithEnvironment(
 		cancel()
 		return nil, err
 	}
-	command.Stderr = &boundedBuffer{limit: maxProbeErrorBytes}
+	command.Stderr = io.MultiWriter(os.Stderr, &boundedBuffer{limit: maxProbeErrorBytes})
 	hideWindow(command)
 	if err = command.Start(); err != nil {
 		cancel()
