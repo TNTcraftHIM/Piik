@@ -29,6 +29,7 @@
 #include <winrt/base.h>
 
 #include "capture_target.h"
+#include "capture_geometry.h"
 #include "process_audio.h"
 #ifndef SCREENER_H264_FIXTURE
 #include "vp8_encoder.h"
@@ -1670,7 +1671,7 @@ class FrameConverter final {
   }
 
   ComPtr<ID3D11Texture2D> Convert(ID3D11Texture2D* source, UINT32 width,
-                                  UINT32 height) {
+                                  UINT32 height, SIZE presentation) {
     if (source == nullptr || width == 0 || height == 0 ||
         width > 16'384 || height > 16'384) {
       Fail("capture-size", "captured window dimensions are invalid");
@@ -1712,17 +1713,9 @@ class FrameConverter final {
 
     RECT source_rect = {0, 0, static_cast<LONG>(width),
                         static_cast<LONG>(height)};
-    double scale = std::min(static_cast<double>(profile_.width) / width,
-                            static_cast<double>(profile_.height) / height);
-    LONG target_width = std::max<LONG>(
-        2, static_cast<LONG>(std::llround(width * scale)) & ~1L);
-    LONG target_height = std::max<LONG>(
-        2, static_cast<LONG>(std::llround(height * scale)) & ~1L);
-    target_width = std::min<LONG>(target_width, profile_.width);
-    target_height = std::min<LONG>(target_height, profile_.height);
-    LONG left = (static_cast<LONG>(profile_.width) - target_width) / 2;
-    LONG top = (static_cast<LONG>(profile_.height) - target_height) / 2;
-    RECT target_rect = {left, top, left + target_width, top + target_height};
+    RECT target_rect = screener::capture::FitFrameRect(
+        presentation, {static_cast<LONG>(profile_.width),
+                       static_cast<LONG>(profile_.height)});
     RECT output_rect = {0, 0, static_cast<LONG>(profile_.width),
                         static_cast<LONG>(profile_.height)};
 
@@ -2206,6 +2199,8 @@ void RunVideoCapture(const ProductArguments& arguments) {
   const bool hardware = encoder->kind == OutputKind::h264;
   const char* codec = hardware ? "h264" : "vp8";
   FrameConverter converter(device.device.Get(), arguments.profile);
+  screener::capture::CapturePresentation presentation(arguments.target_kind,
+                                                      arguments.source_id);
   ProtocolWriter writer;
 
   using namespace winrt::Windows::Graphics::Capture;
@@ -2424,7 +2419,9 @@ void RunVideoCapture(const ProductArguments& arguments) {
       UINT32 content_height = std::min<UINT32>(
           source_description.Height, static_cast<UINT32>(content_size.Height));
       ComPtr<ID3D11Texture2D> nv12 = converter.Convert(
-          source.Get(), content_width, content_height);
+          source.Get(), content_width, content_height,
+          presentation.Resolve(content_width, content_height,
+                               encoded_frames % arguments.profile.gop_frames() == 0));
       if (next_output_timestamp == 0) {
         next_output_timestamp = timestamp + frame_duration;
       } else {

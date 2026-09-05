@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [string]$OutputDirectory
+    [string]$OutputDirectory,
+    [switch]$Check
 )
 
 Set-StrictMode -Version Latest
@@ -47,5 +48,15 @@ $compile = @(
 & cmd.exe /d /s /c $compile
 if ($LASTEXITCODE -ne 0) {
     throw "Window-capture helper compilation failed with exit code $LASTEXITCODE."
+}
+if ($Check) {
+    $geometrySource = Join-Path $helperDirectory 'capture_geometry.test.cpp'
+    $geometryObject = Join-Path $outputPath 'capture-geometry.test.obj'
+    $geometryCheck = Join-Path $outputPath 'capture-geometry.test.exe'
+    $compileCheck = 'call "{0}" -arch=x64 -host_arch=x64 >nul && cl.exe /nologo /std:c++20 /EHsc /W4 /WX "{1}" /Fo:"{2}" /Fe:"{3}" /link user32.lib' -f $developerCommand, $geometrySource, $geometryObject, $geometryCheck
+    & cmd.exe /d /s /c $compileCheck
+    if ($LASTEXITCODE -ne 0) { throw 'Capture geometry check compilation failed.' }
+    & $geometryCheck
+    if ($LASTEXITCODE -ne 0) { throw 'Capture geometry check failed.' }
 }
 Write-Output $executablePath

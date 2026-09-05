@@ -73,12 +73,22 @@ invalid display contexts are leads, not a diagnosis of this user's machine.
 Projected WinRT exceptions now reach the existing capture-error boundary instead
 of escaping `std::exception`; that correction alone does not prove startup fixed.
 
-The converter scales into a new output texture and preserves aspect ratio:
-1280x960 into 1920x1080 yields 1440x1080 content and 240-pixel side bars. It does
-not call a display-mode or game-window resize API. A change to the game's own
-stretching must therefore be distinguished from this encoded presentation.
-Display-path scaling is not an arbitrary window's rendering intent, so aspect
-ratio alone cannot authorize stretching every captured window.
+The original converter always fitted the captured pixel aspect into the output:
+1280x960 into 1920x1080 yielded 1440x1080 content and 240-pixel side bars, even
+when Windows explicitly stretched that desktop source onto a 1920x1080 target.
+The Windows adapter now reads the active `QueryDisplayConfig` path and applies
+its target aspect only for explicit `STRETCHED`, a unique display path, exact
+source/frame dimensions, and display or physical full-client-area capture.
+Rotation changes the target aspect, not the orientation of already-oriented WGC
+pixels. Output profile dimensions and the one-encode media path are unchanged.
+
+Display metadata refreshes on source geometry changes and existing periodic
+keyframes, without another timer or display-setting writes. Unknown/custom
+scaling, ambiguous cloned outputs and normal windows keep captured aspect.
+This does not prove fidelity to monitor-side scaling or vendor-private game
+panel-fit/MPO transforms: those may not appear in desktop display-path metadata.
+The CPU geometry check covers stretch, ordinary aspect, rotation and already-
+scaled input; the reported game's physical comparison remains acceptance work.
 
 Windows explicitly permits a capture item to close when its application silently
 replaces the underlying window. Reattaching to another window is not equivalent
@@ -89,6 +99,10 @@ Primary references: [CreateForMonitor](https://learn.microsoft.com/en-us/windows
 [CreateFreeThreaded](https://learn.microsoft.com/en-us/uwp/api/windows.graphics.capture.direct3d11captureframepool.createfreethreaded),
 [capture item closure](https://learn.microsoft.com/en-us/uwp/api/windows.graphics.capture.graphicscaptureitem.closed),
 and [WinRT exceptions](https://learn.microsoft.com/en-us/uwp/cpp-ref-for-winrt/error-handling/hresult-error).
+Aspect references: [active display paths](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-querydisplayconfig),
+[scaling modes](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ne-wingdi-displayconfig_scaling),
+[active signal size](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-displayconfig_video_signal_info),
+and [independent panel fitting/MPO](https://learn.microsoft.com/en-us/windows/win32/direct3ddxgi/for-best-performance--use-dxgi-flip-model).
 
 ## Acceptance
 

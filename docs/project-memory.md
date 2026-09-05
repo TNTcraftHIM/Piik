@@ -84,7 +84,7 @@ implementation and routine UI detail.
 
 ## Current Snapshot
 
-Canonical source uses the strict `screener-v19` Browser/server contract with
+Canonical source uses the strict `screener-v20` Browser/server contract with
 committed media readiness, bounded candidate-relative progress and one-shot
 Host-root convergence. It retains optional SQLite room authority and the
 H.264/VP8 sender gate. [Status](./status.md) owns the compact current execution

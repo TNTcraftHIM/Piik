@@ -123,8 +123,16 @@ function checkPlatformCapture() {
       "v1.0",
       "powershell.exe",
     );
+    const modernPowerShell = join(
+      process.env.ProgramFiles || "C:\\Program Files",
+      "PowerShell",
+      "7",
+      "pwsh.exe",
+    );
     const powershell = process.env.SCREENER_POWERSHELL?.trim() ||
-      (existsSync(systemPowerShell) ? systemPowerShell : "pwsh");
+      (existsSync(modernPowerShell)
+        ? modernPowerShell
+        : (existsSync(systemPowerShell) ? systemPowerShell : "pwsh"));
     run(powershell, [
       "-NoProfile",
       "-ExecutionPolicy",
@@ -133,6 +141,7 @@ function checkPlatformCapture() {
       join(clientRoot, "platform", "windows", "capture", "build.ps1"),
       "-OutputDirectory",
       buildRoot,
+      "-Check",
     ]);
     executable = join(buildRoot, "screener-client-capture.exe");
   } else if (process.platform === "darwin") {

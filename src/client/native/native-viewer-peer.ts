@@ -95,6 +95,7 @@ export class NativeCapableViewerPeer implements ViewerMediaPeer {
           const client = !forceBrowser && offerHasNativeVideoCodec(payload.description.sdp)
             ? await this.nativeClient.catch(() => null)
             : null;
+          if (this.disposed) return;
           this.backend = client
             ? new NativeViewerPeer(
                 this.currentIceConfig,

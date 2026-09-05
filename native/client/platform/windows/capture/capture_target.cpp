@@ -15,6 +15,7 @@
 #include <wrl/client.h>
 
 #include "capture_target.h"
+#include "capture_geometry.h"
 
 #include <algorithm>
 #include <array>
@@ -37,6 +38,53 @@ constexpr LONG kPreviewHeight = 180;
 constexpr LONG kMaxPreviewSourceDimension = 2'048;
 constexpr DWORD kBitmapHeaderBytes = 54;
 constexpr wchar_t kPreviewWindowClass[] = L"ScreenerPreviewWindow";
+
+SIZE ReadDisplayPresentation(const wchar_t* device_name, SIZE captured) {
+  UINT32 path_count = 0;
+  UINT32 mode_count = 0;
+  constexpr UINT32 flags = QDC_ONLY_ACTIVE_PATHS;
+  if (GetDisplayConfigBufferSizes(flags, &path_count, &mode_count) !=
+      ERROR_SUCCESS) return captured;
+  std::vector<DISPLAYCONFIG_PATH_INFO> paths(path_count);
+  std::vector<DISPLAYCONFIG_MODE_INFO> modes(mode_count);
+  if (QueryDisplayConfig(flags, &path_count, paths.data(), &mode_count,
+                         modes.data(), nullptr) != ERROR_SUCCESS) return captured;
+
+  const DISPLAYCONFIG_PATH_INFO* matched = nullptr;
+  for (UINT32 index = 0; index < path_count; ++index) {
+    const auto& path = paths[index];
+    DISPLAYCONFIG_SOURCE_DEVICE_NAME name{};
+    name.header = {DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME, sizeof(name),
+                   path.sourceInfo.adapterId, path.sourceInfo.id};
+    if (DisplayConfigGetDeviceInfo(&name.header) != ERROR_SUCCESS) return captured;
+    if (wcscmp(name.viewGdiDeviceName, device_name) != 0) continue;
+    // A cloned desktop has no single physical presentation to reproduce.
+    if (matched != nullptr) return captured;
+    matched = &path;
+  }
+  if (matched == nullptr ||
+      !matched->targetInfo.targetAvailable ||
+      (matched->flags & DISPLAYCONFIG_PATH_SUPPORT_VIRTUAL_MODE) != 0 ||
+      matched->sourceInfo.modeInfoIdx >= mode_count ||
+      matched->targetInfo.modeInfoIdx >= mode_count) return captured;
+  const auto& source = modes[matched->sourceInfo.modeInfoIdx];
+  const auto& target = modes[matched->targetInfo.modeInfoIdx];
+  const auto same_adapter = [](LUID first, LUID second) {
+    return first.HighPart == second.HighPart && first.LowPart == second.LowPart;
+  };
+  if (source.infoType != DISPLAYCONFIG_MODE_INFO_TYPE_SOURCE ||
+      target.infoType != DISPLAYCONFIG_MODE_INFO_TYPE_TARGET ||
+      source.id != matched->sourceInfo.id || target.id != matched->targetInfo.id ||
+      !same_adapter(source.adapterId, matched->sourceInfo.adapterId) ||
+      !same_adapter(target.adapterId, matched->targetInfo.adapterId)) return captured;
+  const auto active = target.targetMode.targetVideoSignalInfo.activeSize;
+  return DisplayedFrameSize(
+      captured,
+      {static_cast<LONG>(source.sourceMode.width),
+       static_cast<LONG>(source.sourceMode.height)},
+      {static_cast<LONG>(active.cx), static_cast<LONG>(active.cy)},
+      matched->targetInfo.scaling, matched->targetInfo.rotation);
+}
 
 ATOM EnsurePreviewWindowClass() {
   static ATOM atom = [] {
@@ -948,6 +996,44 @@ HRESULT ValidateWindowTarget(UINT64 source_id, DWORD pid,
     return HRESULT_FROM_WIN32(ERROR_INVALID_WINDOW_HANDLE);
   }
   return ValidateProcessTarget(pid, expected_creation_time);
+}
+
+SIZE CapturePresentation::Resolve(UINT32 width, UINT32 height, bool key_frame) {
+  const SIZE captured{static_cast<LONG>(width), static_cast<LONG>(height)};
+  const HWND window = kind_ == TargetKind::window
+                          ? reinterpret_cast<HWND>(static_cast<UINT_PTR>(source_id_))
+                          : nullptr;
+  const HMONITOR monitor = window != nullptr
+                               ? MonitorFromWindow(window, MONITOR_DEFAULTTONULL)
+                               : reinterpret_cast<HMONITOR>(
+                                     static_cast<UINT_PTR>(source_id_));
+  // WGC/CCD use physical pixels; fullscreen eligibility must use them too.
+  const auto previous_dpi =
+      SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+  MONITORINFOEXW info{};
+  info.cbSize = sizeof(info);
+  bool eligible = previous_dpi != nullptr && GetMonitorInfoW(monitor, &info);
+  if (eligible && window != nullptr) {
+    RECT client{};
+    POINT origin{};
+    eligible = !IsIconic(window) && GetClientRect(window, &client) &&
+               ClientToScreen(window, &origin);
+    OffsetRect(&client, origin.x, origin.y);
+    eligible = eligible && EqualRect(&client, &info.rcMonitor);
+  }
+  if (previous_dpi != nullptr) SetThreadDpiAwarenessContext(previous_dpi);
+  if (!eligible) {
+    monitor_ = nullptr;
+    return captured;
+  }
+  if (key_frame || monitor != monitor_ || !EqualRect(&info.rcMonitor, &bounds_) ||
+      captured.cx != captured_.cx || captured.cy != captured_.cy) {
+    presentation_ = ReadDisplayPresentation(info.szDevice, captured);
+    monitor_ = monitor;
+    bounds_ = info.rcMonitor;
+    captured_ = captured;
+  }
+  return presentation_;
 }
 
 HRESULT ValidateDisplayTarget(UINT64 source_id) {

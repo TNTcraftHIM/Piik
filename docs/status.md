@@ -50,7 +50,7 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Current Source
 
-- Canonical source uses the strict `screener-v19` Browser/server contract.
+- Canonical source uses the strict `screener-v20` Browser/server contract.
   Optional SQLite stable authority, non-expiring local preferred code, atomic
   room replacement and the Host codec selector remain implemented; production
   selects stable storage. Graceful restart, crash, timeout and network loss use

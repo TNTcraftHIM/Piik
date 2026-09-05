@@ -88,7 +88,7 @@ const qualityEvidence = {
 
 describe("client signaling protocol", () => {
   it("uses the current strict signaling generation", () => {
-    expect(SIGNALING_PROTOCOL).toBe("screener-v19");
+    expect(SIGNALING_PROTOCOL).toBe("screener-v20");
   });
 
   it("keeps signaling challenges strict and sequence-only", () => {
@@ -1284,7 +1284,7 @@ describe("server signaling protocol", () => {
     expect(serverMessageSchema.safeParse(viewer).success).toBe(false);
   });
 
-  it("requires the v19 NAT observation configuration", () => {
+  it("requires the v20 NAT observation configuration", () => {
     const message = authenticatedMessage(8);
     const { natPredictionStunUrls: _urls, ...legacyIceConfig } =
       message.iceConfig;

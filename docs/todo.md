@@ -18,8 +18,9 @@ topics are not implementation authority.
    display failing to start while window capture succeeds; do not conflate it
    with exclusive-fullscreen game capture. Current Windows 11 checks cover
    display startup, minimized-source recovery and live presets. Verify remaining
-   game HWND/device-loss behavior and whether reported 4:3 stretching affects
-   the source or only its encoded presentation. Compare bitrate changes against
+   game HWND/device-loss behavior and physically compare the implemented Windows
+   display-aspect correction with the reported stretched game, including GPU
+   scaling not exposed by the active display path. Compare bitrate changes against
    same-content delivery before changing encoder settings.
 4. **NAT acquisition and release acceptance.** Validate the implemented bounded
    three-attempt owner on restricted Browser/Native pairs; a new connection does

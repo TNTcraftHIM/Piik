@@ -14,6 +14,11 @@ adaptation decision.
   one native screen/window enumerated by the packaged platform capture boundary. The
   latter uses one supported native codec path and never infers a target from
   a title. An ordinary Web Host does not probe localhost.
+- Windows native capture follows an explicitly stretched active display path
+  for an entire display or a window covering that display, when the captured
+  frame matches its desktop source dimensions. Other frames retain their own
+  aspect ratio. This changes only the encoded presentation, never the game or
+  display settings; vendor-private scaling is not inferred.
 - Share and source-switch requests ask the Browser for available audio by
   default. Missing audio is reported clearly but does not block video-only
   sharing. Native screen capture can include system playback audio and native
