@@ -27,6 +27,14 @@ type sourcePreviewRequest struct {
 	Source  nativecapture.CaptureTarget `json:"source"`
 }
 
+type qualitySettings struct {
+	Resolution            string `json:"resolution"`
+	MaxFramerate          uint32 `json:"maxFramerate"`
+	MaxBitrate            uint32 `json:"maxBitrate"`
+	DegradationPreference string `json:"degradationPreference"`
+	ScreenAudioQuality    string `json:"screenAudioQuality,omitempty"`
+}
+
 type startShareRequest struct {
 	Version      int                         `json:"version"`
 	ID           string                      `json:"id"`
@@ -37,6 +45,27 @@ type startShareRequest struct {
 	AdapterIndex uint32                      `json:"adapterIndex"`
 	EncoderIndex uint32                      `json:"encoderIndex"`
 	EdgeCapacity int                         `json:"edgeCapacity"`
+	Profile      qualitySettings             `json:"profile"`
+	Codec        string                      `json:"codec"`
+}
+
+type updateShareRequest struct {
+	Version int             `json:"version"`
+	ID      string          `json:"id"`
+	Type    string          `json:"type"`
+	ShareID string          `json:"shareId"`
+	Profile qualitySettings `json:"profile"`
+}
+
+type replaceShareSourceRequest struct {
+	Version      int                         `json:"version"`
+	ID           string                      `json:"id"`
+	Type         string                      `json:"type"`
+	ShareID      string                      `json:"shareId"`
+	Source       nativecapture.CaptureTarget `json:"source"`
+	Audio        bool                        `json:"audio"`
+	AdapterIndex uint32                      `json:"adapterIndex"`
+	EncoderIndex uint32                      `json:"encoderIndex"`
 }
 
 type stopShareRequest struct {
@@ -59,20 +88,57 @@ type iceServer struct {
 }
 
 type prepareEdgeRequest struct {
+	Version            int         `json:"version"`
+	ID                 string      `json:"id"`
+	Type               string      `json:"type"`
+	ShareID            string      `json:"shareId"`
+	ConnectionID       string      `json:"connectionId"`
+	SourceConnectionID string      `json:"sourceConnectionId,omitempty"`
+	ICEServers         []iceServer `json:"iceServers"`
+}
+
+type prepareLocalEdgeRequest struct {
+	Version            int    `json:"version"`
+	ID                 string `json:"id"`
+	Type               string `json:"type"`
+	ShareID            string `json:"shareId"`
+	ConnectionID       string `json:"connectionId"`
+	SourceConnectionID string `json:"sourceConnectionId,omitempty"`
+}
+
+type receiveOfferRequest struct {
 	Version      int         `json:"version"`
 	ID           string      `json:"id"`
 	Type         string      `json:"type"`
 	ShareID      string      `json:"shareId"`
 	ConnectionID string      `json:"connectionId"`
+	EdgeCapacity int         `json:"edgeCapacity"`
 	ICEServers   []iceServer `json:"iceServers"`
+	SDP          string      `json:"sdp"`
 }
 
-type prepareLocalEdgeRequest struct {
+type receiveCandidateRequest struct {
+	Version      int                      `json:"version"`
+	ID           string                   `json:"id"`
+	Type         string                   `json:"type"`
+	ShareID      string                   `json:"shareId"`
+	ConnectionID string                   `json:"connectionId"`
+	Candidate    *webrtc.ICECandidateInit `json:"candidate"`
+}
+
+type closeReceiverRequest struct {
 	Version      int    `json:"version"`
 	ID           string `json:"id"`
 	Type         string `json:"type"`
 	ShareID      string `json:"shareId"`
 	ConnectionID string `json:"connectionId"`
+}
+
+type stopReceiveRequest struct {
+	Version int    `json:"version"`
+	ID      string `json:"id"`
+	Type    string `json:"type"`
+	ShareID string `json:"shareId"`
 }
 
 type edgeAnswerRequest struct {
@@ -122,6 +188,17 @@ type shareStartedResponse struct {
 	responseEnvelope
 	ShareID string `json:"shareId"`
 	Audio   bool   `json:"audio"`
+	Codec   string `json:"codec"`
+}
+
+type shareUpdatedResponse struct {
+	responseEnvelope
+	ShareID string `json:"shareId"`
+}
+
+type shareSourceReplacedResponse struct {
+	responseEnvelope
+	ShareID string `json:"shareId"`
 }
 
 type edgeOfferResponse struct {
@@ -129,6 +206,15 @@ type edgeOfferResponse struct {
 	ShareID      string `json:"shareId"`
 	ConnectionID string `json:"connectionId"`
 	SDP          string `json:"sdp"`
+}
+
+type receiveAnswerResponse struct {
+	responseEnvelope
+	ShareID      string `json:"shareId"`
+	ConnectionID string `json:"connectionId"`
+	SDP          string `json:"sdp"`
+	Audio        bool   `json:"audio"`
+	Codec        string `json:"codec"`
 }
 
 type eventEnvelope struct {
@@ -155,8 +241,9 @@ type edgeStateEvent struct {
 
 type edgePathEvent struct {
 	eventEnvelope
-	LocalType  string `json:"localType"`
-	RemoteType string `json:"remoteType"`
+	LocalType        string `json:"localType"`
+	RemoteType       string `json:"remoteType"`
+	NatTraversalPath string `json:"natTraversalPath"`
 }
 
 type edgeQualityEvent struct {

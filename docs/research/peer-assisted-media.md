@@ -160,7 +160,8 @@ configuration checks and media evidence would still be required.
 This research uses W3C/IETF specifications, BSD-licensed libwebrtc source,
 public browser-compatibility data, and an official TeamSpeak technical
 statement. No GPL/AGPL implementation code was copied. GPL/AGPL projects remain
-study-only until the repository license and distribution model are decided.
+study-only unless a separate distribution decision accepts their obligations;
+the repository's own [MIT license](../../LICENSE) does not replace theirs.
 
 ## Primary Sources
 

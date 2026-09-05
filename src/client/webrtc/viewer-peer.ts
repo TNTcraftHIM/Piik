@@ -19,10 +19,10 @@ import {
   NatPredictionCandidateEmitter,
 } from "./nat-prediction";
 
-const MAX_PENDING_CANDIDATES = 64;
-const MAX_AUTOMATIC_RECOVERY_REQUESTS = 2;
-const INITIAL_CONNECTION_TIMEOUT_MS = 15_000;
-const AUTOMATIC_RECOVERY_TIMEOUT_MS = 3_000;
+export const VIEWER_MAX_PENDING_CANDIDATES = 64;
+export const VIEWER_MAX_AUTOMATIC_RECOVERY_REQUESTS = 2;
+export const VIEWER_INITIAL_CONNECTION_TIMEOUT_MS = 15_000;
+export const VIEWER_AUTOMATIC_RECOVERY_TIMEOUT_MS = 3_000;
 type PeerIceConfig = Pick<RTCConfiguration, "iceServers"> & {
   natPredictionStunUrls?: readonly string[];
 };
@@ -31,7 +31,7 @@ type SignalCandidate = Extract<
   { kind: "candidate" }
 >["candidate"];
 
-interface ViewerPeerEvents {
+export interface ViewerPeerEvents {
   sendSignal: (peerId: string, payload: SignalPayload) => boolean;
   sendRestartRequest: (
     peerId: string,
@@ -47,12 +47,29 @@ interface ViewerPeerEvents {
   ) => boolean;
 }
 
-interface ViewerPeerOptions {
+export interface ViewerPeerOptions {
   natPredictionEnabled?: boolean;
   recoveryOwner?: "viewer" | "route";
 }
 
-export class ViewerPeer {
+export interface ViewerMediaPeer {
+  acceptSignal(parentPeerId: string, payload: SignalPayload): Promise<void>;
+  updateIceConfig(iceConfig: IceConfig): void;
+  requestRecovery(rebuild?: boolean): boolean;
+  isRecovering(): boolean;
+  hasConnection(): boolean;
+  hasConnectionId(connectionId: string): boolean;
+  getConnectionIdentity(): {
+    parentPeerId: string;
+    connectionId: string;
+  } | null;
+  isConnected(): boolean;
+  stopDecodedFrameProof(): void;
+  activatePreparedRoute(): void;
+  dispose(): void;
+}
+
+export class ViewerPeer implements ViewerMediaPeer {
   private connection: RTCPeerConnection | null = null;
   private connectionId: string | null = null;
   private parentPeerId: string | null = null;
@@ -161,7 +178,7 @@ export class ViewerPeer {
       this.clearInitialConnectionTimer();
       this.automaticRecoveryRequests = Math.max(
         this.automaticRecoveryRequests,
-        rebuild ? MAX_AUTOMATIC_RECOVERY_REQUESTS : 1,
+        rebuild ? VIEWER_MAX_AUTOMATIC_RECOVERY_REQUESTS : 1,
       );
       this.scheduleRecoveryDeadline();
     }
@@ -381,7 +398,7 @@ export class ViewerPeer {
         this.events.sendRestartRequest(parentPeerId, connectionId, true)
       ) {
         this.offerRecoveryAttempts += 1;
-        this.automaticRecoveryRequests = MAX_AUTOMATIC_RECOVERY_REQUESTS;
+        this.automaticRecoveryRequests = VIEWER_MAX_AUTOMATIC_RECOVERY_REQUESTS;
         this.scheduleRecoveryDeadline();
       } else {
         this.reportRecoveryExhausted();
@@ -454,7 +471,7 @@ export class ViewerPeer {
     ) {
       return;
     }
-    if (this.automaticRecoveryRequests >= MAX_AUTOMATIC_RECOVERY_REQUESTS) {
+    if (this.automaticRecoveryRequests >= VIEWER_MAX_AUTOMATIC_RECOVERY_REQUESTS) {
       this.reportRecoveryExhausted();
       return;
     }
@@ -498,7 +515,7 @@ export class ViewerPeer {
       ) {
         this.attemptAutomaticRecovery();
       }
-    }, INITIAL_CONNECTION_TIMEOUT_MS);
+    }, VIEWER_INITIAL_CONNECTION_TIMEOUT_MS);
     this.initialConnectionTimer = timer;
   }
 
@@ -510,7 +527,7 @@ export class ViewerPeer {
         this.attemptAutomaticRecovery();
       }
       this.emit();
-    }, AUTOMATIC_RECOVERY_TIMEOUT_MS);
+    }, VIEWER_AUTOMATIC_RECOVERY_TIMEOUT_MS);
   }
 
   private reportRecoveryExhausted(): void {
@@ -557,7 +574,7 @@ export class ViewerPeer {
       queue = [];
       this.pendingByConnection.set(connectionId, queue);
     }
-    if (queue.length < MAX_PENDING_CANDIDATES) {
+    if (queue.length < VIEWER_MAX_PENDING_CANDIDATES) {
       queue.push(candidate);
     }
   }

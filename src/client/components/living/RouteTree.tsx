@@ -83,7 +83,7 @@ function topologyVisibleLabel(
   const peerIdSuffix = peerId?.slice(-6) ?? "";
   const withoutRedundantRole =
     peerIdSuffix &&
-    (label === `👑-${peerIdSuffix}` || label === `👤-${peerIdSuffix}`)
+    (label === `👑 (${peerIdSuffix})` || label === `👤 (${peerIdSuffix})`)
       ? peerIdSuffix
       : label;
   return compactVisibleLabel(withoutRedundantRole, maximumCodePoints);

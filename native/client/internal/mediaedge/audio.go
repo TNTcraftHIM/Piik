@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/TNTcraftHIM/Screener/native/client/internal/nativeaudio"
+	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4"
 	"github.com/pion/webrtc/v4/pkg/media"
 )
@@ -27,7 +28,9 @@ var opusCapability = webrtc.RTPCodecCapability{
 // as the corresponding video source.
 type AudioSource struct {
 	engine   *Engine
-	track    *webrtc.TrackLocalStaticSample
+	track    webrtc.TrackLocal
+	samples  *webrtc.TrackLocalStaticSample
+	packets  *webrtc.TrackLocalStaticRTP
 	encoder  *nativeaudio.Encoder
 	capacity int
 
@@ -62,7 +65,30 @@ func (engine *Engine) NewAudioSource(capacity, bitrate int) (*AudioSource, error
 		return nil, err
 	}
 	return &AudioSource{
-		engine: engine, track: track, encoder: encoder,
+		engine: engine, track: track, samples: track, encoder: encoder,
+		capacity: capacity, edges: make(map[*Edge]bool),
+	}, nil
+}
+
+func (engine *Engine) NewRelayedAudioSource(capacity int) (*AudioSource, error) {
+	if capacity < 1 || capacity > 4 {
+		return nil, errors.New("native audio source capacity is outside the route bound")
+	}
+	engine.mu.Lock()
+	defer engine.mu.Unlock()
+	if engine.closed {
+		return nil, errors.New("native media engine is closed")
+	}
+	track, err := webrtc.NewTrackLocalStaticRTP(
+		opusCapability,
+		"audio",
+		"screener-native",
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &AudioSource{
+		engine: engine, track: track, packets: track,
 		capacity: capacity, edges: make(map[*Edge]bool),
 	}, nil
 }
@@ -84,7 +110,37 @@ func (source *AudioSource) WritePCM(pcm []byte, duration time.Duration) error {
 		return err
 	}
 	source.bytes.Add(uint64(len(packet)))
-	return source.track.WriteSample(media.Sample{Data: packet, Duration: duration})
+	return source.samples.WriteSample(media.Sample{Data: packet, Duration: duration})
+}
+
+func (source *AudioSource) WriteRTP(packet *rtp.Packet) error {
+	if source == nil || source.packets == nil || packet == nil {
+		return errors.New("native Opus RTP packet is invalid")
+	}
+	source.mu.Lock()
+	closed := source.closed
+	source.mu.Unlock()
+	if closed {
+		return errors.New("native audio source is closed")
+	}
+	source.bytes.Add(uint64(len(packet.Payload)))
+	forwarded := connectionNeutralRTP(packet)
+	return source.packets.WriteRTP(&forwarded)
+}
+
+func (source *AudioSource) SetBitrate(bitrate int) error {
+	if source == nil || source.encoder == nil {
+		return errors.New("native audio source is unavailable")
+	}
+	source.encodeMu.Lock()
+	defer source.encodeMu.Unlock()
+	source.mu.Lock()
+	closed := source.closed
+	source.mu.Unlock()
+	if closed {
+		return errors.New("native audio source is closed")
+	}
+	return source.encoder.SetBitrate(bitrate)
 }
 
 func (source *AudioSource) snapshotBytes() uint64 {

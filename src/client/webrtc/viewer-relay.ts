@@ -5,7 +5,11 @@ import type {
 } from "../../shared/protocol";
 import type { QualityProfile } from "../media/quality";
 import type { PeerSnapshot } from "../types";
-import { HostPeer } from "./host-peer";
+import {
+  HostPeer,
+  type HostMediaPeer,
+  type HostPeerEvents,
+} from "./host-peer";
 import { MAX_ENDPOINT_MEDIA_CHILDREN } from "./media-assignment";
 import {
   automaticVideoCodecPreference,
@@ -14,7 +18,7 @@ import {
 } from "./video-codec";
 import { preferredVideoCodecForTrack } from "./video-codec-preflight";
 
-interface ViewerRelayEvents {
+export interface ViewerRelayEvents {
   sendSignal: (peerId: string, payload: SignalPayload) => boolean;
   onUpdate?: (snapshot: PeerSnapshot | null) => void;
   onSenderUpdate?: (snapshot: PeerSnapshot, revision: number | null) => void;
@@ -23,15 +27,30 @@ interface PreparedChild {
   revision: number;
   childPeerId: string;
   candidate: PreparedRouteCandidate;
-  peer: HostPeer;
+  peer: HostMediaPeer;
   failed: boolean;
   replacesConnectionId: string | null;
+}
+
+export interface ViewerRelayPeerFactory {
+  requiresStream: boolean;
+  create(
+    childPeerId: string,
+    connectionId: string | undefined,
+    events: ViewerRelayPeerEvents,
+    candidate: PreparedRouteCandidate | null,
+  ): HostMediaPeer | null;
+}
+
+export interface ViewerRelayPeerEvents {
+  sendSignal: (peerId: string, payload: SignalPayload) => boolean;
+  onUpdate: (snapshot: PeerSnapshot) => void;
 }
 
 export class ViewerRelay {
   private childPeerIds: string[] = [];
   private stream: MediaStream | null = null;
-  private readonly peers = new Map<string, HostPeer>();
+  private readonly peers = new Map<string, HostMediaPeer>();
   private readonly snapshots = new Map<string, PeerSnapshot>();
   private preparedChild: PreparedChild | null = null;
   private preparedRevision: number | null = null;
@@ -51,6 +70,7 @@ export class ViewerRelay {
     private readonly events: ViewerRelayEvents,
     private maxMediaEdges = MAX_ENDPOINT_MEDIA_CHILDREN,
     private readonly natPredictionEnabled = false,
+    private readonly peerFactory: ViewerRelayPeerFactory | null = null,
   ) {}
 
   getSnapshot(childPeerId?: string): PeerSnapshot | null {
@@ -72,7 +92,7 @@ export class ViewerRelay {
     const planned = [...new Set(plannedChildPeerIds)];
     if (
       this.disposed ||
-      !stream ||
+      (!stream && (this.peerFactory?.requiresStream ?? true)) ||
       candidate.transport === "sfu" ||
       !planned.includes(candidate.childPeerId) ||
       planned.length !== plannedChildPeerIds.length ||
@@ -193,7 +213,7 @@ export class ViewerRelay {
     for (const childPeerId of this.childPeerIds) {
       const peer = this.peers.get(childPeerId);
       if (
-        this.stream &&
+        (this.stream || this.peerFactory?.requiresStream === false) &&
         childPeerId !== promotedPeerId &&
         (!peer || !peer.isConnected())
       ) {
@@ -209,7 +229,7 @@ export class ViewerRelay {
       return;
     }
     const nextVideoTrack = stream.getVideoTracks()[0] ?? null;
-    if (nextVideoTrack !== this.codecProbeTrack) {
+    if (!this.peerFactory && nextVideoTrack !== this.codecProbeTrack) {
       this.cancelCodecProbe();
       this.codecProbeTrack = nextVideoTrack;
       if (!this.codecProbeSettled) {
@@ -284,7 +304,11 @@ export class ViewerRelay {
   ): Promise<void> {
     const stream = this.stream;
     const peer = this.peers.get(fromPeerId);
-    if (this.disposed || !stream || !this.childPeerIds.includes(fromPeerId)) {
+    if (
+      this.disposed ||
+      (!stream && (this.peerFactory?.requiresStream ?? true)) ||
+      !this.childPeerIds.includes(fromPeerId)
+    ) {
       return;
     }
     if (rebuild) {
@@ -341,12 +365,13 @@ export class ViewerRelay {
   private startPreparedChild(
     revision: number,
     candidate: PreparedRouteCandidate,
-    stream: MediaStream,
+    stream: MediaStream | null,
   ): void {
     const peer = this.createPeer(
       candidate.childPeerId,
       stream,
       candidate.connectionId,
+      candidate,
     );
     this.preparedChild = {
       revision,
@@ -370,7 +395,7 @@ export class ViewerRelay {
   private startPreparedChildIfCurrent(
     revision: number,
     candidate: PreparedRouteCandidate,
-    stream: MediaStream,
+    stream: MediaStream | null,
   ): void {
     if (
       this.disposed ||
@@ -386,7 +411,7 @@ export class ViewerRelay {
 
   private async syncStream(
     stream: MediaStream,
-    preparedPeer: HostPeer | null,
+    preparedPeer: HostMediaPeer | null,
   ): Promise<void> {
     if (this.disposed || this.stream !== stream) {
       return;
@@ -455,7 +480,7 @@ export class ViewerRelay {
   }
 
   private async replacePeerStream(
-    peer: HostPeer,
+    peer: HostMediaPeer,
     stream: MediaStream,
   ): Promise<boolean> {
     try {
@@ -467,7 +492,7 @@ export class ViewerRelay {
 
   private startPeer(
     childPeerId: string,
-    stream: MediaStream,
+    stream: MediaStream | null,
     attempt = 0,
   ): void {
     if (
@@ -504,50 +529,61 @@ export class ViewerRelay {
 
   private createPeer(
     childPeerId: string,
-    stream: MediaStream,
+    stream: MediaStream | null,
     connectionId?: string,
-  ): HostPeer {
-    let peer: HostPeer;
+    candidate: PreparedRouteCandidate | null = null,
+  ): HostMediaPeer {
+    let peer: HostMediaPeer;
+    const peerEvents: HostPeerEvents = {
+      sendSignal: (targetPeerId, payload) =>
+        !this.disposed &&
+        (this.peers.get(childPeerId) === peer ||
+          this.preparedChild?.peer === peer) &&
+        childPeerId === targetPeerId
+          ? this.events.sendSignal(targetPeerId, payload)
+          : false,
+      onUpdate: (snapshot) => {
+        if (this.preparedChild?.peer === peer) {
+          if (snapshot.connectionState === "failed") {
+            this.failPreparedChild(peer);
+          }
+          this.events.onSenderUpdate?.(
+            snapshot,
+            this.preparedChild?.revision ?? null,
+          );
+          return;
+        }
+        if (
+          !this.disposed &&
+          this.peers.get(childPeerId) === peer &&
+          this.childPeerIds.includes(childPeerId) &&
+          snapshot.peerId === childPeerId &&
+          snapshot.connectionId === peer.connectionId
+        ) {
+          this.snapshots.set(childPeerId, {
+            ...snapshot,
+            metrics: { ...snapshot.metrics },
+          });
+          this.events.onSenderUpdate?.(snapshot, null);
+          this.events.onUpdate?.(this.getSnapshot());
+        }
+      },
+    };
+    if (this.peerFactory) {
+      const nativePeer = this.peerFactory.create(
+        childPeerId,
+        connectionId,
+        peerEvents,
+        candidate,
+      );
+      if (nativePeer) return nativePeer;
+    }
     peer = new HostPeer(
       childPeerId,
       this.iceConfig,
-      stream,
+      stream!,
       this.desiredProfile,
-      {
-        sendSignal: (targetPeerId, payload) =>
-          !this.disposed &&
-          (this.peers.get(childPeerId) === peer ||
-            this.preparedChild?.peer === peer) &&
-          childPeerId === targetPeerId
-            ? this.events.sendSignal(targetPeerId, payload)
-            : false,
-        onUpdate: (snapshot) => {
-          if (this.preparedChild?.peer === peer) {
-            if (snapshot.connectionState === "failed") {
-              this.failPreparedChild(peer);
-            }
-            this.events.onSenderUpdate?.(
-              snapshot,
-              this.preparedChild?.revision ?? null,
-            );
-            return;
-          }
-          if (
-            !this.disposed &&
-            this.peers.get(childPeerId) === peer &&
-            this.childPeerIds.includes(childPeerId) &&
-            snapshot.peerId === childPeerId &&
-            snapshot.connectionId === peer.connectionId
-          ) {
-            this.snapshots.set(childPeerId, {
-              ...snapshot,
-              metrics: { ...snapshot.metrics },
-            });
-            this.events.onSenderUpdate?.(snapshot, null);
-            this.events.onUpdate?.(this.getSnapshot());
-          }
-        },
-      },
+      peerEvents,
       this.videoCodec,
       connectionId,
       this.natPredictionEnabled,
@@ -559,6 +595,7 @@ export class ViewerRelay {
     const track = this.codecProbeTrack;
     if (
       this.disposed ||
+      this.peerFactory ||
       this.codecProbeSettled ||
       this.codecProbeAbort ||
       this.codecProbePromise ||
@@ -604,7 +641,7 @@ export class ViewerRelay {
     controller?.abort();
   }
 
-  private failPreparedChild(peer: HostPeer): void {
+  private failPreparedChild(peer: HostMediaPeer): void {
     const prepared = this.preparedChild;
     if (prepared?.peer !== peer) {
       return;

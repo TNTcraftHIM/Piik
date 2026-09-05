@@ -1,3 +1,4 @@
+import AudioToolbox
 import CoreMedia
 import CoreVideo
 import Darwin
@@ -5,15 +6,40 @@ import Foundation
 import ScreenCaptureKit
 import VideoToolbox
 
-private let captureProtocol = 3
+private let captureProtocol = 4
 private let width = 1280
 private let height = 720
 private let frameRate: Int32 = 30
 private let bitrate = 3_000_000
-private let frameDuration100ns: UInt64 = 10_000_000 / UInt64(frameRate)
-private let frameInterval = CMTime(value: 1, timescale: frameRate)
-private let timestampStep = CMTime(value: 1, timescale: 90_000)
 private let maxPayloadBytes = 1_048_576
+private let supportedH264Levels: Set<UInt8> = [
+    0x1e, 0x1f, 0x20, 0x28, 0x29, 0x2a, 0x32, 0x33,
+]
+
+private enum DegradationPreference: String {
+    case resolution = "maintain-resolution"
+    case balanced
+    case framerate = "maintain-framerate"
+}
+
+private struct VideoProfile {
+    let width: Int
+    let height: Int
+    let frameRate: Int32
+    let bitrate: Int
+    let preference: DegradationPreference
+
+    var frameInterval: CMTime { CMTime(value: 1, timescale: frameRate) }
+    var timestampStep: CMTime { CMTime(value: 1, timescale: 90_000) }
+}
+
+private let defaultVideoProfile = VideoProfile(
+    width: width,
+    height: height,
+    frameRate: frameRate,
+    bitrate: bitrate,
+    preference: .balanced
+)
 
 private struct EncoderProbe: Codable {
     let index: UInt32
@@ -35,6 +61,7 @@ private struct Probe: Codable {
     let videoCapture: Bool
     let processAudio: Bool
     let systemAudio: Bool
+    let softwareVP8 = false
     let adapters: [AdapterProbe]
 }
 
@@ -65,6 +92,7 @@ private struct CaptureTarget: Codable {
 
 private struct StartingStatus: Codable {
     let state = "starting"
+    let codec = "h264"
     let hardwareOnly = true
     let adapterIndex: UInt32 = 0
     let adapterName = "Apple VideoToolbox"
@@ -76,11 +104,17 @@ private struct StartingStatus: Codable {
 
 private struct ActiveStatus: Codable {
     let state = "active"
+    let codec = "h264"
     let hardwareOnly = true
-    let profileLevelId = "42c01f"
-    let width = 1280
-    let height = 720
-    let fps = 30
+    let profileLevelId: String
+    let width: Int
+    let height: Int
+    let fps: Int32
+}
+
+private struct AudioStatus: Codable {
+    let state = "active"
+    let audio = true
 }
 
 private struct CaptureFailure: Error, CustomStringConvertible {
@@ -197,8 +231,8 @@ private func probe() throws {
         platform: "darwin",
         platformBuild: ProcessInfo.processInfo.operatingSystemVersionString,
         videoCapture: true,
-        processAudio: false,
-        systemAudio: false,
+        processAudio: true,
+        systemAudio: true,
         adapters: adapters
     ))
 }
@@ -263,12 +297,31 @@ private final class ProtocolWriter {
                   payload: JSONEncoder().encode(status))
     }
 
-    func writeH264(_ payload: Data, keyFrame: Bool, timestamp: UInt64) throws {
+    func writeH264(
+        _ payload: Data,
+        keyFrame: Bool,
+        timestamp: UInt64,
+        duration: UInt64
+    ) throws {
         try write(
             kind: 2,
             flags: keyFrame ? 1 : 0,
             timestamp: timestamp,
-            duration: frameDuration100ns,
+            duration: duration,
+            payload: payload
+        )
+    }
+
+    func writePCM(
+        _ payload: Data,
+        timestamp: UInt64,
+        duration: UInt64
+    ) throws {
+        try write(
+            kind: 1,
+            flags: 0,
+            timestamp: timestamp,
+            duration: duration,
             payload: payload
         )
     }
@@ -342,8 +395,9 @@ private func h264ParameterSets(_ format: CMFormatDescription) throws -> [Data] {
         result.append(Data(bytes: pointer, count: size))
     }
     let sps = result[0]
-    guard sps.count >= 4, sps[1] == 0x42, sps[2] == 0xc0, sps[3] == 0x1f else {
-        throw CaptureFailure(description: "H.264 profile differs from 42c01f")
+    guard sps.count >= 4, sps[1] == 0x42, sps[2] == 0xc0,
+          supportedH264Levels.contains(sps[3]) else {
+        throw CaptureFailure(description: "H.264 profile is outside the product envelope")
     }
     return result
 }
@@ -396,6 +450,23 @@ private func annexB(_ sample: CMSampleBuffer, keyFrame: Bool) throws -> Data {
     return output
 }
 
+private func h264ProfileLevelID(_ payload: Data) -> String? {
+    let bytes = [UInt8](payload)
+    guard bytes.count >= 8 else { return nil }
+    for index in 0...(bytes.count - 8) where
+        bytes[index] == 0 && bytes[index + 1] == 0 &&
+        bytes[index + 2] == 0 && bytes[index + 3] == 1 &&
+        bytes[index + 4] & 0x1f == 7 {
+        return String(
+            format: "%02x%02x%02x",
+            bytes[index + 5],
+            bytes[index + 6],
+            bytes[index + 7]
+        )
+    }
+    return nil
+}
+
 private final class HardwareEncoder {
     private let writer: ProtocolWriter
     private let done: StopSignal
@@ -403,10 +474,17 @@ private final class HardwareEncoder {
     private var session: VTCompressionSession?
     private var forceKeyFrame = true
     private var active = false
+    private var profileLevelId: String?
+    private let profile: VideoProfile
 
-    init(writer: ProtocolWriter, done: StopSignal) throws {
+    init(
+        writer: ProtocolWriter,
+        done: StopSignal,
+        profile: VideoProfile = defaultVideoProfile
+    ) throws {
         self.writer = writer
         self.done = done
+        self.profile = profile
         let specification = [
             kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder as String: true,
         ] as CFDictionary
@@ -414,8 +492,8 @@ private final class HardwareEncoder {
         try require(
             VTCompressionSessionCreate(
                 allocator: nil,
-                width: Int32(width),
-                height: Int32(height),
+                width: Int32(profile.width),
+                height: Int32(profile.height),
                 codecType: kCMVideoCodecType_H264,
                 encoderSpecification: specification,
                 imageBufferAttributes: nil,
@@ -434,9 +512,15 @@ private final class HardwareEncoder {
         try set(kVTCompressionPropertyKey_AllowFrameReordering, kCFBooleanFalse)
         try set(kVTCompressionPropertyKey_ProfileLevel,
                 kVTProfileLevel_H264_ConstrainedBaseline_AutoLevel)
-        try set(kVTCompressionPropertyKey_AverageBitRate, NSNumber(value: bitrate))
-        try set(kVTCompressionPropertyKey_ExpectedFrameRate, NSNumber(value: frameRate))
-        try set(kVTCompressionPropertyKey_MaxKeyFrameInterval, NSNumber(value: 60))
+        try set(kVTCompressionPropertyKey_AverageBitRate, NSNumber(value: profile.bitrate))
+        try set(kVTCompressionPropertyKey_ExpectedFrameRate, NSNumber(value: profile.frameRate))
+        try set(kVTCompressionPropertyKey_MaxKeyFrameInterval, NSNumber(value: profile.frameRate * 2))
+        if profile.preference != .balanced {
+            try? set(
+                kVTCompressionPropertyKey_PrioritizeEncodingSpeedOverQuality,
+                profile.preference == .framerate ? kCFBooleanTrue : kCFBooleanFalse
+            )
+        }
         try require(VTCompressionSessionPrepareToEncodeFrames(created),
                     "videotoolbox-prepare")
     }
@@ -470,7 +554,7 @@ private final class HardwareEncoder {
             session,
             imageBuffer: image,
             presentationTimeStamp: timestamp,
-            duration: CMTime(value: 1, timescale: frameRate),
+            duration: profile.frameInterval,
             frameProperties: properties,
             infoFlagsOut: &synchronousFlags
         ) { [weak self] status, flags, sample in
@@ -493,6 +577,9 @@ private final class HardwareEncoder {
                 lock.unlock()
                 if needsFirstKeyFrame { return }
                 let payload = try annexB(sample, keyFrame: keyFrame)
+                let observedProfileLevelId = keyFrame
+                    ? h264ProfileLevelID(payload)
+                    : nil
                 let seconds = CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(sample))
                 guard seconds.isFinite, seconds >= 0 else {
                     throw CaptureFailure(description: "invalid H.264 timestamp")
@@ -500,14 +587,29 @@ private final class HardwareEncoder {
                 try writer.writeH264(
                     payload,
                     keyFrame: keyFrame,
-                    timestamp: UInt64(seconds * 10_000_000)
+                    timestamp: UInt64(seconds * 10_000_000),
+                    duration: 10_000_000 / UInt64(profile.frameRate)
                 )
                 lock.lock()
+                if let observedProfileLevelId {
+                    profileLevelId = observedProfileLevelId
+                }
                 let publishActive = !active
-                active = true
+                let activeProfileLevelId = profileLevelId
+                if activeProfileLevelId != nil {
+                    active = true
+                }
                 lock.unlock()
                 if publishActive {
-                    try writer.writeStatus(ActiveStatus())
+                    guard let activeProfileLevelId else {
+                        throw CaptureFailure(description: "H.264 key frame has no SPS profile")
+                    }
+                    try writer.writeStatus(ActiveStatus(
+                        profileLevelId: activeProfileLevelId,
+                        width: profile.width,
+                        height: profile.height,
+                        fps: profile.frameRate
+                    ))
                 }
             } catch {
                 done.signal(error)
@@ -618,10 +720,193 @@ private func selfTest() throws {
     }
 }
 
+private final class AudioCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
+    private let writer: ProtocolWriter
+    private let done: StopSignal
+    private var pending = Data()
+    private var nextTimestamp: UInt64?
+    private var active = false
+
+    init(writer: ProtocolWriter, done: StopSignal) {
+        self.writer = writer
+        self.done = done
+        pending.reserveCapacity(960 * 2 * MemoryLayout<Int16>.size * 2)
+    }
+
+    private func append(_ sample: Float32) {
+        let clipped = max(-1, min(1, sample))
+        var value = Int16((clipped * Float32(Int16.max)).rounded()).littleEndian
+        Swift.withUnsafeBytes(of: &value) { pending.append(contentsOf: $0) }
+    }
+
+    private func sample(
+        _ buffer: AudioBuffer,
+        index: Int,
+        floatingPoint: Bool
+    ) throws -> Float32 {
+        guard let data = buffer.mData else {
+            throw CaptureFailure(description: "audio buffer has no samples")
+        }
+        if floatingPoint {
+            let count = Int(buffer.mDataByteSize) / MemoryLayout<Float32>.size
+            guard index >= 0, index < count else {
+                throw CaptureFailure(description: "audio float buffer is truncated")
+            }
+            return data.assumingMemoryBound(to: Float32.self)[index]
+        }
+        let count = Int(buffer.mDataByteSize) / MemoryLayout<Int16>.size
+        guard index >= 0, index < count else {
+            throw CaptureFailure(description: "audio integer buffer is truncated")
+        }
+        return Float32(data.assumingMemoryBound(to: Int16.self)[index]) /
+            Float32(Int16.max)
+    }
+
+    private func append(_ sampleBuffer: CMSampleBuffer) throws {
+        guard let description = CMSampleBufferGetFormatDescription(sampleBuffer),
+              let formatPointer = CMAudioFormatDescriptionGetStreamBasicDescription(
+                description
+              ) else {
+            throw CaptureFailure(description: "audio format is unavailable")
+        }
+        let format = formatPointer.pointee
+        let channels = Int(format.mChannelsPerFrame)
+        let floatingPoint = format.mFormatFlags &
+            kAudioFormatFlagIsFloat != 0
+        let signedInteger = format.mFormatFlags &
+            kAudioFormatFlagIsSignedInteger != 0
+        let nonInterleaved = format.mFormatFlags &
+            kAudioFormatFlagIsNonInterleaved != 0
+        guard format.mFormatID == kAudioFormatLinearPCM,
+              format.mSampleRate == 48_000,
+              channels > 0,
+              format.mFormatFlags & kAudioFormatFlagIsBigEndian == 0,
+              (floatingPoint && format.mBitsPerChannel == 32) ||
+                (signedInteger && format.mBitsPerChannel == 16) else {
+            throw CaptureFailure(description: "audio format is outside the PCM contract")
+        }
+
+        var requiredSize = 0
+        try require(
+            CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
+                sampleBuffer,
+                bufferListSizeNeededOut: &requiredSize,
+                bufferListOut: nil,
+                bufferListSize: 0,
+                blockBufferAllocator: nil,
+                blockBufferMemoryAllocator: nil,
+                flags: kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment,
+                blockBufferOut: nil
+            ),
+            "audio-buffer-size"
+        )
+        guard requiredSize >= MemoryLayout<AudioBufferList>.size else {
+            throw CaptureFailure(description: "audio buffer list is invalid")
+        }
+        let storage = UnsafeMutableRawPointer.allocate(
+            byteCount: requiredSize,
+            alignment: MemoryLayout<AudioBufferList>.alignment
+        )
+        defer { storage.deallocate() }
+        let list = storage.bindMemory(to: AudioBufferList.self, capacity: 1)
+        var blockBuffer: CMBlockBuffer?
+        try require(
+            CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
+                sampleBuffer,
+                bufferListSizeNeededOut: nil,
+                bufferListOut: list,
+                bufferListSize: requiredSize,
+                blockBufferAllocator: nil,
+                blockBufferMemoryAllocator: nil,
+                flags: kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment,
+                blockBufferOut: &blockBuffer
+            ),
+            "audio-buffer-list"
+        )
+        let buffers = UnsafeMutableAudioBufferListPointer(list)
+        let frames = CMSampleBufferGetNumSamples(sampleBuffer)
+        guard frames > 0,
+              (!nonInterleaved && buffers.count == 1) ||
+                (nonInterleaved && buffers.count >= channels) else {
+            throw CaptureFailure(description: "audio channel layout is invalid")
+        }
+        if nextTimestamp == nil {
+            let time = CMTimeGetSeconds(
+                CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+            )
+            nextTimestamp = time.isFinite && time >= 0
+                ? UInt64(time * 10_000_000)
+                : 0
+        }
+        for frame in 0..<frames {
+            let left: Float32
+            let right: Float32
+            if nonInterleaved {
+                left = try sample(buffers[0], index: frame, floatingPoint: floatingPoint)
+                right = channels > 1
+                    ? try sample(buffers[1], index: frame, floatingPoint: floatingPoint)
+                    : left
+            } else {
+                left = try sample(
+                    buffers[0],
+                    index: frame * channels,
+                    floatingPoint: floatingPoint
+                )
+                right = channels > 1
+                    ? try sample(
+                        buffers[0],
+                        index: frame * channels + 1,
+                        floatingPoint: floatingPoint
+                    )
+                    : left
+            }
+            append(left)
+            append(right)
+        }
+    }
+
+    private func flushFrames() throws {
+        let frameBytes = 960 * 2 * MemoryLayout<Int16>.size
+        while pending.count >= frameBytes {
+            if !active {
+                try writer.writeStatus(AudioStatus())
+                active = true
+            }
+            let payload = pending.prefix(frameBytes)
+            try writer.writePCM(
+                Data(payload),
+                timestamp: nextTimestamp ?? 0,
+                duration: 200_000
+            )
+            pending.removeFirst(frameBytes)
+            nextTimestamp = (nextTimestamp ?? 0) + 200_000
+        }
+    }
+
+    func stream(
+        _ stream: SCStream,
+        didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
+        of outputType: SCStreamOutputType
+    ) {
+        guard outputType == .audio, sampleBuffer.isValid else { return }
+        do {
+            try append(sampleBuffer)
+            try flushFrames()
+        } catch {
+            done.signal(error)
+        }
+    }
+
+    func stream(_ stream: SCStream, didStopWithError error: Error) {
+        done.signal(error)
+    }
+}
+
 private final class CaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
     private let encoder: HardwareEncoder
     private let done: StopSignal
     private let queue: DispatchQueue
+    private let profile: VideoProfile
     private var lastImage: CVImageBuffer?
     private var lastTimestamp = CMTime.invalid
     private var lastRecoveryTime = CMTime.invalid
@@ -629,11 +914,13 @@ private final class CaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
     init(
         encoder: HardwareEncoder,
         done: StopSignal,
-        queue: DispatchQueue
+        queue: DispatchQueue,
+        profile: VideoProfile
     ) {
         self.encoder = encoder
         self.done = done
         self.queue = queue
+        self.profile = profile
     }
 
     func requestKeyFrame() {
@@ -646,7 +933,7 @@ private final class CaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
             if lastRecoveryTime.isValid,
                CMTimeCompare(
                 now,
-                CMTimeAdd(lastRecoveryTime, frameInterval)
+                    CMTimeAdd(lastRecoveryTime, profile.frameInterval)
                ) < 0 {
                 return
             }
@@ -654,7 +941,7 @@ private final class CaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
             let next = lastTimestamp.isValid
                 ? later(
                     now,
-                    CMTimeAdd(lastTimestamp, timestampStep)
+                    CMTimeAdd(lastTimestamp, profile.timestampStep)
                 )
                 : now
             lastTimestamp = next
@@ -684,7 +971,7 @@ private final class CaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
         let timestamp = lastTimestamp.isValid
             ? later(
                 capturedTimestamp,
-                CMTimeAdd(lastTimestamp, timestampStep)
+                CMTimeAdd(lastTimestamp, profile.timestampStep)
             )
             : capturedTimestamp
         lastImage = image
@@ -697,20 +984,13 @@ private final class CaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
     }
 }
 
-private func capture(_ arguments: [String]) async throws {
-    guard arguments.count == 11,
-          arguments[1] == "--capture-video",
-          let sourceID = UInt32(arguments[3]), sourceID > 0,
-          let pid = UInt32(arguments[4]),
-          arguments[6] == "--adapter-index", arguments[7] == "0",
-          arguments[8] == "--mft-index", arguments[9] == "0",
-          arguments[10] == "--protocol-v3" else {
-        throw CaptureFailure(description: "invalid capture arguments")
-    }
-    let kind = arguments[2]
-    let creationTime = arguments[5]
+private func captureFilter(
+    kind: String,
+    sourceID: UInt32,
+    pid: UInt32,
+    creationTime: String
+) async throws -> SCContentFilter {
     let content = try await shareableContent()
-    let filter: SCContentFilter
     if kind == "window" {
         guard pid > 0, creationTime != "0",
               let selected = shareableWindows(content).first(where: {
@@ -719,33 +999,85 @@ private func capture(_ arguments: [String]) async throws {
               })?.0 else {
             throw CaptureFailure(description: "capture target identity changed")
         }
-        filter = SCContentFilter(desktopIndependentWindow: selected)
-    } else if kind == "display" {
+        return SCContentFilter(desktopIndependentWindow: selected)
+    }
+    if kind == "display" {
         guard pid == 0, creationTime == "0",
               let selected = content.displays.first(where: {
                 $0.displayID == sourceID
               }) else {
             throw CaptureFailure(description: "capture target identity changed")
         }
-        filter = SCContentFilter(display: selected, excludingWindows: [])
-    } else {
-        throw CaptureFailure(description: "capture target kind is unsupported")
+        return SCContentFilter(display: selected, excludingWindows: [])
     }
+    throw CaptureFailure(description: "capture target kind is unsupported")
+}
+
+private func videoProfile(_ arguments: [String]) throws -> VideoProfile {
+    guard arguments.count == 23,
+          arguments[10] == "--width", let width = Int(arguments[11]),
+          arguments[12] == "--height", let height = Int(arguments[13]),
+          arguments[14] == "--fps", let frameRate = Int32(arguments[15]),
+          arguments[16] == "--bitrate", let bitrate = Int(arguments[17]),
+          arguments[18] == "--preference",
+          let preference = DegradationPreference(rawValue: arguments[19]),
+          arguments[20] == "--codec",
+          ["auto", "h264"].contains(arguments[21]),
+          arguments[22] == "--protocol-v4" else {
+        throw CaptureFailure(description: "invalid video profile arguments")
+    }
+    let validResolution =
+        (width == 854 && height == 480) ||
+        (width == 1280 && height == 720) ||
+        (width == 1920 && height == 1080) ||
+        (width == 2560 && height == 1440)
+    guard validResolution, frameRate >= 15, frameRate <= 60,
+          bitrate >= 2_000_000, bitrate <= 12_000_000 else {
+        throw CaptureFailure(description: "video profile is outside the product bounds")
+    }
+    return VideoProfile(
+        width: width,
+        height: height,
+        frameRate: frameRate,
+        bitrate: bitrate,
+        preference: preference
+    )
+}
+
+private func capture(_ arguments: [String]) async throws {
+    guard arguments.count == 23,
+          arguments[1] == "--capture-video",
+          let sourceID = UInt32(arguments[3]), sourceID > 0,
+          let pid = UInt32(arguments[4]),
+          arguments[6] == "--adapter-index", arguments[7] == "0",
+          arguments[8] == "--mft-index", arguments[9] == "0" else {
+        throw CaptureFailure(description: "invalid capture arguments")
+    }
+    let profile = try videoProfile(arguments)
+    let kind = arguments[2]
+    let creationTime = arguments[5]
+    let filter = try await captureFilter(
+        kind: kind,
+        sourceID: sourceID,
+        pid: pid,
+        creationTime: creationTime
+    )
 
     let writer = ProtocolWriter()
     let done = StopSignal()
-    let encoder = try HardwareEncoder(writer: writer, done: done)
+    let encoder = try HardwareEncoder(writer: writer, done: done, profile: profile)
     defer { encoder.close() }
     let captureQueue = DispatchQueue(label: "screener.capture.video")
     let output = CaptureOutput(
         encoder: encoder,
         done: done,
-        queue: captureQueue
+        queue: captureQueue,
+        profile: profile
     )
     let configuration = SCStreamConfiguration()
-    configuration.width = width
-    configuration.height = height
-    configuration.minimumFrameInterval = CMTime(value: 1, timescale: frameRate)
+    configuration.width = profile.width
+    configuration.height = profile.height
+    configuration.minimumFrameInterval = profile.frameInterval
     configuration.queueDepth = 5
     configuration.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
     configuration.showsCursor = true
@@ -791,6 +1123,70 @@ private func capture(_ arguments: [String]) async throws {
     encoder.close()
 }
 
+private func captureAudio(_ arguments: [String]) async throws {
+    guard arguments.count == 5,
+          arguments[1] == "--capture-audio",
+          let pid = UInt32(arguments[3]) else {
+        throw CaptureFailure(description: "invalid audio capture arguments")
+    }
+    let kind = arguments[2]
+    let creationTime = arguments[4]
+    let content = try await shareableContent()
+    let filter: SCContentFilter
+    if kind == "window" {
+        guard pid > 0, creationTime != "0",
+              let selected = shareableWindows(content).first(where: {
+                $0.1.pid == pid && $0.1.creationTime == creationTime
+              })?.0 else {
+            throw CaptureFailure(description: "audio target identity changed")
+        }
+        filter = SCContentFilter(desktopIndependentWindow: selected)
+    } else if kind == "display" {
+        guard pid == 0, creationTime == "0",
+              let selected = content.displays.first else {
+            throw CaptureFailure(description: "audio display is unavailable")
+        }
+        filter = SCContentFilter(display: selected, excludingWindows: [])
+    } else {
+        throw CaptureFailure(description: "audio target kind is unsupported")
+    }
+    let writer = ProtocolWriter()
+    let done = StopSignal()
+    let output = AudioCaptureOutput(writer: writer, done: done)
+    let configuration = SCStreamConfiguration()
+    configuration.capturesAudio = true
+    configuration.excludesCurrentProcessAudio = true
+    configuration.sampleRate = 48_000
+    configuration.channelCount = 2
+    let queue = DispatchQueue(label: "screener.capture.audio")
+    let stream = SCStream(
+        filter: filter,
+        configuration: configuration,
+        delegate: output
+    )
+    try stream.addStreamOutput(output, type: .audio, sampleHandlerQueue: queue)
+
+    DispatchQueue.global(qos: .userInitiated).async {
+        while true {
+            let data = FileHandle.standardInput.readData(ofLength: 64)
+            if data.isEmpty || data.contains(81) || data.contains(10) ||
+                data.contains(13) {
+                done.signal()
+                return
+            }
+        }
+    }
+
+    try await stream.startCapture()
+    do {
+        try done.wait()
+    } catch {
+        try? await stream.stopCapture()
+        throw error
+    }
+    try await stream.stopCapture()
+}
+
 @main
 private struct ScreenerCapture {
     static func main() async {
@@ -802,6 +1198,8 @@ private struct ScreenerCapture {
                 try selfTest()
             } else if arguments.count == 2, arguments[1] == "--list" {
                 try await listSources()
+            } else if arguments.count > 1, arguments[1] == "--capture-audio" {
+                try await captureAudio(arguments)
             } else {
                 try await capture(arguments)
             }

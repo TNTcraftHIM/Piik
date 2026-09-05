@@ -9,7 +9,8 @@ import { z } from "zod";
 import { createOpaqueId } from "./opaque-id";
 
 const CLIENT_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
-const CLIENT_ACCESS_BOOTSTRAP_PATTERN = /^[A-Za-z0-9_-]{32}$/;
+const CLIENT_ACCESS_BOOTSTRAP_PATTERN = /^[\x21-\x7e]{8,128}$/;
+const CLIENT_LAUNCH_STORAGE_KEY = "screener:client-launch:v1";
 const HOST_ROOM_STORAGE_KEY = "screener:host-room:v1";
 const HOST_ROOM_PREFERENCE_STORAGE_KEY = "screener:host-room-preference:v1";
 const hostRoomStorageSchema = createRoomResponseSchema.pick({
@@ -97,12 +98,24 @@ export function takeClientLaunchBootstrap(): ClientLaunchBootstrap {
   ] as const;
   const present = keys.some((key) => params.has(key));
   const accessValue = params.get("client-access");
+  const launchedFromFragment = params.get("screener-client") === "1";
+  let launchedByClient = launchedFromFragment;
+  try {
+    if (launchedFromFragment) {
+      window.localStorage.setItem(CLIENT_LAUNCH_STORAGE_KEY, "1");
+    } else {
+      launchedByClient =
+        window.localStorage.getItem(CLIENT_LAUNCH_STORAGE_KEY) === "1";
+    }
+  } catch {
+    // The launch fragment still enables the current load when storage is blocked.
+  }
   const result: ClientLaunchBootstrap = {
     accessToken:
       accessValue && CLIENT_ACCESS_BOOTSTRAP_PATTERN.test(accessValue)
         ? accessValue
         : null,
-    launchedByClient: params.get("screener-client") === "1",
+    launchedByClient,
   };
   if (present) {
     for (const key of keys) params.delete(key);

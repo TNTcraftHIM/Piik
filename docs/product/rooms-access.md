@@ -74,13 +74,15 @@ code-only attempts and does not silently revoke invitations.
   room authority across application restart.
 - **Client Local mode:** the packaged Client composes the same memory RoomStore
   and ends every room when its local authority exits. It persists only its Site
-  choice and generated Local site-access password, not rooms or media state.
+  choice and optional Local site-access password, not rooms or media state. A
+  blank password leaves that local site open.
 
-The Client opens its own localhost Host page with that password in a fragment.
-The page removes the fragment and uses the existing SiteAccess endpoint; this
-does not create a fourth admission authority. LAN and one-link Internet Viewers
-use the same room-scoped invitation grant; its fragment never enters the public
-tunnel request, and the Host's Local RoomStore remains the only authority.
+The Client opens its own localhost Host page with the configured password, when
+present, in a fragment. The page removes the fragment and uses the existing
+SiteAccess endpoint; this does not create a fourth admission authority. LAN and
+one-link Internet Viewers use the same room-scoped invitation grant; its
+fragment never enters the public tunnel request, and the Host's Local RoomStore
+remains the only authority.
 Selecting a Site moves room authority wholly to that Site rather than
 synchronizing two stores.
 

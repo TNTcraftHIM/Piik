@@ -4,7 +4,7 @@
 
 仓库是跨 session、设备和 agent 的持久事实源。会影响后续工作的结论必须先进入其权威文档；聊天、agent 摘要、旧分支和临时计划都不能替代仓库真相。
 
-常驻上下文只保留每次工作都需要的边界和导航。细节按需读取，完成历史交给 Git。任务范围、最小正确结果和 current-result 交付遵循 `AGENTS.md` 摘要并完整读取仓库内的 [`stop-that-shit` skill](../.agents/skills/stop-that-shit/SKILL.md)；本文件只维护仓库特有的事实治理规则。
+常驻上下文只保留每次工作都需要的边界和导航。细节按需读取，完成历史交给 Git。任务范围和交付遵循 `AGENTS.md`，最小正确结果遵循仓库内的 [`ponytail` skill](../.agents/skills/ponytail/SKILL.md)；本文件只维护仓库特有的事实治理规则。
 
 ## 事实分层
 
@@ -25,13 +25,13 @@
 
 ## 顶级指令卫生
 
-[官方调研](./research/agent-context-governance.md)的共同结论是：顶层指令应是短而稳定的地图，流程和专业细节按需加载，并定期删除冲突或陈旧规则。检查器把官方边界分成推荐线和硬顶：Codex 项目指令链在默认 32 KiB 上限的 80% 提示、到上限失败；Claude 的有效启动指令在官方建议的 200 行提示，并容许到 250 行的项目缓冲；Hermes 在动态下限 20,000 字符的 80% 提示、到下限失败。`CLAUDE.md` 导入的 `AGENTS.md` 计入有效行数；每次任务必读的 repo STS skill 使用同一保守包络。
+[官方调研](./research/agent-context-governance.md)的共同结论是：顶层指令应是短而稳定的地图，流程和专业细节按需加载，并定期删除冲突或陈旧规则。检查器把官方边界分成推荐线和硬顶：Codex 项目指令链在默认 32 KiB 上限的 80% 提示、到上限失败；Claude 的有效启动指令在官方建议的 200 行提示，并容许到 250 行的项目缓冲；Hermes 在动态下限 20,000 字符的 80% 提示、到下限失败。`CLAUDE.md` 导入的 `AGENTS.md` 计入有效行数；必读的 repo Ponytail skill 使用同一保守包络。
 
 推荐线只触发园艺提醒，不是压缩目标。硬顶失败时应把目录专属规则迁到嵌套或 path-scoped context，把流程和参考资料迁到按需 skill/文档，简化重复措辞，并删除已完成历史或陈旧结论；不要为了过闸损失仍有消费者的约束。模块特有规则只有在对应代码存在且每次读取确有必要时，才放到最近目录的 `AGENTS.md`；流程说明进入 `CONTRIBUTING.md`，当前工作进入 `docs/todo.md`，证据与理由进入其 owner。
 
 ## 真相更新顺序
 
-1. 按 [`stop-that-shit`](../.agents/skills/stop-that-shit/SKILL.md) 的 authority 和 scope 规则，对照完整产品模型、当前代码、测试和证据确定目标；语义未定时只冻结依赖项。
+1. 按 [`AGENTS.md`](../AGENTS.md) 的 authority 和 scope 规则，对照完整产品模型、当前代码、测试和证据确定目标；语义未定时只冻结依赖项。
 2. 就地更新受影响的 product、ADR 或 research owner；仅在快照确实变化时同步 memory/status，未决执行项进入 TODO。
 3. 检查各 current owner 一致并形成 Git-tracked truth checkpoint，再开始依赖该结论的实现或派发。
 
@@ -39,7 +39,7 @@
 
 ## 机制减负审查
 
-机制减负遵循 [`stop-that-shit`](../.agents/skills/stop-that-shit/SKILL.md) 的 scope 和 smallest-correct-result 规则。本仓库的审查先只读清点机制服务的用户行为，量化移除后的真实退让，并与代码、配置、迁移、测试、运行时状态、部署和故障面的整体成本比较。文档也是需要同步和审查的机制：长期真相只保留产品合同、非显然不变量、算法/模型、关键取舍和外部证据，普通 UI 与实现细节由代码、测试和 PR 持有。若 owner 接受有界退让，先更新产品合同再删除失去必要性的完整表面；否则保留合同并寻找更小实现。审查不以行数为目标，也不授权无边界重构。
+机制减负遵循 [`ponytail`](../.agents/skills/ponytail/SKILL.md) 的最小正确结果原则，范围由 `AGENTS.md` 约束。本仓库的审查先只读清点机制服务的用户行为，量化移除后的真实退让，并与代码、配置、迁移、测试、运行时状态、部署和故障面的整体成本比较。文档也是需要同步和审查的机制：长期真相只保留产品合同、非显然不变量、算法/模型、关键取舍和外部证据，普通 UI 与实现细节由代码、测试和 PR 持有。若 owner 接受有界退让，先更新产品合同再删除失去必要性的完整表面；否则保留合同并寻找更小实现。审查不以行数为目标，也不授权无边界重构。
 
 TURN 的减负证据由 [ADR-0005](./adr/0005-automatic-hybrid-media-routing.md) 和相关 transport research 持有；轻量/SQLite 房间取舍由 [ADR-0002](./adr/0002-memory-resident-protected-rooms.md) 持有。这些案例只证明应按当前消费者重审完整成本，不能被推广为永远删除或永远保留某类机制的规则。
 
@@ -47,7 +47,7 @@ TURN 的减负证据由 [ADR-0005](./adr/0005-automatic-hybrid-media-routing.md)
 
 在需求或优先级被接受、设计或研究结论改变、实质阶段切换、分支/PR/agent 交接、可能 compaction 或长暂停前更新事实 owner。不要为每个函数、工具调用或未形成结论的探索建立检查点。
 
-检查点按 [`stop-that-shit`](../.agents/skills/stop-that-shit/SKILL.md) 的 current-result 规则，只保存以后仍需要的结论、当前状态、下一步和真实阻塞；不保存原始对话或工具输出、完整日志、临时路径、可廉价重查的事实和过程性 TODO 流水账。
+检查点按 [`AGENTS.md`](../AGENTS.md) 的 durable-truth 规则，只保存以后仍需要的结论、当前状态、下一步和真实阻塞；不保存原始对话或工具输出、完整日志、临时路径、可廉价重查的事实和过程性 TODO 流水账。
 
 恢复上下文时依次读取 `AGENTS.md`、project memory、status、TODO、相关 product/ADR/research，然后检查当前分支、`git status`、近期 commit 和 PR。摘要与仓库冲突时，以当前代码、测试和权威文档为准。
 
@@ -63,6 +63,6 @@ TURN 的减负证据由 [ADR-0005](./adr/0005-automatic-hybrid-media-routing.md)
 
 - 迭代中运行覆盖当前改动的最小定向检查；完整套件、真实浏览器矩阵、网络整形、跨设备、长时稳定性和部署检查在相关候选的验收边界批量运行。
 - 文档改动默认运行本地 Markdown 链接、whitespace、diff 和 repository-hygiene 检查；不因无关文档变化重跑媒体基准。
-- 断链、缺失必需 owner 和格式损坏是 hard failure。每次注入的有效 `AGENTS.md`/`CLAUDE.md` 上下文与每次必读的 repo STS skill 使用“推荐线 warning、硬顶 failure”，避免把建议值误当死线，也避免超过工具加载边界。Product、ADR、research、operations 等按需文档的行数/字节阈值始终只是 warning：它提示检查是否应拆分二级 owner、删除历史或移出过程信息，不要求为通过门禁压缩合理正文，也不是交付质量指标。
+- 断链、缺失必需 owner 和格式损坏是 hard failure。每次注入的有效 `AGENTS.md`/`CLAUDE.md` 上下文与必读的 repo Ponytail skill 使用“推荐线 warning、硬顶 failure”，避免把建议值误当死线，也避免超过工具加载边界。Product、ADR、research、operations 等按需文档的行数/字节阈值始终只是 warning：它提示检查是否应拆分二级 owner、删除历史或移出过程信息，不要求为通过门禁压缩合理正文，也不是交付质量指标。
 - 昂贵证据记录 commit、环境、结果和适用边界。只有相关路径、协议、配置、依赖、环境或门槛改变，或旧证据失败/含糊时才重跑。
 - `.githooks/pre-commit`、`scripts/check-project-state.sh` 和 PowerShell 等价入口共享 `scripts/required-project-paths.txt`。Hook 只做快速、确定、可复现的检查；工程判断留给评审和测试。

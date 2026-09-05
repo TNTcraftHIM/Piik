@@ -1,4 +1,4 @@
-import type { NativeAdapter, NativeCaptureTarget } from "./wire";
+import type { NativeAdapter, NativeCaptureTarget, NativeVideoCodec } from "./wire";
 
 export interface NativeCapturePath {
   adapterIndex: number;
@@ -7,18 +7,25 @@ export interface NativeCapturePath {
 
 export function defaultNativeCapturePath(
   adapters: NativeAdapter[],
+  codec: NativeVideoCodec | "auto" = "auto",
+  softwareVP8 = false,
 ): NativeCapturePath | null {
-  for (const adapter of adapters) {
-    const encoder = adapter.hardwareH264[0];
-    if (encoder) {
-      return { adapterIndex: adapter.index, encoderIndex: encoder.index };
+  if (codec !== "vp8") {
+    for (const adapter of adapters) {
+      const encoder = adapter.hardwareH264[0];
+      if (encoder) {
+        return { adapterIndex: adapter.index, encoderIndex: encoder.index };
+      }
     }
   }
-  return null;
+  const adapter = adapters[0];
+  return codec !== "h264" && softwareVP8 && adapter
+    ? { adapterIndex: adapter.index, encoderIndex: 0 }
+    : null;
 }
 
 export function nativeCaptureTargetKey(target: NativeCaptureTarget): string {
   return target.kind === "window"
     ? `window:${target.sourceId}:${target.pid}:${target.creationTime}`
-    : `display:${target.sourceId}`;
+    : `${target.kind}:${target.sourceId}`;
 }

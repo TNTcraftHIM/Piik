@@ -229,16 +229,18 @@ export async function applyVideoCaptureProfile(
   track: MediaStreamTrack,
   profile: QualityProfile,
 ): Promise<void> {
-  const capabilities = track.getCapabilities?.();
-  if (
-    capabilities &&
-    !("width" in capabilities) &&
-    !("height" in capabilities) &&
-    !("frameRate" in capabilities)
-  ) {
+  if (!videoTrackOwnsCaptureConstraints(track)) {
     return;
   }
   await track.applyConstraints(captureConstraints(profile));
+}
+
+function videoTrackOwnsCaptureConstraints(track: MediaStreamTrack): boolean {
+  const capabilities = track.getCapabilities?.();
+  return !capabilities ||
+    "width" in capabilities ||
+    "height" in capabilities ||
+    "frameRate" in capabilities;
 }
 
 export function setMediaPaused(stream: MediaStream, paused: boolean): boolean {
@@ -256,6 +258,9 @@ function requestedScaleResolutionDownBy(
   sender: RTCRtpSender,
   profile: QualityProfile,
 ): number {
+  if (sender.track && !videoTrackOwnsCaptureConstraints(sender.track)) {
+    return 1;
+  }
   const source =
     sender.track && typeof sender.track.getSettings === "function"
       ? sender.track.getSettings()

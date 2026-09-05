@@ -27,6 +27,11 @@ func TestReadFrameUsesTheBoundedVersionedEnvelope(t *testing.T) {
 		!bytes.Equal(frame.Data, payload) {
 		t.Fatalf("frame = %+v", frame)
 	}
+	header[5] = byte(FrameVP8)
+	frame, err = readFrame(bytes.NewReader(append(header, payload...)))
+	if err != nil || frame.Kind != FrameVP8 || !frame.KeyFrame || !bytes.Equal(frame.Data, payload) {
+		t.Fatalf("VP8 frame = %+v, %v", frame, err)
+	}
 }
 
 func TestReadFrameRejectsInvalidKindsFlagsAndBounds(t *testing.T) {
@@ -93,13 +98,16 @@ func TestCaptureTargetIdentityAndAudioScope(t *testing.T) {
 		CreationTime: "456", Title: "Game",
 	}
 	display := CaptureTarget{Kind: "display", SourceID: "789", Title: "Display 1"}
-	if !validCaptureTarget(window) || !validCaptureTarget(display) {
+	picker := CaptureTarget{Kind: "picker", SourceID: "1", Title: "System picker"}
+	if !validCaptureTarget(window) || !validCaptureTarget(display) ||
+		!validCaptureTarget(picker) {
 		t.Fatal("valid capture targets were rejected")
 	}
 	for _, invalid := range []CaptureTarget{
 		{Kind: "window", SourceID: "123", PID: 42, Title: "Game"},
 		{Kind: "display", SourceID: "789", PID: 42, Title: "Display 1"},
 		{Kind: "display", SourceID: "789", CreationTime: "456", Title: "Display 1"},
+		{Kind: "picker", SourceID: "1", PID: 42, Title: "System picker"},
 		{Kind: "other", SourceID: "789", Title: "Display 1"},
 	} {
 		if validCaptureTarget(invalid) {
@@ -109,7 +117,31 @@ func TestCaptureTargetIdentityAndAudioScope(t *testing.T) {
 	audio := Summary{ProcessAudio: true, SystemAudio: true}
 	windowWithoutProcess := Summary{SystemAudio: true}
 	if !audio.AudioFor("window") || !audio.AudioFor("display") ||
+		!audio.AudioFor("picker") ||
 		windowWithoutProcess.AudioFor("window") {
 		t.Fatal("capture audio scope was not separated by target kind")
+	}
+}
+
+func TestVideoProfileUsesTheProductBounds(t *testing.T) {
+	for _, profile := range []VideoProfile{
+		{Width: 854, Height: 480, Framerate: 15, Bitrate: 2_000_000, Preference: "maintain-resolution"},
+		{Width: 1280, Height: 720, Framerate: 30, Bitrate: 3_000_000, Preference: "balanced"},
+		{Width: 1920, Height: 1080, Framerate: 60, Bitrate: 8_000_000, Preference: "maintain-framerate"},
+		{Width: 2560, Height: 1440, Framerate: 60, Bitrate: 12_000_000, Preference: "balanced"},
+	} {
+		if !profile.Valid() {
+			t.Fatalf("valid profile rejected: %+v", profile)
+		}
+	}
+	for _, profile := range []VideoProfile{
+		{Width: 1920, Height: 1200, Framerate: 30, Bitrate: 5_000_000, Preference: "balanced"},
+		{Width: 1920, Height: 1080, Framerate: 14, Bitrate: 5_000_000, Preference: "balanced"},
+		{Width: 1920, Height: 1080, Framerate: 30, Bitrate: 12_000_001, Preference: "balanced"},
+		{Width: 1920, Height: 1080, Framerate: 30, Bitrate: 5_000_000, Preference: "unknown"},
+	} {
+		if profile.Valid() {
+			t.Fatalf("invalid profile accepted: %+v", profile)
+		}
 	}
 }

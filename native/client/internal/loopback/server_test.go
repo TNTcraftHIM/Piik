@@ -22,8 +22,8 @@ func TestStartServesHealthAndStrictControlHandshake(t *testing.T) {
 		Video: true, ProcessAudio: false, SystemAudio: true, HardwareH264: true,
 	}
 	server := startTestServerWithOptions(t, Options{
-		AllowedOrigin: testOrigin,
-		NativeMedia:   expectedMedia,
+		AllowedOrigins: []string{testOrigin},
+		NativeMedia:    expectedMedia,
 	})
 	endpoint := server.Endpoint()
 
@@ -87,6 +87,79 @@ func TestHealthAcceptsTheLocalHostAlias(t *testing.T) {
 	}
 }
 
+func TestPresentationUpdatesOnlyLanguageWithoutClaimingMediaControl(t *testing.T) {
+	languages := make(chan string, 3)
+	var server *Server
+	server = startTestServerWithOptions(t, Options{
+		AllowedOrigins: []string{testOrigin},
+		Presentation: func(language string) {
+			server.SetAllowedOrigins([]string{testOrigin})
+			languages <- language
+		},
+	})
+	endpoint := server.Endpoint()
+	connection := dialControl(t, endpoint, endpoint.InstanceToken, testOrigin)
+	defer connection.CloseNow()
+	writeControl(t, connection, requestJSON("request_hello", "hello"))
+	var ready controlMessage
+	readControl(t, connection, &ready)
+	client := &http.Client{Timeout: time.Second}
+	for _, input := range []struct {
+		method, path, origin, body, language string
+		status                               int
+	}{
+		{http.MethodPost, "/presentation", testOrigin, `{"language":"zh"}`, "zh", http.StatusNoContent},
+		{http.MethodPost, "/presentation", testOrigin, `{"language":"en"}`, "en", http.StatusNoContent},
+		{http.MethodPost, "/presentation", endpoint.URL, `{"language":"vis"}`, "vis", http.StatusNoContent},
+		{http.MethodOptions, "/presentation", testOrigin, "", "", http.StatusNoContent},
+		{http.MethodPost, "/presentation", "https://other.example", `{"language":"en"}`, "", http.StatusForbidden},
+		{http.MethodOptions, "/presentation", "https://other.example", "", "", http.StatusForbidden},
+		{http.MethodOptions, "/health", testOrigin, "", "", http.StatusMethodNotAllowed},
+		{http.MethodGet, "/presentation", testOrigin, "", "", http.StatusMethodNotAllowed},
+		{http.MethodPost, "/presentation", testOrigin, `{"language":"other"}`, "", http.StatusBadRequest},
+		{http.MethodPost, "/presentation", testOrigin, `{"language":"en","capture":true}`, "", http.StatusBadRequest},
+		{http.MethodPost, "/presentation", testOrigin, `{"language":"en"}{}`, "", http.StatusBadRequest},
+		{http.MethodPost, "/presentation", testOrigin, strings.Repeat(" ", 257) + `{"language":"en"}`, "", http.StatusBadRequest},
+	} {
+		request, err := http.NewRequest(input.method, endpoint.URL+input.path, strings.NewReader(input.body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		request.Header.Set("Origin", input.origin)
+		request.Header.Set("Content-Type", "application/json")
+		response, err := client.Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response.Body.Close()
+		if response.StatusCode != input.status {
+			t.Fatalf("%s %s status = %d, want %d", input.method, input.path, response.StatusCode, input.status)
+		}
+		if input.method == http.MethodOptions && input.status == http.StatusNoContent &&
+			(response.Header.Get("Access-Control-Allow-Origin") != testOrigin ||
+				response.Header.Get("Access-Control-Allow-Methods") != "POST" ||
+				response.Header.Get("Access-Control-Allow-Headers") != "Content-Type") {
+			t.Fatal("presentation preflight did not preserve its bounded origin/method scope")
+		}
+		select {
+		case language := <-languages:
+			if language != input.language {
+				t.Fatalf("unexpected presentation callback: %q", language)
+			}
+		default:
+			if input.language != "" {
+				t.Fatal("presentation callback missing")
+			}
+		}
+	}
+	writeControl(t, connection, requestJSON("request_ping", "ping"))
+	var pong controlMessage
+	readControl(t, connection, &pong)
+	if pong.Type != "pong" {
+		t.Fatal("presentation changed the active media control")
+	}
+}
+
 func TestOnlyOneControlSessionIsClaimed(t *testing.T) {
 	server := startTestServer(t, testOrigin)
 	endpoint := server.Endpoint()
@@ -110,7 +183,7 @@ func TestControlSessionSharesOneBoundedSocketForResponsesAndEvents(t *testing.T)
 		closed: make(chan struct{}),
 	}
 	server := startTestServerWithOptions(t, Options{
-		AllowedOrigin: testOrigin,
+		AllowedOrigins: []string{testOrigin},
 		NewControl: func() ControlSession {
 			return extension
 		},
@@ -180,7 +253,7 @@ func TestUnexpectedServeFailureIsReported(t *testing.T) {
 
 func startTestServer(t *testing.T, origin string) *Server {
 	t.Helper()
-	return startTestServerWithOptions(t, Options{AllowedOrigin: origin})
+	return startTestServerWithOptions(t, Options{AllowedOrigins: []string{origin}})
 }
 
 func startTestServerWithOptions(t *testing.T, options Options) *Server {

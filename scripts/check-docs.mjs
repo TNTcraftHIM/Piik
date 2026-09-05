@@ -32,8 +32,8 @@ const claudeWrapper = readFileSync(resolve(root, "CLAUDE.md"), "utf8").replace(
   /^@AGENTS\.md\s*(?:\r?\n)?/u,
   "",
 );
-const stsInstructions = readFileSync(
-  resolve(root, ".agents/skills/stop-that-shit/SKILL.md"),
+const ponytailInstructions = readFileSync(
+  resolve(root, ".agents/skills/ponytail/SKILL.md"),
   "utf8",
 );
 const topLevelContextBudgets = [
@@ -62,8 +62,8 @@ const topLevelContextBudgets = [
     hard: { chars: hermesMinimumContextChars },
   },
   {
-    name: "Required stop-that-shit skill",
-    text: stsInstructions,
+    name: "Required ponytail skill",
+    text: ponytailInstructions,
     recommended: {
       lines: claudeRecommendedLines,
       chars: Math.floor(hermesMinimumContextChars * contextWarningRatio),

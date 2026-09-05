@@ -253,6 +253,28 @@ describe("realtime quality controls", () => {
     ]);
   });
 
+  it("does not scale a remote source that already owns the room profile", async () => {
+    let applied = { encodings: [{}] } as unknown as RTCRtpSendParameters;
+    const sender = {
+      track: {
+        getCapabilities: () => ({}),
+        getSettings: () => ({ width: 2560, height: 1440 }),
+      },
+      getParameters: () => applied,
+      setParameters: vi.fn(async (parameters: RTCRtpSendParameters) => {
+        applied = parameters;
+      }),
+    } as unknown as RTCRtpSender;
+
+    const readback = await configureVideoSender(
+      sender,
+      QUALITY_PROFILES["720p30"],
+    );
+
+    expect(readback.requested.scaleResolutionDownBy).toBe(1);
+    expect(applied.encodings[0]?.scaleResolutionDownBy).toBe(1);
+  });
+
   it.each([
     ["saver", 64_000],
     ["music", 128_000],

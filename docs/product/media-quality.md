@@ -1,6 +1,6 @@
 # Capture, Audio, And Media Quality
 
-This file owns the current Browser media contract. Detailed measurements and
+This file owns the current Browser and Client media contract. Detailed measurements and
 platform limits live in [realtime quality research](../research/realtime-quality-adaptation.md)
 and [screen-audio research](../research/browser-screen-audio-quality.md).
 [ADR-0007](../adr/0007-path-isolated-representation-quality.md) owns the SFU
@@ -12,21 +12,41 @@ adaptation decision.
   stop, synchronously pause/resume audio and video, or switch source.
 - A Client-launched Host explicitly chooses either that Browser capture path or
   one native screen/window enumerated by the packaged platform capture boundary. The
-  latter uses one available hardware H.264 path and never infers a target from
+  latter uses one supported native codec path and never infers a target from
   a title. An ordinary Web Host does not probe localhost.
+- Windows native capture follows an explicitly stretched active display path
+  for an entire display or a window covering that display, when the captured
+  frame matches its desktop source dimensions. Other frames retain their own
+  aspect ratio. This changes only the encoded presentation, never the game or
+  display settings; vendor-private scaling is not inferred.
 - Share and source-switch requests ask the Browser for available audio by
   default. Missing audio is reported clearly but does not block video-only
   sharing. Native screen capture can include system playback audio and native
   window capture can include selected-process audio when the platform exposes it.
-- Authoritative pause disables the current source and sender-owned tracks while
-  retaining the room and established routes. Black frames, track mute, or
-  network failure are not interpreted as a user pause.
+- Authoritative Browser pause disables the current source and sender-owned tracks
+  while retaining the room and established routes. Native pause keeps capture
+  alive but stops session output through the same owner. Black frames, track
+  mute, or network failure are not interpreted as a user pause.
 - The Host preview displays the capture stream directly and creates no Viewer or
   media route. Hiding the page may pause only that local video element; it must
   not intentionally stop capture, encoding, or upload.
 - Live quality changes update the current capture and Host sender-track
   constraints plus sender ceilings without reopening source selection or
   replacing a healthy route.
+- Native quality changes use the same room settings. The Client prepares a new
+  platform capture/encoder generation, then replaces the old generation behind
+  the same encoded source and PeerConnections; audio-only changes update the
+  current Opus encoder directly. Platform quality preference uses the hardware
+  encoder's standard quality-versus-speed hint, while Pion/WebRTC still own
+  transport estimation and route evidence.
+  Windows VP8 uses libvpx's realtime mode; it does not claim the same hardware
+  quality-versus-speed control or per-edge Browser adaptation.
+- With Client available, Browser H.264 capture can use one local sender and the
+  existing Native encoded fanout while topology optimization is enabled. The
+  Browser still owns preview, pause, capture settings, and source selection.
+  Loss of that optional ingress retains capture and rebuilds the assigned
+  Browser edges. [ADR-0011](../adr/0011-browser-assisted-native-fanout.md) owns
+  this composition; pure Browser and VP8 sharing retain their normal senders.
 
 ## Video Profiles
 
@@ -70,6 +90,15 @@ The Browser chooses the concrete encoder implementation. A reported H.264 codec
 does not by itself prove hardware acceleration, and Web content cannot select a
 specific MFT, NVENC, AMF, or QSV implementation.
 
+Windows native capture uses the same VP8/Auto/H264 controls. H264 selects the
+hardware path and VP8 the bundled libvpx encoder. Auto measures encoding work
+for synthetic NV12 frames at the selected dimensions and frame rate, with a
+bounded warmup and sample. If H264 sustains the target it is selected; otherwise
+VP8 is measured within the remaining four-second budget. This is a throughput
+check, not a perceptual-quality score or a promise under future GPU load.
+The returned actual codec owns the shared source, preview, and relay; live
+quality/source changes retain it. Other native platform encoders remain H264.
+
 ## Framework-Owned Adaptation
 
 Each direct, relay, or SFU video sender owns one clone of its capture or received
@@ -95,9 +124,16 @@ capture therefore retains source resolution and frame-rate ownership across its
 loopback Browser bridge; the existing Browser SFU publisher applies only sender
 parameters and LiveKit's representation policy to that remote source.
 
-When a live native sender remains persistently limited after capacity recovers,
-the route controller may rebuild that exact edge with a fresh connection and
-clone; media adaptation still stays entirely framework-owned.
+Native sender edges normally reuse one encoded source. A Native Viewer forwards
+compatible H.264/VP8 and Opus payload without decoding or re-encoding it; each outbound
+PeerConnection owns its RTP identity and transport feedback. When an edge is
+persistently degraded, the existing quality operation may prepare a Browser
+WebRTC sender from the stable local bridge as that edge's candidate. The old
+edge stays live until the Viewer proves the candidate is better; a failed
+candidate rolls back, and a later operation may return the edge to the shared
+native source. This gives one difficult path stock per-sender adaptation without
+lowering the shared representation for healthy paths. It adds no quality score,
+timer, or room-wide media setting.
 
 Screener does not maintain an application bitrate/resolution ladder, scene
 detector, periodic quality controller, manual SFU layer selector, or

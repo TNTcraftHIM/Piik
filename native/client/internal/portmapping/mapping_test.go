@@ -50,8 +50,12 @@ func TestMappingCreatesOnceAndReleases(t *testing.T) {
 	}
 
 	mapping := Start(43210)
-	mapping.Prepare()
-	mapping.Prepare()
+	if port := mapping.Prepare(); port != 43211 {
+		t.Fatalf("mapped port = %d, want 43211", port)
+	}
+	if port := mapping.Prepare(); port != 43211 {
+		t.Fatalf("cached mapped port = %d, want 43211", port)
+	}
 	mapping.Close()
 	mapping.Close()
 

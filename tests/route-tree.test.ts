@@ -223,13 +223,13 @@ describe("RouteTree", () => {
       {
         role: "host",
         peerId: hostPeerId,
-        displayName: "👑-abc123",
+        displayName: "👑 (abc123)",
         upstream: { kind: "none" },
       },
       {
         role: "viewer",
         peerId: viewerPeerId,
-        displayName: "👤-def456",
+        displayName: "👤 (def456)",
         upstream: { kind: "peer", peerId: hostPeerId },
         mediaReady: true,
       },
@@ -253,8 +253,8 @@ describe("RouteTree", () => {
     expect(html).toContain(">abc123</text>");
     expect(html).toContain(">def456</text>");
     expect(html).toContain(">👤-custom</text>");
-    expect(html).not.toContain(">👑-abc123</text>");
-    expect(html).not.toContain(">👤-def456</text>");
+    expect(html).not.toContain(">👑 (abc123)</text>");
+    expect(html).not.toContain(">👤 (def456)</text>");
     expect(html).toContain("scale(0.82)");
   });
 

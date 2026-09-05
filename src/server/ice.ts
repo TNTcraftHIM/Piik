@@ -3,6 +3,7 @@ import type { WireIceConfig } from "../shared/protocol.js";
 export interface IceConfigOptions {
   stunUrls: readonly string[];
   natPredictionEnabled: boolean;
+  natPredictionStunUrls?: readonly string[];
 }
 
 const NAT_PREDICTION_BASE_PORT = 3478;
@@ -38,11 +39,13 @@ export function natPredictionStunUrls(
 }
 
 export function createIceConfig(options: IceConfigOptions): WireIceConfig {
+  const predictionStunUrls =
+    options.natPredictionStunUrls ?? natPredictionStunUrls(options.stunUrls);
   return {
     iceServers:
       options.stunUrls.length > 0 ? [{ urls: [...options.stunUrls] }] : [],
     natPredictionStunUrls: options.natPredictionEnabled
-      ? natPredictionStunUrls(options.stunUrls)
+      ? [...predictionStunUrls]
       : [],
   };
 }

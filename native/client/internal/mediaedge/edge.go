@@ -3,8 +3,11 @@ package mediaedge
 import (
 	"errors"
 	"io"
+	"strconv"
+	"strings"
 	"sync"
 
+	"github.com/pion/ice/v4"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v4"
 )
@@ -41,6 +44,8 @@ type Edge struct {
 	closed               bool
 	qualityMu            sync.Mutex
 	qualityBaseline      qualityBaseline
+	answerMu             sync.Mutex
+	localCandidates      *localCandidateGathering
 }
 
 func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (*Edge, error) {
@@ -51,8 +56,9 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (*Edge, error
 	if options.Audio != nil && options.Audio.engine != engine {
 		return nil, errors.New("native audio edge source belongs to another engine")
 	}
-	if engine.portMapping != nil && !options.Local {
-		engine.portMapping.Prepare()
+	mappedPort := 0
+	if engine.portMapping != nil && !options.Local && len(options.ICEServers) > 0 {
+		mappedPort = engine.portMapping.Prepare()
 	}
 	if err := source.reserve(options.Local); err != nil {
 		return nil, err
@@ -63,9 +69,7 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (*Edge, error
 			return nil, err
 		}
 	}
-	connection, err := engine.api.NewPeerConnection(webrtc.Configuration{
-		ICEServers: options.ICEServers,
-	})
+	connection, err := engine.api.NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
 		source.releaseReservation(options.Local)
 		if options.Audio != nil {
@@ -121,6 +125,14 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (*Edge, error
 		return nil, err
 	}
 	edge.sender = sender
+	for _, transceiver := range connection.GetTransceivers() {
+		if transceiver.Sender() == sender {
+			if err = transceiver.SetCodecPreferences([]webrtc.RTPCodecParameters{videoCodecs[source.codec]}); err != nil {
+				_ = edge.Close()
+				return nil, err
+			}
+		}
+	}
 	if options.Audio != nil {
 		audioSender, audioErr := connection.AddTrack(options.Audio.track)
 		if audioErr != nil {
@@ -129,15 +141,14 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (*Edge, error
 		}
 		edge.audioSender = audioSender
 	}
+	edge.localCandidates = newLocalCandidateGathering(
+		engine,
+		options.ICEServers,
+		mappedPort,
+		options.Events.LocalCandidate,
+	)
 	connection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
-		if edge.events.LocalCandidate != nil {
-			if candidate == nil {
-				edge.events.LocalCandidate(nil)
-				return
-			}
-			value := candidate.ToJSON()
-			edge.events.LocalCandidate(&value)
-		}
+		edge.localCandidates.addPion(candidate)
 	})
 	connection.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
 		if state == webrtc.PeerConnectionStateConnected {
@@ -172,13 +183,29 @@ func (edge *Edge) CreateOffer() (webrtc.SessionDescription, error) {
 	if err = edge.connection.SetLocalDescription(offer); err != nil {
 		return webrtc.SessionDescription{}, err
 	}
+	edge.localCandidates.start()
 	return offer, nil
 }
 
 func (edge *Edge) SetAnswer(answer webrtc.SessionDescription) error {
+	edge.answerMu.Lock()
+	defer edge.answerMu.Unlock()
 	if answer.Type != webrtc.SDPTypeAnswer {
 		return errors.New("native media edge requires an SDP answer")
 	}
+	edge.mu.Lock()
+	if edge.closed {
+		edge.mu.Unlock()
+		return errors.New("native media edge is closed")
+	}
+	if edge.remoteDescriptionSet {
+		// The connection identity fences the answer to one edge. A repeated
+		// answer is a retransmission; the first applied description remains
+		// authoritative.
+		edge.mu.Unlock()
+		return nil
+	}
+	edge.mu.Unlock()
 	if err := edge.connection.SetRemoteDescription(answer); err != nil {
 		return err
 	}
@@ -188,14 +215,17 @@ func (edge *Edge) SetAnswer(answer webrtc.SessionDescription) error {
 	edge.pendingCandidates = nil
 	edge.mu.Unlock()
 	for _, candidate := range pending {
-		if err := edge.connection.AddICECandidate(candidate); err != nil {
-			return err
-		}
+		// Candidates are disposable edge input. The connection state callback
+		// remains the authority for a real media failure.
+		_ = edge.connection.AddICECandidate(candidate)
 	}
 	return nil
 }
 
 func (edge *Edge) AddRemoteCandidate(candidate *webrtc.ICECandidateInit) error {
+	if malformedRemoteCandidate(candidate) {
+		return nil
+	}
 	value := webrtc.ICECandidateInit{}
 	if candidate != nil {
 		value = *candidate
@@ -203,24 +233,37 @@ func (edge *Edge) AddRemoteCandidate(candidate *webrtc.ICECandidateInit) error {
 	edge.mu.Lock()
 	if edge.closed {
 		edge.mu.Unlock()
-		return errors.New("native media edge is closed")
+		return nil
 	}
 	if !edge.remoteDescriptionSet {
 		if len(edge.pendingCandidates) >= maxPendingCandidates {
 			edge.mu.Unlock()
-			return errors.New("native media ICE candidate queue is full")
+			return nil
 		}
 		edge.pendingCandidates = append(edge.pendingCandidates, value)
 		edge.mu.Unlock()
 		return nil
 	}
 	edge.mu.Unlock()
-	return edge.connection.AddICECandidate(value)
+	// A candidate may become stale between validation and delivery. Dropping
+	// that one edge input keeps the shared control session alive; ICE state
+	// events still report whether the edge itself can connect.
+	_ = edge.connection.AddICECandidate(value)
+	return nil
+}
+
+func malformedRemoteCandidate(candidate *webrtc.ICECandidateInit) bool {
+	if candidate == nil || candidate.Candidate == "" {
+		return false
+	}
+	_, err := ice.UnmarshalCandidate(strings.TrimPrefix(candidate.Candidate, "candidate:"))
+	return err != nil
 }
 
 type SelectedPair struct {
-	Local  webrtc.ICECandidateType
-	Remote webrtc.ICECandidateType
+	Local            webrtc.ICECandidateType
+	Remote           webrtc.ICECandidateType
+	NatTraversalPath string
 }
 
 func (edge *Edge) SelectedPair() (SelectedPair, error) {
@@ -232,7 +275,31 @@ func (edge *Edge) SelectedPair() (SelectedPair, error) {
 	if err != nil || pair == nil {
 		return SelectedPair{}, errors.New("native media ICE pair is unavailable")
 	}
-	return SelectedPair{Local: pair.Local.Typ, Remote: pair.Remote.Typ}, nil
+	return SelectedPair{
+		Local: pair.Local.Typ, Remote: pair.Remote.Typ,
+		NatTraversalPath: selectedNatTraversalPath(
+			pair.Local.Foundation,
+			pair.Remote.Foundation,
+		),
+	}, nil
+}
+
+func selectedNatTraversalPath(foundations ...string) string {
+	for _, foundation := range foundations {
+		if len(foundation) < 3 || foundation[0] != 's' ||
+			(foundation[1] != 'p' && foundation[1] != 'm') {
+			continue
+		}
+		if _, err := strconv.Atoi(foundation[2:]); err == nil {
+			return "predicted"
+		}
+	}
+	for _, foundation := range foundations {
+		if foundation != "" {
+			return "ordinary"
+		}
+	}
+	return "unknown"
 }
 
 func (edge *Edge) State() webrtc.PeerConnectionState {
@@ -246,6 +313,9 @@ func (edge *Edge) Close() error {
 		return nil
 	}
 	edge.closed = true
+	if edge.localCandidates != nil {
+		edge.localCandidates.close()
+	}
 	edge.pendingCandidates = nil
 	edge.mu.Unlock()
 	edge.source.detach(edge)

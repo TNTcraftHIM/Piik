@@ -2,8 +2,6 @@ package clientconfig
 
 import (
 	"bytes"
-	"crypto/rand"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,11 +14,12 @@ import (
 )
 
 const (
-	currentVersion = 1
-	passwordBytes  = 24
+	currentVersion         = 1
+	minAccessPasswordBytes = 8
+	maxAccessPasswordBytes = 128
 )
 
-var passwordPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{32}$`)
+var passwordPattern = regexp.MustCompile(`^[\x21-\x7e]{8,128}$`)
 
 type Config struct {
 	Version             int    `json:"version"`
@@ -45,13 +44,8 @@ func LoadOrCreate(path string) (Config, error) {
 		return Config{}, err
 	}
 
-	password := make([]byte, passwordBytes)
-	if _, err = rand.Read(password); err != nil {
-		return Config{}, fmt.Errorf("create Local access password: %w", err)
-	}
 	config = Config{
-		Version:             currentVersion,
-		LocalAccessPassword: base64.RawURLEncoding.EncodeToString(password),
+		Version: currentVersion,
 	}
 	payload, err := encode(config)
 	if err != nil {
@@ -110,6 +104,20 @@ func NormalizeSite(value string) (string, error) {
 	return parsed.Scheme + "://" + parsed.Host, nil
 }
 
+// NormalizeLocalAccessPassword keeps the local authority open by default while
+// retaining a bounded, user-chosen password when one is supplied.
+func NormalizeLocalAccessPassword(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", nil
+	}
+	if len(value) < minAccessPasswordBytes || len(value) > maxAccessPasswordBytes ||
+		!passwordPattern.MatchString(value) {
+		return "", errors.New("Local access password must contain 8 to 128 visible ASCII bytes")
+	}
+	return value, nil
+}
+
 func load(path string) (Config, error) {
 	payload, err := os.ReadFile(path)
 	if err != nil {
@@ -119,7 +127,11 @@ func load(path string) (Config, error) {
 	decoder := json.NewDecoder(bytes.NewReader(payload))
 	decoder.DisallowUnknownFields()
 	if decoder.Decode(&config) != nil || decoder.Decode(&struct{}{}) != io.EOF ||
-		config.Version != currentVersion || !passwordPattern.MatchString(config.LocalAccessPassword) {
+		config.Version != currentVersion {
+		return Config{}, errors.New("Client configuration is invalid")
+	}
+	normalizedPassword, passwordErr := NormalizeLocalAccessPassword(config.LocalAccessPassword)
+	if passwordErr != nil || normalizedPassword != config.LocalAccessPassword {
 		return Config{}, errors.New("Client configuration is invalid")
 	}
 	if config.Site, err = NormalizeSite(config.Site); err != nil {
@@ -129,7 +141,11 @@ func load(path string) (Config, error) {
 }
 
 func encode(config Config) ([]byte, error) {
-	if config.Version != currentVersion || !passwordPattern.MatchString(config.LocalAccessPassword) {
+	if config.Version != currentVersion {
+		return nil, errors.New("Client configuration is invalid")
+	}
+	password, passwordErr := NormalizeLocalAccessPassword(config.LocalAccessPassword)
+	if passwordErr != nil || password != config.LocalAccessPassword {
 		return nil, errors.New("Client configuration is invalid")
 	}
 	site, err := NormalizeSite(config.Site)

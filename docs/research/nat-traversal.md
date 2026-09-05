@@ -1,8 +1,8 @@
-# Browser NAT Traversal
+# Browser And Native NAT Traversal
 
 Last reviewed: 2026-09-02
 
-This document owns evidence for improving direct Browser ICE without adding a
+This document owns evidence for improving direct ICE without adding a
 new relay or a custom transport. The current product contract remains standard
 WebRTC ICE with STUN discovery and bounded SFU fallback.
 
@@ -56,20 +56,49 @@ supports an opt-in mechanism, not a default or a participant-wide classifier.
 
 ## Current Decision
 
-The ordinary self-hosted endpoint remains the discovery service. NAT prediction
-is absent by default; a deployment may enable same-host STUN-only listeners on
-3479 and 3480. Enabled deployments expose a per-share Host switch that defaults
-on and remains locked while sharing.
+An ordinary STUN endpoint remains the discovery service. A Site may enable
+same-host STUN-only listeners on 3479 and 3480. Public-link Client mode supplies
+one ordinary public endpoint plus two public survey destinations; pure LAN mode
+supplies none. Available authorities expose the same per-share Host switch,
+which defaults on and remains locked while sharing.
 
-The accepted adapter is deliberately connection-local and additive. It
-derives the two auxiliary ports from the existing STUN authority, waits for a
+The accepted adapter is deliberately connection-local and additive. It waits for a
 clear three-point arithmetic `srflx` shape in one ICE generation, and appends a
 small two-sided candidate window from the observed port-sequence endpoint.
 Ordinary candidates trickle immediately, so unavailable auxiliary listeners
 cannot hold back stock ICE. There is no NAT label, hard candidate skip,
-route-controller input, or SFU preference. The switch applies to Host, Viewer
-upstream, and Viewer relay P2P connections. Its exact scope is recorded in
+route-controller input, or SFU preference. Browser candidates are filtered by
+their reported STUN URL. Native Pion performs the same survey through its
+`UniversalUDPMux`, so every observation and subsequent media packet uses one
+socket. Only explicitly marked Native survey observations feed prediction;
+the independently mapped-port candidate does not. The switch applies to Host,
+Viewer upstream, and Viewer relay P2P connections. Its exact scope is recorded in
 [ADR-0009](../adr/0009-optional-nat-prediction.md).
+
+### Native Shared-Socket Preflight
+
+On 2026-09-05, the unmodified Pion srflx gatherer contacted three public STUN
+destinations from three different temporary local ports, despite the media
+engine's ordinary UDP mux. This invalidated the prior assumption that Native
+STUN and media already shared one socket. Pion ICE's `UniversalUDPMux` was then
+used as the media mux and direct STUN observation owner. Its emitted srflx
+candidate reported the exact Engine listener as its related port.
+
+The same build carried a public-link session to an independent Linux Pion
+Viewer: 35 H.264 RTP packets arrived over a selected direct host-to-srflx pair,
+while the Quick Tunnel carried signaling only. The active TUN network yielded
+one distinct mapped endpoint across the public survey, so no port sequence or
+prediction was claimed. The result proves shared-socket discovery and transport,
+not public-survey availability or a predicted-path success rate.
+
+Native Site and public-link shares also request one PCP, UPnP, or NAT-PMP
+mapping for that same socket. The returned port is advertised as a
+lower-priority candidate using a public address already observed by ordinary
+STUN. This is additive and bounded; a VPN, double NAT, or absent mapping service
+can make it unusable without delaying or replacing ordinary ICE.
+A local UDP-forwarding gate then withheld every ordinary Host candidate and
+connected Pion ICE/DTLS in 1.26 seconds through the advertised `mp1` endpoint.
+That proves the same-socket ICE mechanism, not rescue through a physical NAT.
 
 ### Independent Observation And Attribution Preflight
 
@@ -180,4 +209,5 @@ a new Peer route.
 - [libp2p Browser and DCUtR hole-punching boundary](https://github.com/libp2p/specs/blob/master/connections/hole-punching.md)
 - [coturn listener and auxiliary endpoint reference](https://github.com/coturn/coturn/blob/master/examples/etc/turnserver.conf)
 - [Cloudflare Realtime STUN service](https://developers.cloudflare.com/realtime/turn/)
+- [Pion Universal UDP mux](https://github.com/pion/ice/blob/main/udp_mux_universal.go)
 - [WebRTC selected candidate stats](https://www.w3.org/TR/webrtc-stats/#dom-rtcicecandidatestats-foundation)

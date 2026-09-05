@@ -5,15 +5,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 const (
 	captureStopTimeout = time.Second
-	maxPreviewBytes    = 48 * 1024
+	maxPreviewBytes    = 192 * 1024
 )
 
 type audioCaptureState struct {
@@ -31,8 +34,33 @@ type CaptureTarget struct {
 
 type VideoOptions struct {
 	Target       CaptureTarget
+	Codec        string
 	AdapterIndex uint32
 	EncoderIndex uint32
+	Profile      VideoProfile
+	RestoreToken string
+}
+
+type VideoProfile struct {
+	Width      uint32
+	Height     uint32
+	Framerate  uint32
+	Bitrate    uint32
+	Preference string
+}
+
+func (profile VideoProfile) Valid() bool {
+	validResolution :=
+		(profile.Width == 854 && profile.Height == 480) ||
+			(profile.Width == 1280 && profile.Height == 720) ||
+			(profile.Width == 1920 && profile.Height == 1080) ||
+			(profile.Width == 2560 && profile.Height == 1440)
+	validPreference := profile.Preference == "maintain-resolution" ||
+		profile.Preference == "balanced" ||
+		profile.Preference == "maintain-framerate"
+	return validResolution && profile.Framerate >= 15 && profile.Framerate <= 60 &&
+		profile.Bitrate >= 2_000_000 && profile.Bitrate <= 12_000_000 &&
+		validPreference
 }
 
 type Stream struct {
@@ -95,10 +123,17 @@ func PreviewSource(parent context.Context, executable string, target CaptureTarg
 }
 
 func StartVideo(parent context.Context, executable string, options VideoOptions) (*Stream, error) {
-	if !validCaptureTarget(options.Target) {
+	if !validCaptureTarget(options.Target) || !options.Profile.Valid() ||
+		(options.Codec != "auto" && options.Codec != "h264" && options.Codec != "vp8") ||
+		len(options.RestoreToken) > 4096 || !utf8.ValidString(options.RestoreToken) ||
+		strings.ContainsRune(options.RestoreToken, 0) {
 		return nil, errors.New("native video target is invalid")
 	}
-	return startStream(parent, executable, []string{
+	environment := []string(nil)
+	if options.RestoreToken != "" {
+		environment = []string{"SCREENER_XDP_RESTORE_TOKEN=" + options.RestoreToken}
+	}
+	return startStreamWithEnvironment(parent, executable, []string{
 		"--capture-video",
 		options.Target.Kind,
 		options.Target.SourceID,
@@ -108,8 +143,20 @@ func StartVideo(parent context.Context, executable string, options VideoOptions)
 		strconv.FormatUint(uint64(options.AdapterIndex), 10),
 		"--mft-index",
 		strconv.FormatUint(uint64(options.EncoderIndex), 10),
-		"--protocol-v3",
-	})
+		"--width",
+		strconv.FormatUint(uint64(options.Profile.Width), 10),
+		"--height",
+		strconv.FormatUint(uint64(options.Profile.Height), 10),
+		"--fps",
+		strconv.FormatUint(uint64(options.Profile.Framerate), 10),
+		"--bitrate",
+		strconv.FormatUint(uint64(options.Profile.Bitrate), 10),
+		"--preference",
+		options.Profile.Preference,
+		"--codec",
+		options.Codec,
+		"--protocol-v4",
+	}, environment)
 }
 
 func StartAudio(parent context.Context, executable string, target CaptureTarget) (*Stream, error) {
@@ -175,6 +222,8 @@ func validCaptureTarget(target CaptureTarget) bool {
 		return target.PID > 0 && positiveDecimal(target.CreationTime)
 	case "display":
 		return target.PID == 0 && target.CreationTime == ""
+	case "picker":
+		return target.PID == 0 && target.CreationTime == ""
 	default:
 		return false
 	}
@@ -210,6 +259,15 @@ func positiveDecimal(value string) bool {
 }
 
 func startStream(parent context.Context, executable string, arguments []string) (*Stream, error) {
+	return startStreamWithEnvironment(parent, executable, arguments, nil)
+}
+
+func startStreamWithEnvironment(
+	parent context.Context,
+	executable string,
+	arguments []string,
+	environment []string,
+) (*Stream, error) {
 	if parent == nil {
 		parent = context.Background()
 	}
@@ -218,6 +276,9 @@ func startStream(parent context.Context, executable string, arguments []string) 
 	}
 	ctx, cancel := context.WithCancel(parent)
 	command := exec.CommandContext(ctx, executable, arguments...)
+	if len(environment) > 0 {
+		command.Env = append(os.Environ(), environment...)
+	}
 	stdout, err := command.StdoutPipe()
 	if err != nil {
 		cancel()

@@ -3,6 +3,7 @@
 // before→after idiom (Frame x={4} w={152} + Frame x={164} w={152}), vls-
 // prefixed keyframes in an inline <style>, rmBlock for reduced motion.
 import {
+  BrowserWindow,
   FAINT,
   Floor,
   Frame,
@@ -17,13 +18,23 @@ import {
   Socket,
   Spark,
   Star,
-  TV_BODY,
   TV_EDGE,
+  TV_SCREEN,
   WARN,
   YOU,
   rmBlock,
 } from "../Comic";
 import type { HintScene, Set1Kind } from "./index";
+
+function SourceWindow({ x, y, alternate = false }: { x: number; y: number; alternate?: boolean }) {
+  return <>
+    <rect x={x} y={y} width={46} height={32} rx={4} fill="var(--paper)" stroke="var(--ink)" strokeWidth={2} />
+    <path d={`M${x} ${y + 7}h46 M${x + 38} ${y + 2}l3 3m0-3-3 3`} stroke="var(--ink)" strokeWidth={1.5} fill="none" />
+    {alternate
+      ? <circle cx={x + 23} cy={y + 20} r={7} fill={WARN} />
+      : <path d={`M${x + 8} ${y + 27}l10-14 7 8 5-5 8 11Z`} fill={SKY} />}
+  </>;
+}
 
 /* hint-share-start: [dark TV + pawn reaching toward it] → [TV bright, mint
    glow, rays + Star]. The after panel replays one power-on beat per loop
@@ -217,8 +228,7 @@ ${rmBlock(
   </>
 );
 
-/* hint-switch-source: [two monitor cards, left lit] → [right lit, swap arcs
-   with two dots exchanging seats — the Hearth switch do-si-do]. */
+/* Switch the selected capture window; the two contents retain their identity. */
 const SceneSwitchSource: HintScene = ({ theme }) => (
   <>
     <style>{`
@@ -230,18 +240,13 @@ ${rmBlock(["vls-sw-d1", "vls-sw-d2"], [[".vls-sw-d1,.vls-sw-d2", "opacity:0;tran
 `}</style>
     <Frame x={4} w={152} theme={theme} />
     <Frame x={164} w={152} theme={theme} accent={SKY} />
-    <rect x={27} y={28} width={46} height={32} rx={6} fill={TV_BODY} stroke={TV_EDGE} strokeWidth={2} />
-    <rect x={32} y={32} width={36} height={16} rx={3} fill={MINT} />
-    <circle cx={50} cy={54} r={2.5} fill={LIVE} />
-    <rect x={87} y={28} width={46} height={32} rx={6} fill={TV_BODY} stroke={TV_EDGE} strokeWidth={2} />
-    <rect x={92} y={32} width={36} height={16} rx={3} fill="#16233c" />
-    <circle cx={110} cy={54} r={2.5} fill={TV_EDGE} />
-    <rect x={187} y={28} width={46} height={32} rx={6} fill={TV_BODY} stroke={TV_EDGE} strokeWidth={2} />
-    <rect x={192} y={32} width={36} height={16} rx={3} fill="#16233c" />
-    <circle cx={210} cy={54} r={2.5} fill={TV_EDGE} />
-    <rect x={247} y={28} width={46} height={32} rx={6} fill={TV_BODY} stroke={TV_EDGE} strokeWidth={2} />
-    <rect x={252} y={32} width={36} height={16} rx={3} fill={MINT} />
-    <circle cx={270} cy={54} r={2.5} fill={LIVE} />
+    <SourceWindow x={27} y={28} />
+    <SourceWindow x={87} y={28} alternate />
+    <SourceWindow x={187} y={28} />
+    <SourceWindow x={247} y={28} alternate />
+    <g stroke={LIVE} strokeWidth={2.5} strokeLinecap="round" fill="none">
+      <path d="M41 70l5 5 10-10 M261 70l5 5 10-10" />
+    </g>
     <g stroke={SKY} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" fill="none">
       <path d="M229 29 C236 16 244 16 251 29 M244.5 26.5 L251 29 L249 22.5" />
       <path d="M251 63 C244 76 236 76 229 63 M235.5 65.5 L229 63 L231 69.5" />
@@ -284,6 +289,43 @@ ${rmBlock(
   </>
 );
 
+function CaptureHint({ theme, target }: Parameters<HintScene>[0] & { target: "browser" | "window" | "display" }) {
+  return <>
+    <style>{`
+.vls-capture-choice{animation:vlsCaptureChoice 3.2s ease-out infinite}
+@keyframes vlsCaptureChoice{0%,10%{opacity:.35;transform:translate(3px,3px)}28%,100%{opacity:1;transform:none}}
+${rmBlock(["vls-capture-choice"], [[".vls-capture-choice", "opacity:1;transform:none"]])}
+`}</style>
+    <Frame x={4} w={152} theme={theme} />
+    <Frame x={164} w={152} theme={theme} accent={LIVE} />
+    {target === "browser" ? <>
+      <BrowserWindow x={29} y={20} w={100} h={58} />
+      <rect x={39} y={35} width={80} height={30} rx={3} fill="var(--wall-2)" stroke={SKY} strokeWidth={2} />
+      <path d="M44 58l10-14 7 8 5-5 8 11Z" fill={SKY} />
+      <rect x={83} y={42} width={24} height={3} rx={1.5} fill={FAINT} />
+      <rect x={83} y={50} width={18} height={3} rx={1.5} fill={FAINT} />
+    </> : target === "window" ? <>
+      <g opacity={.35}><SourceWindow x={38} y={24} alternate /></g>
+      <SourceWindow x={60} y={41} />
+    </> : <>
+      <rect x={29} y={21} width={100} height={54} rx={4} fill="var(--paper)" stroke="var(--ink)" strokeWidth={2} />
+      <path d="M79 75v9m-16 0h32" stroke="var(--ink)" strokeWidth={2.5} strokeLinecap="round" />
+      <SourceWindow x={64} y={31} />
+      <path d="M38 31h8m-8 8h8m-8 8h8" stroke={SKY} strokeWidth={4} />
+    </>}
+    <g transform={target === "window" ? "translate(-16 0)" : undefined}>
+      <path className="vls-capture-choice" d="M113 57v17l5-5 4 8 4-2-4-8h7Z" fill={LIVE} stroke="var(--paper)" strokeWidth={1.5} strokeLinejoin="round" />
+    </g>
+    <MiniTv x={213} y={23} w={76} h={48} />
+    {target === "display" ? <g className="vls-capture-choice">
+      <path d="M225 34h4m-4 6h4m-4 6h4" stroke={SKY} strokeWidth={2.5} />
+      <rect x={237} y={34} width={37} height={23} rx={2} fill={TV_SCREEN} stroke={SKY} strokeWidth={1.5} />
+      <path d="M237 39h37 M243 53l7-10 5 6 4-4 7 8Z" stroke={SKY} strokeWidth={1} fill={SKY} />
+    </g> : <path className="vls-capture-choice" d="M229 54l10-14 7 8 5-5 8 11Z" fill={SKY} />}
+    <Pawn x={190} yb={78} s={8} eyes />
+  </>;
+}
+
 export const SET1_SCENES: Record<Set1Kind, HintScene> = {
   "hint-share-start": SceneShareStart,
   "hint-share-stop": SceneShareStop,
@@ -291,4 +333,7 @@ export const SET1_SCENES: Record<Set1Kind, HintScene> = {
   "hint-resume": SceneResume,
   "hint-switch-source": SceneSwitchSource,
   "hint-reconnect": SceneReconnect,
+  "hint-capture-browser": (props) => <CaptureHint {...props} target="browser" />,
+  "hint-capture-window": (props) => <CaptureHint {...props} target="window" />,
+  "hint-capture-display": (props) => <CaptureHint {...props} target="display" />,
 };

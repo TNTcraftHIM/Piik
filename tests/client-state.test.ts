@@ -66,14 +66,14 @@ describe("browser-local display name", () => {
   it("localizes text defaults and uses visual emoji identities", () => {
     setCopy({ lang: "zh", vis: false });
     expect(defaultViewerDisplayName("viewer-abcdef", false)).toBe("观众");
-    expect(defaultHostDisplayName("host-abcdef", false)).toBe("分享者-abcdef");
+    expect(defaultHostDisplayName("host-abcdef", false)).toBe("分享者 (abcdef)");
 
     setCopy({ lang: "en", vis: false });
     expect(defaultViewerDisplayName("viewer-abcdef", false)).toBe("Viewer");
-    expect(defaultHostDisplayName("host-abcdef", false)).toBe("Host-abcdef");
+    expect(defaultHostDisplayName("host-abcdef", false)).toBe("Host (abcdef)");
 
-    expect(defaultViewerDisplayName("viewer-abcdef", true)).toBe("👤-abcdef");
-    expect(defaultHostDisplayName("host-abcdef", true)).toBe("👑-abcdef");
+    expect(defaultViewerDisplayName("viewer-abcdef", true)).toBe("👤 (abcdef)");
+    expect(defaultHostDisplayName("host-abcdef", true)).toBe("👑 (abcdef)");
   });
 
   it("stores only the canonical preference and falls back when cleared", () => {
@@ -269,7 +269,7 @@ describe("client session identity", () => {
   it("works without secure-context-only crypto.randomUUID", () => {
     const values = new Map<string, string>();
     vi.stubGlobal("window", {
-      sessionStorage: {
+      localStorage: {
         getItem: (key: string) => values.get(key) ?? null,
         setItem: (key: string, value: string) => values.set(key, value),
       },
@@ -792,8 +792,24 @@ describe("room codes", () => {
     expect(replaceState).toHaveBeenCalledWith(null, "", "/");
   });
 
+  it("accepts a bounded user-chosen Client access value", () => {
+    const replaceState = vi.fn();
+    vi.stubGlobal("window", {
+      location: {
+        hash: "#client-access=a%2Bb%26c%3Fd%3De",
+        pathname: "/",
+        search: "",
+      },
+      history: { state: null, replaceState },
+    });
+
+    expect(takeClientLaunchBootstrap().accessToken).toBe("a+b&c?d=e");
+    expect(replaceState).toHaveBeenCalledWith(null, "", "/");
+  });
+
   it("consumes the Client launch marker from a server-private fragment", () => {
     const replaceState = vi.fn();
+    const session = new Map<string, string>();
     vi.stubGlobal("window", {
       location: {
         hash: `#client-access=${"a".repeat(32)}&screener-client=1&retained=yes`,
@@ -801,6 +817,10 @@ describe("room codes", () => {
         search: "?room=6020",
       },
       history: { state: null, replaceState },
+      localStorage: {
+        getItem: (key: string) => session.get(key) ?? null,
+        setItem: (key: string, value: string) => session.set(key, value),
+      },
     });
 
     expect(takeClientLaunchBootstrap()).toEqual({
@@ -812,6 +832,12 @@ describe("room codes", () => {
       "",
       "/?room=6020#retained=yes",
     );
+
+    window.location.hash = "";
+    expect(takeClientLaunchBootstrap()).toEqual({
+      accessToken: null,
+      launchedByClient: true,
+    });
   });
 });
 

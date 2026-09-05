@@ -1,6 +1,7 @@
 AGENTS.md
 CLAUDE.md
 CONTRIBUTING.md
+LICENSE
 README.md
 .gitattributes
 .gitignore
@@ -11,7 +12,9 @@ package-lock.json
 tsconfig.json
 .codex/config.toml
 .codex/README.md
-.agents/skills/stop-that-shit/SKILL.md
+.agents/skills/ponytail/SKILL.md
+.agents/skills/ponytail/LICENSE
+.agents/skills/ponytail/UPSTREAM.md
 .githooks/pre-commit
 .github/pull_request_template.md
 .github/workflows/repository-hygiene.yml
@@ -31,10 +34,13 @@ docs/reference/configuration.md
 scripts/package-app-release.mjs
 scripts/release-update.mjs
 scripts/assemble-client.mjs
+scripts/client-icons.mjs
 scripts/package-client-candidate.mjs
 scripts/check-client.mjs
 scripts/client-native-host-gate.ts
 native/client/cmd/screener-peer-gate/main.go
+native/client/cmd/screener-client/screener.ico
+native/client/cmd/screener-client/screener_windows_amd64.syso
 deploy/release-app.sh
 deploy/check-release.sh
 docs/adr/0001-p2p-first-media-topology.md

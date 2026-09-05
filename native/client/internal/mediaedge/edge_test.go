@@ -12,10 +12,43 @@ import (
 	"github.com/pion/logging"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
+	"github.com/pion/rtp/codecs"
 	"github.com/pion/webrtc/v4"
 )
 
+func TestPortMappingCandidateUsesObservedPublicAddress(t *testing.T) {
+	var emitted []*webrtc.ICECandidateInit
+	gathering := &localCandidateGathering{
+		engine:           &Engine{localPort: 43210},
+		mappedPort:       43211,
+		mappedCandidates: make(map[string]struct{}),
+		emit: func(candidate *webrtc.ICECandidateInit) {
+			emitted = append(emitted, candidate)
+		},
+	}
+	mapped := mappedAddress{address: "203.0.113.7", port: 41000}
+	gathering.emitMappedCandidate(mapped)
+	gathering.emitMappedCandidate(mapped)
+
+	if len(emitted) != 1 {
+		t.Fatalf("emitted candidates = %d, want one mapped", len(emitted))
+	}
+	fields := strings.Fields(emitted[0].Candidate)
+	if len(fields) < 8 || fields[0] != "candidate:mp1" ||
+		fields[3] != "1694498559" ||
+		fields[4] != "203.0.113.7" || fields[5] != "43211" ||
+		fields[7] != "srflx" {
+		t.Fatalf("mapped candidate = %q", emitted[0].Candidate)
+	}
+}
+
 func TestOneEncodedSourceFeedsTwoIndependentEdges(t *testing.T) {
+	for _, codec := range []string{"h264", "vp8"} {
+		t.Run(codec, func(t *testing.T) { testEncodedSourceFanout(t, codec) })
+	}
+}
+
+func testEncodedSourceFanout(t *testing.T, codec string) {
 	engine, err := NewEngine(EngineOptions{
 		BindAddress:     "127.0.0.1:0",
 		IncludeLoopback: true,
@@ -25,7 +58,7 @@ func TestOneEncodedSourceFeedsTwoIndependentEdges(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = engine.Close() })
 	keyFrames := make(chan struct{}, 1)
-	source, err := engine.NewSource(2, func() {
+	source, err := engine.NewSource(codec, 2, func() {
 		select {
 		case keyFrames <- struct{}{}:
 		default:
@@ -60,11 +93,21 @@ func TestOneEncodedSourceFeedsTwoIndependentEdges(t *testing.T) {
 		0, 0, 0, 1, 0x68, 0xce, 0x3c, 0x80,
 		0, 0, 0, 1, 0x65, 0x88, 0x84, 0x00,
 	}
-	if err = source.WriteH264(accessUnit, time.Second, time.Second/30); err != nil {
+	if codec == "vp8" {
+		accessUnit = []byte{0x10, 0, 0, 0x9d, 0x01, 0x2a, 0x80, 0x02, 0xe0, 0x01, 0}
+	}
+	if err = source.WriteVideo(accessUnit, time.Second, time.Second/30); err != nil {
 		t.Fatal(err)
 	}
 	first := waitPacket(t, packetA)
 	_ = waitPacket(t, packetB)
+	if codec == "vp8" {
+		packet := &codecs.VP8Packet{}
+		payload, parseErr := packet.Unmarshal(first.Payload)
+		if parseErr != nil || string(payload) != string(accessUnit) || packet.S != 1 {
+			t.Fatalf("VP8 packetizer changed its encoded source: %v", parseErr)
+		}
+	}
 	if err = receiverA.WriteRTCP([]rtcp.Packet{
 		&rtcp.PictureLossIndication{MediaSSRC: first.SSRC},
 	}); err != nil {
@@ -95,13 +138,21 @@ func TestRemoteCandidatesAreBoundedUntilTheAnswer(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = engine.Close() })
-	source, err := engine.NewSource(1, nil)
+	source, err := engine.NewSource("h264", 1, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	edge, err := engine.NewEdge(source, EdgeOptions{ConnectionID: "edge"})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if err = edge.AddRemoteCandidate(&webrtc.ICECandidateInit{
+		Candidate: "candidate:garbage",
+	}); err != nil {
+		t.Fatalf("malformed candidate escaped the edge boundary: %v", err)
+	}
+	if len(edge.pendingCandidates) != 0 {
+		t.Fatalf("malformed candidate was queued: %d", len(edge.pendingCandidates))
 	}
 	for index := 0; index < maxPendingCandidates; index++ {
 		if err = edge.AddRemoteCandidate(&webrtc.ICECandidateInit{
@@ -112,8 +163,47 @@ func TestRemoteCandidatesAreBoundedUntilTheAnswer(t *testing.T) {
 	}
 	if err = edge.AddRemoteCandidate(&webrtc.ICECandidateInit{
 		Candidate: "candidate:1 1 udp 1 127.0.0.1 9 typ host",
-	}); err == nil {
-		t.Fatal("unbounded candidate queue was accepted")
+	}); err != nil {
+		t.Fatalf("excess candidate was not discarded: %v", err)
+	}
+	if len(edge.pendingCandidates) != maxPendingCandidates {
+		t.Fatalf("candidate queue grew beyond the bound: %d", len(edge.pendingCandidates))
+	}
+}
+
+func TestSelectedNatTraversalPathKeepsOnlyAnonymousProvenance(t *testing.T) {
+	if got := selectedNatTraversalPath("ordinary", "sp3"); got != "predicted" {
+		t.Fatalf("predicted path = %q", got)
+	}
+	if got := selectedNatTraversalPath("ordinary", "remote"); got != "ordinary" {
+		t.Fatalf("ordinary path = %q", got)
+	}
+	if got := selectedNatTraversalPath("", ""); got != "unknown" {
+		t.Fatalf("unknown path = %q", got)
+	}
+}
+
+func TestRepeatedAnswerIsIdempotent(t *testing.T) {
+	engine, err := NewEngine(EngineOptions{
+		BindAddress: "127.0.0.1:0", IncludeLoopback: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = engine.Close() })
+	source, err := engine.NewSource("h264", 1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = source.Close() })
+	edge, receiver, _ := connectedReceiver(t, engine, source, "repeat-answer")
+	t.Cleanup(func() { _ = receiver.Close() })
+	answer := receiver.LocalDescription()
+	if answer == nil {
+		t.Fatal("receiver did not retain its answer")
+	}
+	if err = edge.SetAnswer(*answer); err != nil {
+		t.Fatalf("repeated answer was not idempotent: %v", err)
 	}
 }
 
@@ -125,7 +215,7 @@ func TestCaptureTimestampsDriveTheRTPClock(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = engine.Close() })
-	source, err := engine.NewSource(1, nil)
+	source, err := engine.NewSource("h264", 1, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,23 +226,51 @@ func TestCaptureTimestampsDriveTheRTPClock(t *testing.T) {
 	start := 10 * time.Second
 	frameDuration := time.Second / 30
 
-	if err = source.WriteH264(accessUnit, start, frameDuration); err != nil {
+	if err = source.WriteVideo(accessUnit, start, frameDuration); err != nil {
 		t.Fatal(err)
 	}
 	first := waitPacket(t, packets)
-	if err = source.WriteH264(accessUnit, start+frameDuration, frameDuration); err != nil {
+	if err = source.WriteVideo(accessUnit, start+frameDuration, frameDuration); err != nil {
 		t.Fatal(err)
 	}
 	second := waitPacket(t, packets)
 	if got := second.Timestamp - first.Timestamp; got < 2_999 || got > 3_001 {
 		t.Fatalf("steady timestamp delta = %d", got)
 	}
-	if err = source.WriteH264(accessUnit, start+5*time.Second, frameDuration); err != nil {
+	if err = source.WriteVideo(accessUnit, start+5*time.Second, frameDuration); err != nil {
 		t.Fatal(err)
 	}
 	third := waitPacket(t, packets)
 	if got := third.Timestamp - second.Timestamp; got < 446_999 || got > 447_001 {
 		t.Fatalf("sparse timestamp delta = %d", got)
+	}
+}
+
+func TestNewCaptureGenerationKeepsTheRTPClockContinuous(t *testing.T) {
+	engine, err := NewEngine(EngineOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = engine.Close() })
+	source, err := engine.NewSource("h264", 1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, receiver, packets := connectedReceiver(t, engine, source, "generation-edge")
+	t.Cleanup(func() { _ = receiver.Close() })
+	accessUnit := []byte{0, 0, 0, 1, 0x65, 0x88, 0x84, 0x00}
+	frameDuration := time.Second / 30
+	if err = source.WriteVideo(accessUnit, 50*time.Second, frameDuration); err != nil {
+		t.Fatal(err)
+	}
+	first := waitPacket(t, packets)
+	source.BeginGeneration()
+	if err = source.WriteVideo(accessUnit, 100*time.Millisecond, frameDuration); err != nil {
+		t.Fatal(err)
+	}
+	second := waitPacket(t, packets)
+	if got := second.Timestamp - first.Timestamp; got < 2_999 || got > 3_001 {
+		t.Fatalf("generation timestamp delta = %d", got)
 	}
 }
 
@@ -164,7 +282,7 @@ func TestOneLocalBridgeDoesNotConsumeRouteCapacity(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = engine.Close() })
-	source, err := engine.NewSource(1, nil)
+	source, err := engine.NewSource("h264", 1, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,7 +332,7 @@ func TestBandwidthObserverReceivesTransportFeedbackWithoutPacing(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = engine.Close() })
-	source, err := engine.NewSource(1, nil)
+	source, err := engine.NewSource("h264", 1, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +355,7 @@ func TestBandwidthObserverReceivesTransportFeedbackWithoutPacing(t *testing.T) {
 	deadline := time.Now().Add(5 * time.Second)
 	captureTimestamp := time.Second
 	for time.Now().Before(deadline) {
-		if err = source.WriteH264(
+		if err = source.WriteVideo(
 			accessUnit,
 			captureTimestamp,
 			time.Second/30,
@@ -272,7 +390,7 @@ func TestAudioUsesTheSamePeerConnectionAndCapacityAsVideo(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = engine.Close() })
-	video, err := engine.NewSource(1, nil)
+	video, err := engine.NewSource("h264", 1, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -313,7 +431,7 @@ func TestAudioSourceDeliversOpusOnTheVideoPeerConnection(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = engine.Close() })
-	video, err := engine.NewSource(1, nil)
+	video, err := engine.NewSource("h264", 1, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -431,11 +549,10 @@ func newAudioReceiver(t *testing.T) *webrtc.PeerConnection {
 func newReceiverWithAudio(t *testing.T, includeAudio bool) *webrtc.PeerConnection {
 	t.Helper()
 	mediaEngine := &webrtc.MediaEngine{}
-	if err := mediaEngine.RegisterCodec(webrtc.RTPCodecParameters{
-		RTPCodecCapability: h264Capability,
-		PayloadType:        102,
-	}, webrtc.RTPCodecTypeVideo); err != nil {
-		t.Fatal(err)
+	for _, codec := range []string{"h264", "vp8"} {
+		if err := mediaEngine.RegisterCodec(videoCodecs[codec], webrtc.RTPCodecTypeVideo); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if includeAudio {
 		if err := mediaEngine.RegisterCodec(webrtc.RTPCodecParameters{

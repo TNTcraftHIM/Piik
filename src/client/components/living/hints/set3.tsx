@@ -8,13 +8,13 @@ import {
   LINE,
   LIVE,
   MINT,
+  MiniTv,
   Pawn,
   SKY,
   STAR_GOLD,
   Star,
   TV_BODY,
   TV_EDGE,
-  TV_SCREEN,
   rmBlock,
 } from "../Comic";
 import type { HintScene, Set3Kind } from "./index";
@@ -44,8 +44,7 @@ ${rmBlock(
     {/* BEFORE: pawn squints at a soft picture (3 fat faint scanlines) */}
     <Pawn x={26} yb={80} s={8} />
     <path d="M24 64h2.8 M27.6 64h2.8" stroke="#101a2c" strokeWidth={2} strokeLinecap="round" fill="none" />
-    <rect x={52} y={22} width={76} height={46} rx={8} fill={TV_BODY} stroke={TV_EDGE} strokeWidth={2} />
-    <rect x={58} y={28} width={64} height={30} rx={3} fill={TV_SCREEN} />
+    <MiniTv x={52} y={22} w={76} h={46} />
     <g className="vls-vq-soft" fill={LINE} opacity={0.4}>
       <rect x={63} y={33} width={52} height={6} rx={3} />
       <rect x={63} y={42} width={52} height={6} rx={3} />
@@ -55,8 +54,7 @@ ${rmBlock(
     <Pawn x={186} yb={80} s={8} />
     <circle cx={187} cy={62.8} r={1.2} fill="#101a2c" />
     <circle cx={190} cy={62.8} r={1.2} fill="#101a2c" />
-    <rect x={212} y={22} width={76} height={46} rx={8} fill={TV_BODY} stroke={TV_EDGE} strokeWidth={2} />
-    <rect x={218} y={28} width={64} height={30} rx={3} fill={TV_SCREEN} />
+    <MiniTv x={212} y={22} w={76} h={46} />
     <g fill={MINT} opacity={0.95}>
       <rect x={221} y={30} width={58} height={2.5} rx={1.25} />
       <rect x={221} y={35} width={58} height={2.5} rx={1.25} />
@@ -211,13 +209,11 @@ ${rmBlock(
       <circle cx={48.5} cy={39} r={1.5} fill="#101a2c" />
       <circle cx={55.5} cy={39} r={1.5} fill="#101a2c" />
     </g>
-    <rect x={92} y={22} width={52} height={40} rx={7} fill={TV_BODY} stroke={TV_EDGE} strokeWidth={2} />
-    <rect x={97} y={27} width={42} height={26} rx={3} fill={TV_SCREEN} />
+    <MiniTv x={92} y={22} w={52} h={40} />
     <path d="M92 37 a5 5 0 0 1 0 10" stroke={FAINT} strokeWidth={2} strokeLinecap="round" strokeDasharray="3 3" fill="none" />
     <circle cx={118} cy={68} r={2.5} fill={TV_EDGE} />
     {/* AFTER: piece docked flush, happy eyes, LED live, star */}
-    <rect x={252} y={22} width={52} height={40} rx={7} fill={TV_BODY} stroke={TV_EDGE} strokeWidth={2} />
-    <rect x={257} y={27} width={42} height={26} rx={3} fill={TV_SCREEN} />
+    <MiniTv x={252} y={22} w={52} h={40} />
     <circle cx={278} cy={68} r={2.5} fill={LIVE} />
     <g className="vls-cd-dock">
       <path

@@ -19,12 +19,16 @@ export type Set1Kind =
   | "hint-pause"
   | "hint-resume"
   | "hint-switch-source"
-  | "hint-reconnect";
+  | "hint-reconnect"
+  | "hint-capture-browser"
+  | "hint-capture-window"
+  | "hint-capture-display";
 
 export type Set2Kind =
   | "hint-copy-code"
   | "hint-shuffle-code"
   | "hint-copy-invite"
+  | "hint-client-link"
   | "hint-rotate-invite"
   | "hint-revoke-invite"
   | "hint-policy-open"
@@ -52,7 +56,9 @@ export type Set4Kind =
   | "hint-theater-exit"
   | "hint-route-p2p"
   | "hint-route-sfu"
-  | "hint-nat-prediction";
+  | "hint-nat-prediction"
+  | "hint-client-local"
+  | "hint-client-site";
 
 export type HintKind = Set1Kind | Set2Kind | Set3Kind | Set4Kind;
 
@@ -66,6 +72,7 @@ export const HINT_KINDS: readonly HintKind[] = [
   "hint-copy-code",
   "hint-shuffle-code",
   "hint-copy-invite",
+  "hint-client-link",
   "hint-rotate-invite",
   "hint-revoke-invite",
   "hint-policy-open",
@@ -90,6 +97,11 @@ export const HINT_KINDS: readonly HintKind[] = [
   "hint-route-p2p",
   "hint-route-sfu",
   "hint-nat-prediction",
+  "hint-client-local",
+  "hint-client-site",
+  "hint-capture-browser",
+  "hint-capture-window",
+  "hint-capture-display",
 ];
 
 export type HintScene = (props: { theme: ComicTheme }) => ReactNode;

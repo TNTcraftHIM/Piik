@@ -3,9 +3,9 @@
 ## Authority And Scope
 
 - Read and follow the complete repo-tracked
-  [`stop-that-shit` skill](./.agents/skills/stop-that-shit/SKILL.md) before work.
-  It is the generic authority for scope, smallest-correct-result, and clean
-  delivery; installed copies must remain synchronized with it.
+  [`ponytail` skill](./.agents/skills/ponytail/SKILL.md) before coding, review,
+  or design work. It is required guidance for the smallest correct result;
+  project authority and delivery constraints remain owned here.
 - Within higher-priority instructions, the latest explicit user decision defines
   the task. Review, research, implementation, deployment, and cleanup grant only
   the authority inherent in that task type.

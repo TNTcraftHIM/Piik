@@ -1,8 +1,15 @@
 import type { z } from "zod";
 
-import type { IceConfig, SignalPayload } from "../../shared/protocol";
+import type {
+  IceConfig,
+  QualitySettings,
+  SignalPayload,
+} from "../../shared/protocol";
 import { createOpaqueId } from "../lib/opaque-id";
-import { nativeCaptureTargetKey } from "./capture-selection";
+import {
+  nativeCaptureTargetKey,
+  type NativeCapturePath,
+} from "./capture-selection";
 import {
   captureOptionsResponseSchema,
   edgeOfferResponseSchema,
@@ -14,14 +21,19 @@ import {
   NATIVE_CLIENT_PROTOCOL,
   NATIVE_CLIENT_SUBPROTOCOL,
   pongResponseSchema,
+  receiveAnswerResponseSchema,
   readyResponseSchema,
   shareStartedResponseSchema,
+  shareSourceReplacedResponseSchema,
+  shareUpdatedResponseSchema,
   sourceListResponseSchema,
   sourcePreviewResponseSchema,
   type NativeAdapter,
   type NativeClientEvent,
   type NativeHealth,
   type NativeCaptureTarget,
+  type NativeIceCandidate,
+  type NativeVideoCodec,
 } from "./wire";
 
 const DISCOVERY_TIMEOUT_MS = 400;
@@ -31,7 +43,7 @@ interface PendingRequest<T = unknown> {
   schema: z.ZodType<T>;
   resolve: (value: T) => void;
   reject: (error: Error) => void;
-  timer: number;
+  timer: number | null;
 }
 
 export interface NativeShareInput {
@@ -41,6 +53,8 @@ export interface NativeShareInput {
   adapterIndex: number;
   encoderIndex: number;
   edgeCapacity: number;
+  profile: QualitySettings;
+  codec: NativeVideoCodec | "auto";
 }
 
 export async function discoverNativeHealth(): Promise<NativeHealth | null> {
@@ -75,9 +89,26 @@ export async function discoverNativeHealth(): Promise<NativeHealth | null> {
   return null;
 }
 
+export async function notifyNativePresentation(
+  language: "zh" | "en" | "vis",
+  signal: AbortSignal,
+): Promise<void> {
+  if (signal.aborted) return;
+  const health = await discoverNativeHealth();
+  if (!health || signal.aborted) return;
+  await fetch(`http://127.0.0.1:${health.port}/presentation`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ language }),
+    signal,
+    targetAddressSpace: "loopback",
+  } as RequestInit);
+}
+
 export class NativeClient {
   private readonly pending = new Map<string, PendingRequest>();
   private readonly listeners = new Set<(event: NativeClientEvent) => void>();
+  private readonly closeListeners = new Set<() => void>();
   private closed = false;
 
   private constructor(
@@ -126,6 +157,15 @@ export class NativeClient {
     return () => this.listeners.delete(listener);
   }
 
+  onClose(listener: () => void): () => void {
+    if (this.closed) {
+      listener();
+      return () => undefined;
+    }
+    this.closeListeners.add(listener);
+    return () => this.closeListeners.delete(listener);
+  }
+
   async ping(): Promise<void> {
     await this.request("ping", {}, pongResponseSchema);
   }
@@ -160,24 +200,71 @@ export class NativeClient {
     return response.data ? `data:${response.mime};base64,${response.data}` : null;
   }
 
-  async startShare(input: NativeShareInput): Promise<{ audio: boolean }> {
-    const response = await this.request("start-share", input, shareStartedResponseSchema);
+  async startShare(
+    input: NativeShareInput,
+  ): Promise<{ audio: boolean; codec: NativeVideoCodec }> {
+    const response = await this.request(
+      "start-share",
+      input,
+      shareStartedResponseSchema,
+      input.source.kind === "picker" ? null : REQUEST_TIMEOUT_MS,
+    );
     if (response.shareId !== input.shareId) {
       throw new Error("Native share identity changed");
     }
-    return { audio: response.audio };
+    return { audio: response.audio, codec: response.codec };
+  }
+
+  async updateShare(
+    shareId: string,
+    profile: QualitySettings,
+  ): Promise<void> {
+    const response = await this.request(
+      "update-share",
+      { shareId, profile },
+      shareUpdatedResponseSchema,
+      null,
+    );
+    if (response.shareId !== shareId) {
+      throw new Error("Native share identity changed");
+    }
+  }
+
+  async replaceShareSource(
+    shareId: string,
+    source: NativeCaptureTarget,
+    audio: boolean,
+    path: NativeCapturePath,
+  ): Promise<void> {
+    const response = await this.request(
+      "replace-share-source",
+      {
+        shareId,
+        source,
+        audio,
+        adapterIndex: path.adapterIndex,
+        encoderIndex: path.encoderIndex,
+      },
+      shareSourceReplacedResponseSchema,
+      source.kind === "picker" ? null : REQUEST_TIMEOUT_MS,
+    );
+    if (response.shareId !== shareId) {
+      throw new Error("Native share identity changed");
+    }
   }
 
   async prepareEdge(
     shareId: string,
     connectionId: string,
     iceConfig: IceConfig,
+    sourceConnectionId?: string,
   ): Promise<RTCSessionDescriptionInit> {
     const response = await this.request(
       "prepare-edge",
       {
         shareId,
         connectionId,
+        ...(sourceConnectionId ? { sourceConnectionId } : {}),
         iceServers: iceConfig.iceServers.map((server) => ({
           urls: Array.isArray(server.urls) ? server.urls : [server.urls],
         })),
@@ -196,10 +283,15 @@ export class NativeClient {
   async prepareLocalEdge(
     shareId: string,
     connectionId: string,
+    sourceConnectionId?: string,
   ): Promise<RTCSessionDescriptionInit> {
     const response = await this.request(
       "prepare-local-edge",
-      { shareId, connectionId },
+      {
+        shareId,
+        connectionId,
+        ...(sourceConnectionId ? { sourceConnectionId } : {}),
+      },
       edgeOfferResponseSchema,
     );
     if (
@@ -209,6 +301,74 @@ export class NativeClient {
       throw new Error("Native local edge identity changed");
     }
     return { type: "offer", sdp: response.sdp };
+  }
+
+  async receiveOffer(
+    shareId: string,
+    connectionId: string,
+    offer: RTCSessionDescriptionInit,
+    iceConfig: IceConfig,
+    edgeCapacity: number,
+  ): Promise<{
+    answer: { type: "answer"; sdp: string };
+    audio: boolean;
+    codec: NativeVideoCodec;
+  }> {
+    if (offer.type !== "offer" || !offer.sdp) {
+      throw new Error("Native receiver requires an SDP offer");
+    }
+    const response = await this.request(
+      "receive-offer",
+      {
+        shareId,
+        connectionId,
+        edgeCapacity,
+        iceServers: iceConfig.iceServers.map((server) => ({
+          urls: Array.isArray(server.urls) ? server.urls : [server.urls],
+        })),
+        sdp: offer.sdp,
+      },
+      receiveAnswerResponseSchema,
+    );
+    if (
+      response.shareId !== shareId ||
+      response.connectionId !== connectionId
+    ) {
+      throw new Error("Native receiver identity changed");
+    }
+    return {
+      answer: { type: "answer", sdp: response.sdp },
+      audio: response.audio,
+      codec: response.codec,
+    };
+  }
+
+  async addReceiveCandidate(
+    shareId: string,
+    connectionId: string,
+    candidate: NativeIceCandidate | null,
+  ): Promise<void> {
+    await this.request(
+      "receive-candidate",
+      { shareId, connectionId, candidate },
+      nativeAckResponseSchema,
+    );
+  }
+
+  async closeReceiver(shareId: string, connectionId: string): Promise<void> {
+    await this.request(
+      "close-receiver",
+      { shareId, connectionId },
+      nativeAckResponseSchema,
+    );
+  }
+
+  async stopReceive(shareId: string): Promise<void> {
+    await this.request(
+      "stop-receive",
+      { shareId },
+      nativeAckResponseSchema,
+    );
   }
 
   async acceptSignal(
@@ -262,6 +422,7 @@ export class NativeClient {
     this.closed = true;
     this.rejectPending();
     this.listeners.clear();
+    this.closeListeners.clear();
     if (this.socket.readyState < WebSocket.CLOSING) {
       this.socket.close(1000, "page closed");
     }
@@ -271,16 +432,19 @@ export class NativeClient {
     type: string,
     fields: object,
     schema: z.ZodType<T>,
+    timeoutMs: number | null = REQUEST_TIMEOUT_MS,
   ): Promise<T> {
     if (this.closed || this.socket.readyState !== WebSocket.OPEN) {
       return Promise.reject(new Error("Screener Client is unavailable"));
     }
     const id = createOpaqueId();
     return new Promise<T>((resolveRequest, rejectRequest) => {
-      const timer = window.setTimeout(() => {
-        this.pending.delete(id);
-        rejectRequest(new Error("Screener Client request timed out"));
-      }, REQUEST_TIMEOUT_MS);
+      const timer = timeoutMs === null
+        ? null
+        : window.setTimeout(() => {
+            this.pending.delete(id);
+            rejectRequest(new Error("Screener Client request timed out"));
+          }, timeoutMs);
       this.pending.set(id, {
         schema,
         resolve: resolveRequest as (value: unknown) => void,
@@ -295,7 +459,7 @@ export class NativeClient {
           ...fields,
         }));
       } catch {
-        window.clearTimeout(timer);
+        if (timer !== null) window.clearTimeout(timer);
         this.pending.delete(id);
         rejectRequest(new Error("Screener Client request failed"));
       }
@@ -315,7 +479,7 @@ export class NativeClient {
       const pending = this.pending.get(id);
       if (!pending) return;
       this.pending.delete(id);
-      window.clearTimeout(pending.timer);
+      if (pending.timer !== null) window.clearTimeout(pending.timer);
       const parsed = pending.schema.safeParse(value);
       if (parsed.success) {
         pending.resolve(parsed.data);
@@ -339,6 +503,9 @@ export class NativeClient {
     this.closed = true;
     this.rejectPending();
     this.listeners.clear();
+    const listeners = [...this.closeListeners];
+    this.closeListeners.clear();
+    for (const listener of listeners) listener();
   }
 
   private failConnection(): void {
@@ -350,7 +517,7 @@ export class NativeClient {
 
   private rejectPending(): void {
     for (const request of this.pending.values()) {
-      window.clearTimeout(request.timer);
+      if (request.timer !== null) window.clearTimeout(request.timer);
       request.reject(new Error("Screener Client disconnected"));
     }
     this.pending.clear();

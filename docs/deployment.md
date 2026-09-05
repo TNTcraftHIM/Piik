@@ -63,6 +63,12 @@ is one of `windows-amd64`, `linux-amd64`, or `darwin-arm64`; every supplied
 runtime must match it. It does not create an installer, auto-updater, release
 tag, or compatibility bundle.
 
+The platform package also carries its native presentation metadata: Windows
+embeds the icon in the Go executable, Linux emits a freedesktop desktop entry
+under `share/`, and macOS emits a thin `.app` launcher with an ICNS resource.
+The latter two are packaging metadata only and do not duplicate the Client or
+Node runtime.
+
 CI and local release-candidate builds use the same wrapper on the target's
 native operating system:
 

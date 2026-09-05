@@ -31,11 +31,44 @@ const BUILD_ROOT = join(ROOT, "build", "client-check");
 export const SOURCE_TITLE = "Screener Native Gate Source";
 
 type GateMode = "local" | "cross-nat" | "one-link";
+type VideoCodec = "h264" | "vp8";
+
+const CODEC_PROBE = `(() => {
+  const peers = [], BrowserPeer = RTCPeerConnection;
+  window.RTCPeerConnection = class extends BrowserPeer {
+    constructor(...args) { super(...args); peers.push(this); }
+  };
+  window.__screenerGateVideoCodec = async () => {
+    const trackId = document.querySelector('video')?.srcObject?.getVideoTracks()[0]?.id;
+    if (!trackId) return null;
+    for (const peer of peers) {
+      if (peer.connectionState !== 'connected') continue;
+      const report = await peer.getStats();
+      for (const row of report.values()) {
+        if (row.type !== 'inbound-rtp' || row.kind !== 'video' ||
+            row.trackIdentifier !== trackId || !(row.framesDecoded > 0)) continue;
+        const mime = report.get(row.codecId)?.mimeType?.toLowerCase();
+        if (mime === 'video/h264' || mime === 'video/vp8') return mime.slice(6);
+      }
+    }
+    return null;
+  };
+})()`;
 
 interface GateResult {
   passed: boolean;
+  requestedCodec: VideoCodec | "auto";
+  actualCodec: VideoCodec | null;
+  codecPreserved: boolean;
   hostNativeActive: boolean;
   hostInvite: boolean;
+  preSharePreferenceEnabled: boolean;
+  qualityControlsEnabled: boolean;
+  livePresetChanges: number;
+  liveQualityChanged: boolean;
+  pausedQualityChanged: boolean;
+  mediaObjectPreserved: boolean;
+  nativeSourceChanged: boolean;
   nativeQualityEvidence: boolean;
   viewerConnected: boolean;
   viewerFrames: number;
@@ -51,6 +84,7 @@ interface GateResult {
   sourceFailureEndedShare: boolean | null;
   replacementViewerConnected: boolean | null;
   replacementViewerFrames: number | null;
+  clientCrashEndedShare: boolean | null;
   mode: GateMode;
   cleanup: Awaited<ReturnType<typeof cleanupRun>>;
   error: string | null;
@@ -132,6 +166,12 @@ async function selectNativeSource(
   kind: "window" | "display",
   title?: string,
 ): Promise<void> {
+  await evaluate<void>(
+    cdp,
+    page,
+    `document.querySelector('button[data-source-tab="${kind}"]')?.click()`,
+    Date.now() + 5_000,
+  );
   const selector = kind === "display"
     ? "button[data-native-source^='display:']"
     : "button[data-native-source]";
@@ -154,6 +194,49 @@ async function selectNativeSource(
     `([...document.querySelectorAll(${JSON.stringify(selector)})].find(${predicate}))?.click()`,
     Date.now() + 5_000,
   );
+}
+
+async function clickHostControl(
+  cdp: CdpConnection,
+  page: PageHandle,
+  buttonExpression: string,
+): Promise<void> {
+  await cdp.call("Page.bringToFront", {}, page.sessionId, Date.now() + 5_000);
+  const point = await evaluate<{ x: number; y: number }>(
+    cdp,
+    page,
+    `new Promise((resolve) => {
+      const button = ${buttonExpression};
+      if (!button || button.disabled || button.getAttribute('aria-disabled') === 'true')
+        throw new Error('Host control is unavailable');
+      button.scrollIntoView({block: 'center'});
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        const rect = button.getBoundingClientRect();
+        resolve({x: rect.x + rect.width / 2, y: rect.y + rect.height / 2});
+      }));
+    })`,
+    Date.now() + 5_000,
+  );
+  for (const type of ["mouseMoved", "mousePressed", "mouseReleased"]) {
+    await cdp.call("Input.dispatchMouseEvent", {
+      type, ...point, button: "left", clickCount: 1,
+    }, page.sessionId, Date.now() + 5_000);
+  }
+}
+
+async function readVideoCodec(cdp: CdpConnection, page: PageHandle): Promise<VideoCodec> {
+  const codec = await waitForValue(
+    (deadline) => evaluate<VideoCodec | null>(cdp, page, "window.__screenerGateVideoCodec()", deadline),
+    (value) => value === "vp8" || value === "h264",
+    5_000,
+  );
+  if (codec === null) throw new Error("No decoded video codec was observed");
+  return codec;
+}
+
+async function assertVideoCodec(cdp: CdpConnection, page: PageHandle, expected: VideoCodec): Promise<void> {
+  const codec = await readVideoCodec(cdp, page);
+  if (codec !== expected) throw new Error(`Native codec changed from ${expected} to ${codec}`);
 }
 
 function remoteOptions(): RemoteGateOptions {
@@ -422,14 +505,18 @@ async function readClientEndpoint(
             // Informational lines are printed after the endpoint.
           }
           const passwordLine = lines.find((entry) => entry.startsWith("Local access password: "));
+          const openAccessLine = lines.find((entry) => entry === "Local access: open");
           const publicOriginLine = lines.find((entry) =>
             entry.startsWith("Public invitation origin: ")
           );
-          if (endpoint && passwordLine && (!requirePublicOrigin || publicOriginLine)) {
+          if (endpoint && (passwordLine || openAccessLine) &&
+            (!requirePublicOrigin || publicOriginLine)) {
             child.stdout.off("data", onData);
             resolveEndpoint({
               endpoint,
-              password: passwordLine.slice("Local access password: ".length),
+              password: passwordLine
+                ? passwordLine.slice("Local access password: ".length)
+                : "",
               publicOrigin:
                 publicOriginLine?.slice("Public invitation origin: ".length) ?? null,
             });
@@ -460,10 +547,19 @@ async function main(): Promise<void> {
     throw new Error("Cross-NAT and one-link gate modes are mutually exclusive");
   }
   const mode: GateMode = linkMedia ? "one-link" : crossNat ? "cross-nat" : "local";
+  const crashGate =
+    process.env.SCREENER_CLIENT_NATIVE_HOST_CRASH_GATE === "true";
+  if (crashGate && mode !== "local") {
+    throw new Error("Client crash gate requires local mode");
+  }
   const sourceKind: "window" | "display" =
     process.env.SCREENER_CLIENT_NATIVE_HOST_SOURCE === "display"
       ? "display"
       : "window";
+  const requestedCodec = process.env.SCREENER_CLIENT_NATIVE_HOST_CODEC?.trim() || "auto";
+  if (requestedCodec !== "auto" && requestedCodec !== "h264" && requestedCodec !== "vp8") {
+    throw new Error("SCREENER_CLIENT_NATIVE_HOST_CODEC must be auto, h264, or vp8");
+  }
   const remote = mode === "local" ? null : remoteOptions();
   const chromePath = process.env.CHROME_PATH?.trim();
   if (!chromePath) throw new Error("CHROME_PATH is required");
@@ -497,8 +593,18 @@ async function main(): Promise<void> {
   let stage = "setup";
   const result: GateResult = {
     passed: false,
+    requestedCodec,
+    actualCodec: null,
+    codecPreserved: false,
     hostNativeActive: false,
     hostInvite: false,
+    preSharePreferenceEnabled: false,
+    qualityControlsEnabled: false,
+    livePresetChanges: 0,
+    liveQualityChanged: false,
+    pausedQualityChanged: false,
+    mediaObjectPreserved: false,
+    nativeSourceChanged: false,
     nativeQualityEvidence: false,
     viewerConnected: false,
     viewerFrames: 0,
@@ -514,6 +620,7 @@ async function main(): Promise<void> {
     sourceFailureEndedShare: mode === "local" ? false : null,
     replacementViewerConnected: mode === "local" ? false : null,
     replacementViewerFrames: mode === "local" ? 0 : null,
+    clientCrashEndedShare: crashGate ? false : null,
     mode,
     cleanup: {
       browserExited: false,
@@ -638,12 +745,15 @@ async function main(): Promise<void> {
     stage = "host-cdp";
     const version = await waitForVersion(debugPort, chrome);
     cdp = await CdpConnection.connect(version.webSocketDebuggerUrl, Date.now() + 10_000);
+    const hostBootstrap = new URLSearchParams({
+      ...(clientInfo.password ? { "client-access": clientInfo.password } : {}),
+      "screener-client": "1",
+    }).toString();
     stage = "host-page";
     const host = await createPage(
       cdp,
-      "http://localhost:" + appPort + "/#client-access=" + clientInfo.password +
-        "&screener-client=1",
-      undefined,
+      "http://localhost:" + appPort + "/#" + hostBootstrap,
+      CODEC_PROBE,
       true,
     );
     await waitForValue(
@@ -655,6 +765,37 @@ async function main(): Promise<void> {
       ),
       Boolean,
       15_000,
+    );
+    stage = "pre-share-quality-controls";
+    await evaluate<void>(
+      cdp,
+      host,
+      `document.querySelector('button[aria-controls="host-advanced-door"]')?.click()`,
+      Date.now() + 5_000,
+    );
+    result.preSharePreferenceEnabled = await waitForValue(
+      (deadline) => evaluate<boolean>(
+        cdp!,
+        host,
+        `(() => {
+          const preference = document.querySelector('button[name="degradationPreference"][value="maintain-resolution"]');
+          return Boolean(preference && !preference.disabled);
+        })()`,
+        deadline,
+      ),
+      Boolean,
+      5_000,
+    );
+    stage = "pre-share-codec";
+    await clickHostControl(cdp, host,
+      `([...document.querySelectorAll('button.lr-chip')].find((button) =>
+        button.textContent?.trim() === ${JSON.stringify(requestedCodec.toUpperCase())}))`,
+    );
+    await evaluate<void>(
+      cdp,
+      host,
+      `document.querySelector('button[aria-controls="host-advanced-door"]')?.click()`,
+      Date.now() + 5_000,
     );
     stage = "host-click";
     await evaluate<void>(
@@ -700,6 +841,12 @@ async function main(): Promise<void> {
     }
     result.hostNativeActive = hostState.native;
     result.hostInvite = hostState.invite !== null;
+    stage = "host-codec";
+    const actualCodec = await readVideoCodec(cdp, host);
+    result.actualCodec = actualCodec;
+    if (requestedCodec !== "auto" && actualCodec !== requestedCodec) {
+      throw new Error(`Native ${requestedCodec} selection produced ${actualCodec}`);
+    }
     if (!hostState.invite) throw new Error("Host did not publish an invitation");
     const inviteURL = new URL(hostState.invite);
     const roomMatch = /^\/r\/([1-9][0-9]{3})$/.exec(inviteURL.pathname);
@@ -739,7 +886,7 @@ async function main(): Promise<void> {
       const viewerURL = new URL(hostState.invite);
       viewerURL.hostname = "localhost";
       stage = "viewer-page";
-      const viewer = await createPage(cdp, viewerURL.toString(), undefined, true);
+      const viewer = await createPage(cdp, viewerURL.toString(), CODEC_PROBE, true);
       stage = "viewer-media";
       const viewerState = await waitForValue(
         (deadline) => evaluate<{
@@ -757,21 +904,14 @@ async function main(): Promise<void> {
           deadline,
         ),
         (state) => state.connected && state.frames >= 30 &&
-          state.width === 1280 && state.height === 720,
+          state.width === 1920 && state.height === 1080,
         40_000,
       );
       result.viewerConnected = viewerState.connected;
       result.viewerFrames = viewerState.frames;
       result.viewerWidth = viewerState.width;
       result.viewerHeight = viewerState.height;
-      stage = "native-quality-evidence";
-      result.nativeQualityEvidence = await waitForValue(
-        async () => /"event":"sender-quality-evidence"[^\n]*"state":"(healthy|degraded)"/
-          .test(clientDiagnostics),
-        Boolean,
-        12_000,
-      );
-
+      await assertVideoCodec(cdp, viewer, actualCodec);
       await evaluate<boolean>(
         cdp,
         viewer,
@@ -783,7 +923,303 @@ async function main(): Promise<void> {
         })()`,
         Date.now() + 5_000,
       );
-      if (sourceKind === "window") {
+      stage = "native-quality-presets";
+      for (const [index, width, height] of [[0, 1280, 720], [1, 1920, 1080]] as const) {
+        await clickHostControl(cdp, host, `document.querySelectorAll('button.lr-tile')[${index}]`);
+        await waitForValue(
+          (deadline) => evaluate<boolean>(
+            cdp!,
+            viewer,
+            `(() => { const video = document.querySelector('video'); return Boolean(
+              video && video.videoWidth === ${width} && video.videoHeight === ${height}
+            ); })()`,
+            deadline,
+          ),
+          Boolean,
+          20_000,
+        );
+        await assertVideoCodec(cdp, viewer, actualCodec);
+        result.livePresetChanges += 1;
+      }
+      stage = "native-quality-controls";
+      await evaluate<void>(
+        cdp,
+        host,
+        `document.querySelector('button[aria-controls="host-advanced-door"]')?.click()`,
+        Date.now() + 5_000,
+      );
+      await waitForValue(
+        (deadline) => evaluate<boolean>(
+          cdp!,
+          host,
+          `Boolean(document.querySelector('button.lr-chip[aria-label="1440p"]'))`,
+          deadline,
+        ),
+        Boolean,
+        5_000,
+      );
+      result.qualityControlsEnabled = await evaluate<boolean>(
+        cdp,
+        host,
+        `(() => {
+          const resolution = document.querySelector('button.lr-chip[aria-label="1440p"]');
+          const preference = document.querySelector('button[name="degradationPreference"][value="maintain-framerate"]');
+          const sliders = [...document.querySelectorAll('.lr-slider input[type="range"]')];
+          return Boolean(
+            resolution && preference && !resolution.disabled && !preference.disabled &&
+            sliders.length === 2 && sliders.every((slider) => !slider.disabled)
+          );
+        })()`,
+        Date.now() + 5_000,
+      );
+      if (!result.qualityControlsEnabled) {
+        throw new Error("Native quality controls remained disabled");
+      }
+      await evaluate<void>(
+        cdp,
+        host,
+        `document.querySelector('button.lr-chip[aria-label="1440p"]')?.click()`,
+        Date.now() + 5_000,
+      );
+      result.liveQualityChanged = await waitForValue(
+        (deadline) => evaluate<boolean>(
+          cdp!,
+          viewer,
+          `(() => { const video = document.querySelector('video'); return Boolean(
+            video && video.videoWidth === 2560 && video.videoHeight === 1440 &&
+            video.getVideoPlaybackQuality().totalVideoFrames >= ${viewerState.frames + 10}
+          ); })()`,
+          deadline,
+        ),
+        Boolean,
+        20_000,
+      );
+      if (!result.liveQualityChanged) {
+        throw new Error("Native quality change did not reach the Viewer");
+      }
+      result.viewerWidth = 2560;
+      result.viewerHeight = 1440;
+      await assertVideoCodec(cdp, viewer, actualCodec);
+      const framesBeforePreference = await evaluate<number>(
+        cdp,
+        viewer,
+        `document.querySelector('video')?.getVideoPlaybackQuality().totalVideoFrames ?? 0`,
+        Date.now() + 5_000,
+      );
+      await evaluate<void>(
+        cdp,
+        host,
+        `document.querySelector('button[name="degradationPreference"][value="maintain-framerate"]')?.click()`,
+        Date.now() + 5_000,
+      );
+      await waitForValue(
+        (deadline) => evaluate<number>(
+          cdp!,
+          viewer,
+          `document.querySelector('video')?.getVideoPlaybackQuality().totalVideoFrames ?? 0`,
+          deadline,
+        ),
+        (frames) => frames >= framesBeforePreference + 10,
+        15_000,
+      );
+      stage = "native-pause-ready";
+      await waitForValue(
+        (deadline) => evaluate<boolean>(
+          cdp!,
+          host,
+          `Boolean([...document.querySelectorAll('button')].find((candidate) =>
+            /^(Pause sharing|暂停分享)$/.test(candidate.getAttribute('aria-label') || '') &&
+            !candidate.disabled && candidate.getAttribute('aria-disabled') !== 'true'
+          ))`,
+          deadline,
+        ),
+        Boolean,
+        10_000,
+      );
+      await evaluate<void>(
+        cdp,
+        host,
+        `(() => {
+          const button = [...document.querySelectorAll('button')].find((candidate) =>
+            /^(Pause sharing|暂停分享)$/.test(candidate.getAttribute('aria-label') || '')
+          );
+          button?.click();
+        })()`,
+        Date.now() + 5_000,
+      );
+      stage = "native-pause-applied";
+      await waitForValue(
+        (deadline) => evaluate<boolean>(
+          cdp!,
+          host,
+          `Boolean([...document.querySelectorAll('button')].find((candidate) =>
+            /^(Resume sharing|恢复分享)$/.test(candidate.getAttribute('aria-label') || '')
+          ))`,
+          deadline,
+        ),
+        Boolean,
+        5_000,
+      );
+      await evaluate<void>(
+        cdp,
+        host,
+        `document.querySelector('button.lr-chip[aria-label="480p"]')?.click()`,
+        Date.now() + 5_000,
+      );
+      stage = "native-paused-profile";
+      await waitForValue(
+        (deadline) => evaluate<boolean>(
+          cdp!,
+          host,
+          `(() => {
+            const resolution = document.querySelector('button.lr-chip[aria-label="480p"]');
+            const resume = [...document.querySelectorAll('button')].find((candidate) =>
+              /^(Resume sharing|恢复分享)$/.test(candidate.getAttribute('aria-label') || '')
+            );
+            return Boolean(
+              resolution?.getAttribute('aria-pressed') === 'true' && resume &&
+              !resume.disabled && resume.getAttribute('aria-disabled') !== 'true'
+            );
+          })()`,
+          deadline,
+        ),
+        Boolean,
+        10_000,
+      );
+      const framesBeforeResume = await evaluate<number>(
+        cdp,
+        viewer,
+        `document.querySelector('video')?.getVideoPlaybackQuality().totalVideoFrames ?? 0`,
+        Date.now() + 5_000,
+      );
+      await evaluate<void>(
+        cdp,
+        host,
+        `(() => {
+          const button = [...document.querySelectorAll('button')].find((candidate) =>
+            /^(Resume sharing|恢复分享)$/.test(candidate.getAttribute('aria-label') || '')
+          );
+          button?.click();
+        })()`,
+        Date.now() + 5_000,
+      );
+      stage = "native-resumed-profile";
+      const resumed = await waitForValue(
+        (deadline) => evaluate<{
+          frames: number;
+          width: number;
+          height: number;
+          sameMedia: boolean;
+        }>(
+          cdp!,
+          viewer,
+          `(() => {
+            const video = document.querySelector('video');
+            return {
+              frames: video?.getVideoPlaybackQuality().totalVideoFrames ?? 0,
+              width: video?.videoWidth ?? 0,
+              height: video?.videoHeight ?? 0,
+              sameMedia: Boolean(video && video.srcObject === window.__screenerGateMedia),
+            };
+          })()`,
+          deadline,
+        ),
+        (value) => value.frames >= framesBeforeResume + 10 &&
+          value.width === 854 && value.height === 480,
+        20_000,
+      );
+      result.pausedQualityChanged = resumed.width === 854 && resumed.height === 480;
+      result.mediaObjectPreserved = resumed.sameMedia;
+      result.viewerWidth = resumed.width;
+      result.viewerHeight = resumed.height;
+      await assertVideoCodec(cdp, viewer, actualCodec);
+      stage = "native-source-picker";
+      await waitForValue(
+        (deadline) => evaluate<boolean>(
+          cdp!,
+          host,
+          `Boolean([...document.querySelectorAll('button')].find((candidate) =>
+            /^(Switch source|切换来源)$/.test(candidate.getAttribute('aria-label') || '') &&
+            !candidate.disabled && candidate.getAttribute('aria-disabled') !== 'true'
+          ))`,
+          deadline,
+        ),
+        Boolean,
+        10_000,
+      );
+      await evaluate<void>(
+        cdp,
+        host,
+        `(() => {
+          const button = [...document.querySelectorAll('button')].find((candidate) =>
+            /^(Switch source|切换来源)$/.test(candidate.getAttribute('aria-label') || '')
+          );
+          button?.click();
+        })()`,
+        Date.now() + 5_000,
+      );
+      await waitForValue(
+        (deadline) => evaluate<boolean>(
+          cdp!,
+          host,
+          `Boolean(document.querySelector('[role="dialog"] button[data-native-source]'))`,
+          deadline,
+        ),
+        Boolean,
+        10_000,
+      );
+      const framesBeforeSourceChange = resumed.frames;
+      await evaluate<void>(
+        cdp,
+        host,
+        `document.querySelector('[role="dialog"] button[data-native-source]')?.click()`,
+        Date.now() + 5_000,
+      );
+      stage = "native-source-replaced";
+      result.nativeSourceChanged = await waitForValue(
+        (deadline) => evaluate<boolean>(
+          cdp!,
+          viewer,
+          `(() => {
+            const video = document.querySelector('video');
+            return Boolean(
+              video && video.srcObject === window.__screenerGateMedia &&
+              video.videoWidth === 854 && video.videoHeight === 480 &&
+              video.getVideoPlaybackQuality().totalVideoFrames >= ${framesBeforeSourceChange + 10}
+            );
+          })()`,
+          deadline,
+        ),
+        Boolean,
+        20_000,
+      );
+      stage = "native-quality-evidence";
+      await assertVideoCodec(cdp, viewer, actualCodec);
+      result.codecPreserved = true;
+      result.nativeQualityEvidence = await waitForValue(
+        async () => /"event":"sender-quality-evidence"[^\n]*"state":"(healthy|degraded)"/
+          .test(clientDiagnostics),
+        Boolean,
+        12_000,
+      );
+
+      if (crashGate) {
+        stage = "client-crash";
+        if (!client || !(await stopChild(client))) {
+          throw new Error("Client did not terminate for crash gate");
+        }
+        client = null;
+        result.clientCrashEndedShare = await waitForValue(
+          (deadline) => evaluate<boolean>(
+            cdp!,
+            host,
+            "Boolean(document.querySelector('button.lr-tv-big.is-action'))",
+            deadline,
+          ),
+          Boolean,
+          5_000,
+        );
+      } else if (sourceKind === "window") {
       stage = "source-failure";
       if (!sourceChrome || !sourceCdp ||
           !(await closeSourceBrowser(sourceChrome, sourceCdp))) {
@@ -842,7 +1278,7 @@ async function main(): Promise<void> {
             const video = document.querySelector('video');
             return Boolean(video && video.srcObject &&
               video.srcObject !== window.__screenerGateMedia &&
-              video.videoWidth === 1280 && video.videoHeight === 720);
+              video.videoWidth === 854 && video.videoHeight === 480);
           })()`,
           deadline,
         ),
@@ -910,19 +1346,27 @@ async function main(): Promise<void> {
         result.cleanup.portsClosed && sourceCleanup.portsClosed;
     }
   }
-  result.passed = result.error === null && result.hostNativeActive &&
+  result.passed = result.error === null && result.actualCodec !== null && result.preSharePreferenceEnabled &&
+    result.hostNativeActive &&
     result.hostInvite &&
     (mode !== "local"
       ? result.remoteViewerConnected && result.remoteViewerPackets >= 30 &&
         result.remoteNatPath && result.remotePeerExited === true &&
         (mode !== "cross-nat" || result.reverseSignalTunnelClosed === true)
       : result.viewerConnected && result.viewerFrames >= 30 &&
-        result.viewerWidth === 1280 && result.viewerHeight === 720 &&
+        result.qualityControlsEnabled && result.liveQualityChanged &&
+        result.livePresetChanges === 2 &&
+        result.codecPreserved &&
+        result.pausedQualityChanged && result.mediaObjectPreserved &&
+        result.nativeSourceChanged &&
+        result.viewerWidth === 854 && result.viewerHeight === 480 &&
         result.nativeQualityEvidence &&
-        (sourceKind === "display" ||
-          (result.sourceFailureEndedShare === true &&
-            result.replacementViewerConnected === true &&
-            (result.replacementViewerFrames ?? 0) >= 30))) &&
+        (crashGate
+          ? result.clientCrashEndedShare === true
+          : sourceKind === "display" ||
+            (result.sourceFailureEndedShare === true &&
+              result.replacementViewerConnected === true &&
+              (result.replacementViewerFrames ?? 0) >= 30))) &&
     result.cleanup.browserExited && result.cleanup.nativeExited &&
     result.cleanup.serverClosed && result.cleanup.portsClosed &&
     result.cleanup.profileRemoved;

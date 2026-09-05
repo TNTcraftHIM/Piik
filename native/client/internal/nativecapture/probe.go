@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	probeProtocol       = 3
+	probeProtocol       = 4
 	probeTimeout        = 3 * time.Second
 	maxProbeOutputBytes = 64 * 1024
 	maxProbeErrorBytes  = 4 * 1024
@@ -45,6 +45,7 @@ type Capabilities struct {
 	VideoCapture  bool      `json:"videoCapture"`
 	ProcessAudio  bool      `json:"processAudio"`
 	SystemAudio   bool      `json:"systemAudio"`
+	SoftwareVP8   bool      `json:"softwareVP8"`
 	Adapters      []Adapter `json:"adapters"`
 }
 
@@ -53,6 +54,7 @@ type Summary struct {
 	ProcessAudio bool
 	SystemAudio  bool
 	HardwareH264 bool
+	SoftwareVP8  bool
 }
 
 func (capabilities Capabilities) Summary() Summary {
@@ -60,6 +62,7 @@ func (capabilities Capabilities) Summary() Summary {
 		Video:        capabilities.VideoCapture,
 		ProcessAudio: capabilities.ProcessAudio,
 		SystemAudio:  capabilities.SystemAudio,
+		SoftwareVP8:  capabilities.SoftwareVP8,
 	}
 	for _, adapter := range capabilities.Adapters {
 		if len(adapter.HardwareH264) > 0 {
@@ -74,7 +77,7 @@ func (summary Summary) AudioFor(kind string) bool {
 	if kind == "window" {
 		return summary.ProcessAudio
 	}
-	return kind == "display" && summary.SystemAudio
+	return (kind == "display" || kind == "picker") && summary.SystemAudio
 }
 
 func Discover(parent context.Context, executable string) (Capabilities, error) {
@@ -121,6 +124,8 @@ func PackagedExecutable() string {
 	case "windows":
 		name = "screener-client-capture.exe"
 	case "darwin":
+		name = "screener-client-capture"
+	case "linux":
 		name = "screener-client-capture"
 	default:
 		return ""
