@@ -55,6 +55,8 @@ jobs:
             if [ -n "$base" ] && ! git diff --quiet "$base" HEAD -- \
               .github/workflows/repository-hygiene.yml \
               .node-version \
+              LICENSE \
+              licenses \
               index.html \
               native/client \
               package.json \
@@ -68,6 +70,7 @@ jobs:
               scripts/assemble-client.mjs \
               scripts/client-icons.mjs \
               scripts/package-app-release.mjs \
+              scripts/package-licenses.mjs \
               scripts/package-client-candidate.mjs \
               scripts/client-package-targets.mjs \
               scripts/check-client.mjs \

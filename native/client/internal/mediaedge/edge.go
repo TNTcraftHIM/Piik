@@ -125,6 +125,14 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (*Edge, error
 		return nil, err
 	}
 	edge.sender = sender
+	for _, transceiver := range connection.GetTransceivers() {
+		if transceiver.Sender() == sender {
+			if err = transceiver.SetCodecPreferences([]webrtc.RTPCodecParameters{videoCodecs[source.codec]}); err != nil {
+				_ = edge.Close()
+				return nil, err
+			}
+		}
+	}
 	if options.Audio != nil {
 		audioSender, audioErr := connection.AddTrack(options.Audio.track)
 		if audioErr != nil {

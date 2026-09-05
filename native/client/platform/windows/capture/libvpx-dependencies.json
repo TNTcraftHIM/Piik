@@ -1,0 +1,17 @@
+{
+  "libvpx": {
+    "version": "1.17.0",
+    "commit": "6df3ec34557879fff673706f4a1d9fbd0f3a6f0e",
+    "url": "https://github.com/webmproject/libvpx/archive/6df3ec34557879fff673706f4a1d9fbd0f3a6f0e.tar.gz",
+    "sha256": "073bd6202e4c55c8cb759abbb123aecd4cc8d99f52ba27af790178cfb1108423"
+  },
+  "nasm": {
+    "version": "2.16.03",
+    "url": "https://www.nasm.us/pub/nasm/releasebuilds/2.16.03/win64/nasm-2.16.03-win64.zip",
+    "sha256": "3ee4782247bcb874378d02f7eab4e294a84d3d15f3f6ee2de2f47a46aa7226e6"
+  },
+  "make": {
+    "url": "https://repo.msys2.org/msys/x86_64/make-4.4.1-2-x86_64.pkg.tar.zst",
+    "sha256": "2408af61717dae87b00c855b132769a125c708907fc94a46bb16dae076113e5c"
+  }
+}

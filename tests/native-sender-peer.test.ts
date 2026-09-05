@@ -13,7 +13,7 @@ import type { NativeClientEvent } from "../src/client/native/wire";
 import type { PeerSnapshot } from "../src/client/types";
 
 describe("native Host peer quality", () => {
-  it("maps exact Pion quality windows into the existing sender evidence", async () => {
+  it.each(["h264", "vp8"] as const)("maps %s Pion quality windows into the existing sender evidence", async (codec) => {
     invalidateSenderQualityEvidence();
     let listener: (event: NativeClientEvent) => void = () => undefined;
     const control: NativeEdgeControl = {
@@ -42,6 +42,7 @@ describe("native Host peer quality", () => {
         sendSignal: () => true,
         onUpdate: (snapshot) => snapshots.push(snapshot),
       },
+      codec,
     );
     expect(await peer.start()).toBe(true);
     expect(shouldUseBrowserQualityCandidate(peer, {
@@ -93,6 +94,12 @@ describe("native Host peer quality", () => {
       "unknown",
     );
     listener({ ...quality, sampleTimestampMs: 12_000 });
+    expect(snapshots.at(-1)?.metrics).toMatchObject({
+      codec: `video/${codec.toUpperCase()}`,
+      codecProfile: null,
+      codecParameters: null,
+      powerEfficientEncoder: codec === "h264",
+    });
     expect(senderQualityEvidenceFromSnapshot(snapshots.at(-1)!, 7)).toMatchObject({
       state: "degraded",
       diagnostics: {

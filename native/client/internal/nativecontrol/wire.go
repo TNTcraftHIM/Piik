@@ -46,6 +46,7 @@ type startShareRequest struct {
 	EncoderIndex uint32                      `json:"encoderIndex"`
 	EdgeCapacity int                         `json:"edgeCapacity"`
 	Profile      qualitySettings             `json:"profile"`
+	Codec        string                      `json:"codec"`
 }
 
 type updateShareRequest struct {
@@ -187,6 +188,7 @@ type shareStartedResponse struct {
 	responseEnvelope
 	ShareID string `json:"shareId"`
 	Audio   bool   `json:"audio"`
+	Codec   string `json:"codec"`
 }
 
 type shareUpdatedResponse struct {
@@ -212,6 +214,7 @@ type receiveAnswerResponse struct {
 	ConnectionID string `json:"connectionId"`
 	SDP          string `json:"sdp"`
 	Audio        bool   `json:"audio"`
+	Codec        string `json:"codec"`
 }
 
 type eventEnvelope struct {

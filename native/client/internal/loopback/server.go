@@ -9,7 +9,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -59,6 +58,7 @@ type NativeMediaCapabilities struct {
 	ProcessAudio bool `json:"processAudio"`
 	SystemAudio  bool `json:"systemAudio"`
 	HardwareH264 bool `json:"hardwareH264"`
+	SoftwareVP8  bool `json:"softwareVP8"`
 }
 
 type Server struct {
@@ -312,9 +312,6 @@ func (server *Server) handleControl(response http.ResponseWriter, request *http.
 		}
 		value, handleErr := extension.Handle(controlContext, payload)
 		if handleErr != nil || value == nil {
-			if handleErr != nil {
-				fmt.Fprintf(os.Stderr, "screener-client control error: %v\n", handleErr)
-			}
 			closeControl(connection, "invalid control message")
 			return
 		}

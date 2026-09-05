@@ -255,7 +255,7 @@ static int write_probe(void) {
   g_string_append_printf(
       json,
       "{\"protocol\":%d,\"platform\":\"linux\",\"platformBuild\":%s,"
-      "\"videoCapture\":%s,\"processAudio\":false,\"systemAudio\":%s,"
+      "\"videoCapture\":%s,\"softwareVP8\":false,\"processAudio\":false,\"systemAudio\":%s,"
       "\"adapters\":[",
       kCaptureProtocol, build, video ? "true" : "false",
       audio ? "true" : "false");
@@ -311,7 +311,7 @@ static gboolean parse_uint(const char *value, guint minimum, guint maximum,
 
 static gboolean parse_profile(int count, char **values, VideoProfile *profile,
                               guint *encoder_index) {
-  if (count != 21 || strcmp(values[1], "--capture-video") != 0 ||
+  if (count != 23 || strcmp(values[1], "--capture-video") != 0 ||
       strcmp(values[2], "picker") != 0 || strcmp(values[3], "1") != 0 ||
       strcmp(values[4], "0") != 0 || strcmp(values[5], "0") != 0 ||
       strcmp(values[6], "--adapter-index") != 0 ||
@@ -321,7 +321,9 @@ static gboolean parse_profile(int count, char **values, VideoProfile *profile,
       strcmp(values[14], "--fps") != 0 ||
       strcmp(values[16], "--bitrate") != 0 ||
       strcmp(values[18], "--preference") != 0 ||
-      strcmp(values[20], "--protocol-v4") != 0 ||
+      strcmp(values[20], "--codec") != 0 ||
+      (strcmp(values[21], "auto") != 0 && strcmp(values[21], "h264") != 0) ||
+      strcmp(values[22], "--protocol-v4") != 0 ||
       !parse_uint(values[9], 0, 63, encoder_index) ||
       !parse_uint(values[11], 1, 16384, &profile->width) ||
       !parse_uint(values[13], 1, 16384, &profile->height) ||
@@ -575,7 +577,7 @@ static GstFlowReturn video_sample(GstAppSink *sink, gpointer data) {
   if (!run->active) {
     char *token = json_string(run->restore_token);
     char *status = g_strdup_printf(
-        "{\"state\":\"active\",\"hardwareOnly\":true,"
+        "{\"state\":\"active\",\"codec\":\"h264\",\"hardwareOnly\":true,"
         "\"profileLevelId\":\"%s\",\"width\":%u,\"height\":%u,"
         "\"fps\":%u,\"restoreToken\":%s}",
         nal.profile_level_id, run->profile.width, run->profile.height,
@@ -734,7 +736,7 @@ static int capture_video(int count, char **values) {
   char *encoder_name = json_string(encoder_info->name);
   char *encoder_identity = json_string(encoder_info->factory);
   char *starting = g_strdup_printf(
-      "{\"state\":\"starting\",\"hardwareOnly\":true,"
+      "{\"state\":\"starting\",\"codec\":\"h264\",\"hardwareOnly\":true,"
       "\"adapterIndex\":0,\"adapterName\":%s,"
       "\"adapterIdentity\":\"gstreamer-hardware-h264\","
       "\"encoderIndex\":%u,\"encoderName\":%s,"

@@ -20,9 +20,7 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 
-import { clientPackageTarget } from "./client-package-targets.mjs";
-
-const cloudflaredVersion = "2026.8.3";
+import { clientPackageTarget, CLOUDFLARED_VERSION } from "./client-package-targets.mjs";
 
 function fail(message) {
   throw new Error(message);
@@ -236,6 +234,13 @@ async function verifyPackage(
 ) {
   const packagedRevision = readFileSync(join(root, "REVISION"), "ascii").trim();
   if (packagedRevision !== revision) fail("Client package revision mismatch");
+  for (const file of ["LICENSE", "THIRD-PARTY-NOTICES.txt", "app/LICENSE",
+    "app/dist/client/third-party-licenses.txt", "runtime/node/LICENSE",
+    "runtime/tunnel/THIRD-PARTY-NOTICES.txt"]) {
+    if (!existsSync(join(root, file)) || readFileSync(join(root, file)).length === 0) {
+      fail(`Client package license text is missing: ${file}`);
+    }
+  }
 
   const node = join(root, "runtime", "node", target.nodeName);
   const client = join(root, target.clientName);
@@ -328,7 +333,7 @@ mkdirSync(temporaryRoot, { recursive: true, mode: 0o700 });
 try {
   const tunnelDownload = join(temporaryRoot, target.tunnelAsset);
   await download(
-    `https://github.com/cloudflare/cloudflared/releases/download/${cloudflaredVersion}/${target.tunnelAsset}`,
+    `https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/${target.tunnelAsset}`,
     tunnelDownload,
   );
   if (sha256(tunnelDownload) !== target.tunnelSha256) {

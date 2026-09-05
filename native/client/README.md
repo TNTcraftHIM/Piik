@@ -33,8 +33,10 @@ TURN fallback. The Client chooses a sole private LAN IPv4 automatically. Use
 
 The system Browser remains the Host UI. A Client-launched Host offers the
 Browser's standard capture picker and a list of exact platform capture targets;
-the user selects one explicitly. The Client selects one available hardware
-H.264 path. Windows uses Graphics Capture, Media Foundation, and WASAPI; macOS
+the user selects one explicitly. Windows offers the same VP8/Auto/H264 selector:
+VP8 uses libvpx, H264 uses hardware Media Foundation, and Auto measures target-
+profile encoding work before choosing one codec for the share. Windows uses
+Graphics Capture and WASAPI; macOS
 uses ScreenCaptureKit, VideoToolbox, and AudioToolbox; Linux delegates selection
 to the ScreenCast Portal and uses the system PipeWire/GStreamer hardware path.
 Video and audio share the same room route and PeerConnection. Native capture
@@ -52,13 +54,14 @@ Browser capture path without probing the Client.
 Native P2P edges normally reuse that one encoded source and negotiate transport-
 wide feedback. Once Pion GCC has real feedback and the source has produced
 frames, the Client reports whether that
-edge's target payload bitrate can carry the measured shared H.264 plus Opus
+edge's target payload bitrate can carry the measured shared video plus Opus
 payload. The existing route controller owns persistence and any replacement;
 the Client does not pace, score, or globally lower the shared encoder. If one
 Native sender edge remains persistently degraded, the existing quality operation
 may test a stock Browser WebRTC sender for that edge through the local bridge.
 Existing Viewer evidence commits or rolls back the candidate; healthy Native
-edges continue sharing the hardware encode.
+edges continue sharing the selected encode. Native Viewers can receive and
+forward either H.264 or VP8 without encoding it again.
 
 The Client configuration keeps an optional Local site-access password. Leave it
 blank for an open Local site, or set a visible-ASCII password (8 to 128 bytes)

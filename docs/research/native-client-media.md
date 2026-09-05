@@ -74,6 +74,16 @@ requires Go 1.25; Client CI uses Go 1.26.6.
 
 ## Current Boundary
 
+Windows now supports hardware H264 and software VP8 behind the same capture,
+source and Pion transport boundary. libvpx 1.17.0 accepts the existing NV12 data
+with row pitch preserved, without another color-conversion library. In a local
+CPU-only 720p30 trial its mean encoding work was 6.112 ms per frame; this excludes
+GPU readback and is not game-quality evidence. Separate real Browser gates
+proved manual VP8 and Auto-selected H264, including live presets, pause/resume,
+source replacement and exact RTP codec preservation. Auto uses a bounded
+synthetic target-profile throughput check, not a score or a runtime codec switch.
+GPU-heavy selection and cross-device startup remain open acceptance work.
+
 The Windows Browser gate now also keeps two native PeerConnections alive while
 the source changes from 720p30 to 1440p60, then changes to 480p15 while paused
 and resumes both Viewers. It proves the same Pion source survives two hardware

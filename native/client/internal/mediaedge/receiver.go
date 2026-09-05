@@ -46,10 +46,6 @@ func (engine *Engine) NewReceiver(options ReceiverOptions) (*Receiver, webrtc.Se
 	if err != nil {
 		return nil, webrtc.SessionDescription{}, err
 	}
-	hasVideo, err := offerSendsCodec(options.Offer.SDP, "video", "h264")
-	if err != nil || !hasVideo {
-		return nil, webrtc.SessionDescription{}, errors.New("native media receiver offer has no video")
-	}
 	mappedPort := 0
 	if engine.portMapping != nil && len(options.ICEServers) > 0 {
 		mappedPort = engine.portMapping.Prepare()
@@ -58,11 +54,20 @@ func (engine *Engine) NewReceiver(options ReceiverOptions) (*Receiver, webrtc.Se
 	if err != nil {
 		return nil, webrtc.SessionDescription{}, err
 	}
+	if err = connection.SetRemoteDescription(options.Offer); err != nil {
+		_ = connection.Close()
+		return nil, webrtc.SessionDescription{}, err
+	}
+	videoCodec, err := selectReceiverVideoCodec(connection)
+	if err != nil {
+		_ = connection.Close()
+		return nil, webrtc.SessionDescription{}, err
+	}
 	receiver := &Receiver{
 		connection: connection,
 		events:     options.Events,
 	}
-	receiver.source, err = engine.NewSource(options.EdgeCapacity, receiver.RequestKeyFrame)
+	receiver.source, err = engine.NewSource(videoCodec, options.EdgeCapacity, receiver.RequestKeyFrame)
 	if err != nil {
 		_ = connection.Close()
 		return nil, webrtc.SessionDescription{}, err
@@ -98,7 +103,7 @@ func (engine *Engine) NewReceiver(options ReceiverOptions) (*Receiver, webrtc.Se
 		go receiver.readRTCP(rtpReceiver)
 		receiver.consumeTrack(track, rtpReceiver)
 	})
-	answer, err := receiver.acceptOffer(options.Offer)
+	answer, err := receiver.createAnswer()
 	if err != nil {
 		_ = receiver.Close()
 		return nil, webrtc.SessionDescription{}, err
@@ -109,17 +114,15 @@ func (engine *Engine) NewReceiver(options ReceiverOptions) (*Receiver, webrtc.Se
 func (receiver *Receiver) Source() *Source           { return receiver.source }
 func (receiver *Receiver) AudioSource() *AudioSource { return receiver.audioSource }
 func (receiver *Receiver) HasAudio() bool            { return receiver.audioSource != nil }
+func (receiver *Receiver) Codec() string             { return receiver.source.Codec() }
 
-func (receiver *Receiver) acceptOffer(offer webrtc.SessionDescription) (webrtc.SessionDescription, error) {
+func (receiver *Receiver) createAnswer() (webrtc.SessionDescription, error) {
 	receiver.mu.Lock()
 	if receiver.closed {
 		receiver.mu.Unlock()
 		return webrtc.SessionDescription{}, errors.New("native media receiver is closed")
 	}
 	receiver.mu.Unlock()
-	if err := receiver.connection.SetRemoteDescription(offer); err != nil {
-		return webrtc.SessionDescription{}, err
-	}
 	answer, err := receiver.connection.CreateAnswer(nil)
 	if err != nil {
 		return webrtc.SessionDescription{}, err
@@ -209,7 +212,7 @@ func (receiver *Receiver) consumeTrack(track *webrtc.TrackRemote, _ *webrtc.RTPR
 		return
 	}
 	if track.Kind() == webrtc.RTPCodecTypeVideo {
-		if !strings.EqualFold(track.Codec().MimeType, webrtc.MimeTypeH264) {
+		if !strings.EqualFold(track.Codec().MimeType, videoCodecs[receiver.source.codec].MimeType) {
 			return
 		}
 		receiver.mu.Lock()
@@ -279,6 +282,28 @@ func offerSendsCodec(raw, kind, codecName string) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+func selectReceiverVideoCodec(connection *webrtc.PeerConnection) (string, error) {
+	for _, transceiver := range connection.GetTransceivers() {
+		if transceiver.Kind() != webrtc.RTPCodecTypeVideo || transceiver.Receiver() == nil ||
+			(transceiver.Direction() != webrtc.RTPTransceiverDirectionRecvonly &&
+				transceiver.Direction() != webrtc.RTPTransceiverDirectionSendrecv) {
+			continue
+		}
+		// Pion has already matched the remote codecs and FMTP, preserving offer order.
+		for _, parameters := range transceiver.Receiver().GetParameters().Codecs {
+			name := strings.TrimPrefix(strings.ToLower(parameters.MimeType), "video/")
+			if _, supported := videoCodecs[name]; !supported {
+				continue
+			}
+			if err := transceiver.SetCodecPreferences([]webrtc.RTPCodecParameters{parameters}); err != nil {
+				return "", err
+			}
+			return name, nil
+		}
+	}
+	return "", errors.New("native media receiver offer has no supported video")
 }
 
 func containsString(values []string, target string) bool {

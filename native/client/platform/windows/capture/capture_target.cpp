@@ -32,8 +32,8 @@ namespace {
 using Microsoft::WRL::ComPtr;
 
 constexpr size_t kMaxSources = 100;
-constexpr LONG kPreviewWidth = 160;
-constexpr LONG kPreviewHeight = 90;
+constexpr LONG kPreviewWidth = 320;
+constexpr LONG kPreviewHeight = 180;
 constexpr LONG kMaxPreviewSourceDimension = 2'048;
 constexpr DWORD kBitmapHeaderBytes = 54;
 constexpr wchar_t kPreviewWindowClass[] = L"ScreenerPreviewWindow";
@@ -643,17 +643,17 @@ HRESULT CaptureWindowIconPreview(HWND window, std::vector<BYTE>* output) {
   FillRect(source, &area, static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
   bool owned = false;
   HICON icon = WindowIcon(window, &owned);
-  const int icon_size = 48;
+  const int icon_size = 96;
   if (icon != nullptr) {
     DrawIconEx(source, (kPreviewWidth - icon_size) / 2,
                (kPreviewHeight - icon_size) / 2, icon, icon_size, icon_size, 0,
                nullptr, DI_NORMAL);
   } else {
-    Rectangle(source, 52, 24, 108, 66);
-    MoveToEx(source, 72, 72, nullptr);
-    LineTo(source, 88, 72);
-    MoveToEx(source, 88, 72, nullptr);
-    LineTo(source, 88, 68);
+    Rectangle(source, 104, 48, 216, 132);
+    MoveToEx(source, 144, 144, nullptr);
+    LineTo(source, 176, 144);
+    MoveToEx(source, 176, 144, nullptr);
+    LineTo(source, 176, 136);
   }
   const HRESULT result = WriteBitmapPreview(source, kPreviewWidth,
                                             kPreviewHeight, output);

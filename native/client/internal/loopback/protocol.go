@@ -12,7 +12,7 @@ const (
 	ProtocolVersion        = 8
 	ServiceName            = "screener-client"
 	ControlSubprotocol     = "screener-client-v8"
-	MaxControlMessageBytes = 64 << 10
+	MaxControlMessageBytes = 256 << 10
 	DefaultPortStart       = 39721
 	DefaultPortEnd         = 39730
 )

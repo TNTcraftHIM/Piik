@@ -25,7 +25,7 @@ func TestQualitySampleUsesEstimatorCapacityAgainstEncodedPayload(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = engine.Close() })
-	source, err := engine.NewSource(1, nil)
+	source, err := engine.NewSource("h264", 1, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

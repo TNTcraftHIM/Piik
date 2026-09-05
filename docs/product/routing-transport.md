@@ -36,6 +36,10 @@ share generation:
   self-hosted 3478/3479/3480, Public Link uses its bounded public survey, and
   pure LAN supplies none. Its default-on Host switch augments Browser and Native
   P2P edges; Native also uses its media socket and best-effort gateway mapping.
+  Availability and background direct acquisition share a bounded budget of
+  three actual connection attempts per eligible parent/session opportunity.
+  Retries use the same serial controller and normal operation deadlines;
+  waiting Viewers and untried parents receive their opportunities first.
   It is not a participant capability, route score, or SFU preference. Candidate
   generation and selected-pair diagnostics retain only
   `ordinary | predicted | unknown` provenance.
@@ -91,6 +95,9 @@ not abandon its only possible route at the foreground boundary.
 The pending Viewer transport reports an actual Browser failure but installs no
 shorter initial or disconnected-state deadline. Viewer-owned reconnect timing
 begins only after that exact candidate commits as the active route.
+When NAT traversal is enabled, another operation may use the remaining
+connection-attempt budget after rollback. The waiting display uses the actual
+server-issued attempt ordinal; it never counts time as an attempted connection.
 
 When a newly committed Host-root Viewer exposes unused downstream capacity while
 another Host root has at least two direct children, the same background operation may

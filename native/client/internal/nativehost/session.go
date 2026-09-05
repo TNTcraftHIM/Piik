@@ -22,6 +22,7 @@ const qualitySamplePeriod = 2 * time.Second
 type CaptureState struct {
 	State           string  `json:"state"`
 	HardwareOnly    bool    `json:"hardwareOnly"`
+	Codec           string  `json:"codec"`
 	AdapterIndex    *uint32 `json:"adapterIndex,omitempty"`
 	AdapterName     string  `json:"adapterName,omitempty"`
 	AdapterIdentity string  `json:"adapterIdentity,omitempty"`
@@ -64,6 +65,7 @@ type Session struct {
 	captureProcess string
 	videoOptions   nativecapture.VideoOptions
 	profile        QualityProfile
+	edgeCapacity   int
 	stream         *nativecapture.Stream
 	audioStream    *nativecapture.Stream
 	engine         *mediaedge.Engine
@@ -121,6 +123,7 @@ func Start(parent context.Context, options Options) (*Session, error) {
 		captureProcess: options.CaptureProcess,
 		videoOptions:   options.Video,
 		profile:        options.Profile,
+		edgeCapacity:   options.EdgeCapacity,
 		stream:         stream,
 		audioStream:    audioStream,
 		engine:         engine,
@@ -131,21 +134,6 @@ func Start(parent context.Context, options Options) (*Session, error) {
 		ready:          make(chan error, 1),
 		edges:          make(map[string]*mediaedge.Edge),
 	}
-	source, err := engine.NewSource(options.EdgeCapacity, func() {
-		if current := session.currentStream(); current != nil {
-			_ = current.RequestKeyFrame()
-		}
-	})
-	if err != nil {
-		cancel()
-		_ = stream.Close()
-		if audioStream != nil {
-			_ = audioStream.Close()
-		}
-		_ = engine.Close()
-		return nil, err
-	}
-	session.source = source
 	if audioStream != nil {
 		audioSource, audioErr := engine.NewAudioSource(
 			options.EdgeCapacity, options.Profile.AudioBitrate,
@@ -184,6 +172,15 @@ func Start(parent context.Context, options Options) (*Session, error) {
 
 func (session *Session) ShareID() string {
 	return session.shareID
+}
+
+func (session *Session) Codec() string {
+	session.mu.Lock()
+	defer session.mu.Unlock()
+	if session.source == nil {
+		return ""
+	}
+	return session.source.Codec()
 }
 
 func (session *Session) HasAudio() bool {
@@ -370,6 +367,7 @@ func (session *Session) ReplaceSource(
 		return errors.New("native share is unavailable")
 	}
 	profile := session.profile
+	options.Codec = session.videoOptions.Codec
 	hasAudio := session.audioSource != nil && session.audioStream != nil
 	session.mu.Unlock()
 	if audioEnabled != hasAudio {
@@ -429,6 +427,7 @@ func (session *Session) prepareVideo(
 		session.ctx,
 		replacement,
 		options.Profile,
+		options.Codec,
 		options.Target.Kind == "picker",
 	)
 	if err != nil {
@@ -520,7 +519,9 @@ func (session *Session) Close() error {
 	if audioStream != nil {
 		_ = audioStream.Close()
 	}
-	_ = session.source.Close()
+	if session.source != nil {
+		_ = session.source.Close()
+	}
 	if session.audioSource != nil {
 		_ = session.audioSource.Close()
 	}
@@ -568,7 +569,9 @@ func (session *Session) run() {
 	<-audioDone
 	<-qualityDone
 	defer func() {
-		_ = session.source.Close()
+		if session.source != nil {
+			_ = session.source.Close()
+		}
 		if session.audioSource != nil {
 			_ = session.audioSource.Close()
 		}
@@ -620,6 +623,32 @@ func (session *Session) runVideo() error {
 			if statusErr != nil {
 				return fail(statusErr)
 			}
+			session.mu.Lock()
+			if session.closed {
+				session.mu.Unlock()
+				return fail(errors.New("native share stopped"))
+			}
+			if session.source == nil {
+				if session.videoOptions.Codec != "auto" && session.videoOptions.Codec != status.Codec {
+					session.mu.Unlock()
+					return fail(errors.New("native capture codec was not applied"))
+				}
+				source, sourceErr := session.engine.NewSource(status.Codec, session.edgeCapacity, func() {
+					if stream := session.currentStream(); stream != nil {
+						_ = stream.RequestKeyFrame()
+					}
+				})
+				if sourceErr != nil {
+					session.mu.Unlock()
+					return fail(sourceErr)
+				}
+				session.source = source
+				session.videoOptions.Codec = status.Codec
+			} else if session.source.Codec() != status.Codec {
+				session.mu.Unlock()
+				return fail(errors.New("native capture codec changed within a share"))
+			}
+			session.mu.Unlock()
 			session.emit(Event{Type: "capture-state", ShareID: session.shareID, State: status.State})
 			if status.State == "active" {
 				session.mu.Lock()
@@ -638,14 +667,18 @@ func (session *Session) runVideo() error {
 				ready = true
 				session.ready <- nil
 			}
-		case nativecapture.FrameH264:
+		case nativecapture.FrameH264, nativecapture.FrameVP8:
+			if session.source == nil ||
+				(frame.Kind == nativecapture.FrameH264) != (session.source.Codec() == "h264") {
+				return fail(errors.New("native video frame does not match its source codec"))
+			}
 			// Pion writes every binding before returning a per-binding error. Edge
 			// state owns that failure; one retired edge must not stop healthy siblings.
 			session.mu.Lock()
 			paused := session.paused
 			session.mu.Unlock()
 			if !paused {
-				writeErr := session.source.WriteH264(
+				writeErr := session.source.WriteVideo(
 					frame.Data,
 					frame.Timestamp,
 					frame.Duration,
@@ -676,6 +709,7 @@ func waitForCaptureProfile(
 	ctx context.Context,
 	stream *nativecapture.Stream,
 	profile nativecapture.VideoProfile,
+	codec string,
 	interactive bool,
 ) (CaptureState, error) {
 	type result struct {
@@ -699,7 +733,7 @@ func waitForCaptureProfile(
 				return
 			}
 			if state.State == "active" {
-				if state.Width != profile.Width || state.Height != profile.Height ||
+				if state.Codec != codec || state.Width != profile.Width || state.Height != profile.Height ||
 					state.FPS != profile.Framerate {
 					ready <- result{err: errors.New("native capture profile was not applied")}
 					return
@@ -807,17 +841,20 @@ func decodeCaptureState(payload []byte) (CaptureState, error) {
 	decoder.DisallowUnknownFields()
 	var state CaptureState
 	if err := decoder.Decode(&state); err != nil || decoder.Decode(&struct{}{}) != io.EOF ||
-		(state.State != "starting" && state.State != "active") || !state.HardwareOnly {
+		(state.State != "starting" && state.State != "active") ||
+		(state.Codec != "h264" && state.Codec != "vp8") ||
+		state.HardwareOnly != (state.Codec == "h264") {
 		return CaptureState{}, errors.New("native capture state is invalid")
 	}
 	if state.State == "starting" &&
-		(state.AdapterIndex == nil || state.EncoderIndex == nil ||
+		(state.AdapterIndex == nil || (state.Codec == "h264" && state.EncoderIndex == nil) ||
 			state.AdapterName == "" || state.AdapterIdentity == "" ||
 			state.EncoderName == "" || state.EncoderIdentity == "") {
 		return CaptureState{}, errors.New("native capture starting state is incomplete")
 	}
 	if state.State == "active" &&
-		(!validH264ProfileLevelID(state.ProfileLevelID) ||
+		((state.Codec == "h264" && !validH264ProfileLevelID(state.ProfileLevelID)) ||
+			(state.Codec == "vp8" && state.ProfileLevelID != "") ||
 			state.Width == 0 || state.Height == 0 || state.FPS == 0 ||
 			len(state.RestoreToken) > 4096 || !utf8.ValidString(state.RestoreToken) ||
 			strings.ContainsRune(state.RestoreToken, 0)) {

@@ -6,6 +6,7 @@ import type {
 import { EMPTY_METRICS, type PeerSnapshot } from "../types";
 import type { HostMediaPeer } from "../webrtc/host-peer";
 import { NativeSenderEdge, type NativeEdgeControl } from "./native-sender-edge";
+import type { NativeVideoCodec } from "./wire";
 
 interface NativeSenderPeerEvents {
   sendSignal: (peerId: string, payload: SignalPayload) => boolean;
@@ -39,6 +40,7 @@ export class NativeSenderPeer implements HostMediaPeer {
     natPredictionEnabled: boolean,
     control: NativeEdgeControl,
     events: NativeSenderPeerEvents,
+    codec: NativeVideoCodec,
     private readonly source?: NativeSenderSource,
   ) {
     this.connectionId = connectionId;
@@ -124,11 +126,10 @@ export class NativeSenderPeer implements HostMediaPeer {
                 width !== null && height !== null
                   ? `${width}x${height}`
                   : null,
-              codec: "video/H264",
-              codecProfile: "42c033",
-              codecParameters:
-                "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42c033",
-              powerEfficientEncoder: this.source ? null : true,
+              codec: `video/${codec.toUpperCase()}`,
+              codecProfile: null,
+              codecParameters: null,
+              powerEfficientEncoder: this.source ? null : codec === "h264",
               intervalFramesEncoded: quality.intervalFramesEncoded,
               qualityLimitationReason: quality.reason,
               nativeEdgeQualityState: quality.state,

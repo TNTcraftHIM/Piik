@@ -10,6 +10,7 @@ import {
   shareStartedResponseSchema,
   shareUpdatedResponseSchema,
   sourcePreviewResponseSchema,
+  receiveAnswerResponseSchema,
 } from "../src/client/native/wire";
 
 afterEach(() => {
@@ -73,6 +74,7 @@ describe("native Client private wire", () => {
           processAudio: false,
           systemAudio: false,
           hardwareH264: true,
+          softwareVP8: true,
         },
       }), { status: 200 }),
     ));
@@ -106,6 +108,7 @@ describe("native Client private wire", () => {
           processAudio: false,
           systemAudio: true,
           hardwareH264: true,
+          softwareVP8: true,
         },
       }),
     ).toMatchObject({ nativeMedia: { processAudio: false } });
@@ -120,6 +123,7 @@ describe("native Client private wire", () => {
           processAudio: true,
           systemAudio: true,
           hardwareH264: true,
+          softwareVP8: false,
         },
         adapters: ["private"],
       }).success,
@@ -200,6 +204,14 @@ describe("native Client private wire", () => {
       data: "",
     };
     expect(sourcePreviewResponseSchema.safeParse(preview).success).toBe(true);
+    expect(sourcePreviewResponseSchema.safeParse({
+      ...preview,
+      data: Buffer.alloc(54 + 320 * 180 * 3).toString("base64"),
+    }).success).toBe(true);
+    expect(sourcePreviewResponseSchema.safeParse({
+      ...preview,
+      data: "A".repeat(256 * 1024 + 1),
+    }).success).toBe(false);
   });
 
   it("keeps native share lifecycle responses as strict acknowledgements", () => {
@@ -216,6 +228,7 @@ describe("native Client private wire", () => {
       type: "share-started",
       shareId: "share_123456",
       audio: true,
+      codec: "h264",
     }).success).toBe(true);
     expect(shareUpdatedResponseSchema.safeParse({
       version: 8,
@@ -236,6 +249,27 @@ describe("native Client private wire", () => {
       shareId: "share_123456",
       profile,
     }).success).toBe(false);
+  });
+
+  it("requires the actual Native codec instead of reporting Auto as media", () => {
+    const response = {
+      version: 8,
+      id: "request_receive",
+      type: "receive-answer",
+      shareId: "share_123456",
+      connectionId: "edge_1234567",
+      sdp: "v=0\r\n",
+      audio: false,
+    };
+    for (const codec of ["h264", "vp8"]) {
+      expect(receiveAnswerResponseSchema.safeParse({ ...response, codec }).success).toBe(true);
+      expect(shareStartedResponseSchema.safeParse({
+        version: 8, id: "request_start", type: "share-started",
+        shareId: response.shareId, audio: false, codec,
+      }).success).toBe(true);
+    }
+    expect(receiveAnswerResponseSchema.safeParse(response).success).toBe(false);
+    expect(receiveAnswerResponseSchema.safeParse({ ...response, codec: "auto" }).success).toBe(false);
   });
 
   it("accepts only internally consistent native quality evidence", () => {

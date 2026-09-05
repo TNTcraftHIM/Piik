@@ -1,3 +1,5 @@
+export const CLOUDFLARED_VERSION = "2026.8.3";
+
 export const CLIENT_PACKAGE_TARGETS = [
   {
     id: "windows-amd64",

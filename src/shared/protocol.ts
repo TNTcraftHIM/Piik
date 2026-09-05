@@ -348,6 +348,10 @@ export const preparedRouteCandidateSchema = z
     connectionId: opaqueIdSchema,
     transport: z.enum(["direct", "sfu"]),
     qualityProbe: z.boolean(),
+    connectionAttempt: z.object({
+      current: z.number().int().min(1).max(3),
+      total: z.literal(3),
+    }).strict().optional(),
   })
   .strict();
 export type PreparedRouteCandidate = z.infer<

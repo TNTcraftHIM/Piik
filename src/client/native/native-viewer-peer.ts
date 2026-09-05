@@ -1,4 +1,5 @@
 import type { IceConfig, SignalPayload } from "../../shared/protocol";
+import { parse, parsePayloads } from "sdp-transform";
 import { observeDecodedFrameProof } from "../media/decoded-frame-proof";
 import { EMPTY_METRICS, type PeerSnapshot } from "../types";
 import {
@@ -24,7 +25,7 @@ import {
 } from "../webrtc/nat-prediction";
 import { NativeClient } from "./client";
 import { NativeMediaBridge } from "./media-bridge";
-import type { NativeClientEvent } from "./wire";
+import type { NativeClientEvent, NativeVideoCodec } from "./wire";
 
 
 export interface NativeViewerSource {
@@ -32,6 +33,7 @@ export interface NativeViewerSource {
   sessionId: string;
   connectionId: string;
   generation: number;
+  codec: NativeVideoCodec;
 }
 
 type PeerIceConfig = Pick<RTCConfiguration, "iceServers"> & {
@@ -90,7 +92,7 @@ export class NativeCapableViewerPeer implements ViewerMediaPeer {
         if (!this.backend) {
           const forceBrowser = this.forceBrowserNext;
           this.forceBrowserNext = false;
-          const client = !forceBrowser && offerSupportsNativeH264(payload.description.sdp)
+          const client = !forceBrowser && offerHasNativeVideoCodec(payload.description.sdp)
             ? await this.nativeClient.catch(() => null)
             : null;
           this.backend = client
@@ -206,14 +208,16 @@ class NativeViewerPeer implements ViewerMediaPeer {
   private failureNotified = false;
   private sourceGeneration = 0;
   private sourceReady = false;
+  private sourceCodec: NativeVideoCodec | null = null;
 
   get source(): NativeViewerSource | null {
-    return this.connectionId && this.sourceReady
+    return this.connectionId && this.sourceReady && this.sourceCodec
       ? {
           client: this.client,
           sessionId: this.sessionId,
           connectionId: this.connectionId,
           generation: this.sourceGeneration,
+          codec: this.sourceCodec,
         }
       : null;
   }
@@ -329,6 +333,7 @@ class NativeViewerPeer implements ViewerMediaPeer {
     this.connectionId = null;
     this.parentPeerId = null;
     this.sourceReady = false;
+    this.sourceCodec = null;
     if (connectionId) {
       void this.client.closeReceiver(this.sessionId, connectionId).catch(
         () => undefined,
@@ -363,6 +368,7 @@ class NativeViewerPeer implements ViewerMediaPeer {
     this.failureNotified = false;
     this.sourceGeneration += 1;
     this.sourceReady = false;
+    this.sourceCodec = null;
     this.statsAccumulator = createStatsAccumulator();
     this.snapshot = {
       peerId: parentPeerId,
@@ -424,6 +430,7 @@ class NativeViewerPeer implements ViewerMediaPeer {
       );
       return;
     }
+    this.sourceCodec = result.codec;
     this.sourceReady = true;
     if (!this.events.sendSignal(parentPeerId, {
       kind: "description",
@@ -718,6 +725,20 @@ class NativeViewerPeer implements ViewerMediaPeer {
 
 }
 
-function offerSupportsNativeH264(sdp: string): boolean {
-  return /^a=rtpmap:\d+ H264\/90000\s*$/im.test(sdp);
+export function offerHasNativeVideoCodec(sdp: string): boolean {
+  try {
+    const session = parse(sdp);
+    const video = session.media.filter((media) => {
+      const direction = media.direction ?? session.direction ?? "sendrecv";
+      return media.type === "video" && media.port > 0 &&
+        (direction === "sendonly" || direction === "sendrecv");
+    });
+    if (video.length !== 1) return false;
+    const media = video[0]!;
+    const payloads = new Set(parsePayloads(media.payloads ?? ""));
+    return media.rtp.some((codec) => payloads.has(codec.payload) &&
+      codec.rate === 90_000 && /^(h264|vp8)$/i.test(codec.codec));
+  } catch {
+    return false;
+  }
 }

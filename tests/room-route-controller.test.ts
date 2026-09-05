@@ -25,6 +25,7 @@ function controller(
     sfuEnabled?: boolean;
     qualityConvergenceEnabled?: boolean;
     operationTimeoutMs?: number;
+    natPredictionEnabled?: boolean;
   } = {},
 ) {
   const routes = new RoomRouteController<string>({
@@ -4977,5 +4978,144 @@ describe("RoomRouteController", () => {
     expect(settled.accepted).toBe(false);
     expect(settled.activeRevision).toBeGreaterThan(prepared.current!.revision);
     expect(routes.snapshot().upstreamByViewer.has(A)).toBe(false);
+  });
+});
+
+describe("bounded NAT candidate acquisition", () => {
+  function preparePeer(routes: RoomRouteController<string>, nowMs: number, id: string) {
+    const operation = routes.reconcile(nowMs).operation!;
+    const prepared = beginCandidate(routes, {
+      nowMs,
+      connectionId: id,
+      reservation: { kind: "direct" },
+    }).operation!;
+    const guard: CandidateGuard = {
+      childPeerId: prepared.childPeerId,
+      childSessionId: prepared.childSessionId,
+      revision: prepared.current!.revision,
+      connectionId: id,
+    };
+    return { operation, prepared, guard };
+  }
+
+  it.each(["failed", "timeout"] as const)("runs three real generations on %s, then exhausts until a new session", (failure) => {
+    const routes = controller(2, {
+      natPredictionEnabled: true,
+      operationTimeoutMs: 20_000,
+    });
+    addViewer(routes, A, 0);
+    let nowMs = 0;
+    let previous: CandidateGuard | undefined;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const { operation, prepared, guard } = preparePeer(routes, nowMs, `nat_${attempt}`);
+      expect(prepared.current?.connectionAttempt).toEqual({ current: attempt, total: 3 });
+      expect(operation.deadlineAtMs - nowMs).toBe(20_000);
+      expect(prepared.wakeAtMs).toBe(operation.deadlineAtMs);
+      if (previous) expect(routes.candidateFailed(previous, nowMs).accepted).toBe(false);
+      expect(routes.snapshot().operation?.current?.connectionId).toBe(`nat_${attempt}`);
+      nowMs = failure === "timeout" ? operation.deadlineAtMs : nowMs + 1;
+      const result = failure === "timeout"
+        ? routes.operationExpired(nowMs)
+        : routes.candidateFailed(guard, nowMs);
+      expect(result.failedPeerIds).toEqual(attempt === 3 ? [A] : []);
+      expect(routes.candidateFailed(guard, nowMs).accepted).toBe(false);
+      previous = guard;
+      nowMs += 1;
+    }
+    expect(routes.reconcile(nowMs).operation).toBeUndefined();
+    routes.upsertParticipant({
+      peerId: A, role: "viewer", sessionId: "replacement_session",
+      effectiveDownstreamCapacity: 0,
+    }, nowMs);
+    const { prepared, guard } = preparePeer(routes, nowMs + 1, "new_session");
+    expect(prepared.current?.connectionAttempt?.current).toBe(1);
+    expect(routes.candidateReady(guard, nowMs + 2).committed).toBe(true);
+  });
+
+  it("gives waiting viewers their first opportunity before another viewer retries", () => {
+    const routes = controller(2, { natPredictionEnabled: true });
+    addViewer(routes, A, 0);
+    addViewer(routes, B, 0);
+    for (const [index, childPeerId] of [A, B, A, B, A, B].entries()) {
+      const { prepared, guard } = preparePeer(routes, index * 2, `fair_${index}`);
+      expect(prepared.childPeerId).toBe(childPeerId);
+      expect(prepared.current?.connectionAttempt?.current).toBe(Math.floor(index / 2) + 1);
+      routes.candidateFailed(guard, index * 2 + 1);
+    }
+    expect(routes.reconcile(20).operation).toBeUndefined();
+  });
+
+  it("tries a newly usable parent before spending another attempt on an old parent", () => {
+    const routes = controller(2, { natPredictionEnabled: true });
+    addViewer(routes, B, 2);
+    routes.hydrateEdge(B, peerEdge(HOST, "existing_b"));
+    addViewer(routes, A, 0);
+    const first = preparePeer(routes, 0, "first_host");
+    expect(first.prepared.current?.tuple).toMatchObject({ parentPeerId: HOST });
+    routes.candidateFailed(first.guard, 1);
+    const second = preparePeer(routes, 2, "first_b");
+    expect(second.prepared.current?.tuple).toMatchObject({ parentPeerId: B });
+    routes.candidateFailed(second.guard, 3);
+    addViewer(routes, C, 2, 4);
+    routes.hydrateEdge(C, peerEdge(HOST, "existing_c"));
+    const third = preparePeer(routes, 5, "first_c");
+    expect(third.prepared.current?.tuple).toMatchObject({ parentPeerId: C });
+    expect(third.prepared.current?.connectionAttempt?.current).toBe(1);
+  });
+
+  it("keeps SFU's foreground timing and shares the attempt budget with round-robin direct continuations", () => {
+    const routes = controller(2, {
+      natPredictionEnabled: true, sfuEnabled: true, operationTimeoutMs: 20_000,
+    });
+    let nowMs = 0;
+    for (const childPeerId of [A, B]) {
+      addViewer(routes, childPeerId, 0, nowMs);
+      const direct = preparePeer(routes, nowMs, `${childPeerId}_first`);
+      expect(direct.prepared.wakeAtMs).toBe(nowMs + 5_000);
+      nowMs += 5_000;
+      expect(routes.operationExpired(nowMs).failedPeerIds).toEqual([]);
+      const sfu = beginCandidate(routes, {
+        nowMs,
+        connectionId: `${childPeerId}_sfu`,
+        publicationGeneration: "sfu_generation",
+        publicationConnectionId: "sfu_publisher",
+        reservation: childPeerId === A
+          ? { kind: "sfu-create", edge: "subscription_a", publication: "publication" }
+          : { kind: "sfu-reuse", edge: "subscription_b" },
+      }).operation!;
+      expect(sfu.current?.connectionAttempt).toBeUndefined();
+      routes.candidateReady({
+        childPeerId, childSessionId: sfu.childSessionId,
+        revision: sfu.current!.revision, connectionId: `${childPeerId}_sfu`,
+      }, ++nowMs);
+      nowMs += 1;
+    }
+    for (const [index, childPeerId] of [A, B, A, B].entries()) {
+      const retry = preparePeer(routes, nowMs, `background_${index}`);
+      expect(retry.prepared).toMatchObject({
+        childPeerId, reason: "direct-convergence",
+        current: { connectionAttempt: { current: Math.floor(index / 2) + 2, total: 3 } },
+      });
+      expect(retry.prepared.wakeAtMs - nowMs).toBe(20_000);
+      expect(routes.candidateFailed(retry.guard, ++nowMs).failedPeerIds).toEqual([]);
+      expect(routes.snapshot().upstreamByViewer.get(childPeerId)).toMatchObject({ kind: "sfu", usable: true });
+      nowMs += 1;
+    }
+    expect(routes.reconcile(nowMs).operation).toBeUndefined();
+  });
+
+  it("does not retry without NAT policy or when no candidate was created", () => {
+    const ordinary = controller();
+    addViewer(ordinary, A, 0);
+    const first = preparePeer(ordinary, 0, "ordinary");
+    expect(first.prepared.current?.connectionAttempt).toBeUndefined();
+    expect(ordinary.candidateFailed(first.guard, 1).failedPeerIds).toEqual([A]);
+    expect(ordinary.reconcile(2).operation).toBeUndefined();
+
+    const routes = controller(2, { natPredictionEnabled: true });
+    addViewer(routes, A, 0);
+    const operation = routes.reconcile(0).operation!;
+    routes.skipCurrentCandidate(cursorGuard(operation), 1, "candidate-failed");
+    expect(routes.reconcile(2).operation).toBeUndefined();
   });
 });

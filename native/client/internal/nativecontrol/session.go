@@ -6,9 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
-	"os"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -134,6 +132,8 @@ func (session *Session) Handle(_ context.Context, payload []byte) (any, error) {
 			request.Type != envelope.Type ||
 			!identityPattern.MatchString(request.ShareID) ||
 			request.EdgeCapacity < 1 || request.EdgeCapacity > maxEdgeCapacity ||
+			(request.Codec != "auto" && request.Codec != "h264" && request.Codec != "vp8") ||
+			(request.Codec == "vp8" && !session.capabilities.SoftwareVP8) ||
 			!validQualitySettings(request.Profile) {
 			return nil, errors.New("native start-share request is invalid")
 		}
@@ -356,6 +356,7 @@ func (session *Session) startShare(
 		CaptureProcess: session.captureProcess,
 		Video: nativecapture.VideoOptions{
 			Target:       request.Source,
+			Codec:        request.Codec,
 			AdapterIndex: request.AdapterIndex,
 			EncoderIndex: request.EncoderIndex,
 			Profile:      profile.Video,
@@ -384,6 +385,7 @@ func (session *Session) startShare(
 		responseEnvelope: response(envelope, "share-started"),
 		ShareID:          request.ShareID,
 		Audio:            host.HasAudio(),
+		Codec:            host.Codec(),
 	}, nil
 }
 
@@ -496,7 +498,7 @@ func (session *Session) receiveOffer(
 	if err != nil {
 		return nil, err
 	}
-	answer, audio, err := viewer.AcceptOffer(
+	answer, audio, codec, err := viewer.AcceptOffer(
 		request.ConnectionID,
 		webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: request.SDP},
 		servers,
@@ -510,6 +512,7 @@ func (session *Session) receiveOffer(
 		ConnectionID:     request.ConnectionID,
 		SDP:              answer.SDP,
 		Audio:            audio,
+		Codec:            codec,
 	}, nil
 }
 
@@ -608,9 +611,6 @@ func (session *Session) stopViewer(shareID string) {
 
 func (session *Session) watchHost(host *nativehost.Session) {
 	err, open := <-host.Done()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "screener-client native share error: %v\n", err)
-	}
 	session.mu.Lock()
 	if session.host == host {
 		session.host = nil
@@ -630,12 +630,6 @@ func (session *Session) relayEvents() {
 	for {
 		select {
 		case event := <-session.hostEvents:
-			if event.Type == "edge-state" &&
-				(event.State == "failed" || event.State == "closed") {
-				fmt.Fprintf(os.Stderr,
-					"screener-client native edge state: state=%s\n",
-					event.State)
-			}
 			session.emit(eventMessage(event))
 		case event := <-session.viewerEvents:
 			session.emit(viewerEventMessage(event))

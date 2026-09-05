@@ -80,6 +80,7 @@ function normalizedRelative(root, path) {
 function runtimePathAllowed(path) {
   return (
     path === "REVISION" ||
+    path === "LICENSE" ||
     path === "package.json" ||
     path === "package-lock.json" ||
     path.startsWith("dist/client/") ||
@@ -156,6 +157,7 @@ function validateArchiveEntries(entries) {
     }
     if (
       entry !== "REVISION" &&
+      entry !== "LICENSE" &&
       entry !== "package.json" &&
       entry !== "package-lock.json" &&
       entry !== "dist" &&
@@ -181,7 +183,7 @@ if (existsSync(outputRoot)) fail("Output directory must not already exist");
 
 const revision = assertCleanRevision(repositoryRoot);
 
-for (const required of ["package.json", "package-lock.json"]) {
+for (const required of ["LICENSE", "package.json", "package-lock.json"]) {
   if (!existsSync(join(repositoryRoot, required))) fail(`Missing release input: ${required}`);
 }
 buildRuntime(repositoryRoot);
@@ -198,6 +200,7 @@ const verifyRoot = join(temporaryRoot, "verify");
 try {
   mkdirSync(runtimeRoot, { recursive: true });
   for (const source of [
+    join(repositoryRoot, "LICENSE"),
     join(repositoryRoot, "package.json"),
     join(repositoryRoot, "package-lock.json"),
     ...regularFiles(join(repositoryRoot, "dist")),

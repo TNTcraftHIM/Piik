@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-const validProbe = `{"protocol":4,"platform":"windows","platformBuild":"26200","videoCapture":true,"processAudio":true,"systemAudio":true,"adapters":[{"index":0,"name":"GPU","identity":"0x0:0x1","hardwareH264":[{"index":0,"name":"H264","identity":"{encoder}"}]}]}`
+const validProbe = `{"protocol":4,"platform":"windows","platformBuild":"26200","videoCapture":true,"processAudio":true,"systemAudio":true,"softwareVP8":true,"adapters":[{"index":0,"name":"GPU","identity":"0x0:0x1","hardwareH264":[{"index":0,"name":"H264","identity":"{encoder}"}]}]}`
 
 func TestDecodeProbeSeparatesCaptureAudioAndHardwareEncode(t *testing.T) {
 	capabilities, err := decodeProbe([]byte(validProbe))
@@ -14,7 +14,7 @@ func TestDecodeProbeSeparatesCaptureAudioAndHardwareEncode(t *testing.T) {
 	}
 	summary := capabilities.Summary()
 	if !summary.Video || !summary.ProcessAudio || !summary.SystemAudio ||
-		!summary.HardwareH264 {
+		!summary.HardwareH264 || !summary.SoftwareVP8 {
 		t.Fatalf("summary = %+v", summary)
 	}
 }

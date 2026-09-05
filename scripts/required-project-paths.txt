@@ -1,6 +1,7 @@
 AGENTS.md
 CLAUDE.md
 CONTRIBUTING.md
+LICENSE
 README.md
 .gitattributes
 .gitignore
@@ -11,7 +12,9 @@ package-lock.json
 tsconfig.json
 .codex/config.toml
 .codex/README.md
-.agents/skills/stop-that-shit/SKILL.md
+.agents/skills/ponytail/SKILL.md
+.agents/skills/ponytail/LICENSE
+.agents/skills/ponytail/UPSTREAM.md
 .githooks/pre-commit
 .github/pull_request_template.md
 .github/workflows/repository-hygiene.yml

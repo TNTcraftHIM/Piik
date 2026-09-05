@@ -89,8 +89,16 @@ root. A fresh healthy candidate sender proof is required before make-before-brea
 commit. Success moves one branch toward even fanout; failure consumes that one-shot intent. No timer,
 continuous rebalance or general load score is introduced.
 
-A failed Peer tuple is consumed for its exact parent and endpoint sessions plus
-endpoint-transition strength. SFU create, reuse, and replace are resource
+A Peer opportunity is fenced by its exact parent and endpoint sessions plus
+endpoint-transition strength. With NAT traversal disabled, one failed attempt
+consumes it. With traversal enabled, availability acquisition and direct
+continuation may create at most three candidate connections for that opportunity.
+Only an admitted candidate creation spends an attempt; duplicate failure and
+timeout messages cannot spend it again. A preparation rejection that cannot
+create a connection remains terminal. A new session or strictly stronger
+transition reopens the opportunity; worse transitions use only its remaining
+budget. Quality and root-convergence experiments retain their existing one-shot
+consumption rules. SFU create, reuse, and replace are resource
 actions for one logical SFU opportunity keyed by the child and Host sessions;
 the publication generation remains a physical fence, not retry authority.
 Controller-owned publication creation, replacement, or teardown cannot make the
@@ -139,6 +147,18 @@ before unresolved direct candidates. After an SFU route commits, finite remainin
 Peer candidates converge behind working media, one at a time and round-robin
 across SFU Viewers. New join or repair work preempts this background convergence.
 Exhausting direct candidates simply keeps the working SFU route.
+
+When NAT acquisition exhausts one operation but retains candidate budget, the
+same serial scheduler starts the next operation after rollback and resource
+release. Each operation retains its full original deadline; neither a failed
+candidate nor a retry extends a running operation. Untried parents precede
+repeat attempts, and waiting Viewers with fewer started Peer attempts go first.
+The foreground SFU window is unchanged. SFU commitment carries the same
+remaining Peer budget into the existing round-robin direct continuations, not
+another retry ledger. No usable SFU route is interrupted by these attempts.
+This permits longer total acquisition while keeping every operation bounded and
+requiring no polling or independent retry timer. The prepare message reports
+the actual candidate's connection attempt, not inferred UI progress.
 
 The five-second no-transport-progress window advances a silent Peer only while
 another bounded candidate or SFU fallback remains. It is a route scheduling

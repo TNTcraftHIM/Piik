@@ -45,6 +45,7 @@ type Capabilities struct {
 	VideoCapture  bool      `json:"videoCapture"`
 	ProcessAudio  bool      `json:"processAudio"`
 	SystemAudio   bool      `json:"systemAudio"`
+	SoftwareVP8   bool      `json:"softwareVP8"`
 	Adapters      []Adapter `json:"adapters"`
 }
 
@@ -53,6 +54,7 @@ type Summary struct {
 	ProcessAudio bool
 	SystemAudio  bool
 	HardwareH264 bool
+	SoftwareVP8  bool
 }
 
 func (capabilities Capabilities) Summary() Summary {
@@ -60,6 +62,7 @@ func (capabilities Capabilities) Summary() Summary {
 		Video:        capabilities.VideoCapture,
 		ProcessAudio: capabilities.ProcessAudio,
 		SystemAudio:  capabilities.SystemAudio,
+		SoftwareVP8:  capabilities.SoftwareVP8,
 	}
 	for _, adapter := range capabilities.Adapters {
 		if len(adapter.HardwareH264) > 0 {
@@ -93,7 +96,7 @@ func Discover(parent context.Context, executable string) (Capabilities, error) {
 	stderr := &boundedBuffer{limit: maxProbeErrorBytes}
 	command := exec.CommandContext(ctx, executable, "--probe")
 	command.Stdout = stdout
-	command.Stderr = io.MultiWriter(os.Stderr, stderr)
+	command.Stderr = stderr
 	hideWindow(command)
 	if err := command.Run(); err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {

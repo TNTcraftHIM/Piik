@@ -39,6 +39,7 @@ export async function startNativeSfuHost(input: {
       throw new Error("native capture path is unavailable");
     }
     const started = await client.startShare({
+      codec: "h264",
       shareId,
       source: target,
       audio: true,

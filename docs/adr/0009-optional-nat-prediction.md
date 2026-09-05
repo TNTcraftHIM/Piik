@@ -14,8 +14,8 @@ network- and generation-specific; it is not a reliable NAT type or participant
 capability.
 
 The existing ICE configuration, route policy, and candidate owners are
-sufficient. The mechanism needs no NAT label, route-controller state, or new
-media path.
+sufficient. Prediction needs no NAT classification or new media path; bounded
+connection acquisition reuses the route controller's existing opportunity ledger.
 
 ## Decision
 
@@ -44,12 +44,20 @@ media path.
    candidate source URLs keeps ordinary ICE without prediction. Rejection of a
    predicted remote candidate discards only that optional candidate; ordinary
    candidate errors retain their normal connection error semantics.
-4. Candidate observations remain in memory for that connection only. No NAT
-   label, raw address, port, score, hard candidate skip, periodic probe, or
-   route-controller branch is introduced. Sanitized diagnostics record only
+4. Candidate observations remain in memory for that connection only. They do
+   not create persistent NAT labels, endpoint addresses, routing scores, hard
+   candidate skips, or periodic probes. Sanitized diagnostics record only
    whether a signaled candidate was ordinary, predicted, or end-of-candidates,
    and whether the selected remote foundation was ordinary, predicted, or
    unknown.
+5. The same per-share gate also enables the three-attempt Peer acquisition
+   budget in [ADR-0005](0005-automatic-hybrid-media-routing.md). Browser and
+   Native candidates use the ordinary server-owned prepare/rollback lifecycle;
+   no Viewer-owned ICE-restart loop is added. Local public-link and Hosted
+   peer-only rooms can exhaust that budget without SFU, while mixed rooms use
+   the remaining attempts behind a working SFU route. A new connection can
+   provide another mapping opportunity, not guaranteed independent randomness:
+   in particular, Native connections may retain the same shared UDP socket.
 
 ## Consequences
 
@@ -69,9 +77,11 @@ Negative:
 - the Browser may still reject synthetic candidates or the NAT may not have a
   matching mapping;
 - enabled P2P connections perform two extra STUN transactions and
-  may add connectivity checks for up to eight adjacent UDP ports; and
+  may add connectivity checks for up to eight adjacent UDP ports;
 - two endpoint-dependent NATs remain sensitive to candidate scheduling and
-  intervening mappings, so room-wide coverage is not a success guarantee.
+  intervening mappings, so room-wide coverage is not a success guarantee; and
+- enabled acquisition can occupy up to three ordinary operation windows when
+  one parent remains, yielding between operations to other waiting Viewers.
 
 Predicted connectivity checks originate from participant ICE agents and target
 the other participant's bounded candidate window. A Site server only receives

@@ -19,6 +19,7 @@ const (
 	FramePCM    FrameKind = 1
 	FrameH264   FrameKind = 2
 	FrameStatus FrameKind = 3
+	FrameVP8    FrameKind = 4
 )
 
 type Frame struct {
@@ -41,7 +42,7 @@ func readFrame(input io.Reader) (Frame, error) {
 		maximum = maxStatusBytes
 	}
 	if string(header[:4]) != "SMED" || header[4] != 1 || header[7] != 0 ||
-		(kind != FramePCM && kind != FrameH264 && kind != FrameStatus) ||
+		(kind != FramePCM && kind != FrameH264 && kind != FrameVP8 && kind != FrameStatus) ||
 		size == 0 || size > maximum {
 		return Frame{}, errors.New("native capture frame header is invalid")
 	}
@@ -52,7 +53,7 @@ func readFrame(input io.Reader) (Frame, error) {
 			return Frame{}, errors.New("native capture status frame is invalid")
 		}
 	} else if duration100ns == 0 || (kind == FramePCM && header[6] != 0) ||
-		(kind == FrameH264 && header[6] > 1) {
+		((kind == FrameH264 || kind == FrameVP8) && header[6] > 1) {
 		return Frame{}, errors.New("native capture media frame is invalid")
 	}
 	data := make([]byte, size)
@@ -61,7 +62,7 @@ func readFrame(input io.Reader) (Frame, error) {
 	}
 	return Frame{
 		Kind:      kind,
-		KeyFrame:  kind == FrameH264 && header[6] == 1,
+		KeyFrame:  (kind == FrameH264 || kind == FrameVP8) && header[6] == 1,
 		Timestamp: time.Duration(timestamp100ns) * 100 * time.Nanosecond,
 		Duration:  time.Duration(duration100ns) * 100 * time.Nanosecond,
 		Data:      data,

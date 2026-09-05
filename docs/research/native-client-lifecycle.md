@@ -1,37 +1,28 @@
 # Native Client Lifecycle
 
-- Reviewed: 2026-09-04
+- Reviewed: 2026-09-05
 - Scope: Windows capture idle semantics, native loopback input isolation, and
   Browser visibility of an unexpected Client disconnect.
-- Status: code fix complete; the current Windows static-source and Client-crash
-  gates pass; cross-version behavior remains physical acceptance work; no new
-  wire version.
+- Status: static-source, preview-queue and Client-crash checks pass; Windows 10
+  monitor startup and game-specific window replacement remain unresolved.
 
 ## Current Evidence
 
-1. The Windows capture loop waits up to five seconds for `FrameArrived` and
-   fails the capture on `WAIT_TIMEOUT`. The source and target-closed events are
-   already separate signals. Whether an unchanged WGC source stops producing
-   frames on supported Windows builds is a physical question; the repository
-   has no static-source gate. The correct invariant is that an idle source is
-   not itself a capture-end signal. A new Viewer may still need a keyframe from
-   the latest retained image.
-2. Native control validates message shape and bounds, but a Pion error from one
-   edge candidate or answer currently returns from the extension handler. The
-   loopback server treats any extension error as a control-protocol failure and
-   closes the session. Per-edge media input must not terminate unrelated edges;
-   malformed candidates are disposable input, while a missing/closed edge stays
-   a lifecycle result.
-3. `NativeClient` rejects pending requests and clears listeners when its socket
-   closes unexpectedly, but emits no close notification. The Host therefore
-   waits for the bridge or ICE state to expose a dead Client. The control socket
-   is the native share owner's authority, so an unexpected close should notify
-   that owner; an intentional `close()` must remain silent.
+An idle WGC source is not a capture-end signal. Source/target closure, control
+session loss and individual edge failures have separate owners. A Viewer may
+need a keyframe from the retained image while a source remains unchanged.
+
+Source previews use the same serial control connection as share startup. A
+virtual-time reproduction with three three-second previews made the real
+`NativeClient.startShare()` time out at eight seconds, before its handler ran
+at nine seconds. The picker now sends one preview at a time, cancels unsent
+work when its source view is retired, and waits for the remaining preview before
+starting native media. Refresh and Client replacement fence old results.
 
 ## Scope Decisions
 
 - Keep one strict loopback wire and one-share/one-session fence.
-- Do not change room, route, SFU, codec, NAT, or browser-only behavior.
+- Recovery does not choose a different capture target, codec or media route.
 - Do not add a tunnel watchdog, local-process authentication scheme, custom
   quality score, or compatibility alias in this phase.
 
@@ -64,6 +55,40 @@ runtime change for either is claimed here.
   terminated the Client process, and observed the Host return to its start-share
   control within the bounded gate. Browser, capture, server, ports, and profile
   cleanup all passed.
+- On 2026-09-05, a Windows 11 build 26200 display-source check produced 91
+  hardware-H.264 frames at the 720p30 profile and exited normally. A separate
+  source-window check stayed alive through 7.02 seconds without frames while
+  minimized, then produced 17 frames within 540 ms of restoration. All owned
+  processes, ports and profiles were cleaned up. Neither check establishes the
+  reported Windows 10 monitor-start failure or game HWND recreation as fixed.
+
+## Open Capture Reports
+
+The Windows 10 report concerns selecting one entire monitor; application/window
+capture, including fullscreen games, works. `CreateForMonitor` supports Windows
+10 1903 and later; the current single-HMONITOR call, identity checks and
+`CreateFreeThreaded` setup match the documented API. No missing general permission
+request has been established. Community reports of disabled capture services or
+invalid display contexts are leads, not a diagnosis of this user's machine.
+Projected WinRT exceptions now reach the existing capture-error boundary instead
+of escaping `std::exception`; that correction alone does not prove startup fixed.
+
+The converter scales into a new output texture and preserves aspect ratio:
+1280x960 into 1920x1080 yields 1440x1080 content and 240-pixel side bars. It does
+not call a display-mode or game-window resize API. A change to the game's own
+stretching must therefore be distinguished from this encoded presentation.
+Display-path scaling is not an arbitrary window's rendering intent, so aspect
+ratio alone cannot authorize stretching every captured window.
+
+Windows explicitly permits a capture item to close when its application silently
+replaces the underlying window. Reattaching to another window is not equivalent
+to resuming the same selected target; this remains separate from the verified
+quiet/minimized-source behavior.
+
+Primary references: [CreateForMonitor](https://learn.microsoft.com/en-us/windows/win32/api/windows.graphics.capture.interop/nf-windows-graphics-capture-interop-igraphicscaptureiteminterop-createformonitor),
+[CreateFreeThreaded](https://learn.microsoft.com/en-us/uwp/api/windows.graphics.capture.direct3d11captureframepool.createfreethreaded),
+[capture item closure](https://learn.microsoft.com/en-us/uwp/api/windows.graphics.capture.graphicscaptureitem.closed),
+and [WinRT exceptions](https://learn.microsoft.com/en-us/uwp/cpp-ref-for-winrt/error-handling/hresult-error).
 
 ## Acceptance
 

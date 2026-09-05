@@ -16,6 +16,7 @@ import {
   decodeClientMessage,
   normalizeDisplayName,
   participantRouteAssignmentSchema,
+  preparedRouteCandidateSchema,
   replaceRoomRequestSchema,
   roomAccessUpdateRequestSchema,
   roomAccessUpdateResponseSchema,
@@ -1507,6 +1508,26 @@ describe("server signaling protocol", () => {
         qualitySettings: { ...qualitySettings, maxFramerate: 0 },
       }).success,
     ).toBe(false);
+  });
+
+  it("accepts only bounded connection-attempt progress on a prepared route", () => {
+    const candidate = {
+      childPeerId: "child_12345678", connectionId: "connection_12345678",
+      transport: "direct", qualityProbe: false,
+    };
+    for (const current of [1, 2, 3]) {
+      expect(preparedRouteCandidateSchema.safeParse({
+        ...candidate, connectionAttempt: { current, total: 3 },
+      }).success).toBe(true);
+    }
+    for (const connectionAttempt of [
+      { current: 0, total: 3 }, { current: 4, total: 3 },
+      { current: 1, total: 4 }, { current: 1.5, total: 3 },
+    ]) {
+      expect(preparedRouteCandidateSchema.safeParse({
+        ...candidate, connectionAttempt,
+      }).success).toBe(false);
+    }
   });
 
   it("keeps hybrid route messages strict and separate from ordinary P2P auth", () => {

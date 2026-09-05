@@ -12,7 +12,7 @@ adaptation decision.
   stop, synchronously pause/resume audio and video, or switch source.
 - A Client-launched Host explicitly chooses either that Browser capture path or
   one native screen/window enumerated by the packaged platform capture boundary. The
-  latter uses one available hardware H.264 path and never infers a target from
+  latter uses one supported native codec path and never infers a target from
   a title. An ordinary Web Host does not probe localhost.
 - Share and source-switch requests ask the Browser for available audio by
   default. Missing audio is reported clearly but does not block video-only
@@ -34,6 +34,8 @@ adaptation decision.
   current Opus encoder directly. Platform quality preference uses the hardware
   encoder's standard quality-versus-speed hint, while Pion/WebRTC still own
   transport estimation and route evidence.
+  Windows VP8 uses libvpx's realtime mode; it does not claim the same hardware
+  quality-versus-speed control or per-edge Browser adaptation.
 - With Client available, Browser H.264 capture can use one local sender and the
   existing Native encoded fanout while topology optimization is enabled. The
   Browser still owns preview, pause, capture settings, and source selection.
@@ -83,6 +85,15 @@ The Browser chooses the concrete encoder implementation. A reported H.264 codec
 does not by itself prove hardware acceleration, and Web content cannot select a
 specific MFT, NVENC, AMF, or QSV implementation.
 
+Windows native capture uses the same VP8/Auto/H264 controls. H264 selects the
+hardware path and VP8 the bundled libvpx encoder. Auto measures encoding work
+for synthetic NV12 frames at the selected dimensions and frame rate, with a
+bounded warmup and sample. If H264 sustains the target it is selected; otherwise
+VP8 is measured within the remaining four-second budget. This is a throughput
+check, not a perceptual-quality score or a promise under future GPU load.
+The returned actual codec owns the shared source, preview, and relay; live
+quality/source changes retain it. Other native platform encoders remain H264.
+
 ## Framework-Owned Adaptation
 
 Each direct, relay, or SFU video sender owns one clone of its capture or received
@@ -109,7 +120,7 @@ loopback Browser bridge; the existing Browser SFU publisher applies only sender
 parameters and LiveKit's representation policy to that remote source.
 
 Native sender edges normally reuse one encoded source. A Native Viewer forwards
-compatible H.264/Opus payload without decoding or re-encoding it; each outbound
+compatible H.264/VP8 and Opus payload without decoding or re-encoding it; each outbound
 PeerConnection owns its RTP identity and transport feedback. When an edge is
 persistently degraded, the existing quality operation may prepare a Browser
 WebRTC sender from the stable local bridge as that edge's candidate. The old

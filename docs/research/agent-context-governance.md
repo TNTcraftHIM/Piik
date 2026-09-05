@@ -38,7 +38,7 @@ Screener therefore warns at the published recommendation or 80% of a loader
 limit, then fails only at a real loading boundary or a small explicit buffer:
 32 KiB for the Codex chain, 20,000 characters for Hermes, and 250 effective
 Claude lines above the 200-line recommendation. The same envelope applies to the
-repo STS skill because `AGENTS.md` requires it on every task. A failure tells the
+repo Ponytail skill because `AGENTS.md` requires it for coding work. A failure tells the
 maintainer to use nested/path-scoped context, on-demand skills or linked docs,
 remove duplication and completed history, and delete stale conclusions; raising
 the ceiling is not the default remedy.

@@ -72,6 +72,21 @@ func TestEnvelopeAllowsAnExtensionToOwnItsStrictShape(t *testing.T) {
 	}
 }
 
+func TestResponseBoundFitsOneSourcePreview(t *testing.T) {
+	preview := map[string]string{
+		"type": "source-preview",
+		"mime": "image/bmp",
+		"data": strings.Repeat("A", (54+320*180*3)*4/3),
+	}
+	if _, err := encodeMessage(preview); err != nil {
+		t.Fatalf("320x180 preview was rejected: %v", err)
+	}
+	preview["data"] = strings.Repeat("A", MaxControlMessageBytes)
+	if _, err := encodeMessage(preview); err == nil {
+		t.Fatal("response beyond the message bound was accepted")
+	}
+}
+
 func TestNormalizePortRangeUsesTheBoundedDefaults(t *testing.T) {
 	start, end := normalizePortRange(0, 0)
 	if start != DefaultPortStart || end != DefaultPortEnd {

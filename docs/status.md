@@ -79,6 +79,9 @@ This is the current execution index. Git history owns completed timelines;
 - NAT prediction stays authority-gated and defaults on only when offered. Browser
   and Native P2P use one connection-local rule with Site or Public-Link survey
   endpoints; pure LAN, route scoring, and SFU preference remain unchanged.
+  Enabled acquisition now shares a three-attempt budget in the route controller,
+  across foreground P2P and background direct continuation. Viewer progress
+  reflects actual candidate creation; quality trials retain their prior budget.
   candidate and selected-path logs retain anonymous
   `ordinary | predicted | unknown` provenance. Ordinary candidates and SFU
   fallback remain unchanged.
@@ -94,7 +97,7 @@ This is the current execution index. Git history owns completed timelines;
   Viewer SFU clients disable LiveKit page-leave auto-disconnect, so SFU recovery
   cannot stop Host-owned capture. Native Viewer controls still own playback,
   and manual reconnect stays on the current route. A Client-launched Viewer can
-  receive H.264/Opus through a native encoded source, bridge one local Browser
+  receive H.264/VP8 and Opus through a native encoded source, bridge one local Browser
   preview, and reuse that source for compatible P2P children; unsupported codec
   or failed bridge returns to the Browser peer.
 - Viewer presentation derives access, Host, route, playback, and runtime state
@@ -127,7 +130,11 @@ This is the current execution index. Git history owns completed timelines;
   current system-Browser launcher for Local, temporary public-link, or saved-Site
   operation. The saved Site remains allowed while another room source runs; the
   same Host UI explicitly selects
-  Browser capture or an exact native screen/window. Windows gates prove
+  Browser capture or an exact native screen/window. Windows Native now shares
+  the VP8/Auto/H264 selector, with libvpx software VP8 and hardware H264; Auto
+  uses a bounded target-profile throughput check. Both VP8 and Auto-selected
+  H264 passed real Browser delivery and codec-stable live/source changes.
+  Windows gates prove
   packaged Local/Site operation, WGC hardware-H.264 plus process/system audio, bounded
   shared-encode P2P, and cleanup. The window arm also proves source end and
   same-room reselection; display-source lifecycle remains a separate physical
@@ -181,4 +188,11 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Current Hold
 
-No source or deployment P0/P1 is open; sanitized route logging remains enabled.
+Client acceptance remains open for the reported Windows 10 display startup and
+game-specific source behavior. Windows 11 display, minimized-source recovery,
+live presets and source-switch checks pass, but do not establish those reports
+as resolved. NAT acquisition has controller and signaling coverage, not a new
+public-network success-rate claim. Its added prepare progress field requires a
+coordinated private-wire release: old strict pages cannot consume it safely.
+Native codec and capability fields likewise require the matching bundled UI.
+Production is unchanged; [TODO](./todo.md) owns acceptance and release work.

@@ -6,7 +6,7 @@ This is the default for an ordinary scoped implementation or bug fix.
 
 1. Start from the canonical repository root on a clean, current `main`; preserve unrelated user work.
 2. Inspect the affected code, current owner, and reachable evidence. Research primary sources only when the issue is non-trivial or component behavior is uncertain.
-3. Make the smallest coherent change under the repo-tracked [`stop-that-shit` skill](./.agents/skills/stop-that-shit/SKILL.md).
+3. Make the smallest coherent change under the repo-tracked [`ponytail` skill](./.agents/skills/ponytail/SKILL.md).
 4. Run the focused tests or checks that exercise the changed behavior, inspect the pending diff, stage requested files, and report the result and evidence.
 
 Do not automatically create a truth checkpoint, edit status/memory, run `npm run check`, request independent reviews, open or merge a pull request, deploy, or clean branches/worktrees for every small change. Do not record ordinary UI details, self-evident implementation, one-off fixes, routine test output, or completed history in long-lived truth documents.
@@ -55,7 +55,9 @@ Clean up worktrees and branches only after semantic review and integration are c
 - Use current community issues and operational reports to identify real compatibility failures, but label anecdotal evidence as such.
 - Include a date and direct URLs. Separate verified facts, measurements, assumptions, and recommendations.
 - Review licenses before copying implementation code. A useful reference is not automatically a compatible dependency.
-- Until the project license and distribution model are decided, treat GPL/AGPL implementation sources as study-only.
+- Screener-owned code is [MIT-licensed](./LICENSE); third-party components retain
+  their own licenses and notices. GPL/AGPL implementation sources remain
+  study-only unless a separate distribution decision accepts their obligations.
 
 ## Verification Entrypoints
 

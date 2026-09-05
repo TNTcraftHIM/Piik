@@ -33,6 +33,7 @@ import {
   type NativeHealth,
   type NativeCaptureTarget,
   type NativeIceCandidate,
+  type NativeVideoCodec,
 } from "./wire";
 
 const DISCOVERY_TIMEOUT_MS = 400;
@@ -53,6 +54,7 @@ export interface NativeShareInput {
   encoderIndex: number;
   edgeCapacity: number;
   profile: QualitySettings;
+  codec: NativeVideoCodec | "auto";
 }
 
 export async function discoverNativeHealth(): Promise<NativeHealth | null> {
@@ -184,7 +186,7 @@ export class NativeClient {
 
   async startShare(
     input: NativeShareInput,
-  ): Promise<{ audio: boolean }> {
+  ): Promise<{ audio: boolean; codec: NativeVideoCodec }> {
     const response = await this.request(
       "start-share",
       input,
@@ -194,7 +196,7 @@ export class NativeClient {
     if (response.shareId !== input.shareId) {
       throw new Error("Native share identity changed");
     }
-    return { audio: response.audio };
+    return { audio: response.audio, codec: response.codec };
   }
 
   async updateShare(
@@ -294,6 +296,7 @@ export class NativeClient {
   ): Promise<{
     answer: { type: "answer"; sdp: string };
     audio: boolean;
+    codec: NativeVideoCodec;
   }> {
     if (offer.type !== "offer" || !offer.sdp) {
       throw new Error("Native receiver requires an SDP offer");
@@ -320,6 +323,7 @@ export class NativeClient {
     return {
       answer: { type: "answer", sdp: response.sdp },
       audio: response.audio,
+      codec: response.codec,
     };
   }
 

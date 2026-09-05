@@ -1,6 +1,7 @@
 package mediaedge
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -8,7 +9,55 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
+func TestReceiverCodecMatchesTheSingleNegotiatedAnswer(t *testing.T) {
+	for _, preferVP8 := range []bool{false, true} {
+		engine, err := NewEngine(EngineOptions{BindAddress: "127.0.0.1:0", IncludeLoopback: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = engine.Close() })
+		upstream, err := engine.api.NewPeerConnection(webrtc.Configuration{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = upstream.Close() })
+		transceiver, err := upstream.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo,
+			webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionSendonly})
+		if err != nil {
+			t.Fatal(err)
+		}
+		preferences := []webrtc.RTPCodecParameters{videoCodecs["h264"], videoCodecs["vp8"]}
+		want := "h264"
+		if preferVP8 {
+			preferences[0], preferences[1] = preferences[1], preferences[0]
+			want = "vp8"
+		}
+		if err = transceiver.SetCodecPreferences(preferences); err != nil {
+			t.Fatal(err)
+		}
+		offer, err := upstream.CreateOffer(nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		receiver, answer, err := engine.NewReceiver(ReceiverOptions{Offer: offer, EdgeCapacity: 1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = receiver.Close() })
+		if receiver.Codec() != want || !strings.Contains(strings.ToLower(answer.SDP), want+"/90000") ||
+			(strings.Contains(strings.ToLower(answer.SDP), "vp8/90000") && strings.Contains(strings.ToLower(answer.SDP), "h264/90000")) {
+			t.Fatalf("receiver codec %q does not match its single-codec answer", receiver.Codec())
+		}
+	}
+}
+
 func TestReceiverForwardsEncodedVideoToANativeEdge(t *testing.T) {
+	for _, codec := range []string{"h264", "vp8"} {
+		t.Run(codec, func(t *testing.T) { testReceiverForwarding(t, codec) })
+	}
+}
+
+func testReceiverForwarding(t *testing.T, codec string) {
 	engine, err := NewEngine(EngineOptions{
 		BindAddress:     "127.0.0.1:0",
 		IncludeLoopback: true,
@@ -32,13 +81,20 @@ func TestReceiverForwardsEncodedVideoToANativeEdge(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = upstream.Close() })
 	track, err := webrtc.NewTrackLocalStaticRTP(
-		h264Capability, "screen", "upstream",
+		videoCodecs[codec].RTPCodecCapability, "screen", "upstream",
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err = upstream.AddTrack(track); err != nil {
 		t.Fatal(err)
+	}
+	for _, transceiver := range upstream.GetTransceivers() {
+		if transceiver.Kind() == webrtc.RTPCodecTypeVideo {
+			if err = transceiver.SetCodecPreferences([]webrtc.RTPCodecParameters{videoCodecs[codec]}); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 	audioTrack, err := webrtc.NewTrackLocalStaticRTP(
 		opusCapability, "audio", "upstream",
@@ -93,6 +149,9 @@ func TestReceiverForwardsEncodedVideoToANativeEdge(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = nativeReceiver.Close() })
+	if nativeReceiver.Codec() != codec || nativeReceiver.Source().Codec() != codec {
+		t.Fatalf("native receiver/source selected %q instead of %q", nativeReceiver.Codec(), codec)
+	}
 	if err = upstream.SetRemoteDescription(answer); err != nil {
 		t.Fatal(err)
 	}
@@ -115,13 +174,16 @@ func TestReceiverForwardsEncodedVideoToANativeEdge(t *testing.T) {
 	want := &rtp.Packet{
 		Header: rtp.Header{
 			Version:        2,
-			PayloadType:    h264PayloadType,
+			PayloadType:    uint8(videoCodecs[codec].PayloadType),
 			SequenceNumber: 7,
 			Timestamp:      90_000,
 			SSRC:           42,
 			Marker:         true,
 		},
 		Payload: []byte{0x65, 0x88, 0x84, 0x00},
+	}
+	if codec == "vp8" {
+		want.Payload = []byte{0x10, 0x10, 0, 0, 0x9d, 0x01, 0x2a, 0x80, 0x02, 0xe0, 0x01, 0}
 	}
 	if err = want.SetExtension(9, []byte{0xde, 0xad}); err != nil {
 		t.Fatal(err)

@@ -101,11 +101,24 @@ export interface ControllerOptions {
   operationTimeoutMs: number;
   sfuEnabled?: boolean;
   qualityConvergenceEnabled?: boolean;
+  natPredictionEnabled?: boolean;
 }
 
 const routeDebug = debuglog("screener-route");
 const MAX_DIRECT_HEAD_START_MS = 5_000;
+const MAX_NAT_CONNECTION_ATTEMPTS = 3;
 const SFU_OPPORTUNITY_PREFIX = "sfu\0";
+
+interface CandidateOpportunity {
+  rank: number;
+  startedAttempts: number;
+  exhausted?: true;
+}
+
+interface ConnectionAttemptProgress {
+  current: number;
+  total: typeof MAX_NAT_CONNECTION_ATTEMPTS;
+}
 
 interface Participant {
   peerId: string;
@@ -115,7 +128,7 @@ interface Participant {
   joinOrder: number;
   effectiveDownstreamCapacity: number;
   availabilityExhausted: boolean;
-  consumedCandidateOpportunities: Map<string, number>;
+  consumedCandidateOpportunities: Map<string, CandidateOpportunity>;
   bootstrapFailureReported?: boolean;
   sfuFirstAtNextRoute?: boolean;
 }
@@ -133,6 +146,7 @@ interface Attempt<Resource> {
   startedAtMs: number;
   transportConnected: boolean;
   mediaReady: boolean;
+  connectionAttempt?: ConnectionAttemptProgress;
   senderQualityState?: "healthy" | "degraded";
   senderQualityAcceptedAtMs?: number;
   senderQualityConsecutiveHealthyWindows?: number;
@@ -154,6 +168,7 @@ interface ChildOperation<Resource> {
   deadlineAtMs: number;
   builtAtFactVersion: number;
   deferredParentPeerIds: string[];
+  peerAttemptStarted: boolean;
   qualitySource?: SenderQualityIdentity;
   current?: Attempt<Resource>;
 }
@@ -187,7 +202,12 @@ export interface OperationSnapshot {
   cursor: number;
   deadlineAtMs: number;
   wakeAtMs: number;
-  current?: { tuple: CandidateTuple; revision: number; connectionId: string };
+  current?: {
+    tuple: CandidateTuple;
+    revision: number;
+    connectionId: string;
+    connectionAttempt?: ConnectionAttemptProgress;
+  };
 }
 
 export interface RouteSnapshot<Resource> {
@@ -1751,6 +1771,7 @@ export class RoomRouteController<Resource = unknown> {
         deadlineAtMs: nowMs + this.options.operationTimeoutMs,
         builtAtFactVersion: this.factVersion,
         deferredParentPeerIds: [],
+        peerAttemptStarted: false,
         qualitySource:
           reason === "quality-convergence"
             ? this.currentQualityOperationSource(childPeerId)
@@ -1852,12 +1873,16 @@ export class RoomRouteController<Resource = unknown> {
       startedAtMs: input.nowMs,
       transportConnected: false,
       mediaReady: false,
+      connectionAttempt: this.startCandidateOpportunity(operation, plan),
     };
     this.debug("candidate-started", {
       child: this.debugPeer(operation.childPeerId),
       candidate: this.debugTuple(tuple),
       revision: operation.current.revision,
       cursor: operation.cursor,
+      ...(operation.current.connectionAttempt
+        ? { connectionAttempt: operation.current.connectionAttempt }
+        : {}),
     });
     this.startCandidateTiming(operation.demandPeerId, input.nowMs);
     return {
@@ -2156,12 +2181,7 @@ export class RoomRouteController<Resource = unknown> {
       }
     }
     if (!commitReservation(attempt.reservation)) {
-      if (this.isAvailabilityOperation(operation.reason)) {
-        this.consumeCandidateOpportunity(
-          operation.childPeerId,
-          operation.candidates[operation.cursor]!,
-        );
-      }
+      this.consumeCurrentAvailabilityOpportunity(operation);
       this.debug("candidate-commit-rejected", {
         child: this.debugPeer(operation.childPeerId),
         candidate: this.debugTuple(attempt.tuple),
@@ -2255,19 +2275,13 @@ export class RoomRouteController<Resource = unknown> {
       operation?.current &&
       this.guardMatches(guard, operation, operation.current)
     ) {
-      if (this.isAvailabilityOperation(operation.reason)) {
-        this.consumeCandidateOpportunity(
-          operation.childPeerId,
-          operation.candidates[operation.cursor]!,
-        );
-      }
+      this.consumeCurrentAvailabilityOpportunity(operation);
       this.debug("candidate-failed", {
         child: this.debugPeer(operation.childPeerId),
         candidate: this.debugTuple(operation.current.tuple),
         revision: operation.current.revision,
       });
       this.promoteNextDirectWithinHeadStart(operation, nowMs);
-      this.consumeDirectContinuationCandidate(operation);
       this.noteRejection(operation.demandPeerId, "candidate-failed");
     }
     const validation = this.validateOrAdvance(nowMs, guard);
@@ -2304,7 +2318,6 @@ export class RoomRouteController<Resource = unknown> {
         cursor: this.operation.cursor,
         candidateCount: this.operation.candidates.length,
       });
-      this.consumeDirectContinuationCandidate(this.operation);
     }
     const validation = this.validateOrAdvance(nowMs);
     return {
@@ -2428,7 +2441,8 @@ export class RoomRouteController<Resource = unknown> {
       const exhausted = sfuBootstrap
         ? failedBootstrapDemand !== undefined
         : !backgroundConvergence &&
-          !bootstrapAvailable;
+          !bootstrapAvailable &&
+          !this.hasRemainingNatOpportunity(operation);
       if (bootstrapAvailable) this.stageSfuBootstrap(operation);
       if (!sfuBootstrap) {
         this.finishTiming(
@@ -2566,7 +2580,8 @@ export class RoomRouteController<Resource = unknown> {
       const exhausted = sfuBootstrap
         ? failedBootstrapDemand !== undefined
         : !backgroundConvergence &&
-          !bootstrapAvailable;
+          !bootstrapAvailable &&
+          !this.hasRemainingNatOpportunity(operation);
       if (bootstrapAvailable) this.stageSfuBootstrap(operation);
       if (!sfuBootstrap) {
         this.finishTiming(
@@ -2662,7 +2677,11 @@ export class RoomRouteController<Resource = unknown> {
           : operation.reason !== "direct-convergence"
         ? [
             ...operation.candidates
-              .slice(operation.cursor + 1)
+              .slice(this.options.natPredictionEnabled ? 0 : operation.cursor + 1)
+              .filter((candidate) =>
+                !this.options.natPredictionEnabled ||
+                this.candidateOpportunityAvailable(operation.childPeerId, candidate),
+              )
               .flatMap((candidate) =>
                 candidate.tuple.kind === "peer"
                   ? [candidate.tuple.parentPeerId]
@@ -2766,7 +2785,7 @@ export class RoomRouteController<Resource = unknown> {
     childPeerId: string,
     sfuOnly: boolean,
   ): CandidatePlan[] {
-    return this.buildCandidatePlans(childPeerId, sfuOnly).filter(
+    return this.buildCandidatePlans(childPeerId, sfuOnly, true).filter(
       (candidate) =>
         this.candidateOpportunityAvailable(childPeerId, candidate),
     );
@@ -2775,12 +2794,16 @@ export class RoomRouteController<Resource = unknown> {
   private buildCandidatePlans(
     childPeerId: string,
     sfuOnly: boolean,
+    preferUntried = false,
   ): CandidatePlan[] {
     const descendants = this.descendantsOf(childPeerId);
     const parents = [...this.participants.values()]
       .filter((parent) => parent.sessionId && !parent.departureConfirmed && parent.peerId !== childPeerId &&
         !descendants.has(parent.peerId) && this.sourceUsable(parent.peerId) && this.targetFits(parent.peerId, childPeerId))
-      .sort((left, right) => this.depth(left.peerId) - this.depth(right.peerId) ||
+      .sort((left, right) => (preferUntried
+        ? this.peerAttemptsStarted(childPeerId, left.peerId) - this.peerAttemptsStarted(childPeerId, right.peerId)
+        : 0) ||
+        this.depth(left.peerId) - this.depth(right.peerId) ||
         this.remaining(right.peerId, childPeerId) - this.remaining(left.peerId, childPeerId) ||
         stablePairRank(childPeerId, left.peerId) - stablePairRank(childPeerId, right.peerId) ||
         compareParticipant(left, right));
@@ -2825,7 +2848,69 @@ export class RoomRouteController<Resource = unknown> {
       );
     return (
       consumed === undefined ||
-      endpointTransitionRank(plan.endpointTransition) < consumed
+      endpointTransitionRank(plan.endpointTransition) < consumed.rank ||
+      (this.options.natPredictionEnabled === true &&
+        plan.tuple.kind === "peer" &&
+        !consumed.exhausted &&
+        consumed.startedAttempts < MAX_NAT_CONNECTION_ATTEMPTS)
+    );
+  }
+
+  private startCandidateOpportunity(
+    operation: ChildOperation<Resource>,
+    plan: CandidatePlan,
+  ): ConnectionAttemptProgress | undefined {
+    if (
+      !this.options.natPredictionEnabled ||
+      plan.tuple.kind !== "peer" ||
+      (!this.isAvailabilityOperation(operation.reason) &&
+        operation.reason !== "direct-convergence")
+    ) return undefined;
+    const opportunities = this.participants.get(operation.childPeerId)!
+      .consumedCandidateOpportunities;
+    const key = this.candidateOpportunityBase(operation.childPeerId, plan);
+    const rank = endpointTransitionRank(plan.endpointTransition);
+    const previous = opportunities.get(key);
+    const startedAttempts =
+      (previous && previous.rank <= rank ? previous.startedAttempts : 0) + 1;
+    opportunities.set(key, {
+      rank: Math.min(previous?.rank ?? rank, rank),
+      startedAttempts,
+    });
+    operation.peerAttemptStarted = true;
+    return { current: startedAttempts, total: MAX_NAT_CONNECTION_ATTEMPTS };
+  }
+
+  private peerAttemptsStarted(childPeerId: string, parentPeerId: string): number {
+    if (!this.options.natPredictionEnabled) return 0;
+    const plan = this.planCandidate(childPeerId, {
+      kind: "peer", parentPeerId, transport: "direct",
+    });
+    if (!plan) return 0;
+    const opportunity = this.participants.get(childPeerId)
+      ?.consumedCandidateOpportunities.get(this.candidateOpportunityBase(childPeerId, plan));
+    return opportunity && opportunity.rank <= endpointTransitionRank(plan.endpointTransition)
+      ? opportunity.startedAttempts
+      : 0;
+  }
+
+  private viewerAttemptsStarted(peerId: string): number {
+    if (!this.options.natPredictionEnabled) return 0;
+    let started = 0;
+    for (const [key, opportunity] of this.participants.get(peerId)!
+      .consumedCandidateOpportunities) {
+      if (key.startsWith("peer:")) started += opportunity.startedAttempts;
+    }
+    return started;
+  }
+
+  private hasRemainingNatOpportunity(operation: ChildOperation<Resource>): boolean {
+    return Boolean(
+      this.isAvailabilityOperation(operation.reason) &&
+      operation.peerAttemptStarted &&
+      this.buildCandidates(operation.childPeerId, false).some(
+        (plan) => plan.tuple.kind === "peer",
+      ),
     );
   }
 
@@ -2853,11 +2938,14 @@ export class RoomRouteController<Resource = unknown> {
       childPeerId,
     )?.consumedCandidateOpportunities;
     if (!consumed) return;
-    consumeOpportunity(
-      consumed,
-      this.candidateOpportunityBase(childPeerId, plan),
-      endpointTransitionRank(plan.endpointTransition),
-    );
+    const key = this.candidateOpportunityBase(childPeerId, plan);
+    const rank = endpointTransitionRank(plan.endpointTransition);
+    const previous = consumed.get(key);
+    consumed.set(key, {
+      rank: Math.min(previous?.rank ?? rank, rank),
+      startedAttempts: previous?.startedAttempts ?? 0,
+      exhausted: true,
+    });
   }
 
   private qualityCandidateOpportunityAvailable(
@@ -2906,12 +2994,10 @@ export class RoomRouteController<Resource = unknown> {
     edge: CommittedEdge<Resource>,
   ): void {
     if (edge.kind === "peer") {
-      consumeOpportunity(
-        child.consumedCandidateOpportunities,
-        `peer:${edge.parentPeerId}\0${child.sessionId ?? ""}\0${
-          edge.parentSessionId
-        }`,
-        0,
+      const key = `peer:${edge.parentPeerId}\0${child.sessionId ?? ""}\0${edge.parentSessionId}`;
+      child.consumedCandidateOpportunities.set(
+        key,
+        { rank: 0, startedAttempts: child.consumedCandidateOpportunities.get(key)?.startedAttempts ?? 0, exhausted: true },
       );
       return;
     }
@@ -2926,6 +3012,7 @@ export class RoomRouteController<Resource = unknown> {
   ): void {
     if (!this.isAvailabilityOperation(operation.reason)) return;
     for (const plan of operation.candidates) {
+      if (operation.peerAttemptStarted && plan.tuple.kind === "peer") continue;
       this.consumeCandidateOpportunity(operation.childPeerId, plan);
     }
   }
@@ -2935,6 +3022,7 @@ export class RoomRouteController<Resource = unknown> {
   ): void {
     if (!this.isAvailabilityOperation(operation.reason)) return;
     const plan = operation.candidates[operation.cursor];
+    if (operation.current?.connectionAttempt && plan?.tuple.kind === "peer") return;
     if (plan) this.consumeCandidateOpportunity(operation.childPeerId, plan);
   }
 
@@ -3379,20 +3467,28 @@ export class RoomRouteController<Resource = unknown> {
 
   private selectNextChild(): string | undefined {
     const viewers = this.availableViewers();
-    const departedParent = viewers.find(({ peerId }) => {
+    const departedParents = viewers.filter(({ peerId }) => {
       const edge = this.upstreamByViewer.get(peerId);
       return edge?.kind === "peer" && this.participants.get(edge.parentPeerId)?.departureConfirmed;
     });
-    if (departedParent) return departedParent.peerId;
     const overflow = this.overflowChildren();
-    if (overflow.length > 0) return overflow[0];
-    const unusable = viewers.find(({ peerId }) => this.upstreamByViewer.get(peerId)?.usable === false);
-    const staleSfu = viewers.find(({ peerId }) => {
+    const unusable = viewers.filter(({ peerId }) => this.upstreamByViewer.get(peerId)?.usable === false);
+    const staleSfu = viewers.filter(({ peerId }) => {
       const edge = this.upstreamByViewer.get(peerId);
       return edge?.kind === "sfu" && (!this.hostPublication?.usable ||
         this.hostPublication.generation !== edge.publicationGeneration);
     });
-    return unusable?.peerId ?? staleSfu?.peerId ?? viewers.find(({ peerId }) => !this.upstreamByViewer.has(peerId))?.peerId;
+    const candidates = [...new Set([
+      ...departedParents.map(({ peerId }) => peerId),
+      ...overflow,
+      ...unusable.map(({ peerId }) => peerId),
+      ...staleSfu.map(({ peerId }) => peerId),
+      ...viewers.filter(({ peerId }) => !this.upstreamByViewer.has(peerId))
+        .map(({ peerId }) => peerId),
+    ])];
+    return candidates.sort((left, right) =>
+      this.viewerAttemptsStarted(left) - this.viewerAttemptsStarted(right),
+    )[0];
   }
 
   private selectDirectContinuation(): {
@@ -3401,7 +3497,9 @@ export class RoomRouteController<Resource = unknown> {
   } | undefined {
     for (const [childPeerId, continuation] of [
       ...this.directContinuations,
-    ]) {
+    ].sort(([left], [right]) =>
+      this.viewerAttemptsStarted(left) - this.viewerAttemptsStarted(right),
+    )) {
       const child = this.participants.get(childPeerId);
       const edge = this.upstreamByViewer.get(childPeerId);
       if (
@@ -3420,7 +3518,10 @@ export class RoomRouteController<Resource = unknown> {
         this.directContinuations.delete(childPeerId);
         continue;
       }
-      for (const parentPeerId of continuation.parentPeerIds) {
+      for (const parentPeerId of [...continuation.parentPeerIds].sort(
+        (left, right) => this.peerAttemptsStarted(childPeerId, left) -
+          this.peerAttemptsStarted(childPeerId, right),
+      )) {
         const tuple: CandidateTuple = {
           kind: "peer",
           parentPeerId,
@@ -3430,7 +3531,9 @@ export class RoomRouteController<Resource = unknown> {
         if (
           plan &&
           plan.endpointTransition.kind !== "bounded-gap" &&
-          this.candidateValid(childPeerId, plan)
+          this.candidateValid(childPeerId, plan) &&
+          (!this.options.natPredictionEnabled ||
+            this.candidateOpportunityAvailable(childPeerId, plan))
         ) {
           return { childPeerId, plan };
         }
@@ -3487,6 +3590,14 @@ export class RoomRouteController<Resource = unknown> {
     const index = continuation.parentPeerIds.indexOf(tuple.parentPeerId);
     if (index < 0) return;
     continuation.parentPeerIds.splice(index, 1);
+    const plan = operation.candidates[operation.cursor];
+    if (
+      operation.current?.connectionAttempt &&
+      plan &&
+      this.candidateOpportunityAvailable(operation.childPeerId, plan)
+    ) {
+      continuation.parentPeerIds.push(tuple.parentPeerId);
+    }
     this.debug("direct-convergence-advanced", {
       child: this.debugPeer(operation.childPeerId),
       parent: this.debugPeer(tuple.parentPeerId),
@@ -3844,7 +3955,8 @@ export class RoomRouteController<Resource = unknown> {
   ): boolean {
     return (
       this.candidateValid(operation.childPeerId, plan, attempt) &&
-      (!this.isAvailabilityOperation(operation.reason) ||
+      (attempt?.connectionAttempt !== undefined ||
+        !this.isAvailabilityOperation(operation.reason) ||
         this.candidateOpportunityAvailable(operation.childPeerId, plan))
     );
   }
@@ -4100,7 +4212,11 @@ export class RoomRouteController<Resource = unknown> {
       cursor: operation.cursor, deadlineAtMs: operation.deadlineAtMs,
       wakeAtMs: this.operationWakeAt(operation),
       current: operation.current ? { tuple: { ...operation.current.tuple }, revision: operation.current.revision,
-        connectionId: operation.current.connectionId } : undefined };
+        connectionId: operation.current.connectionId,
+        ...(operation.current.connectionAttempt
+          ? { connectionAttempt: { ...operation.current.connectionAttempt } }
+          : {}),
+      } : undefined };
   }
 
   private advanceExpiredDirectHeadStart(
@@ -4127,12 +4243,7 @@ export class RoomRouteController<Resource = unknown> {
       : null;
     if (operation.current) {
       this.noteRejection(operation.demandPeerId, "first-frame-timeout");
-      if (this.isAvailabilityOperation(operation.reason)) {
-        this.consumeCandidateOpportunity(
-          operation.childPeerId,
-          operation.candidates[operation.cursor]!,
-        );
-      }
+      this.consumeCurrentAvailabilityOpportunity(operation);
       released.push(...reservationResources(operation.current.reservation));
       this.advanceActiveRevision(operation);
       operation.current = undefined;

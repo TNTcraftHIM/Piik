@@ -72,7 +72,7 @@ topologies and makes a saved Site unavailable while another room source runs.
    WebRTC signaling contract. Native media currently covers the Host adapter;
     Viewer receive/relay follows the same boundary rather than adding a second
     participant or route protocol. A Native Viewer accepts only a negotiated
-    H.264/Opus offer, forwards encoded RTP into bounded local sources, and uses
+    H.264/VP8 and Opus offer, forwards encoded RTP into bounded local sources, and uses
     the existing Browser bridge for playback; compatible child edges reuse those
     sources. Unsupported media or a failed native bridge falls back to the
     existing Browser peer. One isolated

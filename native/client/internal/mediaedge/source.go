@@ -11,9 +11,10 @@ import (
 )
 
 const maxAccessUnitBytes = 4 * 1024 * 1024
-const h264ClockRate = 90_000
-const h264PacketMTU = 1200
+const videoClockRate = 90_000
+const videoPacketMTU = 1200
 const h264PayloadType = 102
+const vp8PayloadType = 96
 
 var ErrSourceCapacity = errors.New("native media source capacity is exhausted")
 var ErrInvalidVideoTimestamp = errors.New("native video timestamp is not monotonic")
@@ -21,6 +22,7 @@ var ErrInvalidVideoTimestamp = errors.New("native video timestamp is not monoton
 type Source struct {
 	engine          *Engine
 	track           *webrtc.TrackLocalStaticRTP
+	codec           string
 	packetizer      rtp.Packetizer
 	capacity        int
 	requestKeyFrame func()
@@ -42,14 +44,16 @@ type Source struct {
 	format             atomic.Uint64
 }
 
-func (source *Source) WriteH264(
+func (source *Source) Codec() string { return source.codec }
+
+func (source *Source) WriteVideo(
 	accessUnit []byte,
 	timestamp time.Duration,
 	duration time.Duration,
 ) error {
 	if len(accessUnit) == 0 || len(accessUnit) > maxAccessUnitBytes ||
 		timestamp < 0 || duration <= 0 {
-		return errors.New("native H264 access unit is invalid")
+		return errors.New("native video access unit is invalid")
 	}
 	source.writeMu.Lock()
 	defer source.writeMu.Unlock()
@@ -74,7 +78,7 @@ func (source *Source) WriteH264(
 		if timestamp <= source.lastTimestamp {
 			return ErrInvalidVideoTimestamp
 		}
-		ticksFloat := (timestamp-source.lastTimestamp).Seconds()*h264ClockRate +
+		ticksFloat := (timestamp-source.lastTimestamp).Seconds()*videoClockRate +
 			source.timestampRemainder
 		ticks := uint64(ticksFloat)
 		source.timestampRemainder = ticksFloat - float64(ticks)
@@ -85,7 +89,7 @@ func (source *Source) WriteH264(
 	source.lastTimestamp = timestamp
 	packets := source.packetizer.Packetize(accessUnit, 0)
 	if len(packets) == 0 {
-		return errors.New("native H264 access unit produced no RTP packets")
+		return errors.New("native video access unit produced no RTP packets")
 	}
 	source.frames.Add(1)
 	source.bytes.Add(uint64(len(accessUnit)))
@@ -96,12 +100,12 @@ func (source *Source) WriteH264(
 	return result
 }
 
-// WriteRTP forwards one already encoded H.264 packet without decoding or
+// WriteRTP forwards one already encoded video packet without decoding or
 // re-encoding it. TrackLocalStaticRTP rewrites the negotiated SSRC and payload
 // type independently for every bound edge.
 func (source *Source) WriteRTP(packet *rtp.Packet) error {
 	if packet == nil {
-		return errors.New("native H264 RTP packet is invalid")
+		return errors.New("native video RTP packet is invalid")
 	}
 	source.writeMu.Lock()
 	defer source.writeMu.Unlock()

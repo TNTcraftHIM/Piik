@@ -82,15 +82,15 @@ func (session *Session) AcceptOffer(
 	connectionID string,
 	offer webrtc.SessionDescription,
 	iceServers []webrtc.ICEServer,
-) (webrtc.SessionDescription, bool, error) {
+) (webrtc.SessionDescription, bool, string, error) {
 	if connectionID == "" || len(connectionID) > 256 {
-		return webrtc.SessionDescription{}, false, errors.New("native Viewer receiver identity is invalid")
+		return webrtc.SessionDescription{}, false, "", errors.New("native Viewer receiver identity is invalid")
 	}
 	session.mu.Lock()
 	closed := session.closed
 	session.mu.Unlock()
 	if closed {
-		return webrtc.SessionDescription{}, false, errors.New("native Viewer session is closed")
+		return webrtc.SessionDescription{}, false, "", errors.New("native Viewer session is closed")
 	}
 	session.CloseReceiver(connectionID)
 	receiver, answer, err := session.engine.NewReceiver(mediaedge.ReceiverOptions{
@@ -122,17 +122,17 @@ func (session *Session) AcceptOffer(
 		},
 	})
 	if err != nil {
-		return webrtc.SessionDescription{}, false, err
+		return webrtc.SessionDescription{}, false, "", err
 	}
 	session.mu.Lock()
 	if session.closed || session.receivers[connectionID] != nil {
 		session.mu.Unlock()
 		_ = receiver.Close()
-		return webrtc.SessionDescription{}, false, errors.New("native Viewer receiver is unavailable")
+		return webrtc.SessionDescription{}, false, "", errors.New("native Viewer receiver is unavailable")
 	}
 	session.receivers[connectionID] = receiver
 	session.mu.Unlock()
-	return answer, receiver.HasAudio(), nil
+	return answer, receiver.HasAudio(), receiver.Codec(), nil
 }
 
 func (session *Session) AddReceiverCandidate(

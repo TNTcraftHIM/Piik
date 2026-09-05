@@ -16,7 +16,7 @@ import (
 
 const (
 	captureStopTimeout = time.Second
-	maxPreviewBytes    = 48 * 1024
+	maxPreviewBytes    = 192 * 1024
 )
 
 type audioCaptureState struct {
@@ -34,6 +34,7 @@ type CaptureTarget struct {
 
 type VideoOptions struct {
 	Target       CaptureTarget
+	Codec        string
 	AdapterIndex uint32
 	EncoderIndex uint32
 	Profile      VideoProfile
@@ -75,10 +76,9 @@ func ListSources(parent context.Context, executable string) ([]CaptureTarget, er
 	ctx, cancel := context.WithTimeout(parent, probeTimeout)
 	defer cancel()
 	stdout := &boundedBuffer{limit: maxProbeOutputBytes}
-	stderr := &boundedBuffer{limit: maxProbeErrorBytes}
 	command := exec.CommandContext(ctx, executable, "--list")
 	command.Stdout = stdout
-	command.Stderr = io.MultiWriter(os.Stderr, stderr)
+	command.Stderr = &boundedBuffer{limit: maxProbeErrorBytes}
 	hideWindow(command)
 	if err := command.Run(); err != nil {
 		return nil, errors.New("native capture source list is unavailable")
@@ -102,7 +102,6 @@ func PreviewSource(parent context.Context, executable string, target CaptureTarg
 	ctx, cancel := context.WithTimeout(parent, probeTimeout)
 	defer cancel()
 	stdout := &boundedBuffer{limit: maxPreviewBytes}
-	stderr := &boundedBuffer{limit: maxProbeErrorBytes}
 	command := exec.CommandContext(ctx, executable,
 		"--preview",
 		target.Kind,
@@ -111,7 +110,7 @@ func PreviewSource(parent context.Context, executable string, target CaptureTarg
 		zeroWhenEmpty(target.CreationTime),
 	)
 	command.Stdout = stdout
-	command.Stderr = io.MultiWriter(os.Stderr, stderr)
+	command.Stderr = &boundedBuffer{limit: maxProbeErrorBytes}
 	hideWindow(command)
 	if err := command.Run(); err != nil {
 		return nil, errors.New("native capture preview is unavailable")
@@ -125,6 +124,7 @@ func PreviewSource(parent context.Context, executable string, target CaptureTarg
 
 func StartVideo(parent context.Context, executable string, options VideoOptions) (*Stream, error) {
 	if !validCaptureTarget(options.Target) || !options.Profile.Valid() ||
+		(options.Codec != "auto" && options.Codec != "h264" && options.Codec != "vp8") ||
 		len(options.RestoreToken) > 4096 || !utf8.ValidString(options.RestoreToken) ||
 		strings.ContainsRune(options.RestoreToken, 0) {
 		return nil, errors.New("native video target is invalid")
@@ -153,6 +153,8 @@ func StartVideo(parent context.Context, executable string, options VideoOptions)
 		strconv.FormatUint(uint64(options.Profile.Bitrate), 10),
 		"--preference",
 		options.Profile.Preference,
+		"--codec",
+		options.Codec,
 		"--protocol-v4",
 	}, environment)
 }
@@ -287,7 +289,7 @@ func startStreamWithEnvironment(
 		cancel()
 		return nil, err
 	}
-	command.Stderr = io.MultiWriter(os.Stderr, &boundedBuffer{limit: maxProbeErrorBytes})
+	command.Stderr = &boundedBuffer{limit: maxProbeErrorBytes}
 	hideWindow(command)
 	if err = command.Start(); err != nil {
 		cancel()

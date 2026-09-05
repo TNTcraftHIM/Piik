@@ -27,6 +27,11 @@ func TestReadFrameUsesTheBoundedVersionedEnvelope(t *testing.T) {
 		!bytes.Equal(frame.Data, payload) {
 		t.Fatalf("frame = %+v", frame)
 	}
+	header[5] = byte(FrameVP8)
+	frame, err = readFrame(bytes.NewReader(append(header, payload...)))
+	if err != nil || frame.Kind != FrameVP8 || !frame.KeyFrame || !bytes.Equal(frame.Data, payload) {
+		t.Fatalf("VP8 frame = %+v, %v", frame, err)
+	}
 }
 
 func TestReadFrameRejectsInvalidKindsFlagsAndBounds(t *testing.T) {

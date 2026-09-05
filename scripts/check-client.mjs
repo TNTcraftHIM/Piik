@@ -162,6 +162,7 @@ function checkPlatformCapture() {
     probe.platform !== expectedPlatform ||
     typeof probe.platformBuild !== "string" ||
     typeof probe.videoCapture !== "boolean" ||
+    typeof probe.softwareVP8 !== "boolean" ||
     typeof probe.processAudio !== "boolean" ||
     typeof probe.systemAudio !== "boolean" ||
     !Array.isArray(probe.adapters) ||

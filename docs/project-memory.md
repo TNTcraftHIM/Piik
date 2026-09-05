@@ -13,7 +13,7 @@ level loopback capability service, supervises Local Node when selected, and owns
 the explicit native media path chosen in the same Web UI. Room source and media
 implementation are independent: a topology may mix Browser and Native peers
 without changing participant, signaling, capacity, or route identity. Native
-Host and H.264 Viewer receive/relay adapters share the same Pion media edge;
+Host and H.264/VP8 Viewer receive/relay adapters share the same Pion media edge;
 unsupported Viewer media falls back to Browser. A Client-assisted Browser Host
 can feed that fanout through one local H.264 sender while quality convergence is
 enabled; losing the Client preserves Browser capture. Local remains

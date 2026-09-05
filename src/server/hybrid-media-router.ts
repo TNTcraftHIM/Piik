@@ -1085,6 +1085,7 @@ export class HybridMediaRouter {
       sfuEnabled: Boolean(this.options.sfuFallback) && routePolicy?.peerOnly !== true,
       qualityConvergenceEnabled:
         routePolicy?.topologyOptimization === true,
+      natPredictionEnabled: routePolicy?.natPrediction === true,
     });
     room.controller.upsertParticipant({
       peerId: host.peerId,
@@ -2265,6 +2266,9 @@ function preparedRouteCandidate(
     connectionId,
     transport: tuple.kind === "peer" ? tuple.transport : "sfu",
     qualityProbe: operation.reason === "quality-convergence",
+    ...(operation.current?.connectionAttempt
+      ? { connectionAttempt: operation.current.connectionAttempt }
+      : {}),
   };
 }
 

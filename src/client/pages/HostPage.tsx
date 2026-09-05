@@ -585,6 +585,7 @@ export function HostPage({
   const nativeClientCloseCleanupRef = useRef<(() => void) | null>(null);
   const nativeModeRef = useRef(false);
   const nativeSourceRequestRef = useRef<object | null>(null);
+  const nativePreviewTailRef = useRef<Promise<void>>(Promise.resolve());
   const nativeSourcePathRef = useRef<NativeCapturePath | null>(null);
   const nativeShareCleanupRef = useRef<Promise<void>>(Promise.resolve());
 
@@ -615,7 +616,7 @@ export function HostPage({
     [mediaViewers],
   );
   const displayedVideoCodecMode =
-    videoCodecMode === "auto" && phase === "live" && resolvedVideoCodec
+    phase === "live" && resolvedVideoCodec
       ? resolvedVideoCodec
       : videoCodecMode;
 
@@ -1208,6 +1209,8 @@ export function HostPage({
     let bridge: NativeMediaBridge | null = null;
     let shareStarted = false;
     try {
+      await nativePreviewTailRef.current;
+      if (!isCurrentShare(generation, shareGeneration)) return null;
       const started = await client.startShare({
         shareId: shareGeneration,
         source: target,
@@ -1216,8 +1219,10 @@ export function HostPage({
         encoderIndex: path.encoderIndex,
         edgeCapacity: MAX_ENDPOINT_MEDIA_CHILDREN,
         profile: qualitySettingsRef.current,
+        codec: videoCodecModeRef.current,
       });
       shareStarted = true;
+      videoCodecRef.current = manualVideoCodecPreference(started.codec);
       bridge = new NativeMediaBridge(
         shareGeneration,
         client,
@@ -1340,7 +1345,8 @@ export function HostPage({
     if (
       !client ||
       !client.health.nativeMedia.video ||
-      !client.health.nativeMedia.hardwareH264
+      (!client.health.nativeMedia.hardwareH264 &&
+        !client.health.nativeMedia.softwareVP8)
     ) {
       setNativeSources({ kind: "unavailable" });
       return;
@@ -1350,7 +1356,11 @@ export function HostPage({
         client.captureOptions(),
         client.sources(),
       ]);
-      const path = defaultNativeCapturePath(adapters);
+      const path = defaultNativeCapturePath(
+        adapters,
+        nativeModeRef.current ? videoCodecRef.current.primary : videoCodecModeRef.current,
+        client.health.nativeMedia.softwareVP8,
+      );
       if (nativeSourceRequestRef.current !== request) {
         return;
       }
@@ -1431,15 +1441,26 @@ export function HostPage({
 
   async function loadNativeSourcePreview(
     target: NativeCaptureTarget,
+    signal?: AbortSignal,
   ): Promise<string | null> {
     const client = nativeClientRef.current;
-    if (!client || nativeSources?.kind !== "ready") return null;
-    try {
-      const preview = await client.sourcePreview(target);
-      return nativeClientRef.current === client ? preview : null;
-    } catch {
-      return null;
-    }
+    const request = nativeSourceRequestRef.current;
+    if (!client || !request || nativeSources?.kind !== "ready") return null;
+    const owns = () => !signal?.aborted &&
+      nativeSourceRequestRef.current === request &&
+      nativeClientRef.current === client;
+    // Keep thumbnails from filling the same control queue used to start media.
+    const preview = nativePreviewTailRef.current.then(async () => {
+      if (!owns()) return null;
+      try {
+        const value = await client.sourcePreview(target);
+        return owns() ? value : null;
+      } catch {
+        return null;
+      }
+    });
+    nativePreviewTailRef.current = preview.then(() => undefined);
+    return preview;
   }
 
   function startNativeShareFromPicker(
@@ -1896,6 +1917,7 @@ export function HostPage({
                 input.natPredictionEnabled,
                 nativeClient,
                 events,
+                videoCodecRef.current.primary,
                 nativeMediaIngressRef.current?.source,
               );
             }
@@ -2000,6 +2022,7 @@ export function HostPage({
           routePolicyRef.current.natPrediction,
           nativeClient,
           peerEvents,
+          videoCodecRef.current.primary,
           nativeMediaIngressRef.current?.source,
         )
       : new HostPeer(
@@ -2442,7 +2465,6 @@ export function HostPage({
         setDetails(
           nativeCaptureDetails(qualitySettingsRef.current, captured),
         );
-        videoCodecRef.current = manualVideoCodecPreference("h264");
       } else {
         setDetails(captureDetails(captured));
         videoCodecRef.current = await resolveStreamVideoCodec(captured);
@@ -2682,6 +2704,12 @@ export function HostPage({
     setSwitchingSource(true);
     setNotice(null);
     try {
+      await nativePreviewTailRef.current;
+      if (
+        !isCurrentGeneration(generation) ||
+        sourceSwitchRef.current !== token ||
+        nativeClientRef.current !== client
+      ) return;
       await client.replaceShareSource(
         shareGeneration,
         target,

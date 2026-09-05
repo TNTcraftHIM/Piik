@@ -24,6 +24,7 @@ export const nativeHealthSchema = z
         processAudio: z.boolean(),
         systemAudio: z.boolean(),
         hardwareH264: z.boolean(),
+        softwareVP8: z.boolean(),
       })
       .strict(),
   })
@@ -95,6 +96,9 @@ const responseBase = {
   id: opaqueIdentifierSchema,
 };
 
+const nativeVideoCodecSchema = z.enum(["h264", "vp8"]);
+export type NativeVideoCodec = z.infer<typeof nativeVideoCodecSchema>;
+
 export const readyResponseSchema = z
   .object({ ...responseBase, type: z.literal("ready") })
   .strict();
@@ -121,7 +125,7 @@ export const sourcePreviewResponseSchema = z
     type: z.literal("source-preview"),
     sourceKey: z.string().min(8).max(256),
     mime: z.literal("image/bmp"),
-    data: z.string().max(64 * 1024),
+    data: z.string().max(256 * 1024),
   })
   .strict();
 export const shareStartedResponseSchema = z
@@ -130,6 +134,7 @@ export const shareStartedResponseSchema = z
     type: z.literal("share-started"),
     shareId: opaqueIdentifierSchema,
     audio: z.boolean(),
+    codec: nativeVideoCodecSchema,
   })
   .strict();
 export const shareUpdatedResponseSchema = z
@@ -163,6 +168,7 @@ export const receiveAnswerResponseSchema = z
     connectionId: opaqueIdentifierSchema,
     sdp: z.string().min(1).max(48 * 1024),
     audio: z.boolean(),
+    codec: nativeVideoCodecSchema,
   })
   .strict();
 

@@ -61,6 +61,7 @@ private struct Probe: Codable {
     let videoCapture: Bool
     let processAudio: Bool
     let systemAudio: Bool
+    let softwareVP8 = false
     let adapters: [AdapterProbe]
 }
 
@@ -91,6 +92,7 @@ private struct CaptureTarget: Codable {
 
 private struct StartingStatus: Codable {
     let state = "starting"
+    let codec = "h264"
     let hardwareOnly = true
     let adapterIndex: UInt32 = 0
     let adapterName = "Apple VideoToolbox"
@@ -102,6 +104,7 @@ private struct StartingStatus: Codable {
 
 private struct ActiveStatus: Codable {
     let state = "active"
+    let codec = "h264"
     let hardwareOnly = true
     let profileLevelId: String
     let width: Int
@@ -1011,14 +1014,16 @@ private func captureFilter(
 }
 
 private func videoProfile(_ arguments: [String]) throws -> VideoProfile {
-    guard arguments.count == 21,
+    guard arguments.count == 23,
           arguments[10] == "--width", let width = Int(arguments[11]),
           arguments[12] == "--height", let height = Int(arguments[13]),
           arguments[14] == "--fps", let frameRate = Int32(arguments[15]),
           arguments[16] == "--bitrate", let bitrate = Int(arguments[17]),
           arguments[18] == "--preference",
           let preference = DegradationPreference(rawValue: arguments[19]),
-          arguments[20] == "--protocol-v4" else {
+          arguments[20] == "--codec",
+          ["auto", "h264"].contains(arguments[21]),
+          arguments[22] == "--protocol-v4" else {
         throw CaptureFailure(description: "invalid video profile arguments")
     }
     let validResolution =
@@ -1040,7 +1045,7 @@ private func videoProfile(_ arguments: [String]) throws -> VideoProfile {
 }
 
 private func capture(_ arguments: [String]) async throws {
-    guard arguments.count == 21,
+    guard arguments.count == 23,
           arguments[1] == "--capture-video",
           let sourceID = UInt32(arguments[3]), sourceID > 0,
           let pid = UInt32(arguments[4]),

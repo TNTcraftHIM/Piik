@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-09-04
+Last reviewed: 2026-09-05
 
 Only **Now** is executable. Observations, old branches, experiments, and parked
 topics are not implementation authority.
@@ -14,6 +14,25 @@ topics are not implementation authority.
    through Native fanout, live controls and Client-exit recovery before merging.
    Confirm weak-path convergence with effective media throttling; a DevTools
    command succeeding without limiting RTP is not a weak-path pass.
+3. **Capture startup and controls.** Diagnose Windows 10 selecting an entire
+   display failing to start while window capture succeeds; do not conflate it
+   with exclusive-fullscreen game capture. Current Windows 11 checks cover
+   display startup, minimized-source recovery and live presets. Verify remaining
+   game HWND/device-loss behavior and whether reported 4:3 stretching affects
+   the source or only its encoded presentation. Compare bitrate changes against
+   same-content delivery before changing encoder settings.
+4. **NAT acquisition and release acceptance.** Validate the implemented bounded
+   three-attempt owner on restricted Browser/Native pairs; a new connection does
+   not guarantee a different NAT mapping. The added prepare progress field is
+   incompatible with old strict pages. Obtain owner approval for the coordinated
+   Web/Server/Client update and its active-share impact before merging/deploying;
+   do not mix the new field into an ongoing old-version share.
+5. **Native codec acceptance.** Windows Native VP8 and Auto-selected H264 now
+   pass real Browser playback, live presets, paused changes and source-switch
+   checks while preserving the selected codec. Validate GPU-heavy Auto selection
+   and the tight four-second probe/five-second startup budget on other hardware;
+   do not claim throughput screening guarantees perceptual quality or later
+   load. Other native platform capture encoders remain H264.
 
 ## Parked Product Work
 
@@ -80,10 +99,9 @@ topics are not implementation authority.
     participant-wide NAT label, hard candidate skip, route score, or SFU
     preference. Validate selected predicted paths and bounded resource impact
     plus one selected Native mapped-port path that fails with STUN alone before
-    recommending either as a default for other deployments. Direct
-    convergence currently consumes each deferred Peer parent once; add no
-    cross-generation retry budget until field evidence proves that fresh ICE
-    generations expose a repeatable prediction opportunity.
+    recommending either as a default for other deployments. Measure benefit of
+    the implemented three-attempt budget before increasing it or claiming that
+    independent connection attempts are independent NAT mappings.
 14. **Unresolved route-state ownership claims.** Reopen lower-revision
     reauthentication, active SFU failure during an unrelated prepare, and
     multi-child relay-evidence ownership only from an exact current-wire
@@ -109,9 +127,12 @@ topics are not implementation authority.
     [consolidation draft](./research/server-consolidation.md) identifies the two
     preparatory simplifications, the routing-mode product choice, and the shared
     module and concurrency model; implementation follows Client acceptance.
-
-## Decision Needed
-
-- Choose the repository and distribution license before public release or
-  package distribution. GPL/AGPL implementations remain research-only until
-  then.
+17. **Opt-in diagnostics.** Replace ad hoc console logging with an explicit
+    Client/Server debug option and bounded diagnostic export. Include revision,
+    runtime state and sanitized capture/connection events; exclude credentials,
+    media and raw process memory by default. A compressed feedback bundle needs
+    deliberate collection and retention, not automatic uploads.
+18. **Client console presentation.** Keep ordinary output to version, current
+    mode, live entry links and exit action. A localized, event-driven status
+    panel and WebUI language synchronization remain deferred; no incomplete
+    presentation endpoint or notification ships in this candidate.

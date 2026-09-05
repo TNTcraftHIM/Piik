@@ -435,6 +435,7 @@ async function browserMediaGate(input: {
     const connectionId = "edge_gate_0001";
     const started = await request("start-share", {
       shareId,
+      codec: "h264",
       source: target,
       audio: result.audioAvailable,
       adapterIndex: adapter.index,
@@ -819,6 +820,8 @@ async function main(): Promise<void> {
       "3000000",
       "--preference",
       "balanced",
+      "--codec",
+      "h264",
       "--protocol-v4",
     ], { stdio: "pipe", windowsHide: true });
     capture.stderr.resume();

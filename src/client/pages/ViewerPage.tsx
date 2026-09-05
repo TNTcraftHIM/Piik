@@ -14,6 +14,7 @@ import {
   type IceConfig,
   type ParticipantPresenceEntry,
   type ParticipantRouteAssignment,
+  type PreparedRouteCandidate,
   type ServerMessage,
   type RoutePolicy,
 } from "../../shared/protocol";
@@ -299,6 +300,7 @@ export function ViewerPage({
     revision: number;
     phase: "prepare" | "active";
     upstream: ParticipantRouteAssignment["upstream"];
+    connectionAttempt?: PreparedRouteCandidate["connectionAttempt"];
   } | null>(null);
   const [relaySnapshot, setRelaySnapshot] = useState<PeerSnapshot | null>(null);
   const [relayChildEvidence, setRelayChildEvidence] =
@@ -570,11 +572,12 @@ export function ViewerPage({
     revision: number,
     upstream: ParticipantRouteAssignment["upstream"],
     phase: "prepare" | "active" = "active",
+    connectionAttempt?: PreparedRouteCandidate["connectionAttempt"],
   ): void {
     setAssignedRoute((current) =>
       current && revision < current.revision
         ? current
-        : { revision, phase, upstream },
+        : { revision, phase, upstream, connectionAttempt },
     );
     dispatchPresentation({
       type: "route",
@@ -931,6 +934,7 @@ export function ViewerPage({
                     currentRoutePolicy.natPrediction,
                     source.client,
                     peerEvents,
+                    source.codec,
                     {
                       connectionId: source.connectionId,
                       format: () => {
@@ -1833,6 +1837,7 @@ export function ViewerPage({
                   message.revision,
                   message.assignment.upstream,
                   "prepare",
+                  message.candidate.connectionAttempt,
                 );
               }
             }
@@ -2451,6 +2456,20 @@ export function ViewerPage({
     presentation.stage,
     assignedRouteKind,
   );
+  const connectionAttempt = presentation.stage === "preparing-p2p" &&
+    assignedRoute?.phase === "prepare" &&
+    assignedRoute.revision === presentationState.revision
+      ? assignedRoute.connectionAttempt
+      : undefined;
+  const stageMessage = connectionAttempt
+    ? t("viewer.msg.connectionAttempt", {
+        current: String(connectionAttempt.current),
+        total: String(connectionAttempt.total),
+      })
+    : t(presentation.messageKey);
+  const connectionProgress = connectionAttempt
+    ? `${connectionAttempt.current}/${connectionAttempt.total}`
+    : undefined;
   const noticeVisual = presentation.noticeKey
     ? viewerNoticeVisual(presentation.noticeKey)
     : null;
@@ -2516,7 +2535,7 @@ export function ViewerPage({
 .lr-tv-screen:has(:focus-visible) { outline: 3px solid var(--action); outline-offset: 2px; }
 `}</style>
       <AppHeader
-        led={<LedStrip state={ledState} label={t(presentation.messageKey)} />}
+        led={<LedStrip state={ledState} label={stageMessage} />}
       />
       <main className={`lr-room${theaterMode ? " is-theater" : ""}`}>
         <h1 className="visually-hidden">
@@ -2563,7 +2582,8 @@ export function ViewerPage({
                 icon={overlayGlyph.icon}
                 transition={overlayGlyph.spin}
                 comic={overlayComic}
-                message={t(presentation.messageKey)}
+                message={stageMessage}
+                progress={connectionProgress}
               />
             )}
             {presentation.overlay === "status" &&
@@ -2586,7 +2606,8 @@ export function ViewerPage({
                   dim
                   icon={overlayGlyph.icon}
                   comic={overlayComic}
-                  message={t(presentation.messageKey)}
+                  message={stageMessage}
+                  progress={connectionProgress}
                   spin={overlayGlyph.spin}
                 />
               )}

@@ -35,6 +35,17 @@ var h264Capability = webrtc.RTPCodecCapability{
 	},
 }
 
+var vp8Capability = webrtc.RTPCodecCapability{
+	MimeType:     webrtc.MimeTypeVP8,
+	ClockRate:    videoClockRate,
+	RTCPFeedback: h264Capability.RTCPFeedback,
+}
+
+var videoCodecs = map[string]webrtc.RTPCodecParameters{
+	"h264": {RTPCodecCapability: h264Capability, PayloadType: h264PayloadType},
+	"vp8":  {RTPCodecCapability: vp8Capability, PayloadType: vp8PayloadType},
+}
+
 type EngineOptions struct {
 	BindAddress     string
 	IncludeLoopback bool
@@ -80,12 +91,11 @@ func NewEngine(options EngineOptions) (*Engine, error) {
 	settingEngine.SetIncludeLoopbackCandidate(options.IncludeLoopback)
 
 	mediaEngine := &webrtc.MediaEngine{}
-	if err = mediaEngine.RegisterCodec(webrtc.RTPCodecParameters{
-		RTPCodecCapability: h264Capability,
-		PayloadType:        h264PayloadType,
-	}, webrtc.RTPCodecTypeVideo); err != nil {
-		_ = mux.Close()
-		return nil, err
+	for _, codec := range []string{"h264", "vp8"} {
+		if err = mediaEngine.RegisterCodec(videoCodecs[codec], webrtc.RTPCodecTypeVideo); err != nil {
+			_ = mux.Close()
+			return nil, err
+		}
 	}
 	if err = mediaEngine.RegisterCodec(webrtc.RTPCodecParameters{
 		RTPCodecCapability: opusCapability,
@@ -222,7 +232,11 @@ func (engine *Engine) ListenAddress() string {
 	return engine.listenAddress
 }
 
-func (engine *Engine) NewSource(capacity int, requestKeyFrame func()) (*Source, error) {
+func (engine *Engine) NewSource(codec string, capacity int, requestKeyFrame func()) (*Source, error) {
+	parameters, supported := videoCodecs[codec]
+	if !supported {
+		return nil, errors.New("native video codec is unsupported")
+	}
 	if capacity < 1 || capacity > 4 {
 		return nil, errors.New("native media source capacity is outside the route bound")
 	}
@@ -232,23 +246,28 @@ func (engine *Engine) NewSource(capacity int, requestKeyFrame func()) (*Source, 
 		return nil, errors.New("native media engine is closed")
 	}
 	track, err := webrtc.NewTrackLocalStaticRTP(
-		h264Capability,
+		parameters.RTPCodecCapability,
 		"screen",
 		"screener-native",
 	)
 	if err != nil {
 		return nil, err
 	}
+	var payloader rtp.Payloader = &codecs.H264Payloader{}
+	if codec == "vp8" {
+		payloader = &codecs.VP8Payloader{EnablePictureID: true}
+	}
 	return &Source{
 		engine: engine,
 		track:  track,
+		codec:  codec,
 		packetizer: rtp.NewPacketizer(
-			h264PacketMTU,
-			h264PayloadType,
+			videoPacketMTU,
+			uint8(parameters.PayloadType),
 			0,
-			&codecs.H264Payloader{},
+			payloader,
 			rtp.NewRandomSequencer(),
-			h264ClockRate,
+			videoClockRate,
 		),
 		capacity:        capacity,
 		requestKeyFrame: requestKeyFrame,

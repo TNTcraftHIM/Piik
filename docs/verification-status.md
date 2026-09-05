@@ -165,6 +165,14 @@ revision mismatch remains fail-closed before a listener starts.
 
 ## Interpretation Rules
 
+The current Windows Native candidate additionally passed manual VP8 and Auto-
+selected H264 playback, with actual Host/Viewer RTP codec checks across live
+presets, paused changes and source replacement. A three-attempt NAT acquisition
+has deterministic controller/signaling coverage, not a field success-rate
+claim. The completed checks do not resolve the reported Windows 10 monitor
+startup or game-specific aspect/window-replacement issues. The matching bundle
+must be accepted before any coordinated private-wire deployment.
+
 - Configuration, unit tests, loopback, and synthetic signaling prove invariants,
   not target-network or device behavior.
 - An automated/package gate is evidence from its scripted runner; a physical
