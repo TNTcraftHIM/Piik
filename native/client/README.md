@@ -70,9 +70,13 @@ Host page in a URL fragment; the page uses the existing SiteAccess endpoint and
 removes the fragment before continuing. Viewer invitations keep using the
 existing room-scoped grant.
 
-Press Enter in the Client console to end Local rooms and stop the bundled
-server and any temporary public link. A Site-loaded Browser tab does not own the
-Client process.
+The terminal starts in visual mode and shows the current mode, working entry
+links and startup state. Its language follows the launcher and Client-enabled
+pages; a block television uses the terminal foreground with golden sparkles,
+falling back to ASCII without color support or in very narrow windows.
+Press `o` to reopen the Browser, or `q` / Ctrl+C to end Local
+rooms and stop the bundled server and temporary public link. Plain-text output
+uses Ctrl+C. A Site-loaded Browser tab does not own the Client process.
 
 For one-link Internet sharing, open the Client launcher, choose **Public invite**,
 create a room in the opened Browser, and send its normal invitation link. The

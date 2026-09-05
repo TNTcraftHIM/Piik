@@ -10,7 +10,7 @@ topics are not implementation authority.
 1. **Client physical acceptance.** Physically validate macOS and Linux
    capture/audio/recovery, a decoded public-link Browser Viewer, and a NAT case
    rescued beyond ordinary STUN, plus one mixed Browser/Native Viewer relay.
-2. **Client owner acceptance.** Review the current package's Browser capture
+2. **Client owner acceptance.** Review the localized terminal, Browser capture
    through Native fanout, live controls and Client-exit recovery before merging.
    Confirm weak-path convergence with effective media throttling; a DevTools
    command succeeding without limiting RTP is not a weak-path pass.
@@ -132,7 +132,3 @@ topics are not implementation authority.
     runtime state and sanitized capture/connection events; exclude credentials,
     media and raw process memory by default. A compressed feedback bundle needs
     deliberate collection and retention, not automatic uploads.
-18. **Client console presentation.** Keep ordinary output to version, current
-    mode, live entry links and exit action. A localized, event-driven status
-    panel and WebUI language synchronization remain deferred; no incomplete
-    presentation endpoint or notification ships in this candidate.

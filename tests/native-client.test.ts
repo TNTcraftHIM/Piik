@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { NativeClient } from "../src/client/native/client";
+import { NativeClient, notifyNativePresentation } from "../src/client/native/client";
 
 import {
   nativeEventSchema,
@@ -18,6 +18,32 @@ afterEach(() => {
 });
 
 describe("native Client private wire", () => {
+  it("notifies only the current presentation request after Client discovery", async () => {
+    vi.stubGlobal("window", {
+      setTimeout: globalThis.setTimeout,
+      clearTimeout: globalThis.clearTimeout,
+    });
+    const fetcher = vi.fn(async (url: string) => url.endsWith("/health")
+      ? new Response(JSON.stringify({
+          protocol: 8, service: "screener-client", port: 39_721,
+          instanceToken: "a".repeat(43),
+          nativeMedia: {video: true, processAudio: false, systemAudio: true, hardwareH264: true, softwareVP8: true},
+        }), {status: 200})
+      : new Response(null, {status: 204}));
+    vi.stubGlobal("fetch", fetcher);
+    const stale = new AbortController();
+    const staleNotification = notifyNativePresentation("zh", stale.signal);
+    stale.abort();
+    await staleNotification;
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(fetcher).toHaveBeenCalledWith("http://127.0.0.1:39721/health", expect.anything());
+    const current = new AbortController();
+    await notifyNativePresentation("vis", current.signal);
+    expect(fetcher).toHaveBeenLastCalledWith("http://127.0.0.1:39721/presentation", expect.objectContaining({
+      method: "POST", body: JSON.stringify({language: "vis"}), signal: current.signal,
+    }));
+  });
+
   it("notifies the owner once on an unexpected close and stays silent on cleanup", async () => {
     const sockets: FakeWebSocket[] = [];
     const token = "a".repeat(43);

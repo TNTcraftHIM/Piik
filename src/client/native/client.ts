@@ -89,6 +89,22 @@ export async function discoverNativeHealth(): Promise<NativeHealth | null> {
   return null;
 }
 
+export async function notifyNativePresentation(
+  language: "zh" | "en" | "vis",
+  signal: AbortSignal,
+): Promise<void> {
+  if (signal.aborted) return;
+  const health = await discoverNativeHealth();
+  if (!health || signal.aborted) return;
+  await fetch(`http://127.0.0.1:${health.port}/presentation`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ language }),
+    signal,
+    targetAddressSpace: "loopback",
+  } as RequestInit);
+}
+
 export class NativeClient {
   private readonly pending = new Map<string, PendingRequest>();
   private readonly listeners = new Set<(event: NativeClientEvent) => void>();

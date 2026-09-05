@@ -74,6 +74,17 @@ function readableError(error: unknown, t: (key: "gate.connectFailed") => string)
 }
 
 export function App() {
+  const { lang, vis } = useCopy();
+  useEffect(() => {
+    if (appRoute.kind !== "client" && !clientLaunchBootstrap?.launchedByClient) return;
+    const controller = new AbortController();
+    void import("./native/client")
+      .then(({ notifyNativePresentation }) =>
+        notifyNativePresentation(vis ? "vis" : lang, controller.signal))
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [lang, vis]);
+
   return (
     <Suspense fallback={<RouteLoader />}>
       <AppRoute />

@@ -56,7 +56,7 @@ const MODES: Array<{
 ];
 
 export function ClientLauncherPage() {
-  const { vis, t } = useCopy();
+  const { lang, vis, t } = useCopy();
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
   const [mode, setMode] = useState<ClientMode>("local");
@@ -103,6 +103,7 @@ export function ClientLauncherPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           mode,
+          language: vis ? "vis" : lang,
           ...(mode === "site" ? { site } : { localAccessPassword }),
         }),
       });

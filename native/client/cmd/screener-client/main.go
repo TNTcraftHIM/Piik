@@ -32,14 +32,18 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	go func() {
-		var input [1]byte
-		if count, _ := os.Stdin.Read(input[:]); count > 0 {
-			stop()
-		}
-	}()
+	if options.DisableBrowser {
+		go func() {
+			var input [1]byte
+			if count, _ := os.Stdin.Read(input[:]); count > 0 {
+				stop()
+			}
+		}()
+	}
 	if err := clientapp.Run(ctx, options); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		if options.DisableBrowser {
+			fmt.Fprintln(os.Stderr, err)
+		}
 		os.Exit(1)
 	}
 }

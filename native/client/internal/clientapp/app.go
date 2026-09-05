@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -45,9 +46,17 @@ type Options struct {
 	CaptureProcess string
 	TunnelProcess  string
 	Ready          func(string)
+	console        *clientConsole
 }
 
-func Run(ctx context.Context, options Options) error {
+func Run(ctx context.Context, options Options) (returnedErr error) {
+	ctx, cancel := context.WithCancel(ctx)
+	options.console = newClientConsole(cancel, options.DisableBrowser)
+	defer func() {
+		cancel()
+		returnedErr = errors.Join(returnedErr, options.console.finish(returnedErr))
+	}()
+	options.console.show(consoleView{state: "starting"})
 	if err := validateMode(options); err != nil {
 		return err
 	}
@@ -77,13 +86,16 @@ func Run(ctx context.Context, options Options) error {
 		AllowedOrigins: clientOrigins(config.Site, options.Port),
 		NativeMedia:    nativeMedia.capabilities,
 		NewControl:     nativeMedia.controlFactory(),
+		Presentation:   options.console.setLanguage,
 	})
 	if err != nil {
 		return errors.New("Screener Client could not start")
 	}
 	defer client.Close()
-	if err = printEndpoint(client.Endpoint()); err != nil {
-		return err
+	if options.console.machine {
+		if err = printEndpoint(client.Endpoint()); err != nil {
+			return err
+		}
 	}
 	if !explicitMode(options) {
 		return runLauncher(ctx, options, configPath, config, client)
@@ -129,7 +141,15 @@ func runLauncher(
 		return err
 	}
 	defer launch.Close()
-	fmt.Printf("One-time Screener Client setup: %s\n", launch.URL())
+	launchAddress, err := url.Parse(launch.URL())
+	if err != nil {
+		return err
+	}
+	client.SetAllowedOrigins(append(
+		clientOrigins(config.Site, options.Port),
+		launchAddress.Scheme+"://"+launchAddress.Host,
+	))
+	options.console.show(consoleView{state: "setup", entry: launch.URL()})
 	if err = browser.Open(launch.URL()); err != nil {
 		return errors.New("Screener Client could not open its launcher")
 	}
@@ -145,6 +165,7 @@ func runLauncher(
 		}
 		return nil
 	}
+	options.console.setLanguage(selection.Language)
 	if selection.Mode == launcher.ModeSite {
 		config.Site = selection.Site
 	} else {
@@ -162,18 +183,25 @@ func runLauncher(
 	options.DisableBrowser = true
 	ready := make(chan string, 1)
 	options.Ready = func(target string) { ready <- target }
-	runtimeDone := make(chan error, 1)
+	runtimeContext, cancelRuntime := context.WithCancel(ctx)
+	runtimeDone := make(chan struct{})
+	var runtimeErr error
 	go func() {
-		runtimeDone <- runConfigured(ctx, options, config, client)
+		runtimeErr = runConfigured(runtimeContext, options, config, client)
+		close(runtimeDone)
+	}()
+	defer func() {
+		cancelRuntime()
+		<-runtimeDone
 	}()
 
 	select {
 	case target := <-ready:
 		launch.SetResult(target, nil)
-	case err = <-runtimeDone:
-		launch.SetResult("", err)
+	case <-runtimeDone:
+		launch.SetResult("", runtimeErr)
 		<-launch.Handled()
-		return err
+		return runtimeErr
 	case <-ctx.Done():
 		launch.SetResult("", ctx.Err())
 		return nil
@@ -182,15 +210,14 @@ func runLauncher(
 	select {
 	case <-launch.Handled():
 		_ = launch.Close()
-		fmt.Println("Setup complete. Continue in the opened Browser; press Enter to stop Screener Client.")
-	case err = <-runtimeDone:
-		return err
+	case <-runtimeDone:
+		return runtimeErr
 	case <-ctx.Done():
 		return nil
 	}
 	select {
-	case err = <-runtimeDone:
-		return err
+	case <-runtimeDone:
+		return runtimeErr
 	case <-ctx.Done():
 		return nil
 	}
@@ -223,14 +250,21 @@ func runSite(ctx context.Context, site string, options Options,
 	client *loopback.Server,
 ) error {
 	var err error
-	fmt.Printf("Screener Site: %s\n", site)
+	launchURL := clientLaunchURL(site)
+	view := consoleView{mode: "site", state: "starting", entry: launchURL}
+	options.console.show(view)
+	if options.console.machine {
+		fmt.Printf("Screener Site: %s\n", site)
+	}
 	if !options.DisableBrowser {
-		if err = browser.Open(clientLaunchURL(site)); err != nil {
+		if err = browser.Open(launchURL); err != nil {
 			return errors.New("Screener Client could not open the Site")
 		}
 	} else if options.Ready != nil {
-		options.Ready(clientLaunchURL(site))
+		options.Ready(launchURL)
 	}
+	view.state = "ready"
+	options.console.show(view)
 	if err = <-client.Done(); err != nil {
 		return errors.New("Screener Client stopped unexpectedly")
 	}
@@ -240,6 +274,11 @@ func runSite(ctx context.Context, site string, options Options,
 func runLocal(ctx context.Context, options Options, config clientconfig.Config,
 	client *loopback.Server,
 ) error {
+	view := consoleView{mode: "local", state: "starting", protected: config.LocalAccessPassword != ""}
+	if options.Link {
+		view.mode = "link"
+	}
+	options.console.show(view)
 	addresses, err := lan.Addresses()
 	if err != nil {
 		return err
@@ -277,6 +316,10 @@ func runLocal(ctx context.Context, options Options, config clientconfig.Config,
 			publicNATPredictionSTUNURLB,
 		}
 	}
+	var stdout, stderr io.Writer = os.Stdout, os.Stderr
+	if !options.console.machine {
+		stdout, stderr = io.Discard, options.console.logWriter()
+	}
 	localServer, err := supervisor.Start(ctx, supervisor.Command{
 		Path:      nodePath,
 		Args:      []string{entry},
@@ -290,8 +333,8 @@ func runLocal(ctx context.Context, options Options, config clientconfig.Config,
 			natPredictionStunURLs,
 			publicOrigin,
 		),
-		Stdout:    os.Stdout,
-		Stderr:    os.Stderr,
+		Stdout:    stdout,
+		Stderr:    stderr,
 		HealthURL: fmt.Sprintf("http://127.0.0.1:%d/healthz", options.Port),
 	})
 	if err != nil {
@@ -299,15 +342,17 @@ func runLocal(ctx context.Context, options Options, config clientconfig.Config,
 	}
 	defer localServer.Close()
 
-	if config.LocalAccessPassword == "" {
-		fmt.Println("Local access: open")
-	} else {
-		fmt.Printf("Local access password: %s\n", config.LocalAccessPassword)
-	}
-	if publicOrigin != "" {
-		fmt.Printf("Public invitation origin: %s\n", publicOrigin)
-	} else {
-		fmt.Printf("LAN invitation origin: http://%s:%d\n", selectedAddress, options.Port)
+	if options.console.machine {
+		if config.LocalAccessPassword == "" {
+			fmt.Println("Local access: open")
+		} else {
+			fmt.Printf("Local access password: %s\n", config.LocalAccessPassword)
+		}
+		if publicOrigin != "" {
+			fmt.Printf("Public invitation origin: %s\n", publicOrigin)
+		} else {
+			fmt.Printf("LAN invitation origin: http://%s:%d\n", selectedAddress, options.Port)
+		}
 	}
 	launchURL := clientLaunchURLWithLocalAccess(
 		fmt.Sprintf("http://localhost:%d/", options.Port),
@@ -320,6 +365,11 @@ func runLocal(ctx context.Context, options Options, config clientconfig.Config,
 	} else if options.Ready != nil {
 		options.Ready(launchURL)
 	}
+	view.state, view.entry, view.invite = "ready", launchURL, publicOrigin
+	if view.invite == "" {
+		view.invite = fmt.Sprintf("http://%s:%d", selectedAddress, options.Port)
+	}
+	options.console.show(view)
 	var tunnelDone <-chan struct{}
 	if tunnel != nil {
 		tunnelDone = tunnel.Done()

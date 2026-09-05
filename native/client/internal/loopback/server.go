@@ -4,8 +4,10 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -30,6 +32,7 @@ type Options struct {
 	AllowedOrigins []string
 	NativeMedia    NativeMediaCapabilities
 	NewControl     func() ControlSession
+	Presentation   func(language string)
 }
 
 type ControlSession interface {
@@ -70,6 +73,7 @@ type Server struct {
 	allowedOrigins []string
 	nativeMedia    NativeMediaCapabilities
 	newControl     func() ControlSession
+	presentation   func(string)
 	done           chan error
 
 	mu         sync.Mutex
@@ -109,6 +113,7 @@ func Start(parent context.Context, options Options) (*Server, error) {
 		allowedOrigins: normalizedOrigins(options.AllowedOrigins),
 		nativeMedia:    options.NativeMedia,
 		newControl:     options.NewControl,
+		presentation:   options.Presentation,
 		done:           make(chan error, 1),
 	}
 	server.httpServer = &http.Server{
@@ -179,9 +184,40 @@ func (server *Server) ServeHTTP(response http.ResponseWriter, request *http.Requ
 		server.handleHealth(response, request)
 	case "/control":
 		server.handleControl(response, request)
+	case "/presentation":
+		server.handlePresentation(response, request)
 	default:
 		http.NotFound(response, request)
 	}
+}
+
+func (server *Server) handlePresentation(response http.ResponseWriter, request *http.Request) {
+	if request.Method == http.MethodOptions {
+		response.Header().Set("Access-Control-Allow-Methods", http.MethodPost)
+		response.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		response.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if request.Method != http.MethodPost {
+		response.Header().Set("Allow", "POST, OPTIONS")
+		http.Error(response, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	request.Body = http.MaxBytesReader(response, request.Body, 256)
+	var presentation struct {
+		Language string `json:"language"`
+	}
+	decoder := json.NewDecoder(request.Body)
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&presentation) != nil || decoder.Decode(&struct{}{}) != io.EOF ||
+		(presentation.Language != "zh" && presentation.Language != "en" && presentation.Language != "vis") {
+		http.Error(response, "invalid presentation", http.StatusBadRequest)
+		return
+	}
+	if server.presentation != nil {
+		server.presentation(presentation.Language)
+	}
+	response.WriteHeader(http.StatusNoContent)
 }
 
 func (server *Server) handleHealth(response http.ResponseWriter, request *http.Request) {

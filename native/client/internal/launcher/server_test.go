@@ -38,7 +38,7 @@ func TestLauncherServesStateAndCompletesOneSelection(t *testing.T) {
 		response, err := http.Post(
 			origin+"/api/client-launcher/launch",
 			"application/json",
-			bytes.NewBufferString(`{"mode":"link"}`),
+			bytes.NewBufferString(`{"mode":"link","language":"vis"}`),
 		)
 		if err != nil {
 			requestErr <- err
@@ -49,7 +49,7 @@ func TestLauncherServesStateAndCompletesOneSelection(t *testing.T) {
 
 	select {
 	case selection := <-server.Selection():
-		if selection != (Selection{Mode: ModeLink}) {
+		if selection != (Selection{Mode: ModeLink, Language: "vis"}) {
 			t.Fatalf("selection = %+v", selection)
 		}
 		server.SetResult("http://localhost:8787/#screener-client=1", nil)
@@ -115,7 +115,7 @@ func TestLauncherCarriesAndNormalizesAnOptionalLocalPassword(t *testing.T) {
 		response, err := http.Post(
 			origin+"/api/client-launcher/launch",
 			"application/json",
-			bytes.NewBufferString(`{"mode":"local","localAccessPassword":"new-local-pass"}`),
+			bytes.NewBufferString(`{"mode":"local","language":"zh","localAccessPassword":"new-local-pass"}`),
 		)
 		if err != nil {
 			t.Error(err)
@@ -125,7 +125,7 @@ func TestLauncherCarriesAndNormalizesAnOptionalLocalPassword(t *testing.T) {
 	}()
 	select {
 	case selection := <-server.Selection():
-		if selection.Mode != ModeLocal || selection.LocalAccessPassword != "new-local-pass" {
+		if selection.Mode != ModeLocal || selection.Language != "zh" || selection.LocalAccessPassword != "new-local-pass" {
 			t.Fatalf("selection = %+v", selection)
 		}
 		server.SetResult("http://localhost:8787/#screener-client=1", nil)
@@ -155,13 +155,15 @@ func TestLauncherRejectsAnInvalidSavedSite(t *testing.T) {
 
 func TestLauncherRejectsInvalidSelections(t *testing.T) {
 	for name, payload := range map[string]string{
-		"unknown":        `{"mode":"other"}`,
-		"local-site":     `{"mode":"local","site":"https://share.example"}`,
-		"missing-site":   `{"mode":"site"}`,
-		"site-path":      `{"mode":"site","site":"https://share.example/path"}`,
-		"site-password":  `{"mode":"site","site":"https://share.example","localAccessPassword":"valid-pass"}`,
-		"unknown-field":  `{"mode":"local","extra":true}`,
-		"short-password": `{"mode":"local","localAccessPassword":"short"}`,
+		"unknown":          `{"mode":"other","language":"en"}`,
+		"local-site":       `{"mode":"local","language":"en","site":"https://share.example"}`,
+		"missing-site":     `{"mode":"site","language":"en"}`,
+		"site-path":        `{"mode":"site","language":"en","site":"https://share.example/path"}`,
+		"site-password":    `{"mode":"site","language":"en","site":"https://share.example","localAccessPassword":"valid-pass"}`,
+		"unknown-field":    `{"mode":"local","language":"en","extra":true}`,
+		"short-password":   `{"mode":"local","language":"en","localAccessPassword":"short"}`,
+		"missing-language": `{"mode":"local"}`,
+		"unknown-language": `{"mode":"local","language":"other"}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			server := startFixture(t, "")

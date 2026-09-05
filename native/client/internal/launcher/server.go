@@ -32,6 +32,7 @@ const (
 
 type Selection struct {
 	Mode                Mode   `json:"mode"`
+	Language            string `json:"language"`
 	Site                string `json:"site,omitempty"`
 	LocalAccessPassword string `json:"localAccessPassword"`
 }
@@ -292,6 +293,9 @@ func decodeSelection(reader io.Reader) (Selection, error) {
 	decoder.DisallowUnknownFields()
 	if decoder.Decode(&selection) != nil || decoder.Decode(&struct{}{}) != io.EOF {
 		return Selection{}, errors.New("invalid launch request")
+	}
+	if selection.Language != "zh" && selection.Language != "en" && selection.Language != "vis" {
+		return Selection{}, errors.New("invalid launch language")
 	}
 	switch selection.Mode {
 	case ModeLocal, ModeLink:
