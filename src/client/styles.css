@@ -453,8 +453,28 @@ body.lr-theater-open { overflow: hidden; }
 }
 .lr-tv-overlay.is-dim { background: rgba(10, 16, 28, .62); }
 .lr-tv-status-content { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.lr-tv-progress { display: inline-flex; align-items: center; gap: 6px; }
+.lr-overlay-preview { max-width: 1440px; }
+.lr-overlay-preview-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin: 8px 0 20px; }
+.lr-overlay-preview-head h1 { margin: 0; font-size: 1.1rem; }
+.lr-overlay-preview-head p { margin: 0; color: var(--muted); }
+.lr-overlay-preview-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 18px; }
+.lr-overlay-preview-card { min-width: 0; }
+.lr-overlay-preview-card h2 { margin: 0 0 8px; font-size: .85rem; color: var(--muted); }
+.lr-overlay-preview-card .lr-tv { width: 100%; padding: 7px 7px 0; border-width: 2px; border-radius: 16px 16px 12px 12px; }
+.lr-overlay-preview-card .lr-tv-screen { border-radius: 9px 9px 5px 5px; }
+.lr-tooltip-preview { max-width: 1440px; }
+.lr-tooltip-preview-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin: 8px 0 20px; }
+.lr-tooltip-preview-head h1 { margin: 0; font-size: 1.1rem; }
+.lr-tooltip-preview-head p { margin: 0; color: var(--muted); }
+.lr-tooltip-preview-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 18px; }
+.lr-tooltip-preview-card { min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: color-mix(in srgb, var(--panel) 88%, transparent); }
+.lr-tooltip-preview-card > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.lr-tooltip-preview-card code { color: var(--muted); font-size: .75rem; overflow-wrap: anywhere; }
+.lr-tooltip-preview-trigger { width: 30px; height: 30px; padding: 0; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--accent); cursor: help; }
+.lr-tooltip-preview-art { min-height: 106px; display: grid; place-items: center; overflow: hidden; }
+.lr-tooltip-preview-art svg { max-width: 100%; height: auto; }
 .lr-tv-overlay.has-comic { gap: 8px; padding: 10px; }
-.lr-tv-overlay.has-comic .lr-tv-status-content { flex-direction: row; gap: 8px; }
 .lr-tv-overlay.has-comic .lr-brand-loader,
 .lr-tv-overlay.has-comic .lr-tv-big { width: 40px; height: 40px; }
 .lr-tv-overlay.has-comic .lr-brand-mark { width: 32px; height: 32px; }

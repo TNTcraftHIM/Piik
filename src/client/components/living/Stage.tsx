@@ -101,18 +101,27 @@ export function StageOverlay({
   onActivate?: () => void;
 }) {
   const { vis } = useCopy();
+  const showMascot =
+    transition ||
+    (vis && Boolean(comic) &&
+      (Boolean(spin) || comic === "waiting-for-host" || comic === "recovering"));
   const content = (
     <>
       {vis && comic ? <Comic kind={comic} theme="stage" /> : null}
       <span className="lr-tv-status-content">
-      {transition ? (
+      {showMascot ? (
         <BrandLoader />
       ) : (
         <span className={`lr-tv-big${spin ? " lr-spin" : ""}${onActivate ? " is-action is-ripple" : ""}`}>
           <Glyph name={icon} size={30} draw="stage-overlay" />
         </span>
       )}
-      {vis ? progress && <span className="lr-tv-msg">{progress}</span> :
+      {vis ? progress && (
+        <span className="lr-tv-progress" aria-label={progress}>
+          <Glyph name="refresh" size={17} className="lr-spin" />
+          <span className="lr-tv-msg">{progress}</span>
+        </span>
+      ) :
         <span className="lr-tv-msg">{message}</span>}
       </span>
     </>

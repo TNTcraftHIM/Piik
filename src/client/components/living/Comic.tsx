@@ -549,7 +549,7 @@ ${rmBlock(kills, pins)}
       <Frame x={216} w={96} theme={theme} />
       <Floor x1={20} x2={92} />
       <Pawn x={56} yb={76} s={11} eyes />
-      <Pawn x={128} yb={74} s={7} eyes />
+      <Pawn x={128} yb={74} s={7} eyes color={SKY} />
       {sfu ? (
         <>
           <g stroke={LINE} strokeWidth={2.5} strokeLinecap="round" fill="none" strokeDasharray="4 4">
@@ -1212,7 +1212,7 @@ ${rmBlock(
       <g className="vls-bw-small">
         <MiniTv x={254} y={41} w={34} h={20} />
       </g>
-      <Pawn x={298} yb={76} s={6.5} eyes color={WARN} />
+      <Pawn x={298} yb={76} s={6.5} eyes />
     </>
   );
 }
@@ -1273,7 +1273,7 @@ ${rmBlock(
       <g className="vls-en-small">
         <MiniTv x={258} y={41} w={34} h={20} />
       </g>
-      <Pawn x={301} yb={76} s={6} eyes color={WARN} />
+      <Pawn x={301} yb={76} s={6} eyes />
     </>
   );
 }
