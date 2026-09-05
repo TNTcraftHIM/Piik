@@ -471,7 +471,7 @@ describe("ViewerPeer connection generations", () => {
     expect(timeoutDelays.get(2)).toBe(3_000);
   });
 
-  it("leaves a pending route candidate under the route deadline", async () => {
+  it("gives a NAT-enabled pending route one bounded ICE retry", async () => {
     const restartRequests: string[] = [];
     const exhausted: string[] = [];
     const peer = new ViewerPeer(
@@ -489,7 +489,7 @@ describe("ViewerPeer connection generations", () => {
           return true;
         },
       },
-      { recoveryOwner: "route" },
+      { recoveryOwner: "route", natPredictionEnabled: true },
     );
 
     await peer.acceptSignal("host", offer("route-candidate"));
@@ -503,7 +503,14 @@ describe("ViewerPeer connection generations", () => {
 
     connection.connectionState = "failed";
     connection.dispatchEvent(new Event("connectionstatechange"));
-    expect(restartRequests).toEqual([]);
+    expect(restartRequests).toEqual(["route-candidate"]);
+    expect(exhausted).toEqual([]);
+
+    timeoutCallbacks.get(1)!();
+    expect(restartRequests).toEqual(["route-candidate", "route-candidate"]);
+    expect(exhausted).toEqual([]);
+
+    timeoutCallbacks.get(2)!();
     expect(exhausted).toEqual(["route-candidate"]);
   });
 
