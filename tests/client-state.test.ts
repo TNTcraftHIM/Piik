@@ -66,14 +66,14 @@ describe("browser-local display name", () => {
   it("localizes text defaults and uses visual emoji identities", () => {
     setCopy({ lang: "zh", vis: false });
     expect(defaultViewerDisplayName("viewer-abcdef", false)).toBe("观众");
-    expect(defaultHostDisplayName("host-abcdef", false)).toBe("分享者-abcdef");
+    expect(defaultHostDisplayName("host-abcdef", false)).toBe("分享者 (abcdef)");
 
     setCopy({ lang: "en", vis: false });
     expect(defaultViewerDisplayName("viewer-abcdef", false)).toBe("Viewer");
-    expect(defaultHostDisplayName("host-abcdef", false)).toBe("Host-abcdef");
+    expect(defaultHostDisplayName("host-abcdef", false)).toBe("Host (abcdef)");
 
-    expect(defaultViewerDisplayName("viewer-abcdef", true)).toBe("👤-abcdef");
-    expect(defaultHostDisplayName("host-abcdef", true)).toBe("👑-abcdef");
+    expect(defaultViewerDisplayName("viewer-abcdef", true)).toBe("👤 (abcdef)");
+    expect(defaultHostDisplayName("host-abcdef", true)).toBe("👑 (abcdef)");
   });
 
   it("stores only the canonical preference and falls back when cleared", () => {
