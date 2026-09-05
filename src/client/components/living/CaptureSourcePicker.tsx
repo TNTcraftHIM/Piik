@@ -180,7 +180,7 @@ export function CaptureSourcePicker({
               </button>
             );
             return vis ? (
-              <ComicTooltip key={value} kind="hint-switch-source" place="below">
+              <ComicTooltip key={value} kind={`hint-capture-${value}`} place="below">
                 {button}
               </ComicTooltip>
             ) : (

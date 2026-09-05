@@ -19,7 +19,10 @@ export type Set1Kind =
   | "hint-pause"
   | "hint-resume"
   | "hint-switch-source"
-  | "hint-reconnect";
+  | "hint-reconnect"
+  | "hint-capture-browser"
+  | "hint-capture-window"
+  | "hint-capture-display";
 
 export type Set2Kind =
   | "hint-copy-code"
@@ -96,6 +99,9 @@ export const HINT_KINDS: readonly HintKind[] = [
   "hint-nat-prediction",
   "hint-client-local",
   "hint-client-site",
+  "hint-capture-browser",
+  "hint-capture-window",
+  "hint-capture-display",
 ];
 
 export type HintScene = (props: { theme: ComicTheme }) => ReactNode;

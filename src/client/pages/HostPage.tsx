@@ -3629,7 +3629,7 @@ export function HostPage({
                 <Pill
                   icon="alert"
                   label={hostSfuQualityWarning}
-                  comic="route-failed"
+                  comic="warning"
                 />
               ) : null}
               {noticeText && (vis || noticeText !== phaseLine) ? (

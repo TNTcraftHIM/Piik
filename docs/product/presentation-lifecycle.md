@@ -41,6 +41,11 @@ and sequences, and literal scene objects for people, rooms, and media. Glyphs do
 not form sentences. Universal digits, transport symbols, URLs, and measured
 values remain literal when users need the data.
 
+Control hints and state comics use the same television for shared or watched
+media. Browser chrome identifies the application UI; a window title bar or a
+display stand identifies the capture target. A server in a media path means
+actual SFU relay, not merely opening a configured Site.
+
 Motion explains entry, transition, progress, and control feedback. Operational
 status stays still; ambient motion is limited to the Client brand mark's
 occasional idle wink.

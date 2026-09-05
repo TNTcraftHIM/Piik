@@ -167,10 +167,20 @@ export function Pawn({
   return className ? <g className={className}>{inner}</g> : inner;
 }
 
-/** Mini host TV: body + recessed screen. */
+/** Shared or watched media: the same TV silhouette in every scene. */
 export function MiniTv({ x, y, w, h }: { x: number; y: number; w: number; h: number }) {
+  const antenna = Math.min(5, h * 0.16);
+  const foot = Math.min(4, h * 0.12);
   return (
     <>
+      <path
+        d={`M${r2(x + w * 0.38)} ${r2(y - antenna)} L${r2(x + w * 0.5)} ${y} L${r2(x + w * 0.62)} ${r2(y - antenna)} M${r2(x + w * 0.25)} ${y + h} l${-foot} ${foot} M${r2(x + w * 0.75)} ${y + h} l${foot} ${foot}`}
+        fill="none"
+        stroke={TV_EDGE}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
       <rect
         x={x}
         y={y}
@@ -191,6 +201,23 @@ export function MiniTv({ x, y, w, h }: { x: number; y: number; w: number; h: num
       />
     </>
   );
+}
+
+/** Browser UI, not the media itself; children use the scene's coordinates. */
+export function BrowserWindow({ x, y, w, h, children }: {
+  x: number; y: number; w: number; h: number; children?: ReactNode;
+}) {
+  const bar = Math.min(9, h * 0.2);
+  return <>
+    <rect x={x} y={y} width={w} height={h} rx={4} fill="var(--paper)" stroke="var(--ink)" strokeWidth={2} />
+    <path d={`M${x} ${y + bar} H${x + w}`} stroke="var(--ink)" strokeWidth={1.5} />
+    <g fill={FAINT}>
+      <circle cx={x + 4} cy={y + bar / 2} r={1} />
+      <circle cx={x + 8} cy={y + bar / 2} r={1} />
+      <rect x={x + w * 0.3} y={y + bar / 2 - 1} width={w * 0.5} height={2} rx={1} />
+    </g>
+    {children}
+  </>;
 }
 
 /** Crescent moon (host not live / room asleep). Static; safe to transform. */
@@ -473,8 +500,7 @@ ${rmBlock(
         <circle cx={71} cy={53} r={1.1} fill="#101a2c" />
         <circle cx={74.6} cy={53} r={1.1} fill="#101a2c" />
       </g>
-      <rect x={206} y={28} width={64} height={42} rx={8} fill={TV_BODY} stroke={TV_EDGE} strokeWidth={2} />
-      <rect x={212} y={34} width={52} height={28} rx={4} fill={TV_SCREEN} />
+      <MiniTv x={206} y={28} w={64} h={42} />
       <g className="vls-wf-moon">
         <Moon x={229} y={48} />
       </g>
@@ -534,7 +560,7 @@ ${rmBlock(kills, pins)}
           <g className={`${k}-dot`}>
             <circle cx={137} cy={57} r={2.5} fill={MINT} />
           </g>
-          <rect x={170} y={40} width={24} height={16} rx={3} fill={TV_BODY} stroke={TV_EDGE} strokeWidth={1.5} />
+          <MiniTv x={170} y={40} w={24} h={16} />
           <circle cx={182} cy={61} r={2} fill={TV_EDGE} />
         </>
       ) : (
@@ -552,13 +578,12 @@ ${rmBlock(kills, pins)}
             <path d="M132 52 l-6 -3 M132 62 l-6 3" stroke={FAINT} strokeWidth={2} strokeLinecap="round" />
             <circle cx={140} cy={57} r={2.5} fill={MINT} />
           </g>
-          <rect x={170} y={42} width={24} height={16} rx={3} fill={TV_BODY} stroke={TV_EDGE} strokeWidth={1.5} />
+          <MiniTv x={170} y={42} w={24} h={16} />
           <circle cx={182} cy={63} r={2} fill={TV_EDGE} />
         </>
       )}
       <Floor x1={228} x2={300} />
-      <rect x={238} y={26} width={52} height={40} rx={7} fill={TV_BODY} stroke={TV_EDGE} strokeWidth={2} />
-      <rect x={244} y={32} width={40} height={24} rx={4} fill={TV_SCREEN} />
+      <MiniTv x={238} y={26} w={52} h={40} />
       <rect className={`${k}-warm`} x={244} y={32} width={40} height={24} rx={4} fill={SKY} opacity={0} />
       <circle className={`${k}-led`} cx={264} cy={72} r={3.5} fill="#4a84f2" />
     </>
@@ -604,8 +629,7 @@ ${rmBlock(
         <path d="M22 80 l7 -7 M27 85 l7 -7" stroke={FAINT} strokeWidth={2.5} strokeLinecap="round" />
         <circle cx={34} cy={72} r={7} fill={INK_STAGE} />
       </g>
-      <rect x={200} y={22} width={88} height={52} rx={8} fill={TV_BODY} stroke={TV_EDGE} strokeWidth={2} />
-      <rect x={206} y={28} width={76} height={36} rx={4} fill={TV_SCREEN} />
+      <MiniTv x={200} y={22} w={88} h={52} />
       <rect className="vls-tp-flash" x={206} y={28} width={76} height={36} rx={4} fill={INK_STAGE} opacity={0} />
       <path className="vls-tp-play" d="M236 38 L254 46 L236 54 Z" fill={MINT} />
       <circle className="vls-tp-led" cx={244} cy={80} r={3.5} fill={LIVE} opacity={0.3} />
@@ -642,8 +666,7 @@ ${rmBlock(
 `}</style>
       <Frame x={4} w={152} theme={theme} />
       <Frame x={164} w={152} theme={theme} />
-      <rect x={36} y={16} width={88} height={54} rx={9} fill={TV_BODY} stroke={TV_EDGE} strokeWidth={2} />
-      <rect x={42} y={22} width={76} height={38} rx={4} fill={TV_SCREEN} />
+      <MiniTv x={36} y={16} w={88} h={54} />
       <rect x={42} y={22} width={76} height={38} rx={4} fill="#0a101c" opacity={0.5} />
       <g className="vls-hp-bars" fill={INK_STAGE}>
         <rect x={70} y={30} width={9} height={26} rx={3.5} />
@@ -723,106 +746,45 @@ ${rmBlock(
   );
 }
 
-/** 7. route-failed: 4 panels, direct and SFU paths both end unavailable. */
+/** 7. route-failed: the viewer cannot reach the same TV; no route history implied. */
 function SceneRouteFailed({ theme }: { theme: ComicTheme }) {
   return (
     <>
       <style>{`
 .vls-rf-panel{transform-box:fill-box;transform-origin:center;animation:vlsRfIn .5s cubic-bezier(.3,1.5,.5,1) backwards}
-.vls-rf-p2{animation-delay:.15s}.vls-rf-p3{animation-delay:.3s}.vls-rf-p4{animation-delay:.45s}
+.vls-rf-p2{animation-delay:.2s}
 .vls-rf-march{animation:vlsRfMarch .4s linear .4s 3 both}
-.vls-rf-x{transform-box:fill-box;transform-origin:center;animation:vlsRfX 3.6s ease-out both}
-.vls-rf-spark{animation:vlsRfSpark 3.6s ease-out both}
-.vls-rf-dot{animation:vlsRfDot 3.6s ease-in-out both}
-.vls-rf-fallback{stroke-dasharray:5 5;animation:vlsRfFallback 3.6s ease-out both,vlsRfFailurePulse 2.6s ease-in-out 3.6s infinite}
-.vls-rf-fallback-x{transform-box:fill-box;transform-origin:center;animation:vlsRfFallbackX 3.6s ease-out both,vlsRfFailureX 2.6s ease-in-out 3.6s infinite}
-.vls-rf-slots{animation:vlsRfSlots 3.6s ease-out both}
-.vls-rf-grey{animation:vlsRfGrey 3.6s ease-out both}
+.vls-rf-x{transform-box:fill-box;transform-origin:center;animation:vlsRfX .4s ease-out .8s backwards}
+.vls-rf-sweat{animation:vlsRfSweat 3s ease-in-out 1.2s infinite}
 @keyframes vlsRfIn{from{opacity:0;transform:translateY(6px) scale(.9)}}
 @keyframes vlsRfMarch{from{stroke-dashoffset:0}to{stroke-dashoffset:-16}}
-@keyframes vlsRfX{0%,32%{opacity:0;transform:scale(1.7) rotate(8deg)}40%,100%{opacity:1;transform:scale(1) rotate(8deg)}}
-@keyframes vlsRfSpark{0%,32%{opacity:0}35%{opacity:1}44%,100%{opacity:0}}
-@keyframes vlsRfDot{0%,44%{transform:translate(0,0);opacity:0}46%{opacity:1}54%{transform:translate(2px,-31px)}60%{transform:translate(18px,-31px)}70%,100%{transform:translate(28px,-11px);opacity:0}}
-@keyframes vlsRfFallback{0%,72%{opacity:0}80%,100%{opacity:.42}}
-@keyframes vlsRfFallbackX{0%,78%{opacity:0;transform:scale(1.6) rotate(8deg)}86%,100%{opacity:1;transform:scale(1) rotate(8deg)}}
-@keyframes vlsRfFailurePulse{0%,100%{opacity:.42;stroke-dashoffset:0}50%{opacity:.72;stroke-dashoffset:-8}}
-@keyframes vlsRfFailureX{0%,100%{opacity:1}50%{opacity:.58}}
-@keyframes vlsRfSlots{0%,60%{opacity:0}66%,100%{opacity:1}}
-@keyframes vlsRfGrey{0%{opacity:.9}70%{opacity:.9}82%,100%{opacity:.15}}
+@keyframes vlsRfX{from{opacity:0;transform:scale(1.5)}to{opacity:1;transform:scale(1)}}
+@keyframes vlsRfSweat{0%,65%,100%{opacity:.35;transform:translateY(0)}30%{opacity:1;transform:translateY(3px)}}
 ${rmBlock(
-  ["vls-rf-panel", "vls-rf-march", "vls-rf-x", "vls-rf-spark", "vls-rf-dot", "vls-rf-fallback", "vls-rf-fallback-x", "vls-rf-slots", "vls-rf-grey"],
+  ["vls-rf-panel", "vls-rf-march", "vls-rf-x", "vls-rf-sweat"],
   [
-    [".vls-rf-fallback", "stroke-dasharray:none;opacity:.42"],
-    [".vls-rf-fallback-x,.vls-rf-slots", "opacity:1;transform:none"],
-    [".vls-rf-spark,.vls-rf-dot", "opacity:0"],
-    [".vls-rf-grey", "opacity:.15"],
+    [".vls-rf-x", "opacity:1;transform:none"],
+    [".vls-rf-sweat", "opacity:.7;transform:none"],
   ],
 )}
 `}</style>
       <g className="vls-rf-panel">
-        <Frame x={4} w={72} theme={theme} />
-        <path d="M9 68 c0-12 5-17 11-17 s11 5 11 17 Z" fill={YOU} />
-        <circle cx={20} cy={42} r={6.5} fill={YOU} />
-        <circle cx={17.5} cy={41} r={1.1} fill="#101a2c" />
-        <circle cx={22.5} cy={41} r={1.1} fill="#101a2c" />
-        <rect x={47} y={36} width={18} height={13} rx={2.5} fill={TV_BODY} stroke={TV_EDGE} strokeWidth={1.5} />
-        <circle cx={56} cy={54} r={2} fill={TV_EDGE} />
-        <path className="vls-rf-march" d="M28 47 H46" stroke={LINE} strokeWidth={2.5} strokeDasharray="4 4" fill="none" />
+        <Frame x={4} w={152} theme={theme} />
+        <Floor x1={16} x2={144} />
+        <Pawn x={32} yb={76} s={10} eyes />
+        <MiniTv x={94} y={36} w={44} h={30} />
+        <path className="vls-rf-march" d="M44 55 H61 M75 55 H92" stroke={LINE} strokeWidth={2.5} strokeDasharray="4 4" strokeLinecap="round" fill="none" />
+        <path d="M66 49 l-3 6 7 0 -3 6" stroke={DANGER} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" fill="none" />
       </g>
       <g className="vls-rf-panel vls-rf-p2">
-        <Frame x={84} w={72} theme={theme} />
-        <path d="M89 68 c0-12 5-17 11-17 s11 5 11 17 Z" fill={YOU} />
-        <circle cx={100} cy={42} r={6.5} fill={YOU} />
-        <circle cx={97.5} cy={41} r={1.1} fill="#101a2c" />
-        <circle cx={102.5} cy={41} r={1.1} fill="#101a2c" />
-        <rect x={127} y={36} width={18} height={13} rx={2.5} fill={TV_BODY} stroke={TV_EDGE} strokeWidth={1.5} />
-        <circle cx={136} cy={54} r={2} fill={DANGER} />
-        <path d="M108 47 H113 M121 47 H126" stroke={LINE} strokeWidth={2.5} fill="none" />
-        <g className="vls-rf-spark" opacity={0} stroke={STAR_GOLD} strokeWidth={2} strokeLinecap="round">
-          <path d="M117 36 v-5 M106 40 l-4 -3 M128 40 l4 -3" />
-        </g>
-        <path className="vls-rf-x" d="M111 41 L123 53 M123 41 L111 53" stroke={DANGER} strokeWidth={3} strokeLinecap="round" fill="none" />
-      </g>
-      <g className="vls-rf-panel vls-rf-p3">
-        <Frame x={164} w={72} theme={theme} />
-        <path d="M169 68 c0-12 5-17 11-17 s11 5 11 17 Z" fill={YOU} />
-        <circle cx={180} cy={42} r={6.5} fill={YOU} />
-        <circle cx={177.5} cy={41} r={1.1} fill="#101a2c" />
-        <circle cx={182.5} cy={41} r={1.1} fill="#101a2c" />
-        <rect x={207} y={36} width={18} height={13} rx={2.5} fill={TV_BODY} stroke={TV_EDGE} strokeWidth={1.5} />
-        <circle cx={216} cy={54} r={2} fill={TV_EDGE} />
-        <rect x={192} y={10} width={16} height={12} rx={2.5} fill="#0d1526" stroke={LINE} strokeWidth={2} />
-        <g className="vls-rf-slots" stroke={LIVE} strokeWidth={2} strokeLinecap="round">
-          <path d="M195 14 h10 M195 18 h10" />
-        </g>
-        <g className="vls-rf-grey" stroke={LINE} strokeWidth={2.5} strokeDasharray="4 4" fill="none">
-          <path d="M188 47 L192 16" />
-          <path d="M208 16 L216 34" />
-        </g>
-        <circle className="vls-rf-dot" cx={188} cy={47} r={2.5} fill={MINT} opacity={0} />
-      </g>
-      <g className="vls-rf-panel vls-rf-p4">
-        <Frame x={244} w={72} theme={theme} />
-        <path d="M249 68 c0-12 5-17 11-17 s11 5 11 17 Z" fill={YOU} />
-        <circle cx={260} cy={42} r={6.5} fill={YOU} />
-        <circle cx={257.5} cy={41} r={1.1} fill="#101a2c" />
-        <circle cx={262.5} cy={41} r={1.1} fill="#101a2c" />
-        <rect x={287} y={36} width={18} height={13} rx={2.5} fill={TV_BODY} stroke={TV_EDGE} strokeWidth={1.5} />
-        <circle cx={296} cy={54} r={2} fill={DANGER} />
-        <rect x={272} y={10} width={16} height={12} rx={2.5} fill="#0d1526" stroke={LINE} strokeWidth={2} />
-        <path d="M275 14 h10 M275 18 h10" stroke={LINE} strokeWidth={2} strokeLinecap="round" />
-        <g className="vls-rf-fallback" opacity={0} stroke={LINE} strokeWidth={2.5} fill="none">
-          <path d="M268 47 L272 16" />
-          <path d="M288 16 L296 34" />
-        </g>
-        <path
-          className="vls-rf-fallback-x"
-          d="M288 25 L298 35 M298 25 L288 35"
-          stroke={DANGER}
-          strokeWidth={3}
-          strokeLinecap="round"
-          fill="none"
-        />
+        <Frame x={164} w={152} theme={theme} accent={DANGER} />
+        <Floor x1={176} x2={304} />
+        <Pawn x={192} yb={76} s={10} eyes />
+        <MiniTv x={254} y={36} w={44} h={30} />
+        <circle cx={288} cy={62} r={2} fill={DANGER} />
+        <path d="M204 55 H218 M238 55 H252" stroke={FAINT} strokeWidth={2.5} strokeLinecap="round" fill="none" />
+        <RedX cx={228} cy={55} arm={6} className="vls-rf-x" />
+        <path className="vls-rf-sweat" d="M206 46 c2 3 2 5 0 6 c-2 -1 -2 -3 0 -6 Z" fill={SKY} opacity={0.35} />
       </g>
     </>
   );
@@ -898,7 +860,7 @@ ${rmBlock(
 `}</style>
       <Frame x={4} w={152} theme={theme} />
       <Frame x={164} w={152} theme={theme} />
-      <rect x={30} y={22} width={70} height={44} rx={8} fill={TV_BODY} stroke={TV_EDGE} strokeWidth={2} />
+      <MiniTv x={30} y={22} w={70} h={44} />
       <rect x={36} y={28} width={58} height={30} rx={4} fill="#0a101c" />
       <path d="M65 66 c0 6 -4 8 -8 10" stroke={TV_EDGE} strokeWidth={2.5} fill="none" strokeLinecap="round" />
       <Plug x={57} y={76} className="vls-ho-plug" />
@@ -943,8 +905,7 @@ ${rmBlock(
       <Frame x={4} w={152} theme={theme} />
       <Frame x={164} w={152} theme={theme} />
       {/* panel 1 (before): picture alive, three healthy sound arcs */}
-      <rect x={26} y={20} width={76} height={48} rx={9} fill={TV_BODY} stroke={TV_EDGE} strokeWidth={2} />
-      <rect x={32} y={26} width={64} height={32} rx={4} fill={TV_SCREEN} />
+      <MiniTv x={26} y={20} w={76} h={48} />
       <path d="M54 34 L74 42 L54 50 Z" fill={MINT} />
       <g className="vls-na-flick" stroke={SKY} strokeWidth={2} strokeLinecap="round" opacity={0.15}>
         <path d="M38 30v6 M42 40v5" />
@@ -1233,7 +1194,7 @@ ${rmBlock(
         <circle cx={68} cy={48} r={3.5} />
         <circle cx={81} cy={48} r={3.5} />
       </g>
-      <MiniTv x={94} y={28} w={44} h={36} />
+      <MiniTv x={94} y={34} w={44} h={26} />
       <path
         className="vls-bw-throat"
         d="M181 38H208L226 45V53L208 60H181"
@@ -1249,7 +1210,7 @@ ${rmBlock(
         <circle cx={239} cy={49} r={2.6} />
       </g>
       <g className="vls-bw-small">
-        <MiniTv x={254} y={37} w={34} h={28} />
+        <MiniTv x={254} y={41} w={34} h={20} />
       </g>
       <Pawn x={298} yb={76} s={6.5} eyes color={WARN} />
     </>
@@ -1293,7 +1254,7 @@ ${rmBlock(
         <rect x={96} y={38} width={8} height={8} rx={1.5} />
         <rect x={108} y={38} width={8} height={8} rx={1.5} />
       </g>
-      <MiniTv x={119} y={30} w={28} h={30} />
+      <MiniTv x={119} y={37} w={28} h={17} />
       <g fill="none" stroke={WARN} strokeWidth={2.5}>
         <rect x={184} y={34} width={38} height={28} rx={5} />
         <path d="M190 30v4m8-4v4m8-4v4m8-4v4M190 62v4m8-4v4m8-4v4m8-4v4" />
@@ -1310,7 +1271,7 @@ ${rmBlock(
         <RedX cx={245} cy={53} arm={3} />
       </g>
       <g className="vls-en-small">
-        <MiniTv x={258} y={37} w={34} h={28} />
+        <MiniTv x={258} y={41} w={34} h={20} />
       </g>
       <Pawn x={301} yb={76} s={6} eyes color={WARN} />
     </>
