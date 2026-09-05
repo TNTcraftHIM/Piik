@@ -2461,14 +2461,23 @@ export function ViewerPage({
     assignedRoute.revision === presentationState.revision
       ? assignedRoute.connectionAttempt
       : undefined;
-  const stageMessage = connectionAttempt
-    ? t("viewer.msg.connectionAttempt", {
-        current: String(connectionAttempt.current),
-        total: String(connectionAttempt.total),
+  // Keep the first candidate quiet; the counter describes a retry, not normal setup.
+  const retryAttempt =
+    connectionAttempt && connectionAttempt.current > 1
+      ? {
+        ...connectionAttempt,
+        current: connectionAttempt.current - 1,
+        total: Math.max(1, connectionAttempt.total - 1),
+        }
+      : undefined;
+  const stageMessage = retryAttempt
+    ? t("viewer.msg.connectionRetry", {
+        current: String(retryAttempt.current),
+        total: String(retryAttempt.total),
       })
     : t(presentation.messageKey);
-  const connectionProgress = connectionAttempt
-    ? `${connectionAttempt.current}/${connectionAttempt.total}`
+  const connectionProgress = retryAttempt
+    ? `${retryAttempt.current}/${retryAttempt.total}`
     : undefined;
   const noticeVisual = presentation.noticeKey
     ? viewerNoticeVisual(presentation.noticeKey)

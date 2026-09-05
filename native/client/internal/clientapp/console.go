@@ -57,23 +57,23 @@ type clientConsole struct {
 
 var consoleCopy = map[string][3]string{
 	"mode":       {"Mode", "模式", ""},
-	"local":      {"Local network", "局域网", "    /\\   \n .-/  \\-.\n |[_]-[_]|\n '-------'"},
-	"link":       {"Public link", "公网链接", " o           o \n/|\\ ()=() > /|\\\n/ \\         / \\"},
-	"site":       {"Screener Site", "Screener 站点", ".----.   .---.\n|www |---| = |\n'----'   '---'"},
-	"setup":      {"Choose a mode in the browser", "在浏览器中选择模式", ".o.o--------.\n| [] [] [] <|\n'-----------'"},
-	"starting":   {"Starting", "正在启动", "\\---/\n > < \n/---\\"},
-	"ready":      {"Ready", "已就绪", "    /\n\\  / \n \\/  "},
-	"stopping":   {"Stopping", "正在退出", " __  \n| o|>\n|__| "},
-	"stopped":    {"Stopped", "已停止", ".---.\n| x |\n'---'"},
-	"failed":     {"Could not continue", "运行失败", " /!\\ \n/   \\\n-----"},
-	"entry":      {"Open in browser", "打开网页", "[o]"},
-	"invite":     {"Site address", "站点地址", "()=()"},
+	"local":      {"Local network", "局域网", "□"},
+	"link":       {"Public link", "公网链接", "↗"},
+	"site":       {"Screener Site", "Screener 站点", "@"},
+	"setup":      {"Choose a mode in the browser", "在浏览器中选择模式", "?"},
+	"starting":   {"Starting", "正在启动", "…"},
+	"ready":      {"Ready", "已就绪", "✓"},
+	"stopping":   {"Stopping", "正在退出", "→"},
+	"stopped":    {"Stopped", "已停止", "○"},
+	"failed":     {"Could not continue", "运行失败", "!"},
+	"entry":      {"Open in browser", "打开网页", "□"},
+	"invite":     {"Site address", "站点地址", "↗"},
 	"access":     {"Site access", "站点准入", ""},
-	"open":       {"Open", "开放", "  __ \n /   \n|___|"},
-	"password":   {"Password protected", "已设置密码", " ___ \n|   |\n|_*_|"},
-	"error":      {"Details", "详情", "[!]"},
-	"exit":       {"quit", "退出", "    __ \n--> |o|\n    |_|"},
-	"openFailed": {"Could not open the browser; use the address above.", "无法打开浏览器，请使用上方地址。", "[!] -> www"},
+	"open":       {"Open", "开放", "○"},
+	"password":   {"Password protected", "已设置密码", "*"},
+	"error":      {"Details", "详情", "!"},
+	"exit":       {"quit", "退出", "↪"},
+	"openFailed": {"Could not open the browser; use the address above.", "无法打开浏览器，请使用上方地址。", "! ↗"},
 }
 
 func newClientConsole(cancel context.CancelFunc, machine bool) *clientConsole {
@@ -220,7 +220,7 @@ func (model consoleModel) text(key string) string {
 		index = 1
 	}
 	if model.language == "vis" {
-		index = 2
+		return consoleVisualToken(key)
 	}
 	return consoleCopy[key][index]
 }
@@ -275,7 +275,11 @@ func (model consoleModel) content(styled bool) string {
 				stateStyle = stateStyle.Foreground(lipgloss.Color("#e25a52"))
 			}
 		}
-		fmt.Fprintln(&out, lipgloss.JoinHorizontal(lipgloss.Center, accent.Render(model.text(model.view.mode)), " ", stateStyle.Render(state)))
+		// Keep visual mode one line tall; multi-line scene art side by side
+		// collapses on narrow terminals and reads like missing characters.
+		fmt.Fprintln(&out, lipgloss.JoinHorizontal(lipgloss.Center,
+			accent.Render(consoleVisualToken(model.view.mode)), " · ",
+			stateStyle.Render(consoleVisualToken(model.view.state))))
 	} else {
 		fmt.Fprintln(&out, accent.Render(state))
 		if model.view.mode != "" {
@@ -296,10 +300,7 @@ func (model consoleModel) content(styled bool) string {
 			style = style.Hyperlink(target)
 		}
 		if visual {
-			label := model.text(item[0])
-			if !styled && item[0] == "entry" {
-				label = "www"
-			}
+			label := consoleVisualToken(item[0])
 			fmt.Fprintf(&out, "\n%s %s\n", label, style.Render(address))
 		} else {
 			fmt.Fprintf(&out, "\n%s\n%s\n", muted.Render(model.text(item[0])), style.Render(address))
@@ -312,7 +313,7 @@ func (model consoleModel) content(styled bool) string {
 			access = "password"
 		}
 		if visual {
-			accessPicture = model.text(access) + "   "
+			accessPicture = consoleVisualToken(access) + "   "
 		} else {
 			fmt.Fprintf(&out, "\n%s  %s\n", muted.Render(model.text("access")), model.text(access))
 		}
@@ -331,7 +332,10 @@ func (model consoleModel) content(styled bool) string {
 		}
 		help := keys + " " + model.text("exit")
 		if visual {
-			help = lipgloss.JoinHorizontal(lipgloss.Center, accessPicture, keys+" ", model.text("exit"))
+			if model.view.entry != "" && styled {
+				help = "[o] ↗    " + help
+			}
+			help = lipgloss.JoinHorizontal(lipgloss.Center, accessPicture, help)
 		} else if model.view.entry != "" && styled {
 			help = "[o] " + model.text("entry") + "    " + help
 		}
@@ -352,6 +356,41 @@ func (model consoleModel) content(styled bool) string {
 	}
 	return lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).
 		Padding(padding, 1).Width(width).Render(content)
+}
+
+func consoleVisualToken(key string) string {
+	switch key {
+	case "local":
+		return "□"
+	case "link":
+		return "↗"
+	case "site":
+		return "@"
+	case "setup":
+		return "?"
+	case "starting":
+		return "…"
+	case "ready":
+		return "✓"
+	case "stopping":
+		return "→"
+	case "stopped":
+		return "○"
+	case "failed", "error":
+		return "!"
+	case "open":
+		return "○"
+	case "password":
+		return "*"
+	case "entry":
+		return "□"
+	case "invite":
+		return "↗"
+	case "exit":
+		return "↪"
+	default:
+		return "?"
+	}
 }
 
 func consoleTV(frame int, animated, compact bool) string {

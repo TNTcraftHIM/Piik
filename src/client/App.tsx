@@ -24,8 +24,12 @@ import { Btn, Pill } from "./components/living/primitives";
 import { ComicTooltip } from "./components/living/ComicTooltip";
 import { Glyph, type GlyphName } from "./ui/icons";
 import { useCopy } from "./ui/copy";
+import { OverlayPreviewPage } from "./pages/OverlayPreviewPage";
+import { TooltipPreviewPage } from "./pages/TooltipPreviewPage";
 
 const appRoute = parseAppRoute(window.location.pathname);
+const overlayPreview = import.meta.env.DEV && window.location.pathname === "/__overlay-preview";
+const tooltipPreview = import.meta.env.DEV && window.location.pathname === "/__tooltip-preview";
 const clientLaunchBootstrap =
   appRoute.kind === "host" || appRoute.kind === "viewer"
     ? takeClientLaunchBootstrap()
@@ -93,6 +97,12 @@ export function App() {
 }
 
 function AppRoute() {
+  if (overlayPreview) {
+    return <OverlayPreviewPage />;
+  }
+  if (tooltipPreview) {
+    return <TooltipPreviewPage />;
+  }
   if (appRoute.kind === "client") {
     return <ClientLauncherPage />;
   }

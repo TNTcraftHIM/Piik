@@ -270,7 +270,7 @@ export const zh = {
   "viewer.msg.joining": "正在加入房间",
   "viewer.msg.waitingHost": "等待开始分享",
   "viewer.msg.preparingP2p": "正在建立 P2P",
-  "viewer.msg.connectionAttempt": "正在尝试连接（{current}/{total}）",
+  "viewer.msg.connectionRetry": "正在重试（{current}/{total}）",
   "viewer.msg.preparingSfu": "正在连接备用线路",
   "viewer.msg.allocating": "正在分配线路",
   "viewer.msg.receiving": "正在接收画面",
