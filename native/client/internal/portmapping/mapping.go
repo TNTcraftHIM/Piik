@@ -38,6 +38,7 @@ type Mapping struct {
 	gateway        gateway
 	attempted      bool
 	mapped         bool
+	externalPort   int
 	deleteRequired bool
 	renewAfter     time.Time
 	closed         bool
@@ -54,18 +55,24 @@ func Start(localPort int) *Mapping {
 	return mapping
 }
 
-func (mapping *Mapping) Prepare() {
+func (mapping *Mapping) Prepare() int {
 	<-mapping.ready
 	mapping.mu.Lock()
 	defer mapping.mu.Unlock()
 	if mapping.closed || mapping.gateway == nil ||
-		(mapping.attempted && !mapping.mapped) ||
-		(mapping.mapped && time.Now().Before(mapping.renewAfter)) {
-		return
+		(mapping.attempted && !mapping.mapped) {
+		return 0
+	}
+	if mapping.mapped && time.Now().Before(mapping.renewAfter) {
+		return mapping.externalPort
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), attemptTimeout)
 	defer cancel()
 	mapping.mapPortLocked(ctx)
+	if !mapping.mapped {
+		return 0
+	}
+	return mapping.externalPort
 }
 
 func (mapping *Mapping) Close() {
@@ -80,6 +87,7 @@ func (mapping *Mapping) Close() {
 	gateway := mapping.gateway
 	deleteRequired := mapping.deleteRequired
 	mapping.mapped = false
+	mapping.externalPort = 0
 	mapping.deleteRequired = false
 	mapping.mu.Unlock()
 	if gateway == nil || !deleteRequired {
@@ -104,7 +112,6 @@ func (mapping *Mapping) discover(parent context.Context) {
 		return
 	}
 	mapping.gateway = gateway
-	mapping.mapPortLocked(ctx)
 }
 
 func (mapping *Mapping) mapPortLocked(ctx context.Context) {
@@ -114,9 +121,11 @@ func (mapping *Mapping) mapPortLocked(ctx context.Context) {
 	)
 	if err != nil || externalPort < 1 || externalPort > 65535 {
 		mapping.mapped = false
+		mapping.externalPort = 0
 		return
 	}
 	mapping.mapped = true
+	mapping.externalPort = externalPort
 	mapping.deleteRequired = true
 	mapping.renewAfter = time.Now().Add(leaseDuration / 2)
 }

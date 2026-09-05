@@ -17,6 +17,7 @@ import (
 	"github.com/TNTcraftHIM/Screener/native/client/internal/loopback"
 	"github.com/TNTcraftHIM/Screener/native/client/internal/nativecapture"
 	"github.com/TNTcraftHIM/Screener/native/client/internal/nativehost"
+	"github.com/TNTcraftHIM/Screener/native/client/internal/nativeviewer"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -39,10 +40,18 @@ type Session struct {
 	cancel         context.CancelFunc
 	events         chan any
 	hostEvents     chan nativehost.Event
+	viewerEvents   chan nativeviewer.Event
 
 	mu     sync.Mutex
 	host   *nativehost.Session
+	viewer *nativeviewer.Session
 	closed bool
+}
+
+type outboundMediaSession interface {
+	SetAnswer(string, webrtc.SessionDescription) error
+	AddCandidate(string, *webrtc.ICECandidateInit) error
+	CloseEdge(string)
 }
 
 func New(
@@ -59,6 +68,7 @@ func New(
 		cancel:         cancel,
 		events:         make(chan any, 256),
 		hostEvents:     make(chan nativehost.Event, 256),
+		viewerEvents:   make(chan nativeviewer.Event, 256),
 	}
 	go session.relayEvents()
 	return session
@@ -121,10 +131,57 @@ func (session *Session) Handle(_ context.Context, payload []byte) (any, error) {
 		if err := decodeStrict(payload, &request); err != nil ||
 			request.Type != envelope.Type ||
 			!identityPattern.MatchString(request.ShareID) ||
-			request.EdgeCapacity < 1 || request.EdgeCapacity > maxEdgeCapacity {
+			request.EdgeCapacity < 1 || request.EdgeCapacity > maxEdgeCapacity ||
+			(request.Codec != "auto" && request.Codec != "h264" && request.Codec != "vp8") ||
+			(request.Codec == "vp8" && !session.capabilities.SoftwareVP8) ||
+			!validQualitySettings(request.Profile) {
 			return nil, errors.New("native start-share request is invalid")
 		}
 		return session.startShare(envelope, request)
+	case "update-share":
+		var request updateShareRequest
+		if err := decodeStrict(payload, &request); err != nil ||
+			request.Type != envelope.Type ||
+			!validIdentities(request.ShareID) ||
+			!validQualitySettings(request.Profile) {
+			return nil, errors.New("native update-share request is invalid")
+		}
+		host := session.current(request.ShareID)
+		if host == nil {
+			return nil, errors.New("native share does not exist")
+		}
+		if err := host.UpdateProfile(nativeQualityProfile(request.Profile)); err != nil {
+			return nil, err
+		}
+		return shareUpdatedResponse{
+			responseEnvelope: response(envelope, "share-updated"),
+			ShareID:          request.ShareID,
+		}, nil
+	case "replace-share-source":
+		var request replaceShareSourceRequest
+		if err := decodeStrict(payload, &request); err != nil ||
+			request.Type != envelope.Type ||
+			!validIdentities(request.ShareID) {
+			return nil, errors.New("native replace-share-source request is invalid")
+		}
+		host := session.current(request.ShareID)
+		if host == nil {
+			return nil, errors.New("native share does not exist")
+		}
+		audio := request.Audio && session.capabilities.Summary().AudioFor(
+			request.Source.Kind,
+		)
+		if err := host.ReplaceSource(nativecapture.VideoOptions{
+			Target:       request.Source,
+			AdapterIndex: request.AdapterIndex,
+			EncoderIndex: request.EncoderIndex,
+		}, audio); err != nil {
+			return nil, err
+		}
+		return shareSourceReplacedResponse{
+			responseEnvelope: response(envelope, "share-source-replaced"),
+			ShareID:          request.ShareID,
+		}, nil
 	case "prepare-edge":
 		var request prepareEdgeRequest
 		if err := decodeStrict(payload, &request); err != nil ||
@@ -141,6 +198,51 @@ func (session *Session) Handle(_ context.Context, payload []byte) (any, error) {
 			return nil, errors.New("native prepare-local-edge request is invalid")
 		}
 		return session.prepareLocalEdge(envelope, request)
+	case "receive-offer":
+		var request receiveOfferRequest
+		if err := decodeStrict(payload, &request); err != nil ||
+			request.Type != envelope.Type ||
+			!validIdentities(request.ShareID, request.ConnectionID) ||
+			request.EdgeCapacity < 1 || request.EdgeCapacity > maxEdgeCapacity ||
+			len(request.SDP) == 0 || len(request.SDP) > maxSDPBytes {
+			return nil, errors.New("native receive-offer request is invalid")
+		}
+		return session.receiveOffer(envelope, request)
+	case "receive-candidate":
+		var request receiveCandidateRequest
+		if err := decodeStrict(payload, &request); err != nil ||
+			request.Type != envelope.Type ||
+			!validIdentities(request.ShareID, request.ConnectionID) ||
+			!validCandidate(request.Candidate) {
+			return nil, errors.New("native receive-candidate request is invalid")
+		}
+		viewer := session.currentViewer(request.ShareID)
+		if viewer == nil {
+			return nil, errors.New("native Viewer session does not exist")
+		}
+		if err := viewer.AddReceiverCandidate(request.ConnectionID, request.Candidate); err != nil {
+			return nil, err
+		}
+		return response(envelope, "receive-candidate-accepted"), nil
+	case "close-receiver":
+		var request closeReceiverRequest
+		if err := decodeStrict(payload, &request); err != nil ||
+			request.Type != envelope.Type ||
+			!validIdentities(request.ShareID, request.ConnectionID) {
+			return nil, errors.New("native close-receiver request is invalid")
+		}
+		if viewer := session.currentViewer(request.ShareID); viewer != nil {
+			viewer.CloseReceiver(request.ConnectionID)
+		}
+		return response(envelope, "receiver-closed"), nil
+	case "stop-receive":
+		var request stopReceiveRequest
+		if err := decodeStrict(payload, &request); err != nil ||
+			request.Type != envelope.Type || !validIdentities(request.ShareID) {
+			return nil, errors.New("native stop-receive request is invalid")
+		}
+		session.stopViewer(request.ShareID)
+		return response(envelope, "receive-stopped"), nil
 	case "edge-answer":
 		var request edgeAnswerRequest
 		if err := decodeStrict(payload, &request); err != nil ||
@@ -149,11 +251,11 @@ func (session *Session) Handle(_ context.Context, payload []byte) (any, error) {
 			len(request.SDP) == 0 || len(request.SDP) > maxSDPBytes {
 			return nil, errors.New("native edge-answer request is invalid")
 		}
-		host := session.current(request.ShareID)
-		if host == nil {
-			return nil, errors.New("native share does not exist")
+		media := session.currentMedia(request.ShareID)
+		if media == nil {
+			return nil, errors.New("native media session does not exist")
 		}
-		if err := host.SetAnswer(
+		if err := media.SetAnswer(
 			request.ConnectionID,
 			webrtc.SessionDescription{Type: webrtc.SDPTypeAnswer, SDP: request.SDP},
 		); err != nil {
@@ -168,11 +270,11 @@ func (session *Session) Handle(_ context.Context, payload []byte) (any, error) {
 			!validCandidate(request.Candidate) {
 			return nil, errors.New("native edge-candidate request is invalid")
 		}
-		host := session.current(request.ShareID)
-		if host == nil {
-			return nil, errors.New("native share does not exist")
+		media := session.currentMedia(request.ShareID)
+		if media == nil {
+			return nil, errors.New("native media session does not exist")
 		}
-		if err := host.AddCandidate(request.ConnectionID, request.Candidate); err != nil {
+		if err := media.AddCandidate(request.ConnectionID, request.Candidate); err != nil {
 			return nil, err
 		}
 		return response(envelope, "edge-candidate-accepted"), nil
@@ -183,11 +285,9 @@ func (session *Session) Handle(_ context.Context, payload []byte) (any, error) {
 			!validIdentities(request.ShareID, request.ConnectionID) {
 			return nil, errors.New("native close-edge request is invalid")
 		}
-		host := session.current(request.ShareID)
-		if host == nil {
-			return nil, errors.New("native share does not exist")
+		if media := session.currentMedia(request.ShareID); media != nil {
+			media.CloseEdge(request.ConnectionID)
 		}
-		host.CloseEdge(request.ConnectionID)
 		return response(envelope, "edge-closed"), nil
 	case "stop-share":
 		var request stopShareRequest
@@ -226,11 +326,16 @@ func (session *Session) Close() error {
 	}
 	session.closed = true
 	host := session.host
+	viewer := session.viewer
 	session.host = nil
+	session.viewer = nil
 	session.mu.Unlock()
 	session.cancel()
 	if host != nil {
 		_ = host.Close()
+	}
+	if viewer != nil {
+		_ = viewer.Close()
 	}
 	return nil
 }
@@ -240,19 +345,23 @@ func (session *Session) startShare(
 	request startShareRequest,
 ) (any, error) {
 	session.mu.Lock()
-	if session.closed || session.host != nil {
+	if session.closed || session.host != nil || session.viewer != nil {
 		session.mu.Unlock()
 		return nil, errors.New("native share is already active")
 	}
 	session.mu.Unlock()
+	profile := nativeQualityProfile(request.Profile)
 	host, err := nativehost.Start(session.ctx, nativehost.Options{
 		ShareID:        request.ShareID,
 		CaptureProcess: session.captureProcess,
 		Video: nativecapture.VideoOptions{
 			Target:       request.Source,
+			Codec:        request.Codec,
 			AdapterIndex: request.AdapterIndex,
 			EncoderIndex: request.EncoderIndex,
+			Profile:      profile.Video,
 		},
+		Profile:      profile,
 		EdgeCapacity: request.EdgeCapacity,
 		AudioEnabled: request.Audio && session.capabilities.Summary().AudioFor(
 			request.Source.Kind,
@@ -264,7 +373,7 @@ func (session *Session) startShare(
 		return nil, err
 	}
 	session.mu.Lock()
-	if session.closed || session.host != nil {
+	if session.closed || session.host != nil || session.viewer != nil {
 		session.mu.Unlock()
 		_ = host.Close()
 		return nil, errors.New("native share is unavailable")
@@ -276,7 +385,45 @@ func (session *Session) startShare(
 		responseEnvelope: response(envelope, "share-started"),
 		ShareID:          request.ShareID,
 		Audio:            host.HasAudio(),
+		Codec:            host.Codec(),
 	}, nil
+}
+
+func validQualitySettings(settings qualitySettings) bool {
+	return nativeQualityProfile(settings).Valid()
+}
+
+func nativeQualityProfile(settings qualitySettings) nativehost.QualityProfile {
+	width, height := uint32(0), uint32(0)
+	switch settings.Resolution {
+	case "480p":
+		width, height = 854, 480
+	case "720p":
+		width, height = 1280, 720
+	case "1080p":
+		width, height = 1920, 1080
+	case "1440p":
+		width, height = 2560, 1440
+	}
+	audioBitrate := 0
+	switch settings.ScreenAudioQuality {
+	case "", "music":
+		audioBitrate = 128_000
+	case "saver":
+		audioBitrate = 64_000
+	case "very-high":
+		audioBitrate = 192_000
+	}
+	return nativehost.QualityProfile{
+		Video: nativecapture.VideoProfile{
+			Width:      width,
+			Height:     height,
+			Framerate:  settings.MaxFramerate,
+			Bitrate:    settings.MaxBitrate,
+			Preference: settings.DegradationPreference,
+		},
+		AudioBitrate: audioBitrate,
+	}
 }
 
 func (session *Session) prepareEdge(
@@ -287,11 +434,19 @@ func (session *Session) prepareEdge(
 	if err != nil {
 		return nil, err
 	}
-	host := session.current(request.ShareID)
-	if host == nil {
-		return nil, errors.New("native share does not exist")
+	var offer webrtc.SessionDescription
+	if host := session.current(request.ShareID); host != nil && request.SourceConnectionID == "" {
+		offer, err = host.PrepareEdge(request.ConnectionID, servers)
+	} else if viewer := session.currentViewer(request.ShareID); viewer != nil &&
+		identityPattern.MatchString(request.SourceConnectionID) {
+		offer, err = viewer.PrepareEdge(
+			request.SourceConnectionID,
+			request.ConnectionID,
+			servers,
+		)
+	} else {
+		return nil, errors.New("native media source does not exist")
 	}
-	offer, err := host.PrepareEdge(request.ConnectionID, servers)
 	if err != nil {
 		return nil, err
 	}
@@ -307,11 +462,19 @@ func (session *Session) prepareLocalEdge(
 	envelope requestEnvelope,
 	request prepareLocalEdgeRequest,
 ) (any, error) {
-	host := session.current(request.ShareID)
-	if host == nil {
-		return nil, errors.New("native share does not exist")
+	var offer webrtc.SessionDescription
+	var err error
+	if host := session.current(request.ShareID); host != nil && request.SourceConnectionID == "" {
+		offer, err = host.PrepareLocalEdge(request.ConnectionID)
+	} else if viewer := session.currentViewer(request.ShareID); viewer != nil &&
+		identityPattern.MatchString(request.SourceConnectionID) {
+		offer, err = viewer.PrepareLocalEdge(
+			request.SourceConnectionID,
+			request.ConnectionID,
+		)
+	} else {
+		return nil, errors.New("native media source does not exist")
 	}
-	offer, err := host.PrepareLocalEdge(request.ConnectionID)
 	if err != nil {
 		return nil, err
 	}
@@ -320,6 +483,36 @@ func (session *Session) prepareLocalEdge(
 		ShareID:          request.ShareID,
 		ConnectionID:     request.ConnectionID,
 		SDP:              offer.SDP,
+	}, nil
+}
+
+func (session *Session) receiveOffer(
+	envelope requestEnvelope,
+	request receiveOfferRequest,
+) (any, error) {
+	servers, err := pionICEServers(request.ICEServers)
+	if err != nil {
+		return nil, err
+	}
+	viewer, err := session.ensureViewer(request.ShareID, request.EdgeCapacity)
+	if err != nil {
+		return nil, err
+	}
+	answer, audio, codec, err := viewer.AcceptOffer(
+		request.ConnectionID,
+		webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: request.SDP},
+		servers,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return receiveAnswerResponse{
+		responseEnvelope: response(envelope, "receive-answer"),
+		ShareID:          request.ShareID,
+		ConnectionID:     request.ConnectionID,
+		SDP:              answer.SDP,
+		Audio:            audio,
+		Codec:            codec,
 	}, nil
 }
 
@@ -344,6 +537,78 @@ func (session *Session) current(shareID string) *nativehost.Session {
 	return session.host
 }
 
+func (session *Session) ensureViewer(
+	shareID string,
+	edgeCapacity int,
+) (*nativeviewer.Session, error) {
+	session.mu.Lock()
+	if session.closed || session.host != nil {
+		session.mu.Unlock()
+		return nil, errors.New("native media role is unavailable")
+	}
+	if session.viewer != nil {
+		viewer := session.viewer
+		session.mu.Unlock()
+		if viewer.ShareID() != shareID {
+			return nil, errors.New("native Viewer session identity changed")
+		}
+		return viewer, nil
+	}
+	session.mu.Unlock()
+	viewer, err := nativeviewer.Start(session.ctx, nativeviewer.Options{
+		ShareID: shareID, EdgeCapacity: edgeCapacity,
+		PortMapping: session.portMapping, Events: session.viewerEvents,
+	})
+	if err != nil {
+		return nil, err
+	}
+	session.mu.Lock()
+	if session.closed || session.host != nil || session.viewer != nil {
+		session.mu.Unlock()
+		_ = viewer.Close()
+		return nil, errors.New("native media role is unavailable")
+	}
+	session.viewer = viewer
+	session.mu.Unlock()
+	return viewer, nil
+}
+
+func (session *Session) currentViewer(shareID string) *nativeviewer.Session {
+	session.mu.Lock()
+	defer session.mu.Unlock()
+	if session.closed || session.viewer == nil || session.viewer.ShareID() != shareID {
+		return nil
+	}
+	return session.viewer
+}
+
+func (session *Session) currentMedia(shareID string) outboundMediaSession {
+	session.mu.Lock()
+	defer session.mu.Unlock()
+	if session.closed {
+		return nil
+	}
+	if session.host != nil && session.host.ShareID() == shareID {
+		return session.host
+	}
+	if session.viewer != nil && session.viewer.ShareID() == shareID {
+		return session.viewer
+	}
+	return nil
+}
+
+func (session *Session) stopViewer(shareID string) {
+	session.mu.Lock()
+	viewer := session.viewer
+	if viewer == nil || viewer.ShareID() != shareID {
+		session.mu.Unlock()
+		return
+	}
+	session.viewer = nil
+	session.mu.Unlock()
+	_ = viewer.Close()
+}
+
 func (session *Session) watchHost(host *nativehost.Session) {
 	err, open := <-host.Done()
 	session.mu.Lock()
@@ -366,9 +631,52 @@ func (session *Session) relayEvents() {
 		select {
 		case event := <-session.hostEvents:
 			session.emit(eventMessage(event))
+		case event := <-session.viewerEvents:
+			session.emit(viewerEventMessage(event))
 		case <-session.ctx.Done():
 			return
 		}
+	}
+}
+
+func viewerEventMessage(event nativeviewer.Event) any {
+	base := eventEnvelope{
+		Version:      loopback.ProtocolVersion,
+		Type:         event.Type,
+		ShareID:      event.ShareID,
+		ConnectionID: event.ConnectionID,
+	}
+	switch event.Type {
+	case "edge-candidate":
+		return edgeCandidateEvent{eventEnvelope: base, Candidate: event.Candidate}
+	case "edge-state":
+		return edgeStateEvent{eventEnvelope: base, State: event.State}
+	case "edge-path":
+		return edgePathEvent{
+			eventEnvelope:    base,
+			LocalType:        event.LocalType,
+			RemoteType:       event.RemoteType,
+			NatTraversalPath: event.NatTraversalPath,
+		}
+	case "edge-quality":
+		quality := event.Quality
+		return edgeQualityEvent{
+			eventEnvelope:         base,
+			SampleTimestampMs:     quality.SampleTimestampMs,
+			SampleWindowMs:        quality.SampleWindowMs,
+			RTPStatsID:            quality.RTPStatsID,
+			TrackIdentifier:       quality.TrackIdentifier,
+			State:                 quality.State,
+			Reason:                quality.Reason,
+			IntervalFramesEncoded: quality.IntervalFramesEncoded,
+			FramesPerSecond:       quality.FramesPerSecond,
+			BitrateKbps:           quality.BitrateKbps,
+			AvailableOutgoingKbps: quality.AvailableOutgoingKbps,
+			Width:                 quality.Width,
+			Height:                quality.Height,
+		}
+	default:
+		return edgeStateEvent{eventEnvelope: base, State: event.State}
 	}
 }
 
@@ -393,9 +701,10 @@ func eventMessage(event nativehost.Event) any {
 		return edgeStateEvent{eventEnvelope: base, State: event.State}
 	case "edge-path":
 		return edgePathEvent{
-			eventEnvelope: base,
-			LocalType:     event.LocalType,
-			RemoteType:    event.RemoteType,
+			eventEnvelope:    base,
+			LocalType:        event.LocalType,
+			RemoteType:       event.RemoteType,
+			NatTraversalPath: event.NatTraversalPath,
 		}
 	case "edge-quality":
 		quality := event.Quality

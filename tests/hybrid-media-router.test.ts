@@ -1018,6 +1018,53 @@ describe("HybridMediaRouter v9 runtime", () => {
     }
   });
 
+  it.each([false, true])("creates NAT retries through real prepare messages with configured SFU=%s but peer-only media", async (withSfu) => {
+    const { store, sent, router } = harness(2, withSfu);
+    try {
+      const room = await store.createRoom();
+      const host = connectHost(store, room, {
+        peerOnly: true, topologyOptimization: false, natPrediction: true,
+      });
+      complete(router, host);
+      const viewer = connectViewer(store, room, "nat-retry");
+      complete(router, viewer);
+      const connectionIds = new Set<string>();
+      let staleFailure: Parameters<typeof router.handleRouteFailed>[1] | undefined;
+      for (let current = 1; current <= 3; current += 1) {
+        await vi.waitFor(() => expect(
+          preparedFor(sent, viewer.sessionId)?.candidate.connectionAttempt,
+        ).toEqual({ current, total: 3 }));
+        const prepared = preparedFor(sent, viewer.sessionId)!;
+        connectionIds.add(prepared.candidate.connectionId);
+        expect(preparedFor(sent, host.sessionId)?.candidate).toEqual(prepared.candidate);
+        if (staleFailure) router.handleRouteFailed(viewer, staleFailure);
+        expect(preparedFor(sent, viewer.sessionId)?.candidate.connectionId)
+          .toBe(prepared.candidate.connectionId);
+        if (current === 3) {
+          router.handleRouteReady(viewer, {
+            type: "route-ready", revision: prepared.revision, phase: "prepare",
+          });
+          expect(router.resolveActiveViewerMediaEdge(room.roomId, viewer.peerId))
+            .toMatchObject({ connectionId: prepared.candidate.connectionId });
+        } else {
+          staleFailure = {
+            type: "route-failed", revision: prepared.revision, phase: "prepare",
+            connectionId: prepared.candidate.connectionId,
+          };
+          router.handleRouteFailed(viewer, staleFailure);
+          router.handleRouteFailed(host, staleFailure);
+        }
+      }
+      expect(connectionIds.size).toBe(3);
+      expect([...sent.values()].flat().some((message) =>
+        message.type === "sfu-config" ||
+        (message.type === "route-status" && message.state === "failed"),
+      )).toBe(false);
+    } finally {
+      await router.close();
+    }
+  });
+
   it("keeps peer-only shares out of configured SFU fallback", async () => {
     const { store, sent, router } = harness(1, true);
     try {

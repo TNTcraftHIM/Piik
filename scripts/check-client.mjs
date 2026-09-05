@@ -106,7 +106,7 @@ function runClientTests(go) {
 }
 
 function checkPlatformCapture() {
-  if (process.platform !== "win32" && process.platform !== "darwin") {
+  if (!["win32", "darwin", "linux"].includes(process.platform)) {
     if (mode === "--capture-only") {
       throw new Error("No native capture check exists for this platform");
     }
@@ -123,8 +123,16 @@ function checkPlatformCapture() {
       "v1.0",
       "powershell.exe",
     );
+    const modernPowerShell = join(
+      process.env.ProgramFiles || "C:\\Program Files",
+      "PowerShell",
+      "7",
+      "pwsh.exe",
+    );
     const powershell = process.env.SCREENER_POWERSHELL?.trim() ||
-      (existsSync(systemPowerShell) ? systemPowerShell : "pwsh");
+      (existsSync(modernPowerShell)
+        ? modernPowerShell
+        : (existsSync(systemPowerShell) ? systemPowerShell : "pwsh"));
     run(powershell, [
       "-NoProfile",
       "-ExecutionPolicy",
@@ -133,11 +141,18 @@ function checkPlatformCapture() {
       join(clientRoot, "platform", "windows", "capture", "build.ps1"),
       "-OutputDirectory",
       buildRoot,
+      "-Check",
     ]);
     executable = join(buildRoot, "screener-client-capture.exe");
-  } else {
+  } else if (process.platform === "darwin") {
     run("sh", [
       join(clientRoot, "platform", "darwin", "capture", "build.sh"),
+      buildRoot,
+    ]);
+    executable = join(buildRoot, "screener-client-capture");
+  } else {
+    run("sh", [
+      join(clientRoot, "platform", "linux", "capture", "build.sh"),
       buildRoot,
     ]);
     executable = join(buildRoot, "screener-client-capture");
@@ -150,12 +165,13 @@ function checkPlatformCapture() {
   }
   const raw = run(executable, ["--probe"], { capture: true });
   const probe = JSON.parse(raw);
-  const expectedPlatform = process.platform === "win32" ? "windows" : "darwin";
+  const expectedPlatform = process.platform === "win32" ? "windows" : process.platform;
   if (
-    probe?.protocol !== 3 ||
+    probe?.protocol !== 4 ||
     probe.platform !== expectedPlatform ||
     typeof probe.platformBuild !== "string" ||
     typeof probe.videoCapture !== "boolean" ||
+    typeof probe.softwareVP8 !== "boolean" ||
     typeof probe.processAudio !== "boolean" ||
     typeof probe.systemAudio !== "boolean" ||
     !Array.isArray(probe.adapters) ||
@@ -173,16 +189,17 @@ function checkPlatformCapture() {
   ) {
     throw new Error("Native capture probe returned an invalid contract");
   }
-  if (process.platform !== "win32") return;
   const sources = JSON.parse(run(executable, ["--list"], { capture: true }));
   if (!Array.isArray(sources) || sources.some((target) =>
-    !["window", "display"].includes(target?.kind) ||
+    !["window", "display", "picker"].includes(target?.kind) ||
     !/^[1-9][0-9]{0,19}$/.test(target?.sourceId) ||
     typeof target?.title !== "string" ||
     (target.kind === "window" &&
       (!Number.isInteger(target?.pid) ||
         !/^[1-9][0-9]{0,19}$/.test(target?.creationTime))) ||
     (target.kind === "display" &&
+      (target?.pid !== undefined || target?.creationTime !== undefined)) ||
+    (target.kind === "picker" &&
       (target?.pid !== undefined || target?.creationTime !== undefined))
   )) {
     throw new Error("Windows capture process returned an invalid source list");

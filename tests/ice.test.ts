@@ -11,6 +11,10 @@ describe("ordinary ICE configuration", () => {
           "stun:stun-b.example.test:3478",
         ],
         natPredictionEnabled: true,
+        natPredictionStunUrls: [
+          "stun:survey-a.example.test:3478",
+          "stun:survey-b.example.test:3478",
+        ],
       }),
     ).toEqual({
       iceServers: [
@@ -22,8 +26,8 @@ describe("ordinary ICE configuration", () => {
         },
       ],
       natPredictionStunUrls: [
-        "stun:stun-a.example.test:3479",
-        "stun:stun-a.example.test:3480",
+        "stun:survey-a.example.test:3478",
+        "stun:survey-b.example.test:3478",
       ],
     });
   });

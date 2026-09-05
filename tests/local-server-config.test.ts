@@ -45,6 +45,8 @@ describe("local server configuration", () => {
       SCREENER_CLIENT_LOCAL_PASSWORD: "persistent-local-password",
       SCREENER_CLIENT_PUBLIC_ORIGIN: "https://small-bright-room.trycloudflare.com",
       STUN_URLS: "stun:stun.example:3478, stun:stun.example:3479",
+      SCREENER_CLIENT_NAT_PREDICTION_STUN_URLS:
+        "stun:survey-a.example:3478, stun:survey-b.example:3478",
     });
 
     expect(config.port).toBe(9234);
@@ -59,6 +61,30 @@ describe("local server configuration", () => {
       "stun:stun.example:3478",
       "stun:stun.example:3479",
     ]);
+    expect(config.natPredictionEnabled).toBe(true);
+    expect(config.natPredictionStunUrls).toEqual([
+      "stun:survey-a.example:3478",
+      "stun:survey-b.example:3478",
+    ]);
+  });
+
+  it("leaves the Local site open when no password is supplied", () => {
+    const config = createLocalServerConfig({
+      port: 9235,
+      publicAddress: "192.168.1.10",
+    });
+
+    expect(config.siteAccessPassword).toBeUndefined();
+  });
+
+  it("accepts an empty Client password from the process environment", () => {
+    const config = loadLocalServerConfig({
+      SCREENER_CLIENT_PORT: "9236",
+      SCREENER_CLIENT_LAN_ADDRESS: "192.168.50.4",
+      SCREENER_CLIENT_LOCAL_PASSWORD: "",
+    });
+
+    expect(config.siteAccessPassword).toBeUndefined();
   });
 
   it.each([

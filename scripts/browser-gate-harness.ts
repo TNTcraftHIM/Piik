@@ -117,7 +117,10 @@ export class CdpConnection {
     if (!pending) return;
     this.pending.delete(message.id);
     if (message.error) {
-      pending.reject(new Error("CDP command failed"));
+      const detail = typeof message.error === "object" && "message" in message.error
+        ? String(message.error.message)
+        : "unknown protocol error";
+      pending.reject(new Error(`CDP command failed: ${detail}`));
     } else {
       pending.resolve(message.result ?? {});
     }

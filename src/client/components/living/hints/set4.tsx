@@ -5,6 +5,7 @@
 // Absolute coordinates only: any element whose class animates `transform`
 // carries no transform attribute — positions are baked into path data.
 import {
+  BrowserWindow,
   Crown,
   Door,
   FAINT,
@@ -320,46 +321,49 @@ function TheaterHint({
   exit: boolean;
 }) {
   const motion = exit ? "vlsThExit" : "vlsThEnter";
+  const stageClass = exit ? "vls-th-exit-stage" : "vls-th-enter-stage";
   return (
     <>
       <style>{`
-.vls-th-stage{transform-box:fill-box;transform-origin:center;animation:${motion} 3.2s cubic-bezier(.3,1.25,.5,1) infinite}
+.${stageClass}{transform-box:fill-box;transform-origin:center;animation:${motion} 3.2s cubic-bezier(.3,1.25,.5,1) infinite}
 .vls-th-arrows{animation:vlsThArrows 3.2s ease-in-out infinite}
 @keyframes vlsThEnter{0%,8%{transform:scale(.72)}28%,100%{transform:scale(1)}}
 @keyframes vlsThExit{0%,8%{transform:scale(1.28)}28%,100%{transform:scale(1)}}
 @keyframes vlsThArrows{0%,8%{opacity:0}20%,44%{opacity:1}58%,100%{opacity:.38}}
 ${rmBlock(
-  ["vls-th-stage", "vls-th-arrows"],
+  [stageClass, "vls-th-arrows"],
   [
-    [".vls-th-stage", "transform:none"],
+    [`.${stageClass}`, "transform:none"],
     [".vls-th-arrows", "opacity:.38"],
   ],
 )}
 `}</style>
       <Frame x={4} w={152} theme={theme} />
       <Frame x={164} w={152} theme={theme} accent={LIVE} />
+      <BrowserWindow x={16} y={12} w={128} h={72} />
+      <BrowserWindow x={176} y={12} w={128} h={72} />
       {exit ? (
         <>
-          <MiniTv x={16} y={10} w={132} h={72} />
-          <g className="vls-th-stage">
-            <MiniTv x={204} y={22} w={72} h={44} />
-            <path d="M190 72H290" stroke={INK} strokeWidth={2.5} strokeLinecap="round" />
-            <rect x={218} y={73} width={44} height={9} rx={4.5} fill="var(--couch)" />
+          <MiniTv x={28} y={32} w={104} h={44} />
+          <g className={stageClass}>
+            <MiniTv x={212} y={39} w={56} h={30} />
           </g>
+          <path d="M198 76H282" stroke={INK} strokeWidth={2} strokeLinecap="round" />
+          <rect x={222} y={78} width={36} height={3} rx={1.5} fill="var(--couch)" />
           <g className="vls-th-arrows" stroke={LIVE} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" fill="none">
-            <path d="M184 20l13 13m0-10v10h-10M296 20l-13 13m0-10v10h10M184 78l13-13m0 10V65h-10M296 78l-13-13m0 10V65h10" />
+            <path d="M196 32l13 11m0-9v9h-9M284 32l-13 11m0-9v9h9M196 72l13-11m0 9v-9h-9M284 72l-13-11m0 9v-9h9" />
           </g>
         </>
       ) : (
         <>
-          <MiniTv x={44} y={22} w={72} h={44} />
-          <path d="M30 72H130" stroke={INK} strokeWidth={2.5} strokeLinecap="round" />
-          <rect x={58} y={73} width={44} height={9} rx={4.5} fill="var(--couch)" />
-          <g className="vls-th-stage">
-            <MiniTv x={176} y={10} w={132} h={72} />
+          <MiniTv x={52} y={39} w={56} h={30} />
+          <path d="M38 76H122" stroke={INK} strokeWidth={2} strokeLinecap="round" />
+          <rect x={62} y={78} width={36} height={3} rx={1.5} fill="var(--couch)" />
+          <g className={stageClass}>
+            <MiniTv x={188} y={32} w={104} h={44} />
           </g>
           <g className="vls-th-arrows" stroke={LIVE} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" fill="none">
-            <path d="M204 34l-14-14m0 10V20h10M276 34l14-14m0 10V20h-10M204 62l-14 14m0-10v10h10M276 62l14 14m0-10v10h-10" />
+            <path d="M211 46l-13-12m0 9v-9h9M269 46l13-12m0 9v-9h-9M211 58l-13 12m0-9v9h9M269 58l13 12m0-9v9h-9" />
           </g>
         </>
       )}
@@ -492,6 +496,43 @@ ${rmBlock(
   </>
 );
 
+// The home mark distinguishes local sharing from a public direct route.
+const HintClientLocal: HintScene = ({ theme }) => (
+  <>
+    <HintRouteP2p theme={theme} />
+    <g fill="none" stroke={LIVE} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M173 20 180 14 187 20v7h-14Z" />
+      <path d="M178 27v-5h4v5" />
+    </g>
+  </>
+);
+
+const HintClientSite: HintScene = ({ theme }) => (
+  <>
+    <style>{`
+.vls-site-page{animation:vlsSitePage 3.2s ease-out infinite}
+.vls-site-star{transform-box:fill-box;transform-origin:center;animation:vlsSiteStar 3.2s cubic-bezier(.3,1.5,.5,1) infinite}
+@keyframes vlsSitePage{0%,8%{transform:translateY(4px);opacity:0}28%,100%{transform:none;opacity:1}}
+@keyframes vlsSiteStar{0%,28%{opacity:0;transform:scale(0)}36%{opacity:1;transform:scale(1.2)}44%,100%{opacity:1;transform:scale(1)}}
+${rmBlock(
+  ["vls-site-page", "vls-site-star"],
+  [[".vls-site-page,.vls-site-star", "transform:none;opacity:1"]],
+)}
+`}</style>
+    <Frame x={4} w={152} theme={theme} />
+    <Frame x={164} w={152} theme={theme} accent={LIVE} />
+    <BrowserWindow x={24} y={18} w={120} h={64} />
+    <Pawn x={44} yb={75} s={8} eyes />
+    <ServerBox x={74} y={42} w={36} h={24} />
+    <BrowserWindow x={184} y={18} w={120} h={64} />
+    <g className="vls-site-page">
+      <Pawn x={205} yb={75} s={8} eyes />
+      <MiniTv x={232} y={40} w={54} h={30} />
+    </g>
+    <Star x={290} y={37} r={5} className="vls-site-star" baseOpacity={0} />
+  </>
+);
+
 /* hint-nat-prediction: [one direct path] -> [a small bounded fan of
    alternate direct paths]. The scene describes extra direct chances without
    suggesting a media relay. */
@@ -551,4 +592,6 @@ export const SET4_SCENES: Record<Set4Kind, HintScene> = {
   "hint-route-p2p": HintRouteP2p,
   "hint-route-sfu": HintRouteSfu,
   "hint-nat-prediction": HintNatPrediction,
+  "hint-client-local": HintClientLocal,
+  "hint-client-site": HintClientSite,
 };

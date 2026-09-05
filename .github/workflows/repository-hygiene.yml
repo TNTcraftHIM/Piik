@@ -55,6 +55,8 @@ jobs:
             if [ -n "$base" ] && ! git diff --quiet "$base" HEAD -- \
               .github/workflows/repository-hygiene.yml \
               .node-version \
+              LICENSE \
+              licenses \
               index.html \
               native/client \
               package.json \
@@ -66,7 +68,9 @@ jobs:
               tsconfig.server.json \
               vite.config.ts \
               scripts/assemble-client.mjs \
+              scripts/client-icons.mjs \
               scripts/package-app-release.mjs \
+              scripts/package-licenses.mjs \
               scripts/package-client-candidate.mjs \
               scripts/client-package-targets.mjs \
               scripts/check-client.mjs \
@@ -149,6 +153,16 @@ jobs:
         with:
           go-version: 1.26.6
           cache-dependency-path: native/client/go.sum
+      - name: Install Linux native capture dependencies
+        if: matrix.target == 'linux-amd64'
+        run: >-
+          sudo apt-get update && sudo apt-get install -y
+          libportal-dev
+          libgstreamer1.0-dev
+          libgstreamer-plugins-base1.0-dev
+          gstreamer1.0-pipewire
+          gstreamer1.0-plugins-bad
+          gstreamer1.0-pulseaudio
       - name: Download application release
         uses: actions/download-artifact@v8
         with:

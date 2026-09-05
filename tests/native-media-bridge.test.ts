@@ -67,7 +67,7 @@ function fixture(options: {
     NativeMediaBridgeControl["prepareLocalEdge"]
   >(async (_shareId, connectionId) => {
       listener?.({
-        version: 5,
+        version: 8,
         type: "edge-candidate",
         shareId: "share_123456",
         connectionId,
@@ -199,14 +199,14 @@ describe("native media bridge", () => {
     await starting;
 
     current.emit({
-      version: 5,
+      version: 8,
       type: "edge-state",
       shareId: "share_123456",
       connectionId: current.bridge.connectionId,
       state: "failed",
     });
     current.emit({
-      version: 5,
+      version: 8,
       type: "edge-state",
       shareId: "share_123456",
       connectionId: current.bridge.connectionId,

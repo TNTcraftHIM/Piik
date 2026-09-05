@@ -1,13 +1,14 @@
 package loopback
 
 import (
+	"strings"
 	"testing"
 )
 
 func TestDecodeRequestAcceptsOnlyTheCurrentShape(t *testing.T) {
 	valid := []string{
-		`{"version":5,"id":"request_hello","type":"hello"}`,
-		`{"version":5,"id":"request_ping","type":"ping"}`,
+		`{"version":8,"id":"request_hello","type":"hello"}`,
+		`{"version":8,"id":"request_ping","type":"ping"}`,
 	}
 	for _, payload := range valid {
 		if _, err := decodeRequest([]byte(payload)); err != nil {
@@ -16,15 +17,30 @@ func TestDecodeRequestAcceptsOnlyTheCurrentShape(t *testing.T) {
 	}
 	invalid := []string{
 		`{"version":3,"id":"request_ping","type":"ping"}`,
-		`{"version":5,"id":"short","type":"ping"}`,
-		`{"version":5,"id":"request_ping","type":"ping","extra":true}`,
-		`{"version":5,"id":"request_hello","type":"hello","nonce":"obsolete"}`,
-		`{"version":5,"id":"request_ping","type":"ping"} trailing`,
+		`{"version":8,"id":"short","type":"ping"}`,
+		`{"version":8,"id":"request_ping","type":"ping","extra":true}`,
+		`{"version":8,"id":"request_hello","type":"hello","nonce":"obsolete"}`,
+		`{"version":8,"id":"request_ping","type":"ping"} trailing`,
 	}
 	for _, payload := range invalid {
 		if _, err := decodeRequest([]byte(payload)); err == nil {
 			t.Fatalf("decodeRequest accepted %s", payload)
 		}
+	}
+}
+
+func TestDecodeRequestUsesTheSharedIdentifierBoundary(t *testing.T) {
+	identifier := "request_" + strings.Repeat("a", 248)
+	if len(identifier) != 256 {
+		t.Fatalf("test identifier length = %d", len(identifier))
+	}
+	payload := []byte(`{"version":8,"id":"` + identifier + `","type":"ping"}`)
+	if _, err := decodeRequest(payload); err != nil {
+		t.Fatalf("maximum identifier was rejected: %v", err)
+	}
+	tooLong := []byte(`{"version":8,"id":"` + identifier + `a","type":"ping"}`)
+	if _, err := decodeRequest(tooLong); err == nil {
+		t.Fatal("identifier beyond the boundary was accepted")
 	}
 }
 
@@ -46,13 +62,28 @@ func TestValidateMessagesRequireTheExpectedPhase(t *testing.T) {
 }
 
 func TestEnvelopeAllowsAnExtensionToOwnItsStrictShape(t *testing.T) {
-	payload := []byte(`{"version":5,"id":"request_extension","type":"extension","value":1}`)
+	payload := []byte(`{"version":8,"id":"request_extension","type":"extension","value":1}`)
 	message, err := decodeEnvelope(payload)
 	if err != nil || message.Type != "extension" {
 		t.Fatalf("extension envelope = %+v, %v", message, err)
 	}
 	if _, err = decodeRequest(payload); err == nil {
 		t.Fatal("base message decoder accepted extension fields")
+	}
+}
+
+func TestResponseBoundFitsOneSourcePreview(t *testing.T) {
+	preview := map[string]string{
+		"type": "source-preview",
+		"mime": "image/bmp",
+		"data": strings.Repeat("A", (54+320*180*3)*4/3),
+	}
+	if _, err := encodeMessage(preview); err != nil {
+		t.Fatalf("320x180 preview was rejected: %v", err)
+	}
+	preview["data"] = strings.Repeat("A", MaxControlMessageBytes)
+	if _, err := encodeMessage(preview); err == nil {
+		t.Fatal("response beyond the message bound was accepted")
 	}
 }
 

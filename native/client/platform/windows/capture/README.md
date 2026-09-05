@@ -6,9 +6,14 @@ its PID and process creation time, and has independent modes for:
 
 - capability discovery (`--probe`);
 - process-tree or default-device loopback PCM (`--capture-audio`); or
-- WGC/D3D11 screen/window video with adapter-bound, hardware-only Media Foundation
-  H.264 output (`--capture-video`).
-- bounded 160x90 BMP source previews (`--preview`).
+- WGC/D3D11 screen/window video with adapter-bound Media Foundation H.264 or
+  libvpx VP8 output (`--capture-video --codec auto|h264|vp8`).
+- bounded 320x180 BMP source previews (`--preview`), delivered once per target
+  over the local control connection rather than the media route.
+
+The video command receives the current product resolution, frame-rate, bitrate,
+and quality preference. A replacement process applies live changes while the Go
+session retains its Pion source and connections.
 
 Video and audio run as separate bounded child processes. A source whose audio
 loopback cannot be initialized keeps video available and reports audio
@@ -16,20 +21,25 @@ unavailable instead of failing the whole source. Process loopback is probed by
 activation rather than inferred from a Windows build number; display sources
 use the standard render-device loopback available on Windows 10 and later.
 
-It has no software encoder, alternate codec, or network fallback. The Client
+Auto compares target-profile encoding work within a four-second selection
+budget; H.264 that meets the target needs no software comparison. The selected
+codec remains fixed across profile and source changes. VP8 reads the existing
+NV12 surface through one staging texture and uses the same encoded-frame
+boundary. The process has no network fallback. The Client
 consumes the selected process or system-audio stream through its native media
 edge when the capability probe reports support. Build it outside the repository
 for a bounded capability run:
 
 ```powershell
-$out = Join-Path ([IO.Path]::GetTempPath()) 'screener-native-capture'
-./native/client/platform/windows/capture/build.ps1 -OutputDirectory $out
+npm run check:client-capture
 ```
 
 The implementation follows Microsoft's MIT-licensed reference samples and
 official API contracts without copying their WIL framework. The retained MF
 fixture compiles the same encoder source with `SCREENER_H264_FIXTURE`; there is
 not a second product MFT implementation.
+The build caches pinned libvpx, NASM and make inputs under `build/client-check`;
+only statically linked VP8 code and its notices enter the package.
 
 - <https://github.com/microsoft/Windows-classic-samples/tree/main/Samples/ApplicationLoopback>
 - <https://github.com/microsoft/Windows.UI.Composition-Win32-Samples/tree/master/cpp/ScreenCaptureforHWND>

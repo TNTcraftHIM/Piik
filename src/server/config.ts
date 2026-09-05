@@ -58,6 +58,7 @@ export interface ServerConfig {
   livekitFallback?: LiveKitFallbackConfig;
   stunUrls: readonly string[];
   natPredictionEnabled: boolean;
+  natPredictionStunUrls?: readonly string[];
 }
 
 function parseBoolean(

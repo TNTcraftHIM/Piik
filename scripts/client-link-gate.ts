@@ -150,12 +150,12 @@ async function createInvitation(port: number, password: string): Promise<string>
     headers: { Authorization: `Bearer ${password}`, Origin: origin },
   });
   const cookie = access.headers.get("set-cookie")?.split(";", 1)[0];
-  if (!access.ok || !cookie) throw new Error("Local access authentication failed");
+  if (!access.ok) throw new Error("Local access authentication failed");
   const room = await fetch(`${origin}/api/rooms`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Cookie: cookie,
+      ...(cookie ? { Cookie: cookie } : {}),
       Origin: origin,
     },
     body: JSON.stringify({ codeEntryPolicy: "open" }),
@@ -250,8 +250,8 @@ async function main(): Promise<void> {
       windowsHide: true,
     });
     const output = new LineCapture(client);
-    const passwordLine = await output.wait(
-      (line) => line.startsWith("Local access password: "),
+    const accessLine = await output.wait(
+      (line) => line.startsWith("Local access password: ") || line === "Local access: open",
     );
     const originLine = await output.wait(
       (line) => line.startsWith("Public invitation origin: "),
@@ -260,7 +260,9 @@ async function main(): Promise<void> {
     result.linkCreated = /^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/.test(publicOrigin);
     const invitation = await createInvitation(
       port,
-      passwordLine.slice("Local access password: ".length),
+      accessLine.startsWith("Local access password: ")
+        ? accessLine.slice("Local access password: ".length)
+        : "",
     );
     const invite = new URL(invitation);
     result.invitationUsesLink = invite.origin === publicOrigin && /^#v=/.test(invite.hash);

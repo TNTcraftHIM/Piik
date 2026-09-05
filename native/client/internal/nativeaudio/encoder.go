@@ -26,6 +26,13 @@ type Encoder struct {
 	packet [MaxPacketBytes]byte
 }
 
+func (encoder *Encoder) SetBitrate(bitrate int) error {
+	if encoder == nil || encoder.codec == nil || bitrate < 6_000 || bitrate > 510_000 {
+		return errors.New("native audio bitrate is outside the Opus range")
+	}
+	return encoder.codec.SetBitrate(bitrate)
+}
+
 func NewEncoder(bitrate int) (*Encoder, error) {
 	if bitrate < 6_000 || bitrate > 510_000 {
 		return nil, errors.New("native audio bitrate is outside the Opus range")

@@ -9,16 +9,16 @@ import (
 )
 
 const (
-	ProtocolVersion        = 5
+	ProtocolVersion        = 8
 	ServiceName            = "screener-client"
-	ControlSubprotocol     = "screener-client-v5"
-	MaxControlMessageBytes = 64 << 10
+	ControlSubprotocol     = "screener-client-v8"
+	MaxControlMessageBytes = 256 << 10
 	DefaultPortStart       = 39721
 	DefaultPortEnd         = 39730
 )
 
 var (
-	requestIDPattern  = regexp.MustCompile(`^[A-Za-z0-9_-]{8,64}$`)
+	requestIDPattern  = regexp.MustCompile(`^[A-Za-z0-9_-]{8,256}$`)
 	errInvalidMessage = errors.New("loopback control message is invalid")
 )
 

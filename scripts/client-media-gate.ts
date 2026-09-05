@@ -75,6 +75,8 @@ interface MediaEvidence {
   localType: string | null;
   remoteType: string | null;
   nativeCandidateTypes: string[];
+  liveProfileUpdated: boolean;
+  pausedProfileUpdated: boolean;
   error: string | null;
 }
 
@@ -293,6 +295,8 @@ async function browserMediaGate(input: {
     localType: null,
     remoteType: null,
     nativeCandidateTypes: [],
+    liveProfileUpdated: false,
+    pausedProfileUpdated: false,
     error: null,
   };
   try {
@@ -302,7 +306,7 @@ async function browserMediaGate(input: {
     } as RequestInit);
     const health = await healthResponse.json();
     if (
-      health.protocol !== 5 ||
+      health.protocol !== 7 ||
       health.service !== "screener-client" ||
       health.instanceToken !== input.endpoint.instanceToken ||
       health.nativeMedia?.video !== true ||
@@ -316,7 +320,7 @@ async function browserMediaGate(input: {
 
     socket = new WebSocket(
       "ws://127.0.0.1:" + input.endpoint.port + "/control",
-      ["screener-client-v5." + input.endpoint.instanceToken],
+      ["screener-client-v8." + input.endpoint.instanceToken],
     );
     await new Promise<void>((resolveOpen, rejectOpen) => {
       const timer = window.setTimeout(
@@ -357,7 +361,7 @@ async function browserMediaGate(input: {
           rejectRequest(new Error("Native request timed out: " + type));
         }, 8_000);
         pending.set(id, { resolve: resolveRequest, reject: rejectRequest, timer });
-        socket!.send(JSON.stringify({ version: 5, id, type, ...fields }));
+        socket!.send(JSON.stringify({ version: 8, id, type, ...fields }));
       });
     };
     socket.onmessage = (event) => {
@@ -431,11 +435,19 @@ async function browserMediaGate(input: {
     const connectionId = "edge_gate_0001";
     const started = await request("start-share", {
       shareId,
+      codec: "h264",
       source: target,
       audio: result.audioAvailable,
       adapterIndex: adapter.index,
       encoderIndex: encoder.index,
       edgeCapacity: 2,
+      profile: {
+        resolution: "720p",
+        maxFramerate: 30,
+        maxBitrate: 3_000_000,
+        degradationPreference: "balanced",
+        screenAudioQuality: "music",
+      },
     });
     if (started.shareId !== shareId || started.audio !== result.audioAvailable) {
       throw new Error("Native share audio capability was not reported consistently");
@@ -574,6 +586,70 @@ async function browserMediaGate(input: {
     ) {
       throw new Error("Native H264 did not reach decoded Browser video");
     }
+
+    const videos = [...edges.values()].map((edge) => edge.video);
+    const framesBeforeLiveUpdate = Math.min(
+      ...videos.map((video) => video.getVideoPlaybackQuality().totalVideoFrames),
+    );
+    const liveUpdate = await request("update-share", {
+      shareId,
+      profile: {
+        resolution: "1440p",
+        maxFramerate: 60,
+        maxBitrate: 12_000_000,
+        degradationPreference: "maintain-framerate",
+        screenAudioQuality: "very-high",
+      },
+    });
+    const liveDeadline = performance.now() + 15_000;
+    while (performance.now() < liveDeadline) {
+      const frames = Math.min(
+        ...videos.map((video) => video.getVideoPlaybackQuality().totalVideoFrames),
+      );
+      result.liveProfileUpdated = liveUpdate.type === "share-updated" &&
+        videos.every((video) => video.videoWidth === 2560 && video.videoHeight === 1440) &&
+        frames >= framesBeforeLiveUpdate + 10;
+      if (result.liveProfileUpdated) break;
+      await new Promise((resolveWait) => window.setTimeout(resolveWait, 100));
+    }
+    if (!result.liveProfileUpdated) {
+      throw new Error("Native live profile update did not reach both Viewers");
+    }
+
+    await request("pause-share", { shareId, paused: true });
+    const pausedUpdate = await request("update-share", {
+      shareId,
+      profile: {
+        resolution: "480p",
+        maxFramerate: 15,
+        maxBitrate: 2_000_000,
+        degradationPreference: "maintain-resolution",
+        screenAudioQuality: "saver",
+      },
+    });
+    const framesBeforeResume = Math.min(
+      ...videos.map((video) => video.getVideoPlaybackQuality().totalVideoFrames),
+    );
+    await request("pause-share", { shareId, paused: false });
+    const resumeDeadline = performance.now() + 15_000;
+    while (performance.now() < resumeDeadline) {
+      const frames = Math.min(
+        ...videos.map((video) => video.getVideoPlaybackQuality().totalVideoFrames),
+      );
+      result.pausedProfileUpdated = pausedUpdate.type === "share-updated" &&
+        videos.every((video) => video.videoWidth === 854 && video.videoHeight === 480) &&
+        frames >= framesBeforeResume + 10;
+      if (result.pausedProfileUpdated) {
+        result.frames = frames;
+        result.width = 854;
+        result.height = 480;
+        break;
+      }
+      await new Promise((resolveWait) => window.setTimeout(resolveWait, 100));
+    }
+    if (!result.pausedProfileUpdated) {
+      throw new Error("Native paused profile update did not resume both Viewers");
+    }
   } catch (error) {
     result.error = error instanceof Error ? error.message : String(error);
   } finally {
@@ -630,6 +706,8 @@ async function main(): Promise<void> {
     localType: null,
     remoteType: null,
     nativeCandidateTypes: [],
+    liveProfileUpdated: false,
+    pausedProfileUpdated: false,
     error: "not run",
     audioPackets: 0,
     edgeAudioPackets: [],
@@ -663,7 +741,7 @@ async function main(): Promise<void> {
     const probe = JSON.parse(run(executable, ["--probe"])) as Probe;
     const adapter = probe.adapters.find((candidate) => candidate.hardwareH264.length > 0);
     const encoder = adapter?.hardwareH264[0];
-    if (probe.protocol !== 3 || !adapter || !encoder) {
+    if (probe.protocol !== 4 || !adapter || !encoder) {
       throw new Error("No hardware H264 capture path is available");
     }
 
@@ -732,7 +810,19 @@ async function main(): Promise<void> {
       String(adapter.index),
       "--mft-index",
       String(encoder.index),
-      "--protocol-v3",
+      "--width",
+      "1280",
+      "--height",
+      "720",
+      "--fps",
+      "30",
+      "--bitrate",
+      "3000000",
+      "--preference",
+      "balanced",
+      "--codec",
+      "h264",
+      "--protocol-v4",
     ], { stdio: "pipe", windowsHide: true });
     capture.stderr.resume();
     observeCapture(capture, evidence);
@@ -811,7 +901,7 @@ async function main(): Promise<void> {
         sourceKind,
         stunUrl: GATE_STUN_URL,
       }) + "))((target) => target)",
-      Date.now() + 35_000,
+      Date.now() + 70_000,
     );
     if (media.error) throw new Error(media.error);
   } catch (caught) {
@@ -833,7 +923,8 @@ async function main(): Promise<void> {
     media.connectedEdges === 2 && media.edgeFrames.length === 2 &&
     (!media.audioAvailable ||
       (media.audioPackets > 10 && media.audioEnergy > 0)) &&
-    media.width === 1280 && media.height === 720 &&
+    media.liveProfileUpdated && media.pausedProfileUpdated &&
+    media.width === 854 && media.height === 480 &&
     media.nativeCandidateTypes.includes("srflx") &&
     cleanup.browserExited && cleanup.nativeExited && cleanup.serverClosed &&
     cleanup.portsClosed && cleanup.profileRemoved;

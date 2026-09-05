@@ -1,4 +1,7 @@
-import { DEFAULT_QUALITY_SETTINGS } from "../src/shared/protocol";
+import {
+  DEFAULT_QUALITY_SETTINGS,
+  type QualitySettings,
+} from "../src/shared/protocol";
 import { NativeClient } from "../src/client/native/client";
 import { NativeMediaBridge } from "../src/client/native/media-bridge";
 import { SfuPublisher } from "../src/client/sfu/publisher";
@@ -10,6 +13,7 @@ let hostResources: {
   shareId: string;
 } | null = null;
 let viewerRoom: import("livekit-client").Room | null = null;
+let viewerVideo: HTMLVideoElement | null = null;
 
 export async function startNativeSfuHost(input: {
   url: string;
@@ -35,12 +39,14 @@ export async function startNativeSfuHost(input: {
       throw new Error("native capture path is unavailable");
     }
     const started = await client.startShare({
+      codec: "h264",
       shareId,
       source: target,
       audio: true,
       adapterIndex: adapter.index,
       encoderIndex: encoder.index,
       edgeCapacity: 3,
+      profile: DEFAULT_QUALITY_SETTINGS,
     });
     bridge = new NativeMediaBridge(
       shareId,
@@ -88,6 +94,7 @@ export async function startNativeSfuViewer(input: {
         if (track.kind !== sdk.Track.Kind.Video) return;
         publication.setVideoQuality(sdk.VideoQuality.HIGH);
         const video = track.attach() as HTMLVideoElement;
+        viewerVideo = video;
         video.muted = true;
         video.autoplay = true;
         document.body.append(video);
@@ -95,7 +102,7 @@ export async function startNativeSfuViewer(input: {
         let frames = 0;
         const next = () => {
           video.requestVideoFrameCallback(() => {
-            if (video.videoWidth === 1280 && video.videoHeight === 720) {
+            if (video.videoWidth === 1920 && video.videoHeight === 1080) {
               frames += 1;
             } else {
               frames = 0;
@@ -126,9 +133,48 @@ export async function startNativeSfuViewer(input: {
   }
 }
 
+export async function updateNativeSfuHost(
+  profile: QualitySettings,
+): Promise<boolean> {
+  const host = hostResources;
+  if (!host) throw new Error("native SFU Host is unavailable");
+  await host.client.updateShare(host.shareId, profile);
+  return await host.publisher.updateProfile(profile);
+}
+
+export async function waitForNativeSfuViewer(
+  width: number,
+  height: number,
+): Promise<{ frames: number; width: number; height: number }> {
+  const video = viewerVideo;
+  if (!video) throw new Error("native SFU Viewer is unavailable");
+  return await new Promise((resolve, reject) => {
+    let frames = 0;
+    const timer = window.setTimeout(
+      () => reject(new Error("native SFU Viewer profile timed out")),
+      20_000,
+    );
+    const next = () => {
+      video.requestVideoFrameCallback(() => {
+        frames = video.videoWidth === width && video.videoHeight === height
+          ? frames + 1
+          : 0;
+        if (frames < 15) {
+          next();
+          return;
+        }
+        window.clearTimeout(timer);
+        resolve({ frames, width: video.videoWidth, height: video.videoHeight });
+      });
+    };
+    next();
+  });
+}
+
 export async function stopNativeSfuGate(): Promise<void> {
   const viewer = viewerRoom;
   viewerRoom = null;
+  viewerVideo = null;
   if (viewer) await viewer.disconnect(false).catch(() => undefined);
   const host = hostResources;
   hostResources = null;

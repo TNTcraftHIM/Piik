@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	signalingProtocol    = "screener-v19"
+	signalingProtocol    = "screener-v20"
 	maxPendingCandidates = 64
 )
 

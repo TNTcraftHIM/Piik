@@ -4,13 +4,16 @@ import {
   invalidateSenderQualityEvidence,
   senderQualityEvidenceFromSnapshot,
 } from "../src/client/media/sender-quality-evidence";
-import { NativeHostPeer } from "../src/client/native/native-host-peer";
-import type { NativeEdgeControl } from "../src/client/native/host-edge";
+import {
+  NativeSenderPeer,
+  shouldUseBrowserQualityCandidate,
+} from "../src/client/native/native-sender-peer";
+import type { NativeEdgeControl } from "../src/client/native/native-sender-edge";
 import type { NativeClientEvent } from "../src/client/native/wire";
 import type { PeerSnapshot } from "../src/client/types";
 
 describe("native Host peer quality", () => {
-  it("maps exact Pion quality windows into the existing sender evidence", async () => {
+  it.each(["h264", "vp8"] as const)("maps %s Pion quality windows into the existing sender evidence", async (codec) => {
     invalidateSenderQualityEvidence();
     let listener: (event: NativeClientEvent) => void = () => undefined;
     const control: NativeEdgeControl = {
@@ -28,20 +31,40 @@ describe("native Host peer quality", () => {
       }),
     };
     const snapshots: PeerSnapshot[] = [];
-    const peer = new NativeHostPeer(
+    const peer = new NativeSenderPeer(
       "viewer_123456",
       "edge_12345678",
       "share_1234567",
       { iceServers: [], natPredictionStunUrls: [] },
+      false,
       control,
       {
         sendSignal: () => true,
         onUpdate: (snapshot) => snapshots.push(snapshot),
       },
+      codec,
     );
     expect(await peer.start()).toBe(true);
+    expect(shouldUseBrowserQualityCandidate(peer, {
+      childPeerId: "viewer_123456",
+      connectionId: "candidate_123456",
+      transport: "direct",
+      qualityProbe: true,
+    })).toBe(true);
+    expect(shouldUseBrowserQualityCandidate(peer, {
+      childPeerId: "viewer_123456",
+      connectionId: "candidate_123456",
+      transport: "direct",
+      qualityProbe: false,
+    })).toBe(false);
+    expect(shouldUseBrowserQualityCandidate(undefined, {
+      childPeerId: "viewer_123456",
+      connectionId: "candidate_123456",
+      transport: "direct",
+      qualityProbe: true,
+    })).toBe(false);
     listener({
-      version: 5,
+      version: 8,
       type: "edge-state",
       shareId: "share_1234567",
       connectionId: "edge_12345678",
@@ -49,7 +72,7 @@ describe("native Host peer quality", () => {
     });
 
     const quality = {
-      version: 5 as const,
+      version: 8 as const,
       type: "edge-quality" as const,
       shareId: "share_1234567",
       connectionId: "edge_12345678",
@@ -71,6 +94,12 @@ describe("native Host peer quality", () => {
       "unknown",
     );
     listener({ ...quality, sampleTimestampMs: 12_000 });
+    expect(snapshots.at(-1)?.metrics).toMatchObject({
+      codec: `video/${codec.toUpperCase()}`,
+      codecProfile: null,
+      codecParameters: null,
+      powerEfficientEncoder: codec === "h264",
+    });
     expect(senderQualityEvidenceFromSnapshot(snapshots.at(-1)!, 7)).toMatchObject({
       state: "degraded",
       diagnostics: {

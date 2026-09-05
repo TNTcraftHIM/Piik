@@ -2,9 +2,12 @@
 
 This process keeps the native Client media boundary used on Windows while
 replacing only the platform implementation. It lists current ScreenCaptureKit
-displays and windows, captures one exact source at 1280x720 and 30 fps, requires a
-VideoToolbox hardware H.264 encoder, and writes Annex-B Baseline H.264 through
-the bounded `SMED` protocol. It advertises no native process-audio capability.
+displays and windows, captures one exact source with the current product profile,
+requires a VideoToolbox hardware H.264 encoder, and writes Annex-B Baseline H.264
+through the bounded `SMED` protocol. ScreenCaptureKit application or display
+audio is converted to stereo PCM16 for the existing Go Opus boundary. The Go
+session applies live profile changes by replacing that capture generation behind
+the same Pion source.
 
 Build on Apple Silicon macOS 13 or newer:
 
@@ -20,9 +23,11 @@ Screen Recording permission. Real source selection, capture, and recovery still
 require a physical macOS gate.
 
 The first source-list or capture request is subject to the normal macOS Screen
-Recording permission. The implementation follows Apple's ScreenCaptureKit and
+Recording permission; audio capture has its corresponding usage declaration.
+The implementation follows Apple's ScreenCaptureKit, AudioToolbox, and
 VideoToolbox contracts and does not bundle another media runtime.
 
 - <https://developer.apple.com/documentation/screencapturekit/capturing-screen-content-in-macos>
+- <https://developer.apple.com/documentation/screencapturekit/scstreamoutputtype/audio>
 - <https://developer.apple.com/documentation/videotoolbox/vtcompressionsession-api-collection>
 - <https://developer.apple.com/documentation/videotoolbox/kvtvideoencoderspecification_requirehardwareacceleratedvideoencoder>

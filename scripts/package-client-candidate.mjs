@@ -20,9 +20,7 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 
-import { clientPackageTarget } from "./client-package-targets.mjs";
-
-const cloudflaredVersion = "2026.8.3";
+import { clientPackageTarget, CLOUDFLARED_VERSION } from "./client-package-targets.mjs";
 
 function fail(message) {
   throw new Error(message);
@@ -168,7 +166,7 @@ async function verifyLocalPackage(root, target, temporaryRoot) {
   child.stdin.on("error", () => undefined);
   child.stdout.on("data", (chunk) => {
     stdout = `${stdout}${chunk.toString()}`.slice(-2_048);
-    if (stdout.includes("Local access password: ")) {
+    if (stdout.includes("Local access password: ") || stdout.includes("Local access: open")) {
       clientReady = true;
       stdout = "";
     }
@@ -236,6 +234,13 @@ async function verifyPackage(
 ) {
   const packagedRevision = readFileSync(join(root, "REVISION"), "ascii").trim();
   if (packagedRevision !== revision) fail("Client package revision mismatch");
+  for (const file of ["LICENSE", "THIRD-PARTY-NOTICES.txt", "app/LICENSE",
+    "app/dist/client/third-party-licenses.txt", "runtime/node/LICENSE",
+    "runtime/tunnel/THIRD-PARTY-NOTICES.txt"]) {
+    if (!existsSync(join(root, file)) || readFileSync(join(root, file)).length === 0) {
+      fail(`Client package license text is missing: ${file}`);
+    }
+  }
 
   const node = join(root, "runtime", "node", target.nodeName);
   const client = join(root, target.clientName);
@@ -245,13 +250,60 @@ async function verifyPackage(
   }
   run(client, ["--help"], root);
   run(tunnel, ["--version"], root);
+  verifyPlatformAssets(root, target);
 
   if (target.captureName) {
     const capture = join(root, "runtime", "native", target.captureName);
     const probe = JSON.parse(run(capture, ["--probe"], root));
-    if (probe?.protocol !== 3) fail("Packaged native capture probe is invalid");
+    if (probe?.protocol !== 4) fail("Packaged native capture probe is invalid");
   }
   await verifyLocalPackage(root, target, temporaryRoot);
+}
+
+function verifyPlatformAssets(root, target) {
+  if (target.goos === "linux") {
+    const desktop = join(root, "share", "applications", "screener-client.desktop");
+    const icon = join(
+      root,
+      "share",
+      "icons",
+      "hicolor",
+      "256x256",
+      "apps",
+      "screener-client.png",
+    );
+    if (!existsSync(desktop) || !existsSync(icon)) {
+      fail("Linux Client icon assets are missing");
+    }
+    if (!readFileSync(desktop, "utf8").includes("Icon=screener-client\n")) {
+      fail("Linux desktop entry does not name its icon");
+    }
+    if (!readFileSync(icon).subarray(0, 8).equals(Buffer.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    ]))) {
+      fail("Linux Client icon is not PNG");
+    }
+  }
+  if (target.goos === "darwin") {
+    const bundle = join(root, "Screener Client.app");
+    const launcher = join(bundle, "Contents", "MacOS", "Launcher");
+    const plist = join(bundle, "Contents", "Info.plist");
+    const icon = join(bundle, "Contents", "Resources", "screener.icns");
+    if (!existsSync(launcher) || !existsSync(plist) || !existsSync(icon)) {
+      fail("macOS Client app icon assets are missing");
+    }
+    if (!readFileSync(icon).subarray(0, 4).equals(Buffer.from("icns"))) {
+      fail("macOS Client icon is not ICNS");
+    }
+    const plistText = readFileSync(plist, "utf8");
+    if (
+      !plistText.includes("<key>NSScreenCaptureUsageDescription</key>") ||
+      !plistText.includes("<key>NSAudioCaptureUsageDescription</key>")
+    ) {
+      fail("macOS Client capture usage descriptions are missing");
+    }
+    if (process.platform === "darwin") run(launcher, ["--help"], root);
+  }
 }
 
 if (process.argv.length !== 5) {
@@ -281,7 +333,7 @@ mkdirSync(temporaryRoot, { recursive: true, mode: 0o700 });
 try {
   const tunnelDownload = join(temporaryRoot, target.tunnelAsset);
   await download(
-    `https://github.com/cloudflare/cloudflared/releases/download/${cloudflaredVersion}/${target.tunnelAsset}`,
+    `https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/${target.tunnelAsset}`,
     tunnelDownload,
   );
   if (sha256(tunnelDownload) !== target.tunnelSha256) {

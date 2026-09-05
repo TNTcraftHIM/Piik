@@ -1,4 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+
+import { CaptureSourcePicker } from "../src/client/components/living/CaptureSourcePicker";
 
 import {
   defaultNativeCapturePath,
@@ -38,6 +42,47 @@ describe("native capture source selection", () => {
       }),
     ).toBe("display:2");
   });
+
+  it("separates windows from displays and locks Browser switching during native sharing", () => {
+    const html = renderToStaticMarkup(createElement(CaptureSourcePicker, {
+      nativeSources: {
+        kind: "ready",
+        sources: [game, { kind: "display", sourceId: "2", title: "Display 1" }],
+        processAudio: false,
+        systemAudio: true,
+      },
+      browserAvailable: false,
+      audioLocked: true,
+      onBrowser: () => {},
+      onNative: () => {},
+      onPreview: async () => null,
+      onRefresh: () => {},
+      onCancel: () => {},
+    }));
+    expect(html).toContain('data-source-tab="browser"');
+    expect(html).toMatch(/data-source-tab="browser"[^>]*disabled=""/);
+    expect(html).toMatch(/data-native-source="window:1:10:123456"[^>]*disabled=""/);
+    expect(html).not.toContain('data-native-source="display:2"');
+    expect(html.match(/role="tab"/g)).toHaveLength(3);
+  });
+
+  it("retains the platform-owned combined source picker", () => {
+    const html = renderToStaticMarkup(createElement(CaptureSourcePicker, {
+      nativeSources: {
+        kind: "ready",
+        sources: [{ kind: "picker", sourceId: "1", title: "System picker" }],
+        processAudio: false,
+        systemAudio: true,
+      },
+      onBrowser: () => {},
+      onNative: () => {},
+      onPreview: async () => null,
+      onRefresh: () => {},
+      onCancel: () => {},
+    }));
+    expect(html).toContain('data-native-source="picker:1"');
+    expect(html).toContain('aria-checked="true"');
+  });
 });
 
 describe("native adapter selection", () => {
@@ -57,5 +102,15 @@ describe("native adapter selection", () => {
       encoderIndex: 0,
     });
     expect(defaultNativeCapturePath([adapters[0]!])).toBeNull();
+  });
+
+  it("uses software VP8 only when that capture capability exists", () => {
+    expect(defaultNativeCapturePath(adapters, "vp8", true)).toEqual({
+      adapterIndex: 0, encoderIndex: 0,
+    });
+    expect(defaultNativeCapturePath(adapters, "vp8", false)).toBeNull();
+    expect(defaultNativeCapturePath(adapters, "auto", true)?.adapterIndex).toBe(1);
+    expect(defaultNativeCapturePath([adapters[0]!], "auto", true)?.adapterIndex).toBe(0);
+    expect(defaultNativeCapturePath([adapters[0]!], "h264", true)).toBeNull();
   });
 });

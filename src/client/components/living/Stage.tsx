@@ -88,6 +88,7 @@ export function StageOverlay({
   transition,
   spin,
   comic,
+  progress,
   onActivate,
 }: {
   icon: GlyphName;
@@ -96,12 +97,14 @@ export function StageOverlay({
   transition?: boolean;
   spin?: boolean;
   comic?: ComicKind;
+  progress?: string;
   onActivate?: () => void;
 }) {
   const { vis } = useCopy();
   const content = (
     <>
       {vis && comic ? <Comic kind={comic} theme="stage" /> : null}
+      <span className="lr-tv-status-content">
       {transition ? (
         <BrandLoader />
       ) : (
@@ -109,19 +112,21 @@ export function StageOverlay({
           <Glyph name={icon} size={30} draw="stage-overlay" />
         </span>
       )}
-      {vis ? null : <span className="lr-tv-msg">{message}</span>}
+      {vis ? progress && <span className="lr-tv-msg">{progress}</span> :
+        <span className="lr-tv-msg">{message}</span>}
+      </span>
     </>
   );
   if (onActivate) {
     return (
-      <button type="button" className={`lr-tv-overlay${dim ? " is-dim" : ""}`} onClick={onActivate} aria-label={message}>
+      <button type="button" className={`lr-tv-overlay${dim ? " is-dim" : ""}${vis && comic ? " has-comic" : ""}`} onClick={onActivate} aria-label={message}>
         {content}
       </button>
     );
   }
   return (
     <div
-      className={`lr-tv-overlay${dim ? " is-dim" : ""}`}
+      className={`lr-tv-overlay${dim ? " is-dim" : ""}${vis && comic ? " has-comic" : ""}`}
       role="status"
       aria-label={message}
     >

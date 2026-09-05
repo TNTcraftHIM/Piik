@@ -9,6 +9,7 @@ import {
   FAINT,
   Frame,
   INK_STAGE,
+  LIVE,
   Pawn,
   RedX,
   SKY,
@@ -257,6 +258,18 @@ ${rmBlock(
       <LinkRing x={278} y={31.5} w={20} h={11} tilt={-12} />
     </g>
     <Star x={288} y={16} r={6} className="vls-cinv-star" baseOpacity={0} />
+  </>
+);
+
+// The Client's public-link choice reuses the established invite animation and
+// adds one small globe mark so the destination is clear without text.
+const HintClientLink: HintScene = ({ theme }) => (
+  <>
+    <SceneCopyInvite theme={theme} />
+    <g fill="none" stroke={LIVE} strokeWidth={1.8}>
+      <circle cx={180} cy={18} r={7} />
+      <path d="M173 18h14M180 11c3 3 3 11 0 14M180 11c-3 3-3 11 0 14" />
+    </g>
   </>
 );
 
@@ -548,6 +561,7 @@ export const SET2_SCENES: Record<Set2Kind, HintScene> = {
   "hint-copy-code": SceneCopyCode,
   "hint-shuffle-code": SceneShuffleCode,
   "hint-copy-invite": SceneCopyInvite,
+  "hint-client-link": HintClientLink,
   "hint-rotate-invite": SceneRotateInvite,
   "hint-revoke-invite": SceneRevokeInvite,
   "hint-policy-open": ScenePolicyOpen,

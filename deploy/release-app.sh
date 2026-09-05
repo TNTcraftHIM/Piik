@@ -174,7 +174,7 @@ while IFS= read -r raw_entry; do
   esac
   case "$entry" in
     /*|*\\*) printf 'invalid archive entry: %s\n' "$raw_entry" >&2; exit 41 ;;
-    REVISION|package.json|package-lock.json|dist|dist/client|dist/server|dist/client/*|dist/server/*) ;;
+    LICENSE|REVISION|package.json|package-lock.json|dist|dist/client|dist/server|dist/client/*|dist/server/*) ;;
     *) printf 'unexpected archive entry: %s\n' "$raw_entry" >&2; exit 42 ;;
   esac
 done < <(tar -tzf "$artifact")
@@ -198,7 +198,7 @@ for (const line of lines) {
   const fields = line.split('\t');
   if (fields.length !== 3 || !/^[0-9a-f]{64}$/.test(fields[0]) || !/^\d+$/.test(fields[1])) process.exit(62);
   const path = fields[2];
-  if (!/^(REVISION|package(-lock)?\.json|dist\/(client|server)\/[A-Za-z0-9._/-]+)$/.test(path)) process.exit(63);
+  if (!/^(LICENSE|REVISION|package(-lock)?\.json|dist\/(client|server)\/[A-Za-z0-9._/-]+)$/.test(path)) process.exit(63);
   if (path.split('/').some((part) => part === '' || part === '.' || part === '..') || expected.has(path)) process.exit(64);
   expected.set(path, { hash: fields[0], size: Number(fields[1]) });
 }
@@ -238,7 +238,7 @@ test -f "$stage/dist/client/$main_asset"
 test -f "$stage/dist/server/server/index.js"
 find "$stage/dist" -type d -exec chmod 0755 {} +
 find "$stage/dist" -type f -exec chmod 0644 {} +
-chmod 0644 "$stage/REVISION" "$stage/package.json" "$stage/package-lock.json"
+chmod 0644 "$stage/LICENSE" "$stage/REVISION" "$stage/package.json" "$stage/package-lock.json"
 
 systemd-run \
   --unit="screener-deps-${release_id}" \

@@ -21,13 +21,14 @@ func TestLauncherServesStateAndCompletesOneSelection(t *testing.T) {
 	}
 	defer response.Body.Close()
 	var state struct {
-		Site        string `json:"site"`
-		DefaultMode Mode   `json:"defaultMode"`
-		Revision    string `json:"revision"`
+		Site                string `json:"site"`
+		LocalAccessPassword string `json:"localAccessPassword"`
+		DefaultMode         Mode   `json:"defaultMode"`
+		Revision            string `json:"revision"`
 	}
 	if response.StatusCode != http.StatusOK || json.NewDecoder(response.Body).Decode(&state) != nil ||
 		state.Site != "https://share.example" || state.DefaultMode != ModeSite ||
-		state.Revision != "" {
+		state.Revision != "" || state.LocalAccessPassword != "" {
 		t.Fatalf("launcher state = %d, %+v", response.StatusCode, state)
 	}
 
@@ -37,7 +38,7 @@ func TestLauncherServesStateAndCompletesOneSelection(t *testing.T) {
 		response, err := http.Post(
 			origin+"/api/client-launcher/launch",
 			"application/json",
-			bytes.NewBufferString(`{"mode":"link"}`),
+			bytes.NewBufferString(`{"mode":"link","language":"vis"}`),
 		)
 		if err != nil {
 			requestErr <- err
@@ -48,7 +49,7 @@ func TestLauncherServesStateAndCompletesOneSelection(t *testing.T) {
 
 	select {
 	case selection := <-server.Selection():
-		if selection != (Selection{Mode: ModeLink}) {
+		if selection != (Selection{Mode: ModeLink, Language: "vis"}) {
 			t.Fatalf("selection = %+v", selection)
 		}
 		server.SetResult("http://localhost:8787/#screener-client=1", nil)
@@ -90,6 +91,54 @@ func TestLauncherIncludesTheInjectedBuildRevision(t *testing.T) {
 	}
 }
 
+func TestLauncherCarriesAndNormalizesAnOptionalLocalPassword(t *testing.T) {
+	server := startFixtureWithPassword(t, "", "existing-pass")
+	origin := strings.TrimSuffix(server.URL(), "/client")
+	stateResponse, err := http.Get(origin + "/api/client-launcher")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var state struct {
+		LocalAccessPassword string `json:"localAccessPassword"`
+	}
+	if stateResponse.StatusCode != http.StatusOK ||
+		json.NewDecoder(stateResponse.Body).Decode(&state) != nil {
+		_ = stateResponse.Body.Close()
+		t.Fatal("launcher state was unavailable")
+	}
+	_ = stateResponse.Body.Close()
+	if state.LocalAccessPassword != "existing-pass" {
+		t.Fatal("launcher did not expose the saved Local access setting")
+	}
+	result := make(chan *http.Response, 1)
+	go func() {
+		response, err := http.Post(
+			origin+"/api/client-launcher/launch",
+			"application/json",
+			bytes.NewBufferString(`{"mode":"local","language":"zh","localAccessPassword":"new-local-pass"}`),
+		)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		result <- response
+	}()
+	select {
+	case selection := <-server.Selection():
+		if selection.Mode != ModeLocal || selection.Language != "zh" || selection.LocalAccessPassword != "new-local-pass" {
+			t.Fatalf("selection = %+v", selection)
+		}
+		server.SetResult("http://localhost:8787/#screener-client=1", nil)
+	case <-time.After(time.Second):
+		t.Fatal("launcher did not emit a selection")
+	}
+	response := <-result
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("launch status = %d", response.StatusCode)
+	}
+}
+
 func TestLauncherRejectsAnInvalidSavedSite(t *testing.T) {
 	directory := t.TempDir()
 	if err := os.WriteFile(
@@ -99,18 +148,22 @@ func TestLauncherRejectsAnInvalidSavedSite(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Start(t.Context(), directory, "https://example.test/path", ""); err == nil {
+	if _, err := Start(t.Context(), directory, "https://example.test/path", "", ""); err == nil {
 		t.Fatal("launcher accepted a Site path")
 	}
 }
 
 func TestLauncherRejectsInvalidSelections(t *testing.T) {
 	for name, payload := range map[string]string{
-		"unknown":       `{"mode":"other"}`,
-		"local-site":    `{"mode":"local","site":"https://share.example"}`,
-		"missing-site":  `{"mode":"site"}`,
-		"site-path":     `{"mode":"site","site":"https://share.example/path"}`,
-		"unknown-field": `{"mode":"local","extra":true}`,
+		"unknown":          `{"mode":"other","language":"en"}`,
+		"local-site":       `{"mode":"local","language":"en","site":"https://share.example"}`,
+		"missing-site":     `{"mode":"site","language":"en"}`,
+		"site-path":        `{"mode":"site","language":"en","site":"https://share.example/path"}`,
+		"site-password":    `{"mode":"site","language":"en","site":"https://share.example","localAccessPassword":"valid-pass"}`,
+		"unknown-field":    `{"mode":"local","language":"en","extra":true}`,
+		"short-password":   `{"mode":"local","language":"en","localAccessPassword":"short"}`,
+		"missing-language": `{"mode":"local"}`,
+		"unknown-language": `{"mode":"local","language":"other"}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			server := startFixture(t, "")
@@ -176,10 +229,21 @@ func TestLauncherRejectsCrossOriginControl(t *testing.T) {
 }
 
 func startFixture(t *testing.T, site string) *Server {
-	return startFixtureWithRevision(t, site, "")
+	return startFixtureWithRevisionAndPassword(t, site, "", "")
 }
 
 func startFixtureWithRevision(t *testing.T, site, revision string) *Server {
+	return startFixtureWithRevisionAndPassword(t, site, revision, "")
+}
+
+func startFixtureWithPassword(t *testing.T, site, password string) *Server {
+	return startFixtureWithRevisionAndPassword(t, site, "", password)
+}
+
+func startFixtureWithRevisionAndPassword(
+	t *testing.T,
+	site, revision, password string,
+) *Server {
 	t.Helper()
 	directory := t.TempDir()
 	if err := os.WriteFile(
@@ -189,7 +253,7 @@ func startFixtureWithRevision(t *testing.T, site, revision string) *Server {
 	); err != nil {
 		t.Fatal(err)
 	}
-	server, err := Start(t.Context(), directory, site, revision)
+	server, err := Start(t.Context(), directory, site, revision, password)
 	if err != nil {
 		t.Fatal(err)
 	}

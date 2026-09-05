@@ -1,3 +1,5 @@
+export const CLOUDFLARED_VERSION = "2026.8.3";
+
 export const CLIENT_PACKAGE_TARGETS = [
   {
     id: "windows-amd64",
@@ -22,7 +24,7 @@ export const CLIENT_PACKAGE_TARGETS = [
     clientName: "screener-client",
     nodeName: "node",
     tunnelName: "cloudflared",
-    captureName: null,
+    captureName: "screener-client-capture",
     tunnelAsset: "cloudflared-linux-amd64",
     tunnelSha256: "f29324fe934d1e100617484c78deef803c4dc2cd351d645bbde42e96b4fccc5e",
     tunnelArchive: false,

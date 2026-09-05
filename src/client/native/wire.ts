@@ -1,9 +1,9 @@
 import { z } from "zod";
 
-export const NATIVE_CLIENT_PROTOCOL = 5;
+export const NATIVE_CLIENT_PROTOCOL = 8;
 export const NATIVE_CLIENT_PORT_START = 39_721;
 export const NATIVE_CLIENT_PORT_END = 39_730;
-export const NATIVE_CLIENT_SUBPROTOCOL = "screener-client-v5";
+export const NATIVE_CLIENT_SUBPROTOCOL = "screener-client-v8";
 
 const decimalIdentifierSchema = z.string().regex(/^[1-9]\d{0,19}$/);
 const opaqueIdentifierSchema = z
@@ -24,6 +24,7 @@ export const nativeHealthSchema = z
         processAudio: z.boolean(),
         systemAudio: z.boolean(),
         hardwareH264: z.boolean(),
+        softwareVP8: z.boolean(),
       })
       .strict(),
   })
@@ -48,9 +49,18 @@ const nativeDisplayTargetSchema = z
   })
   .strict();
 
+const nativePickerTargetSchema = z
+  .object({
+    kind: z.literal("picker"),
+    sourceId: decimalIdentifierSchema,
+    title: z.string().min(1).max(4096),
+  })
+  .strict();
+
 export const nativeCaptureTargetSchema = z.discriminatedUnion("kind", [
   nativeWindowTargetSchema,
   nativeDisplayTargetSchema,
+  nativePickerTargetSchema,
 ]);
 export type NativeCaptureTarget = z.infer<typeof nativeCaptureTargetSchema>;
 
@@ -86,6 +96,9 @@ const responseBase = {
   id: opaqueIdentifierSchema,
 };
 
+const nativeVideoCodecSchema = z.enum(["h264", "vp8"]);
+export type NativeVideoCodec = z.infer<typeof nativeVideoCodecSchema>;
+
 export const readyResponseSchema = z
   .object({ ...responseBase, type: z.literal("ready") })
   .strict();
@@ -112,7 +125,7 @@ export const sourcePreviewResponseSchema = z
     type: z.literal("source-preview"),
     sourceKey: z.string().min(8).max(256),
     mime: z.literal("image/bmp"),
-    data: z.string().max(64 * 1024),
+    data: z.string().max(256 * 1024),
   })
   .strict();
 export const shareStartedResponseSchema = z
@@ -121,6 +134,21 @@ export const shareStartedResponseSchema = z
     type: z.literal("share-started"),
     shareId: opaqueIdentifierSchema,
     audio: z.boolean(),
+    codec: nativeVideoCodecSchema,
+  })
+  .strict();
+export const shareUpdatedResponseSchema = z
+  .object({
+    ...responseBase,
+    type: z.literal("share-updated"),
+    shareId: opaqueIdentifierSchema,
+  })
+  .strict();
+export const shareSourceReplacedResponseSchema = z
+  .object({
+    ...responseBase,
+    type: z.literal("share-source-replaced"),
+    shareId: opaqueIdentifierSchema,
   })
   .strict();
 export const edgeOfferResponseSchema = z
@@ -132,6 +160,17 @@ export const edgeOfferResponseSchema = z
     sdp: z.string().min(1).max(48 * 1024),
   })
   .strict();
+export const receiveAnswerResponseSchema = z
+  .object({
+    ...responseBase,
+    type: z.literal("receive-answer"),
+    shareId: opaqueIdentifierSchema,
+    connectionId: opaqueIdentifierSchema,
+    sdp: z.string().min(1).max(48 * 1024),
+    audio: z.boolean(),
+    codec: nativeVideoCodecSchema,
+  })
+  .strict();
 
 export const nativeAckResponseSchema = z
   .object({
@@ -140,6 +179,9 @@ export const nativeAckResponseSchema = z
       "edge-answer-accepted",
       "edge-candidate-accepted",
       "edge-closed",
+      "receive-candidate-accepted",
+      "receiver-closed",
+      "receive-stopped",
       "share-stopped",
       "share-paused",
     ]),
@@ -189,6 +231,7 @@ export const nativeEventSchema = z.discriminatedUnion("type", [
       connectionId: opaqueIdentifierSchema,
       localType: z.enum(["host", "srflx", "prflx", "relay"]),
       remoteType: z.enum(["host", "srflx", "prflx", "relay"]),
+      natTraversalPath: z.enum(["unknown", "ordinary", "predicted"]),
     })
     .strict(),
   z

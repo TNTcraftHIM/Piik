@@ -11,9 +11,10 @@ import (
 )
 
 const maxAccessUnitBytes = 4 * 1024 * 1024
-const h264ClockRate = 90_000
-const h264PacketMTU = 1200
+const videoClockRate = 90_000
+const videoPacketMTU = 1200
 const h264PayloadType = 102
+const vp8PayloadType = 96
 
 var ErrSourceCapacity = errors.New("native media source capacity is exhausted")
 var ErrInvalidVideoTimestamp = errors.New("native video timestamp is not monotonic")
@@ -21,6 +22,7 @@ var ErrInvalidVideoTimestamp = errors.New("native video timestamp is not monoton
 type Source struct {
 	engine          *Engine
 	track           *webrtc.TrackLocalStaticRTP
+	codec           string
 	packetizer      rtp.Packetizer
 	capacity        int
 	requestKeyFrame func()
@@ -34,19 +36,24 @@ type Source struct {
 	hasTimestamp       bool
 	lastTimestamp      time.Duration
 	timestampRemainder float64
+	rebasePending      bool
+	rebaseInput        time.Duration
+	rebaseOutput       time.Duration
 	frames             atomic.Uint64
 	bytes              atomic.Uint64
 	format             atomic.Uint64
 }
 
-func (source *Source) WriteH264(
+func (source *Source) Codec() string { return source.codec }
+
+func (source *Source) WriteVideo(
 	accessUnit []byte,
 	timestamp time.Duration,
 	duration time.Duration,
 ) error {
 	if len(accessUnit) == 0 || len(accessUnit) > maxAccessUnitBytes ||
 		timestamp < 0 || duration <= 0 {
-		return errors.New("native H264 access unit is invalid")
+		return errors.New("native video access unit is invalid")
 	}
 	source.writeMu.Lock()
 	defer source.writeMu.Unlock()
@@ -56,11 +63,22 @@ func (source *Source) WriteH264(
 	if closed {
 		return errors.New("native media source is closed")
 	}
+	if source.rebasePending {
+		source.rebasePending = false
+		source.rebaseInput = timestamp
+		source.rebaseOutput = source.lastTimestamp + duration
+		timestamp = source.rebaseOutput
+	} else if source.rebaseOutput > 0 {
+		if timestamp < source.rebaseInput {
+			return ErrInvalidVideoTimestamp
+		}
+		timestamp = source.rebaseOutput + timestamp - source.rebaseInput
+	}
 	if source.hasTimestamp {
 		if timestamp <= source.lastTimestamp {
 			return ErrInvalidVideoTimestamp
 		}
-		ticksFloat := (timestamp-source.lastTimestamp).Seconds()*h264ClockRate +
+		ticksFloat := (timestamp-source.lastTimestamp).Seconds()*videoClockRate +
 			source.timestampRemainder
 		ticks := uint64(ticksFloat)
 		source.timestampRemainder = ticksFloat - float64(ticks)
@@ -71,7 +89,7 @@ func (source *Source) WriteH264(
 	source.lastTimestamp = timestamp
 	packets := source.packetizer.Packetize(accessUnit, 0)
 	if len(packets) == 0 {
-		return errors.New("native H264 access unit produced no RTP packets")
+		return errors.New("native video access unit produced no RTP packets")
 	}
 	source.frames.Add(1)
 	source.bytes.Add(uint64(len(accessUnit)))
@@ -80,6 +98,49 @@ func (source *Source) WriteH264(
 		result = errors.Join(result, source.track.WriteRTP(packet))
 	}
 	return result
+}
+
+// WriteRTP forwards one already encoded video packet without decoding or
+// re-encoding it. TrackLocalStaticRTP rewrites the negotiated SSRC and payload
+// type independently for every bound edge.
+func (source *Source) WriteRTP(packet *rtp.Packet) error {
+	if packet == nil {
+		return errors.New("native video RTP packet is invalid")
+	}
+	source.writeMu.Lock()
+	defer source.writeMu.Unlock()
+	source.mu.Lock()
+	closed := source.closed
+	source.mu.Unlock()
+	if closed {
+		return errors.New("native media source is closed")
+	}
+	// Forward RTP padding to preserve sequence continuity without counting it as video.
+	if packet.Marker && len(packet.Payload) > 0 {
+		source.frames.Add(1)
+	}
+	source.bytes.Add(uint64(len(packet.Payload)))
+	forwarded := connectionNeutralRTP(packet)
+	return source.track.WriteRTP(&forwarded)
+}
+
+func connectionNeutralRTP(packet *rtp.Packet) rtp.Packet {
+	forwarded := *packet
+	forwarded.Header = packet.Header
+	// Header extensions are negotiated per PeerConnection. The outbound Pion
+	// interceptors add fresh TWCC using that edge's negotiated ID.
+	forwarded.Extension = false
+	forwarded.ExtensionProfile = 0
+	forwarded.Extensions = nil
+	return forwarded
+}
+
+func (source *Source) BeginGeneration() {
+	source.writeMu.Lock()
+	source.rebasePending = true
+	source.rebaseInput = 0
+	source.rebaseOutput = 0
+	source.writeMu.Unlock()
 }
 
 func (source *Source) SetFormat(width, height uint32) {

@@ -1,6 +1,7 @@
 {
   "name": "screener",
   "version": "0.1.0",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "engines": {
@@ -8,9 +9,9 @@
   },
   "packageManager": "npm@11.17.0",
   "scripts": {
-    "dev": "tsx watch src/server/index.ts",
+    "dev": "node scripts/package-licenses.mjs public/third-party-licenses.txt && tsx watch src/server/index.ts",
     "build": "npm run build:client && npm run build:server",
-    "build:client": "vite build",
+    "build:client": "node scripts/package-licenses.mjs public/third-party-licenses.txt && vite build",
     "build:server": "node --input-type=module -e \"import { rmSync } from 'node:fs'; rmSync('dist/server', { recursive: true, force: true })\" && tsc -p tsconfig.server.json",
     "package:client": "node scripts/assemble-client.mjs",
     "package:client-candidate": "node scripts/package-client-candidate.mjs",
@@ -19,6 +20,7 @@
     "check:client-capture": "node scripts/check-client.mjs --capture-only",
     "gate:client-media": "tsx scripts/client-media-gate.ts",
     "gate:client-native-host": "tsx scripts/client-native-host-gate.ts",
+    "gate:client-browser-fanout": "tsx scripts/client-browser-fanout-gate.ts",
     "gate:client-cross-nat": "tsx scripts/client-native-host-gate.ts",
     "gate:client-link-media": "tsx scripts/client-native-host-gate.ts",
     "gate:client-native-sfu": "tsx scripts/client-native-sfu-gate.ts",

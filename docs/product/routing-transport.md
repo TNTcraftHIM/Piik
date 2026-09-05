@@ -32,11 +32,16 @@ share generation:
 - native-edge topology convergence is enabled by default. The Host may disable
   it before sharing; when disabled, quality evidence stays diagnostic and
   availability routing is unchanged;
-- NAT traversal is absent unless the deployment enables its self-hosted
-  auxiliary STUN capability. When available, its Host switch defaults on and
-  augments every Browser P2P edge in that share; the Host may disable it before
-  sharing. It is not a participant capability, route score, or SFU preference.
-  Candidate generation and selected-pair diagnostics retain only
+- NAT traversal requires an exact three-destination STUN survey: a Site may use
+  self-hosted 3478/3479/3480, Public Link uses its bounded public survey, and
+  pure LAN supplies none. Its default-on Host switch augments Browser and Native
+  P2P edges; Native also uses its media socket and best-effort gateway mapping.
+  Availability and background direct acquisition share a bounded budget of
+  three actual connection attempts per eligible parent/session opportunity.
+  Retries use the same serial controller and normal operation deadlines;
+  waiting Viewers and untried parents receive their opportunities first.
+  It is not a participant capability, route score, or SFU preference. Candidate
+  generation and selected-pair diagnostics retain only
   `ordinary | predicted | unknown` provenance.
   [ADR-0009](../adr/0009-optional-nat-prediction.md) owns the bounded behavior
   and evidence boundary.
@@ -90,6 +95,9 @@ not abandon its only possible route at the foreground boundary.
 The pending Viewer transport reports an actual Browser failure but installs no
 shorter initial or disconnected-state deadline. Viewer-owned reconnect timing
 begins only after that exact candidate commits as the active route.
+When NAT traversal is enabled, another operation may use the remaining
+connection-attempt budget after rollback. The waiting display uses the actual
+server-issued attempt ordinal; it never counts time as an attempted connection.
 
 When a newly committed Host-root Viewer exposes unused downstream capacity while
 another Host root has at least two direct children, the same background operation may
@@ -163,17 +171,16 @@ encrypted hop-by-hop with DTLS-SRTP but terminates at the SFU; the product does
 not claim operator-blind media without a separately accepted application E2EE
 design. All-UDP-blocked networks currently end in bounded failure.
 
-Client Local mode runs this same graph with peer-assisted media enabled and no
-SFU or NAT prediction. It uses no STUN by default. Explicit one-link mode carries
-only HTTP/WebSocket control through a temporary public tunnel and adds public
-STUN to the same ordinary Browser media edges. Reachable peers may form the
-ordinary Browser relay tree; an unreachable media path fails without adding a
-route type, score, or fallback. Selecting a Site uses that deployment's current
-transport configuration instead.
+Client Local mode runs this graph without SFU, NAT prediction, or default STUN.
+One-link mode tunnels only HTTP/WebSocket control and adds public STUN to the
+same Browser/Native P2P edges. Reachable peers form one mixed relay tree; an
+unreachable path adds no route type or score. Site mode uses Site transport.
 
-A native Host reserves one additional loopback media edge for its system-
-Browser preview and existing Browser SFU publisher. That local edge neither
-consumes endpoint route-copy capacity nor starts gateway port mapping. Direct
-children still use the native shared encode; if the controller assigns SFU,
-the ordinary SFU publication consumes its existing route copy and retains the
-same LiveKit representation and recovery policy as Browser capture.
+A native Host reserves one loopback edge for Browser preview and the existing
+SFU publisher; it consumes no route-copy capacity or gateway mapping. Direct
+children share the native encode, while assigned SFU keeps the Browser LiveKit
+representation and recovery policy.
+
+A native Viewer terminates only its P2P upstream, reserves one Browser playback
+edge, and reuses compatible H.264/Opus for bounded children. Browser keeps SFU,
+route revisions, frame proof, and fallback.

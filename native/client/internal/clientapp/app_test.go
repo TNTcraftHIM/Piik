@@ -51,11 +51,16 @@ func TestClientLaunchURLMarksThePageWithoutChangingOrigin(t *testing.T) {
 	}
 }
 
-func TestMissingNativeRuntimeLeavesBrowserCaptureAvailable(t *testing.T) {
-	runtime := discoverNativeMedia(t.Context(), "missing-capture-process")
-	if runtime.available() || runtime.controlFactory(false) != nil {
-		t.Fatalf("missing native runtime = %+v", runtime)
+func TestMissingCaptureKeepsViewerControlAvailable(t *testing.T) {
+	native := discoverNativeMedia(t.Context(), "missing-capture-process")
+	if native.capabilities.Video || native.capabilities.HardwareH264 {
+		t.Fatalf("missing native capture = %+v", native)
 	}
+	control := native.controlFactory()()
+	if control == nil {
+		t.Fatal("missing capture disabled the native Viewer control")
+	}
+	_ = control.Close()
 }
 
 func TestLaunchURLPreservesLocalAccessInsideThePrivateFragment(t *testing.T) {
@@ -68,6 +73,32 @@ func TestLaunchURLPreservesLocalAccessInsideThePrivateFragment(t *testing.T) {
 	if err != nil || fragment.Get("client-access") != "secret" ||
 		fragment.Get("screener-client") != "1" {
 		t.Fatalf("local native launch fragment = %q, %v", parsed.Fragment, err)
+	}
+}
+
+func TestLaunchURLEncodesAndClearsOptionalLocalAccess(t *testing.T) {
+	value := clientLaunchURLWithLocalAccess(
+		"http://localhost:8787/#retained=yes&client-access=old",
+		"a+b&c?d=e",
+	)
+	parsed, err := url.Parse(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fragment, err := url.ParseQuery(parsed.Fragment)
+	if err != nil || fragment.Get("client-access") != "a+b&c?d=e" ||
+		fragment.Get("screener-client") != "1" || fragment.Get("retained") != "yes" {
+		t.Fatalf("encoded local launch fragment = %q, %v", parsed.Fragment, err)
+	}
+
+	open := clientLaunchURLWithLocalAccess("http://localhost:8787/#client-access=old", "")
+	parsed, err = url.Parse(open)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fragment, err = url.ParseQuery(parsed.Fragment)
+	if err != nil || fragment.Get("client-access") != "" || fragment.Get("screener-client") != "1" {
+		t.Fatalf("open local launch fragment = %q, %v", parsed.Fragment, err)
 	}
 }
 
@@ -97,13 +128,18 @@ func TestLocalEnvironmentOwnsItsSTUNConfiguration(t *testing.T) {
 		[]string{"192.168.1.2"},
 		"abcdefghijklmnopqrstuvwxyzABCDEF",
 		[]string{"stun:public.example:3478"},
+		[]string{"stun:survey-a.example:3478", "stun:survey-b.example:3478"},
 		"https://small-bright-room.trycloudflare.com",
 	)
 	stunEntries := []string{}
+	surveyEntries := []string{}
 	publicEntries := []string{}
 	for _, entry := range environment {
 		if strings.HasPrefix(entry, "STUN_URLS=") {
 			stunEntries = append(stunEntries, entry)
+		}
+		if strings.HasPrefix(entry, "SCREENER_CLIENT_NAT_PREDICTION_STUN_URLS=") {
+			surveyEntries = append(surveyEntries, entry)
 		}
 		if strings.HasPrefix(entry, "SCREENER_CLIENT_PUBLIC_ORIGIN=") {
 			publicEntries = append(publicEntries, entry)
@@ -111,6 +147,10 @@ func TestLocalEnvironmentOwnsItsSTUNConfiguration(t *testing.T) {
 	}
 	if len(stunEntries) != 1 || stunEntries[0] != "STUN_URLS=stun:public.example:3478" {
 		t.Fatalf("Local STUN environment = %v", stunEntries)
+	}
+	if len(surveyEntries) != 1 ||
+		surveyEntries[0] != "SCREENER_CLIENT_NAT_PREDICTION_STUN_URLS=stun:survey-a.example:3478,stun:survey-b.example:3478" {
+		t.Fatalf("Local NAT survey environment = %v", surveyEntries)
 	}
 	if len(publicEntries) != 1 ||
 		publicEntries[0] != "SCREENER_CLIENT_PUBLIC_ORIGIN=https://small-bright-room.trycloudflare.com" {

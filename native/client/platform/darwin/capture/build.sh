@@ -13,6 +13,7 @@ xcrun swiftc \
   -parse-as-library \
   -swift-version 5 \
   -target arm64-apple-macos13.0 \
+  -framework AudioToolbox \
   -framework CoreMedia \
   -framework CoreVideo \
   -framework ScreenCaptureKit \

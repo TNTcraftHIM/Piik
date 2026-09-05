@@ -11,6 +11,7 @@
 
 # Dependencies and generated output
 node_modules/
+public/third-party-licenses.txt
 build/
 coverage/
 dist/

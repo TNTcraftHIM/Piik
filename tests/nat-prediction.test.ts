@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   addRemoteIceCandidate,
   iceServersWithNatPrediction,
+  isNativeNatSurveyCandidate,
   MAX_NAT_PREDICTION_CANDIDATES,
   NatPredictionCandidateBatch,
   NatPredictionCandidateEmitter,
@@ -43,6 +44,20 @@ function rtcCandidate(port: number): RTCIceCandidate {
 }
 
 describe("NAT prediction ICE adapter", () => {
+  it("uses only explicit Native survey candidates as prediction evidence", () => {
+    const survey = candidate(40_000);
+    if (survey) {
+      survey.candidate = survey.candidate.replace(
+        "candidate:base",
+        "candidate:ns1",
+      );
+    }
+
+    expect(isNativeNatSurveyCandidate(survey)).toBe(true);
+    expect(isNativeNatSurveyCandidate(candidate(40_000))).toBe(false);
+    expect(isNativeNatSurveyCandidate(hostCandidate())).toBe(false);
+  });
+
   it("ignores only rejected predicted candidates", async () => {
     const error = new Error("candidate rejected");
     const connection = {
@@ -85,27 +100,27 @@ describe("NAT prediction ICE adapter", () => {
     ).toEqual(servers);
   });
 
-  it("adds only configured self-hosted auxiliary listeners", () => {
+  it("adds only the configured survey destinations", () => {
     const servers = [{ urls: "stun:share.example.test:3478" }];
     const auxiliary = [
-      "stun:share.example.test:3479",
-      "stun:share.example.test:3480",
+      "stun:survey-a.example.test:3478",
+      "stun:survey-b.example.test:3478",
     ];
 
     expect(
       iceServersWithNatPrediction(servers, true, auxiliary),
     ).toEqual([
       ...servers,
-      { urls: "stun:share.example.test:3479" },
-      { urls: "stun:share.example.test:3480" },
+      { urls: "stun:survey-a.example.test:3478" },
+      { urls: "stun:survey-b.example.test:3478" },
     ]);
     expect(
       natPredictionSurveyUrls(servers, auxiliary),
     ).toEqual(
       new Set([
         "stun:share.example.test:3478",
-        "stun:share.example.test:3479",
-        "stun:share.example.test:3480",
+        "stun:survey-a.example.test:3478",
+        "stun:survey-b.example.test:3478",
       ]),
     );
     expect(
@@ -266,8 +281,8 @@ describe("NAT prediction ICE adapter", () => {
       (value) => sent.push(value),
       new Set([
         "stun:share.example.test:3478",
-        "stun:share.example.test:3479",
-        "stun:share.example.test:3480",
+        "stun:survey-a.example.test:3478",
+        "stun:survey-b.example.test:3478",
       ]),
     );
 

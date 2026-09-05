@@ -47,6 +47,8 @@ ordinary implementation and UI detail.
   audio boundary.
 - [ADR-0009](./adr/0009-optional-nat-prediction.md): optional connection-local
   NAT prediction.
+- [ADR-0011](./adr/0011-browser-assisted-native-fanout.md): Browser capture with
+  Client encoded fanout.
 - [ADR-0010](./adr/0010-cross-platform-client-runtime.md): cross-platform Client
   runtime and self-contained package boundary.
 

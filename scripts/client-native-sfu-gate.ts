@@ -172,6 +172,7 @@ async function main(): Promise<void> {
     viewerFrames: 0,
     viewerWidth: 0,
     viewerHeight: 0,
+    profileUpdated: false,
     cleanup: false,
     error: null as string | null,
     stage: "setup",
@@ -327,6 +328,37 @@ async function main(): Promise<void> {
     result.viewerFrames = viewer.frames ?? 0;
     result.viewerWidth = viewer.width ?? 0;
     result.viewerHeight = viewer.height ?? 0;
+    result.stage = "profile-update";
+    const updated = await evaluate<boolean>(
+      cdp,
+      hostPage,
+      `(async () => {
+        const gate = await import('/scripts/client-native-sfu-page.ts');
+        return await gate.updateNativeSfuHost({
+          resolution: '480p',
+          maxFramerate: 15,
+          maxBitrate: 2000000,
+          degradationPreference: 'maintain-resolution',
+          screenAudioQuality: 'saver',
+        });
+      })()`,
+      Date.now() + 20_000,
+    );
+    const updatedViewer = await evaluate<{
+      frames: number;
+      width: number;
+      height: number;
+    }>(
+      cdp,
+      viewerPage,
+      `import('/scripts/client-native-sfu-page.ts').then((gate) =>
+        gate.waitForNativeSfuViewer(854, 480))`,
+      Date.now() + 25_000,
+    );
+    result.profileUpdated = updated && updatedViewer.frames >= 15;
+    result.viewerFrames = updatedViewer.frames;
+    result.viewerWidth = updatedViewer.width;
+    result.viewerHeight = updatedViewer.height;
   } catch (error) {
     result.error = error instanceof Error ? error.message : String(error);
   } finally {
@@ -381,8 +413,8 @@ async function main(): Promise<void> {
       sourceCleanup.profileRemoved && sourceCleanup.portsClosed;
   }
   result.passed = result.error === null && result.hostPublished &&
-    result.viewerFrames >= 30 && result.viewerWidth === 1280 &&
-    result.viewerHeight === 720 && result.cleanup;
+    result.profileUpdated && result.viewerFrames >= 15 &&
+    result.viewerWidth === 854 && result.viewerHeight === 480 && result.cleanup;
   process.stdout.write(`${JSON.stringify(result)}\n`);
   if (!result.passed) process.exitCode = 1;
 }

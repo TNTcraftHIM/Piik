@@ -32,7 +32,7 @@ export function readDisplayName(
 function suffixedDefaultName(prefix: string, clientId: string): DisplayName {
   const suffix = clientId.slice(-6);
   return (
-    normalizeDisplayName(suffix ? `${prefix}-${suffix}` : prefix) ??
+    normalizeDisplayName(suffix ? `${prefix} (${suffix})` : prefix) ??
     (prefix as DisplayName)
   );
 }

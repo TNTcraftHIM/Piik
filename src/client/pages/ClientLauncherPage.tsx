@@ -2,8 +2,10 @@ import { useEffect, useState, type FormEvent } from "react";
 import { z } from "zod";
 
 import { BrandLoader, BrandMark } from "../components/living/BrandMark";
+import { ComicTooltip } from "../components/living/ComicTooltip";
 import { AppHeader } from "../components/living/Header";
 import { Btn, Pill } from "../components/living/primitives";
+import type { HintKind } from "../components/living/hints";
 import { Glyph, type GlyphName } from "../ui/icons";
 import { useCopy, type CopyKey } from "../ui/copy";
 import {
@@ -16,6 +18,7 @@ type ClientMode = "local" | "link" | "site";
 const launcherStateSchema = z
   .object({
     site: z.string(),
+    localAccessPassword: z.string().max(128),
     defaultMode: z.enum(["local", "site"]),
     revision: z.string(),
   })
@@ -27,33 +30,38 @@ const MODES: Array<{
   icon: GlyphName;
   label: CopyKey;
   hint: CopyKey;
+  comic: HintKind;
 }> = [
   {
     mode: "local",
     icon: "users",
     label: "client.launch.local",
     hint: "client.launch.localHint",
+    comic: "hint-client-local",
   },
   {
     mode: "link",
     icon: "globe",
     label: "client.launch.link",
     hint: "client.launch.linkHint",
+    comic: "hint-client-link",
   },
   {
     mode: "site",
     icon: "server",
     label: "client.launch.site",
     hint: "client.launch.siteHint",
+    comic: "hint-client-site",
   },
 ];
 
 export function ClientLauncherPage() {
-  const { vis, t } = useCopy();
+  const { lang, vis, t } = useCopy();
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
   const [mode, setMode] = useState<ClientMode>("local");
   const [site, setSite] = useState("");
+  const [localAccessPassword, setLocalAccessPassword] = useState("");
   const [error, setError] = useState(false);
   const [update, setUpdate] = useState<ReleaseUpdateNotice | null>(null);
 
@@ -68,6 +76,7 @@ export function ClientLauncherPage() {
         if (!current) return;
         setMode(state.defaultMode);
         setSite(state.site);
+        setLocalAccessPassword(state.localAccessPassword);
         setLoading(false);
         void checkReleaseUpdate(state.revision).then((notice) => {
           if (current && notice) setUpdate(notice);
@@ -92,7 +101,11 @@ export function ClientLauncherPage() {
       const response = await fetch("/api/client-launcher/launch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode, ...(mode === "site" ? { site } : {}) }),
+        body: JSON.stringify({
+          mode,
+          language: vis ? "vis" : lang,
+          ...(mode === "site" ? { site } : { localAccessPassword }),
+        }),
       });
       if (!response.ok) throw new Error();
       const result = launcherResultSchema.parse(await response.json());
@@ -102,6 +115,26 @@ export function ClientLauncherPage() {
       setStarting(false);
     }
   }
+
+  const accessField = (
+    <label className="lr-input lr-client-access">
+      <Glyph name="lock" size={18} />
+      <input
+        type="text"
+        value={localAccessPassword}
+        maxLength={128}
+        autoComplete="off"
+        spellCheck={false}
+        placeholder={vis ? "" : t("client.launch.localAccessPlaceholder")}
+        aria-label={t("client.launch.localAccess")}
+        title={vis ? undefined : t("client.launch.localAccessHint")}
+        onChange={(event) => {
+          setLocalAccessPassword(event.target.value);
+          setError(false);
+        }}
+      />
+    </label>
+  );
 
   return (
     <div className="lr-app">
@@ -157,29 +190,38 @@ export function ClientLauncherPage() {
               role="radiogroup"
               aria-label={t("client.launch.title")}
             >
-              {MODES.map((choice) => (
-                <button
-                  key={choice.mode}
-                  type="button"
-                  role="radio"
-                  className={`lr-client-mode${mode === choice.mode ? " is-selected" : ""}`}
-                  aria-checked={mode === choice.mode}
-                  aria-label={t(choice.label)}
-                  title={vis ? undefined : t(choice.hint)}
-                  onClick={() => {
-                    setMode(choice.mode);
-                    setError(false);
-                  }}
-                >
-                  <Glyph name={choice.icon} size={27} />
-                  {vis ? null : (
-                    <span>
-                      <strong>{t(choice.label)}</strong>
-                      <small>{t(choice.hint)}</small>
-                    </span>
-                  )}
-                </button>
-              ))}
+              {MODES.map((choice) => {
+                const button = (
+                  <button
+                    key={choice.mode}
+                    type="button"
+                    role="radio"
+                    className={`lr-client-mode${mode === choice.mode ? " is-selected" : ""}`}
+                    aria-checked={mode === choice.mode}
+                    aria-label={t(choice.label)}
+                    title={vis ? undefined : t(choice.hint)}
+                    onClick={() => {
+                      setMode(choice.mode);
+                      setError(false);
+                    }}
+                  >
+                    <Glyph name={choice.icon} size={27} />
+                    {vis ? null : (
+                      <span>
+                        <strong>{t(choice.label)}</strong>
+                        <small>{t(choice.hint)}</small>
+                      </span>
+                    )}
+                  </button>
+                );
+                return vis ? (
+                  <ComicTooltip key={choice.mode} kind={choice.comic}>
+                    {button}
+                  </ComicTooltip>
+                ) : (
+                  button
+                );
+              })}
             </div>
 
             {mode === "site" ? (
@@ -199,6 +241,16 @@ export function ClientLauncherPage() {
                   }}
                 />
               </label>
+            ) : null}
+
+            {mode !== "site" ? (
+              vis ? (
+                <ComicTooltip kind="hint-password">
+                  {accessField}
+                </ComicTooltip>
+              ) : (
+                accessField
+              )
             ) : null}
 
             {error ? (
