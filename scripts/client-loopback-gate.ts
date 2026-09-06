@@ -9,6 +9,7 @@ import {
   cleanupRun,
   createPage,
   evaluate,
+  launchChrome,
   waitForVersion,
 } from "./browser-gate-harness";
 import {
@@ -197,16 +198,13 @@ async function main(): Promise<void> {
         portServer.close((error) => error ? rejectPort(error) : resolvePort(address.port));
       });
     });
-    browser = spawn(browserPath, [
-      `--remote-debugging-port=${debugPort}`,
-      `--user-data-dir=${profile}`,
+    browser = launchChrome(browserPath, debugPort, profile, [
       "--headless=new",
       ...(disposableNoSandbox ? ["--no-sandbox"] : []),
       "--no-first-run",
       "--no-proxy-server",
       "--disable-logging",
-      "about:blank",
-    ], { stdio: "pipe", windowsHide: true });
+    ]);
     browser.stdout.resume();
     browser.stderr.resume();
     const version = await waitForVersion(debugPort, browser);

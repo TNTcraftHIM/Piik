@@ -26,6 +26,7 @@ import {
   createPage,
   evaluate,
   fetchJsonBefore,
+  launchChrome,
   reservePort,
   waitForSample,
   waitForVersion,
@@ -327,11 +328,10 @@ async function main(): Promise<void> {
       throw new Error("Room preparation did not enable the Viewer password");
     }
     report.roomPrepared = true;
-    chrome = spawn(chromePath, [
-      `--remote-debugging-port=${debugPort}`, `--user-data-dir=${profile}`,
+    chrome = launchChrome(chromePath, debugPort, profile, [
       "--headless=new", "--no-first-run", "--disable-extensions",
-      "--disable-logging", "about:blank",
-    ], { cwd: root, stdio: "pipe", windowsHide: true });
+      "--disable-logging",
+    ], { cwd: root });
     chrome.stdout.resume();
     chrome.stderr.resume();
     const version = await waitForVersion(debugPort, chrome);

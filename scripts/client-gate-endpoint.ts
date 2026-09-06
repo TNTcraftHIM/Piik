@@ -41,6 +41,7 @@ export function decodeClientEndpoint(line: string): ClientEndpoint {
   return endpoint as ClientEndpoint;
 }
 
+// readClientEndpoint waits for the first valid loopback endpoint from stdout.
 export async function readClientEndpoint(
   client: ChildProcessWithoutNullStreams,
   options: { timeoutMs?: number; ignoreNonEndpointLines?: boolean } = {},

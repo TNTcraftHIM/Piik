@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
-  CdpConnection, cleanupRun, createPage, evaluate, fetchJsonBefore, reservePort,
+  CdpConnection, cleanupRun, createPage, evaluate, fetchJsonBefore, launchChrome, reservePort,
   waitForSample, waitForVersion, type PageHandle,
 } from "./browser-gate-harness";
 import { decodeClientEndpoint } from "./client-gate-endpoint";
@@ -173,12 +173,12 @@ async function main(): Promise<void> {
       if (!clientPort && output.includes("\n")) clientPort = decodeClientEndpoint(output.split("\n")[0]!).port;
     });
     await waitForSample(async () => clientPort, (value) => value > 0, 15000);
-    chrome = spawn(chromePath, [
-      `--remote-debugging-port=${debugPort}`, `--user-data-dir=${profile}`, "--headless=new",
+    chrome = launchChrome(chromePath, debugPort, profile, [
+      "--headless=new",
       "--no-first-run", "--no-default-browser-check", "--no-proxy-server",
       "--autoplay-policy=no-user-gesture-required", "--disable-background-timer-throttling",
-      "--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows", "about:blank",
-    ], { windowsHide: true, stdio: "pipe" });
+      "--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows",
+    ]);
     chrome.stdout.resume(); chrome.stderr.resume();
     const version = await waitForVersion(debugPort, chrome);
     checks.browser = version.Browser;

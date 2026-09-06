@@ -141,6 +141,27 @@ export class CdpConnection {
   }
 }
 
+// launchChrome starts an isolated Chrome process with the shared CDP flags.
+export function launchChrome(
+  executable: string,
+  debugPort: number,
+  profile: string,
+  flags: string[] = [],
+  options: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
+): ChildProcessWithoutNullStreams {
+  return spawn(executable, [
+    `--remote-debugging-port=${debugPort}`,
+    `--user-data-dir=${profile}`,
+    ...flags,
+    "about:blank",
+  ], {
+    cwd: options.cwd,
+    env: options.env,
+    stdio: "pipe",
+    windowsHide: true,
+  });
+}
+
 export function withDeadline<T>(
   operation: () => Promise<T>,
   deadline: number,

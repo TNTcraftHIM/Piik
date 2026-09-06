@@ -17,6 +17,7 @@ import {
   cleanupRun,
   createPage,
   evaluate,
+  launchChrome,
   reservePort,
   type PageHandle,
   waitForVersion,
@@ -231,9 +232,7 @@ async function main(): Promise<void> {
     })).port;
 
     result.stage = "browser";
-    chrome = spawn(chromePath, [
-      `--remote-debugging-port=${debugPort}`,
-      `--user-data-dir=${profile}`,
+    chrome = launchChrome(chromePath, debugPort, profile, [
       "--no-first-run",
       "--no-default-browser-check",
       "--disable-extensions",
@@ -242,8 +241,7 @@ async function main(): Promise<void> {
       "--disable-backgrounding-occluded-windows",
       "--disable-renderer-backgrounding",
       "--disable-features=WebRtcHideLocalIpsWithMdns",
-      "about:blank",
-    ], { stdio: "pipe", windowsHide: true });
+    ]);
     chrome.stdout.resume();
     chrome.stderr.resume();
     const version = await waitForVersion(debugPort, chrome);

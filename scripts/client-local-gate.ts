@@ -9,6 +9,7 @@ import {
   createPage,
   evaluate,
   fetchJsonBefore,
+  launchChrome,
   reservePort,
   waitForSample,
   waitForVersion,
@@ -122,9 +123,7 @@ async function main(): Promise<void> {
       "screener-client": "1",
     }).toString();
 
-    browser = spawn(browserPath, [
-      `--remote-debugging-port=${debugPort}`,
-      `--user-data-dir=${profile}`,
+    browser = launchChrome(browserPath, debugPort, profile, [
       "--headless=new",
       ...(process.env.SCREENER_CLIENT_GATE_NO_SANDBOX === "true"
         ? ["--no-sandbox"]
@@ -132,8 +131,7 @@ async function main(): Promise<void> {
       "--no-first-run",
       "--no-proxy-server",
       "--disable-logging",
-      "about:blank",
-    ], { stdio: "pipe", windowsHide: true });
+    ]);
     browser.stdout.resume();
     browser.stderr.resume();
     const version = await waitForVersion(debugPort, browser);

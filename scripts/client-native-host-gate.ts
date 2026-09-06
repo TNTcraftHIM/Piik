@@ -16,6 +16,7 @@ import {
   cleanupRun,
   createPage,
   evaluate,
+  launchChrome,
   reservePort,
   type PageHandle,
   waitForVersion,
@@ -411,16 +412,14 @@ export async function startSourceBrowser(
   child: ChildProcessWithoutNullStreams;
   cdp: CdpConnection;
 }> {
-  const child = spawn(chromePath, [
-    "--remote-debugging-port=" + debugPort,
-    "--user-data-dir=" + profile,
+  const child = launchChrome(chromePath, debugPort, profile, [
     "--no-first-run", "--no-default-browser-check",
     "--disable-extensions", "--disable-logging",
     "--disable-background-timer-throttling",
     "--disable-backgrounding-occluded-windows",
     "--disable-renderer-backgrounding",
     "--app=http://127.0.0.1:" + sourcePort + "/",
-  ], { stdio: "pipe", windowsHide: true });
+  ]);
   child.stdout.resume();
   child.stderr.resume();
   const version = await waitForVersion(debugPort, child);
@@ -727,17 +726,14 @@ async function main(): Promise<void> {
       15_000,
     );
     stage = "host-browser";
-    chrome = spawn(chromePath, [
-      "--remote-debugging-port=" + debugPort,
-      "--user-data-dir=" + profile,
+    chrome = launchChrome(chromePath, debugPort, profile, [
       "--no-first-run", "--no-default-browser-check",
       "--disable-extensions", "--disable-logging",
       "--disable-background-timer-throttling",
       "--disable-backgrounding-occluded-windows",
       "--disable-renderer-backgrounding",
       "--window-size=1280,900",
-      "about:blank",
-    ], { stdio: "pipe", windowsHide: true });
+    ]);
     chrome.stdout.resume();
     chrome.stderr.resume();
     stage = "host-cdp";
