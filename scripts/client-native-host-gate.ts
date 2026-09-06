@@ -568,7 +568,6 @@ async function main(): Promise<void> {
   const chromePath = process.env.CHROME_PATH?.trim();
   if (!chromePath) throw new Error("CHROME_PATH is required");
   const go = process.env.SCREENER_GO?.trim() || "go";
-  const node = process.env.SCREENER_NODE?.trim() || process.execPath;
   const tunnel = process.env.SCREENER_CLOUDFLARED?.trim() || join(
     BUILD_ROOT,
     "cloudflared.exe",
@@ -638,26 +637,26 @@ async function main(): Promise<void> {
   try {
     stage = "application-build";
     run(process.env.ComSpec || "cmd.exe", [
-      "/d", "/s", "/c", "npm run build",
+      "/d", "/s", "/c", "npm run build:client",
     ]);
     stage = "source-server";
     source = await sourceServer(sourcePort);
     stage = "capture-build";
     run(powershell(), [
       "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
-      join(ROOT, "native", "client", "platform", "windows", "capture", "build.ps1"),
+      join(ROOT, "native", "capture", "windows", "build.ps1"),
       "-OutputDirectory", captureBuild,
     ]);
     stage = "client-build";
     run(go, [
       "build", "-trimpath", "-o", clientBinary, "./cmd/screener-client",
-    ], join(ROOT, "native", "client"));
+    ], ROOT);
     if (remote) {
       stage = "remote-peer-build";
       run(
         go,
         ["build", "-trimpath", "-o", remoteBinary, "./cmd/screener-peer-gate"],
-        join(ROOT, "native", "client"),
+        ROOT,
         { ...process.env, GOOS: "linux", GOARCH: "amd64", CGO_ENABLED: "0" },
       );
     }
@@ -676,8 +675,6 @@ async function main(): Promise<void> {
         ? ["--tunnel-process", tunnel]
         : []),
       "--capture-process", captureBinary,
-      "--node", node,
-      "--app", ROOT,
       "--config", clientConfig,
       "--port", String(appPort),
     ], {
@@ -685,8 +682,10 @@ async function main(): Promise<void> {
       windowsHide: true,
       env: {
         ...process.env,
-        NODE_DEBUG: "screener-route",
+        SCREENER_DEBUG: "route",
         SCREENER_CLIENT_GATE_NO_BROWSER: "true",
+        // STUN_URLS reaches only the Client's own Pion edge: the in-process
+        // room server never reads it, so the cross-NAT arm stays isolated.
         ...(mode === "cross-nat" && gateStunUrls
           ? { STUN_URLS: gateStunUrls }
           : {}),

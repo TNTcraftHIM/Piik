@@ -190,14 +190,14 @@ async function main(): Promise<void> {
   let clientPort = 0;
   try {
     result.stage = "build";
-    run(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", "npm run build"]);
+    run(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", "npm run build:client"]);
     run(powershell(), [
       "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
-      join(ROOT, "native", "client", "platform", "windows", "capture", "build.ps1"),
+      join(ROOT, "native", "capture", "windows", "build.ps1"),
       "-OutputDirectory", BUILD_ROOT,
     ]);
     run(go, ["build", "-trimpath", "-o", clientBinary, "./cmd/screener-client"],
-      join(ROOT, "native", "client"));
+      ROOT);
 
     result.stage = "livekit";
     livekit = spawn(livekitPath, [

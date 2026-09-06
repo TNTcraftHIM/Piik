@@ -740,7 +740,7 @@ async function main(): Promise<void> {
       "-ExecutionPolicy",
       "Bypass",
       "-File",
-      join(ROOT, "native", "client", "platform", "windows", "capture", "build.ps1"),
+      join(ROOT, "native", "capture", "windows", "build.ps1"),
       "-OutputDirectory",
       buildRoot,
     ]);
@@ -875,10 +875,14 @@ async function main(): Promise<void> {
     );
     const clientExecutable = join(packageRoot, "screener-client.exe");
     const go = process.env.SCREENER_GO?.trim() || "go";
+    // The Client embeds the Vite output, so the Web build precedes the Go build.
+    run(process.env.ComSpec || "cmd.exe", [
+      "/d", "/s", "/c", "npm run build:client",
+    ], ROOT);
     run(
       go,
       ["build", "-trimpath", "-o", clientExecutable, "./cmd/screener-client"],
-      join(ROOT, "native", "client"),
+      ROOT,
     );
     client = spawn(clientExecutable, [
       "--site",

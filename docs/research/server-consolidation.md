@@ -1,36 +1,35 @@
 # Server Consolidation
 
-- Reviewed: 2026-09-05
-- Status: design candidate for the phase after Browser/Client acceptance
+- Reviewed: 2026-09-06
+- Status: implemented in the candidate; the acceptance list below is the
+  remaining boundary
 - Scope: one shared Go backend for Hosted and self-contained Client operation
 
 ## Current Ownership
 
-Hosted [`index.ts`](../../src/server/index.ts) and Local
-[`local-index.ts`](../../src/server/local-index.ts) already compose the same
-[`createScreenerServer`](../../src/server/app.ts). The Go
-[`clientapp`](../../native/client/internal/clientapp/app.go) supervises that Node
-process and supplies native media; it does not duplicate room or route authority.
-Consolidation replaces this sole backend rather than merging two implementations.
+`cmd/screener-server` (Hosted) and `cmd/screener-client` (Client) compose the
+same application from `internal/server` and own only their defaults,
+reachability, and lifecycle policy. Within that scope `protocol` owns wire types,
+strict decoding, and shared scalars; `config` owns environment validation plus
+the Hosted and Local compositions; `room` owns room authority, participants, and
+the SQLite database; `route` decides graph transitions without I/O; `signal`
+executes signaling and SFU effects under one lock; `sfu` owns admission, LiveKit
+room control, and token issue; `app` owns HTTP composition, site access, static
+assets, and lifecycle; and `webassets` carries the embedded Browser bundle.
+`internal/client` keeps the native, launcher, and platform boundaries and
+supervises no server process. These are useful boundaries, not duplication to
+remove.
 
-[`RoomStore`](../../src/server/room-store.ts) owns room authority and participants;
-[`RoomDatabase`](../../src/server/room-database.ts) persists only access and lease
-material. [`RoomRouteController`](../../src/server/room-route-controller.ts)
-decides graph transitions without network I/O;
-[`HybridMediaRouter`](../../src/server/hybrid-media-router.ts) executes signaling
-and SFU effects. These are useful boundaries, not duplication to remove.
+## Structural Simplification
 
-## Preparatory Simplification
-
-1. Room expiry and abandonment now share `SignalingServer.terminateRoom` in
-   [`signaling.ts`](../../src/server/signaling.ts). Preserve the distinct semantics
-   of stopping a share, ending a room, and restarting a persistent server.
-2. Remove the Hybrid connection-ID mirror. `connectionIdsByViewer` is populated
-   through router callbacks, then `handleViewerQualityEvidence` checks that map
-   and `resolveActiveViewerMediaEdge` again. Derive the Hybrid identity from the
-   committed edge; retain the evidence gate's own last-observation identity.
-   Cover reauthentication and in-place connection adoption before removing the
-   callbacks. The ordinary Host-star path has been removed.
+1. Room expiry and abandonment share one `terminateRoom` path in `signal`.
+   Preserve the distinct semantics of stopping a share, ending a room, and
+   restarting a persistent server.
+2. The Hybrid connection-ID mirror is gone. The viewer-quality evidence path
+   and the active media-edge lookup read the connection identity from the
+   committed edge, and the evidence gate keeps its own last-observation
+   identity; router tests cover in-place connection adoption during a rebuild
+   and exact direct/peer-relayed evidence sources.
 
 These are structural simplifications, not reproduced functional failures.
 The [audit reconciliation](./backend-audit-1b01048.md) separates verified fixes
@@ -51,14 +50,13 @@ cmd/screener-server -> shared server application
 cmd/screener-client -> shared server application + launcher + native media
 internal/server    -> rooms, routing, HTTP/signaling, persistence, SFU adapters
 internal/client    -> current native and platform boundaries
-one React/Vite static artifact
+one React/Vite static artifact -> embedded in both binaries
 ```
 
 Use packages for cohesive owners and files for local concerns. Do not introduce
 a framework layer per file, a second product API, or a multi-module build.
-Move the existing `native/client` Go module into the common scope during the
-migration. Hosted and Local construct the same validated application options;
-entry points own their defaults, reachability and lifecycle policy.
+Hosted and Local construct the same validated application options; entry points
+own their defaults, reachability and lifecycle policy.
 
 Each room keeps one serialized state owner. Go HTTP/WebSocket handlers must not
 mutate room, share and route maps independently. Run password derivation and
@@ -69,16 +67,19 @@ unrelated locks around each map.
 
 ## Reusable Components
 
-- Use standard [`net/http`](https://pkg.go.dev/net/http) and
-  [`embed`](https://pkg.go.dev/embed) for HTTP and built assets.
-- Reuse the Client's [`coder/websocket`](https://pkg.go.dev/github.com/coder/websocket)
-  for signaling and the official [LiveKit Go SDK](https://github.com/livekit/server-sdk-go)
-  for room control and tokens.
-- Keep the current SQLite schema and transactions. Compare a small
-  [`modernc.org/sqlite`](https://pkg.go.dev/modernc.org/sqlite) build/runtime gate
-  against package and locking needs before selecting a driver; no ORM is needed.
-- Follow [Go's shared `internal` and multiple `cmd` guidance](https://go.dev/doc/modules/layout).
-  Retain current Pion, capture sidecars and control-tunnel ownership.
+- Standard [`net/http`](https://pkg.go.dev/net/http) and
+  [`embed`](https://pkg.go.dev/embed) serve HTTP and the built assets.
+- Signaling reuses the Client's
+  [`coder/websocket`](https://pkg.go.dev/github.com/coder/websocket).
+- LiveKit room control and tokens use the standard library only: HS256 JWTs and
+  Twirp JSON requests. The official
+  [LiveKit Go SDK](https://github.com/livekit/server-sdk-go) adds a large module
+  and license surface for a handful of call shapes and is not used.
+- Room persistence keeps the current schema and transactions on the pure-Go
+  [`modernc.org/sqlite`](https://pkg.go.dev/modernc.org/sqlite) driver, which
+  builds without cgo and holds one exclusive connection; no ORM is needed.
+- The layout follows [Go's shared `internal` and multiple `cmd` guidance](https://go.dev/doc/modules/layout).
+  Pion, capture sidecars and control-tunnel ownership are unchanged.
 
 ## Minimum Acceptance
 
@@ -89,9 +90,40 @@ rollback, including stale asynchronous completions. Preserve short-lived SFU
 authority and release resources only after physical drain confirmation.
 
 Use the same Browser contract scenarios against Hosted and Local, plus one
-physical mixed Browser/Client media flow. Measure package size, startup and idle
-memory before and after. Keep one strict wire contract and one schema owner;
-avoid hand-maintained parallel TypeScript/Go validation rules. Retire the Node
-server, bundled runtime, supervisor and old packaging paths in the same accepted
+physical mixed Browser/Client media flow. Package size, startup and idle memory
+are measured below. Keep one strict wire contract and one schema owner;
+avoid hand-maintained parallel TypeScript/Go validation rules. The Node server,
+bundled runtime, supervisor and old packaging paths retire in this same accepted
 integration boundary, preserving [ADR-0005](../adr/0005-automatic-hybrid-media-routing.md)
-and [ADR-0010](../adr/0010-cross-platform-client-runtime.md).
+and [ADR-0010](../adr/0010-cross-platform-client-runtime.md) as amended by
+[ADR-0012](../adr/0012-shared-go-backend-core.md).
+
+## Measured Before And After
+
+One machine, 2026-09-06: Windows 11, Node 24.15.0, Go 1.26.6. A script spawned
+each server with the same production configuration (`PORT=18787`, HTTPS public
+origin, site-access password, one STUN URL, loopback listen host), polled
+`/healthz` every 10 ms until `{"status":"ok"}`, waited 5 s idle, sampled
+resident memory through PowerShell `WorkingSet64`, then killed the process.
+Five runs per side; the median is reported. Before is the Node baseline at tag
+`baseline-b20fd88`; after is `screener-server` under the same script.
+
+| metric | before | after |
+| --- | ---: | ---: |
+| cold start to healthy | 160 ms | 81 ms |
+| idle resident memory | 77,242,368 B | 10,928,128 B |
+| shipped Hosted bytes | ~106.7 MB | ~14.0 MB |
+
+The before total is the Node runtime (91,694,408 B), the production
+`node_modules` tree (12,640,469 B in 1,513 files), `dist/client` (1,492,721 B)
+and `dist/server` (856,898 B). The after total is the linux/amd64
+`screener-server` built with `-s -w` and embedded assets (13,983,906 B) plus its
+notices and `REVISION`. For reference, the windows/amd64 binaries are
+14,276,608 B (`screener-server`) and 22,703,104 B (`screener-client`, which also
+carries Pion and the terminal UI); the Client package additionally drops the
+Node runtime and dependency tree it used to ship beside its Go executable.
+
+The first two starts of a freshly built binary took 469 ms and 336 ms, which is
+consistent with on-access antivirus scanning of a new executable; the median
+above is the steady state. Not measured: throughput or latency under load, which
+this port does not change, and the Linux deployment host.

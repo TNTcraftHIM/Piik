@@ -11,8 +11,8 @@ this README intentionally does not mirror release details.
 
 ## Screener Client
 
-The Client opens the same interface in your system browser. The Windows package
-includes its runtime; you do not need to install Node.js separately.
+The Client opens the same interface in your system browser. The package is one
+self-contained executable.
 
 - **Local:** share with devices on the same LAN.
 - **Public link:** send an ordinary invitation link. Cloudflare Quick Tunnel
@@ -33,11 +33,17 @@ site-access password. This does not change access rules on a saved Site.
 
 ## Local Development
 
-Node.js 24 and npm 11 are required.
+Node.js 24, npm 11, and Go 1.26 are required.
 
 ```sh
 npm ci
 npm run dev
+```
+
+In a second terminal, run the application server that the dev server proxies:
+
+```sh
+PORT=8788 PUBLIC_BASE_URL=http://localhost:8787 go run ./cmd/screener-server
 ```
 
 Open `http://localhost:8787`. The development server listens on `0.0.0.0`, so a
@@ -55,6 +61,7 @@ Run complete automated validation with:
 
 ```sh
 npm run check
+npm run check:client
 ```
 
 ## Documentation

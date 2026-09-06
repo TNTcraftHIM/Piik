@@ -1,8 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
 import {
   CdpConnection,
@@ -19,8 +18,6 @@ import {
   decodeClientEndpoint,
   type ClientEndpoint as Endpoint,
 } from "./client-gate-endpoint";
-
-const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 
 interface GateReport {
   passed: boolean;
@@ -88,12 +85,10 @@ async function main(): Promise<void> {
   }
   const browserPath = process.env.CHROME_PATH?.trim();
   const clientPath = process.env.SCREENER_CLIENT_EXE?.trim();
-  const nodePath = process.env.SCREENER_CLIENT_NODE?.trim();
-  const appDirectory = process.env.SCREENER_CLIENT_APP?.trim() || ROOT;
   const lanAddress = process.env.SCREENER_CLIENT_GATE_LAN_ADDRESS?.trim();
-  if (!browserPath || !clientPath || !nodePath || !lanAddress) {
+  if (!browserPath || !clientPath || !lanAddress) {
     throw new Error(
-      "CHROME_PATH, SCREENER_CLIENT_EXE, SCREENER_CLIENT_NODE, and SCREENER_CLIENT_GATE_LAN_ADDRESS are required",
+      "CHROME_PATH, SCREENER_CLIENT_EXE, and SCREENER_CLIENT_GATE_LAN_ADDRESS are required",
     );
   }
 
@@ -123,8 +118,6 @@ async function main(): Promise<void> {
   let loopbackPort = 0;
   try {
     client = spawn(clientPath, [
-      "--node", nodePath,
-      "--app", appDirectory,
       "--config", configPath,
       "--lan-address", lanAddress,
       "--port", String(appPort),

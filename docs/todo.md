@@ -124,19 +124,17 @@ Do not treat unperformed physical checks below as passed.
     explicit distribution work; do not add automatic install, container
     self-update, Watchtower, compatibility ranges, or active-share interruption
     before distribution and rollback evidence requires them.
-16. **Go server consolidation.** Revisit replacing the sole TypeScript/Node
-    server owner with Go only after the Client feature and physical acceptance
-    boundaries are complete. First measure package, startup, and maintenance
-    gains. If accepted, migrate Hosted and Local together and delete the Node
-    server in the same boundary; do not create or retain two room, signaling,
-    persistence, or route-controller implementations. The
-    [consolidation draft](./research/server-consolidation.md) identifies the two
-    preparatory simplifications and shared module/concurrency model. The
-    [audit reconciliation](./research/backend-audit-1b01048.md) distinguishes
-    accepted changes from external claims; the graph is now universal, pending
-    ICE recovery belongs only to its route operation, and origin activation
-    stays persistent. Refactor remaining shared owners only when this removes
-    real duplication, not to reproduce every external cleanup suggestion.
+16. **Go server consolidation.** Done in the candidate under
+    [ADR-0012](./adr/0012-shared-go-backend-core.md): Hosted and Client share one
+    Go core and the Node server, bundled runtime, and supervisor are deleted. Do
+    not create or retain two room, signaling, persistence, or route-controller
+    implementations. Package size, startup, and idle memory are measured in the
+    [consolidation research](./research/server-consolidation.md). Remaining
+    acceptance: rerun the physical Client and Browser-contract gates on this
+    build, and sequence the deployment cutover, installing the updated unit,
+    which replaces `NODE_ENV=production` with `SCREENER_ENV=production`, before
+    the first Go release, then proving the release wrapper on a host without
+    Node.
 17. **Opt-in diagnostics.** Replace ad hoc console logging with an explicit
     Client/Server debug option and bounded diagnostic export. Include revision,
     runtime state and sanitized capture/connection events; exclude credentials,
@@ -148,5 +146,5 @@ Do not treat unperformed physical checks below as passed.
     attribution; and Native prepared-bridge failure that must disable Native
     for the current Viewer session before retrying. Storage I/O failure needs
     an authority-consistent recovery policy, not catch-and-continue guards.
-    The Local occupied-port precheck prevents ordinary duplicate launches but
-    does not provide atomic bind handoff; do not claim otherwise.
+    The Local duplicate-launch guard is the in-process listener bind itself;
+    it refuses a second Client on the same port and hands nothing over.

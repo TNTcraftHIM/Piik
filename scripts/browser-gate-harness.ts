@@ -27,11 +27,15 @@ interface AsyncCloseable {
   close(): Promise<void>;
 }
 
+// A gate's server is either an in-process page server it closes directly or a
+// spawned Screener server it stops like any other child.
+export type CleanupServer = AsyncCloseable | ChildProcessWithoutNullStreams;
+
 export interface CleanupResources {
   cdp: CdpConnection | null;
   native: ChildProcessWithoutNullStreams | null;
   chrome: ChildProcessWithoutNullStreams | null;
-  server: AsyncCloseable | null;
+  server: CleanupServer | null;
   profile: string | null;
   ports: number[];
 }
@@ -297,12 +301,16 @@ export async function reservePort(): Promise<number> {
   });
 }
 
+// Readiness is the debugging endpoint, never the spawned process: Chrome's
+// Windows launcher exits as soon as the browser process takes over the profile
+// (measured: exit at ~140 ms, endpoint ready at ~440 ms). The deadline bounds
+// the wait, and the launcher's exit code is reported when it runs out.
 export async function waitForVersion(
   port: number,
   child: ChildProcessWithoutNullStreams,
 ): Promise<{ Browser: string; webSocketDebuggerUrl: string }> {
   const deadline = Date.now() + 20_000;
-  while (Date.now() < deadline && child.exitCode === null) {
+  while (Date.now() < deadline) {
     try {
       return await fetchJsonBefore<{ Browser: string; webSocketDebuggerUrl: string }>(
         `http://127.0.0.1:${port}/json/version`,
@@ -311,7 +319,7 @@ export async function waitForVersion(
     } catch {}
     await delay(Math.min(100, Math.max(0, deadline - Date.now())));
   }
-  throw new Error("Chrome startup timed out");
+  throw new Error(`Chrome startup timed out (exit ${child.exitCode ?? "running"})`);
 }
 
 export async function cleanupRun(
@@ -339,13 +347,16 @@ export async function cleanupRun(
   const nativeExited = resources.native
     ? await stopProcessTree(resources.native)
     : true;
+  const server = resources.server;
   let serverClosed = true;
-  if (resources.server) {
+  if (server && "close" in server) {
     try {
-      await withDeadline(() => resources.server!.close(), Date.now() + 5_000);
+      await withDeadline(() => server.close(), Date.now() + 5_000);
     } catch {
       serverClosed = false;
     }
+  } else if (server) {
+    serverClosed = await stopProcessTree(server);
   }
   const portsClosed = await waitForPortsClosed(
     [...new Set(resources.ports)],

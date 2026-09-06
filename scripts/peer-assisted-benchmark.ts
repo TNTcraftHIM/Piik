@@ -1,4 +1,5 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { mkdirSync } from "node:fs";
 import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -15,15 +16,6 @@ import {
   DEFAULT_ENDPOINT_MEDIA_COPY_CAPACITY,
   MAX_ENDPOINT_MEDIA_COPY_CAPACITY,
 } from "../src/shared/media-copy-accounting";
-import {
-  createScreenerServer,
-  type ScreenerServer,
-} from "../src/server/app";
-import { loadConfig } from "../src/server/config";
-import {
-  ROOM_CAPACITY,
-  RoomStore,
-} from "../src/server/room-store";
 import {
   QUALITY_PROFILES,
   QUALITY_RESOLUTIONS,
@@ -2258,10 +2250,47 @@ async function reservePort(): Promise<number> {
   return address.port;
 }
 
-function startProcess(command: string, args: string[], environment?: NodeJS.ProcessEnv): ManagedProcess {
+function buildStep(command: string, args: string[], failure: string): void {
+  const result = spawnSync(command, args, {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    windowsHide: true,
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error((result.stderr || result.stdout).trim() || failure);
+  }
+}
+
+// buildServer compiles the Screener server this run starts. The Web assets are
+// embedded, so the Vite build precedes the Go build and the Browser reaches the
+// same bundle the binary serves.
+function buildServer(): string {
+  const go = process.env.SCREENER_GO?.trim() || "go";
+  const buildRoot = join(REPO_ROOT, "build", "peer-benchmark");
+  mkdirSync(buildRoot, { recursive: true });
+  const output = join(buildRoot,
+    process.platform === "win32" ? "screener-server.exe" : "screener-server");
+  if (process.platform === "win32") {
+    buildStep(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", "npm run build:client"],
+      "Browser client build failed");
+  } else {
+    buildStep("npm", ["run", "build:client"], "Browser client build failed");
+  }
+  buildStep(go, ["build", "-trimpath", "-o", output, "./cmd/screener-server"],
+    "Screener server build failed");
+  return output;
+}
+
+function startProcess(
+  command: string,
+  args: string[],
+  environment?: NodeJS.ProcessEnv,
+  cwd: string = REPO_ROOT,
+): ManagedProcess {
   const log = new BoundedLog();
   const child = spawn(command, args, {
-    cwd: REPO_ROOT,
+    cwd,
     env: environment,
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,
@@ -2271,6 +2300,9 @@ function startProcess(command: string, args: string[], environment?: NodeJS.Proc
   return { child, log };
 }
 
+// Readiness is the endpoint, never the spawned process: Chrome's Windows
+// launcher exits as soon as the browser process takes over the profile. The
+// deadline bounds the wait; the exit code and captured log explain a failure.
 async function waitForHttp(
   url: string,
   process: ManagedProcess,
@@ -2279,9 +2311,6 @@ async function waitForHttp(
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if (process.child.exitCode !== null) {
-      throw new Error(`Process exited before ${url} was ready\n${process.log.tail()}`);
-    }
     try {
       const response = await fetch(url, { signal: AbortSignal.timeout(1_000) });
       if (response.ok) {
@@ -2292,7 +2321,9 @@ async function waitForHttp(
     }
     await delay(100, signal);
   }
-  throw new Error(`Timed out waiting for ${url}\n${process.log.tail()}`);
+  throw new Error(
+    `Timed out waiting for ${url} (exit ${process.child.exitCode ?? "running"})\n${process.log.tail()}`,
+  );
 }
 
 async function stopProcess(process: ManagedProcess | null): Promise<void> {
@@ -3656,7 +3687,7 @@ export async function main(): Promise<number> {
     runs: [],
   };
 
-  let server: ScreenerServer | null = null;
+  let server: ManagedProcess | null = null;
   let chrome: ManagedProcess | null = null;
   let cdp: CdpConnection | null = null;
   let profileDirectory: string | null = null;
@@ -3673,8 +3704,14 @@ export async function main(): Promise<number> {
     const baseUrl = externalServer?.origin ?? `http://127.0.0.1:${appPort}`;
     profileDirectory = await mkdtemp(join(tmpdir(), "screener-peer-benchmark-"));
     if (appPort !== null) {
-      const serverConfig = loadConfig({
-        NODE_ENV: "development",
+      // An explicit environment and a profile working directory: the measured
+      // configuration is exactly these values, never the repository's .env or
+      // the operator's shell (a stray LIVEKIT_* or SITE_ACCESS_PASSWORD would
+      // silently change the topology this run reports).
+      server = startProcess(buildServer(), [], {
+        PATH: process.env.PATH,
+        SystemRoot: process.env.SystemRoot,
+        SCREENER_ENV: "development",
         PORT: String(appPort),
         LISTEN_HOST: "127.0.0.1",
         PUBLIC_BASE_URL: baseUrl,
@@ -3684,18 +3721,15 @@ export async function main(): Promise<number> {
           ...config.viewerCounts,
           config.canaryMode === "viewer-mbb" ? 3 : 1,
         )),
+        // The loopback gate measures peer topology, never a relayed candidate.
         STUN_URLS: "",
-      });
-      server = await createScreenerServer({
-        config: serverConfig,
-        frontend: { mode: "development" },
-        roomStore: new RoomStore({
-          leaseMs: serverConfig.roomLeaseMs,
-          maxRooms: ROOM_CAPACITY,
-          maxViewersPerRoom: serverConfig.maxViewersPerRoom,
-        }),
-      });
-      await server.listen(appPort, "127.0.0.1");
+      }, profileDirectory);
+      await waitForHttp(
+        `${baseUrl}/healthz`,
+        server,
+        20_000,
+        abortController.signal,
+      );
     }
 
     const chromeArgs = [
@@ -3772,7 +3806,7 @@ export async function main(): Promise<number> {
           }
         })(),
       ),
-      cleanup(server?.close() ?? Promise.resolve()),
+      cleanup(stopProcess(server)),
     ]);
     await cleanup(stopProcess(chrome));
     if (profileDirectory) {

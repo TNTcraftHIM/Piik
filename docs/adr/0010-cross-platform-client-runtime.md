@@ -2,6 +2,10 @@
 
 - Status: accepted capability-provider architecture and native endpoint media boundary
 - Date: 2026-09-05
+- Superseded in part: items 1, 5, 7, 12 (its supervisor sentence), 13, 14, and
+  the local-package consequence were amended in place by
+  [ADR-0012](./0012-shared-go-backend-core.md), which replaced the TypeScript
+  server with one shared Go core. Every other item stands as written.
 
 ## Context
 
@@ -22,10 +26,11 @@ topologies and makes a saved Site unavailable while another room source runs.
 
 ## Decision
 
-1. The TypeScript/Node core remains the sole owner of HTTP, room authority,
-   admission, signaling, and routing in every deployment. A future local package
-   runs that same server and the same built Browser assets with local
-   configuration; Go does not reimplement the product core.
+1. One shared core is the sole owner of HTTP, room authority, admission,
+   signaling, and routing in every deployment. The local package runs that same
+   core and the same built Browser assets with local configuration; no
+   deployment gets a second product core. Its implementation is owned by
+   [ADR-0012](./0012-shared-go-backend-core.md).
 2. The packaged product is Screener Client. Its Go process is the cross-platform
    entry and native capability provider. It starts `/health` and one `/control`
    WebSocket on IPv4 loopback within ports `39721` through `39730` before room-
@@ -45,11 +50,12 @@ topologies and makes a saved Site unavailable while another room source runs.
    native action, reuses it across successive media generations, and closes it
    with the page; a picker, share, or room source does not own the socket. The
    Browser forwards current signaling and remains the participant.
-5. A platform package contains the Go entry, a pinned Node runtime, and the same
-   server/client build used by Hosted Screener. It may also carry one process-
-   isolated capture binary and the pinned `cloudflared` sidecar. The Go entry
-   supervises child processes with bounded lifetime. Platform packaging is
-   metadata around that entry, not another long-running wrapper or UI.
+5. A platform package contains one Go executable carrying the same core and
+   embedded Browser assets used by Hosted Screener. It may also carry one
+   process-isolated capture binary and the pinned `cloudflared` sidecar. Those
+   sidecars are the only supervised children and keep their bounded lifetime.
+   Platform packaging is metadata around that entry, not another long-running
+   wrapper or UI.
 6. The system Browser remains the UI. Browser extensions, userscripts, Electron,
    Tauri, and resident services need new evidence before they can replace this
    smaller boundary. A Client-opened Site stores a non-secret opt-in at that
@@ -59,8 +65,9 @@ topologies and makes a saved Site unavailable while another room source runs.
    Client again.
 7. A self-contained Local deployment serves reachable LAN peers without a
    central Screener service. Its explicit `--link` mode starts one accountless
-   Cloudflare Quick Tunnel for the same Node HTTP/WebSocket surface, injects the
-   resulting HTTPS origin before Node starts, and otherwise retains the same
+   Cloudflare Quick Tunnel for the same HTTP/WebSocket surface, applies the
+   resulting HTTPS origin to the local server configuration before that server
+   starts listening, and otherwise retains the same
    memory RoomStore, Browser UI, Viewer grant, signaling, and route controller.
    The Host sends the ordinary invitation link and the Viewer needs only a
    Browser. Cloudflare terminates this temporary control path; WebRTC media stays
@@ -133,19 +140,21 @@ topologies and makes a saved Site unavailable while another room source runs.
     origin. Friends use the existing room invitation grant. No Client-specific
     room authorization system is added.
 12. Local authority shutdown first ends every in-memory room through the current
-    `room-closed` path, then closes signaling and HTTP. The Go supervisor closes
-    Node stdin, waits, and applies one bounded process timeout. It does not
-    restart a vanished authority.
-13. Client assembly consumes the immutable Web/Server application release from
-   the same full Git revision and an explicit supported target. The Go binary,
-   matching target Node runtime, and `app/REVISION` form one package; revision
-   mismatch fails rather than loading a stale private contract. Client-scoped
-   pull requests build every target and must start the assembled Local authority,
-   pass `/healthz`, and stop it cleanly before the candidate is accepted.
-14. The root package manifest is the single build/runtime dependency contract:
-    Browser-only libraries stay in `devDependencies`, while release and Client
-    assembly install the same manifest with `--omit=dev` for the server runtime.
-    No second Client dependency list or post-install package surgery is used.
+    `room-closed` path, then closes signaling and HTTP. The Client cancels the
+    server context, calls that end-then-close sequence under one bounded
+    timeout, and only then closes the public tunnel and the loopback service. It
+    does not restart a vanished authority.
+13. Client assembly consumes the immutable application release from the same full
+    Git revision and an explicit supported target. The Go binary embeds that
+    release's built Browser assets and the package `REVISION` records the same
+    revision; a revision mismatch fails rather than loading a stale private
+    contract. Client-scoped pull requests build every
+    target and must start the assembled Local authority, pass `/healthz`, and
+    stop it cleanly before the candidate is accepted.
+14. The root package manifest is the single dependency contract for the Browser
+    bundle and repository tooling. No host installs packages to run Screener, so
+    the manifest has no runtime half, and no second Client dependency list or
+    post-install package surgery is used.
 
 ## Consequences
 
@@ -153,9 +162,10 @@ Hosted and Local operation share one product contract and one route model. The
 Go runtime acts as an optional capability provider when an activated Site or
 Local page discovers it, but it is not a second room product. A mixed room does
 not expose endpoint implementation to routing policy. The runtime stays small until a
-proven native capability needs a protocol field. The local package may contain
-two internal processes while presenting one user entry; the supervisor, not a
-compatibility protocol, owns their lifetime.
+proven native capability needs a protocol field. The local package presents one
+user entry and runs its room authority inside that same process; only the
+optional capture and tunnel sidecars remain supervised children, and that entry,
+not a compatibility protocol, owns their lifetime.
 
 Windows gates prove loopback discovery, Local static startup, automatic Host
 access, LAN invitation construction, a three-Viewer Browser relay tree, two

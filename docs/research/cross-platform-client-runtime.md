@@ -25,7 +25,7 @@ Chromium UI separate from a native voice/media module and updater. Oopz ships
 Flutter, a second WebView, FFmpeg, Agora RTC, and Tencent LiteAV together; that
 stack is substantially larger and duplicates media ownership. Screener follows
 the first two products' process separation but not their UI runtimes, and avoids
-Oopz's parallel RTC stacks: one Go supervisor, one Pion media core, and one thin
+Oopz's parallel RTC stacks: one Go process, one Pion media core, and one thin
 system capture sidecar per platform remain sufficient. No binary code or private
 application data was copied or inspected.
 
@@ -49,25 +49,20 @@ credentials or route policy; those stay in the Browser/server protocol.
 
 ## Client Composition
 
-The existing TypeScript server owns the room and route contract. A local package
-therefore composes three artifacts behind one user entry:
-
-```text
-screener-client
-runtime/node
-app/dist
-```
-
-The Client's Go entry starts and supervises the pinned Node runtime in Local
-mode; Node serves the same Screener application with explicit local
-configuration. In Site mode the system Browser opens the saved Site while the
-same Go process remains its loopback native-media owner. The system Browser
-remains the UI.
+The Client and Hosted Screener run the same server core, so the local package is
+one executable carrying the built Browser assets plus the optional capture and
+tunnel sidecars; [the Client README](../../cmd/screener-client/README.md) owns
+that layout. In Local mode the Client runs the server in its own process with
+explicit local configuration. In Site mode it starts no server, and the system
+Browser opens the saved Site while the same process remains its loopback
+native-media owner. The system Browser remains the UI.
 
 Official Go process APIs require every started child to be waited and provide a
-bounded `WaitDelay` for cancellation and stuck I/O. The current supervisor uses
-stdin EOF for graceful Node shutdown, waits for the child, and does not restart
-it. Windows is physically exercised; macOS and Linux remain package gates.
+bounded `WaitDelay` for cancellation and stuck I/O. That guidance now covers the
+capture and cloudflared sidecars only: the room authority is no longer a child
+process, and Local shutdown is one bounded in-process sequence that ends rooms
+before closing signaling and HTTP. Windows is physically exercised; macOS and
+Linux remain package gates.
 
 ## Local And Hosted Reachability
 
@@ -77,12 +72,13 @@ its `loopback-network` permission; without that permission the cross-origin
 request was blocked. The gate checks both expected outcomes.
 
 A self-contained LAN room uses a localhost Host URL and a selected LAN IPv4
-Viewer URL backed by the same local TypeScript process. The Client persists an
+Viewer URL backed by the same local Client process. The Client persists an
 optional user-chosen access password and passes it only to its Host page in a
 consumed fragment; a blank value leaves the Local site open. Explicit `--link`
 mode launches the packaged Cloudflare Quick
 Tunnel against that same local HTTP server and supplies its random HTTPS origin
-to Node before startup. The public path therefore reuses the exact frontend,
+to the local server configuration before it starts listening. The public path
+therefore reuses the exact frontend,
 WebSocket signaling, RoomStore, and Viewer grant instead of adding a rendezvous
 or second client protocol. Cloudflare carries control traffic; WebRTC media uses
 public STUN and remains P2P-only.
@@ -110,6 +106,12 @@ relay, background behavior, and resource use on every target platform. The
 result selects one UI runtime; it does not create parallel products.
 
 ## Current Evidence
+
+The runs below are pre-port evidence: they exercised the package that bundled a
+Node runtime and an extracted application tree. Their capture, discovery, media,
+and network results still apply; every package composition, startup, and
+shutdown claim must be re-verified on the single-binary Client before that build
+is accepted.
 
 On Windows with Chrome for Testing 151.0.7922.138:
 

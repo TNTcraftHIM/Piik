@@ -15,8 +15,8 @@ Browser <--------- DTLS-SRTP/UDP ----------> LiveKit :7882
 Screener -------- private RoomService -----> LiveKit :7880
 ```
 
-The tracked public baseline uses Node.js 24, nginx, a valid Web TLS
-certificate, time synchronization, coturn 4.17.2 or a newer patched release,
+The tracked public baseline uses nginx, a valid Web TLS certificate, time
+synchronization, coturn 4.17.2 or a newer patched release,
 and LiveKit Server 1.13.6. LiveKit is required for the accepted SFU fallback
 and tracked release wrapper. Keep the accepted patch pinned until its
 replacement passes the same Browser/SFU acceptance boundary.
@@ -44,7 +44,8 @@ domains, certificates, users, and resource limits required by the host.
 ## Initial Setup
 
 1. Configure DNS and TLS for the Web origin and STUN name.
-2. Install Node.js, nginx, coturn, and the pinned LiveKit Server patch.
+2. Install nginx, coturn, and the pinned LiveKit Server patch. The Screener
+   release is one static binary and needs no language runtime.
 3. Create an unprivileged `screener` service account, `/opt/screener/releases`,
    `/opt/screener/uploads`, and an access-restricted environment file.
 4. Provision one verified initial immutable release and atomically point

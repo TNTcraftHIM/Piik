@@ -1,0 +1,710 @@
+package signal
+
+// The route pump of hybrid-media-router.ts (requestPump 1114, pumpRoom 1135,
+// prepareCandidate 1303, prepareNewPublication 1409, sendPrepareMessages 1492,
+// scheduleDeadline 1822), following map section 7 step by step. The only
+// unlock windows are inside prepareCandidate (R5, R6, R8, R9, R10); the
+// cursor guard captured before them is the sole staleness detector.
+
+import (
+	"context"
+	"log/slog"
+	"time"
+
+	"github.com/TNTcraftHIM/Screener/internal/server/protocol"
+	"github.com/TNTcraftHIM/Screener/internal/server/room"
+	"github.com/TNTcraftHIM/Screener/internal/server/route"
+	"github.com/TNTcraftHIM/Screener/internal/server/sfu"
+)
+
+// preparedCandidate is PreparedCandidate; the optional TS keys are "" / nil.
+type preparedCandidate struct {
+	reservation             route.CandidateReservation
+	connectionID            string
+	publicationGeneration   string
+	publicationConnectionID string
+	hostSessionID           string
+	hostSfuConfig           *protocol.SfuConfigMessage
+	viewerSfuConfig         *protocol.SfuConfigMessage
+}
+
+// prepareResult is PrepareResult.
+type prepareResult struct {
+	denied          bool
+	rejectionBucket route.RejectionBucket
+	prepared        preparedCandidate
+}
+
+func denied(bucket route.RejectionBucket) prepareResult {
+	return prepareResult{denied: true, rejectionBucket: bucket}
+}
+
+// pumpCandidate is the pump loop state carried across the yield at
+// `await prepareCandidate`: the selected slot with its cursor guard and the
+// outcome of prepareCandidate's synchronous prefix. io is the awaited
+// remainder (drain wait, token issue, LiveKit room creation), nil when
+// result is already settled.
+type pumpCandidate struct {
+	operation *route.OperationSnapshot
+	plan      route.CandidatePlan
+	guard     route.CandidateCursorGuard
+	revision  int64
+	result    prepareResult
+	io        func() prepareResult
+}
+
+// requestPump ports requestPump: the single-flight driver. Every caller
+// only sets requested; the pump that owns pumping drains it.
+//
+// The TS driver was an async IIFE, so it ran synchronously inside the
+// caller up to its first await: the first pumpRoom iteration through the
+// synchronous prefix of prepareCandidate (reconcile, candidate selection,
+// the admission reservations and the LiveKit createRoom initiation). That
+// prefix is observable: the calls that follow requestPump in the same
+// handler see its reconcile, and two rooms woken by one drain reserve
+// SFU capacity in wake order (map O29). It therefore runs here in the
+// caller's critical section; everything after it ran in microtasks and
+// runs in drivePump's goroutine.
+//
+// Deviation: `pumping` is set before that prefix, where `room.pump` was
+// still undefined until the IIFE first suspended. A re-entrant requestPump
+// during the prefix therefore only sets `requested` here and is drained by
+// drivePump's loop, instead of starting a second overlapping pump as the
+// TypeScript would have. No work is lost and the single-operation model of
+// ADR-0005 is what a second pump would have put at risk.
+func (r *router) requestPump(roomID string) {
+	rm, _ := r.rooms.Get(roomID)
+	if rm == nil || rm.controller == nil || r.closing {
+		return
+	}
+	rm.requested = true
+	if rm.pumping {
+		return
+	}
+	rm.pumping = true
+	rm.requested = false
+	controller := rm.controller
+	broadcastRevision := controller.Revision()
+	var pending *pumpCandidate
+	failed := r.recoverPump(func() {
+		pending = r.pumpRoom(roomID, rm, controller, &broadcastRevision, nil, true)
+	})
+	r.inflight++
+	go r.drivePump(roomID, rm, controller, broadcastRevision, pending, failed)
+}
+
+// recoverPump runs one pump segment; a panic is the TS rejection of the pump
+// promise (controller assertion failures panic with the TS messages, D11).
+func (r *router) recoverPump(segment func()) (failed bool) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			failed = true
+			slog.Error("Media route reconciliation failed")
+		}
+	}()
+	segment()
+	return false
+}
+
+// drivePump is the asynchronous remainder of requestPump: the suspended
+// first iteration, the `while (room.requested)` loop, the `finally` that
+// frees the token and re-arms, and the `.catch` that tells the host.
+func (r *router) drivePump(roomID string, rm *roomRuntime, controller *route.Controller, broadcastRevision int64, pending *pumpCandidate, failed bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	defer func() { r.inflight-- }()
+	if !failed {
+		failed = r.recoverPump(func() {
+			if pending != nil {
+				r.pumpRoom(roomID, rm, controller, &broadcastRevision, pending, false)
+			}
+			for rm.requested && !r.closing {
+				rm.requested = false
+				if rm.controller == nil {
+					continue
+				}
+				revision := rm.controller.Revision()
+				r.pumpRoom(roomID, rm, rm.controller, &revision, nil, false)
+			}
+		})
+	}
+	rm.pumping = false
+	if rm.requested && !r.closing {
+		r.requestPump(roomID)
+	}
+	if failed {
+		r.sendRoomError(roomID, "SERVER_ERROR", "Media routing failed")
+	}
+}
+
+// pumpRoom ports pumpRoom. mu is held on entry and exit; the candidate's io
+// releases it around I/O. resume continues an iteration suspended at
+// `await prepareCandidate`; with yieldAtPrepare the first candidate is
+// returned after prepareCandidate's synchronous prefix instead of being
+// awaited (the TS suspension point). Otherwise nil.
+func (r *router) pumpRoom(
+	roomID string,
+	rm *roomRuntime,
+	controller *route.Controller,
+	broadcastRevision *int64,
+	resume *pumpCandidate,
+	yieldAtPrepare bool,
+) *pumpCandidate {
+	broadcastRevisionChange := func() {
+		revision := controller.Revision()
+		if revision == *broadcastRevision {
+			return
+		}
+		r.broadcastActive(roomID, rm)
+		*broadcastRevision = revision
+	}
+	for {
+		var candidate pumpCandidate
+		if resume != nil {
+			candidate, resume = *resume, nil
+		} else {
+			selected, done := r.selectCandidate(roomID, rm, controller, broadcastRevisionChange)
+			if done {
+				return nil
+			}
+			candidate = selected
+			candidate.result, candidate.io = r.prepareCandidate(
+				roomID, rm, controller, candidate.operation, candidate.plan, candidate.revision)
+			if yieldAtPrepare {
+				return &candidate
+			}
+		}
+		operation, plan, guard := candidate.operation, candidate.plan, candidate.guard
+		preparation := candidate.result
+		if candidate.io != nil {
+			preparation = candidate.io()
+		}
+		if preparation.denied {
+			r.debug(roomID, "candidate-preparation-denied",
+				"child", r.debugPeer(roomID, operation.ChildPeerID),
+				"route", r.debugTuple(roomID, plan.Tuple),
+				"rejectionBucket", preparation.rejectionBucket,
+				"cursor", operation.Cursor)
+			if operation.Reason == route.DemandQualityConvergence ||
+				operation.Reason == route.DemandRootConvergence {
+				skipped := controller.SkipCurrentCandidate(guard, r.now(), preparation.rejectionBucket)
+				r.releaseResources(skipped.Released)
+				continue
+			}
+			if preparation.rejectionBucket != route.RejectionSfuAdmission {
+				r.resourceWaiters.Delete(roomID)
+			}
+			if preparation.rejectionBucket == route.RejectionSfuAdmission {
+				if !controller.NoteCurrentCandidateRejection(guard, route.RejectionSfuAdmission) {
+					continue
+				}
+				r.resourceWaiters.Set(roomID, struct{}{})
+				r.sendViewerRouteStatus(roomID, operation.DemandPeerID, protocol.RouteStatusMessage{
+					Type:     "route-status",
+					Revision: protocol.Int(operation.BaseRevision),
+					State:    "waiting",
+					Reason:   "sfu-admission",
+				})
+				r.scheduleDeadline(roomID, rm, operation)
+				return nil
+			}
+			skipped := controller.SkipCurrentCandidate(guard, r.now(), preparation.rejectionBucket)
+			r.releaseResources(skipped.Released)
+			r.sendRouteFailures(roomID, skipped.FailedPeerIDs, controller.Revision())
+			continue
+		}
+		prepared := preparation.prepared
+		r.resourceWaiters.Delete(roomID)
+		r.debug(roomID, "candidate-prepared",
+			"child", r.debugPeer(roomID, operation.ChildPeerID),
+			"route", r.debugTuple(roomID, plan.Tuple),
+			"cursor", operation.Cursor)
+		beginGuard := guard
+		if plan.EndpointTransition.Kind == route.TransitionBoundedGap {
+			gap := controller.RetireCurrentCandidateProducer(guard, r.now())
+			r.releaseResources(gap.Released)
+			r.sendRouteFailures(roomID, gap.FailedPeerIDs, controller.Revision())
+			if !gap.Accepted {
+				r.releaseReservation(prepared.reservation)
+				continue
+			}
+			broadcastRevisionChange()
+			currentOperation := controller.Operation()
+			if currentOperation == nil || currentOperation.Cursor < 0 ||
+				currentOperation.Cursor >= len(currentOperation.Candidates) {
+				r.releaseReservation(prepared.reservation)
+				continue
+			}
+			// The guard is re-derived: the retirement moved the revision.
+			beginGuard = cursorGuard(currentOperation, currentOperation.Candidates[currentOperation.Cursor])
+		}
+		begun := controller.BeginCurrentCandidate(route.BeginInput{
+			Guard:                   beginGuard,
+			NowMs:                   r.now(),
+			ConnectionID:            prepared.connectionID,
+			Reservation:             prepared.reservation,
+			PublicationGeneration:   prepared.publicationGeneration,
+			PublicationConnectionID: prepared.publicationConnectionID,
+			HostSessionID:           prepared.hostSessionID,
+		})
+		r.debug(roomID, "candidate-begin-settled",
+			"child", r.debugPeer(roomID, operation.ChildPeerID),
+			"route", r.debugTuple(roomID, plan.Tuple),
+			"accepted", begun.Accepted,
+			"exhausted", len(begun.FailedPeerIDs) > 0)
+		// A rejected begin returns the reservation inside begun.Released; it
+		// must not be released a second time.
+		r.releaseResources(begun.Released)
+		if !begun.Accepted || begun.Operation == nil || begun.Operation.Current == nil {
+			r.sendRouteFailures(roomID, begun.FailedPeerIDs, controller.Revision())
+			continue
+		}
+		r.sendPrepareMessages(roomID, controller, begun.Operation, prepared)
+		r.debug(roomID, "candidate-prepare-sent",
+			"child", r.debugPeer(roomID, operation.ChildPeerID),
+			"route", r.debugTuple(roomID, plan.Tuple),
+			"revision", begun.Operation.Current.Revision)
+		r.scheduleDeadline(roomID, rm, begun.Operation)
+		return nil
+	}
+}
+
+// selectCandidate is pumpRoom steps 1-7 (map 7.2): reconcile, then either
+// finish the iteration (done) or pick the cursor's plan and its guard.
+func (r *router) selectCandidate(
+	roomID string,
+	rm *roomRuntime,
+	controller *route.Controller,
+	broadcastRevisionChange func(),
+) (candidate pumpCandidate, done bool) {
+	reconciled := controller.Reconcile(r.now())
+	r.releaseResources(reconciled.Released)
+	broadcastRevisionChange()
+	r.sendRouteFailures(roomID, reconciled.FailedPeerIDs, controller.Revision())
+	operation := reconciled.Operation
+	if operation == nil {
+		operation = controller.Operation()
+	}
+	if operation == nil {
+		r.clearDeadline(rm)
+		r.resourceWaiters.Delete(roomID)
+		return pumpCandidate{}, true
+	}
+	if operation.Current != nil {
+		r.resourceWaiters.Delete(roomID)
+		r.scheduleDeadline(roomID, rm, operation)
+		return pumpCandidate{}, true
+	}
+	if operation.Cursor < 0 || operation.Cursor >= len(operation.Candidates) {
+		// TS: `if (!plan)` -- note: no clearDeadline here.
+		r.resourceWaiters.Delete(roomID)
+		return pumpCandidate{}, true
+	}
+	plan := operation.Candidates[operation.Cursor]
+	guard := cursorGuard(operation, plan)
+	r.resourceWaiters.Delete(roomID)
+	revision := operation.BaseRevision + 1
+	if plan.EndpointTransition.Kind == route.TransitionBoundedGap {
+		revision = operation.BaseRevision + 2
+	}
+	return pumpCandidate{operation: operation, plan: plan, guard: guard, revision: revision}, false
+}
+
+// prepareCandidate ports prepareCandidate. It runs the synchronous prefix
+// (everything the TS executed before its first await: the stale checks,
+// the borrowed edge lookup, the admission reservations, the LiveKit
+// createRoom initiation) with mu held and returns either a settled result
+// or the awaited remainder as io. io is called with mu held and releases
+// it around reserveSfuSubscription's drain wait (R5/R10), the token issue
+// (R6) and, for a new publication, the LiveKit room creation (R8/R9). No
+// identity is re-read afterwards: the cursor guard in pumpRoom catches
+// staleness. controller is the pump's captured controller (TS read
+// room.controller!, the same object on every reachable path).
+func (r *router) prepareCandidate(
+	roomID string,
+	rm *roomRuntime,
+	controller *route.Controller,
+	operation *route.OperationSnapshot,
+	plan route.CandidatePlan,
+	revision int64,
+) (prepareResult, func() prepareResult) {
+	snapshot := controller.Snapshot()
+	child, hasChild := r.store.GetConnectedViewer(roomID, operation.ChildPeerID)
+	shareGeneration := r.hooks.shareGeneration(roomID)
+	if !hasChild || child.SessionID != operation.ChildSessionID || shareGeneration == "" {
+		return denied(route.RejectionStale), nil
+	}
+	connectionID := opaqueID()
+	var overlap *route.Resource
+	if plan.EndpointTransition.Kind == route.TransitionOverlap {
+		producerPeerID := ""
+		if plan.EndpointTransition.ProducerPeerID != nil {
+			producerPeerID = *plan.EndpointTransition.ProducerPeerID
+		}
+		overlap = overlapResource(producerPeerID)
+	}
+	if plan.Tuple.Kind == route.UpstreamPeer {
+		return prepareResult{prepared: preparedCandidate{
+			connectionID: connectionID,
+			reservation:  route.CandidateReservation{Kind: route.ReservationDirect, Overlap: overlap},
+		}}, nil
+	}
+
+	fallback := r.sfu
+	host, hasHost := r.store.GetConnectedHost(roomID)
+	if fallback == nil || !hasHost || host.PeerID != rm.hostPeerID {
+		return denied(route.RejectionStale), nil
+	}
+	if plan.Tuple.Publication == route.PublicationReuse {
+		publication := snapshot.HostPublication
+		if publication == nil || publication.Resource == nil ||
+			publication.Resource.Kind != route.ResourceSfuPublication {
+			return denied(route.RejectionStale), nil
+		}
+		fence := sfu.SubscriptionFence{
+			ResourceFence: resourceFence(publication.Resource),
+			ViewerPeerID:  operation.ChildPeerID,
+		}
+		var borrowedEdge *route.Resource
+		if currentEdge, ok := snapshot.UpstreamByViewer.Get(operation.ChildPeerID); ok &&
+			currentEdge.Kind == route.UpstreamSfu &&
+			currentEdge.PublicationGeneration == publication.Generation &&
+			currentEdge.Resource != nil &&
+			currentEdge.Resource.Kind == route.ResourceSfuSubscription &&
+			!currentEdge.Resource.Released {
+			borrowedEdge = currentEdge.Resource
+		}
+		// issue is the remainder after `await this.reserveSfuSubscription`.
+		issue := func(edge *route.Resource) prepareResult {
+			request := sfu.TokenRequest{
+				RoomID:                roomID,
+				Role:                  protocol.RoleViewer,
+				PeerID:                operation.ChildPeerID,
+				ShareGeneration:       shareGeneration,
+				PublicationGeneration: publication.Generation,
+			}
+			var token string
+			var err error
+			r.io(func() { token, err = fallback.tokenIssuer.IssueToken(request) }) // R6
+			if err != nil {
+				if borrowedEdge == nil {
+					r.releaseResource(edge)
+				}
+				return denied(route.RejectionCandidateFailed)
+			}
+			return prepareResult{prepared: preparedCandidate{
+				connectionID:  connectionID,
+				hostSessionID: host.SessionID,
+				reservation: route.CandidateReservation{
+					Kind:     route.ReservationSfuReuse,
+					Edge:     edge,
+					Borrowed: borrowedEdge != nil,
+					Overlap:  overlap,
+				},
+				publicationGeneration: publication.Generation,
+				viewerSfuConfig: &protocol.SfuConfigMessage{
+					Type:     "sfu-config",
+					Revision: protocol.Int(revision),
+					URL:      fallback.url,
+					Token:    token,
+				},
+			}}
+		}
+		if borrowedEdge != nil {
+			return prepareResult{}, func() prepareResult { return issue(borrowedEdge) }
+		}
+		// reserveSfuSubscription (1788): a pending drain of the same
+		// subscription is awaited first (R10); otherwise the reservation is
+		// part of the synchronous prefix.
+		key := sfuDrainKey(drainSubscription, fence)
+		if pending, _ := r.sfuDrainTasks.Get(key); pending != nil && pending.operation != nil {
+			drain := pending.operation
+			return prepareResult{}, func() prepareResult {
+				r.io(func() { <-drain.done })
+				if drain.err != nil {
+					return denied(route.RejectionSfuAdmission)
+				}
+				// Hazard 8: a drain that settled but left its task
+				// registered means refuse.
+				if registered, _ := r.sfuDrainTasks.Get(key); registered == pending {
+					return denied(route.RejectionSfuAdmission)
+				}
+				if !r.reserveSfuSubscription(fence) {
+					return denied(route.RejectionSfuAdmission)
+				}
+				return issue(subscriptionResource(fence))
+			}
+		}
+		if !r.reserveSfuSubscription(fence) {
+			return denied(route.RejectionSfuAdmission), nil
+		}
+		edge := subscriptionResource(fence)
+		return prepareResult{}, func() prepareResult { return issue(edge) }
+	}
+
+	return r.prepareNewPublication(roomID, operation, revision, connectionID, shareGeneration, host, overlap)
+}
+
+// prepareNewPublication ports prepareNewPublication. The reservations and
+// the room's FIFO turn (the TS createRoom call, registered synchronously
+// by LiveKitSfuRoomControl.serialize) belong to the synchronous prefix;
+// io creates the LiveKit room inside that turn and issues the two tokens
+// sequentially where the TS used Promise.all (hazard 6: latency only).
+// Failure releases the subscription before the publication (O26), the
+// reverse of releaseResources.
+func (r *router) prepareNewPublication(
+	roomID string,
+	operation *route.OperationSnapshot,
+	revision int64,
+	connectionID string,
+	shareGeneration string,
+	host room.ConnectedPeer,
+	overlap *route.Resource,
+) (prepareResult, func() prepareResult) {
+	fallback := r.sfu
+	publicationGeneration := opaqueID()
+	publicationFence := sfu.ResourceFence{
+		RoomID:                roomID,
+		ShareGeneration:       shareGeneration,
+		PublicationGeneration: publicationGeneration,
+	}
+	subscriptionFence := sfu.SubscriptionFence{
+		ResourceFence: publicationFence,
+		ViewerPeerID:  operation.ChildPeerID,
+	}
+	if !fallback.admission.ReservePublication(publicationFence) {
+		return denied(route.RejectionSfuAdmission), nil
+	}
+	if !fallback.admission.ReserveSubscription(subscriptionFence) {
+		fallback.admission.BeginDrain(publicationFence)
+		r.scheduleSfuPublicationDrain(publicationFence)
+		return denied(route.RejectionSfuAdmission), nil
+	}
+	subscription := subscriptionResource(subscriptionFence)
+	publicationConnectionID := publicationGeneration
+	publication := publicationResource(publicationFence)
+	turn := r.takeTurn(sfu.ManagedRoomName(publicationFence))
+	return prepareResult{}, func() prepareResult {
+		var err error
+		var hostToken, viewerToken string
+		r.io(func() {
+			turn.run(func() {
+				err = fallback.roomControl.CreateRoom(context.Background(), publicationFence) // R8
+			})
+			if err == nil { // R9
+				hostToken, err = fallback.tokenIssuer.IssueToken(sfu.TokenRequest{
+					RoomID:                roomID,
+					Role:                  protocol.RoleHost,
+					PeerID:                host.PeerID,
+					ShareGeneration:       shareGeneration,
+					PublicationGeneration: publicationGeneration,
+				})
+			}
+			if err == nil {
+				viewerToken, err = fallback.tokenIssuer.IssueToken(sfu.TokenRequest{
+					RoomID:                roomID,
+					Role:                  protocol.RoleViewer,
+					PeerID:                operation.ChildPeerID,
+					ShareGeneration:       shareGeneration,
+					PublicationGeneration: publicationGeneration,
+				})
+			}
+		})
+		r.dropTurn(turn)
+		if err != nil {
+			r.releaseResource(subscription)
+			r.releaseResource(publication)
+			return denied(route.RejectionCandidateFailed)
+		}
+		return prepareResult{prepared: preparedCandidate{
+			connectionID:            connectionID,
+			hostSessionID:           host.SessionID,
+			publicationGeneration:   publicationGeneration,
+			publicationConnectionID: publicationConnectionID,
+			reservation: route.CandidateReservation{
+				Kind:        route.ReservationSfuCreate,
+				Edge:        subscription,
+				Publication: publication,
+				Overlap:     overlap,
+			},
+			hostSfuConfig: &protocol.SfuConfigMessage{
+				Type:     "sfu-config",
+				Revision: protocol.Int(revision),
+				URL:      fallback.url,
+				Token:    hostToken,
+			},
+			viewerSfuConfig: &protocol.SfuConfigMessage{
+				Type:     "sfu-config",
+				Revision: protocol.Int(revision),
+				URL:      fallback.url,
+				Token:    viewerToken,
+			},
+		}}
+	}
+}
+
+// sendPrepareMessages ports sendPrepareMessages (O24: fixed order). It sends
+// nothing at all when the child is stale or the peer parent vanished; the
+// deadline timer then resolves the operation (hazard 7).
+func (r *router) sendPrepareMessages(
+	roomID string,
+	controller *route.Controller,
+	operation *route.OperationSnapshot,
+	prepared preparedCandidate,
+) {
+	current := operation.Current
+	candidate := preparedRouteCandidate(operation, current.Tuple, current.ConnectionID)
+	tuple := current.Tuple
+	assignments := r.assignments(roomID, controller.Snapshot(), &tuple, operation.ChildPeerID, prepared.publicationGeneration)
+	child, hasChild := r.store.GetConnectedViewer(roomID, operation.ChildPeerID)
+	if !hasChild || child.SessionID != operation.ChildSessionID {
+		return
+	}
+	prepare := func(peerID string) protocol.RouteUpdatePrepareMessage {
+		return protocol.RouteUpdatePrepareMessage{
+			Type:       "route-update",
+			Revision:   protocol.Int(current.Revision),
+			Phase:      "prepare",
+			Assignment: assignmentFor(assignments, peerID),
+			Candidate:  candidate,
+		}
+	}
+	childUpdate := prepare(operation.ChildPeerID)
+	if current.Tuple.Kind == route.UpstreamPeer {
+		parent, hasParent := r.connectedPeer(roomID, current.Tuple.ParentPeerID)
+		if !hasParent {
+			return
+		}
+		r.hooks.sendToSession(child.SessionID, childUpdate)
+		r.hooks.sendToSession(parent.SessionID, prepare(parent.PeerID))
+		return
+	}
+	host, hasHost := r.store.GetConnectedHost(roomID)
+	if prepared.hostSfuConfig != nil && hasHost && host.SessionID == prepared.hostSessionID {
+		r.hooks.sendToSession(host.SessionID, prepare(host.PeerID))
+		r.hooks.sendToSession(host.SessionID, *prepared.hostSfuConfig)
+	}
+	r.hooks.sendToSession(child.SessionID, childUpdate)
+	if prepared.viewerSfuConfig != nil {
+		r.hooks.sendToSession(child.SessionID, *prepared.viewerSfuConfig)
+	}
+}
+
+// scheduleDeadline ports scheduleDeadline (T6). The callback verifies it is
+// still the registered deadline through the room's generation counter, which
+// clearDeadline bumps: a cleared TS timer never fired (D5).
+func (r *router) scheduleDeadline(roomID string, rm *roomRuntime, operation *route.OperationSnapshot) {
+	r.clearDeadline(rm)
+	wakeInMs := max(int64(0), operation.WakeAtMs-r.now())
+	if routeDebugEnabled {
+		var current any
+		if operation.Current != nil {
+			current = r.debugTuple(roomID, operation.Current.Tuple)
+		}
+		r.debug(roomID, "deadline-scheduled",
+			"child", r.debugPeer(roomID, operation.ChildPeerID),
+			"wakeInMs", wakeInMs,
+			"cursor", operation.Cursor,
+			"candidateCount", len(operation.Candidates),
+			"current", current)
+	}
+	generation := rm.deadlineGeneration
+	rm.deadlineStop = r.afterFunc(time.Duration(wakeInMs)*time.Millisecond, func() {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		if rm.deadlineGeneration != generation || rm.controller == nil || r.closing {
+			return
+		}
+		rm.deadlineStop = nil
+		before := rm.controller.Revision()
+		expired := rm.controller.OperationExpired(r.now())
+		r.debug(roomID, "deadline-fired",
+			"child", r.debugPeer(roomID, operation.ChildPeerID),
+			"accepted", expired.Accepted,
+			"exhausted", len(expired.FailedPeerIDs) > 0)
+		r.releaseResources(expired.Released)
+		if rm.controller.Revision() != before {
+			r.broadcastActive(roomID, rm)
+		}
+		r.sendRouteFailures(roomID, expired.FailedPeerIDs, rm.controller.Revision())
+		r.requestPump(roomID)
+	})
+}
+
+// clearDeadline ports clearDeadline; bumping the generation retires a
+// callback that already lost the Stop race.
+func (r *router) clearDeadline(rm *roomRuntime) {
+	if rm.deadlineStop != nil {
+		rm.deadlineStop()
+	}
+	rm.deadlineStop = nil
+	rm.deadlineGeneration++
+}
+
+func cursorGuard(operation *route.OperationSnapshot, plan route.CandidatePlan) route.CandidateCursorGuard {
+	return route.CandidateCursorGuard{
+		ChildPeerID:    operation.ChildPeerID,
+		ChildSessionID: operation.ChildSessionID,
+		BaseRevision:   operation.BaseRevision,
+		FactVersion:    operation.FactVersion,
+		Cursor:         operation.Cursor,
+		Plan:           plan,
+	}
+}
+
+// preparedRouteCandidate ports preparedRouteCandidate; connectionAttempt is
+// present only when the current attempt carries one.
+func preparedRouteCandidate(operation *route.OperationSnapshot, tuple route.CandidateTuple, connectionID string) protocol.PreparedRouteCandidate {
+	transport := "sfu"
+	if tuple.Kind == route.UpstreamPeer {
+		transport = string(tuple.Transport)
+	}
+	candidate := protocol.PreparedRouteCandidate{
+		ChildPeerID:  operation.ChildPeerID,
+		ConnectionID: connectionID,
+		Transport:    transport,
+		QualityProbe: operation.Reason == route.DemandQualityConvergence,
+	}
+	if operation.Current != nil && operation.Current.ConnectionAttempt != nil {
+		candidate.ConnectionAttempt = &protocol.ConnectionAttempt{
+			Current: protocol.Int(operation.Current.ConnectionAttempt.Current),
+			Total:   protocol.Int(operation.Current.ConnectionAttempt.Total),
+		}
+	}
+	return candidate
+}
+
+func overlapResource(endpointPeerID string) *route.Resource {
+	return &route.Resource{Kind: route.ResourceOverlap, EndpointPeerID: endpointPeerID}
+}
+
+func subscriptionResource(fence sfu.SubscriptionFence) *route.Resource {
+	return &route.Resource{
+		Kind:                  route.ResourceSfuSubscription,
+		RoomID:                fence.RoomID,
+		ShareGeneration:       fence.ShareGeneration,
+		PublicationGeneration: fence.PublicationGeneration,
+		ViewerPeerID:          fence.ViewerPeerID,
+	}
+}
+
+func publicationResource(fence sfu.ResourceFence) *route.Resource {
+	return &route.Resource{
+		Kind:                  route.ResourceSfuPublication,
+		RoomID:                fence.RoomID,
+		ShareGeneration:       fence.ShareGeneration,
+		PublicationGeneration: fence.PublicationGeneration,
+	}
+}
+
+func resourceFence(resource *route.Resource) sfu.ResourceFence {
+	return sfu.ResourceFence{
+		RoomID:                resource.RoomID,
+		ShareGeneration:       resource.ShareGeneration,
+		PublicationGeneration: resource.PublicationGeneration,
+	}
+}
+
+func subscriptionFence(resource *route.Resource) sfu.SubscriptionFence {
+	return sfu.SubscriptionFence{ResourceFence: resourceFence(resource), ViewerPeerID: resource.ViewerPeerID}
+}
