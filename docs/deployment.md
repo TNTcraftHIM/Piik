@@ -130,6 +130,14 @@ state. A different current-revision file may be supplied as its only argument.
 
 ## Atomic Cutover
 
+### First Go cutover prerequisite
+
+The release wrapper is an application updater, not a systemd installer. Before
+the first Go release, install and reload the tracked unit as described in the
+[self-hosting cutover procedure](./operations/self-hosting.md#first-go-service-cutover).
+Do not mix the new Go binary with the old Node unit or an environment file that
+still sets `NODE_ENV`.
+
 Run the tracked server entry with the uploaded descriptor:
 
 ```sh

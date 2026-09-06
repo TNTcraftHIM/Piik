@@ -63,6 +63,31 @@ domains, certificates, users, and resource limits required by the host.
 8. Start coturn and LiveKit before Screener, then nginx. The LiveKit
    readiness drop-in waits for its private control listener before Screener.
 
+### First Go service cutover
+
+The tracked unit already starts the Go binary and rejects the old Node
+environment contract. Install it before the first Go release, but do not
+restart Screener until the matching Go application release is installed:
+
+```sh
+sudo install -o root -g root -m 0644 \
+  deploy/systemd/screener.service.example \
+  /etc/systemd/system/screener.service
+sudo systemctl daemon-reload
+sudo systemctl show screener.service -p ExecStart -p Environment --no-pager
+```
+
+The output must show `/opt/screener/current/screener-server` and
+`SCREENER_ENV=production`. Remove any stale `NODE_ENV` entry from the service
+environment file; the Go server fails closed when it is present. Then run the
+tracked release wrapper, which performs the first stop, symlink switch and
+start. The wrapper assumes the unit is already installed and does not install
+or reload systemd units itself.
+
+Before this cutover, record the previous unit file and environment file. A
+rollback from the first Go release must restore both before restarting the old
+Node release; changing only the `/opt/screener/current` symlink is not enough.
+
 LiveKit must be dedicated to this Screener application, set
 `room.auto_create: false`, and expose its control listener only to the proxy and
 application host. Screener binds its own listener before touching LiveKit,
