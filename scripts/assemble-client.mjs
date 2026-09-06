@@ -25,6 +25,7 @@ import { fileURLToPath } from "node:url";
 import { clientPackageTarget, CLOUDFLARED_VERSION } from "./client-package-targets.mjs";
 import { writeClientPlatformAssets } from "./client-icons.mjs";
 import { writeClientLicenseNotices } from "./package-licenses.mjs";
+import { tarExecutable } from "./archive-tool.mjs";
 
 function fail(message) {
   throw new Error(message);
@@ -205,7 +206,7 @@ try {
   // embeds the Web assets, so the revision, clean-tree and digest assertions
   // above plus this REVISION check tie the binary to that immutable release.
   mkdirSync(releaseRoot, { recursive: true });
-  run("tar", ["-xzf", artifactPath, "-C", releaseRoot], repositoryRoot);
+  run(tarExecutable(), ["-xzf", artifactPath, "-C", releaseRoot], repositoryRoot);
   if (readFileSync(join(releaseRoot, "REVISION"), "ascii") !== `${revision}\n`) {
     fail("Extracted application revision does not match the Client");
   }

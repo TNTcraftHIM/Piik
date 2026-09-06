@@ -21,6 +21,7 @@ import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 
 import { clientPackageTarget, CLOUDFLARED_VERSION } from "./client-package-targets.mjs";
+import { tarExecutable } from "./archive-tool.mjs";
 
 function fail(message) {
   throw new Error(message);
@@ -336,7 +337,7 @@ try {
 
   let tunnel = tunnelDownload;
   if (target.tunnelArchive) {
-    run("tar", ["-xzf", tunnelDownload, "-C", temporaryRoot], repositoryRoot);
+    run(tarExecutable(), ["-xzf", tunnelDownload, "-C", temporaryRoot], repositoryRoot);
     tunnel = join(temporaryRoot, target.tunnelName);
   }
   if (!existsSync(tunnel)) fail("Public-link runtime is missing");
@@ -370,7 +371,7 @@ try {
   const shortRevision = revision.slice(0, 7);
   const archiveName = `Screener-Client-${target.id}-${shortRevision}.tar.gz`;
   const archive = join(outputRoot, archiveName);
-  run("tar", ["-czf", archive, "-C", packageRoot, "."], repositoryRoot);
+  run(tarExecutable(), ["-czf", archive, "-C", packageRoot, "."], repositoryRoot);
   const digest = sha256(archive);
   writeFileSync(join(outputRoot, `${archiveName}.sha256`), `${digest}  ${archiveName}\n`, "ascii");
   process.stdout.write(`${JSON.stringify({

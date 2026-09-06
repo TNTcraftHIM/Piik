@@ -21,6 +21,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { writeServerLicenseNotices } from "./package-licenses.mjs";
+import { tarExecutable } from "./archive-tool.mjs";
 
 // The Hosted deployment target. deploy/release-app.sh runs the archived binary
 // as the service user, so the release is always built for linux/amd64, and
@@ -238,10 +239,11 @@ try {
     "ascii",
   );
 
-  run("tar", ["-czf", artifactPath, "-C", runtimeRoot, "."], repositoryRoot);
-  validateArchiveEntries(run("tar", ["-tzf", artifactPath], repositoryRoot));
+  const tar = tarExecutable();
+  run(tar, ["-czf", artifactPath, "-C", runtimeRoot, "."], repositoryRoot);
+  validateArchiveEntries(run(tar, ["-tzf", artifactPath], repositoryRoot));
   mkdirSync(verifyRoot);
-  run("tar", ["-xzf", artifactPath, "-C", verifyRoot], repositoryRoot);
+  run(tar, ["-xzf", artifactPath, "-C", verifyRoot], repositoryRoot);
   compareRecords(records, recordsFor(verifyRoot));
 
   const descriptor = {
