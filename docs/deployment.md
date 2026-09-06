@@ -88,11 +88,11 @@ Retain the descriptor and successful deployment output as release metadata. Do
 not create a follow-up source commit solely to duplicate their revision, asset,
 or hashes.
 
-After `validate` succeeds on a push to `main`, CI packages this application
-release once and uses it to assemble Windows amd64, Linux amd64, and macOS arm64
-Client candidates on native runners. Each Client artifact contains one native
-archive and its SHA-256 file; Actions retains candidates for 14 days. This is
-automatic build output, not a tag, public GitHub Release, or deployment.
+After `validate` succeeds on a push to `main`, CI packages one short-lived
+Server application release. The three-platform Client matrix is an explicit
+manual workflow dispatch with `client_checks=true`; it consumes that same
+application artifact and retains the candidates for 14 days. Neither path is a
+tag, public GitHub Release, or deployment.
 
 Do not build or run the full repository check on a constrained production host.
 That host runs only the packaged binary and needs no Node, npm, or dependency

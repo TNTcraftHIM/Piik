@@ -118,8 +118,9 @@ remain evidence gaps, not claims established by compilation or local loopback.
 15. **Unified release and update surface.** Build Client packages, Server
     runtime, future OCI images, and deployment bundles from one intentionally
     triggered immutable application release identified by its full commit SHA.
-    A validated `main` push now produces that application release and three
-    native-runner Client candidates with SHA-256 metadata. The default Client
+    A validated `main` push now produces that application release. An explicit
+    `client_checks=true` workflow dispatch produces the three native-runner
+    Client candidates with SHA-256 metadata. The default Client
     launcher now performs a non-blocking GitHub Releases check and the tracked
     deployment tree provides an operator-invoked read-only Server check. Formal
     GitHub Release publication, future OCI images, and deployment bundles remain
