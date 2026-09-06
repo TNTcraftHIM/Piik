@@ -217,4 +217,19 @@ describe("native media bridge", () => {
     expect(current.peer().close).toHaveBeenCalledOnce();
     expect(current.control.closeEdge).toHaveBeenCalledOnce();
   });
+
+  it("rejects a pending start when the bridge is disposed", async () => {
+    const current = fixture();
+    const starting = current.bridge.start();
+    await vi.waitFor(() => {
+      expect(current.peer().setLocalDescription).toHaveBeenCalledOnce();
+    });
+
+    current.bridge.dispose();
+
+    await expect(starting).rejects.toThrow("Native media bridge failed");
+    expect(current.onFailed).not.toHaveBeenCalled();
+    expect(current.peer().close).toHaveBeenCalledOnce();
+    expect(current.control.closeEdge).toHaveBeenCalledOnce();
+  });
 });

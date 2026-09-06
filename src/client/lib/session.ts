@@ -39,6 +39,8 @@ export interface HostRoomState extends HostRoomIdentity {
 export interface ViewerRoute {
   roomId: string;
   viewerGrant?: string;
+  /** An invite fragment was present but its grant was unusable. */
+  invalidGrant?: true;
 }
 
 export type AppRoute =
@@ -266,20 +268,22 @@ export function readViewerRoute(): ViewerRoute | null {
   }
 
   const roomId = route.roomId;
-  const fragment = window.location.hash;
-  if (fragment) {
-    const fragmentMatch = fragment.match(/^#v=(.+)$/);
-    const viewerGrant = fragmentMatch?.[1];
-    const validGrant = viewerGrant && isValidViewerGrant(viewerGrant)
-      ? viewerGrant
-      : null;
+  // Only a `#v=` fragment is an invite credential. Any other fragment (a mail
+  // client suffix, a `#:~:text=` scroll target) must not be read as a failed
+  // grant, or it would revoke the grant this tab already holds.
+  const fragmentMatch = window.location.hash.match(/^#v=(.*)$/);
+  if (fragmentMatch) {
+    const viewerGrant = fragmentMatch[1];
+    const validGrant = isValidViewerGrant(viewerGrant) ? viewerGrant : null;
     if (validGrant) {
       writeSessionValue(viewerGrantStorageKey(roomId), validGrant);
     } else {
       clearViewerGrant(roomId);
     }
     window.history.replaceState(window.history.state, "", `/r/${roomId}`);
-    return validGrant ? { roomId, viewerGrant: validGrant } : { roomId };
+    return validGrant
+      ? { roomId, viewerGrant: validGrant }
+      : { roomId, invalidGrant: true };
   }
 
   const storedGrant = readSessionValue(viewerGrantStorageKey(roomId));

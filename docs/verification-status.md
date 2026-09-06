@@ -73,9 +73,15 @@ page retention, or capture keepalive. See
 ## Screener Client
 
 The Go Client has unit coverage for persistent Local/Site configuration, LAN
-address selection, Browser launch commands, bounded Node supervision, its
-loopback port/Origin/Host/session contract, and exact package revision. The same
-source cross-builds for Windows amd64, macOS arm64, and Linux amd64.
+address selection, Browser launch commands, and its loopback
+port/Origin/Host/session contract. The same source cross-builds for Windows
+amd64, macOS arm64, and Linux amd64.
+
+Every packaged-Client result in this section is pre-port evidence from the
+package that bundled a Node runtime and an application tree. Capture, media,
+discovery, and network results remain applicable; package assembly, startup, and
+shutdown claims must be re-verified on the single-binary Client before it is
+accepted.
 
 On Windows, Chrome 151.0.7922.175 completed the built Local page's
 fragment access, Host surface, LAN invitation, and clean Client/Node/Browser
@@ -83,9 +89,9 @@ shutdown. A separate synthetic run formed a P2P-only Host-plus-three-Viewer tree
 with one Browser relay and advancing frames at every Viewer. The Hosted Site
 completed v8 loopback `hello`/`ping` after CDP granted `loopback-network`; without
 that permission Chrome blocked it as expected.
-The current clean-revision Windows package assembled with Node 24.19.0 passed the
-package checks recorded for that revision; changing `app/REVISION` made it fail
-before opening a listener. Its fresh Site loopback gate closed the Client,
+The pre-port clean-revision Windows package assembled with Node 24.19.0 passed
+the package checks recorded for that revision; changing `app/REVISION` made it
+fail before opening a listener. Its fresh Site loopback gate closed the Client,
 Browser, port, and temporary profile.
 The same explicit-target assembly produced a Linux amd64 package that ran its
 bundled Node application and loopback runtime on an independent Ubuntu host.
@@ -158,10 +164,11 @@ retained image, and exited cleanly. The Native Host crash gate also terminated t
 Client process and observed the Host return to its start-share control within
 the bounded check. These results cover the current Windows build only.
 
-The same clean revision assembled into a self-contained Windows package with a
-matching Node runtime, application tree, and native capture process. Chrome 151
-passed the package's Local startup gate and both Site loopback-permission arms;
-revision mismatch remains fail-closed before a listener starts.
+That same pre-port clean revision assembled into a self-contained Windows package
+with a matching Node runtime, application tree, and native capture process.
+Chrome 151 passed the package's Local startup gate and both Site
+loopback-permission arms; revision mismatch remains fail-closed before a listener
+starts.
 
 ## Interpretation Rules
 

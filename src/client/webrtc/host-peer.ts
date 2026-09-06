@@ -598,7 +598,7 @@ export class HostPeer {
       if (this.ordinaryAnswerEpoch === epoch) {
         this.ordinaryAnswerEpoch = null;
       }
-      this.setError(error, restart ? say("host.err.createConnection") : say("host.err.createConnection"));
+      this.setError(error, say("host.err.createConnection"));
       return false;
     }
   }

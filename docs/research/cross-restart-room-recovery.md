@@ -68,7 +68,7 @@ truth path.
 
 ## Storage And Deployment Boundary
 
-The accepted implementation uses built-in Node `node:sqlite`, one exact schema,
+The accepted implementation uses one embedded SQLite driver, one exact schema,
 one process connection and transactional low-frequency room writes. No ORM,
 event table, stats writer, compatibility reader or migration chain is added.
 Unknown schema, wrong application identity, corrupt row, inaccessible file or a
@@ -96,6 +96,7 @@ restoring one later requires an explicit credential-invalidating decision.
 ## Primary Sources
 
 - [Node.js SQLite](https://nodejs.org/docs/latest-v24.x/api/sqlite.html)
+- [`modernc.org/sqlite` driver](https://pkg.go.dev/modernc.org/sqlite)
 - [SQLite transactional guarantees](https://www.sqlite.org/transactional.html)
 - [SQLite locking mode](https://sqlite.org/pragma.html#pragma_locking_mode)
 - [LiveKit reconnect behavior](https://docs.livekit.io/intro/basics/connect/#network-changes-and-reconnection)

@@ -1,8 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
 import {
   CdpConnection,
@@ -10,17 +9,14 @@ import {
   createPage,
   evaluate,
   fetchJsonBefore,
+  launchChrome,
   reservePort,
   waitForSample,
   waitForVersion,
-  withDeadline,
 } from "./browser-gate-harness";
 import {
-  decodeClientEndpoint,
-  type ClientEndpoint as Endpoint,
+  readClientEndpoint,
 } from "./client-gate-endpoint";
-
-const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 
 interface GateReport {
   passed: boolean;
@@ -55,45 +51,16 @@ const LOCAL_PAGE_STATE = `fetch('/api/site-access')
   hostReady: Boolean(document.querySelector('.lr-host-personal-controls')),
 }))`;
 
-async function readEndpoint(
-  client: ChildProcessWithoutNullStreams,
-): Promise<Endpoint> {
-  let buffered = "";
-  return withDeadline(
-    () => new Promise<Endpoint>((resolveEndpoint, rejectEndpoint) => {
-      const onData = (chunk: Buffer) => {
-        buffered += chunk.toString();
-        const newline = buffered.indexOf("\n");
-        if (newline < 0) return;
-        client.stdout.off("data", onData);
-        try {
-          resolveEndpoint(decodeClientEndpoint(buffered.slice(0, newline)));
-        } catch (error) {
-          rejectEndpoint(error);
-        }
-      };
-      client.stdout.on("data", onData);
-      client.once("error", rejectEndpoint);
-      client.once("exit", (code) =>
-        rejectEndpoint(new Error(`Client exited before readiness (${code ?? "signal"})`)),
-      );
-    }),
-    Date.now() + 10_000,
-  );
-}
-
 async function main(): Promise<void> {
   if (process.env.SCREENER_CLIENT_LOCAL_GATE !== "true") {
     throw new Error("Local Client gate was not explicitly enabled");
   }
   const browserPath = process.env.CHROME_PATH?.trim();
   const clientPath = process.env.SCREENER_CLIENT_EXE?.trim();
-  const nodePath = process.env.SCREENER_CLIENT_NODE?.trim();
-  const appDirectory = process.env.SCREENER_CLIENT_APP?.trim() || ROOT;
   const lanAddress = process.env.SCREENER_CLIENT_GATE_LAN_ADDRESS?.trim();
-  if (!browserPath || !clientPath || !nodePath || !lanAddress) {
+  if (!browserPath || !clientPath || !lanAddress) {
     throw new Error(
-      "CHROME_PATH, SCREENER_CLIENT_EXE, SCREENER_CLIENT_NODE, and SCREENER_CLIENT_GATE_LAN_ADDRESS are required",
+      "CHROME_PATH, SCREENER_CLIENT_EXE, and SCREENER_CLIENT_GATE_LAN_ADDRESS are required",
     );
   }
 
@@ -123,8 +90,7 @@ async function main(): Promise<void> {
   let loopbackPort = 0;
   try {
     client = spawn(clientPath, [
-      "--node", nodePath,
-      "--app", appDirectory,
+      "--local",
       "--config", configPath,
       "--lan-address", lanAddress,
       "--port", String(appPort),
@@ -134,7 +100,7 @@ async function main(): Promise<void> {
       env: { ...process.env, SCREENER_CLIENT_GATE_NO_BROWSER: "true" },
     });
     client.stderr.resume();
-    const endpoint = await readEndpoint(client);
+    const endpoint = await readClientEndpoint(client);
     loopbackPort = endpoint.port;
     report.clientStarted = true;
     await waitForSample(
@@ -158,9 +124,7 @@ async function main(): Promise<void> {
       "screener-client": "1",
     }).toString();
 
-    browser = spawn(browserPath, [
-      `--remote-debugging-port=${debugPort}`,
-      `--user-data-dir=${profile}`,
+    browser = launchChrome(browserPath, debugPort, profile, [
       "--headless=new",
       ...(process.env.SCREENER_CLIENT_GATE_NO_SANDBOX === "true"
         ? ["--no-sandbox"]
@@ -168,8 +132,7 @@ async function main(): Promise<void> {
       "--no-first-run",
       "--no-proxy-server",
       "--disable-logging",
-      "about:blank",
-    ], { stdio: "pipe", windowsHide: true });
+    ]);
     browser.stdout.resume();
     browser.stderr.resume();
     const version = await waitForVersion(debugPort, browser);

@@ -9,10 +9,9 @@
   },
   "packageManager": "npm@11.17.0",
   "scripts": {
-    "dev": "node scripts/package-licenses.mjs public/third-party-licenses.txt && tsx watch src/server/index.ts",
-    "build": "npm run build:client && npm run build:server",
-    "build:client": "node scripts/package-licenses.mjs public/third-party-licenses.txt && vite build",
-    "build:server": "node --input-type=module -e \"import { rmSync } from 'node:fs'; rmSync('dist/server', { recursive: true, force: true })\" && tsc -p tsconfig.server.json",
+    "dev": "node scripts/package-licenses.mjs public/third-party-licenses.txt && vite",
+    "build": "npm run build:client",
+    "build:client": "node scripts/package-licenses.mjs public/third-party-licenses.txt && node --input-type=module -e \"import { readdirSync, rmSync } from 'node:fs'; const dir = 'internal/server/webassets/dist'; for (const entry of readdirSync(dir)) { if (entry !== '.gitkeep') rmSync(dir + '/' + entry, { recursive: true, force: true }); }\" && vite build",
     "package:client": "node scripts/assemble-client.mjs",
     "package:client-candidate": "node scripts/package-client-candidate.mjs",
     "check:client": "node scripts/check-client.mjs",
@@ -21,14 +20,11 @@
     "gate:client-media": "tsx scripts/client-media-gate.ts",
     "gate:client-native-host": "tsx scripts/client-native-host-gate.ts",
     "gate:client-browser-fanout": "tsx scripts/client-browser-fanout-gate.ts",
-    "gate:client-cross-nat": "tsx scripts/client-native-host-gate.ts",
-    "gate:client-link-media": "tsx scripts/client-native-host-gate.ts",
     "gate:client-native-sfu": "tsx scripts/client-native-sfu-gate.ts",
     "gate:client-link": "tsx scripts/client-link-gate.ts",
-    "start": "node dist/server/server/index.js",
     "gate:peer-topology-loopback": "tsx scripts/peer-assisted-benchmark.ts",
-    "gate:sfu-admission": "vitest run tests/room-route-controller.test.ts tests/hybrid-media-router.test.ts tests/sfu-resource-admission.test.ts tests/sfu-room-control.test.ts tests/livekit-token.test.ts tests/sfu-client.test.ts tests/route-transition.test.ts tests/server-config.test.ts tests/server-http.test.ts tests/server-signal.test.ts",
-    "gate:access-privacy": "npm run build:client && vitest run tests/server-signal.test.ts && tsx scripts/access-privacy-gate.ts",
+    "gate:sfu-admission": "vitest run tests/sfu-client.test.ts tests/route-transition.test.ts && go test ./internal/server/...",
+    "gate:access-privacy": "npm run build:client && tsx scripts/access-privacy-gate.ts",
     "probe:client-loopback": "tsx scripts/client-loopback-gate.ts",
     "gate:client-local": "tsx scripts/client-local-gate.ts",
     "typecheck": "tsc -b --pretty false",
@@ -36,12 +32,7 @@
     "test:watch": "vitest",
     "check": "npm run typecheck && npm test && npm run build"
   },
-  "dependencies": {
-    "livekit-server-sdk": "2.18.0",
-    "sirv": "3.0.2",
-    "ws": "8.21.3",
-    "zod": "4.4.3"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@types/node": "24.13.3",
     "@types/react": "19.2.18",
@@ -50,12 +41,15 @@
     "@types/ws": "8.18.1",
     "@vitejs/plugin-react": "6.0.5",
     "livekit-client": "2.22.1",
+    "livekit-server-sdk": "2.18.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "sdp-transform": "3.0.0",
     "tsx": "4.23.12",
     "typescript": "~6.0.3",
     "vite": "8.2.1",
-    "vitest": "4.1.10"
+    "vitest": "4.1.10",
+    "ws": "8.21.3",
+    "zod": "4.4.3"
   }
 }

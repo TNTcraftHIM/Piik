@@ -14,7 +14,10 @@ node_modules/
 public/third-party-licenses.txt
 build/
 coverage/
-dist/
+/dist/
+!internal/server/webassets/dist/
+internal/server/webassets/dist/*
+!internal/server/webassets/dist/.gitkeep
 benchmark-results/
 .cache/
 *.sqlite

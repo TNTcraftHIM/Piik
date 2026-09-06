@@ -576,7 +576,7 @@ export class ViewerRelay {
         peerEvents,
         candidate,
       );
-      if (nativePeer) return nativePeer;
+      if (nativePeer) return (peer = nativePeer);
     }
     peer = new HostPeer(
       childPeerId,

@@ -26,26 +26,6 @@ export type ComicKind =
   | "encoder-limited"
   | "warning";
 
-export const COMIC_KINDS: readonly ComicKind[] = [
-  "waiting-for-host",
-  "connecting-p2p",
-  "connecting-sfu",
-  "tap-to-play",
-  "host-paused",
-  "recovering",
-  "route-failed",
-  "playback-failed",
-  "host-offline",
-  "no-audio",
-  "room-not-found",
-  "access-denied",
-  "invalid-invite",
-  "room-full",
-  "bandwidth-limited",
-  "encoder-limited",
-  "warning",
-];
-
 /** stage = dark TV overlay (default for overlay states); paper = join rows. */
 export type ComicTheme = "stage" | "paper";
 

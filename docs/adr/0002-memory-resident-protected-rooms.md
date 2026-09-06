@@ -48,7 +48,7 @@ Stable mode stores only `roomId`, Host-token digest, Viewer-grant digest,
 authorization generation, code-entry policy, optional password verifier, and
 dormant lease deadline. It never stores raw tokens, grants, or passwords.
 
-The schema is one exact current version using built-in `node:sqlite`, one
+The schema is one exact current version on an embedded SQLite driver, one
 connection, one writer, and transactional room mutations. An unknown schema,
 wrong application identity, corrupt row, inaccessible path, or second owner
 fails startup before signaling or LiveKit mutation. This private pre-release
@@ -139,6 +139,7 @@ returns `ROOM_ACCESS_DENIED`.
 ## Decision Sources
 
 - [Node.js SQLite](https://nodejs.org/docs/latest-v24.x/api/sqlite.html)
+- [`modernc.org/sqlite` driver](https://pkg.go.dev/modernc.org/sqlite)
 - [SQLite transactional guarantees](https://www.sqlite.org/transactional.html)
 - [SQLite locking mode](https://sqlite.org/pragma.html#pragma_locking_mode)
 - [LiveKit reconnect behavior](https://docs.livekit.io/intro/basics/connect/#network-changes-and-reconnection)

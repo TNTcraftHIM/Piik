@@ -1,0 +1,1199 @@
+package room
+
+import (
+	"bytes"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/base64"
+	"encoding/binary"
+	"errors"
+	"fmt"
+	"math"
+	"slices"
+	"strconv"
+	"time"
+
+	"github.com/TNTcraftHIM/Screener/internal/server/ordered"
+	"github.com/TNTcraftHIM/Screener/internal/server/protocol"
+)
+
+// Capacity is ROOM_CAPACITY: every four-digit room code.
+const Capacity = 9_000
+
+const roomCodeFirst = 1_000
+
+// ErrorCode is RoomStoreErrorCode.
+type ErrorCode string
+
+// The RoomStoreErrorCode set.
+const (
+	CodeInvalidToken         ErrorCode = "INVALID_TOKEN"
+	CodeRoomAccessDenied     ErrorCode = "ROOM_ACCESS_DENIED"
+	CodeRoomBusy             ErrorCode = "ROOM_BUSY"
+	CodeRoomNotFound         ErrorCode = "ROOM_NOT_FOUND"
+	CodeRoomExpired          ErrorCode = "ROOM_EXPIRED"
+	CodeRoomFull             ErrorCode = "ROOM_FULL"
+	CodeHostAlreadyConnected ErrorCode = "HOST_ALREADY_CONNECTED"
+	CodeRoomLimit            ErrorCode = "ROOM_LIMIT"
+)
+
+// Error is RoomStoreError. Its message is the code, as `super(code)` made it.
+type Error struct {
+	Code ErrorCode
+}
+
+// Error returns the code, which is the message `super(code)` produced.
+func (e *Error) Error() string { return string(e.Code) }
+
+func codeError(code ErrorCode) error { return &Error{Code: code} }
+
+func hasCode(err error, code ErrorCode) bool {
+	var roomError *Error
+	return errors.As(err, &roomError) && roomError.Code == code
+}
+
+// admittedBy values.
+const (
+	admittedByGrant = "grant"
+	admittedByCode  = "code"
+)
+
+type participant struct {
+	clientID string
+	peerID   string
+	// sessionID is "" where the TypeScript left sessionId undefined. Session
+	// IDs are opaque IDs of at least 8 characters, so "" cannot collide.
+	sessionID  string
+	admittedBy string
+}
+
+// Room is one room's authority plus its participants. It has no exported
+// members: callers hold the pointer only to compare identity across the
+// unlocked password derivation, as the TypeScript compared room objects.
+type Room struct {
+	roomID                        string
+	hostTokenDigest               []byte
+	viewerGrantDigest             []byte
+	viewerPasswordMaterial        []byte
+	viewerAuthorizationGeneration string
+	codeEntryPolicy               protocol.CodeEntryPolicy
+	sharingActive                 bool
+	leaseExpiresAtMs              *int64
+	host                          *participant
+	// ordering: JS Map insertion order decides viewer presence order, the
+	// closed-session list and the router's participant order.
+	viewers ordered.Map[string, *participant]
+}
+
+// CreatedRoom is CreatedRoom. ViewerGrant is "" where the TypeScript had null.
+type CreatedRoom struct {
+	RoomID          string
+	HostToken       string
+	CodeEntryPolicy protocol.CodeEntryPolicy
+	ViewerGrant     string
+	ExpiresAt       *string
+}
+
+// ConnectParticipantInput is ConnectParticipantInput; Token is read for a host
+// and ViewerGrant for a viewer, "" meaning the key was absent.
+type ConnectParticipantInput struct {
+	RoomID      string
+	Role        protocol.Role
+	Token       string
+	ViewerGrant string
+	ClientID    string
+	SessionID   string
+}
+
+// ConnectViewerWithPasswordInput is ConnectViewerWithPasswordInput. Password is
+// consumed by the caller's DeriveViewerPassword call, not by the commit.
+type ConnectViewerWithPasswordInput struct {
+	RoomID    string
+	Password  string
+	ClientID  string
+	SessionID string
+}
+
+// ConnectedParticipant is ConnectedParticipant. ReplacedSessionID is "" where
+// the TypeScript omitted replacedSessionId.
+type ConnectedParticipant struct {
+	RoomID                        string
+	Role                          protocol.Role
+	PeerID                        string
+	ExpiresAt                     *string
+	HostOnline                    bool
+	ReplacedSessionID             string
+	CodeEntryPolicy               protocol.CodeEntryPolicy
+	ViewerPasswordEnabled         bool
+	ViewerAuthorizationGeneration string
+}
+
+// DisconnectedParticipant is DisconnectedParticipant.
+type DisconnectedParticipant struct {
+	RoomID string
+	Role   protocol.Role
+	PeerID string
+}
+
+// ConnectedPeer is ConnectedPeer.
+type ConnectedPeer struct {
+	PeerID    string
+	SessionID string
+}
+
+// ClosedRoom is ClosedRoom.
+type ClosedRoom struct {
+	RoomID     string
+	SessionIDs []string
+}
+
+// ReplacedRoom is ReplacedRoom.
+type ReplacedRoom struct {
+	Created CreatedRoom
+	Closed  ClosedRoom
+}
+
+// RevokedViewer is RevokedViewer; SessionID is "" where the TypeScript omitted
+// sessionId.
+type RevokedViewer struct {
+	PeerID    string
+	SessionID string
+}
+
+// ViewerGrantUpdate is ViewerGrantUpdate. ViewerGrant is "" for a revoke.
+type ViewerGrantUpdate struct {
+	ViewerGrant                           string
+	ViewerAuthorizationGeneration         string
+	PreviousViewerAuthorizationGeneration string
+	RevokedViewers                        []RevokedViewer
+}
+
+// CodeEntryUpdate is CodeEntryUpdate.
+type CodeEntryUpdate struct {
+	CodeEntryPolicy       protocol.CodeEntryPolicy
+	ViewerPasswordEnabled bool
+}
+
+// Options is RoomStoreOptions.
+type Options struct {
+	LeaseMs           int64
+	MaxRooms          int
+	MaxViewersPerRoom int
+	Database          *Database
+	Now               func() int64
+	Random            func(size int) []byte
+}
+
+// Store is RoomStore. See the package comment for the locking contract.
+type Store struct {
+	// ordering: JS Map insertion order decides AbandonAllRooms/ExpireRooms.
+	rooms             ordered.Map[string, *Room]
+	freeRoomCodes     []string
+	now               func() int64
+	random            func(size int) []byte
+	database          *Database
+	initialized       bool
+	leaseMs           int64
+	maxRooms          int
+	maxViewersPerRoom int
+	// gate is per store; the TypeScript module-level gate was shared by every
+	// RoomStore in a process, of which there was one (D11).
+	gate gate
+}
+
+// New is the RoomStore constructor; the TypeScript threw where this returns an
+// error.
+func New(options Options) (*Store, error) {
+	if options.LeaseMs <= 0 || options.LeaseMs > protocol.MaxSafeInteger {
+		return nil, errors.New("Room lease must be a positive integer")
+	}
+	if options.MaxRooms <= 0 || options.MaxRooms > Capacity {
+		return nil, fmt.Errorf("Room limit must be an integer between 1 and %d", Capacity)
+	}
+	if options.MaxViewersPerRoom <= 0 ||
+		options.MaxViewersPerRoom > protocol.MaxViewersPerRoomLimit {
+		return nil, fmt.Errorf(
+			"Room viewer limit must be an integer between 1 and %d",
+			protocol.MaxViewersPerRoomLimit)
+	}
+	store := &Store{
+		freeRoomCodes:     make([]string, Capacity),
+		now:               options.Now,
+		random:            options.Random,
+		database:          options.Database,
+		initialized:       options.Database == nil,
+		leaseMs:           options.LeaseMs,
+		maxRooms:          options.MaxRooms,
+		maxViewersPerRoom: options.MaxViewersPerRoom,
+		gate:              gate{limit: gateActiveLimit, pendingLimit: gatePendingLimit},
+	}
+	for index := range store.freeRoomCodes {
+		store.freeRoomCodes[index] = strconv.Itoa(roomCodeFirst + index)
+	}
+	if store.now == nil {
+		store.now = func() int64 { return time.Now().UnixMilli() }
+	}
+	if store.random == nil {
+		store.random = cryptoRandom
+	}
+	return store, nil
+}
+
+func cryptoRandom(size int) []byte {
+	value := make([]byte, size)
+	// crypto/rand.Read never fails; it panics if the operating system source does.
+	_, _ = rand.Read(value)
+	return value
+}
+
+// MaxViewersPerRoom is the readonly RoomStore field of the same name.
+func (s *Store) MaxViewersPerRoom() int { return s.maxViewersPerRoom }
+
+// Size is the `size` getter.
+func (s *Store) Size() int { return s.rooms.Len() }
+
+// Close closes the database.
+func (s *Store) Close() error {
+	if s.database == nil {
+		return nil
+	}
+	return s.database.Close()
+}
+
+// Initialize recovers the stable authority. It is a no-op without a database.
+func (s *Store) Initialize() error {
+	if s.initialized {
+		return nil
+	}
+	if s.database == nil {
+		s.initialized = true
+		return nil
+	}
+	if err := s.restore(s.now()); err != nil {
+		s.rooms.Clear()
+		_ = s.database.Close()
+		return err
+	}
+	s.initialized = true
+	return nil
+}
+
+func (s *Store) restore(startupNowMs int64) error {
+	lease, err := s.leaseDeadline(startupNowMs)
+	if err != nil {
+		return err
+	}
+	storedRooms, err := s.database.Initialize(startupNowMs, lease)
+	if err != nil {
+		return err
+	}
+	if len(storedRooms) > s.maxRooms {
+		return errors.New("Room database exceeds the configured room limit")
+	}
+	roomIDs := make(map[string]struct{}, len(storedRooms))
+	for _, stored := range storedRooms {
+		roomIDs[stored.RoomID] = struct{}{}
+	}
+	if len(roomIDs) != len(storedRooms) {
+		return errors.New("Room database contains duplicate room IDs")
+	}
+	for _, stored := range storedRooms {
+		s.rooms.Set(stored.RoomID, &Room{
+			roomID:                        stored.RoomID,
+			hostTokenDigest:               bytes.Clone(stored.HostTokenDigest),
+			viewerGrantDigest:             bytes.Clone(stored.ViewerGrantDigest),
+			viewerPasswordMaterial:        bytes.Clone(stored.ViewerPasswordMaterial),
+			viewerAuthorizationGeneration: stored.ViewerAuthorizationGeneration,
+			codeEntryPolicy:               stored.CodeEntryPolicy,
+			sharingActive:                 false,
+			leaseExpiresAtMs:              stored.LeaseExpiresAtMs,
+		})
+	}
+	available := s.freeRoomCodes[:0]
+	for _, code := range s.freeRoomCodes {
+		if _, taken := roomIDs[code]; !taken {
+			available = append(available, code)
+		}
+	}
+	s.freeRoomCodes = available
+	return nil
+}
+
+// BeginCreateRoom runs the part of createRoom that precedes the password
+// derivation: the room limit and the lease deadline, which the TypeScript took
+// from the clock before awaiting the KDF. Pass the deadline to CreateRoom.
+func (s *Store) BeginCreateRoom() (leaseExpiresAtMs int64, err error) {
+	if err := s.ensureInitialized(); err != nil {
+		return 0, err
+	}
+	if s.rooms.Len() >= s.maxRooms {
+		return 0, codeError(CodeRoomLimit)
+	}
+	return s.leaseDeadline(s.now())
+}
+
+// CreateRoom is the commit half of createRoom. material and derived are the
+// results of DeriveViewerPasswordMaterial (both zero when no password was
+// given) and leaseExpiresAtMs comes from BeginCreateRoom.
+func (s *Store) CreateRoom(
+	policy protocol.CodeEntryPolicy,
+	material []byte,
+	derived error,
+	preferredRoomID string,
+	leaseExpiresAtMs int64,
+) (CreatedRoom, error) {
+	// createViewerPasswordMaterial threw before any of the checks below.
+	if derived != nil && !isGateOutcome(derived) {
+		return CreatedRoom{}, derived
+	}
+	if err := s.ensureInitialized(); err != nil {
+		return CreatedRoom{}, err
+	}
+	if s.rooms.Len() >= s.maxRooms {
+		return CreatedRoom{}, codeError(CodeRoomLimit)
+	}
+	if hasCode(derived, CodeRoomBusy) {
+		return CreatedRoom{}, codeError(CodeRoomBusy)
+	}
+	if errors.Is(derived, errDerivationCancelled) {
+		return CreatedRoom{}, errors.New("Room creation password derivation was cancelled")
+	}
+	roomID, err := s.takeRoomCode(preferredRoomID)
+	if err != nil {
+		return CreatedRoom{}, err
+	}
+	room, created, err := s.newRoom(roomID, policy, material, leaseExpiresAtMs)
+	if err == nil {
+		err = s.writeDatabase(func() error { return s.database.InsertRoom(storedRoomAuthority(room)) })
+	}
+	if err != nil {
+		s.releaseRoomCode(roomID)
+		return CreatedRoom{}, err
+	}
+	s.rooms.Set(roomID, room)
+	return created, nil
+}
+
+// HostManagedRoom is getHostManagedRoom: the room the exact Host token owns.
+// It is the pre-KDF half of replaceRoom and setViewerPassword.
+func (s *Store) HostManagedRoom(roomID, hostToken string) (*Room, error) {
+	if err := s.ensureInitialized(); err != nil {
+		return nil, err
+	}
+	return s.getHostManagedRoom(roomID, hostToken)
+}
+
+// HostStillOwnsRoom is the mayStart closure replaceRoom and setViewerPassword
+// hand to the KDF gate: the room must still be the same object and the token
+// must still own it. Call it with the lock held.
+func (s *Store) HostStillOwnsRoom(roomID, hostToken string, current *Room) bool {
+	room, ok := s.rooms.Get(roomID)
+	return ok && room == current && verifyDigest(hostToken, room.hostTokenDigest)
+}
+
+// ReplaceRoom is the commit half of replaceRoom. current is the room
+// HostManagedRoom returned before the derivation.
+func (s *Store) ReplaceRoom(
+	roomID, hostToken string,
+	policy protocol.CodeEntryPolicy,
+	material []byte,
+	derived error,
+	current *Room,
+) (ReplacedRoom, error) {
+	// createViewerPasswordMaterial threw before the second getHostManagedRoom.
+	if derived != nil && !isGateOutcome(derived) {
+		return ReplacedRoom{}, derived
+	}
+	if err := s.ensureInitialized(); err != nil {
+		return ReplacedRoom{}, err
+	}
+	owned, err := s.getHostManagedRoom(roomID, hostToken)
+	if err != nil {
+		return ReplacedRoom{}, err
+	}
+	if owned != current || errors.Is(derived, errDerivationCancelled) {
+		return ReplacedRoom{}, codeError(CodeRoomAccessDenied)
+	}
+	if hasCode(derived, CodeRoomBusy) {
+		return ReplacedRoom{}, codeError(CodeRoomBusy)
+	}
+
+	replacementRoomID, err := s.takeRoomCode("")
+	if err != nil {
+		return ReplacedRoom{}, err
+	}
+	replaced, err := s.replaceRoom(roomID, replacementRoomID, policy, material, current)
+	if err != nil {
+		s.releaseRoomCode(replacementRoomID)
+		return ReplacedRoom{}, err
+	}
+	return replaced, nil
+}
+
+func (s *Store) replaceRoom(
+	roomID, replacementRoomID string,
+	policy protocol.CodeEntryPolicy,
+	material []byte,
+	current *Room,
+) (ReplacedRoom, error) {
+	leaseExpiresAtMs, err := s.leaseDeadline(s.now())
+	if err != nil {
+		return ReplacedRoom{}, err
+	}
+	room, created, err := s.newRoom(replacementRoomID, policy, material, leaseExpiresAtMs)
+	if err != nil {
+		return ReplacedRoom{}, err
+	}
+	err = s.writeDatabase(func() error {
+		return s.database.ReplaceRoom(roomID, current.hostTokenDigest, storedRoomAuthority(room))
+	})
+	if err != nil {
+		return ReplacedRoom{}, err
+	}
+	closed := ClosedRoom{RoomID: roomID, SessionIDs: connectedSessionIDs(current)}
+	s.rooms.Delete(roomID)
+	s.rooms.Set(replacementRoomID, room)
+	s.releaseRoomCode(roomID)
+	return ReplacedRoom{Created: created, Closed: closed}, nil
+}
+
+// SetViewerPassword is the commit half of setViewerPassword; it reports whether
+// a password is now set. current is the room HostManagedRoom returned before
+// the derivation.
+func (s *Store) SetViewerPassword(
+	roomID, hostToken string,
+	material []byte,
+	derived error,
+	current *Room,
+) (bool, error) {
+	// createViewerPasswordMaterial threw before the second getHostManagedRoom.
+	if derived != nil && !isGateOutcome(derived) {
+		return false, derived
+	}
+	if err := s.ensureInitialized(); err != nil {
+		return false, err
+	}
+	currentRoom, err := s.getHostManagedRoom(roomID, hostToken)
+	if err != nil {
+		return false, err
+	}
+	if currentRoom != current || errors.Is(derived, errDerivationCancelled) {
+		return false, codeError(CodeRoomAccessDenied)
+	}
+	if hasCode(derived, CodeRoomBusy) {
+		return false, codeError(CodeRoomBusy)
+	}
+	err = s.writeDatabase(func() error {
+		return s.database.SetViewerPassword(roomID, currentRoom.hostTokenDigest, material)
+	})
+	if err != nil {
+		return false, err
+	}
+	currentRoom.viewerPasswordMaterial = material
+	return material != nil, nil
+}
+
+// SetCodeEntryPolicy is setCodeEntryPolicy.
+func (s *Store) SetCodeEntryPolicy(
+	roomID string,
+	policy protocol.CodeEntryPolicy,
+	hostToken string,
+) (CodeEntryUpdate, error) {
+	if err := s.ensureInitialized(); err != nil {
+		return CodeEntryUpdate{}, err
+	}
+	room, err := s.getHostManagedRoom(roomID, hostToken)
+	if err != nil {
+		return CodeEntryUpdate{}, err
+	}
+	err = s.writeDatabase(func() error {
+		return s.database.SetCodeEntryPolicy(roomID, room.hostTokenDigest, policy)
+	})
+	if err != nil {
+		return CodeEntryUpdate{}, err
+	}
+	room.codeEntryPolicy = policy
+	return CodeEntryUpdate{
+		CodeEntryPolicy:       policy,
+		ViewerPasswordEnabled: room.viewerPasswordMaterial != nil,
+	}, nil
+}
+
+// SetViewerGrant is setViewerGrant; action is "rotate" or "revoke".
+func (s *Store) SetViewerGrant(
+	roomID, action, hostToken string,
+) (ViewerGrantUpdate, error) {
+	if err := s.ensureInitialized(); err != nil {
+		return ViewerGrantUpdate{}, err
+	}
+	room, err := s.getHostManagedRoom(roomID, hostToken)
+	if err != nil {
+		return ViewerGrantUpdate{}, err
+	}
+	previousGeneration := room.viewerAuthorizationGeneration
+	viewerGrant := ""
+	if action == "rotate" {
+		if viewerGrant, err = s.createViewerGrant(); err != nil {
+			return ViewerGrantUpdate{}, err
+		}
+	}
+
+	var revokedViewers []RevokedViewer
+	for _, viewer := range room.viewers.Values() {
+		if viewer.admittedBy == admittedByGrant {
+			revokedViewers = append(revokedViewers, RevokedViewer{
+				PeerID:    viewer.peerID,
+				SessionID: viewer.sessionID,
+			})
+		}
+	}
+	var viewerGrantDigest []byte
+	if viewerGrant != "" {
+		viewerGrantDigest = digest(viewerGrant)
+	} else {
+		if viewerGrantDigest, err = s.randomDigest(); err != nil {
+			return ViewerGrantUpdate{}, err
+		}
+	}
+	generation, err := s.newAuthorizationGeneration()
+	if err != nil {
+		return ViewerGrantUpdate{}, err
+	}
+	err = s.writeDatabase(func() error {
+		return s.database.SetViewerGrant(
+			roomID, room.hostTokenDigest, viewerGrantDigest, generation)
+	})
+	if err != nil {
+		return ViewerGrantUpdate{}, err
+	}
+	room.viewerGrantDigest = viewerGrantDigest
+	room.viewerAuthorizationGeneration = generation
+	// ordering: delete during iteration, which a JS Map allows.
+	for clientID, viewer := range room.viewers.All() {
+		if viewer.admittedBy == admittedByGrant {
+			room.viewers.Delete(clientID)
+		}
+	}
+	return ViewerGrantUpdate{
+		ViewerGrant:                           viewerGrant,
+		ViewerAuthorizationGeneration:         room.viewerAuthorizationGeneration,
+		PreviousViewerAuthorizationGeneration: previousGeneration,
+		RevokedViewers:                        revokedViewers,
+	}, nil
+}
+
+// ConnectParticipant is connectParticipant.
+func (s *Store) ConnectParticipant(input ConnectParticipantInput) (ConnectedParticipant, error) {
+	if err := s.ensureInitialized(); err != nil {
+		return ConnectedParticipant{}, err
+	}
+	room, err := s.getAvailableRoom(input.RoomID)
+	if err != nil {
+		if input.Role == protocol.RoleViewer && input.ViewerGrant == "" &&
+			(hasCode(err, CodeInvalidToken) || hasCode(err, CodeRoomExpired)) {
+			return ConnectedParticipant{}, codeError(CodeRoomNotFound)
+		}
+		return ConnectedParticipant{}, err
+	}
+	if input.Role == protocol.RoleHost {
+		if !verifyDigest(input.Token, room.hostTokenDigest) {
+			return ConnectedParticipant{}, codeError(CodeInvalidToken)
+		}
+		return s.connectHost(room, input)
+	}
+
+	if input.ViewerGrant != "" {
+		if !viewerGrantIsValid(room, input.ViewerGrant) {
+			return ConnectedParticipant{}, codeError(CodeInvalidToken)
+		}
+		return s.connectViewer(room, input.ClientID, input.SessionID, admittedByGrant)
+	}
+	if room.codeEntryPolicy != protocol.CodeEntryOpen {
+		return ConnectedParticipant{}, codeError(CodeInvalidToken)
+	}
+	return s.connectViewer(room, input.ClientID, input.SessionID, admittedByCode)
+}
+
+// ViewerGrantMayEnter is viewerGrantMayEnter.
+func (s *Store) ViewerGrantMayEnter(roomID, grant string) (bool, error) {
+	if err := s.ensureInitialized(); err != nil {
+		return false, err
+	}
+	room, err := s.getAvailableRoom(roomID)
+	if err != nil {
+		var roomError *Error
+		if errors.As(err, &roomError) {
+			return false, nil
+		}
+		return false, err
+	}
+	return viewerGrantIsValid(room, grant), nil
+}
+
+// ViewerPasswordChallenge is the locked first half of connectViewerWithPassword:
+// it returns the salt to derive against, a copy of the material to compare with
+// and the room reference to re-check afterwards. A missing room, an expired
+// room and a room without a private password all answer with the same 48 zero
+// bytes so the derivation cost does not reveal which. The only error is the
+// `ensureInitialized()` the TypeScript ran before the password check.
+func (s *Store) ViewerPasswordChallenge(
+	roomID string,
+) (salt, expectedMaterial []byte, room *Room, err error) {
+	if err := s.ensureInitialized(); err != nil {
+		return nil, nil, nil, err
+	}
+	found, err := s.getAvailableRoom(roomID)
+	if err != nil {
+		found = nil
+	}
+	expectedMaterial = make([]byte, viewerPasswordMaterialBytes)
+	if found != nil && found.codeEntryPolicy == protocol.CodeEntryPrivate &&
+		found.viewerPasswordMaterial != nil {
+		copy(expectedMaterial, found.viewerPasswordMaterial)
+	}
+	return expectedMaterial[:viewerPasswordSaltBytes], expectedMaterial, found, nil
+}
+
+// ConnectViewerWithPassword is the commit half of connectViewerWithPassword.
+// derived is the DeriveViewerPassword result; expectedMaterial and room come
+// from ViewerPasswordChallenge; mayConnect is evaluated with the lock held.
+func (s *Store) ConnectViewerWithPassword(
+	input ConnectViewerWithPasswordInput,
+	derived, expectedMaterial []byte,
+	room *Room,
+	mayConnect func() bool,
+) (ConnectedParticipant, error) {
+	if err := s.ensureInitialized(); err != nil {
+		return ConnectedParticipant{}, err
+	}
+	matches := subtle.ConstantTimeCompare(
+		derived, expectedMaterial[viewerPasswordSaltBytes:]) == 1
+
+	currentRoom, err := s.getAvailableRoom(input.RoomID)
+	if err != nil {
+		var roomError *Error
+		if errors.As(err, &roomError) {
+			return ConnectedParticipant{}, codeError(CodeRoomNotFound)
+		}
+		return ConnectedParticipant{}, err
+	}
+	if room == nil || currentRoom != room ||
+		currentRoom.codeEntryPolicy != protocol.CodeEntryPrivate ||
+		currentRoom.viewerPasswordMaterial == nil ||
+		!matches ||
+		subtle.ConstantTimeCompare(currentRoom.viewerPasswordMaterial, expectedMaterial) != 1 ||
+		!mayConnect() {
+		return ConnectedParticipant{}, codeError(CodeInvalidToken)
+	}
+	connected, err := s.connectViewer(
+		currentRoom, input.ClientID, input.SessionID, admittedByCode)
+	if hasCode(err, CodeRoomFull) {
+		return ConnectedParticipant{}, codeError(CodeInvalidToken)
+	}
+	return connected, err
+}
+
+// DisconnectParticipant is disconnectParticipant; it returns nil where the
+// TypeScript returned undefined.
+func (s *Store) DisconnectParticipant(
+	roomID, peerID, sessionID string,
+) (*DisconnectedParticipant, error) {
+	if err := s.ensureInitialized(); err != nil {
+		return nil, err
+	}
+	room, ok := s.rooms.Get(roomID)
+	if !ok {
+		return nil, nil
+	}
+
+	if room.host != nil && room.host.peerID == peerID {
+		if room.host.sessionID != sessionID {
+			return nil, nil
+		}
+		leaseExpiresAtMs, err := s.leaseDeadline(s.now())
+		if err != nil {
+			return nil, err
+		}
+		err = s.writeDatabase(func() error {
+			return s.database.SetLeaseDeadline(roomID, room.hostTokenDigest, &leaseExpiresAtMs)
+		})
+		if err != nil {
+			return nil, err
+		}
+		room.host.sessionID = ""
+		room.sharingActive = false
+		room.leaseExpiresAtMs = &leaseExpiresAtMs
+		return &DisconnectedParticipant{
+			RoomID: roomID, Role: protocol.RoleHost, PeerID: peerID}, nil
+	}
+
+	viewer := findViewerByPeerID(room, peerID)
+	if viewer == nil || viewer.sessionID != sessionID {
+		return nil, nil
+	}
+	viewer.sessionID = ""
+	return &DisconnectedParticipant{
+		RoomID: roomID, Role: protocol.RoleViewer, PeerID: peerID}, nil
+}
+
+// RemoveDisconnectedViewer is removeDisconnectedViewer.
+func (s *Store) RemoveDisconnectedViewer(roomID, peerID string) bool {
+	room, ok := s.rooms.Get(roomID)
+	if !ok {
+		return false
+	}
+	viewer := findViewerByPeerID(room, peerID)
+	if viewer == nil || viewer.sessionID != "" {
+		return false
+	}
+	return room.viewers.Delete(viewer.clientID)
+}
+
+// GetConnectedHost is getConnectedHost.
+func (s *Store) GetConnectedHost(roomID string) (ConnectedPeer, bool) {
+	room, ok := s.rooms.Get(roomID)
+	if !ok || room.host == nil || room.host.sessionID == "" {
+		return ConnectedPeer{}, false
+	}
+	return ConnectedPeer{PeerID: room.host.peerID, SessionID: room.host.sessionID}, true
+}
+
+// GetConnectedViewer is getConnectedViewer.
+func (s *Store) GetConnectedViewer(roomID, peerID string) (ConnectedPeer, bool) {
+	room, ok := s.rooms.Get(roomID)
+	if !ok {
+		return ConnectedPeer{}, false
+	}
+	viewer := findViewerByPeerID(room, peerID)
+	if viewer == nil || viewer.sessionID == "" {
+		return ConnectedPeer{}, false
+	}
+	return ConnectedPeer{PeerID: peerID, SessionID: viewer.sessionID}, true
+}
+
+// GetViewerPeerIDs is getViewerPeerIds, in viewer insertion order.
+func (s *Store) GetViewerPeerIDs(roomID string) []string {
+	room, ok := s.rooms.Get(roomID)
+	if !ok {
+		return nil
+	}
+	peerIDs := make([]string, 0, room.viewers.Len())
+	for _, viewer := range room.viewers.Values() {
+		peerIDs = append(peerIDs, viewer.peerID)
+	}
+	return peerIDs
+}
+
+// GetConnectedViewers is getConnectedViewers, in viewer insertion order.
+func (s *Store) GetConnectedViewers(roomID string) []ConnectedPeer {
+	room, ok := s.rooms.Get(roomID)
+	if !ok {
+		return nil
+	}
+	var connected []ConnectedPeer
+	for _, viewer := range room.viewers.Values() {
+		if viewer.sessionID != "" {
+			connected = append(connected, ConnectedPeer{
+				PeerID: viewer.peerID, SessionID: viewer.sessionID})
+		}
+	}
+	return connected
+}
+
+// AbandonRoom is abandonRoom; it returns nil where the TypeScript returned
+// undefined.
+func (s *Store) AbandonRoom(roomID string) (*ClosedRoom, error) {
+	if err := s.ensureInitialized(); err != nil {
+		return nil, err
+	}
+	room, ok := s.rooms.Get(roomID)
+	if !ok {
+		return nil, nil
+	}
+	sessionIDs := connectedSessionIDs(room)
+	err := s.writeDatabase(func() error {
+		return s.database.DeleteRoom(roomID, room.hostTokenDigest)
+	})
+	if err != nil {
+		return nil, err
+	}
+	s.rooms.Delete(roomID)
+	s.releaseRoomCode(roomID)
+	return &ClosedRoom{RoomID: roomID, SessionIDs: sessionIDs}, nil
+}
+
+// AbandonAllRooms is abandonAllRooms, in room insertion order.
+func (s *Store) AbandonAllRooms() ([]ClosedRoom, error) {
+	if err := s.ensureInitialized(); err != nil {
+		return nil, err
+	}
+	var closedRooms []ClosedRoom
+	for _, roomID := range s.rooms.Keys() {
+		closed, err := s.AbandonRoom(roomID)
+		if err != nil {
+			return nil, err
+		}
+		if closed != nil {
+			closedRooms = append(closedRooms, *closed)
+		}
+	}
+	return closedRooms, nil
+}
+
+// ExpireRooms is expireRooms, in room insertion order. The TypeScript defaulted
+// nowMs to the injected clock; every caller passed it explicitly.
+func (s *Store) ExpireRooms(nowMs int64) ([]ClosedRoom, error) {
+	if err := s.ensureInitialized(); err != nil {
+		return nil, err
+	}
+	var expiredIDs []string
+	var identities []RoomIdentity
+	var expired []ClosedRoom
+	for roomID, room := range s.rooms.All() {
+		if !roomIsExpired(room, nowMs) {
+			continue
+		}
+		expiredIDs = append(expiredIDs, roomID)
+		identities = append(identities, RoomIdentity{
+			RoomID: roomID, HostTokenDigest: room.hostTokenDigest})
+		expired = append(expired, ClosedRoom{
+			RoomID: roomID, SessionIDs: connectedSessionIDs(room)})
+	}
+	if err := s.writeDatabase(func() error { return s.database.DeleteRooms(identities) }); err != nil {
+		return nil, err
+	}
+	for _, roomID := range expiredIDs {
+		s.rooms.Delete(roomID)
+		s.releaseRoomCode(roomID)
+	}
+	return expired, nil
+}
+
+func (s *Store) connectHost(
+	room *Room, input ConnectParticipantInput,
+) (ConnectedParticipant, error) {
+	current := room.host
+	if current != nil && current.sessionID != "" && current.clientID != input.ClientID {
+		return ConnectedParticipant{}, codeError(CodeHostAlreadyConnected)
+	}
+
+	joining := current
+	if current == nil || current.clientID != input.ClientID {
+		peerID, err := s.newPeerID(room)
+		if err != nil {
+			return ConnectedParticipant{}, err
+		}
+		joining = &participant{
+			clientID: input.ClientID, peerID: peerID, admittedBy: admittedByCode}
+	}
+	replacedSessionID := joining.sessionID
+	err := s.writeDatabase(func() error {
+		return s.database.SetLeaseDeadline(room.roomID, room.hostTokenDigest, nil)
+	})
+	if err != nil {
+		return ConnectedParticipant{}, err
+	}
+	joining.sessionID = input.SessionID
+	room.host = joining
+	room.sharingActive = true
+	room.leaseExpiresAtMs = nil
+
+	return connectedParticipant(
+		room, joining.peerID, protocol.RoleHost, replacedSessionID, input.SessionID), nil
+}
+
+func (s *Store) connectViewer(
+	room *Room, clientID, sessionID, admittedBy string,
+) (ConnectedParticipant, error) {
+	joining, ok := room.viewers.Get(clientID)
+	if !ok && room.viewers.Len() >= s.maxViewersPerRoom {
+		return ConnectedParticipant{}, codeError(CodeRoomFull)
+	}
+	if !ok {
+		peerID, err := s.newPeerID(room)
+		if err != nil {
+			return ConnectedParticipant{}, err
+		}
+		joining = &participant{clientID: clientID, peerID: peerID, admittedBy: admittedBy}
+	}
+	replacedSessionID := joining.sessionID
+	joining.sessionID = sessionID
+	joining.admittedBy = admittedBy
+	// ordering: Map.set keeps the position of an existing key.
+	room.viewers.Set(clientID, joining)
+	return connectedParticipant(
+		room, joining.peerID, protocol.RoleViewer, replacedSessionID, sessionID), nil
+}
+
+func connectedParticipant(
+	room *Room, peerID string, role protocol.Role, replacedSessionID, sessionID string,
+) ConnectedParticipant {
+	if replacedSessionID == sessionID {
+		replacedSessionID = ""
+	}
+	return ConnectedParticipant{
+		RoomID:                        room.roomID,
+		Role:                          role,
+		PeerID:                        peerID,
+		ExpiresAt:                     formatExpiresAt(room.leaseExpiresAtMs),
+		HostOnline:                    room.host != nil && room.host.sessionID != "",
+		ReplacedSessionID:             replacedSessionID,
+		CodeEntryPolicy:               room.codeEntryPolicy,
+		ViewerPasswordEnabled:         room.viewerPasswordMaterial != nil,
+		ViewerAuthorizationGeneration: room.viewerAuthorizationGeneration,
+	}
+}
+
+func (s *Store) getAvailableRoom(roomID string) (*Room, error) {
+	room, ok := s.rooms.Get(roomID)
+	if !ok {
+		return nil, codeError(CodeInvalidToken)
+	}
+	if roomIsExpired(room, s.now()) {
+		return nil, codeError(CodeRoomExpired)
+	}
+	return room, nil
+}
+
+func (s *Store) getHostManagedRoom(roomID, hostToken string) (*Room, error) {
+	room, err := s.getAvailableRoom(roomID)
+	if err != nil {
+		return nil, err
+	}
+	if !verifyDigest(hostToken, room.hostTokenDigest) {
+		return nil, codeError(CodeInvalidToken)
+	}
+	return room, nil
+}
+
+func (s *Store) newPeerID(room *Room) (string, error) {
+	return s.uniqueID(16, func(candidate string) bool {
+		if room.host != nil && room.host.peerID == candidate {
+			return true
+		}
+		for _, viewer := range room.viewers.Values() {
+			if viewer.peerID == candidate {
+				return true
+			}
+		}
+		return false
+	})
+}
+
+func (s *Store) takeRoomCode(preferredRoomID string) (string, error) {
+	if len(s.freeRoomCodes) == 0 {
+		return "", codeError(CodeRoomLimit)
+	}
+	if preferredRoomID != "" {
+		if index := slices.Index(s.freeRoomCodes, preferredRoomID); index >= 0 {
+			return s.takeRoomCodeAt(index), nil
+		}
+	}
+	index, err := uniformIndex(len(s.freeRoomCodes), s.random)
+	if err != nil {
+		return "", err
+	}
+	return s.takeRoomCodeAt(index), nil
+}
+
+// uniformIndex draws a uniform index below count from 8 random bytes, rejecting
+// the values above the largest multiple of count. The TypeScript computed the
+// limit in BigInt as 2^64 - 2^64 % count; (MaxUint64 % count + 1) % count is
+// the same remainder without the uint64 wrap at a power-of-two count (D11).
+func uniformIndex(count int, random func(size int) []byte) (int, error) {
+	span := uint64(count)
+	remainder := (math.MaxUint64%span + 1) % span
+	for attempt := 0; attempt < 16; attempt++ {
+		value := random(8)
+		if len(value) != 8 {
+			return 0, errors.New("Room code random source must return 8 bytes")
+		}
+		if remainder != 0 &&
+			binary.BigEndian.Uint64(value) >= math.MaxUint64-remainder+1 {
+			continue
+		}
+		return int(binary.BigEndian.Uint64(value) % span), nil
+	}
+	return 0, errors.New("Unable to select a room code uniformly")
+}
+
+// takeRoomCodeAt removes the code at index by swapping the last code into it.
+func (s *Store) takeRoomCodeAt(index int) string {
+	roomID := s.freeRoomCodes[index]
+	last := len(s.freeRoomCodes) - 1
+	lastRoomID := s.freeRoomCodes[last]
+	s.freeRoomCodes = s.freeRoomCodes[:last]
+	if index < last {
+		s.freeRoomCodes[index] = lastRoomID
+	}
+	return roomID
+}
+
+func (s *Store) releaseRoomCode(roomID string) {
+	s.freeRoomCodes = append(s.freeRoomCodes, roomID)
+}
+
+func (s *Store) uniqueID(size int, exists func(candidate string) bool) (string, error) {
+	for attempt := 0; attempt < 8; attempt++ {
+		value := s.random(size)
+		if len(value) != size {
+			return "", fmt.Errorf("Identifier random source must return %d bytes", size)
+		}
+		candidate := base64.RawURLEncoding.EncodeToString(value)
+		if !exists(candidate) {
+			return candidate, nil
+		}
+	}
+	return "", errors.New("Unable to allocate a unique identifier")
+}
+
+func viewerGrantIsValid(room *Room, grant string) bool {
+	if grant == "" || !protocol.ValidViewerGrant(grant) {
+		return false
+	}
+	return verifyDigest(grant, room.viewerGrantDigest)
+}
+
+func (s *Store) createViewerGrant() (string, error) {
+	secret := s.random(16)
+	if len(secret) != 16 {
+		return "", errors.New("Viewer grant random source must return 16 bytes")
+	}
+	return base64.RawURLEncoding.EncodeToString(secret), nil
+}
+
+func (s *Store) newRoom(
+	roomID string,
+	policy protocol.CodeEntryPolicy,
+	material []byte,
+	leaseExpiresAtMs int64,
+) (*Room, CreatedRoom, error) {
+	hostTokenBytes := s.random(32)
+	if len(hostTokenBytes) != 32 {
+		return nil, CreatedRoom{}, errors.New("Host token random source must return 32 bytes")
+	}
+	hostToken := base64.RawURLEncoding.EncodeToString(hostTokenBytes)
+	viewerGrant, err := s.createViewerGrant()
+	if err != nil {
+		return nil, CreatedRoom{}, err
+	}
+	generation, err := s.newAuthorizationGeneration()
+	if err != nil {
+		return nil, CreatedRoom{}, err
+	}
+	room := &Room{
+		roomID:                        roomID,
+		hostTokenDigest:               digest(hostToken),
+		viewerGrantDigest:             digest(viewerGrant),
+		viewerPasswordMaterial:        material,
+		viewerAuthorizationGeneration: generation,
+		codeEntryPolicy:               policy,
+		sharingActive:                 false,
+		leaseExpiresAtMs:              &leaseExpiresAtMs,
+	}
+	return room, CreatedRoom{
+		RoomID:          roomID,
+		HostToken:       hostToken,
+		CodeEntryPolicy: policy,
+		ViewerGrant:     viewerGrant,
+		ExpiresAt:       formatExpiresAt(&leaseExpiresAtMs),
+	}, nil
+}
+
+func (s *Store) randomDigest() ([]byte, error) {
+	value := s.random(32)
+	if len(value) != 32 {
+		return nil, errors.New("Viewer grant random source must return 32 bytes")
+	}
+	return bytes.Clone(value), nil
+}
+
+func (s *Store) newAuthorizationGeneration() (string, error) {
+	value := s.random(16)
+	if len(value) != 16 {
+		return "", errors.New("Authorization generation random source must return 16 bytes")
+	}
+	return base64.RawURLEncoding.EncodeToString(value), nil
+}
+
+func (s *Store) leaseDeadline(nowMs int64) (int64, error) {
+	deadline := nowMs + s.leaseMs
+	if deadline <= nowMs || deadline > protocol.MaxSafeInteger ||
+		deadline < -protocol.MaxSafeInteger {
+		return 0, errors.New("Room lease deadline exceeds the supported time range")
+	}
+	return deadline, nil
+}
+
+func (s *Store) ensureInitialized() error {
+	if !s.initialized {
+		return errors.New("RoomStore stable authority is not initialized")
+	}
+	return nil
+}
+
+// writeDatabase runs a stable-authority write when a database is configured,
+// which is the TypeScript `this.options.database?.write(...)`.
+func (s *Store) writeDatabase(write func() error) error {
+	if s.database == nil {
+		return nil
+	}
+	return write()
+}
+
+func storedRoomAuthority(room *Room) StoredRoomAuthority {
+	return StoredRoomAuthority{
+		RoomID:                        room.roomID,
+		HostTokenDigest:               room.hostTokenDigest,
+		ViewerGrantDigest:             room.viewerGrantDigest,
+		ViewerAuthorizationGeneration: room.viewerAuthorizationGeneration,
+		CodeEntryPolicy:               room.codeEntryPolicy,
+		ViewerPasswordMaterial:        room.viewerPasswordMaterial,
+		LeaseExpiresAtMs:              room.leaseExpiresAtMs,
+	}
+}
+
+func roomIsExpired(room *Room, nowMs int64) bool {
+	return !room.sharingActive && room.leaseExpiresAtMs != nil &&
+		*room.leaseExpiresAtMs <= nowMs
+}
+
+func formatExpiresAt(expiresAtMs *int64) *string {
+	if expiresAtMs == nil {
+		return nil
+	}
+	value := time.UnixMilli(*expiresAtMs).UTC().Format("2006-01-02T15:04:05.000Z")
+	return &value
+}
+
+func findViewerByPeerID(room *Room, peerID string) *participant {
+	for _, viewer := range room.viewers.Values() {
+		if viewer.peerID == peerID {
+			return viewer
+		}
+	}
+	return nil
+}
+
+func connectedSessionIDs(room *Room) []string {
+	var sessionIDs []string
+	if room.host != nil && room.host.sessionID != "" {
+		sessionIDs = append(sessionIDs, room.host.sessionID)
+	}
+	for _, viewer := range room.viewers.Values() {
+		if viewer.sessionID != "" {
+			sessionIDs = append(sessionIDs, viewer.sessionID)
+		}
+	}
+	return sessionIDs
+}
+
+func digest(value string) []byte {
+	sum := sha256.Sum256([]byte(value))
+	return sum[:]
+}
+
+func verifyDigest(value string, expectedDigest []byte) bool {
+	return subtle.ConstantTimeCompare(digest(value), expectedDigest) == 1
+}

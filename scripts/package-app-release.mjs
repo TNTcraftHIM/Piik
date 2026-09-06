@@ -3,6 +3,7 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  chmodSync,
   copyFileSync,
   existsSync,
   lstatSync,
@@ -19,13 +20,31 @@ import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { writeServerLicenseNotices } from "./package-licenses.mjs";
+import { tarExecutable } from "./archive-tool.mjs";
+
+// The Hosted deployment target. deploy/release-app.sh runs the archived binary
+// as the service user, so the release is always built for linux/amd64, and
+// CGO_ENABLED=0 keeps it self-contained.
+const SERVER_TARGET = { goos: "linux", goarch: "amd64" };
+const SERVER_NAME = "screener-server";
+
+// Everything the archive may contain. deploy/release-app.sh enforces the same
+// four names in its entry allowlist and manifest pattern; both change together.
+const RUNTIME_PATHS = ["REVISION", "LICENSE", "THIRD-PARTY-NOTICES.txt", SERVER_NAME];
+
+// The Vite output the server embeds. Its index.html names the main asset the
+// deployment postflight proves over HTTP.
+const CLIENT_DIST = "internal/server/webassets/dist";
+
 function fail(message) {
   throw new Error(message);
 }
 
-function run(command, args, cwd) {
+function run(command, args, cwd, environment = process.env) {
   const result = spawnSync(command, args, {
     cwd,
+    env: environment,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -36,16 +55,16 @@ function run(command, args, cwd) {
   return result.stdout.trim();
 }
 
-function buildRuntime(cwd) {
+function buildClient(cwd) {
   if (process.platform === "win32") {
     run(
       process.env.ComSpec || "cmd.exe",
-      ["/d", "/s", "/c", "npm run build"],
+      ["/d", "/s", "/c", "npm run build:client"],
       cwd,
     );
     return;
   }
-  run("npm", ["run", "build"], cwd);
+  run("npm", ["run", "build:client"], cwd);
 }
 
 function assertCleanRevision(repositoryRoot, expectedRevision) {
@@ -77,17 +96,6 @@ function normalizedRelative(root, path) {
   return value;
 }
 
-function runtimePathAllowed(path) {
-  return (
-    path === "REVISION" ||
-    path === "LICENSE" ||
-    path === "package.json" ||
-    path === "package-lock.json" ||
-    path.startsWith("dist/client/") ||
-    path.startsWith("dist/server/")
-  );
-}
-
 function regularFiles(root) {
   const files = [];
   const pending = [root];
@@ -111,18 +119,10 @@ function regularFiles(root) {
   );
 }
 
-function copyRuntimeFile(sourceRoot, targetRoot, source) {
-  const path = normalizedRelative(sourceRoot, source);
-  if (!runtimePathAllowed(path)) fail(`Unexpected runtime file: ${path}`);
-  const target = join(targetRoot, ...path.split("/"));
-  mkdirSync(dirname(target), { recursive: true });
-  copyFileSync(source, target);
-}
-
 function recordsFor(root) {
   return regularFiles(root).map((absolute) => {
     const path = normalizedRelative(root, absolute);
-    if (!runtimePathAllowed(path)) fail(`Unexpected packaged file: ${path}`);
+    if (!RUNTIME_PATHS.includes(path)) fail(`Unexpected packaged file: ${path}`);
     return { path, size: statSync(absolute).size, sha256: sha256(absolute) };
   });
 }
@@ -155,18 +155,21 @@ function validateArchiveEntries(entries) {
     ) {
       fail(`Invalid archive entry: ${rawEntry}`);
     }
-    if (
-      entry !== "REVISION" &&
-      entry !== "LICENSE" &&
-      entry !== "package.json" &&
-      entry !== "package-lock.json" &&
-      entry !== "dist" &&
-      !entry.startsWith("dist/client") &&
-      !entry.startsWith("dist/server")
-    ) {
-      fail(`Unexpected archive entry: ${rawEntry}`);
-    }
+    if (!RUNTIME_PATHS.includes(entry)) fail(`Unexpected archive entry: ${rawEntry}`);
   }
+}
+
+// mainAsset is the hashed entry script Vite named in the embedded index.html.
+// The deployment postflight proves it over HTTP, so it is read from the same
+// build the binary embeds rather than from the archive.
+function mainAssetOf(distributionRoot) {
+  const html = readFileSync(join(distributionRoot, "index.html"), "utf8");
+  const match = html.match(/<script[^>]+src="\/(assets\/index-[A-Za-z0-9_-]+\.js)"/);
+  if (!match) fail("Built client HTML has no unique main asset");
+  if (!existsSync(join(distributionRoot, ...match[1].split("/")))) {
+    fail("Built client main asset is missing");
+  }
+  return match[1];
 }
 
 if (process.argv.length !== 3) {
@@ -176,21 +179,17 @@ if (process.argv.length !== 3) {
 const repositoryRoot = realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), ".."));
 const outputRoot = resolve(process.cwd(), process.argv[2]);
 const relativeOutput = relative(repositoryRoot, outputRoot);
-if (relativeOutput === "" || (!relativeOutput.startsWith("..") && !isAbsolute(relativeOutput))) {
+if (relativeOutput === "" || (relativeOutput.split(/[\\/]/)[0] !== ".." && !isAbsolute(relativeOutput))) {
   fail("Output directory must be outside the repository");
 }
 if (existsSync(outputRoot)) fail("Output directory must not already exist");
 
 const revision = assertCleanRevision(repositoryRoot);
 
-for (const required of ["LICENSE", "package.json", "package-lock.json"]) {
-  if (!existsSync(join(repositoryRoot, required))) fail(`Missing release input: ${required}`);
-}
-buildRuntime(repositoryRoot);
+if (!existsSync(join(repositoryRoot, "LICENSE"))) fail("Missing release input: LICENSE");
+buildClient(repositoryRoot);
 assertCleanRevision(repositoryRoot, revision);
-for (const required of ["dist/client", "dist/server"]) {
-  if (!existsSync(join(repositoryRoot, required))) fail(`Missing built runtime path: ${required}`);
-}
+const mainAsset = mainAssetOf(join(repositoryRoot, CLIENT_DIST));
 
 const releaseId = revision.slice(0, 7);
 const temporaryRoot = mkdtempSync(join(tmpdir(), `screener-app-${releaseId}-`));
@@ -199,14 +198,30 @@ const verifyRoot = join(temporaryRoot, "verify");
 
 try {
   mkdirSync(runtimeRoot, { recursive: true });
-  for (const source of [
-    join(repositoryRoot, "LICENSE"),
-    join(repositoryRoot, "package.json"),
-    join(repositoryRoot, "package-lock.json"),
-    ...regularFiles(join(repositoryRoot, "dist")),
-  ]) {
-    copyRuntimeFile(repositoryRoot, runtimeRoot, source);
-  }
+  copyFileSync(join(repositoryRoot, "LICENSE"), join(runtimeRoot, "LICENSE"));
+  const goCommand = process.env.SCREENER_GO?.trim() || "go";
+  const serverPath = join(runtimeRoot, SERVER_NAME);
+  run(goCommand, [
+    "build",
+    "-trimpath",
+    "-ldflags",
+    `-s -w -X main.BuildRevision=${revision}`,
+    "-o",
+    serverPath,
+    "./cmd/screener-server",
+  ], repositoryRoot, {
+    ...process.env,
+    GOOS: SERVER_TARGET.goos,
+    GOARCH: SERVER_TARGET.goarch,
+    CGO_ENABLED: "0",
+  });
+  chmodSync(serverPath, 0o755);
+  writeServerLicenseNotices(
+    repositoryRoot,
+    join(runtimeRoot, "THIRD-PARTY-NOTICES.txt"),
+    goCommand,
+    SERVER_TARGET,
+  );
   assertCleanRevision(repositoryRoot, revision);
   writeFileSync(join(runtimeRoot, "REVISION"), `${revision}\n`, "ascii");
 
@@ -224,19 +239,12 @@ try {
     "ascii",
   );
 
-  run("tar", ["-czf", artifactPath, "-C", runtimeRoot, "."], repositoryRoot);
-  validateArchiveEntries(run("tar", ["-tzf", artifactPath], repositoryRoot));
+  const tar = tarExecutable();
+  run(tar, ["-czf", artifactPath, "-C", runtimeRoot, "."], repositoryRoot);
+  validateArchiveEntries(run(tar, ["-tzf", artifactPath], repositoryRoot));
   mkdirSync(verifyRoot);
-  run("tar", ["-xzf", artifactPath, "-C", verifyRoot], repositoryRoot);
+  run(tar, ["-xzf", artifactPath, "-C", verifyRoot], repositoryRoot);
   compareRecords(records, recordsFor(verifyRoot));
-
-  const html = readFileSync(join(runtimeRoot, "dist/client/index.html"), "utf8");
-  const mainAssetMatch = html.match(/<script[^>]+src="\/(assets\/index-[A-Za-z0-9_-]+\.js)"/);
-  if (!mainAssetMatch) fail("Built client HTML has no unique main asset");
-  const mainAsset = mainAssetMatch[1];
-  if (!existsSync(join(runtimeRoot, "dist/client", ...mainAsset.split("/")))) {
-    fail("Built client main asset is missing");
-  }
 
   const descriptor = {
     schema: 1,

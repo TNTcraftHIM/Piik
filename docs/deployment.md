@@ -15,8 +15,8 @@ do not call this wrapper generic.
 
 ## Release Boundary
 
-A routine application release changes only the built Screener client/server and
-its independent runtime dependency tree. It does not change infrastructure,
+A routine application release changes only the built Screener server binary and
+the Browser assets it embeds. It does not change infrastructure,
 service units, proxy/firewall rules, secrets, LiveKit/coturn configuration, or
 persistent room state.
 
@@ -30,7 +30,7 @@ backup; Git and immutable artifacts own history.
 
 ## Build Host
 
-Start from a clean exact revision with Node.js 24 and npm 11:
+Start from a clean exact revision with Node.js 24, npm 11, and Go 1.26:
 
 ```sh
 npm ci
@@ -38,36 +38,37 @@ npm run check
 node scripts/package-app-release.mjs <output-directory-outside-repository>
 ```
 
-The packager refuses a dirty tree, builds from that exact revision, records the
+The packager refuses a dirty tree, builds the Browser assets and the
+linux/amd64 server binary from that exact revision without cgo, records the
 full revision, emits a runtime archive plus path/size/SHA-256 manifest and release descriptor, and
-extracts its own artifact to verify it. Upload the archive, manifest, and
-descriptor together to `/opt/screener/uploads`.
+extracts its own artifact to verify it. The archive contains exactly
+`screener-server`, `LICENSE`, `THIRD-PARTY-NOTICES.txt`, and `REVISION`. Upload
+the archive, manifest, and descriptor together to `/opt/screener/uploads`.
 
 The same application descriptor is also the Client assembly input. On each
-target platform, provide that platform's Node executable and Go toolchain:
+target platform, provide that platform's Go toolchain:
 
 ```sh
 SCREENER_GO=/path/to/go node scripts/assemble-client.mjs \
   /outside/repository/app-release/screener-<revision>.release.json \
-  /path/to/node \
   /outside/repository/Screener-Client \
   --target windows-amd64 \
   --capture /path/to/platform-capture \
   --tunnel /path/to/cloudflared
 ```
 
-Assembly refuses a dirty or different revision and emits one directory with
-the Client executable, pinned Node runtime, application release, selected
-sidecars, production dependencies, and matching `REVISION`. Its required target
+Assembly refuses a dirty or different revision and emits one directory with the
+Client executable, the Browser assets taken from that release and embedded in
+it, the selected sidecars, notices, and matching `REVISION`. Its required target
 is one of `windows-amd64`, `linux-amd64`, or `darwin-arm64`; every supplied
-runtime must match it. It does not create an installer, auto-updater, release
-tag, or compatibility bundle.
+binary input must match it. It does not create an installer, auto-updater,
+release tag, or compatibility bundle.
 
 The platform package also carries its native presentation metadata: Windows
 embeds the icon in the Go executable, Linux emits a freedesktop desktop entry
 under `share/`, and macOS emits a thin `.app` launcher with an ICNS resource.
-The latter two are packaging metadata only and do not duplicate the Client or
-Node runtime.
+The latter two are packaging metadata only and do not duplicate the Client
+executable.
 
 CI and local release-candidate builds use the same wrapper on the target's
 native operating system:
@@ -94,8 +95,8 @@ archive and its SHA-256 file; Actions retains candidates for 14 days. This is
 automatic build output, not a tag, public GitHub Release, or deployment.
 
 Do not build or run the full repository check on a constrained production host.
-The release wrapper installs only production dependencies in a transient,
-CPU/memory/time-bounded unit.
+That host runs only the packaged binary and needs no Node, npm, or dependency
+install.
 
 ## Update Check
 
@@ -115,10 +116,11 @@ as no notice. It never downloads, replaces, or interrupts a running share.
 An operator can perform the corresponding read-only Server check:
 
 ```sh
-SCREENER_NODE=/usr/local/bin/node bash deploy/check-release.sh
+bash deploy/check-release.sh
 ```
 
-The command reads `/opt/screener/current/REVISION` and prints one JSON result.
+The script runs the deployed binary's release check, which reads
+`/opt/screener/current/REVISION` and prints one JSON result.
 Exit status `0` means the deployed revision is current, `10` means a newer
 release is available, and `20` means the check could not establish a valid
 release identity. For a private repository, inject a short-lived `GITHUB_TOKEN`
@@ -127,6 +129,14 @@ line. The command does not mutate files, services, containers, or persistent
 state. A different current-revision file may be supplied as its only argument.
 
 ## Atomic Cutover
+
+### First Go cutover prerequisite
+
+The release wrapper is an application updater, not a systemd installer. Before
+the first Go release, install and reload the tracked unit as described in the
+[self-hosting cutover procedure](./operations/self-hosting.md#first-go-service-cutover).
+Do not mix the new Go binary with the old Node unit or an environment file that
+still sets `NODE_ENV`.
 
 Run the tracked server entry with the uploaded descriptor:
 
@@ -142,14 +152,14 @@ The wrapper:
    manifest, current release, required services, and public origin;
 2. rejects unexpected archive paths, links, file types, or duplicate inodes;
 3. extracts to a new release directory and verifies every file hash and size;
-4. installs an independent `node_modules` tree under resource limits and checks
-   runtime imports plus production configuration;
+4. validates production configuration by running the packaged binary's
+   configuration check as the service user under a bounded runtime;
 5. proves the old and new releases share no regular-file inode;
 6. atomically switches `/opt/screener/current`, starts the service, and polls
    bounded local/public health; and
 7. restores the exact prior symlink and service when cutover or health fails.
 
-Never hard-link dependency trees or recursively mutate permissions before the
+Never hard-link release files or recursively mutate permissions before the
 inode audit: metadata changes would violate both releases. Expected service
 states should be read as data (`systemctl show`), not used as bare commands under
 strict-shell error traps.

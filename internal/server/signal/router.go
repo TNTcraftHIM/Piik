@@ -1,0 +1,1616 @@
+package signal
+
+// Ported from src/server/hybrid-media-router.ts (baseline b20fd88).
+//
+// The router owns no lock. signal.Server.mu (routerOptions.mu) is held by the
+// caller of every method except close, hooks are called with it held, and the
+// goroutines the router starts (pump driver, fresh SFU config, host-offline
+// probe, drains, timer callbacks) take it themselves. Every TS `await` is an
+// unlock / I/O / lock window followed by exactly the guard the TS code ran
+// after that await (map C:/tmp/screener-go/maps/effect-layer.md, section 2.2).
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/base64"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net/url"
+	"os"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/TNTcraftHIM/Screener/internal/server/ordered"
+	"github.com/TNTcraftHIM/Screener/internal/server/protocol"
+	"github.com/TNTcraftHIM/Screener/internal/server/room"
+	"github.com/TNTcraftHIM/Screener/internal/server/route"
+	"github.com/TNTcraftHIM/Screener/internal/server/sfu"
+)
+
+const (
+	defaultRouteOperationTimeoutMs int64 = 20_000
+	defaultSfuDrainRetryMs         int64 = 1_000
+	defaultHostOfflineCheckMs      int64 = 5_000
+)
+
+// routeDebugEnabled ports debuglog("screener-route"): SCREENER_DEBUG=route
+// (D8), read once like NODE_DEBUG. The route package keeps the same flag
+// unexported, so this is its second reader.
+var routeDebugEnabled = routeDebugFlag(os.Getenv("SCREENER_DEBUG"))
+
+func routeDebugFlag(value string) bool {
+	for _, section := range strings.Split(value, ",") {
+		if strings.TrimSpace(section) == "route" {
+			return true
+		}
+	}
+	return false
+}
+
+// sfuFallback is SfuFallbackOptions. A zero timeout means the TS default.
+type sfuFallback struct {
+	url                string
+	tokenIssuer        sfu.TokenIssuer
+	admission          *sfu.Admission
+	roomControl        sfu.RoomControl
+	prepareTimeoutMs   int64
+	drainRetryMs       int64
+	hostOfflineCheckMs int64
+}
+
+// routerHooks are the signaling server callbacks of HybridMediaRouterOptions.
+// Every hook is called with mu held and must not block (D11). shareGeneration
+// returns "" where the TS returned undefined; routesChanged may be nil.
+type routerHooks struct {
+	sendToSession   func(sessionID string, message protocol.ServerMessage)
+	shareGeneration func(roomID string) string
+	routesChanged   func(roomID string)
+}
+
+// routerOptions is HybridMediaRouterOptions plus the shared mutex and the
+// timer factory of D5. now and afterFunc default to the wall clock.
+type routerOptions struct {
+	mu                        *sync.Mutex
+	store                     *room.Store
+	endpointMediaCopyCapacity int
+	sfu                       *sfuFallback
+	hooks                     routerHooks
+	now                       func() int64
+	afterFunc                 func(time.Duration, func()) func() bool
+}
+
+// authenticatedRouteParticipant is AuthenticatedRouteParticipant; routePolicy
+// is nil where the TS key was absent.
+type authenticatedRouteParticipant struct {
+	roomID      string
+	role        protocol.Role
+	peerID      string
+	sessionID   string
+	routePolicy *protocol.RoutePolicy
+}
+
+// hybridAuthenticationState is HybridAuthenticationState.
+type hybridAuthenticationState struct {
+	routeRevision   int64
+	routeAssignment protocol.ParticipantRouteAssignment
+}
+
+// activeViewerMediaEdge is ActiveViewerMediaEdge; upstream is peer or sfu.
+type activeViewerMediaEdge struct {
+	revision     int64
+	connectionID string
+	upstream     protocol.MediaRouteUpstream
+}
+
+// signalAuthorization is the `boolean | "probe" | undefined` result of
+// peerSignalAuthorization. signalAuthorizationUnassigned is the TS undefined:
+// the signaling server falls back to the committed-edge assignment.
+type signalAuthorization int
+
+const (
+	signalAuthorizationUnassigned signalAuthorization = iota
+	signalAuthorizationDenied
+	signalAuthorizationAllowed
+	signalAuthorizationProbe
+)
+
+// peerSignalInput is the peerSignalAuthorization input; descriptionType is
+// "" where the TS key was absent.
+type peerSignalInput struct {
+	roomID          string
+	sourcePeerID    string
+	sourceSessionID string
+	targetPeerID    string
+	targetSessionID string
+	connectionID    string
+	signalKind      string
+	descriptionType string
+}
+
+// peerSignalDebugInput is the debugPeerSignal input; candidateOrigin and
+// descriptionType are "" where the TS keys were absent.
+type peerSignalDebugInput struct {
+	roomID          string
+	sourcePeerID    string
+	targetPeerID    string
+	signalKind      string
+	candidateOrigin protocol.CandidateSignalOrigin
+	descriptionType string
+	authorization   signalAuthorization
+}
+
+// roomRuntime is RoomRuntime. pumping is the `pump` promise used as a
+// single-flight token; deadlineGeneration is bumped by every clearDeadline so
+// a callback that lost the Stop race sees it is stale (D5).
+type roomRuntime struct {
+	hostPeerID string
+	controller *route.Controller
+	// O32: capacities survive stopRoom in insertion order.
+	advertisedCapacityByViewer ordered.Map[string, int]
+	requested                  bool
+	pumping                    bool
+	deadlineStop               func() bool
+	deadlineGeneration         uint64
+	sfuRefreshesInFlight       map[string]struct{}
+}
+
+// hostOfflineCheck is HostOfflineCheck; the timer callback compares the
+// registered pointer with the one it was armed with.
+type hostOfflineCheck struct {
+	hostPeerID    string
+	fence         sfu.ResourceFence
+	hostSessionID string
+	connectionID  string
+	stop          func() bool
+}
+
+// router is HybridMediaRouter.
+type router struct {
+	mu        *sync.Mutex
+	store     *room.Store
+	capacity  int
+	sfu       *sfuFallback
+	hooks     routerHooks
+	now       func() int64
+	afterFunc func(time.Duration, func()) func() bool
+
+	// O14, O16, O29: rooms, drain tasks and waiters are walked in insertion
+	// order.
+	rooms             ordered.Map[string, *roomRuntime]
+	resourceWaiters   ordered.Map[string, struct{}]
+	sfuDrainTasks     ordered.Map[string, *sfuDrainTask]
+	hostOfflineChecks ordered.Map[string, *hostOfflineCheck]
+	// roomTurns is the per managed-room-name FIFO of takeTurn.
+	roomTurns map[string]chan struct{}
+	// inflight counts the goroutines that will re-acquire mu: the pump
+	// drivers, fresh SFU config issues and drains. It is the TS microtask
+	// backlog; tests wait for it to reach zero where the TS awaited.
+	inflight int
+	closing  bool
+	// closeCtx bounds every drain started once close began (D6).
+	closeCtx context.Context
+}
+
+// newRouter is the HybridMediaRouter constructor.
+func newRouter(options routerOptions) *router {
+	if err := protocol.AssertEndpointMediaCopyCapacity(options.endpointMediaCopyCapacity); err != nil {
+		panic(err)
+	}
+	if options.sfu != nil {
+		// TS: new URL(options.sfuFallback.url) throws on a relative URL.
+		if parsed, err := url.Parse(options.sfu.url); err != nil || parsed.Scheme == "" {
+			panic(errors.New("SFU fallback URL is invalid"))
+		}
+	}
+	r := &router{
+		mu:        options.mu,
+		store:     options.store,
+		capacity:  options.endpointMediaCopyCapacity,
+		sfu:       options.sfu,
+		hooks:     options.hooks,
+		now:       options.now,
+		afterFunc: options.afterFunc,
+		roomTurns: map[string]chan struct{}{},
+	}
+	if r.now == nil {
+		r.now = func() int64 { return time.Now().UnixMilli() }
+	}
+	if r.afterFunc == nil {
+		r.afterFunc = func(d time.Duration, fn func()) func() bool {
+			return time.AfterFunc(d, fn).Stop
+		}
+	}
+	return r
+}
+
+// io is one TS `await` on external work: mu is released around fn and always
+// re-acquired, including while a panic unwinds. That last part is the reason
+// this is a helper rather than an inline Unlock/Lock pair: recoverPump turns a
+// panic raised inside such a window into the TS pump rejection, and its
+// caller's `defer r.mu.Unlock()` would otherwise unlock a mutex nobody holds
+// (an unrecoverable runtime error). Nothing may touch router state inside fn.
+func (r *router) io(fn func()) {
+	r.mu.Unlock()
+	defer r.mu.Lock()
+	fn()
+}
+
+// close ports close(). mu must be held, as for every other router method: the
+// synchronous prefix (closing flag, timers, drains scheduled) runs in the
+// caller's critical section exactly as the TS ran it before its first await,
+// and mu is released only inside awaitDrain, around each LiveKit wait (R1,
+// R2). Drains run sequentially in insertion order (O16) and their errors are
+// joined; ctx bounds every wait and every close-initiated LiveKit call.
+func (r *router) close(ctx context.Context) error {
+	r.closing = true
+	r.closeCtx = ctx
+	for _, roomID := range r.rooms.Keys() {
+		r.clearRoom(roomID)
+	}
+	r.resourceWaiters.Clear()
+	for _, check := range r.hostOfflineChecks.Values() {
+		check.stop()
+	}
+	r.hostOfflineChecks.Clear()
+	fallback := r.sfu
+	if fallback == nil {
+		return nil
+	}
+	for _, fence := range fallback.admission.BeginDrainAll() {
+		r.scheduleSfuPublicationDrain(fence)
+	}
+	type entry struct {
+		key  string
+		task *sfuDrainTask
+	}
+	var snapshot []entry
+	for key, task := range r.sfuDrainTasks.All() {
+		snapshot = append(snapshot, entry{key, task})
+	}
+	var errs []error
+	for _, current := range snapshot {
+		key, task := current.key, current.task
+		r.clearDrainRetry(task)
+		if task.operation != nil {
+			if err := r.awaitDrain(ctx, task.operation); err != nil {
+				errs = append(errs, err)
+				continue
+			}
+		}
+		if registered, _ := r.sfuDrainTasks.Get(key); registered == task {
+			if err := r.awaitDrain(ctx, r.runSfuDrain(ctx, key, task)); err != nil {
+				errs = append(errs, err)
+			}
+		}
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("LiveKit drain failed during shutdown: %w", errors.Join(errs...))
+	}
+	return nil
+}
+
+// connectParticipant ports connectParticipant.
+func (r *router) connectParticipant(input authenticatedRouteParticipant) hybridAuthenticationState {
+	rm := r.room(input.roomID)
+	if input.role == protocol.RoleHost {
+		if rm.controller != nil && rm.hostPeerID != input.peerID {
+			r.clearDeadline(rm)
+			// rm.hostPeerID always equals the controller's, so this branch
+			// takes RebindHostIdentity's clearing path: every committed edge
+			// goes, which is what the TS per-viewer deleteConnectionId loop
+			// then restated into the mirror.
+			r.releaseResources(rm.controller.RebindHostIdentity(input.peerID, input.sessionID, r.nowPtr()))
+		}
+		rm.hostPeerID = input.peerID
+		r.cancelHostOfflineCheck(input.roomID)
+		if rm.controller == nil {
+			r.createController(input.roomID, rm, input)
+		}
+	} else {
+		capacity, _ := rm.advertisedCapacityByViewer.Get(input.peerID)
+		rm.advertisedCapacityByViewer.Set(input.peerID, capacity)
+	}
+	if rm.controller != nil {
+		capacity := r.capacity
+		if input.role != protocol.RoleHost {
+			capacity, _ = rm.advertisedCapacityByViewer.Get(input.peerID)
+		}
+		r.releaseResources(rm.controller.UpsertParticipant(route.ParticipantInput{
+			PeerID:                      input.peerID,
+			Role:                        input.role,
+			SessionID:                   input.sessionID,
+			EffectiveDownstreamCapacity: capacity,
+		}, r.nowPtr()))
+	}
+	state := hybridAuthenticationState{routeAssignment: emptyAssignment()}
+	if rm.controller != nil {
+		current := rm.controller.Snapshot()
+		state.routeRevision = current.Revision
+		state.routeAssignment = assignmentFor(r.assignments(input.roomID, current, nil, "", ""), input.peerID)
+	}
+	return state
+}
+
+// completeAuthentication ports completeAuthentication.
+func (r *router) completeAuthentication(participant authenticatedRouteParticipant, _ hybridAuthenticationState) {
+	rm, _ := r.rooms.Get(participant.roomID)
+	if rm == nil || rm.controller == nil {
+		return
+	}
+	r.broadcastActive(participant.roomID, rm)
+	// TS: void this.sendFreshSfuConfig(participant).catch(() => undefined)
+	r.sendFreshSfuConfig(participant, nil, nil)
+	r.requestPump(participant.roomID)
+}
+
+// setPaused ports setPaused.
+func (r *router) setPaused(roomID string, paused bool) {
+	rm, _ := r.rooms.Get(roomID)
+	if rm == nil || rm.controller == nil {
+		return
+	}
+	before := rm.controller.Revision()
+	r.releaseResources(rm.controller.SetPaused(paused, r.nowPtr()))
+	if rm.controller.Revision() != before {
+		r.broadcastActive(roomID, rm)
+	}
+	if !paused {
+		r.requestPump(roomID)
+	}
+}
+
+// routeDiagnosticSnapshot ports routeDiagnosticSnapshot.
+func (r *router) routeDiagnosticSnapshot(roomID string) protocol.RouteDiagnosticSnapshot {
+	if rm, _ := r.rooms.Get(roomID); rm != nil && rm.controller != nil {
+		return rm.controller.RouteDiagnosticSnapshot(r.now())
+	}
+	return protocol.RouteDiagnosticSnapshot{Children: []protocol.RouteDiagnosticChild{}, Operation: nil}
+}
+
+// observeQualityEvidence ports observeQualityEvidence; roomID is the TS
+// input's roomId and evidence the rest.
+func (r *router) observeQualityEvidence(roomID string, evidence route.RouteQualityEvidenceInput) route.RouteQualityEvidenceResult {
+	result := route.QualityEvidenceRejected
+	if rm, _ := r.rooms.Get(roomID); rm != nil && rm.controller != nil {
+		result = rm.controller.ObserveQualityEvidence(evidence)
+	}
+	if result != route.QualityEvidenceRejected && routeDebugEnabled {
+		upstream := "sfu"
+		if evidence.Upstream.Kind == route.UpstreamPeer {
+			upstream = "p2p:" + r.debugPeer(roomID, evidence.Upstream.PeerID)
+		}
+		metrics := evidence.Metrics
+		var packetLossPercent any
+		if percent, ok := protocol.PacketLossPercentFromDeltas(
+			intFloat(metrics.PacketsReceivedDelta), intFloat(metrics.PacketsLostDelta)); ok {
+			packetLossPercent = percent
+		}
+		r.debug(roomID, "viewer-quality-evidence",
+			"viewer", r.debugPeer(roomID, evidence.ChildPeerID),
+			"upstream", upstream,
+			"natTraversalPath", metrics.NatTraversalPath,
+			"framesPerSecond", optional(metrics.FramesPerSecond),
+			"bitrateKbps", optional(metrics.BitrateKbps),
+			"width", optional(metrics.Width),
+			"height", optional(metrics.Height),
+			"framesDecoded", optional(metrics.FramesDecodedDelta),
+			"freezes", optional(metrics.FreezeCountDelta),
+			"pauses", optional(metrics.PauseCountDelta),
+			"packetsReceivedDelta", optional(metrics.PacketsReceivedDelta),
+			"packetsLostDelta", optional(metrics.PacketsLostDelta),
+			"packetLossPercent", packetLossPercent,
+			"rttMs", optional(metrics.RttMs),
+			"jitterMs", optional(metrics.JitterMs))
+	}
+	return result
+}
+
+// observeSenderQualityEvidence ports observeSenderQualityEvidence.
+func (r *router) observeSenderQualityEvidence(participant authenticatedRouteParticipant, message protocol.SenderQualityEvidenceMessage) bool {
+	rm, _ := r.rooms.Get(participant.roomID)
+	if rm == nil || rm.controller == nil {
+		return false
+	}
+	controller := rm.controller
+	snapshot := controller.Snapshot()
+	before := snapshot.Revision
+	endpointCapacity := r.capacity
+	if participant.role != protocol.RoleHost {
+		advertised, _ := rm.advertisedCapacityByViewer.Get(participant.peerID)
+		endpointCapacity = min(advertised, r.capacity)
+	}
+	copyContext := r.qualityCopyContext(snapshot, rm.hostPeerID, participant.peerID, endpointCapacity, qualitySample{
+		kind:          route.UpstreamPeer,
+		childPeerID:   message.ChildPeerID,
+		routeRevision: int64(message.RouteRevision),
+		connectionID:  message.ConnectionID,
+	})
+	var senderIdentity *string
+	if message.RtpStatsID != nil && *message.RtpStatsID != "" &&
+		message.TrackIdentifier != nil && *message.TrackIdentifier != "" {
+		identity := *message.RtpStatsID + "\x00" + *message.TrackIdentifier
+		senderIdentity = &identity
+	}
+	input := route.SenderQualityEvidenceInput{
+		ParentPeerID:      participant.peerID,
+		ParentSessionID:   participant.sessionID,
+		ChildPeerID:       message.ChildPeerID,
+		RouteRevision:     int64(message.RouteRevision),
+		ConnectionID:      message.ConnectionID,
+		SenderIdentity:    senderIdentity,
+		SampleTimestampMs: sampleTimestamp(message.SampleTimestampMs),
+		State:             route.SenderQualityState(message.State),
+		AcceptedAtMs:      r.now(),
+	}
+	result := controller.ObserveSenderQualityEvidence(input, r.commitReservation)
+	if result.Accepted && routeDebugEnabled {
+		diagnostics := message.Diagnostics
+		details := []any{
+			"parent", r.debugPeer(participant.roomID, participant.peerID),
+			"child", r.debugPeer(participant.roomID, message.ChildPeerID),
+			"routeRevision", int64(message.RouteRevision),
+		}
+		details = append(details, copyContext.kv()...)
+		details = append(details,
+			"state", message.State,
+			"natTraversalPath", diagnostics.NatTraversalPath,
+			"reason", optional(diagnostics.Reason),
+			"framesPerSecond", optional(diagnostics.FramesPerSecond),
+			"bitrateKbps", optional(diagnostics.BitrateKbps),
+			"captureFramesPerSecond", nullable(diagnostics.CaptureFramesPerSecond),
+			"mediaSourceFramesPerSecond", nullable(diagnostics.MediaSourceFramesPerSecond),
+			"width", nullable(diagnostics.Width),
+			"height", nullable(diagnostics.Height),
+			"availableOutgoingKbps", nullable(diagnostics.AvailableOutgoingKbps),
+			"rttMs", nullable(diagnostics.RttMs),
+			"packetLossPercent", nullable(diagnostics.PacketLossPercent))
+		r.debug(participant.roomID, "sender-quality-evidence", details...)
+	}
+	r.releaseResources(result.Released)
+	if result.Committed {
+		r.resourceWaiters.Delete(participant.roomID)
+	}
+	if controller.Revision() != before {
+		r.broadcastActive(participant.roomID, rm)
+	}
+	r.sendRouteFailures(participant.roomID, result.FailedPeerIDs, controller.Revision())
+	if result.Accepted {
+		r.requestPump(participant.roomID)
+	}
+	return result.Accepted
+}
+
+// observeSfuPublisherQualityEvidence ports observeSfuPublisherQualityEvidence.
+func (r *router) observeSfuPublisherQualityEvidence(participant authenticatedRouteParticipant, message protocol.SfuPublisherQualityEvidenceMessage) bool {
+	rm, _ := r.rooms.Get(participant.roomID)
+	if rm == nil || rm.controller == nil || participant.role != protocol.RoleHost {
+		return false
+	}
+	controller := rm.controller
+	snapshot := controller.Snapshot()
+	operation := snapshot.Operation
+	candidateChildPeerID, candidateConnectionID := "", ""
+	if operation != nil {
+		candidateChildPeerID = operation.ChildPeerID
+		if operation.Current != nil {
+			candidateConnectionID = operation.Current.ConnectionID
+		}
+	}
+	before := snapshot.Revision
+	copyContext := r.qualityCopyContext(snapshot, participant.peerID, participant.peerID, r.capacity, qualitySample{
+		kind:                  route.UpstreamSfu,
+		routeRevision:         int64(message.RouteRevision),
+		publicationGeneration: message.PublicationGeneration,
+		hostSessionID:         participant.sessionID,
+	})
+	input := route.SfuPublisherQualityEvidenceInput{
+		HostPeerID:            participant.peerID,
+		HostSessionID:         participant.sessionID,
+		PublicationGeneration: message.PublicationGeneration,
+		RouteRevision:         int64(message.RouteRevision),
+		State:                 route.SenderQualityState(message.State),
+		SampleTimestampMs:     sampleTimestamp(message.SampleTimestampMs),
+		AcceptedAtMs:          r.now(),
+	}
+	result := controller.ObserveSfuPublisherQualityEvidence(input, r.commitReservation)
+	if result.Accepted && routeDebugEnabled {
+		diagnostics := message.Diagnostics
+		details := []any{"routeRevision", int64(message.RouteRevision)}
+		details = append(details, copyContext.kv()...)
+		details = append(details,
+			"state", message.State,
+			"reason", optional(diagnostics.Reason),
+			"framesPerSecond", optional(diagnostics.FramesPerSecond),
+			"bitrateKbps", optional(diagnostics.BitrateKbps),
+			"captureFramesPerSecond", nullable(diagnostics.CaptureFramesPerSecond),
+			"mediaSourceFramesPerSecond", nullable(diagnostics.MediaSourceFramesPerSecond),
+			"width", nullable(diagnostics.Width),
+			"height", nullable(diagnostics.Height),
+			"videoEncodingCount", nullable(diagnostics.VideoEncodingCount),
+			"activeVideoEncodingCount", nullable(diagnostics.ActiveVideoEncodingCount),
+			"availableOutgoingKbps", nullable(diagnostics.AvailableOutgoingKbps),
+			"rttMs", nullable(diagnostics.RttMs),
+			"packetLossPercent", nullable(diagnostics.PacketLossPercent))
+		r.debug(participant.roomID, "sfu-publisher-quality-evidence", details...)
+	}
+	r.releaseResources(result.Released)
+	if result.Committed && candidateChildPeerID != "" && candidateConnectionID != "" {
+		r.resourceWaiters.Delete(participant.roomID)
+	}
+	if controller.Revision() != before {
+		r.broadcastActive(participant.roomID, rm)
+	}
+	r.sendRouteFailures(participant.roomID, result.FailedPeerIDs, controller.Revision())
+	if result.Accepted {
+		r.requestPump(participant.roomID)
+	}
+	return result.Accepted
+}
+
+// resetSenderQuality ports resetSenderQuality.
+func (r *router) resetSenderQuality(participant authenticatedRouteParticipant) {
+	rm, _ := r.rooms.Get(participant.roomID)
+	if rm == nil || rm.controller == nil {
+		return
+	}
+	before := rm.controller.Revision()
+	r.releaseResources(rm.controller.ResetSenderQuality(participant.peerID, participant.sessionID, r.now()))
+	if rm.controller.Revision() != before {
+		r.broadcastActive(participant.roomID, rm)
+	}
+	r.requestPump(participant.roomID)
+}
+
+// isActivePeerParentOf ports isActivePeerParentOf.
+func (r *router) isActivePeerParentOf(roomID, parentPeerID, childPeerID string) bool {
+	_, activeParent, ok := r.resolveActivePeerEdge(roomID, childPeerID)
+	return ok && activeParent == parentPeerID
+}
+
+// resolveActivePeerEdge ports resolveActivePeerEdge; ok is false where the
+// TS returned undefined.
+func (r *router) resolveActivePeerEdge(roomID, childPeerID string) (revision int64, parentPeerID string, ok bool) {
+	edge, found := r.resolveActiveViewerMediaEdge(roomID, childPeerID)
+	if !found || edge.upstream.Kind != "peer" {
+		return 0, "", false
+	}
+	return edge.revision, edge.upstream.PeerID, true
+}
+
+// resolveActiveViewerMediaEdge ports resolveActiveViewerMediaEdge.
+func (r *router) resolveActiveViewerMediaEdge(roomID, childPeerID string) (activeViewerMediaEdge, bool) {
+	rm, _ := r.rooms.Get(roomID)
+	if rm == nil || rm.controller == nil {
+		return activeViewerMediaEdge{}, false
+	}
+	snapshot := rm.controller.Snapshot()
+	edge, hasEdge := snapshot.UpstreamByViewer.Get(childPeerID)
+	if !hasEdge || !r.pathIsPhysical(roomID, snapshot, childPeerID) {
+		return activeViewerMediaEdge{}, false
+	}
+	upstream := protocol.SfuUpstream()
+	if edge.Kind == route.UpstreamPeer {
+		upstream = protocol.PeerUpstream(edge.ParentPeerID)
+	}
+	return activeViewerMediaEdge{
+		revision:     snapshot.Revision,
+		connectionID: edge.ConnectionID,
+		upstream:     upstream,
+	}, true
+}
+
+// getViewerRouteUpstream ports getViewerRouteUpstream.
+func (r *router) getViewerRouteUpstream(roomID, viewerPeerID string) protocol.MediaRouteUpstream {
+	rm, _ := r.rooms.Get(roomID)
+	if rm == nil || rm.controller == nil {
+		return protocol.NoUpstream()
+	}
+	return assignmentFor(r.assignments(roomID, rm.controller.Snapshot(), nil, "", ""), viewerPeerID).Upstream
+}
+
+// peerSignalAuthorization ports peerSignalAuthorization.
+func (r *router) peerSignalAuthorization(input peerSignalInput) signalAuthorization {
+	rm, _ := r.rooms.Get(input.roomID)
+	if rm == nil || rm.controller == nil {
+		return signalAuthorizationUnassigned
+	}
+	controller := rm.controller
+	snapshot := controller.Snapshot()
+	operation := snapshot.Operation
+	if operation != nil && operation.Current != nil && operation.Current.Tuple.Kind == route.UpstreamPeer {
+		current := operation.Current
+		parent, hasParent := r.connectedPeer(input.roomID, current.Tuple.ParentPeerID)
+		child, hasChild := r.store.GetConnectedViewer(input.roomID, operation.ChildPeerID)
+		parentToChild := input.sourcePeerID == current.Tuple.ParentPeerID &&
+			input.targetPeerID == operation.ChildPeerID
+		childToParent := input.sourcePeerID == operation.ChildPeerID &&
+			input.targetPeerID == current.Tuple.ParentPeerID
+		if parentToChild || childToParent {
+			parentSession, childSession := input.targetSessionID, input.sourceSessionID
+			if parentToChild {
+				parentSession, childSession = input.sourceSessionID, input.targetSessionID
+			}
+			if hasParent && hasChild &&
+				parent.SessionID == parentSession &&
+				child.SessionID == childSession &&
+				input.connectionID == current.ConnectionID &&
+				(input.signalKind == "candidate" ||
+					(parentToChild && input.descriptionType == "offer") ||
+					(childToParent && input.descriptionType == "answer")) {
+				return signalAuthorizationProbe
+			}
+			return signalAuthorizationDenied
+		}
+	}
+
+	childPeerID := childForPair(snapshot, input.sourcePeerID, input.targetPeerID)
+	if childPeerID == "" {
+		return signalAuthorizationUnassigned
+	}
+	edge, hasEdge := snapshot.UpstreamByViewer.Get(childPeerID)
+	if !hasEdge || edge.Kind != route.UpstreamPeer || !edge.PhysicalActive {
+		return signalAuthorizationUnassigned
+	}
+	parentToChild := input.sourcePeerID == edge.ParentPeerID
+	sessionsMatch := (parentToChild &&
+		input.sourceSessionID == edge.ParentSessionID &&
+		input.targetSessionID == edge.ChildSessionID) ||
+		(!parentToChild &&
+			input.sourceSessionID == edge.ChildSessionID &&
+			input.targetSessionID == edge.ParentSessionID)
+	if !sessionsMatch {
+		return signalAuthorizationDenied
+	}
+	if edge.Transport == route.TransportDirect &&
+		parentToChild &&
+		input.signalKind == "description" &&
+		input.descriptionType == "offer" &&
+		input.connectionID != edge.ConnectionID {
+		adopted := controller.AdoptDirectConnection(route.AdoptDirectConnectionInput{
+			EdgeGuard: route.EdgeGuard{
+				ChildPeerID:     childPeerID,
+				ChildSessionID:  edge.ChildSessionID,
+				ParentSessionID: edge.ParentSessionID,
+				RouteRevision:   snapshot.Revision,
+				ConnectionID:    edge.ConnectionID,
+			},
+			NewConnectionID: input.connectionID,
+		})
+		if adopted {
+			return signalAuthorizationAllowed
+		}
+		return signalAuthorizationDenied
+	}
+	if input.connectionID == edge.ConnectionID {
+		return signalAuthorizationAllowed
+	}
+	return signalAuthorizationDenied
+}
+
+// debugPeerSignal ports debugPeerSignal.
+func (r *router) debugPeerSignal(input peerSignalDebugInput) {
+	if !routeDebugEnabled {
+		return
+	}
+	var authorization any
+	switch input.authorization {
+	case signalAuthorizationUnassigned:
+		authorization = "assignment"
+	case signalAuthorizationDenied:
+		authorization = false
+	case signalAuthorizationAllowed:
+		authorization = true
+	case signalAuthorizationProbe:
+		authorization = "probe"
+	}
+	r.debug(input.roomID, "peer-signal",
+		"source", r.debugPeer(input.roomID, input.sourcePeerID),
+		"target", r.debugPeer(input.roomID, input.targetPeerID),
+		"signalKind", input.signalKind,
+		"candidateOrigin", nullString(string(input.candidateOrigin)),
+		"descriptionType", nullString(input.descriptionType),
+		"authorization", authorization)
+}
+
+// setViewerRelayCapacity ports setViewerRelayCapacity.
+func (r *router) setViewerRelayCapacity(participant authenticatedRouteParticipant, downstreamEdges int) {
+	rm := r.room(participant.roomID)
+	r.debug(participant.roomID, "relay-capacity-received",
+		"participant", r.debugPeer(participant.roomID, participant.peerID),
+		"downstreamEdges", downstreamEdges)
+	rm.advertisedCapacityByViewer.Set(participant.peerID, downstreamEdges)
+	if rm.controller != nil &&
+		rm.controller.SetEffectiveCapacity(participant.peerID, participant.sessionID, downstreamEdges, r.nowPtr()) {
+		r.requestPump(participant.roomID)
+	}
+}
+
+// handleRouteReady ports handleRouteReady.
+func (r *router) handleRouteReady(participant authenticatedRouteParticipant, message protocol.RouteReadyMessage) {
+	if participant.role != protocol.RoleViewer || message.Phase != "prepare" {
+		return
+	}
+	revision := int64(message.Revision)
+	r.debug(participant.roomID, "route-ready-received",
+		"participant", r.debugPeer(participant.roomID, participant.peerID),
+		"revision", revision)
+	rm, _ := r.rooms.Get(participant.roomID)
+	if rm == nil || rm.controller == nil {
+		return
+	}
+	controller := rm.controller
+	operation := controller.Operation()
+	if operation == nil || operation.Current == nil ||
+		operation.ChildPeerID != participant.peerID ||
+		operation.ChildSessionID != participant.sessionID ||
+		operation.Current.Revision != revision {
+		return
+	}
+	current := operation.Current
+	before := controller.Revision()
+	settled := controller.CandidateReady(route.CandidateGuard{
+		ChildPeerID:    participant.peerID,
+		ChildSessionID: participant.sessionID,
+		Revision:       revision,
+		ConnectionID:   current.ConnectionID,
+	}, r.now(), r.commitReservation, route.CandidateProof{RelativeQualityApproved: message.QualityApproved})
+	r.debug(participant.roomID, "route-ready-settled",
+		"participant", r.debugPeer(participant.roomID, participant.peerID),
+		"revision", revision,
+		"accepted", settled.Accepted,
+		"exhausted", len(settled.FailedPeerIDs) > 0)
+	r.releaseResources(settled.Released)
+	if settled.Committed && settled.Accepted {
+		r.resourceWaiters.Delete(participant.roomID)
+	}
+	if controller.Revision() != before {
+		r.broadcastActive(participant.roomID, rm)
+	}
+	r.sendRouteFailures(participant.roomID, settled.FailedPeerIDs, controller.Revision())
+	r.requestPump(participant.roomID)
+}
+
+// handleRouteTransportConnected ports handleRouteTransportConnected.
+func (r *router) handleRouteTransportConnected(participant authenticatedRouteParticipant, message protocol.RouteTransportConnectedMessage) {
+	if participant.role != protocol.RoleViewer {
+		return
+	}
+	rm, _ := r.rooms.Get(participant.roomID)
+	if rm == nil || rm.controller == nil {
+		return
+	}
+	controller := rm.controller
+	operation := controller.Operation()
+	revision := int64(message.Revision)
+	if operation == nil || operation.Current == nil ||
+		operation.ChildPeerID != participant.peerID ||
+		operation.ChildSessionID != participant.sessionID ||
+		operation.Current.Revision != revision ||
+		operation.Current.ConnectionID != message.ConnectionID ||
+		operation.Current.Tuple.Kind != route.UpstreamPeer {
+		return
+	}
+	before := controller.Revision()
+	progressed := controller.CandidateTransportConnected(route.CandidateGuard{
+		ChildPeerID:    participant.peerID,
+		ChildSessionID: participant.sessionID,
+		Revision:       revision,
+		ConnectionID:   message.ConnectionID,
+	}, r.now())
+	r.releaseResources(progressed.Released)
+	if controller.Revision() != before {
+		r.broadcastActive(participant.roomID, rm)
+	}
+	r.sendRouteFailures(participant.roomID, progressed.FailedPeerIDs, controller.Revision())
+	after := controller.Operation()
+	if !progressed.Accepted || after == nil || after.WakeAtMs != operation.WakeAtMs {
+		r.requestPump(participant.roomID)
+	}
+}
+
+// handleRouteMediaUnavailable ports handleRouteMediaUnavailable.
+func (r *router) handleRouteMediaUnavailable(participant authenticatedRouteParticipant, message protocol.RouteMediaUnavailableMessage) {
+	if participant.role != protocol.RoleViewer {
+		return
+	}
+	revision := int64(message.Revision)
+	r.debug(participant.roomID, "sfu-media-unavailable",
+		"participant", r.debugPeer(participant.roomID, participant.peerID),
+		"revision", revision)
+	rm, _ := r.rooms.Get(participant.roomID)
+	if rm == nil || rm.controller == nil {
+		return
+	}
+	snapshot := rm.controller.Snapshot()
+	edge, hasEdge := snapshot.UpstreamByViewer.Get(participant.peerID)
+	if snapshot.Paused || snapshot.Revision != revision ||
+		!hasEdge || edge.Kind != route.UpstreamSfu ||
+		edge.ChildSessionID != participant.sessionID {
+		return
+	}
+	rm.controller.InvalidateEdge(route.EdgeGuard{
+		ChildPeerID:    participant.peerID,
+		ChildSessionID: participant.sessionID,
+		RouteRevision:  snapshot.Revision,
+		ConnectionID:   edge.ConnectionID,
+	}, r.nowPtr())
+	r.requestPump(participant.roomID)
+}
+
+// handleRouteFailed ports handleRouteFailed.
+func (r *router) handleRouteFailed(participant authenticatedRouteParticipant, message protocol.RouteFailedMessage) {
+	connectionID := ""
+	if message.ConnectionID != nil {
+		connectionID = *message.ConnectionID
+	}
+	revision := int64(message.Revision)
+	r.debug(participant.roomID, "route-failed-received",
+		"participant", r.debugPeer(participant.roomID, participant.peerID),
+		"role", participant.role,
+		"phase", message.Phase,
+		"revision", revision,
+		"hasConnectionId", connectionID != "")
+	rm, _ := r.rooms.Get(participant.roomID)
+	if rm == nil || rm.controller == nil {
+		return
+	}
+	controller := rm.controller
+	snapshot := controller.Snapshot()
+	if message.Phase == "prepare" {
+		operation := snapshot.Operation
+		if operation == nil || operation.Current == nil || operation.Current.Revision != revision {
+			return
+		}
+		current := operation.Current
+		ownsChild := participant.role == protocol.RoleViewer &&
+			participant.peerID == operation.ChildPeerID &&
+			participant.sessionID == operation.ChildSessionID
+		ownsParent := false
+		if current.Tuple.Kind == route.UpstreamPeer && participant.peerID == current.Tuple.ParentPeerID {
+			peer, ok := r.connectedPeer(participant.roomID, participant.peerID)
+			ownsParent = ok && peer.SessionID == participant.sessionID
+		}
+		ownsPublication := false
+		if current.Tuple.Kind == route.UpstreamSfu && participant.role == protocol.RoleHost &&
+			participant.peerID == rm.hostPeerID {
+			host, ok := r.store.GetConnectedHost(participant.roomID)
+			ownsPublication = ok && host.SessionID == participant.sessionID
+		}
+		if !ownsChild && !ownsParent && !ownsPublication {
+			return
+		}
+		if connectionID != "" && connectionID != current.ConnectionID {
+			return
+		}
+		before := snapshot.Revision
+		settled := controller.CandidateFailed(route.CandidateGuard{
+			ChildPeerID:    operation.ChildPeerID,
+			ChildSessionID: operation.ChildSessionID,
+			Revision:       current.Revision,
+			ConnectionID:   current.ConnectionID,
+		}, r.now())
+		r.releaseResources(settled.Released)
+		if controller.Revision() != before {
+			r.broadcastActive(participant.roomID, rm)
+		}
+		r.sendRouteFailures(participant.roomID, settled.FailedPeerIDs, controller.Revision())
+		r.requestPump(participant.roomID)
+		return
+	}
+
+	if snapshot.Revision != revision {
+		return
+	}
+	if participant.role == protocol.RoleHost {
+		if connectionID != "" && controller.InvalidateDirectEdgeFromParent(route.ParentEdgeGuard{
+			ParentPeerID:    participant.peerID,
+			ParentSessionID: participant.sessionID,
+			RouteRevision:   snapshot.Revision,
+			ConnectionID:    connectionID,
+		}, r.nowPtr()) {
+			r.requestPump(participant.roomID)
+			return
+		}
+		publication := snapshot.HostPublication
+		if publication == nil || publication.HostSessionID != participant.sessionID ||
+			(connectionID != "" && connectionID != publication.ConnectionID) {
+			return
+		}
+		controller.InvalidateHostPublication(route.PublicationGuard{
+			HostSessionID: participant.sessionID,
+			RouteRevision: snapshot.Revision,
+			Generation:    publication.Generation,
+			ConnectionID:  publication.ConnectionID,
+		}, r.nowPtr())
+		r.releaseResources(controller.RetireHostPublication(route.PublicationGuard{
+			HostSessionID: participant.sessionID,
+			RouteRevision: controller.Revision(),
+			Generation:    publication.Generation,
+			ConnectionID:  publication.ConnectionID,
+		}))
+		r.broadcastActive(participant.roomID, rm)
+		r.requestPump(participant.roomID)
+		return
+	}
+
+	edge, hasEdge := snapshot.UpstreamByViewer.Get(participant.peerID)
+	if !hasEdge || edge.ChildSessionID != participant.sessionID ||
+		(connectionID != "" && connectionID != edge.ConnectionID) {
+		return
+	}
+	guard := route.EdgeGuard{
+		ChildPeerID:    participant.peerID,
+		ChildSessionID: participant.sessionID,
+		RouteRevision:  snapshot.Revision,
+		ConnectionID:   edge.ConnectionID,
+	}
+	if edge.Kind == route.UpstreamPeer {
+		guard.ParentSessionID = edge.ParentSessionID
+	}
+	invalidated := controller.InvalidateEdge(guard, r.nowPtr())
+	if invalidated && edge.Usable && snapshot.Paused && r.hooks.routesChanged != nil {
+		r.hooks.routesChanged(participant.roomID)
+	}
+	r.requestPump(participant.roomID)
+}
+
+// refreshSfu ports refreshSfu.
+func (r *router) refreshSfu(participant authenticatedRouteParticipant, revision int64) {
+	rm, _ := r.rooms.Get(participant.roomID)
+	if rm == nil || rm.controller == nil {
+		return
+	}
+	currentRevision := rm.controller.Revision()
+	if revision > currentRevision {
+		return
+	}
+	key := fmt.Sprintf("%d\x00%s\x00%s", currentRevision, participant.peerID, participant.sessionID)
+	if _, inFlight := rm.sfuRefreshesInFlight[key]; inFlight {
+		return
+	}
+	rm.sfuRefreshesInFlight[key] = struct{}{}
+	r.sendFreshSfuConfig(participant,
+		func() { r.failCurrentSfuRoute(participant, currentRevision) },
+		func() { delete(rm.sfuRefreshesInFlight, key) })
+}
+
+// failCurrentSfuRoute ports failCurrentSfuRoute.
+func (r *router) failCurrentSfuRoute(participant authenticatedRouteParticipant, revision int64) {
+	rm, _ := r.rooms.Get(participant.roomID)
+	if rm == nil || rm.controller == nil {
+		return
+	}
+	snapshot := rm.controller.Snapshot()
+	if snapshot.Revision != revision {
+		return
+	}
+	connectionID := ""
+	if participant.peerID == rm.hostPeerID {
+		if snapshot.HostPublication != nil {
+			connectionID = snapshot.HostPublication.ConnectionID
+		}
+	} else if edge, ok := snapshot.UpstreamByViewer.Get(participant.peerID); ok && edge.Kind == route.UpstreamSfu {
+		connectionID = edge.ConnectionID
+	}
+	if connectionID == "" {
+		return
+	}
+	r.handleRouteFailed(participant, protocol.RouteFailedMessage{
+		Type:         "route-failed",
+		Revision:     protocol.Int(revision),
+		Phase:        "active",
+		ConnectionID: &connectionID,
+	})
+}
+
+// disconnectParticipant ports disconnectParticipant.
+func (r *router) disconnectParticipant(roomID, peerID, sessionID string) {
+	rm, _ := r.rooms.Get(roomID)
+	if rm == nil || rm.controller == nil || !rm.controller.DisconnectSession(peerID, sessionID) {
+		return
+	}
+	if peerID == rm.hostPeerID {
+		r.scheduleHostOfflineCheck(roomID, peerID)
+	}
+	r.requestPump(roomID)
+}
+
+// removeViewer ports removeViewer.
+func (r *router) removeViewer(roomID, peerID string) {
+	rm, _ := r.rooms.Get(roomID)
+	if rm != nil {
+		rm.advertisedCapacityByViewer.Delete(peerID)
+	}
+	if rm != nil && rm.controller != nil && rm.controller.ConfirmDeparture(peerID, r.nowPtr()) {
+		r.requestPump(roomID)
+	} else if rm != nil && rm.controller == nil && rm.advertisedCapacityByViewer.Len() == 0 {
+		r.rooms.Delete(roomID)
+	}
+}
+
+// stopRoom ports stopRoom: advertised capacities survive the share (O32).
+func (r *router) stopRoom(roomID string) {
+	type capacity struct {
+		peerID string
+		value  int
+	}
+	var capacities []capacity
+	if rm, _ := r.rooms.Get(roomID); rm != nil {
+		for peerID, value := range rm.advertisedCapacityByViewer.All() {
+			capacities = append(capacities, capacity{peerID, value})
+		}
+	}
+	r.clearRoom(roomID)
+	if len(capacities) > 0 {
+		rm := r.room(roomID)
+		for _, current := range capacities {
+			rm.advertisedCapacityByViewer.Set(current.peerID, current.value)
+		}
+	}
+}
+
+// deleteRoom ports deleteRoom.
+func (r *router) deleteRoom(roomID string) {
+	r.clearRoom(roomID)
+}
+
+func (r *router) room(roomID string) *roomRuntime {
+	rm, ok := r.rooms.Get(roomID)
+	if !ok {
+		rm = &roomRuntime{sfuRefreshesInFlight: map[string]struct{}{}}
+		r.rooms.Set(roomID, rm)
+	}
+	return rm
+}
+
+// createController ports createController (O18: connected viewers in store
+// order).
+func (r *router) createController(roomID string, rm *roomRuntime, host authenticatedRouteParticipant) {
+	routePolicy := host.routePolicy
+	operationTimeoutMs := defaultRouteOperationTimeoutMs
+	if r.sfu != nil && r.sfu.prepareTimeoutMs != 0 {
+		operationTimeoutMs = r.sfu.prepareTimeoutMs
+	}
+	rm.controller = route.New(route.Options{
+		HostPeerID:                host.peerID,
+		DebugRoomID:               roomID,
+		EndpointMediaCopyCapacity: r.capacity,
+		OperationTimeoutMs:        operationTimeoutMs,
+		SfuEnabled:                r.sfu != nil && !(routePolicy != nil && routePolicy.PeerOnly),
+		QualityConvergenceEnabled: routePolicy != nil && routePolicy.TopologyOptimization,
+		NatPredictionEnabled:      routePolicy != nil && routePolicy.NatPrediction,
+	})
+	rm.controller.UpsertParticipant(route.ParticipantInput{
+		PeerID:                      host.peerID,
+		Role:                        protocol.RoleHost,
+		SessionID:                   host.sessionID,
+		EffectiveDownstreamCapacity: r.capacity,
+	}, r.nowPtr())
+	for _, viewer := range r.store.GetConnectedViewers(roomID) {
+		capacity, _ := rm.advertisedCapacityByViewer.Get(viewer.PeerID)
+		rm.controller.UpsertParticipant(route.ParticipantInput{
+			PeerID:                      viewer.PeerID,
+			Role:                        protocol.RoleViewer,
+			SessionID:                   viewer.SessionID,
+			EffectiveDownstreamCapacity: capacity,
+		}, r.nowPtr())
+	}
+}
+
+// clearRoom ports clearRoom (O31: admission publication order).
+func (r *router) clearRoom(roomID string) {
+	rm, ok := r.rooms.Get(roomID)
+	if !ok {
+		return
+	}
+	r.clearDeadline(rm)
+	r.cancelHostOfflineCheck(roomID)
+	controller := rm.controller
+	rm.controller = nil
+	rm.requested = false
+	if controller != nil {
+		r.releaseResources(controller.Dispose())
+	}
+	r.rooms.Delete(roomID)
+	r.resourceWaiters.Delete(roomID)
+	if r.sfu != nil {
+		for _, fence := range r.sfu.admission.BeginDrainRoom(roomID) {
+			r.scheduleSfuPublicationDrain(fence)
+		}
+	}
+}
+
+// assignmentEdge is the value of the `edges` map of assignments().
+type assignmentEdge struct {
+	kind                  route.UpstreamKind
+	parentPeerID          string
+	publicationGeneration string
+}
+
+// assignments ports assignments(). candidate overlays the current attempt
+// (nil for the committed graph only). O19: peers are the host first, then
+// the store's viewer order; O20/O21: edges keep the snapshot's insertion
+// order, which is the childPeerIds order on the wire.
+func (r *router) assignments(
+	roomID string,
+	snapshot route.RouteSnapshot,
+	candidate *route.CandidateTuple,
+	candidateChildPeerID string,
+	candidatePublicationGeneration string,
+) map[string]protocol.ParticipantRouteAssignment {
+	assignments := map[string]protocol.ParticipantRouteAssignment{}
+	rm, _ := r.rooms.Get(roomID)
+	if rm == nil || rm.hostPeerID == "" {
+		return assignments
+	}
+	hostPeerID := rm.hostPeerID
+	peerIDs := []string{hostPeerID}
+	seen := map[string]struct{}{hostPeerID: {}}
+	for _, peerID := range r.store.GetViewerPeerIDs(roomID) {
+		if _, duplicate := seen[peerID]; !duplicate {
+			seen[peerID] = struct{}{}
+			peerIDs = append(peerIDs, peerID)
+		}
+	}
+	edges := &ordered.Map[string, assignmentEdge]{}
+	for childPeerID, edge := range snapshot.UpstreamByViewer.All() {
+		if !edge.PhysicalActive {
+			continue
+		}
+		if edge.Kind == route.UpstreamPeer {
+			edges.Set(childPeerID, assignmentEdge{kind: route.UpstreamPeer, parentPeerID: edge.ParentPeerID})
+		} else {
+			edges.Set(childPeerID, assignmentEdge{kind: route.UpstreamSfu, publicationGeneration: edge.PublicationGeneration})
+		}
+	}
+	publicationGeneration := ""
+	if snapshot.HostPublication != nil && snapshot.HostPublication.PhysicalActive {
+		publicationGeneration = snapshot.HostPublication.Generation
+	}
+	if candidate != nil && candidateChildPeerID != "" {
+		// TS delete-then-set: the candidate child moves to the back.
+		edges.Delete(candidateChildPeerID)
+		if candidate.Kind == route.UpstreamPeer {
+			edges.Set(candidateChildPeerID, assignmentEdge{kind: route.UpstreamPeer, parentPeerID: candidate.ParentPeerID})
+			if old, hasOld := snapshot.UpstreamByViewer.Get(candidateChildPeerID); hasOld && old.Kind == route.UpstreamSfu {
+				anySfu := false
+				for _, edge := range edges.Values() {
+					if edge.kind == route.UpstreamSfu {
+						anySfu = true
+						break
+					}
+				}
+				if !anySfu {
+					publicationGeneration = ""
+				}
+			}
+		} else {
+			if candidate.Publication != route.PublicationReuse {
+				for peerID, edge := range edges.All() {
+					if edge.kind == route.UpstreamSfu {
+						edges.Delete(peerID)
+					}
+				}
+				publicationGeneration = candidatePublicationGeneration
+			}
+			if publicationGeneration != "" {
+				edges.Set(candidateChildPeerID, assignmentEdge{kind: route.UpstreamSfu, publicationGeneration: publicationGeneration})
+			}
+		}
+	}
+	var sourceReachable func(peerID string, visited map[string]struct{}) bool
+	sourceReachable = func(peerID string, visited map[string]struct{}) bool {
+		if peerID == hostPeerID {
+			return true
+		}
+		if _, again := visited[peerID]; again {
+			return false
+		}
+		visited[peerID] = struct{}{}
+		edge, ok := edges.Get(peerID)
+		if !ok {
+			return false
+		}
+		if edge.kind == route.UpstreamSfu {
+			return publicationGeneration == edge.publicationGeneration
+		}
+		return sourceReachable(edge.parentPeerID, visited)
+	}
+	for _, peerID := range peerIDs {
+		edge, hasEdge := edges.Get(peerID)
+		reachable := sourceReachable(peerID, map[string]struct{}{})
+		childPeerIDs := []string{}
+		for childPeerID, child := range edges.All() {
+			if child.kind == route.UpstreamPeer && child.parentPeerID == peerID {
+				childPeerIDs = append(childPeerIDs, childPeerID)
+			}
+		}
+		upstream := protocol.NoUpstream()
+		switch {
+		case peerID == hostPeerID || !hasEdge:
+		case edge.kind == route.UpstreamPeer:
+			upstream = protocol.PeerUpstream(edge.parentPeerID)
+		case reachable:
+			upstream = protocol.SfuUpstream()
+		}
+		var sfuPublicationGeneration *string
+		if peerID == hostPeerID {
+			if publicationGeneration != "" {
+				generation := publicationGeneration
+				sfuPublicationGeneration = &generation
+			}
+		} else if reachable && hasEdge && edge.kind == route.UpstreamSfu {
+			generation := edge.publicationGeneration
+			sfuPublicationGeneration = &generation
+		}
+		assignments[peerID] = protocol.ParticipantRouteAssignment{
+			Upstream:                 upstream,
+			ChildPeerIDs:             childPeerIDs,
+			SfuPublicationGeneration: sfuPublicationGeneration,
+		}
+	}
+	return assignments
+}
+
+// broadcastActive ports broadcastActive (O23: host first, then viewers in
+// store order; one routesChanged at the end).
+func (r *router) broadcastActive(roomID string, rm *roomRuntime) {
+	if rm.controller == nil {
+		return
+	}
+	snapshot := rm.controller.Snapshot()
+	if routeDebugEnabled {
+		type routeEntry struct {
+			Child          string `json:"child"`
+			Parent         string `json:"parent"`
+			Usable         bool   `json:"usable"`
+			PhysicalActive bool   `json:"physicalActive"`
+		}
+		routes := []routeEntry{}
+		for childPeerID, edge := range snapshot.UpstreamByViewer.All() {
+			parent := "sfu"
+			if edge.Kind == route.UpstreamPeer {
+				parent = r.debugPeer(roomID, edge.ParentPeerID)
+			}
+			routes = append(routes, routeEntry{r.debugPeer(roomID, childPeerID), parent, edge.Usable, edge.PhysicalActive})
+		}
+		r.debug(roomID, "active-topology",
+			"revision", snapshot.Revision,
+			"paused", snapshot.Paused,
+			"hostPublication", snapshot.HostPublication != nil && snapshot.HostPublication.PhysicalActive,
+			"routes", routes)
+	}
+	assignments := r.assignments(roomID, snapshot, nil, "", "")
+	var participants []room.ConnectedPeer
+	if host, ok := r.store.GetConnectedHost(roomID); ok {
+		participants = append(participants, host)
+	}
+	participants = append(participants, r.store.GetConnectedViewers(roomID)...)
+	for _, participant := range participants {
+		r.hooks.sendToSession(participant.SessionID, protocol.RouteUpdateActiveMessage{
+			Type:       "route-update",
+			Revision:   protocol.Int(snapshot.Revision),
+			Phase:      "active",
+			Assignment: assignmentFor(assignments, participant.PeerID),
+		})
+	}
+	if r.hooks.routesChanged != nil {
+		r.hooks.routesChanged(roomID)
+	}
+}
+
+// pathIsPhysical ports pathIsPhysical.
+func (r *router) pathIsPhysical(roomID string, snapshot route.RouteSnapshot, childPeerID string) bool {
+	rm, _ := r.rooms.Get(roomID)
+	if rm == nil || rm.hostPeerID == "" {
+		return false
+	}
+	hostPeerID := rm.hostPeerID
+	seen := map[string]struct{}{}
+	current := childPeerID
+	for current != hostPeerID {
+		if _, again := seen[current]; again {
+			return false
+		}
+		seen[current] = struct{}{}
+		edge, ok := snapshot.UpstreamByViewer.Get(current)
+		if !ok || !edge.PhysicalActive || !edge.Usable {
+			return false
+		}
+		if edge.Kind == route.UpstreamSfu {
+			return snapshot.HostPublication != nil &&
+				snapshot.HostPublication.PhysicalActive &&
+				snapshot.HostPublication.Generation == edge.PublicationGeneration
+		}
+		if edge.ParentPeerID == hostPeerID {
+			return true
+		}
+		current = edge.ParentPeerID
+	}
+	return true
+}
+
+// childForPair ports childForPair; "" is the TS undefined.
+func childForPair(snapshot route.RouteSnapshot, firstPeerID, secondPeerID string) string {
+	if first, ok := snapshot.UpstreamByViewer.Get(firstPeerID); ok &&
+		first.Kind == route.UpstreamPeer && first.ParentPeerID == secondPeerID {
+		return firstPeerID
+	}
+	if second, ok := snapshot.UpstreamByViewer.Get(secondPeerID); ok &&
+		second.Kind == route.UpstreamPeer && second.ParentPeerID == firstPeerID {
+		return secondPeerID
+	}
+	return ""
+}
+
+// connectedPeer ports connectedPeer.
+func (r *router) connectedPeer(roomID, peerID string) (room.ConnectedPeer, bool) {
+	if host, ok := r.store.GetConnectedHost(roomID); ok && host.PeerID == peerID {
+		return host, true
+	}
+	return r.store.GetConnectedViewer(roomID, peerID)
+}
+
+// debugPeer ports debugPeer.
+func (r *router) debugPeer(roomID, peerID string) string {
+	rm, _ := r.rooms.Get(roomID)
+	if rm != nil && peerID == rm.hostPeerID {
+		return "host"
+	}
+	if rm != nil && rm.controller != nil {
+		return rm.controller.DiagnosticParticipantLabel(peerID)
+	}
+	return "viewer-unknown"
+}
+
+// qualitySample is QualitySampleReference; kind selects the peer or sfu
+// fields.
+type qualitySample struct {
+	kind                  route.UpstreamKind
+	childPeerID           string
+	routeRevision         int64
+	connectionID          string
+	publicationGeneration string
+	hostSessionID         string
+}
+
+// qualityCopyContext is QualityCopyContext; operationReason and
+// candidateTransition are "" where the TS had null.
+type qualityCopyContext struct {
+	committedCopies         int
+	candidateReservedCopies int
+	possibleCopies          int
+	endpointCapacity        int
+	operationReason         route.DemandReason
+	candidateTransition     route.TransitionKind
+	sampleRole              string
+}
+
+// kv is the `...copyContext` spread of the debug events.
+func (c qualityCopyContext) kv() []any {
+	return []any{
+		"committedCopies", c.committedCopies,
+		"candidateReservedCopies", c.candidateReservedCopies,
+		"possibleCopies", c.possibleCopies,
+		"endpointCapacity", c.endpointCapacity,
+		"operationReason", nullString(string(c.operationReason)),
+		"candidateTransition", nullString(string(c.candidateTransition)),
+		"sampleRole", c.sampleRole,
+	}
+}
+
+// qualityCopyContext ports qualityCopyContext (O33: count only).
+func (r *router) qualityCopyContext(
+	snapshot route.RouteSnapshot,
+	hostPeerID string,
+	observedPeerID string,
+	endpointCapacity int,
+	sample qualitySample,
+) qualityCopyContext {
+	committedCopies := 0
+	for _, edge := range snapshot.UpstreamByViewer.Values() {
+		if edge.Kind == route.UpstreamPeer && edge.ParentPeerID == observedPeerID && edge.PhysicalActive {
+			committedCopies++
+		}
+	}
+	if observedPeerID == hostPeerID && snapshot.HostPublication != nil && snapshot.HostPublication.PhysicalActive {
+		committedCopies++
+	}
+
+	operation := snapshot.Operation
+	var current *route.CurrentAttempt
+	var currentPlan *route.CandidatePlan
+	if operation != nil {
+		current = operation.Current
+		if current != nil && operation.Cursor >= 0 && operation.Cursor < len(operation.Candidates) {
+			plan := operation.Candidates[operation.Cursor]
+			currentPlan = &plan
+		}
+	}
+	candidateReservedCopies := 0
+	if current != nil {
+		if current.Tuple.Kind == route.UpstreamPeer && current.Tuple.ParentPeerID == observedPeerID {
+			candidateReservedCopies = 1
+		} else if current.Tuple.Kind == route.UpstreamSfu && observedPeerID == hostPeerID &&
+			current.Tuple.Publication != route.PublicationReuse {
+			candidateReservedCopies = 1
+		}
+	}
+
+	candidateSample := false
+	if current != nil {
+		if sample.kind == route.UpstreamPeer {
+			candidateSample = current.Tuple.Kind == route.UpstreamPeer &&
+				operation.ChildPeerID == sample.childPeerID &&
+				current.Tuple.ParentPeerID == observedPeerID &&
+				current.Revision == sample.routeRevision &&
+				current.ConnectionID == sample.connectionID
+		} else {
+			candidateSample = current.Tuple.Kind == route.UpstreamSfu &&
+				observedPeerID == hostPeerID &&
+				current.Revision == sample.routeRevision
+		}
+	}
+	activeSample := false
+	if sample.kind == route.UpstreamPeer {
+		activeEdge, hasActive := snapshot.UpstreamByViewer.Get(sample.childPeerID)
+		activeSample = sample.routeRevision == snapshot.Revision &&
+			hasActive && activeEdge.Kind == route.UpstreamPeer &&
+			activeEdge.PhysicalActive && activeEdge.Usable &&
+			activeEdge.ParentPeerID == observedPeerID &&
+			activeEdge.ConnectionID == sample.connectionID
+	} else {
+		publication := snapshot.HostPublication
+		activeSample = sample.routeRevision == snapshot.Revision &&
+			publication != nil && publication.PhysicalActive && publication.Usable &&
+			publication.Generation == sample.publicationGeneration &&
+			publication.HostSessionID == sample.hostSessionID
+	}
+
+	context := qualityCopyContext{
+		committedCopies:         committedCopies,
+		candidateReservedCopies: candidateReservedCopies,
+		possibleCopies:          committedCopies + candidateReservedCopies,
+		endpointCapacity:        endpointCapacity,
+		sampleRole:              "unknown",
+	}
+	if operation != nil {
+		context.operationReason = operation.Reason
+	}
+	if currentPlan != nil {
+		context.candidateTransition = currentPlan.EndpointTransition.Kind
+	}
+	if candidateSample {
+		context.sampleRole = "candidate"
+	} else if activeSample {
+		context.sampleRole = "active"
+	}
+	return context
+}
+
+// debugTuple ports debugTuple.
+func (r *router) debugTuple(roomID string, tuple route.CandidateTuple) string {
+	if tuple.Kind == route.UpstreamPeer {
+		label := "p2p:" + r.debugPeer(roomID, tuple.ParentPeerID)
+		if tuple.Regenerate {
+			label += ":regenerate"
+		}
+		return label
+	}
+	return "sfu:" + string(tuple.Publication)
+}
+
+// debug ports debug(): one sanitised slog event. details are key/value
+// pairs; never pass raw peer, session or connection IDs (use debugPeer).
+func (r *router) debug(roomID, event string, details ...any) {
+	if !routeDebugEnabled {
+		return
+	}
+	args := make([]any, 0, 4+len(details))
+	args = append(args, "event", event, "roomId", roomID)
+	args = append(args, details...)
+	slog.Info("screener-route", args...)
+}
+
+// sendRoomError ports sendRoomError: only the connected host is told.
+func (r *router) sendRoomError(roomID, code, message string) {
+	if host, ok := r.store.GetConnectedHost(roomID); ok {
+		r.hooks.sendToSession(host.SessionID, protocol.ErrorMessage{Type: "error", Code: code, Message: message})
+	}
+}
+
+// sendViewerRouteStatus ports sendViewerRouteStatus.
+func (r *router) sendViewerRouteStatus(roomID, viewerPeerID string, message protocol.RouteStatusMessage) {
+	if viewer, ok := r.store.GetConnectedViewer(roomID, viewerPeerID); ok {
+		r.hooks.sendToSession(viewer.SessionID, message)
+	}
+}
+
+// sendRouteFailures ports sendRouteFailures (O27: deduplicated, first
+// occurrence wins).
+func (r *router) sendRouteFailures(roomID string, failedPeerIDs []string, revision int64) {
+	seen := map[string]struct{}{}
+	for _, peerID := range failedPeerIDs {
+		if _, duplicate := seen[peerID]; duplicate {
+			continue
+		}
+		seen[peerID] = struct{}{}
+		r.sendViewerRouteStatus(roomID, peerID, protocol.RouteStatusMessage{
+			Type:     "route-status",
+			Revision: protocol.Int(revision),
+			State:    "failed",
+			Reason:   "route-exhausted",
+		})
+	}
+}
+
+func (r *router) nowPtr() *int64 {
+	now := r.now()
+	return &now
+}
+
+func emptyAssignment() protocol.ParticipantRouteAssignment {
+	return protocol.ParticipantRouteAssignment{
+		Upstream:                 protocol.NoUpstream(),
+		ChildPeerIDs:             []string{},
+		SfuPublicationGeneration: nil,
+	}
+}
+
+func assignmentFor(assignments map[string]protocol.ParticipantRouteAssignment, peerID string) protocol.ParticipantRouteAssignment {
+	if assignment, ok := assignments[peerID]; ok {
+		return assignment
+	}
+	return emptyAssignment()
+}
+
+// opaqueID ports opaqueId(): 16 random bytes, base64url without padding.
+func opaqueID() string {
+	value := make([]byte, 16)
+	// crypto/rand.Read never fails; it panics if the operating system source does.
+	_, _ = rand.Read(value)
+	return base64.RawURLEncoding.EncodeToString(value)
+}
+
+func sampleTimestamp(value *protocol.Num) *int64 {
+	if value == nil {
+		return nil
+	}
+	timestamp := int64(*value)
+	return &timestamp
+}
+
+func intFloat(value *protocol.Int) *float64 {
+	if value == nil {
+		return nil
+	}
+	converted := float64(*value)
+	return &converted
+}
+
+// optional is the debug value of a nullable pointer field: nil for null.
+func optional[T any](value *T) any {
+	if value == nil {
+		return nil
+	}
+	return *value
+}
+
+// nullable is the `value ?? null` of an optional-and-nullable field.
+func nullable[T any](value protocol.Nullable[T]) any {
+	if value.Value == nil {
+		return nil
+	}
+	return *value.Value
+}
+
+// nullString is the debug value of a string that is "" where the TS had
+// null or undefined.
+func nullString(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
+}

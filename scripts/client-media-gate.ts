@@ -9,22 +9,25 @@ import {
   cleanupRun,
   createPage,
   evaluate,
+  launchChrome,
   reservePort,
   waitForSample,
   waitForVersion,
   withDeadline,
 } from "./browser-gate-harness";
 import {
-  decodeClientEndpoint,
+  readClientEndpoint,
   type ClientEndpoint as Endpoint,
 } from "./client-gate-endpoint";
+import {
+  NATIVE_CLIENT_PROTOCOL,
+  NATIVE_CLIENT_SUBPROTOCOL,
+} from "../src/client/native/wire";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const BUILD_ROOT = join(ROOT, "build", "client-check");
 const SOURCE_TITLE = "Screener Native Gate Source";
-const GATE_STUN_URL =
-  process.env.SCREENER_CLIENT_GATE_STUN_URL?.trim() ||
-  "stun:share.bonfire.icu:3478";
+const GATE_STUN_URLS = process.env.SCREENER_CLIENT_GATE_STUN_URLS?.trim();
 
 interface Probe {
   protocol: number;
@@ -242,36 +245,13 @@ async function stopCapture(child: ChildProcessWithoutNullStreams): Promise<void>
   if (code !== 0) throw new Error("Native capture did not stop cleanly");
 }
 
-async function readEndpoint(child: ChildProcessWithoutNullStreams): Promise<Endpoint> {
-  let buffered = "";
-  return withDeadline(
-    () => new Promise<Endpoint>((resolveEndpoint, rejectEndpoint) => {
-      const onData = (chunk: Buffer) => {
-        buffered += chunk.toString();
-        const newline = buffered.indexOf("\n");
-        if (newline < 0) return;
-        child.stdout.off("data", onData);
-        try {
-          resolveEndpoint(decodeClientEndpoint(buffered.slice(0, newline)));
-        } catch (error) {
-          rejectEndpoint(error);
-        }
-      };
-      child.stdout.on("data", onData);
-      child.once("error", rejectEndpoint);
-      child.once("exit", (code) => {
-        rejectEndpoint(new Error("Client exited before readiness (" + String(code) + ")"));
-      });
-    }),
-    Date.now() + 10_000,
-  );
-}
-
 async function browserMediaGate(input: {
   endpoint: Endpoint;
+  protocol: number;
+  subprotocol: string;
   sourceTitle: string;
   sourceKind: "window" | "display";
-  stunUrl: string;
+  stunUrls: string;
 }): Promise<MediaEvidence> {
   let socket: WebSocket | null = null;
   const peers: RTCPeerConnection[] = [];
@@ -306,7 +286,7 @@ async function browserMediaGate(input: {
     } as RequestInit);
     const health = await healthResponse.json();
     if (
-      health.protocol !== 7 ||
+      health.protocol !== input.protocol ||
       health.service !== "screener-client" ||
       health.instanceToken !== input.endpoint.instanceToken ||
       health.nativeMedia?.video !== true ||
@@ -320,7 +300,7 @@ async function browserMediaGate(input: {
 
     socket = new WebSocket(
       "ws://127.0.0.1:" + input.endpoint.port + "/control",
-      ["screener-client-v8." + input.endpoint.instanceToken],
+      [input.subprotocol + "." + input.endpoint.instanceToken],
     );
     await new Promise<void>((resolveOpen, rejectOpen) => {
       const timer = window.setTimeout(
@@ -493,7 +473,7 @@ async function browserMediaGate(input: {
       const offer = await request("prepare-edge", {
         shareId,
         connectionId: nextConnectionId,
-        iceServers: [{ urls: [input.stunUrl] }],
+        iceServers: [{ urls: input.stunUrls.split(",") }],
       });
       await peer.setRemoteDescription({ type: "offer", sdp: offer.sdp });
       edge.remoteDescriptionSet = true;
@@ -668,6 +648,9 @@ async function main(): Promise<void> {
   }
   const chromePath = process.env.CHROME_PATH?.trim();
   if (!chromePath) throw new Error("CHROME_PATH is required");
+  if (!GATE_STUN_URLS) {
+    throw new Error("SCREENER_CLIENT_GATE_STUN_URLS is required");
+  }
 
   const profile = await mkdtemp(join(tmpdir(), "screener-client-media-"));
   // Keep network-capable binaries at a stable repository path. Windows
@@ -733,7 +716,7 @@ async function main(): Promise<void> {
       "-ExecutionPolicy",
       "Bypass",
       "-File",
-      join(ROOT, "native", "client", "platform", "windows", "capture", "build.ps1"),
+      join(ROOT, "native", "capture", "windows", "build.ps1"),
       "-OutputDirectory",
       buildRoot,
     ]);
@@ -746,9 +729,7 @@ async function main(): Promise<void> {
     }
 
     server = await startPageServer(pagePort);
-    chrome = spawn(chromePath, [
-      "--remote-debugging-port=" + debugPort,
-      "--user-data-dir=" + profile,
+    chrome = launchChrome(chromePath, debugPort, profile, [
       "--no-first-run",
       "--no-default-browser-check",
       "--disable-extensions",
@@ -757,8 +738,7 @@ async function main(): Promise<void> {
       "--disable-backgrounding-occluded-windows",
       "--disable-renderer-backgrounding",
       "--window-size=1280,900",
-      "about:blank",
-    ], { stdio: "pipe", windowsHide: true });
+    ]);
     chrome.stdout.resume();
     chrome.stderr.resume();
     const version = await waitForVersion(debugPort, chrome);
@@ -868,10 +848,14 @@ async function main(): Promise<void> {
     );
     const clientExecutable = join(packageRoot, "screener-client.exe");
     const go = process.env.SCREENER_GO?.trim() || "go";
+    // The Client embeds the Vite output, so the Web build precedes the Go build.
+    run(process.env.ComSpec || "cmd.exe", [
+      "/d", "/s", "/c", "npm run build:client",
+    ], ROOT);
     run(
       go,
       ["build", "-trimpath", "-o", clientExecutable, "./cmd/screener-client"],
-      join(ROOT, "native", "client"),
+      ROOT,
     );
     client = spawn(clientExecutable, [
       "--site",
@@ -884,7 +868,7 @@ async function main(): Promise<void> {
       env: { ...process.env, SCREENER_CLIENT_GATE_NO_BROWSER: "true" },
     });
     client.stderr.resume();
-    const endpoint = await readEndpoint(client);
+    const endpoint = await readClientEndpoint(client);
     clientPort = endpoint.port;
     const controlPage = await createPage(
       cdp,
@@ -897,9 +881,11 @@ async function main(): Promise<void> {
       controlPage,
       "((__name) => (" + browserMediaGate.toString() + ")(" + JSON.stringify({
         endpoint,
+        protocol: NATIVE_CLIENT_PROTOCOL,
+        subprotocol: NATIVE_CLIENT_SUBPROTOCOL,
         sourceTitle: SOURCE_TITLE,
         sourceKind,
-        stunUrl: GATE_STUN_URL,
+        stunUrls: GATE_STUN_URLS,
       }) + "))((target) => target)",
       Date.now() + 70_000,
     );

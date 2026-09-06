@@ -1,11 +1,17 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-09-05
+Last reviewed: 2026-09-06
 
 Only **Now** is executable. Observations, old branches, experiments, and parked
 topics are not implementation authority.
 
 ## Now
+
+The returned Go core and frontend fixes are reconciled on the integration
+candidate. The owner authorized hygiene cleanup, matched Server/Client builds,
+one squash PR and a controlled deployment. Complete the existing checks and
+first-Go unit/environment rollback before cutover. Device/network checks below
+remain evidence gaps, not claims established by compilation or local loopback.
 
 1. **Client physical acceptance.** Physically validate macOS and Linux
    capture/audio/recovery, a decoded public-link Browser Viewer, and a NAT case
@@ -25,8 +31,9 @@ topics are not implementation authority.
 4. **NAT acquisition and release acceptance.** Validate the implemented bounded
    three-attempt owner on restricted Browser/Native pairs; a new connection does
    not guarantee a different NAT mapping. The added prepare progress field is
-   incompatible with old strict pages. Obtain owner approval for the coordinated
-   Web/Server/Client update and its active-share impact before merging/deploying;
+   incompatible with old strict pages. The owner authorized the coordinated
+   Web/Server/Client update; check active sessions before the cutover and
+   retain the previous unit/environment alongside the application rollback;
    do not mix the new field into an ongoing old-version share.
 5. **Native codec acceptance.** Windows Native VP8 and Auto-selected H264 now
    pass real Browser playback, live presets, paused changes and source-switch
@@ -103,8 +110,8 @@ topics are not implementation authority.
     recommending either as a default for other deployments. Measure benefit of
     the implemented three-attempt budget before increasing it or claiming that
     independent connection attempts are independent NAT mappings.
-14. **Unresolved route-state ownership claims.** Reopen lower-revision
-    reauthentication, active SFU failure during an unrelated prepare, and
+14. **Unresolved route-state ownership claims.** Reopen active SFU failure
+    during an unrelated prepare and
     multi-child relay-evidence ownership only from an exact current-wire
     reproduction. Do not add a second revision namespace, parallel failure
     state, or generalized evidence map from static possibility alone.
@@ -119,17 +126,27 @@ topics are not implementation authority.
     explicit distribution work; do not add automatic install, container
     self-update, Watchtower, compatibility ranges, or active-share interruption
     before distribution and rollback evidence requires them.
-16. **Go server consolidation.** Revisit replacing the sole TypeScript/Node
-    server owner with Go only after the Client feature and physical acceptance
-    boundaries are complete. First measure package, startup, and maintenance
-    gains. If accepted, migrate Hosted and Local together and delete the Node
-    server in the same boundary; do not create or retain two room, signaling,
-    persistence, or route-controller implementations. The
-    [consolidation draft](./research/server-consolidation.md) identifies the two
-    preparatory simplifications, the routing-mode product choice, and the shared
-    module and concurrency model; implementation follows Client acceptance.
+16. **Go server consolidation.** Done in the candidate under
+    [ADR-0012](./adr/0012-shared-go-backend-core.md): Hosted and Client share one
+    Go core and the Node server, bundled runtime, and supervisor are deleted. Do
+    not create or retain two room, signaling, persistence, or route-controller
+    implementations. Package size, startup, and idle memory are measured in the
+    [consolidation research](./research/server-consolidation.md). Remaining
+    acceptance: rerun the physical Client and Browser-contract gates on this
+    build, and sequence the deployment cutover, installing the updated unit,
+    which replaces `NODE_ENV=production` with `SCREENER_ENV=production`, before
+    the first Go release, then proving the release wrapper on a host without
+    Node.
 17. **Opt-in diagnostics.** Replace ad hoc console logging with an explicit
     Client/Server debug option and bounded diagnostic export. Include revision,
     runtime state and sanitized capture/connection events; exclude credentials,
     media and raw process memory by default. A compressed feedback bundle needs
     deliberate collection and retention, not automatic uploads.
+18. **Remaining audit behavior.** During the owning refactor, reproduce and
+    resolve optional Local-password cookies across HTTP LAN/HTTPS public origins;
+    audio-process failure without stopping healthy video; natural capture EOF
+    attribution; and Native prepared-bridge failure that must disable Native
+    for the current Viewer session before retrying. Storage I/O failure needs
+    an authority-consistent recovery policy, not catch-and-continue guards.
+    The Local duplicate-launch guard is the in-process listener bind itself;
+    it refuses a second Client on the same port and hands nothing over.

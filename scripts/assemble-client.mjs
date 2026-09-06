@@ -25,6 +25,7 @@ import { fileURLToPath } from "node:url";
 import { clientPackageTarget, CLOUDFLARED_VERSION } from "./client-package-targets.mjs";
 import { writeClientPlatformAssets } from "./client-icons.mjs";
 import { writeClientLicenseNotices } from "./package-licenses.mjs";
+import { tarExecutable } from "./archive-tool.mjs";
 
 function fail(message) {
   throw new Error(message);
@@ -131,7 +132,7 @@ function readDescriptor(path) {
 
 function assertOutsideRepository(repositoryRoot, outputRoot) {
   const path = relative(repositoryRoot, outputRoot);
-  if (path === "" || (!path.startsWith("..") && !isAbsolute(path))) {
+  if (path === "" || (path.split(/[\\/]/)[0] !== ".." && !isAbsolute(path))) {
     fail("Client output directory must be outside the repository");
   }
   if (existsSync(outputRoot)) {
@@ -139,11 +140,11 @@ function assertOutsideRepository(repositoryRoot, outputRoot) {
   }
 }
 
-const positional = process.argv.slice(2, 5);
-const options = process.argv.slice(5);
-if (positional.length !== 3 || options.length % 2 !== 0) {
+const positional = process.argv.slice(2, 4);
+const options = process.argv.slice(4);
+if (positional.length !== 2 || options.length % 2 !== 0) {
   fail(
-    "Usage: node scripts/assemble-client.mjs <app-release.json> <node-executable> <new-output-directory> --target <windows-amd64|linux-amd64|darwin-arm64> [--capture <executable>] [--tunnel <executable>]",
+    "Usage: node scripts/assemble-client.mjs <app-release.json> <new-output-directory> --target <windows-amd64|linux-amd64|darwin-arm64> [--capture <executable>] [--tunnel <executable>]",
   );
 }
 
@@ -174,19 +175,10 @@ if (!target) fail("Client package target is invalid");
 
 const repositoryRoot = realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), ".."));
 const descriptorPath = realpathSync(resolve(positional[0]));
-const nodePath = realpathSync(resolve(positional[1]));
-const outputRoot = resolve(process.cwd(), positional[2]);
+const outputRoot = resolve(process.cwd(), positional[1]);
 const capturePath = captureArgument ? realpathSync(resolve(captureArgument)) : null;
 const tunnelPath = tunnelArgument ? realpathSync(resolve(tunnelArgument)) : null;
 assertOutsideRepository(repositoryRoot, outputRoot);
-assertTargetExecutable(nodePath, target, "Node runtime");
-const expectedNodeVersion = `v${readFileSync(
-  join(repositoryRoot, ".node-version"),
-  "ascii",
-).trim()}`;
-if (run(nodePath, ["--version"], repositoryRoot) !== expectedNodeVersion) {
-  fail(`Node runtime must be ${expectedNodeVersion}`);
-}
 if (capturePath && !target.captureName) {
   fail("Capture runtime is invalid for the Client package target");
 }
@@ -208,21 +200,20 @@ if (!existsSync(artifactPath) || sha256(artifactPath) !== descriptor.artifactSha
 
 const temporaryRoot = mkdtempSync(join(tmpdir(), `screener-client-${revision.slice(0, 7)}-`));
 const packageRoot = join(temporaryRoot, "package");
-const appRoot = join(packageRoot, "app");
+const releaseRoot = join(temporaryRoot, "release");
 try {
-  mkdirSync(appRoot, { recursive: true });
-  run("tar", ["-xzf", artifactPath, "-C", appRoot], repositoryRoot);
-  if (readFileSync(join(appRoot, "REVISION"), "ascii") !== `${revision}\n`) {
+  // The application release is consumed for its provenance only: the Client
+  // embeds the Web assets, so the revision, clean-tree and digest assertions
+  // above plus this REVISION check tie the binary to that immutable release.
+  mkdirSync(releaseRoot, { recursive: true });
+  run(tarExecutable(), ["-xzf", artifactPath, "-C", releaseRoot], repositoryRoot);
+  if (readFileSync(join(releaseRoot, "REVISION"), "ascii") !== `${revision}\n`) {
     fail("Extracted application revision does not match the Client");
   }
-  runNpm(["ci", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund"], appRoot);
-
-  const runtimeRoot = join(packageRoot, "runtime", "node");
-  mkdirSync(runtimeRoot, { recursive: true });
-  const nodeName = target.nodeName;
-  const packagedNode = join(runtimeRoot, nodeName);
-  copyFileSync(nodePath, packagedNode);
-  chmodSync(packagedNode, 0o755);
+  // Build the Web assets the Go binary embeds. The checkout is clean and at the
+  // release revision, so this reproduces that release's client.
+  runNpm(["run", "build:client"], repositoryRoot);
+  mkdirSync(packageRoot, { recursive: true });
 
   let packagedCapture = null;
   if (capturePath) {
@@ -250,31 +241,25 @@ try {
     "build",
     "-trimpath",
     "-ldflags",
-    `-s -w -X github.com/TNTcraftHIM/Screener/native/client/internal/clientapp.BuildRevision=${revision}`,
+    `-s -w -X github.com/TNTcraftHIM/Screener/internal/client/clientapp.BuildRevision=${revision}`,
     "-o",
     clientPath,
     "./cmd/screener-client",
-  ], join(repositoryRoot, "native", "client"), {
+  ], repositoryRoot, {
     ...process.env,
     GOOS: target.goos,
     GOARCH: target.goarch,
     CGO_ENABLED: "0",
   });
   chmodSync(clientPath, 0o755);
+  assertTargetExecutable(clientPath, target, "Client executable");
   writeClientLicenseNotices(repositoryRoot, packageRoot, goCommand, target,
     packagedTunnel ? CLOUDFLARED_VERSION : null);
   const platformAssets = writeClientPlatformAssets({
     packageRoot,
     target,
     revision,
-    iconPath: join(
-      repositoryRoot,
-      "native",
-      "client",
-      "cmd",
-      "screener-client",
-      "screener.ico",
-    ),
+    iconPath: join(repositoryRoot, "cmd", "screener-client", "screener.ico"),
   });
   writeFileSync(join(packageRoot, "REVISION"), `${revision}\n`, "ascii");
 
@@ -290,13 +275,11 @@ try {
     platform: target.goos,
     arch: target.goarch,
     client: clientName,
-    node: `runtime/node/${nodeName}`,
     nativeCapture: packagedCapture ? `runtime/native/${target.captureName}` : null,
     publicTunnel: packagedTunnel
       ? `runtime/tunnel/${target.tunnelName}`
       : null,
     platformAssets,
-    app: "app",
   })}\n`);
 } finally {
   rmSync(temporaryRoot, { recursive: true, force: true });

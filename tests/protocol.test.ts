@@ -88,7 +88,7 @@ const qualityEvidence = {
 
 describe("client signaling protocol", () => {
   it("uses the current strict signaling generation", () => {
-    expect(SIGNALING_PROTOCOL).toBe("screener-v20");
+    expect(SIGNALING_PROTOCOL).toBe("screener-v21");
   });
 
   it("keeps signaling challenges strict and sequence-only", () => {
@@ -1244,7 +1244,7 @@ describe("server signaling protocol", () => {
     ).toBe(false);
   });
 
-  function authenticatedMessage(maxViewers: number, viewerPeerIds: string[] = []) {
+  function authenticatedMessage(maxViewers: number) {
     return {
       type: "authenticated",
       protocol: SIGNALING_PROTOCOL,
@@ -1255,7 +1255,16 @@ describe("server signaling protocol", () => {
       endpointMediaCopyCapacity: 2,
       hostOnline: true,
       connectionId: null,
-      viewerPeerIds,
+      mediaMode: "peer-assisted",
+      shareGeneration: "share_generation_12345678",
+      routeRevision: 0,
+      routeAssignment: {
+        upstream: { kind: "none" },
+        childPeerIds: [],
+        sfuPublicationGeneration: null,
+      },
+      qualitySettings,
+      routePolicy: DEFAULT_ROUTE_POLICY,
       codeEntryPolicy: "open",
       viewerPasswordEnabled: false,
       viewerAuthorizationGeneration: "viewer_generation_12345678",
@@ -1276,7 +1285,6 @@ describe("server signaling protocol", () => {
       ...authenticatedMessage(8),
       role: "viewer",
       peerId: "viewer_12345678",
-      viewerPeerIds: [],
     } as Record<string, unknown>;
     delete viewer.viewerPasswordEnabled;
     expect(serverMessageSchema.safeParse(viewer).success).toBe(true);
@@ -1329,26 +1337,6 @@ describe("server signaling protocol", () => {
       }
       expect(serverMessageSchema.safeParse(message).success).toBe(false);
     }
-  });
-
-  it("accepts only a strict peer-waiting notification", () => {
-    expect(
-      serverMessageSchema.safeParse({
-        type: "peer-waiting",
-        peerId: "viewer_12345678",
-      }).success,
-    ).toBe(true);
-    expect(
-      serverMessageSchema.safeParse({
-        type: "peer-waiting",
-        peerId: "viewer_12345678",
-        active: false,
-      }).success,
-    ).toBe(false);
-    expect(
-      serverMessageSchema.safeParse({ type: "peer-waiting", peerId: "short" })
-        .success,
-    ).toBe(false);
   });
 
   it("accepts a strict, unique and bounded Viewer presence snapshot", () => {
@@ -1444,15 +1432,11 @@ describe("server signaling protocol", () => {
         sfuStandbyUrl: "wss://sfu.example.com",
       }).success,
     ).toBe(true);
-    expect(
-      serverMessageSchema.safeParse({
-        ...authenticatedMessage(8),
-        mediaMode: "peer-assisted",
-        routeRevision: 0,
-        routeAssignment: peerAssisted.routeAssignment,
-        qualitySettings,
-      }).success,
-    ).toBe(false);
+    const incomplete = {
+      ...authenticatedMessage(8),
+    } as Record<string, unknown>;
+    delete incomplete.routeAssignment;
+    expect(serverMessageSchema.safeParse(incomplete).success).toBe(false);
     expect(
       serverMessageSchema.safeParse({
         ...peerAssisted,
@@ -1473,18 +1457,11 @@ describe("server signaling protocol", () => {
         qualitySettings: { ...qualitySettings, maxBitrate: 20_000_000 },
       }).success,
     ).toBe(false);
-    expect(
-      serverMessageSchema.safeParse({
-        ...authenticatedMessage(8),
-        qualitySettings,
-      }).success,
-    ).toBe(false);
-    expect(
-      serverMessageSchema.safeParse({
-        ...authenticatedMessage(8),
-        sfuStandbyUrl: "wss://sfu.example.com",
-      }).success,
-    ).toBe(false);
+    const missingMode = {
+      ...authenticatedMessage(8),
+    } as Record<string, unknown>;
+    delete missingMode.mediaMode;
+    expect(serverMessageSchema.safeParse(missingMode).success).toBe(false);
     expect(
       serverMessageSchema.safeParse({
         ...peerAssisted,
@@ -1530,7 +1507,7 @@ describe("server signaling protocol", () => {
     }
   });
 
-  it("keeps hybrid route messages strict and separate from ordinary P2P auth", () => {
+  it("keeps route messages strict alongside the single authenticated mode", () => {
     const assignment = {
       upstream: { kind: "peer", peerId: "parent_12345678" },
       childPeerIds: ["child_12345678", "child_87654321"],
@@ -1629,7 +1606,7 @@ describe("server signaling protocol", () => {
     expect(
       serverMessageSchema.safeParse({
         ...authenticatedMessage(8),
-        routeRevision: 9,
+        routeRevision: MAX_MEDIA_ROUTE_REVISION + 1,
       }).success,
     ).toBe(false);
   });
@@ -1710,24 +1687,4 @@ describe("server signaling protocol", () => {
     },
   );
 
-  it("bounds authenticated viewer rosters independently of configured capacity", () => {
-    const viewerPeerIds = Array.from(
-      { length: MAX_VIEWERS_PER_ROOM_LIMIT },
-      (_, index) => `viewer_${index.toString().padStart(8, "0")}`,
-    );
-
-    expect(
-      serverMessageSchema.safeParse(
-        authenticatedMessage(MAX_VIEWERS_PER_ROOM_LIMIT, viewerPeerIds),
-      ).success,
-    ).toBe(true);
-    expect(
-      serverMessageSchema.safeParse(
-        authenticatedMessage(MAX_VIEWERS_PER_ROOM_LIMIT, [
-          ...viewerPeerIds,
-          "viewer_overflow",
-        ]),
-      ).success,
-    ).toBe(false);
-  });
 });

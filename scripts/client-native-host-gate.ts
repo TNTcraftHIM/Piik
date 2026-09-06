@@ -16,6 +16,7 @@ import {
   cleanupRun,
   createPage,
   evaluate,
+  launchChrome,
   reservePort,
   type PageHandle,
   waitForVersion,
@@ -411,16 +412,14 @@ export async function startSourceBrowser(
   child: ChildProcessWithoutNullStreams;
   cdp: CdpConnection;
 }> {
-  const child = spawn(chromePath, [
-    "--remote-debugging-port=" + debugPort,
-    "--user-data-dir=" + profile,
+  const child = launchChrome(chromePath, debugPort, profile, [
     "--no-first-run", "--no-default-browser-check",
     "--disable-extensions", "--disable-logging",
     "--disable-background-timer-throttling",
     "--disable-backgrounding-occluded-windows",
     "--disable-renderer-backgrounding",
     "--app=http://127.0.0.1:" + sourcePort + "/",
-  ], { stdio: "pipe", windowsHide: true });
+  ]);
   child.stdout.resume();
   child.stderr.resume();
   const version = await waitForVersion(debugPort, child);
@@ -547,6 +546,10 @@ async function main(): Promise<void> {
     throw new Error("Cross-NAT and one-link gate modes are mutually exclusive");
   }
   const mode: GateMode = linkMedia ? "one-link" : crossNat ? "cross-nat" : "local";
+  const gateStunUrls = process.env.SCREENER_CLIENT_GATE_STUN_URLS?.trim();
+  if (mode === "cross-nat" && !gateStunUrls) {
+    throw new Error("SCREENER_CLIENT_GATE_STUN_URLS is required for the cross-NAT gate");
+  }
   const crashGate =
     process.env.SCREENER_CLIENT_NATIVE_HOST_CRASH_GATE === "true";
   if (crashGate && mode !== "local") {
@@ -564,7 +567,6 @@ async function main(): Promise<void> {
   const chromePath = process.env.CHROME_PATH?.trim();
   if (!chromePath) throw new Error("CHROME_PATH is required");
   const go = process.env.SCREENER_GO?.trim() || "go";
-  const node = process.env.SCREENER_NODE?.trim() || process.execPath;
   const tunnel = process.env.SCREENER_CLOUDFLARED?.trim() || join(
     BUILD_ROOT,
     "cloudflared.exe",
@@ -634,26 +636,26 @@ async function main(): Promise<void> {
   try {
     stage = "application-build";
     run(process.env.ComSpec || "cmd.exe", [
-      "/d", "/s", "/c", "npm run build",
+      "/d", "/s", "/c", "npm run build:client",
     ]);
     stage = "source-server";
     source = await sourceServer(sourcePort);
     stage = "capture-build";
     run(powershell(), [
       "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
-      join(ROOT, "native", "client", "platform", "windows", "capture", "build.ps1"),
+      join(ROOT, "native", "capture", "windows", "build.ps1"),
       "-OutputDirectory", captureBuild,
     ]);
     stage = "client-build";
     run(go, [
       "build", "-trimpath", "-o", clientBinary, "./cmd/screener-client",
-    ], join(ROOT, "native", "client"));
+    ], ROOT);
     if (remote) {
       stage = "remote-peer-build";
       run(
         go,
         ["build", "-trimpath", "-o", remoteBinary, "./cmd/screener-peer-gate"],
-        join(ROOT, "native", "client"),
+        ROOT,
         { ...process.env, GOOS: "linux", GOARCH: "amd64", CGO_ENABLED: "0" },
       );
     }
@@ -672,8 +674,6 @@ async function main(): Promise<void> {
         ? ["--tunnel-process", tunnel]
         : []),
       "--capture-process", captureBinary,
-      "--node", node,
-      "--app", ROOT,
       "--config", clientConfig,
       "--port", String(appPort),
     ], {
@@ -681,15 +681,12 @@ async function main(): Promise<void> {
       windowsHide: true,
       env: {
         ...process.env,
-        NODE_DEBUG: "screener-route",
-        PEER_ASSISTED_MEDIA: "true",
+        SCREENER_DEBUG: "route",
         SCREENER_CLIENT_GATE_NO_BROWSER: "true",
-        ...(mode === "cross-nat"
-          ? {
-              STUN_URLS:
-                process.env.SCREENER_CLIENT_GATE_STUN_URLS?.trim() ||
-                "stun:share.bonfire.icu:3478",
-            }
+        // STUN_URLS reaches only the Client's own Pion edge: the in-process
+        // room server never reads it, so the cross-NAT arm stays isolated.
+        ...(mode === "cross-nat" && gateStunUrls
+          ? { STUN_URLS: gateStunUrls }
           : {}),
       },
     });
@@ -729,17 +726,14 @@ async function main(): Promise<void> {
       15_000,
     );
     stage = "host-browser";
-    chrome = spawn(chromePath, [
-      "--remote-debugging-port=" + debugPort,
-      "--user-data-dir=" + profile,
+    chrome = launchChrome(chromePath, debugPort, profile, [
       "--no-first-run", "--no-default-browser-check",
       "--disable-extensions", "--disable-logging",
       "--disable-background-timer-throttling",
       "--disable-backgrounding-occluded-windows",
       "--disable-renderer-backgrounding",
       "--window-size=1280,900",
-      "about:blank",
-    ], { stdio: "pipe", windowsHide: true });
+    ]);
     chrome.stdout.resume();
     chrome.stderr.resume();
     stage = "host-cdp";

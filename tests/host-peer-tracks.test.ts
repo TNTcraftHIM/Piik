@@ -5,15 +5,19 @@ import {
   type QualityProfile,
 } from "../src/client/media/quality.ts";
 import { HostProvisionalChild } from "../src/client/media/host-provisional-child.ts";
-import type { PeerSnapshot } from "../src/client/types.ts";
-import { HostPeer } from "../src/client/webrtc/host-peer.ts";
+import { EMPTY_METRICS, type PeerSnapshot } from "../src/client/types.ts";
+import { HostPeer, type HostMediaPeer } from "../src/client/webrtc/host-peer.ts";
 import {
   automaticVideoCodecPreference,
   manualVideoCodecPreference,
   type BrowserVideoCodecPreference,
   VP8_ONLY_VIDEO_CODEC,
 } from "../src/client/webrtc/video-codec.ts";
-import { ViewerRelay } from "../src/client/webrtc/viewer-relay.ts";
+import {
+  ViewerRelay,
+  type ViewerRelayPeerEvents,
+  type ViewerRelayPeerFactory,
+} from "../src/client/webrtc/viewer-relay.ts";
 import { setCopy } from "../src/client/ui/copy.ts";
 import type {
   IceConfig,
@@ -2007,6 +2011,88 @@ describe("ViewerRelay downstream ownership", () => {
     expect(relay.getSnapshot("prepared-child")?.connectionId).toBe(
       preparedConnectionId,
     );
+    relay.dispose();
+  });
+
+  it("binds native relay children so their signalling and snapshots stay owned", async () => {
+    const stubs = new Map<
+      string,
+      { peer: HostMediaPeer; events: ViewerRelayPeerEvents }
+    >();
+    const nativeSnapshot = (peer: HostMediaPeer): PeerSnapshot => ({
+      peerId: peer.peerId,
+      connectionId: peer.connectionId,
+      connectionState: "connected",
+      iceConnectionState: "connected",
+      metrics: { ...EMPTY_METRICS },
+      error: null,
+    });
+    const peerFactory: ViewerRelayPeerFactory = {
+      requiresStream: false,
+      create: (childPeerId, connectionId, events) => {
+        const edgeConnectionId = connectionId ?? `native-${childPeerId}`;
+        const peer: HostMediaPeer = {
+          peerId: childPeerId,
+          connectionId: edgeConnectionId,
+          start: async () =>
+            events.sendSignal(childPeerId, {
+              kind: "description",
+              connectionId: edgeConnectionId,
+              description: { type: "offer", sdp: "native-offer" },
+            }),
+          acceptSignal: async () => undefined,
+          restartIce: async () => true,
+          isConnected: () => true,
+          getSnapshot: () => nativeSnapshot(peer),
+          updateIceConfig: () => undefined,
+          updateProfile: async () => true,
+          updateCaptureProfile: async () => true,
+          setPaused: () => undefined,
+          replaceStream: async () => true,
+          dispose: () => undefined,
+        };
+        stubs.set(childPeerId, { peer, events });
+        return peer;
+      },
+    };
+    const onSenderUpdate = vi.fn();
+    const relay = new ViewerRelay(
+      { iceServers: [] },
+      QUALITY_PROFILES["720p30"],
+      { sendSignal: () => true, onSenderUpdate },
+      2,
+      false,
+      peerFactory,
+    );
+
+    relay.setChildren(["native-a"]);
+    await vi.waitFor(() => expect(stubs.has("native-a")).toBe(true));
+    expect(
+      relay.prepareChild(7, routeCandidate(7, "native-b"), [
+        "native-a",
+        "native-b",
+      ]),
+    ).toBe(true);
+    await vi.waitFor(() => expect(stubs.has("native-b")).toBe(true));
+    const active = stubs.get("native-a")!;
+    const prepared = stubs.get("native-b")!;
+
+    expect(
+      active.events.sendSignal("native-a", {
+        kind: "candidate",
+        connectionId: active.peer.connectionId,
+        candidate: { candidate: "late-candidate" },
+      }),
+    ).toBe(true);
+    prepared.events.onUpdate(nativeSnapshot(prepared.peer));
+    expect(onSenderUpdate).toHaveBeenLastCalledWith(
+      expect.objectContaining({ peerId: "native-b" }),
+      7,
+    );
+
+    relay.activateChildren(7, ["native-a", "native-b"]);
+    prepared.events.onUpdate({ ...nativeSnapshot(prepared.peer), error: "late" });
+    expect(relay.getSnapshot("native-b")?.error).toBe("late");
     relay.dispose();
   });
 

@@ -452,6 +452,7 @@ body.lr-theater-open { overflow: hidden; }
   text-align: center;
 }
 .lr-tv-overlay.is-dim { background: rgba(10, 16, 28, .62); }
+.lr-tv-overlay.is-passive { pointer-events: none; }
 .lr-tv-status-content { display: flex; flex-direction: column; align-items: center; gap: 14px; }
 .lr-tv-progress { display: inline-flex; align-items: center; gap: 6px; }
 .lr-overlay-preview { max-width: 1440px; }
@@ -1033,6 +1034,9 @@ html[data-theme="dark"] .lr-viewer-host-slot svg { color: #9bb0c5; }
   user-select: text;
 }
 html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #33465c; }
+/* Touch only: the compact mono URL would auto-zoom iOS on focus under 16px,
+   and the zoom never returns. Pointer devices keep the dense line. */
+@media (pointer: coarse) { .lr-invite-url { font-size: 16px; } }
 .lr-status-text {
   min-width: 0;
   overflow: hidden;
@@ -1174,7 +1178,9 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
   border: 0;
   border-radius: 11px;
   background: transparent;
-  color: #8aa0b2;
+  /* 68% ink clears AA on both themes (light 4.89:1, dark 5.89:1) while the
+     selected option keeps its stronger contrast. */
+  color: color-mix(in srgb, var(--ink) 68%, var(--paper));
   transition: color 180ms ease;
 }
 .lr-toggle button.is-selected { color: var(--paper); }
@@ -1248,7 +1254,7 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
   transition: border-color 140ms ease;
 }
 .lr-input:focus-within { border-color: var(--action); outline: 3px solid var(--action); outline-offset: 2px; }
-.lr-input input { min-width: 0; flex: 1; height: 100%; border: 0; outline: 0; background: transparent; font: inherit; }
+.lr-input input { min-width: 0; flex: 1; height: 100%; border: 0; outline: 0; background: transparent; font: inherit; font-size: 16px; }
 .lr-input input[type="password"]:not(:placeholder-shown) { letter-spacing: .25em; }
 .lr-input.lr-name-editor {
   width: clamp(140px, 18vw, 200px);
@@ -1628,7 +1634,9 @@ html[data-theme="dark"] .lr-door-glyph { color: #7d92a8; }
 .lr-client-access input {
   min-width: 0;
 }
-.lr-client-launch-panel > .lr-comic-tip-wrap {
+/* Only the wrapped access field spans the panel width; a wrapped pill or
+   button keeps its own size so the grid can center it. */
+.lr-client-launch-panel > .lr-comic-tip-wrap:has(> .lr-client-access) {
   width: min(460px, 100%);
 }
 .lr-client-launch-panel > .lr-comic-tip-wrap > .lr-client-access {
@@ -1858,7 +1866,8 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
   position: absolute;
   z-index: 3;
   left: 50%;
-  bottom: max(18px, env(safe-area-inset-bottom));
+  /* Clear the native <video> control bar underneath (~48px tall). */
+  bottom: max(64px, calc(env(safe-area-inset-bottom) + 48px));
   width: min(92vw, 720px);
   margin: 0;
   transform: translateX(-50%);

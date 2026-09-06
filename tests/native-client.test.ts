@@ -321,5 +321,12 @@ describe("native Client private wire", () => {
     expect(
       nativeEventSchema.safeParse({ ...event, reason: "none" }).success,
     ).toBe(false);
+    expect(
+      nativeEventSchema.safeParse({
+        ...event,
+        state: "unknown",
+        reason: null,
+      }).success,
+    ).toBe(true);
   });
 });

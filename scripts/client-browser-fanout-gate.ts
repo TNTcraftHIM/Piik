@@ -1,16 +1,20 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { createScreenerServer, type ScreenerServer } from "../src/server/app";
-import { createLocalServerConfig } from "../src/server/local-config";
 import {
-  CdpConnection, cleanupRun, createPage, evaluate, reservePort,
+  CdpConnection, cleanupRun, createPage, evaluate, fetchJsonBefore, launchChrome, reservePort,
   waitForSample, waitForVersion, type PageHandle,
 } from "./browser-gate-harness";
 import { decodeClientEndpoint } from "./client-gate-endpoint";
 
 const ROOT = resolve(import.meta.dirname, "..");
+const BUILD_ROOT = join(ROOT, "build/client-check");
+// A documentation-only LAN address: it makes the room server publish a LAN
+// invitation the gate rewrites to its loopback origins, exactly as the packaged
+// Client does on a real network.
+const LAN_ADDRESS = "192.0.2.1";
+
 const initialAudio = process.env.SCREENER_CLIENT_GATE_AUDIO !== "false";
 const probe = String.raw`(() => {
   localStorage.setItem('screener:ui-lang', 'en');
@@ -91,6 +95,54 @@ const probe = String.raw`(() => {
   };
 })()`;
 
+function build(command: string, args: string[]): void {
+  const result = spawnSync(command, args, { cwd: ROOT, encoding: "utf8", windowsHide: true });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error((result.stderr || result.stdout).trim() || command + " failed");
+  }
+}
+
+// startRoomServer builds and starts the Screener server the Browser pages and
+// both Clients share. SCREENER_ENV stays development because production
+// requires an https public origin, a site password and STUN; the Web assets are
+// embedded either way.
+async function startRoomServer(
+  port: number,
+  workingDirectory: string,
+): Promise<ChildProcessWithoutNullStreams> {
+  const go = process.env.SCREENER_GO?.trim() || "go";
+  await mkdir(BUILD_ROOT, { recursive: true });
+  // The server embeds the Vite output, so the Web build precedes the Go build.
+  build(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", "npm run build:client"]);
+  const binary = join(BUILD_ROOT, "screener-server.exe");
+  build(go, ["build", "-trimpath", "-o", binary, "./cmd/screener-server"]);
+  const origins = [`http://localhost:${port}`, `http://127.0.0.1:${port}`, `http://${LAN_ADDRESS}:${port}`];
+  const child = spawn(binary, [], {
+    // The gate profile has no .env, and the environment is explicit: the
+    // configuration this measurement runs against is these five values, never
+    // the repository's development file or the operator's shell.
+    cwd: workingDirectory, stdio: "pipe", windowsHide: true,
+    env: {
+      PATH: process.env.PATH,
+      SystemRoot: process.env.SystemRoot,
+      SCREENER_ENV: "development",
+      PORT: String(port),
+      LISTEN_HOST: "127.0.0.1",
+      PUBLIC_BASE_URL: `http://${LAN_ADDRESS}:${port}`,
+      ALLOWED_ORIGINS: origins.join(","),
+    },
+  });
+  child.stdout.resume();
+  child.stderr.resume();
+  await waitForSample(
+    (deadline) => fetchJsonBefore<{ status: string }>(`http://127.0.0.1:${port}/healthz`, deadline),
+    (value) => value.status === "ok",
+    20000,
+  );
+  return child;
+}
+
 async function main(): Promise<void> {
   if (process.env.SCREENER_CLIENT_BROWSER_FANOUT_GATE !== "true") throw new Error("Browser fanout gate was not enabled");
   const chromePath = process.env.CHROME_PATH;
@@ -102,21 +154,17 @@ async function main(): Promise<void> {
   let relayClient: ChildProcessWithoutNullStreams | null = null;
   let chrome: ChildProcessWithoutNullStreams | null = null;
   let cdp: CdpConnection | null = null;
-  let server: ScreenerServer | null = null;
+  let server: ChildProcessWithoutNullStreams | null = null;
   let clientPort = 0;
   let relayPort = 0;
   const pages: PageHandle[] = [];
   const checks: Record<string, unknown> = {};
   let stage = "startup", error: string | null = null;
   try {
-    server = await createScreenerServer({
-      config: createLocalServerConfig({ port: appPort, publicAddress: "192.0.2.1" }),
-      frontend: { mode: "static", directory: join(ROOT, "dist/client") },
-    });
-    await server.listen(appPort, "127.0.0.1");
-    client = spawn(process.env.SCREENER_CLIENT_EXE || join(ROOT, "build/client-check/screener-client.exe"), [
+    server = await startRoomServer(appPort, profile);
+    client = spawn(process.env.SCREENER_CLIENT_EXE || join(BUILD_ROOT, "screener-client.exe"), [
       "--site", origin, "--config", join(profile, "client.json"),
-      "--capture-process", join(ROOT, "build/client-check/screener-client-capture.exe"),
+      "--capture-process", join(BUILD_ROOT, "screener-client-capture.exe"),
     ], { windowsHide: true, stdio: "pipe", env: { ...process.env, SCREENER_CLIENT_GATE_NO_BROWSER: "true" } });
     client.stderr.resume();
     let output = "";
@@ -125,12 +173,12 @@ async function main(): Promise<void> {
       if (!clientPort && output.includes("\n")) clientPort = decodeClientEndpoint(output.split("\n")[0]!).port;
     });
     await waitForSample(async () => clientPort, (value) => value > 0, 15000);
-    chrome = spawn(chromePath, [
-      `--remote-debugging-port=${debugPort}`, `--user-data-dir=${profile}`, "--headless=new",
+    chrome = launchChrome(chromePath, debugPort, profile, [
+      "--headless=new",
       "--no-first-run", "--no-default-browser-check", "--no-proxy-server",
       "--autoplay-policy=no-user-gesture-required", "--disable-background-timer-throttling",
-      "--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows", "about:blank",
-    ], { windowsHide: true, stdio: "pipe" });
+      "--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows",
+    ]);
     chrome.stdout.resume(); chrome.stderr.resume();
     const version = await waitForVersion(debugPort, chrome);
     checks.browser = version.Browser;
@@ -161,9 +209,9 @@ async function main(): Promise<void> {
     let invite = await evaluate<string>(cdp, host, "document.querySelector('.lr-invite-url').value", Date.now()+5000);
     const url = new URL(invite); url.host = `localhost:${appPort}`; invite = url.toString();
     const relayOrigin = `http://127.0.0.1:${appPort}`;
-    relayClient = spawn(process.env.SCREENER_CLIENT_EXE || join(ROOT,"build/client-check/screener-client.exe"), [
+    relayClient = spawn(process.env.SCREENER_CLIENT_EXE || join(BUILD_ROOT,"screener-client.exe"), [
       "--site", relayOrigin, "--config", join(profile,"relay-client.json"),
-      "--capture-process", join(ROOT,"build/client-check/screener-client-capture.exe"),
+      "--capture-process", join(BUILD_ROOT,"screener-client-capture.exe"),
     ], { windowsHide:true, stdio:"pipe", env:{...process.env,SCREENER_CLIENT_GATE_NO_BROWSER:"true"} });
     relayClient.stderr.resume(); let relayOutput="";
     relayClient.stdout.on("data", (chunk:Buffer) => {
@@ -224,9 +272,9 @@ async function main(): Promise<void> {
     checks.clientExitRecovery = true;
     checks.finalHost = await read(host);
     if ((checks.finalHost as any).errors.length > 0) throw new Error("Browser reported an unhandled media error");
-    await mkdir(join(ROOT,"build/client-check"), {recursive:true});
+    await mkdir(BUILD_ROOT, {recursive:true});
     const screenshot = await cdp.call<{data:string}>("Page.captureScreenshot", {format:"png"}, host.sessionId, Date.now()+5000);
-    await writeFile(join(ROOT,"build/client-check/browser-fanout.png"), Buffer.from(screenshot.data,"base64"));
+    await writeFile(join(BUILD_ROOT,"browser-fanout.png"), Buffer.from(screenshot.data,"base64"));
     await click(host, 'button[aria-label="Stop sharing"]');
     stage = "done";
   } catch (caught) {
@@ -237,8 +285,8 @@ async function main(): Promise<void> {
     const relayCleanup = await cleanupRun({cdp:null,native:relayClient,chrome:null,server:null,profile:null,ports:relayPort?[relayPort]:[]});
     const cleanup = await cleanupRun({cdp, native:client, chrome, server, profile, ports:[appPort,debugPort,...(clientPort?[clientPort]:[])]});
     const result = {passed: error===null && Object.values(cleanup).every(Boolean) && relayCleanup.nativeExited && relayCleanup.portsClosed, stage, checks, error, cleanup};
-    await mkdir(join(ROOT,"build/client-check"),{recursive:true});
-    await writeFile(join(ROOT,"build/client-check/browser-fanout.json"), JSON.stringify(result,null,2));
+    await mkdir(BUILD_ROOT,{recursive:true});
+    await writeFile(join(BUILD_ROOT,"browser-fanout.json"), JSON.stringify(result,null,2));
     process.stdout.write(JSON.stringify(result)+"\n");
     if (!result.passed) process.exitCode=1;
   }

@@ -10,6 +10,14 @@ const pinned = JSON.parse(readFileSync(join(root, "licenses", "upstream.json"), 
 const licenseName = /^(licen[cs]e|copying|notice|copyright|authors)([._-]|$)/i;
 const section = (label, body) => `\n===== ${label} =====\n\n${body.trim()}\n`;
 
+// The packages the Vite bundle ships to the Browser. Nothing installs
+// node_modules at runtime any more, so this list is the notice contract rather
+// than package.json's dependencies field.
+const WEB_BUNDLE_PACKAGES = ["react", "react-dom", "livekit-client", "sdp-transform", "zod"];
+
+// Both binaries embed the Web bundle, which serves its own notice file.
+const WEB_NOTICE_LINE = "Web dependencies: served at /third-party-licenses.txt\n";
+
 function pinnedNotice(key) {
   const entry = pinned[key];
   if (!entry) throw new Error(`Missing pinned license text for ${key}`);
@@ -28,10 +36,8 @@ function noticesIn(directory) {
 
 export function writeWebLicenseNotices(repositoryRoot, outputFile) {
   const packagePath = join(repositoryRoot, "package.json");
-  const pkg = JSON.parse(readFileSync(packagePath, "utf8"));
   const lock = JSON.parse(readFileSync(join(repositoryRoot, "package-lock.json"), "utf8"));
-  const queue = [...Object.keys(pkg.dependencies), "react", "react-dom", "livekit-client", "sdp-transform"]
-    .map((name) => [name, packagePath]);
+  const queue = WEB_BUNDLE_PACKAGES.map((name) => [name, packagePath]);
   const visited = new Set();
   const entries = new Map();
   for (const [name, parent] of queue) {
@@ -61,21 +67,16 @@ export function writeWebLicenseNotices(repositoryRoot, outputFile) {
     [...entries].sort(([a], [b]) => a.localeCompare(b)).map(([, body]) => body).join(""));
 }
 
-export function writeClientLicenseNotices(repositoryRoot, packageRoot, goCommand, target, tunnelVersion) {
-  copyFileSync(join(repositoryRoot, "LICENSE"), join(packageRoot, "LICENSE"));
-  const nodeVersion = readFileSync(join(repositoryRoot, ".node-version"), "ascii").trim();
-  writeFileSync(join(packageRoot, "runtime", "node", "LICENSE"), pinnedNotice(`node@${nodeVersion}`));
-  if (tunnelVersion) {
-    writeFileSync(join(packageRoot, "runtime", "tunnel", "THIRD-PARTY-NOTICES.txt"),
-      pinnedNotice(`cloudflared@${tunnelVersion}`));
-  }
-  const cwd = join(repositoryRoot, "native", "client");
-  const options = { cwd, encoding: "utf8", windowsHide: true,
+// goNotices enumerates the Go toolchain notice and every license file that
+// belongs to a module actually compiled into `command` for `target`. A module
+// without a recognised license filename fails closed.
+function goNotices(repositoryRoot, goCommand, target, command) {
+  const options = { cwd: repositoryRoot, encoding: "utf8", windowsHide: true,
     env: { ...process.env, GOOS: target.goos, GOARCH: target.goarch, CGO_ENABLED: "0" } };
   const runGo = (args) => execFileSync(goCommand, args, options).trim();
   const goroot = runGo(["env", "GOROOT"]);
   const template = '{{if .Module}}{{if not .Module.Main}}[{{printf "%q" .Module.Path}},{{printf "%q" .Module.Version}},{{printf "%q" .Module.Dir}},{{printf "%q" .Dir}}]{{end}}{{end}}';
-  const packages = runGo(["list", "-deps", "-f", template, "./cmd/screener-client"])
+  const packages = runGo(["list", "-deps", "-f", template, command])
     .split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
   const entries = new Map();
   for (const [name, version, directory, packageDirectory] of packages) {
@@ -92,24 +93,57 @@ export function writeClientLicenseNotices(repositoryRoot, packageRoot, goCommand
     }
     entries.set(key, files);
   }
-  let text = "Native Client third-party software notices\n" +
-    "Web and Server dependencies: app/dist/client/third-party-licenses.txt\n" +
-    "Node runtime: runtime/node/LICENSE\n" +
-    (tunnelVersion ? "Cloudflared: runtime/tunnel/THIRD-PARTY-NOTICES.txt\n" : "") +
-    section(runGo(["version"]), readFileSync(join(goroot, "LICENSE"), "utf8"));
-  if (target.goos === "windows" &&
-      existsSync(join(packageRoot, "runtime", "native", target.captureName))) {
-    const dependencies = JSON.parse(readFileSync(join(repositoryRoot, "native", "client",
-      "platform", "windows", "capture", "libvpx-dependencies.json"), "utf8"));
-    const name = `libvpx@${dependencies.libvpx.version}`;
-    text += section(name, pinnedNotice(name));
-  }
-  for (const [name, files] of [...entries].sort(([a], [b]) => a.localeCompare(b))) {
+  const toolchain = section(runGo(["version"]), readFileSync(join(goroot, "LICENSE"), "utf8"));
+  return { toolchain, modules: entries };
+}
+
+function moduleSections(modules) {
+  let text = "";
+  for (const [name, files] of [...modules].sort(([a], [b]) => a.localeCompare(b))) {
     for (const [file, body] of [...files].sort(([a], [b]) => a.localeCompare(b))) {
       text += section(`${name}/${file}`, body);
     }
   }
-  writeFileSync(join(packageRoot, "THIRD-PARTY-NOTICES.txt"), text);
+  return text;
+}
+
+// writeServerLicenseNotices produces the Hosted application release notice file,
+// which ships beside the single screener-server binary.
+export function writeServerLicenseNotices(repositoryRoot, outputFile, goCommand, target) {
+  const notices = goNotices(repositoryRoot, goCommand, target, "./cmd/screener-server");
+  writeFileSync(outputFile, "Screener server third-party software notices\n" +
+    WEB_NOTICE_LINE + notices.toolchain + moduleSections(notices.modules));
+}
+
+export function writeClientLicenseNotices(repositoryRoot, packageRoot, goCommand, target, tunnelVersion) {
+  copyFileSync(join(repositoryRoot, "LICENSE"), join(packageRoot, "LICENSE"));
+  if (tunnelVersion) {
+    writeFileSync(join(packageRoot, "runtime", "tunnel", "THIRD-PARTY-NOTICES.txt"),
+      pinnedNotice(`cloudflared@${tunnelVersion}`));
+  }
+  const notices = goNotices(repositoryRoot, goCommand, target, "./cmd/screener-client");
+  let text = "Native Client third-party software notices\n" +
+    WEB_NOTICE_LINE +
+    (tunnelVersion ? "Cloudflared: runtime/tunnel/THIRD-PARTY-NOTICES.txt\n" : "") +
+    notices.toolchain;
+  const linuxCapture = target.goos === "linux" && target.captureName &&
+    existsSync(join(packageRoot, "runtime", "native", target.captureName));
+  if (linuxCapture) {
+    text += section("Linux system dependencies (not bundled)",
+      readFileSync(join(repositoryRoot, "licenses", "linux-system-dependencies.txt"), "utf8"));
+    text += section("LGPL-3.0-only (libportal)",
+      readFileSync(join(repositoryRoot, "licenses", "LGPL-3.0.txt"), "utf8"));
+    text += section("GPL-3.0 (libportal terms)",
+      readFileSync(join(repositoryRoot, "licenses", "GPL-3.0.txt"), "utf8"));
+  }
+  if (target.goos === "windows" &&
+      existsSync(join(packageRoot, "runtime", "native", target.captureName))) {
+    const dependencies = JSON.parse(readFileSync(join(repositoryRoot, "native", "capture",
+      "windows", "libvpx-dependencies.json"), "utf8"));
+    const name = `libvpx@${dependencies.libvpx.version}`;
+    text += section(name, pinnedNotice(name));
+  }
+  writeFileSync(join(packageRoot, "THIRD-PARTY-NOTICES.txt"), text + moduleSections(notices.modules));
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

@@ -512,6 +512,7 @@ export function HostPage({
     setNoticeComic(comic);
   }
   const [copied, setCopied] = useState(false);
+  const copiedResetTimerRef = useRef<number | null>(null);
   const [switchingSource, setSwitchingSource] = useState(false);
   const [changingQuality, setChangingQuality] = useState(false);
   const [sharingPaused, setSharingPaused] = useState(false);
@@ -531,6 +532,13 @@ export function HostPage({
   const signalRef = useRef<SignalingClient | null>(null);
   const displayNameRef = useRef(displayName);
   const hostClientIdRef = useRef<string | null>(null);
+  // Share start awaits capture, codec probe and room creation; the host can
+  // switch expression mode meanwhile, so the name is derived from the current
+  // mode rather than the render that began the start.
+  const visRef = useRef(vis);
+  useEffect(() => {
+    visRef.current = vis;
+  }, [vis]);
   useEffect(() => {
     if (hasCustomDisplayName) return;
     const fallback = defaultHostDisplayName(
@@ -556,7 +564,6 @@ export function HostPage({
     new Map<string, number>(),
   );
   const viewerQualityEvidenceRenderFrameRef = useRef<number | null>(null);
-  const peerAssistedRef = useRef(false);
   const activeRouteRevisionRef = useRef(0);
   const generationRef = useRef(0);
   const activeGenerationRef = useRef<number | null>(null);
@@ -692,6 +699,10 @@ export function HostPage({
       activeHostChildPeerIdsRef.current = [];
       endpointMediaCopyCapacityRef.current = MAX_ENDPOINT_MEDIA_CHILDREN;
       hostPeerIdRef.current = null;
+      if (copiedResetTimerRef.current !== null) {
+        window.clearTimeout(copiedResetTimerRef.current);
+        copiedResetTimerRef.current = null;
+      }
       viewerQualityEvidenceTimersRef.current.forEach((timer) =>
         window.clearTimeout(timer),
       );
@@ -807,14 +818,6 @@ export function HostPage({
     return route;
   }
 
-  function clearHostSfuRoute(): void {
-    const route = hostSfuRouteRef.current;
-    hostSfuRouteRef.current = null;
-    setHostSfuQualityWarning(null);
-    sfuStandbyPrewarmerRef.current?.setUrl(null);
-    void route?.disconnect();
-  }
-
   function setSfuStandbyUrl(url: string | null | undefined): void {
     if (!url) {
       sfuStandbyPrewarmerRef.current?.setUrl(null);
@@ -878,7 +881,6 @@ export function HostPage({
     streamRef.current = null;
     retiringStreamRef.current = null;
     iceConfigRef.current = null;
-    peerAssistedRef.current = false;
     setStream(null);
     setDetails(null);
     setMaxViewers(null);
@@ -943,6 +945,9 @@ export function HostPage({
   function endSharing(
     message: string | { key: CopyKey; vars?: Record<string, string> },
     notifyServer = true,
+    // Involuntary endings keep the failure tone: the notice pill reads its
+    // icon/tone from the comic, so a bare key would render as green success.
+    comic: ComicKind | null = null,
   ): void {
     const generation = activeGenerationRef.current;
     if (generation === null || generationRef.current !== generation) {
@@ -955,11 +960,12 @@ export function HostPage({
       writePreferredRoom(currentRoom.roomId);
     }
     disposeResources(notifyServer);
-    if (typeof message === "string") {
-      setNotice(message);
-    } else {
-      setNoticeKey(message.key, message.vars);
-    }
+    setNoticeValue(
+      typeof message === "string"
+        ? { kind: "text", text: message }
+        : { kind: "key", key: message.key, vars: message.vars },
+    );
+    setNoticeComic(comic);
     setPhase("ended");
   }
 
@@ -1038,7 +1044,10 @@ export function HostPage({
           }
         }
         if (forgetRoom(activeRoom)) {
-          endSharing({ key: "host.roomInvalid" }, false);
+          // endSharing already stated the recovery path; the raw room error
+          // would only overwrite it with the same 404 in server wording.
+          endSharing({ key: "host.roomInvalid" }, false, "warning");
+          return;
         }
       }
       setNoticeError(error, "room");
@@ -1167,10 +1176,7 @@ export function HostPage({
       activeRouteRevisionRef.current,
       directSnapshot,
     );
-    if (
-      !evidenceSource ||
-      (evidenceSource === "peer-relayed" && !peerAssistedRef.current)
-    ) {
+    if (!evidenceSource) {
       return;
     }
     commitViewerQualityEvidence(
@@ -1231,7 +1237,7 @@ export function HostPage({
             nativeMediaBridgeRef.current === bridge &&
             isCurrentShare(generation, shareGeneration)
           ) {
-            endSharing({ key: "host.shareEnded" });
+            endSharing({ key: "host.shareEnded" }, true, "warning");
           }
         },
         started.audio,
@@ -1250,9 +1256,11 @@ export function HostPage({
           isCurrentShare(generation, shareGeneration) &&
           nativeClientRef.current === client
         ) {
-          endSharing({
-            key: event.failed ? "host.shareEnded" : "host.stopNotice",
-          });
+          endSharing(
+            { key: event.failed ? "host.shareEnded" : "host.stopNotice" },
+            true,
+            event.failed ? "warning" : null,
+          );
         }
       });
       nativeEventCleanupRef.current = nativeEventCleanup;
@@ -1293,7 +1301,7 @@ export function HostPage({
       if (nativeMediaIngressRef.current) {
         recoverBrowserFanout(nativeMediaIngressRef.current);
       } else if (nativeModeRef.current && activeGenerationRef.current !== null) {
-        endSharing({ key: "host.shareEnded" });
+        endSharing({ key: "host.shareEnded" }, true, "warning");
       }
     });
   }
@@ -1640,9 +1648,7 @@ export function HostPage({
       } else if (captureChanged) {
         setDetails(captureDetails(activeStream));
       }
-      if (peerAssistedRef.current) {
-        signalRef.current?.setHostQualitySettings(appliedProfile);
-      }
+      signalRef.current?.setHostQualitySettings(appliedProfile);
       const activeSfuRoute = hostSfuRouteRef.current;
       const [results, sfuUpdated] = await Promise.all([
         Promise.all(
@@ -1732,9 +1738,13 @@ export function HostPage({
         .setPaused(nativeShareGeneration, nextPaused)
         .then(() => {
           if (!isCurrentGeneration(generation)) return;
-          if (signalRef.current?.setSharingPaused(nextPaused) !== true) {
-            void nativeClient.setPaused(nativeShareGeneration, !nextPaused);
-            setNoticeKey("host.pause.signalRecovering");
+          const sent = signalRef.current?.setSharingPaused(nextPaused) === true;
+          if (!sent && !nextPaused) {
+            // Mirror the Browser branch: a resume the server did not hear
+            // rolls back to paused and restores the wire intent.
+            void nativeClient.setPaused(nativeShareGeneration, true);
+            signalRef.current?.confirmSharingPaused();
+            setNoticeErrorKey("host.pause.signalRecovering");
             return;
           }
           if (activeStream) {
@@ -1747,7 +1757,11 @@ export function HostPage({
           hostSfuRouteRef.current?.setPaused(nextPaused);
           sharingPausedRef.current = nextPaused;
           setSharingPaused(nextPaused);
-          setNoticeKey(nextPaused ? "host.pauseNotice" : "host.resumeNotice");
+          if (!sent) {
+            setNoticeErrorKey("host.pause.signalRecovering");
+          } else {
+            setNoticeKey(nextPaused ? "host.pauseNotice" : "host.resumeNotice");
+          }
         })
         .catch((error: unknown) => {
           if (isCurrentGeneration(generation)) {
@@ -1761,7 +1775,7 @@ export function HostPage({
     }
     if (sharingPausedRef.current) {
       if (!setMediaPaused(activeStream, false)) {
-        setNoticeKey("host.pause.noTracksResume");
+        setNoticeErrorKey("host.pause.noTracksResume");
         return;
       }
       nativeMediaIngressRef.current?.setPaused(false);
@@ -1775,7 +1789,7 @@ export function HostPage({
         hostProvisionalChildRef.current?.setPaused(true);
         hostSfuRouteRef.current?.setPaused(true);
         signalRef.current?.confirmSharingPaused();
-        setNoticeKey("host.pause.signalRecovering");
+        setNoticeErrorKey("host.pause.signalRecovering");
         return;
       }
       sharingPausedRef.current = false;
@@ -1784,7 +1798,7 @@ export function HostPage({
       return;
     }
     if (!setMediaPaused(activeStream, true)) {
-      setNoticeKey("host.pause.noTracksPause");
+      setNoticeErrorKey("host.pause.noTracksPause");
       return;
     }
     nativeMediaIngressRef.current?.setPaused(true);
@@ -1797,7 +1811,7 @@ export function HostPage({
     if (signalRef.current?.setSharingPaused(true) === true) {
       setNoticeKey("host.pauseNotice");
     } else {
-      setNoticeKey("host.pause.signalRecovering");
+      setNoticeErrorKey("host.pause.signalRecovering");
     }
   }
 
@@ -1963,7 +1977,6 @@ export function HostPage({
   async function startPeer(
     peerId: string,
     generation: number,
-    attempt = 0,
   ): Promise<void> {
     if (!isCurrentGeneration(generation) || !hostChildIsAssigned(peerId)) {
       return;
@@ -2052,31 +2065,8 @@ export function HostPage({
     }
 
     const connectionId = peer.connectionId;
-    if (peerAssistedRef.current || attempt >= 1) {
-      reportHostChildFailure(peerId, connectionId, generation);
-      removePeer(peerId);
-      return;
-    }
+    reportHostChildFailure(peerId, connectionId, generation);
     removePeer(peerId);
-    window.setTimeout(() => {
-      if (
-        isCurrentGeneration(generation) &&
-        !peerAssistedRef.current &&
-        hostChildIsAssigned(peerId) &&
-        !peersRef.current.has(peerId)
-      ) {
-        void startPeer(peerId, generation, attempt + 1).catch(
-          (error: unknown) => {
-            if (
-              isCurrentGeneration(generation) &&
-              hostChildIsAssigned(peerId)
-            ) {
-              setNoticeError(error, "connection");
-            }
-          },
-        );
-      }
-    }, 500);
   }
 
   async function recoverPeer(
@@ -2148,7 +2138,6 @@ export function HostPage({
   ): boolean {
     return Boolean(
       isCurrentGeneration(generation) &&
-        peerAssistedRef.current &&
         hostChildIsAssigned(peerId) &&
         signalRef.current?.send({
           type: "route-failed",
@@ -2199,49 +2188,38 @@ export function HostPage({
           message.codeEntryPolicy,
         ),
       );
-      if (
-        "mediaMode" in message &&
-        message.mediaMode === "peer-assisted"
-      ) {
-        const currentQualitySettings =
-          pendingQualitySettings ?? message.qualitySettings;
-        activeRouteRevisionRef.current = message.routeRevision;
-        peerAssistedRef.current = true;
-        if (reauthenticated) {
-          commitQuality(currentQualitySettings);
-          const endpointUpdates = [
-            ...[...peersRef.current.values()].map((peer) =>
-              peer.updateProfile(currentQualitySettings),
-            ),
-            ...(hostProvisionalChildRef.current
-              ? [
-                  hostProvisionalChildRef.current.updateProfile(
-                    currentQualitySettings,
-                  ),
-                ]
-              : []),
-          ];
-          void Promise.allSettled(endpointUpdates);
-        }
-        const route = ensureHostSfuRoute(generation);
-        void route
-          .resyncAuthoritative({
-            revision: message.routeRevision,
-            phase: "active",
-            assignment: message.routeAssignment,
-          })
-          .then(async () => {
-            if (reauthenticated && hostSfuRouteRef.current === route) {
-              await route.updateProfile(currentQualitySettings);
-            }
-            syncHostSfuQualityWarning(route, generation);
-          });
-        return;
+      const currentQualitySettings =
+        pendingQualitySettings ?? message.qualitySettings;
+      activeRouteRevisionRef.current = message.routeRevision;
+      if (reauthenticated) {
+        commitQuality(currentQualitySettings);
+        const endpointUpdates = [
+          ...[...peersRef.current.values()].map((peer) =>
+            peer.updateProfile(currentQualitySettings),
+          ),
+          ...(hostProvisionalChildRef.current
+            ? [
+                hostProvisionalChildRef.current.updateProfile(
+                  currentQualitySettings,
+                ),
+              ]
+            : []),
+        ];
+        void Promise.allSettled(endpointUpdates);
       }
-      activeRouteRevisionRef.current = 0;
-      peerAssistedRef.current = false;
-      clearHostSfuRoute();
-      reconcileHostChildren(message.viewerPeerIds, generation);
+      const route = ensureHostSfuRoute(generation);
+      void route
+        .resyncAuthoritative({
+          revision: message.routeRevision,
+          phase: "active",
+          assignment: message.routeAssignment,
+        })
+        .then(async () => {
+          if (reauthenticated && hostSfuRouteRef.current === route) {
+            await route.updateProfile(currentQualitySettings);
+          }
+          syncHostSfuQualityWarning(route, generation);
+        });
       return;
     }
     if (message.type === "viewer-presence") {
@@ -2271,36 +2249,34 @@ export function HostPage({
       sharingPausedRef.current = true;
       setSharingPaused(true);
       signalRef.current?.confirmSharingPaused();
-      setNoticeKey("host.pause.stillPaused");
+      setNoticeErrorKey("host.pause.stillPaused");
       return;
     }
     if (message.type === "route-update") {
-      if (peerAssistedRef.current) {
-        const route = ensureHostSfuRoute(generation);
-        const accepted = route.accept(message);
-        if (accepted === "stale") return;
-        if (message.phase === "prepare") {
-          if (message.candidate.transport === "direct") {
-            prepareHostChild(
-              message.revision,
-              message.assignment,
-              message.candidate,
-              generation,
-            );
-          } else {
-            discardPreparedHostChild();
-          }
+      const route = ensureHostSfuRoute(generation);
+      const accepted = route.accept(message);
+      if (accepted === "stale") return;
+      if (message.phase === "prepare") {
+        if (message.candidate.transport === "direct") {
+          prepareHostChild(
+            message.revision,
+            message.assignment,
+            message.candidate,
+            generation,
+          );
         } else {
-          activatePreparedHostChild(message.revision, message.assignment);
+          discardPreparedHostChild();
         }
-        if (
-          message.phase === "active" &&
-          message.revision !== activeRouteRevisionRef.current
-        ) {
-          activeRouteRevisionRef.current = message.revision;
-        }
-        syncHostSfuQualityWarning(route, generation);
+      } else {
+        activatePreparedHostChild(message.revision, message.assignment);
       }
+      if (
+        message.phase === "active" &&
+        message.revision !== activeRouteRevisionRef.current
+      ) {
+        activeRouteRevisionRef.current = message.revision;
+      }
+      syncHostSfuQualityWarning(route, generation);
       return;
     }
     if (message.type === "viewer-quality-evidence") {
@@ -2308,45 +2284,10 @@ export function HostPage({
       return;
     }
     if (message.type === "sfu-config") {
-      if (peerAssistedRef.current) {
-        const route = ensureHostSfuRoute(generation);
-        void route
-          .acceptConfig(message)
-          .then(() => syncHostSfuQualityWarning(route, generation));
-      }
-      return;
-    }
-    if (message.type === "peer-joined") {
-      if (peerAssistedRef.current) {
-        return;
-      }
-      reconcileHostChildren(
-        [...activeHostChildPeerIdsRef.current, message.peerId],
-        generation,
-      );
-      return;
-    }
-    if (message.type === "peer-waiting") {
-      if (!peerAssistedRef.current) {
-        reconcileHostChildren(
-          activeHostChildPeerIdsRef.current.filter(
-            (peerId) => peerId !== message.peerId,
-          ),
-          generation,
-        );
-      }
-      return;
-    }
-    if (message.type === "peer-left") {
-      if (peerAssistedRef.current) {
-        return;
-      }
-      reconcileHostChildren(
-        activeHostChildPeerIdsRef.current.filter(
-          (peerId) => peerId !== message.peerId,
-        ),
-        generation,
-      );
+      const route = ensureHostSfuRoute(generation);
+      void route
+        .acceptConfig(message)
+        .then(() => syncHostSfuQualityWarning(route, generation));
       return;
     }
     if (message.type === "signal") {
@@ -2381,6 +2322,7 @@ export function HostPage({
       endSharing(
         message.reason === "expired" ? say("host.roomExpired") : say("host.roomClosed"),
         false,
+        "warning",
       );
       return;
     }
@@ -2389,14 +2331,14 @@ export function HostPage({
         if (!forgetRoom(activeRoom)) {
           return;
         }
-        endSharing({ key: "host.roomInvalid" }, false);
+        endSharing({ key: "host.roomInvalid" }, false, "warning");
         return;
       }
       if (message.code === "AUTH_REQUIRED") {
         return;
       }
       if (message.code === "HOST_ALREADY_CONNECTED") {
-        endSharing(hostServerErrorNotice(message.code), false);
+        endSharing(hostServerErrorNotice(message.code), false, "warning");
         return;
       }
       setNotice(hostServerErrorNotice(message.code), "warning");
@@ -2513,7 +2455,7 @@ export function HostPage({
         let authenticated = false;
         const hostClientId = getStableClientId("host", activeRoom.roomId);
         hostClientIdRef.current = hostClientId;
-        const hostFallback = defaultHostDisplayName(hostClientId, vis);
+        const hostFallback = defaultHostDisplayName(hostClientId, visRef.current);
         const initialDisplayName = readDisplayName(hostFallback);
         displayNameRef.current = initialDisplayName;
         setDisplayName(initialDisplayName);
@@ -2546,7 +2488,7 @@ export function HostPage({
                 isCurrentShare(generation, shareGeneration) &&
                 signalRef.current === signal
               ) {
-                endSharing({ key: hostTerminationKey(reason) }, false);
+                endSharing({ key: hostTerminationKey(reason) }, false, "warning");
               }
             },
             onAccessRequired: () => {
@@ -2554,7 +2496,7 @@ export function HostPage({
                 isCurrentShare(generation, shareGeneration) &&
                 signalRef.current === signal
               ) {
-                endSharing({ key: "gate.expired" }, false);
+                endSharing({ key: "gate.expired" }, false, "warning");
                 onAuthorizationRequired?.();
               }
             },
@@ -2953,11 +2895,17 @@ export function HostPage({
     try {
       await navigator.clipboard.writeText(inviteUrl);
       setCopied(true);
-      window.setTimeout(() => {
+      // One owner for the confirmation window: a second copy restarts it
+      // instead of inheriting the first click's expiry.
+      if (copiedResetTimerRef.current !== null) {
+        window.clearTimeout(copiedResetTimerRef.current);
+      }
+      copiedResetTimerRef.current = window.setTimeout(() => {
+        copiedResetTimerRef.current = null;
         setCopied(false);
       }, 1_500);
     } catch {
-      setNoticeKey("host.invite.copyFailed");
+      setNoticeErrorKey("host.invite.copyFailed");
     }
   }
 
@@ -3083,7 +3031,7 @@ export function HostPage({
       password !== null &&
       !viewerPasswordSchema.safeParse(password).success
     ) {
-      setNoticeKey("host.password.rule", {
+      setNoticeErrorKey("host.password.rule", "warning", {
         max: String(MAX_VIEWER_PASSWORD_LENGTH),
       });
       return;
@@ -3151,7 +3099,7 @@ export function HostPage({
     setEditingDisplayName(false);
     setHasCustomDisplayName(readStoredDisplayName() !== null);
     if (!signalRef.current?.setDisplayName(saved)) {
-      setNoticeKey("host.nameOffline");
+      setNoticeErrorKey("host.nameOffline");
     }
   }
 
@@ -3167,6 +3115,9 @@ export function HostPage({
 
   const activeCodeEntryPolicy = room?.codeEntryPolicy ?? null;
   const hostPeerId = hostPresence?.peerId ?? hostPeerIdRef.current;
+  // One identity for the Host body everywhere (couch, name tag, topology) so
+  // the pawn is not recoloured per surface while the peer id is still pending.
+  const hostIdentity = hostPeerId ?? hostClientIdRef.current ?? "host-pending";
 
   const couchEntries: CouchEntry[] = viewers.map((viewer) => {
     const snapshot =
@@ -3292,7 +3243,7 @@ export function HostPage({
         })
       : phase === "starting"
         ? `${t("host.starting")}…`
-        : phase === "ended" && room
+        : phase === "ended"
           ? t("host.ended")
           : room
             ? t("host.roomReady")
@@ -3409,7 +3360,7 @@ export function HostPage({
                     <p>{t("host.idle.hint")}</p>
                   </div>
                 )}
-                {phase === "ended" && room && !vis ? (
+                {phase === "ended" && !vis ? (
                   <span className="lr-tv-msg">{t("host.ended")}</span>
                 ) : null}
                 <div className="lr-entry-actions">
@@ -3525,7 +3476,9 @@ export function HostPage({
                 ) : null}
               </div>
             ) : null}
-            {switchingSource ? (
+            {/* The picker owns the stage while it is open: a state overlay
+                painted after it would cover and swallow its controls. */}
+            {nativeSources ? null : switchingSource ? (
               <StageOverlay
                 icon="refresh"
                 spin
@@ -3556,8 +3509,8 @@ export function HostPage({
           <div className="lr-shelf" aria-hidden="true" />
           <Couch
             host={{
-              key: hostPeerId ?? hostClientIdRef.current ?? "host-local",
-              name: hostPresence?.displayName ?? displayName,
+              key: hostIdentity,
+              name: labeledHostPresence?.label ?? displayName,
               you: true,
               selected:
                 hostDiagnosticsAvailable &&
@@ -3692,10 +3645,8 @@ export function HostPage({
                 ) : (
                   <>
                     <NameTag
-                      name={hostPresence?.displayName ?? displayName}
-                      identity={
-                        hostPeerId ?? hostClientIdRef.current ?? "host-pending"
-                      }
+                      name={labeledHostPresence?.label ?? displayName}
+                      identity={hostIdentity}
                     />
                     {hintWrap(
                       "hint-rename",
@@ -3954,6 +3905,7 @@ export function HostPage({
             <Row sub>
               <RouteTree
                 hostPeerId={hostPeerId}
+                hostIdentity={hostIdentity}
                 hostLabel={labeledHostPresence?.label ?? displayName}
                 viewers={viewers}
                 selectedPeerId={selectedPawn}

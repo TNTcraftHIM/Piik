@@ -9,10 +9,15 @@ import {
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { CLIENT_PACKAGE_TARGETS } from "./client-package-targets.mjs";
+import { CLIENT_PACKAGE_TARGETS, clientPackageTarget } from "./client-package-targets.mjs";
+
+// Every Go command embeds the Vite output, so the build, vet and test steps all
+// fail without it. The Hosted binary is cross-built for its deployment target.
+const CLIENT_INDEX = join("internal", "server", "webassets", "dist", "index.html");
+const SERVER_TARGET = clientPackageTarget("linux-amd64");
 
 const root = realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), ".."));
-const clientRoot = join(root, "native", "client");
+const captureRoot = join(root, "native", "capture");
 const mode = process.argv[2] ?? "--all";
 
 if (!["--all", "--core", "--capture-only"].includes(mode)) {
@@ -36,54 +41,65 @@ function run(command, args, options = {}) {
   return options.capture ? result.stdout.trim() : "";
 }
 
+function buildWebAssets() {
+  if (existsSync(join(root, CLIENT_INDEX))) return;
+  if (process.platform === "win32") {
+    run(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", "npm run build:client"]);
+    return;
+  }
+  run("npm", ["run", "build:client"]);
+}
+
 function checkCore() {
+  buildWebAssets();
   const go = process.env.SCREENER_GO?.trim() || "go";
-  const goRoot = run(go, ["env", "GOROOT"], { cwd: clientRoot, capture: true });
+  const goRoot = run(go, ["env", "GOROOT"], { capture: true });
   const gofmt = process.env.SCREENER_GOFMT?.trim() ||
     join(goRoot, "bin", process.platform === "win32" ? "gofmt.exe" : "gofmt");
-  const unformatted = run(gofmt, ["-l", "."], { cwd: clientRoot, capture: true });
+  const unformatted = run(gofmt, ["-l", "."], { capture: true });
   if (unformatted) {
     throw new Error(`Go source is not formatted:\n${unformatted}`);
   }
   runClientTests(go);
-  run(go, ["vet", "./..."], { cwd: clientRoot });
+  run(go, ["vet", "./..."]);
 
   const buildRoot = join(root, "build", "client-check");
   mkdirSync(buildRoot, { recursive: true });
-  for (const target of CLIENT_PACKAGE_TARGETS) {
-    for (const command of ["screener-client", "screener-peer-gate"]) {
-      const outputName = target.goos === "windows"
-        ? `${command}.exe`
-        : `${command}-${target.id}`;
-      run(go, ["build", "-trimpath", "-o", join(buildRoot, outputName), `./cmd/${command}`], {
-        cwd: clientRoot,
-        env: {
-          ...process.env,
-          GOOS: target.goos,
-          GOARCH: target.goarch,
-          CGO_ENABLED: "0",
-        },
-      });
-    }
+  const builds = CLIENT_PACKAGE_TARGETS.flatMap((target) =>
+    ["screener-client", "screener-peer-gate"].map((command) => ({ target, command })),
+  );
+  builds.push({ target: SERVER_TARGET, command: "screener-server" });
+  for (const { target, command } of builds) {
+    const outputName = target.goos === "windows"
+      ? `${command}.exe`
+      : `${command}-${target.id}`;
+    run(go, ["build", "-trimpath", "-o", join(buildRoot, outputName), `./cmd/${command}`], {
+      env: {
+        ...process.env,
+        GOOS: target.goos,
+        GOARCH: target.goarch,
+        CGO_ENABLED: "0",
+      },
+    });
   }
 }
 
 function runClientTests(go) {
   if (process.platform !== "win32") {
-    run(go, ["test", "./..."], { cwd: clientRoot });
+    run(go, ["test", "./..."]);
     return;
   }
 
   // Windows associates its listen prompt with the test executable path. Keep
   // the one UDP integration package at a stable path so repeated checks do not
   // create a new firewall rule for every Go build directory.
-  const packages = run(go, ["list", "./..."], { cwd: clientRoot, capture: true })
+  const packages = run(go, ["list", "./..."], { capture: true })
     .split(/\r?\n/)
     .map((value) => value.trim())
     .filter(Boolean);
   const stableNetworkPackages = [
     {
-      package: "github.com/TNTcraftHIM/Screener/native/client/internal/mediaedge",
+      package: "github.com/TNTcraftHIM/Screener/internal/client/mediaedge",
       binary: "mediaedge.test.exe",
     },
   ];
@@ -92,16 +108,14 @@ function runClientTests(go) {
   );
   const otherPackages = packages.filter((value) => !stablePackageNames.has(value));
   if (otherPackages.length > 0) {
-    run(go, ["test", ...otherPackages], { cwd: clientRoot });
+    run(go, ["test", ...otherPackages]);
   }
   const stableRoot = join(root, "build", "client-check");
   mkdirSync(stableRoot, { recursive: true });
   for (const entry of stableNetworkPackages) {
     const binary = join(stableRoot, entry.binary);
-    run(go, ["test", "-c", "-o", binary, entry.package], {
-      cwd: clientRoot,
-    });
-    run(binary, ["-test.v"], { cwd: clientRoot });
+    run(go, ["test", "-c", "-o", binary, entry.package]);
+    run(binary, ["-test.v"]);
   }
 }
 
@@ -138,23 +152,17 @@ function checkPlatformCapture() {
       "-ExecutionPolicy",
       "Bypass",
       "-File",
-      join(clientRoot, "platform", "windows", "capture", "build.ps1"),
+      join(captureRoot, "windows", "build.ps1"),
       "-OutputDirectory",
       buildRoot,
       "-Check",
     ]);
     executable = join(buildRoot, "screener-client-capture.exe");
   } else if (process.platform === "darwin") {
-    run("sh", [
-      join(clientRoot, "platform", "darwin", "capture", "build.sh"),
-      buildRoot,
-    ]);
+    run("sh", [join(captureRoot, "darwin", "build.sh"), buildRoot]);
     executable = join(buildRoot, "screener-client-capture");
   } else {
-    run("sh", [
-      join(clientRoot, "platform", "linux", "capture", "build.sh"),
-      buildRoot,
-    ]);
+    run("sh", [join(captureRoot, "linux", "build.sh"), buildRoot]);
     executable = join(buildRoot, "screener-client-capture");
   }
   if (!existsSync(executable)) {

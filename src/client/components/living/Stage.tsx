@@ -135,7 +135,9 @@ export function StageOverlay({
   }
   return (
     <div
-      className={`lr-tv-overlay${dim ? " is-dim" : ""}${vis && comic ? " has-comic" : ""}`}
+      // Passive state layer: it must not intercept clicks meant for the
+      // native <video> controls it covers (it owns no controls itself).
+      className={`lr-tv-overlay is-passive${dim ? " is-dim" : ""}${vis && comic ? " has-comic" : ""}`}
       role="status"
       aria-label={message}
     >

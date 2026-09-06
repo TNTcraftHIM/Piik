@@ -109,6 +109,7 @@ export type ViewerPresentationAction =
       revision: number;
       phase: "prepare" | "active";
       kind: ViewerRouteKind;
+      authoritative?: boolean;
     }
   | {
       type: "route-status";
@@ -193,7 +194,11 @@ export function reduceViewerPresentation(
       return { ...state, host: action.host };
     }
     case "route": {
-      if (state.revision !== null && action.revision < state.revision) {
+      if (
+        !action.authoritative &&
+        state.revision !== null &&
+        action.revision < state.revision
+      ) {
         return state;
       }
       const revisionChanged = state.revision !== action.revision;
@@ -208,19 +213,24 @@ export function reduceViewerPresentation(
           phase: action.phase,
           kind: action.kind,
         },
-        routeStatus:
-          !committedRoute && state.routeStatus?.revision === action.revision
+        routeStatus: action.authoritative
+          ? null
+          : !committedRoute && state.routeStatus?.revision === action.revision
             ? state.routeStatus
             : null,
-        connection: reactivatingTerminalRoute
-          ? state.media
-            ? "reconnecting"
+        connection: action.authoritative && state.media === null
+          ? action.kind === "none"
+            ? "idle"
             : "connecting"
-          : revisionChanged && state.media === null
-            ? action.kind === "none"
-              ? "idle"
+          : reactivatingTerminalRoute
+            ? state.media
+              ? "reconnecting"
               : "connecting"
-            : state.connection,
+            : revisionChanged && state.media === null
+              ? action.kind === "none"
+                ? "idle"
+                : "connecting"
+              : state.connection,
       };
     }
     case "route-status": {

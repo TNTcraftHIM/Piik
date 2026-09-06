@@ -1,14 +1,14 @@
 # Configuration And Ports
 
 The tracked [`.env.example`](../../.env.example) is the executable schema
-companion; `src/server/config.ts` is validation truth. Keep real values in the
+companion; `internal/server/config` is validation truth. Keep real values in the
 service secret store or an untracked access-restricted environment file.
 
 ## Application Environment
 
 | Variable | Contract |
 | --- | --- |
-| `NODE_ENV` | `production` enables production-only validation. |
+| `SCREENER_ENV` | `development` or `production`, default `development`; required for every server deployment: `production` enables production-only validation and the `Secure` site-access cookie. |
 | `LISTEN_HOST` | Defaults to `0.0.0.0`; bare-metal production normally uses `127.0.0.1`. |
 | `PORT` | Positive TCP port, default `8787`; the tracked release wrapper supports only that default. |
 | `PUBLIC_BASE_URL` | Exact public HTTP(S) origin; production requires HTTPS. |
@@ -17,13 +17,11 @@ service secret store or an untracked access-restricted environment file.
 | `ROOM_LEASE_SECONDS` | Positive dormant lease, default `86400`; active Host prevents expiry. |
 | `ROOM_DATABASE_PATH` | Optional absolute SQLite file path; unset selects memory mode. |
 | `MAX_VIEWERS_PER_ROOM` | `1..20`, default `8`. |
-| `PEER_ASSISTED_MEDIA` | Enables the all-room bounded Peer/SFU controller. |
 | `ENDPOINT_MEDIA_COPY_CAPACITY` | Shared endpoint steady-copy cap `1..3`, default `2`. |
 | `STUN_URLS` | Comma-separated `stun:` URLs; at least one is required in production. |
 | `NAT_PREDICTION_ENABLED` | Optional bounded NAT prediction capability, default `false`; requires an ordinary `STUN_URLS` endpoint on UDP 3478 plus reachable same-host UDP 3479/3480 listeners. |
 
-Automatic SFU fallback is enabled only when `PEER_ASSISTED_MEDIA=true` and all
-four values below are present:
+Automatic SFU fallback is enabled when all four values below are present:
 
 | Variable | Contract |
 | --- | --- |
@@ -37,13 +35,15 @@ another. LiveKit tokens are short-lived media credentials and do not provide
 application E2EE.
 
 Removed access, room TTL, endpoint-tier, room-rollout, and TURN variables fail
-startup even when blank. The private deployment is upgraded atomically; there
-are no compatibility aliases or dual configuration readers.
+startup even when blank. A present `NODE_ENV` fails the same way, so a stale
+environment file cannot silently drop a deployment out of production. The
+private deployment is upgraded atomically; there are no compatibility aliases or
+dual configuration readers.
 
-During pre-release route canaries, standard Node `NODE_DEBUG=screener-route`
-enables sanitized room and participant-ordinal events. It records route reasons,
-candidates, revisions, quality states and commit/failure outcomes, but not raw
-Peer IDs, SDP, ICE candidates, tokens or media credentials.
+During pre-release route canaries, `SCREENER_DEBUG=route` enables sanitized room
+and participant-ordinal events. It records route reasons, candidates, revisions,
+quality states and commit/failure outcomes, but not raw Peer IDs, SDP, ICE
+candidates, tokens or media credentials.
 
 ## Public And Private Ports
 

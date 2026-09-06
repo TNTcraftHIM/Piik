@@ -456,7 +456,9 @@ class NativeViewerPeer implements ViewerMediaPeer {
       }
       this.events.onStream(stream);
       this.startObservation(bridge, connectionId);
-    }).catch(() => this.handleBridgeFailure(connectionId));
+    }).catch(() => {
+      if (this.bridge === bridge) this.handleBridgeFailure(connectionId);
+    });
   }
 
   private onEvent(event: NativeClientEvent): void {
@@ -643,6 +645,7 @@ class NativeViewerPeer implements ViewerMediaPeer {
   }
 
   private scheduleInitialConnectionDeadline(connectionId: string): void {
+    if (this.recoveryOwner !== "viewer") return;
     this.clearInitialConnectionTimer();
     const timer = window.setTimeout(() => {
       if (this.initialConnectionTimer !== timer) return;
