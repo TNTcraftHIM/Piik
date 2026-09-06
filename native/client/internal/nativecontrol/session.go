@@ -78,7 +78,7 @@ func (session *Session) Events() <-chan any {
 	return session.events
 }
 
-func (session *Session) Handle(_ context.Context, payload []byte) (any, error) {
+func (session *Session) Handle(ctx context.Context, payload []byte) (any, error) {
 	var envelope requestEnvelope
 	if err := decodeEnvelope(payload, &envelope); err != nil {
 		return nil, err
@@ -137,7 +137,7 @@ func (session *Session) Handle(_ context.Context, payload []byte) (any, error) {
 			!validQualitySettings(request.Profile) {
 			return nil, errors.New("native start-share request is invalid")
 		}
-		return session.startShare(envelope, request)
+		return session.startShare(ctx, envelope, request)
 	case "update-share":
 		var request updateShareRequest
 		if err := decodeStrict(payload, &request); err != nil ||
@@ -171,7 +171,7 @@ func (session *Session) Handle(_ context.Context, payload []byte) (any, error) {
 		audio := request.Audio && session.capabilities.Summary().AudioFor(
 			request.Source.Kind,
 		)
-		if err := host.ReplaceSource(nativecapture.VideoOptions{
+		if err := host.ReplaceSource(ctx, nativecapture.VideoOptions{
 			Target:       request.Source,
 			AdapterIndex: request.AdapterIndex,
 			EncoderIndex: request.EncoderIndex,
@@ -341,6 +341,7 @@ func (session *Session) Close() error {
 }
 
 func (session *Session) startShare(
+	ctx context.Context,
 	envelope requestEnvelope,
 	request startShareRequest,
 ) (any, error) {
@@ -351,7 +352,7 @@ func (session *Session) startShare(
 	}
 	session.mu.Unlock()
 	profile := nativeQualityProfile(request.Profile)
-	host, err := nativehost.Start(session.ctx, nativehost.Options{
+	host, err := nativehost.Start(ctx, nativehost.Options{
 		ShareID:        request.ShareID,
 		CaptureProcess: session.captureProcess,
 		Video: nativecapture.VideoOptions{

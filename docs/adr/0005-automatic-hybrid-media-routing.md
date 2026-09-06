@@ -18,6 +18,10 @@ physical evidence is in the routing research documents.
 
 ## Decision
 
+Hosted and Local always use this controller. The former rollout switch and
+separate Host-star authority are removed; SFU availability is still selected by
+configuration and the room's privacy policy, not by another routing mode.
+
 ### One Capacity Rule
 
 Every non-server endpoint uses one server-authoritative steady outbound media-

@@ -36,12 +36,17 @@ async function shutdown(): Promise<void> {
   await server.close();
 }
 
-process.once("SIGINT", () => {
-  void shutdown().then(() => process.exit(0));
-});
-process.once("SIGTERM", () => {
-  void shutdown().then(() => process.exit(0));
-});
+function requestStop(): void {
+  void shutdown()
+    .catch((error: unknown) => {
+      console.error("Screener shutdown failed", error);
+      process.exitCode = 1;
+    })
+    .finally(() => process.exit());
+}
+
+process.once("SIGINT", requestStop);
+process.once("SIGTERM", requestStop);
 
 function isMissingFileError(error: unknown): boolean {
   return (

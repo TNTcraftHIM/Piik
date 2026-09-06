@@ -7,11 +7,7 @@ type RelayCapacityMessage = Extract<
 >;
 
 export function relayCapacityMessageForBrowser(
-  peerAssisted: boolean,
-): RelayCapacityMessage | null {
-  if (!peerAssisted) {
-    return null;
-  }
+): RelayCapacityMessage {
   return {
     type: "relay-capacity",
     downstreamEdges: MAX_ENDPOINT_MEDIA_COPY_CAPACITY,

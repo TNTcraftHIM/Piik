@@ -134,7 +134,6 @@ function testConfig(): ServerConfig {
     allowedOrigins: new Set([allowedOrigin]),
     roomLeaseMs: 86_400_000,
     maxViewersPerRoom: 8,
-    peerAssistedMedia: false,
     endpointMediaCopyCapacity: 2,
     stunUrls: [],
     natPredictionEnabled: false,
@@ -149,18 +148,17 @@ async function startHarness(
     maxSignalConnections?: number;
     maxUnauthenticatedSignalConnections?: number;
     siteAccessPassword?: string;
-    peerAssistedMedia?: boolean;
     endpointMediaCopyCapacity?: number;
     stunUrls?: readonly string[];
     natPredictionEnabled?: boolean;
     now?: () => number;
+    cleanupIntervalMs?: number;
     roomStore?: RoomStore;
     room?: CreatedRoom;
   } = {},
 ): Promise<SignalHarness> {
   const config = testConfig();
   config.siteAccessPassword = overrides.siteAccessPassword;
-  config.peerAssistedMedia = overrides.peerAssistedMedia ?? false;
   config.endpointMediaCopyCapacity =
     overrides.endpointMediaCopyCapacity ?? 2;
   config.stunUrls = overrides.stunUrls ?? [];
@@ -184,7 +182,7 @@ async function startHarness(
     authenticationTimeoutMs: overrides.authenticationTimeoutMs ?? 500,
     viewerDisconnectGraceMs: overrides.viewerDisconnectGraceMs ?? 50,
     heartbeatIntervalMs: 60_000,
-    cleanupIntervalMs: 60_000,
+    cleanupIntervalMs: overrides.cleanupIntervalMs ?? 60_000,
     maxSignalConnections: overrides.maxSignalConnections,
     maxUnauthenticatedSignalConnections:
       overrides.maxUnauthenticatedSignalConnections,
@@ -411,6 +409,62 @@ async function nextActiveRouteRevision(client: TestClient, revision: number) {
   }
 }
 
+async function nextActiveRouteAfter(client: TestClient, revision: number) {
+  while (true) {
+    const message = await client.inbox.next("route-update");
+    if (message.phase === "active" && message.revision > revision) {
+      return message;
+    }
+  }
+}
+
+async function commitPreparedRoute(
+  client: TestClient,
+): Promise<Extract<ServerMessage, { type: "route-update" }>> {
+  const prepared = await nextPreparedRoute(client);
+  client.socket.send(
+    JSON.stringify({
+      type: "route-transport-connected",
+      revision: prepared.revision,
+      connectionId: prepared.candidate.connectionId,
+    }),
+  );
+  client.socket.send(
+    JSON.stringify({
+      type: "route-ready",
+      revision: prepared.revision,
+      phase: "prepare",
+    }),
+  );
+  return nextActiveRouteRevision(client, prepared.revision);
+}
+
+async function expectNoViewerPresenceMatching(
+  client: TestClient,
+  predicate: (
+    message: Extract<ServerMessage, { type: "viewer-presence" }>,
+  ) => boolean,
+  timeoutMs: number,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const message = await client.inbox.next(
+        "viewer-presence",
+        deadline - Date.now(),
+      );
+      if (predicate(message)) {
+        throw new Error("Viewer presence reached a forbidden state");
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message === "Timed out waiting for viewer-presence") {
+        return;
+      }
+      throw error;
+    }
+  }
+}
+
 function viewerQualityEvidenceMessage(
   connectionId: string,
   routeRevision: number,
@@ -467,7 +521,6 @@ async function closeClient(client: TestClient): Promise<void> {
 describe("WebSocket signaling", () => {
   it("echoes the exact per-share route policy authority", async () => {
     const harness = await startHarness({
-      peerAssistedMedia: true,
       stunUrls: ["stun:share.example.test:3478"],
       natPredictionEnabled: true,
     });
@@ -510,7 +563,6 @@ describe("WebSocket signaling", () => {
 
   it("broadcasts configured NAT prediction in lightweight rooms", async () => {
     const harness = await startHarness({
-      peerAssistedMedia: false,
       stunUrls: ["stun:share.example.test:3478"],
       natPredictionEnabled: true,
     });
@@ -555,7 +607,7 @@ describe("WebSocket signaling", () => {
   });
 
   it("clamps NAT prediction off when the server capability is disabled", async () => {
-    const harness = await startHarness({ peerAssistedMedia: false });
+    const harness = await startHarness();
     const host = await openClient(harness.webSocketUrl);
     const authenticated = await authenticate(
       host,
@@ -611,7 +663,6 @@ describe("WebSocket signaling", () => {
       firstStore.initialize();
       const room = await firstStore.createRoom();
       const first = await startHarness({
-        peerAssistedMedia: true,
         roomStore: firstStore,
         room,
       });
@@ -646,7 +697,6 @@ describe("WebSocket signaling", () => {
       });
       secondStore.initialize();
       const second = await startHarness({
-        peerAssistedMedia: true,
         roomStore: secondStore,
         room,
       });
@@ -750,7 +800,10 @@ describe("WebSocket signaling", () => {
     let now = Date.now();
     const harness = await startHarness({ now: () => now });
     const host = await openClient(harness.webSocketUrl);
-    await authenticate(host, harness.room, "host", "challenge-host");
+    const hostAuth = peerAssisted(
+      await authenticate(host, harness.room, "host", "challenge-host"),
+    );
+    await nextActiveRouteRevision(host, hostAuth.routeRevision);
 
     host.socket.send(
       JSON.stringify({ type: "signaling-challenge", sequence: 7 }),
@@ -776,7 +829,7 @@ describe("WebSocket signaling", () => {
   });
 
   it("serves one current route snapshot only to the authenticated Host", async () => {
-    const harness = await startHarness({ peerAssistedMedia: true });
+    const harness = await startHarness();
     const host = await openClient(harness.webSocketUrl);
     await authenticate(host, harness.room, "host", "route-diagnostic-host");
     const viewer = await openClient(harness.webSocketUrl);
@@ -814,8 +867,10 @@ describe("WebSocket signaling", () => {
       undefined,
       { displayName: "移动观众" },
     );
-
-    await host.inbox.next("peer-joined");
+    const hostPrepared = await nextPreparedRoute(host);
+    const viewerActive = await commitPreparedRoute(viewer);
+    expect(hostPrepared.revision).toBe(viewerActive.revision);
+    await nextActiveRouteRevision(host, viewerActive.revision);
     await host.inbox.expectNone(40);
 
     host.socket.send(
@@ -880,7 +935,7 @@ describe("WebSocket signaling", () => {
         { viewerPassword: "easy-password" },
       ),
     ).resolves.toMatchObject({ role: "viewer" });
-    await host.inbox.next("peer-joined");
+    await commitPreparedRoute(passwordViewer);
 
     expect(
       await updateRoomAccess(harness, {
@@ -901,8 +956,6 @@ describe("WebSocket signaling", () => {
         "grant-after-password-removal",
       ),
     ).resolves.toMatchObject({ role: "viewer" });
-    await host.inbox.next("peer-joined");
-
     const removedPasswordViewer = await openClient(harness.webSocketUrl);
     removedPasswordViewer.socket.send(
       JSON.stringify({
@@ -969,7 +1022,7 @@ describe("WebSocket signaling", () => {
   });
 
   it("reports every online Viewer without expanding the Host media fanout", async () => {
-    const harness = await startHarness({ peerAssistedMedia: true });
+    const harness = await startHarness();
     const host = await openClient(harness.webSocketUrl);
     const hostAuth = await authenticate(
       host,
@@ -980,9 +1033,10 @@ describe("WebSocket signaling", () => {
       undefined,
       { viewerPresence: true },
     );
-    expect(
-      viewerPresenceEntries(await host.inbox.next("viewer-presence")),
-    ).toEqual([]);
+    await nextViewerPresenceMatching(
+      host,
+      (message) => viewerPresenceEntries(message).length === 0,
+    );
 
     const viewerNames = ["阿明", "阿青", undefined] as const;
     const viewers: TestClient[] = [];
@@ -1119,8 +1173,21 @@ describe("WebSocket signaling", () => {
       "evidence-direct-viewer",
     );
     host.inbox.ignore("viewer-presence");
-    await host.inbox.next("peer-joined");
-    const connectionId = "evidence_direct_connection_12345678";
+    const prepared = await nextPreparedRoute(viewer);
+    const connectionId = prepared.candidate.connectionId;
+    const routeRevision = prepared.revision;
+    viewer.socket.send(
+      JSON.stringify({
+        type: "route-transport-connected",
+        revision: routeRevision,
+        connectionId,
+      }),
+    );
+    viewer.socket.send(
+      JSON.stringify({ type: "route-ready", revision: routeRevision, phase: "prepare" }),
+    );
+    await nextActiveRouteRevision(viewer, routeRevision);
+    await nextActiveRouteRevision(host, routeRevision);
     host.socket.send(
       JSON.stringify({
         type: "signal",
@@ -1135,41 +1202,41 @@ describe("WebSocket signaling", () => {
     await viewer.inbox.next("signal");
 
     viewer.socket.send(
-      JSON.stringify(viewerQualityEvidenceMessage(connectionId, 0)),
+      JSON.stringify(viewerQualityEvidenceMessage(connectionId, routeRevision)),
     );
     expect(await host.inbox.next("viewer-quality-evidence")).toMatchObject({
       viewerPeerId: viewerAuth.peerId,
       upstream: { kind: "peer", peerId: hostAuth.peerId },
-      guard: { connectionId, routeRevision: 0 },
+      guard: { connectionId, routeRevision },
     });
 
     viewer.socket.send(
-      JSON.stringify(viewerQualityEvidenceMessage(connectionId, 0, 0, 1)),
+      JSON.stringify(viewerQualityEvidenceMessage(connectionId, routeRevision, 0, 1)),
     );
     await host.inbox.expectNone(40);
     now += 2_000;
     viewer.socket.send(
-      JSON.stringify(viewerQualityEvidenceMessage(connectionId, 0, 7, 1)),
+      JSON.stringify(viewerQualityEvidenceMessage(connectionId, routeRevision, 7, 1)),
     );
     expect(await host.inbox.next("viewer-quality-evidence")).toMatchObject({
-      guard: { connectionId, routeRevision: 0, presentationEpoch: 1 },
+      guard: { connectionId, routeRevision, presentationEpoch: 1 },
       sequence: 7,
     });
     now += 2_000;
     viewer.socket.send(
-      JSON.stringify(viewerQualityEvidenceMessage(connectionId, 0, 1, 0)),
+      JSON.stringify(viewerQualityEvidenceMessage(connectionId, routeRevision, 1, 0)),
     );
     await host.inbox.expectNone(40);
     viewer.socket.send(
-      JSON.stringify(viewerQualityEvidenceMessage(connectionId, 0, 0, 2)),
+      JSON.stringify(viewerQualityEvidenceMessage(connectionId, routeRevision, 0, 2)),
     );
     await host.inbox.expectNone(40);
     now += 2_000;
     viewer.socket.send(
-      JSON.stringify(viewerQualityEvidenceMessage(connectionId, 0, 9, 2)),
+      JSON.stringify(viewerQualityEvidenceMessage(connectionId, routeRevision, 9, 2)),
     );
     expect(await host.inbox.next("viewer-quality-evidence")).toMatchObject({
-      guard: { connectionId, routeRevision: 0, presentationEpoch: 2 },
+      guard: { connectionId, routeRevision, presentationEpoch: 2 },
       sequence: 9,
     });
   });
@@ -1177,7 +1244,6 @@ describe("WebSocket signaling", () => {
   it("forwards a relayed child receive report to its exact parent and Host", async () => {
     let now = 10_000;
     const harness = await startHarness({
-      peerAssistedMedia: true,
       endpointMediaCopyCapacity: 1,
       now: () => now,
     });
@@ -1497,10 +1563,18 @@ describe("WebSocket signaling", () => {
       undefined,
       { displayName: "第一位" },
     );
-    expect((await host.inbox.next("peer-joined")).peerId).toBe(
-      firstViewerAuth.peerId,
-    );
-    expect(viewerPresenceEntries(await host.inbox.next("viewer-presence"))).toEqual([
+    await commitPreparedRoute(firstViewer);
+    expect(
+      viewerPresenceEntries(
+        await nextViewerPresenceMatching(
+          host,
+          (message) =>
+            viewerPresenceEntries(message).some(
+              (entry) => entry.upstream.kind === "peer",
+            ),
+        ),
+      ),
+    ).toMatchObject([
       {
         role: "viewer",
         peerId: firstViewerAuth.peerId,
@@ -1520,13 +1594,10 @@ describe("WebSocket signaling", () => {
         firstViewerAuth.viewerAuthorizationGeneration,
     });
     expect(await firstClosed).toBe(4004);
-    expect((await host.inbox.next("peer-left")).peerId).toBe(
-      firstViewerAuth.peerId,
+    await nextViewerPresenceMatching(
+      host,
+      (message) => viewerPresenceEntries(message).length === 0,
     );
-    expect(
-      viewerPresenceEntries(await host.inbox.next("viewer-presence")),
-    ).toEqual([]);
-    await host.inbox.expectNone(30);
 
     expect(rotated.type).toBe("viewer-grant-updated");
     if (rotated.type !== "viewer-grant-updated") {
@@ -1551,11 +1622,17 @@ describe("WebSocket signaling", () => {
       undefined,
       { displayName: "第二位" },
     );
-    expect((await host.inbox.next("peer-joined")).peerId).toBe(
-      secondViewerAuth.peerId,
-    );
+    await commitPreparedRoute(secondViewer);
     expect(
-      viewerPresenceEntries(await host.inbox.next("viewer-presence")),
+      viewerPresenceEntries(
+        await nextViewerPresenceMatching(
+          host,
+          (message) =>
+            viewerPresenceEntries(message).some(
+              (entry) => entry.peerId === secondViewerAuth.peerId,
+            ),
+        ),
+      ),
     ).toHaveLength(1);
 
     const secondClosed = new Promise<number>((resolve) =>
@@ -1566,16 +1643,18 @@ describe("WebSocket signaling", () => {
     });
     await secondViewer.inbox.next("viewer-grant-revoked");
     expect(await secondClosed).toBe(4004);
-    expect((await host.inbox.next("peer-left")).peerId).toBe(
-      secondViewerAuth.peerId,
+    await nextViewerPresenceMatching(
+      host,
+      (message) => viewerPresenceEntries(message).length === 0,
     );
-    expect(
-      viewerPresenceEntries(await host.inbox.next("viewer-presence")),
-    ).toEqual([]);
     expect(revoked).toMatchObject({
       inviteUrl: null,
     });
-    await host.inbox.expectNone(30);
+    await expectNoViewerPresenceMatching(
+      host,
+      (message) => viewerPresenceEntries(message).length > 0,
+      30,
+    );
   });
 
   it("rotates a grant and promotes the waiting code-admitted Viewer", async () => {
@@ -1603,12 +1682,21 @@ describe("WebSocket signaling", () => {
       harness.room,
       "viewer",
       "mixed-grant-viewer",
-      1,
+      0,
       undefined,
       { displayName: "邀请观众" },
     );
-    await host.inbox.next("peer-joined");
-    await host.inbox.next("viewer-presence");
+    await commitPreparedRoute(grantViewer);
+    await nextViewerPresenceMatching(
+      host,
+      (message) =>
+        viewerPresenceEntries(message).some(
+          (entry) =>
+            entry.peerId === grantAuth.peerId &&
+            entry.upstream.kind === "peer" &&
+            entry.mediaReady === true,
+        ),
+    );
 
     const codeViewer = await openClient(harness.webSocketUrl);
     const codeAuth = await authenticate(
@@ -1621,21 +1709,28 @@ describe("WebSocket signaling", () => {
       { codeOnly: true, displayName: "房间号观众" },
     );
     expect(
-      viewerPresenceEntries(await host.inbox.next("viewer-presence")),
+      viewerPresenceEntries(
+        await nextViewerPresenceMatching(
+          host,
+          (message) => viewerPresenceEntries(message).length === 2,
+        ),
+      ),
     ).toHaveLength(2);
-    expect((await host.inbox.next("peer-waiting")).peerId).toBe(codeAuth.peerId);
-
     const grantClosed = new Promise<number>((resolve) =>
       grantViewer.socket.once("close", (code) => resolve(code)),
     );
     await updateRoomAccess(harness, { action: "rotate-viewer-grant" });
     await grantViewer.inbox.next("viewer-grant-revoked");
     expect(await grantClosed).toBe(4004);
-    expect((await host.inbox.next("peer-left")).peerId).toBe(grantAuth.peerId);
-    expect((await host.inbox.next("peer-joined")).peerId).toBe(codeAuth.peerId);
-
+    await commitPreparedRoute(codeViewer);
     const remaining = viewerPresenceEntries(
-      await host.inbox.next("viewer-presence"),
+      await nextViewerPresenceMatching(
+        host,
+        (message) =>
+          viewerPresenceEntries(message).length === 1 &&
+          viewerPresenceEntries(message)[0]?.peerId === codeAuth.peerId &&
+          viewerPresenceEntries(message)[0]?.upstream.kind === "peer",
+      ),
     );
     expect(remaining).toEqual([
       {
@@ -1643,6 +1738,7 @@ describe("WebSocket signaling", () => {
         peerId: codeAuth.peerId,
         displayName: "房间号观众",
         upstream: { kind: "peer", peerId: hostAuth.peerId },
+        mediaReady: true,
       },
     ]);
     expect(codeViewer.socket.readyState).toBe(WebSocket.OPEN);
@@ -1948,7 +2044,7 @@ describe("WebSocket signaling", () => {
     );
     const viewer = await openClient(harness.webSocketUrl);
     await authenticate(viewer, harness.room, "viewer", "provisional-viewer");
-    await host.inbox.next("peer-joined");
+    await commitPreparedRoute(viewer);
 
     now += 86_401_000;
     expect(harness.roomStore.expireRooms()).toEqual([]);
@@ -1962,6 +2058,39 @@ describe("WebSocket signaling", () => {
     expect(expired[0]?.sessionIds).toHaveLength(1);
     await closeClient(viewer);
     expect(authenticated.role).toBe("host");
+  });
+
+  it("terminates an expired dormant room through the cleanup timer", async () => {
+    let now = Date.UTC(2026, 7, 20, 12);
+    const harness = await startHarness({
+      now: () => now,
+      cleanupIntervalMs: 20,
+    });
+    const host = await openClient(harness.webSocketUrl);
+    await authenticate(host, harness.room, "host", "expiring-host");
+    const viewer = await openClient(harness.webSocketUrl);
+    await authenticate(viewer, harness.room, "viewer", "expiring-viewer");
+    await commitPreparedRoute(viewer);
+    const viewerClosed = new Promise<{ code: number; reason: string }>(
+      (resolve) =>
+        viewer.socket.once("close", (code, reason) =>
+          resolve({ code, reason: reason.toString() }),
+        ),
+    );
+    await closeClient(host);
+    await viewer.inbox.next("host-status");
+
+    now += 86_401_000;
+
+    await expect(viewer.inbox.next("room-closed")).resolves.toEqual({
+      type: "room-closed",
+      reason: "expired",
+    });
+    await expect(viewerClosed).resolves.toEqual({
+      code: 1000,
+      reason: "Room expired",
+    });
+    expect(harness.roomStore.size).toBe(0);
   });
 
   it("keeps a pre-Host Viewer session current after the Host clears the room lease", async () => {
@@ -2021,7 +2150,7 @@ describe("WebSocket signaling", () => {
       "viewer",
       "persistence-failure-viewer",
     );
-    await host.inbox.next("peer-joined");
+    await commitPreparedRoute(viewer);
     host.socket.send(
       JSON.stringify({
         type: "signal",
@@ -2098,12 +2227,12 @@ describe("WebSocket signaling", () => {
       "viewer-client-early",
     );
     expect(viewerAuth.hostOnline).toBe(false);
-    expect("mediaMode" in viewerAuth).toBe(false);
-    expect("routeRevision" in viewerAuth).toBe(false);
+    expect("mediaMode" in viewerAuth).toBe(true);
+    expect("routeRevision" in viewerAuth).toBe(true);
 
     const host = await openClient(harness.webSocketUrl);
     await authenticate(host, harness.room, "host", "host-client-stable");
-    expect((await host.inbox.next("peer-joined")).peerId).toBe(viewerAuth.peerId);
+    host.inbox.ignore("route-update");
     expect(await viewer.inbox.next("host-status")).toEqual({
       type: "host-status",
       online: true,
@@ -2133,7 +2262,7 @@ describe("WebSocket signaling", () => {
       "pause-viewer-client",
     );
     expect(viewerAuth.hostPaused).toBe(false);
-    await host.inbox.next("peer-joined");
+    await commitPreparedRoute(viewer);
 
     host.socket.send(
       JSON.stringify({
@@ -2229,7 +2358,7 @@ describe("WebSocket signaling", () => {
   });
 
   it("applies symmetric pause updates only to the exact current Host share", async () => {
-    const harness = await startHarness({ peerAssistedMedia: true });
+    const harness = await startHarness();
     const shareGeneration = "hybrid_pause_share_generation_12345678";
     const host = await openClient(harness.webSocketUrl);
     await authenticate(
@@ -2285,7 +2414,7 @@ describe("WebSocket signaling", () => {
   });
 
   it("retains authoritative pause when a reconnecting Host advertises unpaused", async () => {
-    const harness = await startHarness({ peerAssistedMedia: false });
+    const harness = await startHarness();
     const shareGeneration = "reconnect_resume_share_generation_12345678";
     const hostClientId = "reconnect-resume-host-client";
     const host = await openClient(harness.webSocketUrl);
@@ -2304,7 +2433,7 @@ describe("WebSocket signaling", () => {
       "viewer",
       "reconnect-resume-viewer-client",
     );
-    await host.inbox.next("peer-joined");
+    await commitPreparedRoute(viewer);
 
     host.socket.send(
       JSON.stringify({
@@ -2357,102 +2486,8 @@ describe("WebSocket signaling", () => {
     });
   });
 
-  it("marks an ordinary Host edge ready after its exact SDP handshake", async () => {
-    const harness = await startHarness({ peerAssistedMedia: false });
-    const host = await openClient(harness.webSocketUrl);
-    const hostAuth = await authenticate(
-      host,
-      harness.room,
-      "host",
-      "ordinary-ready-host",
-      1,
-      undefined,
-      { viewerPresence: true },
-    );
-    await host.inbox.next("viewer-presence");
-    const viewer = await openClient(harness.webSocketUrl);
-    const viewerAuth = await authenticate(
-      viewer,
-      harness.room,
-      "viewer",
-      "ordinary-ready-viewer",
-      1,
-      undefined,
-      { viewerPresence: true },
-    );
-    expect((await host.inbox.next("peer-joined")).peerId).toBe(
-      viewerAuth.peerId,
-    );
-    const assigned = await nextViewerPresenceMatching(
-      host,
-      (message) =>
-        viewerPresenceEntries(message).some(
-          (entry) => entry.peerId === viewerAuth.peerId,
-        ),
-    );
-    expect(viewerPresenceEntries(assigned)[0]).not.toHaveProperty("mediaReady");
-
-    const connectionId = "ordinary_ready_connection_12345678";
-    host.socket.send(
-      JSON.stringify({
-        type: "signal",
-        targetPeerId: viewerAuth.peerId,
-        payload: {
-          kind: "description",
-          connectionId,
-          description: { type: "offer", sdp: "v=0\r\n" },
-        },
-      }),
-    );
-    expect(await viewer.inbox.next("signal")).toMatchObject({
-      fromPeerId: hostAuth.peerId,
-      payload: { connectionId, description: { type: "offer" } },
-    });
-    host.socket.send(
-      JSON.stringify({
-        type: "set-display-name",
-        displayName: "等待应答",
-      }),
-    );
-    const offered = await nextViewerPresenceMatching(
-      host,
-      (message) =>
-        viewerPresenceEntries(message).some(
-          (entry) => entry.peerId === viewerAuth.peerId,
-        ),
-    );
-    expect(viewerPresenceEntries(offered)[0]).not.toHaveProperty("mediaReady");
-    viewer.socket.send(
-      JSON.stringify({
-        type: "signal",
-        payload: {
-          kind: "description",
-          connectionId,
-          description: { type: "answer", sdp: "v=0\r\n" },
-        },
-      }),
-    );
-    expect(await host.inbox.next("signal")).toMatchObject({
-      fromPeerId: viewerAuth.peerId,
-      payload: { connectionId, description: { type: "answer" } },
-    });
-    const ready = await nextViewerPresenceMatching(
-      host,
-      (message) =>
-        viewerPresenceEntries(message).some(
-          (entry) =>
-            entry.peerId === viewerAuth.peerId && entry.mediaReady === true,
-        ),
-    );
-    expect(viewerPresenceEntries(ready)[0]).toMatchObject({
-      peerId: viewerAuth.peerId,
-      upstream: { kind: "peer", peerId: hostAuth.peerId },
-      mediaReady: true,
-    });
-  });
-
   it("binds new-share quality and preserves active-share quality across reconnect", async () => {
-    const harness = await startHarness({ peerAssistedMedia: true });
+    const harness = await startHarness();
     const initialSettings: QualitySettings = {
       resolution: "1440p",
       maxFramerate: 60,
@@ -2578,7 +2613,8 @@ describe("WebSocket signaling", () => {
       "viewer",
       "viewer-client-stable",
     );
-    await host.inbox.next("peer-joined");
+    const activeRoute = await commitPreparedRoute(firstViewer);
+    await nextActiveRouteRevision(host, activeRoute.revision);
     host.socket.send(
       JSON.stringify({
         type: "signal",
@@ -2602,276 +2638,18 @@ describe("WebSocket signaling", () => {
     );
     expect(reconnectedAuth.peerId).toBe(firstAuth.peerId);
     expect(reconnectedAuth.connectionId).toBe("stable-connection");
-    expect((await host.inbox.next("peer-joined")).peerId).toBe(firstAuth.peerId);
-
-    reconnectedViewer.socket.send(
-      JSON.stringify({
-        type: "restart-request",
-        connectionId: reconnectedAuth.connectionId,
-        rebuild: false,
-      }),
+    await nextActiveRouteRevision(
+      host,
+      peerAssisted(reconnectedAuth).routeRevision,
     );
-    expect(await host.inbox.next("restart-request")).toMatchObject({
-      fromPeerId: firstAuth.peerId,
-      connectionId: "stable-connection",
-      rebuild: false,
-    });
     await host.inbox.expectNone(110);
 
     await closeClient(reconnectedViewer);
-    expect((await host.inbox.next("peer-left", 500)).peerId).toBe(firstAuth.peerId);
-  });
-
-  it.each([1, 2, 3] as const)(
-    "authorizes exactly %i ordinary Host children independently of room admission",
-    async (endpointMediaCopyCapacity) => {
-      const maxViewersPerRoom = endpointMediaCopyCapacity + 1;
-      const harness = await startHarness({
-        endpointMediaCopyCapacity,
-        maxViewersPerRoom,
-      });
-      const viewers: TestClient[] = [];
-      const viewerPeerIds: string[] = [];
-      for (let index = 0; index < maxViewersPerRoom; index += 1) {
-        const viewer = await openClient(harness.webSocketUrl);
-        const authenticated = await authenticate(
-          viewer,
-          harness.room,
-          "viewer",
-          `ordinary-cap-viewer-${index}`,
-          1,
-          undefined,
-          { viewerPresence: true },
-        );
-        expect(authenticated.endpointMediaCopyCapacity).toBe(
-          endpointMediaCopyCapacity,
-        );
-        viewers.push(viewer);
-        viewerPeerIds.push(authenticated.peerId);
-      }
-
-      const host = await openClient(harness.webSocketUrl);
-      const hostAuth = await authenticate(
-        host,
-        harness.room,
-        "host",
-        "ordinary-cap-host",
-        1,
-        undefined,
-        { viewerPresence: true },
-      );
-      expect(hostAuth).toMatchObject({
-        maxViewers: maxViewersPerRoom,
-        endpointMediaCopyCapacity,
-        viewerPeerIds: viewerPeerIds.slice(0, endpointMediaCopyCapacity),
-      });
-
-      const presence = viewerPresenceEntries(
-        await host.inbox.next("viewer-presence"),
-      );
-      for (let index = 0; index < presence.length; index += 1) {
-        expect(presence[index]).toMatchObject({
-          peerId: viewerPeerIds[index],
-          upstream:
-            index < endpointMediaCopyCapacity
-              ? { kind: "peer", peerId: hostAuth.peerId }
-              : { kind: "none" },
-        });
-      }
-
-      const waitingPeerId = viewerPeerIds.at(-1)!;
-      expect((await host.inbox.next("peer-waiting")).peerId).toBe(
-        waitingPeerId,
-      );
-      for (const activePeerId of viewerPeerIds.slice(
-        0,
-        endpointMediaCopyCapacity,
-      )) {
-        expect((await host.inbox.next("peer-joined")).peerId).toBe(
-          activePeerId,
-        );
-      }
-
-      host.socket.send(
-        JSON.stringify({
-          type: "signal",
-          targetPeerId: waitingPeerId,
-          payload: {
-            kind: "description",
-            connectionId: "waiting-host-offer",
-            description: { type: "offer", sdp: "v=0\r\n" },
-          },
-        }),
-      );
-      expect((await host.inbox.next("error")).code).toBe("FORBIDDEN");
-
-      host.socket.send(
-        JSON.stringify({
-          type: "signal",
-          targetPeerId: waitingPeerId,
-          payload: {
-            kind: "candidate",
-            connectionId: "waiting-host-candidate",
-            candidate: null,
-          },
-        }),
-      );
-      expect((await host.inbox.next("error")).code).toBe("FORBIDDEN");
-
-      const waitingViewer = viewers.at(-1)!;
-      waitingViewer.socket.send(
-        JSON.stringify({
-          type: "signal",
-          payload: {
-            kind: "description",
-            connectionId: "waiting-viewer-answer",
-            description: { type: "answer", sdp: "v=0\r\n" },
-          },
-        }),
-      );
-      expect((await waitingViewer.inbox.next("error")).code).toBe("FORBIDDEN");
-
-      waitingViewer.socket.send(
-        JSON.stringify({
-          type: "signal",
-          payload: {
-            kind: "candidate",
-            connectionId: "waiting-viewer-candidate",
-            candidate: null,
-          },
-        }),
-      );
-      expect((await waitingViewer.inbox.next("error")).code).toBe("FORBIDDEN");
-
-      waitingViewer.socket.send(
-        JSON.stringify({
-          type: "restart-request",
-          connectionId: "waiting-viewer-restart",
-          rebuild: true,
-        }),
-      );
-      expect((await waitingViewer.inbox.next("error")).code).toBe("FORBIDDEN");
-
-      host.socket.send(
-        JSON.stringify({
-          type: "signal",
-          targetPeerId: viewerPeerIds[0],
-          payload: {
-            kind: "description",
-            connectionId: "active-host-offer",
-            description: { type: "offer", sdp: "v=0\r\n" },
-          },
-        }),
-      );
-      expect(await viewers[0]!.inbox.next("signal")).toMatchObject({
-        fromPeerId: hostAuth.peerId,
-        payload: { connectionId: "active-host-offer" },
-      });
-    },
-  );
-
-  it("holds an active ordinary slot through grace and skips offline waiters", async () => {
-    const harness = await startHarness({
-      endpointMediaCopyCapacity: 1,
-      maxViewersPerRoom: 3,
-      viewerDisconnectGraceMs: 100,
+    await nextActiveRouteAfter(host, activeRoute.revision);
+    host.socket.send(JSON.stringify({ type: "request-route-diagnostic" }));
+    expect(await host.inbox.next("route-diagnostic-snapshot")).toMatchObject({
+      snapshot: { children: [] },
     });
-    const host = await openClient(harness.webSocketUrl);
-    const hostAuth = await authenticate(
-      host,
-      harness.room,
-      "host",
-      "ordinary-grace-host",
-      1,
-      undefined,
-      { viewerPresence: true },
-    );
-    expect(
-      viewerPresenceEntries(await host.inbox.next("viewer-presence")),
-    ).toEqual([]);
-
-    const activeViewer = await openClient(harness.webSocketUrl);
-    const activeAuth = await authenticate(
-      activeViewer,
-      harness.room,
-      "viewer",
-      "ordinary-grace-active",
-    );
-    expect((await host.inbox.next("peer-joined")).peerId).toBe(
-      activeAuth.peerId,
-    );
-    expect(
-      viewerPresenceEntries(await host.inbox.next("viewer-presence")),
-    ).toEqual([
-      expect.objectContaining({
-        peerId: activeAuth.peerId,
-        upstream: { kind: "peer", peerId: hostAuth.peerId },
-      }),
-    ]);
-
-    const offlineWaitingViewer = await openClient(harness.webSocketUrl);
-    const offlineWaitingAuth = await authenticate(
-      offlineWaitingViewer,
-      harness.room,
-      "viewer",
-      "ordinary-grace-offline-waiting",
-    );
-    expect((await host.inbox.next("peer-waiting")).peerId).toBe(
-      offlineWaitingAuth.peerId,
-    );
-    await host.inbox.next("viewer-presence");
-
-    const connectedWaitingViewer = await openClient(harness.webSocketUrl);
-    const connectedWaitingAuth = await authenticate(
-      connectedWaitingViewer,
-      harness.room,
-      "viewer",
-      "ordinary-grace-connected-waiting",
-    );
-    expect((await host.inbox.next("peer-waiting")).peerId).toBe(
-      connectedWaitingAuth.peerId,
-    );
-    await host.inbox.next("viewer-presence");
-
-    await closeClient(activeViewer);
-    await host.inbox.next("viewer-presence");
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    await closeClient(offlineWaitingViewer);
-    await host.inbox.next("viewer-presence");
-    await host.inbox.expectNone(40);
-
-    expect((await host.inbox.next("peer-left", 300)).peerId).toBe(
-      activeAuth.peerId,
-    );
-    expect((await host.inbox.next("peer-joined", 300)).peerId).toBe(
-      connectedWaitingAuth.peerId,
-    );
-    expect(
-      viewerPresenceEntries(await host.inbox.next("viewer-presence")),
-    ).toEqual([
-      expect.objectContaining({
-        peerId: connectedWaitingAuth.peerId,
-        upstream: { kind: "peer", peerId: hostAuth.peerId },
-      }),
-    ]);
-
-    host.socket.send(
-      JSON.stringify({
-        type: "signal",
-        targetPeerId: connectedWaitingAuth.peerId,
-        payload: {
-          kind: "description",
-          connectionId: "promoted-host-offer",
-          description: { type: "offer", sdp: "v=0\r\n" },
-        },
-      }),
-    );
-    expect(await connectedWaitingViewer.inbox.next("signal")).toMatchObject({
-      payload: { connectionId: "promoted-host-offer" },
-    });
-    expect((await host.inbox.next("peer-left", 300)).peerId).toBe(
-      offlineWaitingAuth.peerId,
-    );
   });
 
   it("clears the previous media generation when sharing stops", async () => {
@@ -2885,7 +2663,7 @@ describe("WebSocket signaling", () => {
       "viewer",
       "viewer-client-stop",
     );
-    await host.inbox.next("peer-joined");
+    await commitPreparedRoute(viewer);
     host.socket.send(
       JSON.stringify({
         type: "signal",
@@ -2920,7 +2698,7 @@ describe("WebSocket signaling", () => {
     expect(reconnectedAuth.hostOnline).toBe(false);
   });
 
-  it("replaces the same client presence once without leave churn", async () => {
+  it("replaces the same client presence without transient leave churn", async () => {
     const harness = await startHarness({ viewerDisconnectGraceMs: 40 });
     const host = await openClient(harness.webSocketUrl);
     const hostAuth = await authenticate(
@@ -2945,8 +2723,18 @@ describe("WebSocket signaling", () => {
       undefined,
       { displayName: "旧会话" },
     );
-    await host.inbox.next("peer-joined");
-    expect(viewerPresenceEntries(await host.inbox.next("viewer-presence"))).toEqual([
+    await commitPreparedRoute(original);
+    expect(
+      viewerPresenceEntries(
+        await nextViewerPresenceMatching(
+          host,
+          (message) =>
+            viewerPresenceEntries(message).some(
+              (entry) => entry.upstream.kind === "peer",
+            ),
+        ),
+      ),
+    ).toMatchObject([
       {
         role: "viewer",
         peerId: originalAuth.peerId,
@@ -2971,8 +2759,7 @@ describe("WebSocket signaling", () => {
 
     expect(replacementAuth.peerId).toBe(originalAuth.peerId);
     expect(await originalClosed).toBe(4001);
-    expect((await host.inbox.next("peer-joined")).peerId).toBe(originalAuth.peerId);
-    expect(viewerPresenceEntries(await host.inbox.next("viewer-presence"))).toEqual([
+    expect(viewerPresenceEntries(await host.inbox.next("viewer-presence"))).toMatchObject([
       {
         role: "viewer",
         peerId: originalAuth.peerId,
@@ -2980,7 +2767,14 @@ describe("WebSocket signaling", () => {
         upstream: { kind: "peer", peerId: hostAuth.peerId },
       },
     ]);
-    await host.inbox.expectNone(70);
+    await expectNoViewerPresenceMatching(
+      host,
+      (message) =>
+        !viewerPresenceEntries(message).some(
+          (entry) => entry.peerId === originalAuth.peerId,
+        ),
+      70,
+    );
   });
 
   it("notifies the host when a pre-offer viewer reconnects inside grace", async () => {
@@ -2995,8 +2789,10 @@ describe("WebSocket signaling", () => {
     await closeClient(originalViewer);
 
     const host = await openClient(harness.webSocketUrl);
-    await authenticate(host, harness.room, "host", "host-client-stable");
-    await host.inbox.expectNone(30);
+    const hostAuth = peerAssisted(
+      await authenticate(host, harness.room, "host", "host-client-stable"),
+    );
+    await nextActiveRouteRevision(host, hostAuth.routeRevision);
 
     const reconnectedViewer = await openClient(harness.webSocketUrl);
     const reconnectedAuth = await authenticate(
@@ -3006,8 +2802,11 @@ describe("WebSocket signaling", () => {
       "viewer-client-before-offer",
     );
     expect(reconnectedAuth.peerId).toBe(originalAuth.peerId);
-    expect(await host.inbox.next("peer-joined")).toMatchObject({
-      peerId: originalAuth.peerId,
+    const prepared = await nextPreparedRoute(host);
+    expect(prepared.candidate).toMatchObject({
+      childPeerId: originalAuth.peerId,
+      transport: "direct",
+      qualityProbe: false,
     });
   });
 
@@ -3027,7 +2826,7 @@ describe("WebSocket signaling", () => {
       "host",
       "host-client-stable",
     );
-    await firstHost.inbox.next("peer-joined");
+    await commitPreparedRoute(viewer);
     await viewer.inbox.next("host-status");
     firstHost.socket.send(
       JSON.stringify({
@@ -3063,11 +2862,13 @@ describe("WebSocket signaling", () => {
       "host-client-stable",
     );
     expect(secondHostAuth.peerId).toBe(firstHostAuth.peerId);
-    expect(secondHostAuth.viewerPeerIds).toEqual([viewerAuth.peerId]);
-    expect((await secondHost.inbox.next("peer-joined")).peerId).toBe(
+    expect(harness.roomStore.getViewerPeerIds(harness.room.roomId)).toEqual([
       viewerAuth.peerId,
+    ]);
+    await nextActiveRouteRevision(
+      secondHost,
+      peerAssisted(secondHostAuth).routeRevision,
     );
-    await secondHost.inbox.expectNone(30);
     expect(await refreshedViewer.inbox.next("host-status")).toMatchObject({
       online: true,
     });
@@ -3084,7 +2885,7 @@ describe("WebSocket signaling", () => {
     );
     const viewer = await openClient(harness.webSocketUrl);
     await authenticate(viewer, harness.room, "viewer", "viewer-client-roster");
-    await firstHost.inbox.next("peer-joined");
+    await commitPreparedRoute(viewer);
 
     await closeClient(firstHost);
     await closeClient(viewer);
@@ -3098,7 +2899,11 @@ describe("WebSocket signaling", () => {
       "host-client-roster",
     );
     expect(secondHostAuth.peerId).toBe(firstHostAuth.peerId);
-    expect(secondHostAuth.viewerPeerIds).toEqual([]);
+    expect(harness.roomStore.getViewerPeerIds(harness.room.roomId)).toEqual([]);
+    await nextActiveRouteRevision(
+      secondHost,
+      peerAssisted(secondHostAuth).routeRevision,
+    );
     await secondHost.inbox.expectNone(30);
   });
 
@@ -3127,10 +2932,18 @@ describe("WebSocket signaling", () => {
       undefined,
       { displayName: "短线重连" },
     );
-    await firstHost.inbox.next("peer-joined");
+    await commitPreparedRoute(firstViewer);
     expect(
-      viewerPresenceEntries(await firstHost.inbox.next("viewer-presence")),
-    ).toEqual([
+      viewerPresenceEntries(
+        await nextViewerPresenceMatching(
+          firstHost,
+          (message) =>
+            viewerPresenceEntries(message).some(
+              (entry) => entry.upstream.kind === "peer",
+            ),
+        ),
+      ),
+    ).toMatchObject([
       {
         role: "viewer",
         peerId: firstViewerAuth.peerId,
@@ -3167,11 +2980,12 @@ describe("WebSocket signaling", () => {
       undefined,
       { viewerPresence: true },
     );
-    expect(secondHostAuth.viewerPeerIds).toEqual([firstViewerAuth.peerId]);
+    expect(harness.roomStore.getViewerPeerIds(harness.room.roomId)).toEqual([
+      firstViewerAuth.peerId,
+    ]);
     expect(
       viewerPresenceEntries(await secondHost.inbox.next("viewer-presence")),
     ).toEqual([]);
-    await secondHost.inbox.expectNone(30);
 
     const secondViewer = await openClient(harness.webSocketUrl);
     const secondViewerAuth = await authenticate(
@@ -3185,24 +2999,38 @@ describe("WebSocket signaling", () => {
     );
     expect(secondViewerAuth.peerId).toBe(firstViewerAuth.peerId);
     expect(secondViewerAuth.connectionId).toBe("connection-during-grace");
-    expect((await secondHost.inbox.next("peer-joined")).peerId).toBe(
-      firstViewerAuth.peerId,
-    );
     expect(
-      viewerPresenceEntries(await secondHost.inbox.next("viewer-presence")),
+      viewerPresenceEntries(
+        await nextViewerPresenceMatching(
+          secondHost,
+          (message) =>
+            viewerPresenceEntries(message).some(
+              (entry) => entry.peerId === firstViewerAuth.peerId,
+            ),
+        ),
+      ),
     ).toEqual([
       {
         role: "viewer",
         peerId: firstViewerAuth.peerId,
         displayName: "短线重连",
         upstream: { kind: "peer", peerId: secondHostAuth.peerId },
+        mediaReady: true,
       },
     ]);
-    await secondHost.inbox.expectNone(30);
+    await expectNoViewerPresenceMatching(
+      secondHost,
+      (message) =>
+        !viewerPresenceEntries(message).some(
+          (entry) => entry.peerId === firstViewerAuth.peerId,
+        ),
+      30,
+    );
 
     secondViewer.socket.send(
       JSON.stringify({
         type: "restart-request",
+        targetPeerId: secondHostAuth.peerId,
         connectionId: secondViewerAuth.connectionId,
         rebuild: false,
       }),
@@ -3235,7 +3063,7 @@ describe("WebSocket signaling", () => {
         `viewer-client-${index}`,
       );
       expect(viewerAuth.maxViewers).toBe(maxViewersPerRoom);
-      await host.inbox.next(index <= 2 ? "peer-joined" : "peer-waiting");
+      await commitPreparedRoute(viewer);
       viewers.push(viewer);
     }
 

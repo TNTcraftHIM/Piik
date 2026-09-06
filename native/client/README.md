@@ -201,6 +201,7 @@ npm run probe:client-loopback
 
 SCREENER_CLIENT_MEDIA_GATE=true \
 CHROME_PATH=/path/to/chrome \
+SCREENER_CLIENT_GATE_STUN_URLS=stun:<stun-host>:3478 \
 npm run gate:client-media
 
 SCREENER_CLIENT_NATIVE_HOST_GATE=true \
@@ -216,7 +217,7 @@ SCREENER_REMOTE_HOST=<public-test-host> \
 SCREENER_REMOTE_USER=<ssh-user> \
 SCREENER_REMOTE_SSH_KEY=/path/to/key \
 SCREENER_CLIENT_GATE_STUN_URLS=stun:<stun-host>:3478 \
-npm run gate:client-cross-nat
+npm run gate:client-native-host
 
 SCREENER_CLIENT_NATIVE_HOST_GATE=true \
 SCREENER_CLIENT_LINK_MEDIA_GATE=true \
@@ -226,7 +227,7 @@ SCREENER_CLOUDFLARED=/path/to/cloudflared \
 SCREENER_REMOTE_HOST=<public-test-host> \
 SCREENER_REMOTE_USER=<ssh-user> \
 SCREENER_REMOTE_SSH_KEY=/path/to/key \
-npm run gate:client-link-media
+npm run gate:client-native-host
 
 SCREENER_CLIENT_LINK_GATE=true \
 SCREENER_GO=/path/to/go \

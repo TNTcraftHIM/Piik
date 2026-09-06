@@ -1,11 +1,16 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-09-05
+Last reviewed: 2026-09-06
 
 Only **Now** is executable. Observations, old branches, experiments, and parked
 topics are not implementation authority.
 
 ## Now
+
+The audit preparation branch is the refactor handoff candidate. Export one exact
+verified source baseline, then hold without merge or deployment. The external
+agent owns the Go rewrite; the main agent reviews contract parity and design.
+Do not treat unperformed physical checks below as passed.
 
 1. **Client physical acceptance.** Physically validate macOS and Linux
    capture/audio/recovery, a decoded public-link Browser Viewer, and a NAT case
@@ -103,8 +108,8 @@ topics are not implementation authority.
     recommending either as a default for other deployments. Measure benefit of
     the implemented three-attempt budget before increasing it or claiming that
     independent connection attempts are independent NAT mappings.
-14. **Unresolved route-state ownership claims.** Reopen lower-revision
-    reauthentication, active SFU failure during an unrelated prepare, and
+14. **Unresolved route-state ownership claims.** Reopen active SFU failure
+    during an unrelated prepare and
     multi-child relay-evidence ownership only from an exact current-wire
     reproduction. Do not add a second revision namespace, parallel failure
     state, or generalized evidence map from static possibility alone.
@@ -126,10 +131,22 @@ topics are not implementation authority.
     server in the same boundary; do not create or retain two room, signaling,
     persistence, or route-controller implementations. The
     [consolidation draft](./research/server-consolidation.md) identifies the two
-    preparatory simplifications, the routing-mode product choice, and the shared
-    module and concurrency model; implementation follows Client acceptance.
+    preparatory simplifications and shared module/concurrency model. The
+    [audit reconciliation](./research/backend-audit-1b01048.md) distinguishes
+    accepted changes from external claims; the graph is now universal, pending
+    ICE recovery belongs only to its route operation, and origin activation
+    stays persistent. Refactor remaining shared owners only when this removes
+    real duplication, not to reproduce every external cleanup suggestion.
 17. **Opt-in diagnostics.** Replace ad hoc console logging with an explicit
     Client/Server debug option and bounded diagnostic export. Include revision,
     runtime state and sanitized capture/connection events; exclude credentials,
     media and raw process memory by default. A compressed feedback bundle needs
     deliberate collection and retention, not automatic uploads.
+18. **Remaining audit behavior.** During the owning refactor, reproduce and
+    resolve optional Local-password cookies across HTTP LAN/HTTPS public origins;
+    audio-process failure without stopping healthy video; natural capture EOF
+    attribution; and Native prepared-bridge failure that must disable Native
+    for the current Viewer session before retrying. Storage I/O failure needs
+    an authority-consistent recovery policy, not catch-and-continue guards.
+    The Local occupied-port precheck prevents ordinary duplicate launches but
+    does not provide atomic bind handoff; do not claim otherwise.

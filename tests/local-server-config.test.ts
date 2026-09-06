@@ -21,7 +21,6 @@ describe("local server configuration", () => {
       siteAccessPassword: "local-access-password",
       roomLeaseMs: 86_400_000,
       maxViewersPerRoom: 20,
-      peerAssistedMedia: true,
       endpointMediaCopyCapacity: 2,
       stunUrls: [],
       natPredictionEnabled: false,

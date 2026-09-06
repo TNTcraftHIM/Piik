@@ -54,7 +54,6 @@ function testConfig(overrides: Partial<ServerConfig> = {}): ServerConfig {
     siteAccessPassword,
     roomLeaseMs: 86_400_000,
     maxViewersPerRoom: 8,
-    peerAssistedMedia: false,
     endpointMediaCopyCapacity: 2,
     stunUrls: [],
     natPredictionEnabled: false,
@@ -924,7 +923,6 @@ describe("server HTTP listener and health", () => {
   it("starts with an injected optional SFU token issuer", async () => {
     const baseUrl = await start(
       testConfig({
-        peerAssistedMedia: true,
         livekitFallback: {
           url: "ws://livekit.test:7880",
           apiUrl: "http://livekit.test:7880",
@@ -953,7 +951,6 @@ describe("server HTTP listener and health", () => {
     roomControl.seedRoom(staleFence, ["host", "viewer:stale"]);
     const baseUrl = await start(
       testConfig({
-        peerAssistedMedia: true,
         livekitFallback: {
           url: "ws://livekit.test:7880",
           apiUrl: "http://127.0.0.1:7880",
@@ -983,7 +980,6 @@ describe("server HTTP listener and health", () => {
     });
     runningServer = await createScreenerServer({
       config: testConfig({
-        peerAssistedMedia: true,
         livekitFallback: {
           url: "ws://livekit.test:7880",
           apiUrl: "http://127.0.0.1:7880",
@@ -1035,7 +1031,6 @@ describe("server HTTP listener and health", () => {
     const contender = await createScreenerServer({
       config: testConfig({
         roomDatabasePath: unavailableDatabasePath,
-        peerAssistedMedia: true,
         livekitFallback: {
           url: "ws://livekit.test:7880",
           apiUrl: "http://127.0.0.1:7880",
@@ -1073,7 +1068,6 @@ describe("server HTTP listener and health", () => {
     const contender = await createScreenerServer({
       config: testConfig({
         roomDatabasePath,
-        peerAssistedMedia: true,
         livekitFallback: {
           url: "ws://livekit.test:7880",
           apiUrl: "http://127.0.0.1:7880",
@@ -1110,7 +1104,6 @@ describe("server HTTP listener and health", () => {
     runningServer = await createScreenerServer({
       config: testConfig({
         roomDatabasePath,
-        peerAssistedMedia: true,
         livekitFallback: {
           url: "ws://livekit.test:7880",
           apiUrl: "http://127.0.0.1:7880",
@@ -1143,7 +1136,6 @@ describe("server HTTP listener and health", () => {
     runningServer = await createScreenerServer({
       config: testConfig({
         roomDatabasePath,
-        peerAssistedMedia: true,
         livekitFallback: {
           url: "ws://livekit.test:7880",
           apiUrl: "http://127.0.0.1:7880",
@@ -1173,7 +1165,6 @@ describe("server HTTP listener and health", () => {
     });
     runningServer = await createScreenerServer({
       config: testConfig({
-        peerAssistedMedia: true,
         livekitFallback: {
           url: "ws://livekit.test:7880",
           apiUrl: "http://127.0.0.1:7880",
@@ -1229,7 +1220,6 @@ describe("server HTTP listener and health", () => {
     roomControl.initializeError = new Error("startup reconciliation failed");
     runningServer = await createScreenerServer({
       config: testConfig({
-        peerAssistedMedia: true,
         livekitFallback: {
           url: "ws://livekit.test:7880",
           apiUrl: "http://127.0.0.1:7880",

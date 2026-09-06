@@ -115,7 +115,6 @@ export interface ConnectedParticipant {
   expiresAt: string | null;
   hostOnline: boolean;
   replacedSessionId?: string;
-  viewerPeerIds: readonly string[];
   codeEntryPolicy: CodeEntryPolicy;
   viewerPasswordEnabled: boolean;
   viewerAuthorizationGeneration: string;
@@ -772,10 +771,6 @@ export class RoomStore {
       hostOnline: Boolean(room.host?.sessionId),
       replacedSessionId:
         replacedSessionId === sessionId ? undefined : replacedSessionId,
-      viewerPeerIds:
-        role === "host"
-          ? [...room.viewers.values()].map((viewer) => viewer.peerId)
-          : [],
       codeEntryPolicy: room.codeEntryPolicy,
       viewerPasswordEnabled: room.viewerPasswordMaterial !== null,
       viewerAuthorizationGeneration: room.viewerAuthorizationGeneration,

@@ -31,6 +31,7 @@ const REMOVED_ENVIRONMENT_VARIABLES = [
   "SELECTED_EDGE_TURN_CREDENTIAL_TTL_SECONDS",
   "SELECTED_EDGE_TURN_ALLOCATION_CAPACITY",
   "PEER_ASSISTED_ROOM_IDS",
+  "PEER_ASSISTED_MEDIA",
   "HOST_ADMISSION_PASSWORD",
   "MAX_PEER_RELAY_DOWNSTREAM_EDGES",
   "ROOM_TTL_SECONDS",
@@ -53,7 +54,6 @@ export interface ServerConfig {
   roomDatabasePath?: string;
   roomLeaseMs: number;
   maxViewersPerRoom: number;
-  peerAssistedMedia: boolean;
   endpointMediaCopyCapacity: number;
   livekitFallback?: LiveKitFallbackConfig;
   stunUrls: readonly string[];
@@ -272,7 +272,9 @@ export function loadConfig(
           : name === "HOST_ADMISSION_PASSWORD"
           ? `${name} is no longer supported; use SITE_ACCESS_PASSWORD`
           : name === "PEER_ASSISTED_ROOM_IDS"
-          ? `${name} is no longer supported; peer-assisted media applies to every room when enabled`
+          ? `${name} is no longer supported; peer-assisted media applies to every room`
+          : name === "PEER_ASSISTED_MEDIA"
+          ? `${name} is no longer supported; peer-assisted media is always enabled`
           : name === "ROOM_TTL_SECONDS"
           ? `${name} is no longer supported; use ROOM_LEASE_SECONDS`
           : `${name} is no longer supported; ordinary ICE accepts STUN_URLS only`,
@@ -349,11 +351,6 @@ export function loadConfig(
     1,
     MAX_VIEWERS_PER_ROOM_LIMIT,
   );
-  const peerAssistedMedia = parseBoolean(
-    environment.PEER_ASSISTED_MEDIA,
-    false,
-    "PEER_ASSISTED_MEDIA",
-  );
   const endpointMediaCopyCapacity = parseBoundedInteger(
     environment.ENDPOINT_MEDIA_COPY_CAPACITY,
     DEFAULT_ENDPOINT_MEDIA_COPY_CAPACITY,
@@ -363,9 +360,6 @@ export function loadConfig(
   );
   const livekitFallback = parseLiveKitFallback(environment, nodeEnv);
 
-  if (livekitFallback && !peerAssistedMedia) {
-    throw new Error("LiveKit fallback requires PEER_ASSISTED_MEDIA=true");
-  }
   const configuredSecrets = [
     siteAccessPassword,
     livekitFallback?.apiKey,
@@ -412,7 +406,6 @@ export function loadConfig(
         "ROOM_LEASE_SECONDS",
       ) * 1_000,
     maxViewersPerRoom,
-    peerAssistedMedia,
     endpointMediaCopyCapacity,
     livekitFallback,
     stunUrls,

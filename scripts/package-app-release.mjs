@@ -176,7 +176,7 @@ if (process.argv.length !== 3) {
 const repositoryRoot = realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), ".."));
 const outputRoot = resolve(process.cwd(), process.argv[2]);
 const relativeOutput = relative(repositoryRoot, outputRoot);
-if (relativeOutput === "" || (!relativeOutput.startsWith("..") && !isAbsolute(relativeOutput))) {
+if (relativeOutput === "" || (relativeOutput.split(/[\\/]/)[0] !== ".." && !isAbsolute(relativeOutput))) {
   fail("Output directory must be outside the repository");
 }
 if (existsSync(outputRoot)) fail("Output directory must not already exist");

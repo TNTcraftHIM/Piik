@@ -445,6 +445,38 @@ describe("RoomRouteController", () => {
     });
   });
 
+  it("consumes a quality candidate rejected at preparation instead of rebuilding it", () => {
+    const routes = controller(2, { qualityConvergenceEnabled: true });
+    addViewer(routes, A, 2);
+    addViewer(routes, B, 2);
+    routes.hydrateEdge(A, peerEdge(HOST, "a_from_host"));
+    routes.hydrateEdge(B, peerEdge(HOST, "b_from_host"));
+    observePersistentDegraded(routes, A, "a_from_host", 0);
+    const first = routes.reconcile(10).operation;
+    expect(first).toMatchObject({
+      childPeerId: A,
+      reason: "quality-convergence",
+    });
+    const rejected = first!.candidates[first!.cursor]!.tuple;
+
+    let operation = first;
+    for (let round = 0; operation && round < 4; round += 1) {
+      if (round > 0) {
+        expect(
+          operation.candidates
+            .slice(operation.cursor)
+            .map((candidate) => candidate.tuple),
+        ).not.toContainEqual(rejected);
+      }
+      expect(
+        routes.skipCurrentCandidate(cursorGuard(operation), 11 + round, "stale")
+          .accepted,
+      ).toBe(true);
+      operation = routes.reconcile(12 + round).operation;
+    }
+    expect(operation).toBeUndefined();
+  });
+
   it("lets a newly committed availability edge report persistent degradation before healthy", () => {
     const routes = controller(2, { qualityConvergenceEnabled: true });
     addViewer(routes, B, 2);

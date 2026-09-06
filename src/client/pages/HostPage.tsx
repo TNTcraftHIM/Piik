@@ -556,7 +556,6 @@ export function HostPage({
     new Map<string, number>(),
   );
   const viewerQualityEvidenceRenderFrameRef = useRef<number | null>(null);
-  const peerAssistedRef = useRef(false);
   const activeRouteRevisionRef = useRef(0);
   const generationRef = useRef(0);
   const activeGenerationRef = useRef<number | null>(null);
@@ -807,14 +806,6 @@ export function HostPage({
     return route;
   }
 
-  function clearHostSfuRoute(): void {
-    const route = hostSfuRouteRef.current;
-    hostSfuRouteRef.current = null;
-    setHostSfuQualityWarning(null);
-    sfuStandbyPrewarmerRef.current?.setUrl(null);
-    void route?.disconnect();
-  }
-
   function setSfuStandbyUrl(url: string | null | undefined): void {
     if (!url) {
       sfuStandbyPrewarmerRef.current?.setUrl(null);
@@ -878,7 +869,6 @@ export function HostPage({
     streamRef.current = null;
     retiringStreamRef.current = null;
     iceConfigRef.current = null;
-    peerAssistedRef.current = false;
     setStream(null);
     setDetails(null);
     setMaxViewers(null);
@@ -1167,10 +1157,7 @@ export function HostPage({
       activeRouteRevisionRef.current,
       directSnapshot,
     );
-    if (
-      !evidenceSource ||
-      (evidenceSource === "peer-relayed" && !peerAssistedRef.current)
-    ) {
+    if (!evidenceSource) {
       return;
     }
     commitViewerQualityEvidence(
@@ -1640,9 +1627,7 @@ export function HostPage({
       } else if (captureChanged) {
         setDetails(captureDetails(activeStream));
       }
-      if (peerAssistedRef.current) {
-        signalRef.current?.setHostQualitySettings(appliedProfile);
-      }
+      signalRef.current?.setHostQualitySettings(appliedProfile);
       const activeSfuRoute = hostSfuRouteRef.current;
       const [results, sfuUpdated] = await Promise.all([
         Promise.all(
@@ -1732,8 +1717,12 @@ export function HostPage({
         .setPaused(nativeShareGeneration, nextPaused)
         .then(() => {
           if (!isCurrentGeneration(generation)) return;
-          if (signalRef.current?.setSharingPaused(nextPaused) !== true) {
-            void nativeClient.setPaused(nativeShareGeneration, !nextPaused);
+          const sent = signalRef.current?.setSharingPaused(nextPaused) === true;
+          if (!sent && !nextPaused) {
+            // Mirror the Browser branch: a resume the server did not hear
+            // rolls back to paused and restores the wire intent.
+            void nativeClient.setPaused(nativeShareGeneration, true);
+            signalRef.current?.confirmSharingPaused();
             setNoticeKey("host.pause.signalRecovering");
             return;
           }
@@ -1747,7 +1736,13 @@ export function HostPage({
           hostSfuRouteRef.current?.setPaused(nextPaused);
           sharingPausedRef.current = nextPaused;
           setSharingPaused(nextPaused);
-          setNoticeKey(nextPaused ? "host.pauseNotice" : "host.resumeNotice");
+          setNoticeKey(
+            !sent
+              ? "host.pause.signalRecovering"
+              : nextPaused
+                ? "host.pauseNotice"
+                : "host.resumeNotice",
+          );
         })
         .catch((error: unknown) => {
           if (isCurrentGeneration(generation)) {
@@ -1963,7 +1958,6 @@ export function HostPage({
   async function startPeer(
     peerId: string,
     generation: number,
-    attempt = 0,
   ): Promise<void> {
     if (!isCurrentGeneration(generation) || !hostChildIsAssigned(peerId)) {
       return;
@@ -2052,31 +2046,8 @@ export function HostPage({
     }
 
     const connectionId = peer.connectionId;
-    if (peerAssistedRef.current || attempt >= 1) {
-      reportHostChildFailure(peerId, connectionId, generation);
-      removePeer(peerId);
-      return;
-    }
+    reportHostChildFailure(peerId, connectionId, generation);
     removePeer(peerId);
-    window.setTimeout(() => {
-      if (
-        isCurrentGeneration(generation) &&
-        !peerAssistedRef.current &&
-        hostChildIsAssigned(peerId) &&
-        !peersRef.current.has(peerId)
-      ) {
-        void startPeer(peerId, generation, attempt + 1).catch(
-          (error: unknown) => {
-            if (
-              isCurrentGeneration(generation) &&
-              hostChildIsAssigned(peerId)
-            ) {
-              setNoticeError(error, "connection");
-            }
-          },
-        );
-      }
-    }, 500);
   }
 
   async function recoverPeer(
@@ -2148,7 +2119,6 @@ export function HostPage({
   ): boolean {
     return Boolean(
       isCurrentGeneration(generation) &&
-        peerAssistedRef.current &&
         hostChildIsAssigned(peerId) &&
         signalRef.current?.send({
           type: "route-failed",
@@ -2199,49 +2169,38 @@ export function HostPage({
           message.codeEntryPolicy,
         ),
       );
-      if (
-        "mediaMode" in message &&
-        message.mediaMode === "peer-assisted"
-      ) {
-        const currentQualitySettings =
-          pendingQualitySettings ?? message.qualitySettings;
-        activeRouteRevisionRef.current = message.routeRevision;
-        peerAssistedRef.current = true;
-        if (reauthenticated) {
-          commitQuality(currentQualitySettings);
-          const endpointUpdates = [
-            ...[...peersRef.current.values()].map((peer) =>
-              peer.updateProfile(currentQualitySettings),
-            ),
-            ...(hostProvisionalChildRef.current
-              ? [
-                  hostProvisionalChildRef.current.updateProfile(
-                    currentQualitySettings,
-                  ),
-                ]
-              : []),
-          ];
-          void Promise.allSettled(endpointUpdates);
-        }
-        const route = ensureHostSfuRoute(generation);
-        void route
-          .resyncAuthoritative({
-            revision: message.routeRevision,
-            phase: "active",
-            assignment: message.routeAssignment,
-          })
-          .then(async () => {
-            if (reauthenticated && hostSfuRouteRef.current === route) {
-              await route.updateProfile(currentQualitySettings);
-            }
-            syncHostSfuQualityWarning(route, generation);
-          });
-        return;
+      const currentQualitySettings =
+        pendingQualitySettings ?? message.qualitySettings;
+      activeRouteRevisionRef.current = message.routeRevision;
+      if (reauthenticated) {
+        commitQuality(currentQualitySettings);
+        const endpointUpdates = [
+          ...[...peersRef.current.values()].map((peer) =>
+            peer.updateProfile(currentQualitySettings),
+          ),
+          ...(hostProvisionalChildRef.current
+            ? [
+                hostProvisionalChildRef.current.updateProfile(
+                  currentQualitySettings,
+                ),
+              ]
+            : []),
+        ];
+        void Promise.allSettled(endpointUpdates);
       }
-      activeRouteRevisionRef.current = 0;
-      peerAssistedRef.current = false;
-      clearHostSfuRoute();
-      reconcileHostChildren(message.viewerPeerIds, generation);
+      const route = ensureHostSfuRoute(generation);
+      void route
+        .resyncAuthoritative({
+          revision: message.routeRevision,
+          phase: "active",
+          assignment: message.routeAssignment,
+        })
+        .then(async () => {
+          if (reauthenticated && hostSfuRouteRef.current === route) {
+            await route.updateProfile(currentQualitySettings);
+          }
+          syncHostSfuQualityWarning(route, generation);
+        });
       return;
     }
     if (message.type === "viewer-presence") {
@@ -2275,32 +2234,30 @@ export function HostPage({
       return;
     }
     if (message.type === "route-update") {
-      if (peerAssistedRef.current) {
-        const route = ensureHostSfuRoute(generation);
-        const accepted = route.accept(message);
-        if (accepted === "stale") return;
-        if (message.phase === "prepare") {
-          if (message.candidate.transport === "direct") {
-            prepareHostChild(
-              message.revision,
-              message.assignment,
-              message.candidate,
-              generation,
-            );
-          } else {
-            discardPreparedHostChild();
-          }
+      const route = ensureHostSfuRoute(generation);
+      const accepted = route.accept(message);
+      if (accepted === "stale") return;
+      if (message.phase === "prepare") {
+        if (message.candidate.transport === "direct") {
+          prepareHostChild(
+            message.revision,
+            message.assignment,
+            message.candidate,
+            generation,
+          );
         } else {
-          activatePreparedHostChild(message.revision, message.assignment);
+          discardPreparedHostChild();
         }
-        if (
-          message.phase === "active" &&
-          message.revision !== activeRouteRevisionRef.current
-        ) {
-          activeRouteRevisionRef.current = message.revision;
-        }
-        syncHostSfuQualityWarning(route, generation);
+      } else {
+        activatePreparedHostChild(message.revision, message.assignment);
       }
+      if (
+        message.phase === "active" &&
+        message.revision !== activeRouteRevisionRef.current
+      ) {
+        activeRouteRevisionRef.current = message.revision;
+      }
+      syncHostSfuQualityWarning(route, generation);
       return;
     }
     if (message.type === "viewer-quality-evidence") {
@@ -2308,45 +2265,10 @@ export function HostPage({
       return;
     }
     if (message.type === "sfu-config") {
-      if (peerAssistedRef.current) {
-        const route = ensureHostSfuRoute(generation);
-        void route
-          .acceptConfig(message)
-          .then(() => syncHostSfuQualityWarning(route, generation));
-      }
-      return;
-    }
-    if (message.type === "peer-joined") {
-      if (peerAssistedRef.current) {
-        return;
-      }
-      reconcileHostChildren(
-        [...activeHostChildPeerIdsRef.current, message.peerId],
-        generation,
-      );
-      return;
-    }
-    if (message.type === "peer-waiting") {
-      if (!peerAssistedRef.current) {
-        reconcileHostChildren(
-          activeHostChildPeerIdsRef.current.filter(
-            (peerId) => peerId !== message.peerId,
-          ),
-          generation,
-        );
-      }
-      return;
-    }
-    if (message.type === "peer-left") {
-      if (peerAssistedRef.current) {
-        return;
-      }
-      reconcileHostChildren(
-        activeHostChildPeerIdsRef.current.filter(
-          (peerId) => peerId !== message.peerId,
-        ),
-        generation,
-      );
+      const route = ensureHostSfuRoute(generation);
+      void route
+        .acceptConfig(message)
+        .then(() => syncHostSfuQualityWarning(route, generation));
       return;
     }
     if (message.type === "signal") {

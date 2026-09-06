@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  DEFAULT_QUALITY_SETTINGS,
   DEFAULT_ROUTE_POLICY,
   SIGNALING_PROTOCOL,
   type QualitySettings,
@@ -61,6 +62,24 @@ afterEach(() => {
   vi.unstubAllGlobals();
   setCopy({ lang: "zh", vis: false });
 });
+
+function routeAuthenticated(
+  shareGeneration: string | null = null,
+  qualitySettings: QualitySettings = DEFAULT_QUALITY_SETTINGS,
+) {
+  return {
+    mediaMode: "peer-assisted" as const,
+    shareGeneration,
+    routeRevision: 0,
+    routeAssignment: {
+      upstream: { kind: "none" as const },
+      childPeerIds: [],
+      sfuPublicationGeneration: null,
+    },
+    qualitySettings,
+    routePolicy: DEFAULT_ROUTE_POLICY,
+  };
+}
 
 describe("browser-local display name", () => {
   it("localizes text defaults and uses visual emoji identities", () => {
@@ -947,7 +966,7 @@ describe("client signaling recovery policy", () => {
           endpointMediaCopyCapacity: 2,
           hostOnline: true,
           connectionId: null,
-          viewerPeerIds: [],
+          ...routeAuthenticated(),
           iceConfig: { iceServers: [], natPredictionStunUrls: [] },
           codeEntryPolicy: "open",
           viewerAuthorizationGeneration: "viewer_generation_12345678",
@@ -1091,7 +1110,7 @@ describe("client signaling recovery policy", () => {
         hostOnline: true,
         hostPaused: true,
         connectionId: null,
-        viewerPeerIds: [],
+        ...routeAuthenticated("share_generation_12345678"),
         iceConfig: { iceServers: [], natPredictionStunUrls: [] },
         codeEntryPolicy: "open",
         viewerPasswordEnabled: false,
@@ -1127,7 +1146,7 @@ describe("client signaling recovery policy", () => {
       hostOnline: true,
       hostPaused: true,
       connectionId: null,
-      viewerPeerIds: [],
+      ...routeAuthenticated("share_generation_12345678"),
       iceConfig: { iceServers: [], natPredictionStunUrls: [] },
       codeEntryPolicy: "open",
       viewerPasswordEnabled: false,
@@ -1240,7 +1259,6 @@ describe("client signaling recovery policy", () => {
           hostOnline: true,
           hostPaused: false,
           connectionId: null,
-          viewerPeerIds: [],
           iceConfig: { iceServers: [], natPredictionStunUrls: [] },
           codeEntryPolicy: "open",
           viewerPasswordEnabled: false,
@@ -1368,7 +1386,7 @@ describe("client signaling recovery policy", () => {
         endpointMediaCopyCapacity: 2,
         hostOnline: true,
         connectionId: null,
-        viewerPeerIds: [],
+        ...routeAuthenticated(),
         iceConfig: { iceServers: [], natPredictionStunUrls: [] },
         codeEntryPolicy: "open",
         viewerPasswordEnabled: false,
@@ -1485,7 +1503,6 @@ describe("client signaling recovery policy", () => {
       endpointMediaCopyCapacity: 2,
       hostOnline: true,
       connectionId: "connection_12345678",
-      viewerPeerIds: [],
       iceConfig: { iceServers: [], natPredictionStunUrls: [] },
       codeEntryPolicy: "open",
       viewerAuthorizationGeneration: "viewer_generation_12345678",
@@ -1566,7 +1583,7 @@ describe("client signaling recovery policy", () => {
       maxViewers: 8,
       hostOnline: true,
       connectionId: null,
-      viewerPeerIds: [],
+      ...routeAuthenticated(),
       iceConfig: { iceServers: [], natPredictionStunUrls: [] },
     }),
   ])(

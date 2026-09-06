@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"os/exec"
 	"sync"
 	"time"
@@ -43,6 +45,9 @@ func Start(parent context.Context, command Command) (*Process, error) {
 	if command.Path == "" || command.HealthURL == "" {
 		return nil, errors.New("supervised process command is incomplete")
 	}
+	if err := ensureHealthPortAvailable(command.HealthURL); err != nil {
+		return nil, err
+	}
 	ctx, cancel := context.WithCancel(parent)
 	child := exec.CommandContext(ctx, command.Path, command.Args...)
 	child.Dir = command.Directory
@@ -77,6 +82,22 @@ func Start(parent context.Context, command Command) (*Process, error) {
 		return nil, err
 	}
 	return process, nil
+}
+
+func ensureHealthPortAvailable(healthURL string) error {
+	parsed, err := url.Parse(healthURL)
+	if err != nil {
+		return errors.New("supervised process health URL is invalid")
+	}
+	host, port, err := net.SplitHostPort(parsed.Host)
+	if err != nil || (host != "127.0.0.1" && host != "localhost" && host != "::1") {
+		return nil
+	}
+	listener, err := net.Listen("tcp", net.JoinHostPort(host, port))
+	if err != nil {
+		return fmt.Errorf("supervised process health port is unavailable: %w", err)
+	}
+	return listener.Close()
 }
 
 func (process *Process) Done() <-chan struct{} {

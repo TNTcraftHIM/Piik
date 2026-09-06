@@ -54,6 +54,7 @@ func (engine *Engine) NewReceiver(options ReceiverOptions) (*Receiver, webrtc.Se
 	if err != nil {
 		return nil, webrtc.SessionDescription{}, err
 	}
+	_ = engine.bandwidth.take(connection.ID())
 	if err = connection.SetRemoteDescription(options.Offer); err != nil {
 		_ = connection.Close()
 		return nil, webrtc.SessionDescription{}, err

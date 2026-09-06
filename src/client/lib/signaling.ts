@@ -144,10 +144,6 @@ export class SignalingClient {
     return this.send({ type: "set-display-name", displayName });
   }
 
-  setViewerDisplayName(displayName: DisplayName): boolean {
-    return this.setDisplayName(displayName);
-  }
-
   setSharingPaused(paused: boolean): boolean {
     if (this.identity.role !== "host") {
       return false;
@@ -325,9 +321,7 @@ export class SignalingClient {
       if (!this.stopped && shouldReconnectSignaling(event.code)) {
         this.scheduleReconnect();
       } else if (!this.stopped) {
-        this.stopped = true;
-        this.clearTimers();
-        this.events.onStatus("offline");
+        this.stop();
         this.events.onTerminated(
           event.code === SIGNAL_CLOSE_CODES.sessionReplaced
             ? "SESSION_REPLACED"

@@ -37,6 +37,7 @@ export class NativeMediaBridge {
   private ready = false;
   private disposed = false;
   private startTimer: number | null = null;
+  private rejectStart: ((error: Error) => void) | null = null;
 
   constructor(
     private readonly shareId: string,
@@ -62,13 +63,9 @@ export class NativeMediaBridge {
     if (this.disposed || this.unsubscribe) {
       throw new Error("Native media bridge is unavailable");
     }
-    let rejectStart: (error: Error) => void = () => undefined;
     const started = new Promise<MediaStream>((resolve, reject) => {
-      rejectStart = reject;
-      this.startTimer = window.setTimeout(
-        () => this.fail(rejectStart),
-        BRIDGE_TIMEOUT_MS,
-      );
+      this.rejectStart = reject;
+      this.startTimer = window.setTimeout(() => this.fail(), BRIDGE_TIMEOUT_MS);
       const complete = () => {
         if (
           !this.ready &&
@@ -77,6 +74,7 @@ export class NativeMediaBridge {
           (!this.expectedAudio || this.stream.getAudioTracks().length > 0)
         ) {
           this.ready = true;
+          this.rejectStart = null;
           this.clearStartTimer();
           resolve(this.stream);
         }
@@ -92,7 +90,7 @@ export class NativeMediaBridge {
           this.peer.connectionState === "failed" ||
           this.peer.connectionState === "closed"
         ) {
-          this.fail(rejectStart);
+          this.fail();
           return;
         }
         complete();
@@ -114,12 +112,12 @@ export class NativeMediaBridge {
               }
             : null,
         },
-      ).catch(() => this.fail(rejectStart));
+      ).catch(() => this.fail());
     });
     this.unsubscribe = this.control.onEvent((event) => {
       if (event.shareId !== this.shareId) return;
       if (event.type === "share-ended") {
-        this.fail(rejectStart);
+        this.fail();
         return;
       }
       if (
@@ -131,7 +129,7 @@ export class NativeMediaBridge {
       if (event.type === "edge-candidate") {
         if (!this.remoteDescriptionSet) {
           if (this.pendingCandidates.length >= MAX_PENDING_CANDIDATES) {
-            this.fail(rejectStart);
+            this.fail();
           } else {
             this.pendingCandidates.push(event.candidate);
           }
@@ -139,12 +137,12 @@ export class NativeMediaBridge {
         }
         void this.peer
           .addIceCandidate(event.candidate)
-          .catch(() => this.fail(rejectStart));
+          .catch(() => this.fail());
       } else if (
         event.type === "edge-state" &&
         (event.state === "failed" || event.state === "closed")
       ) {
-        this.fail(rejectStart);
+        this.fail();
       }
     });
 
@@ -189,6 +187,8 @@ export class NativeMediaBridge {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.rejectStart?.(new Error("Native media bridge failed"));
+    this.rejectStart = null;
     this.unsubscribe?.();
     this.unsubscribe = null;
     this.clearStartTimer();
@@ -200,13 +200,9 @@ export class NativeMediaBridge {
     );
   }
 
-  private fail(rejectStart: (error: Error) => void): void {
+  private fail(): void {
     if (this.disposed) return;
-    if (this.ready) {
-      this.onFailed();
-    } else {
-      rejectStart(new Error("Native media bridge failed"));
-    }
+    if (this.ready) this.onFailed();
     this.dispose();
   }
 

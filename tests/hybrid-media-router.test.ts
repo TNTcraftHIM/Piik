@@ -7,6 +7,7 @@ import {
   type HybridAuthenticationState,
 } from "../src/server/hybrid-media-router.ts";
 import { RoomStore, type CreatedRoom } from "../src/server/room-store.ts";
+import { RoomRouteController } from "../src/server/room-route-controller.ts";
 import { SfuResourceAdmission } from "../src/server/sfu-resource-admission.ts";
 import { FakeSfuRoomControl } from "./fake-sfu-room-control.ts";
 
@@ -184,9 +185,6 @@ function harness(
       messages.push(message);
       sent.set(sessionId, messages);
     },
-    getConnectionId(roomId, viewerPeerId) {
-      return connections.get(`${roomId}:${viewerPeerId}`);
-    },
     setConnectionId(roomId, viewerPeerId, connectionId) {
       connections.set(`${roomId}:${viewerPeerId}`, connectionId);
     },
@@ -251,6 +249,35 @@ async function establishSfuRoom(
 }
 
 describe("HybridMediaRouter v9 runtime", () => {
+  it.each([undefined, false, true])("publishes a connection identity only for an explicit commit: %s", async (committed) => {
+    const { store, sent, connections, router } = harness(2);
+    try {
+      const room = await store.createRoom();
+      complete(router, connectHost(store, room));
+      const viewer = connectViewer(store, room, "settlement");
+      complete(router, viewer);
+      await vi.waitFor(() => expect(preparedFor(sent, viewer.sessionId)).toBeDefined());
+      const prepared = preparedFor(sent, viewer.sessionId)!;
+      const settle = vi.spyOn(RoomRouteController.prototype, "candidateReady")
+        .mockReturnValueOnce({
+          accepted: true, committed, released: [], failedPeerIds: [],
+          activeRevision: prepared.revision,
+        });
+      try {
+        router.handleRouteReady(viewer, {
+          type: "route-ready", phase: "prepare", revision: prepared.revision,
+        });
+        expect(connections.get(`${room.roomId}:${viewer.peerId}`)).toBe(
+          committed === true ? prepared.candidate.connectionId : undefined,
+        );
+      } finally {
+        settle.mockRestore();
+      }
+    } finally {
+      await router.close();
+    }
+  });
+
   it("logs only aggregate candidate origin for route signals", async () => {
     const { router } = harness(2);
     const debug = vi.spyOn(
@@ -2293,6 +2320,37 @@ describe("HybridMediaRouter v9 runtime", () => {
       );
     } finally {
       await router.close();
+    }
+  });
+
+  it("drains every pending SFU publication during close even when one drain rejects", async () => {
+    const { store, sent, roomControl, router } = harness(1, true, 1_000, 2, 10_000);
+    try {
+      const roomA = await store.createRoom();
+      await establishSfuRoom(store, sent, router, roomA);
+      const roomB = await store.createRoom();
+      await establishSfuRoom(store, sent, router, roomB);
+      const deleteRoom = vi.spyOn(roomControl!, "deleteRoom");
+      roomControl!.failDelete = true;
+      router.stopRoom(roomA.roomId);
+      router.stopRoom(roomB.roomId);
+      await vi.waitFor(() => expect(deleteRoom).toHaveBeenCalledTimes(2));
+
+      deleteRoom.mockImplementation(async (fence) => {
+        if (fence.roomId === roomA.roomId) {
+          throw new Error("room deletion failed");
+        }
+        roomControl!.deleted.push({ ...fence });
+      });
+
+      await expect(router.close()).rejects.toThrow(
+        "LiveKit drain failed during shutdown",
+      );
+      expect(roomControl!.deleted.map((fence) => fence.roomId)).toEqual([
+        roomB.roomId,
+      ]);
+    } finally {
+      await router.close().catch(() => undefined);
     }
   });
 

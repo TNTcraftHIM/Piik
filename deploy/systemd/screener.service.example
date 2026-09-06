@@ -9,6 +9,7 @@ Type=simple
 User=screener
 Group=screener
 WorkingDirectory=/opt/screener/current
+Environment=NODE_ENV=production
 EnvironmentFile=/etc/screener/screener.env
 ExecStart=/usr/local/bin/node dist/server/server/index.js
 Restart=on-failure

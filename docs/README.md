@@ -77,6 +77,11 @@ Rooms and repository practice:
 - [Cross-restart room recovery](./research/cross-restart-room-recovery.md)
 - [Agent context governance](./research/agent-context-governance.md)
 
+Backend structure:
+
+- [Server consolidation](./research/server-consolidation.md)
+- [Backend audit and refactor preparation](./research/backend-audit-1b01048.md)
+
 Research records verified facts, measurements, assumptions, licenses, and
 remaining evidence boundaries. It does not own current product behavior or work
 priority.

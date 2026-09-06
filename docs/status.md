@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-09-05
+Last updated: 2026-09-06
 
 This is the current execution index. Git history owns completed timelines;
 [verification status](./verification-status.md) owns evidence boundaries.
@@ -50,7 +50,9 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Current Source
 
-- Canonical source uses the strict `screener-v20` Browser/server contract.
+- Candidate source uses the strict `screener-v21` Browser/server contract;
+  the graph controller is universal and the Host-star configuration and wire
+  path are removed. This candidate has not been merged or deployed.
   Optional SQLite stable authority, non-expiring local preferred code, atomic
   room replacement and the Host codec selector remain implemented; production
   selects stable storage. Graceful restart, crash, timeout and network loss use
@@ -192,7 +194,8 @@ Client acceptance remains open for the reported Windows 10 display startup and
 game-specific source behavior. Windows 11 display, minimized-source recovery,
 live presets and source-switch checks pass, but do not establish those reports
 as resolved. NAT acquisition has controller and signaling coverage, not a new
-public-network success-rate claim. Its added prepare progress field requires a
-coordinated private-wire release: old strict pages cannot consume it safely.
-Native codec and capability fields likewise require the matching bundled UI.
-Production is unchanged; [TODO](./todo.md) owns acceptance and release work.
+public-network success-rate claim. The audit candidate removes the Host-star
+configuration and wire shape under `screener-v21`. It is held for refactor
+handoff, not deployed: a future cutover needs matching Web/Server/Client builds,
+explicit active-share acceptance, and configuration restoration on rollback.
+Production is unchanged by this audit; [TODO](./todo.md) owns remaining work.

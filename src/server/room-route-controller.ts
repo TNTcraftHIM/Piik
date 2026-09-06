@@ -11,7 +11,11 @@ import {
   type RouteDiagnosticSnapshot,
   type ViewerQualityEvidenceMetrics,
 } from "../shared/protocol.js";
-import { assertEndpointMediaCopyCapacity } from "../shared/media-copy-accounting.js";
+import {
+  assertEndpointMediaCopyCapacity,
+  endpointMediaCopyCountFits,
+  endpointMediaCopyLimit,
+} from "../shared/media-copy-accounting.js";
 
 export type CandidateTuple =
   | {
@@ -874,31 +878,6 @@ export class RoomRouteController<Resource = unknown> {
     if (child) child.availabilityExhausted = false;
     this.touchFacts();
     return true;
-  }
-
-  retireCommittedTransport(guard: EdgeGuard): readonly Resource[] {
-    const child = this.participants.get(guard.childPeerId);
-    const edge = this.upstreamByViewer.get(guard.childPeerId);
-    if (this.operation?.current || !child || child.sessionId !== guard.childSessionId || this.revision !== guard.routeRevision ||
-        !edge || edge.connectionId !== guard.connectionId || !edge.physicalActive ||
-        edge.childSessionId !== guard.childSessionId ||
-        (edge.kind === "peer" && edge.parentSessionId !== guard.parentSessionId)) {
-      return [];
-    }
-    const released: Resource[] = [];
-    if (edge.kind === "sfu") {
-      this.retireSfuEdge(guard.childPeerId, edge, released);
-      this.pruneRetiringSfuAnchors();
-    } else {
-      edge.physicalActive = false;
-      edge.usable = false;
-    }
-    this.clearQualityForParticipant(guard.childPeerId);
-    child.availabilityExhausted = false;
-    this.revision = this.allocateRevision();
-    if (this.operation) this.operation.baseRevision = this.revision;
-    this.touchFacts();
-    return released;
   }
 
   retireHostPublication(guard: {
@@ -1932,6 +1911,10 @@ export class RoomRouteController<Resource = unknown> {
       }
       this.promoteNextDirectWithinHeadStart(operation, nowMs);
     }
+    this.consumeQualityCandidateOpportunity(
+      operation,
+      operation.candidates[operation.cursor],
+    );
     this.consumeDirectContinuationCandidate(operation);
     this.noteRejection(operation.demandPeerId, bucket);
     this.debug("candidate-rejected", {
@@ -3972,7 +3955,10 @@ export class RoomRouteController<Resource = unknown> {
     if (copies + 1 <= producer.effectiveDownstreamCapacity) {
       return { tuple, endpointTransition: { kind: "none", producerPeerId } };
     }
-    if (copies + 1 <= Math.min(this.options.endpointMediaCopyCapacity + 1, 3)) {
+    if (
+      copies + 1 <=
+      endpointMediaCopyLimit(this.options.endpointMediaCopyCapacity, "transition")
+    ) {
       return { tuple, endpointTransition: { kind: "overlap", producerPeerId } };
     }
     const retire = this.retirementFor(childPeerId, producerPeerId, tuple);
@@ -4880,8 +4866,15 @@ export class RoomRouteController<Resource = unknown> {
         current = currentEdge.parentPeerId;
       }
     }
-    for (const participant of this.participants.values()) if (this.usedSlots(participant.peerId) > this.options.endpointMediaCopyCapacity) {
-      throw new Error("Committed route exceeds endpoint capacity");
+    for (const participant of this.participants.values()) {
+      if (
+        !endpointMediaCopyCountFits(
+          this.usedSlots(participant.peerId),
+          this.options.endpointMediaCopyCapacity,
+        )
+      ) {
+        throw new Error("Committed route exceeds endpoint capacity");
+      }
     }
     for (const generation of this.retiringPublicationGenerations) {
       if (![...this.upstreamByViewer.values()].some(

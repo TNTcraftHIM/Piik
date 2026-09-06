@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -213,6 +215,107 @@ func TestControlSessionSharesOneBoundedSocketForResponsesAndEvents(t *testing.T)
 	}
 }
 
+func TestControlClosesTheSocketWhenItsReaderRejectsAFrame(t *testing.T) {
+	server := startTestServer(t, testOrigin)
+	connection := dialControl(t, server.Endpoint(), server.Endpoint().InstanceToken, testOrigin)
+	defer connection.CloseNow()
+	writeControl(t, connection, requestJSON("request_hello", "hello"))
+	var ready controlMessage
+	readControl(t, connection, &ready)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := connection.Write(ctx, websocket.MessageBinary, []byte("invalid")); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := connection.Read(ctx); err == nil || ctx.Err() != nil {
+		t.Fatalf("server did not close its rejected control socket: %v", err)
+	}
+}
+
+func TestControlCloseCancelsAHandlerWaitingForPicker(t *testing.T) {
+	extension := &blockingControlSession{
+		startedSignal: make(chan struct{}),
+		closedSignal:  make(chan struct{}),
+	}
+	server := startTestServerWithOptions(t, Options{
+		AllowedOrigins: []string{testOrigin},
+		NewControl: func() ControlSession {
+			return extension
+		},
+	})
+	connection := dialControl(t, server.Endpoint(), server.Endpoint().InstanceToken, testOrigin)
+	writeControl(t, connection, requestJSON("request_hello", "hello"))
+	var ready controlMessage
+	readControl(t, connection, &ready)
+	writeControl(t, connection, requestJSON("request_extension", "extension"))
+	select {
+	case <-extension.startedSignal:
+	case <-time.After(time.Second):
+		t.Fatal("control handler did not start")
+	}
+	connection.CloseNow()
+	select {
+	case <-extension.closedSignal:
+	case <-time.After(time.Second):
+		t.Fatal("closing the control socket did not release the picker handler")
+	}
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		second, response, err := websocket.Dial(context.Background(),
+			websocketURL(server.Endpoint())+"/control", &websocket.DialOptions{
+				HTTPHeader:   http.Header{"Origin": []string{testOrigin}},
+				Subprotocols: []string{ControlSubprotocol + "." + server.Endpoint().InstanceToken},
+			})
+		if err == nil {
+			second.CloseNow()
+			return
+		}
+		if response != nil && response.Body != nil {
+			response.Body.Close()
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("control session was not released: %v", err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestControlSessionProcessesARequestBurstInOrder(t *testing.T) {
+	extension := &testControlSession{
+		events: make(chan any, 1),
+		closed: make(chan struct{}),
+	}
+	server := startTestServerWithOptions(t, Options{
+		AllowedOrigins: []string{testOrigin},
+		NewControl: func() ControlSession {
+			return extension
+		},
+	})
+	connection := dialControl(t, server.Endpoint(), server.Endpoint().InstanceToken, testOrigin)
+	defer connection.CloseNow()
+	writeControl(t, connection, requestJSON("request_hello", "hello"))
+	var ready controlMessage
+	readControl(t, connection, &ready)
+	const burst = 32
+	for index := 0; index < burst; index++ {
+		writeControl(t, connection, requestJSON(
+			fmt.Sprintf("request_extension_%d", index), "extension",
+		))
+	}
+	seen := make(map[string]bool, burst)
+	for len(seen) < burst {
+		var response controlMessage
+		readControl(t, connection, &response)
+		seen[response.ID] = true
+	}
+	for index := 0; index < burst; index++ {
+		if !seen[fmt.Sprintf("request_extension_%d", index)] {
+			t.Fatalf("request %d was not processed", index)
+		}
+	}
+}
+
 func TestStartAlwaysBindsToIPv4Loopback(t *testing.T) {
 	server := startTestServer(t, testOrigin)
 	host, _, err := net.SplitHostPort(server.Endpoint().Host)
@@ -339,6 +442,28 @@ func requestJSON(id, messageType string) map[string]any {
 type testControlSession struct {
 	events chan any
 	closed chan struct{}
+}
+
+type blockingControlSession struct {
+	started       sync.Once
+	closed        sync.Once
+	startedSignal chan struct{}
+	closedSignal  chan struct{}
+}
+
+func (session *blockingControlSession) Handle(ctx context.Context, _ []byte) (any, error) {
+	session.started.Do(func() { close(session.startedSignal) })
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func (session *blockingControlSession) Events() <-chan any {
+	return nil
+}
+
+func (session *blockingControlSession) Close() error {
+	session.closed.Do(func() { close(session.closedSignal) })
+	return nil
 }
 
 func (session *testControlSession) Handle(_ context.Context, payload []byte) (any, error) {

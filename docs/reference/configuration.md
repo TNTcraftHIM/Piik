@@ -8,7 +8,7 @@ service secret store or an untracked access-restricted environment file.
 
 | Variable | Contract |
 | --- | --- |
-| `NODE_ENV` | `production` enables production-only validation. |
+| `NODE_ENV` | Required for every server deployment: `production` selects the built static client and enables production-only validation. |
 | `LISTEN_HOST` | Defaults to `0.0.0.0`; bare-metal production normally uses `127.0.0.1`. |
 | `PORT` | Positive TCP port, default `8787`; the tracked release wrapper supports only that default. |
 | `PUBLIC_BASE_URL` | Exact public HTTP(S) origin; production requires HTTPS. |
@@ -17,13 +17,11 @@ service secret store or an untracked access-restricted environment file.
 | `ROOM_LEASE_SECONDS` | Positive dormant lease, default `86400`; active Host prevents expiry. |
 | `ROOM_DATABASE_PATH` | Optional absolute SQLite file path; unset selects memory mode. |
 | `MAX_VIEWERS_PER_ROOM` | `1..20`, default `8`. |
-| `PEER_ASSISTED_MEDIA` | Enables the all-room bounded Peer/SFU controller. |
 | `ENDPOINT_MEDIA_COPY_CAPACITY` | Shared endpoint steady-copy cap `1..3`, default `2`. |
 | `STUN_URLS` | Comma-separated `stun:` URLs; at least one is required in production. |
 | `NAT_PREDICTION_ENABLED` | Optional bounded NAT prediction capability, default `false`; requires an ordinary `STUN_URLS` endpoint on UDP 3478 plus reachable same-host UDP 3479/3480 listeners. |
 
-Automatic SFU fallback is enabled only when `PEER_ASSISTED_MEDIA=true` and all
-four values below are present:
+Automatic SFU fallback is enabled when all four values below are present:
 
 | Variable | Contract |
 | --- | --- |

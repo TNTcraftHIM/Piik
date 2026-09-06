@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"strconv"
 	"testing"
@@ -30,6 +31,18 @@ func TestStartWaitsForReadinessAndClosesThroughStdin(t *testing.T) {
 func TestStartReportsAChildThatExitsBeforeReadiness(t *testing.T) {
 	if _, err := Start(context.Background(), helperCommand(freePort(t), "exit")); err == nil {
 		t.Fatal("early child exit was accepted")
+	}
+}
+
+func TestStartRejectsAHealthPortAlreadyInUse(t *testing.T) {
+	foreign := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		response.WriteHeader(http.StatusOK)
+	}))
+	defer foreign.Close()
+	port := foreign.Listener.Addr().(*net.TCPAddr).Port
+	if process, err := Start(context.Background(), helperCommand(port, "serve")); err == nil {
+		_ = process.Close()
+		t.Fatal("foreign health response was accepted as child readiness")
 	}
 }
 

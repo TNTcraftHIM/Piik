@@ -18,13 +18,15 @@ import {
   decodeClientEndpoint,
   type ClientEndpoint as Endpoint,
 } from "./client-gate-endpoint";
+import {
+  NATIVE_CLIENT_PROTOCOL,
+  NATIVE_CLIENT_SUBPROTOCOL,
+} from "../src/client/native/wire";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const BUILD_ROOT = join(ROOT, "build", "client-check");
 const SOURCE_TITLE = "Screener Native Gate Source";
-const GATE_STUN_URL =
-  process.env.SCREENER_CLIENT_GATE_STUN_URL?.trim() ||
-  "stun:share.bonfire.icu:3478";
+const GATE_STUN_URLS = process.env.SCREENER_CLIENT_GATE_STUN_URLS?.trim();
 
 interface Probe {
   protocol: number;
@@ -269,9 +271,11 @@ async function readEndpoint(child: ChildProcessWithoutNullStreams): Promise<Endp
 
 async function browserMediaGate(input: {
   endpoint: Endpoint;
+  protocol: number;
+  subprotocol: string;
   sourceTitle: string;
   sourceKind: "window" | "display";
-  stunUrl: string;
+  stunUrls: string;
 }): Promise<MediaEvidence> {
   let socket: WebSocket | null = null;
   const peers: RTCPeerConnection[] = [];
@@ -306,7 +310,7 @@ async function browserMediaGate(input: {
     } as RequestInit);
     const health = await healthResponse.json();
     if (
-      health.protocol !== 7 ||
+      health.protocol !== input.protocol ||
       health.service !== "screener-client" ||
       health.instanceToken !== input.endpoint.instanceToken ||
       health.nativeMedia?.video !== true ||
@@ -320,7 +324,7 @@ async function browserMediaGate(input: {
 
     socket = new WebSocket(
       "ws://127.0.0.1:" + input.endpoint.port + "/control",
-      ["screener-client-v8." + input.endpoint.instanceToken],
+      [input.subprotocol + "." + input.endpoint.instanceToken],
     );
     await new Promise<void>((resolveOpen, rejectOpen) => {
       const timer = window.setTimeout(
@@ -493,7 +497,7 @@ async function browserMediaGate(input: {
       const offer = await request("prepare-edge", {
         shareId,
         connectionId: nextConnectionId,
-        iceServers: [{ urls: [input.stunUrl] }],
+        iceServers: [{ urls: input.stunUrls.split(",") }],
       });
       await peer.setRemoteDescription({ type: "offer", sdp: offer.sdp });
       edge.remoteDescriptionSet = true;
@@ -668,6 +672,9 @@ async function main(): Promise<void> {
   }
   const chromePath = process.env.CHROME_PATH?.trim();
   if (!chromePath) throw new Error("CHROME_PATH is required");
+  if (!GATE_STUN_URLS) {
+    throw new Error("SCREENER_CLIENT_GATE_STUN_URLS is required");
+  }
 
   const profile = await mkdtemp(join(tmpdir(), "screener-client-media-"));
   // Keep network-capable binaries at a stable repository path. Windows
@@ -897,9 +904,11 @@ async function main(): Promise<void> {
       controlPage,
       "((__name) => (" + browserMediaGate.toString() + ")(" + JSON.stringify({
         endpoint,
+        protocol: NATIVE_CLIENT_PROTOCOL,
+        subprotocol: NATIVE_CLIENT_SUBPROTOCOL,
         sourceTitle: SOURCE_TITLE,
         sourceKind,
-        stunUrl: GATE_STUN_URL,
+        stunUrls: GATE_STUN_URLS,
       }) + "))((target) => target)",
       Date.now() + 70_000,
     );

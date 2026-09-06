@@ -24,6 +24,7 @@ const (
 	instanceTokenBytes = 32
 	helloTimeout       = 5 * time.Second
 	shutdownTimeout    = 2 * time.Second
+	controlQueueSize   = 64 // MaxControlMessageBytes * 64 = 16 MiB worst-case.
 )
 
 type Options struct {
@@ -262,6 +263,7 @@ func (server *Server) handleControl(response http.ResponseWriter, request *http.
 	}
 	server.setConnection(connection)
 	defer server.releaseConnection(connection)
+	defer connection.CloseNow()
 	connection.SetReadLimit(MaxControlMessageBytes)
 
 	helloContext, cancelHello := context.WithTimeout(server.ctx, helloTimeout)
@@ -320,11 +322,30 @@ func (server *Server) handleControl(response http.ResponseWriter, request *http.
 			}
 		}()
 	}
+	reads := make(chan []byte, controlQueueSize)
+	go func() {
+		for {
+			messageType, payload, readErr := connection.Read(controlContext)
+			if readErr != nil || messageType != websocket.MessageText {
+				cancelControl()
+				return
+			}
+			select {
+			case reads <- payload:
+			case <-controlContext.Done():
+				return
+			default:
+				cancelControl()
+				return
+			}
+		}
+	}()
 	for {
-		messageType, payload, err = connection.Read(controlContext)
-		if err != nil || messageType != websocket.MessageText {
-			closeControl(connection, "control frame required")
+		select {
+		case <-controlContext.Done():
 			return
+		case payload = <-reads:
+			messageType = websocket.MessageText
 		}
 		message, err = decodeEnvelope(payload)
 		if err != nil {

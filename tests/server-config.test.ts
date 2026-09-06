@@ -20,14 +20,12 @@ describe("server configuration", () => {
     expect(config.stunUrls).toEqual([]);
     expect(config.natPredictionEnabled).toBe(false);
     expect(config.maxViewersPerRoom).toBe(8);
-    expect(config.peerAssistedMedia).toBe(false);
     expect(config.endpointMediaCopyCapacity).toBe(2);
     expect(config.livekitFallback).toBeUndefined();
   });
 
   it("enables LiveKit fallback only for a complete credential tuple", () => {
     const config = loadConfig({
-      PEER_ASSISTED_MEDIA: "true",
       LIVEKIT_URL: " ws://livekit.test:7880 ",
       LIVEKIT_API_URL: " http://livekit.test:7880 ",
       LIVEKIT_API_KEY: " test-key ",
@@ -40,18 +38,6 @@ describe("server configuration", () => {
       apiKey: "test-key",
       apiSecret: "s".repeat(32),
     });
-  });
-
-  it("requires peer-assisted media for LiveKit fallback", () => {
-    expect(() =>
-      loadConfig({
-        PEER_ASSISTED_MEDIA: "false",
-        LIVEKIT_URL: "wss://livekit.test",
-        LIVEKIT_API_KEY: "test-key",
-        LIVEKIT_API_SECRET: "s".repeat(32),
-        ...liveKitAdmission,
-      }),
-    ).toThrow("LiveKit fallback requires PEER_ASSISTED_MEDIA=true");
   });
 
   it.each([
@@ -93,7 +79,6 @@ describe("server configuration", () => {
         NODE_ENV: "production",
         PUBLIC_BASE_URL: "https://share.test",
         STUN_URLS: "stun:stun.test:3478",
-        PEER_ASSISTED_MEDIA: "true",
         LIVEKIT_URL: "ws://livekit.test:7880",
         LIVEKIT_API_KEY: "test-key",
         LIVEKIT_API_SECRET: "s".repeat(32),
@@ -111,7 +96,6 @@ describe("server configuration", () => {
   ])("rejects an invalid LiveKit control origin: %s", (apiUrl) => {
     expect(() =>
       loadConfig({
-        PEER_ASSISTED_MEDIA: "true",
         LIVEKIT_URL: "wss://livekit.test",
         LIVEKIT_API_URL: apiUrl,
         LIVEKIT_API_KEY: "test-key",
@@ -126,7 +110,6 @@ describe("server configuration", () => {
       PUBLIC_BASE_URL: "https://share.test",
       SITE_ACCESS_PASSWORD: "host-password-12",
       STUN_URLS: "stun:stun.test:3478",
-      PEER_ASSISTED_MEDIA: "true",
       LIVEKIT_URL: "wss://livekit.test",
       LIVEKIT_API_KEY: "test-key",
       LIVEKIT_API_SECRET: "s".repeat(32),
@@ -161,14 +144,12 @@ describe("server configuration", () => {
   it.each([
     {
       SITE_ACCESS_PASSWORD: "x".repeat(32),
-      PEER_ASSISTED_MEDIA: "true",
       LIVEKIT_URL: "wss://livekit.test",
       LIVEKIT_API_KEY: "test-key",
       LIVEKIT_API_SECRET: "x".repeat(32),
       ...liveKitAdmission,
     },
     {
-      PEER_ASSISTED_MEDIA: "true",
       LIVEKIT_URL: "wss://livekit.test",
       LIVEKIT_API_KEY: "x".repeat(32),
       LIVEKIT_API_SECRET: "x".repeat(32),
@@ -180,33 +161,17 @@ describe("server configuration", () => {
     );
   });
 
-  it("requires an explicit boolean to enable peer-assisted media", () => {
-    expect(
-      loadConfig({
-        PEER_ASSISTED_MEDIA: "true",
-      }).peerAssistedMedia,
-    ).toBe(true);
-    expect(loadConfig({ PEER_ASSISTED_MEDIA: "false" }).peerAssistedMedia).toBe(
-      false,
-    );
-    expect(() => loadConfig({ PEER_ASSISTED_MEDIA: "1" })).toThrow(
-      "PEER_ASSISTED_MEDIA must be true or false",
-    );
-  });
-
   it("keeps the peer-assisted room default at 8 and accepts the room ceiling", () => {
     expect(
-      loadConfig({ PEER_ASSISTED_MEDIA: "true" }).maxViewersPerRoom,
+      loadConfig({}).maxViewersPerRoom,
     ).toBe(8);
     expect(
       loadConfig({
-        PEER_ASSISTED_MEDIA: "true",
         MAX_VIEWERS_PER_ROOM: String(MAX_VIEWERS_PER_ROOM_LIMIT),
       }).maxViewersPerRoom,
     ).toBe(MAX_VIEWERS_PER_ROOM_LIMIT);
     expect(() =>
       loadConfig({
-        PEER_ASSISTED_MEDIA: "true",
         MAX_VIEWERS_PER_ROOM: String(MAX_VIEWERS_PER_ROOM_LIMIT + 1),
       }),
     ).toThrow("MAX_VIEWERS_PER_ROOM");
@@ -242,10 +207,7 @@ describe("server configuration", () => {
     );
   });
 
-  it("enables the hybrid controller for every room when selected", () => {
-    expect(loadConfig({ PEER_ASSISTED_MEDIA: "true" }).peerAssistedMedia).toBe(
-      true,
-    );
+  it("rejects the removed room rollout setting", () => {
     expect(() =>
       loadConfig({ PEER_ASSISTED_ROOM_IDS: "1" }),
     ).toThrow("PEER_ASSISTED_ROOM_IDS is no longer supported");
@@ -292,7 +254,6 @@ describe("server configuration", () => {
       PUBLIC_BASE_URL: "https://share.test",
       SITE_ACCESS_PASSWORD: "host-password-12",
       STUN_URLS: "stun:stun.test:3478",
-      PEER_ASSISTED_MEDIA: "true",
       LIVEKIT_URL: "wss://livekit.test",
       LIVEKIT_API_KEY: "test-key",
       LIVEKIT_API_SECRET: "s".repeat(32),

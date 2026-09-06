@@ -547,6 +547,10 @@ async function main(): Promise<void> {
     throw new Error("Cross-NAT and one-link gate modes are mutually exclusive");
   }
   const mode: GateMode = linkMedia ? "one-link" : crossNat ? "cross-nat" : "local";
+  const gateStunUrls = process.env.SCREENER_CLIENT_GATE_STUN_URLS?.trim();
+  if (mode === "cross-nat" && !gateStunUrls) {
+    throw new Error("SCREENER_CLIENT_GATE_STUN_URLS is required for the cross-NAT gate");
+  }
   const crashGate =
     process.env.SCREENER_CLIENT_NATIVE_HOST_CRASH_GATE === "true";
   if (crashGate && mode !== "local") {
@@ -682,14 +686,9 @@ async function main(): Promise<void> {
       env: {
         ...process.env,
         NODE_DEBUG: "screener-route",
-        PEER_ASSISTED_MEDIA: "true",
         SCREENER_CLIENT_GATE_NO_BROWSER: "true",
-        ...(mode === "cross-nat"
-          ? {
-              STUN_URLS:
-                process.env.SCREENER_CLIENT_GATE_STUN_URLS?.trim() ||
-                "stun:share.bonfire.icu:3478",
-            }
+        ...(mode === "cross-nat" && gateStunUrls
+          ? { STUN_URLS: gateStunUrls }
           : {}),
       },
     });

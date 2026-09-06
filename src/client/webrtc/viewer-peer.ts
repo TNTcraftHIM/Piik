@@ -230,7 +230,6 @@ export class ViewerPeer implements ViewerMediaPeer {
       return;
     }
     this.disposed = true;
-    this.clearRecoveryTimer();
     this.disposeConnection();
     this.pendingByConnection.clear();
   }
@@ -440,14 +439,7 @@ export class ViewerPeer implements ViewerMediaPeer {
     if (this.recoveryOwner === "route") {
       this.clearDisconnectTimer();
       if (state === "failed") {
-        if (
-          this.natPredictionEnabled &&
-          this.automaticRecoveryRequests < VIEWER_MAX_AUTOMATIC_RECOVERY_REQUESTS
-        ) {
-          this.attemptAutomaticRecovery();
-        } else {
-          this.reportRecoveryExhausted();
-        }
+        this.reportRecoveryExhausted();
       }
       return;
     }
@@ -482,10 +474,7 @@ export class ViewerPeer implements ViewerMediaPeer {
       this.reportRecoveryExhausted();
       return;
     }
-    const rebuild =
-      this.recoveryOwner === "route"
-        ? false
-        : this.automaticRecoveryRequests > 0;
+    const rebuild = this.automaticRecoveryRequests > 0;
     if (
       !this.events.sendRestartRequest(
         this.parentPeerId,
@@ -699,6 +688,7 @@ export class ViewerPeer implements ViewerMediaPeer {
   private disposeConnection(): void {
     this.clearDisconnectTimer();
     this.clearInitialConnectionTimer();
+    this.clearRecoveryTimer();
     this.stopDecodedFrameProof();
     if (this.statsTimer !== null) {
       window.clearInterval(this.statsTimer);

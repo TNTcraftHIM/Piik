@@ -79,7 +79,9 @@ by one presentation reducer. Older route or media generations cannot overwrite
 the current result, and raw server errors are never rendered directly.
 
 The room route revision orders control messages; it is not a Viewer media
-identity. A Viewer frame belongs to its local media generation and remains
+identity. Reauthentication replaces the route snapshot authoritatively, even if
+a replacement controller restarted revision numbering; ordinary updates remain
+monotonic within that authority. A Viewer frame belongs to its local media generation and remains
 current across unrelated graph revisions until that exact binding is replaced,
 invalidated, or terminally failed. Pending candidates never own the primary
 badge, status line, or overlay while committed media remains proved. Those

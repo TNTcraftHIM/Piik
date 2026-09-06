@@ -149,7 +149,6 @@ export async function createScreenerServer(
   const signalingOptions: SignalingOptions = {
     server: httpServer,
     roomStore,
-    peerAssistedMedia: config.peerAssistedMedia,
     endpointMediaCopyCapacity: config.endpointMediaCopyCapacity,
     ...(sfuFallback ? { sfuFallback } : {}),
     ice: iceOptions,
@@ -237,17 +236,19 @@ export async function createScreenerServer(
       } catch (error) {
         errors.push(error);
       }
+      // Vite's HMR socket shares this listener; close it first or
+      // httpServer.close() never settles in development.
+      try {
+        await vite?.close();
+      } catch (error) {
+        errors.push(error);
+      }
       try {
         if (httpServer.listening) {
           await new Promise<void>((resolve, reject) => {
             httpServer.close((error) => (error ? reject(error) : resolve()));
           });
         }
-      } catch (error) {
-        errors.push(error);
-      }
-      try {
-        await vite?.close();
       } catch (error) {
         errors.push(error);
       }

@@ -166,7 +166,6 @@ export interface HybridMediaRouterOptions {
   endpointMediaCopyCapacity: number;
   sfuFallback?: SfuFallbackOptions;
   sendToSession: (sessionId: string, message: ServerMessage) => void;
-  getConnectionId: (roomId: string, viewerPeerId: string) => string | undefined;
   setConnectionId: (roomId: string, viewerPeerId: string, connectionId: string) => void;
   deleteConnectionId: (roomId: string, viewerPeerId: string) => void;
   getShareGeneration: (roomId: string) => string | undefined;
@@ -212,10 +211,18 @@ export class HybridMediaRouter {
     for (const fence of fallback.admission.beginDrainAll()) {
       this.scheduleSfuPublicationDrain(fence);
     }
+    const errors: unknown[] = [];
     for (const [key, task] of [...this.sfuDrainTasks]) {
       if (task.retryTimer) clearTimeout(task.retryTimer);
-      if (task.operation) await task.operation;
-      if (this.sfuDrainTasks.get(key) === task) await this.runSfuDrain(key, task);
+      try {
+        if (task.operation) await task.operation;
+        if (this.sfuDrainTasks.get(key) === task) await this.runSfuDrain(key, task);
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    if (errors.length > 0) {
+      throw new AggregateError(errors, "LiveKit drain failed during shutdown");
     }
   }
 
@@ -766,7 +773,7 @@ export class HybridMediaRouter {
       exhausted: settled.failedPeerIds.length > 0,
     });
     this.releaseResources(settled.released);
-    if (settled.committed !== false && settled.accepted) {
+    if (settled.committed === true && settled.accepted) {
       this.resourceWaiters.delete(participant.roomId);
       this.options.setConnectionId(
         participant.roomId,

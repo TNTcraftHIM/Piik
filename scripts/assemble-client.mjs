@@ -131,7 +131,7 @@ function readDescriptor(path) {
 
 function assertOutsideRepository(repositoryRoot, outputRoot) {
   const path = relative(repositoryRoot, outputRoot);
-  if (path === "" || (!path.startsWith("..") && !isAbsolute(path))) {
+  if (path === "" || (path.split(/[\\/]/)[0] !== ".." && !isAbsolute(path))) {
     fail("Client output directory must be outside the repository");
   }
   if (existsSync(outputRoot)) {

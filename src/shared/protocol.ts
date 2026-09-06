@@ -7,7 +7,7 @@ import { NAT_TRAVERSAL_PATHS } from "./nat-candidate.js";
 export const MAX_VIEWERS_PER_ROOM_LIMIT = 20;
 export const MAX_PARTICIPANTS_PER_ROOM_LIMIT = MAX_VIEWERS_PER_ROOM_LIMIT + 1;
 export const MAX_SIGNAL_BYTES = 64 * 1024;
-export const SIGNALING_PROTOCOL = "screener-v20";
+export const SIGNALING_PROTOCOL = "screener-v21";
 export const SIGNAL_CLOSE_CODES = {
   serviceRestart: 1012,
   sessionReplaced: 4001,
@@ -943,7 +943,6 @@ const authenticatedMessageShape = {
   hostOnline: z.boolean(),
   hostPaused: z.boolean().optional(),
   connectionId: opaqueIdSchema.nullable(),
-  viewerPeerIds: z.array(opaqueIdSchema).max(MAX_VIEWERS_PER_ROOM_LIMIT),
   iceConfig: iceConfigSchema,
   routePolicy: routePolicySchema.default(DEFAULT_ROUTE_POLICY),
   codeEntryPolicy: codeEntryPolicySchema,
@@ -961,7 +960,7 @@ const authenticatedViewerMessageShape = {
   role: z.literal("viewer"),
 };
 
-const peerAssistedAuthenticatedShape = {
+const routeAuthenticatedShape = {
   mediaMode: z.literal("peer-assisted"),
   shareGeneration: opaqueIdSchema.nullable(),
   routeRevision: mediaRouteRevisionSchema,
@@ -971,18 +970,16 @@ const peerAssistedAuthenticatedShape = {
 };
 
 const authenticatedMessageSchema = z.union([
-  z.object(authenticatedHostMessageShape).strict(),
-  z.object(authenticatedViewerMessageShape).strict(),
   z
     .object({
       ...authenticatedHostMessageShape,
-      ...peerAssistedAuthenticatedShape,
+      ...routeAuthenticatedShape,
     })
     .strict(),
   z
     .object({
       ...authenticatedViewerMessageShape,
-      ...peerAssistedAuthenticatedShape,
+      ...routeAuthenticatedShape,
     })
     .strict(),
 ]);
@@ -993,24 +990,6 @@ export const serverMessageSchema = z.union([
     .object({
       type: z.literal("signaling-challenge-response"),
       sequence: signalingChallengeSequenceSchema,
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("peer-joined"),
-      peerId: opaqueIdSchema,
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("peer-waiting"),
-      peerId: opaqueIdSchema,
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("peer-left"),
-      peerId: opaqueIdSchema,
     })
     .strict(),
   z

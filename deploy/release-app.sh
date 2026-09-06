@@ -126,6 +126,7 @@ recover() {
     systemctl start screener.service || ok=0
     wait_for_health || ok=0
   fi
+  rm -f -- "${current}.${release_id}-$$" "${current}.recover-${release_id}-$$" || ok=0
   if [ "$ok" -eq 1 ]; then
     cleanup_release || ok=0
   fi
@@ -257,7 +258,7 @@ systemd-run \
 previous_directory="$PWD"
 cd "$stage"
 sudo -u screener "$node" --input-type=module --eval "await Promise.all([import('sirv'), import('ws'), import('zod'), import('livekit-server-sdk'), import('./dist/server/server/config.js')]);"
-"$node" --env-file=/etc/screener/screener.env --input-type=module --eval "import { loadConfig } from './dist/server/server/config.js'; loadConfig(process.env);"
+NODE_ENV=production "$node" --env-file=/etc/screener/screener.env --input-type=module --eval "import { loadConfig } from './dist/server/server/config.js'; loadConfig(process.env);"
 cd "$previous_directory"
 
 OLD_RELEASE="$old_release" NEW_RELEASE="$stage" "$node" --input-type=module <<'NODE'

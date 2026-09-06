@@ -22,29 +22,26 @@ and SFU effects. These are useful boundaries, not duplication to remove.
 
 ## Preparatory Simplification
 
-1. Unify room termination cleanup. `SignalingServer.closeRoom` and `expireRooms`
-   in [`signaling.ts`](../../src/server/signaling.ts) delete the same timers,
-   connection evidence, share state and router resources before closing sockets.
-   Use one cleanup owner with the existing termination reason as input.
+1. Room expiry and abandonment now share `SignalingServer.terminateRoom` in
+   [`signaling.ts`](../../src/server/signaling.ts). Preserve the distinct semantics
+   of stopping a share, ending a room, and restarting a persistent server.
 2. Remove the Hybrid connection-ID mirror. `connectionIdsByViewer` is populated
    through router callbacks, then `handleViewerQualityEvidence` checks that map
    and `resolveActiveViewerMediaEdge` again. Derive the Hybrid identity from the
    committed edge; retain the evidence gate's own last-observation identity.
    Cover reauthentication and in-place connection adoption before removing the
-   callbacks. The ordinary routing mode remains a separate consumer until its
-   product decision is made.
+   callbacks. The ordinary Host-star path has been removed.
 
 These are structural simplifications, not reproduced functional failures.
+The [audit reconciliation](./backend-audit-1b01048.md) separates verified fixes
+from disputed recommendations. Its external staged plan is not an instruction
+to perform extractions for their own sake.
 
 ## Product Choice
 
-`PEER_ASSISTED_MEDIA=false` remains a documented, default configuration in
-[`.env.example`](../../.env.example). It owns a separate Host-star path in
-`SignalingServer`, including child admission and SDP-answer readiness; Local and
-production use the graph controller. Decide whether this mode still belongs to
-the product before translating it. If automatic Peer topology is universal,
-remove the switch and ordinary path together; otherwise retain its explicit
-contract; this reachable mode is not dead code.
+The graph controller is now universal. The former rollout switch and ordinary
+Host-star signaling path were removed together, so Hosted and Local
+share one route authority and LiveKit remains an optional fallback of that graph.
 
 ## Target Composition
 

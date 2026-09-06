@@ -20,6 +20,7 @@
     "vite.config.ts",
     "vitest.config.ts",
     "scripts/access-privacy-gate.ts",
+    "scripts/client-browser-fanout-gate.ts",
     "scripts/client-media-gate.ts",
     "scripts/client-native-host-gate.ts",
     "scripts/client-native-sfu-gate.ts",
@@ -27,6 +28,7 @@
     "scripts/client-loopback-gate.ts",
     "scripts/client-local-gate.ts",
     "scripts/client-link-gate.ts",
+    "scripts/peer-assisted-benchmark.ts",
     "tests"
   ]
 }

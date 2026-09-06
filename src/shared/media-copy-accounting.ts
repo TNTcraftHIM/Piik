@@ -62,13 +62,3 @@ export function assertEndpointMediaCopyCapacity(capacity: number): void {
     throw new Error("Endpoint media copy capacity must be 1, 2, or 3");
   }
 }
-
-export function assertEndpointMediaCopyCount(
-  count: number,
-  capacity: number,
-  phase: EndpointMediaCopyPhase = "steady",
-): void {
-  if (!endpointMediaCopyCountFits(count, capacity, phase)) {
-    throw new Error(`Endpoint ${phase} media copy capacity exceeded`);
-  }
-}

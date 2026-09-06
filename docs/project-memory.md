@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-09-05
+Last updated: 2026-09-06
 
 Screener is private, low-latency game screen sharing for one Host and up to 20
 authenticated friends. The current product surface is Web Host, Web Viewer, and
@@ -84,7 +84,7 @@ implementation and routine UI detail.
 
 ## Current Snapshot
 
-Canonical source uses the strict `screener-v20` Browser/server contract with
+The audit candidate uses the strict `screener-v21` Browser/server contract with
 committed media readiness, bounded candidate-relative progress and one-shot
 Host-root convergence. It retains optional SQLite room authority and the
 H.264/VP8 sender gate. [Status](./status.md) owns the compact current execution

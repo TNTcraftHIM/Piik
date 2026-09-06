@@ -83,7 +83,6 @@ export function createLocalServerConfig(
     siteAccessPassword: siteAccessPassword || undefined,
     roomLeaseMs: LOCAL_ROOM_LEASE_MS,
     maxViewersPerRoom: MAX_VIEWERS_PER_ROOM_LIMIT,
-    peerAssistedMedia: true,
     endpointMediaCopyCapacity: DEFAULT_ENDPOINT_MEDIA_COPY_CAPACITY,
     stunUrls,
     natPredictionEnabled: natPredictionStunUrls.length === 2,

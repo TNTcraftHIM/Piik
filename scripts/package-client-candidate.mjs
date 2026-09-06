@@ -45,7 +45,7 @@ function sha256(path) {
 
 function assertOutsideRepository(repositoryRoot, outputRoot) {
   const path = relative(repositoryRoot, outputRoot);
-  if (path === "" || (!path.startsWith("..") && !isAbsolute(path))) {
+  if (path === "" || (path.split(/[\\/]/)[0] !== ".." && !isAbsolute(path))) {
     fail("Client candidate output must be outside the repository");
   }
   if (existsSync(outputRoot)) {

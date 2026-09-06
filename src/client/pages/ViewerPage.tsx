@@ -425,7 +425,7 @@ export function ViewerPage({
     displayNameRef.current = fallback;
     setDisplayName(fallback);
     if (!editingDisplayName) setDisplayNameDraft(fallback);
-    signalRef.current?.setViewerDisplayName(fallback);
+    signalRef.current?.setDisplayName(fallback);
   }, [hasCustomDisplayName, lang, vis, viewerClientId]);
   const remoteMediaRef = useRef<RemoteMediaBinding | null>(null);
   const mediaGenerationRef = useRef(0);
@@ -573,9 +573,10 @@ export function ViewerPage({
     upstream: ParticipantRouteAssignment["upstream"],
     phase: "prepare" | "active" = "active",
     connectionAttempt?: PreparedRouteCandidate["connectionAttempt"],
+    authoritative = false,
   ): void {
     setAssignedRoute((current) =>
-      current && revision < current.revision
+      !authoritative && current && revision < current.revision
         ? current
         : { revision, phase, upstream, connectionAttempt },
     );
@@ -584,6 +585,7 @@ export function ViewerPage({
       revision,
       phase,
       kind: routeKindFromAssignment(upstream),
+      authoritative,
     });
   }
 
@@ -592,7 +594,6 @@ export function ViewerPage({
     let currentIceConfig: IceConfig | null = null;
     let currentHostOnline = false;
     let currentHostPaused = false;
-    let peerAssisted = false;
     let currentPeerId: string | null = null;
     let currentRouteRevision = 0;
     let currentRouteAssignment: ParticipantRouteAssignment | null = null;
@@ -649,7 +650,7 @@ export function ViewerPage({
         options,
         acquireNativeClient(),
         nativeViewerSessionId,
-        endpointMediaCopyCapacity,
+        MAX_ENDPOINT_MEDIA_CHILDREN,
       );
     }
 
@@ -877,7 +878,6 @@ export function ViewerPage({
       const relaySnapshot =
         viewerRelay?.getSnapshot(evidence.viewerPeerId) ?? null;
       if (
-        !peerAssisted ||
         evidence.upstream.kind !== "peer" ||
         evidence.upstream.peerId !== currentPeerId ||
         evidence.guard.routeRevision !== currentRouteRevision ||
@@ -896,7 +896,7 @@ export function ViewerPage({
     function ensureViewerRelay(
       upstreamKind = currentRouteAssignment?.upstream.kind,
     ): ViewerRelay | null {
-      if (!peerAssisted || !currentIceConfig) {
+      if (!currentIceConfig) {
         return null;
       }
       const source =
@@ -961,7 +961,7 @@ export function ViewerPage({
         currentQualitySettings,
         {
           sendSignal: (targetPeerId, payload) =>
-            active && peerAssisted
+            active
               ? signal.send({
                   type: "signal",
                   targetPeerId,
@@ -1069,7 +1069,6 @@ export function ViewerPage({
       connectionId?: string,
     ): void {
       if (
-        !peerAssisted ||
         currentHostPaused ||
         !decodedFrameStall.observe(`${route}:${identity}`, framesDecodedDelta)
       ) {
@@ -1409,7 +1408,6 @@ export function ViewerPage({
     ): Promise<void> {
       while (
         active &&
-        peerAssisted &&
         preparedParentPeerId === parentPeerId
       ) {
         const message = preparedParentSignals.shift();
@@ -1472,9 +1470,8 @@ export function ViewerPage({
         currentIceConfig,
         {
           sendSignal: (targetPeerId, payload) =>
-            signal.send(viewerSignalMessage(peerAssisted, targetPeerId, payload)),
+            signal.send(viewerSignalMessage(targetPeerId, payload)),
           sendRestartRequest: createOwnedViewerRestartSender(
-            peerAssisted,
             (targetPeerId, connectionId) => {
               const identity = peer.getConnectionIdentity();
               return (
@@ -1603,11 +1600,8 @@ export function ViewerPage({
         currentIceConfig,
         {
           sendSignal: (targetPeerId, payload) =>
-            signal.send(
-              viewerSignalMessage(peerAssisted, targetPeerId, payload),
-            ),
+              signal.send(viewerSignalMessage(targetPeerId, payload)),
           sendRestartRequest: createOwnedViewerRestartSender(
-            peerAssisted,
             (targetPeerId, connectionId) => {
               const identity = peer.getConnectionIdentity();
               return (
@@ -1706,51 +1700,24 @@ export function ViewerPage({
         setSfuStandbyUrl(
           "sfuStandbyUrl" in message ? message.sfuStandbyUrl : null,
         );
-        const nextPeerAssisted =
-          "mediaMode" in message && message.mediaMode === "peer-assisted";
-        if (!nextPeerAssisted && peerAssisted) {
-          clearViewerSfuRoute();
-          clearPeerState();
-          viewerRelay?.dispose();
-          viewerRelay = null;
-          viewerRelaySourceKey = null;
-          currentAssignment = { parentPeerId: null, childPeerIds: [] };
-        }
-        peerAssisted = nextPeerAssisted;
-        const nextRouteRevision =
-          nextPeerAssisted && "routeRevision" in message
-            ? message.routeRevision
-            : 0;
+        const nextRouteRevision = message.routeRevision;
         if (nextRouteRevision !== currentRouteRevision) {
           clearRelayChildEvidence();
         }
         currentRouteRevision = nextRouteRevision;
-        if (nextPeerAssisted && "routeAssignment" in message) {
-          activateRouteIdentity(
-            message.routeRevision,
-            message.routeAssignment,
-            message.connectionId,
-          );
-          acceptAssignedRoute(
-            message.routeRevision,
-            message.routeAssignment.upstream,
-          );
-        } else {
-          currentRouteAssignment = null;
-          currentRouteConnectionId = null;
-          pendingRouteConnection = null;
-          setAssignedRoute(null);
-          dispatchPresentation({
-            type: "route",
-            revision: 0,
-            phase: "active",
-            kind: message.hostOnline ? "p2p" : "none",
-          });
-        }
-        const relayCapacity = relayCapacityMessageForBrowser(nextPeerAssisted);
-        if (relayCapacity) {
-          signal.send(relayCapacity);
-        }
+        activateRouteIdentity(
+          message.routeRevision,
+          message.routeAssignment,
+          message.connectionId,
+        );
+        acceptAssignedRoute(
+          message.routeRevision,
+          message.routeAssignment.upstream,
+          "active",
+          undefined,
+          true,
+        );
+        signal.send(relayCapacityMessageForBrowser());
         currentIceConfig = message.iceConfig;
         currentHostOnline = message.hostOnline;
         const sharingPaused = message.hostPaused ?? false;
@@ -1767,23 +1734,21 @@ export function ViewerPage({
               ? "online"
               : "stopped",
         });
-        if (nextPeerAssisted && "qualitySettings" in message) {
-          currentQualitySettings = message.qualitySettings;
-          currentShareGeneration = message.shareGeneration;
-          void viewerRelay?.updateProfile(currentQualitySettings);
-          const route = ensureViewerSfuRoute();
-          route.setPaused(sharingPaused);
-          await route.resyncAuthoritative(
-            {
-              revision: message.routeRevision,
-              phase: "active",
-              assignment: message.routeAssignment,
-            },
-            message.peerId,
-          );
-          if (!active || !messageAuthority.owns(authorityToken)) {
-            return;
-          }
+        currentQualitySettings = message.qualitySettings;
+        currentShareGeneration = message.shareGeneration;
+        void viewerRelay?.updateProfile(currentQualitySettings);
+        const route = ensureViewerSfuRoute();
+        route.setPaused(sharingPaused);
+        await route.resyncAuthoritative(
+          {
+            revision: message.routeRevision,
+            phase: "active",
+            assignment: message.routeAssignment,
+          },
+          message.peerId,
+        );
+        if (!active || !messageAuthority.owns(authorityToken)) {
+          return;
         }
         if (
           !message.hostOnline &&
@@ -1800,13 +1765,7 @@ export function ViewerPage({
           !peer?.hasConnectionId(message.connectionId)
         ) {
           const parentPeerId = currentAssignment.parentPeerId;
-          if (!peerAssisted) {
-            signal.send({
-              type: "restart-request",
-              connectionId: message.connectionId,
-              rebuild: true,
-            });
-          } else if (parentPeerId) {
+          if (parentPeerId) {
             signal.send({
               type: "restart-request",
               targetPeerId: parentPeerId,
@@ -1820,60 +1779,58 @@ export function ViewerPage({
         return;
       }
       if (message.type === "route-update") {
-        if (peerAssisted) {
-          const result = ensureViewerSfuRoute().accept(message);
-          if (result !== "stale") {
-            if (
-              result === "accepted" &&
-              message.phase === "prepare" &&
-              message.candidate.childPeerId === currentPeerId
-            ) {
-              pendingRouteConnection = {
-                revision: message.revision,
-                connectionId: message.candidate.connectionId,
-              };
-              if (remoteMediaRef.current === null) {
-                acceptAssignedRoute(
-                  message.revision,
-                  message.assignment.upstream,
-                  "prepare",
-                  message.candidate.connectionAttempt,
-                );
-              }
-            }
-            if (message.phase === "active") {
-              const samePeerUpstream =
-                currentRouteAssignment?.upstream.kind === "peer" &&
-                message.assignment.upstream.kind === "peer" &&
-                currentRouteAssignment.upstream.peerId ===
-                  message.assignment.upstream.peerId;
-              const sameSfuUpstream =
-                currentRouteAssignment?.upstream.kind === "sfu" &&
-                message.assignment.upstream.kind === "sfu" &&
-                currentRouteAssignment.sfuPublicationGeneration ===
-                  message.assignment.sfuPublicationGeneration;
-              const connectionId =
-                pendingRouteConnection?.revision === message.revision
-                  ? pendingRouteConnection.connectionId
-                  : samePeerUpstream || sameSfuUpstream
-                    ? currentRouteConnectionId
-                    : null;
-              if (result === "accepted") {
-                if (message.revision !== currentRouteRevision) {
-                  clearRelayChildEvidence();
-                }
-                activateRouteIdentity(
-                  message.revision,
-                  message.assignment,
-                  connectionId,
-                );
-              }
+        const result = ensureViewerSfuRoute().accept(message);
+        if (result !== "stale") {
+          if (
+            result === "accepted" &&
+            message.phase === "prepare" &&
+            message.candidate.childPeerId === currentPeerId
+          ) {
+            pendingRouteConnection = {
+              revision: message.revision,
+              connectionId: message.candidate.connectionId,
+            };
+            if (remoteMediaRef.current === null) {
               acceptAssignedRoute(
                 message.revision,
                 message.assignment.upstream,
-                "active",
+                "prepare",
+                message.candidate.connectionAttempt,
               );
             }
+          }
+          if (message.phase === "active") {
+            const samePeerUpstream =
+              currentRouteAssignment?.upstream.kind === "peer" &&
+              message.assignment.upstream.kind === "peer" &&
+              currentRouteAssignment.upstream.peerId ===
+                message.assignment.upstream.peerId;
+            const sameSfuUpstream =
+              currentRouteAssignment?.upstream.kind === "sfu" &&
+              message.assignment.upstream.kind === "sfu" &&
+              currentRouteAssignment.sfuPublicationGeneration ===
+                message.assignment.sfuPublicationGeneration;
+            const connectionId =
+              pendingRouteConnection?.revision === message.revision
+                ? pendingRouteConnection.connectionId
+                : samePeerUpstream || sameSfuUpstream
+                  ? currentRouteConnectionId
+                  : null;
+            if (result === "accepted") {
+              if (message.revision !== currentRouteRevision) {
+                clearRelayChildEvidence();
+              }
+              activateRouteIdentity(
+                message.revision,
+                message.assignment,
+                connectionId,
+              );
+            }
+            acceptAssignedRoute(
+              message.revision,
+              message.assignment.upstream,
+              "active",
+            );
           }
         }
         return;
@@ -1894,16 +1851,12 @@ export function ViewerPage({
         return;
       }
       if (message.type === "sfu-config") {
-        if (peerAssisted) {
-          await ensureViewerSfuRoute().acceptConfig(message);
-        }
+        await ensureViewerSfuRoute().acceptConfig(message);
         return;
       }
       if (message.type === "quality-settings") {
-        if (peerAssisted) {
-          currentQualitySettings = message.qualitySettings;
-          void viewerRelay?.updateProfile(currentQualitySettings);
-        }
+        currentQualitySettings = message.qualitySettings;
+        void viewerRelay?.updateProfile(currentQualitySettings);
         return;
       }
       if (message.type === "route-policy") {
@@ -1918,7 +1871,7 @@ export function ViewerPage({
         return;
       }
       if (message.type === "signal") {
-        if (peerAssisted && pendingPeer?.parentPeerId === message.fromPeerId) {
+        if (pendingPeer?.parentPeerId === message.fromPeerId) {
           if (currentAssignment.parentPeerId !== message.fromPeerId) {
             await ensurePendingPeerRoute()?.acceptSignal(
               message.fromPeerId,
@@ -1947,15 +1900,11 @@ export function ViewerPage({
           }
           return;
         }
-        if (
-          peerAssisted &&
-          preparedParentPeerId === message.fromPeerId
-        ) {
+        if (preparedParentPeerId === message.fromPeerId) {
           preparedParentSignals.push(message);
           return;
         }
         if (
-          peerAssisted &&
           viewerRelay &&
           (await viewerRelay.acceptSignal(
             message.fromPeerId,
@@ -1969,10 +1918,7 @@ export function ViewerPage({
         ) {
           return;
         }
-        if (
-          peerAssisted &&
-          currentAssignment.parentPeerId !== message.fromPeerId
-        ) {
+        if (currentAssignment.parentPeerId !== message.fromPeerId) {
           return;
         }
         const peer = ensurePeer();
@@ -1983,13 +1929,11 @@ export function ViewerPage({
         return;
       }
       if (message.type === "restart-request") {
-        if (peerAssisted) {
-          await viewerRelay?.recover(
-            message.fromPeerId,
-            message.connectionId,
-            message.rebuild,
-          );
-        }
+        await viewerRelay?.recover(
+          message.fromPeerId,
+          message.connectionId,
+          message.rebuild,
+        );
         return;
       }
       if (message.type === "host-status") {
@@ -2145,6 +2089,7 @@ export function ViewerPage({
       viewerSfuRoute = null;
       preparedParentPeerId = null;
       preparedParentSignals = [];
+      discardPendingPeer();
       peerRef.current?.dispose();
       peerRef.current = null;
       viewerRelay?.dispose();
@@ -2266,7 +2211,7 @@ export function ViewerPage({
     setDisplayNameError(false);
     setEditingDisplayName(false);
     setHasCustomDisplayName(readStoredDisplayName() !== null);
-    signalRef.current?.setViewerDisplayName(saved);
+    signalRef.current?.setDisplayName(saved);
   }
 
   function submitViewerPassword(event: React.FormEvent<HTMLFormElement>): void {

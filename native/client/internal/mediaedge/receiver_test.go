@@ -39,9 +39,18 @@ func TestReceiverCodecMatchesTheSingleNegotiatedAnswer(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		engine.bandwidth.mu.Lock()
+		pendingBefore := len(engine.bandwidth.pending)
+		engine.bandwidth.mu.Unlock()
 		receiver, answer, err := engine.NewReceiver(ReceiverOptions{Offer: offer, EdgeCapacity: 1})
 		if err != nil {
 			t.Fatal(err)
+		}
+		engine.bandwidth.mu.Lock()
+		pendingObservers := len(engine.bandwidth.pending)
+		engine.bandwidth.mu.Unlock()
+		if pendingObservers != pendingBefore {
+			t.Fatalf("receiver changed pending bandwidth observers from %d to %d", pendingBefore, pendingObservers)
 		}
 		t.Cleanup(func() { _ = receiver.Close() })
 		if receiver.Codec() != want || !strings.Contains(strings.ToLower(answer.SDP), want+"/90000") ||

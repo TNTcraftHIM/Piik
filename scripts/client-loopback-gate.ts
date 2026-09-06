@@ -16,7 +16,12 @@ import {
   decodeClientEndpoint,
   type ClientEndpoint as Endpoint,
 } from "./client-gate-endpoint";
-import { NATIVE_CLIENT_PROTOCOL, NATIVE_CLIENT_SUBPROTOCOL } from "../src/client/native/wire";
+import {
+  NATIVE_CLIENT_PORT_END,
+  NATIVE_CLIENT_PORT_START,
+  NATIVE_CLIENT_PROTOCOL,
+  NATIVE_CLIENT_SUBPROTOCOL,
+} from "../src/client/native/wire";
 
 const PAGE_URL = "https://share.bonfire.icu/";
 const NATIVE_PROTOCOL = NATIVE_CLIENT_PROTOCOL;
@@ -75,8 +80,8 @@ async function browserHandshake(
   const endpointJSON = JSON.stringify({
     host: "127.0.0.1",
     expectedPort: endpoint.port,
-    portStart: 39721,
-    portEnd: 39730,
+    portStart: NATIVE_CLIENT_PORT_START,
+    portEnd: NATIVE_CLIENT_PORT_END,
   });
   return await evaluate(
     cdp,

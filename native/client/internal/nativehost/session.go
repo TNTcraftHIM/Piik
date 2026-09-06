@@ -333,7 +333,7 @@ func (session *Session) UpdateProfile(profile QualityProfile) error {
 		return nil
 	}
 
-	replacement, state, err := session.prepareVideo(options)
+	replacement, state, err := session.prepareVideo(session.ctx, options)
 	if err != nil {
 		return err
 	}
@@ -355,6 +355,7 @@ func (session *Session) UpdateProfile(profile QualityProfile) error {
 }
 
 func (session *Session) ReplaceSource(
+	ctx context.Context,
 	options nativecapture.VideoOptions,
 	audioEnabled bool,
 ) error {
@@ -375,14 +376,14 @@ func (session *Session) ReplaceSource(
 	}
 	options.Profile = profile.Video
 	options.RestoreToken = ""
-	replacement, state, err := session.prepareVideo(options)
+	replacement, state, err := session.prepareVideo(ctx, options)
 	if err != nil {
 		return err
 	}
 	var replacementAudio *nativecapture.Stream
 	if hasAudio {
 		replacementAudio, err = startAudioCapture(
-			session.ctx,
+			ctx,
 			session.captureProcess,
 			options.Target,
 		)
@@ -413,10 +414,11 @@ func startAudioCapture(
 }
 
 func (session *Session) prepareVideo(
+	ctx context.Context,
 	options nativecapture.VideoOptions,
 ) (*nativecapture.Stream, CaptureState, error) {
 	replacement, err := nativecapture.StartVideo(
-		session.ctx,
+		ctx,
 		session.captureProcess,
 		options,
 	)
@@ -424,7 +426,7 @@ func (session *Session) prepareVideo(
 		return nil, CaptureState{}, errors.New("native capture could not start")
 	}
 	state, err := waitForCaptureProfile(
-		session.ctx,
+		ctx,
 		replacement,
 		options.Profile,
 		options.Codec,
@@ -559,6 +561,14 @@ func (session *Session) run() {
 		}()
 	}
 	result := <-videoDone
+	session.mu.Lock()
+	closed := session.closed
+	session.mu.Unlock()
+	if closed {
+		// An explicit Close is a clean end, even if closing the capture process
+		// made the video reader return an error.
+		result = nil
+	}
 	session.cancel()
 	session.mu.Lock()
 	audioStream := session.audioStream
