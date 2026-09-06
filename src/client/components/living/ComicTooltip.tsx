@@ -27,6 +27,8 @@ const TOUCH_HIDE_MS = 1500;
 const COMIC_EXIT_MS = 160;
 // Minimum clearance the re-picked alignment keeps to each viewport edge.
 const EDGE_MARGIN = 8;
+// Paper panel before it is measured: 240-wide comic strip plus its padding.
+const FALLBACK_PANEL_HEIGHT = 96;
 
 type Align = "center" | "start" | "end";
 
@@ -55,6 +57,10 @@ export function ComicTooltip({
   const [touchOpen, setTouchOpen] = useState(false);
   const [comicMounted, setComicMounted] = useState(false);
   const [liveAlign, setLiveAlign] = useState<Align | null>(null);
+  const [livePlace, setLivePlace] = useState<"above" | "below" | null>(null);
+  // True while the current gesture is a touch, so contextmenu can tell a
+  // long-press from a mouse right-click without reading vendor event fields.
+  const touchGesture = useRef(false);
   const interactionOpen = hoverOpen || focusOpen || touchOpen;
   const disabledTrigger =
     isValidElement<{
@@ -94,6 +100,22 @@ export function ComicTooltip({
     const rect = wrap.getBoundingClientRect();
     const measured = comicMounted ? (tipRef.current?.offsetWidth ?? 0) : 0;
     const width = Math.max(0, Math.min(measured || 320, vw - EDGE_MARGIN * 2));
+    // Same idea vertically: a control scrolled near the top has no room above,
+    // and the panel would be cut off by the viewport edge.
+    const vh = window.innerHeight;
+    const panelHeight =
+      (comicMounted ? tipRef.current?.offsetHeight : 0) || FALLBACK_PANEL_HEIGHT;
+    const fitsAbove = rect.top - panelHeight - EDGE_MARGIN >= 0;
+    const fitsBelow = !vh || rect.bottom + panelHeight + EDGE_MARGIN <= vh;
+    setLivePlace(
+      place === "above"
+        ? fitsAbove || !fitsBelow
+          ? "above"
+          : "below"
+        : fitsBelow || !fitsAbove
+          ? "below"
+          : "above",
+    );
     const center = rect.left + rect.width / 2;
     const boxes: Record<Align, { left: number; right: number }> = {
       center: { left: center - width / 2, right: center + width / 2 },
@@ -180,7 +202,7 @@ export function ComicTooltip({
     }
   };
 
-  const placeClass = place === "below" ? " is-below" : "";
+  const placeClass = (livePlace ?? place) === "below" ? " is-below" : "";
   const shownAlign = liveAlign ?? align;
   const alignClass =
     shownAlign === "start" ? " is-start" : shownAlign === "end" ? " is-end" : "";
@@ -213,6 +235,7 @@ export function ComicTooltip({
         }
       }}
       onPointerDown={(event) => {
+        touchGesture.current = event.pointerType === "touch";
         if (event.pointerType !== "touch") return;
         // A suppression token belongs only to the click synthesized for the
         // completed long-press. A later touch starts a new, actionable gesture.
@@ -260,11 +283,18 @@ export function ComicTooltip({
       }}
       onContextMenu={(event) => {
         // Long-press on a wrapped control means "show the hint", never the
-        // native context menu. Chrome fires contextmenu as a PointerEvent;
-        // fall back to treating unknown types as touch.
-        if ((event.nativeEvent as PointerEvent).pointerType !== "mouse") {
-          event.preventDefault();
+        // native context menu. Only that gesture is suppressed: a mouse
+        // right-click (no touch pointerdown) and any menu raised over a text
+        // field (its paste/select entries are the only way in) stay native.
+        if (!touchGesture.current) return;
+        if (
+          (event.target as HTMLElement).closest(
+            "input, textarea, [contenteditable=\"true\"]",
+          )
+        ) {
+          return;
         }
+        event.preventDefault();
       }}
       onClickCapture={(event) => {
         // The synthetic click after a long-press must not fire the control.

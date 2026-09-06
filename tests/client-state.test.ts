@@ -442,13 +442,33 @@ describe("client session identity", () => {
       },
     });
 
-    expect(readViewerRoute()).toEqual({ roomId: "1234" });
+    expect(readViewerRoute()).toEqual({ roomId: "1234", invalidGrant: true });
     expect(readViewerGrant("1234")).toBeNull();
     replaceViewerInvite("1234", `https://share.test/r/1234#v=${"e".repeat(21)}Q`);
     expect(readViewerGrant("1234")).toBe(`${"e".repeat(21)}Q`);
     replaceViewerInvite("1234", `https://share.test/r/5678#v=${"f".repeat(21)}A`);
     expect(readViewerGrant("1234")).toBeNull();
     expect(readViewerGrant("5678")).toBeNull();
+  });
+
+  it("keeps the stored Viewer grant when the URL carries an unrelated fragment", () => {
+    const values = new Map<string, string>();
+    const grant = `${"d".repeat(21)}w`;
+    values.set("screener:viewer-grant:1234", grant);
+    const replaceState = vi.fn();
+    vi.stubGlobal("window", {
+      location: new URL("https://share.test/r/1234#:~:text=hello"),
+      history: { state: null, replaceState },
+      sessionStorage: {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => values.set(key, value),
+        removeItem: (key: string) => values.delete(key),
+      },
+    });
+
+    expect(readViewerRoute()).toEqual({ roomId: "1234", viewerGrant: grant });
+    expect(readViewerGrant("1234")).toBe(grant);
+    expect(replaceState).not.toHaveBeenCalled();
   });
 
   it("persists a rotated Viewer invitation across reload and clears it on revoke", () => {

@@ -13,6 +13,8 @@ interface MetricValue {
   label: CopyKey;
   value: string;
   title?: string;
+  /** Visual mode shows the glyph alone; the value stays in the a11y name. */
+  glyphOnly?: boolean;
 }
 
 export function codecContractWarnings(
@@ -62,6 +64,14 @@ function secondaryMetrics(
     };
     return t(keys[value] ?? "stats.quality.unclassified");
   };
+  const qualityReasonIcon = (value: string): GlyphName =>
+    value === "none"
+      ? "check"
+      : value === "bandwidth"
+        ? "gauge"
+        : value === "cpu"
+          ? "cpu"
+          : "alert";
 
   addNumber("stats.rtt", "clock", metrics.rttMs, "ms");
   if (metrics.codec) {
@@ -76,9 +86,12 @@ function secondaryMetrics(
     addNumber("stats.outgoing", "gauge", metrics.availableOutgoingKbps, "kbps");
     if (metrics.qualityLimitationReason) {
       values.push({
-        icon: "gauge",
+        icon: qualityReasonIcon(metrics.qualityLimitationReason),
         label: "stats.qualityState",
         value: qualityReason(metrics.qualityLimitationReason),
+        // A limitation reason is a sentence, not a measured value: visual
+        // mode states it with the glyph and keeps the words for AT.
+        glyphOnly: true,
       });
     }
     const captureParts: string[] = [];
@@ -163,16 +176,17 @@ export function MetricCells({
   onToggle: (expanded: boolean) => void;
 }) {
   const { t, vis } = useCopy();
-  const cell = ({ icon, label, value, title }: MetricValue): ReactNode => {
-    if (vis && label === "stats.qualityState") return null;
+  const cell = ({ icon, label, value, title, glyphOnly }: MetricValue): ReactNode => {
     const display = vis && value === t("stats.unknown") ? "—" : value;
     return (
     <span className="lr-meter-cell" title={vis ? undefined : title ?? t(label)} key={label + display}>
       <Glyph name={icon} size={16} />
       {vis ? (
         <>
-          <b>{display}</b>
-          <span className="visually-hidden">{t(label)}</span>
+          {glyphOnly ? null : <b>{display}</b>}
+          <span className="visually-hidden">
+            {glyphOnly ? [t(label), display].join(" · ") : t(label)}
+          </span>
         </>
       ) : (
         <span className="lr-meter-text">

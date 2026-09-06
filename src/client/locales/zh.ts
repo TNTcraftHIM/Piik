@@ -33,6 +33,7 @@ export const zh = {
   "client.launch.go": "进入 Screener",
   "client.launch.starting": "正在准备 Screener",
   "client.launch.error": "暂时无法启动，请检查设置后重试",
+  "client.launch.loadFailed": "无法读取启动设置，请重试",
   "client.update.available": "发现新的 Screener 版本",
 
   "gate.title": "站点访问",

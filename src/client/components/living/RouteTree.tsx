@@ -99,6 +99,7 @@ function edgeClass(kind: "p2p" | "sfu", ready = true): string {
 
 export const RouteTree = memo(function RouteTree({
   hostPeerId,
+  hostIdentity,
   hostLabel,
   viewers,
   selfPeerId,
@@ -107,6 +108,8 @@ export const RouteTree = memo(function RouteTree({
   onSelectPeer,
 }: {
   hostPeerId: string | null;
+  /** Colour identity for the Host pawn while its peer id is still unknown. */
+  hostIdentity?: string | null;
   hostLabel: string;
   viewers: readonly LabeledViewerPresence[];
   selfPeerId?: string | null;
@@ -361,7 +364,10 @@ export const RouteTree = memo(function RouteTree({
           className="lr-route-node is-host"
           transform={`translate(${centeredPawnX(hostPos.x, PAWN_SCALE)}, ${centeredPawnY(hostPos.y, PAWN_SCALE)}) scale(${PAWN_SCALE})`}
         >
-          <PawnSvg color={participantColor(hostPeerId ?? "host-pending")} crown />
+          <PawnSvg
+            color={participantColor(hostPeerId ?? hostIdentity ?? "host-pending")}
+            crown
+          />
         </g>
         <text
           className="lr-route-label is-host"
@@ -491,9 +497,11 @@ export const RouteTree = memo(function RouteTree({
                 key={`hit-${node.key}`}
                 className="lr-route-hit"
                 x={point.x - 48}
-                y={point.y - 28}
+                // Bound the target to the row pitch: a taller rect would cover
+                // the next row's label and steal its clicks (later rect wins).
+                y={point.y - 26}
                 width={96}
-                height={72}
+                height={spacing}
                 rx={12}
                 role="button"
                 tabIndex={0}

@@ -24,7 +24,8 @@ import {
   viewerRouteEvidence,
 } from "../components/status-badge-model";
 import { AppHeader, LedStrip, type LedState } from "../components/living/Header";
-import { Couch, type CouchEntry } from "../components/living/Couch";
+import { Couch, PawnSvg, type CouchEntry } from "../components/living/Couch";
+import { participantColor } from "../components/living/participant-color";
 import { MetricCells, useMetricsExpanded } from "../components/living/Metrics";
 import { PawnDetail, RouteGlyph } from "../components/living/PawnDetail";
 import { Lcd } from "../components/living/RoomChip";
@@ -72,6 +73,7 @@ import {
   senderQualityEvidenceFromSnapshot,
 } from "../media/sender-quality-evidence";
 import {
+  freshViewerQualityEvidence,
   metricsFromQualityEvidence,
   nextViewerQualityEvidencePresentationExpiryAt,
   presentViewerQualityEvidence,
@@ -303,8 +305,9 @@ export function ViewerPage({
     connectionAttempt?: PreparedRouteCandidate["connectionAttempt"];
   } | null>(null);
   const [relaySnapshot, setRelaySnapshot] = useState<PeerSnapshot | null>(null);
-  const [relayChildEvidence, setRelayChildEvidence] =
-    useState<ViewerQualityEvidencePresentation | null>(null);
+  const [relayChildEvidence, setRelayChildEvidence] = useState<
+    Map<string, ViewerQualityEvidencePresentation>
+  >(() => new Map());
   const [showConnectionDetails, setShowConnectionDetails] = useState(false);
   const [showTopology, setShowTopology] = useState(false);
   const [theaterMode, setTheaterMode] = useState(false);
@@ -623,9 +626,11 @@ export function ViewerPage({
     const decodedFrameStall = new DecodedFrameStallDetector();
     const messageAuthority = new ViewerMessageAuthority();
     let sfuStandbyPrewarmer: SfuStandbyPrewarmer | null = null;
-    let relayChildEvidenceCurrent: ViewerQualityEvidencePresentation | null =
-      null;
-    let relayChildEvidenceTimer: number | null = null;
+    const relayChildEvidenceCurrent = new Map<
+      string,
+      ViewerQualityEvidencePresentation
+    >();
+    const relayChildEvidenceTimers = new Map<string, number>();
     let sfuTransportConnected = false;
     let nativeClientPromise: Promise<NativeClient | null> | null = null;
     const nativeViewerSessionId = createOpaqueId();
@@ -836,16 +841,22 @@ export function ViewerPage({
     }
 
     function commitRelayChildEvidence(
+      peerId: string,
       presentation: ViewerQualityEvidencePresentation | null,
     ): void {
-      if (relayChildEvidenceTimer !== null) {
-        window.clearTimeout(relayChildEvidenceTimer);
-        relayChildEvidenceTimer = null;
+      const timer = relayChildEvidenceTimers.get(peerId);
+      if (timer !== undefined) {
+        window.clearTimeout(timer);
+        relayChildEvidenceTimers.delete(peerId);
       }
-      const current = relayChildEvidenceCurrent;
-      relayChildEvidenceCurrent = presentation;
+      const current = relayChildEvidenceCurrent.get(peerId) ?? null;
+      if (presentation === null) {
+        relayChildEvidenceCurrent.delete(peerId);
+      } else {
+        relayChildEvidenceCurrent.set(peerId, presentation);
+      }
       if (current !== presentation) {
-        setRelayChildEvidence(presentation);
+        setRelayChildEvidence(new Map(relayChildEvidenceCurrent));
       }
       if (presentation === null) {
         return;
@@ -860,18 +871,25 @@ export function ViewerPage({
         return;
       }
       const expected = presentation;
-      relayChildEvidenceTimer = window.setTimeout(() => {
-        if (relayChildEvidenceCurrent !== expected) {
-          return;
-        }
-        commitRelayChildEvidence(
-          refreshViewerQualityEvidencePresentation(expected),
-        );
-      }, Math.max(0, expiryAt - nowMs));
+      relayChildEvidenceTimers.set(
+        peerId,
+        window.setTimeout(() => {
+          relayChildEvidenceTimers.delete(peerId);
+          if (relayChildEvidenceCurrent.get(peerId) !== expected) {
+            return;
+          }
+          commitRelayChildEvidence(
+            peerId,
+            refreshViewerQualityEvidencePresentation(expected),
+          );
+        }, Math.max(0, expiryAt - nowMs)),
+      );
     }
 
     function clearRelayChildEvidence(): void {
-      commitRelayChildEvidence(null);
+      for (const peerId of [...relayChildEvidenceCurrent.keys()]) {
+        commitRelayChildEvidence(peerId, null);
+      }
     }
 
     function acceptRelayChildEvidence(evidence: ViewerQualityEvidence): void {
@@ -886,8 +904,9 @@ export function ViewerPage({
         return;
       }
       commitRelayChildEvidence(
+        evidence.viewerPeerId,
         presentViewerQualityEvidence(
-          relayChildEvidenceCurrent,
+          relayChildEvidenceCurrent.get(evidence.viewerPeerId) ?? null,
           evidence,
         ),
       );
@@ -971,16 +990,16 @@ export function ViewerPage({
           onUpdate: (snapshot) => {
             if (active) {
               setRelaySnapshot(snapshot);
-              if (relayChildEvidenceCurrent) {
+              for (const [peerId, presentation] of [
+                ...relayChildEvidenceCurrent,
+              ]) {
                 const reconciled =
                   reconcileViewerQualityEvidencePresentation(
-                    relayChildEvidenceCurrent,
-                    viewerRelay?.getSnapshot(
-                      relayChildEvidenceCurrent.evidence.viewerPeerId,
-                    ) ?? null,
+                    presentation,
+                    viewerRelay?.getSnapshot(peerId) ?? null,
                   );
-                if (reconciled !== relayChildEvidenceCurrent) {
-                  commitRelayChildEvidence(reconciled);
+                if (reconciled !== presentation) {
+                  commitRelayChildEvidence(peerId, reconciled);
                 }
               }
             }
@@ -2236,12 +2255,17 @@ export function ViewerPage({
     const failureCode = presentation.failureCode;
     const codeOnlyDenied =
       !viewerGrant && failureCode === "ROOM_ACCESS_DENIED";
-    const canRefresh = [
-      "STALE_CLIENT",
-      "SERVER_ERROR",
-      "SESSION_REPLACED",
-      "SIGNAL_TERMINATED",
-    ].includes(failureCode ?? "");
+    const canRefresh =
+      failureCode === null ||
+      // ROOM_FULL is transient by nature: a seat frees when a Viewer leaves,
+      // so the hint that says "try again" needs something to try.
+      [
+        "ROOM_FULL",
+        "STALE_CLIENT",
+        "SERVER_ERROR",
+        "SESSION_REPLACED",
+        "SIGNAL_TERMINATED",
+      ].includes(failureCode);
     const deniedComic: ComicKind =
       failureCode === "ROOM_FULL"
         ? "room-full"
@@ -2270,7 +2294,10 @@ export function ViewerPage({
           failureCode === "ROOM_EXPIRED" ||
           failureCode === "ROOM_CLOSED"
         ? "viewer.hint.notFound"
-        : failureCode === "INVALID_TOKEN"
+        : failureCode === "INVALID_TOKEN" ||
+            // A grant that the room no longer accepts is not a retry case:
+            // the recovery is a new invite, not another attempt.
+            failureCode === "ROOM_ACCESS_DENIED"
           ? "viewer.hint.invite"
           : "viewer.hint.generic";
     return (
@@ -2428,11 +2455,22 @@ export function ViewerPage({
     ? viewerNoticeVisual(presentation.noticeKey)
     : null;
   const selectedChildEvidence =
-    selectedPawn !== null &&
-    selectedPawn !== selfPeerId &&
-    relayChildEvidence?.evidence.viewerPeerId === selectedPawn
-      ? relayChildEvidence
+    selectedPawn !== null && selectedPawn !== selfPeerId
+      ? freshViewerQualityEvidence(relayChildEvidence.get(selectedPawn))
       : null;
+  // Downstream rows describe one named child each; expired evidence stops
+  // rendering instead of freezing the last numbers on screen.
+  const freshRelayChildEvidence = viewers
+    .map((viewer) => ({
+      viewer,
+      evidence: freshViewerQualityEvidence(
+        relayChildEvidence.get(viewer.peerId),
+      ),
+    }))
+    .filter(
+      (entry): entry is { viewer: typeof entry.viewer; evidence: ViewerQualityEvidence } =>
+        entry.evidence !== null,
+    );
   const couchEntries: CouchEntry[] = viewers.map((viewer) => {
     const isSelf = selfPeerId !== null && viewer.peerId === selfPeerId;
     const isChild =
@@ -2782,7 +2820,7 @@ export function ViewerPage({
                     disabled={
                       !routePresentation.route &&
                       !relaySnapshot &&
-                      !relayChildEvidence
+                      freshRelayChildEvidence.length === 0
                     }
                     onClick={() =>
                       setShowConnectionDetails((current) => !current)
@@ -2841,17 +2879,23 @@ export function ViewerPage({
               />
             </Row>
           ) : null}
-          {showConnectionDetails && relayChildEvidence ? (
-            <Row sub>
-              <MeterTag icon="arrowUp" label={t("stats.downstream")} />
-              <MetricCells
-                metrics={metricsFromQualityEvidence(relayChildEvidence.evidence)}
-                direction="receive"
-                expanded={downstreamMetricsExpanded}
-                onToggle={setDownstreamMetricsExpanded}
-              />
-            </Row>
-          ) : null}
+          {showConnectionDetails
+            ? freshRelayChildEvidence.map(({ viewer, evidence }) => (
+                <Row sub key={viewer.peerId} label={viewer.label}>
+                  <MeterTag icon="arrowUp" label={t("stats.downstream")} />
+                  <span className="lr-pawn-mini">
+                    <PawnSvg color={participantColor(viewer.peerId)} />
+                  </span>
+                  <span className="lr-pawn-detail-name">{viewer.label}</span>
+                  <MetricCells
+                    metrics={metricsFromQualityEvidence(evidence)}
+                    direction="receive"
+                    expanded={downstreamMetricsExpanded}
+                    onToggle={setDownstreamMetricsExpanded}
+                  />
+                </Row>
+              ))
+            : null}
           {selectedPawn !== null && selectedChildEvidence ? (
             <PawnDetail
               pawnKey={selectedPawn}
@@ -2860,7 +2904,7 @@ export function ViewerPage({
                   ?.label ?? selectedPawn
               }
               route={null}
-              metrics={metricsFromQualityEvidence(selectedChildEvidence.evidence)}
+              metrics={metricsFromQualityEvidence(selectedChildEvidence)}
               direction="receive"
               tag={{ icon: "arrowUp", label: t("stats.downstream") }}
               expanded={pawnMetricsExpanded}

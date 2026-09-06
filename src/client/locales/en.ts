@@ -35,6 +35,7 @@ export const en: Record<CopyKey, string> = {
   "client.launch.go": "Open Screener",
   "client.launch.starting": "Preparing Screener",
   "client.launch.error": "Screener could not start; check the setting and retry",
+  "client.launch.loadFailed": "Could not read the launcher settings; retry",
   "client.update.available": "A newer Screener release is available",
 
   "gate.title": "Site access",
