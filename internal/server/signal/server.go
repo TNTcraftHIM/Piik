@@ -644,9 +644,9 @@ func (s *Server) CreateRoom(
 	preferredRoomID string,
 ) (room.CreatedRoom, error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	lease, err := s.store.BeginCreateRoom()
 	if err != nil {
+		s.mu.Unlock()
 		return room.CreatedRoom{}, err
 	}
 	var material []byte
@@ -656,7 +656,9 @@ func (s *Server) CreateRoom(
 		material, derived = s.store.DeriveViewerPasswordMaterial(*roomPassword, nil)
 		s.mu.Lock()
 	}
-	return s.store.CreateRoom(codeEntryPolicy, material, derived, preferredRoomID, lease)
+	created, err := s.store.CreateRoom(codeEntryPolicy, material, derived, preferredRoomID, lease)
+	s.mu.Unlock()
+	return created, err
 }
 
 // armHeartbeat is the heartbeat setInterval (T1): each tick re-arms the
