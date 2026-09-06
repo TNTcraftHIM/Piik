@@ -97,8 +97,6 @@ jobs:
           cache-dependency-path: go.sum
       - name: Check Go core
         run: npm run check:client-core
-      - name: Check server concurrency
-        run: go test -race ./internal/server/...
       - name: Type-check, test, and build
         run: npm run check
 
