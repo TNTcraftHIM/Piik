@@ -107,8 +107,7 @@ jobs:
   release-application:
     needs: validate
     if: >-
-      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      needs.validate.outputs.client_scope == 'true'
+      github.event_name == 'workflow_dispatch' && inputs.client_checks == true
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

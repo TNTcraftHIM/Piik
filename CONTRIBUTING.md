@@ -71,10 +71,11 @@ Clean up worktrees and branches only after semantic review and integration are c
   isolated profiles, bounded deadlines, shared cleanup helpers, and a structured
   result. A manual diagnostic may locate a failure, but is not retained as pass
   evidence.
-- A Client-scoped pull request builds and smoke-tests all three platform
-  candidates before merge. A validated push to `main` uploads those short-lived
-  Server and Client candidates. Publishing a tag or GitHub Release remains an
-  explicit release decision rather than a side effect of every merge.
+- A validated push to `main` uploads a short-lived Server candidate. The three
+  platform Client candidates run only from an explicit manual workflow dispatch
+  with `client_checks=true`, because they are the expensive part of the matrix.
+  Publishing a tag or GitHub Release remains an explicit release decision rather
+  than a side effect of every merge.
 
 ## Pull Request Scope
 
