@@ -126,6 +126,10 @@ export function writeClientLicenseNotices(repositoryRoot, packageRoot, goCommand
     WEB_NOTICE_LINE +
     (tunnelVersion ? "Cloudflared: runtime/tunnel/THIRD-PARTY-NOTICES.txt\n" : "") +
     notices.toolchain;
+  if (target.goos === "linux") {
+    text += section("Linux system dependencies (not bundled)",
+      readFileSync(join(repositoryRoot, "licenses", "linux-system-dependencies.txt"), "utf8"));
+  }
   if (target.goos === "windows" &&
       existsSync(join(packageRoot, "runtime", "native", target.captureName))) {
     const dependencies = JSON.parse(readFileSync(join(repositoryRoot, "native", "capture",

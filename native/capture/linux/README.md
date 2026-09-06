@@ -22,7 +22,10 @@ sh native/capture/linux/build.sh /outside/repository/build
 Runtime requirements are the desktop Portal/PipeWire services, a GStreamer
 PipeWire source, and an installed GStreamer hardware H.264 encoder. If any part
 is unavailable, the Client reports no Linux Native path and the same Browser
-capture choice remains available.
+capture choice remains available. These system libraries and services are not
+bundled; their distribution-provided license notices remain applicable. Linux
+Client packages repeat the dependency and source links in
+`THIRD-PARTY-NOTICES.txt`.
 
 Primary references:
 
