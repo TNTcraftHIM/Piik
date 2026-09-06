@@ -26,8 +26,8 @@ import {
 const PROFILE_SETTINGS = QUALITY_PROFILES;
 type ProfileId = QualityProfileId;
 type PageRole = "host" | "viewer";
-export type BenchmarkCodecMode = "vp8" | "auto" | "h264";
-export type BenchmarkCanaryMode = "none" | "viewer-mbb";
+type BenchmarkCodecMode = "vp8" | "auto" | "h264";
+type BenchmarkCanaryMode = "none" | "viewer-mbb";
 
 const ROUTE_TIMING_KEYS = [
   "queueWaitMs",
@@ -44,12 +44,12 @@ interface RouteTimingDistribution {
   p95Ms: number | null;
   maxMs: number | null;
 }
-export type BenchmarkRouteTimingSamples = {
+type BenchmarkRouteTimingSamples = {
   [Key in RouteTimingKey]: Array<
     RouteDiagnosticSnapshot["children"][number][Key]
   >;
 };
-export type BenchmarkRouteTimingSummary = Record<
+type BenchmarkRouteTimingSummary = Record<
   RouteTimingKey,
   RouteTimingDistribution
 >;
@@ -62,7 +62,7 @@ interface ViewerMbbCanaryResult {
   failureCode?: "topology-unavailable" | "probe-unavailable";
 }
 
-export interface BenchmarkConfig {
+interface BenchmarkConfig {
   chromePath: string;
   viewerCounts: number[];
   expectedEndpointCap: number;
@@ -108,7 +108,7 @@ interface ConnectionObservation {
   error?: string;
 }
 
-export interface PagePerformanceSample {
+interface PagePerformanceSample {
   timestampSeconds: number;
   taskDurationSeconds: number;
   scriptDurationSeconds: number;
@@ -182,7 +182,7 @@ interface RunCheck {
   expected: string;
 }
 
-export interface RecoveryResult {
+interface RecoveryResult {
   triggered: boolean;
   relayPeerId?: string;
   affectedPeerIds?: string[];
@@ -195,12 +195,12 @@ export interface RecoveryResult {
   error?: string;
 }
 
-export interface RecoveryHostPeaks {
+interface RecoveryHostPeaks {
   maxHostActiveMediaEdges?: number;
   maxHostAssignedChildren?: number;
 }
 
-export interface RecoveryViewerBaseline {
+interface RecoveryViewerBaseline {
   label: string;
   routeRevision: number;
   upstreamKind: "peer" | "sfu";
@@ -297,7 +297,7 @@ class BoundedLog {
   }
 }
 
-export class CdpConnection {
+class CdpConnection {
   private nextId = 1;
   private readonly pending = new Map<
     number,
@@ -424,7 +424,7 @@ export class CdpConnection {
   }
 }
 
-export function summarizeBenchmarkRouteTiming(
+function summarizeBenchmarkRouteTiming(
   samples: BenchmarkRouteTimingSamples,
 ): BenchmarkRouteTimingSummary {
   return Object.fromEntries(
@@ -459,7 +459,7 @@ function nearestRank(
   return sortedValues[Math.ceil(percentile * sortedValues.length) - 1] ?? null;
 }
 
-export function buildRouteTimingCheck(
+function buildRouteTimingCheck(
   status: BenchmarkRun["routeTimingStatus"],
   summary: BenchmarkRouteTimingSummary | null,
   expectedChildCount = MAX_VIEWERS,
@@ -484,7 +484,7 @@ export function buildRouteTimingCheck(
   };
 }
 
-export async function joinViewerBurst<T>(
+async function joinViewerBurst<T>(
   viewerCount: number,
   createViewer: (viewerIndex: number) => Promise<T>,
   waitForMedia: (viewer: T, viewerIndex: number) => Promise<unknown>,
@@ -515,7 +515,7 @@ export async function joinViewerBurst<T>(
   return viewers;
 }
 
-export function parseViewerCounts(value: string | undefined): number[] {
+function parseViewerCounts(value: string | undefined): number[] {
   if (!value?.trim()) {
     return [...DEFAULT_VIEWER_COUNTS];
   }
@@ -567,13 +567,13 @@ function parseBoolean(value: string | undefined, fallback: boolean, name: string
   throw new Error(`${name} must be true, false, 1, or 0`);
 }
 
-export function parseBenchmarkCanaryMode(value: string | undefined): BenchmarkCanaryMode {
+function parseBenchmarkCanaryMode(value: string | undefined): BenchmarkCanaryMode {
   const mode = value?.trim() || "none";
   if (mode === "none" || mode === "viewer-mbb") return mode;
   throw new Error("BENCHMARK_CANARY must be none or viewer-mbb");
 }
 
-export function parseBenchmarkCodecMode(
+function parseBenchmarkCodecMode(
   value: string | undefined,
 ): BenchmarkCodecMode {
   const mode = value?.trim().toLowerCase() || "auto";
@@ -581,7 +581,7 @@ export function parseBenchmarkCodecMode(
   throw new Error("BENCHMARK_CODEC_MODE must be vp8, auto, or h264");
 }
 
-export function parseExpectedEndpointCap(value: string | undefined): number {
+function parseExpectedEndpointCap(value: string | undefined): number {
   const parsed = value?.trim()
     ? Number(value)
     : DEFAULT_ENDPOINT_MEDIA_COPY_CAPACITY;
@@ -597,7 +597,7 @@ export function parseExpectedEndpointCap(value: string | undefined): number {
   return parsed;
 }
 
-export function parseBenchmarkConfig(
+function parseBenchmarkConfig(
   environment: NodeJS.ProcessEnv = process.env,
 ): BenchmarkConfig {
   const chromePath = environment.CHROME_PATH?.trim();
@@ -701,7 +701,7 @@ export function parseBenchmarkConfig(
   };
 }
 
-export function parseExternalServerTarget(
+function parseExternalServerTarget(
   environment: NodeJS.ProcessEnv = process.env,
 ): ExternalServerTarget | null {
   const value = environment.BENCHMARK_SERVER_URL?.trim();
@@ -728,7 +728,7 @@ export function parseExternalServerTarget(
   };
 }
 
-export function activeVideoEdgeCount(
+function activeVideoEdgeCount(
   page: PageObservation,
   direction: "send" | "receive",
 ): number {
@@ -745,7 +745,7 @@ export function activeVideoEdgeCount(
   }).length;
 }
 
-export function sanitizeFailurePageEvidence(
+function sanitizeFailurePageEvidence(
   page: PageObservation,
 ): FailurePageEvidence {
   const connectionStates = new Set([
@@ -883,7 +883,7 @@ const PAGE_PERFORMANCE_METRICS = {
   JSHeapUsedSize: "jsHeapUsedBytes",
 } as const satisfies Record<string, keyof PagePerformanceSample>;
 
-export function parsePagePerformanceMetrics(
+function parsePagePerformanceMetrics(
   rawMetrics: unknown,
 ): PagePerformanceSample | null {
   if (!Array.isArray(rawMetrics)) return null;
@@ -919,7 +919,7 @@ export function parsePagePerformanceMetrics(
   };
 }
 
-export function summarizeSamples(samples: TimedSample[], viewerCount: number) {
+function summarizeSamples(samples: TimedSample[], viewerCount: number) {
   let maxHostActiveMediaEdges = 0;
   let maxHostAssignedChildren = 0;
   let maxRelayActiveMediaEdges = 0;
@@ -1206,7 +1206,7 @@ function finiteMetric(metrics: Record<string, unknown>, key: string): number | n
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-export function summarizeViewerExperienceByDepth(samples: TimedSample[]) {
+function summarizeViewerExperienceByDepth(samples: TimedSample[]) {
   const cohorts = new Map<string, ViewerExperienceAccumulator>();
   let unresolvedRouteSamples = 0;
   const cohort = (route: ViewerExperienceRoute, depth: number | null) => {
@@ -1508,7 +1508,7 @@ function finishPageRuntime(accumulator: PageRuntimeAccumulator) {
   };
 }
 
-export function summarizePageRuntimeResources(samples: TimedSample[]) {
+function summarizePageRuntimeResources(samples: TimedSample[]) {
   const accumulators: Record<PageRuntimeRole, PageRuntimeAccumulator> = {
     host: emptyPageRuntimeAccumulator(),
     viewer: emptyPageRuntimeAccumulator(),
@@ -1585,7 +1585,7 @@ export function summarizePageRuntimeResources(samples: TimedSample[]) {
   };
 }
 
-export function buildRunChecks(
+function buildRunChecks(
   summary: NonNullable<BenchmarkRun["summary"]>,
   viewerCount: number,
   profileId: ProfileId,
@@ -1648,7 +1648,7 @@ export function buildRunChecks(
   ];
 }
 
-export function buildRecoveryCheck(
+function buildRecoveryCheck(
   recovery: RecoveryResult,
   expectedEndpointCap = DEFAULT_ENDPOINT_MEDIA_COPY_CAPACITY,
 ): RunCheck {
@@ -1668,7 +1668,7 @@ export function buildRecoveryCheck(
   };
 }
 
-export function buildBenchmarkInitScript(options: {
+function buildBenchmarkInitScript(options: {
   label: string;
   role: PageRole;
   viewerIndex: number | null;
@@ -2390,7 +2390,7 @@ async function evaluate<T>(
   return evaluation.result.value as T;
 }
 
-export async function createPage(
+async function createPage(
   cdp: CdpConnection,
   url: string,
   options: Parameters<typeof buildBenchmarkInitScript>[0],
@@ -2510,7 +2510,7 @@ async function progressSample(
   );
 }
 
-export function buildBenchmarkFailureEvidence(
+function buildBenchmarkFailureEvidence(
   pages: readonly PageObservation[],
   expectedPageCount: number,
 ): BenchmarkFailureEvidence {
@@ -2966,7 +2966,7 @@ function totalDecodedFrames(page: PageObservation): number {
   );
 }
 
-export function everyViewerAdvanced(
+function everyViewerAdvanced(
   before: PageObservation[],
   after: PageObservation[],
 ): boolean {
@@ -3022,7 +3022,7 @@ function recoveryViewerBaseline(
   };
 }
 
-export function captureRecoveryViewerBaselines(
+function captureRecoveryViewerBaselines(
   pages: PageObservation[],
 ): RecoveryViewerBaseline[] | null {
   const viewers = pages.filter((page) => page.role === "viewer");
@@ -3032,7 +3032,7 @@ export function captureRecoveryViewerBaselines(
     : null;
 }
 
-export function everyViewerRecoveredMedia(
+function everyViewerRecoveredMedia(
   baselines: RecoveryViewerBaseline[] | null,
   after: PageObservation[],
 ): boolean {
@@ -3061,7 +3061,7 @@ export function everyViewerRecoveredMedia(
   );
 }
 
-export function mergeRecoveryHostPeaks(
+function mergeRecoveryHostPeaks(
   peaks: RecoveryHostPeaks,
   host: PageObservation,
 ): RecoveryHostPeaks {
@@ -3621,7 +3621,7 @@ async function authenticateExternalServer(
   }
 }
 
-export async function main(): Promise<number> {
+async function main(): Promise<number> {
   let config: BenchmarkConfig;
   let externalServer: ExternalServerTarget | null;
   try {
