@@ -44,6 +44,33 @@ const (
 	defaultWait      = 2 * time.Second
 )
 
+func TestCreateRoomReleasesLockWhenDerivationOrCommitPanics(t *testing.T) {
+	for _, password := range []string{"", "room-password"} {
+		t.Run(password, func(t *testing.T) {
+			store, err := room.New(room.Options{
+				LeaseMs: 86_400_000, MaxRooms: 1, MaxViewersPerRoom: 1,
+				Random: func(int) []byte { panic("test random source") },
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			server := &Server{store: store}
+			func() {
+				defer func() {
+					if value := recover(); value != "test random source" {
+						t.Errorf("panic = %v, want original random-source panic", value)
+					}
+				}()
+				_, _ = server.CreateRoom(protocol.CodeEntryOpen, &password, "")
+			}()
+			if !server.mu.TryLock() {
+				t.Fatal("CreateRoom left the server locked after a recovered panic")
+			}
+			server.mu.Unlock()
+		})
+	}
+}
+
 // ---------------------------------------------------------------------------
 // harness
 // ---------------------------------------------------------------------------

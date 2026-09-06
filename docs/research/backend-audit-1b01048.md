@@ -85,10 +85,10 @@ Browser capture remains available in the existing picker.
 
 ## Refactor Direction
 
-The [consolidation draft](./server-consolidation.md) owns the proposed module
-layout. Hosted and Local already share one TypeScript backend. Replace it once
-with a shared Go core, preserve one graph/operation owner, and remove the Node
-runtime and superseded server packaging in the same accepted boundary.
+The [consolidation research](./server-consolidation.md) owns the shared Go module
+layout that replaced the single TypeScript backend. Hosted and Local preserve
+one graph/operation owner, with the Node runtime and superseded server packaging
+removed in that same boundary.
 Browser UI and native capture adapters are reuse boundaries, not rewrite targets.
 
 Use the current behavioral tests as an oracle, not a requirement to preserve

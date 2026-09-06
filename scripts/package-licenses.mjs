@@ -126,9 +126,15 @@ export function writeClientLicenseNotices(repositoryRoot, packageRoot, goCommand
     WEB_NOTICE_LINE +
     (tunnelVersion ? "Cloudflared: runtime/tunnel/THIRD-PARTY-NOTICES.txt\n" : "") +
     notices.toolchain;
-  if (target.goos === "linux") {
+  const linuxCapture = target.goos === "linux" && target.captureName &&
+    existsSync(join(packageRoot, "runtime", "native", target.captureName));
+  if (linuxCapture) {
     text += section("Linux system dependencies (not bundled)",
       readFileSync(join(repositoryRoot, "licenses", "linux-system-dependencies.txt"), "utf8"));
+    text += section("LGPL-3.0-only (libportal)",
+      readFileSync(join(repositoryRoot, "licenses", "LGPL-3.0.txt"), "utf8"));
+    text += section("GPL-3.0 (libportal terms)",
+      readFileSync(join(repositoryRoot, "licenses", "GPL-3.0.txt"), "utf8"));
   }
   if (target.goos === "windows" &&
       existsSync(join(packageRoot, "runtime", "native", target.captureName))) {

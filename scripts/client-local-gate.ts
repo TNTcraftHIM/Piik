@@ -90,6 +90,7 @@ async function main(): Promise<void> {
   let loopbackPort = 0;
   try {
     client = spawn(clientPath, [
+      "--local",
       "--config", configPath,
       "--lan-address", lanAddress,
       "--port", String(appPort),

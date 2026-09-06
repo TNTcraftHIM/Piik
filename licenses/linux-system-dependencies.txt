@@ -2,11 +2,12 @@ Linux capture dependencies (not bundled)
 
 The Linux native capture process dynamically uses the distribution's XDG
 Desktop Portal/libportal and GStreamer packages. Screener does not redistribute
-those shared libraries. Their copyright notices and license texts remain the
-responsibility of the distribution or package maintainer that supplies them.
+those shared libraries. The Client package carries the applicable license texts
+for this linked capture path.
 
-libportal is distributed under LGPL-3.0-or-later. Source and license:
+libportal headers and library are LGPL-3.0-only. Source:
 https://github.com/flatpak/libportal/blob/main/COPYING
+The full LGPL-3.0-only and GPL-3.0 texts are included in the package notice.
 
 GStreamer and its plugins carry the license and notices of each upstream
 component. The core project is LGPL-2.1-or-later; consult the installed distro

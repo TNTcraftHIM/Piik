@@ -644,21 +644,21 @@ func (s *Server) CreateRoom(
 	preferredRoomID string,
 ) (room.CreatedRoom, error) {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	lease, err := s.store.BeginCreateRoom()
 	if err != nil {
-		s.mu.Unlock()
 		return room.CreatedRoom{}, err
 	}
 	var material []byte
 	var derived error
 	if roomPassword != nil && *roomPassword != "" {
-		s.mu.Unlock()
-		material, derived = s.store.DeriveViewerPasswordMaterial(*roomPassword, nil)
-		s.mu.Lock()
+		func() {
+			s.mu.Unlock()
+			defer s.mu.Lock()
+			material, derived = s.store.DeriveViewerPasswordMaterial(*roomPassword, nil)
+		}()
 	}
-	created, err := s.store.CreateRoom(codeEntryPolicy, material, derived, preferredRoomID, lease)
-	s.mu.Unlock()
-	return created, err
+	return s.store.CreateRoom(codeEntryPolicy, material, derived, preferredRoomID, lease)
 }
 
 // armHeartbeat is the heartbeat setInterval (T1): each tick re-arms the

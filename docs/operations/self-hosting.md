@@ -65,9 +65,10 @@ domains, certificates, users, and resource limits required by the host.
 
 ### First Go service cutover
 
-The tracked unit already starts the Go binary and rejects the old Node
-environment contract. Install it before the first Go release, but do not
-restart Screener until the matching Go application release is installed:
+The tracked unit starts the Go binary. A Node-to-Go deployment is a one-time
+infrastructure transaction, not a routine application update: its failure path
+must restore the old unit and environment before starting the prior release.
+Prepare and verify that recovery before installing the unit:
 
 ```sh
 sudo install -o root -g root -m 0644 \
@@ -78,15 +79,16 @@ sudo systemctl show screener.service -p ExecStart -p Environment --no-pager
 ```
 
 The output must show `/opt/screener/current/screener-server` and
-`SCREENER_ENV=production`. Remove any stale `NODE_ENV` entry from the service
-environment file; the Go server fails closed when it is present. Then run the
-tracked release wrapper, which performs the first stop, symlink switch and
-start. The wrapper assumes the unit is already installed and does not install
-or reload systemd units itself.
+`SCREENER_ENV=production`. The staged environment removes `NODE_ENV` and
+`PEER_ASSISTED_MEDIA`, and replaces route `NODE_DEBUG` with `SCREENER_DEBUG=route`.
+Keep credentials, ports, capacity and media configuration unchanged. Do not
+restart the old release using the Go unit. The routine release wrapper owns
+only application-symlink recovery; it does not install or restore systemd units.
 
-Before this cutover, record the previous unit file and environment file. A
-rollback from the first Go release must restore both before restarting the old
-Node release; changing only the `/opt/screener/current` symlink is not enough.
+The first-cutover transaction retains the previous unit, environment and closed
+SQLite files, applies unit/environment plus release together, and restores those
+exact values on failure before reloading systemd and restarting Node. After a
+successful Go cutover, later application releases use the ordinary wrapper.
 
 LiveKit must be dedicated to this Screener application, set
 `room.auto_create: false`, and expose its control listener only to the proxy and

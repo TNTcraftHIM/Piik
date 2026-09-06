@@ -47,8 +47,6 @@ export type Set3Kind =
 export type Set4Kind =
   | "hint-topology"
   | "hint-close"
-  | "hint-admit"
-  | "hint-deny"
   | "hint-rename"
   | "hint-theme"
   | "hint-join-go"
@@ -87,8 +85,6 @@ export const HINT_KINDS: readonly HintKind[] = [
   "hint-more-metrics",
   "hint-topology",
   "hint-close",
-  "hint-admit",
-  "hint-deny",
   "hint-rename",
   "hint-theme",
   "hint-join-go",

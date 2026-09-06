@@ -71,6 +71,7 @@ jobs:
               tsconfig.app.json \
               vite.config.ts \
               scripts/assemble-client.mjs \
+              scripts/archive-tool.mjs \
               scripts/client-icons.mjs \
               scripts/package-app-release.mjs \
               scripts/package-licenses.mjs \
@@ -96,6 +97,8 @@ jobs:
           cache-dependency-path: go.sum
       - name: Check Go core
         run: npm run check:client-core
+      - name: Check server concurrency
+        run: go test -race ./internal/server/...
       - name: Type-check, test, and build
         run: npm run check
 

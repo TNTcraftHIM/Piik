@@ -16,9 +16,8 @@ owns ports and [self-hosting](../operations/self-hosting.md) owns service setup.
 - SFU-fed and peer-fed Viewers may both serve as ordinary peer parents.
 - A route ends in usable media, explicit bounded waiting, or clear failure.
 
-The flagship deployment enables the all-room controller. A lightweight
-deployment may disable peer assistance and keep only bounded direct Host edges;
-it does not gain another transport or compatibility protocol.
+Every deployment uses this controller. Omitting LiveKit keeps the same bounded
+P2P graph without its SFU fallback; there is no separate Host-star mode.
 
 ## Per-Share Route Policy
 

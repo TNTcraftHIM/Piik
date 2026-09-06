@@ -7,10 +7,11 @@ topics are not implementation authority.
 
 ## Now
 
-The audit preparation branch is the refactor handoff candidate. Export one exact
-verified source baseline, then hold without merge or deployment. The external
-agent owns the Go rewrite; the main agent reviews contract parity and design.
-Do not treat unperformed physical checks below as passed.
+The returned Go core and frontend fixes are reconciled on the integration
+candidate. The owner authorized hygiene cleanup, matched Server/Client builds,
+one squash PR and a controlled deployment. Complete the existing checks and
+first-Go unit/environment rollback before cutover. Device/network checks below
+remain evidence gaps, not claims established by compilation or local loopback.
 
 1. **Client physical acceptance.** Physically validate macOS and Linux
    capture/audio/recovery, a decoded public-link Browser Viewer, and a NAT case
@@ -30,8 +31,9 @@ Do not treat unperformed physical checks below as passed.
 4. **NAT acquisition and release acceptance.** Validate the implemented bounded
    three-attempt owner on restricted Browser/Native pairs; a new connection does
    not guarantee a different NAT mapping. The added prepare progress field is
-   incompatible with old strict pages. Obtain owner approval for the coordinated
-   Web/Server/Client update and its active-share impact before merging/deploying;
+   incompatible with old strict pages. The owner authorized the coordinated
+   Web/Server/Client update; check active sessions before the cutover and
+   retain the previous unit/environment alongside the application rollback;
    do not mix the new field into an ongoing old-version share.
 5. **Native codec acceptance.** Windows Native VP8 and Auto-selected H264 now
    pass real Browser playback, live presets, paused changes and source-switch

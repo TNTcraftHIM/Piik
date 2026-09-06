@@ -5,10 +5,11 @@ Last updated: 2026-09-06
 This is the current execution index. Git history owns completed timelines;
 [verification status](./verification-status.md) owns evidence boundaries.
 
-## Production
+## Last Production Postflight
 
-- `https://share.bonfire.icu` runs the strict `screener-v19` Browser/server
-  contract. Exact revision, release, artifact, manifest, and asset identity are
+- The pre-Go postflight at `https://share.bonfire.icu` verified the strict
+  `screener-v19` Browser/server contract. Current revision, release, artifact,
+  manifest, and asset identity are
   retained by the immutable release descriptor, runtime `REVISION`, and
   deployment record rather than copied into this source snapshot.
 - The latest scoped postflight found public health and the immutable Browser
@@ -50,10 +51,10 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Current Source
 
-- Candidate source uses the strict `screener-v21` Browser/server contract and one
+- Source uses the strict `screener-v21` Browser/server contract and one
   shared Go server core for Hosted and Client; the graph controller is universal
-  and the Host-star configuration and wire path are removed. This candidate has
-  not been merged or deployed. Optional SQLite stable authority, non-expiring
+  and the Host-star configuration and wire path are removed. Optional SQLite
+  stable authority, non-expiring
   local preferred code, atomic room replacement and the Host codec selector
   remain implemented; production selects stable storage. Graceful restart, crash,
   timeout and network loss use one reconnect state. LiveKit room teardown cannot
@@ -185,15 +186,16 @@ This is the current execution index. Git history owns completed timelines;
   the deployment tree provides a read-only operator check against the same full-
   SHA release identity. Neither installs or interrupts a running share.
 
-## Current Hold
+## Release Acceptance
 
 Client acceptance remains open for the reported Windows 10 display startup and
 game-specific source behavior. Windows 11 display, minimized-source recovery,
 live presets and source-switch checks pass, but do not establish those reports
 as resolved. NAT acquisition has controller and signaling coverage, not a new
 public-network success-rate claim. The candidate removes the Host-star
-configuration and wire shape under `screener-v21` and moves the server to Go. It
-is not deployed: cutover needs matching Web/Client builds, the updated unit file
+configuration and wire shape under `screener-v21` and moves the server to Go.
+The authorized cutover needs matching Web/Client builds, the updated unit file
 that replaces `NODE_ENV` with `SCREENER_ENV` before the first Go release,
-explicit active-share acceptance, and configuration restoration on rollback.
-Production is unchanged; [TODO](./todo.md) owns remaining work.
+an active-session check, and configuration restoration on rollback. The actual
+deployment result belongs to its release record; [TODO](./todo.md) owns
+remaining device/network acceptance.

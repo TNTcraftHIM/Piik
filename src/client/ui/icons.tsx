@@ -19,7 +19,6 @@ const PATHS: Record<string, { body: ReactNode; solid?: boolean }> = {
   stop: { solid: true, body: (<><rect pathLength={1} x="6" y="6" width="12" height="12" rx="2"/></>) },
   share: { body: (<><rect pathLength={1} x="2" y="4" width="20" height="13" rx="2"/><path pathLength={1} d="M12 17v-7m0 0-3 3m3-3 3 3"/><path pathLength={1} d="M8 21h8"/></>) },
   switchSource: { body: (<><rect pathLength={1} x="2" y="4" width="20" height="14" rx="2"/><path pathLength={1} d="M7 9h9m0 0-2.5-2.5M16 9l-2.5 2.5M17 13H8m0 0 2.5-2.5M8 13l2.5 2.5"/><path pathLength={1} d="M8 22h8M12 18v4"/></>) },
-  hash: { body: (<><path pathLength={1} d="M9 3 7 21M17 3l-2 18M4 8h17M3 16h17"/></>) },
   users: { body: (<><circle pathLength={1} cx="9" cy="8" r="3.5"/><path pathLength={1} d="M2.5 20c.8-3.2 3.4-5 6.5-5s5.7 1.8 6.5 5"/><circle pathLength={1} cx="17" cy="9" r="2.5"/><path pathLength={1} d="M16.2 15.2c2.5.4 4.6 1.8 5.3 4.8"/></>) },
   network: { body: (<><rect pathLength={1} x="9" y="2" width="6" height="6" rx="1.5"/><rect pathLength={1} x="2" y="16" width="6" height="6" rx="1.5"/><rect pathLength={1} x="16" y="16" width="6" height="6" rx="1.5"/><path pathLength={1} d="M12 8v3.5M12 11.5 5.5 16M12 11.5l6.5 4.5"/></>) },
   chevron: { body: (<><path pathLength={1} d="m6 9 6 6 6-6"/></>) },
@@ -53,9 +52,7 @@ const PATHS: Record<string, { body: ReactNode; solid?: boolean }> = {
   branch: { body: (<><circle pathLength={1} cx="6" cy="6" r="2.5"/><circle pathLength={1} cx="6" cy="18" r="2.5"/><circle pathLength={1} cx="18" cy="8" r="2.5"/><path pathLength={1} d="M6 8.5v7M6 13c5 0 5.5-2 9.3-3.2"/></>) },
   clock: { body: (<><circle pathLength={1} cx="12" cy="12" r="9"/><path pathLength={1} d="M12 7v5.2l3.4 2"/></>) },
   cpu: { body: (<><rect pathLength={1} x="7" y="7" width="10" height="10" rx="2"/><path pathLength={1} d="M10 2v3m4-3v3M10 19v3m4-3v3M2 10h3M2 14h3m14-4h3m-3 4h3"/></>) },
-  star: { body: (<><path pathLength={1} d="m12 3 2.7 5.7 6.3.8-4.6 4.3 1.2 6.2-5.6-3-5.6 3 1.2-6.2L3 9.5l6.3-.8L12 3Z"/></>) },
   zap: { body: (<><path pathLength={1} d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></>) },
-  sparkles: { body: (<><path pathLength={1} d="m12 4 1.6 4.4L18 10l-4.4 1.6L12 16l-1.6-4.4L6 10l4.4-1.6L12 4Z"/><path pathLength={1} d="m18.5 15.5.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2Z"/></>) },
   cast: { body: (<><path pathLength={1} d="M4 16a4 4 0 0 1 4 4M4 12a8 8 0 0 1 8 8"/><circle pathLength={1} cx="4" cy="20" r="1.2" fill="currentColor" stroke="none"/><path pathLength={1} d="M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5"/></>) },
   sun: { body: (<><circle pathLength={1} cx="12" cy="12" r="4"/><path pathLength={1} d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></>) },
 };
