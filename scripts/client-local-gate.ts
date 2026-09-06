@@ -12,11 +12,9 @@ import {
   reservePort,
   waitForSample,
   waitForVersion,
-  withDeadline,
 } from "./browser-gate-harness";
 import {
-  decodeClientEndpoint,
-  type ClientEndpoint as Endpoint,
+  readClientEndpoint,
 } from "./client-gate-endpoint";
 
 interface GateReport {
@@ -51,33 +49,6 @@ const LOCAL_PAGE_STATE = `fetch('/api/site-access')
   access,
   hostReady: Boolean(document.querySelector('.lr-host-personal-controls')),
 }))`;
-
-async function readEndpoint(
-  client: ChildProcessWithoutNullStreams,
-): Promise<Endpoint> {
-  let buffered = "";
-  return withDeadline(
-    () => new Promise<Endpoint>((resolveEndpoint, rejectEndpoint) => {
-      const onData = (chunk: Buffer) => {
-        buffered += chunk.toString();
-        const newline = buffered.indexOf("\n");
-        if (newline < 0) return;
-        client.stdout.off("data", onData);
-        try {
-          resolveEndpoint(decodeClientEndpoint(buffered.slice(0, newline)));
-        } catch (error) {
-          rejectEndpoint(error);
-        }
-      };
-      client.stdout.on("data", onData);
-      client.once("error", rejectEndpoint);
-      client.once("exit", (code) =>
-        rejectEndpoint(new Error(`Client exited before readiness (${code ?? "signal"})`)),
-      );
-    }),
-    Date.now() + 10_000,
-  );
-}
 
 async function main(): Promise<void> {
   if (process.env.SCREENER_CLIENT_LOCAL_GATE !== "true") {
@@ -127,7 +98,7 @@ async function main(): Promise<void> {
       env: { ...process.env, SCREENER_CLIENT_GATE_NO_BROWSER: "true" },
     });
     client.stderr.resume();
-    const endpoint = await readEndpoint(client);
+    const endpoint = await readClientEndpoint(client);
     loopbackPort = endpoint.port;
     report.clientStarted = true;
     await waitForSample(

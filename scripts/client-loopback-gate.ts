@@ -10,10 +10,9 @@ import {
   createPage,
   evaluate,
   waitForVersion,
-  withDeadline,
 } from "./browser-gate-harness";
 import {
-  decodeClientEndpoint,
+  readClientEndpoint,
   type ClientEndpoint as Endpoint,
 } from "./client-gate-endpoint";
 import {
@@ -43,33 +42,6 @@ interface GateReport {
   clientExited: boolean;
   browserExited: boolean;
   profileRemoved: boolean;
-}
-
-async function readEndpoint(
-  client: ChildProcessWithoutNullStreams,
-): Promise<Endpoint> {
-  let buffered = "";
-  return await withDeadline(
-    () => new Promise<Endpoint>((resolveEndpoint, rejectEndpoint) => {
-      const onData = (chunk: Buffer) => {
-        buffered += chunk.toString();
-        const newline = buffered.indexOf("\n");
-        if (newline < 0) return;
-        client.stdout.off("data", onData);
-        try {
-          resolveEndpoint(decodeClientEndpoint(buffered.slice(0, newline)));
-        } catch (error) {
-          rejectEndpoint(error instanceof Error ? error : new Error("Client endpoint is invalid"));
-        }
-      };
-      client.stdout.on("data", onData);
-      client.once("error", rejectEndpoint);
-      client.once("exit", (code) => {
-        rejectEndpoint(new Error(`Client exited before endpoint (${code ?? "signal"})`));
-      });
-    }),
-    Date.now() + 8_000,
-  );
 }
 
 async function browserHandshake(
@@ -210,7 +182,7 @@ async function main(): Promise<void> {
       env: { ...process.env, SCREENER_CLIENT_GATE_NO_BROWSER: "true" },
     });
     client.stderr.resume();
-    const endpoint = await readEndpoint(client);
+    const endpoint = await readClientEndpoint(client, { timeoutMs: 8_000 });
     report.clientStarted = true;
 
     const portServer = createServer();

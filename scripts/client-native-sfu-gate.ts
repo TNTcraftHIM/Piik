@@ -30,8 +30,7 @@ import {
   waitForCaptureWindow,
 } from "./client-native-host-gate";
 import {
-  decodeClientEndpoint,
-  type ClientEndpoint as Endpoint,
+  readClientEndpoint,
 } from "./client-gate-endpoint";
 
 const ROOT = resolve(import.meta.dirname, "..");
@@ -71,39 +70,6 @@ async function waitForHTTP(url: string, timeoutMs: number): Promise<void> {
     await new Promise((resolveWait) => setTimeout(resolveWait, 100));
   }
   throw new Error(`service did not become ready: ${url}`);
-}
-
-async function readEndpoint(
-  process: ChildProcessWithoutNullStreams,
-): Promise<Endpoint> {
-  return await new Promise<Endpoint>((resolveEndpoint, rejectEndpoint) => {
-    const timer = setTimeout(
-      () => rejectEndpoint(new Error("native Client did not become ready")),
-      10_000,
-    );
-    let buffered = "";
-    const onData = (chunk: Buffer) => {
-      buffered += chunk.toString();
-      for (;;) {
-        const newline = buffered.indexOf("\n");
-        if (newline < 0) return;
-        const line = buffered.slice(0, newline).trim();
-        buffered = buffered.slice(newline + 1);
-        try {
-          const value = decodeClientEndpoint(line);
-          clearTimeout(timer);
-          process.stdout.off("data", onData);
-          resolveEndpoint(value);
-          return;
-        } catch {
-          // Ignore non-JSON informational output.
-        }
-      }
-    };
-    process.stdout.on("data", onData);
-    process.once("error", rejectEndpoint);
-    process.once("exit", () => rejectEndpoint(new Error("native Client exited")));
-  });
 }
 
 async function issueToken(
@@ -260,7 +226,9 @@ async function main(): Promise<void> {
       env: { ...process.env, SCREENER_CLIENT_GATE_NO_BROWSER: "true" },
     });
     client.stderr.resume();
-    clientPort = (await readEndpoint(client)).port;
+    clientPort = (await readClientEndpoint(client, {
+      ignoreNonEndpointLines: true,
+    })).port;
 
     result.stage = "browser";
     chrome = spawn(chromePath, [

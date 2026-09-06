@@ -15,7 +15,7 @@ import {
   withDeadline,
 } from "./browser-gate-harness";
 import {
-  decodeClientEndpoint,
+  readClientEndpoint,
   type ClientEndpoint as Endpoint,
 } from "./client-gate-endpoint";
 import {
@@ -242,31 +242,6 @@ async function stopCapture(child: ChildProcessWithoutNullStreams): Promise<void>
     Date.now() + 3_000,
   );
   if (code !== 0) throw new Error("Native capture did not stop cleanly");
-}
-
-async function readEndpoint(child: ChildProcessWithoutNullStreams): Promise<Endpoint> {
-  let buffered = "";
-  return withDeadline(
-    () => new Promise<Endpoint>((resolveEndpoint, rejectEndpoint) => {
-      const onData = (chunk: Buffer) => {
-        buffered += chunk.toString();
-        const newline = buffered.indexOf("\n");
-        if (newline < 0) return;
-        child.stdout.off("data", onData);
-        try {
-          resolveEndpoint(decodeClientEndpoint(buffered.slice(0, newline)));
-        } catch (error) {
-          rejectEndpoint(error);
-        }
-      };
-      child.stdout.on("data", onData);
-      child.once("error", rejectEndpoint);
-      child.once("exit", (code) => {
-        rejectEndpoint(new Error("Client exited before readiness (" + String(code) + ")"));
-      });
-    }),
-    Date.now() + 10_000,
-  );
 }
 
 async function browserMediaGate(input: {
@@ -895,7 +870,7 @@ async function main(): Promise<void> {
       env: { ...process.env, SCREENER_CLIENT_GATE_NO_BROWSER: "true" },
     });
     client.stderr.resume();
-    const endpoint = await readEndpoint(client);
+    const endpoint = await readClientEndpoint(client);
     clientPort = endpoint.port;
     const controlPage = await createPage(
       cdp,
