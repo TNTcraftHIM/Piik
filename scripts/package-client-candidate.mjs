@@ -21,6 +21,7 @@ import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 
 import { clientPackageTarget, CLOUDFLARED_VERSION } from "./client-package-targets.mjs";
+import { tarExecutable } from "./archive-tool.mjs";
 
 function fail(message) {
   throw new Error(message);
@@ -45,7 +46,7 @@ function sha256(path) {
 
 function assertOutsideRepository(repositoryRoot, outputRoot) {
   const path = relative(repositoryRoot, outputRoot);
-  if (path === "" || (!path.startsWith("..") && !isAbsolute(path))) {
+  if (path === "" || (path.split(/[\\/]/)[0] !== ".." && !isAbsolute(path))) {
     fail("Client candidate output must be outside the repository");
   }
   if (existsSync(outputRoot)) {
@@ -145,6 +146,7 @@ async function verifyLocalPackage(root, target, temporaryRoot) {
   const client = join(root, target.clientName);
   const port = await reservePort();
   const healthURL = `http://127.0.0.1:${port}/healthz`;
+  const noticeURL = `http://127.0.0.1:${port}/third-party-licenses.txt`;
   const child = spawn(client, [
     "--local",
     "--config", join(temporaryRoot, "smoke-client.json"),
@@ -195,6 +197,14 @@ async function verifyLocalPackage(root, target, temporaryRoot) {
     if (!healthReady || !clientReady) {
       fail("Packaged Client Local health did not become ready");
     }
+    // The Web notices ship inside the binary; the embedded assets serve them.
+    const notices = await fetch(noticeURL, {
+      headers: { Connection: "close" },
+      signal: AbortSignal.timeout(2_000),
+    });
+    if (!notices.ok || (await notices.text()).length === 0) {
+      fail("Packaged Client did not serve its Web third-party notices");
+    }
     child.stdin.write("\n");
     const exitCode = await waitForExit(child, 10_000);
     if (exitCode !== 0) {
@@ -225,29 +235,18 @@ async function verifyLocalPackage(root, target, temporaryRoot) {
   }
 }
 
-async function verifyPackage(
-  root,
-  target,
-  revision,
-  expectedNodeVersion,
-  temporaryRoot,
-) {
+async function verifyPackage(root, target, revision, temporaryRoot) {
   const packagedRevision = readFileSync(join(root, "REVISION"), "ascii").trim();
   if (packagedRevision !== revision) fail("Client package revision mismatch");
-  for (const file of ["LICENSE", "THIRD-PARTY-NOTICES.txt", "app/LICENSE",
-    "app/dist/client/third-party-licenses.txt", "runtime/node/LICENSE",
+  for (const file of ["LICENSE", "THIRD-PARTY-NOTICES.txt",
     "runtime/tunnel/THIRD-PARTY-NOTICES.txt"]) {
     if (!existsSync(join(root, file)) || readFileSync(join(root, file)).length === 0) {
       fail(`Client package license text is missing: ${file}`);
     }
   }
 
-  const node = join(root, "runtime", "node", target.nodeName);
   const client = join(root, target.clientName);
   const tunnel = join(root, "runtime", "tunnel", target.tunnelName);
-  if (run(node, ["--version"], root) !== expectedNodeVersion) {
-    fail(`Packaged Node runtime must be ${expectedNodeVersion}`);
-  }
   run(client, ["--help"], root);
   run(tunnel, ["--version"], root);
   verifyPlatformAssets(root, target);
@@ -323,10 +322,6 @@ if (process.platform !== target.nodePlatform || process.arch !== target.nodeArch
 assertOutsideRepository(repositoryRoot, outputRoot);
 
 const revision = run("git", ["rev-parse", "HEAD"], repositoryRoot).toLowerCase();
-const expectedNodeVersion = `v${readFileSync(
-  join(repositoryRoot, ".node-version"),
-  "ascii",
-).trim()}`;
 const temporaryRoot = join(tmpdir(), "screener-client-candidate", target.id);
 rmSync(temporaryRoot, { recursive: true, force: true });
 mkdirSync(temporaryRoot, { recursive: true, mode: 0o700 });
@@ -342,7 +337,7 @@ try {
 
   let tunnel = tunnelDownload;
   if (target.tunnelArchive) {
-    run("tar", ["-xzf", tunnelDownload, "-C", temporaryRoot], repositoryRoot);
+    run(tarExecutable(), ["-xzf", tunnelDownload, "-C", temporaryRoot], repositoryRoot);
     tunnel = join(temporaryRoot, target.tunnelName);
   }
   if (!existsSync(tunnel)) fail("Public-link runtime is missing");
@@ -362,7 +357,6 @@ try {
   const assembleArguments = [
     join(repositoryRoot, "scripts", "assemble-client.mjs"),
     applicationDescriptor(applicationRoot),
-    process.execPath,
     packageRoot,
     "--target",
     target.id,
@@ -371,19 +365,13 @@ try {
   ];
   if (capture) assembleArguments.push("--capture", capture);
   run(process.execPath, assembleArguments, repositoryRoot);
-  await verifyPackage(
-    packageRoot,
-    target,
-    revision,
-    expectedNodeVersion,
-    temporaryRoot,
-  );
+  await verifyPackage(packageRoot, target, revision, temporaryRoot);
 
   mkdirSync(outputRoot, { recursive: false, mode: 0o700 });
   const shortRevision = revision.slice(0, 7);
   const archiveName = `Screener-Client-${target.id}-${shortRevision}.tar.gz`;
   const archive = join(outputRoot, archiveName);
-  run("tar", ["-czf", archive, "-C", packageRoot, "."], repositoryRoot);
+  run(tarExecutable(), ["-czf", archive, "-C", packageRoot, "."], repositoryRoot);
   const digest = sha256(archive);
   writeFileSync(join(outputRoot, `${archiveName}.sha256`), `${digest}  ${archiveName}\n`, "ascii");
   process.stdout.write(`${JSON.stringify({

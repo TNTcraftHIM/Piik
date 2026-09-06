@@ -58,16 +58,20 @@ jobs:
               LICENSE \
               licenses \
               index.html \
-              native/client \
+              cmd \
+              internal \
+              native \
+              go.mod \
+              go.sum \
               package.json \
               package-lock.json \
               public \
               src \
               tsconfig.json \
               tsconfig.app.json \
-              tsconfig.server.json \
               vite.config.ts \
               scripts/assemble-client.mjs \
+              scripts/archive-tool.mjs \
               scripts/client-icons.mjs \
               scripts/package-app-release.mjs \
               scripts/package-licenses.mjs \
@@ -81,17 +85,18 @@ jobs:
             fi
           fi
           echo "run=$run_client" >> "$GITHUB_OUTPUT"
+      - name: Install dependencies
+        run: npm ci
+      # The Go build embeds internal/server/webassets/dist, so Vite runs first.
+      - name: Build the Browser client
+        run: npm run build:client
       - name: Set up Go
-        if: steps.client-scope.outputs.run == 'true'
         uses: actions/setup-go@v6
         with:
           go-version: 1.26.6
-          cache-dependency-path: native/client/go.sum
-      - name: Check Screener Client
-        if: steps.client-scope.outputs.run == 'true'
+          cache-dependency-path: go.sum
+      - name: Check Go core
         run: npm run check:client-core
-      - name: Install dependencies
-        run: npm ci
       - name: Type-check, test, and build
         run: npm run check
 
@@ -110,6 +115,11 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: 1.26.6
+          cache-dependency-path: go.sum
       - name: Install dependencies
         run: npm ci
       - name: Package application release
@@ -148,11 +158,17 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version-file: .node-version
+          cache: npm
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
           go-version: 1.26.6
-          cache-dependency-path: native/client/go.sum
+          cache-dependency-path: go.sum
+      # scripts/assemble-client.mjs runs `npm run build:client` for the Web
+      # assets the Client binary embeds, so Vite and the license inputs must be
+      # installed here too.
+      - name: Install dependencies
+        run: npm ci
       - name: Install Linux native capture dependencies
         if: matrix.target == 'linux-amd64'
         run: >-

@@ -127,6 +127,50 @@ describe("Viewer presentation reducer", () => {
     expect(nextRoute.connection).toBe("connecting");
   });
 
+  it("accepts an authoritative lower route revision without retaining failure state", () => {
+    const failed = apply(
+      { type: "access", access: "ready" },
+      { type: "host", host: "online" },
+      { type: "route", revision: 8, phase: "active", kind: "p2p" },
+      { type: "route-status", revision: 8, state: "failed" },
+    );
+
+    const rebound = reduceViewerPresentation(failed, {
+      type: "route",
+      revision: 0,
+      phase: "active",
+      kind: "none",
+      authoritative: true,
+    });
+
+    expect(rebound.revision).toBe(0);
+    expect(rebound.routeStatus).toBeNull();
+    expect(rebound.connection).toBe("idle");
+  });
+
+  it("keeps proven media across an authoritative same-route reauthentication", () => {
+    const playing = apply(
+      { type: "access", access: "ready" },
+      { type: "host", host: "online" },
+      { type: "route", revision: 8, phase: "active", kind: "p2p" },
+      { type: "media-bound", generation: 1, revision: 8 },
+      { type: "frame-presented", generation: 1, proofEpoch: 0, revision: 8 },
+      { type: "route-status", revision: 8, state: "failed" },
+    );
+
+    const rebound = reduceViewerPresentation(playing, {
+      type: "route",
+      revision: 0,
+      phase: "active",
+      kind: "p2p",
+      authoritative: true,
+    });
+
+    expect(rebound.routeStatus).toBeNull();
+    expect(rebound.media).toMatchObject({ generation: 1 });
+    expect(rebound.connection).toBe("reconnecting");
+  });
+
   it("keeps proven media independent of room graph revision changes", () => {
     const playing = apply(
       { type: "access", access: "ready" },

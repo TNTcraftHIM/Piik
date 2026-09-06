@@ -1,4 +1,4 @@
-// Hint set 4 — people & misc: topology, close, admit/deny, rename, theme, join-go, route p2p/sfu.
+// Hint set 4 — people & misc: topology, close, rename, theme, join-go, route p2p/sfu.
 // Scenes follow ../Comic.tsx conventions: 320x96 canvas, 2-panel
 // before→after idiom (Frame x={4} w={152} + Frame x={164} w={152}), vls-
 // prefixed keyframes in an inline <style>, rmBlock for reduced motion.
@@ -7,7 +7,6 @@
 import {
   BrowserWindow,
   Crown,
-  Door,
   FAINT,
   Frame,
   LIVE,
@@ -102,83 +101,6 @@ ${rmBlock(
       </g>
     </g>
     <RedX cx={266} cy={24} arm={6.5} className="vls-cls-x" />
-  </>
-);
-
-/* hint-admit: [pawn knocking at a shut door] → [door open, pawn hops in,
-   star]. Loop 3.2s: two knocks 0-24%, hop-in 10-26%, star pop 30-42%;
-   rest ~58%. */
-const HintAdmit: HintScene = ({ theme }) => (
-  <>
-    <style>{`
-.vls-adm-knock{animation:vlsAdmKnock 3.2s ease-in-out infinite}
-.vls-adm-kn{animation:vlsAdmKn 3.2s ease-in-out infinite}
-.vls-adm-hop{transform-box:fill-box;transform-origin:50% 100%;animation:vlsAdmHop 3.2s cubic-bezier(.3,1.4,.5,1) infinite}
-.vls-adm-star{transform-box:fill-box;transform-origin:center;animation:vlsAdmStar 3.2s cubic-bezier(.3,1.5,.5,1) infinite}
-@keyframes vlsAdmKnock{0%{transform:translateX(0)}6%{transform:translateX(4px)}12%{transform:translateX(0)}18%{transform:translateX(4px)}24%,100%{transform:translateX(0)}}
-@keyframes vlsAdmKn{0%,3%{opacity:0}7%{opacity:.9}11%{opacity:0}15%{opacity:.9}22%,100%{opacity:0}}
-@keyframes vlsAdmHop{0%,10%{transform:translate(-40px,0)}18%{transform:translate(-18px,-9px)}26%,100%{transform:translate(0,0)}}
-@keyframes vlsAdmStar{0%,30%{opacity:0;transform:scale(0)}36%{opacity:1;transform:scale(1.25)}42%,100%{opacity:1;transform:scale(1)}}
-${rmBlock(
-  ["vls-adm-knock", "vls-adm-kn", "vls-adm-hop", "vls-adm-star"],
-  [
-    [".vls-adm-kn", "opacity:0"],
-    [".vls-adm-hop,.vls-adm-star", "transform:none"],
-    [".vls-adm-star", "opacity:1"],
-  ],
-)}
-`}</style>
-    <Frame x={4} w={152} theme={theme} />
-    <Frame x={164} w={152} theme={theme} accent={LIVE} />
-    <g className="vls-adm-knock">
-      <Pawn x={63} yb={76} s={9} eyes />
-    </g>
-    <g className="vls-adm-kn" stroke={INK} strokeWidth={2} strokeLinecap="round" opacity={0}>
-      <path d="M84 36l-7-3M82 46h-8M84 56l-7 3" />
-    </g>
-    <Door x={96} y={18} />
-    <rect x={242} y={18} width={38} height={56} rx={5} fill={TV_SCREEN} stroke={INK} strokeWidth={2.5} />
-    <path d="M242 18 L262 25 L262 67 L242 74 Z" fill={WALL2} stroke={INK} strokeWidth={2.5} strokeLinejoin="round" />
-    <circle cx={257} cy={46} r={1.8} fill={INK} />
-    <g className="vls-adm-hop">
-      <Pawn x={271} yb={74} s={8} eyes />
-    </g>
-    <Star x={288} y={24} className="vls-adm-star" baseOpacity={0} />
-  </>
-);
-
-/* hint-deny: [pawn at a shut door] → [door stays shut, pawn turned away
-   waving bye with a head-tilt; footprints trail back]. Gentle: no RedX.
-   Loop 3.2s: two knocks 0-24%, wave 32-52%; rest ~48%. */
-const HintDeny: HintScene = ({ theme }) => (
-  <>
-    <style>{`
-.vls-dny-kn{animation:vlsDnyKn 3.2s ease-in-out infinite}
-.vls-dny-wave{transform-box:fill-box;transform-origin:50% 100%;animation:vlsDnyWave 3.2s ease-in-out infinite}
-@keyframes vlsDnyKn{0%,3%{opacity:0}7%{opacity:.9}11%{opacity:0}15%{opacity:.9}22%,100%{opacity:0}}
-@keyframes vlsDnyWave{0%,32%{transform:rotate(0)}36%{transform:rotate(-8deg)}40%{transform:rotate(8deg)}44%{transform:rotate(-8deg)}48%{transform:rotate(8deg)}52%,100%{transform:rotate(0)}}
-${rmBlock(
-  ["vls-dny-kn", "vls-dny-wave"],
-  [[".vls-dny-kn", "opacity:0"], [".vls-dny-wave", "transform:none"]],
-)}
-`}</style>
-    <Frame x={4} w={152} theme={theme} />
-    <Frame x={164} w={152} theme={theme} />
-    <Pawn x={60} yb={76} s={9} eyes />
-    <g className="vls-dny-kn" stroke={INK} strokeWidth={2} strokeLinecap="round" opacity={0}>
-      <path d="M88 36l-7-3M86 46h-8M88 56l-7 3" />
-    </g>
-    <Door x={96} y={18} />
-    <Door x={252} y={18} />
-    <g fill={INK} opacity={0.35}>
-      <circle cx={222} cy={72} r={1.5} />
-      <circle cx={232} cy={68} r={1.5} />
-    </g>
-    <g className="vls-dny-wave">
-      <Pawn x={206} yb={76} s={9} />
-      <circle cx={202.5} cy={58} r={1} fill={EYE} />
-      <circle cx={206} cy={58} r={1} fill={EYE} />
-    </g>
   </>
 );
 
@@ -582,8 +504,6 @@ ${rmBlock(
 export const SET4_SCENES: Record<Set4Kind, HintScene> = {
   "hint-topology": HintTopology,
   "hint-close": HintClose,
-  "hint-admit": HintAdmit,
-  "hint-deny": HintDeny,
   "hint-rename": HintRename,
   "hint-theme": HintTheme,
   "hint-join-go": HintJoinGo,

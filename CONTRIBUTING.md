@@ -61,11 +61,12 @@ Clean up worktrees and branches only after semantic review and integration are c
 
 ## Verification Entrypoints
 
-- `npm run check` owns deterministic Web/Server type-check, unit, and build
-  acceptance.
+- `npm run check` owns deterministic Web type-check, unit, and build acceptance.
 - `npm run check:client` owns Go formatting, unit tests, vet, three-platform
-  builds, and the Windows capture compile/probe when run on Windows. CI invokes
-  these same package commands rather than rebuilding their steps in YAML.
+  builds, and the Windows capture compile/probe when run on Windows. The server
+  core is Go, so its acceptance runs here. It builds the Vite client first when
+  that output is missing, because both binaries embed it. CI invokes these same
+  package commands rather than rebuilding their steps in YAML.
 - `gate:*` commands are explicit physical or network acceptance. They must use
   isolated profiles, bounded deadlines, shared cleanup helpers, and a structured
   result. A manual diagnostic may locate a failure, but is not retained as pass

@@ -51,6 +51,8 @@ ordinary implementation and UI detail.
   Client encoded fanout.
 - [ADR-0010](./adr/0010-cross-platform-client-runtime.md): cross-platform Client
   runtime and self-contained package boundary.
+- [ADR-0012](./adr/0012-shared-go-backend-core.md): one shared Go backend core
+  for Hosted and Client, amending part of ADR-0010.
 
 ## Evidence
 
@@ -76,6 +78,12 @@ Rooms and repository practice:
 
 - [Cross-restart room recovery](./research/cross-restart-room-recovery.md)
 - [Agent context governance](./research/agent-context-governance.md)
+
+Backend structure:
+
+- [Server consolidation](./research/server-consolidation.md): Go core ownership
+  and its acceptance checklist
+- [Backend audit and refactor preparation](./research/backend-audit-1b01048.md)
 
 Research records verified facts, measurements, assumptions, licenses, and
 remaining evidence boundaries. It does not own current product behavior or work

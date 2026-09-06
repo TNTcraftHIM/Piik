@@ -1,9 +1,11 @@
 import {
+  Component,
   Suspense,
   lazy,
   useEffect,
   useState,
   type FormEvent,
+  type ReactNode,
 } from "react";
 import {
   ApiError,
@@ -21,7 +23,7 @@ import {
 import { AppHeader } from "./components/living/Header";
 import { BrandLoader } from "./components/living/BrandMark";
 import { Btn, Pill } from "./components/living/primitives";
-import { ComicTooltip } from "./components/living/ComicTooltip";
+import { Comic, type ComicKind } from "./components/living/Comic";
 import { Glyph, type GlyphName } from "./ui/icons";
 import { useCopy } from "./ui/copy";
 import { OverlayPreviewPage } from "./pages/OverlayPreviewPage";
@@ -90,10 +92,38 @@ export function App() {
   }, [lang, vis]);
 
   return (
-    <Suspense fallback={<RouteLoader />}>
-      <AppRoute />
-    </Suspense>
+    <RouteBoundary>
+      <Suspense fallback={<RouteLoader />}>
+        <AppRoute />
+      </Suspense>
+    </RouteBoundary>
   );
+}
+
+// A page chunk that fails to load (offline, stale deploy) throws during render;
+// without this the root unmounts to a blank page with no way back.
+class RouteBoundary extends Component<
+  { children: ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError(): { failed: boolean } {
+    return { failed: true };
+  }
+
+  render(): ReactNode {
+    return this.state.failed ? (
+      <StaticRoute
+        icon="alert"
+        comic="warning"
+        titleKey="gate.unavailableRoute"
+        action="reload"
+      />
+    ) : (
+      this.props.children
+    );
+  }
 }
 
 function AppRoute() {
@@ -113,7 +143,7 @@ function AppRoute() {
         launchedByClient={clientLaunchBootstrap?.launchedByClient}
       />
     ) : (
-      <SiteAccessGate surface="viewer" />
+      <SiteAccessGate surface="viewer" invalidInvite={viewerRoute.invalidGrant} />
     );
   }
   if (appRoute.kind === "host") {
@@ -123,9 +153,15 @@ function AppRoute() {
     return <SiteAccessGate surface="join" />;
   }
   return appRoute.kind === "malformed-room" ? (
-    <StaticRoute icon="door" titleKey="gate.malformed" hintKey="gate.malformedHint" />
+    <StaticRoute
+      icon="door"
+      comic="room-not-found"
+      titleKey="gate.malformed"
+      hintKey="gate.malformedHint"
+      action="join"
+    />
   ) : (
-    <StaticRoute icon="alert" titleKey="gate.unavailableRoute" />
+    <StaticRoute icon="alert" comic="warning" titleKey="gate.unavailableRoute" />
   );
 }
 
@@ -157,28 +193,31 @@ function RouteLoader() {
 
 function StaticRoute({
   icon,
+  comic,
   titleKey,
   hintKey,
+  action,
 }: {
   icon: GlyphName;
+  comic: ComicKind;
   titleKey: "gate.malformed" | "gate.unavailableRoute";
   hintKey?: "gate.malformedHint";
+  action?: "join" | "reload";
 }) {
   const { t, vis } = useCopy();
-  const panelIcon = (
-    <span className="lr-tv-big" style={{ borderColor: "var(--ink)", color: "var(--ink)", background: "var(--paper)" }}>
-      <Glyph name={icon} size={30} />
-    </span>
-  );
   return (
     <div className="lr-app">
       <AppHeader />
       <main className="lr-join">
         <div className="lr-join-panel">
           {vis ? (
-            <ComicTooltip kind="warning">{panelIcon}</ComicTooltip>
+            // The scene states this exact situation, so the meaning needs no
+            // hover: a tooltip trigger would leave it pointer-only.
+            <Comic kind={comic} theme="paper" />
           ) : (
-            panelIcon
+            <span className="lr-tv-big" style={{ borderColor: "var(--ink)", color: "var(--ink)", background: "var(--paper)" }}>
+              <Glyph name={icon} size={30} />
+            </span>
           )}
           {vis ? null : (
             <div className="lr-access-text">
@@ -187,8 +226,24 @@ function StaticRoute({
             </div>
           )}
           <span className="visually-hidden" role="alert">
-            {t(titleKey)}
+            {hintKey ? [t(titleKey), t(hintKey)].join(" · ") : t(titleKey)}
           </span>
+          {action === "join" ? (
+            <Btn
+              icon="door"
+              title="join.title"
+              cap="join.title"
+              hint="hint-join-go"
+              onClick={() => window.location.assign("/join")}
+            />
+          ) : action === "reload" ? (
+            <Btn
+              icon="refresh"
+              title="common.refresh"
+              cap="common.refresh"
+              onClick={() => window.location.reload()}
+            />
+          ) : null}
         </div>
       </main>
     </div>
@@ -197,8 +252,11 @@ function StaticRoute({
 
 function SiteAccessGate({
   surface,
+  invalidInvite,
 }: {
   surface: "host" | "join" | "viewer";
+  /** The URL carried an invite fragment that could not be used. */
+  invalidInvite?: boolean;
 }) {
   const { t, vis } = useCopy();
   const [access, setAccess] = useState<AccessState>({ kind: "checking" });
@@ -220,11 +278,23 @@ function SiteAccessGate({
       ([status, nextCapabilities]) => {
         if (!active) return;
         setCapabilities(nextCapabilities);
-        setAccess(stateFromStatus(status));
+        const next = stateFromStatus(status);
+        setAccess(
+          next.kind === "required" && invalidInvite
+            ? { kind: "required", error: t("viewer.msg.invalidInvite") }
+            : next,
+        );
       },
-      (error: unknown) =>
-        active &&
-        setAccess({ kind: "unavailable", message: readableError(error, t) }),
+      (error: unknown) => {
+        if (!active) return;
+        // A rejected bootstrap credential is an access problem, not an outage:
+        // the passphrase form is the recovery, not a retry of the same token.
+        setAccess(
+          error instanceof ApiError && error.status === 401
+            ? { kind: "required", error: t("gate.expired") }
+            : { kind: "unavailable", message: readableError(error, t) },
+        );
+      },
     );
     return () => {
       active = false;

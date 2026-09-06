@@ -6,7 +6,6 @@ import {
   limitMediaAssignment,
   MAX_ENDPOINT_MEDIA_CHILDREN,
   reconcileBoundedMediaChildren,
-  retainSelectedMediaParent,
   viewerRestartMessage,
   viewerSignalMessage,
 } from "../src/client/webrtc/media-assignment.ts";
@@ -63,49 +62,14 @@ describe("peer-assisted client assignment", () => {
     ]);
   });
 
-  it("updates selected Viewer children without replacing its retained parent", () => {
-    expect(
-      retainSelectedMediaParent(
-        {
-          parentPeerId: null,
-          childPeerIds: ["new-child_12345678"],
-        },
-        "selected-parent_12345678",
-      ),
-    ).toEqual({
-      parentPeerId: "selected-parent_12345678",
-      childPeerIds: ["new-child_12345678"],
-    });
-  });
-
-  it("leaves ordinary viewer signaling untargeted", () => {
-    expect(viewerSignalMessage(false, "host_12345678", offer)).toEqual({
-      type: "signal",
-      payload: offer,
-    });
-    expect(
-      viewerRestartMessage(
-        false,
-        "host_12345678",
-        "connection_12345678",
-        true,
-      ),
-    ).toEqual({
-      type: "restart-request",
-      connectionId: "connection_12345678",
-      rebuild: true,
-    });
-  });
-
-  it("targets peer-assisted signaling at the assigned parent", () => {
-    expect(viewerSignalMessage(true, "parent_12345678", offer)).toEqual({
+  it("targets signaling at the assigned parent", () => {
+    expect(viewerSignalMessage("parent_12345678", offer)).toEqual({
       type: "signal",
       targetPeerId: "parent_12345678",
       payload: offer,
     });
     expect(
       viewerRestartMessage(
-        true,
         "parent_12345678",
         "connection_12345678",
         false,
@@ -122,7 +86,6 @@ describe("peer-assisted client assignment", () => {
     let active = false;
     const messages: unknown[] = [];
     const sendRestart = createOwnedViewerRestartSender(
-      true,
       (targetPeerId, connectionId) =>
         active &&
         targetPeerId === "parent_12345678" &&

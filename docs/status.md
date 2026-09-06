@@ -1,14 +1,15 @@
 # Current Status
 
-Last updated: 2026-09-05
+Last updated: 2026-09-06
 
 This is the current execution index. Git history owns completed timelines;
 [verification status](./verification-status.md) owns evidence boundaries.
 
-## Production
+## Last Production Postflight
 
-- `https://share.bonfire.icu` runs the strict `screener-v19` Browser/server
-  contract. Exact revision, release, artifact, manifest, and asset identity are
+- The pre-Go postflight at `https://share.bonfire.icu` verified the strict
+  `screener-v19` Browser/server contract. Current revision, release, artifact,
+  manifest, and asset identity are
   retained by the immutable release descriptor, runtime `REVISION`, and
   deployment record rather than copied into this source snapshot.
 - The latest scoped postflight found public health and the immutable Browser
@@ -26,7 +27,7 @@ This is the current execution index. Git history owns completed timelines;
 - Public media listeners remain STUN-only UDP 3478 and LiveKit UDP 7882.
   Production enables optional NAT prediction with self-hosted STUN-only UDP
   3479 and 3480; ordinary `STUN_URLS` and media routes remain unchanged. Web
-  ingress is TCP 80/443; Node 8787 and LiveKit control/signaling 7880 are
+  ingress is TCP 80/443; Screener 8787 and LiveKit control/signaling 7880 are
   private. TURN, ICE/TCP, media TCP, TLS relay, port 5349, and relay ranges are
   disabled.
 - Browser video uses the content-independent H.264 sender gate with VP8
@@ -50,11 +51,14 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Current Source
 
-- Canonical source uses the strict `screener-v20` Browser/server contract.
-  Optional SQLite stable authority, non-expiring local preferred code, atomic
-  room replacement and the Host codec selector remain implemented; production
-  selects stable storage. Graceful restart, crash, timeout and network loss use
-  one reconnect state. LiveKit room teardown cannot stop Host-owned capture.
+- Source uses the strict `screener-v21` Browser/server contract and one
+  shared Go server core for Hosted and Client; the graph controller is universal
+  and the Host-star configuration and wire path are removed. Optional SQLite
+  stable authority, non-expiring
+  local preferred code, atomic room replacement and the Host codec selector
+  remain implemented; production selects stable storage. Graceful restart, crash,
+  timeout and network loss use one reconnect state. LiveKit room teardown cannot
+  stop Host-owned capture.
 - One event-driven controller owns the committed graph and one room-serial child
   operation. Initial direct acquisition uses a five-second foreground window;
   exact transport-connected progress may retain that candidate through the
@@ -82,9 +86,8 @@ This is the current execution index. Git history owns completed timelines;
   Enabled acquisition now shares a three-attempt budget in the route controller,
   across foreground P2P and background direct continuation. Viewer progress
   reflects actual candidate creation; quality trials retain their prior budget.
-  candidate and selected-path logs retain anonymous
-  `ordinary | predicted | unknown` provenance. Ordinary candidates and SFU
-  fallback remain unchanged.
+  Candidate and selected-path logs retain anonymous `ordinary | predicted |
+  unknown` provenance. Ordinary candidates and SFU fallback remain unchanged.
 - Every direct, Browser-relay, and Host SFU video sender owns one clone of its
   source track; the original remains presentation and source authority only.
   Replacement, rollback, unpublish, physical LiveKit sender recreation, and
@@ -145,14 +148,11 @@ This is the current execution index. Git history owns completed timelines;
   capture path remain unrun on a physical Mac. The Linux package now includes a
   thin Portal/PipeWire/GStreamer hardware-H.264 capture adapter and passes its
   compile, probe, package, startup, and shutdown checks; real desktop capture,
-  system audio, and recovery remain unproved. Client-scoped pull requests build
-  and run the scripted Local smoke on all three candidates before merge; a
-  validated `main` push emits them as short-lived Actions artifacts. One-link
-  mode preserves the Host Local authority while exposing its ordinary invitation
-  and HTTP/WebSocket control path through a session-scoped Quick Tunnel. An
-  independent Linux Pion Viewer
-  has received that native media over a direct ICE pair; remote Browser media
-  remains unproved. Site and one-link native shares also make one bounded
+  system audio, and recovery remain unproved. One-link mode preserves the Host
+  Local authority while exposing its ordinary invitation and HTTP/WebSocket
+  control path through a session-scoped Quick Tunnel. An independent Linux Pion
+  Viewer has received that native media over a direct ICE pair; remote Browser
+  media remains unproved. Site and one-link native shares also make one bounded
   best-effort PCP/UPnP/NAT-PMP mapping and Pion Universal-UDP-mux STUN discovery
   on their media socket. A public-link run delivered 35 H.264 packets to an
   independent Linux Viewer; no predicted-path win is yet claimed.
@@ -186,13 +186,16 @@ This is the current execution index. Git history owns completed timelines;
   the deployment tree provides a read-only operator check against the same full-
   SHA release identity. Neither installs or interrupts a running share.
 
-## Current Hold
+## Release Acceptance
 
 Client acceptance remains open for the reported Windows 10 display startup and
 game-specific source behavior. Windows 11 display, minimized-source recovery,
 live presets and source-switch checks pass, but do not establish those reports
 as resolved. NAT acquisition has controller and signaling coverage, not a new
-public-network success-rate claim. Its added prepare progress field requires a
-coordinated private-wire release: old strict pages cannot consume it safely.
-Native codec and capability fields likewise require the matching bundled UI.
-Production is unchanged; [TODO](./todo.md) owns acceptance and release work.
+public-network success-rate claim. The candidate removes the Host-star
+configuration and wire shape under `screener-v21` and moves the server to Go.
+The authorized cutover needs matching Web/Client builds, the updated unit file
+that replaces `NODE_ENV` with `SCREENER_ENV` before the first Go release,
+an active-session check, and configuration restoration on rollback. The actual
+deployment result belongs to its release record; [TODO](./todo.md) owns
+remaining device/network acceptance.

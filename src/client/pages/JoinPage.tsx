@@ -8,13 +8,16 @@ import { roomRouteForExplicitEntry } from "../lib/session";
 export function JoinPage() {
   const { t, vis } = useCopy();
   const [roomId, setRoomId] = useState("");
-  const [error, setError] = useState(false);
+  // Counts rejected submits so a repeated one still restarts the shake and
+  // re-announces the alert; a plain boolean would already be true.
+  const [rejectedAttempt, setRejectedAttempt] = useState(0);
+  const error = rejectedAttempt > 0;
 
   function join(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
     const route = roomRouteForExplicitEntry(roomId);
     if (!route) {
-      setError(true);
+      setRejectedAttempt((attempt) => attempt + 1);
       return;
     }
     window.location.assign(route);
@@ -38,6 +41,7 @@ export function JoinPage() {
       <main className="lr-join">
         <form className="lr-join-panel" onSubmit={join} noValidate>
           <span
+            key={rejectedAttempt}
             className={`lr-join-door${error ? " is-shake" : ""}`}
             title={vis ? undefined : t("join.title")}
             role="img"
@@ -72,13 +76,18 @@ export function JoinPage() {
               aria-invalid={error}
               onChange={(event) => {
                 setRoomId(event.target.value.replace(/\D/g, "").slice(0, 4));
-                setError(false);
+                setRejectedAttempt(0);
               }}
             />
           </div>
           {error ? (
             <>
-              <span className="lr-join-error" role="alert" aria-label={t("join.invalid")}>
+              <span
+                key={rejectedAttempt}
+                className="lr-join-error"
+                role="alert"
+                aria-label={t("join.invalid")}
+              >
                 <Glyph name="x" size={24} />
               </span>
               {vis ? (

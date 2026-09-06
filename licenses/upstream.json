@@ -4,21 +4,6 @@
     "source": "https://github.com/webmproject/libvpx/tree/6df3ec34557879fff673706f4a1d9fbd0f3a6f0e",
     "sha256": "3042109b4fb2a8d44e52c6241eaa8a1a9b4bfdbd632e67b7d91b4d1db36d653b"
   },
-  "node@24.19.0": {
-    "file": "node-24.19.0.txt",
-    "source": "https://raw.githubusercontent.com/nodejs/node/cdc1b38d40cb567b7ad0b39c86addf830a0af0ae/LICENSE",
-    "sha256": "d5dfe2ee1355c7c315e2b150c397c791d5fd17c154916ac2ac4b1c4eed04fd36"
-  },
-  "sirv@3.0.2": {
-    "file": "sirv-3.0.2.txt",
-    "source": "https://raw.githubusercontent.com/lukeed/sirv/1135207e92c40354543cbd15c763c7a61d79d432/license",
-    "sha256": "ba573393f24555ac0528612ad39665fab5bdcc80330a61096024bbf5f736526d"
-  },
-  "@polka/url@1.0.0-next.29": {
-    "file": "polka-url-1.0.0-next.29.txt",
-    "source": "https://raw.githubusercontent.com/lukeed/polka/02cbdb529ddca0a9f3d225e2abb2931924219cc3/license",
-    "sha256": "ba573393f24555ac0528612ad39665fab5bdcc80330a61096024bbf5f736526d"
-  },
   "@bufbuild/protobuf@1.10.1": {
     "file": "bufbuild-protobuf-1.10.1.txt",
     "source": "https://raw.githubusercontent.com/bufbuild/protobuf-es/e31c1b139cf1e7fea2fb914f650af3c28c42ec68/LICENSE",

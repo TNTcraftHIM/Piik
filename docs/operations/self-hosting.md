@@ -15,8 +15,8 @@ Browser <--------- DTLS-SRTP/UDP ----------> LiveKit :7882
 Screener -------- private RoomService -----> LiveKit :7880
 ```
 
-The tracked public baseline uses Node.js 24, nginx, a valid Web TLS
-certificate, time synchronization, coturn 4.17.2 or a newer patched release,
+The tracked public baseline uses nginx, a valid Web TLS certificate, time
+synchronization, coturn 4.17.2 or a newer patched release,
 and LiveKit Server 1.13.6. LiveKit is required for the accepted SFU fallback
 and tracked release wrapper. Keep the accepted patch pinned until its
 replacement passes the same Browser/SFU acceptance boundary.
@@ -44,7 +44,8 @@ domains, certificates, users, and resource limits required by the host.
 ## Initial Setup
 
 1. Configure DNS and TLS for the Web origin and STUN name.
-2. Install Node.js, nginx, coturn, and the pinned LiveKit Server patch.
+2. Install nginx, coturn, and the pinned LiveKit Server patch. The Screener
+   release is one static binary and needs no language runtime.
 3. Create an unprivileged `screener` service account, `/opt/screener/releases`,
    `/opt/screener/uploads`, and an access-restricted environment file.
 4. Provision one verified initial immutable release and atomically point
@@ -61,6 +62,33 @@ domains, certificates, users, and resource limits required by the host.
    is closed.
 8. Start coturn and LiveKit before Screener, then nginx. The LiveKit
    readiness drop-in waits for its private control listener before Screener.
+
+### First Go service cutover
+
+The tracked unit starts the Go binary. A Node-to-Go deployment is a one-time
+infrastructure transaction, not a routine application update: its failure path
+must restore the old unit and environment before starting the prior release.
+Prepare and verify that recovery before installing the unit:
+
+```sh
+sudo install -o root -g root -m 0644 \
+  deploy/systemd/screener.service.example \
+  /etc/systemd/system/screener.service
+sudo systemctl daemon-reload
+sudo systemctl show screener.service -p ExecStart -p Environment --no-pager
+```
+
+The output must show `/opt/screener/current/screener-server` and
+`SCREENER_ENV=production`. The staged environment removes `NODE_ENV` and
+`PEER_ASSISTED_MEDIA`, and replaces route `NODE_DEBUG` with `SCREENER_DEBUG=route`.
+Keep credentials, ports, capacity and media configuration unchanged. Do not
+restart the old release using the Go unit. The routine release wrapper owns
+only application-symlink recovery; it does not install or restore systemd units.
+
+The first-cutover transaction retains the previous unit, environment and closed
+SQLite files, applies unit/environment plus release together, and restores those
+exact values on failure before reloading systemd and restarting Node. After a
+successful Go cutover, later application releases use the ordinary wrapper.
 
 LiveKit must be dedicated to this Screener application, set
 `room.auto_create: false`, and expose its control listener only to the proxy and

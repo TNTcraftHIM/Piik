@@ -7,8 +7,6 @@ if [ "$#" -ne 1 ]; then
   exit 2
 fi
 
-node='/usr/local/bin/node'
-npm='/usr/local/bin/npm'
 upload_root='/opt/screener/uploads'
 release_root='/opt/screener/releases'
 current='/opt/screener/current'
@@ -23,26 +21,20 @@ old_release=''
 test "$(dirname -- "$descriptor")" = "$upload_root"
 [[ "$public_origin" =~ ^https://[A-Za-z0-9.-]+(:[0-9]+)?$ ]]
 
-IFS=$'\t' read -r revision release_id artifact_name artifact_sha manifest_name manifest_sha file_count main_asset < <(
-  "$node" --input-type=module --eval '
-    import { readFileSync } from "node:fs";
-    const value = JSON.parse(readFileSync(process.argv[1], "utf8"));
-    const fields = [
-      value.revision,
-      value.releaseId,
-      value.artifact,
-      value.artifactSha256,
-      value.manifest,
-      value.manifestSha256,
-      value.fileCount,
-      value.mainAsset,
-    ];
-    if (value.schema !== 1 || fields.some((field) =>
-      !["string", "number"].includes(typeof field) || String(field).includes("\t") || String(field).includes("\n")
-    )) process.exit(2);
-    process.stdout.write(fields.join("\t") + "\n");
-  ' "$descriptor"
-)
+# The descriptor is JSON.stringify(descriptor, null, 2): one field per line.
+descriptor_text() {
+  sed -n "s|^  \"$1\": \"\([A-Za-z0-9._/-]*\)\",\{0,1\}\$|\1|p" "$descriptor"
+}
+
+grep -qx '  "schema": 1,' "$descriptor"
+revision="$(descriptor_text revision)"
+release_id="$(descriptor_text releaseId)"
+artifact_name="$(descriptor_text artifact)"
+artifact_sha="$(descriptor_text artifactSha256)"
+manifest_name="$(descriptor_text manifest)"
+manifest_sha="$(descriptor_text manifestSha256)"
+file_count="$(sed -n 's|^  "fileCount": \([0-9]\{1,\}\),\{0,1\}$|\1|p' "$descriptor")"
+main_asset="$(descriptor_text mainAsset)"
 
 [[ "$revision" =~ ^[0-9a-f]{40}$ ]]
 [[ "$release_id" =~ ^[0-9a-f]{7}$ ]]
@@ -126,6 +118,7 @@ recover() {
     systemctl start screener.service || ok=0
     wait_for_health || ok=0
   fi
+  rm -f -- "${current}.${release_id}-$$" "${current}.recover-${release_id}-$$" || ok=0
   if [ "$ok" -eq 1 ]; then
     cleanup_release || ok=0
   fi
@@ -148,8 +141,6 @@ trap 'code=$?; if [ "$code" -ne 0 ]; then recover "$code"; fi' EXIT
 
 exec 9>"$lock"
 flock -n 9
-test -x "$node"
-test -x "$npm"
 old_release="$(readlink -f -- "$current")"
 test "$(dirname -- "$old_release")" = "$release_root"
 test -d "$old_release"
@@ -174,7 +165,7 @@ while IFS= read -r raw_entry; do
   esac
   case "$entry" in
     /*|*\\*) printf 'invalid archive entry: %s\n' "$raw_entry" >&2; exit 41 ;;
-    LICENSE|REVISION|package.json|package-lock.json|dist|dist/client|dist/server|dist/client/*|dist/server/*) ;;
+    LICENSE|REVISION|THIRD-PARTY-NOTICES.txt|screener-server) ;;
     *) printf 'unexpected archive entry: %s\n' "$raw_entry" >&2; exit 42 ;;
   esac
 done < <(tar -tzf "$artifact")
@@ -184,115 +175,50 @@ test "$(dirname -- "$(realpath -m -- "$stage")")" = "$release_root"
 chmod 0755 "$stage"
 tar --no-same-owner --no-same-permissions -xzf "$artifact" -C "$stage"
 
-STAGE="$stage" MANIFEST="$manifest" FILE_COUNT="$file_count" REVISION="$revision" "$node" --input-type=module <<'NODE'
-import { createHash } from 'node:crypto';
-import { lstat, readFile, readdir } from 'node:fs/promises';
-import { join, relative, sep } from 'node:path';
+tab=$'\t'
+if [ -n "$(tail -c 1 "$manifest")" ]; then exit 61; fi
+if grep -qEv "^[0-9a-f]{64}${tab}[0-9]+${tab}[^${tab}]*$" "$manifest"; then exit 62; fi
+if grep -qEv "^[0-9a-f]{64}${tab}[0-9]+${tab}(LICENSE|REVISION|THIRD-PARTY-NOTICES\.txt|screener-server)$" "$manifest"; then exit 63; fi
+if [ -n "$(cut -f3 "$manifest" | sort | uniq -d)" ]; then exit 64; fi
+if [ "$(wc -l < "$manifest")" -ne "$file_count" ]; then exit 65; fi
+if [ -n "$(find "$stage" -type l)" ]; then exit 66; fi
+if [ -n "$(find "$stage" -type f -printf '%D:%i\n' | sort | uniq -d)" ]; then exit 67; fi
+if [ -n "$(find "$stage" ! -type f ! -type d ! -type l)" ]; then exit 68; fi
+if [ "$(find "$stage" -type f | wc -l)" -ne "$file_count" ]; then exit 69; fi
+if ! awk -F'\t' '{ printf "%s  %s\n", $1, $3 }' "$manifest" | (cd "$stage" && sha256sum -c --strict --quiet -); then exit 70; fi
+while IFS="$tab" read -r _ size path; do
+  test "$(stat -c '%s' "$stage/$path")" = "$size" || exit 70
+done < "$manifest"
+if [ "$(cat "$stage/REVISION")" != "$revision" ]; then exit 71; fi
+printf 'artifact_manifest=ok files=%s revision=%s\n' "$file_count" "$revision"
 
-const stage = process.env.STAGE;
-const text = await readFile(process.env.MANIFEST, 'utf8');
-if (!text.endsWith('\n')) process.exit(61);
-const lines = text.slice(0, -1).split('\n');
-const expected = new Map();
-for (const line of lines) {
-  const fields = line.split('\t');
-  if (fields.length !== 3 || !/^[0-9a-f]{64}$/.test(fields[0]) || !/^\d+$/.test(fields[1])) process.exit(62);
-  const path = fields[2];
-  if (!/^(LICENSE|REVISION|package(-lock)?\.json|dist\/(client|server)\/[A-Za-z0-9._/-]+)$/.test(path)) process.exit(63);
-  if (path.split('/').some((part) => part === '' || part === '.' || part === '..') || expected.has(path)) process.exit(64);
-  expected.set(path, { hash: fields[0], size: Number(fields[1]) });
-}
-if (expected.size !== Number(process.env.FILE_COUNT)) process.exit(65);
+# Set the mode before testing it: an archive packaged on a host without an
+# executable bit (Windows) records 0644, and the release owns the bit here.
+chmod 0755 "$stage/screener-server"
+test -x "$stage/screener-server"
+chmod 0644 "$stage/LICENSE" "$stage/REVISION" "$stage/THIRD-PARTY-NOTICES.txt"
 
-const actual = new Map();
-const identities = new Set();
-const pending = [stage];
-while (pending.length) {
-  const directory = pending.pop();
-  for (const entry of await readdir(directory, { withFileTypes: true })) {
-    const absolute = join(directory, entry.name);
-    const metadata = await lstat(absolute);
-    if (metadata.isSymbolicLink()) process.exit(66);
-    if (metadata.isDirectory()) {
-      pending.push(absolute);
-    } else if (metadata.isFile()) {
-      const identity = `${metadata.dev}:${metadata.ino}`;
-      if (identities.has(identity)) process.exit(67);
-      identities.add(identity);
-      const path = relative(stage, absolute).split(sep).join('/');
-      const body = await readFile(absolute);
-      actual.set(path, { hash: createHash('sha256').update(body).digest('hex'), size: body.length });
-    } else process.exit(68);
-  }
-}
-if (actual.size !== expected.size) process.exit(69);
-for (const [path, record] of expected) {
-  const found = actual.get(path);
-  if (!found || found.hash !== record.hash || found.size !== record.size) process.exit(70);
-}
-if ((await readFile(join(stage, 'REVISION'), 'ascii')) !== `${process.env.REVISION}\n`) process.exit(71);
-console.log(`artifact_manifest=ok files=${actual.size} revision=${process.env.REVISION}`);
-NODE
-
-test -f "$stage/dist/client/$main_asset"
-test -f "$stage/dist/server/server/index.js"
-find "$stage/dist" -type d -exec chmod 0755 {} +
-find "$stage/dist" -type f -exec chmod 0644 {} +
-chmod 0644 "$stage/LICENSE" "$stage/REVISION" "$stage/package.json" "$stage/package-lock.json"
-
+# Runs as the service user under the manager (no sudo/polkit round trip) so a
+# binary or environment file the service cannot use fails here, before cutover.
 systemd-run \
-  --unit="screener-deps-${release_id}" \
+  --uid=screener \
+  --gid=screener \
   --wait \
   --collect \
   --quiet \
   --service-type=exec \
-  --property="WorkingDirectory=$stage" \
-  --property='CPUQuota=30%' \
-  --property='MemoryHigh=160M' \
-  --property='MemoryMax=256M' \
-  --property='MemorySwapMax=0' \
-  --property='RuntimeMaxSec=120s' \
-  "$npm" ci --omit=dev --ignore-scripts --no-audit --no-fund
+  --property='EnvironmentFile=/etc/screener/screener.env' \
+  --property='Environment=SCREENER_ENV=production' \
+  --property='RuntimeMaxSec=20s' \
+  "$stage/screener-server" --check-config
 
-previous_directory="$PWD"
-cd "$stage"
-sudo -u screener "$node" --input-type=module --eval "await Promise.all([import('sirv'), import('ws'), import('zod'), import('livekit-server-sdk'), import('./dist/server/server/config.js')]);"
-"$node" --env-file=/etc/screener/screener.env --input-type=module --eval "import { loadConfig } from './dist/server/server/config.js'; loadConfig(process.env);"
-cd "$previous_directory"
+if [ -n "$(comm -12 <(find "$old_release" -type f -printf '%D:%i\n' | sort -u) <(find "$stage" -type f -printf '%D:%i\n' | sort -u))" ]; then
+  exit 80
+fi
+printf 'release_inode_intersection=0 new_regular_files=%s\n' \
+  "$(find "$stage" -type f -printf '%D:%i\n' | sort -u | wc -l)"
 
-OLD_RELEASE="$old_release" NEW_RELEASE="$stage" "$node" --input-type=module <<'NODE'
-import { lstatSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
-function collect(root) {
-  const identities = new Set();
-  const pending = [root];
-  while (pending.length) {
-    const directory = pending.pop();
-    for (const name of readdirSync(directory)) {
-      const path = join(directory, name);
-      const metadata = lstatSync(path);
-      if (metadata.isSymbolicLink()) continue;
-      if (metadata.isDirectory()) pending.push(path);
-      else if (metadata.isFile()) identities.add(`${metadata.dev}:${metadata.ino}`);
-    }
-  }
-  return identities;
-}
-const oldFiles = collect(process.env.OLD_RELEASE);
-const newFiles = collect(process.env.NEW_RELEASE);
-let intersection = 0;
-for (const identity of newFiles) if (oldFiles.has(identity)) intersection += 1;
-if (intersection !== 0) process.exit(80);
-console.log(`release_inode_intersection=0 new_regular_files=${newFiles.size}`);
-NODE
-
-old_asset="$(OLD_RELEASE="$old_release" "$node" --input-type=module --eval '
-  import { readFileSync } from "node:fs";
-  const html = readFileSync(`${process.env.OLD_RELEASE}/dist/client/index.html`, "utf8");
-  const match = html.match(/<script[^>]+src="\/(assets\/index-[A-Za-z0-9_-]+\.js)"/);
-  if (!match) process.exit(2);
-  process.stdout.write(match[1]);
-')"
+old_asset="$(curl -fsS --max-time 5 http://127.0.0.1:8787/ | grep -oE 'assets/index-[A-Za-z0-9_-]+\.js' | sed -n 1p)"
 
 release_owned=1
 mv -- "$stage" "$release"
@@ -337,7 +263,7 @@ if [ "$old_asset" != "$main_asset" ]; then
 fi
 test -z "$(journalctl -u screener.service --since "$cutover_since" -p warning --no-pager --output=cat)"
 
-asset_sha="$(sha256sum "$release/dist/client/$main_asset" | awk '{print $1}')"
+asset_sha="$(curl -fsS --max-time 8 "$public_origin/$main_asset" | sha256sum | awk '{print $1}')"
 release_owned=0
 cutover_started=0
 trap - ERR HUP INT TERM EXIT

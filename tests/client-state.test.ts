@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  DEFAULT_QUALITY_SETTINGS,
   DEFAULT_ROUTE_POLICY,
   SIGNALING_PROTOCOL,
   type QualitySettings,
@@ -61,6 +62,24 @@ afterEach(() => {
   vi.unstubAllGlobals();
   setCopy({ lang: "zh", vis: false });
 });
+
+function routeAuthenticated(
+  shareGeneration: string | null = null,
+  qualitySettings: QualitySettings = DEFAULT_QUALITY_SETTINGS,
+) {
+  return {
+    mediaMode: "peer-assisted" as const,
+    shareGeneration,
+    routeRevision: 0,
+    routeAssignment: {
+      upstream: { kind: "none" as const },
+      childPeerIds: [],
+      sfuPublicationGeneration: null,
+    },
+    qualitySettings,
+    routePolicy: DEFAULT_ROUTE_POLICY,
+  };
+}
 
 describe("browser-local display name", () => {
   it("localizes text defaults and uses visual emoji identities", () => {
@@ -423,13 +442,33 @@ describe("client session identity", () => {
       },
     });
 
-    expect(readViewerRoute()).toEqual({ roomId: "1234" });
+    expect(readViewerRoute()).toEqual({ roomId: "1234", invalidGrant: true });
     expect(readViewerGrant("1234")).toBeNull();
     replaceViewerInvite("1234", `https://share.test/r/1234#v=${"e".repeat(21)}Q`);
     expect(readViewerGrant("1234")).toBe(`${"e".repeat(21)}Q`);
     replaceViewerInvite("1234", `https://share.test/r/5678#v=${"f".repeat(21)}A`);
     expect(readViewerGrant("1234")).toBeNull();
     expect(readViewerGrant("5678")).toBeNull();
+  });
+
+  it("keeps the stored Viewer grant when the URL carries an unrelated fragment", () => {
+    const values = new Map<string, string>();
+    const grant = `${"d".repeat(21)}w`;
+    values.set("screener:viewer-grant:1234", grant);
+    const replaceState = vi.fn();
+    vi.stubGlobal("window", {
+      location: new URL("https://share.test/r/1234#:~:text=hello"),
+      history: { state: null, replaceState },
+      sessionStorage: {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => values.set(key, value),
+        removeItem: (key: string) => values.delete(key),
+      },
+    });
+
+    expect(readViewerRoute()).toEqual({ roomId: "1234", viewerGrant: grant });
+    expect(readViewerGrant("1234")).toBe(grant);
+    expect(replaceState).not.toHaveBeenCalled();
   });
 
   it("persists a rotated Viewer invitation across reload and clears it on revoke", () => {
@@ -947,7 +986,7 @@ describe("client signaling recovery policy", () => {
           endpointMediaCopyCapacity: 2,
           hostOnline: true,
           connectionId: null,
-          viewerPeerIds: [],
+          ...routeAuthenticated(),
           iceConfig: { iceServers: [], natPredictionStunUrls: [] },
           codeEntryPolicy: "open",
           viewerAuthorizationGeneration: "viewer_generation_12345678",
@@ -1091,7 +1130,7 @@ describe("client signaling recovery policy", () => {
         hostOnline: true,
         hostPaused: true,
         connectionId: null,
-        viewerPeerIds: [],
+        ...routeAuthenticated("share_generation_12345678"),
         iceConfig: { iceServers: [], natPredictionStunUrls: [] },
         codeEntryPolicy: "open",
         viewerPasswordEnabled: false,
@@ -1127,7 +1166,7 @@ describe("client signaling recovery policy", () => {
       hostOnline: true,
       hostPaused: true,
       connectionId: null,
-      viewerPeerIds: [],
+      ...routeAuthenticated("share_generation_12345678"),
       iceConfig: { iceServers: [], natPredictionStunUrls: [] },
       codeEntryPolicy: "open",
       viewerPasswordEnabled: false,
@@ -1240,7 +1279,6 @@ describe("client signaling recovery policy", () => {
           hostOnline: true,
           hostPaused: false,
           connectionId: null,
-          viewerPeerIds: [],
           iceConfig: { iceServers: [], natPredictionStunUrls: [] },
           codeEntryPolicy: "open",
           viewerPasswordEnabled: false,
@@ -1368,7 +1406,7 @@ describe("client signaling recovery policy", () => {
         endpointMediaCopyCapacity: 2,
         hostOnline: true,
         connectionId: null,
-        viewerPeerIds: [],
+        ...routeAuthenticated(),
         iceConfig: { iceServers: [], natPredictionStunUrls: [] },
         codeEntryPolicy: "open",
         viewerPasswordEnabled: false,
@@ -1485,7 +1523,6 @@ describe("client signaling recovery policy", () => {
       endpointMediaCopyCapacity: 2,
       hostOnline: true,
       connectionId: "connection_12345678",
-      viewerPeerIds: [],
       iceConfig: { iceServers: [], natPredictionStunUrls: [] },
       codeEntryPolicy: "open",
       viewerAuthorizationGeneration: "viewer_generation_12345678",
@@ -1566,7 +1603,7 @@ describe("client signaling recovery policy", () => {
       maxViewers: 8,
       hostOnline: true,
       connectionId: null,
-      viewerPeerIds: [],
+      ...routeAuthenticated(),
       iceConfig: { iceServers: [], natPredictionStunUrls: [] },
     }),
   ])(

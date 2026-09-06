@@ -9,14 +9,19 @@ import {
   cleanupRun,
   createPage,
   evaluate,
+  launchChrome,
   waitForVersion,
-  withDeadline,
 } from "./browser-gate-harness";
 import {
-  decodeClientEndpoint,
+  readClientEndpoint,
   type ClientEndpoint as Endpoint,
 } from "./client-gate-endpoint";
-import { NATIVE_CLIENT_PROTOCOL, NATIVE_CLIENT_SUBPROTOCOL } from "../src/client/native/wire";
+import {
+  NATIVE_CLIENT_PORT_END,
+  NATIVE_CLIENT_PORT_START,
+  NATIVE_CLIENT_PROTOCOL,
+  NATIVE_CLIENT_SUBPROTOCOL,
+} from "../src/client/native/wire";
 
 const PAGE_URL = "https://share.bonfire.icu/";
 const NATIVE_PROTOCOL = NATIVE_CLIENT_PROTOCOL;
@@ -40,33 +45,6 @@ interface GateReport {
   profileRemoved: boolean;
 }
 
-async function readEndpoint(
-  client: ChildProcessWithoutNullStreams,
-): Promise<Endpoint> {
-  let buffered = "";
-  return await withDeadline(
-    () => new Promise<Endpoint>((resolveEndpoint, rejectEndpoint) => {
-      const onData = (chunk: Buffer) => {
-        buffered += chunk.toString();
-        const newline = buffered.indexOf("\n");
-        if (newline < 0) return;
-        client.stdout.off("data", onData);
-        try {
-          resolveEndpoint(decodeClientEndpoint(buffered.slice(0, newline)));
-        } catch (error) {
-          rejectEndpoint(error instanceof Error ? error : new Error("Client endpoint is invalid"));
-        }
-      };
-      client.stdout.on("data", onData);
-      client.once("error", rejectEndpoint);
-      client.once("exit", (code) => {
-        rejectEndpoint(new Error(`Client exited before endpoint (${code ?? "signal"})`));
-      });
-    }),
-    Date.now() + 8_000,
-  );
-}
-
 async function browserHandshake(
   cdp: CdpConnection,
   page: { sessionId: string },
@@ -75,8 +53,8 @@ async function browserHandshake(
   const endpointJSON = JSON.stringify({
     host: "127.0.0.1",
     expectedPort: endpoint.port,
-    portStart: 39721,
-    portEnd: 39730,
+    portStart: NATIVE_CLIENT_PORT_START,
+    portEnd: NATIVE_CLIENT_PORT_END,
   });
   return await evaluate(
     cdp,
@@ -205,7 +183,7 @@ async function main(): Promise<void> {
       env: { ...process.env, SCREENER_CLIENT_GATE_NO_BROWSER: "true" },
     });
     client.stderr.resume();
-    const endpoint = await readEndpoint(client);
+    const endpoint = await readClientEndpoint(client, { timeoutMs: 8_000 });
     report.clientStarted = true;
 
     const portServer = createServer();
@@ -220,16 +198,13 @@ async function main(): Promise<void> {
         portServer.close((error) => error ? rejectPort(error) : resolvePort(address.port));
       });
     });
-    browser = spawn(browserPath, [
-      `--remote-debugging-port=${debugPort}`,
-      `--user-data-dir=${profile}`,
+    browser = launchChrome(browserPath, debugPort, profile, [
       "--headless=new",
       ...(disposableNoSandbox ? ["--no-sandbox"] : []),
       "--no-first-run",
       "--no-proxy-server",
       "--disable-logging",
-      "about:blank",
-    ], { stdio: "pipe", windowsHide: true });
+    ]);
     browser.stdout.resume();
     browser.stderr.resume();
     const version = await waitForVersion(debugPort, browser);

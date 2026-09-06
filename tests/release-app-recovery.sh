@@ -100,8 +100,10 @@ run_recover() {
 
 reset_release
 release_owned=1
+ln -s "$release" "${current}.${release_id}-$$"
 run_recover 37
 test ! -e "$release"
+test ! -e "${current}.${release_id}-$$"
 
 reset_release
 release_owned=0

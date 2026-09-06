@@ -19,7 +19,7 @@ if ($LASTEXITCODE -ne 0) { throw "Working-tree whitespace check failed." }
 git diff --cached --check
 if ($LASTEXITCODE -ne 0) { throw "Staged whitespace check failed." }
 
-if ($env:SCREENER_BASE_SHA) {
+if ($env:SCREENER_BASE_SHA -and $env:SCREENER_BASE_SHA -notmatch '^0{40}$') {
     git diff --check "$env:SCREENER_BASE_SHA...HEAD"
     if ($LASTEXITCODE -ne 0) { throw "Commit-range whitespace check failed." }
 }

@@ -1,6 +1,13 @@
+import { EventEmitter } from "node:events";
+import type { ChildProcessWithoutNullStreams } from "node:child_process";
+import { PassThrough } from "node:stream";
+
 import { describe, expect, it } from "vitest";
 
-import { decodeClientEndpoint } from "../scripts/client-gate-endpoint";
+import {
+  decodeClientEndpoint,
+  readClientEndpoint,
+} from "../scripts/client-gate-endpoint";
 
 describe("Client gate endpoint decoder", () => {
   const endpoint = {
@@ -29,5 +36,17 @@ describe("Client gate endpoint decoder", () => {
     expect(() => decodeClientEndpoint("not-json")).toThrow(
       "Client endpoint is invalid",
     );
+  });
+
+  it("reads an endpoint after optional client status lines", async () => {
+    const stdout = new PassThrough();
+    const child = Object.assign(new EventEmitter(), { stdout }) as unknown as
+      ChildProcessWithoutNullStreams;
+    const result = readClientEndpoint(child, {
+      ignoreNonEndpointLines: true,
+    });
+    stdout.write("Local access: open\n");
+    stdout.write(`${JSON.stringify(endpoint)}\n`);
+    await expect(result).resolves.toEqual(endpoint);
   });
 });

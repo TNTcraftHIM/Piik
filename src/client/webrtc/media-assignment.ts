@@ -21,16 +21,6 @@ export function limitMediaAssignment(
   };
 }
 
-export function retainSelectedMediaParent(
-  assignment: MediaAssignment,
-  parentPeerId: string,
-): MediaAssignment {
-  return {
-    parentPeerId,
-    childPeerIds: assignment.childPeerIds,
-  };
-}
-
 export function reconcileBoundedMediaChildren(
   currentPeerIds: Iterable<string>,
   nextChildPeerIds: readonly string[],
@@ -55,33 +45,26 @@ export function reconcileBoundedMediaChildren(
 }
 
 export function viewerSignalMessage(
-  peerAssisted: boolean,
   targetPeerId: string,
   payload: SignalPayload,
 ): Extract<ClientMessage, { type: "signal" }> {
-  return peerAssisted
-    ? { type: "signal", targetPeerId, payload }
-    : { type: "signal", payload };
+  return { type: "signal", targetPeerId, payload };
 }
 
 export function viewerRestartMessage(
-  peerAssisted: boolean,
   targetPeerId: string,
   connectionId: string,
   rebuild: boolean,
 ): Extract<ClientMessage, { type: "restart-request" }> {
-  return peerAssisted
-    ? {
-        type: "restart-request",
-        targetPeerId,
-        connectionId,
-        rebuild,
-      }
-    : { type: "restart-request", connectionId, rebuild };
+  return {
+    type: "restart-request",
+    targetPeerId,
+    connectionId,
+    rebuild,
+  };
 }
 
 export function createOwnedViewerRestartSender(
-  peerAssisted: boolean,
   ownsActivePeer: (targetPeerId: string, connectionId: string) => boolean,
   send: (
     message: Extract<ClientMessage, { type: "restart-request" }>,
@@ -95,7 +78,6 @@ export function createOwnedViewerRestartSender(
     ownsActivePeer(targetPeerId, connectionId) &&
     send(
       viewerRestartMessage(
-        peerAssisted,
         targetPeerId,
         connectionId,
         rebuild,

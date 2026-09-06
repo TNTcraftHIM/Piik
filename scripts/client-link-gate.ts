@@ -204,8 +204,6 @@ async function main(): Promise<void> {
   const destination = `${remote.user}@${remote.host}`;
   const go = process.env.SCREENER_GO?.trim() || "go";
   const configuredClient = process.env.SCREENER_CLIENT_EXE?.trim();
-  const node = process.env.SCREENER_CLIENT_NODE?.trim() || process.execPath;
-  const app = process.env.SCREENER_CLIENT_APP?.trim() || ROOT;
   const tunnel = process.env.SCREENER_CLOUDFLARED?.trim() ||
     join(BUILD_ROOT, process.platform === "win32" ? "cloudflared.exe" : "cloudflared");
   const profile = await mkdtemp(join(tmpdir(), "screener-client-link-"));
@@ -231,14 +229,19 @@ async function main(): Promise<void> {
   try {
     result.stage = "build";
     if (!configuredClient) {
+      // The Client embeds the Vite output, and this gate asserts on the page it
+      // serves over the public link, so the Web build precedes the Go build.
+      if (process.platform === "win32") {
+        run(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", "npm run build:client"]);
+      } else {
+        run("npm", ["run", "build:client"]);
+      }
       run(go, ["build", "-trimpath", "-o", clientBinary, "./cmd/screener-client"],
-        join(ROOT, "native", "client"));
+        ROOT);
     }
     result.stage = "client-start";
     client = spawn(clientBinary, [
       "--link",
-      "--node", node,
-      "--app", app,
       "--config", join(profile, "client.json"),
       "--port", String(port),
       "--lan-address", localLANAddress(),

@@ -1,16 +1,19 @@
 # Project Memory
 
-Last updated: 2026-09-05
+Last updated: 2026-09-06
 
 Screener is private, low-latency game screen sharing for one Host and up to 20
 authenticated friends. The current product surface is Web Host, Web Viewer, and
 Browser relay; desktop and mobile Browsers are Viewer targets. It is not a
-public broadcast service. Source includes a cross-platform Client that reuses
-the TypeScript product core in a self-contained Local deployment or opens one
-configured Site through the system Browser. Its Go entry presents Local,
-temporary public-link, and saved-Site choices on every launch, starts one process-
-level loopback capability service, supervises Local Node when selected, and owns
-the explicit native media path chosen in the same Web UI. Room source and media
+public broadcast service. Hosted and Client run one shared Go core
+([ADR-0012](./adr/0012-shared-go-backend-core.md)); Node and Vite build the
+Browser UI and are not a runtime. Source includes a cross-platform Client that
+runs that same core in a self-contained Local deployment or opens one configured
+Site through the system Browser. Its single Go process presents Local, temporary
+public-link, and saved-Site choices on every launch, starts one process-level
+loopback capability service, owns the Local room authority in-process when
+selected, and owns the explicit native media path chosen in the same Web UI.
+Room source and media
 implementation are independent: a topology may mix Browser and Native peers
 without changing participant, signaling, capacity, or route identity. Native
 Host and H.264/VP8 Viewer receive/relay adapters share the same Pion media edge;
@@ -84,7 +87,7 @@ implementation and routine UI detail.
 
 ## Current Snapshot
 
-Canonical source uses the strict `screener-v20` Browser/server contract with
+The audit candidate uses the strict `screener-v21` Browser/server contract with
 committed media readiness, bounded candidate-relative progress and one-shot
 Host-root convergence. It retains optional SQLite room authority and the
 H.264/VP8 sender gate. [Status](./status.md) owns the compact current execution

@@ -62,7 +62,7 @@ export function ClientLauncherPage() {
   const [mode, setMode] = useState<ClientMode>("local");
   const [site, setSite] = useState("");
   const [localAccessPassword, setLocalAccessPassword] = useState("");
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<null | "load" | "launch">(null);
   const [update, setUpdate] = useState<ReleaseUpdateNotice | null>(null);
 
   useEffect(() => {
@@ -84,7 +84,7 @@ export function ClientLauncherPage() {
       })
       .catch(() => {
         if (!current) return;
-        setError(true);
+        setError("load");
         setLoading(false);
       });
     return () => {
@@ -96,7 +96,7 @@ export function ClientLauncherPage() {
     event.preventDefault();
     if (starting || (mode === "site" && !site.trim())) return;
     setStarting(true);
-    setError(false);
+    setError(null);
     try {
       const response = await fetch("/api/client-launcher/launch", {
         method: "POST",
@@ -111,7 +111,7 @@ export function ClientLauncherPage() {
       const result = launcherResultSchema.parse(await response.json());
       window.location.replace(result.target);
     } catch {
-      setError(true);
+      setError("launch");
       setStarting(false);
     }
   }
@@ -130,7 +130,7 @@ export function ClientLauncherPage() {
         title={vis ? undefined : t("client.launch.localAccessHint")}
         onChange={(event) => {
           setLocalAccessPassword(event.target.value);
-          setError(false);
+          setError(null);
         }}
       />
     </label>
@@ -154,6 +154,23 @@ export function ClientLauncherPage() {
                 {t(starting ? "client.launch.starting" : "gate.checking")}
               </span>
             )}
+          </div>
+        ) : error === "load" ? (
+          <div className="lr-client-launch-panel">
+            <BrandMark size={68} motion="once" />
+            <Pill
+              icon="alert"
+              tone="bad"
+              label={t("client.launch.loadFailed")}
+              alert
+              comic="warning"
+            />
+            <Btn
+              icon="refresh"
+              title="common.refresh"
+              cap="common.refresh"
+              onClick={() => window.location.reload()}
+            />
           </div>
         ) : (
           <form className="lr-client-launch-panel" onSubmit={launch}>
@@ -202,7 +219,7 @@ export function ClientLauncherPage() {
                     title={vis ? undefined : t(choice.hint)}
                     onClick={() => {
                       setMode(choice.mode);
-                      setError(false);
+                      setError(null);
                     }}
                   >
                     <Glyph name={choice.icon} size={27} />
@@ -237,7 +254,7 @@ export function ClientLauncherPage() {
                   aria-label={t("client.launch.siteAddress")}
                   onChange={(event) => {
                     setSite(event.target.value);
-                    setError(false);
+                    setError(null);
                   }}
                 />
               </label>
@@ -253,7 +270,7 @@ export function ClientLauncherPage() {
               )
             ) : null}
 
-            {error ? (
+            {error === "launch" ? (
               <Pill
                 icon="alert"
                 tone="bad"
