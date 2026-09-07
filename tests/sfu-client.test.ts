@@ -1,2515 +1,551 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
 import { QUALITY_PROFILES } from "../src/client/media/quality.ts";
-import { sfuPublisherQualityEvidenceFromMetrics } from "../src/client/media/sender-quality-evidence.ts";
 import { SfuPublisher } from "../src/client/sfu/publisher.ts";
 import { SfuSubscriber } from "../src/client/sfu/subscriber.ts";
-import type { ConnectionMetrics } from "../src/client/types.ts";
-import { mergeStatsReports } from "../src/client/webrtc/stats.ts";
-import { setCopy } from "../src/client/ui/copy.ts";
+import {
+  clientMessageSchema,
+  type SfuSignalMessage,
+} from "../src/shared/protocol.ts";
 
-type EventHandler = (...args: unknown[]) => void;
-
-const livekit = vi.hoisted(() => {
-  class FakeSender {
-    track: MediaStreamTrack;
-    failNextSetParameters = false;
-    deferNextSetParameters = false;
-    private releaseSetParameters: (() => void) | null = null;
-    parameters: RTCRtpSendParameters = {
-      codecs: [],
-      encodings: [{}],
-      headerExtensions: [],
-      rtcp: { cname: "fake", reducedSize: true },
-      transactionId: "fake",
-    };
-
-    constructor(track: MediaStreamTrack) {
-      this.track = track;
-    }
-
-    readonly getParameters = vi.fn(() => this.parameters);
-    readonly setParameters = vi.fn(
-      async (parameters: RTCRtpSendParameters): Promise<void> => {
-        if (this.failNextSetParameters) {
-          this.failNextSetParameters = false;
-          throw new Error("audio parameters rejected");
-        }
-        const failure = state.nextSenderParameterError;
-        if (failure) {
-          state.nextSenderParameterError = null;
-          throw failure;
-        }
-        if (this.deferNextSetParameters) {
-          this.deferNextSetParameters = false;
-          await new Promise<void>((resolve) => {
-            this.releaseSetParameters = resolve;
-          });
-        }
-        this.parameters = parameters;
-      },
-    );
-    readonly getStats = vi.fn(
-      async (): Promise<RTCStatsReport> =>
-        new Map() as unknown as RTCStatsReport,
-    );
-
-    releaseDeferredSetParameters(): void {
-      this.releaseSetParameters?.();
-      this.releaseSetParameters = null;
-    }
+class FakeTrack extends EventTarget {
+  readonly id = crypto.randomUUID();
+  enabled = true;
+  contentHint = "";
+  readyState = "live";
+  readonly clones: FakeTrack[] = [];
+  readonly stop = vi.fn(() => {
+    this.readyState = "ended";
+  });
+  readonly getSettings = vi.fn(() => ({
+    width: 1920,
+    height: 1080,
+    frameRate: 30,
+  }));
+  readonly applyConstraints = vi.fn(
+    async (_constraints: MediaTrackConstraints) => undefined,
+  );
+  readonly clone = vi.fn(() => {
+    const next = new FakeTrack(this.kind);
+    this.clones.push(next);
+    return next;
+  });
+  constructor(readonly kind: "audio" | "video") {
+    super();
   }
+}
 
-  class FakeLocalTrack {
-    currentTrack: MediaStreamTrack;
-    sender: FakeSender;
-    publishOptions?: Record<string, unknown>;
-    savedDegradationPreference: RTCDegradationPreference | null = null;
-
-    constructor(track: MediaStreamTrack) {
-      this.currentTrack = track;
-      this.sender = new FakeSender(track);
-    }
-
-    get mediaStreamTrack(): MediaStreamTrack {
-      return this.currentTrack;
-    }
-
-    readonly replaceTrack = vi.fn(
-      async (nextTrack: MediaStreamTrack): Promise<void> => {
-        this.currentTrack = nextTrack;
-        this.sender.track = nextTrack;
-      },
-    );
-
-    readonly setDegradationPreference = vi.fn(
-      async (preference: RTCDegradationPreference): Promise<void> => {
-        this.savedDegradationPreference = preference;
-      },
-    );
-
-    replaceSenderForTest(): FakeSender {
-      this.sender = new FakeSender(this.currentTrack);
-      return this.sender;
-    }
-  }
-
-  class FakeLocalParticipant {
-    readonly publications: Array<{
-      track: FakeLocalTrack;
-      videoTrack?: FakeLocalTrack;
-      audioTrack?: FakeLocalTrack;
-      rawTrack: MediaStreamTrack;
-      options: Record<string, unknown>;
-    }> = [];
-
-    readonly publishTrack = vi.fn(
-      async (
-        rawTrack: MediaStreamTrack,
-        options: Record<string, unknown>,
-      ) => {
-        const localTrack = new FakeLocalTrack(rawTrack);
-        localTrack.publishOptions = options;
-        const audioPreset = options.audioPreset;
-        if (
-          rawTrack.kind === "audio" &&
-          typeof audioPreset === "object" &&
-          audioPreset !== null &&
-          "maxBitrate" in audioPreset &&
-          typeof audioPreset.maxBitrate === "number"
-        ) {
-          localTrack.sender.parameters.encodings = [
-            { maxBitrate: audioPreset.maxBitrate },
-          ];
-        }
-        const screenShareEncoding = options.screenShareEncoding;
-        if (
-          rawTrack.kind === "video" &&
-          options.simulcast === false &&
-          typeof screenShareEncoding === "object" &&
-          screenShareEncoding !== null
-        ) {
-          const encoding = screenShareEncoding as {
-            maxBitrate?: number;
-            maxFramerate?: number;
-          };
-          localTrack.sender.parameters.encodings = [
-            {
-              maxBitrate: encoding.maxBitrate,
-              maxFramerate: encoding.maxFramerate,
-              scaleResolutionDownBy: 1,
-            },
-          ];
-        }
-        const publication = {
-          track: localTrack,
-          videoTrack: rawTrack.kind === "video" ? localTrack : undefined,
-          audioTrack: rawTrack.kind === "audio" ? localTrack : undefined,
-          rawTrack,
-          options,
-        };
-        this.publications.push(publication);
-        return publication;
-      },
-    );
-
-    getTrackPublication(source: string) {
-      return this.publications.find(
-        (publication) => publication.options.source === source,
-      );
-    }
-
-    async republishForReconnect(): Promise<void> {
-      const previous = [...this.publications];
-      this.publications.length = 0;
-      for (const publication of previous) {
-        delete publication.videoTrack;
-        delete publication.audioTrack;
-        await this.publishTrack(publication.rawTrack, {
-          ...publication.options,
-        });
-      }
-    }
-
-    republishedOptions: Array<Record<string, unknown>> = [];
-    readonly republishAllTracks = vi.fn(async (): Promise<void> => {
-      this.republishedOptions = this.publications.map((publication) => ({
-        ...publication.options,
-      }));
-    });
-
-    readonly unpublishTrack = vi.fn(
-      async (_track: FakeLocalTrack, _stopOnUnpublish: boolean) => undefined,
-    );
-  }
-
-  class FakeRemotePublication {
-    subscribed = false;
-    readonly setSubscribed = vi.fn((subscribed: boolean) => {
-      this.subscribed = subscribed;
-    });
-
-    constructor(
-      readonly trackSid: string,
-      readonly source: string,
-    ) {}
-  }
-
-  class FakeRemoteParticipant {
-    readonly trackPublications = new Map<string, FakeRemotePublication>();
-
-    constructor(readonly identity: string) {}
-
-    add(publication: FakeRemotePublication): this {
-      this.trackPublications.set(publication.trackSid, publication);
-      return this;
-    }
-  }
-
-  class FakeRoom {
-    readonly localParticipant = new FakeLocalParticipant();
-    readonly remoteParticipants = new Map<string, FakeRemoteParticipant>();
-    readonly handlers = new Map<string, EventHandler[]>();
-    readonly connect = vi.fn(
-      async (
-        _url: string,
-        _token: string,
-        _options: Record<string, unknown>,
-      ): Promise<void> => {
-        await state.connectGate;
-      },
-    );
-    readonly disconnect = vi.fn(async (_stopTracks?: boolean) => undefined);
-
-    constructor(readonly options: Record<string, unknown> = {}) {
-      state.rooms.push(this);
-    }
-
-    on(event: string, handler: EventHandler): this {
-      const handlers = this.handlers.get(event) ?? [];
-      handlers.push(handler);
-      this.handlers.set(event, handlers);
-      return this;
-    }
-
-    emit(event: string, ...args: unknown[]): void {
-      for (const handler of this.handlers.get(event) ?? []) {
-        handler(...args);
-      }
-    }
-  }
-
-  const state: {
-    rooms: FakeRoom[];
-    connectGate: Promise<void> | null;
-    nextSenderParameterError: Error | null;
-  } = {
-    rooms: [],
-    connectGate: null,
-    nextSenderParameterError: null,
-  };
-
-  const AudioPresets = {
-    musicStereo: { maxBitrate: 64_000 },
-    musicHighQualityStereo: { maxBitrate: 128_000 },
-  } as const;
-
-  return {
-    AudioPresets,
-    FakeRemoteParticipant,
-    FakeRemotePublication,
-    FakeRoom,
-    state,
-  };
-});
-
-const RoomEvent = {
-  Disconnected: "disconnected",
-  ParticipantConnected: "participant-connected",
-  ParticipantDisconnected: "participant-disconnected",
-  Reconnected: "reconnected",
-  Reconnecting: "reconnecting",
-  TrackPublished: "track-published",
-  TrackSubscribed: "track-subscribed",
-  TrackUnpublished: "track-unpublished",
-  TrackUnsubscribed: "track-unsubscribed",
-} as const;
-
-const Track = {
-  Source: {
-    Camera: "camera",
-    ScreenShare: "screen-share",
-    ScreenShareAudio: "screen-share-audio",
-  },
-} as const;
-
-vi.mock("livekit-client", () => ({
-  AudioPresets: livekit.AudioPresets,
-  Room: livekit.FakeRoom,
-  RoomEvent,
-  Track,
-}));
-
-class FakeMediaStream {
-  constructor(private readonly tracks: MediaStreamTrack[] = []) {}
-
-  addTrack(track: MediaStreamTrack): void {
-    if (!this.tracks.includes(track)) this.tracks.push(track);
-  }
-
-  removeTrack(track: MediaStreamTrack): void {
-    const index = this.tracks.indexOf(track);
-    if (index >= 0) this.tracks.splice(index, 1);
-  }
-
-  getTracks(): MediaStreamTrack[] {
+class FakeStream {
+  constructor(private tracks: FakeTrack[] = []) {}
+  getTracks(): FakeTrack[] {
     return [...this.tracks];
   }
-
-  getVideoTracks(): MediaStreamTrack[] {
-    return this.tracks.filter((item) => item.kind === "video");
+  getVideoTracks(): FakeTrack[] {
+    return this.tracks.filter((track) => track.kind === "video");
   }
-
-  getAudioTracks(): MediaStreamTrack[] {
-    return this.tracks.filter((item) => item.kind === "audio");
+  getAudioTracks(): FakeTrack[] {
+    return this.tracks.filter((track) => track.kind === "audio");
+  }
+  addTrack(track: FakeTrack): void {
+    this.tracks.push(track);
+  }
+  removeTrack(track: FakeTrack): void {
+    this.tracks = this.tracks.filter((current) => current !== track);
   }
 }
 
-const connection = {
-  url: "wss://sfu.example.test",
-  token: "short-lived-token",
+class FakeSender {
+  readonly getParameters = vi.fn(() => structuredClone(this.parameters));
+  readonly setParameters = vi.fn(async (parameters: RTCRtpSendParameters) => {
+    this.parameters = structuredClone(parameters);
+  });
+  readonly replaceTrack = vi.fn(async (track: FakeTrack | null) => {
+    this.track = track;
+  });
+  readonly getStats = vi.fn(async () => new Map());
+  parameters: RTCRtpSendParameters;
+  constructor(
+    public track: FakeTrack | null,
+    encodings: RTCRtpEncodingParameters[],
+  ) {
+    this.parameters = {
+      encodings,
+      codecs: [],
+      headerExtensions: [],
+      rtcp: {},
+      transactionId: "test",
+    };
+  }
+  static getCapabilities(kind: string) {
+    return {
+      codecs:
+        kind === "audio"
+          ? [{ mimeType: "audio/opus", clockRate: 48000, channels: 2 }]
+          : [
+              { mimeType: "video/VP8", clockRate: 90000 },
+              {
+                mimeType: "video/H264",
+                clockRate: 90000,
+                sdpFmtpLine: "packetization-mode=1;profile-level-id=42e01f",
+              },
+              { mimeType: "video/VP9", clockRate: 90000 },
+            ],
+    };
+  }
+}
+
+class FakePc {
+  static instances: FakePc[] = [];
+  onicecandidate: ((event: { candidate: unknown }) => void) | null = null;
+  onconnectionstatechange: (() => void) | null = null;
+  ontrack: ((event: unknown) => void) | null = null;
+  connectionState: RTCPeerConnectionState = "new";
+  signalingState: RTCSignalingState = "stable";
+  localDescription: RTCSessionDescriptionInit | null = null;
+  remoteDescription: RTCSessionDescriptionInit | null = null;
+  readonly transceivers: Array<{
+    sender: FakeSender;
+    setCodecPreferences: ReturnType<typeof vi.fn>;
+  }> = [];
+  report = new Map();
+  readonly getStats = vi.fn(async () => this.report);
+  readonly close = vi.fn(() => {
+    this.connectionState = "closed";
+  });
+  readonly createOffer = vi.fn(async (_options?: RTCOfferOptions) => ({
+    type: "offer" as const,
+    sdp: "offer",
+  }));
+  readonly createAnswer = vi.fn(async () => ({
+    type: "answer" as const,
+    sdp: "answer",
+  }));
+  readonly setLocalDescription = vi.fn(
+    async (description: RTCSessionDescriptionInit) => {
+      this.localDescription = description;
+      this.signalingState =
+        description.type === "offer" ? "have-local-offer" : "stable";
+      this.onicecandidate?.({
+        candidate: {
+          protocol: "udp",
+          candidate: "candidate:1 1 UDP 1 127.0.0.1 4000 typ host",
+          toJSON: () => ({
+            candidate: "candidate:1 1 UDP 1 127.0.0.1 4000 typ host",
+          }),
+        },
+      });
+    },
+  );
+  readonly setRemoteDescription = vi.fn(
+    async (description: RTCSessionDescriptionInit) => {
+      this.remoteDescription = description;
+      this.signalingState =
+        description.type === "offer" ? "have-remote-offer" : "stable";
+    },
+  );
+  readonly addIceCandidate = vi.fn(
+    async (_candidate: RTCIceCandidateInit) => undefined,
+  );
+  constructor(readonly configuration: RTCConfiguration) {
+    FakePc.instances.push(this);
+  }
+  addTransceiver(track: FakeTrack | string, options: RTCRtpTransceiverInit) {
+    const transceiver = {
+      sender: new FakeSender(
+        typeof track === "string" ? null : track,
+        options.sendEncodings ?? [{}],
+      ),
+      setCodecPreferences: vi.fn(),
+    };
+    this.transceivers.push(transceiver);
+    return transceiver;
+  }
+  state(state: RTCPeerConnectionState): void {
+    this.connectionState = state;
+    this.onconnectionstatechange?.();
+  }
+}
+
+const config = {
+  revision: 4,
+  publicationGeneration: "publication_12345678",
+  connectionId: "connection_12345678",
 };
-
-const qualityProfile = {
-  resolution: "1080p",
-  maxFramerate: 60,
-  maxBitrate: 8_000_000,
-  degradationPreference: "maintain-resolution",
-} as const;
-
-function track(kind: "video" | "audio", id: string): MediaStreamTrack {
-  const mediaTrack = Object.assign(new EventTarget(), {
-    id,
-    kind,
-    contentHint: "",
-    enabled: true,
-    getSettings: () => ({}),
-    applyConstraints: vi.fn(async () => undefined),
-    stop: vi.fn(),
-  }) as unknown as MediaStreamTrack;
-  mediaTrack.clone = vi.fn(() => {
-    const clone = track(kind, id);
-    clone.getSettings = mediaTrack.getSettings.bind(mediaTrack);
-    return clone;
-  });
-  return mediaTrack;
-}
-
-function remoteTrack(
-  mediaStreamTrack: MediaStreamTrack,
-  getStats: () => RTCStatsReport | Promise<RTCStatsReport> = () =>
-    new Map() as unknown as RTCStatsReport,
-) {
-  return {
-    mediaStreamTrack,
-    getRTCStatsReport: vi.fn(async () => getStats()),
-  };
-}
-
-function statsReport(
-  records: Array<Record<string, unknown> & { id: string }>,
-): RTCStatsReport {
-  return new Map(
-    records.map((record) => [record.id, record]),
-  ) as unknown as RTCStatsReport;
-}
-
-function receiverReport(kind: "video" | "audio"): RTCStatsReport {
-  return statsReport([
-    {
-      id: `${kind}-in`,
-      type: "inbound-rtp",
-      timestamp: 1_000,
-      kind,
-      trackIdentifier: `${kind}-1`,
-      estimatedPlayoutTimestamp: kind === "video" ? 10_000 : 10_012,
-    },
-  ]);
-}
-
-function senderReport(
-  trackId: string,
-  timestamp: number,
-  bytesSent: number,
-  framesEncoded: number,
-): RTCStatsReport {
-  return statsReport([
-    {
-      id: "video-out",
-      type: "outbound-rtp",
-      timestamp,
-      kind: "video",
-      transportId: "transport",
-      codecId: "codec",
-      mediaSourceId: "video-source",
-      bytesSent,
-      framesEncoded,
-      framesPerSecond: 57,
-      frameWidth: 1920,
-      frameHeight: 1080,
-      totalEncodeTime: framesEncoded * 0.004,
-      qualityLimitationReason: "bandwidth",
-      encoderImplementation: "ExternalEncoder",
-      powerEfficientEncoder: true,
-    },
-    {
-      id: "video-source",
-      type: "media-source",
-      timestamp,
-      trackIdentifier: trackId,
-      framesPerSecond: 59,
-    },
-    {
-      id: "transport",
-      type: "transport",
-      timestamp,
-    },
-    {
-      id: "codec",
-      type: "codec",
-      timestamp,
-      transportId: "transport",
-      mimeType: "video/H264",
-      sdpFmtpLine: "profile-level-id=42e01f;packetization-mode=1",
-    },
-  ]);
-}
-
-function simulcastSenderReport(
-  trackId: string,
-  timestamp: number,
-  lowBytesSent: number,
-  highBytesSent: number,
-  highActive = true,
-): RTCStatsReport {
-  const layer = (
-    id: string,
-    rid: string,
-    width: number,
-    height: number,
-    bytesSent: number,
-    framesEncoded: number,
-    active = true,
-  ) => ({
-    id,
-    type: "outbound-rtp",
-    timestamp,
-    kind: "video",
-    rid,
-    active,
-    mediaSourceId: "video-source",
-    bytesSent,
-    framesEncoded,
-    framesPerSecond: active ? 30 : 0,
-    frameWidth: width,
-    frameHeight: height,
-    qualityLimitationReason: "none",
-    qualityLimitationDurations: {
-      none: timestamp / 1_000,
-      bandwidth: 0,
-      cpu: 0,
-      other: 0,
-    },
-  });
-  return statsReport([
-    layer("video-low", "q", 960, 540, lowBytesSent, timestamp / 40),
-    layer(
-      "video-high",
-      "f",
-      1920,
-      1080,
-      highBytesSent,
-      timestamp / 20,
-      highActive,
-    ),
-    {
-      id: "video-source",
-      type: "media-source",
-      timestamp,
-      trackIdentifier: trackId,
-    },
-  ]);
-}
-
-function audioSenderReport(
-  trackId: string,
-  timestamp: number,
-  bytesSent: number,
-): RTCStatsReport {
-  return statsReport([
-    {
-      id: "audio-out",
-      type: "outbound-rtp",
-      timestamp,
-      kind: "audio",
-      ssrc: 202,
-      transportId: "audio-transport",
-      mediaSourceId: "audio-source",
-      codecId: "audio-codec",
-      bytesSent,
-    },
-    {
-      id: "audio-source",
-      type: "media-source",
-      timestamp,
-      kind: "audio",
-      trackIdentifier: trackId,
-    },
-    {
-      id: "audio-transport",
-      type: "transport",
-      timestamp,
-    },
-    {
-      id: "audio-codec",
-      type: "codec",
-      timestamp,
-      transportId: "audio-transport",
-      mimeType: "audio/opus",
-    },
-  ]);
-}
-
-function stream(...tracks: MediaStreamTrack[]): MediaStream {
-  return new FakeMediaStream(tracks) as unknown as MediaStream;
-}
-
-function deferred(): {
-  promise: Promise<void>;
-  resolve: () => void;
-} {
-  let resolve = (): void => undefined;
-  const promise = new Promise<void>((next) => {
-    resolve = next;
-  });
-  return { promise, resolve };
-}
+const signal = (payload: Partial<SfuSignalMessage>): SfuSignalMessage => ({
+  type: "sfu-signal",
+  ...config,
+  kind: "description",
+  ...payload,
+});
+const cleanups: Array<() => Promise<void>> = [];
+const stream = (...tracks: FakeTrack[]): MediaStream =>
+  new FakeStream(tracks) as unknown as MediaStream;
 
 beforeEach(() => {
-  setCopy({ lang: "zh", vis: false });
-  livekit.state.rooms.length = 0;
-  livekit.state.connectGate = null;
-  livekit.state.nextSenderParameterError = null;
-  vi.stubGlobal("MediaStream", FakeMediaStream);
+  vi.useFakeTimers();
+  FakePc.instances = [];
+  vi.stubGlobal("MediaStream", FakeStream);
+  vi.stubGlobal("RTCPeerConnection", FakePc);
+  vi.stubGlobal("RTCRtpSender", FakeSender);
 });
-
-afterEach(() => {
-  vi.clearAllTimers();
+afterEach(async () => {
+  for (const cleanup of cleanups.splice(0)) await cleanup();
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
-describe("SfuPublisher", () => {
-  it("reports the aggregate bitrate of active simulcast layers", async () => {
-    vi.useFakeTimers();
-    const updates: Array<ConnectionMetrics | null> = [];
-    const publisher = new SfuPublisher({
-      onStats: (metrics) => updates.push(metrics),
-    });
-    const video = track("video", "video-1");
-    await publisher.connect(connection);
-    await publisher.activate(stream(video), qualityProfile);
-    const sender = livekit.state.rooms[0].localParticipant.publications[0].track
-      .sender;
-    sender.parameters.encodings = [
-      { rid: "q", active: true },
-      { rid: "f", active: true },
-    ];
-    sender.getStats
-      .mockResolvedValueOnce(
-        simulcastSenderReport(video.id, 1_000, 100_000, 200_000),
-      )
-      .mockResolvedValueOnce(
-        simulcastSenderReport(video.id, 3_000, 300_000, 600_000),
-      );
-
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(updates.at(-1)?.bitrateKbps).toBeNull();
-    expect(updates.at(-1)).toMatchObject({
-      rtpRid: "f",
-      frameWidth: 1920,
-      frameHeight: 1080,
-      videoEncodingCount: 2,
-      activeVideoEncodingCount: 2,
-    });
-    expect(
-      sfuPublisherQualityEvidenceFromMetrics(
-        updates.at(-1)!,
-        7,
-        "simulcast_publication_12345678",
-      ),
-    ).toMatchObject({ state: "unknown", sampleTimestampMs: null });
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(updates.at(-1)?.bitrateKbps).toBe(2_400);
-    expect(updates.at(-1)?.sampleTimestampMs).toBe(3_000);
-    expect(
-      sfuPublisherQualityEvidenceFromMetrics(
-        updates.at(-1)!,
-        7,
-        "simulcast_publication_12345678",
-      ),
-    ).toMatchObject({
-      state: "healthy",
-      sampleTimestampMs: 3_000,
-      diagnostics: {
-        videoEncodingCount: 2,
-        activeVideoEncodingCount: 2,
-      },
-    });
-  });
-
-  it("reports the highest active SFU representation", async () => {
-    vi.useFakeTimers();
-    const updates: Array<ConnectionMetrics | null> = [];
-    const publisher = new SfuPublisher({
-      onStats: (metrics) => updates.push(metrics),
-    });
-    const video = track("video", "video-1");
-    await publisher.connect(connection);
-    await publisher.activate(stream(video), qualityProfile);
-    const sender = livekit.state.rooms[0].localParticipant.publications[0].track
-      .sender;
-    sender.parameters.encodings = [
-      { rid: "q", active: true },
-      { rid: "f", active: false },
-    ];
-    sender.getStats.mockResolvedValueOnce(
-      simulcastSenderReport(video.id, 1_000, 100_000, 200_000, false),
-    );
-
-    await vi.advanceTimersByTimeAsync(2_000);
-
-    expect(updates.at(-1)).toMatchObject({
-      rtpRid: "q",
-      frameWidth: 960,
-      frameHeight: 540,
-      videoEncodingCount: 2,
-      activeVideoEncodingCount: 1,
-    });
-  });
-
-  it("enables balanced SFU adaptation after startup frames", async () => {
-    vi.useFakeTimers();
-    const publisher = new SfuPublisher();
-    const video = track("video", "startup-video");
-    const balancedProfile = {
-      ...qualityProfile,
-      degradationPreference: "balanced",
-    } as const;
-
-    await publisher.connect(connection);
-    await publisher.activate(stream(video), balancedProfile);
-    const localTrack = livekit.state.rooms[0].localParticipant.publications[0]
-      .track;
-    const sender = localTrack.sender;
-    expect(localTrack.savedDegradationPreference).toBe("maintain-resolution");
-    expect(sender.parameters.degradationPreference).toBe(
-      "maintain-resolution",
-    );
-
-    sender.getStats
-      .mockResolvedValueOnce(senderReport(video.id, 1_000, 10_000, 4))
-      .mockResolvedValueOnce(senderReport(video.id, 2_000, 20_000, 5));
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(localTrack.savedDegradationPreference).toBe("maintain-resolution");
-    expect(sender.setParameters).toHaveBeenCalledOnce();
-
-    await vi.advanceTimersByTimeAsync(2_000);
-    await vi.waitFor(() =>
-      expect(localTrack.savedDegradationPreference).toBe("balanced"),
-    );
-    expect(sender.parameters.degradationPreference).toBe("balanced");
-    expect(sender.setParameters).toHaveBeenCalledTimes(2);
-  });
-
-  it("samples only the current published sender and clears replaced evidence", async () => {
-    vi.useFakeTimers();
-    const updates: Array<ConnectionMetrics | null> = [];
-    const publisher = new SfuPublisher({
-      onStats: (metrics) => updates.push(metrics),
-    });
-    const previousVideo = track("video", "video-1");
-    previousVideo.getSettings = () => ({
-      width: 1920,
-      height: 1080,
-      frameRate: 60,
-    });
-    await publisher.connect(connection);
-    await publisher.activate(stream(previousVideo), qualityProfile);
-    const sender = livekit.state.rooms[0].localParticipant.publications[0].track
-      .sender;
-    sender.getStats.mockResolvedValueOnce(
-      senderReport(previousVideo.id, 1_000, 100_000, 60),
-    );
-
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(updates.at(-1)).toMatchObject({
-      captureWidth: 1920,
-      captureHeight: 1080,
-      captureFramesPerSecond: 60,
-      trackIdentifier: previousVideo.id,
-      rtpRid: null,
-      mediaSourceFramesPerSecond: 59,
-      framesPerSecond: 57,
-      resolution: "1920x1080",
-      codec: "video/H264",
-      codecProfile: "profile-level-id=42e01f",
-      encoderImplementation: "ExternalEncoder",
-      powerEfficientEncoder: true,
-      qualityLimitationReason: "bandwidth",
-      nativeEdgeQualityState: "unknown",
-    });
-
-    sender.getStats.mockResolvedValueOnce(
-      senderReport(previousVideo.id, 3_000, 300_000, 180),
-    );
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(updates.at(-1)).toMatchObject({
-      bitrateKbps: 800,
-      intervalFramesEncoded: 120,
-      intervalEncodeTimeMs: 480,
-      intervalEncodeMs: 4,
-    });
-
-    let resolveOld!: (report: RTCStatsReport) => void;
-    sender.getStats.mockImplementationOnce(
-      () => new Promise<RTCStatsReport>((resolve) => { resolveOld = resolve; }),
-    );
-    await vi.advanceTimersByTimeAsync(2_000);
-    const nextVideo = track("video", "video-2");
-    nextVideo.getSettings = () => ({
-      width: 1280,
-      height: 720,
-      frameRate: 30,
-    });
-    await expect(publisher.replaceStream(stream(nextVideo))).resolves.toBe(true);
-    expect(updates.at(-1)).toBeNull();
-    resolveOld(senderReport(previousVideo.id, 5_000, 500_000, 300));
-    await Promise.resolve();
-    expect(updates.at(-1)).toBeNull();
-
-    sender.getStats.mockResolvedValueOnce(
-      senderReport(nextVideo.id, 4_000, 400_000, 240),
-    );
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(updates.at(-1)?.trackIdentifier).toBe(nextVideo.id);
-
-    const updateCount = updates.length;
-    const localTrack = livekit.state.rooms[0].localParticipant.publications[0]
-      .track;
-    const replacementSender = localTrack.replaceSenderForTest();
-    replacementSender.getStats.mockResolvedValueOnce(
-      senderReport(nextVideo.id, 6_000, 500_000, 270),
-    );
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(updates[updateCount]).toBeNull();
-    expect(updates.at(-1)).toMatchObject({
-      trackIdentifier: nextVideo.id,
-      framesPerSecond: 57,
-    });
-
-    await publisher.deactivate();
-    expect(updates.at(-1)).toBeNull();
-  });
-
-  it("merges the current audio sender report and resets after its sender changes", async () => {
-    vi.useFakeTimers();
-    const updates: Array<ConnectionMetrics | null> = [];
-    const publisher = new SfuPublisher({
-      onStats: (metrics) => updates.push(metrics),
-    });
-    const video = track("video", "video-1");
-    const audio = track("audio", "audio-1");
-    await publisher.connect(connection);
-    await publisher.activate(stream(video, audio), qualityProfile);
-    const room = livekit.state.rooms[0];
-    const videoSender = room.localParticipant.publications[0].track.sender;
-    const audioTrack = room.localParticipant.publications[1].track;
-    const audioSender = audioTrack.sender;
-    videoSender.getStats
-      .mockResolvedValueOnce(senderReport(video.id, 1_000, 100_000, 60))
-      .mockResolvedValueOnce(senderReport(video.id, 3_000, 300_000, 180));
-    audioSender.getStats
-      .mockResolvedValueOnce(audioSenderReport(audio.id, 1_000, 10_000))
-      .mockResolvedValueOnce(audioSenderReport(audio.id, 3_000, 50_000));
-
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(updates.at(-1)).toMatchObject({
-      audioBitrateKbps: null,
-      audioCodec: "audio/opus",
-    });
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(updates.at(-1)).toMatchObject({
-      audioBitrateKbps: 160,
-      audioCodec: "audio/opus",
-    });
-
-    const replacementSender = audioTrack.replaceSenderForTest();
-    videoSender.getStats
-      .mockResolvedValueOnce(senderReport(video.id, 5_000, 500_000, 300))
-      .mockResolvedValueOnce(senderReport(video.id, 7_000, 700_000, 420));
-    replacementSender.getStats
-      .mockResolvedValueOnce(audioSenderReport(audio.id, 5_000, 90_000))
-      .mockResolvedValueOnce(audioSenderReport(audio.id, 7_000, 130_000));
-
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(updates.at(-2)).toBeNull();
-    expect(updates.at(-1)?.audioBitrateKbps).toBeNull();
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(updates.at(-1)?.audioBitrateKbps).toBe(160);
-    expect(audioSender.getStats).toHaveBeenCalledTimes(2);
-    expect(replacementSender.getStats).toHaveBeenCalledTimes(2);
-  });
-
-  it("enables Dynacast while preparing SFU fallback", async () => {
-    const publisher = new SfuPublisher();
-
-    await expect(publisher.connect(connection)).resolves.toBe(true);
-
-    const room = livekit.state.rooms[0];
-    expect(room.options).toEqual({
-      disconnectOnPageLeave: false,
-      dynacast: true,
-      stopLocalTrackOnUnpublish: false,
-    });
-    expect(room.connect).toHaveBeenCalledWith(connection.url, connection.token, {
-      autoSubscribe: false,
-      rtcConfig: { iceServers: [] },
-    });
-    expect(room.localParticipant.publishTrack).not.toHaveBeenCalled();
-
-    await publisher.disconnect();
-    await publisher.disconnect();
-    expect(room.disconnect).toHaveBeenCalledOnce();
-    expect(room.disconnect).toHaveBeenCalledWith(false);
-  });
-
-  it("retains the bounded stage after connection setup fails", async () => {
-    livekit.state.connectGate = Promise.reject(new Error("connect failed"));
-    const publisher = new SfuPublisher();
-
-    await expect(publisher.connect(connection)).rejects.toThrow("connect failed");
-
-    expect(publisher.getFailureStage()).toBe("connect");
-    expect(livekit.state.rooms[0]?.disconnect).toHaveBeenCalledWith(false);
-  });
-
-  it("leaves VP8 screen-share simulcast layers to LiveKit defaults", async () => {
-    const publisher = new SfuPublisher();
-    const video = track("video", "video-1");
-    const audio = track("audio", "audio-1");
-    await publisher.connect(connection);
-
-    await expect(
-      publisher.activate(stream(video, audio), qualityProfile),
-    ).resolves.toBe(true);
-
-    const room = livekit.state.rooms[0];
-    const sender = room.localParticipant.publications[0].track.sender;
-    const publishedVideo = room.localParticipant.publishTrack.mock.calls[0]?.[0];
-    expect(publishedVideo).not.toBe(video);
-    expect(publishedVideo?.id).toBe(video.id);
-    expect(room.localParticipant.publishTrack).toHaveBeenNthCalledWith(1, publishedVideo, {
-      source: Track.Source.ScreenShare,
-      backupCodec: false,
-      videoCodec: "vp8",
-      screenShareEncoding: {
-        maxBitrate: 8_000_000,
-        maxFramerate: 60,
-      },
-      degradationPreference: "maintain-resolution",
-    });
-    expect(
-      room.localParticipant.publishTrack.mock.calls[0]?.[1],
-    ).not.toHaveProperty("simulcast");
-    expect(room.localParticipant.publishTrack).toHaveBeenNthCalledWith(2, audio, {
-      source: Track.Source.ScreenShareAudio,
-      audioPreset: { maxBitrate: 128_000 },
-      forceStereo: true,
-      dtx: false,
-      red: false,
-    });
-    expect(sender.setParameters).toHaveBeenCalledOnce();
-    expect(sender.parameters.encodings).toEqual([
-      {
-        maxBitrate: 8_000_000,
-        maxFramerate: 60,
-        scaleResolutionDownBy: 1,
-      },
-    ]);
-    expect(sender.parameters.encodings[0]).not.toHaveProperty("rid");
-    expect(publisher.getSenderParameters()).toEqual({
-      requested: {
-        maxBitrate: 8_000_000,
-        maxFramerate: 60,
-        scaleResolutionDownBy: 1,
-        degradationPreference: "maintain-resolution",
-        scalabilityMode: null,
-      },
-      applied: {
-        maxBitrate: 8_000_000,
-        maxFramerate: 60,
-        scaleResolutionDownBy: 1,
-        degradationPreference: "maintain-resolution",
-        scalabilityMode: null,
-      },
-      mismatches: [],
-    });
-
-    await expect(publisher.deactivate()).resolves.toBe(true);
-    expect(room.localParticipant.unpublishTrack).toHaveBeenCalledTimes(2);
-    expect(publishedVideo?.stop).toHaveBeenCalledOnce();
-    expect(video.stop).not.toHaveBeenCalled();
-    expect(room.disconnect).not.toHaveBeenCalled();
-  });
-
-  it("owns SFU video clone controls without stopping the capture source", async () => {
-    const publisher = new SfuPublisher();
-    const sourceVideo = track("video", "capture-video");
-    sourceVideo.contentHint = "motion";
-    await publisher.connect(connection);
-    await publisher.activate(stream(sourceVideo), qualityProfile);
-    const publishedVideo = livekit.state.rooms[0].localParticipant.publications[0]
-      .rawTrack;
-
-    expect(publishedVideo).not.toBe(sourceVideo);
-    expect(publishedVideo.contentHint).toBe("motion");
-    publisher.setPaused(true);
-    expect(publishedVideo.enabled).toBe(false);
-    expect(sourceVideo.enabled).toBe(true);
-    publisher.setPaused(false);
-
-    await expect(
-      publisher.updateProfile(QUALITY_PROFILES["720p30"]),
-    ).resolves.toBe(true);
-    expect(publishedVideo.applyConstraints).toHaveBeenLastCalledWith({
-      width: { ideal: 1280, max: 1280 },
-      height: { ideal: 720, max: 720 },
-      frameRate: { ideal: 30, max: 30 },
-    });
-
-    await publisher.disconnect();
-    expect(publishedVideo.stop).toHaveBeenCalledOnce();
-    expect(sourceVideo.stop).not.toHaveBeenCalled();
-  });
-
-  it.each([
-    ["saver", 64_000],
-    ["music", 128_000],
-    ["very-high", 192_000],
-  ] as const)("maps the %s audio preset to %i bps", async (screenAudioQuality, bitrate) => {
-    const publisher = new SfuPublisher();
-    const video = track("video", `video-${screenAudioQuality}`);
-    const audio = track("audio", `audio-${screenAudioQuality}`);
-    await publisher.connect(connection);
-
-    await expect(
-      publisher.activate(stream(video, audio), {
-        ...qualityProfile,
-        screenAudioQuality,
-      }),
-    ).resolves.toBe(true);
-
-    expect(
-      livekit.state.rooms[0]?.localParticipant.publishTrack,
-    ).toHaveBeenNthCalledWith(2, audio, {
-      source: Track.Source.ScreenShareAudio,
-      audioPreset: { maxBitrate: bitrate },
-      forceStereo: true,
-      dtx: false,
-      red: false,
-    });
-  });
-
-  it("fails closed when initial sender configuration is rejected", async () => {
-    const disconnected = vi.fn();
-    const publisher = new SfuPublisher({ onDisconnected: disconnected });
-    const sourceVideo = track("video", "video-1");
-    await publisher.connect(connection);
-    livekit.state.nextSenderParameterError = new Error("parameters rejected");
-
-    await expect(
-      publisher.activate(stream(sourceVideo), qualityProfile),
-    ).rejects.toThrow("parameters rejected");
-
-    const publishedVideo = livekit.state.rooms[0].localParticipant.publications[0]
-      .rawTrack;
-    expect(publishedVideo.stop).toHaveBeenCalledOnce();
-    expect(sourceVideo.stop).not.toHaveBeenCalled();
-    expect(livekit.state.rooms[0].disconnect).toHaveBeenCalledWith(false);
-    expect(disconnected).toHaveBeenCalledOnce();
-    expect(publisher.getSenderParameters()).toBeNull();
-    expect(publisher.getFailureStage()).toBe("sender-config");
-  });
-
-  it("records an unexpected active transport disconnect", async () => {
-    const disconnected = vi.fn();
-    const publisher = new SfuPublisher({ onDisconnected: disconnected });
-    await publisher.connect(connection);
-    await publisher.activate(stream(track("video", "video-1")), qualityProfile);
-
-    livekit.state.rooms[0].emit(RoomEvent.Disconnected);
-
-    expect(publisher.getFailureStage()).toBe("transport");
-    expect(disconnected).toHaveBeenCalledOnce();
-  });
-
-  it("updates the active sender profile without republishing", async () => {
-    const publisher = new SfuPublisher();
-    await publisher.connect(connection);
-    await publisher.activate(stream(track("video", "video-1")), qualityProfile);
-    const room = livekit.state.rooms[0];
-    const videoPublication = room.localParticipant.publications[0];
-
-    await expect(
-      publisher.updateProfile({
-        resolution: "720p",
-        maxFramerate: 30,
-        maxBitrate: 3_000_000,
-        degradationPreference: "balanced",
-      }),
-    ).resolves.toBe(true);
-
-    expect(videoPublication.track.sender.setParameters).toHaveBeenCalledWith(
-      expect.objectContaining({
-        degradationPreference: "balanced",
-        encodings: [
-          expect.objectContaining({
-            maxBitrate: 3_000_000,
-            maxFramerate: 30,
-            scaleResolutionDownBy: 1,
-          }),
-        ],
-      }),
-    );
-    expect(room.localParticipant.publishTrack).toHaveBeenCalledOnce();
-    expect(publisher.getQualityWarning()).toBeNull();
-  });
-
-  it("updates an active audio sender and retained options without republishing", async () => {
-    const publisher = new SfuPublisher();
-    await publisher.connect(connection);
-    await publisher.activate(
-      stream(track("video", "video-1"), track("audio", "audio-1")),
-      { ...qualityProfile, screenAudioQuality: "saver" },
-    );
-    const room = livekit.state.rooms[0];
-    const videoPublication = room.localParticipant.publications[0];
-    const audioPublication = room.localParticipant.publications[1];
-
-    await expect(
-      publisher.updateProfile({
-        ...qualityProfile,
-        screenAudioQuality: "very-high",
-      }),
-    ).resolves.toBe(true);
-
-    expect(videoPublication.track.sender.setParameters).toHaveBeenCalledOnce();
-    expect(audioPublication.track.sender.setParameters).toHaveBeenCalledTimes(2);
-    expect(audioPublication.track.sender.parameters.encodings[0]?.maxBitrate).toBe(
-      192_000,
-    );
-    expect(audioPublication.options).toMatchObject({
-      audioPreset: { maxBitrate: 192_000 },
-      forceStereo: true,
-      dtx: false,
-      red: false,
-    });
-    expect(publisher.getAudioSenderParameters()).toEqual({
-      requestedMaxBitrate: 192_000,
-      appliedMaxBitrate: 192_000,
-      mismatch: false,
-    });
-    expect(room.localParticipant.publishTrack).toHaveBeenCalledTimes(2);
-
-    await room.localParticipant.republishAllTracks();
-    expect(room.localParticipant.republishedOptions[1]).toMatchObject({
-      audioPreset: { maxBitrate: 192_000 },
-      forceStereo: true,
-      dtx: false,
-      red: false,
-    });
-  });
-
-  it("publishes one H264 source without a backup codec", async () => {
-    const publisher = new SfuPublisher();
-    const video = track("video", "video-h264");
-    await publisher.connect(connection);
-
-    await expect(
-      publisher.activate(stream(video), qualityProfile, "h264"),
-    ).resolves.toBe(true);
-
-    const publication = livekit.state.rooms[0].localParticipant.publications[0];
-    expect(publication.options).toMatchObject({
-      source: Track.Source.ScreenShare,
-      backupCodec: false,
-      videoCodec: "h264",
-    });
-    await expect(
-      publisher.updateProfile(QUALITY_PROFILES["720p30"]),
-    ).resolves.toBe(true);
-    expect(publication.options.videoCodec).toBe("h264");
-  });
-
-  it("keeps media and prior audio readback when a live update fails", async () => {
-    const publisher = new SfuPublisher();
-    await publisher.connect(connection);
-    await publisher.activate(
-      stream(track("video", "video-1"), track("audio", "audio-1")),
-      { ...qualityProfile, screenAudioQuality: "music" },
-    );
-    const room = livekit.state.rooms[0];
-    const videoPublication = room.localParticipant.publications[0];
-    const audioPublication = room.localParticipant.publications[1];
-    audioPublication.track.sender.failNextSetParameters = true;
-
-    await expect(
-      publisher.updateProfile({
-        ...qualityProfile,
-        screenAudioQuality: "very-high",
-      }),
-    ).resolves.toBe(false);
-
-    expect(publisher.getAudioSenderParameters()?.appliedMaxBitrate).toBe(
-      128_000,
-    );
-    expect(publisher.getQualityWarning()).toContain(
-      "应用 SFU 音频发送参数失败",
-    );
-    expect(audioPublication.track.sender.parameters.encodings[0]?.maxBitrate).toBe(
-      128_000,
-    );
-    expect(audioPublication.options).toMatchObject({
-      audioPreset: { maxBitrate: 192_000 },
-    });
-    expect(videoPublication.track.sender.setParameters).toHaveBeenCalledOnce();
-    expect(room.disconnect).not.toHaveBeenCalled();
-    expect(room.localParticipant.publishTrack).toHaveBeenCalledTimes(2);
-
-    await expect(
-      publisher.updateProfile({
-        ...qualityProfile,
-        screenAudioQuality: "very-high",
-      }),
-    ).resolves.toBe(true);
-    expect(publisher.getAudioSenderParameters()?.appliedMaxBitrate).toBe(
-      192_000,
-    );
-    expect(publisher.getQualityWarning()).toBeNull();
-  });
-
-  it("keeps rapid SFU audio updates last-wins", async () => {
-    const publisher = new SfuPublisher();
-    await publisher.connect(connection);
-    await publisher.activate(
-      stream(track("video", "video-1"), track("audio", "audio-1")),
-      { ...qualityProfile, screenAudioQuality: "music" },
-    );
-    const room = livekit.state.rooms[0];
-    const audioPublication = room.localParticipant.publications[1];
-    const audioSender = audioPublication.track.sender;
-    audioSender.deferNextSetParameters = true;
-
-    const saver = publisher.updateProfile({
-      ...qualityProfile,
-      screenAudioQuality: "saver",
-    });
-    await vi.waitFor(() =>
-      expect(audioSender.setParameters).toHaveBeenCalledTimes(2),
-    );
-    const music = publisher.updateProfile({
-      ...qualityProfile,
-      screenAudioQuality: "music",
-    });
-    expect(audioPublication.options).toMatchObject({
-      audioPreset: { maxBitrate: 128_000 },
-    });
-    audioSender.releaseDeferredSetParameters();
-
-    await expect(saver).resolves.toBe(false);
-    await expect(music).resolves.toBe(true);
-    expect(audioSender.parameters.encodings[0]?.maxBitrate).toBe(128_000);
-    expect(publisher.getAudioSenderParameters()?.appliedMaxBitrate).toBe(
-      128_000,
-    );
-    expect(room.localParticipant.republishAllTracks).not.toHaveBeenCalled();
-  });
-
-  it("reapplies the latest audio ceiling to a replacement sender after reconnect", async () => {
-    const publisher = new SfuPublisher();
-    await publisher.connect(connection);
-    await publisher.activate(
-      stream(track("video", "video-1"), track("audio", "audio-1")),
-      { ...qualityProfile, screenAudioQuality: "music" },
-    );
-    const room = livekit.state.rooms[0];
-    const audioPublication = room.localParticipant.publications[1];
-    const oldSender = audioPublication.track.sender;
-    oldSender.deferNextSetParameters = true;
-
-    const updating = publisher.updateProfile({
-      ...qualityProfile,
-      screenAudioQuality: "very-high",
-    });
-    await vi.waitFor(() =>
-      expect(oldSender.setParameters).toHaveBeenCalledTimes(2),
-    );
-    const replacementSender = audioPublication.track.replaceSenderForTest();
-
-    room.emit(RoomEvent.Reconnected);
-    oldSender.releaseDeferredSetParameters();
-
-    await expect(updating).resolves.toBe(false);
-    await vi.waitFor(() =>
-      expect(replacementSender.setParameters).toHaveBeenCalledOnce(),
-    );
-    expect(replacementSender.parameters.encodings[0]?.maxBitrate).toBe(192_000);
-    expect(publisher.getAudioSenderParameters()?.appliedMaxBitrate).toBe(
-      192_000,
-    );
-    expect(room.localParticipant.republishAllTracks).not.toHaveBeenCalled();
-  });
-
-  it("rebinds republished tracks after a full reconnect", async () => {
-    const publisher = new SfuPublisher();
-    const sourceVideo = track("video", "video-1");
-    await publisher.connect(connection);
-    await publisher.activate(
-      stream(sourceVideo, track("audio", "audio-1")),
-      { ...qualityProfile, screenAudioQuality: "music" },
-    );
-    await expect(
-      publisher.updateProfile({
-        ...qualityProfile,
-        screenAudioQuality: "very-high",
-      }),
-    ).resolves.toBe(true);
-    const room = livekit.state.rooms[0];
-    const oldVideoPublication = room.localParticipant.publications[0];
-    const oldAudioPublication = room.localParticipant.publications[1];
-    const oldPublishedVideo = oldVideoPublication.rawTrack;
-
-    await room.localParticipant.republishForReconnect();
-    const videoPublication = room.localParticipant.getTrackPublication(
-      Track.Source.ScreenShare,
-    )!;
-    const audioPublication = room.localParticipant.getTrackPublication(
-      Track.Source.ScreenShareAudio,
-    )!;
-    expect(videoPublication).not.toBe(oldVideoPublication);
-    expect(audioPublication).not.toBe(oldAudioPublication);
-
-    room.emit(RoomEvent.Reconnected);
-
-    await vi.waitFor(() =>
-      expect(videoPublication.track.currentTrack).not.toBe(oldPublishedVideo),
-    );
-    expect(publisher.getAudioSenderParameters()).not.toBeNull();
-    expect(videoPublication.track.currentTrack.id).toBe(sourceVideo.id);
-    expect(oldPublishedVideo.stop).toHaveBeenCalledOnce();
-    expect(sourceVideo.stop).not.toHaveBeenCalled();
-    expect(audioPublication.track.sender.setParameters).not.toHaveBeenCalled();
-    expect(audioPublication.track.sender.parameters.encodings[0]?.maxBitrate).toBe(
-      192_000,
-    );
-    expect(publisher.getAudioSenderParameters()?.appliedMaxBitrate).toBe(
-      192_000,
-    );
-    expect(publisher.getSenderParameters()).toBeNull();
-    expect(publisher.getQualityWarning()).toBeNull();
-  });
-
-  it("reconciles pause state onto a video clone committed after reconnect", async () => {
-    const publisher = new SfuPublisher();
-    const sourceVideo = track("video", "video-pause-race");
-    await publisher.connect(connection);
-    await publisher.activate(stream(sourceVideo), qualityProfile);
-    publisher.setPaused(true);
-    sourceVideo.enabled = false;
-
-    const room = livekit.state.rooms[0];
-    await room.localParticipant.republishForReconnect();
-    const publication = room.localParticipant.getTrackPublication(
-      Track.Source.ScreenShare,
-    )!;
-    const replaceGate = deferred();
-    publication.track.replaceTrack.mockImplementationOnce(
-      async (nextTrack: MediaStreamTrack) => {
-        await replaceGate.promise;
-        publication.track.currentTrack = nextTrack;
-        publication.track.sender.track = nextTrack;
-      },
-    );
-
-    room.emit(RoomEvent.Reconnected);
-    await vi.waitFor(() =>
-      expect(publication.track.replaceTrack).toHaveBeenCalledOnce(),
-    );
-    sourceVideo.enabled = true;
-    publisher.setPaused(false);
-    replaceGate.resolve();
-
-    await vi.waitFor(() =>
-      expect(publication.track.currentTrack).not.toBe(publication.rawTrack),
-    );
-    expect(publication.track.currentTrack.enabled).toBe(true);
-  });
-
-  it("retains video sender readback across a signal-only reconnect", async () => {
-    const publisher = new SfuPublisher();
-    await publisher.connect(connection);
-    await publisher.activate(
-      stream(track("video", "video-1"), track("audio", "audio-1")),
-      { ...qualityProfile, screenAudioQuality: "music" },
-    );
-    const room = livekit.state.rooms[0];
-    const videoSender = room.localParticipant.publications[0].track.sender;
-    const audioSender = room.localParticipant.publications[1].track.sender;
-    videoSender.setParameters.mockImplementationOnce(async (parameters) => {
-      videoSender.parameters = {
-        ...parameters,
-        encodings: parameters.encodings.map((encoding) => ({
-          ...encoding,
-          maxBitrate: 2_000_000,
-        })),
-      };
-    });
-    await expect(
-      publisher.updateProfile({
-        ...qualityProfile,
-        maxBitrate: 5_000_000,
-        degradationPreference: "balanced",
-        screenAudioQuality: "music",
-      }),
-    ).resolves.toBe(true);
-    const senderParameters = publisher.getSenderParameters();
-    const qualityWarning = publisher.getQualityWarning();
-    expect(senderParameters).not.toBeNull();
-    expect(qualityWarning).not.toBeNull();
-    const audioUpdates = audioSender.setParameters.mock.calls.length;
-
-    room.emit(RoomEvent.Reconnected);
-
-    await vi.waitFor(() =>
-      expect(publisher.getAudioSenderParameters()?.appliedMaxBitrate).toBe(
-        128_000,
-      ),
-    );
-    expect(audioSender.setParameters).toHaveBeenCalledTimes(audioUpdates);
-    expect(publisher.getSenderParameters()).toBe(senderParameters);
-    expect(publisher.getQualityWarning()).toBe(qualityWarning);
-    expect(room.disconnect).not.toHaveBeenCalled();
-  });
-
-  it("keeps publisher stats continuous across a signal-only reconnect", async () => {
-    vi.useFakeTimers();
-    const updates: Array<ConnectionMetrics | null> = [];
-    const publisher = new SfuPublisher({
-      onStats: (metrics) => updates.push(metrics),
-    });
-    const video = track("video", "video-1");
-    await publisher.connect(connection);
-    await publisher.activate(stream(video), qualityProfile);
-    const room = livekit.state.rooms[0];
-    const sender = room.localParticipant.publications[0].track.sender;
-    sender.getStats
-      .mockResolvedValueOnce(senderReport(video.id, 1_000, 100_000, 60))
-      .mockResolvedValueOnce(senderReport(video.id, 3_000, 300_000, 180))
-      .mockResolvedValueOnce(senderReport(video.id, 5_000, 500_000, 300));
-
-    await vi.advanceTimersByTimeAsync(4_000);
-    const resets = updates.filter((update) => update === null).length;
-    room.emit(RoomEvent.Reconnected);
-    await Promise.resolve();
-    await vi.advanceTimersByTimeAsync(2_000);
-
-    expect(updates.filter((update) => update === null)).toHaveLength(resets);
-    expect(updates.at(-1)).toMatchObject({
-      bitrateKbps: 800,
-      intervalFramesEncoded: 120,
-    });
-  });
-
-  it.each(["publication", "sender"] as const)(
-    "fails the SFU route when republished audio loses its %s",
-    async (missing) => {
-      const disconnected = vi.fn();
-      const publisher = new SfuPublisher({ onDisconnected: disconnected });
-      await publisher.connect(connection);
-      await publisher.activate(
-        stream(track("video", "video-1"), track("audio", "audio-1")),
-        { ...qualityProfile, screenAudioQuality: "music" },
-      );
-      const room = livekit.state.rooms[0];
-      await room.localParticipant.republishForReconnect();
-      const audioPublication = room.localParticipant.getTrackPublication(
-        Track.Source.ScreenShareAudio,
-      )!;
-      if (missing === "publication") {
-        room.localParticipant.publications.splice(
-          room.localParticipant.publications.indexOf(audioPublication),
-          1,
-        );
-      } else {
-        delete audioPublication.audioTrack;
-      }
-
-      room.emit(RoomEvent.Reconnected);
-
-      await vi.waitFor(() => expect(room.disconnect).toHaveBeenCalledWith(false));
-      expect(publisher.getFailureStage()).toBe("transport");
-      expect(disconnected).toHaveBeenCalledOnce();
-    },
+async function publisher(audio = true) {
+  const send = vi.fn((_message: SfuSignalMessage) => true);
+  const onDisconnected = vi.fn();
+  const video = new FakeTrack("video");
+  const sound = new FakeTrack("audio");
+  const publisher = new SfuPublisher({ send, onDisconnected });
+  cleanups.push(() => publisher.disconnect());
+  await publisher.connect(config);
+  await publisher.activate(
+    stream(video, ...(audio ? [sound] : [])),
+    QUALITY_PROFILES["1080p30"],
+    "h264",
   );
+  return {
+    publisher,
+    send,
+    onDisconnected,
+    video,
+    sound,
+    pc: FakePc.instances[0]!,
+  };
+}
 
-  it("retains the active profile for LiveKit track restart and republish", async () => {
-    const publisher = new SfuPublisher();
-    await publisher.connect(connection);
-    await publisher.activate(stream(track("video", "video-1")), qualityProfile);
-    const publication = livekit.state.rooms[0].localParticipant.publications[0];
-    const localTrack = publication.track;
-
-    await expect(
-      publisher.updateProfile({
-        resolution: "720p",
-        maxFramerate: 30,
-        maxBitrate: 3_000_000,
-        degradationPreference: "maintain-framerate",
-      }),
-    ).resolves.toBe(true);
-
-    expect(localTrack.setDegradationPreference).toHaveBeenLastCalledWith(
-      "maintain-framerate",
-    );
-    expect(
-      localTrack.setDegradationPreference.mock.invocationCallOrder.at(-1)!,
-    ).toBeLessThan(
-      localTrack.sender.setParameters.mock.invocationCallOrder.at(-1)!,
-    );
-    expect(localTrack.savedDegradationPreference).toBe("maintain-framerate");
-    expect(localTrack.sender.parameters).toMatchObject({
-      degradationPreference: "maintain-framerate",
-      encodings: [
-        {
-          maxBitrate: 3_000_000,
-          maxFramerate: 30,
-          scaleResolutionDownBy: 1,
-        },
+describe("embedded SFU browser transport", () => {
+  it("publishes one bounded simulcast PC, offers before ICE and admits only the selected codec", async () => {
+    const { publisher: host, pc, send, video } = await publisher();
+    expect(pc.configuration).toEqual({ iceServers: [] });
+    expect(pc.transceivers).toHaveLength(2);
+    expect(pc.transceivers[0]!.sender.track).toBe(video.clones[0]);
+    const offer = send.mock.calls[0]![0];
+    expect(offer.kind).toBe("description");
+    expect(offer.media).toEqual({
+      codec: "h264",
+      layers: [
+        { rid: "q", width: 960, height: 540, bitrate: 1_250_000 },
+        { rid: "h", width: 1920, height: 1080, bitrate: 5_000_000 },
       ],
+      audio: true,
+      audioBitrate: 128_000,
     });
-    expect(localTrack.publishOptions).toBe(publication.options);
-    expect(publication.options).toMatchObject({
-      source: Track.Source.ScreenShare,
-      backupCodec: false,
-      screenShareEncoding: {
-        maxBitrate: 3_000_000,
-        maxFramerate: 30,
-      },
-      degradationPreference: "maintain-framerate",
-    });
-
-    await livekit.state.rooms[0].localParticipant.republishAllTracks();
-    expect(
-      livekit.state.rooms[0].localParticipant.republishedOptions[0],
-    ).toMatchObject({
-      screenShareEncoding: {
-        maxBitrate: 3_000_000,
-        maxFramerate: 30,
-      },
-      degradationPreference: "maintain-framerate",
-    });
-  });
-
-  it("restores LiveKit retained state when saving a new profile fails", async () => {
-    const publisher = new SfuPublisher();
-    await publisher.connect(connection);
-    await publisher.activate(stream(track("video", "video-1")), qualityProfile);
-    const publication = livekit.state.rooms[0].localParticipant.publications[0];
-    const localTrack = publication.track;
-    localTrack.setDegradationPreference.mockRejectedValueOnce(
-      new Error("preference save failed"),
-    );
-
-    await expect(
-      publisher.updateProfile({
-        resolution: "720p",
-        maxFramerate: 30,
-        maxBitrate: 3_000_000,
-        degradationPreference: "maintain-framerate",
-      }),
-    ).resolves.toBe(false);
-
-    expect(localTrack.setDegradationPreference).toHaveBeenLastCalledWith(
-      "maintain-resolution",
-    );
-    expect(localTrack.savedDegradationPreference).toBe("maintain-resolution");
-    expect(localTrack.publishOptions).toBe(publication.options);
-    expect(publication.options).toMatchObject({
-      screenShareEncoding: {
-        maxBitrate: 8_000_000,
-        maxFramerate: 60,
-      },
-      degradationPreference: "maintain-resolution",
-    });
-    expect(publisher.getSenderParameters()?.applied).toMatchObject({
-      maxBitrate: 8_000_000,
-      maxFramerate: 60,
-      degradationPreference: "maintain-resolution",
-    });
-    expect(publisher.getQualityWarning()).toContain("应用 SFU 发送参数失败");
-    expect(publisher.getQualityWarning()).not.toContain("preference save failed");
-  });
-
-  it("does not retain an update from a disconnected publisher generation", async () => {
-    const publisher = new SfuPublisher();
-    await publisher.connect(connection);
-    await publisher.activate(stream(track("video", "video-1")), qualityProfile);
-    const localTrack = livekit.state.rooms[0].localParticipant.publications[0].track;
-    const publication = livekit.state.rooms[0].localParticipant.publications[0];
-    const gate = deferred();
-    localTrack.setDegradationPreference.mockImplementationOnce(
-      async (preference) => {
-        await gate.promise;
-        localTrack.savedDegradationPreference = preference;
-      },
-    );
-
-    const updating = publisher.updateProfile({
-      resolution: "720p",
-      maxFramerate: 30,
-      maxBitrate: 3_000_000,
-      degradationPreference: "maintain-framerate",
-    });
-    await vi.waitFor(() =>
-      expect(localTrack.setDegradationPreference).toHaveBeenCalledTimes(2),
-    );
-    await publisher.disconnect();
-    gate.resolve();
-
-    await expect(updating).resolves.toBe(false);
-    expect(publisher.getSenderParameters()).toBeNull();
-    expect(publisher.getQualityWarning()).toBeNull();
-    expect(localTrack.savedDegradationPreference).toBe("maintain-resolution");
-    expect(localTrack.sender.setParameters).toHaveBeenCalledTimes(1);
-    expect(publication.options).toMatchObject({
-      screenShareEncoding: {
-        maxBitrate: 8_000_000,
-        maxFramerate: 60,
-      },
-      degradationPreference: "maintain-resolution",
-    });
-  });
-
-  it("retains a visible warning when the SFU sender rewrites a parameter", async () => {
-    const publisher = new SfuPublisher();
-    await publisher.connect(connection);
-    await publisher.activate(stream(track("video", "video-1")), qualityProfile);
-    const sender = livekit.state.rooms[0].localParticipant.publications[0].track
-      .sender;
-    sender.setParameters.mockImplementationOnce(async (parameters) => {
-      sender.parameters = {
-        ...parameters,
-        encodings: parameters.encodings.map((encoding) => ({
-          ...encoding,
-          maxBitrate: 2_000_000,
-        })),
-      };
-    });
-
-    await expect(
-      publisher.updateProfile({
-        resolution: "1080p",
-        maxFramerate: 30,
-        maxBitrate: 5_000_000,
-        degradationPreference: "balanced",
-      }),
-    ).resolves.toBe(true);
-
-    expect(publisher.getQualityWarning()).toContain("码率上限");
-  });
-
-  it("retains a visible warning when SFU sender parameters are rejected", async () => {
-    const publisher = new SfuPublisher();
-    await publisher.connect(connection);
-    await publisher.activate(stream(track("video", "video-1")), qualityProfile);
-    const publication = livekit.state.rooms[0].localParticipant.publications[0];
-    const localTrack = publication.track;
-    const sender = localTrack.sender;
-    sender.setParameters.mockRejectedValueOnce(new Error("unsupported"));
-
-    await expect(
-      publisher.updateProfile({
-        resolution: "720p",
-        maxFramerate: 30,
-        maxBitrate: 3_000_000,
-        degradationPreference: "maintain-framerate",
-      }),
-    ).resolves.toBe(false);
-
-    expect(localTrack.setDegradationPreference).toHaveBeenLastCalledWith(
-      "maintain-resolution",
-    );
-    expect(localTrack.savedDegradationPreference).toBe("maintain-resolution");
-    expect(publication.options).toMatchObject({
-      screenShareEncoding: {
-        maxBitrate: 8_000_000,
-        maxFramerate: 60,
-      },
-      degradationPreference: "maintain-resolution",
-    });
-    expect(sender.parameters).toMatchObject({
-      degradationPreference: "maintain-resolution",
-      encodings: [
-        expect.objectContaining({
-          maxBitrate: 8_000_000,
-          maxFramerate: 60,
-        }),
-      ],
-    });
-    expect(publisher.getQualityWarning()).toBe("应用 SFU 发送参数失败");
-    expect(publisher.getQualityWarning()).not.toContain("unsupported");
-  });
-
-  it("retains a sender rewrite warning after rolling back parameters", async () => {
-    const publisher = new SfuPublisher();
-    await publisher.connect(connection);
-    await publisher.activate(stream(track("video", "video-1")), qualityProfile);
-    const sender = livekit.state.rooms[0].localParticipant.publications[0].track
-      .sender;
-    sender.setParameters
-      .mockRejectedValueOnce(new Error("unsupported"))
-      .mockImplementationOnce(async (parameters) => {
-        sender.parameters = {
-          ...parameters,
-          encodings: parameters.encodings.map((encoding) => ({
-            ...encoding,
-            maxBitrate: 1_500_000,
-          })),
-        };
-      });
-
-    await expect(
-      publisher.updateProfile({
-        resolution: "720p",
-        maxFramerate: 30,
-        maxBitrate: 3_000_000,
-        degradationPreference: "balanced",
-      }),
-    ).resolves.toBe(false);
-
-    expect(publisher.getSenderParameters()).toMatchObject({
-      requested: { maxBitrate: 8_000_000 },
-      applied: { maxBitrate: 1_500_000 },
-      mismatches: ["maxBitrate"],
-    });
-    expect(publisher.getQualityWarning()).toContain("应用 SFU 发送参数失败");
-    expect(publisher.getQualityWarning()).not.toContain("unsupported");
-    expect(publisher.getQualityWarning()).toContain("码率上限");
-  });
-
-  it("restores the previous video after a partially applied replacement fails", async () => {
-    const previousVideo = track("video", "video-1");
-    const nextVideo = track("video", "video-2");
-    const publisher = new SfuPublisher();
-    await publisher.connect(connection);
-    await publisher.activate(stream(previousVideo), qualityProfile);
-    const localTrack = livekit.state.rooms[0].localParticipant.publications[0].track;
-    const previousPublishedVideo = localTrack.currentTrack;
-    localTrack.replaceTrack.mockImplementationOnce(async (replacement) => {
-      localTrack.currentTrack = replacement;
-      throw new Error("sender swap failed after applying");
-    });
-
-    await expect(publisher.replaceStream(stream(nextVideo))).resolves.toBe(false);
-
-    const nextPublishedVideo = localTrack.replaceTrack.mock.calls[0]?.[0];
-    expect(nextPublishedVideo).not.toBe(nextVideo);
-    expect(nextPublishedVideo?.id).toBe(nextVideo.id);
-    expect(localTrack.replaceTrack).toHaveBeenNthCalledWith(
-      2,
-      previousPublishedVideo,
-    );
-    expect(localTrack.currentTrack).toBe(previousPublishedVideo);
-    expect(nextPublishedVideo?.stop).toHaveBeenCalledOnce();
-    expect(previousPublishedVideo.stop).not.toHaveBeenCalled();
-  });
-
-  it("applies pause authority to an SFU source replacement while it is in flight", async () => {
-    const publisher = new SfuPublisher();
-    const previousAudio = track("audio", "audio-1");
-    const nextVideo = track("video", "video-2");
-    const nextAudio = track("audio", "audio-2");
-    await publisher.connect(connection);
-    await publisher.activate(
-      stream(track("video", "video-1"), previousAudio),
-      qualityProfile,
-    );
-    const room = livekit.state.rooms[0];
-    const videoPublication = room.localParticipant.publications[0].track;
-    const replaceGate = deferred();
-    videoPublication.replaceTrack.mockImplementationOnce(
-      async (replacement: MediaStreamTrack) => {
-        await replaceGate.promise;
-        videoPublication.currentTrack = replacement;
-        videoPublication.sender.track = replacement;
-      },
-    );
-
-    const replacing = publisher.replaceStream(stream(nextVideo, nextAudio));
-    await vi.waitFor(() =>
-      expect(videoPublication.replaceTrack).toHaveBeenCalledOnce(),
-    );
-    const replacementVideo = videoPublication.replaceTrack.mock.calls[0]![0]!;
-    publisher.setPaused(true);
-    expect(replacementVideo.enabled).toBe(false);
-    expect(nextAudio.enabled).toBe(false);
-
-    replaceGate.resolve();
-    await expect(replacing).resolves.toBe(true);
-    expect(videoPublication.currentTrack.enabled).toBe(false);
-    expect(room.localParticipant.publications[1].track.currentTrack.enabled).toBe(
-      false,
-    );
-  });
-
-  it("uses the screen audio preset when a replacement adds audio", async () => {
-    const publisher = new SfuPublisher();
-    const audio = track("audio", "audio-2");
-    await publisher.connect(connection);
-    await publisher.activate(stream(track("video", "video-1")), {
-      ...qualityProfile,
-      screenAudioQuality: "very-high",
-    });
-    const room = livekit.state.rooms[0];
-
-    await expect(
-      publisher.replaceStream(stream(track("video", "video-2"), audio)),
-    ).resolves.toBe(true);
-
-    expect(room.localParticipant.publishTrack).toHaveBeenNthCalledWith(2, audio, {
-      source: Track.Source.ScreenShareAudio,
-      audioPreset: { maxBitrate: 192_000 },
-      forceStereo: true,
-      dtx: false,
-      red: false,
-    });
-  });
-
-  it("reapplies and retains the current sender settings after replacing video", async () => {
-    const publisher = new SfuPublisher();
-    await publisher.connect(connection);
-    await publisher.activate(stream(track("video", "video-1")), qualityProfile);
-    const localTrack = livekit.state.rooms[0].localParticipant.publications[0].track;
-
-    await expect(
-      publisher.replaceStream(stream(track("video", "video-2"))),
-    ).resolves.toBe(true);
-
-    expect(localTrack.sender.setParameters).toHaveBeenCalledTimes(2);
-    expect(publisher.getSenderParameters()?.requested).toMatchObject({
-      maxBitrate: 8_000_000,
-      maxFramerate: 60,
-      degradationPreference: "maintain-resolution",
-    });
-  });
-
-  it("restores sender settings when replacement configuration is rejected", async () => {
-    const previousVideo = track("video", "video-1");
-    const publisher = new SfuPublisher();
-    await publisher.connect(connection);
-    await publisher.activate(stream(previousVideo), qualityProfile);
-    const localTrack = livekit.state.rooms[0].localParticipant.publications[0].track;
-    const previousPublishedVideo = localTrack.currentTrack;
-    localTrack.sender.setParameters.mockRejectedValueOnce(
-      new Error("replacement parameters rejected"),
-    );
-
-    await expect(
-      publisher.replaceStream(stream(track("video", "video-2"))),
-    ).resolves.toBe(false);
-
-    expect(localTrack.replaceTrack).toHaveBeenCalledTimes(2);
-    expect(localTrack.currentTrack).toBe(previousPublishedVideo);
-    expect(localTrack.sender.setParameters).toHaveBeenCalledTimes(3);
-    expect(publisher.getSenderParameters()?.applied.maxBitrate).toBe(8_000_000);
-    expect(publisher.getQualityWarning()).toBe("切换 SFU 分享来源失败");
-    expect(publisher.getQualityWarning()).not.toContain(
-      "replacement parameters rejected",
-    );
-  });
-
-  it("disconnects fail-closed when replacement rollback also fails", async () => {
-    const disconnected = vi.fn();
-    const previousVideo = track("video", "video-1");
-    const publisher = new SfuPublisher({ onDisconnected: disconnected });
-    await publisher.connect(connection);
-    await publisher.activate(stream(previousVideo), qualityProfile);
-    const room = livekit.state.rooms[0];
-    const localTrack = room.localParticipant.publications[0].track;
-    localTrack.replaceTrack
-      .mockRejectedValueOnce(new Error("replace failed"))
-      .mockRejectedValueOnce(new Error("rollback failed"));
-
-    await expect(
-      publisher.replaceStream(stream(track("video", "video-2"))),
-    ).rejects.toThrow("rollback failed");
-    expect(room.disconnect).toHaveBeenCalledWith(false);
-    expect(disconnected).toHaveBeenCalledOnce();
-  });
-
-  it("does not resurrect a stale connection after disconnect", async () => {
-    const gate = deferred();
-    livekit.state.connectGate = gate.promise;
-    const publisher = new SfuPublisher();
-    const connecting = publisher.connect(connection);
-    await vi.waitFor(() => expect(livekit.state.rooms).toHaveLength(1));
-    const room = livekit.state.rooms[0];
-
-    await publisher.disconnect();
-    gate.resolve();
-
-    await expect(connecting).resolves.toBe(false);
-    expect(room.localParticipant.publishTrack).not.toHaveBeenCalled();
-    expect(room.disconnect).toHaveBeenCalledOnce();
-  });
-});
-
-describe("SfuSubscriber", () => {
-  it("uses cumulative frames for a fresh exact subscriber and growth after rearm", async () => {
-    vi.useFakeTimers();
-    let framesDecoded = 1;
-    const proofs: number[] = [];
-    const subscriber = new SfuSubscriber({
-      onStream: vi.fn(),
-      onFirstDecodedFrame: () => {
-        proofs.push(framesDecoded);
-        return true;
-      },
-    });
-    await subscriber.connect(connection);
-    const room = livekit.state.rooms[0];
-    expect(room.options).toEqual({ disconnectOnPageLeave: false });
-    const host = new livekit.FakeRemoteParticipant("host");
-    const publication = new livekit.FakeRemotePublication(
-      "host-video",
-      Track.Source.ScreenShare,
-    );
-    host.add(publication);
-    room.remoteParticipants.set("host", host);
-    expect(subscriber.activate()).toBe(true);
-    subscriber.armDecodedFrameProof();
-    const video = track("video", "video-1");
-    room.emit(
-      RoomEvent.TrackSubscribed,
-      remoteTrack(video, () =>
-        statsReport([
-          {
-            id: "video-in",
-            type: "inbound-rtp",
-            timestamp: 1_000,
-            kind: "video",
-            framesDecoded,
-          },
-        ]),
-      ),
-      publication,
-      host,
-    );
-    await vi.waitFor(() => expect(proofs).toEqual([1]));
-
-    proofs.length = 0;
-    framesDecoded = 7;
-    subscriber.armDecodedFrameProof(true);
-    await Promise.resolve();
-    await vi.advanceTimersByTimeAsync(100);
-    expect(proofs).toEqual([]);
-    framesDecoded = 8;
-    await vi.advanceTimersByTimeAsync(300);
-    expect(proofs).toEqual([8]);
-
-    subscriber.deactivate();
-    framesDecoded = 9;
-    await vi.advanceTimersByTimeAsync(500);
-    expect(proofs).toEqual([8]);
-  });
-
-  it("retains pending frame proof through LiveKit full reconnect order", async () => {
-    vi.useFakeTimers();
-    const proofs = vi.fn(() => true);
-    const subscriber = new SfuSubscriber({
-      onStream: vi.fn(),
-      onFirstDecodedFrame: proofs,
-    });
-    await subscriber.connect(connection);
-    const room = livekit.state.rooms[0];
-    const oldHost = new livekit.FakeRemoteParticipant("host");
-    const oldPublication = new livekit.FakeRemotePublication(
-      "host-video-before-reconnect",
-      Track.Source.ScreenShare,
-    );
-    oldHost.add(oldPublication);
-    room.remoteParticipants.set("host", oldHost);
-    expect(subscriber.activate()).toBe(true);
-    subscriber.armDecodedFrameProof();
-
-    let releaseOldRead!: () => void;
-    const oldRead = new Promise<void>((resolve) => {
-      releaseOldRead = resolve;
-    });
-    room.emit(
-      RoomEvent.TrackSubscribed,
-      remoteTrack(track("video", "video-before-reconnect"), async () => {
-        await oldRead;
-        return statsReport([]);
-      }),
-      oldPublication,
-      oldHost,
-    );
-
-    room.remoteParticipants.delete("host");
-    room.emit(RoomEvent.ParticipantDisconnected, oldHost);
-    room.emit(RoomEvent.Reconnecting);
-
-    const newHost = new livekit.FakeRemoteParticipant("host");
-    const newPublication = new livekit.FakeRemotePublication(
-      "host-video-after-reconnect",
-      Track.Source.ScreenShare,
-    );
-    newHost.add(newPublication);
-    room.remoteParticipants.set("host", newHost);
-    room.emit(RoomEvent.Reconnected);
-    room.emit(
-      RoomEvent.TrackSubscribed,
-      remoteTrack(track("video", "video-after-reconnect"), async () =>
-        statsReport([
-          {
-            id: "video-after-reconnect",
-            type: "inbound-rtp",
-            timestamp: 1,
-            kind: "video",
-            framesDecoded: 1,
-          },
-        ]),
-      ),
-      newPublication,
-      newHost,
-    );
-
-    await vi.waitFor(() => expect(proofs).toHaveBeenCalledOnce());
-    releaseOldRead();
-    expect(subscriber.deactivate()).toBe(true);
-  });
-
-  it("reconciles a Host publication announced while connect is pending", async () => {
-    const gate = deferred();
-    livekit.state.connectGate = gate.promise;
-    const subscriber = new SfuSubscriber({ onStream: vi.fn() });
-    const connecting = subscriber.connect(connection);
-    await vi.waitFor(() => expect(livekit.state.rooms).toHaveLength(1));
-    const room = livekit.state.rooms[0];
-    const host = new livekit.FakeRemoteParticipant("host");
-    const hostVideo = new livekit.FakeRemotePublication(
-      "host-video-pending",
-      Track.Source.ScreenShare,
-    );
-    host.add(hostVideo);
-
-    room.emit(RoomEvent.TrackPublished, hostVideo, host);
-    expect(hostVideo.setSubscribed).not.toHaveBeenCalled();
-    gate.resolve();
-    await expect(connecting).resolves.toBe(true);
-
-    expect(subscriber.activate()).toBe(true);
-    expect(hostVideo.setSubscribed).toHaveBeenCalledWith(true);
-  });
-
-  it("reconciles a Host participant that appears after activation", async () => {
-    const subscriber = new SfuSubscriber({ onStream: vi.fn() });
-    await subscriber.connect(connection);
-    const room = livekit.state.rooms[0];
-    expect(subscriber.activate()).toBe(true);
-
-    const host = new livekit.FakeRemoteParticipant("host");
-    const hostVideo = new livekit.FakeRemotePublication(
-      "host-video-late",
-      Track.Source.ScreenShare,
-    );
-    host.add(hostVideo);
-    room.emit(RoomEvent.ParticipantConnected, host);
-
-    expect(hostVideo.setSubscribed).toHaveBeenCalledWith(true);
-  });
-
-  it("subscribes only to assigned Host screen tracks", async () => {
-    const gate = deferred();
-    livekit.state.connectGate = gate.promise;
-    const streams: Array<MediaStream | null> = [];
-    const subscriber = new SfuSubscriber({
-      onStream: (nextStream) => streams.push(nextStream),
-    });
-    const connecting = subscriber.connect(connection);
-    await vi.waitFor(() => expect(livekit.state.rooms).toHaveLength(1));
-    const room = livekit.state.rooms[0];
-    const host = new livekit.FakeRemoteParticipant("host");
-    const hostVideo = new livekit.FakeRemotePublication(
-      "host-video",
-      Track.Source.ScreenShare,
-    );
-    const hostAudio = new livekit.FakeRemotePublication(
-      "host-audio",
-      Track.Source.ScreenShareAudio,
-    );
-    const hostCamera = new livekit.FakeRemotePublication(
-      "host-camera",
-      Track.Source.Camera,
-    );
-    host.add(hostVideo).add(hostAudio).add(hostCamera);
-    room.remoteParticipants.set("host", host);
-    const viewer = new livekit.FakeRemoteParticipant("viewer:other");
-    const viewerScreen = new livekit.FakeRemotePublication(
-      "viewer-screen",
-      Track.Source.ScreenShare,
-    );
-    viewer.add(viewerScreen);
-    room.remoteParticipants.set(viewer.identity, viewer);
-
-    gate.resolve();
-    await expect(connecting).resolves.toBe(true);
-    expect(room.connect).toHaveBeenCalledWith(connection.url, connection.token, {
-      autoSubscribe: false,
-      rtcConfig: { iceServers: [] },
-    });
-    expect(hostVideo.setSubscribed).not.toHaveBeenCalled();
-    expect(streams).toEqual([]);
-
-    expect(subscriber.activate()).toBe(true);
-    expect(hostVideo.setSubscribed).toHaveBeenCalledWith(true);
-    expect(hostAudio.setSubscribed).toHaveBeenCalledWith(true);
-    expect(hostCamera.setSubscribed).not.toHaveBeenCalled();
-    expect(viewerScreen.setSubscribed).not.toHaveBeenCalled();
-
-    const audio = track("audio", "audio-1");
-    room.emit(
-      RoomEvent.TrackSubscribed,
-      remoteTrack(audio),
-      hostAudio,
-      host,
-    );
-    expect(streams).toEqual([]);
-
-    const video = track("video", "video-1");
-    room.emit(
-      RoomEvent.TrackSubscribed,
-      remoteTrack(video),
-      hostVideo,
-      host,
-    );
-    expect(streams.at(-1)?.getVideoTracks()).toEqual([video]);
-    expect(streams.at(-1)?.getAudioTracks()).toEqual([audio]);
-
-    expect(subscriber.deactivate()).toBe(true);
-    expect(hostVideo.setSubscribed).toHaveBeenLastCalledWith(false);
-    expect(hostAudio.setSubscribed).toHaveBeenLastCalledWith(false);
-    expect(streams.at(-1)).toBeNull();
-    expect(room.disconnect).not.toHaveBeenCalled();
-  });
-
-  it("keeps one stream while video-first tracks change", async () => {
-    const streams: Array<MediaStream | null> = [];
-    const availability: boolean[] = [];
-    const subscriber = new SfuSubscriber({
-      onStream: (nextStream) => streams.push(nextStream),
-      onVideoAvailability: (available) => availability.push(available),
-    });
-    await subscriber.connect(connection);
-    const room = livekit.state.rooms[0];
-    const host = new livekit.FakeRemoteParticipant("host");
-    const hostVideo = new livekit.FakeRemotePublication(
-      "host-video",
-      Track.Source.ScreenShare,
-    );
-    const hostAudio = new livekit.FakeRemotePublication(
-      "host-audio",
-      Track.Source.ScreenShareAudio,
-    );
-    host.add(hostVideo).add(hostAudio);
-    room.remoteParticipants.set("host", host);
-    expect(subscriber.activate()).toBe(true);
-    const video = track("video", "video-1");
-    room.emit(RoomEvent.TrackSubscribed, remoteTrack(video), hostVideo, host);
-    const stableStream = streams.at(-1);
-    expect(stableStream?.getTracks()).toEqual([video]);
-    expect(availability).toEqual([true]);
-    const audio = track("audio", "audio-1");
-    room.emit(RoomEvent.TrackSubscribed, remoteTrack(audio), hostAudio, host);
-    expect(streams.at(-1)).toBe(stableStream);
-    expect(stableStream?.getAudioTracks()).toEqual([audio]);
-    const callbacksBeforeReplacement = streams.length;
-    const replacement = track("video", "video-2");
-    room.emit(RoomEvent.TrackSubscribed, remoteTrack(replacement), hostVideo, host);
-    expect(streams).toHaveLength(callbacksBeforeReplacement + 1);
-    expect(streams.at(-1)).toBe(stableStream);
-    expect(stableStream?.getVideoTracks()).toEqual([replacement]);
-    video.dispatchEvent(new Event("ended"));
-    expect(stableStream?.getVideoTracks()).toEqual([replacement]);
-    expect(availability).toEqual([true]);
-    replacement.dispatchEvent(new Event("ended"));
-    expect(stableStream?.getVideoTracks()).toEqual([]);
-    expect(streams).toHaveLength(callbacksBeforeReplacement + 1);
-    expect(availability).toEqual([true, false]);
-
-    const recovered = track("video", "video-3");
-    room.emit(RoomEvent.TrackSubscribed, remoteTrack(recovered), hostVideo, host);
-    expect(streams.at(-1)).toBe(stableStream);
-    expect(stableStream?.getVideoTracks()).toEqual([recovered]);
-    expect(availability).toEqual([true, false, true]);
-  });
-
-  it.each(["unsubscribed", "unpublished", "host-disconnected"] as const)(
-    "reports the last video unavailable when it is %s",
-    async (loss) => {
-      const availability: boolean[] = [];
-      const subscriber = new SfuSubscriber({
-        onStream: vi.fn(),
-        onVideoAvailability: (available) => availability.push(available),
-      });
-      await subscriber.connect(connection);
-      const room = livekit.state.rooms[0];
-      const host = new livekit.FakeRemoteParticipant("host");
-      const publication = new livekit.FakeRemotePublication(
-        "host-video",
-        Track.Source.ScreenShare,
-      );
-      host.add(publication);
-      room.remoteParticipants.set("host", host);
-      subscriber.activate();
-      const video = track("video", "video-1");
-      const remoteVideo = remoteTrack(video);
-      room.emit(RoomEvent.TrackSubscribed, remoteVideo, publication, host);
-      availability.length = 0;
-
-      if (loss === "unsubscribed") {
-        room.emit(RoomEvent.TrackUnsubscribed, remoteVideo, publication, host);
-      } else if (loss === "unpublished") {
-        room.emit(RoomEvent.TrackUnpublished, publication, host);
-      } else {
-        room.emit(RoomEvent.ParticipantDisconnected, host);
-      }
-
-      expect(availability).toEqual([false]);
-    },
-  );
-
-  it("keeps active decoded-frame sampling through unavailable receiver stats", async () => {
-    vi.useFakeTimers();
-    const samples: Array<number | null> = [];
-    const updates: ConnectionMetrics[] = [];
-    const subscriber = new SfuSubscriber({
-      onStream: vi.fn(),
-      onStats: (metrics) => updates.push(metrics),
-      onDecodedFrameSample: (framesDecodedDelta) =>
-        samples.push(framesDecodedDelta),
-    });
-    await subscriber.connect(connection);
-    const room = livekit.state.rooms[0];
-    const host = new livekit.FakeRemoteParticipant("host");
-    const publication = new livekit.FakeRemotePublication(
-      "host-video",
-      Track.Source.ScreenShare,
-    );
-    host.add(publication);
-    room.remoteParticipants.set("host", host);
-
-    expect(subscriber.activate()).toBe(true);
-    expect(samples).toEqual([null]);
-
-    let receiverStats: RTCStatsReport | Promise<RTCStatsReport> | Error =
-      statsReport([]);
-    const video = track("video", "video-1");
-    const remoteVideo = remoteTrack(video, () => {
-      if (receiverStats instanceof Error) throw receiverStats;
-      return receiverStats;
-    });
-    room.emit(RoomEvent.TrackSubscribed, remoteVideo, publication, host);
-    await vi.advanceTimersByTimeAsync(0);
-    expect(samples).toEqual([null, null]);
-    expect(updates).toEqual([]);
-
-    receiverStats = new Error("stats unavailable");
-    const samplesBeforeStatsError = samples.length;
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(samples).toHaveLength(samplesBeforeStatsError + 1);
-    expect(samples.at(-1)).toBeNull();
-    expect(updates).toEqual([]);
-
-    receiverStats = statsReport([
-      {
-        id: "video-in",
-        type: "inbound-rtp",
-        timestamp: 1_000,
-        kind: "video",
-        trackIdentifier: video.id,
-        framesDecoded: 1,
-      },
+    expect(send.mock.calls[1]![0].kind).toBe("candidate");
+    expect(clientMessageSchema.safeParse(offer).success).toBe(true);
+    expect(pc.transceivers[0]!.setCodecPreferences.mock.calls[0]![0]).toEqual([
+      expect.objectContaining({ mimeType: "video/H264" }),
     ]);
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(samples.at(-1)).toBeNull();
-    expect(updates).toHaveLength(1);
-
-    receiverStats = statsReport([
-      {
-        id: "video-in",
-        type: "inbound-rtp",
-        timestamp: 3_000,
-        kind: "video",
-        trackIdentifier: video.id,
-        framesDecoded: 5,
-      },
-    ]);
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(samples.at(-1)).toBe(4);
-    expect(updates).toHaveLength(2);
-
-    let releasePendingStats!: (report: RTCStatsReport) => void;
-    receiverStats = new Promise<RTCStatsReport>((resolve) => {
-      releasePendingStats = resolve;
-    });
-    const statsCallsBeforePending = remoteVideo.getRTCStatsReport.mock.calls.length;
-    const samplesBeforePending = samples.length;
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(remoteVideo.getRTCStatsReport).toHaveBeenCalledTimes(
-      statsCallsBeforePending + 1,
+    await host.acceptSignal(
+      signal({ description: { type: "answer", sdp: "answer" } }),
     );
-    expect(samples).toHaveLength(samplesBeforePending);
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(remoteVideo.getRTCStatsReport).toHaveBeenCalledTimes(
-      statsCallsBeforePending + 1,
-    );
-    expect(samples).toHaveLength(samplesBeforePending + 1);
-    expect(samples.at(-1)).toBeNull();
-
-    const replacementVideo = track("video", "video-2");
-    let replacementStats = statsReport([
-      {
-        id: "replacement-video-in",
-        type: "inbound-rtp",
-        timestamp: 1_000,
-        kind: "video",
-        trackIdentifier: replacementVideo.id,
-        framesDecoded: 2,
-      },
-    ]);
-    const replacementRemoteVideo = remoteTrack(
-      replacementVideo,
-      () => replacementStats,
-    );
-    room.emit(
-      RoomEvent.TrackSubscribed,
-      replacementRemoteVideo,
-      publication,
-      host,
-    );
-    await vi.advanceTimersByTimeAsync(0);
-    expect(updates.at(-1)?.trackIdentifier).toBe(replacementVideo.id);
-    const samplesAfterReplacement = samples.length;
-    const updatesAfterReplacement = updates.length;
-    releasePendingStats(
-      statsReport([
-        {
-          id: "video-in",
-          type: "inbound-rtp",
-          timestamp: 5_000,
-          kind: "video",
-          trackIdentifier: video.id,
-          framesDecoded: 9,
-        },
-      ]),
-    );
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(samples).toHaveLength(samplesAfterReplacement);
-    expect(updates).toHaveLength(updatesAfterReplacement);
-
-    replacementStats = statsReport([
-      {
-        id: "replacement-video-in",
-        type: "inbound-rtp",
-        timestamp: 3_000,
-        kind: "video",
-        trackIdentifier: replacementVideo.id,
-        framesDecoded: 7,
-      },
-    ]);
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(samples.at(-1)).toBe(5);
-
-    room.emit(
-      RoomEvent.TrackUnsubscribed,
-      replacementRemoteVideo,
-      publication,
-      host,
-    );
-    const samplesBeforeMissingTrack = samples.length;
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(samples).toHaveLength(samplesBeforeMissingTrack + 1);
-    expect(samples.at(-1)).toBeNull();
-
-    expect(subscriber.deactivate()).toBe(true);
-    const samplesAfterDeactivate = samples.length;
-    await vi.advanceTimersByTimeAsync(4_000);
-    expect(samples).toHaveLength(samplesAfterDeactivate);
+    expect(pc.remoteDescription?.type).toBe("answer");
   });
 
-  it("keeps video liveness independent from optional audio stats", async () => {
-    vi.useFakeTimers();
-    const samples: Array<number | null> = [];
-    const updates: ConnectionMetrics[] = [];
-    const subscriber = new SfuSubscriber({
-      onStream: vi.fn(),
-      onStats: (metrics) => updates.push(metrics),
-      onDecodedFrameSample: (framesDecodedDelta) =>
-        samples.push(framesDecodedDelta),
-    });
-    await subscriber.connect(connection);
-    const room = livekit.state.rooms[0];
-    const host = new livekit.FakeRemoteParticipant("host");
-    const hostVideo = new livekit.FakeRemotePublication(
-      "host-video",
-      Track.Source.ScreenShare,
-    );
-    const hostAudio = new livekit.FakeRemotePublication(
-      "host-audio",
-      Track.Source.ScreenShareAudio,
-    );
-    host.add(hostVideo).add(hostAudio);
-    room.remoteParticipants.set("host", host);
-    expect(subscriber.activate()).toBe(true);
-
-    const video = track("video", "video-1");
-    let videoTimestamp = 1_000;
-    let videoFrames = 1;
-    const remoteVideo = remoteTrack(video, () =>
-      statsReport([
-        {
-          id: "video-in",
-          type: "inbound-rtp",
-          timestamp: videoTimestamp,
-          kind: "video",
-          trackIdentifier: video.id,
-          framesDecoded: videoFrames,
-          estimatedPlayoutTimestamp: 10_000,
-        },
-      ]),
-    );
-    const audio = track("audio", "audio-1");
-    let audioStats: RTCStatsReport | Promise<RTCStatsReport> | Error =
-      new Error("audio stats unavailable");
-    const remoteAudio = remoteTrack(audio, () => {
-      if (audioStats instanceof Error) throw audioStats;
-      return audioStats;
-    });
-    room.emit(RoomEvent.TrackSubscribed, remoteAudio, hostAudio, host);
-    room.emit(RoomEvent.TrackSubscribed, remoteVideo, hostVideo, host);
-    await vi.advanceTimersByTimeAsync(0);
-    expect(samples.at(-1)).toBeNull();
-    expect(updates).toHaveLength(1);
-
-    videoTimestamp = 3_000;
-    videoFrames = 5;
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(samples.at(-1)).toBe(4);
-    expect(remoteAudio.getRTCStatsReport).toHaveBeenCalledTimes(2);
-
-    audioStats = receiverReport("audio");
-    videoTimestamp = 5_000;
-    videoFrames = 9;
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(samples.at(-1)).toBe(4);
-    expect(updates.at(-1)?.audioVideoPlayoutDeltaMs).toBe(12);
-    expect(remoteAudio.getRTCStatsReport).toHaveBeenCalledTimes(3);
-
-    audioStats = new Promise<RTCStatsReport>(() => undefined);
-    videoTimestamp = 7_000;
-    videoFrames = 13;
-    const samplesBeforePendingAudio = samples.length;
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(samples).toHaveLength(samplesBeforePendingAudio + 1);
-    expect(samples.at(-1)).toBe(4);
-    expect(updates.at(-1)?.audioVideoPlayoutDeltaMs).toBeNull();
-    expect(remoteAudio.getRTCStatsReport).toHaveBeenCalledTimes(4);
-
-    videoTimestamp = 9_000;
-    videoFrames = 17;
-    const samplesBeforeSecondPendingAudioTick = samples.length;
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(samples).toHaveLength(samplesBeforeSecondPendingAudioTick + 1);
-    expect(samples.at(-1)).toBe(4);
-    expect(updates.at(-1)?.audioVideoPlayoutDeltaMs).toBeNull();
-    expect(remoteAudio.getRTCStatsReport).toHaveBeenCalledTimes(4);
-    expect(remoteVideo.getRTCStatsReport).toHaveBeenCalledTimes(5);
-
-    expect(subscriber.deactivate()).toBe(true);
-  });
-
-  it("reports merged receiver stats and drops a stale sample", async () => {
-    const updates: ConnectionMetrics[] = [];
-    const samples: Array<number | null> = [];
-    const states: string[] = [];
-    const subscriber = new SfuSubscriber({
-      onStream: vi.fn(),
-      onStats: (metrics) => updates.push(metrics),
-      onDecodedFrameSample: (framesDecodedDelta) =>
-        samples.push(framesDecodedDelta),
-      onState: (state) => states.push(state),
-    });
-    await subscriber.connect(connection);
-    const room = livekit.state.rooms[0];
-    const host = new livekit.FakeRemoteParticipant("host");
-    const hostVideo = new livekit.FakeRemotePublication(
-      "host-video",
-      Track.Source.ScreenShare,
-    );
-    const hostAudio = new livekit.FakeRemotePublication(
-      "host-audio",
-      Track.Source.ScreenShareAudio,
-    );
-    host.add(hostVideo).add(hostAudio);
-    room.remoteParticipants.set("host", host);
-    expect(subscriber.activate()).toBe(true);
-
-    const reports = {
-      video: receiverReport("video"),
-      audio: receiverReport("audio"),
+  it("queues remote ICE and rejects retired connection/publication identities", async () => {
+    const { publisher: host, pc } = await publisher();
+    const candidate = {
+      candidate: "candidate:1 1 UDP 1 127.0.0.1 4100 typ host",
     };
-    expect(
-      Array.from(mergeStatsReports([reports.video, reports.audio])!.keys()),
-    ).toEqual(["video-in", "audio-in"]);
-    const video = track("video", "video-1");
-    const audio = track("audio", "audio-1");
-    let videoStats: RTCStatsReport | Promise<RTCStatsReport> = reports.video;
-    const remoteVideo = remoteTrack(video, () => videoStats);
-    room.emit(
-      RoomEvent.TrackSubscribed,
-      remoteTrack(audio, () => reports.audio),
-      hostAudio,
-      host,
+    await host.acceptSignal(signal({ kind: "candidate", candidate }));
+    expect(pc.addIceCandidate).not.toHaveBeenCalled();
+    await host.acceptSignal(
+      signal({
+        connectionId: "retired_12345678",
+        description: { type: "answer", sdp: "stale" },
+      }),
     );
-    room.emit(
-      RoomEvent.TrackSubscribed,
-      remoteVideo,
-      hostVideo,
-      host,
+    await host.acceptSignal(
+      signal({
+        publicationGeneration: "retired_12345678",
+        description: { type: "answer", sdp: "stale" },
+      }),
     );
-    await vi.waitFor(() => expect(updates).toHaveLength(1));
-    expect(samples).toEqual([null, null]);
-
-    expect(updates.at(-1)).toMatchObject({
-      rtpStatsId: "video-in",
-      trackIdentifier: "video-1",
-      audioVideoPlayoutDeltaMs: 12,
-    });
-
-    let releaseStats = (): void => undefined;
-    videoStats = new Promise<RTCStatsReport>((resolve) => {
-      releaseStats = () => resolve(reports.video);
-    });
-    room.emit(RoomEvent.Reconnecting);
-    room.emit(RoomEvent.Reconnected);
-    expect(states).toEqual(["reconnecting", "connected"]);
-    await vi.waitFor(() =>
-      expect(remoteVideo.getRTCStatsReport).toHaveBeenCalledTimes(2),
+    expect(pc.setRemoteDescription).not.toHaveBeenCalled();
+    await host.acceptSignal(
+      signal({ description: { type: "answer", sdp: "answer" } }),
     );
-
-    expect(subscriber.deactivate()).toBe(true);
-    const samplesAfterDeactivate = samples.length;
-    releaseStats();
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(updates).toHaveLength(1);
-    expect(samples).toHaveLength(samplesAfterDeactivate);
+    expect(pc.addIceCandidate).toHaveBeenCalledWith(candidate);
   });
 
-  it("notifies the controller after a terminal room disconnect", async () => {
-    const disconnected = vi.fn();
+  it("updates all existing encodings and audio without changing the PC or codec", async () => {
+    const { publisher: host, pc, send } = await publisher();
+    const profile = {
+      ...QUALITY_PROFILES["720p30"],
+      screenAudioQuality: "very-high" as const,
+    };
+    expect(await host.updateProfile(profile)).toBe(true);
+    expect(pc.transceivers[0]!.sender.parameters.encodings).toEqual([
+      expect.objectContaining({
+        rid: "q",
+        maxBitrate: 750_000,
+        scaleResolutionDownBy: 3,
+      }),
+      expect.objectContaining({
+        rid: "h",
+        maxBitrate: 3_000_000,
+        scaleResolutionDownBy: 1.5,
+      }),
+    ]);
+    expect(host.getAudioSenderParameters()?.appliedMaxBitrate).toBe(192_000);
+    expect(send.mock.calls.at(-1)![0]).toMatchObject({
+      kind: "media",
+      media: { codec: "h264", audioBitrate: 192_000 },
+    });
+    expect(FakePc.instances).toHaveLength(1);
+    expect(pc.createOffer).toHaveBeenCalledOnce();
+  });
+
+  it("reuses the audio transceiver when source audio appears and retires clones only", async () => {
+    const { publisher: host, pc, video, send } = await publisher(false);
+    const nextVideo = new FakeTrack("video");
+    const nextAudio = new FakeTrack("audio");
+    host.setPaused(true);
+    expect(await host.replaceStream(stream(nextVideo, nextAudio))).toBe(true);
+    expect(video.clones[0]!.stop).toHaveBeenCalledOnce();
+    expect(video.stop).not.toHaveBeenCalled();
+    expect(pc.transceivers).toHaveLength(2);
+    expect(nextVideo.clones[0]!.enabled).toBe(false);
+    expect(nextAudio.clones[0]!.enabled).toBe(false);
+    expect(send.mock.calls.at(-1)![0]).toMatchObject({
+      kind: "media",
+      media: { audio: true },
+    });
+    await host.disconnect();
+    expect(nextVideo.clones[0]!.stop).toHaveBeenCalledOnce();
+    expect(nextAudio.clones[0]!.stop).toHaveBeenCalledOnce();
+    expect(nextVideo.stop).not.toHaveBeenCalled();
+    expect(nextAudio.stop).not.toHaveBeenCalled();
+    expect(pc.close).toHaveBeenCalledOnce();
+  });
+
+  it("rolls back a failed source replacement and releases its unused clone", async () => {
+    const { publisher: host, pc, video } = await publisher();
+    pc.transceivers[0]!.sender.replaceTrack.mockRejectedValueOnce(
+      new Error("replace rejected"),
+    );
+    const replacement = new FakeTrack("video");
+    expect(await host.replaceStream(stream(replacement))).toBe(false);
+    expect(pc.transceivers[0]!.sender.track).toBe(video.clones[0]);
+    expect(video.clones[0]!.stop).not.toHaveBeenCalled();
+    expect(replacement.clones[0]!.stop).toHaveBeenCalledOnce();
+    expect(pc.close).not.toHaveBeenCalled();
+  });
+
+  it("preserves media during a signaling outage and updates only the route fence", async () => {
+    const { publisher: host, pc, send, onDisconnected } = await publisher();
+    await host.acceptSignal(
+      signal({ description: { type: "answer", sdp: "answer" } }),
+    );
+    pc.state("connected");
+    send.mockReturnValue(false);
+    expect(await host.updateProfile(QUALITY_PROFILES["720p30"])).toBe(false);
+    expect(pc.close).not.toHaveBeenCalled();
+    expect(onDisconnected).not.toHaveBeenCalled();
+    send.mockReturnValue(true);
+    host.updateConfig({ ...config, revision: 9 });
+    expect(await host.updateProfile(QUALITY_PROFILES["720p30"])).toBe(true);
+    const updated = send.mock.calls.at(-1)![0];
+    expect(updated.revision).toBe(9);
+    expect(clientMessageSchema.safeParse(updated).success).toBe(true);
+  });
+
+  it("answers the server offer and commits only decoded video, preserving media during ICE restart", async () => {
+    const send = vi.fn(() => true);
+    const onFirstDecodedFrame = vi.fn(() => true);
+    const onStream = vi.fn();
+    const onDisconnected = vi.fn();
     const subscriber = new SfuSubscriber({
-      onStream: vi.fn(),
-      onDisconnected: disconnected,
+      send,
+      onStream,
+      onFirstDecodedFrame,
+      onDisconnected,
     });
-    await subscriber.connect(connection);
-    const room = livekit.state.rooms[0];
-
-    room.emit(RoomEvent.Disconnected);
-    room.emit(RoomEvent.Disconnected);
-
-    expect(disconnected).toHaveBeenCalledOnce();
-    expect(subscriber.deactivate()).toBe(false);
+    cleanups.push(() => subscriber.disconnect());
+    await subscriber.connect(config);
+    subscriber.activate();
+    subscriber.armDecodedFrameProof();
+    const pc = FakePc.instances[0]!;
+    await subscriber.acceptSignal(
+      signal({ description: { type: "offer", sdp: "offer" } }),
+    );
+    let framesDecoded = 0;
+    const video = new FakeTrack("video");
+    pc.ontrack?.({
+      track: video,
+      receiver: {
+        getStats: async () =>
+          new Map([
+            [
+              "video",
+              {
+                id: "video",
+                type: "inbound-rtp",
+                kind: "video",
+                framesDecoded,
+              },
+            ],
+          ]),
+      },
+    });
+    pc.state("connected");
+    await vi.advanceTimersByTimeAsync(100);
+    expect(onFirstDecodedFrame).not.toHaveBeenCalled();
+    framesDecoded = 1;
+    await vi.advanceTimersByTimeAsync(100);
+    expect(onFirstDecodedFrame).toHaveBeenCalledOnce();
+    expect(onStream).toHaveBeenCalledOnce();
+    expect(subscriber.reconnect()).toBe(true);
+    expect(send).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        kind: "subscribe",
+        connectionId: config.connectionId,
+      }),
+    );
+    expect(pc.close).not.toHaveBeenCalled();
+    expect(onDisconnected).not.toHaveBeenCalled();
+    await subscriber.disconnect();
+    expect(onStream).toHaveBeenLastCalledWith(null);
   });
 
-  it("does not activate a stale connection after disconnect", async () => {
-    const gate = deferred();
-    livekit.state.connectGate = gate.promise;
-    const subscriber = new SfuSubscriber({ onStream: vi.fn() });
-    const connecting = subscriber.connect(connection);
-    await vi.waitFor(() => expect(livekit.state.rooms).toHaveLength(1));
-    const room = livekit.state.rooms[0];
+  it("bounds pending ICE and reports one terminal failure", async () => {
+    const { publisher: host, pc, onDisconnected } = await publisher();
+    for (let index = 0; index < 65; index++) {
+      await host.acceptSignal(
+        signal({
+          kind: "candidate",
+          candidate: { candidate: `candidate:${index}` },
+        }),
+      );
+    }
+    expect(pc.close).toHaveBeenCalledOnce();
+    expect(onDisconnected).toHaveBeenCalledOnce();
+    expect(host.getFailureStage()).toBe("transport");
+  });
 
-    await subscriber.disconnect();
-    await subscriber.disconnect();
-    gate.resolve();
+  it("changes audio ceilings without touching video capture or sender parameters", async () => {
+    const { publisher: host, pc, video } = await publisher();
+    const constraints = video.clones[0]!.applyConstraints.mock.calls.length;
+    const parameters =
+      pc.transceivers[0]!.sender.setParameters.mock.calls.length;
+    expect(
+      await host.updateProfile({
+        ...QUALITY_PROFILES["1080p30"],
+        screenAudioQuality: "saver",
+      }),
+    ).toBe(true);
+    expect(video.clones[0]!.applyConstraints).toHaveBeenCalledTimes(
+      constraints,
+    );
+    expect(pc.transceivers[0]!.sender.setParameters).toHaveBeenCalledTimes(
+      parameters,
+    );
+    expect(host.getAudioSenderParameters()?.appliedMaxBitrate).toBe(64_000);
+  });
 
-    await expect(connecting).resolves.toBe(false);
-    expect(room.disconnect).toHaveBeenCalledOnce();
-    expect(() => subscriber.activate()).toThrow("expected prepared");
+  it("closes every owned clone during in-flight replacement without stopping the sources", async () => {
+    const { publisher: host, pc, video, sound } = await publisher();
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    pc.transceivers[0]!.sender.setParameters.mockImplementationOnce(
+      async () => blocked,
+    );
+    const replacement = new FakeTrack("video");
+    const replacing = host.replaceStream(stream(replacement));
+    await vi.advanceTimersByTimeAsync(0);
+    host.setPaused(true);
+    expect(replacement.clones[0]!.enabled).toBe(false);
+    await host.disconnect();
+    release();
+    expect(await replacing).toBe(false);
+    for (const track of [
+      video.clones[0]!,
+      sound.clones[0]!,
+      replacement.clones[0]!,
+    ])
+      expect(track.stop).toHaveBeenCalledOnce();
+    for (const source of [video, sound, replacement])
+      expect(source.stop).not.toHaveBeenCalled();
+    expect(pc.close).toHaveBeenCalledOnce();
+  });
+
+  it("fails closed when restoring a replaced sender fails", async () => {
+    const { publisher: host, pc, onDisconnected, video } = await publisher();
+    pc.transceivers[0]!.sender.replaceTrack.mockRejectedValue(
+      new Error("sender failed"),
+    );
+    const replacement = new FakeTrack("video");
+    expect(await host.replaceStream(stream(replacement))).toBe(false);
+    expect(onDisconnected).toHaveBeenCalledOnce();
+    expect(pc.close).toHaveBeenCalledOnce();
+    expect(video.clones[0]!.stop).toHaveBeenCalledOnce();
+    expect(replacement.clones[0]!.stop).toHaveBeenCalledOnce();
+  });
+
+  it("uses the fenced SFU demand prefix without live profiles reactivating upper layers", async () => {
+    const { publisher: host, pc } = await publisher();
+    await host.acceptSignal(signal({ kind: "layers", activeCount: 1 }));
+    expect(
+      pc.transceivers[0]!.sender.parameters.encodings.map(
+        (encoding) => encoding.active,
+      ),
+    ).toEqual([true, false]);
+    await host.updateProfile(QUALITY_PROFILES["720p30"]);
+    expect(
+      pc.transceivers[0]!.sender.parameters.encodings.map(
+        (encoding) => encoding.active,
+      ),
+    ).toEqual([true, false]);
+    await host.acceptSignal(
+      signal({
+        kind: "layers",
+        activeCount: 0,
+        connectionId: "retired_connection",
+      }),
+    );
+    expect(
+      pc.transceivers[0]!.sender.parameters.encodings.map(
+        (encoding) => encoding.active,
+      ),
+    ).toEqual([true, false]);
+    await host.acceptSignal(signal({ kind: "layers", activeCount: 0 }));
+    expect(
+      pc.transceivers[0]!.sender.parameters.encodings.map(
+        (encoding) => encoding.active,
+      ),
+    ).toEqual([false, false]);
+    await host.acceptSignal(signal({ kind: "layers", activeCount: 2 }));
+    expect(
+      pc.transceivers[0]!.sender.parameters.encodings.map(
+        (encoding) => encoding.active,
+      ),
+    ).toEqual([true, true]);
+    expect(FakePc.instances).toHaveLength(1);
+  });
+
+  it("resumes an unsent ICE-restart offer after signaling returns on the same connection", async () => {
+    const { publisher: host, pc, send, onDisconnected } = await publisher();
+    await host.acceptSignal(
+      signal({ description: { type: "answer", sdp: "answer" } }),
+    );
+    send.mockReturnValue(false);
+    pc.state("disconnected");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(pc.createOffer).toHaveBeenLastCalledWith({ iceRestart: true });
+    expect(pc.close).not.toHaveBeenCalled();
+    send.mockClear();
+    send.mockReturnValue(true);
+    host.updateConfig({ ...config, revision: 5 });
+    expect(send.mock.calls.map(([message]) => message.kind)).toEqual([
+      "description",
+      "candidate",
+    ]);
+    expect(send.mock.calls[0]![0].revision).toBe(5);
+    expect(pc.close).not.toHaveBeenCalled();
+    expect(onDisconnected).not.toHaveBeenCalled();
   });
 });

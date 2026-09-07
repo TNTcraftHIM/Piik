@@ -1,6 +1,8 @@
 package clientapp
 
 import (
+	"errors"
+	"net"
 	"net/url"
 	"slices"
 	"testing"
@@ -8,6 +10,22 @@ import (
 	"github.com/TNTcraftHIM/Screener/internal/client/clientconfig"
 	serverconfig "github.com/TNTcraftHIM/Screener/internal/server/config"
 )
+
+func TestOccupiedPortRejectsLinkBeforeStartingATunnel(t *testing.T) {
+	listener, err := net.ListenTCP("tcp4", &net.TCPAddr{IP: net.IPv4zero})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	err = runLocal(t.Context(), Options{
+		Link: true, Port: listener.Addr().(*net.TCPAddr).Port,
+		TunnelProcess: "missing-tunnel-process", console: &clientConsole{machine: true},
+	}, clientconfig.Config{}, nil)
+	var bindError *net.OpError
+	if !errors.As(err, &bindError) || bindError.Op != "listen" {
+		t.Fatalf("occupied port must fail before tunnel work: %v", err)
+	}
+}
 
 func TestClientLaunchURLMarksThePageWithoutChangingOrigin(t *testing.T) {
 	value := clientLaunchURL("https://share.example/")

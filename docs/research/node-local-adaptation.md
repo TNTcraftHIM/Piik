@@ -1,43 +1,18 @@
 # Node-Local Adaptive Encoded Reuse
 
-Reviewed: 2026-09-07. The owner has agreed to the model below as a research
-direction. Codec backends, representation policy and timing values are not yet
-accepted for production. ADR-0007 remains the deployed media contract.
+Reviewed: 2026-09-07. [ADR-0013](../adr/0013-embedded-node-local-media.md) now owns
+the accepted model and highest-demand envelope. Codec backends and timing
+values still need implementation evidence. ADR-0007 remains the runtime contract.
+The [design proposal](./node-local-media-design.md) narrows implementation from
+the measurements below; it does not reopen the agreed topology/reuse model.
 
 ## Agreed Model
 
-Every producing/relaying node, including Host, is responsible for its direct
-children only. It does not pre-encode every quality needed anywhere in the tree.
-
-1. Keep the selected Host baseline or the best usable received encoding as the
-   node's input source. `base/native` is a source-quality name, not another
-   representation alongside an identical `high` encoding.
-2. Forward a suitable existing encoding without decoding or re-encoding for
-   transport. Playback still needs decoding at each viewing device.
-3. When a direct child cannot use an available representation, derive a lower
-   representation locally using mature codec components. Reuse that output for
-   other direct children with compatible requirements, instead of one encoder
-   per peer or per distinct instantaneous bandwidth number.
-4. A child does the same for its own children. A weak grandchild does not by
-   itself require Host to encode another representation if its direct parent
-   already has a suitable input and can do the required work.
-5. Keep the original input independent of derived low-quality outputs. A weak
-   child's feedback must not silently lower healthy sibling branches.
-6. Recover to an existing higher representation when possible. If the current
-   parent only has degraded input, restoring input quality or changing the
-   upstream route is required; upscaling cannot recover lost source detail.
-
-Example: Host supplies its baseline to A and B. A's healthy subtree can forward
-it unchanged. If B has good ingress but a weak direct child, B derives the lower
-output. If Host-to-B itself cannot carry the baseline, Host supplies a suitable
-lower output for B. This does not imply all lower representations must always
-be encoded; `base only`, `base plus all lower`, and individual demand activation
-are alternatives still to compare.
-
-In an all-capable, all-healthy tree, forwarding can reuse one Host encoding.
-This is an ideal case, not a promise for pure Browser relays or impaired trees.
-Each node's extra encoding scales with distinct required derived outputs, not
-automatically with its child count. Packet transport still scales with edges.
+ADR-0013 is the sole owner of the accepted direct-child model and policy. This
+file retains evidence and alternative comparisons, not a second design contract.
+The implementation design is owned by [node-local media design](./node-local-media-design.md).
+`base/native` names the selected source quality; it is not a second output
+alongside an identical `high` encoding.
 
 ## Two Workstreams
 
@@ -120,6 +95,11 @@ subscriber-tree demand aggregation to override our direct-child derivation rule.
 
 ## Strategy Comparison
 
+Shared encoding and per-child selective delivery are common to both compared
+policies. The owner explicitly excludes Native-plus-Browser and repeated full
+encoders as the next experiment's reference baseline. Compare exact demanded
+outputs against the maximum-demand envelope, not shared versus unshared media.
+
 | Strategy | Main benefit | Cost to verify |
 | --- | --- | --- |
 | Base plus all lower encodings always active | Lower outputs are already being produced when needed | Permanent encode/GPU cost even for an entirely healthy tree; still needs a switch point |
@@ -127,13 +107,23 @@ subscriber-tree demand aggregation to override our direct-child derivation rule.
 | Finite outputs activated only as needed | Avoids unused representations and shares compatible demands | Cold start and churn if codecs are constantly destroyed/recreated |
 | Demand activation with bounded warm retention or a minimal fallback output | Potential compromise between steady cost and transition delay | Requires measurements to justify retention or pre-encoding; not free memory/session capacity |
 
-Provisional preference: finite demand-driven outputs, promptly activate new
-required output, do not immediately tear down reusable resources during a brief
-quality oscillation. Do not start all lower encodings merely because one is
-needed. Keep all-active pre-encoding as a comparison arm, not an assumed default.
-A continuously encoded minimal fallback is justified only if cold-start evidence
-shows a meaningful interruption that warm resource retention cannot avoid.
-No timing value, extra polling loop or prediction score has been selected.
+The owner's 2026-09-07 preference makes the LiveKit-style maximum-demand
+envelope a first-class candidate: keep the highest requested representation and
+its lower fallbacks active; stop unused higher outputs when all direct children
+need less. Compare it with exact demand activation, not with an assumption that
+exact demand is inherently better. Prefer the simpler envelope if its measured
+cost is small and switching is better. Good network capacity alone does not
+prove spare encoding capacity or cheap lower outputs.
+
+Both policies retain the original source authority and the ability to recover;
+stopping an unneeded high output does not lower capture or discard the best
+received input. Exact demand can retain inactive codec resources for a bounded
+comparison instead of repeatedly destroying them. No production timing value,
+extra polling loop or prediction score has been selected.
+Do not blindly create a fallback encoder set at every forwarding relay: that
+would add decode/encode work to the entirely healthy tree. Reusing received
+encodings and deciding how an already-needed encoder set stays active are
+separate decisions; publisher measurements cannot stand in for relay costs.
 Where the media framework supports it, negotiate the finite representation
 capability up front and activate existing identities; a quality change should
 not reopen capture or recreate a PeerConnection merely to add an encoder.
@@ -178,8 +168,19 @@ Use the same source, codec, frame rate and direct-child count for each arm:
 5. Source replacement, child departure and stop: verify generations and release
    of decoder/encoder surfaces, tracks and queues.
 
-This plan is not a completed benchmark. No native GPU capture, new codec backend
-or production media was exercised for this research pass.
+The first [CPU-only encoder comparison](./node-local-encoding-probe.md) is complete.
+It compares existing Native VP8 encodes and scripted direct-child demand, not
+network adaptation or playback. It supports keeping the maximum-demand envelope
+as a candidate, but also exposes timestamp-sensitive resume behavior in a naive
+warm-encoder composition. Validate mature multi-resolution pause/resume semantics
+before implementing retention. H264 hardware, relay decode/scale and actual
+receiver switching remain open; no production policy changed.
+The subsequent [software-preference decode comparison](./node-local-browser-probe.md)
+now includes VP8/H264, scaling and two real VideoDecoders, plus received-source
+relay derivation. It measures local component readiness only, not WebRTC delivery
+or congestion. The design treats representation bookkeeping as small and puts
+the remaining overhead work in codec lifecycle, shared decode/surfaces and the
+transport library's switching/probing path.
 
 ## Primary References
 
@@ -209,7 +210,8 @@ or production media was exercised for this research pass.
 选择。稳定传输低画质不等于路径已经最优；现有优化不能直接视为已覆盖这种
 恢复。当前先研究按需/预编码策略及成熟实现，尚未改动生产媒体或路由。
 
-当前优先比较“有限档位按需启用，资源不因短暂波动立即销毁”；常驻全档仅作为
-对照，是否保留预编码低档由冷启动/首个可解码帧的实测决定。LiveKit 的档位
-启用、按带宽选择转发层，以及编码器创建销毁不是一回事；带宽探测也不要求
-始终编码所有视频档位。具体库和启停时间尚未拍板。
+优先把 LiveKit 式“最高需求档及以下保持编码”与精确按需启用作为平等候选，
+不预设后者更优；若常备低档成本小、切换更好，就选择更简单的策略。所有直属
+下游都不需要高档时可以停掉高档输出，但不修改捕获或丢弃最好的输入来源。
+先用已有 VP8 编码器短时测量成本和关键帧启停，不把结果外推成 H264 硬件或
+真实网络验收。具体库、档位与启停时间仍未作为生产决策。

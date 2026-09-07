@@ -6,7 +6,6 @@ import {
   DEFAULT_VIEWER_DISPLAY_NAME,
   MAX_DISPLAY_NAME_CODE_POINTS,
   MAX_MEDIA_ROUTE_REVISION,
-  MAX_SFU_TOKEN_LENGTH,
   MAX_VIEWER_QUALITY_EVIDENCE_BYTES,
   MAX_VIEWER_PASSWORD_LENGTH,
   MAX_VIEWERS_PER_ROOM_LIMIT,
@@ -88,7 +87,7 @@ const qualityEvidence = {
 
 describe("client signaling protocol", () => {
   it("uses the current strict signaling generation", () => {
-    expect(SIGNALING_PROTOCOL).toBe("screener-v21");
+    expect(SIGNALING_PROTOCOL).toBe("screener-v22");
   });
 
   it("keeps signaling challenges strict and sequence-only", () => {
@@ -1426,12 +1425,6 @@ describe("server signaling protocol", () => {
     };
 
     expect(serverMessageSchema.safeParse(peerAssisted).success).toBe(true);
-    expect(
-      serverMessageSchema.safeParse({
-        ...peerAssisted,
-        sfuStandbyUrl: "wss://sfu.example.com",
-      }).success,
-    ).toBe(true);
     const incomplete = {
       ...authenticatedMessage(8),
     } as Record<string, unknown>;
@@ -1462,12 +1455,6 @@ describe("server signaling protocol", () => {
     } as Record<string, unknown>;
     delete missingMode.mediaMode;
     expect(serverMessageSchema.safeParse(missingMode).success).toBe(false);
-    expect(
-      serverMessageSchema.safeParse({
-        ...peerAssisted,
-        sfuStandbyUrl: "https://sfu.example.com",
-      }).success,
-    ).toBe(false);
     expect(
       serverMessageSchema.safeParse({
         type: "quality-settings",
@@ -1564,8 +1551,8 @@ describe("server signaling protocol", () => {
       serverMessageSchema.safeParse({
         type: "sfu-config",
         revision: 9,
-        url: "wss://sfu.example.com",
-        token: "header.payload.signature",
+        publicationGeneration: "publication_12345678",
+        connectionId: "connection_12345678",
       }).success,
     ).toBe(true);
 
@@ -1599,8 +1586,8 @@ describe("server signaling protocol", () => {
       serverMessageSchema.safeParse({
         type: "sfu-config",
         revision: 9,
-        url: "wss://sfu.example.com",
-        token: "x".repeat(MAX_SFU_TOKEN_LENGTH + 1),
+        publicationGeneration: "publication_12345678",
+        connectionId: "",
       }).success,
     ).toBe(false);
     expect(

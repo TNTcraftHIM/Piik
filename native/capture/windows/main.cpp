@@ -12,6 +12,7 @@
 #include <mferror.h>
 #include <mfidl.h>
 #include <mftransform.h>
+#include <wmcodecdsp.h>
 #ifdef SCREENER_H264_FIXTURE
 #include <pdh.h>
 #include <pdhmsg.h>
@@ -32,7 +33,13 @@
 #include "capture_geometry.h"
 #include "process_audio.h"
 #ifndef SCREENER_H264_FIXTURE
+#include "capture_control.h"
+#include "capture_input.h"
+#include "h264_decoder.h"
+#include "capture_output.h"
+#include "output_mailbox.h"
 #include "vp8_encoder.h"
+#include "vp8_decoder.h"
 #endif
 
 #include <algorithm>
@@ -387,8 +394,16 @@ ActivationList EnumerateHardwareEncoders(const Adapter& adapter,
 }
 
 struct SelectedTransform final {
+  SelectedTransform() = default;
+  SelectedTransform(const SelectedTransform&) = delete;
+  SelectedTransform& operator=(const SelectedTransform&) = delete;
+  SelectedTransform(SelectedTransform&&) noexcept = default;
+  SelectedTransform& operator=(SelectedTransform&&) = delete;
+  ~SelectedTransform() { if (activation) activation->ShutdownObject(); }
+
   std::string name;
   std::string clsid;
+  ComPtr<IMFActivate> activation;
   ComPtr<IMFTransform> transform;
   ComPtr<ICodecAPI> codec;
   ComPtr<IMFMediaEventGenerator> events;
@@ -421,6 +436,7 @@ SelectedTransform ActivateTransform(const ActivationList& list, UINT index,
   }
 
   SelectedTransform selected;
+  selected.activation = activation;
   selected.name = NarrowAscii(friendly);
   selected.clsid = GuidString(clsid);
   Check(activation->ActivateObject(IID_PPV_ARGS(&selected.transform)),
@@ -1336,14 +1352,9 @@ UINT ParseIndex(const wchar_t* value, const std::string& stage) {
 }
 
 #ifndef SCREENER_H264_FIXTURE
-constexpr DWORD kMaxProductAccessUnitBytes = 1 * 1024 * 1024;
-constexpr DWORD kMaxStatusBytes = 4 * 1024;
-enum class OutputKind : UINT8 {
-  pcm = 1,
-  h264 = 2,
-  status = 3,
-  vp8 = 4,
-};
+using screener::capture::kMaxProductAccessUnitBytes;
+using screener::capture::OutputKind;
+using screener::capture::ProtocolWriter;
 
 class UniqueHandle final {
  public:
@@ -1360,71 +1371,6 @@ class UniqueHandle final {
 
  private:
   HANDLE value_ = nullptr;
-};
-
-void PutUint32BE(BYTE* output, UINT32 value) {
-  for (int index = 3; index >= 0; --index) {
-    output[index] = static_cast<BYTE>(value & 0xff);
-    value >>= 8;
-  }
-}
-
-void PutUint64BE(BYTE* output, UINT64 value) {
-  for (int index = 7; index >= 0; --index) {
-    output[index] = static_cast<BYTE>(value & 0xff);
-    value >>= 8;
-  }
-}
-
-class ProtocolWriter final {
- public:
-  HRESULT Write(OutputKind kind, UINT8 flags, UINT64 timestamp100ns,
-                UINT64 duration100ns, const BYTE* data, DWORD size) {
-    DWORD maximum = kind == OutputKind::status ? kMaxStatusBytes
-                                                : kMaxProductAccessUnitBytes;
-    if (data == nullptr || size == 0 || size > maximum ||
-        (kind != OutputKind::status && duration100ns == 0)) {
-      return HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
-    }
-    std::array<BYTE, 28> header{};
-    header[0] = 'S';
-    header[1] = 'M';
-    header[2] = 'E';
-    header[3] = 'D';
-    header[4] = 1;
-    header[5] = static_cast<BYTE>(kind);
-    header[6] = flags;
-    PutUint64BE(header.data() + 8, timestamp100ns);
-    PutUint64BE(header.data() + 16, duration100ns);
-    PutUint32BE(header.data() + 24, size);
-
-    std::lock_guard<std::mutex> lock(mutex_);
-    HRESULT result = WriteAll(header.data(), static_cast<DWORD>(header.size()));
-    return SUCCEEDED(result) ? WriteAll(data, size) : result;
-  }
-
-  HRESULT WriteStatus(const std::string& value) {
-    return Write(OutputKind::status, 0, 0, 0,
-                 reinterpret_cast<const BYTE*>(value.data()),
-                 static_cast<DWORD>(value.size()));
-  }
-
- private:
-  HRESULT WriteAll(const BYTE* data, DWORD size) {
-    HANDLE output = GetStdHandle(STD_OUTPUT_HANDLE);
-    while (size > 0) {
-      DWORD written = 0;
-      if (!WriteFile(output, data, size, &written, nullptr)) {
-        return HRESULT_FROM_WIN32(GetLastError());
-      }
-      if (written == 0) return HRESULT_FROM_WIN32(ERROR_WRITE_FAULT);
-      data += written;
-      size -= written;
-    }
-    return S_OK;
-  }
-
-  std::mutex mutex_;
 };
 
 ComPtr<IMFSample> CreateSurfaceSample(ID3D11Texture2D* texture,
@@ -1467,6 +1413,7 @@ class VideoEncoder {
                                     bool force_key_frame,
                                     EncoderClock::time_point deadline =
                                         EncoderClock::time_point::max()) = 0;
+  virtual void SetBitrate(UINT32 bitrate) = 0;
   const OutputKind kind;
   const std::string name;
   const std::string identity;
@@ -1507,6 +1454,12 @@ class LiveEncoder final : public VideoEncoder {
       selected_.transform->ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH, 0);
       selected_.transform->ProcessMessage(MFT_MESSAGE_NOTIFY_END_STREAMING, 0);
     }
+  }
+
+  void SetBitrate(UINT32 bitrate) override {
+    SetU32(selected_.codec.Get(), CODECAPI_AVEncCommonMeanBitRate, bitrate,
+           "codec-live-bitrate");
+    profile_.bit_rate = bitrate;
   }
 
   EncodedAccessUnit Encode(ID3D11Texture2D* texture, UINT64 timestamp100ns,
@@ -1560,7 +1513,8 @@ class LiveEncoder final : public VideoEncoder {
         Fail("bitstream-sps", "first live access unit did not carry an SPS");
       }
       RequireEncoderTime(probe_deadline);
-      return EncodedAccessUnit{timestamp100ns, nal.idr, std::move(bytes)};
+      return EncodedAccessUnit{timestamp100ns, nal.idr && nal.sps && nal.pps,
+                               std::move(bytes)};
     }
     Fail("mft-output-timeout", "hardware MFT did not produce live output in time");
   }
@@ -1650,6 +1604,8 @@ class SoftwareVp8Encoder final : public VideoEncoder {
     RequireEncoderTime(deadline);
     return {timestamp100ns, frame.key_frame, std::move(frame.bytes)};
   }
+
+  void SetBitrate(UINT32 bitrate) override { encoder_.SetBitrate(bitrate); }
 
  private:
   screener::capture::Vp8Encoder encoder_;
@@ -1839,41 +1795,50 @@ std::string JSONString(const std::string& value) {
   return output;
 }
 
-struct ControlSignal final {
-  bool key_frame = false;
-  bool stop = false;
+class InputReader final {
+ public:
+  std::vector<screener::capture::InputEnvelope> Read(bool blocking = false) {
+    HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
+    DWORD available = 0;
+    if (input == INVALID_HANDLE_VALUE || input == nullptr) return {};
+    if (!blocking && !PeekNamedPipe(input, nullptr, 0, nullptr, &available, nullptr)) {
+      if (GetLastError() == ERROR_BROKEN_PIPE) return End();
+      Check(HRESULT_FROM_WIN32(GetLastError()), "capture-control-peek");
+    }
+    if (!blocking && available == 0) return {};
+    std::array<char, 32 * 1024> bytes{};
+    DWORD read = 0;
+    if (!ReadFile(input, bytes.data(),
+                  blocking ? static_cast<DWORD>(bytes.size()) : std::min<DWORD>(available, static_cast<DWORD>(bytes.size())),
+                  &read, nullptr)) {
+      if (GetLastError() == ERROR_BROKEN_PIPE) return End();
+      Check(HRESULT_FROM_WIN32(GetLastError()), "capture-control-read");
+    }
+    return envelopes_.Feed(std::string_view(bytes.data(), read));
+  }
+
+ private:
+  std::vector<screener::capture::InputEnvelope> End() {
+    if (!envelopes_.Empty()) Fail("capture-input-eof", "native input ended within an envelope");
+    screener::capture::InputEnvelope stop;
+    stop.kind = 7;
+    stop.data = {'Q'};
+    return {std::move(stop)};
+  }
+  screener::capture::InputEnvelopes envelopes_;
 };
 
-ControlSignal ConsumeControlSignal() {
-  HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
-  DWORD available = 0;
-  if (input == INVALID_HANDLE_VALUE || input == nullptr) {
-    return {};
+class ControlReader final {
+ public:
+  std::vector<screener::capture::CaptureControl> Read() {
+    std::vector<screener::capture::CaptureControl> controls;
+    for (const auto& envelope : input_.Read()) controls.push_back(envelope.Control());
+    return controls;
   }
-  if (!PeekNamedPipe(input, nullptr, 0, nullptr, &available, nullptr)) {
-    DWORD error = GetLastError();
-    return {.stop = error == ERROR_BROKEN_PIPE};
-  }
-  if (available == 0) {
-    return {};
-  }
-  std::array<BYTE, 64> bytes{};
-  DWORD read = 0;
-  if (!ReadFile(input, bytes.data(),
-                std::min<DWORD>(available, static_cast<DWORD>(bytes.size())),
-                &read, nullptr)) {
-    return {.stop = GetLastError() == ERROR_BROKEN_PIPE};
-  }
-  ControlSignal signal;
-  for (auto current = bytes.begin(); current != bytes.begin() + read;
-       ++current) {
-    signal.key_frame = signal.key_frame || *current == static_cast<BYTE>('K');
-    signal.stop = signal.stop || *current == static_cast<BYTE>('Q') ||
-                  *current == static_cast<BYTE>('\n') ||
-                  *current == static_cast<BYTE>('\r');
-  }
-  return signal;
-}
+
+ private:
+  InputReader input_;
+};
 
 UINT64 ParseUint64(const wchar_t* value, const std::string& stage) {
   try {
@@ -1909,7 +1874,7 @@ screener::capture::TargetKind ParseTargetKind(const wchar_t* value) {
 }
 
 struct ProductArguments final {
-  enum class Mode { list, probe, preview, audio, video } mode = Mode::list;
+  enum class Mode { list, probe, preview, audio, video, encoded } mode = Mode::list;
   screener::capture::TargetKind target_kind =
       screener::capture::TargetKind::window;
   DWORD pid = 0;
@@ -1919,6 +1884,7 @@ struct ProductArguments final {
   UINT mft_index = 0;
   std::string codec = "auto";
   VideoProfile profile;
+  std::vector<VideoProfile> outputs;
 };
 
 DegradationPreference ParseDegradationPreference(const wchar_t* value) {
@@ -1945,6 +1911,34 @@ void ValidateVideoProfile(const VideoProfile& profile) {
   }
 }
 
+void ParseOutputProfiles(ProductArguments& arguments, int first, int count, wchar_t** values) {
+  for (int index = first; index < count; index += 5) {
+    if (std::wstring(values[index]) != L"--output") Fail("argument-output", "output profile is missing");
+    VideoProfile output = arguments.profile;
+    output.width = ParseIndex(values[index + 1], "argument-output-width");
+    output.height = ParseIndex(values[index + 2], "argument-output-height");
+    output.frame_rate = ParseIndex(values[index + 3], "argument-output-fps");
+    output.bit_rate = ParseIndex(values[index + 4], "argument-output-bitrate");
+    if (output.width < 2 || output.height < 2 || (output.width & 1) || (output.height & 1) ||
+        output.width > 2560 || output.height > 1440 || output.frame_rate == 0 ||
+        output.frame_rate > 60 || output.bit_rate < 1'000 || output.bit_rate > 12'000'000) {
+      Fail("argument-output", "output profile exceeds codec bounds");
+    }
+    if (arguments.mode == ProductArguments::Mode::video &&
+        (output.width > arguments.profile.width || output.height > arguments.profile.height ||
+         output.frame_rate > arguments.profile.frame_rate || output.bit_rate > arguments.profile.bit_rate)) {
+      Fail("argument-output", "output profile exceeds source bounds");
+    }
+    if (!arguments.outputs.empty()) {
+      const auto& previous = arguments.outputs.back();
+      if (output.width <= previous.width || output.height <= previous.height || output.bit_rate < previous.bit_rate) {
+        Fail("argument-output-order", "outputs must be ordered low to high");
+      }
+    }
+    arguments.outputs.push_back(output);
+  }
+}
+
 ProductArguments ParseProductArguments(int count, wchar_t** values) {
   ProductArguments arguments;
   if (count == 2 && std::wstring(values[1]) == L"--list") return arguments;
@@ -1968,7 +1962,24 @@ ProductArguments ParseProductArguments(int count, wchar_t** values) {
   if (count == 5 && std::wstring(values[1]) == L"--capture-audio") {
     arguments.mode = ProductArguments::Mode::audio;
     arguments.target_kind = ParseTargetKind(values[2]);
-  } else if (count == 23 && std::wstring(values[1]) == L"--capture-video" &&
+  } else if (count >= 16 && count <= 26 && (count - 11) % 5 == 0 &&
+             std::wstring(values[1]) == L"--encoded-video" &&
+             std::wstring(values[2]) == L"--codec" &&
+             std::wstring(values[4]) == L"--adapter-index" &&
+             std::wstring(values[6]) == L"--mft-index" &&
+             std::wstring(values[8]) == L"--preference" &&
+             std::wstring(values[10]) == L"--protocol-v5") {
+    arguments.mode = ProductArguments::Mode::encoded;
+    arguments.codec = NarrowAscii(values[3]);
+    if (arguments.codec != "h264" && arguments.codec != "vp8") Fail("argument-codec", "encoded input codec is unsupported");
+    arguments.adapter_index = ParseIndex(values[5], "argument-adapter");
+    arguments.mft_index = ParseIndex(values[7], "argument-mft");
+    arguments.profile.preference = ParseDegradationPreference(values[9]);
+    ParseOutputProfiles(arguments, 11, count, values);
+    arguments.profile = arguments.outputs.back();
+    return arguments;
+  } else if (count >= 28 && count <= 38 && (count - 23) % 5 == 0 &&
+             std::wstring(values[1]) == L"--capture-video" &&
              std::wstring(values[6]) == L"--adapter-index" &&
              std::wstring(values[8]) == L"--mft-index" &&
              std::wstring(values[10]) == L"--width" &&
@@ -1977,7 +1988,7 @@ ProductArguments ParseProductArguments(int count, wchar_t** values) {
              std::wstring(values[16]) == L"--bitrate" &&
              std::wstring(values[18]) == L"--preference" &&
              std::wstring(values[20]) == L"--codec" &&
-             std::wstring(values[22]) == L"--protocol-v4") {
+             std::wstring(values[22]) == L"--protocol-v5") {
     arguments.mode = ProductArguments::Mode::video;
     arguments.target_kind = ParseTargetKind(values[2]);
     arguments.source_id = ParseUint64(values[3], "argument-source");
@@ -1994,6 +2005,12 @@ ProductArguments ParseProductArguments(int count, wchar_t** values) {
     }
     arguments.codec = NarrowAscii(codec);
     ValidateVideoProfile(arguments.profile);
+    ParseOutputProfiles(arguments, 23, count, values);
+    const auto& highest = arguments.outputs.back();
+    if (highest.width != arguments.profile.width || highest.height != arguments.profile.height ||
+        highest.frame_rate != arguments.profile.frame_rate || highest.bit_rate != arguments.profile.bit_rate) {
+      Fail("argument-output-source", "highest output must match the source profile");
+    }
   } else {
     Fail("arguments", "unsupported or incomplete command-line argument");
   }
@@ -2021,6 +2038,13 @@ HRESULT RunAudioCapture(const ProductArguments& arguments) {
   UniqueHandle stop(CreateEventW(nullptr, TRUE, FALSE, nullptr));
   if (stop.get() == nullptr) return HRESULT_FROM_WIN32(GetLastError());
   ProtocolWriter writer;
+  ControlReader controls;
+  auto should_stop = [&]() {
+    const auto commands = controls.Read();
+    if (commands.empty()) return false;
+    if (commands.front().kind != 'Q') Fail("audio-control", "audio process only accepts stop");
+    return true;
+  };
   auto ready = [&writer]() {
     return writer.WriteStatus("{\"state\":\"active\",\"audio\":true}");
   };
@@ -2031,11 +2055,11 @@ HRESULT RunAudioCapture(const ProductArguments& arguments) {
   };
   if (arguments.target_kind == screener::capture::TargetKind::display) {
     return screener::capture::CaptureSystemAudio(
-        stop.get(), []() { return ConsumeControlSignal().stop; }, ready, pcm);
+        stop.get(), should_stop, ready, pcm);
   }
   return screener::capture::CaptureProcessAudio(
       arguments.pid, arguments.creation_time, stop.get(),
-      []() { return ConsumeControlSignal().stop; },
+      should_stop,
       ready, pcm);
 }
 
@@ -2078,7 +2102,7 @@ void WriteCapabilityProbe() {
 
   std::vector<Adapter> adapters = EnumerateAdapters();
   std::ostringstream output;
-  output << "{\"protocol\":4,\"platform\":\"windows\",\"platformBuild\":"
+  output << "{\"protocol\":5,\"platform\":\"windows\",\"platformBuild\":"
          << JSONString(std::to_string(build))
          << ",\"videoCapture\":" << (window_capture ? "true" : "false")
          << ",\"softwareVP8\":true"
@@ -2131,6 +2155,7 @@ double MeasureEncoderWork(VideoEncoder& encoder, ID3D11Device* device,
     auto encoded = encoder.Encode(texture.Get(),
         (static_cast<UINT64>(frame) + 1) * profile.frame_duration_100ns(),
         frame == 0, deadline);
+    // A dropped input cannot count as a throughput-probe output frame.
     if (encoded.bytes.empty() || encoded.bytes.size() > kMaxProductAccessUnitBytes) {
       Fail("codec-probe-output", "encoder produced an invalid probe frame");
     }
@@ -2181,6 +2206,382 @@ std::unique_ptr<VideoEncoder> SelectVideoEncoder(
   return hardware;
 }
 
+struct CaptureInput final {
+  ComPtr<ID3D11Texture2D> texture;
+  UINT32 width = 0;
+  UINT32 height = 0;
+  SIZE presentation{};
+  UINT64 timestamp = 0;
+};
+
+class OutputWorker final {
+ public:
+  using Factory = std::function<std::unique_ptr<VideoEncoder>()>;
+  OutputWorker(UINT8 layer, VideoProfile profile, ID3D11Device* device,
+               ProtocolWriter& writer, Factory create,
+               std::unique_ptr<VideoEncoder> initial,
+               std::function<void()> on_output,
+               std::function<void(std::exception_ptr)> on_failure)
+      : layer_(layer), profile_(profile), device_(device), writer_(writer),
+        create_(std::move(create)), initial_(std::move(initial)),
+        on_output_(std::move(on_output)), on_failure_(std::move(on_failure)),
+        mailbox_(profile.bit_rate), thread_([this]() { Run(); }) {}
+
+  ~OutputWorker() { Stop(); Join(); }
+
+  void Submit(std::shared_ptr<const CaptureInput> input) {
+    mailbox_.Submit(std::move(input));
+  }
+
+  void SetActive(bool active) { mailbox_.SetActive(active); }
+  void RequestKeyFrame() { mailbox_.RequestKeyFrame(); }
+  void SetBitrate(UINT32 bitrate) { mailbox_.SetBitrate(bitrate); }
+
+  void Stop() {
+    mailbox_.Stop();
+    if (thread_.joinable()) CancelSynchronousIo(thread_.native_handle());
+  }
+
+  void Join() {
+    if (!thread_.joinable()) return;
+    // Keep cancellation effective if a retiring worker was about to enter WriteFile.
+    const DWORD interval = std::max<DWORD>(1, 1000 / profile_.frame_rate);
+    while (WaitForSingleObject(thread_.native_handle(), interval) == WAIT_TIMEOUT) {
+      CancelSynchronousIo(thread_.native_handle());
+    }
+    thread_.join();
+  }
+
+ private:
+  void Run() noexcept {
+    bool apartment = false;
+    bool recovery = false;
+    auto encoder = std::move(initial_);
+    std::unique_ptr<FrameConverter> converter;
+    try {
+      Check(CoInitializeEx(nullptr, COINIT_MULTITHREADED), "output-com-apartment");
+      apartment = true;
+      UINT64 codec_generation = 0;
+      UINT64 next_timestamp = 0;
+      UINT64 encoded_frames = 0;
+      UINT32 applied_bitrate = profile_.bit_rate;
+      for (;;) {
+        const auto work = mailbox_.Take();
+        if (work.action == Mailbox::Action::stop) break;
+        if (work.action == Mailbox::Action::retire) {
+          encoder.reset();
+          converter.reset();
+          continue;
+        }
+        const auto& input = work.input;
+        recovery = work.recovery;
+        if (codec_generation != work.generation) {
+          encoder.reset();
+          converter.reset();
+          codec_generation = work.generation;
+          next_timestamp = 0;
+          encoded_frames = 0;
+        }
+        const UINT64 duration = static_cast<UINT64>(profile_.frame_duration_100ns());
+        if (!recovery && input->timestamp < next_timestamp &&
+            next_timestamp - input->timestamp > duration / 20) continue;
+        if (!encoder) {
+          encoder = create_();
+          applied_bitrate = profile_.bit_rate;
+          recovery = true;
+        }
+        if (!converter) converter = std::make_unique<FrameConverter>(device_.Get(), profile_);
+        if (work.bitrate != applied_bitrate) {
+          encoder->SetBitrate(work.bitrate);
+          applied_bitrate = work.bitrate;
+        }
+        recovery = recovery || encoded_frames % profile_.gop_frames() == 0;
+        auto texture = converter->Convert(input->texture.Get(), input->width,
+                                          input->height, input->presentation);
+        auto access_unit = encoder->Encode(texture.Get(), input->timestamp, recovery);
+        if (next_timestamp == 0) {
+          next_timestamp = input->timestamp + duration;
+        } else {
+          const UINT64 elapsed = input->timestamp > next_timestamp ? input->timestamp - next_timestamp : 0;
+          next_timestamp += (elapsed / duration + 1) * duration;
+        }
+        if (access_unit.bytes.empty()) {
+          if (recovery) mailbox_.RequestKeyFrame();
+          continue;
+        }
+        ++encoded_frames;
+        if (!mailbox_.Accept(work.generation)) continue;
+        Check(writer_.Write(encoder->kind, access_unit.key_frame ? 1 : 0,
+                             access_unit.timestamp100ns, profile_.frame_duration_100ns(),
+                             access_unit.bytes.data(), static_cast<DWORD>(access_unit.bytes.size()),
+                             layer_, static_cast<UINT16>(profile_.width),
+                             static_cast<UINT16>(profile_.height)), "capture-video-output");
+        if (on_output_) on_output_();
+      }
+    } catch (...) {
+      if (mailbox_.Fail(recovery)) on_failure_(std::current_exception());
+    }
+    encoder.reset();
+    converter.reset();
+    if (apartment) CoUninitialize();
+  }
+
+  const UINT8 layer_;
+  const VideoProfile profile_;
+  ComPtr<ID3D11Device> device_;
+  ProtocolWriter& writer_;
+  Factory create_;
+  std::unique_ptr<VideoEncoder> initial_;
+  std::function<void()> on_output_;
+  std::function<void(std::exception_ptr)> on_failure_;
+  using Mailbox = screener::capture::OutputMailbox<CaptureInput>;
+  Mailbox mailbox_;
+  std::thread thread_;
+};
+
+void AppendOutputProfiles(std::ostream& output, const std::vector<VideoProfile>& profiles) {
+  output << ",\"outputs\":[";
+  for (size_t index = 0; index < profiles.size(); ++index) {
+    if (index != 0) output << ',';
+    const auto& profile = profiles[index];
+    output << "{\"width\":" << profile.width << ",\"height\":" << profile.height
+           << ",\"fps\":" << profile.frame_rate << ",\"bitrate\":" << profile.bit_rate << '}';
+  }
+  output << ']';
+}
+
+void WriteVideoStarting(ProtocolWriter& writer, const ProductArguments& arguments,
+                        const Adapter& adapter, const VideoEncoder& encoder) {
+  const bool hardware = encoder.kind == OutputKind::h264;
+  std::ostringstream status;
+  status << "{\"state\":\"starting\",\"hardwareOnly\":" << (hardware ? "true" : "false")
+         << ",\"codec\":" << JSONString(hardware ? "h264" : "vp8")
+         << ",\"adapterIndex\":" << adapter.index
+         << ",\"adapterName\":" << JSONString(NarrowAscii(adapter.description.Description))
+         << ",\"adapterIdentity\":" << JSONString(LuidString(adapter.description.AdapterLuid))
+         << ",\"encoderName\":" << JSONString(encoder.name)
+         << ",\"encoderIdentity\":" << JSONString(encoder.identity);
+  if (hardware) status << ",\"encoderIndex\":" << arguments.mft_index;
+  AppendOutputProfiles(status, arguments.outputs);
+  status << '}';
+  Check(writer.WriteStatus(status.str()), "capture-status-starting");
+}
+
+void WriteVideoActive(ProtocolWriter& writer, const ProductArguments& arguments, bool hardware) {
+  std::ostringstream status;
+  status << "{\"state\":\"active\",\"hardwareOnly\":" << (hardware ? "true" : "false")
+         << ",\"codec\":" << JSONString(hardware ? "h264" : "vp8");
+  if (hardware) status << ",\"profileLevelId\":" << JSONString(arguments.profile.profile_level_id());
+  status << ",\"width\":" << arguments.profile.width << ",\"height\":" << arguments.profile.height
+         << ",\"fps\":" << arguments.profile.frame_rate;
+  AppendOutputProfiles(status, arguments.outputs);
+  status << '}';
+  Check(writer.WriteStatus(status.str()), "capture-status-active");
+}
+
+std::vector<std::unique_ptr<OutputWorker>> CreateOutputWorkers(
+    const ProductArguments& arguments, const Adapter& adapter, const DeviceContext& device,
+    ProtocolWriter& writer, std::unique_ptr<VideoEncoder> initial,
+    const std::function<void()>& on_active,
+    const std::function<void(size_t, std::exception_ptr)>& on_failure) {
+  const bool hardware = initial->kind == OutputKind::h264;
+  const UINT encoder_index = arguments.mft_index;
+  std::vector<std::unique_ptr<OutputWorker>> workers;
+  for (size_t layer = 0; layer < arguments.outputs.size(); ++layer) {
+    const auto profile = arguments.outputs[layer];
+    const bool highest = layer + 1 == arguments.outputs.size();
+    auto create = [&adapter, &device, profile, hardware, encoder_index]() -> std::unique_ptr<VideoEncoder> {
+      if (!hardware) return std::make_unique<SoftwareVp8Encoder>(device.device.Get(), profile);
+      auto activations = EnumerateHardwareEncoders(adapter);
+      auto selected = ActivateTransform(activations, encoder_index, device.manager.Get());
+      return std::make_unique<LiveEncoder>(std::move(selected), profile);
+    };
+    workers.push_back(std::make_unique<OutputWorker>(
+        static_cast<UINT8>(layer), profile, device.device.Get(), writer,
+        std::move(create), highest ? std::move(initial) : nullptr,
+        [highest, on_active]() { if (highest) on_active(); },
+        [layer, on_failure](std::exception_ptr error) { on_failure(layer, error); }));
+  }
+  return workers;
+}
+
+std::string OutputFailureDetail(std::exception_ptr error) {
+  try {
+    std::rethrow_exception(error);
+  } catch (const GateFailure& failed) {
+    return failed.stage();
+  } catch (const std::exception& failed) {
+    return failed.what();
+  } catch (...) {
+    return "Output encoder is unavailable";
+  }
+}
+
+void ApplyOutputControl(const screener::capture::CaptureControl& control,
+                        const std::vector<std::unique_ptr<OutputWorker>>& workers) {
+  if (control.kind == 'A') {
+    if (control.value > workers.size()) Fail("control-prefix", "active prefix exceeds configured outputs");
+    for (size_t layer = 0; layer < workers.size(); ++layer) workers[layer]->SetActive(layer < control.value);
+    return;
+  }
+  if (control.layer >= static_cast<int>(workers.size())) Fail("control-layer", "output layer is unavailable");
+  if (control.kind == 'K') {
+    for (size_t layer = 0; layer < workers.size(); ++layer) {
+      if (control.layer == -1 || static_cast<size_t>(control.layer) == layer) workers[layer]->RequestKeyFrame();
+    }
+  } else if (control.kind == 'B') {
+    workers[control.layer]->SetBitrate(control.value);
+  }
+}
+
+ComPtr<ID3D11Texture2D> UploadDecodedNV12(const DeviceContext& device,
+                                        const BYTE* data, UINT32 width, UINT32 height) {
+  D3D11_TEXTURE2D_DESC description{};
+  description.Width = width;
+  description.Height = height;
+  description.MipLevels = description.ArraySize = 1;
+  description.Format = DXGI_FORMAT_NV12;
+  description.SampleDesc.Count = 1;
+  description.Usage = D3D11_USAGE_DEFAULT;
+  description.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+  D3D11_SUBRESOURCE_DATA input{};
+  input.pSysMem = data;
+  input.SysMemPitch = width;
+  input.SysMemSlicePitch = width * height * 3 / 2;
+  ComPtr<ID3D11Texture2D> texture;
+  Check(device.device->CreateTexture2D(&description, &input, &texture), "decoded-input-upload");
+  return texture;
+}
+
+ComPtr<ID3D11Texture2D> OwnDecodedTexture(const DeviceContext& device, IMFSample* sample,
+                                         UINT32 width, UINT32 height, LONG stride) {
+  ComPtr<IMFMediaBuffer> buffer;
+  Check(sample->GetBufferByIndex(0, &buffer), "decoded-buffer");
+  ComPtr<IMFDXGIBuffer> dxgi;
+  if (SUCCEEDED(buffer.As(&dxgi))) {
+    ComPtr<ID3D11Texture2D> original;
+    UINT subresource = 0;
+    Check(dxgi->GetResource(IID_PPV_ARGS(&original)), "decoded-dxgi-resource");
+    Check(dxgi->GetSubresourceIndex(&subresource), "decoded-dxgi-subresource");
+    D3D11_TEXTURE2D_DESC description{};
+    original->GetDesc(&description);
+    if (description.Format != DXGI_FORMAT_NV12 || description.Width < width || description.Height < height ||
+        description.Width > 2560 || description.Height > 1440) Fail("decoded-texture-size", "decoder texture exceeds source bounds");
+    description.ArraySize = description.MipLevels = 1;
+    description.Usage = D3D11_USAGE_DEFAULT;
+    description.CPUAccessFlags = description.MiscFlags = 0;
+    description.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+    ComPtr<ID3D11Texture2D> owned;
+    Check(device.device->CreateTexture2D(&description, nullptr, &owned), "decoded-owned-texture");
+    device.context->CopySubresourceRegion(owned.Get(), 0, 0, 0, 0, original.Get(), subresource, nullptr);
+    return owned;
+  }
+  const DWORD size = width * height * 3 / 2;
+  std::vector<BYTE> pixels(size);
+  ComPtr<IMF2DBuffer> planar;
+  if (SUCCEEDED(buffer.As(&planar))) {
+    DWORD length = 0;
+    Check(planar->GetContiguousLength(&length), "decoded-contiguous-length");
+    if (length != size) Fail("decoded-contiguous-size", "NV12 output does not match its dimensions");
+    Check(planar->ContiguousCopyTo(pixels.data(), size), "decoded-contiguous-copy");
+  } else {
+    BYTE* data = nullptr;
+    DWORD length = 0;
+    Check(buffer->Lock(&data, nullptr, &length), "decoded-memory-lock");
+    const bool valid = stride >= static_cast<LONG>(width) &&
+        static_cast<UINT64>(stride) * height * 3 / 2 <= length;
+    if (valid) {
+      for (UINT32 row = 0; row < height * 3 / 2; ++row) {
+        std::copy_n(data + static_cast<size_t>(row) * stride, width, pixels.data() + static_cast<size_t>(row) * width);
+      }
+    }
+    Check(buffer->Unlock(), "decoded-memory-unlock");
+    if (!valid) Fail("decoded-memory-size", "NV12 output buffer is incomplete");
+  }
+  return UploadDecodedNV12(device, pixels.data(), width, height);
+}
+
+void RunEncodedVideo(const ProductArguments& arguments) {
+  auto adapters = EnumerateAdapters();
+  const auto& adapter = SelectAdapter(adapters, arguments.adapter_index);
+  const auto device = CreateDevice(adapter);
+  auto encoder = SelectVideoEncoder(arguments, adapter, device);
+  const bool hardware = arguments.codec == "h264";
+  ProtocolWriter writer;
+  WriteVideoStarting(writer, arguments, adapter, *encoder);
+  HANDLE input_thread_handle = nullptr;
+  Check(DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(),
+                         &input_thread_handle, 0, FALSE, DUPLICATE_SAME_ACCESS), "encoded-input-thread");
+  UniqueHandle input_thread(input_thread_handle);
+  std::atomic<bool> active{false};
+  std::atomic<size_t> failed{0};
+  auto workers = CreateOutputWorkers(arguments, adapter, device, writer, std::move(encoder),
+      [&]() { if (!active.exchange(true)) WriteVideoActive(writer, arguments, hardware); },
+      [&](size_t layer, std::exception_ptr error) {
+        (void)writer.WriteUnavailable(static_cast<UINT8>(layer), OutputFailureDetail(error));
+        if (failed.fetch_add(1) + 1 == arguments.outputs.size()) CancelSynchronousIo(input_thread.get());
+      });
+  auto cleanup = [&]() {
+    writer.Stop();
+    for (auto& worker : workers) worker->Stop();
+    for (auto& worker : workers) worker->Join();
+  };
+  try {
+    std::unique_ptr<screener::capture::H264Decoder> h264;
+    std::unique_ptr<screener::capture::Vp8Decoder> vp8;
+    if (hardware) h264 = std::make_unique<screener::capture::H264Decoder>(device.manager.Get());
+    else vp8 = std::make_unique<screener::capture::Vp8Decoder>();
+    InputReader reader;
+    bool began = false;
+    UINT64 last_timestamp = 0;
+    auto submit = [&](ComPtr<ID3D11Texture2D> texture, UINT32 width, UINT32 height,
+                      UINT64 timestamp, UINT64 duration) {
+      if ((began && timestamp <= last_timestamp) || width < arguments.profile.width || height < arguments.profile.height) {
+        Fail("encoded-input-output", "decoded frame changed the source timeline or output bounds");
+      }
+      auto input = std::make_shared<CaptureInput>();
+      input->texture = std::move(texture);
+      input->width = width;
+      input->height = height;
+      input->presentation = {static_cast<LONG>(width), static_cast<LONG>(height)};
+      input->timestamp = timestamp;
+      Check(writer.WriteBegin(timestamp, duration), "decoded-frame-begin");
+      for (auto& worker : workers) worker->Submit(input);
+      began = true;
+      last_timestamp = timestamp;
+    };
+    for (;;) {
+      if (failed.load() == workers.size()) Fail("encoded-outputs", "all derived outputs are unavailable");
+      for (const auto& input : reader.Read(true)) {
+        if (input.kind == 7) {
+          const auto control = input.Control();
+          if (control.kind == 'Q') { cleanup(); return; }
+          ApplyOutputControl(control, workers);
+          continue;
+        }
+        if (input.kind != (hardware ? 2 : 4)) Fail("encoded-input-codec", "encoded source codec changed");
+        if (h264) {
+          h264->Decode(input, [&](IMFSample* sample, UINT32 width, UINT32 height, LONG stride) {
+            LONGLONG timestamp = -1, duration = 0;
+            Check(sample->GetSampleTime(&timestamp), "decoded-timestamp");
+            Check(sample->GetSampleDuration(&duration), "decoded-duration");
+            if (timestamp < 0 || duration <= 0) Fail("decoded-timing", "decoder did not preserve source timing");
+            submit(OwnDecodedTexture(device, sample, width, height, stride), width, height,
+                   static_cast<UINT64>(timestamp), static_cast<UINT64>(duration));
+          });
+        } else {
+          const auto decoded = vp8->Decode(input.data);
+          if (!decoded.nv12.empty()) submit(UploadDecodedNV12(device, decoded.nv12.data(), decoded.width, decoded.height),
+              decoded.width, decoded.height, input.timestamp, input.duration);
+        }
+      }
+    }
+  } catch (...) {
+    cleanup();
+    throw;
+  }
+}
+
 void RunVideoCapture(const ProductArguments& arguments) {
   const bool window_target =
       arguments.target_kind == screener::capture::TargetKind::window;
@@ -2197,8 +2598,6 @@ void RunVideoCapture(const ProductArguments& arguments) {
   DeviceContext device = CreateDevice(adapter);
   auto encoder = SelectVideoEncoder(arguments, adapter, device);
   const bool hardware = encoder->kind == OutputKind::h264;
-  const char* codec = hardware ? "h264" : "vp8";
-  FrameConverter converter(device.device.Get(), arguments.profile);
   screener::capture::CapturePresentation presentation(arguments.target_kind,
                                                       arguments.source_id);
   ProtocolWriter writer;
@@ -2258,8 +2657,21 @@ void RunVideoCapture(const ProductArguments& arguments) {
         item_closed.store(true);
         SetEvent(event);
       });
+  std::vector<std::unique_ptr<OutputWorker>> workers;
+  std::atomic<bool> active_status_written{false};
+  std::mutex failure_mutex;
+  std::exception_ptr failure;
+  auto fail_capture = [&](std::exception_ptr error) {
+    {
+      std::lock_guard<std::mutex> lock(failure_mutex);
+      if (!failure) failure = error;
+    }
+    SetEvent(shutdown.get());
+  };
   auto cleanup = [&]() noexcept {
     SetEvent(shutdown.get());
+    writer.Stop();
+    for (auto& worker : workers) worker->Stop();
     try {
       pool.FrameArrived(frame_token);
     } catch (...) {
@@ -2276,73 +2688,63 @@ void RunVideoCapture(const ProductArguments& arguments) {
       pool.Close();
     } catch (...) {
     }
+    for (auto& worker : workers) worker->Join();
   };
 
   try {
     const UINT64 frame_duration = static_cast<UINT64>(
         arguments.profile.frame_duration_100ns());
-    const UINT64 envelope_frame_duration = (frame_duration / 10) * 10;
-    std::ostringstream starting;
-    starting << "{\"state\":\"starting\",\"hardwareOnly\":"
-             << (hardware ? "true" : "false") << ",\"codec\":" << JSONString(codec)
-             << ",\"adapterIndex\":" << adapter.index
-             << ",\"adapterName\":"
-             << JSONString(NarrowAscii(adapter.description.Description))
-             << ",\"adapterIdentity\":"
-             << JSONString(LuidString(adapter.description.AdapterLuid))
-             << ",\"encoderName\":"
-             << JSONString(encoder->name)
-             << ",\"encoderIdentity\":"
-             << JSONString(encoder->identity);
-    if (hardware) starting << ",\"encoderIndex\":" << arguments.mft_index;
-    starting << '}';
-    Check(writer.WriteStatus(starting.str()), "capture-status-starting");
+    const DWORD control_wait_ms = static_cast<DWORD>((frame_duration + 9'999) / 10'000);
+    WriteVideoStarting(writer, arguments, adapter, *encoder);
+    workers = CreateOutputWorkers(arguments, adapter, device, writer, std::move(encoder),
+      [&]() {
+        if (!active_status_written.exchange(true)) WriteVideoActive(writer, arguments, hardware);
+      },
+      [&](size_t layer, std::exception_ptr error) {
+        if (layer + 1 == arguments.outputs.size()) {
+          fail_capture(error);
+          return;
+        }
+        if (FAILED(writer.WriteUnavailable(static_cast<UINT8>(layer), OutputFailureDetail(error)))) fail_capture(error);
+      });
     capture_session.StartCapture();
 
     UINT64 previous_timestamp = 0;
     UINT64 next_output_timestamp = 0;
-    UINT64 encoded_frames = 0;
-    bool active_status_written = false;
+    UINT64 source_frames = 0;
     auto pool_size = initial_size;
-    ComPtr<ID3D11Texture2D> latest_nv12;
-    UINT64 latest_timestamp = 0;
-    bool pending_key_frame = false;
-    auto write_encoded = [&](ID3D11Texture2D* texture, UINT64 timestamp,
-                             bool force_key_frame) {
-      EncodedAccessUnit access_unit =
-          encoder->Encode(texture, timestamp, force_key_frame);
-      if (access_unit.bytes.size() > kMaxProductAccessUnitBytes) {
-        Fail("output-buffer-bounds", "live video access unit exceeded one MiB");
-      }
-      UINT64 wire_timestamp = (access_unit.timestamp100ns / 10) * 10;
-      Check(writer.Write(encoder->kind, access_unit.key_frame ? 1 : 0,
-                         wire_timestamp, envelope_frame_duration,
-                         access_unit.bytes.data(),
-                         static_cast<DWORD>(access_unit.bytes.size())),
-            "capture-video-output");
-      previous_timestamp = timestamp;
-      ++encoded_frames;
-      if (!active_status_written) {
-        std::ostringstream active;
-        active << "{\"state\":\"active\",\"hardwareOnly\":"
-               << (hardware ? "true" : "false") << ",\"codec\":" << JSONString(codec);
-        if (hardware) {
-          active << ",\"profileLevelId\":" << JSONString(arguments.profile.profile_level_id());
-        }
-        active << ",\"width\":" << arguments.profile.width << ",\"height\":"
-               << arguments.profile.height << ",\"fps\":"
-               << arguments.profile.frame_rate << '}';
-        Check(writer.WriteStatus(active.str()), "capture-status-active");
-        active_status_written = true;
-      }
+    std::shared_ptr<const CaptureInput> latest_input;
+    bool refresh_input = false;
+    size_t active_count = workers.size();
+    ControlReader controls;
+    auto submit = [&](std::shared_ptr<const CaptureInput> input) {
+      Check(writer.WriteBegin(input->timestamp, frame_duration), "capture-frame-begin");
+      for (auto& worker : workers) worker->Submit(input);
+      previous_timestamp = input->timestamp;
+      ++source_frames;
+      refresh_input = false;
     };
     const HANDLE window_waits[] = {
         process.get(), shutdown.get(), frame_ready.get()};
     const HANDLE display_waits[] = {shutdown.get(), frame_ready.get()};
     for (;;) {
+      for (const auto& control : controls.Read()) {
+        if (control.kind == 'Q') {
+          cleanup();
+          return;
+        }
+        if (control.kind == 'A') {
+          refresh_input = refresh_input || control.value > active_count;
+          active_count = control.value;
+          ApplyOutputControl(control, workers);
+          continue;
+        }
+        ApplyOutputControl(control, workers);
+        refresh_input = true;
+      }
       DWORD wait = window_target
-                       ? WaitForMultipleObjects(3, window_waits, FALSE, 5'000)
-                       : WaitForMultipleObjects(2, display_waits, FALSE, 5'000);
+                       ? WaitForMultipleObjects(3, window_waits, FALSE, control_wait_ms)
+                       : WaitForMultipleObjects(2, display_waits, FALSE, control_wait_ms);
       if (window_target && wait == WAIT_OBJECT_0) {
         Fail("target-exited", "selected target process exited");
       }
@@ -2351,27 +2753,21 @@ void RunVideoCapture(const ProductArguments& arguments) {
       const DWORD frame_index =
           window_target ? WAIT_OBJECT_0 + 2 : WAIT_OBJECT_0 + 1;
       if (wait == shutdown_index) {
+        {
+          std::lock_guard<std::mutex> lock(failure_mutex);
+          if (failure) std::rethrow_exception(failure);
+        }
         if (item_closed.load()) {
           Fail("capture-closed", "selected source stopped capture");
         }
         Fail("capture-stopped", "source capture stopped");
       }
       if (wait == WAIT_TIMEOUT) {
-        // A quiet source is not a capture-end signal. The item/process wait
-        // handles remain the terminal signals; a pending keyframe can reuse
-        // the latest converted image.
-        ControlSignal control = ConsumeControlSignal();
-        if (control.stop) {
-          cleanup();
-          return;
-        }
-        pending_key_frame = pending_key_frame || control.key_frame;
-        if (pending_key_frame && latest_nv12) {
-          const UINT64 timestamp = previous_timestamp == 0
-                                       ? latest_timestamp
-                                       : previous_timestamp + frame_duration;
-          write_encoded(latest_nv12.Get(), timestamp, true);
-          pending_key_frame = false;
+        // An explicit output/control request may reuse a quiet source; silence is not EOF.
+        if (refresh_input && latest_input) {
+          auto input = std::make_shared<CaptureInput>(*latest_input);
+          input->timestamp = previous_timestamp + frame_duration;
+          submit(input);
         }
         continue;
       }
@@ -2403,8 +2799,7 @@ void RunVideoCapture(const ProductArguments& arguments) {
           content_size.Height != pool_size.Height) {
         latest.Close();
         latest = nullptr;
-        latest_nv12 = nullptr;
-        latest_timestamp = 0;
+        latest_input.reset();
         pool.Recreate(capture_device,
                       DirectXPixelFormat::B8G8R8A8UIntNormalized, 2,
                       content_size);
@@ -2418,10 +2813,21 @@ void RunVideoCapture(const ProductArguments& arguments) {
           source_description.Width, static_cast<UINT32>(content_size.Width));
       UINT32 content_height = std::min<UINT32>(
           source_description.Height, static_cast<UINT32>(content_size.Height));
-      ComPtr<ID3D11Texture2D> nv12 = converter.Convert(
-          source.Get(), content_width, content_height,
-          presentation.Resolve(content_width, content_height,
-                               encoded_frames % arguments.profile.gop_frames() == 0));
+      auto input = std::make_shared<CaptureInput>();
+      auto owned_description = source_description;
+      owned_description.Usage = D3D11_USAGE_DEFAULT;
+      owned_description.CPUAccessFlags = 0;
+      owned_description.MiscFlags = 0;
+      owned_description.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+      Check(device.device->CreateTexture2D(&owned_description, nullptr, &input->texture), "capture-owned-input");
+      device.context->CopyResource(input->texture.Get(), source.Get());
+      input->width = content_width;
+      input->height = content_height;
+      input->timestamp = timestamp;
+      input->presentation = presentation.Resolve(content_width, content_height,
+          source_frames % arguments.profile.gop_frames() == 0);
+      latest.Close();
+      latest = nullptr;
       if (next_output_timestamp == 0) {
         next_output_timestamp = timestamp + frame_duration;
       } else {
@@ -2431,19 +2837,8 @@ void RunVideoCapture(const ProductArguments& arguments) {
         next_output_timestamp +=
             (elapsed / frame_duration + 1) * frame_duration;
       }
-      latest_nv12 = nv12;
-      latest_timestamp = timestamp;
-      ControlSignal control = ConsumeControlSignal();
-      if (control.stop) {
-        cleanup();
-        return;
-      }
-      pending_key_frame = pending_key_frame || control.key_frame;
-      bool key_frame = encoded_frames == 0 ||
-                       encoded_frames % arguments.profile.gop_frames() == 0 ||
-                       pending_key_frame;
-      write_encoded(nv12.Get(), timestamp, key_frame);
-      pending_key_frame = false;
+      latest_input = input;
+      submit(input);
     }
   } catch (...) {
     cleanup();
@@ -2594,7 +2989,8 @@ int wmain(int argc, wchar_t** argv) {
       return 0;
     }
     Runtime runtime;
-    RunVideoCapture(arguments);
+    if (arguments.mode == ProductArguments::Mode::encoded) RunEncodedVideo(arguments);
+    else RunVideoCapture(arguments);
     return 0;
   } catch (const GateFailure& error) {
     std::cerr << "result=window-capture-failed\n"

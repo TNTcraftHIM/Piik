@@ -1,0 +1,275 @@
+// Package forwarding adapts mature RTP forwarding components without owning
+// room authority, capture or a second congestion controller.
+package forwarding
+
+import (
+	"sync"
+
+	"github.com/livekit/livekit-server/pkg/sfu"
+	"github.com/livekit/livekit-server/pkg/sfu/buffer"
+)
+
+// Output owns allocation for one video stream on one child connection. Its
+// physical owner closes it; budget changes and upstream events do not create
+// another scheduler. Do not attach a StreamAllocator to the same DownTrack.
+type Output struct {
+	*sfu.DownTrack
+	mu              sync.Mutex
+	writeMu         sync.Mutex
+	budget          int64
+	current         int32
+	allocation      sfu.VideoAllocation
+	hasAllocation   bool
+	closed          bool
+	onActivity      func()
+	onDemandChanged func()
+}
+
+// Snapshot is read by the parent at its input-frame boundary. Current means
+// accepted for forwarding, not remotely decoded. Prepare admits codec work,
+// not network delivery, from the latest supplied budget (initial or observed).
+// Its caller gates observed-only decisions with Transport.TargetBitrate.
+// -1 means no selected layer.
+type Snapshot struct {
+	Prepare, Target, Requested, Current int32
+	Paused                              bool
+	// VideoBudget is the current connection estimate after audio reservation.
+	// It is codec input, not a claim that this bitrate is available or delivered.
+	VideoBudget int64
+}
+
+func NewOutput(track *sfu.DownTrack, budget int64) *Output {
+	return &Output{DownTrack: track, budget: max(budget, 0), current: -1}
+}
+
+func (output *Output) SetBudget(budget int64) {
+	output.mu.Lock()
+	defer output.mu.Unlock()
+	output.budget = max(budget, 0)
+	output.reconcileLocked()
+}
+
+func (output *Output) Reconcile() {
+	output.mu.Lock()
+	defer output.mu.Unlock()
+	output.reconcileLocked()
+}
+
+func (output *Output) reconcileLocked() {
+	defer output.notifyDemand()
+	if output.closed {
+		return
+	}
+	if output.budget == 0 {
+		output.allocation = output.Pause()
+		output.hasAllocation = true
+		return
+	}
+	available, rates := output.Receiver().GetLayeredBitrate()
+	measured := false
+	for _, layer := range available {
+		if rates[layer][0] > 0 {
+			measured = true
+			break
+		}
+	}
+	if !measured {
+		if len(available) > 0 {
+			// A real layer can deliver before its bitrate window exists. The
+			// library bootstrap also establishes the target for PLI recovery.
+			output.allocation = output.AllocateOptimal(false, false)
+			output.hasAllocation = true
+		}
+		return
+	}
+	output.ProvisionalAllocatePrepare()
+	remaining := output.budget
+	maximum := output.MaxLayer()
+	for spatial := int32(0); spatial <= maximum.Spatial; spatial++ {
+		for temporal := int32(0); temporal <= maximum.Temporal; temporal++ {
+			_, used := output.ProvisionalAllocate(remaining,
+				buffer.VideoLayer{Spatial: spatial, Temporal: temporal}, true, false)
+			remaining -= used
+		}
+	}
+	// Keep the measured allocation honest while the parent reduces a prepared
+	// encoder's bitrate. It becomes selectable through real output measurements.
+	output.allocation = output.ProvisionalAllocateCommit()
+	output.hasAllocation = true
+}
+
+func (output *Output) State() Snapshot {
+	output.mu.Lock()
+	defer output.mu.Unlock()
+	if output.closed {
+		return Snapshot{Prepare: -1, Target: -1, Requested: -1, Current: -1, Paused: true}
+	}
+	prepare := int32(-1)
+	receiver := output.Receiver()
+	layers := buffer.GetVideoLayersForMimeType(receiver.Mime(), receiver.TrackInfo())
+	maximum := output.MaxLayer().Spatial
+	lowest := int32(-1)
+	for _, layer := range layers {
+		if layer.SpatialLayer >= 0 && layer.SpatialLayer < int32(len(layers)) &&
+			layer.SpatialLayer <= maximum && layer.Bitrate > 0 {
+			if lowest < 0 || layer.SpatialLayer < lowest {
+				lowest = layer.SpatialLayer
+			}
+			if int64(layer.Bitrate) <= output.budget {
+				prepare = max(prepare, layer.SpatialLayer)
+			}
+		}
+	}
+	// Below the lowest ceiling, keep one codec output eligible for rate control;
+	// otherwise pausing would retire the output needed to recover delivery.
+	if prepare < 0 && output.budget > 0 {
+		prepare = lowest
+	}
+	if !output.hasAllocation {
+		return Snapshot{Prepare: prepare, Target: -1, Requested: -1, Current: output.current, VideoBudget: output.budget}
+	}
+	return Snapshot{
+		Prepare: prepare,
+		Target:  output.allocation.TargetLayer.Spatial, Requested: output.allocation.RequestLayerSpatial,
+		Current: output.current, Paused: !output.allocation.TargetLayer.IsValid(), VideoBudget: output.budget,
+	}
+}
+
+func (output *Output) probeDemand() (int64, int64) {
+	output.mu.Lock()
+	defer output.mu.Unlock()
+	if output.closed || !output.hasAllocation {
+		return 0, 0
+	}
+	usage := output.BandwidthRequested()
+	if transition, available := output.GetNextHigherTransition(false); available {
+		return transition.BandwidthDelta, usage
+	}
+	// Dormant ceilings are desired demand only. They never enter the receiver's
+	// measured bitrate table or authorize forwarding an unavailable layer.
+	next, desired := int32(buffer.DefaultMaxLayerSpatial+1), int64(0)
+	for _, layer := range buffer.GetVideoLayersForMimeType(output.Receiver().Mime(), output.Receiver().TrackInfo()) {
+		if layer.SpatialLayer > output.allocation.TargetLayer.Spatial && layer.SpatialLayer <= output.MaxLayer().Spatial &&
+			layer.SpatialLayer < next && int64(layer.Bitrate) > output.budget {
+			next, desired = layer.SpatialLayer, int64(layer.Bitrate)
+		}
+	}
+	return max(desired-usage, 0), usage
+}
+
+func (output *Output) WriteRTP(packet *buffer.ExtPacket, layer int32) int32 {
+	if output.onActivity != nil {
+		output.onActivity()
+	}
+	output.writeMu.Lock()
+	defer output.writeMu.Unlock()
+	output.mu.Lock()
+	closed := output.closed
+	output.mu.Unlock()
+	if closed {
+		return 0
+	}
+	// DownTrack listeners may read State; never hold its mutex during callbacks.
+	written := output.DownTrack.WriteRTP(packet, layer)
+	if written > 0 && packet.Packet.Marker {
+		output.mu.Lock()
+		if !output.closed {
+			output.current = layer
+		}
+		output.mu.Unlock()
+		output.notifyDemand()
+	}
+	return written
+}
+
+// BeginFrame fences a controlled Native input before any of its outputs arrive.
+// Raw RTP has no such boundary and keeps DownTrack's ordinary switching path.
+func (output *Output) BeginFrame() {
+	output.writeMu.Lock()
+	defer output.writeMu.Unlock()
+	output.mu.Lock()
+	switching := !output.closed && output.hasAllocation && output.current >= 0 &&
+		output.allocation.TargetLayer.IsValid() && output.current != output.allocation.TargetLayer.Spatial
+	output.mu.Unlock()
+	if !switching {
+		return
+	}
+	output.DownTrack.Resync()
+	output.mu.Lock()
+	output.current = -1
+	output.mu.Unlock()
+}
+
+func (output *Output) Resync() {
+	output.writeMu.Lock()
+	defer output.writeMu.Unlock()
+	output.DownTrack.Resync()
+	output.mu.Lock()
+	output.current = -1
+	output.hasAllocation = false
+	output.mu.Unlock()
+}
+
+func (output *Output) ReceiverRestart(receiver sfu.TrackReceiver) {
+	output.writeMu.Lock()
+	defer output.writeMu.Unlock()
+	output.DownTrack.ReceiverRestart(receiver)
+	output.mu.Lock()
+	output.current = -1
+	// ReceiverBase updates availability after forwarding a new input. Arm the
+	// library's existing acquisition target before that first recovery AU arrives.
+	if !output.closed {
+		output.allocation = output.AllocateOptimal(false, false)
+		output.hasAllocation = true
+	}
+	output.mu.Unlock()
+}
+
+func (output *Output) SetMaxSpatialLayer(layer int32) {
+	output.DownTrack.SetMaxSpatialLayer(layer)
+	output.Reconcile()
+}
+
+func (output *Output) SetMaxTemporalLayer(layer int32) {
+	output.DownTrack.SetMaxTemporalLayer(layer)
+	output.Reconcile()
+}
+
+func (output *Output) UpTrackLayersChange() {
+	output.DownTrack.UpTrackLayersChange()
+	output.Reconcile()
+}
+
+func (output *Output) UpTrackBitrateAvailabilityChange() {
+	output.DownTrack.UpTrackBitrateAvailabilityChange()
+	output.Reconcile()
+}
+
+func (output *Output) UpTrackMaxPublishedLayerChange(layer int32) {
+	output.DownTrack.UpTrackMaxPublishedLayerChange(layer)
+	output.Reconcile()
+}
+
+func (output *Output) UpTrackMaxTemporalLayerSeenChange(layer int32) {
+	output.DownTrack.UpTrackMaxTemporalLayerSeenChange(layer)
+	output.Reconcile()
+}
+
+func (output *Output) UpTrackBitrateReport(layers []int32, rates sfu.Bitrates) {
+	output.DownTrack.UpTrackBitrateReport(layers, rates)
+	output.Reconcile()
+}
+
+func (output *Output) Close() {
+	output.mu.Lock()
+	output.closed = true
+	output.mu.Unlock()
+	output.DownTrack.Close()
+	output.notifyDemand()
+}
+
+func (output *Output) notifyDemand() {
+	if output.onDemandChanged != nil {
+		output.onDemandChanged()
+	}
+}

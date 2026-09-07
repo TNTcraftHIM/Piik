@@ -1,6 +1,7 @@
 package nativecontrol
 
 import (
+	"github.com/TNTcraftHIM/Screener/internal/client/mediaedge"
 	"github.com/TNTcraftHIM/Screener/internal/client/nativecapture"
 	"github.com/pion/webrtc/v4"
 )
@@ -15,6 +16,11 @@ type responseEnvelope struct {
 	Version int    `json:"version"`
 	ID      string `json:"id"`
 	Type    string `json:"type"`
+}
+
+type requestFailedResponse struct {
+	responseEnvelope
+	Code string `json:"code"`
 }
 
 type captureOptionsRequest requestEnvelope
@@ -218,10 +224,52 @@ type receiveAnswerResponse struct {
 }
 
 type eventEnvelope struct {
-	Version      int    `json:"version"`
-	Type         string `json:"type"`
-	ShareID      string `json:"shareId"`
-	ConnectionID string `json:"connectionId,omitempty"`
+	Version               int    `json:"version"`
+	Type                  string `json:"type"`
+	ShareID               string `json:"shareId"`
+	ConnectionID          string `json:"connectionId,omitempty"`
+	PublicationGeneration string `json:"publicationGeneration,omitempty"`
+}
+
+type publicationIdentity struct {
+	requestEnvelope
+	ShareID               string `json:"shareId"`
+	PublicationGeneration string `json:"publicationGeneration"`
+	ConnectionID          string `json:"connectionId"`
+}
+
+type preparePublicationRequest struct {
+	publicationIdentity
+	ICEServers []iceServer `json:"iceServers"`
+}
+
+type publicationAnswerRequest struct {
+	publicationIdentity
+	SDP string `json:"sdp"`
+}
+
+type publicationCandidateRequest struct {
+	publicationIdentity
+	Candidate *webrtc.ICECandidateInit `json:"candidate"`
+}
+
+type publicationLayersRequest struct {
+	publicationIdentity
+	ActiveCount *int `json:"activeCount"`
+}
+
+type publicationResponse struct {
+	responseEnvelope
+	ShareID               string                     `json:"shareId"`
+	PublicationGeneration string                     `json:"publicationGeneration"`
+	ConnectionID          string                     `json:"connectionId"`
+	SDP                   string                     `json:"sdp,omitempty"`
+	Media                 mediaedge.PublicationMedia `json:"media"`
+}
+
+type publicationQualityEvent struct {
+	eventEnvelope
+	mediaedge.PublicationQualitySample
 }
 
 type captureStateEvent struct {

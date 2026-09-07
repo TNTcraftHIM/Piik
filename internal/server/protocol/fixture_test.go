@@ -48,7 +48,6 @@ func TestFixtureConstants(t *testing.T) {
 		"maxSignalBytes":                      float64(MaxSignalBytes),
 		"roomCodeLength":                      float64(RoomCodeLength),
 		"maxMediaRouteRevision":               float64(MaxMediaRouteRevision),
-		"maxSfuTokenLength":                   float64(MaxSfuTokenLength),
 		"maxIceServerUrls":                    float64(MaxIceServerURLs),
 		"maxNatPredictionAuxiliaryStunUrls":   float64(MaxNatPredictionAuxiliaryStunURLs),
 		"maxViewerQualityEvidenceBytes":       float64(MaxViewerQualityEvidenceBytes),

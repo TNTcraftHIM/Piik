@@ -1,6 +1,5 @@
 [Unit]
-Description=Screener WebRTC signaling and web application
-# Same-host LiveKit deployments also install the tracked readiness drop-in.
+Description=Screener web, signaling, STUN and SFU application
 After=network-online.target
 Wants=network-online.target
 

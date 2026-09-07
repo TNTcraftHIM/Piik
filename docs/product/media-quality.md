@@ -6,6 +6,10 @@ and [screen-audio research](../research/browser-screen-audio-quality.md).
 [ADR-0007](../adr/0007-path-isolated-representation-quality.md) owns the SFU
 adaptation decision.
 
+[ADR-0013](../adr/0013-embedded-node-local-media.md) accepts the successor shared
+Native/SFU model. Its implementation is in progress; the runtime behavior below
+has not yet been replaced by multi-output Native adaptation.
+
 ## Capture And Controls
 
 - The Web Host may share a display, application window, or Browser tab and may
@@ -123,6 +127,11 @@ Tracks received from a PeerConnection do not own capture constraints. Native
 capture therefore retains source resolution and frame-rate ownership across its
 loopback Browser bridge; the existing Browser SFU publisher applies only sender
 parameters and LiveKit's representation policy to that remote source.
+
+Native encoded output is grouped by source, while packet identity and delivered
+video counters belong to each outbound edge. Unused representations must not
+inflate that edge's reported FPS or bitrate. Current packaged capture still
+emits one representation; multi-output adaptation remains under implementation.
 
 Native sender edges normally reuse one encoded source. A Native Viewer forwards
 compatible H.264/VP8 and Opus payload without decoding or re-encoding it; each outbound

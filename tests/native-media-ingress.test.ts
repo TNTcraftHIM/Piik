@@ -44,7 +44,7 @@ function fixture(pending = false) {
     onEvent: (next) => { listener = next; return () => { listener = null; }; },
   };
   const onFailed = vi.fn();
-  const ingress = new NativeMediaIngress("share_123456", control, onFailed);
+  const ingress = new NativeMediaIngress("share_123456", control, onFailed, () => DEFAULT_QUALITY_SETTINGS);
   const stream = { getAudioTracks: () => [] } as unknown as MediaStream;
   return { ingress, control, stream, onFailed, answer: () => resolveAnswer(answer), emit: (event: NativeClientEvent) => listener?.(event) };
 }

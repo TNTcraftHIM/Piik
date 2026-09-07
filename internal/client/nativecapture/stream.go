@@ -17,6 +17,9 @@ import (
 const (
 	captureStopTimeout = time.Second
 	maxPreviewBytes    = 192 * 1024
+	maxOutputs         = 3
+	minOutputBitrate   = 1_000 // Codec rate APIs use whole kbps.
+	maxOutputBitrate   = 12_000_000
 )
 
 type audioCaptureState struct {
@@ -41,6 +44,14 @@ type VideoOptions struct {
 	RestoreToken string
 }
 
+type EncodedVideoOptions struct {
+	Codec        string
+	AdapterIndex uint32
+	EncoderIndex uint32
+	Preference   string
+	Outputs      []OutputProfile
+}
+
 type VideoProfile struct {
 	Width      uint32
 	Height     uint32
@@ -49,18 +60,49 @@ type VideoProfile struct {
 	Preference string
 }
 
+// OutputProfile describes one codec output, not a selectable product preset.
+type OutputProfile struct {
+	Width     uint32 `json:"width"`
+	Height    uint32 `json:"height"`
+	Framerate uint32 `json:"fps"`
+	Bitrate   uint32 `json:"bitrate"`
+}
+
+func (profile OutputProfile) Valid() bool {
+	return profile.Width >= 2 && profile.Width <= 2560 && profile.Width%2 == 0 &&
+		profile.Height >= 2 && profile.Height <= 1440 && profile.Height%2 == 0 &&
+		profile.Framerate >= 1 && profile.Framerate <= 60 &&
+		profile.Bitrate >= minOutputBitrate && profile.Bitrate <= maxOutputBitrate
+}
+
+// ScreenShareOutputs follows LiveKit 2.22.1's screen-share simulcast construction,
+// with even derived dimensions for NV12. The source profile has already passed Valid.
+func ScreenShareOutputs(profile VideoProfile) []OutputProfile {
+	return []OutputProfile{
+		{
+			Width: profile.Width / 4 * 2, Height: profile.Height / 4 * 2,
+			Framerate: profile.Framerate, Bitrate: max(150_000, profile.Bitrate/4),
+		},
+		{
+			Width: profile.Width, Height: profile.Height,
+			Framerate: profile.Framerate, Bitrate: profile.Bitrate,
+		},
+	}
+}
+
 func (profile VideoProfile) Valid() bool {
 	validResolution :=
 		(profile.Width == 854 && profile.Height == 480) ||
 			(profile.Width == 1280 && profile.Height == 720) ||
 			(profile.Width == 1920 && profile.Height == 1080) ||
 			(profile.Width == 2560 && profile.Height == 1440)
-	validPreference := profile.Preference == "maintain-resolution" ||
-		profile.Preference == "balanced" ||
-		profile.Preference == "maintain-framerate"
 	return validResolution && profile.Framerate >= 15 && profile.Framerate <= 60 &&
 		profile.Bitrate >= 2_000_000 && profile.Bitrate <= 12_000_000 &&
-		validPreference
+		validVideoPreference(profile.Preference)
+}
+
+func validVideoPreference(preference string) bool {
+	return preference == "maintain-resolution" || preference == "balanced" || preference == "maintain-framerate"
 }
 
 type Stream struct {
@@ -69,7 +111,13 @@ type Stream struct {
 	key    io.WriteCloser
 	done   chan error
 
-	closeOnce sync.Once
+	outputs     []OutputProfile
+	activeCount int
+	hasActive   bool
+	bitrates    [maxOutputs]uint32
+	controlMu   sync.Mutex
+	closed      bool
+	closeOnce   sync.Once
 }
 
 func ListSources(parent context.Context, executable string) ([]CaptureTarget, error) {
@@ -88,7 +136,7 @@ func ListSources(parent context.Context, executable string) ([]CaptureTarget, er
 		return nil, errors.New("native capture source list is invalid")
 	}
 	for _, target := range targets {
-		if !validCaptureTarget(target) {
+		if !target.Valid() {
 			return nil, errors.New("native capture target is invalid")
 		}
 	}
@@ -96,7 +144,7 @@ func ListSources(parent context.Context, executable string) ([]CaptureTarget, er
 }
 
 func PreviewSource(parent context.Context, executable string, target CaptureTarget) ([]byte, error) {
-	if !validCaptureTarget(target) {
+	if !target.Valid() {
 		return nil, errors.New("native preview target is invalid")
 	}
 	ctx, cancel := context.WithTimeout(parent, probeTimeout)
@@ -123,7 +171,7 @@ func PreviewSource(parent context.Context, executable string, target CaptureTarg
 }
 
 func StartVideo(parent context.Context, executable string, options VideoOptions) (*Stream, error) {
-	if !validCaptureTarget(options.Target) || !options.Profile.Valid() ||
+	if !options.Target.Valid() || !options.Profile.Valid() ||
 		(options.Codec != "auto" && options.Codec != "h264" && options.Codec != "vp8") ||
 		len(options.RestoreToken) > 4096 || !utf8.ValidString(options.RestoreToken) ||
 		strings.ContainsRune(options.RestoreToken, 0) {
@@ -133,7 +181,7 @@ func StartVideo(parent context.Context, executable string, options VideoOptions)
 	if options.RestoreToken != "" {
 		environment = []string{"SCREENER_XDP_RESTORE_TOKEN=" + options.RestoreToken}
 	}
-	return startStreamWithEnvironment(parent, executable, []string{
+	arguments := []string{
 		"--capture-video",
 		options.Target.Kind,
 		options.Target.SourceID,
@@ -155,12 +203,64 @@ func StartVideo(parent context.Context, executable string, options VideoOptions)
 		options.Profile.Preference,
 		"--codec",
 		options.Codec,
-		"--protocol-v4",
-	}, environment)
+		"--protocol-v5",
+	}
+	outputs := ScreenShareOutputs(options.Profile)
+	arguments, err := appendOutputArguments(arguments, outputs)
+	if err != nil {
+		return nil, err
+	}
+	stream, err := startStreamWithEnvironment(parent, executable, arguments, environment)
+	if err != nil {
+		return nil, err
+	}
+	stream.outputs = outputs
+	return stream, nil
+}
+
+func StartEncodedVideo(parent context.Context, executable string, options EncodedVideoOptions) (*Stream, error) {
+	if (options.Codec != "h264" && options.Codec != "vp8") || !validVideoPreference(options.Preference) {
+		return nil, errors.New("native encoded video options are invalid")
+	}
+	arguments, err := appendOutputArguments([]string{
+		"--encoded-video", "--codec", options.Codec,
+		"--adapter-index", strconv.FormatUint(uint64(options.AdapterIndex), 10),
+		"--mft-index", strconv.FormatUint(uint64(options.EncoderIndex), 10),
+		"--preference", options.Preference, "--protocol-v5",
+	}, options.Outputs)
+	if err != nil {
+		return nil, err
+	}
+	stream, err := startStream(parent, executable, arguments)
+	if err != nil {
+		return nil, err
+	}
+	stream.outputs = append([]OutputProfile(nil), options.Outputs...)
+	return stream, nil
+}
+
+func appendOutputArguments(arguments []string, outputs []OutputProfile) ([]string, error) {
+	if len(outputs) < 1 || len(outputs) > maxOutputs {
+		return nil, errors.New("native output count is invalid")
+	}
+	for index, output := range outputs {
+		if !output.Valid() {
+			return nil, errors.New("native output profile is invalid")
+		}
+		if index > 0 {
+			previous := outputs[index-1]
+			if output.Width <= previous.Width || output.Height <= previous.Height || output.Framerate < previous.Framerate || output.Bitrate < previous.Bitrate {
+				return nil, errors.New("native output profiles must be ordered low to high")
+			}
+		}
+		arguments = append(arguments, "--output", strconv.FormatUint(uint64(output.Width), 10),
+			strconv.FormatUint(uint64(output.Height), 10), strconv.FormatUint(uint64(output.Framerate), 10), strconv.FormatUint(uint64(output.Bitrate), 10))
+	}
+	return arguments, nil
 }
 
 func StartAudio(parent context.Context, executable string, target CaptureTarget) (*Stream, error) {
-	if !validCaptureTarget(target) {
+	if !target.Valid() {
 		return nil, errors.New("native audio target is invalid")
 	}
 	return startAudioStream(parent, executable, []string{
@@ -212,7 +312,7 @@ func startAudioStream(parent context.Context, executable string, arguments []str
 	}
 }
 
-func validCaptureTarget(target CaptureTarget) bool {
+func (target CaptureTarget) Valid() bool {
 	if !positiveDecimal(target.SourceID) || len(target.Title) == 0 ||
 		len(target.Title) > 4096 {
 		return false
@@ -312,9 +412,80 @@ func (stream *Stream) Read() (Frame, error) {
 	return readFrame(stream.input)
 }
 
-func (stream *Stream) RequestKeyFrame() error {
-	_, err := stream.key.Write([]byte{'K'})
-	return err
+// WriteFrame shares the existing stdin lock with control. Only encoded video
+// crosses this input boundary; capture status and PCM remain producer outputs.
+func (stream *Stream) WriteFrame(frame Frame) error {
+	if frame.Kind != FrameH264 && frame.Kind != FrameVP8 {
+		return errors.New("native encoded input is not video")
+	}
+	stream.controlMu.Lock()
+	defer stream.controlMu.Unlock()
+	if stream.closed {
+		return io.ErrClosedPipe
+	}
+	return writeFrame(stream.key, frame)
+}
+
+func (stream *Stream) Outputs() []OutputProfile {
+	return append([]OutputProfile(nil), stream.outputs...)
+}
+
+func (stream *Stream) RequestKeyFrame(layer int) error {
+	if layer < -1 || layer >= len(stream.outputs) || len(stream.outputs) == 0 {
+		return errors.New("native recovery output is invalid")
+	}
+	return stream.writeControl("K " + strconv.Itoa(layer))
+}
+
+func (stream *Stream) SetActiveOutputs(count int) error {
+	if count < 0 || count > len(stream.outputs) || len(stream.outputs) == 0 {
+		return errors.New("native active output count is invalid")
+	}
+	stream.controlMu.Lock()
+	defer stream.controlMu.Unlock()
+	if stream.closed {
+		return io.ErrClosedPipe
+	}
+	if stream.hasActive && stream.activeCount == count {
+		return nil
+	}
+	if err := stream.writeControlLocked("A " + strconv.Itoa(count)); err != nil {
+		return err
+	}
+	stream.activeCount, stream.hasActive = count, true
+	return nil
+}
+
+func (stream *Stream) SetOutputBitrate(layer int, bitrate uint32) error {
+	if layer < 0 || layer >= len(stream.outputs) || bitrate < minOutputBitrate || bitrate > stream.outputs[layer].Bitrate {
+		return errors.New("native output bitrate is invalid")
+	}
+	stream.controlMu.Lock()
+	defer stream.controlMu.Unlock()
+	if stream.closed {
+		return io.ErrClosedPipe
+	}
+	if stream.bitrates[layer] == bitrate {
+		return nil
+	}
+	if err := stream.writeControlLocked("B " + strconv.Itoa(layer) + " " + strconv.FormatUint(uint64(bitrate), 10)); err != nil {
+		return err
+	}
+	stream.bitrates[layer] = bitrate
+	return nil
+}
+
+func (stream *Stream) writeControl(command string) error {
+	stream.controlMu.Lock()
+	defer stream.controlMu.Unlock()
+	return stream.writeControlLocked(command)
+}
+
+func (stream *Stream) writeControlLocked(command string) error {
+	if stream.closed {
+		return io.ErrClosedPipe
+	}
+	return writeFrame(stream.key, Frame{Kind: FrameControl, Data: []byte(command)})
 }
 
 func (stream *Stream) Done() <-chan error {
@@ -322,17 +493,17 @@ func (stream *Stream) Done() <-chan error {
 }
 
 func (stream *Stream) Close() error {
+	// Start the existing stop budget before waiting for a possibly blocked control write.
+	timer := time.AfterFunc(captureStopTimeout, stream.cancel)
+	defer timer.Stop()
 	stream.closeOnce.Do(func() {
-		_, _ = stream.key.Write([]byte{'Q'})
+		stream.controlMu.Lock()
+		defer stream.controlMu.Unlock()
+		stream.closed = true
+		_ = writeFrame(stream.key, Frame{Kind: FrameControl, Data: []byte("Q")})
 		_ = stream.key.Close()
 	})
-	select {
-	case <-stream.done:
-		stream.cancel()
-		return nil
-	case <-time.After(captureStopTimeout):
-		stream.cancel()
-		<-stream.done
-		return nil
-	}
+	<-stream.done
+	stream.cancel()
+	return nil
 }

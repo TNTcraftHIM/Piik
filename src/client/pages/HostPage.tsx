@@ -14,6 +14,7 @@ import {
   MAX_VIEWER_PASSWORD_LENGTH,
   viewerPasswordSchema,
   type CreateRoomResponse,
+  type ClientMessage,
   type IceConfig,
   type ParticipantPresenceEntry,
   type PreparedRouteCandidate,
@@ -125,7 +126,6 @@ import { HostSfuRoute } from "../media/host-sfu-route";
 import {
   HostProvisionalChild,
 } from "../media/host-provisional-child";
-import { SfuStandbyPrewarmer } from "../media/sfu-standby-prewarmer";
 import {
   invalidateSenderQualityEvidence,
   senderQualityEvidenceFromSnapshot,
@@ -153,6 +153,8 @@ import {
   NativeSenderPeer,
   shouldUseBrowserQualityCandidate,
 } from "../native/native-sender-peer";
+import { NativeSfuPublisher } from "../native/native-sfu-publisher";
+import { SfuPublisher } from "../sfu/publisher";
 import { NativeMediaBridge } from "../native/media-bridge";
 import { NativeMediaIngress } from "../native/media-ingress";
 import {
@@ -582,7 +584,6 @@ export function HostPage({
   const sharingPausedRef = useRef(false);
   const retiringStreamRef = useRef<MediaStream | null>(null);
   const hostSfuRouteRef = useRef<HostSfuRoute | null>(null);
-  const sfuStandbyPrewarmerRef = useRef<SfuStandbyPrewarmer | null>(null);
   const nativeClientRef = useRef<NativeClient | null>(null);
   const nativeClientConnectRef = useRef<Promise<NativeClient | null> | null>(null);
   const nativeShareGenerationRef = useRef<string | null>(null);
@@ -712,7 +713,6 @@ export function HostPage({
       activeRouteRevisionRef.current = 0;
       void hostSfuRouteRef.current?.disconnect();
       hostSfuRouteRef.current = null;
-      sfuStandbyPrewarmerRef.current?.dispose();
       nativeSourceRequestRef.current = null;
       nativeSourcePathRef.current = null;
       disposeNativeShare();
@@ -784,6 +784,21 @@ export function HostPage({
       getStream: () => streamRef.current,
       getProfile: () => qualitySettingsRef.current,
       getVideoCodec: () => videoCodecRef.current.primary,
+      createPublisher: (onDisconnected, onStats) => {
+        const events = {
+          send: (message: ClientMessage) => isCurrentGeneration(generation) && hostSfuRouteRef.current === route
+            ? signalRef.current?.send(message) === true : false,
+          onDisconnected, onStats,
+        };
+        if (nativeModeRef.current) {
+          const client = nativeClientRef.current;
+          const shareId = nativeShareGenerationRef.current;
+          const ice = iceConfigRef.current;
+          if (!client || !shareId || !ice) throw new Error("Native publication source is unavailable");
+          return new NativeSfuPublisher(client, shareId, ice, events);
+        }
+        return new SfuPublisher(events);
+      },
       reconcileChildren: (childPeerIds) => {
         if (
           isCurrentGeneration(generation) &&
@@ -816,15 +831,6 @@ export function HostPage({
     });
     hostSfuRouteRef.current = route;
     return route;
-  }
-
-  function setSfuStandbyUrl(url: string | null | undefined): void {
-    if (!url) {
-      sfuStandbyPrewarmerRef.current?.setUrl(null);
-      return;
-    }
-    sfuStandbyPrewarmerRef.current ??= new SfuStandbyPrewarmer();
-    sfuStandbyPrewarmerRef.current.setUrl(url);
   }
 
   function syncHostSfuQualityWarning(
@@ -875,7 +881,6 @@ export function HostPage({
     hostPeerIdRef.current = null;
     void hostSfuRouteRef.current?.disconnect();
     hostSfuRouteRef.current = null;
-    sfuStandbyPrewarmerRef.current?.setUrl(null);
     streamRef.current?.getTracks().forEach((track) => track.stop());
     retiringStreamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
@@ -1404,7 +1409,7 @@ export function HostPage({
     if (!client || !isCurrentShare(generation, shareGeneration)) return;
     const ingress = new NativeMediaIngress(shareGeneration, client, () => {
       recoverBrowserFanout(ingress);
-    });
+    }, () => qualitySettingsRef.current);
     nativeMediaIngressRef.current = ingress;
     nativeShareGenerationRef.current = shareGeneration;
     try {
@@ -2174,9 +2179,6 @@ export function HostPage({
       setViewerPasswordEnabled(message.viewerPasswordEnabled);
       setViewerPasswordDraft(authenticatedProfile.roomPassword ?? "");
       setViewerPasswordVisible(false);
-      setSfuStandbyUrl(
-        "sfuStandbyUrl" in message ? message.sfuStandbyUrl : null,
-      );
       setMaxViewers(message.maxViewers);
       routePolicyRef.current = { ...message.routePolicy };
       setRoutePolicy({ ...message.routePolicy });
@@ -2288,6 +2290,10 @@ export function HostPage({
       void route
         .acceptConfig(message)
         .then(() => syncHostSfuQualityWarning(route, generation));
+      return;
+    }
+    if (message.type === "sfu-signal") {
+      void hostSfuRouteRef.current?.acceptSignal(message);
       return;
     }
     if (message.type === "signal") {
@@ -2675,9 +2681,10 @@ export function HostPage({
           nativeCaptureDetails(qualitySettingsRef.current, activeStream),
         );
       }
+      const sfuUpdated = await hostSfuRouteRef.current?.updateProfile(qualitySettingsRef.current) ?? true;
       setNotice(sourceSwitchNotice({
         failedPeerCount: 0,
-        sfuReplaced: true,
+        sfuReplaced: sfuUpdated,
         sfuWarning: null,
       }));
     } catch (error) {
@@ -2765,7 +2772,7 @@ export function HostPage({
             if (!client) throw new Error("Native media ingress is unavailable");
             const replacement = new NativeMediaIngress(ingress.shareId, client, () => {
               recoverBrowserFanout(replacement);
-            });
+            }, () => qualitySettingsRef.current);
             try {
               await replacement.start(captured, qualitySettingsRef.current);
               if (!isCurrentGeneration(generation) || nativeMediaIngressRef.current !== ingress) {
@@ -4158,7 +4165,7 @@ export function HostPage({
 
           <Row label={t("host.quality")}>
             <RowGroup>
-              <div className="lr-tiles">
+              <div className="lr-tiles" aria-busy={changingQuality}>
                 {(Object.keys(QUALITY_PROFILES) as QualityProfileId[]).map(
                   (id, index) => (
                     <Fragment key={id}>
@@ -4210,6 +4217,7 @@ export function HostPage({
               "hint-advanced",
               <Btn
                 icon="sliders"
+                busy={changingQuality}
                 cap="host.advanced"
                 title="host.advanced"
                 tone={showAdvanced ? "on" : undefined}
@@ -4238,6 +4246,7 @@ export function HostPage({
                   className="lr-door-body"
                   role="group"
                   aria-label={t("host.advanced")}
+                  aria-busy={changingQuality}
                 >
                   <div className="lr-door-group">
                     <span

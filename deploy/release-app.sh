@@ -150,10 +150,15 @@ test -f "$artifact"
 test -f "$manifest"
 test "$(sha256sum "$artifact" | awk '{print $1}')" = "$artifact_sha"
 test "$(sha256sum "$manifest" | awk '{print $1}')" = "$manifest_sha"
-for service in screener livekit coturn nginx; do
+for service in screener nginx; do
   test "$(systemctl show "${service}.service" -p ActiveState --value)" = 'active'
   test "$(systemctl show "${service}.service" -p NRestarts --value)" = '0'
 done
+# The first Go/embedded-media cutover owns its infrastructure recovery separately.
+test -x "$old_release/screener-server"
+old_pid="$(systemctl show screener.service -p MainPID --value)"
+test "$old_pid" -gt 1
+test "$(readlink -f "/proc/${old_pid}/exe")" = "$old_release/screener-server"
 
 while IFS= read -r raw_entry; do
   entry="$raw_entry"
@@ -228,8 +233,6 @@ test ! -L "$release"
 test "$(stat -c '%U:%G %a' "$release")" = 'root:root 755'
 
 firewall_before="$(nft list table inet bonfire_filter | sha256sum | awk '{print $1}')"
-livekit_restarts="$(systemctl show livekit.service -p NRestarts --value)"
-coturn_restarts="$(systemctl show coturn.service -p NRestarts --value)"
 nginx_restarts="$(systemctl show nginx.service -p NRestarts --value)"
 cutover_since="$(date '+%Y-%m-%d %H:%M:%S')"
 cutover_start="$(date +%s%3N)"
@@ -245,8 +248,6 @@ health_ready="$(date +%s%3N)"
 
 test "$(systemctl show screener.service -p ActiveState --value)" = 'active'
 test "$(systemctl show screener.service -p NRestarts --value)" = '0'
-test "$(systemctl show livekit.service -p NRestarts --value)" = "$livekit_restarts"
-test "$(systemctl show coturn.service -p NRestarts --value)" = "$coturn_restarts"
 test "$(systemctl show nginx.service -p NRestarts --value)" = "$nginx_restarts"
 test "$(nft list table inet bonfire_filter | sha256sum | awk '{print $1}')" = "$firewall_before"
 test "$(readlink -f -- "$current")" = "$release"

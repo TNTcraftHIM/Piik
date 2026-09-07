@@ -18,21 +18,22 @@ service secret store or an untracked access-restricted environment file.
 | `ROOM_DATABASE_PATH` | Optional absolute SQLite file path; unset selects memory mode. |
 | `MAX_VIEWERS_PER_ROOM` | `1..20`, default `8`. |
 | `ENDPOINT_MEDIA_COPY_CAPACITY` | Shared endpoint steady-copy cap `1..3`, default `2`. |
-| `STUN_URLS` | Comma-separated `stun:` URLs; at least one is required in production. |
-| `NAT_PREDICTION_ENABLED` | Optional bounded NAT prediction capability, default `false`; requires an ordinary `STUN_URLS` endpoint on UDP 3478 plus reachable same-host UDP 3479/3480 listeners. |
+| `STUN_URLS` | Comma-separated advertised `stun:` discovery URLs; at least one is required in production. These are not local bind addresses and may use an unproxied DNS name separate from the Web origin. |
+| `STUN_LISTEN_HOST` | Hosted IPv4 STUN bind address, default `0.0.0.0` when `STUN_URLS` is configured; independent of HTTP `LISTEN_HOST`. Local Client construction creates no STUN listeners. |
+| `NAT_PREDICTION_ENABLED` | Optional bounded NAT prediction capability, default `false`; requires an ordinary `STUN_URLS` endpoint on UDP 3478. Hosted startup binds UDP 3479/3480 before advertising the capability. Firewall reachability remains an operator requirement. |
 
-Automatic SFU fallback is enabled when all four values below are present:
+Automatic SFU fallback runs inside the Hosted process when `SFU_UDP_PORT` is set:
 
 | Variable | Contract |
 | --- | --- |
-| `LIVEKIT_URL` | Browser `ws:`/`wss:` origin with no path; production requires WSS. |
-| `LIVEKIT_API_URL` | RoomService `http:`/`https:` origin with no path; production plaintext is loopback-only. |
-| `LIVEKIT_API_KEY` | Independent LiveKit API key. |
-| `LIVEKIT_API_SECRET` | Independent secret of at least 32 bytes. |
+| `SFU_UDP_PORT` | Optional UDP media port `1..65535`; unset or blank disables SFU. Set `7882` for the standard public listener. |
+| `SFU_LISTEN_HOST` | IPv4 bind address, default `0.0.0.0`; independent of HTTP `LISTEN_HOST`. Read only when SFU is enabled. |
+| `SFU_PUBLIC_IP` | Optional explicit IPv4 advertised-address override for a host behind NAT. Read only when SFU is enabled. |
 
-The site-access password, LiveKit API key, and LiveKit secret must not reuse one
-another. LiveKit tokens are short-lived media credentials and do not provide
-application E2EE.
+SFU control uses the application's authenticated signaling connection. No
+separate control origin or infrastructure credentials are configured. Local and
+public-link Client construction create no SFU listener. The relay does not
+provide application E2EE.
 
 Removed access, room TTL, endpoint-tier, room-rollout, and TURN variables fail
 startup even when blank. A present `NODE_ENV` fails the same way, so a stale
@@ -50,13 +51,12 @@ candidates, tokens or media credentials.
 | Port | Scope | Owner |
 | ---: | --- | --- |
 | TCP 80/443 | public | HTTP redirect and HTTPS/WSS reverse proxy |
-| UDP 3478 | public | STUN-only coturn |
-| UDP 3479/3480 | public when NAT prediction is enabled | auxiliary STUN-only coturn listeners |
-| UDP 7882 | public when SFU enabled | LiveKit WebRTC media |
+| UDP 3478 | public | in-process STUN-only Screener listener |
+| UDP 3479/3480 | public when NAT prediction is enabled | in-process auxiliary STUN-only Screener listeners |
+| UDP 7882 (or `SFU_UDP_PORT`) | public when SFU enabled | in-process Screener WebRTC media |
 | TCP 8787 | private | Screener application |
-| TCP 7880 | private when SFU enabled | LiveKit signaling/control |
 
-TCP 3478, TCP/TLS 5349, TURN relay ranges, LiveKit media TCP, and other media
+TCP 3478, TCP/TLS 5349, TURN relay ranges, media TCP, and other media
 ports remain closed. HTTPS/WSS transport is independent of the UDP-only media
 contract.
 
@@ -64,10 +64,14 @@ When `NAT_PREDICTION_ENABLED=true`, the server derives
 `stun:<same-hostname>:3479` and `:3480` from the first ordinary STUN authority
 on UDP 3478. The Host sees a pre-share switch that defaults on and may disable
 it. The capability adds no media route or third-party service. It needs both
-cloud security-group rules and the host's `/etc/nftables.conf` rule; coturn must
-bind both auxiliary listeners with `aux-server`. Opening a cloud port without a
-listener has no effect, and no new DNS record is required. Disable the
-capability before removing either listener or firewall rule. Same-IP ports
+cloud security-group rules and the host's `/etc/nftables.conf` rule. Screener
+binds every required UDP listener before opening room persistence or accepting
+signaling; a bind failure rolls back all newly owned sockets. Close and End
+retire these listeners with the application. Existing coturn listeners must
+be retired in the coordinated deployment because two processes cannot own the
+same ports. Opening a cloud port without a listener has no effect, and local
+binding alone does not prove external reachability. Disable the capability
+before removing firewall rules. Same-IP ports
 expose destination-port allocation behavior; a full RFC 5780 alternate-address
 test requires a second public IPv4.
 
@@ -80,5 +84,5 @@ test requires a second public IPv4.
 - The four-digit code space fixes the maximum managed Host publications at
   9,000; maximum subscription admission is that capacity times the configured
   per-room Viewer limit. These are admission bounds, not throughput claims.
-- One application process owns room authority and LiveKit admission. Multiple
+- One application process owns room authority and SFU admission. Multiple
   processes require a new shared atomic owner.

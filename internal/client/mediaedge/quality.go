@@ -1,38 +1,12 @@
 package mediaedge
 
 import (
-	"sync"
 	"time"
 
-	"github.com/pion/interceptor"
-	"github.com/pion/interceptor/pkg/cc"
-	"github.com/pion/interceptor/pkg/gcc"
 	"github.com/pion/webrtc/v4"
 )
 
 const defaultNativeSourceInitialBitrate = 3_000_000
-
-type targetBitrateEstimator interface {
-	GetTargetBitrate() int
-	OnTargetBitrateChange(func(int))
-}
-
-type bandwidthObserver struct {
-	estimator targetBitrateEstimator
-
-	mu       sync.RWMutex
-	observed bool
-}
-
-func newBandwidthObserver(estimator targetBitrateEstimator) *bandwidthObserver {
-	observer := &bandwidthObserver{estimator: estimator}
-	estimator.OnTargetBitrateChange(func(int) {
-		observer.mu.Lock()
-		observer.observed = true
-		observer.mu.Unlock()
-	})
-	return observer
-}
 
 type QualitySample struct {
 	SampleTimestampMs     int64
@@ -57,12 +31,12 @@ type qualityBaseline struct {
 }
 
 func (edge *Edge) QualitySample(now time.Time) (QualitySample, bool) {
-	video := edge.source.snapshot()
+	framesNow, bytesNow, format := edge.videoCounters()
 	audioBytes := edge.audioSource.snapshotBytes()
 	edge.qualityMu.Lock()
 	previous := edge.qualityBaseline
 	edge.qualityBaseline = qualityBaseline{
-		at: now, frames: video.frames, videoBytes: video.bytes, audioBytes: audioBytes,
+		at: now, frames: framesNow, videoBytes: bytesNow, audioBytes: audioBytes,
 	}
 	edge.qualityMu.Unlock()
 	if previous.at.IsZero() {
@@ -70,27 +44,30 @@ func (edge *Edge) QualitySample(now time.Time) (QualitySample, bool) {
 	}
 	window := now.Sub(previous.at)
 	if window < time.Second || window > 5*time.Second ||
-		video.frames < previous.frames || video.bytes < previous.videoBytes ||
+		framesNow < previous.frames || bytesNow < previous.videoBytes ||
 		audioBytes < previous.audioBytes {
 		return QualitySample{}, false
 	}
-	frames := video.frames - previous.frames
-	bytes := video.bytes - previous.videoBytes + audioBytes - previous.audioBytes
+	frames := framesNow - previous.frames
+	bytes := bytesNow - previous.videoBytes + audioBytes - previous.audioBytes
 	seconds := window.Seconds()
+	if edge.audioSource != nil && edge.audioSource.encoder == nil {
+		edge.transport.SetAudioBitrate(uint32(float64((audioBytes-previous.audioBytes)*8) / seconds))
+	}
 	bitrate := float64(bytes*8) / seconds
 	sample := QualitySample{
 		SampleTimestampMs:     now.UnixMilli(),
 		SampleWindowMs:        window.Milliseconds(),
 		RTPStatsID:            edge.connection.ID(),
-		TrackIdentifier:       edge.source.track.ID(),
+		TrackIdentifier:       edge.transport.Output.ID(),
 		State:                 "unknown",
 		IntervalFramesEncoded: frames,
 		FramesPerSecond:       float64(frames) / seconds,
 		BitrateKbps:           bitrate / 1000,
-		Width:                 video.width,
-		Height:                video.height,
+		Width:                 uint32(format >> 32),
+		Height:                uint32(format),
 	}
-	target, observed := edge.bandwidth.targetBitrate()
+	target, observed := edge.targetBitrate()
 	if edge.State() != webrtc.PeerConnectionStateConnected || !observed ||
 		frames == 0 || bytes == 0 {
 		return sample, true
@@ -106,55 +83,19 @@ func (edge *Edge) QualitySample(now time.Time) (QualitySample, bool) {
 	return sample, true
 }
 
-func (observer *bandwidthObserver) targetBitrate() (int, bool) {
-	observer.mu.RLock()
-	observed := observer.observed
-	observer.mu.RUnlock()
-	if !observed {
-		return 0, false
+func (edge *Edge) videoCounters() (frames, bytes, format uint64) {
+	stats := edge.transport.Output.GetState().RTPStats.ToProto()
+	if stats != nil {
+		frames, bytes = uint64(stats.Frames), stats.Bytes-stats.HeaderBytes
 	}
-	return observer.estimator.GetTargetBitrate(), true
-}
-
-type bandwidthObservers struct {
-	mu      sync.Mutex
-	pending map[string]*bandwidthObserver
-}
-
-func configureBandwidthObservers(
-	media *webrtc.MediaEngine,
-	registry *interceptor.Registry,
-	initialBitrate int,
-) (*bandwidthObservers, error) {
-	if initialBitrate <= 0 {
-		initialBitrate = defaultNativeSourceInitialBitrate
+	current := edge.transport.Output.State().Current
+	sizes := edge.source.media.VideoSizes()
+	if current >= 0 && int(current) < len(sizes) {
+		format = uint64(sizes[current].Width)<<32 | uint64(sizes[current].Height)
+	} else if edge.source.relay != nil && current == int32(len(edge.source.formats)-1) {
+		// ReceiverBase.VideoSizes stops at an unproduced lower slot. The raw
+		// input's codec header still provides its actual delivered dimensions.
+		format = edge.source.formats[current].Load()
 	}
-	observers := &bandwidthObservers{pending: make(map[string]*bandwidthObserver)}
-	factory, err := cc.NewInterceptor(func() (cc.BandwidthEstimator, error) {
-		return gcc.NewSendSideBWE(
-			gcc.SendSideBWEInitialBitrate(initialBitrate),
-			gcc.SendSideBWEPacer(gcc.NewNoOpPacer()),
-		)
-	})
-	if err != nil {
-		return nil, err
-	}
-	factory.OnNewPeerConnection(func(id string, estimator cc.BandwidthEstimator) {
-		observers.mu.Lock()
-		observers.pending[id] = newBandwidthObserver(estimator)
-		observers.mu.Unlock()
-	})
-	registry.Add(factory)
-	if err = webrtc.ConfigureTWCCHeaderExtensionSender(media, registry); err != nil {
-		return nil, err
-	}
-	return observers, nil
-}
-
-func (observers *bandwidthObservers) take(id string) *bandwidthObserver {
-	observers.mu.Lock()
-	defer observers.mu.Unlock()
-	observer := observers.pending[id]
-	delete(observers.pending, id)
-	return observer
+	return
 }

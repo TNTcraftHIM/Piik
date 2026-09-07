@@ -65,6 +65,9 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 	if err := validateMode(options); err != nil {
 		return err
 	}
+	if options.Port == 0 {
+		options.Port = DefaultLocalPort
+	}
 	configPath := strings.TrimSpace(options.ConfigPath)
 	if configPath == "" {
 		var err error
@@ -281,6 +284,15 @@ func runLocal(ctx context.Context, options Options, config clientconfig.Config,
 		view.mode = "link"
 	}
 	options.console.show(view)
+	listener, err := net.ListenTCP("tcp4", &net.TCPAddr{IP: net.IPv4zero, Port: options.Port})
+	if err != nil {
+		return fmt.Errorf("local server port is unavailable: %w", err)
+	}
+	defer func() {
+		if listener != nil {
+			_ = listener.Close()
+		}
+	}()
 	addresses, err := lan.Addresses()
 	if err != nil {
 		return err
@@ -318,8 +330,9 @@ func runLocal(ctx context.Context, options Options, config clientconfig.Config,
 		return err
 	}
 	localServer, err := serverapp.New(serverapp.Options{
-		Config: localConfig,
-		Assets: webassets.FS(),
+		Config:   localConfig,
+		Listener: listener,
+		Assets:   webassets.FS(),
 		// Machine mode inherits stderr; the interactive console shows server
 		// diagnostics in its log pane, as the Node child's stderr did.
 		Logger: slog.New(slog.NewTextHandler(options.console.logWriter(), nil)),
@@ -327,17 +340,11 @@ func runLocal(ctx context.Context, options Options, config clientconfig.Config,
 	if err != nil {
 		return err
 	}
+	listener = nil // Ownership is now in the application's startup/shutdown path.
+	defer func() { _ = endLocalServer(localServer) }()
 	if _, err = localServer.Listen(ctx); err != nil {
-		// Binding the Local port is the duplicate-launch guard, and now an
-		// atomic one: a second Client on the same port loses the bind instead
-		// of racing the first for the room authority.
-		var bindErr *net.OpError
-		if errors.As(err, &bindErr) && bindErr.Op == "listen" {
-			return fmt.Errorf("local server port is unavailable: %w", err)
-		}
 		return err
 	}
-	defer func() { _ = endLocalServer(localServer) }()
 
 	// The readiness lines follow the listener, which the packaged smoke and the
 	// public-link gate both read from stdout before they probe the port.
@@ -354,7 +361,7 @@ func runLocal(ctx context.Context, options Options, config clientconfig.Config,
 		}
 	}
 	launchURL := clientLaunchURLWithLocalAccess(
-		fmt.Sprintf("http://localhost:%d/", options.Port),
+		fmt.Sprintf("http://127.0.0.1:%d/", options.Port),
 		config.LocalAccessPassword,
 	)
 	if !options.DisableBrowser {

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { DEFAULT_QUALITY_SETTINGS, type QualitySettings } from "../src/shared/protocol";
 
 import {
   invalidateSenderQualityEvidence,
@@ -17,6 +18,7 @@ describe("native Host peer quality", () => {
     invalidateSenderQualityEvidence();
     let listener: (event: NativeClientEvent) => void = () => undefined;
     const control: NativeEdgeControl = {
+      updateShare: vi.fn(async () => undefined),
       prepareEdge: vi.fn<NativeEdgeControl["prepareEdge"]>(async () => ({
         type: "offer",
         sdp: "v=0\r\n",
@@ -45,6 +47,7 @@ describe("native Host peer quality", () => {
       codec,
     );
     expect(await peer.start()).toBe(true);
+    expect(control.updateShare).not.toHaveBeenCalled();
     expect(shouldUseBrowserQualityCandidate(peer, {
       childPeerId: "viewer_123456",
       connectionId: "candidate_123456",
@@ -64,7 +67,7 @@ describe("native Host peer quality", () => {
       qualityProbe: true,
     })).toBe(false);
     listener({
-      version: 8,
+      version: 9,
       type: "edge-state",
       shareId: "share_1234567",
       connectionId: "edge_12345678",
@@ -72,7 +75,7 @@ describe("native Host peer quality", () => {
     });
 
     const quality = {
-      version: 8 as const,
+      version: 9 as const,
       type: "edge-quality" as const,
       shareId: "share_1234567",
       connectionId: "edge_12345678",
@@ -108,6 +111,31 @@ describe("native Host peer quality", () => {
         availableOutgoingKbps: 1_000,
       },
     });
+    peer.dispose();
+  });
+
+  it("applies the latest relay ceiling before preparing a child", async () => {
+    let profile: QualitySettings = DEFAULT_QUALITY_SETTINGS;
+    const control: NativeEdgeControl = {
+      updateShare: vi.fn(async () => undefined),
+      prepareEdge: vi.fn(async () => ({ type: "offer" as const, sdp: "v=0\r\n" })),
+      acceptSignal: vi.fn(async () => undefined),
+      closeEdge: vi.fn(async () => undefined),
+      onEvent: () => () => undefined,
+    };
+    const peer = new NativeSenderPeer(
+      "viewer_123456", "edge_12345678", "share_1234567",
+      { iceServers: [] }, false, control,
+      { sendSignal: () => true, onUpdate: () => undefined }, "h264",
+      { connectionId: "upstream_123456", getProfile: () => profile },
+    );
+    profile = { ...DEFAULT_QUALITY_SETTINGS, maxFramerate: 60 };
+    expect(await peer.start()).toBe(true);
+    expect(control.updateShare).toHaveBeenCalledWith("share_1234567", profile);
+    expect(vi.mocked(control.updateShare).mock.invocationCallOrder[0])
+      .toBeLessThan(vi.mocked(control.prepareEdge).mock.invocationCallOrder[0]!);
+    expect(await peer.updateCaptureProfile(DEFAULT_QUALITY_SETTINGS)).toBe(true);
+    expect(control.updateShare).toHaveBeenLastCalledWith("share_1234567", DEFAULT_QUALITY_SETTINGS);
     peer.dispose();
   });
 });

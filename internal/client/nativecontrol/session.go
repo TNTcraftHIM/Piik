@@ -15,6 +15,7 @@ import (
 	"unicode"
 
 	"github.com/TNTcraftHIM/Screener/internal/client/loopback"
+	"github.com/TNTcraftHIM/Screener/internal/client/mediaedge"
 	"github.com/TNTcraftHIM/Screener/internal/client/nativecapture"
 	"github.com/TNTcraftHIM/Screener/internal/client/nativehost"
 	"github.com/TNTcraftHIM/Screener/internal/client/nativeviewer"
@@ -84,6 +85,8 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (any, error)
 		return nil, err
 	}
 	switch envelope.Type {
+	case "prepare-publication", "publication-media", "publication-answer", "publication-candidate", "publication-layers", "close-publication":
+		return session.handlePublication(envelope, payload)
 	case "capture-options":
 		var request captureOptionsRequest
 		if err := decodeStrict(payload, &request); err != nil || request.Type != envelope.Type {
@@ -146,12 +149,17 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (any, error)
 			!validQualitySettings(request.Profile) {
 			return nil, errors.New("native update-share request is invalid")
 		}
-		host := session.current(request.ShareID)
-		if host == nil {
+		profile := nativeQualityProfile(request.Profile)
+		var err error
+		if host := session.current(request.ShareID); host != nil {
+			err = host.UpdateProfile(profile)
+		} else if viewer := session.currentViewer(request.ShareID); viewer != nil {
+			err = viewer.UpdateProfile(profile.Video)
+		} else {
 			return nil, errors.New("native share does not exist")
 		}
-		if err := host.UpdateProfile(nativeQualityProfile(request.Profile)); err != nil {
-			return nil, err
+		if err != nil {
+			return operationFailure(envelope), nil
 		}
 		return shareUpdatedResponse{
 			responseEnvelope: response(envelope, "share-updated"),
@@ -161,7 +169,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (any, error)
 		var request replaceShareSourceRequest
 		if err := decodeStrict(payload, &request); err != nil ||
 			request.Type != envelope.Type ||
-			!validIdentities(request.ShareID) {
+			!validIdentities(request.ShareID) || !request.Source.Valid() {
 			return nil, errors.New("native replace-share-source request is invalid")
 		}
 		host := session.current(request.ShareID)
@@ -176,7 +184,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (any, error)
 			AdapterIndex: request.AdapterIndex,
 			EncoderIndex: request.EncoderIndex,
 		}, audio); err != nil {
-			return nil, err
+			return operationFailure(envelope), nil
 		}
 		return shareSourceReplacedResponse{
 			responseEnvelope: response(envelope, "share-source-replaced"),
@@ -559,6 +567,7 @@ func (session *Session) ensureViewer(
 	viewer, err := nativeviewer.Start(session.ctx, nativeviewer.Options{
 		ShareID: shareID, EdgeCapacity: edgeCapacity,
 		PortMapping: session.portMapping, Events: session.viewerEvents,
+		Relay: &mediaedge.RelayOptions{CaptureProcess: session.captureProcess, Capabilities: session.capabilities},
 	})
 	if err != nil {
 		return nil, err
@@ -690,15 +699,18 @@ func (session *Session) emit(event any) {
 
 func eventMessage(event nativehost.Event) any {
 	base := eventEnvelope{
-		Version:      loopback.ProtocolVersion,
-		Type:         event.Type,
-		ShareID:      event.ShareID,
-		ConnectionID: event.ConnectionID,
+		Version:               loopback.ProtocolVersion,
+		Type:                  event.Type,
+		ShareID:               event.ShareID,
+		ConnectionID:          event.ConnectionID,
+		PublicationGeneration: event.PublicationGeneration,
 	}
 	switch event.Type {
-	case "edge-candidate":
+	case "publication-quality":
+		return publicationQualityEvent{eventEnvelope: base, PublicationQualitySample: *event.PublicationQuality}
+	case "edge-candidate", "publication-candidate":
 		return edgeCandidateEvent{eventEnvelope: base, Candidate: event.Candidate}
-	case "edge-state":
+	case "edge-state", "publication-state":
 		return edgeStateEvent{eventEnvelope: base, State: event.State}
 	case "edge-path":
 		return edgePathEvent{
@@ -825,5 +837,12 @@ func response(request requestEnvelope, responseType string) responseEnvelope {
 		Version: loopback.ProtocolVersion,
 		ID:      request.ID,
 		Type:    responseType,
+	}
+}
+
+func operationFailure(request requestEnvelope) requestFailedResponse {
+	return requestFailedResponse{
+		responseEnvelope: response(request, "request-failed"),
+		Code:             "operation-failed",
 	}
 }

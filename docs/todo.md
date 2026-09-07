@@ -1,21 +1,46 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-09-07
+Last reviewed: 2026-09-08
 
 Only **Now** is executable. Observations, old branches, experiments, and parked
 topics are not implementation authority.
 
 ## Now
 
-Owner-authorized workstreams: [embedded media](./research/embedded-media.md)
-and [node-local adaptive reuse](./research/node-local-adaptation.md). Every
-parent, including Host, forwards available encodings and derives missing lower
+Owner-authorized phase: [embedded STUN/SFU and node-local media](./adr/0013-embedded-node-local-media.md).
+Every parent, including Host, forwards available encodings and derives missing lower
 outputs only for direct children; compatible demands reuse the same output.
-The agreed model and primary-source findings are recorded. Next compare bounded
-on-demand activation with pre-encoding, encoder cold-start/retention costs and
-inherited-low-quality recovery, then select reusable codec components. These are
+The agreed model and [first encoding comparison](./research/node-local-encoding-probe.md)
+are recorded. The [decode comparison](./research/node-local-browser-probe.md) and
+[design proposal](./research/node-local-media-design.md) narrow remaining work to
+native H264 hardware cost, mature layer switching/pacing and actual RTP recovery.
+Shared encoding is common to both policies; do not reopen unshared/Browser-sender
+baseline comparisons. The maximum-demand model is accepted; library and runtime
+integration remain under acceptance. Native uses the shared forwarding adapter,
+with Pion transport and unmodified LiveKit media/BWE components behind bounded adapters.
+A real three-output VP8 fixture passes two Pion connections and Chrome decode.
+Bounded Native output workers and coordinated capture framing/
+control are implemented; Windows compiles and the actual mailbox/pipe boundary
+passes CPU-only checks. A bounded native VP8 process now proves received high
+forwarding plus shared low derivation, live preference replacement, and retirement
+without desktop capture. A shaped Pion virtual network proves stopped-high recovery
+after bandwidth release; physical loss/recovery, codec overload and overhead remain
+unverified. Linux producers compile; macOS changes still require SDK validation.
+Native direct SFU publication, bounded current/candidate replacement and actual
+multi-RID metrics are implemented. Browser SFU decode/live-profile acceptance
+passes; matched Client/platform and network acceptance remain open. The Pion
+UDP-mux initialization and candidate-fixture races are repaired; six affected
+Linux packages pass the race detector.
+Packaged multi-output capture is not accepted.
+Embedded STUN is bound by the application lifecycle and passes startup/rollback/
+closure checks. Embedded SFU room signaling, exact physical retirement and Browser
+adapters are implemented; real Browser decoding is under acceptance and external-
+service deployment removal remains pending. Prioritize the shared quality/encoding module and its
+Native codec/transport checks, then complete embedded SFU/STUN integration.
+Independent library/service audits may proceed in parallel. Do not add a custom warm pool, media clock
+or congestion algorithm. These are
 not bundled service executables, full LiveKit embedding or per-Viewer Host
-uploads via TURN. Production codec/variant policy and cutover remain unaccepted.
+uploads via TURN. Concrete codec parameters and release cutover remain unaccepted.
 
 The returned Go core and frontend fixes are reconciled on the integration
 candidate. The owner authorized hygiene cleanup, matched Server/Client builds,
@@ -51,6 +76,32 @@ remain evidence gaps, not claims established by compilation or local loopback.
    and the tight four-second probe/five-second startup budget on other hardware;
    do not claim throughput screening guarantees perceptual quality or later
    load. Other native platform capture encoders remain H264.
+
+### Reported Follow-Ups
+
+After the shared media integration, finish the owner's reported behaviors in
+this same candidate. Global Link now reserves its IPv4 listener before creating
+a tunnel; include that path in packaged acceptance.
+
+1. **Concurrent Client rooms.** Preserve the backend's multiple rooms and one
+   Host per room. Separate a tab's active Host authority from the origin-wide
+   resume hint, and replace the process-wide single RPC claim with bounded
+   control-session ownership. Reuse each native session and account for aggregate
+   hardware resources; do not add an unbounded capture map. A friend's independent
+   Browser Host already captures on their own device, not the instance owner's
+   helper. Validate that path separately from multiple Native shares on one Client.
+2. **Reported live-setting and package behavior.** Reconcile the unmerged
+   `fix/live-quality-capture` fixes against this candidate, retaining only
+   independently confirmed capture, setting, access and diagnostic behavior.
+   Do not overwrite the new media/transport owners with that older branch.
+   Reproduce game backgrounding,
+   changing resolution/FPS/bitrate, and returning to the game against the exact
+   newly built Client, not a repacked old executable. Verify failed replacement
+   preserves the running source and later changes still apply. Keep preset
+   highlighting tied to applied settings and make the advanced draft/apply
+   boundary unambiguous. Complete the Windows display-startup and platform
+   checks above; investigate Vivaldi through primary reports and actual local
+   capability failures, without speculative Browser-specific fallbacks.
 
 ## Parked Product Work
 

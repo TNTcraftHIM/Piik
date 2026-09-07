@@ -1,4 +1,4 @@
-import type { IceConfig, SignalPayload } from "../../shared/protocol";
+import type { IceConfig, QualitySettings, SignalPayload } from "../../shared/protocol";
 import {
   iceServersWithNatPrediction,
   isNativeNatSurveyCandidate,
@@ -11,6 +11,7 @@ import type { NativeClientEvent } from "./wire";
 const MAX_PENDING_CANDIDATES = 64;
 
 export interface NativeEdgeControl {
+  updateShare(shareId: string, profile: QualitySettings): Promise<void>;
   prepareEdge(
     shareId: string,
     connectionId: string,

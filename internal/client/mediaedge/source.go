@@ -2,126 +2,268 @@ package mediaedge
 
 import (
 	"errors"
+	"io"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/TNTcraftHIM/Screener/internal/client/nativecapture"
+	"github.com/TNTcraftHIM/Screener/internal/media/encoded"
+	"github.com/TNTcraftHIM/Screener/internal/media/forwarding"
+	mediacodec "github.com/livekit/mediatransportutil/pkg/codec"
+	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4"
 )
 
-const maxAccessUnitBytes = 4 * 1024 * 1024
 const videoClockRate = 90_000
 const videoPacketMTU = 1200
 const h264PayloadType = 102
 const vp8PayloadType = 96
 
 var ErrSourceCapacity = errors.New("native media source capacity is exhausted")
-var ErrInvalidVideoTimestamp = errors.New("native video timestamp is not monotonic")
+
+// OutputPlan belongs to the capture input that produced it. The caller applies
+// it to that exact stream after BeginFrame releases the source locks.
+type OutputPlan struct {
+	ActiveLayers   int
+	RecoveryLayers []int
+	Bitrates       []uint32
+}
 
 type Source struct {
 	engine          *Engine
-	track           *webrtc.TrackLocalStaticRTP
 	codec           string
-	packetizer      rtp.Packetizer
+	media           *forwarding.EncodedSource
+	formats         []atomic.Uint64
+	outputBitrates  []uint32
 	capacity        int
 	requestKeyFrame func()
+	relayProfile    *nativecapture.VideoProfile
+	relay           *relayDerivation
 
-	mu                 sync.Mutex
-	writeMu            sync.Mutex
-	edges              map[*Edge]bool
-	reservations       int
-	localReservation   bool
-	closed             bool
-	hasTimestamp       bool
-	lastTimestamp      time.Duration
-	timestampRemainder float64
-	rebasePending      bool
-	rebaseInput        time.Duration
-	rebaseOutput       time.Duration
-	frames             atomic.Uint64
-	bytes              atomic.Uint64
-	format             atomic.Uint64
+	mu               sync.Mutex
+	writeMu          sync.Mutex
+	edges            map[*Edge]bool
+	publications     map[*Publication]struct{}
+	reservations     int
+	localReservation bool
+	closed           bool
 }
 
 func (source *Source) Codec() string { return source.codec }
 
-func (source *Source) WriteVideo(
-	accessUnit []byte,
-	timestamp time.Duration,
-	duration time.Duration,
-) error {
-	if len(accessUnit) == 0 || len(accessUnit) > maxAccessUnitBytes ||
-		timestamp < 0 || duration <= 0 {
-		return errors.New("native video access unit is invalid")
+// The room supplies a relay ceiling, never a replacement capture authority.
+// Recording it does not create an encoder or invoke the capture process.
+func (source *Source) SetRelayProfile(profile nativecapture.VideoProfile) error {
+	if !profile.Valid() {
+		return errors.New("native relay profile is invalid")
 	}
+	source.mu.Lock()
+	if source.closed {
+		source.mu.Unlock()
+		return io.ErrClosedPipe
+	}
+	if source.relayProfile != nil && *source.relayProfile == profile {
+		source.mu.Unlock()
+		return nil
+	}
+	source.relayProfile = &profile
+	source.mu.Unlock()
+	if source.relay != nil {
+		source.relay.cancel()
+		source.writeMu.Lock()
+		defer source.writeMu.Unlock()
+		return source.configureRelayFormats(true)
+	}
+	return nil
+}
+
+// BeginFrame runs once before outputs for an actual source input. Unconnected
+// edges retain their capacity reservation but do not demand encoded output yet.
+func (source *Source) BeginFrame(timestamp time.Duration) (OutputPlan, error) {
+	source.writeMu.Lock()
+	defer source.writeMu.Unlock()
+	source.mu.Lock()
+	if source.closed {
+		source.mu.Unlock()
+		return OutputPlan{}, io.ErrClosedPipe
+	}
+	edges := make([]*Edge, 0, len(source.edges))
+	for edge := range source.edges {
+		edges = append(edges, edge)
+	}
+	publications := make([]*Publication, 0, len(source.publications))
+	for publication := range source.publications {
+		publications = append(publications, publication)
+	}
+	source.mu.Unlock()
+	if err := source.media.BeginFrame(timestamp, time.Now()); err != nil {
+		return OutputPlan{}, err
+	}
+	plan := OutputPlan{
+		Bitrates: append([]uint32(nil), source.outputBitrates...),
+	}
+	for _, publication := range publications {
+		active := publication.RequiredActiveCount()
+		plan.ActiveLayers = max(plan.ActiveLayers, active)
+		if budget := publication.LowestLayerBudget(); active > 0 && len(plan.Bitrates) > 0 && budget > 0 {
+			plan.Bitrates[0] = min(plan.Bitrates[0], uint32(max(1000, min(budget, int64(plan.Bitrates[0])))))
+		}
+	}
+	for _, edge := range edges {
+		if edge.State() != webrtc.PeerConnectionStateConnected {
+			continue
+		}
+		if err := edge.transport.SetConnected(); err != nil {
+			return OutputPlan{}, err
+		}
+		state := edge.transport.Output.State()
+		highest := state.Target
+		if !state.Paused {
+			highest = max(highest, state.Current)
+		}
+		if _, observed := edge.transport.TargetBitrate(); observed {
+			highest = max(highest, state.Prepare)
+			// Only consumers of the lowest representation constrain that encoder.
+			// A limited child never changes a healthy sibling's higher output.
+			if len(plan.Bitrates) > 0 && state.VideoBudget > 0 &&
+				(state.Target == 0 || state.Current == 0 || state.Paused && state.Prepare == 0) {
+				plan.Bitrates[0] = min(plan.Bitrates[0], uint32(max(1000, min(state.VideoBudget, int64(plan.Bitrates[0])))))
+			}
+		}
+		if highest < 0 && !state.Paused {
+			highest = int32(len(source.formats) - 1)
+		}
+		plan.ActiveLayers = max(plan.ActiveLayers, int(highest)+1)
+		edge.transport.Output.BeginFrame()
+	}
+	return plan, nil
+}
+
+// ConfigureOutputs installs one validated capture generation's bitrate bounds.
+// A zero slot subsequently means that producer has failed, not a new preset.
+func (source *Source) ConfigureOutputs(ceilings []uint32) error {
+	if len(ceilings) != len(source.formats) {
+		return errors.New("native output count does not match the source")
+	}
+	for _, bitrate := range ceilings {
+		if bitrate < 1000 {
+			return errors.New("native output bitrate is invalid")
+		}
+	}
+	source.writeMu.Lock()
+	defer source.writeMu.Unlock()
+	source.mu.Lock()
+	defer source.mu.Unlock()
+	if source.closed {
+		return io.ErrClosedPipe
+	}
+	source.outputBitrates = append([]uint32(nil), ceilings...)
+	formats := make([]forwarding.LayerFormat, len(ceilings))
+	for layer, bitrate := range ceilings {
+		format := source.formats[layer].Load()
+		formats[layer] = forwarding.LayerFormat{Width: uint32(format >> 32), Height: uint32(format), Bitrate: bitrate}
+	}
+	return source.media.UpdateFormats(formats)
+}
+
+func (source *Source) DisableLayer(layer int) error {
+	source.writeMu.Lock()
+	source.mu.Lock()
+	if source.closed || layer < 0 || layer >= len(source.outputBitrates) {
+		source.mu.Unlock()
+		source.writeMu.Unlock()
+		return errors.New("native output layer is unavailable")
+	}
+	source.outputBitrates[layer] = 0
+	publications := make([]*Publication, 0, len(source.publications))
+	for publication := range source.publications {
+		publications = append(publications, publication)
+	}
+	var affected []*Edge
+	for edge := range source.edges {
+		state := edge.transport.Output.State()
+		_, observed := edge.transport.TargetBitrate()
+		if state.Target == int32(layer) || state.Current == int32(layer) ||
+			(observed && state.Paused && state.Prepare == int32(layer)) ||
+			(state.Target < 0 && state.Current < 0 && edge.transport.Output.MaxLayer().Spatial == int32(layer)) {
+			affected = append(affected, edge)
+		}
+	}
+	source.mu.Unlock()
+	source.writeMu.Unlock()
+	// An unavailable encoder retires its consumers through the existing edge
+	// lifecycle. Healthy sibling outputs are neither stopped nor restarted.
+	closeEdges(affected)
+	for _, publication := range publications {
+		if layer < publication.RequiredActiveCount() {
+			_ = publication.Close()
+		}
+	}
+	return nil
+}
+
+func (source *Source) WriteVideo(layer int, frame encoded.Frame) error {
 	source.writeMu.Lock()
 	defer source.writeMu.Unlock()
 	source.mu.Lock()
 	closed := source.closed
 	source.mu.Unlock()
 	if closed {
-		return errors.New("native media source is closed")
+		return io.ErrClosedPipe
 	}
-	if source.rebasePending {
-		source.rebasePending = false
-		source.rebaseInput = timestamp
-		source.rebaseOutput = source.lastTimestamp + duration
-		timestamp = source.rebaseOutput
-	} else if source.rebaseOutput > 0 {
-		if timestamp < source.rebaseInput {
-			return ErrInvalidVideoTimestamp
-		}
-		timestamp = source.rebaseOutput + timestamp - source.rebaseInput
-	}
-	if source.hasTimestamp {
-		if timestamp <= source.lastTimestamp {
-			return ErrInvalidVideoTimestamp
-		}
-		ticksFloat := (timestamp-source.lastTimestamp).Seconds()*videoClockRate +
-			source.timestampRemainder
-		ticks := uint64(ticksFloat)
-		source.timestampRemainder = ticksFloat - float64(ticks)
-		source.packetizer.SkipSamples(uint32(ticks))
-	} else {
-		source.hasTimestamp = true
-	}
-	source.lastTimestamp = timestamp
-	packets := source.packetizer.Packetize(accessUnit, 0)
-	if len(packets) == 0 {
-		return errors.New("native video access unit produced no RTP packets")
-	}
-	source.frames.Add(1)
-	source.bytes.Add(uint64(len(accessUnit)))
-	var result error
-	for _, packet := range packets {
-		result = errors.Join(result, source.track.WriteRTP(packet))
-	}
-	return result
+	return source.media.WriteFrame(layer, frame)
 }
 
-// WriteRTP forwards one already encoded video packet without decoding or
-// re-encoding it. TrackLocalStaticRTP rewrites the negotiated SSRC and payload
-// type independently for every bound edge.
+// WriteRTP preserves the received representation. Optional lower derivation is
+// fed without waiting for its decoder, encoder, or process pipe.
 func (source *Source) WriteRTP(packet *rtp.Packet) error {
 	if packet == nil {
 		return errors.New("native video RTP packet is invalid")
 	}
 	source.writeMu.Lock()
-	defer source.writeMu.Unlock()
 	source.mu.Lock()
-	closed := source.closed
+	if source.closed {
+		source.mu.Unlock()
+		source.writeMu.Unlock()
+		return io.ErrClosedPipe
+	}
 	source.mu.Unlock()
-	if closed {
-		return errors.New("native media source is closed")
+	layer := len(source.formats) - 1
+	if source.relay != nil {
+		var size mediacodec.VideoSize
+		if source.codec == "h264" {
+			size = mediacodec.ExtractH264VideoSize(packet.Payload)
+		} else {
+			var header mediacodec.VP8
+			if header.Unmarshal(packet.Payload) == nil {
+				size = mediacodec.ExtractVP8VideoSize(&header, packet.Payload)
+			}
+		}
+		if size.Width > 0 && size.Height > 0 {
+			format := uint64(size.Width)<<32 | uint64(size.Height)
+			if source.formats[layer].Swap(format) != format {
+				_ = source.configureRelayFormats(false)
+			}
+		}
 	}
-	// Forward RTP padding to preserve sequence continuity without counting it as video.
-	if packet.Marker && len(packet.Payload) > 0 {
-		source.frames.Add(1)
-	}
-	source.bytes.Add(uint64(len(packet.Payload)))
 	forwarded := connectionNeutralRTP(packet)
-	return source.track.WriteRTP(&forwarded)
+	forwarded.SSRC = uint32(layer + 1)
+	forwarded.PayloadType = uint8(videoCodecs[source.codec].PayloadType)
+	err := source.media.Source.WriteRTP(layer, &forwarded)
+	source.writeMu.Unlock()
+	if source.relay != nil {
+		source.relay.push(packet)
+	}
+	return err
+}
+
+func (source *Source) SenderReport(report *rtcp.SenderReport) error {
+	correlated := *report
+	layer := len(source.formats) - 1
+	correlated.SSRC = uint32(layer + 1)
+	return source.media.SenderReport(layer, &correlated)
 }
 
 func connectionNeutralRTP(packet *rtp.Packet) rtp.Packet {
@@ -137,31 +279,16 @@ func connectionNeutralRTP(packet *rtp.Packet) rtp.Packet {
 
 func (source *Source) BeginGeneration() {
 	source.writeMu.Lock()
-	source.rebasePending = true
-	source.rebaseInput = 0
-	source.rebaseOutput = 0
-	source.writeMu.Unlock()
+	defer source.writeMu.Unlock()
+	source.media.BeginGeneration()
 }
 
-func (source *Source) SetFormat(width, height uint32) {
-	source.format.Store(uint64(width)<<32 | uint64(height))
-}
-
-type sourceSnapshot struct {
-	frames uint64
-	bytes  uint64
-	width  uint32
-	height uint32
-}
-
-func (source *Source) snapshot() sourceSnapshot {
-	format := source.format.Load()
-	return sourceSnapshot{
-		frames: source.frames.Load(),
-		bytes:  source.bytes.Load(),
-		width:  uint32(format >> 32),
-		height: uint32(format),
+func (source *Source) SetFormat(layer int, width, height uint32) error {
+	if layer < 0 || layer >= len(source.formats) {
+		return errors.New("native output layer is invalid")
 	}
+	source.formats[layer].Store(uint64(width)<<32 | uint64(height))
+	return nil
 }
 
 func (source *Source) reserve(local bool) error {
@@ -196,6 +323,8 @@ func (source *Source) reserve(local bool) error {
 }
 
 func (source *Source) attach(edge *Edge, local bool) error {
+	source.writeMu.Lock()
+	defer source.writeMu.Unlock()
 	source.mu.Lock()
 	defer source.mu.Unlock()
 	if local {
@@ -205,6 +334,16 @@ func (source *Source) attach(edge *Edge, local bool) error {
 	}
 	if source.closed {
 		return errors.New("native media source is closed")
+	}
+	if len(source.outputBitrates) > 0 {
+		highest := len(source.outputBitrates) - 1
+		for highest >= 0 && source.outputBitrates[highest] == 0 {
+			highest--
+		}
+		if highest < 0 {
+			return errors.New("native media source has no available output")
+		}
+		edge.transport.Output.SetMaxSpatialLayer(int32(highest))
 	}
 	source.edges[edge] = local
 	return nil
@@ -221,9 +360,21 @@ func (source *Source) releaseReservation(local bool) {
 }
 
 func (source *Source) detach(edge *Edge) {
+	source.writeMu.Lock()
 	source.mu.Lock()
 	delete(source.edges, edge)
 	source.mu.Unlock()
+	source.writeMu.Unlock()
+	if source.relay != nil && !source.relayPlan().wanted {
+		source.relay.cancel()
+	}
+}
+
+func (source *Source) requestLayerKeyFrame(layer int) {
+	if source.relay != nil && layer < len(source.formats)-1 {
+		source.relay.recovery.Store(true)
+	}
+	source.RequestRecoveryFrame()
 }
 
 func (source *Source) RequestRecoveryFrame() {
@@ -239,13 +390,25 @@ func (source *Source) Close() error {
 		return nil
 	}
 	source.closed = true
+	publications := make([]*Publication, 0, len(source.publications))
+	for publication := range source.publications {
+		publications = append(publications, publication)
+	}
 	edges := make([]*Edge, 0, len(source.edges))
 	for edge := range source.edges {
 		edges = append(edges, edge)
 	}
 	source.mu.Unlock()
-	for _, edge := range edges {
-		_ = edge.Close()
+	// Close transports before waiting on their possible writes into this group.
+	closeEdges(edges)
+	for _, publication := range publications {
+		_ = publication.Close()
 	}
+	if source.relay != nil {
+		source.relay.close()
+	}
+	source.writeMu.Lock()
+	source.media.Close()
+	source.writeMu.Unlock()
 	return nil
 }

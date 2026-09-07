@@ -1,16 +1,8 @@
-// Package sfu ports the server's LiveKit-facing modules: the resource
-// admission ledger (src/server/sfu-resource-admission.ts), the RoomService
-// control plane (src/server/sfu-room-control.ts) and the participant token
-// issuer (src/server/livekit-token.ts).
-//
-// LiveKit access is stdlib only (DECISIONS D1): one HS256 JWT signed with
-// crypto/hmac and Twirp JSON over net/http, no SDK.
+// Package sfu owns admitted physical publication and subscription resources.
 package sfu
 
 import (
-	"errors"
 	"regexp"
-	"strings"
 
 	"github.com/TNTcraftHIM/Screener/internal/server/ordered"
 	"github.com/TNTcraftHIM/Screener/internal/server/protocol"
@@ -30,6 +22,7 @@ type ResourceFence struct {
 type SubscriptionFence struct {
 	ResourceFence
 	ViewerPeerID string
+	ConnectionID string
 }
 
 // Usage is SfuResourceUsage.
@@ -72,8 +65,7 @@ type publicationEntry struct {
 // insertion order, both of which the router turns into drain tasks.
 type roomPublications = ordered.Map[string, *publicationEntry]
 
-// Admission is SfuResourceAdmission: the ingress/egress ledger for the LiveKit
-// fallback. It is not safe for concurrent use; the signaling server calls it
+// Admission is SfuResourceAdmission: the ingress/egress ledger for the embedded SFU. It is not safe for concurrent use; the signaling server calls it
 // under its global mutex, exactly as Node's single thread did.
 type Admission struct {
 	// Ordering site: beginDrainAll walks the rooms in insertion order.
@@ -139,24 +131,15 @@ func (admission *Admission) ReserveSubscription(fence SubscriptionFence) bool {
 	if publication == nil || publication.state == stateDraining {
 		return false
 	}
-	if existing, ok := publication.subscriptions[fence.ViewerPeerID]; ok {
-		if existing.fence != fence {
-			return false
-		}
-		if existing.state == stateReserved || existing.state == stateCommitted {
-			return true
-		}
-		if publication.state != stateCommitted {
-			return false
-		}
-		existing.state = stateReserved
-		return true
+	key := fence.ViewerPeerID + "\x00" + fence.ConnectionID
+	if existing, ok := publication.subscriptions[key]; ok {
+		return existing.fence == fence && existing.state != stateDraining
 	}
 	if admission.egressInUse >= admission.egressCapacity {
 		return false
 	}
 
-	publication.subscriptions[fence.ViewerPeerID] = &subscriptionEntry{
+	publication.subscriptions[key] = &subscriptionEntry{
 		fence: fence,
 		state: stateReserved,
 	}
@@ -217,7 +200,7 @@ func (admission *Admission) CommitSubscription(fence SubscriptionFence) bool {
 	if publication == nil || publication.state != stateCommitted {
 		return false
 	}
-	subscription, ok := publication.subscriptions[fence.ViewerPeerID]
+	subscription, ok := publication.subscriptions[fence.ViewerPeerID+"\x00"+fence.ConnectionID]
 	if !ok || subscription.fence != fence {
 		return false
 	}
@@ -238,7 +221,7 @@ func (admission *Admission) BeginSubscriptionDrain(fence SubscriptionFence) bool
 	if publication == nil {
 		return false
 	}
-	subscription, ok := publication.subscriptions[fence.ViewerPeerID]
+	subscription, ok := publication.subscriptions[fence.ViewerPeerID+"\x00"+fence.ConnectionID]
 	if !ok || subscription.fence != fence {
 		return false
 	}
@@ -254,6 +237,36 @@ func (admission *Admission) BeginDrain(fence ResourceFence) bool {
 		return false
 	}
 	markDraining(publication)
+	return true
+}
+
+func (admission *Admission) HasPublication(fence ResourceFence) bool {
+	publication := admission.publication(fence)
+	return publication != nil && publication.state != stateDraining
+}
+
+func (admission *Admission) HasSubscription(fence SubscriptionFence) bool {
+	publication := admission.publication(fence.ResourceFence)
+	if publication == nil || publication.state == stateDraining {
+		return false
+	}
+	entry := publication.subscriptions[fence.ViewerPeerID+"\x00"+fence.ConnectionID]
+	return entry != nil && entry.fence == fence && entry.state != stateDraining
+}
+
+// In-process closure revokes this exact connection; no reusable token remains.
+func (admission *Admission) CompleteSubscriptionDrain(fence SubscriptionFence) bool {
+	publication := admission.publication(fence.ResourceFence)
+	if publication == nil {
+		return false
+	}
+	key := fence.ViewerPeerID + "\x00" + fence.ConnectionID
+	entry := publication.subscriptions[key]
+	if entry == nil || entry.fence != fence || entry.state != stateDraining {
+		return false
+	}
+	delete(publication.subscriptions, key)
+	admission.subtractEgress(1)
 	return true
 }
 
@@ -371,54 +384,10 @@ func assertPositiveSafeInteger(value int, name string) {
 	}
 }
 
-const managedRoomPrefix = "screener-v1."
-
-// roomIDPattern is ROOM_ID_PATTERN, /^[1-9]\d{0,11}$/. Go's \d and $ are the
-// ASCII digits and end of text, as they are in a non-unicode, non-multiline
-// JavaScript regular expression. OPAQUE_ID_PATTERN is protocol.ValidOpaqueID.
 var roomIDPattern = regexp.MustCompile(`^[1-9][0-9]{0,11}$`)
 
-var errInvalidRoomFence = errors.New("Managed LiveKit room fence is invalid")
-
-// ManagedRoomName ports managedSfuRoomName. An invalid fence panics where the
-// TypeScript throws, because the router builds room-name keys from it in
-// synchronous code that never caught the throw. The RoomService calls, whose
-// TypeScript throw was caught by the router, use the error-returning form.
-func ManagedRoomName(fence ResourceFence) string {
-	name, err := managedRoomName(fence)
-	if err != nil {
-		panic(err.Error())
-	}
-	return name
-}
-
-func managedRoomName(fence ResourceFence) (string, error) {
-	if !roomIDPattern.MatchString(fence.RoomID) ||
-		!protocol.ValidOpaqueID(fence.ShareGeneration) ||
-		!protocol.ValidOpaqueID(fence.PublicationGeneration) {
-		return "", errInvalidRoomFence
-	}
-	return managedRoomPrefix + fence.RoomID + "." +
-		fence.ShareGeneration + "." + fence.PublicationGeneration, nil
-}
-
-// IsManagedRoomName ports isManagedSfuRoomName.
-func IsManagedRoomName(roomName string) bool {
-	rest, ok := strings.CutPrefix(roomName, managedRoomPrefix)
-	if !ok {
-		return false
-	}
-	parts := strings.Split(rest, ".")
-	return len(parts) == 3 &&
-		roomIDPattern.MatchString(parts[0]) &&
-		protocol.ValidOpaqueID(parts[1]) &&
-		protocol.ValidOpaqueID(parts[2])
-}
-
-// viewerIdentity ports managedSfuViewerIdentity.
-func viewerIdentity(peerID string) (string, error) {
-	if !protocol.ValidOpaqueID(peerID) {
-		return "", errors.New("Managed LiveKit Viewer identity is invalid")
-	}
-	return "viewer:" + peerID, nil
+func validResourceFence(fence ResourceFence) bool {
+	return roomIDPattern.MatchString(fence.RoomID) &&
+		protocol.ValidOpaqueID(fence.ShareGeneration) &&
+		protocol.ValidOpaqueID(fence.PublicationGeneration)
 }

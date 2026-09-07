@@ -2713,10 +2713,8 @@ func TestSignalCloseMarksRouterClosingBeforeReleasingTheLock(t *testing.T) {
 		afterFunc: timers.afterFunc,
 		now:       now.now,
 		sfu: &SfuFallback{
-			URL:              "wss://sfu.example.test",
-			TokenIssuer:      &fakeTokenIssuer{},
 			Admission:        sfu.NewAdmission(sfu.AdmissionOptions{IngressCapacity: 2, EgressCapacity: 20}),
-			RoomControl:      control,
+			Media:            control,
 			PrepareTimeoutMs: 300,
 		},
 	})

@@ -21,6 +21,7 @@ type ReceiverOptions struct {
 	ICEServers   []webrtc.ICEServer
 	EdgeCapacity int
 	Events       ReceiverEvents
+	Relay        *RelayOptions
 }
 
 // Receiver owns one inbound WebRTC connection and exposes its encoded media as
@@ -54,7 +55,6 @@ func (engine *Engine) NewReceiver(options ReceiverOptions) (*Receiver, webrtc.Se
 	if err != nil {
 		return nil, webrtc.SessionDescription{}, err
 	}
-	_ = engine.bandwidth.take(connection.ID())
 	if err = connection.SetRemoteDescription(options.Offer); err != nil {
 		_ = connection.Close()
 		return nil, webrtc.SessionDescription{}, err
@@ -68,10 +68,17 @@ func (engine *Engine) NewReceiver(options ReceiverOptions) (*Receiver, webrtc.Se
 		connection: connection,
 		events:     options.Events,
 	}
-	receiver.source, err = engine.NewSource(videoCodec, options.EdgeCapacity, receiver.RequestKeyFrame)
+	layers := 1
+	if _, supported := relayBackend(videoCodec, options.Relay); supported {
+		layers = 2
+	}
+	receiver.source, err = engine.NewSource(videoCodec, options.EdgeCapacity, layers, receiver.RequestKeyFrame)
 	if err != nil {
 		_ = connection.Close()
 		return nil, webrtc.SessionDescription{}, err
+	}
+	if layers > 1 {
+		receiver.source.relay = &relayDerivation{source: receiver.source, options: *options.Relay}
 	}
 	if hasAudio {
 		receiver.audioSource, err = engine.NewRelayedAudioSource(options.EdgeCapacity)
@@ -101,7 +108,7 @@ func (engine *Engine) NewReceiver(options ReceiverOptions) (*Receiver, webrtc.Se
 		receiver.events.ConnectionState(state, selected)
 	})
 	connection.OnTrack(func(track *webrtc.TrackRemote, rtpReceiver *webrtc.RTPReceiver) {
-		go receiver.readRTCP(rtpReceiver)
+		go receiver.readRTCP(track, rtpReceiver)
 		receiver.consumeTrack(track, rtpReceiver)
 	})
 	answer, err := receiver.createAnswer()
@@ -243,13 +250,21 @@ func (receiver *Receiver) consumeTrack(track *webrtc.TrackRemote, _ *webrtc.RTPR
 	}
 }
 
-func (receiver *Receiver) readRTCP(rtpReceiver *webrtc.RTPReceiver) {
+func (receiver *Receiver) readRTCP(track *webrtc.TrackRemote, rtpReceiver *webrtc.RTPReceiver) {
 	if rtpReceiver == nil {
 		return
 	}
 	for {
-		if _, _, err := rtpReceiver.ReadRTCP(); err != nil {
+		packets, _, err := rtpReceiver.ReadRTCP()
+		if err != nil {
 			return
+		}
+		if track.Kind() == webrtc.RTPCodecTypeVideo {
+			for _, packet := range packets {
+				if report, ok := packet.(*rtcp.SenderReport); ok && report.SSRC == uint32(track.SSRC()) {
+					_ = receiver.source.SenderReport(report)
+				}
+			}
 		}
 	}
 }

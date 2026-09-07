@@ -58,5 +58,13 @@ if ($Check) {
     if ($LASTEXITCODE -ne 0) { throw 'Capture geometry check compilation failed.' }
     & $geometryCheck
     if ($LASTEXITCODE -ne 0) { throw 'Capture geometry check failed.' }
+    $controlSource = Join-Path $helperDirectory 'capture_control.test.cpp'
+    $controlObject = Join-Path $outputPath 'capture-control.test.obj'
+    $controlCheck = Join-Path $outputPath 'capture-control.test.exe'
+    $compileCheck = 'call "{0}" -arch=x64 -host_arch=x64 >nul && cl.exe /nologo /std:c++20 /EHsc /W4 /WX /external:I "{6}" /external:W0 "{1}" /Fo:"{2}" /Fe:"{3}" "{4}" "{5}"' -f $developerCommand, $controlSource, $controlObject, $controlCheck, $vp8ObjectPath, $vpx.Library, $vpx.Include
+    & cmd.exe /d /s /c $compileCheck
+    if ($LASTEXITCODE -ne 0) { throw 'Capture output check compilation failed.' }
+    & $controlCheck
+    if ($LASTEXITCODE -ne 0) { throw 'Capture output check failed.' }
 }
 Write-Output $executablePath

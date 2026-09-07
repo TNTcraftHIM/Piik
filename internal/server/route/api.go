@@ -20,6 +20,7 @@ type Resource struct {
 	ShareGeneration       string
 	PublicationGeneration string
 	ViewerPeerID          string
+	ConnectionID          string
 	// Released is flipped by the router once the allocation is freed.
 	Released bool
 }

@@ -56,7 +56,7 @@ $compile = @(
     'set "PATH={0};{1};{2};%PATH%"' -f $nasmPath,$makePath,(Join-Path $gitRoot 'usr\bin')
     'call "{0}" -arch=x64 -host_arch=x64 >nul' -f $developerCommand
     'cd /d "{0}"' -f $buildPath
-    '"{0}" "{1}" --target=x86_64-win64-vs17 --as=nasm --disable-vp9 --disable-vp8-decoder --disable-examples --disable-unit-tests --disable-tools --disable-docs --disable-webm-io --disable-libyuv --disable-postproc --enable-realtime-only --enable-static-msvcrt' -f $bashPath,((Join-Path $sourcePath 'configure').Replace('\','/'))
+    '"{0}" "{1}" --target=x86_64-win64-vs17 --as=nasm --disable-vp9 --enable-vp8-decoder --disable-examples --disable-unit-tests --disable-tools --disable-docs --disable-webm-io --disable-libyuv --disable-postproc --enable-realtime-only --enable-static-msvcrt' -f $bashPath,((Join-Path $sourcePath 'configure').Replace('\','/'))
     'make.exe -B vpx.vcxproj'
     'msbuild vpx.vcxproj /nologo /t:Rebuild /p:Configuration=Release /p:Platform=x64 /m:4 /v:minimal'
 ) -join ' && '

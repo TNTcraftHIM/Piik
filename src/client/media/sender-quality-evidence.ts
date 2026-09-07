@@ -46,13 +46,14 @@ function emitUnknownOnce(identities: Set<string>, identity: string): boolean {
 function nativeQualityState(
   metrics: ConnectionMetrics,
 ): "unknown" | "healthy" | "degraded" {
+  const frames = metrics.intervalFramesEncoded ?? metrics.intervalFramesSent;
   if (
     (metrics.nativeEdgeQualityState !== "healthy" &&
       metrics.nativeEdgeQualityState !== "degraded") ||
     metrics.sampleWindowMs === null ||
     metrics.sampleTimestampMs === null ||
-    metrics.intervalFramesEncoded === null ||
-    metrics.intervalFramesEncoded <= 0
+    frames === null ||
+    frames <= 0
   ) {
     return "unknown";
   }
@@ -92,18 +93,16 @@ export function senderQualityEvidenceFromSnapshot(
     type: "sender-quality-evidence",
     childPeerId: snapshot.peerId,
     connectionId: snapshot.connectionId,
-    rtpStatsId:
-      state === "unknown" ? null : snapshot.metrics.rtpStatsId,
+    rtpStatsId: state === "unknown" ? null : snapshot.metrics.rtpStatsId,
     trackIdentifier:
-      state === "unknown"
-        ? null
-        : snapshot.metrics.trackIdentifier,
+      state === "unknown" ? null : snapshot.metrics.trackIdentifier,
     sampleTimestampMs,
     routeRevision,
     state,
     diagnostics: {
       natTraversalPath: snapshot.metrics.natTraversalPath,
-      reason: state === "unknown" ? null : snapshot.metrics.qualityLimitationReason,
+      reason:
+        state === "unknown" ? null : snapshot.metrics.qualityLimitationReason,
       framesPerSecond: snapshot.metrics.framesPerSecond,
       bitrateKbps: snapshot.metrics.bitrateKbps,
       captureFramesPerSecond: snapshot.metrics.captureFramesPerSecond,
@@ -139,10 +138,7 @@ export function sfuPublisherQualityEvidenceFromMetrics(
   metrics: ConnectionMetrics,
   routeRevision: number,
   publicationGeneration: string,
-): Extract<
-  ClientMessage,
-  { type: "sfu-publisher-quality-evidence" }
-> | null {
+): Extract<ClientMessage, { type: "sfu-publisher-quality-evidence" }> | null {
   const evidence = nativeQualityState(metrics);
   const rawSampleTimestampMs = metrics.sampleTimestampMs;
   const state = ownsCurrentEvidenceGeneration(

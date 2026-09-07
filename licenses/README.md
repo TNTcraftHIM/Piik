@@ -26,6 +26,18 @@ and the license files of the modules actually compiled into that binary; the
 Client package also carries the pinned Cloudflared notices. Missing license
 texts or changed pinned contents stop packaging.
 
+LiveKit media-core packages are referenced as an unmodified, version-pinned Go
+module under Apache-2.0. Original Screener adapters remain MIT; adapted upstream
+probe orchestration retains its Apache-2.0 attribution in the source. Redistribution retains
+the module's license and applicable notices through the same Go notice collector.
+Any later copied or modified upstream file must retain its attribution and mark
+the modification. Prefer public API composition over a maintained source fork.
+
+Dependency updates are explicit rebuilds, not live updates in a running binary.
+Review relevant upstream advisories and actual reachable dependencies at release;
+an affected serious vulnerability warrants an earlier update. Mature media code
+is not exempt from vulnerability checks or focused upgrade verification.
+
 The Linux license texts come from the GNU license pages:
 `https://www.gnu.org/licenses/lgpl-3.0.txt` and
 `https://www.gnu.org/licenses/gpl-3.0.txt`.
