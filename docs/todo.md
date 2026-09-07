@@ -1,11 +1,21 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-09-06
+Last reviewed: 2026-09-07
 
 Only **Now** is executable. Observations, old branches, experiments, and parked
 topics are not implementation authority.
 
 ## Now
+
+Owner-authorized workstreams: [embedded media](./research/embedded-media.md)
+and [node-local adaptive reuse](./research/node-local-adaptation.md). Every
+parent, including Host, forwards available encodings and derives missing lower
+outputs only for direct children; compatible demands reuse the same output.
+The agreed model and primary-source findings are recorded. Next compare bounded
+on-demand activation with pre-encoding, encoder cold-start/retention costs and
+inherited-low-quality recovery, then select reusable codec components. These are
+not bundled service executables, full LiveKit embedding or per-Viewer Host
+uploads via TURN. Production codec/variant policy and cutover remain unaccepted.
 
 The returned Go core and frontend fixes are reconciled on the integration
 candidate. The owner authorized hygiene cleanup, matched Server/Client builds,

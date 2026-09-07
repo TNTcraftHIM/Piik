@@ -9,6 +9,7 @@ require (
 	github.com/charmbracelet/x/ansi v0.11.8
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/coder/websocket v1.8.15
+	github.com/inlivedev/sfu v0.0.0-20260307060053-14b2448a8982
 	github.com/netbirdio/go-nat v0.0.0-20260821095157-6b2c8c5c74e8
 	github.com/pion/ice/v4 v4.4.0
 	github.com/pion/interceptor v0.1.47
@@ -17,6 +18,7 @@ require (
 	github.com/pion/rtp v1.10.5
 	github.com/pion/sdp/v3 v3.0.19
 	github.com/pion/stun/v3 v3.1.6
+	github.com/pion/turn/v5 v5.0.12
 	github.com/pion/webrtc/v4 v4.2.18
 	github.com/thesyncim/gopus v0.1.1
 	golang.org/x/crypto v0.48.0
@@ -35,6 +37,7 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/huin/goupnp v1.2.0 // indirect
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
+	github.com/jaevor/go-nanoid v1.3.0 // indirect
 	github.com/koron/go-ssdp v0.0.4 // indirect
 	github.com/libp2p/go-netroute v0.2.1 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.1 // indirect
@@ -49,12 +52,13 @@ require (
 	github.com/pion/sctp v1.11.1 // indirect
 	github.com/pion/srtp/v3 v3.0.12 // indirect
 	github.com/pion/transport/v4 v4.0.2 // indirect
-	github.com/pion/turn/v5 v5.0.12 // indirect
+	github.com/pion/turn/v4 v4.1.4 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
-	golang.org/x/net v0.50.0 // indirect
+	golang.org/x/exp v0.0.0-20231006140011-7918f672742d // indirect
+	golang.org/x/net v0.51.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
