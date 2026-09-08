@@ -322,7 +322,9 @@ func (run *relayRun) read(stream *nativecapture.Stream) {
 				err = errors.New("native relay output does not match its source")
 				break
 			}
-			_ = source.SetFormat(0, frame.Width, frame.Height)
+			if err = source.SetFormat(0, frame.Width, frame.Height); err != nil {
+				break
+			}
 			err = source.WriteVideo(0, encoded.Frame{
 				Data: frame.Data, PTS: frame.Timestamp, Duration: frame.Duration, Recovery: frame.KeyFrame,
 			})

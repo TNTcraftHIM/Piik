@@ -140,8 +140,8 @@ export function writeClientLicenseNotices(repositoryRoot, packageRoot, goCommand
   if (target.goos === "windows" &&
       existsSync(join(packageRoot, "runtime", "native", target.captureName))) {
     const dependencies = JSON.parse(readFileSync(join(repositoryRoot, "native", "capture",
-      "windows", "libvpx-dependencies.json"), "utf8"));
-    const name = `libvpx@${dependencies.libvpx.version}`;
+      "windows", "webrtc-dependencies.json"), "utf8"));
+    const name = `webrtc@${dependencies.webrtc.version}`;
     text += section(name, pinnedNotice(name));
   }
   writeFileSync(join(packageRoot, "THIRD-PARTY-NOTICES.txt"), text + moduleSections(notices.modules));

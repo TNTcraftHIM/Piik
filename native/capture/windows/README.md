@@ -27,8 +27,8 @@ codec remains fixed across profile and source changes. VP8 reads the existing
 NV12 surface through one staging texture and uses the same encoded-frame
 boundary. The process has no network fallback. The Client
 consumes the selected process or system-audio stream through its native media
-edge when the capability probe reports support. Build it outside the repository
-for a bounded capability run:
+edge when the capability probe reports support. Build to the stable project
+`build/client-check` directory for a bounded capability run:
 
 ```powershell
 npm run check:client-capture
@@ -38,8 +38,17 @@ The implementation follows Microsoft's MIT-licensed reference samples and
 official API contracts without copying their WIL framework. The retained MF
 fixture compiles the same encoder source with `SCREENER_H264_FIXTURE`; there is
 not a second product MFT implementation.
-The build caches pinned libvpx, NASM and make inputs under `build/client-check`;
-only statically linked VP8 code and its notices enter the package.
+Shared local outputs use stock WebRTC source/encoder adaptation. H264 keeps
+native NV12 surfaces, while WebRTC VP8 reads back into I420. The existing capture
+and output mailboxes retain source/generation ownership; adapted sizes and
+timestamps cross the same media envelope. Hardware low-latency mode stays on;
+the old fixed one-frame VBV override is removed so later bitrate increases are
+not trapped by the original buffer limit.
+
+The build caches the pinned WebRTC SDK and matching official MSVC linker/runtime
+libraries under `build/encoder-pool`. The SDK supplies libvpx, replacing the
+separate source build. Only statically linked code and required notices enter
+the package, not the SDK/toolchain or another runtime service.
 
 - <https://github.com/microsoft/Windows-classic-samples/tree/main/Samples/ApplicationLoopback>
 - <https://github.com/microsoft/Windows.UI.Composition-Win32-Samples/tree/master/cpp/ScreenCaptureforHWND>

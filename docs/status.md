@@ -104,7 +104,10 @@ back the initial infrastructure change.
 
 - Native adaptive-resolution design is reopened under the
   [encoder-pool review](./research/webrtc-encoder-pool.md); dependent release
-  approval is held in TODO. Independent Client/service fixes remain preserved.
+  approval is held in TODO. Windows capture and derivation now attach stock
+  WebRTC output pipelines; both codecs pass bounded process-level shrinking and
+  recovery checks. Incompatible weak-consumer grouping is still incomplete.
+  Independent Client/service fixes remain preserved.
 - Browser and Native H264/VP8 publication through embedded SFU pass Browser decoding,
   live-profile and cleanup checks; the Native path also delivers Opus. Bounded
   Native VP8 forwarding/derivation and stopped-upper recovery have synthetic

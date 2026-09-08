@@ -323,8 +323,6 @@ void ConfigureCodec(
   SetBool(codec, CODECAPI_AVLowLatencyMode, true, "codec-low-latency");
   SetU32(codec, CODECAPI_AVEncCommonMeanBitRate, profile.bit_rate,
          "codec-mean-bitrate");
-  SetU32(codec, CODECAPI_AVEncCommonBufferSize, profile.vbv_bytes(),
-         "codec-vbv-bytes");
   SetU32(codec, CODECAPI_AVEncMPVGOPSize, profile.gop_frames(), "codec-gop");
   SetOptionalU32(codec, CODECAPI_AVEncCommonQualityVsSpeed,
                  profile.quality_vs_speed());
@@ -434,8 +432,6 @@ void ValidateCodecReadback(
       !ReadBool(codec, CODECAPI_AVLowLatencyMode, "codec-low-latency") ||
       ReadU32(codec, CODECAPI_AVEncCommonMeanBitRate,
               "codec-mean-bitrate") != profile.bit_rate ||
-      ReadU32(codec, CODECAPI_AVEncCommonBufferSize, "codec-vbv-bytes") !=
-          profile.vbv_bytes() ||
       ReadU32(codec, CODECAPI_AVEncMPVGOPSize, "codec-gop") !=
           profile.gop_frames()) {
     Fail("codec-final-readback", "one or more codec properties were weakened");

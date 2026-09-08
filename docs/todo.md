@@ -89,13 +89,13 @@ seconds; do not expand the model to promise imperceptible switching. Permanent
 stalls, stale generations and sibling damage remain defects. Upstream assembly-
 gap recovery is implemented and checked; finish matched-package acceptance.
 The owner reaffirmed shared encoding and weak-path adaptation as the core
-release targets. Fixed original/half-size outputs plus bitrate reduction do not
-establish Browser-equivalent adaptation: the Native lowest encoder cannot yet
-shrink its dimensions further. Investigate mature codec/resource adaptation
-before accepting this boundary or adding another fixed layer. Compare usable
-delivery and recovery against ordinary WebRTC under matched conditions; preserve
-healthy inputs and reusable output ownership. Freeze dependent release approval
-while the adaptive-resolution design remains unresolved.
+release targets. Windows shared output workers now attach stock WebRTC
+codec/resource adaptation and both H264/VP8 shrink and recover in the actual
+encoded-input process check. Retain actual-dimension metadata and source
+timestamps; do not replace this with another fixed ladder. Complete independent
+incompatible weak-child demand grouping, real capture cadence/overload and
+usable delivery comparisons before accepting Browser-equivalent behavior.
+Dependent release approval remains held; this is not merely packaging work.
 The [pinned WebRTC trace and executed encoder-pool probe](./research/webrtc-encoder-pool.md)
 show that a transparent factory cache alone loses reuse when independent
 corrected rates diverge. Sharing WebRTC's existing overshoot corrector with the
@@ -110,8 +110,9 @@ files or remove required platform adapters for appearance alone.
 Cross-level reuse now has actual two-hop Pion replay evidence and a separate
 two-consumer shared-derivation/retirement check. Keep `Source.WriteRTP` as the
 healthy encoded bypass; integrate VSE/pool only behind required local outputs,
-not a fake per-child raw pipeline or a replacement transport. The new pool is
-not yet attached to the Native derivation process. One-total-encode claims must
+not a fake per-child raw pipeline or a replacement transport. The Windows
+derivation process now uses the new output pipeline; complete grouped demand
+membership and mixed-network acceptance. One-total-encode claims must
 count Host standby outputs and exclude pure Browser intermediate re-encoding.
 The delayed-codec probe exposes repeated input-drop split/rejoin in the narrow
 factory cache. Evaluate sharing the complete encoding/adaptation pipeline per
@@ -121,6 +122,12 @@ Independent library/service audits may proceed in parallel. Do not add a custom 
 or congestion algorithm. These are
 not bundled service executables, full LiveKit embedding or per-Viewer Host
 uploads via TURN. Concrete codec parameters and release cutover remain unaccepted.
+
+The owner retains the smallest direct-child responsibility model: reuse suitable
+encodings already received at this node; derive a missing output locally for
+compatible direct-child demand. Do not add ancestor-cache discovery or extra
+upstream layer subscriptions merely to avoid a local encode. That expansion's
+subscription/bandwidth/lifecycle cost has no measured benefit in this phase.
 
 The returned Go core and frontend fixes are reconciled on the integration
 candidate. The owner authorized hygiene cleanup, matched Server/Client builds,
@@ -190,6 +197,11 @@ a tunnel; include that path in packaged acceptance.
    Alt-Tab out, change advanced sharing settings, then return to the game;
    interruption occurs on return. Ordinary window minimization is not this
    display-mode/capture-session transition.
+   The current Windows 11 candidate passes actual CS2 fullscreen 1920x1440
+   Alt-Tab/pending-setting/return twice at 1080p30 and 720p30, preserving media
+   and subsequent settings. This does not establish the affected machine's
+   root cause, vendor panel-fit or in-match behavior. The additional prolonged
+   background case did not hold its minimize precondition; verify separately.
 
 ## Parked Product Work
 

@@ -122,6 +122,25 @@ The ordinary-window gate does not reproduce exclusive-fullscreen/display-mode
 changes. Capture replacement overlap, target identity and device state remain
 separate hypotheses until that exact transition is observed.
 
+Later that day, the Windows 11 candidate ran the actual installed CS2 in
+fullscreen 1920x1440. The desktop changed from 2560x1440 while the game was
+minimized to 1920x1440 after return. Two real HostPage pending updates returned
+to the game after 1,703 ms and 1,545 ms: H264 1080p30 to 720p30 and back.
+The Viewer received both actual sizes, retained its media object, and the game
+kept its HWND/process generation. The current candidate did not reproduce the
+reported interruption in this menu-level sequence. Game settings were restored
+byte-for-byte and all owned processes, ports and Browser profiles closed.
+An additional prolonged-background case failed to keep CS2 minimized before
+the settings action, so it is not a passed or failed capture check. Vendor-side
+stretch fidelity, in-match execution and the affected machine remain unverified.
+
+The end-to-end review did confirm a separate presentation defect: share
+termination during a pending update cleared its token but retained the advanced
+draft. A restart used the last applied settings while controls could show the
+failed draft. Cleanup now restores the applied settings through the existing
+commit helper; no new state or recovery mechanism was added. This alone is not
+claimed as the cause of CS2 capture termination.
+
 Primary references: [CreateForMonitor](https://learn.microsoft.com/en-us/windows/win32/api/windows.graphics.capture.interop/nf-windows-graphics-capture-interop-igraphicscaptureiteminterop-createformonitor),
 [CreateFreeThreaded](https://learn.microsoft.com/en-us/uwp/api/windows.graphics.capture.direct3d11captureframepool.createfreethreaded),
 [capture item closure](https://learn.microsoft.com/en-us/uwp/api/windows.graphics.capture.graphicscaptureitem.closed),

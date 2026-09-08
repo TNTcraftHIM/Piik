@@ -356,10 +356,21 @@ func (source *Source) BeginGeneration() {
 }
 
 func (source *Source) SetFormat(layer int, width, height uint32) error {
-	if layer < 0 || layer >= len(source.formats) {
-		return errors.New("native output layer is invalid")
+	if layer < 0 || layer >= len(source.formats) || width == 0 || height == 0 {
+		return errors.New("native output format is invalid")
 	}
-	source.formats[layer].Store(uint64(width)<<32 | uint64(height))
+	source.writeMu.Lock()
+	defer source.writeMu.Unlock()
+	source.mu.Lock()
+	defer source.mu.Unlock()
+	if source.closed {
+		return io.ErrClosedPipe
+	}
+	format := uint64(width)<<32 | uint64(height)
+	if err := source.media.UpdateDimensions(layer, width, height); err != nil {
+		return err
+	}
+	source.formats[layer].Store(format)
 	return nil
 }
 

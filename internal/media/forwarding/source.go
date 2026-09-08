@@ -14,6 +14,7 @@ import (
 	"github.com/livekit/mediatransportutil"
 	"github.com/livekit/protocol/livekit"
 	"github.com/livekit/protocol/logger"
+	"github.com/livekit/protocol/utils"
 	"github.com/livekit/protocol/utils/mono"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
@@ -43,6 +44,7 @@ type Source struct {
 	maxPackets           int
 	onRTCP               func(int, []rtcp.Packet)
 	closed               bool
+	currentTrackInfo     atomic.Pointer[livekit.TrackInfo]
 	lowestRateControlled atomic.Bool
 }
 
@@ -75,7 +77,7 @@ func NewSource(options SourceOptions) (*Source, error) {
 	if err := setLayerFormats(info, options.Formats); err != nil {
 		return nil, err
 	}
-	return &Source{
+	source := &Source{
 		ReceiverBase: sfu.NewReceiverBase(sfu.ReceiverBaseParams{
 			TrackID: livekit.TrackID(options.ID), StreamID: options.StreamID,
 			Kind: webrtc.RTPCodecTypeVideo, Codec: options.Codec,
@@ -84,7 +86,13 @@ func NewSource(options SourceOptions) (*Source, error) {
 		}, info, sfu.ReceiverCodecStateNormal),
 		buffers:    make([]*buffer.Buffer, len(options.Formats)),
 		maxPackets: options.MaxPackets, onRTCP: options.OnRTCP,
-	}, nil
+	}
+	source.currentTrackInfo.Store(info)
+	return source, nil
+}
+
+func (source *Source) TrackInfo() *livekit.TrackInfo {
+	return utils.CloneProto(source.currentTrackInfo.Load())
 }
 
 func canonicalHeaderExtensions(extensions []webrtc.RTPHeaderExtensionParameter) []webrtc.RTPHeaderExtensionParameter {
@@ -142,8 +150,34 @@ func (source *Source) UpdateFormats(formats []LayerFormat) error {
 	if err := setLayerFormats(info, formats); err != nil {
 		return err
 	}
+	source.currentTrackInfo.Store(info)
 	// The library can notify downtracks while applying metadata.
 	source.UpdateTrackInfo(info)
+	return nil
+}
+
+// UpdateDimensions publishes actual encoder dimensions without UpdateTrackInfo's
+// mute propagation, which resets every active layer's tracker and bitrate.
+func (source *Source) UpdateDimensions(layer int, width, height uint32) error {
+	source.mu.Lock()
+	defer source.mu.Unlock()
+	if source.closed {
+		return sfu.ErrReceiverClosed
+	}
+	if layer < 0 || layer >= len(source.buffers) || width == 0 || height == 0 {
+		return errors.New("forwarded video layer dimensions are invalid")
+	}
+	current := source.currentTrackInfo.Load()
+	if current.Layers[layer].Width == width && current.Layers[layer].Height == height {
+		return nil
+	}
+	info := utils.CloneProto(current)
+	info.Layers[layer].Width, info.Layers[layer].Height = width, height
+	info.Codecs[0].Layers[layer].Width, info.Codecs[0].Layers[layer].Height = width, height
+	if layer == len(source.buffers)-1 {
+		info.Width, info.Height = width, height
+	}
+	source.currentTrackInfo.Store(info)
 	return nil
 }
 

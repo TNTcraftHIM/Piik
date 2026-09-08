@@ -69,6 +69,16 @@ mistaken for a healthy high-quality path.
 
 ## Consequences And Release Boundary
 
+The Native integration uses one complete stock WebRTC encoding/adaptation
+pipeline per shared local output. Its source adapter, rate correction, resource
+feedback and input dropping share that output's lifetime; they are not cloned
+per consumer behind an encoder cache. The existing Pion/LiveKit transport owns
+the input bitrate budget and forwarding. Ordinary encoder adaptation preserves
+the unadapted capture/received original, source timeline and route identity.
+This refines the implementation boundary, not the direct-child demand model or
+an acceptance claim. The [encoder-pool evidence](../research/webrtc-encoder-pool.md)
+shows why sharing the codec alone loses reuse or churns under independent drops.
+
 - One media model can serve Native edges and embedded server forwarding without
   duplicating room authority. The adapter is not a second room policy.
 - Extra low encodes, decoder work, frame copies and publication upload remain

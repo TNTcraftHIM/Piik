@@ -34,13 +34,14 @@
 #include "process_audio.h"
 #include "h264_encoder.h"
 #ifndef SCREENER_H264_FIXTURE
+#include "adaptive_encoder.h"
 #include "capture_control.h"
 #include "capture_input.h"
 #include "h264_decoder.h"
 #include "capture_output.h"
 #include "output_mailbox.h"
-#include "vp8_encoder.h"
 #include "vp8_decoder.h"
+#include <vpx/vpx_codec.h>
 #endif
 
 #include <algorithm>
@@ -656,57 +657,6 @@ class UniqueHandle final {
   HANDLE value_ = nullptr;
 };
 
-class SoftwareVp8Encoder final : public VideoEncoder {
- public:
-  SoftwareVp8Encoder(ID3D11Device* device, const VideoProfile& profile)
-      : VideoEncoder(OutputKind::vp8, "libvpx VP8",
-                     std::string("libvpx/") + screener::capture::Vp8Encoder::Version()),
-        encoder_(profile.width, profile.height, profile.frame_rate, profile.bit_rate) {
-    device->GetImmediateContext(&context_);
-    D3D11_TEXTURE2D_DESC description{};
-    description.Width = profile.width;
-    description.Height = profile.height;
-    description.MipLevels = 1;
-    description.ArraySize = 1;
-    description.Format = DXGI_FORMAT_NV12;
-    description.SampleDesc.Count = 1;
-    description.Usage = D3D11_USAGE_STAGING;
-    description.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-    Check(device->CreateTexture2D(&description, nullptr, &staging_),
-          "vp8-readback-texture");
-  }
-
-  EncodedAccessUnit Encode(ID3D11Texture2D* texture, UINT64 timestamp100ns,
-                           bool force_key_frame,
-                           EncoderClock::time_point deadline) override {
-    RequireEncoderTime(deadline);
-    context_->CopyResource(staging_.Get(), texture);
-    D3D11_MAPPED_SUBRESOURCE mapped{};
-    Check(context_->Map(staging_.Get(), 0, D3D11_MAP_READ, 0, &mapped),
-          "vp8-readback-map");
-    screener::capture::Vp8Frame frame;
-    try {
-      RequireEncoderTime(deadline);
-      frame = encoder_.Encode(static_cast<uint8_t*>(mapped.pData),
-                                mapped.RowPitch, timestamp100ns,
-                                force_key_frame);
-    } catch (...) {
-      context_->Unmap(staging_.Get(), 0);
-      throw;
-    }
-    context_->Unmap(staging_.Get(), 0);
-    RequireEncoderTime(deadline);
-    return {timestamp100ns, frame.key_frame, std::move(frame.bytes)};
-  }
-
-  void SetBitrate(UINT32 bitrate) override { encoder_.SetBitrate(bitrate); }
-
- private:
-  screener::capture::Vp8Encoder encoder_;
-  ComPtr<ID3D11DeviceContext> context_;
-  ComPtr<ID3D11Texture2D> staging_;
-};
-
 class FrameConverter final {
  public:
   explicit FrameConverter(
@@ -1236,19 +1186,45 @@ void WriteCapabilityProbe() {
   }
 }
 
-double MeasureEncoderWork(VideoEncoder& encoder, ID3D11Device* device,
+double MeasureEncoderWork(VideoEncoder* hardware, ID3D11Device* device,
                           const VideoProfile& profile,
                           EncoderClock::time_point deadline) {
   const UINT32 warmup_frames = (profile.frame_rate + 1) / 2;
   const UINT32 sample_frames = profile.frame_rate;
+  std::unique_ptr<AdaptiveEncoder> adaptive;
+  if (!hardware) {
+    adaptive = std::make_unique<AdaptiveEncoder>(OutputKind::vp8, profile, device,
+                                               AdaptiveEncoder::Factory{});
+  }
+  const auto cadence_start = EncoderClock::now();
   std::chrono::duration<double> measured{};
   for (UINT32 frame = 0; frame < warmup_frames + sample_frames; ++frame) {
     RequireEncoderTime(deadline);
     auto texture = CreateSyntheticTexture(device, frame, profile);
+    if (adaptive) {
+      // VSE observes real input cadence; pacing is not encoder work.
+      std::this_thread::sleep_until(cadence_start + std::chrono::nanoseconds(
+          static_cast<INT64>(frame) * profile.frame_duration_100ns() * 100));
+      RequireEncoderTime(deadline);
+    }
     const auto start = EncoderClock::now();
-    auto encoded = encoder.Encode(texture.Get(),
-        (static_cast<UINT64>(frame) + 1) * profile.frame_duration_100ns(),
-        frame == 0, deadline);
+    const auto timestamp = (static_cast<UINT64>(frame) + 1) * profile.frame_duration_100ns();
+    EncodedAccessUnit encoded;
+    if (adaptive) {
+      auto output = adaptive->Encode([&](UINT32 width, UINT32 height) {
+        if (width != profile.width || height != profile.height)
+          Fail("codec-probe-output", "encoder reduced the probe resolution");
+        return texture;
+      }, profile.width, profile.height, timestamp, frame == 0, profile.bit_rate);
+      RequireEncoderTime(deadline);
+      if (!output || output->width != profile.width || output->height != profile.height ||
+          output->duration100ns != static_cast<UINT64>(profile.frame_duration_100ns())) {
+        Fail("codec-probe-output", "encoder reduced the probe profile or dropped a frame");
+      }
+      encoded = std::move(output->access_unit);
+    } else {
+      encoded = hardware->Encode(texture.Get(), timestamp, frame == 0, deadline);
+    }
     // A dropped input cannot count as a throughput-probe output frame.
     if (encoded.bytes.empty() || encoded.bytes.size() > kMaxProductAccessUnitBytes) {
       Fail("codec-probe-output", "encoder produced an invalid probe frame");
@@ -1258,46 +1234,47 @@ double MeasureEncoderWork(VideoEncoder& encoder, ID3D11Device* device,
   return measured.count() / sample_frames;
 }
 
-std::unique_ptr<VideoEncoder> SelectVideoEncoder(
+struct VideoEncoderSelection final {
+  OutputKind kind = OutputKind::vp8;
+  std::unique_ptr<VideoEncoder> initial;
+};
+
+VideoEncoderSelection SelectVideoEncoder(
     const ProductArguments& arguments, const Adapter& adapter,
     const DeviceContext& device) {
-  const auto create = [&](bool hardware) -> std::unique_ptr<VideoEncoder> {
-    if (!hardware) {
-      return std::make_unique<SoftwareVp8Encoder>(device.device.Get(), arguments.profile);
-    }
+  const auto create = [&]() -> std::unique_ptr<VideoEncoder> {
     ActivationList activations = EnumerateHardwareEncoders(adapter);
     auto selected = ActivateTransform(activations, arguments.mft_index, device.manager.Get());
     return std::make_unique<LiveEncoder>(std::move(selected), arguments.profile);
   };
-  if (arguments.codec != "auto") return create(arguments.codec == "h264");
+  if (arguments.codec == "vp8") return {};
+  if (arguments.codec == "h264") return {OutputKind::h264, create()};
 
   const auto began = EncoderClock::now();
   const auto budget = std::chrono::seconds(4);
   const auto deadline = began + budget;
   std::optional<double> hardware_work;
   try {
-    auto hardware = create(true);
-    hardware_work = MeasureEncoderWork(*hardware, device.device.Get(),
+    auto hardware = create();
+    hardware_work = MeasureEncoderWork(hardware.get(), device.device.Get(),
                                       arguments.profile, began + budget / 2);
-    if (*hardware_work <= 1.0 / arguments.profile.frame_rate) return hardware;
+    if (*hardware_work <= 1.0 / arguments.profile.frame_rate)
+      return {OutputKind::h264, std::move(hardware)};
   } catch (const std::exception&) {
     // No media has been published; a failed hardware probe may try software.
   }
   RequireEncoderTime(deadline);
-  std::unique_ptr<VideoEncoder> software;
   try {
-    software = create(false);
-    const double software_work = MeasureEncoderWork(*software, device.device.Get(),
+    const double software_work = MeasureEncoderWork(nullptr, device.device.Get(),
                                                     arguments.profile, deadline);
-    if (!hardware_work || software_work <= *hardware_work) return software;
+    if (!hardware_work || software_work <= *hardware_work) return {};
   } catch (const std::exception&) {
     if (!hardware_work) throw;
   }
-  software.reset();
   RequireEncoderTime(deadline);
-  auto hardware = create(true);
+  auto hardware = create();
   RequireEncoderTime(deadline);
-  return hardware;
+  return {OutputKind::h264, std::move(hardware)};
 }
 
 struct CaptureInput final {
@@ -1306,18 +1283,17 @@ struct CaptureInput final {
   UINT32 height = 0;
   SIZE presentation{};
   UINT64 timestamp = 0;
-  UINT64 cadence = 0;
 };
 
 class OutputWorker final {
  public:
-  using Factory = std::function<std::unique_ptr<VideoEncoder>()>;
-  OutputWorker(UINT8 layer, VideoProfile profile, ID3D11Device* device,
+  using Factory = AdaptiveEncoder::Factory;
+  OutputWorker(UINT8 layer, VideoProfile profile, OutputKind kind, ID3D11Device* device,
                ProtocolWriter& writer, Factory create,
                std::unique_ptr<VideoEncoder> initial,
                std::function<void()> on_output,
                std::function<void(std::exception_ptr)> on_failure)
-      : layer_(layer), profile_(profile), device_(device), writer_(writer),
+      : layer_(layer), profile_(profile), kind_(kind), device_(device), writer_(writer),
         create_(std::move(create)), initial_(std::move(initial)),
         on_output_(std::move(on_output)), on_failure_(std::move(on_failure)),
         mailbox_(profile.bit_rate), thread_([this]() { Run(); }) {}
@@ -1351,20 +1327,20 @@ class OutputWorker final {
   void Run() noexcept {
     bool apartment = false;
     bool recovery = false;
-    auto encoder = std::move(initial_);
+    auto initial = std::move(initial_);
+    std::unique_ptr<AdaptiveEncoder> encoder;
     std::unique_ptr<FrameConverter> converter;
     try {
       Check(CoInitializeEx(nullptr, COINIT_MULTITHREADED), "output-com-apartment");
       apartment = true;
       UINT64 codec_generation = 0;
-      UINT64 next_timestamp = 0;
-      UINT64 encoded_frames = 0;
-      UINT32 applied_bitrate = profile_.bit_rate;
+      UINT32 converted_width = 0, converted_height = 0;
       for (;;) {
         const auto work = mailbox_.Take();
         if (work.action == Mailbox::Action::stop) break;
         if (work.action == Mailbox::Action::retire) {
           encoder.reset();
+          initial.reset();
           converter.reset();
           continue;
         }
@@ -1372,59 +1348,48 @@ class OutputWorker final {
         recovery = work.recovery;
         if (codec_generation != work.generation) {
           encoder.reset();
+          initial.reset();
           converter.reset();
           codec_generation = work.generation;
-          next_timestamp = 0;
-          encoded_frames = 0;
         }
-        const UINT64 duration = static_cast<UINT64>(profile_.frame_duration_100ns());
-        // Captured inputs already obey their source ceiling. Reapplying the
-        // same limiter from a worker's later origin drops valid jittered frames.
-        if (duration > input->cadence && !recovery && input->timestamp < next_timestamp &&
-            next_timestamp - input->timestamp > duration / 20) continue;
         if (!encoder) {
-          encoder = create_();
-          applied_bitrate = profile_.bit_rate;
-          recovery = true;
+          encoder = std::make_unique<AdaptiveEncoder>(
+              kind_, profile_, device_.Get(), create_, std::move(initial));
         }
-        if (!converter) converter = std::make_unique<FrameConverter>(device_.Get(), profile_);
-        if (work.bitrate != applied_bitrate) {
-          encoder->SetBitrate(work.bitrate);
-          applied_bitrate = work.bitrate;
-        }
-        recovery = recovery || encoded_frames % profile_.gop_frames() == 0;
-        auto texture = converter->Convert(input->texture.Get(), input->width,
-                                          input->height, input->presentation);
-        auto access_unit = encoder->Encode(texture.Get(), input->timestamp, recovery);
-        if (next_timestamp == 0) {
-          next_timestamp = input->timestamp + duration;
-        } else {
-          const UINT64 elapsed = input->timestamp > next_timestamp ? input->timestamp - next_timestamp : 0;
-          next_timestamp += (elapsed / duration + 1) * duration;
-        }
-        if (access_unit.bytes.empty()) {
-          if (recovery) mailbox_.RequestKeyFrame();
-          continue;
-        }
-        ++encoded_frames;
+        auto output = encoder->Encode([&](UINT32 width, UINT32 height) {
+          if (!converter || converted_width != width || converted_height != height) {
+            auto selected = profile_;
+            selected.width = width;
+            selected.height = height;
+            converter = std::make_unique<FrameConverter>(device_.Get(), selected);
+            converted_width = width;
+            converted_height = height;
+          }
+          return converter->Convert(input->texture.Get(), input->width,
+                                    input->height, input->presentation);
+        }, profile_.width, profile_.height, input->timestamp, recovery, work.bitrate);
+        if (!output) continue;
         if (!mailbox_.Accept(work.generation)) continue;
-        Check(writer_.Write(encoder->kind, access_unit.key_frame ? 1 : 0,
-                             access_unit.timestamp100ns, profile_.frame_duration_100ns(),
+        const auto& access_unit = output->access_unit;
+        Check(writer_.Write(kind_, access_unit.key_frame ? 1 : 0,
+                             access_unit.timestamp100ns, output->duration100ns,
                              access_unit.bytes.data(), static_cast<DWORD>(access_unit.bytes.size()),
-                             layer_, static_cast<UINT16>(profile_.width),
-                             static_cast<UINT16>(profile_.height)), "capture-video-output");
+                             layer_, static_cast<UINT16>(output->width),
+                             static_cast<UINT16>(output->height)), "capture-video-output");
         if (on_output_) on_output_();
       }
     } catch (...) {
       if (mailbox_.Fail(recovery)) on_failure_(std::current_exception());
     }
     encoder.reset();
+    initial.reset();
     converter.reset();
     if (apartment) CoUninitialize();
   }
 
   const UINT8 layer_;
   const VideoProfile profile_;
+  const OutputKind kind_;
   ComPtr<ID3D11Device> device_;
   ProtocolWriter& writer_;
   Factory create_;
@@ -1448,7 +1413,7 @@ void AppendOutputProfiles(std::ostream& output, const std::vector<VideoProfile>&
 }
 
 void WriteVideoStarting(ProtocolWriter& writer, const ProductArguments& arguments,
-                        const Adapter& adapter, const VideoEncoder& encoder) {
+                        const Adapter& adapter, const VideoEncoderSelection& encoder) {
   const bool hardware = encoder.kind == OutputKind::h264;
   std::ostringstream status;
   status << "{\"state\":\"starting\",\"hardwareOnly\":" << (hardware ? "true" : "false")
@@ -1456,8 +1421,9 @@ void WriteVideoStarting(ProtocolWriter& writer, const ProductArguments& argument
          << ",\"adapterIndex\":" << adapter.index
          << ",\"adapterName\":" << JSONString(NarrowAscii(adapter.description.Description))
          << ",\"adapterIdentity\":" << JSONString(LuidString(adapter.description.AdapterLuid))
-         << ",\"encoderName\":" << JSONString(encoder.name)
-         << ",\"encoderIdentity\":" << JSONString(encoder.identity);
+         << ",\"encoderName\":" << JSONString(hardware ? encoder.initial->name : "libvpx VP8")
+         << ",\"encoderIdentity\":" << JSONString(hardware ? encoder.initial->identity :
+              std::string("libvpx/") + vpx_codec_version_str());
   if (hardware) status << ",\"encoderIndex\":" << arguments.mft_index;
   AppendOutputProfiles(status, arguments.outputs);
   status << '}';
@@ -1478,24 +1444,26 @@ void WriteVideoActive(ProtocolWriter& writer, const ProductArguments& arguments,
 
 std::vector<std::unique_ptr<OutputWorker>> CreateOutputWorkers(
     const ProductArguments& arguments, const Adapter& adapter, const DeviceContext& device,
-    ProtocolWriter& writer, std::unique_ptr<VideoEncoder> initial,
+    ProtocolWriter& writer, VideoEncoderSelection encoder,
     const std::function<void()>& on_active,
     const std::function<void(size_t, std::exception_ptr)>& on_failure) {
-  const bool hardware = initial->kind == OutputKind::h264;
+  const bool hardware = encoder.kind == OutputKind::h264;
   const UINT encoder_index = arguments.mft_index;
   std::vector<std::unique_ptr<OutputWorker>> workers;
   for (size_t layer = 0; layer < arguments.outputs.size(); ++layer) {
     const auto profile = arguments.outputs[layer];
     const bool highest = layer + 1 == arguments.outputs.size();
-    auto create = [&adapter, &device, profile, hardware, encoder_index]() -> std::unique_ptr<VideoEncoder> {
-      if (!hardware) return std::make_unique<SoftwareVp8Encoder>(device.device.Get(), profile);
-      auto activations = EnumerateHardwareEncoders(adapter);
-      auto selected = ActivateTransform(activations, encoder_index, device.manager.Get());
-      return std::make_unique<LiveEncoder>(std::move(selected), profile);
-    };
+    AdaptiveEncoder::Factory create;
+    if (hardware) {
+      create = [&adapter, &device, encoder_index](const VideoProfile& selected_profile) -> std::unique_ptr<VideoEncoder> {
+        auto activations = EnumerateHardwareEncoders(adapter);
+        auto selected = ActivateTransform(activations, encoder_index, device.manager.Get());
+        return std::make_unique<LiveEncoder>(std::move(selected), selected_profile);
+      };
+    }
     workers.push_back(std::make_unique<OutputWorker>(
-        static_cast<UINT8>(layer), profile, device.device.Get(), writer,
-        std::move(create), highest ? std::move(initial) : nullptr,
+        static_cast<UINT8>(layer), profile, encoder.kind, device.device.Get(), writer,
+        std::move(create), highest ? std::move(encoder.initial) : nullptr,
         [highest, on_active]() { if (highest) on_active(); },
         [layer, on_failure](std::exception_ptr error) { on_failure(layer, error); }));
   }
@@ -1605,7 +1573,7 @@ void RunEncodedVideo(const ProductArguments& arguments) {
   auto encoder = SelectVideoEncoder(arguments, adapter, device);
   const bool hardware = arguments.codec == "h264";
   ProtocolWriter writer;
-  WriteVideoStarting(writer, arguments, adapter, *encoder);
+  WriteVideoStarting(writer, arguments, adapter, encoder);
   HANDLE input_thread_handle = nullptr;
   Check(DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(),
                          &input_thread_handle, 0, FALSE, DUPLICATE_SAME_ACCESS), "encoded-input-thread");
@@ -1694,7 +1662,7 @@ void RunVideoCapture(const ProductArguments& arguments) {
   const Adapter& adapter = SelectAdapter(adapters, arguments.adapter_index);
   DeviceContext device = CreateDevice(adapter);
   auto encoder = SelectVideoEncoder(arguments, adapter, device);
-  const bool hardware = encoder->kind == OutputKind::h264;
+  const bool hardware = encoder.kind == OutputKind::h264;
   screener::capture::CapturePresentation presentation(arguments.target_kind,
                                                       arguments.source_id);
   ProtocolWriter writer;
@@ -1792,7 +1760,7 @@ void RunVideoCapture(const ProductArguments& arguments) {
     const UINT64 frame_duration = static_cast<UINT64>(
         arguments.profile.frame_duration_100ns());
     const DWORD control_wait_ms = static_cast<DWORD>((frame_duration + 9'999) / 10'000);
-    WriteVideoStarting(writer, arguments, adapter, *encoder);
+    WriteVideoStarting(writer, arguments, adapter, encoder);
     workers = CreateOutputWorkers(arguments, adapter, device, writer, std::move(encoder),
       [&]() {
         if (!active_status_written.exchange(true)) WriteVideoActive(writer, arguments, hardware);
@@ -1923,7 +1891,6 @@ void RunVideoCapture(const ProductArguments& arguments) {
       input->timestamp = timestamp;
       input->presentation = presentation.Resolve(content_width, content_height,
           source_frames % arguments.profile.gop_frames() == 0);
-      input->cadence = frame_duration;
       latest.Close();
       latest = nullptr;
       if (next_output_timestamp == 0) {

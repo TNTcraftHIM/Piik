@@ -369,8 +369,8 @@ Encode, SetBitrate and retirement around MFT. A shared extraction plus an adapte
 can preserve that implementation. Truthful codec information, requested FPS,
 actual QP availability, and dynamic output dimensions remain integration work;
 the old fixed `OutputWorker` policy is not a requirement to restart WGC capture.
-The following H264 step implements that extraction and opt-in adapter; no
-product VSE pipeline has been installed.
+The following H264 step first verified that extraction and opt-in adapter;
+the subsequent product attachment is recorded below.
 
 ### Hardware H264 Adapter Check
 
@@ -401,10 +401,8 @@ reported errors. The last six exported AUs followed B's retirement; this is
 bitstream validation, not a claim that both actual consumers received 180.
 
 [Structured results](./data/webrtc-h264-pipeline.json) retain that narrow scope.
-These checks do not establish independent weak-child adaptation, overload,
-actual capture throughput, transport overhead or Client integration. The
-adapter remains probe-only; the existing product encoder is only extracted,
-not replaced by an accepted new pipeline or a second implementation.
+These initial checks do not establish independent weak-child adaptation,
+overload, actual capture throughput, transport overhead or Client integration.
 
 The concrete product attachment is `OutputWorker::Run`, shared by WGC and
 encoded-input derivation. Its fixed-size/FPS/direct-rate block can become a
@@ -424,6 +422,55 @@ assigning shared pipelines to those slots. Product linking also must reconcile
 the SDK's bundled libvpx with the existing capture dependency and include the
 SDK's own notices. These are concrete implementation costs, not solved by the
 healthy two-callback check above.
+
+### Windows Product Attachment
+
+`OutputWorker` now uses one complete stock VSE/VideoAdapter per shared local
+output, for both WGC and encoded-input derivation. The original capture, bounded
+mailbox, generation checks and cancellable pipe writer remain. H264 receives
+same-device NV12 directly; stock VP8 uses I420 readback. The returned AU retains
+its exact input timestamp rather than rounding it through WebRTC microseconds.
+The source publishes adapted dimensions through an immutable metadata snapshot;
+calling LiveKit's full track-info update for each size change would reset every
+active layer's bitrate tracker and was rejected by a focused regression.
+
+The product build now links the same pinned SDK, including its libvpx, instead
+of a second standalone libvpx build. The Windows capture executable is about
+8.0 MB and imports only Windows system DLLs/API sets. Cached SDK and official
+MSVC archives total about 816 MB, not package payload. SDK notices are retained
+in the package; no new daemon or runtime service is added.
+
+The opt-in `TestAdaptiveOutputFixture` sends synthetic encoded input through the
+actual capture executable: six seconds at 2 Mbps, fifteen at 100 kbps, then
+restoration to 2 Mbps. VP8 delivered 178 full-size healthy frames, 94 reduced
+frames during the limited interval and 26 full-size restored frames within
+the first 25 seconds after release. Source timestamps remained ordered.
+
+H264 exposed two interface differences. Unconditionally marking QP untrusted
+selected the bandwidth-quality scaler rather than Chromium's usual parsed-QP
+path. The adapter now allows VSE's existing H264 parser and uses upstream
+24/37 quality-scaler thresholds, without a custom controller. The existing MFT
+implementation also forced a one-frame VBV at initialization. Updating only
+mean bitrate left about 118 kbps output after restoration; attempting to change
+VBV dynamically failed driver readback and was removed. Chromium does not set
+that VBV override. Deleting the override and its exact-value assertion restored
+about 1.9 Mbps while retaining CBR and low-latency mode.
+
+The remaining delay was visible in upstream logs: parsed QP fell to 22-25 but
+the low-QP smoother remained above the 24 upscale threshold. In a 76-second run,
+resolution returned via 480x270 to 640x360 around 50-55 seconds from start,
+about 29-34 seconds after budget restoration. Counts were 178 healthy full-size,
+265 limited reduced-size and 686 restored full-size frames, 2,105 total. No
+connection/pipeline reset or new timer forced recovery. Temporary internal
+tracing was removed after this diagnosis. This is eventual recovery, not a
+low-latency recovery guarantee; Intel-specific QP capability quirks and actual
+overload still need hardware evidence.
+
+Auto VP8 measurement now uses the actual VSE path rather than benchmarking an
+encoder with different live settings. H264's existing successful-hardware probe
+path remains. The four-second decision budget is unchanged. Current grouping
+still folds multiple weak consumers into one low budget; the product attachment
+does not resolve that independent remaining requirement.
 
 ## Replacement And Preservation Map
 

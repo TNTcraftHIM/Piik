@@ -863,6 +863,7 @@ export function HostPage({
     sourceSwitchRef.current = null;
     qualityChangeRef.current = null;
     pendingQualityChangeRef.current = null;
+    commitQuality(qualitySettingsRef.current);
     codecProbeAbortRef.current?.abort();
     codecProbeAbortRef.current = null;
     videoCodecRef.current = VP8_ONLY_VIDEO_CODEC;

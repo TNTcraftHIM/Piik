@@ -154,11 +154,17 @@ have real encode and upload costs; this is not a one-encode guarantee.
 Packet identity and delivered counters belong to each outbound edge. Unused
 outputs do not inflate that edge's FPS or bitrate. Bounded codec workers and
 packet queues isolate slow children and retire with the source generation.
-Lowest-output budgets and stopped-upper recovery are implemented. The Native
-encoder still has fixed output dimensions within a generation; it does not yet
-include libwebrtc's encoder resource-adaptation chain. Bandwidth below that
-output's usable range, hardware overload and physical recovery remain open;
-the finite output set is not proof of Browser adaptation parity.
+Windows shared local outputs use one complete stock WebRTC encoding/adaptation
+pipeline each, including source restrictions, rate correction and resource
+feedback. Resolution/FPS adaptation keeps the capture and transport identities;
+actual output dimensions update forwarding metadata without resetting sibling
+stream trackers. H264 uses native NV12/MFT and WebRTC's parsed-QP adaptation;
+VP8 uses the library encoder. Other platform producers retain their current
+fixed-output implementation pending equivalent physical acceptance.
+The current lowest-output budget still combines its consumers; independent
+incompatible weak-child demands remain unfinished pool integration. Neither
+the fixed output set nor local codec recovery proves full Browser parity or
+hardware-overload acceptance.
 
 Native sender edges normally reuse the shared encoded source. A Native Viewer
 forwards suitable H.264/VP8 and Opus payload unchanged and derives only a missing

@@ -44,7 +44,6 @@ struct VideoProfile final {
   UINT32 bit_rate = 3'000'000;
   DegradationPreference preference = DegradationPreference::balanced;
 
-  UINT32 vbv_bytes() const { return bit_rate / frame_rate / 8; }
   UINT32 gop_frames() const { return frame_rate * 2; }
   LONGLONG frame_duration_100ns() const {
     return 10'000'000 / static_cast<LONGLONG>(frame_rate);
