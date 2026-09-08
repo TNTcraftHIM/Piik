@@ -69,7 +69,19 @@ runtime change for either is claimed here.
   process/port/profile cleanup passed. The gate's stale Node JSON-log assertion
   was corrected to the current Go text format, without changing evidence
   eligibility. This is not H264 overload, Win10, or game-window replacement
-  evidence. Further physical execution is subject to the hold in [TODO](../todo.md).
+  evidence. The same owned-window sequence subsequently passed H264. Further
+  physical runs use the serialized plan in [TODO](../todo.md).
+
+The multi-output Windows worker initially reapplied the source's frame-rate
+limit from each worker's first input timestamp. With jitter and a later worker
+start, this second limiter could reject frames already admitted by capture.
+Captured inputs now carry their existing cadence bound; a worker limits only
+when it needs a lower rate. Received encoded input has no such bound and keeps
+its output limiter. No capture ceiling, media clock or quality setting changed.
+In the same owned-window H264 720p15 SFU gate, the reported Native output went
+from 12 fps before this correction to 15 fps after it. Both runs decoded 300
+720p frames, applied a live 480p change and cleaned up. This is a local cadence
+comparison, not a claim about hardware overload or all games.
 
 ## Open Capture Reports
 
@@ -103,6 +115,12 @@ Windows explicitly permits a capture item to close when its application silently
 replaces the underlying window. Reattaching to another window is not equivalent
 to resuming the same selected target; this remains separate from the verified
 quiet/minimized-source behavior.
+
+The 2026-09-08 owner clarification names CS2, fullscreen 4:3 stretched: leave the
+game, change advanced share settings, then return; the share ends on return.
+The ordinary-window gate does not reproduce exclusive-fullscreen/display-mode
+changes. Capture replacement overlap, target identity and device state remain
+separate hypotheses until that exact transition is observed.
 
 Primary references: [CreateForMonitor](https://learn.microsoft.com/en-us/windows/win32/api/windows.graphics.capture.interop/nf-windows-graphics-capture-interop-igraphicscaptureiteminterop-createformonitor),
 [CreateFreeThreaded](https://learn.microsoft.com/en-us/uwp/api/windows.graphics.capture.direct3d11captureframepool.createfreethreaded),

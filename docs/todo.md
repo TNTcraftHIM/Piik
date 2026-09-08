@@ -8,10 +8,15 @@ topics are not implementation authority.
 ## Now
 
 Owner-authorized phase: [embedded STUN/SFU and node-local media](./adr/0013-embedded-node-local-media.md).
-Physical capture/GPU/VM acceptance is on hold after the owner's 2026-09-08
-machine-freeze report. Windows records unexpected restarts without a bugcheck;
-causation is unconfirmed. Resume only with a reviewed, bounded execution plan.
-Code review, documentation and low-concurrency non-hardware checks may continue.
+The owner authorized resuming physical acceptance after the 2026-09-08
+machine-freeze report; causation remains unconfirmed. Run one bounded capture/
+codec workload at a time, require cleanup before the next, and keep VM and
+unrelated hardware workloads out of that interval. Start with Native SFU VP8
+at 720p15, then H264, followed by controlled loss/overload checks.
+The owner makes Windows Client and Browser the acceptance targets for this
+phase. Keep macOS/Linux implementation and standard build/package support;
+their physical matrices and the unavailable local Mac SDK build may follow user
+feedback and do not block this release. Do not claim those paths were tested.
 Every parent, including Host, forwards available encodings and derives missing lower
 outputs only for direct children; compatible demands reuse the same output.
 The agreed model and [first encoding comparison](./research/node-local-encoding-probe.md)
@@ -31,17 +36,24 @@ without desktop capture. A shaped Pion virtual network proves stopped-high recov
 after bandwidth release; physical loss/recovery, codec overload and overhead remain
 unverified. Linux producers compile; macOS changes still require SDK validation.
 Native direct SFU publication, bounded current/candidate replacement and actual
-multi-RID metrics are implemented. Browser SFU decode/live-profile acceptance
-passes; Native-to-embedded-SFU Browser decoding through the full control path,
-matched Client/platform and network acceptance remain open. The Pion
-UDP-mux initialization and candidate-fixture races are repaired; six affected
-Linux packages pass the race detector.
+multi-RID metrics are implemented. Browser and Native H264/VP8 SFU paths pass
+Browser decoding, live profiles, audio and cleanup. Matched Client/platform and
+constrained-network acceptance remain open. The latest eight-package Linux race
+run passes; the subsequent categorical-quality and assembly changes pass the
+full Windows core checks using stable executable paths.
 Packaged multi-output capture is not accepted.
 Embedded STUN is bound by the application lifecycle and passes startup/rollback/
 closure checks. Embedded SFU room signaling, exact physical retirement and Browser
 adapters are implemented; real Browser decoding passes and external-service
 deployment removal is prepared, not deployed. Prioritize the shared quality/encoding module and its
 Native codec/transport checks, then complete embedded SFU/STUN integration.
+The real-codec 120 kbps relay trace now recovers with the library's non-pausing
+lowest-layer policy only while a live local encoder owns that output's bitrate.
+Two constrained/released runs and received-frame decoding pass without harming
+the healthy sibling. The owner accepts best-effort adaptation delays of several
+seconds; do not expand the model to promise imperceptible switching. Permanent
+stalls, stale generations and sibling damage remain defects. Upstream assembly-
+gap recovery is implemented and checked; finish matched-package acceptance.
 Independent library/service audits may proceed in parallel. Do not add a custom warm pool, media clock
 or congestion algorithm. These are
 not bundled service executables, full LiveKit embedding or per-Viewer Host
@@ -50,11 +62,11 @@ uploads via TURN. Concrete codec parameters and release cutover remain unaccepte
 The returned Go core and frontend fixes are reconciled on the integration
 candidate. The owner authorized hygiene cleanup, matched Server/Client builds,
 one squash PR and a controlled deployment. Complete the existing checks and
-first-Go unit/environment rollback before cutover. Device/network checks below
+embedded-service unit/environment rollback before cutover. Device/network checks below
 remain evidence gaps, not claims established by compilation or local loopback.
 
-1. **Client physical acceptance.** Physically validate macOS and Linux
-   capture/audio/recovery, a decoded public-link Browser Viewer, and a NAT case
+1. **Client physical acceptance.** Validate Windows Client and Browser
+   capture/audio/recovery, a separate-device public-link Browser Viewer, and a NAT case
    rescued beyond ordinary STUN, plus one mixed Browser/Native Viewer relay.
 2. **Client owner acceptance.** Review the localized terminal, Browser capture
    through Native fanout, live controls and Client-exit recovery before merging.
@@ -110,6 +122,10 @@ a tunnel; include that path in packaged acceptance.
    boundary unambiguous. Complete the Windows display-startup and platform
    checks above; investigate Vivaldi through primary reports and actual local
    capability failures, without speculative Browser-specific fallbacks.
+   The owner narrowed the game reproduction to CS2 in fullscreen 4:3 stretched:
+   Alt-Tab out, change advanced sharing settings, then return to the game;
+   interruption occurs on return. Ordinary window minimization is not this
+   display-mode/capture-session transition.
 
 ## Parked Product Work
 
@@ -187,9 +203,9 @@ a tunnel; include that path in packaged acceptance.
 15. **Unified release and update surface.** Build Client packages, Server
     runtime, future OCI images, and deployment bundles from one intentionally
     triggered immutable application release identified by its full commit SHA.
-    A validated `main` push now produces that application release. An explicit
-    `client_checks=true` workflow dispatch produces the three native-runner
-    Client candidates with SHA-256 metadata. The default Client
+    An explicit `client_checks=true` workflow dispatch produces the application
+    release and three native-runner Client candidates with SHA-256 metadata.
+    Ordinary `main` pushes do not package release artifacts. The default Client
     launcher now performs a non-blocking GitHub Releases check and the tracked
     deployment tree provides an operator-invoked read-only Server check. Formal
     GitHub Release publication, future OCI images, and deployment bundles remain
@@ -202,11 +218,9 @@ a tunnel; include that path in packaged acceptance.
     not create or retain two room, signaling, persistence, or route-controller
     implementations. Package size, startup, and idle memory are measured in the
     [consolidation research](./research/server-consolidation.md). Remaining
-    acceptance: rerun the physical Client and Browser-contract gates on this
-    build, and sequence the deployment cutover, installing the updated unit,
-    which replaces `NODE_ENV=production` with `SCREENER_ENV=production`, before
-    the first Go release, then proving the release wrapper on a host without
-    Node.
+    acceptance: match the current Client and Browser artifacts and complete
+    the embedded-media cutover. Production already runs the Go application,
+    while its external media services have not yet been replaced.
 17. **Feedback bundle.** Add compressed collection only when distribution needs
     it. The candidate
     now has explicit Client/Server diagnostic flags and bounded manual Browser

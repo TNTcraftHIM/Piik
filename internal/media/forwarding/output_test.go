@@ -15,8 +15,13 @@ import (
 // This fixture supplies allocation metadata, not simulated network evidence.
 type allocationReceiver struct {
 	*sfu.ReceiverBase
-	rates     sfu.Bitrates
-	available []int32
+	rates      sfu.Bitrates
+	available  []int32
+	controlled bool
+}
+
+func (receiver *allocationReceiver) RateControlled(layer int32) bool {
+	return receiver.controlled && layer == 0
 }
 
 func (receiver *allocationReceiver) GetLayeredBitrate() ([]int32, sfu.Bitrates) {
@@ -106,6 +111,23 @@ func TestOutputUsesLibraryAllocationAndExactLifetime(t *testing.T) {
 	if state := output.State(); !state.Paused || state.Target != -1 || state.Prepare != 0 || state.VideoBudget != 60_000 {
 		t.Fatalf("below-lowest budget cannot request codec adaptation: %+v", state)
 	}
+	receiver.controlled = true
+	output.Reconcile()
+	if state := output.State(); state.Paused || state.Target != 0 {
+		t.Fatalf("live lowest codec could not continue bitrate adaptation: %+v", state)
+	}
+	output.SetBudget(0)
+	if state := output.State(); !state.Paused {
+		t.Fatalf("codec control overrode exhausted connection budget: %+v", state)
+	}
+	receiver.available = []int32{1, 2}
+	receiver.rates[0][0] = 0
+	output.SetBudget(60_000)
+	if state := output.State(); !state.Paused {
+		t.Fatalf("codec control selected an unavailable lowest layer: %+v", state)
+	}
+	receiver.available = []int32{0, 1, 2}
+	receiver.controlled = false
 	receiver.rates[0][0] = 50_000
 	output.Reconcile()
 	if state := output.State(); state.Paused || state.Target != 0 || state.VideoBudget != 60_000 {

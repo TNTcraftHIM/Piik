@@ -5,9 +5,7 @@ import (
 	"encoding/hex"
 	"testing"
 
-	"github.com/livekit/server-sdk-go/v2/pkg/samplebuilder"
 	"github.com/pion/rtp"
-	"github.com/pion/rtp/codecs"
 )
 
 func TestRelayInputKeepsRecoveryAndEmitsACompleteQuietFrame(t *testing.T) {
@@ -16,14 +14,15 @@ func TestRelayInputKeepsRecoveryAndEmitsACompleteQuietFrame(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	builder := samplebuilder.New(relayPacketLimit, &codecs.VP8Packet{}, videoClockRate)
-	builder.Push(&rtp.Packet{Header: rtp.Header{Version: 2, SequenceNumber: 10, Timestamp: 0xfffffff0, Marker: true},
-		Payload: append([]byte{0x10}, key...)})
-	sample, timestamp := builder.PopWithTimestamp()
+	input := relayVideoInput{codec: "vp8"}
+	if err = input.push(&rtp.Packet{Header: rtp.Header{Version: 2, SequenceNumber: 10, Timestamp: 0xfffffff0, Marker: true},
+		Payload: append([]byte{0x10}, key...)}); err != nil {
+		t.Fatal(err)
+	}
+	sample, timestamp := input.pop()
 	if sample == nil || timestamp != 0xfffffff0 || !bytes.Equal(sample.Data, key) {
 		t.Fatal("complete quiet frame waited for future input")
 	}
-	input := relayVideoInput{codec: "vp8"}
 	frame, err := input.frame(sample.Data)
 	if err != nil || !frame.KeyFrame || frame.Width != 160 || frame.Height != 90 {
 		t.Fatalf("VP8 recovery metadata = %+v, %v", frame, err)
@@ -42,5 +41,85 @@ func TestRelayInputKeepsRecoveryAndEmitsACompleteQuietFrame(t *testing.T) {
 	if err != nil || !frame.KeyFrame || !bytes.Contains(frame.Data, configuration[:4+len(input.sps)]) ||
 		!bytes.Contains(frame.Data, input.pps) {
 		t.Fatal("H264 IDR lost preceding decoder configuration")
+	}
+}
+
+func TestRelayAssemblyRecoversAtNewIndependentFrame(t *testing.T) {
+	key, _ := hex.DecodeString("1000009d012aa0005a00")
+	sps, _ := hex.DecodeString("6742c01eda0280b7fe5c0505050200")
+	pps := []byte{0x68, 0xce, 0x06, 0xe2}
+	idr := []byte{0x65, 0x88, 0x84}
+	stap := []byte{0x78}
+	for _, nal := range [][]byte{sps, pps, idr} {
+		stap = append(stap, byte(len(nal)>>8), byte(len(nal)))
+		stap = append(stap, nal...)
+	}
+	for _, check := range []struct {
+		name, codec string
+		recovery    [][]byte
+	}{
+		{"vp8", "vp8", [][]byte{append([]byte{0x10}, key...), {0x00, 0x01}}},
+		{"h264-nals", "h264", [][]byte{sps, pps, idr}},
+		{"h264-stap", "h264", [][]byte{stap}},
+		{"h264-fu", "h264", [][]byte{append([]byte{0x7c, 0x87}, sps[1:5]...), append([]byte{0x7c, 0x47}, sps[5:]...), pps, idr}},
+	} {
+		t.Run(check.name, func(t *testing.T) {
+			input := relayVideoInput{codec: check.codec}
+			old := uint32(0xffffe000)
+			fresh := uint32(0x1000)
+			push := func(sequence uint16, timestamp uint32, marker bool, payload []byte) {
+				t.Helper()
+				if err := input.push(&rtp.Packet{Header: rtp.Header{Version: 2, SequenceNumber: sequence, Timestamp: timestamp, Marker: marker}, Payload: payload}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for index, payload := range check.recovery {
+				push(uint16(10+index), old, index+1 == len(check.recovery), payload)
+			}
+			if sample, _ := input.pop(); sample == nil {
+				t.Fatal("initial complete recovery did not assemble")
+			}
+			for sample, _ := input.pop(); sample != nil; sample, _ = input.pop() {
+			}
+			// A missing sequence and partial frame must not block later independent recovery.
+			partial := []byte{0x10, 0x01, 0x00}
+			if check.codec == "h264" {
+				partial = []byte{0x7c, 0x81, 0x01}
+			}
+			push(30, old+3000, false, partial)
+			if sample, _ := input.pop(); sample != nil {
+				t.Fatal("incomplete frame unexpectedly assembled")
+			}
+			for index, payload := range check.recovery {
+				push(uint16(40+index), fresh, index+1 == len(check.recovery), payload)
+				if index == 0 {
+					push(40, fresh, index+1 == len(check.recovery), payload)
+					push(10, old, false, payload)
+				}
+			}
+			sample, timestamp := input.pop()
+			if sample == nil || timestamp != fresh {
+				t.Fatalf("new recovery remained blocked: sample=%v timestamp=%x recovery=%x", sample != nil, timestamp, input.recoveryTimestamp)
+			}
+			recovered := false
+			for ; sample != nil; sample, timestamp = input.pop() {
+				if timestamp != fresh {
+					t.Fatal("old frame was replayed after recovery")
+				}
+				frame, err := input.frame(sample.Data)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if frame.KeyFrame {
+					if frame.Width == 0 || frame.Height == 0 {
+						t.Fatal("recovered dimensions missing")
+					}
+					recovered = true
+				}
+			}
+			if !recovered {
+				t.Fatal("complete independent recovery was not assembled")
+			}
+		})
 	}
 }

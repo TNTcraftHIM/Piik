@@ -83,12 +83,13 @@ type Session struct {
 	done   chan error
 	ready  chan error
 
-	mu           sync.Mutex
-	updateMu     sync.Mutex
-	edges        map[string]*mediaedge.Edge
-	publications map[publicationKey]*mediaedge.Publication
-	paused       bool
-	closed       bool
+	mu             sync.Mutex
+	updateMu       sync.Mutex
+	edges          map[string]*mediaedge.Edge
+	publications   map[publicationKey]*mediaedge.Publication
+	captureApplied chan struct{}
+	paused         bool
+	closed         bool
 }
 
 func Start(parent context.Context, options Options) (*Session, error) {
@@ -470,6 +471,8 @@ func (session *Session) commitCapture(
 		options.RestoreToken = state.RestoreToken
 	}
 	session.stream = replacement
+	applied := make(chan struct{})
+	session.captureApplied = applied
 	if replaceAudio {
 		session.audioStream = replacementAudio
 	}
@@ -477,14 +480,38 @@ func (session *Session) commitCapture(
 	session.profile = profile
 	session.mu.Unlock()
 
-	session.emit(Event{
-		Type: "capture-state", ShareID: session.shareID, State: "active",
-	})
 	_ = replacement.RequestKeyFrame(-1)
 	_ = previous.Close()
 	if replaceAudio && previousAudio != nil {
 		_ = previousAudio.Close()
 	}
+	select {
+	case <-applied:
+	case <-session.ctx.Done():
+		return session.ctx.Err()
+	}
+	if err := session.ctx.Err(); err != nil {
+		return err
+	}
+	session.emit(Event{
+		Type: "capture-state", ShareID: session.shareID, State: "active",
+	})
+	return nil
+}
+
+// Only the video reader installs source metadata, after leaving the old input.
+// The update response waits for this exact stream's installation, not its process.
+func (session *Session) installCapture(next *nativecapture.Stream) error {
+	session.source.BeginGeneration()
+	if err := configureCaptureOutputs(session.source, next.Outputs()); err != nil {
+		return err
+	}
+	session.mu.Lock()
+	if session.stream == next && session.captureApplied != nil {
+		close(session.captureApplied)
+		session.captureApplied = nil
+	}
+	session.mu.Unlock()
 	return nil
 }
 
@@ -503,6 +530,7 @@ func (session *Session) Done() <-chan error {
 }
 
 func (session *Session) Close() error {
+	session.cancel()
 	session.updateMu.Lock()
 	defer session.updateMu.Unlock()
 	session.mu.Lock()
@@ -517,7 +545,6 @@ func (session *Session) Close() error {
 	audioStream := session.audioStream
 	session.edges = make(map[string]*mediaedge.Edge)
 	session.mu.Unlock()
-	session.cancel()
 	if source != nil {
 		_ = source.Close()
 	}
@@ -565,9 +592,9 @@ func (session *Session) run() {
 	session.mu.Lock()
 	closed := session.closed
 	session.mu.Unlock()
-	if closed {
-		// An explicit Close is a clean end, even if closing the capture process
-		// made the video reader return an error.
+	if closed || session.ctx.Err() != nil {
+		// Closing this owner or its parent is a clean end, even if stopping the
+		// capture process made the video reader return an error.
 		result = nil
 	}
 	session.cancel()
@@ -612,8 +639,7 @@ func (session *Session) runVideo() error {
 	}
 	current := session.currentStream()
 	changeStream := func(next *nativecapture.Stream) error {
-		session.source.BeginGeneration()
-		if err := configureCaptureOutputs(session.source, next.Outputs()); err != nil {
+		if err := session.installCapture(next); err != nil {
 			return err
 		}
 		current = next
@@ -758,7 +784,11 @@ func configureCaptureOutputs(source *mediaedge.Source, outputs []nativecapture.O
 		}
 		ceilings[layer] = output.Bitrate
 	}
-	return source.ConfigureOutputs(ceilings)
+	if err := source.ConfigureOutputs(ceilings); err != nil {
+		return err
+	}
+	source.SetLowestLayerRateControlled(true)
+	return nil
 }
 
 func applyOutputPlan(stream *nativecapture.Stream, plan mediaedge.OutputPlan, activeSeen bool) error {

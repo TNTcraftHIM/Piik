@@ -75,7 +75,7 @@ func (edge *Edge) QualitySample(now time.Time) (QualitySample, bool) {
 	sample.AvailableOutgoingKbps = float64(target) / 1000
 	reason := "none"
 	sample.State = "healthy"
-	if float64(target) < bitrate {
+	if edge.transport.Output.IsDeficient() || float64(target) < bitrate {
 		reason = "bandwidth"
 		sample.State = "degraded"
 	}

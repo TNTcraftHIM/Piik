@@ -45,7 +45,8 @@ func TestPublicationOwnsOneReservationAndSourceLifetime(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(source.media.GetDownTracks()) != 4 {
-		t.Fatal("candidate overwrote the current publication's physical outputs")
+		t.Fatalf("candidate overwrote current outputs: tracks=%d current=%s candidate=%s",
+			len(source.media.GetDownTracks()), publication.transport.PC.ID(), candidate.transport.PC.ID())
 	}
 	if _, err = engine.NewPublication(source, EdgeOptions{ConnectionID: "third"}); err == nil {
 		t.Fatal("third publication was admitted")
@@ -70,6 +71,22 @@ func TestPublicationOwnsOneReservationAndSourceLifetime(t *testing.T) {
 	replacement, err := engine.NewPublication(source, EdgeOptions{ConnectionID: "replacement"})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if err = source.DisableLayer(0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = engine.NewPublication(source, EdgeOptions{ConnectionID: "failed-output"}); err == nil {
+		t.Fatal("failed output was admitted into publication metadata")
+	}
+	if source.reservations != 0 || len(source.publications) != 0 {
+		t.Fatal("failed publication demand retained a reservation")
+	}
+	if err = source.ConfigureOutputs([]uint32{90_000, 300_000}); err != nil {
+		t.Fatal(err)
+	}
+	replacement, err = engine.NewPublication(source, EdgeOptions{ConnectionID: "restored-output"})
+	if err != nil {
+		t.Fatalf("validated replacement did not restore publication admission: %v", err)
 	}
 	if err = source.Close(); err != nil {
 		t.Fatal(err)

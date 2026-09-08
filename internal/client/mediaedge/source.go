@@ -53,6 +53,10 @@ type Source struct {
 
 func (source *Source) Codec() string { return source.codec }
 
+func (source *Source) SetLowestLayerRateControlled(controlled bool) {
+	source.media.SetLowestLayerRateControlled(controlled)
+}
+
 // The room supplies a relay ceiling, never a replacement capture authority.
 // Recording it does not create an encoder or invoke the capture process.
 func (source *Source) SetRelayProfile(profile nativecapture.VideoProfile) error {
@@ -83,7 +87,11 @@ func (source *Source) SetRelayProfile(profile nativecapture.VideoProfile) error 
 // edges retain their capacity reservation but do not demand encoded output yet.
 func (source *Source) BeginFrame(timestamp time.Duration) (OutputPlan, error) {
 	source.writeMu.Lock()
-	defer source.writeMu.Unlock()
+	var unavailable []*Edge
+	defer func() {
+		source.writeMu.Unlock()
+		closeEdges(unavailable)
+	}()
 	source.mu.Lock()
 	if source.closed {
 		source.mu.Unlock()
@@ -108,6 +116,7 @@ func (source *Source) BeginFrame(timestamp time.Duration) (OutputPlan, error) {
 		active := publication.RequiredActiveCount()
 		plan.ActiveLayers = max(plan.ActiveLayers, active)
 		if budget := publication.LowestLayerBudget(); active > 0 && len(plan.Bitrates) > 0 && budget > 0 {
+			budget = source.media.CodecBudget(0, budget)
 			plan.Bitrates[0] = min(plan.Bitrates[0], uint32(max(1000, min(budget, int64(plan.Bitrates[0])))))
 		}
 	}
@@ -118,18 +127,25 @@ func (source *Source) BeginFrame(timestamp time.Duration) (OutputPlan, error) {
 		if err := edge.transport.SetConnected(); err != nil {
 			return OutputPlan{}, err
 		}
+		if source.unavailableDemand(edge) {
+			unavailable = append(unavailable, edge)
+			continue
+		}
 		state := edge.transport.Output.State()
 		highest := state.Target
 		if !state.Paused {
 			highest = max(highest, state.Current)
 		}
 		if _, observed := edge.transport.TargetBitrate(); observed {
-			highest = max(highest, state.Prepare)
+			if !source.failedOutput(state.Prepare) {
+				highest = max(highest, state.Prepare)
+			}
 			// Only consumers of the lowest representation constrain that encoder.
 			// A limited child never changes a healthy sibling's higher output.
 			if len(plan.Bitrates) > 0 && state.VideoBudget > 0 &&
 				(state.Target == 0 || state.Current == 0 || state.Paused && state.Prepare == 0) {
-				plan.Bitrates[0] = min(plan.Bitrates[0], uint32(max(1000, min(state.VideoBudget, int64(plan.Bitrates[0])))))
+				budget := source.media.CodecBudget(0, state.VideoBudget)
+				plan.Bitrates[0] = min(plan.Bitrates[0], uint32(max(1000, min(budget, int64(plan.Bitrates[0])))))
 			}
 		}
 		if highest < 0 && !state.Paused {
@@ -169,14 +185,34 @@ func (source *Source) ConfigureOutputs(ceilings []uint32) error {
 }
 
 func (source *Source) DisableLayer(layer int) error {
+	retire, err := source.markLayerUnavailable(layer, nil)
+	if retire != nil {
+		retire()
+	}
+	return err
+}
+
+func (source *Source) markLayerUnavailable(layer int, run *relayRun) (func(), error) {
+	if run != nil {
+		run.owner.mu.Lock()
+		defer run.owner.mu.Unlock()
+	}
 	source.writeMu.Lock()
+	defer source.writeMu.Unlock()
 	source.mu.Lock()
+	if run != nil && (run.owner.run != run || source.relayProfile != run.plan.profile ||
+		source.formats[len(source.formats)-1].Load() != run.plan.format) {
+		source.mu.Unlock()
+		return nil, nil
+	}
 	if source.closed || layer < 0 || layer >= len(source.outputBitrates) {
 		source.mu.Unlock()
-		source.writeMu.Unlock()
-		return errors.New("native output layer is unavailable")
+		return nil, errors.New("native output layer is unavailable")
 	}
 	source.outputBitrates[layer] = 0
+	if layer == 0 {
+		source.media.SetLowestLayerRateControlled(false)
+	}
 	publications := make([]*Publication, 0, len(source.publications))
 	for publication := range source.publications {
 		publications = append(publications, publication)
@@ -192,16 +228,19 @@ func (source *Source) DisableLayer(layer int) error {
 		}
 	}
 	source.mu.Unlock()
-	source.writeMu.Unlock()
+	if tracker := source.media.StreamTrackerManager().GetTracker(int32(layer)); tracker != nil {
+		tracker.SetPaused(true)
+	}
 	// An unavailable encoder retires its consumers through the existing edge
 	// lifecycle. Healthy sibling outputs are neither stopped nor restarted.
-	closeEdges(affected)
-	for _, publication := range publications {
-		if layer < publication.RequiredActiveCount() {
+	return func() {
+		closeEdges(affected)
+		// Publication metadata declares every slot, including paused or preparing
+		// uploads. None may publish a descriptor containing a failed encoding.
+		for _, publication := range publications {
 			_ = publication.Close()
 		}
-	}
-	return nil
+	}, nil
 }
 
 func (source *Source) WriteVideo(layer int, frame encoded.Frame) error {
@@ -212,6 +251,10 @@ func (source *Source) WriteVideo(layer int, frame encoded.Frame) error {
 	source.mu.Unlock()
 	if closed {
 		return io.ErrClosedPipe
+	}
+	if len(source.outputBitrates) > 0 &&
+		(layer < 0 || layer >= len(source.outputBitrates) || source.outputBitrates[layer] == 0) {
+		return errors.New("native output layer is unavailable")
 	}
 	return source.media.WriteFrame(layer, frame)
 }
@@ -252,11 +295,40 @@ func (source *Source) WriteRTP(packet *rtp.Packet) error {
 	forwarded.SSRC = uint32(layer + 1)
 	forwarded.PayloadType = uint8(videoCodecs[source.codec].PayloadType)
 	err := source.media.Source.WriteRTP(layer, &forwarded)
+	var unavailable []*Edge
+	if packet.Marker {
+		source.mu.Lock()
+		for edge := range source.edges {
+			if edge.State() == webrtc.PeerConnectionStateConnected && source.unavailableDemand(edge) {
+				unavailable = append(unavailable, edge)
+			}
+		}
+		source.mu.Unlock()
+	}
 	source.writeMu.Unlock()
+	closeEdges(unavailable)
 	if source.relay != nil {
 		source.relay.push(packet)
 	}
 	return err
+}
+
+// Called with writeMu held. Preparation is advisory; the source owns whether
+// that requested codec output still exists after a producer failure.
+func (source *Source) unavailableDemand(edge *Edge) bool {
+	state := edge.transport.Output.State()
+	selected := state.Target
+	if !state.Paused {
+		selected = max(selected, state.Current)
+	}
+	if selected >= 0 && !source.failedOutput(selected) {
+		return false
+	}
+	return source.failedOutput(int32(edge.transport.RequiredActiveCount() - 1))
+}
+
+func (source *Source) failedOutput(layer int32) bool {
+	return layer >= 0 && int(layer) < len(source.outputBitrates) && source.outputBitrates[layer] == 0
 }
 
 func (source *Source) SenderReport(report *rtcp.SenderReport) error {

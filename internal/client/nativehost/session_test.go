@@ -1,11 +1,131 @@
 package nativehost
 
 import (
+	"context"
 	"encoding/json"
+	"io"
+	"os"
 	"testing"
+	"time"
 
+	"github.com/TNTcraftHIM/Screener/internal/client/mediaedge"
 	"github.com/TNTcraftHIM/Screener/internal/client/nativecapture"
 )
+
+func TestMain(tests *testing.M) {
+	if os.Getenv("SCREENER_NATIVEHOST_PIPE_FIXTURE") == "1" {
+		_, _ = io.Copy(io.Discard, os.Stdin)
+		os.Exit(0)
+	}
+	os.Exit(tests.Run())
+}
+
+func TestCaptureCommitWaitsForReaderMetadataOrTermination(t *testing.T) {
+	t.Setenv("SCREENER_NATIVEHOST_PIPE_FIXTURE", "1")
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, mode := range []string{"installed", "reader-failed", "closed"} {
+		t.Run(mode, func(t *testing.T) {
+			check := func(err error) {
+				t.Helper()
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			engine, err := mediaedge.NewEngine(mediaedge.EngineOptions{BindAddress: "127.0.0.1:0", IncludeLoopback: true})
+			check(err)
+			defer engine.Close()
+			options := nativecapture.VideoOptions{Target: nativecapture.CaptureTarget{Kind: "display", SourceID: "1", Title: "Fixture"}, Codec: "vp8",
+				Profile: nativecapture.VideoProfile{Width: 1280, Height: 720, Framerate: 15, Bitrate: 2_000_000, Preference: "balanced"}}
+			previous, err := nativecapture.StartVideo(ctx, executable, options)
+			check(err)
+			defer previous.Close()
+			source, err := engine.NewSource("vp8", 1, 2, nil)
+			check(err)
+			defer source.Close()
+			check(configureCaptureOutputs(source, previous.Outputs()))
+			publication, err := engine.NewPublication(source, mediaedge.EdgeOptions{ConnectionID: "metadata-fixture"})
+			check(err)
+			session := &Session{ctx: ctx, cancel: cancel, engine: engine, source: source, stream: previous,
+				ready: make(chan error, 1), done: make(chan error, 1), events: make(chan Event, 16)}
+			options.Profile.Width, options.Profile.Height = 854, 480
+			replacement, err := nativecapture.StartVideo(ctx, executable, options)
+			check(err)
+			defer replacement.Close()
+			committed := make(chan error, 1)
+			go func() {
+				session.updateMu.Lock()
+				err := session.commitCapture(options, QualityProfile{Video: options.Profile, AudioBitrate: 64_000}, replacement, CaptureState{}, nil, false)
+				session.updateMu.Unlock()
+				committed <- err
+			}()
+			select {
+			case <-previous.Done():
+			case <-time.After(5 * time.Second):
+				t.Fatal("old fixture did not exit")
+			}
+			select {
+			case err := <-committed:
+				t.Fatalf("process exit acknowledged metadata before reader installation: %v", err)
+			default:
+			}
+			if publication.Media().Layers[1].Width != 1280 {
+				t.Fatal("held reader unexpectedly changed source metadata")
+			}
+			if mode == "installed" {
+				// Hold the reader at its handoff, then run the same installation it uses.
+				check(session.installCapture(replacement))
+				select {
+				case err = <-committed:
+					check(err)
+				case <-time.After(time.Second):
+					t.Fatal("installed metadata did not acknowledge update")
+				}
+				media := publication.Media()
+				if media.Layers[1].Width != 854 || media.Layers[1].Height != 480 || media.Layers[1].Bitrate != 2_000_000 {
+					t.Fatalf("acknowledged stale metadata: %+v", media)
+				}
+				return
+			}
+			go session.run()
+			closed := make(chan error, 1)
+			if mode == "closed" {
+				go func() { closed <- session.Close() }()
+			} else {
+				check(replacement.Close())
+			}
+			select {
+			case err = <-committed:
+				if err == nil {
+					t.Fatal("terminated reader acknowledged an uninstalled stream")
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("capture update remained latched after termination")
+			}
+			if mode == "closed" {
+				select {
+				case err = <-closed:
+					check(err)
+				case <-time.After(5 * time.Second):
+					t.Fatal("Close deadlocked behind the capture update")
+				}
+			} else {
+				select {
+				case err = <-session.Done():
+					if err == nil {
+						t.Fatal("unexpected reader death did not fail the share")
+					}
+				case <-time.After(5 * time.Second):
+					t.Fatal("reader death did not end the share")
+				}
+			}
+		})
+	}
+}
 
 func TestCaptureStateKeepsStartingAndActiveContractsDistinct(t *testing.T) {
 	starting, err := decodeCaptureState(captureStatePayload(t,

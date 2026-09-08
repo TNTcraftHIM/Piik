@@ -7,16 +7,71 @@ import (
 
 	"github.com/TNTcraftHIM/Screener/internal/client/nativecapture"
 	mediacodec "github.com/livekit/mediatransportutil/pkg/codec"
+	"github.com/livekit/server-sdk-go/v2/pkg/samplebuilder"
+	"github.com/pion/rtp"
+	"github.com/pion/rtp/codecs"
+	"github.com/pion/webrtc/v4/pkg/media"
 	"github.com/pion/webrtc/v4/pkg/media/h264reader"
 )
 
 // Decoder configuration belongs to this received stream, not a child encoder.
 type relayVideoInput struct {
-	codec  string
-	sps    []byte
-	pps    []byte
-	width  uint32
-	height uint32
+	codec             string
+	sps               []byte
+	pps               []byte
+	width             uint32
+	height            uint32
+	builder           *samplebuilder.SampleBuilder
+	onPacketDropped   func()
+	recoveryTimestamp uint32
+	recoverySequence  uint16
+	hasRecovery       bool
+}
+
+func (input *relayVideoInput) push(packet *rtp.Packet) error {
+	if input.hasRecovery && int32(packet.Timestamp-input.recoveryTimestamp) < 0 {
+		return nil
+	}
+	recovery := mediacodec.IsKeyFrame(input.codec, packet.Payload)
+	if recovery && input.hasRecovery && packet.Timestamp == input.recoveryTimestamp && packet.SequenceNumber == input.recoverySequence {
+		return nil
+	}
+	if input.builder == nil || recovery && (!input.hasRecovery || packet.Timestamp != input.recoveryTimestamp) {
+		if input.builder != nil {
+			for {
+				sample, _ := input.builder.ForcePopWithTimestamp()
+				if sample == nil {
+					break
+				}
+				// Keep completed H264 configuration, never replay expired video.
+				if input.codec == "h264" {
+					if _, err := input.frame(sample.Data); err != nil {
+						return err
+					}
+				}
+			}
+		}
+		var depacketizer rtp.Depacketizer = &codecs.H264Packet{}
+		if input.codec == "vp8" {
+			depacketizer = &codecs.VP8Packet{}
+		}
+		input.builder = samplebuilder.New(relayPacketLimit, depacketizer, videoClockRate,
+			samplebuilder.WithPacketDroppedHandler(func() {
+				if input.onPacketDropped != nil {
+					input.onPacketDropped()
+				}
+			}))
+	}
+	if recovery {
+		input.recoveryTimestamp, input.hasRecovery = packet.Timestamp, true
+		input.recoverySequence = packet.SequenceNumber
+	}
+	input.builder.Push(packet)
+	return nil
+}
+
+func (input *relayVideoInput) pop() (*media.Sample, uint32) {
+	return input.builder.PopWithTimestamp()
 }
 
 func (input *relayVideoInput) frame(data []byte) (nativecapture.Frame, error) {

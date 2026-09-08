@@ -64,6 +64,13 @@ is one of `windows-amd64`, `linux-amd64`, or `darwin-arm64`; every supplied
 binary input must match it. It does not create an installer, auto-updater,
 release tag, or compatibility bundle.
 
+Darwin Client assembly runs on macOS with its SDK and cgo enabled: the pinned
+LiveKit dependency's [Darwin CPU statistics](https://github.com/mackerelio/go-osstat/blob/v0.2.8/cpu/cpu_darwin_cgo.go)
+call Mach APIs. Windows and Linux
+Client builds keep cgo disabled. A core check on those hosts explicitly skips
+the Darwin binaries; macOS build and package verification belong to the existing
+native runner. This does not change the cgo-free linux/amd64 Server artifact.
+
 The platform package also carries its native presentation metadata: Windows
 embeds the icon in the Go executable, Linux emits a freedesktop desktop entry
 under `share/`, and macOS emits a thin `.app` launcher with an ICNS resource.
@@ -88,11 +95,11 @@ Retain the descriptor and successful deployment output as release metadata. Do
 not create a follow-up source commit solely to duplicate their revision, asset,
 or hashes.
 
-After `validate` succeeds on a push to `main`, CI packages one short-lived
-Server application release. The three-platform Client matrix is an explicit
-manual workflow dispatch with `client_checks=true`; it consumes that same
-application artifact and retains the candidates for 14 days. Neither path is a
-tag, public GitHub Release, or deployment.
+After `validate` succeeds on an explicit workflow dispatch with
+`client_checks=true`, CI packages the Server application release and the
+three-platform Client candidates that consume it. The artifacts are retained
+for 14 days. Ordinary `main` pushes do not run these packaging jobs. This
+workflow does not create a tag, public GitHub Release, or deployment.
 
 Do not build or run the full repository check on a constrained production host.
 That host runs only the packaged binary and needs no Node, npm, or dependency

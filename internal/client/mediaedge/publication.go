@@ -2,6 +2,7 @@ package mediaedge
 
 import (
 	"errors"
+	"slices"
 	"sync"
 	"time"
 
@@ -40,6 +41,12 @@ func (engine *Engine) NewPublication(source *Source, options EdgeOptions) (*Publ
 	if source == nil || source.engine != engine || options.Local || options.ConnectionID == "" ||
 		len(options.ConnectionID) > 256 || options.Audio != nil && options.Audio.engine != engine {
 		return nil, errors.New("native publication input is invalid")
+	}
+	source.mu.Lock()
+	unavailable := slices.Contains(source.outputBitrates, uint32(0))
+	source.mu.Unlock()
+	if unavailable {
+		return nil, errors.New("native publication output is unavailable")
 	}
 	if err := source.reserve(false); err != nil {
 		return nil, err
@@ -82,7 +89,7 @@ func (engine *Engine) NewPublication(source *Source, options EdgeOptions) (*Publ
 	})
 	engine.mu.Lock()
 	source.mu.Lock()
-	if engine.closed || source.closed || len(source.publications) >= 2 {
+	if engine.closed || source.closed || len(source.publications) >= 2 || slices.Contains(source.outputBitrates, uint32(0)) {
 		source.mu.Unlock()
 		engine.mu.Unlock()
 		_ = publication.Close()
@@ -172,7 +179,7 @@ func (publication *Publication) QualitySample(now time.Time) (PublicationQuality
 		if publication.signaling.State() == webrtc.PeerConnectionStateConnected && sample.IntervalFramesSent > 0 {
 			reason := "none"
 			sample.State = "healthy"
-			if current.Congested {
+			if current.Limited {
 				reason, sample.State = "bandwidth", "degraded"
 			}
 			sample.Reason = &reason

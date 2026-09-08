@@ -4,6 +4,12 @@
 - Date: 2026-08-19
 - Last reviewed: 2026-09-01
 
+[ADR-0013](./0013-embedded-node-local-media.md) supersedes the external SFU SDK,
+Dynacast-service and single-output Native assumptions for the current candidate.
+Browser source intent, codec selection and framework-owned adaptation remain.
+Historical evidence below is not acceptance of the shared Native/embedded-SFU
+implementation; [media quality](../product/media-quality.md) owns current behavior.
+
 ## Context
 
 Screener sends one realtime game-screen source through independent P2P

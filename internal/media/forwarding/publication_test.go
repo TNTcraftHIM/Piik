@@ -200,9 +200,17 @@ func TestPublicationSimulcastReuseAudioDemandAndClose(t *testing.T) {
 	}
 	// Once real bitrate measurements exist, one shared capacity update must
 	// constrain the sum of both RID allocations after reserving Opus.
-	for range 45 {
+	for {
+		_, rates := source.GetLayeredBitrate()
+		if rates[0][0] > 0 && rates[1][0] > 0 {
+			break
+		}
 		write()
-		time.Sleep(time.Second / 30)
+		select {
+		case <-time.After(time.Second / 30):
+		case <-ctx.Done():
+			t.Fatal("publication did not measure both available encodings")
+		}
 	}
 	publication.bandwidth.OnCongestionStateChange(bwe.CongestionStateNone, bwe.CongestionStateCongested, 65_000)
 	for publication.tracks[0].BandwidthRequested()+publication.tracks[1].BandwidthRequested() > 1_000 {
@@ -214,6 +222,9 @@ func TestPublicationSimulcastReuseAudioDemandAndClose(t *testing.T) {
 	}
 	if publication.LowestLayerBudget() != 1_000 {
 		t.Fatal("paused higher output retained the lowest encoder's budget")
+	}
+	if publication.bandwidth.CongestionState() != bwe.CongestionStateNone || !publication.Counters().Limited {
+		t.Fatalf("clear transport feedback hid the committed publication allocation deficit: state=%v counters=%+v low=%v high=%v", publication.bandwidth.CongestionState(), publication.Counters(), publication.tracks[0].IsDeficient(), publication.tracks[1].IsDeficient())
 	}
 	publication.bandwidth.OnCongestionStateChange(bwe.CongestionStateCongested, bwe.CongestionStateCongested, 1_000_000)
 	check(publication.SetActiveCount(1))
@@ -231,7 +242,19 @@ func TestPublicationSimulcastReuseAudioDemandAndClose(t *testing.T) {
 		time.Sleep(time.Second / 30)
 	}
 	if received[1].Load() != high || received[0].Load() <= low {
-		t.Fatal("inactive high RID affected low or continued sending")
+		t.Fatalf("inactive high RID affected low or continued sending: high=%d->%d low=%d->%d limited=%t lowtrack=%+v hightrack=%+v", high, received[1].Load(), low, received[0].Load(), publication.Counters().Limited, publication.tracks[0].DebugInfo(), publication.tracks[1].DebugInfo())
+	}
+	if publication.Counters().Limited {
+		t.Fatal("publication stayed limited after requested low output recovered and high was deactivated")
+	}
+	check(publication.SetActiveCount(2))
+	for received[1].Load() <= high {
+		write()
+		select {
+		case <-time.After(time.Second / 30):
+		case <-ctx.Done():
+			t.Fatal("requested high RID did not resume after publisher activation")
+		}
 	}
 	check(publication.Close())
 	if len(source.GetDownTracks()) != 0 {

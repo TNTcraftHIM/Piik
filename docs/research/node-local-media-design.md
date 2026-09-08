@@ -295,6 +295,35 @@ they do not change the original or higher sibling outputs. Hardware overload,
 extremely low bandwidth, real-game recovery and physical overhead still need
 acceptance. A forwarding SFU does not invent a server-side transcoder.
 
+The pinned full publication allocator has no public per-RID pause setting;
+globally disabling pause would also force unaffordable upper encodings and is
+not used. Native publication retains the framework's pause behavior when no
+usable output fits, and below-lowest-layer parity remains unverified.
+
+The real VP8 relay experiment at 6 Mbps -> 120 kbps -> 6 Mbps exposed a pause
+while a live lowest encoder was being reduced below its nominal rate. Source-RTP
+framing is now subtracted using actual access-unit/packet byte ratios and the
+existing tracker window. The A/B changed only LiveKit's `allowPause` input
+for an available lowest representation owned by a live local codec; raw forwarding
+and zero-budget output retain pausing. Codec ownership is explicit and retired
+with the encoder, not inferred from packets. The 30-second trace records actual
+packet arrival and assembled-frame age separately; its receiver discards unresolved
+older assembly on an independent VP8 keyframe. The original pause policy delivered
+no low frames before release. Two unchanged local-codec-policy runs delivered
+75 and 162 real 320x180 frames, with Chrome decoding all 573 and 620 weak-path
+frames and all 891 healthy-path frames in each run. Each run used one derived
+process. Low delivery began about 8-12 seconds after constraint; the second run
+recovered high output 2.61 seconds after release. The healthy original remained
+near 30 fps with about 26 ms packet age. Transition/retransmission age reached
+seconds, so this verifies codec adaptation and eventual recovery, not smooth
+low-bandwidth latency parity. The 500-packet assembly window also delayed frames
+after an unrecoverable sequence hole: restored primary packets arrived in about
+26 ms while assembly lagged over 20 seconds. Production relay input and the test
+receiver now share recovery-boundary assembly: a newer codec-verified recovery
+timestamp retires unresolved older data, retaining complete H264 configuration.
+Focused RTP checks cover VP8/H264 loss, duplicate recovery packets and timestamp
+wrap without another timer or packet queue.
+
 ### Native Feedback Probe
 
 The explicit [GCC/TWCC probe](../../internal/client/mediaedge/testdata/gcc_feedback_probe.go)

@@ -11,6 +11,10 @@ import {
 import { SfuPublisher } from "../src/client/sfu/publisher";
 import { SfuSubscriber } from "../src/client/sfu/subscriber";
 import type { SfuConnectionConfig } from "../src/client/sfu/peer";
+import { NativeClient } from "../src/client/native/client";
+import { NativeSfuPublisher } from "../src/client/native/native-sfu-publisher";
+import { defaultNativeCapturePath } from "../src/client/native/capture-selection";
+import type { HostPublisherTransport } from "../src/client/media/host-sfu-route";
 
 const high: QualitySettings = {
   resolution: "720p", maxFramerate: 15, maxBitrate: 2_000_000,
@@ -19,7 +23,13 @@ const high: QualitySettings = {
 const low: QualitySettings = { ...high, resolution: "480p" };
 const shareGeneration = crypto.randomUUID();
 let socket: WebSocket | null = null;
-let publisher: SfuPublisher | null = null;
+let publisher: HostPublisherTransport | null = null;
+let native: NativeClient | null = null;
+let nativeShareStarted = false;
+let nativeShareStopped = false;
+let nativeFramesPerSecond = 0;
+let nativeBitrateKbps = 0;
+let nativeEncodingCount = 0;
 let subscriber: SfuSubscriber | null = null;
 let configuration: SfuConnectionConfig | null = null;
 let source: MediaStream | null = null;
@@ -37,6 +47,7 @@ let stopping = false;
 let peerFailures = 0;
 let published = false;
 let simulcast = false;
+let codec: "vp8" | "h264" = "vp8";
 let audioKbps = 0;
 let audioCodec: string | null = null;
 let error: string | null = null;
@@ -97,15 +108,25 @@ async function accept(message: ServerMessage, host: boolean): Promise<void> {
     }
     configuration = message;
     if (host) {
-      publisher = new SfuPublisher({ send, onDisconnected: () => {
+      const events = { send, onDisconnected: () => {
         if (!stopping) failed("Publisher disconnected");
-      } });
+      } };
+      publisher = native
+        ? new NativeSfuPublisher(native, shareGeneration, { iceServers: [] }, { ...events,
+            onStats: (metrics) => {
+              nativeFramesPerSecond = metrics?.framesPerSecond ?? 0;
+              nativeBitrateKbps = metrics?.bitrateKbps ?? 0;
+              nativeEncodingCount = metrics?.videoEncodingCount ?? 0;
+            },
+          })
+        : new SfuPublisher(events);
       await publisher.connect(message);
-      published = await publisher.activate(source!, high, "vp8");
+      published = await publisher.activate(source!, high, codec);
       if (!published) throw new Error("Publisher did not activate");
     } else {
       video = document.createElement("video");
-      video.muted = true;
+      video.muted = false;
+      video.volume = 0.1;
       video.autoplay = true;
       video.playsInline = true;
       video.style.cssText = "max-width:100%;width:640px";
@@ -161,13 +182,30 @@ async function connect(room: CreateRoomResponse, host: boolean): Promise<void> {
     : { ...common, role: "viewer", viewerGrant: new URLSearchParams(new URL(room.inviteUrl).hash.slice(1)).get("v")! });
 }
 
-export async function startHost(): Promise<CreateRoomResponse> {
+export async function startHost(nativeSource?: { title: string; port: number }, selectedCodec: "vp8" | "h264" = "vp8"): Promise<CreateRoomResponse> {
+  codec = selectedCodec;
   const response = await fetch("/api/rooms", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ codeEntryPolicy: "private" }),
   });
   if (!response.ok) throw new Error(`Room creation failed: ${response.status}`);
   const room = createRoomResponseSchema.parse(await response.json());
+  if (nativeSource) {
+    native = await NativeClient.connect();
+    if (!native || native.health.port !== nativeSource.port) throw new Error("Gate Client was not discovered");
+    const target = (await native.sources()).find((candidate) => candidate.kind === "window" && candidate.title === nativeSource.title);
+    const path = defaultNativeCapturePath(await native.captureOptions(), codec, native.health.nativeMedia.softwareVP8);
+    if (!target || !path) throw new Error("Native source is unavailable");
+    native.onEvent((event) => {
+      if (!stopping && event.type === "share-ended" && event.shareId === shareGeneration) failed("Native capture ended");
+    });
+    const started = await native.startShare({ shareId: shareGeneration, source: target,
+      codec, audio: true, profile: high, edgeCapacity: 2, ...path });
+    nativeShareStarted = true;
+    if (started.codec !== codec || !started.audio) throw new Error("Requested Native codec and Opus capture did not start");
+    await connect(room, true);
+    return room;
+  }
   canvas = document.createElement("canvas");
   canvas.width = 1280;
   canvas.height = 720;
@@ -204,12 +242,18 @@ export async function startViewer(room: CreateRoomResponse): Promise<void> {
 
 export function snapshot() {
   return { authenticated, published, simulcast, decoded, committed, peerFailures,
-    audioKbps, audioCodec, publicationRetired, sharingStopped,
-    warning: publisher?.getQualityWarning() ?? null,
-    failureStage: publisher?.getFailureStage() ?? null, error };
+    audioKbps, audioCodec, publicationRetired, sharingStopped, nativeShareStarted, nativeShareStopped,
+    nativeFramesPerSecond, nativeBitrateKbps, nativeEncodingCount,
+    warning: publisher?.getQualityWarning?.() ?? null,
+    failureStage: publisher?.getFailureStage?.() ?? null, error };
 }
 
-export async function waitForFrames(width: number, height: number) {
+export async function audioEnergy(): Promise<number> {
+  const probe = (window as unknown as { __screenerGateAudioEnergy: () => Promise<number> }).__screenerGateAudioEnergy;
+  return await probe();
+}
+
+export async function waitForFrames(width: number, height: number, minimumFrames = 15) {
   if (!video) throw new Error("Viewer video is unavailable");
   const target = video;
   return await new Promise<{ frames: number; width: number; height: number }>((resolve, reject) => {
@@ -217,12 +261,12 @@ export async function waitForFrames(width: number, height: number) {
     let callback = 0;
     const timer = setTimeout(() => {
       target.cancelVideoFrameCallback(callback);
-      reject(new Error(`Viewer did not decode ${width}x${height}; current ${target.videoWidth}x${target.videoHeight}; ${error ?? "no signaling error"}`));
-    }, 20_000);
+      reject(new Error(`Viewer did not decode ${width}x${height}; current ${target.videoWidth}x${target.videoHeight}; ${frames} frame callbacks; ${document.visibilityState}; ${error ?? "no signaling error"}`));
+    }, minimumFrames > 15 ? 30_000 : 20_000);
     const next = () => {
       callback = target.requestVideoFrameCallback(() => {
         frames = target.videoWidth === width && target.videoHeight === height ? frames + 1 : 0;
-        if (frames < 15) return next();
+        if (frames < minimumFrames) return next();
         clearTimeout(timer);
         resolve({ frames, width: target.videoWidth, height: target.videoHeight });
       });
@@ -232,9 +276,13 @@ export async function waitForFrames(width: number, height: number) {
 }
 
 export async function lowerProfile(): Promise<boolean> {
-  if (!publisher || !canvas) throw new Error("Publisher is unavailable");
-  canvas.width = 854;
-  canvas.height = 480;
+  if (!publisher) throw new Error("Publisher is unavailable");
+  if (native) await native.updateShare(shareGeneration, low);
+  else {
+    if (!canvas) throw new Error("Browser source is unavailable");
+    canvas.width = 854;
+    canvas.height = 480;
+  }
   send({ type: "set-quality-settings", qualitySettings: low });
   return await publisher.updateProfile(low);
 }
@@ -248,6 +296,14 @@ export async function stop(): Promise<boolean> {
   stopping = true;
   await publisher?.disconnect();
   await subscriber?.disconnect();
+  if (native) {
+    if (nativeShareStarted) {
+      await native.stopShare(shareGeneration);
+      nativeShareStopped = true;
+    }
+    native.close();
+    native = null;
+  }
   if (drawTimer !== null) clearInterval(drawTimer);
   source?.getTracks().forEach((track) => track.stop());
   await audio?.close();

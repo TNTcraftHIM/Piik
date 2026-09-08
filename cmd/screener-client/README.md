@@ -20,7 +20,7 @@ room store, signaling protocol, or route controller.
   opens and shows a notice when a newer full-SHA release exists. The check is
   best-effort and never installs or replaces the Client.
 
-Local mode uses memory-only rooms, Browser P2P relay, no LiveKit, and no public
+Local mode uses memory-only rooms, P2P relay, no SFU listener, and no public
 discovery. Ordinary Local works on a reachable LAN. The **Public invite** mode
 runs the packaged Cloudflare Tunnel sidecar for the existing HTTP/WebSocket
 control surface and
@@ -47,21 +47,21 @@ connections. A Native edge with public STUN also attempts one bounded PCP,
 UPnP, or NAT-PMP mapping for its Pion UDP socket; pure LAN does not. Routers
 without a mapping service continue with ordinary ICE/STUN. The mapping does not
 create a relay or carry media through the Client control link. A configured Site
-may route the native source through its existing Browser LiveKit publisher;
+may receive a direct Native publication from the shared encoded source;
 Local and one-link modes remain P2P-only. An ordinary Web Host keeps the
 Browser capture path without probing the Client.
 
-Native P2P edges normally reuse that one encoded source and negotiate transport-
-wide feedback. Once Pion GCC has real feedback and the source has produced
-frames, the Client reports whether that
-edge's target payload bitrate can carry the measured shared video plus Opus
-payload. The existing route controller owns persistence and any replacement;
-the Client does not pace, score, or globally lower the shared encoder. If one
-Native sender edge remains persistently degraded, the existing quality operation
-may test a stock Browser WebRTC sender for that edge through the local bridge.
-Existing Viewer evidence commits or rolls back the candidate; healthy Native
-edges continue sharing the selected encode. Native Viewers can receive and
-forward either H.264 or VP8 without encoding it again.
+Native P2P edges and embedded SFU use one shared Pion/LiveKit media adapter for
+feedback, forwarding allocation, bounded pacing and recovery. Native parents
+reuse suitable H.264/VP8 outputs and derive a missing lower output only for
+direct-child demand. Compatible children share that output; each edge receives
+only its selected representation. SFU publication combines its requested output
+prefix with one aggregate upstream budget. A lower-output constraint does not
+replace the original input or higher sibling outputs. The existing route
+controller still owns persistent quality evidence and any route replacement;
+there is no room-wide score or periodic rebalance. See
+[media quality](../../docs/product/media-quality.md) for the implemented behavior
+and [status](../../docs/status.md) for its acceptance limits.
 
 The Client configuration keeps an optional Local site-access password. Leave it
 blank for an open Local site, or set a visible-ASCII password (8 to 128 bytes)
@@ -108,7 +108,11 @@ written to the ignored repository `build/client-check` directory and reused on
 the next run. This keeps the executable identity stable for the system firewall;
 the files are local build output and are never packaged or committed.
 
-It runs Go formatting, unit tests, vet, and the three supported cross-builds.
+It runs Go formatting, unit tests, vet, and Windows/Linux cgo-free cross-builds.
+The Darwin Client and peer gate build only on macOS with cgo enabled and an
+installed SDK; other hosts report that skipped platform explicitly. The pinned
+media dependency's Darwin CPU statistics use Mach APIs through cgo, so a Windows
+or Linux core check does not establish Darwin build acceptance.
 Each target compiles its isolated capture process and validates its bounded
 capability response. macOS additionally encodes one in-memory hardware H.264
 IDR; Linux probes the Portal/PipeWire/GStreamer adapter. Real capture, GPU
@@ -117,12 +121,15 @@ gates rather than environment-dependent unit tests.
 
 The loopback service binds IPv4 loopback on the first available port from
 `39721` through `39730`. `/health` discovers the current process; `/control`
-accepts one strict v8 session. After `hello`, an available Client may list local
-capture choices, own one generation-fenced Host share, or receive one native
-Viewer source and its bounded encoded child edges. Its public `instanceToken`
+admits at most two independent strict v9 control sessions. After `hello`, each
+session may list local capture choices, own one generation-fenced Host share,
+or receive one native Viewer source and its bounded encoded child edges. Closing
+one session retires only its resources. Its public `instanceToken`
 distinguishes the discovered process but is not authentication; room authority
 and remote signaling remain in the Browser. Viewer receive/relay remains
 available even when this machine has no accepted native capture encoder.
+Capture sidecars use the current v5 probe/encoded-output contract; the native
+package-candidate wrapper validates that version before accepting its artifact.
 
 ## Packaging
 
@@ -142,9 +149,10 @@ SCREENER_GO=/path/to/go \
 ```
 
 Supported targets are `windows-amd64`, `linux-amd64`, and `darwin-arm64`.
-`--target` controls the Go cross-build and packaged executable names; the
+`--target` controls the Go build and packaged executable names; the
 capture and tunnel inputs must already match that target. Each target accepts
-its matching native-capture input.
+its matching native-capture input. Darwin assembly requires a native macOS runner
+with its SDK and enables cgo; Windows and Linux assembly keep cgo disabled.
 
 The result contains:
 
@@ -243,7 +251,7 @@ probe and target OS support it. The cross-NAT variant uses a temporary reverse
 SSH path for signaling only and requires a selected `srflx` or `prflx` media pair;
 media never travels through SSH. The one-link media variant instead carries the
 same signaling through the Client's temporary public origin and requires direct
-media delivery to an independent Linux peer. Native P2P quality evidence and the
-Browser-mediated SFU path have dedicated gates. macOS and Linux capture still
+media delivery to an independent Linux peer. Native P2P quality evidence and
+embedded SFU delivery have explicit gates. macOS and Linux capture still
 require physical desktop/media gates; CI compilation and package smoke do not
 substitute for them.

@@ -2,6 +2,7 @@ package forwarding
 
 import (
 	"errors"
+	"math"
 	"time"
 
 	"github.com/TNTcraftHIM/Screener/internal/media/encoded"
@@ -21,6 +22,8 @@ type EncodedSource struct {
 	packetizers []*encoded.Packetizer
 	packets     []uint32
 	octets      []uint64
+	codecBytes  []uint64
+	rtpBytes    []uint64
 	inputPTS    time.Duration
 	anchorPTS   time.Duration
 	anchorTime  time.Time
@@ -35,6 +38,7 @@ func NewEncodedSource(options SourceOptions) (*EncodedSource, error) {
 	input := &EncodedSource{
 		Source: source, packetizers: make([]*encoded.Packetizer, len(options.Formats)),
 		packets: make([]uint32, len(options.Formats)), octets: make([]uint64, len(options.Formats)),
+		codecBytes: make([]uint64, len(options.Formats)), rtpBytes: make([]uint64, len(options.Formats)),
 	}
 	for layer := range input.packetizers {
 		var payloader rtp.Payloader = &codecs.H264Payloader{}
@@ -84,7 +88,9 @@ func (input *EncodedSource) WriteFrame(layer int, frame encoded.Frame) error {
 		}
 		input.packets[layer]++
 		input.octets[layer] += uint64(len(packet.Payload))
+		input.rtpBytes[layer] += uint64(packet.MarshalSize())
 	}
+	input.codecBytes[layer] += uint64(len(frame.Data))
 	// Correlate each layer with the actual input clock, not its encoder finish
 	// time. This is internal correlation data, not a backdated wire sender report.
 	return input.SetCorrelation(layer, &livekit.RTCPSenderReportState{
@@ -94,6 +100,19 @@ func (input *EncodedSource) WriteFrame(layer int, frame encoded.Frame) error {
 	})
 }
 
+// CodecBudget converts source-RTP allocation units to encoder AU-payload units.
+// Actual packetization includes codec descriptors; bitrate comes from the
+// existing tracker window so dormant time does not dilute the overhead rate.
+// Downstream extensions and SRTP/UDP overhead are outside this source measure.
+func (input *EncodedSource) CodecBudget(layer int, rtpBudget int64) int64 {
+	if layer < 0 || layer >= len(input.rtpBytes) || input.rtpBytes[layer] <= input.codecBytes[layer] {
+		return max(rtpBudget, 0)
+	}
+	_, rates := input.GetLayeredBitrate()
+	overhead := float64(rates[layer][0]) * float64(input.rtpBytes[layer]-input.codecBytes[layer]) / float64(input.rtpBytes[layer])
+	return max(rtpBudget-int64(math.Ceil(overhead)), 0)
+}
+
 func (input *EncodedSource) BeginGeneration() {
 	// Capture replacement changes the input clock, not these RTP identities.
 	// Rebase the packetizers; restarting DownTrack as well would rebase twice.
@@ -101,4 +120,6 @@ func (input *EncodedSource) BeginGeneration() {
 		packetizer.BeginGeneration()
 	}
 	input.hasInput = false
+	clear(input.codecBytes)
+	clear(input.rtpBytes)
 }

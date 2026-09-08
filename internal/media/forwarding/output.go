@@ -3,6 +3,7 @@
 package forwarding
 
 import (
+	"slices"
 	"sync"
 
 	"github.com/livekit/livekit-server/pkg/sfu"
@@ -85,15 +86,17 @@ func (output *Output) reconcileLocked() {
 	output.ProvisionalAllocatePrepare()
 	remaining := output.budget
 	maximum := output.MaxLayer()
+	controlled, ok := output.Receiver().(interface{ RateControlled(int32) bool })
+	keepLowest := ok && controlled.RateControlled(0) && slices.Contains(available, int32(0))
 	for spatial := int32(0); spatial <= maximum.Spatial; spatial++ {
 		for temporal := int32(0); temporal <= maximum.Temporal; temporal++ {
 			_, used := output.ProvisionalAllocate(remaining,
-				buffer.VideoLayer{Spatial: spatial, Temporal: temporal}, true, false)
+				buffer.VideoLayer{Spatial: spatial, Temporal: temporal}, !(keepLowest && spatial == 0), false)
 			remaining -= used
 		}
 	}
-	// Keep the measured allocation honest while the parent reduces a prepared
-	// encoder's bitrate. It becomes selectable through real output measurements.
+	// Only a live local encoder can follow this child's budget below the current
+	// lowest-layer measurement; raw forwarding retains the library pause policy.
 	output.allocation = output.ProvisionalAllocateCommit()
 	output.hasAllocation = true
 }

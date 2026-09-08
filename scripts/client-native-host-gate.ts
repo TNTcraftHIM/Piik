@@ -36,6 +36,15 @@ type VideoCodec = "h264" | "vp8";
 
 const CODEC_PROBE = `(() => {
   const peers = [], BrowserPeer = RTCPeerConnection;
+  const sockets = [], BrowserSocket = WebSocket;
+  window.WebSocket = class extends BrowserSocket {
+    constructor(...args) { super(...args); sockets.push(this); }
+  };
+  window.__screenerGatePublicSignal = () => sockets.some((socket) => {
+    const url = new URL(socket.url);
+    return socket.readyState === WebSocket.OPEN && url.protocol === 'wss:' &&
+      url.host === location.host && url.pathname === '/signal';
+  });
   window.RTCPeerConnection = class extends BrowserPeer {
     constructor(...args) { super(...args); peers.push(this); }
   };
@@ -88,6 +97,9 @@ interface GateResult {
   replacementViewerFrames: number | null;
   clientCrashEndedShare: boolean | null;
   mode: GateMode;
+  viewerLocation: "local-browser" | "public-url-browser" | "remote-peer";
+  publicViewerPage: boolean;
+  publicViewerSignal: boolean;
   cleanup: Awaited<ReturnType<typeof cleanupRun>>;
   error: string | null;
   stage?: string;
@@ -564,7 +576,9 @@ async function main(): Promise<void> {
   if (requestedCodec !== "auto" && requestedCodec !== "h264" && requestedCodec !== "vp8") {
     throw new Error("SCREENER_CLIENT_NATIVE_HOST_CODEC must be auto, h264, or vp8");
   }
-  const remote = mode === "local" ? null : remoteOptions();
+  const remote = mode === "cross-nat" || mode === "one-link" &&
+    Boolean(process.env.SCREENER_REMOTE_HOST?.trim() || process.env.SCREENER_REMOTE_SSH_KEY?.trim())
+      ? remoteOptions() : null;
   const chromePath = process.env.CHROME_PATH?.trim();
   if (!chromePath) throw new Error("CHROME_PATH is required");
   const go = process.env.SCREENER_GO?.trim() || "go";
@@ -626,6 +640,9 @@ async function main(): Promise<void> {
     replacementViewerFrames: mode === "local" ? 0 : null,
     clientCrashEndedShare: crashGate ? false : null,
     mode,
+    viewerLocation: remote ? "remote-peer" : mode === "one-link" ? "public-url-browser" : "local-browser",
+    publicViewerPage: false,
+    publicViewerSignal: false,
     cleanup: {
       browserExited: false,
       nativeExited: false,
@@ -643,15 +660,17 @@ async function main(): Promise<void> {
     stage = "source-server";
     source = await sourceServer(sourcePort);
     stage = "capture-build";
+    process.stderr.write(`${JSON.stringify({ stage, status: "started", at: new Date().toISOString() })}\n`);
     run(powershell(), [
       "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
       join(ROOT, "native", "capture", "windows", "build.ps1"),
       "-OutputDirectory", captureBuild,
     ]);
+    process.stderr.write(`${JSON.stringify({ stage, status: "finished", at: new Date().toISOString() })}\n`);
     stage = "client-build";
     run(go, [
-      "build", "-trimpath", "-o", clientBinary, "./cmd/screener-client",
-    ], ROOT);
+      "build", "-p", "1", "-trimpath", "-o", clientBinary, "./cmd/screener-client",
+    ], ROOT, { ...process.env, GOMAXPROCS: "2" });
     if (remote) {
       stage = "remote-peer-build";
       run(
@@ -880,7 +899,17 @@ async function main(): Promise<void> {
       }
     } else {
       const viewerURL = new URL(hostState.invite);
-      viewerURL.hostname = "localhost";
+      if (mode === "local") viewerURL.hostname = "localhost";
+      else {
+        if (viewerURL.protocol !== "https:" || viewerURL.origin !== clientInfo.publicOrigin) {
+          throw new Error("One-link invitation does not use the actual public origin");
+        }
+        stage = "public-page-ready";
+        await waitForValue(async (deadline) => {
+          const response = await fetch(viewerURL, { signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())) });
+          return response.ok;
+        }, Boolean, 20_000);
+      }
       stage = "viewer-page";
       const viewer = await createPage(cdp, viewerURL.toString(), CODEC_PROBE, true);
       stage = "viewer-media";
@@ -908,6 +937,14 @@ async function main(): Promise<void> {
       result.viewerWidth = viewerState.width;
       result.viewerHeight = viewerState.height;
       await assertVideoCodec(cdp, viewer, actualCodec);
+      if (mode === "one-link") {
+        result.codecPreserved = true;
+        result.publicViewerPage = await evaluate<boolean>(cdp, viewer,
+          `location.origin === ${JSON.stringify(clientInfo.publicOrigin)} && location.pathname === ${JSON.stringify(viewerURL.pathname)}`,
+          Date.now() + 5_000);
+        result.publicViewerSignal = await evaluate<boolean>(cdp, viewer,
+          "window.__screenerGatePublicSignal()", Date.now() + 5_000);
+      } else {
       await evaluate<boolean>(
         cdp,
         viewer,
@@ -1358,6 +1395,7 @@ async function main(): Promise<void> {
         result.replacementViewerConnected = null;
         result.replacementViewerFrames = null;
       }
+      }
     }
   } catch (error) {
     // Client stderr can contain implementation diagnostics or URLs; keep gate
@@ -1401,11 +1439,14 @@ async function main(): Promise<void> {
   result.passed = result.error === null && result.actualCodec !== null && result.preSharePreferenceEnabled &&
     result.hostNativeActive &&
     result.hostInvite &&
-    (mode !== "local"
+    (remote
       ? result.remoteViewerConnected && result.remoteViewerPackets >= 30 &&
         result.remoteNatPath && result.remotePeerExited === true &&
         (mode !== "cross-nat" || result.reverseSignalTunnelClosed === true)
-      : result.viewerConnected && result.viewerFrames >= 30 &&
+      : mode === "one-link"
+        ? result.publicViewerPage && result.publicViewerSignal && result.viewerConnected &&
+          result.viewerFrames >= 30 && result.viewerWidth === 1920 && result.viewerHeight === 1080 && result.codecPreserved
+        : result.viewerConnected && result.viewerFrames >= 30 &&
         result.qualityControlsEnabled && result.liveQualityChanged &&
         result.backgroundProfileRecovery !== false &&
         result.livePresetChanges === 2 &&

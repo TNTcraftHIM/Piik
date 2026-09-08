@@ -2212,6 +2212,7 @@ struct CaptureInput final {
   UINT32 height = 0;
   SIZE presentation{};
   UINT64 timestamp = 0;
+  UINT64 cadence = 0;
 };
 
 class OutputWorker final {
@@ -2283,7 +2284,9 @@ class OutputWorker final {
           encoded_frames = 0;
         }
         const UINT64 duration = static_cast<UINT64>(profile_.frame_duration_100ns());
-        if (!recovery && input->timestamp < next_timestamp &&
+        // Captured inputs already obey their source ceiling. Reapplying the
+        // same limiter from a worker's later origin drops valid jittered frames.
+        if (duration > input->cadence && !recovery && input->timestamp < next_timestamp &&
             next_timestamp - input->timestamp > duration / 20) continue;
         if (!encoder) {
           encoder = create_();
@@ -2826,6 +2829,7 @@ void RunVideoCapture(const ProductArguments& arguments) {
       input->timestamp = timestamp;
       input->presentation = presentation.Resolve(content_width, content_height,
           source_frames % arguments.profile.gop_frames() == 0);
+      input->cadence = frame_duration;
       latest.Close();
       latest = nullptr;
       if (next_output_timestamp == 0) {

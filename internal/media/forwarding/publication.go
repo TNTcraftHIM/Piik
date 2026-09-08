@@ -1,6 +1,7 @@
 package forwarding
 
 import (
+	"crypto/rand"
 	"errors"
 	"io"
 	"strconv"
@@ -123,12 +124,15 @@ func NewPublication(options TransportOptions) (_ *Publication, err error) {
 		return nil, err
 	}
 	var transceiver *webrtc.RTPTransceiver
+	// Pion's diagnostic PC.ID is clock-based and can repeat. Source membership
+	// needs a unique physical owner even when signaling reuses a connection ID.
+	subscriberID := rand.Text()
 	for index := range options.Source.TrackInfo().Layers {
 		receiver := &publicationLayer{Source: options.Source, layer: int32(index)}
 		track, trackErr := sfu.NewDownTrack(sfu.DownTrackParams{
 			Codecs: []webrtc.RTPCodecParameters{codec}, Source: livekit.TrackSource_SCREEN_SHARE,
 			Receiver: receiver, BufferFactory: factory,
-			SubID:    livekit.ParticipantID(publication.PC.ID() + "_" + strconv.Itoa(index)),
+			SubID:    livekit.ParticipantID(subscriberID + "_" + strconv.Itoa(index)),
 			StreamID: options.Source.StreamID(), MaxTrack: options.Source.maxPackets,
 			Pacer: publication.pacer, Logger: log, Listener: publication,
 			RTCPWriter: publication.PC.WriteRTCP, DisableSenderReportPassThrough: true,
@@ -211,7 +215,9 @@ func (publication *Publication) SetActiveCount(count int) error {
 	}
 	publication.activeCount = count
 	for index, track := range publication.tracks {
-		track.Mute(index >= count)
+		// Publisher demand is authoritative even while allocation is paused;
+		// subscription visibility mute may be ignored by the framework then.
+		track.PubMute(index >= count)
 	}
 	return nil
 }
@@ -245,16 +251,21 @@ type PublicationCounters struct {
 	Frames                 []uint64
 	VideoBytes, AudioBytes uint64
 	TargetBitrate          int64
-	Observed, Congested    bool
+	Observed, Limited      bool
 }
 
 func (publication *Publication) Counters() PublicationCounters {
+	publication.mu.Lock()
+	defer publication.mu.Unlock()
 	stats := PublicationCounters{Frames: make([]uint64, len(publication.counters)),
 		AudioBytes: publication.audioBytes.Load(), TargetBitrate: publication.bandwidth.target.Load(),
-		Observed: publication.bandwidth.observed.Load(), Congested: publication.bandwidth.CongestionState() == bwe.CongestionStateCongested}
+		Observed: publication.bandwidth.observed.Load(), Limited: publication.bandwidth.CongestionState() == bwe.CongestionStateCongested}
 	for index := range publication.counters {
 		stats.Frames[index] = publication.counters[index].frames.Load()
 		stats.VideoBytes += publication.counters[index].bytes.Load()
+		if index < publication.activeCount && publication.tracks[index].IsDeficient() {
+			stats.Limited = true
+		}
 	}
 	return stats
 }

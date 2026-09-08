@@ -3,7 +3,15 @@ package mediaedge
 import (
 	"testing"
 	"time"
+
+	"github.com/livekit/livekit-server/pkg/sfu"
 )
+
+type qualityAllocationReceiver struct{ sfu.TrackReceiver }
+
+func (receiver qualityAllocationReceiver) GetLayeredBitrate() ([]int32, sfu.Bitrates) {
+	return []int32{0, 1}, sfu.Bitrates{{100_000}, {900_000}}
+}
 
 func TestQualitySampleUsesEstimatorCapacityAgainstEncodedPayload(t *testing.T) {
 	engine, err := NewEngine(EngineOptions{
@@ -13,7 +21,7 @@ func TestQualitySampleUsesEstimatorCapacityAgainstEncodedPayload(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = engine.Close() })
-	source, err := engine.NewSource("h264", 1, 1, nil)
+	source, err := engine.NewSource("h264", 1, 2, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,5 +52,41 @@ func TestQualitySampleUsesEstimatorCapacityAgainstEncodedPayload(t *testing.T) {
 		sample.FramesPerSecond != 30 || sample.BitrateKbps != 4_000 ||
 		sample.AvailableOutgoingKbps != 100 {
 		t.Fatalf("quality sample = %+v, %v", sample, ok)
+	}
+
+	// Real library allocation remains deficient after selecting a layer that
+	// fits the link; steady low delivery must not cancel quality convergence.
+	output := edge.transport.Output
+	output.SetReceiver(qualityAllocationReceiver{TrackReceiver: output.Receiver()})
+	output.UpTrackMaxPublishedLayerChange(1)
+	output.UpTrackMaxTemporalLayerSeenChange(0)
+	output.SetMaxSpatialLayer(1)
+	for index, check := range []struct {
+		budget, sent int
+		layer        int32
+		state        string
+	}{
+		{200_000, 100_000, 0, "degraded"},
+		{1_000_000, 900_000, 1, "healthy"},
+	} {
+		output.SetBudget(int64(check.budget))
+		edge.targetBitrate = func() (int, bool) { return check.budget, true }
+		if output.State().Target != check.layer || output.IsDeficient() != (check.state == "degraded") {
+			t.Fatalf("fixture did not establish the expected committed allocation: %+v", output.State())
+		}
+		bytes := check.sent / 4
+		for frame := 0; frame < 60; frame++ {
+			number := uint64((index+1)*60 + frame + 1)
+			size := bytes / 60
+			if frame == 59 {
+				size += bytes % 60
+			}
+			stats.Update(started.Add(time.Duration(number)*time.Second/30).UnixNano(), number,
+				number*3000, true, 12, size, 0, false)
+		}
+		sample, ok = edge.QualitySample(started.Add(time.Duration(index+2) * 2 * time.Second))
+		if !ok || sample.State != check.state || sample.BitrateKbps != float64(check.sent)/1000 {
+			t.Fatalf("allocation %d quality = %+v, %v", index, sample, ok)
+		}
 	}
 }

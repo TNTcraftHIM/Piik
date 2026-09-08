@@ -74,12 +74,20 @@ mistaken for a healthy high-quality path.
 - Extra low encodes, decoder work, frame copies and publication upload remain
   real costs. A fixed set of layers does not solve bandwidth below its lowest
   layer or CPU overload; those cases need framework adaptation and verification.
+- An available lowest output owned by a live local rate-controlled codec uses
+  the framework's non-pausing allocation policy at positive budgets; raw relay
+  input and forwarding SFU outputs retain pausing. Cold codec preparation and
+  existing estimation windows still impose transition cost, so eventual recovery
+  does not establish low-bandwidth latency parity.
 - Replacing the external SFU changes Browser signaling/media integration and
   deployment. Cut over one coordinated current contract, delete replaced paths
   in that boundary, and preserve active-share/rollback rules from CONTRIBUTING.
-- ADR-0007 remains the current runtime contract until the replacement passes.
-  This decision accepts the new model and its implementation work, not claims
-  that hardware, mixed peers, loss/recovery or shutdown already pass.
+- The candidate implements this model through shared Pion/LiveKit media
+  components; ADR-0007 retains the earlier
+  production/runtime context and its unchanged Browser source/codec decisions.
+  Implementation is not acceptance of hardware, mixed peers, loss/recovery or
+  production cutover. Current product modules describe the candidate, while
+  status and deployment records keep production evidence separate.
 - [TODO](../todo.md) owns remaining implementation and acceptance. Research owns
   measurements and library-selection evidence; no production switch is added
   merely because a probe passes.

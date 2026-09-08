@@ -2,8 +2,8 @@
 
 Screener is a private, low-latency screen-sharing tool for one game player and
 up to 20 authenticated friends. Web Viewers need no installation. Media is
-automatic and P2P-first, with bounded Browser relay and one dedicated LiveKit
-SFU/UDP fallback rather than an always-SFU conference topology.
+automatic and P2P-first, with bounded Browser relay and one embedded SFU/UDP
+fallback. The Hosted Go process owns signaling, STUN, and admitted SFU media.
 
 [Project memory](./docs/project-memory.md) is the compact product map.
 [Current status](./docs/status.md) owns the exact source and production state;
@@ -11,8 +11,8 @@ this README intentionally does not mirror release details.
 
 ## Screener Client
 
-The Client opens the same interface in your system browser. The package is one
-self-contained executable.
+The Client opens the same interface in your system browser. Its self-contained
+package carries the Go application and required capture/public-link sidecars.
 
 - **Local:** share with devices on the same LAN.
 - **Public link:** send an ordinary invitation link. Cloudflare Quick Tunnel
@@ -25,6 +25,11 @@ screen audio uses the default system output; window audio uses the selected
 application when supported. Audio has a separate sharing switch. Native capture
 on Windows offers VP8, Auto, and H264 in the same controls as Browser capture.
 Other native platform adapters currently use hardware H.264.
+
+Native parents reuse encoded outputs for compatible direct children and derive
+a missing lower output only when needed. Native SFU publication uses that same
+source; ordinary Browser capture and relay retain WebRTC senders. The candidate's
+media and release acceptance boundaries are recorded in [current status](./docs/status.md).
 
 P2P is best effort, not a guarantee that every network pair connects. The
 [current status](./docs/status.md) lists platform acceptance and open Client

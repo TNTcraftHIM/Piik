@@ -71,6 +71,11 @@ Clean up worktrees and branches only after semantic review and integration are c
   isolated profiles, bounded deadlines, shared cleanup helpers, and a structured
   result. A manual diagnostic may locate a failure, but is not retained as pass
   evidence.
+- On Windows, execute Client/Server and Go test binaries only from stable
+  project build paths. Go's temporary compiler/cache files are not firewall
+  identities; do not run network tests with a changing temporary executable
+  path. Keep browser profiles isolated and consider the active firewall when
+  diagnosing connection failures rather than changing global firewall rules.
 - A validated push to `main` uploads a short-lived Server candidate. The three
   platform Client candidates run only from an explicit manual workflow dispatch
   with `client_checks=true`, because they are the expensive part of the matrix.

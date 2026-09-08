@@ -42,6 +42,10 @@ func TestSourceLayerBindingFeedbackAndClose(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(source.Close)
+	source.SetLowestLayerRateControlled(true)
+	if !source.RateControlled(0) || source.RateControlled(1) {
+		t.Fatal("local codec ownership escaped its lowest output")
+	}
 	if info := source.TrackInfo(); info.Layers[0].Bitrate != 0 || info.Layers[0].Width != 0 {
 		t.Fatal("unknown received metadata was replaced by a guessed value")
 	}
@@ -104,6 +108,9 @@ func TestSourceLayerBindingFeedbackAndClose(t *testing.T) {
 	source.SendPLI(0, true)
 	if feedbackLayer != 0 || !source.IsClosed() || !errors.Is(source.WriteRTP(0, packet), sfu.ErrReceiverClosed) {
 		t.Fatal("feedback could not retire its source without retaining stale writes")
+	}
+	if source.RateControlled(0) {
+		t.Fatal("closed source retained local codec ownership")
 	}
 	if err = source.BindLayer(0, 2000, parameters); !errors.Is(err, sfu.ErrReceiverClosed) {
 		t.Fatal("closed source accepted another layer")

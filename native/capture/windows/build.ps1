@@ -38,9 +38,9 @@ $vpx = & (Join-Path $helperDirectory 'build-libvpx.ps1') -OutputDirectory (Join-
 
 $compile = @(
     'call "{0}" -arch=x64 -host_arch=x64 >nul' -f $developerCommand
-    'cl.exe /nologo /c /std:c++20 /EHsc /W4 /WX /external:I "{2}" /external:W0 /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN /D_WIN32_WINNT=0x0A00 /DNTDDI_VERSION=0x0A00000A "{0}" /Fo:"{1}"' -f $mainSourcePath, $mainObjectPath, $vpx.Include
-    'cl.exe /nologo /c /std:c++20 /EHsc /W4 /WX /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN /D_WIN32_WINNT=0x0A00 /DNTDDI_VERSION=0x0A00000A "{0}" /Fo:"{1}"' -f $audioSourcePath, $audioObjectPath
-    'cl.exe /nologo /c /std:c++20 /EHsc /W4 /WX /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN /D_WIN32_WINNT=0x0A00 /DNTDDI_VERSION=0x0A00000A "{0}" /Fo:"{1}"' -f $targetSourcePath, $targetObjectPath
+    'cl.exe /nologo /c /std:c++20 /EHsc /O2 /W4 /WX /external:I "{2}" /external:W0 /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN /D_WIN32_WINNT=0x0A00 /DNTDDI_VERSION=0x0A00000A "{0}" /Fo:"{1}"' -f $mainSourcePath, $mainObjectPath, $vpx.Include
+    'cl.exe /nologo /c /std:c++20 /EHsc /O2 /W4 /WX /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN /D_WIN32_WINNT=0x0A00 /DNTDDI_VERSION=0x0A00000A "{0}" /Fo:"{1}"' -f $audioSourcePath, $audioObjectPath
+    'cl.exe /nologo /c /std:c++20 /EHsc /O2 /W4 /WX /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN /D_WIN32_WINNT=0x0A00 /DNTDDI_VERSION=0x0A00000A "{0}" /Fo:"{1}"' -f $targetSourcePath, $targetObjectPath
     'cl.exe /nologo /c /std:c++20 /EHsc /O2 /W4 /WX /external:I "{2}" /external:W0 "{0}" /Fo:"{1}"' -f $vp8SourcePath, $vp8ObjectPath, $vpx.Include
     'link.exe /nologo /LTCG /out:"{0}" "{1}" "{2}" "{3}" "{4}" "{5}" ole32.lib mmdevapi.lib runtimeobject.lib user32.lib gdi32.lib dwmapi.lib shell32.lib mfplat.lib mf.lib mfuuid.lib d3d11.lib dxgi.lib dxguid.lib evr.lib oleaut32.lib windowsapp.lib' -f $executablePath, $mainObjectPath, $audioObjectPath, $targetObjectPath, $vp8ObjectPath, $vpx.Library
 ) -join ' && '
@@ -53,7 +53,7 @@ if ($Check) {
     $geometrySource = Join-Path $helperDirectory 'capture_geometry.test.cpp'
     $geometryObject = Join-Path $outputPath 'capture-geometry.test.obj'
     $geometryCheck = Join-Path $outputPath 'capture-geometry.test.exe'
-    $compileCheck = 'call "{0}" -arch=x64 -host_arch=x64 >nul && cl.exe /nologo /std:c++20 /EHsc /W4 /WX "{1}" /Fo:"{2}" /Fe:"{3}" /link user32.lib' -f $developerCommand, $geometrySource, $geometryObject, $geometryCheck
+    $compileCheck = 'call "{0}" -arch=x64 -host_arch=x64 >nul && cl.exe /nologo /std:c++20 /EHsc /O2 /W4 /WX "{1}" /Fo:"{2}" /Fe:"{3}" /link user32.lib' -f $developerCommand, $geometrySource, $geometryObject, $geometryCheck
     & cmd.exe /d /s /c $compileCheck
     if ($LASTEXITCODE -ne 0) { throw 'Capture geometry check compilation failed.' }
     & $geometryCheck
@@ -61,7 +61,7 @@ if ($Check) {
     $controlSource = Join-Path $helperDirectory 'capture_control.test.cpp'
     $controlObject = Join-Path $outputPath 'capture-control.test.obj'
     $controlCheck = Join-Path $outputPath 'capture-control.test.exe'
-    $compileCheck = 'call "{0}" -arch=x64 -host_arch=x64 >nul && cl.exe /nologo /std:c++20 /EHsc /W4 /WX /external:I "{6}" /external:W0 "{1}" /Fo:"{2}" /Fe:"{3}" "{4}" "{5}"' -f $developerCommand, $controlSource, $controlObject, $controlCheck, $vp8ObjectPath, $vpx.Library, $vpx.Include
+    $compileCheck = 'call "{0}" -arch=x64 -host_arch=x64 >nul && cl.exe /nologo /std:c++20 /EHsc /O2 /W4 /WX /external:I "{6}" /external:W0 "{1}" /Fo:"{2}" /Fe:"{3}" "{4}" "{5}"' -f $developerCommand, $controlSource, $controlObject, $controlCheck, $vp8ObjectPath, $vpx.Library, $vpx.Include
     & cmd.exe /d /s /c $compileCheck
     if ($LASTEXITCODE -ne 0) { throw 'Capture output check compilation failed.' }
     & $controlCheck

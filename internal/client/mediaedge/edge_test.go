@@ -1,6 +1,7 @@
 package mediaedge
 
 import (
+	"context"
 	"errors"
 	"net"
 	"strings"
@@ -9,8 +10,10 @@ import (
 	"time"
 
 	"github.com/TNTcraftHIM/Screener/internal/client/nativeaudio"
+	"github.com/TNTcraftHIM/Screener/internal/client/nativecapture"
 	"github.com/TNTcraftHIM/Screener/internal/media/encoded"
 	"github.com/livekit/livekit-server/pkg/sfu"
+	"github.com/livekit/livekit-server/pkg/sfu/streamtracker"
 	"github.com/pion/interceptor"
 	"github.com/pion/logging"
 	"github.com/pion/rtcp"
@@ -57,6 +60,10 @@ func TestOutputPlanRetiresOnlyFailedLayerConsumers(t *testing.T) {
 		t.Fatalf("output plan = %+v, %v", plan, err)
 	}
 	plan.Bitrates[0] = 1
+	trackers := source.media.StreamTrackerManager()
+	lowerTracker, higherTracker := trackers.AddTracker(0), trackers.AddTracker(1)
+	lowerTracker.Observe(0, 1200, 1188, true, 90000, nil)
+	higherTracker.Observe(0, 1200, 1188, true, 90000, nil)
 	if err = source.DisableLayer(0); err != nil {
 		t.Fatal(err)
 	}
@@ -66,9 +73,103 @@ func TestOutputPlanRetiresOnlyFailedLayerConsumers(t *testing.T) {
 	if err = high.SetTargetLayer(0); err == nil {
 		t.Fatal("failed output accepted a new demand")
 	}
+	lowerTracker.Observe(0, 1200, 1188, true, 93000, nil)
+	if lowerTracker.Status() != streamtracker.StreamStatusStopped || higherTracker.Status() != streamtracker.StreamStatusActive {
+		t.Fatal("failed tracker revived or reset a healthy sibling")
+	}
 	plan, err = source.BeginFrame(2 * time.Second / 30)
 	if err != nil || plan.ActiveLayers != 2 || plan.Bitrates[0] != 0 || plan.Bitrates[1] != 600_000 {
 		t.Fatalf("surviving output plan = %+v, %v", plan, err)
+	}
+	if err = source.WriteVideo(0, encoded.Frame{Data: sfu.VP8KeyFrame8x8, PTS: 2 * time.Second / 30, Duration: time.Second / 30}); err == nil {
+		t.Fatal("late output revived a failed encoder slot")
+	}
+	for index, input := range []string{"capture", "relay"} {
+		candidate, _, _ := connectedReceiver(t, engine, source, "failed-demand-"+input)
+		// Exercise a framework request independently of the explicit Native
+		// setter. This is admission metadata, not simulated network evidence.
+		candidate.transport.OnTransportCCFeedback(nil, &rtcp.TransportLayerCC{})
+		candidate.transport.Output.SetMaxSpatialLayer(0)
+		candidate.transport.Output.SetBudget(80_000)
+		if input == "capture" {
+			plan, err = source.BeginFrame(time.Duration(index+3) * time.Second / 30)
+			if err != nil || plan.ActiveLayers != 2 || plan.Bitrates[0] != 0 {
+				t.Fatalf("failed demand changed the capture plan: %+v, %v", plan, err)
+			}
+		} else {
+			err = source.WriteRTP(&rtp.Packet{Header: rtp.Header{Version: 2, SSRC: 42, PayloadType: 96,
+				SequenceNumber: 1, Timestamp: 90000, Marker: true}, Payload: append([]byte{0x10}, sfu.VP8KeyFrame8x8...)})
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		if candidate.State() != webrtc.PeerConnectionStateClosed || high.State() != webrtc.PeerConnectionStateConnected {
+			t.Fatalf("%s failed/sibling state = %s/%s", input, candidate.State(), high.State())
+		}
+	}
+	if err = source.ConfigureOutputs([]uint32{150_000, 600_000}); err != nil {
+		t.Fatal(err)
+	}
+	lowerTracker.Observe(0, 1200, 1188, true, 96000, nil)
+	if lowerTracker.Status() != streamtracker.StreamStatusActive || high.SetTargetLayer(0) != nil {
+		t.Fatal("validated capture output did not restore the failed slot")
+	}
+}
+
+func TestRelayFailureCannotRetireReconfiguredProfile(t *testing.T) {
+	engine, err := NewEngine(EngineOptions{BindAddress: "127.0.0.1:0", IncludeLoopback: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = engine.Close() })
+	source, err := engine.NewSource("vp8", 1, 2, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = source.Close() })
+	source.relay = &relayDerivation{source: source}
+	_ = source.SetFormat(1, 640, 360)
+	profile := nativecapture.VideoProfile{Width: 1280, Height: 720, Framerate: 30, Bitrate: 3_000_000, Preference: "balanced"}
+	if err = source.SetRelayProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	low, _, _ := connectedReceiver(t, engine, source, "relay-failure")
+	if err = low.SetTargetLayer(0); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancelCause(t.Context())
+	defer cancel(nil)
+	done := make(chan struct{})
+	close(done)
+	old := &relayRun{owner: source.relay, ctx: ctx, cancel: cancel, done: done,
+		plan: relayPlan{profile: source.relayProfile, format: source.formats[1].Load()}}
+	source.relay.run = old
+	cancel(errors.New("old decoder failed"))
+	profile.Preference = "maintain-resolution"
+	if err = source.SetRelayProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	profile.Preference = "balanced"
+	if err = source.SetRelayProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	if source.relayProfile == old.plan.profile || *source.relayProfile != *old.plan.profile {
+		t.Fatal("fixture did not return to equal settings with a new owner")
+	}
+	retire, err := source.markLayerUnavailable(0, old)
+	if err != nil || retire != nil || source.outputBitrates[0] == 0 || low.State() != webrtc.PeerConnectionStateConnected {
+		t.Fatal("late failed decoder retired reconfigured output")
+	}
+	current := &relayRun{owner: source.relay, ctx: ctx, cancel: cancel, done: done,
+		plan: relayPlan{profile: source.relayProfile, format: source.formats[1].Load()}}
+	source.relay.run = current
+	retire, err = source.markLayerUnavailable(0, current)
+	if err != nil || retire == nil || low.State() != webrtc.PeerConnectionStateConnected {
+		t.Fatal("current failure did not defer transport retirement until after owner locks")
+	}
+	retire()
+	if source.outputBitrates[0] != 0 || low.State() != webrtc.PeerConnectionStateClosed {
+		t.Fatal("current decoder failure was not retired")
 	}
 }
 

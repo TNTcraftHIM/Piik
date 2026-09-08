@@ -1,5 +1,6 @@
 import type { SignalPayload } from "../../shared/protocol";
 import { createOpaqueId } from "../lib/opaque-id";
+import { debugEvent } from "../lib/debug";
 import type { ConnectionMetrics } from "../types";
 import {
   collectConnectionMetrics,
@@ -86,6 +87,7 @@ export class NativeMediaBridge {
         complete();
       });
       this.peer.addEventListener("connectionstatechange", () => {
+        debugEvent("native-bridge", "connection-state", { state: this.peer.connectionState });
         if (
           this.peer.connectionState === "failed" ||
           this.peer.connectionState === "closed"
@@ -202,6 +204,7 @@ export class NativeMediaBridge {
 
   private fail(): void {
     if (this.disposed) return;
+    debugEvent("native-bridge", "failed", { state: this.ready ? "active" : "starting" });
     if (this.ready) this.onFailed();
     this.dispose();
   }

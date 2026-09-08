@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/livekit/livekit-server/pkg/sfu"
@@ -37,11 +38,21 @@ type SourceOptions struct {
 // run without Source's mutex and may retire the source.
 type Source struct {
 	*sfu.ReceiverBase
-	mu         sync.Mutex
-	buffers    []*buffer.Buffer
-	maxPackets int
-	onRTCP     func(int, []rtcp.Packet)
-	closed     bool
+	mu                   sync.Mutex
+	buffers              []*buffer.Buffer
+	maxPackets           int
+	onRTCP               func(int, []rtcp.Packet)
+	closed               bool
+	lowestRateControlled atomic.Bool
+}
+
+// The live codec owner sets this after startup and clears it at retirement.
+func (source *Source) SetLowestLayerRateControlled(controlled bool) {
+	source.lowestRateControlled.Store(controlled)
+}
+
+func (source *Source) RateControlled(layer int32) bool {
+	return layer == 0 && !source.IsClosed() && source.lowestRateControlled.Load()
 }
 
 func NewSource(options SourceOptions) (*Source, error) {

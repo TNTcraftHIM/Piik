@@ -4,6 +4,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFi
 import { createRequire } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { clientGoEnvironment } from "./client-package-targets.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const pinned = JSON.parse(readFileSync(join(root, "licenses", "upstream.json"), "utf8"));
@@ -72,7 +73,7 @@ export function writeWebLicenseNotices(repositoryRoot, outputFile) {
 // without a recognised license filename fails closed.
 function goNotices(repositoryRoot, goCommand, target, command) {
   const options = { cwd: repositoryRoot, encoding: "utf8", windowsHide: true,
-    env: { ...process.env, GOOS: target.goos, GOARCH: target.goarch, CGO_ENABLED: "0" } };
+    env: clientGoEnvironment(target) };
   const runGo = (args) => execFileSync(goCommand, args, options).trim();
   const goroot = runGo(["env", "GOROOT"]);
   const template = '{{if .Module}}{{if not .Module.Main}}[{{printf "%q" .Module.Path}},{{printf "%q" .Module.Version}},{{printf "%q" .Module.Dir}},{{printf "%q" .Dir}}]{{end}}{{end}}';

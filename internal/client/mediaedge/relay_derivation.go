@@ -12,9 +12,7 @@ import (
 	"github.com/TNTcraftHIM/Screener/internal/media/encoded"
 	"github.com/TNTcraftHIM/Screener/internal/media/forwarding"
 	"github.com/livekit/mediatransportutil/pkg/utils"
-	"github.com/livekit/server-sdk-go/v2/pkg/samplebuilder"
 	"github.com/pion/rtp"
-	"github.com/pion/rtp/codecs"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -54,7 +52,7 @@ type relayDerivation struct {
 }
 
 type relayPlan struct {
-	profile nativecapture.VideoProfile
+	profile *nativecapture.VideoProfile
 	output  nativecapture.OutputProfile
 	format  uint64
 	bitrate uint32
@@ -110,9 +108,9 @@ func (source *Source) relayPlan() relayPlan {
 		return plan
 	}
 	base := len(source.formats) - 1
-	plan.profile, plan.format = *source.relayProfile, source.formats[base].Load()
+	plan.profile, plan.format = source.relayProfile, source.formats[base].Load()
 	width, height := uint32(plan.format>>32), uint32(plan.format)
-	plan.output = nativecapture.ScreenShareOutputs(plan.profile)[0]
+	plan.output = nativecapture.ScreenShareOutputs(*plan.profile)[0]
 	plan.output.Width = min(width/4*2, plan.output.Width)
 	plan.output.Height = min(height/4*2, plan.output.Height)
 	if !plan.output.Valid() || width > 2560 || height > 1440 {
@@ -131,7 +129,8 @@ func (source *Source) relayPlan() relayPlan {
 			state.Current >= 0 && state.Current < int32(base)
 		if state.VideoBudget > 0 && needsLower {
 			plan.wanted = true
-			plan.bitrate = min(plan.bitrate, uint32(min(state.VideoBudget, int64(plan.output.Bitrate))))
+			budget := source.media.CodecBudget(0, state.VideoBudget)
+			plan.bitrate = min(plan.bitrate, uint32(min(budget, int64(plan.output.Bitrate))))
 		}
 	}
 	plan.bitrate = max(1000, plan.bitrate)
@@ -209,7 +208,10 @@ func (run *relayRun) serve() {
 	defer close(run.done)
 	defer func() {
 		if cause := context.Cause(run.ctx); cause != nil && !errors.Is(cause, context.Canceled) {
-			_ = run.owner.source.DisableLayer(0)
+			retire, _ := run.owner.source.markLayerUnavailable(0, run)
+			if retire != nil {
+				retire()
+			}
 		}
 	}()
 	backend, _ := relayBackend(run.owner.source.codec, &run.owner.options)
@@ -219,6 +221,8 @@ func (run *relayRun) serve() {
 		run.cancel(err)
 		return
 	}
+	run.owner.source.SetLowestLayerRateControlled(true)
+	defer run.owner.source.SetLowestLayerRateControlled(false)
 	run.owner.source.BeginGeneration()
 	readDone := make(chan struct{})
 	go func() {
@@ -234,27 +238,23 @@ func (run *relayRun) serve() {
 }
 
 func (run *relayRun) write(stream *nativecapture.Stream) error {
-	var depacketizer rtp.Depacketizer = &codecs.H264Packet{}
-	if run.owner.source.codec == "vp8" {
-		depacketizer = &codecs.VP8Packet{}
-	}
 	waitingRecovery := true
-	builder := samplebuilder.New(relayPacketLimit, depacketizer, videoClockRate,
-		samplebuilder.WithPacketDroppedHandler(func() {
-			waitingRecovery = true
-			run.owner.source.media.SendPLI(int32(len(run.owner.source.formats)-1), false)
-		}))
+	input := relayVideoInput{codec: run.owner.source.codec, onPacketDropped: func() {
+		waitingRecovery = true
+		run.owner.source.media.SendPLI(int32(len(run.owner.source.formats)-1), false)
+	}}
 	clock := utils.NewWrapAround[uint32, uint64](utils.WrapAroundParams{})
 	clock.Update(run.anchorRTP)
-	input := relayVideoInput{codec: run.owner.source.codec}
 	for {
 		select {
 		case <-run.ctx.Done():
 			return context.Cause(run.ctx)
 		case packet := <-run.packets:
-			builder.Push(packet)
+			if err := input.push(packet); err != nil {
+				return err
+			}
 			for {
-				sample, timestamp := builder.PopWithTimestamp()
+				sample, timestamp := input.pop()
 				if sample == nil {
 					break
 				}

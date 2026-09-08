@@ -5,7 +5,13 @@
 - Superseded in part: items 1, 5, 7, 12 (its supervisor sentence), 13, 14, and
   the local-package consequence were amended in place by
   [ADR-0012](./0012-shared-go-backend-core.md), which replaced the TypeScript
-  server with one shared Go core. Every other item stands as written.
+  server with one shared Go core.
+- [ADR-0013](./0013-embedded-node-local-media.md) supersedes item 8's single-output,
+  Pion-GCC-observation-only and Browser-mediated LiveKit publisher details for
+  the current candidate. The shared encoded-media adapter and direct Native SFU
+  publisher preserve this ADR's participant and capability boundaries. The
+  independent bounded control-session contract remains current; historical
+  acceptance below does not validate the new media implementation.
 
 ## Context
 
