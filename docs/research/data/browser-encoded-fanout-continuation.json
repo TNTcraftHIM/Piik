@@ -1,0 +1,368 @@
+{
+  "date": "2026-09-09",
+  "browser": "Installed Chrome 152, isolated headless profile",
+  "scope": "Synthetic 640x360 canvas, loopback; sender parameter limits, not network shaping",
+  "productIntegrated": false,
+  "runs": [
+    {
+      "name": "vp8-late-key",
+      "codec": "VP8",
+      "durationMs": 7000,
+      "primaryMaxBitrate": null,
+      "secondaryMaxBitrate": null,
+      "firstDecodedMs": 17.399999998509884,
+      "primaryKeys": 2,
+      "errors": [],
+      "aSend": {
+        "framesEncoded": 219,
+        "framesSent": 219,
+        "bytesSent": 361447,
+        "encodeSeconds": 0.162,
+        "reason": "none"
+      },
+      "bSend": {
+        "framesEncoded": 0,
+        "framesSent": 0,
+        "bytesSent": 354993,
+        "encodeSeconds": 0,
+        "reason": "none"
+      },
+      "aReceive": {
+        "framesDecoded": 219,
+        "reportsSent": 7
+      },
+      "bReceive": {
+        "framesDecoded": 210,
+        "reportsSent": 0
+      },
+      "aVideo": [
+        640,
+        360
+      ],
+      "bVideo": [
+        640,
+        360
+      ]
+    },
+    {
+      "name": "h264-late-key",
+      "codec": "H264",
+      "durationMs": 7000,
+      "primaryMaxBitrate": null,
+      "secondaryMaxBitrate": null,
+      "firstDecodedMs": 43.399999998509884,
+      "primaryKeys": 2,
+      "errors": [],
+      "aSend": {
+        "framesEncoded": 219,
+        "framesSent": 219,
+        "bytesSent": 183570,
+        "encodeSeconds": 0.616,
+        "reason": "none"
+      },
+      "bSend": {
+        "framesEncoded": 0,
+        "framesSent": 0,
+        "bytesSent": 179063,
+        "encodeSeconds": 0,
+        "reason": "none"
+      },
+      "aReceive": {
+        "framesDecoded": 219,
+        "reportsSent": 7
+      },
+      "bReceive": {
+        "framesDecoded": 210,
+        "reportsSent": 0
+      },
+      "aVideo": [
+        640,
+        360
+      ],
+      "bVideo": [
+        640,
+        360
+      ]
+    },
+    {
+      "name": "vp8-primary-limited-key",
+      "codec": "VP8",
+      "durationMs": 14000,
+      "primaryMaxBitrate": 50000,
+      "secondaryMaxBitrate": null,
+      "firstDecodedMs": 81.79999999701977,
+      "primaryKeys": 1,
+      "errors": [],
+      "aSend": {
+        "framesEncoded": 417,
+        "framesSent": 417,
+        "bytesSent": 86543,
+        "encodeSeconds": 0.177,
+        "reason": "bandwidth"
+      },
+      "bSend": {
+        "framesEncoded": 0,
+        "framesSent": 0,
+        "bytesSent": 86543,
+        "encodeSeconds": 0,
+        "reason": "none"
+      },
+      "aReceive": {
+        "framesDecoded": 417,
+        "reportsSent": 15
+      },
+      "bReceive": {
+        "framesDecoded": 417,
+        "reportsSent": 0
+      },
+      "aVideo": [
+        320,
+        180
+      ],
+      "bVideo": [
+        320,
+        180
+      ]
+    },
+    {
+      "name": "vp8-primary-limited-ordinary",
+      "codec": "VP8",
+      "durationMs": 14000,
+      "primaryMaxBitrate": 50000,
+      "secondaryMaxBitrate": null,
+      "firstDecodedMs": null,
+      "primaryKeys": 1,
+      "errors": [],
+      "aSend": {
+        "framesEncoded": 415,
+        "framesSent": 415,
+        "bytesSent": 85701,
+        "encodeSeconds": 0.201,
+        "reason": "bandwidth"
+      },
+      "bSend": {
+        "framesEncoded": 422,
+        "framesSent": 422,
+        "bytesSent": 654848,
+        "encodeSeconds": 0.396,
+        "reason": "none"
+      },
+      "aReceive": {
+        "framesDecoded": 415,
+        "reportsSent": 15
+      },
+      "bReceive": {
+        "framesDecoded": 422,
+        "reportsSent": 14
+      },
+      "aVideo": [
+        320,
+        180
+      ],
+      "bVideo": [
+        640,
+        360
+      ]
+    },
+    {
+      "name": "h264-primary-limited-key",
+      "codec": "H264",
+      "durationMs": 14000,
+      "primaryMaxBitrate": 50000,
+      "secondaryMaxBitrate": null,
+      "firstDecodedMs": 173.40000000223517,
+      "primaryKeys": 2,
+      "errors": [],
+      "aSend": {
+        "framesEncoded": 416,
+        "framesSent": 416,
+        "bytesSent": 80614,
+        "encodeSeconds": 0.25,
+        "reason": "bandwidth"
+      },
+      "bSend": {
+        "framesEncoded": 0,
+        "framesSent": 0,
+        "bytesSent": 80614,
+        "encodeSeconds": 0,
+        "reason": "none"
+      },
+      "aReceive": {
+        "framesDecoded": 416,
+        "reportsSent": 15
+      },
+      "bReceive": {
+        "framesDecoded": 416,
+        "reportsSent": 0
+      },
+      "aVideo": [
+        480,
+        270
+      ],
+      "bVideo": [
+        480,
+        270
+      ]
+    },
+    {
+      "name": "h264-primary-limited-ordinary",
+      "codec": "H264",
+      "durationMs": 14000,
+      "primaryMaxBitrate": 50000,
+      "secondaryMaxBitrate": null,
+      "firstDecodedMs": 181.70000000298023,
+      "primaryKeys": 2,
+      "errors": [],
+      "aSend": {
+        "framesEncoded": 415,
+        "framesSent": 415,
+        "bytesSent": 80241,
+        "encodeSeconds": 0.269,
+        "reason": "bandwidth"
+      },
+      "bSend": {
+        "framesEncoded": 416,
+        "framesSent": 416,
+        "bytesSent": 294216,
+        "encodeSeconds": 1.185,
+        "reason": "none"
+      },
+      "aReceive": {
+        "framesDecoded": 415,
+        "reportsSent": 15
+      },
+      "bReceive": {
+        "framesDecoded": 416,
+        "reportsSent": 14
+      },
+      "aVideo": [
+        480,
+        270
+      ],
+      "bVideo": [
+        640,
+        360
+      ]
+    },
+    {
+      "name": "vp8-limited-key",
+      "codec": "VP8",
+      "durationMs": 7000,
+      "primaryMaxBitrate": null,
+      "secondaryMaxBitrate": 50000,
+      "firstDecodedMs": 25.900000002235174,
+      "primaryKeys": 1,
+      "errors": [],
+      "aSend": {
+        "framesEncoded": 208,
+        "framesSent": 208,
+        "bytesSent": 389433,
+        "encodeSeconds": 0.176,
+        "reason": "none"
+      },
+      "bSend": {
+        "framesEncoded": 0,
+        "framesSent": 0,
+        "bytesSent": 312067,
+        "encodeSeconds": 0,
+        "reason": "none"
+      },
+      "aReceive": {
+        "framesDecoded": 208,
+        "reportsSent": 8
+      },
+      "bReceive": {
+        "framesDecoded": 158,
+        "reportsSent": 0
+      },
+      "aVideo": [
+        640,
+        360
+      ],
+      "bVideo": [
+        640,
+        360
+      ]
+    },
+    {
+      "name": "vp8-standard",
+      "codec": "VP8",
+      "durationMs": 7000,
+      "primaryMaxBitrate": null,
+      "secondaryMaxBitrate": null,
+      "firstDecodedMs": null,
+      "primaryKeys": 0,
+      "errors": [],
+      "aSend": {
+        "framesEncoded": 208,
+        "framesSent": 208,
+        "bytesSent": 386466,
+        "encodeSeconds": 0.168,
+        "reason": "none"
+      },
+      "bSend": {
+        "framesEncoded": 0,
+        "framesSent": 0,
+        "bytesSent": 0,
+        "encodeSeconds": 0,
+        "reason": "none"
+      },
+      "aReceive": {
+        "framesDecoded": 207,
+        "reportsSent": 8
+      },
+      "bReceive": {
+        "framesDecoded": 0,
+        "reportsSent": 0
+      },
+      "aVideo": [
+        640,
+        360
+      ],
+      "bVideo": [
+        0,
+        0
+      ]
+    },
+    {
+      "name": "vp8-standard-clone-own",
+      "codec": "VP8",
+      "durationMs": 7000,
+      "primaryMaxBitrate": null,
+      "secondaryMaxBitrate": null,
+      "firstDecodedMs": null,
+      "primaryKeys": 0,
+      "errors": [],
+      "aSend": {
+        "framesEncoded": 210,
+        "framesSent": 210,
+        "bytesSent": 0,
+        "encodeSeconds": 0.187,
+        "reason": "none"
+      },
+      "bSend": {
+        "framesEncoded": 0,
+        "framesSent": 0,
+        "bytesSent": 0,
+        "encodeSeconds": 0,
+        "reason": "none"
+      },
+      "aReceive": {
+        "framesDecoded": 0,
+        "reportsSent": 0
+      },
+      "bReceive": {
+        "framesDecoded": 0,
+        "reportsSent": 0
+      },
+      "aVideo": [
+        0,
+        0
+      ],
+      "bVideo": [
+        0,
+        0
+      ]
+    }
+  ]
+}

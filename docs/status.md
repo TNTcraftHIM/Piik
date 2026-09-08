@@ -141,8 +141,10 @@ back the initial infrastructure change.
   Browser/OS suspension remains a physical limit, not a keepalive promise.
 - Windows Native Host, Native embedded-SFU and Browser-to-Client fanout pass the
   current combined profile, pause/recovery and closure checks. Pure Browser
-  encoding reuse is authorized next, only after committing this mainline
-  checkpoint; it does not replace the current Browser sender contract yet.
+  reuse was then tested separately: late-join recovery works, but legacy fanout
+  fails independent quality and sender accounting; standard transforms reject
+  cross-source frames. The experiment adds no product path. Normal Browser
+  senders and optional Client fanout remain the supported composition.
 
 ## Release Acceptance
 

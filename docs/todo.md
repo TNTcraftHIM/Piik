@@ -32,13 +32,13 @@ Execution priority is now explicit:
    cutover still requires the current live-session/interruption decision and
    matching infrastructure recovery; local checks are not a production rollout.
 
-4. **Browser encoding reuse, after the mainline checkpoint.** Complete the
-   current Native/service acceptance and release-preparation work, commit that
-   coherent boundary on the work branch, then resume the Browser experiment.
-   Prove late join, independent constrained-child behavior, recovery and actual
-   encode savings before selecting a small production adapter. Do not merge an
-   unsafe shortcut or replace Browser transport/adaptation with an application
-   controller merely to report fewer encoding calls.
+4. **Browser encoding reuse investigation completed.** The mainline checkpoint
+   precedes the isolated [nine-scenario continuation](./research/advanced-peer-distribution.md#september-9-results-and-decision).
+   One-shot keyframe recovery fixes late join, but legacy fanout fails independent
+   quality and truthful sender accounting, while standard transforms reject the
+   cross-source frames. No production adapter is accepted. Keep the mainline
+   Browser senders and optional Client fanout unchanged; further work is parked
+   behind a supported encoded-input/feedback API, not another custom controller.
 The owner-authorized diagnostic file/export work is an independent side task
 for investigating reported Client and Server failures. Preserve it alongside
 the mainline; it does not depend on Browser encoding-pool research or turn that
@@ -244,11 +244,10 @@ a tunnel; include that path in packaged acceptance.
    Auto or move an unproved result into the availability path. Validate whether
    H.264 qualification can choose a slower VP8 fallback under mixed GPU/CPU load
    before adding comparative or dual-codec probing.
-3. **Browser encoded reuse context.** Execution is reopened in **Now**, after
-   the mainline checkpoint. The [existing probe](./research/advanced-peer-distribution.md#chromium-legacy-fanout-probe)
-   proves clean-path single encoding, not safe late join, independent adaptation
-   or truthful frame statistics. Ordinary Browser senders remain the product
-   path until those defects have a verified, economical solution.
+3. **Browser encoded reuse follow-up.** The current investigation concludes
+   no-go for legacy fanout. Reopen only when a supported encoded-input API offers
+   usable feedback and timing ownership; Chromium's experimental RTCEncodedSource
+   is a lead, not current M152 availability or proof of automatic adaptation.
 4. **Control-plane resource fairness.** Reassess ingress budgets against the
    current authenticated room WebSocket and embedded SFU owner before adding
    another queue or limiter. The replaced external media-token/control service
