@@ -28,6 +28,7 @@ import {
   parseAppRoute,
   mergeAuthenticatedHostRoom,
   readHostRoom,
+  releaseHostRoom,
   readPreferredRoomId,
   readViewerGrant,
   readViewerRoute,
@@ -58,6 +59,7 @@ import {
 } from "../src/client/webrtc/stats.ts";
 
 afterEach(() => {
+  releaseHostRoom();
   vi.useRealTimers();
   vi.unstubAllGlobals();
   setCopy({ lang: "zh", vis: false });
@@ -84,15 +86,15 @@ function routeAuthenticated(
 describe("browser-local display name", () => {
   it("localizes text defaults and uses visual emoji identities", () => {
     setCopy({ lang: "zh", vis: false });
-    expect(defaultViewerDisplayName("viewer-abcdef", false)).toBe("观众");
-    expect(defaultHostDisplayName("host-abcdef", false)).toBe("分享者 (abcdef)");
+    expect(defaultViewerDisplayName(false)).toBe("观众");
+    expect(defaultHostDisplayName(false)).toBe("分享者");
 
     setCopy({ lang: "en", vis: false });
-    expect(defaultViewerDisplayName("viewer-abcdef", false)).toBe("Viewer");
-    expect(defaultHostDisplayName("host-abcdef", false)).toBe("Host (abcdef)");
+    expect(defaultViewerDisplayName(false)).toBe("Viewer");
+    expect(defaultHostDisplayName(false)).toBe("Host");
 
-    expect(defaultViewerDisplayName("viewer-abcdef", true)).toBe("👤 (abcdef)");
-    expect(defaultHostDisplayName("host-abcdef", true)).toBe("👑 (abcdef)");
+    expect(defaultViewerDisplayName(true)).toBe("👤");
+    expect(defaultHostDisplayName(true)).toBe("👑");
   });
 
   it("stores only the canonical preference and falls back when cleared", () => {
@@ -284,6 +286,33 @@ describe("browser-local display name", () => {
   });
 });
 
+function hostRoomStorage(lockState: "available" | "held" | "absent" = "available") {
+  const local = new Map<string, string>();
+  const session = new Map<string, string>();
+  const held = new Set<string>();
+  const storage = (values: Map<string, string>) => ({
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, value),
+    removeItem: (key: string) => values.delete(key),
+  });
+  const request = vi.fn(async (name: string, _options: LockOptions, callback: (lock: Lock | null) => Promise<void>) => {
+    if (lockState === "held" || held.has(name)) return callback(null);
+    held.add(name);
+    try { await callback({ name, mode: "exclusive" } as Lock); }
+    finally { held.delete(name); }
+  });
+  vi.stubGlobal("window", {
+    localStorage: storage(local), sessionStorage: storage(session),
+    navigator: { locks: lockState === "absent" ? undefined : { request } },
+  });
+  return { local, session, held, request };
+}
+
+const storedHost = (roomId = "1234", hostToken = "a".repeat(32)) => ({
+  roomId, hostToken, inviteUrl: `https://share.test/r/${roomId}`,
+  expiresAt: null, roomLeaseSeconds: 3_600,
+});
+
 describe("client session identity", () => {
   it("works without secure-context-only crypto.randomUUID", () => {
     const values = new Map<string, string>();
@@ -306,15 +335,8 @@ describe("client session identity", () => {
     expect(getStableClientId("viewer", "room-id-1234")).toBe(first);
   });
 
-  it("persists one validated host room across browser sessions", () => {
-    const values = new Map<string, string>();
-    vi.stubGlobal("window", {
-      localStorage: {
-        getItem: (key: string) => values.get(key) ?? null,
-        setItem: (key: string, value: string) => values.set(key, value),
-        removeItem: (key: string) => values.delete(key),
-      },
-    });
+  it("persists a tab room and one validated origin resume hint without Viewer grants", async () => {
+    const { local: values, session } = hostRoomStorage();
     const room = {
       roomId: "1234",
       hostToken: "a".repeat(32),
@@ -324,9 +346,9 @@ describe("client session identity", () => {
       roomLeaseSeconds: 3_600,
     };
 
-    writeHostRoom(room);
+    await writeHostRoom(room);
 
-    expect(readHostRoom()).toEqual({
+    expect(await readHostRoom()).toEqual({
       roomId: "1234",
       hostToken: "a".repeat(32),
       canonicalUrl: "https://share.test/r/1234",
@@ -343,50 +365,28 @@ describe("client session identity", () => {
       }),
     );
     expect([...values.values()].join(" ")).not.toContain(`${"b".repeat(21)}A`);
+    expect(session.get("screener:host-room:v1")).toBe(values.get("screener:host-room:v1"));
     clearHostRoom();
-    expect(readHostRoom()).toBeNull();
+    expect(await readHostRoom()).toBeNull();
   });
 
-  it("reclaims a deployed Host ownership record through the stable shape", () => {
-    const values = new Map<string, string>([
-      [
-        "screener:host-room:v1",
-        JSON.stringify({
-          roomId: "1234",
-          hostToken: "h".repeat(32),
-          inviteUrl: "https://share.test/r/1234",
-          expiresAt: null,
-          roomLeaseSeconds: 3_600,
-        }),
-      ],
-    ]);
-    vi.stubGlobal("window", {
-      localStorage: {
-        getItem: (key: string) => values.get(key) ?? null,
-        setItem: (key: string, value: string) => values.set(key, value),
-        removeItem: (key: string) => values.delete(key),
-      },
-    });
-
-    expect(readHostRoom()).toEqual({
+  it("restores an origin resume hint only after claiming its room", async () => {
+    const { local, session, request } = hostRoomStorage();
+    local.set("screener:host-room:v1", JSON.stringify(storedHost("1234", "h".repeat(32))));
+    expect(await readHostRoom()).toEqual({
       roomId: "1234",
       hostToken: "h".repeat(32),
       canonicalUrl: "https://share.test/r/1234",
       expiresAt: null,
       roomLeaseSeconds: 3_600,
     });
+    expect(JSON.parse(session.get("screener:host-room:v1")!)).toEqual(JSON.parse(local.get("screener:host-room:v1")!));
+    expect(request).toHaveBeenCalledWith(expect.stringMatching(/^screener:host-room:1234:[a-f0-9]{64}$/), { ifAvailable: true }, expect.any(Function));
+    expect(request.mock.calls[0]![0]).not.toContain("h".repeat(32));
   });
 
-  it("keeps expired host records for server judgment and discards malformed records", () => {
-    const values = new Map<string, string>();
-    const removeItem = vi.fn((key: string) => values.delete(key));
-    vi.stubGlobal("window", {
-      localStorage: {
-        getItem: (key: string) => values.get(key) ?? null,
-        setItem: (key: string, value: string) => values.set(key, value),
-        removeItem,
-      },
-    });
+  it("keeps expired host records for server judgment and discards malformed records", async () => {
+    const { local: values, session } = hostRoomStorage();
     const expired = {
       roomId: "1234",
       hostToken: "b".repeat(32),
@@ -395,13 +395,123 @@ describe("client session identity", () => {
       roomLeaseSeconds: 3_600,
     };
 
-    writeHostRoom(expired);
-    expect(readHostRoom()).toMatchObject({ roomId: "1234" });
-    expect(removeItem).not.toHaveBeenCalled();
-
+    await writeHostRoom(expired);
+    expect(await readHostRoom()).toMatchObject({ roomId: "1234" });
+    releaseHostRoom();
+    session.delete("screener:host-room:v1");
     values.set("screener:host-room:v1", "not-json");
-    expect(readHostRoom()).toBeNull();
-    expect(removeItem).toHaveBeenCalledOnce();
+    expect(await readHostRoom()).toBeNull();
+    expect(values.has("screener:host-room:v1")).toBe(false);
+  });
+
+  it("rejects a copied tab room while another tab holds it without deleting that hint", async () => {
+    const { local, session } = hostRoomStorage("held");
+    const saved = JSON.stringify(storedHost());
+    local.set("screener:host-room:v1", saved);
+    session.set("screener:host-room:v1", saved);
+    expect(await readHostRoom()).toBeNull();
+    expect(session.has("screener:host-room:v1")).toBe(false);
+    expect(local.get("screener:host-room:v1")).toBe(saved);
+  });
+
+  it("prefers this tab's room over another tab's latest hint and preserves that hint when forgotten", async () => {
+    const { local, session } = hostRoomStorage();
+    session.set("screener:host-room:v1", JSON.stringify(storedHost()));
+    const other = JSON.stringify(storedHost("5678", "b".repeat(32)));
+    local.set("screener:host-room:v1", other);
+    expect(await readHostRoom()).toMatchObject({ roomId: "1234" });
+    clearHostRoom();
+    expect(session.has("screener:host-room:v1")).toBe(false);
+    expect(local.get("screener:host-room:v1")).toBe(other);
+  });
+
+  it("retains both records on unmount, reclaims on refresh, and releases the old claim on rotation", async () => {
+    const { local, session, held, request } = hostRoomStorage();
+    const room = storedHost();
+    await writeHostRoom({ ...room, codeEntryPolicy: "open" });
+    const stored = local.get("screener:host-room:v1");
+    releaseHostRoom();
+    expect(session.get("screener:host-room:v1")).toBe(stored);
+    expect(local.get("screener:host-room:v1")).toBe(stored);
+    expect(await readHostRoom()).toMatchObject({ roomId: "1234" });
+    expect(request).toHaveBeenCalledTimes(2);
+    await writeHostRoom({ ...storedHost("5678", "b".repeat(32)), codeEntryPolicy: "open" });
+    expect(held.size).toBe(1);
+    expect([...held][0]).toContain(":5678:");
+  });
+
+  it("coalesces concurrent restoration and preserves records when an unmounted restore is cancelled", async () => {
+    const { local, session, request } = hostRoomStorage();
+    local.set("screener:host-room:v1", JSON.stringify(storedHost()));
+    const first = await Promise.all([readHostRoom(), readHostRoom()]);
+    expect(first[0]).toEqual(first[1]);
+    expect(request).toHaveBeenCalledOnce();
+    releaseHostRoom();
+    const cancelled = readHostRoom();
+    releaseHostRoom();
+    expect(await cancelled).toBeNull();
+    expect(session.has("screener:host-room:v1")).toBe(true);
+    expect(await readHostRoom()).toMatchObject({ roomId: "1234" });
+  });
+
+  it("does not reuse the origin hint without Web Locks but keeps same-tab refresh authority", async () => {
+    const { local, session } = hostRoomStorage("absent");
+    const saved = JSON.stringify(storedHost());
+    local.set("screener:host-room:v1", saved);
+    expect(await readHostRoom()).toBeNull();
+    session.set("screener:host-room:v1", saved);
+    expect(await readHostRoom()).toMatchObject({ roomId: "1234" });
+    releaseHostRoom();
+    expect(await readHostRoom()).toMatchObject({ roomId: "1234" });
+  });
+
+  it("does not erase the resume hint when the server replaces this Host session", async () => {
+    const { local, session } = hostRoomStorage();
+    await writeHostRoom({ ...storedHost(), codeEntryPolicy: "open" });
+    const saved = local.get("screener:host-room:v1");
+    clearHostRoom(true);
+    expect(session.has("screener:host-room:v1")).toBe(false);
+    expect(local.get("screener:host-room:v1")).toBe(saved);
+  });
+
+  it("keeps same-tab authority when Web Locks are denied, without restoring the origin hint", async () => {
+    const { local, session, request } = hostRoomStorage();
+    request.mockRejectedValue(new DOMException("Blocked", "SecurityError"));
+    const saved = JSON.stringify(storedHost());
+    local.set("screener:host-room:v1", saved);
+    expect(await readHostRoom()).toBeNull();
+    session.set("screener:host-room:v1", saved);
+    expect(await readHostRoom()).toMatchObject({ roomId: "1234" });
+    expect(session.get("screener:host-room:v1")).toBeTruthy();
+  });
+
+  it("does not persist an obsolete creation and gives a reused code a distinct incarnation claim", async () => {
+    const { local, held, request } = hostRoomStorage();
+    let owns = true;
+    const cancelled = writeHostRoom({ ...storedHost(), codeEntryPolicy: "open" }, () => owns);
+    owns = false;
+    expect(await cancelled).toBe(false);
+    expect(local.size).toBe(0);
+    await writeHostRoom({ ...storedHost(), codeEntryPolicy: "open" });
+    const first = request.mock.calls.at(-1)![0];
+    await writeHostRoom({ ...storedHost("1234", "b".repeat(32)), codeEntryPolicy: "open" });
+    expect(request.mock.calls.at(-1)![0]).not.toBe(first);
+    expect(held.size).toBe(1);
+  });
+
+  it("retains the tab claim when a share's metadata update becomes obsolete", async () => {
+    const { held, request, local } = hostRoomStorage();
+    const room = { ...storedHost(), codeEntryPolicy: "open" as const };
+    await writeHostRoom(room);
+    const saved = local.get("screener:host-room:v1");
+    let owns = true;
+    const writing = writeHostRoom({ ...room, expiresAt: "2026-09-09T00:00:00.000Z" }, () => owns);
+    owns = false;
+    expect(await writing).toBe(false);
+    expect(held.size).toBe(1);
+    expect(local.get("screener:host-room:v1")).toBe(saved);
+    expect(await readHostRoom()).toMatchObject({ roomId: "1234", expiresAt: null });
+    expect(request).toHaveBeenCalledOnce();
   });
 
   it("consumes a Viewer grant fragment once into room-scoped session storage", () => {

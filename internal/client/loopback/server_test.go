@@ -116,7 +116,8 @@ func TestPresentationUpdatesOnlyLanguageWithoutClaimingMediaControl(t *testing.T
 		{http.MethodOptions, "/presentation", testOrigin, "", "", http.StatusNoContent},
 		{http.MethodPost, "/presentation", "https://other.example", `{"language":"en"}`, "", http.StatusForbidden},
 		{http.MethodOptions, "/presentation", "https://other.example", "", "", http.StatusForbidden},
-		{http.MethodOptions, "/health", testOrigin, "", "", http.StatusMethodNotAllowed},
+		{http.MethodOptions, "/health", testOrigin, "", "", http.StatusNoContent},
+		{http.MethodOptions, "/health", "https://other.example", "", "", http.StatusForbidden},
 		{http.MethodGet, "/presentation", testOrigin, "", "", http.StatusMethodNotAllowed},
 		{http.MethodPost, "/presentation", testOrigin, `{"language":"other"}`, "", http.StatusBadRequest},
 		{http.MethodPost, "/presentation", testOrigin, `{"language":"en","capture":true}`, "", http.StatusBadRequest},
@@ -129,6 +130,9 @@ func TestPresentationUpdatesOnlyLanguageWithoutClaimingMediaControl(t *testing.T
 		}
 		request.Header.Set("Origin", input.origin)
 		request.Header.Set("Content-Type", "application/json")
+		if input.method == http.MethodOptions {
+			request.Header.Set("Access-Control-Request-Private-Network", "true")
+		}
 		response, err := client.Do(request)
 		if err != nil {
 			t.Fatal(err)
@@ -139,8 +143,10 @@ func TestPresentationUpdatesOnlyLanguageWithoutClaimingMediaControl(t *testing.T
 		}
 		if input.method == http.MethodOptions && input.status == http.StatusNoContent &&
 			(response.Header.Get("Access-Control-Allow-Origin") != testOrigin ||
-				response.Header.Get("Access-Control-Allow-Methods") != "POST" ||
-				response.Header.Get("Access-Control-Allow-Headers") != "Content-Type") {
+				response.Header.Get("Access-Control-Allow-Private-Network") != "true" ||
+				(input.path == "/presentation" && (response.Header.Get("Access-Control-Allow-Methods") != "POST" ||
+					response.Header.Get("Access-Control-Allow-Headers") != "Content-Type")) ||
+				(input.path == "/health" && response.Header.Get("Access-Control-Allow-Methods") != "GET")) {
 			t.Fatal("presentation preflight did not preserve its bounded origin/method scope")
 		}
 		select {
@@ -162,20 +168,65 @@ func TestPresentationUpdatesOnlyLanguageWithoutClaimingMediaControl(t *testing.T
 	}
 }
 
-func TestOnlyOneControlSessionIsClaimed(t *testing.T) {
-	server := startTestServer(t, testOrigin)
+func TestControlSessionsAreBoundedAndRetireIndependently(t *testing.T) {
+	created := make(chan *testControlSession, maxControlSessions)
+	server := startTestServerWithOptions(t, Options{
+		AllowedOrigins: []string{testOrigin},
+		NewControl: func() ControlSession {
+			session := &testControlSession{events: make(chan any), closed: make(chan struct{})}
+			created <- session
+			return session
+		},
+	})
 	endpoint := server.Endpoint()
-	first := dialControl(t, endpoint, endpoint.InstanceToken, testOrigin)
-	defer first.CloseNow()
-	second, response, err := websocket.Dial(context.Background(), websocketURL(endpoint)+"/control", &websocket.DialOptions{
+	var connections []*websocket.Conn
+	var sessions []*testControlSession
+	for index := 0; index < maxControlSessions; index++ {
+		connection := dialControl(t, endpoint, endpoint.InstanceToken, testOrigin)
+		defer connection.CloseNow()
+		writeControl(t, connection, requestJSON("request_hello", "hello"))
+		var ready controlMessage
+		readControl(t, connection, &ready)
+		connections = append(connections, connection)
+		select {
+		case session := <-created:
+			sessions = append(sessions, session)
+		case <-time.After(time.Second):
+			t.Fatal("accepted control did not acquire its own session")
+		}
+	}
+	extra, response, err := websocket.Dial(context.Background(), websocketURL(endpoint)+"/control", &websocket.DialOptions{
 		HTTPHeader:   http.Header{"Origin": []string{testOrigin}},
 		Subprotocols: []string{ControlSubprotocol + "." + endpoint.InstanceToken},
 	})
-	if second != nil {
-		second.CloseNow()
+	if extra != nil {
+		extra.CloseNow()
 	}
 	if err == nil || response == nil || response.StatusCode != http.StatusConflict {
-		t.Fatalf("second control dial: conn=%v response=%v err=%v", second, response, err)
+		t.Fatalf("excess control dial: conn=%v response=%v err=%v", extra, response, err)
+	}
+	_ = response.Body.Close()
+	_ = connections[0].CloseNow()
+	select {
+	case <-sessions[0].closed:
+	case <-time.After(time.Second):
+		t.Fatal("closed room retained its native session")
+	}
+	writeControl(t, connections[1], requestJSON("request_ping", "ping"))
+	var pong controlMessage
+	readControl(t, connections[1], &pong)
+	if pong.Type != "pong" {
+		t.Fatal("closing one room affected its sibling control")
+	}
+	if err = server.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, session := range sessions {
+		select {
+		case <-session.closed:
+		default:
+			t.Fatal("Client close returned before native session cleanup")
+		}
 	}
 }
 
@@ -313,6 +364,28 @@ func TestControlSessionProcessesARequestBurstInOrder(t *testing.T) {
 		if !seen[fmt.Sprintf("request_extension_%d", index)] {
 			t.Fatalf("request %d was not processed", index)
 		}
+	}
+}
+
+func TestDeferredResponseKeepsControlResponsiveAndRequestIdentity(t *testing.T) {
+	extension := &testControlSession{events: make(chan any, 1), closed: make(chan struct{})}
+	server := startTestServerWithOptions(t, Options{AllowedOrigins: []string{testOrigin},
+		NewControl: func() ControlSession { return extension }})
+	connection := dialControl(t, server.Endpoint(), server.Endpoint().InstanceToken, testOrigin)
+	defer connection.CloseNow()
+	writeControl(t, connection, requestJSON("request_hello", "hello"))
+	var value controlMessage
+	readControl(t, connection, &value)
+	writeControl(t, connection, requestJSON("request_pending", "deferred"))
+	writeControl(t, connection, requestJSON("request_ping", "ping"))
+	readControl(t, connection, &value)
+	if value.Type != "pong" || value.ID != "request_ping" {
+		t.Fatalf("pending operation blocked control: %+v", value)
+	}
+	extension.events <- controlMessage{Version: ProtocolVersion, ID: "request_pending", Type: "extension-response"}
+	readControl(t, connection, &value)
+	if value.Type != "extension-response" || value.ID != "request_pending" {
+		t.Fatalf("deferred response lost its request identity: %+v", value)
 	}
 }
 
@@ -468,6 +541,9 @@ func (session *blockingControlSession) Close() error {
 
 func (session *testControlSession) Handle(_ context.Context, payload []byte) (any, error) {
 	message, err := decodeEnvelope(payload)
+	if err == nil && message.Type == "deferred" {
+		return nil, nil
+	}
 	if err != nil || message.Type != "extension" {
 		return nil, errors.New("unexpected extension request")
 	}

@@ -1,0 +1,3354 @@
+{
+  "completed": true,
+  "scope": "CPU-only Native VP8 encode microbenchmark, not playback/network/H264 acceptance",
+  "input": "32 synthetic NV12 frames per size; generation and scaling excluded",
+  "profiles": [
+    [
+      480,
+      270,
+      312500
+    ],
+    [
+      960,
+      540,
+      1250000
+    ],
+    [
+      1920,
+      1080,
+      5000000
+    ]
+  ],
+  "fps": 30,
+  "threadsPerEncoder": 4,
+  "demandTrace": [
+    "H/H",
+    "H/L",
+    "L/L",
+    "M/M",
+    "H/H",
+    "H/L",
+    "H/H"
+  ],
+  "secondsPerDemand": 2,
+  "envelope": "maximum-demand active set; no LiveKit demand detection/debounce emulation",
+  "warm": "retain at most three codec objects within the 14-second trace, stop inactive encoding",
+  "clockAblation": "change only encoder PTS to a continuous active-frame clock; not a production proposal",
+  "cpuMeasurement": "whole-window GetProcessTimes and QueryProcessCycleTime on Windows; cycles are not converted to milliseconds",
+  "sources": {
+    "native/capture/windows/encoded_variants.probe.cpp": "3eb7efff0fe3e9df174256d5da430905e76cc5748e671c8e25860e2207adab0a",
+    "native/capture/windows/vp8_encoder.cpp": "e8c840c935da9c81b6feaffcb8af7bd6726b63d3f6082733b4ead1a45c5d5e54"
+  },
+  "host": {
+    "platform": "win32",
+    "release": "10.0.26200",
+    "cpu": "AMD Ryzen 7 9700X 8-Core Processor             ",
+    "logicalCpus": 16
+  },
+  "results": [
+    {
+      "round": 1,
+      "scenario": "high",
+      "scene": "still",
+      "codec": "v1.17.0",
+      "summary": {
+        "sourceFrames": 90,
+        "workMeanMs": 4.338,
+        "workP95Ms": 5.425,
+        "workOverFrameBudget": 0,
+        "cpuMs": 703.125,
+        "cpuCyclesPerFrame": 40599505.111,
+        "cpuCoresAt30Fps": 0.234,
+        "createCount": 0,
+        "createMs": 0,
+        "encodedFrames": [
+          0,
+          0,
+          90,
+          0
+        ],
+        "encodedBytes": [
+          0,
+          0,
+          1092435,
+          0
+        ]
+      },
+      "inputResidentBytes": 134868992,
+      "activeResidentBytes": 211345408,
+      "stoppedResidentBytes": 136962048,
+      "phases": [
+        {
+          "sourceFrames": 90,
+          "workMeanMs": 4.338,
+          "workP95Ms": 5.425,
+          "workOverFrameBudget": 0,
+          "cpuMs": 703.125,
+          "cpuCyclesPerFrame": 40599505.111,
+          "cpuCoresAt30Fps": 0.234,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            0,
+            0,
+            90,
+            0
+          ],
+          "encodedBytes": [
+            0,
+            0,
+            1092435,
+            0
+          ]
+        }
+      ],
+      "transitions": []
+    },
+    {
+      "round": 1,
+      "scenario": "two-high",
+      "scene": "still",
+      "codec": "v1.17.0",
+      "summary": {
+        "sourceFrames": 90,
+        "workMeanMs": 8.519,
+        "workP95Ms": 11.759,
+        "workOverFrameBudget": 0,
+        "cpuMs": 1218.75,
+        "cpuCyclesPerFrame": 78822674.633,
+        "cpuCoresAt30Fps": 0.406,
+        "createCount": 0,
+        "createMs": 0,
+        "encodedFrames": [
+          0,
+          0,
+          90,
+          90
+        ],
+        "encodedBytes": [
+          0,
+          0,
+          1092435,
+          1092435
+        ]
+      },
+      "inputResidentBytes": 134873088,
+      "activeResidentBytes": 286961664,
+      "stoppedResidentBytes": 135872512,
+      "phases": [
+        {
+          "sourceFrames": 90,
+          "workMeanMs": 8.519,
+          "workP95Ms": 11.759,
+          "workOverFrameBudget": 0,
+          "cpuMs": 1218.75,
+          "cpuCyclesPerFrame": 78822674.633,
+          "cpuCoresAt30Fps": 0.406,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            0,
+            0,
+            90,
+            90
+          ],
+          "encodedBytes": [
+            0,
+            0,
+            1092435,
+            1092435
+          ]
+        }
+      ],
+      "transitions": []
+    },
+    {
+      "round": 1,
+      "scenario": "high-low",
+      "scene": "still",
+      "codec": "v1.17.0",
+      "summary": {
+        "sourceFrames": 90,
+        "workMeanMs": 4.79,
+        "workP95Ms": 6.514,
+        "workOverFrameBudget": 0,
+        "cpuMs": 937.5,
+        "cpuCyclesPerFrame": 44010347.422,
+        "cpuCoresAt30Fps": 0.312,
+        "createCount": 0,
+        "createMs": 0,
+        "encodedFrames": [
+          90,
+          0,
+          90,
+          0
+        ],
+        "encodedBytes": [
+          72791,
+          0,
+          1092435,
+          0
+        ]
+      },
+      "inputResidentBytes": 134868992,
+      "activeResidentBytes": 216936448,
+      "stoppedResidentBytes": 136728576,
+      "phases": [
+        {
+          "sourceFrames": 90,
+          "workMeanMs": 4.79,
+          "workP95Ms": 6.514,
+          "workOverFrameBudget": 0,
+          "cpuMs": 937.5,
+          "cpuCyclesPerFrame": 44010347.422,
+          "cpuCoresAt30Fps": 0.312,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            90,
+            0,
+            90,
+            0
+          ],
+          "encodedBytes": [
+            72791,
+            0,
+            1092435,
+            0
+          ]
+        }
+      ],
+      "transitions": []
+    },
+    {
+      "round": 1,
+      "scenario": "all",
+      "scene": "still",
+      "codec": "v1.17.0",
+      "summary": {
+        "sourceFrames": 90,
+        "workMeanMs": 5.977,
+        "workP95Ms": 7.425,
+        "workOverFrameBudget": 0,
+        "cpuMs": 1109.375,
+        "cpuCyclesPerFrame": 54740335.456,
+        "cpuCoresAt30Fps": 0.37,
+        "createCount": 0,
+        "createMs": 0,
+        "encodedFrames": [
+          90,
+          90,
+          90,
+          0
+        ],
+        "encodedBytes": [
+          72791,
+          286127,
+          1092435,
+          0
+        ]
+      },
+      "inputResidentBytes": 134873088,
+      "activeResidentBytes": 236654592,
+      "stoppedResidentBytes": 135913472,
+      "phases": [
+        {
+          "sourceFrames": 90,
+          "workMeanMs": 5.977,
+          "workP95Ms": 7.425,
+          "workOverFrameBudget": 0,
+          "cpuMs": 1109.375,
+          "cpuCyclesPerFrame": 54740335.456,
+          "cpuCoresAt30Fps": 0.37,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            90,
+            90,
+            90,
+            0
+          ],
+          "encodedBytes": [
+            72791,
+            286127,
+            1092435,
+            0
+          ]
+        }
+      ],
+      "transitions": []
+    },
+    {
+      "round": 1,
+      "scenario": "mid-low",
+      "scene": "still",
+      "codec": "v1.17.0",
+      "summary": {
+        "sourceFrames": 90,
+        "workMeanMs": 1.706,
+        "workP95Ms": 2.144,
+        "workOverFrameBudget": 0,
+        "cpuMs": 187.5,
+        "cpuCyclesPerFrame": 15686844.956,
+        "cpuCoresAt30Fps": 0.062,
+        "createCount": 0,
+        "createMs": 0,
+        "encodedFrames": [
+          90,
+          90,
+          0,
+          0
+        ],
+        "encodedBytes": [
+          72791,
+          286127,
+          0,
+          0
+        ]
+      },
+      "inputResidentBytes": 134868992,
+      "activeResidentBytes": 160935936,
+      "stoppedResidentBytes": 136105984,
+      "phases": [
+        {
+          "sourceFrames": 90,
+          "workMeanMs": 1.706,
+          "workP95Ms": 2.144,
+          "workOverFrameBudget": 0,
+          "cpuMs": 187.5,
+          "cpuCyclesPerFrame": 15686844.956,
+          "cpuCoresAt30Fps": 0.062,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            90,
+            90,
+            0,
+            0
+          ],
+          "encodedBytes": [
+            72791,
+            286127,
+            0,
+            0
+          ]
+        }
+      ],
+      "transitions": []
+    },
+    {
+      "round": 1,
+      "scenario": "low",
+      "scene": "still",
+      "codec": "v1.17.0",
+      "summary": {
+        "sourceFrames": 90,
+        "workMeanMs": 0.458,
+        "workP95Ms": 0.611,
+        "workOverFrameBudget": 0,
+        "cpuMs": 109.375,
+        "cpuCyclesPerFrame": 3713051.878,
+        "cpuCoresAt30Fps": 0.036,
+        "createCount": 0,
+        "createMs": 0,
+        "encodedFrames": [
+          90,
+          0,
+          0,
+          0
+        ],
+        "encodedBytes": [
+          72791,
+          0,
+          0,
+          0
+        ]
+      },
+      "inputResidentBytes": 134873088,
+      "activeResidentBytes": 141131776,
+      "stoppedResidentBytes": 136880128,
+      "phases": [
+        {
+          "sourceFrames": 90,
+          "workMeanMs": 0.458,
+          "workP95Ms": 0.611,
+          "workOverFrameBudget": 0,
+          "cpuMs": 109.375,
+          "cpuCyclesPerFrame": 3713051.878,
+          "cpuCoresAt30Fps": 0.036,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            90,
+            0,
+            0,
+            0
+          ],
+          "encodedBytes": [
+            72791,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "transitions": []
+    },
+    {
+      "round": 1,
+      "scenario": "high",
+      "scene": "motion",
+      "codec": "v1.17.0",
+      "summary": {
+        "sourceFrames": 90,
+        "workMeanMs": 6.497,
+        "workP95Ms": 9.354,
+        "workOverFrameBudget": 0,
+        "cpuMs": 1390.625,
+        "cpuCyclesPerFrame": 45229729.6,
+        "cpuCoresAt30Fps": 0.464,
+        "createCount": 0,
+        "createMs": 0,
+        "encodedFrames": [
+          0,
+          0,
+          90,
+          0
+        ],
+        "encodedBytes": [
+          0,
+          0,
+          1528747,
+          0
+        ]
+      },
+      "inputResidentBytes": 134873088,
+      "activeResidentBytes": 207904768,
+      "stoppedResidentBytes": 136970240,
+      "phases": [
+        {
+          "sourceFrames": 90,
+          "workMeanMs": 6.497,
+          "workP95Ms": 9.354,
+          "workOverFrameBudget": 0,
+          "cpuMs": 1390.625,
+          "cpuCyclesPerFrame": 45229729.6,
+          "cpuCoresAt30Fps": 0.464,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            0,
+            0,
+            90,
+            0
+          ],
+          "encodedBytes": [
+            0,
+            0,
+            1528747,
+            0
+          ]
+        }
+      ],
+      "transitions": []
+    },
+    {
+      "round": 1,
+      "scenario": "two-high",
+      "scene": "motion",
+      "codec": "v1.17.0",
+      "summary": {
+        "sourceFrames": 90,
+        "workMeanMs": 12.741,
+        "workP95Ms": 18.444,
+        "workOverFrameBudget": 1,
+        "cpuMs": 1875,
+        "cpuCyclesPerFrame": 88019835.611,
+        "cpuCoresAt30Fps": 0.625,
+        "createCount": 0,
+        "createMs": 0,
+        "encodedFrames": [
+          0,
+          0,
+          90,
+          90
+        ],
+        "encodedBytes": [
+          0,
+          0,
+          1528747,
+          1528747
+        ]
+      },
+      "inputResidentBytes": 134873088,
+      "activeResidentBytes": 280084480,
+      "stoppedResidentBytes": 135872512,
+      "phases": [
+        {
+          "sourceFrames": 90,
+          "workMeanMs": 12.741,
+          "workP95Ms": 18.444,
+          "workOverFrameBudget": 1,
+          "cpuMs": 1875,
+          "cpuCyclesPerFrame": 88019835.611,
+          "cpuCoresAt30Fps": 0.625,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            0,
+            0,
+            90,
+            90
+          ],
+          "encodedBytes": [
+            0,
+            0,
+            1528747,
+            1528747
+          ]
+        }
+      ],
+      "transitions": []
+    },
+    {
+      "round": 1,
+      "scenario": "high-low",
+      "scene": "motion",
+      "codec": "v1.17.0",
+      "summary": {
+        "sourceFrames": 90,
+        "workMeanMs": 7.088,
+        "workP95Ms": 9.902,
+        "workOverFrameBudget": 0,
+        "cpuMs": 1203.125,
+        "cpuCyclesPerFrame": 49396719.389,
+        "cpuCoresAt30Fps": 0.401,
+        "createCount": 0,
+        "createMs": 0,
+        "encodedFrames": [
+          90,
+          0,
+          90,
+          0
+        ],
+        "encodedBytes": [
+          122802,
+          0,
+          1528747,
+          0
+        ]
+      },
+      "inputResidentBytes": 134868992,
+      "activeResidentBytes": 213233664,
+      "stoppedResidentBytes": 136601600,
+      "phases": [
+        {
+          "sourceFrames": 90,
+          "workMeanMs": 7.088,
+          "workP95Ms": 9.902,
+          "workOverFrameBudget": 0,
+          "cpuMs": 1203.125,
+          "cpuCyclesPerFrame": 49396719.389,
+          "cpuCoresAt30Fps": 0.401,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            90,
+            0,
+            90,
+            0
+          ],
+          "encodedBytes": [
+            122802,
+            0,
+            1528747,
+            0
+          ]
+        }
+      ],
+      "transitions": []
+    },
+    {
+      "round": 1,
+      "scenario": "all",
+      "scene": "motion",
+      "codec": "v1.17.0",
+      "summary": {
+        "sourceFrames": 90,
+        "workMeanMs": 8.681,
+        "workP95Ms": 11.961,
+        "workOverFrameBudget": 0,
+        "cpuMs": 1359.375,
+        "cpuCyclesPerFrame": 60308691.522,
+        "cpuCoresAt30Fps": 0.453,
+        "createCount": 0,
+        "createMs": 0,
+        "encodedFrames": [
+          90,
+          90,
+          90,
+          0
+        ],
+        "encodedBytes": [
+          122802,
+          506114,
+          1528747,
+          0
+        ]
+      },
+      "inputResidentBytes": 134873088,
+      "activeResidentBytes": 232017920,
+      "stoppedResidentBytes": 135905280,
+      "phases": [
+        {
+          "sourceFrames": 90,
+          "workMeanMs": 8.681,
+          "workP95Ms": 11.961,
+          "workOverFrameBudget": 0,
+          "cpuMs": 1359.375,
+          "cpuCyclesPerFrame": 60308691.522,
+          "cpuCoresAt30Fps": 0.453,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            90,
+            90,
+            90,
+            0
+          ],
+          "encodedBytes": [
+            122802,
+            506114,
+            1528747,
+            0
+          ]
+        }
+      ],
+      "transitions": []
+    },
+    {
+      "round": 1,
+      "scenario": "mid-low",
+      "scene": "motion",
+      "codec": "v1.17.0",
+      "summary": {
+        "sourceFrames": 90,
+        "workMeanMs": 2.372,
+        "workP95Ms": 3.828,
+        "workOverFrameBudget": 0,
+        "cpuMs": 421.875,
+        "cpuCyclesPerFrame": 16465430.089,
+        "cpuCoresAt30Fps": 0.141,
+        "createCount": 0,
+        "createMs": 0,
+        "encodedFrames": [
+          90,
+          90,
+          0,
+          0
+        ],
+        "encodedBytes": [
+          122802,
+          506114,
+          0,
+          0
+        ]
+      },
+      "inputResidentBytes": 134873088,
+      "activeResidentBytes": 159875072,
+      "stoppedResidentBytes": 136130560,
+      "phases": [
+        {
+          "sourceFrames": 90,
+          "workMeanMs": 2.372,
+          "workP95Ms": 3.828,
+          "workOverFrameBudget": 0,
+          "cpuMs": 421.875,
+          "cpuCyclesPerFrame": 16465430.089,
+          "cpuCoresAt30Fps": 0.141,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            90,
+            90,
+            0,
+            0
+          ],
+          "encodedBytes": [
+            122802,
+            506114,
+            0,
+            0
+          ]
+        }
+      ],
+      "transitions": []
+    },
+    {
+      "round": 1,
+      "scenario": "low",
+      "scene": "motion",
+      "codec": "v1.17.0",
+      "summary": {
+        "sourceFrames": 90,
+        "workMeanMs": 0.65,
+        "workP95Ms": 1.106,
+        "workOverFrameBudget": 0,
+        "cpuMs": 125,
+        "cpuCyclesPerFrame": 4339882.911,
+        "cpuCoresAt30Fps": 0.042,
+        "createCount": 0,
+        "createMs": 0,
+        "encodedFrames": [
+          90,
+          0,
+          0,
+          0
+        ],
+        "encodedBytes": [
+          122802,
+          0,
+          0,
+          0
+        ]
+      },
+      "inputResidentBytes": 134868992,
+      "activeResidentBytes": 140861440,
+      "stoppedResidentBytes": 136871936,
+      "phases": [
+        {
+          "sourceFrames": 90,
+          "workMeanMs": 0.65,
+          "workP95Ms": 1.106,
+          "workOverFrameBudget": 0,
+          "cpuMs": 125,
+          "cpuCyclesPerFrame": 4339882.911,
+          "cpuCoresAt30Fps": 0.042,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            90,
+            0,
+            0,
+            0
+          ],
+          "encodedBytes": [
+            122802,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "transitions": []
+    },
+    {
+      "round": 1,
+      "scenario": "envelope",
+      "scene": "motion",
+      "codec": "v1.17.0",
+      "summary": {
+        "sourceFrames": 420,
+        "workMeanMs": 6.754,
+        "workP95Ms": 11.527,
+        "workOverFrameBudget": 0,
+        "cpuMs": 4796.875,
+        "cpuCyclesPerFrame": 47743354.238,
+        "cpuCoresAt30Fps": 0.343,
+        "createCount": 5,
+        "createMs": 15.062,
+        "encodedFrames": [
+          420,
+          360,
+          300,
+          0
+        ],
+        "encodedBytes": [
+          536510,
+          1805256,
+          4974370,
+          0
+        ]
+      },
+      "inputResidentBytes": 134873088,
+      "activeResidentBytes": 232402944,
+      "stoppedResidentBytes": 135917568,
+      "phases": [
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 9.078,
+          "workP95Ms": 14.518,
+          "workOverFrameBudget": 0,
+          "cpuMs": 921.875,
+          "cpuCyclesPerFrame": 63839084.95,
+          "cpuCoresAt30Fps": 0.461,
+          "createCount": 3,
+          "createMs": 6.951,
+          "encodedFrames": [
+            60,
+            60,
+            60,
+            0
+          ],
+          "encodedBytes": [
+            76218,
+            299124,
+            1101559,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 8.588,
+          "workP95Ms": 9.615,
+          "workOverFrameBudget": 0,
+          "cpuMs": 890.625,
+          "cpuCyclesPerFrame": 60620952.533,
+          "cpuCoresAt30Fps": 0.445,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            60,
+            60,
+            60,
+            0
+          ],
+          "encodedBytes": [
+            78385,
+            344891,
+            906072,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 0.692,
+          "workP95Ms": 0.921,
+          "workOverFrameBudget": 0,
+          "cpuMs": 46.875,
+          "cpuCyclesPerFrame": 4506330.417,
+          "cpuCoresAt30Fps": 0.023,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            60,
+            0,
+            0,
+            0
+          ],
+          "encodedBytes": [
+            69518,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 2.433,
+          "workP95Ms": 3.754,
+          "workOverFrameBudget": 0,
+          "cpuMs": 234.375,
+          "cpuCyclesPerFrame": 17794100.967,
+          "cpuCoresAt30Fps": 0.117,
+          "createCount": 1,
+          "createMs": 2.396,
+          "encodedFrames": [
+            60,
+            60,
+            0,
+            0
+          ],
+          "encodedBytes": [
+            76630,
+            294116,
+            0,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 9.154,
+          "workP95Ms": 13.707,
+          "workOverFrameBudget": 0,
+          "cpuMs": 1031.25,
+          "cpuCyclesPerFrame": 65020105.567,
+          "cpuCoresAt30Fps": 0.516,
+          "createCount": 1,
+          "createMs": 5.714,
+          "encodedFrames": [
+            60,
+            60,
+            60,
+            0
+          ],
+          "encodedBytes": [
+            71017,
+            300401,
+            1117930,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 8.351,
+          "workP95Ms": 9.37,
+          "workOverFrameBudget": 0,
+          "cpuMs": 765.625,
+          "cpuCyclesPerFrame": 59696377.1,
+          "cpuCoresAt30Fps": 0.383,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            60,
+            60,
+            60,
+            0
+          ],
+          "encodedBytes": [
+            87244,
+            283072,
+            910931,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 8.979,
+          "workP95Ms": 12.151,
+          "workOverFrameBudget": 0,
+          "cpuMs": 906.25,
+          "cpuCyclesPerFrame": 62726528.133,
+          "cpuCoresAt30Fps": 0.453,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            60,
+            60,
+            60,
+            0
+          ],
+          "encodedBytes": [
+            77498,
+            283652,
+            937878,
+            0
+          ]
+        }
+      ],
+      "transitions": [
+        {
+          "frame": 0,
+          "layer": 2,
+          "keyframeReadyMs": 20.636,
+          "keyframeBytes": 32308
+        },
+        {
+          "frame": 60,
+          "layer": 0,
+          "keyframeReadyMs": 20.003,
+          "keyframeBytes": 2812
+        },
+        {
+          "frame": 120,
+          "layer": 0,
+          "keyframeReadyMs": 5.596,
+          "keyframeBytes": 8361
+        },
+        {
+          "frame": 180,
+          "layer": 1,
+          "keyframeReadyMs": 7.176,
+          "keyframeBytes": 29822
+        },
+        {
+          "frame": 240,
+          "layer": 2,
+          "keyframeReadyMs": 22.111,
+          "keyframeBytes": 32268
+        },
+        {
+          "frame": 300,
+          "layer": 0,
+          "keyframeReadyMs": 19.459,
+          "keyframeBytes": 5957
+        },
+        {
+          "frame": 360,
+          "layer": 2,
+          "keyframeReadyMs": 18.184,
+          "keyframeBytes": 31246
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "scenario": "exact-cold",
+      "scene": "motion",
+      "codec": "v1.17.0",
+      "summary": {
+        "sourceFrames": 420,
+        "workMeanMs": 5.321,
+        "workP95Ms": 9.091,
+        "workOverFrameBudget": 0,
+        "cpuMs": 3640.625,
+        "cpuCyclesPerFrame": 37786592.14,
+        "cpuCoresAt30Fps": 0.26,
+        "createCount": 5,
+        "createMs": 12.874,
+        "encodedFrames": [
+          180,
+          60,
+          300,
+          0
+        ],
+        "encodedBytes": [
+          227182,
+          294116,
+          4976220,
+          0
+        ]
+      },
+      "inputResidentBytes": 134868992,
+      "activeResidentBytes": 208228352,
+      "stoppedResidentBytes": 136589312,
+      "phases": [
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 6.862,
+          "workP95Ms": 12.544,
+          "workOverFrameBudget": 0,
+          "cpuMs": 421.875,
+          "cpuCyclesPerFrame": 48882755.5,
+          "cpuCoresAt30Fps": 0.211,
+          "createCount": 1,
+          "createMs": 4.352,
+          "encodedFrames": [
+            0,
+            0,
+            60,
+            0
+          ],
+          "encodedBytes": [
+            0,
+            0,
+            1101559,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 7.144,
+          "workP95Ms": 8.021,
+          "workOverFrameBudget": 0,
+          "cpuMs": 765.625,
+          "cpuCyclesPerFrame": 50520022.883,
+          "cpuCoresAt30Fps": 0.383,
+          "createCount": 1,
+          "createMs": 0.834,
+          "encodedFrames": [
+            60,
+            0,
+            60,
+            0
+          ],
+          "encodedBytes": [
+            72001,
+            0,
+            906072,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 0.694,
+          "workP95Ms": 0.863,
+          "workOverFrameBudget": 0,
+          "cpuMs": 46.875,
+          "cpuCyclesPerFrame": 5182470.8,
+          "cpuCoresAt30Fps": 0.023,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            60,
+            0,
+            0,
+            0
+          ],
+          "encodedBytes": [
+            83372,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 1.873,
+          "workP95Ms": 3.015,
+          "workOverFrameBudget": 0,
+          "cpuMs": 187.5,
+          "cpuCyclesPerFrame": 14114056.4,
+          "cpuCoresAt30Fps": 0.094,
+          "createCount": 1,
+          "createMs": 1.5,
+          "encodedFrames": [
+            0,
+            60,
+            0,
+            0
+          ],
+          "encodedBytes": [
+            0,
+            294116,
+            0,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 6.95,
+          "workP95Ms": 12.623,
+          "workOverFrameBudget": 0,
+          "cpuMs": 828.125,
+          "cpuCyclesPerFrame": 49941229.733,
+          "cpuCoresAt30Fps": 0.414,
+          "createCount": 1,
+          "createMs": 5.423,
+          "encodedFrames": [
+            0,
+            0,
+            60,
+            0
+          ],
+          "encodedBytes": [
+            0,
+            0,
+            1117930,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 7.051,
+          "workP95Ms": 8.164,
+          "workOverFrameBudget": 0,
+          "cpuMs": 765.625,
+          "cpuCyclesPerFrame": 49444201.517,
+          "cpuCoresAt30Fps": 0.383,
+          "createCount": 1,
+          "createMs": 0.765,
+          "encodedFrames": [
+            60,
+            0,
+            60,
+            0
+          ],
+          "encodedBytes": [
+            71809,
+            0,
+            910931,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 6.671,
+          "workP95Ms": 7.846,
+          "workOverFrameBudget": 0,
+          "cpuMs": 625,
+          "cpuCyclesPerFrame": 46421408.15,
+          "cpuCoresAt30Fps": 0.312,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            0,
+            0,
+            60,
+            0
+          ],
+          "encodedBytes": [
+            0,
+            0,
+            939728,
+            0
+          ]
+        }
+      ],
+      "transitions": [
+        {
+          "frame": 0,
+          "layer": 2,
+          "keyframeReadyMs": 19.673,
+          "keyframeBytes": 32308
+        },
+        {
+          "frame": 60,
+          "layer": 0,
+          "keyframeReadyMs": 16.627,
+          "keyframeBytes": 8272
+        },
+        {
+          "frame": 120,
+          "layer": 0,
+          "keyframeReadyMs": 4.258,
+          "keyframeBytes": 4336
+        },
+        {
+          "frame": 180,
+          "layer": 1,
+          "keyframeReadyMs": 5.731,
+          "keyframeBytes": 29822
+        },
+        {
+          "frame": 240,
+          "layer": 2,
+          "keyframeReadyMs": 22.787,
+          "keyframeBytes": 32268
+        },
+        {
+          "frame": 300,
+          "layer": 0,
+          "keyframeReadyMs": 15.404,
+          "keyframeBytes": 8284
+        },
+        {
+          "frame": 360,
+          "layer": 2,
+          "keyframeReadyMs": 13.188,
+          "keyframeBytes": 31246
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "scenario": "exact-warm",
+      "scene": "motion",
+      "codec": "v1.17.0",
+      "summary": {
+        "sourceFrames": 420,
+        "workMeanMs": 4.989,
+        "workP95Ms": 7.914,
+        "workOverFrameBudget": 0,
+        "cpuMs": 3937.5,
+        "cpuCyclesPerFrame": 35658453.552,
+        "cpuCoresAt30Fps": 0.281,
+        "createCount": 3,
+        "createMs": 6.924,
+        "encodedFrames": [
+          180,
+          60,
+          300,
+          0
+        ],
+        "encodedBytes": [
+          207584,
+          294116,
+          4429337,
+          0
+        ]
+      },
+      "inputResidentBytes": 134864896,
+      "activeResidentBytes": 231952384,
+      "stoppedResidentBytes": 135897088,
+      "phases": [
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 6.765,
+          "workP95Ms": 12.372,
+          "workOverFrameBudget": 0,
+          "cpuMs": 468.75,
+          "cpuCyclesPerFrame": 48188313.9,
+          "cpuCoresAt30Fps": 0.234,
+          "createCount": 1,
+          "createMs": 4.359,
+          "encodedFrames": [
+            0,
+            0,
+            60,
+            0
+          ],
+          "encodedBytes": [
+            0,
+            0,
+            1101559,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 7.15,
+          "workP95Ms": 8.607,
+          "workOverFrameBudget": 0,
+          "cpuMs": 593.75,
+          "cpuCyclesPerFrame": 50078138.633,
+          "cpuCoresAt30Fps": 0.297,
+          "createCount": 1,
+          "createMs": 0.814,
+          "encodedFrames": [
+            60,
+            0,
+            60,
+            0
+          ],
+          "encodedBytes": [
+            72001,
+            0,
+            906072,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 0.615,
+          "workP95Ms": 0.779,
+          "workOverFrameBudget": 0,
+          "cpuMs": 78.125,
+          "cpuCyclesPerFrame": 4742545.883,
+          "cpuCoresAt30Fps": 0.039,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            60,
+            0,
+            0,
+            0
+          ],
+          "encodedBytes": [
+            83372,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 1.816,
+          "workP95Ms": 3.055,
+          "workOverFrameBudget": 0,
+          "cpuMs": 281.25,
+          "cpuCyclesPerFrame": 13635436.517,
+          "cpuCoresAt30Fps": 0.141,
+          "createCount": 1,
+          "createMs": 1.752,
+          "encodedFrames": [
+            0,
+            60,
+            0,
+            0
+          ],
+          "encodedBytes": [
+            0,
+            294116,
+            0,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 5.291,
+          "workP95Ms": 6.083,
+          "workOverFrameBudget": 0,
+          "cpuMs": 671.875,
+          "cpuCyclesPerFrame": 39366895.9,
+          "cpuCoresAt30Fps": 0.336,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            0,
+            0,
+            60,
+            0
+          ],
+          "encodedBytes": [
+            0,
+            0,
+            606169,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 6.91,
+          "workP95Ms": 9.1,
+          "workOverFrameBudget": 0,
+          "cpuMs": 984.375,
+          "cpuCyclesPerFrame": 48596712.25,
+          "cpuCoresAt30Fps": 0.492,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            60,
+            0,
+            60,
+            0
+          ],
+          "encodedBytes": [
+            52211,
+            0,
+            935201,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 6.375,
+          "workP95Ms": 7.069,
+          "workOverFrameBudget": 0,
+          "cpuMs": 859.375,
+          "cpuCyclesPerFrame": 45001131.783,
+          "cpuCoresAt30Fps": 0.43,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            0,
+            0,
+            60,
+            0
+          ],
+          "encodedBytes": [
+            0,
+            0,
+            880336,
+            0
+          ]
+        }
+      ],
+      "transitions": [
+        {
+          "frame": 0,
+          "layer": 2,
+          "keyframeReadyMs": 20.542,
+          "keyframeBytes": 32308
+        },
+        {
+          "frame": 60,
+          "layer": 0,
+          "keyframeReadyMs": 15.62,
+          "keyframeBytes": 8272
+        },
+        {
+          "frame": 120,
+          "layer": 0,
+          "keyframeReadyMs": 1.391,
+          "keyframeBytes": 4336
+        },
+        {
+          "frame": 180,
+          "layer": 1,
+          "keyframeReadyMs": 6.057,
+          "keyframeBytes": 29822
+        },
+        {
+          "frame": 240,
+          "layer": 2,
+          "keyframeReadyMs": 21.789,
+          "keyframeBytes": 228469
+        },
+        {
+          "frame": 300,
+          "layer": 0,
+          "keyframeReadyMs": 16.375,
+          "keyframeBytes": 22184
+        },
+        {
+          "frame": 360,
+          "layer": 2,
+          "keyframeReadyMs": 14.522,
+          "keyframeBytes": 43851
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "scenario": "warm-clock-ablation",
+      "scene": "motion",
+      "codec": "v1.17.0",
+      "summary": {
+        "sourceFrames": 420,
+        "workMeanMs": 5.166,
+        "workP95Ms": 8.458,
+        "workOverFrameBudget": 0,
+        "cpuMs": 3984.375,
+        "cpuCyclesPerFrame": 36539063.486,
+        "cpuCoresAt30Fps": 0.285,
+        "createCount": 3,
+        "createMs": 6.742,
+        "encodedFrames": [
+          180,
+          60,
+          300,
+          0
+        ],
+        "encodedBytes": [
+          223834,
+          294116,
+          4720828,
+          0
+        ]
+      },
+      "inputResidentBytes": 134873088,
+      "activeResidentBytes": 232001536,
+      "stoppedResidentBytes": 135901184,
+      "phases": [
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 7.002,
+          "workP95Ms": 12.963,
+          "workOverFrameBudget": 0,
+          "cpuMs": 734.375,
+          "cpuCyclesPerFrame": 50002499.417,
+          "cpuCoresAt30Fps": 0.367,
+          "createCount": 1,
+          "createMs": 4.345,
+          "encodedFrames": [
+            0,
+            0,
+            60,
+            0
+          ],
+          "encodedBytes": [
+            0,
+            0,
+            1101559,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 6.952,
+          "workP95Ms": 8.135,
+          "workOverFrameBudget": 0,
+          "cpuMs": 531.25,
+          "cpuCyclesPerFrame": 48541372.583,
+          "cpuCoresAt30Fps": 0.266,
+          "createCount": 1,
+          "createMs": 0.784,
+          "encodedFrames": [
+            60,
+            0,
+            60,
+            0
+          ],
+          "encodedBytes": [
+            72001,
+            0,
+            906072,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 0.62,
+          "workP95Ms": 0.799,
+          "workOverFrameBudget": 0,
+          "cpuMs": 15.625,
+          "cpuCyclesPerFrame": 4771511.65,
+          "cpuCoresAt30Fps": 0.008,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            60,
+            0,
+            0,
+            0
+          ],
+          "encodedBytes": [
+            83372,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 1.822,
+          "workP95Ms": 3.111,
+          "workOverFrameBudget": 0,
+          "cpuMs": 218.75,
+          "cpuCyclesPerFrame": 13631252,
+          "cpuCoresAt30Fps": 0.109,
+          "createCount": 1,
+          "createMs": 1.613,
+          "encodedFrames": [
+            0,
+            60,
+            0,
+            0
+          ],
+          "encodedBytes": [
+            0,
+            294116,
+            0,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 6.618,
+          "workP95Ms": 8.134,
+          "workOverFrameBudget": 0,
+          "cpuMs": 796.875,
+          "cpuCyclesPerFrame": 45929727.467,
+          "cpuCoresAt30Fps": 0.398,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            0,
+            0,
+            60,
+            0
+          ],
+          "encodedBytes": [
+            0,
+            0,
+            946138,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 6.916,
+          "workP95Ms": 8.629,
+          "workOverFrameBudget": 0,
+          "cpuMs": 1000,
+          "cpuCyclesPerFrame": 48775678.983,
+          "cpuCoresAt30Fps": 0.5,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            60,
+            0,
+            60,
+            0
+          ],
+          "encodedBytes": [
+            68461,
+            0,
+            899110,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 6.235,
+          "workP95Ms": 7.212,
+          "workOverFrameBudget": 0,
+          "cpuMs": 687.5,
+          "cpuCyclesPerFrame": 44121402.3,
+          "cpuCoresAt30Fps": 0.344,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            0,
+            0,
+            60,
+            0
+          ],
+          "encodedBytes": [
+            0,
+            0,
+            867949,
+            0
+          ]
+        }
+      ],
+      "transitions": [
+        {
+          "frame": 0,
+          "layer": 2,
+          "keyframeReadyMs": 20.744,
+          "keyframeBytes": 32308
+        },
+        {
+          "frame": 60,
+          "layer": 0,
+          "keyframeReadyMs": 16.727,
+          "keyframeBytes": 8272
+        },
+        {
+          "frame": 120,
+          "layer": 0,
+          "keyframeReadyMs": 1.366,
+          "keyframeBytes": 4336
+        },
+        {
+          "frame": 180,
+          "layer": 1,
+          "keyframeReadyMs": 6.018,
+          "keyframeBytes": 29822
+        },
+        {
+          "frame": 240,
+          "layer": 2,
+          "keyframeReadyMs": 13.235,
+          "keyframeBytes": 31079
+        },
+        {
+          "frame": 300,
+          "layer": 0,
+          "keyframeReadyMs": 15.961,
+          "keyframeBytes": 7185
+        },
+        {
+          "frame": 360,
+          "layer": 2,
+          "keyframeReadyMs": 14.751,
+          "keyframeBytes": 43851
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "scenario": "low",
+      "scene": "still",
+      "codec": "v1.17.0",
+      "summary": {
+        "sourceFrames": 90,
+        "workMeanMs": 0.446,
+        "workP95Ms": 0.63,
+        "workOverFrameBudget": 0,
+        "cpuMs": 140.625,
+        "cpuCyclesPerFrame": 3601520.767,
+        "cpuCoresAt30Fps": 0.047,
+        "createCount": 0,
+        "createMs": 0,
+        "encodedFrames": [
+          90,
+          0,
+          0,
+          0
+        ],
+        "encodedBytes": [
+          72791,
+          0,
+          0,
+          0
+        ]
+      },
+      "inputResidentBytes": 134873088,
+      "activeResidentBytes": 141135872,
+      "stoppedResidentBytes": 136880128,
+      "phases": [
+        {
+          "sourceFrames": 90,
+          "workMeanMs": 0.446,
+          "workP95Ms": 0.63,
+          "workOverFrameBudget": 0,
+          "cpuMs": 140.625,
+          "cpuCyclesPerFrame": 3601520.767,
+          "cpuCoresAt30Fps": 0.047,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            90,
+            0,
+            0,
+            0
+          ],
+          "encodedBytes": [
+            72791,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "transitions": []
+    },
+    {
+      "round": 2,
+      "scenario": "mid-low",
+      "scene": "still",
+      "codec": "v1.17.0",
+      "summary": {
+        "sourceFrames": 90,
+        "workMeanMs": 1.668,
+        "workP95Ms": 2.118,
+        "workOverFrameBudget": 0,
+        "cpuMs": 328.125,
+        "cpuCyclesPerFrame": 15514971.444,
+        "cpuCoresAt30Fps": 0.109,
+        "createCount": 0,
+        "createMs": 0,
+        "encodedFrames": [
+          90,
+          90,
+          0,
+          0
+        ],
+        "encodedBytes": [
+          72791,
+          286127,
+          0,
+          0
+        ]
+      },
+      "inputResidentBytes": 134868992,
+      "activeResidentBytes": 160993280,
+      "stoppedResidentBytes": 136118272,
+      "phases": [
+        {
+          "sourceFrames": 90,
+          "workMeanMs": 1.668,
+          "workP95Ms": 2.118,
+          "workOverFrameBudget": 0,
+          "cpuMs": 328.125,
+          "cpuCyclesPerFrame": 15514971.444,
+          "cpuCoresAt30Fps": 0.109,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            90,
+            90,
+            0,
+            0
+          ],
+          "encodedBytes": [
+            72791,
+            286127,
+            0,
+            0
+          ]
+        }
+      ],
+      "transitions": []
+    },
+    {
+      "round": 2,
+      "scenario": "all",
+      "scene": "still",
+      "codec": "v1.17.0",
+      "summary": {
+        "sourceFrames": 90,
+        "workMeanMs": 5.701,
+        "workP95Ms": 7.666,
+        "workOverFrameBudget": 0,
+        "cpuMs": 859.375,
+        "cpuCyclesPerFrame": 53234397.044,
+        "cpuCoresAt30Fps": 0.286,
+        "createCount": 0,
+        "createMs": 0,
+        "encodedFrames": [
+          90,
+          90,
+          90,
+          0
+        ],
+        "encodedBytes": [
+          72791,
+          286127,
+          1092435,
+          0
+        ]
+      },
+      "inputResidentBytes": 134868992,
+      "activeResidentBytes": 236564480,
+      "stoppedResidentBytes": 135909376,
+      "phases": [
+        {
+          "sourceFrames": 90,
+          "workMeanMs": 5.701,
+          "workP95Ms": 7.666,
+          "workOverFrameBudget": 0,
+          "cpuMs": 859.375,
+          "cpuCyclesPerFrame": 53234397.044,
+          "cpuCoresAt30Fps": 0.286,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            90,
+            90,
+            90,
+            0
+          ],
+          "encodedBytes": [
+            72791,
+            286127,
+            1092435,
+            0
+          ]
+        }
+      ],
+      "transitions": []
+    },
+    {
+      "round": 2,
+      "scenario": "high-low",
+      "scene": "still",
+      "codec": "v1.17.0",
+      "summary": {
+        "sourceFrames": 90,
+        "workMeanMs": 4.564,
+        "workP95Ms": 5.585,
+        "workOverFrameBudget": 0,
+        "cpuMs": 1500,
+        "cpuCyclesPerFrame": 42623930.389,
+        "cpuCoresAt30Fps": 0.5,
+        "createCount": 0,
+        "createMs": 0,
+        "encodedFrames": [
+          90,
+          0,
+          90,
+          0
+        ],
+        "encodedBytes": [
+          72791,
+          0,
+          1092435,
+          0
+        ]
+      },
+      "inputResidentBytes": 134868992,
+      "activeResidentBytes": 216883200,
+      "stoppedResidentBytes": 136728576,
+      "phases": [
+        {
+          "sourceFrames": 90,
+          "workMeanMs": 4.564,
+          "workP95Ms": 5.585,
+          "workOverFrameBudget": 0,
+          "cpuMs": 1500,
+          "cpuCyclesPerFrame": 42623930.389,
+          "cpuCoresAt30Fps": 0.5,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            90,
+            0,
+            90,
+            0
+          ],
+          "encodedBytes": [
+            72791,
+            0,
+            1092435,
+            0
+          ]
+        }
+      ],
+      "transitions": []
+    },
+    {
+      "round": 2,
+      "scenario": "two-high",
+      "scene": "still",
+      "codec": "v1.17.0",
+      "summary": {
+        "sourceFrames": 90,
+        "workMeanMs": 8.413,
+        "workP95Ms": 10.434,
+        "workOverFrameBudget": 0,
+        "cpuMs": 1906.25,
+        "cpuCyclesPerFrame": 76975458.089,
+        "cpuCoresAt30Fps": 0.635,
+        "createCount": 0,
+        "createMs": 0,
+        "encodedFrames": [
+          0,
+          0,
+          90,
+          90
+        ],
+        "encodedBytes": [
+          0,
+          0,
+          1092435,
+          1092435
+        ]
+      },
+      "inputResidentBytes": 134868992,
+      "activeResidentBytes": 286834688,
+      "stoppedResidentBytes": 135868416,
+      "phases": [
+        {
+          "sourceFrames": 90,
+          "workMeanMs": 8.413,
+          "workP95Ms": 10.434,
+          "workOverFrameBudget": 0,
+          "cpuMs": 1906.25,
+          "cpuCyclesPerFrame": 76975458.089,
+          "cpuCoresAt30Fps": 0.635,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            0,
+            0,
+            90,
+            90
+          ],
+          "encodedBytes": [
+            0,
+            0,
+            1092435,
+            1092435
+          ]
+        }
+      ],
+      "transitions": []
+    },
+    {
+      "round": 2,
+      "scenario": "high",
+      "scene": "still",
+      "codec": "v1.17.0",
+      "summary": {
+        "sourceFrames": 90,
+        "workMeanMs": 4.172,
+        "workP95Ms": 4.936,
+        "workOverFrameBudget": 0,
+        "cpuMs": 750,
+        "cpuCyclesPerFrame": 39201885.767,
+        "cpuCoresAt30Fps": 0.25,
+        "createCount": 0,
+        "createMs": 0,
+        "encodedFrames": [
+          0,
+          0,
+          90,
+          0
+        ],
+        "encodedBytes": [
+          0,
+          0,
+          1092435,
+          0
+        ]
+      },
+      "inputResidentBytes": 134868992,
+      "activeResidentBytes": 211349504,
+      "stoppedResidentBytes": 136962048,
+      "phases": [
+        {
+          "sourceFrames": 90,
+          "workMeanMs": 4.172,
+          "workP95Ms": 4.936,
+          "workOverFrameBudget": 0,
+          "cpuMs": 750,
+          "cpuCyclesPerFrame": 39201885.767,
+          "cpuCoresAt30Fps": 0.25,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            0,
+            0,
+            90,
+            0
+          ],
+          "encodedBytes": [
+            0,
+            0,
+            1092435,
+            0
+          ]
+        }
+      ],
+      "transitions": []
+    },
+    {
+      "round": 2,
+      "scenario": "warm-clock-ablation",
+      "scene": "motion",
+      "codec": "v1.17.0",
+      "summary": {
+        "sourceFrames": 420,
+        "workMeanMs": 5.124,
+        "workP95Ms": 8.36,
+        "workOverFrameBudget": 0,
+        "cpuMs": 3546.875,
+        "cpuCyclesPerFrame": 36452003.333,
+        "cpuCoresAt30Fps": 0.253,
+        "createCount": 3,
+        "createMs": 6.851,
+        "encodedFrames": [
+          180,
+          60,
+          300,
+          0
+        ],
+        "encodedBytes": [
+          223834,
+          294116,
+          4720828,
+          0
+        ]
+      },
+      "inputResidentBytes": 134873088,
+      "activeResidentBytes": 231952384,
+      "stoppedResidentBytes": 136564736,
+      "phases": [
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 6.781,
+          "workP95Ms": 12.596,
+          "workOverFrameBudget": 0,
+          "cpuMs": 921.875,
+          "cpuCyclesPerFrame": 48471701.317,
+          "cpuCoresAt30Fps": 0.461,
+          "createCount": 1,
+          "createMs": 4.042,
+          "encodedFrames": [
+            0,
+            0,
+            60,
+            0
+          ],
+          "encodedBytes": [
+            0,
+            0,
+            1101559,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 6.943,
+          "workP95Ms": 8.254,
+          "workOverFrameBudget": 0,
+          "cpuMs": 734.375,
+          "cpuCyclesPerFrame": 48821966.233,
+          "cpuCoresAt30Fps": 0.367,
+          "createCount": 1,
+          "createMs": 0.816,
+          "encodedFrames": [
+            60,
+            0,
+            60,
+            0
+          ],
+          "encodedBytes": [
+            72001,
+            0,
+            906072,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 0.628,
+          "workP95Ms": 0.756,
+          "workOverFrameBudget": 0,
+          "cpuMs": 78.125,
+          "cpuCyclesPerFrame": 4837825.95,
+          "cpuCoresAt30Fps": 0.039,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            60,
+            0,
+            0,
+            0
+          ],
+          "encodedBytes": [
+            83372,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 1.847,
+          "workP95Ms": 3.114,
+          "workOverFrameBudget": 0,
+          "cpuMs": 203.125,
+          "cpuCyclesPerFrame": 13833621.117,
+          "cpuCoresAt30Fps": 0.102,
+          "createCount": 1,
+          "createMs": 1.994,
+          "encodedFrames": [
+            0,
+            60,
+            0,
+            0
+          ],
+          "encodedBytes": [
+            0,
+            294116,
+            0,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 6.472,
+          "workP95Ms": 7.365,
+          "workOverFrameBudget": 0,
+          "cpuMs": 562.5,
+          "cpuCyclesPerFrame": 45209399.133,
+          "cpuCoresAt30Fps": 0.281,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            0,
+            0,
+            60,
+            0
+          ],
+          "encodedBytes": [
+            0,
+            0,
+            946138,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 6.901,
+          "workP95Ms": 8.36,
+          "workOverFrameBudget": 0,
+          "cpuMs": 484.375,
+          "cpuCyclesPerFrame": 49000844.133,
+          "cpuCoresAt30Fps": 0.242,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            60,
+            0,
+            60,
+            0
+          ],
+          "encodedBytes": [
+            68461,
+            0,
+            899110,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 6.296,
+          "workP95Ms": 7.675,
+          "workOverFrameBudget": 0,
+          "cpuMs": 562.5,
+          "cpuCyclesPerFrame": 44988665.45,
+          "cpuCoresAt30Fps": 0.281,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            0,
+            0,
+            60,
+            0
+          ],
+          "encodedBytes": [
+            0,
+            0,
+            867949,
+            0
+          ]
+        }
+      ],
+      "transitions": [
+        {
+          "frame": 0,
+          "layer": 2,
+          "keyframeReadyMs": 20.179,
+          "keyframeBytes": 32308
+        },
+        {
+          "frame": 60,
+          "layer": 0,
+          "keyframeReadyMs": 16.735,
+          "keyframeBytes": 8272
+        },
+        {
+          "frame": 120,
+          "layer": 0,
+          "keyframeReadyMs": 1.424,
+          "keyframeBytes": 4336
+        },
+        {
+          "frame": 180,
+          "layer": 1,
+          "keyframeReadyMs": 6.64,
+          "keyframeBytes": 29822
+        },
+        {
+          "frame": 240,
+          "layer": 2,
+          "keyframeReadyMs": 12.898,
+          "keyframeBytes": 31079
+        },
+        {
+          "frame": 300,
+          "layer": 0,
+          "keyframeReadyMs": 15.943,
+          "keyframeBytes": 7185
+        },
+        {
+          "frame": 360,
+          "layer": 2,
+          "keyframeReadyMs": 14.962,
+          "keyframeBytes": 43851
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "scenario": "exact-warm",
+      "scene": "motion",
+      "codec": "v1.17.0",
+      "summary": {
+        "sourceFrames": 420,
+        "workMeanMs": 4.97,
+        "workP95Ms": 8.023,
+        "workOverFrameBudget": 0,
+        "cpuMs": 4218.75,
+        "cpuCyclesPerFrame": 35567133.54,
+        "cpuCoresAt30Fps": 0.301,
+        "createCount": 3,
+        "createMs": 6.591,
+        "encodedFrames": [
+          180,
+          60,
+          300,
+          0
+        ],
+        "encodedBytes": [
+          207584,
+          294116,
+          4429337,
+          0
+        ]
+      },
+      "inputResidentBytes": 134868992,
+      "activeResidentBytes": 231882752,
+      "stoppedResidentBytes": 136556544,
+      "phases": [
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 6.819,
+          "workP95Ms": 12.424,
+          "workOverFrameBudget": 0,
+          "cpuMs": 906.25,
+          "cpuCyclesPerFrame": 48590315.05,
+          "cpuCoresAt30Fps": 0.453,
+          "createCount": 1,
+          "createMs": 4.264,
+          "encodedFrames": [
+            0,
+            0,
+            60,
+            0
+          ],
+          "encodedBytes": [
+            0,
+            0,
+            1101559,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 7.033,
+          "workP95Ms": 8.023,
+          "workOverFrameBudget": 0,
+          "cpuMs": 765.625,
+          "cpuCyclesPerFrame": 49349932.833,
+          "cpuCoresAt30Fps": 0.383,
+          "createCount": 1,
+          "createMs": 0.769,
+          "encodedFrames": [
+            60,
+            0,
+            60,
+            0
+          ],
+          "encodedBytes": [
+            72001,
+            0,
+            906072,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 0.642,
+          "workP95Ms": 0.904,
+          "workOverFrameBudget": 0,
+          "cpuMs": 187.5,
+          "cpuCyclesPerFrame": 4973236.483,
+          "cpuCoresAt30Fps": 0.094,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            60,
+            0,
+            0,
+            0
+          ],
+          "encodedBytes": [
+            83372,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 1.81,
+          "workP95Ms": 3.052,
+          "workOverFrameBudget": 0,
+          "cpuMs": 187.5,
+          "cpuCyclesPerFrame": 13568736.9,
+          "cpuCoresAt30Fps": 0.094,
+          "createCount": 1,
+          "createMs": 1.558,
+          "encodedFrames": [
+            0,
+            60,
+            0,
+            0
+          ],
+          "encodedBytes": [
+            0,
+            294116,
+            0,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 5.13,
+          "workP95Ms": 5.738,
+          "workOverFrameBudget": 0,
+          "cpuMs": 281.25,
+          "cpuCyclesPerFrame": 38341723.533,
+          "cpuCoresAt30Fps": 0.141,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            0,
+            0,
+            60,
+            0
+          ],
+          "encodedBytes": [
+            0,
+            0,
+            606169,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 6.996,
+          "workP95Ms": 8.139,
+          "workOverFrameBudget": 0,
+          "cpuMs": 1156.25,
+          "cpuCyclesPerFrame": 49199003.283,
+          "cpuCoresAt30Fps": 0.578,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            60,
+            0,
+            60,
+            0
+          ],
+          "encodedBytes": [
+            52211,
+            0,
+            935201,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 6.356,
+          "workP95Ms": 7.421,
+          "workOverFrameBudget": 0,
+          "cpuMs": 734.375,
+          "cpuCyclesPerFrame": 44946986.7,
+          "cpuCoresAt30Fps": 0.367,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            0,
+            0,
+            60,
+            0
+          ],
+          "encodedBytes": [
+            0,
+            0,
+            880336,
+            0
+          ]
+        }
+      ],
+      "transitions": [
+        {
+          "frame": 0,
+          "layer": 2,
+          "keyframeReadyMs": 20.71,
+          "keyframeBytes": 32308
+        },
+        {
+          "frame": 60,
+          "layer": 0,
+          "keyframeReadyMs": 16.579,
+          "keyframeBytes": 8272
+        },
+        {
+          "frame": 120,
+          "layer": 0,
+          "keyframeReadyMs": 1.421,
+          "keyframeBytes": 4336
+        },
+        {
+          "frame": 180,
+          "layer": 1,
+          "keyframeReadyMs": 5.77,
+          "keyframeBytes": 29822
+        },
+        {
+          "frame": 240,
+          "layer": 2,
+          "keyframeReadyMs": 21.558,
+          "keyframeBytes": 228469
+        },
+        {
+          "frame": 300,
+          "layer": 0,
+          "keyframeReadyMs": 16.927,
+          "keyframeBytes": 22184
+        },
+        {
+          "frame": 360,
+          "layer": 2,
+          "keyframeReadyMs": 14.679,
+          "keyframeBytes": 43851
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "scenario": "exact-cold",
+      "scene": "motion",
+      "codec": "v1.17.0",
+      "summary": {
+        "sourceFrames": 420,
+        "workMeanMs": 5.25,
+        "workP95Ms": 9.224,
+        "workOverFrameBudget": 0,
+        "cpuMs": 4687.5,
+        "cpuCyclesPerFrame": 37017168.495,
+        "cpuCoresAt30Fps": 0.335,
+        "createCount": 5,
+        "createMs": 11.468,
+        "encodedFrames": [
+          180,
+          60,
+          300,
+          0
+        ],
+        "encodedBytes": [
+          227182,
+          294116,
+          4976220,
+          0
+        ]
+      },
+      "inputResidentBytes": 134873088,
+      "activeResidentBytes": 208179200,
+      "stoppedResidentBytes": 136597504,
+      "phases": [
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 6.798,
+          "workP95Ms": 11.715,
+          "workOverFrameBudget": 0,
+          "cpuMs": 1281.25,
+          "cpuCyclesPerFrame": 48112555.167,
+          "cpuCoresAt30Fps": 0.641,
+          "createCount": 1,
+          "createMs": 4.263,
+          "encodedFrames": [
+            0,
+            0,
+            60,
+            0
+          ],
+          "encodedBytes": [
+            0,
+            0,
+            1101559,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 7.123,
+          "workP95Ms": 7.631,
+          "workOverFrameBudget": 0,
+          "cpuMs": 828.125,
+          "cpuCyclesPerFrame": 50188931.65,
+          "cpuCoresAt30Fps": 0.414,
+          "createCount": 1,
+          "createMs": 0.838,
+          "encodedFrames": [
+            60,
+            0,
+            60,
+            0
+          ],
+          "encodedBytes": [
+            72001,
+            0,
+            906072,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 0.665,
+          "workP95Ms": 0.793,
+          "workOverFrameBudget": 0,
+          "cpuMs": 187.5,
+          "cpuCyclesPerFrame": 4975088.2,
+          "cpuCoresAt30Fps": 0.094,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            60,
+            0,
+            0,
+            0
+          ],
+          "encodedBytes": [
+            83372,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 1.822,
+          "workP95Ms": 3.16,
+          "workOverFrameBudget": 0,
+          "cpuMs": 250,
+          "cpuCyclesPerFrame": 13768425.733,
+          "cpuCoresAt30Fps": 0.125,
+          "createCount": 1,
+          "createMs": 1.561,
+          "encodedFrames": [
+            0,
+            60,
+            0,
+            0
+          ],
+          "encodedBytes": [
+            0,
+            294116,
+            0,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 6.832,
+          "workP95Ms": 11.655,
+          "workOverFrameBudget": 0,
+          "cpuMs": 546.875,
+          "cpuCyclesPerFrame": 48656173.883,
+          "cpuCoresAt30Fps": 0.273,
+          "createCount": 1,
+          "createMs": 4.051,
+          "encodedFrames": [
+            0,
+            0,
+            60,
+            0
+          ],
+          "encodedBytes": [
+            0,
+            0,
+            1117930,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 6.964,
+          "workP95Ms": 9.224,
+          "workOverFrameBudget": 0,
+          "cpuMs": 828.125,
+          "cpuCyclesPerFrame": 48336316.817,
+          "cpuCoresAt30Fps": 0.414,
+          "createCount": 1,
+          "createMs": 0.755,
+          "encodedFrames": [
+            60,
+            0,
+            60,
+            0
+          ],
+          "encodedBytes": [
+            71809,
+            0,
+            910931,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 6.549,
+          "workP95Ms": 7.418,
+          "workOverFrameBudget": 0,
+          "cpuMs": 765.625,
+          "cpuCyclesPerFrame": 45082688.017,
+          "cpuCoresAt30Fps": 0.383,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            0,
+            0,
+            60,
+            0
+          ],
+          "encodedBytes": [
+            0,
+            0,
+            939728,
+            0
+          ]
+        }
+      ],
+      "transitions": [
+        {
+          "frame": 0,
+          "layer": 2,
+          "keyframeReadyMs": 20.893,
+          "keyframeBytes": 32308
+        },
+        {
+          "frame": 60,
+          "layer": 0,
+          "keyframeReadyMs": 15.545,
+          "keyframeBytes": 8272
+        },
+        {
+          "frame": 120,
+          "layer": 0,
+          "keyframeReadyMs": 3.742,
+          "keyframeBytes": 4336
+        },
+        {
+          "frame": 180,
+          "layer": 1,
+          "keyframeReadyMs": 6.294,
+          "keyframeBytes": 29822
+        },
+        {
+          "frame": 240,
+          "layer": 2,
+          "keyframeReadyMs": 19.761,
+          "keyframeBytes": 32268
+        },
+        {
+          "frame": 300,
+          "layer": 0,
+          "keyframeReadyMs": 16.61,
+          "keyframeBytes": 8284
+        },
+        {
+          "frame": 360,
+          "layer": 2,
+          "keyframeReadyMs": 14.382,
+          "keyframeBytes": 31246
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "scenario": "envelope",
+      "scene": "motion",
+      "codec": "v1.17.0",
+      "summary": {
+        "sourceFrames": 420,
+        "workMeanMs": 6.668,
+        "workP95Ms": 11.363,
+        "workOverFrameBudget": 1,
+        "cpuMs": 6109.375,
+        "cpuCyclesPerFrame": 46602515.583,
+        "cpuCoresAt30Fps": 0.436,
+        "createCount": 5,
+        "createMs": 12.898,
+        "encodedFrames": [
+          420,
+          360,
+          300,
+          0
+        ],
+        "encodedBytes": [
+          536510,
+          1805256,
+          4976220,
+          0
+        ]
+      },
+      "inputResidentBytes": 134868992,
+      "activeResidentBytes": 232144896,
+      "stoppedResidentBytes": 136798208,
+      "phases": [
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 8.999,
+          "workP95Ms": 13.241,
+          "workOverFrameBudget": 0,
+          "cpuMs": 1140.625,
+          "cpuCyclesPerFrame": 63126475.317,
+          "cpuCoresAt30Fps": 0.57,
+          "createCount": 3,
+          "createMs": 6.636,
+          "encodedFrames": [
+            60,
+            60,
+            60,
+            0
+          ],
+          "encodedBytes": [
+            76218,
+            299124,
+            1101559,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 8.601,
+          "workP95Ms": 9.62,
+          "workOverFrameBudget": 1,
+          "cpuMs": 1000,
+          "cpuCyclesPerFrame": 60494139.317,
+          "cpuCoresAt30Fps": 0.5,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            60,
+            60,
+            60,
+            0
+          ],
+          "encodedBytes": [
+            78385,
+            344891,
+            906072,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 0.66,
+          "workP95Ms": 0.895,
+          "workOverFrameBudget": 0,
+          "cpuMs": 78.125,
+          "cpuCyclesPerFrame": 4365287.983,
+          "cpuCoresAt30Fps": 0.039,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            60,
+            0,
+            0,
+            0
+          ],
+          "encodedBytes": [
+            69518,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 2.407,
+          "workP95Ms": 3.725,
+          "workOverFrameBudget": 0,
+          "cpuMs": 328.125,
+          "cpuCyclesPerFrame": 17466828.283,
+          "cpuCoresAt30Fps": 0.164,
+          "createCount": 1,
+          "createMs": 1.56,
+          "encodedFrames": [
+            60,
+            60,
+            0,
+            0
+          ],
+          "encodedBytes": [
+            76630,
+            294116,
+            0,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 8.964,
+          "workP95Ms": 13.039,
+          "workOverFrameBudget": 0,
+          "cpuMs": 1125,
+          "cpuCyclesPerFrame": 62410755.083,
+          "cpuCoresAt30Fps": 0.562,
+          "createCount": 1,
+          "createMs": 4.702,
+          "encodedFrames": [
+            60,
+            60,
+            60,
+            0
+          ],
+          "encodedBytes": [
+            71017,
+            300401,
+            1117930,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 8.336,
+          "workP95Ms": 9.784,
+          "workOverFrameBudget": 0,
+          "cpuMs": 859.375,
+          "cpuCyclesPerFrame": 58408691.767,
+          "cpuCoresAt30Fps": 0.43,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            60,
+            60,
+            60,
+            0
+          ],
+          "encodedBytes": [
+            87244,
+            283072,
+            910931,
+            0
+          ]
+        },
+        {
+          "sourceFrames": 60,
+          "workMeanMs": 8.71,
+          "workP95Ms": 9.7,
+          "workOverFrameBudget": 0,
+          "cpuMs": 1578.125,
+          "cpuCyclesPerFrame": 59945431.333,
+          "cpuCoresAt30Fps": 0.789,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            60,
+            60,
+            60,
+            0
+          ],
+          "encodedBytes": [
+            77498,
+            283652,
+            939728,
+            0
+          ]
+        }
+      ],
+      "transitions": [
+        {
+          "frame": 0,
+          "layer": 2,
+          "keyframeReadyMs": 18.924,
+          "keyframeBytes": 32308
+        },
+        {
+          "frame": 60,
+          "layer": 0,
+          "keyframeReadyMs": 19.379,
+          "keyframeBytes": 2812
+        },
+        {
+          "frame": 120,
+          "layer": 0,
+          "keyframeReadyMs": 4.458,
+          "keyframeBytes": 8361
+        },
+        {
+          "frame": 180,
+          "layer": 1,
+          "keyframeReadyMs": 6.04,
+          "keyframeBytes": 29822
+        },
+        {
+          "frame": 240,
+          "layer": 2,
+          "keyframeReadyMs": 20.817,
+          "keyframeBytes": 32268
+        },
+        {
+          "frame": 300,
+          "layer": 0,
+          "keyframeReadyMs": 18.511,
+          "keyframeBytes": 5957
+        },
+        {
+          "frame": 360,
+          "layer": 2,
+          "keyframeReadyMs": 13.691,
+          "keyframeBytes": 31246
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "scenario": "low",
+      "scene": "motion",
+      "codec": "v1.17.0",
+      "summary": {
+        "sourceFrames": 90,
+        "workMeanMs": 0.652,
+        "workP95Ms": 0.978,
+        "workOverFrameBudget": 0,
+        "cpuMs": 93.75,
+        "cpuCyclesPerFrame": 4359299.067,
+        "cpuCoresAt30Fps": 0.031,
+        "createCount": 0,
+        "createMs": 0,
+        "encodedFrames": [
+          90,
+          0,
+          0,
+          0
+        ],
+        "encodedBytes": [
+          122802,
+          0,
+          0,
+          0
+        ]
+      },
+      "inputResidentBytes": 134873088,
+      "activeResidentBytes": 140865536,
+      "stoppedResidentBytes": 136876032,
+      "phases": [
+        {
+          "sourceFrames": 90,
+          "workMeanMs": 0.652,
+          "workP95Ms": 0.978,
+          "workOverFrameBudget": 0,
+          "cpuMs": 93.75,
+          "cpuCyclesPerFrame": 4359299.067,
+          "cpuCoresAt30Fps": 0.031,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            90,
+            0,
+            0,
+            0
+          ],
+          "encodedBytes": [
+            122802,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "transitions": []
+    },
+    {
+      "round": 2,
+      "scenario": "mid-low",
+      "scene": "motion",
+      "codec": "v1.17.0",
+      "summary": {
+        "sourceFrames": 90,
+        "workMeanMs": 2.333,
+        "workP95Ms": 3.391,
+        "workOverFrameBudget": 0,
+        "cpuMs": 531.25,
+        "cpuCyclesPerFrame": 16267237.033,
+        "cpuCoresAt30Fps": 0.177,
+        "createCount": 0,
+        "createMs": 0,
+        "encodedFrames": [
+          90,
+          90,
+          0,
+          0
+        ],
+        "encodedBytes": [
+          122802,
+          506114,
+          0,
+          0
+        ]
+      },
+      "inputResidentBytes": 134868992,
+      "activeResidentBytes": 159858688,
+      "stoppedResidentBytes": 136118272,
+      "phases": [
+        {
+          "sourceFrames": 90,
+          "workMeanMs": 2.333,
+          "workP95Ms": 3.391,
+          "workOverFrameBudget": 0,
+          "cpuMs": 531.25,
+          "cpuCyclesPerFrame": 16267237.033,
+          "cpuCoresAt30Fps": 0.177,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            90,
+            90,
+            0,
+            0
+          ],
+          "encodedBytes": [
+            122802,
+            506114,
+            0,
+            0
+          ]
+        }
+      ],
+      "transitions": []
+    },
+    {
+      "round": 2,
+      "scenario": "all",
+      "scene": "motion",
+      "codec": "v1.17.0",
+      "summary": {
+        "sourceFrames": 90,
+        "workMeanMs": 8.743,
+        "workP95Ms": 11.777,
+        "workOverFrameBudget": 0,
+        "cpuMs": 1890.625,
+        "cpuCyclesPerFrame": 60031697.044,
+        "cpuCoresAt30Fps": 0.63,
+        "createCount": 0,
+        "createMs": 0,
+        "encodedFrames": [
+          90,
+          90,
+          90,
+          0
+        ],
+        "encodedBytes": [
+          122802,
+          506114,
+          1528747,
+          0
+        ]
+      },
+      "inputResidentBytes": 134873088,
+      "activeResidentBytes": 232071168,
+      "stoppedResidentBytes": 135905280,
+      "phases": [
+        {
+          "sourceFrames": 90,
+          "workMeanMs": 8.743,
+          "workP95Ms": 11.777,
+          "workOverFrameBudget": 0,
+          "cpuMs": 1890.625,
+          "cpuCyclesPerFrame": 60031697.044,
+          "cpuCoresAt30Fps": 0.63,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            90,
+            90,
+            90,
+            0
+          ],
+          "encodedBytes": [
+            122802,
+            506114,
+            1528747,
+            0
+          ]
+        }
+      ],
+      "transitions": []
+    },
+    {
+      "round": 2,
+      "scenario": "high-low",
+      "scene": "motion",
+      "codec": "v1.17.0",
+      "summary": {
+        "sourceFrames": 90,
+        "workMeanMs": 7.139,
+        "workP95Ms": 9.929,
+        "workOverFrameBudget": 0,
+        "cpuMs": 1265.625,
+        "cpuCyclesPerFrame": 49574775.556,
+        "cpuCoresAt30Fps": 0.422,
+        "createCount": 0,
+        "createMs": 0,
+        "encodedFrames": [
+          90,
+          0,
+          90,
+          0
+        ],
+        "encodedBytes": [
+          122802,
+          0,
+          1528747,
+          0
+        ]
+      },
+      "inputResidentBytes": 134873088,
+      "activeResidentBytes": 213245952,
+      "stoppedResidentBytes": 136605696,
+      "phases": [
+        {
+          "sourceFrames": 90,
+          "workMeanMs": 7.139,
+          "workP95Ms": 9.929,
+          "workOverFrameBudget": 0,
+          "cpuMs": 1265.625,
+          "cpuCyclesPerFrame": 49574775.556,
+          "cpuCoresAt30Fps": 0.422,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            90,
+            0,
+            90,
+            0
+          ],
+          "encodedBytes": [
+            122802,
+            0,
+            1528747,
+            0
+          ]
+        }
+      ],
+      "transitions": []
+    },
+    {
+      "round": 2,
+      "scenario": "two-high",
+      "scene": "motion",
+      "codec": "v1.17.0",
+      "summary": {
+        "sourceFrames": 90,
+        "workMeanMs": 13.119,
+        "workP95Ms": 18.577,
+        "workOverFrameBudget": 1,
+        "cpuMs": 2234.375,
+        "cpuCyclesPerFrame": 89077219.1,
+        "cpuCoresAt30Fps": 0.745,
+        "createCount": 0,
+        "createMs": 0,
+        "encodedFrames": [
+          0,
+          0,
+          90,
+          90
+        ],
+        "encodedBytes": [
+          0,
+          0,
+          1528747,
+          1528747
+        ]
+      },
+      "inputResidentBytes": 134873088,
+      "activeResidentBytes": 279961600,
+      "stoppedResidentBytes": 135872512,
+      "phases": [
+        {
+          "sourceFrames": 90,
+          "workMeanMs": 13.119,
+          "workP95Ms": 18.577,
+          "workOverFrameBudget": 1,
+          "cpuMs": 2234.375,
+          "cpuCyclesPerFrame": 89077219.1,
+          "cpuCoresAt30Fps": 0.745,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            0,
+            0,
+            90,
+            90
+          ],
+          "encodedBytes": [
+            0,
+            0,
+            1528747,
+            1528747
+          ]
+        }
+      ],
+      "transitions": []
+    },
+    {
+      "round": 2,
+      "scenario": "high",
+      "scene": "motion",
+      "codec": "v1.17.0",
+      "summary": {
+        "sourceFrames": 90,
+        "workMeanMs": 6.533,
+        "workP95Ms": 9.993,
+        "workOverFrameBudget": 0,
+        "cpuMs": 718.75,
+        "cpuCyclesPerFrame": 45666274.333,
+        "cpuCoresAt30Fps": 0.24,
+        "createCount": 0,
+        "createMs": 0,
+        "encodedFrames": [
+          0,
+          0,
+          90,
+          0
+        ],
+        "encodedBytes": [
+          0,
+          0,
+          1528747,
+          0
+        ]
+      },
+      "inputResidentBytes": 134873088,
+      "activeResidentBytes": 207974400,
+      "stoppedResidentBytes": 136970240,
+      "phases": [
+        {
+          "sourceFrames": 90,
+          "workMeanMs": 6.533,
+          "workP95Ms": 9.993,
+          "workOverFrameBudget": 0,
+          "cpuMs": 718.75,
+          "cpuCyclesPerFrame": 45666274.333,
+          "cpuCoresAt30Fps": 0.24,
+          "createCount": 0,
+          "createMs": 0,
+          "encodedFrames": [
+            0,
+            0,
+            90,
+            0
+          ],
+          "encodedBytes": [
+            0,
+            0,
+            1528747,
+            0
+          ]
+        }
+      ],
+      "transitions": []
+    }
+  ]
+}

@@ -7,17 +7,17 @@ identity is owned by the immutable release descriptor, runtime `REVISION`, and
 deployment record. [Status](./status.md) owns only the compact current product
 and operational snapshot; it is not a per-release ledger.
 
-The tracked `release-app.sh` is the updater for the current bare-metal nginx,
-LiveKit, coturn, nftables, and local-port-8787 deployment. It requires an
-existing current release. Another proxy, optional-LiveKit shape, firewall owner,
-application port, or first installation needs its own scoped bootstrap/updater;
-do not call this wrapper generic.
+The tracked `release-app.sh` updates an existing Go deployment with embedded
+media, bare-metal nginx, nftables, and application port 8787. It requires an
+existing running Go release. Another proxy, firewall owner, application port,
+first installation, or initial embedded-media cutover needs its own scoped
+bootstrap/updater; do not call this wrapper generic.
 
 ## Release Boundary
 
 A routine application release changes only the built Screener server binary and
 the Browser assets it embeds. It does not change infrastructure,
-service units, proxy/firewall rules, secrets, LiveKit/coturn configuration, or
+service units, proxy/firewall rules, secrets, media listener configuration, or
 persistent room state.
 
 Any task that touches one of those excluded surfaces must first record its exact
@@ -64,6 +64,13 @@ is one of `windows-amd64`, `linux-amd64`, or `darwin-arm64`; every supplied
 binary input must match it. It does not create an installer, auto-updater,
 release tag, or compatibility bundle.
 
+Darwin Client assembly runs on macOS with its SDK and cgo enabled: the pinned
+LiveKit dependency's [Darwin CPU statistics](https://github.com/mackerelio/go-osstat/blob/v0.2.8/cpu/cpu_darwin_cgo.go)
+call Mach APIs. Windows and Linux
+Client builds keep cgo disabled. A core check on those hosts explicitly skips
+the Darwin binaries; macOS build and package verification belong to the existing
+native runner. This does not change the cgo-free linux/amd64 Server artifact.
+
 The platform package also carries its native presentation metadata: Windows
 embeds the icon in the Go executable, Linux emits a freedesktop desktop entry
 under `share/`, and macOS emits a thin `.app` launcher with an ICNS resource.
@@ -88,11 +95,11 @@ Retain the descriptor and successful deployment output as release metadata. Do
 not create a follow-up source commit solely to duplicate their revision, asset,
 or hashes.
 
-After `validate` succeeds on a push to `main`, CI packages one short-lived
-Server application release. The three-platform Client matrix is an explicit
-manual workflow dispatch with `client_checks=true`; it consumes that same
-application artifact and retains the candidates for 14 days. Neither path is a
-tag, public GitHub Release, or deployment.
+After `validate` succeeds on an explicit workflow dispatch with
+`client_checks=true`, CI packages the Server application release and the
+three-platform Client candidates that consume it. The artifacts are retained
+for 14 days. Ordinary `main` pushes do not run these packaging jobs. This
+workflow does not create a tag, public GitHub Release, or deployment.
 
 Do not build or run the full repository check on a constrained production host.
 That host runs only the packaged binary and needs no Node, npm, or dependency
@@ -130,13 +137,16 @@ state. A different current-revision file may be supplied as its only argument.
 
 ## Atomic Cutover
 
-### First Go cutover prerequisite
+### First embedded-media cutover prerequisite
 
-The release wrapper is an application updater, not a systemd installer. Before
-the first Go release, install and reload the tracked unit as described in the
-[self-hosting cutover procedure](./operations/self-hosting.md#first-go-service-cutover).
-Do not mix the new Go binary with the old Node unit or an environment file that
-still sets `NODE_ENV`.
+The first move from external services to embedded STUN/SFU is a coordinated
+infrastructure and protocol transaction, including Node-to-Go where still
+needed. Complete the [self-hosting cutover procedure](./operations/self-hosting.md#coordinated-embedded-media-cutover)
+with matching `screener-v22` Web/Server and native protocol v9 Client builds,
+accepted active-session interruption, released UDP ports, and exact
+unit/environment/proxy/service recovery. The routine wrapper does not perform
+that transaction; it requires an already running packaged Go release and cannot
+restore the previous infrastructure.
 
 Run the tracked server entry with the uploaded descriptor:
 
@@ -149,7 +159,7 @@ sudo env SCREENER_PUBLIC_ORIGIN=https://share.example.com \
 The wrapper:
 
 1. takes a deployment lock and validates the descriptor, revision, archive,
-   manifest, current release, required services, and public origin;
+   manifest, current Go process, Screener/nginx service state, and public origin;
 2. rejects unexpected archive paths, links, file types, or duplicate inodes;
 3. extracts to a new release directory and verifies every file hash and size;
 4. validates production configuration by running the packaged binary's
@@ -174,7 +184,7 @@ process state.
 
 Lightweight mode has no persistent room state and starts empty. A release does
 not add a migration or compatibility reader for either mode; current exact
-schema validation fails closed before signaling or LiveKit mutation.
+schema validation fails closed before accepting signaling or media admission.
 
 ## Postflight
 
@@ -182,8 +192,9 @@ Verify only the surfaces relevant to the release:
 
 - local and public `/healthz` return `{"status":"ok"}`;
 - the public HTML references the new immutable main asset;
-- Screener, nginx, coturn, and LiveKit have expected active/restart
-  state;
+- Screener and nginx have expected active/restart state;
+- Screener owns each configured STUN/SFU UDP listener and public reachability
+  matches the configuration;
 - the current symlink and served revision match the descriptor;
 - room creation, Host authentication, one direct Viewer, and configured SFU
   fallback complete the scoped smoke; and

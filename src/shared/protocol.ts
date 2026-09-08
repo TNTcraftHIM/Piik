@@ -7,7 +7,7 @@ import { NAT_TRAVERSAL_PATHS } from "./nat-candidate.js";
 export const MAX_VIEWERS_PER_ROOM_LIMIT = 20;
 export const MAX_PARTICIPANTS_PER_ROOM_LIMIT = MAX_VIEWERS_PER_ROOM_LIMIT + 1;
 export const MAX_SIGNAL_BYTES = 64 * 1024;
-export const SIGNALING_PROTOCOL = "screener-v21";
+export const SIGNALING_PROTOCOL = "screener-v22";
 export const SIGNAL_CLOSE_CODES = {
   serviceRestart: 1012,
   sessionReplaced: 4001,
@@ -17,7 +17,6 @@ export const SIGNAL_CLOSE_CODES = {
 } as const;
 export const ROOM_CODE_LENGTH = 4;
 export const MAX_MEDIA_ROUTE_REVISION = Number.MAX_SAFE_INTEGER;
-export const MAX_SFU_TOKEN_LENGTH = 8 * 1024;
 export const MAX_ICE_SERVER_URLS = 8;
 export const MAX_NAT_PREDICTION_AUXILIARY_STUN_URLS = 2;
 export const MAX_VIEWER_QUALITY_EVIDENCE_BYTES = 2 * 1024;
@@ -145,18 +144,6 @@ export const viewerPasswordSchema = z
 export const codeEntryPolicySchema = z.enum(["open", "private"]);
 export type CodeEntryPolicy = z.infer<typeof codeEntryPolicySchema>;
 
-const liveKitWebSocketUrlSchema = z
-  .string()
-  .url()
-  .max(2048)
-  .refine((value) => {
-    try {
-      const protocol = new URL(value).protocol;
-      return protocol === "ws:" || protocol === "wss:";
-    } catch {
-      return false;
-    }
-  });
 
 export const roomCodeSchema = z
   .string()
@@ -341,6 +328,43 @@ export const signalPayloadSchema = z.discriminatedUnion("kind", [
     .strict(),
 ]);
 export type SignalPayload = z.infer<typeof signalPayloadSchema>;
+
+export const sfuMediaSchema = z.object({
+  codec: z.enum(["h264", "vp8"]),
+  layers: z.array(z.object({
+    rid: z.string().max(16),
+    width: z.number().int().min(1).max(8192),
+    height: z.number().int().min(1).max(8192),
+    bitrate: z.number().int().min(1).max(100_000_000),
+  }).strict()).min(1).max(3),
+  audio: z.boolean(),
+  audioBitrate: z.number().int().min(0).max(510_000),
+}).strict().refine((media) =>
+  (!media.audio || media.audioBitrate > 0) &&
+  new Set(media.layers.map((layer) => layer.rid)).size === media.layers.length &&
+  (media.layers.length === 1 || media.layers.every((layer) => layer.rid !== "")),
+);
+export type SfuMedia = z.infer<typeof sfuMediaSchema>;
+
+const sfuSignalMessageSchema = z.object({
+  type: z.literal("sfu-signal"),
+  revision: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+  publicationGeneration: opaqueIdSchema,
+  connectionId: opaqueIdSchema,
+  kind: z.enum(["subscribe", "description", "candidate", "media", "layers"]),
+  description: sessionDescriptionSchema.optional(),
+  candidate: iceCandidateSchema.optional(),
+  media: sfuMediaSchema.optional(),
+  activeCount: z.number().int().min(0).max(3).optional(),
+}).strict().refine((message) => {
+  if (message.kind === "layers") return message.activeCount !== undefined && !message.description && !message.candidate && !message.media;
+  if (message.activeCount !== undefined) return false;
+  if (message.kind === "media") return Boolean(message.media) && !message.description && !message.candidate;
+  if (message.kind === "subscribe") return !message.description && !message.candidate && !message.media;
+  if (message.kind === "candidate") return !message.description && !message.media;
+  return Boolean(message.description) && !message.candidate && (!message.media || message.description?.type === "offer");
+});
+export type SfuSignalMessage = z.infer<typeof sfuSignalMessageSchema>;
 
 export const preparedRouteCandidateSchema = z
   .object({
@@ -887,6 +911,7 @@ export const clientMessageSchema = z.union([
       revision: mediaRouteRevisionSchema,
     })
     .strict(),
+  sfuSignalMessageSchema,
   z.object({ type: z.literal("request-route-diagnostic") }).strict(),
   viewerQualityEvidenceMessageSchema,
   senderQualityEvidenceMessageSchema,
@@ -966,7 +991,6 @@ const routeAuthenticatedShape = {
   routeRevision: mediaRouteRevisionSchema,
   routeAssignment: participantRouteAssignmentSchema,
   qualitySettings: qualitySettingsSchema,
-  sfuStandbyUrl: liveKitWebSocketUrlSchema.optional(),
 };
 
 const authenticatedMessageSchema = z.union([
@@ -1054,10 +1078,11 @@ export const serverMessageSchema = z.union([
     .object({
       type: z.literal("sfu-config"),
       revision: mediaRouteRevisionSchema,
-      url: liveKitWebSocketUrlSchema,
-      token: z.string().min(1).max(MAX_SFU_TOKEN_LENGTH),
+      publicationGeneration: opaqueIdSchema,
+      connectionId: opaqueIdSchema,
     })
     .strict(),
+  sfuSignalMessageSchema,
   z
     .object({
       type: z.literal("quality-settings"),
@@ -1069,7 +1094,6 @@ export const serverMessageSchema = z.union([
       type: z.literal("route-policy"),
       shareGeneration: opaqueIdSchema,
       routePolicy: routePolicySchema,
-      sfuStandbyUrl: liveKitWebSocketUrlSchema.optional(),
     })
     .strict(),
   z

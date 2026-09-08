@@ -50,13 +50,13 @@ export class NativeCapableViewerPeer implements ViewerMediaPeer {
   private identity: { parentPeerId: string; connectionId: string } | null = null;
   private signalTail: Promise<void> = Promise.resolve();
   private currentIceConfig: PeerIceConfig;
-  private forceBrowserNext = false;
 
   constructor(
     iceConfig: PeerIceConfig,
     private readonly events: ViewerPeerEvents,
     private readonly options: ViewerPeerOptions,
-    private readonly nativeClient: Promise<NativeClient | null>,
+    private readonly acquireNativeClient: () => Promise<NativeClient | null>,
+    private readonly onNativeUnavailable: () => void,
     private readonly nativeSessionId: string,
     private readonly edgeCapacity: number,
   ) {
@@ -90,10 +90,8 @@ export class NativeCapableViewerPeer implements ViewerMediaPeer {
           this.identity = nextIdentity;
         }
         if (!this.backend) {
-          const forceBrowser = this.forceBrowserNext;
-          this.forceBrowserNext = false;
-          const client = !forceBrowser && offerHasNativeVideoCodec(payload.description.sdp)
-            ? await this.nativeClient.catch(() => null)
+          const client = offerHasNativeVideoCodec(payload.description.sdp)
+            ? await this.acquireNativeClient().catch(() => null)
             : null;
           if (this.disposed) return;
           this.backend = client
@@ -104,9 +102,7 @@ export class NativeCapableViewerPeer implements ViewerMediaPeer {
                 client,
                 this.nativeSessionId,
                 this.edgeCapacity,
-                () => {
-                  this.forceBrowserNext = true;
-                },
+                this.onNativeUnavailable,
               )
             : this.newBrowserPeer();
         }
@@ -592,11 +588,11 @@ class NativeViewerPeer implements ViewerMediaPeer {
     void this.client.closeReceiver(this.sessionId, connectionId).catch(
       () => undefined,
     );
+    this.onFailure();
     if (this.recoveryOwner === "route") {
       this.reportRecoveryExhausted();
       return;
     }
-    this.onFailure();
     if (!this.requestRecovery(true)) {
       this.reportRecoveryExhausted();
     }

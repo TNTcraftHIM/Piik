@@ -1,6 +1,8 @@
 #include <gst/app/gstappsink.h>
+#include <gst/app/gstappsrc.h>
 #include <gst/gst.h>
 #include <gst/video/video-event.h>
+#include <glib-unix.h>
 
 #include <errno.h>
 #include <stdint.h>
@@ -13,7 +15,8 @@
 #include "portal.h"
 
 enum {
-  kCaptureProtocol = 4,
+  kCaptureProtocol = 7,
+  kMaxOutputs = 6,
   kMaxPayloadBytes = 4 * 1024 * 1024,
   kAudioFrameBytes = 960 * 2 * 2,
 };
@@ -38,21 +41,50 @@ typedef struct {
   guint bit_rate_divisor;
 } EncoderInfo;
 
+typedef struct CaptureRun CaptureRun;
+
 typedef struct {
+  CaptureRun *run;
+  GstElement *encoder;
+  GstElement *branch;
+  GstElement *gate;
+  VideoProfile profile;
+  guint layer;
+  gboolean enabled;
+  gboolean decodable;
+  guint64 key_requested;
+  guint64 key_sent;
+  guint64 key_acknowledged;
+  GstClockTime key_timestamp;
+  GstClockTime activation_timestamp;
+} VideoOutput;
+
+struct CaptureRun {
   GMainLoop *loop;
   GstElement *pipeline;
-  GstElement *encoder;
+  GstElement *encoded_source;
   VideoProfile profile;
+  VideoOutput outputs[kMaxOutputs];
+  guint output_count;
+  guint original_output;
   const EncoderInfo *encoder_info;
   const char *restore_token;
   GMutex lock;
   char *failure;
   gint stopping;
   gboolean active;
-  guint64 last_timestamp;
+  GstClockTime last_input_timestamp;
+  guint8 input_header[32];
+  guint input_header_length;
+  GByteArray *input_payload;
+  guint input_size;
+  guint64 encoded_timestamp;
+  gboolean encoded_started;
   GByteArray *audio;
   guint64 audio_timestamp;
-} CaptureRun;
+};
+
+static GMutex output_lock;
 
 static gboolean write_all(const void *data, size_t size) {
   const uint8_t *next = data;
@@ -79,15 +111,29 @@ static void put_u64_be(uint8_t *output, guint64 value) {
   }
 }
 
-static gboolean write_frame(guint8 kind, guint8 flags, guint64 timestamp,
-                            guint64 duration, const guint8 *payload,
-                            gsize size) {
-  if (payload == NULL || size == 0 || size > kMaxPayloadBytes) return FALSE;
-  uint8_t header[28] = {'S', 'M', 'E', 'D', 1, kind, flags, 0};
+static guint64 read_be(const guint8 *input, guint count) {
+  guint64 value = 0;
+  for (guint index = 0; index < count; ++index) value = (value << 8) | input[index];
+  return value;
+}
+
+static gboolean write_frame(guint8 kind, guint8 flags, guint8 layer,
+                            guint width, guint height, guint64 timestamp,
+                            guint64 duration, const guint8 *payload, gsize size) {
+  if ((kind != 5 && (payload == NULL || size == 0)) ||
+      size > ((kind == 3 || kind == 6) ? 1024 * 1024 : kMaxPayloadBytes)) return FALSE;
+  uint8_t header[32] = {'S', 'M', 'E', 'D', 2, kind, flags, layer};
   put_u64_be(header + 8, timestamp);
   put_u64_be(header + 16, duration);
-  put_u32_be(header + 24, (guint32)size);
-  return write_all(header, sizeof(header)) && write_all(payload, size);
+  header[24] = (guint8)(width >> 8);
+  header[25] = (guint8)width;
+  header[26] = (guint8)(height >> 8);
+  header[27] = (guint8)height;
+  put_u32_be(header + 28, (guint32)size);
+  g_mutex_lock(&output_lock);
+  gboolean written = write_all(header, sizeof(header)) && write_all(payload, size);
+  g_mutex_unlock(&output_lock);
+  return written;
 }
 
 static char *json_string(const char *value) {
@@ -129,7 +175,20 @@ static char *json_string(const char *value) {
 }
 
 static gboolean write_status(const char *json) {
-  return write_frame(3, 0, 0, 0, (const guint8 *)json, strlen(json));
+  return write_frame(3, 0, 0, 0, 0, 0, 0, (const guint8 *)json, strlen(json));
+}
+
+static char *output_profiles_json(const CaptureRun *run) {
+  GString *json = g_string_new("[");
+  for (guint index = 0; index < run->output_count; ++index) {
+    const VideoProfile *profile = &run->outputs[index].profile;
+    g_string_append_printf(json,
+        "%s{\"width\":%u,\"height\":%u,\"fps\":%u,\"bitrate\":%u}",
+        index == 0 ? "" : ",", profile->width, profile->height,
+        profile->frame_rate, profile->bit_rate);
+  }
+  g_string_append_c(json, ']');
+  return g_string_free(json, FALSE);
 }
 
 static void encoder_info_free(gpointer value) {
@@ -226,7 +285,7 @@ static gboolean has_factory(const char *name) {
 }
 
 static gboolean video_stack_available(void) {
-  const char *required[] = {"pipewiresrc", "queue", "videoconvert",
+  const char *required[] = {"pipewiresrc", "queue", "tee", "videoconvert",
                             "videoscale", "videorate", "h264parse",
                             "appsink"};
   for (guint index = 0; index < G_N_ELEMENTS(required); ++index) {
@@ -309,9 +368,60 @@ static gboolean parse_uint(const char *value, guint minimum, guint maximum,
   return TRUE;
 }
 
-static gboolean parse_profile(int count, char **values, VideoProfile *profile,
+static gboolean parse_outputs(int count, char **values, guint start, CaptureRun *run) {
+  if (count <= (int)start || (count - (int)start) % 5 != 0 ||
+      (count - (int)start) / 5 > kMaxOutputs) return FALSE;
+  run->output_count = (guint)(count - (int)start) / 5;
+  for (guint index = 0; index < run->output_count; ++index) {
+    guint offset = start + index * 5;
+    VideoOutput *output = &run->outputs[index];
+    output->run = run;
+    output->layer = index;
+    output->enabled = strcmp(values[1], "--capture-video") == 0 && index < 2;
+    output->key_requested = 1;
+    output->key_timestamp = GST_CLOCK_TIME_NONE;
+    output->activation_timestamp = GST_CLOCK_TIME_NONE;
+    output->profile.preference = run->profile.preference;
+    if (strcmp(values[offset], "--output") != 0 ||
+        !parse_uint(values[offset + 1], 2, 2560, &output->profile.width) ||
+        !parse_uint(values[offset + 2], 2, 1440, &output->profile.height) ||
+        !parse_uint(values[offset + 3], 1, 60, &output->profile.frame_rate) ||
+        !parse_uint(values[offset + 4], 1000, 12000000, &output->profile.bit_rate) ||
+        output->profile.width % 2 != 0 || output->profile.height % 2 != 0) return FALSE;
+  }
+  return TRUE;
+}
+
+static gboolean parse_preference(const char *value, VideoProfile *profile) {
+  if (strcmp(value, "maintain-resolution") == 0) profile->preference = kPreferResolution;
+  else if (strcmp(value, "balanced") == 0) profile->preference = kPreferBalanced;
+  else if (strcmp(value, "maintain-framerate") == 0) profile->preference = kPreferFramerate;
+  else return FALSE;
+  return TRUE;
+}
+
+static gboolean parse_profile(int count, char **values, CaptureRun *run,
                               guint *encoder_index) {
-  if (count != 23 || strcmp(values[1], "--capture-video") != 0 ||
+  VideoProfile *profile = &run->profile;
+  if (count >= 16 && strcmp(values[1], "--encoded-video") == 0) {
+    if (strcmp(values[2], "--codec") != 0 || strcmp(values[3], "h264") != 0 ||
+        strcmp(values[4], "--adapter-index") != 0 || strcmp(values[5], "0") != 0 ||
+        strcmp(values[6], "--mft-index") != 0 || !parse_uint(values[7], 0, 63, encoder_index) ||
+        strcmp(values[8], "--preference") != 0 || !parse_preference(values[9], profile) ||
+        strcmp(values[10], "--protocol-v7") != 0 || !parse_outputs(count, values, 11, run)) return FALSE;
+    for (guint index = 0; index < run->output_count; ++index) {
+      const VideoProfile *output = &run->outputs[index].profile;
+      profile->width = MAX(profile->width, output->width);
+      profile->height = MAX(profile->height, output->height);
+      profile->frame_rate = MAX(profile->frame_rate, output->frame_rate);
+      profile->bit_rate = MAX(profile->bit_rate, output->bit_rate);
+    }
+    run->original_output = 0;
+    return TRUE;
+  }
+  if (count < 28 || (count - 23) % 5 != 0 ||
+      (count - 23) / 5 > kMaxOutputs ||
+      strcmp(values[1], "--capture-video") != 0 ||
       strcmp(values[2], "picker") != 0 || strcmp(values[3], "1") != 0 ||
       strcmp(values[4], "0") != 0 || strcmp(values[5], "0") != 0 ||
       strcmp(values[6], "--adapter-index") != 0 ||
@@ -323,7 +433,7 @@ static gboolean parse_profile(int count, char **values, VideoProfile *profile,
       strcmp(values[18], "--preference") != 0 ||
       strcmp(values[20], "--codec") != 0 ||
       (strcmp(values[21], "auto") != 0 && strcmp(values[21], "h264") != 0) ||
-      strcmp(values[22], "--protocol-v4") != 0 ||
+      strcmp(values[22], "--protocol-v7") != 0 ||
       !parse_uint(values[9], 0, 63, encoder_index) ||
       !parse_uint(values[11], 1, 16384, &profile->width) ||
       !parse_uint(values[13], 1, 16384, &profile->height) ||
@@ -337,14 +447,16 @@ static gboolean parse_profile(int count, char **values, VideoProfile *profile,
       (profile->width == 1920 && profile->height == 1080) ||
       (profile->width == 2560 && profile->height == 1440);
   if (!resolution) return FALSE;
-  if (strcmp(values[19], "maintain-resolution") == 0) {
-    profile->preference = kPreferResolution;
-  } else if (strcmp(values[19], "balanced") == 0) {
-    profile->preference = kPreferBalanced;
-  } else if (strcmp(values[19], "maintain-framerate") == 0) {
-    profile->preference = kPreferFramerate;
-  } else {
-    return FALSE;
+  if (!parse_preference(values[19], profile) || !parse_outputs(count, values, 23, run)) return FALSE;
+  run->original_output = MIN(1, run->output_count - 1);
+  const VideoProfile *original = &run->outputs[run->original_output].profile;
+  if (original->width != profile->width || original->height != profile->height ||
+      original->frame_rate != profile->frame_rate ||
+      original->bit_rate != profile->bit_rate) return FALSE;
+  for (guint index = 0; index < run->output_count; ++index) {
+    const VideoProfile *output = &run->outputs[index].profile;
+    if (output->width > profile->width || output->height > profile->height ||
+        output->frame_rate > profile->frame_rate || output->bit_rate > profile->bit_rate) return FALSE;
   }
   return TRUE;
 }
@@ -355,17 +467,26 @@ static gboolean set_numeric_property(GObject *object, const char *name,
       g_object_class_find_property(G_OBJECT_GET_CLASS(object), name);
   if (property == NULL || !(property->flags & G_PARAM_WRITABLE)) return FALSE;
   GType type = G_PARAM_SPEC_VALUE_TYPE(property);
+  GValue setting = G_VALUE_INIT;
+  g_value_init(&setting, type);
   if (type == G_TYPE_UINT) {
-    g_object_set(object, name, (guint)value, NULL);
+    g_value_set_uint(&setting, (guint)value);
   } else if (type == G_TYPE_INT) {
-    g_object_set(object, name, (gint)value, NULL);
+    g_value_set_int(&setting, (gint)value);
   } else if (type == G_TYPE_UINT64) {
-    g_object_set(object, name, value, NULL);
+    g_value_set_uint64(&setting, value);
   } else if (type == G_TYPE_INT64) {
-    g_object_set(object, name, (gint64)value, NULL);
+    g_value_set_int64(&setting, (gint64)value);
   } else {
+    g_value_unset(&setting);
     return FALSE;
   }
+  if (g_param_value_validate(property, &setting)) {
+    g_value_unset(&setting);
+    return FALSE;
+  }
+  g_object_set_property(object, name, &setting);
+  g_value_unset(&setting);
   return TRUE;
 }
 
@@ -393,24 +514,25 @@ static void set_optional_enum(GObject *object, const char *name,
   g_type_class_unref(values);
 }
 
-static gboolean configure_encoder(CaptureRun *run) {
+static gboolean configure_encoder(VideoOutput *output) {
+  CaptureRun *run = output->run;
   guint64 bitrate =
-      run->profile.bit_rate / run->encoder_info->bit_rate_divisor;
-  if (!set_numeric_property(G_OBJECT(run->encoder), "bitrate", bitrate)) {
+      output->profile.bit_rate / run->encoder_info->bit_rate_divisor;
+  if (!set_numeric_property(G_OBJECT(output->encoder), "bitrate", bitrate)) {
     return FALSE;
   }
-  set_numeric_property(G_OBJECT(run->encoder), "key-int-max",
-                       run->profile.frame_rate * 2);
-  set_numeric_property(G_OBJECT(run->encoder), "b-frames", 0);
-  set_numeric_property(G_OBJECT(run->encoder), "ref-frames", 1);
-  set_optional_boolean(G_OBJECT(run->encoder), "cabac", FALSE);
-  set_optional_boolean(G_OBJECT(run->encoder), "aud", TRUE);
-  set_optional_boolean(G_OBJECT(run->encoder), "zerolatency", TRUE);
-  set_optional_enum(G_OBJECT(run->encoder), "rate-control", "cbr");
-  guint usage = run->profile.preference == kPreferResolution
+  set_numeric_property(G_OBJECT(output->encoder), "key-int-max",
+                       output->profile.frame_rate * 2);
+  set_numeric_property(G_OBJECT(output->encoder), "b-frames", 0);
+  set_numeric_property(G_OBJECT(output->encoder), "ref-frames", 1);
+  set_optional_boolean(G_OBJECT(output->encoder), "cabac", FALSE);
+  set_optional_boolean(G_OBJECT(output->encoder), "aud", TRUE);
+  set_optional_boolean(G_OBJECT(output->encoder), "zerolatency", TRUE);
+  set_optional_enum(G_OBJECT(output->encoder), "rate-control", "cbr");
+  guint usage = output->profile.preference == kPreferResolution
                     ? 1
                     : run->profile.preference == kPreferFramerate ? 7 : 4;
-  set_numeric_property(G_OBJECT(run->encoder), "target-usage", usage);
+  set_numeric_property(G_OBJECT(output->encoder), "target-usage", usage);
   return TRUE;
 }
 
@@ -480,40 +602,232 @@ static gboolean quit_loop(gpointer data) {
 
 static void fail_run(CaptureRun *run, const char *message) {
   g_mutex_lock(&run->lock);
-  if (run->failure == NULL) run->failure = g_strdup(message);
+  gboolean first = run->failure == NULL;
+  if (first) run->failure = g_strdup(message);
   g_mutex_unlock(&run->lock);
-  g_main_context_invoke(NULL, quit_loop, run);
+  if (first) g_main_context_invoke(NULL, quit_loop, run);
 }
 
-static gboolean force_key_frame(gpointer data) {
-  CaptureRun *run = data;
-  if (run->encoder == NULL) return G_SOURCE_REMOVE;
-  GstPad *source = gst_element_get_static_pad(run->encoder, "src");
-  if (source != NULL) {
-    gst_pad_send_event(
-        source,
-        gst_video_event_new_upstream_force_key_unit(GST_CLOCK_TIME_NONE, TRUE,
-                                                     0));
-    gst_object_unref(source);
+static void fail_output(VideoOutput *output, const char *message) {
+  write_frame(6, 0, (guint8)output->layer, 0, 0, 0, 0,
+              (const guint8 *)message, MIN(strlen(message), 512));
+  fail_run(output->run, message);
+}
+
+static gboolean set_output_active(VideoOutput *output, gboolean enabled) {
+  CaptureRun *run = output->run;
+  g_mutex_lock(&run->lock);
+  if (output->enabled == enabled) {
+    g_mutex_unlock(&run->lock);
+    return TRUE;
   }
-  return G_SOURCE_REMOVE;
+  output->enabled = FALSE;
+  output->decodable = FALSE;
+  output->activation_timestamp = GST_CLOCK_TIME_NONE;
+  output->key_timestamp = GST_CLOCK_TIME_NONE;
+  ++output->key_requested;
+  g_mutex_unlock(&run->lock);
+  // A closed valve isolates the retired branch from the other tee subscribers.
+  g_object_set(output->gate, "drop", TRUE, NULL);
+  gst_element_set_locked_state(output->branch, !enabled);
+  gboolean applied = enabled
+      ? gst_element_sync_state_with_parent(output->branch)
+      : gst_element_set_state(output->branch, GST_STATE_NULL) != GST_STATE_CHANGE_FAILURE;
+  if (!applied) return FALSE;
+  g_mutex_lock(&run->lock);
+  output->enabled = enabled;
+  g_mutex_unlock(&run->lock);
+  if (enabled) g_object_set(output->gate, "drop", FALSE, NULL);
+  return TRUE;
 }
 
-static gpointer control_input(gpointer data) {
+static gboolean apply_control(CaptureRun *run, char *line) {
+  char *values[4] = {0};
+  guint count = 0;
+  g_auto(GStrv) tokens = g_strsplit_set(line, " \t\r", -1);
+  for (guint index = 0; tokens[index] != NULL; ++index) {
+    char *part = tokens[index];
+    if (part[0] == '\0') continue;
+    if (count == G_N_ELEMENTS(values)) return FALSE;
+    values[count++] = part;
+  }
+  if (count == 1 && strcmp(values[0], "Q") == 0) {
+    g_atomic_int_set(&run->stopping, TRUE);
+    g_main_loop_quit(run->loop);
+    return TRUE;
+  }
+  if (run->output_count == 0) return FALSE;
+  guint layer = 0;
+  if (count == 2 && strcmp(values[0], "K") == 0) {
+    gboolean all = strcmp(values[1], "-1") == 0;
+    if (!all && !parse_uint(values[1], 0, run->output_count - 1, &layer)) return FALSE;
+    g_mutex_lock(&run->lock);
+    for (guint index = 0; index < run->output_count; ++index) {
+      if (all || index == layer) ++run->outputs[index].key_requested;
+    }
+    g_mutex_unlock(&run->lock);
+    return TRUE;
+  }
+  if (count == 3 && strcmp(values[0], "A") == 0) {
+    guint active = 0;
+    if (!parse_uint(values[1], 0, run->output_count - 1, &layer) ||
+        !parse_uint(values[2], 0, 1, &active)) return FALSE;
+    return set_output_active(&run->outputs[layer], active != 0);
+  }
+  if (count == 3 && strcmp(values[0], "B") == 0 &&
+      parse_uint(values[1], 0, run->output_count - 1, &layer)) {
+    VideoOutput *output = &run->outputs[layer];
+    guint bitrate = 0;
+    if (!parse_uint(values[2], 1000, output->profile.bit_rate, &bitrate)) return FALSE;
+    GParamSpec *property = g_object_class_find_property(
+        G_OBJECT_GET_CLASS(output->encoder), "bitrate");
+    if (property == NULL || !(property->flags & GST_PARAM_MUTABLE_PLAYING) ||
+        !set_numeric_property(G_OBJECT(output->encoder), "bitrate",
+                              MAX(1, bitrate / run->encoder_info->bit_rate_divisor))) {
+      fail_output(output, "hardware encoder cannot apply the live bitrate");
+    }
+    return TRUE;
+  }
+  return FALSE;
+}
+
+static gboolean valid_input_header(CaptureRun *run) {
+  const guint8 *header = run->input_header;
+  if (memcmp(header, "SMED", 4) != 0 || header[4] != 2) return FALSE;
+  run->input_size = (guint)read_be(header + 28, 4);
+  if (header[5] == 7) {
+    for (guint index = 6; index < 28; ++index) if (header[index] != 0) return FALSE;
+    return run->input_size > 0 && run->input_size <= 64;
+  }
+  if (header[5] != 2 || run->encoded_source == NULL || header[6] > 1 || header[7] != 0 ||
+      run->input_size == 0 || run->input_size > kMaxPayloadBytes) return FALSE;
+  guint width = (guint)read_be(header + 24, 2), height = (guint)read_be(header + 26, 2);
+  guint64 timestamp = read_be(header + 8, 8), duration = read_be(header + 16, 8);
+  return width >= 2 && width <= 2560 && height >= 2 && height <= 1440 &&
+         width % 2 == 0 && height % 2 == 0 && duration > 0 &&
+         timestamp <= INT64_MAX / 100 && duration <= INT64_MAX / 100;
+}
+
+static gboolean apply_input(CaptureRun *run) {
+  const guint8 *payload = run->input_payload->data;
+  if (run->input_header[5] == 7) {
+    for (guint index = 0; index < run->input_size; ++index) if (payload[index] < 32 || payload[index] > 126) return FALSE;
+    char command[65];
+    memcpy(command, payload, run->input_size);
+    command[run->input_size] = '\0';
+    return apply_control(run, command);
+  }
+  NalSummary nal = inspect_h264(payload, run->input_size);
+  guint64 timestamp = read_be(run->input_header + 8, 8);
+  if ((!run->encoded_started && !(nal.sps && nal.pps && nal.idr)) ||
+      (run->encoded_started && timestamp <= run->encoded_timestamp)) return FALSE;
+  GstBuffer *buffer = gst_buffer_new_allocate(NULL, run->input_size, NULL);
+  if (buffer == NULL) return FALSE;
+  gst_buffer_fill(buffer, 0, payload, run->input_size);
+  GST_BUFFER_PTS(buffer) = timestamp * 100;
+  GST_BUFFER_DTS(buffer) = GST_CLOCK_TIME_NONE;
+  GST_BUFFER_DURATION(buffer) = read_be(run->input_header + 16, 8) * 100;
+  if (!nal.idr) GST_BUFFER_FLAG_SET(buffer, GST_BUFFER_FLAG_DELTA_UNIT);
+  run->encoded_started = TRUE;
+  run->encoded_timestamp = timestamp;
+  // appsrc blocks at one queued AU; compressed reference frames are never dropped.
+  return gst_app_src_push_buffer(GST_APP_SRC(run->encoded_source), buffer) == GST_FLOW_OK;
+}
+
+static gboolean control_input(gint fd, GIOCondition condition, gpointer data) {
   CaptureRun *run = data;
-  guint8 value = 0;
-  while (read(STDIN_FILENO, &value, 1) == 1) {
-    if (value == 'K') {
-      g_main_context_invoke(NULL, force_key_frame, run);
-    } else if (value == 'Q' || value == '\n' || value == '\r') {
-      g_atomic_int_set(&run->stopping, TRUE);
-      g_main_context_invoke(NULL, quit_loop, run);
-      return NULL;
+  guint8 bytes[32 * 1024];
+  ssize_t size = read(fd, bytes, sizeof(bytes));
+  if (size < 0 && errno == EINTR) return G_SOURCE_CONTINUE;
+  if (size <= 0) {
+    g_atomic_int_set(&run->stopping, TRUE);
+    g_main_loop_quit(run->loop);
+    return G_SOURCE_CONTINUE;
+  }
+  (void)condition;
+  gsize offset = 0;
+  while (offset < (gsize)size && !g_atomic_int_get(&run->stopping)) {
+    if (run->input_header_length < 32) {
+      gsize take = MIN(32 - run->input_header_length, (gsize)size - offset);
+      memcpy(run->input_header + run->input_header_length, bytes + offset, take);
+      offset += take;
+      run->input_header_length += (guint)take;
+      if (run->input_header_length < 32) continue;
+      if (!valid_input_header(run)) {
+        fail_run(run, "invalid native input envelope");
+        return G_SOURCE_CONTINUE;
+      }
+    }
+    gsize take = MIN(run->input_size - run->input_payload->len, (gsize)size - offset);
+    g_byte_array_append(run->input_payload, bytes + offset, (guint)take);
+    offset += take;
+    if (run->input_payload->len < run->input_size) continue;
+    if (!apply_input(run)) {
+      fail_run(run, "invalid or failed native input");
+      return G_SOURCE_CONTINUE;
+    }
+    run->input_header_length = 0;
+    run->input_size = 0;
+    g_byte_array_set_size(run->input_payload, 0);
+  }
+  return G_SOURCE_CONTINUE;
+}
+
+static GstPadProbeReturn begin_input_frame(GstPad *pad, GstPadProbeInfo *info,
+                                           gpointer data) {
+  (void)pad;
+  CaptureRun *run = data;
+  GstBuffer *buffer = GST_PAD_PROBE_INFO_BUFFER(info);
+  if (buffer == NULL || !GST_BUFFER_PTS_IS_VALID(buffer)) {
+    fail_run(run, "capture input has no presentation timestamp");
+    return GST_PAD_PROBE_DROP;
+  }
+  GstClockTime timestamp = GST_BUFFER_PTS(buffer);
+  if (GST_CLOCK_TIME_IS_VALID(run->last_input_timestamp) &&
+      timestamp <= run->last_input_timestamp) return GST_PAD_PROBE_DROP;
+  run->last_input_timestamp = timestamp;
+  GstClockTime duration = GST_BUFFER_DURATION_IS_VALID(buffer)
+                              ? GST_BUFFER_DURATION(buffer)
+                              : GST_SECOND / run->profile.frame_rate;
+  if (!write_frame(5, 0, 0, 0, 0, timestamp / 100, MAX(1, duration / 100), NULL, 0)) {
+    fail_run(run, "native media output closed");
+    return GST_PAD_PROBE_DROP;
+  }
+  return GST_PAD_PROBE_OK;
+}
+
+static GstPadProbeReturn output_input_frame(GstPad *pad, GstPadProbeInfo *info,
+                                            gpointer data) {
+  VideoOutput *output = data;
+  CaptureRun *run = output->run;
+  GstBuffer *buffer = GST_PAD_PROBE_INFO_BUFFER(info);
+  if (buffer == NULL || !GST_BUFFER_PTS_IS_VALID(buffer)) return GST_PAD_PROBE_DROP;
+  GstClockTime timestamp = GST_BUFFER_PTS(buffer);
+  g_mutex_lock(&run->lock);
+  gboolean enabled = output->enabled;
+  gboolean force = enabled && output->key_requested != output->key_sent;
+  guint64 request = output->key_requested;
+  if (enabled && !GST_CLOCK_TIME_IS_VALID(output->activation_timestamp)) {
+    output->activation_timestamp = timestamp;
+  }
+  if (force) {
+    output->key_sent = request;
+    output->key_timestamp = timestamp;
+  }
+  g_mutex_unlock(&run->lock);
+  if (!enabled) return GST_PAD_PROBE_DROP;
+  if (force) {
+    gboolean sent = gst_pad_push_event(pad,
+        gst_video_event_new_downstream_force_key_unit(
+            timestamp, GST_CLOCK_TIME_NONE, GST_CLOCK_TIME_NONE, TRUE,
+            (guint)request));
+    if (!sent) {
+      g_mutex_lock(&run->lock);
+      if (output->key_sent == request) output->key_sent = output->key_acknowledged;
+      g_mutex_unlock(&run->lock);
     }
   }
-  g_atomic_int_set(&run->stopping, TRUE);
-  g_main_context_invoke(NULL, quit_loop, run);
-  return NULL;
+  return GST_PAD_PROBE_OK;
 }
 
 static gboolean bus_message(GstBus *bus, GstMessage *message, gpointer data) {
@@ -523,6 +837,12 @@ static gboolean bus_message(GstBus *bus, GstMessage *message, gpointer data) {
     GError *error = NULL;
     char *debug = NULL;
     gst_message_parse_error(message, &error, &debug);
+    for (guint index = 0; index < run->output_count; ++index) {
+      if (GST_MESSAGE_SRC(message) == GST_OBJECT(run->outputs[index].encoder)) {
+        fail_output(&run->outputs[index], "hardware encoder output failed");
+        break;
+      }
+    }
     fail_run(run, error == NULL ? "GStreamer pipeline failed" : error->message);
     g_clear_error(&error);
     g_free(debug);
@@ -534,7 +854,8 @@ static gboolean bus_message(GstBus *bus, GstMessage *message, gpointer data) {
 }
 
 static GstFlowReturn video_sample(GstAppSink *sink, gpointer data) {
-  CaptureRun *run = data;
+  VideoOutput *output = data;
+  CaptureRun *run = output->run;
   GstSample *sample = gst_app_sink_pull_sample(sink);
   if (sample == NULL) return GST_FLOW_EOS;
   GstBuffer *buffer = gst_sample_get_buffer(sample);
@@ -543,30 +864,44 @@ static GstFlowReturn video_sample(GstAppSink *sink, gpointer data) {
       mapped.size == 0 || mapped.size > kMaxPayloadBytes) {
     if (buffer != NULL && mapped.data != NULL) gst_buffer_unmap(buffer, &mapped);
     gst_sample_unref(sample);
-    fail_run(run, "GStreamer returned an invalid H.264 access unit");
+    fail_output(output, "GStreamer returned an invalid H.264 access unit");
     return GST_FLOW_ERROR;
   }
   gboolean key_frame = !GST_BUFFER_FLAG_IS_SET(buffer, GST_BUFFER_FLAG_DELTA_UNIT);
   NalSummary nal = inspect_h264(mapped.data, mapped.size);
-  if (!run->active &&
-      (!key_frame || !nal.sps || !nal.pps || !nal.idr ||
-       nal.profile_level_id[0] == '\0')) {
+  if (!GST_BUFFER_PTS_IS_VALID(buffer)) {
     gst_buffer_unmap(buffer, &mapped);
     gst_sample_unref(sample);
-    g_main_context_invoke(NULL, force_key_frame, run);
+    fail_output(output, "encoded output lost the source presentation timestamp");
+    return GST_FLOW_ERROR;
+  }
+  GstClockTime timestamp = GST_BUFFER_PTS(buffer);
+  gboolean recovery = key_frame && nal.sps && nal.pps && nal.idr &&
+                      nal.profile_level_id[0] != '\0';
+  g_mutex_lock(&run->lock);
+  gboolean current = output->enabled &&
+      GST_CLOCK_TIME_IS_VALID(output->activation_timestamp) &&
+      timestamp >= output->activation_timestamp;
+  if (current && GST_CLOCK_TIME_IS_VALID(output->key_timestamp) &&
+      timestamp >= output->key_timestamp) {
+    if (recovery) output->key_acknowledged = output->key_sent;
+    else output->key_sent = output->key_acknowledged;
+  }
+  if (current && recovery) output->decodable = TRUE;
+  gboolean deliver = current && output->decodable;
+  gboolean publish_active = deliver && !run->active &&
+      output->layer == run->original_output;
+  if (publish_active) run->active = TRUE;
+  g_mutex_unlock(&run->lock);
+  if (!deliver) {
+    gst_buffer_unmap(buffer, &mapped);
+    gst_sample_unref(sample);
     return GST_FLOW_OK;
   }
-  guint64 duration = GST_BUFFER_DURATION_IS_VALID(buffer)
-                         ? GST_BUFFER_DURATION(buffer) / 100
-                         : 10000000ULL / run->profile.frame_rate;
-  guint64 timestamp = GST_BUFFER_PTS_IS_VALID(buffer)
-                          ? GST_BUFFER_PTS(buffer) / 100
-                          : run->last_timestamp + duration;
-  if (run->last_timestamp != 0 && timestamp <= run->last_timestamp) {
-    timestamp = run->last_timestamp + duration;
-  }
-  run->last_timestamp = timestamp;
-  gboolean written = write_frame(2, key_frame ? 1 : 0, timestamp, duration,
+  gboolean written = write_frame(2, recovery ? 1 : 0, (guint8)output->layer,
+                                  output->profile.width, output->profile.height,
+                                  timestamp / 100,
+                                  10000000ULL / output->profile.frame_rate,
                                   mapped.data, mapped.size);
   gst_buffer_unmap(buffer, &mapped);
   gst_sample_unref(sample);
@@ -574,18 +909,20 @@ static GstFlowReturn video_sample(GstAppSink *sink, gpointer data) {
     fail_run(run, "native media output closed");
     return GST_FLOW_ERROR;
   }
-  if (!run->active) {
+  if (publish_active) {
     char *token = json_string(run->restore_token);
+    char *profiles = output_profiles_json(run);
     char *status = g_strdup_printf(
         "{\"state\":\"active\",\"codec\":\"h264\",\"hardwareOnly\":true,"
         "\"profileLevelId\":\"%s\",\"width\":%u,\"height\":%u,"
-        "\"fps\":%u,\"restoreToken\":%s}",
+        "\"fps\":%u,\"restoreToken\":%s,\"outputs\":%s}",
         nal.profile_level_id, run->profile.width, run->profile.height,
-        run->profile.frame_rate, token);
+        run->profile.frame_rate, token, profiles);
     g_free(token);
-    run->active = write_status(status);
+    g_free(profiles);
+    gboolean active_written = write_status(status);
     g_free(status);
-    if (!run->active) {
+    if (!active_written) {
       fail_run(run, "native media output closed");
       return GST_FLOW_ERROR;
     }
@@ -620,7 +957,7 @@ static GstFlowReturn audio_sample(GstAppSink *sink, gpointer data) {
   gst_buffer_unmap(buffer, &mapped);
   gst_sample_unref(sample);
   while (run->audio->len >= kAudioFrameBytes) {
-    if (!write_frame(1, 0, run->audio_timestamp, 200000,
+    if (!write_frame(1, 0, 0, 0, 0, run->audio_timestamp, 200000,
                      run->audio->data, kAudioFrameBytes)) {
       fail_run(run, "native audio output closed");
       return GST_FLOW_ERROR;
@@ -631,27 +968,34 @@ static GstFlowReturn audio_sample(GstAppSink *sink, gpointer data) {
   return GST_FLOW_OK;
 }
 
-static int run_pipeline(CaptureRun *run, GCallback sample_callback,
-                        const char *starting_status) {
+static int run_pipeline(CaptureRun *run, const char *starting_status) {
+  run->input_payload = g_byte_array_new();
   GstBus *bus = gst_element_get_bus(run->pipeline);
   guint bus_watch = gst_bus_add_watch(bus, bus_message, run);
   gst_object_unref(bus);
-  GstElement *output = gst_bin_get_by_name(GST_BIN(run->pipeline), "output");
-  if (output == NULL) return 2;
-  g_signal_connect(output, "new-sample", sample_callback, run);
-  gst_object_unref(output);
-  if (starting_status != NULL && !write_status(starting_status)) return 2;
+  guint control_watch = g_unix_fd_add(STDIN_FILENO, G_IO_IN | G_IO_HUP | G_IO_ERR,
+                                     control_input, run);
+  if (starting_status != NULL && !write_status(starting_status)) {
+    fail_run(run, "native media output closed");
+    goto stopped;
+  }
   GstStateChangeReturn state =
       gst_element_set_state(run->pipeline, GST_STATE_PLAYING);
-  if (state == GST_STATE_CHANGE_FAILURE) return 2;
+  if (state == GST_STATE_CHANGE_FAILURE) {
+    fail_run(run, "GStreamer pipeline failed to start");
+    goto stopped;
+  }
   if (gst_element_get_state(run->pipeline, NULL, NULL, 5 * GST_SECOND) ==
       GST_STATE_CHANGE_FAILURE) {
-    return 2;
+    fail_run(run, "GStreamer pipeline failed to start");
+    goto stopped;
   }
-  g_thread_unref(g_thread_new("screener-control", control_input, run));
   g_main_loop_run(run->loop);
+stopped:
+  g_source_remove(control_watch);
   gst_element_set_state(run->pipeline, GST_STATE_NULL);
   g_source_remove(bus_watch);
+  g_byte_array_unref(run->input_payload);
   g_mutex_lock(&run->lock);
   char *failure = g_strdup(run->failure);
   g_mutex_unlock(&run->lock);
@@ -664,18 +1008,22 @@ static int run_pipeline(CaptureRun *run, GCallback sample_callback,
 }
 
 static int capture_video(int count, char **values) {
-  VideoProfile profile = {0};
+  CaptureRun run = {.last_input_timestamp = GST_CLOCK_TIME_NONE};
+  gboolean encoded = count > 1 && strcmp(values[1], "--encoded-video") == 0;
   guint encoder_index = 0;
-  if (!parse_profile(count, values, &profile, &encoder_index)) return 2;
+  if (!parse_profile(count, values, &run, &encoder_index)) return 2;
   GPtrArray *encoders = hardware_encoders();
-  if (!video_stack_available() || encoder_index >= encoders->len) {
+  gboolean input_available = encoded
+      ? has_factory("appsrc") && has_factory("h264parse") && has_factory("decodebin")
+      : video_stack_available();
+  if (!input_available || encoder_index >= encoders->len) {
     g_ptr_array_unref(encoders);
     return 2;
   }
   const EncoderInfo *encoder_info = g_ptr_array_index(encoders, encoder_index);
   GError *error = NULL;
   ScreenerPortalCapture portal = {.pipewire_fd = -1};
-  if (!screener_portal_capture_open(
+  if (!encoded && !screener_portal_capture_open(
           g_getenv("SCREENER_XDP_RESTORE_TOKEN"), &portal, &error)) {
     fprintf(stderr, "Screener capture unavailable: %s\n",
             error == NULL ? "screen selection failed" : error->message);
@@ -684,19 +1032,36 @@ static int capture_video(int count, char **values) {
     return 2;
   }
 
-  char *pipeline_text = g_strdup_printf(
+  GString *pipeline_text = g_string_new(NULL);
+  if (encoded) {
+    g_string_append(pipeline_text,
+        "appsrc name=source is-live=true format=time do-timestamp=false block=true "
+        "max-buffers=1 max-bytes=1048576 max-time=0 "
+        "caps=video/x-h264,stream-format=byte-stream,alignment=au ! "
+        "h264parse ! decodebin ! video/x-raw ! tee name=frames ");
+  } else g_string_append_printf(pipeline_text,
       "pipewiresrc name=source fd=%d target-object=%s do-timestamp=true ! "
-      "queue max-size-buffers=2 max-size-bytes=0 max-size-time=0 "
-      "leaky=downstream ! videoconvert ! videoscale ! videorate ! "
-      "video/x-raw,format=NV12,width=%u,height=%u,framerate=%u/1 ! "
-      "%s name=encoder ! video/x-h264,profile=constrained-baseline ! "
-      "h264parse config-interval=-1 ! "
-      "video/x-h264,stream-format=byte-stream,alignment=au ! "
-      "appsink name=output emit-signals=true sync=false max-buffers=2 drop=true",
-      portal.pipewire_fd, portal.target_object, profile.width, profile.height,
-      profile.frame_rate, encoder_info->factory);
-  GstElement *pipeline = gst_parse_launch(pipeline_text, &error);
-  g_free(pipeline_text);
+      "videorate drop-only=true ! video/x-raw,framerate=%u/1 ! tee name=frames ",
+      portal.pipewire_fd, portal.target_object, run.profile.frame_rate);
+  for (guint index = 0; index < run.output_count; ++index) {
+    const VideoProfile *profile = &run.outputs[index].profile;
+    g_string_append_printf(pipeline_text,
+        "frames. ! valve name=gate%u drop=%s ! ( "
+        "queue name=raw%u max-size-buffers=1 max-size-bytes=0 "
+        "max-size-time=0 leaky=downstream ! videorate drop-only=true ! "
+        "video/x-raw,framerate=%u/1 ! videoconvert ! videoscale ! "
+        "video/x-raw,format=NV12,width=%u,height=%u ! "
+        "%s name=encoder%u ! video/x-h264,profile=constrained-baseline ! "
+        "h264parse config-interval=-1 ! "
+        "video/x-h264,stream-format=byte-stream,alignment=au ! "
+        "appsink name=output%u emit-signals=true sync=false async=false "
+        "max-buffers=1 drop=false ) ",
+        index, run.outputs[index].enabled ? "false" : "true",
+        index, profile->frame_rate, profile->width, profile->height, encoder_info->factory,
+        index, index);
+  }
+  GstElement *pipeline = gst_parse_launch(pipeline_text->str, &error);
+  g_string_free(pipeline_text, TRUE);
   if (pipeline == NULL || error != NULL) {
     fprintf(stderr, "Screener capture unavailable: %s\n",
             error == NULL ? "video pipeline failed" : error->message);
@@ -706,48 +1071,85 @@ static int capture_video(int count, char **values) {
     g_ptr_array_unref(encoders);
     return 2;
   }
-  CaptureRun run = {
-      .loop = g_main_loop_new(NULL, FALSE),
-      .pipeline = pipeline,
-      .profile = profile,
-      .encoder_info = encoder_info,
-      .restore_token = portal.restore_token,
-  };
+  run.loop = g_main_loop_new(NULL, FALSE);
+  run.pipeline = pipeline;
+  run.encoder_info = encoder_info;
+  run.restore_token = portal.restore_token;
   g_mutex_init(&run.lock);
-  run.encoder = gst_bin_get_by_name(GST_BIN(pipeline), "encoder");
+  int result = 2;
   GstElement *source = gst_bin_get_by_name(GST_BIN(pipeline), "source");
   if (source != NULL) {
-    set_optional_boolean(G_OBJECT(source), "resend-last", TRUE);
-    set_numeric_property(G_OBJECT(source), "keepalive-time",
-                         MAX(1, 1000 / profile.frame_rate));
-    gst_object_unref(source);
+    if (encoded) run.encoded_source = source;
+    else {
+      set_optional_boolean(G_OBJECT(source), "resend-last", TRUE);
+      set_numeric_property(G_OBJECT(source), "keepalive-time",
+                           MAX(1, 1000 / run.profile.frame_rate));
+      gst_object_unref(source);
+    }
   }
-  if (run.encoder == NULL || !configure_encoder(&run)) {
-    fprintf(stderr, "Screener capture unavailable: hardware encoder is incompatible\n");
-    if (run.encoder != NULL) gst_object_unref(run.encoder);
-    g_main_loop_unref(run.loop);
-    g_mutex_clear(&run.lock);
-    gst_object_unref(pipeline);
-    screener_portal_capture_close(&portal);
-    g_ptr_array_unref(encoders);
-    return 2;
+  GstElement *tee = gst_bin_get_by_name(GST_BIN(pipeline), "frames");
+  GstPad *input = tee == NULL ? NULL : gst_element_get_static_pad(tee, "sink");
+  if (tee != NULL) gst_object_unref(tee);
+  if (input == NULL) goto cleanup;
+  gst_pad_add_probe(input, GST_PAD_PROBE_TYPE_BUFFER, begin_input_frame, &run, NULL);
+  gst_object_unref(input);
+  for (guint index = 0; index < run.output_count; ++index) {
+    VideoOutput *output = &run.outputs[index];
+    char *name = g_strdup_printf("encoder%u", index);
+    output->encoder = gst_bin_get_by_name(GST_BIN(pipeline), name);
+    g_free(name);
+    if (output->encoder == NULL || !configure_encoder(output)) {
+      fprintf(stderr, "Screener capture unavailable: hardware encoder is incompatible\n");
+      write_frame(6, 0, (guint8)index, 0, 0, 0, 0,
+          (const guint8 *)"hardware encoder configuration failed",
+          strlen("hardware encoder configuration failed"));
+      goto cleanup;
+    }
+    output->branch = GST_ELEMENT(gst_object_get_parent(GST_OBJECT(output->encoder)));
+    name = g_strdup_printf("gate%u", index);
+    output->gate = gst_bin_get_by_name(GST_BIN(pipeline), name);
+    g_free(name);
+    if (output->branch == NULL || output->branch == pipeline || output->gate == NULL) goto cleanup;
+    gst_element_set_locked_state(output->branch, !output->enabled);
+    name = g_strdup_printf("output%u", index);
+    GstElement *sink = gst_bin_get_by_name(GST_BIN(pipeline), name);
+    g_free(name);
+    if (sink == NULL) goto cleanup;
+    g_signal_connect(sink, "new-sample", G_CALLBACK(video_sample), output);
+    gst_object_unref(sink);
+    name = g_strdup_printf("raw%u", index);
+    GstElement *queue = gst_bin_get_by_name(GST_BIN(pipeline), name);
+    g_free(name);
+    GstPad *raw = queue == NULL ? NULL : gst_element_get_static_pad(queue, "src");
+    if (queue != NULL) gst_object_unref(queue);
+    if (raw == NULL) goto cleanup;
+    gst_pad_add_probe(raw, GST_PAD_PROBE_TYPE_BUFFER, output_input_frame, output, NULL);
+    gst_object_unref(raw);
   }
   char *adapter_name = json_string("GStreamer hardware H.264");
   char *encoder_name = json_string(encoder_info->name);
   char *encoder_identity = json_string(encoder_info->factory);
+  char *profiles = output_profiles_json(&run);
   char *starting = g_strdup_printf(
       "{\"state\":\"starting\",\"codec\":\"h264\",\"hardwareOnly\":true,"
       "\"adapterIndex\":0,\"adapterName\":%s,"
       "\"adapterIdentity\":\"gstreamer-hardware-h264\","
       "\"encoderIndex\":%u,\"encoderName\":%s,"
-      "\"encoderIdentity\":%s}",
-      adapter_name, encoder_index, encoder_name, encoder_identity);
+      "\"encoderIdentity\":%s,\"outputs\":%s}",
+      adapter_name, encoder_index, encoder_name, encoder_identity, profiles);
   g_free(adapter_name);
   g_free(encoder_name);
   g_free(encoder_identity);
-  int result = run_pipeline(&run, G_CALLBACK(video_sample), starting);
+  g_free(profiles);
+  result = run_pipeline(&run, starting);
   g_free(starting);
-  gst_object_unref(run.encoder);
+cleanup:
+  if (run.encoded_source != NULL) gst_object_unref(run.encoded_source);
+  for (guint index = 0; index < run.output_count; ++index) {
+    if (run.outputs[index].encoder != NULL) gst_object_unref(run.outputs[index].encoder);
+    if (run.outputs[index].branch != NULL) gst_object_unref(run.outputs[index].branch);
+    if (run.outputs[index].gate != NULL) gst_object_unref(run.outputs[index].gate);
+  }
   g_free(run.failure);
   g_main_loop_unref(run.loop);
   g_mutex_clear(&run.lock);
@@ -784,7 +1186,12 @@ static int capture_audio(int count, char **values) {
       .audio = g_byte_array_new(),
   };
   g_mutex_init(&run.lock);
-  int result = run_pipeline(&run, G_CALLBACK(audio_sample), NULL);
+  GstElement *output = gst_bin_get_by_name(GST_BIN(pipeline), "output");
+  if (output != NULL) {
+    g_signal_connect(output, "new-sample", G_CALLBACK(audio_sample), &run);
+    gst_object_unref(output);
+  }
+  int result = output == NULL ? 2 : run_pipeline(&run, NULL);
   g_byte_array_unref(run.audio);
   g_free(run.failure);
   g_main_loop_unref(run.loop);
@@ -797,7 +1204,7 @@ int main(int argc, char **argv) {
   gst_init(&argc, &argv);
   if (argc == 2 && strcmp(argv[1], "--probe") == 0) return write_probe();
   if (argc == 2 && strcmp(argv[1], "--list") == 0) return write_sources();
-  if (argc > 1 && strcmp(argv[1], "--capture-video") == 0) {
+  if (argc > 1 && (strcmp(argv[1], "--capture-video") == 0 || strcmp(argv[1], "--encoded-video") == 0)) {
     return capture_video(argc, argv);
   }
   if (argc > 1 && strcmp(argv[1], "--capture-audio") == 0) {

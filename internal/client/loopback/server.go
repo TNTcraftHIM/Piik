@@ -25,6 +25,7 @@ const (
 	helloTimeout       = 5 * time.Second
 	shutdownTimeout    = 2 * time.Second
 	controlQueueSize   = 64 // MaxControlMessageBytes * 64 = 16 MiB worst-case.
+	maxControlSessions = 2
 )
 
 type Options struct {
@@ -37,6 +38,7 @@ type Options struct {
 }
 
 type ControlSession interface {
+	// A nil response with no error is completed later through Events, using the request ID.
 	Handle(context.Context, []byte) (any, error)
 	Events() <-chan any
 	Close() error
@@ -77,10 +79,13 @@ type Server struct {
 	presentation   func(string)
 	done           chan error
 
-	mu         sync.Mutex
-	activeConn *websocket.Conn
-	claimed    bool
-	closed     bool
+	mu          sync.Mutex
+	connections map[*websocket.Conn]struct{}
+	claimed     int
+	closed      bool
+	controls    sync.WaitGroup
+	closeOnce   sync.Once
+	closeErr    error
 }
 
 func Start(parent context.Context, options Options) (*Server, error) {
@@ -116,6 +121,7 @@ func Start(parent context.Context, options Options) (*Server, error) {
 		newControl:     options.NewControl,
 		presentation:   options.Presentation,
 		done:           make(chan error, 1),
+		connections:    make(map[*websocket.Conn]struct{}),
 	}
 	server.httpServer = &http.Server{
 		Handler:           server,
@@ -145,23 +151,33 @@ func (server *Server) SetAllowedOrigins(origins []string) {
 }
 
 func (server *Server) Close() error {
-	server.mu.Lock()
-	if server.closed {
+	server.closeOnce.Do(func() {
+		server.mu.Lock()
+		server.closed = true
+		connections := make([]*websocket.Conn, 0, len(server.connections))
+		for connection := range server.connections {
+			connections = append(connections, connection)
+		}
 		server.mu.Unlock()
-		return nil
-	}
-	server.closed = true
-	connection := server.activeConn
-	server.activeConn = nil
-	server.claimed = false
-	server.mu.Unlock()
-	server.cancel()
-	if connection != nil {
-		_ = connection.Close(websocket.StatusNormalClosure, "helper stopped")
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
-	defer cancel()
-	return server.httpServer.Shutdown(ctx)
+		server.cancel()
+		ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+		for _, connection := range connections {
+			_ = connection.CloseNow()
+		}
+		server.closeErr = server.httpServer.Shutdown(ctx)
+		retired := make(chan struct{})
+		go func() {
+			server.controls.Wait()
+			close(retired)
+		}()
+		select {
+		case <-retired:
+		case <-ctx.Done():
+			server.closeErr = errors.Join(server.closeErr, ctx.Err())
+		}
+	})
+	return server.closeErr
 }
 
 func (server *Server) serve() {
@@ -196,6 +212,7 @@ func (server *Server) handlePresentation(response http.ResponseWriter, request *
 	if request.Method == http.MethodOptions {
 		response.Header().Set("Access-Control-Allow-Methods", http.MethodPost)
 		response.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		allowPrivateNetwork(response, request)
 		response.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -222,8 +239,14 @@ func (server *Server) handlePresentation(response http.ResponseWriter, request *
 }
 
 func (server *Server) handleHealth(response http.ResponseWriter, request *http.Request) {
+	if request.Method == http.MethodOptions {
+		response.Header().Set("Access-Control-Allow-Methods", http.MethodGet)
+		allowPrivateNetwork(response, request)
+		response.WriteHeader(http.StatusNoContent)
+		return
+	}
 	if request.Method != http.MethodGet {
-		response.Header().Set("Allow", http.MethodGet)
+		response.Header().Set("Allow", "GET, OPTIONS")
 		http.Error(response, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -237,6 +260,12 @@ func (server *Server) handleHealth(response http.ResponseWriter, request *http.R
 	})
 }
 
+func allowPrivateNetwork(response http.ResponseWriter, request *http.Request) {
+	if strings.EqualFold(strings.TrimSpace(request.Header.Get("Access-Control-Request-Private-Network")), "true") {
+		response.Header().Set("Access-Control-Allow-Private-Network", "true")
+	}
+}
+
 func (server *Server) handleControl(response http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodGet {
 		response.Header().Set("Allow", http.MethodGet)
@@ -244,26 +273,28 @@ func (server *Server) handleControl(response http.ResponseWriter, request *http.
 		return
 	}
 	if !server.claimConnection() {
-		http.Error(response, "control session already active", http.StatusConflict)
+		http.Error(response, "native control capacity is occupied", http.StatusConflict)
 		return
 	}
+	var connection *websocket.Conn
+	defer func() { server.releaseConnection(connection) }()
 	expectedSubprotocol := ControlSubprotocol + "." + server.endpoint.InstanceToken
-	connection, err := websocket.Accept(response, request, &websocket.AcceptOptions{
+	var err error
+	connection, err = websocket.Accept(response, request, &websocket.AcceptOptions{
 		Subprotocols:   []string{expectedSubprotocol},
 		OriginPatterns: server.originPatterns(),
 	})
 	if err != nil {
-		server.releaseConnection(nil)
 		return
 	}
+	defer connection.CloseNow()
 	if connection.Subprotocol() != expectedSubprotocol {
 		closeControl(connection, "unsupported control protocol")
-		server.releaseConnection(connection)
 		return
 	}
-	server.setConnection(connection)
-	defer server.releaseConnection(connection)
-	defer connection.CloseNow()
+	if !server.setConnection(connection) {
+		return
+	}
 	connection.SetReadLimit(MaxControlMessageBytes)
 
 	helloContext, cancelHello := context.WithTimeout(server.ctx, helloTimeout)
@@ -368,9 +399,12 @@ func (server *Server) handleControl(response http.ResponseWriter, request *http.
 			return
 		}
 		value, handleErr := extension.Handle(controlContext, payload)
-		if handleErr != nil || value == nil {
+		if handleErr != nil {
 			closeControl(connection, "invalid control message")
 			return
+		}
+		if value == nil {
+			continue
 		}
 		if err = write(controlContext, value); err != nil {
 			return
@@ -443,26 +477,30 @@ func (server *Server) localOrigin(origin string) bool {
 func (server *Server) claimConnection() bool {
 	server.mu.Lock()
 	defer server.mu.Unlock()
-	if server.closed || server.claimed {
+	if server.closed || server.claimed >= maxControlSessions {
 		return false
 	}
-	server.claimed = true
+	server.claimed++
+	server.controls.Add(1)
 	return true
 }
 
-func (server *Server) setConnection(connection *websocket.Conn) {
+func (server *Server) setConnection(connection *websocket.Conn) bool {
 	server.mu.Lock()
-	server.activeConn = connection
-	server.mu.Unlock()
+	defer server.mu.Unlock()
+	if server.closed {
+		return false
+	}
+	server.connections[connection] = struct{}{}
+	return true
 }
 
 func (server *Server) releaseConnection(connection *websocket.Conn) {
 	server.mu.Lock()
-	if server.activeConn == connection {
-		server.activeConn = nil
-	}
-	server.claimed = false
+	delete(server.connections, connection)
+	server.claimed--
 	server.mu.Unlock()
+	server.controls.Done()
 }
 
 func listenInRange(bindAddress string, start, end int) (net.Listener, error) {

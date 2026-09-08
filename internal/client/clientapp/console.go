@@ -7,6 +7,7 @@ import (
 	"math/rand/v2"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -31,6 +32,14 @@ type consoleTick struct{}
 type consoleIdleWink struct{}
 type consoleOpenResult struct{ err error }
 type consoleDiagnostic string
+type consoleDebug struct {
+	logPath string
+	export  func() (string, error)
+}
+type consoleExportResult struct {
+	path string
+	err  error
+}
 
 type consoleModel struct {
 	view        consoleView
@@ -44,6 +53,10 @@ type consoleModel struct {
 	idleWink    bool
 	finished    bool
 	cancel      context.CancelFunc
+	debug       consoleDebug
+	exporting   bool
+	exportPath  string
+	exportError bool
 }
 
 type clientConsole struct {
@@ -56,24 +69,29 @@ type clientConsole struct {
 }
 
 var consoleCopy = map[string][3]string{
-	"mode":       {"Mode", "模式", ""},
-	"local":      {"Local network", "局域网", "□"},
-	"link":       {"Public link", "公网链接", "↗"},
-	"site":       {"Screener Site", "Screener 站点", "@"},
-	"setup":      {"Choose a mode in the browser", "在浏览器中选择模式", "?"},
-	"starting":   {"Starting", "正在启动", "…"},
-	"ready":      {"Ready", "已就绪", "✓"},
-	"stopping":   {"Stopping", "正在退出", "→"},
-	"stopped":    {"Stopped", "已停止", "○"},
-	"failed":     {"Could not continue", "运行失败", "!"},
-	"entry":      {"Open in browser", "打开网页", "□"},
-	"invite":     {"Site address", "站点地址", "↗"},
-	"access":     {"Site access", "站点准入", ""},
-	"open":       {"Open", "开放", "○"},
-	"password":   {"Password protected", "已设置密码", "*"},
-	"error":      {"Details", "详情", "!"},
-	"exit":       {"quit", "退出", "↪"},
-	"openFailed": {"Could not open the browser; use the address above.", "无法打开浏览器，请使用上方地址。", "! ↗"},
+	"mode":         {"Mode", "模式", ""},
+	"local":        {"Local network", "局域网", "□"},
+	"link":         {"Public link", "公网链接", "↗"},
+	"site":         {"Screener Site", "Screener 站点", "@"},
+	"setup":        {"Choose a mode in the browser", "在浏览器中选择模式", "?"},
+	"starting":     {"Starting", "正在启动", "…"},
+	"ready":        {"Ready", "已就绪", "✓"},
+	"stopping":     {"Stopping", "正在退出", "→"},
+	"stopped":      {"Stopped", "已停止", "○"},
+	"failed":       {"Could not continue", "运行失败", "!"},
+	"entry":        {"Open in browser", "打开网页", "□"},
+	"invite":       {"Site address", "站点地址", "↗"},
+	"access":       {"Site access", "站点准入", ""},
+	"open":         {"Open", "开放", "○"},
+	"password":     {"Password protected", "已设置密码", "*"},
+	"error":        {"Details", "详情", "!"},
+	"exit":         {"quit", "退出", "↪"},
+	"openFailed":   {"Could not open the browser; use the address above.", "无法打开浏览器，请使用上方地址。", "! ↗"},
+	"log":          {"Log", "日志", ""},
+	"export":       {"Export diagnostics", "导出诊断", ""},
+	"exporting":    {"Saving diagnostics", "正在保存诊断", ""},
+	"exported":     {"Saved", "已保存", ""},
+	"exportFailed": {"Could not save diagnostics", "无法保存诊断", ""},
 }
 
 func newClientConsole(cancel context.CancelFunc, machine bool) *clientConsole {
@@ -159,6 +177,13 @@ func (model consoleModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		model.language = string(value)
 	case consoleDiagnostic:
 		model.view.problem = string(value)
+	case consoleDebug:
+		model.debug = value
+	case consoleExportResult:
+		model.exporting, model.exportError = false, value.err != nil
+		if value.err == nil {
+			model.exportPath = value.path
+		}
 	case tea.WindowSizeMsg:
 		model.width, model.height = value.Width, value.Height
 	case tea.ColorProfileMsg:
@@ -194,6 +219,14 @@ func (model consoleModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "o":
 			if target := model.view.entry; target != "" {
 				return model, func() tea.Msg { return consoleOpenResult{browser.Open(clientLaunchURL(consoleAddress(target)))} }
+			}
+		case "d", "D":
+			if model.debug.export != nil && !model.exporting && !model.finished && model.view.state != "stopping" {
+				model.exporting, model.exportError = true, false
+				return model, func() tea.Msg {
+					path, err := model.debug.export()
+					return consoleExportResult{path: path, err: err}
+				}
 			}
 		}
 	}
@@ -235,6 +268,7 @@ func (model consoleModel) View() tea.View {
 func (model consoleModel) content(styled bool) string {
 	width := max(12, min(model.width-2, 74))
 	compact := model.height > 0 && model.height < 24
+	compactDebug := compact && model.debug.logPath != ""
 	visual := model.language == "vis"
 	accent, muted, link := lipgloss.NewStyle(), lipgloss.NewStyle(), lipgloss.NewStyle()
 	if styled {
@@ -250,7 +284,7 @@ func (model consoleModel) content(styled bool) string {
 	heading := "Screener\nClient\n" + muted.Render(revision)
 	animated := styled && model.animating()
 	mascot := accent.Render(consoleTV(model.frame, animated, compact || width < 34))
-	if styled && model.colors && width >= 36 {
+	if styled && model.colors && width >= 36 && !compactDebug {
 		mascot = consoleBlockTV(model.frame, animated)
 	}
 	fmt.Fprintln(&out, lipgloss.JoinHorizontal(lipgloss.Center, mascot, heading))
@@ -280,6 +314,8 @@ func (model consoleModel) content(styled bool) string {
 		fmt.Fprintln(&out, lipgloss.JoinHorizontal(lipgloss.Center,
 			accent.Render(consoleVisualToken(model.view.mode)), " · ",
 			stateStyle.Render(consoleVisualToken(model.view.state))))
+	} else if compactDebug && model.view.mode != "" {
+		fmt.Fprintf(&out, "%s  %s\n", accent.Render(state), model.text(model.view.mode))
 	} else {
 		fmt.Fprintln(&out, accent.Render(state))
 		if model.view.mode != "" {
@@ -299,7 +335,9 @@ func (model consoleModel) content(styled bool) string {
 			}
 			style = style.Hyperlink(target)
 		}
-		if visual {
+		if compactDebug {
+			fmt.Fprintf(&out, "\n%s\n", style.Render(address))
+		} else if visual {
 			label := consoleVisualToken(item[0])
 			fmt.Fprintf(&out, "\n%s %s\n", label, style.Render(address))
 		} else {
@@ -325,6 +363,22 @@ func (model consoleModel) content(styled bool) string {
 		}
 		fmt.Fprintf(&out, "\n%s\n%s\n", model.text("error"), strings.Join(lines, "\n"))
 	}
+	if model.debug.logPath != "" {
+		path, label := model.debug.logPath, "log"
+		if model.exportPath != "" {
+			path, label = model.exportPath, "exported"
+		}
+		separator := "\n"
+		if compactDebug {
+			separator = " "
+		}
+		fmt.Fprintf(&out, "\n%s%s%s\n", muted.Render(model.text(label)), separator, consoleFileLink(path, path, link, styled))
+		if model.exporting {
+			fmt.Fprintln(&out, model.text("exporting"))
+		} else if model.exportError {
+			fmt.Fprintln(&out, model.text("exportFailed"))
+		}
+	}
 	if !model.finished {
 		keys := "[q / Ctrl+C]"
 		if !styled {
@@ -337,7 +391,14 @@ func (model consoleModel) content(styled bool) string {
 			}
 			help = lipgloss.JoinHorizontal(lipgloss.Center, accessPicture, help)
 		} else if model.view.entry != "" && styled {
-			help = "[o] " + model.text("entry") + "    " + help
+			separator := "    "
+			if compact && model.debug.export != nil {
+				separator = "\n"
+			}
+			help = "[o] " + model.text("entry") + separator + help
+		}
+		if model.debug.export != nil && styled {
+			help = "[d] " + model.text("export") + "\n" + help
 		}
 		if visual {
 			fmt.Fprintf(&out, "\n%s", accent.Render(help))
@@ -388,6 +449,16 @@ func consoleVisualToken(key string) string {
 		return "↗"
 	case "exit":
 		return "↪"
+	case "log":
+		return "LOG"
+	case "export":
+		return "ZIP"
+	case "exporting":
+		return "ZIP ..."
+	case "exported":
+		return "ZIP +"
+	case "exportFailed":
+		return "ZIP !"
 	default:
 		return "?"
 	}
@@ -480,4 +551,16 @@ func consoleAddress(raw string) string {
 	}
 	parsed.User, parsed.RawQuery, parsed.Fragment, parsed.RawFragment, parsed.ForceQuery = nil, "", "", "", false
 	return parsed.String()
+}
+
+func consoleFileLink(path, label string, style lipgloss.Style, styled bool) string {
+	if !styled {
+		return label
+	}
+	path = filepath.ToSlash(path)
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	address := url.URL{Scheme: "file", Path: path}
+	return style.Hyperlink(address.String()).Render(label)
 }

@@ -1,9 +1,10 @@
 import { z } from "zod";
+import { sfuMediaSchema } from "../../shared/protocol";
 
-export const NATIVE_CLIENT_PROTOCOL = 8;
+export const NATIVE_CLIENT_PROTOCOL = 9;
 export const NATIVE_CLIENT_PORT_START = 39_721;
 export const NATIVE_CLIENT_PORT_END = 39_730;
-export const NATIVE_CLIENT_SUBPROTOCOL = "screener-client-v8";
+export const NATIVE_CLIENT_SUBPROTOCOL = "screener-client-v9";
 
 const decimalIdentifierSchema = z.string().regex(/^[1-9]\d{0,19}$/);
 const opaqueIdentifierSchema = z
@@ -16,8 +17,15 @@ export const nativeHealthSchema = z
   .object({
     protocol: z.literal(NATIVE_CLIENT_PROTOCOL),
     service: z.literal("screener-client"),
-    port: z.number().int().min(NATIVE_CLIENT_PORT_START).max(NATIVE_CLIENT_PORT_END),
-    instanceToken: z.string().length(43).regex(/^[A-Za-z0-9_-]+$/),
+    port: z
+      .number()
+      .int()
+      .min(NATIVE_CLIENT_PORT_START)
+      .max(NATIVE_CLIENT_PORT_END),
+    instanceToken: z
+      .string()
+      .length(43)
+      .regex(/^[A-Za-z0-9_-]+$/),
     nativeMedia: z
       .object({
         video: z.boolean(),
@@ -105,6 +113,13 @@ export const readyResponseSchema = z
 export const pongResponseSchema = z
   .object({ ...responseBase, type: z.literal("pong") })
   .strict();
+export const requestFailedResponseSchema = z
+  .object({
+    ...responseBase,
+    type: z.literal("request-failed"),
+    code: z.literal("operation-failed"),
+  })
+  .strict();
 export const captureOptionsResponseSchema = z
   .object({
     ...responseBase,
@@ -157,7 +172,10 @@ export const edgeOfferResponseSchema = z
     type: z.literal("edge-offer"),
     shareId: opaqueIdentifierSchema,
     connectionId: opaqueIdentifierSchema,
-    sdp: z.string().min(1).max(48 * 1024),
+    sdp: z
+      .string()
+      .min(1)
+      .max(48 * 1024),
   })
   .strict();
 export const receiveAnswerResponseSchema = z
@@ -166,9 +184,27 @@ export const receiveAnswerResponseSchema = z
     type: z.literal("receive-answer"),
     shareId: opaqueIdentifierSchema,
     connectionId: opaqueIdentifierSchema,
-    sdp: z.string().min(1).max(48 * 1024),
+    sdp: z
+      .string()
+      .min(1)
+      .max(48 * 1024),
     audio: z.boolean(),
     codec: nativeVideoCodecSchema,
+  })
+  .strict();
+
+export const publicationResponseSchema = z
+  .object({
+    ...responseBase,
+    type: z.enum(["publication-offer", "publication-media"]),
+    shareId: opaqueIdentifierSchema,
+    publicationGeneration: opaqueIdentifierSchema,
+    connectionId: opaqueIdentifierSchema,
+    sdp: z
+      .string()
+      .max(48 * 1024)
+      .optional(),
+    media: sfuMediaSchema,
   })
   .strict();
 
@@ -184,6 +220,10 @@ export const nativeAckResponseSchema = z
       "receive-stopped",
       "share-stopped",
       "share-paused",
+      "publication-answer-accepted",
+      "publication-candidate-accepted",
+      "publication-layers-accepted",
+      "publication-closed",
     ]),
   })
   .strict();
@@ -194,6 +234,76 @@ const eventBase = {
 };
 
 export const nativeEventSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      ...eventBase,
+      type: z.literal("publication-quality"),
+      publicationGeneration: opaqueIdentifierSchema,
+      connectionId: opaqueIdentifierSchema,
+      sampleTimestampMs: z
+        .number()
+        .int()
+        .nonnegative()
+        .max(Number.MAX_SAFE_INTEGER),
+      sampleWindowMs: z.number().int().min(1_000).max(5_000),
+      rtpStatsId: z.string().min(1).max(256),
+      trackIdentifier: z.string().min(1).max(256),
+      codec: nativeVideoCodecSchema,
+      videoEncodingCount: z.number().int().min(1).max(3),
+      activeVideoEncodingCount: z.number().int().min(0).max(3),
+      rid: z.string().max(16),
+      intervalFramesSent: z
+        .number()
+        .int()
+        .nonnegative()
+        .max(Number.MAX_SAFE_INTEGER),
+      framesPerSecond: z.number().finite().nonnegative().max(240),
+      width: z.number().int().nonnegative().max(16_384),
+      height: z.number().int().nonnegative().max(16_384),
+      bitrateKbps: z.number().finite().nonnegative().max(100_000),
+      audioBitrateKbps: z.number().finite().nonnegative().max(1_000),
+      availableOutgoingKbps: z
+        .number()
+        .finite()
+        .nonnegative()
+        .max(100_000)
+        .nullable(),
+      state: z.enum(["unknown", "healthy", "degraded"]),
+      reason: z.enum(["none", "bandwidth"]).nullable(),
+    })
+    .strict()
+    .refine(({ state, reason }) =>
+      state === "unknown"
+        ? reason === null
+        : state === "healthy"
+          ? reason === "none"
+          : reason === "bandwidth",
+    ),
+  z
+    .object({
+      ...eventBase,
+      type: z.literal("publication-candidate"),
+      publicationGeneration: opaqueIdentifierSchema,
+      connectionId: opaqueIdentifierSchema,
+      candidate: candidateSchema.nullable(),
+    })
+    .strict(),
+  z
+    .object({
+      ...eventBase,
+      type: z.literal("publication-state"),
+      publicationGeneration: opaqueIdentifierSchema,
+      connectionId: opaqueIdentifierSchema,
+      state: z.enum([
+        "new",
+        "connecting",
+        "connected",
+        "disconnected",
+        "failed",
+        "closed",
+      ]),
+    })
+    .strict(),
   z
     .object({
       ...eventBase,
@@ -239,13 +349,21 @@ export const nativeEventSchema = z.discriminatedUnion("type", [
       ...eventBase,
       type: z.literal("edge-quality"),
       connectionId: opaqueIdentifierSchema,
-      sampleTimestampMs: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+      sampleTimestampMs: z
+        .number()
+        .int()
+        .nonnegative()
+        .max(Number.MAX_SAFE_INTEGER),
       sampleWindowMs: z.number().int().min(1_000).max(5_000),
       rtpStatsId: z.string().min(1).max(256),
       trackIdentifier: z.string().min(1).max(256),
       state: z.enum(["unknown", "healthy", "degraded"]),
       reason: z.enum(["none", "bandwidth"]).nullable(),
-      intervalFramesEncoded: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+      intervalFramesEncoded: z
+        .number()
+        .int()
+        .nonnegative()
+        .max(Number.MAX_SAFE_INTEGER),
       framesPerSecond: z.number().finite().nonnegative().max(240),
       bitrateKbps: z.number().finite().nonnegative().max(100_000),
       availableOutgoingKbps: z.number().finite().nonnegative().max(100_000),

@@ -13,10 +13,9 @@ const (
 	MaxViewersPerRoomLimit      = 20
 	MaxParticipantsPerRoomLimit = MaxViewersPerRoomLimit + 1
 	MaxSignalBytes              = 64 * 1024
-	SignalingProtocol           = "screener-v21"
+	SignalingProtocol           = "screener-v22"
 	RoomCodeLength              = 4
 	MaxMediaRouteRevision       = MaxSafeInteger
-	MaxSfuTokenLength           = 8 * 1024
 	MaxIceServerURLs            = 8
 
 	MaxNatPredictionAuxiliaryStunURLs = 2

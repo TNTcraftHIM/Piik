@@ -1,6 +1,7 @@
 import type {
   IceConfig,
   PreparedRouteCandidate,
+  QualitySettings,
   SignalPayload,
 } from "../../shared/protocol";
 import { EMPTY_METRICS, type PeerSnapshot } from "../types";
@@ -20,6 +21,7 @@ export interface NativeSourceFormat {
 
 export interface NativeSenderSource {
   connectionId: string;
+  getProfile: () => QualitySettings;
   format?: () => NativeSourceFormat;
 }
 
@@ -35,10 +37,10 @@ export class NativeSenderPeer implements HostMediaPeer {
   constructor(
     readonly peerId: string,
     connectionId: string,
-    shareId: string,
+    private readonly shareId: string,
     iceConfig: IceConfig,
     natPredictionEnabled: boolean,
-    control: NativeEdgeControl,
+    private readonly control: NativeEdgeControl,
     events: NativeSenderPeerEvents,
     codec: NativeVideoCodec,
     private readonly source?: NativeSenderSource,
@@ -145,7 +147,10 @@ export class NativeSenderPeer implements HostMediaPeer {
 
   private readonly events: NativeSenderPeerEvents;
 
-  start(): Promise<boolean> {
+  async start(): Promise<boolean> {
+    if (this.disposed) return false;
+    if (this.source && !(await this.updateProfile(this.source.getProfile()))) return false;
+    if (this.disposed) return false;
     return this.edge.start();
   }
 
@@ -189,14 +194,20 @@ export class NativeSenderPeer implements HostMediaPeer {
     // mutate a live edge's server list behind the route owner's fence.
   }
 
-  updateProfile(_profile: Parameters<HostMediaPeer["updateProfile"]>[0]): Promise<boolean> {
-    // The share-level native owner updates the one encoded source before its
-    // Pion edges. An individual edge cannot own or repeat that operation.
-    return Promise.resolve(true);
+  async updateProfile(profile: Parameters<HostMediaPeer["updateProfile"]>[0]): Promise<boolean> {
+    if (this.disposed) return false;
+    // Native Host capture remains share-owned; only received sources need a relay ceiling.
+    if (!this.source) return true;
+    try {
+      await this.control.updateShare(this.shareId, profile);
+      return !this.disposed;
+    } catch {
+      return false;
+    }
   }
 
-  updateCaptureProfile(_profile: Parameters<HostMediaPeer["updateCaptureProfile"]>[0]): Promise<boolean> {
-    return Promise.resolve(true);
+  updateCaptureProfile(profile: Parameters<HostMediaPeer["updateCaptureProfile"]>[0]): Promise<boolean> {
+    return this.updateProfile(profile);
   }
 
   setPaused(_paused: boolean): void {

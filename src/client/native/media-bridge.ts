@@ -1,5 +1,6 @@
 import type { SignalPayload } from "../../shared/protocol";
 import { createOpaqueId } from "../lib/opaque-id";
+import { browserDebugEnabled, debugError, debugEvent } from "../lib/debug";
 import type { ConnectionMetrics } from "../types";
 import {
   collectConnectionMetrics,
@@ -10,6 +11,8 @@ import type { NativeClientEvent } from "./wire";
 
 const BRIDGE_TIMEOUT_MS = 8_000;
 const MAX_PENDING_CANDIDATES = 64;
+
+export class NativeMediaBridgeError extends Error {}
 
 export interface NativeMediaBridgeControl {
   prepareLocalEdge(
@@ -61,11 +64,11 @@ export class NativeMediaBridge {
 
   async start(): Promise<MediaStream> {
     if (this.disposed || this.unsubscribe) {
-      throw new Error("Native media bridge is unavailable");
+      throw new NativeMediaBridgeError("Native media bridge is unavailable");
     }
     const started = new Promise<MediaStream>((resolve, reject) => {
       this.rejectStart = reject;
-      this.startTimer = window.setTimeout(() => this.fail(), BRIDGE_TIMEOUT_MS);
+      this.startTimer = window.setTimeout(() => this.fail("timeout"), BRIDGE_TIMEOUT_MS);
       const complete = () => {
         if (
           !this.ready &&
@@ -86,15 +89,22 @@ export class NativeMediaBridge {
         complete();
       });
       this.peer.addEventListener("connectionstatechange", () => {
+        debugEvent("native-bridge", "connection-state", { state: this.peer.connectionState });
         if (
           this.peer.connectionState === "failed" ||
           this.peer.connectionState === "closed"
         ) {
-          this.fail();
+          this.fail("connection-state");
           return;
         }
         complete();
       });
+    });
+    this.peer.addEventListener("iceconnectionstatechange", () => {
+      debugEvent("native-bridge", "ice-state", { state: this.peer.iceConnectionState });
+    });
+    this.peer.addEventListener("icegatheringstatechange", () => {
+      debugEvent("native-bridge", "ice-gathering-state", { state: this.peer.iceGatheringState });
     });
     this.peer.addEventListener("icecandidate", (event) => {
       void this.control.acceptSignal(
@@ -112,12 +122,12 @@ export class NativeMediaBridge {
               }
             : null,
         },
-      ).catch(() => this.fail());
+      ).catch(() => this.fail("candidate-signal"));
     });
     this.unsubscribe = this.control.onEvent((event) => {
       if (event.shareId !== this.shareId) return;
       if (event.type === "share-ended") {
-        this.fail();
+        this.fail("share-ended");
         return;
       }
       if (
@@ -129,7 +139,7 @@ export class NativeMediaBridge {
       if (event.type === "edge-candidate") {
         if (!this.remoteDescriptionSet) {
           if (this.pendingCandidates.length >= MAX_PENDING_CANDIDATES) {
-            this.fail();
+            this.fail("candidate-overflow");
           } else {
             this.pendingCandidates.push(event.candidate);
           }
@@ -137,12 +147,12 @@ export class NativeMediaBridge {
         }
         void this.peer
           .addIceCandidate(event.candidate)
-          .catch(() => this.fail());
+          .catch(() => this.fail("candidate-apply"));
       } else if (
         event.type === "edge-state" &&
         (event.state === "failed" || event.state === "closed")
       ) {
-        this.fail();
+        this.fail("native-state");
       }
     });
 
@@ -179,15 +189,17 @@ export class NativeMediaBridge {
     try {
       return await Promise.race([negotiate(), started]);
     } catch (error) {
-      this.dispose();
-      throw error;
+      this.fail("negotiation");
+      throw error instanceof NativeMediaBridgeError
+        ? error
+        : new NativeMediaBridgeError("Native media bridge failed", { cause: error });
     }
   }
 
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    this.rejectStart?.(new Error("Native media bridge failed"));
+    this.rejectStart?.(new NativeMediaBridgeError("Native media bridge failed"));
     this.rejectStart = null;
     this.unsubscribe?.();
     this.unsubscribe = null;
@@ -200,10 +212,46 @@ export class NativeMediaBridge {
     );
   }
 
-  private fail(): void {
+  private fail(reason: string): void {
     if (this.disposed) return;
+    debugEvent("native-bridge", "failed", { type: reason, state: this.ready ? "active" : "starting" });
+    void this.reportFailureDiagnostics();
     if (this.ready) this.onFailed();
     this.dispose();
+  }
+
+  private async reportFailureDiagnostics(): Promise<void> {
+    if (!browserDebugEnabled) return;
+    try {
+      debugEvent("native-bridge", "connection-state", { state: this.peer.connectionState });
+      debugEvent("native-bridge", "ice-state", { state: this.peer.iceConnectionState });
+      debugEvent("native-bridge", "ice-gathering-state", { state: this.peer.iceGatheringState });
+      const receivers = this.peer.getReceivers();
+      for (const kind of ["video", "audio"]) {
+        debugEvent("native-bridge", "receiver-count", {
+          type: kind, state: "live",
+          count: receivers.filter((receiver) => receiver.track.kind === kind && receiver.track.readyState === "live").length,
+        });
+      }
+      for (const transport of new Set(receivers.map((receiver) => receiver.transport))) {
+        if (transport) debugEvent("native-bridge", "dtls-state", { state: transport.state });
+      }
+      // Start the one snapshot before disposal; it never delays the bridge deadline.
+      const stats = Array.from((await this.peer.getStats()).values());
+      for (const direction of ["local", "remote"]) {
+        for (const type of ["host", "srflx", "prflx", "relay"]) {
+          for (const protocol of ["udp", "tcp"]) {
+            debugEvent("native-bridge", "candidate-count", {
+              type: `${direction}-${type}`, state: protocol,
+              count: stats.filter((entry) => entry.type === `${direction}-candidate` &&
+                entry.candidateType === type && entry.protocol === protocol).length,
+            });
+          }
+        }
+      }
+    } catch (error) {
+      debugError("native-bridge", "diagnostics-failed", error);
+    }
   }
 
   private clearStartTimer(): void {

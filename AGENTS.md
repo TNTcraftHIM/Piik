@@ -31,7 +31,8 @@
   [media quality](./docs/product/media-quality.md), and
   [presentation/lifecycle](./docs/product/presentation-lifecycle.md).
 - Media stays automatic and P2P-first; central services provide room authority,
-  signaling, STUN, observability, and bounded LiveKit SFU/UDP fallback. Route
+  signaling, STUN, observability, and bounded embedded SFU/UDP fallback using
+  mature LiveKit media components under [ADR-0013](./docs/adr/0013-embedded-node-local-media.md). Route
   changes must preserve the single-graph, single-operation model in
   [ADR-0005](./docs/adr/0005-automatic-hybrid-media-routing.md).
 - WebRTC and LiveKit own network and media adaptation. Do not add custom quality

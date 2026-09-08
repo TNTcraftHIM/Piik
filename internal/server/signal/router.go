@@ -4,8 +4,8 @@ package signal
 //
 // The router owns no lock. signal.Server.mu (routerOptions.mu) is held by the
 // caller of every method except close, hooks are called with it held, and the
-// goroutines the router starts (pump driver, fresh SFU config, host-offline
-// probe, drains, timer callbacks) take it themselves. Every TS `await` is an
+// goroutines the router starts (pump driver, media prepares, drains and timer
+// callbacks) take it themselves. Every I/O window is an
 // unlock / I/O / lock window followed by exactly the guard the TS code ran
 // after that await (map C:/tmp/screener-go/maps/effect-layer.md, section 2.2).
 
@@ -16,7 +16,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -31,14 +30,12 @@ import (
 
 const (
 	defaultRouteOperationTimeoutMs int64 = 20_000
-	defaultSfuDrainRetryMs         int64 = 1_000
-	defaultHostOfflineCheckMs      int64 = 5_000
 )
 
-// routeDebugEnabled ports debuglog("screener-route"): SCREENER_DEBUG=route
-// (D8), read once like NODE_DEBUG. The route package keeps the same flag
-// unexported, so this is its second reader.
-var routeDebugEnabled = routeDebugFlag(os.Getenv("SCREENER_DEBUG"))
+func routeDebugEnabled() bool {
+	return routeDebugFlag(os.Getenv("SCREENER_DEBUG")) ||
+		slog.Default().Enabled(context.Background(), slog.LevelDebug)
+}
 
 func routeDebugFlag(value string) bool {
 	for _, section := range strings.Split(value, ",") {
@@ -51,13 +48,9 @@ func routeDebugFlag(value string) bool {
 
 // sfuFallback is SfuFallbackOptions. A zero timeout means the TS default.
 type sfuFallback struct {
-	url                string
-	tokenIssuer        sfu.TokenIssuer
-	admission          *sfu.Admission
-	roomControl        sfu.RoomControl
-	prepareTimeoutMs   int64
-	drainRetryMs       int64
-	hostOfflineCheckMs int64
+	media            sfu.Runtime
+	admission        *sfu.Admission
+	prepareTimeoutMs int64
 }
 
 // routerHooks are the signaling server callbacks of HybridMediaRouterOptions.
@@ -153,17 +146,6 @@ type roomRuntime struct {
 	pumping                    bool
 	deadlineStop               func() bool
 	deadlineGeneration         uint64
-	sfuRefreshesInFlight       map[string]struct{}
-}
-
-// hostOfflineCheck is HostOfflineCheck; the timer callback compares the
-// registered pointer with the one it was armed with.
-type hostOfflineCheck struct {
-	hostPeerID    string
-	fence         sfu.ResourceFence
-	hostSessionID string
-	connectionID  string
-	stop          func() bool
 }
 
 // router is HybridMediaRouter.
@@ -178,19 +160,14 @@ type router struct {
 
 	// O14, O16, O29: rooms, drain tasks and waiters are walked in insertion
 	// order.
-	rooms             ordered.Map[string, *roomRuntime]
-	resourceWaiters   ordered.Map[string, struct{}]
-	sfuDrainTasks     ordered.Map[string, *sfuDrainTask]
-	hostOfflineChecks ordered.Map[string, *hostOfflineCheck]
-	// roomTurns is the per managed-room-name FIFO of takeTurn.
-	roomTurns map[string]chan struct{}
+	rooms           ordered.Map[string, *roomRuntime]
+	resourceWaiters ordered.Map[string, struct{}]
+	sfuDrainTasks   ordered.Map[sfu.SubscriptionFence, *sfuDrainTask]
 	// inflight counts the goroutines that will re-acquire mu: the pump
 	// drivers, fresh SFU config issues and drains. It is the TS microtask
 	// backlog; tests wait for it to reach zero where the TS awaited.
 	inflight int
 	closing  bool
-	// closeCtx bounds every drain started once close began (D6).
-	closeCtx context.Context
 }
 
 // newRouter is the HybridMediaRouter constructor.
@@ -198,12 +175,7 @@ func newRouter(options routerOptions) *router {
 	if err := protocol.AssertEndpointMediaCopyCapacity(options.endpointMediaCopyCapacity); err != nil {
 		panic(err)
 	}
-	if options.sfu != nil {
-		// TS: new URL(options.sfuFallback.url) throws on a relative URL.
-		if parsed, err := url.Parse(options.sfu.url); err != nil || parsed.Scheme == "" {
-			panic(errors.New("SFU fallback URL is invalid"))
-		}
-	}
+
 	r := &router{
 		mu:        options.mu,
 		store:     options.store,
@@ -212,7 +184,6 @@ func newRouter(options routerOptions) *router {
 		hooks:     options.hooks,
 		now:       options.now,
 		afterFunc: options.afterFunc,
-		roomTurns: map[string]chan struct{}{},
 	}
 	if r.now == nil {
 		r.now = func() int64 { return time.Now().UnixMilli() }
@@ -237,23 +208,13 @@ func (r *router) io(fn func()) {
 	fn()
 }
 
-// close ports close(). mu must be held, as for every other router method: the
-// synchronous prefix (closing flag, timers, drains scheduled) runs in the
-// caller's critical section exactly as the TS ran it before its first await,
-// and mu is released only inside awaitDrain, around each LiveKit wait (R1,
-// R2). Drains run sequentially in insertion order (O16) and their errors are
-// joined; ctx bounds every wait and every close-initiated LiveKit call.
+// close retires room operations and waits for their exact physical resources.
 func (r *router) close(ctx context.Context) error {
 	r.closing = true
-	r.closeCtx = ctx
 	for _, roomID := range r.rooms.Keys() {
 		r.clearRoom(roomID)
 	}
 	r.resourceWaiters.Clear()
-	for _, check := range r.hostOfflineChecks.Values() {
-		check.stop()
-	}
-	r.hostOfflineChecks.Clear()
 	fallback := r.sfu
 	if fallback == nil {
 		return nil
@@ -262,7 +223,7 @@ func (r *router) close(ctx context.Context) error {
 		r.scheduleSfuPublicationDrain(fence)
 	}
 	type entry struct {
-		key  string
+		key  sfu.SubscriptionFence
 		task *sfuDrainTask
 	}
 	var snapshot []entry
@@ -272,7 +233,6 @@ func (r *router) close(ctx context.Context) error {
 	var errs []error
 	for _, current := range snapshot {
 		key, task := current.key, current.task
-		r.clearDrainRetry(task)
 		if task.operation != nil {
 			if err := r.awaitDrain(ctx, task.operation); err != nil {
 				errs = append(errs, err)
@@ -280,13 +240,13 @@ func (r *router) close(ctx context.Context) error {
 			}
 		}
 		if registered, _ := r.sfuDrainTasks.Get(key); registered == task {
-			if err := r.awaitDrain(ctx, r.runSfuDrain(ctx, key, task)); err != nil {
+			if err := r.awaitDrain(ctx, r.runSfuDrain(key, task)); err != nil {
 				errs = append(errs, err)
 			}
 		}
 	}
 	if len(errs) > 0 {
-		return fmt.Errorf("LiveKit drain failed during shutdown: %w", errors.Join(errs...))
+		return fmt.Errorf("SFU drain failed during shutdown: %w", errors.Join(errs...))
 	}
 	return nil
 }
@@ -304,7 +264,6 @@ func (r *router) connectParticipant(input authenticatedRouteParticipant) hybridA
 			r.releaseResources(rm.controller.RebindHostIdentity(input.peerID, input.sessionID, r.nowPtr()))
 		}
 		rm.hostPeerID = input.peerID
-		r.cancelHostOfflineCheck(input.roomID)
 		if rm.controller == nil {
 			r.createController(input.roomID, rm, input)
 		}
@@ -341,7 +300,7 @@ func (r *router) completeAuthentication(participant authenticatedRouteParticipan
 	}
 	r.broadcastActive(participant.roomID, rm)
 	// TS: void this.sendFreshSfuConfig(participant).catch(() => undefined)
-	r.sendFreshSfuConfig(participant, nil, nil)
+	r.sendFreshSfuConfig(participant)
 	r.requestPump(participant.roomID)
 }
 
@@ -376,7 +335,7 @@ func (r *router) observeQualityEvidence(roomID string, evidence route.RouteQuali
 	if rm, _ := r.rooms.Get(roomID); rm != nil && rm.controller != nil {
 		result = rm.controller.ObserveQualityEvidence(evidence)
 	}
-	if result != route.QualityEvidenceRejected && routeDebugEnabled {
+	if result != route.QualityEvidenceRejected && routeDebugEnabled() {
 		upstream := "sfu"
 		if evidence.Upstream.Kind == route.UpstreamPeer {
 			upstream = "p2p:" + r.debugPeer(roomID, evidence.Upstream.PeerID)
@@ -445,7 +404,7 @@ func (r *router) observeSenderQualityEvidence(participant authenticatedRoutePart
 		AcceptedAtMs:      r.now(),
 	}
 	result := controller.ObserveSenderQualityEvidence(input, r.commitReservation)
-	if result.Accepted && routeDebugEnabled {
+	if result.Accepted && routeDebugEnabled() {
 		diagnostics := message.Diagnostics
 		details := []any{
 			"parent", r.debugPeer(participant.roomID, participant.peerID),
@@ -515,7 +474,7 @@ func (r *router) observeSfuPublisherQualityEvidence(participant authenticatedRou
 		AcceptedAtMs:          r.now(),
 	}
 	result := controller.ObserveSfuPublisherQualityEvidence(input, r.commitReservation)
-	if result.Accepted && routeDebugEnabled {
+	if result.Accepted && routeDebugEnabled() {
 		diagnostics := message.Diagnostics
 		details := []any{"routeRevision", int64(message.RouteRevision)}
 		details = append(details, copyContext.kv()...)
@@ -691,7 +650,7 @@ func (r *router) peerSignalAuthorization(input peerSignalInput) signalAuthorizat
 
 // debugPeerSignal ports debugPeerSignal.
 func (r *router) debugPeerSignal(input peerSignalDebugInput) {
-	if !routeDebugEnabled {
+	if !routeDebugEnabled() {
 		return
 	}
 	var authorization any
@@ -956,53 +915,11 @@ func (r *router) handleRouteFailed(participant authenticatedRouteParticipant, me
 	r.requestPump(participant.roomID)
 }
 
-// refreshSfu ports refreshSfu.
 func (r *router) refreshSfu(participant authenticatedRouteParticipant, revision int64) {
 	rm, _ := r.rooms.Get(participant.roomID)
-	if rm == nil || rm.controller == nil {
-		return
+	if rm != nil && rm.controller != nil && revision <= rm.controller.Revision() {
+		r.sendFreshSfuConfig(participant)
 	}
-	currentRevision := rm.controller.Revision()
-	if revision > currentRevision {
-		return
-	}
-	key := fmt.Sprintf("%d\x00%s\x00%s", currentRevision, participant.peerID, participant.sessionID)
-	if _, inFlight := rm.sfuRefreshesInFlight[key]; inFlight {
-		return
-	}
-	rm.sfuRefreshesInFlight[key] = struct{}{}
-	r.sendFreshSfuConfig(participant,
-		func() { r.failCurrentSfuRoute(participant, currentRevision) },
-		func() { delete(rm.sfuRefreshesInFlight, key) })
-}
-
-// failCurrentSfuRoute ports failCurrentSfuRoute.
-func (r *router) failCurrentSfuRoute(participant authenticatedRouteParticipant, revision int64) {
-	rm, _ := r.rooms.Get(participant.roomID)
-	if rm == nil || rm.controller == nil {
-		return
-	}
-	snapshot := rm.controller.Snapshot()
-	if snapshot.Revision != revision {
-		return
-	}
-	connectionID := ""
-	if participant.peerID == rm.hostPeerID {
-		if snapshot.HostPublication != nil {
-			connectionID = snapshot.HostPublication.ConnectionID
-		}
-	} else if edge, ok := snapshot.UpstreamByViewer.Get(participant.peerID); ok && edge.Kind == route.UpstreamSfu {
-		connectionID = edge.ConnectionID
-	}
-	if connectionID == "" {
-		return
-	}
-	r.handleRouteFailed(participant, protocol.RouteFailedMessage{
-		Type:         "route-failed",
-		Revision:     protocol.Int(revision),
-		Phase:        "active",
-		ConnectionID: &connectionID,
-	})
 }
 
 // disconnectParticipant ports disconnectParticipant.
@@ -1010,9 +927,6 @@ func (r *router) disconnectParticipant(roomID, peerID, sessionID string) {
 	rm, _ := r.rooms.Get(roomID)
 	if rm == nil || rm.controller == nil || !rm.controller.DisconnectSession(peerID, sessionID) {
 		return
-	}
-	if peerID == rm.hostPeerID {
-		r.scheduleHostOfflineCheck(roomID, peerID)
 	}
 	r.requestPump(roomID)
 }
@@ -1059,7 +973,7 @@ func (r *router) deleteRoom(roomID string) {
 func (r *router) room(roomID string) *roomRuntime {
 	rm, ok := r.rooms.Get(roomID)
 	if !ok {
-		rm = &roomRuntime{sfuRefreshesInFlight: map[string]struct{}{}}
+		rm = &roomRuntime{}
 		r.rooms.Set(roomID, rm)
 	}
 	return rm
@@ -1106,7 +1020,6 @@ func (r *router) clearRoom(roomID string) {
 		return
 	}
 	r.clearDeadline(rm)
-	r.cancelHostOfflineCheck(roomID)
 	controller := rm.controller
 	rm.controller = nil
 	rm.requested = false
@@ -1261,7 +1174,7 @@ func (r *router) broadcastActive(roomID string, rm *roomRuntime) {
 		return
 	}
 	snapshot := rm.controller.Snapshot()
-	if routeDebugEnabled {
+	if routeDebugEnabled() {
 		type routeEntry struct {
 			Child          string `json:"child"`
 			Parent         string `json:"parent"`
@@ -1505,7 +1418,7 @@ func (r *router) debugTuple(roomID string, tuple route.CandidateTuple) string {
 // debug ports debug(): one sanitised slog event. details are key/value
 // pairs; never pass raw peer, session or connection IDs (use debugPeer).
 func (r *router) debug(roomID, event string, details ...any) {
-	if !routeDebugEnabled {
+	if !routeDebugEnabled() {
 		return
 	}
 	args := make([]any, 0, 4+len(details))

@@ -4,6 +4,7 @@ import type {
   MediaRoutePhase,
   ParticipantRouteAssignment,
   ServerMessage,
+  SfuSignalMessage,
 } from "../../shared/protocol";
 import {
   SfuPublisher,
@@ -21,8 +22,10 @@ import {
   type RouteUpdateResult,
 } from "./route-transition";
 
-interface HostPublisherTransport {
+export interface HostPublisherTransport {
   connect(config: SfuConnectionConfig): Promise<boolean>;
+  updateConfig(config: SfuConnectionConfig): void;
+  acceptSignal(message: SfuSignalMessage): Promise<void>;
   activate(
     stream: MediaStream,
     profile: QualityProfile,
@@ -39,6 +42,7 @@ interface HostPublisherTransport {
 
 interface HostPublisherSlot {
   revision: number;
+  connectionId: string;
   publicationGeneration: string;
   publisher: HostPublisherTransport;
   connected: boolean;
@@ -85,6 +89,9 @@ export class HostSfuRoute {
     const result = this.route.accept(update);
     if (result === "stale") {
       return result;
+    }
+    if (this.active) {
+      this.active.publisher.updateConfig({ ...this.active, revision: update.revision });
     }
     const pausedActiveReconciliation =
       this.paused && update.phase === "active" && result !== "duplicate";
@@ -208,12 +215,17 @@ export class HostSfuRoute {
       !phase ||
       !assignment ||
       !publicationGeneration ||
+      message.publicationGeneration !== publicationGeneration ||
       (phase === "prepare" && candidate?.transport !== "sfu")
     ) {
       return;
     }
-    if (this.active?.publicationGeneration === publicationGeneration) {
+    if (
+      this.active?.publicationGeneration === publicationGeneration &&
+      this.active.connectionId === message.connectionId
+    ) {
       this.active.revision = message.revision;
+      this.active.publisher.updateConfig(message);
       if (phase === "active" && this.active.active) {
         await this.queueActivation(token);
       }
@@ -222,8 +234,10 @@ export class HostSfuRoute {
     if (
       this.pending?.revision === message.revision &&
       this.pending.publicationGeneration === publicationGeneration &&
+      this.pending.connectionId === message.connectionId &&
       !this.pending.failed
     ) {
+      this.pending.publisher.updateConfig(message);
       return;
     }
 
@@ -235,11 +249,13 @@ export class HostSfuRoute {
         (metrics) => this.handlePublisherStats(slot, metrics),
       ) ??
       new SfuPublisher({
+        send: this.events.send,
         onDisconnected: () => this.failPublisherSlot(slot),
         onStats: (metrics) => this.handlePublisherStats(slot, metrics),
       });
     slot = {
       revision: message.revision,
+      connectionId: message.connectionId,
       publicationGeneration,
       publisher,
       connected: false,
@@ -248,10 +264,7 @@ export class HostSfuRoute {
     };
     this.pending = slot;
     try {
-      const connected = await publisher.connect({
-        url: message.url,
-        token: message.token,
-      });
+      const connected = await publisher.connect(message);
       if (!connected) {
         if (this.pending === slot && this.route.owns(token)) {
           this.handleFailure(slot);
@@ -305,6 +318,15 @@ export class HostSfuRoute {
     if (paused) {
       this.clearPending();
     }
+  }
+
+  async acceptSignal(message: SfuSignalMessage): Promise<void> {
+    const slot = [this.pending, this.active].find((slot) =>
+      slot && !slot.failed && slot.connectionId === message.connectionId &&
+      slot.publicationGeneration === message.publicationGeneration,
+    );
+    if (slot === this.pending && slot?.revision !== message.revision) return;
+    await slot?.publisher.acceptSignal(message);
   }
 
   updateProfile(profile: QualityProfile): Promise<boolean> {
@@ -454,9 +476,11 @@ export class HostSfuRoute {
     if (
       this.active &&
       !this.active.failed &&
-      this.active.publicationGeneration === publicationGeneration
+      this.active.publicationGeneration === publicationGeneration &&
+      this.pending?.publicationGeneration !== publicationGeneration
     ) {
       this.active.revision = token.revision;
+      this.active.publisher.updateConfig(this.active);
       this.clearPending();
       if (this.active.active) {
         this.commitMedia(token);

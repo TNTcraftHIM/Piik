@@ -228,6 +228,8 @@ func DecodeClientMessage(data []byte) (ClientMessage, error) {
 		return decodeRouteFailed(data)
 	case "refresh-sfu":
 		return decodeRefreshSfu(data)
+	case "sfu-signal":
+		return decodeSfuSignal(data)
 	case "request-route-diagnostic":
 		return decodeEmptyClientMessage(data, RequestRouteDiagnosticMessage{Type: messageType})
 	case "viewer-quality-evidence":

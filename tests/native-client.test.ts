@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { NativeClient, notifyNativePresentation } from "../src/client/native/client";
+import { DEFAULT_QUALITY_SETTINGS } from "../src/shared/protocol";
 
 import {
   nativeEventSchema,
@@ -25,7 +26,7 @@ describe("native Client private wire", () => {
     });
     const fetcher = vi.fn(async (url: string) => url.endsWith("/health")
       ? new Response(JSON.stringify({
-          protocol: 8, service: "screener-client", port: 39_721,
+          protocol: 9, service: "screener-client", port: 39_721,
           instanceToken: "a".repeat(43),
           nativeMedia: {video: true, processAudio: false, systemAudio: true, hardwareH264: true, softwareVP8: true},
         }), {status: 200})
@@ -52,7 +53,7 @@ describe("native Client private wire", () => {
       static readonly CLOSING = 2;
       static readonly CLOSED = 3;
       readyState = FakeWebSocket.OPEN;
-      protocol = `screener-client-v8.${token}`;
+      protocol = `screener-client-v9.${token}`;
       readonly close = vi.fn(() => {
         this.readyState = FakeWebSocket.CLOSING;
       });
@@ -65,14 +66,15 @@ describe("native Client private wire", () => {
 
       send(payload: string): void {
         const request = JSON.parse(payload) as { id: string; type: string };
-        if (request.type !== "hello") return;
+        if (!["hello", "update-share", "ping"].includes(request.type)) return;
         queueMicrotask(() => {
           const event = new Event("message");
           Object.defineProperty(event, "data", {
             value: JSON.stringify({
-              version: 8,
+              version: 9,
               id: request.id,
-              type: "ready",
+              type: request.type === "hello" ? "ready" : request.type === "ping" ? "pong" : "request-failed",
+              ...(request.type === "update-share" ? { code: "operation-failed" } : {}),
             }),
           });
           this.dispatchEvent(event);
@@ -91,7 +93,7 @@ describe("native Client private wire", () => {
     });
     vi.stubGlobal("fetch", vi.fn(async () =>
       new Response(JSON.stringify({
-        protocol: 8,
+        protocol: 9,
         service: "screener-client",
         port: 39_721,
         instanceToken: token,
@@ -109,6 +111,11 @@ describe("native Client private wire", () => {
     expect(client).not.toBeNull();
     const unexpected = vi.fn();
     client!.onClose(unexpected);
+    await expect(client!.updateShare("share_123456", DEFAULT_QUALITY_SETTINGS))
+      .rejects.toThrow("Screener Client request failed");
+    await client!.ping();
+    expect(sockets[0]!.close).not.toHaveBeenCalled();
+    expect(unexpected).not.toHaveBeenCalled();
     sockets[0]!.emitUnexpectedClose();
     sockets[0]!.emitUnexpectedClose();
     expect(unexpected).toHaveBeenCalledOnce();
@@ -125,7 +132,7 @@ describe("native Client private wire", () => {
   it("keeps public discovery capability-only", () => {
     expect(
       nativeHealthSchema.parse({
-        protocol: 8,
+        protocol: 9,
         service: "screener-client",
         port: 39_721,
         instanceToken: "a".repeat(43),
@@ -193,7 +200,7 @@ describe("native Client private wire", () => {
 
   it("fences native events by share and connection identity", () => {
     const event = {
-      version: 8,
+      version: 9,
       type: "edge-state",
       shareId: "share_123456",
       connectionId: "edge_1234567",
@@ -207,7 +214,7 @@ describe("native Client private wire", () => {
       nativeEventSchema.safeParse({ ...event, routeRevision: 1 }).success,
     ).toBe(false);
     const path = {
-      version: 8,
+      version: 9,
       type: "edge-path",
       shareId: "share_123456",
       connectionId: "edge_1234567",
@@ -222,7 +229,7 @@ describe("native Client private wire", () => {
 
   it("keeps an unavailable preview advisory instead of treating it as media failure", () => {
     const preview = {
-      version: 8,
+      version: 9,
       id: "request_preview",
       type: "source-preview",
       sourceKey: "display:65537",
@@ -249,7 +256,7 @@ describe("native Client private wire", () => {
       screenAudioQuality: "very-high",
     };
     expect(shareStartedResponseSchema.safeParse({
-      version: 8,
+      version: 9,
       id: "request_start",
       type: "share-started",
       shareId: "share_123456",
@@ -257,19 +264,19 @@ describe("native Client private wire", () => {
       codec: "h264",
     }).success).toBe(true);
     expect(shareUpdatedResponseSchema.safeParse({
-      version: 8,
+      version: 9,
       id: "request_update",
       type: "share-updated",
       shareId: "share_123456",
     }).success).toBe(true);
     expect(shareSourceReplacedResponseSchema.safeParse({
-      version: 8,
+      version: 9,
       id: "request_source",
       type: "share-source-replaced",
       shareId: "share_123456",
     }).success).toBe(true);
     expect(shareUpdatedResponseSchema.safeParse({
-      version: 8,
+      version: 9,
       id: "request_update",
       type: "share-updated",
       shareId: "share_123456",
@@ -279,7 +286,7 @@ describe("native Client private wire", () => {
 
   it("requires the actual Native codec instead of reporting Auto as media", () => {
     const response = {
-      version: 8,
+      version: 9,
       id: "request_receive",
       type: "receive-answer",
       shareId: "share_123456",
@@ -290,7 +297,7 @@ describe("native Client private wire", () => {
     for (const codec of ["h264", "vp8"]) {
       expect(receiveAnswerResponseSchema.safeParse({ ...response, codec }).success).toBe(true);
       expect(shareStartedResponseSchema.safeParse({
-        version: 8, id: "request_start", type: "share-started",
+        version: 9, id: "request_start", type: "share-started",
         shareId: response.shareId, audio: false, codec,
       }).success).toBe(true);
     }
@@ -300,7 +307,7 @@ describe("native Client private wire", () => {
 
   it("accepts only internally consistent native quality evidence", () => {
     const event = {
-      version: 8,
+      version: 9,
       type: "edge-quality",
       shareId: "share_123456",
       connectionId: "edge_1234567",

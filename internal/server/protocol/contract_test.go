@@ -75,7 +75,7 @@ const (
 func authenticatedHost() []member {
 	return []member{
 		{"type", `"authenticated"`},
-		{"protocol", `"screener-v21"`},
+		{"protocol", `"screener-v22"`},
 		{"peerId", `"host_12345678"`},
 		{"roomExpiresAt", `"2026-08-18T18:00:00.000Z"`},
 		{"maxViewers", `8`},
@@ -176,12 +176,6 @@ func TestAuthenticatedRoomLifetimeAndRevision(t *testing.T) {
 		object(drop(authenticatedHost(), "routeAssignment")), false)
 	assertServerMessage(t, "absent media mode",
 		object(drop(authenticatedHost(), "mediaMode")), false)
-	assertServerMessage(t, "sfu standby url",
-		object(with(authenticatedHost(),
-			member{"sfuStandbyUrl", `"wss://sfu.example.test"`})), true)
-	assertServerMessage(t, "sfu standby url over https",
-		object(with(authenticatedHost(),
-			member{"sfuStandbyUrl", `"https://sfu.example.test"`})), false)
 	assertServerMessage(t, "quality settings past the bitrate ceiling",
 		object(with(authenticatedHost(), member{"qualitySettings",
 			`{"resolution":"1080p","maxFramerate":60,"maxBitrate":20000000,` +
@@ -479,11 +473,9 @@ func TestForwardedEvidenceAndSfuConfig(t *testing.T) {
 			`"presentationEpoch":0},"sequence":0,"windowMs":2000,"metrics":`+metrics+`}`), false)
 
 	assertServerMessage(t, "sfu config",
-		[]byte(`{"type":"sfu-config","revision":9,"url":"wss://sfu.example.test",`+
-			`"token":"header.payload.signature"}`), true)
-	assertServerMessage(t, "sfu config with an oversized token",
-		[]byte(`{"type":"sfu-config","revision":9,"url":"wss://sfu.example.test","token":"`+
-			repeat("x", MaxSfuTokenLength+1)+`"}`), false)
+		[]byte(`{"type":"sfu-config","revision":9,"publicationGeneration":"publication_12345678","connectionId":"connection_12345678"}`), true)
+	assertServerMessage(t, "sfu config missing connection fence",
+		[]byte(`{"type":"sfu-config","revision":9,"publicationGeneration":"publication_12345678"}`), false)
 }
 
 // zod's z.number().int() accepts an integral JSON number in any spelling.
@@ -563,7 +555,6 @@ func TestEncodeServerMessageEmitsEmptyArrays(t *testing.T) {
 
 // The authenticated key order follows the object literal in signaling.ts.
 func TestAuthenticatedKeyOrder(t *testing.T) {
-	standby := "wss://sfu.example.test"
 	paused := true
 	encoded, err := EncodeServerMessage(AuthenticatedViewerMessage{
 		Type: "authenticated", Protocol: SignalingProtocol, PeerID: "viewer_12345678",
@@ -571,7 +562,7 @@ func TestAuthenticatedKeyOrder(t *testing.T) {
 		IceConfig: IceConfig{}, RoutePolicy: DefaultRoutePolicy, CodeEntryPolicy: CodeEntryOpen,
 		ViewerAuthorizationGeneration: "viewer_generation_12345678",
 		MediaMode:                     "peer-assisted", RouteRevision: 0,
-		QualitySettings: DefaultQualitySettings, SfuStandbyURL: &standby, Role: RoleViewer,
+		QualitySettings: DefaultQualitySettings, Role: RoleViewer,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -597,7 +588,7 @@ func TestAuthenticatedKeyOrder(t *testing.T) {
 		"endpointMediaCopyCapacity", "hostOnline", "hostPaused", "connectionId",
 		"iceConfig", "routePolicy", "codeEntryPolicy", "viewerAuthorizationGeneration",
 		"mediaMode", "shareGeneration", "routeRevision", "routeAssignment",
-		"qualitySettings", "sfuStandbyUrl", "role",
+		"qualitySettings", "role",
 	}
 	if strings.Join(order, ",") != strings.Join(want, ",") {
 		t.Fatalf("key order\n got: %v\nwant: %v", order, want)
@@ -631,7 +622,7 @@ func TestOptionalAndNullableAreExact(t *testing.T) {
 // A host authenticate without routePolicy takes DEFAULT_ROUTE_POLICY.
 func TestAuthenticateAppliesTheRoutePolicyDefault(t *testing.T) {
 	message, err := DecodeClientMessage([]byte(
-		`{"type":"authenticate","protocol":"screener-v21","roomId":"1234","role":"host",` +
+		`{"type":"authenticate","protocol":"screener-v22","roomId":"1234","role":"host",` +
 			`"token":"` + repeat("a", 43) + `","clientId":"client_12345678"}`))
 	if err != nil {
 		t.Fatal(err)

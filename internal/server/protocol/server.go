@@ -34,7 +34,6 @@ type AuthenticatedHostMessage struct {
 	RouteRevision                 Int                        `json:"routeRevision"`
 	RouteAssignment               ParticipantRouteAssignment `json:"routeAssignment"`
 	QualitySettings               QualitySettings            `json:"qualitySettings"`
-	SfuStandbyURL                 *string                    `json:"sfuStandbyUrl,omitempty"`
 	Role                          Role                       `json:"role"`
 	ViewerPasswordEnabled         bool                       `json:"viewerPasswordEnabled"`
 }
@@ -60,7 +59,6 @@ type AuthenticatedViewerMessage struct {
 	RouteRevision                 Int                        `json:"routeRevision"`
 	RouteAssignment               ParticipantRouteAssignment `json:"routeAssignment"`
 	QualitySettings               QualitySettings            `json:"qualitySettings"`
-	SfuStandbyURL                 *string                    `json:"sfuStandbyUrl,omitempty"`
 	Role                          Role                       `json:"role"`
 }
 
@@ -117,12 +115,12 @@ type RouteDiagnosticSnapshotMessage struct {
 	Snapshot RouteDiagnosticSnapshot `json:"snapshot"`
 }
 
-// SfuConfigMessage carries a LiveKit URL and a short-lived token.
+// SfuConfigMessage authorizes one embedded media connection.
 type SfuConfigMessage struct {
-	Type     string `json:"type"`
-	Revision Int    `json:"revision"`
-	URL      string `json:"url"`
-	Token    string `json:"token"`
+	Type                  string `json:"type"`
+	Revision              Int    `json:"revision"`
+	PublicationGeneration string `json:"publicationGeneration"`
+	ConnectionID          string `json:"connectionId"`
 }
 
 // QualitySettingsMessage broadcasts the host's quality settings.
@@ -136,7 +134,6 @@ type RoutePolicyMessage struct {
 	Type            string      `json:"type"`
 	ShareGeneration string      `json:"shareGeneration"`
 	RoutePolicy     RoutePolicy `json:"routePolicy"`
-	SfuStandbyURL   *string     `json:"sfuStandbyUrl,omitempty"`
 }
 
 // PauseSharingSourceMessage asks the host to pause its capture source.
@@ -255,6 +252,8 @@ func DecodeServerMessage(data []byte) (ServerMessage, error) {
 		return decodeRouteDiagnosticSnapshotMessage(data)
 	case "sfu-config":
 		return decodeSfuConfig(data)
+	case "sfu-signal":
+		return decodeSfuSignal(data)
 	case "quality-settings":
 		return decodeQualitySettingsMessage(data)
 	case "route-policy":
@@ -298,7 +297,7 @@ func validateAuthenticatedBase(
 	protocol string, peerID string, roomExpiresAt *string,
 	maxViewers, endpointCapacity Int, connectionID *string,
 	codeEntryPolicy, viewerAuthorizationGeneration, mediaMode string,
-	shareGeneration *string, routeRevision Int, sfuStandbyURL *string,
+	shareGeneration *string, routeRevision Int,
 ) error {
 	if err := present.require("type", "protocol", "peerId", "maxViewers",
 		"endpointMediaCopyCapacity", "hostOnline", "iceConfig", "codeEntryPolicy",
@@ -310,7 +309,7 @@ func validateAuthenticatedBase(
 		"roomExpiresAt", "connectionId", "shareGeneration"); err != nil {
 		return err
 	}
-	if err := present.optional("hostPaused", "routePolicy", "sfuStandbyUrl"); err != nil {
+	if err := present.optional("hostPaused", "routePolicy"); err != nil {
 		return err
 	}
 	if protocol != SignalingProtocol {
@@ -346,9 +345,6 @@ func validateAuthenticatedBase(
 	if !validRevision(routeRevision) {
 		return errors.New("routeRevision is out of range")
 	}
-	if sfuStandbyURL != nil && !ValidLiveKitWebSocketURL(*sfuStandbyURL) {
-		return errors.New("sfuStandbyUrl is not a LiveKit WebSocket URL")
-	}
 	return nil
 }
 
@@ -371,7 +367,7 @@ func decodeAuthenticated(data []byte) (ServerMessage, error) {
 			message.RoomExpiresAt, message.MaxViewers, message.EndpointMediaCopyCapacity,
 			message.ConnectionID, message.CodeEntryPolicy,
 			message.ViewerAuthorizationGeneration, message.MediaMode,
-			message.ShareGeneration, message.RouteRevision, message.SfuStandbyURL); err != nil {
+			message.ShareGeneration, message.RouteRevision); err != nil {
 			return nil, err
 		}
 		if !present.has("routePolicy") {
@@ -388,7 +384,7 @@ func decodeAuthenticated(data []byte) (ServerMessage, error) {
 			message.RoomExpiresAt, message.MaxViewers, message.EndpointMediaCopyCapacity,
 			message.ConnectionID, message.CodeEntryPolicy,
 			message.ViewerAuthorizationGeneration, message.MediaMode,
-			message.ShareGeneration, message.RouteRevision, message.SfuStandbyURL); err != nil {
+			message.ShareGeneration, message.RouteRevision); err != nil {
 			return nil, err
 		}
 		if !present.has("routePolicy") {
@@ -521,17 +517,14 @@ func decodeSfuConfig(data []byte) (ServerMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := present.require("type", "revision", "url", "token"); err != nil {
+	if err := present.require("type", "revision", "publicationGeneration", "connectionId"); err != nil {
 		return nil, err
 	}
 	if !validRevision(message.Revision) {
 		return nil, errors.New("revision is out of range")
 	}
-	if !ValidLiveKitWebSocketURL(message.URL) {
-		return nil, errors.New("url is not a LiveKit WebSocket URL")
-	}
-	if length := UTF16Length(message.Token); length < 1 || length > MaxSfuTokenLength {
-		return nil, errors.New("token length is out of range")
+	if !ValidOpaqueID(message.PublicationGeneration) || !ValidOpaqueID(message.ConnectionID) {
+		return nil, errors.New("invalid SFU connection fence")
 	}
 	return message, nil
 }
@@ -557,14 +550,8 @@ func decodeRoutePolicyMessage(data []byte) (ServerMessage, error) {
 	if err := present.require("type", "shareGeneration", "routePolicy"); err != nil {
 		return nil, err
 	}
-	if err := present.optional("sfuStandbyUrl"); err != nil {
-		return nil, err
-	}
 	if !ValidOpaqueID(message.ShareGeneration) {
 		return nil, errors.New("shareGeneration is not an opaque id")
-	}
-	if message.SfuStandbyURL != nil && !ValidLiveKitWebSocketURL(*message.SfuStandbyURL) {
-		return nil, errors.New("sfuStandbyUrl is not a LiveKit WebSocket URL")
 	}
 	return message, nil
 }

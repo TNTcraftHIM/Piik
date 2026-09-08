@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
 	"os"
@@ -30,8 +31,6 @@ import (
 	"github.com/TNTcraftHIM/Screener/internal/server/config"
 	"github.com/TNTcraftHIM/Screener/internal/server/protocol"
 	"github.com/TNTcraftHIM/Screener/internal/server/room"
-	"github.com/TNTcraftHIM/Screener/internal/server/sfu"
-	"github.com/TNTcraftHIM/Screener/internal/server/sfu/sfutest"
 )
 
 // The scenarios below are ported from tests/server-http.test.ts.
@@ -45,12 +44,6 @@ var setCookiePattern = regexp.MustCompile(
 
 var secureSetCookiePattern = regexp.MustCompile(
 	`^__Host-screener-site-access=v1\.[0-9]+\.[A-Za-z0-9_-]{43}; Path=/; Max-Age=86400; HttpOnly; SameSite=Strict; Secure$`)
-
-type fakeTokenIssuer struct{}
-
-func (fakeTokenIssuer) IssueToken(sfu.TokenRequest) (string, error) {
-	return "unused-test-token", nil
-}
 
 func testConfig(t *testing.T) config.Config {
 	t.Helper()
@@ -72,15 +65,6 @@ func testConfig(t *testing.T) config.Config {
 	}
 }
 
-func livekitFallback() *config.LiveKitFallback {
-	return &config.LiveKitFallback{
-		URL:       "ws://livekit.test:7880",
-		APIURL:    "http://127.0.0.1:7880",
-		APIKey:    "test-key",
-		APISecret: strings.Repeat("s", 32),
-	}
-}
-
 // newServer builds a server without listening. It mirrors the TS harness: the
 // heartbeat and cleanup intervals are pushed out of the way and a fake room
 // control is injected whenever a LiveKit fallback is configured.
@@ -94,14 +78,6 @@ func newServer(t *testing.T, options Options) *Server {
 	}
 	if options.CleanupIntervalMs == 0 {
 		options.CleanupIntervalMs = 60_000
-	}
-	if options.Config.LiveKit != nil {
-		if options.SFURoomControl == nil {
-			options.SFURoomControl = sfutest.New()
-		}
-		if options.SFUTokenIssuer == nil {
-			options.SFUTokenIssuer = fakeTokenIssuer{}
-		}
 	}
 	server, err := New(options)
 	if err != nil {
@@ -387,6 +363,7 @@ func TestCapabilitiesReportOptionalNATPredictionWithoutExposingConfiguration(t *
 	configuration := testConfig(t)
 	configuration.STUNURLs = []string{"stun:share.example.test:3478"}
 	configuration.NATPredictionEnabled = true
+	configuration.STUNListenAddresses = []string{"127.0.0.1:0", "127.0.0.1:0", "127.0.0.1:0"}
 	server := start(t, Options{Config: configuration})
 
 	server.do(http.MethodGet, "/api/capabilities").
@@ -397,6 +374,123 @@ func TestCapabilitiesReportOptionalNATPredictionWithoutExposingConfiguration(t *
 	server.do(http.MethodPost, "/api/capabilities").
 		expect(http.StatusMethodNotAllowed, `{"error":"Method not allowed"}`).
 		expectHeader("Allow", "GET")
+}
+
+func TestSTUNListenersFollowApplicationCloseAndEnd(t *testing.T) {
+	for _, ending := range []bool{false, true} {
+		t.Run(fmt.Sprintf("end=%t", ending), func(t *testing.T) {
+			configuration := testConfig(t)
+			configuration.STUNURLs = []string{"stun:share.example.test:3478"}
+			configuration.NATPredictionEnabled = true
+			configuration.STUNListenAddresses = []string{"127.0.0.1:0", "127.0.0.1:0", "127.0.0.1:0"}
+			server := start(t, Options{Config: configuration})
+			addresses := server.stunServer.Addresses
+			var err error
+			if ending {
+				err = server.End(context.Background())
+			} else {
+				err = server.Close(context.Background())
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertUDPPortsFree(t, addresses)
+		})
+	}
+}
+
+func TestSFUListenerFollowsApplicationCloseAndEnd(t *testing.T) {
+	for _, ending := range []bool{false, true} {
+		t.Run(fmt.Sprintf("end=%t", ending), func(t *testing.T) {
+			configuration := testConfig(t)
+			configuration.SFU = &config.SFUConfig{ListenHost: "127.0.0.1", Port: 0}
+			server := start(t, Options{Config: configuration})
+			addresses := server.mediaMux.GetListenAddresses()
+			if server.signaling.Load() == nil || server.media == nil {
+				t.Fatal("missing runtime owner")
+			}
+			var err error
+			if ending {
+				err = server.End(context.Background())
+			} else {
+				err = server.Close(context.Background())
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertUDPPortsFree(t, addresses)
+		})
+	}
+}
+
+func TestOccupiedSFUPortRollsBackBeforeOpeningTheDatabase(t *testing.T) {
+	occupied, err := net.ListenPacket("udp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer occupied.Close()
+	configuration := testConfig(t)
+	configuration.Port = freePort(t)
+	configuration.RoomDatabasePath = filepath.Join(t.TempDir(), "rooms.sqlite")
+	configuration.STUNListenAddresses = []string{"127.0.0.1:0"}
+	configuration.SFU = &config.SFUConfig{ListenHost: "127.0.0.1", Port: occupied.LocalAddr().(*net.UDPAddr).Port}
+	server := newServer(t, Options{Config: configuration})
+	if _, err = server.Listen(context.Background()); err == nil {
+		t.Fatal("occupied media listener was accepted")
+	}
+	if _, err = os.Stat(configuration.RoomDatabasePath); !os.IsNotExist(err) {
+		t.Fatalf("SFU bind failure touched room persistence: %v", err)
+	}
+	assertPortFree(t, configuration.Port)
+	if server.stunServer != nil || server.mediaMux != nil {
+		t.Fatal("failed startup retained a UDP listener")
+	}
+	if err = occupied.SetDeadline(time.Now().Add(time.Second)); err != nil {
+		t.Fatalf("startup rollback closed another listener: %v", err)
+	}
+}
+
+func TestOccupiedSTUNAuxiliaryRollsBackBeforeOpeningTheDatabase(t *testing.T) {
+	first, err := net.ListenPacket("udp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstAddress := first.LocalAddr()
+	_ = first.Close()
+	occupied, err := net.ListenPacket("udp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer occupied.Close()
+	configuration := testConfig(t)
+	configuration.Port = freePort(t)
+	configuration.RoomDatabasePath = filepath.Join(t.TempDir(), "rooms.sqlite")
+	configuration.STUNListenAddresses = []string{
+		firstAddress.String(), occupied.LocalAddr().String(), "127.0.0.1:0",
+	}
+	server := newServer(t, Options{Config: configuration})
+	if _, err = server.Listen(context.Background()); err == nil {
+		t.Fatal("occupied auxiliary STUN listener was accepted")
+	}
+	if _, err = os.Stat(configuration.RoomDatabasePath); !os.IsNotExist(err) {
+		t.Fatalf("STUN bind failure touched room persistence: %v", err)
+	}
+	assertPortFree(t, configuration.Port)
+	assertUDPPortsFree(t, []net.Addr{firstAddress})
+	if err = occupied.SetDeadline(time.Now().Add(time.Second)); err != nil {
+		t.Fatalf("startup rollback closed another listener: %v", err)
+	}
+}
+
+func assertUDPPortsFree(t *testing.T, addresses []net.Addr) {
+	t.Helper()
+	for _, address := range addresses {
+		listener, err := net.ListenPacket("udp4", address.String())
+		if err != nil {
+			t.Fatalf("STUN listener remained owned: %v", err)
+		}
+		_ = listener.Close()
+	}
 }
 
 // --- site access ----------------------------------------------------------
@@ -490,6 +584,53 @@ func TestSiteAccessUsesASecureHostCookieForProductionHTTPS(t *testing.T) {
 	}
 	if strings.Contains(setCookie, "Domain=") {
 		t.Fatalf("Set-Cookie = %q must not scope a domain", setCookie)
+	}
+}
+
+func TestLocalPasswordUsesConfiguredDestinationCookieAcrossLANAndPublicLink(t *testing.T) {
+	configuration, err := config.Local(config.LocalOptions{
+		Port: freePort(t), PublicAddress: "192.0.2.10", PublicOrigin: "https://public.example.test",
+		SiteAccessPassword: testAccessPassword,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := start(t, Options{Config: configuration})
+	lanOrigin := fmt.Sprintf("http://192.0.2.10:%d", configuration.Port)
+	for _, origin := range []string{lanOrigin, "https://public.example.test"} {
+		t.Run(origin, func(t *testing.T) {
+			destination, _ := url.Parse(origin)
+			host := func(request *http.Request) { request.Host = destination.Host }
+			login := server.do(http.MethodPost, "/api/site-access", host,
+				withOrigin(lanOrigin), withBearer(testAccessPassword)).expectStatus(http.StatusOK)
+			cookies := (&http.Response{Header: login.header}).Cookies()
+			if len(cookies) != 1 || cookies[0].Secure != (destination.Scheme == "https") {
+				t.Fatal("cookie policy does not match its configured destination")
+			}
+			jar, _ := cookiejar.New(nil)
+			jar.SetCookies(destination, cookies)
+			usable := jar.Cookies(destination)
+			if len(usable) != 1 {
+				t.Fatal("browser cookie rules reject the issued login")
+			}
+			cookie := usable[0].String()
+			server.do(http.MethodGet, "/api/site-access", host, withCookie(cookie)).
+				expect(http.StatusOK, `{"required":true,"authenticated":true}`)
+			server.do(http.MethodPost, "/api/rooms", host, withOrigin(origin),
+				withCookie(cookie), withJSON(`{"codeEntryPolicy":"open"}`)).expectStatus(http.StatusCreated)
+			upgrade := httptest.NewRequest(http.MethodGet, origin+"/signal", nil)
+			upgrade.Header.Set("Cookie", cookie)
+			upgrade.Header.Set("X-Forwarded-Proto", "http")
+			if !server.signalOptions.SiteAccessAtUpgrade(upgrade) {
+				t.Fatal("WebSocket admission does not use the same cookie policy")
+			}
+			if destination.Scheme == "https" {
+				upgrade.Header.Set("Cookie", strings.TrimPrefix(cookie, "__Host-"))
+				if server.signalOptions.SiteAccessAtUpgrade(upgrade) {
+					t.Fatal("public authority accepted the plain LAN cookie name")
+				}
+			}
+		})
 	}
 }
 
@@ -1053,94 +1194,15 @@ func TestRestoresStableRoomAuthorityAcrossAnApplicationRestart(t *testing.T) {
 		`{"type":"code-entry-policy-updated","codeEntryPolicy":"open","viewerPasswordEnabled":false}`)
 }
 
-func TestStartsWithAnInjectedOptionalSFUTokenIssuer(t *testing.T) {
-	configuration := testConfig(t)
-	configuration.LiveKit = livekitFallback()
-	server := start(t, Options{Config: configuration, SFUTokenIssuer: fakeTokenIssuer{}})
-
-	server.do(http.MethodGet, "/healthz").expect(http.StatusOK, `{"status":"ok"}`)
-}
-
-func TestClearsAStaleManagedLiveKitRoomBeforeServingTraffic(t *testing.T) {
-	roomControl := sfutest.New()
-	roomControl.SeedRoom(sfu.ResourceFence{
-		RoomID:                "42",
-		ShareGeneration:       "stale_share_generation",
-		PublicationGeneration: "stale_publication_generation",
-	}, "host", "viewer:stale")
-	configuration := testConfig(t)
-	configuration.LiveKit = livekitFallback()
-	server := start(t, Options{Config: configuration, SFURoomControl: roomControl})
-
-	if calls := roomControl.InitializeCalls(); calls != 1 {
-		t.Fatalf("initialize calls = %d, want 1", calls)
-	}
-	if deleted := roomControl.StartupDeletedRoomNames(); len(deleted) != 1 {
-		t.Fatalf("startup deleted rooms = %v, want one", deleted)
-	}
-	if count := roomControl.RoomCount(); count != 0 {
-		t.Fatalf("live rooms = %d, want 0", count)
-	}
-	server.do(http.MethodGet, "/healthz").expect(http.StatusOK, `{"status":"ok"}`)
-}
-
-func TestBindsTheApplicationListenerBeforeLiveKitReconciliation(t *testing.T) {
-	roomControl := sfutest.New()
-	barrier := make(chan struct{})
-	roomControl.SetInitializeBarrier(barrier)
-	port := freePort(t)
-	configuration := testConfig(t)
-	configuration.Port = port
-	configuration.LiveKit = livekitFallback()
-	server := newServer(t, Options{Config: configuration, SFURoomControl: roomControl})
-	client := testClient(t)
-
-	listening := make(chan error, 1)
-	go func() {
-		bound, err := server.Listen(context.Background())
-		if err == nil && bound != port {
-			err = fmt.Errorf("bound port %d, want %d", bound, port)
-		}
-		listening <- err
-	}()
-	waitFor(t, "LiveKit reconciliation to start",
-		func() bool { return roomControl.InitializeCalls() == 1 })
-
-	// Hazard 13: the listener is bound but no traffic is accepted yet.
-	send(t, client, http.MethodGet, baseURL(port)+"/healthz").
-		expect(http.StatusServiceUnavailable, `{"error":"Service starting"}`).
-		expectHeader("Retry-After", "1").
-		expectHeader("Cache-Control", "no-store")
-	// The /signal upgrade is not served either.
-	send(t, client, http.MethodGet, baseURL(port)+"/signal",
-		withOrigin(allowedOrigin),
-		func(request *http.Request) {
-			request.Header.Set("Connection", "Upgrade")
-			request.Header.Set("Upgrade", "websocket")
-			request.Header.Set("Sec-WebSocket-Version", "13")
-			request.Header.Set("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ==")
-		}).
-		expect(http.StatusServiceUnavailable, `{"error":"Service starting"}`)
-
-	close(barrier)
-	if err := <-listening; err != nil {
-		t.Fatalf("Listen: %v", err)
-	}
-	send(t, client, http.MethodGet, baseURL(port)+"/healthz").
-		expect(http.StatusOK, `{"status":"ok"}`)
-}
-
-func TestMakesNoLiveKitCallWhenAnotherProcessOwnsTheListener(t *testing.T) {
+func TestDoesNotOpenDatabaseWhenAnotherProcessOwnsTheListener(t *testing.T) {
 	owner := start(t, Options{Config: testConfig(t)})
 	ownerPort := ownerBoundPort(t, owner)
 
 	databasePath := filepath.Join(t.TempDir(), "missing-parent", "rooms.sqlite")
-	roomControl := sfutest.New()
 	configuration := testConfig(t)
 	configuration.Port = ownerPort
 	configuration.RoomDatabasePath = databasePath
-	configuration.LiveKit = livekitFallback()
-	contender := newServer(t, Options{Config: configuration, SFURoomControl: roomControl})
+	contender := newServer(t, Options{Config: configuration})
 
 	// The TS test asserted the EADDRINUSE code; Windows reports WSAEADDRINUSE,
 	// which errors.Is does not fold into syscall.EADDRINUSE, so the contract
@@ -1153,9 +1215,6 @@ func TestMakesNoLiveKitCallWhenAnotherProcessOwnsTheListener(t *testing.T) {
 	var addressError *net.OpError
 	if !errors.As(err, &addressError) || addressError.Op != "listen" {
 		t.Fatalf("Listen error = %v, want a listen failure", err)
-	}
-	if calls := roomControl.InitializeCalls(); calls != 0 {
-		t.Fatalf("initialize calls = %d, want 0", calls)
 	}
 	if _, statErr := os.Stat(databasePath); !os.IsNotExist(statErr) {
 		t.Fatalf("the room database was created: %v", statErr)
@@ -1177,30 +1236,25 @@ func ownerBoundPort(t *testing.T, server *harness) int {
 	return port
 }
 
-func TestRejectsASecondDatabaseOwnerBeforeLiveKitReconciliation(t *testing.T) {
+func TestRejectsASecondDatabaseOwnerBeforeServingTraffic(t *testing.T) {
 	databasePath := filepath.Join(t.TempDir(), "rooms.sqlite")
 	ownerConfig := testConfig(t)
 	ownerConfig.RoomDatabasePath = databasePath
 	start(t, Options{Config: ownerConfig})
 
-	roomControl := sfutest.New()
 	contenderConfig := testConfig(t)
 	contenderConfig.Port = freePort(t)
 	contenderConfig.RoomDatabasePath = databasePath
-	contenderConfig.LiveKit = livekitFallback()
-	contender := newServer(t, Options{Config: contenderConfig, SFURoomControl: roomControl})
+	contender := newServer(t, Options{Config: contenderConfig})
 
 	_, err := contender.Listen(context.Background())
 	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "locked") {
 		t.Fatalf("Listen error = %v, want a locked database", err)
 	}
-	if calls := roomControl.InitializeCalls(); calls != 0 {
-		t.Fatalf("initialize calls = %d, want 0", calls)
-	}
 	assertPortFree(t, contenderConfig.Port)
 }
 
-func TestRejectsAMismatchedDatabaseBeforeLiveKitReconciliation(t *testing.T) {
+func TestRejectsAMismatchedDatabaseBeforeServingTraffic(t *testing.T) {
 	databasePath := filepath.Join(t.TempDir(), "rooms.sqlite")
 	raw, err := sql.Open("sqlite", "file:"+filepath.ToSlash(databasePath))
 	if err != nil {
@@ -1213,117 +1267,33 @@ func TestRejectsAMismatchedDatabaseBeforeLiveKitReconciliation(t *testing.T) {
 		t.Fatalf("close raw database: %v", err)
 	}
 
-	roomControl := sfutest.New()
 	configuration := testConfig(t)
 	configuration.Port = freePort(t)
 	configuration.RoomDatabasePath = databasePath
-	configuration.LiveKit = livekitFallback()
-	server := newServer(t, Options{Config: configuration, SFURoomControl: roomControl})
+	server := newServer(t, Options{Config: configuration})
 
 	_, err = server.Listen(context.Background())
 	if err == nil ||
 		!strings.Contains(err.Error(), "Room database application identity does not match") {
 		t.Fatalf("Listen error = %v", err)
 	}
-	if calls := roomControl.InitializeCalls(); calls != 0 {
-		t.Fatalf("initialize calls = %d, want 0", calls)
-	}
 	assertPortFree(t, configuration.Port)
 }
 
-func TestRejectsAnInaccessibleDatabasePathBeforeLiveKitReconciliation(t *testing.T) {
+func TestRejectsAnInaccessibleDatabasePathBeforeServingTraffic(t *testing.T) {
 	databasePath := filepath.Join(t.TempDir(), "missing-parent", "rooms.sqlite")
-	roomControl := sfutest.New()
 	configuration := testConfig(t)
 	configuration.Port = freePort(t)
 	configuration.RoomDatabasePath = databasePath
-	configuration.LiveKit = livekitFallback()
-	server := newServer(t, Options{Config: configuration, SFURoomControl: roomControl})
+	server := newServer(t, Options{Config: configuration})
 
 	if _, err := server.Listen(context.Background()); err == nil {
 		t.Fatal("Listen accepted an unreachable database path")
-	}
-	if calls := roomControl.InitializeCalls(); calls != 0 {
-		t.Fatalf("initialize calls = %d, want 0", calls)
 	}
 	if _, err := os.Stat(databasePath); !os.IsNotExist(err) {
 		t.Fatalf("the room database was created: %v", err)
 	}
 	assertPortFree(t, configuration.Port)
-}
-
-func TestHoldsListenerOwnershipUntilAnInFlightStartupSettles(t *testing.T) {
-	before := runtime.NumGoroutine()
-	roomControl := sfutest.New()
-	barrier := make(chan struct{})
-	roomControl.SetInitializeBarrier(barrier)
-	port := freePort(t)
-	configuration := testConfig(t)
-	configuration.Port = port
-	configuration.LiveKit = livekitFallback()
-	server := newServer(t, Options{Config: configuration, SFURoomControl: roomControl})
-
-	listening := make(chan int, 1)
-	go func() {
-		bound, err := server.Listen(context.Background())
-		if err != nil {
-			bound = -1
-		}
-		listening <- bound
-	}()
-	waitFor(t, "LiveKit reconciliation to start",
-		func() bool { return roomControl.InitializeCalls() == 1 })
-
-	var closed atomic.Bool
-	closing := make(chan error, 1)
-	go func() {
-		err := server.Close(context.Background())
-		closed.Store(true)
-		closing <- err
-	}()
-	time.Sleep(20 * time.Millisecond)
-	if closed.Load() {
-		t.Fatal("Close returned while startup was still in flight")
-	}
-	// A14: the listener is still owned, so a contender cannot take the port.
-	if listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port)); err == nil {
-		_ = listener.Close()
-		t.Fatal("the listener was released before startup settled")
-	}
-
-	close(barrier)
-	if bound := <-listening; bound != port {
-		t.Fatalf("Listen returned %d, want %d", bound, port)
-	}
-	if err := <-closing; err != nil {
-		t.Fatalf("Close: %v", err)
-	}
-	if !closed.Load() {
-		t.Fatal("Close never settled")
-	}
-	assertPortFree(t, port)
-	expectGoroutinesSettled(t, before)
-}
-
-func TestClosesTheListenerWhenLiveKitStartupReconciliationFails(t *testing.T) {
-	before := runtime.NumGoroutine()
-	roomControl := sfutest.New()
-	roomControl.SetInitializeError(errors.New("startup reconciliation failed"))
-	port := freePort(t)
-	configuration := testConfig(t)
-	configuration.Port = port
-	configuration.LiveKit = livekitFallback()
-	server := newServer(t, Options{Config: configuration, SFURoomControl: roomControl})
-
-	_, err := server.Listen(context.Background())
-	if err == nil || !strings.Contains(err.Error(), "startup reconciliation failed") {
-		t.Fatalf("Listen error = %v", err)
-	}
-	if calls := roomControl.InitializeCalls(); calls != 1 {
-		t.Fatalf("initialize calls = %d, want 1", calls)
-	}
-	assertPortFree(t, port)
-	expectGoroutinesSettled(t, before)
 }
 
 func TestUsesTheConfiguredListenHostByDefault(t *testing.T) {
@@ -1333,6 +1303,42 @@ func TestUsesTheConfiguredListenHostByDefault(t *testing.T) {
 		t.Fatalf("listen address = %q", server.baseURL)
 	}
 	server.do(http.MethodGet, "/healthz").expect(http.StatusOK, `{"status":"ok"}`)
+}
+
+func TestPreboundListenerHasOneStartupAndShutdownOwner(t *testing.T) {
+	for _, serve := range []bool{false, true} {
+		t.Run(fmt.Sprintf("serve=%t", serve), func(t *testing.T) {
+			listener, err := net.ListenTCP("tcp4", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			address := listener.Addr().(*net.TCPAddr)
+			server := newServer(t, Options{Listener: listener})
+			if serve {
+				port, err := server.Listen(t.Context())
+				if err != nil || port != address.Port || server.listener != listener {
+					t.Fatalf("startup replaced the prebound listener: port=%d err=%v", port, err)
+				}
+				client := &http.Client{Timeout: time.Second}
+				response, err := client.Get("http://" + address.String() + "/healthz")
+				if err != nil {
+					t.Fatal(err)
+				}
+				_ = response.Body.Close()
+				if response.StatusCode != http.StatusOK {
+					t.Fatalf("prebound server health = %d", response.StatusCode)
+				}
+			}
+			if err := server.Close(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			rebound, err := net.ListenTCP("tcp4", address)
+			if err != nil {
+				t.Fatalf("prebound listener survived shutdown: %v", err)
+			}
+			_ = rebound.Close()
+		})
+	}
 }
 
 func TestReportsProcessLivenessWithoutAccessChecks(t *testing.T) {
@@ -1379,8 +1385,8 @@ func TestListenIsSingleShotAndRefusedAfterClose(t *testing.T) {
 // --- request failures and server settings ---------------------------------
 
 // The createServer .catch of app.ts: a handler that throws answers 500 and the
-// record carries the method and the path only (D11).
-func TestRequestFailureAnswers500AndLogsMethodAndPathOnly(t *testing.T) {
+// record carries fixed method and route categories without request data.
+func TestRequestFailureAnswers500AndLogsRequestCategoriesOnly(t *testing.T) {
 	var logged bytes.Buffer
 	server := newServer(t, Options{
 		Config: testConfig(t),
@@ -1393,7 +1399,7 @@ func TestRequestFailureAnswers500AndLogsMethodAndPathOnly(t *testing.T) {
 
 	recorder := httptest.NewRecorder()
 	server.ServeHTTP(recorder,
-		httptest.NewRequest(http.MethodGet, "/boom?grant=viewer-grant-that-must-not-be-logged", nil))
+		httptest.NewRequest(http.MethodGet, "/viewer-grant-that-must-not-be-logged?grant=viewer-grant-that-must-not-be-logged", nil))
 
 	if recorder.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500", recorder.Code)
@@ -1404,11 +1410,17 @@ func TestRequestFailureAnswers500AndLogsMethodAndPathOnly(t *testing.T) {
 	record := logged.String()
 	if !strings.Contains(record, "HTTP request failed") ||
 		!strings.Contains(record, "method=GET") ||
-		!strings.Contains(record, "path=/boom") {
+		!strings.Contains(record, "route=frontend") || strings.Contains(record, "path=") {
 		t.Fatalf("log record = %q", record)
 	}
 	if strings.Contains(record, "viewer-grant-that-must-not-be-logged") {
 		t.Fatalf("the failure log leaked the request: %q", record)
+	}
+	logged.Reset()
+	server.ServeHTTP(httptest.NewRecorder(),
+		httptest.NewRequest("private-method-token", "/private-path-token", nil))
+	if record := logged.String(); !strings.Contains(record, "method=other") || strings.Contains(record, "private-") {
+		t.Fatalf("the failure log leaked a custom method: %q", record)
 	}
 }
 
@@ -1495,46 +1507,10 @@ func TestSignalUpgradeIsDispatchedToTheSignalingServer(t *testing.T) {
 // panickingRoomControl is a reconciliation step that fails with a panic rather
 // than an error, which is what a nil dereference inside a future startup step
 // would look like.
-type panickingRoomControl struct{ sfu.RoomControl }
-
-func (panickingRoomControl) Initialize(context.Context) error {
-	panic(errors.New("startup reconciliation panicked"))
-}
 
 // app.ts:219 awaited startupOperation inside a try/catch, so a rejected
 // startup still settled the promise shutdown waited on. A panic out of start()
 // must release the same latch.
-func TestShutdownIsNotBlockedByAStartupThatPanicked(t *testing.T) {
-	configuration := testConfig(t)
-	configuration.LiveKit = livekitFallback()
-	server, err := New(Options{
-		Config:              configuration,
-		SFURoomControl:      panickingRoomControl{},
-		SFUTokenIssuer:      fakeTokenIssuer{},
-		HeartbeatIntervalMs: 60_000,
-		CleanupIntervalMs:   60_000,
-	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-
-	func() {
-		defer func() {
-			if recovered := recover(); recovered == nil {
-				t.Fatal("Listen swallowed the startup panic")
-			}
-		}()
-		_, _ = server.Listen(context.Background())
-	}()
-
-	closed := make(chan error, 1)
-	go func() { closed <- server.Close(context.Background()) }()
-	select {
-	case <-closed:
-	case <-time.After(5 * time.Second):
-		t.Fatal("Close blocked on the startup latch after a panicking startup")
-	}
-}
 
 // syncBuffer collects log records written from the Serve goroutine.
 type syncBuffer struct {
@@ -1574,4 +1550,7 @@ func TestReportsAListenerThatDiesWhileServing(t *testing.T) {
 	waitFor(t, "the serve failure to be reported", func() bool {
 		return strings.Contains(logged.String(), "Screener HTTP server stopped unexpectedly")
 	})
+	if record := logged.String(); !strings.Contains(record, "errorType=*net.OpError") || strings.Contains(record, "error=") || strings.Contains(record, "127.0.0.1") {
+		t.Fatalf("listener failure must log only the error type: %q", record)
+	}
 }

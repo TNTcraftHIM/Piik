@@ -1,0 +1,111 @@
+{
+  "date": "2026-09-08",
+  "scope": "Local UDP Pion chain replays previously encoded synthetic VP8; separate forced-demand native derivation check; not integrated VSE-to-transport adaptation",
+  "webrtcCommit": "6f37672d358475cd17544121a12494da454d85fb",
+  "inputSha256": "8e0e9deb4c2a2d449200885cb433bc235e53a54b89758930bf32ec330b0a388a",
+  "sourceHealthy": {
+    "phase": "healthy",
+    "seconds": 6.00062,
+    "encodes": 187,
+    "hits": 173,
+    "a": {
+      "encoded": 180,
+      "decoded": 180,
+      "fps": 29.9969,
+      "kbps": 1776.14,
+      "errors": 0,
+      "keyframes": 2,
+      "width": 640,
+      "height": 360,
+      "minWidth": 640,
+      "minHeight": 360,
+      "firstFullMs": 8.0151,
+      "firstReducedMs": -1
+    },
+    "b": {
+      "encoded": 180,
+      "decoded": 180,
+      "fps": 29.9969,
+      "kbps": 1779.64,
+      "errors": 0,
+      "keyframes": 3,
+      "width": 640,
+      "height": 360,
+      "minWidth": 640,
+      "minHeight": 360,
+      "firstFullMs": 13.2214,
+      "firstReducedMs": -1
+    },
+    "aEncodeMs": 4,
+    "bEncodeMs": 2,
+    "aEncodeUsage": 36,
+    "bEncodeUsage": 34
+  },
+  "sourceIntegrity": {
+    "integrity": "pass",
+    "pooled": true,
+    "adjuster": false,
+    "groupAdjuster": true,
+    "unsafeSkip": false,
+    "encodes": 339,
+    "hits": 260,
+    "splits": 5,
+    "rateSplits": 1,
+    "dependencySplits": 2,
+    "created": 5,
+    "joins": 3,
+    "live": 0,
+    "maxLive": 2,
+    "callbacks": 599,
+    "samePayloadCompared": 260,
+    "decodedHashMismatches": 0,
+    "aWantsUpdates": 3,
+    "bWantsUpdates": 3,
+    "aMinPixels": 230400,
+    "bMinPixels": 230400
+  },
+  "chain": {
+    "inputFrames": 180,
+    "relayHops": 2,
+    "leaves": [
+      {
+        "frames": 180,
+        "firstIndex": 0,
+        "lastIndex": 179
+      },
+      {
+        "frames": 167,
+        "firstIndex": 13,
+        "lastIndex": 179
+      },
+      {
+        "frames": 167,
+        "firstIndex": 13,
+        "lastIndex": 179
+      }
+    ],
+    "derivationObserved": false,
+    "cleanup": true
+  },
+  "localDerivation": {
+    "codec": "vp8",
+    "original": {
+      "width": 640,
+      "height": 360
+    },
+    "derived": {
+      "width": 320,
+      "height": 180
+    },
+    "compatibleChildren": 2,
+    "sameLiveProcess": true,
+    "firstConsumerRetirementPreservesOther": true,
+    "lastConsumerRetirementStopsProcess": true,
+    "automaticNetworkSelection": false
+  },
+  "sourceSha256": {
+    "native/probes/encoder-pool/harness.cpp": "ea24fa618dbc2387969b85207fc9dd02b6927342f08d49cda649e25069e1f4c4",
+    "internal/client/mediaedge/relay_chain_fixture_test.go": "19e679e6e43dfd5f7bacab1e3d14b4269a894e07976c65fd7e33960cb8949683",
+    "internal/client/mediaedge/relay_fixture_test.go": "e8398294c80c2371cbf638e28a0a83f6f440eefc4fb1cf58f2e7179c45fcc17f"
+  }
+}

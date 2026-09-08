@@ -5,7 +5,13 @@
 - Superseded in part: items 1, 5, 7, 12 (its supervisor sentence), 13, 14, and
   the local-package consequence were amended in place by
   [ADR-0012](./0012-shared-go-backend-core.md), which replaced the TypeScript
-  server with one shared Go core. Every other item stands as written.
+  server with one shared Go core.
+- [ADR-0013](./0013-embedded-node-local-media.md) supersedes item 8's single-output,
+  Pion-GCC-observation-only and Browser-mediated LiveKit publisher details for
+  the current candidate. The shared encoded-media adapter and direct Native SFU
+  publisher preserve this ADR's participant and capability boundaries. The
+  independent bounded control-session contract remains current; historical
+  acceptance below does not validate the new media implementation.
 
 ## Context
 
@@ -33,14 +39,18 @@ topologies and makes a saved Site unavailable while another room source runs.
    [ADR-0012](./0012-shared-go-backend-core.md).
 2. The packaged product is Screener Client. Its Go process is the cross-platform
    entry and native capability provider. It starts `/health` and one `/control`
-   WebSocket on IPv4 loopback within ports `39721` through `39730` before room-
+   endpoint on IPv4 loopback within ports `39721` through `39730` before room-
    source selection and retains them until the process exits.
 3. Discovery returns a per-process `instanceToken`. The WebSocket subprotocol
    echoes it so the Browser connects to the process it discovered. This value is
    public process identity, not authentication. The listener accepts the current
    Local Host origin and the one user-saved Site origin. Origin and Host
    validation plus the Browser's local-network permission own this boundary.
-4. Loopback v8 starts with a strict `hello` handshake. Health discovery reports
+4. Loopback v9 starts with a strict `hello` handshake. Up to two participant
+   control sessions may coexist; each retains its own share and media lifetime.
+   This bounds concurrent Native work, not the shared server's room count.
+   Ending one control session cannot end another; Client exit waits for all
+   owned sessions to retire. Health discovery reports
    only separately probed native capture booleans. Native Viewer receive/NAT
    remains available when capture or hardware encode is absent. An active control session may
    list local screen/window choices, request bounded previews, and own one share's generation-fenced SDP/ICE
@@ -65,9 +75,9 @@ topologies and makes a saved Site unavailable while another room source runs.
    Client again.
 7. A self-contained Local deployment serves reachable LAN peers without a
    central Screener service. Its explicit `--link` mode starts one accountless
-   Cloudflare Quick Tunnel for the same HTTP/WebSocket surface, applies the
-   resulting HTTPS origin to the local server configuration before that server
-   starts listening, and otherwise retains the same
+   Cloudflare Quick Tunnel for the same HTTP/WebSocket surface. The Client
+   reserves the exact IPv4 listener before creating that tunnel, then applies
+   its HTTPS origin before the server starts serving that listener. It retains the same
    memory RoomStore, Browser UI, Viewer grant, signaling, and route controller.
    The Host sends the ordinary invitation link and the Viewer needs only a
    Browser. Cloudflare terminates this temporary control path; WebRTC media stays

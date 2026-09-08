@@ -6,6 +6,7 @@ import {
   sfuPublisherQualityEvidenceFromMetrics,
 } from "../src/client/media/sender-quality-evidence.ts";
 import type { PeerSnapshot } from "../src/client/types.ts";
+import { EMPTY_METRICS } from "../src/client/types.ts";
 import {
   collectConnectionMetricsFromReport,
   collectNativeSenderQualityFromReport,
@@ -37,6 +38,27 @@ function report(
 }
 
 describe("native sender quality evidence", () => {
+  it("uses actual Native publication sent frames without inventing encoder work", () => {
+    invalidateSenderQualityEvidence();
+    const metrics = {
+      ...EMPTY_METRICS,
+      sampleTimestampMs: 12_000,
+      sampleWindowMs: 2_000,
+      intervalFramesSent: 30,
+      framesPerSecond: 15,
+      nativeEdgeQualityState: "healthy" as const,
+      qualityLimitationReason: "none",
+    };
+    sfuPublisherQualityEvidenceFromMetrics(metrics, 3, "native_publication");
+    expect(
+      sfuPublisherQualityEvidenceFromMetrics(
+        { ...metrics, sampleTimestampMs: 14_000 },
+        3,
+        "native_publication",
+      ),
+    ).toMatchObject({ state: "healthy", diagnostics: { framesPerSecond: 15 } });
+    expect(metrics.intervalFramesEncoded).toBeNull();
+  });
   it("conservatively combines every active SFU publication encoding", () => {
     const accumulator = createNativeSenderQualityAccumulator();
     const multi = (
@@ -67,8 +89,7 @@ describe("native sender quality evidence", () => {
             qualityLimitationReason: reason,
             qualityLimitationDurations: {
               none: reason === "none" ? timestamp / 1_000 : 3,
-              bandwidth:
-                reason === "bandwidth" ? timestamp / 1_000 - 3 : 0,
+              bandwidth: reason === "bandwidth" ? timestamp / 1_000 - 3 : 0,
               cpu: 0,
               other: 0,
             },

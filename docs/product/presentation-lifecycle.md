@@ -103,14 +103,21 @@ black screen, ICE-connected state, or unproved `playing` event.
   before showing a retained frozen background and recovery or failure state.
 - Room not found/expired is distinct from current-room access denial and does not
   prompt for a password.
-- Manual reconnect rebuilds the same route. It does not select a new parent.
+- Manual reconnect recovers the same route. It does not select a new parent.
 - An actionable overlay may appear while fullscreen remains active; application
   state never forces the user out of fullscreen.
 
 Visibility, page freeze, and pagehide suppress application decoded-stall
 authority. Returning to the page rebaselines time and proves a current frame
-again before clearing recovery. LiveKit page-leave auto-disconnect is disabled,
-but Browser or OS suspension and page reclamation remain outside Web guarantees.
+again before clearing recovery. SFU media is retained independently of transient
+room-signaling loss, but Browser or OS suspension and page reclamation remain
+outside Web guarantees.
+
+Failure of the local Native media bridge disables Native reception for the
+current Viewer session before route recovery runs. Future peers in that session
+use Browser reception; existing healthy peers are not torn down by this choice.
+Parent-network failure alone is not evidence that the local Native capability
+is unavailable.
 
 ## Presence And Diagnostics
 

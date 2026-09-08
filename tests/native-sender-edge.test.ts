@@ -14,6 +14,7 @@ function fixture(natPrediction = false) {
     sdp: "v=0\r\n",
   }));
   const control: NativeEdgeControl = {
+    updateShare: vi.fn(async () => undefined),
     prepareEdge,
     acceptSignal: vi.fn(async () => undefined),
     closeEdge: vi.fn(async () => undefined),
@@ -64,7 +65,7 @@ describe("native sender edge adapter", () => {
     const prepare = vi.mocked(current.control.prepareEdge);
     prepare.mockImplementationOnce(async () => {
       current.emit({
-        version: 8,
+        version: 9,
         type: "edge-candidate",
         shareId: "share_1234567",
         connectionId: "edge_12345678",
@@ -85,7 +86,7 @@ describe("native sender edge adapter", () => {
     const current = fixture();
     expect(await current.edge.start()).toBe(true);
     current.emit({
-      version: 8,
+      version: 9,
       type: "edge-state",
       shareId: "share_1234567",
       connectionId: "edge_12345678",
@@ -113,7 +114,7 @@ describe("native sender edge adapter", () => {
       .toHaveLength(3);
     for (const [index, port] of [40_000, 40_003, 40_006].entries()) {
       current.emit({
-        version: 8,
+        version: 9,
         type: "edge-candidate",
         shareId: "share_1234567",
         connectionId: "edge_12345678",

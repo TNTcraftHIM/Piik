@@ -77,19 +77,6 @@ func ValidViewerPassword(value string) bool {
 		viewerPasswordPattern.MatchString(value)
 }
 
-// ValidLiveKitWebSocketURL mirrors liveKitWebSocketUrlSchema.
-func ValidLiveKitWebSocketURL(value string) bool {
-	if UTF16Length(value) > 2048 {
-		return false
-	}
-	parsed, err := url.Parse(value)
-	if err != nil || parsed.Host == "" {
-		return false
-	}
-	scheme := strings.ToLower(parsed.Scheme)
-	return scheme == "ws" || scheme == "wss"
-}
-
 // isoDateTimePattern mirrors z.string().datetime(): an RFC 3339 UTC instant
 // with a "Z" designator and no offset.
 var isoDateTimePattern = regexp.MustCompile(

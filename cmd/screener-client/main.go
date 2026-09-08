@@ -25,6 +25,8 @@ func main() {
 	})
 	flag.BoolVar(&options.Local, "local", false, "use the self-contained Local room authority")
 	flag.BoolVar(&options.Link, "link", false, "create one public Viewer invitation link")
+	flag.BoolVar(&options.Debug, "debug", false, "save opt-in Client diagnostics to rotated files")
+	flag.StringVar(&options.LogDir, "log-dir", "", "diagnostic directory (overrides SCREENER_LOG_DIR)")
 	flag.StringVar(&options.CaptureProcess, "capture-process", "", "path to the platform native capture process")
 	flag.StringVar(&options.TunnelProcess, "tunnel-process", "", "path to the packaged public tunnel process")
 	flag.StringVar(&options.ConfigPath, "config", "", "path to the Client configuration file")

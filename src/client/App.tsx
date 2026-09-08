@@ -26,6 +26,7 @@ import { Btn, Pill } from "./components/living/primitives";
 import { Comic, type ComicKind } from "./components/living/Comic";
 import { Glyph, type GlyphName } from "./ui/icons";
 import { useCopy } from "./ui/copy";
+import { installBrowserDebug } from "./lib/debug";
 import { OverlayPreviewPage } from "./pages/OverlayPreviewPage";
 import { TooltipPreviewPage } from "./pages/TooltipPreviewPage";
 
@@ -81,6 +82,7 @@ function readableError(error: unknown, t: (key: "gate.connectFailed") => string)
 
 export function App() {
   const { lang, vis } = useCopy();
+  useEffect(installBrowserDebug, []);
   useEffect(() => {
     if (appRoute.kind !== "client" && !clientLaunchBootstrap?.launchedByClient) return;
     const controller = new AbortController();

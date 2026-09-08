@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"strconv"
 	"strings"
@@ -16,6 +17,24 @@ const natPredictionBasePort = 3478
 // listeners a NAT-prediction STUN deployment binds beside the base port, whose
 // answers reveal the peer's port-allocation stride.
 var natPredictionAuxiliaryPorts = [...]int{natPredictionBasePort + 1, natPredictionBasePort + 2}
+
+func stunListenAddresses(host string, prediction bool) ([]string, error) {
+	host = strings.TrimSpace(host)
+	if host == "" {
+		host = "0.0.0.0"
+	}
+	address := net.ParseIP(host)
+	if address == nil || address.To4() == nil || strings.ContainsRune(host, ':') {
+		return nil, fmt.Errorf("STUN_LISTEN_HOST must be an IPv4 address")
+	}
+	listeners := []string{net.JoinHostPort(host, strconv.Itoa(natPredictionBasePort))}
+	if prediction {
+		for _, port := range natPredictionAuxiliaryPorts {
+			listeners = append(listeners, net.JoinHostPort(host, strconv.Itoa(port)))
+		}
+	}
+	return listeners, nil
+}
 
 // NATPredictionStunURLs ports natPredictionStunUrls: the two auxiliary
 // listeners derived from the first ordinary STUN authority on UDP 3478.

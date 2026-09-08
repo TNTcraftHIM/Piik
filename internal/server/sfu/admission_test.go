@@ -10,6 +10,32 @@ import (
 	"github.com/TNTcraftHIM/Screener/internal/server/protocol"
 )
 
+func TestSubscriptionDrainReleasesOnlyExactConnection(t *testing.T) {
+	admission := NewAdmission(AdmissionOptions{IngressCapacity: 1, EgressCapacity: 2})
+	publication := ResourceFence{RoomID: "1234", ShareGeneration: "share_12345678", PublicationGeneration: "publication_12345678"}
+	old := SubscriptionFence{ResourceFence: publication, ViewerPeerID: "viewer_12345678", ConnectionID: "old_12345678"}
+	current := old
+	current.ConnectionID = "new_12345678"
+	if !admission.ReservePublication(publication) || !admission.ReserveSubscription(old) {
+		t.Fatal("initial admission failed")
+	}
+	if _, ok := admission.CommitPublication(publication); !ok {
+		t.Fatal("publication commit failed")
+	}
+	if !admission.ReserveSubscription(current) {
+		t.Fatal("candidate connection was not charged independently")
+	}
+	if admission.Usage().Egress != 2 {
+		t.Fatal("two physical handles must remain charged")
+	}
+	if !admission.BeginSubscriptionDrain(old) || !admission.CompleteSubscriptionDrain(old) {
+		t.Fatal("exact subscription drain failed")
+	}
+	if admission.CompleteSubscriptionDrain(old) || !admission.HasSubscription(current) || admission.Usage().Egress != 1 {
+		t.Fatal("stale retirement changed the candidate")
+	}
+}
+
 func publicationFence(roomID string, publicationGeneration string) ResourceFence {
 	return ResourceFence{
 		RoomID:                roomID,
@@ -215,7 +241,7 @@ func TestAdmissionKeepsReleasedReservedSubscriptionCharged(t *testing.T) {
 	expectUsage(t, admission, 0, 0)
 }
 
-func TestAdmissionReactivatesExactDrainingSubscription(t *testing.T) {
+func TestAdmissionDoesNotReviveAConnectionDuringPhysicalClose(t *testing.T) {
 	admission := NewAdmission(AdmissionOptions{IngressCapacity: 1, EgressCapacity: 1})
 	active := publicationFence("1", "publication_active")
 	viewer := subscriptionFence(active, "viewer_a")
@@ -230,18 +256,19 @@ func TestAdmissionReactivatesExactDrainingSubscription(t *testing.T) {
 	}
 	expectUsage(t, admission, 1, 1)
 
-	if !admission.ReserveSubscription(viewer) || !admission.ReserveSubscription(viewer) {
-		t.Fatal("the exact draining subscription must reactivate")
+	if admission.ReserveSubscription(viewer) {
+		t.Fatal("a draining connection cannot be revived")
 	}
 	expectUsage(t, admission, 1, 1)
-	if !admission.BeginSubscriptionDrain(viewer) {
-		t.Fatal("the subscription must drain again")
-	}
 	if admission.ReserveSubscription(subscriptionFence(active, "viewer_b")) {
 		t.Fatal("the charge must still block another viewer")
 	}
+	if !admission.CompleteSubscriptionDrain(viewer) {
+		t.Fatal("physical close must release the charge")
+	}
+	viewer.ConnectionID = "replacement_12345678"
 	if !admission.ReserveSubscription(viewer) || !admission.CommitSubscription(viewer) {
-		t.Fatal("the exact subscription must reactivate and commit")
+		t.Fatal("a new connection must reserve after physical close")
 	}
 	expectUsage(t, admission, 1, 1)
 }
@@ -348,43 +375,4 @@ func TestAdmissionAssertsNoUnderflow(t *testing.T) {
 	expectPanic(t, "SFU resource accounting underflow", func() {
 		admission.CompleteDrain(active)
 	})
-}
-
-func TestManagedRoomName(t *testing.T) {
-	fence := ResourceFence{
-		RoomID:                "42",
-		ShareGeneration:       "share_generation_12345678",
-		PublicationGeneration: "publication_generation_12345678",
-	}
-	name := ManagedRoomName(fence)
-	const want = "screener-v1.42.share_generation_12345678.publication_generation_12345678"
-	if name != want {
-		t.Fatalf("ManagedRoomName = %q, want %q", name, want)
-	}
-	if !IsManagedRoomName(name) {
-		t.Fatal("the generated name must be managed")
-	}
-
-	for _, roomName := range []string{
-		"screener-v1.42.bad.segment.extra",
-		"another-application",
-		"screener-v1.42.share_generation_12345678",
-		"screener-v1.042.share_generation_12345678.publication_generation_12345678",
-		"screener-v1.1234567890123.share_generation_12345678.publication_generation_12345678",
-		"screener-v1.42.short.publication_generation_12345678",
-	} {
-		if IsManagedRoomName(roomName) {
-			t.Fatalf("%q must not be a managed room name", roomName)
-		}
-	}
-
-	for _, invalid := range []ResourceFence{
-		{RoomID: "0", ShareGeneration: "share_generation_12345678", PublicationGeneration: "publication_generation_12345678"},
-		{RoomID: "42", ShareGeneration: "has.dot.12345678", PublicationGeneration: "publication_generation_12345678"},
-		{RoomID: "42", ShareGeneration: "share_generation_12345678", PublicationGeneration: "short"},
-	} {
-		expectPanic(t, "Managed LiveKit room fence is invalid", func() {
-			ManagedRoomName(invalid)
-		})
-	}
 }

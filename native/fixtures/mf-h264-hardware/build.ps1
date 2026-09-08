@@ -28,15 +28,19 @@ if ([string]::IsNullOrWhiteSpace($installationPath)) {
 }
 
 $developerCommand = Join-Path $installationPath 'Common7\Tools\VsDevCmd.bat'
-$sourcePath = Join-Path $fixtureDirectory '..\..\client\platform\windows\capture\main.cpp'
+$sourcePath = Join-Path $fixtureDirectory '..\..\capture\windows\main.cpp'
+$encoderSourcePath = Join-Path $fixtureDirectory '..\..\capture\windows\h264_encoder.cpp'
 $executablePath = Join-Path $outputPath 'screener-mf-h264-fixture.exe'
 $objectPath = Join-Path $outputPath 'main.obj'
+$encoderObjectPath = Join-Path $outputPath 'h264-encoder.obj'
 
 New-Item -ItemType Directory -Path $outputPath -Force | Out-Null
 
 $compile = @(
     'call "{0}" -arch=x64 -host_arch=x64 >nul' -f $developerCommand
-    'cl.exe /nologo /std:c++20 /EHsc /W4 /WX /DSCREENER_H264_FIXTURE /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN /D_WIN32_WINNT=0x0A00 "{0}" /Fo:"{1}" /Fe:"{2}" /link mfplat.lib mf.lib mfuuid.lib d3d11.lib dxgi.lib dxguid.lib evr.lib ole32.lib oleaut32.lib pdh.lib windowsapp.lib' -f $sourcePath, $objectPath, $executablePath
+    'cl.exe /nologo /c /std:c++20 /EHsc /W4 /WX /DSCREENER_H264_FIXTURE /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN /D_WIN32_WINNT=0x0A00 "{0}" /Fo:"{1}"' -f $sourcePath, $objectPath
+    'cl.exe /nologo /c /std:c++20 /EHsc /W4 /WX /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN /D_WIN32_WINNT=0x0A00 "{0}" /Fo:"{1}"' -f $encoderSourcePath, $encoderObjectPath
+    'link.exe /nologo /out:"{0}" "{1}" "{2}" mfplat.lib mf.lib mfuuid.lib d3d11.lib dxgi.lib dxguid.lib evr.lib ole32.lib oleaut32.lib pdh.lib windowsapp.lib' -f $executablePath, $objectPath, $encoderObjectPath
 ) -join ' && '
 
 & cmd.exe /d /s /c $compile

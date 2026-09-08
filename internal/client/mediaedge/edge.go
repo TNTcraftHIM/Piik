@@ -2,13 +2,15 @@ package mediaedge
 
 import (
 	"errors"
+	"fmt"
 	"io"
+	"log/slog"
 	"strconv"
 	"strings"
 	"sync"
 
+	"github.com/TNTcraftHIM/Screener/internal/media/forwarding"
 	"github.com/pion/ice/v4"
-	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -28,15 +30,17 @@ type EdgeOptions struct {
 }
 
 type Edge struct {
-	connectionID string
-	engine       *Engine
-	source       *Source
-	audioSource  *AudioSource
-	connection   *webrtc.PeerConnection
-	sender       *webrtc.RTPSender
-	audioSender  *webrtc.RTPSender
-	bandwidth    *bandwidthObserver
-	events       EdgeEvents
+	connectionID  string
+	engine        *Engine
+	source        *Source
+	audioSource   *AudioSource
+	connection    *webrtc.PeerConnection
+	sender        *webrtc.RTPSender
+	audioSender   *webrtc.RTPSender
+	targetBitrate func() (int, bool)
+	events        EdgeEvents
+	transport     *forwarding.Transport
+	local         bool
 
 	mu                   sync.Mutex
 	pendingCandidates    []webrtc.ICECandidateInit
@@ -69,7 +73,14 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (*Edge, error
 			return nil, err
 		}
 	}
-	connection, err := engine.api.NewPeerConnection(webrtc.Configuration{})
+	var audio webrtc.TrackLocal
+	if options.Audio != nil {
+		audio = options.Audio.track
+	}
+	transport, err := forwarding.NewTransport(forwarding.TransportOptions{
+		Source: source.media.Source, Settings: engine.settings, ConnectionID: options.ConnectionID,
+		InitialBitrate: engine.initialBitrate, Audio: audio,
+	})
 	if err != nil {
 		source.releaseReservation(options.Local)
 		if options.Audio != nil {
@@ -77,30 +88,27 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (*Edge, error
 		}
 		return nil, err
 	}
-	bandwidth := engine.bandwidth.take(connection.ID())
-	if bandwidth == nil {
-		source.releaseReservation(options.Local)
-		if options.Audio != nil {
-			options.Audio.releaseReservation(options.Local)
-		}
-		_ = connection.Close()
-		return nil, errors.New("native media bandwidth observer is unavailable")
-	}
+	connection := transport.PC
+	transport.SetAudioBitrate(options.Audio.configuredBitrate())
 	edge := &Edge{
-		connectionID: options.ConnectionID,
-		engine:       engine,
-		source:       source,
-		audioSource:  options.Audio,
-		connection:   connection,
-		bandwidth:    bandwidth,
-		events:       options.Events,
+		connectionID:  options.ConnectionID,
+		engine:        engine,
+		source:        source,
+		audioSource:   options.Audio,
+		connection:    connection,
+		transport:     transport,
+		local:         options.Local,
+		targetBitrate: transport.TargetBitrate,
+		events:        options.Events,
+		sender:        transport.VideoSender,
+		audioSender:   transport.AudioSender,
 	}
 	if err = engine.register(edge); err != nil {
 		source.releaseReservation(options.Local)
 		if options.Audio != nil {
 			options.Audio.releaseReservation(options.Local)
 		}
-		_ = connection.Close()
+		_ = transport.Close()
 		return nil, err
 	}
 	if err = source.attach(edge, options.Local); err != nil {
@@ -108,38 +116,16 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (*Edge, error
 			options.Audio.releaseReservation(options.Local)
 		}
 		engine.remove(edge)
-		_ = connection.Close()
+		_ = transport.Close()
 		return nil, err
 	}
 	if options.Audio != nil {
 		if err = options.Audio.attach(edge, options.Local); err != nil {
 			source.detach(edge)
 			engine.remove(edge)
-			_ = connection.Close()
+			_ = transport.Close()
 			return nil, err
 		}
-	}
-	sender, err := connection.AddTrack(source.track)
-	if err != nil {
-		_ = edge.Close()
-		return nil, err
-	}
-	edge.sender = sender
-	for _, transceiver := range connection.GetTransceivers() {
-		if transceiver.Sender() == sender {
-			if err = transceiver.SetCodecPreferences([]webrtc.RTPCodecParameters{videoCodecs[source.codec]}); err != nil {
-				_ = edge.Close()
-				return nil, err
-			}
-		}
-	}
-	if options.Audio != nil {
-		audioSender, audioErr := connection.AddTrack(options.Audio.track)
-		if audioErr != nil {
-			_ = edge.Close()
-			return nil, audioErr
-		}
-		edge.audioSender = audioSender
 	}
 	edge.localCandidates = newLocalCandidateGathering(
 		engine,
@@ -150,29 +136,77 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (*Edge, error
 	connection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
 		edge.localCandidates.addPion(candidate)
 	})
+	connection.OnICEConnectionStateChange(func(state webrtc.ICEConnectionState) {
+		slog.Debug("screener-client", "event", "media-ice-state", "direction", "outbound", "local", options.Local, "state", state.String())
+	})
+	if dtls := edge.sender.Transport(); dtls != nil {
+		dtls.OnStateChange(func(state webrtc.DTLSTransportState) {
+			slog.Debug("screener-client", "event", "media-dtls-state", "direction", "outbound", "local", options.Local, "state", state.String())
+		})
+	}
 	connection.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+		debug := slog.Default().Enabled(engine.ctx, slog.LevelDebug)
+		if debug {
+			slog.Debug("screener-client", "event", "media-connection-state", "direction", "outbound", "local", options.Local, "state", state.String())
+		}
 		if state == webrtc.PeerConnectionStateConnected {
+			if err := edge.transport.SetConnected(); err != nil {
+				if debug {
+					slog.Debug("screener-client", "event", "media-activation-failed", "errorType", fmt.Sprintf("%T", err))
+				}
+				_ = connection.Close()
+				return
+			}
 			edge.source.RequestRecoveryFrame()
 		}
-		if edge.events.ConnectionState != nil {
-			var selected *SelectedPair
-			if state == webrtc.PeerConnectionStateConnected {
-				if pair, pairErr := edge.SelectedPair(); pairErr == nil {
-					selected = &pair
+		var selected *SelectedPair
+		if state == webrtc.PeerConnectionStateConnected && (edge.events.ConnectionState != nil || debug) {
+			if pair, pairErr := edge.SelectedPair(); pairErr == nil {
+				selected = &pair
+				if debug {
+					slog.Debug("screener-client", "event", "media-selected-path", "direction", "outbound", "local", options.Local,
+						"localType", pair.Local.String(), "remoteType", pair.Remote.String(), "natTraversalPath", pair.NatTraversalPath)
 				}
 			}
+		}
+		if edge.events.ConnectionState != nil {
 			edge.events.ConnectionState(state, selected)
 		}
 	})
-	go edge.readRTCP(edge.sender, edge.source)
-	if edge.audioSender != nil {
-		go edge.readRTCP(edge.audioSender, nil)
-	}
 	return edge, nil
 }
 
 func (edge *Edge) ConnectionID() string {
 	return edge.connectionID
+}
+
+// SetTargetLayer is a media-component input, not a route change or UI setting.
+func (edge *Edge) SetTargetLayer(layer int) error {
+	source := edge.source
+	changed := false
+	source.writeMu.Lock()
+	defer func() {
+		source.writeMu.Unlock()
+		if changed {
+			source.RequestRecoveryFrame()
+		}
+	}()
+	source.mu.Lock()
+	_, attached := source.edges[edge]
+	closed := source.closed
+	source.mu.Unlock()
+	if closed || !attached {
+		return io.ErrClosedPipe
+	}
+	if layer < 0 || layer >= len(source.formats) {
+		return errors.New("native output layer is invalid")
+	}
+	if len(source.outputBitrates) > 0 && source.outputBitrates[layer] == 0 {
+		return errors.New("native output layer is unavailable")
+	}
+	changed = edge.transport.Output.MaxLayer().Spatial != int32(layer)
+	edge.transport.Output.SetMaxSpatialLayer(int32(layer))
+	return nil
 }
 
 func (edge *Edge) CreateOffer() (webrtc.SessionDescription, error) {
@@ -318,30 +352,46 @@ func (edge *Edge) Close() error {
 	}
 	edge.pendingCandidates = nil
 	edge.mu.Unlock()
+	if edge.local && slog.Default().Enabled(edge.engine.ctx, slog.LevelDebug) {
+		logLocalMediaCandidateCounts(edge.connection.GetStats())
+	}
+	err := edge.transport.Close()
 	edge.source.detach(edge)
 	if edge.audioSource != nil {
 		edge.audioSource.detach(edge)
 	}
 	edge.engine.remove(edge)
-	return edge.connection.Close()
+	return err
 }
 
-func (edge *Edge) readRTCP(sender *webrtc.RTPSender, videoSource *Source) {
-	for {
-		packets, _, err := sender.ReadRTCP()
-		if err != nil {
-			if !errors.Is(err, io.EOF) {
-				return
-			}
-			return
-		}
-		for _, packet := range packets {
-			switch packet.(type) {
-			case *rtcp.PictureLossIndication, *rtcp.FullIntraRequest:
-				if videoSource != nil {
-					videoSource.RequestRecoveryFrame()
+func logLocalMediaCandidateCounts(report webrtc.StatsReport) {
+	for _, direction := range []webrtc.StatsType{webrtc.StatsTypeLocalCandidate, webrtc.StatsTypeRemoteCandidate} {
+		for _, kind := range []webrtc.ICECandidateType{webrtc.ICECandidateTypeHost, webrtc.ICECandidateTypeSrflx, webrtc.ICECandidateTypePrflx, webrtc.ICECandidateTypeRelay} {
+			udp, tcp := 0, 0
+			for _, entry := range report {
+				candidate, ok := entry.(webrtc.ICECandidateStats)
+				if !ok || candidate.Type != direction || candidate.CandidateType != kind || candidate.Deleted {
+					continue
+				}
+				switch candidate.Protocol {
+				case "udp":
+					udp++
+				case "tcp":
+					tcp++
 				}
 			}
+			slog.Debug("screener-client", "event", "media-candidate-counts", "local", true,
+				"direction", string(direction), "type", kind.String(), "udp", udp, "tcp", tcp)
 		}
+	}
+}
+
+// Shutdown must release every transport before waiting on shared source writes.
+func closeEdges(edges []*Edge) {
+	for _, edge := range edges {
+		_ = edge.connection.Close()
+	}
+	for _, edge := range edges {
+		_ = edge.Close()
 	}
 }

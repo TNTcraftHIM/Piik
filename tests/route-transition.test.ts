@@ -51,17 +51,19 @@ const hostAssignment = (
   sfuPublicationGeneration: publicationGeneration,
 });
 
-function sfuConfig(revision: number) {
+function sfuConfig(revision: number, publicationGeneration = "publication_generation_12345678") {
   return {
     type: "sfu-config" as const,
     revision,
-    url: "wss://sfu.example.test",
-    token: `token-${revision}`,
+    publicationGeneration,
+    connectionId: `sfu_connection_${revision}_12345678`,
   };
 }
 
 function createFakePublisher(log: string[], label: string) {
   return {
+    updateConfig: vi.fn(),
+    acceptSignal: vi.fn(async () => undefined),
     connect: vi.fn(async (_config: unknown) => {
       log.push(`${label}:connect`);
       return true;
@@ -102,6 +104,9 @@ const candidate = (
 
 function createFakeSubscriber(events: SubscriberEvents, log: string[], label: string) {
   return {
+    updateConfig: vi.fn(),
+    acceptSignal: vi.fn(async () => undefined),
+    reconnect: vi.fn(() => true),
     events,
     connect: vi.fn(async () => {
       log.push(`${label}:connect`);
@@ -388,7 +393,7 @@ describe("minimal route transition contracts", () => {
       phase: "active",
       assignment: hostAssignment("publication-a"),
     });
-    await route.acceptConfig(sfuConfig(1));
+    await route.acceptConfig(sfuConfig(1, "publication-a"));
     expect(publishers[0]?.activate).toHaveBeenCalledOnce();
     expect(publishers[0]?.activate).toHaveBeenCalledWith(
       expect.anything(),
@@ -402,7 +407,7 @@ describe("minimal route transition contracts", () => {
       assignment: hostAssignment("publication-b"),
       candidate: candidate(2, "viewer_12345678", "sfu"),
     });
-    await route.acceptConfig(sfuConfig(2));
+    await route.acceptConfig(sfuConfig(2, "publication-b"));
     expect(publishers[1]?.activate).toHaveBeenCalledOnce();
     expect(publishers[0]?.deactivate).not.toHaveBeenCalled();
     expect(messages.filter((message) => message.type === "route-ready")).toEqual([]);
@@ -432,7 +437,7 @@ describe("minimal route transition contracts", () => {
       phase: "active",
       assignment: hostAssignment("publication", ["committed-child"]),
     });
-    await route.acceptConfig(sfuConfig(1));
+    await route.acceptConfig(sfuConfig(1, "publication"));
     reconciledChildren.length = 0;
 
     route.accept({
@@ -449,6 +454,35 @@ describe("minimal route transition contracts", () => {
       assignment: hostAssignment(null, ["candidate-child"]),
     });
     expect(reconciledChildren).toEqual([["candidate-child"]]);
+  });
+
+  it("replaces a Host physical connection within one publication and fences stale signaling", async () => {
+    const publishers: ReturnType<typeof createFakePublisher>[] = [];
+    const route = new HostSfuRoute({
+      getStream: () => ({}) as MediaStream,
+      getProfile: () => QUALITY_PROFILES["720p30"],
+      getVideoCodec: () => "vp8",
+      reconcileChildren: () => undefined,
+      send: () => true,
+      createPublisher: () => {
+        const publisher = createFakePublisher([], "publisher");
+        publishers.push(publisher);
+        return publisher;
+      },
+    });
+    await route.acceptAndWait({ revision: 1, phase: "active", assignment: hostAssignment("publication") });
+    const first = sfuConfig(1, "publication");
+    await route.acceptConfig(first);
+    const replacement = { ...first, connectionId: "replacement_connection" };
+    await route.acceptConfig(replacement);
+    expect(publishers).toHaveLength(2);
+    expect(publishers[0]!.disconnect).toHaveBeenCalledOnce();
+    expect(publishers[1]!.disconnect).not.toHaveBeenCalled();
+    await route.acceptSignal({ ...first, type: "sfu-signal", kind: "candidate", candidate: { candidate: "old" } });
+    expect(publishers[0]!.acceptSignal).not.toHaveBeenCalled();
+    await route.acceptSignal({ ...replacement, type: "sfu-signal", kind: "candidate", candidate: { candidate: "current" } });
+    expect(publishers[1]!.acceptSignal).toHaveBeenCalledOnce();
+    await route.disconnect();
   });
 
   it("reports and retires an exact active SFU source replacement failure", async () => {
@@ -475,7 +509,7 @@ describe("minimal route transition contracts", () => {
       phase: "active",
       assignment: hostAssignment("publication-active"),
     });
-    await route.acceptConfig(sfuConfig(1));
+    await route.acceptConfig(sfuConfig(1, "publication-active"));
     publishers[0]!.replaceStream.mockResolvedValue(false);
 
     await expect(route.replaceStream({} as MediaStream)).resolves.toBe(false);
@@ -510,14 +544,14 @@ describe("minimal route transition contracts", () => {
       phase: "active",
       assignment: hostAssignment("publication-active"),
     });
-    await route.acceptConfig(sfuConfig(1));
+    await route.acceptConfig(sfuConfig(1, "publication-active"));
     route.accept({
       revision: 2,
       phase: "prepare",
       assignment: hostAssignment("publication-pending"),
       candidate: candidate(2, "viewer_12345678", "sfu"),
     });
-    await route.acceptConfig(sfuConfig(2));
+    await route.acceptConfig(sfuConfig(2, "publication-pending"));
     publishers[1]!.replaceStream.mockResolvedValue(false);
 
     await expect(route.replaceStream({} as MediaStream)).resolves.toBe(true);
@@ -554,14 +588,14 @@ describe("minimal route transition contracts", () => {
       phase: "active",
       assignment: hostAssignment("publication-old"),
     });
-    await route.acceptConfig(sfuConfig(1));
+    await route.acceptConfig(sfuConfig(1, "publication-old"));
     route.accept({
       revision: 2,
       phase: "prepare",
       assignment: hostAssignment("publication-new"),
       candidate: candidate(2, "viewer_12345678", "sfu"),
     });
-    await route.acceptConfig(sfuConfig(2));
+    await route.acceptConfig(sfuConfig(2, "publication-new"));
 
     let resolveOldReplacement!: (replaced: boolean) => void;
     publishers[0]!.replaceStream.mockImplementation(
@@ -615,7 +649,7 @@ describe("minimal route transition contracts", () => {
       phase: "active",
       assignment: hostAssignment("publication-old"),
     });
-    await route.acceptConfig(sfuConfig(1));
+    await route.acceptConfig(sfuConfig(1, "publication-old"));
     route.setPaused(true);
     expect(publishers[0]?.setPaused).toHaveBeenCalledWith(true);
 
@@ -673,12 +707,12 @@ describe("minimal route transition contracts", () => {
       phase: "active",
       assignment: hostAssignment("publication-paused"),
     });
-    await route.acceptConfig(sfuConfig(1));
+    await route.acceptConfig(sfuConfig(1, "publication-paused"));
     route.setPaused(true);
     disconnects[0]!();
     expect(messages).toContainEqual({ type: "refresh-sfu", revision: 1 });
 
-    await route.acceptConfig({ ...sfuConfig(1), token: "recovery-token" });
+    await route.acceptConfig({ ...sfuConfig(1, "publication-paused"), connectionId: "recovery_connection" });
     expect(publishers).toHaveLength(2);
     expect(publishers[1]!.setPaused).toHaveBeenCalledWith(true);
 
@@ -719,7 +753,7 @@ describe("minimal route transition contracts", () => {
       phase: "active",
       assignment: hostAssignment("publication-old"),
     });
-    await route.acceptConfig(sfuConfig(1));
+    await route.acceptConfig(sfuConfig(1, "publication-old"));
 
     route.accept({
       revision: 2,
@@ -732,7 +766,7 @@ describe("minimal route transition contracts", () => {
         "candidate_2_12345678",
       ),
     });
-    const freshPublication = route.acceptConfig(sfuConfig(2));
+    const freshPublication = route.acceptConfig(sfuConfig(2, "publication-fresh"));
     await vi.waitFor(() =>
       expect(publishers[1]?.activate).toHaveBeenCalledOnce(),
     );
@@ -786,14 +820,14 @@ describe("minimal route transition contracts", () => {
       phase: "active",
       assignment: hostAssignment("publication-old"),
     });
-    await route.acceptConfig(sfuConfig(1));
+    await route.acceptConfig(sfuConfig(1, "publication-old"));
     route.accept({
       revision: 2,
       phase: "prepare",
       assignment: hostAssignment("publication-new"),
       candidate: candidate(2, "viewer_12345678", "sfu"),
     });
-    const stale = route.acceptConfig(sfuConfig(2));
+    const stale = route.acceptConfig(sfuConfig(2, "publication-new"));
     await vi.waitFor(() => expect(publishers[1]?.connect).toHaveBeenCalledOnce());
 
     await route.resyncAuthoritative({
@@ -807,7 +841,7 @@ describe("minimal route transition contracts", () => {
       assignment: hostAssignment("publication-new"),
       candidate: candidate(2, "viewer_12345678", "sfu"),
     });
-    const current = route.acceptConfig(sfuConfig(2));
+    const current = route.acceptConfig(sfuConfig(2, "publication-new"));
     await vi.waitFor(() => expect(publishers).toHaveLength(3));
     releaseOldConnect();
     await Promise.all([stale, current]);
@@ -855,14 +889,14 @@ describe("minimal route transition contracts", () => {
       phase: "active",
       assignment: viewerSfuAssignment([], "publication-old"),
     });
-    await route.acceptConfig(sfuConfig(1));
+    await route.acceptConfig(sfuConfig(1, "publication-old"));
     route.accept({
       revision: 2,
       phase: "prepare",
       assignment: viewerSfuAssignment([], "publication-new"),
       candidate: candidate(2, "viewer_12345678", "sfu"),
     });
-    const stale = route.acceptConfig(sfuConfig(2));
+    const stale = route.acceptConfig(sfuConfig(2, "publication-new"));
     await vi.waitFor(() => expect(subscribers[1]?.connect).toHaveBeenCalledOnce());
 
     await route.resyncAuthoritative(
@@ -879,7 +913,7 @@ describe("minimal route transition contracts", () => {
       assignment: viewerSfuAssignment([], "publication-new"),
       candidate: candidate(2, "viewer_12345678", "sfu"),
     });
-    const current = route.acceptConfig(sfuConfig(2));
+    const current = route.acceptConfig(sfuConfig(2, "publication-new"));
     await vi.waitFor(() => expect(subscribers).toHaveLength(3));
     releaseOldConnect();
     await Promise.all([stale, current]);
@@ -950,7 +984,7 @@ describe("minimal route transition contracts", () => {
       assignment: viewerSfuAssignment([], "publication-generation-2"),
       candidate: candidate(2, "viewer_12345678", "sfu"),
     });
-    await route.acceptConfig(sfuConfig(2));
+    await route.acceptConfig(sfuConfig(2, "publication-generation-2"));
     const pendingStream = {} as MediaStream;
     subscribers[1]?.events.onStream(pendingStream);
     subscribers[1]?.events.onStats?.({
@@ -1158,25 +1192,15 @@ describe("minimal route transition contracts", () => {
     await vi.waitFor(() => expect(streams).toEqual([firstStream]));
 
     expect(route.reconnectActive()).toBe(true);
-    expect(route.reconnectActive()).toBe(false);
-    await vi.waitFor(() =>
-      expect(messages.at(-1)).toEqual({ type: "refresh-sfu", revision: 7 }),
-    );
+    expect(subscribers[0]?.reconnect).toHaveBeenCalledOnce();
     expect(resetMedia).not.toHaveBeenCalled();
     expect(subscribers[0]?.deactivate).not.toHaveBeenCalled();
     expect(subscribers[0]?.disconnect).not.toHaveBeenCalled();
 
-    await route.acceptConfig({ ...sfuConfig(7), token: "fresh-token" });
-    const nextStream = {} as MediaStream;
-    subscribers[1]?.events.onStream(nextStream);
-    subscribers[1]?.events.onFirstDecodedFrame();
-    await vi.waitFor(() => expect(streams).toEqual([firstStream, nextStream]));
-    expect(subscribers[1]?.connect).toHaveBeenCalledWith({
-      url: "wss://sfu.example.test",
-      token: "fresh-token",
-    });
-    expect(subscribers[0]?.deactivate).toHaveBeenCalledOnce();
-    expect(subscribers[0]?.disconnect).toHaveBeenCalledOnce();
+    await route.acceptConfig(sfuConfig(7));
+    expect(subscribers).toHaveLength(1);
+    expect(streams).toEqual([firstStream]);
+    expect(subscribers[0]?.disconnect).not.toHaveBeenCalled();
     await route.disconnect();
   });
 
@@ -1217,7 +1241,7 @@ describe("minimal route transition contracts", () => {
     await route.disconnect();
   });
 
-  it("retargets manual SFU recovery after an unrelated room revision", async () => {
+  it("retains the physical SFU subscriber when a room revision advances during reconnect", async () => {
     const messages: ClientMessage[] = [];
     const subscribers: ReturnType<typeof createFakeSubscriber>[] = [];
     const streams: MediaStream[] = [];
@@ -1246,19 +1270,15 @@ describe("minimal route transition contracts", () => {
     expect(route.reconnectActive()).toBe(true);
 
     route.accept({ revision: 8, phase: "active", assignment });
-    await vi.waitFor(() =>
-      expect(
-        messages.filter((message) => message.type === "refresh-sfu"),
-      ).toEqual([
-        { type: "refresh-sfu", revision: 7 },
-        { type: "refresh-sfu", revision: 8 },
-      ]),
-    );
+    await vi.waitFor(() => expect(subscribers[0]?.updateConfig).toHaveBeenLastCalledWith(
+      expect.objectContaining({ revision: 8 }),
+    ));
+    expect(messages.filter((message) => message.type === "refresh-sfu")).toEqual([]);
     expect(subscribers[0]?.disconnect).not.toHaveBeenCalled();
     await route.disconnect();
   });
 
-  it("retargets manual SFU recovery through an unrelated prepare", async () => {
+  it("keeps SFU reconnect on the physical subscriber through an unrelated prepare", async () => {
     const messages: ClientMessage[] = [];
     const streams: MediaStream[] = [];
     const subscribers: ReturnType<typeof createFakeSubscriber>[] = [];
@@ -1292,14 +1312,12 @@ describe("minimal route transition contracts", () => {
     });
     route.accept({ revision: 8, phase: "active", assignment });
 
-    await vi.waitFor(() =>
-      expect(
-        messages.filter((message) => message.type === "refresh-sfu"),
-      ).toEqual([
-        { type: "refresh-sfu", revision: 7 },
-        { type: "refresh-sfu", revision: 8 },
-      ]),
-    );
+    await vi.waitFor(() => expect(subscribers[0]?.updateConfig).toHaveBeenLastCalledWith(
+      expect.objectContaining({ revision: 8 }),
+    ));
+    expect(subscribers[0]?.reconnect).toHaveBeenCalledOnce();
+    expect(subscribers[0]?.disconnect).not.toHaveBeenCalled();
+    expect(messages.filter((message) => message.type === "refresh-sfu").every((message) => message.revision === 7)).toBe(true);
   });
 
   it("does not spend SFU recovery until refresh signaling is sent", async () => {
@@ -1380,7 +1398,7 @@ describe("minimal route transition contracts", () => {
     expect(route.reconnectActive()).toBe(true);
     const recovery = route.acceptConfig({
       ...sfuConfig(7),
-      token: "recovery-token",
+      connectionId: "recovery_connection",
     });
     await vi.waitFor(() => expect(subscribers).toHaveLength(2));
     route.accept({ revision: 8, phase: "active", assignment });
@@ -1468,7 +1486,7 @@ describe("minimal route transition contracts", () => {
     subscribers[0]!.events.onDisconnected();
     expect(messages).toContainEqual({ type: "refresh-sfu", revision: 7 });
 
-    await route.acceptConfig({ ...sfuConfig(7), token: "recovery-token" });
+    await route.acceptConfig({ ...sfuConfig(7), connectionId: "recovery_connection" });
     expect(subscribers).toHaveLength(2);
     expect(subscribers[1]!.armDecodedFrameProof).not.toHaveBeenCalled();
 
@@ -1510,7 +1528,7 @@ describe("minimal route transition contracts", () => {
       phase: "active",
       assignment: viewerSfuAssignment([], "publication-old"),
     });
-    await route.acceptConfig(sfuConfig(1));
+    await route.acceptConfig(sfuConfig(1, "publication-old"));
     const oldStream = {} as MediaStream;
     subscribers[0]?.events.onStream(oldStream);
     subscribers[0]?.events.onFirstDecodedFrame();

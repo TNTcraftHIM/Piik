@@ -1,0 +1,287 @@
+{
+  "date": "2026-09-08",
+  "scope": "Chrome152 legacy createEncodedStreams, synthetic canvas, two loopback WebRTC connections, no Client or SFU; no loss/bandwidth shaping",
+  "standardApi": false,
+  "productIntegrated": false,
+  "sourceSha256": "59015dacabf258ffa6f266c32815e9a20fb1e3d90487a0f0267f153db555145b",
+  "runs": [
+    {
+      "codec": "VP8",
+      "lateJoin": false,
+      "browser": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/152.0.0.0 Safari/537.36",
+      "sharedFrames": 208,
+      "dummyFrames": 0,
+      "errors": [],
+      "aSend": [
+        {
+          "type": "outbound-rtp",
+          "framesEncoded": 208,
+          "framesSent": 208,
+          "frameWidth": 640,
+          "frameHeight": 360,
+          "framesPerSecond": 30,
+          "bytesSent": 390630,
+          "totalEncodeTime": 0.175,
+          "qualityLimitationReason": "none",
+          "targetBitrate": 1700000,
+          "pliCount": 0,
+          "nackCount": 0
+        }
+      ],
+      "bSend": [
+        {
+          "type": "outbound-rtp",
+          "framesEncoded": 0,
+          "framesSent": 0,
+          "bytesSent": 390630,
+          "totalEncodeTime": 0,
+          "qualityLimitationReason": "none",
+          "pliCount": 0,
+          "nackCount": 0
+        }
+      ],
+      "aReceive": [
+        {
+          "type": "inbound-rtp",
+          "framesDecoded": 208,
+          "framesReceived": 208,
+          "frameWidth": 640,
+          "frameHeight": 360,
+          "framesPerSecond": 30,
+          "bytesReceived": 390630,
+          "pliCount": 0,
+          "nackCount": 0
+        }
+      ],
+      "bReceive": [
+        {
+          "type": "inbound-rtp",
+          "framesDecoded": 208,
+          "framesReceived": 208,
+          "frameWidth": 640,
+          "frameHeight": 360,
+          "framesPerSecond": 30,
+          "bytesReceived": 390630,
+          "pliCount": 0,
+          "nackCount": 0
+        }
+      ],
+      "aVideo": [
+        640,
+        360
+      ],
+      "bVideo": [
+        640,
+        360
+      ]
+    },
+    {
+      "codec": "H264",
+      "lateJoin": false,
+      "browser": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/152.0.0.0 Safari/537.36",
+      "sharedFrames": 206,
+      "dummyFrames": 0,
+      "errors": [],
+      "aSend": [
+        {
+          "type": "outbound-rtp",
+          "framesEncoded": 206,
+          "framesSent": 206,
+          "frameWidth": 640,
+          "frameHeight": 360,
+          "framesPerSecond": 30,
+          "bytesSent": 175079,
+          "totalEncodeTime": 0.284,
+          "qualityLimitationReason": "none",
+          "targetBitrate": 1700000,
+          "pliCount": 0,
+          "nackCount": 0
+        }
+      ],
+      "bSend": [
+        {
+          "type": "outbound-rtp",
+          "framesEncoded": 0,
+          "framesSent": 0,
+          "bytesSent": 175079,
+          "totalEncodeTime": 0,
+          "qualityLimitationReason": "none",
+          "pliCount": 0,
+          "nackCount": 0
+        }
+      ],
+      "aReceive": [
+        {
+          "type": "inbound-rtp",
+          "framesDecoded": 206,
+          "framesReceived": 206,
+          "frameWidth": 640,
+          "frameHeight": 360,
+          "framesPerSecond": 30,
+          "bytesReceived": 175079,
+          "pliCount": 0,
+          "nackCount": 0
+        }
+      ],
+      "bReceive": [
+        {
+          "type": "inbound-rtp",
+          "framesDecoded": 206,
+          "framesReceived": 206,
+          "frameWidth": 640,
+          "frameHeight": 360,
+          "framesPerSecond": 30,
+          "bytesReceived": 175079,
+          "pliCount": 0,
+          "nackCount": 0
+        }
+      ],
+      "aVideo": [
+        640,
+        360
+      ],
+      "bVideo": [
+        640,
+        360
+      ]
+    },
+    {
+      "codec": "VP8",
+      "lateJoin": true,
+      "browser": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/152.0.0.0 Safari/537.36",
+      "sharedFrames": 220,
+      "dummyFrames": 0,
+      "errors": [],
+      "aSend": [
+        {
+          "type": "outbound-rtp",
+          "framesEncoded": 220,
+          "framesSent": 220,
+          "frameWidth": 640,
+          "frameHeight": 360,
+          "framesPerSecond": 30,
+          "bytesSent": 408158,
+          "totalEncodeTime": 0.173,
+          "qualityLimitationReason": "none",
+          "targetBitrate": 1700000,
+          "pliCount": 0,
+          "nackCount": 0
+        }
+      ],
+      "bSend": [
+        {
+          "type": "outbound-rtp",
+          "framesEncoded": 0,
+          "framesSent": 0,
+          "bytesSent": 400636,
+          "totalEncodeTime": 0,
+          "qualityLimitationReason": "none",
+          "pliCount": 34,
+          "nackCount": 0
+        }
+      ],
+      "aReceive": [
+        {
+          "type": "inbound-rtp",
+          "framesDecoded": 220,
+          "framesReceived": 220,
+          "frameWidth": 640,
+          "frameHeight": 360,
+          "framesPerSecond": 30,
+          "bytesReceived": 408158,
+          "pliCount": 0,
+          "nackCount": 0
+        }
+      ],
+      "bReceive": [
+        {
+          "type": "inbound-rtp",
+          "framesDecoded": 0,
+          "framesReceived": 0,
+          "bytesReceived": 400636,
+          "pliCount": 34,
+          "nackCount": 0
+        }
+      ],
+      "aVideo": [
+        640,
+        360
+      ],
+      "bVideo": [
+        0,
+        0
+      ]
+    },
+    {
+      "codec": "VP8",
+      "lateJoin": false,
+      "secondaryMaxBitrate": 50000,
+      "browser": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/152.0.0.0 Safari/537.36",
+      "sharedFrames": 208,
+      "dummyFrames": 0,
+      "errors": [],
+      "aSend": [
+        {
+          "type": "outbound-rtp",
+          "framesEncoded": 208,
+          "framesSent": 208,
+          "frameWidth": 640,
+          "frameHeight": 360,
+          "framesPerSecond": 30,
+          "bytesSent": 387287,
+          "totalEncodeTime": 0.179,
+          "qualityLimitationReason": "none",
+          "targetBitrate": 1700000,
+          "pliCount": 0,
+          "nackCount": 0
+        }
+      ],
+      "bSend": [
+        {
+          "type": "outbound-rtp",
+          "framesEncoded": 0,
+          "framesSent": 0,
+          "bytesSent": 387287,
+          "totalEncodeTime": 0,
+          "qualityLimitationReason": "none",
+          "pliCount": 0,
+          "nackCount": 0
+        }
+      ],
+      "aReceive": [
+        {
+          "type": "inbound-rtp",
+          "framesDecoded": 207,
+          "framesReceived": 208,
+          "frameWidth": 640,
+          "frameHeight": 360,
+          "framesPerSecond": 30,
+          "bytesReceived": 387287,
+          "pliCount": 0,
+          "nackCount": 0
+        }
+      ],
+      "bReceive": [
+        {
+          "type": "inbound-rtp",
+          "framesDecoded": 207,
+          "framesReceived": 208,
+          "frameWidth": 640,
+          "frameHeight": 360,
+          "framesPerSecond": 30,
+          "bytesReceived": 387287,
+          "pliCount": 0,
+          "nackCount": 0
+        }
+      ],
+      "aVideo": [
+        640,
+        360
+      ],
+      "bVideo": [
+        640,
+        360
+      ]
+    }
+  ]
+}

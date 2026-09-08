@@ -151,6 +151,20 @@ function startPageServer(port: number) {
   });
 }
 
+function writeCaptureControl(child: ChildProcessWithoutNullStreams, command: string): void {
+  const payload = Buffer.from(command, "ascii");
+  if (payload.length === 0 || payload.length > 64 || !/^[\x20-\x7e]+$/.test(command)) {
+    throw new Error("Capture control exceeds its SMED bound");
+  }
+  const frame = Buffer.alloc(32 + payload.length);
+  frame.write("SMED", 0, "ascii");
+  frame[4] = 2;
+  frame[5] = 7;
+  frame.writeUInt32BE(payload.length, 28);
+  payload.copy(frame, 32);
+  child.stdin.write(frame);
+}
+
 function observeCapture(
   child: ChildProcessWithoutNullStreams,
   evidence: CaptureEvidence,
@@ -159,22 +173,22 @@ function observeCapture(
   let framesAtRequest = 0;
   child.stdout.on("data", (chunk: Buffer) => {
     buffered = Buffer.concat([buffered, chunk]);
-    while (buffered.length >= 28) {
-      if (buffered.subarray(0, 4).toString("ascii") !== "SMED" || buffered[4] !== 1) {
+    while (buffered.length >= 32) {
+      if (buffered.subarray(0, 4).toString("ascii") !== "SMED" || buffered[4] !== 2) {
         child.kill();
         return;
       }
       const kind = buffered[5]!;
       const flags = buffered[6]!;
-      const size = buffered.readUInt32BE(24);
-      const maximum = kind === 3 ? 4 * 1024 : 1024 * 1024;
-      if (size === 0 || size > maximum) {
+      const size = buffered.readUInt32BE(28);
+      const maximum = kind === 3 ? 4 * 1024 : 4 * 1024 * 1024;
+      if ((size === 0 && kind !== 5) || size > maximum) {
         child.kill();
         return;
       }
-      if (buffered.length < 28 + size) return;
-      const payload = buffered.subarray(28, 28 + size);
-      buffered = buffered.subarray(28 + size);
+      if (buffered.length < 32 + size) return;
+      const payload = buffered.subarray(32, 32 + size);
+      buffered = buffered.subarray(32 + size);
       if (kind === 3) {
         const state = JSON.parse(payload.toString("utf8")) as { state?: string };
         evidence.starting ||= state.state === "starting";
@@ -184,7 +198,7 @@ function observeCapture(
         if (!evidence.keyFrameRequested && evidence.frames >= 5) {
           evidence.keyFrameRequested = true;
           framesAtRequest = evidence.frames;
-          child.stdin.write("K");
+          writeCaptureControl(child, "K -1");
         } else if (evidence.keyFrameRequested && evidence.frames > framesAtRequest && flags === 1) {
           evidence.recoveryFrame = true;
         }
@@ -200,20 +214,20 @@ function observeAudioCapture(
   let buffered = Buffer.alloc(0);
   child.stdout.on("data", (chunk: Buffer) => {
     buffered = Buffer.concat([buffered, chunk]);
-    while (buffered.length >= 28) {
-      if (buffered.subarray(0, 4).toString("ascii") !== "SMED" || buffered[4] !== 1) {
+    while (buffered.length >= 32) {
+      if (buffered.subarray(0, 4).toString("ascii") !== "SMED" || buffered[4] !== 2) {
         child.kill();
         return;
       }
       const kind = buffered[5]!;
-      const size = buffered.readUInt32BE(24);
-      const maximum = kind === 3 ? 4 * 1024 : 1024 * 1024;
-      if (size === 0 || size > maximum || buffered.length < 28 + size) {
+      const size = buffered.readUInt32BE(28);
+      const maximum = kind === 3 ? 4 * 1024 : 4 * 1024 * 1024;
+      if (size === 0 || size > maximum || buffered.length < 32 + size) {
         if (size === 0 || size > maximum) child.kill();
         return;
       }
-      const payload = buffered.subarray(28, 28 + size);
-      buffered = buffered.subarray(28 + size);
+      const payload = buffered.subarray(32, 32 + size);
+      buffered = buffered.subarray(32 + size);
       if (kind === 3) {
         const state = JSON.parse(payload.toString("utf8")) as {
           state?: string;
@@ -237,7 +251,7 @@ async function stopCapture(child: ChildProcessWithoutNullStreams): Promise<void>
     if (child.exitCode !== 0) throw new Error("Native capture exited unsuccessfully");
     return;
   }
-  child.stdin.write("\n");
+  writeCaptureControl(child, "Q");
   const code = await withDeadline(
     () => new Promise<number | null>((resolveExit) => child.once("exit", resolveExit)),
     Date.now() + 3_000,
@@ -341,7 +355,7 @@ async function browserMediaGate(input: {
           rejectRequest(new Error("Native request timed out: " + type));
         }, 8_000);
         pending.set(id, { resolve: resolveRequest, reject: rejectRequest, timer });
-        socket!.send(JSON.stringify({ version: 8, id, type, ...fields }));
+        socket!.send(JSON.stringify({ version: 9, id, type, ...fields }));
       });
     };
     socket.onmessage = (event) => {
@@ -724,7 +738,7 @@ async function main(): Promise<void> {
     const probe = JSON.parse(run(executable, ["--probe"])) as Probe;
     const adapter = probe.adapters.find((candidate) => candidate.hardwareH264.length > 0);
     const encoder = adapter?.hardwareH264[0];
-    if (probe.protocol !== 4 || !adapter || !encoder) {
+    if (probe.protocol !== 7 || !adapter || !encoder) {
       throw new Error("No hardware H264 capture path is available");
     }
 
@@ -802,7 +816,8 @@ async function main(): Promise<void> {
       "balanced",
       "--codec",
       "h264",
-      "--protocol-v4",
+      "--protocol-v7",
+      "--output", "1280", "720", "30", "3000000",
     ], { stdio: "pipe", windowsHide: true });
     capture.stderr.resume();
     observeCapture(capture, evidence);

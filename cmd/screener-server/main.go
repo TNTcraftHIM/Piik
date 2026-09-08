@@ -14,13 +14,16 @@ import (
 	"flag"
 	"fmt"
 	"io/fs"
+	"log"
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/TNTcraftHIM/Screener/internal/diagnostics"
 	"github.com/TNTcraftHIM/Screener/internal/server/app"
 	"github.com/TNTcraftHIM/Screener/internal/server/config"
 	"github.com/TNTcraftHIM/Screener/internal/server/webassets"
@@ -47,6 +50,7 @@ func main() {
 		"path to the deployed REVISION file read by --check-release")
 	apiURL := flag.String("api-url", defaultReleaseAPIURL,
 		"release metadata endpoint used by --check-release")
+	debug := flag.Bool("debug", false, "save opt-in server diagnostics to rotated files")
 	flag.Parse()
 
 	if err := loadEnvironmentFile(environmentFile); err != nil {
@@ -61,7 +65,7 @@ func main() {
 		}
 		fmt.Println("config=ok")
 	default:
-		if err := serve(); err != nil {
+		if err := serve(*debug); err != nil {
 			fail(err)
 		}
 	}
@@ -75,7 +79,31 @@ func fail(err error) {
 // serve runs the application until the first SIGINT or SIGTERM, then stops it
 // with Close rather than End: Hosted rooms are leased in the database and must
 // survive a restart (DECISIONS D6).
-func serve() error {
+func serve(debug bool) (returnedErr error) {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	if debug || serverDebugEnabled(os.Getenv("SCREENER_DEBUG")) {
+		recorder, err := diagnostics.Open(serverLogDirectory(), "server", BuildRevision)
+		if err != nil {
+			return fmt.Errorf("Screener server diagnostics are unavailable: %w", err)
+		}
+		logger = slog.New(slog.NewMultiHandler(logger.Handler(), recorder.Logger().Handler()))
+		previous, previousWriter, previousFlags := slog.Default(), log.Writer(), log.Flags()
+		slog.SetDefault(logger)
+		// Unstructured dependency logs retain their existing journal destination.
+		log.SetOutput(previousWriter)
+		log.SetFlags(previousFlags)
+		fmt.Fprintln(os.Stderr, "Screener diagnostic log:", recorder.LogPath())
+		stopExport := watchDiagnosticExport(recorder)
+		defer func() {
+			stopExport()
+			logger.Info("screener-server", "event", "stopped", "failed", returnedErr != nil)
+			returnedErr = errors.Join(returnedErr, exportServerDiagnostics(recorder), recorder.Close())
+			slog.SetDefault(previous)
+			log.SetOutput(previousWriter)
+			log.SetFlags(previousFlags)
+		}()
+		logger.Info("screener-server", "event", "start", "revision", BuildRevision)
+	}
 	configuration, err := config.Load(environment())
 	if err != nil {
 		return err
@@ -83,7 +111,7 @@ func serve() error {
 	server, err := app.New(app.Options{
 		Config: configuration,
 		Assets: webassets.FS(),
-		Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
+		Logger: logger,
 	})
 	if err != nil {
 		return err
@@ -107,6 +135,36 @@ func serve() error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 	return server.Close(shutdownCtx)
+}
+
+func serverDebugEnabled(value string) bool {
+	for _, component := range strings.Split(value, ",") {
+		switch strings.TrimSpace(component) {
+		case "server", "route":
+			return true
+		}
+	}
+	return false
+}
+
+func serverLogDirectory() string {
+	if directory := strings.TrimSpace(os.Getenv("SCREENER_LOG_DIR")); directory != "" {
+		return directory
+	}
+	if directories := filepath.SplitList(os.Getenv("LOGS_DIRECTORY")); len(directories) > 0 && directories[0] != "" {
+		return directories[0]
+	}
+	return "logs"
+}
+
+func exportServerDiagnostics(recorder *diagnostics.Recorder) error {
+	path, err := recorder.Export()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Screener diagnostic export failed:", err)
+		return err
+	}
+	fmt.Fprintln(os.Stderr, "Screener diagnostic bundle:", path)
+	return nil
 }
 
 // environment is the process environment in the form config.Load expects.

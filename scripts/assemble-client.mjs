@@ -10,7 +10,6 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
-  mkdtempSync,
   openSync,
   readSync,
   readFileSync,
@@ -18,14 +17,14 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { clientPackageTarget, CLOUDFLARED_VERSION } from "./client-package-targets.mjs";
+import { clientPackageTarget, clientGoEnvironment, CLOUDFLARED_VERSION } from "./client-package-targets.mjs";
 import { writeClientPlatformAssets } from "./client-icons.mjs";
 import { writeClientLicenseNotices } from "./package-licenses.mjs";
 import { tarExecutable } from "./archive-tool.mjs";
+import { resetBuildWorkspace } from "./build-workspace.mjs";
 
 function fail(message) {
   throw new Error(message);
@@ -130,10 +129,20 @@ function readDescriptor(path) {
   };
 }
 
-function assertOutsideRepository(repositoryRoot, outputRoot) {
+function assertOutputDirectory(repositoryRoot, outputRoot, target) {
   const path = relative(repositoryRoot, outputRoot);
-  if (path === "" || (path.split(/[\\/]/)[0] !== ".." && !isAbsolute(path))) {
-    fail("Client output directory must be outside the repository");
+  const candidateOutput = join(repositoryRoot, "build", "client-package", target.id,
+    "candidate", `Screener-Client-${target.id}`);
+  if (outputRoot !== candidateOutput &&
+      (path === "" || (path.split(/[\\/]/)[0] !== ".." && !isAbsolute(path)))) {
+    fail("Client output must be outside the repository or its exact candidate workspace");
+  }
+  if (outputRoot === candidateOutput) {
+    for (let parent = dirname(outputRoot); parent !== repositoryRoot; parent = dirname(parent)) {
+      const metadata = lstatSync(parent, { throwIfNoEntry: false });
+      if (metadata && (!metadata.isDirectory() || metadata.isSymbolicLink() ||
+          realpathSync(parent) !== parent)) fail("Client candidate output must not contain links");
+    }
   }
   if (existsSync(outputRoot)) {
     fail("Client output directory must not already exist");
@@ -172,13 +181,16 @@ for (let index = 0; index < options.length; index += 2) {
 }
 const target = clientPackageTarget(targetArgument);
 if (!target) fail("Client package target is invalid");
+if (target.cgo && process.platform !== target.nodePlatform) {
+  fail(`Client target ${target.id} requires a native macOS runner with its SDK and cgo`);
+}
 
 const repositoryRoot = realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), ".."));
 const descriptorPath = realpathSync(resolve(positional[0]));
 const outputRoot = resolve(process.cwd(), positional[1]);
 const capturePath = captureArgument ? realpathSync(resolve(captureArgument)) : null;
 const tunnelPath = tunnelArgument ? realpathSync(resolve(tunnelArgument)) : null;
-assertOutsideRepository(repositoryRoot, outputRoot);
+assertOutputDirectory(repositoryRoot, outputRoot, target);
 if (capturePath && !target.captureName) {
   fail("Capture runtime is invalid for the Client package target");
 }
@@ -198,7 +210,7 @@ if (!existsSync(artifactPath) || sha256(artifactPath) !== descriptor.artifactSha
   fail("Application release artifact does not match its descriptor");
 }
 
-const temporaryRoot = mkdtempSync(join(tmpdir(), `screener-client-${revision.slice(0, 7)}-`));
+const temporaryRoot = resetBuildWorkspace(repositoryRoot, "client-package", target.id, "assembly");
 const packageRoot = join(temporaryRoot, "package");
 const releaseRoot = join(temporaryRoot, "release");
 try {
@@ -245,12 +257,7 @@ try {
     "-o",
     clientPath,
     "./cmd/screener-client",
-  ], repositoryRoot, {
-    ...process.env,
-    GOOS: target.goos,
-    GOARCH: target.goarch,
-    CGO_ENABLED: "0",
-  });
+  ], repositoryRoot, clientGoEnvironment(target));
   chmodSync(clientPath, 0o755);
   assertTargetExecutable(clientPath, target, "Client executable");
   writeClientLicenseNotices(repositoryRoot, packageRoot, goCommand, target,

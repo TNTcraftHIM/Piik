@@ -35,6 +35,7 @@ export class NativeMediaIngress {
   readonly connectionId = createOpaqueId();
   readonly source: NativeSenderSource = {
     connectionId: this.connectionId,
+    getProfile: () => this.getProfile(),
     format: () => {
       const metrics = this.sender?.getSnapshot().metrics;
       return { width: metrics?.frameWidth ?? null, height: metrics?.frameHeight ?? null };
@@ -55,6 +56,7 @@ export class NativeMediaIngress {
     readonly shareId: string,
     private readonly client: NativeMediaIngressControl,
     private readonly onFailed: () => void,
+    private readonly getProfile: () => QualityProfile,
   ) {}
 
   get hasAudio(): boolean { return this.audio; }

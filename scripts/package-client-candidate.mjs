@@ -13,7 +13,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { networkInterfaces, tmpdir } from "node:os";
+import { networkInterfaces } from "node:os";
 import { createServer } from "node:net";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { Readable } from "node:stream";
@@ -22,6 +22,7 @@ import { fileURLToPath } from "node:url";
 
 import { clientPackageTarget, CLOUDFLARED_VERSION } from "./client-package-targets.mjs";
 import { tarExecutable } from "./archive-tool.mjs";
+import { resetBuildWorkspace } from "./build-workspace.mjs";
 
 function fail(message) {
   throw new Error(message);
@@ -254,7 +255,7 @@ async function verifyPackage(root, target, revision, temporaryRoot) {
   if (target.captureName) {
     const capture = join(root, "runtime", "native", target.captureName);
     const probe = JSON.parse(run(capture, ["--probe"], root));
-    if (probe?.protocol !== 4) fail("Packaged native capture probe is invalid");
+    if (probe?.protocol !== 7) fail("Packaged native capture probe is invalid");
   }
   await verifyLocalPackage(root, target, temporaryRoot);
 }
@@ -322,9 +323,7 @@ if (process.platform !== target.nodePlatform || process.arch !== target.nodeArch
 assertOutsideRepository(repositoryRoot, outputRoot);
 
 const revision = run("git", ["rev-parse", "HEAD"], repositoryRoot).toLowerCase();
-const temporaryRoot = join(tmpdir(), "screener-client-candidate", target.id);
-rmSync(temporaryRoot, { recursive: true, force: true });
-mkdirSync(temporaryRoot, { recursive: true, mode: 0o700 });
+const temporaryRoot = resetBuildWorkspace(repositoryRoot, "client-package", target.id, "candidate");
 try {
   const tunnelDownload = join(temporaryRoot, target.tunnelAsset);
   await download(

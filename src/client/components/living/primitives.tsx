@@ -55,6 +55,7 @@ export function Btn({
   tone,
   title,
   disabled,
+  busy,
   pressed,
   expanded,
   controls,
@@ -68,6 +69,7 @@ export function Btn({
   tone?: "primary" | "danger" | "on";
   title: CopyKey;
   disabled?: boolean;
+  busy?: boolean;
   pressed?: boolean;
   expanded?: boolean;
   controls?: string;
@@ -90,6 +92,7 @@ export function Btn({
       aria-label={label}
       disabled={disabled && !softDisabled}
       aria-disabled={softDisabled || undefined}
+      aria-busy={busy || undefined}
       aria-pressed={pressed}
       aria-expanded={expanded}
       aria-controls={controls}
@@ -105,7 +108,12 @@ export function Btn({
             : onClick
       }
     >
-      <Glyph name={icon} size={19} draw={draw} />
+      <Glyph
+        name={busy ? "loader" : icon}
+        size={19}
+        draw={draw}
+        className={busy ? "lr-spin" : undefined}
+      />
       {cap ? <Cap k={cap} /> : null}
     </button>
   );

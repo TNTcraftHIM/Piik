@@ -4,6 +4,20 @@ Screener Client is the self-contained and native-capability runtime for the same
 Browser application used by Hosted Screener. It does not implement another UI,
 room store, signaling protocol, or route controller.
 
+## Run A Package
+
+Extract the matching platform bundle in full and keep `runtime` beside the
+Client executable. Run `screener-client.exe` on Windows, `./screener-client` on
+Linux, or `Screener Client.app` on macOS. The launcher opens in the system Browser;
+the Client does not embed a browser UI. Packaged execution needs no Node.js, npm,
+or Go installation. Linux native capture uses the system dependencies described
+in the [Linux capture guide](../../native/capture/linux/README.md).
+
+Windows Client and Browser are this phase's acceptance targets. Other platform
+builds do not establish physical capture/audio acceptance; see
+[current status](../../docs/status.md). Package construction and public Release
+publication are separate steps in [deployment](../../docs/deployment.md).
+
 ## Modes
 
 - With no mode argument, the Client opens a small launcher in the system
@@ -20,7 +34,7 @@ room store, signaling protocol, or route controller.
   opens and shows a notice when a newer full-SHA release exists. The check is
   best-effort and never installs or replaces the Client.
 
-Local mode uses memory-only rooms, Browser P2P relay, no LiveKit, and no public
+Local mode uses memory-only rooms, P2P relay, no SFU listener, and no public
 discovery. Ordinary Local works on a reachable LAN. The **Public invite** mode
 runs the packaged Cloudflare Tunnel sidecar for the existing HTTP/WebSocket
 control surface and
@@ -34,8 +48,9 @@ TURN fallback. The Client chooses a sole private LAN IPv4 automatically. Use
 The system Browser remains the Host UI. A Client-launched Host offers the
 Browser's standard capture picker and a list of exact platform capture targets;
 the user selects one explicitly. Windows offers the same VP8/Auto/H264 selector:
-VP8 uses libvpx, H264 uses hardware Media Foundation, and Auto measures target-
-profile encoding work before choosing one codec for the share. Windows uses
+VP8 uses the pinned WebRTC/libvpx encoder and H264 uses hardware Media Foundation
+inside WebRTC's output pipeline. Auto measures target-profile encoding work
+before choosing one codec for the share. Windows uses
 Graphics Capture and WASAPI; macOS
 uses ScreenCaptureKit, VideoToolbox, and AudioToolbox; Linux delegates selection
 to the ScreenCast Portal and uses the system PipeWire/GStreamer hardware path.
@@ -47,21 +62,21 @@ connections. A Native edge with public STUN also attempts one bounded PCP,
 UPnP, or NAT-PMP mapping for its Pion UDP socket; pure LAN does not. Routers
 without a mapping service continue with ordinary ICE/STUN. The mapping does not
 create a relay or carry media through the Client control link. A configured Site
-may route the native source through its existing Browser LiveKit publisher;
+may receive a direct Native publication from the shared encoded source;
 Local and one-link modes remain P2P-only. An ordinary Web Host keeps the
 Browser capture path without probing the Client.
 
-Native P2P edges normally reuse that one encoded source and negotiate transport-
-wide feedback. Once Pion GCC has real feedback and the source has produced
-frames, the Client reports whether that
-edge's target payload bitrate can carry the measured shared video plus Opus
-payload. The existing route controller owns persistence and any replacement;
-the Client does not pace, score, or globally lower the shared encoder. If one
-Native sender edge remains persistently degraded, the existing quality operation
-may test a stock Browser WebRTC sender for that edge through the local bridge.
-Existing Viewer evidence commits or rolls back the candidate; healthy Native
-edges continue sharing the selected encode. Native Viewers can receive and
-forward either H.264 or VP8 without encoding it again.
+Native P2P edges and embedded SFU use one shared Pion/LiveKit media adapter for
+feedback, forwarding allocation, bounded pacing and recovery. Native parents
+reuse suitable H.264/VP8 outputs and derive a missing lower output only for
+direct-child demand. Compatible children share that output; each edge receives
+only its selected representation. SFU publication combines its requested output
+prefix with one aggregate upstream budget. A lower-output constraint does not
+replace the original input or higher sibling outputs. The existing route
+controller still owns persistent quality evidence and any route replacement;
+there is no room-wide score or periodic rebalance. See
+[media quality](../../docs/product/media-quality.md) for the implemented behavior
+and [status](../../docs/status.md) for its acceptance limits.
 
 The Client configuration keeps an optional Local site-access password. Leave it
 blank for an open Local site, or set a visible-ASCII password (8 to 128 bytes)
@@ -70,21 +85,49 @@ Host page in a URL fragment; the page uses the existing SiteAccess endpoint and
 removes the fragment before continuing. Viewer invitations keep using the
 existing room-scoped grant.
 
-The terminal starts in visual mode and shows the current mode, working entry
-links and startup state. Its language follows the launcher and Client-enabled
-pages; a block television uses the terminal foreground with golden sparkles,
-falling back to ASCII without color support or in very narrow windows.
-Visual mode depicts the selected mode and startup state with small scenes;
-the television rests with one eye closed and occasionally winks while idle.
+The terminal shows the current mode, entry links and startup state; its language
+follows the launcher and Client-enabled pages.
 Press `o` to reopen the Browser, or `q` / Ctrl+C to end Local
 rooms and stop the local server and temporary public link. Plain-text output
 uses Ctrl+C. A Site-loaded Browser tab does not own the Client process.
 
 For one-link Internet sharing, open the Client launcher, choose **Public invite**,
 create a room in the opened Browser, and send its normal invitation link. The
-random `trycloudflare.com` origin lasts only for that Client run. Cloudflare Quick
-Tunnels provide no uptime guarantee; use a configured Site when persistent
-control availability or SFU fallback matters.
+random `trycloudflare.com` origin lasts only for that Client run; a later launch
+creates a new temporary link. Cloudflare Quick Tunnels provide no uptime guarantee;
+use a configured Site when persistent control availability or SFU fallback matters.
+
+## Troubleshooting
+
+### Chromium WebRTC Connections
+
+**Why can screen capture succeed while the media connection fails?**
+
+Chromium-based Browsers can restrict WebRTC UDP through Browser settings,
+extensions or managed policies. Disabling non-proxied UDP can prevent even the
+local Browser-to-Client media connection; successful capture or page loading
+does not prove that this separate connection is available. This is not specific
+to one Browser brand or to VPN use.
+
+Check the Browser's WebRTC/IP-handling policy and any extension's WebRTC or
+IP-leak protection setting. Restore a policy that permits WebRTC UDP, reload
+Screener, and verify that another extension or managed policy has not overridden
+the choice. Setting names and availability differ between Browsers. For example,
+Vivaldi exposes **Settings > Privacy and Security > WebRTC IP Handling >
+Broadcast IP for Best WebRTC Performance**. Changing this policy can expose
+network addresses to WebRTC peers; do not disable unrelated protections.
+
+See [Chromium's extension policy API](https://developer.chrome.com/docs/extensions/reference/api/privacy#property-network),
+[Vivaldi's setting example](https://help.vivaldi.com/desktop/privacy/privacy-settings/),
+and the [verified policy mechanism and field case](../../docs/research/native-client-lifecycle.md).
+
+### Diagnostics
+
+Start the packaged executable with `--debug`, reproduce the problem, then press
+`D` in the interactive terminal to export a local ZIP. This does not stop the
+share or upload the archive. Browser diagnostics are separate; the
+[diagnostic reference](../../docs/reference/configuration.md#diagnostics) owns
+log locations, export commands, retention and privacy boundaries.
 
 ## Development
 
@@ -108,7 +151,11 @@ written to the ignored repository `build/client-check` directory and reused on
 the next run. This keeps the executable identity stable for the system firewall;
 the files are local build output and are never packaged or committed.
 
-It runs Go formatting, unit tests, vet, and the three supported cross-builds.
+It runs Go formatting, unit tests, vet, and Windows/Linux cgo-free cross-builds.
+The Darwin Client and peer gate build only on macOS with cgo enabled and an
+installed SDK; other hosts report that skipped platform explicitly. The pinned
+media dependency's Darwin CPU statistics use Mach APIs through cgo, so a Windows
+or Linux core check does not establish Darwin build acceptance.
 Each target compiles its isolated capture process and validates its bounded
 capability response. macOS additionally encodes one in-memory hardware H.264
 IDR; Linux probes the Portal/PipeWire/GStreamer adapter. Real capture, GPU
@@ -117,36 +164,38 @@ gates rather than environment-dependent unit tests.
 
 The loopback service binds IPv4 loopback on the first available port from
 `39721` through `39730`. `/health` discovers the current process; `/control`
-accepts one strict v8 session. After `hello`, an available Client may list local
-capture choices, own one generation-fenced Host share, or receive one native
-Viewer source and its bounded encoded child edges. Its public `instanceToken`
+admits at most two independent strict v9 control sessions. After `hello`, each
+session may list local capture choices, own one generation-fenced Host share,
+or receive one native Viewer source and its bounded encoded child edges. Closing
+one session retires only its resources. Its public `instanceToken`
 distinguishes the discovered process but is not authentication; room authority
 and remote signaling remain in the Browser. Viewer receive/relay remains
 available even when this machine has no accepted native capture encoder.
+Capture sidecars must match the Client's current probe/encoded-output contract;
+the package-candidate wrapper validates that version before accepting its artifact.
 
 ## Packaging
 
-Build one application release, then assemble a platform Client from that exact
-descriptor. Native capture and the public-link sidecar are explicit package
-inputs:
+From a clean revision, build the application release and run the platform's
+candidate wrapper on its native operating system. The wrapper builds capture,
+verifies the pinned public-link helper, and assembles and checks the Client:
 
 ```sh
 node scripts/package-app-release.mjs /outside/repository/app-release
-SCREENER_GO=/path/to/go \
-  node scripts/assemble-client.mjs \
-  /outside/repository/app-release/screener-<sha>.release.json \
-  /outside/repository/Screener-Client \
-  --target windows-amd64 \
-  --capture /outside/repository/screener-client-capture.exe \
-  --tunnel /outside/repository/cloudflared.exe
+node scripts/package-client-candidate.mjs \
+  /outside/repository/app-release windows-amd64 \
+  /outside/repository/client-candidate
 ```
 
 Supported targets are `windows-amd64`, `linux-amd64`, and `darwin-arm64`.
-`--target` controls the Go cross-build and packaged executable names; the
-capture and tunnel inputs must already match that target. Each target accepts
-its matching native-capture input.
+Use the matching target name in the command above. Darwin assembly requires a
+native macOS runner with its SDK and enables cgo; Windows and Linux assembly keep
+cgo disabled.
+The result is a `tar.gz` bundle and SHA-256 file. Manual sidecar assembly,
+explicit CI packaging, Release publication and updates are documented in
+[deployment](../../docs/deployment.md); creating a candidate does not publish it.
 
-The result contains:
+The extracted bundle contains:
 
 ```text
 screener-client[.exe]
@@ -243,7 +292,7 @@ probe and target OS support it. The cross-NAT variant uses a temporary reverse
 SSH path for signaling only and requires a selected `srflx` or `prflx` media pair;
 media never travels through SSH. The one-link media variant instead carries the
 same signaling through the Client's temporary public origin and requires direct
-media delivery to an independent Linux peer. Native P2P quality evidence and the
-Browser-mediated SFU path have dedicated gates. macOS and Linux capture still
+media delivery to an independent Linux peer. Native P2P quality evidence and
+embedded SFU delivery have explicit gates. macOS and Linux capture still
 require physical desktop/media gates; CI compilation and package smoke do not
 substitute for them.

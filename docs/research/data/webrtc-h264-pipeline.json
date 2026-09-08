@@ -1,0 +1,44 @@
+{
+  "date": "2026-09-08",
+  "webrtcRevision": "6f37672d358475cd17544121a12494da454d85fb",
+  "sdk": "shiguredo m152.7977.0.2",
+  "chrome": "152.0.7977.82",
+  "scope": "Synthetic I420 -> existing Windows MFT H264 adapter -> one complete VSE -> two callbacks; exported bitstream decoded separately in Chrome",
+  "input": { "width": 640, "height": 360, "fps": 30, "budgetBps": 2000000 },
+  "healthy": {
+    "seconds": 6.00065,
+    "physicalEncodes": 174,
+    "encodedPerConsumer": [174, 174],
+    "samePayloadComparisons": 174,
+    "firstOutputMs": 274.88,
+    "width": 640,
+    "height": 360,
+    "averageOutputKbps": 695.472
+  },
+  "retiredB": {
+    "seconds": 2.00067,
+    "physicalEncodes": 60,
+    "encodedPerConsumer": [60, 0]
+  },
+  "lifetime": {
+    "physicalEncodes": 234,
+    "created": 1,
+    "maximumLive": 1,
+    "remainingLive": 0,
+    "splits": 0,
+    "reportedErrors": 0
+  },
+  "browserDecode": {
+    "codec": "avc1.42c033",
+    "exportedFrames": 180,
+    "decodedPerDecoder": [180, 180],
+    "dimensionsAndTimestamps": "pass",
+    "scope": "Both decoders receive the same exported input, not separate network deliveries"
+  },
+  "notEstablished": [
+    "weak-child budget grouping or independent adaptation",
+    "hardware overload adaptation or game/capture throughput",
+    "Pion transport, packet loss or Browser WebRTC jitter-buffer behavior",
+    "production VSE integration, package or deployment acceptance"
+  ]
+}

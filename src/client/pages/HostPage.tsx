@@ -14,6 +14,7 @@ import {
   MAX_VIEWER_PASSWORD_LENGTH,
   viewerPasswordSchema,
   type CreateRoomResponse,
+  type ClientMessage,
   type IceConfig,
   type ParticipantPresenceEntry,
   type PreparedRouteCandidate,
@@ -91,6 +92,7 @@ import {
   type HostRoomState,
   mergeAuthenticatedHostRoom,
   readHostRoom,
+  releaseHostRoom,
   readPreferredRoomId,
   readViewerGrant,
   replaceViewerInvite,
@@ -125,7 +127,6 @@ import { HostSfuRoute } from "../media/host-sfu-route";
 import {
   HostProvisionalChild,
 } from "../media/host-provisional-child";
-import { SfuStandbyPrewarmer } from "../media/sfu-standby-prewarmer";
 import {
   invalidateSenderQualityEvidence,
   senderQualityEvidenceFromSnapshot,
@@ -153,6 +154,8 @@ import {
   NativeSenderPeer,
   shouldUseBrowserQualityCandidate,
 } from "../native/native-sender-peer";
+import { NativeSfuPublisher } from "../native/native-sfu-publisher";
+import { SfuPublisher } from "../sfu/publisher";
 import { NativeMediaBridge } from "../native/media-bridge";
 import { NativeMediaIngress } from "../native/media-ingress";
 import {
@@ -445,10 +448,22 @@ export function HostPage({
   const [nativeSources, setNativeSources] =
     useState<NativeSourceList | null>(null);
   const [details, setDetails] = useState<CaptureDetails | null>(null);
-  const [room, setRoom] = useState<HostRoomState | null>(() =>
-    hostRoomFromStored(readHostRoom()),
-  );
+  const [room, setRoom] = useState<HostRoomState | null>(null);
   const roomRef = useRef(room);
+  const roomInitializationRef = useRef<Promise<void>>(Promise.resolve());
+  useEffect(() => {
+    let mounted = true;
+    roomInitializationRef.current = readHostRoom().then((stored) => {
+      if (!mounted || roomRef.current !== null) return;
+      const restored = hostRoomFromStored(stored);
+      roomRef.current = restored;
+      setRoom(restored);
+    });
+    return () => {
+      mounted = false;
+      releaseHostRoom();
+    };
+  }, []);
   useEffect(() => {
     roomRef.current = room;
   }, [room]);
@@ -478,7 +493,7 @@ export function HostPage({
     () => readStoredDisplayName() !== null,
   );
   const [displayName, setDisplayName] = useState(() =>
-    readDisplayName(defaultHostDisplayName("", vis)),
+    readDisplayName(defaultHostDisplayName(vis)),
   );
   const [displayNameDraft, setDisplayNameDraft] = useState(displayName);
   const [displayNameError, setDisplayNameError] = useState<string | null>(null);
@@ -541,10 +556,7 @@ export function HostPage({
   }, [vis]);
   useEffect(() => {
     if (hasCustomDisplayName) return;
-    const fallback = defaultHostDisplayName(
-      hostClientIdRef.current ?? "",
-      vis,
-    );
+    const fallback = defaultHostDisplayName(vis);
     if (displayNameRef.current === fallback) return;
     displayNameRef.current = fallback;
     setDisplayName(fallback);
@@ -582,7 +594,6 @@ export function HostPage({
   const sharingPausedRef = useRef(false);
   const retiringStreamRef = useRef<MediaStream | null>(null);
   const hostSfuRouteRef = useRef<HostSfuRoute | null>(null);
-  const sfuStandbyPrewarmerRef = useRef<SfuStandbyPrewarmer | null>(null);
   const nativeClientRef = useRef<NativeClient | null>(null);
   const nativeClientConnectRef = useRef<Promise<NativeClient | null> | null>(null);
   const nativeShareGenerationRef = useRef<string | null>(null);
@@ -686,6 +697,7 @@ export function HostPage({
     () => () => {
       activeGenerationRef.current = null;
       generationRef.current += 1;
+      roomMutationRef.current = null;
       sourceSwitchRef.current = null;
       qualityChangeRef.current = null;
       pendingQualityChangeRef.current = null;
@@ -712,7 +724,6 @@ export function HostPage({
       activeRouteRevisionRef.current = 0;
       void hostSfuRouteRef.current?.disconnect();
       hostSfuRouteRef.current = null;
-      sfuStandbyPrewarmerRef.current?.dispose();
       nativeSourceRequestRef.current = null;
       nativeSourcePathRef.current = null;
       disposeNativeShare();
@@ -784,6 +795,21 @@ export function HostPage({
       getStream: () => streamRef.current,
       getProfile: () => qualitySettingsRef.current,
       getVideoCodec: () => videoCodecRef.current.primary,
+      createPublisher: (onDisconnected, onStats) => {
+        const events = {
+          send: (message: ClientMessage) => isCurrentGeneration(generation) && hostSfuRouteRef.current === route
+            ? signalRef.current?.send(message) === true : false,
+          onDisconnected, onStats,
+        };
+        if (nativeModeRef.current) {
+          const client = nativeClientRef.current;
+          const shareId = nativeShareGenerationRef.current;
+          const ice = iceConfigRef.current;
+          if (!client || !shareId || !ice) throw new Error("Native publication source is unavailable");
+          return new NativeSfuPublisher(client, shareId, ice, events);
+        }
+        return new SfuPublisher(events);
+      },
       reconcileChildren: (childPeerIds) => {
         if (
           isCurrentGeneration(generation) &&
@@ -818,15 +844,6 @@ export function HostPage({
     return route;
   }
 
-  function setSfuStandbyUrl(url: string | null | undefined): void {
-    if (!url) {
-      sfuStandbyPrewarmerRef.current?.setUrl(null);
-      return;
-    }
-    sfuStandbyPrewarmerRef.current ??= new SfuStandbyPrewarmer();
-    sfuStandbyPrewarmerRef.current.setUrl(url);
-  }
-
   function syncHostSfuQualityWarning(
     route: HostSfuRoute,
     generation: number,
@@ -846,6 +863,7 @@ export function HostPage({
     sourceSwitchRef.current = null;
     qualityChangeRef.current = null;
     pendingQualityChangeRef.current = null;
+    commitQuality(qualitySettingsRef.current);
     codecProbeAbortRef.current?.abort();
     codecProbeAbortRef.current = null;
     videoCodecRef.current = VP8_ONLY_VIDEO_CODEC;
@@ -875,7 +893,6 @@ export function HostPage({
     hostPeerIdRef.current = null;
     void hostSfuRouteRef.current?.disconnect();
     hostSfuRouteRef.current = null;
-    sfuStandbyPrewarmerRef.current?.setUrl(null);
     streamRef.current?.getTracks().forEach((track) => track.stop());
     retiringStreamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
@@ -909,11 +926,11 @@ export function HostPage({
     );
   }
 
-  function forgetRoom(expected?: HostRoomState): boolean {
+  function forgetRoom(expected?: HostRoomState, keepResumeHint = false): boolean {
     if (expected && !isCurrentRoomAuthority(expected)) {
       return false;
     }
-    clearHostRoom();
+    clearHostRoom(keepResumeHint);
     roomRef.current = null;
     setRoom(null);
     setCopied(false);
@@ -992,7 +1009,12 @@ export function HostPage({
         endSharing({ key: "host.roomReplaced" }, false);
       }
       replaceViewerInvite(activeRoom.roomId, null);
-      writeHostRoom(replacement);
+      if (!(await writeHostRoom(
+        replacement,
+        () => roomMutationRef.current === mutation,
+      ))) {
+        throw new Error("Host room is already open in another tab");
+      }
       writePreferredRoom(replacement.roomId);
       roomRef.current = replacement;
       setRoom(replacement);
@@ -1027,7 +1049,12 @@ export function HostPage({
             if (replacement.roomId !== activeRoom.roomId) {
               replaceViewerInvite(activeRoom.roomId, null);
             }
-            writeHostRoom(replacement);
+            if (!(await writeHostRoom(
+              replacement,
+              () => roomMutationRef.current === mutation,
+            ))) {
+              throw new Error("Host room is already open in another tab");
+            }
             writePreferredRoom(replacement.roomId);
             roomRef.current = replacement;
             setRoom(replacement);
@@ -1404,7 +1431,7 @@ export function HostPage({
     if (!client || !isCurrentShare(generation, shareGeneration)) return;
     const ingress = new NativeMediaIngress(shareGeneration, client, () => {
       recoverBrowserFanout(ingress);
-    });
+    }, () => qualitySettingsRef.current);
     nativeMediaIngressRef.current = ingress;
     nativeShareGenerationRef.current = shareGeneration;
     try {
@@ -1630,10 +1657,6 @@ export function HostPage({
       if (!nativeUpdate && captureChanged) {
         await applyCaptureProfile(activeStream, nextProfile);
       }
-      const ingress = nativeMediaIngressRef.current;
-      if (ingress && !(await ingress.updateProfile(nextProfile))) {
-        throw new Error("Native media ingress is unavailable");
-      }
       if (
         !isCurrentGeneration(generation) ||
         qualityChangeRef.current !== token ||
@@ -1649,6 +1672,20 @@ export function HostPage({
         setDetails(captureDetails(activeStream));
       }
       signalRef.current?.setHostQualitySettings(appliedProfile);
+      const ingress = nativeMediaIngressRef.current;
+      if (ingress) {
+        const updated = await ingress.updateProfile(appliedProfile).catch(() => false);
+        if (
+          !isCurrentGeneration(generation) ||
+          qualityChangeRef.current !== token ||
+          streamRef.current !== activeStream
+        ) {
+          return;
+        }
+        if (!updated && nativeMediaIngressRef.current === ingress) {
+          recoverBrowserFanout(ingress);
+        }
+      }
       const activeSfuRoute = hostSfuRouteRef.current;
       const [results, sfuUpdated] = await Promise.all([
         Promise.all(
@@ -1670,7 +1707,8 @@ export function HostPage({
       ]);
       if (
         isCurrentGeneration(generation) &&
-        qualityChangeRef.current === token
+        qualityChangeRef.current === token &&
+        streamRef.current === activeStream
       ) {
         const failed = results.filter((updated) => !updated).length;
         const sfuWarning =
@@ -1694,7 +1732,8 @@ export function HostPage({
     } catch (error) {
       if (
         isCurrentGeneration(generation) &&
-        qualityChangeRef.current === token
+        qualityChangeRef.current === token &&
+        streamRef.current === activeStream
       ) {
         if (pendingQualityChangeRef.current === null) {
           advancedQualityRef.current = qualitySettingsRef.current;
@@ -2174,9 +2213,6 @@ export function HostPage({
       setViewerPasswordEnabled(message.viewerPasswordEnabled);
       setViewerPasswordDraft(authenticatedProfile.roomPassword ?? "");
       setViewerPasswordVisible(false);
-      setSfuStandbyUrl(
-        "sfuStandbyUrl" in message ? message.sfuStandbyUrl : null,
-      );
       setMaxViewers(message.maxViewers);
       routePolicyRef.current = { ...message.routePolicy };
       setRoutePolicy({ ...message.routePolicy });
@@ -2192,7 +2228,12 @@ export function HostPage({
         pendingQualitySettings ?? message.qualitySettings;
       activeRouteRevisionRef.current = message.routeRevision;
       if (reauthenticated) {
+        const draft = qualityChangeRef.current ? advancedQualityRef.current : null;
         commitQuality(currentQualitySettings);
+        if (draft) {
+          advancedQualityRef.current = draft;
+          setAdvancedQuality(draft);
+        }
         const endpointUpdates = [
           ...[...peersRef.current.values()].map((peer) =>
             peer.updateProfile(currentQualitySettings),
@@ -2215,8 +2256,8 @@ export function HostPage({
           assignment: message.routeAssignment,
         })
         .then(async () => {
-          if (reauthenticated && hostSfuRouteRef.current === route) {
-            await route.updateProfile(currentQualitySettings);
+          if (reauthenticated && isCurrentGeneration(generation) && hostSfuRouteRef.current === route) {
+            await route.updateProfile(qualitySettingsRef.current);
           }
           syncHostSfuQualityWarning(route, generation);
         });
@@ -2288,6 +2329,10 @@ export function HostPage({
       void route
         .acceptConfig(message)
         .then(() => syncHostSfuQualityWarning(route, generation));
+      return;
+    }
+    if (message.type === "sfu-signal") {
+      void hostSfuRouteRef.current?.acceptSignal(message);
       return;
     }
     if (message.type === "signal") {
@@ -2426,8 +2471,9 @@ export function HostPage({
     let createdRoom: HostRoomState | null = null;
     let claimedRoom = false;
     try {
-      const reusableRoom = roomRef.current;
-      createdRoom = reusableRoom ?? hostRoomFromStored(readHostRoom());
+      await roomInitializationRef.current;
+      if (!isCurrentShare(generation, shareGeneration)) return;
+      createdRoom = roomRef.current;
       if (!createdRoom) {
         const response = await createRoom(
           creationProfileRef.current.codeEntryPolicy,
@@ -2441,7 +2487,12 @@ export function HostPage({
           closeAbandonedRoom(createdRoom);
           return;
         }
-        writeHostRoom(createdRoom);
+        if (!(await writeHostRoom(
+          createdRoom,
+          () => isCurrentShare(generation, shareGeneration),
+        ))) {
+          throw new Error("Host room is already open in another tab");
+        }
         roomRef.current = createdRoom;
         setRoom(createdRoom);
         claimedRoom = true;
@@ -2455,7 +2506,7 @@ export function HostPage({
         let authenticated = false;
         const hostClientId = getStableClientId("host", activeRoom.roomId);
         hostClientIdRef.current = hostClientId;
-        const hostFallback = defaultHostDisplayName(hostClientId, visRef.current);
+        const hostFallback = defaultHostDisplayName(visRef.current);
         const initialDisplayName = readDisplayName(hostFallback);
         displayNameRef.current = initialDisplayName;
         setDisplayName(initialDisplayName);
@@ -2489,6 +2540,7 @@ export function HostPage({
                 signalRef.current === signal
               ) {
                 endSharing({ key: hostTerminationKey(reason) }, false, "warning");
+                if (reason === "SESSION_REPLACED") forgetRoom(activeRoom, true);
               }
             },
             onAccessRequired: () => {
@@ -2532,10 +2584,11 @@ export function HostPage({
                 peersRef.current.forEach((peer) =>
                   peer.updateIceConfig(message.iceConfig),
                 );
-                writeHostRoom({
-                  ...activeRoom,
-                  expiresAt: message.roomExpiresAt,
-                });
+                void writeHostRoom(
+                  { ...activeRoom, expiresAt: message.roomExpiresAt },
+                  () => isCurrentShare(generation, shareGeneration) &&
+                    signalRef.current === signal,
+                );
                 writePreferredRoom(activeRoom.roomId);
                 setPhase("live");
               }
@@ -2567,7 +2620,13 @@ export function HostPage({
             closeAbandonedRoom(replacement);
             return;
           }
-          writeHostRoom(replacement);
+          if (!(await writeHostRoom(
+            replacement,
+            () => isCurrentShare(generation, shareGeneration),
+          ))) {
+            closeAbandonedRoom(replacement);
+            throw new Error("Host room is already open in another tab");
+          }
           roomRef.current = replacement;
           setRoom(replacement);
           const replacementSignal = connectSignal(replacement);
@@ -2675,9 +2734,17 @@ export function HostPage({
           nativeCaptureDetails(qualitySettingsRef.current, activeStream),
         );
       }
+      const sfuUpdated = await hostSfuRouteRef.current?.updateProfile(qualitySettingsRef.current) ?? true;
+      if (
+        !isCurrentGeneration(generation) ||
+        sourceSwitchRef.current !== token ||
+        nativeClientRef.current !== client
+      ) {
+        return;
+      }
       setNotice(sourceSwitchNotice({
         failedPeerCount: 0,
-        sfuReplaced: true,
+        sfuReplaced: sfuUpdated,
         sfuWarning: null,
       }));
     } catch (error) {
@@ -2765,7 +2832,7 @@ export function HostPage({
             if (!client) throw new Error("Native media ingress is unavailable");
             const replacement = new NativeMediaIngress(ingress.shareId, client, () => {
               recoverBrowserFanout(replacement);
-            });
+            }, () => qualitySettingsRef.current);
             try {
               await replacement.start(captured, qualitySettingsRef.current);
               if (!isCurrentGeneration(generation) || nativeMediaIngressRef.current !== ingress) {
@@ -3084,9 +3151,7 @@ export function HostPage({
   }
 
   function commitDisplayName(): void {
-    const hostFallback = hostClientIdRef.current
-      ? defaultHostDisplayName(hostClientIdRef.current, vis)
-      : defaultHostDisplayName("", vis);
+    const hostFallback = defaultHostDisplayName(vis);
     const saved = saveDisplayName(displayNameDraft, hostFallback);
     if (!saved) {
       setDisplayNameError(say("host.nameError"));
@@ -4158,7 +4223,7 @@ export function HostPage({
 
           <Row label={t("host.quality")}>
             <RowGroup>
-              <div className="lr-tiles">
+              <div className="lr-tiles" aria-busy={changingQuality}>
                 {(Object.keys(QUALITY_PROFILES) as QualityProfileId[]).map(
                   (id, index) => (
                     <Fragment key={id}>
@@ -4210,6 +4275,7 @@ export function HostPage({
               "hint-advanced",
               <Btn
                 icon="sliders"
+                busy={changingQuality}
                 cap="host.advanced"
                 title="host.advanced"
                 tone={showAdvanced ? "on" : undefined}
@@ -4238,6 +4304,7 @@ export function HostPage({
                   className="lr-door-body"
                   role="group"
                   aria-label={t("host.advanced")}
+                  aria-busy={changingQuality}
                 >
                   <div className="lr-door-group">
                     <span

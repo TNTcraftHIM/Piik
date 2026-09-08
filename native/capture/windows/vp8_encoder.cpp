@@ -28,7 +28,7 @@ Vp8Encoder::Vp8Encoder(uint32_t width, uint32_t height, uint32_t frame_rate,
     throw std::runtime_error("VP8 encoder profile is invalid");
   }
   duration100ns_ = 10'000'000 / frame_rate;
-  vpx_codec_enc_cfg_t config{};
+  auto& config = config_;
   CheckVpx(vpx_codec_enc_config_default(vpx_codec_vp8_cx(), &config, 0));
   config.g_w = width;
   config.g_h = height;
@@ -56,6 +56,14 @@ Vp8Encoder::Vp8Encoder(uint32_t width, uint32_t height, uint32_t frame_rate,
 Vp8Encoder::~Vp8Encoder() { vpx_codec_destroy(&codec_); }
 
 const char* Vp8Encoder::Version() { return vpx_codec_version_str(); }
+
+void Vp8Encoder::SetBitrate(uint32_t bit_rate) {
+  if (bit_rate < 1'000) throw std::runtime_error("VP8 bitrate is invalid");
+  auto updated = config_;
+  updated.rc_target_bitrate = bit_rate / 1'000;
+  CheckVpx(vpx_codec_enc_config_set(&codec_, &updated));
+  config_ = updated;
+}
 
 Vp8Frame Vp8Encoder::Encode(uint8_t* nv12, size_t row_pitch,
                            uint64_t timestamp100ns, bool key_frame) {
@@ -89,7 +97,7 @@ Vp8Frame Vp8Encoder::Encode(uint8_t* nv12, size_t row_pitch,
     frame.bytes.assign(bytes, bytes + packet->data.frame.sz);
     frame.key_frame = (packet->data.frame.flags & VPX_FRAME_IS_KEY) != 0;
   }
-  if (frame.bytes.empty() || (key_frame && !frame.key_frame)) {
+  if (!frame.bytes.empty() && key_frame && !frame.key_frame) {
     throw std::runtime_error("VP8 encoder did not produce the requested frame");
   }
   return frame;

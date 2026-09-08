@@ -39,46 +39,9 @@ server {
     add_header X-Frame-Options "DENY" always;
     add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
 
-    # Reject the unversioned fallback endpoint that pinned livekit-client@2.22.0
-    # can still try. Keep it out of logs because the URL may contain a join token.
-    location = /rtc {
-        access_log off;
-        error_log /dev/null crit;
-        return 404;
-    }
-
-    # Pinned livekit-client@2.22.0 still tries this v0 endpoint after a
-    # ServiceNotFound response. Reject that fallback with a no-log 404;
-    # /rtc/v1* below is the accepted SDK path.
-    location = /rtc/validate {
-        access_log off;
-        error_log /dev/null crit;
-        return 404;
-    }
-
-    # This integration accepts only the v1 path. Set LIVEKIT_URL to
-    # wss://share.bonfire.icu.
-    location ^~ /rtc/v1 {
-        # The WebSocket query contains a short-lived LiveKit join token. Do not
-        # persist the request target in either access or error logs.
-        access_log off;
-        error_log /dev/null crit;
-        proxy_pass http://127.0.0.1:7880;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Host $host;
-        proxy_set_header X-Forwarded-Proto https;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $screener_connection_upgrade;
-        proxy_read_timeout 5h;
-        proxy_send_timeout 5h;
-        proxy_buffering off;
-    }
-
-    # Reject any other retired or unknown LiveKit path without logging tokens.
-    location ^~ /rtc/ {
+    # Media uses /signal. Reject credential-bearing RTC query endpoints without
+    # persisting their query strings, including requests from already-open pages.
+    location ~ ^/rtc(?:/|$) {
         access_log off;
         error_log /dev/null crit;
         return 404;
