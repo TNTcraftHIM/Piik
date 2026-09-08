@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
 	"os"
@@ -583,6 +584,53 @@ func TestSiteAccessUsesASecureHostCookieForProductionHTTPS(t *testing.T) {
 	}
 	if strings.Contains(setCookie, "Domain=") {
 		t.Fatalf("Set-Cookie = %q must not scope a domain", setCookie)
+	}
+}
+
+func TestLocalPasswordUsesConfiguredDestinationCookieAcrossLANAndPublicLink(t *testing.T) {
+	configuration, err := config.Local(config.LocalOptions{
+		Port: freePort(t), PublicAddress: "192.0.2.10", PublicOrigin: "https://public.example.test",
+		SiteAccessPassword: testAccessPassword,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := start(t, Options{Config: configuration})
+	lanOrigin := fmt.Sprintf("http://192.0.2.10:%d", configuration.Port)
+	for _, origin := range []string{lanOrigin, "https://public.example.test"} {
+		t.Run(origin, func(t *testing.T) {
+			destination, _ := url.Parse(origin)
+			host := func(request *http.Request) { request.Host = destination.Host }
+			login := server.do(http.MethodPost, "/api/site-access", host,
+				withOrigin(lanOrigin), withBearer(testAccessPassword)).expectStatus(http.StatusOK)
+			cookies := (&http.Response{Header: login.header}).Cookies()
+			if len(cookies) != 1 || cookies[0].Secure != (destination.Scheme == "https") {
+				t.Fatal("cookie policy does not match its configured destination")
+			}
+			jar, _ := cookiejar.New(nil)
+			jar.SetCookies(destination, cookies)
+			usable := jar.Cookies(destination)
+			if len(usable) != 1 {
+				t.Fatal("browser cookie rules reject the issued login")
+			}
+			cookie := usable[0].String()
+			server.do(http.MethodGet, "/api/site-access", host, withCookie(cookie)).
+				expect(http.StatusOK, `{"required":true,"authenticated":true}`)
+			server.do(http.MethodPost, "/api/rooms", host, withOrigin(origin),
+				withCookie(cookie), withJSON(`{"codeEntryPolicy":"open"}`)).expectStatus(http.StatusCreated)
+			upgrade := httptest.NewRequest(http.MethodGet, origin+"/signal", nil)
+			upgrade.Header.Set("Cookie", cookie)
+			upgrade.Header.Set("X-Forwarded-Proto", "http")
+			if !server.signalOptions.SiteAccessAtUpgrade(upgrade) {
+				t.Fatal("WebSocket admission does not use the same cookie policy")
+			}
+			if destination.Scheme == "https" {
+				upgrade.Header.Set("Cookie", strings.TrimPrefix(cookie, "__Host-"))
+				if server.signalOptions.SiteAccessAtUpgrade(upgrade) {
+					t.Fatal("public authority accepted the plain LAN cookie name")
+				}
+			}
+		})
 	}
 }
 

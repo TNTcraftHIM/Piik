@@ -6,11 +6,14 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"errors"
+	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/TNTcraftHIM/Screener/internal/server/config"
 	"github.com/TNTcraftHIM/Screener/internal/server/protocol"
 )
 
@@ -45,6 +48,25 @@ type siteAccessGate struct {
 	secure     bool
 	now        func() int64
 	ttlSeconds int
+}
+
+// One Local authority can be served through HTTPS public links and HTTP LAN
+// origins. Select the cookie contract by its configured destination, never by
+// the initiating Origin or an untrusted forwarded-protocol header.
+func (s *Server) siteAccessForRequest(request *http.Request) *siteAccessGate {
+	if !s.siteAccess.secure || request.TLS != nil {
+		return s.siteAccess
+	}
+	plain := config.Origin(&url.URL{Scheme: "http", Host: request.Host})
+	secure := config.Origin(&url.URL{Scheme: "https", Host: request.Host})
+	_, allowsPlain := s.config.AllowedOrigins[plain]
+	_, allowsSecure := s.config.AllowedOrigins[secure]
+	if !allowsPlain || allowsSecure || strings.EqualFold(request.Host, s.config.PublicBaseURL.Host) {
+		return s.siteAccess
+	}
+	access := *s.siteAccess
+	access.secure = false
+	return &access
 }
 
 // newSiteAccess mirrors the SiteAccess constructor, including its TTL check.

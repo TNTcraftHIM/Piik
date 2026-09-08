@@ -40,7 +40,10 @@ Three independent authorities exist:
    authorized page renews it through the site-access check while it remains
    active. It authorizes room creation, Host role, and code-only Viewer
    attempts; it is not a room credential, and Viewer-grant admission cannot
-   create or renew it.
+   create or renew it. Cookie transport attributes follow the configured
+   destination: public HTTPS retains the Secure host-prefixed cookie, while a
+   separately configured HTTP LAN origin can use its HTTP cookie. Login,
+   renewal, room creation and WebSocket admission use that same selection.
 2. **Host ownership.** The exact Host token authorizes that room's Host and
    access-management operations. It cannot authorize another room.
 3. **Viewer invitation.** Every room creates a 128-bit, 22-character base64url

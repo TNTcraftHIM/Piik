@@ -90,6 +90,7 @@ type Session struct {
 	edges          map[string]*mediaedge.Edge
 	publications   map[publicationKey]*mediaedge.Publication
 	captureApplied chan struct{}
+	audioChanged   chan struct{}
 	paused         bool
 	closed         bool
 }
@@ -143,6 +144,7 @@ func Start(parent context.Context, options Options) (*Session, error) {
 		done:           make(chan error, 1),
 		ready:          make(chan error, 1),
 		edges:          make(map[string]*mediaedge.Edge),
+		audioChanged:   make(chan struct{}, 1),
 	}
 	if audioStream != nil {
 		audioSource, audioErr := engine.NewAudioSource(
@@ -483,6 +485,10 @@ func (session *Session) commitCapture(
 	session.captureApplied = applied
 	if replaceAudio {
 		session.audioStream = replacementAudio
+		select {
+		case session.audioChanged <- struct{}{}:
+		default:
+		}
 	}
 	session.videoOptions = options
 	session.profile = profile
@@ -1006,30 +1012,28 @@ func (session *Session) runAudio() {
 	current := session.currentAudioStream()
 	for current != nil {
 		frame, err := current.Read()
-		if err != nil {
-			next := session.currentAudioStream()
-			if next != nil && next != current {
-				current = next
-				continue
-			}
-			return
-		}
 		if next := session.currentAudioStream(); next != current {
 			current = next
 			continue
 		}
-		if frame.Kind != nativecapture.FramePCM {
-			return
+		if err == nil && frame.Kind == nativecapture.FramePCM {
+			session.mu.Lock()
+			paused := session.paused
+			session.mu.Unlock()
+			if paused || session.audioSource.WritePCM(frame.Data, frame.Duration) == nil {
+				continue
+			}
 		}
-		session.mu.Lock()
-		paused := session.paused
-		session.mu.Unlock()
-		if paused {
-			continue
+		// Audio failure leaves video live. Only an explicit source replacement
+		// changes this owner; its buffered wake also covers an earlier commit.
+		for session.currentAudioStream() == current {
+			select {
+			case <-session.audioChanged:
+			case <-session.ctx.Done():
+				return
+			}
 		}
-		if err = session.audioSource.WritePCM(frame.Data, frame.Duration); err != nil {
-			return
-		}
+		current = session.currentAudioStream()
 	}
 }
 

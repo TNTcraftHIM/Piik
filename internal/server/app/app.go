@@ -163,7 +163,7 @@ func New(options Options) (*Server, error) {
 		NATPredictionEnabled: configuration.NATPredictionEnabled,
 		AllowedOrigins:       configuration.AllowedOrigins,
 		SiteAccessAtUpgrade: func(request *http.Request) bool {
-			return siteAccess.isAuthenticated(cookieHeader(request))
+			return server.siteAccessForRequest(request).isAuthenticated(cookieHeader(request))
 		},
 		PublicBaseURL:                 configuration.PublicBaseURL,
 		Now:                           now,

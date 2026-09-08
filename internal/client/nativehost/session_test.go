@@ -17,6 +17,10 @@ import (
 )
 
 func TestMain(tests *testing.M) {
+	if os.Getenv("SCREENER_NATIVEHOST_PIPE_FIXTURE") == "audio-recovery" {
+		runAudioRecoveryCapture()
+		os.Exit(0)
+	}
 	if os.Getenv("SCREENER_NATIVEHOST_PIPE_FIXTURE") == "echo" {
 		_, _ = io.Copy(os.Stdout, os.Stdin)
 		os.Exit(0)

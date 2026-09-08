@@ -631,12 +631,14 @@ export function ViewerPage({
     const relayChildEvidenceTimers = new Map<string, number>();
     let sfuTransportConnected = false;
     let nativeClientPromise: Promise<NativeClient | null> | null = null;
+    let nativeViewerAvailable = true;
     const nativeViewerSessionId = createOpaqueId();
 
-    const acquireNativeClient = (): Promise<NativeClient | null> => {
-      if (!launchedByClient) return Promise.resolve(null);
+    const acquireNativeClient = async (): Promise<NativeClient | null> => {
+      if (!launchedByClient || !nativeViewerAvailable) return null;
       nativeClientPromise ??= NativeClient.connect();
-      return nativeClientPromise;
+      const client = await nativeClientPromise;
+      return nativeViewerAvailable ? client : null;
     };
 
     function createViewerMediaPeer(
@@ -651,7 +653,8 @@ export function ViewerPage({
         iceConfig,
         events,
         options,
-        acquireNativeClient(),
+        acquireNativeClient,
+        () => { nativeViewerAvailable = false; },
         nativeViewerSessionId,
         MAX_ENDPOINT_MEDIA_CHILDREN,
       );

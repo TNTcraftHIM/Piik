@@ -201,6 +201,10 @@ disabled; this accepts less burst-loss resilience in exchange for bounded
 publisher traffic. The Browser and source still decide whether an audio track
 exists and what is actually delivered.
 
+A Native audio-process failure does not end healthy video. A later explicit
+source replacement resumes audio through the existing track and encoder owner;
+it does not trigger an automatic capture retry or change room audio topology.
+
 ## Observable Truth
 
 Requested resolution, frame rate, bitrate, content intent, codec, and audio

@@ -113,6 +113,12 @@ again before clearing recovery. SFU media is retained independently of transient
 room-signaling loss, but Browser or OS suspension and page reclamation remain
 outside Web guarantees.
 
+Failure of the local Native media bridge disables Native reception for the
+current Viewer session before route recovery runs. Future peers in that session
+use Browser reception; existing healthy peers are not torn down by this choice.
+Parent-network failure alone is not evidence that the local Native capability
+is unavailable.
+
 ## Presence And Diagnostics
 
 Host and Viewer pages show the authoritative online Viewer count and roster,
