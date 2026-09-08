@@ -6,7 +6,7 @@ import {
 } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { createServer } from "node:http";
-import { mkdir, mkdtemp } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -36,6 +36,15 @@ type VideoCodec = "h264" | "vp8";
 
 const CODEC_PROBE = `(() => {
   const peers = [], BrowserPeer = RTCPeerConnection;
+  const sockets = [], BrowserSocket = WebSocket;
+  window.WebSocket = class extends BrowserSocket {
+    constructor(...args) { super(...args); sockets.push(this); }
+  };
+  window.__screenerGatePublicSignal = () => sockets.some((socket) => {
+    const url = new URL(socket.url);
+    return socket.readyState === WebSocket.OPEN && url.protocol === 'wss:' &&
+      url.host === location.host && url.pathname === '/signal';
+  });
   window.RTCPeerConnection = class extends BrowserPeer {
     constructor(...args) { super(...args); peers.push(this); }
   };
@@ -68,6 +77,7 @@ interface GateResult {
   livePresetChanges: number;
   liveQualityChanged: boolean;
   pausedQualityChanged: boolean;
+  backgroundProfileRecovery: boolean | null;
   mediaObjectPreserved: boolean;
   nativeSourceChanged: boolean;
   nativeQualityEvidence: boolean;
@@ -87,6 +97,9 @@ interface GateResult {
   replacementViewerFrames: number | null;
   clientCrashEndedShare: boolean | null;
   mode: GateMode;
+  viewerLocation: "local-browser" | "public-url-browser" | "remote-peer";
+  publicViewerPage: boolean;
+  publicViewerSignal: boolean;
   cleanup: Awaited<ReturnType<typeof cleanupRun>>;
   error: string | null;
   stage?: string;
@@ -563,7 +576,9 @@ async function main(): Promise<void> {
   if (requestedCodec !== "auto" && requestedCodec !== "h264" && requestedCodec !== "vp8") {
     throw new Error("SCREENER_CLIENT_NATIVE_HOST_CODEC must be auto, h264, or vp8");
   }
-  const remote = mode === "local" ? null : remoteOptions();
+  const remote = mode === "cross-nat" || mode === "one-link" &&
+    Boolean(process.env.SCREENER_REMOTE_HOST?.trim() || process.env.SCREENER_REMOTE_SSH_KEY?.trim())
+      ? remoteOptions() : null;
   const chromePath = process.env.CHROME_PATH?.trim();
   if (!chromePath) throw new Error("CHROME_PATH is required");
   const go = process.env.SCREENER_GO?.trim() || "go";
@@ -574,6 +589,7 @@ async function main(): Promise<void> {
   const profile = await mkdtemp(join(tmpdir(), "screener-client-media-"));
   const sourceProfile = await mkdtemp(join(tmpdir(), "screener-client-media-"));
   await mkdir(BUILD_ROOT, { recursive: true });
+  const diagnosticDirectory = await mkdtemp(join(BUILD_ROOT, "native-host-gate-"));
   const sourcePort = await reservePort();
   const appPort = await reservePort();
   const debugPort = await reservePort();
@@ -590,7 +606,6 @@ async function main(): Promise<void> {
   let chrome: ChildProcessWithoutNullStreams | null = null;
   let cdp: CdpConnection | null = null;
   let clientPort = 0;
-  let clientDiagnostics = "";
   let remoteTunnel: ChildProcess | null = null;
   let stage = "setup";
   const result: GateResult = {
@@ -605,6 +620,7 @@ async function main(): Promise<void> {
     livePresetChanges: 0,
     liveQualityChanged: false,
     pausedQualityChanged: false,
+    backgroundProfileRecovery: mode === "local" && sourceKind === "window" ? false : null,
     mediaObjectPreserved: false,
     nativeSourceChanged: false,
     nativeQualityEvidence: false,
@@ -624,6 +640,9 @@ async function main(): Promise<void> {
     replacementViewerFrames: mode === "local" ? 0 : null,
     clientCrashEndedShare: crashGate ? false : null,
     mode,
+    viewerLocation: remote ? "remote-peer" : mode === "one-link" ? "public-url-browser" : "local-browser",
+    publicViewerPage: false,
+    publicViewerSignal: false,
     cleanup: {
       browserExited: false,
       nativeExited: false,
@@ -641,15 +660,17 @@ async function main(): Promise<void> {
     stage = "source-server";
     source = await sourceServer(sourcePort);
     stage = "capture-build";
+    process.stderr.write(`${JSON.stringify({ stage, status: "started", at: new Date().toISOString() })}\n`);
     run(powershell(), [
       "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
       join(ROOT, "native", "capture", "windows", "build.ps1"),
       "-OutputDirectory", captureBuild,
     ]);
+    process.stderr.write(`${JSON.stringify({ stage, status: "finished", at: new Date().toISOString() })}\n`);
     stage = "client-build";
     run(go, [
-      "build", "-trimpath", "-o", clientBinary, "./cmd/screener-client",
-    ], ROOT);
+      "build", "-p", "1", "-trimpath", "-o", clientBinary, "./cmd/screener-client",
+    ], ROOT, { ...process.env, GOMAXPROCS: "2" });
     if (remote) {
       stage = "remote-peer-build";
       run(
@@ -676,12 +697,13 @@ async function main(): Promise<void> {
       "--capture-process", captureBinary,
       "--config", clientConfig,
       "--port", String(appPort),
+      "--debug", "--log-dir", diagnosticDirectory,
     ], {
       stdio: "pipe",
       windowsHide: true,
       env: {
         ...process.env,
-        SCREENER_DEBUG: "route",
+        SCREENER_DEBUG: "",
         SCREENER_CLIENT_GATE_NO_BROWSER: "true",
         // STUN_URLS reaches only the Client's own Pion edge: the in-process
         // room server never reads it, so the cross-NAT arm stays isolated.
@@ -690,9 +712,7 @@ async function main(): Promise<void> {
           : {}),
       },
     });
-    client.stderr.on("data", (chunk: Buffer) => {
-      clientDiagnostics = (clientDiagnostics + chunk.toString()).slice(-262_144);
-    });
+    client.stderr.resume();
     stage = "client-ready";
     const clientInfo = await readClientEndpoint(client, mode === "one-link");
     clientPort = clientInfo.endpoint.port;
@@ -878,7 +898,17 @@ async function main(): Promise<void> {
       }
     } else {
       const viewerURL = new URL(hostState.invite);
-      viewerURL.hostname = "localhost";
+      if (mode === "local") viewerURL.hostname = "localhost";
+      else {
+        if (viewerURL.protocol !== "https:" || viewerURL.origin !== clientInfo.publicOrigin) {
+          throw new Error("One-link invitation does not use the actual public origin");
+        }
+        stage = "public-page-ready";
+        await waitForValue(async (deadline) => {
+          const response = await fetch(viewerURL, { signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())) });
+          return response.ok;
+        }, Boolean, 20_000);
+      }
       stage = "viewer-page";
       const viewer = await createPage(cdp, viewerURL.toString(), CODEC_PROBE, true);
       stage = "viewer-media";
@@ -906,6 +936,14 @@ async function main(): Promise<void> {
       result.viewerWidth = viewerState.width;
       result.viewerHeight = viewerState.height;
       await assertVideoCodec(cdp, viewer, actualCodec);
+      if (mode === "one-link") {
+        result.codecPreserved = true;
+        result.publicViewerPage = await evaluate<boolean>(cdp, viewer,
+          `location.origin === ${JSON.stringify(clientInfo.publicOrigin)} && location.pathname === ${JSON.stringify(viewerURL.pathname)}`,
+          Date.now() + 5_000);
+        result.publicViewerSignal = await evaluate<boolean>(cdp, viewer,
+          "window.__screenerGatePublicSignal()", Date.now() + 5_000);
+      } else {
       await evaluate<boolean>(
         cdp,
         viewer,
@@ -1127,6 +1165,66 @@ async function main(): Promise<void> {
       result.viewerWidth = resumed.width;
       result.viewerHeight = resumed.height;
       await assertVideoCodec(cdp, viewer, actualCodec);
+      if (sourceKind === "window") {
+        stage = "native-background-profile";
+        const { targetInfos } = await sourceCdp!.call<{
+          targetInfos: Array<{ targetId: string; type: string; url: string }>;
+        }>("Target.getTargets", {}, undefined, Date.now() + 5_000);
+        const target = targetInfos.find((value) =>
+          value.type === "page" && value.url === `http://127.0.0.1:${sourcePort}/`,
+        );
+        if (!target) throw new Error("Capture source page is missing");
+        const { windowId } = await sourceCdp!.call<{ windowId: number }>(
+          "Browser.getWindowForTarget", { targetId: target.targetId },
+          undefined, Date.now() + 5_000,
+        );
+        await sourceCdp!.call("Browser.setWindowBounds", {
+          windowId, bounds: { windowState: "minimized" },
+        }, undefined, Date.now() + 5_000);
+        try {
+          await evaluate<void>(cdp, host,
+            `new Promise((resolve) => {
+              document.querySelector('button.lr-chip[aria-label="720p"]')?.click();
+              requestAnimationFrame(() => requestAnimationFrame(resolve));
+            })`,
+            Date.now() + 5_000,
+          );
+          await waitForValue((deadline) => evaluate<boolean>(cdp!, host,
+            `Boolean(document.querySelector('#host-advanced-door .lr-door-body[aria-busy="true"]'))`,
+            deadline,
+          ), Boolean, 5_000);
+        } finally {
+          await sourceCdp!.call("Browser.setWindowBounds", {
+            windowId, bounds: { windowState: "normal" },
+          }, undefined, Date.now() + 5_000);
+        }
+        stage = "native-background-profile-recovery";
+        // A quiet source retains its pending replacement until restoration.
+        // Prove its actual delivery before applying the following profile.
+        for (const [label, width, height] of [["720p", 1280, 720], ["480p", 854, 480]] as const) {
+          const before = await evaluate<number>(cdp, viewer,
+            `document.querySelector('video')?.getVideoPlaybackQuality().totalVideoFrames ?? 0`,
+            Date.now() + 5_000,
+          );
+          await evaluate<void>(cdp, host,
+            `document.querySelector('button.lr-chip[aria-label="${label}"]')?.click()`,
+            Date.now() + 5_000,
+          );
+          await waitForValue((deadline) => evaluate<boolean>(cdp!, viewer,
+            `(() => {
+              const video = document.querySelector('video');
+              return Boolean(video && video.srcObject === window.__screenerGateMedia &&
+                video.videoWidth === ${width} && video.videoHeight === ${height} &&
+                video.getVideoPlaybackQuality().totalVideoFrames >= ${before + 10});
+            })()`, deadline,
+          ), Boolean, 20_000);
+          await waitForValue((deadline) => evaluate<boolean>(cdp!, host,
+            `Boolean(document.querySelector('#host-advanced-door .lr-door-body[aria-busy="false"]'))`,
+            deadline,
+          ), Boolean, 5_000);
+        }
+        result.backgroundProfileRecovery = true;
+      }
       stage = "native-source-picker";
       await waitForValue(
         (deadline) => evaluate<boolean>(
@@ -1191,8 +1289,22 @@ async function main(): Promise<void> {
       await assertVideoCodec(cdp, viewer, actualCodec);
       result.codecPreserved = true;
       result.nativeQualityEvidence = await waitForValue(
-        async () => /"event":"sender-quality-evidence"[^\n]*"state":"(healthy|degraded)"/
-          .test(clientDiagnostics),
+        async () => {
+          const logPath = join(diagnosticDirectory, "client.log");
+          if ((await stat(logPath)).size > 8 * 1024 * 1024) {
+            throw new Error("Native Host gate diagnostic log exceeded its bound");
+          }
+          const diagnostics = await readFile(logPath, "utf8");
+          return diagnostics.split(/\r?\n/).some((line) => {
+            try {
+              const record = JSON.parse(line);
+              return record.msg === "screener-route" && record.event === "sender-quality-evidence" &&
+                (record.state === "healthy" || record.state === "degraded");
+            } catch {
+              return false;
+            }
+          });
+        },
         Boolean,
         12_000,
       );
@@ -1300,6 +1412,7 @@ async function main(): Promise<void> {
         result.replacementViewerConnected = null;
         result.replacementViewerFrames = null;
       }
+      }
     }
   } catch (error) {
     // Client stderr can contain implementation diagnostics or URLs; keep gate
@@ -1343,12 +1456,16 @@ async function main(): Promise<void> {
   result.passed = result.error === null && result.actualCodec !== null && result.preSharePreferenceEnabled &&
     result.hostNativeActive &&
     result.hostInvite &&
-    (mode !== "local"
+    (remote
       ? result.remoteViewerConnected && result.remoteViewerPackets >= 30 &&
         result.remoteNatPath && result.remotePeerExited === true &&
         (mode !== "cross-nat" || result.reverseSignalTunnelClosed === true)
-      : result.viewerConnected && result.viewerFrames >= 30 &&
+      : mode === "one-link"
+        ? result.publicViewerPage && result.publicViewerSignal && result.viewerConnected &&
+          result.viewerFrames >= 30 && result.viewerWidth === 1920 && result.viewerHeight === 1080 && result.codecPreserved
+        : result.viewerConnected && result.viewerFrames >= 30 &&
         result.qualityControlsEnabled && result.liveQualityChanged &&
+        result.backgroundProfileRecovery !== false &&
         result.livePresetChanges === 2 &&
         result.codecPreserved &&
         result.pausedQualityChanged && result.mediaObjectPreserved &&

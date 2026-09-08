@@ -67,7 +67,6 @@ import {
 import { DecodedFrameStallDetector } from "../media/decoded-frame-stall";
 import type { QualitySettings } from "../media/quality";
 import { relayCapacityMessageForBrowser } from "../media/relay-capability";
-import { SfuStandbyPrewarmer } from "../media/sfu-standby-prewarmer";
 import {
   invalidateSenderQualityEvidence,
   senderQualityEvidenceFromSnapshot,
@@ -315,7 +314,7 @@ export function ViewerPage({
     () => readStoredDisplayName() !== null,
   );
   const [displayName, setDisplayName] = useState(() =>
-    readDisplayName(defaultViewerDisplayName(viewerClientId, vis)),
+    readDisplayName(defaultViewerDisplayName(vis)),
   );
   const [displayNameDraft, setDisplayNameDraft] = useState(displayName);
   const [displayNameError, setDisplayNameError] = useState(false);
@@ -423,7 +422,7 @@ export function ViewerPage({
   const displayNameRef = useRef(displayName);
   useEffect(() => {
     if (hasCustomDisplayName) return;
-    const fallback = defaultViewerDisplayName(viewerClientId, vis);
+    const fallback = defaultViewerDisplayName(vis);
     if (displayNameRef.current === fallback) return;
     displayNameRef.current = fallback;
     setDisplayName(fallback);
@@ -625,7 +624,6 @@ export function ViewerPage({
     let pendingPeer: PendingPeerRoute | null = null;
     const decodedFrameStall = new DecodedFrameStallDetector();
     const messageAuthority = new ViewerMessageAuthority();
-    let sfuStandbyPrewarmer: SfuStandbyPrewarmer | null = null;
     const relayChildEvidenceCurrent = new Map<
       string,
       ViewerQualityEvidencePresentation
@@ -633,12 +631,14 @@ export function ViewerPage({
     const relayChildEvidenceTimers = new Map<string, number>();
     let sfuTransportConnected = false;
     let nativeClientPromise: Promise<NativeClient | null> | null = null;
+    let nativeViewerAvailable = true;
     const nativeViewerSessionId = createOpaqueId();
 
-    const acquireNativeClient = (): Promise<NativeClient | null> => {
-      if (!launchedByClient) return Promise.resolve(null);
+    const acquireNativeClient = async (): Promise<NativeClient | null> => {
+      if (!launchedByClient || !nativeViewerAvailable) return null;
       nativeClientPromise ??= NativeClient.connect();
-      return nativeClientPromise;
+      const client = await nativeClientPromise;
+      return nativeViewerAvailable ? client : null;
     };
 
     function createViewerMediaPeer(
@@ -653,7 +653,8 @@ export function ViewerPage({
         iceConfig,
         events,
         options,
-        acquireNativeClient(),
+        acquireNativeClient,
+        () => { nativeViewerAvailable = false; },
         nativeViewerSessionId,
         MAX_ENDPOINT_MEDIA_CHILDREN,
       );
@@ -699,15 +700,6 @@ export function ViewerPage({
     window.addEventListener("pagehide", suspendForPageLifecycle);
     window.addEventListener("pageshow", recoverFromPageLifecycle);
 
-    function setSfuStandbyUrl(url: string | null | undefined): void {
-      if (!url) {
-        sfuStandbyPrewarmer?.setUrl(null);
-        return;
-      }
-      sfuStandbyPrewarmer ??= new SfuStandbyPrewarmer();
-      sfuStandbyPrewarmer.setUrl(url);
-    }
-
     const signal = new SignalingClient(
       {
         roomId,
@@ -732,7 +724,6 @@ export function ViewerPage({
             return;
           }
           messageAuthority.invalidate();
-          setSfuStandbyUrl(null);
           setAssignedRoute(null);
           clearViewerSfuRoute();
           clearPeerState(true);
@@ -746,7 +737,6 @@ export function ViewerPage({
         onAccessRequired: () => {
           if (active) {
             messageAuthority.invalidate();
-            setSfuStandbyUrl(null);
             setAssignedRoute(null);
             clearViewerSfuRoute();
             clearPeerState(true);
@@ -956,6 +946,7 @@ export function ViewerPage({
                     source.codec,
                     {
                       connectionId: source.connectionId,
+                      getProfile: () => currentQualitySettings,
                       format: () => {
                         const settings = remoteMediaRef.current?.stream
                           .getVideoTracks()[0]
@@ -1716,9 +1707,6 @@ export function ViewerPage({
         viewerAuthorizationGeneration =
           message.viewerAuthorizationGeneration;
         currentRoutePolicy = message.routePolicy;
-        setSfuStandbyUrl(
-          "sfuStandbyUrl" in message ? message.sfuStandbyUrl : null,
-        );
         const nextRouteRevision = message.routeRevision;
         if (nextRouteRevision !== currentRouteRevision) {
           clearRelayChildEvidence();
@@ -1873,6 +1861,10 @@ export function ViewerPage({
         await ensureViewerSfuRoute().acceptConfig(message);
         return;
       }
+      if (message.type === "sfu-signal") {
+        await viewerSfuRoute?.acceptSignal(message);
+        return;
+      }
       if (message.type === "quality-settings") {
         currentQualitySettings = message.qualitySettings;
         void viewerRelay?.updateProfile(currentQualitySettings);
@@ -1885,7 +1877,6 @@ export function ViewerPage({
         ) {
           currentShareGeneration = message.shareGeneration;
           currentRoutePolicy = message.routePolicy;
-          setSfuStandbyUrl(message.sfuStandbyUrl ?? null);
         }
         return;
       }
@@ -1988,7 +1979,6 @@ export function ViewerPage({
         pendingRouteConnection = null;
         currentShareGeneration = null;
         currentRoutePolicy = DEFAULT_ROUTE_POLICY;
-        setSfuStandbyUrl(null);
         setAssignedRoute(null);
         currentHostOnline = false;
         currentHostPaused = false;
@@ -2009,7 +1999,6 @@ export function ViewerPage({
         }
         viewerAuthorizationGeneration = null;
         clearViewerGrant(roomId);
-        setSfuStandbyUrl(null);
         setAssignedRoute(null);
         clearViewerSfuRoute();
         clearPeerState(true);
@@ -2023,7 +2012,6 @@ export function ViewerPage({
         return;
       }
       if (message.type === "room-closed") {
-        setSfuStandbyUrl(null);
         setAssignedRoute(null);
         clearViewerSfuRoute();
         clearPeerState(true);
@@ -2048,7 +2036,6 @@ export function ViewerPage({
             "ROOM_FULL",
           ].includes(message.code)
         ) {
-          setSfuStandbyUrl(null);
           setAssignedRoute(null);
           clearViewerSfuRoute();
           clearPeerState(true);
@@ -2095,7 +2082,6 @@ export function ViewerPage({
         qualityEvidenceReporterRef.current = null;
       }
       clearRelayChildEvidence();
-      sfuStandbyPrewarmer?.dispose();
       signal.stop();
       clearParticipantPresence();
       if (signalRef.current === signal) {
@@ -2218,7 +2204,7 @@ export function ViewerPage({
   }
 
   function commitDisplayName(): void {
-    const fallback = defaultViewerDisplayName(viewerClientId, vis);
+    const fallback = defaultViewerDisplayName(vis);
     const saved = saveDisplayName(displayNameDraft, fallback);
     if (!saved) {
       setDisplayNameError(true);

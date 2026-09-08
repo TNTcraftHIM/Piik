@@ -203,6 +203,7 @@ async function main(): Promise<void> {
     stage = "share-picker";
     await click(host, 'button.lr-tv-big.is-action');
     stage = "share-browser-capture";
+    await click(host, 'button[data-source-tab="browser"]');
     await click(host, '.lr-source-option.is-browser');
     stage = "share-ingress";
     await waitForSample(() => read(host), (s) => s.sharing && s.receiveRequests === 1 && s.outbound === 1, 30000);

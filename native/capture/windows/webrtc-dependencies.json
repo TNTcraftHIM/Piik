@@ -1,0 +1,19 @@
+{
+  "webrtc": {
+    "version": "m152.7977.0.2",
+    "commit": "6f37672d358475cd17544121a12494da454d85fb",
+    "url": "https://github.com/shiguredo-webrtc-build/webrtc-build/releases/download/m152.7977.0.2/webrtc.windows_x86_64.zip",
+    "sha256": "3250ee091eb745b9885482d92db352e6bcd5426940021ff90a095747d84d2137"
+  },
+  "msvc": {
+    "directory": "Contents/VC/Tools/MSVC/14.44.35207",
+    "crt": {
+      "url": "https://download.visualstudio.microsoft.com/download/pr/67cf767c-5e71-47c2-a54a-cd5631e28942/f01f701a7bcd9587a340898c851424f6a52bb913a70c185ff0d5bf0288c5831a/Microsoft.VC.14.44.17.14.CRT.x64.Desktop.base.vsix",
+      "sha256": "f01f701a7bcd9587a340898c851424f6a52bb913a70c185ff0d5bf0288c5831a"
+    },
+    "tools": {
+      "url": "https://download.visualstudio.microsoft.com/download/pr/bbc72d8e-2acd-4229-8f6a-85e23c5e3456/ee0baaa3a112d255f19f6c27dcc0ff6e496949eb9f1f37be0ac908c562a7076c/Microsoft.VC.14.44.17.14.Tools.HostX64.TargetX64.base.vsix",
+      "sha256": "ee0baaa3a112d255f19f6c27dcc0ff6e496949eb9f1f37be0ac908c562a7076c"
+    }
+  }
+}

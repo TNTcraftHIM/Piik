@@ -7,8 +7,8 @@ import (
 
 func TestDecodeRequestAcceptsOnlyTheCurrentShape(t *testing.T) {
 	valid := []string{
-		`{"version":8,"id":"request_hello","type":"hello"}`,
-		`{"version":8,"id":"request_ping","type":"ping"}`,
+		`{"version":9,"id":"request_hello","type":"hello"}`,
+		`{"version":9,"id":"request_ping","type":"ping"}`,
 	}
 	for _, payload := range valid {
 		if _, err := decodeRequest([]byte(payload)); err != nil {
@@ -17,10 +17,10 @@ func TestDecodeRequestAcceptsOnlyTheCurrentShape(t *testing.T) {
 	}
 	invalid := []string{
 		`{"version":3,"id":"request_ping","type":"ping"}`,
-		`{"version":8,"id":"short","type":"ping"}`,
-		`{"version":8,"id":"request_ping","type":"ping","extra":true}`,
-		`{"version":8,"id":"request_hello","type":"hello","nonce":"obsolete"}`,
-		`{"version":8,"id":"request_ping","type":"ping"} trailing`,
+		`{"version":9,"id":"short","type":"ping"}`,
+		`{"version":9,"id":"request_ping","type":"ping","extra":true}`,
+		`{"version":9,"id":"request_hello","type":"hello","nonce":"obsolete"}`,
+		`{"version":9,"id":"request_ping","type":"ping"} trailing`,
 	}
 	for _, payload := range invalid {
 		if _, err := decodeRequest([]byte(payload)); err == nil {
@@ -34,11 +34,11 @@ func TestDecodeRequestUsesTheSharedIdentifierBoundary(t *testing.T) {
 	if len(identifier) != 256 {
 		t.Fatalf("test identifier length = %d", len(identifier))
 	}
-	payload := []byte(`{"version":8,"id":"` + identifier + `","type":"ping"}`)
+	payload := []byte(`{"version":9,"id":"` + identifier + `","type":"ping"}`)
 	if _, err := decodeRequest(payload); err != nil {
 		t.Fatalf("maximum identifier was rejected: %v", err)
 	}
-	tooLong := []byte(`{"version":8,"id":"` + identifier + `a","type":"ping"}`)
+	tooLong := []byte(`{"version":9,"id":"` + identifier + `a","type":"ping"}`)
 	if _, err := decodeRequest(tooLong); err == nil {
 		t.Fatal("identifier beyond the boundary was accepted")
 	}
@@ -62,7 +62,7 @@ func TestValidateMessagesRequireTheExpectedPhase(t *testing.T) {
 }
 
 func TestEnvelopeAllowsAnExtensionToOwnItsStrictShape(t *testing.T) {
-	payload := []byte(`{"version":8,"id":"request_extension","type":"extension","value":1}`)
+	payload := []byte(`{"version":9,"id":"request_extension","type":"extension","value":1}`)
 	message, err := decodeEnvelope(payload)
 	if err != nil || message.Type != "extension" {
 		t.Fatalf("extension envelope = %+v, %v", message, err)

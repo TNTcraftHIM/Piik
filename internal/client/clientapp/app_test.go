@@ -1,13 +1,37 @@
 package clientapp
 
 import (
+	"bytes"
+	"errors"
+	"log"
+	"log/slog"
+	"net"
 	"net/url"
+	"os"
+	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/TNTcraftHIM/Screener/internal/client/clientconfig"
 	serverconfig "github.com/TNTcraftHIM/Screener/internal/server/config"
 )
+
+func TestOccupiedPortRejectsLinkBeforeStartingATunnel(t *testing.T) {
+	listener, err := net.ListenTCP("tcp4", &net.TCPAddr{IP: net.IPv4zero})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	err = runLocal(t.Context(), Options{
+		Link: true, Port: listener.Addr().(*net.TCPAddr).Port,
+		TunnelProcess: "missing-tunnel-process", console: &clientConsole{machine: true},
+	}, clientconfig.Config{}, nil)
+	var bindError *net.OpError
+	if !errors.As(err, &bindError) || bindError.Op != "listen" {
+		t.Fatalf("occupied port must fail before tunnel work: %v", err)
+	}
+}
 
 func TestClientLaunchURLMarksThePageWithoutChangingOrigin(t *testing.T) {
 	value := clientLaunchURL("https://share.example/")
@@ -19,6 +43,79 @@ func TestClientLaunchURLMarksThePageWithoutChangingOrigin(t *testing.T) {
 	fragment, err := url.ParseQuery(parsed.Fragment)
 	if err != nil || fragment.Get("screener-client") != "1" {
 		t.Fatalf("Client launch fragment = %q, %v", parsed.Fragment, err)
+	}
+}
+
+func TestClientDiagnosticsUseFilesOnlyWhenEnabled(t *testing.T) {
+	for value, want := range map[string]bool{
+		"client": true, "route, client": true, "client,": true,
+		"": false, "route": false, "all": false, "client-secret": false,
+	} {
+		if got := clientDebugEnabled(value); got != want {
+			t.Fatalf("clientDebugEnabled(%q) = %v, want %v", value, got, want)
+		}
+	}
+
+	var output bytes.Buffer
+	previousOutput := log.Writer()
+	previousLevel := slog.SetLogLoggerLevel(slog.LevelInfo)
+	log.SetOutput(&output)
+	t.Cleanup(func() {
+		log.SetOutput(previousOutput)
+		slog.SetLogLoggerLevel(previousLevel)
+	})
+	t.Setenv("SCREENER_DEBUG", "")
+	for _, enabled := range []bool{false, true} {
+		output.Reset()
+		directory := t.TempDir()
+		err := Run(t.Context(), Options{Debug: enabled, LogDir: directory, DisableBrowser: true, Local: true, Link: true})
+		if err == nil {
+			t.Fatal("invalid mode must stop before starting capture or services")
+		}
+		if strings.Contains(output.String(), "screener-client") {
+			t.Fatalf("Client diagnostics reached stderr: %s", output.String())
+		}
+		content, readErr := os.ReadFile(filepath.Join(directory, "client.log"))
+		if !enabled {
+			if !errors.Is(readErr, os.ErrNotExist) {
+				t.Fatalf("disabled diagnostics created a log: %v", readErr)
+			}
+			continue
+		}
+		if readErr != nil || !strings.Contains(string(content), `"event":"start"`) ||
+			!strings.Contains(string(content), `"revision":`) ||
+			!strings.Contains(string(content), `"event":"stopped","failed":true`) {
+			t.Fatalf("missing file lifecycle events: %s, %v", content, readErr)
+		}
+	}
+}
+
+func TestClientDiagnosticDirectoryHonorsExplicitSelection(t *testing.T) {
+	environmentDirectory := t.TempDir()
+	t.Setenv("SCREENER_LOG_DIR", environmentDirectory)
+	for _, directory := range []string{"", t.TempDir()} {
+		recorder, err := openClientDiagnostics(directory)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := directory
+		if want == "" {
+			want = environmentDirectory
+		}
+		if recorder.LogPath() != filepath.Join(want, "client.log") {
+			t.Fatalf("diagnostic path = %q", recorder.LogPath())
+		}
+		if err = recorder.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	blocked := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(blocked, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if recorder, err := openClientDiagnostics(blocked); err == nil {
+		_ = recorder.Close()
+		t.Fatal("an explicit directory failure silently fell back")
 	}
 }
 

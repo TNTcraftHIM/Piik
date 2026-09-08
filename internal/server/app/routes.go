@@ -33,8 +33,7 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		if recovered == http.ErrAbortHandler {
 			panic(recovered)
 		}
-		// TS: console.error("HTTP request failed", {method, path, error}).
-		// D11 keeps the method and the path only.
+		// Persist only fixed request categories, never the panic or raw URL.
 		s.requestFailed(recorder, request)
 	}()
 
@@ -143,16 +142,17 @@ func allowMethod(writer http.ResponseWriter, request *http.Request, allowed stri
 // handleSiteAccess is handleSiteAccessRequest of app.ts.
 func (s *Server) handleSiteAccess(writer http.ResponseWriter, request *http.Request) {
 	noStoreJSON(writer)
+	access := s.siteAccessForRequest(request)
 
 	if request.Method == http.MethodGet {
 		status := siteAccessBody{
-			Required:      s.siteAccess.required(),
-			Authenticated: s.siteAccess.isAuthenticated(cookieHeader(request)),
+			Required:      access.required(),
+			Authenticated: access.isAuthenticated(cookieHeader(request)),
 		}
 		if status.Required && status.Authenticated {
 			// The Set-Cookie value is written verbatim, in the TS attribute
 			// order (D11).
-			writer.Header().Set("Set-Cookie", s.siteAccess.createCookie())
+			writer.Header().Set("Set-Cookie", access.createCookie())
 		}
 		sendJSON(writer, http.StatusOK, status)
 		return
@@ -172,16 +172,16 @@ func (s *Server) handleSiteAccess(writer http.ResponseWriter, request *http.Requ
 		sendJSON(writer, http.StatusBadRequest, errorBody{"Request body is not accepted"})
 		return
 	}
-	if !s.siteAccess.required() {
+	if !access.required() {
 		sendJSON(writer, http.StatusOK, siteAccessBody{Required: false, Authenticated: true})
 		return
 	}
-	if provided := bearerToken(request); provided == "" || !s.siteAccess.passwordMatches(provided) {
+	if provided := bearerToken(request); provided == "" || !access.passwordMatches(provided) {
 		writer.Header().Set("WWW-Authenticate", "Bearer")
 		sendJSON(writer, http.StatusUnauthorized, errorBody{"Unauthorized"})
 		return
 	}
-	writer.Header().Set("Set-Cookie", s.siteAccess.createCookie())
+	writer.Header().Set("Set-Cookie", access.createCookie())
 	sendJSON(writer, http.StatusOK, siteAccessBody{Required: true, Authenticated: true})
 }
 
@@ -360,7 +360,7 @@ func (s *Server) allowedRequestOrigin(request *http.Request) bool {
 
 // roomCreationAuthorized ports isRoomCreationAuthorized.
 func (s *Server) roomCreationAuthorized(request *http.Request) bool {
-	return !s.siteAccess.required() || s.siteAccess.isAuthenticated(cookieHeader(request))
+	return s.siteAccessForRequest(request).isAuthenticated(cookieHeader(request))
 }
 
 // createRoomResponse of app.ts. signal.InviteURL is the one owner of the invite
@@ -378,12 +378,27 @@ func (s *Server) createRoomResponse(created room.CreatedRoom) protocol.CreateRoo
 	}
 }
 
-// requestFailed is the createServer .catch: log the method and the path only —
-// never a body, header, token or grant (D11) — then answer 500 unless the
-// response already started, where Node destroyed the socket.
+// requestFailed logs fixed request categories, then answers 500 or aborts a
+// response that already started. Request paths and arbitrary methods are private.
 func (s *Server) requestFailed(writer http.ResponseWriter, request *http.Request) {
-	s.logger.Error("HTTP request failed",
-		"method", request.Method, "path", requestPath(request))
+	method := request.Method
+	switch method {
+	case http.MethodGet, http.MethodPost, http.MethodHead, http.MethodOptions,
+		http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodConnect, http.MethodTrace:
+	default:
+		method = "other"
+	}
+	path := requestPath(request)
+	category := "frontend"
+	switch {
+	case isUpgradeRequest(request):
+		category = "signaling"
+	case path == "/healthz":
+		category = "health"
+	case strings.HasPrefix(path, "/api/"):
+		category = "api"
+	}
+	s.logger.Error("HTTP request failed", "method", method, "route", category)
 	if recorder, ok := writer.(*responseRecorder); ok && recorder.wrote {
 		panic(http.ErrAbortHandler)
 	}

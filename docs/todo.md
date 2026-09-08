@@ -1,153 +1,121 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-09-06
+Last reviewed: 2026-09-09
 
-Only **Now** is executable. Observations, old branches, experiments, and parked
-topics are not implementation authority.
+Only **Now** is executable. Product modules own behavior, research owns evidence,
+and Git/PRs own completed history. A parked idea is not implementation authority.
 
 ## Now
 
-The returned Go core and frontend fixes are reconciled on the integration
-candidate. The owner authorized hygiene cleanup, matched Server/Client builds,
-one squash PR and a controlled deployment. Complete the existing checks and
-first-Go unit/environment rollback before cutover. Device/network checks below
-remain evidence gaps, not claims established by compilation or local loopback.
+Owner-authorized phase: [embedded STUN/SFU and node-local media](./adr/0013-embedded-node-local-media.md).
+Finish this phase as one integration, preserving the completed mainline checkpoint.
 
-1. **Client physical acceptance.** Physically validate macOS and Linux
-   capture/audio/recovery, a decoded public-link Browser Viewer, and a NAT case
-   rescued beyond ordinary STUN, plus one mixed Browser/Native Viewer relay.
-2. **Client owner acceptance.** Review the localized terminal, Browser capture
-   through Native fanout, live controls and Client-exit recovery before merging.
-   Confirm weak-path convergence with effective media throttling; a DevTools
-   command succeeding without limiting RTP is not a weak-path pass.
-3. **Capture startup and controls.** Diagnose Windows 10 selecting an entire
-   display failing to start while window capture succeeds; do not conflate it
-   with exclusive-fullscreen game capture. Current Windows 11 checks cover
-   display startup, minimized-source recovery and live presets. Verify remaining
-   game HWND/device-loss behavior and physically compare the implemented Windows
-   display-aspect correction with the reported stretched game, including GPU
-   scaling not exposed by the active display path. Compare bitrate changes against
-   same-content delivery before changing encoder settings.
-4. **NAT acquisition and release acceptance.** Validate the implemented bounded
-   three-attempt owner on restricted Browser/Native pairs; a new connection does
-   not guarantee a different NAT mapping. The added prepare progress field is
-   incompatible with old strict pages. The owner authorized the coordinated
-   Web/Server/Client update; check active sessions before the cutover and
-   retain the previous unit/environment alongside the application rollback;
-   do not mix the new field into an ongoing old-version share.
-5. **Native codec acceptance.** Windows Native VP8 and Auto-selected H264 now
-   pass real Browser playback, live presets, paused changes and source-switch
-   checks while preserving the selected codec. Validate GPU-heavy Auto selection
-   and the tight four-second probe/five-second startup budget on other hardware;
-   do not claim throughput screening guarantees perceptual quality or later
-   load. Other native platform capture encoders remain H264.
+1. **Release integration.** One complete PR must contain the Native/embedded
+   media work, retained Client fixes, final corrections, current documentation
+   and research outcomes. Build matching Web/Server/Client/capture artifacts
+   from the accepted revision; main remains a low-frequency integration branch.
+2. **Coordinated production cutover.** Recheck active sessions, preserve the
+   exact old release/unit/environment/proxy/media-service state and SQLite
+   recovery material, then replace external LiveKit/coturn with the embedded
+   process. Verify HTTP/assets, STUN, SFU media, listener retirement and rollback
+   using [self-hosting operations](./operations/self-hosting.md).
+   The routine application updater alone cannot perform this first cutover.
+3. **Matched delivery.** Provide the current Windows Client package and Server
+   descriptor/archive with matching hashes and notices. Production pages and
+   old Clients cannot be mixed across the private protocol change. Formal
+   public GitHub Release/image publication remains a separate explicit action.
+
+Current evidence and limits:
+
+- Windows/Browser are the primary targets. Native Host, Native embedded SFU and
+  Browser-to-Client fanout pass profile, audio, pause/recovery and cleanup checks.
+  Local container checks cover non-root/read-only operation, memory/SQLite,
+  diagnostics, STUN and media listener lifecycle; they do not prove target-network
+  media. macOS/Linux physical matrices may follow user feedback.
+- Compatible Native consumers share one complete encoding/adaptation pipeline;
+  incompatible direct-child demands remain independent. Reuse suitable received
+  encodings and derive missing outputs locally. No ancestor-cache discovery,
+  extra upstream layer subscription, custom BWE or resource controller is accepted.
+- Extended weak-network recovery passes. Preserve the earlier missed twelve-second
+  observation and extreme single-core sampling-reset limitation in
+  [encoder research](./research/webrtc-encoder-pool.md); neither establishes a
+  universal recovery deadline or a missing callback.
+- The owner closed Win10 whole-display sharing. Quiet-source settings pass real
+  WGC/Browser acceptance. Reopen distinct game/display failures only from new
+  evidence, not a failed automation focus precondition.
+- [Browser encoded reuse](./research/advanced-peer-distribution.md#september-9-results-and-decision)
+  completed after the mainline checkpoint. Late join can recover with one keyframe
+  request, but legacy fanout fails independent quality and sender accounting.
+  Standard Transform rejects cross-source frames. No product adapter is accepted.
+  Keep normal Browser senders and the verified optional Client fanout.
+- Run one bounded capture/codec workload at a time, with cleanup before the next.
+  Keep VM workloads out of that interval and use stable executable build paths.
 
 ## Parked Product Work
 
-1. **Broader quality optimization.** Same-edge connection regeneration is now
-   part of the bounded local convergence path. Weighted/global optimization,
-   parent-wide prediction, startup-limited inference, complete cross-clone
-   source isolation, and alternative SFU policies remain unaccepted. Reopen only
-   from exact path evidence; do not add a score, all-pairs probe, periodic
-   rebalancer, or ordinary SFU preference. Validate whether a quality move merely
-   shifts residual shared-source pressure to the new parent's siblings before
-   widening it. Preserve the accepted profiles, bitrate ceilings, endpoint
-   capacity, degradation preferences and LiveKit representations unless a
-   measured gain is large enough to justify the quality, resilience,
-   compatibility and maintenance cost through a new accepted decision.
-2. **Startup codec budget.** Reconcile the bounded Auto codec probe with the
-   first-frame target from measured Browser evidence; do not silently weaken
-   Auto or move an unproved result into the availability path. Validate whether
-   H.264 qualification can choose a slower VP8 fallback under mixed GPU/CPU load
-   before adding comparative or dual-codec probing.
-3. **Browser encoded reuse.** Pure Browser operation keeps normal WebRTC
-   senders; users can use Client to reduce repeated encoding. Revisit Browser
-   reuse only for a small mature adapter that preserves adaptation and media
-   quality without an application-owned transport or layer controller.
-4. **Control-plane resource fairness.** Calibrate one deployment-wide LiveKit
-   control queue and simple HTTP/WebSocket ingress budgets before implementation;
-   prove a self-hosted stale-token revocation boundary before independently
-   releasing subscription egress; do not introduce accounts, polling, risk
-   scoring, or an independent policy framework.
-5. **Client ownership.** Extract media-session owners from the Host/Viewer pages
-   only alongside reachable behavior work. File length alone does not authorize
-   a page rewrite; Host diagnostic presentation is already coalesced without
-   delaying media evidence or route control.
-6. **C=3 structural intent retention.** Revisit multiple simultaneous one-shot
-   Host-root convergence intents only with an exact C=3 reproduction; do not add
-   periodic balancing or another topology queue for the default path.
-7. **Mobile Viewer lifecycle.** Run Android Chrome and iOS Safari matrices for
-   autoplay, background audio, foreground recovery, lock/page reclamation,
-   rotation, network migration, and relay survival.
-8. **Representative network acceptance.** Complete public-network direct,
-   Browser relay, SFU, recovery, Pause/Resume, screen-audio, real-game A/V,
-   two-room SFU, 20-Viewer endurance, and all-UDP-blocked bounded failure.
-   Validate LiveKit Server 1.13.6 simulcast retransmission under controlled loss
-   and correlate any remaining SFU freezes with publisher encoding counts before
-   changing Dynacast or representation policy.
-9. **Client-input security review.** Audit HTTP/WebSocket schema, auth,
-   authorization, rate/body/resource bounds, errors, logs, and secrets without
-   adding a parallel security framework.
-10. **Public-server package.** Package the exact Web/signaling, STUN/SFU, proxy,
-   secrets, health, and recovery contract for a user-owned server.
-11. **Native media endurance.** Exercise long-lived native P2P and Browser-
-    mediated SFU recovery after the platform capture boundary passes. Preserve
-    Browser/server authority and the existing LiveKit representation policy; do
-    not create a second room or media policy.
-12. **Platform output.** System/tab mirroring needs no product adapter, while
-    Remote Playback, default Cast and AirPlay do not provide a portable live
-    `MediaStream` output contract. Reopen only for a registered custom receiver
-    acting as an ordinary Viewer after a named Browser and physical receiver
-    pass the [platform-output gate](./research/platform-output.md).
-13. **NAT inference and predictive candidates.** The deployment-gated,
-    connection-local capability is accepted under
-    [ADR-0009](./adr/0009-optional-nat-prediction.md). Production enables its
-    self-hosted field rollout; the general configuration default stays off.
-    Keep injected candidates additive and diagnostic; do not make them a
-    participant-wide NAT label, hard candidate skip, route score, or SFU
-    preference. Validate selected predicted paths and bounded resource impact
-    plus one selected Native mapped-port path that fails with STUN alone before
-    recommending either as a default for other deployments. Measure benefit of
-    the implemented three-attempt budget before increasing it or claiming that
-    independent connection attempts are independent NAT mappings.
-14. **Unresolved route-state ownership claims.** Reopen active SFU failure
-    during an unrelated prepare and
-    multi-child relay-evidence ownership only from an exact current-wire
-    reproduction. Do not add a second revision namespace, parallel failure
-    state, or generalized evidence map from static possibility alone.
-15. **Unified release and update surface.** Build Client packages, Server
-    runtime, future OCI images, and deployment bundles from one intentionally
-    triggered immutable application release identified by its full commit SHA.
-    A validated `main` push now produces that application release. An explicit
-    `client_checks=true` workflow dispatch produces the three native-runner
-    Client candidates with SHA-256 metadata. The default Client
-    launcher now performs a non-blocking GitHub Releases check and the tracked
-    deployment tree provides an operator-invoked read-only Server check. Formal
-    GitHub Release publication, future OCI images, and deployment bundles remain
-    explicit distribution work; do not add automatic install, container
-    self-update, Watchtower, compatibility ranges, or active-share interruption
-    before distribution and rollback evidence requires them.
-16. **Go server consolidation.** Done in the candidate under
-    [ADR-0012](./adr/0012-shared-go-backend-core.md): Hosted and Client share one
-    Go core and the Node server, bundled runtime, and supervisor are deleted. Do
-    not create or retain two room, signaling, persistence, or route-controller
-    implementations. Package size, startup, and idle memory are measured in the
-    [consolidation research](./research/server-consolidation.md). Remaining
-    acceptance: rerun the physical Client and Browser-contract gates on this
-    build, and sequence the deployment cutover, installing the updated unit,
-    which replaces `NODE_ENV=production` with `SCREENER_ENV=production`, before
-    the first Go release, then proving the release wrapper on a host without
-    Node.
-17. **Opt-in diagnostics.** Replace ad hoc console logging with an explicit
-    Client/Server debug option and bounded diagnostic export. Include revision,
-    runtime state and sanitized capture/connection events; exclude credentials,
-    media and raw process memory by default. A compressed feedback bundle needs
-    deliberate collection and retention, not automatic uploads.
-18. **Remaining audit behavior.** During the owning refactor, reproduce and
-    resolve optional Local-password cookies across HTTP LAN/HTTPS public origins;
-    audio-process failure without stopping healthy video; natural capture EOF
-    attribution; and Native prepared-bridge failure that must disable Native
-    for the current Viewer session before retrying. Storage I/O failure needs
-    an authority-consistent recovery policy, not catch-and-continue guards.
-    The Local duplicate-launch guard is the in-process listener bind itself;
-    it refuses a second Client on the same port and hands nothing over.
+1. **Comprehensive Debug feedback.** Authorized as follow-up on 2026-09-09 for
+   Client and Server. Use mature projects' feedback-bundle practice. A first
+   report should contain enough context to diagnose without another build just
+   to add missing logging: operation start/end and identity, requested/applied
+   settings, capture/codec/ICE/transport transitions, resource and queue pressure,
+   and precise failed checks with safe expected/actual values.
+   Debug-on completeness takes priority over minimal log volume; keep explicit
+   resource bounds without silently removing essential context. Exclude
+   credentials, access/media tokens and private keys. Do not promise complete
+   anonymization; document residual identifiers, network/system information and
+   export contents clearly. Keep local opt-in collection and user-controlled
+   sharing. Design one observability surface, not incident-specific patches.
+   Assess stack and memory snapshots by diagnostic value and document their
+   contents; do not silently include raw media or secret-bearing memory.
+   Existing exports are owned by [configuration](./reference/configuration.md).
+2. **Public distribution and updates.** Candidate packagers, immutable descriptors,
+   notices, the runtime-only OCI recipe and release checks exist. Choose the
+   public asset set and release notes before publishing a full-SHA GitHub Release
+   or image. Do not add automatic installation, container self-update, Watchtower,
+   compatibility ranges or active-share interruption without distribution and
+   recovery evidence. Ordinary branch pushes must not run expensive CI packaging.
+3. **Representative device/network acceptance.** Exercise public-network direct
+   and relay paths, two-room SFU, real-game A/V, twenty-Viewer endurance,
+   sustained loss/recovery and all-UDP-blocked bounded failure. Correlate freezes
+   with publisher/receiver evidence before changing representation policy.
+   Physical Android/iOS work includes autoplay, background/lock, rotation,
+   network migration and relay survival. Secondary desktop platform matrices
+   remain explicitly deferred; compilation does not prove capture.
+4. **Browser encoded-input API.** Reopen reuse only when a supported API supplies
+   usable injection, feedback and timing ownership. Chromium's experimental
+   RTCEncodedSource is a lead, not current M152 availability or automatic
+   adaptation. An adapter must pass independent quality, recovery and truthful
+   statistics before product integration.
+5. **Broader quality work.** Reopen from measured benefit at acceptable complexity.
+   Preserve chosen profiles, bitrate ceilings, endpoint capacity and P2P-first
+   routing unless a new accepted decision supports changing them. No weighted
+   score, all-pairs probes, periodic rebalancing, parent-wide prediction or
+   room-wide minimum. Check whether a quality move merely shifts pressure to
+   another parent's siblings before widening policy.
+6. **Startup codec budget.** Compare bounded Auto and first-frame behavior on
+   representative hardware. Throughput qualification does not guarantee perceptual
+   quality or later GPU load. Do not silently weaken Auto or introduce
+   comparative/dual probing without evidence.
+7. **NAT field evidence.** Preserve [ADR-0009](./adr/0009-optional-nat-prediction.md).
+   Validate selected predicted/mapped paths and bounded resource cost, including
+   a Native case rescued beyond ordinary STUN. Measure the three-attempt budget
+   before expanding it; new connections do not guarantee independent mappings.
+   Candidates remain connection-local and diagnostic, not participant labels,
+   hard skips, route scores or SFU preference.
+8. **Control/resource fairness and input review.** Reassess the authenticated
+   WebSocket/SFU owner, HTTP/body/resource bounds, authorization and error/log
+   handling before adding a queue or limiter. No parallel security framework,
+   accounts, risk score or speculative policy layer.
+9. **Reachable ownership/refactor work.** Extract page media-session owners only
+   alongside behavior changes; file size alone is not a rewrite reason. Reopen
+   C=3 structural-intent retention, SFU failure during unrelated prepare and
+   multi-child evidence ownership only with current-contract reproductions.
+   No new revision namespace, failure-state mirror or topology queue by default.
+10. **Storage fault recovery.** Ordinary transactions persist before memory
+    changes; failures must preserve authority. Message-handler panics must unwind
+    locks. Damaged-disk/COMMIT/ROLLBACK recovery is not established; choose its
+    policy explicitly rather than adding catch-and-continue or retries.
+11. **Platform output.** System/tab mirroring needs no adapter. Remote Playback,
+    Cast and AirPlay do not provide a portable live MediaStream receiver.
+    Reopen for a registered receiver acting as an ordinary Viewer after the
+    [platform-output gate](./research/platform-output.md) passes.

@@ -7,6 +7,7 @@ export const CLIENT_PACKAGE_TARGETS = [
     nodeArch: "x64",
     goos: "windows",
     goarch: "amd64",
+    cgo: false,
     clientName: "screener-client.exe",
     tunnelName: "cloudflared.exe",
     captureName: "screener-client-capture.exe",
@@ -20,6 +21,7 @@ export const CLIENT_PACKAGE_TARGETS = [
     nodeArch: "x64",
     goos: "linux",
     goarch: "amd64",
+    cgo: false,
     clientName: "screener-client",
     tunnelName: "cloudflared",
     captureName: "screener-client-capture",
@@ -33,6 +35,7 @@ export const CLIENT_PACKAGE_TARGETS = [
     nodeArch: "arm64",
     goos: "darwin",
     goarch: "arm64",
+    cgo: true,
     clientName: "screener-client",
     tunnelName: "cloudflared",
     captureName: "screener-client-capture",
@@ -44,4 +47,13 @@ export const CLIENT_PACKAGE_TARGETS = [
 
 export function clientPackageTarget(id) {
   return CLIENT_PACKAGE_TARGETS.find((target) => target.id === id) ?? null;
+}
+
+export function clientGoEnvironment(target) {
+  return {
+    ...process.env,
+    GOOS: target.goos,
+    GOARCH: target.goarch,
+    CGO_ENABLED: target.cgo ? "1" : "0",
+  };
 }

@@ -4,6 +4,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFi
 import { createRequire } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { clientGoEnvironment } from "./client-package-targets.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const pinned = JSON.parse(readFileSync(join(root, "licenses", "upstream.json"), "utf8"));
@@ -13,7 +14,7 @@ const section = (label, body) => `\n===== ${label} =====\n\n${body.trim()}\n`;
 // The packages the Vite bundle ships to the Browser. Nothing installs
 // node_modules at runtime any more, so this list is the notice contract rather
 // than package.json's dependencies field.
-const WEB_BUNDLE_PACKAGES = ["react", "react-dom", "livekit-client", "sdp-transform", "zod"];
+const WEB_BUNDLE_PACKAGES = ["react", "react-dom", "sdp-transform", "zod"];
 
 // Both binaries embed the Web bundle, which serves its own notice file.
 const WEB_NOTICE_LINE = "Web dependencies: served at /third-party-licenses.txt\n";
@@ -72,7 +73,7 @@ export function writeWebLicenseNotices(repositoryRoot, outputFile) {
 // without a recognised license filename fails closed.
 function goNotices(repositoryRoot, goCommand, target, command) {
   const options = { cwd: repositoryRoot, encoding: "utf8", windowsHide: true,
-    env: { ...process.env, GOOS: target.goos, GOARCH: target.goarch, CGO_ENABLED: "0" } };
+    env: clientGoEnvironment(target) };
   const runGo = (args) => execFileSync(goCommand, args, options).trim();
   const goroot = runGo(["env", "GOROOT"]);
   const template = '{{if .Module}}{{if not .Module.Main}}[{{printf "%q" .Module.Path}},{{printf "%q" .Module.Version}},{{printf "%q" .Module.Dir}},{{printf "%q" .Dir}}]{{end}}{{end}}';
@@ -139,8 +140,8 @@ export function writeClientLicenseNotices(repositoryRoot, packageRoot, goCommand
   if (target.goos === "windows" &&
       existsSync(join(packageRoot, "runtime", "native", target.captureName))) {
     const dependencies = JSON.parse(readFileSync(join(repositoryRoot, "native", "capture",
-      "windows", "libvpx-dependencies.json"), "utf8"));
-    const name = `libvpx@${dependencies.libvpx.version}`;
+      "windows", "webrtc-dependencies.json"), "utf8"));
+    const name = `webrtc@${dependencies.webrtc.version}`;
     text += section(name, pinnedNotice(name));
   }
   writeFileSync(join(packageRoot, "THIRD-PARTY-NOTICES.txt"), text + moduleSections(notices.modules));

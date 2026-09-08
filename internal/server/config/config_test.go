@@ -24,16 +24,12 @@ func env(parts ...map[string]string) map[string]string {
 	return merged
 }
 
-var (
-	liveKitAdmission = map[string]string{"LIVEKIT_API_URL": "https://livekit-api.test"}
-	liveKitSecret    = strings.Repeat("s", 32)
-	productionBase   = map[string]string{
-		"SCREENER_ENV":         "production",
-		"PUBLIC_BASE_URL":      "https://share.test",
-		"SITE_ACCESS_PASSWORD": "host-password-12",
-		"STUN_URLS":            "stun:stun.test:3478",
-	}
-)
+var productionBase = map[string]string{
+	"SCREENER_ENV":         "production",
+	"PUBLIC_BASE_URL":      "https://share.test",
+	"SITE_ACCESS_PASSWORD": "host-password-12",
+	"STUN_URLS":            "stun:stun.test:3478",
+}
 
 func stunList(count int, prefix string) string {
 	urls := make([]string, 0, count)
@@ -74,6 +70,9 @@ func TestLoadDevelopmentDefaults(t *testing.T) {
 	if len(config.STUNURLs) != 0 {
 		t.Errorf("STUNURLs = %v", config.STUNURLs)
 	}
+	if len(config.STUNListenAddresses) != 0 {
+		t.Errorf("STUNListenAddresses = %v", config.STUNListenAddresses)
+	}
 	if config.NATPredictionEnabled {
 		t.Error("NATPredictionEnabled = true")
 	}
@@ -86,8 +85,8 @@ func TestLoadDevelopmentDefaults(t *testing.T) {
 	if config.EndpointMediaCopyCapacity != 2 {
 		t.Errorf("EndpointMediaCopyCapacity = %d", config.EndpointMediaCopyCapacity)
 	}
-	if config.LiveKit != nil {
-		t.Errorf("LiveKit = %+v", config.LiveKit)
+	if config.SFU != nil {
+		t.Errorf("SFU = %+v", config.SFU)
 	}
 	if config.RoomLeaseMs != 86_400_000 {
 		t.Errorf("RoomLeaseMs = %d", config.RoomLeaseMs)
@@ -97,21 +96,42 @@ func TestLoadDevelopmentDefaults(t *testing.T) {
 	}
 }
 
-func TestLoadLiveKitTuple(t *testing.T) {
+func TestLoadSFU(t *testing.T) {
 	config := mustLoad(t, map[string]string{
-		"LIVEKIT_URL":        " ws://livekit.test:7880 ",
-		"LIVEKIT_API_URL":    " http://livekit.test:7880 ",
-		"LIVEKIT_API_KEY":    " test-key ",
-		"LIVEKIT_API_SECRET": " " + liveKitSecret + " ",
+		"LISTEN_HOST":     "127.0.0.1",
+		"SFU_UDP_PORT":    " 7882 ",
+		"SFU_LISTEN_HOST": " 192.0.2.5 ",
+		"SFU_PUBLIC_IP":   " 198.51.100.5 ",
 	})
-	want := LiveKitFallback{
-		URL:       "ws://livekit.test:7880",
-		APIURL:    "http://livekit.test:7880",
-		APIKey:    "test-key",
-		APISecret: liveKitSecret,
+	want := SFUConfig{
+		ListenHost: "192.0.2.5",
+		Port:       7882,
+		PublicIP:   "198.51.100.5",
 	}
-	if config.LiveKit == nil || *config.LiveKit != want {
-		t.Errorf("LiveKit = %+v, want %+v", config.LiveKit, want)
+	if config.SFU == nil || *config.SFU != want {
+		t.Errorf("SFU = %+v, want %+v", config.SFU, want)
+	}
+}
+
+func TestLoadSFUOptional(t *testing.T) {
+	for _, values := range []map[string]string{
+		nil,
+		{"SFU_UDP_PORT": ""},
+		{"SFU_UDP_PORT": "  "},
+		{"SFU_LISTEN_HOST": "192.0.2.5", "SFU_PUBLIC_IP": "198.51.100.5"},
+	} {
+		if config := mustLoad(t, values); config.SFU != nil {
+			t.Errorf("SFU = %+v without an enabled port", config.SFU)
+		}
+	}
+	for _, port := range []int{1, 7882, maxPort} {
+		config := mustLoad(t, env(productionBase, map[string]string{
+			"SFU_UDP_PORT": strconv.Itoa(port),
+		}))
+		want := SFUConfig{ListenHost: "0.0.0.0", Port: port}
+		if config.SFU == nil || *config.SFU != want {
+			t.Errorf("SFU = %+v, want %+v", config.SFU, want)
+		}
 	}
 }
 
@@ -176,6 +196,19 @@ func TestLoadAccepts(t *testing.T) {
 			if !slices.Equal(c.STUNURLs, []string{"stun:stun.test:3478"}) {
 				t.Errorf("STUNURLs = %v", c.STUNURLs)
 			}
+			if !slices.Equal(c.STUNListenAddresses, []string{"0.0.0.0:3478"}) {
+				t.Errorf("STUNListenAddresses = %v", c.STUNListenAddresses)
+			}
+		}},
+		{"independent STUN bind host", env(productionBase, map[string]string{
+			"LISTEN_HOST": "127.0.0.1", "STUN_LISTEN_HOST": " 192.0.2.5 ",
+			"NAT_PREDICTION_ENABLED": "true",
+		}), func(t *testing.T, c Config) {
+			if !slices.Equal(c.STUNListenAddresses, []string{
+				"192.0.2.5:3478", "192.0.2.5:3479", "192.0.2.5:3480",
+			}) || !slices.Equal(c.STUNURLs, []string{"stun:stun.test:3478"}) {
+				t.Fatalf("binding and advertisement were coupled: %+v", c)
+			}
 		}},
 		{"production site access password",
 			env(productionBase, map[string]string{"SITE_ACCESS_PASSWORD": "easy-key"}),
@@ -184,25 +217,6 @@ func TestLoadAccepts(t *testing.T) {
 					t.Errorf("SiteAccessPassword = %q", c.SiteAccessPassword)
 				}
 			}},
-		{"STUN-only production with LiveKit", env(productionBase, liveKitAdmission, map[string]string{
-			"LIVEKIT_URL":        "wss://livekit.test",
-			"LIVEKIT_API_KEY":    "test-key",
-			"LIVEKIT_API_SECRET": liveKitSecret,
-		}), func(t *testing.T, c Config) {
-			if c.LiveKit == nil || c.LiveKit.URL != "wss://livekit.test" {
-				t.Errorf("LiveKit = %+v", c.LiveKit)
-			}
-		}},
-		{"production loopback LiveKit control", env(productionBase, map[string]string{
-			"LIVEKIT_URL":        "wss://livekit.test",
-			"LIVEKIT_API_URL":    "http://127.0.0.1:7880",
-			"LIVEKIT_API_KEY":    "test-key",
-			"LIVEKIT_API_SECRET": liveKitSecret,
-		}), func(t *testing.T, c Config) {
-			if c.LiveKit == nil || c.LiveKit.APIURL != "http://127.0.0.1:7880" {
-				t.Errorf("LiveKit = %+v", c.LiveKit)
-			}
-		}},
 		{"uppercase STUN scheme and IPv6 host", map[string]string{"STUN_URLS": "STUN:[2001:db8::1]:3478"},
 			func(t *testing.T, c Config) {
 				if !slices.Equal(c.STUNURLs, []string{"STUN:[2001:db8::1]:3478"}) {
@@ -289,59 +303,28 @@ func TestLoadRejects(t *testing.T) {
 		env  map[string]string
 		want string
 	}{
-		// Partial LiveKit credential tuples.
-		{"only LiveKit URL", map[string]string{"LIVEKIT_URL": "wss://livekit.test"},
-			"LIVEKIT_URL, LIVEKIT_API_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET must be configured together"},
-		{"only LiveKit control URL", liveKitAdmission,
-			"LIVEKIT_URL, LIVEKIT_API_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET must be configured together"},
-		{"only LiveKit key", map[string]string{"LIVEKIT_API_KEY": "test-key"},
-			"must be configured together"},
-		{"only LiveKit secret", map[string]string{"LIVEKIT_API_SECRET": liveKitSecret},
-			"must be configured together"},
-		{"LiveKit without secret", env(liveKitAdmission, map[string]string{
-			"LIVEKIT_URL": "wss://livekit.test", "LIVEKIT_API_KEY": "test-key",
-		}), "must be configured together"},
-
-		// Invalid LiveKit media origins.
-		{"LiveKit https scheme", liveKitURL("https://livekit.test"), "LIVEKIT_URL must use ws or wss"},
-		{"LiveKit credentials", liveKitURL("wss://user:pass@livekit.test"),
-			"LIVEKIT_URL must be an origin without credentials, path, query, or fragment"},
-		{"LiveKit path", liveKitURL("wss://livekit.test/rtc"), "LIVEKIT_URL must be an origin"},
-		{"LiveKit query", liveKitURL("wss://livekit.test?token=value"), "LIVEKIT_URL must be an origin"},
-		{"LiveKit fragment", liveKitURL("wss://livekit.test#fragment"), "LIVEKIT_URL must be an origin"},
-		{"LiveKit not a URL", liveKitURL("livekit.test"), "LIVEKIT_URL must be a valid ws or wss origin"},
-		{"LiveKit ws in production", env(productionBase, liveKitAdmission, map[string]string{
-			"LIVEKIT_URL": "ws://livekit.test:7880", "LIVEKIT_API_KEY": "test-key",
-			"LIVEKIT_API_SECRET": liveKitSecret,
-		}), "LIVEKIT_URL must use wss in production"},
-
-		// Invalid LiveKit control origins.
-		{"control ws scheme", liveKitAPIURL("ws://livekit-api.test"), "LIVEKIT_API_URL must use http or https"},
-		{"control credentials", liveKitAPIURL("http://user:pass@livekit-api.test"),
-			"LIVEKIT_API_URL must be an origin without credentials, path, query, or fragment"},
-		{"control path", liveKitAPIURL("http://livekit-api.test/rtc"), "LIVEKIT_API_URL must be an origin"},
-		{"control query", liveKitAPIURL("http://livekit-api.test?token=value"), "LIVEKIT_API_URL must be an origin"},
-		{"control fragment", liveKitAPIURL("http://livekit-api.test#fragment"), "LIVEKIT_API_URL must be an origin"},
-		{"control not a URL", liveKitAPIURL("livekit-api.test"),
-			"LIVEKIT_API_URL must be a valid http or https origin"},
-		{"control plaintext in production", env(productionBase, map[string]string{
-			"LIVEKIT_URL": "wss://livekit.test", "LIVEKIT_API_URL": "http://livekit-api.test:7880",
-			"LIVEKIT_API_KEY": "test-key", "LIVEKIT_API_SECRET": liveKitSecret,
-		}), "must use https or loopback"},
-		{"short LiveKit secret", env(liveKitAdmission, map[string]string{
-			"LIVEKIT_URL": "wss://livekit.test", "LIVEKIT_API_KEY": "test-key",
-			"LIVEKIT_API_SECRET": "too-short",
-		}), "LIVEKIT_API_SECRET must contain at least 32 bytes"},
-
-		// Reused infrastructure secrets.
-		{"site password reused as LiveKit secret", env(liveKitAdmission, map[string]string{
-			"SITE_ACCESS_PASSWORD": strings.Repeat("x", 32), "LIVEKIT_URL": "wss://livekit.test",
-			"LIVEKIT_API_KEY": "test-key", "LIVEKIT_API_SECRET": strings.Repeat("x", 32),
-		}), "must use independent values"},
-		{"LiveKit key reused as LiveKit secret", env(liveKitAdmission, map[string]string{
-			"LIVEKIT_URL": "wss://livekit.test", "LIVEKIT_API_KEY": strings.Repeat("x", 32),
-			"LIVEKIT_API_SECRET": strings.Repeat("x", 32),
-		}), "must use independent values"},
+		{"SFU port zero", map[string]string{"SFU_UDP_PORT": "0"},
+			"SFU_UDP_PORT must be a positive integer"},
+		{"SFU port negative", map[string]string{"SFU_UDP_PORT": "-1"},
+			"SFU_UDP_PORT must be a positive integer"},
+		{"SFU port fractional", map[string]string{"SFU_UDP_PORT": "7882.5"},
+			"SFU_UDP_PORT must be a positive integer"},
+		{"SFU port not a number", map[string]string{"SFU_UDP_PORT": "media"},
+			"SFU_UDP_PORT must be a positive integer"},
+		{"SFU port above UDP ceiling", map[string]string{"SFU_UDP_PORT": "65536"},
+			"SFU_UDP_PORT must be between 1 and 65535"},
+		{"SFU bind hostname", map[string]string{"SFU_UDP_PORT": "7882", "SFU_LISTEN_HOST": "sfu.test"},
+			"SFU_LISTEN_HOST must be an IPv4 address"},
+		{"SFU bind IPv6", map[string]string{"SFU_UDP_PORT": "7882", "SFU_LISTEN_HOST": "::1"},
+			"SFU_LISTEN_HOST must be an IPv4 address"},
+		{"SFU bind mapped IPv6", map[string]string{"SFU_UDP_PORT": "7882", "SFU_LISTEN_HOST": "::ffff:192.0.2.5"},
+			"SFU_LISTEN_HOST must be an IPv4 address"},
+		{"SFU public hostname", map[string]string{"SFU_UDP_PORT": "7882", "SFU_PUBLIC_IP": "sfu.test"},
+			"SFU_PUBLIC_IP must be an IPv4 address"},
+		{"SFU public IPv6", map[string]string{"SFU_UDP_PORT": "7882", "SFU_PUBLIC_IP": "2001:db8::5"},
+			"SFU_PUBLIC_IP must be an IPv4 address"},
+		{"SFU public mapped IPv6", map[string]string{"SFU_UDP_PORT": "7882", "SFU_PUBLIC_IP": "::ffff:198.51.100.5"},
+			"SFU_PUBLIC_IP must be an IPv4 address"},
 
 		// Bounded integers.
 		{"viewer limit above ceiling",
@@ -411,6 +394,12 @@ func TestLoadRejects(t *testing.T) {
 		// STUN lists.
 		{"STUN path", map[string]string{"STUN_URLS": "stun:stun.test/path"},
 			"STUN_URLS contains an invalid STUN URL"},
+		{"STUN hostname is not a local bind address", map[string]string{
+			"STUN_URLS": "stun:stun.test:3478", "STUN_LISTEN_HOST": "stun.test",
+		}, "STUN_LISTEN_HOST must be an IPv4 address"},
+		{"STUN IPv6 listener is unsupported", map[string]string{
+			"STUN_URLS": "stun:stun.test:3478", "STUN_LISTEN_HOST": "::1",
+		}, "STUN_LISTEN_HOST must be an IPv4 address"},
 		{"STUN query", map[string]string{"STUN_URLS": "stun:stun.test?transport=udp"},
 			"STUN_URLS contains an invalid STUN URL"},
 		{"STUN fragment", map[string]string{"STUN_URLS": "stun:stun.test#fragment"},
@@ -523,8 +512,6 @@ func TestOrigin(t *testing.T) {
 		{"http://Example.com:80", "http", "https", "http://example.com"},
 		{"https://share.test:0443", "http", "https", "https://share.test"},
 		{"http://localhost:9123", "http", "https", "http://localhost:9123"},
-		{"wss://LiveKit.test:443", "ws", "wss", "wss://livekit.test"},
-		{"ws://livekit.test:7880", "ws", "wss", "ws://livekit.test:7880"},
 		{"https://[2001:DB8::1]:8443", "http", "https", "https://[2001:db8::1]:8443"},
 		{"http://[::1]:7880", "http", "https", "http://[::1]:7880"},
 	}
@@ -541,18 +528,5 @@ func TestOrigin(t *testing.T) {
 				t.Errorf("String = %q, want %q", got, testCase.want+"/")
 			}
 		})
-	}
-}
-
-func liveKitURL(value string) map[string]string {
-	return env(liveKitAdmission, map[string]string{
-		"LIVEKIT_URL": value, "LIVEKIT_API_KEY": "test-key", "LIVEKIT_API_SECRET": liveKitSecret,
-	})
-}
-
-func liveKitAPIURL(value string) map[string]string {
-	return map[string]string{
-		"LIVEKIT_URL": "wss://livekit.test", "LIVEKIT_API_URL": value,
-		"LIVEKIT_API_KEY": "test-key", "LIVEKIT_API_SECRET": liveKitSecret,
 	}
 }

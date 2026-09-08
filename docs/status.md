@@ -1,18 +1,23 @@
 # Current Status
 
-Last updated: 2026-09-06
+Last updated: 2026-09-09
 
 This is the current execution index. Git history owns completed timelines;
 [verification status](./verification-status.md) owns evidence boundaries.
 
-## Last Production Postflight
+## Recorded Pre-Cutover Production Check
 
-- The pre-Go postflight at `https://share.bonfire.icu` verified the strict
-  `screener-v19` Browser/server contract. Current revision, release, artifact,
+Read-only verification on 2026-09-08 confirmed the pre-cutover production state
+below. The runtime release descriptor and deployment record own later cutover
+identity; this historical check is not a live service-status endpoint.
+
+- The running Go application and public Browser asset at
+  `https://share.bonfire.icu` retain the strict `screener-v21` contract.
+  Current revision, release, artifact,
   manifest, and asset identity are
   retained by the immutable release descriptor, runtime `REVISION`, and
   deployment record rather than copied into this source snapshot.
-- The latest scoped postflight found public health and the immutable Browser
+- The latest scoped check found application health and the immutable Browser
   asset available, with Screener, LiveKit, coturn, and nginx active and without
   restarts.
 - Production enables SQLite room authority at
@@ -51,151 +56,103 @@ This is the current execution index. Git history owns completed timelines;
 
 ## Current Source
 
-- Source uses the strict `screener-v21` Browser/server contract and one
-  shared Go server core for Hosted and Client; the graph controller is universal
-  and the Host-star configuration and wire path are removed. Optional SQLite
-  stable authority, non-expiring
-  local preferred code, atomic room replacement and the Host codec selector
-  remain implemented; production selects stable storage. Graceful restart, crash,
-  timeout and network loss use one reconnect state. LiveKit room teardown cannot
-  stop Host-owned capture.
-- One event-driven controller owns the committed graph and one room-serial child
-  operation. Initial direct acquisition uses a five-second foreground window;
-  exact transport-connected progress may retain that candidate through the
-  total deadline, while first decoded frame remains the only commit proof. SFU
-  provides working media before finite background direct convergence. Healthy
-  decoded edges remain sticky. A connected Viewer's advertised effective
-  capacity survives sharing-generation graph replacement and is cleared only
-  when that Viewer departs or the room is deleted. A replacement Host identity
-  resets physical route ownership without discarding Viewer capacity. Retiring
-  SFU roots remain only as inactive anchors while Peer descendants reassign.
-- WebRTC/LiveKit own media adaptation. After availability work, one persistently
-  degraded native edge may use the existing serial operation. A P2P candidate
-  needs first-frame readiness, fresh native healthy sender evidence, and three
-  clean receive windows that do not regress resolution or rounded FPS. A zero-
-  frame incumbent is zero delivery only against an overlapping candidate that
-  decodes video. Peer candidates stay first; bounded SFU remains only the whole-
-  Host-root suffix; when no different Peer is eligible, the same operation may
-  append one same-parent connection-regeneration candidate. Inconclusive current-
-  sender windows retain the bounded Peer operation; failed exact candidates stay
-  consumed until the sender or candidate opportunity changes. The pre-share gate
-  defaults on and locks while sharing.
-- NAT prediction stays authority-gated and defaults on only when offered. Browser
-  and Native P2P use one connection-local rule with Site or Public-Link survey
-  endpoints; pure LAN, route scoring, and SFU preference remain unchanged.
-  Enabled acquisition now shares a three-attempt budget in the route controller,
-  across foreground P2P and background direct continuation. Viewer progress
-  reflects actual candidate creation; quality trials retain their prior budget.
-  Candidate and selected-path logs retain anonymous `ordinary | predicted |
-  unknown` provenance. Ordinary candidates and SFU fallback remain unchanged.
-- Every direct, Browser-relay, and Host SFU video sender owns one clone of its
-  source track; the original remains presentation and source authority only.
-  Replacement, rollback, unpublish, physical LiveKit sender recreation, and
-  teardown retire that clone. Sibling clones may still share source pressure.
-- Screener has no custom SFU layer list, quality score, layer selector,
-  all-pairs probe, parent-wide prediction or periodic rebalancing. P2P and SFU
-  still recover their current route before actual failure enters reassignment.
-- Viewer hidden/freeze/pagehide suppress decoded-stall routing authority;
-  visible/resume/pageshow rebaseline and rearm current-frame proof. Host and
-  Viewer SFU clients disable LiveKit page-leave auto-disconnect, so SFU recovery
-  cannot stop Host-owned capture. Native Viewer controls still own playback,
-  and manual reconnect stays on the current route. A Client-launched Viewer can
-  receive H.264/VP8 and Opus through a native encoded source, bridge one local Browser
-  preview, and reuse that source for compatible P2P children; unsupported codec
-  or failed bridge returns to the Browser peer.
-- Viewer presentation derives access, Host, route, playback, and runtime state
-  from separate owners. An exact media generation plus monotonic proof epoch
-  owns visible-frame truth; every invalidation rearms proof, while stale epochs
-  and replaced generations cannot clear or revive the current result. Viewer
-  diagnostics continue through incomplete presentation windows, but those
-  windows remain ineligible for route-quality convergence.
-- Host, Viewer, join, and access surfaces share the living-room presentation
-  model. Room codes, invitation URLs, the current display name, selected
-  participant details, route labels, and metrics remain visible in visual mode;
-  Host and Viewer couch/topology identities stay consistent across expression
-  modes, and bounded deep trees scroll within their own surface.
+- The candidate uses one shared Go core and the strict `screener-v22`
+  Browser/server contract, Native control v9 and capture v7. These artifacts
+  form one private contract. Optional SQLite persists stable room authority;
+  participants, routes and media remain process-only.
+- Hosted Screener owns configured Binding-only STUN and optional SFU UDP
+  listeners in-process. SFU SDP/ICE and direct-subscriber demand use authenticated
+  room signaling. There is no external SFU room service, Browser LiveKit SDK,
+  media token or second signaling connection. Startup and shutdown own all
+  configured listeners; Local and public-link Clients remain P2P-only.
+- One controller still owns the committed graph and one serial child operation.
+  Endpoint copy limits, first-decoded-frame commits, bounded direct acquisition
+  and candidate-relative quality proof remain in
+  [routing and transport](./product/routing-transport.md). Exact physical
+  subscription/publication closure now releases the matching SFU reservation.
+- Native parents and embedded SFU share a Pion/LiveKit media adapter for
+  forwarding, bandwidth estimation, allocation, pacing and recovery. A Native
+  parent reuses a suitable encoded output and derives a missing lower output
+  only on direct-child demand. Source groups retain the highest needed output
+  and lower fallbacks; each child receives one selected output. Native Host SFU
+  publication reuses the source directly and has one aggregate upstream budget.
+  [Media quality](./product/media-quality.md) owns this behavior and its limits.
+- Browser senders retain source-owned clones and stock WebRTC adaptation.
+  Current SFU demand updates the publisher's active output prefix; live quality
+  changes and ICE recovery retain their connection identities. Healthy media
+  survives transient room-signaling loss, and transport teardown cannot stop
+  the Host's original capture track.
+- Host tab authority is separate from the persistent origin resume hint. The
+  Client admits two independent native control sessions; reconnect, room
+  replacement and source retirement remain fenced by their current owners.
+  Public-link startup reserves its local listener before starting a tunnel.
+- Viewer presentation retains current-media identity and decoded-frame proof
+  across lifecycle changes. Diagnostic capture, signaling and native-request
+  events are opt-in and bounded; [configuration](./reference/configuration.md)
+  owns activation and export. Diagnostics do not add media or routing authority.
+- The runtime-only container recipe reuses the Server release rather than
+  rebuilding the application. Non-root/read-only execution, memory/SQLite
+  restart behavior, diagnostic export, STUN and UDP lifecycle pass in the local
+  Linux VM. Public-network media and production cutover remain separate.
 
 ## Source/Production Relationship
 
-- The deployment record owns exact source/release comparison. Routine releases
-  change this file only when its semantic or operational snapshot changes.
+The source change requires a coordinated production cutover. The recorded check
+above retains the external-service history; exact release identity belongs to
+the deployment record. The
+[self-hosting transaction](./operations/self-hosting.md#coordinated-embedded-media-cutover)
+replaces those services and their configuration together. The routine application
+wrapper requires an existing embedded Go deployment and cannot perform or roll
+back the initial infrastructure change.
 
 ## Active Boundaries
 
-- Desktop Host background capture remains unconfirmed. Current Browser screening
-  did not reproduce a drop; Viewer lifecycle work prevents frozen JavaScript
-  wall time from becoming route-failure evidence but is not capture keepalive.
-- Current-path quality can drive local convergence in source and production,
-  including bounded same-edge connection regeneration. Both default it on with a
-  pre-share Host opt-out. Weighted/global optimization remains parked.
-- Source contains the cross-platform Client outside the current Web release.
-  One Go entry starts a process-level loopback capability service, then opens the
-  current system-Browser launcher for Local, temporary public-link, or saved-Site
-  operation. The saved Site remains allowed while another room source runs; the
-  same Host UI explicitly selects
-  Browser capture or an exact native screen/window. Windows Native now shares
-  the VP8/Auto/H264 selector, with libvpx software VP8 and hardware H264; Auto
-  uses a bounded target-profile throughput check. Both VP8 and Auto-selected
-  H264 passed real Browser delivery and codec-stable live/source changes.
-  Windows gates prove
-  packaged Local/Site operation, WGC hardware-H.264 plus process/system audio, bounded
-  shared-encode P2P, and cleanup. The window arm also proves source end and
-  same-room reselection; display-source lifecycle remains a separate physical
-  gate. An explicit target assembler also produces a
-  Linux amd64 package with proved Local/one-link runtime and a structurally
-  verified macOS arm64 package. Its capture sidecar passes an arm64 compile,
-  hardware-H.264 IDR self-test, and audio-adapter build, but the package and
-  capture path remain unrun on a physical Mac. The Linux package now includes a
-  thin Portal/PipeWire/GStreamer hardware-H.264 capture adapter and passes its
-  compile, probe, package, startup, and shutdown checks; real desktop capture,
-  system audio, and recovery remain unproved. One-link mode preserves the Host
-  Local authority while exposing its ordinary invitation and HTTP/WebSocket
-  control path through a session-scoped Quick Tunnel. An independent Linux Pion
-  Viewer has received that native media over a direct ICE pair; remote Browser
-  media remains unproved. Site and one-link native shares also make one bounded
-  best-effort PCP/UPnP/NAT-PMP mapping and Pion Universal-UDP-mux STUN discovery
-  on their media socket. A public-link run delivered 35 H.264 packets to an
-  independent Linux Viewer; no predicted-path win is yet claimed.
-  Native P2P edges now negotiate TWCC and send Pion GCC's target-versus-source
-  payload category through the existing sender-quality evidence path without
-  pacing or changing the shared encode. The existing quality operation may test
-  a Browser sender for one persistently degraded Native edge without lowering
-  healthy shared edges. A local bridge supplies native Host media to the existing
-  Browser LiveKit publisher; an isolated LiveKit gate
-  proves default 1080p delivery, a live change to 480p, and complete cleanup
-  without a second SFU client.
-  A Windows gate proves Browser Host to Client-native Viewer delivery and Chrome
-  decode; an RTP gate covers bounded H.264/Opus child relay and cleanup.
-  Client-assisted Browser H.264 capture now reuses one local sender for Native
-  fanout while quality convergence is enabled. Its two-Viewer gate covers
-  cadence, live controls and Client-exit recovery; weak-network acceptance
-  remains open. Native RTP forwarding preserves padding and its sequence
-  continuity without requiring decoded dimensions for capacity evidence.
-  Native control treats malformed/stale/repeated per-edge signaling as disposable;
-  unexpected Client close reaches the current Browser participant through the
-  existing fence. Windows
-  retains one converted frame for quiet-source keyframe recovery. Its live
-  profile gate keeps two PeerConnections while moving the hardware source from
-  720p30 to 1440p60, then to 480p15 while paused, and resumes both Viewers;
-  current source-switch, static, and crash gates pass, while cross-version
-  capture remains open.
-  Local Client access is open by default and can be protected with a user-chosen
-  password from the Browser launcher; Hosted Site access is unchanged.
-  Non-Windows native media remains outside physical acceptance. The default
-  packaged Client launcher performs a non-blocking official GitHub Release check;
-  the deployment tree provides a read-only operator check against the same full-
-  SHA release identity. Neither installs or interrupts a running share.
+- Native shared-output implementation follows the
+  [encoder-pool review](./research/webrtc-encoder-pool.md); remaining release
+  acceptance is held in TODO. Windows capture and derivation now attach stock
+  WebRTC output pipelines; both codecs pass bounded process-level shrinking and
+  recovery checks. Incompatible weak-consumer grouping now has real relay
+  split/rejoin and independent-dimension delivery evidence; exact throughput,
+  representative-network behavior and extreme-overload limits remain explicit.
+  The extreme single-core check reaches WebRTC's sample-reset boundary; it does
+  not justify another application resource controller.
+  Independent Client/service fixes remain preserved.
+- Browser and Native H264/VP8 publication through embedded SFU pass Browser decoding,
+  live-profile and cleanup checks; the Native path also delivers Opus. Bounded
+  Native VP8 forwarding/derivation and stopped-upper recovery have synthetic
+  codec and shaped-network evidence. Hardware
+  overload, below-lowest-output, public-network and packaged acceptance remain open.
+- Current Windows VP8 and H264 owned-window minimize/profile/restore checks pass,
+  including live and paused changes and the H264 source-switch/restart path.
+  The owner confirmed Windows 10 display sharing resolved. Distinct game
+  HWND/device-loss behavior, 60 fps endurance and hardware overload remain
+  separate evidence boundaries. The reported
+  machine freeze has no confirmed cause; [TODO](./todo.md) owns the current
+  authorization and serialization of physical workloads.
+- Linux capture producers compile. Updated macOS producers still require an
+  SDK build; neither platform's current capture/audio/recovery has physical
+  acceptance. Prior package and single-output results do not prove the new
+  multi-output contract. The owner defers these secondary-platform matrices;
+  Windows Client and Browser remain this phase's acceptance targets. Two Native
+  control sessions and rooms now pass concurrent media and independent retirement.
+- Matched platform artifacts,
+  representative packet loss/congestion, 20-Viewer endurance, public-link
+  Browser delivery and restricted-NAT success remain in the
+  [TODO ledger](./todo.md) and [verification status](./verification-status.md).
+  Browser/OS suspension remains a physical limit, not a keepalive promise.
+- Windows Native Host, Native embedded-SFU and Browser-to-Client fanout pass the
+  current combined profile, pause/recovery and closure checks. Pure Browser
+  reuse was then tested separately: late-join recovery works, but legacy fanout
+  fails independent quality and sender accounting; standard transforms reject
+  cross-source frames. The experiment adds no product path. Normal Browser
+  senders and optional Client fanout remain the supported composition.
 
 ## Release Acceptance
 
-Client acceptance remains open for the reported Windows 10 display startup and
-game-specific source behavior. Windows 11 display, minimized-source recovery,
-live presets and source-switch checks pass, but do not establish those reports
-as resolved. NAT acquisition has controller and signaling coverage, not a new
-public-network success-rate claim. The candidate removes the Host-star
-configuration and wire shape under `screener-v21` and moves the server to Go.
-The authorized cutover needs matching Web/Client builds, the updated unit file
-that replaces `NODE_ENV` with `SCREENER_ENV` before the first Go release,
-an active-session check, and configuration restoration on rollback. The actual
-deployment result belongs to its release record; [TODO](./todo.md) owns
-remaining device/network acceptance.
+The phase requires matching current Web/Server/Client/capture artifacts and the
+remaining media acceptance before one owner-accepted integration. The first
+production move also needs an active-session check, accepted share interruption,
+released old UDP listeners, and verified unit/environment/proxy/service recovery.
+Restoring only an application symlink cannot roll back that protocol and
+infrastructure transaction. No deployment or current-platform acceptance is
+claimed by these source documents.

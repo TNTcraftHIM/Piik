@@ -9,7 +9,7 @@ import {
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { CLIENT_PACKAGE_TARGETS, clientPackageTarget } from "./client-package-targets.mjs";
+import { CLIENT_PACKAGE_TARGETS, clientPackageTarget, clientGoEnvironment } from "./client-package-targets.mjs";
 
 // Every Go command embeds the Vite output, so the build, vet and test steps all
 // fail without it. The Hosted binary is cross-built for its deployment target.
@@ -65,7 +65,14 @@ function checkCore() {
 
   const buildRoot = join(root, "build", "client-check");
   mkdirSync(buildRoot, { recursive: true });
-  const builds = CLIENT_PACKAGE_TARGETS.flatMap((target) =>
+  const buildTargets = CLIENT_PACKAGE_TARGETS.filter((target) => {
+    if (target.cgo && process.platform !== target.nodePlatform) {
+      process.stderr.write(`Skipped ${target.id}: its cgo dependencies require a native macOS runner and SDK; Darwin acceptance remains pending.\n`);
+      return false;
+    }
+    return true;
+  });
+  const builds = buildTargets.flatMap((target) =>
     ["screener-client", "screener-peer-gate"].map((command) => ({ target, command })),
   );
   builds.push({ target: SERVER_TARGET, command: "screener-server" });
@@ -74,12 +81,7 @@ function checkCore() {
       ? `${command}.exe`
       : `${command}-${target.id}`;
     run(go, ["build", "-trimpath", "-o", join(buildRoot, outputName), `./cmd/${command}`], {
-      env: {
-        ...process.env,
-        GOOS: target.goos,
-        GOARCH: target.goarch,
-        CGO_ENABLED: "0",
-      },
+      env: clientGoEnvironment(target),
     });
   }
 }
@@ -90,32 +92,19 @@ function runClientTests(go) {
     return;
   }
 
-  // Windows associates its listen prompt with the test executable path. Keep
-  // the one UDP integration package at a stable path so repeated checks do not
-  // create a new firewall rule for every Go build directory.
-  const packages = run(go, ["list", "./..."], { capture: true })
+  // Windows firewall permissions follow executable paths, including tests that
+  // open sockets indirectly. Never execute a test from Go's temporary directory.
+  const packages = run(go, ["list", "-f", '{{if or .TestGoFiles .XTestGoFiles}}[{{printf "%q" .ImportPath}},{{printf "%q" .Dir}}]{{end}}', "./..."], { capture: true })
     .split(/\r?\n/)
     .map((value) => value.trim())
-    .filter(Boolean);
-  const stableNetworkPackages = [
-    {
-      package: "github.com/TNTcraftHIM/Screener/internal/client/mediaedge",
-      binary: "mediaedge.test.exe",
-    },
-  ];
-  const stablePackageNames = new Set(
-    stableNetworkPackages.map((entry) => entry.package),
-  );
-  const otherPackages = packages.filter((value) => !stablePackageNames.has(value));
-  if (otherPackages.length > 0) {
-    run(go, ["test", ...otherPackages]);
-  }
+    .filter(Boolean)
+    .map((value) => JSON.parse(value));
   const stableRoot = join(root, "build", "client-check");
   mkdirSync(stableRoot, { recursive: true });
-  for (const entry of stableNetworkPackages) {
-    const binary = join(stableRoot, entry.binary);
-    run(go, ["test", "-c", "-o", binary, entry.package]);
-    run(binary, ["-test.v"]);
+  for (const [entry, directory] of packages) {
+    const binary = join(stableRoot, `${basename(entry)}.test.exe`);
+    run(go, ["test", "-c", "-o", binary, entry]);
+    run(binary, [], { cwd: directory });
   }
 }
 
@@ -175,7 +164,7 @@ function checkPlatformCapture() {
   const probe = JSON.parse(raw);
   const expectedPlatform = process.platform === "win32" ? "windows" : process.platform;
   if (
-    probe?.protocol !== 4 ||
+    probe?.protocol !== 7 ||
     probe.platform !== expectedPlatform ||
     typeof probe.platformBuild !== "string" ||
     typeof probe.videoCapture !== "boolean" ||

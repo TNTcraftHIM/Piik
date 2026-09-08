@@ -1,271 +1,115 @@
-// Package sfutest holds the SFU test double the TypeScript suite kept in
-// tests/fake-sfu-room-control.ts, so the signaling, router and app tests can
-// drive the LiveKit fallback without a LiveKit.
+// Package sfutest provides deterministic physical-media effects for router tests.
 package sfutest
 
 import (
 	"context"
 	"errors"
-	"sort"
+	"slices"
 	"sync"
 
-	"github.com/TNTcraftHIM/Screener/internal/server/ordered"
 	"github.com/TNTcraftHIM/Screener/internal/server/sfu"
+	"github.com/pion/webrtc/v4"
 )
 
-// FakeRoomControl is FakeSfuRoomControl. Every field is guarded: unlike the
-// single-threaded TypeScript, the router calls it from goroutines while the
-// test asserts. A barrier is a channel the test closes to release the call;
-// a nil barrier does not block, which is the TypeScript `await undefined`.
-type FakeRoomControl struct {
-	mu sync.Mutex
-	// Ordering site: initialize reports the room names in insertion order.
-	rooms                     ordered.Map[string, map[string]struct{}]
-	created                   []sfu.ResourceFence
-	deleted                   []sfu.ResourceFence
-	subscriptionDrainAttempts []sfu.SubscriptionFence
-	drainedSubscriptions      []sfu.SubscriptionFence
-	startupDeletedRoomNames   []string
-	initializeCalls           int
-	initializeBarrier         chan struct{}
-	initializeError           error
-	createBarrier             chan struct{}
-	subscriptionDrainBarrier  chan struct{}
-	failDelete                bool
-	failHostCheck             bool
+type FakeMedia struct {
+	mu            sync.Mutex
+	publications  map[sfu.ResourceFence]string
+	created       []sfu.ResourceFence
+	deleted       []sfu.ResourceFence
+	drained       []sfu.SubscriptionFence
+	drainAttempts []sfu.SubscriptionFence
+	deleteErr     error
+	drainBarrier  <-chan struct{}
 }
 
-var _ sfu.RoomControl = (*FakeRoomControl)(nil)
-
-// New returns an empty fake.
-func New() *FakeRoomControl { return &FakeRoomControl{} }
-
-// Initialize records the call, then clears every room.
-func (fake *FakeRoomControl) Initialize(ctx context.Context) error {
-	fake.mu.Lock()
-	fake.initializeCalls++
-	barrier := fake.initializeBarrier
-	fake.mu.Unlock()
-
-	if err := wait(ctx, barrier); err != nil {
-		return err
-	}
-
-	fake.mu.Lock()
-	defer fake.mu.Unlock()
-	if fake.initializeError != nil {
-		return fake.initializeError
-	}
-	fake.startupDeletedRoomNames = append(fake.startupDeletedRoomNames, fake.rooms.Keys()...)
-	fake.rooms.Clear()
+func New() *FakeMedia { return &FakeMedia{publications: make(map[sfu.ResourceFence]string)} }
+func (media *FakeMedia) HasPublication(fence sfu.ResourceFence, connectionID string) bool {
+	media.mu.Lock()
+	defer media.mu.Unlock()
+	return media.publications[fence] == connectionID && connectionID != ""
+}
+func (media *FakeMedia) PreparePublication(fence sfu.ResourceFence, connectionID string, _ sfu.PublicationMedia) error {
+	media.mu.Lock()
+	defer media.mu.Unlock()
+	media.publications[fence] = connectionID
+	media.created = append(media.created, fence)
 	return nil
 }
-
-// CreateRoom refuses a room name that already exists.
-func (fake *FakeRoomControl) CreateRoom(ctx context.Context, fence sfu.ResourceFence) error {
-	fake.mu.Lock()
-	barrier := fake.createBarrier
-	fake.mu.Unlock()
-
-	if err := wait(ctx, barrier); err != nil {
-		return err
-	}
-	roomName := sfu.ManagedRoomName(fence)
-
-	fake.mu.Lock()
-	defer fake.mu.Unlock()
-	if fake.rooms.Has(roomName) {
-		return errors.New("room already exists")
-	}
-	fake.rooms.Set(roomName, map[string]struct{}{})
-	fake.created = append(fake.created, fence)
+func (*FakeMedia) AcceptPublisherOffer(sfu.ResourceFence, string, webrtc.SessionDescription) (webrtc.SessionDescription, error) {
+	return webrtc.SessionDescription{Type: webrtc.SDPTypeAnswer, SDP: "answer"}, nil
+}
+func (*FakeMedia) AddPublisherICE(sfu.ResourceFence, string, webrtc.ICECandidateInit) error {
 	return nil
 }
-
-// DeleteRoom removes the room, whether or not it existed.
-func (fake *FakeRoomControl) DeleteRoom(ctx context.Context, fence sfu.ResourceFence) error {
-	fake.mu.Lock()
-	defer fake.mu.Unlock()
-	if fake.failDelete {
-		return errors.New("room deletion failed")
-	}
-	fake.rooms.Delete(sfu.ManagedRoomName(fence))
-	fake.deleted = append(fake.deleted, fence)
+func (*FakeMedia) UpdatePublication(sfu.ResourceFence, string, sfu.PublicationMedia) error {
 	return nil
 }
-
-// DrainSubscription records the attempt before waiting, then removes the viewer.
-func (fake *FakeRoomControl) DrainSubscription(ctx context.Context, fence sfu.SubscriptionFence) error {
-	fake.mu.Lock()
-	fake.subscriptionDrainAttempts = append(fake.subscriptionDrainAttempts, fence)
-	barrier := fake.subscriptionDrainBarrier
-	fake.mu.Unlock()
-
-	if err := wait(ctx, barrier); err != nil {
-		return err
-	}
-
-	fake.mu.Lock()
-	defer fake.mu.Unlock()
-	if participants, ok := fake.rooms.Get(sfu.ManagedRoomName(fence.ResourceFence)); ok {
-		delete(participants, "viewer:"+fence.ViewerPeerID)
-	}
-	fake.drainedSubscriptions = append(fake.drainedSubscriptions, fence)
+func (*FakeMedia) PublicationDemand(sfu.ResourceFence, string) (int, error) { return 1, nil }
+func (*FakeMedia) PrepareSubscriber(context.Context, sfu.SubscriptionFence, string) (webrtc.SessionDescription, error) {
+	return webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: "offer"}, nil
+}
+func (*FakeMedia) ApplySubscriberAnswer(sfu.SubscriptionFence, string, webrtc.SessionDescription) error {
 	return nil
 }
-
-// HostParticipantExists reports whether "host" joined the fenced room.
-func (fake *FakeRoomControl) HostParticipantExists(
-	_ context.Context,
-	fence sfu.ResourceFence,
-) (bool, error) {
-	fake.mu.Lock()
-	defer fake.mu.Unlock()
-	if fake.failHostCheck {
-		return false, errors.New("host check failed")
+func (*FakeMedia) AddSubscriberICE(sfu.SubscriptionFence, string, webrtc.ICECandidateInit) error {
+	return nil
+}
+func (*FakeMedia) RestartSubscriber(sfu.SubscriptionFence, string) (webrtc.SessionDescription, error) {
+	return webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: "restart"}, nil
+}
+func (media *FakeMedia) CloseSubscription(fence sfu.SubscriptionFence, _ string) error {
+	media.mu.Lock()
+	media.drainAttempts = append(media.drainAttempts, fence)
+	barrier := media.drainBarrier
+	media.mu.Unlock()
+	if barrier != nil {
+		<-barrier
 	}
-	participants, ok := fake.rooms.Get(sfu.ManagedRoomName(fence))
-	if !ok {
-		return false, nil
+	media.mu.Lock()
+	defer media.mu.Unlock()
+	media.drained = append(media.drained, fence)
+	return nil
+}
+func (media *FakeMedia) ClosePublication(fence sfu.ResourceFence) error {
+	media.mu.Lock()
+	defer media.mu.Unlock()
+	if media.deleteErr != nil {
+		return media.deleteErr
 	}
-	_, joined := participants["host"]
-	return joined, nil
+	delete(media.publications, fence)
+	media.deleted = append(media.deleted, fence)
+	return nil
 }
-
-// SeedRoom creates the fenced room with the given identities present.
-func (fake *FakeRoomControl) SeedRoom(fence sfu.ResourceFence, identities ...string) {
-	participants := make(map[string]struct{}, len(identities))
-	for _, identity := range identities {
-		participants[identity] = struct{}{}
+func (media *FakeMedia) SetFailDelete(fail bool) {
+	media.mu.Lock()
+	defer media.mu.Unlock()
+	media.deleteErr = nil
+	if fail {
+		media.deleteErr = errors.New("test media close failed")
 	}
-	fake.mu.Lock()
-	defer fake.mu.Unlock()
-	fake.rooms.Set(sfu.ManagedRoomName(fence), participants)
 }
-
-// CanJoin reports whether the room name exists.
-func (fake *FakeRoomControl) CanJoin(roomName string) bool {
-	fake.mu.Lock()
-	defer fake.mu.Unlock()
-	return fake.rooms.Has(roomName)
+func (media *FakeMedia) SetSubscriptionDrainBarrier(barrier <-chan struct{}) {
+	media.mu.Lock()
+	defer media.mu.Unlock()
+	media.drainBarrier = barrier
 }
-
-// RoomCount is rooms.size.
-func (fake *FakeRoomControl) RoomCount() int {
-	fake.mu.Lock()
-	defer fake.mu.Unlock()
-	return fake.rooms.Len()
+func (media *FakeMedia) Created() []sfu.ResourceFence {
+	media.mu.Lock()
+	defer media.mu.Unlock()
+	return slices.Clone(media.created)
 }
-
-// Participants lists the identities in a room, sorted for a stable assertion.
-func (fake *FakeRoomControl) Participants(roomName string) []string {
-	fake.mu.Lock()
-	defer fake.mu.Unlock()
-	participants, ok := fake.rooms.Get(roomName)
-	if !ok {
-		return nil
-	}
-	identities := make([]string, 0, len(participants))
-	for identity := range participants {
-		identities = append(identities, identity)
-	}
-	sort.Strings(identities)
-	return identities
+func (media *FakeMedia) Deleted() []sfu.ResourceFence {
+	media.mu.Lock()
+	defer media.mu.Unlock()
+	return slices.Clone(media.deleted)
 }
-
-// InitializeCalls is initializeCalls.
-func (fake *FakeRoomControl) InitializeCalls() int {
-	fake.mu.Lock()
-	defer fake.mu.Unlock()
-	return fake.initializeCalls
+func (media *FakeMedia) DrainedSubscriptions() []sfu.SubscriptionFence {
+	media.mu.Lock()
+	defer media.mu.Unlock()
+	return slices.Clone(media.drained)
 }
-
-// StartupDeletedRoomNames is startupDeletedRoomNames.
-func (fake *FakeRoomControl) StartupDeletedRoomNames() []string {
-	fake.mu.Lock()
-	defer fake.mu.Unlock()
-	return append([]string(nil), fake.startupDeletedRoomNames...)
-}
-
-// Created is created.
-func (fake *FakeRoomControl) Created() []sfu.ResourceFence {
-	fake.mu.Lock()
-	defer fake.mu.Unlock()
-	return append([]sfu.ResourceFence(nil), fake.created...)
-}
-
-// Deleted is deleted.
-func (fake *FakeRoomControl) Deleted() []sfu.ResourceFence {
-	fake.mu.Lock()
-	defer fake.mu.Unlock()
-	return append([]sfu.ResourceFence(nil), fake.deleted...)
-}
-
-// SubscriptionDrainAttempts is subscriptionDrainAttempts.
-func (fake *FakeRoomControl) SubscriptionDrainAttempts() []sfu.SubscriptionFence {
-	fake.mu.Lock()
-	defer fake.mu.Unlock()
-	return append([]sfu.SubscriptionFence(nil), fake.subscriptionDrainAttempts...)
-}
-
-// DrainedSubscriptions is drainedSubscriptions.
-func (fake *FakeRoomControl) DrainedSubscriptions() []sfu.SubscriptionFence {
-	fake.mu.Lock()
-	defer fake.mu.Unlock()
-	return append([]sfu.SubscriptionFence(nil), fake.drainedSubscriptions...)
-}
-
-// SetInitializeBarrier blocks Initialize until barrier is closed.
-func (fake *FakeRoomControl) SetInitializeBarrier(barrier chan struct{}) {
-	fake.mu.Lock()
-	defer fake.mu.Unlock()
-	fake.initializeBarrier = barrier
-}
-
-// SetInitializeError makes Initialize fail after its barrier.
-func (fake *FakeRoomControl) SetInitializeError(err error) {
-	fake.mu.Lock()
-	defer fake.mu.Unlock()
-	fake.initializeError = err
-}
-
-// SetCreateBarrier blocks CreateRoom until barrier is closed.
-func (fake *FakeRoomControl) SetCreateBarrier(barrier chan struct{}) {
-	fake.mu.Lock()
-	defer fake.mu.Unlock()
-	fake.createBarrier = barrier
-}
-
-// SetSubscriptionDrainBarrier blocks DrainSubscription until barrier is closed.
-func (fake *FakeRoomControl) SetSubscriptionDrainBarrier(barrier chan struct{}) {
-	fake.mu.Lock()
-	defer fake.mu.Unlock()
-	fake.subscriptionDrainBarrier = barrier
-}
-
-// SetFailDelete makes DeleteRoom fail.
-func (fake *FakeRoomControl) SetFailDelete(fail bool) {
-	fake.mu.Lock()
-	defer fake.mu.Unlock()
-	fake.failDelete = fail
-}
-
-// SetFailHostCheck makes HostParticipantExists fail.
-func (fake *FakeRoomControl) SetFailHostCheck(fail bool) {
-	fake.mu.Lock()
-	defer fake.mu.Unlock()
-	fake.failHostCheck = fail
-}
-
-// wait is `await barrier` with the Go escape hatch a cancelled context needs.
-func wait(ctx context.Context, barrier chan struct{}) error {
-	if barrier == nil {
-		return nil
-	}
-	select {
-	case <-barrier:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+func (media *FakeMedia) SubscriptionDrainAttempts() []sfu.SubscriptionFence {
+	media.mu.Lock()
+	defer media.mu.Unlock()
+	return slices.Clone(media.drainAttempts)
 }

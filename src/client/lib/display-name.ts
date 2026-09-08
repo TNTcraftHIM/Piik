@@ -29,31 +29,18 @@ export function readDisplayName(
   return readStoredDisplayName() ?? fallback;
 }
 
-function suffixedDefaultName(prefix: string, clientId: string): DisplayName {
-  const suffix = clientId.slice(-6);
-  return (
-    normalizeDisplayName(suffix ? `${prefix} (${suffix})` : prefix) ??
-    (prefix as DisplayName)
-  );
-}
-
 export function defaultViewerDisplayName(
-  clientId: string,
   visual: boolean,
 ): DisplayName {
   return visual
-    ? suffixedDefaultName("👤", clientId)
+    ? ("👤" as DisplayName)
     : (say("common.name.viewerDefault") as DisplayName);
 }
 
 export function defaultHostDisplayName(
-  clientId: string,
   visual = false,
 ): DisplayName {
-  return suffixedDefaultName(
-    visual ? "👑" : say("common.name.hostDefault"),
-    clientId,
-  );
+  return (visual ? "👑" : say("common.name.hostDefault")) as DisplayName;
 }
 
 export function saveDisplayName(

@@ -1,11 +1,5 @@
+import type { SfuMedia, SfuSignalMessage } from "../../shared/protocol";
 import { say } from "../ui/copy";
-import type {
-  LocalTrackPublication,
-  Room,
-  Track,
-  TrackPublishOptions,
-} from "livekit-client";
-
 import {
   audioSenderParameterWarning,
   applyVideoCaptureProfile,
@@ -13,8 +7,7 @@ import {
   configureScreenAudioSender,
   configureVideoSender,
   needsStartupVideoProfile,
-  resolveScreenAudioQuality,
-  screenAudioQualityEqual,
+  QUALITY_RESOLUTIONS,
   screenAudioBitrate,
   senderParameterWarning,
   STARTUP_VIDEO_ENCODED_FRAMES,
@@ -22,11 +15,14 @@ import {
   videoQualitySettingsEqual,
   type AudioSenderParameterReadback,
   type QualityProfile,
-  type ScreenAudioQuality,
   type VideoSenderParameterReadback,
 } from "../media/quality";
 import type { ConnectionMetrics } from "../types";
-import type { BrowserVideoCodec } from "../webrtc/video-codec";
+import {
+  applyVideoCodecPreference,
+  manualVideoCodecPreference,
+  type BrowserVideoCodec,
+} from "../webrtc/video-codec";
 import {
   captureMetrics,
   collectConnectionMetricsFromReport,
@@ -35,18 +31,13 @@ import {
   createStatsAccumulator,
   highestActiveVideoRid,
   maxEncodedVideoFrames,
-  mergeStatsReports,
-  type StatsAccumulator,
-  type NativeSenderQualityAccumulator,
 } from "../webrtc/stats";
-import { sfuRoomConnectOptions } from "./connection-options";
+import { SfuPeer, type SfuConnectionConfig } from "./peer";
 
-export interface SfuConnectionConfig {
-  url: string;
-  token: string;
-}
+export type { SfuConnectionConfig } from "./peer";
 
 interface PublisherEvents {
+  send: (message: SfuSignalMessage) => boolean;
   onDisconnected?: () => void;
   onStats?: (metrics: ConnectionMetrics | null) => void;
 }
@@ -59,1429 +50,519 @@ export type SfuPublisherFailureStage =
   | "audio-publish"
   | "transport";
 
-interface PublishedTrack {
-  publication: LocalTrackPublication;
-  sourceTrack: MediaStreamTrack;
-  rawTrack: MediaStreamTrack;
-  stopOnRelease: boolean;
-}
-
-interface PublishedVideoConfiguration {
-  readback: VideoSenderParameterReadback;
-  warning: string | null;
-}
-
-interface PublishedAudioConfiguration {
-  sender: RTCRtpSender;
-  readback: AudioSenderParameterReadback;
-  warning: string | null;
-}
-
-interface PublisherStatsIdentity {
-  video: PublishedTrack;
-  videoSender: RTCRtpSender;
-  videoTrack: MediaStreamTrack;
-  audio: PublishedTrack | null;
-  audioSender: RTCRtpSender | null;
-  audioTrack: MediaStreamTrack | null;
-  accumulator: StatsAccumulator;
-  nativeQualityAccumulator: NativeSenderQualityAccumulator;
-}
-
-type LiveKit = typeof import("livekit-client");
-type PublisherState =
-  | "idle"
-  | "connecting"
-  | "prepared"
-  | "active"
-  | "disconnected";
-
-const roomDisconnects = new WeakMap<Room, Promise<void>>();
-const STATS_INTERVAL_MS = 2_000;
-
 export class SfuPublisher {
-  private room: Room | null = null;
-  private sdk: LiveKit | null = null;
-  private video: PublishedTrack | null = null;
-  private audio: PublishedTrack | null = null;
-  private desiredProfile: QualityProfile | null = null;
-  private appliedVideoProfile: QualityProfile | null = null;
-  private profileRevision = 0;
+  private peer: SfuPeer | null = null;
+  private video: MediaStreamTrack | null = null;
+  private audio: MediaStreamTrack | null = null;
+  private videoSender: RTCRtpSender | null = null;
+  private audioSender: RTCRtpSender | null = null;
+  private profile: QualityProfile | null = null;
+  private codec: BrowserVideoCodec = "vp8";
+  private layerCount = 2;
+  private activeCount = 2;
+  private paused = false;
+  private closed = false;
+  private readonly ownedTracks = new Set<MediaStreamTrack>();
+  private startupPending = false;
+  private operationTail: Promise<void> = Promise.resolve();
+  private failureStage: SfuPublisherFailureStage | null = null;
   private senderParameters: VideoSenderParameterReadback | null = null;
   private audioSenderParameters: AudioSenderParameterReadback | null = null;
-  private audioParametersSender: RTCRtpSender | null = null;
-  private videoQualityWarning: string | null = null;
-  private audioQualityWarning: string | null = null;
-  private failureStage: SfuPublisherFailureStage | null = null;
-  private state: PublisherState = "idle";
-  private generation = 0;
-  private operationTail: Promise<void> = Promise.resolve();
-  private terminalNotified = false;
-  private statsVideo: PublishedTrack | null = null;
-  private statsIdentity: PublisherStatsIdentity | null = null;
-  private statsInFlight: PublisherStatsIdentity | null = null;
+  private videoWarning: string | null = null;
+  private audioWarning: string | null = null;
+  private stats = createStatsAccumulator();
+  private nativeStats = createNativeSenderQualityAccumulator();
+  private statsInFlight: typeof this.stats | null = null;
   private statsTimer: ReturnType<typeof setInterval> | null = null;
-  private startupVideoProfilePending = false;
-  private paused = false;
-  private replacementVideoTrack: MediaStreamTrack | null = null;
-  private replacementAudioTrack: MediaStreamTrack | null = null;
 
-  constructor(private readonly events: PublisherEvents = {}) {}
+  constructor(private readonly events: PublisherEvents) {}
 
   async connect(config: SfuConnectionConfig): Promise<boolean> {
-    if (this.state !== "idle") {
+    if (this.peer || this.closed)
       throw new Error("SFU publisher cannot be connected twice");
-    }
+    this.peer = new SfuPeer(config, {
+      send: this.events.send,
+      onState: (state) => {
+        if (state === "failed") this.fail("transport");
+        else if (state === "disconnected") void this.restartIce();
+      },
+    });
+    return true;
+  }
 
-    const generation = ++this.generation;
-    this.failureStage = null;
-    this.state = "connecting";
+  updateConfig(config: SfuConnectionConfig): void {
+    this.peer?.updateConfig(config);
+  }
 
+  async acceptSignal(message: SfuSignalMessage): Promise<void> {
+    const peer = this.peer;
+    if (!peer) return;
     try {
-      const sdk = await import("livekit-client");
-      if (!this.ownsGeneration(generation)) {
-        return false;
-      }
-
-      const room = new sdk.Room({
-        disconnectOnPageLeave: false,
-        dynacast: true,
-        stopLocalTrackOnUnpublish: false,
-      });
-      this.room = room;
-      this.sdk = sdk;
-      room.on(sdk.RoomEvent.Disconnected, () => {
-        if (this.owns(room, generation)) {
-          const notify = this.state !== "connecting";
-          this.failureStage = "transport";
-          this.invalidate();
-          if (notify) {
-            this.notifyTerminalDisconnect();
-          }
-        }
-      });
-      room.on(sdk.RoomEvent.Reconnected, () => {
-        if (this.owns(room, generation) && this.state === "active") {
-          this.reapplyAudioAfterReconnect(room, generation);
-        }
-      });
-
-      await room.connect(config.url, config.token, sfuRoomConnectOptions());
-      if (!this.owns(room, generation)) {
-        await safeDisconnect(room);
-        return false;
-      }
-
-      this.state = "prepared";
-      return true;
-    } catch (error) {
-      if (!this.ownsGeneration(generation)) {
-        return false;
-      }
-      this.failureStage = "connect";
-      const room = this.invalidate();
-      if (room) {
-        await safeDisconnect(room);
-      }
-      throw error;
+      await peer.acceptSignal(
+        message,
+        async (description) => {
+          if (description.type !== "answer")
+            throw new Error("SFU publisher expected an answer");
+          await peer.pc.setRemoteDescription(description);
+        },
+        async (activeCount) => {
+          await this.enqueue(async () => {
+            const sender = this.videoSender;
+            if (this.peer !== peer || !sender) return false;
+            if (activeCount > this.layerCount)
+              throw new Error("SFU requested an unavailable encoding");
+            this.activeCount = activeCount;
+            const parameters = sender.getParameters();
+            parameters.encodings.forEach((encoding, index) => {
+              encoding.active = index < activeCount;
+            });
+            await sender.setParameters(parameters);
+            return this.peer === peer;
+          });
+        },
+      );
+    } catch {
+      if (this.peer === peer) this.fail("transport");
     }
   }
 
   activate(
     stream: MediaStream,
     profile: QualityProfile,
-    videoCodec: BrowserVideoCodec = "vp8",
+    codec: BrowserVideoCodec = "vp8",
   ): Promise<boolean> {
-    this.desiredProfile = profile;
-    this.startupVideoProfilePending = needsStartupVideoProfile(profile);
-    const effectiveVideoProfile = startupVideoProfile(profile);
-    ++this.profileRevision;
-    const generation = this.generation;
     return this.enqueue(async () => {
-      const room = this.requireOwnedRoom(generation, "prepared");
-      if (!room) {
-        return false;
-      }
-      let failureStage: SfuPublisherFailureStage = "source";
+      const peer = this.peer;
+      if (!peer || this.video) return false;
+      this.profile = profile;
+      this.codec = codec;
+      this.startupPending = needsStartupVideoProfile(profile);
+      let video: MediaStreamTrack | null = null;
       try {
-        const sdk = this.sdk;
-        if (!sdk) {
-          throw new Error("SFU publisher SDK is unavailable");
+        this.failureStage = "source";
+        video = this.ownTrack(cloneSenderVideoTrack(requiredVideo(stream)));
+        await applyVideoCaptureProfile(video, profile);
+        if (this.peer !== peer) {
+          this.releaseTrack(video);
+          return false;
         }
-
-        const videoTrack = requiredVideoTrack(stream);
-        const audioTrack = stream.getAudioTracks()[0] ?? null;
-
-        failureStage = "video-publish";
-        const video = await publishVideoTrack(
-          room,
-          videoTrack,
-          profile,
-          sdk.Track.Source.ScreenShare,
-          videoPublishOptions(effectiveVideoProfile, videoCodec),
+        this.video = video;
+        this.audio = this.ownTrack(stream.getAudioTracks()[0]?.clone() ?? null);
+        this.setPaused(this.paused);
+        const dimensions = video.getSettings();
+        this.layerCount =
+          Math.max(dimensions.width ?? 0, dimensions.height ?? 0) >= 480
+            ? 2
+            : 1;
+        const videoTransceiver = peer.pc.addTransceiver(video, {
+          direction: "sendonly",
+          streams: [stream],
+          sendEncodings: this.encodings(profile),
+        });
+        this.failureStage = "video-publish";
+        if (
+          !applyVideoCodecPreference(
+            videoTransceiver,
+            manualVideoCodecPreference(codec),
+          )
+        ) {
+          throw new Error("SFU video codec is unavailable");
+        }
+        this.videoSender = videoTransceiver.sender;
+        const audioTransceiver = peer.pc.addTransceiver(this.audio ?? "audio", {
+          direction: "sendonly",
+          streams: [stream],
+          sendEncodings: [
+            { maxBitrate: screenAudioBitrate(profile.screenAudioQuality) },
+          ],
+        });
+        const opus = RTCRtpSender.getCapabilities("audio")?.codecs.filter(
+          ({ mimeType }) => mimeType.toLowerCase() === "audio/opus",
         );
-        let adoptedVideo = false;
-        try {
-          if (!this.owns(room, generation)) {
-            return false;
-          }
-          failureStage = "sender-config";
-          const videoConfiguration = await configurePublishedVideo(
-            video,
-            effectiveVideoProfile,
-            () => this.owns(room, generation),
-          );
-          if (!videoConfiguration || !this.owns(room, generation)) {
-            return false;
-          }
-
-          let audio: PublishedTrack | null = null;
-          let audioConfiguration: PublishedAudioConfiguration | null = null;
-          let audioWarning: string | null = null;
-          if (audioTrack) {
-            failureStage = "audio-publish";
-            audio = await publishTrack(
-              room,
-              audioTrack,
-              sdk.Track.Source.ScreenShareAudio,
-              audioPublishOptions(sdk, profile.screenAudioQuality),
-            );
-            if (!this.owns(room, generation)) {
-              return false;
-            }
-            retainPublishedAudioOptions(audio, profile, sdk);
-            try {
-              const audioSender = publishedAudioSender(audio);
-              audioConfiguration = await configurePublishedAudio(
-                audio,
-                audioSender,
-                profile,
-                () => this.owns(room, generation),
-              );
-              if (!audioConfiguration || !this.owns(room, generation)) {
-                return false;
-              }
-              audioWarning = audioConfiguration.warning;
-            } catch (error) {
-              if (!this.owns(room, generation)) {
-                return false;
-              }
-              audioWarning = audioSenderFailureWarning(error);
-            }
-          }
-
-          this.video = video;
-          this.audio = audio;
-          adoptedVideo = true;
-          this.appliedVideoProfile = effectiveVideoProfile;
-          this.retainSenderParameters(
-            videoConfiguration,
-            audioConfiguration?.readback ?? null,
-            audioWarning,
-            audioConfiguration?.sender ?? null,
-          );
-          this.failureStage = null;
-          this.state = "active";
-          this.startStats(video);
-          return true;
-        } finally {
-          if (!adoptedVideo) {
-            releasePublishedTrack(video);
-          }
-        }
+        if (!opus?.length) throw new Error("SFU Opus codec is unavailable");
+        audioTransceiver.setCodecPreferences(opus);
+        this.audioSender = audioTransceiver.sender;
+        this.failureStage = "sender-config";
+        await this.configure(profile);
+        if (this.peer !== peer) return false;
+        await peer.sendDescription(
+          await peer.pc.createOffer(),
+          this.media(profile),
+        );
+        if (this.peer !== peer) return false;
+        this.failureStage = null;
+        this.startStats();
+        return true;
       } catch (error) {
-        if (this.owns(room, generation)) {
-          this.failureStage = failureStage;
-          await this.failClosed(room, generation);
-        }
+        if (video && this.video !== video) this.releaseTrack(video);
+        if (this.peer === peer) this.fail(this.failureStage ?? "connect");
         throw error;
       }
     });
   }
 
-  deactivate(): Promise<boolean> {
-    const generation = this.generation;
-    return this.enqueue(async () => {
-      const room = this.requireOwnedRoom(generation, ["prepared", "active"]);
-      if (!room) {
-        return false;
-      }
-      if (this.state === "prepared") {
-        return true;
-      }
-      this.stopStats();
-
-      const video = this.video;
-      const audio = this.audio;
-      try {
-        if (audio) {
-          await unpublishTrack(room, audio);
-          if (!this.owns(room, generation)) {
-            return false;
-          }
-        }
-        if (video) {
-          await unpublishTrack(room, video);
-          if (!this.owns(room, generation)) {
-            return false;
-          }
-        }
-      } catch (error) {
-        if (this.owns(room, generation)) {
-          await this.failClosed(room, generation);
-        }
-        throw error;
-      }
-
-      this.video = null;
-      this.audio = null;
-      this.desiredProfile = null;
-      this.appliedVideoProfile = null;
-      this.startupVideoProfilePending = false;
-      ++this.profileRevision;
-      this.senderParameters = null;
-      this.audioSenderParameters = null;
-      this.audioParametersSender = null;
-      this.videoQualityWarning = null;
-      this.audioQualityWarning = null;
-      this.state = "prepared";
-      return true;
-    });
+  async deactivate(): Promise<boolean> {
+    await this.disconnect();
+    return true;
   }
 
   replaceStream(stream: MediaStream): Promise<boolean> {
-    const generation = this.generation;
     return this.enqueue(async () => {
-      const room = this.requireOwnedRoom(generation, "active");
-      if (!room) {
-        return false;
-      }
-      const sdk = this.sdk;
+      const peer = this.peer;
+      const profile = this.profile;
       const previousVideo = this.video;
-      const profile = this.desiredProfile;
-      const previousVideoProfile = this.appliedVideoProfile;
-      if (!sdk || !previousVideo || !profile || !previousVideoProfile) {
-        throw new Error("SFU publisher has no active video publication");
-      }
-      const effectiveVideoProfile = startupVideoProfile(profile);
-
-      const nextVideoSource = requiredVideoTrack(stream);
-      const nextVideoTrack = cloneSenderVideoTrack(nextVideoSource);
-      try {
-        await applyVideoCaptureProfile(nextVideoTrack, profile);
-      } catch {
-        nextVideoTrack.stop();
-        this.failureStage = "source";
-        return false;
-      }
-      const nextAudioTrack = stream.getAudioTracks()[0] ?? null;
-      this.replacementVideoTrack = nextVideoTrack;
-      this.replacementAudioTrack = nextAudioTrack;
-      this.applyPausedState(nextVideoTrack, nextAudioTrack);
       const previousAudio = this.audio;
-      const previousVideoTrack = previousVideo.rawTrack;
-      let retainedNextVideoTrack = false;
-      let videoReplaceAttempted = false;
-      let audioReplaceAttempted = false;
-      let audioConfiguration: PublishedAudioConfiguration | null = null;
-      let audioWarning: string | null = null;
-      this.stopStats();
-
+      const videoSender = this.videoSender;
+      const audioSender = this.audioSender;
+      if (!peer || !profile || !previousVideo || !videoSender || !audioSender)
+        return false;
+      const nextVideo = this.ownTrack(
+        cloneSenderVideoTrack(requiredVideo(stream)),
+      );
+      const nextAudio = this.ownTrack(
+        stream.getAudioTracks()[0]?.clone() ?? null,
+      );
+      let retained = false;
+      this.resetStats();
       try {
-        videoReplaceAttempted = true;
-        await replacePublishedTrack(previousVideo, nextVideoTrack);
-        if (!this.owns(room, generation)) {
-          return false;
+        await applyVideoCaptureProfile(nextVideo, profile);
+        if (this.peer !== peer) return false;
+        nextVideo.enabled = !this.paused;
+        if (nextAudio) {
+          nextAudio.enabled = !this.paused;
+          nextAudio.contentHint = "music";
         }
-
-        if (previousAudio && nextAudioTrack) {
-          audioReplaceAttempted = true;
-          await replacePublishedTrack(previousAudio, nextAudioTrack);
-          if (!this.owns(room, generation)) {
-            return false;
-          }
-        } else if (previousAudio) {
-          await unpublishTrack(room, previousAudio);
-          if (!this.owns(room, generation)) {
-            return false;
-          }
-          this.audio = null;
-        } else if (nextAudioTrack) {
-          const nextAudio = await publishTrack(
-            room,
-            nextAudioTrack,
-            sdk.Track.Source.ScreenShareAudio,
-            audioPublishOptions(sdk, profile.screenAudioQuality),
-          );
-          if (!this.owns(room, generation)) {
-            return false;
-          }
-          this.audio = nextAudio;
-        }
-
-        const currentAudio = this.audio;
-        if (currentAudio && nextAudioTrack) {
-          retainPublishedAudioOptions(currentAudio, profile, sdk);
-          try {
-            const audioSender = publishedAudioSender(currentAudio);
-            audioConfiguration = await configurePublishedAudio(
-              currentAudio,
-              audioSender,
-              profile,
-              () => this.owns(room, generation),
-            );
-            if (!audioConfiguration || !this.owns(room, generation)) {
-              return false;
-            }
-            audioWarning = audioConfiguration.warning;
-          } catch (error) {
-            if (!this.owns(room, generation)) {
-              return false;
-            }
-            audioWarning = audioSenderFailureWarning(error);
-          }
-        }
-
-        const videoConfiguration = await configurePublishedVideo(
-          previousVideo,
-          effectiveVideoProfile,
-          () => this.owns(room, generation),
-        );
-        if (!videoConfiguration || !this.owns(room, generation)) {
-          return false;
-        }
-        this.applyPausedState(nextVideoTrack, nextAudioTrack);
-        previousVideo.rawTrack = nextVideoTrack;
-        previousVideo.sourceTrack = nextVideoSource;
-        retainedNextVideoTrack = true;
-        previousVideoTrack.stop();
-        if (previousAudio && nextAudioTrack) {
-          previousAudio.rawTrack = nextAudioTrack;
-        }
-        this.startupVideoProfilePending = needsStartupVideoProfile(profile);
-        this.appliedVideoProfile = effectiveVideoProfile;
-        this.retainSenderParameters(
-          videoConfiguration,
-          nextAudioTrack
-            ? (audioConfiguration?.readback ?? this.audioSenderParameters)
-            : null,
-          nextAudioTrack ? audioWarning : null,
-          nextAudioTrack
-            ? (audioConfiguration?.sender ?? this.audioParametersSender)
-            : null,
-        );
-        this.startStats(previousVideo);
+        await videoSender.replaceTrack(nextVideo);
+        await audioSender.replaceTrack(nextAudio);
+        if (this.peer !== peer) return false;
+        this.video = nextVideo;
+        this.audio = nextAudio;
+        this.startupPending = needsStartupVideoProfile(profile);
+        await this.configure(profile);
+        if (this.peer !== peer) return false;
+        if (!peer.send({ kind: "media", media: this.media(profile) }))
+          throw new Error("SFU signaling is unavailable");
+        retained = true;
+        this.releaseTrack(previousVideo);
+        this.releaseTrack(previousAudio);
+        this.setPaused(this.paused);
         return true;
-      } catch (error) {
-        if (!this.owns(room, generation)) {
-          return false;
-        }
-        this.failureStage = "source";
-        const failureWarning = say("host.fail.sfuSwitch");
-
-        // A rejected publish/unpublish may have changed server state without
-        // returning enough ownership information to undo it safely.
-        if (
-          (previousAudio === null && nextAudioTrack !== null) ||
-          (previousAudio !== null && nextAudioTrack === null)
-        ) {
-          await this.failClosed(room, generation);
-          throw error;
-        }
-
+      } catch {
+        if (this.peer !== peer) return false;
+        this.video = previousVideo;
+        this.audio = previousAudio;
         try {
-          if (audioReplaceAttempted && previousAudio) {
-            await replacePublishedTrack(previousAudio, previousAudio.rawTrack);
-            if (!this.owns(room, generation)) {
-              return false;
-            }
-          }
-          if (videoReplaceAttempted) {
-            await replacePublishedTrack(previousVideo, previousVideoTrack);
-            if (!this.owns(room, generation)) {
-              return false;
-            }
-            const videoConfiguration = await configurePublishedVideo(
-              previousVideo,
-              previousVideoProfile,
-              () => this.owns(room, generation),
-            );
-            if (!videoConfiguration || !this.owns(room, generation)) {
-              return false;
-            }
-            this.appliedVideoProfile = previousVideoProfile;
-            this.senderParameters = videoConfiguration.readback;
-            this.videoQualityWarning = mergeQualityWarnings(
-              failureWarning,
-              videoConfiguration.warning,
-            );
-            this.startStats(previousVideo);
-          }
+          await videoSender.replaceTrack(previousVideo);
+          await audioSender.replaceTrack(previousAudio);
+          await this.configure(profile);
+          this.videoWarning = say("host.fail.sfuSwitch");
           return false;
-        } catch (rollbackError) {
-          if (this.owns(room, generation)) {
-            await this.failClosed(room, generation);
-          }
-          throw rollbackError;
+        } catch {
+          this.fail("source");
+          return false;
         }
       } finally {
-        if (!retainedNextVideoTrack) {
-          nextVideoTrack.stop();
-        }
-        if (this.replacementVideoTrack === nextVideoTrack) {
-          this.replacementVideoTrack = null;
-          this.replacementAudioTrack = null;
+        if (!retained) {
+          this.releaseTrack(nextVideo);
+          this.releaseTrack(nextAudio);
         }
       }
     });
   }
 
   updateProfile(profile: QualityProfile): Promise<boolean> {
-    const previousDesiredProfile = this.desiredProfile;
-    if (!needsStartupVideoProfile(profile)) {
-      this.startupVideoProfilePending = false;
-    }
-    const effectiveVideoProfile = this.startupVideoProfilePending
-      ? startupVideoProfile(profile)
-      : profile;
-    const requestedVideo =
-      previousDesiredProfile === null ||
-      !videoQualitySettingsEqual(previousDesiredProfile, profile) ||
-      this.appliedVideoProfile === null ||
-      !videoQualitySettingsEqual(
-        this.appliedVideoProfile,
-        effectiveVideoProfile,
-      );
-    const requestedAudio =
-      previousDesiredProfile === null ||
-      !screenAudioQualityEqual(previousDesiredProfile, profile) ||
-      (this.audio !== null &&
-        (this.audio.publication.audioTrack?.sender !==
-          this.audioParametersSender ||
-          this.audioSenderParameters?.requestedMaxBitrate !==
-            screenAudioBitrate(profile.screenAudioQuality)));
-    this.desiredProfile = profile;
-    const requestedRevision = ++this.profileRevision;
-    if (this.state === "active" && this.audio && this.sdk) {
-      retainPublishedAudioOptions(this.audio, profile, this.sdk);
-    }
-    const generation = this.generation;
     return this.enqueue(async () => {
-      const room = this.requireOwnedRoom(generation, "active");
-      if (!room || requestedRevision !== this.profileRevision) {
-        return false;
-      }
+      const peer = this.peer;
       const video = this.video;
-      const audio = this.audio;
-      const previousVideoProfile = this.appliedVideoProfile;
-      const sdk = this.sdk;
-      if (!video || !previousVideoProfile || !sdk) {
-        throw new Error("SFU publisher has no active video publication");
-      }
-      const updateVideo =
-        requestedVideo ||
-        !videoQualitySettingsEqual(
-          previousVideoProfile,
-          effectiveVideoProfile,
-        );
-      const currentAudioSender = audio?.publication.audioTrack?.sender ?? null;
-      const updateAudio =
-        audio !== null &&
-        (requestedAudio ||
-          currentAudioSender !== this.audioParametersSender ||
-          this.audioSenderParameters?.requestedMaxBitrate !==
-            screenAudioBitrate(profile.screenAudioQuality));
-      if (!updateVideo && !updateAudio) {
-        return true;
-      }
-      if (audio) {
-        retainPublishedAudioOptions(audio, profile, sdk);
-      }
-      if (updateVideo) {
-        this.stopStats();
-      }
-
-      let senderParameters = this.senderParameters;
-      let videoWarning = this.videoQualityWarning;
-      let appliedVideoProfile = previousVideoProfile;
-      let videoSucceeded = true;
-      if (updateVideo) {
+      const previous = this.profile;
+      if (!peer || !video || !previous) return false;
+      if (!needsStartupVideoProfile(profile)) this.startupPending = false;
+      const videoChanged = !videoQualitySettingsEqual(previous, profile);
+      const configureVideo =
+        videoChanged ||
+        this.senderParameters?.applied.degradationPreference !==
+          (this.startupPending ? startupVideoProfile(profile) : profile)
+            .degradationPreference;
+      if (configureVideo) this.resetStats();
+      try {
+        if (videoChanged) await applyVideoCaptureProfile(video, profile);
+        const result = await this.configure(profile, configureVideo);
+        if (this.peer !== peer) return false;
+        if (!peer.send({ kind: "media", media: this.media(profile) }))
+          throw new Error("SFU signaling is unavailable");
+        this.profile = profile;
+        return result;
+      } catch {
+        if (this.peer !== peer) return false;
         try {
-          await applyVideoCaptureProfile(video.rawTrack, profile);
-          const configured = await configurePublishedVideo(
-            video,
-            effectiveVideoProfile,
-            () =>
-              this.owns(room, generation) &&
-              requestedRevision === this.profileRevision &&
-              this.video === video,
-          );
-          if (!configured) {
-            if (this.video === video) {
-              this.startStats(video);
-            }
-            return false;
-          }
-          senderParameters = configured.readback;
-          videoWarning = configured.warning;
-          appliedVideoProfile = effectiveVideoProfile;
+          if (videoChanged) await applyVideoCaptureProfile(video, previous);
+          await this.configure(previous, configureVideo);
+          this.videoWarning = say("host.fail.sfuParams");
+          return false;
         } catch {
-          if (
-            !this.owns(room, generation) ||
-            requestedRevision !== this.profileRevision ||
-            this.video !== video
-          ) {
-            if (this.video === video) {
-              this.startStats(video);
-            }
-            return false;
-          }
-          videoSucceeded = false;
-          const failureWarning = say("host.fail.sfuParams");
-          try {
-            await applyVideoCaptureProfile(
-              video.rawTrack,
-              previousVideoProfile,
-            );
-            const rolledBack = await configurePublishedVideo(
-              video,
-              previousVideoProfile,
-              () =>
-                this.owns(room, generation) &&
-                requestedRevision === this.profileRevision &&
-                this.video === video,
-            );
-            if (!rolledBack) {
-              if (this.video === video) {
-                this.startStats(video);
-              }
-              return false;
-            }
-            senderParameters = rolledBack.readback;
-            videoWarning = mergeQualityWarnings(
-              failureWarning,
-              rolledBack.warning,
-            );
-          } catch (rollbackError) {
-            if (
-              this.owns(room, generation) &&
-              requestedRevision === this.profileRevision &&
-              this.video === video
-            ) {
-              await this.failClosed(room, generation);
-              throw rollbackError;
-            }
-            if (this.video === video) {
-              this.startStats(video);
-            }
-            return false;
-          }
+          this.fail("sender-config");
+          return false;
         }
       }
-
-      if (
-        !this.owns(room, generation) ||
-        requestedRevision !== this.profileRevision ||
-        this.video !== video ||
-        this.audio !== audio
-      ) {
-        if (updateVideo && this.video === video) {
-          this.startStats(video);
-        }
-        return false;
-      }
-
-      let audioSenderParameters = this.audioSenderParameters;
-      let audioParametersSender = this.audioParametersSender;
-      let audioWarning = this.audioQualityWarning;
-      let audioSucceeded = true;
-      if (updateAudio && audio) {
-        let audioSender: RTCRtpSender | null = null;
-        try {
-          audioSender = publishedAudioSender(audio);
-          const ownedAudioSender = audioSender;
-          const configured = await configurePublishedAudio(
-            audio,
-            ownedAudioSender,
-            profile,
-            () =>
-              this.ownsAudioMutation(
-                room,
-                generation,
-                requestedRevision,
-                audio,
-                ownedAudioSender,
-              ),
-          );
-          if (!configured) {
-            if (updateVideo && this.video === video) {
-              this.startStats(video);
-            }
-            return false;
-          }
-          audioSenderParameters = configured.readback;
-          audioParametersSender = configured.sender;
-          audioWarning = configured.warning;
-        } catch (error) {
-          if (
-            !this.owns(room, generation) ||
-            requestedRevision !== this.profileRevision ||
-            this.audio !== audio ||
-            (audioSender !== null &&
-              audio.publication.audioTrack?.sender !== audioSender)
-          ) {
-            if (updateVideo && this.video === video) {
-              this.startStats(video);
-            }
-            return false;
-          }
-          audioSucceeded = false;
-          audioWarning = audioSenderFailureWarning(error);
-        }
-      }
-
-      if (
-        !this.owns(room, generation) ||
-        requestedRevision !== this.profileRevision ||
-        this.video !== video ||
-        this.audio !== audio
-      ) {
-        if (updateVideo && this.video === video) {
-          this.startStats(video);
-        }
-        return false;
-      }
-      this.senderParameters = senderParameters;
-      this.audioSenderParameters = audioSenderParameters;
-      this.audioParametersSender = audioParametersSender;
-      this.appliedVideoProfile = appliedVideoProfile;
-      this.videoQualityWarning = videoWarning;
-      this.audioQualityWarning = audioWarning;
-      if (updateVideo) {
-        this.startStats(video);
-      }
-      return videoSucceeded && audioSucceeded;
     });
   }
 
   getQualityWarning(): string | null {
-    return mergeQualityWarnings(
-      this.videoQualityWarning,
-      this.audioQualityWarning,
+    return (
+      [this.videoWarning, this.audioWarning].filter(Boolean).join("; ") || null
     );
   }
-
   getFailureStage(): SfuPublisherFailureStage | null {
     return this.failureStage;
   }
-
   getSenderParameters(): VideoSenderParameterReadback | null {
     return this.senderParameters;
   }
-
   getAudioSenderParameters(): AudioSenderParameterReadback | null {
     return this.audioSenderParameters;
   }
 
   setPaused(paused: boolean): void {
     this.paused = paused;
-    this.applyPausedState(
-      this.video?.rawTrack ?? null,
-      this.audio?.rawTrack ?? null,
-    );
-    this.applyPausedState(this.replacementVideoTrack, this.replacementAudioTrack);
+    for (const track of this.ownedTracks) {
+      track.enabled = !paused;
+      if (track.kind === "audio") track.contentHint = "music";
+    }
   }
 
-  private applyPausedState(
-    videoTrack: MediaStreamTrack | null,
-    audioTrack: MediaStreamTrack | null,
-  ): void {
-    if (videoTrack) videoTrack.enabled = !this.paused;
-    if (audioTrack) audioTrack.enabled = !this.paused;
+  async disconnect(): Promise<void> {
+    if (this.closed) return;
+    this.closed = true;
+    const peer = this.peer;
+    this.peer = null;
+    peer?.close();
+    for (const track of this.ownedTracks) this.releaseTrack(track);
+    this.video = null;
+    this.audio = null;
+    this.videoSender = null;
+    this.audioSender = null;
+    if (this.statsTimer !== null) clearInterval(this.statsTimer);
+    this.statsTimer = null;
+    this.resetStats();
   }
 
-  private reapplyAudioAfterReconnect(room: Room, generation: number): void {
-    void this.enqueue(async () => {
-      if (!this.owns(room, generation) || this.state !== "active") {
-        return false;
-      }
-      const sdk = this.sdk;
-      if (!sdk) {
-        return false;
-      }
+  private fail(stage: SfuPublisherFailureStage): void {
+    if (this.closed) return;
+    this.failureStage = stage;
+    void this.disconnect();
+    this.events.onDisconnected?.();
+  }
 
-      const previousVideo = this.video;
-      const previousAudio = this.audio;
-      const previousVideoSender =
-        previousVideo?.publication.videoTrack?.sender ?? null;
-      const previousAudioSender =
-        previousAudio?.publication.audioTrack?.sender ?? null;
-      const currentVideo = previousVideo
-        ? currentPublishedTrack(
-            room,
-            sdk.Track.Source.ScreenShare,
-            previousVideo,
-          )
-        : null;
-      const videoSender = currentVideo?.publication.videoTrack?.sender ?? null;
-      if (!currentVideo || !videoSender) {
-        this.failureStage = "transport";
-        await this.failClosed(room, generation);
-        return false;
-      }
-      const currentAudio = previousAudio
-        ? currentPublishedTrack(
-            room,
-            sdk.Track.Source.ScreenShareAudio,
-            previousAudio,
-          )
-        : null;
-      const audioSender = currentAudio?.publication.audioTrack?.sender ?? null;
-      if (previousAudio && (!currentAudio || !audioSender)) {
-        this.failureStage = "transport";
-        await this.failClosed(room, generation);
-        return false;
-      }
-      const videoChanged =
-        currentVideo.publication !== previousVideo?.publication ||
-        videoSender !== previousVideoSender;
-      const audioChanged =
-        currentAudio?.publication !== previousAudio?.publication ||
-        audioSender !== previousAudioSender;
-      const video = videoChanged ? currentVideo : previousVideo;
-      const audio = audioChanged ? currentAudio : previousAudio;
-      if (videoChanged) {
-        this.stopStats();
-        const profile = this.desiredProfile;
-        if (!profile) {
-          this.failureStage = "transport";
-          await this.failClosed(room, generation);
-          return false;
-        }
-        const previousRawTrack = video.rawTrack;
-        const nextRawTrack = cloneSenderVideoTrack(video.sourceTrack);
-        let retainedNextTrack = false;
-        try {
-          await applyVideoCaptureProfile(nextRawTrack, profile);
-          nextRawTrack.enabled = !this.paused;
-          await replacePublishedTrack(video, nextRawTrack);
-          if (!this.owns(room, generation)) {
-            return false;
-          }
-          nextRawTrack.enabled = !this.paused;
-          video.rawTrack = nextRawTrack;
-          retainedNextTrack = true;
-          previousRawTrack.stop();
-        } catch {
-          this.failureStage = "transport";
-          await this.failClosed(room, generation);
-          return false;
-        } finally {
-          if (!retainedNextTrack) {
-            nextRawTrack.stop();
-          }
-        }
-      }
-      this.video = video;
-      this.audio = audio;
-      if (videoChanged) {
-        this.senderParameters = null;
-        this.videoQualityWarning = null;
-        this.startStats(video);
-      }
+  private ownTrack<T extends MediaStreamTrack | null>(track: T): T {
+    if (track) this.ownedTracks.add(track);
+    return track;
+  }
 
-      const profile = this.desiredProfile;
-      const profileRevision = this.profileRevision;
-      if (!audio || !profile) {
-        this.audioSenderParameters = null;
-        this.audioParametersSender = null;
-        this.audioQualityWarning = null;
-        return true;
-      }
-      retainPublishedAudioOptions(audio, profile, sdk);
+  private releaseTrack(track: MediaStreamTrack | null): void {
+    if (track && this.ownedTracks.delete(track)) track.stop();
+  }
 
-      if (!audioSender) {
-        this.failureStage = "transport";
-        await this.failClosed(room, generation);
+  private restartIce(): Promise<boolean> {
+    return this.enqueue(async () => {
+      const peer = this.peer;
+      if (!peer || !this.profile || peer.pc.signalingState !== "stable")
         return false;
-      }
-      if (
-        audio.publication !== previousAudio?.publication ||
-        this.audioParametersSender !== audioSender
-      ) {
-        this.audioSenderParameters = null;
-        this.audioParametersSender = null;
-        this.audioQualityWarning = null;
-      }
       try {
-        const ownedAudioSender = audioSender;
-        const requestedMaxBitrate = screenAudioBitrate(
-          profile.screenAudioQuality,
+        await peer.sendDescription(
+          await peer.pc.createOffer({ iceRestart: true }),
+          this.media(this.profile),
         );
-        const appliedMaxBitrate =
-          ownedAudioSender.getParameters().encodings[0]?.maxBitrate ?? null;
-        if (appliedMaxBitrate === requestedMaxBitrate) {
-          this.audioSenderParameters = {
-            requestedMaxBitrate,
-            appliedMaxBitrate,
-            mismatch: false,
-          };
-          this.audioParametersSender = ownedAudioSender;
-          this.audioQualityWarning = null;
-          return true;
-        }
-        const configured = await configurePublishedAudio(
-          audio,
-          ownedAudioSender,
-          profile,
-          () =>
-            this.ownsAudioMutation(
-              room,
-              generation,
-              profileRevision,
-              audio,
-              ownedAudioSender,
-            ),
-        );
-        if (!configured) {
-          return false;
-        }
-        this.audioSenderParameters = configured.readback;
-        this.audioParametersSender = configured.sender;
-        this.audioQualityWarning = configured.warning;
         return true;
-      } catch (error) {
-        if (
-          !this.owns(room, generation) ||
-          profileRevision !== this.profileRevision ||
-          this.audio !== audio ||
-          (audioSender !== null &&
-            audio.publication.audioTrack?.sender !== audioSender)
-        ) {
-          return false;
-        }
-        this.audioQualityWarning = audioSenderFailureWarning(error);
+      } catch {
         return false;
       }
     });
   }
 
-  async disconnect(): Promise<void> {
-    const room = this.invalidate();
-    if (room) {
-      await safeDisconnect(room);
-    }
-  }
-
-  private enqueue<T>(operation: () => Promise<T>): Promise<T> {
-    const result = this.operationTail.then(operation, operation);
-    this.operationTail = result.then(
+  private enqueue(work: () => Promise<boolean>): Promise<boolean> {
+    const next = this.operationTail.then(work, work);
+    this.operationTail = next.then(
       () => undefined,
       () => undefined,
     );
-    return result;
+    return next;
   }
 
-  private requireOwnedRoom(
-    generation: number,
-    expectedState: PublisherState | PublisherState[],
-  ): Room | null {
-    if (!this.ownsGeneration(generation)) {
-      return null;
-    }
-    const expected = Array.isArray(expectedState)
-      ? expectedState
-      : [expectedState];
-    if (!expected.includes(this.state)) {
-      throw new Error(`SFU publisher is ${this.state}, expected ${expected.join(" or ")}`);
-    }
-    if (!this.room) {
-      throw new Error("SFU publisher room is unavailable");
-    }
-    return this.room;
-  }
-
-  private ownsGeneration(generation: number): boolean {
-    return this.generation === generation && this.state !== "disconnected";
-  }
-
-  private owns(room: Room, generation: number): boolean {
-    return this.room === room && this.ownsGeneration(generation);
-  }
-
-  private ownsAudioMutation(
-    room: Room,
-    generation: number,
-    profileRevision: number,
-    audio: PublishedTrack,
-    sender: RTCRtpSender,
-  ): boolean {
-    return (
-      this.owns(room, generation) &&
-      this.state === "active" &&
-      this.profileRevision === profileRevision &&
-      this.audio === audio &&
-      audio.publication.audioTrack?.sender === sender
-    );
-  }
-
-  private invalidate(): Room | null {
-    if (this.state === "disconnected") {
-      return null;
-    }
-    ++this.generation;
-    this.stopStats();
-    this.state = "disconnected";
-    const room = this.room;
-    releasePublishedTrack(this.video);
-    this.room = null;
-    this.sdk = null;
-    this.video = null;
-    this.audio = null;
-    this.desiredProfile = null;
-    this.appliedVideoProfile = null;
-    this.startupVideoProfilePending = false;
-    ++this.profileRevision;
-    this.senderParameters = null;
-    this.audioSenderParameters = null;
-    this.audioParametersSender = null;
-    this.videoQualityWarning = null;
-    this.audioQualityWarning = null;
-    return room;
-  }
-
-  private async failClosed(room: Room, generation: number): Promise<void> {
-    if (!this.owns(room, generation)) {
-      return;
-    }
-    this.invalidate();
-    await safeDisconnect(room);
-    this.notifyTerminalDisconnect();
-  }
-
-  private notifyTerminalDisconnect(): void {
-    if (this.terminalNotified) {
-      return;
-    }
-    this.terminalNotified = true;
-    this.events.onDisconnected?.();
-  }
-
-  private retainSenderParameters(
-    configuration: PublishedVideoConfiguration,
-    audioSenderParameters: AudioSenderParameterReadback | null,
-    audioWarning: string | null,
-    audioParametersSender: RTCRtpSender | null,
-  ): void {
-    this.senderParameters = configuration.readback;
-    this.audioSenderParameters = audioSenderParameters;
-    this.audioParametersSender = audioParametersSender;
-    this.videoQualityWarning = configuration.warning;
-    this.audioQualityWarning = audioWarning;
-  }
-
-  private startStats(video: PublishedTrack): void {
-    this.stopStats();
-    this.statsVideo = video;
-    this.statsTimer = setInterval(() => {
-      void this.updateStats(video);
-    }, STATS_INTERVAL_MS);
-  }
-
-  private async updateStats(video: PublishedTrack): Promise<void> {
-    if (
-      this.state !== "active" ||
-      this.statsVideo !== video ||
-      this.video !== video
-    ) {
-      return;
-    }
-    const videoSender = video.publication.videoTrack?.sender;
-    const audio = this.audio;
-    const audioSender = audio?.publication.audioTrack?.sender ?? null;
-    if (
-      !videoSender ||
-      videoSender.track !== video.rawTrack ||
-      (audio !== null &&
-        (!audioSender || audioSender.track !== audio.rawTrack))
-    ) {
-      this.resetStatsIdentity();
-      return;
-    }
-    const audioTrack = audio?.rawTrack ?? null;
-    let identity = this.statsIdentity;
-    if (
-      !identity ||
-      identity.video !== video ||
-      identity.videoSender !== videoSender ||
-      identity.videoTrack !== video.rawTrack ||
-      identity.audio !== audio ||
-      identity.audioSender !== audioSender ||
-      identity.audioTrack !== audioTrack
-    ) {
-      this.resetStatsIdentity();
-      identity = {
-        video,
-        videoSender,
-        videoTrack: video.rawTrack,
-        audio,
-        audioSender,
-        audioTrack,
-        accumulator: createStatsAccumulator(),
-        nativeQualityAccumulator: createNativeSenderQualityAccumulator(),
-      };
-      this.statsIdentity = identity;
-    }
-    if (this.statsInFlight === identity) {
-      return;
-    }
-    this.statsInFlight = identity;
-    try {
-      const report = mergeStatsReports(
-        await Promise.all([
-          identity.videoSender.getStats(),
-          identity.audioSender?.getStats(),
-        ]),
-      );
-      if (
-        !report ||
-        this.state !== "active" ||
-        this.statsIdentity !== identity ||
-        this.video !== identity.video ||
-        identity.video.rawTrack !== identity.videoTrack ||
-        identity.video.publication.videoTrack?.sender !==
-          identity.videoSender ||
-        identity.videoSender.track !== identity.videoTrack ||
-        this.audio !== identity.audio ||
-        (identity.audio?.rawTrack ?? null) !== identity.audioTrack ||
-        (identity.audio?.publication.audioTrack?.sender ?? null) !==
-          identity.audioSender ||
-        (identity.audioSender?.track ?? null) !== identity.audioTrack
-      ) {
-        return;
-      }
-      const nativeQuality = collectNativeSenderQualityFromReport(
-        report,
-        identity.videoTrack.id,
-        identity.nativeQualityAccumulator,
-      );
-      const connectionMetrics = collectConnectionMetricsFromReport(
-        report,
-        "send",
-        identity.accumulator,
-        {
-          trackIdentifier: identity.videoTrack.id,
-          rid: highestActiveVideoRid(report, identity.videoTrack.id),
-          audioTrackIdentifier: identity.audioTrack?.id ?? null,
-        },
-      );
-      const videoEncodings = identity.videoSender.getParameters().encodings;
-      const metrics = {
-        ...connectionMetrics,
-        videoEncodingCount:
-          videoEncodings.length > 0 ? videoEncodings.length : null,
-        activeVideoEncodingCount:
-          videoEncodings.length > 0
-            ? videoEncodings.filter((encoding) => encoding.active !== false)
-                .length
-            : null,
-        bitrateKbps:
-          nativeQuality.bitrateKbps ?? connectionMetrics.bitrateKbps,
-        nativeEdgeQualityState: nativeQuality.nativeEdgeQualityState,
-        ...(nativeQuality.nativeEdgeQualityState === "unknown"
-          ? {}
-          : {
-              qualityLimitationReason:
-                nativeQuality.qualityLimitationReason,
-              sampleTimestampMs: nativeQuality.sampleTimestampMs,
-              sampleWindowMs: nativeQuality.sampleWindowMs,
-              intervalFramesEncoded: nativeQuality.intervalFramesEncoded,
-            }),
-        ...captureMetrics(identity.videoTrack),
-      };
-      if (
-        this.startupVideoProfilePending &&
-        maxEncodedVideoFrames(report, identity.videoTrack.id) >=
-          STARTUP_VIDEO_ENCODED_FRAMES
-      ) {
-        this.startupVideoProfilePending = false;
-        const desiredProfile = this.desiredProfile;
-        if (desiredProfile) {
-          void this.updateProfile(desiredProfile);
-        }
-      }
-      this.events.onStats?.(metrics);
-    } catch {
-      // Stats are observational and must never disrupt active SFU media.
-    } finally {
-      if (this.statsInFlight === identity) {
-        this.statsInFlight = null;
-      }
-    }
-  }
-
-  private stopStats(): void {
-    if (this.statsTimer !== null) {
-      clearInterval(this.statsTimer);
-      this.statsTimer = null;
-    }
-    this.statsVideo = null;
-    this.statsInFlight = null;
-    this.resetStatsIdentity();
-  }
-
-  private resetStatsIdentity(): void {
-    const hadIdentity = this.statsIdentity !== null;
-    this.statsIdentity = null;
-    if (hadIdentity) {
-      this.events.onStats?.(null);
-    }
-  }
-}
-
-async function publishTrack(
-  room: Room,
-  rawTrack: MediaStreamTrack,
-  source: Track.Source,
-  options: TrackPublishOptions,
-): Promise<PublishedTrack> {
-  const publication = await room.localParticipant.publishTrack(rawTrack, {
-    source,
-    ...options,
-  });
-  if (!publication.track) {
-    throw new Error("SFU did not retain the published track");
-  }
-  return {
-    publication,
-    sourceTrack: rawTrack,
-    rawTrack,
-    stopOnRelease: false,
-  };
-}
-
-async function publishVideoTrack(
-  room: Room,
-  sourceTrack: MediaStreamTrack,
-  profile: QualityProfile,
-  source: Track.Source,
-  options: TrackPublishOptions,
-): Promise<PublishedTrack> {
-  const rawTrack = cloneSenderVideoTrack(sourceTrack);
-  try {
-    await applyVideoCaptureProfile(rawTrack, profile);
-    const published = await publishTrack(room, rawTrack, source, options);
-    published.sourceTrack = sourceTrack;
-    published.stopOnRelease = true;
-    return published;
-  } catch (error) {
-    rawTrack.stop();
-    throw error;
-  }
-}
-
-async function replacePublishedTrack(
-  published: PublishedTrack,
-  nextTrack: MediaStreamTrack,
-): Promise<void> {
-  const localTrack = published.publication.track;
-  if (!localTrack) {
-    throw new Error("SFU publication has no local track");
-  }
-  await localTrack.replaceTrack(nextTrack);
-}
-
-async function unpublishTrack(room: Room, published: PublishedTrack): Promise<void> {
-  try {
-    const localTrack = published.publication.track;
-    if (!localTrack) {
-      throw new Error("SFU publication has no local track");
-    }
-    await room.localParticipant.unpublishTrack(localTrack, false);
-  } finally {
-    releasePublishedTrack(published);
-  }
-}
-
-function releasePublishedTrack(published: PublishedTrack | null): void {
-  if (!published?.stopOnRelease) {
-    return;
-  }
-  published.stopOnRelease = false;
-  published.rawTrack.stop();
-}
-
-async function configurePublishedVideo(
-  published: PublishedTrack,
-  profile: QualityProfile,
-  ownsPublication: () => boolean,
-): Promise<PublishedVideoConfiguration | null> {
-  const videoTrack = published.publication.videoTrack;
-  const sender = videoTrack?.sender;
-  if (!sender) {
-    throw new Error("SFU video publication has no RTP sender");
-  }
-  const previousPreference = videoTrack.publishOptions?.degradationPreference;
-  await videoTrack.setDegradationPreference(profile.degradationPreference);
-  if (!ownsPublication()) {
-    if (previousPreference) {
-      await videoTrack.setDegradationPreference(previousPreference);
-    }
-    return null;
-  }
-  const readback = await configureVideoSender(sender, profile);
-  if (!ownsPublication()) {
-    if (previousPreference) {
-      await videoTrack.setDegradationPreference(previousPreference);
-    }
-    return null;
-  }
-  const retainedPublishOptions = {
-    ...published.publication.options,
-    ...videoTrack.publishOptions,
-    ...videoPublishOptions(profile, publishedVideoCodec(published)),
-  };
-  published.publication.options = retainedPublishOptions;
-  videoTrack.publishOptions = retainedPublishOptions;
-  return {
-    readback,
-    warning: senderParameterWarning(readback),
-  };
-}
-
-async function configurePublishedAudio(
-  published: PublishedTrack,
-  sender: RTCRtpSender,
-  profile: QualityProfile,
-  ownsPublication: () => boolean,
-): Promise<PublishedAudioConfiguration | null> {
-  if (published.publication.audioTrack?.sender !== sender) {
-    return null;
-  }
-  const readback = await configureScreenAudioSender(
-    sender,
-    profile.screenAudioQuality,
-  );
-  if (
-    !ownsPublication() ||
-    published.publication.audioTrack?.sender !== sender
-  ) {
-    return null;
-  }
-  return {
-    sender,
-    readback,
-    warning: audioSenderParameterWarning(readback),
-  };
-}
-
-function publishedAudioSender(published: PublishedTrack): RTCRtpSender {
-  const sender = published.publication.audioTrack?.sender;
-  if (!sender) {
-    throw new Error("SFU audio publication has no RTP sender");
-  }
-  return sender;
-}
-
-function currentPublishedTrack(
-  room: Room,
-  source: Track.Source,
-  expected: PublishedTrack,
-): PublishedTrack | null {
-  const publication = room.localParticipant.getTrackPublication(source);
-  const rawTrack = publication?.track?.mediaStreamTrack;
-  if (
-    !publication ||
-    !rawTrack ||
-    rawTrack !== expected.rawTrack
-  ) {
-    return null;
-  }
-  return {
-    publication,
-    sourceTrack: expected.sourceTrack,
-    rawTrack,
-    stopOnRelease: expected.stopOnRelease,
-  };
-}
-
-function retainPublishedAudioOptions(
-  published: PublishedTrack,
-  profile: QualityProfile,
-  sdk: LiveKit,
-): void {
-  published.publication.options = {
-    ...published.publication.options,
-    ...audioPublishOptions(sdk, profile.screenAudioQuality),
-  };
-}
-
-function audioSenderFailureWarning(_error: unknown): string {
-  return say("host.fail.sfuAudioParams");
-}
-
-function mergeQualityWarnings(...warnings: Array<string | null>): string | null {
-  const present = warnings.filter(
-    (warning): warning is string => warning !== null,
-  );
-  return present.length > 0 ? present.join("；") : null;
-}
-
-function publishedVideoCodec(published: PublishedTrack): BrowserVideoCodec {
-  return published.publication.options?.videoCodec === "h264"
-    ? "h264"
-    : "vp8";
-}
-
-function videoPublishOptions(
-  profile: QualityProfile,
-  videoCodec: BrowserVideoCodec,
-): TrackPublishOptions {
-  return {
-    backupCodec: false,
-    videoCodec,
-    screenShareEncoding: {
+  private encodings(profile: QualityProfile): RTCRtpEncodingParameters[] {
+    const settings = this.video?.getSettings();
+    const ceiling = QUALITY_RESOLUTIONS[profile.resolution];
+    const width = settings?.width ?? ceiling.width;
+    const height = settings?.height ?? ceiling.height;
+    const scale = Math.max(1, width / ceiling.width, height / ceiling.height);
+    // LiveKit 2.22.1 publishUtils: screen share uses half size, same FPS,
+    // and quarter bitrate with a 150 kbps floor. WebRTC budgets the entire PC.
+    const high = {
+      rid: this.layerCount === 2 ? "h" : "q",
+      active: this.activeCount >= this.layerCount,
+      scaleResolutionDownBy: scale,
       maxBitrate: profile.maxBitrate,
       maxFramerate: profile.maxFramerate,
-    },
-    degradationPreference: profile.degradationPreference,
-  };
-}
-
-function audioPublishOptions(
-  sdk: LiveKit,
-  quality: ScreenAudioQuality | undefined,
-): TrackPublishOptions {
-  const resolvedQuality = resolveScreenAudioQuality(quality);
-  const audioPreset =
-    resolvedQuality === "saver"
-      ? sdk.AudioPresets.musicStereo
-      : resolvedQuality === "music"
-        ? sdk.AudioPresets.musicHighQualityStereo
-        : { maxBitrate: screenAudioBitrate(resolvedQuality) };
-  return {
-    audioPreset,
-    forceStereo: true,
-    dtx: false,
-    red: false,
-  };
-}
-
-async function safeDisconnect(room: Room): Promise<void> {
-  const existing = roomDisconnects.get(room);
-  if (existing) {
-    await existing;
-    return;
+    };
+    return this.layerCount === 2
+      ? [
+          {
+            rid: "q",
+            active: this.activeCount > 0,
+            scaleResolutionDownBy: 2 * scale,
+            maxBitrate: Math.max(150_000, Math.floor(profile.maxBitrate / 4)),
+            maxFramerate: profile.maxFramerate,
+          },
+          high,
+        ]
+      : [high];
   }
-  const disconnecting = room.disconnect(false).catch(() => undefined);
-  roomDisconnects.set(room, disconnecting);
-  await disconnecting;
+
+  private media(profile: QualityProfile): SfuMedia {
+    const settings = this.video!.getSettings();
+    const ceiling = QUALITY_RESOLUTIONS[profile.resolution];
+    return {
+      codec: this.codec,
+      layers: this.encodings(profile).map((encoding) => ({
+        rid: encoding.rid!,
+        width: Math.max(
+          1,
+          Math.floor(
+            (settings.width ?? ceiling.width) / encoding.scaleResolutionDownBy!,
+          ),
+        ),
+        height: Math.max(
+          1,
+          Math.floor(
+            (settings.height ?? ceiling.height) /
+              encoding.scaleResolutionDownBy!,
+          ),
+        ),
+        bitrate: encoding.maxBitrate!,
+      })),
+      audio: this.audio !== null,
+      audioBitrate: screenAudioBitrate(profile.screenAudioQuality),
+    };
+  }
+
+  private async configure(
+    profile: QualityProfile,
+    configureVideo = true,
+  ): Promise<boolean> {
+    const peer = this.peer;
+    const sender = this.videoSender;
+    if (!peer || !sender) return false;
+    if (configureVideo) {
+      const parameters = sender.getParameters();
+      const encodings = this.encodings(profile);
+      parameters.encodings.forEach((encoding, index) =>
+        Object.assign(encoding, encodings[index]),
+      );
+      await sender.setParameters(parameters);
+      if (this.peer !== peer) return false;
+      const readback = await configureVideoSender(
+        sender,
+        this.startupPending ? startupVideoProfile(profile) : profile,
+      );
+      if (this.peer !== peer) return false;
+      this.senderParameters = readback;
+      this.videoWarning = senderParameterWarning(readback);
+    }
+    if (!this.audio || !this.audioSender) {
+      this.audioSenderParameters = null;
+      this.audioWarning = null;
+      return true;
+    }
+    try {
+      const audio = await configureScreenAudioSender(
+        this.audioSender,
+        profile.screenAudioQuality,
+      );
+      if (this.peer !== peer) return false;
+      this.audioSenderParameters = audio;
+      this.audioWarning = audioSenderParameterWarning(audio);
+      return true;
+    } catch {
+      this.audioWarning = say("host.fail.sfuAudioParams");
+      return false;
+    }
+  }
+
+  private startStats(): void {
+    this.resetStats();
+    this.statsTimer = setInterval(() => void this.updateStats(), 2_000);
+  }
+
+  private resetStats(): void {
+    this.stats = createStatsAccumulator();
+    this.nativeStats = createNativeSenderQualityAccumulator();
+    this.statsInFlight = null;
+    this.events.onStats?.(null);
+  }
+
+  private async updateStats(): Promise<void> {
+    const peer = this.peer;
+    const video = this.video;
+    const sender = this.videoSender;
+    const stats = this.stats;
+    const nativeStats = this.nativeStats;
+    if (!peer || !video || !sender || this.statsInFlight === stats) return;
+    this.statsInFlight = stats;
+    try {
+      const report = await peer.pc.getStats();
+      if (this.peer !== peer || this.video !== video || this.stats !== stats)
+        return;
+      const native = collectNativeSenderQualityFromReport(
+        report,
+        video.id,
+        nativeStats,
+      );
+      const connection = collectConnectionMetricsFromReport(
+        report,
+        "send",
+        stats,
+        {
+          trackIdentifier: video.id,
+          rid: highestActiveVideoRid(report, video.id),
+          audioTrackIdentifier: this.audio?.id ?? null,
+        },
+      );
+      const encodings = sender.getParameters().encodings;
+      this.events.onStats?.({
+        ...connection,
+        ...captureMetrics(video),
+        videoEncodingCount: encodings.length,
+        activeVideoEncodingCount: encodings.filter(
+          (encoding) => encoding.active !== false,
+        ).length,
+        bitrateKbps: native.bitrateKbps ?? connection.bitrateKbps,
+        nativeEdgeQualityState: native.nativeEdgeQualityState,
+        ...(native.nativeEdgeQualityState === "unknown"
+          ? {}
+          : {
+              qualityLimitationReason: native.qualityLimitationReason,
+              sampleTimestampMs: native.sampleTimestampMs,
+              sampleWindowMs: native.sampleWindowMs,
+              intervalFramesEncoded: native.intervalFramesEncoded,
+            }),
+      });
+      if (
+        this.startupPending &&
+        maxEncodedVideoFrames(report, video.id) >= STARTUP_VIDEO_ENCODED_FRAMES
+      ) {
+        this.startupPending = false;
+        if (this.profile) void this.updateProfile(this.profile);
+      }
+    } catch {
+      /* Diagnostics do not own media lifetime. */
+    } finally {
+      if (this.statsInFlight === stats) this.statsInFlight = null;
+    }
+  }
 }
 
-function requiredVideoTrack(stream: MediaStream): MediaStreamTrack {
+function requiredVideo(stream: MediaStream): MediaStreamTrack {
   const track = stream.getVideoTracks()[0];
-  if (!track) {
-    throw new Error(say("host.capture.noSource"));
-  }
+  if (!track || track.readyState === "ended")
+    throw new Error("SFU source has no live video track");
   return track;
 }

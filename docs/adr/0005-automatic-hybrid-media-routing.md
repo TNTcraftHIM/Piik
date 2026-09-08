@@ -4,6 +4,12 @@
 - Date: 2026-08-20
 - Last updated: 2026-08-30
 
+The current candidate replaces this ADR's external LiveKit room/token lifecycle
+with admitted in-process SFU resources under [ADR-0013](./0013-embedded-node-local-media.md).
+Exact physical subscription closure now releases its reservation. The graph,
+capacity and serial-operation decisions below remain; external-service details
+describe the earlier implementation and its production history.
+
 ## Context
 
 Direct Browser WebRTC gives Screener its desired latency and distributed cost,

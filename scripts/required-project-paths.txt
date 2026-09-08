@@ -67,4 +67,3 @@ scripts/check-project-state.ps1
 scripts/check-docs.mjs
 scripts/install-hooks.sh
 scripts/install-hooks.ps1
-deploy/coturn/turnserver.conf.example

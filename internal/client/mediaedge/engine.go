@@ -4,17 +4,20 @@ import (
 	"context"
 	"errors"
 	"net"
+	"net/netip"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/TNTcraftHIM/Screener/internal/client/portmapping"
+	"github.com/TNTcraftHIM/Screener/internal/media/encoded"
+	"github.com/TNTcraftHIM/Screener/internal/media/forwarding"
 	"github.com/pion/ice/v4"
 	"github.com/pion/interceptor"
 	"github.com/pion/logging"
-	"github.com/pion/rtp"
-	"github.com/pion/rtp/codecs"
+	"github.com/pion/rtcp"
 	"github.com/pion/stun/v3"
 	"github.com/pion/webrtc/v4"
 )
@@ -54,18 +57,20 @@ type EngineOptions struct {
 }
 
 type Engine struct {
-	api           *webrtc.API
-	mux           *ice.UniversalUDPMuxDefault
-	listenAddress string
-	localPort     int
-	portMapping   *portmapping.Mapping
-	bandwidth     *bandwidthObservers
-	ctx           context.Context
-	cancel        context.CancelFunc
+	api            *webrtc.API
+	settings       webrtc.SettingEngine
+	mux            *ice.UniversalUDPMuxDefault
+	listenAddress  string
+	localPort      int
+	portMapping    *portmapping.Mapping
+	initialBitrate int
+	ctx            context.Context
+	cancel         context.CancelFunc
 
-	mu     sync.Mutex
-	edges  map[*Edge]struct{}
-	closed bool
+	mu           sync.Mutex
+	edges        map[*Edge]struct{}
+	publications map[*Publication]struct{}
+	closed       bool
 }
 
 func NewEngine(options EngineOptions) (*Engine, error) {
@@ -82,10 +87,12 @@ func NewEngine(options EngineOptions) (*Engine, error) {
 		return nil, errors.New("native media UDP socket is unavailable")
 	}
 	loggerFactory := logging.NewDefaultLoggerFactory()
+	ready := make(chan struct{})
 	mux := ice.NewUniversalUDPMuxDefault(ice.UniversalUDPMuxParams{
 		Logger:  loggerFactory.NewLogger("screener-ice"),
-		UDPConn: connection,
+		UDPConn: &initializingUDPConn{UDPConn: connection, ready: ready},
 	})
+	close(ready)
 	settingEngine := webrtc.SettingEngine{LoggerFactory: loggerFactory}
 	settingEngine.SetICEUDPMux(mux)
 	settingEngine.SetIncludeLoopbackCandidate(options.IncludeLoopback)
@@ -105,38 +112,57 @@ func NewEngine(options EngineOptions) (*Engine, error) {
 		return nil, err
 	}
 	registry := &interceptor.Registry{}
-	bandwidth, err := configureBandwidthObservers(
-		mediaEngine,
-		registry,
-		options.InitialBitrate,
-	)
-	if err != nil {
-		_ = mux.Close()
-		return nil, err
-	}
 	if err = webrtc.RegisterDefaultInterceptors(mediaEngine, registry); err != nil {
 		_ = mux.Close()
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
+	if options.InitialBitrate <= 0 {
+		options.InitialBitrate = defaultNativeSourceInitialBitrate
+	}
 	engine := &Engine{
 		api: webrtc.NewAPI(
 			webrtc.WithMediaEngine(mediaEngine),
 			webrtc.WithInterceptorRegistry(registry),
 			webrtc.WithSettingEngine(settingEngine),
 		),
-		mux:           mux,
-		listenAddress: connection.LocalAddr().String(),
-		localPort:     connection.LocalAddr().(*net.UDPAddr).Port,
-		bandwidth:     bandwidth,
-		ctx:           ctx,
-		cancel:        cancel,
-		edges:         make(map[*Edge]struct{}),
+		mux:            mux,
+		settings:       settingEngine,
+		listenAddress:  connection.LocalAddr().String(),
+		localPort:      connection.LocalAddr().(*net.UDPAddr).Port,
+		initialBitrate: options.InitialBitrate,
+		ctx:            ctx,
+		cancel:         cancel,
+		edges:          make(map[*Edge]struct{}),
+		publications:   make(map[*Publication]struct{}),
 	}
 	if options.PortMapping {
 		engine.portMapping = portmapping.Start(connection.LocalAddr().(*net.UDPAddr).Port)
 	}
 	return engine, nil
+}
+
+// Pion starts its reader before publishing the embedded UDP mux. Both receive
+// paths wait for construction; the AddrPort interface preserves its fast path.
+type initializingUDPConn struct {
+	*net.UDPConn
+	ready <-chan struct{}
+}
+
+var _ ice.AddrPortReaderWriter = (*initializingUDPConn)(nil)
+
+func (connection *initializingUDPConn) ReadFrom(buffer []byte) (int, net.Addr, error) {
+	<-connection.ready
+	return connection.UDPConn.ReadFrom(buffer)
+}
+
+func (connection *initializingUDPConn) ReadFromAddrPort(buffer []byte) (int, netip.AddrPort, error) {
+	<-connection.ready
+	return connection.UDPConn.ReadFromUDPAddrPort(buffer)
+}
+
+func (connection *initializingUDPConn) WriteToAddrPort(buffer []byte, address netip.AddrPort) (int, error) {
+	return connection.UDPConn.WriteToUDPAddrPort(buffer, address)
 }
 
 type mappedAddress struct {
@@ -232,47 +258,49 @@ func (engine *Engine) ListenAddress() string {
 	return engine.listenAddress
 }
 
-func (engine *Engine) NewSource(codec string, capacity int, requestKeyFrame func()) (*Source, error) {
-	parameters, supported := videoCodecs[codec]
+func (engine *Engine) NewSource(codec string, capacity, layers int, requestKeyFrame func()) (*Source, error) {
+	_, supported := videoCodecs[codec]
 	if !supported {
 		return nil, errors.New("native video codec is unsupported")
 	}
 	if capacity < 1 || capacity > 4 {
 		return nil, errors.New("native media source capacity is outside the route bound")
 	}
+	if layers < 1 || layers > 3 {
+		return nil, errors.New("native media source output count is invalid")
+	}
 	engine.mu.Lock()
 	defer engine.mu.Unlock()
 	if engine.closed {
 		return nil, errors.New("native media engine is closed")
 	}
-	track, err := webrtc.NewTrackLocalStaticRTP(
-		parameters.RTPCodecCapability,
-		"screen",
-		"screener-native",
-	)
+	source := &Source{
+		engine: engine, codec: codec, formats: make([]atomic.Uint64, layers),
+		capacity: capacity, requestKeyFrame: requestKeyFrame, edges: make(map[*Edge]bool),
+		publications: make(map[*Publication]struct{}),
+	}
+	media, err := forwarding.NewEncodedSource(forwarding.SourceOptions{
+		ID: "screen", StreamID: "screener-native", Codec: videoCodecs[codec],
+		Formats: make([]forwarding.LayerFormat, layers), MaxPackets: encoded.MaxPacketWindow,
+		OnRTCP: func(layer int, packets []rtcp.Packet) {
+			for _, packet := range packets {
+				switch packet.(type) {
+				case *rtcp.PictureLossIndication, *rtcp.FullIntraRequest:
+					source.requestLayerKeyFrame(layer)
+				}
+			}
+		},
+	})
 	if err != nil {
 		return nil, err
 	}
-	var payloader rtp.Payloader = &codecs.H264Payloader{}
-	if codec == "vp8" {
-		payloader = &codecs.VP8Payloader{EnablePictureID: true}
+	source.media = media
+	if requestKeyFrame != nil {
+		source.recoveryRequests = make(chan struct{}, 1)
+		source.recoveryStopped = make(chan struct{})
+		go source.runRecovery()
 	}
-	return &Source{
-		engine: engine,
-		track:  track,
-		codec:  codec,
-		packetizer: rtp.NewPacketizer(
-			videoPacketMTU,
-			uint8(parameters.PayloadType),
-			0,
-			payloader,
-			rtp.NewRandomSequencer(),
-			videoClockRate,
-		),
-		capacity:        capacity,
-		requestKeyFrame: requestKeyFrame,
-		edges:           make(map[*Edge]bool),
-	}, nil
+	return source, nil
 }
 
 func (engine *Engine) register(edge *Edge) error {
@@ -303,9 +331,14 @@ func (engine *Engine) Close() error {
 	for edge := range engine.edges {
 		edges = append(edges, edge)
 	}
+	publications := make([]*Publication, 0, len(engine.publications))
+	for publication := range engine.publications {
+		publications = append(publications, publication)
+	}
 	engine.mu.Unlock()
-	for _, edge := range edges {
-		_ = edge.Close()
+	closeEdges(edges)
+	for _, publication := range publications {
+		_ = publication.Close()
 	}
 	if engine.portMapping != nil {
 		engine.portMapping.Close()

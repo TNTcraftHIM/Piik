@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-const validProbe = `{"protocol":4,"platform":"windows","platformBuild":"26200","videoCapture":true,"processAudio":true,"systemAudio":true,"softwareVP8":true,"adapters":[{"index":0,"name":"GPU","identity":"0x0:0x1","hardwareH264":[{"index":0,"name":"H264","identity":"{encoder}"}]}]}`
+const validProbe = `{"protocol":7,"platform":"windows","platformBuild":"26200","videoCapture":true,"processAudio":true,"systemAudio":true,"softwareVP8":true,"adapters":[{"index":0,"name":"GPU","identity":"0x0:0x1","hardwareH264":[{"index":0,"name":"H264","identity":"{encoder}"}]}]}`
 
 func TestDecodeProbeSeparatesCaptureAudioAndHardwareEncode(t *testing.T) {
 	capabilities, err := decodeProbe([]byte(validProbe))
@@ -21,8 +21,8 @@ func TestDecodeProbeSeparatesCaptureAudioAndHardwareEncode(t *testing.T) {
 
 func TestDecodeProbeRejectsUnknownTrailingAndDuplicateData(t *testing.T) {
 	tests := []string{
-		strings.Replace(validProbe, `"protocol":4`, `"protocol":4,"extra":true`, 1),
-		strings.Replace(validProbe, `"protocol":4`, `"protocol":1`, 1),
+		strings.Replace(validProbe, `"protocol":7`, `"protocol":7,"extra":true`, 1),
+		strings.Replace(validProbe, `"protocol":7`, `"protocol":6`, 1),
 		validProbe + `{}`,
 		strings.Replace(validProbe, `"adapters":[`, `"adapters":[{"index":0,"name":"GPU 2","identity":"0x0:0x2","hardwareH264":[]},`, 1),
 	}
@@ -35,7 +35,7 @@ func TestDecodeProbeRejectsUnknownTrailingAndDuplicateData(t *testing.T) {
 
 func TestSummaryDoesNotConflateVideoAudioAndEncoder(t *testing.T) {
 	capabilities, err := decodeProbe([]byte(
-		`{"protocol":4,"platform":"windows","platformBuild":"19045","videoCapture":true,"processAudio":false,"systemAudio":true,"adapters":[{"index":0,"name":"GPU","identity":"0x0:0x1","hardwareH264":[]}]}`,
+		`{"protocol":7,"platform":"windows","platformBuild":"19045","videoCapture":true,"processAudio":false,"systemAudio":true,"adapters":[{"index":0,"name":"GPU","identity":"0x0:0x1","hardwareH264":[]}]}`,
 	))
 	if err != nil {
 		t.Fatal(err)

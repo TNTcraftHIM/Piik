@@ -113,10 +113,6 @@ func TestScalarValidators(t *testing.T) {
 		{"viewer password with newline", ValidViewerPassword, "line\nbreak", false},
 		{"viewer password past ceiling", ValidViewerPassword,
 			repeat("x", MaxViewerPasswordLength+1), false},
-		{"livekit url", ValidLiveKitWebSocketURL, "wss://sfu.example.test", true},
-		{"livekit url plain ws", ValidLiveKitWebSocketURL, "ws://127.0.0.1:7880", true},
-		{"livekit url https", ValidLiveKitWebSocketURL, "https://sfu.example.test", false},
-		{"livekit url relative", ValidLiveKitWebSocketURL, "/signal", false},
 	} {
 		t.Run(sample.name, func(t *testing.T) {
 			if got := sample.valid(sample.value); got != sample.want {

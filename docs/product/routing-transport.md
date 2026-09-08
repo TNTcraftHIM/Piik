@@ -16,8 +16,8 @@ owns ports and [self-hosting](../operations/self-hosting.md) owns service setup.
 - SFU-fed and peer-fed Viewers may both serve as ordinary peer parents.
 - A route ends in usable media, explicit bounded waiting, or clear failure.
 
-Every deployment uses this controller. Omitting LiveKit keeps the same bounded
-P2P graph without its SFU fallback; there is no separate Host-star mode.
+Every deployment uses this controller. Leaving embedded SFU disabled keeps the
+same bounded P2P graph without its SFU fallback; there is no separate Host-star mode.
 
 ## Per-Share Route Policy
 
@@ -111,32 +111,44 @@ fanout skew; it is not periodic balancing and does not move a healthy branch
 without admitted overlap.
 
 Framework reconnect runs before route reassignment. Manual media reconnect also
-rebuilds only the current P2P parent or current SFU subscription; it does not
+recovers only the current P2P parent or current SFU subscription; it does not
 perform quality selection or choose another route.
 
 ## SFU Fallback
 
-The only application fallback is one dedicated LiveKit SFU publication from the
+The only application fallback is one admitted embedded SFU publication from the
 Host, with independently admitted Viewer subscriptions. The controller may
 create it through the same bounded transition when Host capacity is occupied.
 No Viewer creates a second publication.
 
-Browser SFU PeerConnections use LiveKit-signaled UDP candidates and no external
-ICE-server list. Ordinary peer connections use deployment STUN. Screener
+SFU offer/answer, ICE and output demand use the existing authenticated room
+WebSocket. The server binds each physical connection to the current participant,
+share and publication; it issues no separate media token or room-service URL.
+Browser SFU PeerConnections use the server's UDP candidates and no external
+ICE-server list. Ordinary peer connections use deployment STUN. Hosted Screener
+owns its configured Binding-only STUN listeners and optional SFU UDP listener in
+the same Go process. Screener
 configures no TURN, ICE/TCP, media TCP, or TLS-relayed media path. HTTPS/WSS is a
 separate control transport and remains TLS/TCP.
 
 SFU resources remain bounded throughout reservation, use, and cleanup; stale
-credentials cannot recreate off-ledger media. Grant revocation, Viewer leave,
-and SFU-to-P2P replacement remove the exact LiveKit Viewer and confirm absence,
-but the subscription remains charged until its publication generation drains.
-ADR-0005 owns that lifecycle.
+signaling cannot recreate off-ledger media. Grant revocation, Viewer leave,
+and SFU-to-P2P replacement close the exact physical subscription before releasing
+its egress reservation. Publication teardown closes its ingress and descendants
+before releasing their reservations. There is no outstanding external token to
+retain after those resources close. ADR-0005's graph and operation rules remain;
+[ADR-0013](../adr/0013-embedded-node-local-media.md) replaces the external-service lifecycle.
+
+Transient room-signaling loss does not close healthy SFU media. The current
+physical connection can restart ICE; actual terminal media failure returns to
+the same bounded route recovery. Source capture remains Host-owned throughout.
 
 ## Quality And Privacy Boundaries
 
-WebRTC and LiveKit own ICE, consent, congestion control, bitrate, frame rate,
-resolution, retransmission, reconnect, and SFU layer selection. When the
-per-share convergence gate is enabled, Screener uses an exact persistent native
+Browser WebRTC and the shared Pion/LiveKit media adapter own ICE, consent,
+congestion control, bitrate, frame rate, resolution, retransmission, pacing and
+layer selection. Direct-child media demand does not create a topology operation.
+When the per-share convergence gate is enabled, Screener uses an exact persistent native
 sender limitation only to trigger one measured experiment through the existing
 serial operation. Three fresh complete limited deltas from one exact sender may
 trigger that experiment on a newly committed availability or direct-convergence
@@ -180,11 +192,12 @@ One-link mode tunnels only HTTP/WebSocket control and adds public STUN to the
 same Browser/Native P2P edges. Reachable peers form one mixed relay tree; an
 unreachable path adds no route type or score. Site mode uses Site transport.
 
-A native Host reserves one loopback edge for Browser preview and the existing
-SFU publisher; it consumes no route-copy capacity or gateway mapping. Direct
-children share the native encode, while assigned SFU keeps the Browser LiveKit
-representation and recovery policy.
+A Native Host reserves one loopback edge for Browser preview; it consumes no
+route-copy capacity or gateway mapping. Direct children and the admitted Native
+SFU publisher reuse the encoded source through the shared media adapter. The SFU
+publication still consumes one route copy and one aggregate upstream budget.
 
 A native Viewer terminates only its P2P upstream, reserves one Browser playback
-edge, and reuses compatible H.264/Opus for bounded children. Browser keeps SFU,
+edge, and reuses compatible H.264/VP8/Opus for bounded children, deriving a missing
+lower output only on direct-child demand. Browser keeps SFU subscription,
 route revisions, frame proof, and fallback.

@@ -10,7 +10,7 @@
 // Server.mu is the one lock of the effect layer: it guards every field of
 // the server and the router, the room.Store and the route controllers. Every
 // handler, timer callback and goroutine takes it; it is released only around
-// I/O (the password KDF, LiveKit, token issue), after which exactly the guard
+// I/O (the password KDF and media transport), after which exactly the guard
 // the TypeScript ran after its await is re-run. Router methods and hooks are
 // called with mu held and never lock.
 package signal
@@ -61,16 +61,12 @@ const (
 	defaultCleanupIntervalMs       = 30_000
 )
 
-// SfuFallback is SfuFallbackOptions: the LiveKit fallback the media router
+// SfuFallback is the embedded media runtime the media router
 // may use. A zero timeout means the TypeScript default.
 type SfuFallback struct {
-	URL                string
-	TokenIssuer        sfu.TokenIssuer
-	Admission          *sfu.Admission
-	RoomControl        sfu.RoomControl
-	PrepareTimeoutMs   int64
-	DrainRetryMs       int64
-	HostOfflineCheckMs int64
+	Media            sfu.Runtime
+	Admission        *sfu.Admission
+	PrepareTimeoutMs int64
 }
 
 // Options is SignalingOptions. Every zero value is the TypeScript `undefined`
@@ -78,7 +74,7 @@ type SfuFallback struct {
 type Options struct {
 	Store                     *room.Store
 	EndpointMediaCopyCapacity int
-	// SfuFallback is nil when the LiveKit fallback is disabled.
+	// SfuFallback is nil when embedded SFU media is disabled.
 	SfuFallback *SfuFallback
 	// Ice is the derived wire ICE configuration (config.IceConfig).
 	Ice protocol.IceConfig
@@ -225,6 +221,9 @@ func New(options Options) (*Server, error) {
 	if options.Store == nil {
 		return nil, errors.New("signaling requires a room store")
 	}
+	if options.SfuFallback != nil && (options.SfuFallback.Media == nil || options.SfuFallback.Admission == nil) {
+		return nil, errors.New("SFU fallback requires media and resource admission")
+	}
 	s := &Server{
 		store:                         options.Store,
 		endpointMediaCopyCapacity:     options.EndpointMediaCopyCapacity,
@@ -272,13 +271,9 @@ func New(options Options) (*Server, error) {
 	var fallback *sfuFallback
 	if options.SfuFallback != nil {
 		fallback = &sfuFallback{
-			url:                options.SfuFallback.URL,
-			tokenIssuer:        options.SfuFallback.TokenIssuer,
-			admission:          options.SfuFallback.Admission,
-			roomControl:        options.SfuFallback.RoomControl,
-			prepareTimeoutMs:   options.SfuFallback.PrepareTimeoutMs,
-			drainRetryMs:       options.SfuFallback.DrainRetryMs,
-			hostOfflineCheckMs: options.SfuFallback.HostOfflineCheckMs,
+			media:            options.SfuFallback.Media,
+			admission:        options.SfuFallback.Admission,
+			prepareTimeoutMs: options.SfuFallback.PrepareTimeoutMs,
 		}
 	}
 	mediaRouter, err := buildRouter(routerOptions{
@@ -305,8 +300,7 @@ func New(options Options) (*Server, error) {
 	return s, nil
 }
 
-// buildRouter turns the HybridMediaRouter constructor's throw (an invalid
-// SFU URL) into the error New returns.
+// buildRouter returns constructor assertions through the startup error path.
 func buildRouter(options routerOptions) (r *router, err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
@@ -481,10 +475,10 @@ func (s *Server) Close(ctx context.Context) error {
 	grace := time.NewTimer(serviceRestartCloseGrace)
 	defer grace.Stop()
 	// TS close() ran `this.closing = true` and the router's synchronous close
-	// prefix (its own closing flag, every deadline / host-offline / retry
+	// prefix (its own closing flag, every deadline and operation
 	// timer, the drains) in one tick; only the drain waits yielded. Keeping mu
 	// held across that prefix reproduces it: a router timer callback that
-	// fires now cannot slip in between and start a pump against LiveKit.
+	// fires now cannot slip in between and start a new media operation.
 	routeCloseError := s.router.close(ctx)
 	s.mu.Unlock()
 
@@ -977,11 +971,6 @@ func (s *Server) completeAuthentication(sess *session, request authRequest, part
 	share := s.shares[roomID]
 	routePolicy := s.routePolicyOf(roomID)
 
-	var sfuStandbyURL *string
-	if s.sfuFallback != nil && share.routePolicy != nil && !routePolicy.PeerOnly {
-		standby := s.sfuFallback.URL
-		sfuStandbyURL = &standby
-	}
 	qualitySettings := protocol.DefaultQualitySettings
 	if share.qualitySettings != nil {
 		qualitySettings = *share.qualitySettings
@@ -1010,7 +999,6 @@ func (s *Server) completeAuthentication(sess *session, request authRequest, part
 			RouteRevision:                 protocol.Int(hybridState.routeRevision),
 			RouteAssignment:               hybridState.routeAssignment,
 			QualitySettings:               qualitySettings,
-			SfuStandbyURL:                 sfuStandbyURL,
 			Role:                          protocol.RoleHost,
 			ViewerPasswordEnabled:         participant.ViewerPasswordEnabled,
 		})
@@ -1036,7 +1024,6 @@ func (s *Server) completeAuthentication(sess *session, request authRequest, part
 			RouteRevision:                 protocol.Int(hybridState.routeRevision),
 			RouteAssignment:               hybridState.routeAssignment,
 			QualitySettings:               qualitySettings,
-			SfuStandbyURL:                 sfuStandbyURL,
 			Role:                          protocol.RoleViewer,
 		})
 	}
@@ -1120,10 +1107,6 @@ func (s *Server) settleHostShare(roomID, sessionID string, request authRequest) 
 				RoutePolicy:     routePolicy,
 			}
 			// Hazard 3: no `has(roomId)` term here, unlike `authenticated`.
-			if s.sfuFallback != nil && !routePolicy.PeerOnly {
-				standby := s.sfuFallback.URL
-				message.SfuStandbyURL = &standby
-			}
 			s.sendToSession(viewer.SessionID, message)
 		}
 	}
@@ -1250,6 +1233,8 @@ func (s *Server) handleAuthenticatedMessage(sess *session, authenticated *authen
 		s.router.handleRouteMediaUnavailable(routeParticipant(sess, authenticated), m)
 	case protocol.RouteFailedMessage:
 		s.router.handleRouteFailed(routeParticipant(sess, authenticated), m)
+	case protocol.SfuSignalMessage:
+		s.router.handleSfuSignal(routeParticipant(sess, authenticated), m)
 	case protocol.RefreshSfuMessage:
 		if s.sfuFallback == nil {
 			s.sendError(sess, "FORBIDDEN", "SFU fallback is not enabled")
@@ -1333,7 +1318,7 @@ func (s *Server) handleAuthenticatedMessage(sess *session, authenticated *authen
 			return
 		}
 		if err := s.abandonRoom(authenticated.roomID); err != nil {
-			s.logger.Error("Room abandonment failed", "error", err)
+			s.logger.Error("Room abandonment failed", "errorType", fmt.Sprintf("%T", err))
 			s.sendError(sess, "SERVER_ERROR", "Room could not be abandoned")
 		}
 	}

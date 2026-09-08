@@ -1,13 +1,8 @@
 package signal
 
-// The route pump of hybrid-media-router.ts (requestPump 1114, pumpRoom 1135,
-// prepareCandidate 1303, prepareNewPublication 1409, sendPrepareMessages 1492,
-// scheduleDeadline 1822), following map section 7 step by step. The only
-// unlock windows are inside prepareCandidate (R5, R6, R8, R9, R10); the
-// cursor guard captured before them is the sole staleness detector.
+// Room authority prepares one candidate at a time; media signaling follows admission.
 
 import (
-	"context"
 	"log/slog"
 	"time"
 
@@ -28,7 +23,7 @@ type preparedCandidate struct {
 	viewerSfuConfig         *protocol.SfuConfigMessage
 }
 
-// prepareResult is PrepareResult.
+// prepareResult is one admitted candidate or a typed rejection.
 type prepareResult struct {
 	denied          bool
 	rejectionBucket route.RejectionBucket
@@ -39,18 +34,13 @@ func denied(bucket route.RejectionBucket) prepareResult {
 	return prepareResult{denied: true, rejectionBucket: bucket}
 }
 
-// pumpCandidate is the pump loop state carried across the yield at
-// `await prepareCandidate`: the selected slot with its cursor guard and the
-// outcome of prepareCandidate's synchronous prefix. io is the awaited
-// remainder (drain wait, token issue, LiveKit room creation), nil when
-// result is already settled.
+// pumpCandidate keeps the admitted result across the pump driver's queued turn.
 type pumpCandidate struct {
 	operation *route.OperationSnapshot
 	plan      route.CandidatePlan
 	guard     route.CandidateCursorGuard
 	revision  int64
 	result    prepareResult
-	io        func() prepareResult
 }
 
 // requestPump ports requestPump: the single-flight driver. Every caller
@@ -59,7 +49,7 @@ type pumpCandidate struct {
 // The TS driver was an async IIFE, so it ran synchronously inside the
 // caller up to its first await: the first pumpRoom iteration through the
 // synchronous prefix of prepareCandidate (reconcile, candidate selection,
-// the admission reservations and the LiveKit createRoom initiation). That
+// the admission reservations). That
 // prefix is observable: the calls that follow requestPump in the same
 // handler see its reconcile, and two rooms woken by one drain reserve
 // SFU capacity in wake order (map O29). It therefore runs here in the
@@ -137,11 +127,7 @@ func (r *router) drivePump(roomID string, rm *roomRuntime, controller *route.Con
 	}
 }
 
-// pumpRoom ports pumpRoom. mu is held on entry and exit; the candidate's io
-// releases it around I/O. resume continues an iteration suspended at
-// `await prepareCandidate`; with yieldAtPrepare the first candidate is
-// returned after prepareCandidate's synchronous prefix instead of being
-// awaited (the TS suspension point). Otherwise nil.
+// pumpRoom keeps admission ordered while allowing the driver to yield before signaling.
 func (r *router) pumpRoom(
 	roomID string,
 	rm *roomRuntime,
@@ -168,7 +154,7 @@ func (r *router) pumpRoom(
 				return nil
 			}
 			candidate = selected
-			candidate.result, candidate.io = r.prepareCandidate(
+			candidate.result = r.prepareCandidate(
 				roomID, rm, controller, candidate.operation, candidate.plan, candidate.revision)
 			if yieldAtPrepare {
 				return &candidate
@@ -176,9 +162,6 @@ func (r *router) pumpRoom(
 		}
 		operation, plan, guard := candidate.operation, candidate.plan, candidate.guard
 		preparation := candidate.result
-		if candidate.io != nil {
-			preparation = candidate.io()
-		}
 		if preparation.denied {
 			r.debug(roomID, "candidate-preparation-denied",
 				"child", r.debugPeer(roomID, operation.ChildPeerID),
@@ -310,16 +293,7 @@ func (r *router) selectCandidate(
 	return pumpCandidate{operation: operation, plan: plan, guard: guard, revision: revision}, false
 }
 
-// prepareCandidate ports prepareCandidate. It runs the synchronous prefix
-// (everything the TS executed before its first await: the stale checks,
-// the borrowed edge lookup, the admission reservations, the LiveKit
-// createRoom initiation) with mu held and returns either a settled result
-// or the awaited remainder as io. io is called with mu held and releases
-// it around reserveSfuSubscription's drain wait (R5/R10), the token issue
-// (R6) and, for a new publication, the LiveKit room creation (R8/R9). No
-// identity is re-read afterwards: the cursor guard in pumpRoom catches
-// staleness. controller is the pump's captured controller (TS read
-// room.controller!, the same object on every reachable path).
+// prepareCandidate reserves the exact connection before any client can signal it.
 func (r *router) prepareCandidate(
 	roomID string,
 	rm *roomRuntime,
@@ -327,12 +301,12 @@ func (r *router) prepareCandidate(
 	operation *route.OperationSnapshot,
 	plan route.CandidatePlan,
 	revision int64,
-) (prepareResult, func() prepareResult) {
+) prepareResult {
 	snapshot := controller.Snapshot()
 	child, hasChild := r.store.GetConnectedViewer(roomID, operation.ChildPeerID)
 	shareGeneration := r.hooks.shareGeneration(roomID)
 	if !hasChild || child.SessionID != operation.ChildSessionID || shareGeneration == "" {
-		return denied(route.RejectionStale), nil
+		return denied(route.RejectionStale)
 	}
 	connectionID := opaqueID()
 	var overlap *route.Resource
@@ -347,111 +321,46 @@ func (r *router) prepareCandidate(
 		return prepareResult{prepared: preparedCandidate{
 			connectionID: connectionID,
 			reservation:  route.CandidateReservation{Kind: route.ReservationDirect, Overlap: overlap},
-		}}, nil
+		}}
 	}
 
 	fallback := r.sfu
 	host, hasHost := r.store.GetConnectedHost(roomID)
 	if fallback == nil || !hasHost || host.PeerID != rm.hostPeerID {
-		return denied(route.RejectionStale), nil
+		return denied(route.RejectionStale)
 	}
 	if plan.Tuple.Publication == route.PublicationReuse {
 		publication := snapshot.HostPublication
 		if publication == nil || publication.Resource == nil ||
 			publication.Resource.Kind != route.ResourceSfuPublication {
-			return denied(route.RejectionStale), nil
+			return denied(route.RejectionStale)
 		}
 		fence := sfu.SubscriptionFence{
 			ResourceFence: resourceFence(publication.Resource),
 			ViewerPeerID:  operation.ChildPeerID,
+			ConnectionID:  connectionID,
 		}
-		var borrowedEdge *route.Resource
-		if currentEdge, ok := snapshot.UpstreamByViewer.Get(operation.ChildPeerID); ok &&
-			currentEdge.Kind == route.UpstreamSfu &&
-			currentEdge.PublicationGeneration == publication.Generation &&
-			currentEdge.Resource != nil &&
-			currentEdge.Resource.Kind == route.ResourceSfuSubscription &&
-			!currentEdge.Resource.Released {
-			borrowedEdge = currentEdge.Resource
-		}
-		// issue is the remainder after `await this.reserveSfuSubscription`.
 		issue := func(edge *route.Resource) prepareResult {
-			request := sfu.TokenRequest{
-				RoomID:                roomID,
-				Role:                  protocol.RoleViewer,
-				PeerID:                operation.ChildPeerID,
-				ShareGeneration:       shareGeneration,
-				PublicationGeneration: publication.Generation,
-			}
-			var token string
-			var err error
-			r.io(func() { token, err = fallback.tokenIssuer.IssueToken(request) }) // R6
-			if err != nil {
-				if borrowedEdge == nil {
-					r.releaseResource(edge)
-				}
-				return denied(route.RejectionCandidateFailed)
-			}
 			return prepareResult{prepared: preparedCandidate{
-				connectionID:  connectionID,
-				hostSessionID: host.SessionID,
-				reservation: route.CandidateReservation{
-					Kind:     route.ReservationSfuReuse,
-					Edge:     edge,
-					Borrowed: borrowedEdge != nil,
-					Overlap:  overlap,
-				},
+				connectionID: connectionID, hostSessionID: host.SessionID,
+				reservation:           route.CandidateReservation{Kind: route.ReservationSfuReuse, Edge: edge, Overlap: overlap},
 				publicationGeneration: publication.Generation,
 				viewerSfuConfig: &protocol.SfuConfigMessage{
-					Type:     "sfu-config",
-					Revision: protocol.Int(revision),
-					URL:      fallback.url,
-					Token:    token,
+					Type: "sfu-config", Revision: protocol.Int(revision),
+					PublicationGeneration: publication.Generation, ConnectionID: connectionID,
 				},
 			}}
 		}
-		if borrowedEdge != nil {
-			return prepareResult{}, func() prepareResult { return issue(borrowedEdge) }
+		if !fallback.admission.ReserveSubscription(fence) {
+			return denied(route.RejectionSfuAdmission)
 		}
-		// reserveSfuSubscription (1788): a pending drain of the same
-		// subscription is awaited first (R10); otherwise the reservation is
-		// part of the synchronous prefix.
-		key := sfuDrainKey(drainSubscription, fence)
-		if pending, _ := r.sfuDrainTasks.Get(key); pending != nil && pending.operation != nil {
-			drain := pending.operation
-			return prepareResult{}, func() prepareResult {
-				r.io(func() { <-drain.done })
-				if drain.err != nil {
-					return denied(route.RejectionSfuAdmission)
-				}
-				// Hazard 8: a drain that settled but left its task
-				// registered means refuse.
-				if registered, _ := r.sfuDrainTasks.Get(key); registered == pending {
-					return denied(route.RejectionSfuAdmission)
-				}
-				if !r.reserveSfuSubscription(fence) {
-					return denied(route.RejectionSfuAdmission)
-				}
-				return issue(subscriptionResource(fence))
-			}
-		}
-		if !r.reserveSfuSubscription(fence) {
-			return denied(route.RejectionSfuAdmission), nil
-		}
-		edge := subscriptionResource(fence)
-		return prepareResult{}, func() prepareResult { return issue(edge) }
+		return issue(subscriptionResource(fence))
 	}
 
 	return r.prepareNewPublication(roomID, operation, revision, connectionID, shareGeneration, host, overlap)
 }
 
-// prepareNewPublication ports prepareNewPublication. The reservations and
-// the room's FIFO turn (the TS createRoom call, registered synchronously
-// by LiveKitSfuRoomControl.serialize) belong to the synchronous prefix;
-// io creates the LiveKit room inside that turn and issues the two tokens
-// sequentially where the TS used Promise.all (hazard 6: latency only).
-// Failure releases the subscription before the publication (O26), the
-// reverse of releaseResources.
+// One candidate reserves both publication and first subscription atomically.
 func (r *router) prepareNewPublication(
 	roomID string,
 	operation *route.OperationSnapshot,
@@ -460,7 +369,7 @@ func (r *router) prepareNewPublication(
 	shareGeneration string,
 	host room.ConnectedPeer,
 	overlap *route.Resource,
-) (prepareResult, func() prepareResult) {
+) prepareResult {
 	fallback := r.sfu
 	publicationGeneration := opaqueID()
 	publicationFence := sfu.ResourceFence{
@@ -471,76 +380,34 @@ func (r *router) prepareNewPublication(
 	subscriptionFence := sfu.SubscriptionFence{
 		ResourceFence: publicationFence,
 		ViewerPeerID:  operation.ChildPeerID,
+		ConnectionID:  connectionID,
 	}
 	if !fallback.admission.ReservePublication(publicationFence) {
-		return denied(route.RejectionSfuAdmission), nil
+		return denied(route.RejectionSfuAdmission)
 	}
 	if !fallback.admission.ReserveSubscription(subscriptionFence) {
 		fallback.admission.BeginDrain(publicationFence)
 		r.scheduleSfuPublicationDrain(publicationFence)
-		return denied(route.RejectionSfuAdmission), nil
+		return denied(route.RejectionSfuAdmission)
 	}
 	subscription := subscriptionResource(subscriptionFence)
 	publicationConnectionID := publicationGeneration
 	publication := publicationResource(publicationFence)
-	turn := r.takeTurn(sfu.ManagedRoomName(publicationFence))
-	return prepareResult{}, func() prepareResult {
-		var err error
-		var hostToken, viewerToken string
-		r.io(func() {
-			turn.run(func() {
-				err = fallback.roomControl.CreateRoom(context.Background(), publicationFence) // R8
-			})
-			if err == nil { // R9
-				hostToken, err = fallback.tokenIssuer.IssueToken(sfu.TokenRequest{
-					RoomID:                roomID,
-					Role:                  protocol.RoleHost,
-					PeerID:                host.PeerID,
-					ShareGeneration:       shareGeneration,
-					PublicationGeneration: publicationGeneration,
-				})
-			}
-			if err == nil {
-				viewerToken, err = fallback.tokenIssuer.IssueToken(sfu.TokenRequest{
-					RoomID:                roomID,
-					Role:                  protocol.RoleViewer,
-					PeerID:                operation.ChildPeerID,
-					ShareGeneration:       shareGeneration,
-					PublicationGeneration: publicationGeneration,
-				})
-			}
-		})
-		r.dropTurn(turn)
-		if err != nil {
-			r.releaseResource(subscription)
-			r.releaseResource(publication)
-			return denied(route.RejectionCandidateFailed)
-		}
-		return prepareResult{prepared: preparedCandidate{
-			connectionID:            connectionID,
-			hostSessionID:           host.SessionID,
-			publicationGeneration:   publicationGeneration,
-			publicationConnectionID: publicationConnectionID,
-			reservation: route.CandidateReservation{
-				Kind:        route.ReservationSfuCreate,
-				Edge:        subscription,
-				Publication: publication,
-				Overlap:     overlap,
-			},
-			hostSfuConfig: &protocol.SfuConfigMessage{
-				Type:     "sfu-config",
-				Revision: protocol.Int(revision),
-				URL:      fallback.url,
-				Token:    hostToken,
-			},
-			viewerSfuConfig: &protocol.SfuConfigMessage{
-				Type:     "sfu-config",
-				Revision: protocol.Int(revision),
-				URL:      fallback.url,
-				Token:    viewerToken,
-			},
-		}}
-	}
+	return prepareResult{prepared: preparedCandidate{
+		connectionID: connectionID, hostSessionID: host.SessionID,
+		publicationGeneration: publicationGeneration, publicationConnectionID: publicationConnectionID,
+		reservation: route.CandidateReservation{
+			Kind: route.ReservationSfuCreate, Edge: subscription, Publication: publication, Overlap: overlap,
+		},
+		hostSfuConfig: &protocol.SfuConfigMessage{
+			Type: "sfu-config", Revision: protocol.Int(revision),
+			PublicationGeneration: publicationGeneration, ConnectionID: publicationConnectionID,
+		},
+		viewerSfuConfig: &protocol.SfuConfigMessage{
+			Type: "sfu-config", Revision: protocol.Int(revision),
+			PublicationGeneration: publicationGeneration, ConnectionID: connectionID,
+		},
+	}}
 }
 
 // sendPrepareMessages ports sendPrepareMessages (O24: fixed order). It sends
@@ -587,6 +454,9 @@ func (r *router) sendPrepareMessages(
 	r.hooks.sendToSession(child.SessionID, childUpdate)
 	if prepared.viewerSfuConfig != nil {
 		r.hooks.sendToSession(child.SessionID, *prepared.viewerSfuConfig)
+		if prepared.hostSfuConfig == nil {
+			r.prepareSfuSubscriber(roomID, operation, prepared.publicationGeneration)
+		}
 	}
 }
 
@@ -596,7 +466,7 @@ func (r *router) sendPrepareMessages(
 func (r *router) scheduleDeadline(roomID string, rm *roomRuntime, operation *route.OperationSnapshot) {
 	r.clearDeadline(rm)
 	wakeInMs := max(int64(0), operation.WakeAtMs-r.now())
-	if routeDebugEnabled {
+	if routeDebugEnabled() {
 		var current any
 		if operation.Current != nil {
 			current = r.debugTuple(roomID, operation.Current.Tuple)
@@ -685,6 +555,7 @@ func subscriptionResource(fence sfu.SubscriptionFence) *route.Resource {
 		ShareGeneration:       fence.ShareGeneration,
 		PublicationGeneration: fence.PublicationGeneration,
 		ViewerPeerID:          fence.ViewerPeerID,
+		ConnectionID:          fence.ConnectionID,
 	}
 }
 
@@ -706,5 +577,5 @@ func resourceFence(resource *route.Resource) sfu.ResourceFence {
 }
 
 func subscriptionFence(resource *route.Resource) sfu.SubscriptionFence {
-	return sfu.SubscriptionFence{ResourceFence: resourceFence(resource), ViewerPeerID: resource.ViewerPeerID}
+	return sfu.SubscriptionFence{ResourceFence: resourceFence(resource), ViewerPeerID: resource.ViewerPeerID, ConnectionID: resource.ConnectionID}
 }

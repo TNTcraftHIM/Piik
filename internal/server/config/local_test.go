@@ -52,6 +52,9 @@ func TestLocalMapsClientInputs(t *testing.T) {
 	if len(config.STUNURLs) != 0 {
 		t.Errorf("STUNURLs = %v", config.STUNURLs)
 	}
+	if len(config.STUNListenAddresses) != 0 {
+		t.Fatalf("Local created STUN listeners: %v", config.STUNListenAddresses)
+	}
 	if config.NATPredictionEnabled {
 		t.Error("NATPredictionEnabled = true")
 	}
@@ -67,8 +70,8 @@ func TestLocalMapsClientInputs(t *testing.T) {
 	if !reflect.DeepEqual(config.AllowedOrigins, want) {
 		t.Errorf("AllowedOrigins = %v, want %v", config.AllowedOrigins, want)
 	}
-	if config.LiveKit != nil {
-		t.Errorf("LiveKit = %+v", config.LiveKit)
+	if config.SFU != nil {
+		t.Errorf("SFU = %+v", config.SFU)
 	}
 	if config.RoomDatabasePath != "" {
 		t.Errorf("RoomDatabasePath = %q", config.RoomDatabasePath)
@@ -104,6 +107,12 @@ func TestLocalTunnelledClient(t *testing.T) {
 	}
 	if !config.NATPredictionEnabled {
 		t.Error("NATPredictionEnabled = false")
+	}
+	if len(config.STUNListenAddresses) != 0 {
+		t.Fatalf("public discovery created Local STUN listeners: %v", config.STUNListenAddresses)
+	}
+	if config.SFU != nil {
+		t.Errorf("public link created an SFU listener: %+v", config.SFU)
 	}
 	if !slices.Equal(config.NATPredictionSTUNURLs,
 		[]string{"stun:survey-a.example:3478", "stun:survey-b.example:3478"}) {

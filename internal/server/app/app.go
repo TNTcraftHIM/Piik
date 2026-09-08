@@ -34,6 +34,9 @@ import (
 	"github.com/TNTcraftHIM/Screener/internal/server/room"
 	"github.com/TNTcraftHIM/Screener/internal/server/sfu"
 	"github.com/TNTcraftHIM/Screener/internal/server/signal"
+	"github.com/TNTcraftHIM/Screener/internal/server/stun"
+	"github.com/pion/ice/v4"
+	"github.com/pion/webrtc/v4"
 )
 
 // Node HTTP server settings of app.ts, mapped in map section 3.3 / D11.
@@ -47,6 +50,9 @@ const (
 type Options struct {
 	// Config is the loaded server configuration; cmd owns config.Load / Local.
 	Config config.Config
+	// Listener is optional prebound TCP ownership transferred on successful New.
+	// It lets the Local Client reserve its HTTP port before opening a tunnel.
+	Listener *net.TCPListener
 	// Assets is the built Browser UI. A nil FS serves the API only, which is
 	// the TS frontend mode "none"; webassets.FS() returns nil the same way
 	// when no build was embedded (D3).
@@ -64,10 +70,6 @@ type Options struct {
 	MaxUnauthenticatedSignalConnections int
 	SiteAccessTTLSeconds                int
 
-	// SFUTokenIssuer and SFURoomControl replace the LiveKit implementations
-	// this package would otherwise construct from Config.LiveKit.
-	SFUTokenIssuer sfu.TokenIssuer
-	SFURoomControl sfu.RoomControl
 	// AfterFunc is the signaling timer factory (D5); nil uses time.AfterFunc.
 	AfterFunc func(time.Duration, func()) func() bool
 	// RoomStore replaces the store this package would build from Config.
@@ -76,19 +78,20 @@ type Options struct {
 
 // Server is ScreenerServer.
 type Server struct {
-	config     config.Config
-	store      *room.Store
-	siteAccess *siteAccessGate
-	frontend   http.Handler
-	logger     *slog.Logger
-	// roomControl is nil without a LiveKit fallback; it is the only startup
-	// reconciliation step (A12).
-	roomControl   sfu.RoomControl
+	config        config.Config
+	store         *room.Store
+	siteAccess    *siteAccessGate
+	frontend      http.Handler
+	logger        *slog.Logger
+	media         *sfu.Media
+	mediaMux      ice.UDPMux
 	signalOptions signal.Options
 	httpServer    *http.Server
-	// listener is nil until Listen binds. It is written before startupDone is
-	// closed and read only after that channel settles, so it needs no lock.
+	// Listen binds unless New received an already owned listener. Shutdown waits
+	// for startupDone before reading it; closing before Listen also releases it.
 	listener net.Listener
+	// STUN shares the same startup/shutdown owner, never the advertised ICE URLs.
+	stunServer *stun.Server
 
 	// acceptingTraffic and signaling are the two closure variables app.ts
 	// flipped together; both are read by request goroutines without a lock and
@@ -121,10 +124,6 @@ func New(options Options) (*Server, error) {
 		logger = slog.Default()
 	}
 
-	roomControl, fallback, err := newSfuFallback(options)
-	if err != nil {
-		return nil, err
-	}
 	store, err := newRoomStore(options, now)
 	if err != nil {
 		return nil, err
@@ -146,8 +145,10 @@ func New(options Options) (*Server, error) {
 		store:       store,
 		siteAccess:  siteAccess,
 		logger:      logger,
-		roomControl: roomControl,
 		startupDone: make(chan struct{}),
+	}
+	if options.Listener != nil {
+		server.listener = options.Listener
 	}
 	if options.Assets != nil {
 		server.frontend = staticHandler(options.Assets, http.HandlerFunc(notFoundJSON))
@@ -155,7 +156,6 @@ func New(options Options) (*Server, error) {
 	server.signalOptions = signal.Options{
 		Store:                     store,
 		EndpointMediaCopyCapacity: configuration.EndpointMediaCopyCapacity,
-		SfuFallback:               fallback,
 		Ice:                       config.IceConfig(configuration),
 		// The TS signaling server read natPredictionEnabled off the same
 		// `ice` options object it forwarded; the Go IceConfig is already the
@@ -163,7 +163,7 @@ func New(options Options) (*Server, error) {
 		NATPredictionEnabled: configuration.NATPredictionEnabled,
 		AllowedOrigins:       configuration.AllowedOrigins,
 		SiteAccessAtUpgrade: func(request *http.Request) bool {
-			return siteAccess.isAuthenticated(cookieHeader(request))
+			return server.siteAccessForRequest(request).isAuthenticated(cookieHeader(request))
 		},
 		PublicBaseURL:                 configuration.PublicBaseURL,
 		Now:                           now,
@@ -184,51 +184,6 @@ func New(options Options) (*Server, error) {
 		// No WriteTimeout: Node had none, and it would cut long downloads.
 	}
 	return server, nil
-}
-
-// newSfuFallback builds the LiveKit half of createScreenerServer. Without a
-// LiveKit fallback in the configuration both results are nil and the signaling
-// server runs peer-only. The returned RoomControl is also kept by the caller,
-// because it is the one startup reconciliation step (A12).
-func newSfuFallback(options Options) (sfu.RoomControl, *signal.SfuFallback, error) {
-	livekit := options.Config.LiveKit
-	if livekit == nil {
-		return nil, nil, nil
-	}
-	roomControl := options.SFURoomControl
-	if roomControl == nil {
-		control, err := sfu.NewLiveKitRoomControl(sfu.LiveKitRoomControlOptions{
-			APIURL:            livekit.APIURL,
-			APIKey:            livekit.APIKey,
-			APISecret:         livekit.APISecret,
-			MaxViewersPerRoom: options.Config.MaxViewersPerRoom,
-		})
-		if err != nil {
-			return nil, nil, err
-		}
-		roomControl = control
-	}
-	tokenIssuer := options.SFUTokenIssuer
-	if tokenIssuer == nil {
-		issuer, err := sfu.NewLiveKitTokenIssuer(sfu.LiveKitTokenIssuerOptions{
-			APIKey:            livekit.APIKey,
-			APISecret:         livekit.APISecret,
-			MaxViewersPerRoom: options.Config.MaxViewersPerRoom,
-		})
-		if err != nil {
-			return nil, nil, err
-		}
-		tokenIssuer = issuer
-	}
-	return roomControl, &signal.SfuFallback{
-		URL:         livekit.URL,
-		TokenIssuer: tokenIssuer,
-		Admission: sfu.NewAdmission(sfu.AdmissionOptions{
-			IngressCapacity: room.Capacity,
-			EgressCapacity:  room.Capacity * options.Config.MaxViewersPerRoom,
-		}),
-		RoomControl: roomControl,
-	}, nil
 }
 
 // newRoomStore builds the room store createScreenerServer would otherwise take
@@ -263,9 +218,7 @@ func (s *Server) Handler() http.Handler { return s }
 // callers outside that lock may only read it while no request is in flight.
 func (s *Server) Store() *room.Store { return s.store }
 
-// Listen binds the configured address, then reconciles the stable authority and
-// LiveKit, and only then starts accepting traffic. It returns the bound port,
-// which is the actual one when Config.Port is 0.
+// Listen binds application sockets before recovering room authority and accepting traffic.
 func (s *Server) Listen(ctx context.Context) (int, error) {
 	s.mu.Lock()
 	if s.startupRequested {
@@ -287,14 +240,48 @@ func (s *Server) Listen(ctx context.Context) (int, error) {
 }
 
 func (s *Server) start(ctx context.Context) (int, error) {
-	// A11: bind first. A listener owned by another process must fail before
-	// the room database is opened and before LiveKit is called at all.
-	address := net.JoinHostPort(s.config.ListenHost, strconv.Itoa(s.config.Port))
-	listener, err := net.Listen("tcp", address)
-	if err != nil {
-		return 0, err
+	// Bind first. A listener owned by another process must fail before
+	// the room database is opened.
+	listener := s.listener
+	var err error
+	if listener == nil {
+		address := net.JoinHostPort(s.config.ListenHost, strconv.Itoa(s.config.Port))
+		listener, err = net.Listen("tcp", address)
+		if err != nil {
+			return 0, err
+		}
 	}
 	s.listener = listener
+	if len(s.config.STUNListenAddresses) > 0 {
+		s.stunServer, err = stun.Listen(ctx, s.config.STUNListenAddresses)
+		if err != nil {
+			_ = listener.Close()
+			return 0, fmt.Errorf("Screener STUN listener failed: %w", err)
+		}
+	}
+	if configuration := s.config.SFU; configuration != nil {
+		connection, listenErr := net.ListenPacket("udp4", net.JoinHostPort(configuration.ListenHost, strconv.Itoa(configuration.Port)))
+		if listenErr != nil {
+			_ = s.stopServing(ctx)
+			return 0, fmt.Errorf("Screener SFU listener failed: %w", listenErr)
+		}
+		s.mediaMux = ice.NewUDPMuxDefault(ice.UDPMuxParams{UDPConn: connection})
+		settings := webrtc.SettingEngine{}
+		settings.SetNetworkTypes([]webrtc.NetworkType{webrtc.NetworkTypeUDP4})
+		settings.SetICEUDPMux(s.mediaMux)
+		settings.SetIncludeLoopbackCandidate(net.ParseIP(configuration.ListenHost).IsLoopback())
+		if configuration.PublicIP != "" {
+			settings.SetNAT1To1IPs([]string{configuration.PublicIP}, webrtc.ICECandidateTypeHost)
+		}
+		s.media = sfu.NewMedia(sfu.MediaOptions{Settings: settings, Events: func(event sfu.MediaEvent) {
+			if signaling := s.signaling.Load(); signaling != nil {
+				signaling.HandleSfuMediaEvent(event)
+			}
+		}})
+		s.signalOptions.SfuFallback = &signal.SfuFallback{Media: s.media, Admission: sfu.NewAdmission(sfu.AdmissionOptions{
+			IngressCapacity: room.Capacity, EgressCapacity: room.Capacity * s.config.MaxViewersPerRoom,
+		})}
+	}
 	go func() {
 		// bindHttpServer removed its "error" listener once the server was
 		// listening (app.ts:315-333), so a later listener failure ended the
@@ -302,7 +289,7 @@ func (s *Server) start(ctx context.Context) (int, error) {
 		// ErrServerClosed on a permanent accept failure, which nothing here
 		// causes; report it rather than serving nothing in silence.
 		if err := s.httpServer.Serve(listener); !errors.Is(err, http.ErrServerClosed) {
-			s.logger.Error("Screener HTTP server stopped unexpectedly", "error", err)
+			s.logger.Error("Screener HTTP server stopped unexpectedly", "errorType", fmt.Sprintf("%T", err))
 		}
 	}()
 	port := listener.Addr().(*net.TCPAddr).Port
@@ -325,31 +312,36 @@ func (s *Server) start(ctx context.Context) (int, error) {
 	return port, nil
 }
 
-// stopServing is closeHttpServer. Shutdown stops accepting and drains, but it
-// can lose the race against the Serve goroutine registering the listener, in
+// stopServing releases the application-owned HTTP and STUN sockets. Shutdown
+// stops accepting HTTP and drains, but it can lose the race against the Serve
+// goroutine registering the listener, in
 // which case it returns without having closed the bound socket; closing the
 // listener afterwards makes the port release synchronous. A second close of an
-// already closed listener is a no-op error nobody reported in TS either, so
-// only Shutdown's error is returned.
+// already closed HTTP listener is harmless.
 func (s *Server) stopServing(ctx context.Context) error {
 	err := s.httpServer.Shutdown(ctx)
 	if s.listener != nil {
 		_ = s.listener.Close()
 	}
+	if s.stunServer != nil {
+		err = errors.Join(err, s.stunServer.Close())
+		s.stunServer = nil
+	}
+	if s.media != nil {
+		err = errors.Join(err, s.media.Close())
+		s.media = nil
+	}
+	if s.mediaMux != nil {
+		err = errors.Join(err, s.mediaMux.Close())
+		s.mediaMux = nil
+	}
 	return err
 }
 
-// reconcile is the body of the TS startup try block: the store recovers its
-// stable authority synchronously, LiveKit reconciliation is the one await
-// (A12), and traffic starts only if no shutdown began while it ran.
+// reconcile restores room authority and enables traffic unless shutdown has begun.
 func (s *Server) reconcile(ctx context.Context) error {
 	if err := s.store.Initialize(); err != nil {
 		return err
-	}
-	if s.roomControl != nil {
-		if err := s.roomControl.Initialize(ctx); err != nil {
-			return err
-		}
 	}
 	// Holding mu across the check and the two stores is what made the TS
 	// single thread safe here: a shutdown that already set closing must never
@@ -368,7 +360,7 @@ func (s *Server) reconcile(ctx context.Context) error {
 	return nil
 }
 
-// Close stops accepting traffic, closes the signaling server, the listener and
+// Close stops accepting traffic, closes signaling, the HTTP/STUN listeners and
 // the room store, and leaves the rooms in place. Hosted restarts use it.
 func (s *Server) Close(ctx context.Context) error {
 	return s.shutdown(ctx, false)

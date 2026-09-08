@@ -176,25 +176,29 @@ func (s *Server) armAuthenticationTimer(sess *session) {
 // the connection fails and then runs handleDisconnect exactly once (D6).
 func (s *Server) readLoop(sess *session) {
 	defer func() {
+		defer close(sess.readerDone)
 		sess.cancel()
 		s.mu.Lock()
+		defer s.mu.Unlock()
 		s.handleDisconnect(sess)
-		s.mu.Unlock()
-		close(sess.readerDone)
 	}()
 	for {
 		kind, data, err := sess.conn.Read(sess.ctx)
 		if err != nil {
 			return
 		}
-		s.mu.Lock()
-		if kind == websocket.MessageBinary {
-			// TS: if (isBinary) rejectInvalidMessage(socket)
-			s.rejectInvalidMessage(sess)
-		} else {
-			s.handleMessage(sess, data)
-		}
-		s.mu.Unlock()
+		s.handleIncoming(sess, kind, data)
+	}
+}
+
+func (s *Server) handleIncoming(sess *session, kind websocket.MessageType, data []byte) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if kind == websocket.MessageBinary {
+		// TS: if (isBinary) rejectInvalidMessage(socket)
+		s.rejectInvalidMessage(sess)
+	} else {
+		s.handleMessage(sess, data)
 	}
 }
 

@@ -1,4 +1,5 @@
 import type { ServerMessage } from "../../shared/protocol";
+import { NativeMediaBridgeError } from "../native/media-bridge";
 import { joinSentences, say, type CopyKey } from "../ui/copy";
 
 export type HostAction =
@@ -39,6 +40,7 @@ export function hostActionErrorNotice(
   error: unknown,
   action: HostAction,
 ): string {
+  if (error instanceof NativeMediaBridgeError) return say(HOST_ACTION_FALLBACK.connection);
   if (
     error instanceof DOMException &&
     (action === "capture" || action === "source")

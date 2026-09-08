@@ -1,8 +1,8 @@
 {
-  "libvpx@1.17.0": {
-    "file": "libvpx-1.17.0.txt",
-    "source": "https://github.com/webmproject/libvpx/tree/6df3ec34557879fff673706f4a1d9fbd0f3a6f0e",
-    "sha256": "3042109b4fb2a8d44e52c6241eaa8a1a9b4bfdbd632e67b7d91b4d1db36d653b"
+  "webrtc@m152.7977.0.2": {
+    "file": "webrtc-m152.7977.0.2.txt",
+    "source": "https://github.com/shiguredo-webrtc-build/webrtc-build/releases/tag/m152.7977.0.2",
+    "sha256": "bf8b75cf620f754c60fc5efa8eb20ed543540aca1b91c63e6ac78f86b85844b0"
   },
   "@bufbuild/protobuf@1.10.1": {
     "file": "bufbuild-protobuf-1.10.1.txt",

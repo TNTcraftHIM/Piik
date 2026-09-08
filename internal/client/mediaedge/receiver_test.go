@@ -2,9 +2,11 @@ package mediaedge
 
 import (
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/livekit/livekit-server/pkg/sfu"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4"
 )
@@ -39,18 +41,9 @@ func TestReceiverCodecMatchesTheSingleNegotiatedAnswer(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		engine.bandwidth.mu.Lock()
-		pendingBefore := len(engine.bandwidth.pending)
-		engine.bandwidth.mu.Unlock()
 		receiver, answer, err := engine.NewReceiver(ReceiverOptions{Offer: offer, EdgeCapacity: 1})
 		if err != nil {
 			t.Fatal(err)
-		}
-		engine.bandwidth.mu.Lock()
-		pendingObservers := len(engine.bandwidth.pending)
-		engine.bandwidth.mu.Unlock()
-		if pendingObservers != pendingBefore {
-			t.Fatalf("receiver changed pending bandwidth observers from %d to %d", pendingBefore, pendingObservers)
 		}
 		t.Cleanup(func() { _ = receiver.Close() })
 		if receiver.Codec() != want || !strings.Contains(strings.ToLower(answer.SDP), want+"/90000") ||
@@ -117,16 +110,21 @@ func testReceiverForwarding(t *testing.T, codec string) {
 	var nativeReceiver *Receiver
 	var upstreamCandidates []*webrtc.ICECandidateInit
 	var receiverCandidates []*webrtc.ICECandidateInit
+	var candidateMu sync.Mutex
 	remoteReady := false
 	upstream.OnICECandidate(func(candidate *webrtc.ICECandidate) {
 		if candidate == nil {
 			return
 		}
 		value := candidate.ToJSON()
-		if nativeReceiver != nil && remoteReady {
-			_ = nativeReceiver.AddRemoteCandidate(&value)
-		} else {
+		candidateMu.Lock()
+		ready := remoteReady
+		if !ready {
 			upstreamCandidates = append(upstreamCandidates, &value)
+		}
+		candidateMu.Unlock()
+		if ready {
+			_ = nativeReceiver.AddRemoteCandidate(&value)
 		}
 	})
 	upstreamGathered := webrtc.GatheringCompletePromise(upstream)
@@ -144,12 +142,17 @@ func testReceiverForwarding(t *testing.T, codec string) {
 		EdgeCapacity: 1,
 		Events: ReceiverEvents{
 			LocalCandidate: func(candidate *webrtc.ICECandidateInit) {
-				if candidate != nil {
-					if remoteReady {
-						_ = upstream.AddICECandidate(*candidate)
-					} else {
-						receiverCandidates = append(receiverCandidates, candidate)
-					}
+				if candidate == nil {
+					return
+				}
+				candidateMu.Lock()
+				ready := remoteReady
+				if !ready {
+					receiverCandidates = append(receiverCandidates, candidate)
+				}
+				candidateMu.Unlock()
+				if ready {
+					_ = upstream.AddICECandidate(*candidate)
 				}
 			},
 		},
@@ -164,11 +167,15 @@ func testReceiverForwarding(t *testing.T, codec string) {
 	if err = upstream.SetRemoteDescription(answer); err != nil {
 		t.Fatal(err)
 	}
+	candidateMu.Lock()
 	remoteReady = true
-	for _, candidate := range upstreamCandidates {
+	pendingUpstream, pendingReceiver := upstreamCandidates, receiverCandidates
+	upstreamCandidates, receiverCandidates = nil, nil
+	candidateMu.Unlock()
+	for _, candidate := range pendingUpstream {
 		_ = nativeReceiver.AddRemoteCandidate(candidate)
 	}
-	for _, candidate := range receiverCandidates {
+	for _, candidate := range pendingReceiver {
 		_ = upstream.AddICECandidate(*candidate)
 	}
 	waitConnected(t, upstream, "native receiver")
@@ -193,6 +200,12 @@ func testReceiverForwarding(t *testing.T, codec string) {
 	}
 	if codec == "vp8" {
 		want.Payload = []byte{0x10, 0x10, 0, 0, 0x9d, 0x01, 0x2a, 0x80, 0x02, 0xe0, 0x01, 0}
+	} else {
+		want.Payload = []byte{0x78}
+		for _, nalu := range sfu.H264KeyFrame2x2 {
+			want.Payload = append(want.Payload, byte(len(nalu)>>8), byte(len(nalu)))
+			want.Payload = append(want.Payload, nalu...)
+		}
 	}
 	if err = want.SetExtension(9, []byte{0xde, 0xad}); err != nil {
 		t.Fatal(err)
@@ -235,8 +248,10 @@ func testReceiverForwarding(t *testing.T, codec string) {
 		if err = input.track.WriteRTP(padding); err != nil {
 			t.Fatal(err)
 		}
-		if packet := waitPacket(t, input.packets); !packet.Padding || packet.PaddingSize != padding.PaddingSize || len(packet.Payload) != 0 {
-			t.Fatalf("stream %d lost RTP padding continuity", index)
+		if index == 1 {
+			if packet := waitPacket(t, input.packets); !packet.Padding || packet.PaddingSize != padding.PaddingSize || len(packet.Payload) != 0 {
+				t.Fatal("audio lost RTP padding continuity")
+			}
 		}
 		next := input.media.Clone()
 		next.SequenceNumber += 2
@@ -244,7 +259,11 @@ func testReceiverForwarding(t *testing.T, codec string) {
 		if err = input.track.WriteRTP(next); err != nil {
 			t.Fatal(err)
 		}
-		if packet := waitPacket(t, input.packets); string(packet.Payload) != string(next.Payload) {
+		packet := waitPacket(t, input.packets)
+		if index == 0 && packet.SequenceNumber != got.SequenceNumber+1 {
+			t.Fatal("video projection did not close the filtered padding sequence gap")
+		}
+		if string(packet.Payload) != string(next.Payload) {
 			t.Fatalf("stream %d stopped delivering media after padding", index)
 		}
 	}

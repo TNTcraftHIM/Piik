@@ -5,12 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/TNTcraftHIM/Screener/internal/client/browser"
@@ -21,6 +24,7 @@ import (
 	"github.com/TNTcraftHIM/Screener/internal/client/nativecapture"
 	"github.com/TNTcraftHIM/Screener/internal/client/nativecontrol"
 	"github.com/TNTcraftHIM/Screener/internal/client/publictunnel"
+	"github.com/TNTcraftHIM/Screener/internal/diagnostics"
 	serverapp "github.com/TNTcraftHIM/Screener/internal/server/app"
 	serverconfig "github.com/TNTcraftHIM/Screener/internal/server/config"
 	"github.com/TNTcraftHIM/Screener/internal/server/webassets"
@@ -48,22 +52,61 @@ type Options struct {
 	LANAddress     string
 	Port           int
 	DisableBrowser bool
+	Debug          bool
+	LogDir         string
 	CaptureProcess string
 	TunnelProcess  string
 	Ready          func(string)
 	console        *clientConsole
+	logger         *slog.Logger
 }
 
 func Run(ctx context.Context, options Options) (returnedErr error) {
 	ctx, cancel := context.WithCancel(ctx)
+	options.Debug = options.Debug || clientDebugEnabled(os.Getenv("SCREENER_DEBUG"))
 	options.console = newClientConsole(cancel, options.DisableBrowser)
+	var recorder *diagnostics.Recorder
+	var restoreLogger func()
 	defer func() {
 		cancel()
+		if recorder != nil {
+			slog.Debug("screener-client", "event", "stopped", "failed", returnedErr != nil)
+			if options.console.program == nil {
+				path, err := recorder.Export()
+				options.console.send(consoleExportResult{path: path, err: err})
+				returnedErr = errors.Join(returnedErr, err)
+			}
+			restoreLogger()
+			returnedErr = errors.Join(returnedErr, recorder.Close())
+		}
 		returnedErr = errors.Join(returnedErr, options.console.finish(returnedErr))
 	}()
+	if options.Debug {
+		var err error
+		recorder, err = openClientDiagnostics(options.LogDir)
+		if err != nil {
+			return fmt.Errorf("Screener Client diagnostics are unavailable: %w", err)
+		}
+		previous, previousWriter, previousFlags := slog.Default(), log.Writer(), log.Flags()
+		restoreLogger = func() {
+			slog.SetDefault(previous)
+			log.SetOutput(previousWriter)
+			log.SetFlags(previousFlags)
+		}
+		options.logger = recorder.Logger()
+		slog.SetDefault(options.logger)
+		// Only structured application events belong in the persisted log.
+		log.SetOutput(previousWriter)
+		log.SetFlags(previousFlags)
+		options.console.send(consoleDebug{logPath: recorder.LogPath(), export: recorder.Export})
+	}
+	slog.Debug("screener-client", "event", "start", "revision", BuildRevision)
 	options.console.show(consoleView{state: "starting"})
 	if err := validateMode(options); err != nil {
 		return err
+	}
+	if options.Port == 0 {
+		options.Port = DefaultLocalPort
 	}
 	configPath := strings.TrimSpace(options.ConfigPath)
 	if configPath == "" {
@@ -81,12 +124,17 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 	if err != nil {
 		return err
 	}
+	slog.Debug("screener-client", "event", "configuration", "siteConfigured", config.Site != "", "localAccessProtected", config.LocalAccessPassword != "")
 	if options.SiteSet || options.Local {
 		if err = clientconfig.Save(configPath, config); err != nil {
 			return errors.New("Screener Client configuration is unavailable")
 		}
 	}
 	nativeMedia := discoverNativeMedia(ctx, options.CaptureProcess)
+	slog.Debug("screener-client", "event", "native-capabilities",
+		"video", nativeMedia.capabilities.Video, "processAudio", nativeMedia.capabilities.ProcessAudio,
+		"systemAudio", nativeMedia.capabilities.SystemAudio, "hardwareH264", nativeMedia.capabilities.HardwareH264,
+		"softwareVP8", nativeMedia.capabilities.SoftwareVP8)
 	client, err := loopback.Start(ctx, loopback.Options{
 		AllowedOrigins: clientOrigins(config.Site, options.Port),
 		NativeMedia:    nativeMedia.capabilities,
@@ -97,6 +145,7 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 		return errors.New("Screener Client could not start")
 	}
 	defer client.Close()
+	slog.Debug("screener-client", "event", "control-ready")
 	if options.console.machine {
 		if err = printEndpoint(client.Endpoint()); err != nil {
 			return err
@@ -247,11 +296,43 @@ func validateMode(options Options) error {
 	return nil
 }
 
+func clientDebugEnabled(value string) bool {
+	for _, component := range strings.Split(value, ",") {
+		if strings.TrimSpace(component) == "client" {
+			return true
+		}
+	}
+	return false
+}
+
+func openClientDiagnostics(directory string) (*diagnostics.Recorder, error) {
+	if directory = strings.TrimSpace(directory); directory == "" {
+		directory = strings.TrimSpace(os.Getenv("SCREENER_LOG_DIR"))
+	}
+	if directory != "" {
+		return diagnostics.Open(directory, "client", BuildRevision)
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		return nil, err
+	}
+	recorder, err := diagnostics.Open(filepath.Join(filepath.Dir(executable), "logs"), "client", BuildRevision)
+	if err == nil || !errors.Is(err, os.ErrPermission) && !errors.Is(err, syscall.EROFS) {
+		return recorder, err
+	}
+	cache, cacheErr := os.UserCacheDir()
+	if cacheErr != nil {
+		return nil, errors.Join(err, cacheErr)
+	}
+	return diagnostics.Open(filepath.Join(cache, "Screener", "logs"), "client", BuildRevision)
+}
+
 // runSite opens the configured Screener Site in the Browser and waits for the
 // loopback server, which is the only thing this mode owns. It takes no context:
 // cancellation reaches it through client.Done().
 func runSite(site string, options Options, client *loopback.Server) error {
 	var err error
+	slog.Debug("screener-client", "event", "mode", "mode", "site")
 	launchURL := clientLaunchURL(site)
 	view := consoleView{mode: "site", state: "starting", entry: launchURL}
 	options.console.show(view)
@@ -266,6 +347,7 @@ func runSite(site string, options Options, client *loopback.Server) error {
 		options.Ready(launchURL)
 	}
 	view.state = "ready"
+	slog.Debug("screener-client", "event", "site-ready")
 	options.console.show(view)
 	if err = <-client.Done(); err != nil {
 		return errors.New("Screener Client stopped unexpectedly")
@@ -280,7 +362,17 @@ func runLocal(ctx context.Context, options Options, config clientconfig.Config,
 	if options.Link {
 		view.mode = "link"
 	}
+	slog.Debug("screener-client", "event", "mode", "mode", view.mode)
 	options.console.show(view)
+	listener, err := net.ListenTCP("tcp4", &net.TCPAddr{IP: net.IPv4zero, Port: options.Port})
+	if err != nil {
+		return fmt.Errorf("local server port is unavailable: %w", err)
+	}
+	defer func() {
+		if listener != nil {
+			_ = listener.Close()
+		}
+	}()
 	addresses, err := lan.Addresses()
 	if err != nil {
 		return err
@@ -302,6 +394,7 @@ func runLocal(ctx context.Context, options Options, config clientconfig.Config,
 		}
 		defer tunnel.Close()
 		publicOrigin = tunnel.Origin()
+		slog.Debug("screener-client", "event", "public-link-ready")
 	}
 
 	stunURLs, natPredictionStunURLs := localSTUNURLs(options.Link)
@@ -317,27 +410,25 @@ func runLocal(ctx context.Context, options Options, config clientconfig.Config,
 	if err != nil {
 		return err
 	}
+	logger := options.logger
+	if logger == nil {
+		logger = slog.New(slog.NewTextHandler(options.console.logWriter(), nil))
+	}
 	localServer, err := serverapp.New(serverapp.Options{
-		Config: localConfig,
-		Assets: webassets.FS(),
-		// Machine mode inherits stderr; the interactive console shows server
-		// diagnostics in its log pane, as the Node child's stderr did.
-		Logger: slog.New(slog.NewTextHandler(options.console.logWriter(), nil)),
+		Config:   localConfig,
+		Listener: listener,
+		Assets:   webassets.FS(),
+		Logger:   logger,
 	})
 	if err != nil {
 		return err
 	}
+	listener = nil // Ownership is now in the application's startup/shutdown path.
+	defer func() { _ = endLocalServer(localServer) }()
 	if _, err = localServer.Listen(ctx); err != nil {
-		// Binding the Local port is the duplicate-launch guard, and now an
-		// atomic one: a second Client on the same port loses the bind instead
-		// of racing the first for the room authority.
-		var bindErr *net.OpError
-		if errors.As(err, &bindErr) && bindErr.Op == "listen" {
-			return fmt.Errorf("local server port is unavailable: %w", err)
-		}
 		return err
 	}
-	defer func() { _ = endLocalServer(localServer) }()
+	slog.Debug("screener-client", "event", "local-server-ready", "port", options.Port, "publicLink", publicOrigin != "")
 
 	// The readiness lines follow the listener, which the packaged smoke and the
 	// public-link gate both read from stdout before they probe the port.
@@ -354,7 +445,7 @@ func runLocal(ctx context.Context, options Options, config clientconfig.Config,
 		}
 	}
 	launchURL := clientLaunchURLWithLocalAccess(
-		fmt.Sprintf("http://localhost:%d/", options.Port),
+		fmt.Sprintf("http://127.0.0.1:%d/", options.Port),
 		config.LocalAccessPassword,
 	)
 	if !options.DisableBrowser {

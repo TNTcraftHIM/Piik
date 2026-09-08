@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/TNTcraftHIM/Screener/internal/client/mediaedge"
+	"github.com/TNTcraftHIM/Screener/internal/client/nativecapture"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -27,6 +28,7 @@ type Options struct {
 	EdgeCapacity int
 	PortMapping  bool
 	Events       chan<- Event
+	Relay        *mediaedge.RelayOptions
 }
 
 type sessionEdge struct {
@@ -43,10 +45,12 @@ type Session struct {
 	events       chan<- Event
 	ctx          context.Context
 	cancel       context.CancelFunc
+	relay        *mediaedge.RelayOptions
 
 	mu        sync.Mutex
 	receivers map[string]*mediaedge.Receiver
 	edges     map[string]sessionEdge
+	profile   *nativecapture.VideoProfile
 	closed    bool
 }
 
@@ -68,7 +72,7 @@ func Start(parent context.Context, options Options) (*Session, error) {
 	ctx, cancel := context.WithCancel(parent)
 	session := &Session{
 		shareID: options.ShareID, edgeCapacity: options.EdgeCapacity,
-		engine: engine, events: options.Events, ctx: ctx, cancel: cancel,
+		engine: engine, events: options.Events, ctx: ctx, cancel: cancel, relay: options.Relay,
 		receivers: make(map[string]*mediaedge.Receiver),
 		edges:     make(map[string]sessionEdge),
 	}
@@ -77,6 +81,28 @@ func Start(parent context.Context, options Options) (*Session, error) {
 }
 
 func (session *Session) ShareID() string { return session.shareID }
+
+// UpdateProfile records the Host ceiling; receiving alone never starts derivation.
+func (session *Session) UpdateProfile(profile nativecapture.VideoProfile) error {
+	if !profile.Valid() {
+		return errors.New("native Viewer profile is invalid")
+	}
+	session.mu.Lock()
+	defer session.mu.Unlock()
+	if session.closed {
+		return errors.New("native Viewer session is closed")
+	}
+	if session.profile != nil && *session.profile == profile {
+		return nil
+	}
+	for _, receiver := range session.receivers {
+		if err := receiver.Source().SetRelayProfile(profile); err != nil {
+			return err
+		}
+	}
+	session.profile = &profile
+	return nil
+}
 
 func (session *Session) AcceptOffer(
 	connectionID string,
@@ -97,6 +123,7 @@ func (session *Session) AcceptOffer(
 		Offer:        offer,
 		ICEServers:   iceServers,
 		EdgeCapacity: session.edgeCapacity,
+		Relay:        session.relay,
 		Events: mediaedge.ReceiverEvents{
 			LocalCandidate: func(candidate *webrtc.ICECandidateInit) {
 				session.emit(Event{
@@ -129,6 +156,13 @@ func (session *Session) AcceptOffer(
 		session.mu.Unlock()
 		_ = receiver.Close()
 		return webrtc.SessionDescription{}, false, "", errors.New("native Viewer receiver is unavailable")
+	}
+	if session.profile != nil {
+		if err = receiver.Source().SetRelayProfile(*session.profile); err != nil {
+			session.mu.Unlock()
+			_ = receiver.Close()
+			return webrtc.SessionDescription{}, false, "", err
+		}
 	}
 	session.receivers[connectionID] = receiver
 	session.mu.Unlock()
@@ -175,6 +209,10 @@ func (session *Session) prepareEdge(
 	if session.closed || session.edges[connectionID].edge != nil {
 		session.mu.Unlock()
 		return webrtc.SessionDescription{}, errors.New("native Viewer edge is unavailable")
+	}
+	if !local && session.profile == nil {
+		session.mu.Unlock()
+		return webrtc.SessionDescription{}, errors.New("native relay requires the Host profile")
 	}
 	session.mu.Unlock()
 	edge, err := session.engine.NewEdge(receiver.Source(), mediaedge.EdgeOptions{

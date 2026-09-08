@@ -36,6 +36,16 @@ export interface HostRoomState extends HostRoomIdentity {
   inviteUrl: string | null;
 }
 
+interface HostRoomClaim {
+  room: HostRoomIdentity;
+  ready: Promise<boolean>;
+  done: Promise<void>;
+  release: () => void;
+}
+
+let hostRoomClaim: HostRoomClaim | null = null;
+let hostRoomRelease: Promise<void> = Promise.resolve();
+
 export interface ViewerRoute {
   roomId: string;
   viewerGrant?: string;
@@ -131,18 +141,46 @@ export function takeClientLaunchBootstrap(): ClientLaunchBootstrap {
   return result;
 }
 
-export function clearHostRoom(): void {
-  try {
-    window.localStorage.removeItem(HOST_ROOM_STORAGE_KEY);
-  } catch {
-    // Storage can be disabled; the current page still keeps its in-memory room.
+export function clearHostRoom(keepResumeHint = false): void {
+  const room = readStoredHostRoom("sessionStorage") ?? hostRoomClaim?.room;
+  if (room) {
+    removeStoredHostRoom("sessionStorage", room);
+    if (!keepResumeHint) removeStoredHostRoom("localStorage", room);
   }
+  releaseHostRoom();
 }
 
-export function readHostRoom(): HostRoomIdentity | null {
+export function releaseHostRoom(): void {
+  if (hostRoomClaim) {
+    hostRoomClaim.release();
+    hostRoomRelease = hostRoomClaim.done;
+  }
+  hostRoomClaim = null;
+}
+
+export async function readHostRoom(): Promise<HostRoomIdentity | null> {
+  const tabRoom = readStoredHostRoom("sessionStorage") ?? hostRoomClaim?.room;
+  const room =
+    tabRoom ?? (hostRoomLocks() ? readStoredHostRoom("localStorage") : null);
+  if (!room) return null;
+  const claim = claimHostRoom(room, Boolean(tabRoom));
+  const acquired = await claim.ready;
+  if (hostRoomClaim !== claim) return null;
+  if (!acquired) {
+    releaseHostRoom();
+    removeStoredHostRoom("sessionStorage", room);
+    return null;
+  }
+  storeHostRoom("sessionStorage", room);
+  return room;
+}
+
+function readStoredHostRoom(
+  storage: "localStorage" | "sessionStorage",
+): HostRoomIdentity | null {
   let stored: string | null;
   try {
-    stored = window.localStorage.getItem(HOST_ROOM_STORAGE_KEY);
+    stored = window[storage].getItem(HOST_ROOM_STORAGE_KEY);
   } catch {
     return null;
   }
@@ -153,7 +191,7 @@ export function readHostRoom(): HostRoomIdentity | null {
   try {
     const parsed = hostRoomStorageSchema.safeParse(JSON.parse(stored));
     if (!parsed.success) {
-      clearHostRoom();
+      window[storage].removeItem(HOST_ROOM_STORAGE_KEY);
       return null;
     }
     const room: HostRoomIdentity = {
@@ -165,9 +203,100 @@ export function readHostRoom(): HostRoomIdentity | null {
     };
     return room;
   } catch {
-    clearHostRoom();
+    try {
+      window[storage].removeItem(HOST_ROOM_STORAGE_KEY);
+    } catch {
+      /* Storage is optional. */
+    }
     return null;
   }
+}
+
+function sameHostRoom(
+  left: HostRoomIdentity | null,
+  right: HostRoomIdentity,
+): boolean {
+  return left?.roomId === right.roomId && left.hostToken === right.hostToken;
+}
+
+function removeStoredHostRoom(
+  storage: "localStorage" | "sessionStorage",
+  room: HostRoomIdentity,
+): void {
+  if (!sameHostRoom(readStoredHostRoom(storage), room)) return;
+  try {
+    window[storage].removeItem(HOST_ROOM_STORAGE_KEY);
+  } catch {
+    /* Storage is optional. */
+  }
+}
+
+function hostRoomLocks(): LockManager | undefined {
+  try {
+    return window.navigator?.locks;
+  } catch {
+    return undefined;
+  }
+}
+
+function claimHostRoom(
+  room: HostRoomIdentity,
+  allowWithoutLocks: boolean,
+): HostRoomClaim {
+  let claim = hostRoomClaim;
+  if (!claim || !sameHostRoom(claim.room, room)) {
+    releaseHostRoom();
+    const previousRelease = hostRoomRelease;
+    let release!: () => void;
+    let resolveReady!: (ready: boolean) => void;
+    const lifetime = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    claim = {
+      room,
+      release,
+      done: Promise.resolve(),
+      ready: new Promise<boolean>((resolve) => {
+        resolveReady = resolve;
+      }),
+    };
+    hostRoomClaim = claim;
+    const locks = hostRoomLocks();
+    const requestedClaim = claim;
+    claim.done = (async () => {
+      await previousRelease;
+      if (hostRoomClaim !== requestedClaim) {
+        resolveReady(false);
+        return;
+      }
+      if (!locks) {
+        resolveReady(allowWithoutLocks);
+        return;
+      }
+      // The lock follows the room incarnation without exposing the Host token
+      // in queryable lock names. The browser releases it when this document ends.
+      const digest = await crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(room.hostToken),
+      );
+      if (hostRoomClaim !== requestedClaim) {
+        resolveReady(false);
+        return;
+      }
+      const identity = Array.from(new Uint8Array(digest), (byte) =>
+        byte.toString(16).padStart(2, "0"),
+      ).join("");
+      await locks.request(
+        `screener:host-room:${room.roomId}:${identity}`,
+        { ifAvailable: true },
+        async (lock) => {
+          resolveReady(lock !== null);
+          if (lock) await lifetime;
+        },
+      );
+    })().catch(() => resolveReady(allowWithoutLocks));
+  }
+  return claim;
 }
 
 export function readPreferredRoomId(): string | null {
@@ -215,22 +344,48 @@ export function clearPreferredRoom(): void {
   }
 }
 
-export function writeHostRoom(
+export async function writeHostRoom(
   room: HostRoomIdentity | CreateRoomResponse,
-): void {
-  try {
-    const canonicalUrl =
+  owns: () => boolean = () => true,
+): Promise<boolean> {
+  if (!owns()) return false;
+  const identity: HostRoomIdentity = {
+    roomId: room.roomId,
+    hostToken: room.hostToken,
+    expiresAt: room.expiresAt,
+    roomLeaseSeconds: room.roomLeaseSeconds,
+    canonicalUrl:
       "canonicalUrl" in room
         ? room.canonicalUrl
-        : canonicalViewerUrl(room.inviteUrl);
-    window.localStorage.setItem(
+        : canonicalViewerUrl(room.inviteUrl),
+  };
+  const previousClaim = hostRoomClaim;
+  const claim = claimHostRoom(identity, true);
+  const acquired = await claim.ready;
+  if (hostRoomClaim !== claim) return false;
+  if (!acquired || !owns()) {
+    if (!acquired || claim !== previousClaim) releaseHostRoom();
+    return false;
+  }
+  claim.room = identity;
+  storeHostRoom("sessionStorage", identity);
+  storeHostRoom("localStorage", identity);
+  return true;
+}
+
+function storeHostRoom(
+  storage: "localStorage" | "sessionStorage",
+  room: HostRoomIdentity,
+): void {
+  try {
+    window[storage].setItem(
       HOST_ROOM_STORAGE_KEY,
       JSON.stringify({
         roomId: room.roomId,
         hostToken: room.hostToken,
         expiresAt: room.expiresAt,
         roomLeaseSeconds: room.roomLeaseSeconds,
-        inviteUrl: canonicalUrl,
+        inviteUrl: room.canonicalUrl,
       }),
     );
   } catch {

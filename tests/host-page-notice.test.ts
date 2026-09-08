@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { setCopy } from "../src/client/ui/copy.ts";
+import { NativeMediaBridgeError } from "../src/client/native/media-bridge";
 import {
   hostActionErrorNotice,
   hostServerErrorNotice,
@@ -11,6 +12,11 @@ import {
 setCopy({ lang: "zh" });
 
 describe("host error notices", () => {
+  it("classifies the native preview bridge as a connection failure", () => {
+    expect(hostActionErrorNotice(new NativeMediaBridgeError("private detail"), "capture"))
+      .toBe(hostActionErrorNotice(new Error("private detail"), "connection"));
+  });
+
   it("maps every server error code without exposing server text", () => {
     const notices = {
       AUTH_REQUIRED: "站点访问已失效，请重新验证",

@@ -6,12 +6,16 @@
 ## Context
 
 The product media goal is one encoded source per capable distribution layer.
-Pure Browser WebRTC does not expose a way to inject a received encoded frame
+Standard Browser WebRTC does not expose a way to inject a received encoded frame
 into another `RTCPeerConnection` sender. `RTCRtpScriptTransform` can observe or
 modify an existing sender or receiver pipeline, but it does not provide an RTP
 transport fanout API. Browser simulcast and Dynacast remain appropriate for a
 single Browser-to-SFU publication; they do not make independent P2P senders
 share one encoder.
+
+The later [Chromium legacy probe](../research/advanced-peer-distribution.md#chromium-legacy-fanout-probe)
+demonstrates a non-standard clean-path exception, with unresolved feedback and
+statistics. It is not an accepted replacement for this Browser/Client boundary.
 
 The repository already has the required Native boundary: a Pion receiver can
 accept H.264/Opus RTP and its encoded source can feed bounded downstream Pion

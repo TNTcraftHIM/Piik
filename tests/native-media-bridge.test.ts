@@ -2,9 +2,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   NativeMediaBridge,
+  NativeMediaBridgeError,
   type NativeMediaBridgeControl,
 } from "../src/client/native/media-bridge";
 import type { NativeClientEvent } from "../src/client/native/wire";
+import { debugError, debugEvent } from "../src/client/lib/debug";
+
+vi.mock("../src/client/lib/debug", () => ({
+  browserDebugEnabled: true,
+  debugEvent: vi.fn(),
+  debugError: vi.fn(),
+}));
 
 class FakeMediaStream {
   private readonly tracks: MediaStreamTrack[] = [];
@@ -28,6 +36,10 @@ class FakeMediaStream {
 
 class FakePeerConnection extends EventTarget {
   connectionState: RTCPeerConnectionState = "new";
+  iceConnectionState: RTCIceConnectionState = "new";
+  iceGatheringState: RTCIceGatheringState = "new";
+  readonly getReceivers = vi.fn<() => RTCRtpReceiver[]>(() => []);
+  readonly getStats = vi.fn(async () => new Map());
   readonly addIceCandidate = vi.fn(async () => undefined);
   readonly setRemoteDescription = vi.fn(async () => undefined);
   readonly createAnswer = vi.fn(async () => ({
@@ -67,7 +79,7 @@ function fixture(options: {
     NativeMediaBridgeControl["prepareLocalEdge"]
   >(async (_shareId, connectionId) => {
       listener?.({
-        version: 8,
+        version: 9,
         type: "edge-candidate",
         shareId: "share_123456",
         connectionId,
@@ -109,6 +121,7 @@ function fixture(options: {
 
 beforeEach(() => {
   vi.useRealTimers();
+  vi.clearAllMocks();
 });
 
 afterEach(() => {
@@ -185,6 +198,57 @@ describe("native media bridge", () => {
     expect(current.bridge.stream.getAudioTracks()).toHaveLength(1);
   });
 
+  it("reports only categorical transport and candidate counts on timeout", async () => {
+    vi.useFakeTimers();
+    const current = fixture();
+    const peer = current.peer();
+    peer.connectionState = "connecting";
+    peer.iceConnectionState = "checking";
+    peer.iceGatheringState = "complete";
+    peer.getReceivers.mockReturnValue([{
+      track: { kind: "video", readyState: "live", id: "private-track" },
+      transport: { state: "new" },
+    } as unknown as RTCRtpReceiver]);
+    peer.getStats.mockResolvedValue(new Map([
+      ["private-local", { type: "local-candidate", candidateType: "host", protocol: "tcp", address: "192.0.2.1", port: 54321 }],
+      ["private-remote", { type: "remote-candidate", candidateType: "host", protocol: "udp", address: "192.0.2.2", port: 54322 }],
+    ]));
+    const starting = current.bridge.start();
+    const rejected = expect(starting).rejects.toBeInstanceOf(NativeMediaBridgeError);
+    await vi.advanceTimersByTimeAsync(8_000);
+    await rejected;
+
+    expect(debugEvent).toHaveBeenCalledWith("native-bridge", "failed", { type: "timeout", state: "starting" });
+    expect(debugEvent).toHaveBeenCalledWith("native-bridge", "ice-state", { state: "checking" });
+    expect(debugEvent).toHaveBeenCalledWith("native-bridge", "ice-gathering-state", { state: "complete" });
+    expect(debugEvent).toHaveBeenCalledWith("native-bridge", "dtls-state", { state: "new" });
+    expect(debugEvent).toHaveBeenCalledWith("native-bridge", "receiver-count", { type: "video", state: "live", count: 1 });
+    expect(debugEvent).toHaveBeenCalledWith("native-bridge", "candidate-count", { type: "local-host", state: "udp", count: 0 });
+    expect(debugEvent).toHaveBeenCalledWith("native-bridge", "candidate-count", { type: "remote-host", state: "udp", count: 1 });
+    const report = JSON.stringify(vi.mocked(debugEvent).mock.calls);
+    for (const privateValue of ["private-track", "private-local", "private-remote", "192.0.2.", "54321", "54322"]) {
+      expect(report).not.toContain(privateValue);
+    }
+    expect(peer.getStats).toHaveBeenCalledOnce();
+    expect(peer.close).toHaveBeenCalledOnce();
+  });
+
+  it.each(["failed", "pending"])("does not delay timeout cleanup for %s diagnostics", async (state) => {
+    vi.useFakeTimers();
+    const current = fixture();
+    current.peer().getStats.mockImplementation(() => state === "failed"
+      ? Promise.reject(new Error("private stats failure"))
+      : new Promise(() => undefined));
+    const rejected = expect(current.bridge.start()).rejects.toBeInstanceOf(NativeMediaBridgeError);
+    await vi.advanceTimersByTimeAsync(8_000);
+    await rejected;
+    expect(current.peer().close).toHaveBeenCalledOnce();
+    expect(current.control.closeEdge).toHaveBeenCalledOnce();
+    if (state === "failed") expect(debugError).toHaveBeenCalledWith(
+      "native-bridge", "diagnostics-failed", expect.any(Error),
+    );
+  });
+
   it("reports an active native failure once and retires its edge", async () => {
     const current = fixture();
     const starting = current.bridge.start();
@@ -199,14 +263,14 @@ describe("native media bridge", () => {
     await starting;
 
     current.emit({
-      version: 8,
+      version: 9,
       type: "edge-state",
       shareId: "share_123456",
       connectionId: current.bridge.connectionId,
       state: "failed",
     });
     current.emit({
-      version: 8,
+      version: 9,
       type: "edge-state",
       shareId: "share_123456",
       connectionId: current.bridge.connectionId,

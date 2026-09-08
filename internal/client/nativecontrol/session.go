@@ -6,7 +6,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"log/slog"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -15,6 +17,7 @@ import (
 	"unicode"
 
 	"github.com/TNTcraftHIM/Screener/internal/client/loopback"
+	"github.com/TNTcraftHIM/Screener/internal/client/mediaedge"
 	"github.com/TNTcraftHIM/Screener/internal/client/nativecapture"
 	"github.com/TNTcraftHIM/Screener/internal/client/nativehost"
 	"github.com/TNTcraftHIM/Screener/internal/client/nativeviewer"
@@ -42,10 +45,11 @@ type Session struct {
 	hostEvents     chan nativehost.Event
 	viewerEvents   chan nativeviewer.Event
 
-	mu     sync.Mutex
-	host   *nativehost.Session
-	viewer *nativeviewer.Session
-	closed bool
+	mu         sync.Mutex
+	host       *nativehost.Session
+	viewer     *nativeviewer.Session
+	closed     bool
+	updateDone chan struct{}
 }
 
 type outboundMediaSession interface {
@@ -84,6 +88,8 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (any, error)
 		return nil, err
 	}
 	switch envelope.Type {
+	case "prepare-publication", "publication-media", "publication-answer", "publication-candidate", "publication-layers", "close-publication":
+		return session.handlePublication(envelope, payload)
 	case "capture-options":
 		var request captureOptionsRequest
 		if err := decodeStrict(payload, &request); err != nil || request.Type != envelope.Type {
@@ -100,7 +106,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (any, error)
 		}
 		targets, err := nativecapture.ListSources(session.ctx, session.captureProcess)
 		if err != nil {
-			return nil, err
+			return operationFailure(envelope), nil
 		}
 		return sourceListResponse{
 			responseEnvelope: response(envelope, "source-list"),
@@ -146,37 +152,46 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (any, error)
 			!validQualitySettings(request.Profile) {
 			return nil, errors.New("native update-share request is invalid")
 		}
-		host := session.current(request.ShareID)
-		if host == nil {
+		profile := nativeQualityProfile(request.Profile)
+		var err error
+		if host := session.current(request.ShareID); host != nil {
+			return session.updateHost(host, envelope, request.ShareID, profile), nil
+		} else if viewer := session.currentViewer(request.ShareID); viewer != nil {
+			err = viewer.UpdateProfile(profile.Video)
+		} else {
 			return nil, errors.New("native share does not exist")
 		}
-		if err := host.UpdateProfile(nativeQualityProfile(request.Profile)); err != nil {
-			return nil, err
-		}
-		return shareUpdatedResponse{
-			responseEnvelope: response(envelope, "share-updated"),
-			ShareID:          request.ShareID,
-		}, nil
+		return session.shareUpdateResult(envelope, request.ShareID, profile, err), nil
 	case "replace-share-source":
 		var request replaceShareSourceRequest
 		if err := decodeStrict(payload, &request); err != nil ||
 			request.Type != envelope.Type ||
-			!validIdentities(request.ShareID) {
+			!validIdentities(request.ShareID) || !request.Source.Valid() {
 			return nil, errors.New("native replace-share-source request is invalid")
 		}
 		host := session.current(request.ShareID)
 		if host == nil {
 			return nil, errors.New("native share does not exist")
 		}
+		session.mu.Lock()
+		updating := session.updateDone != nil
+		session.mu.Unlock()
+		if updating {
+			return operationFailure(envelope), nil
+		}
 		audio := request.Audio && session.capabilities.Summary().AudioFor(
 			request.Source.Kind,
 		)
-		if err := host.ReplaceSource(ctx, nativecapture.VideoOptions{
+		err := host.ReplaceSource(ctx, nativecapture.VideoOptions{
 			Target:       request.Source,
 			AdapterIndex: request.AdapterIndex,
 			EncoderIndex: request.EncoderIndex,
-		}, audio); err != nil {
-			return nil, err
+		}, audio)
+		if slog.Default().Enabled(session.ctx, slog.LevelDebug) {
+			slog.Debug("screener-client", "event", "share-source-replace", "failed", err != nil, "errorType", fmt.Sprintf("%T", err))
+		}
+		if err != nil {
+			return operationFailure(envelope), nil
 		}
 		return shareSourceReplacedResponse{
 			responseEnvelope: response(envelope, "share-source-replaced"),
@@ -296,7 +311,11 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (any, error)
 			!identityPattern.MatchString(request.ShareID) {
 			return nil, errors.New("native stop-share request is invalid")
 		}
-		if err := session.stopShare(request.ShareID); err != nil {
+		err := session.stopShare(request.ShareID)
+		if slog.Default().Enabled(session.ctx, slog.LevelDebug) {
+			slog.Debug("screener-client", "event", "share-stop", "failed", err != nil, "errorType", fmt.Sprintf("%T", err))
+		}
+		if err != nil {
 			return nil, err
 		}
 		return response(envelope, "share-stopped"), nil
@@ -325,6 +344,7 @@ func (session *Session) Close() error {
 		return nil
 	}
 	session.closed = true
+	updateDone := session.updateDone
 	host := session.host
 	viewer := session.viewer
 	session.host = nil
@@ -337,21 +357,92 @@ func (session *Session) Close() error {
 	if viewer != nil {
 		_ = viewer.Close()
 	}
+	if updateDone != nil {
+		<-updateDone
+	}
 	return nil
+}
+
+func (session *Session) updateHost(host *nativehost.Session, request requestEnvelope, shareID string, profile nativehost.QualityProfile) any {
+	session.mu.Lock()
+	if session.closed || session.host != host || session.updateDone != nil {
+		session.mu.Unlock()
+		return operationFailure(request)
+	}
+	done := make(chan struct{})
+	session.updateDone = done
+	session.mu.Unlock()
+	go func() {
+		err := host.UpdateProfile(profile)
+		session.mu.Lock()
+		current := !session.closed && session.host == host
+		if !current && err == nil {
+			err = errors.New("native share stopped during quality update")
+		}
+		result := session.shareUpdateResult(request, shareID, profile, err)
+		close(done)
+		if session.closed {
+			session.updateDone = nil
+			session.mu.Unlock()
+			return
+		}
+		// Release admission before an enqueued ACK can trigger the next update.
+		select {
+		case session.events <- result:
+			session.updateDone = nil
+			session.mu.Unlock()
+			return
+		default:
+			session.mu.Unlock()
+		}
+		// Backpressure retains one completion but never holds the stop mutex.
+		session.emit(result)
+		session.mu.Lock()
+		if session.updateDone == done {
+			session.updateDone = nil
+		}
+		session.mu.Unlock()
+	}()
+	return nil
+}
+
+func (session *Session) shareUpdateResult(request requestEnvelope, shareID string, profile nativehost.QualityProfile, err error) any {
+	if slog.Default().Enabled(session.ctx, slog.LevelDebug) {
+		slog.Debug("screener-client", "event", "share-update", "failed", err != nil, "errorType", fmt.Sprintf("%T", err),
+			"width", profile.Video.Width, "height", profile.Video.Height, "fps", profile.Video.Framerate,
+			"bitrate", profile.Video.Bitrate, "audioBitrate", profile.AudioBitrate)
+	}
+	if err != nil {
+		return operationFailure(request)
+	}
+	return shareUpdatedResponse{responseEnvelope: response(request, "share-updated"), ShareID: shareID}
 }
 
 func (session *Session) startShare(
 	ctx context.Context,
 	envelope requestEnvelope,
 	request startShareRequest,
-) (any, error) {
+) (result any, returnedErr error) {
+	profile := nativeQualityProfile(request.Profile)
+	codec := request.Codec
+	defer func() {
+		if slog.Default().Enabled(session.ctx, slog.LevelDebug) {
+			_, rejected := result.(requestFailedResponse)
+			slog.Debug("screener-client", "event", "share-start", "failed", returnedErr != nil || rejected, "errorType", fmt.Sprintf("%T", returnedErr),
+				"codec", codec, "width", profile.Video.Width, "height", profile.Video.Height,
+				"fps", profile.Video.Framerate, "bitrate", profile.Video.Bitrate)
+		}
+	}()
 	session.mu.Lock()
+	if session.updateDone != nil {
+		session.mu.Unlock()
+		return operationFailure(envelope), nil
+	}
 	if session.closed || session.host != nil || session.viewer != nil {
 		session.mu.Unlock()
 		return nil, errors.New("native share is already active")
 	}
 	session.mu.Unlock()
-	profile := nativeQualityProfile(request.Profile)
 	host, err := nativehost.Start(ctx, nativehost.Options{
 		ShareID:        request.ShareID,
 		CaptureProcess: session.captureProcess,
@@ -381,12 +472,13 @@ func (session *Session) startShare(
 	}
 	session.host = host
 	session.mu.Unlock()
+	codec = host.Codec()
 	go session.watchHost(host)
 	return shareStartedResponse{
 		responseEnvelope: response(envelope, "share-started"),
 		ShareID:          request.ShareID,
 		Audio:            host.HasAudio(),
-		Codec:            host.Codec(),
+		Codec:            codec,
 	}, nil
 }
 
@@ -525,8 +617,13 @@ func (session *Session) stopShare(shareID string) error {
 		return errors.New("native share does not exist")
 	}
 	session.host = nil
+	updateDone := session.updateDone
 	session.mu.Unlock()
-	return host.Close()
+	err := host.Close()
+	if updateDone != nil {
+		<-updateDone
+	}
+	return err
 }
 
 func (session *Session) current(shareID string) *nativehost.Session {
@@ -559,6 +656,7 @@ func (session *Session) ensureViewer(
 	viewer, err := nativeviewer.Start(session.ctx, nativeviewer.Options{
 		ShareID: shareID, EdgeCapacity: edgeCapacity,
 		PortMapping: session.portMapping, Events: session.viewerEvents,
+		Relay: &mediaedge.RelayOptions{CaptureProcess: session.captureProcess, Capabilities: session.capabilities},
 	})
 	if err != nil {
 		return nil, err
@@ -690,15 +788,18 @@ func (session *Session) emit(event any) {
 
 func eventMessage(event nativehost.Event) any {
 	base := eventEnvelope{
-		Version:      loopback.ProtocolVersion,
-		Type:         event.Type,
-		ShareID:      event.ShareID,
-		ConnectionID: event.ConnectionID,
+		Version:               loopback.ProtocolVersion,
+		Type:                  event.Type,
+		ShareID:               event.ShareID,
+		ConnectionID:          event.ConnectionID,
+		PublicationGeneration: event.PublicationGeneration,
 	}
 	switch event.Type {
-	case "edge-candidate":
+	case "publication-quality":
+		return publicationQualityEvent{eventEnvelope: base, PublicationQualitySample: *event.PublicationQuality}
+	case "edge-candidate", "publication-candidate":
 		return edgeCandidateEvent{eventEnvelope: base, Candidate: event.Candidate}
-	case "edge-state":
+	case "edge-state", "publication-state":
 		return edgeStateEvent{eventEnvelope: base, State: event.State}
 	case "edge-path":
 		return edgePathEvent{
@@ -825,5 +926,12 @@ func response(request requestEnvelope, responseType string) responseEnvelope {
 		Version: loopback.ProtocolVersion,
 		ID:      request.ID,
 		Type:    responseType,
+	}
+}
+
+func operationFailure(request requestEnvelope) requestFailedResponse {
+	return requestFailedResponse{
+		responseEnvelope: response(request, "request-failed"),
+		Code:             "operation-failed",
 	}
 }

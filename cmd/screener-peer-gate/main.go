@@ -13,16 +13,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/TNTcraftHIM/Screener/internal/server/protocol"
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 	"github.com/pion/interceptor"
 	"github.com/pion/webrtc/v4"
 )
 
-const (
-	signalingProtocol    = "screener-v21"
-	maxPendingCandidates = 64
-)
+const maxPendingCandidates = 64
 
 type gateConfig struct {
 	SignalURL      string `json:"signalUrl"`
@@ -168,7 +166,7 @@ func run(ctx context.Context, config gateConfig) gateResult {
 	}
 	defer receiver.close()
 	if err = receiver.write(map[string]any{
-		"type": "authenticate", "protocol": signalingProtocol,
+		"type": "authenticate", "protocol": protocol.SignalingProtocol,
 		"roomId": config.RoomID, "role": "viewer", "clientId": config.ClientID,
 		"viewerGrant": config.ViewerGrant, "viewerPresence": true,
 		"displayName": "remote-gate",

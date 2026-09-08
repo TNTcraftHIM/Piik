@@ -8,7 +8,6 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
   readdirSync,
   realpathSync,
@@ -16,12 +15,12 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { writeServerLicenseNotices } from "./package-licenses.mjs";
 import { tarExecutable } from "./archive-tool.mjs";
+import { resetBuildWorkspace } from "./build-workspace.mjs";
 
 // The Hosted deployment target. deploy/release-app.sh runs the archived binary
 // as the service user, so the release is always built for linux/amd64, and
@@ -192,7 +191,7 @@ assertCleanRevision(repositoryRoot, revision);
 const mainAsset = mainAssetOf(join(repositoryRoot, CLIENT_DIST));
 
 const releaseId = revision.slice(0, 7);
-const temporaryRoot = mkdtempSync(join(tmpdir(), `screener-app-${releaseId}-`));
+const temporaryRoot = resetBuildWorkspace(repositoryRoot, "app-package", "assembly");
 const runtimeRoot = join(temporaryRoot, "runtime");
 const verifyRoot = join(temporaryRoot, "verify");
 

@@ -11,6 +11,14 @@ the storage decision; implementation detail belongs in code and tests.
   a room; it is not a secret or permanent identity.
 - Every room has a 256-bit Host token. The server stores only its digest; the
   owning Browser keeps the raw token locally.
+- Each Host tab retains its current room in session storage. The origin keeps
+  one persistent resume hint and a separate preferred code; a new tab may resume
+  that room only when no other tab claims it. Secure Browser origins use Web
+  Locks, including protection against copied tab storage. Without Web Locks,
+  fresh tabs create independent rooms and same-tab reload can retain authority,
+  but duplicated-tab exclusion is not guaranteed. Closing the tab releases its
+  claim; losing Host authority clears that tab without erasing another tab's
+  resume hint.
 - Dormant rooms have a configurable lease, default 24 hours. An authenticated
   online Host clears the lease deadline whether or not it is currently sharing;
   Host absence starts the dormant lease. The exact Host token resumes an
@@ -32,7 +40,10 @@ Three independent authorities exist:
    authorized page renews it through the site-access check while it remains
    active. It authorizes room creation, Host role, and code-only Viewer
    attempts; it is not a room credential, and Viewer-grant admission cannot
-   create or renew it.
+   create or renew it. Cookie transport attributes follow the configured
+   destination: public HTTPS retains the Secure host-prefixed cookie, while a
+   separately configured HTTP LAN origin can use its HTTP cookie. Login,
+   renewal, room creation and WebSocket admission use that same selection.
 2. **Host ownership.** The exact Host token authorizes that room's Host and
    access-management operations. It cannot authorize another room.
 3. **Viewer invitation.** Every room creates a 128-bit, 22-character base64url
@@ -60,10 +71,10 @@ remain separate.
 
 Rotating or revoking the Viewer grant is a strong authorization change. The new
 generation is committed before old Viewers, signaling grace, routes, and sender
-edges are closed. An affected SFU Viewer is removed by its exact LiveKit
-identity and confirmed absent. This does not revoke an already issued
-self-hosted LiveKit token: its subscription stays charged until that publication
-generation drains. Changing code-entry policy or password affects later
+edges are closed. An affected SFU Viewer's exact embedded subscription is closed
+before its egress reservation is released. Room-authenticated signaling cannot
+recreate a revoked subscription; no separate media token survives revocation.
+Changing code-entry policy or password affects later
 code-only attempts and does not silently revoke invitations.
 
 ## Persistence Modes

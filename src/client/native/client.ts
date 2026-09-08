@@ -1,9 +1,11 @@
 import type { z } from "zod";
+import { debugEvent } from "../lib/debug";
 
 import type {
   IceConfig,
   QualitySettings,
   SignalPayload,
+  SfuSignalMessage,
 } from "../../shared/protocol";
 import { createOpaqueId } from "../lib/opaque-id";
 import {
@@ -21,8 +23,10 @@ import {
   NATIVE_CLIENT_PROTOCOL,
   NATIVE_CLIENT_SUBPROTOCOL,
   pongResponseSchema,
+  publicationResponseSchema,
   receiveAnswerResponseSchema,
   readyResponseSchema,
+  requestFailedResponseSchema,
   shareStartedResponseSchema,
   shareSourceReplacedResponseSchema,
   shareUpdatedResponseSchema,
@@ -115,7 +119,9 @@ export class NativeClient {
     readonly health: NativeHealth,
     private readonly socket: WebSocket,
   ) {
-    socket.addEventListener("message", (event) => this.handleMessage(event.data));
+    socket.addEventListener("message", (event) =>
+      this.handleMessage(event.data),
+    );
     socket.addEventListener("close", () => this.handleClose());
     socket.addEventListener("error", () => this.handleClose());
   }
@@ -123,20 +129,33 @@ export class NativeClient {
   static async connect(): Promise<NativeClient | null> {
     const health = await discoverNativeHealth();
     if (!health) return null;
-    const socket = new WebSocket(
-      `ws://127.0.0.1:${health.port}/control`,
-      [`${NATIVE_CLIENT_SUBPROTOCOL}.${health.instanceToken}`],
-    );
+    const socket = new WebSocket(`ws://127.0.0.1:${health.port}/control`, [
+      `${NATIVE_CLIENT_SUBPROTOCOL}.${health.instanceToken}`,
+    ]);
     const opened = await new Promise<boolean>((resolveOpen) => {
-      const timer = window.setTimeout(() => resolveOpen(false), REQUEST_TIMEOUT_MS);
-      socket.addEventListener("open", () => {
-        window.clearTimeout(timer);
-        resolveOpen(socket.protocol === `${NATIVE_CLIENT_SUBPROTOCOL}.${health.instanceToken}`);
-      }, { once: true });
-      socket.addEventListener("error", () => {
-        window.clearTimeout(timer);
-        resolveOpen(false);
-      }, { once: true });
+      const timer = window.setTimeout(
+        () => resolveOpen(false),
+        REQUEST_TIMEOUT_MS,
+      );
+      socket.addEventListener(
+        "open",
+        () => {
+          window.clearTimeout(timer);
+          resolveOpen(
+            socket.protocol ===
+              `${NATIVE_CLIENT_SUBPROTOCOL}.${health.instanceToken}`,
+          );
+        },
+        { once: true },
+      );
+      socket.addEventListener(
+        "error",
+        () => {
+          window.clearTimeout(timer);
+          resolveOpen(false);
+        },
+        { once: true },
+      );
     });
     if (!opened) {
       socket.close();
@@ -145,6 +164,7 @@ export class NativeClient {
     const client = new NativeClient(health, socket);
     try {
       await client.request("hello", {}, readyResponseSchema);
+      debugEvent("native", "connected");
       return client;
     } catch {
       client.close();
@@ -197,7 +217,9 @@ export class NativeClient {
     if (response.sourceKey !== nativeCaptureTargetKey(target)) {
       throw new Error("Native capture preview identity changed");
     }
-    return response.data ? `data:${response.mime};base64,${response.data}` : null;
+    return response.data
+      ? `data:${response.mime};base64,${response.data}`
+      : null;
   }
 
   async startShare(
@@ -215,10 +237,7 @@ export class NativeClient {
     return { audio: response.audio, codec: response.codec };
   }
 
-  async updateShare(
-    shareId: string,
-    profile: QualitySettings,
-  ): Promise<void> {
+  async updateShare(shareId: string, profile: QualitySettings): Promise<void> {
     const response = await this.request(
       "update-share",
       { shareId, profile },
@@ -278,6 +297,109 @@ export class NativeClient {
       throw new Error("Native edge identity changed");
     }
     return { type: "offer", sdp: response.sdp };
+  }
+
+  async preparePublication(
+    shareId: string,
+    publicationGeneration: string,
+    connectionId: string,
+    iceConfig: IceConfig,
+  ) {
+    const response = await this.request(
+      "prepare-publication",
+      {
+        shareId,
+        publicationGeneration,
+        connectionId,
+        iceServers: iceConfig.iceServers.map((server) => ({
+          urls: Array.isArray(server.urls) ? server.urls : [server.urls],
+        })),
+      },
+      publicationResponseSchema,
+    );
+    if (
+      response.type !== "publication-offer" ||
+      !response.sdp ||
+      response.shareId !== shareId ||
+      response.publicationGeneration !== publicationGeneration ||
+      response.connectionId !== connectionId
+    ) {
+      throw new Error("Native publication identity changed");
+    }
+    return {
+      description: { type: "offer" as const, sdp: response.sdp },
+      media: response.media,
+    };
+  }
+
+  async publicationMedia(
+    shareId: string,
+    publicationGeneration: string,
+    connectionId: string,
+  ) {
+    const response = await this.request(
+      "publication-media",
+      {
+        shareId,
+        publicationGeneration,
+        connectionId,
+      },
+      publicationResponseSchema,
+    );
+    if (
+      response.type !== "publication-media" ||
+      response.shareId !== shareId ||
+      response.publicationGeneration !== publicationGeneration ||
+      response.connectionId !== connectionId
+    ) {
+      throw new Error("Native publication identity changed");
+    }
+    return response.media;
+  }
+
+  async acceptPublicationSignal(
+    shareId: string,
+    message: SfuSignalMessage,
+  ): Promise<void> {
+    const identity = {
+      shareId,
+      publicationGeneration: message.publicationGeneration,
+      connectionId: message.connectionId,
+    };
+    if (
+      message.kind === "description" &&
+      message.description?.type === "answer"
+    ) {
+      await this.request(
+        "publication-answer",
+        { ...identity, sdp: message.description.sdp },
+        nativeAckResponseSchema,
+      );
+    } else if (message.kind === "candidate") {
+      await this.request(
+        "publication-candidate",
+        { ...identity, candidate: message.candidate ?? null },
+        nativeAckResponseSchema,
+      );
+    } else if (message.kind === "layers") {
+      await this.request(
+        "publication-layers",
+        { ...identity, activeCount: message.activeCount },
+        nativeAckResponseSchema,
+      );
+    }
+  }
+
+  async closePublication(
+    shareId: string,
+    publicationGeneration: string,
+    connectionId: string,
+  ): Promise<void> {
+    await this.request(
+      "close-publication",
+      { shareId, publicationGeneration, connectionId },
+      nativeAckResponseSchema,
+    );
   }
 
   async prepareLocalEdge(
@@ -364,11 +486,7 @@ export class NativeClient {
   }
 
   async stopReceive(shareId: string): Promise<void> {
-    await this.request(
-      "stop-receive",
-      { shareId },
-      nativeAckResponseSchema,
-    );
+    await this.request("stop-receive", { shareId }, nativeAckResponseSchema);
   }
 
   async acceptSignal(
@@ -402,11 +520,7 @@ export class NativeClient {
   }
 
   async stopShare(shareId: string): Promise<void> {
-    await this.request(
-      "stop-share",
-      { shareId },
-      nativeAckResponseSchema,
-    );
+    await this.request("stop-share", { shareId }, nativeAckResponseSchema);
   }
 
   async setPaused(shareId: string, paused: boolean): Promise<void> {
@@ -439,28 +553,40 @@ export class NativeClient {
     }
     const id = createOpaqueId();
     return new Promise<T>((resolveRequest, rejectRequest) => {
-      const timer = timeoutMs === null
-        ? null
-        : window.setTimeout(() => {
-            this.pending.delete(id);
-            rejectRequest(new Error("Screener Client request timed out"));
-          }, timeoutMs);
+      const timer =
+        timeoutMs === null
+          ? null
+          : window.setTimeout(() => {
+              this.pending.delete(id);
+              debugEvent("native", "request-timeout", { type });
+              rejectRequest(new Error("Screener Client request timed out"));
+            }, timeoutMs);
       this.pending.set(id, {
         schema,
-        resolve: resolveRequest as (value: unknown) => void,
-        reject: rejectRequest,
+        resolve: (value) => {
+          debugEvent("native", "response", { type });
+          resolveRequest(value as T);
+        },
+        reject: (error) => {
+          debugEvent("native", "request-failed", { type });
+          rejectRequest(error);
+        },
         timer,
       });
       try {
-        this.socket.send(JSON.stringify({
-          version: NATIVE_CLIENT_PROTOCOL,
-          id,
-          type,
-          ...fields,
-        }));
+        debugEvent("native", "request", { type });
+        this.socket.send(
+          JSON.stringify({
+            version: NATIVE_CLIENT_PROTOCOL,
+            id,
+            type,
+            ...fields,
+          }),
+        );
       } catch {
         if (timer !== null) window.clearTimeout(timer);
         this.pending.delete(id);
+        debugEvent("native", "request-failed", { type });
         rejectRequest(new Error("Screener Client request failed"));
       }
     });
@@ -480,6 +606,10 @@ export class NativeClient {
       if (!pending) return;
       this.pending.delete(id);
       if (pending.timer !== null) window.clearTimeout(pending.timer);
+      if (requestFailedResponseSchema.safeParse(value).success) {
+        pending.reject(new Error("Screener Client request failed"));
+        return;
+      }
       const parsed = pending.schema.safeParse(value);
       if (parsed.success) {
         pending.resolve(parsed.data);
@@ -493,6 +623,9 @@ export class NativeClient {
       this.failConnection();
       return;
     }
+    if (event.data.type === "capture-state" || event.data.type === "edge-state" || event.data.type === "publication-state") {
+      debugEvent("native", "state", { type: event.data.type, state: event.data.state });
+    } else if (event.data.type === "share-ended") debugEvent("native", "share-ended");
     for (const listener of this.listeners) {
       listener(event.data);
     }
@@ -500,6 +633,7 @@ export class NativeClient {
 
   private handleClose(): void {
     if (this.closed) return;
+    debugEvent("native", "closed");
     this.closed = true;
     this.rejectPending();
     this.listeners.clear();

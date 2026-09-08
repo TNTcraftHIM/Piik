@@ -1,18 +1,12 @@
 import type { NatTraversalPath } from "../shared/nat-candidate";
 
 export type SignalConnectionState =
-  | "connecting"
-  | "connected"
-  | "reconnecting"
-  | "offline";
+  "connecting" | "connected" | "reconnecting" | "offline";
 
 export type MediaPath = "direct" | "unknown";
 export type NativeEdgeQualityState = "unknown" | "healthy" | "degraded";
 export type QualityWarningKind =
-  | "bandwidth"
-  | "cpu"
-  | "other"
-  | "configuration";
+  "bandwidth" | "cpu" | "other" | "configuration";
 
 export interface ConnectionMetrics {
   sampleTimestampMs: number | null;
@@ -79,6 +73,7 @@ export interface ConnectionMetrics {
   encoderImplementation: string | null;
   powerEfficientEncoder: boolean | null;
   intervalFramesEncoded: number | null;
+  intervalFramesSent: number | null;
   intervalEncodeTimeMs: number | null;
   intervalEncodeMs: number | null;
   intervalDecodeMs: number | null;
@@ -93,10 +88,10 @@ export interface PeerSnapshot {
   iceConnectionState: RTCIceConnectionState;
   metrics: ConnectionMetrics;
   error: string | null;
-  senderParameters?: import("./media/quality").VideoSenderParameterReadback | null;
+  senderParameters?:
+    import("./media/quality").VideoSenderParameterReadback | null;
   audioSenderParameters?:
-    | import("./media/quality").AudioSenderParameterReadback
-    | null;
+    import("./media/quality").AudioSenderParameterReadback | null;
   qualityWarning?: string | null;
   qualityWarningKind?: QualityWarningKind | null;
 }
@@ -166,6 +161,7 @@ export const EMPTY_METRICS: ConnectionMetrics = {
   encoderImplementation: null,
   powerEfficientEncoder: null,
   intervalFramesEncoded: null,
+  intervalFramesSent: null,
   intervalEncodeTimeMs: null,
   intervalEncodeMs: null,
   intervalDecodeMs: null,

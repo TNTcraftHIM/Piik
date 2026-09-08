@@ -71,6 +71,48 @@ func TestCreateRoomReleasesLockWhenDerivationOrCommitPanics(t *testing.T) {
 	}
 }
 
+func TestIncomingStorageFailureReleasesLockWithoutSuppressingPanic(t *testing.T) {
+	database, err := room.NewDatabase(filepath.Join(t.TempDir(), "rooms.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := newStore(t, 1, nil, database)
+	defer store.Close()
+	created := createStoreRoom(t, store, protocol.CodeEntryOpen, "")
+	sess := newSession(nil, true)
+	defer sess.cancel()
+	participant, err := store.ConnectParticipant(room.ConnectParticipantInput{
+		RoomID: created.RoomID, Role: protocol.RoleHost, Token: created.HostToken,
+		ClientID: "failed-storage-host", SessionID: sess.sessionID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const generation = "failed_storage_share_generation"
+	sess.authenticated = &authenticatedSession{roomID: created.RoomID, role: protocol.RoleHost,
+		peerID: participant.PeerID, shareGeneration: generation}
+	server := &Server{store: store, shares: map[string]roomShare{created.RoomID: {generation: generation}}}
+	server.sessions.Set(sess, struct{}{})
+	if err = database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	func() {
+		defer func() {
+			failure, ok := recover().(error)
+			if !ok || !strings.Contains(failure.Error(), "room store write failed while stopping sharing") {
+				t.Errorf("handler did not preserve its storage panic: %v", failure)
+			}
+		}()
+		server.handleIncoming(sess, websocket.MessageText,
+			[]byte(`{"type":"stop-sharing","shareGeneration":"`+generation+`"}`))
+	}()
+	if !server.mu.TryLock() {
+		server.mu.Unlock() // Allow test cleanup if the regression returns.
+		t.Fatal("storage panic left the message lock held before reader cleanup")
+	}
+	server.mu.Unlock()
+}
+
 // ---------------------------------------------------------------------------
 // harness
 // ---------------------------------------------------------------------------
@@ -2713,10 +2755,8 @@ func TestSignalCloseMarksRouterClosingBeforeReleasingTheLock(t *testing.T) {
 		afterFunc: timers.afterFunc,
 		now:       now.now,
 		sfu: &SfuFallback{
-			URL:              "wss://sfu.example.test",
-			TokenIssuer:      &fakeTokenIssuer{},
 			Admission:        sfu.NewAdmission(sfu.AdmissionOptions{IngressCapacity: 2, EgressCapacity: 20}),
-			RoomControl:      control,
+			Media:            control,
 			PrepareTimeoutMs: 300,
 		},
 	})

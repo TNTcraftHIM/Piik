@@ -1,13 +1,20 @@
 package mediaedge
 
 import (
+	"context"
 	"errors"
 	"net"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/TNTcraftHIM/Screener/internal/client/nativeaudio"
+	"github.com/TNTcraftHIM/Screener/internal/client/nativecapture"
+	"github.com/TNTcraftHIM/Screener/internal/media/encoded"
+	"github.com/livekit/livekit-server/pkg/sfu"
+	"github.com/livekit/livekit-server/pkg/sfu/streamtracker"
 	"github.com/pion/interceptor"
 	"github.com/pion/logging"
 	"github.com/pion/rtcp"
@@ -15,6 +22,204 @@ import (
 	"github.com/pion/rtp/codecs"
 	"github.com/pion/webrtc/v4"
 )
+
+func writeSourceFrame(source *Source, data []byte, timestamp, duration time.Duration) error {
+	if _, err := source.BeginFrame(timestamp); err != nil {
+		return err
+	}
+	return source.WriteVideo(0, encoded.Frame{Data: data, PTS: timestamp, Duration: duration, Recovery: true})
+}
+
+func TestOutputPlanRetiresOnlyFailedLayerConsumers(t *testing.T) {
+	engine, err := NewEngine(EngineOptions{BindAddress: "127.0.0.1:0", IncludeLoopback: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = engine.Close() })
+	wake := make(chan struct{}, 8)
+	source, err := engine.NewSource("vp8", 2, 2, func() { wake <- struct{}{} })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = source.ConfigureOutputs([]uint32{150_000, 600_000}); err != nil {
+		t.Fatal(err)
+	}
+	high, _, _ := connectedReceiver(t, engine, source, "high")
+	low, _, _ := connectedReceiver(t, engine, source, "low")
+	if _, err = source.BeginFrame(0); err != nil {
+		t.Fatal(err)
+	}
+	for len(wake) > 0 {
+		<-wake
+	}
+	if err = low.SetTargetLayer(0); err != nil {
+		t.Fatal(err)
+	}
+	waitSignal(t, wake, "quiet source target-change wakeup")
+	plan, err := source.BeginFrame(time.Second / 30)
+	if err != nil || !slices.Equal(plan.Active, []bool{true, true}) || len(plan.Bitrates) != 2 {
+		t.Fatalf("output plan = %+v, %v", plan, err)
+	}
+	plan.Bitrates[0] = 1
+	trackers := source.media.StreamTrackerManager()
+	lowerTracker, higherTracker := trackers.AddTracker(0), trackers.AddTracker(1)
+	lowerTracker.Observe(0, 1200, 1188, true, 90000, nil)
+	higherTracker.Observe(0, 1200, 1188, true, 90000, nil)
+	if err = source.DisableLayer(0); err != nil {
+		t.Fatal(err)
+	}
+	if low.State() != webrtc.PeerConnectionStateClosed || high.State() != webrtc.PeerConnectionStateConnected {
+		t.Fatalf("failed/sibling state = %s/%s", low.State(), high.State())
+	}
+	if err = high.SetTargetLayer(0); err == nil {
+		t.Fatal("failed output accepted a new demand")
+	}
+	lowerTracker.Observe(0, 1200, 1188, true, 93000, nil)
+	if lowerTracker.Status() != streamtracker.StreamStatusStopped || higherTracker.Status() != streamtracker.StreamStatusActive {
+		t.Fatal("failed tracker revived or reset a healthy sibling")
+	}
+	plan, err = source.BeginFrame(2 * time.Second / 30)
+	if err != nil || !slices.Equal(plan.Active, []bool{false, true}) || plan.Bitrates[0] != 0 || plan.Bitrates[1] != 600_000 {
+		t.Fatalf("surviving output plan = %+v, %v", plan, err)
+	}
+	if err = source.WriteVideo(0, encoded.Frame{Data: sfu.VP8KeyFrame8x8, PTS: 2 * time.Second / 30, Duration: time.Second / 30}); err == nil {
+		t.Fatal("late output revived a failed encoder slot")
+	}
+	for index, input := range []string{"capture", "relay"} {
+		candidate, _, _ := connectedReceiver(t, engine, source, "failed-demand-"+input)
+		// Exercise a framework request independently of the explicit Native
+		// setter. This is admission metadata, not simulated network evidence.
+		candidate.transport.OnTransportCCFeedback(nil, &rtcp.TransportLayerCC{})
+		candidate.transport.Output.SetMaxSpatialLayer(0)
+		candidate.transport.Output.SetBudget(80_000)
+		if input == "capture" {
+			plan, err = source.BeginFrame(time.Duration(index+3) * time.Second / 30)
+			if err != nil || !slices.Equal(plan.Active, []bool{false, true}) || plan.Bitrates[0] != 0 {
+				t.Fatalf("failed demand changed the capture plan: %+v, %v", plan, err)
+			}
+		} else {
+			err = source.WriteRTP(&rtp.Packet{Header: rtp.Header{Version: 2, SSRC: 42, PayloadType: 96,
+				SequenceNumber: 1, Timestamp: 90000, Marker: true}, Payload: append([]byte{0x10}, sfu.VP8KeyFrame8x8...)})
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		if candidate.State() != webrtc.PeerConnectionStateClosed || high.State() != webrtc.PeerConnectionStateConnected {
+			t.Fatalf("%s failed/sibling state = %s/%s", input, candidate.State(), high.State())
+		}
+	}
+	if err = source.ConfigureOutputs([]uint32{150_000, 600_000}); err != nil {
+		t.Fatal(err)
+	}
+	lowerTracker.Observe(0, 1200, 1188, true, 96000, nil)
+	if lowerTracker.Status() != streamtracker.StreamStatusActive || high.SetTargetLayer(0) != nil {
+		t.Fatal("validated capture output did not restore the failed slot")
+	}
+}
+
+func TestRelayFailureCannotRetireReconfiguredProfile(t *testing.T) {
+	engine, err := NewEngine(EngineOptions{BindAddress: "127.0.0.1:0", IncludeLoopback: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = engine.Close() })
+	source, err := engine.NewSource("vp8", 1, 2, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = source.Close() })
+	source.relay = &relayDerivation{source: source}
+	_ = source.SetFormat(1, 640, 360)
+	profile := nativecapture.VideoProfile{Width: 1280, Height: 720, Framerate: 30, Bitrate: 3_000_000, Preference: "balanced"}
+	if err = source.SetRelayProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	low, _, _ := connectedReceiver(t, engine, source, "relay-failure")
+	if err = low.SetTargetLayer(0); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancelCause(t.Context())
+	defer cancel(nil)
+	done := make(chan struct{})
+	close(done)
+	old := &relayRun{owner: source.relay, ctx: ctx, cancel: cancel, done: done,
+		plan: relayPlan{profile: source.relayProfile, format: source.formats[1].Load()}}
+	source.relay.run = old
+	cancel(errors.New("old decoder failed"))
+	profile.Preference = "maintain-resolution"
+	if err = source.SetRelayProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	profile.Preference = "balanced"
+	if err = source.SetRelayProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	if source.relayProfile == old.plan.profile || *source.relayProfile != *old.plan.profile {
+		t.Fatal("fixture did not return to equal settings with a new owner")
+	}
+	retire, err := source.markLayerUnavailable(0, old)
+	if err != nil || retire != nil || source.outputBitrates[0] == 0 || low.State() != webrtc.PeerConnectionStateConnected {
+		t.Fatal("late failed decoder retired reconfigured output")
+	}
+	current := &relayRun{owner: source.relay, ctx: ctx, cancel: cancel, done: done,
+		plan: relayPlan{profile: source.relayProfile, format: source.formats[1].Load()}}
+	source.relay.run = current
+	retire, err = source.markLayerUnavailable(0, current)
+	if err != nil || retire == nil || low.State() != webrtc.PeerConnectionStateConnected {
+		t.Fatal("current failure did not defer transport retirement until after owner locks")
+	}
+	retire()
+	if source.outputBitrates[0] != 0 || low.State() != webrtc.PeerConnectionStateClosed {
+		t.Fatal("current decoder failure was not retired")
+	}
+}
+
+func TestShutdownClosesSiblingTransportsBeforeWaitingForWrites(t *testing.T) {
+	for _, owner := range []string{"source", "engine"} {
+		t.Run(owner, func(t *testing.T) {
+			engine, err := NewEngine(EngineOptions{BindAddress: "127.0.0.1:0", IncludeLoopback: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = engine.Close() })
+			source, err := engine.NewSource("vp8", 2, 1, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			closed := []chan struct{}{make(chan struct{}, 1), make(chan struct{}, 1)}
+			for index := range closed {
+				_, err := engine.NewEdge(source, EdgeOptions{
+					ConnectionID: "shutdown-" + owner + string(rune('a'+index)),
+					Events: EdgeEvents{ConnectionState: func(state webrtc.PeerConnectionState, _ *SelectedPair) {
+						if state == webrtc.PeerConnectionStateClosed {
+							closed[index] <- struct{}{}
+						}
+					}},
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			source.writeMu.Lock()
+			unlock := sync.OnceFunc(source.writeMu.Unlock)
+			done := make(chan struct{})
+			t.Cleanup(func() { unlock(); waitSignal(t, done, "shutdown cleanup") })
+			go func() {
+				if owner == "source" {
+					_ = source.Close()
+				} else {
+					_ = engine.Close()
+				}
+				close(done)
+			}()
+			for _, transport := range closed {
+				waitSignal(t, transport, "sibling transport close")
+			}
+			unlock()
+			waitSignal(t, done, "shutdown completion")
+		})
+	}
+}
 
 func TestPortMappingCandidateUsesObservedPublicAddress(t *testing.T) {
 	var emitted []*webrtc.ICECandidateInit
@@ -58,7 +263,7 @@ func testEncodedSourceFanout(t *testing.T, codec string) {
 	}
 	t.Cleanup(func() { _ = engine.Close() })
 	keyFrames := make(chan struct{}, 1)
-	source, err := engine.NewSource(codec, 2, func() {
+	source, err := engine.NewSource(codec, 2, 1, func() {
 		select {
 		case keyFrames <- struct{}{}:
 		default:
@@ -76,7 +281,7 @@ func testEncodedSourceFanout(t *testing.T, codec string) {
 	if edgeA.connection == edgeB.connection || engine.ListenAddress() == "" {
 		t.Fatal("media edges did not keep independent transports")
 	}
-	if edgeA.bandwidth == edgeB.bandwidth {
+	if edgeA.transport == edgeB.transport {
 		t.Fatal("media edges shared one bandwidth estimator")
 	}
 	if _, err = engine.NewEdge(source, EdgeOptions{ConnectionID: "edge-c"}); !errors.Is(err, ErrSourceCapacity) {
@@ -96,7 +301,7 @@ func testEncodedSourceFanout(t *testing.T, codec string) {
 	if codec == "vp8" {
 		accessUnit = []byte{0x10, 0, 0, 0x9d, 0x01, 0x2a, 0x80, 0x02, 0xe0, 0x01, 0}
 	}
-	if err = source.WriteVideo(accessUnit, time.Second, time.Second/30); err != nil {
+	if err = writeSourceFrame(source, accessUnit, time.Second, time.Second/30); err != nil {
 		t.Fatal(err)
 	}
 	first := waitPacket(t, packetA)
@@ -107,6 +312,11 @@ func testEncodedSourceFanout(t *testing.T, codec string) {
 		if parseErr != nil || string(payload) != string(accessUnit) || packet.S != 1 {
 			t.Fatalf("VP8 packetizer changed its encoded source: %v", parseErr)
 		}
+	}
+	// Verify feedback delivery independently of the upstream bootstrap throttle.
+	source.media.GetAllBuffers()[0].SetPLIThrottle(0)
+	for len(keyFrames) > 0 {
+		<-keyFrames
 	}
 	if err = receiverA.WriteRTCP([]rtcp.Packet{
 		&rtcp.PictureLossIndication{MediaSSRC: first.SSRC},
@@ -138,7 +348,7 @@ func TestRemoteCandidatesAreBoundedUntilTheAnswer(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = engine.Close() })
-	source, err := engine.NewSource("h264", 1, nil)
+	source, err := engine.NewSource("h264", 1, 1, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +401,7 @@ func TestRepeatedAnswerIsIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = engine.Close() })
-	source, err := engine.NewSource("h264", 1, nil)
+	source, err := engine.NewSource("h264", 1, 1, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,29 +425,29 @@ func TestCaptureTimestampsDriveTheRTPClock(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = engine.Close() })
-	source, err := engine.NewSource("h264", 1, nil)
+	source, err := engine.NewSource("vp8", 1, 1, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = source.Close() })
 	_, receiver, packets := connectedReceiver(t, engine, source, "timed-edge")
 	t.Cleanup(func() { _ = receiver.Close() })
-	accessUnit := []byte{0, 0, 0, 1, 0x65, 0x88, 0x84, 0x00}
+	accessUnit := sfu.VP8KeyFrame8x8
 	start := 10 * time.Second
 	frameDuration := time.Second / 30
 
-	if err = source.WriteVideo(accessUnit, start, frameDuration); err != nil {
+	if err = writeSourceFrame(source, accessUnit, start, frameDuration); err != nil {
 		t.Fatal(err)
 	}
 	first := waitPacket(t, packets)
-	if err = source.WriteVideo(accessUnit, start+frameDuration, frameDuration); err != nil {
+	if err = writeSourceFrame(source, accessUnit, start+frameDuration, frameDuration); err != nil {
 		t.Fatal(err)
 	}
 	second := waitPacket(t, packets)
 	if got := second.Timestamp - first.Timestamp; got < 2_999 || got > 3_001 {
 		t.Fatalf("steady timestamp delta = %d", got)
 	}
-	if err = source.WriteVideo(accessUnit, start+5*time.Second, frameDuration); err != nil {
+	if err = writeSourceFrame(source, accessUnit, start+5*time.Second, frameDuration); err != nil {
 		t.Fatal(err)
 	}
 	third := waitPacket(t, packets)
@@ -252,20 +462,20 @@ func TestNewCaptureGenerationKeepsTheRTPClockContinuous(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = engine.Close() })
-	source, err := engine.NewSource("h264", 1, nil)
+	source, err := engine.NewSource("vp8", 1, 1, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	_, receiver, packets := connectedReceiver(t, engine, source, "generation-edge")
 	t.Cleanup(func() { _ = receiver.Close() })
-	accessUnit := []byte{0, 0, 0, 1, 0x65, 0x88, 0x84, 0x00}
+	accessUnit := sfu.VP8KeyFrame8x8
 	frameDuration := time.Second / 30
-	if err = source.WriteVideo(accessUnit, 50*time.Second, frameDuration); err != nil {
+	if err = writeSourceFrame(source, accessUnit, 50*time.Second, frameDuration); err != nil {
 		t.Fatal(err)
 	}
 	first := waitPacket(t, packets)
 	source.BeginGeneration()
-	if err = source.WriteVideo(accessUnit, 100*time.Millisecond, frameDuration); err != nil {
+	if err = writeSourceFrame(source, accessUnit, 100*time.Millisecond, frameDuration); err != nil {
 		t.Fatal(err)
 	}
 	second := waitPacket(t, packets)
@@ -282,7 +492,7 @@ func TestOneLocalBridgeDoesNotConsumeRouteCapacity(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = engine.Close() })
-	source, err := engine.NewSource("h264", 1, nil)
+	source, err := engine.NewSource("h264", 1, 1, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -332,7 +542,7 @@ func TestBandwidthObserverReceivesTransportFeedbackWithoutPacing(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = engine.Close() })
-	source, err := engine.NewSource("h264", 1, nil)
+	source, err := engine.NewSource("h264", 1, 1, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -341,7 +551,7 @@ func TestBandwidthObserverReceivesTransportFeedbackWithoutPacing(t *testing.T) {
 	if !strings.Contains(edge.connection.LocalDescription().SDP, "transport-cc") {
 		t.Fatal("native media offer did not negotiate transport feedback")
 	}
-	source.SetFormat(1280, 720)
+	source.SetFormat(0, 1280, 720)
 	started := time.Now()
 	if _, ok := edge.QualitySample(started); ok {
 		t.Fatal("first quality sample did not establish a baseline")
@@ -355,7 +565,7 @@ func TestBandwidthObserverReceivesTransportFeedbackWithoutPacing(t *testing.T) {
 	deadline := time.Now().Add(5 * time.Second)
 	captureTimestamp := time.Second
 	for time.Now().Before(deadline) {
-		if err = source.WriteVideo(
+		if err = writeSourceFrame(source,
 			accessUnit,
 			captureTimestamp,
 			time.Second/30,
@@ -367,7 +577,7 @@ func TestBandwidthObserverReceivesTransportFeedbackWithoutPacing(t *testing.T) {
 		case <-packets:
 		default:
 		}
-		if bitrate, observed := edge.bandwidth.targetBitrate(); observed && time.Since(started) >= time.Second {
+		if bitrate, observed := edge.targetBitrate(); observed && time.Since(started) >= time.Second {
 			if bitrate <= 0 {
 				t.Fatalf("observed target bitrate = %d", bitrate)
 			}
@@ -390,7 +600,7 @@ func TestAudioUsesTheSamePeerConnectionAndCapacityAsVideo(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = engine.Close() })
-	video, err := engine.NewSource("h264", 1, nil)
+	video, err := engine.NewSource("h264", 1, 1, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -431,7 +641,7 @@ func TestAudioSourceDeliversOpusOnTheVideoPeerConnection(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = engine.Close() })
-	video, err := engine.NewSource("h264", 1, nil)
+	video, err := engine.NewSource("h264", 1, 1, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -483,7 +693,7 @@ func connectedReceiver(
 	}
 	t.Cleanup(func() { _ = edge.Close() })
 	receiver := newReceiver(t)
-	packets := make(chan *rtp.Packet, 1)
+	packets := make(chan *rtp.Packet, 64)
 	receiver.OnTrack(func(track *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
 		go func() {
 			for {

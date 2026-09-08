@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net/netip"
 	"net/url"
 	"path/filepath"
 	"regexp"
@@ -31,7 +32,6 @@ const (
 const (
 	minSiteAccessPasswordBytes = 8
 	maxSiteAccessPasswordBytes = 128
-	minLiveKitAPISecretBytes   = 32
 	defaultMaxViewersPerRoom   = 8
 	defaultRoomLeaseSeconds    = 86_400
 	defaultPort                = 8787
@@ -67,18 +67,16 @@ var removedEnvironmentVariables = []struct{ name, reason string }{
 	{"NODE_ENV", "use SCREENER_ENV"},
 }
 
-// LiveKitFallback ports LiveKitFallbackConfig. URL and APIURL are serialised
-// WHATWG origins.
-type LiveKitFallback struct {
-	URL       string
-	APIURL    string
-	APIKey    string
-	APISecret string
+// SFUConfig enables the embedded UDP media listener.
+type SFUConfig struct {
+	ListenHost string
+	Port       int
+	PublicIP   string
 }
 
 // Config ports ServerConfig. Fields the TypeScript left `undefined` are the
 // zero value here: an empty SiteAccessPassword means site access is open, an
-// empty RoomDatabasePath means memory mode, and a nil LiveKit means no SFU
+// empty RoomDatabasePath means memory mode, and a nil SFU means no SFU
 // fallback.
 type Config struct {
 	Env           Environment
@@ -93,9 +91,12 @@ type Config struct {
 	RoomLeaseMs               int64
 	MaxViewersPerRoom         int
 	EndpointMediaCopyCapacity int
-	LiveKit                   *LiveKitFallback
+	SFU                       *SFUConfig
 	STUNURLs                  []string
-	NATPredictionEnabled      bool
+	// STUNListenAddresses is populated only by Hosted configuration. Local
+	// discovery URLs do not make the Client an externally reachable STUN server.
+	STUNListenAddresses  []string
+	NATPredictionEnabled bool
 	// NATPredictionSTUNURLs is nil where the TypeScript left it `undefined`,
 	// which IceConfig distinguishes from a configured empty list.
 	NATPredictionSTUNURLs []string
@@ -168,6 +169,13 @@ func Load(env map[string]string) (Config, error) {
 			"STUN_URLS must contain at most %d URLs when NAT_PREDICTION_ENABLED=true",
 			protocol.MaxIceServerURLs-protocol.MaxNatPredictionAuxiliaryStunURLs)
 	}
+	var stunListeners []string
+	if len(stunURLs) > 0 {
+		stunListeners, err = stunListenAddresses(env["STUN_LISTEN_HOST"], natPredictionEnabled)
+		if err != nil {
+			return Config{}, err
+		}
+	}
 	maxViewersPerRoom, err := parseBoundedInteger(env["MAX_VIEWERS_PER_ROOM"],
 		defaultMaxViewersPerRoom, "MAX_VIEWERS_PER_ROOM", 1, protocol.MaxViewersPerRoomLimit)
 	if err != nil {
@@ -179,26 +187,11 @@ func Load(env map[string]string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	liveKit, err := parseLiveKitFallback(env, environment)
+	sfu, err := parseSFU(env)
 	if err != nil {
 		return Config{}, err
 	}
 
-	secrets := make([]string, 0, 3)
-	if siteAccessPassword != "" {
-		secrets = append(secrets, siteAccessPassword)
-	}
-	if liveKit != nil {
-		secrets = append(secrets, liveKit.APIKey, liveKit.APISecret)
-	}
-	distinct := make(map[string]struct{}, len(secrets))
-	for _, secret := range secrets {
-		distinct[secret] = struct{}{}
-	}
-	if len(distinct) != len(secrets) {
-		return Config{}, errors.New(
-			"SITE_ACCESS_PASSWORD, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET must use independent values")
-	}
 	// Buffer.byteLength is the UTF-8 length, which is len() in Go. The pattern
 	// already restricts the value to one byte per character.
 	if siteAccessPassword != "" &&
@@ -238,8 +231,9 @@ func Load(env map[string]string) (Config, error) {
 		RoomLeaseMs:               roomLeaseSeconds * 1_000,
 		MaxViewersPerRoom:         int(maxViewersPerRoom),
 		EndpointMediaCopyCapacity: int(endpointMediaCopyCapacity),
-		LiveKit:                   liveKit,
+		SFU:                       sfu,
 		STUNURLs:                  stunURLs,
+		STUNListenAddresses:       stunListeners,
 		NATPredictionEnabled:      natPredictionEnabled,
 	}, nil
 }
@@ -309,58 +303,33 @@ func parseRoomDatabasePath(value string) (string, error) {
 	return path, nil
 }
 
-// parseLiveKitFallback ports parseLiveKitFallback.
-func parseLiveKitFallback(env map[string]string, environment Environment) (*LiveKitFallback, error) {
-	rawURL := strings.TrimFunc(env["LIVEKIT_URL"], protocol.IsJSWhitespace)
-	rawAPIURL := strings.TrimFunc(env["LIVEKIT_API_URL"], protocol.IsJSWhitespace)
-	apiKey := strings.TrimFunc(env["LIVEKIT_API_KEY"], protocol.IsJSWhitespace)
-	apiSecret := strings.TrimFunc(env["LIVEKIT_API_SECRET"], protocol.IsJSWhitespace)
-
-	configured := 0
-	for _, value := range []string{rawURL, rawAPIURL, apiKey, apiSecret} {
-		if value != "" {
-			configured++
-		}
-	}
-	if configured == 0 {
+func parseSFU(env map[string]string) (*SFUConfig, error) {
+	rawPort := strings.TrimSpace(env["SFU_UDP_PORT"])
+	if rawPort == "" {
 		return nil, nil
 	}
-	if configured != 4 {
-		return nil, errors.New(
-			"LIVEKIT_URL, LIVEKIT_API_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET must be configured together")
-	}
-	if len(apiSecret) < minLiveKitAPISecretBytes {
-		return nil, fmt.Errorf("LIVEKIT_API_SECRET must contain at least %d bytes", minLiveKitAPISecretBytes)
-	}
-
-	parsedURL, err := parseOriginURL(rawURL, "LIVEKIT_URL", "ws", "wss")
+	port, err := parseBoundedInteger(rawPort, 0, "SFU_UDP_PORT", 1, maxPort)
 	if err != nil {
 		return nil, err
 	}
-	if environment == EnvironmentProduction && parsedURL.Scheme != "wss" {
-		return nil, errors.New("LIVEKIT_URL must use wss in production")
+	listenHost := strings.TrimSpace(env["SFU_LISTEN_HOST"])
+	if listenHost == "" {
+		listenHost = "0.0.0.0"
 	}
-	parsedAPIURL, err := parseOriginURL(rawAPIURL, "LIVEKIT_API_URL", "http", "https")
-	if err != nil {
-		return nil, err
+	if address, err := netip.ParseAddr(listenHost); err != nil || !address.Is4() {
+		return nil, errors.New("SFU_LISTEN_HOST must be an IPv4 address")
 	}
-	if environment == EnvironmentProduction && parsedAPIURL.Scheme != "https" &&
-		!isLoopbackHostname(parsedAPIURL.Hostname()) {
-		return nil, errors.New("LIVEKIT_API_URL must use https or loopback in production")
+	publicIP := strings.TrimSpace(env["SFU_PUBLIC_IP"])
+	if publicIP != "" {
+		if address, err := netip.ParseAddr(publicIP); err != nil || !address.Is4() {
+			return nil, errors.New("SFU_PUBLIC_IP must be an IPv4 address")
+		}
 	}
-	return &LiveKitFallback{
-		URL:       Origin(parsedURL),
-		APIURL:    Origin(parsedAPIURL),
-		APIKey:    apiKey,
-		APISecret: apiSecret,
+	return &SFUConfig{
+		ListenHost: listenHost,
+		Port:       int(port),
+		PublicIP:   publicIP,
 	}, nil
-}
-
-// isLoopbackHostname ports isLoopbackHostname. url.URL.Hostname strips the IPv6
-// brackets, so only the unbracketed "::1" can actually match here.
-func isLoopbackHostname(hostname string) bool {
-	return hostname == "localhost" || hostname == "127.0.0.1" ||
-		hostname == "[::1]" || hostname == "::1"
 }
 
 // parseURLList ports parseUrlList.
@@ -431,9 +400,8 @@ func toOrigin(value string) (string, error) {
 	return Origin(parsed), nil
 }
 
-// parseOriginURL ports the `new URL` + protocol + shape ladder that
-// PUBLIC_BASE_URL, LIVEKIT_URL and LIVEKIT_API_URL each repeat, and returns the
-// WHATWG-normalised URL (lowercase host, default port removed, path "/").
+// parseOriginURL validates an origin and returns the WHATWG-normalised URL
+// (lowercase host, default port removed, path "/").
 func parseOriginURL(value, name, scheme, alternative string) (*url.URL, error) {
 	parsed, err := url.Parse(value)
 	// net/url accepts relative references and opaque URLs that the WHATWG

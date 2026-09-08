@@ -2,7 +2,7 @@ package signal
 
 // Ported from tests/hybrid-media-router.test.ts (baseline b20fd88). The
 // harness mirrors harness(...) there: a memory room.Store, a real
-// sfu.Admission, sfutest.FakeRoomControl behind a thin spy (the vi.spyOn
+// sfu.Admission, sfutest.FakeMedia behind a thin spy (the vi.spyOn
 // cases), a fake token issuer returning "token-<peerId>", recorded hooks and
 // the shared mutex every router call and every assertion takes.
 //
@@ -21,6 +21,7 @@ package signal
 import (
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"reflect"
 	"runtime"
@@ -50,8 +51,6 @@ type routerHarnessOptions struct {
 	withSfu            bool
 	prepareTimeoutMs   int64
 	sfuIngressCapacity int
-	drainRetryMs       int64
-	hostOfflineCheckMs int64
 	fakeTimers         bool
 }
 
@@ -61,8 +60,7 @@ type routerHarness struct {
 	store         *room.Store
 	router        *router
 	admission     *sfu.Admission
-	roomControl   *spyRoomControl
-	tokens        *fakeTokenIssuer
+	media         *spyMedia
 	clock         *manualClock
 	sent          map[string][]protocol.ServerMessage
 	routesChanged []string
@@ -92,16 +90,11 @@ func newRouterHarness(t *testing.T, options routerHarnessOptions) *routerHarness
 			ingress = 2
 		}
 		h.admission = sfu.NewAdmission(sfu.AdmissionOptions{IngressCapacity: ingress, EgressCapacity: 20})
-		h.roomControl = &spyRoomControl{FakeRoomControl: sfutest.New()}
-		h.tokens = &fakeTokenIssuer{}
+		h.media = &spyMedia{FakeMedia: sfutest.New()}
 		fallback = &sfuFallback{
-			url:                "wss://sfu.example.test",
-			tokenIssuer:        h.tokens,
-			admission:          h.admission,
-			roomControl:        h.roomControl,
-			prepareTimeoutMs:   options.prepareTimeoutMs,
-			drainRetryMs:       options.drainRetryMs,
-			hostOfflineCheckMs: options.hostOfflineCheckMs,
+			admission:        h.admission,
+			media:            h.media,
+			prepareTimeoutMs: options.prepareTimeoutMs,
 		}
 	}
 	h.router = newRouter(routerOptions{
@@ -503,18 +496,6 @@ func (h *routerHarness) usage() sfu.Usage {
 	return usage
 }
 
-func (h *routerHarness) failNextTokenIssue() {
-	h.tokens.mu.Lock()
-	defer h.tokens.mu.Unlock()
-	h.tokens.nextError = errors.New("token issue failed")
-}
-
-func (h *routerHarness) panicNextTokenIssue() {
-	h.tokens.mu.Lock()
-	defer h.tokens.mu.Unlock()
-	h.tokens.nextPanic = true
-}
-
 // establishSfuRoom ports establishSfuRoom: a Host, a first Viewer moved to
 // the SFU and a second Viewer joining it.
 func (h *routerHarness) establishSfuRoom(created room.CreatedRoom) (host, first, second authenticatedRouteParticipant) {
@@ -567,113 +548,32 @@ func senderEvidenceMessage(childPeerID, connectionID, rtpStatsID, trackIdentifie
 	}
 }
 
-// fakeTokenIssuer is the harness tokenIssuer: "token-<peerId>" with a
-// one-shot failure switch and a one-shot panic switch. It is called with the
-// router mutex released.
-type fakeTokenIssuer struct {
-	mu        sync.Mutex
-	nextError error
-	nextPanic bool
+type spyMedia struct {
+	*sfutest.FakeMedia
+	mu               sync.Mutex
+	deleteCalls      int
+	closePublication func(sfu.ResourceFence) error
 }
 
-func (f *fakeTokenIssuer) IssueToken(request sfu.TokenRequest) (string, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if f.nextPanic {
-		f.nextPanic = false
-		panic(errors.New("token issue panicked"))
-	}
-	if f.nextError != nil {
-		err := f.nextError
-		f.nextError = nil
-		return "", err
-	}
-	return "token-" + request.PeerID, nil
-}
-
-// spyRoomControl is the vi.spyOn(roomControl, ...) of the TS suite over the
-// shared fake: call counters, one-shot behaviours (mock*Once) and a
-// persistent deleteRoom implementation.
-type spyRoomControl struct {
-	*sfutest.FakeRoomControl
-	mu              sync.Mutex
-	deleteRoomCalls int
-	hostCheckCalls  int
-	drainCalls      []sfu.SubscriptionFence
-	deleteRoom      func(context.Context, sfu.ResourceFence) error
-	hostCheckOnce   []func(context.Context, sfu.ResourceFence) (bool, error)
-	drainOnce       []func(context.Context, sfu.SubscriptionFence) error
-}
-
-func (s *spyRoomControl) DeleteRoom(ctx context.Context, fence sfu.ResourceFence) error {
-	s.mu.Lock()
-	s.deleteRoomCalls++
-	override := s.deleteRoom
-	s.mu.Unlock()
+func (media *spyMedia) ClosePublication(fence sfu.ResourceFence) error {
+	media.mu.Lock()
+	media.deleteCalls++
+	override := media.closePublication
+	media.mu.Unlock()
 	if override != nil {
-		return override(ctx, fence)
+		return override(fence)
 	}
-	return s.FakeRoomControl.DeleteRoom(ctx, fence)
+	return media.FakeMedia.ClosePublication(fence)
 }
-
-func (s *spyRoomControl) HostParticipantExists(ctx context.Context, fence sfu.ResourceFence) (bool, error) {
-	s.mu.Lock()
-	s.hostCheckCalls++
-	var once func(context.Context, sfu.ResourceFence) (bool, error)
-	if len(s.hostCheckOnce) > 0 {
-		once, s.hostCheckOnce = s.hostCheckOnce[0], s.hostCheckOnce[1:]
-	}
-	s.mu.Unlock()
-	if once != nil {
-		return once(ctx, fence)
-	}
-	return s.FakeRoomControl.HostParticipantExists(ctx, fence)
+func (media *spyMedia) counts() (int, int, int) {
+	media.mu.Lock()
+	defer media.mu.Unlock()
+	return media.deleteCalls, 0, len(media.SubscriptionDrainAttempts())
 }
-
-func (s *spyRoomControl) DrainSubscription(ctx context.Context, fence sfu.SubscriptionFence) error {
-	s.mu.Lock()
-	s.drainCalls = append(s.drainCalls, fence)
-	var once func(context.Context, sfu.SubscriptionFence) error
-	if len(s.drainOnce) > 0 {
-		once, s.drainOnce = s.drainOnce[0], s.drainOnce[1:]
-	}
-	s.mu.Unlock()
-	if once != nil {
-		return once(ctx, fence)
-	}
-	return s.FakeRoomControl.DrainSubscription(ctx, fence)
-}
-
-func (s *spyRoomControl) counts() (deleteRoom, hostCheck, drain int) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.deleteRoomCalls, s.hostCheckCalls, len(s.drainCalls)
-}
-
-// drainAttempts is the spy's own record (the TS toHaveBeenCalledWith on the
-// spied drainSubscription), which also sees the mocked calls.
-func (s *spyRoomControl) drainAttempts() []sfu.SubscriptionFence {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return slices.Clone(s.drainCalls)
-}
-
-func (s *spyRoomControl) queueHostCheck(behaviours ...func(context.Context, sfu.ResourceFence) (bool, error)) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.hostCheckOnce = append(s.hostCheckOnce, behaviours...)
-}
-
-func (s *spyRoomControl) queueDrain(behaviours ...func(context.Context, sfu.SubscriptionFence) error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.drainOnce = append(s.drainOnce, behaviours...)
-}
-
-func (s *spyRoomControl) setDeleteRoom(implementation func(context.Context, sfu.ResourceFence) error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.deleteRoom = implementation
+func (media *spyMedia) setClosePublication(closePublication func(sfu.ResourceFence) error) {
+	media.mu.Lock()
+	defer media.mu.Unlock()
+	media.closePublication = closePublication
 }
 
 func hasViewer(fences []sfu.SubscriptionFence, viewerPeerID string) bool {
@@ -783,13 +683,11 @@ type debugRecorder struct {
 func captureRouteDebug(t *testing.T) *debugRecorder {
 	t.Helper()
 	recorder := &debugRecorder{}
-	previousEnabled := routeDebugEnabled
 	previousLogger := slog.Default()
-	routeDebugEnabled = true
+	t.Setenv("SCREENER_DEBUG", "route")
 	slog.SetDefault(slog.New(recorder))
 	t.Cleanup(func() {
 		slog.SetDefault(previousLogger)
-		routeDebugEnabled = previousEnabled
 	})
 	return recorder
 }
@@ -1670,8 +1568,8 @@ func TestRouterDoesNotRecreateSfuAfterExhaustedReuseAndCarrierTeardown(t *testin
 	h.routeReady(carrier, int64(bootstrap.Revision))
 
 	h.waitPreparedTransport(demand.sessionID, "sfu")
-	if len(h.roomControl.Created()) != 1 {
-		t.Fatalf("created rooms = %d, want 1", len(h.roomControl.Created()))
+	if h.usage().Ingress != 1 {
+		t.Fatal("expected one admitted publication")
 	}
 	configCountAfterBootstrap := sfuConfigCount(h.allMessages())
 	if configCountAfterBootstrap < 3 {
@@ -1693,11 +1591,11 @@ func TestRouterDoesNotRecreateSfuAfterExhaustedReuseAndCarrierTeardown(t *testin
 		edge, ok := h.activeEdge(created.RoomID, carrier.peerID)
 		return ok && edge.upstream == protocol.PeerUpstream(host.peerID)
 	})
-	h.waitFor("the publication drain", func() bool { return len(h.roomControl.Deleted()) == 1 })
+	h.waitFor("the publication drain", func() bool { return len(h.media.Deleted()) == 1 })
 	h.clock.advance(300)
 
-	if len(h.roomControl.Created()) != 1 {
-		t.Fatalf("created rooms = %d, want 1", len(h.roomControl.Created()))
+	if h.usage().Ingress != 0 {
+		t.Fatal("retired publication remained admitted")
 	}
 	if count := sfuConfigCount(h.allMessages()); count != configCountAfterBootstrap {
 		t.Fatalf("sfu-config count = %d, want %d", count, configCountAfterBootstrap)
@@ -1850,7 +1748,7 @@ func TestRouterReportsOnlySfuAdmissionWaitingWhileBoundedCapacityIsUnavailable(t
 // TS asserted admission.reservePublication was not called again through a
 // spy; here the observable is the waiting status count, which a woken
 // waiter would re-send (map 7.2 step 9c), plus the unchanged usage.
-func TestRouterPhysicallyRemovesExactSubscriptionWithoutReleasingGenerationCharge(t *testing.T) {
+func TestRouterReleasesExactSubscriptionChargeAfterPhysicalClose(t *testing.T) {
 	h := newRouterHarness(t, routerHarnessOptions{capacity: 1, withSfu: true, sfuIngressCapacity: 2})
 	activeRoom := h.createRoom()
 	_, first, _ := h.establishSfuRoom(activeRoom)
@@ -1871,9 +1769,8 @@ func TestRouterPhysicallyRemovesExactSubscriptionWithoutReleasingGenerationCharg
 		status, ok := h.lastRouteStatus(waitingViewer.sessionID)
 		return ok && status.State == "waiting" && status.Reason == "sfu-admission"
 	})
-	waitingBeforeRelease := h.countRouteStatus(waitingViewer.sessionID, "waiting")
 	drainGate := make(chan struct{})
-	h.roomControl.SetSubscriptionDrainBarrier(drainGate)
+	h.media.SetSubscriptionDrainBarrier(drainGate)
 
 	h.locked(func() {
 		h.doDisconnect(first)
@@ -1881,22 +1778,17 @@ func TestRouterPhysicallyRemovesExactSubscriptionWithoutReleasingGenerationCharg
 	})
 	h.waitFor("one diagnostic child", func() bool { return len(h.diagnostic(activeRoom.RoomID).Children) == 1 })
 	h.waitFor("the subscription drain attempt", func() bool {
-		return hasViewer(h.roomControl.SubscriptionDrainAttempts(), first.peerID)
+		return hasViewer(h.media.SubscriptionDrainAttempts(), first.peerID)
 	})
 	if usage := h.usage(); usage != (sfu.Usage{Ingress: 2, Egress: 2}) {
 		t.Fatalf("usage during drain = %+v", usage)
 	}
 	close(drainGate)
 	h.waitFor("the drained subscription", func() bool {
-		return hasViewer(h.roomControl.DrainedSubscriptions(), first.peerID)
+		return hasViewer(h.media.DrainedSubscriptions(), first.peerID)
 	})
 
-	if usage := h.usage(); usage != (sfu.Usage{Ingress: 2, Egress: 2}) {
-		t.Fatalf("usage after drain = %+v", usage)
-	}
-	if count := h.countRouteStatus(waitingViewer.sessionID, "waiting"); count != waitingBeforeRelease {
-		t.Fatalf("waiting statuses = %d, want %d (a subscription drain must not wake waiters)", count, waitingBeforeRelease)
-	}
+	h.waitUsage(sfu.Usage{Ingress: 2, Egress: 1})
 
 	if err := h.close(); err != nil {
 		t.Fatalf("close: %v", err)
@@ -1980,151 +1872,6 @@ func TestRouterCreatesOneHostPublicationAndReusesExactViewerSubscriptions(t *tes
 	}
 }
 
-func TestRouterDiscardsSfuPreparationWhoseCursorBecomesStaleWhileAwaitingLiveKit(t *testing.T) {
-	h := newRouterHarness(t, routerHarnessOptions{capacity: 1, withSfu: true})
-	created := h.createRoom()
-	host := h.connectHost(created, nil, "", "")
-	root := h.connectViewer(created, "prepare-stale-root")
-	h.locked(func() {
-		h.doComplete(host)
-		h.doComplete(root)
-	})
-	direct := h.waitPreparedTransport(root.sessionID, "direct")
-	gate := make(chan struct{})
-	waiting := h.connectViewer(created, "prepare-stale-waiting")
-	h.locked(func() {
-		h.doReady(root, int64(direct.Revision))
-		h.roomControl.SetCreateBarrier(gate)
-		h.doRelay(root, 0)
-		h.doComplete(waiting)
-	})
-	h.waitFor("the publication reservation", func() bool { return h.usage().Ingress == 1 })
-	h.locked(func() {
-		h.doDisconnect(root)
-		close(gate)
-	})
-	h.waitUsage(sfu.Usage{})
-	if operation := h.diagnostic(created.RoomID).Operation; operation != nil {
-		t.Fatalf("operation = %+v, want none", operation)
-	}
-}
-
-func TestRouterReschedulesRegularHostOfflineCheckAfterReadError(t *testing.T) {
-	h := newRouterHarness(t, routerHarnessOptions{capacity: 1, withSfu: true, sfuIngressCapacity: 2, hostOfflineCheckMs: 10})
-	created := h.createRoom()
-	host, _, _ := h.establishSfuRoom(created)
-	release := make(chan struct{})
-	t.Cleanup(func() { close(release) })
-	h.roomControl.queueHostCheck(
-		func(context.Context, sfu.ResourceFence) (bool, error) {
-			return false, errors.New("temporary LiveKit read failure")
-		},
-		func(context.Context, sfu.ResourceFence) (bool, error) {
-			<-release
-			return true, nil
-		},
-	)
-	h.disconnect(host)
-
-	h.waitFor("two host checks", func() bool {
-		_, hostChecks, _ := h.roomControl.counts()
-		return hostChecks == 2
-	})
-	if usage := h.usage(); usage != (sfu.Usage{Ingress: 1, Egress: 2}) {
-		t.Fatalf("usage = %+v", usage)
-	}
-}
-
-func TestRouterRechecksHostOfflineRetirementAfterLiveRouteOperation(t *testing.T) {
-	h := newRouterHarness(t, routerHarnessOptions{capacity: 1, withSfu: true, sfuIngressCapacity: 2, hostOfflineCheckMs: 10})
-	created := h.createRoom()
-	host, first, second := h.establishSfuRoom(created)
-	var active activeViewerMediaEdge
-	h.locked(func() {
-		h.doRelay(second, 1)
-		active = h.doMustEdge(created.RoomID, first.peerID)
-		h.doFailed(first, routeFailedMessage(active.revision, "active", active.connectionID))
-	})
-	h.waitPreparedMatching(first.sessionID, "a direct rebuild", func(prepared protocol.RouteUpdatePrepareMessage) bool {
-		return int64(prepared.Revision) > active.revision && prepared.Candidate.Transport == "direct"
-	})
-	retry := make(chan struct{})
-	h.roomControl.queueHostCheck(
-		func(context.Context, sfu.ResourceFence) (bool, error) { return false, nil },
-		func(context.Context, sfu.ResourceFence) (bool, error) {
-			<-retry
-			return false, nil
-		},
-	)
-	h.disconnect(host)
-
-	h.waitFor("two host checks", func() bool {
-		_, hostChecks, _ := h.roomControl.counts()
-		return hostChecks == 2
-	})
-	if _, ok := h.activeEdge(created.RoomID, first.peerID); ok {
-		t.Fatal("the first viewer must have no active edge during the rebuild")
-	}
-	close(retry)
-	h.waitUsage(sfu.Usage{})
-	if _, hostChecks, _ := h.roomControl.counts(); hostChecks != 2 {
-		t.Fatalf("host checks = %d, want 2", hostChecks)
-	}
-}
-
-func TestRouterIgnoresOldHostOfflineResultAfterNewSfuGenerationCommits(t *testing.T) {
-	h := newRouterHarness(t, routerHarnessOptions{capacity: 1, withSfu: true, sfuIngressCapacity: 2, hostOfflineCheckMs: 10})
-	created := h.createRoom()
-	host, first, second := h.establishSfuRoom(created)
-	oldRevision := max(h.mustActiveEdge(created.RoomID, first.peerID).revision, h.mustActiveEdge(created.RoomID, second.peerID).revision)
-	delayed := make(chan struct{})
-	h.roomControl.queueHostCheck(func(context.Context, sfu.ResourceFence) (bool, error) {
-		<-delayed
-		return false, nil
-	})
-	h.disconnect(host)
-	h.waitFor("the first host check", func() bool {
-		_, hostChecks, _ := h.roomControl.counts()
-		return hostChecks == 1
-	})
-
-	replacementHost := h.connectHost(created, nil, "new-physical-host-client", "new-physical-host-session")
-	h.complete(replacementHost)
-	handled := map[string]struct{}{}
-	for index := 0; index < 3; index++ {
-		var next authenticatedRouteParticipant
-		var prepared protocol.RouteUpdatePrepareMessage
-		h.waitFor("a new-generation prepare", func() bool {
-			for _, viewer := range []authenticatedRouteParticipant{first, second} {
-				candidate, ok := h.preparedFor(viewer.sessionID)
-				if _, done := handled[candidate.Candidate.ConnectionID]; ok && int64(candidate.Revision) > oldRevision && !done {
-					next, prepared = viewer, candidate
-					return true
-				}
-			}
-			return false
-		})
-		handled[prepared.Candidate.ConnectionID] = struct{}{}
-		h.routeReady(next, int64(prepared.Revision))
-	}
-	h.waitUsage(sfu.Usage{Ingress: 1, Egress: 2})
-	createdFences := h.roomControl.Created()
-	currentFence := createdFences[len(createdFences)-1]
-	if currentFence.PublicationGeneration == createdFences[0].PublicationGeneration {
-		t.Fatal("the replacement host must publish a new generation")
-	}
-
-	close(delayed)
-	// TS: two microtask turns for the stale continuation to run.
-	time.Sleep(50 * time.Millisecond)
-	if usage := h.usage(); usage != (sfu.Usage{Ingress: 1, Egress: 2}) {
-		t.Fatalf("usage after the stale result = %+v", usage)
-	}
-	if slices.Contains(h.roomControl.Deleted(), currentFence) {
-		t.Fatal("the stale host-offline result must not retire the new generation")
-	}
-}
-
 func TestRouterResolvesExactDirectAndPeerRelayedViewerEvidenceSources(t *testing.T) {
 	h := newRouterHarness(t, routerHarnessOptions{capacity: 1})
 	created := h.createRoom()
@@ -2170,115 +1917,42 @@ func TestRouterResolvesExactDirectAndPeerRelayedViewerEvidenceSources(t *testing
 
 func TestRouterDrainsEveryPendingSfuPublicationDuringCloseEvenWhenOneDrainRejects(t *testing.T) {
 	before := runtime.NumGoroutine()
-	h := newRouterHarness(t, routerHarnessOptions{capacity: 1, withSfu: true, prepareTimeoutMs: 1_000, sfuIngressCapacity: 2, drainRetryMs: 10_000})
+	h := newRouterHarness(t, routerHarnessOptions{capacity: 1, withSfu: true, prepareTimeoutMs: 1_000, sfuIngressCapacity: 2_000})
 	roomA := h.createRoom()
 	h.establishSfuRoom(roomA)
 	roomB := h.createRoom()
 	h.establishSfuRoom(roomB)
-	h.roomControl.SetFailDelete(true)
+	h.media.SetFailDelete(true)
 	h.locked(func() {
 		h.router.stopRoom(roomA.RoomID)
 		h.router.stopRoom(roomB.RoomID)
 	})
 	h.waitFor("two delete attempts", func() bool {
-		deletes, _, _ := h.roomControl.counts()
+		deletes, _, _ := h.media.counts()
 		return deletes == 2
 	})
 
-	h.roomControl.SetFailDelete(false)
-	fake := h.roomControl.FakeRoomControl
-	h.roomControl.setDeleteRoom(func(ctx context.Context, fence sfu.ResourceFence) error {
+	h.media.SetFailDelete(false)
+	fake := h.media.FakeMedia
+	h.media.setClosePublication(func(fence sfu.ResourceFence) error {
 		if fence.RoomID == roomA.RoomID {
 			return errors.New("room deletion failed")
 		}
-		return fake.DeleteRoom(ctx, fence)
+		return fake.ClosePublication(fence)
 	})
 
 	err := h.close()
-	if err == nil || !strings.Contains(err.Error(), "LiveKit drain failed during shutdown") {
+	if err == nil || !strings.Contains(err.Error(), "SFU drain failed during shutdown") {
 		t.Fatalf("close error = %v, want the shutdown drain failure", err)
 	}
 	var deleted []string
-	for _, fence := range h.roomControl.Deleted() {
+	for _, fence := range h.media.Deleted() {
 		deleted = append(deleted, fence.RoomID)
 	}
 	if !slices.Equal(deleted, []string{roomB.RoomID}) {
 		t.Fatalf("deleted rooms = %v, want [%s]", deleted, roomB.RoomID)
 	}
 	expectGoroutinesSettled(t, before)
-}
-
-func TestRouterRetriesFailedPhysicalDrainBeforeReusingExactSfuIdentity(t *testing.T) {
-	h := newRouterHarness(t, routerHarnessOptions{capacity: 1, withSfu: true, prepareTimeoutMs: 1_000, sfuIngressCapacity: 2, drainRetryMs: 10})
-	created := h.createRoom()
-	_, first, _ := h.establishSfuRoom(created)
-	h.waitFor("the first viewer on the SFU", func() bool {
-		edge, ok := h.activeEdge(created.RoomID, first.peerID)
-		return ok && edge.upstream == protocol.SfuUpstream()
-	})
-
-	child := h.connectViewer(created, "sfu-peer-child")
-	h.locked(func() {
-		h.doRelay(first, 1)
-		h.doComplete(child)
-	})
-	h.waitPreparedTransport(child.sessionID, "direct")
-	// The direct boundary of a 1000 ms operation is 500 ms of real time.
-	time.Sleep(510 * time.Millisecond)
-	sfuPrepare := h.waitPreparedTransport(child.sessionID, "sfu")
-	h.routeReady(child, int64(sfuPrepare.Revision))
-	h.waitFor("the child on the SFU", func() bool {
-		edge, ok := h.activeEdge(created.RoomID, child.peerID)
-		return ok && edge.upstream == protocol.SfuUpstream()
-	})
-	directPrepare := h.waitPreparedTransport(child.sessionID, "direct")
-	drainGate := make(chan struct{})
-	h.locked(func() {
-		h.roomControl.queueDrain(func(context.Context, sfu.SubscriptionFence) error {
-			<-drainGate
-			return errors.New("transient participant drain failure")
-		})
-		h.doReady(child, int64(directPrepare.Revision))
-	})
-	h.waitFor("the child on the first viewer", func() bool {
-		edge, ok := h.activeEdge(created.RoomID, child.peerID)
-		return ok && edge.upstream == protocol.PeerUpstream(first.peerID)
-	})
-	h.waitFor("the child subscription drain attempt", func() bool {
-		return hasViewer(h.roomControl.drainAttempts(), child.peerID)
-	})
-	if usage := h.usage(); usage != (sfu.Usage{Ingress: 1, Egress: 3}) {
-		t.Fatalf("usage = %+v", usage)
-	}
-
-	h.routeFailed(child, routeFailedMessage(int64(directPrepare.Revision), "active", directPrepare.Candidate.ConnectionID))
-	h.waitFor("a rebuild operation", func() bool { return h.diagnostic(created.RoomID).Operation != nil })
-	if prepared, _ := h.preparedFor(child.sessionID); prepared.Revision != directPrepare.Revision {
-		t.Fatalf("prepare revision during the pending drain = %d, want %d", prepared.Revision, directPrepare.Revision)
-	}
-
-	close(drainGate)
-	h.waitFor("the drain retry", func() bool {
-		_, _, drains := h.roomControl.counts()
-		return drains == 2
-	})
-	reusedSfu := h.waitPreparedMatching(child.sessionID, "the reused SFU prepare", func(prepared protocol.RouteUpdatePrepareMessage) bool {
-		return int64(prepared.Revision) > int64(directPrepare.Revision) && prepared.Candidate.Transport == "sfu"
-	})
-	h.routeReady(child, int64(reusedSfu.Revision))
-	h.waitFor("the child back on the SFU", func() bool {
-		edge, ok := h.activeEdge(created.RoomID, child.peerID)
-		return ok && edge.upstream == protocol.SfuUpstream()
-	})
-	if !hasViewer(h.roomControl.DrainedSubscriptions(), child.peerID) {
-		t.Fatal("the retried drain must have removed the child")
-	}
-	if usage := h.usage(); usage != (sfu.Usage{Ingress: 1, Egress: 3}) {
-		t.Fatalf("usage after reuse = %+v", usage)
-	}
-	if edge := h.mustActiveEdge(created.RoomID, first.peerID); edge.upstream != protocol.SfuUpstream() {
-		t.Fatalf("first viewer upstream = %v", edge.upstream)
-	}
 }
 
 func TestRouterSerializesFreshSfuConfigurationWithoutMakingRefreshOneShot(t *testing.T) {
@@ -2301,55 +1975,10 @@ func TestRouterSerializesFreshSfuConfigurationWithoutMakingRefreshOneShot(t *tes
 	h.waitFor("the second refresh", func() bool { return configCount() == initialCount+2 })
 }
 
-func TestRouterFailsExactActiveSfuRouteWhenFreshConfigurationCannotBeIssued(t *testing.T) {
-	h := newRouterHarness(t, routerHarnessOptions{capacity: 1, withSfu: true})
-	created := h.createRoom()
-	_, first, _ := h.establishSfuRoom(created)
-	var active activeViewerMediaEdge
-	h.locked(func() {
-		active = h.doMustEdge(created.RoomID, first.peerID)
-		if active.upstream != protocol.SfuUpstream() {
-			t.Fatalf("upstream = %v", active.upstream)
-		}
-		h.failNextTokenIssue()
-		h.router.refreshSfu(first, active.revision)
-	})
-	h.waitFor("the active SFU route to fail", func() bool {
-		edge, ok := h.activeEdge(created.RoomID, first.peerID)
-		return !ok || edge != active
-	})
-}
-
-// hybrid-media-router.ts:1129-1132: a throw from roomControl or tokenIssuer
+// hybrid-media-router.ts:1129-1132: a throw from media or tokenIssuer
 // rejected the pump promise and its .catch told the Host. In Go the throw is a
 // panic raised while mu is released for the token issue, so the pump must come
 // back holding mu; otherwise drivePump's deferred Unlock aborts the process.
-func TestRouterTellsHostWhenCandidatePreparationPanicsWithTheLockReleased(t *testing.T) {
-	h := newRouterHarness(t, routerHarnessOptions{capacity: 1, withSfu: true})
-	created := h.createRoom()
-	host, _, _ := h.establishSfuRoom(created)
-	joining := h.connectViewer(created, "sfu-panic")
-
-	h.locked(func() {
-		h.panicNextTokenIssue()
-		h.doComplete(joining)
-	})
-
-	h.waitFor("the host to be told that media routing failed", func() bool {
-		for _, message := range h.messages(host.sessionID) {
-			failure, ok := message.(protocol.ErrorMessage)
-			if ok && failure.Code == "SERVER_ERROR" && failure.Message == "Media routing failed" {
-				return true
-			}
-		}
-		return false
-	})
-	// The router still owns its lock: it settles and serves the next call.
-	h.settle()
-	if _, ok := h.activeEdge(created.RoomID, joining.peerID); ok {
-		t.Fatal("the failed candidate must not have been committed")
-	}
-}
 
 func TestRouterEmitsTypedExhaustionAndClearsDiagnosticsOnDepartureAndRoomDeletion(t *testing.T) {
 	h := newRouterHarness(t, routerHarnessOptions{capacity: 1})
@@ -2437,67 +2066,10 @@ func TestRouterEmitsTypedExhaustionWhenReconciliationHasNoCandidate(t *testing.T
 // the per-room-name FIFO keeps LiveKit calls in decision order.
 // ---------------------------------------------------------------------------
 
-func TestRouterTurnsRunInDecisionOrderPerRoomName(t *testing.T) {
-	var mu sync.Mutex
-	r := &router{mu: &mu, roomTurns: map[string]chan struct{}{}}
-	mu.Lock()
-	first := r.takeTurn("room")
-	second := r.takeTurn("room")
-	other := r.takeTurn("other")
-	mu.Unlock()
-
-	var order []string
-	var orderMu sync.Mutex
-	record := func(name string) {
-		orderMu.Lock()
-		defer orderMu.Unlock()
-		order = append(order, name)
-	}
-	release := make(chan struct{})
-	done := make(chan struct{})
-	go func() {
-		second.run(func() { record("second") })
-		done <- struct{}{}
-	}()
-	go func() {
-		other.run(func() { record("other") })
-		done <- struct{}{}
-	}()
-	<-done // "other" is independent and finishes first
-	go func() {
-		first.run(func() {
-			<-release
-			record("first")
-		})
-		done <- struct{}{}
-	}()
-	time.Sleep(10 * time.Millisecond)
-	orderMu.Lock()
-	if !slices.Equal(order, []string{"other"}) {
-		t.Fatalf("second must wait for first: %v", order)
-	}
-	orderMu.Unlock()
-	close(release)
-	<-done
-	<-done
-	orderMu.Lock()
-	defer orderMu.Unlock()
-	if !slices.Equal(order, []string{"other", "first", "second"}) {
-		t.Fatalf("order = %v", order)
-	}
-	mu.Lock()
-	r.dropTurn(first)
-	if _, still := r.roomTurns["room"]; !still {
-		t.Fatal("dropping a superseded turn must keep the tail")
-	}
-	r.dropTurn(second)
-	if _, still := r.roomTurns["room"]; still {
-		t.Fatal("dropping the tail must forget the room name")
-	}
-	mu.Unlock()
-}
-
 func TestRouterDebugFlagParsesLikeNodeDebug(t *testing.T) {
+	previous := slog.Default()
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	cases := map[string]bool{"": false, "route": true, "http,route": true, " route ": true, "router": false}
 	keys := make([]string, 0, len(cases))
 	for key := range cases {
@@ -2505,8 +2077,17 @@ func TestRouterDebugFlagParsesLikeNodeDebug(t *testing.T) {
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
+		t.Setenv("SCREENER_DEBUG", key)
 		if got := routeDebugFlag(key); got != cases[key] {
 			t.Fatalf("routeDebugFlag(%q) = %v, want %v", key, got, cases[key])
 		}
+		if got := routeDebugEnabled(); got != cases[key] {
+			t.Fatalf("routeDebugEnabled with %q = %v, want %v", key, got, cases[key])
+		}
+	}
+	t.Setenv("SCREENER_DEBUG", "")
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	if !routeDebugEnabled() {
+		t.Fatal("the active diagnostic logger did not enable route events")
 	}
 }
