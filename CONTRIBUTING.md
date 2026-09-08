@@ -76,9 +76,9 @@ Clean up worktrees and branches only after semantic review and integration are c
   identities; do not run network tests with a changing temporary executable
   path. Keep browser profiles isolated and consider the active firewall when
   diagnosing connection failures rather than changing global firewall rules.
-- A validated push to `main` uploads a short-lived Server candidate. The three
-  platform Client candidates run only from an explicit manual workflow dispatch
-  with `client_checks=true`, because they are the expensive part of the matrix.
+- Server and three-platform Client candidates run only from an explicit manual
+  workflow dispatch with `client_checks=true`. Ordinary `main` pushes validate
+  source without running the expensive packaging matrix.
   Publishing a tag or GitHub Release remains an explicit release decision rather
   than a side effect of every merge.
 

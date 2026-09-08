@@ -1,6 +1,6 @@
 # ADR-0013: Embedded Node-Local Media
 
-- Status: Accepted architecture; implementation and release acceptance pending
+- Status: Accepted; physical evidence and release boundaries are owned by status
 - Date: 2026-09-07
 
 ## Context

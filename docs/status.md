@@ -5,10 +5,11 @@ Last updated: 2026-09-09
 This is the current execution index. Git history owns completed timelines;
 [verification status](./verification-status.md) owns evidence boundaries.
 
-## Last Production Postflight
+## Recorded Pre-Cutover Production Check
 
-Read-only verification on 2026-09-08 confirmed this production state. The
-embedded candidate below is not deployed.
+Read-only verification on 2026-09-08 confirmed the pre-cutover production state
+below. The runtime release descriptor and deployment record own later cutover
+identity; this historical check is not a live service-status endpoint.
 
 - The running Go application and public Browser asset at
   `https://share.bonfire.icu` retain the strict `screener-v21` contract.
@@ -96,9 +97,9 @@ embedded candidate below is not deployed.
 
 ## Source/Production Relationship
 
-The embedded candidate is not a production cutover. The last production
-postflight above retains the external-service history; exact release identity
-belongs to the deployment record. The
+The source change requires a coordinated production cutover. The recorded check
+above retains the external-service history; exact release identity belongs to
+the deployment record. The
 [self-hosting transaction](./operations/self-hosting.md#coordinated-embedded-media-cutover)
 replaces those services and their configuration together. The routine application
 wrapper requires an existing embedded Go deployment and cannot perform or roll

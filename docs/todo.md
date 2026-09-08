@@ -10,21 +10,17 @@ and Git/PRs own completed history. A parked idea is not implementation authority
 Owner-authorized phase: [embedded STUN/SFU and node-local media](./adr/0013-embedded-node-local-media.md).
 Finish this phase as one integration, preserving the completed mainline checkpoint.
 
-1. **Final ownership corrections.** Complete verification of Viewer-session
-   Native fallback, configured-destination access cookies, explicit audio-source
-   recovery, and signaling mutex unwinding on a storage failure. Preserve
-   the existing storage failure policy; add no retry or compatibility layer.
-2. **Release integration.** One complete PR must contain the Native/embedded
+1. **Release integration.** One complete PR must contain the Native/embedded
    media work, retained Client fixes, final corrections, current documentation
    and research outcomes. Build matching Web/Server/Client/capture artifacts
    from the accepted revision; main remains a low-frequency integration branch.
-3. **Coordinated production cutover.** Recheck active sessions, preserve the
+2. **Coordinated production cutover.** Recheck active sessions, preserve the
    exact old release/unit/environment/proxy/media-service state and SQLite
    recovery material, then replace external LiveKit/coturn with the embedded
    process. Verify HTTP/assets, STUN, SFU media, listener retirement and rollback
    using [self-hosting operations](./operations/self-hosting.md).
    The routine application updater alone cannot perform this first cutover.
-4. **Matched delivery.** Provide the current Windows Client package and Server
+3. **Matched delivery.** Provide the current Windows Client package and Server
    descriptor/archive with matching hashes and notices. Production pages and
    old Clients cannot be mixed across the private protocol change. Formal
    public GitHub Release/image publication remains a separate explicit action.
@@ -69,7 +65,8 @@ Current evidence and limits:
    anonymization; document residual identifiers, network/system information and
    export contents clearly. Keep local opt-in collection and user-controlled
    sharing. Design one observability surface, not incident-specific patches.
-   Media and raw process-memory collection are not authorized by this follow-up.
+   Assess stack and memory snapshots by diagnostic value and document their
+   contents; do not silently include raw media or secret-bearing memory.
    Existing exports are owned by [configuration](./reference/configuration.md).
 2. **Public distribution and updates.** Candidate packagers, immutable descriptors,
    notices, the runtime-only OCI recipe and release checks exist. Choose the

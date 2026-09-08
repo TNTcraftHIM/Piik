@@ -20,8 +20,8 @@ blank `SFU_UDP_PORT` keeps SFU disabled. SFU control uses authenticated Screener
 signaling through the Web origin. No separate media-service executable, control
 origin, or API credentials are needed by this source contract.
 
-These source templates describe the embedded candidate. Production cutover,
-active-session acceptance, and public media verification remain pending.
+These templates describe the embedded deployment. Its first cutover requires
+the active-session check, matching artifacts and public media verification below.
 
 ## Single-Host Topology
 

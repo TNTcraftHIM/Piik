@@ -21,7 +21,7 @@ Host authority belongs to a tab, with one separate persistent origin resume
 hint. The Client admits two independent native control sessions under its one
 loopback service.
 
-The current candidate embeds Binding-only STUN and optional SFU forwarding in
+The current source embeds Binding-only STUN and optional SFU forwarding in
 the Hosted Go process. Native and SFU use one shared Pion/LiveKit media adapter;
 Native parents reuse suitable encoded outputs and derive a missing lower output
 only for direct-child demand. Source-owned groups retain the highest needed
@@ -32,7 +32,7 @@ WebRTC senders. Windows, macOS and Linux producers share one encoded-frame
 boundary and Host quality controls. Source replacement retains route and
 connection identity; lower-output adaptation preserves the original and higher
 sibling outputs. [Status](./status.md) owns the remaining physical and release
-acceptance boundary; the candidate has not been deployed.
+acceptance boundary; runtime release descriptors own deployed identity.
 The Local launcher keeps an optional user-chosen site-access password; leaving it
 blank keeps the self-contained site open.
 
