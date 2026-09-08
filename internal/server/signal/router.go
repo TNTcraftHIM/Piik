@@ -32,10 +32,10 @@ const (
 	defaultRouteOperationTimeoutMs int64 = 20_000
 )
 
-// routeDebugEnabled ports debuglog("screener-route"): SCREENER_DEBUG=route
-// (D8), read once like NODE_DEBUG. The route package keeps the same flag
-// unexported, so this is its second reader.
-var routeDebugEnabled = routeDebugFlag(os.Getenv("SCREENER_DEBUG"))
+func routeDebugEnabled() bool {
+	return routeDebugFlag(os.Getenv("SCREENER_DEBUG")) ||
+		slog.Default().Enabled(context.Background(), slog.LevelDebug)
+}
 
 func routeDebugFlag(value string) bool {
 	for _, section := range strings.Split(value, ",") {
@@ -335,7 +335,7 @@ func (r *router) observeQualityEvidence(roomID string, evidence route.RouteQuali
 	if rm, _ := r.rooms.Get(roomID); rm != nil && rm.controller != nil {
 		result = rm.controller.ObserveQualityEvidence(evidence)
 	}
-	if result != route.QualityEvidenceRejected && routeDebugEnabled {
+	if result != route.QualityEvidenceRejected && routeDebugEnabled() {
 		upstream := "sfu"
 		if evidence.Upstream.Kind == route.UpstreamPeer {
 			upstream = "p2p:" + r.debugPeer(roomID, evidence.Upstream.PeerID)
@@ -404,7 +404,7 @@ func (r *router) observeSenderQualityEvidence(participant authenticatedRoutePart
 		AcceptedAtMs:      r.now(),
 	}
 	result := controller.ObserveSenderQualityEvidence(input, r.commitReservation)
-	if result.Accepted && routeDebugEnabled {
+	if result.Accepted && routeDebugEnabled() {
 		diagnostics := message.Diagnostics
 		details := []any{
 			"parent", r.debugPeer(participant.roomID, participant.peerID),
@@ -474,7 +474,7 @@ func (r *router) observeSfuPublisherQualityEvidence(participant authenticatedRou
 		AcceptedAtMs:          r.now(),
 	}
 	result := controller.ObserveSfuPublisherQualityEvidence(input, r.commitReservation)
-	if result.Accepted && routeDebugEnabled {
+	if result.Accepted && routeDebugEnabled() {
 		diagnostics := message.Diagnostics
 		details := []any{"routeRevision", int64(message.RouteRevision)}
 		details = append(details, copyContext.kv()...)
@@ -650,7 +650,7 @@ func (r *router) peerSignalAuthorization(input peerSignalInput) signalAuthorizat
 
 // debugPeerSignal ports debugPeerSignal.
 func (r *router) debugPeerSignal(input peerSignalDebugInput) {
-	if !routeDebugEnabled {
+	if !routeDebugEnabled() {
 		return
 	}
 	var authorization any
@@ -1174,7 +1174,7 @@ func (r *router) broadcastActive(roomID string, rm *roomRuntime) {
 		return
 	}
 	snapshot := rm.controller.Snapshot()
-	if routeDebugEnabled {
+	if routeDebugEnabled() {
 		type routeEntry struct {
 			Child          string `json:"child"`
 			Parent         string `json:"parent"`
@@ -1418,7 +1418,7 @@ func (r *router) debugTuple(roomID string, tuple route.CandidateTuple) string {
 // debug ports debug(): one sanitised slog event. details are key/value
 // pairs; never pass raw peer, session or connection IDs (use debugPeer).
 func (r *router) debug(roomID, event string, details ...any) {
-	if !routeDebugEnabled {
+	if !routeDebugEnabled() {
 		return
 	}
 	args := make([]any, 0, 4+len(details))

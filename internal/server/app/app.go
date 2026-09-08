@@ -289,7 +289,7 @@ func (s *Server) start(ctx context.Context) (int, error) {
 		// ErrServerClosed on a permanent accept failure, which nothing here
 		// causes; report it rather than serving nothing in silence.
 		if err := s.httpServer.Serve(listener); !errors.Is(err, http.ErrServerClosed) {
-			s.logger.Error("Screener HTTP server stopped unexpectedly", "error", err)
+			s.logger.Error("Screener HTTP server stopped unexpectedly", "errorType", fmt.Sprintf("%T", err))
 		}
 	}()
 	port := listener.Addr().(*net.TCPAddr).Port

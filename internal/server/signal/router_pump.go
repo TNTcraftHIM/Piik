@@ -466,7 +466,7 @@ func (r *router) sendPrepareMessages(
 func (r *router) scheduleDeadline(roomID string, rm *roomRuntime, operation *route.OperationSnapshot) {
 	r.clearDeadline(rm)
 	wakeInMs := max(int64(0), operation.WakeAtMs-r.now())
-	if routeDebugEnabled {
+	if routeDebugEnabled() {
 		var current any
 		if operation.Current != nil {
 			current = r.debugTuple(roomID, operation.Current.Tuple)

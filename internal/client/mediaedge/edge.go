@@ -2,7 +2,9 @@ package mediaedge
 
 import (
 	"errors"
+	"fmt"
 	"io"
+	"log/slog"
 	"strconv"
 	"strings"
 	"sync"
@@ -133,20 +135,31 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (*Edge, error
 		edge.localCandidates.addPion(candidate)
 	})
 	connection.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+		debug := slog.Default().Enabled(engine.ctx, slog.LevelDebug)
+		if debug {
+			slog.Debug("screener-client", "event", "media-connection-state", "direction", "outbound", "local", options.Local, "state", state.String())
+		}
 		if state == webrtc.PeerConnectionStateConnected {
 			if err := edge.transport.SetConnected(); err != nil {
+				if debug {
+					slog.Debug("screener-client", "event", "media-activation-failed", "errorType", fmt.Sprintf("%T", err))
+				}
 				_ = connection.Close()
 				return
 			}
 			edge.source.RequestRecoveryFrame()
 		}
-		if edge.events.ConnectionState != nil {
-			var selected *SelectedPair
-			if state == webrtc.PeerConnectionStateConnected {
-				if pair, pairErr := edge.SelectedPair(); pairErr == nil {
-					selected = &pair
+		var selected *SelectedPair
+		if state == webrtc.PeerConnectionStateConnected && (edge.events.ConnectionState != nil || debug) {
+			if pair, pairErr := edge.SelectedPair(); pairErr == nil {
+				selected = &pair
+				if debug {
+					slog.Debug("screener-client", "event", "media-selected-path", "direction", "outbound", "local", options.Local,
+						"localType", pair.Local.String(), "remoteType", pair.Remote.String(), "natTraversalPath", pair.NatTraversalPath)
 				}
 			}
+		}
+		if edge.events.ConnectionState != nil {
 			edge.events.ConnectionState(state, selected)
 		}
 	})

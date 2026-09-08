@@ -33,8 +33,7 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		if recovered == http.ErrAbortHandler {
 			panic(recovered)
 		}
-		// TS: console.error("HTTP request failed", {method, path, error}).
-		// D11 keeps the method and the path only.
+		// Persist only fixed request categories, never the panic or raw URL.
 		s.requestFailed(recorder, request)
 	}()
 
@@ -378,12 +377,27 @@ func (s *Server) createRoomResponse(created room.CreatedRoom) protocol.CreateRoo
 	}
 }
 
-// requestFailed is the createServer .catch: log the method and the path only —
-// never a body, header, token or grant (D11) — then answer 500 unless the
-// response already started, where Node destroyed the socket.
+// requestFailed logs fixed request categories, then answers 500 or aborts a
+// response that already started. Request paths and arbitrary methods are private.
 func (s *Server) requestFailed(writer http.ResponseWriter, request *http.Request) {
-	s.logger.Error("HTTP request failed",
-		"method", request.Method, "path", requestPath(request))
+	method := request.Method
+	switch method {
+	case http.MethodGet, http.MethodPost, http.MethodHead, http.MethodOptions,
+		http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodConnect, http.MethodTrace:
+	default:
+		method = "other"
+	}
+	path := requestPath(request)
+	category := "frontend"
+	switch {
+	case isUpgradeRequest(request):
+		category = "signaling"
+	case path == "/healthz":
+		category = "health"
+	case strings.HasPrefix(path, "/api/"):
+		category = "api"
+	}
+	s.logger.Error("HTTP request failed", "method", method, "route", category)
 	if recorder, ok := writer.(*responseRecorder); ok && recorder.wrote {
 		panic(http.ErrAbortHandler)
 	}

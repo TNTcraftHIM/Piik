@@ -1,6 +1,7 @@
 package route
 
 import (
+	"context"
 	"log/slog"
 	"os"
 	"strconv"
@@ -9,9 +10,10 @@ import (
 	"github.com/TNTcraftHIM/Screener/internal/server/protocol"
 )
 
-// debugEnabled is the port of `debuglog("screener-route")`: read once,
-// enabled by SCREENER_DEBUG=route (comma-separated like NODE_DEBUG).
-var debugEnabled = routeDebugEnabled(os.Getenv("SCREENER_DEBUG"))
+func debugEnabled() bool {
+	return routeDebugEnabled(os.Getenv("SCREENER_DEBUG")) ||
+		slog.Default().Enabled(context.Background(), slog.LevelDebug)
+}
 
 func routeDebugEnabled(value string) bool {
 	for _, section := range strings.Split(value, ",") {
@@ -28,13 +30,11 @@ type debugCandidate struct {
 	Transition TransitionKind
 }
 
-// debug ports 4911: one sanitised event with the room's debug ID, the
-// current revision and fact version, then the caller's key/value details.
+// debug emits one sanitized event with a diagnostic room ID and current facts.
 // Never pass raw peer IDs, session IDs or connection IDs; use debugPeer and
-// debugTuple. It is a no-op without the env flag or a DebugRoomID; the
-// level is Info because the env flag is the gate, as NODE_DEBUG was.
+// debugTuple. The environment or diagnostic logger enables these Info events.
 func (c *Controller) debug(event string, details ...any) {
-	if !debugEnabled || c.debugRoomID == "" {
+	if !debugEnabled() || c.debugRoomID == "" {
 		return
 	}
 	args := make([]any, 0, 8+len(details))

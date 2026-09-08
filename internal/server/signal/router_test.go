@@ -21,6 +21,7 @@ package signal
 import (
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"reflect"
 	"runtime"
@@ -682,13 +683,11 @@ type debugRecorder struct {
 func captureRouteDebug(t *testing.T) *debugRecorder {
 	t.Helper()
 	recorder := &debugRecorder{}
-	previousEnabled := routeDebugEnabled
 	previousLogger := slog.Default()
-	routeDebugEnabled = true
+	t.Setenv("SCREENER_DEBUG", "route")
 	slog.SetDefault(slog.New(recorder))
 	t.Cleanup(func() {
 		slog.SetDefault(previousLogger)
-		routeDebugEnabled = previousEnabled
 	})
 	return recorder
 }
@@ -2068,6 +2067,9 @@ func TestRouterEmitsTypedExhaustionWhenReconciliationHasNoCandidate(t *testing.T
 // ---------------------------------------------------------------------------
 
 func TestRouterDebugFlagParsesLikeNodeDebug(t *testing.T) {
+	previous := slog.Default()
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	cases := map[string]bool{"": false, "route": true, "http,route": true, " route ": true, "router": false}
 	keys := make([]string, 0, len(cases))
 	for key := range cases {
@@ -2075,8 +2077,17 @@ func TestRouterDebugFlagParsesLikeNodeDebug(t *testing.T) {
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
+		t.Setenv("SCREENER_DEBUG", key)
 		if got := routeDebugFlag(key); got != cases[key] {
 			t.Fatalf("routeDebugFlag(%q) = %v, want %v", key, got, cases[key])
 		}
+		if got := routeDebugEnabled(); got != cases[key] {
+			t.Fatalf("routeDebugEnabled with %q = %v, want %v", key, got, cases[key])
+		}
+	}
+	t.Setenv("SCREENER_DEBUG", "")
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	if !routeDebugEnabled() {
+		t.Fatal("the active diagnostic logger did not enable route events")
 	}
 }

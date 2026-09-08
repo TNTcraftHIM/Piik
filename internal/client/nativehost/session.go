@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"log/slog"
 	"slices"
 	"strings"
 	"sync"
@@ -622,6 +624,9 @@ func (session *Session) run() {
 		if audioStream != nil {
 			_ = audioStream.Close()
 		}
+		if slog.Default().Enabled(session.ctx, slog.LevelDebug) {
+			slog.Debug("screener-client", "event", "share-ended", "failed", result != nil, "errorType", fmt.Sprintf("%T", result))
+		}
 		session.done <- result
 		close(session.done)
 	}()
@@ -717,6 +722,8 @@ func (session *Session) runVideo() error {
 				}
 			}
 			session.mu.Unlock()
+			slog.Debug("screener-client", "event", "capture-state", "state", status.State, "codec", status.Codec,
+				"width", status.Width, "height", status.Height, "fps", status.FPS)
 			session.emit(Event{Type: "capture-state", ShareID: session.shareID, State: status.State})
 			if !ready {
 				ready = true

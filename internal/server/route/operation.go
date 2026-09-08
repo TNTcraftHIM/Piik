@@ -214,7 +214,7 @@ func (c *Controller) Reconcile(nowMs int64) ReconcileResult {
 			deferredParentPeerIDs: []string{},
 			qualitySource:         qualitySource,
 		}
-		if debugEnabled {
+		if debugEnabled() {
 			routes := make([]debugCandidate, 0, len(candidates))
 			for _, candidate := range candidates {
 				routes = append(routes, debugCandidate{Route: c.debugTuple(candidate.Tuple), Transition: candidate.EndpointTransition.Kind})
@@ -318,7 +318,7 @@ func (c *Controller) BeginCurrentCandidate(input BeginInput) BeginResult {
 		mediaReady:              false,
 		connectionAttempt:       c.startCandidateOpportunity(op, *plan),
 	}
-	if debugEnabled {
+	if debugEnabled() {
 		details := []any{
 			"child", c.debugPeer(op.childPeerID),
 			"candidate", c.debugTuple(tuple),
@@ -689,7 +689,7 @@ func (c *Controller) CandidateFailed(guard CandidateGuard, nowMs int64) SettleRe
 // OperationExpired applies head-start and deadline expiry at nowMs;
 // Accepted reports whether something expired.
 func (c *Controller) OperationExpired(nowMs int64) SettleResult {
-	if op := c.operation; op != nil && debugEnabled {
+	if op := c.operation; op != nil && debugEnabled() {
 		current := op.current
 		noProgress := current != nil &&
 			current.tuple.Kind == UpstreamPeer &&

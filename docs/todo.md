@@ -27,6 +27,10 @@ Execution priority is now explicit:
 Pure Browser encoding reuse is parked. Independent background source research
 may continue only without delaying this mainline or its serialized hardware
 acceptance; it is not an additional release prerequisite.
+The owner-authorized diagnostic file/export work is an independent side task
+for investigating reported Client and Server failures. Preserve it alongside
+the mainline; it does not depend on Browser encoding-pool research or turn that
+research into an acceptance prerequisite.
 
 The owner restated two delivery goals: integrated STUN/SFU/runtime dependencies
 or one coherent deployment entry, and controllable shared encoding/adaptation/
@@ -288,12 +292,15 @@ a tunnel; include that path in packaged acceptance.
     acceptance: match the current Client and Browser artifacts and complete
     the embedded-media cutover. Production already runs the Go application,
     while its external media services have not yet been replaced.
-17. **Feedback bundle.** Add compressed collection only when distribution needs
-    it. The candidate
-    now has explicit Client/Server diagnostic flags and bounded manual Browser
-    export, documented in [configuration](./reference/configuration.md).
-    Retention and packaging remain separate work; exclude credentials, media
-    and raw process memory, and do not upload automatically.
+17. **Feedback bundle.** The candidate now has bounded Client/Server diagnostic
+    files, asynchronous Client `D` export, Unix Server `SIGUSR1` export and
+    orderly-shutdown snapshots, documented in
+    [configuration](./reference/configuration.md). Profiles describe the Go
+    runtime; Browser export stays separate, and credentials, media and raw
+    process memory are excluded. Exports stay local with manual archive cleanup.
+    Focused file/privacy/layout checks and the Linux Server build pass;
+    packaged user acceptance and deployed Unix signal/export behavior remain
+    part of the existing release acceptance, not established by those checks.
 18. **Remaining audit behavior.** During the owning refactor, reproduce and
     resolve optional Local-password cookies across HTTP LAN/HTTPS public origins;
     audio-process failure without stopping healthy video; natural capture EOF

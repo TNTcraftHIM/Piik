@@ -1318,7 +1318,7 @@ func (s *Server) handleAuthenticatedMessage(sess *session, authenticated *authen
 			return
 		}
 		if err := s.abandonRoom(authenticated.roomID); err != nil {
-			s.logger.Error("Room abandonment failed", "error", err)
+			s.logger.Error("Room abandonment failed", "errorType", fmt.Sprintf("%T", err))
 			s.sendError(sess, "SERVER_ERROR", "Room could not be abandoned")
 		}
 	}

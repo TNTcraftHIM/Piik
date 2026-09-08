@@ -41,16 +41,56 @@ environment file cannot silently drop a deployment out of production. The
 private deployment is upgraded atomically; there are no compatibility aliases or
 dual configuration readers.
 
-During pre-release route canaries, `SCREENER_DEBUG=route` enables sanitized room
-and participant-ordinal events. It records route reasons, candidates, revisions,
-quality states and commit/failure outcomes, but not raw Peer IDs, SDP, ICE
-candidates, tokens or media credentials.
+## Diagnostics
 
-Client diagnostics use `--debug` or `SCREENER_DEBUG=client`. They add structured
-lifecycle, build-revision, native-capability and fixed native-failure events to
-stderr without changing the launcher/TUI or machine-readable stdout. Use
-`SCREENER_DEBUG=client,route` for both Client and route events; `--debug` alone
-does not enable route tracing.
+Client file diagnostics default off; enable them with `--debug` or
+`SCREENER_DEBUG=client`. Structured lifecycle, build-revision, native-capability,
+fixed native-failure and sanitized Local route events go to `client.log`.
+Native share changes, validated capture states, connection states and selected
+candidate types/provenance are included without source names or addresses.
+The embedded Local server uses the same file. Debug events do not stream through
+the TUI or change machine-readable stdout. On the Client, `SCREENER_DEBUG=route`
+alone retains console route tracing and does not enable file capture or `D`.
+
+The default Client directory is `logs` beside the executable. If that directory
+is not writable, the Client uses `Screener/logs` inside the OS user-cache directory
+and displays the actual log path. `--log-dir <directory>` overrides
+`SCREENER_LOG_DIR`; either explicit choice must be writable or startup fails.
+Selecting a directory alone does not enable diagnostics.
+
+Press `D` in the interactive Client terminal to export a ZIP without stopping
+the Client. The terminal shows the saved path as a local-file hyperlink when
+supported; the visible path can also be copied normally. English, Chinese and
+visual modes share that action. Non-interactive and `TERM=dumb` sessions export
+at orderly shutdown, since they do not read TUI keys.
+
+Hosted Server diagnostics use `--debug`, `SCREENER_DEBUG=server` or
+`SCREENER_DEBUG=route`. They persist structured events in `server.log` while
+normal service journal output continues. The directory is `SCREENER_LOG_DIR`,
+otherwise the first systemd `LOGS_DIRECTORY`, otherwise `logs` under the working
+directory. The tracked systemd unit supplies `/var/log/screener` with mode `0700`
+through `LogsDirectory`, which remains writable with `ProtectSystem=strict`.
+An unwritable selection fails startup. In a running debug-enabled
+Unix server, `kill -USR1 <pid>` saves a bundle and prints its path in the journal.
+Every platform also exports at orderly debug shutdown. Windows does not have
+the Unix signal action; forced termination cannot produce a shutdown snapshot.
+No diagnostic HTTP listener or automatic upload is added.
+
+`--debug` enables the existing sanitized route events for the local Go process;
+`SCREENER_DEBUG=route` also works when loaded from the Server `.env`. Those events
+record room and participant ordinals, route reasons, candidates, revisions,
+quality states and commit/failure outcomes. They exclude raw Peer IDs, SDP, ICE
+candidates, tokens and media credentials. Raw third-party protocol logging is
+not enabled or copied into these files.
+
+Each component retains an 8 MiB current JSON log and one 8 MiB previous log.
+Exports contain those existing logs, build/platform metadata, Go `runtime.MemStats`,
+a sampled Go heap/allocation profile (`heap.pprof`) and aggregate goroutine
+stacks (`goroutines.txt`). These are runtime counters and allocation/stack
+profiles, not raw process-memory dumps. They do not collect environment values,
+configuration files, credentials, media payloads, Browser logs or memory from
+the separate C++ capture process. Exported ZIPs remain in the selected directory
+until the user or operator removes them; log rotation does not delete exports.
 
 For Browser diagnostics, add `?debug=1` to the page before reproducing the
 problem. The page retains its last 256 bounded events and exposes

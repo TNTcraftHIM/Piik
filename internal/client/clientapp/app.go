@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"log/slog"
 	"net"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/TNTcraftHIM/Screener/internal/client/browser"
@@ -22,6 +24,7 @@ import (
 	"github.com/TNTcraftHIM/Screener/internal/client/nativecapture"
 	"github.com/TNTcraftHIM/Screener/internal/client/nativecontrol"
 	"github.com/TNTcraftHIM/Screener/internal/client/publictunnel"
+	"github.com/TNTcraftHIM/Screener/internal/diagnostics"
 	serverapp "github.com/TNTcraftHIM/Screener/internal/server/app"
 	serverconfig "github.com/TNTcraftHIM/Screener/internal/server/config"
 	"github.com/TNTcraftHIM/Screener/internal/server/webassets"
@@ -50,25 +53,53 @@ type Options struct {
 	Port           int
 	DisableBrowser bool
 	Debug          bool
+	LogDir         string
 	CaptureProcess string
 	TunnelProcess  string
 	Ready          func(string)
 	console        *clientConsole
+	logger         *slog.Logger
 }
 
 func Run(ctx context.Context, options Options) (returnedErr error) {
 	ctx, cancel := context.WithCancel(ctx)
 	options.Debug = options.Debug || clientDebugEnabled(os.Getenv("SCREENER_DEBUG"))
-	if options.Debug {
-		previous := slog.SetLogLoggerLevel(slog.LevelDebug)
-		defer slog.SetLogLoggerLevel(previous)
-	}
 	options.console = newClientConsole(cancel, options.DisableBrowser)
+	var recorder *diagnostics.Recorder
+	var restoreLogger func()
 	defer func() {
 		cancel()
+		if recorder != nil {
+			slog.Debug("screener-client", "event", "stopped", "failed", returnedErr != nil)
+			if options.console.program == nil {
+				path, err := recorder.Export()
+				options.console.send(consoleExportResult{path: path, err: err})
+				returnedErr = errors.Join(returnedErr, err)
+			}
+			restoreLogger()
+			returnedErr = errors.Join(returnedErr, recorder.Close())
+		}
 		returnedErr = errors.Join(returnedErr, options.console.finish(returnedErr))
-		slog.Debug("screener-client", "event", "stopped", "failed", returnedErr != nil)
 	}()
+	if options.Debug {
+		var err error
+		recorder, err = openClientDiagnostics(options.LogDir)
+		if err != nil {
+			return fmt.Errorf("Screener Client diagnostics are unavailable: %w", err)
+		}
+		previous, previousWriter, previousFlags := slog.Default(), log.Writer(), log.Flags()
+		restoreLogger = func() {
+			slog.SetDefault(previous)
+			log.SetOutput(previousWriter)
+			log.SetFlags(previousFlags)
+		}
+		options.logger = recorder.Logger()
+		slog.SetDefault(options.logger)
+		// Only structured application events belong in the persisted log.
+		log.SetOutput(previousWriter)
+		log.SetFlags(previousFlags)
+		options.console.send(consoleDebug{logPath: recorder.LogPath(), export: recorder.Export})
+	}
 	slog.Debug("screener-client", "event", "start", "revision", BuildRevision)
 	options.console.show(consoleView{state: "starting"})
 	if err := validateMode(options); err != nil {
@@ -274,6 +305,28 @@ func clientDebugEnabled(value string) bool {
 	return false
 }
 
+func openClientDiagnostics(directory string) (*diagnostics.Recorder, error) {
+	if directory = strings.TrimSpace(directory); directory == "" {
+		directory = strings.TrimSpace(os.Getenv("SCREENER_LOG_DIR"))
+	}
+	if directory != "" {
+		return diagnostics.Open(directory, "client", BuildRevision)
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		return nil, err
+	}
+	recorder, err := diagnostics.Open(filepath.Join(filepath.Dir(executable), "logs"), "client", BuildRevision)
+	if err == nil || !errors.Is(err, os.ErrPermission) && !errors.Is(err, syscall.EROFS) {
+		return recorder, err
+	}
+	cache, cacheErr := os.UserCacheDir()
+	if cacheErr != nil {
+		return nil, errors.Join(err, cacheErr)
+	}
+	return diagnostics.Open(filepath.Join(cache, "Screener", "logs"), "client", BuildRevision)
+}
+
 // runSite opens the configured Screener Site in the Browser and waits for the
 // loopback server, which is the only thing this mode owns. It takes no context:
 // cancellation reaches it through client.Done().
@@ -357,13 +410,15 @@ func runLocal(ctx context.Context, options Options, config clientconfig.Config,
 	if err != nil {
 		return err
 	}
+	logger := options.logger
+	if logger == nil {
+		logger = slog.New(slog.NewTextHandler(options.console.logWriter(), nil))
+	}
 	localServer, err := serverapp.New(serverapp.Options{
 		Config:   localConfig,
 		Listener: listener,
 		Assets:   webassets.FS(),
-		// Machine mode inherits stderr; the interactive console shows server
-		// diagnostics in its log pane, as the Node child's stderr did.
-		Logger: slog.New(slog.NewTextHandler(options.console.logWriter(), nil)),
+		Logger:   logger,
 	})
 	if err != nil {
 		return err

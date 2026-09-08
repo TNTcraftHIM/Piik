@@ -65,3 +65,27 @@ func TestLoadEnvironmentFileIgnoresOnlyAMissingFile(t *testing.T) {
 		t.Fatal("an unreadable environment file was ignored")
 	}
 }
+
+func TestServerDiagnosticSelection(t *testing.T) {
+	for value, want := range map[string]bool{
+		"server": true, "route": true, "client, route": true,
+		"": false, "client": false, "all": false, "server-secret": false,
+	} {
+		if got := serverDebugEnabled(value); got != want {
+			t.Fatalf("serverDebugEnabled(%q) = %v, want %v", value, got, want)
+		}
+	}
+	t.Setenv("SCREENER_LOG_DIR", "")
+	t.Setenv("LOGS_DIRECTORY", "")
+	if got := serverLogDirectory(); got != "logs" {
+		t.Fatalf("default directory = %q", got)
+	}
+	t.Setenv("LOGS_DIRECTORY", "service-logs"+string(os.PathListSeparator)+"other-logs")
+	if got := serverLogDirectory(); got != "service-logs" {
+		t.Fatalf("systemd directory = %q", got)
+	}
+	t.Setenv("SCREENER_LOG_DIR", "explicit-logs")
+	if got := serverLogDirectory(); got != "explicit-logs" {
+		t.Fatalf("explicit directory = %q", got)
+	}
+}

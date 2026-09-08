@@ -1337,8 +1337,8 @@ func TestListenIsSingleShotAndRefusedAfterClose(t *testing.T) {
 // --- request failures and server settings ---------------------------------
 
 // The createServer .catch of app.ts: a handler that throws answers 500 and the
-// record carries the method and the path only (D11).
-func TestRequestFailureAnswers500AndLogsMethodAndPathOnly(t *testing.T) {
+// record carries fixed method and route categories without request data.
+func TestRequestFailureAnswers500AndLogsRequestCategoriesOnly(t *testing.T) {
 	var logged bytes.Buffer
 	server := newServer(t, Options{
 		Config: testConfig(t),
@@ -1351,7 +1351,7 @@ func TestRequestFailureAnswers500AndLogsMethodAndPathOnly(t *testing.T) {
 
 	recorder := httptest.NewRecorder()
 	server.ServeHTTP(recorder,
-		httptest.NewRequest(http.MethodGet, "/boom?grant=viewer-grant-that-must-not-be-logged", nil))
+		httptest.NewRequest(http.MethodGet, "/viewer-grant-that-must-not-be-logged?grant=viewer-grant-that-must-not-be-logged", nil))
 
 	if recorder.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500", recorder.Code)
@@ -1362,11 +1362,17 @@ func TestRequestFailureAnswers500AndLogsMethodAndPathOnly(t *testing.T) {
 	record := logged.String()
 	if !strings.Contains(record, "HTTP request failed") ||
 		!strings.Contains(record, "method=GET") ||
-		!strings.Contains(record, "path=/boom") {
+		!strings.Contains(record, "route=frontend") || strings.Contains(record, "path=") {
 		t.Fatalf("log record = %q", record)
 	}
 	if strings.Contains(record, "viewer-grant-that-must-not-be-logged") {
 		t.Fatalf("the failure log leaked the request: %q", record)
+	}
+	logged.Reset()
+	server.ServeHTTP(httptest.NewRecorder(),
+		httptest.NewRequest("private-method-token", "/private-path-token", nil))
+	if record := logged.String(); !strings.Contains(record, "method=other") || strings.Contains(record, "private-") {
+		t.Fatalf("the failure log leaked a custom method: %q", record)
 	}
 }
 
@@ -1496,4 +1502,7 @@ func TestReportsAListenerThatDiesWhileServing(t *testing.T) {
 	waitFor(t, "the serve failure to be reported", func() bool {
 		return strings.Contains(logged.String(), "Screener HTTP server stopped unexpectedly")
 	})
+	if record := logged.String(); !strings.Contains(record, "errorType=*net.OpError") || strings.Contains(record, "error=") || strings.Contains(record, "127.0.0.1") {
+		t.Fatalf("listener failure must log only the error type: %q", record)
+	}
 }

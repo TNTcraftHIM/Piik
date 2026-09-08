@@ -3,6 +3,7 @@ package mediaedge
 import (
 	"errors"
 	"io"
+	"log/slog"
 	"strings"
 	"sync"
 
@@ -96,16 +97,23 @@ func (engine *Engine) NewReceiver(options ReceiverOptions) (*Receiver, webrtc.Se
 	)
 	connection.OnICECandidate(receiver.localCandidates.addPion)
 	connection.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
-		if receiver.events.ConnectionState == nil {
-			return
+		debug := slog.Default().Enabled(engine.ctx, slog.LevelDebug)
+		if debug {
+			slog.Debug("screener-client", "event", "media-connection-state", "direction", "inbound", "state", state.String())
 		}
 		var selected *SelectedPair
-		if state == webrtc.PeerConnectionStateConnected {
+		if state == webrtc.PeerConnectionStateConnected && (receiver.events.ConnectionState != nil || debug) {
 			if pair, pairErr := receiver.SelectedPair(); pairErr == nil {
 				selected = &pair
+				if debug {
+					slog.Debug("screener-client", "event", "media-selected-path", "direction", "inbound",
+						"localType", pair.Local.String(), "remoteType", pair.Remote.String(), "natTraversalPath", pair.NatTraversalPath)
+				}
 			}
 		}
-		receiver.events.ConnectionState(state, selected)
+		if receiver.events.ConnectionState != nil {
+			receiver.events.ConnectionState(state, selected)
+		}
 	})
 	connection.OnTrack(func(track *webrtc.TrackRemote, rtpReceiver *webrtc.RTPReceiver) {
 		go receiver.readRTCP(track, rtpReceiver)

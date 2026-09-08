@@ -6,7 +6,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"log/slog"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -158,6 +160,11 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (any, error)
 		} else {
 			return nil, errors.New("native share does not exist")
 		}
+		if slog.Default().Enabled(session.ctx, slog.LevelDebug) {
+			slog.Debug("screener-client", "event", "share-update", "failed", err != nil, "errorType", fmt.Sprintf("%T", err),
+				"width", profile.Video.Width, "height", profile.Video.Height, "fps", profile.Video.Framerate,
+				"bitrate", profile.Video.Bitrate, "audioBitrate", profile.AudioBitrate)
+		}
 		if err != nil {
 			return operationFailure(envelope), nil
 		}
@@ -179,11 +186,15 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (any, error)
 		audio := request.Audio && session.capabilities.Summary().AudioFor(
 			request.Source.Kind,
 		)
-		if err := host.ReplaceSource(ctx, nativecapture.VideoOptions{
+		err := host.ReplaceSource(ctx, nativecapture.VideoOptions{
 			Target:       request.Source,
 			AdapterIndex: request.AdapterIndex,
 			EncoderIndex: request.EncoderIndex,
-		}, audio); err != nil {
+		}, audio)
+		if slog.Default().Enabled(session.ctx, slog.LevelDebug) {
+			slog.Debug("screener-client", "event", "share-source-replace", "failed", err != nil, "errorType", fmt.Sprintf("%T", err))
+		}
+		if err != nil {
 			return operationFailure(envelope), nil
 		}
 		return shareSourceReplacedResponse{
@@ -304,7 +315,11 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (any, error)
 			!identityPattern.MatchString(request.ShareID) {
 			return nil, errors.New("native stop-share request is invalid")
 		}
-		if err := session.stopShare(request.ShareID); err != nil {
+		err := session.stopShare(request.ShareID)
+		if slog.Default().Enabled(session.ctx, slog.LevelDebug) {
+			slog.Debug("screener-client", "event", "share-stop", "failed", err != nil, "errorType", fmt.Sprintf("%T", err))
+		}
+		if err != nil {
 			return nil, err
 		}
 		return response(envelope, "share-stopped"), nil
@@ -352,14 +367,22 @@ func (session *Session) startShare(
 	ctx context.Context,
 	envelope requestEnvelope,
 	request startShareRequest,
-) (any, error) {
+) (result any, returnedErr error) {
+	profile := nativeQualityProfile(request.Profile)
+	codec := request.Codec
+	defer func() {
+		if slog.Default().Enabled(session.ctx, slog.LevelDebug) {
+			slog.Debug("screener-client", "event", "share-start", "failed", returnedErr != nil, "errorType", fmt.Sprintf("%T", returnedErr),
+				"codec", codec, "width", profile.Video.Width, "height", profile.Video.Height,
+				"fps", profile.Video.Framerate, "bitrate", profile.Video.Bitrate)
+		}
+	}()
 	session.mu.Lock()
 	if session.closed || session.host != nil || session.viewer != nil {
 		session.mu.Unlock()
 		return nil, errors.New("native share is already active")
 	}
 	session.mu.Unlock()
-	profile := nativeQualityProfile(request.Profile)
 	host, err := nativehost.Start(ctx, nativehost.Options{
 		ShareID:        request.ShareID,
 		CaptureProcess: session.captureProcess,
@@ -389,12 +412,13 @@ func (session *Session) startShare(
 	}
 	session.host = host
 	session.mu.Unlock()
+	codec = host.Codec()
 	go session.watchHost(host)
 	return shareStartedResponse{
 		responseEnvelope: response(envelope, "share-started"),
 		ShareID:          request.ShareID,
 		Audio:            host.HasAudio(),
-		Codec:            host.Codec(),
+		Codec:            codec,
 	}, nil
 }
 

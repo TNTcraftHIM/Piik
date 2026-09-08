@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"net"
 	"net/url"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -44,7 +46,7 @@ func TestClientLaunchURLMarksThePageWithoutChangingOrigin(t *testing.T) {
 	}
 }
 
-func TestClientDebugOnlyEnablesItsExplicitComponent(t *testing.T) {
+func TestClientDiagnosticsUseFilesOnlyWhenEnabled(t *testing.T) {
 	for value, want := range map[string]bool{
 		"client": true, "route, client": true, "client,": true,
 		"": false, "route": false, "all": false, "client-secret": false,
@@ -65,17 +67,55 @@ func TestClientDebugOnlyEnablesItsExplicitComponent(t *testing.T) {
 	t.Setenv("SCREENER_DEBUG", "")
 	for _, enabled := range []bool{false, true} {
 		output.Reset()
-		err := Run(t.Context(), Options{Debug: enabled, DisableBrowser: true, Local: true, Link: true})
+		directory := t.TempDir()
+		err := Run(t.Context(), Options{Debug: enabled, LogDir: directory, DisableBrowser: true, Local: true, Link: true})
 		if err == nil {
 			t.Fatal("invalid mode must stop before starting capture or services")
 		}
-		if got := strings.Contains(output.String(), "screener-client event=start"); got != enabled {
-			t.Fatalf("debug enabled=%v, emitted start=%v", enabled, got)
+		if strings.Contains(output.String(), "screener-client") {
+			t.Fatalf("Client diagnostics reached stderr: %s", output.String())
 		}
-		if enabled && (!strings.Contains(output.String(), "revision=") ||
-			!strings.Contains(output.String(), "event=stopped failed=true")) {
-			t.Fatalf("missing fixed Client lifecycle fields: %s", output.String())
+		content, readErr := os.ReadFile(filepath.Join(directory, "client.log"))
+		if !enabled {
+			if !errors.Is(readErr, os.ErrNotExist) {
+				t.Fatalf("disabled diagnostics created a log: %v", readErr)
+			}
+			continue
 		}
+		if readErr != nil || !strings.Contains(string(content), `"event":"start"`) ||
+			!strings.Contains(string(content), `"revision":`) ||
+			!strings.Contains(string(content), `"event":"stopped","failed":true`) {
+			t.Fatalf("missing file lifecycle events: %s, %v", content, readErr)
+		}
+	}
+}
+
+func TestClientDiagnosticDirectoryHonorsExplicitSelection(t *testing.T) {
+	environmentDirectory := t.TempDir()
+	t.Setenv("SCREENER_LOG_DIR", environmentDirectory)
+	for _, directory := range []string{"", t.TempDir()} {
+		recorder, err := openClientDiagnostics(directory)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := directory
+		if want == "" {
+			want = environmentDirectory
+		}
+		if recorder.LogPath() != filepath.Join(want, "client.log") {
+			t.Fatalf("diagnostic path = %q", recorder.LogPath())
+		}
+		if err = recorder.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	blocked := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(blocked, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if recorder, err := openClientDiagnostics(blocked); err == nil {
+		_ = recorder.Close()
+		t.Fatal("an explicit directory failure silently fell back")
 	}
 }
 
