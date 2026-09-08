@@ -17,21 +17,24 @@
 #include "rtc_base/checks.h"
 #include "video/encoder_bitrate_adjuster.h"
 
-// A one-source, single-stream VP8 experiment, not a product encoder registry.
+// A one-source, single-stream experiment, not a product encoder registry.
+// H264 uses the shared-pipeline control, not per-sender cache adaptation.
 // Matching requests share only one last completed access unit. No warm cache.
 // ponytail: one mutex serializes groups; validate per-group workers before production.
 class PoolFactory final : public webrtc::VideoEncoderFactory {
  public:
-  explicit PoolFactory(bool pooled, bool group_adjuster = false, bool unsafe_skip = false)
+  explicit PoolFactory(bool pooled, bool group_adjuster = false, bool unsafe_skip = false,
+                       std::unique_ptr<webrtc::VideoEncoderFactory> backend = nullptr)
       : pooled_(pooled), group_adjuster_(group_adjuster), unsafe_skip_(unsafe_skip),
-        builtin_(webrtc::CreateBuiltinVideoEncoderFactory()) {}
+        builtin_(backend ? std::move(backend) : webrtc::CreateBuiltinVideoEncoderFactory()),
+        format_(builtin_->GetSupportedFormats().front()) {}
   std::atomic<int> encodes{0}, hits{0}, splits{0}, live{0}, maxLive{0}, callbacks{0};
   std::atomic<int> dependencySplits{0}, rateSplits{0};
   std::atomic<int> created{0}, joins{0};
   std::atomic<int> simulatedLatencyMs{0};
 
   std::vector<webrtc::SdpVideoFormat> GetSupportedFormats() const override {
-    return {webrtc::SdpVideoFormat("VP8")};
+    return {format_};
   }
 
  private:
@@ -55,7 +58,7 @@ class PoolFactory final : public webrtc::VideoEncoderFactory {
           const webrtc::VideoCodec& configuration,
           const webrtc::VideoEncoder::Settings& options)
         : owner(parent), config(configuration), settings(options),
-          codec(parent.builtin_->Create(env, webrtc::SdpVideoFormat("VP8"))) {
+          codec(parent.builtin_->Create(env, parent.format_)) {
       RTC_CHECK(codec);
       RTC_CHECK_EQ(codec->InitEncode(&config, settings), 0);
       codec->RegisterEncodeCompleteCallback(this);
@@ -101,7 +104,8 @@ class PoolFactory final : public webrtc::VideoEncoderFactory {
            a.qpMax == c.qpMax && a.mode == c.mode && a.active == c.active &&
            a.GetFrameDropEnabled() == c.GetFrameDropEnabled() &&
            a.GetVideoEncoderComplexity() == c.GetVideoEncoderComplexity() &&
-           a.GetScalabilityMode() == c.GetScalabilityMode() && a.VP8() == c.VP8() &&
+           a.GetScalabilityMode() == c.GetScalabilityMode() && a.codecType == c.codecType &&
+           (a.codecType == webrtc::kVideoCodecVP8 ? a.VP8() == c.VP8() : a.H264() == c.H264()) &&
            group.settings.number_of_cores == s.number_of_cores &&
            group.settings.max_payload_size == s.max_payload_size &&
            group.settings.encoder_thread_limit == s.encoder_thread_limit;
@@ -111,12 +115,12 @@ class PoolFactory final : public webrtc::VideoEncoderFactory {
    public:
     Encoder(PoolFactory& owner, const webrtc::Environment& env)
         : owner_(owner), env_(env),
-          metadata_(owner.builtin_->Create(env, webrtc::SdpVideoFormat("VP8"))) {}
+          metadata_(owner.builtin_->Create(env, owner.format_)) {}
     ~Encoder() override { Release(); }
     int InitEncode(const webrtc::VideoCodec* c, const Settings& s) override {
-      RTC_CHECK_EQ(c->codecType, webrtc::kVideoCodecVP8);
+      RTC_CHECK(c->codecType == webrtc::kVideoCodecVP8 || c->codecType == webrtc::kVideoCodecH264);
       RTC_CHECK_LE(c->numberOfSimulcastStreams, 1);
-      RTC_CHECK_EQ(c->VP8().numberOfTemporalLayers, 1);
+      RTC_CHECK_EQ(c->codecType == webrtc::kVideoCodecVP8 ? c->VP8().numberOfTemporalLayers : c->H264().numberOfTemporalLayers, 1);
       RTC_CHECK_EQ(c->mode, webrtc::VideoCodecMode::kRealtimeVideo);
       std::lock_guard lock(owner_.mutex_);
       group_.reset();
@@ -306,6 +310,7 @@ class PoolFactory final : public webrtc::VideoEncoderFactory {
   bool group_adjuster_;
   bool unsafe_skip_;
   std::unique_ptr<webrtc::VideoEncoderFactory> builtin_;
+  webrtc::SdpVideoFormat format_;
   std::mutex mutex_;
   std::vector<std::weak_ptr<Group>> groups_;
 };

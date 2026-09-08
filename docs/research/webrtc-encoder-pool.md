@@ -1,6 +1,6 @@
 # WebRTC Adaptation And Encoder Reuse
 
-Reviewed: 2026-09-08. Source-backed review and synthetic VP8 feasibility probe,
+Reviewed: 2026-09-08. Source-backed review and synthetic VP8/H264 feasibility probes,
 not an accepted engine replacement. [ADR-0013](../adr/0013-embedded-node-local-media.md)
 still owns the direct-child/shared-output model; [TODO](../todo.md) owns work and
 the dependent release hold. The question is whether retaining mature encoder
@@ -369,7 +369,61 @@ Encode, SetBitrate and retirement around MFT. A shared extraction plus an adapte
 can preserve that implementation. Truthful codec information, requested FPS,
 actual QP availability, and dynamic output dimensions remain integration work;
 the old fixed `OutputWorker` policy is not a requirement to restart WGC capture.
-No H264 adapter or product pipeline was changed in this follow-up.
+The following H264 step implements that extraction and opt-in adapter; no
+product VSE pipeline has been installed.
+
+### Hardware H264 Adapter Check
+
+The existing Windows `LiveEncoder` and its MFT/device helpers now have one
+shared implementation in `native/capture/windows/h264_encoder.{h,cpp}`. Both
+the capture binary and the opt-in probe link it; WGC, source selection, audio,
+profile application and capture retirement retain their existing owners.
+The probe adapter converts synthetic I420 to NV12 and uploads it for MFT.
+This validates the native encoder interface, not a zero-copy capture path.
+
+One complete stock VSE owns rates, pre-encoder dropping, correction and resource
+feedback. The adapter reports untrusted hardware rate control and unavailable
+QP, rather than claiming the VP8-specific cache feedback applies to H264.
+It preserves callback timestamps and shares immutable encoded bytes. SetRates
+uses the configured/requested-FPS bitrate compensation in Chromium's
+[Media Foundation adapter][chromium-mf]; zero budget pauses instead of writing
+an invalid MFT bitrate. WebRTC's [codec initializer][codec-initializer] owns
+default H264 settings and the single temporal layer.
+
+The bounded 640x360@30 run produced 174 physical encodes during six seconds,
+delivering 174 byte-identical AUs to each consumer. First output took about
+275 ms. Removing B left A receiving 60 further frames over two seconds.
+One physical encoder was created and all resources retired; there was no
+split/rejoin. The pinned SDK has no H264 decoder, so its C++ decoded counters
+are explicitly zero. Two Chrome WebCodecs decoders subsequently each decoded
+the exported first 180 AUs with the expected dimensions/timestamps and no
+reported errors. The last six exported AUs followed B's retirement; this is
+bitstream validation, not a claim that both actual consumers received 180.
+
+[Structured results](./data/webrtc-h264-pipeline.json) retain that narrow scope.
+These checks do not establish independent weak-child adaptation, overload,
+actual capture throughput, transport overhead or Client integration. The
+adapter remains probe-only; the existing product encoder is only extracted,
+not replaced by an accepted new pipeline or a second implementation.
+
+The concrete product attachment is `OutputWorker::Run`, shared by WGC and
+encoded-input derivation. Its fixed-size/FPS/direct-rate block can become a
+complete VSE while retaining the bounded mailbox, generation fence and
+stop/join lifecycle. Bind the H264 adapter to the existing D3D device and reuse
+`FrameConverter`/owned decoded NV12, rather than introducing the probe's CPU
+round-trip into normal capture. Preserve one timestamp domain across Begin and
+AUs: rounding a 100 ns capture timestamp down to WebRTC microseconds can put
+the first AU before its Begin anchor. Dynamic output sizes must update the
+forwarding format metadata as well as `Source.SetFormat`; ordinary adaptation
+must not rebase the whole source generation.
+
+The remaining grouping boundary is not transport-independent bookkeeping yet:
+current `OutputPlan`/`relayPlan` collapse demand into one lowest bitrate and the
+source has bounded fixed slots. Retain compatible direct-child demands before
+assigning shared pipelines to those slots. Product linking also must reconcile
+the SDK's bundled libvpx with the existing capture dependency and include the
+SDK's own notices. These are concrete implementation costs, not solved by the
+healthy two-callback check above.
 
 ## Replacement And Preservation Map
 
@@ -432,3 +486,5 @@ unrelated page rewrite or platform-adapter deletion is justified by this review.
 [epic-migration]: https://github.com/EpicGames/PixelStreamingInfrastructure/blob/f826b19279ef5a8401341bc046129f1726999db2/Docs/pixel-streaming-2-migration-guide.md#L319
 [epic-settings]: https://github.com/EpicGames/PixelStreamingInfrastructure/blob/f826b19279ef5a8401341bc046129f1726999db2/Frontend/Docs/Settings%20Panel.md
 [webrtc-build]: https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/docs/native-code/development/README.md
+[codec-initializer]: https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/modules/video_coding/video_codec_initializer.cc
+[chromium-mf]: https://chromium.googlesource.com/chromium/src/+/refs/tags/152.0.7977.82/media/gpu/windows/media_foundation_video_encode_accelerator_win.cc

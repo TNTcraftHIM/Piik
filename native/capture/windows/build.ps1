@@ -28,11 +28,13 @@ $mainSourcePath = Join-Path $helperDirectory 'main.cpp'
 $audioSourcePath = Join-Path $helperDirectory 'process_audio.cpp'
 $targetSourcePath = Join-Path $helperDirectory 'capture_target.cpp'
 $vp8SourcePath = Join-Path $helperDirectory 'vp8_encoder.cpp'
+$h264SourcePath = Join-Path $helperDirectory 'h264_encoder.cpp'
 $executablePath = Join-Path $outputPath 'screener-client-capture.exe'
 $mainObjectPath = Join-Path $outputPath 'window-capture.obj'
 $audioObjectPath = Join-Path $outputPath 'process-audio.obj'
 $targetObjectPath = Join-Path $outputPath 'capture-target.obj'
 $vp8ObjectPath = Join-Path $outputPath 'vp8-encoder.obj'
+$h264ObjectPath = Join-Path $outputPath 'h264-encoder.obj'
 New-Item -ItemType Directory -Path $outputPath -Force | Out-Null
 $vpx = & (Join-Path $helperDirectory 'build-libvpx.ps1') -OutputDirectory (Join-Path $outputPath 'libvpx') -VisualStudioDirectory $installationPath
 
@@ -42,7 +44,8 @@ $compile = @(
     'cl.exe /nologo /c /std:c++20 /EHsc /O2 /W4 /WX /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN /D_WIN32_WINNT=0x0A00 /DNTDDI_VERSION=0x0A00000A "{0}" /Fo:"{1}"' -f $audioSourcePath, $audioObjectPath
     'cl.exe /nologo /c /std:c++20 /EHsc /O2 /W4 /WX /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN /D_WIN32_WINNT=0x0A00 /DNTDDI_VERSION=0x0A00000A "{0}" /Fo:"{1}"' -f $targetSourcePath, $targetObjectPath
     'cl.exe /nologo /c /std:c++20 /EHsc /O2 /W4 /WX /external:I "{2}" /external:W0 "{0}" /Fo:"{1}"' -f $vp8SourcePath, $vp8ObjectPath, $vpx.Include
-    'link.exe /nologo /LTCG /out:"{0}" "{1}" "{2}" "{3}" "{4}" "{5}" ole32.lib mmdevapi.lib runtimeobject.lib user32.lib gdi32.lib dwmapi.lib shell32.lib mfplat.lib mf.lib mfuuid.lib d3d11.lib dxgi.lib dxguid.lib evr.lib oleaut32.lib windowsapp.lib' -f $executablePath, $mainObjectPath, $audioObjectPath, $targetObjectPath, $vp8ObjectPath, $vpx.Library
+    'cl.exe /nologo /c /std:c++20 /EHsc /O2 /W4 /WX /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN /D_WIN32_WINNT=0x0A00 "{0}" /Fo:"{1}"' -f $h264SourcePath, $h264ObjectPath
+    'link.exe /nologo /LTCG /out:"{0}" "{1}" "{2}" "{3}" "{4}" "{5}" "{6}" ole32.lib mmdevapi.lib runtimeobject.lib user32.lib gdi32.lib dwmapi.lib shell32.lib mfplat.lib mf.lib mfuuid.lib d3d11.lib dxgi.lib dxguid.lib evr.lib oleaut32.lib windowsapp.lib' -f $executablePath, $mainObjectPath, $audioObjectPath, $targetObjectPath, $vp8ObjectPath, $vpx.Library, $h264ObjectPath
 ) -join ' && '
 
 & cmd.exe /d /s /c $compile

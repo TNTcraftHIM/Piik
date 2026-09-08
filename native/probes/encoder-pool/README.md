@@ -1,6 +1,6 @@
 # Encoder Pool Feasibility Probe
 
-Explicit Windows CPU experiment, not a product dependency or CI job. Two real
+Explicit Windows experiment, not a product dependency or CI job. Two real
 libwebrtc VideoStreamEncoders consume one synthetic 640x360 source through
 independent stock VideoAdapters. It does not capture the desktop or open ports.
 [Research and evidence](../../../docs/research/webrtc-encoder-pool.md) own conclusions.
@@ -41,8 +41,8 @@ it is not an automatic performance/parity verdict.
 WebRTC's actual adjustment algorithm once per physical codec; it must not run
 alongside per-VSE correction. `--unsafe-skip` removes dependency protection as a
 negative control and should fail integrity with group adjustment and a skipped
-input. This is guarded single-source realtime VP8/L1T1 with synchronous codecs;
-no H264, asynchronous encoder, physical overload or public-network claim follows.
+input. This cache arm is guarded single-source realtime VP8/L1T1 with synchronous
+codecs; no H264 cache, physical overload or public-network claim follows.
 
 `--realtime` removes per-input encoder-queue drains. `--latency-probe` requires
 that mode and inserts a bounded pixel-proportional 45 ms codec delay, then
@@ -52,6 +52,29 @@ decoders, not two VSEs borrowing its encoder. Do not combine it with pool or
 adjuster flags. Source and codec work remain bounded; use a 95-second process
 deadline for these approximately 70-second traces. The shared-pipeline B resource
 metrics repeat the common pipeline, while its decoded counters are independent.
+
+## Hardware H264 Pipeline
+
+The separate `--h264` arm wraps the existing Windows MFT `LiveEncoder` in a
+WebRTC encoder adapter. It requires `--shared-pipeline --healthy-only --export
+PATH`; one complete stock VSE supplies two output callbacks. It does not test
+two independent controllers borrowing an H264 encoder. Run it alone, with a
+30-second process deadline and no concurrent capture/codec workload:
+
+```powershell
+& ./build/encoder-pool/probe/Release/encoder-pool-probe.exe `
+  --h264 --shared-pipeline --healthy-only --realtime `
+  --export build/encoder-pool/h264-input.jsonl
+```
+
+This is synthetic I420 upload to NV12/MFT, not WGC capture or zero-copy input.
+The pinned SDK has no H264 decoder, so this arm records payload equality and
+encoded dimensions with decoded counters at zero. Validate the exported AUs
+separately in Chrome. The existing `scripts/encoded-group-decode.mjs` accepts
+`SCREENER_ENCODED_CODEC=avc1.42c033` and `SCREENER_ENCODED_OUTPUT` pointing to two
+arrays of `{Index, Width, Height, PTS, Recovery, Data}` frames (nanosecond PTS,
+base64 Annex-B data). A repeated export in those two arrays proves decoding of
+that bitstream, not two Pion transports or weak-budget/resource adaptation.
 
 ## Healthy Relay Chain
 

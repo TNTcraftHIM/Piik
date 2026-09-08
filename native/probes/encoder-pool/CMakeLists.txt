@@ -7,7 +7,8 @@ set(MSVC_CRT_DIR "" CACHE PATH "Optional newer official MSVC x64 library directo
 if(NOT EXISTS "${WEBRTC_SDK}/lib/webrtc.lib")
   message(FATAL_ERROR "This Windows probe needs WEBRTC_SDK pointing to the matching SDK")
 endif()
-add_executable(encoder-pool-probe harness.cpp)
+add_executable(encoder-pool-probe harness.cpp h264_encoder_adapter.cpp
+  ../../capture/windows/h264_encoder.cpp)
 target_include_directories(encoder-pool-probe SYSTEM PRIVATE
   "${WEBRTC_SDK}/include"
   "${WEBRTC_SDK}/include/third_party/abseil-cpp"
@@ -22,4 +23,5 @@ if(MSVC_CRT_DIR)
 endif()
 target_link_libraries(encoder-pool-probe PRIVATE
   "${WEBRTC_SDK}/lib/webrtc.lib"
-  winmm ws2_32 Strmiids crypt32 dmoguids iphlpapi msdmo Secur32 wmcodecdspuuid)
+  winmm ws2_32 Strmiids crypt32 dmoguids iphlpapi msdmo Secur32 wmcodecdspuuid
+  ole32 oleaut32 mfplat mf mfuuid d3d11 dxgi dxguid evr)

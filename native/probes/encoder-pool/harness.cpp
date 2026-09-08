@@ -1,5 +1,6 @@
 // Explicit synthetic experiment. Not part of Client, Server, unit tests or CI.
 #include "pool.h"
+#include "h264_encoder_adapter.h"
 
 #include <algorithm>
 #include <array>
@@ -89,17 +90,21 @@ class SharedProof {
     std::lock_guard<std::mutex> lock(mutex_);
     auto& row = pending_[timestamp];
     row[consumer] = proof;
-    if (row[0].pixels && row[1].pixels) {
+    if (row[0].payload && row[1].payload) {
       if (row[0].payload == row[1].payload) {
         ++compared;
-        if (row[0].pixels != row[1].pixels || row[0].width != row[1].width ||
-            row[0].height != row[1].height) ++mismatches;
+        if (row[0].pixels && row[1].pixels) {
+          ++decodedCompared;
+          if (row[0].pixels != row[1].pixels || row[0].width != row[1].width ||
+              row[0].height != row[1].height) ++mismatches;
+        }
       }
       pending_.erase(timestamp);
     }
     while (pending_.size() > 64) pending_.erase(pending_.begin());
   }
   std::atomic<int> compared{0};
+  std::atomic<int> decodedCompared{0};
   std::atomic<int> mismatches{0};
 
  private:
@@ -124,8 +129,9 @@ struct Counts {
 class Sink final : public VideoStreamEncoderInterface::EncoderSink,
                    public DecodedImageCallback {
  public:
-  Sink(const Environment& env, int consumer, SharedProof& proof)
+  Sink(const Environment& env, int consumer, SharedProof& proof, bool h264 = false)
       : consumer_(consumer), proof_(proof) {
+    if (h264) return;  // The pinned SDK has no H264 decoder; export to Browser WebCodecs.
     auto factory = CreateBuiltinVideoDecoderFactory();
     decoder_ = factory->Create(env, SdpVideoFormat("VP8"));
     VideoDecoder::Settings settings;
@@ -139,7 +145,9 @@ class Sink final : public VideoStreamEncoderInterface::EncoderSink,
       throw std::runtime_error("raw VP8 decoder initialization failed");
   }
 
-  ~Sink() override { decoder_->Release(); vpx_codec_destroy(&raw_); }
+  ~Sink() override {
+    if (decoder_) { decoder_->Release(); vpx_codec_destroy(&raw_); }
+  }
 
   void OnEncoderConfigurationChanged(std::vector<VideoStream>, bool,
                                     VideoEncoderConfig::ContentType, int) override {}
@@ -170,10 +178,14 @@ class Sink final : public VideoStreamEncoderInterface::EncoderSink,
     }
     current_timestamp_ = image.RtpTimestamp();
     current_payload_ = HashBytes(1469598103934665603ULL, image.data(), image.size());
-    if (decoder_->Decode(image, 0) < 0) ++counts_.errors;
-    if (vpx_codec_decode(&raw_, image.data(), static_cast<unsigned>(image.size()), nullptr, 0) != VPX_CODEC_OK) {
+    if (!decoder_) {
+      RecordSize(image._encodedWidth, image._encodedHeight);
+      proof_.Observe(consumer_, current_timestamp_,
+          {current_payload_, 0, static_cast<int>(image._encodedWidth), static_cast<int>(image._encodedHeight)});
+    } else if (decoder_->Decode(image, 0) < 0) ++counts_.errors;
+    if (decoder_ && vpx_codec_decode(&raw_, image.data(), static_cast<unsigned>(image.size()), nullptr, 0) != VPX_CODEC_OK) {
       ++counts_.errors;
-    } else {
+    } else if (decoder_) {
       vpx_codec_iter_t iterator = nullptr;
       if (const auto* raw = vpx_codec_get_frame(&raw_, &iterator)) {
         uint64_t hash = 1469598103934665603ULL;
@@ -194,17 +206,21 @@ class Sink final : public VideoStreamEncoderInterface::EncoderSink,
   // The selected built-in VP8 decoder completes synchronously inside Decode.
   int32_t Decoded(VideoFrame& frame) override {
     ++counts_.decoded;
-    counts_.width = frame.width();
-    counts_.height = frame.height();
-    counts_.min_width = std::min(counts_.min_width, frame.width());
-    counts_.min_height = std::min(counts_.min_height, frame.height());
+    RecordSize(frame.width(), frame.height());
+    return 0;
+  }
+
+  void RecordSize(int width, int height) {
+    counts_.width = width;
+    counts_.height = height;
+    counts_.min_width = std::min(counts_.min_width, width);
+    counts_.min_height = std::min(counts_.min_height, height);
     const double elapsed = std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now() - phase_started_).count();
-    if (frame.width() == kWidth && frame.height() == kHeight && counts_.first_full_ms < 0)
+    if (width == kWidth && height == kHeight && counts_.first_full_ms < 0)
       counts_.first_full_ms = elapsed;
-    if (frame.width() < kWidth && counts_.first_reduced_ms < 0)
+    if (width < kWidth && counts_.first_reduced_ms < 0)
       counts_.first_reduced_ms = elapsed;
-    return 0;
   }
 
   Counts Snapshot() {
@@ -301,10 +317,10 @@ struct Pipeline {
   TaskQueueBase* encode_queue = nullptr;
 };
 
-VideoEncoderConfig Config() {
+VideoEncoderConfig Config(const SdpVideoFormat& format) {
   VideoEncoderConfig config;
-  config.codec_type = kVideoCodecVP8;
-  config.video_format = SdpVideoFormat("VP8");
+  config.codec_type = format.name == "H264" ? kVideoCodecH264 : kVideoCodecVP8;
+  config.video_format = format;
   config.content_type = VideoEncoderConfig::ContentType::kRealtimeVideo;
   config.number_of_streams = 1;
   config.max_bitrate_bps = 2'000'000;
@@ -315,23 +331,26 @@ VideoEncoderConfig Config() {
   config.simulcast_layers[0].max_framerate = kFps;
   config.simulcast_layers[0].max_bitrate_bps = 2'000'000;
   config.simulcast_layers[0].num_temporal_layers = 1;
-  auto vp8 = VideoEncoder::GetDefaultVp8Settings();
-  vp8.automaticResizeOn = true;
-  config.encoder_specific_settings =
-      make_ref_counted<VideoEncoderConfig::Vp8EncoderSpecificSettings>(vp8);
+  if (config.codec_type == kVideoCodecVP8) {
+    auto vp8 = VideoEncoder::GetDefaultVp8Settings();
+    vp8.automaticResizeOn = true;
+    config.encoder_specific_settings =
+        make_ref_counted<VideoEncoderConfig::Vp8EncoderSpecificSettings>(vp8);
+  }
   return config;
 }
 
 void Start(Pipeline& pipeline, const Environment& env, PoolFactory& factory,
            VideoBitrateAllocatorFactory* allocator, int consumer, SharedProof& proof) {
   VideoSendStream::Config send_config(nullptr);
+  const auto format = factory.GetSupportedFormats().front();
   send_config.rtp.ssrcs = {static_cast<uint32_t>(100 + consumer)};
-  send_config.rtp.payload_name = "VP8";
+  send_config.rtp.payload_name = format.name;
   send_config.rtp.payload_type = 96;
   pipeline.stats = std::make_unique<SendStatisticsProxy>(
       &env.clock(), send_config, VideoEncoderConfig::ContentType::kRealtimeVideo,
       env.field_trials());
-  pipeline.sink = std::make_unique<Sink>(env, consumer, proof);
+  pipeline.sink = std::make_unique<Sink>(env, consumer, proof, format.name == "H264");
   VideoStreamEncoderSettings settings(VideoEncoder::Capabilities(false));
   settings.encoder_factory = &factory;
   settings.bitrate_allocator_factory = allocator;
@@ -348,7 +367,7 @@ void Start(Pipeline& pipeline, const Environment& env, PoolFactory& factory,
   pipeline.encoder->SetSink(pipeline.sink.get(), false);
   pipeline.encoder->SetSource(&pipeline.source, DegradationPreference::MAINTAIN_FRAMERATE);
   pipeline.encoder->SetStartBitrate(2'000'000);
-  pipeline.encoder->ConfigureEncoder(Config(), 1200);
+  pipeline.encoder->ConfigureEncoder(Config(format), 1200);
   pipeline.encoder->OnBitrateUpdated(DataRate::BitsPerSec(2'000'000),
                                      DataRate::BitsPerSec(2'000'000), 0, 20, 0);
 }
@@ -405,12 +424,16 @@ int main(int argc, char** argv) {
     if (latency_probe && !realtime)
       throw std::runtime_error("--latency-probe requires --realtime");
     const bool shared_pipeline = has("--shared-pipeline");
+    const bool h264 = has("--h264");
+    if (h264 && (!shared_pipeline || !healthy_only || !has("--export")))
+      throw std::runtime_error("--h264 requires --shared-pipeline --healthy-only --export PATH");
     if (shared_pipeline && (pooled || group_adjuster || no_adjuster || has("--unsafe-skip") ||
                             (!healthy_only && !latency_probe)))
       throw std::runtime_error("shared pipeline control requires a healthy/latency trace with stock VSE settings");
     const auto env = CreateEnvironment(std::make_unique<Trials>(no_adjuster));
     const bool unsafe_skip = has("--unsafe-skip");
-    PoolFactory factory(pooled, group_adjuster, unsafe_skip);
+    PoolFactory factory(pooled, group_adjuster, unsafe_skip,
+        h264 ? screener::probe::CreateHardwareEncoderFactory() : nullptr);
     auto allocator = CreateBuiltinVideoBitrateAllocatorFactory();
     auto worker = env.task_queue_factory().CreateTaskQueue(
         "PoolProbeWorker", TaskQueueFactory::Priority::kNormal);
@@ -419,7 +442,7 @@ int main(int argc, char** argv) {
     Sync(worker.get(), [&] {
       Start(pipelines[0], env, factory, allocator.get(), 0, proof);
       if (shared_pipeline) {
-        pipelines[1].sink = std::make_unique<Sink>(env, 1, proof);
+        pipelines[1].sink = std::make_unique<Sink>(env, 1, proof, h264);
         pipelines[0].sink->SetDuplicate(pipelines[1].sink.get());
       } else Start(pipelines[1], env, factory, allocator.get(), 1, proof);
     });
@@ -506,11 +529,12 @@ int main(int argc, char** argv) {
     });
     pipelines[0].sink->FinishExport();
     const auto a = pipelines[0].sink->Snapshot(), b = pipelines[1].sink->Snapshot();
-    const bool integrity = a.decoded > 0 && b.decoded > 0 && factory.live.load() == 0 &&
+    const bool integrity = (h264 ? a.encoded > 0 && b.encoded > 0 : a.decoded > 0 && b.decoded > 0) && factory.live.load() == 0 &&
         a.errors + b.errors + proof.mismatches.load() == 0 &&
         (!pooled || factory.hits.load() > 0 && proof.compared.load() > 0) &&
         (!shared_pipeline || proof.compared.load() > 0);
     std::cout << "{\"integrity\":\"" << (integrity ? "pass" : "fail")
+              << "\",\"codec\":\"" << (h264 ? "h264" : "vp8")
               << "\",\"pooled\":" << (pooled ? "true" : "false")
               << ",\"adjuster\":" << (no_adjuster ? "false" : "true")
               << ",\"groupAdjuster\":" << (group_adjuster ? "true" : "false")
@@ -529,6 +553,7 @@ int main(int argc, char** argv) {
               << ",\"maxLive\":" << factory.maxLive.load()
               << ",\"callbacks\":" << factory.callbacks.load()
               << ",\"samePayloadCompared\":" << proof.compared.load()
+              << ",\"decodedHashComparisons\":" << proof.decodedCompared.load()
               << ",\"decodedHashMismatches\":" << proof.mismatches.load()
               << ",\"aWantsUpdates\":" << pipelines[0].source.wants_updates
               << ",\"bWantsUpdates\":" << pipelines[1].source.wants_updates

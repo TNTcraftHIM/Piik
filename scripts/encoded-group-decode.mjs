@@ -5,6 +5,8 @@ import { createServer } from "node:http";
 import { resolve } from "node:path";
 
 const customInput = process.env.SCREENER_ENCODED_OUTPUT;
+const codec = process.env.SCREENER_ENCODED_CODEC ?? "vp8";
+assert.ok(["vp8", "avc1.42c033"].includes(codec), "Expected VP8 or constrained-baseline H264");
 const inputPath = customInput ? resolve(customInput) : new URL("../build/embedded-media/encoded-group.received.json", import.meta.url);
 const input = await readFile(inputPath);
 const streams = JSON.parse(input);
@@ -15,7 +17,7 @@ for (const frames of streams) {
 }
 const expectedCounts = streams.map((frames) => frames.length);
 const page = `<!doctype html><meta charset="utf-8"><title>Shared encoded output decode</title>
-<pre id="result">Decoding received Pion output...</pre><script>
+<pre id="result">Decoding encoded input...</pre><script>
 (async () => {
   const streams = await (await fetch('/frames')).json();
   const results = [];
@@ -24,7 +26,7 @@ const page = `<!doctype html><meta charset="utf-8"><title>Shared encoded output 
     const decoded = [];
     const decoder = new VideoDecoder({output: frame => accept(frame), error: error => reject(error)});
     try {
-      decoder.configure({codec:'vp8', hardwareAcceleration:'prefer-software', optimizeForLatency:true});
+      decoder.configure({codec:${JSON.stringify(codec)}, hardwareAcceleration:'prefer-software', optimizeForLatency:true});
       for (const row of rows) {
         const pending = new Promise((resolve, fail) => { accept = resolve; reject = fail; });
         decoder.decode(new EncodedVideoChunk({type:row.Recovery ? 'key' : 'delta',
@@ -55,7 +57,8 @@ const server = createServer(async (request, response) => {
     assert.equal(result.passed, true, result.error);
     assert.deepEqual(result.results.map((frames) => frames.length), expectedCounts);
     result.receivedSha256 = createHash("sha256").update(input).digest("hex");
-    result.scope = "Real Native VP8 -> shared forwarding -> two Pion PCs -> depacketized Chrome WebCodecs decode; not Browser WebRTC jitter-buffer or hardware acceptance";
+    result.codec = codec;
+    result.scope = "Encoded input -> two Chrome WebCodecs decoders; input provenance is owned by its producing fixture, not proof of Browser WebRTC transport, jitter-buffer or hardware acceptance";
     result.sources = {};
     for (const path of ["go.mod", "go.sum", "internal/media/encoded/packetizer.go",
       "internal/media/forwarding/source.go", "internal/media/forwarding/encoded_source.go",
