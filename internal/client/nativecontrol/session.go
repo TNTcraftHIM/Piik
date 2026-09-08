@@ -103,7 +103,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (any, error)
 		}
 		targets, err := nativecapture.ListSources(session.ctx, session.captureProcess)
 		if err != nil {
-			return nil, err
+			return operationFailure(envelope), nil
 		}
 		return sourceListResponse{
 			responseEnvelope: response(envelope, "source-list"),

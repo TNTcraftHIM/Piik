@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -48,6 +49,7 @@ type Options struct {
 	LANAddress     string
 	Port           int
 	DisableBrowser bool
+	Debug          bool
 	CaptureProcess string
 	TunnelProcess  string
 	Ready          func(string)
@@ -56,11 +58,18 @@ type Options struct {
 
 func Run(ctx context.Context, options Options) (returnedErr error) {
 	ctx, cancel := context.WithCancel(ctx)
+	options.Debug = options.Debug || clientDebugEnabled(os.Getenv("SCREENER_DEBUG"))
+	if options.Debug {
+		previous := slog.SetLogLoggerLevel(slog.LevelDebug)
+		defer slog.SetLogLoggerLevel(previous)
+	}
 	options.console = newClientConsole(cancel, options.DisableBrowser)
 	defer func() {
 		cancel()
 		returnedErr = errors.Join(returnedErr, options.console.finish(returnedErr))
+		slog.Debug("screener-client", "event", "stopped", "failed", returnedErr != nil)
 	}()
+	slog.Debug("screener-client", "event", "start", "revision", BuildRevision)
 	options.console.show(consoleView{state: "starting"})
 	if err := validateMode(options); err != nil {
 		return err
@@ -84,12 +93,17 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 	if err != nil {
 		return err
 	}
+	slog.Debug("screener-client", "event", "configuration", "siteConfigured", config.Site != "", "localAccessProtected", config.LocalAccessPassword != "")
 	if options.SiteSet || options.Local {
 		if err = clientconfig.Save(configPath, config); err != nil {
 			return errors.New("Screener Client configuration is unavailable")
 		}
 	}
 	nativeMedia := discoverNativeMedia(ctx, options.CaptureProcess)
+	slog.Debug("screener-client", "event", "native-capabilities",
+		"video", nativeMedia.capabilities.Video, "processAudio", nativeMedia.capabilities.ProcessAudio,
+		"systemAudio", nativeMedia.capabilities.SystemAudio, "hardwareH264", nativeMedia.capabilities.HardwareH264,
+		"softwareVP8", nativeMedia.capabilities.SoftwareVP8)
 	client, err := loopback.Start(ctx, loopback.Options{
 		AllowedOrigins: clientOrigins(config.Site, options.Port),
 		NativeMedia:    nativeMedia.capabilities,
@@ -100,6 +114,7 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 		return errors.New("Screener Client could not start")
 	}
 	defer client.Close()
+	slog.Debug("screener-client", "event", "control-ready")
 	if options.console.machine {
 		if err = printEndpoint(client.Endpoint()); err != nil {
 			return err
@@ -250,11 +265,21 @@ func validateMode(options Options) error {
 	return nil
 }
 
+func clientDebugEnabled(value string) bool {
+	for _, component := range strings.Split(value, ",") {
+		if strings.TrimSpace(component) == "client" {
+			return true
+		}
+	}
+	return false
+}
+
 // runSite opens the configured Screener Site in the Browser and waits for the
 // loopback server, which is the only thing this mode owns. It takes no context:
 // cancellation reaches it through client.Done().
 func runSite(site string, options Options, client *loopback.Server) error {
 	var err error
+	slog.Debug("screener-client", "event", "mode", "mode", "site")
 	launchURL := clientLaunchURL(site)
 	view := consoleView{mode: "site", state: "starting", entry: launchURL}
 	options.console.show(view)
@@ -269,6 +294,7 @@ func runSite(site string, options Options, client *loopback.Server) error {
 		options.Ready(launchURL)
 	}
 	view.state = "ready"
+	slog.Debug("screener-client", "event", "site-ready")
 	options.console.show(view)
 	if err = <-client.Done(); err != nil {
 		return errors.New("Screener Client stopped unexpectedly")
@@ -283,6 +309,7 @@ func runLocal(ctx context.Context, options Options, config clientconfig.Config,
 	if options.Link {
 		view.mode = "link"
 	}
+	slog.Debug("screener-client", "event", "mode", "mode", view.mode)
 	options.console.show(view)
 	listener, err := net.ListenTCP("tcp4", &net.TCPAddr{IP: net.IPv4zero, Port: options.Port})
 	if err != nil {
@@ -314,6 +341,7 @@ func runLocal(ctx context.Context, options Options, config clientconfig.Config,
 		}
 		defer tunnel.Close()
 		publicOrigin = tunnel.Origin()
+		slog.Debug("screener-client", "event", "public-link-ready")
 	}
 
 	stunURLs, natPredictionStunURLs := localSTUNURLs(options.Link)
@@ -345,6 +373,7 @@ func runLocal(ctx context.Context, options Options, config clientconfig.Config,
 	if _, err = localServer.Listen(ctx); err != nil {
 		return err
 	}
+	slog.Debug("screener-client", "event", "local-server-ready", "port", options.Port, "publicLink", publicOrigin != "")
 
 	// The readiness lines follow the listener, which the packaged smoke and the
 	// public-link gate both read from stdout before they probe the port.

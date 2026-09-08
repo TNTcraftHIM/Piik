@@ -1,6 +1,6 @@
 # Native Client Lifecycle
 
-- Reviewed: 2026-09-05
+- Reviewed: 2026-09-08
 - Scope: Windows capture idle semantics, native loopback input isolation, and
   Browser visibility of an unexpected Client disconnect.
 - Status: static-source, preview-queue and Client-crash checks pass; Windows 10
@@ -40,7 +40,7 @@ runtime change for either is claimed here.
 - Native Pion candidate input is syntax-checked with the existing ICE parser,
   bounded before queuing, and discarded when malformed, stale, or over capacity.
   Repeated answers for an edge are idempotent. Profile updates remain fenced to
-  that same share session in the current loopback v8 wire.
+  that same share session in the current loopback v9 wire.
 - An unexpected Browser control-socket close now notifies the active Host owner;
   intentional user cleanup remains silent and uses the existing share fence.
 
@@ -61,6 +61,15 @@ runtime change for either is claimed here.
   minimized, then produced 17 frames within 540 ms of restoration. All owned
   processes, ports and profiles were cleaned up. Neither check establishes the
   reported Windows 10 monitor-start failure or game HWND recreation as fixed.
+- On 2026-09-08, the current multi-output Windows VP8 Host gate captured only
+  its own animated Chrome window. Live presets, paused changes, minimize/change
+  resolution/restore/another change, and source replacement preserved the
+  Viewer's media object. Closing the actual source ended the share; restarting
+  delivered 30 new Viewer frames. Server-accepted Native quality evidence and
+  process/port/profile cleanup passed. The gate's stale Node JSON-log assertion
+  was corrected to the current Go text format, without changing evidence
+  eligibility. This is not H264 overload, Win10, or game-window replacement
+  evidence. Further physical execution is subject to the hold in [TODO](../todo.md).
 
 ## Open Capture Reports
 

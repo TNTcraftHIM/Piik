@@ -1,4 +1,5 @@
 import type { z } from "zod";
+import { debugEvent } from "../lib/debug";
 
 import type {
   IceConfig,
@@ -163,6 +164,7 @@ export class NativeClient {
     const client = new NativeClient(health, socket);
     try {
       await client.request("hello", {}, readyResponseSchema);
+      debugEvent("native", "connected");
       return client;
     } catch {
       client.close();
@@ -556,15 +558,23 @@ export class NativeClient {
           ? null
           : window.setTimeout(() => {
               this.pending.delete(id);
+              debugEvent("native", "request-timeout", { type });
               rejectRequest(new Error("Screener Client request timed out"));
             }, timeoutMs);
       this.pending.set(id, {
         schema,
-        resolve: resolveRequest as (value: unknown) => void,
-        reject: rejectRequest,
+        resolve: (value) => {
+          debugEvent("native", "response", { type });
+          resolveRequest(value as T);
+        },
+        reject: (error) => {
+          debugEvent("native", "request-failed", { type });
+          rejectRequest(error);
+        },
         timer,
       });
       try {
+        debugEvent("native", "request", { type });
         this.socket.send(
           JSON.stringify({
             version: NATIVE_CLIENT_PROTOCOL,
@@ -576,6 +586,7 @@ export class NativeClient {
       } catch {
         if (timer !== null) window.clearTimeout(timer);
         this.pending.delete(id);
+        debugEvent("native", "request-failed", { type });
         rejectRequest(new Error("Screener Client request failed"));
       }
     });
@@ -612,6 +623,9 @@ export class NativeClient {
       this.failConnection();
       return;
     }
+    if (event.data.type === "capture-state" || event.data.type === "edge-state" || event.data.type === "publication-state") {
+      debugEvent("native", "state", { type: event.data.type, state: event.data.state });
+    } else if (event.data.type === "share-ended") debugEvent("native", "share-ended");
     for (const listener of this.listeners) {
       listener(event.data);
     }
@@ -619,6 +633,7 @@ export class NativeClient {
 
   private handleClose(): void {
     if (this.closed) return;
+    debugEvent("native", "closed");
     this.closed = true;
     this.rejectPending();
     this.listeners.clear();

@@ -25,6 +25,7 @@ func main() {
 	})
 	flag.BoolVar(&options.Local, "local", false, "use the self-contained Local room authority")
 	flag.BoolVar(&options.Link, "link", false, "create one public Viewer invitation link")
+	flag.BoolVar(&options.Debug, "debug", false, "emit opt-in Client diagnostic events to stderr")
 	flag.StringVar(&options.CaptureProcess, "capture-process", "", "path to the platform native capture process")
 	flag.StringVar(&options.TunnelProcess, "tunnel-process", "", "path to the packaged public tunnel process")
 	flag.StringVar(&options.ConfigPath, "config", "", "path to the Client configuration file")

@@ -330,18 +330,12 @@ export class HostPeer {
     const effectiveVideoProfile = this.startupVideoProfilePending
       ? startupVideoProfile(profile)
       : profile;
-    const requestedVideo =
-      this.appliedVideoProfile === null ||
-      !videoQualitySettingsEqual(
-        this.appliedVideoProfile,
-        effectiveVideoProfile,
-      );
-    const requestedAudio =
-      !screenAudioQualityEqual(this.desiredProfile, profile) ||
-      this.appliedAudioQuality !==
-        resolveScreenAudioQuality(profile.screenAudioQuality);
+    const changed =
+      !videoQualitySettingsEqual(this.desiredProfile, profile) ||
+      !screenAudioQualityEqual(this.desiredProfile, profile);
     this.desiredProfile = profile;
-    const requestedRevision = ++this.profileRevision;
+    // Connection recovery replays the same intent, not a new user mutation.
+    const requestedRevision = changed ? ++this.profileRevision : this.profileRevision;
     return this.enqueueSenderMutation(async () => {
       const videoSender = this.videoSender;
       const audioSender = this.audioSender;
@@ -367,14 +361,12 @@ export class HostPeer {
       }
       const updateVideo =
         this.connection.connectionState === "connected" &&
-        (requestedVideo ||
-          this.appliedVideoProfile === null ||
+        (this.appliedVideoProfile === null ||
           !videoQualitySettingsEqual(
             this.appliedVideoProfile,
             effectiveVideoProfile,
           ));
       const updateAudio =
-        requestedAudio ||
         this.appliedAudioQuality !==
           resolveScreenAudioQuality(profile.screenAudioQuality);
       if (!updateVideo && !updateAudio) {
@@ -508,6 +500,8 @@ export class HostPeer {
           this.appliedVideoProfile = null;
           this.appliedAudioQuality = null;
           this.appliedAudioSenderParameters = null;
+        }
+        if (replayProfile || !this.startupVideoProfilePending) {
           void this.updateProfile(this.desiredProfile);
         }
       } else if (this.connectedOnce && state !== "closed") {

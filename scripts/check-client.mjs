@@ -175,7 +175,7 @@ function checkPlatformCapture() {
   const probe = JSON.parse(raw);
   const expectedPlatform = process.platform === "win32" ? "windows" : process.platform;
   if (
-    probe?.protocol !== 4 ||
+    probe?.protocol !== 5 ||
     probe.platform !== expectedPlatform ||
     typeof probe.platformBuild !== "string" ||
     typeof probe.videoCapture !== "boolean" ||

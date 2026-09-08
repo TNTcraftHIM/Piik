@@ -339,7 +339,8 @@ func (session *Session) UpdateProfile(profile QualityProfile) error {
 		return nil
 	}
 
-	replacement, state, err := session.prepareVideo(session.ctx, options)
+	// Updating an existing source never waits for an interactive picker.
+	replacement, state, err := session.prepareVideo(session.ctx, options, false)
 	if err != nil {
 		return err
 	}
@@ -382,7 +383,7 @@ func (session *Session) ReplaceSource(
 	}
 	options.Profile = profile.Video
 	options.RestoreToken = ""
-	replacement, state, err := session.prepareVideo(ctx, options)
+	replacement, state, err := session.prepareVideo(ctx, options, options.Target.Kind == "picker")
 	if err != nil {
 		return err
 	}
@@ -422,6 +423,7 @@ func startAudioCapture(
 func (session *Session) prepareVideo(
 	ctx context.Context,
 	options nativecapture.VideoOptions,
+	interactive bool,
 ) (*nativecapture.Stream, CaptureState, error) {
 	replacement, err := nativecapture.StartVideo(
 		ctx,
@@ -436,7 +438,7 @@ func (session *Session) prepareVideo(
 		replacement,
 		options.Profile,
 		options.Codec,
-		options.Target.Kind == "picker",
+		interactive,
 	)
 	if err != nil {
 		_ = replacement.Close()

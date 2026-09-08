@@ -11,6 +11,14 @@ the storage decision; implementation detail belongs in code and tests.
   a room; it is not a secret or permanent identity.
 - Every room has a 256-bit Host token. The server stores only its digest; the
   owning Browser keeps the raw token locally.
+- Each Host tab retains its current room in session storage. The origin keeps
+  one persistent resume hint and a separate preferred code; a new tab may resume
+  that room only when no other tab claims it. Secure Browser origins use Web
+  Locks, including protection against copied tab storage. Without Web Locks,
+  fresh tabs create independent rooms and same-tab reload can retain authority,
+  but duplicated-tab exclusion is not guaranteed. Closing the tab releases its
+  claim; losing Host authority clears that tab without erasing another tab's
+  resume hint.
 - Dormant rooms have a configurable lease, default 24 hours. An authenticated
   online Host clears the lease deadline whether or not it is currently sharing;
   Host absence starts the dormant lease. The exact Host token resumes an

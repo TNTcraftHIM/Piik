@@ -1159,6 +1159,40 @@ describe("HostPeer source replacement", () => {
     expect(videoSender.appliedMaxBitrates).toEqual([3_000_000, 8_000_000]);
   });
 
+  it.each([false, true])("applies connecting profile changes without canceling an in-flight constraint: %s", async (holdConstraints) => {
+    const peer = createPeer(createStream(createTrack("video", "video"), createTrack("audio", "audio")));
+    await expect(peer.start()).resolves.toBe(true);
+    const connection = FakePeerConnection.latest!;
+    const sender = connection.senders[0]!;
+    await peer.acceptSignal({
+      kind: "description", connectionId: peer.connectionId,
+      description: { type: "answer", sdp: "test-answer" },
+    });
+    await completeVideoStartup(connection, 5);
+    const before = sender.setParameters.mock.calls.length;
+    let release: (() => void) | undefined;
+    if (holdConstraints) {
+      vi.mocked(sender.track!.applyConstraints).mockImplementationOnce(() =>
+        new Promise<void>((resolve) => { release = resolve; }),
+      );
+    }
+    const changing = holdConstraints
+      ? peer.updateCaptureProfile(QUALITY_PROFILES["1080p60"])
+      : peer.updateProfile(QUALITY_PROFILES["1080p60"]);
+    if (holdConstraints) {
+      await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+    } else {
+      await expect(changing).resolves.toBe(true);
+    }
+    expect(sender.setParameters).toHaveBeenCalledTimes(before);
+    connection.connectionState = "connected";
+    connection.dispatchEvent(new Event("connectionstatechange"));
+    release?.();
+    await expect(changing).resolves.toBe(true);
+    await vi.waitFor(() => expect(sender.appliedMaxBitrates.at(-1)).toBe(8_000_000));
+    expect(sender.setParameters).toHaveBeenCalledTimes(before + 1);
+  });
+
   it("replays the desired profile only after a connected peer reconnects", async () => {
     const peer = createPeer(
       createStream(

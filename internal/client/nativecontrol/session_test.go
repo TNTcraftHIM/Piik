@@ -89,6 +89,24 @@ func TestPreviewFailureReturnsAnAdvisoryResponse(t *testing.T) {
 	}
 }
 
+func TestSourceEnumerationFailureDoesNotCloseControl(t *testing.T) {
+	session := New("missing-capture-process", nativecapture.Capabilities{}, false)
+	t.Cleanup(func() { _ = session.Close() })
+	value, err := session.Handle(t.Context(), []byte(
+		`{"version":9,"id":"request_sources","type":"list-sources"}`,
+	))
+	if err != nil || value != operationFailure(requestEnvelope{
+		Version: loopback.ProtocolVersion, ID: "request_sources", Type: "list-sources",
+	}) {
+		t.Fatalf("source list failure ended its control session: %#v, %v", value, err)
+	}
+	if _, err := session.Handle(t.Context(), []byte(
+		`{"version":9,"id":"request_options","type":"capture-options"}`,
+	)); err != nil {
+		t.Fatalf("control was unusable after source enumeration failed: %v", err)
+	}
+}
+
 func TestQualitySettingsMapOnceIntoNativeMedia(t *testing.T) {
 	settings := qualitySettings{
 		Resolution: "1440p", MaxFramerate: 60, MaxBitrate: 12_000_000,

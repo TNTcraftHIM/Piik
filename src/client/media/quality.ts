@@ -8,6 +8,7 @@ import {
 } from "../../shared/protocol";
 import { joinItems, say, type CopyKey } from "../ui/copy";
 import { displayMediaOptions } from "./audio-capture";
+import { debugError, debugEvent } from "../lib/debug";
 
 export type {
   DegradationPreference,
@@ -189,9 +190,14 @@ export async function captureDisplay(
     throw new Error(say("host.capture.unavailable"));
   }
 
-  const stream = await navigator.mediaDevices.getDisplayMedia(
-    displayMediaOptions(captureConstraints(profile)),
-  );
+  debugEvent("capture", "requested", { resolution: profile.resolution, maxFramerate: profile.maxFramerate });
+  let stream: MediaStream;
+  try {
+    stream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions(captureConstraints(profile)));
+  } catch (error) {
+    debugError("capture", "failed", error);
+    throw error;
+  }
 
   const videoTrack = stream.getVideoTracks()[0];
   if (!videoTrack) {
@@ -202,6 +208,7 @@ export async function captureDisplay(
   for (const audioTrack of stream.getAudioTracks()) {
     audioTrack.contentHint = "music";
   }
+  debugEvent("capture", "started", { audio: stream.getAudioTracks().length > 0 });
   return stream;
 }
 
@@ -232,7 +239,14 @@ export async function applyVideoCaptureProfile(
   if (!videoTrackOwnsCaptureConstraints(track)) {
     return;
   }
-  await track.applyConstraints(captureConstraints(profile));
+  debugEvent("quality", "capture-requested", { resolution: profile.resolution, maxFramerate: profile.maxFramerate });
+  try {
+    await track.applyConstraints(captureConstraints(profile));
+    debugEvent("quality", "capture-applied", { resolution: profile.resolution, maxFramerate: profile.maxFramerate });
+  } catch (error) {
+    debugError("quality", "capture-failed", error);
+    throw error;
+  }
 }
 
 function videoTrackOwnsCaptureConstraints(track: MediaStreamTrack): boolean {

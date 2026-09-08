@@ -8,6 +8,10 @@ topics are not implementation authority.
 ## Now
 
 Owner-authorized phase: [embedded STUN/SFU and node-local media](./adr/0013-embedded-node-local-media.md).
+Physical capture/GPU/VM acceptance is on hold after the owner's 2026-09-08
+machine-freeze report. Windows records unexpected restarts without a bugcheck;
+causation is unconfirmed. Resume only with a reviewed, bounded execution plan.
+Code review, documentation and low-concurrency non-hardware checks may continue.
 Every parent, including Host, forwards available encodings and derives missing lower
 outputs only for direct children; compatible demands reuse the same output.
 The agreed model and [first encoding comparison](./research/node-local-encoding-probe.md)
@@ -28,14 +32,15 @@ after bandwidth release; physical loss/recovery, codec overload and overhead rem
 unverified. Linux producers compile; macOS changes still require SDK validation.
 Native direct SFU publication, bounded current/candidate replacement and actual
 multi-RID metrics are implemented. Browser SFU decode/live-profile acceptance
-passes; matched Client/platform and network acceptance remain open. The Pion
+passes; Native-to-embedded-SFU Browser decoding through the full control path,
+matched Client/platform and network acceptance remain open. The Pion
 UDP-mux initialization and candidate-fixture races are repaired; six affected
 Linux packages pass the race detector.
 Packaged multi-output capture is not accepted.
 Embedded STUN is bound by the application lifecycle and passes startup/rollback/
 closure checks. Embedded SFU room signaling, exact physical retirement and Browser
-adapters are implemented; real Browser decoding is under acceptance and external-
-service deployment removal remains pending. Prioritize the shared quality/encoding module and its
+adapters are implemented; real Browser decoding passes and external-service
+deployment removal is prepared, not deployed. Prioritize the shared quality/encoding module and its
 Native codec/transport checks, then complete embedded SFU/STUN integration.
 Independent library/service audits may proceed in parallel. Do not add a custom warm pool, media clock
 or congestion algorithm. These are
@@ -84,17 +89,20 @@ this same candidate. Global Link now reserves its IPv4 listener before creating
 a tunnel; include that path in packaged acceptance.
 
 1. **Concurrent Client rooms.** Preserve the backend's multiple rooms and one
-   Host per room. Separate a tab's active Host authority from the origin-wide
-   resume hint, and replace the process-wide single RPC claim with bounded
-   control-session ownership. Reuse each native session and account for aggregate
-   hardware resources; do not add an unbounded capture map. A friend's independent
+   Host per room. Tab authority is now separate from the origin-wide resume hint;
+   two Native control sessions have independent ownership and bounded admission.
+   Browser multi-tab and control-session lifecycle checks pass; concurrent native
+   capture remains physically unverified. Do not add an unbounded capture map.
+   A friend's independent
    Browser Host already captures on their own device, not the instance owner's
    helper. Validate that path separately from multiple Native shares on one Client.
 2. **Reported live-setting and package behavior.** Reconcile the unmerged
    `fix/live-quality-capture` fixes against this candidate, retaining only
    independently confirmed capture, setting, access and diagnostic behavior.
    Do not overwrite the new media/transport owners with that older branch.
-   Reproduce game backgrounding,
+   The current VP8 minimize/live-update sequence passes; its scope is recorded
+   in [capture research](./research/native-client-lifecycle.md). This does not
+   prove game HWND replacement or device-loss recovery. Reproduce game backgrounding,
    changing resolution/FPS/bitrate, and returning to the game against the exact
    newly built Client, not a repacked old executable. Verify failed replacement
    preserves the running source and later changes still apply. Keep preset
@@ -199,11 +207,12 @@ a tunnel; include that path in packaged acceptance.
     which replaces `NODE_ENV=production` with `SCREENER_ENV=production`, before
     the first Go release, then proving the release wrapper on a host without
     Node.
-17. **Opt-in diagnostics.** Replace ad hoc console logging with an explicit
-    Client/Server debug option and bounded diagnostic export. Include revision,
-    runtime state and sanitized capture/connection events; exclude credentials,
-    media and raw process memory by default. A compressed feedback bundle needs
-    deliberate collection and retention, not automatic uploads.
+17. **Feedback bundle.** Add compressed collection only when distribution needs
+    it. The candidate
+    now has explicit Client/Server diagnostic flags and bounded manual Browser
+    export, documented in [configuration](./reference/configuration.md).
+    Retention and packaging remain separate work; exclude credentials, media
+    and raw process memory, and do not upload automatically.
 18. **Remaining audit behavior.** During the owning refactor, reproduce and
     resolve optional Local-password cookies across HTTP LAN/HTTPS public origins;
     audio-process failure without stopping healthy video; natural capture EOF

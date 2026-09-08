@@ -46,6 +46,21 @@ and participant-ordinal events. It records route reasons, candidates, revisions,
 quality states and commit/failure outcomes, but not raw Peer IDs, SDP, ICE
 candidates, tokens or media credentials.
 
+Client diagnostics use `--debug` or `SCREENER_DEBUG=client`. They add structured
+lifecycle, build-revision, native-capability and fixed native-failure events to
+stderr without changing the launcher/TUI or machine-readable stdout. Use
+`SCREENER_DEBUG=client,route` for both Client and route events; `--debug` alone
+does not enable route tracing.
+
+For Browser diagnostics, add `?debug=1` to the page before reproducing the
+problem. The page retains its last 256 bounded events and exposes
+`window.__SCREENER_DEBUG__.export()` for manual JSON export from DevTools.
+The report includes the Browser asset name and signaling contract, capture
+exception categories, capture-setting outcomes, signaling state and native
+request/state outcomes. It excludes raw exception messages, credentials,
+invitation fragments, URLs, SDP, ICE candidates and media payloads. Collection
+stays in the current page; there is no automatic upload or persistent log.
+
 ## Public And Private Ports
 
 | Port | Scope | Owner |

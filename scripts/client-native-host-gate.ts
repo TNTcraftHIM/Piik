@@ -68,6 +68,7 @@ interface GateResult {
   livePresetChanges: number;
   liveQualityChanged: boolean;
   pausedQualityChanged: boolean;
+  backgroundProfileRecovery: boolean | null;
   mediaObjectPreserved: boolean;
   nativeSourceChanged: boolean;
   nativeQualityEvidence: boolean;
@@ -605,6 +606,7 @@ async function main(): Promise<void> {
     livePresetChanges: 0,
     liveQualityChanged: false,
     pausedQualityChanged: false,
+    backgroundProfileRecovery: mode === "local" && sourceKind === "window" ? false : null,
     mediaObjectPreserved: false,
     nativeSourceChanged: false,
     nativeQualityEvidence: false,
@@ -1127,6 +1129,62 @@ async function main(): Promise<void> {
       result.viewerWidth = resumed.width;
       result.viewerHeight = resumed.height;
       await assertVideoCodec(cdp, viewer, actualCodec);
+      if (sourceKind === "window") {
+        stage = "native-background-profile";
+        const { targetInfos } = await sourceCdp!.call<{
+          targetInfos: Array<{ targetId: string; type: string; url: string }>;
+        }>("Target.getTargets", {}, undefined, Date.now() + 5_000);
+        const target = targetInfos.find((value) =>
+          value.type === "page" && value.url === `http://127.0.0.1:${sourcePort}/`,
+        );
+        if (!target) throw new Error("Capture source page is missing");
+        const { windowId } = await sourceCdp!.call<{ windowId: number }>(
+          "Browser.getWindowForTarget", { targetId: target.targetId },
+          undefined, Date.now() + 5_000,
+        );
+        await sourceCdp!.call("Browser.setWindowBounds", {
+          windowId, bounds: { windowState: "minimized" },
+        }, undefined, Date.now() + 5_000);
+        try {
+          await evaluate<void>(cdp, host,
+            `new Promise((resolve) => {
+              document.querySelector('button.lr-chip[aria-label="720p"]')?.click();
+              requestAnimationFrame(() => requestAnimationFrame(resolve));
+            })`,
+            Date.now() + 5_000,
+          );
+          await waitForValue((deadline) => evaluate<boolean>(cdp!, host,
+            `Boolean(document.querySelector('#host-advanced-door .lr-door-body[aria-busy="false"]'))`,
+            deadline,
+          ), Boolean, 15_000);
+        } finally {
+          await sourceCdp!.call("Browser.setWindowBounds", {
+            windowId, bounds: { windowState: "normal" },
+          }, undefined, Date.now() + 5_000);
+        }
+        stage = "native-background-profile-recovery";
+        // A quiet source may reject replacement; restoring it must keep the
+        // current share usable and permit a fresh update on the same media.
+        for (const [label, width, height] of [["720p", 1280, 720], ["480p", 854, 480]] as const) {
+          const before = await evaluate<number>(cdp, viewer,
+            `document.querySelector('video')?.getVideoPlaybackQuality().totalVideoFrames ?? 0`,
+            Date.now() + 5_000,
+          );
+          await evaluate<void>(cdp, host,
+            `document.querySelector('button.lr-chip[aria-label="${label}"]')?.click()`,
+            Date.now() + 5_000,
+          );
+          await waitForValue((deadline) => evaluate<boolean>(cdp!, viewer,
+            `(() => {
+              const video = document.querySelector('video');
+              return Boolean(video && video.srcObject === window.__screenerGateMedia &&
+                video.videoWidth === ${width} && video.videoHeight === ${height} &&
+                video.getVideoPlaybackQuality().totalVideoFrames >= ${before + 10});
+            })()`, deadline,
+          ), Boolean, 20_000);
+        }
+        result.backgroundProfileRecovery = true;
+      }
       stage = "native-source-picker";
       await waitForValue(
         (deadline) => evaluate<boolean>(
@@ -1191,7 +1249,7 @@ async function main(): Promise<void> {
       await assertVideoCodec(cdp, viewer, actualCodec);
       result.codecPreserved = true;
       result.nativeQualityEvidence = await waitForValue(
-        async () => /"event":"sender-quality-evidence"[^\n]*"state":"(healthy|degraded)"/
+        async () => /\bscreener-route event=sender-quality-evidence [^\r\n]*\bstate=(?:healthy|degraded)(?:[ \t]|$)/m
           .test(clientDiagnostics),
         Boolean,
         12_000,
@@ -1349,6 +1407,7 @@ async function main(): Promise<void> {
         (mode !== "cross-nat" || result.reverseSignalTunnelClosed === true)
       : result.viewerConnected && result.viewerFrames >= 30 &&
         result.qualityControlsEnabled && result.liveQualityChanged &&
+        result.backgroundProfileRecovery !== false &&
         result.livePresetChanges === 2 &&
         result.codecPreserved &&
         result.pausedQualityChanged && result.mediaObjectPreserved &&

@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -20,6 +22,11 @@ const (
 	maxOutputs         = 3
 	minOutputBitrate   = 1_000 // Codec rate APIs use whole kbps.
 	maxOutputBitrate   = 12_000_000
+)
+
+var (
+	captureStageCode = regexp.MustCompile(`^[a-z][a-z0-9-]{0,63}$`)
+	captureHRESULT   = regexp.MustCompile(`^0x[0-9a-fA-F]{8}$`)
 )
 
 type audioCaptureState struct {
@@ -389,7 +396,8 @@ func startStreamWithEnvironment(
 		cancel()
 		return nil, err
 	}
-	command.Stderr = &boundedBuffer{limit: maxProbeErrorBytes}
+	stderr := &boundedBuffer{limit: maxProbeErrorBytes}
+	command.Stderr = stderr
 	hideWindow(command)
 	if err = command.Start(); err != nil {
 		cancel()
@@ -402,10 +410,36 @@ func startStreamWithEnvironment(
 		done:   make(chan error, 1),
 	}
 	go func() {
-		stream.done <- command.Wait()
+		waitErr := command.Wait()
+		logCaptureFailure(ctx, waitErr, command.ProcessState.ExitCode(), stderr.Bytes())
+		stream.done <- waitErr
 		close(stream.done)
 	}()
 	return stream, nil
+}
+
+func logCaptureFailure(ctx context.Context, err error, exitCode int, stderr []byte) {
+	if err == nil || !slog.Default().Enabled(ctx, slog.LevelDebug) {
+		return
+	}
+	stage, hresult := "", ""
+	for _, line := range strings.Split(string(stderr), "\n") {
+		key, value, _ := strings.Cut(strings.TrimSuffix(line, "\r"), "=")
+		switch {
+		case key == "stage" && stage == "" && captureStageCode.MatchString(value):
+			stage = value
+		case key == "hresult" && hresult == "" && captureHRESULT.MatchString(value):
+			hresult = strings.ToLower(value)
+		}
+	}
+	canceled := ctx.Err() != nil
+	// A real child failure may race owner cancellation. Keep its fixed codes,
+	// while ordinary cancellation without a reported failure stays silent.
+	if canceled && stage == "" && hresult == "" {
+		return
+	}
+	slog.DebugContext(ctx, "screener-client", "event", "capture-process-failed",
+		"exitCode", exitCode, "stage", stage, "hresult", hresult, "canceled", canceled)
 }
 
 func (stream *Stream) Read() (Frame, error) {

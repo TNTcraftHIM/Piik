@@ -92,6 +92,7 @@ import {
   type HostRoomState,
   mergeAuthenticatedHostRoom,
   readHostRoom,
+  releaseHostRoom,
   readPreferredRoomId,
   readViewerGrant,
   replaceViewerInvite,
@@ -447,10 +448,22 @@ export function HostPage({
   const [nativeSources, setNativeSources] =
     useState<NativeSourceList | null>(null);
   const [details, setDetails] = useState<CaptureDetails | null>(null);
-  const [room, setRoom] = useState<HostRoomState | null>(() =>
-    hostRoomFromStored(readHostRoom()),
-  );
+  const [room, setRoom] = useState<HostRoomState | null>(null);
   const roomRef = useRef(room);
+  const roomInitializationRef = useRef<Promise<void>>(Promise.resolve());
+  useEffect(() => {
+    let mounted = true;
+    roomInitializationRef.current = readHostRoom().then((stored) => {
+      if (!mounted || roomRef.current !== null) return;
+      const restored = hostRoomFromStored(stored);
+      roomRef.current = restored;
+      setRoom(restored);
+    });
+    return () => {
+      mounted = false;
+      releaseHostRoom();
+    };
+  }, []);
   useEffect(() => {
     roomRef.current = room;
   }, [room]);
@@ -480,7 +493,7 @@ export function HostPage({
     () => readStoredDisplayName() !== null,
   );
   const [displayName, setDisplayName] = useState(() =>
-    readDisplayName(defaultHostDisplayName("", vis)),
+    readDisplayName(defaultHostDisplayName(vis)),
   );
   const [displayNameDraft, setDisplayNameDraft] = useState(displayName);
   const [displayNameError, setDisplayNameError] = useState<string | null>(null);
@@ -543,10 +556,7 @@ export function HostPage({
   }, [vis]);
   useEffect(() => {
     if (hasCustomDisplayName) return;
-    const fallback = defaultHostDisplayName(
-      hostClientIdRef.current ?? "",
-      vis,
-    );
+    const fallback = defaultHostDisplayName(vis);
     if (displayNameRef.current === fallback) return;
     displayNameRef.current = fallback;
     setDisplayName(fallback);
@@ -687,6 +697,7 @@ export function HostPage({
     () => () => {
       activeGenerationRef.current = null;
       generationRef.current += 1;
+      roomMutationRef.current = null;
       sourceSwitchRef.current = null;
       qualityChangeRef.current = null;
       pendingQualityChangeRef.current = null;
@@ -914,11 +925,11 @@ export function HostPage({
     );
   }
 
-  function forgetRoom(expected?: HostRoomState): boolean {
+  function forgetRoom(expected?: HostRoomState, keepResumeHint = false): boolean {
     if (expected && !isCurrentRoomAuthority(expected)) {
       return false;
     }
-    clearHostRoom();
+    clearHostRoom(keepResumeHint);
     roomRef.current = null;
     setRoom(null);
     setCopied(false);
@@ -997,7 +1008,12 @@ export function HostPage({
         endSharing({ key: "host.roomReplaced" }, false);
       }
       replaceViewerInvite(activeRoom.roomId, null);
-      writeHostRoom(replacement);
+      if (!(await writeHostRoom(
+        replacement,
+        () => roomMutationRef.current === mutation,
+      ))) {
+        throw new Error("Host room is already open in another tab");
+      }
       writePreferredRoom(replacement.roomId);
       roomRef.current = replacement;
       setRoom(replacement);
@@ -1032,7 +1048,12 @@ export function HostPage({
             if (replacement.roomId !== activeRoom.roomId) {
               replaceViewerInvite(activeRoom.roomId, null);
             }
-            writeHostRoom(replacement);
+            if (!(await writeHostRoom(
+              replacement,
+              () => roomMutationRef.current === mutation,
+            ))) {
+              throw new Error("Host room is already open in another tab");
+            }
             writePreferredRoom(replacement.roomId);
             roomRef.current = replacement;
             setRoom(replacement);
@@ -2432,8 +2453,9 @@ export function HostPage({
     let createdRoom: HostRoomState | null = null;
     let claimedRoom = false;
     try {
-      const reusableRoom = roomRef.current;
-      createdRoom = reusableRoom ?? hostRoomFromStored(readHostRoom());
+      await roomInitializationRef.current;
+      if (!isCurrentShare(generation, shareGeneration)) return;
+      createdRoom = roomRef.current;
       if (!createdRoom) {
         const response = await createRoom(
           creationProfileRef.current.codeEntryPolicy,
@@ -2447,7 +2469,12 @@ export function HostPage({
           closeAbandonedRoom(createdRoom);
           return;
         }
-        writeHostRoom(createdRoom);
+        if (!(await writeHostRoom(
+          createdRoom,
+          () => isCurrentShare(generation, shareGeneration),
+        ))) {
+          throw new Error("Host room is already open in another tab");
+        }
         roomRef.current = createdRoom;
         setRoom(createdRoom);
         claimedRoom = true;
@@ -2461,7 +2488,7 @@ export function HostPage({
         let authenticated = false;
         const hostClientId = getStableClientId("host", activeRoom.roomId);
         hostClientIdRef.current = hostClientId;
-        const hostFallback = defaultHostDisplayName(hostClientId, visRef.current);
+        const hostFallback = defaultHostDisplayName(visRef.current);
         const initialDisplayName = readDisplayName(hostFallback);
         displayNameRef.current = initialDisplayName;
         setDisplayName(initialDisplayName);
@@ -2495,6 +2522,7 @@ export function HostPage({
                 signalRef.current === signal
               ) {
                 endSharing({ key: hostTerminationKey(reason) }, false, "warning");
+                if (reason === "SESSION_REPLACED") forgetRoom(activeRoom, true);
               }
             },
             onAccessRequired: () => {
@@ -2538,10 +2566,11 @@ export function HostPage({
                 peersRef.current.forEach((peer) =>
                   peer.updateIceConfig(message.iceConfig),
                 );
-                writeHostRoom({
-                  ...activeRoom,
-                  expiresAt: message.roomExpiresAt,
-                });
+                void writeHostRoom(
+                  { ...activeRoom, expiresAt: message.roomExpiresAt },
+                  () => isCurrentShare(generation, shareGeneration) &&
+                    signalRef.current === signal,
+                );
                 writePreferredRoom(activeRoom.roomId);
                 setPhase("live");
               }
@@ -2573,7 +2602,13 @@ export function HostPage({
             closeAbandonedRoom(replacement);
             return;
           }
-          writeHostRoom(replacement);
+          if (!(await writeHostRoom(
+            replacement,
+            () => isCurrentShare(generation, shareGeneration),
+          ))) {
+            closeAbandonedRoom(replacement);
+            throw new Error("Host room is already open in another tab");
+          }
           roomRef.current = replacement;
           setRoom(replacement);
           const replacementSignal = connectSignal(replacement);
@@ -3091,9 +3126,7 @@ export function HostPage({
   }
 
   function commitDisplayName(): void {
-    const hostFallback = hostClientIdRef.current
-      ? defaultHostDisplayName(hostClientIdRef.current, vis)
-      : defaultHostDisplayName("", vis);
+    const hostFallback = defaultHostDisplayName(vis);
     const saved = saveDisplayName(displayNameDraft, hostFallback);
     if (!saved) {
       setDisplayNameError(say("host.nameError"));

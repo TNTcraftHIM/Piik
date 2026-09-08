@@ -1,10 +1,14 @@
 package clientapp
 
 import (
+	"bytes"
 	"errors"
+	"log"
+	"log/slog"
 	"net"
 	"net/url"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/TNTcraftHIM/Screener/internal/client/clientconfig"
@@ -37,6 +41,41 @@ func TestClientLaunchURLMarksThePageWithoutChangingOrigin(t *testing.T) {
 	fragment, err := url.ParseQuery(parsed.Fragment)
 	if err != nil || fragment.Get("screener-client") != "1" {
 		t.Fatalf("Client launch fragment = %q, %v", parsed.Fragment, err)
+	}
+}
+
+func TestClientDebugOnlyEnablesItsExplicitComponent(t *testing.T) {
+	for value, want := range map[string]bool{
+		"client": true, "route, client": true, "client,": true,
+		"": false, "route": false, "all": false, "client-secret": false,
+	} {
+		if got := clientDebugEnabled(value); got != want {
+			t.Fatalf("clientDebugEnabled(%q) = %v, want %v", value, got, want)
+		}
+	}
+
+	var output bytes.Buffer
+	previousOutput := log.Writer()
+	previousLevel := slog.SetLogLoggerLevel(slog.LevelInfo)
+	log.SetOutput(&output)
+	t.Cleanup(func() {
+		log.SetOutput(previousOutput)
+		slog.SetLogLoggerLevel(previousLevel)
+	})
+	t.Setenv("SCREENER_DEBUG", "")
+	for _, enabled := range []bool{false, true} {
+		output.Reset()
+		err := Run(t.Context(), Options{Debug: enabled, DisableBrowser: true, Local: true, Link: true})
+		if err == nil {
+			t.Fatal("invalid mode must stop before starting capture or services")
+		}
+		if got := strings.Contains(output.String(), "screener-client event=start"); got != enabled {
+			t.Fatalf("debug enabled=%v, emitted start=%v", enabled, got)
+		}
+		if enabled && (!strings.Contains(output.String(), "revision=") ||
+			!strings.Contains(output.String(), "event=stopped failed=true")) {
+			t.Fatalf("missing fixed Client lifecycle fields: %s", output.String())
+		}
 	}
 }
 

@@ -9,6 +9,7 @@ import {
 } from "../../shared/protocol";
 import type { SignalConnectionState } from "../types";
 import { qualitySettingsEqual } from "../media/quality";
+import { debugEvent } from "./debug";
 
 type WithoutProtocolEnvelope<T> = T extends {
   type: string;
@@ -102,6 +103,7 @@ export class SignalingClient {
       return;
     }
     this.attachVisibilityListener();
+    debugEvent("signal", "start", { role: this.identity.role });
     this.events.onStatus(this.reconnectAttempt === 0 ? "connecting" : "reconnecting");
     this.connect();
   }
@@ -119,6 +121,7 @@ export class SignalingClient {
       socket.close(1000, "client closed");
     }
     this.events.onStatus("offline");
+    debugEvent("signal", "stop", { role: this.identity.role });
   }
 
   send(message: ClientMessage): boolean {
@@ -215,6 +218,7 @@ export class SignalingClient {
     }
 
     const generation = ++this.socketGeneration;
+    debugEvent("signal", "connecting", { role: this.identity.role, generation });
     const socket = new WebSocket(signalUrl());
     this.socket = socket;
 
@@ -251,6 +255,7 @@ export class SignalingClient {
       try {
         message = decodeServerMessage(event.data);
       } catch {
+        debugEvent("signal", "invalid-message", { role: this.identity.role });
         this.terminateForProtocolMismatch();
         return;
       }
@@ -258,6 +263,12 @@ export class SignalingClient {
       if (message.type === "signaling-challenge-response") {
         this.acceptSignalingChallengeResponse(message.sequence, generation);
         return;
+      }
+
+      if (message.type === "error") {
+        debugEvent("signal", "server-error", { role: this.identity.role, code: message.code });
+      } else if (message.type === "route-update" || message.type === "route-status") {
+        debugEvent("signal", "route", { role: this.identity.role, type: message.type, revision: message.revision });
       }
 
       if (
@@ -291,6 +302,7 @@ export class SignalingClient {
           }
         }
         this.events.onStatus("connected");
+        debugEvent("signal", "authenticated", { role: this.identity.role, generation });
         this.refreshSignalingWatchdog();
       }
       if (
@@ -316,6 +328,8 @@ export class SignalingClient {
       }
       this.socket = null;
       this.authenticated = false;
+      debugEvent("signal", "closed", { role: this.identity.role, code: event.code,
+        reconnecting: !this.stopped && shouldReconnectSignaling(event.code) });
       this.clearSignalingWatchdog();
       this.clearAuthenticationTimer();
       if (!this.stopped && shouldReconnectSignaling(event.code)) {

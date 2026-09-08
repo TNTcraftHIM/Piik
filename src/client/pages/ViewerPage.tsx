@@ -314,7 +314,7 @@ export function ViewerPage({
     () => readStoredDisplayName() !== null,
   );
   const [displayName, setDisplayName] = useState(() =>
-    readDisplayName(defaultViewerDisplayName(viewerClientId, vis)),
+    readDisplayName(defaultViewerDisplayName(vis)),
   );
   const [displayNameDraft, setDisplayNameDraft] = useState(displayName);
   const [displayNameError, setDisplayNameError] = useState(false);
@@ -422,7 +422,7 @@ export function ViewerPage({
   const displayNameRef = useRef(displayName);
   useEffect(() => {
     if (hasCustomDisplayName) return;
-    const fallback = defaultViewerDisplayName(viewerClientId, vis);
+    const fallback = defaultViewerDisplayName(vis);
     if (displayNameRef.current === fallback) return;
     displayNameRef.current = fallback;
     setDisplayName(fallback);
@@ -2201,7 +2201,7 @@ export function ViewerPage({
   }
 
   function commitDisplayName(): void {
-    const fallback = defaultViewerDisplayName(viewerClientId, vis);
+    const fallback = defaultViewerDisplayName(vis);
     const saved = saveDisplayName(displayNameDraft, fallback);
     if (!saved) {
       setDisplayNameError(true);
