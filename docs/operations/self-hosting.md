@@ -77,6 +77,71 @@ domains, certificates, users, and resource limits required by the host.
    before accepting signaling and closes them with the application; a listener
    bind failure rolls back startup. Verify public UDP reachability separately.
 
+## Optional Container
+
+The [runtime-only Dockerfile](../../deploy/container/Dockerfile) consumes the
+existing linux/amd64 Server release; it does not rebuild Go or Browser assets.
+Its pinned [Distroless static non-root base](https://github.com/GoogleContainerTools/distroless)
+includes CA certificates for HTTPS release checks and has no shell or package
+manager. This is an optional recipe, not a published image or automatic installer.
+On the local Linux Docker runtime, non-root/read-only startup, both persistence
+modes, diagnostics export, STUN Binding and media listener cleanup pass. That
+check covers the container lifecycle, not public-network SFU media or the host's
+proxy/firewall configuration; verify those on the target deployment.
+
+Verify the release archive against its descriptor and manifest using the
+[release procedure](../deployment.md), then extract its four files into a new
+build-context directory: `screener-server`, `LICENSE`, `THIRD-PARTY-NOTICES.txt`
+and `REVISION`. Use that directory, not the repository or a secrets directory:
+
+```sh
+docker build --platform linux/amd64 \
+  -f /path/to/Screener/deploy/container/Dockerfile \
+  -t screener:<full-revision> /path/to/extracted-runtime
+docker run --rm --env-file /path/to/screener.env \
+  screener:<full-revision> --check-config
+```
+
+Use the existing [production configuration](../reference/configuration.md).
+Keep `LISTEN_HOST=0.0.0.0` inside the container and retain the host's existing
+HTTPS/WebSocket proxy. With Docker port mapping, set `SFU_PUBLIC_IP` to the
+reachable server IPv4 address when SFU is enabled; container-private candidates
+are not Internet-reachable. Advertised STUN names must resolve to the server's
+public address, and UDP must reach the container directly.
+
+The following example publishes the standard listeners and keeps HTTP private
+to a proxy running on the same host. Omit UDP publish options for disabled SFU
+or auxiliary STUN listeners; use the matching port if configuration changes it.
+
+```sh
+docker run -d --name screener --restart unless-stopped --stop-timeout 20 \
+  --read-only --cap-drop ALL --security-opt no-new-privileges \
+  --env-file /path/to/screener.env \
+  --mount type=volume,source=screener-data,target=/home/nonroot \
+  -e ROOM_DATABASE_PATH=/home/nonroot/rooms.sqlite \
+  -p 127.0.0.1:8787:8787/tcp \
+  -p 3478:3478/udp -p 3479:3479/udp -p 3480:3480/udp -p 7882:7882/udp \
+  screener:<full-revision>
+```
+
+The image's `/home/nonroot` is owned by UID/GID `65532:65532` with mode `0700`.
+A new named volume inherits that directory; an existing volume or bind mount
+must already be writable by that identity. Keep this volume when replacing the
+container. Omit `ROOM_DATABASE_PATH` for memory-only room authority. Diagnostics
+remain opt-in and use `/home/nonroot/logs`; [export and retention](../reference/configuration.md#diagnostics)
+remain the operator's responsibility. Do not mount application files writable.
+With diagnostics enabled, `docker kill --signal=USR1 screener` requests a local
+export without stopping the container; the ZIP remains in the mounted log directory.
+
+Check `/healthz` from the host and public proxy, then verify configured STUN/SFU
+UDP and room/media behavior using [operational verification](#operational-verification).
+There is no shell-based healthcheck in the image. Retain the previous image,
+environment and volume backup before replacement. Stop the old container before
+reusing its listeners or SQLite volume, and recreate with the previous image and
+environment if verification fails. The bare-metal `release-app.sh` wrapper does
+not manage containers. The first move from external media services still follows
+the coordinated cutover below; this recipe changes no proxy or firewall itself.
+
 ## Coordinated Embedded-Media Cutover
 
 Replacing the external STUN/SFU services, including Node-to-Go where still

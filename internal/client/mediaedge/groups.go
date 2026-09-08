@@ -30,6 +30,7 @@ type outputDemand struct {
 	budget   uint32
 	active   bool
 	lower    bool
+	original bool
 }
 
 func (source *Source) groupForMedia(media *forwarding.Source) *outputGroup {
@@ -51,16 +52,19 @@ func (source *Source) collectDemands(edges []*Edge, publications []*Publication)
 		lower := active && !edge.local && observed &&
 			(state.Target == 0 || state.Current == 0 && !state.Paused || state.Paused && state.Prepare == 0)
 		demands = append(demands, outputDemand{consumer: edge.transport, active: active, lower: lower,
-			budget: uint32(max(1000, min(state.VideoBudget, int64(ceiling))))})
+			original: edge.transport.RequiredActiveCount() > 1,
+			budget:   uint32(max(1000, min(state.VideoBudget, int64(ceiling))))})
 	}
 	for _, publication := range publications {
-		active := publication.RequiredActiveCount() > 0
+		required := publication.RequiredActiveCount()
+		active := required > 0
 		budget := publication.LowestLayerBudget()
 		if budget <= 0 {
 			budget = int64(ceiling)
 		}
 		demands = append(demands, outputDemand{consumer: publication.transport, active: active, lower: active,
-			budget: uint32(max(1000, min(budget, int64(ceiling))))})
+			original: required > 1,
+			budget:   uint32(max(1000, min(budget, int64(ceiling))))})
 	}
 	return demands
 }
@@ -82,9 +86,7 @@ func (source *Source) planGroups(demands []outputDemand) (OutputPlan, error) {
 	for _, demand := range demands {
 		present[demand.consumer] = true
 		hasLowerDemand = hasLowerDemand || demand.active && demand.lower
-		if demand.active {
-			plan.Active[1] = true
-		}
+		plan.Active[1] = plan.Active[1] || demand.active && demand.original
 	}
 	for consumer := range source.memberships {
 		if !present[consumer] {
@@ -170,7 +172,7 @@ func (source *Source) planGroups(demands []outputDemand) (OutputPlan, error) {
 				continue
 			}
 			if source.memberships[demand.consumer] == group ||
-				demand.consumer.CurrentSource() == group.media.Source && (demand.lower || group.slot != 0) {
+				demand.consumer.CurrentSource() == group.media.Source && (demand.lower || !demand.original || group.slot != 0) {
 				active = true
 			}
 		}

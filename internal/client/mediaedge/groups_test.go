@@ -7,6 +7,7 @@ import (
 	"github.com/TNTcraftHIM/Screener/internal/media/encoded"
 	"github.com/TNTcraftHIM/Screener/internal/media/forwarding"
 	"github.com/livekit/livekit-server/pkg/sfu"
+	"github.com/pion/rtcp"
 )
 
 type groupTestConsumer struct{ source *forwarding.Source }
@@ -51,7 +52,7 @@ func TestOutputGroupsShareSplitRejoinAndRetire(t *testing.T) {
 		return value
 	}
 	shared := plan()
-	if source.memberships[a] != source.memberships[b] || len(source.groups) != 1 || shared.Bitrates[0] != 100_000 {
+	if source.memberships[a] != source.memberships[b] || len(source.groups) != 1 || shared.Bitrates[0] != 100_000 || shared.Active[1] {
 		t.Fatal("compatible consumers did not share one output")
 	}
 	demands[1].budget = 300_000
@@ -80,8 +81,9 @@ func TestOutputGroupsShareSplitRejoinAndRetire(t *testing.T) {
 		t.Fatal("unused encoder did not retire after rejoin")
 	}
 	demands[0].lower = false
+	demands[0].original = true
 	pending := plan()
-	if !pending.Active[gb.slot] || a.CurrentSource() != gb.media.Source {
+	if !pending.Active[1] || !pending.Active[gb.slot] || a.CurrentSource() != gb.media.Source {
 		t.Fatal("original handoff retired active source")
 	}
 	source.installGroup(nil, true)
@@ -94,13 +96,104 @@ func TestOutputGroupsShareSplitRejoinAndRetire(t *testing.T) {
 		t.Fatal("last lower member did not release its encoder")
 	}
 	demands[0].lower = true
+	demands[0].original = false
 	demands[0].budget = 300_000
 	reactivated := plan()
-	if !reactivated.Active[gb.slot] || source.memberships[a] != gb {
+	if !reactivated.Active[gb.slot] || reactivated.Active[1] || source.memberships[a] != gb {
 		t.Fatal("inactive compatible group could not reactivate")
 	}
 	if err = gb.media.BeginFrame(tick+time.Nanosecond, time.Unix(0, 0).Add(tick+time.Nanosecond)); err != nil {
 		t.Fatal(err)
+	}
+}
+
+type groupLowOnlyReceiver struct{ sfu.TrackReceiver }
+
+func (receiver groupLowOnlyReceiver) GetLayeredBitrate() ([]int32, sfu.Bitrates) {
+	return []int32{0}, sfu.Bitrates{{100_000}}
+}
+
+func TestOutputGroupsHonorOriginalTransportDemand(t *testing.T) {
+	check := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	engine, err := NewEngine(EngineOptions{BindAddress: "127.0.0.1:0", IncludeLoopback: true})
+	check(err)
+	defer engine.Close()
+	source, err := engine.NewSource("vp8", 2, 2, nil)
+	check(err)
+	defer source.Close()
+	check(source.SetFormat(0, 640, 360))
+	check(source.SetFormat(1, 1280, 720))
+	check(source.ConfigureOutputs([]uint32{500_000, 2_000_000, 500_000}))
+	edge, receiver, _ := connectedReceiver(t, engine, source, "original-demand")
+	defer receiver.Close()
+	plan := func(label string, original bool) {
+		t.Helper()
+		source.writeMu.Lock()
+		defer source.writeMu.Unlock()
+		value, err := source.planGroups(source.collectDemands([]*Edge{edge}, nil))
+		check(err)
+		if !value.Active[0] || value.Active[1] != original {
+			t.Fatalf("%s plan = %+v, state = %+v", label, value, edge.transport.Output.State())
+		}
+	}
+	plan("initial acquisition", true)
+	output := edge.transport.Output
+	deadline := time.Now().Add(3 * time.Second)
+	for frame := 0; output.State().Current != 1; frame++ {
+		if time.Now().After(deadline) {
+			t.Fatalf("original never forwarded: %+v", output.State())
+		}
+		pts := time.Duration(frame) * time.Second / 30
+		_, err = source.BeginFrame(pts)
+		check(err)
+		for layer := range 2 {
+			check(source.WriteVideo(layer, encoded.Frame{Data: sfu.VP8KeyFrame8x8, PTS: pts,
+				Duration: time.Second / 30, Recovery: true}))
+		}
+		time.Sleep(time.Second / 30)
+	}
+	plan("original target", true)
+	check(edge.SetTargetLayer(0))
+	if state := output.State(); state.Target != 0 || state.Current != 1 || state.Paused {
+		t.Fatalf("fixture did not retain current original during lower handoff: %+v", state)
+	}
+	plan("original still current", true)
+	output.BeginFrame()
+	plan("lower handoff", false)
+	edge.local = true
+	plan("local lower preview", false)
+	edge.local = false
+
+	// Only the low representation is available; metadata may prepare the
+	// dormant original, but may not invent its measured availability.
+	output.SetReceiver(groupLowOnlyReceiver{TrackReceiver: output.Receiver()})
+	edge.transport.OnTransportCCFeedback(nil, &rtcp.TransportLayerCC{})
+	output.SetMaxSpatialLayer(1)
+	output.SetBudget(200_000)
+	plan("limited budget", false)
+	output.SetBudget(2_000_000)
+	if state := output.State(); state.Target != 0 || state.Prepare != 1 {
+		t.Fatalf("higher budget did not prepare the dormant original: %+v", state)
+	}
+	plan("higher budget preparation", true)
+
+	publication, err := engine.NewPublication(source, EdgeOptions{ConnectionID: "original-publication"})
+	check(err)
+	check(publication.transport.SetConnected())
+	for _, count := range []int{1, 2, 0} {
+		check(publication.transport.SetActiveCount(count))
+		source.writeMu.Lock()
+		value, err := source.planGroups(source.collectDemands(nil, []*Publication{publication}))
+		source.writeMu.Unlock()
+		check(err)
+		if value.Active[0] != (count > 0) || value.Active[1] != (count > 1) {
+			t.Fatalf("publication demand %d plan = %+v", count, value)
+		}
 	}
 }
 
@@ -180,6 +273,7 @@ func TestOutputGroupReactivationRejectsEarlierAccessUnits(t *testing.T) {
 	source, consumer, group, demands := newGroupLifecycleFixture(t)
 	source.installGroup(group, false)
 	demands[1].lower = false
+	demands[1].original = true
 	if _, err := source.planGroups(demands); err != nil {
 		t.Fatal(err)
 	}
@@ -194,6 +288,7 @@ func TestOutputGroupReactivationRejectsEarlierAccessUnits(t *testing.T) {
 		t.Fatal(err)
 	}
 	demands[1].lower = true
+	demands[1].original = false
 	if _, err := source.planGroups(demands); err != nil {
 		t.Fatal(err)
 	}

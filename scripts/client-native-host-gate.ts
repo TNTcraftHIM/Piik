@@ -6,7 +6,7 @@ import {
 } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { createServer } from "node:http";
-import { mkdir, mkdtemp } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -589,6 +589,7 @@ async function main(): Promise<void> {
   const profile = await mkdtemp(join(tmpdir(), "screener-client-media-"));
   const sourceProfile = await mkdtemp(join(tmpdir(), "screener-client-media-"));
   await mkdir(BUILD_ROOT, { recursive: true });
+  const diagnosticDirectory = await mkdtemp(join(BUILD_ROOT, "native-host-gate-"));
   const sourcePort = await reservePort();
   const appPort = await reservePort();
   const debugPort = await reservePort();
@@ -605,7 +606,6 @@ async function main(): Promise<void> {
   let chrome: ChildProcessWithoutNullStreams | null = null;
   let cdp: CdpConnection | null = null;
   let clientPort = 0;
-  let clientDiagnostics = "";
   let remoteTunnel: ChildProcess | null = null;
   let stage = "setup";
   const result: GateResult = {
@@ -697,12 +697,13 @@ async function main(): Promise<void> {
       "--capture-process", captureBinary,
       "--config", clientConfig,
       "--port", String(appPort),
+      "--debug", "--log-dir", diagnosticDirectory,
     ], {
       stdio: "pipe",
       windowsHide: true,
       env: {
         ...process.env,
-        SCREENER_DEBUG: "route",
+        SCREENER_DEBUG: "",
         SCREENER_CLIENT_GATE_NO_BROWSER: "true",
         // STUN_URLS reaches only the Client's own Pion edge: the in-process
         // room server never reads it, so the cross-NAT arm stays isolated.
@@ -711,9 +712,7 @@ async function main(): Promise<void> {
           : {}),
       },
     });
-    client.stderr.on("data", (chunk: Buffer) => {
-      clientDiagnostics = (clientDiagnostics + chunk.toString()).slice(-262_144);
-    });
+    client.stderr.resume();
     stage = "client-ready";
     const clientInfo = await readClientEndpoint(client, mode === "one-link");
     clientPort = clientInfo.endpoint.port;
@@ -1191,17 +1190,17 @@ async function main(): Promise<void> {
             Date.now() + 5_000,
           );
           await waitForValue((deadline) => evaluate<boolean>(cdp!, host,
-            `Boolean(document.querySelector('#host-advanced-door .lr-door-body[aria-busy="false"]'))`,
+            `Boolean(document.querySelector('#host-advanced-door .lr-door-body[aria-busy="true"]'))`,
             deadline,
-          ), Boolean, 15_000);
+          ), Boolean, 5_000);
         } finally {
           await sourceCdp!.call("Browser.setWindowBounds", {
             windowId, bounds: { windowState: "normal" },
           }, undefined, Date.now() + 5_000);
         }
         stage = "native-background-profile-recovery";
-        // A quiet source may reject replacement; restoring it must keep the
-        // current share usable and permit a fresh update on the same media.
+        // A quiet source retains its pending replacement until restoration.
+        // Prove its actual delivery before applying the following profile.
         for (const [label, width, height] of [["720p", 1280, 720], ["480p", 854, 480]] as const) {
           const before = await evaluate<number>(cdp, viewer,
             `document.querySelector('video')?.getVideoPlaybackQuality().totalVideoFrames ?? 0`,
@@ -1219,6 +1218,10 @@ async function main(): Promise<void> {
                 video.getVideoPlaybackQuality().totalVideoFrames >= ${before + 10});
             })()`, deadline,
           ), Boolean, 20_000);
+          await waitForValue((deadline) => evaluate<boolean>(cdp!, host,
+            `Boolean(document.querySelector('#host-advanced-door .lr-door-body[aria-busy="false"]'))`,
+            deadline,
+          ), Boolean, 5_000);
         }
         result.backgroundProfileRecovery = true;
       }
@@ -1286,8 +1289,22 @@ async function main(): Promise<void> {
       await assertVideoCodec(cdp, viewer, actualCodec);
       result.codecPreserved = true;
       result.nativeQualityEvidence = await waitForValue(
-        async () => /\bscreener-route event=sender-quality-evidence [^\r\n]*\bstate=(?:healthy|degraded)(?:[ \t]|$)/m
-          .test(clientDiagnostics),
+        async () => {
+          const logPath = join(diagnosticDirectory, "client.log");
+          if ((await stat(logPath)).size > 8 * 1024 * 1024) {
+            throw new Error("Native Host gate diagnostic log exceeded its bound");
+          }
+          const diagnostics = await readFile(logPath, "utf8");
+          return diagnostics.split(/\r?\n/).some((line) => {
+            try {
+              const record = JSON.parse(line);
+              return record.msg === "screener-route" && record.event === "sender-quality-evidence" &&
+                (record.state === "healthy" || record.state === "degraded");
+            } catch {
+              return false;
+            }
+          });
+        },
         Boolean,
         12_000,
       );

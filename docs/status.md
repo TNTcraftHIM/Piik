@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-09-08
+Last updated: 2026-09-09
 
 This is the current execution index. Git history owns completed timelines;
 [verification status](./verification-status.md) owns evidence boundaries.
@@ -89,6 +89,10 @@ embedded candidate below is not deployed.
   across lifecycle changes. Diagnostic capture, signaling and native-request
   events are opt-in and bounded; [configuration](./reference/configuration.md)
   owns activation and export. Diagnostics do not add media or routing authority.
+- The runtime-only container recipe reuses the Server release rather than
+  rebuilding the application. Non-root/read-only execution, memory/SQLite
+  restart behavior, diagnostic export, STUN and UDP lifecycle pass in the local
+  Linux VM. Public-network media and production cutover remain separate.
 
 ## Source/Production Relationship
 
@@ -102,13 +106,15 @@ back the initial infrastructure change.
 
 ## Active Boundaries
 
-- Native adaptive-resolution design is reopened under the
-  [encoder-pool review](./research/webrtc-encoder-pool.md); dependent release
-  approval is held in TODO. Windows capture and derivation now attach stock
+- Native shared-output implementation follows the
+  [encoder-pool review](./research/webrtc-encoder-pool.md); remaining release
+  acceptance is held in TODO. Windows capture and derivation now attach stock
   WebRTC output pipelines; both codecs pass bounded process-level shrinking and
   recovery checks. Incompatible weak-consumer grouping now has real relay
   split/rejoin and independent-dimension delivery evidence; exact throughput,
-  overload and representative-network acceptance remain open.
+  representative-network behavior and extreme-overload limits remain explicit.
+  The extreme single-core check reaches WebRTC's sample-reset boundary; it does
+  not justify another application resource controller.
   Independent Client/service fixes remain preserved.
 - Browser and Native H264/VP8 publication through embedded SFU pass Browser decoding,
   live-profile and cleanup checks; the Native path also delivers Opus. Bounded
@@ -117,8 +123,9 @@ back the initial infrastructure change.
   overload, below-lowest-output, public-network and packaged acceptance remain open.
 - Current Windows VP8 and H264 owned-window minimize/profile/restore checks pass,
   including live and paused changes and the H264 source-switch/restart path.
-  Windows 10 display startup, game-specific HWND/device-loss behavior, 60 fps
-  endurance and hardware overload remain separate acceptance work. The reported
+  The owner confirmed Windows 10 display sharing resolved. Distinct game
+  HWND/device-loss behavior, 60 fps endurance and hardware overload remain
+  separate evidence boundaries. The reported
   machine freeze has no confirmed cause; [TODO](./todo.md) owns the current
   authorization and serialization of physical workloads.
 - Linux capture producers compile. Updated macOS producers still require an
@@ -132,6 +139,10 @@ back the initial infrastructure change.
   Browser delivery and restricted-NAT success remain in the
   [TODO ledger](./todo.md) and [verification status](./verification-status.md).
   Browser/OS suspension remains a physical limit, not a keepalive promise.
+- Windows Native Host, Native embedded-SFU and Browser-to-Client fanout pass the
+  current combined profile, pause/recovery and closure checks. Pure Browser
+  encoding reuse is authorized next, only after committing this mainline
+  checkpoint; it does not replace the current Browser sender contract yet.
 
 ## Release Acceptance
 

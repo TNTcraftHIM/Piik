@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-09-08
+Last reviewed: 2026-09-09
 
 Only **Now** is executable. Observations, old branches, experiments, and parked
 topics are not implementation authority.
@@ -13,25 +13,32 @@ Execution priority is now explicit:
 1. **Client encoding-layer pool acceptance.** Source-owned compatible groups,
    independent weak budgets and retained transport handoff are implemented.
    Real relay checks cover shared output, split/rejoin and 180p/360p delivery.
-   Finish full Host/SFU, physical overload and representative network acceptance;
-   packet delivery and local fixtures do not establish perceptual parity.
-   Recovery repeatability remains open: one 120 kbps shaped-network run missed
-   the 12-second recovery interval; another recovered without runtime changes.
-   The successful trace shows the framework congestion guard clearing, but does
-   not explain the earlier failure. Preserve both outcomes and isolate the
-   cause before adding policy or claiming reliable recovery.
-2. **Reported capture defects and retained fixes.** Finish the exact CS2
-   fullscreen 4:3 stretched, Alt-Tab, advanced-setting, return reproduction and
-   the independent Win10 whole-display startup investigation. Preserve this
-   phase's multi-room, controls, UI, Global Link and diagnostic improvements.
+   The current Host/SFU/Browser-assisted gates pass. Extended 120 kbps recovery
+   returns to the original without new policy; preserve the earlier missed
+   12-second observation rather than claiming a universal recovery deadline.
+   Extreme single-core overload exposes the stock detector's sampling-reset
+   boundary, not a missing CPU callback; no separate resource controller is
+   accepted. Representative hardware/network behavior remains best-effort
+   evidence, not a reason to keep rebuilding the proved owner model.
+2. **Reported capture defects and retained fixes.** The quiet-source timeout
+   correction passes real Windows capture and Browser delivery, including a
+   subsequent update. The owner confirmed Windows 10 whole-display sharing
+   resolved. Reopen a distinct game display-mode/HWND failure only with fresh
+   evidence; do not reopen the fixed timeout because the focus harness failed.
+   Preserve this phase's multi-room, controls, UI, Global Link and diagnostics.
 3. **Integrated acceptance and release.** Build matching Client/Server/Web/
-   capture artifacts, complete the scoped Windows/Browser checks, and verify
-   embedded SFU/STUN cutover and recovery. Implemented services are not deployed
-   or accepted merely because their local media checks passed.
+   capture artifacts from the completed checkpoint. Scoped Windows/Browser,
+   Go core, Linux compile and container lifecycle checks pass. Production
+   cutover still requires the current live-session/interruption decision and
+   matching infrastructure recovery; local checks are not a production rollout.
 
-Pure Browser encoding reuse is parked. Independent background source research
-may continue only without delaying this mainline or its serialized hardware
-acceptance; it is not an additional release prerequisite.
+4. **Browser encoding reuse, after the mainline checkpoint.** Complete the
+   current Native/service acceptance and release-preparation work, commit that
+   coherent boundary on the work branch, then resume the Browser experiment.
+   Prove late join, independent constrained-child behavior, recovery and actual
+   encode savings before selecting a small production adapter. Do not merge an
+   unsafe shortcut or replace Browser transport/adaptation with an application
+   controller merely to report fewer encoding calls.
 The owner-authorized diagnostic file/export work is an independent side task
 for investigating reported Client and Server failures. Preserve it alongside
 the mainline; it does not depend on Browser encoding-pool research or turn that
@@ -84,8 +91,9 @@ Packaged multi-output capture is not accepted.
 Embedded STUN is bound by the application lifecycle and passes startup/rollback/
 closure checks. Embedded SFU room signaling, exact physical retirement and Browser
 adapters are implemented; real Browser decoding passes and external-service
-deployment removal is prepared, not deployed. Prioritize the shared quality/encoding module and its
-Native codec/transport checks, then complete embedded SFU/STUN integration.
+deployment removal is prepared, not deployed. Complete the shared media
+acceptance and coordinated embedded-service cutover; SFU/STUN implementation
+is present, not a remaining feature to rebuild.
 The real-codec 120 kbps relay trace now recovers with the library's non-pausing
 lowest-layer policy only while a live local encoder owns that output's bitrate.
 Two constrained/released runs and received-frame decoding pass without harming
@@ -119,10 +127,10 @@ not a fake per-child raw pipeline or a replacement transport. The Windows
 derivation process now uses the new output pipeline and grouped demand
 membership; complete mixed-network acceptance. One-total-encode claims must
 count Host standby outputs and exclude pure Browser intermediate re-encoding.
-The delayed-codec probe exposes repeated input-drop split/rejoin in the narrow
-factory cache. Evaluate sharing the complete encoding/adaptation pipeline per
-compatible output before adding physical-resource proxy machinery. Neither the
-cache nor the shared-pipeline control has established full overload parity.
+The delayed-codec probe exposed repeated input-drop split/rejoin in the narrow
+factory cache. The implementation now shares the complete encoding/adaptation
+pipeline per compatible output. Full overload parity remains unverified;
+do not add physical-resource proxy machinery without a reproduced gap.
 Independent library/service audits may proceed in parallel. Do not add a custom warm pool, media clock
 or congestion algorithm. These are
 not bundled service executables, full LiveKit embedding or per-Viewer Host
@@ -137,14 +145,13 @@ subscription/bandwidth/lifecycle cost has no measured benefit in this phase.
 Field feedback from the owner's current Client bundles is being resolved in
 parallel. The Vivaldi report is resolved: a VPN extension forced off WebRTC IP
 broadcasting, and correcting that setting restored Native sharing on the affected
-device. [Client troubleshooting](../cmd/screener-client/README.md#vivaldi-and-vpn-extensions)
-records the remedy. CS2 feedback and local reproduction confirm quiet-source
-profile preparation timing out; 1440p60 capture also exposes inconsistent encoded
-frame and forwarding bounds. Finish both corrections through actual Viewer
-delivery. The reported Browser-setting rollback has a separate confirmed owner
-defect: successful capture changes must not be rolled back only in the UI when
-optional Native ingress fails. Retain pending drafts and reject stale completion
-effects across signaling recovery, stop and the next share.
+device. [Chromium WebRTC FAQ](../cmd/screener-client/README.md#chromium-webrtc-connections)
+records the remedy. The quiet-source profile timeout is fixed and locally
+accepted; the legal large-frame capture/forwarding failure has real encoded
+delivery proof. Browser-setting ownership, pending drafts and stale completion
+effects are corrected and have focused regression checks. Preserve these fixes
+in the final matched Browser/Client acceptance rather than listing their
+implementation again as open work.
 
 The returned Go core and frontend fixes are reconciled on the integration
 candidate. The owner authorized hygiene cleanup, matched Server/Client builds,
@@ -159,9 +166,8 @@ remain evidence gaps, not claims established by compilation or local loopback.
    through Native fanout, live controls and Client-exit recovery before merging.
    Confirm weak-path convergence with effective media throttling; a DevTools
    command succeeding without limiting RTP is not a weak-path pass.
-3. **Capture startup and controls.** Diagnose Windows 10 selecting an entire
-   display failing to start while window capture succeeds; do not conflate it
-   with exclusive-fullscreen game capture. Current Windows 11 checks cover
+3. **Capture startup and controls.** The owner closed the Windows 10
+   whole-display startup report. Current Windows checks cover
    display startup, minimized-source recovery and live presets. Verify remaining
    game HWND/device-loss behavior and physically compare the implemented Windows
    display-aspect correction with the reported stretched game, including GPU
@@ -209,7 +215,7 @@ a tunnel; include that path in packaged acceptance.
    highlighting tied to applied settings and make the advanced draft/apply
    boundary unambiguous. Complete the Windows display-startup and platform
    checks above. The Vivaldi extension-policy case is resolved and documented in
-   [Client troubleshooting](../cmd/screener-client/README.md#vivaldi-and-vpn-extensions).
+   [Chromium WebRTC FAQ](../cmd/screener-client/README.md#chromium-webrtc-connections).
    The owner narrowed the game reproduction to CS2 in fullscreen 4:3 stretched:
    Alt-Tab out, change advanced sharing settings, then return to the game;
    interruption occurs on return. Ordinary window minimization is not this
@@ -238,17 +244,11 @@ a tunnel; include that path in packaged acceptance.
    Auto or move an unproved result into the availability path. Validate whether
    H.264 qualification can choose a slower VP8 fallback under mixed GPU/CPU load
    before adding comparative or dual-codec probing.
-3. **Browser encoded reuse (parked).** Client pool integration takes priority;
-   this research must not delay it or become a release prerequisite.
-   Pure Browser operation keeps normal WebRTC
-   senders; users can use Client to reduce repeated encoding. The September 8
-   [Chromium legacy probe](./research/advanced-peer-distribution.md#chromium-legacy-fanout-probe)
-   proves clean-path VP8/H264 single encode to two PCs without Client, but late
-   join fails, the secondary encoder bitrate ceiling is bypassed and its frame
-   statistics do not describe the borrowed stream. Revisit
-   product integration only for a small proven adapter preserving recovery,
-   independent adaptation and truthful evidence; do not silently ship the shortcut
-   or introduce an application-owned transport/quality controller.
+3. **Browser encoded reuse context.** Execution is reopened in **Now**, after
+   the mainline checkpoint. The [existing probe](./research/advanced-peer-distribution.md#chromium-legacy-fanout-probe)
+   proves clean-path single encoding, not safe late join, independent adaptation
+   or truthful frame statistics. Ordinary Browser senders remain the product
+   path until those defects have a verified, economical solution.
 4. **Control-plane resource fairness.** Reassess ingress budgets against the
    current authenticated room WebSocket and embedded SFU owner before adding
    another queue or limiter. The replaced external media-token/control service
@@ -267,14 +267,16 @@ a tunnel; include that path in packaged acceptance.
 8. **Representative network acceptance.** Complete public-network direct,
    Browser relay, SFU, recovery, Pause/Resume, screen-audio, real-game A/V,
    two-room SFU, 20-Viewer endurance, and all-UDP-blocked bounded failure.
-   Validate LiveKit Server 1.13.6 simulcast retransmission under controlled loss
-   and correlate any remaining SFU freezes with publisher encoding counts before
-   changing Dynacast or representation policy.
+   Validate the embedded Pion/LiveKit media adapter's retransmission and
+   publisher-demand behavior under controlled loss; correlate any SFU freezes
+   with current publisher output counts before changing representation policy.
 9. **Client-input security review.** Audit HTTP/WebSocket schema, auth,
    authorization, rate/body/resource bounds, errors, logs, and secrets without
    adding a parallel security framework.
-10. **Public-server package.** Package the exact Web/signaling, STUN/SFU, proxy,
-   secrets, health, and recovery contract for a user-owned server.
+10. **Public-server distribution.** The Server release and runtime-only OCI
+    recipe are implemented, with local lifecycle/persistence/STUN checks.
+    Public image/Release publication and target proxy/firewall/media acceptance
+    remain explicit distribution tasks, not another application implementation.
 11. **Native media endurance.** Exercise long-lived Native P2P and direct Native
     SFU publication recovery after the platform capture boundary passes. Preserve
     Browser/server authority and the existing LiveKit representation policy; do
@@ -301,14 +303,14 @@ a tunnel; include that path in packaged acceptance.
     reproduction. Do not add a second revision namespace, parallel failure
     state, or generalized evidence map from static possibility alone.
 15. **Unified release and update surface.** Build Client packages, Server
-    runtime, future OCI images, and deployment bundles from one intentionally
+    runtime, optional OCI images, and deployment bundles from one intentionally
     triggered immutable application release identified by its full commit SHA.
     An explicit `client_checks=true` workflow dispatch produces the application
     release and three native-runner Client candidates with SHA-256 metadata.
     Ordinary `main` pushes do not package release artifacts. The default Client
     launcher now performs a non-blocking GitHub Releases check and the tracked
     deployment tree provides an operator-invoked read-only Server check. Formal
-    GitHub Release publication, future OCI images, and deployment bundles remain
+    GitHub Release/image publication and deployment bundles remain
     explicit distribution work; do not add automatic install, container
     self-update, Watchtower, compatibility ranges, or active-share interruption
     before distribution and rollback evidence requires them.
@@ -330,6 +332,20 @@ a tunnel; include that path in packaged acceptance.
     Focused file/privacy/layout checks and the Linux Server build pass;
     packaged user acceptance and deployed Unix signal/export behavior remain
     part of the existing release acceptance, not established by those checks.
+    Follow-up authorized on 2026-09-09: design comprehensive Debug-mode capture
+    for both Client and Server, using mature projects' feedback-bundle practice.
+    A first report should retain enough failure context to diagnose without
+    rebuilding solely to add the missing event: operation start/end and identity,
+    requested/applied settings, capture/codec/ICE/transport transitions, resource
+    and queue pressure, and precise failed checks with safe expected/actual values.
+    Debug-on diagnostic completeness takes priority over minimal log volume;
+    keep explicit resource bounds without silently removing essential context.
+    Exclude credentials, access/media tokens and private keys. Do not promise
+    complete anonymization of useful technical evidence; document residual
+    identifiers/network/system information and export contents clearly, retaining
+    local opt-in collection and user-controlled sharing. Review this as one
+    coherent observability design, not repeated incident-specific log patches.
+    This follow-up does not authorize collecting media or raw process memory.
 18. **Remaining audit behavior.** During the owning refactor, reproduce and
     resolve optional Local-password cookies across HTTP LAN/HTTPS public origins;
     audio-process failure without stopping healthy video; natural capture EOF

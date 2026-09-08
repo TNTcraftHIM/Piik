@@ -4,14 +4,16 @@ Screener-owned code uses the root [MIT license](../LICENSE). Dependencies retain
 their own licenses; MIT does not replace their copyright notices or terms.
 
 The [pinned source index](./upstream.json) records exact upstream commits and
-SHA-256 values for Cloudflared, libvpx, and npm packages that omit license
+SHA-256 values for Cloudflared, the WebRTC SDK, and npm packages that omit license
 files.
 The retained text normalizes line endings and incidental whitespace only.
 The Cloudflared text includes its source distribution's root and all vendored
 LICENSE, COPYING, and NOTICE files, including platform variants. The protobuf
 text also preserves Google's BSD-licensed varint attribution.
-The Windows capture adapter statically links libvpx; its copyright, patent grant
-and author list are included in the Client's native notices.
+The Windows capture adapter statically links the pinned WebRTC SDK, including
+its libvpx encoder. The Client's native notices retain the SDK's collected
+third-party license texts; these dependencies do not become MIT-licensed merely
+because Screener's adapter is MIT-licensed.
 Linux packages that include the native capture binary include
 `linux-system-dependencies.txt`, the full LGPL-3.0-only text for libportal, and
 the full GPL-3.0 text referenced by that license. The system shared libraries

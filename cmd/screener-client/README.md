@@ -4,6 +4,20 @@ Screener Client is the self-contained and native-capability runtime for the same
 Browser application used by Hosted Screener. It does not implement another UI,
 room store, signaling protocol, or route controller.
 
+## Run A Package
+
+Extract the matching platform bundle in full and keep `runtime` beside the
+Client executable. Run `screener-client.exe` on Windows, `./screener-client` on
+Linux, or `Screener Client.app` on macOS. The launcher opens in the system Browser;
+the Client does not embed a browser UI. Packaged execution needs no Node.js, npm,
+or Go installation. Linux native capture uses the system dependencies described
+in the [Linux capture guide](../../native/capture/linux/README.md).
+
+Windows Client and Browser are this phase's acceptance targets. Other platform
+builds do not establish physical capture/audio acceptance; see
+[current status](../../docs/status.md). Package construction and public Release
+publication are separate steps in [deployment](../../docs/deployment.md).
+
 ## Modes
 
 - With no mode argument, the Client opens a small launcher in the system
@@ -34,8 +48,9 @@ TURN fallback. The Client chooses a sole private LAN IPv4 automatically. Use
 The system Browser remains the Host UI. A Client-launched Host offers the
 Browser's standard capture picker and a list of exact platform capture targets;
 the user selects one explicitly. Windows offers the same VP8/Auto/H264 selector:
-VP8 uses libvpx, H264 uses hardware Media Foundation, and Auto measures target-
-profile encoding work before choosing one codec for the share. Windows uses
+VP8 uses the pinned WebRTC/libvpx encoder and H264 uses hardware Media Foundation
+inside WebRTC's output pipeline. Auto measures target-profile encoding work
+before choosing one codec for the share. Windows uses
 Graphics Capture and WASAPI; macOS
 uses ScreenCaptureKit, VideoToolbox, and AudioToolbox; Linux delegates selection
 to the ScreenCast Portal and uses the system PipeWire/GStreamer hardware path.
@@ -70,36 +85,49 @@ Host page in a URL fragment; the page uses the existing SiteAccess endpoint and
 removes the fragment before continuing. Viewer invitations keep using the
 existing room-scoped grant.
 
-The terminal starts in visual mode and shows the current mode, working entry
-links and startup state. Its language follows the launcher and Client-enabled
-pages; a block television uses the terminal foreground with golden sparkles,
-falling back to ASCII without color support or in very narrow windows.
-Visual mode depicts the selected mode and startup state with small scenes;
-the television rests with one eye closed and occasionally winks while idle.
+The terminal shows the current mode, entry links and startup state; its language
+follows the launcher and Client-enabled pages.
 Press `o` to reopen the Browser, or `q` / Ctrl+C to end Local
 rooms and stop the local server and temporary public link. Plain-text output
 uses Ctrl+C. A Site-loaded Browser tab does not own the Client process.
 
 For one-link Internet sharing, open the Client launcher, choose **Public invite**,
 create a room in the opened Browser, and send its normal invitation link. The
-random `trycloudflare.com` origin lasts only for that Client run. Cloudflare Quick
-Tunnels provide no uptime guarantee; use a configured Site when persistent
-control availability or SFU fallback matters.
+random `trycloudflare.com` origin lasts only for that Client run; a later launch
+creates a new temporary link. Cloudflare Quick Tunnels provide no uptime guarantee;
+use a configured Site when persistent control availability or SFU fallback matters.
 
 ## Troubleshooting
 
-### Vivaldi And VPN Extensions
+### Chromium WebRTC Connections
 
-Native screen capture can work while a VPN extension blocks the local WebRTC
-connection between the Client and Browser. This caused a confirmed Vivaldi
-report and was resolved by correcting the extension's WebRTC policy.
+**Why can screen capture succeed while the media connection fails?**
 
-In Vivaldi, open **Settings > Privacy and Security > WebRTC IP Handling**, enable
-**Broadcast IP for Best WebRTC Performance**, and reload Screener. If a VPN
-extension controls or turns this setting off again, adjust its WebRTC/IP-leak
-protection setting and verify that broadcasting stays enabled. See
-[Vivaldi's setting documentation](https://help.vivaldi.com/desktop/privacy/privacy-settings/)
-and the [confirmed diagnostic evidence](../../docs/research/native-client-lifecycle.md).
+Chromium-based Browsers can restrict WebRTC UDP through Browser settings,
+extensions or managed policies. Disabling non-proxied UDP can prevent even the
+local Browser-to-Client media connection; successful capture or page loading
+does not prove that this separate connection is available. This is not specific
+to one Browser brand or to VPN use.
+
+Check the Browser's WebRTC/IP-handling policy and any extension's WebRTC or
+IP-leak protection setting. Restore a policy that permits WebRTC UDP, reload
+Screener, and verify that another extension or managed policy has not overridden
+the choice. Setting names and availability differ between Browsers. For example,
+Vivaldi exposes **Settings > Privacy and Security > WebRTC IP Handling >
+Broadcast IP for Best WebRTC Performance**. Changing this policy can expose
+network addresses to WebRTC peers; do not disable unrelated protections.
+
+See [Chromium's extension policy API](https://developer.chrome.com/docs/extensions/reference/api/privacy#property-network),
+[Vivaldi's setting example](https://help.vivaldi.com/desktop/privacy/privacy-settings/),
+and the [verified policy mechanism and field case](../../docs/research/native-client-lifecycle.md).
+
+### Diagnostics
+
+Start the packaged executable with `--debug`, reproduce the problem, then press
+`D` in the interactive terminal to export a local ZIP. This does not stop the
+share or upload the archive. Browser diagnostics are separate; the
+[diagnostic reference](../../docs/reference/configuration.md#diagnostics) owns
+log locations, export commands, retention and privacy boundaries.
 
 ## Development
 
@@ -143,33 +171,31 @@ one session retires only its resources. Its public `instanceToken`
 distinguishes the discovered process but is not authentication; room authority
 and remote signaling remain in the Browser. Viewer receive/relay remains
 available even when this machine has no accepted native capture encoder.
-Capture sidecars use the current v5 probe/encoded-output contract; the native
-package-candidate wrapper validates that version before accepting its artifact.
+Capture sidecars must match the Client's current probe/encoded-output contract;
+the package-candidate wrapper validates that version before accepting its artifact.
 
 ## Packaging
 
-Build one application release, then assemble a platform Client from that exact
-descriptor. Native capture and the public-link sidecar are explicit package
-inputs:
+From a clean revision, build the application release and run the platform's
+candidate wrapper on its native operating system. The wrapper builds capture,
+verifies the pinned public-link helper, and assembles and checks the Client:
 
 ```sh
 node scripts/package-app-release.mjs /outside/repository/app-release
-SCREENER_GO=/path/to/go \
-  node scripts/assemble-client.mjs \
-  /outside/repository/app-release/screener-<sha>.release.json \
-  /outside/repository/Screener-Client \
-  --target windows-amd64 \
-  --capture /outside/repository/screener-client-capture.exe \
-  --tunnel /outside/repository/cloudflared.exe
+node scripts/package-client-candidate.mjs \
+  /outside/repository/app-release windows-amd64 \
+  /outside/repository/client-candidate
 ```
 
 Supported targets are `windows-amd64`, `linux-amd64`, and `darwin-arm64`.
-`--target` controls the Go build and packaged executable names; the
-capture and tunnel inputs must already match that target. Each target accepts
-its matching native-capture input. Darwin assembly requires a native macOS runner
-with its SDK and enables cgo; Windows and Linux assembly keep cgo disabled.
+Use the matching target name in the command above. Darwin assembly requires a
+native macOS runner with its SDK and enables cgo; Windows and Linux assembly keep
+cgo disabled.
+The result is a `tar.gz` bundle and SHA-256 file. Manual sidecar assembly,
+explicit CI packaging, Release publication and updates are documented in
+[deployment](../../docs/deployment.md); creating a candidate does not publish it.
 
-The result contains:
+The extracted bundle contains:
 
 ```text
 screener-client[.exe]

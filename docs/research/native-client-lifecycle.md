@@ -1,10 +1,11 @@
 # Native Client Lifecycle
 
-- Reviewed: 2026-09-08
+- Reviewed: 2026-09-09
 - Scope: Windows capture idle semantics, native loopback input isolation, and
   Browser visibility of an unexpected Client disconnect.
-- Status: static-source, preview-queue and Client-crash checks pass; Windows 10
-  monitor startup and game-specific window replacement remain unresolved.
+- Status: quiet-source, preview-queue and Client-crash checks pass. The owner
+  confirmed Windows 10 monitor sharing resolved; game-specific window replacement
+  is not established by the quiet-source checks.
 
 ## Current Evidence
 
@@ -93,6 +94,9 @@ request has been established. Community reports of disabled capture services or
 invalid display contexts are leads, not a diagnosis of this user's machine.
 Projected WinRT exceptions now reach the existing capture-error boundary instead
 of escaping `std::exception`; that correction alone does not prove startup fixed.
+On 2026-09-09, the owner confirmed whole-display sharing works and closed this
+report. That field confirmation does not establish which earlier correction or
+environment change resolved it; no further workaround is justified by this report.
 
 The original converter always fitted the captured pixel aspect into the output:
 1280x960 into 1920x1080 yielded 1440x1080 content and 240-pixel side bars, even
@@ -159,6 +163,16 @@ timeouts, three successes and one cancellation caused by share termination.
 This establishes a quiet-source/readiness error in the live-update path, not
 an old setting request overwriting a successfully installed replacement.
 
+On 2026-09-09, matched `cbb3d77` passed the corrected path through actual Windows
+Graphics Capture and Browser playback. An owned source stopped repainting and
+remained minimized for 8,378 ms: the 720p request stayed pending while the Viewer
+retained 1080p. Restoring the source delivered 720p in 1,868 ms; the next 1080p
+request delivered in 480 ms, retaining the media object. Both updates succeeded;
+all processes, ports and Browser profiles closed. This closes the reproduced
+quiet-source timeout defect. CS2 foreground automation did not complete that
+same post-fix sequence, so this does not establish game-specific display-mode
+or HWND replacement behavior.
+
 That same bundle also contains two independent `adaptive-output` capture
 failures at H264 1440p60, one without a settings update in progress. A controlled
 1440p60/12 Mbps high-entropy input produced a valid 1,609,216-byte keyframe and
@@ -194,7 +208,7 @@ extension forcibly disabled **Broadcast IP for Best WebRTC Performance**;
 correcting the setting/extension restored Native sharing. The confirmed cause
 is that extension's WebRTC policy, not unsupported Windows capture. VPN
 extensions may reapply the override; the
-[Client troubleshooting guide](../../cmd/screener-client/README.md#vivaldi-and-vpn-extensions)
+[Chromium WebRTC FAQ](../../cmd/screener-client/README.md#chromium-webrtc-connections)
 owns the user steps. This does not authorize a Browser-specific transport fallback.
 
 An isolated Chrome 152.0.7977.82 data-channel A/B verifies the policy

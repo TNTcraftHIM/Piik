@@ -537,6 +537,19 @@ path and counters follow the actually attached group, preserving failed runs
 and avoiding stale-group attribution. This is an unresolved repeatability
 boundary, not evidence for a new recovery timer or a permanent deadlock.
 
+A 75-second follow-up on the 4,096-packet candidate kept the same 5-to-18-second
+120 kbps constraint and restored the original at 19.535 seconds, 1.535 seconds
+after release. The stock congestion guard cleared, a 200 ms padding probe
+requested 315,957 bps, and the estimate rose to 400,717 bps. Both children then
+held about 30 fps through the remaining run; the healthy original delivered
+2,241 frames with no assembly loss, while the constrained child delivered 1,941
+frames with 25 assembly gaps during congestion. The sampled pacer queue peaked
+at 57 packets and stayed at two or fewer after recovery. This demonstrates
+sustained stock recovery in that run, without an algorithm change; it does not
+identify the earlier missed recovery as either a long cooldown or a permanent
+stall. Temporary tracing and the extended fixture duration were removed, and
+all capture/test processes exited.
+
 A bounded CPU-affinity check retained the original 1280x720 child and two
 compatible 640x360 consumers through fifteen seconds with only the capture
 subprocess restricted to one core, then restored its original affinity. All
@@ -544,6 +557,42 @@ three received about 30 fps with the same shared group and decoder process.
 The subprocess used only about 11.5% of that core during the restriction, so
 this did not induce overload and cannot establish resource-adaptation parity.
 The temporary fixture was removed and process/affinity cleanup verified.
+
+A later 46-second VP8 check used the actual `AdaptiveEncoder` and mailbox at
+2560x1440, 60 fps and 12 Mbps, with an independent raw-input producer. An
+ignored source copy added only `GetStats()` observations. The eight-second
+baseline already averaged about 33 encoded fps and reduced to 1920x1080 for
+bandwidth/quality. Restricting the already initialized process to one core for
+18 seconds used about 88% of that core but delivered only about 0.24 fps;
+average encode time reached 1.4-3.8 seconds. Restoring affinity recovered about
+60 fps at 1280x720 during the final 20 seconds. Stock statistics recorded two
+quality adaptations and no CPU adaptations. This exposes a severe overload
+limit, not CPU-adaptation parity. The helper reported affinity restoration and
+normal completion; its PowerShell wrapper failed to retain an exit-code handle,
+so an OS exit-code pass is not claimed. No product code was changed.
+
+The pinned [CPU detector][cpu-detector] explains why large encode times do not
+necessarily produce a CPU adaptation. Its default software thresholds are
+85/42%, with 120 frame samples, three initial checks and two consecutive high
+checks; checks run every five seconds after an initial 100 ms check. A change
+in pixel count or a gap above 1,500 ms between frames entering encoding resets
+the samples and initial-check count. Before enough samples exist, usage returns
+the threshold midpoint rounded to 64%, matching the repeated 64% observations
+after the multi-second stalls. The [resource manager][resources] is connected:
+built-in VP8 retains the [encoder default][encoder-default] CPU opt-in and is a
+software encoder. VSE invokes `OnEncodeStarted` on its encoder queue just
+before the codec call; raw arrival and `OnDiscardedFrame` do not supply CPU
+samples. Replaying dropped inputs as encoded work would misrepresent feedback.
+
+Screener's synchronous drain and latest-input mailbox reduce arrivals into VSE
+under this load, but the [same pinned VSE][vse] also skips queued frames before
+calling the CPU observer. Therefore moving admission or reporting source drops
+alone is not an established fix for multi-second encode gaps. Chromium's pinned
+Call also [caches system core count][cpu-count]; changing process affinity after
+encoder initialization is an extreme constraint, not a measured one-core-device
+or Chrome comparison. The 0.24 fps result belongs only to this helper. Keep
+overload acceptance open without changing stock thresholds or adding a custom
+CPU controller.
 
 ## Replacement And Preservation Map
 
@@ -580,7 +629,8 @@ unrelated page rewrite or platform-adapter deletion is justified by this review.
    the remaining owners. Preserve the current candidate; never merge it solely
    to manufacture a new branch base. Follow
    the stable executable paths and serialized physical workload rules in
-   CONTRIBUTING. CS2 and Win10 reports remain separate, unresolved acceptance.
+   CONTRIBUTING. The quiet-source update defect has real WGC acceptance and the
+   owner closed the Win10 display report; distinct game failures require fresh evidence.
 
 [chromium-deps]: https://chromium.googlesource.com/chromium/src/+/refs/tags/152.0.7977.82/DEPS
 [chromium-hint]: https://chromium.googlesource.com/chromium/src/+/refs/tags/152.0.7977.82/third_party/blink/renderer/modules/peerconnection/media_stream_video_webrtc_sink.cc
@@ -589,6 +639,9 @@ unrelated page rewrite or platform-adapter deletion is justified by this review.
 [simulcast-rates]: https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/modules/video_coding/utility/simulcast_rate_allocator.cc
 [vse]: https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/video/video_stream_encoder.cc
 [resources]: https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/video/adaptation/video_stream_encoder_resource_manager.cc
+[cpu-detector]: https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/video/adaptation/overuse_frame_detector.cc
+[encoder-default]: https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/api/video_codecs/video_encoder.cc
+[cpu-count]: https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/rtc_base/cpu_info.cc
 [video-adapter]: https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/call/adaptation/video_stream_adapter.cc
 [vp8]: https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/modules/video_coding/codecs/vp8/libvpx_vp8_encoder.cc
 [sender-hint]: https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/pc/rtp_sender.cc
