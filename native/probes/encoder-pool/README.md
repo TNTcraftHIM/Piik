@@ -43,3 +43,25 @@ alongside per-VSE correction. `--unsafe-skip` removes dependency protection as a
 negative control and should fail integrity with group adjustment and a skipped
 input. This is guarded single-source realtime VP8/L1T1 with synchronous codecs;
 no H264, asynchronous encoder, physical overload or public-network claim follows.
+
+## Healthy Relay Chain
+
+Export the first 180 real AUs from sender A for the opt-in Go forwarding check:
+
+```powershell
+& ./build/encoder-pool/probe/Release/encoder-pool-probe.exe `
+  --pooled --group-adjuster --healthy-only --export build/encoder-pool/chain-input.jsonl
+go test -c -o build/embedded-media/mediaedge.test.exe ./internal/client/mediaedge
+$env:SCREENER_POOL_CHAIN_FIXTURE = "$PWD/build/encoder-pool/chain-input.jsonl"
+$env:SCREENER_NATIVE_CAPTURE = "$PWD/build/client-check/screener-client-capture.exe"
+$env:SCREENER_POOL_CHAIN_OUTPUT = "$PWD/build/encoder-pool/chain-result.json"
+& ./build/embedded-media/mediaedge.test.exe `
+  '-test.run=^TestRelayChainEncodedFixture$' '-test.v' '-test.timeout=30s'
+```
+
+The real capture executable must already be built, so Native relay capability
+remains enabled while checking that healthy forwarding does not start it. This
+replays encoded video through two Native receivers and three leaves, checking
+recovery-first, contiguous, hash-identical AUs and closure. No frame payload is
+committed. Optional output contains only the synthetic trace's summary. It is
+not a live encoder/BWE integration or an internet/NAT test.

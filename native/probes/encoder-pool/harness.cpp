@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cstdint>
 #include <exception>
+#include <fstream>
 #include <future>
 #include <iostream>
 #include <map>
@@ -152,6 +153,21 @@ class Sink final : public VideoStreamEncoderInterface::EncoderSink,
     ++counts_.encoded;
     counts_.bytes += image.size();
     counts_.keyframes += image.IsKey();
+    if (export_.is_open() && counts_.encoded <= 180) {
+      constexpr char hex[] = "0123456789abcdef";
+      std::string data;
+      data.reserve(image.size() * 2);
+      for (uint8_t byte : image) {
+        data.push_back(hex[byte >> 4]);
+        data.push_back(hex[byte & 15]);
+      }
+      export_ << "{\"index\":" << counts_.encoded - 1
+              << ",\"width\":" << image._encodedWidth
+              << ",\"height\":" << image._encodedHeight
+              << ",\"recovery\":" << (image.IsKey() ? "true" : "false")
+              << ",\"dataHex\":\"" << data << "\"}\n";
+      if (!export_) ++counts_.errors;
+    }
     current_timestamp_ = image.RtpTimestamp();
     current_payload_ = HashBytes(1469598103934665603ULL, image.data(), image.size());
     if (decoder_->Decode(image, 0) < 0) ++counts_.errors;
@@ -194,6 +210,17 @@ class Sink final : public VideoStreamEncoderInterface::EncoderSink,
     std::lock_guard<std::mutex> lock(mutex_);
     return counts_;
   }
+  void Export(const std::string& path) {
+    export_.open(path, std::ios::binary | std::ios::trunc);
+    if (!export_) throw std::runtime_error("fixture export unavailable");
+  }
+  void FinishExport() {
+    if (!export_.is_open()) return;
+    export_.flush();
+    export_.close();
+    if (!export_ || counts_.encoded < 180)
+      throw std::runtime_error("fixture export incomplete");
+  }
   void ResetMinimum() {
     std::lock_guard<std::mutex> lock(mutex_);
     counts_.min_width = kWidth;
@@ -209,6 +236,7 @@ class Sink final : public VideoStreamEncoderInterface::EncoderSink,
   std::mutex mutex_;
   std::unique_ptr<VideoDecoder> decoder_;
   vpx_codec_ctx_t raw_{};
+  std::ofstream export_;
   Counts counts_;
   uint32_t current_timestamp_ = 0;
   uint64_t current_payload_ = 0;
@@ -377,6 +405,11 @@ int main(int argc, char** argv) {
     Sync(worker.get(), [&] {
       for (int i = 0; i < 2; ++i) Start(pipelines[i], env, factory, allocator.get(), i, proof);
     });
+    const auto export_arg = std::find(args.begin(), args.end(), "--export");
+    if (export_arg != args.end()) {
+      if (export_arg + 1 == args.end()) throw std::runtime_error("--export needs a path");
+      pipelines[0].sink->Export(*(export_arg + 1));
+    }
     int frame_index = 0;
     auto run = [&](const char* name, int seconds, int weak_bitrate, bool skip, bool retire) {
       Sync(worker.get(), [&] {
@@ -437,6 +470,7 @@ int main(int argc, char** argv) {
       pipelines[0].encoder->Stop();
       pipelines[0].encoder.reset();
     });
+    pipelines[0].sink->FinishExport();
     const auto a = pipelines[0].sink->Snapshot(), b = pipelines[1].sink->Snapshot();
     const bool integrity = a.decoded > 0 && b.decoded > 0 && factory.live.load() == 0 &&
         a.errors + b.errors + proof.mismatches.load() == 0 &&

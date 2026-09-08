@@ -178,10 +178,64 @@ func TestRelayDerivationFixture(t *testing.T) {
 		t.Fatal("live relay settings stopped healthy forwarding or failed to replace the derived output")
 	}
 	run = replacement
+	if err = healthy.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err = receiverA.Close(); err != nil {
+		t.Fatal(err)
+	}
+	secondLow, secondReceiver, secondPackets := connectedReceiver(t, engine, source, "relay-second-low")
+	t.Cleanup(func() { _ = secondReceiver.Close() })
+	packetsA = secondPackets
+	seen[0], frames[0] = mediacodec.VideoSize{}, 0
+	if err = secondLow.SetTargetLayer(0); err != nil {
+		t.Fatal(err)
+	}
+	beforeShared := frames
+	checkSharedRun := func() {
+		t.Helper()
+		source.relay.mu.Lock()
+		same := source.relay.run == run
+		source.relay.mu.Unlock()
+		select {
+		case <-run.done:
+			t.Fatal("a compatible consumer retired the shared derivation")
+		default:
+		}
+		if !same {
+			t.Fatal("compatible consumers created a replacement derivation")
+		}
+	}
+	for frame := 0; frame < 120; frame++ {
+		weak.transport.Output.SetBudget(300_000)
+		secondLow.transport.Output.SetBudget(300_000)
+		feed()
+		checkSharedRun()
+		_, observed := secondLow.transport.TargetBitrate()
+		if observed && seen[0].Width == 320 && frames[0] >= 3 && frames[1] >= beforeShared[1]+3 {
+			break
+		}
+	}
+	_, secondObserved := secondLow.transport.TargetBitrate()
+	if !secondObserved || seen[0].Width != 320 || frames[0] < 3 || frames[1] < beforeShared[1]+3 {
+		t.Fatalf("compatible low consumers did not share delivery: sizes=%+v frames=%v", seen, frames)
+	}
 	if err = weak.Close(); err != nil {
 		t.Fatal(err)
 	}
-	// Healthy remaining children require no derived output.
+	beforeRetire := frames[0]
+	for frame := 0; frame < 30 && frames[0] < beforeRetire+3; frame++ {
+		secondLow.transport.Output.SetBudget(300_000)
+		feed()
+		checkSharedRun()
+	}
+	if frames[0] < beforeRetire+3 {
+		t.Fatal("retiring one consumer stopped the other consumer's shared output")
+	}
+	if err = secondLow.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// Only the last lower-output consumer retires the derivation.
 	for frame := 0; frame < 3; frame++ {
 		feed()
 	}
@@ -190,5 +244,5 @@ func TestRelayDerivationFixture(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("unused native relay process did not retire")
 	}
-	t.Logf("raw high %dx%d, derived low %dx%d; input stayed encoded, process retired", seen[0].Width, seen[0].Height, seen[1].Width, seen[1].Height)
+	t.Log("640x360 raw forwarding; two 320x180 consumers reused one derivation, independently retired")
 }

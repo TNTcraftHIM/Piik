@@ -83,6 +83,12 @@ map, not a second accepted architecture. A new isolated candidate is authorized;
 do not merge the current candidate just to create that base. Client simplification
 review should identify redundant owners and compensating mechanisms, not split
 files or remove required platform adapters for appearance alone.
+Cross-level reuse now has actual two-hop Pion replay evidence and a separate
+two-consumer shared-derivation/retirement check. Keep `Source.WriteRTP` as the
+healthy encoded bypass; integrate VSE/pool only behind required local outputs,
+not a fake per-child raw pipeline or a replacement transport. The new pool is
+not yet attached to the Native derivation process. One-total-encode claims must
+count Host standby outputs and exclude pure Browser intermediate re-encoding.
 Independent library/service audits may proceed in parallel. Do not add a custom warm pool, media clock
 or congestion algorithm. These are
 not bundled service executables, full LiveKit embedding or per-Viewer Host

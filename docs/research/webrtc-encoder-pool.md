@@ -242,6 +242,80 @@ just `Encode(frame)`. Before product replacement, resolve those remaining
 feedback owners through upstream interfaces; do not accumulate quality formulas
 or silently reintroduce per-child encoders as the ordinary product model.
 
+## Cross-Level Reuse
+
+The shared boundary already exists in `mediaedge.Source`. A Native Receiver
+feeds received packets directly through `Source.WriteRTP` into LiveKit buffers
+and DownTrack projection. It does not call a decoder or encoder to forward an
+available representation. Local capture/derivation instead supplies complete
+codec output through `Source.WriteVideo`. The pool fits behind that second
+entry, not in front of every received packet:
+
+```text
+received original -> existing per-child RTP forwarding -> healthy descendants
+                 -> missing direct-child output only
+                    -> one real decode -> VSE / shared physical encoder
+                                      -> Source.WriteVideo -> child transport
+```
+
+The factory's first 180 real VP8 output AUs were exported and replayed through
+five actual loopback Pion connections: Host to R1 to R2, with one leaf attached
+at each source. Both Native receivers had normal derivation capability and
+profiles enabled. The final trace delivered 180, 167 and 167 contiguous AUs at
+the three leaves, starting at indexes 0, 13 and 13 respectively. Every received
+AU matched an original SHA-256 hash, beginning with independent recovery; no
+derivation run was observed at either relay. Earlier runs began at the later
+recovery index 19. The prerecorded source cannot answer live PLI requests, so
+this startup interval is not a capture/join-latency measurement.
+
+An extension to the existing Native derivation fixture separately verified
+640x360 original forwarding alongside one 320x180 derived output, then two
+compatible low consumers sharing the same live derivation process. Retiring
+one low consumer left the other receiving new frames; retiring the last stopped
+the process. The original input stayed encoded. Target layers/budgets in this
+fixture are forced to test ownership, not prove automatic network selection.
+Both checks passed together and cleaned up. The test awaits Pion's graceful
+completion outside callbacks rather than equating concurrent `Close()` return
+with completed transport teardown. [Recorded evidence](./data/webrtc-encoder-chain.json)
+contains counters and hashes, not media or private connection identifiers.
+
+These measurements establish zero additional encoding on the observed healthy
+Native hops, and local sharing of a genuinely missing output. They do not yet
+connect the new VSE pool to that native derivation process: the source-pool,
+network replay and existing-codec derivation are separate verified boundaries.
+The original AUs were already decoded in the C++ probe; byte-identical contiguous
+forwarding is not another Browser playback, original-clock or loss-recovery gate.
+
+"One encoding for the whole tree" requires one active source representation
+and Native/SFU intermediate forwarding nodes. Pure Browser intermediate nodes
+still encode through their normal senders; Browser leaves add decoding only.
+If Host keeps pre-encoded lower standby outputs, those encodes must also be
+counted. The current packaged producer still constructs original plus half-size;
+neither this one-output replay nor a no-extra-hop result silently changes the
+accepted envelope policy. The pool probe also has occasional split/rejoin work,
+so its healthy case is close to one encode per frame, not an unconditional bound.
+
+### Minimal Integration Direction
+
+Keep the existing Pion/LiveKit transport, estimator, pacer and projection per
+edge. Codec-only `VideoStreamEncoder::OnBitrateUpdated` accepts an external
+budget without constructing a GoogCC controller, Call or PeerConnection.
+`relayPlan` already recognizes missing output from observed positive bandwidth
+and paused/lower forwarding demand. It does not need to choose pixel dimensions;
+VSE and stock `VideoAdapter` can make that decision from the actual raw input.
+A healthy original consumer needs neither VSE nor a fabricated raw frame.
+
+The owning source can reuse `OnDemandChanged` to signal work, never reenter
+transport synchronously under its locks. This callback is not currently wired
+by Native `NewEdge`; current relay demand is reevaluated at input markers.
+Budget-to-payload conversion, dynamic output association in bounded source slots,
+physical resource feedback and decoder-safe switching remain concrete integration
+work. Connecting those owners is narrower than replacing the transport engine,
+but its total change/maintenance cost is not yet measured. A low-quality received
+source still cannot manufacture missing detail; higher input or the existing
+bounded topology operation must supply it. No subtree quality minimum or new
+congestion algorithm is introduced by this direction.
+
 ## Replacement And Preservation Map
 
 | Current owner | Treatment if a pool-backed engine is proved |
@@ -265,8 +339,8 @@ unrelated page rewrite or platform-adapter deletion is justified by this review.
 2. Measure source replacement, overload, real scheduling, perceptual quality,
    transport overhead and actual CPU/GPU cost. Preserve correction/drop/resource
    feedback with explicit owners before accepting the product integration.
-3. Prove the received-encoding bypass and fresh lower derivation can use the
-   same representation owner before planning integration. If preserving stock
+3. Connect the separately verified encoded bypass and shared lower derivation
+   through that same representation owner. If preserving stock
    control requires substantial VSE/source patches or a custom rate/quality
    policy, report that cost instead of calling it a small factory adapter.
 4. The narrow pass permits an isolated implementation candidate, not release
