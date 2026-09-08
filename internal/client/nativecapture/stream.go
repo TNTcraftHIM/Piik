@@ -211,7 +211,7 @@ func StartVideo(parent context.Context, executable string, options VideoOptions)
 		options.Profile.Preference,
 		"--codec",
 		options.Codec,
-		"--protocol-v6",
+		"--protocol-v7",
 	}
 	outputs := ScreenShareOutputs(options.Profile)
 	for range options.OutputGroups {
@@ -238,7 +238,7 @@ func StartEncodedVideo(parent context.Context, executable string, options Encode
 		"--encoded-video", "--codec", options.Codec,
 		"--adapter-index", strconv.FormatUint(uint64(options.AdapterIndex), 10),
 		"--mft-index", strconv.FormatUint(uint64(options.EncoderIndex), 10),
-		"--preference", options.Preference, "--protocol-v6",
+		"--preference", options.Preference, "--protocol-v7",
 	}, options.Outputs)
 	if err != nil {
 		return nil, err

@@ -181,7 +181,7 @@ function observeCapture(
       const kind = buffered[5]!;
       const flags = buffered[6]!;
       const size = buffered.readUInt32BE(28);
-      const maximum = kind === 3 ? 4 * 1024 : 1024 * 1024;
+      const maximum = kind === 3 ? 4 * 1024 : 4 * 1024 * 1024;
       if ((size === 0 && kind !== 5) || size > maximum) {
         child.kill();
         return;
@@ -221,7 +221,7 @@ function observeAudioCapture(
       }
       const kind = buffered[5]!;
       const size = buffered.readUInt32BE(28);
-      const maximum = kind === 3 ? 4 * 1024 : 1024 * 1024;
+      const maximum = kind === 3 ? 4 * 1024 : 4 * 1024 * 1024;
       if (size === 0 || size > maximum || buffered.length < 32 + size) {
         if (size === 0 || size > maximum) child.kill();
         return;
@@ -738,7 +738,7 @@ async function main(): Promise<void> {
     const probe = JSON.parse(run(executable, ["--probe"])) as Probe;
     const adapter = probe.adapters.find((candidate) => candidate.hardwareH264.length > 0);
     const encoder = adapter?.hardwareH264[0];
-    if (probe.protocol !== 6 || !adapter || !encoder) {
+    if (probe.protocol !== 7 || !adapter || !encoder) {
       throw new Error("No hardware H264 capture path is available");
     }
 
@@ -816,7 +816,7 @@ async function main(): Promise<void> {
       "balanced",
       "--codec",
       "h264",
-      "--protocol-v6",
+      "--protocol-v7",
       "--output", "1280", "720", "30", "3000000",
     ], { stdio: "pipe", windowsHide: true });
     capture.stderr.resume();

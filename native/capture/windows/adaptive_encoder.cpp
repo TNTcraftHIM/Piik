@@ -525,11 +525,15 @@ class AdaptiveEncoder::Impl final : public webrtc::VideoSourceInterface<webrtc::
                         const webrtc::CodecSpecificInfo*) override {
     try {
       std::lock_guard<std::mutex> lock(output_mutex_);
-      if (output_ || image.RtpTimestamp() != rtp_timestamp_ || image.size() == 0 ||
-          image.size() > kMaxProductAccessUnitBytes || image._encodedWidth == 0 ||
-          image._encodedHeight == 0 || image._encodedWidth > ceiling_.width ||
-          image._encodedHeight > ceiling_.height)
-        Fail("adaptive-output", "WebRTC returned an invalid or out-of-order access unit");
+      if (output_)
+        Fail("adaptive-output-duplicate", "WebRTC returned more than one access unit for the current input");
+      if (image.RtpTimestamp() != rtp_timestamp_)
+        Fail("adaptive-output-timestamp", "WebRTC returned an access unit from a different input");
+      if (image.size() == 0 || image.size() > kMaxProductAccessUnitBytes)
+        Fail("adaptive-output-size", "Encoded access unit bytes=" + std::to_string(image.size()));
+      if (image._encodedWidth == 0 || image._encodedHeight == 0 ||
+          image._encodedWidth > ceiling_.width || image._encodedHeight > ceiling_.height)
+        Fail("adaptive-output-dimensions", "WebRTC returned output outside its configured dimensions");
       AdaptiveAccessUnit output;
       output.access_unit.timestamp100ns = timestamp100ns_;
       output.access_unit.key_frame = image.IsKey();

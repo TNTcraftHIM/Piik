@@ -13,7 +13,7 @@
 
 namespace screener::capture {
 
-constexpr DWORD kMaxProductAccessUnitBytes = 1024 * 1024;
+constexpr DWORD kMaxProductAccessUnitBytes = 4 * 1024 * 1024;
 constexpr DWORD kMaxStatusBytes = 4 * 1024;
 enum class OutputKind : UINT8 { pcm = 1, h264 = 2, status = 3, vp8 = 4, begin = 5, unavailable = 6 };
 

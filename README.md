@@ -36,6 +36,9 @@ P2P is best effort, not a guarantee that every network pair connects. The
 issues. Client access is open by default; its launcher can set an optional
 site-access password. This does not change access rules on a saved Site.
 
+For Vivaldi with a VPN extension, see
+[Client WebRTC troubleshooting](./cmd/screener-client/README.md#vivaldi-and-vpn-extensions).
+
 ## Local Development
 
 Node.js 24, npm 11, and Go 1.26 are required.

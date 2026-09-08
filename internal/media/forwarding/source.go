@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/TNTcraftHIM/Screener/internal/media/encoded"
 	"github.com/livekit/livekit-server/pkg/sfu"
 	"github.com/livekit/livekit-server/pkg/sfu/buffer"
 	"github.com/livekit/mediatransportutil"
@@ -65,7 +66,7 @@ func NewSource(options SourceOptions) (*Source, error) {
 		return nil, errors.New("forwarded video source is invalid")
 	}
 	if options.MaxPackets == 0 {
-		options.MaxPackets = buffer.InitPacketBufferSizeVideo
+		options.MaxPackets = encoded.MaxPacketWindow
 	}
 	if options.MaxPackets < buffer.InitPacketBufferSizeVideo || options.MaxPackets > 1<<16 {
 		return nil, errors.New("forwarded video packet bound is invalid")

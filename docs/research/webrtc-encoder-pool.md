@@ -492,7 +492,8 @@ Unneeded physical codec slots stop, and a Native relay still owns one decoder
 process for all locally derived groups. Source-generation changes and rejected
 timestamps are fenced before attachment changes.
 
-The internal capture v6 contract adds independent per-slot activation in place
+The internal capture v7 contract supports encoded AUs up to 4 MiB and independent
+per-slot activation in place
 of the old prefix count, permitting equal-ceiling outputs with different
 budgets. All three platform producers implement that contract. Windows builds
 and normal tests pass; Linux production compilation and CPU-only GStreamer
@@ -522,6 +523,27 @@ a live 480p change, retains decoded Opus and closes publication/capture/UDP
 resources. Its Vite server disables file watching: scanning the growing ignored
 build tree had blocked the test's in-process event loop and CDP navigation
 before media started. No Browser media deadline was relaxed to obtain the pass.
+
+The subsequent automatic-BWE relay checks are mixed: one 120 kbps constrained
+run retained a roughly 49 kbps estimate throughout the twelve seconds after
+release; an instrumented repeat, with no runtime correction, returned to the
+original 640x360 output about 1.3 seconds after release. That successful trace
+shows valid higher-output demand and the stock congestion guard clearing, not
+proof of why the earlier run stayed low. The fixture's 6 Mbps value is link
+capacity, not payload rate: its replayed original is roughly 157 kbps and its
+bounded queue makes keyframe/retransmission bursts relevant. Temporary probe
+instrumentation was removed. Observation files now follow each received-output
+path and counters follow the actually attached group, preserving failed runs
+and avoiding stale-group attribution. This is an unresolved repeatability
+boundary, not evidence for a new recovery timer or a permanent deadlock.
+
+A bounded CPU-affinity check retained the original 1280x720 child and two
+compatible 640x360 consumers through fifteen seconds with only the capture
+subprocess restricted to one core, then restored its original affinity. All
+three received about 30 fps with the same shared group and decoder process.
+The subprocess used only about 11.5% of that core during the restriction, so
+this did not induce overload and cannot establish resource-adaptation parity.
+The temporary fixture was removed and process/affinity cleanup verified.
 
 ## Replacement And Preservation Map
 

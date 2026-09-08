@@ -3,9 +3,15 @@ package mediaedge
 import (
 	"bytes"
 	"encoding/hex"
+	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/TNTcraftHIM/Screener/internal/media/encoded"
+	"github.com/livekit/livekit-server/pkg/sfu"
 	"github.com/pion/rtp"
+	"github.com/pion/rtp/codecs"
+	"github.com/pion/webrtc/v4"
 )
 
 func TestRelayInputKeepsRecoveryAndEmitsACompleteQuietFrame(t *testing.T) {
@@ -41,6 +47,88 @@ func TestRelayInputKeepsRecoveryAndEmitsACompleteQuietFrame(t *testing.T) {
 	if err != nil || !frame.KeyFrame || !bytes.Contains(frame.Data, configuration[:4+len(input.sps)]) ||
 		!bytes.Contains(frame.Data, input.pps) {
 		t.Fatal("H264 IDR lost preceding decoder configuration")
+	}
+}
+
+func TestLargeRecoveryUsesTheDefaultPacketWindow(t *testing.T) {
+	check := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Standard user-data SEI plus the library's valid H264 keyframe. The SEI
+	// makes this AU exceed 500 RTP packets without a codec/GPU test dependency.
+	var data []byte
+	for _, nal := range sfu.H264KeyFrame2x2[:2] {
+		data = append(data, 0, 0, 0, 1)
+		data = append(data, nal...)
+	}
+	data = append(data, 0, 0, 0, 1, 0x06, 5)
+	const userBytes = 1024 * 1024
+	for size := userBytes; size >= 255; size -= 255 {
+		data = append(data, 255)
+	}
+	data = append(data, userBytes%255)
+	data = append(data, bytes.Repeat([]byte{0x55}, userBytes)...)
+	data = append(data, 0x80, 0, 0, 0, 1)
+	data = append(data, sfu.H264KeyFrame2x2IDR...)
+	packetizer := encoded.NewPacketizer(&codecs.H264Payloader{}, h264PayloadType, videoPacketMTU)
+	packets, err := packetizer.Packetize(data, 0, time.Second)
+	check(err)
+	if len(packets) <= 500 || len(packets) > encoded.MaxPacketWindow {
+		t.Fatal("fixture does not exercise the packet window boundary")
+	}
+	engine, err := NewEngine(EngineOptions{BindAddress: "127.0.0.1:0", IncludeLoopback: true, InitialBitrate: 12_000_000})
+	check(err)
+	defer engine.Close()
+	source, err := engine.NewSource("h264", 1, 1, nil)
+	check(err)
+	defer source.Close()
+	check(source.SetFormat(0, 2, 2))
+	check(source.ConfigureOutputs([]uint32{12_000_000}))
+	edge, err := engine.NewEdge(source, EdgeOptions{ConnectionID: "large-recovery"})
+	check(err)
+	defer edge.Close()
+	receiver := newReceiver(t)
+	defer receiver.Close()
+	var complete atomic.Bool
+	receiver.OnTrack(func(track *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
+		input := relayVideoInput{codec: "h264"}
+		var parts []byte
+		var previous uint32
+		for {
+			packet, _, err := track.ReadRTP()
+			if err != nil {
+				return
+			}
+			if err = input.push(packet); err != nil {
+				t.Error(err)
+				return
+			}
+			for {
+				sample, timestamp := input.pop()
+				if sample == nil {
+					break
+				}
+				if timestamp != previous {
+					parts = parts[:0]
+					previous = timestamp
+				}
+				parts = append(parts, sample.Data...)
+				if bytes.Equal(parts, data) {
+					complete.Store(true)
+				}
+			}
+		}
+	})
+	connectEdgeToReceiver(t, edge, receiver)
+	for attempt := 1; attempt <= 4 && !complete.Load(); attempt++ {
+		check(writeSourceFrame(source, data, time.Duration(attempt)*time.Second, time.Second))
+		time.Sleep(time.Second)
+	}
+	if !complete.Load() || edge.transport.Egress().DroppedPackets != 0 {
+		t.Fatalf("large recovery did not survive source, pacer and assembly: packets=%d complete=%v egress=%+v", len(packets), complete.Load(), edge.transport.Egress())
 	}
 }
 

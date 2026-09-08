@@ -136,7 +136,7 @@ func TestPublicationQualityUsesHighestSentLayerCadence(t *testing.T) {
 	})
 	connectEdgeToReceiver(t, &publication.signaling, receiver)
 	assigned, err := forwarding.NewEncodedSource(forwarding.SourceOptions{
-		ID: string(source.media.TrackID()), StreamID: source.media.StreamID(), Codec: source.media.Codec(), MaxPackets: 500,
+		ID: string(source.media.TrackID()), StreamID: source.media.StreamID(), Codec: source.media.Codec(), MaxPackets: encoded.MaxPacketWindow,
 		Formats: []forwarding.LayerFormat{{Width: 8, Height: 8, Bitrate: 45_000}, {Width: 8, Height: 8, Bitrate: 150_000}},
 	})
 	check(err)

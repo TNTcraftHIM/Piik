@@ -367,6 +367,28 @@ func TestControlSessionProcessesARequestBurstInOrder(t *testing.T) {
 	}
 }
 
+func TestDeferredResponseKeepsControlResponsiveAndRequestIdentity(t *testing.T) {
+	extension := &testControlSession{events: make(chan any, 1), closed: make(chan struct{})}
+	server := startTestServerWithOptions(t, Options{AllowedOrigins: []string{testOrigin},
+		NewControl: func() ControlSession { return extension }})
+	connection := dialControl(t, server.Endpoint(), server.Endpoint().InstanceToken, testOrigin)
+	defer connection.CloseNow()
+	writeControl(t, connection, requestJSON("request_hello", "hello"))
+	var value controlMessage
+	readControl(t, connection, &value)
+	writeControl(t, connection, requestJSON("request_pending", "deferred"))
+	writeControl(t, connection, requestJSON("request_ping", "ping"))
+	readControl(t, connection, &value)
+	if value.Type != "pong" || value.ID != "request_ping" {
+		t.Fatalf("pending operation blocked control: %+v", value)
+	}
+	extension.events <- controlMessage{Version: ProtocolVersion, ID: "request_pending", Type: "extension-response"}
+	readControl(t, connection, &value)
+	if value.Type != "extension-response" || value.ID != "request_pending" {
+		t.Fatalf("deferred response lost its request identity: %+v", value)
+	}
+}
+
 func TestStartAlwaysBindsToIPv4Loopback(t *testing.T) {
 	server := startTestServer(t, testOrigin)
 	host, _, err := net.SplitHostPort(server.Endpoint().Host)
@@ -519,6 +541,9 @@ func (session *blockingControlSession) Close() error {
 
 func (session *testControlSession) Handle(_ context.Context, payload []byte) (any, error) {
 	message, err := decodeEnvelope(payload)
+	if err == nil && message.Type == "deferred" {
+		return nil, nil
+	}
 	if err != nil || message.Type != "extension" {
 		return nil, errors.New("unexpected extension request")
 	}

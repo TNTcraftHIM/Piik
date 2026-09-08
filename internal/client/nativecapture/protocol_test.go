@@ -66,6 +66,30 @@ func TestReadFrameRejectsInvalidKindsFlagsAndBounds(t *testing.T) {
 	}
 }
 
+func TestMediaEnvelopeAcceptsFourMiBAndRejectsLargerFrames(t *testing.T) {
+	const limit = 4 * 1024 * 1024
+	frame := Frame{Kind: FrameH264, KeyFrame: true, Width: 2560, Height: 1440,
+		Duration: time.Second / 60, Data: make([]byte, limit)}
+	var output bytes.Buffer
+	if err := writeFrame(&output, frame); err != nil {
+		t.Fatal(err)
+	}
+	read, err := readFrame(bytes.NewReader(output.Bytes()))
+	if err != nil || len(read.Data) != limit || read.Width != frame.Width || read.Height != frame.Height {
+		t.Fatalf("4 MiB media envelope rejected: bytes=%d err=%v", len(read.Data), err)
+	}
+	frame.Data = append(frame.Data, 0)
+	var rejected bytes.Buffer
+	if err := writeFrame(&rejected, frame); err == nil || rejected.Len() != 0 {
+		t.Fatal("oversized media wrote an envelope")
+	}
+	header := append([]byte(nil), output.Bytes()[:envelopeHeaderBytes]...)
+	binary.BigEndian.PutUint32(header[28:32], limit+1)
+	if _, err := readFrame(bytes.NewReader(header)); err == nil || errors.Is(err, io.EOF) {
+		t.Fatal("oversized input was not rejected before payload allocation")
+	}
+}
+
 func TestInputBeginAndUnavailableLayerHaveDistinctEnvelopes(t *testing.T) {
 	header := make([]byte, envelopeHeaderBytes)
 	copy(header, "SMED")
@@ -111,7 +135,7 @@ func TestOutputProfilesAndControlFramesShareOneBoundedContract(t *testing.T) {
 		t.Fatalf("derived outputs = %+v", outputs)
 	}
 	derived := []OutputProfile{{Width: 160, Height: 90, Framerate: 30, Bitrate: 90_000}, {Width: 320, Height: 180, Framerate: 30, Bitrate: 300_000}}
-	if _, err := appendOutputArguments([]string{"--protocol-v6"}, derived); err != nil {
+	if _, err := appendOutputArguments([]string{"--protocol-v7"}, derived); err != nil {
 		t.Fatal(err)
 	}
 	for _, slots := range [][]OutputProfile{{derived[1], derived[0]}, {derived[0], derived[0]},

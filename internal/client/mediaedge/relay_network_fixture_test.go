@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"io"
 	"os"
-	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -281,13 +280,14 @@ func TestRelayNetworkVP8Fixture(t *testing.T) {
 			state, plan := children[1].transport.Output.State(), source.relayPlan()
 			physical := 0
 			source.writeMu.Lock()
-			if group := source.groupForMedia(children[1].transport.CurrentSource()); group != nil {
+			currentSource := children[1].transport.CurrentSource()
+			if group := source.groupForMedia(currentSource); group != nil {
 				physical = group.slot
 			}
 			source.writeMu.Unlock()
 			row := observation{Second: elapsed.Seconds(), Capacity: capacity, CodecBudget: plan.controls.Bitrates[physical],
 				VideoBudget: state.VideoBudget, Target: state.Target, Current: state.Current}
-			if buffer := source.media.GetAllBuffers()[0]; buffer != nil {
+			if buffer := currentSource.GetAllBuffers()[0]; buffer != nil {
 				if stats := buffer.GetStats(); stats != nil {
 					row.DerivedFrames, row.DerivedBytes = uint64(stats.Frames), stats.Bytes
 				}
@@ -325,6 +325,13 @@ func TestRelayNetworkVP8Fixture(t *testing.T) {
 	}
 	receivedMu.Lock()
 	defer receivedMu.Unlock()
+	// The last reporting tick precedes shutdown; include its unreported tail
+	// with the same original-size and post-release capture-time requirements.
+	for _, output := range delivered[1][previousFrames[1]:] {
+		if output.ReceivedAt > 18*time.Second && output.Width == 640 && output.PTS > 18*time.Second {
+			recovered = true
+		}
+	}
 	outputPath := os.Getenv("SCREENER_ENCODED_OUTPUT")
 	if outputPath == "" {
 		t.Fatal("SCREENER_ENCODED_OUTPUT must name the ignored received-frame artifact")
@@ -339,7 +346,7 @@ func TestRelayNetworkVP8Fixture(t *testing.T) {
 		Constrained, Recovered bool
 	}{observations, lost, processStarts, constrained, recovered}, "", "  ")
 	check(err)
-	check(os.WriteFile(filepath.Join(filepath.Dir(outputPath), "relay-network.observations.json"), data, 0600))
+	check(os.WriteFile(outputPath+".observations.json", data, 0600))
 	if !constrained || !recovered || process == nil || lost[0] != 0 {
 		t.Fatalf("actual codec/network result: constrained=%v recovered=%v process=%v loss=%v", constrained, recovered, process != nil, lost)
 	}

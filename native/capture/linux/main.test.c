@@ -8,7 +8,7 @@ static void check_slot_profiles(void) {
       "capture", "--capture-video", "picker", "1", "0", "0",
       "--adapter-index", "0", "--mft-index", "0", "--width", "1280",
       "--height", "720", "--fps", "30", "--bitrate", "3000000",
-      "--preference", "balanced", "--codec", "h264", "--protocol-v6"};
+      "--preference", "balanced", "--codec", "h264", "--protocol-v7"};
   for (guint index = 0; index < 7; ++index) {
     guint offset = 23 + index * 5;
     arguments[offset] = "--output";
@@ -35,7 +35,7 @@ static void check_slot_profiles(void) {
 
   char *encoded[11 + 6 * 5] = {
       "capture", "--encoded-video", "--codec", "h264", "--adapter-index", "0",
-      "--mft-index", "0", "--preference", "balanced", "--protocol-v6"};
+      "--mft-index", "0", "--preference", "balanced", "--protocol-v7"};
   memcpy(encoded + 11, arguments + 23, 6 * 5 * sizeof(char *));
   run = (CaptureRun){0};
   g_assert_true(parse_profile(G_N_ELEMENTS(encoded), encoded, &run, &encoder));

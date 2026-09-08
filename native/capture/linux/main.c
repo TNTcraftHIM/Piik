@@ -15,9 +15,9 @@
 #include "portal.h"
 
 enum {
-  kCaptureProtocol = 6,
+  kCaptureProtocol = 7,
   kMaxOutputs = 6,
-  kMaxPayloadBytes = 1024 * 1024,
+  kMaxPayloadBytes = 4 * 1024 * 1024,
   kAudioFrameBytes = 960 * 2 * 2,
 };
 
@@ -121,7 +121,7 @@ static gboolean write_frame(guint8 kind, guint8 flags, guint8 layer,
                             guint width, guint height, guint64 timestamp,
                             guint64 duration, const guint8 *payload, gsize size) {
   if ((kind != 5 && (payload == NULL || size == 0)) ||
-      size > kMaxPayloadBytes) return FALSE;
+      size > ((kind == 3 || kind == 6) ? 1024 * 1024 : kMaxPayloadBytes)) return FALSE;
   uint8_t header[32] = {'S', 'M', 'E', 'D', 2, kind, flags, layer};
   put_u64_be(header + 8, timestamp);
   put_u64_be(header + 16, duration);
@@ -408,7 +408,7 @@ static gboolean parse_profile(int count, char **values, CaptureRun *run,
         strcmp(values[4], "--adapter-index") != 0 || strcmp(values[5], "0") != 0 ||
         strcmp(values[6], "--mft-index") != 0 || !parse_uint(values[7], 0, 63, encoder_index) ||
         strcmp(values[8], "--preference") != 0 || !parse_preference(values[9], profile) ||
-        strcmp(values[10], "--protocol-v6") != 0 || !parse_outputs(count, values, 11, run)) return FALSE;
+        strcmp(values[10], "--protocol-v7") != 0 || !parse_outputs(count, values, 11, run)) return FALSE;
     for (guint index = 0; index < run->output_count; ++index) {
       const VideoProfile *output = &run->outputs[index].profile;
       profile->width = MAX(profile->width, output->width);
@@ -433,7 +433,7 @@ static gboolean parse_profile(int count, char **values, CaptureRun *run,
       strcmp(values[18], "--preference") != 0 ||
       strcmp(values[20], "--codec") != 0 ||
       (strcmp(values[21], "auto") != 0 && strcmp(values[21], "h264") != 0) ||
-      strcmp(values[22], "--protocol-v6") != 0 ||
+      strcmp(values[22], "--protocol-v7") != 0 ||
       !parse_uint(values[9], 0, 63, encoder_index) ||
       !parse_uint(values[11], 1, 16384, &profile->width) ||
       !parse_uint(values[13], 1, 16384, &profile->height) ||

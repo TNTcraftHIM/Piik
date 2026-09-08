@@ -1657,10 +1657,6 @@ export function HostPage({
       if (!nativeUpdate && captureChanged) {
         await applyCaptureProfile(activeStream, nextProfile);
       }
-      const ingress = nativeMediaIngressRef.current;
-      if (ingress && !(await ingress.updateProfile(nextProfile))) {
-        throw new Error("Native media ingress is unavailable");
-      }
       if (
         !isCurrentGeneration(generation) ||
         qualityChangeRef.current !== token ||
@@ -1676,6 +1672,20 @@ export function HostPage({
         setDetails(captureDetails(activeStream));
       }
       signalRef.current?.setHostQualitySettings(appliedProfile);
+      const ingress = nativeMediaIngressRef.current;
+      if (ingress) {
+        const updated = await ingress.updateProfile(appliedProfile).catch(() => false);
+        if (
+          !isCurrentGeneration(generation) ||
+          qualityChangeRef.current !== token ||
+          streamRef.current !== activeStream
+        ) {
+          return;
+        }
+        if (!updated && nativeMediaIngressRef.current === ingress) {
+          recoverBrowserFanout(ingress);
+        }
+      }
       const activeSfuRoute = hostSfuRouteRef.current;
       const [results, sfuUpdated] = await Promise.all([
         Promise.all(
@@ -1697,7 +1707,8 @@ export function HostPage({
       ]);
       if (
         isCurrentGeneration(generation) &&
-        qualityChangeRef.current === token
+        qualityChangeRef.current === token &&
+        streamRef.current === activeStream
       ) {
         const failed = results.filter((updated) => !updated).length;
         const sfuWarning =
@@ -1721,7 +1732,8 @@ export function HostPage({
     } catch (error) {
       if (
         isCurrentGeneration(generation) &&
-        qualityChangeRef.current === token
+        qualityChangeRef.current === token &&
+        streamRef.current === activeStream
       ) {
         if (pendingQualityChangeRef.current === null) {
           advancedQualityRef.current = qualitySettingsRef.current;
@@ -2216,7 +2228,12 @@ export function HostPage({
         pendingQualitySettings ?? message.qualitySettings;
       activeRouteRevisionRef.current = message.routeRevision;
       if (reauthenticated) {
+        const draft = qualityChangeRef.current ? advancedQualityRef.current : null;
         commitQuality(currentQualitySettings);
+        if (draft) {
+          advancedQualityRef.current = draft;
+          setAdvancedQuality(draft);
+        }
         const endpointUpdates = [
           ...[...peersRef.current.values()].map((peer) =>
             peer.updateProfile(currentQualitySettings),
@@ -2239,8 +2256,8 @@ export function HostPage({
           assignment: message.routeAssignment,
         })
         .then(async () => {
-          if (reauthenticated && hostSfuRouteRef.current === route) {
-            await route.updateProfile(currentQualitySettings);
+          if (reauthenticated && isCurrentGeneration(generation) && hostSfuRouteRef.current === route) {
+            await route.updateProfile(qualitySettingsRef.current);
           }
           syncHostSfuQualityWarning(route, generation);
         });
@@ -2718,6 +2735,13 @@ export function HostPage({
         );
       }
       const sfuUpdated = await hostSfuRouteRef.current?.updateProfile(qualitySettingsRef.current) ?? true;
+      if (
+        !isCurrentGeneration(generation) ||
+        sourceSwitchRef.current !== token ||
+        nativeClientRef.current !== client
+      ) {
+        return;
+      }
       setNotice(sourceSwitchNotice({
         failedPeerCount: 0,
         sfuReplaced: sfuUpdated,

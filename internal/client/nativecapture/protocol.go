@@ -6,11 +6,13 @@ import (
 	"io"
 	"time"
 	"unicode/utf8"
+
+	"github.com/TNTcraftHIM/Screener/internal/media/encoded"
 )
 
 const (
 	envelopeHeaderBytes = 32
-	maxMediaBytes       = 1024 * 1024
+	maxMediaBytes       = encoded.MaxAccessUnitBytes
 	maxStatusBytes      = 4 * 1024
 	maxControlBytes     = 64
 )

@@ -150,6 +150,34 @@ preparation step failed or explain the reported brief Viewer-size change.
 Current diagnostics add fixed preparation rejection stages without changing
 capture recovery policy. Do not label the affected-device report resolved.
 
+The matched `0675265` local reproduction then held CS2 minimized continuously
+for 8.6 seconds during a 720p request. Preparation failed with `wait-timeout`
+after 5,015 ms and controls reverted; the Viewer retained 1080p and its media
+object. The identical request succeeded in 438 ms after restoring the game.
+The affected machine's subsequent bundle independently records eleven update
+timeouts, three successes and one cancellation caused by share termination.
+This establishes a quiet-source/readiness error in the live-update path, not
+an old setting request overwriting a successfully installed replacement.
+
+That same bundle also contains two independent `adaptive-output` capture
+failures at H264 1440p60, one without a settings update in progress. A controlled
+1440p60/12 Mbps high-entropy input produced a valid 1,609,216-byte keyframe and
+reproduced the one-MiB capture-envelope rejection. The MFT and RTP access-unit
+owners already permit four MiB. Aligning capture readers/writers removes that
+false fatal rejection, but does not by itself establish delivery: the separate
+500-packet forwarding/pacing bound also loses that large recovery frame. Both
+boundaries must be verified before describing the large-frame report as fixed.
+
+The aligned 4,096-packet source/pacing/reassembly window subsequently delivered
+two copies of that actual keyframe byte-for-byte with zero paced drops or
+assembly loss. The 500-packet comparison dropped 1,182 packets and reconstructed
+none. Active fixture heap usage increased by roughly ten to thirteen MiB;
+LiveKit's packet cache still grows lazily and all queues remain bounded. Go
+capture and transport now share the encoded-frame bounds owner. This fixes a
+reproduced legal-input failure, not proof that every compound `adaptive-output`
+error in the field had the same cause; distinct failure stages preserve that
+remaining distinction.
+
 The `cbdd751` Vivaldi bundle shows two successful Native H264 1080p30 capture
 starts followed by a local outbound PeerConnection remaining connecting for
 about 7.985 seconds. The Browser bridge's eight-second startup timeout then
@@ -157,9 +185,26 @@ stops the Native share cleanly. This is a local media-bridge failure boundary,
 not evidence that Windows capture or the control WebSocket failed. That bundle
 does not distinguish ICE from DTLS or a Browser policy. Current diagnostics
 record those states and candidate-type counts separately; the UI reports a
-connection error. Vivaldi's documented WebRTC IP-handling setting is only an
-[A/B lead](https://help.vivaldi.com/desktop/privacy/privacy-settings/), not the
-proven cause or authorization for a Browser-specific transport fallback.
+connection error. The subsequent `0675265` bundle shows four successful capture
+starts, each with two Native UDP host candidates, no usable remote candidates,
+ICE stuck checking and no DTLS connection before the same deadline.
+
+The owner then confirmed the affected Vivaldi report was resolved: a VPN
+extension forcibly disabled **Broadcast IP for Best WebRTC Performance**;
+correcting the setting/extension restored Native sharing. The confirmed cause
+is that extension's WebRTC policy, not unsupported Windows capture. VPN
+extensions may reapply the override; the
+[Client troubleshooting guide](../../cmd/screener-client/README.md#vivaldi-and-vpn-extensions)
+owns the user steps. This does not authorize a Browser-specific transport fallback.
+
+An isolated Chrome 152.0.7977.82 data-channel A/B verifies the policy
+mechanism: default handling gathers one UDP host candidate per peer and connects
+ICE/DTLS in 33 ms; `disable_non_proxied_udp` gathers no candidates and remains
+unconnected at 8,009 ms. The check uses fresh profiles and the effective
+`--webrtc-ip-handling-policy` switch, without capture, encoding or user-profile
+changes. This establishes Chromium's policy mechanism; the affected Vivaldi case
+was resolved by the owner's setting correction above. Extra STUN or a longer
+timeout cannot restore candidates disabled by that policy.
 
 Primary references: [CreateForMonitor](https://learn.microsoft.com/en-us/windows/win32/api/windows.graphics.capture.interop/nf-windows-graphics-capture-interop-igraphicscaptureiteminterop-createformonitor),
 [CreateFreeThreaded](https://learn.microsoft.com/en-us/uwp/api/windows.graphics.capture.direct3d11captureframepool.createfreethreaded),

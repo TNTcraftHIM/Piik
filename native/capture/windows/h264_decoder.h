@@ -55,7 +55,8 @@ class H264Decoder final {
   H264Decoder& operator=(const H264Decoder&) = delete;
 
   void Decode(const InputEnvelope& input, const Consumer& consume) {
-    if (input.kind != 2 || input.data.empty()) throw std::runtime_error("Invalid H264 decoder input");
+    if (input.kind != 2 || input.data.empty() || input.data.size() > 4 * 1024 * 1024)
+      throw std::runtime_error("Invalid H264 decoder input");
     if (!configured_) {
       if (!input.recovery) throw std::runtime_error("H264 decoder needs an independent recovery input");
       Microsoft::WRL::ComPtr<IMFMediaType> type;

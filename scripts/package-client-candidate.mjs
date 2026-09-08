@@ -255,7 +255,7 @@ async function verifyPackage(root, target, revision, temporaryRoot) {
   if (target.captureName) {
     const capture = join(root, "runtime", "native", target.captureName);
     const probe = JSON.parse(run(capture, ["--probe"], root));
-    if (probe?.protocol !== 6) fail("Packaged native capture probe is invalid");
+    if (probe?.protocol !== 7) fail("Packaged native capture probe is invalid");
   }
   await verifyLocalPackage(root, target, temporaryRoot);
 }

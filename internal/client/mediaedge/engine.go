@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/TNTcraftHIM/Screener/internal/client/portmapping"
+	"github.com/TNTcraftHIM/Screener/internal/media/encoded"
 	"github.com/TNTcraftHIM/Screener/internal/media/forwarding"
 	"github.com/pion/ice/v4"
 	"github.com/pion/interceptor"
@@ -280,7 +281,7 @@ func (engine *Engine) NewSource(codec string, capacity, layers int, requestKeyFr
 	}
 	media, err := forwarding.NewEncodedSource(forwarding.SourceOptions{
 		ID: "screen", StreamID: "screener-native", Codec: videoCodecs[codec],
-		Formats: make([]forwarding.LayerFormat, layers), MaxPackets: 500,
+		Formats: make([]forwarding.LayerFormat, layers), MaxPackets: encoded.MaxPacketWindow,
 		OnRTCP: func(layer int, packets []rtcp.Packet) {
 			for _, packet := range packets {
 				switch packet.(type) {

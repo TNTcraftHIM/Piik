@@ -39,7 +39,11 @@ production behavior and remaining acceptance.
 - Native quality changes use the same room settings. The Client prepares a new
   platform capture/encoder generation, then replaces the old generation behind
   the same encoded source and PeerConnections; audio-only changes update the
-  current Opus encoder directly. Platform quality preference uses the hardware
+  current Opus encoder directly. A live profile update may remain pending while
+  the selected source produces no frames. Setup and encoding failures remain
+  bounded; quiet-source waiting must not block pause, stop or connection control.
+  Applied settings change only after the replacement is ready and installed;
+  failure preserves the previous capture and profile. Platform quality preference uses the hardware
   encoder's standard quality-versus-speed hint. Pion owns Native WebRTC
   transport; the shared media adapter uses LiveKit media components for bandwidth
   estimation, forwarding allocation, pacing and recovery.

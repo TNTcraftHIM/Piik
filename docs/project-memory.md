@@ -90,7 +90,7 @@ implementation and routine UI detail.
 ## Current Snapshot
 
 The candidate uses strict `screener-v22` Browser/server signaling, Native control
-v9 and capture v6 together. Embedded SFU SDP/ICE and demand travel over the
+v9 and capture v7 together. Embedded SFU SDP/ICE and demand travel over the
 authenticated room WebSocket, without an external room service or media token.
 Committed first-frame readiness, bounded candidate-relative progress, optional
 SQLite room authority and the H.264/VP8 sender gate remain. [Status](./status.md)

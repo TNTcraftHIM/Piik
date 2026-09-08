@@ -315,7 +315,7 @@ func (session *Session) UpdateProfile(profile QualityProfile) error {
 	defer session.updateMu.Unlock()
 
 	session.mu.Lock()
-	if session.closed {
+	if session.closed || session.ctx.Err() != nil {
 		session.mu.Unlock()
 		return errors.New("native share is unavailable")
 	}
@@ -334,7 +334,7 @@ func (session *Session) UpdateProfile(profile QualityProfile) error {
 			}
 		}
 		session.mu.Lock()
-		if session.closed {
+		if session.closed || session.ctx.Err() != nil {
 			session.mu.Unlock()
 			return errors.New("native share is unavailable")
 		}
@@ -344,7 +344,7 @@ func (session *Session) UpdateProfile(profile QualityProfile) error {
 	}
 
 	// Updating an existing source never waits for an interactive picker.
-	replacement, state, err := session.prepareVideo(session.ctx, options, false)
+	replacement, state, err := session.prepareVideo(session.ctx, options, false, true)
 	if err != nil {
 		return err
 	}
@@ -388,7 +388,7 @@ func (session *Session) ReplaceSource(
 	}
 	options.Profile = profile.Video
 	options.RestoreToken = ""
-	replacement, state, err := session.prepareVideo(ctx, options, options.Target.Kind == "picker")
+	replacement, state, err := session.prepareVideo(ctx, options, options.Target.Kind == "picker", false)
 	if err != nil {
 		return err
 	}
@@ -429,6 +429,7 @@ func (session *Session) prepareVideo(
 	ctx context.Context,
 	options nativecapture.VideoOptions,
 	interactive bool,
+	allowQuiet bool,
 ) (*nativecapture.Stream, CaptureState, error) {
 	options.OutputGroups = session.edgeCapacity
 	replacement, err := nativecapture.StartVideo(
@@ -446,6 +447,7 @@ func (session *Session) prepareVideo(
 		options.Profile,
 		options.Codec,
 		interactive,
+		allowQuiet,
 	)
 	if err != nil {
 		_ = replacement.Close()
@@ -463,7 +465,7 @@ func (session *Session) commitCapture(
 	replaceAudio bool,
 ) error {
 	session.mu.Lock()
-	if session.closed {
+	if session.closed || session.ctx.Err() != nil {
 		session.mu.Unlock()
 		_ = replacement.Close()
 		if replacementAudio != nil {
@@ -855,43 +857,69 @@ func waitForCaptureProfile(
 	profile nativecapture.VideoProfile,
 	codec string,
 	interactive bool,
+	allowQuiet bool,
 ) (CaptureState, error) {
 	type result struct {
 		state CaptureState
 		err   error
 		stage string
+		input bool
 	}
 	ready := make(chan result, 1)
+	stopped := make(chan struct{})
+	defer close(stopped)
 	go func() {
+		send := func(value result) bool {
+			select {
+			case ready <- value:
+				return true
+			case <-stopped:
+				return false
+			}
+		}
+		inputSeen := false
 		for {
 			frame, err := stream.Read()
 			if err != nil {
-				ready <- result{stage: "process-ended", err: errors.New("native capture profile did not become ready")}
+				send(result{stage: "process-ended", err: errors.New("native capture profile did not become ready")})
 				return
 			}
 			if frame.Kind == nativecapture.FrameLayerUnavailable {
-				ready <- result{stage: "output-unavailable", err: errors.New("native capture profile has an unavailable output")}
+				send(result{stage: "output-unavailable", err: errors.New("native capture profile has an unavailable output")})
 				return
+			}
+			if frame.Kind == nativecapture.FrameBegin && !inputSeen {
+				inputSeen = true
+				if !send(result{input: true}) {
+					return
+				}
 			}
 			if frame.Kind != nativecapture.FrameStatus {
 				continue
 			}
 			state, err := decodeCaptureState(frame.Data)
 			if err != nil {
-				ready <- result{stage: "status-invalid", err: err}
+				send(result{stage: "status-invalid", err: err})
 				return
 			}
 			if !slices.Equal(state.Outputs, stream.Outputs()) {
-				ready <- result{stage: "outputs-mismatch", err: errors.New("native capture outputs were not applied")}
+				send(result{stage: "outputs-mismatch", err: errors.New("native capture outputs were not applied")})
+				return
+			}
+			if state.Codec != codec {
+				send(result{stage: "profile-mismatch", err: errors.New("native capture codec was not applied")})
 				return
 			}
 			if state.State == "active" {
-				if state.Codec != codec || state.Width != profile.Width || state.Height != profile.Height ||
+				if state.Width != profile.Width || state.Height != profile.Height ||
 					state.FPS != profile.Framerate {
-					ready <- result{stage: "profile-mismatch", err: errors.New("native capture profile was not applied")}
+					send(result{stage: "profile-mismatch", err: errors.New("native capture profile was not applied")})
 					return
 				}
-				ready <- result{state: state}
+				send(result{state: state})
+				return
+			}
+			if !send(result{state: state}) {
 				return
 			}
 		}
@@ -903,18 +931,38 @@ func waitForCaptureProfile(
 		timeout = timer.C
 		defer timer.Stop()
 	}
-	select {
-	case value := <-ready:
-		if value.err != nil {
-			return value.state, captureProfileFailure(ctx, profile, value.stage, value.err)
+	inputSeen, startingSeen := false, false
+	for {
+		select {
+		case value := <-ready:
+			if value.err != nil {
+				return value.state, captureProfileFailure(ctx, profile, value.stage, value.err)
+			}
+			if value.state.State == "active" {
+				return value.state, nil
+			}
+			if allowQuiet && timer != nil {
+				if value.input && !inputSeen {
+					if !startingSeen {
+						return CaptureState{}, captureProfileFailure(ctx, profile, "status-invalid",
+							errors.New("native capture input arrived before its starting state"))
+					}
+					inputSeen = true
+					timer.Reset(startTimeout)
+					timeout = timer.C
+				} else if value.state.State == "starting" && !inputSeen {
+					startingSeen = true
+					timer.Stop()
+					timeout = nil
+				}
+			}
+		case <-timeout:
+			return CaptureState{}, captureProfileFailure(ctx, profile, "wait-timeout",
+				errors.New("native capture profile timed out"))
+		case <-ctx.Done():
+			return CaptureState{}, captureProfileFailure(ctx, profile, "share-stopped",
+				errors.New("native share stopped"))
 		}
-		return value.state, value.err
-	case <-timeout:
-		return CaptureState{}, captureProfileFailure(ctx, profile, "wait-timeout",
-			errors.New("native capture profile timed out"))
-	case <-ctx.Done():
-		return CaptureState{}, captureProfileFailure(ctx, profile, "share-stopped",
-			errors.New("native share stopped"))
 	}
 }
 

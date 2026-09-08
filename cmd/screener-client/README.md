@@ -86,6 +86,21 @@ random `trycloudflare.com` origin lasts only for that Client run. Cloudflare Qui
 Tunnels provide no uptime guarantee; use a configured Site when persistent
 control availability or SFU fallback matters.
 
+## Troubleshooting
+
+### Vivaldi And VPN Extensions
+
+Native screen capture can work while a VPN extension blocks the local WebRTC
+connection between the Client and Browser. This caused a confirmed Vivaldi
+report and was resolved by correcting the extension's WebRTC policy.
+
+In Vivaldi, open **Settings > Privacy and Security > WebRTC IP Handling**, enable
+**Broadcast IP for Best WebRTC Performance**, and reload Screener. If a VPN
+extension controls or turns this setting off again, adjust its WebRTC/IP-leak
+protection setting and verify that broadcasting stays enabled. See
+[Vivaldi's setting documentation](https://help.vivaldi.com/desktop/privacy/privacy-settings/)
+and the [confirmed diagnostic evidence](../../docs/research/native-client-lifecycle.md).
+
 ## Development
 
 The binary embeds the Browser assets, so build them before running it:

@@ -1006,7 +1006,7 @@ ProductArguments ParseProductArguments(int count, wchar_t** values) {
              std::wstring(values[4]) == L"--adapter-index" &&
              std::wstring(values[6]) == L"--mft-index" &&
              std::wstring(values[8]) == L"--preference" &&
-             std::wstring(values[10]) == L"--protocol-v6") {
+             std::wstring(values[10]) == L"--protocol-v7") {
     arguments.mode = ProductArguments::Mode::encoded;
     arguments.codec = NarrowAscii(values[3]);
     if (arguments.codec != "h264" && arguments.codec != "vp8") Fail("argument-codec", "encoded input codec is unsupported");
@@ -1032,7 +1032,7 @@ ProductArguments ParseProductArguments(int count, wchar_t** values) {
              std::wstring(values[16]) == L"--bitrate" &&
              std::wstring(values[18]) == L"--preference" &&
              std::wstring(values[20]) == L"--codec" &&
-             std::wstring(values[22]) == L"--protocol-v6") {
+             std::wstring(values[22]) == L"--protocol-v7") {
     arguments.mode = ProductArguments::Mode::video;
     arguments.target_kind = ParseTargetKind(values[2]);
     arguments.source_id = ParseUint64(values[3], "argument-source");
@@ -1146,7 +1146,7 @@ void WriteCapabilityProbe() {
 
   std::vector<Adapter> adapters = EnumerateAdapters();
   std::ostringstream output;
-  output << "{\"protocol\":6,\"platform\":\"windows\",\"platformBuild\":"
+  output << "{\"protocol\":7,\"platform\":\"windows\",\"platformBuild\":"
          << JSONString(std::to_string(build))
          << ",\"videoCapture\":" << (window_capture ? "true" : "false")
          << ",\"softwareVP8\":true"

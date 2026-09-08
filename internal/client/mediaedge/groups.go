@@ -4,6 +4,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/TNTcraftHIM/Screener/internal/media/encoded"
 	"github.com/TNTcraftHIM/Screener/internal/media/forwarding"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v4"
@@ -191,7 +192,7 @@ func (source *Source) newGroup(slot int) (*outputGroup, error) {
 	formats[0].Bitrate = source.outputBitrates[slot]
 	media, err := forwarding.NewEncodedSource(forwarding.SourceOptions{
 		ID: string(source.media.TrackID()), StreamID: source.media.StreamID(), Codec: videoCodecs[source.codec],
-		Formats: formats, MaxPackets: 500,
+		Formats: formats, MaxPackets: encoded.MaxPacketWindow,
 		OnRTCP: func(layer int, packets []rtcp.Packet) {
 			for _, packet := range packets {
 				switch packet.(type) {

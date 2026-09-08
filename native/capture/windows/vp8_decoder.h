@@ -32,7 +32,7 @@ class Vp8Decoder final {
   Vp8Decoder& operator=(const Vp8Decoder&) = delete;
 
   Image Decode(const std::vector<uint8_t>& data) {
-    if (data.empty() || data.size() > 1024 * 1024) throw std::runtime_error("Invalid VP8 decoder input size");
+    if (data.empty() || data.size() > 4 * 1024 * 1024) throw std::runtime_error("Invalid VP8 decoder input size");
     if (!(data[0] & 1)) {
       vpx_codec_stream_info_t info{};
       info.sz = sizeof(info);

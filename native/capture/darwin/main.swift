@@ -6,13 +6,13 @@ import Foundation
 import ScreenCaptureKit
 import VideoToolbox
 
-private let captureProtocol = 6
+private let captureProtocol = 7
 private let maxOutputs = 6
 private let width = 1280
 private let height = 720
 private let frameRate: Int32 = 30
 private let bitrate = 3_000_000
-private let maxPayloadBytes = 1_048_576
+private let maxPayloadBytes = 4_194_304
 private let supportedH264Levels: Set<UInt8> = [
     0x1e, 0x1f, 0x20, 0x28, 0x29, 0x2a, 0x32, 0x33,
 ]
@@ -370,7 +370,8 @@ private final class ProtocolWriter {
         duration: UInt64,
         payload: Data
     ) throws {
-        guard (kind == 5 || !payload.isEmpty), payload.count <= maxPayloadBytes else {
+        let maximum = (kind == 3 || kind == 6) ? 1_048_576 : maxPayloadBytes
+        guard (kind == 5 || !payload.isEmpty), payload.count <= maximum else {
             throw CaptureFailure(description: "capture payload is outside its bound")
         }
         var envelope = Data([0x53, 0x4d, 0x45, 0x44, 2, kind, flags, layer])
@@ -1332,7 +1333,7 @@ private func videoProfile(_ arguments: [String]) throws -> VideoProfile {
           let preference = DegradationPreference(rawValue: arguments[19]),
           arguments[20] == "--codec",
           ["auto", "h264"].contains(arguments[21]),
-          arguments[22] == "--protocol-v6" else {
+          arguments[22] == "--protocol-v7" else {
         throw CaptureFailure(description: "invalid video profile arguments")
     }
     let validResolution =
@@ -1614,7 +1615,7 @@ private func encodedVideo(_ arguments: [String]) throws {
           arguments[6] == "--mft-index", arguments[7] == "0",
           arguments[8] == "--preference",
           let preference = DegradationPreference(rawValue: arguments[9]),
-          arguments[10] == "--protocol-v6" else {
+          arguments[10] == "--protocol-v7" else {
         throw CaptureFailure(description: "invalid encoded video arguments")
     }
     let outputs = try outputProfiles(arguments, start: 11)

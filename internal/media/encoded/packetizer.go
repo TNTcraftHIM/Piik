@@ -9,7 +9,11 @@ import (
 	"github.com/pion/rtp"
 )
 
-const maxAccessUnitBytes = 4 * 1024 * 1024
+const MaxAccessUnitBytes = 4 * 1024 * 1024
+
+// At the 1200-byte media MTU, this window covers a maximum-sized fragmented AU
+// with header headroom. It does not promise unlimited tiny-NAL packetization.
+const MaxPacketWindow = MaxAccessUnitBytes / 1024
 const videoClockRate = 90_000
 
 var ErrInvalidTimestamp = errors.New("encoded video timestamp is not monotonic")
@@ -41,7 +45,7 @@ func NewPacketizer(payloader rtp.Payloader, payloadType uint8, mtu uint16) *Pack
 }
 
 func (p *Packetizer) Packetize(data []byte, timestamp, duration time.Duration) ([]*rtp.Packet, error) {
-	if len(data) == 0 || len(data) > maxAccessUnitBytes || timestamp < 0 || duration <= 0 {
+	if len(data) == 0 || len(data) > MaxAccessUnitBytes || timestamp < 0 || duration <= 0 {
 		return nil, errors.New("encoded video access unit is invalid")
 	}
 	if p.rebasePending {

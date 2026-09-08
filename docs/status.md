@@ -56,7 +56,7 @@ embedded candidate below is not deployed.
 ## Current Source
 
 - The candidate uses one shared Go core and the strict `screener-v22`
-  Browser/server contract, Native control v9 and capture v6. These artifacts
+  Browser/server contract, Native control v9 and capture v7. These artifacts
   form one private contract. Optional SQLite persists stable room authority;
   participants, routes and media remain process-only.
 - Hosted Screener owns configured Binding-only STUN and optional SFU UDP

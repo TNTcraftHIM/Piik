@@ -38,6 +38,7 @@ type Options struct {
 }
 
 type ControlSession interface {
+	// A nil response with no error is completed later through Events, using the request ID.
 	Handle(context.Context, []byte) (any, error)
 	Events() <-chan any
 	Close() error
@@ -398,9 +399,12 @@ func (server *Server) handleControl(response http.ResponseWriter, request *http.
 			return
 		}
 		value, handleErr := extension.Handle(controlContext, payload)
-		if handleErr != nil || value == nil {
+		if handleErr != nil {
 			closeControl(connection, "invalid control message")
 			return
+		}
+		if value == nil {
+			continue
 		}
 		if err = write(controlContext, value); err != nil {
 			return

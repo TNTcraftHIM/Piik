@@ -15,6 +15,11 @@ Execution priority is now explicit:
    Real relay checks cover shared output, split/rejoin and 180p/360p delivery.
    Finish full Host/SFU, physical overload and representative network acceptance;
    packet delivery and local fixtures do not establish perceptual parity.
+   Recovery repeatability remains open: one 120 kbps shaped-network run missed
+   the 12-second recovery interval; another recovered without runtime changes.
+   The successful trace shows the framework congestion guard clearing, but does
+   not explain the earlier failure. Preserve both outcomes and isolate the
+   cause before adding policy or claiming reliable recovery.
 2. **Reported capture defects and retained fixes.** Finish the exact CS2
    fullscreen 4:3 stretched, Alt-Tab, advanced-setting, return reproduction and
    the independent Win10 whole-display startup investigation. Preserve this
@@ -129,14 +134,17 @@ compatible direct-child demand. Do not add ancestor-cache discovery or extra
 upstream layer subscriptions merely to avoid a local encode. That expansion's
 subscription/bandwidth/lifecycle cost has no measured benefit in this phase.
 
-Field feedback from the owner's `cbdd751` Client bundles is being resolved in
-parallel. Vivaldi's Native H264 capture starts successfully but the local
-Browser media bridge stays connecting until its eight-second deadline; ICE
-versus DTLS/policy is not yet distinguished. CS2's three 720p update requests
-all return failure, so the UI restores the committed 1080p settings; the old log
-does not identify the exact preparation rejection. The missing bounded
-failure/state evidence is now implemented; verify a cause-specific correction rather than
-assuming unsupported capture or silently weakening Browser/network settings.
+Field feedback from the owner's current Client bundles is being resolved in
+parallel. The Vivaldi report is resolved: a VPN extension forced off WebRTC IP
+broadcasting, and correcting that setting restored Native sharing on the affected
+device. [Client troubleshooting](../cmd/screener-client/README.md#vivaldi-and-vpn-extensions)
+records the remedy. CS2 feedback and local reproduction confirm quiet-source
+profile preparation timing out; 1440p60 capture also exposes inconsistent encoded
+frame and forwarding bounds. Finish both corrections through actual Viewer
+delivery. The reported Browser-setting rollback has a separate confirmed owner
+defect: successful capture changes must not be rolled back only in the UI when
+optional Native ingress fails. Retain pending drafts and reject stale completion
+effects across signaling recovery, stop and the next share.
 
 The returned Go core and frontend fixes are reconciled on the integration
 candidate. The owner authorized hygiene cleanup, matched Server/Client builds,
@@ -200,8 +208,8 @@ a tunnel; include that path in packaged acceptance.
    preserves the running source and later changes still apply. Keep preset
    highlighting tied to applied settings and make the advanced draft/apply
    boundary unambiguous. Complete the Windows display-startup and platform
-   checks above; investigate Vivaldi through primary reports and actual local
-   capability failures, without speculative Browser-specific fallbacks.
+   checks above. The Vivaldi extension-policy case is resolved and documented in
+   [Client troubleshooting](../cmd/screener-client/README.md#vivaldi-and-vpn-extensions).
    The owner narrowed the game reproduction to CS2 in fullscreen 4:3 stretched:
    Alt-Tab out, change advanced sharing settings, then return to the game;
    interruption occurs on return. Ordinary window minimization is not this

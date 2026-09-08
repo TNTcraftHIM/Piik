@@ -15,7 +15,7 @@ import (
 	"github.com/pion/rtp"
 )
 
-const relayPacketLimit = 500 // Same retained-packet bound as the native forwarding source.
+const relayPacketLimit = encoded.MaxPacketWindow
 
 type RelayOptions struct {
 	CaptureProcess string
