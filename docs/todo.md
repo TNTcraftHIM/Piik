@@ -8,6 +8,16 @@ topics are not implementation authority.
 ## Now
 
 Owner-authorized phase: [embedded STUN/SFU and node-local media](./adr/0013-embedded-node-local-media.md).
+The owner restated two delivery goals: integrated STUN/SFU/runtime dependencies
+or one coherent deployment entry, and controllable shared encoding/adaptation/
+SFU distribution. Customizable ownership does not require custom congestion or
+quality algorithms. Preserve this phase's independently useful fixes and Client
+enhancements while reviewing the encoder-pool alternative: concurrent rooms,
+tab/session ownership, Global Link startup, live controls, presentation,
+diagnostics and stable build paths remain in scope. Media-dependent fixes must
+retain their behavior in a replacement, not necessarily their old machinery.
+Do not discard these changes through a wholesale branch reset or expand into
+unrelated features merely because this branch is already large.
 The owner authorized resuming physical acceptance after the 2026-09-08
 machine-freeze report; causation remains unconfirmed. Run one bounded capture/
 codec workload at a time, require cleanup before the next, and keep VM and
@@ -54,6 +64,24 @@ the healthy sibling. The owner accepts best-effort adaptation delays of several
 seconds; do not expand the model to promise imperceptible switching. Permanent
 stalls, stale generations and sibling damage remain defects. Upstream assembly-
 gap recovery is implemented and checked; finish matched-package acceptance.
+The owner reaffirmed shared encoding and weak-path adaptation as the core
+release targets. Fixed original/half-size outputs plus bitrate reduction do not
+establish Browser-equivalent adaptation: the Native lowest encoder cannot yet
+shrink its dimensions further. Investigate mature codec/resource adaptation
+before accepting this boundary or adding another fixed layer. Compare usable
+delivery and recovery against ordinary WebRTC under matched conditions; preserve
+healthy inputs and reusable output ownership. Freeze dependent release approval
+while the adaptive-resolution design remains unresolved.
+The [pinned WebRTC trace and encoder-pool review](./research/webrtc-encoder-pool.md)
+identify the missing resource-adaptation chain and the constraints on retaining
+it behind a shared encoder factory. Test the narrow reuse boundary before an
+engine replacement; matching resolution alone does not establish compatible
+rates, frame dependencies or feedback. The research owns the experiment and
+replacement map, not a second accepted architecture. A new isolated worktree
+is authorized if feasibility is proved;
+do not merge the current candidate just to create that base. Client simplification
+review should identify redundant owners and compensating mechanisms, not split
+files or remove required platform adapters for appearance alone.
 Independent library/service audits may proceed in parallel. Do not add a custom warm pool, media clock
 or congestion algorithm. These are
 not bundled service executables, full LiveKit embedding or per-Viewer Host
@@ -103,8 +131,9 @@ a tunnel; include that path in packaged acceptance.
 1. **Concurrent Client rooms.** Preserve the backend's multiple rooms and one
    Host per room. Tab authority is now separate from the origin-wide resume hint;
    two Native control sessions have independent ownership and bounded admission.
-   Browser multi-tab and control-session lifecycle checks pass; concurrent native
-   capture remains physically unverified. Do not add an unbounded capture map.
+   Browser multi-tab, concurrent Native media and independent session retirement
+   checks pass. Preserve those behaviors through any media replacement; this is
+   not multiple-device or endurance acceptance. Do not add an unbounded capture map.
    A friend's independent
    Browser Host already captures on their own device, not the instance owner's
    helper. Validate that path separately from multiple Native shares on one Client.
@@ -112,7 +141,7 @@ a tunnel; include that path in packaged acceptance.
    `fix/live-quality-capture` fixes against this candidate, retaining only
    independently confirmed capture, setting, access and diagnostic behavior.
    Do not overwrite the new media/transport owners with that older branch.
-   The current VP8 minimize/live-update sequence passes; its scope is recorded
+   The current VP8/H264 minimize/live-update sequences pass; their scope is recorded
    in [capture research](./research/native-client-lifecycle.md). This does not
    prove game HWND replacement or device-loss recovery. Reproduce game backgrounding,
    changing resolution/FPS/bitrate, and returning to the game against the exact
@@ -149,10 +178,10 @@ a tunnel; include that path in packaged acceptance.
    senders; users can use Client to reduce repeated encoding. Revisit Browser
    reuse only for a small mature adapter that preserves adaptation and media
    quality without an application-owned transport or layer controller.
-4. **Control-plane resource fairness.** Calibrate one deployment-wide LiveKit
-   control queue and simple HTTP/WebSocket ingress budgets before implementation;
-   prove a self-hosted stale-token revocation boundary before independently
-   releasing subscription egress; do not introduce accounts, polling, risk
+4. **Control-plane resource fairness.** Reassess ingress budgets against the
+   current authenticated room WebSocket and embedded SFU owner before adding
+   another queue or limiter. The replaced external media-token/control service
+   is not an implementation target. Do not introduce accounts, polling, risk
    scoring, or an independent policy framework.
 5. **Client ownership.** Extract media-session owners from the Host/Viewer pages
    only alongside reachable behavior work. File length alone does not authorize
@@ -175,8 +204,8 @@ a tunnel; include that path in packaged acceptance.
    adding a parallel security framework.
 10. **Public-server package.** Package the exact Web/signaling, STUN/SFU, proxy,
    secrets, health, and recovery contract for a user-owned server.
-11. **Native media endurance.** Exercise long-lived native P2P and Browser-
-    mediated SFU recovery after the platform capture boundary passes. Preserve
+11. **Native media endurance.** Exercise long-lived Native P2P and direct Native
+    SFU publication recovery after the platform capture boundary passes. Preserve
     Browser/server authority and the existing LiveKit representation policy; do
     not create a second room or media policy.
 12. **Platform output.** System/tab mirroring needs no product adapter, while

@@ -5,6 +5,12 @@ model and highest-demand policy. This file proposes implementation details, not
 a claim that the replacement has shipped. The work includes embedded STUN/SFU
 and a shared Native/SFU media module, not just Native encoding improvements.
 
+The 2026-09-08 [WebRTC encoder-pool review](./webrtc-encoder-pool.md) qualifies
+this candidate: fixed output construction and forwarding allocation do not
+include Browser encoder resource adaptation. The maximum-demand ownership model
+remains accepted; the implementation below is not an accepted quality-parity
+boundary. Review the proposed reuse point before adding compensating policies.
+
 ## Recommendation From The Experiments
 
 Use one bounded output group with the maximum-demand envelope as the first

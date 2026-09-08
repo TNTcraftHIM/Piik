@@ -154,9 +154,11 @@ have real encode and upload costs; this is not a one-encode guarantee.
 Packet identity and delivered counters belong to each outbound edge. Unused
 outputs do not inflate that edge's FPS or bitrate. Bounded codec workers and
 packet queues isolate slow children and retire with the source generation.
-Lowest-output budgets and stopped-upper recovery are implemented, but bandwidth
-below that output's usable range, hardware overload and physical recovery still
-require acceptance; the finite output set alone is not proof of adaptation parity.
+Lowest-output budgets and stopped-upper recovery are implemented. The Native
+encoder still has fixed output dimensions within a generation; it does not yet
+include libwebrtc's encoder resource-adaptation chain. Bandwidth below that
+output's usable range, hardware overload and physical recovery remain open;
+the finite output set is not proof of Browser adaptation parity.
 
 Native sender edges normally reuse the shared encoded source. A Native Viewer
 forwards suitable H.264/VP8 and Opus payload unchanged and derives only a missing
