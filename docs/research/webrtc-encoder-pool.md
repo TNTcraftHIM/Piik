@@ -316,6 +316,61 @@ source still cannot manufacture missing detail; higher input or the existing
 bounded topology operation must supply it. No subtree quality minimum or new
 congestion algorithm is introduced by this direction.
 
+## Scheduling And Resource Follow-Up
+
+The initial probe drained each VSE queue between consumers. A later
+`--realtime` arm keeps the 30 fps source cadence without that drain and flushes
+queues only at phase boundaries. Its healthy six seconds used exactly 180
+physical encodes for two 180-frame receivers, with zero decoded-hash mismatch.
+This improves the fixture's scheduling realism, not a one-encode guarantee for
+all devices, rates or source histories.
+
+The bounded `--latency-probe` inserts 45 ms before each physical VP8 encode at
+640x360, proportional to pixel area at lower sizes. It is a synthetic service
+delay, not CPU saturation, desktop capture or a hardware-driver test. The
+prototype's registry mutex serializes physical groups, so this arm stresses
+ownership and is not a performance comparison with independent parallel codecs.
+
+Under that delay, the two-VSE shared-codec form developed repeated independent
+input-drop divergence. During 30 seconds, A/B decoded 391/378 frames and produced
+146/149 keyframes; the full trace created 115 codec groups and made 218 group
+changes. Reference protection kept the decoded payloads correct, but this churn
+is not acceptable product behavior. Both returned to about 30 fps after release.
+This is a counterexample to accepting the factory-cache boundary from its
+healthy result alone, not proof that all shared encoders must behave this way.
+
+A `--shared-pipeline` control instead gives both consumers one complete stock
+VSE/source-adaptation/encoder pipeline. It has no per-consumer encoder factory
+cache and leaves upstream overshoot/resource handling enabled. In the same
+delay trace, both decoded the same 484 frames with no new keyframe during the
+delayed phase; the whole trace created three encoder instances, only for normal
+configuration changes, and no split/rejoin cycle. Both consumers' resource
+fields in this control refer to the same pipeline, not two independent sensors.
+
+Neither delayed arm delivered a smaller picture until after latency was
+released; both subsequently showed 480x270 and recovered full size. Do not claim
+complete overload adaptation or perceptual parity from these runs. The useful
+result is narrower: shared input admission and shared resource ownership avoid
+one source of duplicate-controller churn. Different-child-budget grouping,
+transport coupling and actual hardware still need evidence.
+[Structured traces](./data/webrtc-encoder-latency.json) retain those limits.
+
+The pinned library also has `EncodeUsageResource`, `OveruseFrameDetector` and
+`BroadcastResourceListener` for one resource feeding multiple send streams.
+VSE exposes `AddAdaptationResource` but no public removal counterpart; registering
+a new resource after each group change would retain old restrictions until
+Stop. A stable per-VSE forwarding resource can avoid that, but is additional
+coordination, not a reason to add it before the simpler shared-pipeline boundary
+has been evaluated. Do not disable local CPU detection unless an honest shared
+measurement replaces it, or replay a cached frame's timing as physical work.
+
+Windows H264 need not be rewritten: existing `LiveEncoder` already has bounded
+Encode, SetBitrate and retirement around MFT. A shared extraction plus an adapter
+can preserve that implementation. Truthful codec information, requested FPS,
+actual QP availability, and dynamic output dimensions remain integration work;
+the old fixed `OutputWorker` policy is not a requirement to restart WGC capture.
+No H264 adapter or product pipeline was changed in this follow-up.
+
 ## Replacement And Preservation Map
 
 | Current owner | Treatment if a pool-backed engine is proved |
@@ -339,6 +394,9 @@ unrelated page rewrite or platform-adapter deletion is justified by this review.
 2. Measure source replacement, overload, real scheduling, perceptual quality,
    transport overhead and actual CPU/GPU cost. Preserve correction/drop/resource
    feedback with explicit owners before accepting the product integration.
+   The delayed-codec counterexample above means the per-sender factory cache
+   cannot be selected as-is; evaluate shared complete encoding pipelines before
+   adding another resource/membership coordination layer.
 3. Connect the separately verified encoded bypass and shared lower derivation
    through that same representation owner. If preserving stock
    control requires substantial VSE/source patches or a custom rate/quality

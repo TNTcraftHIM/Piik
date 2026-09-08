@@ -89,6 +89,10 @@ healthy encoded bypass; integrate VSE/pool only behind required local outputs,
 not a fake per-child raw pipeline or a replacement transport. The new pool is
 not yet attached to the Native derivation process. One-total-encode claims must
 count Host standby outputs and exclude pure Browser intermediate re-encoding.
+The delayed-codec probe exposes repeated input-drop split/rejoin in the narrow
+factory cache. Evaluate sharing the complete encoding/adaptation pipeline per
+compatible output before adding physical-resource proxy machinery. Neither the
+cache nor the shared-pipeline control has established full overload parity.
 Independent library/service audits may proceed in parallel. Do not add a custom warm pool, media clock
 or congestion algorithm. These are
 not bundled service executables, full LiveKit embedding or per-Viewer Host
@@ -182,9 +186,14 @@ a tunnel; include that path in packaged acceptance.
    H.264 qualification can choose a slower VP8 fallback under mixed GPU/CPU load
    before adding comparative or dual-codec probing.
 3. **Browser encoded reuse.** Pure Browser operation keeps normal WebRTC
-   senders; users can use Client to reduce repeated encoding. Revisit Browser
-   reuse only for a small mature adapter that preserves adaptation and media
-   quality without an application-owned transport or layer controller.
+   senders; users can use Client to reduce repeated encoding. The September 8
+   [Chromium legacy probe](./research/advanced-peer-distribution.md#chromium-legacy-fanout-probe)
+   proves clean-path VP8/H264 single encode to two PCs without Client, but late
+   join fails, the secondary encoder bitrate ceiling is bypassed and its frame
+   statistics do not describe the borrowed stream. Revisit
+   product integration only for a small proven adapter preserving recovery,
+   independent adaptation and truthful evidence; do not silently ship the shortcut
+   or introduce an application-owned transport/quality controller.
 4. **Control-plane resource fairness.** Reassess ingress budgets against the
    current authenticated room WebSocket and embedded SFU owner before adding
    another queue or limiter. The replaced external media-token/control service

@@ -1,6 +1,6 @@
 # Advanced Peer Distribution
 
-- Last reviewed: 2026-08-27
+- Last reviewed: 2026-09-08
 - Scope: advanced low-server distribution candidates for sub-second interactive media
 - Status: research comparison and falsifiable gates, not an accepted product route
 
@@ -60,7 +60,7 @@ compute, not total room upload.
 The Host sends complementary stripes through two deterministic,
 interior-node-disjoint trees. An internal node forwards only its stripe; a Viewer
 needs both parents and a bounded assembler. SVC alone cannot supply this shape:
-its layers remain in one encoded RTP stream, and Encoded Transform does not move
+its layers remain in one encoded RTP stream, and standard Encoded Transform does not move
 encoded frames between transports.
 
 Start with 50/50 single-layer frame/object striping. Retain only if:
@@ -115,6 +115,62 @@ an Internet-listening peer relay. A central MoQ service therefore retains the
 same egress class as an SFU. Keep it only if equal-quality measurements improve
 latency or server CPU by at least 20% at the same egress, and draft-version churn
 is isolated behind a small adapter.
+
+## Chromium Legacy Fanout Probe
+
+On 2026-09-08, an isolated installed Chrome 152 session demonstrated one Browser
+encoder feeding two PeerConnections through legacy `createEncodedStreams()`.
+The [manual probe](../../scripts/browser-encoded-fanout-probe.mjs) serves only a
+synthetic 640x360 canvas over loopback HTTP; it uses neither Client nor SFU.
+No browser feature flags were added to permit encoded-frame forwarding.
+
+The secondary sender has a non-updating canvas track to establish its RTP path.
+Each primary encoded frame is cloned into both writable streams. With the
+secondary connection established before primary encoding starts, VP8 encoded
+208 frames once and both receivers decoded 208 at about 30 fps. H264 encoded
+206 frames once and both receivers decoded 206. The secondary reported zero
+encoded frames and zero encode time in both runs. This is clean-path frame
+reuse, not whole-process CPU savings or hardware-acceleration evidence.
+
+It has three concrete failures/limits:
+
+- The secondary sender's `framesSent` stayed zero despite sending the complete
+  payload. Its `qualityLimitationReason=none` is not useful proof that the
+  borrowed encoding fits that connection. Existing Screener sender evidence
+  cannot consume those counters unchanged.
+- In a VP8 late-join arm, the secondary received bytes but decoded zero frames
+  and sent 34 PLI requests. Those requests did not make the primary encoder
+  produce a recovery frame. Merely copying frames does not connect all feedback.
+- With secondary `maxBitrate=50000` confirmed by parameter readback, it still
+  sent 387,287 payload bytes in the approximately seven-second VP8 window,
+  roughly 440 kbps, and both receivers decoded 207 frames. Borrowed output
+  bypasses that sender's encoder-rate ceiling. This is a parameter-constraint
+  check, not network shaping or evidence that transport BWE itself is broken.
+
+This exception does not overturn the [standard owner/counter restrictions](https://www.w3.org/TR/2026/WD-webrtc-encoded-transform-20260625/#stream-processing).
+Pinned Chromium [legacy sender construction](https://chromium.googlesource.com/chromium/src/+/refs/tags/152.0.7977.82/third_party/blink/renderer/modules/peerconnection/rtc_rtp_sender.cc)
+uses the underlying sink's legacy constructor, while the
+[sink](https://chromium.googlesource.com/chromium/src/+/refs/tags/152.0.7977.82/third_party/blink/renderer/modules/peerconnection/rtc_encoded_video_underlying_sink.cc)
+applies those checks when restrictions are enabled. Its
+[transformer](https://chromium.googlesource.com/chromium/src/+/refs/tags/152.0.7977.82/third_party/blink/renderer/platform/peerconnection/rtc_encoded_video_stream_transformer.cc)
+can deliver a written frame to the sole registered sink. No metadata rewriting
+or disabled-standard-check browser flag was needed by this legacy probe.
+
+Therefore "pure Browser reuse is impossible" is too broad. A current Chromium
+legacy path is executable; a portable, correctly adapting production adapter is
+not established. The standard transform is after encoding, not an encoder
+factory injection API. Unproven bandwidth/probe behavior, PLI routing, truthful
+stats, non-Chromium compatibility and API lifetime remain reasons not to ship
+this shortcut. No fallback switch, polling quality controller or transport
+replacement was added to the product. [Results](./data/browser-encoded-fanout.json)
+retain only selected public counters, not candidates, addresses or frame data.
+
+Run `node scripts/browser-encoded-fanout-probe.mjs`, optionally `--h264`,
+`--late-join` or `--limit-secondary`, and open the printed loopback URL in an isolated Chrome session.
+The page closes its PCs/tracks and posts the result; the server exits on result
+or at its 60-second deadline. Output stays under ignored `build/encoder-pool`.
+These observations are not an assertion that every arm should decode: late join
+is the explicit negative control.
 
 ## Local Reconciliation Evidence
 

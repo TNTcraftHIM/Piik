@@ -187,6 +187,7 @@ class Sink final : public VideoStreamEncoderInterface::EncoderSink,
             {current_payload_, hash, static_cast<int>(raw->d_w), static_cast<int>(raw->d_h)});
       } else ++counts_.errors;
     }
+    if (duplicate_) duplicate_->OnEncodedImage(image, nullptr);
     return Result(Result::OK);
   }
 
@@ -214,6 +215,10 @@ class Sink final : public VideoStreamEncoderInterface::EncoderSink,
     export_.open(path, std::ios::binary | std::ios::trunc);
     if (!export_) throw std::runtime_error("fixture export unavailable");
   }
+  void SetDuplicate(Sink* sink) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    duplicate_ = sink;
+  }
   void FinishExport() {
     if (!export_.is_open()) return;
     export_.flush();
@@ -237,6 +242,7 @@ class Sink final : public VideoStreamEncoderInterface::EncoderSink,
   std::unique_ptr<VideoDecoder> decoder_;
   vpx_codec_ctx_t raw_{};
   std::ofstream export_;
+  Sink* duplicate_ = nullptr;
   Counts counts_;
   uint32_t current_timestamp_ = 0;
   uint64_t current_payload_ = 0;
@@ -394,6 +400,14 @@ int main(int argc, char** argv) {
     const bool group_adjuster = has("--group-adjuster");
     const bool no_adjuster = has("--no-adjuster") || group_adjuster;
     const bool healthy_only = has("--healthy-only");
+    const bool realtime = has("--realtime");
+    const bool latency_probe = has("--latency-probe");
+    if (latency_probe && !realtime)
+      throw std::runtime_error("--latency-probe requires --realtime");
+    const bool shared_pipeline = has("--shared-pipeline");
+    if (shared_pipeline && (pooled || group_adjuster || no_adjuster || has("--unsafe-skip") ||
+                            (!healthy_only && !latency_probe)))
+      throw std::runtime_error("shared pipeline control requires a healthy/latency trace with stock VSE settings");
     const auto env = CreateEnvironment(std::make_unique<Trials>(no_adjuster));
     const bool unsafe_skip = has("--unsafe-skip");
     PoolFactory factory(pooled, group_adjuster, unsafe_skip);
@@ -403,7 +417,11 @@ int main(int argc, char** argv) {
     SharedProof proof;
     std::array<Pipeline, 2> pipelines;
     Sync(worker.get(), [&] {
-      for (int i = 0; i < 2; ++i) Start(pipelines[i], env, factory, allocator.get(), i, proof);
+      Start(pipelines[0], env, factory, allocator.get(), 0, proof);
+      if (shared_pipeline) {
+        pipelines[1].sink = std::make_unique<Sink>(env, 1, proof);
+        pipelines[0].sink->SetDuplicate(pipelines[1].sink.get());
+      } else Start(pipelines[1], env, factory, allocator.get(), 1, proof);
     });
     const auto export_arg = std::find(args.begin(), args.end(), "--export");
     if (export_arg != args.end()) {
@@ -414,8 +432,11 @@ int main(int argc, char** argv) {
     auto run = [&](const char* name, int seconds, int weak_bitrate, bool skip, bool retire) {
       Sync(worker.get(), [&] {
         if (retire) {
-          pipelines[1].encoder->Stop();
-          pipelines[1].encoder.reset();
+          if (shared_pipeline) pipelines[0].sink->SetDuplicate(nullptr);
+          else {
+            pipelines[1].encoder->Stop();
+            pipelines[1].encoder.reset();
+          }
         }
       });
       const auto a = pipelines[0].sink->Snapshot();
@@ -428,19 +449,23 @@ int main(int argc, char** argv) {
         // Equal feedback cadence for both controllers; only B's budget differs.
         if (frame % 6 == 0) Sync(worker.get(), [&] {
           for (int i = 0; i < 2; ++i) {
-            if (i == 1 && retire) continue;
+            if (!pipelines[i].encoder) continue;
             const auto rate = DataRate::BitsPerSec(i == 0 ? 2'000'000 : weak_bitrate);
             pipelines[i].encoder->OnBitrateUpdated(rate, rate, 0, 20, 0);
           }
         });
         auto original = MakeFrame(env, ++frame_index);
         for (int consumer = 0; consumer < 2; ++consumer) {
+          if (!pipelines[consumer].encoder) continue;
           if (consumer == 1 && (retire || (skip && frame == kFps))) continue;
           Sync(worker.get(), [&, consumer] { pipelines[consumer].source.Push(original); });
-          Sync(pipelines[consumer].encode_queue, [] {});
+          if (!realtime) Sync(pipelines[consumer].encode_queue, [] {});
         }
         std::this_thread::sleep_until(started +
             std::chrono::microseconds((frame + 1) * 1'000'000LL / kFps));
+      }
+      for (auto& pipeline : pipelines) {
+        if (pipeline.encoder) Sync(pipeline.encode_queue, [] {});
       }
       Sync(worker.get(), [] {});
       const double elapsed = std::chrono::duration<double>(
@@ -452,19 +477,28 @@ int main(int argc, char** argv) {
       std::cout << ",\"b\":";
       PrintCounts(b, pipelines[1].sink->Snapshot(), elapsed);
       const auto stats_a = pipelines[0].stats->GetStats();
-      const auto stats_b = pipelines[1].stats->GetStats();
+      const auto stats_b = shared_pipeline ? stats_a : pipelines[1].stats->GetStats();
       std::cout << ",\"aEncodeMs\":" << stats_a.avg_encode_time_ms
                 << ",\"bEncodeMs\":" << stats_b.avg_encode_time_ms
                 << ",\"aEncodeUsage\":" << stats_a.encode_usage_percent
                 << ",\"bEncodeUsage\":" << stats_b.encode_usage_percent
+                << ",\"aCpuLimitedResolution\":" << (stats_a.cpu_limited_resolution ? "true" : "false")
+                << ",\"bCpuLimitedResolution\":" << (stats_b.cpu_limited_resolution ? "true" : "false")
+                << ",\"aCpuLimitedFramerate\":" << (stats_a.cpu_limited_framerate ? "true" : "false")
+                << ",\"bCpuLimitedFramerate\":" << (stats_b.cpu_limited_framerate ? "true" : "false")
                 << "}\n" << std::flush;
     };
     run("healthy", 6, 2'000'000, false, false);
-    if (!healthy_only) {
+    if (latency_probe) {
+      factory.simulatedLatencyMs = 45;
+      run("encoder-delayed", 30, 2'000'000, false, false);
+      factory.simulatedLatencyMs = 0;
+      run("encoder-released", 30, 2'000'000, false, false);
+    } else if (!healthy_only) {
       run("weak", 15, 100'000, false, false);
       run("released", 25, 2'000'000, false, false);
     }
-    run("skipped-input", 3, 2'000'000, true, false);
+    if (!shared_pipeline) run("skipped-input", 3, 2'000'000, true, false);
     run("retired-b", 2, 2'000'000, false, true);
     Sync(worker.get(), [&] {
       pipelines[0].encoder->Stop();
@@ -474,12 +508,16 @@ int main(int argc, char** argv) {
     const auto a = pipelines[0].sink->Snapshot(), b = pipelines[1].sink->Snapshot();
     const bool integrity = a.decoded > 0 && b.decoded > 0 && factory.live.load() == 0 &&
         a.errors + b.errors + proof.mismatches.load() == 0 &&
-        (!pooled || factory.hits.load() > 0 && proof.compared.load() > 0);
+        (!pooled || factory.hits.load() > 0 && proof.compared.load() > 0) &&
+        (!shared_pipeline || proof.compared.load() > 0);
     std::cout << "{\"integrity\":\"" << (integrity ? "pass" : "fail")
               << "\",\"pooled\":" << (pooled ? "true" : "false")
               << ",\"adjuster\":" << (no_adjuster ? "false" : "true")
               << ",\"groupAdjuster\":" << (group_adjuster ? "true" : "false")
               << ",\"unsafeSkip\":" << (unsafe_skip ? "true" : "false")
+              << ",\"realtime\":" << (realtime ? "true" : "false")
+              << ",\"latencyProbe\":" << (latency_probe ? "true" : "false")
+              << ",\"sharedPipeline\":" << (shared_pipeline ? "true" : "false")
               << ",\"encodes\":" << factory.encodes.load()
               << ",\"hits\":" << factory.hits.load()
               << ",\"splits\":" << factory.splits.load()

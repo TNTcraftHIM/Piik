@@ -44,6 +44,15 @@ negative control and should fail integrity with group adjustment and a skipped
 input. This is guarded single-source realtime VP8/L1T1 with synchronous codecs;
 no H264, asynchronous encoder, physical overload or public-network claim follows.
 
+`--realtime` removes per-input encoder-queue drains. `--latency-probe` requires
+that mode and inserts a bounded pixel-proportional 45 ms codec delay, then
+releases it; it is not a CPU/GPU stress test. `--shared-pipeline --realtime
+--latency-probe` is a separate control with one full stock VSE feeding both
+decoders, not two VSEs borrowing its encoder. Do not combine it with pool or
+adjuster flags. Source and codec work remain bounded; use a 95-second process
+deadline for these approximately 70-second traces. The shared-pipeline B resource
+metrics repeat the common pipeline, while its decoded counters are independent.
+
 ## Healthy Relay Chain
 
 Export the first 180 real AUs from sender A for the opt-in Go forwarding check:

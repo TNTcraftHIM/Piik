@@ -2,10 +2,12 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <memory>
 #include <iostream>
 #include <mutex>
 #include <optional>
+#include <thread>
 #include <vector>
 
 #include "api/environment/environment.h"
@@ -17,6 +19,7 @@
 
 // A one-source, single-stream VP8 experiment, not a product encoder registry.
 // Matching requests share only one last completed access unit. No warm cache.
+// ponytail: one mutex serializes groups; validate per-group workers before production.
 class PoolFactory final : public webrtc::VideoEncoderFactory {
  public:
   explicit PoolFactory(bool pooled, bool group_adjuster = false, bool unsafe_skip = false)
@@ -25,6 +28,7 @@ class PoolFactory final : public webrtc::VideoEncoderFactory {
   std::atomic<int> encodes{0}, hits{0}, splits{0}, live{0}, maxLive{0}, callbacks{0};
   std::atomic<int> dependencySplits{0}, rateSplits{0};
   std::atomic<int> created{0}, joins{0};
+  std::atomic<int> simulatedLatencyMs{0};
 
   std::vector<webrtc::SdpVideoFormat> GetSupportedFormats() const override {
     return {webrtc::SdpVideoFormat("VP8")};
@@ -222,6 +226,9 @@ class PoolFactory final : public webrtc::VideoEncoderFactory {
               key ? webrtc::VideoFrameType::kVideoFrameKey : webrtc::VideoFrameType::kVideoFrameDelta};
           ++owner_.encodes;
           group_->UpdateCodecRates();
+          const int64_t latency_us = static_cast<int64_t>(owner_.simulatedLatencyMs.load()) *
+              1000 * group_->config.width * group_->config.height / (640 * 360);
+          if (latency_us > 0) std::this_thread::sleep_for(std::chrono::microseconds(latency_us));
           result = group_->codec->Encode(frame, &types);
           if (group_->image) group_->timestamp = ts;
         }
