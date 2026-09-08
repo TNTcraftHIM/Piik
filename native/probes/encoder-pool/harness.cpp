@@ -1,0 +1,470 @@
+// Explicit synthetic experiment. Not part of Client, Server, unit tests or CI.
+#include "pool.h"
+
+#include <algorithm>
+#include <array>
+#include <chrono>
+#include <cstdint>
+#include <exception>
+#include <future>
+#include <iostream>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <stdexcept>
+#include <string>
+#include <thread>
+
+#include "api/environment/environment_factory.h"
+#include "api/field_trials_view.h"
+#include "api/make_ref_counted.h"
+#include "api/task_queue/task_queue_base.h"
+#include "api/task_queue/task_queue_factory.h"
+#include "api/video/builtin_video_bitrate_allocator_factory.h"
+#include "api/video/i420_buffer.h"
+#include "api/video/video_adapter.h"
+#include "api/video/video_frame.h"
+#include "api/video/video_stream_encoder_settings.h"
+#include "api/video_codecs/builtin_video_decoder_factory.h"
+#include "api/video_codecs/video_decoder.h"
+#include "api/video_codecs/video_decoder_factory.h"
+#include "call/video_send_stream.h"
+#include "system_wrappers/include/clock.h"
+#include "video/adaptation/overuse_frame_detector.h"
+#include "video/frame_cadence_adapter.h"
+#include "video/send_statistics_proxy.h"
+#include "video/video_stream_encoder.h"
+#include "vpx/vpx_decoder.h"
+#include "vpx/vp8dx.h"
+
+namespace {
+using namespace webrtc;
+constexpr int kWidth = 640;
+constexpr int kHeight = 360;
+constexpr int kFps = 30;
+
+class Trials final : public FieldTrialsView {
+ public:
+  explicit Trials(bool disable) : disable_(disable) {}
+  std::string Lookup(absl::string_view key) const override {
+    return disable_ && key == "WebRTC-VideoRateControl" ? "bitrate_adjuster:false" : "";
+  }
+ private:
+  bool disable_;
+};
+
+template <typename F>
+void Sync(TaskQueueBase* queue, F fn) {
+  auto completion = std::make_shared<std::promise<void>>();
+  auto future = completion->get_future();
+  queue->PostTask([completion, fn = std::move(fn)]() mutable {
+    try {
+      fn();
+      completion->set_value();
+    } catch (...) {
+      completion->set_exception(std::current_exception());
+    }
+  });
+  if (future.wait_for(std::chrono::seconds(10)) != std::future_status::ready)
+    throw std::runtime_error("task queue deadline exceeded");
+  future.get();
+}
+
+uint64_t HashBytes(uint64_t hash, const uint8_t* bytes, size_t count) {
+  for (size_t i = 0; i < count; ++i) hash = (hash ^ bytes[i]) * 1099511628211ULL;
+  return hash;
+}
+
+struct FrameProof {
+  uint64_t payload = 0;
+  uint64_t pixels = 0;
+  int width = 0;
+  int height = 0;
+};
+
+class SharedProof {
+ public:
+  void Observe(int consumer, uint32_t timestamp, FrameProof proof) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto& row = pending_[timestamp];
+    row[consumer] = proof;
+    if (row[0].pixels && row[1].pixels) {
+      if (row[0].payload == row[1].payload) {
+        ++compared;
+        if (row[0].pixels != row[1].pixels || row[0].width != row[1].width ||
+            row[0].height != row[1].height) ++mismatches;
+      }
+      pending_.erase(timestamp);
+    }
+    while (pending_.size() > 64) pending_.erase(pending_.begin());
+  }
+  std::atomic<int> compared{0};
+  std::atomic<int> mismatches{0};
+
+ private:
+  std::mutex mutex_;
+  std::map<uint32_t, std::array<FrameProof, 2>> pending_;
+};
+
+struct Counts {
+  int encoded = 0;
+  int decoded = 0;
+  int errors = 0;
+  int keyframes = 0;
+  int width = 0;
+  int height = 0;
+  int min_width = kWidth;
+  int min_height = kHeight;
+  uint64_t bytes = 0;
+  double first_full_ms = -1;
+  double first_reduced_ms = -1;
+};
+
+class Sink final : public VideoStreamEncoderInterface::EncoderSink,
+                   public DecodedImageCallback {
+ public:
+  Sink(const Environment& env, int consumer, SharedProof& proof)
+      : consumer_(consumer), proof_(proof) {
+    auto factory = CreateBuiltinVideoDecoderFactory();
+    decoder_ = factory->Create(env, SdpVideoFormat("VP8"));
+    VideoDecoder::Settings settings;
+    settings.set_codec_type(kVideoCodecVP8);
+    settings.set_number_of_cores(1);
+    if (!decoder_ || !decoder_->Configure(settings) ||
+        decoder_->RegisterDecodeCompleteCallback(this) != 0)
+      throw std::runtime_error("VP8 decoder initialization failed");
+    vpx_codec_dec_cfg_t raw_config{1, 0, 0};
+    if (vpx_codec_dec_init(&raw_, vpx_codec_vp8_dx(), &raw_config, 0) != VPX_CODEC_OK)
+      throw std::runtime_error("raw VP8 decoder initialization failed");
+  }
+
+  ~Sink() override { decoder_->Release(); vpx_codec_destroy(&raw_); }
+
+  void OnEncoderConfigurationChanged(std::vector<VideoStream>, bool,
+                                    VideoEncoderConfig::ContentType, int) override {}
+  void OnBitrateAllocationUpdated(const VideoBitrateAllocation&) override {}
+  void OnVideoLayersAllocationUpdated(VideoLayersAllocation) override {}
+  void OnFrameDropped(uint32_t, int, bool) override {}
+
+  Result OnEncodedImage(const EncodedImage& image,
+                        const CodecSpecificInfo*) override {
+    std::lock_guard<std::mutex> lock(mutex_);
+    ++counts_.encoded;
+    counts_.bytes += image.size();
+    counts_.keyframes += image.IsKey();
+    current_timestamp_ = image.RtpTimestamp();
+    current_payload_ = HashBytes(1469598103934665603ULL, image.data(), image.size());
+    if (decoder_->Decode(image, 0) < 0) ++counts_.errors;
+    if (vpx_codec_decode(&raw_, image.data(), static_cast<unsigned>(image.size()), nullptr, 0) != VPX_CODEC_OK) {
+      ++counts_.errors;
+    } else {
+      vpx_codec_iter_t iterator = nullptr;
+      if (const auto* raw = vpx_codec_get_frame(&raw_, &iterator)) {
+        uint64_t hash = 1469598103934665603ULL;
+        for (int plane = 0; plane < 3; ++plane) {
+          const unsigned width = plane ? (raw->d_w + 1) / 2 : raw->d_w;
+          const unsigned height = plane ? (raw->d_h + 1) / 2 : raw->d_h;
+          for (unsigned y = 0; y < height; ++y)
+            hash = HashBytes(hash, raw->planes[plane] + y * raw->stride[plane], width);
+        }
+        proof_.Observe(consumer_, current_timestamp_,
+            {current_payload_, hash, static_cast<int>(raw->d_w), static_cast<int>(raw->d_h)});
+      } else ++counts_.errors;
+    }
+    return Result(Result::OK);
+  }
+
+  // The selected built-in VP8 decoder completes synchronously inside Decode.
+  int32_t Decoded(VideoFrame& frame) override {
+    ++counts_.decoded;
+    counts_.width = frame.width();
+    counts_.height = frame.height();
+    counts_.min_width = std::min(counts_.min_width, frame.width());
+    counts_.min_height = std::min(counts_.min_height, frame.height());
+    const double elapsed = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - phase_started_).count();
+    if (frame.width() == kWidth && frame.height() == kHeight && counts_.first_full_ms < 0)
+      counts_.first_full_ms = elapsed;
+    if (frame.width() < kWidth && counts_.first_reduced_ms < 0)
+      counts_.first_reduced_ms = elapsed;
+    return 0;
+  }
+
+  Counts Snapshot() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return counts_;
+  }
+  void ResetMinimum() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    counts_.min_width = kWidth;
+    counts_.min_height = kHeight;
+    counts_.first_full_ms = -1;
+    counts_.first_reduced_ms = -1;
+    phase_started_ = std::chrono::steady_clock::now();
+  }
+
+ private:
+  const int consumer_;
+  SharedProof& proof_;
+  std::mutex mutex_;
+  std::unique_ptr<VideoDecoder> decoder_;
+  vpx_codec_ctx_t raw_{};
+  Counts counts_;
+  uint32_t current_timestamp_ = 0;
+  uint64_t current_payload_ = 0;
+  std::chrono::steady_clock::time_point phase_started_ = std::chrono::steady_clock::now();
+};
+
+// Each sender applies stock VideoAdapter wants to the same original input.
+class Source final : public VideoSourceInterface<VideoFrame> {
+ public:
+  void AddOrUpdateSink(VideoSinkInterface<VideoFrame>* sink,
+                       const VideoSinkWants& wants) override {
+    sink_ = sink;
+    adapter_.OnSinkWants(wants);
+    ++wants_updates;
+    min_pixels = std::min(min_pixels, wants.max_pixel_count);
+  }
+  void RemoveSink(VideoSinkInterface<VideoFrame>* sink) override {
+    if (sink_ == sink) sink_ = nullptr;
+  }
+  void Push(const VideoFrame& original) {
+    if (!sink_) return;
+    int crop_width, crop_height, width, height;
+    if (!adapter_.AdaptFrameResolution(original.width(), original.height(),
+                                       original.timestamp_us() * 1000,
+                                       &crop_width, &crop_height, &width, &height)) {
+      ++dropped;
+      sink_->OnDiscardedFrame();
+      return;
+    }
+    VideoFrame frame = original;
+    if (width != original.width() || height != original.height() ||
+        crop_width != original.width() || crop_height != original.height()) {
+      auto scaled = I420Buffer::Create(width, height);
+      scaled->CropAndScaleFrom(*original.video_frame_buffer()->ToI420(),
+                               (original.width() - crop_width) / 2,
+                               (original.height() - crop_height) / 2,
+                               crop_width, crop_height);
+      frame.set_video_frame_buffer(scaled);
+    }
+    sink_->OnFrame(frame);
+  }
+  int dropped = 0;
+  int wants_updates = 0;
+  int min_pixels = kWidth * kHeight;
+
+ private:
+  VideoSinkInterface<VideoFrame>* sink_ = nullptr;
+  VideoAdapter adapter_{2};
+};
+
+struct Pipeline {
+  Source source;
+  std::unique_ptr<SendStatisticsProxy> stats;
+  std::unique_ptr<Sink> sink;
+  std::unique_ptr<VideoStreamEncoder> encoder;
+  TaskQueueBase* encode_queue = nullptr;
+};
+
+VideoEncoderConfig Config() {
+  VideoEncoderConfig config;
+  config.codec_type = kVideoCodecVP8;
+  config.video_format = SdpVideoFormat("VP8");
+  config.content_type = VideoEncoderConfig::ContentType::kRealtimeVideo;
+  config.number_of_streams = 1;
+  config.max_bitrate_bps = 2'000'000;
+  config.frame_drop_enabled = true;
+  config.is_quality_scaling_allowed = true;
+  config.simulcast_layers.resize(1);
+  config.simulcast_layers[0].active = true;
+  config.simulcast_layers[0].max_framerate = kFps;
+  config.simulcast_layers[0].max_bitrate_bps = 2'000'000;
+  config.simulcast_layers[0].num_temporal_layers = 1;
+  auto vp8 = VideoEncoder::GetDefaultVp8Settings();
+  vp8.automaticResizeOn = true;
+  config.encoder_specific_settings =
+      make_ref_counted<VideoEncoderConfig::Vp8EncoderSpecificSettings>(vp8);
+  return config;
+}
+
+void Start(Pipeline& pipeline, const Environment& env, PoolFactory& factory,
+           VideoBitrateAllocatorFactory* allocator, int consumer, SharedProof& proof) {
+  VideoSendStream::Config send_config(nullptr);
+  send_config.rtp.ssrcs = {static_cast<uint32_t>(100 + consumer)};
+  send_config.rtp.payload_name = "VP8";
+  send_config.rtp.payload_type = 96;
+  pipeline.stats = std::make_unique<SendStatisticsProxy>(
+      &env.clock(), send_config, VideoEncoderConfig::ContentType::kRealtimeVideo,
+      env.field_trials());
+  pipeline.sink = std::make_unique<Sink>(env, consumer, proof);
+  VideoStreamEncoderSettings settings(VideoEncoder::Capabilities(false));
+  settings.encoder_factory = &factory;
+  settings.bitrate_allocator_factory = allocator;
+  auto queue = env.task_queue_factory().CreateTaskQueue(
+      "PoolProbeEncoder", TaskQueueFactory::Priority::kNormal);
+  pipeline.encode_queue = queue.get();
+  auto cadence = FrameCadenceAdapterInterface::Create(
+      &env.clock(), queue.get(), nullptr, TaskQueueBase::Current(), env.field_trials());
+  pipeline.encoder = std::make_unique<VideoStreamEncoder>(
+      env, 1, pipeline.stats.get(), settings,
+      std::make_unique<OveruseFrameDetector>(env, pipeline.stats.get()),
+      std::move(cadence), std::move(queue),
+      VideoStreamEncoder::BitrateAllocationCallbackType::kVideoBitrateAllocation);
+  pipeline.encoder->SetSink(pipeline.sink.get(), false);
+  pipeline.encoder->SetSource(&pipeline.source, DegradationPreference::MAINTAIN_FRAMERATE);
+  pipeline.encoder->SetStartBitrate(2'000'000);
+  pipeline.encoder->ConfigureEncoder(Config(), 1200);
+  pipeline.encoder->OnBitrateUpdated(DataRate::BitsPerSec(2'000'000),
+                                     DataRate::BitsPerSec(2'000'000), 0, 20, 0);
+}
+
+VideoFrame MakeFrame(const Environment& env, int index) {
+  auto pixels = I420Buffer::Create(kWidth, kHeight);
+  for (int y = 0; y < kHeight; ++y) {
+    for (int x = 0; x < kWidth; ++x) {
+      const int shifted = x + index * 5;
+      pixels->MutableDataY()[y * pixels->StrideY() + x] =
+          static_cast<uint8_t>(32 + ((shifted * 3 + y * 2 +
+                                      (((shifted / 23) ^ (y / 17)) & 7) * 19) % 192));
+    }
+  }
+  for (int y = 0; y < kHeight / 2; ++y) {
+    for (int x = 0; x < kWidth / 2; ++x) {
+      pixels->MutableDataU()[y * pixels->StrideU() + x] =
+          static_cast<uint8_t>(80 + (x + index * 2) % 96);
+      pixels->MutableDataV()[y * pixels->StrideV() + x] =
+          static_cast<uint8_t>(80 + (y + index) % 96);
+    }
+  }
+  return VideoFrame::Builder().set_video_frame_buffer(pixels)
+      .set_timestamp_us(env.clock().TimeInMicroseconds())
+      .set_ntp_time_ms(env.clock().CurrentNtpInMilliseconds())
+      .set_id(static_cast<uint16_t>(index)).build();
+}
+
+void PrintCounts(const Counts& before, const Counts& after, double seconds) {
+  std::cout << "{\"encoded\":" << after.encoded - before.encoded
+            << ",\"decoded\":" << after.decoded - before.decoded
+            << ",\"fps\":" << (after.decoded - before.decoded) / seconds
+            << ",\"kbps\":" << (after.bytes - before.bytes) * 0.008 / seconds
+            << ",\"errors\":" << after.errors - before.errors
+            << ",\"keyframes\":" << after.keyframes - before.keyframes
+            << ",\"width\":" << after.width << ",\"height\":" << after.height
+            << ",\"minWidth\":" << after.min_width
+            << ",\"minHeight\":" << after.min_height
+            << ",\"firstFullMs\":" << after.first_full_ms
+            << ",\"firstReducedMs\":" << after.first_reduced_ms << '}';
+}
+}  // namespace
+
+int main(int argc, char** argv) {
+  try {
+    const std::vector<std::string> args(argv + 1, argv + argc);
+    const auto has = [&](const char* flag) { return std::find(args.begin(), args.end(), flag) != args.end(); };
+    const bool pooled = has("--pooled");
+    const bool group_adjuster = has("--group-adjuster");
+    const bool no_adjuster = has("--no-adjuster") || group_adjuster;
+    const bool healthy_only = has("--healthy-only");
+    const auto env = CreateEnvironment(std::make_unique<Trials>(no_adjuster));
+    const bool unsafe_skip = has("--unsafe-skip");
+    PoolFactory factory(pooled, group_adjuster, unsafe_skip);
+    auto allocator = CreateBuiltinVideoBitrateAllocatorFactory();
+    auto worker = env.task_queue_factory().CreateTaskQueue(
+        "PoolProbeWorker", TaskQueueFactory::Priority::kNormal);
+    SharedProof proof;
+    std::array<Pipeline, 2> pipelines;
+    Sync(worker.get(), [&] {
+      for (int i = 0; i < 2; ++i) Start(pipelines[i], env, factory, allocator.get(), i, proof);
+    });
+    int frame_index = 0;
+    auto run = [&](const char* name, int seconds, int weak_bitrate, bool skip, bool retire) {
+      Sync(worker.get(), [&] {
+        if (retire) {
+          pipelines[1].encoder->Stop();
+          pipelines[1].encoder.reset();
+        }
+      });
+      const auto a = pipelines[0].sink->Snapshot();
+      const auto b = pipelines[1].sink->Snapshot();
+      pipelines[0].sink->ResetMinimum();
+      pipelines[1].sink->ResetMinimum();
+      const int encodes = factory.encodes.load(), hits = factory.hits.load();
+      const auto started = std::chrono::steady_clock::now();
+      for (int frame = 0; frame < seconds * kFps; ++frame) {
+        // Equal feedback cadence for both controllers; only B's budget differs.
+        if (frame % 6 == 0) Sync(worker.get(), [&] {
+          for (int i = 0; i < 2; ++i) {
+            if (i == 1 && retire) continue;
+            const auto rate = DataRate::BitsPerSec(i == 0 ? 2'000'000 : weak_bitrate);
+            pipelines[i].encoder->OnBitrateUpdated(rate, rate, 0, 20, 0);
+          }
+        });
+        auto original = MakeFrame(env, ++frame_index);
+        for (int consumer = 0; consumer < 2; ++consumer) {
+          if (consumer == 1 && (retire || (skip && frame == kFps))) continue;
+          Sync(worker.get(), [&, consumer] { pipelines[consumer].source.Push(original); });
+          Sync(pipelines[consumer].encode_queue, [] {});
+        }
+        std::this_thread::sleep_until(started +
+            std::chrono::microseconds((frame + 1) * 1'000'000LL / kFps));
+      }
+      Sync(worker.get(), [] {});
+      const double elapsed = std::chrono::duration<double>(
+          std::chrono::steady_clock::now() - started).count();
+      std::cout << "{\"phase\":\"" << name << "\",\"seconds\":" << elapsed
+                << ",\"encodes\":" << factory.encodes.load() - encodes
+                << ",\"hits\":" << factory.hits.load() - hits << ",\"a\":";
+      PrintCounts(a, pipelines[0].sink->Snapshot(), elapsed);
+      std::cout << ",\"b\":";
+      PrintCounts(b, pipelines[1].sink->Snapshot(), elapsed);
+      const auto stats_a = pipelines[0].stats->GetStats();
+      const auto stats_b = pipelines[1].stats->GetStats();
+      std::cout << ",\"aEncodeMs\":" << stats_a.avg_encode_time_ms
+                << ",\"bEncodeMs\":" << stats_b.avg_encode_time_ms
+                << ",\"aEncodeUsage\":" << stats_a.encode_usage_percent
+                << ",\"bEncodeUsage\":" << stats_b.encode_usage_percent
+                << "}\n" << std::flush;
+    };
+    run("healthy", 6, 2'000'000, false, false);
+    if (!healthy_only) {
+      run("weak", 15, 100'000, false, false);
+      run("released", 25, 2'000'000, false, false);
+    }
+    run("skipped-input", 3, 2'000'000, true, false);
+    run("retired-b", 2, 2'000'000, false, true);
+    Sync(worker.get(), [&] {
+      pipelines[0].encoder->Stop();
+      pipelines[0].encoder.reset();
+    });
+    const auto a = pipelines[0].sink->Snapshot(), b = pipelines[1].sink->Snapshot();
+    const bool integrity = a.decoded > 0 && b.decoded > 0 && factory.live.load() == 0 &&
+        a.errors + b.errors + proof.mismatches.load() == 0 &&
+        (!pooled || factory.hits.load() > 0 && proof.compared.load() > 0);
+    std::cout << "{\"integrity\":\"" << (integrity ? "pass" : "fail")
+              << "\",\"pooled\":" << (pooled ? "true" : "false")
+              << ",\"adjuster\":" << (no_adjuster ? "false" : "true")
+              << ",\"groupAdjuster\":" << (group_adjuster ? "true" : "false")
+              << ",\"unsafeSkip\":" << (unsafe_skip ? "true" : "false")
+              << ",\"encodes\":" << factory.encodes.load()
+              << ",\"hits\":" << factory.hits.load()
+              << ",\"splits\":" << factory.splits.load()
+              << ",\"rateSplits\":" << factory.rateSplits.load()
+              << ",\"dependencySplits\":" << factory.dependencySplits.load()
+              << ",\"created\":" << factory.created.load()
+              << ",\"joins\":" << factory.joins.load()
+              << ",\"live\":" << factory.live.load()
+              << ",\"maxLive\":" << factory.maxLive.load()
+              << ",\"callbacks\":" << factory.callbacks.load()
+              << ",\"samePayloadCompared\":" << proof.compared.load()
+              << ",\"decodedHashMismatches\":" << proof.mismatches.load()
+              << ",\"aWantsUpdates\":" << pipelines[0].source.wants_updates
+              << ",\"bWantsUpdates\":" << pipelines[1].source.wants_updates
+              << ",\"aMinPixels\":" << pipelines[0].source.min_pixels
+              << ",\"bMinPixels\":" << pipelines[1].source.min_pixels << "}\n";
+    return integrity ? 0 : 1;
+  } catch (const std::exception& error) {
+    std::cerr << "pool harness failed: " << error.what() << '\n';
+    return 2;
+  }
+}

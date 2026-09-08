@@ -72,13 +72,14 @@ before accepting this boundary or adding another fixed layer. Compare usable
 delivery and recovery against ordinary WebRTC under matched conditions; preserve
 healthy inputs and reusable output ownership. Freeze dependent release approval
 while the adaptive-resolution design remains unresolved.
-The [pinned WebRTC trace and encoder-pool review](./research/webrtc-encoder-pool.md)
-identify the missing resource-adaptation chain and the constraints on retaining
-it behind a shared encoder factory. Test the narrow reuse boundary before an
-engine replacement; matching resolution alone does not establish compatible
-rates, frame dependencies or feedback. The research owns the experiment and
-replacement map, not a second accepted architecture. A new isolated worktree
-is authorized if feasibility is proved;
+The [pinned WebRTC trace and executed encoder-pool probe](./research/webrtc-encoder-pool.md)
+show that a transparent factory cache alone loses reuse when independent
+corrected rates diverge. Sharing WebRTC's existing overshoot corrector with the
+physical encoder passes the narrow VP8 reuse/split/adapt/rejoin check. Keep that
+evidence distinct from full quality parity: hardware/resource feedback,
+pre-encoder drops for untrusted codecs, received-source bypass and real transport
+remain integration gates. The research owns measured results and the replacement
+map, not a second accepted architecture. A new isolated candidate is authorized;
 do not merge the current candidate just to create that base. Client simplification
 review should identify redundant owners and compensating mechanisms, not split
 files or remove required platform adapters for appearance alone.

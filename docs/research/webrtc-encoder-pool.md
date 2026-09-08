@@ -1,7 +1,7 @@
 # WebRTC Adaptation And Encoder Reuse
 
-Reviewed: 2026-09-08. Source-backed feasibility review, not an accepted engine
-replacement or a measured encoder-pool implementation. [ADR-0013](../adr/0013-embedded-node-local-media.md)
+Reviewed: 2026-09-08. Source-backed review and synthetic VP8 feasibility probe,
+not an accepted engine replacement. [ADR-0013](../adr/0013-embedded-node-local-media.md)
 still owns the direct-child/shared-output model; [TODO](../todo.md) owns work and
 the dependent release hold. The question is whether retaining mature encoder
 control while sharing compatible encoding work is smaller and more complete
@@ -121,7 +121,9 @@ adapter would have to preserve all of the following:
    removed upstream. Retain original capture and validate sibling isolation.
 
 Therefore the owner's abstraction is useful, but a transparent cross-sender
-pool preserving every independent control decision is not yet demonstrated.
+pool preserving every independent control decision is not established by the
+factory API alone. The experiment below distinguishes that from a pool owning
+the physical encoder's correction state.
 Per-node encoding cost follows the number of compatible active representations,
 not automatically a fixed three encodes regardless of downstream conditions.
 Already-encoded Native relay/SFU forwarding must remain zero-encode when usable;
@@ -150,7 +152,95 @@ build. Its headers are not a stable Go plug-in ABI. Evaluate reproducible build,
 update and package cost before replacing the Native media engine. WebRTC code
 retains its BSD-style license and PATENTS grant, dependencies their own notices.
 Epic's infrastructure MIT license does not license Unreal Engine/EpicRtc code.
-This review copies no upstream implementation and adds no dependency.
+This review copies no upstream implementation and adds no product dependency.
+The opt-in probe links the pinned SDK only under the ignored build directory.
+
+## Executed Feasibility Probe
+
+The [opt-in source and build recipe](../../native/probes/encoder-pool/README.md)
+use Shiguredo `m152.7977.0.2`, whose WebRTC revision exactly matches the pin
+above. Its relevant vendor differences are disabled built-in H264 and disabled
+pacer keyframe flushing; this VP8 encoder-only probe uses neither path.
+Matching SDK headers/static library and official MSVC libraries/linker were
+used. No desktop capture, ports, game, production service or CI job was involved.
+
+Two actual VSEs receive one synthetic 640x360@30 source through separate stock
+VideoAdapters. Both receive identical 2 Mbps budgets/feedback cadence; B alone
+gets 100 kbps for 15 seconds and then returns to 2 Mbps for 25 seconds.
+Degradation preference is maintain-framerate to expose spatial adaptation.
+This supplies encoder budgets, not a simulated full GoogCC/packet network.
+The driver drains queues between inputs, so it is not a throughput benchmark.
+
+The factory starts with exact codec/rate compatibility and one cached access
+unit per physical encoder. Different requests split, compatible streams rejoin
+on a keyframe, and each VSE gets its own metadata/callback with shared payload.
+Attempted input and successful reference identity are separate so a codec drop
+is not submitted twice. RTT/loss are excluded only because the guarded realtime
+VP8 L1T1 implementation's [DefaultTemporalLayers][vp8-default-temporal] ignores them.
+
+Three forms were exercised, plus an explicit disabled-adjuster ablation:
+
+| Form | Healthy 6-second physical Encode calls | Delivered frames per consumer | Result |
+| --- | ---: | ---: | --- |
+| Independent encoders, stock VSE correction | 360 | 180 / 180 | Control |
+| Shared factory, separate unchanged VSE correction | 337 | 180 / 180 | Only 23 reuses; independent adjusted targets soon differ |
+| Shared factory and one upstream corrector per physical encoder | 187 | 180 / 180 | 173 reuses, about 48% fewer calls in this phase |
+
+Both VSEs can have the same 2 Mbps logical target but ask their encoder for
+different corrected rates, such as about 1.67 versus 1.59 Mbps. The upstream
+[EncoderBitrateAdjuster][bitrate-adjuster] observes encoded size/timing to
+correct overshoot; it is not a resolution selector or a receiver-supplied QP.
+Disabling it only for diagnosis restored healthy reuse, locating the conflict.
+The viable probe form instead instantiates that same library class per physical
+encoder and feeds each physical output once. It does not delete correction or
+choose one peer as quality authority.
+
+In the final paired full runs, both forms first reduced B at about 4.04 seconds,
+reached 320x180, and first returned to 640x360 about 24.05 seconds after release.
+A remained full-size at about 30 fps. The pooled form resumed shared output after
+recovery and reused 87 frames in the following 3-second, single-skipped-input
+phase. Both groups fully retired, with at most two live physical encoders.
+Repeated earlier runs showed the same broad transitions. This does not promise
+fast or seamless recovery: the measured upward delay was substantial in both.
+
+Weak-phase delivery was not identical: the final control decoded 154 frames
+(10.27 fps, 85.3 kbps), versus 142 (9.47 fps, 95.1 kbps) for the pooled form.
+Splitting/rejoining also produces extra keyframes. Do not infer perceptual or
+congested-network parity from matching dimensions and transition times.
+
+WebRTC decoding checked usability; raw libvpx with postprocessing disabled
+checked matching-payload reference correctness. The [stock VP8 decoder][vp8-decoder]
+enables history-dependent MFQE on x64, so comparing its postprocessed pixels
+after different histories produced one misleading mismatch during development.
+The corrected final full pooled run compared 288 shared payloads with zero raw
+pixel mismatches. Removing reference-continuity protection in a negative
+control produced 29 mismatches despite successful decoder calls. The guard is
+necessary, not decorative defensive code. [Structured results](./data/webrtc-encoder-pool.json)
+contain no frame payloads or private identifiers.
+
+### Verdict And Remaining Scope
+
+- **An unchanged factory cache alone does not meet the goal.** Independent
+  encoder-side correction fragments otherwise equal nominal demands.
+- **The shared-encoder abstraction passes a narrow executable feasibility
+  check when physical correction state shares that owner.** It reuses real
+  encoding, retains stock spatial adaptation and can split/rejoin safely in
+  this VP8 case. No engine replacement has been selected or integrated.
+- The group invokes correction on actual frames, with rate-write deduplication;
+  stock VSE does so on rate/configuration/FPS updates. The algorithm is reused,
+  but this cadence change must not be described as an otherwise identical move.
+- Default VP8 trusts its rate controller, so pre-encoder media-optimization
+  dropping is inactive here. Other encoders need the corresponding drop feedback:
+  it is outside VideoEncoder's callbacks. Codec drops must not impersonate it.
+- Per-VSE encode timing still differs for a physical encode and a cache hit.
+  H264 hardware/asynchronous execution, actual resource overload, transport
+  overhead, received-source bypass and perceptual parity remain unverified.
+  These are integration gates, not reasons to disable mature adaptation.
+
+The reusable boundary is an encoding instance plus its encoder-side state, not
+just `Encode(frame)`. Before product replacement, resolve those remaining
+feedback owners through upstream interfaces; do not accumulate quality formulas
+or silently reintroduce per-child encoders as the ordinary product model.
 
 ## Replacement And Preservation Map
 
@@ -167,30 +257,22 @@ Native room sessions, native ICE improvements and mixed Browser/Client relay.
 Changing transport libraries does not automatically preserve these APIs. No
 unrelated page rewrite or platform-adapter deletion is justified by this review.
 
-## Bounded Next Experiment
+## Integration Gates
 
-1. Establish a reproducible native libwebrtc dependency and the smallest
-   source/encoder adapter without modifying product transport. First verify the
-   actual injection surface and build cost. Do not download/build a whole engine
-   merely to demonstrate shared immutable buffers.
-2. Use one synthetic source and two real `VideoStreamEncoder` instances with
-   stock resource adaptation active, first VP8 then the H264 hardware adapter.
-   Compare independent encoding with a pool behind their encoder factory.
-   Calling only `VideoEncoder::Encode/SetRates` cannot validate the surrounding
-   adaptation. This is a correctness control, not reopening Browser-only product
-   fanout or choosing per-child product encoders.
-3. Exercise two healthy consumers, divergent rates, one pre-encoder skipped
-   frame, keyframe/split/rejoin, source replacement, overload and stop. Require
-   actual decoding, preserved healthy quality, lower-quality recovery and
-   retirement. Record physical encode count, latency, bytes/copies and CPU/GPU
-   cost; equal dimensions or successful callbacks are insufficient.
-4. Prove the received-encoding bypass and fresh lower derivation can use the
+1. Reuse the now-executed native VSE/VP8 boundary; do not repeat a mock-only
+   factory probe or fetch a second full engine to show buffer reuse. Validate
+   hardware H264 and physical-resource feedback with the existing capture adapter.
+2. Measure source replacement, overload, real scheduling, perceptual quality,
+   transport overhead and actual CPU/GPU cost. Preserve correction/drop/resource
+   feedback with explicit owners before accepting the product integration.
+3. Prove the received-encoding bypass and fresh lower derivation can use the
    same representation owner before planning integration. If preserving stock
    control requires substantial VSE/source patches or a custom rate/quality
    policy, report that cost instead of calling it a small factory adapter.
-5. Only a passing boundary justifies an isolated implementation worktree and
-   an ADR refinement selecting the library/integration. Preserve the current
-   candidate; never merge it solely to manufacture a new branch base. Follow
+4. The narrow pass permits an isolated implementation candidate, not release
+   approval. Select the integration through an ADR refinement after resolving
+   the remaining owners. Preserve the current candidate; never merge it solely
+   to manufacture a new branch base. Follow
    the stable executable paths and serialized physical workload rules in
    CONTRIBUTING. CS2 and Win10 reports remain separate, unresolved acceptance.
 
@@ -212,6 +294,9 @@ unrelated page rewrite or platform-adapter deletion is justified by this review.
 [frame-metadata]: https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/video/frame_encode_metadata_writer.cc
 [broadcaster]: https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/api/video/video_broadcaster.cc
 [test-proxy]: https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/test/video_encoder_proxy_factory.h
+[bitrate-adjuster]: https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/video/encoder_bitrate_adjuster.cc
+[vp8-default-temporal]: https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/modules/video_coding/codecs/vp8/default_temporal_layers.cc
+[vp8-decoder]: https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/modules/video_coding/codecs/vp8/libvpx_vp8_decoder.cc
 [epic-migration]: https://github.com/EpicGames/PixelStreamingInfrastructure/blob/f826b19279ef5a8401341bc046129f1726999db2/Docs/pixel-streaming-2-migration-guide.md#L319
 [epic-settings]: https://github.com/EpicGames/PixelStreamingInfrastructure/blob/f826b19279ef5a8401341bc046129f1726999db2/Frontend/Docs/Settings%20Panel.md
 [webrtc-build]: https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/docs/native-code/development/README.md
