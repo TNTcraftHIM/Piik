@@ -19,7 +19,7 @@ import (
 const (
 	captureStopTimeout = time.Second
 	maxPreviewBytes    = 192 * 1024
-	maxOutputs         = 3
+	maxOutputs         = 6
 	minOutputBitrate   = 1_000 // Codec rate APIs use whole kbps.
 	maxOutputBitrate   = 12_000_000
 )
@@ -49,6 +49,7 @@ type VideoOptions struct {
 	EncoderIndex uint32
 	Profile      VideoProfile
 	RestoreToken string
+	OutputGroups int
 }
 
 type EncodedVideoOptions struct {
@@ -118,13 +119,12 @@ type Stream struct {
 	key    io.WriteCloser
 	done   chan error
 
-	outputs     []OutputProfile
-	activeCount int
-	hasActive   bool
-	bitrates    [maxOutputs]uint32
-	controlMu   sync.Mutex
-	closed      bool
-	closeOnce   sync.Once
+	outputs   []OutputProfile
+	active    [maxOutputs]bool
+	bitrates  [maxOutputs]uint32
+	controlMu sync.Mutex
+	closed    bool
+	closeOnce sync.Once
 }
 
 func ListSources(parent context.Context, executable string) ([]CaptureTarget, error) {
@@ -180,6 +180,7 @@ func PreviewSource(parent context.Context, executable string, target CaptureTarg
 func StartVideo(parent context.Context, executable string, options VideoOptions) (*Stream, error) {
 	if !options.Target.Valid() || !options.Profile.Valid() ||
 		(options.Codec != "auto" && options.Codec != "h264" && options.Codec != "vp8") ||
+		options.OutputGroups < 0 || options.OutputGroups > maxOutputs-2 ||
 		len(options.RestoreToken) > 4096 || !utf8.ValidString(options.RestoreToken) ||
 		strings.ContainsRune(options.RestoreToken, 0) {
 		return nil, errors.New("native video target is invalid")
@@ -210,9 +211,12 @@ func StartVideo(parent context.Context, executable string, options VideoOptions)
 		options.Profile.Preference,
 		"--codec",
 		options.Codec,
-		"--protocol-v5",
+		"--protocol-v6",
 	}
 	outputs := ScreenShareOutputs(options.Profile)
+	for range options.OutputGroups {
+		outputs = append(outputs, outputs[0])
+	}
 	arguments, err := appendOutputArguments(arguments, outputs)
 	if err != nil {
 		return nil, err
@@ -222,6 +226,7 @@ func StartVideo(parent context.Context, executable string, options VideoOptions)
 		return nil, err
 	}
 	stream.outputs = outputs
+	stream.active[0], stream.active[1] = true, true
 	return stream, nil
 }
 
@@ -233,7 +238,7 @@ func StartEncodedVideo(parent context.Context, executable string, options Encode
 		"--encoded-video", "--codec", options.Codec,
 		"--adapter-index", strconv.FormatUint(uint64(options.AdapterIndex), 10),
 		"--mft-index", strconv.FormatUint(uint64(options.EncoderIndex), 10),
-		"--preference", options.Preference, "--protocol-v5",
+		"--preference", options.Preference, "--protocol-v6",
 	}, options.Outputs)
 	if err != nil {
 		return nil, err
@@ -250,15 +255,9 @@ func appendOutputArguments(arguments []string, outputs []OutputProfile) ([]strin
 	if len(outputs) < 1 || len(outputs) > maxOutputs {
 		return nil, errors.New("native output count is invalid")
 	}
-	for index, output := range outputs {
+	for _, output := range outputs {
 		if !output.Valid() {
 			return nil, errors.New("native output profile is invalid")
-		}
-		if index > 0 {
-			previous := outputs[index-1]
-			if output.Width <= previous.Width || output.Height <= previous.Height || output.Framerate < previous.Framerate || output.Bitrate < previous.Bitrate {
-				return nil, errors.New("native output profiles must be ordered low to high")
-			}
 		}
 		arguments = append(arguments, "--output", strconv.FormatUint(uint64(output.Width), 10),
 			strconv.FormatUint(uint64(output.Height), 10), strconv.FormatUint(uint64(output.Framerate), 10), strconv.FormatUint(uint64(output.Bitrate), 10))
@@ -471,22 +470,26 @@ func (stream *Stream) RequestKeyFrame(layer int) error {
 	return stream.writeControl("K " + strconv.Itoa(layer))
 }
 
-func (stream *Stream) SetActiveOutputs(count int) error {
-	if count < 0 || count > len(stream.outputs) || len(stream.outputs) == 0 {
-		return errors.New("native active output count is invalid")
+func (stream *Stream) SetOutputActive(layer int, active bool) error {
+	if layer < 0 || layer >= len(stream.outputs) {
+		return errors.New("native active output is invalid")
 	}
 	stream.controlMu.Lock()
 	defer stream.controlMu.Unlock()
 	if stream.closed {
 		return io.ErrClosedPipe
 	}
-	if stream.hasActive && stream.activeCount == count {
+	if stream.active[layer] == active {
 		return nil
 	}
-	if err := stream.writeControlLocked("A " + strconv.Itoa(count)); err != nil {
+	value := "0"
+	if active {
+		value = "1"
+	}
+	if err := stream.writeControlLocked("A " + strconv.Itoa(layer) + " " + value); err != nil {
 		return err
 	}
-	stream.activeCount, stream.hasActive = count, true
+	stream.active[layer] = active
 	return nil
 }
 

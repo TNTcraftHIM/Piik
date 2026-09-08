@@ -79,6 +79,18 @@ This refines the implementation boundary, not the direct-child demand model or
 an acceptance claim. The [encoder-pool evidence](../research/webrtc-encoder-pool.md)
 shows why sharing the codec alone loses reuse or churns under independent drops.
 
+Incompatible direct-child budgets own separate adaptive outputs. Equal effective
+requests within the same source generation, codec, preference and ceiling may
+share; dimensions alone are not a compatibility key. Rates update an owned
+pipeline in place, not by recreating it for every bitrate sample. Membership
+changes wait for independent recovery, retain existing transport identity and
+stop the last unused codec slot. The original input is not lowered by a derived
+group. Physical codec slots are bounded by endpoint admission, not by LiveKit's
+three spatial-layer labels; each connection sees original plus its assigned
+adaptive output. SFU publication retains its aggregate allocation separately.
+No ancestor lookup, extra upstream layer subscription or new congestion policy
+is introduced.
+
 - One media model can serve Native edges and embedded server forwarding without
   duplicating room authority. The adapter is not a second room policy.
 - Extra low encodes, decoder work, frame copies and publication upload remain

@@ -161,10 +161,16 @@ actual output dimensions update forwarding metadata without resetting sibling
 stream trackers. H264 uses native NV12/MFT and WebRTC's parsed-QP adaptation;
 VP8 uses the library encoder. Other platform producers retain their current
 fixed-output implementation pending equivalent physical acceptance.
-The current lowest-output budget still combines its consumers; independent
-incompatible weak-child demands remain unfinished pool integration. Neither
-the fixed output set nor local codec recovery proves full Browser parity or
-hardware-overload acceptance.
+Each source groups compatible effective direct-child requests and keeps
+incompatible weak budgets independent. Per-group rates change in place; joining
+another group's output waits for accepted recovery and keeps the existing
+PeerConnection, pacer and bandwidth estimator. Original received media stays
+encoded, while a relay uses one decoder process for its independently activated
+missing outputs. Source-generation retirement rejects old frames before they
+can change attachment. Private physical slots are bounded by admitted consumers,
+not fixed spatial presets, and unused codec workers retire independently.
+This does not establish full Browser parity, hardware-overload acceptance or
+seamless adaptation at extremely low bandwidth.
 
 Native sender edges normally reuse the shared encoded source. A Native Viewer
 forwards suitable H.264/VP8 and Opus payload unchanged and derives only a missing

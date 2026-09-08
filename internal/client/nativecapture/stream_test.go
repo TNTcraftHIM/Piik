@@ -10,6 +10,21 @@ import (
 	"testing"
 )
 
+func TestVideoOutputGroupCountIsBoundedBeforeProcessStartup(t *testing.T) {
+	options := VideoOptions{
+		Target: CaptureTarget{Kind: "display", SourceID: "1", Title: "Display"},
+		Codec:  "vp8",
+		Profile: VideoProfile{Width: 1280, Height: 720, Framerate: 30,
+			Bitrate: 3_000_000, Preference: "balanced"},
+	}
+	for _, groups := range []int{-1, maxOutputs - 1} {
+		options.OutputGroups = groups
+		if _, err := StartVideo(t.Context(), "", options); err == nil || err.Error() != "native video target is invalid" {
+			t.Fatalf("group count %d reached process startup: %v", groups, err)
+		}
+	}
+}
+
 func TestCaptureFailureDebugUsesOnlyFixedFields(t *testing.T) {
 	previous := slog.Default()
 	t.Cleanup(func() { slog.SetDefault(previous) })

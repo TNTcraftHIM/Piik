@@ -10,6 +10,7 @@ interface DebugDetails {
   generation?: number;
   revision?: number;
   code?: string | number;
+  count?: number;
   reconnecting?: boolean;
   native?: boolean;
   resolution?: QualityResolution;
@@ -26,7 +27,7 @@ interface BrowserDebugEvent {
   details: DebugDetails;
 }
 
-const enabled =
+export const browserDebugEnabled =
   typeof window !== "undefined" &&
   new URLSearchParams(window.location.search).get("debug") === "1";
 const events: BrowserDebugEvent[] = [];
@@ -37,6 +38,7 @@ const fields = [
   "generation",
   "revision",
   "code",
+  "count",
   "reconnecting",
   "native",
   "resolution",
@@ -72,7 +74,7 @@ export function debugEvent(
   details: DebugDetails = {},
 ): void {
   if (
-    !enabled ||
+    !browserDebugEnabled ||
     !/^[a-z][a-z-]{0,47}$/.test(scope) ||
     !/^[a-z][a-z-]{0,47}$/.test(event)
   )
@@ -105,7 +107,7 @@ export function debugError(
   error: unknown,
   details: DebugDetails = {},
 ): void {
-  if (!enabled) return;
+  if (!browserDebugEnabled) return;
   let errorName = "Error";
   try {
     if (
@@ -124,7 +126,7 @@ function snapshot(): BrowserDebugEvent[] {
 }
 
 export function installBrowserDebug(): (() => void) | undefined {
-  if (!enabled) return;
+  if (!browserDebugEnabled) return;
   window.__SCREENER_DEBUG__ = {
     events: snapshot,
     clear: () => {

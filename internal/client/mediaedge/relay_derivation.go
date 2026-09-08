@@ -13,7 +13,6 @@ import (
 	"github.com/TNTcraftHIM/Screener/internal/media/forwarding"
 	"github.com/livekit/mediatransportutil/pkg/utils"
 	"github.com/pion/rtp"
-	"github.com/pion/webrtc/v4"
 )
 
 const relayPacketLimit = 500 // Same retained-packet bound as the native forwarding source.
@@ -52,11 +51,11 @@ type relayDerivation struct {
 }
 
 type relayPlan struct {
-	profile *nativecapture.VideoProfile
-	output  nativecapture.OutputProfile
-	format  uint64
-	bitrate uint32
-	wanted  bool
+	profile  *nativecapture.VideoProfile
+	output   nativecapture.OutputProfile
+	format   uint64
+	controls OutputPlan
+	wanted   bool
 }
 
 type relayRun struct {
@@ -88,27 +87,49 @@ func (source *Source) configureRelayFormats(reset bool) error {
 	if width > 0 && height > 0 {
 		lower.Width, lower.Height = min(width/4*2, lower.Width), min(height/4*2, lower.Height)
 	}
-	if !reset && len(source.outputBitrates) > 0 && source.outputBitrates[0] == 0 {
-		lower.Bitrate = 0
+	if len(source.outputBitrates) != 2+source.capacity {
+		source.outputBitrates = make([]uint32, 2+source.capacity)
+		reset = true
 	}
-	source.outputBitrates = []uint32{lower.Bitrate, source.relayProfile.Bitrate}
-	return source.media.UpdateFormats([]forwarding.LayerFormat{
+	for slot := range source.outputBitrates {
+		if reset || source.outputBitrates[slot] != 0 {
+			source.outputBitrates[slot] = lower.Bitrate
+		}
+	}
+	source.outputBitrates[1] = source.relayProfile.Bitrate
+	formats := []forwarding.LayerFormat{
 		{Width: lower.Width, Height: lower.Height, Bitrate: lower.Bitrate},
 		{Width: width, Height: height, Bitrate: source.relayProfile.Bitrate},
-	})
+	}
+	if err := source.media.UpdateFormats(formats); err != nil {
+		return err
+	}
+	for slot, group := range source.groups {
+		if slot != 0 {
+			if err := group.media.UpdateFormats(formats); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (source *Source) relayPlan() relayPlan {
 	source.writeMu.Lock()
 	defer source.writeMu.Unlock()
 	source.mu.Lock()
-	defer source.mu.Unlock()
 	plan := relayPlan{}
-	if source.closed || source.relayProfile == nil || len(source.outputBitrates) == 0 || source.outputBitrates[0] == 0 {
+	if source.closed || source.relayProfile == nil || len(source.outputBitrates) == 0 {
+		source.mu.Unlock()
 		return plan
 	}
 	base := len(source.formats) - 1
 	plan.profile, plan.format = source.relayProfile, source.formats[base].Load()
+	edges := make([]*Edge, 0, len(source.edges))
+	for edge := range source.edges {
+		edges = append(edges, edge)
+	}
+	source.mu.Unlock()
 	width, height := uint32(plan.format>>32), uint32(plan.format)
 	plan.output = nativecapture.ScreenShareOutputs(*plan.profile)[0]
 	plan.output.Width = min(width/4*2, plan.output.Width)
@@ -116,30 +137,23 @@ func (source *Source) relayPlan() relayPlan {
 	if !plan.output.Valid() || width > 2560 || height > 1440 {
 		return plan
 	}
-	plan.bitrate = plan.output.Bitrate
-	for edge, local := range source.edges {
-		if local || edge.State() != webrtc.PeerConnectionStateConnected {
-			continue
-		}
-		if _, fresh := edge.transport.TargetBitrate(); !fresh {
-			continue
-		}
-		state := edge.transport.Output.State()
-		needsLower := state.Paused || state.Target >= 0 && state.Target < int32(base) ||
-			state.Current >= 0 && state.Current < int32(base)
-		if state.VideoBudget > 0 && needsLower {
-			plan.wanted = true
-			budget := source.media.CodecBudget(0, state.VideoBudget)
-			plan.bitrate = min(plan.bitrate, uint32(min(budget, int64(plan.output.Bitrate))))
-		}
+	demands := source.collectDemands(edges, nil)
+	for _, demand := range demands {
+		plan.wanted = plan.wanted || demand.active && demand.lower
 	}
-	plan.bitrate = max(1000, plan.bitrate)
+	plan.controls, _ = source.planGroups(demands)
 	return plan
 }
 
 func (relay *relayDerivation) push(packet *rtp.Packet) {
 	relay.mu.Lock()
-	defer relay.mu.Unlock()
+	requestOriginal := false
+	defer func() {
+		relay.mu.Unlock()
+		if requestOriginal {
+			relay.source.RequestRecoveryFrame()
+		}
+	}()
 	if relay.run != nil {
 		select {
 		case <-relay.run.done:
@@ -149,6 +163,10 @@ func (relay *relayDerivation) push(packet *rtp.Packet) {
 	}
 	if packet.Marker {
 		plan := relay.source.relayPlan()
+		if !plan.wanted && relay.source.groupRecovery.Load()&2 != 0 {
+			relay.source.groupRecovery.And(^uint32(2))
+			requestOriginal = true
+		}
 		if relay.run != nil && (!plan.wanted || plan.profile != relay.run.plan.profile || plan.format != relay.run.plan.format) {
 			relay.run.cancel(nil)
 			return
@@ -208,14 +226,23 @@ func (run *relayRun) serve() {
 	defer close(run.done)
 	defer func() {
 		if cause := context.Cause(run.ctx); cause != nil && !errors.Is(cause, context.Canceled) {
-			retire, _ := run.owner.source.markLayerUnavailable(0, run)
-			if retire != nil {
-				retire()
+			for slot := 0; slot < 2+run.owner.source.capacity; slot++ {
+				if slot == 1 {
+					continue
+				}
+				retire, _ := run.owner.source.markLayerUnavailable(slot, run)
+				if retire != nil {
+					retire()
+				}
 			}
 		}
 	}()
 	backend, _ := relayBackend(run.owner.source.codec, &run.owner.options)
-	backend.Preference, backend.Outputs = run.plan.profile.Preference, []nativecapture.OutputProfile{run.plan.output}
+	backend.Preference = run.plan.profile.Preference
+	backend.Outputs = make([]nativecapture.OutputProfile, run.owner.source.capacity+1)
+	for slot := range backend.Outputs {
+		backend.Outputs[slot] = run.plan.output
+	}
 	stream, err := nativecapture.StartEncodedVideo(run.ctx, run.owner.options.CaptureProcess, backend)
 	if err != nil {
 		run.cancel(err)
@@ -283,11 +310,8 @@ func (run *relayRun) write(stream *nativecapture.Stream) error {
 				if !plan.wanted || plan.profile != run.plan.profile || plan.format != run.plan.format {
 					return context.Canceled
 				}
-				if err = stream.SetOutputBitrate(0, plan.bitrate); err != nil {
-					return err
-				}
 				if run.owner.recovery.Swap(false) {
-					if err = stream.RequestKeyFrame(0); err != nil {
+					if err = stream.RequestKeyFrame(-1); err != nil {
 						return err
 					}
 				}
@@ -314,20 +338,58 @@ func (run *relayRun) read(stream *nativecapture.Stream) {
 		case nativecapture.FrameStatus:
 			continue
 		case nativecapture.FrameBegin:
-			source.writeMu.Lock()
-			err = source.media.BeginFrame(frame.Timestamp, run.anchorTime.Add(frame.Timestamp))
-			source.writeMu.Unlock()
+			var plan OutputPlan
+			plan, err = source.beginFrame(frame.Timestamp, run.anchorTime.Add(frame.Timestamp))
+			if err == nil {
+				for slot := range stream.Outputs() {
+					physical := slot
+					if slot > 0 {
+						physical++
+					}
+					if plan.Bitrates[physical] > 0 {
+						err = stream.SetOutputBitrate(slot, plan.Bitrates[physical])
+					}
+					if err == nil {
+						err = stream.SetOutputActive(slot, plan.Active[physical])
+					}
+					if err != nil {
+						break
+					}
+				}
+			}
+			for _, physical := range plan.RecoveryLayers {
+				if physical == 1 {
+					source.RequestRecoveryFrame()
+					continue
+				}
+				slot := physical
+				if slot > 1 {
+					slot--
+				}
+				if err == nil {
+					err = stream.RequestKeyFrame(slot)
+				}
+			}
 		case nativecapture.FrameH264, nativecapture.FrameVP8:
-			if frame.Layer != 0 || (frame.Kind == nativecapture.FrameH264) != (source.codec == "h264") {
+			if frame.Layer > source.capacity || (frame.Kind == nativecapture.FrameH264) != (source.codec == "h264") {
 				err = errors.New("native relay output does not match its source")
 				break
 			}
-			if err = source.SetFormat(0, frame.Width, frame.Height); err != nil {
-				break
+			physical := frame.Layer
+			if physical > 0 {
+				physical++
 			}
-			err = source.WriteVideo(0, encoded.Frame{
-				Data: frame.Data, PTS: frame.Timestamp, Duration: frame.Duration, Recovery: frame.KeyFrame,
-			})
+			err = run.acceptFrame(physical, frame)
+		case nativecapture.FrameLayerUnavailable:
+			physical := frame.Layer
+			if physical > 0 {
+				physical++
+			}
+			retire, failure := source.markLayerUnavailable(physical, run)
+			err = failure
+			if retire != nil {
+				retire()
+			}
 		default:
 			err = errors.New("native relay output failed")
 		}
@@ -336,4 +398,25 @@ func (run *relayRun) read(stream *nativecapture.Stream) {
 			return
 		}
 	}
+}
+
+func (run *relayRun) acceptFrame(slot int, frame nativecapture.Frame) error {
+	run.owner.mu.Lock()
+	defer run.owner.mu.Unlock()
+	source := run.owner.source
+	source.writeMu.Lock()
+	defer source.writeMu.Unlock()
+	source.mu.Lock()
+	current := run.owner.run == run && run.ctx.Err() == nil && !source.closed &&
+		source.relayProfile == run.plan.profile && source.formats[len(source.formats)-1].Load() == run.plan.format
+	source.mu.Unlock()
+	if !current {
+		return context.Canceled
+	}
+	if err := source.setFormat(slot, frame.Width, frame.Height); err != nil {
+		return err
+	}
+	return source.writeVideo(slot, encoded.Frame{
+		Data: frame.Data, PTS: frame.Timestamp, Duration: frame.Duration, Recovery: frame.KeyFrame,
+	})
 }

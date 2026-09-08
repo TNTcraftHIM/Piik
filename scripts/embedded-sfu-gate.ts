@@ -142,7 +142,7 @@ async function main(): Promise<void> {
     await waitForSample((deadline) => fetchJsonBefore<{ status: string }>(`${backend}/healthz`, deadline),
       () => true, 15_000);
     vite = await createViteServer({ root: ROOT, configFile: false, appType: "custom", logLevel: "silent",
-      server: { host: "127.0.0.1", port: vitePort, strictPort: true,
+      server: { host: "127.0.0.1", port: vitePort, strictPort: true, watch: null,
         proxy: { "/api": { target: backend }, "/signal": { target: backend, ws: true } } },
       plugins: [{ name: "embedded-sfu-gate", configureServer(instance) {
         instance.middlewares.use((request, response, next) => {
@@ -194,6 +194,11 @@ async function main(): Promise<void> {
     if (nativeArm) await cdp.call("Browser.setPermission", {
       permission: { name: "local-network-access" }, setting: "granted", origin,
     }, undefined, Date.now() + 5_000);
+    result.stage = "gate-page";
+    const gatePage = await fetch(`${origin}/embedded-sfu-gate`, { signal: AbortSignal.timeout(5_000) });
+    if (!gatePage.ok || !(await gatePage.text()).includes("Embedded SFU acceptance")) {
+      throw new Error("Local SFU gate page is unavailable");
+    }
     host = await createPage(cdp, `${origin}/embedded-sfu-gate`);
     viewer = await createPage(cdp, `${origin}/embedded-sfu-gate`, AUDIO_PROBE);
     result.stage = "authenticate";

@@ -147,13 +147,18 @@ func TestEncodedGroupVP8Fixture(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			upperPrefix := max(wanted[0], wanted[1]) + 1
+			highestNeeded := max(wanted[0], wanted[1])
 			for _, edge := range edges {
-				upperPrefix = max(upperPrefix, int(edge.transport.Output.State().Current)+1)
+				highestNeeded = max(highestNeeded, int(edge.transport.Output.State().Current))
 			}
 			plan, err := source.BeginFrame(row.PTS)
-			if err != nil || plan.ActiveLayers < max(wanted[0], wanted[1])+1 || plan.ActiveLayers > upperPrefix {
-				t.Fatalf("active prefix = %d, err=%v", plan.ActiveLayers, err)
+			if err != nil || len(plan.Active) != 3 || !plan.Active[wanted[0]] || !plan.Active[wanted[1]] {
+				t.Fatalf("requested outputs = %v, active slots = %v, err=%v", wanted, plan.Active, err)
+			}
+			for slot, active := range plan.Active {
+				if active && slot > highestNeeded {
+					t.Fatalf("slot %d is active above current/requested output %d", slot, highestNeeded)
+				}
 			}
 			lastFrame = row.FrameIndex
 		}

@@ -157,8 +157,9 @@ func (publication *Publication) QualitySample(now time.Time) (PublicationQuality
 		return PublicationQualitySample{}, false
 	}
 	seconds := window.Seconds()
+	source := publication.transport.CurrentSource()
 	sample := PublicationQualitySample{SampleTimestampMs: now.UnixMilli(), SampleWindowMs: window.Milliseconds(),
-		RTPStatsID: publication.signaling.connection.ID(), TrackIdentifier: string(publication.source.media.TrackID()),
+		RTPStatsID: publication.signaling.connection.ID(), TrackIdentifier: string(source.TrackID()),
 		Codec: publication.source.codec, VideoEncodingCount: len(current.Frames), State: "unknown",
 		BitrateKbps:      float64((current.VideoBytes-previous.VideoBytes+current.AudioBytes-previous.AudioBytes)*8) / seconds / 1000,
 		AudioBitrateKbps: float64((current.AudioBytes-previous.AudioBytes)*8) / seconds / 1000}
@@ -169,8 +170,7 @@ func (publication *Publication) QualitySample(now time.Time) (PublicationQuality
 		sample.ActiveVideoEncodingCount++
 		sample.IntervalFramesSent = frames - previous.Frames[index]
 		sample.RID = forwarding.PublicationRID(index, len(current.Frames))
-		format := publication.source.formats[index].Load()
-		sample.Width, sample.Height = uint32(format>>32), uint32(format)
+		sample.Width, sample.Height = sentVideoDimensions(source, index)
 	}
 	sample.FramesPerSecond = float64(sample.IntervalFramesSent) / seconds
 	if current.Observed {
@@ -189,15 +189,12 @@ func (publication *Publication) QualitySample(now time.Time) (PublicationQuality
 }
 
 func (publication *Publication) Media() PublicationMedia {
-	source := publication.source
-	source.writeMu.Lock()
-	defer source.writeMu.Unlock()
-	media := PublicationMedia{Codec: source.codec, Audio: publication.audio != nil,
-		AudioBitrate: publication.audio.configuredBitrate(), Layers: make([]PublicationLayer, len(source.formats))}
-	for index := range source.formats {
-		format := source.formats[index].Load()
-		media.Layers[index] = PublicationLayer{RID: forwarding.PublicationRID(index, len(source.formats)),
-			Width: uint32(format >> 32), Height: uint32(format), Bitrate: source.outputBitrates[index]}
+	info := publication.transport.CurrentSource().TrackInfo()
+	media := PublicationMedia{Codec: publication.source.codec, Audio: publication.audio != nil,
+		AudioBitrate: publication.audio.configuredBitrate(), Layers: make([]PublicationLayer, len(info.Layers))}
+	for index, layer := range info.Layers {
+		media.Layers[index] = PublicationLayer{RID: forwarding.PublicationRID(index, len(info.Layers)),
+			Width: layer.Width, Height: layer.Height, Bitrate: layer.Bitrate}
 	}
 	publication.transport.SetAudioBitrate(media.AudioBitrate)
 	return media
@@ -225,6 +222,7 @@ func (publication *Publication) Close() error {
 		engine.mu.Lock()
 		delete(engine.publications, publication)
 		engine.mu.Unlock()
+		publication.source.RequestRecoveryFrame()
 	})
 	return publication.closeErr
 }

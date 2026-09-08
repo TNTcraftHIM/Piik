@@ -10,11 +10,11 @@ topics are not implementation authority.
 Owner-authorized phase: [embedded STUN/SFU and node-local media](./adr/0013-embedded-node-local-media.md).
 Execution priority is now explicit:
 
-1. **Client encoding-layer pool integration.** Reuse compatible complete
-   WebRTC encoding/adaptation pipelines for local outputs, preserve encoded
-   cross-hop forwarding, and connect real transport budgets, H264/VP8 producers,
-   dynamic settings and retirement. A passing cache fixture is not this delivery.
-   Remove superseded encoding control only after its replacement is verified.
+1. **Client encoding-layer pool acceptance.** Source-owned compatible groups,
+   independent weak budgets and retained transport handoff are implemented.
+   Real relay checks cover shared output, split/rejoin and 180p/360p delivery.
+   Finish full Host/SFU, physical overload and representative network acceptance;
+   packet delivery and local fixtures do not establish perceptual parity.
 2. **Reported capture defects and retained fixes.** Finish the exact CS2
    fullscreen 4:3 stretched, Alt-Tab, advanced-setting, return reproduction and
    the independent Win10 whole-display startup investigation. Preserve this
@@ -92,8 +92,8 @@ The owner reaffirmed shared encoding and weak-path adaptation as the core
 release targets. Windows shared output workers now attach stock WebRTC
 codec/resource adaptation and both H264/VP8 shrink and recover in the actual
 encoded-input process check. Retain actual-dimension metadata and source
-timestamps; do not replace this with another fixed ladder. Complete independent
-incompatible weak-child demand grouping, real capture cadence/overload and
+timestamps; do not replace this with another fixed ladder. Independent
+incompatible weak-child demand grouping is implemented; finish capture cadence/overload and
 usable delivery comparisons before accepting Browser-equivalent behavior.
 Dependent release approval remains held; this is not merely packaging work.
 The [pinned WebRTC trace and executed encoder-pool probe](./research/webrtc-encoder-pool.md)
@@ -111,8 +111,8 @@ Cross-level reuse now has actual two-hop Pion replay evidence and a separate
 two-consumer shared-derivation/retirement check. Keep `Source.WriteRTP` as the
 healthy encoded bypass; integrate VSE/pool only behind required local outputs,
 not a fake per-child raw pipeline or a replacement transport. The Windows
-derivation process now uses the new output pipeline; complete grouped demand
-membership and mixed-network acceptance. One-total-encode claims must
+derivation process now uses the new output pipeline and grouped demand
+membership; complete mixed-network acceptance. One-total-encode claims must
 count Host standby outputs and exclude pure Browser intermediate re-encoding.
 The delayed-codec probe exposes repeated input-drop split/rejoin in the narrow
 factory cache. Evaluate sharing the complete encoding/adaptation pipeline per
@@ -128,6 +128,15 @@ encodings already received at this node; derive a missing output locally for
 compatible direct-child demand. Do not add ancestor-cache discovery or extra
 upstream layer subscriptions merely to avoid a local encode. That expansion's
 subscription/bandwidth/lifecycle cost has no measured benefit in this phase.
+
+Field feedback from the owner's `cbdd751` Client bundles is being resolved in
+parallel. Vivaldi's Native H264 capture starts successfully but the local
+Browser media bridge stays connecting until its eight-second deadline; ICE
+versus DTLS/policy is not yet distinguished. CS2's three 720p update requests
+all return failure, so the UI restores the committed 1080p settings; the old log
+does not identify the exact preparation rejection. The missing bounded
+failure/state evidence is now implemented; verify a cause-specific correction rather than
+assuming unsupported capture or silently weakening Browser/network settings.
 
 The returned Go core and frontend fixes are reconciled on the integration
 candidate. The owner authorized hygiene cleanup, matched Server/Client builds,

@@ -40,6 +40,7 @@ type Edge struct {
 	targetBitrate func() (int, bool)
 	events        EdgeEvents
 	transport     *forwarding.Transport
+	local         bool
 
 	mu                   sync.Mutex
 	pendingCandidates    []webrtc.ICECandidateInit
@@ -96,6 +97,7 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (*Edge, error
 		audioSource:   options.Audio,
 		connection:    connection,
 		transport:     transport,
+		local:         options.Local,
 		targetBitrate: transport.TargetBitrate,
 		events:        options.Events,
 		sender:        transport.VideoSender,
@@ -134,6 +136,14 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (*Edge, error
 	connection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
 		edge.localCandidates.addPion(candidate)
 	})
+	connection.OnICEConnectionStateChange(func(state webrtc.ICEConnectionState) {
+		slog.Debug("screener-client", "event", "media-ice-state", "direction", "outbound", "local", options.Local, "state", state.String())
+	})
+	if dtls := edge.sender.Transport(); dtls != nil {
+		dtls.OnStateChange(func(state webrtc.DTLSTransportState) {
+			slog.Debug("screener-client", "event", "media-dtls-state", "direction", "outbound", "local", options.Local, "state", state.String())
+		})
+	}
 	connection.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
 		debug := slog.Default().Enabled(engine.ctx, slog.LevelDebug)
 		if debug {
@@ -342,6 +352,9 @@ func (edge *Edge) Close() error {
 	}
 	edge.pendingCandidates = nil
 	edge.mu.Unlock()
+	if edge.local && slog.Default().Enabled(edge.engine.ctx, slog.LevelDebug) {
+		logLocalMediaCandidateCounts(edge.connection.GetStats())
+	}
 	err := edge.transport.Close()
 	edge.source.detach(edge)
 	if edge.audioSource != nil {
@@ -349,6 +362,28 @@ func (edge *Edge) Close() error {
 	}
 	edge.engine.remove(edge)
 	return err
+}
+
+func logLocalMediaCandidateCounts(report webrtc.StatsReport) {
+	for _, direction := range []webrtc.StatsType{webrtc.StatsTypeLocalCandidate, webrtc.StatsTypeRemoteCandidate} {
+		for _, kind := range []webrtc.ICECandidateType{webrtc.ICECandidateTypeHost, webrtc.ICECandidateTypeSrflx, webrtc.ICECandidateTypePrflx, webrtc.ICECandidateTypeRelay} {
+			udp, tcp := 0, 0
+			for _, entry := range report {
+				candidate, ok := entry.(webrtc.ICECandidateStats)
+				if !ok || candidate.Type != direction || candidate.CandidateType != kind || candidate.Deleted {
+					continue
+				}
+				switch candidate.Protocol {
+				case "udp":
+					udp++
+				case "tcp":
+					tcp++
+				}
+			}
+			slog.Debug("screener-client", "event", "media-candidate-counts", "local", true,
+				"direction", string(direction), "type", kind.String(), "udp", udp, "tcp", tcp)
+		}
+	}
 }
 
 // Shutdown must release every transport before waiting on shared source writes.

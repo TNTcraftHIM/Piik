@@ -279,7 +279,13 @@ func TestRelayNetworkVP8Fixture(t *testing.T) {
 		source.relay.mu.Unlock()
 		if now.Sub(lastReport) >= time.Second {
 			state, plan := children[1].transport.Output.State(), source.relayPlan()
-			row := observation{Second: elapsed.Seconds(), Capacity: capacity, CodecBudget: plan.bitrate,
+			physical := 0
+			source.writeMu.Lock()
+			if group := source.groupForMedia(children[1].transport.CurrentSource()); group != nil {
+				physical = group.slot
+			}
+			source.writeMu.Unlock()
+			row := observation{Second: elapsed.Seconds(), Capacity: capacity, CodecBudget: plan.controls.Bitrates[physical],
 				VideoBudget: state.VideoBudget, Target: state.Target, Current: state.Current}
 			if buffer := source.media.GetAllBuffers()[0]; buffer != nil {
 				if stats := buffer.GetStats(); stats != nil {

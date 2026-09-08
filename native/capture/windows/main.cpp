@@ -973,12 +973,6 @@ void ParseOutputProfiles(ProductArguments& arguments, int first, int count, wcha
          output.frame_rate > arguments.profile.frame_rate || output.bit_rate > arguments.profile.bit_rate)) {
       Fail("argument-output", "output profile exceeds source bounds");
     }
-    if (!arguments.outputs.empty()) {
-      const auto& previous = arguments.outputs.back();
-      if (output.width <= previous.width || output.height <= previous.height || output.bit_rate < previous.bit_rate) {
-        Fail("argument-output-order", "outputs must be ordered low to high");
-      }
-    }
     arguments.outputs.push_back(output);
   }
 }
@@ -1006,13 +1000,13 @@ ProductArguments ParseProductArguments(int count, wchar_t** values) {
   if (count == 5 && std::wstring(values[1]) == L"--capture-audio") {
     arguments.mode = ProductArguments::Mode::audio;
     arguments.target_kind = ParseTargetKind(values[2]);
-  } else if (count >= 16 && count <= 26 && (count - 11) % 5 == 0 &&
+  } else if (count >= 16 && count <= 11 + 5 * screener::capture::kMaxOutputs && (count - 11) % 5 == 0 &&
              std::wstring(values[1]) == L"--encoded-video" &&
              std::wstring(values[2]) == L"--codec" &&
              std::wstring(values[4]) == L"--adapter-index" &&
              std::wstring(values[6]) == L"--mft-index" &&
              std::wstring(values[8]) == L"--preference" &&
-             std::wstring(values[10]) == L"--protocol-v5") {
+             std::wstring(values[10]) == L"--protocol-v6") {
     arguments.mode = ProductArguments::Mode::encoded;
     arguments.codec = NarrowAscii(values[3]);
     if (arguments.codec != "h264" && arguments.codec != "vp8") Fail("argument-codec", "encoded input codec is unsupported");
@@ -1020,9 +1014,15 @@ ProductArguments ParseProductArguments(int count, wchar_t** values) {
     arguments.mft_index = ParseIndex(values[7], "argument-mft");
     arguments.profile.preference = ParseDegradationPreference(values[9]);
     ParseOutputProfiles(arguments, 11, count, values);
-    arguments.profile = arguments.outputs.back();
+    arguments.profile = arguments.outputs.front();
+    for (const auto& output : arguments.outputs) {
+      arguments.profile.width = std::max(arguments.profile.width, output.width);
+      arguments.profile.height = std::max(arguments.profile.height, output.height);
+      arguments.profile.frame_rate = std::max(arguments.profile.frame_rate, output.frame_rate);
+      arguments.profile.bit_rate = std::max(arguments.profile.bit_rate, output.bit_rate);
+    }
     return arguments;
-  } else if (count >= 28 && count <= 38 && (count - 23) % 5 == 0 &&
+  } else if (count >= 28 && count <= 23 + 5 * screener::capture::kMaxOutputs && (count - 23) % 5 == 0 &&
              std::wstring(values[1]) == L"--capture-video" &&
              std::wstring(values[6]) == L"--adapter-index" &&
              std::wstring(values[8]) == L"--mft-index" &&
@@ -1032,7 +1032,7 @@ ProductArguments ParseProductArguments(int count, wchar_t** values) {
              std::wstring(values[16]) == L"--bitrate" &&
              std::wstring(values[18]) == L"--preference" &&
              std::wstring(values[20]) == L"--codec" &&
-             std::wstring(values[22]) == L"--protocol-v5") {
+             std::wstring(values[22]) == L"--protocol-v6") {
     arguments.mode = ProductArguments::Mode::video;
     arguments.target_kind = ParseTargetKind(values[2]);
     arguments.source_id = ParseUint64(values[3], "argument-source");
@@ -1050,10 +1050,10 @@ ProductArguments ParseProductArguments(int count, wchar_t** values) {
     arguments.codec = NarrowAscii(codec);
     ValidateVideoProfile(arguments.profile);
     ParseOutputProfiles(arguments, 23, count, values);
-    const auto& highest = arguments.outputs.back();
-    if (highest.width != arguments.profile.width || highest.height != arguments.profile.height ||
-        highest.frame_rate != arguments.profile.frame_rate || highest.bit_rate != arguments.profile.bit_rate) {
-      Fail("argument-output-source", "highest output must match the source profile");
+    const auto& original = arguments.outputs[arguments.outputs.size() > 1 ? 1 : 0];
+    if (original.width != arguments.profile.width || original.height != arguments.profile.height ||
+        original.frame_rate != arguments.profile.frame_rate || original.bit_rate != arguments.profile.bit_rate) {
+      Fail("argument-output-source", "original output must match the source profile");
     }
   } else {
     Fail("arguments", "unsupported or incomplete command-line argument");
@@ -1146,7 +1146,7 @@ void WriteCapabilityProbe() {
 
   std::vector<Adapter> adapters = EnumerateAdapters();
   std::ostringstream output;
-  output << "{\"protocol\":5,\"platform\":\"windows\",\"platformBuild\":"
+  output << "{\"protocol\":6,\"platform\":\"windows\",\"platformBuild\":"
          << JSONString(std::to_string(build))
          << ",\"videoCapture\":" << (window_capture ? "true" : "false")
          << ",\"softwareVP8\":true"
@@ -1290,13 +1290,13 @@ class OutputWorker final {
   using Factory = AdaptiveEncoder::Factory;
   OutputWorker(UINT8 layer, VideoProfile profile, OutputKind kind, ID3D11Device* device,
                ProtocolWriter& writer, Factory create,
-               std::unique_ptr<VideoEncoder> initial,
+               std::unique_ptr<VideoEncoder> initial, bool active,
                std::function<void()> on_output,
                std::function<void(std::exception_ptr)> on_failure)
       : layer_(layer), profile_(profile), kind_(kind), device_(device), writer_(writer),
         create_(std::move(create)), initial_(std::move(initial)),
         on_output_(std::move(on_output)), on_failure_(std::move(on_failure)),
-        mailbox_(profile.bit_rate), thread_([this]() { Run(); }) {}
+        mailbox_(profile.bit_rate, active), thread_([this]() { Run(); }) {}
 
   ~OutputWorker() { Stop(); Join(); }
 
@@ -1304,7 +1304,7 @@ class OutputWorker final {
     mailbox_.Submit(std::move(input));
   }
 
-  void SetActive(bool active) { mailbox_.SetActive(active); }
+  bool SetActive(bool active) { return mailbox_.SetActive(active); }
   void RequestKeyFrame() { mailbox_.RequestKeyFrame(); }
   void SetBitrate(UINT32 bitrate) { mailbox_.SetBitrate(bitrate); }
 
@@ -1449,10 +1449,12 @@ std::vector<std::unique_ptr<OutputWorker>> CreateOutputWorkers(
     const std::function<void(size_t, std::exception_ptr)>& on_failure) {
   const bool hardware = encoder.kind == OutputKind::h264;
   const UINT encoder_index = arguments.mft_index;
+  const bool capture = arguments.mode == ProductArguments::Mode::video;
+  const size_t original_layer = capture && arguments.outputs.size() > 1 ? 1 : 0;
   std::vector<std::unique_ptr<OutputWorker>> workers;
   for (size_t layer = 0; layer < arguments.outputs.size(); ++layer) {
     const auto profile = arguments.outputs[layer];
-    const bool highest = layer + 1 == arguments.outputs.size();
+    const bool original = layer == original_layer;
     AdaptiveEncoder::Factory create;
     if (hardware) {
       create = [&adapter, &device, encoder_index](const VideoProfile& selected_profile) -> std::unique_ptr<VideoEncoder> {
@@ -1463,8 +1465,8 @@ std::vector<std::unique_ptr<OutputWorker>> CreateOutputWorkers(
     }
     workers.push_back(std::make_unique<OutputWorker>(
         static_cast<UINT8>(layer), profile, encoder.kind, device.device.Get(), writer,
-        std::move(create), highest ? std::move(encoder.initial) : nullptr,
-        [highest, on_active]() { if (highest) on_active(); },
+        std::move(create), original ? std::move(encoder.initial) : nullptr, capture && layer < 2,
+        [original, on_active]() { if (original) on_active(); },
         [layer, on_failure](std::exception_ptr error) { on_failure(layer, error); }));
   }
   return workers;
@@ -1482,21 +1484,19 @@ std::string OutputFailureDetail(std::exception_ptr error) {
   }
 }
 
-void ApplyOutputControl(const screener::capture::CaptureControl& control,
+bool ApplyOutputControl(const screener::capture::CaptureControl& control,
                         const std::vector<std::unique_ptr<OutputWorker>>& workers) {
-  if (control.kind == 'A') {
-    if (control.value > workers.size()) Fail("control-prefix", "active prefix exceeds configured outputs");
-    for (size_t layer = 0; layer < workers.size(); ++layer) workers[layer]->SetActive(layer < control.value);
-    return;
-  }
   if (control.layer >= static_cast<int>(workers.size())) Fail("control-layer", "output layer is unavailable");
-  if (control.kind == 'K') {
+  if (control.kind == 'A') {
+    return workers[control.layer]->SetActive(control.value != 0);
+  } else if (control.kind == 'K') {
     for (size_t layer = 0; layer < workers.size(); ++layer) {
       if (control.layer == -1 || static_cast<size_t>(control.layer) == layer) workers[layer]->RequestKeyFrame();
     }
   } else if (control.kind == 'B') {
     workers[control.layer]->SetBitrate(control.value);
   }
+  return false;
 }
 
 ComPtr<ID3D11Texture2D> UploadDecodedNV12(const DeviceContext& device,
@@ -1766,7 +1766,7 @@ void RunVideoCapture(const ProductArguments& arguments) {
         if (!active_status_written.exchange(true)) WriteVideoActive(writer, arguments, hardware);
       },
       [&](size_t layer, std::exception_ptr error) {
-        if (layer + 1 == arguments.outputs.size()) {
+        if (layer == (arguments.outputs.size() > 1 ? 1u : 0u)) {
           fail_capture(error);
           return;
         }
@@ -1780,7 +1780,6 @@ void RunVideoCapture(const ProductArguments& arguments) {
     auto pool_size = initial_size;
     std::shared_ptr<const CaptureInput> latest_input;
     bool refresh_input = false;
-    size_t active_count = workers.size();
     ControlReader controls;
     auto submit = [&](std::shared_ptr<const CaptureInput> input) {
       Check(writer.WriteBegin(input->timestamp, frame_duration), "capture-frame-begin");
@@ -1799,9 +1798,7 @@ void RunVideoCapture(const ProductArguments& arguments) {
           return;
         }
         if (control.kind == 'A') {
-          refresh_input = refresh_input || control.value > active_count;
-          active_count = control.value;
-          ApplyOutputControl(control, workers);
+          refresh_input = ApplyOutputControl(control, workers) || refresh_input;
           continue;
         }
         ApplyOutputControl(control, workers);

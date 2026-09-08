@@ -39,6 +39,7 @@ type Publication struct {
 	bandwidth   *publicationBWE
 	pacer       *publicationPacer
 	mu          sync.Mutex
+	writeMu     sync.Mutex
 	attached    bool
 	closed      bool
 	activeCount int
@@ -128,7 +129,7 @@ func NewPublication(options TransportOptions) (_ *Publication, err error) {
 	// needs a unique physical owner even when signaling reuses a connection ID.
 	subscriberID := rand.Text()
 	for index := range options.Source.TrackInfo().Layers {
-		receiver := &publicationLayer{Source: options.Source, layer: int32(index)}
+		receiver := &publicationLayer{Source: options.Source, layer: int32(index), publication: publication}
 		track, trackErr := sfu.NewDownTrack(sfu.DownTrackParams{
 			Codecs: []webrtc.RTPCodecParameters{codec}, Source: livekit.TrackSource_SCREEN_SHARE,
 			Receiver: receiver, BufferFactory: factory,
@@ -195,12 +196,68 @@ func (publication *Publication) SetConnected() error {
 		return nil
 	}
 	for _, track := range publication.tracks {
-		if err := publication.source.AddDownTrack(&publicationLayerSender{DownTrack: track, layer: track.MaxLayer().Spatial}); err != nil {
+		receiver := track.Receiver().(*publicationLayer)
+		receiver.attached = true
+		if err := receiver.AddDownTrack(track); err != nil {
+			receiver.attached = false
 			return err
 		}
 		track.SetConnected()
 	}
 	publication.attached = true
+	return nil
+}
+
+func (publication *Publication) CurrentSource() *Source {
+	publication.mu.Lock()
+	defer publication.mu.Unlock()
+	return publication.source
+}
+
+// ReplaceSource keeps every RID, allocator, counter and sender on this PC.
+func (publication *Publication) ReplaceSource(next *Source) error {
+	recovery := false
+	// Source feedback may retire this publication; release all locks first.
+	defer func() {
+		if recovery {
+			for layer := range next.TrackInfo().Layers {
+				next.SendPLI(int32(layer), true)
+			}
+		}
+	}()
+	publication.mu.Lock()
+	defer publication.mu.Unlock()
+	if publication.closed {
+		return io.ErrClosedPipe
+	}
+	if next == nil {
+		return errors.New("replacement publication source is absent")
+	}
+	next.mu.Lock()
+	defer next.mu.Unlock()
+	if err := validateReplacement(publication.source, next); err != nil {
+		return err
+	}
+	if next == publication.source {
+		return nil
+	}
+	publication.writeMu.Lock()
+	defer publication.writeMu.Unlock()
+	for _, track := range publication.tracks {
+		if track.IsClosed() {
+			return io.ErrClosedPipe
+		}
+	}
+	for index, track := range publication.tracks {
+		receiver := &publicationLayer{Source: next, layer: int32(index), publication: publication, attached: publication.attached}
+		track.ReceiverRestart(track.Receiver())
+		track.SetReceiver(receiver)
+		// The subscribed max layer did not change, so SetReceiver's layer
+		// notification alone does not wake the allocator for this fresh input.
+		publication.allocator.OnSubscriptionChanged(track)
+	}
+	publication.source = next
+	recovery = publication.attached
 	return nil
 }
 
@@ -307,7 +364,22 @@ func (*Publication) OnStreamStarted(time.Duration)               {}
 // can never substitute the same lower output and charge it twice.
 type publicationLayer struct {
 	*Source
-	layer int32
+	layer       int32
+	publication *Publication
+	attached    bool
+}
+
+func (layer *publicationLayer) AddDownTrack(sender sfu.TrackSender) error {
+	if !layer.attached {
+		return nil
+	}
+	filtered := &publicationLayerSender{
+		DownTrack: sender.(*sfu.DownTrack), layer: layer.layer, receiver: layer,
+	}
+	filtered.registering.Store(true)
+	err := layer.Source.AddDownTrack(filtered)
+	filtered.registering.Store(false)
+	return err
 }
 
 func (layer *publicationLayer) TrackID() livekit.TrackID {
@@ -332,18 +404,70 @@ func onlyPublicationLayer(layer int32, available []int32, rates sfu.Bitrates) ([
 
 type publicationLayerSender struct {
 	*sfu.DownTrack
-	layer int32
+	layer       int32
+	receiver    *publicationLayer
+	registering atomic.Bool
 }
 
 func (sender *publicationLayerSender) UpTrackBitrateReport(available []int32, rates sfu.Bitrates) {
-	available, rates = onlyPublicationLayer(sender.layer, available, rates)
-	sender.DownTrack.UpTrackBitrateReport(available, rates)
+	sender.withReceiver(func() {
+		available, rates = onlyPublicationLayer(sender.layer, available, rates)
+		sender.DownTrack.UpTrackBitrateReport(available, rates)
+	})
 }
 func (sender *publicationLayerSender) WriteRTP(packet *buffer.ExtPacket, layer int32) int32 {
+	sender.receiver.publication.writeMu.Lock()
+	defer sender.receiver.publication.writeMu.Unlock()
+	if sender.Receiver() != sender.receiver {
+		return 0
+	}
 	if layer != sender.layer {
 		return 0
 	}
 	return sender.DownTrack.WriteRTP(packet, layer)
+}
+
+func (sender *publicationLayerSender) Close() {
+	sender.withReceiver(sender.DownTrack.Close)
+}
+
+func (sender *publicationLayerSender) withReceiver(fn func()) {
+	if !sender.registering.Load() {
+		sender.receiver.publication.writeMu.Lock()
+		defer sender.receiver.publication.writeMu.Unlock()
+	}
+	if sender.Receiver() == sender.receiver {
+		fn()
+	}
+}
+
+func (sender *publicationLayerSender) ReceiverRestart(receiver sfu.TrackReceiver) {
+	sender.withReceiver(func() { sender.DownTrack.ReceiverRestart(receiver) })
+}
+
+func (sender *publicationLayerSender) UpTrackLayersChange() {
+	sender.withReceiver(sender.DownTrack.UpTrackLayersChange)
+}
+
+func (sender *publicationLayerSender) UpTrackBitrateAvailabilityChange() {
+	sender.withReceiver(sender.DownTrack.UpTrackBitrateAvailabilityChange)
+}
+
+func (sender *publicationLayerSender) UpTrackMaxPublishedLayerChange(layer int32) {
+	sender.withReceiver(func() { sender.DownTrack.UpTrackMaxPublishedLayerChange(layer) })
+}
+
+func (sender *publicationLayerSender) UpTrackMaxTemporalLayerSeenChange(layer int32) {
+	sender.withReceiver(func() { sender.DownTrack.UpTrackMaxTemporalLayerSeenChange(layer) })
+}
+
+func (sender *publicationLayerSender) HandleRTCPSenderReportData(payloadType webrtc.PayloadType, layer int32, report *livekit.RTCPSenderReportState) error {
+	sender.receiver.publication.writeMu.Lock()
+	defer sender.receiver.publication.writeMu.Unlock()
+	if sender.Receiver() != sender.receiver {
+		return nil
+	}
+	return sender.DownTrack.HandleRTCPSenderReportData(payloadType, layer, report)
 }
 
 type publicationTrack struct {

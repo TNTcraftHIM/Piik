@@ -48,6 +48,9 @@ Client file diagnostics default off; enable them with `--debug` or
 fixed native-failure and sanitized Local route events go to `client.log`.
 Native share changes, validated capture states, connection states and selected
 candidate types/provenance are included without source names or addresses.
+Failed profile preparation records a fixed rejection stage. Native outbound
+connections record ICE and DTLS state separately; local-bridge closure records
+candidate type/transport counts, never candidate addresses or SDP.
 The embedded Local server uses the same file. Debug events do not stream through
 the TUI or change machine-readable stdout. On the Client, `SCREENER_DEBUG=route`
 alone retains console route tracing and does not enable file capture or `D`.
@@ -97,8 +100,10 @@ problem. The page retains its last 256 bounded events and exposes
 `window.__SCREENER_DEBUG__.export()` for manual JSON export from DevTools.
 The report includes the Browser asset name and signaling contract, capture
 exception categories, capture-setting outcomes, signaling state and native
-request/state outcomes. It excludes raw exception messages, credentials,
-invitation fragments, URLs, SDP, ICE candidates and media payloads. Collection
+request/state outcomes. The Native bridge's failure snapshot includes ICE/DTLS
+states, live receiver counts and candidate type counts without delaying teardown.
+It excludes raw exception messages, credentials, invitation fragments, URLs,
+SDP, ICE candidates and media payloads. Collection
 stays in the current page; there is no automatic upload or persistent log.
 
 ## Public And Private Ports

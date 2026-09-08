@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/TNTcraftHIM/Screener/internal/media/encoded"
+	"github.com/TNTcraftHIM/Screener/internal/media/forwarding"
 	"github.com/livekit/livekit-server/pkg/sfu"
 	"github.com/pion/interceptor"
 	"github.com/pion/webrtc/v4"
@@ -109,8 +110,8 @@ func TestPublicationQualityUsesHighestSentLayerCadence(t *testing.T) {
 	source, err := engine.NewSource("vp8", 1, 2, nil)
 	check(err)
 	defer source.Close()
-	check(source.SetFormat(0, 8, 8))
-	check(source.SetFormat(1, 8, 8))
+	check(source.SetFormat(0, 320, 180))
+	check(source.SetFormat(1, 640, 360))
 	check(source.ConfigureOutputs([]uint32{90_000, 300_000}))
 	publication, err := engine.NewPublication(source, EdgeOptions{ConnectionID: "publication_quality"})
 	check(err)
@@ -134,17 +135,32 @@ func TestPublicationQualityUsesHighestSentLayerCadence(t *testing.T) {
 		}
 	})
 	connectEdgeToReceiver(t, &publication.signaling, receiver)
+	assigned, err := forwarding.NewEncodedSource(forwarding.SourceOptions{
+		ID: string(source.media.TrackID()), StreamID: source.media.StreamID(), Codec: source.media.Codec(), MaxPackets: 500,
+		Formats: []forwarding.LayerFormat{{Width: 8, Height: 8, Bitrate: 45_000}, {Width: 8, Height: 8, Bitrate: 150_000}},
+	})
+	check(err)
+	defer assigned.Close()
+	check(assigned.BeginFrame(0, time.Now()))
+	for layer := range 2 {
+		check(assigned.WriteFrame(layer, encoded.Frame{Data: sfu.VP8KeyFrame8x8, Duration: time.Second / 30, Recovery: true}))
+	}
+	check(publication.transport.ReplaceSource(assigned.Source))
+	metadata := publication.Media()
+	if len(metadata.Layers) != 2 || metadata.Layers[0].Width != 8 || metadata.Layers[0].Height != 8 ||
+		metadata.Layers[0].Bitrate != 45_000 || metadata.Layers[1].Bitrate != 150_000 {
+		t.Fatalf("publication descriptor ignored assigned source: %+v", metadata)
+	}
 	now := time.Now()
 	if _, ok := publication.QualitySample(now); ok {
 		t.Fatal("first sample invented a window")
 	}
 	for frame := range 60 {
 		pts := time.Duration(frame+1) * time.Second / 30
-		_, err = source.BeginFrame(pts)
-		check(err)
-		check(source.WriteVideo(0, encoded.Frame{Data: sfu.VP8KeyFrame8x8, PTS: pts, Duration: time.Second / 30, Recovery: true}))
+		check(assigned.BeginFrame(pts, time.Now()))
+		check(assigned.WriteFrame(0, encoded.Frame{Data: sfu.VP8KeyFrame8x8, PTS: pts, Duration: time.Second / 30, Recovery: true}))
 		if frame%2 == 0 {
-			check(source.WriteVideo(1, encoded.Frame{Data: sfu.VP8KeyFrame8x8, PTS: pts, Duration: time.Second / 15, Recovery: true}))
+			check(assigned.WriteFrame(1, encoded.Frame{Data: sfu.VP8KeyFrame8x8, PTS: pts, Duration: time.Second / 15, Recovery: true}))
 		}
 		time.Sleep(time.Second / 30)
 	}

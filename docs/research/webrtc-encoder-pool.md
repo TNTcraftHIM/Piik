@@ -416,12 +416,10 @@ forwarding format metadata as well as `Source.SetFormat`; ordinary adaptation
 must not rebase the whole source generation.
 
 The remaining grouping boundary is not transport-independent bookkeeping yet:
-current `OutputPlan`/`relayPlan` collapse demand into one lowest bitrate and the
-source has bounded fixed slots. Retain compatible direct-child demands before
-assigning shared pipelines to those slots. Product linking also must reconcile
-the SDK's bundled libvpx with the existing capture dependency and include the
-SDK's own notices. These are concrete implementation costs, not solved by the
-healthy two-callback check above.
+the initial `OutputPlan`/`relayPlan` collapsed demand into one lowest bitrate.
+The grouped integration below replaces that owner. The SDK's bundled libvpx
+and notices now replace the separate capture dependency. Those were concrete
+implementation costs, not solved by the healthy two-callback check above.
 
 ### Windows Product Attachment
 
@@ -469,8 +467,61 @@ overload still need hardware evidence.
 Auto VP8 measurement now uses the actual VSE path rather than benchmarking an
 encoder with different live settings. H264's existing successful-hardware probe
 path remains. The four-second decision budget is unchanged. Current grouping
-still folds multiple weak consumers into one low budget; the product attachment
-does not resolve that independent remaining requirement.
+at that point still folded multiple weak consumers into one low budget; the
+following integration addresses that independent requirement.
+
+### Compatible Output Groups
+
+The source now retains per-consumer demand instead of taking a minimum across
+weak children. Effective connection budgets are bounded by the same output
+ceiling; equal requests share one complete pipeline, while differing requests
+are isolated. The group's rates change in place, so a changing estimate is not
+a new encoder identity. Stable slot selection avoids changing groups due to
+map iteration. Two logical representations remain visible to a connection:
+original plus its assigned adaptive output. Additional physical codec slots
+are bounded by source admission and do not become new product quality presets.
+
+The existing forwarding source is reused per group. This duplicates bounded
+RTP buffering/projection of the original, not original encoding or decoding.
+LiveKit's `DownTrack.SetReceiver` retains the transport; the adapter preserves
+its own callback wrapper and clears old input clock references before retarget.
+Detached packet, sender-report and closure callbacks cannot mutate the new
+attachment. A source handoff follows an accepted recovery AU and requests
+recovery for the new attachment; pending members keep their current output.
+Unneeded physical codec slots stop, and a Native relay still owns one decoder
+process for all locally derived groups. Source-generation changes and rejected
+timestamps are fenced before attachment changes.
+
+The internal capture v6 contract adds independent per-slot activation in place
+of the old prefix count, permitting equal-ceiling outputs with different
+budgets. All three platform producers implement that contract. Windows builds
+and normal tests pass; Linux production compilation and CPU-only GStreamer
+slot retirement checks pass. The macOS change is source-reviewed, not SDK or
+physical acceptance. No Browser/server signaling change is needed for private
+encoder grouping; matched Client and capture artifacts are required.
+
+Actual VP8 relay checks exercise two equal 300 kbps consumers sharing one
+derived output, splitting to 80/300 kbps and rejoining at 300/300 kbps. Both
+consumers keep receiving and the decoder process remains the same. Independent
+consumer and final-process retirement pass. A separate 1280x720 moving-input
+trace keeps one child at a 1.25 Mbps derived budget while the other receives
+80 kbps: the latter reaches 320x180 and the former stays at 640x360. Over the
+roughly 20-second weak phase they receive 45 and 596 frames respectively;
+Chrome WebCodecs decodes every exported frame with its expected dimensions
+and timestamp. This proves spatial isolation and valid delivery, not weak-path
+cadence parity. Budgets in these grouping fixtures are explicit transport
+inputs; the separate shaped-network gate owns automatic estimator evidence.
+
+The full H264 Windows Host/Viewer gate also passes live and paused profile
+changes, background-profile recovery, source replacement and restart while
+preserving media identity. SFU retarget has real loopback tests for clock,
+per-RID counters, recovery and late old-source callbacks. Complete network,
+hardware-overload, multi-room and platform acceptance remain distinct work.
+The Native H264 embedded-SFU gate additionally decodes 300 720p frames, applies
+a live 480p change, retains decoded Opus and closes publication/capture/UDP
+resources. Its Vite server disables file watching: scanning the growing ignored
+build tree had blocked the test's in-process event loop and CDP navigation
+before media started. No Browser media deadline was relaxed to obtain the pass.
 
 ## Replacement And Preservation Map
 

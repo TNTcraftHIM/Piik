@@ -6,7 +6,8 @@ import Foundation
 import ScreenCaptureKit
 import VideoToolbox
 
-private let captureProtocol = 5
+private let captureProtocol = 6
+private let maxOutputs = 6
 private let width = 1280
 private let height = 720
 private let frameRate: Int32 = 30
@@ -44,7 +45,7 @@ private struct OutputProfile: Codable {
 
 private enum CaptureControl {
     case keyFrame(Int)
-    case activeCount(Int)
+    case active(Int, Bool)
     case bitrate(Int, Int)
 }
 
@@ -522,9 +523,7 @@ private final class HardwareEncoder {
     private var working = false
     private var encodingTimestamp = CMTime.invalid
     private var closed = false
-    private var enabled = true
     private var failed = false
-    private var activation = 0
     private var forceKeyFrame = true
     private var decodable = false
     private var desiredBitrate: Int
@@ -629,19 +628,6 @@ private final class HardwareEncoder {
         lock.unlock()
     }
 
-    func setEnabled(_ value: Bool) {
-        lock.lock()
-        if enabled != value {
-            enabled = value
-            pending = nil
-            lastFrameBucket = nil
-            activation += 1
-            decodable = false
-            forceKeyFrame = true
-        }
-        lock.unlock()
-    }
-
     func setBitrate(_ value: Int) {
         lock.lock()
         desiredBitrate = value
@@ -650,7 +636,7 @@ private final class HardwareEncoder {
 
     func encode(_ image: CVImageBuffer, timestamp: CMTime) {
         lock.lock()
-        guard !closed, !failed, enabled else {
+        guard !closed, !failed else {
             lock.unlock()
             return
         }
@@ -674,7 +660,7 @@ private final class HardwareEncoder {
 
     private func encodePending() {
         lock.lock()
-        guard !closed, !failed, enabled, let input = pending else {
+        guard !closed, !failed, let input = pending else {
             working = false
             lock.unlock()
             return
@@ -682,7 +668,6 @@ private final class HardwareEncoder {
         pending = nil
         let force = forceKeyFrame
         forceKeyFrame = false
-        let generation = activation
         let bitrate = desiredBitrate
         encodingTimestamp = input.timestamp
         lock.unlock()
@@ -719,7 +704,7 @@ private final class HardwareEncoder {
                     let encoded = try annexB(sample, keyFrame: isKeyFrame(sample))
                     let keyFrame = encoded.recovery
                     lock.lock()
-                    let current = enabled && !failed && generation == activation &&
+                    let current = !closed && !failed &&
                         CMTimeCompare(encodingTimestamp, input.timestamp) == 0
                     let needsRecovery = !decodable && !keyFrame
                     if current && ((force && !keyFrame) || needsRecovery) {
@@ -795,7 +780,7 @@ private final class HardwareEncoder {
 
     private func fail(_ error: Error) {
         lock.lock()
-        let first = !failed
+        let first = !failed && !closed
         failed = true
         pending = nil
         lock.unlock()
@@ -839,37 +824,31 @@ private final class EncoderGroup {
     private let profile: VideoProfile
     private let outputs: [OutputProfile]
     private let lock = NSLock()
+    // Encoder callbacks cannot wait behind synchronous encoder retirement.
+    private let lifecycle = NSLock()
+    private let originalOutput: Int
     private var active = false
     private var failedLayers = Set<UInt8>()
     private var encoders: [HardwareEncoder?] = []
+    private var bitrates: [Int]
+    private var closed = false
 
     init(writer: ProtocolWriter, done: StopSignal, profile: VideoProfile,
-         outputs: [OutputProfile]) throws {
+         outputs: [OutputProfile], encoded: Bool = false) throws {
         self.writer = writer
         self.done = done
         self.profile = profile
         self.outputs = outputs
+        self.originalOutput = encoded ? 0 : min(1, outputs.count - 1)
+        self.bitrates = outputs.map(\.bitrate)
+        self.encoders = Array(repeating: nil, count: outputs.count)
         try writer.writeStatus(StartingStatus(outputs: outputs))
-        for (index, output) in outputs.enumerated() {
-            let layer = UInt8(index)
-            do {
-                encoders.append(try HardwareEncoder(
-                    writer: writer, done: done, profile: profile,
-                    output: output, layer: layer,
-                    onActive: { [weak self] profileLevelId in
-                        if index == outputs.count - 1 {
-                            try self?.reportActive(profileLevelId)
-                        }
-                    },
-                    onFailure: { [weak self] in self?.unavailable(layer, $0) }
-                ))
-            } catch {
-                encoders.append(nil)
-                unavailable(layer, error)
+        if !encoded {
+            for index in 0...originalOutput { setActive(index, true) }
+            if encoders[originalOutput] == nil {
+                close()
+                throw CaptureFailure(description: "original hardware video output is unavailable")
             }
-        }
-        if encoders.allSatisfy({ $0 == nil }) {
-            throw CaptureFailure(description: "no hardware video output is available")
         }
     }
 
@@ -890,7 +869,7 @@ private final class EncoderGroup {
         lock.lock()
         let first = failedLayers.insert(layer).inserted
         let allFailed = failedLayers.count == outputs.count
-        let startupFailed = !active && Int(layer) == outputs.count - 1
+        let startupFailed = !active && Int(layer) == originalOutput
         lock.unlock()
         if first {
             do { try writer.unavailable(layer: layer, error: error) }
@@ -900,6 +879,9 @@ private final class EncoderGroup {
     }
 
     func encode(_ image: CVImageBuffer, timestamp: CMTime) throws {
+        lifecycle.lock()
+        defer { lifecycle.unlock() }
+        if closed { return }
         guard timestamp.isNumeric, CMTimeCompare(timestamp, .zero) >= 0 else {
             throw CaptureFailure(description: "invalid capture timestamp")
         }
@@ -913,21 +895,57 @@ private final class EncoderGroup {
     }
 
     func requestKeyFrame(_ layer: Int) {
+        lifecycle.lock()
+        defer { lifecycle.unlock() }
         for (index, encoder) in encoders.enumerated() where layer == -1 || index == layer {
             encoder?.requestKeyFrame()
         }
     }
 
-    func setActiveCount(_ count: Int) {
-        for (index, encoder) in encoders.enumerated() { encoder?.setEnabled(index < count) }
+    func setActive(_ index: Int, _ enabled: Bool) {
+        lifecycle.lock()
+        defer { lifecycle.unlock() }
+        if closed || enabled == (encoders[index] != nil) { return }
+        if !enabled {
+            let previous = encoders[index]
+            encoders[index] = nil
+            previous?.close()
+            return
+        }
+        let layer = UInt8(index)
+        lock.lock()
+        failedLayers.remove(layer)
+        lock.unlock()
+        do {
+            let encoder = try HardwareEncoder(
+                writer: writer, done: done, profile: profile,
+                output: outputs[index], layer: layer,
+                onActive: { [weak self] profileLevelId in
+                    guard let self, index == self.originalOutput else { return }
+                    try self.reportActive(profileLevelId)
+                },
+                onFailure: { [weak self] in self?.unavailable(layer, $0) }
+            )
+            encoder.setBitrate(bitrates[index])
+            encoders[index] = encoder
+        } catch {
+            unavailable(layer, error)
+        }
     }
 
     func setBitrate(_ layer: Int, _ bitrate: Int) {
+        lifecycle.lock()
+        defer { lifecycle.unlock() }
+        bitrates[layer] = bitrate
         encoders[layer]?.setBitrate(bitrate)
     }
 
     func close() {
+        lifecycle.lock()
+        defer { lifecycle.unlock() }
+        closed = true
         for encoder in encoders { encoder?.close() }
+        encoders = Array(repeating: nil, count: outputs.count)
     }
 }
 
@@ -1220,7 +1238,7 @@ private final class CaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
         queue.sync {
             switch command {
             case .keyFrame(let layer): encoders.requestKeyFrame(layer)
-            case .activeCount(let count): encoders.setActiveCount(count)
+            case .active(let slot, let enabled): encoders.setActive(slot, enabled)
             case .bitrate(let layer, let bitrate): encoders.setBitrate(layer, bitrate)
             }
             do { try replayLastImage() }
@@ -1314,7 +1332,7 @@ private func videoProfile(_ arguments: [String]) throws -> VideoProfile {
           let preference = DegradationPreference(rawValue: arguments[19]),
           arguments[20] == "--codec",
           ["auto", "h264"].contains(arguments[21]),
-          arguments[22] == "--protocol-v5" else {
+          arguments[22] == "--protocol-v6" else {
         throw CaptureFailure(description: "invalid video profile arguments")
     }
     let validResolution =
@@ -1338,7 +1356,7 @@ private func videoProfile(_ arguments: [String]) throws -> VideoProfile {
 private func outputProfiles(_ arguments: [String], start: Int = 23,
                             source: VideoProfile? = nil) throws -> [OutputProfile] {
     let count = arguments.count - start
-    guard count > 0, count % 5 == 0, count / 5 <= 3 else {
+    guard count > 0, count % 5 == 0, count / 5 <= maxOutputs else {
         throw CaptureFailure(description: "invalid output profile count")
     }
     var result: [OutputProfile] = []
@@ -1354,18 +1372,14 @@ private func outputProfiles(_ arguments: [String], start: Int = 23,
               bitrate >= 1000, bitrate <= (source?.bitrate ?? 12_000_000) else {
             throw CaptureFailure(description: "output profile is outside source bounds")
         }
-        if let previous = result.last,
-           (width <= previous.width || height <= previous.height ||
-            fps < previous.fps || bitrate < previous.bitrate) {
-            throw CaptureFailure(description: "output profiles must be ordered low to high")
-        }
         result.append(OutputProfile(width: width, height: height, fps: fps, bitrate: bitrate))
     }
     if let source {
-        guard let last = result.last, last.width == source.width,
-              last.height == source.height, last.fps == source.frameRate,
-              last.bitrate == source.bitrate else {
-            throw CaptureFailure(description: "highest output must match the source profile")
+        let original = result[min(1, result.count - 1)]
+        guard original.width == source.width,
+              original.height == source.height, original.fps == source.frameRate,
+              original.bitrate == source.bitrate else {
+            throw CaptureFailure(description: "original output must match the source profile")
         }
     }
     return result
@@ -1432,9 +1446,11 @@ private func readInput(done: StopSignal, outputs: [OutputProfile] = [],
                 if fields.count == 2, let value = Int(fields[1]) {
                     if fields[0] == "K", value >= -1, value < outputs.count {
                         command = .keyFrame(value)
-                    } else if fields[0] == "A", value >= 0, value <= outputs.count {
-                        command = .activeCount(value)
                     }
+                } else if fields.count == 3, fields[0] == "A",
+                          let slot = Int(fields[1]), let enabled = Int(fields[2]),
+                          outputs.indices.contains(slot), (0...1).contains(enabled) {
+                    command = .active(slot, enabled == 1)
                 } else if fields.count == 3, fields[0] == "B",
                           let layer = Int(fields[1]), let bitrate = Int(fields[2]),
                           outputs.indices.contains(layer),
@@ -1598,22 +1614,22 @@ private func encodedVideo(_ arguments: [String]) throws {
           arguments[6] == "--mft-index", arguments[7] == "0",
           arguments[8] == "--preference",
           let preference = DegradationPreference(rawValue: arguments[9]),
-          arguments[10] == "--protocol-v5" else {
+          arguments[10] == "--protocol-v6" else {
         throw CaptureFailure(description: "invalid encoded video arguments")
     }
     let outputs = try outputProfiles(arguments, start: 11)
-    let highest = outputs[outputs.count - 1]
-    let profile = VideoProfile(width: highest.width, height: highest.height,
-        frameRate: highest.fps, bitrate: highest.bitrate, preference: preference)
+    let profile = VideoProfile(width: outputs.map(\.width).max()!, height: outputs.map(\.height).max()!,
+        frameRate: outputs.map(\.fps).max()!, bitrate: outputs.map(\.bitrate).max()!, preference: preference)
     let done = StopSignal()
-    let encoders = try EncoderGroup(writer: ProtocolWriter(), done: done, profile: profile, outputs: outputs)
+    let encoders = try EncoderGroup(writer: ProtocolWriter(), done: done, profile: profile,
+        outputs: outputs, encoded: true)
     defer { encoders.close() }
     let decoder = H264InputDecoder(encoders: encoders)
     defer { decoder.close() }
     readInput(done: done, outputs: outputs, handle: { command in
         switch command {
         case .keyFrame(let layer): encoders.requestKeyFrame(layer)
-        case .activeCount(let count): encoders.setActiveCount(count)
+        case .active(let slot, let enabled): encoders.setActive(slot, enabled)
         case .bitrate(let layer, let bitrate): encoders.setBitrate(layer, bitrate)
         }
     }, video: decoder.decode)

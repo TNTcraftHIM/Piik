@@ -3,6 +3,7 @@ package forwarding
 import (
 	"errors"
 	"io"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -136,7 +137,7 @@ func NewTransport(options TransportOptions) (_ *Transport, err error) {
 	transport.pacer.SetPacerProbeObserverListener(transport)
 	track, err := sfu.NewDownTrack(sfu.DownTrackParams{
 		Codecs: []webrtc.RTPCodecParameters{codec}, Source: livekit.TrackSource_SCREEN_SHARE,
-		Receiver: options.Source, BufferFactory: factory, SubID: livekit.ParticipantID(options.ConnectionID),
+		Receiver: &outputReceiver{Source: options.Source}, BufferFactory: factory, SubID: livekit.ParticipantID(options.ConnectionID),
 		StreamID: options.Source.StreamID(), MaxTrack: options.Source.maxPackets,
 		Pacer: transport.pacer, Logger: log, Listener: transport,
 		RTCPWriter: transport.PC.WriteRTCP, DisableSenderReportPassThrough: true,
@@ -146,6 +147,7 @@ func NewTransport(options TransportOptions) (_ *Transport, err error) {
 		return nil, err
 	}
 	transport.Output = NewOutput(track, int64(options.InitialBitrate))
+	track.Receiver().(*outputReceiver).output = transport.Output
 	transport.Output.onActivity = transport.mediaActivity
 	transport.Output.onDemandChanged = options.OnDemandChanged
 	track.SetStreamAllocatorListener(transport)
@@ -194,12 +196,76 @@ func (transport *Transport) SetConnected() error {
 	if transport.attached {
 		return nil
 	}
-	if err := transport.source.AddDownTrack(transport.Output); err != nil {
+	receiver := transport.Output.Receiver().(*outputReceiver)
+	receiver.attached = true
+	if err := receiver.AddDownTrack(transport.Output); err != nil {
+		receiver.attached = false
 		return err
 	}
 	transport.attached = true
 	transport.Output.SetConnected()
 	transport.Output.Reconcile()
+	return nil
+}
+
+func (transport *Transport) CurrentSource() *Source {
+	transport.mu.Lock()
+	defer transport.mu.Unlock()
+	return transport.source
+}
+
+// ReplaceSource retains the connection and its congestion state. The caller
+// prepares recovery in next and serializes group lifetime with this handoff.
+func (transport *Transport) ReplaceSource(next *Source) error {
+	recovery := false
+	// Register first so feedback runs after every lock below has been released.
+	defer func() {
+		if recovery {
+			for layer := range next.TrackInfo().Layers {
+				next.SendPLI(int32(layer), true)
+			}
+		}
+	}()
+	transport.mu.Lock()
+	defer transport.mu.Unlock()
+	if transport.closed || transport.Output.IsClosed() {
+		return io.ErrClosedPipe
+	}
+	if next == nil {
+		return errors.New("replacement video source is absent")
+	}
+	next.mu.Lock()
+	defer next.mu.Unlock()
+	if err := validateReplacement(transport.source, next); err != nil {
+		return err
+	}
+	if next == transport.source {
+		return nil
+	}
+	receiver := &outputReceiver{Source: next, output: transport.Output, attached: transport.attached}
+	if err := transport.Output.replaceReceiver(receiver); err != nil {
+		return err
+	}
+	transport.source = next
+	recovery = transport.attached
+	return nil
+}
+
+// next.mu prevents source closure between validation and receiver attachment.
+func validateReplacement(current, next *Source) error {
+	if next.closed || next.IsClosed() {
+		return io.ErrClosedPipe
+	}
+	before, after := current.Codec(), next.Codec()
+	if before.PayloadType != after.PayloadType || before.MimeType != after.MimeType ||
+		before.ClockRate != after.ClockRate || before.Channels != after.Channels ||
+		before.SDPFmtpLine != after.SDPFmtpLine || !slices.Equal(before.RTCPFeedback, after.RTCPFeedback) ||
+		current.TrackID() != next.TrackID() || current.StreamID() != next.StreamID() ||
+		current.VideoLayerMode() != next.VideoLayerMode() || current.maxPackets != next.maxPackets ||
+		len(current.TrackInfo().Layers) != len(next.TrackInfo().Layers) ||
+		!slices.Equal(current.HeaderExtensions(), next.HeaderExtensions()) {
+		return errors.New("replacement video source changed its transport contract")
+	}
 	return nil
 }
 

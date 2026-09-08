@@ -294,6 +294,11 @@ func (engine *Engine) NewSource(codec string, capacity, layers int, requestKeyFr
 		return nil, err
 	}
 	source.media = media
+	if requestKeyFrame != nil {
+		source.recoveryRequests = make(chan struct{}, 1)
+		source.recoveryStopped = make(chan struct{})
+		go source.runRecovery()
+	}
 	return source, nil
 }
 

@@ -113,6 +113,7 @@ func Start(parent context.Context, options Options) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
+	options.Video.OutputGroups = options.EdgeCapacity
 	stream, err := nativecapture.StartVideo(parent, options.CaptureProcess, options.Video)
 	if err != nil {
 		_ = engine.Close()
@@ -379,6 +380,7 @@ func (session *Session) ReplaceSource(
 	}
 	profile := session.profile
 	options.Codec = session.videoOptions.Codec
+	options.OutputGroups = session.edgeCapacity
 	hasAudio := session.audioSource != nil && session.audioStream != nil
 	session.mu.Unlock()
 	if audioEnabled != hasAudio {
@@ -428,13 +430,15 @@ func (session *Session) prepareVideo(
 	options nativecapture.VideoOptions,
 	interactive bool,
 ) (*nativecapture.Stream, CaptureState, error) {
+	options.OutputGroups = session.edgeCapacity
 	replacement, err := nativecapture.StartVideo(
 		ctx,
 		session.captureProcess,
 		options,
 	)
 	if err != nil {
-		return nil, CaptureState{}, errors.New("native capture could not start")
+		return nil, CaptureState{}, captureProfileFailure(ctx, options.Profile, "process-start",
+			errors.New("native capture could not start"))
 	}
 	state, err := waitForCaptureProfile(
 		ctx,
@@ -695,7 +699,7 @@ func (session *Session) runVideo() error {
 					session.mu.Unlock()
 					return fail(errors.New("native capture codec was not applied"))
 				}
-				source, sourceErr := session.engine.NewSource(status.Codec, session.edgeCapacity, len(status.Outputs), func() {
+				source, sourceErr := session.engine.NewSource(status.Codec, session.edgeCapacity, min(2, len(status.Outputs)), func() {
 					if stream := session.currentStream(); stream != nil {
 						_ = stream.RequestKeyFrame(-1)
 					}
@@ -741,7 +745,7 @@ func (session *Session) runVideo() error {
 			paused := session.paused
 			session.mu.Unlock()
 			if paused {
-				plan.ActiveLayers = 0
+				clear(plan.Active)
 			}
 			controlErr := applyOutputPlan(current, plan, activeSeen)
 			if controlErr != nil && session.currentStream() == current {
@@ -786,25 +790,26 @@ func (session *Session) runVideo() error {
 func configureCaptureOutputs(source *mediaedge.Source, outputs []nativecapture.OutputProfile) error {
 	ceilings := make([]uint32, len(outputs))
 	for layer, output := range outputs {
-		if err := source.SetFormat(layer, output.Width, output.Height); err != nil {
-			return err
+		if layer < 2 {
+			if err := source.SetFormat(layer, output.Width, output.Height); err != nil {
+				return err
+			}
 		}
 		ceilings[layer] = output.Bitrate
 	}
 	if err := source.ConfigureOutputs(ceilings); err != nil {
 		return err
 	}
+	for layer := 2; layer < len(outputs); layer++ {
+		if err := source.SetFormat(layer, outputs[layer].Width, outputs[layer].Height); err != nil {
+			return err
+		}
+	}
 	source.SetLowestLayerRateControlled(true)
 	return nil
 }
 
 func applyOutputPlan(stream *nativecapture.Stream, plan mediaedge.OutputPlan, activeSeen bool) error {
-	// Startup must produce its first active status before unused encoders can stop.
-	if activeSeen {
-		if err := stream.SetActiveOutputs(plan.ActiveLayers); err != nil {
-			return err
-		}
-	}
 	for layer, bitrate := range plan.Bitrates {
 		if bitrate > 0 {
 			if err := stream.SetOutputBitrate(layer, bitrate); err != nil {
@@ -815,6 +820,15 @@ func applyOutputPlan(stream *nativecapture.Stream, plan mediaedge.OutputPlan, ac
 	for _, layer := range plan.RecoveryLayers {
 		if err := stream.RequestKeyFrame(layer); err != nil {
 			return err
+		}
+	}
+	// A new group must receive its budget before activation admits a frame.
+	// Startup retains the original until its first active status has arrived.
+	if activeSeen {
+		for layer, active := range plan.Active {
+			if err := stream.SetOutputActive(layer, active); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -829,6 +843,12 @@ func (session *Session) currentStream() *nativecapture.Stream {
 	return session.stream
 }
 
+func captureProfileFailure(ctx context.Context, profile nativecapture.VideoProfile, stage string, err error) error {
+	slog.DebugContext(ctx, "screener-client", "event", "capture-profile-rejected", "stage", stage,
+		"width", profile.Width, "height", profile.Height, "fps", profile.Framerate, "bitrate", profile.Bitrate)
+	return err
+}
+
 func waitForCaptureProfile(
 	ctx context.Context,
 	stream *nativecapture.Stream,
@@ -839,17 +859,18 @@ func waitForCaptureProfile(
 	type result struct {
 		state CaptureState
 		err   error
+		stage string
 	}
 	ready := make(chan result, 1)
 	go func() {
 		for {
 			frame, err := stream.Read()
 			if err != nil {
-				ready <- result{err: errors.New("native capture profile did not become ready")}
+				ready <- result{stage: "process-ended", err: errors.New("native capture profile did not become ready")}
 				return
 			}
 			if frame.Kind == nativecapture.FrameLayerUnavailable {
-				ready <- result{err: errors.New("native capture profile has an unavailable output")}
+				ready <- result{stage: "output-unavailable", err: errors.New("native capture profile has an unavailable output")}
 				return
 			}
 			if frame.Kind != nativecapture.FrameStatus {
@@ -857,17 +878,17 @@ func waitForCaptureProfile(
 			}
 			state, err := decodeCaptureState(frame.Data)
 			if err != nil {
-				ready <- result{err: err}
+				ready <- result{stage: "status-invalid", err: err}
 				return
 			}
 			if !slices.Equal(state.Outputs, stream.Outputs()) {
-				ready <- result{err: errors.New("native capture outputs were not applied")}
+				ready <- result{stage: "outputs-mismatch", err: errors.New("native capture outputs were not applied")}
 				return
 			}
 			if state.State == "active" {
 				if state.Codec != codec || state.Width != profile.Width || state.Height != profile.Height ||
 					state.FPS != profile.Framerate {
-					ready <- result{err: errors.New("native capture profile was not applied")}
+					ready <- result{stage: "profile-mismatch", err: errors.New("native capture profile was not applied")}
 					return
 				}
 				ready <- result{state: state}
@@ -884,11 +905,16 @@ func waitForCaptureProfile(
 	}
 	select {
 	case value := <-ready:
+		if value.err != nil {
+			return value.state, captureProfileFailure(ctx, profile, value.stage, value.err)
+		}
 		return value.state, value.err
 	case <-timeout:
-		return CaptureState{}, errors.New("native capture profile timed out")
+		return CaptureState{}, captureProfileFailure(ctx, profile, "wait-timeout",
+			errors.New("native capture profile timed out"))
 	case <-ctx.Done():
-		return CaptureState{}, errors.New("native share stopped")
+		return CaptureState{}, captureProfileFailure(ctx, profile, "share-stopped",
+			errors.New("native share stopped"))
 	}
 }
 
@@ -985,13 +1011,11 @@ func decodeCaptureState(payload []byte) (CaptureState, error) {
 	if err := decoder.Decode(&state); err != nil || decoder.Decode(&struct{}{}) != io.EOF ||
 		(state.State != "starting" && state.State != "active") ||
 		(state.Codec != "h264" && state.Codec != "vp8") ||
-		state.HardwareOnly != (state.Codec == "h264") || len(state.Outputs) < 1 || len(state.Outputs) > 3 {
+		state.HardwareOnly != (state.Codec == "h264") || len(state.Outputs) < 1 || len(state.Outputs) > 6 {
 		return CaptureState{}, errors.New("native capture state is invalid")
 	}
-	for layer, output := range state.Outputs {
-		if !output.Valid() || layer > 0 &&
-			(uint64(output.Width)*uint64(output.Height) <= uint64(state.Outputs[layer-1].Width)*uint64(state.Outputs[layer-1].Height) ||
-				output.Bitrate < state.Outputs[layer-1].Bitrate) {
+	for _, output := range state.Outputs {
+		if !output.Valid() {
 			return CaptureState{}, errors.New("native capture output profile is invalid")
 		}
 	}
@@ -1001,12 +1025,13 @@ func decodeCaptureState(payload []byte) (CaptureState, error) {
 			state.EncoderName == "" || state.EncoderIdentity == "") {
 		return CaptureState{}, errors.New("native capture starting state is incomplete")
 	}
+	original := state.Outputs[min(1, len(state.Outputs)-1)]
 	if state.State == "active" &&
 		((state.Codec == "h264" && !validH264ProfileLevelID(state.ProfileLevelID)) ||
 			(state.Codec == "vp8" && state.ProfileLevelID != "") ||
-			state.Width != state.Outputs[len(state.Outputs)-1].Width ||
-			state.Height != state.Outputs[len(state.Outputs)-1].Height ||
-			state.FPS != state.Outputs[len(state.Outputs)-1].Framerate ||
+			state.Width != original.Width ||
+			state.Height != original.Height ||
+			state.FPS != original.Framerate ||
 			len(state.RestoreToken) > 4096 || !utf8.ValidString(state.RestoreToken) ||
 			strings.ContainsRune(state.RestoreToken, 0)) {
 		return CaptureState{}, errors.New("native capture active state is incomplete")

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"os"
 	"testing"
 	"time"
@@ -212,13 +213,53 @@ func TestRelayDerivationFixture(t *testing.T) {
 		feed()
 		checkSharedRun()
 		_, observed := secondLow.transport.TargetBitrate()
-		if observed && seen[0].Width == 320 && frames[0] >= 3 && frames[1] >= beforeShared[1]+3 {
+		if observed && seen[0].Width == 320 && frames[0] >= 3 && frames[1] >= beforeShared[1]+3 &&
+			weak.transport.CurrentSource() == secondLow.transport.CurrentSource() {
 			break
 		}
 	}
 	_, secondObserved := secondLow.transport.TargetBitrate()
-	if !secondObserved || seen[0].Width != 320 || frames[0] < 3 || frames[1] < beforeShared[1]+3 {
+	if !secondObserved || seen[0].Width != 320 || frames[0] < 3 || frames[1] < beforeShared[1]+3 ||
+		weak.transport.CurrentSource() != secondLow.transport.CurrentSource() {
 		t.Fatalf("compatible low consumers did not share delivery: sizes=%+v frames=%v", seen, frames)
+	}
+	checkMembership := func(split bool) bool {
+		source.writeMu.Lock()
+		defer source.writeMu.Unlock()
+		weakGroup, secondGroup := source.memberships[weak.transport], source.memberships[secondLow.transport]
+		if weakGroup == nil || secondGroup == nil || (weakGroup != secondGroup) != split ||
+			weak.transport.CurrentSource() != weakGroup.media.Source ||
+			secondLow.transport.CurrentSource() != secondGroup.media.Source {
+			return false
+		}
+		weakBudget := uint32(300_000)
+		if split {
+			weakBudget = 80_000
+		}
+		return weakGroup.budget == weakBudget && secondGroup.budget == 300_000 &&
+			weak.transport.Output.State().Current == 0 && secondLow.transport.Output.State().Current == 0
+	}
+	for _, split := range []bool{true, false} {
+		before := frames
+		budget := int64(300_000)
+		if split {
+			budget = 80_000
+		}
+		for frame := 0; frame < 120; frame++ {
+			weak.transport.Output.SetBudget(budget)
+			secondLow.transport.Output.SetBudget(300_000)
+			feed()
+			checkSharedRun()
+			if checkMembership(split) && frames[0] >= before[0]+3 && frames[1] >= before[1]+3 {
+				break
+			}
+		}
+		if !checkMembership(split) || frames[0] < before[0]+3 || frames[1] < before[1]+3 {
+			t.Fatalf("budget membership transition failed: split=%v frames=%v->%v weak=%+v second=%+v",
+				split, before, frames, weak.transport.Output.State(), secondLow.transport.Output.State())
+		}
+		t.Logf("shared decoder budget transition: split=%v weakBudget=%d secondBudget=300000 frames=%v->%v",
+			split, budget, before, frames)
 	}
 	if err = weak.Close(); err != nil {
 		t.Fatal(err)
@@ -244,5 +285,199 @@ func TestRelayDerivationFixture(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("unused native relay process did not retire")
 	}
-	t.Log("640x360 raw forwarding; two 320x180 consumers reused one derivation, independently retired")
+	t.Log("640x360 raw forwarding; lower consumers shared, split at 80/300 kbps, rejoined at 300/300 kbps and independently retired with one decoder process")
+}
+
+// Forced direct-child budgets exercise real per-group WebRTC spatial adaptation;
+// they do not simulate transport loss or prove bandwidth-estimator behavior.
+func TestRelayIndependentSpatialFixture(t *testing.T) {
+	executable, fixture := os.Getenv("SCREENER_NATIVE_CAPTURE"), os.Getenv("SCREENER_GROUP_MOTION_INPUT")
+	if executable == "" || fixture == "" {
+		t.Skip("set SCREENER_NATIVE_CAPTURE and SCREENER_GROUP_MOTION_INPUT")
+	}
+	check := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	input, err := os.Open(fixture)
+	check(err)
+	defer input.Close()
+	var motion [][]byte
+	decoder := json.NewDecoder(io.LimitReader(input, 16*1024*1024))
+	for {
+		var row struct {
+			Width, Height uint32
+			Recovery      bool
+			DataHex       string
+		}
+		err := decoder.Decode(&row)
+		if err == io.EOF {
+			break
+		}
+		check(err)
+		if len(motion) >= 60 || row.Width != 1280 || row.Height != 720 || len(motion) == 0 && !row.Recovery {
+			t.Fatal("expected bounded 1280x720 motion input beginning with recovery")
+		}
+		data, err := hex.DecodeString(row.DataHex)
+		check(err)
+		motion = append(motion, data)
+	}
+	if len(motion) != 60 {
+		t.Fatal("motion fixture must contain 60 decoder-safe frames")
+	}
+	engine, err := NewEngine(EngineOptions{BindAddress: "127.0.0.1:0", IncludeLoopback: true})
+	check(err)
+	defer engine.Close()
+	source, err := engine.NewSource("vp8", 2, 2, nil)
+	check(err)
+	defer source.Close()
+	source.relay = &relayDerivation{source: source, options: RelayOptions{
+		CaptureProcess: executable,
+		Capabilities:   nativecapture.Capabilities{SoftwareVP8: true, Adapters: []nativecapture.Adapter{{Index: 0}}},
+	}}
+	check(source.SetRelayProfile(nativecapture.VideoProfile{
+		Width: 1920, Height: 1080, Framerate: 30, Bitrate: 5_000_000, Preference: "maintain-framerate",
+	}))
+	a, receiverA, packetsA := connectedReceiver(t, engine, source, "spatial-a")
+	b, receiverB, packetsB := connectedReceiver(t, engine, source, "spatial-b")
+	defer receiverA.Close()
+	defer receiverB.Close()
+	packetizer := rtp.NewPacketizer(videoPacketMTU, vp8PayloadType, 1, &codecs.VP8Payloader{EnablePictureID: true}, rtp.NewRandomSequencer(), videoClockRate)
+	ticker := time.NewTicker(time.Second / 30)
+	defer ticker.Stop()
+	ctx, cancel := context.WithTimeout(t.Context(), 35*time.Second)
+	defer cancel()
+	type receivedFrame struct {
+		Index         int
+		Width, Height uint32
+		Recovery      bool
+		Data          []byte
+		PTS           time.Duration
+	}
+	var output [2][]receivedFrame
+	var seen [2]mediacodec.VideoSize
+	var frames [2]int
+	var anchor [2]uint32
+	var waiting = [2]bool{true, true}
+	var assembled [2]relayVideoInput
+	for child := range assembled {
+		assembled[child] = relayVideoInput{codec: "vp8", onPacketDropped: func() { waiting[child] = true }}
+	}
+	var packetsSent, bytesSent uint32
+	index := 0
+	record := false
+	feed := func() {
+		t.Helper()
+		for _, packet := range packetizer.Packetize(motion[index%len(motion)], videoClockRate/30) {
+			check(source.WriteRTP(packet))
+			packetsSent++
+			bytesSent += uint32(len(packet.Payload))
+			if packet.Marker {
+				check(source.SenderReport(&rtcp.SenderReport{SSRC: 1, RTPTime: packet.Timestamp,
+					NTPTime: uint64(mediatransportutil.ToNtpTime(time.Now())), PacketCount: packetsSent, OctetCount: bytesSent}))
+			}
+		}
+		index++
+		select {
+		case <-ticker.C:
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		}
+		for child, channel := range []<-chan *rtp.Packet{packetsA, packetsB} {
+		drain:
+			for {
+				select {
+				case packet := <-channel:
+					check(assembled[child].push(packet))
+					for {
+						sample, timestamp := assembled[child].pop()
+						if sample == nil {
+							break
+						}
+						frame, err := assembled[child].frame(sample.Data)
+						check(err)
+						seen[child] = mediacodec.VideoSize{Width: frame.Width, Height: frame.Height}
+						frames[child]++
+						if !record || waiting[child] && !frame.KeyFrame {
+							continue
+						}
+						if len(output[child]) == 0 {
+							anchor[child] = timestamp
+						}
+						waiting[child] = false
+						output[child] = append(output[child], receivedFrame{Index: len(output[child]),
+							Width: frame.Width, Height: frame.Height, Recovery: frame.KeyFrame, Data: frame.Data,
+							PTS: time.Duration(uint32(timestamp-anchor[child])) * time.Second / videoClockRate})
+					}
+				default:
+					break drain
+				}
+			}
+		}
+	}
+	for range 60 {
+		feed()
+	}
+	check(a.SetTargetLayer(0))
+	check(b.SetTargetLayer(0))
+	for frame := 0; frame < 240; frame++ {
+		a.transport.Output.SetBudget(1_250_000)
+		b.transport.Output.SetBudget(1_250_000)
+		feed()
+		if seen[0].Width == 640 && seen[1].Width == 640 && a.transport.Output.State().Current == 0 && b.transport.Output.State().Current == 0 {
+			break
+		}
+	}
+	if seen[0].Width != 640 || seen[1].Width != 640 {
+		t.Fatalf("shared derived warmup failed: sizes=%+v frames=%v", seen, frames)
+	}
+	source.relay.mu.Lock()
+	run := source.relay.run
+	source.relay.mu.Unlock()
+	if run == nil {
+		t.Fatal("motion derivation did not start")
+	}
+	before := frames
+	record = true
+	for range 600 {
+		a.transport.Output.SetBudget(80_000)
+		b.transport.Output.SetBudget(1_250_000)
+		feed()
+		source.relay.mu.Lock()
+		same := source.relay.run == run
+		source.relay.mu.Unlock()
+		if !same {
+			t.Fatal("independent budgets replaced the shared decoder process")
+		}
+		select {
+		case <-run.done:
+			t.Fatalf("shared motion derivation failed: %v", context.Cause(run.ctx))
+		default:
+		}
+	}
+	if path := os.Getenv("SCREENER_GROUP_OUTPUT"); path != "" {
+		file, err := os.Create(path)
+		check(err)
+		check(json.NewEncoder(file).Encode(output))
+		check(file.Close())
+	}
+	source.writeMu.Lock()
+	ga, gb := source.memberships[a.transport], source.memberships[b.transport]
+	independent := ga != nil && gb != nil && ga != gb && ga.budget == 80_000 && gb.budget == 1_250_000 &&
+		a.transport.CurrentSource() == ga.media.Source && b.transport.CurrentSource() == gb.media.Source
+	source.writeMu.Unlock()
+	if !independent || seen[0].Width != 320 || seen[0].Height != 180 || seen[1].Width != 640 || seen[1].Height != 360 ||
+		frames[0] <= before[0]+30 || frames[1] <= before[1]+30 || a.transport.Output.State().Current != 0 || b.transport.Output.State().Current != 0 {
+		t.Fatalf("independent spatial adaptation missing: independent=%v sizes=%+v frames=%v->%v", independent, seen, before, frames)
+	}
+	check(a.Close())
+	check(b.Close())
+	select {
+	case <-run.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("last spatial consumer did not retire the decoder process")
+	}
+	t.Logf("one decoder, two budget-owned encoders: A=80kbps 320x180 B=1250kbps 640x360 frames=%v->%v exported=%d/%d", before, frames, len(output[0]), len(output[1]))
 }

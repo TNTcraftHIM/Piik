@@ -15,8 +15,8 @@
 #include "portal.h"
 
 enum {
-  kCaptureProtocol = 5,
-  kMaxOutputs = 3,
+  kCaptureProtocol = 6,
+  kMaxOutputs = 6,
   kMaxPayloadBytes = 1024 * 1024,
   kAudioFrameBytes = 960 * 2 * 2,
 };
@@ -46,6 +46,8 @@ typedef struct CaptureRun CaptureRun;
 typedef struct {
   CaptureRun *run;
   GstElement *encoder;
+  GstElement *branch;
+  GstElement *gate;
   VideoProfile profile;
   guint layer;
   gboolean enabled;
@@ -64,6 +66,7 @@ struct CaptureRun {
   VideoProfile profile;
   VideoOutput outputs[kMaxOutputs];
   guint output_count;
+  guint original_output;
   const EncoderInfo *encoder_info;
   const char *restore_token;
   GMutex lock;
@@ -374,7 +377,7 @@ static gboolean parse_outputs(int count, char **values, guint start, CaptureRun 
     VideoOutput *output = &run->outputs[index];
     output->run = run;
     output->layer = index;
-    output->enabled = TRUE;
+    output->enabled = strcmp(values[1], "--capture-video") == 0 && index < 2;
     output->key_requested = 1;
     output->key_timestamp = GST_CLOCK_TIME_NONE;
     output->activation_timestamp = GST_CLOCK_TIME_NONE;
@@ -385,12 +388,6 @@ static gboolean parse_outputs(int count, char **values, guint start, CaptureRun 
         !parse_uint(values[offset + 3], 1, 60, &output->profile.frame_rate) ||
         !parse_uint(values[offset + 4], 1000, 12000000, &output->profile.bit_rate) ||
         output->profile.width % 2 != 0 || output->profile.height % 2 != 0) return FALSE;
-    if (index > 0) {
-      const VideoProfile *previous = &run->outputs[index - 1].profile;
-      if (output->profile.width <= previous->width || output->profile.height <= previous->height ||
-          output->profile.frame_rate < previous->frame_rate ||
-          output->profile.bit_rate < previous->bit_rate) return FALSE;
-    }
   }
   return TRUE;
 }
@@ -411,8 +408,15 @@ static gboolean parse_profile(int count, char **values, CaptureRun *run,
         strcmp(values[4], "--adapter-index") != 0 || strcmp(values[5], "0") != 0 ||
         strcmp(values[6], "--mft-index") != 0 || !parse_uint(values[7], 0, 63, encoder_index) ||
         strcmp(values[8], "--preference") != 0 || !parse_preference(values[9], profile) ||
-        strcmp(values[10], "--protocol-v5") != 0 || !parse_outputs(count, values, 11, run)) return FALSE;
-    *profile = run->outputs[run->output_count - 1].profile;
+        strcmp(values[10], "--protocol-v6") != 0 || !parse_outputs(count, values, 11, run)) return FALSE;
+    for (guint index = 0; index < run->output_count; ++index) {
+      const VideoProfile *output = &run->outputs[index].profile;
+      profile->width = MAX(profile->width, output->width);
+      profile->height = MAX(profile->height, output->height);
+      profile->frame_rate = MAX(profile->frame_rate, output->frame_rate);
+      profile->bit_rate = MAX(profile->bit_rate, output->bit_rate);
+    }
+    run->original_output = 0;
     return TRUE;
   }
   if (count < 28 || (count - 23) % 5 != 0 ||
@@ -429,7 +433,7 @@ static gboolean parse_profile(int count, char **values, CaptureRun *run,
       strcmp(values[18], "--preference") != 0 ||
       strcmp(values[20], "--codec") != 0 ||
       (strcmp(values[21], "auto") != 0 && strcmp(values[21], "h264") != 0) ||
-      strcmp(values[22], "--protocol-v5") != 0 ||
+      strcmp(values[22], "--protocol-v6") != 0 ||
       !parse_uint(values[9], 0, 63, encoder_index) ||
       !parse_uint(values[11], 1, 16384, &profile->width) ||
       !parse_uint(values[13], 1, 16384, &profile->height) ||
@@ -444,10 +448,16 @@ static gboolean parse_profile(int count, char **values, CaptureRun *run,
       (profile->width == 2560 && profile->height == 1440);
   if (!resolution) return FALSE;
   if (!parse_preference(values[19], profile) || !parse_outputs(count, values, 23, run)) return FALSE;
-  const VideoProfile *highest = &run->outputs[run->output_count - 1].profile;
-  if (highest->width != profile->width || highest->height != profile->height ||
-      highest->frame_rate != profile->frame_rate ||
-      highest->bit_rate != profile->bit_rate) return FALSE;
+  run->original_output = MIN(1, run->output_count - 1);
+  const VideoProfile *original = &run->outputs[run->original_output].profile;
+  if (original->width != profile->width || original->height != profile->height ||
+      original->frame_rate != profile->frame_rate ||
+      original->bit_rate != profile->bit_rate) return FALSE;
+  for (guint index = 0; index < run->output_count; ++index) {
+    const VideoProfile *output = &run->outputs[index].profile;
+    if (output->width > profile->width || output->height > profile->height ||
+        output->frame_rate > profile->frame_rate || output->bit_rate > profile->bit_rate) return FALSE;
+  }
   return TRUE;
 }
 
@@ -604,6 +614,33 @@ static void fail_output(VideoOutput *output, const char *message) {
   fail_run(output->run, message);
 }
 
+static gboolean set_output_active(VideoOutput *output, gboolean enabled) {
+  CaptureRun *run = output->run;
+  g_mutex_lock(&run->lock);
+  if (output->enabled == enabled) {
+    g_mutex_unlock(&run->lock);
+    return TRUE;
+  }
+  output->enabled = FALSE;
+  output->decodable = FALSE;
+  output->activation_timestamp = GST_CLOCK_TIME_NONE;
+  output->key_timestamp = GST_CLOCK_TIME_NONE;
+  ++output->key_requested;
+  g_mutex_unlock(&run->lock);
+  // A closed valve isolates the retired branch from the other tee subscribers.
+  g_object_set(output->gate, "drop", TRUE, NULL);
+  gst_element_set_locked_state(output->branch, !enabled);
+  gboolean applied = enabled
+      ? gst_element_sync_state_with_parent(output->branch)
+      : gst_element_set_state(output->branch, GST_STATE_NULL) != GST_STATE_CHANGE_FAILURE;
+  if (!applied) return FALSE;
+  g_mutex_lock(&run->lock);
+  output->enabled = enabled;
+  g_mutex_unlock(&run->lock);
+  if (enabled) g_object_set(output->gate, "drop", FALSE, NULL);
+  return TRUE;
+}
+
 static gboolean apply_control(CaptureRun *run, char *line) {
   char *values[4] = {0};
   guint count = 0;
@@ -631,22 +668,11 @@ static gboolean apply_control(CaptureRun *run, char *line) {
     g_mutex_unlock(&run->lock);
     return TRUE;
   }
-  if (count == 2 && strcmp(values[0], "A") == 0) {
+  if (count == 3 && strcmp(values[0], "A") == 0) {
     guint active = 0;
-    if (!parse_uint(values[1], 0, run->output_count, &active)) return FALSE;
-    g_mutex_lock(&run->lock);
-    for (guint index = 0; index < run->output_count; ++index) {
-      VideoOutput *output = &run->outputs[index];
-      gboolean enabled = index < active;
-      if (output->enabled != enabled) {
-        output->enabled = enabled;
-        output->decodable = FALSE;
-        output->activation_timestamp = GST_CLOCK_TIME_NONE;
-        ++output->key_requested;
-      }
-    }
-    g_mutex_unlock(&run->lock);
-    return TRUE;
+    if (!parse_uint(values[1], 0, run->output_count - 1, &layer) ||
+        !parse_uint(values[2], 0, 1, &active)) return FALSE;
+    return set_output_active(&run->outputs[layer], active != 0);
   }
   if (count == 3 && strcmp(values[0], "B") == 0 &&
       parse_uint(values[1], 0, run->output_count - 1, &layer)) {
@@ -864,7 +890,7 @@ static GstFlowReturn video_sample(GstAppSink *sink, gpointer data) {
   if (current && recovery) output->decodable = TRUE;
   gboolean deliver = current && output->decodable;
   gboolean publish_active = deliver && !run->active &&
-      output->layer == run->output_count - 1;
+      output->layer == run->original_output;
   if (publish_active) run->active = TRUE;
   g_mutex_unlock(&run->lock);
   if (!deliver) {
@@ -1020,7 +1046,8 @@ static int capture_video(int count, char **values) {
   for (guint index = 0; index < run.output_count; ++index) {
     const VideoProfile *profile = &run.outputs[index].profile;
     g_string_append_printf(pipeline_text,
-        "frames. ! queue name=raw%u max-size-buffers=1 max-size-bytes=0 "
+        "frames. ! valve name=gate%u drop=%s ! ( "
+        "queue name=raw%u max-size-buffers=1 max-size-bytes=0 "
         "max-size-time=0 leaky=downstream ! videorate drop-only=true ! "
         "video/x-raw,framerate=%u/1 ! videoconvert ! videoscale ! "
         "video/x-raw,format=NV12,width=%u,height=%u ! "
@@ -1028,7 +1055,8 @@ static int capture_video(int count, char **values) {
         "h264parse config-interval=-1 ! "
         "video/x-h264,stream-format=byte-stream,alignment=au ! "
         "appsink name=output%u emit-signals=true sync=false async=false "
-        "max-buffers=1 drop=false ",
+        "max-buffers=1 drop=false ) ",
+        index, run.outputs[index].enabled ? "false" : "true",
         index, profile->frame_rate, profile->width, profile->height, encoder_info->factory,
         index, index);
   }
@@ -1077,6 +1105,12 @@ static int capture_video(int count, char **values) {
           strlen("hardware encoder configuration failed"));
       goto cleanup;
     }
+    output->branch = GST_ELEMENT(gst_object_get_parent(GST_OBJECT(output->encoder)));
+    name = g_strdup_printf("gate%u", index);
+    output->gate = gst_bin_get_by_name(GST_BIN(pipeline), name);
+    g_free(name);
+    if (output->branch == NULL || output->branch == pipeline || output->gate == NULL) goto cleanup;
+    gst_element_set_locked_state(output->branch, !output->enabled);
     name = g_strdup_printf("output%u", index);
     GstElement *sink = gst_bin_get_by_name(GST_BIN(pipeline), name);
     g_free(name);
@@ -1113,6 +1147,8 @@ cleanup:
   if (run.encoded_source != NULL) gst_object_unref(run.encoded_source);
   for (guint index = 0; index < run.output_count; ++index) {
     if (run.outputs[index].encoder != NULL) gst_object_unref(run.outputs[index].encoder);
+    if (run.outputs[index].branch != NULL) gst_object_unref(run.outputs[index].branch);
+    if (run.outputs[index].gate != NULL) gst_object_unref(run.outputs[index].gate);
   }
   g_free(run.failure);
   g_main_loop_unref(run.loop);

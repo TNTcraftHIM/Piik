@@ -56,7 +56,7 @@ embedded candidate below is not deployed.
 ## Current Source
 
 - The candidate uses one shared Go core and the strict `screener-v22`
-  Browser/server contract, Native control v9 and capture v5. These artifacts
+  Browser/server contract, Native control v9 and capture v6. These artifacts
   form one private contract. Optional SQLite persists stable room authority;
   participants, routes and media remain process-only.
 - Hosted Screener owns configured Binding-only STUN and optional SFU UDP
@@ -106,7 +106,9 @@ back the initial infrastructure change.
   [encoder-pool review](./research/webrtc-encoder-pool.md); dependent release
   approval is held in TODO. Windows capture and derivation now attach stock
   WebRTC output pipelines; both codecs pass bounded process-level shrinking and
-  recovery checks. Incompatible weak-consumer grouping is still incomplete.
+  recovery checks. Incompatible weak-consumer grouping now has real relay
+  split/rejoin and independent-dimension delivery evidence; exact throughput,
+  overload and representative-network acceptance remain open.
   Independent Client/service fixes remain preserved.
 - Browser and Native H264/VP8 publication through embedded SFU pass Browser decoding,
   live-profile and cleanup checks; the Native path also delivers Opus. Bounded

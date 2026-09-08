@@ -738,7 +738,7 @@ async function main(): Promise<void> {
     const probe = JSON.parse(run(executable, ["--probe"])) as Probe;
     const adapter = probe.adapters.find((candidate) => candidate.hardwareH264.length > 0);
     const encoder = adapter?.hardwareH264[0];
-    if (probe.protocol !== 5 || !adapter || !encoder) {
+    if (probe.protocol !== 6 || !adapter || !encoder) {
       throw new Error("No hardware H264 capture path is available");
     }
 
@@ -816,7 +816,7 @@ async function main(): Promise<void> {
       "balanced",
       "--codec",
       "h264",
-      "--protocol-v5",
+      "--protocol-v6",
       "--output", "1280", "720", "30", "3000000",
     ], { stdio: "pipe", windowsHide: true });
     capture.stderr.resume();

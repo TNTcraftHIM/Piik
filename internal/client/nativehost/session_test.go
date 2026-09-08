@@ -1,10 +1,14 @@
 package nativehost
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
+	"log/slog"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,6 +17,10 @@ import (
 )
 
 func TestMain(tests *testing.M) {
+	if os.Getenv("SCREENER_NATIVEHOST_PIPE_FIXTURE") == "echo" {
+		_, _ = io.Copy(os.Stdout, os.Stdin)
+		os.Exit(0)
+	}
 	if os.Getenv("SCREENER_NATIVEHOST_PIPE_FIXTURE") == "1" {
 		_, _ = io.Copy(io.Discard, os.Stdin)
 		os.Exit(0)
@@ -40,10 +48,13 @@ func TestCaptureCommitWaitsForReaderMetadataOrTermination(t *testing.T) {
 			check(err)
 			defer engine.Close()
 			options := nativecapture.VideoOptions{Target: nativecapture.CaptureTarget{Kind: "display", SourceID: "1", Title: "Fixture"}, Codec: "vp8",
-				Profile: nativecapture.VideoProfile{Width: 1280, Height: 720, Framerate: 15, Bitrate: 2_000_000, Preference: "balanced"}}
+				Profile: nativecapture.VideoProfile{Width: 1280, Height: 720, Framerate: 15, Bitrate: 2_000_000, Preference: "balanced"}, OutputGroups: 1}
 			previous, err := nativecapture.StartVideo(ctx, executable, options)
 			check(err)
 			defer previous.Close()
+			if len(previous.Outputs()) != 3 {
+				t.Fatal("capture did not retain its independent output group")
+			}
 			source, err := engine.NewSource("vp8", 1, 2, nil)
 			check(err)
 			defer source.Close()
@@ -51,7 +62,7 @@ func TestCaptureCommitWaitsForReaderMetadataOrTermination(t *testing.T) {
 			publication, err := engine.NewPublication(source, mediaedge.EdgeOptions{ConnectionID: "metadata-fixture"})
 			check(err)
 			session := &Session{ctx: ctx, cancel: cancel, engine: engine, source: source, stream: previous,
-				ready: make(chan error, 1), done: make(chan error, 1), events: make(chan Event, 16)}
+				edgeCapacity: 1, ready: make(chan error, 1), done: make(chan error, 1), events: make(chan Event, 16)}
 			options.Profile.Width, options.Profile.Height = 854, 480
 			replacement, err := nativecapture.StartVideo(ctx, executable, options)
 			check(err)
@@ -73,7 +84,7 @@ func TestCaptureCommitWaitsForReaderMetadataOrTermination(t *testing.T) {
 				t.Fatalf("process exit acknowledged metadata before reader installation: %v", err)
 			default:
 			}
-			if publication.Media().Layers[1].Width != 1280 {
+			if len(publication.Media().Layers) != 2 || publication.Media().Layers[1].Width != 1280 {
 				t.Fatal("held reader unexpectedly changed source metadata")
 			}
 			if mode == "installed" {
@@ -127,6 +138,44 @@ func TestCaptureCommitWaitsForReaderMetadataOrTermination(t *testing.T) {
 	}
 }
 
+func TestOutputPlanPreservesOriginalStartupAndIndependentActivation(t *testing.T) {
+	t.Setenv("SCREENER_NATIVEHOST_PIPE_FIXTURE", "echo")
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	stream, err := nativecapture.StartVideo(ctx, executable, nativecapture.VideoOptions{
+		Target: nativecapture.CaptureTarget{Kind: "display", SourceID: "1", Title: "Fixture"}, Codec: "vp8",
+		Profile: nativecapture.VideoProfile{Width: 1280, Height: 720, Framerate: 15,
+			Bitrate: 2_000_000, Preference: "balanced"}, OutputGroups: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Close()
+	plan := mediaedge.OutputPlan{Active: []bool{false, true, true, false}, Bitrates: []uint32{0, 0, 250_000, 0}}
+	if err = applyOutputPlan(stream, plan, false); err != nil {
+		t.Fatal(err)
+	}
+	plan.RecoveryLayers = []int{2}
+	if err = applyOutputPlan(stream, plan, true); err != nil {
+		t.Fatal(err)
+	}
+	clear(plan.Active)
+	plan.RecoveryLayers = nil
+	if err = applyOutputPlan(stream, plan, true); err != nil {
+		t.Fatal(err)
+	}
+	for _, command := range []string{"B 2 250000", "K 2", "A 0 0", "A 2 1", "A 1 0", "A 2 0"} {
+		frame, readErr := stream.Read()
+		if readErr != nil || frame.Kind != nativecapture.FrameControl || string(frame.Data) != command {
+			t.Fatalf("expected control %q, received %+v, %v", command, frame, readErr)
+		}
+	}
+}
+
 func TestCaptureStateKeepsStartingAndActiveContractsDistinct(t *testing.T) {
 	starting, err := decodeCaptureState(captureStatePayload(t,
 		`{"state":"starting","hardwareOnly":true,"codec":"h264","adapterIndex":0,"adapterName":"GPU","adapterIdentity":"0:1","encoderIndex":0,"encoderName":"H264","encoderIdentity":"encoder"}`,
@@ -166,6 +215,27 @@ func TestCaptureStateRejectsUnknownOrUnattributedState(t *testing.T) {
 	}
 }
 
+func TestCaptureStateUsesOriginalSlotAndBoundsPhysicalGroups(t *testing.T) {
+	state, err := decodeCaptureState(captureStatePayload(t,
+		`{"state":"active","hardwareOnly":false,"codec":"vp8","width":1280,"height":720,"fps":30}`))
+	if err != nil || len(state.Outputs) != 6 || state.Outputs[5] != state.Outputs[0] {
+		t.Fatalf("independent output groups = %+v, %v", state, err)
+	}
+	wrongOriginal := state
+	wrongOriginal.Width = state.Outputs[5].Width
+	tooMany := state
+	tooMany.Outputs = append(tooMany.Outputs, tooMany.Outputs[0])
+	for _, invalid := range []CaptureState{wrongOriginal, tooMany} {
+		payload, err := json.Marshal(invalid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = decodeCaptureState(payload); err == nil {
+			t.Fatal("invalid original slot or output count was accepted")
+		}
+	}
+}
+
 func captureStatePayload(t *testing.T, payload string) []byte {
 	t.Helper()
 	var fields map[string]json.RawMessage
@@ -180,7 +250,11 @@ func captureStatePayload(t *testing.T, payload string) []byte {
 			}
 		}
 	}
-	outputs, err := json.Marshal(nativecapture.ScreenShareOutputs(profile))
+	slots := nativecapture.ScreenShareOutputs(profile)
+	for range 4 {
+		slots = append(slots, slots[0])
+	}
+	outputs, err := json.Marshal(slots)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,5 +270,26 @@ func TestCandidateForRetiredEdgeIsIgnored(t *testing.T) {
 	session := &Session{}
 	if err := session.AddCandidate("retired-edge", nil); err != nil {
 		t.Fatalf("stale candidate stopped the session: %v", err)
+	}
+}
+
+func TestCaptureProfileFailureLogsFixedStageWithoutPrivateError(t *testing.T) {
+	previous := slog.Default()
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	var output bytes.Buffer
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&output, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	failure := errors.New("private capture path and window title")
+	profile := nativecapture.VideoProfile{Width: 1280, Height: 720, Framerate: 30, Bitrate: 3_000_000}
+	if captureProfileFailure(t.Context(), profile, "wait-timeout", failure) != failure {
+		t.Fatal("diagnostic changed the failure result")
+	}
+	var record map[string]any
+	if err := json.Unmarshal(output.Bytes(), &record); err != nil {
+		t.Fatal(err)
+	}
+	if record["event"] != "capture-profile-rejected" || record["stage"] != "wait-timeout" ||
+		record["width"] != float64(1280) || record["height"] != float64(720) ||
+		record["fps"] != float64(30) || record["bitrate"] != float64(3_000_000) || strings.Contains(output.String(), "private") {
+		t.Fatalf("profile diagnostic changed or leaked: %s", output.String())
 	}
 }

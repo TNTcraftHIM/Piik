@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -56,7 +57,7 @@ func TestOutputPlanRetiresOnlyFailedLayerConsumers(t *testing.T) {
 	}
 	waitSignal(t, wake, "quiet source target-change wakeup")
 	plan, err := source.BeginFrame(time.Second / 30)
-	if err != nil || plan.ActiveLayers != 2 || len(plan.Bitrates) != 2 {
+	if err != nil || !slices.Equal(plan.Active, []bool{true, true}) || len(plan.Bitrates) != 2 {
 		t.Fatalf("output plan = %+v, %v", plan, err)
 	}
 	plan.Bitrates[0] = 1
@@ -78,7 +79,7 @@ func TestOutputPlanRetiresOnlyFailedLayerConsumers(t *testing.T) {
 		t.Fatal("failed tracker revived or reset a healthy sibling")
 	}
 	plan, err = source.BeginFrame(2 * time.Second / 30)
-	if err != nil || plan.ActiveLayers != 2 || plan.Bitrates[0] != 0 || plan.Bitrates[1] != 600_000 {
+	if err != nil || !slices.Equal(plan.Active, []bool{false, true}) || plan.Bitrates[0] != 0 || plan.Bitrates[1] != 600_000 {
 		t.Fatalf("surviving output plan = %+v, %v", plan, err)
 	}
 	if err = source.WriteVideo(0, encoded.Frame{Data: sfu.VP8KeyFrame8x8, PTS: 2 * time.Second / 30, Duration: time.Second / 30}); err == nil {
@@ -93,7 +94,7 @@ func TestOutputPlanRetiresOnlyFailedLayerConsumers(t *testing.T) {
 		candidate.transport.Output.SetBudget(80_000)
 		if input == "capture" {
 			plan, err = source.BeginFrame(time.Duration(index+3) * time.Second / 30)
-			if err != nil || plan.ActiveLayers != 2 || plan.Bitrates[0] != 0 {
+			if err != nil || !slices.Equal(plan.Active, []bool{false, true}) || plan.Bitrates[0] != 0 {
 				t.Fatalf("failed demand changed the capture plan: %+v, %v", plan, err)
 			}
 		} else {

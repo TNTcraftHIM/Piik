@@ -22,7 +22,8 @@ class OutputMailbox final {
     bool recovery = false;
   };
 
-  explicit OutputMailbox(uint32_t ceiling) : ceiling_(ceiling), bitrate_(ceiling) {}
+  explicit OutputMailbox(uint32_t ceiling, bool active = true)
+      : ceiling_(ceiling), bitrate_(ceiling), active_(active) {}
 
   void Submit(std::shared_ptr<const Frame> input) {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -44,9 +45,10 @@ class OutputMailbox final {
             std::exchange(key_requested_, false)};
   }
 
-  void SetActive(bool active) {
+  // Only a fresh activation needs a retained capture frame.
+  bool SetActive(bool active) {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (active_ == active || failed_) return;
+    if (active_ == active || failed_) return false;
     active_ = active;
     ++generation_;
     key_requested_ = true;
@@ -55,6 +57,7 @@ class OutputMailbox final {
       retire_ = true;
     }
     changed_.notify_one();
+    return active;
   }
 
   void RequestKeyFrame() {

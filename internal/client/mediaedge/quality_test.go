@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/TNTcraftHIM/Screener/internal/media/encoded"
+	"github.com/TNTcraftHIM/Screener/internal/media/forwarding"
 	"github.com/livekit/livekit-server/pkg/sfu"
 )
 
@@ -11,6 +13,48 @@ type qualityAllocationReceiver struct{ sfu.TrackReceiver }
 
 func (receiver qualityAllocationReceiver) GetLayeredBitrate() ([]int32, sfu.Bitrates) {
 	return []int32{0, 1}, sfu.Bitrates{{100_000}, {900_000}}
+}
+
+func TestQualityDimensionsFollowAssignedSource(t *testing.T) {
+	check := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	engine, err := NewEngine(EngineOptions{BindAddress: "127.0.0.1:0", IncludeLoopback: true})
+	check(err)
+	defer engine.Close()
+	source, err := engine.NewSource("vp8", 1, 2, nil)
+	check(err)
+	defer source.Close()
+	check(source.SetFormat(0, 320, 180))
+	check(source.SetFormat(1, 640, 360))
+	check(source.ConfigureOutputs([]uint32{90_000, 300_000}))
+	edge, receiver, _ := connectedReceiver(t, engine, source, "assigned-quality")
+	defer receiver.Close()
+	assigned, err := forwarding.NewEncodedSource(forwarding.SourceOptions{
+		ID: string(source.media.TrackID()), StreamID: source.media.StreamID(), Codec: source.media.Codec(), MaxPackets: 500,
+		Formats: []forwarding.LayerFormat{{Width: 4, Height: 4, Bitrate: 45_000}, {Width: 8, Height: 8, Bitrate: 150_000}},
+	})
+	check(err)
+	defer assigned.Close()
+	check(assigned.BeginFrame(0, time.Now()))
+	check(assigned.WriteFrame(1, encoded.Frame{Data: sfu.VP8KeyFrame8x8, Duration: time.Second / 30, Recovery: true}))
+	check(edge.transport.ReplaceSource(assigned.Source))
+	deadline := time.Now().Add(3 * time.Second)
+	for frame := 1; time.Now().Before(deadline); frame++ {
+		pts := time.Duration(frame) * time.Second / 30
+		check(assigned.BeginFrame(pts, time.Now()))
+		check(assigned.WriteFrame(1, encoded.Frame{Data: sfu.VP8KeyFrame8x8, PTS: pts, Duration: time.Second / 30, Recovery: true}))
+		frames, _, format := edge.videoCounters()
+		if frames > 0 && format == uint64(8)<<32|8 {
+			return
+		}
+		time.Sleep(time.Second / 30)
+	}
+	_, _, format := edge.videoCounters()
+	t.Fatalf("quality dimensions still refer to original source: %dx%d", uint32(format>>32), uint32(format))
 }
 
 func TestQualitySampleUsesEstimatorCapacityAgainstEncodedPayload(t *testing.T) {

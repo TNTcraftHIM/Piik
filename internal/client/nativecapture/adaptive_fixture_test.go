@@ -64,6 +64,9 @@ func TestAdaptiveOutputFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer stream.Close()
+	if err = stream.SetOutputActive(0, true); err != nil {
+		t.Fatal(err)
+	}
 	readDone := make(chan error, 1)
 	timelineError := errors.New("adaptive output violated its input timeline")
 	var output []Frame

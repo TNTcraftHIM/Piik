@@ -141,6 +141,26 @@ failed draft. Cleanup now restores the applied settings through the existing
 commit helper; no new state or recovery mechanism was added. This alone is not
 claimed as the cause of CS2 capture termination.
 
+The later owner-supplied `cbdd751` CS2 diagnostic bundle records three 720p30
+update requests, all rejected while the existing 1080p30 share remains live.
+It contains no successful 720p commit or explicit rollback-to-1080 request.
+The Browser's failed-request rollback explains its controls returning to the
+committed profile, but the original generic error does not identify which
+preparation step failed or explain the reported brief Viewer-size change.
+Current diagnostics add fixed preparation rejection stages without changing
+capture recovery policy. Do not label the affected-device report resolved.
+
+The `cbdd751` Vivaldi bundle shows two successful Native H264 1080p30 capture
+starts followed by a local outbound PeerConnection remaining connecting for
+about 7.985 seconds. The Browser bridge's eight-second startup timeout then
+stops the Native share cleanly. This is a local media-bridge failure boundary,
+not evidence that Windows capture or the control WebSocket failed. That bundle
+does not distinguish ICE from DTLS or a Browser policy. Current diagnostics
+record those states and candidate-type counts separately; the UI reports a
+connection error. Vivaldi's documented WebRTC IP-handling setting is only an
+[A/B lead](https://help.vivaldi.com/desktop/privacy/privacy-settings/), not the
+proven cause or authorization for a Browser-specific transport fallback.
+
 Primary references: [CreateForMonitor](https://learn.microsoft.com/en-us/windows/win32/api/windows.graphics.capture.interop/nf-windows-graphics-capture-interop-igraphicscaptureiteminterop-createformonitor),
 [CreateFreeThreaded](https://learn.microsoft.com/en-us/uwp/api/windows.graphics.capture.direct3d11captureframepool.createfreethreaded),
 [capture item closure](https://learn.microsoft.com/en-us/uwp/api/windows.graphics.capture.graphicscaptureitem.closed),

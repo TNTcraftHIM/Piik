@@ -3,11 +3,15 @@
 package forwarding
 
 import (
+	"io"
 	"slices"
 	"sync"
+	"sync/atomic"
 
 	"github.com/livekit/livekit-server/pkg/sfu"
 	"github.com/livekit/livekit-server/pkg/sfu/buffer"
+	"github.com/livekit/protocol/livekit"
+	"github.com/pion/webrtc/v4"
 )
 
 // Output owns allocation for one video stream on one child connection. Its
@@ -161,11 +165,18 @@ func (output *Output) probeDemand() (int64, int64) {
 }
 
 func (output *Output) WriteRTP(packet *buffer.ExtPacket, layer int32) int32 {
+	return output.writeRTP(packet, layer, nil)
+}
+
+func (output *Output) writeRTP(packet *buffer.ExtPacket, layer int32, receiver sfu.TrackReceiver) int32 {
 	if output.onActivity != nil {
 		output.onActivity()
 	}
 	output.writeMu.Lock()
 	defer output.writeMu.Unlock()
+	if receiver != nil && output.Receiver() != receiver {
+		return 0
+	}
 	output.mu.Lock()
 	closed := output.closed
 	output.mu.Unlock()
@@ -183,6 +194,102 @@ func (output *Output) WriteRTP(packet *buffer.ExtPacket, layer int32) int32 {
 		output.notifyDemand()
 	}
 	return written
+}
+
+// SetReceiver registers its raw DownTrack; retain the complete output wrapper
+// and reject callbacks already in flight from a detached receiver.
+type outputReceiver struct {
+	*Source
+	output   *Output
+	attached bool
+}
+
+func (receiver *outputReceiver) AddDownTrack(sfu.TrackSender) error {
+	if !receiver.attached {
+		return nil
+	}
+	sender := &outputSourceSender{Output: receiver.output, receiver: receiver}
+	sender.registering.Store(true)
+	err := receiver.Source.AddDownTrack(sender)
+	sender.registering.Store(false)
+	return err
+}
+
+type outputSourceSender struct {
+	*Output
+	receiver    *outputReceiver
+	registering atomic.Bool
+}
+
+func (sender *outputSourceSender) WriteRTP(packet *buffer.ExtPacket, layer int32) int32 {
+	return sender.Output.writeRTP(packet, layer, sender.receiver)
+}
+
+func (sender *outputSourceSender) Close() {
+	sender.withReceiver(sender.Output.Close)
+}
+
+func (sender *outputSourceSender) withReceiver(fn func()) {
+	// AddDownTrack invokes initial metadata synchronously inside SetReceiver,
+	// which already holds writeMu. Later source events take the normal lock.
+	if !sender.registering.Load() {
+		sender.Output.writeMu.Lock()
+		defer sender.Output.writeMu.Unlock()
+	}
+	if sender.Output.Receiver() == sender.receiver {
+		fn()
+	}
+}
+
+func (sender *outputSourceSender) ReceiverRestart(receiver sfu.TrackReceiver) {
+	sender.withReceiver(func() { sender.Output.receiverRestartLocked(receiver) })
+}
+
+func (sender *outputSourceSender) UpTrackLayersChange() {
+	sender.withReceiver(sender.Output.UpTrackLayersChange)
+}
+
+func (sender *outputSourceSender) UpTrackBitrateAvailabilityChange() {
+	sender.withReceiver(sender.Output.UpTrackBitrateAvailabilityChange)
+}
+
+func (sender *outputSourceSender) UpTrackMaxPublishedLayerChange(layer int32) {
+	sender.withReceiver(func() { sender.Output.UpTrackMaxPublishedLayerChange(layer) })
+}
+
+func (sender *outputSourceSender) UpTrackMaxTemporalLayerSeenChange(layer int32) {
+	sender.withReceiver(func() { sender.Output.UpTrackMaxTemporalLayerSeenChange(layer) })
+}
+
+func (sender *outputSourceSender) UpTrackBitrateReport(layers []int32, rates sfu.Bitrates) {
+	sender.withReceiver(func() { sender.Output.UpTrackBitrateReport(layers, rates) })
+}
+
+func (sender *outputSourceSender) HandleRTCPSenderReportData(payloadType webrtc.PayloadType, layer int32, report *livekit.RTCPSenderReportState) error {
+	sender.Output.writeMu.Lock()
+	defer sender.Output.writeMu.Unlock()
+	if sender.Output.Receiver() != sender.receiver {
+		return nil
+	}
+	return sender.Output.HandleRTCPSenderReportData(payloadType, layer, report)
+}
+
+func (output *Output) replaceReceiver(receiver *outputReceiver) error {
+	output.writeMu.Lock()
+	defer output.writeMu.Unlock()
+	if output.IsClosed() {
+		return io.ErrClosedPipe
+	}
+	// A different source has different RTP/NTP references even with the same
+	// logical layer SSRCs. Restart clears those references; Resync does not.
+	output.DownTrack.ReceiverRestart(output.Receiver())
+	output.DownTrack.SetReceiver(receiver)
+	output.mu.Lock()
+	output.current = -1
+	output.hasAllocation = false
+	output.reconcileLocked()
+	output.mu.Unlock()
+	return nil
 }
 
 // BeginFrame fences a controlled Native input before any of its outputs arrive.
@@ -216,6 +323,10 @@ func (output *Output) Resync() {
 func (output *Output) ReceiverRestart(receiver sfu.TrackReceiver) {
 	output.writeMu.Lock()
 	defer output.writeMu.Unlock()
+	output.receiverRestartLocked(receiver)
+}
+
+func (output *Output) receiverRestartLocked(receiver sfu.TrackReceiver) {
 	output.DownTrack.ReceiverRestart(receiver)
 	output.mu.Lock()
 	output.current = -1

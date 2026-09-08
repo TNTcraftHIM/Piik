@@ -53,7 +53,7 @@ func TestReadFrameRejectsInvalidKindsFlagsAndBounds(t *testing.T) {
 		func(value []byte) { value[4] = 1 },
 		func(value []byte) { value[5] = 9 },
 		func(value []byte) { value[6] = 2 },
-		func(value []byte) { value[7] = 3 },
+		func(value []byte) { value[7] = maxOutputs },
 		func(value []byte) { binary.BigEndian.PutUint16(value[24:26], 1279) },
 		func(value []byte) { binary.BigEndian.PutUint64(value[8:16], ^uint64(0)) },
 		func(value []byte) { binary.BigEndian.PutUint32(value[28:32], maxMediaBytes+1) },
@@ -111,10 +111,16 @@ func TestOutputProfilesAndControlFramesShareOneBoundedContract(t *testing.T) {
 		t.Fatalf("derived outputs = %+v", outputs)
 	}
 	derived := []OutputProfile{{Width: 160, Height: 90, Framerate: 30, Bitrate: 90_000}, {Width: 320, Height: 180, Framerate: 30, Bitrate: 300_000}}
-	if _, err := appendOutputArguments([]string{"--protocol-v5"}, derived); err != nil {
+	if _, err := appendOutputArguments([]string{"--protocol-v6"}, derived); err != nil {
 		t.Fatal(err)
 	}
-	for _, invalid := range [][]OutputProfile{nil, {derived[1], derived[0]}, {derived[0], derived[0]}} {
+	for _, slots := range [][]OutputProfile{{derived[1], derived[0]}, {derived[0], derived[0]},
+		{derived[0], derived[1], derived[0], derived[0], derived[0], derived[0]}} {
+		if _, err := appendOutputArguments(nil, slots); err != nil {
+			t.Fatalf("independent output slots rejected: %v", err)
+		}
+	}
+	for _, invalid := range [][]OutputProfile{nil, make([]OutputProfile, maxOutputs+1), {{}}} {
 		if _, err := appendOutputArguments(nil, invalid); err == nil {
 			t.Fatal("invalid derived output set was accepted")
 		}
@@ -130,8 +136,11 @@ func TestOutputProfilesAndControlFramesShareOneBoundedContract(t *testing.T) {
 		control <- payload
 	}()
 	for _, command := range []func() error{
-		func() error { return stream.SetActiveOutputs(2) },
-		func() error { return stream.SetActiveOutputs(2) },
+		func() error { return stream.SetOutputActive(1, true) },
+		func() error { return stream.SetOutputActive(1, true) },
+		func() error { return stream.SetOutputActive(0, true) },
+		func() error { return stream.SetOutputActive(1, false) },
+		func() error { return stream.SetOutputActive(1, false) },
 		func() error { return stream.SetOutputBitrate(0, 250_000) },
 		func() error { return stream.SetOutputBitrate(0, 250_000) },
 		func() error { return stream.RequestKeyFrame(0) },
@@ -162,11 +171,25 @@ func TestOutputProfilesAndControlFramesShareOneBoundedContract(t *testing.T) {
 		}
 		encodedInputs++
 	}
-	if !slices.Equal(commands, []string{"A 2", "B 0 250000", "K 0", "K -1", "Q"}) || encodedInputs != 1 {
+	if !slices.Equal(commands, []string{"A 1 1", "A 0 1", "A 1 0", "B 0 250000", "K 0", "K -1", "Q"}) || encodedInputs != 1 {
 		t.Fatalf("controls = %q, encoded inputs = %d", commands, encodedInputs)
 	}
-	if !errors.Is(stream.RequestKeyFrame(0), io.ErrClosedPipe) || stream.SetActiveOutputs(3) == nil {
+	if !errors.Is(stream.RequestKeyFrame(0), io.ErrClosedPipe) || stream.SetOutputActive(2, true) == nil ||
+		stream.SetOutputActive(-1, false) == nil || !errors.Is(stream.SetOutputActive(0, false), io.ErrClosedPipe) {
 		t.Fatal("closed or invalid controls were accepted")
+	}
+}
+
+func TestIndependentOutputEnvelopeUsesTheLastBoundedSlot(t *testing.T) {
+	var output bytes.Buffer
+	frame := Frame{Kind: FrameVP8, Layer: maxOutputs - 1, Width: 320, Height: 180,
+		Timestamp: time.Second, Duration: time.Second / 30, Data: []byte{1}}
+	if err := writeFrame(&output, frame); err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := readFrame(&output)
+	if err != nil || decoded.Layer != maxOutputs-1 {
+		t.Fatalf("last output slot = %+v, %v", decoded, err)
 	}
 }
 

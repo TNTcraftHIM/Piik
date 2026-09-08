@@ -8,6 +8,8 @@
 
 namespace screener::capture {
 
+constexpr int kMaxOutputs = 6;
+
 struct CaptureControl final {
   char kind = 'Q';
   int layer = -1;
@@ -32,15 +34,16 @@ class CaptureControls final {
       case 'Q': break;
       case 'K':
         valid = valid && static_cast<bool>(input >> control.layer) &&
-                control.layer >= -1 && control.layer < 3;
+                control.layer >= -1 && control.layer < kMaxOutputs;
         break;
       case 'A':
-        valid = valid && static_cast<bool>(input >> value) && value >= 0 && value <= 3;
+        valid = valid && static_cast<bool>(input >> control.layer >> value) &&
+                control.layer >= 0 && control.layer < kMaxOutputs && value >= 0 && value <= 1;
         control.value = static_cast<uint32_t>(value);
         break;
       case 'B':
         valid = valid && static_cast<bool>(input >> control.layer >> value) &&
-                control.layer >= 0 && control.layer < 3 && value >= 1'000 &&
+                control.layer >= 0 && control.layer < kMaxOutputs && value >= 1'000 &&
                 value <= UINT32_MAX;
         control.value = static_cast<uint32_t>(value);
         break;

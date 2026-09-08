@@ -40,8 +40,9 @@ func TestSourceFormatAdaptationPreservesLiveLayers(t *testing.T) {
 	var pts time.Duration
 	write := func() {
 		t.Helper()
-		_, err := source.BeginFrame(pts)
-		check(err)
+		// This check owns input explicitly; no consumer is present to request
+		// codec activation through the separate demand planner.
+		check(source.beginGroupFrame(pts, time.Now()))
 		for layer := range 2 {
 			check(source.WriteVideo(layer, encoded.Frame{Data: sfu.VP8KeyFrame8x8, PTS: pts, Duration: period}))
 		}

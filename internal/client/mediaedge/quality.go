@@ -3,6 +3,7 @@ package mediaedge
 import (
 	"time"
 
+	"github.com/TNTcraftHIM/Screener/internal/media/forwarding"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -89,13 +90,24 @@ func (edge *Edge) videoCounters() (frames, bytes, format uint64) {
 		frames, bytes = uint64(stats.Frames), stats.Bytes-stats.HeaderBytes
 	}
 	current := edge.transport.Output.State().Current
-	sizes := edge.source.media.VideoSizes()
-	if current >= 0 && int(current) < len(sizes) {
-		format = uint64(sizes[current].Width)<<32 | uint64(sizes[current].Height)
-	} else if edge.source.relay != nil && current == int32(len(edge.source.formats)-1) {
-		// ReceiverBase.VideoSizes stops at an unproduced lower slot. The raw
-		// input's codec header still provides its actual delivered dimensions.
-		format = edge.source.formats[current].Load()
-	}
+	width, height := sentVideoDimensions(edge.transport.CurrentSource(), int(current))
+	format = uint64(width)<<32 | uint64(height)
 	return
+}
+
+func sentVideoDimensions(source *forwarding.Source, layer int) (uint32, uint32) {
+	if layer < 0 {
+		return 0, 0
+	}
+	sizes := source.VideoSizes()
+	if layer < len(sizes) {
+		return sizes[layer].Width, sizes[layer].Height
+	}
+	// VideoSizes stops at an unproduced lower slot. The source owner also
+	// publishes actual dimensions in metadata as encoded frames arrive.
+	info := source.TrackInfo()
+	if layer < len(info.Layers) {
+		return info.Layers[layer].Width, info.Layers[layer].Height
+	}
+	return 0, 0
 }

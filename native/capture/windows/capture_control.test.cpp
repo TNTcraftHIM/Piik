@@ -154,6 +154,34 @@ void CheckDroppedRecoveryInput() {
   mailbox.Stop();
 }
 
+void CheckIndependentActivation() {
+  using Mailbox = screener::capture::OutputMailbox<int>;
+  Mailbox original(300'000), extra(90'000, false);
+  original.Submit(std::make_shared<int>(1));
+  const auto original_frame = original.Take();
+  extra.Submit(std::make_shared<int>(1));
+  auto pending = std::async(std::launch::async, [&]() { return extra.Take(); });
+  assert(pending.wait_for(std::chrono::milliseconds(20)) == std::future_status::timeout);
+  assert(extra.SetActive(true));
+  assert(!extra.SetActive(true));
+  extra.SetBitrate(30'000);
+  extra.Submit(std::make_shared<int>(2));
+  assert(pending.wait_for(std::chrono::seconds(2)) == std::future_status::ready);
+  const auto activated = pending.get();
+  assert(activated.action == Mailbox::Action::frame && *activated.input == 2 &&
+      activated.recovery && activated.bitrate == 30'000);
+  assert(!extra.SetActive(false));
+  assert(!extra.Accept(activated.generation) && original.Accept(original_frame.generation));
+  assert(extra.Take().action == Mailbox::Action::retire);
+  assert(extra.SetActive(true));
+  extra.Submit(std::make_shared<int>(3));
+  const auto replacement = extra.Take();
+  assert(replacement.recovery && *replacement.input == 3 &&
+      replacement.generation != activated.generation);
+  original.Stop();
+  extra.Stop();
+}
+
 void CheckInputEnvelopes() {
   std::string control(32, '\0');
   control.replace(0, 4, "SMED");
@@ -177,10 +205,13 @@ void CheckInputEnvelopes() {
 int main() {
   using screener::capture::CaptureControls;
   assert(CaptureControls::Parse("K -1").layer == -1);
-  assert(CaptureControls::Parse("A 2").value == 2);
+  assert(CaptureControls::Parse("A 5 1").layer == 5);
+  assert(CaptureControls::Parse("A 5 1").value == 1);
+  assert(CaptureControls::Parse("A 0 0").value == 0);
+  assert(CaptureControls::Parse("K 5").layer == 5);
   assert(CaptureControls::Parse("B 1 90000").value == 90'000);
   assert(CaptureControls::Parse("Q").kind == 'Q');
-  for (const auto& bad : {"K 3", "A 4", "A2", "B 0 -1", "Q ignored", "\n"}) {
+  for (const auto& bad : {"K 6", "A 2", "A 6 1", "A -1 1", "A 0 2", "A2", "B 6 1000", "B 0 -1", "Q ignored", "\n"}) {
     bool rejected = false;
     try { (void)CaptureControls::Parse(bad); }
     catch (const std::runtime_error&) { rejected = true; }
@@ -207,6 +238,7 @@ int main() {
   }
   CheckWorkers();
   CheckDroppedRecoveryInput();
+  CheckIndependentActivation();
   CheckOutputPipe();
   CheckInputEnvelopes();
 }
