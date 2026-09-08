@@ -8,6 +8,26 @@ topics are not implementation authority.
 ## Now
 
 Owner-authorized phase: [embedded STUN/SFU and node-local media](./adr/0013-embedded-node-local-media.md).
+Execution priority is now explicit:
+
+1. **Client encoding-layer pool integration.** Reuse compatible complete
+   WebRTC encoding/adaptation pipelines for local outputs, preserve encoded
+   cross-hop forwarding, and connect real transport budgets, H264/VP8 producers,
+   dynamic settings and retirement. A passing cache fixture is not this delivery.
+   Remove superseded encoding control only after its replacement is verified.
+2. **Reported capture defects and retained fixes.** Finish the exact CS2
+   fullscreen 4:3 stretched, Alt-Tab, advanced-setting, return reproduction and
+   the independent Win10 whole-display startup investigation. Preserve this
+   phase's multi-room, controls, UI, Global Link and diagnostic improvements.
+3. **Integrated acceptance and release.** Build matching Client/Server/Web/
+   capture artifacts, complete the scoped Windows/Browser checks, and verify
+   embedded SFU/STUN cutover and recovery. Implemented services are not deployed
+   or accepted merely because their local media checks passed.
+
+Pure Browser encoding reuse is parked. Independent background source research
+may continue only without delaying this mainline or its serialized hardware
+acceptance; it is not an additional release prerequisite.
+
 The owner restated two delivery goals: integrated STUN/SFU/runtime dependencies
 or one coherent deployment entry, and controllable shared encoding/adaptation/
 SFU distribution. Customizable ownership does not require custom congestion or
@@ -185,7 +205,9 @@ a tunnel; include that path in packaged acceptance.
    Auto or move an unproved result into the availability path. Validate whether
    H.264 qualification can choose a slower VP8 fallback under mixed GPU/CPU load
    before adding comparative or dual-codec probing.
-3. **Browser encoded reuse.** Pure Browser operation keeps normal WebRTC
+3. **Browser encoded reuse (parked).** Client pool integration takes priority;
+   this research must not delay it or become a release prerequisite.
+   Pure Browser operation keeps normal WebRTC
    senders; users can use Client to reduce repeated encoding. The September 8
    [Chromium legacy probe](./research/advanced-peer-distribution.md#chromium-legacy-fanout-probe)
    proves clean-path VP8/H264 single encode to two PCs without Client, but late
