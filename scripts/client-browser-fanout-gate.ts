@@ -127,6 +127,7 @@ async function startRoomServer(
       PATH: process.env.PATH,
       SystemRoot: process.env.SystemRoot,
       SCREENER_ENV: "development",
+      ROOM_DATABASE_PATH: ":memory:",
       PORT: String(port),
       LISTEN_HOST: "127.0.0.1",
       PUBLIC_BASE_URL: `http://${LAN_ADDRESS}:${port}`,

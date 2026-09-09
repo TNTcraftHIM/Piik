@@ -158,12 +158,10 @@ func DecodeRoomAccessUpdateRequest(data []byte) (RoomAccessUpdateRequest, error)
 
 // CreateRoomResponse mirrors createRoomResponseSchema.
 type CreateRoomResponse struct {
-	RoomID           string          `json:"roomId"`
-	HostToken        string          `json:"hostToken"`
-	InviteURL        string          `json:"inviteUrl"`
-	CodeEntryPolicy  CodeEntryPolicy `json:"codeEntryPolicy"`
-	ExpiresAt        *string         `json:"expiresAt"`
-	RoomLeaseSeconds Int             `json:"roomLeaseSeconds"`
+	RoomID          string          `json:"roomId"`
+	HostToken       string          `json:"hostToken"`
+	InviteURL       string          `json:"inviteUrl"`
+	CodeEntryPolicy CodeEntryPolicy `json:"codeEntryPolicy"`
 }
 
 // RoomAccessUpdateResponse is one member of roomAccessUpdateResponseSchema.

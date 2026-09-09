@@ -12,7 +12,6 @@ import (
 	"math"
 	"slices"
 	"strconv"
-	"time"
 
 	"github.com/TNTcraftHIM/Screener/internal/server/ordered"
 	"github.com/TNTcraftHIM/Screener/internal/server/protocol"
@@ -32,7 +31,6 @@ const (
 	CodeRoomAccessDenied     ErrorCode = "ROOM_ACCESS_DENIED"
 	CodeRoomBusy             ErrorCode = "ROOM_BUSY"
 	CodeRoomNotFound         ErrorCode = "ROOM_NOT_FOUND"
-	CodeRoomExpired          ErrorCode = "ROOM_EXPIRED"
 	CodeRoomFull             ErrorCode = "ROOM_FULL"
 	CodeHostAlreadyConnected ErrorCode = "HOST_ALREADY_CONNECTED"
 	CodeRoomLimit            ErrorCode = "ROOM_LIMIT"
@@ -78,8 +76,6 @@ type Room struct {
 	viewerPasswordMaterial        []byte
 	viewerAuthorizationGeneration string
 	codeEntryPolicy               protocol.CodeEntryPolicy
-	sharingActive                 bool
-	leaseExpiresAtMs              *int64
 	host                          *participant
 	// ordering: JS Map insertion order decides viewer presence order, the
 	// closed-session list and the router's participant order.
@@ -92,7 +88,6 @@ type CreatedRoom struct {
 	HostToken       string
 	CodeEntryPolicy protocol.CodeEntryPolicy
 	ViewerGrant     string
-	ExpiresAt       *string
 }
 
 // ConnectParticipantInput is ConnectParticipantInput; Token is read for a host
@@ -121,7 +116,6 @@ type ConnectedParticipant struct {
 	RoomID                        string
 	Role                          protocol.Role
 	PeerID                        string
-	ExpiresAt                     *string
 	HostOnline                    bool
 	ReplacedSessionID             string
 	CodeEntryPolicy               protocol.CodeEntryPolicy
@@ -177,24 +171,20 @@ type CodeEntryUpdate struct {
 
 // Options is RoomStoreOptions.
 type Options struct {
-	LeaseMs           int64
 	MaxRooms          int
 	MaxViewersPerRoom int
 	Database          *Database
-	Now               func() int64
 	Random            func(size int) []byte
 }
 
 // Store is RoomStore. See the package comment for the locking contract.
 type Store struct {
-	// ordering: JS Map insertion order decides AbandonAllRooms/ExpireRooms.
+	// ordering: JS Map insertion order decides AbandonAllRooms.
 	rooms             ordered.Map[string, *Room]
 	freeRoomCodes     []string
-	now               func() int64
 	random            func(size int) []byte
 	database          *Database
 	initialized       bool
-	leaseMs           int64
 	maxRooms          int
 	maxViewersPerRoom int
 	// gate is per store; the TypeScript module-level gate was shared by every
@@ -205,9 +195,6 @@ type Store struct {
 // New is the RoomStore constructor; the TypeScript threw where this returns an
 // error.
 func New(options Options) (*Store, error) {
-	if options.LeaseMs <= 0 || options.LeaseMs > protocol.MaxSafeInteger {
-		return nil, errors.New("Room lease must be a positive integer")
-	}
 	if options.MaxRooms <= 0 || options.MaxRooms > Capacity {
 		return nil, fmt.Errorf("Room limit must be an integer between 1 and %d", Capacity)
 	}
@@ -219,20 +206,15 @@ func New(options Options) (*Store, error) {
 	}
 	store := &Store{
 		freeRoomCodes:     make([]string, Capacity),
-		now:               options.Now,
 		random:            options.Random,
 		database:          options.Database,
 		initialized:       options.Database == nil,
-		leaseMs:           options.LeaseMs,
 		maxRooms:          options.MaxRooms,
 		maxViewersPerRoom: options.MaxViewersPerRoom,
 		gate:              gate{limit: gateActiveLimit, pendingLimit: gatePendingLimit},
 	}
 	for index := range store.freeRoomCodes {
 		store.freeRoomCodes[index] = strconv.Itoa(roomCodeFirst + index)
-	}
-	if store.now == nil {
-		store.now = func() int64 { return time.Now().UnixMilli() }
 	}
 	if store.random == nil {
 		store.random = cryptoRandom
@@ -270,7 +252,7 @@ func (s *Store) Initialize() error {
 		s.initialized = true
 		return nil
 	}
-	if err := s.restore(s.now()); err != nil {
+	if err := s.restore(); err != nil {
 		s.rooms.Clear()
 		_ = s.database.Close()
 		return err
@@ -279,12 +261,8 @@ func (s *Store) Initialize() error {
 	return nil
 }
 
-func (s *Store) restore(startupNowMs int64) error {
-	lease, err := s.leaseDeadline(startupNowMs)
-	if err != nil {
-		return err
-	}
-	storedRooms, err := s.database.Initialize(startupNowMs, lease)
+func (s *Store) restore() error {
+	storedRooms, err := s.database.Initialize()
 	if err != nil {
 		return err
 	}
@@ -306,8 +284,6 @@ func (s *Store) restore(startupNowMs int64) error {
 			viewerPasswordMaterial:        bytes.Clone(stored.ViewerPasswordMaterial),
 			viewerAuthorizationGeneration: stored.ViewerAuthorizationGeneration,
 			codeEntryPolicy:               stored.CodeEntryPolicy,
-			sharingActive:                 false,
-			leaseExpiresAtMs:              stored.LeaseExpiresAtMs,
 		})
 	}
 	available := s.freeRoomCodes[:0]
@@ -320,28 +296,25 @@ func (s *Store) restore(startupNowMs int64) error {
 	return nil
 }
 
-// BeginCreateRoom runs the part of createRoom that precedes the password
-// derivation: the room limit and the lease deadline, which the TypeScript took
-// from the clock before awaiting the KDF. Pass the deadline to CreateRoom.
-func (s *Store) BeginCreateRoom() (leaseExpiresAtMs int64, err error) {
+// BeginCreateRoom checks room capacity before password derivation.
+func (s *Store) BeginCreateRoom() error {
 	if err := s.ensureInitialized(); err != nil {
-		return 0, err
+		return err
 	}
 	if s.rooms.Len() >= s.maxRooms {
-		return 0, codeError(CodeRoomLimit)
+		return codeError(CodeRoomLimit)
 	}
-	return s.leaseDeadline(s.now())
+	return nil
 }
 
 // CreateRoom is the commit half of createRoom. material and derived are the
 // results of DeriveViewerPasswordMaterial (both zero when no password was
-// given) and leaseExpiresAtMs comes from BeginCreateRoom.
+// given).
 func (s *Store) CreateRoom(
 	policy protocol.CodeEntryPolicy,
 	material []byte,
 	derived error,
 	preferredRoomID string,
-	leaseExpiresAtMs int64,
 ) (CreatedRoom, error) {
 	// createViewerPasswordMaterial threw before any of the checks below.
 	if derived != nil && !isGateOutcome(derived) {
@@ -363,7 +336,7 @@ func (s *Store) CreateRoom(
 	if err != nil {
 		return CreatedRoom{}, err
 	}
-	room, created, err := s.newRoom(roomID, policy, material, leaseExpiresAtMs)
+	room, created, err := s.newRoom(roomID, policy, material)
 	if err == nil {
 		err = s.writeDatabase(func() error { return s.database.InsertRoom(storedRoomAuthority(room)) })
 	}
@@ -437,11 +410,7 @@ func (s *Store) replaceRoom(
 	material []byte,
 	current *Room,
 ) (ReplacedRoom, error) {
-	leaseExpiresAtMs, err := s.leaseDeadline(s.now())
-	if err != nil {
-		return ReplacedRoom{}, err
-	}
-	room, created, err := s.newRoom(replacementRoomID, policy, material, leaseExpiresAtMs)
+	room, created, err := s.newRoom(replacementRoomID, policy, material)
 	if err != nil {
 		return ReplacedRoom{}, err
 	}
@@ -591,7 +560,7 @@ func (s *Store) ConnectParticipant(input ConnectParticipantInput) (ConnectedPart
 	room, err := s.getAvailableRoom(input.RoomID)
 	if err != nil {
 		if input.Role == protocol.RoleViewer && input.ViewerGrant == "" &&
-			(hasCode(err, CodeInvalidToken) || hasCode(err, CodeRoomExpired)) {
+			hasCode(err, CodeInvalidToken) {
 			return ConnectedParticipant{}, codeError(CodeRoomNotFound)
 		}
 		return ConnectedParticipant{}, err
@@ -633,8 +602,8 @@ func (s *Store) ViewerGrantMayEnter(roomID, grant string) (bool, error) {
 
 // ViewerPasswordChallenge is the locked first half of connectViewerWithPassword:
 // it returns the salt to derive against, a copy of the material to compare with
-// and the room reference to re-check afterwards. A missing room, an expired
-// room and a room without a private password all answer with the same 48 zero
+// and the room reference to re-check afterwards. A missing room and a room
+// without a private password both answer with the same 48 zero
 // bytes so the derivation cost does not reveal which. The only error is the
 // `ensureInitialized()` the TypeScript ran before the password check.
 func (s *Store) ViewerPasswordChallenge(
@@ -711,19 +680,7 @@ func (s *Store) DisconnectParticipant(
 		if room.host.sessionID != sessionID {
 			return nil, nil
 		}
-		leaseExpiresAtMs, err := s.leaseDeadline(s.now())
-		if err != nil {
-			return nil, err
-		}
-		err = s.writeDatabase(func() error {
-			return s.database.SetLeaseDeadline(roomID, room.hostTokenDigest, &leaseExpiresAtMs)
-		})
-		if err != nil {
-			return nil, err
-		}
 		room.host.sessionID = ""
-		room.sharingActive = false
-		room.leaseExpiresAtMs = &leaseExpiresAtMs
 		return &DisconnectedParticipant{
 			RoomID: roomID, Role: protocol.RoleHost, PeerID: peerID}, nil
 	}
@@ -841,35 +798,6 @@ func (s *Store) AbandonAllRooms() ([]ClosedRoom, error) {
 	return closedRooms, nil
 }
 
-// ExpireRooms is expireRooms, in room insertion order. The TypeScript defaulted
-// nowMs to the injected clock; every caller passed it explicitly.
-func (s *Store) ExpireRooms(nowMs int64) ([]ClosedRoom, error) {
-	if err := s.ensureInitialized(); err != nil {
-		return nil, err
-	}
-	var expiredIDs []string
-	var identities []RoomIdentity
-	var expired []ClosedRoom
-	for roomID, room := range s.rooms.All() {
-		if !roomIsExpired(room, nowMs) {
-			continue
-		}
-		expiredIDs = append(expiredIDs, roomID)
-		identities = append(identities, RoomIdentity{
-			RoomID: roomID, HostTokenDigest: room.hostTokenDigest})
-		expired = append(expired, ClosedRoom{
-			RoomID: roomID, SessionIDs: connectedSessionIDs(room)})
-	}
-	if err := s.writeDatabase(func() error { return s.database.DeleteRooms(identities) }); err != nil {
-		return nil, err
-	}
-	for _, roomID := range expiredIDs {
-		s.rooms.Delete(roomID)
-		s.releaseRoomCode(roomID)
-	}
-	return expired, nil
-}
-
 func (s *Store) connectHost(
 	room *Room, input ConnectParticipantInput,
 ) (ConnectedParticipant, error) {
@@ -888,16 +816,8 @@ func (s *Store) connectHost(
 			clientID: input.ClientID, peerID: peerID, admittedBy: admittedByCode}
 	}
 	replacedSessionID := joining.sessionID
-	err := s.writeDatabase(func() error {
-		return s.database.SetLeaseDeadline(room.roomID, room.hostTokenDigest, nil)
-	})
-	if err != nil {
-		return ConnectedParticipant{}, err
-	}
 	joining.sessionID = input.SessionID
 	room.host = joining
-	room.sharingActive = true
-	room.leaseExpiresAtMs = nil
 
 	return connectedParticipant(
 		room, joining.peerID, protocol.RoleHost, replacedSessionID, input.SessionID), nil
@@ -936,7 +856,6 @@ func connectedParticipant(
 		RoomID:                        room.roomID,
 		Role:                          role,
 		PeerID:                        peerID,
-		ExpiresAt:                     formatExpiresAt(room.leaseExpiresAtMs),
 		HostOnline:                    room.host != nil && room.host.sessionID != "",
 		ReplacedSessionID:             replacedSessionID,
 		CodeEntryPolicy:               room.codeEntryPolicy,
@@ -949,9 +868,6 @@ func (s *Store) getAvailableRoom(roomID string) (*Room, error) {
 	room, ok := s.rooms.Get(roomID)
 	if !ok {
 		return nil, codeError(CodeInvalidToken)
-	}
-	if roomIsExpired(room, s.now()) {
-		return nil, codeError(CodeRoomExpired)
 	}
 	return room, nil
 }
@@ -1067,7 +983,6 @@ func (s *Store) newRoom(
 	roomID string,
 	policy protocol.CodeEntryPolicy,
 	material []byte,
-	leaseExpiresAtMs int64,
 ) (*Room, CreatedRoom, error) {
 	hostTokenBytes := s.random(32)
 	if len(hostTokenBytes) != 32 {
@@ -1089,15 +1004,12 @@ func (s *Store) newRoom(
 		viewerPasswordMaterial:        material,
 		viewerAuthorizationGeneration: generation,
 		codeEntryPolicy:               policy,
-		sharingActive:                 false,
-		leaseExpiresAtMs:              &leaseExpiresAtMs,
 	}
 	return room, CreatedRoom{
 		RoomID:          roomID,
 		HostToken:       hostToken,
 		CodeEntryPolicy: policy,
 		ViewerGrant:     viewerGrant,
-		ExpiresAt:       formatExpiresAt(&leaseExpiresAtMs),
 	}, nil
 }
 
@@ -1115,15 +1027,6 @@ func (s *Store) newAuthorizationGeneration() (string, error) {
 		return "", errors.New("Authorization generation random source must return 16 bytes")
 	}
 	return base64.RawURLEncoding.EncodeToString(value), nil
-}
-
-func (s *Store) leaseDeadline(nowMs int64) (int64, error) {
-	deadline := nowMs + s.leaseMs
-	if deadline <= nowMs || deadline > protocol.MaxSafeInteger ||
-		deadline < -protocol.MaxSafeInteger {
-		return 0, errors.New("Room lease deadline exceeds the supported time range")
-	}
-	return deadline, nil
 }
 
 func (s *Store) ensureInitialized() error {
@@ -1150,21 +1053,7 @@ func storedRoomAuthority(room *Room) StoredRoomAuthority {
 		ViewerAuthorizationGeneration: room.viewerAuthorizationGeneration,
 		CodeEntryPolicy:               room.codeEntryPolicy,
 		ViewerPasswordMaterial:        room.viewerPasswordMaterial,
-		LeaseExpiresAtMs:              room.leaseExpiresAtMs,
 	}
-}
-
-func roomIsExpired(room *Room, nowMs int64) bool {
-	return !room.sharingActive && room.leaseExpiresAtMs != nil &&
-		*room.leaseExpiresAtMs <= nowMs
-}
-
-func formatExpiresAt(expiresAtMs *int64) *string {
-	if expiresAtMs == nil {
-		return nil
-	}
-	value := time.UnixMilli(*expiresAtMs).UTC().Format("2006-01-02T15:04:05.000Z")
-	return &value
 }
 
 func findViewerByPeerID(room *Room, peerID string) *participant {

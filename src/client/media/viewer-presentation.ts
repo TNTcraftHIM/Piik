@@ -16,7 +16,6 @@ export type ViewerFailureCode =
   | "ROOM_ACCESS_DENIED"
   | "INVALID_TOKEN"
   | "ROOM_CLOSED"
-  | "ROOM_EXPIRED"
   | "ROOM_FULL"
   | "STALE_CLIENT"
   | "SERVER_ERROR"
@@ -37,7 +36,6 @@ export type ViewerStage =
   | "access-denied"
   | "invalid-invite"
   | "room-closed"
-  | "room-expired"
   | "room-full"
   | "stale-client"
   | "server-error"
@@ -422,8 +420,6 @@ export function deriveViewerPresentation(
           "blocking",
           state,
         );
-      case "ROOM_EXPIRED":
-        return presentation("room-expired", "viewer.msg.expired", "blocking", state);
       case "ROOM_CLOSED":
         return presentation("room-closed", "viewer.msg.closed", "blocking", state);
       case "ROOM_FULL":
@@ -629,8 +625,6 @@ export function viewerFailureFromServerCode(
     case "INVALID_TOKEN":
     case "AUTH_REQUIRED":
       return "INVALID_TOKEN";
-    case "ROOM_EXPIRED":
-      return "ROOM_EXPIRED";
     case "ROOM_FULL":
       return "ROOM_FULL";
     case "SERVER_ERROR":

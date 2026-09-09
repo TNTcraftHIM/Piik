@@ -7,7 +7,7 @@ import { NAT_TRAVERSAL_PATHS } from "./nat-candidate.js";
 export const MAX_VIEWERS_PER_ROOM_LIMIT = 20;
 export const MAX_PARTICIPANTS_PER_ROOM_LIMIT = MAX_VIEWERS_PER_ROOM_LIMIT + 1;
 export const MAX_SIGNAL_BYTES = 64 * 1024;
-export const SIGNALING_PROTOCOL = "screener-v22";
+export const SIGNALING_PROTOCOL = "screener-v23";
 export const SIGNAL_CLOSE_CODES = {
   serviceRestart: 1012,
   sessionReplaced: 4001,
@@ -946,7 +946,6 @@ const errorCodeSchema = z.enum([
   "INVALID_TOKEN",
   "ROOM_ACCESS_DENIED",
   "ROOM_NOT_FOUND",
-  "ROOM_EXPIRED",
   "ROOM_FULL",
   "HOST_ALREADY_CONNECTED",
   "PEER_NOT_FOUND",
@@ -958,7 +957,6 @@ const authenticatedMessageShape = {
   type: z.literal("authenticated"),
   protocol: z.literal(SIGNALING_PROTOCOL),
   peerId: opaqueIdSchema,
-  roomExpiresAt: z.string().datetime().nullable(),
   maxViewers: z.number().int().min(1).max(MAX_VIEWERS_PER_ROOM_LIMIT),
   endpointMediaCopyCapacity: z
     .number()
@@ -1150,7 +1148,7 @@ export const serverMessageSchema = z.union([
   z
     .object({
       type: z.literal("room-closed"),
-      reason: z.enum(["host-ended", "expired"]),
+      reason: z.literal("host-ended"),
     })
     .strict(),
   z
@@ -1169,8 +1167,6 @@ export const createRoomResponseSchema = z
     hostToken: tokenSchema,
     inviteUrl: z.string().url().max(2048),
     codeEntryPolicy: codeEntryPolicySchema,
-    expiresAt: z.string().datetime().nullable(),
-    roomLeaseSeconds: z.number().int().positive(),
   })
   .strict();
 export type CreateRoomResponse = z.infer<typeof createRoomResponseSchema>;

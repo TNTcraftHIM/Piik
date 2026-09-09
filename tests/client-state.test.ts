@@ -310,7 +310,6 @@ function hostRoomStorage(lockState: "available" | "held" | "absent" = "available
 
 const storedHost = (roomId = "1234", hostToken = "a".repeat(32)) => ({
   roomId, hostToken, inviteUrl: `https://share.test/r/${roomId}`,
-  expiresAt: null, roomLeaseSeconds: 3_600,
 });
 
 describe("client session identity", () => {
@@ -342,8 +341,6 @@ describe("client session identity", () => {
       hostToken: "a".repeat(32),
       inviteUrl: `https://share.test/r/1234#v=${"b".repeat(21)}A`,
       codeEntryPolicy: "open" as const,
-      expiresAt: null,
-      roomLeaseSeconds: 3_600,
     };
 
     await writeHostRoom(room);
@@ -352,15 +349,11 @@ describe("client session identity", () => {
       roomId: "1234",
       hostToken: "a".repeat(32),
       canonicalUrl: "https://share.test/r/1234",
-      expiresAt: null,
-      roomLeaseSeconds: 3_600,
     });
     expect(values.get("screener:host-room:v1")).toBe(
       JSON.stringify({
         roomId: "1234",
         hostToken: "a".repeat(32),
-        expiresAt: null,
-        roomLeaseSeconds: 3_600,
         inviteUrl: "https://share.test/r/1234",
       }),
     );
@@ -377,26 +370,19 @@ describe("client session identity", () => {
       roomId: "1234",
       hostToken: "h".repeat(32),
       canonicalUrl: "https://share.test/r/1234",
-      expiresAt: null,
-      roomLeaseSeconds: 3_600,
     });
     expect(JSON.parse(session.get("screener:host-room:v1")!)).toEqual(JSON.parse(local.get("screener:host-room:v1")!));
     expect(request).toHaveBeenCalledWith(expect.stringMatching(/^screener:host-room:1234:[a-f0-9]{64}$/), { ifAvailable: true }, expect.any(Function));
     expect(request.mock.calls[0]![0]).not.toContain("h".repeat(32));
   });
 
-  it("keeps expired host records for server judgment and discards malformed records", async () => {
+  it("keeps stored room authority despite unowned metadata and discards malformed records", async () => {
     const { local: values, session } = hostRoomStorage();
-    const expired = {
-      roomId: "1234",
-      hostToken: "b".repeat(32),
-      canonicalUrl: "https://share.test/r/1234",
-      expiresAt: "2026-08-18T00:00:00.000Z",
-      roomLeaseSeconds: 3_600,
-    };
-
-    await writeHostRoom(expired);
-    expect(await readHostRoom()).toMatchObject({ roomId: "1234" });
+    values.set("screener:host-room:v1", JSON.stringify({ ...storedHost(), unusedMetadata: 123 }));
+    expect(await readHostRoom()).toEqual({
+      roomId: "1234", hostToken: "a".repeat(32), canonicalUrl: "https://share.test/r/1234",
+    });
+    expect(JSON.parse(session.get("screener:host-room:v1")!)).toEqual(storedHost());
     releaseHostRoom();
     session.delete("screener:host-room:v1");
     values.set("screener:host-room:v1", "not-json");
@@ -505,12 +491,12 @@ describe("client session identity", () => {
     await writeHostRoom(room);
     const saved = local.get("screener:host-room:v1");
     let owns = true;
-    const writing = writeHostRoom({ ...room, expiresAt: "2026-09-09T00:00:00.000Z" }, () => owns);
+    const writing = writeHostRoom({ ...room, inviteUrl: "https://new.test/r/1234" }, () => owns);
     owns = false;
     expect(await writing).toBe(false);
     expect(held.size).toBe(1);
     expect(local.get("screener:host-room:v1")).toBe(saved);
-    expect(await readHostRoom()).toMatchObject({ roomId: "1234", expiresAt: null });
+    expect(await readHostRoom()).toMatchObject({ roomId: "1234", canonicalUrl: "https://share.test/r/1234" });
     expect(request).toHaveBeenCalledOnce();
   });
 
@@ -619,8 +605,6 @@ describe("client session identity", () => {
       roomId: "1234",
       hostToken: "h".repeat(32),
       canonicalUrl: "https://share.test/r/1234",
-      expiresAt: null,
-      roomLeaseSeconds: 3_600,
       codeEntryPolicy: "open" as const,
       inviteUrl: oldInvite,
     };
@@ -629,7 +613,6 @@ describe("client session identity", () => {
       mergeAuthenticatedHostRoom(
         { ...activeRoom, inviteUrl: rotatedInvite },
         activeRoom.roomId,
-        null,
         "open",
       )?.inviteUrl,
     ).toBe(rotatedInvite);
@@ -637,7 +620,6 @@ describe("client session identity", () => {
       mergeAuthenticatedHostRoom(
         { ...activeRoom, inviteUrl: null },
         activeRoom.roomId,
-        null,
         "open",
       )?.inviteUrl,
     ).toBe(oldInvite);
@@ -646,7 +628,6 @@ describe("client session identity", () => {
       mergeAuthenticatedHostRoom(
         { ...activeRoom, inviteUrl: null },
         activeRoom.roomId,
-        null,
         "open",
       )?.inviteUrl,
     ).toBeNull();
@@ -822,14 +803,12 @@ describe("site access API", () => {
     );
   });
 
-  it("accepts an active room with a lease deadline", async () => {
+  it("accepts room creation with permanent authority", async () => {
     const room = {
       roomId: "1234",
       hostToken: "c".repeat(32),
       inviteUrl: `https://share.test/r/1234#v=${"f".repeat(21)}A`,
       codeEntryPolicy: "open",
-      expiresAt: "2026-08-24T00:00:00.000Z",
-      roomLeaseSeconds: 86_400,
     };
     vi.stubGlobal(
       "fetch",
@@ -1091,7 +1070,6 @@ describe("client signaling recovery policy", () => {
           protocol: SIGNALING_PROTOCOL,
           role: "viewer",
           peerId: "viewer_12345678",
-          roomExpiresAt: null,
           maxViewers: 8,
           endpointMediaCopyCapacity: 2,
           hostOnline: true,
@@ -1234,7 +1212,6 @@ describe("client signaling recovery policy", () => {
         protocol: SIGNALING_PROTOCOL,
         role: "host",
         peerId: "host_12345678",
-        roomExpiresAt: null,
         maxViewers: 8,
         endpointMediaCopyCapacity: 2,
         hostOnline: true,
@@ -1270,7 +1247,6 @@ describe("client signaling recovery policy", () => {
       protocol: SIGNALING_PROTOCOL,
       role: "host",
       peerId: "host_12345678",
-      roomExpiresAt: null,
       maxViewers: 8,
       endpointMediaCopyCapacity: 2,
       hostOnline: true,
@@ -1383,7 +1359,6 @@ describe("client signaling recovery policy", () => {
           protocol: SIGNALING_PROTOCOL,
           role: "host",
           peerId: "host_12345678",
-          roomExpiresAt: null,
           maxViewers: 8,
           endpointMediaCopyCapacity: 2,
           hostOnline: true,
@@ -1511,7 +1486,6 @@ describe("client signaling recovery policy", () => {
         protocol: SIGNALING_PROTOCOL,
         role: "host",
         peerId: "host_12345678",
-        roomExpiresAt: null,
         maxViewers: 8,
         endpointMediaCopyCapacity: 2,
         hostOnline: true,
@@ -1628,7 +1602,6 @@ describe("client signaling recovery policy", () => {
       protocol: SIGNALING_PROTOCOL,
       role: "viewer",
       peerId: "viewer_12345678",
-      roomExpiresAt: null,
       maxViewers: 8,
       endpointMediaCopyCapacity: 2,
       hostOnline: true,
@@ -1709,7 +1682,6 @@ describe("client signaling recovery policy", () => {
       type: "authenticated",
       role: "viewer",
       peerId: "viewer_12345678",
-      roomExpiresAt: null,
       maxViewers: 8,
       hostOnline: true,
       connectionId: null,

@@ -1127,7 +1127,7 @@ func TestClearsQualityShadowForRelaySubtreeWhenSourceChanges(t *testing.T) {
 	eq(t, routes.AdoptDirectConnection(AdoptDirectConnectionInput{
 		EdgeGuard:       edgeGuard(A, "host_session", revision, "a_from_host"),
 		NewConnectionID: "a_from_host_recovered",
-	}), true)
+	}, 1_002).Accepted, true)
 	eq(t, withQuality(1_002), 0)
 
 	for _, step := range []struct {
@@ -1140,6 +1140,35 @@ func TestClearsQualityShadowForRelaySubtreeWhenSourceChanges(t *testing.T) {
 		}
 	}
 	eq(t, withQuality(3_101), 2)
+}
+
+func TestActiveRebuildRetiresBootstrapReservationWithoutLosingWaitingDemand(t *testing.T) {
+	routes := newController(2, Options{SfuEnabled: true})
+	for _, child := range []string{B, C} {
+		addViewer(routes, child, 0, nil)
+		routes.hydrateEdge(child, peerEdge(HOST, child+"_from_host"))
+	}
+	addViewer(routes, A, 0, ms(0))
+	bootstrap := must(t, routes.Reconcile(0).Operation)
+	eq(t, bootstrap.Reason, DemandSfuBootstrap)
+	retained := edgeOf(t, routes, bootstrap.ChildPeerID)
+	attempt := beginOperation(t, routes, BeginInput{
+		NowMs: 1, ConnectionID: "carrier_sfu", PublicationGeneration: "publication",
+		PublicationConnectionID: "publication_connection",
+		Reservation:             sfuCreateOverlap("subscription", "publication", "overlap"),
+	})
+	replaced := routes.AdoptDirectConnection(AdoptDirectConnectionInput{
+		EdgeGuard:       edgeGuard(bootstrap.ChildPeerID, "host_session", routes.Revision(), retained.ConnectionID),
+		NewConnectionID: "recovered_connection",
+	}, 2)
+	eq(t, replaced.Accepted, true)
+	eqLabels(t, replaced.Released, "subscription", "publication", "overlap")
+	noOperation(t, routes.Snapshot().Operation)
+	eq(t, edgeOf(t, routes, bootstrap.ChildPeerID).ConnectionID, "recovered_connection")
+	eq(t, routes.CandidateReady(guardFor(bootstrap.ChildPeerID, attempt.Current.Revision, "carrier_sfu"), 3, nil, CandidateProof{}).Accepted, false)
+	next := must(t, routes.Reconcile(4).Operation)
+	eq(t, next.Reason, DemandSfuBootstrap)
+	eq(t, next.DemandPeerID, A)
 }
 
 // TS 2569: retains one latest timing sample for a 20-Viewer burst

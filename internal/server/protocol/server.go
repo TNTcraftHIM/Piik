@@ -19,7 +19,6 @@ type AuthenticatedHostMessage struct {
 	Type                          string                     `json:"type"`
 	Protocol                      string                     `json:"protocol"`
 	PeerID                        string                     `json:"peerId"`
-	RoomExpiresAt                 *string                    `json:"roomExpiresAt"`
 	MaxViewers                    Int                        `json:"maxViewers"`
 	EndpointMediaCopyCapacity     Int                        `json:"endpointMediaCopyCapacity"`
 	HostOnline                    bool                       `json:"hostOnline"`
@@ -44,7 +43,6 @@ type AuthenticatedViewerMessage struct {
 	Type                          string                     `json:"type"`
 	Protocol                      string                     `json:"protocol"`
 	PeerID                        string                     `json:"peerId"`
-	RoomExpiresAt                 *string                    `json:"roomExpiresAt"`
 	MaxViewers                    Int                        `json:"maxViewers"`
 	EndpointMediaCopyCapacity     Int                        `json:"endpointMediaCopyCapacity"`
 	HostOnline                    bool                       `json:"hostOnline"`
@@ -294,7 +292,7 @@ func decodeEmptyServerMessage(data []byte, message ServerMessage) (ServerMessage
 
 func validateAuthenticatedBase(
 	present fields,
-	protocol string, peerID string, roomExpiresAt *string,
+	protocol string, peerID string,
 	maxViewers, endpointCapacity Int, connectionID *string,
 	codeEntryPolicy, viewerAuthorizationGeneration, mediaMode string,
 	shareGeneration *string, routeRevision Int,
@@ -306,7 +304,7 @@ func validateAuthenticatedBase(
 		return err
 	}
 	if err := present.requireNullable(
-		"roomExpiresAt", "connectionId", "shareGeneration"); err != nil {
+		"connectionId", "shareGeneration"); err != nil {
 		return err
 	}
 	if err := present.optional("hostPaused", "routePolicy"); err != nil {
@@ -317,9 +315,6 @@ func validateAuthenticatedBase(
 	}
 	if !ValidOpaqueID(peerID) {
 		return errors.New("peerId is not an opaque id")
-	}
-	if roomExpiresAt != nil && !ValidISODateTime(*roomExpiresAt) {
-		return errors.New("roomExpiresAt is not an ISO instant")
 	}
 	if !inRangeInt(maxViewers, 1, MaxViewersPerRoomLimit) {
 		return errors.New("maxViewers is out of range")
@@ -364,7 +359,7 @@ func decodeAuthenticated(data []byte) (ServerMessage, error) {
 			return nil, err
 		}
 		if err := validateAuthenticatedBase(present, message.Protocol, message.PeerID,
-			message.RoomExpiresAt, message.MaxViewers, message.EndpointMediaCopyCapacity,
+			message.MaxViewers, message.EndpointMediaCopyCapacity,
 			message.ConnectionID, message.CodeEntryPolicy,
 			message.ViewerAuthorizationGeneration, message.MediaMode,
 			message.ShareGeneration, message.RouteRevision); err != nil {
@@ -381,7 +376,7 @@ func decodeAuthenticated(data []byte) (ServerMessage, error) {
 			return nil, err
 		}
 		if err := validateAuthenticatedBase(present, message.Protocol, message.PeerID,
-			message.RoomExpiresAt, message.MaxViewers, message.EndpointMediaCopyCapacity,
+			message.MaxViewers, message.EndpointMediaCopyCapacity,
 			message.ConnectionID, message.CodeEntryPolicy,
 			message.ViewerAuthorizationGeneration, message.MediaMode,
 			message.ShareGeneration, message.RouteRevision); err != nil {
@@ -653,7 +648,7 @@ func decodeRoomClosed(data []byte) (ServerMessage, error) {
 	if err := present.require("type", "reason"); err != nil {
 		return nil, err
 	}
-	if !enumOf(message.Reason, "host-ended", "expired") {
+	if message.Reason != "host-ended" {
 		return nil, fmt.Errorf("unknown room-closed reason %q", message.Reason)
 	}
 	return message, nil

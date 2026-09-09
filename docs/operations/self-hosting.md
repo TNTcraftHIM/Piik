@@ -64,9 +64,11 @@ domains, certificates, users, and resource limits required by the host.
    `/opt/screener/current` to it before enabling the unit. The tracked release
    wrapper is upgrade-only and deliberately refuses a missing prior release;
    this repository does not provide a generic first-install transaction.
-5. When stable room authority is enabled, use the service-owned
-   `/var/lib/screener` StateDirectory and include the SQLite file in the host's
-   state backup/recovery policy.
+5. SQLite is the Hosted default. The service template selects
+   `/var/lib/screener/rooms.sqlite` in its service-owned StateDirectory; retain
+   that absolute path in the environment file and include it in the host's
+   backup/recovery policy. Use `ROOM_DATABASE_PATH=:memory:` only for intentional
+   process-only rooms. Do not leave an empty override in a service environment.
 6. Install the tracked service and proxy templates. Bind HTTP to loopback on
    bare metal; STUN and SFU retain their independent public IPv4 binds.
    Containers may bind HTTP to `0.0.0.0` only when publishing/firewall rules
@@ -127,7 +129,7 @@ docker run -d --name screener --restart unless-stopped --stop-timeout 20 \
 The image's `/home/nonroot` is owned by UID/GID `65532:65532` with mode `0700`.
 A new named volume inherits that directory; an existing volume or bind mount
 must already be writable by that identity. Keep this volume when replacing the
-container. Omit `ROOM_DATABASE_PATH` for memory-only room authority. Diagnostics
+container. Set `ROOM_DATABASE_PATH=:memory:` for memory-only room authority. Diagnostics
 remain opt-in and use `/home/nonroot/logs`; [export and retention](../reference/configuration.md#diagnostics)
 remain the operator's responsibility. Do not mount application files writable.
 With diagnostics enabled, `docker kill --signal=USR1 screener` requests a local
@@ -148,7 +150,7 @@ Replacing the external STUN/SFU services, including Node-to-Go where still
 needed, is one explicitly authorized infrastructure and protocol transaction.
 The routine application wrapper cannot perform or recover it.
 
-1. Prepare and verify matching `screener-v22` Web/Server and native protocol v9
+1. Prepare and verify matching Web/Server signaling and native protocol v9
    Client artifacts. Check active sessions and obtain the owner's acceptance of
    share interruption before cutover; old pages and Clients must reload or
    update together.

@@ -12,9 +12,6 @@ import (
 	"github.com/TNTcraftHIM/Screener/internal/server/protocol"
 )
 
-// Ported from src/server/local-config.ts.
-const localRoomLeaseMs = 24 * 60 * 60 * 1_000
-
 // localPasswordPattern is VISIBLE_ASCII_PATTERN from local-config.ts. Because
 // it admits one byte per character the TypeScript's extra Buffer.byteLength
 // bounds are already implied by {8,128}.
@@ -109,7 +106,6 @@ func Local(options LocalOptions) (Config, error) {
 		PublicBaseURL:             publicBaseURL,
 		AllowedOrigins:            allowedOrigins,
 		SiteAccessPassword:        siteAccessPassword,
-		RoomLeaseMs:               localRoomLeaseMs,
 		MaxViewersPerRoom:         protocol.MaxViewersPerRoomLimit,
 		EndpointMediaCopyCapacity: protocol.DefaultEndpointMediaCopyCapacity,
 		STUNURLs:                  stunURLs,

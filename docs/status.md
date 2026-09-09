@@ -1,53 +1,43 @@
 # Current Status
 
-Last updated: 2026-09-09
+Last updated: 2026-09-10
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) owns unresolved physical limits,
 and Git/PRs own completed history.
 
-## Production
+## Accepted Release Contract
 
-The coordinated embedded-media cutover is complete. The immutable release
-descriptor, runtime REVISION and operator deployment record own exact identity.
+- Browser/server v23, Native control v9 and capture v7 form one private contract.
+  The release requires matching Web/Client/Server artifacts and a reload of old
+  active pages at cutover.
+- Hosted Server defaults to SQLite schema 2. Room authority has no inactivity
+  expiry; explicit replacement/deletion or grant rotation/revocation ends the
+  corresponding authority. Explicit memory mode and Client Local end rooms at
+  process exit. Site access retains its separate 24-hour idle lifetime.
+- Browser/Client entry lifecycle and current-edge reconnect ownership repairs
+  are implemented. Browser node-local pooling and detailed local Debug export
+  remain part of the accepted media surface. Product modules own their behavior;
+  [configuration](./reference/configuration.md#diagnostics) owns Debug activation,
+  report contents and disclosure.
 
-- One Go process serves the Web application, room authority/signaling,
-  Binding-only STUN on UDP 3478/3479/3480 and optional SFU on UDP 7882.
-  External LiveKit/coturn services are stopped and disabled. nginx retains HTTPS.
-- Browser/server v22, Native control v9 and capture v7 form the current private
-  contract. Old pages and Clients must use matching artifacts.
-- SQLite persists stable room authority; participants, routes and media remain
-  process-only. Lightweight mode remains available without a database path.
-- Public health/assets and all three STUN Binding endpoints pass postflight.
-  Synthetic H264/VP8 media crosses the public SFU, retains decoded Opus through
-  720p-to-480p changes, and retires cleanly. Public signaling also passes a direct
-  Peer check; both direct endpoints were on the acceptance machine.
-- Initial SFU startup exposed the systemd address-family restriction on Linux
-  interface discovery. The old release/unit/environment/proxy/media-service
-  state was restored successfully, then the corrected unit passed media
-  postflight. AF_NETLINK is needed by Go/Pion interface enumeration; no new
-  administrative capability was granted. The template correction is carried
-  in the current Debug supplement.
-- This private deployment is not a public demonstration service.
+## Deployment
 
-## Current Supplement
+The owner authorized integration, coordinated cutover and cleanup before the
+Piik appearance phase. Authorization is not deployment evidence: the immutable
+release descriptor, runtime `REVISION` and operator deployment record own the
+actual deployed identity and postflight result. The
+[schema cutover procedure](./deployment.md#permanent-room-schema-cutover) preserves
+existing room authority and Browser credential keys with a database/application
+rollback boundary.
 
-Browser node-local pooling, the detailed Debug supplement and scoped Native
-ablation passed the combined checks and matching Client/Server packaging. The
-owner authorized complete integration and deployment on 2026-09-09, with later
-hands-on feedback. Runtime release metadata owns the actual cutover identity.
+The existing deployment uses one Go process for Web, room authority/signaling,
+Binding-only STUN on UDP 3478/3479/3480 and optional SFU on UDP 7882. nginx owns
+HTTPS; external LiveKit/coturn services remain disabled. Participants, routes and
+media remain process-only. This private service is not a public demonstration.
 
-The supplement retains the existing local recorder/export owners and adds
-correlated requests, meaningful error causes, media/dependency observations,
-selected runtime context and explicit partial-report/history information.
-[Configuration](./reference/configuration.md#diagnostics) owns exact activation,
-report contents and disclosure. The Linux service-template correction belongs
-to this same supplement.
-
-English/Chinese README, Quick Start, documentation map and license guidance are
-prepared. The piik naming/visual discussion, static GitHub Pages website and
-whole-repository ablation review follow closeout. No public site or bulk rename
-is part of this release. [TODO](./todo.md) is the only work ledger.
+[TODO](./todo.md) owns closeout and subsequent appearance, renaming, distribution
+and ablation work. No public site or bulk rename belongs to this release.
 
 ## Media Evidence And Limits
 
@@ -69,7 +59,7 @@ is part of this release. [TODO](./todo.md) is the only work ledger.
 - The Linux runtime container has non-root/read-only, memory/SQLite, diagnostic
   export, STUN and listener-lifecycle evidence. This does not establish every
   operator's proxy/firewall or public-media configuration.
-- The independent Browser producer in ADR-0014 is integrated on the candidate.
+- The independent Browser producer in ADR-0014 is integrated.
   Bounded H264/VP8 checks cover direct and received-track sharing, weak-child
   isolation/recovery, live/quiet settings, pause, source change and ordinary
   fallback. Its native allocation and complete-frame output replace the earlier

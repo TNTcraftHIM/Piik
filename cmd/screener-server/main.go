@@ -77,8 +77,7 @@ func fail(err error) {
 }
 
 // serve runs the application until the first SIGINT or SIGTERM, then stops it
-// with Close rather than End: Hosted rooms are leased in the database and must
-// survive a restart (DECISIONS D6).
+// with Close rather than End: durable room authority survives a restart.
 func serve(debug bool) (returnedErr error) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{ReplaceAttr: diagnostics.ReplaceAttr}))
 	var recorder *diagnostics.Recorder
@@ -117,7 +116,7 @@ func serve(debug bool) (returnedErr error) {
 			"sqlite": configuration.RoomDatabasePath != "", "siteAccessProtected": configuration.SiteAccessPassword != "",
 			"maxViewers": configuration.MaxViewersPerRoom, "endpointCapacity": configuration.EndpointMediaCopyCapacity,
 			"sfu": configuration.SFU, "stunURLs": configuration.STUNURLs,
-			"natPrediction": configuration.NATPredictionEnabled, "roomLeaseMs": configuration.RoomLeaseMs,
+			"natPrediction": configuration.NATPredictionEnabled,
 		})
 	}
 	server, err := app.New(app.Options{

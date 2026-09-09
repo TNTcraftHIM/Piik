@@ -66,7 +66,6 @@ type Options struct {
 	AuthenticationTimeoutMs             int
 	ViewerDisconnectGraceMs             int
 	HeartbeatIntervalMs                 int
-	CleanupIntervalMs                   int
 	MaxSignalConnections                int
 	MaxUnauthenticatedSignalConnections int
 	SiteAccessTTLSeconds                int
@@ -125,7 +124,7 @@ func New(options Options) (*Server, error) {
 		logger = slog.Default()
 	}
 
-	store, err := newRoomStore(options, now)
+	store, err := newRoomStore(options)
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +170,6 @@ func New(options Options) (*Server, error) {
 		AuthenticationTimeoutMs:       options.AuthenticationTimeoutMs,
 		ViewerDisconnectGraceMs:       options.ViewerDisconnectGraceMs,
 		HeartbeatIntervalMs:           options.HeartbeatIntervalMs,
-		CleanupIntervalMs:             options.CleanupIntervalMs,
 		MaxConnections:                options.MaxSignalConnections,
 		MaxUnauthenticatedConnections: options.MaxUnauthenticatedSignalConnections,
 		AfterFunc:                     options.AfterFunc,
@@ -189,7 +187,7 @@ func New(options Options) (*Server, error) {
 
 // newRoomStore builds the room store createScreenerServer would otherwise take
 // from Options.RoomStore. An empty RoomDatabasePath is the memory-only mode.
-func newRoomStore(options Options, now func() int64) (*room.Store, error) {
+func newRoomStore(options Options) (*room.Store, error) {
 	if options.RoomStore != nil {
 		return options.RoomStore, nil
 	}
@@ -204,11 +202,9 @@ func newRoomStore(options Options, now func() int64) (*room.Store, error) {
 		database = opened
 	}
 	return room.New(room.Options{
-		LeaseMs:           options.Config.RoomLeaseMs,
 		MaxRooms:          room.Capacity,
 		MaxViewersPerRoom: options.Config.MaxViewersPerRoom,
 		Database:          database,
-		Now:               now,
 	})
 }
 

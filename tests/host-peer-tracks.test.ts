@@ -2530,14 +2530,14 @@ describe("ViewerRelay downstream ownership", () => {
     }
   });
 
-  it("rebuilds a stalled peer but preserves a connected peer on reconciliation", async () => {
-    const targets: string[] = [];
+  it("preserves a connecting replacement when topology reaffirms the same child", async () => {
+    const connectionIds: string[] = [];
     const relay = new ViewerRelay(
       { iceServers: [] },
       QUALITY_PROFILES["720p30"],
       {
-        sendSignal: (peerId) => {
-          targets.push(peerId);
+        sendSignal: (_peerId, payload) => {
+          connectionIds.push(payload.connectionId);
           return true;
         },
       },
@@ -2546,20 +2546,81 @@ describe("ViewerRelay downstream ownership", () => {
     relay.setStream(
       createStream(createTrack("video", "reconciled-video"), null),
     );
-    await vi.waitFor(() => expect(targets).toEqual(["reconciled-child"]));
-    const stalledConnection = FakePeerConnection.latest!;
+    try {
+      await vi.waitFor(() => expect(connectionIds).toHaveLength(1));
+      const original = FakePeerConnection.latest!;
+      original.connectionState = "connected";
 
-    relay.setChildren(["reconciled-child"]);
-    await vi.waitFor(() =>
-      expect(FakePeerConnection.latest).not.toBe(stalledConnection),
+      await relay.recover("reconciled-child", connectionIds[0]!, true);
+      await vi.waitFor(() => expect(connectionIds).toHaveLength(2));
+      const replacement = FakePeerConnection.latest!;
+      expect(replacement).not.toBe(original);
+      expect(original.connectionState).toBe("closed");
+      replacement.connectionState = "connecting";
+
+      relay.activateChildren(2, ["reconciled-child"]);
+      relay.setChildren(["reconciled-child"]);
+      relay.updateCapacity(1);
+
+      await expect(relay.acceptSignal("reconciled-child", {
+        kind: "description",
+        connectionId: connectionIds[1]!,
+        description: { type: "answer", sdp: "replacement-answer" },
+      }, 2)).resolves.toBe(true);
+      expect(FakePeerConnection.latest).toBe(replacement);
+      expect(replacement.connectionState).toBe("connecting");
+      expect(replacement.remoteDescription?.sdp).toBe("replacement-answer");
+      expect(connectionIds).toHaveLength(2);
+    } finally {
+      relay.dispose();
+    }
+  });
+
+  it("rebuilds only unfinished negotiations after signaling resynchronizes", async () => {
+    const signals: Array<{ peerId: string; connectionId: string }> = [];
+    const relay = new ViewerRelay(
+      { iceServers: [] },
+      QUALITY_PROFILES["720p30"],
+      {
+        sendSignal: (peerId, payload) => {
+          signals.push({ peerId, connectionId: payload.connectionId });
+          return true;
+        },
+      },
     );
-    const connectedConnection = FakePeerConnection.latest!;
-    await vi.waitFor(() => expect(targets).toHaveLength(2));
-    connectedConnection.connectionState = "connected";
+    const children = ["healthy-child", "unfinished-child"];
+    relay.setChildren(children);
+    relay.setStream(createStream(createTrack("video", "resync-video"), null));
+    try {
+      await vi.waitFor(() => expect(signals).toHaveLength(2));
+      const [healthy, unfinished] = FakePeerConnection.instances;
+      healthy!.connectionState = "connected";
+      unfinished!.connectionState = "connecting";
+      const oldId = signals.find(({ peerId }) => peerId === "unfinished-child")!.connectionId;
 
-    relay.setChildren(["reconciled-child"]);
-    expect(FakePeerConnection.latest).toBe(connectedConnection);
-    expect(targets).toHaveLength(2);
+      relay.resyncSignaling();
+      relay.activateChildren(2, children);
+      await vi.waitFor(() => expect(signals).toHaveLength(3));
+      expect(healthy!.connectionState).toBe("connected");
+      expect(unfinished!.connectionState).toBe("closed");
+      expect(signals.filter(({ peerId }) => peerId === "healthy-child")).toHaveLength(1);
+      const replacement = FakePeerConnection.latest!;
+      const newId = signals[2]!.connectionId;
+      expect(newId).not.toBe(oldId);
+      await expect(relay.acceptSignal("unfinished-child", {
+        kind: "description",
+        connectionId: oldId,
+        description: { type: "answer", sdp: "stale-answer" },
+      }, 2)).resolves.toBe(false);
+      await expect(relay.acceptSignal("unfinished-child", {
+        kind: "description",
+        connectionId: newId,
+        description: { type: "answer", sdp: "resynced-answer" },
+      }, 2)).resolves.toBe(true);
+      expect(replacement.remoteDescription?.sdp).toBe("resynced-answer");
+    } finally {
+      relay.dispose();
+    }
   });
 
   it("keeps one downstream connection across upstream stream replacement", async () => {

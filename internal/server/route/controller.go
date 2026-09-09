@@ -778,13 +778,13 @@ func (c *Controller) InvalidateHostPublication(guard PublicationGuard, nowMs *in
 	return true
 }
 
-// AdoptDirectConnection rewrites the connection ID of a usable, active
-// direct edge the operation does not own; true when adopted (no-op when
-// unchanged).
-func (c *Controller) AdoptDirectConnection(input AdoptDirectConnectionInput) bool {
+// AdoptDirectConnection accepts a replacement for the exact active edge.
+// Recovery supersedes optional preparation for that child when the replacement
+// arrives. Required availability work, including capacity reduction, keeps priority.
+func (c *Controller) AdoptDirectConnection(input AdoptDirectConnectionInput, nowMs int64) SettleResult {
+	result := SettleResult{ActiveRevision: c.revision}
 	edge, _ := c.upstreamByViewer.Get(input.ChildPeerID)
-	if (c.operation != nil && c.operation.childPeerID == input.ChildPeerID) ||
-		c.revision != input.RouteRevision ||
+	if c.revision != input.RouteRevision ||
 		edge == nil ||
 		edge.Kind != UpstreamPeer ||
 		edge.Transport != TransportDirect ||
@@ -794,10 +794,17 @@ func (c *Controller) AdoptDirectConnection(input AdoptDirectConnectionInput) boo
 		edge.ParentSessionID != input.ParentSessionID ||
 		edge.ConnectionID != input.ConnectionID ||
 		input.NewConnectionID == "" {
-		return false
+		return result
 	}
 	if input.NewConnectionID == edge.ConnectionID {
-		return true
+		result.Accepted = true
+		return result
+	}
+	if op := c.operation; op != nil && op.childPeerID == input.ChildPeerID {
+		if isAvailabilityOperation(op.reason) {
+			return result
+		}
+		result.Released = c.abortOperation(&nowMs, RejectionAborted)
 	}
 	c.clearQualityForParticipant(input.ChildPeerID)
 	edge.ConnectionID = input.NewConnectionID
@@ -805,7 +812,9 @@ func (c *Controller) AdoptDirectConnection(input AdoptDirectConnectionInput) boo
 		child.availabilityExhausted = false
 	}
 	c.touchFacts()
-	return true
+	result.Accepted = true
+	result.ActiveRevision = c.revision
+	return result
 }
 
 // RetireHostPublication retires the physically active publication and its

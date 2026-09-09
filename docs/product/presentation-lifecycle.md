@@ -25,6 +25,19 @@ Browser picker and any exact Client-owned native windows. It never chooses a
 window automatically. A reproduced Browser-window, capture, or background
 failure is required before introducing an embedded Web runtime.
 
+A remembered Client activation permits discovery when choosing a source or
+receiving media; it does not make Client a prerequisite for sharing. Idle Host
+pages hold no Client control session. Ordinary Web entry opens the Browser picker
+directly. Activated origins offer the shared source selector, initially on its
+Browser tab unless Client is already connected. Discovery never blocks Browser
+selection or changes the chosen tab. Native tabs and refresh remain reachable
+after absence or disconnection; pending attempts are shared, completed failures
+do not suppress later discovery. Cancelling the selector or ending a share
+releases its unused control session; an obsolete operation cannot install or
+retire another operation's media. Optional native ingress uses an already
+available connection without another scan. If it is not ready at Browser
+startup, that share keeps Browser senders.
+
 ## Visual Language
 
 The interface presents one small shared living room rather than an operations
@@ -101,7 +114,7 @@ black screen, ICE-connected state, or unproved `playing` event.
 - Host signaling loss alone does not invalidate media that is still healthy.
 - Exact media failure or terminal route failure invalidates current-frame proof
   before showing a retained frozen background and recovery or failure state.
-- Room not found/expired is distinct from current-room access denial and does not
+- Room not found is distinct from current-room access denial and does not
   prompt for a password.
 - Manual reconnect recovers the same route. It does not select a new parent.
 - An actionable overlay may appear while fullscreen remains active; application
@@ -136,8 +149,9 @@ that reported adaptation; they do not by themselves locate the physical
 bottleneck or describe the Viewer's receive path.
 Locally exposed selected-candidate addresses may be shown only on the Browser
 that owns that PeerConnection and are never uploaded, persisted, or used for
-identity or route selection. The product does not offer a diagnostic-download
-button or a raw stats dump.
+identity or route selection. Explicit Debug mode can export a bounded diagnostic
+report through the separate [diagnostic owner](../reference/configuration.md#diagnostics);
+ordinary connection details do not collect or expose that report.
 
 Current scope includes Web Host, Web Viewer, Browser relay, and optional Native
 Host/Viewer media beneath those same pages. Desktop and mobile Browsers are

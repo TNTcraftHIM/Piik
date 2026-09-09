@@ -16,21 +16,14 @@ import (
 
 // The scenarios below are ported from tests/room-store.test.ts.
 
-type clock struct{ nowMs int64 }
-
-func newStore(t *testing.T, options Options) (*Store, *clock) {
+func newStore(t *testing.T, options Options) *Store {
 	t.Helper()
-	testClock := &clock{}
-	if options.LeaseMs == 0 {
-		options.LeaseMs = 1_000
-	}
 	if options.MaxRooms == 0 {
 		options.MaxRooms = 2
 	}
 	if options.MaxViewersPerRoom == 0 {
 		options.MaxViewersPerRoom = 2
 	}
-	options.Now = func() int64 { return testClock.nowMs }
 	store, err := New(options)
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -39,7 +32,7 @@ func newStore(t *testing.T, options Options) (*Store, *clock) {
 		t.Fatalf("Initialize: %v", err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	return store, testClock
+	return store
 }
 
 func constantRandom(value func(size int) byte) func(size int) []byte {
@@ -51,8 +44,7 @@ func constantRandom(value func(size int) byte) func(size int) []byte {
 func tryCreateRoom(
 	store *Store, policy protocol.CodeEntryPolicy, password, preferredRoomID string,
 ) (CreatedRoom, error) {
-	lease, err := store.BeginCreateRoom()
-	if err != nil {
+	if err := store.BeginCreateRoom(); err != nil {
 		return CreatedRoom{}, err
 	}
 	var material []byte
@@ -60,7 +52,7 @@ func tryCreateRoom(
 	if password != "" {
 		material, derived = store.DeriveViewerPasswordMaterial(password, nil)
 	}
-	return store.CreateRoom(policy, material, derived, preferredRoomID, lease)
+	return store.CreateRoom(policy, material, derived, preferredRoomID)
 }
 
 func createRoom(
@@ -167,7 +159,7 @@ var roomCodePattern = regexp.MustCompile(`^[1-9][0-9]{3}$`)
 var viewerGrantPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{21}[AQgw]$`)
 
 func TestAllocatesEveryFreeRoomCodeAndRecyclesReleases(t *testing.T) {
-	store, _ := newStore(t, Options{
+	store := newStore(t, Options{
 		MaxRooms: Capacity,
 		Random:   constantRandom(func(int) byte { return 0 }),
 	})
@@ -200,7 +192,7 @@ func TestAllocatesEveryFreeRoomCodeAndRecyclesReleases(t *testing.T) {
 }
 
 func TestUsesAFreePreferredCodeAndFallsBack(t *testing.T) {
-	store, _ := newStore(t, Options{MaxRooms: 3})
+	store := newStore(t, Options{MaxRooms: 3})
 
 	preferred := createRoom(t, store, protocol.CodeEntryOpen, "", "4321")
 	fallback := createRoom(t, store, protocol.CodeEntryOpen, "", "4321")
@@ -220,7 +212,7 @@ func TestUsesAFreePreferredCodeAndFallsBack(t *testing.T) {
 }
 
 func TestAbandonsEveryCurrentRoomAsOneShutdown(t *testing.T) {
-	store, _ := newStore(t, Options{MaxRooms: 3})
+	store := newStore(t, Options{MaxRooms: 3})
 	first := createRoom(t, store, protocol.CodeEntryOpen, "", "")
 	second := createRoom(t, store, protocol.CodeEntryOpen, "", "")
 	mustConnect(t, store, hostInput(first.RoomID, first.HostToken))
@@ -248,7 +240,7 @@ func TestAbandonsEveryCurrentRoomAsOneShutdown(t *testing.T) {
 }
 
 func TestAtomicallyReplacesARoomWithDifferentAuthority(t *testing.T) {
-	store, _ := newStore(t, Options{})
+	store := newStore(t, Options{})
 	original := createRoom(t, store, protocol.CodeEntryPrivate, "old-password", "4321")
 	host := mustConnect(t, store, hostInput(original.RoomID, original.HostToken))
 	mustConnect(t, store, viewerInput(original.RoomID, "viewer-session", original.ViewerGrant))
@@ -293,56 +285,36 @@ func TestAtomicallyReplacesARoomWithDifferentAuthority(t *testing.T) {
 }
 
 func TestRejectsRoomLimitsBeyondTheCodeSpace(t *testing.T) {
-	_, err := New(Options{LeaseMs: 1_000, MaxRooms: Capacity + 1, MaxViewersPerRoom: 2})
+	_, err := New(Options{MaxRooms: Capacity + 1, MaxViewersPerRoom: 2})
 	if err == nil || err.Error() != "Room limit must be an integer between 1 and 9000" {
 		t.Fatalf("New: %v", err)
 	}
 }
 
-func TestKeepsActiveSharingAliveAndRenewsOnlyWithTheExactHostToken(t *testing.T) {
-	store, testClock := newStore(t, Options{LeaseMs: 1_000})
+func TestResumesDisconnectedRoomOnlyWithTheExactHostToken(t *testing.T) {
+	store := newStore(t, Options{})
 	room := createRoom(t, store, protocol.CodeEntryOpen, "", "")
 	host := mustConnect(t, store, hostInput(room.RoomID, room.HostToken))
-
-	testClock.nowMs = 2_000
-	if expired, err := store.ExpireRooms(testClock.nowMs); err != nil || len(expired) != 0 {
-		t.Fatalf("ExpireRooms while sharing = %v, %v", expired, err)
-	}
 
 	if _, err := store.DisconnectParticipant(room.RoomID, host.PeerID, "host-session"); err != nil {
 		t.Fatalf("DisconnectParticipant: %v", err)
 	}
-	testClock.nowMs = 2_500
-	if expired, err := store.ExpireRooms(testClock.nowMs); err != nil || len(expired) != 0 {
-		t.Fatalf("ExpireRooms inside the lease = %v, %v", expired, err)
-	}
-
 	_, err := store.ConnectParticipant(hostInput(room.RoomID, "wrong-token"))
 	expectCode(t, err, CodeInvalidToken)
 	resumed := mustConnect(t, store, hostInput(room.RoomID, room.HostToken, "host-session-2"))
-	if resumed.ExpiresAt != nil {
-		t.Fatalf("resumed expiresAt = %v, want null", *resumed.ExpiresAt)
-	}
 
 	if _, err := store.DisconnectParticipant(
 		room.RoomID, resumed.PeerID, "host-session-2"); err != nil {
 		t.Fatalf("DisconnectParticipant: %v", err)
 	}
 	mustConnect(t, store, viewerInput(room.RoomID, "viewer-session", room.ViewerGrant))
-	testClock.nowMs = 3_501
-	expired, err := store.ExpireRooms(testClock.nowMs)
-	if err != nil || len(expired) != 1 {
-		t.Fatalf("ExpireRooms after the lease = %v, %v", expired, err)
-	}
-	_, err = store.ConnectParticipant(hostInput(room.RoomID, room.HostToken, "late-host"))
-	expectCode(t, err, CodeInvalidToken)
+	mustConnect(t, store, hostInput(room.RoomID, room.HostToken, "late-host"))
 }
 
-func TestManagesDormantAccessWithTheExactHostTokenWithoutRenewing(t *testing.T) {
-	store, testClock := newStore(t, Options{LeaseMs: 1_000})
+func TestManagesDormantAccessWithTheExactHostToken(t *testing.T) {
+	store := newStore(t, Options{})
 	room := createRoom(t, store, protocol.CodeEntryOpen, "", "")
 	otherRoom := createRoom(t, store, protocol.CodeEntryOpen, "", "")
-	testClock.nowMs = 900
 
 	_, err := trySetViewerPassword(store, room.RoomID, "room-password", "wrong-token")
 	expectCode(t, err, CodeInvalidToken)
@@ -370,28 +342,10 @@ func TestManagesDormantAccessWithTheExactHostTokenWithoutRenewing(t *testing.T) 
 	if _, ok := store.GetConnectedHost(room.RoomID); ok {
 		t.Fatal("a dormant room reported a connected host")
 	}
-
-	testClock.nowMs = 1_001
-	expired, err := store.ExpireRooms(testClock.nowMs)
-	if err != nil {
-		t.Fatalf("ExpireRooms: %v", err)
-	}
-	if !slicesContainsRoom(expired, room.RoomID) {
-		t.Fatalf("expired = %+v, want %q", expired, room.RoomID)
-	}
-}
-
-func slicesContainsRoom(rooms []ClosedRoom, roomID string) bool {
-	for _, room := range rooms {
-		if room.RoomID == roomID {
-			return true
-		}
-	}
-	return false
 }
 
 func TestKeepsViewerGrantsIndependentFromCodeEntryPolicy(t *testing.T) {
-	store, _ := newStore(t, Options{MaxRooms: 3})
+	store := newStore(t, Options{MaxRooms: 3})
 	room := createRoom(t, store, protocol.CodeEntryPrivate, "", "")
 
 	_, err := store.ConnectParticipant(viewerInput(room.RoomID, "code-only", ""))
@@ -410,14 +364,13 @@ func TestKeepsViewerGrantsIndependentFromCodeEntryPolicy(t *testing.T) {
 }
 
 func TestKeepsTheExactViewerGrantValidForTheRoomIncarnation(t *testing.T) {
-	store, testClock := newStore(t, Options{LeaseMs: 1_000})
+	store := newStore(t, Options{})
 	room := createRoom(t, store, protocol.CodeEntryOpen, "", "")
 	mustConnect(t, store, hostInput(room.RoomID, room.HostToken))
 
 	if !viewerGrantPattern.MatchString(room.ViewerGrant) {
 		t.Fatalf("viewer grant = %q", room.ViewerGrant)
 	}
-	testClock.nowMs = 8 * 24 * 60 * 60 * 1_000
 	connected := mustConnect(t, store, viewerInput(room.RoomID, "room-lived-grant", room.ViewerGrant))
 	if connected.Role != protocol.RoleViewer {
 		t.Fatalf("role = %q", connected.Role)
@@ -425,7 +378,7 @@ func TestKeepsTheExactViewerGrantValidForTheRoomIncarnation(t *testing.T) {
 }
 
 func TestSupportsOpenAndPasswordEnabledPrivateCodeEntry(t *testing.T) {
-	store, _ := newStore(t, Options{MaxRooms: 3})
+	store := newStore(t, Options{MaxRooms: 3})
 	open := createRoom(t, store, protocol.CodeEntryOpen, "", "")
 	if connected := mustConnect(t, store, viewerInput(open.RoomID, "open", "")); connected.Role !=
 		protocol.RoleViewer {
@@ -495,7 +448,7 @@ func waitForSaturatedGate(t *testing.T, store *Store) {
 }
 
 func TestDoesNotCreateAPasswordlessRoomWhenTheGateIsBusy(t *testing.T) {
-	store, _ := newStore(t, Options{MaxRooms: 1})
+	store := newStore(t, Options{MaxRooms: 1})
 
 	withSaturatedGate(t, store, func() {
 		_, err := tryCreateRoom(store, protocol.CodeEntryPrivate, "room-password", "4321")
@@ -510,7 +463,7 @@ func TestDoesNotCreateAPasswordlessRoomWhenTheGateIsBusy(t *testing.T) {
 }
 
 func TestKeepsGateSaturationDistinctFromInvalidCredentials(t *testing.T) {
-	store, _ := newStore(t, Options{})
+	store := newStore(t, Options{})
 	room := createRoom(t, store, protocol.CodeEntryPrivate, "room-password", "")
 
 	withSaturatedGate(t, store, func() {
@@ -525,7 +478,7 @@ func TestKeepsGateSaturationDistinctFromInvalidCredentials(t *testing.T) {
 }
 
 func TestKeepsRoomReplacementAndPasswordUpdatesUnchangedWhenBusy(t *testing.T) {
-	store, _ := newStore(t, Options{MaxRooms: 3})
+	store := newStore(t, Options{MaxRooms: 3})
 	room := createRoom(t, store, protocol.CodeEntryPrivate, "old-password", "4321")
 
 	withSaturatedGate(t, store, func() {
@@ -560,7 +513,7 @@ func TestKeepsRoomReplacementAndPasswordUpdatesUnchangedWhenBusy(t *testing.T) {
 }
 
 func TestBoundsPasswordDerivationsAndUsesTheSamePathForUnknownRooms(t *testing.T) {
-	store, _ := newStore(t, Options{})
+	store := newStore(t, Options{})
 
 	var mayStartCalls atomic.Int64
 	release := make(chan struct{})
@@ -611,7 +564,7 @@ func TestBoundsPasswordDerivationsAndUsesTheSamePathForUnknownRooms(t *testing.T
 }
 
 func TestRotatesAndRevokesViewerGrantsWithoutChangingCodeEntry(t *testing.T) {
-	store, _ := newStore(t, Options{})
+	store := newStore(t, Options{})
 	room := createRoom(t, store, protocol.CodeEntryOpen, "", "")
 	mustConnect(t, store, hostInput(room.RoomID, room.HostToken))
 
@@ -646,7 +599,7 @@ func TestKeepsTheOldGrantWhenRotationCannotCreateAGeneration(t *testing.T) {
 	failedRandomCall := 0
 	randomCalls := 0
 	randomValue := byte(0)
-	store, _ := newStore(t, Options{
+	store := newStore(t, Options{
 		Random: func(size int) []byte {
 			randomCalls++
 			randomValue++
@@ -680,9 +633,9 @@ func TestKeepsTheOldGrantWhenRotationCannotCreateAGeneration(t *testing.T) {
 }
 
 func TestClearsEveryCredentialOnProcessRestart(t *testing.T) {
-	firstStore, _ := newStore(t, Options{})
+	firstStore := newStore(t, Options{})
 	room := createRoom(t, firstStore, protocol.CodeEntryPrivate, "room-password", "")
-	secondStore, _ := newStore(t, Options{})
+	secondStore := newStore(t, Options{})
 
 	replacement := createRoom(t, secondStore, protocol.CodeEntryOpen, "", "")
 	if !roomCodePattern.MatchString(replacement.RoomID) {
@@ -702,7 +655,7 @@ func TestClearsEveryCredentialOnProcessRestart(t *testing.T) {
 }
 
 func TestRejectsAnOldGrantWhenANewRoomReusesTheSameCode(t *testing.T) {
-	firstStore, _ := newStore(t, Options{
+	firstStore := newStore(t, Options{
 		Random: constantRandom(func(size int) byte {
 			if size == 8 {
 				return 0
@@ -715,7 +668,7 @@ func TestRejectsAnOldGrantWhenANewRoomReusesTheSameCode(t *testing.T) {
 		t.Fatalf("AbandonRoom: %v", err)
 	}
 
-	secondStore, _ := newStore(t, Options{
+	secondStore := newStore(t, Options{
 		Random: constantRandom(func(size int) byte {
 			if size == 8 {
 				return 0
@@ -737,7 +690,7 @@ func TestRejectsAnOldGrantWhenANewRoomReusesTheSameCode(t *testing.T) {
 }
 
 func TestParticipantReplacementRules(t *testing.T) {
-	store, _ := newStore(t, Options{})
+	store := newStore(t, Options{})
 	room := createRoom(t, store, protocol.CodeEntryOpen, "", "")
 	host := mustConnect(t, store, hostInput(room.RoomID, room.HostToken))
 
@@ -823,7 +776,7 @@ func TestHostChangeChecksIdentityAfterTheDerivation(t *testing.T) {
 	// A constant random source gives a recreated room the same Host token, so
 	// the identity comparison is reachable instead of being shadowed by the
 	// token check.
-	store, testClock := newStore(t, Options{
+	store := newStore(t, Options{
 		MaxRooms: 3,
 		Random:   constantRandom(func(int) byte { return 7 }),
 	})
@@ -856,15 +809,6 @@ func TestHostChangeChecksIdentityAfterTheDerivation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("HostManagedRoom: %v", err)
 	}
-	testClock.nowMs = 5_000
-	_, err = store.SetViewerPassword(again.RoomID, again.HostToken, nil, nil, incarnation)
-	expectCode(t, err, CodeRoomExpired)
-	// An expired room outranks a saturated gate, as the TypeScript order did.
-	_, err = store.SetViewerPassword(
-		again.RoomID, again.HostToken, nil, codeError(CodeRoomBusy), incarnation)
-	expectCode(t, err, CodeRoomExpired)
-
-	testClock.nowMs = 0
 	_, err = store.SetViewerPassword(
 		again.RoomID, again.HostToken, nil, errDerivationCancelled, incarnation)
 	expectCode(t, err, CodeRoomAccessDenied)
@@ -883,7 +827,7 @@ func TestHostChangeChecksIdentityAfterTheDerivation(t *testing.T) {
 func TestPasswordLoginRechecksTheRoomAfterTheDerivation(t *testing.T) {
 	// A constant random source repeats the salt, so a recreated room holds the
 	// same material and only the room identity separates the two incarnations.
-	store, _ := newStore(t, Options{
+	store := newStore(t, Options{
 		MaxRooms: 3,
 		Random:   constantRandom(func(int) byte { return 7 }),
 	})
@@ -938,7 +882,7 @@ func TestPasswordLoginRequiresAnInitializedStore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewDatabase: %v", err)
 	}
-	store, err := New(Options{LeaseMs: 1_000, MaxRooms: 2, MaxViewersPerRoom: 2, Database: database})
+	store, err := New(Options{MaxRooms: 2, MaxViewersPerRoom: 2, Database: database})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -951,7 +895,7 @@ func TestPasswordLoginRequiresAnInitializedStore(t *testing.T) {
 // TestPasswordLoginHidesAFullRoom keeps ROOM_FULL from leaking to a Viewer that
 // authenticated with the room password.
 func TestPasswordLoginHidesAFullRoom(t *testing.T) {
-	store, _ := newStore(t, Options{MaxViewersPerRoom: 2})
+	store := newStore(t, Options{MaxViewersPerRoom: 2})
 	room := createRoom(t, store, protocol.CodeEntryPrivate, "room-password", "")
 	mustConnect(t, store, viewerInput(room.RoomID, "first", room.ViewerGrant))
 	mustConnect(t, store, viewerInput(room.RoomID, "second", room.ViewerGrant))
@@ -966,9 +910,8 @@ func TestPasswordLoginHidesAFullRoom(t *testing.T) {
 }
 
 func TestCreateRoomReportsACancelledDerivation(t *testing.T) {
-	store, _ := newStore(t, Options{})
-	lease, err := store.BeginCreateRoom()
-	if err != nil {
+	store := newStore(t, Options{})
+	if err := store.BeginCreateRoom(); err != nil {
 		t.Fatalf("BeginCreateRoom: %v", err)
 	}
 	material, derived := store.DeriveViewerPasswordMaterial(
@@ -976,7 +919,7 @@ func TestCreateRoomReportsACancelledDerivation(t *testing.T) {
 	if material != nil || !errors.Is(derived, errDerivationCancelled) {
 		t.Fatalf("derive = %v, %v", material, derived)
 	}
-	_, err = store.CreateRoom(protocol.CodeEntryPrivate, material, derived, "", lease)
+	_, err := store.CreateRoom(protocol.CodeEntryPrivate, material, derived, "")
 	if err == nil || err.Error() != "Room creation password derivation was cancelled" {
 		t.Fatalf("CreateRoom = %v", err)
 	}
@@ -986,7 +929,7 @@ func TestCreateRoomReportsACancelledDerivation(t *testing.T) {
 }
 
 func TestRejectsAMalformedViewerPassword(t *testing.T) {
-	store, _ := newStore(t, Options{})
+	store := newStore(t, Options{})
 	for _, password := range []string{"", "with space", strings.Repeat("a", 65)} {
 		material, derived := store.DeriveViewerPasswordMaterial(password, nil)
 		if material != nil || !hasCode(derived, CodeInvalidToken) {
