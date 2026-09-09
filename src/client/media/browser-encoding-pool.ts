@@ -2,116 +2,95 @@ import { createOpaqueId } from "../lib/opaque-id";
 import { EMPTY_METRICS, type ConnectionMetrics } from "../types";
 import { captureMetrics, collectConnectionMetricsFromReport, createStatsAccumulator } from "../webrtc/stats";
 import { BrowserEncodingProducer } from "./browser-encoding-producer";
+import type { BrowserEncodingOutput } from "./browser-encoding-output";
 import { codecIdentity, fits, nativeVideoBudget, negotiatedCodec, noRegression, observeVideo,
   projectEncodingMetrics, videoOutbound, type Observation } from "./browser-encoding-stats";
-import type { BrowserEncodingOutputSample, BrowserEncodingWorkerEvent,
-  BrowserEncodingWorkerMessage, BrowserEncodingWorkerOptions } from "./browser-encoding-worker";
-import { cloneSenderVideoTrack, videoQualitySettingsEqual, type QualityProfile } from "./quality";
+import { QUALITY_RESOLUTIONS, videoQualitySettingsEqual, type QualityProfile } from "./quality";
 
 export interface BrowserPooledSender {
   updateProfile(profile: QualityProfile): Promise<void>;
+  carrierScale(): number | undefined;
   setPaused(paused: boolean): void;
   metrics(transport: ConnectionMetrics): ConnectionMetrics;
   dispose(): void;
 }
 
-type Output = BrowserEncodingOutputSample & { timestamp: number };
+type Output = ReturnType<BrowserEncodingOutput["snapshot"]>;
 type Group = {
   producer: BrowserEncodingProducer; source: MediaStreamTrack; profile: QualityProfile;
   codecKey: string; budget: number; ready: boolean; failed: boolean;
   report?: RTCStatsReport; previous?: RTCOutboundRtpStreamStats; output?: Observation;
-  keyRequest?: Promise<void>; updating?: Promise<void>;
+  updating?: Promise<void>;
 };
 type Member = {
   id: string; source: MediaStreamTrack; sender: RTCRtpSender; connection: RTCPeerConnection;
-  profile: QualityProfile; transform: RTCRtpScriptTransform;
-  replaceTrack: (track: MediaStreamTrack) => Promise<boolean>;
+  profile: QualityProfile; encoded: BrowserEncodingOutput;
+  configureCarrier: () => Promise<boolean>;
   requestKey: () => Promise<void>; onFatal: () => void;
-  paused: boolean; disabled: boolean; disposed: boolean; mixed: boolean; outputFailed: boolean;
+  paused: boolean; disabled: boolean; disposed: boolean; mixed: boolean; carrier: boolean;
   codec?: RTCRtpCodec; codecKey?: string; budget?: number; raw?: RTCOutboundRtpStreamStats;
   encoderStats: ReturnType<typeof createStatsAccumulator>;
-  current?: Group; pending?: { group: Group; requestId?: string };
-  output?: Output; previousOutput?: Output; keyRequest?: Promise<void>; replacement?: Promise<void>;
-  carrier?: { context: CanvasRenderingContext2D; track: CanvasCaptureMediaStreamTrack; frame: number };
+  current?: Group; pending?: { group: Group; selecting?: boolean };
+  output?: Output; previousOutput?: Output; replacement?: Promise<void>;
 };
 
 // M152 exposes BWE through getStats, not a bandwidth callback. The paired
 // weak-entry probe bounds observation lag at this cadence; it is not a retry.
 const BUDGET_SAMPLE_MS = 500;
+// A carrier only supplies native RTP timing/feedback. Chromium clamps this
+// request to its codec's minimum size; it is not a delivered quality layer.
+const CARRIER_WIDTH = 16;
 
 /** One owner per captured source tree; connections retain their own RTP and transport. */
 export class BrowserEncodingPool {
   private readonly members = new Set<Member>();
   private readonly groups = new Set<Group>();
   private readonly failedSources = new WeakSet<MediaStreamTrack>();
-  private worker: Worker | null = null;
   private timer: ReturnType<typeof setInterval> | undefined;
   private polling = false;
   private disposed = false;
-  private sampleRequest: { id: string; timestamp: number } | undefined;
 
   create(source: MediaStreamTrack, sender: RTCRtpSender, connection: RTCPeerConnection,
-    profile: QualityProfile, replaceTrack: Member["replaceTrack"], requestKey: Member["requestKey"],
+    profile: QualityProfile, encoded: BrowserEncodingOutput, configureCarrier: Member["configureCarrier"], requestKey: Member["requestKey"],
     onFatal: () => void): BrowserPooledSender | null {
-    if (this.disposed || this.failedSources.has(source) || source.kind !== "video" || source.readyState !== "live" ||
-      sender.transform || typeof RTCRtpScriptTransform === "undefined" || typeof Worker === "undefined" ||
-      typeof HTMLCanvasElement === "undefined" || typeof HTMLCanvasElement.prototype.captureStream !== "function") return null;
-    let member: Member | undefined;
-    try {
-      const id = createOpaqueId();
-      const transform = new RTCRtpScriptTransform(this.ensureWorker(),
-        { kind: "carrier", id, passthrough: true } satisfies BrowserEncodingWorkerOptions);
-      member = { id, source, sender, connection, profile: { ...profile }, transform, replaceTrack, requestKey, onFatal,
-        paused: !source.enabled, disabled: false, disposed: false, mixed: false, outputFailed: false,
-        encoderStats: createStatsAccumulator() };
-      sender.transform = transform;
-      this.members.add(member);
-      if (member.paused) this.post({ type: "pause", carrierId: id, paused: true });
-      const owned = member;
-      if (!this.timer) this.timer = setInterval(() => void this.poll(), BUDGET_SAMPLE_MS);
-      return {
-        updateProfile: async (next) => {
-          if (owned.disposed || videoQualitySettingsEqual(owned.profile, next)) return;
-          owned.profile = { ...next };
-          owned.encoderStats = createStatsAccumulator(); owned.previousOutput = undefined;
-          // HostPeer awaits this inside its sender queue. Handoffs run outside it.
-        },
-        setPaused: (paused) => {
-          if (owned.disposed || owned.paused === paused) return;
-          owned.paused = paused;
-          owned.previousOutput = undefined;
-          this.post({ type: "pause", carrierId: owned.id, paused });
-          this.updatePauses();
-        },
-        metrics: (transport) => this.metrics(owned, transport),
-        dispose: () => this.remove(owned),
-      };
-    } catch {
-      if (member) this.remove(member);
-      this.failedSources.add(source);
-      this.prune();
-      return null;
-    }
+    if (this.disposed || this.failedSources.has(source) || source.kind !== "video" || source.readyState !== "live") return null;
+    const member: Member = { id: createOpaqueId(), source, sender, connection, profile: { ...profile }, encoded, configureCarrier, requestKey, onFatal,
+      paused: !source.enabled, disabled: false, disposed: false, mixed: false, carrier: encoded.snapshot().frames === 0,
+      encoderStats: createStatsAccumulator() };
+    this.members.add(member);
+    // A fresh connection has no useful raw output to preserve. Start its
+    // tiny clock immediately, rather than warming two full encoders first.
+    if (!member.carrier) encoded.passthrough(requestKey);
+    encoded.setPaused(member.paused);
+    if (!this.timer) this.timer = setInterval(() => void this.poll(), BUDGET_SAMPLE_MS);
+    return {
+      carrierScale: () => {
+        if (!member.carrier) return;
+        const width = member.source.getSettings().width ?? QUALITY_RESOLUTIONS[member.profile.resolution].width;
+        return Math.max(1, width / CARRIER_WIDTH);
+      },
+      updateProfile: async (next) => {
+        if (member.disposed || videoQualitySettingsEqual(member.profile, next)) return;
+        member.profile = { ...next };
+        member.encoderStats = createStatsAccumulator(); member.previousOutput = undefined;
+        // HostPeer awaits this inside its sender queue. Handoffs run outside it.
+      },
+      setPaused: (paused) => {
+        if (member.disposed || member.paused === paused) return;
+        member.paused = paused;
+        member.previousOutput = undefined;
+        member.encoded.setPaused(paused);
+        this.updatePauses();
+      },
+      metrics: (transport) => this.metrics(member, transport),
+      dispose: () => this.remove(member),
+    };
   }
 
   dispose(): void {
     this.disposed = true;
     for (const member of [...this.members]) this.remove(member);
     this.prune();
-  }
-
-  private post(message: BrowserEncodingWorkerMessage): void { this.worker?.postMessage(message); }
-
-  private ensureWorker(): Worker {
-    if (!this.worker) {
-      const worker = new Worker(new URL("./browser-encoding-worker.ts", import.meta.url), { type: "module" });
-      this.worker = worker;
-      worker.onmessage = (event: MessageEvent<BrowserEncodingWorkerEvent>) => {
-        if (this.worker === worker) this.onMessage(event.data);
-      };
-      worker.onerror = () => { if (this.worker === worker) this.failWorker(); };
-    }
-    return this.worker;
   }
 
   private compatible(member: Member, group: Group): boolean {
@@ -159,9 +138,11 @@ export class BrowserEncodingPool {
       ]);
       if (this.disposed) return;
       this.reconcile();
-      const id = createOpaqueId();
-      this.sampleRequest = { id, timestamp: performance.now() };
-      this.post({ type: "sample", requestId: id });
+      for (const member of this.members) {
+        member.output = member.encoded.snapshot();
+        if (!member.pending && !member.replacement && member.output.frames > 0 &&
+          member.output.lastProducerId === (member.current?.producer.id ?? null)) member.mixed = false;
+      }
     } finally { this.polling = false; }
   }
 
@@ -175,7 +156,7 @@ export class BrowserEncodingPool {
           videoQualitySettingsEqual(member.profile, profile))) continue;
       changing.add(group);
       if (!group.ready || group.updating) continue;
-      for (const member of references) if (member.current === group && member.pending && !member.pending.requestId) member.pending = undefined;
+      for (const member of references) if (member.current === group && member.pending && !member.pending.selecting) member.pending = undefined;
       const next = { ...profile };
       const budget = Math.min(next.maxBitrate, Math.max(...references.map((member) => member.budget ?? group.budget)));
       group.budget = budget;
@@ -194,27 +175,41 @@ export class BrowserEncodingPool {
       if ([member.current, member.pending?.group].some((group) => group && (group.updating || changing.has(group)))) continue;
       if (member.pending) {
         const pending = member.pending;
-        if (!pending.requestId && member.current && this.compatible(member, member.current) &&
+        if (!pending.selecting && member.current && this.compatible(member, member.current) &&
           fits(member.current.output, member.budget) && pending.group.budget < member.current.budget) {
           member.pending = undefined;
           continue;
         }
-        if (!pending.requestId && !this.compatible(member, pending.group)) {
+        if (!pending.selecting && !this.compatible(member, pending.group)) {
           member.pending = undefined;
           continue;
         }
         const ownedBudget = pending.group.budget <= member.budget;
-        // The worker already waits for a real recovery frame. A rate-owned
+        // The output already waits for a real recovery frame. A rate-owned
         // downgrade need not wait another statistics window while the old
         // high-rate output keeps congesting the same path.
-        if (!pending.requestId && pending.group.ready &&
-          (fits(pending.group.output, member.budget) || (member.current && ownedBudget))) {
+        if (!pending.selecting && pending.group.ready &&
+          (fits(pending.group.output, member.budget) || ((member.current || member.carrier) && ownedBudget))) {
           const output = pending.group.output;
-          if (member.current || (output && noRegression(output, member.raw?.frameWidth ?? null,
+          // A fresh carrier has delivered no picture. Its tiny encode cannot
+          // establish a quality baseline for the first real output.
+          if (member.current || member.carrier || (output && noRegression(output, member.raw?.frameWidth ?? null,
             member.raw?.frameHeight ?? null, member.raw?.framesPerSecond ?? null, member.profile))) {
-            pending.requestId = createOpaqueId();
+            pending.selecting = true;
             member.mixed = true;
-            this.post({ type: "select", carrierId: member.id, producerId: pending.group.producer.id, requestId: pending.requestId });
+            member.encoded.select(pending.group.producer.id, () => pending.group.producer.requestKey(), () => {
+              if (member.disposed || member.pending !== pending) return;
+              member.current = pending.group;
+              member.pending = undefined;
+              member.encoderStats = createStatsAccumulator(); member.previousOutput = undefined;
+              if (!member.carrier) {
+                member.carrier = true;
+                member.replacement = member.configureCarrier().then((applied) => {
+                  if (!member.disposed && !applied) this.failSource(member.source);
+                }).catch(() => this.failSource(member.source)).finally(() => { member.replacement = undefined; });
+              }
+              this.prune();
+            });
           }
         }
         continue;
@@ -266,7 +261,11 @@ export class BrowserEncodingPool {
 
   private startGroup(member: Member, budget: number): Group {
     const profile = { ...member.profile };
-    const producer = new BrowserEncodingProducer(member.source, profile, member.codec!, this.worker!,
+    const producer = new BrowserEncodingProducer(member.source, profile, member.codec!, (frame) => {
+      for (const output of this.members) if (output.current === group || output.pending?.group === group) {
+        output.encoded.push(producer.id, frame);
+      }
+    },
       () => { group.failed = true; this.failSource(member.source); });
     const group: Group = { producer, source: member.source, profile, codecKey: member.codecKey!, budget, ready: false, failed: false };
     this.groups.add(group);
@@ -276,154 +275,29 @@ export class BrowserEncodingPool {
     return group;
   }
 
-  private onMessage(event: BrowserEncodingWorkerEvent): void {
-    if (this.disposed) return;
-    if (event.type === "frame") {
-      for (const id of event.carrierIds) {
-        const member = [...this.members].find((candidate) => candidate.id === id);
-        const carrier = member?.carrier;
-        if (!carrier || member.paused) continue;
-        carrier.context.fillStyle = "#080808"; carrier.context.fillRect(0, 0, 16, 16);
-        carrier.context.fillStyle = "#181818"; carrier.context.fillRect(carrier.frame++ % 16, 0, 1, 1);
-        carrier.track.requestFrame();
-      }
-    } else if (event.type === "key") {
-      const owner = [...this.members].find((member) => member.id === event.id) ??
-        [...this.groups].find((group) => group.producer.id === event.id);
-      if (!owner || owner.keyRequest || "producer" in owner && this.failedSources.has(owner.source)) return;
-      const request = "producer" in owner ? () => owner.producer.requestKey() : owner.requestKey;
-      owner.keyRequest = request().catch(() => {
-        if ("producer" in owner) {
-          if (this.groups.has(owner)) this.failSource(owner.source);
-        } else if (this.members.has(owner)) {
-          if (owner.disabled) owner.onFatal();
-          else this.failSource(owner.source);
-        }
-      }).finally(() => { owner.keyRequest = undefined; });
-    } else if (event.type === "selected") {
-      const member = [...this.members].find((candidate) => candidate.id === event.carrierId);
-      if (!member || member.pending?.requestId !== event.requestId || member.pending.group.producer.id !== event.producerId) return;
-      // This key was actually written. A newer profile remains intent for the next handoff.
-      member.current = member.pending.group;
-      member.pending = undefined;
-      member.encoderStats = createStatsAccumulator();
-      member.previousOutput = undefined;
-      member.mixed = true;
-      if (!member.carrier) this.installCarrier(member);
-      this.prune();
-    } else if (event.type === "sample") {
-      if (event.requestId !== this.sampleRequest?.id) return;
-      for (const sample of event.outputs) {
-        const member = [...this.members].find((candidate) => candidate.id === sample.carrierId);
-        if (!member) continue;
-        member.output = { ...sample, timestamp: this.sampleRequest.timestamp };
-        if (!member.pending && !member.replacement && sample.frames > 0 &&
-          sample.lastProducerId === (member.current?.producer.id ?? null)) member.mixed = false;
-      }
-      this.sampleRequest = undefined;
-    } else {
-      const group = [...this.groups].find((candidate) => candidate.producer.id === event.id);
-      const member = [...this.members].find((candidate) => candidate.id === event.id);
-      if (group) group.failed = true;
-      if (member) member.outputFailed = true;
-      const source = group?.source ?? member?.source;
-      if (source) this.failSource(source);
-    }
-  }
-
-  private installCarrier(member: Member): void {
-    if (member.disposed || member.replacement) return;
-    try {
-      const canvas = document.createElement("canvas"); canvas.width = canvas.height = 16;
-      const context = canvas.getContext("2d");
-      if (!context) throw new Error("Canvas capture unavailable");
-      context.fillRect(0, 0, 16, 16);
-      const track = canvas.captureStream(0).getVideoTracks()[0] as CanvasCaptureMediaStreamTrack | undefined;
-      if (!track || typeof track.requestFrame !== "function") {
-        track?.stop(); throw new Error("Manual canvas capture unavailable");
-      }
-      track.contentHint = "motion";
-      const carrier = { context, track, frame: 0 };
-      member.carrier = carrier;
-      member.replacement = member.replaceTrack(track).then((replaced) => {
-        if (member.disposed) return;
-        if (!replaced) {
-          track.stop(); member.carrier = undefined; member.disabled = true;
-          if (member.outputFailed || member.current?.failed) member.onFatal();
-        }
-      }, () => { if (!member.disposed) { track.stop(); member.carrier = undefined; this.failSource(member.source); } })
-        .finally(() => { member.replacement = undefined; });
-    } catch { this.failSource(member.source); }
-  }
-
   private restore(member: Member): void {
-    if (member.disposed || member.replacement) return;
+    if (member.disposed) return;
     member.mixed = true;
     member.pending = undefined;
-    let track: MediaStreamTrack;
-    try { track = cloneSenderVideoTrack(member.source); }
-    catch { member.onFatal(); return; }
-    track.enabled = !member.paused;
-    member.replacement = member.replaceTrack(track).then(async (replaced) => {
-      if (member.disposed) { if (!replaced) track.stop(); return; }
-      if (!replaced) {
-        track.stop(); member.disabled = true;
-        if (member.outputFailed || member.current?.failed) member.onFatal();
-        return;
-      }
-      if (member.outputFailed) {
-        const previousId = member.id;
-        const id = createOpaqueId();
-        const transform = new RTCRtpScriptTransform(this.ensureWorker(),
-          { kind: "carrier", id, passthrough: true } satisfies BrowserEncodingWorkerOptions);
-        member.sender.transform = transform;
-        member.id = id; member.transform = transform; member.outputFailed = false;
-        this.post({ type: "remove", id: previousId });
-        if (member.paused) this.post({ type: "pause", carrierId: id, paused: true });
-      } else {
-        this.post({ type: "passthrough", carrierId: member.id });
-      }
-      member.carrier?.track.stop(); member.carrier = undefined;
+    member.carrier = false;
+    member.replacement = member.configureCarrier().then((applied) => {
+      if (member.disposed) return;
+      if (!applied) { member.onFatal(); return; }
+      member.encoded.passthrough(member.requestKey);
       member.current = undefined;
       member.encoderStats = createStatsAccumulator(); member.previousOutput = undefined;
-      // M152 detach does not short-circuit its transform. Keep own-frame passthrough
-      // until the sender owner retires, and begin the real source on a fresh key.
-      await member.requestKey();
-    }).catch(() => {
-      track.stop();
-      if (!member.disposed) member.onFatal();
-    }).finally(() => { member.replacement = undefined; this.prune(); });
+    }).catch(() => { if (!member.disposed) member.onFatal(); })
+      .finally(() => { member.replacement = undefined; this.prune(); });
   }
 
   private failSource(source: MediaStreamTrack): void {
-    if (this.failedSources.has(source)) {
-      for (const member of this.members) if (member.source === source && !member.replacement &&
-        (member.outputFailed || member.current?.failed)) member.onFatal();
-      return;
-    }
+    if (this.failedSources.has(source)) return;
     this.failedSources.add(source);
     for (const member of this.members) if (member.source === source) {
       member.disabled = true;
       if (member.replacement) void member.replacement.then(() => this.restore(member));
       else this.restore(member);
     }
-  }
-
-  private failWorker(): void {
-    if (this.disposed) return;
-    const wasPooling = [...this.members].some((member) => !member.disabled);
-    this.worker?.terminate(); this.worker = null;
-    this.sampleRequest = undefined;
-    for (const group of this.groups) group.failed = true;
-    for (const member of [...this.members]) {
-      member.outputFailed = true;
-      this.failedSources.add(member.source);
-      member.disabled = true;
-      if (!wasPooling) member.onFatal();
-      else if (member.replacement) void member.replacement.then(() => this.restore(member));
-      else this.restore(member);
-    }
-    this.prune();
   }
 
   private updatePauses(): void {
@@ -448,9 +322,8 @@ export class BrowserEncodingPool {
     if (member.disposed) return;
     member.disposed = true;
     this.members.delete(member);
-    if (member.sender.transform === member.transform) member.sender.transform = null;
-    this.post({ type: "remove", id: member.id });
-    member.carrier?.track.stop(); member.carrier = undefined;
+    member.encoded.passthrough(member.requestKey);
+    member.carrier = false;
     member.current = undefined; member.pending = undefined;
     this.prune();
   }
@@ -462,8 +335,6 @@ export class BrowserEncodingPool {
     if (!this.members.size) {
       if (this.timer) clearInterval(this.timer);
       this.timer = undefined;
-      this.worker?.terminate(); this.worker = null;
-      this.sampleRequest = undefined;
     }
   }
 }

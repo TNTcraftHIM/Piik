@@ -7,8 +7,11 @@
 
 The [Browser pool research](../research/browser-local-encoding-pool.md) proves
 that an independent local WebRTC encoder can supply real video to multiple
-outgoing senders by replacing each sender's own encoded-frame payload. This
-preserves standard transform ownership and avoids making one downstream
+outgoing senders. The initial standard payload-only transform retained carrier
+metadata and failed intermittent VP8 startup checks. The
+selected refinement uses Chromium's existing encoded-stream API to retain the
+producer's encoded payload/type and exposed codec metadata, with the outgoing
+stream's RTP clock. It avoids making one downstream
 connection the shared encoding authority. Small carrier encodes and local
 transport/decoder work remain real costs. Measured savings and recovery vary
 by codec; the prototype is not production acceptance.
@@ -30,10 +33,14 @@ in [ADR-0011](./0011-browser-assisted-native-fanout.md) remains independently ow
    connects existing demand observations to group budgets and membership; it
    adds no congestion estimator, quality score or arbitrary resolution ladder.
 3. Reuse `HostPeer` and its existing signaling, sender-mutation and retirement
-   owners. A stable per-connection carrier binding installs its transform before
-   encoding starts and selects the group's encoded output. It writes each
-   carrier frame at most once, in order, by replacing its payload. It does not
-   write foreign-owner frames or fabricate native frame statistics.
+   owners. A connection-owned encoded output stays attached across source
+   changes. It copies complete producer frames, preserving codec/reference
+   metadata, and assigns the outgoing carrier's RTP timestamp. Its native source
+   clone is scaled to a tiny encoder input with `scaleResolutionDownBy`; there
+   is no synthetic canvas clock. Chromium's `createEncodedStreams()` path is
+   required for this composition. Do not force this through the standard
+   `RTCRtpScriptTransform` owner restrictions, use feature flags to weaken them,
+   or fabricate native frame statistics. Unsupported APIs use ordinary senders.
 4. Group compatibility includes source-track identity/generation, negotiated
    codec and codec parameters, Host ceilings, content intent, degradation
    preference and effective demand. Adapted dimensions alone are insufficient.
@@ -43,7 +50,9 @@ in [ADR-0011](./0011-browser-assisted-native-fanout.md) remains independently ow
    source ownership. Producers own their input clones; outgoing bindings own
    their carriers. Group queues, retained frames and references are bounded by
    admitted consumers and existing prepared operations. Last-use retirement
-   closes unused producers, local connections and worker resources.
+   closes unused producers and local connections. The outgoing encoded stream
+   belongs to its PeerConnection, so replacing a source cannot detach it or
+   create a second writer. Audio passes through the same API unchanged.
 6. Live settings and source replacement follow the existing requested/applied
    boundary. Prepare the replacement while retaining healthy output, reject
    stale completion, and release the old group only after the owning operation
@@ -54,6 +63,10 @@ in [ADR-0011](./0011-browser-assisted-native-fanout.md) remains independently ow
    dependency, codec and packetization metadata. Preserve ordering and discard
    obsolete data only at a valid recovery boundary. Carrier timestamps and
    sender reports must remain consistent with real content and audio timing.
+   A copied frame does not preserve every internal native capture timestamp;
+   paired source-age and played-audio measurements are required. Current
+   H264/VP8 connections do not negotiate generic dependency descriptors and
+   do not need another frame-ID mapping layer.
    Browser feature flags that relax ownership or metadata checks are not a
    product dependency.
 8. Keep producer, carrier, actual egress and receiver observations distinct.
@@ -89,6 +102,11 @@ Implementation and physical acceptance are tracked in [TODO](../todo.md).
   supports keyframe requests through `setParameters` encoding options.
 - [M152 transformer IDL](https://chromium.googlesource.com/chromium/src/+/refs/tags/152.0.7977.82/third_party/blink/renderer/modules/peerconnection/rtc_rtp_script_transformer.idl)
   does not expose `generateKeyFrame`; do not assume that API exists.
+- [M152 encoded frame implementation](https://raw.githubusercontent.com/chromium/chromium/152.0.7977.82/third_party/blink/renderer/modules/peerconnection/rtc_encoded_video_frame.cc)
+  exposes copy construction with validated RTP timestamp metadata.
+- [LiveKit encoded-stream capability detection](https://github.com/livekit/client-sdk-js/blob/main/src/e2ee/utils.ts)
+  recognizes the existing Chromium API. This is reuse of an available platform
+  boundary, not a claim that LiveKit provides this encoding pool.
 - [Pinned WebRTC transform delegate](https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/modules/rtp_rtcp/source/rtp_sender_video_frame_transformer_delegate.cc)
   retains original frame type and pre-transform size, motivating the metadata
   and accounting requirements above.

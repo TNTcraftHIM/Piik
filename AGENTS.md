@@ -88,6 +88,11 @@
 - Prefer the simplest cohesive design that is easy to use and maintain. Reuse
   mature components, keep ownership explicit, and remove superseded paths in
   the same change instead of retaining speculative flexibility or technical debt.
+- Apply good coding practice to every change: split modules around clear
+  responsibilities and state/lifecycle ownership, with cohesive internals and
+  narrow interfaces. Reuse proven shared behavior and abstract stable common
+  responsibilities; avoid both duplicate implementations and needless wrappers.
+  Review coupling and readability, not only file size or line count.
 - Judge a change by evidenced user value against its full implementation,
   maintenance, compatibility, and failure cost. A large measured gain may
   justify broad or breaking work; a small or speculative gain does not justify

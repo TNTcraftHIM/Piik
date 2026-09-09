@@ -7,50 +7,27 @@ and Git/PRs own completed history. A parked idea is not implementation authority
 
 ## Now
 
-2026-09-09 owner-requested research continuation: independently test a Browser
-node-local producer and two dummy/carrier egress senders. The earlier experiment
-borrowed a real child's encoded output and does not decide this architecture.
-Compare ordinary senders, quiet placeholders, live tiny carriers and standard
-own-frame payload replacement. Count all encoding/local-loopback work; verify
-source freshness, ordering, independent weak-path behavior, recovery and sender
-accounting before proposing product integration. Keep the completed Debug
-supplement on its separate branch; no main merge or production switch is implied.
+Finish the owner-authorized Browser encoding pool under
+[ADR-0014](./adr/0014-browser-node-local-encoding-pool.md), together with detailed
+Debug and their matched package acceptance. The independent source-owned producer
+is implemented using Chromium encoded streams, native scaled carriers and
+complete exposed codec metadata. The superseded payload-only Worker/canvas path
+has been removed. Unsupported APIs retain ordinary media; Native ingress,
+dedicated quality candidates and Browser SFU keep their established composition.
 
-The first [independent-producer experiments](./research/browser-local-encoding-pool.md)
-are complete and support continuing this candidate. Before any product adapter,
-resolve weak-entry latency, safe recovery/membership, carrier versus actual-media
-statistics, A/V synchronization and representative whole-process/GPU cost.
-The experimental budget bridge is not an accepted routing/media policy. Reuse
-existing Browser statistics owners in a proposed adapter; do not add a second
-congestion estimator, whole-tree cache, or periodic topology controller.
+The same pool path starts with the first eligible consumer; do not introduce an
+audience-count threshold. Preserve each direct child's adaptation, Host ceilings,
+actual receiver details and source/profile/pause ownership. No ancestor cache,
+custom congestion estimator, quality ladder or periodic topology controller.
+[Research](./research/browser-local-encoding-pool.md) owns bounded codec,
+weak-network, lifecycle, A/V, relay and cost evidence, including failed controls.
+Fewer full-size encodes alone do not establish total CPU savings.
 
-The owner now authorizes product integration after refinement. Match ordinary
-WebRTC viewing quality and recovery under the same constraints; reasonable
-adaptation time is acceptable, perfect seamlessness is not required. First
-finish weak-entry/recovery and A/V evidence, then record the accepted adapter
-boundary in the media ADR before connecting it to product senders. Keep the
-pool source-owned, consider direct children only, and reuse existing connection,
-capture, settings and statistics owners. Receiver details must remain measured
-inbound data. Sender details and quality evidence must describe real transmitted
-media and its assigned encoder, never the dummy carrier's encoder statistics.
-Check lifecycle/pause/source replacement, mixed ordinary/pool receivers and
-whole-process cost before integration acceptance. Do not deploy a partial adapter.
-
-Use one Browser pool path from the first eligible consumer, as requested after
-the singleton overhead comparison. Do not add an audience-count threshold or
-switch back and forth as the audience crosses it. Ordinary encoding remains
-the capability/failure fallback. Native already uses one required-output model
-for singleton and shared consumers.
-
-Current integration hold: the standard payload-only carrier still has intermittent
-VP8 startup/dependency stalls at 1080p. Do not deploy that path or fix it with
-another keyframe timer. A scoped Chromium encoded-stream comparison now keeps
-the producer frame's complete metadata, retimes it to the local carrier, and
-uses a natively scaled source clone. It passes initial healthy/weak A/V checks
-for both codecs and may remove the canvas and key-type rendezvous. Validate the
-complete replacement, record its supported API boundary, and delete the
-superseded implementation in the same phase if selected. The current product
-adapter is not yet accepted for release.
+Finish the remaining combined diagnostic, build and package checks before
+acceptance. Keep the Native ablation in the same phase: current consumer ownership
+must decide group reuse, and targeted recovery must not be duplicated by a
+second all-group broadcast. Its source changes preserve independent direct-child
+adaptation and encoded forwarding. Do not reopen a broad Client rewrite.
 
 The embedded-media phase is already integrated and deployed. The detailed Debug
 supplement and matched review package are complete on their separate branch,
@@ -82,6 +59,17 @@ The owner-confirmed phase order is:
    demonstrations consistent with the product. Existing piik sketches are input,
    not an accepted visual identity. Do not rename code, move domains, configure
    DNS/Pages or publish the new brand during the preceding media/debug work.
+   Include an owner-requested whole-repository ablation review, covering both
+   frontend and backend, by the main agent and/or an external reviewer. Check
+   duplicated implementation/state, misplaced ownership and reusable mature
+   modules before proposing replacements. Review module boundaries, interface
+   clarity, cohesion, coupling and useful shared abstractions as everyday coding
+   requirements, not only deletion opportunities. Prefer existing code and platform or
+   library capabilities; keep code understandable, cohesive and easy to maintain.
+   Measure material performance claims and preserve product behavior and viewing
+   quality. Remove only what the evidence shows is unnecessary; fewer lines alone
+   do not justify a rewrite, new abstraction, dependency or compatibility layer.
+   This is piik-stage work, not permission to expand the current media phase.
 
 Current evidence and limits:
 
@@ -101,11 +89,9 @@ Current evidence and limits:
 - The owner closed Win10 whole-display sharing. Quiet-source settings pass real
   WGC/Browser acceptance. Reopen distinct game/display failures only from new
   evidence, not a failed automation focus precondition.
-- [Browser encoded reuse](./research/advanced-peer-distribution.md#september-9-results-and-decision)
-  completed after the mainline checkpoint. Late join can recover with one keyframe
-  request, but legacy fanout fails independent quality and sender accounting.
-  Standard Transform rejects cross-source frames. No product adapter is accepted.
-  Keep normal Browser senders and the verified optional Client fanout.
+- The earlier borrowed-child Browser experiment failed independent quality and
+  accounting; it does not decide the independent-producer composition now owned
+  by ADR-0014. Keep its failed evidence without retaining a second implementation.
 - Run one bounded capture/codec workload at a time, with cleanup before the next.
   Keep VM workloads out of that interval and use stable executable build paths.
 

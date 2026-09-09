@@ -345,6 +345,7 @@ function sameParameter(
 export async function configureVideoSender(
   sender: RTCRtpSender,
   profile: QualityProfile,
+  scaleResolutionDownBy?: number,
 ): Promise<VideoSenderParameterReadback> {
   const parameters = sender.getParameters();
   if (parameters.encodings.length === 0) {
@@ -356,7 +357,7 @@ export async function configureVideoSender(
   parameters.encodings[encodingIndex]!.maxFramerate = profile.maxFramerate;
   if (parameters.encodings.length === 1) {
     parameters.encodings[encodingIndex]!.scaleResolutionDownBy =
-      requestedScaleResolutionDownBy(sender, profile);
+      scaleResolutionDownBy ?? requestedScaleResolutionDownBy(sender, profile);
   }
   parameters.degradationPreference = profile.degradationPreference;
 

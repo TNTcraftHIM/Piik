@@ -1,283 +1,150 @@
 # Browser Node-Local Encoding Pool
 
-Reviewed and executed 2026-09-09 on Windows, Chrome 152.0.7977.82. This is a
-research continuation of [encoded fanout](./advanced-peer-distribution.md), not
-a deployed media adapter. The complete Debug supplement remains separate.
+Reviewed and executed 2026-09-09 on Windows, Chrome 152.0.7977.82.
+[ADR-0014](../adr/0014-browser-node-local-encoding-pool.md) owns the selected
+design. [TODO](../todo.md) owns combined Debug, package and release acceptance.
+This branch has not been deployed.
 
-## Question And Current Answer
+## Result And Scope
 
-An independent local encoder can feed two Browser senders without choosing one
-real downstream connection as the encoding authority. A standard-transform
-prototype now delivers this composition. Therefore the earlier A-limited/B-low
-result does not reject the owner's node-local cache model.
+An independent local WebRTC producer can supply compatible direct children
+without making one real child the encoding authority. Each child's existing
+connection retains RTP, ICE, congestion control and recovery. Different weak
+demands can require separate local producers; healthy siblings keep their
+original producer. There is no ancestor cache or application quality ladder.
 
-The viable tested carrier encodes tiny changing 16x16 frames at the required
-cadence, then replaces each carrier's own encoded payload with the shared real
-video. It preserves standard frame ownership. It is one full-size encode plus
-two cheap encodes, not literally one encoder or one total Encode invocation.
-No Browser feature flag enables this data replacement.
+The selected Chromium encoded-stream path copies the producer's payload, type
+and exposed codec metadata, assigning the outgoing carrier's RTP timestamp.
+Carriers use native scaling on source clones. A new eligible connection starts
+with that tiny clock and a real producer; it does not first warm another
+full-size encoder. Unsupported APIs and failed pooling retain ordinary senders.
+The original capture/received track is never replaced by a carrier.
 
-The prototype also creates a separate local low-budget encoding group when a
-child cannot afford the original. The child's existing PeerConnection remains;
-only its assigned encoded source changes. Stock WebRTC inside the local group
-adapts real picture dimensions/FPS. This is closer to the Client model than the
-earlier cross-sender frame-copy test, but Browser's feedback and carrier
-bookkeeping are not the same native-library integration.
+This is one full encode plus small carrier encodes for compatible children,
+not literally one encoder or one Encode call. Each producer also has a local
+connection and receiver decoder. Browser relay reuses its local encoded output
+across direct children; it still decodes/re-encodes its received source.
 
-## Composition And Reference Boundaries
+## Why The Earlier Implementations Were Removed
 
-```text
-original canvas/raw input -> independent local P encoder -> current encoded output
-                                    |                       |              |
-                              local receiver         A own-frame     B own-frame
-                                                     carrier         carrier
-                                                        |               |
-                                                   real child A    real child B
+- Borrowing a real child's encoder couples siblings to that child's adaptation.
+  It does not test an independent producer.
+- Quiet placeholders omit native sender accounting and do not provide a usable
+  clock. They are not a zero-cost product implementation.
+- Standard own-frame payload replacement can transmit real pictures, but retains
+  carrier metadata. At 1080p, VP8 intermittently stalled. Extra carrier key-type
+  rendezvous and a canvas clock did not establish reliable parity.
+- The selected complete-frame API removes that Worker, canvas and rendezvous.
+  It preserves exposed metadata, not every internal native capture timestamp;
+  played-audio and source-age measurements remain necessary.
+- Starting two full ordinary encoders before pooling caused a transient extra
+  encoding load and, in one run, 500-700 ms early played-audio lag. Starting the
+  tiny carrier immediately removed that unnecessary warmup; the next VP8
+  1080p check measured offsets between about -64 and +42 ms.
+- Hand-subtracting audio/repair from available BWE introduced another inaccurate
+  allocator. The pool now uses the existing sender's native video payload
+  target, bounded by Host settings. This is not the same unit conversion as
+  Native's measured RTP-to-codec budget, which remains necessary.
 
-when A needs less: original input -> local L encoder -> A carrier
-                  P output continues unchanged    -> B carrier
-```
+The replaced experiments and selected original measurements remain recoverable
+at Git checkpoint `4e3de79`; runtime code and the runner keep only the selected
+implementation. Failed cases are evidence, not acceptance passes.
 
-Only direct children participate. No ancestor query, tree-wide cache discovery,
-DataChannel media protocol, server forwarding dependency or codec-family change
-was introduced. P and L currently have ordinary local PeerConnections, including
-their local receiver decode cost. All such work is counted.
+## Current Executed Evidence
 
-The [W3C stream-processing rules](https://www.w3.org/TR/webrtc-encoded-transform/#stream-processing)
-reject foreign owners and reordered/replayed frame counters. They permit
-modifying an existing frame's data. [LiveKit's frame cryptor](https://github.com/livekit/client-sdk-js/blob/main/src/e2ee/worker/FrameCryptor.ts)
-is a mature example of same-frame payload transformation, not an existing
-complete encoding pool. No mature, independently audited pool satisfying all
-Screener's quality/recovery obligations was found in this review.
+The [selected summaries](./data/browser-local-pool.json) retain exact fixture
+hashes, raw artifact names, delivered frames, source ages and limitations.
+The actual `HostPeer` and pool are bundled into the fixture; it does not copy
+their implementation. All workloads ran serially.
 
-Pinned Chromium/WebRTC retains pre-transform payload size and frame type in
-its [transform delegate](https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/modules/rtp_rtcp/source/rtp_sender_video_frame_transformer_delegate.cc).
-Added payload is accounted as post-encode overhead by the
-[RTP sender](https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/call/rtp_video_sender.cc).
-Consequently the dummy encoder's dimensions, QP and limitation state are not
-evidence about the borrowed real picture. Restored sender reports do not prove
-complete A/V synchronization or correct Screener quality-convergence evidence.
+| Actual product path | Observed result |
+| --- | --- |
+| VP8, 1080p30, 400 kbps constrained A | A reached 480x270 and returned to 1080p; B kept 1080p. A decoded 194 frames in 14 constrained seconds and 948 in 40 recovery seconds. |
+| H264, same constraint | A reached 1280x720 and returned to 1080p; B kept 1080p. A decoded 368 and 1,142 frames in the corresponding windows. |
+| Both codecs, live settings | 720p60, quiet-source 480p30, pause, resume and new source delivered the requested ceilings without replacing the outgoing connections. |
+| Producer failure | Both codecs returned to ordinary sending on the existing connections; VP8 delivered 181 frames per child in six seconds, with no retained groups. |
+| VP8, late child | Both children shared the existing producer and decoded fresh 1080p, without backward source IDs. |
+| VP8, received-track relay | One local producer supplied two children at 1080p; source-age p95 was about 71/122 ms, with played audio present. |
+| Actual hidden page | Native fake source continued at its available 20 fps; both receivers decoded 200 frames in ten seconds. The first run had a temporary profile-cleanup failure, recorded separately from media behavior. |
 
-## Executed Comparisons
+The source generates moving bars and a frame-ID barcode. It is not a game
+perceptual-quality benchmark. Played audio is recaptured from the receiving
+video element; this is element-level synchronization, not physical speakers
+or display scanout. Hidden-page checks use a native fake source because a
+background canvas timer is itself throttled. They establish neither real-game
+60 fps endurance nor background audio timing.
 
-The [runner](../../scripts/browser-local-pool-probe.ts) owns an isolated Chrome,
-loopback page server and cleanup. [Page fixture](../../scripts/browser-local-pool-page.js)
-generates a moving source with a frame-ID barcode. Receiver callbacks read that
-ID to measure freshness/age and detect repeated/backward IDs; this is not a
-pixel-quality or perceptual benchmark. A single FIFO per output plus the latest
-available own carrier avoids serially blocking A on B. Recovery discards obsolete
-queued frames only at a valid keyframe boundary; key/delta carrier types are
-aligned through existing keyframe requests.
+The constrained runs use a test-only forward UDP bridge with about 250 ms
+maximum queued service; reverse feedback is unshaped. They are not a model of
+public NAT, geographic RTT or every congestion/loss pattern. Reduced quality
+and temporary stalls under real constraints remain possible.
 
-For network cases, a [test-only UDP bridge](../../scripts/browser-pool-shaper.mjs)
-replaces both A ICE candidate descriptions with its loopback sockets. It limits
-forward traffic to 120 kbps with at most about 250 ms queued service, then releases
-the limit. Reverse feedback remains unshaped. Current artifacts retain nominated
-pair references, proxy ports and per-phase byte/drop observations. This is real
-packet shaping on a local path, not a public-NAT or Internet congestion model.
+## Cost And Accounting
 
-The [selected results](./data/browser-local-pool.json) retain limitations as well
-as successes. Runtime completion and process cleanup do not mean product
-acceptance. Earlier development runs without code hashes are labeled; later
-reports include the exact page-fixture SHA-256. No media payload, user session or
-real invitation is retained.
+In one matched actual-product VP8 1080p30 comparison, the ordinary pair made
+350 full-size encodes in six seconds, using about 1,201 ms summed encode time.
+The pool made 170 full-size and 342 tiny encodes, using about 516 ms summed
+encode time. Whole isolated Chrome CPU was 9.23 versus 8.95 CPU-seconds.
+The fixture includes source drawing, barcode reads, all receiving pages and the
+extra producer receiver; this is not Host-only CPU, GPU or thermal measurement.
 
-Run one physical workload at a time from the repository root:
+Earlier independent-producer comparisons showed a larger whole-fixture VP8
+saving, but H264 showed no total CPU win despite fewer full encodes. Do not
+generalize one percentage or count dropped frames as an optimization.
+The current H264 pair likewise reduced summed encode time from about 1,649 to
+927 ms, while whole-fixture CPU increased from 4.17 to 4.56 CPU-seconds over six
+seconds (about 0.065 of one CPU core). Less full-resolution encoding does not
+guarantee lower overall CPU on hardware codecs.
+The owner accepts a uniform path from the first eligible consumer, without
+an audience-count threshold. Singleton and hardware costs remain explicit.
+
+Receiver details stay real inbound observations. Sender transport bytes/loss
+belong to each connection; dimensions/cadence describe the frames actually
+written; native limitation evidence comes from the assigned real producer.
+Shared encode counts/total encode time are not duplicated per child.
+Retired producer samples keep their latest per-instance report rather than
+reverting to an older polling snapshot.
+
+## Reproduction
+
+Use the existing isolated-browser harness and stable executable paths:
 
 ```sh
-npx tsx scripts/browser-local-pool-probe.ts ordinary --1080
-npx tsx scripts/browser-local-pool-probe.ts carrier --1080
-npx tsx scripts/browser-local-pool-probe.ts carrier --h264 --late
-npx tsx scripts/browser-local-pool-probe.ts ordinary --network
-npx tsx scripts/browser-local-pool-probe.ts carrier --network --auto
+npx tsx scripts/browser-local-pool-probe.ts ordinary --1080 --av --preference=balanced
+npx tsx scripts/browser-local-pool-probe.ts carrier --1080 --av --preference=balanced
+npx tsx scripts/browser-local-pool-probe.ts carrier --1080 --av --network --auto --rate=400000 --preference=balanced
+npx tsx scripts/browser-local-pool-probe.ts carrier --1080 --av --lifecycle
+npx tsx scripts/browser-local-pool-probe.ts carrier --1080 --av --relay
+npx tsx scripts/browser-local-pool-probe.ts carrier --1080 --background
 ```
 
-Set `CHROME_PATH` on non-Windows hosts or when using another Chromium binary.
-Add `--h264` for the second codec. `quiet` and `live` select the legacy-copy
-controls; `carrier` uses standard own-frame data replacement. `--weak` is a
-sender-parameter constraint, while `--network` uses the packet bridge.
-`--derive` selects the known-budget split control; `--feedback` then applies
-the observed budget without automatic rejoining. `--split` is the ordinary-sender
-fallback control. The failed no-local-decode ablation is explicit via
-`--no-local-decode --no-local-pli`. Outputs are unique files under
-`build/browser-local-pool`; summarize them with
-`node scripts/browser-local-pool-summary.mjs <result.json> ...`.
+Add `--h264`, `--single` or `--late` for the corresponding case. Set
+`CHROME_PATH` for another installed Chromium binary. `--auto` extends the
+recovery observation; product code owns all adaptation. Results go to ignored
+`build/browser-local-pool`; summarize with
+`node scripts/browser-local-pool-summary.mjs <result.json>`.
+A successful process exit does not establish visual/performance parity.
 
-### Healthy Work
+## Primary References And Remaining Boundaries
 
-Two six-second 1080p30 VP8 comparisons gave:
+- [W3C Encoded Transform](https://www.w3.org/TR/webrtc-encoded-transform/#stream-processing)
+  enforces standard frame owner/order. The selected legacy API is a different
+  available API boundary, not a feature flag relaxing those checks.
+- [Chromium M152 encoded frame](https://raw.githubusercontent.com/chromium/chromium/152.0.7977.82/third_party/blink/renderer/modules/peerconnection/rtc_encoded_video_frame.cc)
+  supports copy construction with validated RTP timestamp metadata.
+- [Pinned WebRTC transform delegate](https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/modules/rtp_rtcp/source/rtp_sender_video_frame_transformer_delegate.cc)
+  reconstructs copied native frames; internal capture/presentation timing is
+  not wholly preserved. Current negotiated VP8/H264 connections lack generic
+  dependency-descriptor extensions, so no frame-ID mapping was added.
+- [LiveKit capability detection](https://github.com/livekit/client-sdk-js/blob/main/src/e2ee/utils.ts)
+  recognizes `createEncodedStreams()`; it is not itself a reusable encoding pool.
+- [WebRTC stats](https://www.w3.org/TR/webrtc-stats/#dom-rtcoutboundrtpstreamstats-targetbitrate)
+  distinguishes the video encoder payload target from link bandwidth.
+- [Chrome timer throttling](https://developer.chrome.com/blog/timer-throttling-in-chrome-88/)
+  explains why a JS canvas timer is not a reliable hidden-page media clock.
 
-| Measure | Ordinary two real senders | Independent P + two carriers |
-| --- | ---: | ---: |
-| Full-size encoded frames | 366 / 364 total | 183 / 182 |
-| Tiny carrier frames | 0 | 366 / 364 total |
-| Summed encode time | 1320 / 1284 ms | 497 / 477 ms including carriers |
-| Whole isolated Chrome CPU time | 9.382 / 9.383 CPU-seconds | 7.486 / 7.712 CPU-seconds |
-| Received picture | Both 1920x1080 | Both 1920x1080 |
-
-Whole-Chrome CPU time includes the extra local decode and transport, both real
-test receivers and barcode observations. These two short runs suggest roughly
-18-20% lower whole-fixture CPU cost; they are not Host-only CPU, GPU utilization,
-thermal or perceptual-quality measurements. Output bitrate differed between
-runs, and encode time is not CPU time. Do not generalize the percentage.
-
-H264 is materially different. The paired 1080p check reduced summed encode time
-from 2168 ms to 905 ms including carriers, but whole Chrome CPU was 4.454 versus
-4.531 CPU-seconds: no measured total CPU win. Both receivers decoded 182 frames.
-A later keyframe-queue cleanup retained that cadence and lowered picture-age
-p95 from about 100/107 ms to 70/78 ms, still above the ordinary 41/49 ms result.
-This preserves the owner's overhead concern; H264 adoption cannot be justified
-by counting encoders alone.
-
-### Weak-Path Isolation And Recovery
-
-Quiet placeholders isolate P from A but retain missing sender accounting.
-Live standard carriers restore reports and frame counts; simply replacing their
-payload does not automatically fit the real video to the available budget.
-With a 50 kbps parameter ceiling, one carrier still sent about 455 kbps. Under
-actual 120 kbps shaping, unadapted sharing gave A only 27 decoded frames during
-14 seconds, with multi-second stale playback, while B remained healthy.
-
-Creating a separate 80 kbps local L group demonstrates the missing ownership
-boundary: A received roughly 30 fps at 320x180 and B retained 640x360. This
-manual split uses a known test budget and is not evidence of automatic detection.
-Immediately reconnecting A to P when the shaper releases causes about 1.4 seconds
-of stale playback; a link-capacity change is not a safe rejoin signal.
-
-The automatic arm reads the existing candidate-pair bandwidth estimate every
-two seconds, applies it as the L sender's bitrate ceiling and waits for L's
-full-size/non-limited output plus sufficient budget before rejoining P. The
-split decision compares that estimate with measured P output bitrate. These
-are explicit experimental membership/budget bridges, not a claim that stock
-WebRTC already wires feedback between the senders or an accepted product rule.
-No second congestion estimator was written.
-
-Both VP8 and H264 automatic arms split and rejoined once in their final traces,
-with B retaining high resolution. VP8 recovered sustained fresh output with
-about 243 ms p95 source age during the forty-second release window. H264 did
-the same with about 424 ms p95. The constrained transitions are still worse than
-ordinary senders: VP8's first split includes a 1.4-second render gap; H264's
-limited interval reaches about 1.42-second p95 age versus about 486 ms in its
-ordinary control. Release-window lengths differ, so compare their raw phase
-boundaries before treating aggregate percentiles as a performance ranking.
-
-An H264 late-join check also delivers fresh source frames after joining and
-keyframe alignment. Frame-ID order checks do not establish bit-exact decoder
-reference correctness or A/V synchronization. Those remain required.
-
-### Ablations And Measurement Corrections
-
-- Flashing the entire tiny H264 source black/white caused repeated keyframes.
-  Moving one dim pixel supplies fresh frames without that scene-change workload.
-- An async transform sink that waits for each producer frame can accumulate old
-  carrier timestamps. The current middle layer keeps one latest carrier and
-  consumes the producer FIFO independently; this reduced avoidable latency.
-- Serialized sender parameter operations eliminate keyframe/rate update races.
-  Adding a parameter await before installing the transform caused one failed
-  startup experiment that delivered only 16x16 placeholders; it is excluded
-  from performance claims.
-- Dropping local receiver frames avoids decoding but causes repeated PLI and
-  keyframe work. Removing PLI/FIR from that local offer did not eliminate the
-  observed requests. This arm is not selected as a cost optimization.
-- Retired encoder counters retain their final values; missing counters must not
-  subtract earlier work. Sender-report counts use report deltas, not the number
-  of stats objects. The prototype's key realignment counter is not a decoder
-  corruption counter.
-
-## Product Adapter Refinement
-
-The owner accepted integration after refinement in
-[ADR-0014](../adr/0014-browser-node-local-encoding-pool.md). Current branch code
-uses separate producer, transform, pool-lifetime and stateless statistics modules
-behind the existing `HostPeer`; ordinary join and relay paths use that owner.
-Native ingress, dedicated quality candidates and the existing SFU simulcast
-publisher retain their independently accepted paths. Implementation is not
-production activation or completed acceptance.
-
-The owner prefers one pool path even for a singleton. Two singleton VP8 1080p30
-comparisons measured an extra 0.37 and 1.09 CPU-seconds per six-second window;
-H264 added 0.145 CPU-seconds in one paired window. That is roughly 0.06/0.18
-and 0.024 CPU cores averaged over those intervals, not system-wide percentage
-points or a universal overhead guarantee. Received frame cadence was preserved.
-Audience-count activation was removed; unsupported/failed pooling still uses
-ordinary encoding. Native already has one required-output model at either count.
-
-Refinement removed the hand-calculated BWE/audio/retransmission budget bridge.
-The adapter now forwards the native sender's `targetBitrate`, bounded by the Host
-ceiling. That is a native encoder allocation, distinct from actual bytes and from
-the connection-wide bandwidth estimate. The
-[statistics specification](https://www.w3.org/TR/webrtc-stats/#dom-rtcoutboundrtpstreamstats-targetbitrate)
-defines this distinction. This avoids another overhead model and application
-minimum bitrate. A valid lower-output keyframe may be selected before a full
-rate-measurement window; the worker already supplies the recovery-frame fence.
-An exclusively owned group adapts in place instead of recreating itself when
-its budget falls. Obsolete unsubmitted lower work is cancelled after recovery.
-
-Other measured corrections:
-
-- Common live settings update the existing producer. The shared owner receives
-  final Host intent, not HostPeer's temporary startup preference. Producers reuse
-  the existing five-encoded-frame startup rule, with queued work reading current
-  intent so it cannot replay an older bitrate/profile.
-- Tiny carriers are requested by real producer frame events. There is no main-
-  thread canvas timer. Normal Chrome background activation, without disabling
-  timer throttling, retained the native fake source's 20 fps at both receivers;
-  that source check does not establish real-game 60 fps endurance.
-- M152 `setTransform(null)` detaches without enabling native short-circuiting.
-  A dead worker therefore recovers by reattaching the existing own-frame
-  passthrough implementation, on the same sender and connection. VP8/H264
-  lifecycle checks delivered 181/180 frames per receiver over six seconds after
-  failure, with about 88-91 ms p95 source age and zero retained encoder groups.
-  [M152 sender source](https://chromium.googlesource.com/chromium/src/+/refs/tags/152.0.7977.82/third_party/blink/renderer/modules/peerconnection/rtc_rtp_sender.cc)
-  owns this implementation fact.
-- Receiver details remain actual inbound statistics. Sender projections combine
-  real forwarded dimensions/cadence and the assigned producer's native quality
-  window with that connection's transport counters. Shared encoder call counts
-  and total encode time are not duplicated as independent per-child work.
-
-## Remaining Acceptance
-
-Later 1080p product runs exposed intermittent VP8 startup stalls despite
-successful writes and live connections. Holding a carrier key can preserve its
-owner counter but introduces timing skew; payload-only replacement still
-retains the carrier's codec/reference metadata. This candidate is therefore
-not accepted merely because lower-resolution bounded comparisons improved.
-
-A narrower Chromium `createEncodedStreams()` comparison preserves the complete
-producer frame through the public `RTCEncodedVideoFrame` copy constructor, with
-the carrier's RTP timestamp supplied as constructor metadata. A source clone is
-scaled natively; no dummy canvas is needed. With 1080p30, 400 kbps shaped A and
-unshaped B, the first VP8 run decoded 183 A frames over the constrained fourteen
-seconds and 1,163 over the following forty seconds; B retained 1080p. H264
-decoded 404 and 1,206 respectively. Neither recorded backward IDs; synchronized
-audio pulses were received. These synthetic runs use maintain-resolution and
-are not game-content perceptual validation. Earlier legacy A/V attempts omitted
-the required audio stream passthrough and are not valid A/V evidence.
-
-This is a different API boundary from standard `RTCRtpScriptTransform` ownership,
-not a relaxed flag on that standard. [LiveKit capability detection](https://github.com/livekit/client-sdk-js/blob/main/src/e2ee/utils.ts)
-still recognizes the Chromium encoded-stream API; it does not provide a complete
-reusable encoding pool. Full-size adaptation, source switch, pause, cold/late
-join, fallback and lifecycle cost must be checked before choosing the replacement.
-Unsupported Browsers retain ordinary senders. No browser feature flags or future
-`RTCEncodedSource` implementation are assumed.
-
-Continue this candidate; do not reject Browser pooling on the older experiment.
-Before product activation, resolve these concrete obligations:
-
-1. Integrate demand sampling with existing media-stat ownership, and compare
-   faster event/feedback options against the measured weak-entry gap. No blind
-   immediate rejoin, room-wide minimum or periodic topology controller.
-2. Keep source, carrier, actual egress and receiver evidence distinct. Feed
-   quality convergence trustworthy actual-media evidence; never overwrite native
-   stats to make a dummy appear to be the real encoder.
-3. Verify recovery dependency metadata, synchronized audio/video, pause/source
-   replacement, producer failure and bounded queues under longer lossy runs.
-4. Measure Host process/GPU cost on representative game content. Use the existing
-   ordinary sender path when reuse does not improve the agreed cost/experience;
-   do not ship H264 merely because VP8's short CPU comparison improved.
-
-The experimental [RTCEncodedSource proposal](https://chromestatus.com/feature/5177374353260544)
-may eventually remove carrier plumbing, but installed Chrome 152 does not expose
-it. It is a separate future lead, not a prerequisite for investigating the
-standard same-frame carrier prototype already demonstrated here.
+The future [RTCEncodedSource proposal](https://chromestatus.com/feature/5177374353260544)
+is not exposed by the installed M152 Browser. No future API, feature flag, SFU
+policy change, Browser cross-level encoded passthrough or public-network
+performance guarantee is assumed. Matching Debug/artifact acceptance and
+representative game/hardware feedback remain separate from these bounded runs.

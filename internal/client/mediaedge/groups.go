@@ -93,6 +93,18 @@ func (source *Source) planGroups(demands []outputDemand) (OutputPlan, error) {
 			delete(source.memberships, consumer)
 		}
 	}
+	// The previous frame's active bit alone may outlive its last handoff.
+	inUse := func(group *outputGroup) bool {
+		if group == nil || !group.active {
+			return false
+		}
+		for _, demand := range demands {
+			if demand.active && (demand.consumer.CurrentSource() == group.media.Source || source.memberships[demand.consumer] == group) {
+				return true
+			}
+		}
+		return false
+	}
 	for _, demand := range demands {
 		if !demand.active || !demand.lower {
 			if source.memberships[demand.consumer] != nil {
@@ -105,14 +117,27 @@ func (source *Source) planGroups(demands []outputDemand) (OutputPlan, error) {
 		for slot := 0; slot < len(source.outputBitrates); slot++ {
 			group := source.groups[slot]
 			if group != nil && source.outputBitrates[slot] > 0 && group.budget == demand.budget {
-				selected = group
-				break
+				if selected == nil || inUse(group) {
+					selected = group
+				}
+				if inUse(group) {
+					break
+				}
 			}
 		}
-		if selected == nil {
+		if selected == nil || !inUse(selected) {
 			// A group's rates can change in place only when no other current or
 			// requested member still needs a different budget.
-			ordered := []*outputGroup{source.memberships[demand.consumer], source.groupForMedia(demand.consumer.CurrentSource())}
+			owned := []*outputGroup{source.memberships[demand.consumer], source.groupForMedia(demand.consumer.CurrentSource())}
+			var ordered []*outputGroup
+			for _, group := range owned {
+				if inUse(group) {
+					ordered = append(ordered, group)
+				}
+			}
+			// Keep an owned live pipeline before reviving an inactive cached match.
+			ordered = append(ordered, selected)
+			ordered = append(ordered, owned...)
 			for slot := 0; slot < len(source.outputBitrates); slot++ {
 				if group := source.groups[slot]; group != nil {
 					ordered = append(ordered, group)

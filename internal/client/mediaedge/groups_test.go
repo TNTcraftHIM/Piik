@@ -95,12 +95,37 @@ func TestOutputGroupsShareSplitRejoinAndRetire(t *testing.T) {
 	if retired.Active[gb.slot] {
 		t.Fatal("last lower member did not release its encoder")
 	}
+	demands[0].active = false
+	if inactive := plan(); inactive.Active[ga.slot] || inactive.Active[gb.slot] {
+		t.Fatal("disconnected consumer kept an output active")
+	}
+	demands[0].active = true
 	demands[0].lower = true
 	demands[0].original = false
 	demands[0].budget = 300_000
 	reactivated := plan()
 	if !reactivated.Active[gb.slot] || reactivated.Active[1] || source.memberships[a] != gb {
 		t.Fatal("inactive compatible group could not reactivate")
+	}
+	source.installGroup(gb, false)
+	started := gb.start
+	source.groupRecovery.Store(0)
+	demands[0].budget = ga.budget
+	repriced := plan()
+	if source.memberships[a] != gb || a.CurrentSource() != gb.media.Source ||
+		!repriced.Active[gb.slot] || repriced.Active[ga.slot] || repriced.Bitrates[gb.slot] != ga.budget ||
+		gb.start != started || source.groupRecovery.Load() != 0 {
+		t.Fatalf("inactive budget match replaced live pipeline: member=%v source=%v active=%v rate=%d want=%d start=%v/%v recovery=%d", source.memberships[a] == gb, a.CurrentSource() == gb.media.Source, repriced.Active, repriced.Bitrates[gb.slot], ga.budget, gb.start, started, source.groupRecovery.Load())
+	}
+	c := &groupTestConsumer{source.media.Source}
+	demands = append(demands, outputDemand{consumer: c, budget: ga.budget, active: true, lower: true})
+	plan()
+	if source.memberships[c] != gb {
+		t.Fatal("inactive budget match took precedence over a compatible active output")
+	}
+	source.installGroup(gb, false)
+	if settled := plan(); settled.Active[ga.slot] || c.CurrentSource() != gb.media.Source {
+		t.Fatal("last handoff retained an unneeded output")
 	}
 	if err = gb.media.BeginFrame(tick+time.Nanosecond, time.Unix(0, 0).Add(tick+time.Nanosecond)); err != nil {
 		t.Fatal(err)

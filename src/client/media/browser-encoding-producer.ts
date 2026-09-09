@@ -1,6 +1,6 @@
 import { createOpaqueId } from "../lib/opaque-id";
 import { maxEncodedVideoFrames } from "../webrtc/stats";
-import type { BrowserEncodingWorkerMessage, BrowserEncodingWorkerOptions } from "./browser-encoding-worker";
+import { encodedStreams } from "./browser-encoding-output";
 import {
   applyVideoCaptureProfile, cloneSenderVideoTrack, configureVideoSender,
   needsStartupVideoProfile, startupVideoProfile, STARTUP_VIDEO_ENCODED_FRAMES,
@@ -14,6 +14,8 @@ export class BrowserEncodingProducer {
   private input: MediaStreamTrack | null = null;
   private videoSender: RTCRtpSender | null = null;
   private video: HTMLVideoElement | null = null;
+  private readonly streamAbort = new AbortController();
+  private streamWriter: WritableStreamDefaultWriter<RTCEncodedVideoFrame> | null = null;
   private parameterTail = Promise.resolve();
   private disposed = false;
   private paused: boolean;
@@ -25,7 +27,7 @@ export class BrowserEncodingProducer {
     readonly source: MediaStreamTrack,
     private desiredProfile: QualityProfile,
     private readonly codec: RTCRtpCodec,
-    private readonly worker: Worker,
+    private readonly onFrame: (frame: RTCEncodedVideoFrame) => void,
     private readonly onFailure: () => void,
   ) {
     this.desiredProfile = { ...desiredProfile };
@@ -47,12 +49,20 @@ export class BrowserEncodingProducer {
       track.enabled = !this.paused;
       this.source.addEventListener("ended", this.fail);
       track.addEventListener("ended", this.fail);
-      const send = this.send = new RTCPeerConnection({ iceServers: [] });
+      const send = this.send = new RTCPeerConnection({ iceServers: [], encodedInsertableStreams: true } as RTCConfiguration);
       const receive = this.receive = new RTCPeerConnection({ iceServers: [] });
       const transceiver = send.addTransceiver(track, { direction: "sendonly", streams: [new MediaStream([track])] });
       this.videoSender = transceiver.sender;
-      transceiver.sender.transform = new RTCRtpScriptTransform(this.worker,
-        { kind: "producer", id: this.id } satisfies BrowserEncodingWorkerOptions);
+      const streams = encodedStreams(transceiver.sender), writer = streams.writable.getWriter();
+      this.streamWriter = writer;
+      void streams.readable.pipeTo(new WritableStream({ write: async (frame) => {
+        if (this.disposed) return;
+        // Outputs clone synchronously before the local decoder consumes the original.
+        this.onFrame(frame);
+        await writer.write(frame);
+      } }), { signal: this.streamAbort.signal }).then(this.fail, this.fail).finally(() => {
+        try { writer.releaseLock(); } catch { /* Owner abort retired the writer. */ }
+      });
       transceiver.setCodecPreferences([this.codec]);
       const video = this.video = document.createElement("video");
       video.autoplay = true;
@@ -141,7 +151,9 @@ export class BrowserEncodingProducer {
     this.source.removeEventListener("ended", this.fail);
     this.input?.removeEventListener("ended", this.fail);
     this.input?.stop();
-    if (this.videoSender) this.worker.postMessage({ type: "remove", id: this.id } satisfies BrowserEncodingWorkerMessage);
+    this.streamAbort.abort();
+    void this.streamWriter?.abort().catch(() => undefined);
+    this.streamWriter = null;
     for (const connection of [this.send, this.receive]) {
       if (!connection) continue;
       connection.onicecandidate = connection.onconnectionstatechange = connection.ontrack = null;

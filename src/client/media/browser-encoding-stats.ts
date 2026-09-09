@@ -1,9 +1,9 @@
 import { EMPTY_METRICS, type ConnectionMetrics } from "../types";
-import type { BrowserEncodingOutputSample } from "./browser-encoding-worker";
+import type { BrowserEncodingOutput } from "./browser-encoding-output";
 import type { QualityProfile } from "./quality";
 
 export type Observation = { width: number; height: number; fps: number; bitrate: number; reason: string | null };
-type Output = BrowserEncodingOutputSample & { timestamp: number };
+type Output = ReturnType<BrowserEncodingOutput["snapshot"]>;
 
 const normalizeFmtp = (value = "") => value.split(";").map((part) => part.trim().toLowerCase()).filter(Boolean).sort().join(";");
 export const codecIdentity = (codec: RTCRtpCodec) => `${codec.mimeType.toLowerCase()}/${codec.clockRate}/${normalizeFmtp(codec.sdpFmtpLine)}`;

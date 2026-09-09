@@ -1,8 +1,16 @@
 import { readFile } from 'node:fs/promises';
 for (const filename of process.argv.slice(2)) {
     const result = JSON.parse(await readFile(filename, 'utf8'));
+    const completed = Array.isArray(result.snapshots) && !result.error && !result.errors?.length &&
+        result.cleanup && Object.values(result.cleanup).every(Boolean);
+    const configuration = { file: filename, probeSha256: result.probeSha256, mode: result.mode, codec: result.codec,
+        product: result.product, high: result.high, single: result.single, late: result.late, network: result.network,
+        automatic: result.automatic, av: result.av, background: result.background, nativeSource: result.nativeSource,
+        lifecycle: result.lifecycle, relay: result.relay, shapedRate: result.shapedRate, profile: result.profile,
+        completed: !!completed, error: result.error, errors: result.errors, cleanup: result.cleanup };
+    if (!completed) process.exitCode = 1;
     if (!result.snapshots) {
-        console.log(JSON.stringify({ filename, error: result.error, progress: result.progress, cleanup: result.cleanup }));
+        console.log(JSON.stringify({ ...configuration, progress: result.progress, partial: result.partial }));
         continue;
     }
     const phases = [];
@@ -18,6 +26,7 @@ for (const filename of process.argv.slice(2)) {
                 decoded: (d.framesDecoded || 0) - (c.framesDecoded || 0), decodeMs: 1000 * ((d.totalDecodeTime || 0) - (c.totalDecodeTime || 0)),
                 sentFrames: (b.framesSent || 0) - (a.framesSent || 0), kbps: 8 * ((b.bytesSent || 0) - (a.bytesSent || 0)) / seconds / 1000,
                 output: [b.frameWidth, b.frameHeight], receive: [d.frameWidth, d.frameHeight], reason: b.qualityLimitationReason, target: b.targetBitrate,
+                retired: after.retired ?? false, details: after.details,
                 meanQp: b.qpSum !== undefined && b.framesEncoded > (a.framesEncoded || 0) ? (b.qpSum - (a.qpSum || 0)) / (b.framesEncoded - (a.framesEncoded || 0)) : null,
                 senderReports: after.receive.filter(r => r.type === 'remote-outbound-rtp').reduce((s, r) => s + (r.reportsSent || 0), 0) - (before?.receive || []).filter(r => r.type === 'remote-outbound-rtp').reduce((s, r) => s + (r.reportsSent || 0), 0), pli: (d.pliCount || 0) - (c.pliCount || 0) };
         }
@@ -32,7 +41,7 @@ for (const filename of process.argv.slice(2)) {
                     duplicates++;
             }
             if (samples.length) maxGapMs = Math.max(maxGapMs, next.at - samples.at(-1).at);
-            row.viewers[monitor.role] = { rendered: samples.length, fresh: samples.filter(s => s.age !== null && s.age < 1000).length, backwards, duplicates, maxGapMs,
+            row.viewers[monitor.role] = { rendered: samples.length, fresh: result.nativeSource ? null : samples.filter(s => s.age !== null && s.age < 1000).length, backwards, duplicates, maxGapMs,
                 ageP50: ages[Math.floor(ages.length * .5)] ?? null, ageP95: ages[Math.floor(ages.length * .95)] ?? null };
             if (result.av) {
                 const sound = result.audioMonitors.find(m => m.role === monitor.role);
@@ -49,9 +58,6 @@ for (const filename of process.argv.slice(2)) {
         }
         phases.push(row);
     }
-    console.log(JSON.stringify({ file: filename, probeSha256: result.probeSha256 ?? null,
-        mode: result.mode, codec: result.codec, high: result.high ?? false, single: result.single ?? false, network: result.network ?? false, cadenceMs: result.cadenceMs ?? null, av: result.av ?? false,
-        workerSha256: result.workerSha256, product: result.product, lifecycle: result.lifecycle, nativeSource: result.nativeSource,
-        counts: result.counts, error: result.error, errors: result.errors, phases, groupChanges: result.groupChanges ?? [],
-        shaper: result.shaper ?? null, cleanup: result.cleanup }));
+    console.log(JSON.stringify({ ...configuration, phases, controls: result.controls, visibility: result.visibility,
+        shaper: result.shaper ?? null }));
 }
