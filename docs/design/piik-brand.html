@@ -107,7 +107,6 @@
         <button id="pause" type="button">暂停 / Pause</button>
         <button id="word-state" type="button">字标 / Wordmark</button>
         <button id="tv-state" type="button">电视 / TV</button>
-        <button id="headphones-state" type="button">耳罩 / Headphones</button>
       </div>
       <label class="motion-option"><input id="reduce" type="checkbox"> 减少动态 / Reduced motion</label>
     </div>
@@ -172,15 +171,7 @@
   const $ = (id) => document.getElementById(id);
   const ns = 'http://www.w3.org/2000/svg';
   const tv = '<g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m11 4 5 4 5-4"/><rect x="4" y="8" width="24" height="18" rx="4"/><circle cx="11.5" cy="16.5" r="1.25" fill="currentColor" stroke="none"/><path d="M19 17c1.5-1.8 3.2-1.8 4.7 0M10 29l2-3m10 3-2-3"/></g>';
-  const tvWithHeadphones = '<g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m11 4 5 4 5-4"/><rect x="1.5" y="12" width="5" height="9" rx="2.5"/><path d="M6.5 16.5H4"/><rect x="25.5" y="12" width="5" height="9" rx="2.5"/><path d="M25.5 16.5H28"/><rect x="4" y="8" width="24" height="18" rx="4"/><circle cx="11.5" cy="16.5" r="1.25" fill="currentColor" stroke="none"/><path d="M19 17c1.5-1.8 3.2-1.8 4.7 0M10 29l2-3m10 3-2-3"/></g>';
-  let headphoneMode = false;
-  function setIconMode() {
-    document.querySelectorAll('.tv').forEach((svg) => { svg.innerHTML = headphoneMode ? tvWithHeadphones : tv; });
-    const morphEars = document.querySelector('.morph-headphones');
-    if (morphEars) morphEars.setAttribute('display', headphoneMode ? 'inline' : 'none');
-    $('headphones-state').textContent = headphoneMode ? '原版电视 / Plain TV' : '耳罩 / Headphones';
-  }
-  setIconMode();
+  document.querySelectorAll('.tv').forEach((svg) => svg.innerHTML = tv);
   // The k diagonals become antennae; the outer stems join the screen edges.
   const parts = [
     ['rect', {x:108,y:72,width:58,height:48,rx:20}, {x:172,y:76,width:136,height:102,rx:22.667}],
@@ -212,14 +203,6 @@
       if(moving) { animate(eye,'cx',cx,eyeX); animate(eye,'cy',95,124.167); animate(eye,'rx',6.5,7.083); animate(eye,'ry',6.5,7.083); if(index) animate(eye,'ry',7.083,0,2.2,.16); }
     });
     if(moving) {
-      const ears = element(group,'g',{class:'morph-headphones',opacity:0});
-      const leftEar = element(ears,'rect',{x:98,y:106,width:10,height:32,rx:5});
-      const rightEar = element(ears,'rect',{x:278,y:106,width:10,height:32,rx:5});
-      animate(leftEar,'x',98,157,1.05,.95); animate(leftEar,'y',106,116,1.05,.95);
-      animate(leftEar,'width',10,16,1.05,.95); animate(leftEar,'height',32,48,1.05,.95); animate(leftEar,'rx',5,8,1.05,.95);
-      animate(rightEar,'x',278,307,1.05,.95); animate(rightEar,'y',106,116,1.05,.95);
-      animate(rightEar,'width',10,16,1.05,.95); animate(rightEar,'height',32,48,1.05,.95); animate(rightEar,'rx',5,8,1.05,.95);
-      animate(ears,'opacity',0,1,1.35,.4);
       animate(group,'stroke-width',10,13.6);
       const wink = element(group,'path',{d:'M257 127c8.5-10.2 18.133-10.2 26.633 0',pathLength:1,'stroke-dasharray':1,'stroke-dashoffset':1});
       animate(wink,'stroke-dashoffset',1,0,2.3,.23);
@@ -231,7 +214,6 @@
     }
   }
   drawWord($('morph'),'Piik',true);
-  setIconMode();
   document.querySelectorAll('[data-case]').forEach(svg => drawWord(svg,svg.dataset.case));
   document.querySelectorAll('[data-size]').forEach(svg => { const height=Number(svg.dataset.size); attributes(svg,{height,width:height*244/138}); drawWord(svg); });
   const morph=$('morph'), reduce=$('reduce'), pause=$('pause'), motion=matchMedia('(prefers-reduced-motion: reduce)');
@@ -243,8 +225,7 @@
   $('replay').onclick=replay;
   pause.onclick=() => { if(morph.animationsPaused()) { pause.textContent='暂停 / Pause'; morph.unpauseAnimations(); watch(); } else still(morph.getCurrentTime()); };
   $('word-state').onclick=() => still(0);
-  $('tv-state').onclick=() => { headphoneMode = false; setIconMode(); still(duration); };
-  $('headphones-state').onclick=() => { headphoneMode = !headphoneMode; setIconMode(); };
+  $('tv-state').onclick=() => still(duration);
   reduce.checked=motion.matches;
   reduce.onchange=() => still(reduce.checked?duration:0);
   motion.addEventListener('change',event => { reduce.checked=event.matches; reduce.onchange(); });

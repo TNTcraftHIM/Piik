@@ -8,11 +8,9 @@ and Git/PRs own completed history. A parked idea is not implementation authority
 ## Now
 
 Resume the [Piik brand study](./design/piik-brand.html) on the appearance branch
-from current main. Keep round i dots; the tiny-e experiment was rejected. Try
-using the two outer stems as small headphones/earcups on the TV, retaining its
-familiar silhouette and the k diagonals as antennae. Display `Piik` and technical
-`piik` remain proposals. Settle identity before coordinated renaming or the
-public-site implementation.
+from current main. Keep round i dots and the familiar TV silhouette; the tiny-e
+experiment was rejected. Display `Piik` and technical `piik` remain proposals.
+Settle identity before coordinated renaming or the public-site implementation.
 
 ## Next — Awaiting Owner Direction
 
