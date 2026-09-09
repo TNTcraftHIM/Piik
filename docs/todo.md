@@ -7,23 +7,28 @@ and Git/PRs own completed history. A parked idea is not implementation authority
 
 ## Now
 
-Owner-authorized phase: [embedded STUN/SFU and node-local media](./adr/0013-embedded-node-local-media.md).
-Finish this phase as one integration, preserving the completed mainline checkpoint.
+2026-09-09 owner-requested research continuation: independently test a Browser
+node-local producer and two dummy/carrier egress senders. The earlier experiment
+borrowed a real child's encoded output and does not decide this architecture.
+Compare ordinary senders, quiet placeholders, live tiny carriers and standard
+own-frame payload replacement. Count all encoding/local-loopback work; verify
+source freshness, ordering, independent weak-path behavior, recovery and sender
+accounting before proposing product integration. Keep the completed Debug
+supplement on its separate branch; no main merge or production switch is implied.
 
-1. **Release integration.** One complete PR must contain the Native/embedded
-   media work, retained Client fixes, final corrections, current documentation
-   and research outcomes. Build matching Web/Server/Client/capture artifacts
-   from the accepted revision; main remains a low-frequency integration branch.
-2. **Coordinated production cutover.** Recheck active sessions, preserve the
-   exact old release/unit/environment/proxy/media-service state and SQLite
-   recovery material, then replace external LiveKit/coturn with the embedded
-   process. Verify HTTP/assets, STUN, SFU media, listener retirement and rollback
-   using [self-hosting operations](./operations/self-hosting.md).
-   The routine application updater alone cannot perform this first cutover.
-3. **Matched delivery.** Provide the current Windows Client package and Server
-   descriptor/archive with matching hashes and notices. Production pages and
-   old Clients cannot be mixed across the private protocol change. Formal
-   public GitHub Release/image publication remains a separate explicit action.
+The first [independent-producer experiments](./research/browser-local-encoding-pool.md)
+are complete and support continuing this candidate. Before any product adapter,
+resolve weak-entry latency, safe recovery/membership, carrier versus actual-media
+statistics, A/V synchronization and representative whole-process/GPU cost.
+The experimental budget bridge is not an accepted routing/media policy. Reuse
+existing Browser statistics owners in a proposed adapter; do not add a second
+congestion estimator, whole-tree cache, or periodic topology controller.
+
+The embedded-media phase is already integrated and deployed. The detailed Debug
+supplement and matched review package are complete on their separate branch,
+held for owner acceptance. Do not re-merge or redeploy either checkpoint merely
+to continue this research. Public release and piik branding/site work remain
+separate product stages.
 
 Current evidence and limits:
 
@@ -81,11 +86,10 @@ Current evidence and limits:
    Physical Android/iOS work includes autoplay, background/lock, rotation,
    network migration and relay survival. Secondary desktop platform matrices
    remain explicitly deferred; compilation does not prove capture.
-4. **Browser encoded-input API.** Reopen reuse only when a supported API supplies
-   usable injection, feedback and timing ownership. Chromium's experimental
-   RTCEncodedSource is a lead, not current M152 availability or automatic
-   adaptation. An adapter must pass independent quality, recovery and truthful
-   statistics before product integration.
+4. **Browser encoded-input API.** RTCEncodedSource is a future simplification
+   lead, not current M152 availability or automatic adaptation. It does not block
+   the active same-frame carrier research above. Either adapter must pass
+   independent quality, recovery and truthful statistics before product use.
 5. **Broader quality work.** Reopen from measured benefit at acceptable complexity.
    Preserve chosen profiles, bitrate ceilings, endpoint capacity and P2P-first
    routing unless a new accepted decision supports changing them. No weighted

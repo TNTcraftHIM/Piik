@@ -236,14 +236,18 @@ updates frame/timing accounting before the
 Borrowing below that point bypasses those updates. This exposes an unverified
 audio/video-clock boundary, not a measured audible desynchronization claim.
 
-**Decision: no product integration of legacy fanout.** The saved encode is real,
+**Decision for this experiment: no product integration of A-as-producer fanout.** The saved encode is real,
 but the shared master's limitation damages a healthy sibling and the borrowed
 connection's ordinary encoder policy no longer controls its payload. Adding a
 live dummy encoder, independent budget polling, master election or timestamp
 projection would introduce new ownership and recovery work rather than preserve
-the current native adaptation contract. Standard Transform does not provide a
-portable alternative injection point. Keep normal Browser senders and the
-verified optional Browser-to-Client encoded fanout.
+the current native adaptation contract. This standard-transform arm tested
+foreign-frame ownership, not replacement of a sender's own frame payload.
+It does not reject an independent local producer. The later
+[node-local producer/carrier experiments](./browser-local-encoding-pool.md)
+establish a working standard-transform prototype with separate findings and
+remaining quality/accounting obligations. Product media still uses normal
+Browser senders and the verified optional Client fanout pending that acceptance.
 
 A relevant future input API is Chromium's experimental
 [`RTCEncodedSource` implementation](https://chromium-review.googlesource.com/c/chromium/src/+/8097283),
