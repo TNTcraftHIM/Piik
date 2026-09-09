@@ -78,6 +78,7 @@ import {
   type HostCreationProfile,
 } from "../lib/creation-profile";
 import { createOpaqueId } from "../lib/opaque-id";
+import { debugEvent, debugOperation } from "../lib/debug";
 import {
   defaultHostDisplayName,
   readDisplayName,
@@ -124,6 +125,7 @@ import {
   type ScreenAudioQuality,
 } from "../media/quality";
 import { HostSfuRoute } from "../media/host-sfu-route";
+import { BrowserEncodingPool } from "../media/browser-encoding-pool";
 import {
   HostProvisionalChild,
 } from "../media/host-provisional-child";
@@ -565,6 +567,7 @@ export function HostPage({
   }, [hasCustomDisplayName, lang, vis]);
   const iceConfigRef = useRef<IceConfig | null>(null);
   const peersRef = useRef(new Map<string, HostMediaPeer>());
+  const browserVideoPoolRef = useRef<BrowserEncodingPool | null>(null);
   const hostProvisionalChildRef = useRef<HostProvisionalChild | null>(null);
   const activeHostChildPeerIdsRef = useRef<string[]>([]);
   const endpointMediaCopyCapacityRef = useRef(MAX_ENDPOINT_MEDIA_CHILDREN);
@@ -708,6 +711,8 @@ export function HostPage({
       peersRef.current.clear();
       hostProvisionalChildRef.current?.discard();
       hostProvisionalChildRef.current = null;
+      browserVideoPoolRef.current?.dispose();
+      browserVideoPoolRef.current = null;
       activeHostChildPeerIdsRef.current = [];
       endpointMediaCopyCapacityRef.current = MAX_ENDPOINT_MEDIA_CHILDREN;
       hostPeerIdRef.current = null;
@@ -888,6 +893,8 @@ export function HostPage({
     peersRef.current.clear();
     hostProvisionalChildRef.current?.discard();
     hostProvisionalChildRef.current = null;
+    browserVideoPoolRef.current?.dispose();
+    browserVideoPoolRef.current = null;
     activeHostChildPeerIdsRef.current = [];
     endpointMediaCopyCapacityRef.current = MAX_ENDPOINT_MEDIA_CHILDREN;
     hostPeerIdRef.current = null;
@@ -1603,6 +1610,7 @@ export function HostPage({
       return;
     }
     if (qualityChangeRef.current) {
+      debugEvent("quality", "queued", { requested: nextProfile, generation: activeGenerationRef.current });
       pendingQualityChangeRef.current = nextProfile;
       return;
     }
@@ -1623,6 +1631,10 @@ export function HostPage({
       return;
     }
     const token = {};
+    const complete = debugOperation("quality", "update", { generation,
+      requested: nextProfile, previous: previousProfile, native: nativeModeRef.current });
+    let outcome = "superseded";
+    let failure: unknown;
     qualityChangeRef.current = token;
     setChangingQuality(true);
     setNotice(null);
@@ -1666,6 +1678,8 @@ export function HostPage({
       }
 
       commitQuality(appliedProfile);
+      debugEvent("quality", "committed", { generation, applied: appliedProfile });
+      outcome = "applied";
       if (nativeUpdate) {
         setDetails(nativeCaptureDetails(appliedProfile, activeStream));
       } else if (captureChanged) {
@@ -1711,6 +1725,8 @@ export function HostPage({
         streamRef.current === activeStream
       ) {
         const failed = results.filter((updated) => !updated).length;
+        if (failed > 0 || !sfuUpdated) outcome = "partial";
+        debugEvent("quality", "sender-results", { generation, failed, sfuUpdated, senderCount: results.length });
         const sfuWarning =
           activeSfuRoute && hostSfuRouteRef.current === activeSfuRoute
             ? syncHostSfuQualityWarning(activeSfuRoute, generation)
@@ -1730,6 +1746,8 @@ export function HostPage({
         setNotice(connectionWarning ?? (sfuWarning ? null : successNotice));
       }
     } catch (error) {
+      failure = error;
+      outcome = "failed";
       if (
         isCurrentGeneration(generation) &&
         qualityChangeRef.current === token &&
@@ -1742,6 +1760,8 @@ export function HostPage({
         setNoticeError(error, "quality");
       }
     } finally {
+      complete(outcome, { generation,
+        ...(isCurrentGeneration(generation) ? { applied: qualitySettingsRef.current } : {}) }, failure);
       if (qualityChangeRef.current === token) {
         qualityChangeRef.current = null;
         const pending = pendingQualityChangeRef.current;
@@ -1987,6 +2007,7 @@ export function HostPage({
       profile: qualitySettingsRef.current,
       videoCodec: videoCodecRef.current,
       natPredictionEnabled: routePolicyRef.current.natPrediction,
+      videoPool: nativeClient && nativeShareGeneration ? undefined : browserVideoPool(),
     });
   }
 
@@ -2011,6 +2032,10 @@ export function HostPage({
     } else {
       discardPreparedHostChild();
     }
+  }
+
+  function browserVideoPool(): BrowserEncodingPool {
+    return browserVideoPoolRef.current ??= new BrowserEncodingPool();
   }
 
   async function startPeer(
@@ -2086,6 +2111,7 @@ export function HostPage({
           videoCodecRef.current,
           undefined,
           routePolicyRef.current.natPrediction,
+          browserVideoPool(),
         );
     peersRef.current.set(peerId, peer);
     let started: boolean;

@@ -1,5 +1,6 @@
 import type { SfuMedia, SfuSignalMessage } from "../../shared/protocol";
 import { say } from "../ui/copy";
+import { debugRtcFailure, debugRtcStats, debugTrack } from "../lib/debug-webrtc";
 import {
   audioSenderParameterWarning,
   applyVideoCaptureProfile,
@@ -509,6 +510,8 @@ export class SfuPublisher {
     this.statsInFlight = stats;
     try {
       const report = await peer.pc.getStats();
+      debugRtcStats(peer.pc, report);
+      debugTrack(video, { event: "sfu-sample" });
       if (this.peer !== peer || this.video !== video || this.stats !== stats)
         return;
       const native = collectNativeSenderQualityFromReport(
@@ -552,8 +555,8 @@ export class SfuPublisher {
         this.startupPending = false;
         if (this.profile) void this.updateProfile(this.profile);
       }
-    } catch {
-      /* Diagnostics do not own media lifetime. */
+    } catch (error) {
+      debugRtcFailure(peer.pc, error);
     } finally {
       if (this.statsInFlight === stats) this.statsInFlight = null;
     }

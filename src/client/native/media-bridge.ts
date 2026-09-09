@@ -1,6 +1,7 @@
 import type { SignalPayload } from "../../shared/protocol";
 import { createOpaqueId } from "../lib/opaque-id";
 import { browserDebugEnabled, debugError, debugEvent } from "../lib/debug";
+import { observeDebugConnection } from "../lib/debug-webrtc";
 import type { ConnectionMetrics } from "../types";
 import {
   collectConnectionMetrics,
@@ -48,7 +49,9 @@ export class NativeMediaBridge {
     private readonly onFailed: () => void,
     private readonly expectedAudio = false,
     private readonly sourceConnectionId?: string,
-  ) {}
+  ) {
+    observeDebugConnection(this.peer, { connectionId: this.connectionId, sourceConnectionId, shareId, role: "native-preview" });
+  }
 
   collectMetrics(accumulator: StatsAccumulator): Promise<ConnectionMetrics> {
     return collectConnectionMetrics(this.peer, "receive", accumulator);

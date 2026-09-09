@@ -1,14 +1,17 @@
 package forwarding
 
 import (
+	"context"
 	"crypto/rand"
 	"errors"
 	"io"
+	"log/slog"
 	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/TNTcraftHIM/Screener/internal/diagnostics"
 	"github.com/livekit/livekit-server/pkg/sfu"
 	"github.com/livekit/livekit-server/pkg/sfu/buffer"
 	"github.com/livekit/livekit-server/pkg/sfu/bwe"
@@ -17,7 +20,6 @@ import (
 	"github.com/livekit/livekit-server/pkg/sfu/pacer"
 	"github.com/livekit/livekit-server/pkg/sfu/streamallocator"
 	"github.com/livekit/protocol/livekit"
-	"github.com/livekit/protocol/logger"
 	"github.com/pion/interceptor"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
@@ -59,7 +61,7 @@ func NewPublication(options TransportOptions) (_ *Publication, err error) {
 			_ = publication.Close()
 		}
 	}()
-	log := logger.GetDiscardLogger()
+	log := diagnostics.MediaLogger("publication").WithValues("connectionId", diagnostics.ID(options.ConnectionID))
 	publication.bandwidth = &publicationBWE{SendSideBWE: sendsidebwe.NewSendSideBWE(sendsidebwe.SendSideBWEParams{
 		Config: sendsidebwe.DefaultSendSideBWEConfig, Logger: log,
 	})}
@@ -101,6 +103,9 @@ func NewPublication(options TransportOptions) (_ *Publication, err error) {
 	}
 	factory := buffer.NewFactoryOfBufferFactory(options.Source.maxPackets, buffer.InitPacketBufferSizeAudio).CreateBufferFactory()
 	settings := options.Settings
+	if slog.Default().Enabled(context.Background(), slog.LevelDebug) {
+		settings.LoggerFactory = diagnostics.PionLoggerFactory("connectionId", diagnostics.ID(options.ConnectionID))
+	}
 	settings.BufferFactory = func(kind packetio.BufferPacketType, ssrc uint32) io.ReadWriteCloser {
 		if kind == packetio.RTCPBufferPacket {
 			if reader := factory.GetRTCPReader(ssrc); reader != nil {
@@ -350,9 +355,15 @@ func (publication *Publication) Close() error {
 	return publication.closeErr
 }
 
-func (*Publication) OnBindAndConnected()                  {}
-func (*Publication) OnStatsUpdate(*livekit.AnalyticsStat) {}
-func (*Publication) OnMaxSubscribedLayerChanged(int32)    {}
+func (*Publication) OnBindAndConnected() {}
+func (publication *Publication) OnStatsUpdate(stats *livekit.AnalyticsStat) {
+	if slog.Default().Enabled(context.Background(), slog.LevelDebug) {
+		slog.Debug("media-stats", "scope", "publication", "rtcPeerId", diagnostics.ID(publication.PC.ID()),
+			"rtp", stats, "egress", publication.pacer.stats(), "targetBitrate", publication.bandwidth.target.Load(),
+			"pendingPackets", publication.pacer.pendingCount(), "packetCapacity", publication.pacer.limit)
+	}
+}
+func (*Publication) OnMaxSubscribedLayerChanged(int32) {}
 func (publication *Publication) OnRttUpdate(rtt uint32) {
 	publication.bandwidth.UpdateRTT(float64(rtt) / 1000)
 }

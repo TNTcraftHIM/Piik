@@ -5,10 +5,27 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"strings"
 	"testing"
 )
+
+func TestDiagnosticStderrOverflowDoesNotStopTheChildReader(t *testing.T) {
+	for _, discard := range []bool{false, true} {
+		buffer := &boundedBuffer{limit: 4, discardOverflow: discard}
+		var forwarded bytes.Buffer
+		writer := io.MultiWriter(buffer, &forwarded)
+		_, err := io.Copy(writer, strings.NewReader("stage=capture-closed\ndetail=more evidence\n"))
+		if discard {
+			if err != nil || string(buffer.Bytes()) != "nce\n" || !strings.Contains(forwarded.String(), "more evidence") {
+				t.Fatalf("diagnostic stderr stopped or lost its bounded tail: %q, %q, %v", buffer.Bytes(), forwarded.String(), err)
+			}
+		} else if err == nil {
+			t.Fatal("strict probe output no longer rejects overflow")
+		}
+	}
+}
 
 func TestVideoOutputGroupCountIsBoundedBeforeProcessStartup(t *testing.T) {
 	options := VideoOptions{

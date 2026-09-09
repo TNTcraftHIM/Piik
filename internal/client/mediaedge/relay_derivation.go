@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/TNTcraftHIM/Screener/internal/client/nativecapture"
@@ -43,11 +42,10 @@ func relayBackend(codec string, options *RelayOptions) (nativecapture.EncodedVid
 // relayDerivation owns only the optional missing lower representation. Raw RTP
 // never waits for it. A retired process must exit before another one can start.
 type relayDerivation struct {
-	source   *Source
-	options  RelayOptions
-	recovery atomic.Bool
-	mu       sync.Mutex
-	run      *relayRun
+	source  *Source
+	options RelayOptions
+	mu      sync.Mutex
+	run     *relayRun
 }
 
 type relayPlan struct {
@@ -182,7 +180,6 @@ func (relay *relayDerivation) push(packet *rtp.Packet) {
 				done: make(chan struct{}), packets: make(chan *rtp.Packet, relayPacketLimit),
 				anchorRTP: packet.Timestamp, anchorTime: at,
 			}
-			relay.recovery.Store(true)
 			go relay.run.serve()
 			// Earlier packets of this frame used the raw path only. Begin assembly
 			// with the next complete frame, not this frame's trailing fragment.
@@ -309,11 +306,6 @@ func (run *relayRun) write(stream *nativecapture.Stream) error {
 				plan := run.owner.source.relayPlan()
 				if !plan.wanted || plan.profile != run.plan.profile || plan.format != run.plan.format {
 					return context.Canceled
-				}
-				if run.owner.recovery.Swap(false) {
-					if err = stream.RequestKeyFrame(-1); err != nil {
-						return err
-					}
 				}
 				if err = stream.WriteFrame(frame); err != nil {
 					return err

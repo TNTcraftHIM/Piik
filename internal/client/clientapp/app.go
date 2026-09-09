@@ -70,7 +70,7 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 	defer func() {
 		cancel()
 		if recorder != nil {
-			slog.Debug("screener-client", "event", "stopped", "failed", returnedErr != nil)
+			slog.Debug("screener-client", "event", "stopped", "failed", returnedErr != nil, diagnostics.Error(returnedErr))
 			if options.console.program == nil {
 				path, err := recorder.Export()
 				options.console.send(consoleExportResult{path: path, err: err})
@@ -88,15 +88,17 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 			return fmt.Errorf("Screener Client diagnostics are unavailable: %w", err)
 		}
 		previous, previousWriter, previousFlags := slog.Default(), log.Writer(), log.Flags()
+		var dependencyLog *diagnostics.LineWriter
 		restoreLogger = func() {
+			_ = dependencyLog.Close()
 			slog.SetDefault(previous)
 			log.SetOutput(previousWriter)
 			log.SetFlags(previousFlags)
 		}
 		options.logger = recorder.Logger()
 		slog.SetDefault(options.logger)
-		// Only structured application events belong in the persisted log.
-		log.SetOutput(previousWriter)
+		dependencyLog = diagnostics.Writer("stdlib")
+		log.SetOutput(dependencyLog)
 		log.SetFlags(previousFlags)
 		options.console.send(consoleDebug{logPath: recorder.LogPath(), export: recorder.Export})
 	}
@@ -131,6 +133,12 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 		}
 	}
 	nativeMedia := discoverNativeMedia(ctx, options.CaptureProcess)
+	if recorder != nil {
+		recorder.Context("configuration", map[string]any{"siteConfigured": config.Site != "", "local": options.Local,
+			"link": options.Link, "port": options.Port, "localAccessProtected": config.LocalAccessPassword != ""})
+		recorder.Context("capture", nativeMedia.capture)
+		recorder.Binary("captureExecutable", nativeMedia.captureProcess)
+	}
 	slog.Debug("screener-client", "event", "native-capabilities",
 		"video", nativeMedia.capabilities.Video, "processAudio", nativeMedia.capabilities.ProcessAudio,
 		"systemAudio", nativeMedia.capabilities.SystemAudio, "hardwareH264", nativeMedia.capabilities.HardwareH264,

@@ -1,8 +1,10 @@
 package mediaedge
 
 import (
+	"log/slog"
 	"time"
 
+	"github.com/TNTcraftHIM/Screener/internal/diagnostics"
 	"github.com/TNTcraftHIM/Screener/internal/media/forwarding"
 	"github.com/pion/webrtc/v4"
 )
@@ -67,6 +69,15 @@ func (edge *Edge) QualitySample(now time.Time) (QualitySample, bool) {
 		BitrateKbps:           bitrate / 1000,
 		Width:                 uint32(format >> 32),
 		Height:                uint32(format),
+	}
+	if slog.Default().Enabled(edge.engine.ctx, slog.LevelDebug) {
+		defer func() {
+			slog.Debug("media-sample", "connectionId", diagnostics.ID(edge.connectionID), "local", edge.local,
+				"rtcPeerId", diagnostics.ID(edge.connection.ID()), "windowMs", sample.SampleWindowMs,
+				"fps", sample.FramesPerSecond, "bitrateKbps", sample.BitrateKbps, "width", sample.Width, "height", sample.Height,
+				"availableOutgoingKbps", sample.AvailableOutgoingKbps, "state", sample.State, "reason", sample.Reason,
+				"egress", edge.transport.Egress(), "output", edge.transport.Output.State())
+		}()
 	}
 	target, observed := edge.targetBitrate()
 	if edge.State() != webrtc.PeerConnectionStateConnected || !observed ||

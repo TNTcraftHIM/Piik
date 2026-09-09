@@ -54,7 +54,8 @@ production behavior and remaining acceptance.
   Browser still owns preview, pause, capture settings, and source selection.
   Loss of that optional ingress retains capture and rebuilds the assigned
   Browser edges. [ADR-0011](../adr/0011-browser-assisted-native-fanout.md) owns
-  this composition; pure Browser and VP8 sharing retain their normal senders.
+  this composition; pure Browser and VP8 sharing use the Browser-owned sender
+  paths described below.
 
 ## Video Profiles
 
@@ -116,8 +117,19 @@ sender also stops its clone, so native adaptation state cannot survive by being
 inherited through the original track. Host pause and live capture constraints
 are propagated to current Host-owned clones.
 
-Each Browser PeerConnection owns stock WebRTC congestion control and sender
-adaptation. Clones share one underlying media source and therefore do not provide
+Eligible Browser P2P parents use the source-owned pool in
+[ADR-0014](../adr/0014-browser-node-local-encoding-pool.md). Compatible direct
+children share one independent local WebRTC producer; incompatible demands
+remain separate. Each outgoing connection keeps native transport, allocation
+and recovery, with a tiny carrier supplying its RTP clock. Producers use
+the existing native video target under Host ceilings. Actual forwarded-frame
+and producer observations remain distinct from the tiny carrier's statistics.
+The first eligible consumer follows the same path; unsupported APIs or failed
+pooling use ordinary senders. Prepared ordinary quality candidates, Native
+ingress and Browser SFU remain independent compositions.
+
+Each ordinary Browser PeerConnection owns stock WebRTC congestion control and
+sender adaptation. Clones share one underlying media source and therefore do not provide
 complete simultaneous isolation: framework source-wants aggregation may still
 partially reduce frames available to sibling clones. Sibling outputs may differ;
 Screener does not impose a room-wide minimum. The Host's one Browser SFU

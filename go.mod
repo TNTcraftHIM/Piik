@@ -9,9 +9,11 @@ require (
 	github.com/charmbracelet/x/ansi v0.11.8
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/coder/websocket v1.8.15
+	github.com/go-logr/logr v1.4.4
 	github.com/livekit/livekit-server v1.13.6
 	github.com/livekit/mediatransportutil v0.0.0-20260821083140-f234b534b095
 	github.com/livekit/protocol v1.50.5-0.20260821144838-17c16cf496fd
+	github.com/livekit/server-sdk-go/v2 v2.14.0
 	github.com/netbirdio/go-nat v0.0.0-20260821095157-6b2c8c5c74e8
 	github.com/pion/ice/v4 v4.4.0
 	github.com/pion/interceptor v0.1.47
@@ -24,8 +26,10 @@ require (
 	github.com/pion/turn/v5 v5.0.12
 	github.com/pion/webrtc/v4 v4.2.18
 	github.com/thesyncim/gopus v0.1.1
+	go.uber.org/zap v1.28.0
 	golang.org/x/crypto v0.54.0
 	golang.org/x/text v0.41.0
+	google.golang.org/protobuf v1.36.11
 	modernc.org/sqlite v1.58.0
 )
 
@@ -50,7 +54,6 @@ require (
 	github.com/frostbyte73/core v0.1.1 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/gammazero/deque v1.2.1 // indirect
-	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 	github.com/google/cel-go v0.30.0 // indirect
@@ -71,7 +74,6 @@ require (
 	github.com/lithammer/shortuuid/v4 v4.2.0 // indirect
 	github.com/livekit/mageutil v0.0.0-20250511045019-0f1ff63f7731 // indirect
 	github.com/livekit/psrpc v0.7.3 // indirect
-	github.com/livekit/server-sdk-go/v2 v2.14.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.1 // indirect
 	github.com/mackerelio/go-osstat v0.2.8 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
@@ -109,7 +111,6 @@ require (
 	go.opentelemetry.io/otel/trace v1.45.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	go.uber.org/zap v1.28.0 // indirect
 	go.uber.org/zap/exp v0.3.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/exp v0.0.0-20260727155853-b88d891fe743 // indirect
@@ -120,7 +121,6 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20260803160001-6ac0973c030d // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260803160001-6ac0973c030d // indirect
 	google.golang.org/grpc v1.83.0 // indirect
-	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	modernc.org/libc v1.75.6 // indirect
 	modernc.org/mathutil v1.7.1 // indirect

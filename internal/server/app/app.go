@@ -30,6 +30,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/TNTcraftHIM/Screener/internal/diagnostics"
 	"github.com/TNTcraftHIM/Screener/internal/server/config"
 	"github.com/TNTcraftHIM/Screener/internal/server/room"
 	"github.com/TNTcraftHIM/Screener/internal/server/sfu"
@@ -265,8 +266,9 @@ func (s *Server) start(ctx context.Context) (int, error) {
 			_ = s.stopServing(ctx)
 			return 0, fmt.Errorf("Screener SFU listener failed: %w", listenErr)
 		}
-		s.mediaMux = ice.NewUDPMuxDefault(ice.UDPMuxParams{UDPConn: connection})
-		settings := webrtc.SettingEngine{}
+		factory := diagnostics.PionLoggerFactory()
+		s.mediaMux = ice.NewUDPMuxDefault(ice.UDPMuxParams{UDPConn: connection, Logger: factory.NewLogger("sfu-udp")})
+		settings := webrtc.SettingEngine{LoggerFactory: factory}
 		settings.SetNetworkTypes([]webrtc.NetworkType{webrtc.NetworkTypeUDP4})
 		settings.SetICEUDPMux(s.mediaMux)
 		settings.SetIncludeLoopbackCandidate(net.ParseIP(configuration.ListenHost).IsLoopback())
@@ -290,6 +292,7 @@ func (s *Server) start(ctx context.Context) (int, error) {
 		// causes; report it rather than serving nothing in silence.
 		if err := s.httpServer.Serve(listener); !errors.Is(err, http.ErrServerClosed) {
 			s.logger.Error("Screener HTTP server stopped unexpectedly", "errorType", fmt.Sprintf("%T", err))
+			s.logger.Debug("http-listener-failed", diagnostics.Error(err))
 		}
 	}()
 	port := listener.Addr().(*net.TCPAddr).Port

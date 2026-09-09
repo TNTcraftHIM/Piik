@@ -1,5 +1,6 @@
 import type { SfuSignalMessage } from "../../shared/protocol";
 import type { ConnectionMetrics } from "../types";
+import { debugRtcFailure, debugRtcStats } from "../lib/debug-webrtc";
 import {
   collectConnectionMetricsFromReport,
   createStatsAccumulator,
@@ -234,6 +235,7 @@ export class SfuSubscriber {
     this.statsInFlight = stats;
     try {
       const report = await peer.pc.getStats();
+      debugRtcStats(peer.pc, report);
       if (this.peer !== peer || this.video !== video || this.stats !== stats)
         return;
       const metrics = collectConnectionMetricsFromReport(
@@ -243,7 +245,8 @@ export class SfuSubscriber {
       );
       this.events.onDecodedFrameSample?.(metrics.intervalFramesDecoded);
       this.events.onStats?.(metrics);
-    } catch {
+    } catch (error) {
+      debugRtcFailure(peer.pc, error);
       if (this.peer === peer && this.stats === stats)
         this.events.onDecodedFrameSample?.(null);
     } finally {

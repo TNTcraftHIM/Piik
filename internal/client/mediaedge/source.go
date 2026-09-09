@@ -603,9 +603,6 @@ func (source *Source) detach(edge *Edge) {
 }
 
 func (source *Source) requestLayerKeyFrame(layer int) {
-	if source.relay != nil && layer < len(source.formats)-1 {
-		source.relay.recovery.Store(true)
-	}
 	source.groupRecovery.Or(uint32(1) << layer)
 	source.RequestRecoveryFrame()
 }

@@ -1,90 +1,94 @@
-# Documentation Map
+# Documentation
 
-Start with [project memory](./project-memory.md), [status](./status.md), and
-[TODO](./todo.md). Read only the product, decision, evidence, or operations file
-needed for the current task.
+[English Quick Start](../README.md) · [中文快速开始](../README.zh-CN.md)
 
-## Current Product
+## Use Screener
+
+| What you need | Start here |
+| --- | --- |
+| Join a friend or share a screen | [Quick Start](../README.md) |
+| Run Client, choose a mode, or fix capture trouble | [Client guide](../cmd/screener-client/README.md) |
+| Collect a useful bug report | [Diagnostics and export](./reference/configuration.md#diagnostics) |
+| Host your own site | [Self-hosting](./operations/self-hosting.md) |
+| Configure ports, access or persistence | [Configuration reference](./reference/configuration.md) |
+| Update an existing deployment | [Deployment and recovery](./deployment.md) |
+| Check platform and release readiness | [Current status](./status.md) |
+
+The public entry points have English and Chinese versions. Technical references
+keep one owner rather than duplicate the full documentation tree.
+
+## Run from source
+
+Use Node from [.node-version](../.node-version), npm from
+[package.json](../package.json), and Go 1.26 as specified by [go.mod](../go.mod).
+Node builds and serves the development UI; the application server runs in Go.
+
+Start the UI:
+
+```sh
+npm ci
+npm run dev
+```
+
+In a second terminal, start the server. For a POSIX shell:
+
+```sh
+PORT=8788 PUBLIC_BASE_URL=http://localhost:8787 go run ./cmd/screener-server
+```
+
+Or in PowerShell:
+
+```powershell
+$env:PORT = '8788'
+$env:PUBLIC_BASE_URL = 'http://localhost:8787'
+go build -o build/dev/screener-server.exe ./cmd/screener-server
+./build/dev/screener-server.exe
+```
+
+The fixed Windows executable path avoids repeated firewall prompts from `go run`.
+
+Open `http://localhost:8787`. The development UI also listens on the LAN;
+screen capture requires `localhost` or HTTPS. For another invitation origin,
+follow the [configuration reference](./reference/configuration.md).
+
+The standard checks are:
+
+```sh
+npm run check
+npm run check:client
+```
+
+The [contributing guide](../CONTRIBUTING.md#verification-entrypoints) explains
+native build prerequisites, focused checks and separate physical gates.
+
+## Product and design
+
+Current behavior belongs to four product modules:
 
 - [Rooms and access](./product/rooms-access.md)
 - [Routing and transport](./product/routing-transport.md)
-- [Capture, audio, and media quality](./product/media-quality.md)
+- [Capture, audio and media quality](./product/media-quality.md)
 - [Presentation and lifecycle](./product/presentation-lifecycle.md)
 
-These four modules own current product behavior. Source code and tests own
-ordinary implementation and UI detail.
+Key decisions cover [automatic routing](./adr/0005-automatic-hybrid-media-routing.md),
+the [shared Go core](./adr/0012-shared-go-backend-core.md),
+[embedded media and Native output groups](./adr/0013-embedded-node-local-media.md),
+and the [Browser encoding-pool candidate](./adr/0014-browser-node-local-encoding-pool.md).
+Browse [all ADRs](./adr/) for their context and consequences.
 
-## Current Indexes And Operations
+## Evidence and current work
 
-- [Project memory](./project-memory.md): compact cross-domain map and invariants.
-- [Status](./status.md): exact current source, production, milestone, and holds.
-- [TODO](./todo.md): the only current work ledger.
-- [Verification](./verification-status.md): open physical evidence and expensive
-  gate applicability.
-- [Deployment](./deployment.md): immutable application release and recovery.
-- [Self-hosting](./operations/self-hosting.md): initial services, topology, and
-  operational verification.
-- [Configuration](./reference/configuration.md): environment, secrets, bounds,
-  and ports.
-- [Maintenance](./maintenance.md): truth ownership, context, and repository
-  lifecycle.
+- [Project memory](./project-memory.md): compact product map and invariants.
+- [Status](./status.md): current source, production and acceptance boundaries.
+- [TODO](./todo.md): the only work ledger.
+- [Verification status](./verification-status.md): remaining physical evidence.
+- [Native encoding research](./research/webrtc-encoder-pool.md) and
+  [Browser pooling research](./research/browser-local-encoding-pool.md): measured
+  results, failed controls and limits; neither promises universal performance.
+- [Research directory](./research/): transport, capture, platform and backend evidence.
+- [Maintenance](./maintenance.md): document ownership and repository lifecycle.
+- [Licensing](../licenses/README.md): Screener's MIT scope and third-party notices.
 
-## Decisions
-
-- [ADR-0001](./adr/0001-p2p-first-media-topology.md): initial P2P-first
-  baseline.
-- [ADR-0002](./adr/0002-memory-resident-protected-rooms.md): room authority and
-  optional SQLite stability.
-- [ADR-0004](./adr/0004-peer-assisted-media-experiment.md): Browser relay
-  experiment.
-- [ADR-0005](./adr/0005-automatic-hybrid-media-routing.md): current automatic
-  route and SFU resource model.
-- [ADR-0006](./adr/0006-fixed-high-native-sender-canary.md): historical native
-  sender canary evidence (superseded by ADR-0010).
-- [ADR-0007](./adr/0007-path-isolated-representation-quality.md): framework-
-  owned media adaptation.
-- [ADR-0008](./adr/0008-window-scoped-audio-capture.md): Browser/native window
-  audio boundary.
-- [ADR-0009](./adr/0009-optional-nat-prediction.md): optional connection-local
-  NAT prediction.
-- [ADR-0011](./adr/0011-browser-assisted-native-fanout.md): Browser capture with
-  Client encoded fanout.
-- [ADR-0010](./adr/0010-cross-platform-client-runtime.md): cross-platform Client
-  runtime and self-contained package boundary.
-- [ADR-0012](./adr/0012-shared-go-backend-core.md): one shared Go backend core
-  for Hosted and Client, amending part of ADR-0010.
-
-## Evidence
-
-Routing and transport:
-
-- [WebRTC feasibility](./research/webrtc-p2p-screen-sharing.md)
-- [Browser peer relay](./research/peer-assisted-media.md)
-- [Low-server-cost routes](./research/low-server-media-routes.md)
-- [Advanced distribution alternatives](./research/advanced-peer-distribution.md)
-
-Media and platform:
-
-- [Realtime quality and codecs](./research/realtime-quality-adaptation.md)
-- [Browser background capture](./research/browser-background-capture.md)
-- [Browser screen audio](./research/browser-screen-audio-quality.md)
-- [Browser NAT traversal](./research/nat-traversal.md)
-- [Browser platform output](./research/platform-output.md)
-- [Historical native sender and shared encode evidence](./research/native-sender.md)
-- [Native Client media](./research/native-client-media.md)
-- [Cross-platform Client runtime](./research/cross-platform-client-runtime.md)
-
-Rooms and repository practice:
-
-- [Cross-restart room recovery](./research/cross-restart-room-recovery.md)
-- [Agent context governance](./research/agent-context-governance.md)
-
-Backend structure:
-
-- [Server consolidation](./research/server-consolidation.md): Go core ownership
-  and its acceptance checklist
-- [Backend audit and refactor preparation](./research/backend-audit-1b01048.md)
-
-Research records verified facts, measurements, assumptions, licenses, and
-remaining evidence boundaries. It does not own current product behavior or work
-priority.
+Research distinguishes observations from assumptions. Product modules own
+accepted behavior, source and tests own implementation detail, and Git/PRs own
+completed history.

@@ -1,10 +1,12 @@
 package nativecontrol
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -94,6 +96,12 @@ func runQuietCaptureFixture(directory string) {
 func TestQuietHostUpdatePreservesControlAndCancelsCleanly(t *testing.T) {
 	for _, outcome := range []string{"complete", "stop", "disconnect", "first-input-timeout", "backpressure-stop"} {
 		t.Run(outcome, func(t *testing.T) {
+			var trace bytes.Buffer
+			if outcome == "complete" {
+				previous := slog.Default()
+				t.Cleanup(func() { slog.SetDefault(previous) })
+				slog.SetDefault(slog.New(slog.NewJSONHandler(&trace, &slog.HandlerOptions{Level: slog.LevelDebug})))
+			}
 			directory := t.TempDir()
 			t.Setenv("SCREENER_QUIET_CAPTURE_FIXTURE", directory)
 			executable, err := os.Executable()
@@ -238,6 +246,30 @@ func TestQuietHostUpdatePreservesControlAndCancelsCleanly(t *testing.T) {
 				}
 				if _, ok := responseFor("request_followup").(shareUpdatedResponse); !ok {
 					t.Fatal("later update could not complete")
+				}
+				_ = session.Close()
+				var started, ended int
+				decoder := json.NewDecoder(&trace)
+				for decoder.More() {
+					var record map[string]any
+					if err := decoder.Decode(&record); err != nil {
+						t.Fatal(err)
+					}
+					if record["requestId"] != "request_update" {
+						continue
+					}
+					switch record["event"] {
+					case "native-request-started":
+						started++
+					case "native-request-ended":
+						ended++
+						if record["durationMs"].(float64) < 5_000 || record["failed"] != false || record["share"] == "share_123456" {
+							t.Fatalf("asynchronous request lost duration, outcome or private identity handling: %+v", record)
+						}
+					}
+				}
+				if started != 1 || ended != 1 {
+					t.Fatalf("async update logged %d starts and %d completions", started, ended)
 				}
 			}
 		})

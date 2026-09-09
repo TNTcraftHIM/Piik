@@ -43,68 +43,80 @@ dual configuration readers.
 
 ## Diagnostics
 
-Client file diagnostics default off; enable them with `--debug` or
-`SCREENER_DEBUG=client`. Structured lifecycle, build-revision, native-capability,
-fixed native-failure and sanitized Local route events go to `client.log`.
-Native share changes, validated capture states, connection states and selected
-candidate types/provenance are included without source names or addresses.
-Failed profile preparation records a fixed rejection stage. Native outbound
-connections record ICE and DTLS state separately; local-bridge closure records
-candidate type/transport counts, never candidate addresses or SDP.
-The embedded Local server uses the same file. Debug events do not stream through
-the TUI or change machine-readable stdout. On the Client, `SCREENER_DEBUG=route`
-alone retains console route tracing and does not enable file capture or `D`.
+Diagnostics are local and opt-in. Enable them **before** reproducing the problem:
 
-The default Client directory is `logs` beside the executable. If that directory
-is not writable, the Client uses `Screener/logs` inside the OS user-cache directory
-and displays the actual log path. `--log-dir <directory>` overrides
-`SCREENER_LOG_DIR`; either explicit choice must be writable or startup fails.
-Selecting a directory alone does not enable diagnostics.
+| Surface | Enable | Export |
+| --- | --- | --- |
+| Client | Start with `--debug` or `SCREENER_DEBUG=client` | Press `D` in the terminal for a ZIP |
+| Browser Host/Viewer | Add `?debug=1` to the page URL, before any invitation fragment | Use the download button beside language/theme controls |
+| Hosted Server | Start with `--debug`, `SCREENER_DEBUG=server` or `SCREENER_DEBUG=route` | On Unix, `kill -USR1 <pid>`; also exported at orderly shutdown |
 
-Press `D` in the interactive Client terminal to export a ZIP without stopping
-the Client. The terminal shows the saved path as a local-file hyperlink when
-supported; the visible path can also be copied normally. English, Chinese and
-visual modes share that action. Non-interactive and `TERM=dumb` sessions export
-at orderly shutdown, since they do not read TUI keys.
+Client/Server ZIP and Browser JSON reports are separate: when investigating
+Browser/Client cooperation, include both from the same reproduction. Neither
+action stops an active share or uploads anything. Browser export also remains
+available as `await window.__SCREENER_DEBUG__.export()` in DevTools.
 
-Hosted Server diagnostics use `--debug`, `SCREENER_DEBUG=server` or
-`SCREENER_DEBUG=route`. They persist structured events in `server.log` while
-normal service journal output continues. The directory is `SCREENER_LOG_DIR`,
-otherwise the first systemd `LOGS_DIRECTORY`, otherwise `logs` under the working
-directory. The tracked systemd unit supplies `/var/log/screener` with mode `0700`
-through `LogsDirectory`, which remains writable with `ProtectSystem=strict`.
-An unwritable selection fails startup. In a running debug-enabled
-Unix server, `kill -USR1 <pid>` saves a bundle and prints its path in the journal.
-Every platform also exports at orderly debug shutdown. Windows does not have
-the Unix signal action; forced termination cannot produce a shutdown snapshot.
-No diagnostic HTTP listener or automatic upload is added.
+Client logs go to `logs` beside the executable, falling back to `Screener/logs`
+in the OS user-cache directory when that default is unwritable. The TUI shows
+the actual path and the exported ZIP. `--log-dir` overrides
+`SCREENER_LOG_DIR`; an explicit directory must be writable. Choosing a
+directory alone does not enable collection. Non-interactive Clients export at
+orderly shutdown. On Client, `SCREENER_DEBUG=route` alone retains console route
+tracing; use `--debug` for file collection and the `D` action.
 
-`--debug` enables the existing sanitized route events for the local Go process;
-`SCREENER_DEBUG=route` also works when loaded from the Server `.env`. Those events
-record room and participant ordinals, route reasons, candidates, revisions,
-quality states and commit/failure outcomes. They exclude raw Peer IDs, SDP, ICE
-candidates, tokens and media credentials. Raw third-party protocol logging is
-not enabled or copied into these files.
+Hosted logs use `SCREENER_LOG_DIR`, otherwise systemd `LOGS_DIRECTORY`,
+otherwise `logs` under the working directory. The service unit supplies
+`/var/log/screener` with mode `0700`. Normal service notices remain in the
+journal; detailed dependency records go into the report. Windows Server has no
+Unix signal trigger; forced process termination cannot create a final snapshot.
 
-Each component retains an 8 MiB current JSON log and one 8 MiB previous log.
-Exports contain those existing logs, build/platform metadata, Go `runtime.MemStats`,
-a sampled Go heap/allocation profile (`heap.pprof`) and aggregate goroutine
-stacks (`goroutines.txt`). These are runtime counters and allocation/stack
-profiles, not raw process-memory dumps. They do not collect environment values,
-configuration files, credentials, media payloads, Browser logs or memory from
-the separate C++ capture process. Exported ZIPs remain in the selected directory
-until the user or operator removes them; log rotation does not delete exports.
+The report combines operation history and existing runtime evidence:
 
-For Browser diagnostics, add `?debug=1` to the page before reproducing the
-problem. The page retains its last 256 bounded events and exposes
-`window.__SCREENER_DEBUG__.export()` for manual JSON export from DevTools.
-The report includes the Browser asset name and signaling contract, capture
-exception categories, capture-setting outcomes, signaling state and native
-request/state outcomes. The Native bridge's failure snapshot includes ICE/DTLS
-states, live receiver counts and candidate type counts without delaying teardown.
-It excludes raw exception messages, credentials, invitation fragments, URLs,
-SDP, ICE candidates and media payloads. Collection
-stays in the current page; there is no automatic upload or persistent log.
+- Native request IDs connect start/completion, duration, requested/applied
+  profiles, source kind, codec/adapter selection and cancellation or failure.
+  Async quality preparation retains that ID until its actual completion.
+- Capture process start/exit/EOF and streamed stderr include useful failure
+  causes and system/HRESULT codes. Windows samples its existing WebRTC encoder
+  observer during processing: input/output FPS, actual size, bitrate, encode
+  time/usage, QP when available, drops, limitation flags and adaptation counts.
+  Those are VSE counters, not a complete account of WGC mailbox overwrites.
+- Pion connection/ICE/DTLS and media-component diagnostics are included.
+  Existing RTP/BWE/allocation observations, packet queue/drop counters,
+  group demand/attachment changes and gateway/STUN outcomes explain delivery
+  without adding a media-control loop or a new per-connection polling timer.
+- Browser records capture settings and sender readbacks, signaling and Native
+  operations, meaningful error messages/stacks/causes and existing RTCStats.
+  Pool observations distinguish native carrier reports, actual output and its
+  assigned producer. Export adds Browser/platform metadata; diagnostic collection
+  does not replace media APIs or control transport.
+
+Each Go component keeps an 8 MiB current log and one 8 MiB backup. ZIPs contain
+these retained logs, a report marker, selected startup context, build/module and
+platform metadata, Go memory counters, sampled allocation profile
+(`heap.pprof`) and aggregate goroutine stacks. These are not raw process-memory
+or C++ memory dumps. A failed optional collector leaves useful files available;
+`metadata.json` lists included files, errors and partial status. ZIP write/disk
+failure still reports an export failure. Rotation and preexisting history are
+identified; retained logs do not claim a complete session history.
+
+Browser retains up to 8,192 events and 8 MiB of compact event data in the current
+page. Reports identify retained sequence/time ranges, evicted/truncated events
+and collector failures. Field/record limits are explicit in the report.
+Browser reload/close loses that in-page history; export before closing it.
+Go ZIP exports remain until the user/operator removes them; rotation only
+manages the current logs.
+
+Credentials, authorization/cookies, invitation secrets, ICE passwords/fragments
+and private keys are filtered before persistence/export. Application media
+identities use diagnostic hashes where applicable; Browser/library technical
+identifiers, IP addresses, device information and file paths may remain.
+Do not treat a report as anonymous. Review it before sharing. Raw screen/audio
+payloads, arbitrary config/environment files and raw process-memory contents
+are not collected. Browser window titles and participant display names are
+omitted. Debug detail has CPU/I/O cost and should be enabled for investigation.
+
+The [research comparison](../research/diagnostic-feedback.md) records the mature
+project references and the reasons for this collection boundary.
 
 ## Public And Private Ports
 

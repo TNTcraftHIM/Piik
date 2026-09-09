@@ -1354,7 +1354,7 @@ class OutputWorker final {
         }
         if (!encoder) {
           encoder = std::make_unique<AdaptiveEncoder>(
-              kind_, profile_, device_.Get(), create_, std::move(initial));
+              kind_, profile_, device_.Get(), create_, std::move(initial), layer_);
         }
         auto output = encoder->Encode([&](UINT32 width, UINT32 height) {
           if (!converter || converted_width != width || converted_height != height) {

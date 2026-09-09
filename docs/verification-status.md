@@ -1,193 +1,99 @@
 # Verification Status
 
-Last updated: 2026-09-05
+Last updated: 2026-09-09
 
-This file owns only cross-module physical evidence that still changes how the
-current product may be described. [Status](./status.md) owns exact source and
-production identity; product modules and ADRs own accepted behavior; tests and
-Git own completed implementation evidence.
+This file owns physical evidence limits that change how the product may be
+described. [Status](./status.md) owns the execution/deployment index.
+Product modules own behavior; research owns measurements; Git owns completed
+implementation and obsolete package history.
 
-## Route And Network
+## Current Evidence
 
-Still required on representative public networks:
+Windows Client and Browser are the owner's primary acceptance targets. Current
+Go packages embed their Web assets and do not run a Node backend. The current
+contract is Browser/server v22, Native control v9 and capture v7; pre-port
+Client/Node package checks do not prove this package.
 
-- direct Host-to-Viewer P2P;
-- Peer-fed and SFU-fed Browser relay, including a second-level child;
-- Host and Viewer TUN/VPN cases;
-- relay-ingress failure with subtree retention;
-- disconnect and effective-capacity drain;
-- two simultaneous rooms with independent SFU publications;
-- measured endpoint upload and server ingress/egress during steady routing and
-  make-before-break overlap;
-- 20-Viewer queue tail, route depth, resource use, and endurance; and
-- all-UDP-blocked bounded failure.
+Bounded current checks cover:
 
-The route model, capacity `C=1..3`, first-frame commit, rollback, SFU admission,
-and managed-room lifecycle have automated invariant coverage. That coverage does
-not prove target-network quality, latency, or interoperability. See
-[ADR-0005](./adr/0005-automatic-hybrid-media-routing.md) and the
-[routing contract](./product/routing-transport.md).
+- Native H264/VP8 output, compatible encoding reuse, different weak-budget
+  grouping, keyframe-safe retarget and independent retirement;
+- Windows live/paused/quiet-source settings, source replacement and subsequent
+  sharing, including media-object continuity where required;
+- Native H264 SFU video and decoded Opus through a profile change and closure;
+- Browser-to-Client fanout and Client-exit fallback;
+- concurrent Native sessions with independent media and retirement;
+- complete large encoded access-unit transport and bounded queue/cache behavior;
+- Linux container startup as non-root with a read-only filesystem, memory/SQLite
+  restart semantics, diagnostics export, STUN and listener lifecycle; and
+- public embedded-SFU H264/VP8, audio, live profile changes and closure after the
+  coordinated production cutover.
 
-## Media Quality
+The owner confirmed Windows 10 whole-display capture resolved. Chromium
+WebRTC/IP-handling policy explains the verified local-media failure; it is a
+Browser policy limitation, not a Vivaldi-specific transport workaround.
 
-Still required:
+NAT traversal and Auto codec selection are implemented features, not unfinished
+functionality. On 2026-09-09 the owner confirmed that the new NAT traversal is
+useful in actual use. That field confirmation is accepted; it does not claim a
+population success percentage or identify which candidate won without a trace.
+Neither a statistical NAT campaign nor exhaustive Auto hardware benchmarking
+is required to close this phase. Investigate further only from a new failure
+or a measured improvement worth its implementation and maintenance cost.
 
-- real games at 720p30, 1080p30, and 1080p60 on weaker Hosts;
-- actual H.264/VP8 encoder paths and sustained CPU/GPU contention on Windows,
-  macOS, and Linux;
-- mixed P2P/SFU quality and recovery on heterogeneous public networks;
-- screen-audio presence, stereo correctness, weak-network behavior, and A/V
-  synchronization after SFU RED was disabled; and
-- long-running encode/decode cost, thermals, frame delivery, and resource
-  admission at the 20-Viewer bound.
+## Remaining Device And Network Acceptance
 
-Current controlled Browser evidence supports the H.264/VP8 gate, `motion`
-content intent, startup-quality workaround, LiveKit-owned SFU adaptation, native
-edge convergence, and same-edge connection regeneration invariants. The
-2026-08-30 production comparison confirms recovery on a fresh same-route sender,
-but does not establish its quality or resource benefit on heterogeneous public
-networks. Room 8489 confirms synchronized SFU stalls and representation churn,
-but retained logs do not prove whether Dynacast layer disablement, subscriber
-forwarding, or keyframe reacquisition owned each freeze. See
-[media quality](./product/media-quality.md)
-and [realtime quality research](./research/realtime-quality-adaptation.md).
+The following are broader coverage and endurance tasks, not automatically new
+implementation mechanisms:
 
-## Browser Lifecycle
+- heterogeneous public-network P2P and multi-hop Browser/Native/SFU-fed relays;
+- Host/Viewer TUN/VPN combinations, migration and all-UDP-blocked bounded failure;
+- two-room public SFU load, real-game audio/video synchronization and sustained
+  packet loss/recovery;
+- weaker Hosts at 720p30, 1080p30 and 1080p60, CPU/GPU contention, thermals,
+  long-running resources and the 20-Viewer bound; and
+- physical mobile autoplay, background/lock, page reclamation, rotation,
+  Wi-Fi/cellular migration and relay survival.
 
-Still required on physical Android Chrome and iOS Safari:
+A short 20-Viewer topology run from an earlier revision proves only its tested
+invariants; it is not current-contract endurance or a public-network quality
+guarantee. A direct postflight with both endpoints on one machine proves public
+signaling and local media, not restricted-NAT traversal.
 
-- autoplay and user-gesture recovery;
-- foreground/background audio;
-- foreground video recovery after background or lock;
-- page reclamation and BFCache behavior;
-- rotation and viewport changes;
-- Wi-Fi/cellular migration; and
-- survival or controller recovery when the mobile Viewer is a relay.
+macOS/Linux physical capture/audio/recovery remains explicitly deferred by the
+owner. Linux producer compilation and older Mac SDK/package evidence do not
+prove the current Windows multi-output adaptation contract on those platforms.
 
-Desktop Host background/minimized capture also remains unconfirmed under a
-current-production real game. Web code cannot promise OS background execution,
-page retention, or capture keepalive. See
-[presentation and lifecycle](./product/presentation-lifecycle.md) and
-[background capture research](./research/browser-background-capture.md).
+## Adaptation Boundaries
 
-## Screener Client
+The [encoder-pool research](./research/webrtc-encoder-pool.md) retains both
+successful and unsuccessful observations:
 
-The Go Client has unit coverage for persistent Local/Site configuration, LAN
-address selection, Browser launch commands, and its loopback
-port/Origin/Host/session contract. The same source cross-builds for Windows
-amd64, macOS arm64, and Linux amd64.
+- A prolonged shaped-network run recovered original output about 1.5 seconds
+  after release and stayed near 30 fps; an earlier twelve-second observation
+  missed recovery. The cause of that difference is not established.
+- H264's stock QP adaptation can take tens of seconds to restore full size.
+- Extreme single-core VP8 overload produced multi-second encode gaps that reset
+  the stock CPU detector's samples. That result does not establish normal-device
+  or Browser parity and does not authorize custom CPU thresholds.
+- Equal effective demands can share; incompatible demands may need more encoders.
+  Extra fallback outputs, buffers and recovery keyframes have real costs.
+- The 360-to-187 encode-call result compares a bounded prototype with independent
+  encoders. It is not an old-versus-new Native product CPU benchmark.
 
-Every packaged-Client result in this section is pre-port evidence from the
-package that bundled a Node runtime and an application tree. Capture, media,
-discovery, and network results remain applicable; package assembly, startup, and
-shutdown claims must be re-verified on the single-binary Client before it is
-accepted.
+The earlier borrowed-child Browser experiment failed independent quality and
+accounting. The independent producer in ADR-0014 now has bounded H264/VP8
+direct/relay, weak-path, lifecycle and A/V evidence on the acceptance candidate;
+[its research](./research/browser-local-encoding-pool.md) owns results and limits.
+The owner authorized its release on 2026-09-09. Browser relay shares local outputs
+among its direct children; it still re-encodes received media. Native/SFU healthy
+forwarding remains encoded.
 
-On Windows, Chrome 151.0.7922.175 completed the built Local page's
-fragment access, Host surface, LAN invitation, and clean Client/Node/Browser
-shutdown. A separate synthetic run formed a P2P-only Host-plus-three-Viewer tree
-with one Browser relay and advancing frames at every Viewer. The Hosted Site
-completed v8 loopback `hello`/`ping` after CDP granted `loopback-network`; without
-that permission Chrome blocked it as expected.
-The pre-port clean-revision Windows package assembled with Node 24.19.0 passed
-the package checks recorded for that revision; changing `app/REVISION` made it
-fail before opening a listener. Its fresh Site loopback gate closed the Client,
-Browser, port, and temporary profile.
-The same explicit-target assembly produced a Linux amd64 package that ran its
-bundled Node application and loopback runtime on an independent Ubuntu host.
-Its full package also created a public link reachable from another network and
-closed that link and all local ports on exit. The macOS arm64 output contains
-matching Mach-O arm64 Client and Node binaries. Its prior fixed-profile capture
-baseline and current variable-profile/audio sidecar compile on the macOS runner;
-the latter passes the synthetic hardware-H.264 IDR self-test. The full package
-and ScreenCaptureKit video/audio path have not run on a physical Mac. Linux CI
-also compiles, probes, packages, starts, and stops its Portal/PipeWire/system-
-GStreamer hardware-H.264 adapter; it has not captured on a physical desktop.
+## Interpretation
 
-Still required are physical second-device LAN playback, first-run LNA prompt,
-no-STUN mDNS behavior, macOS package execution, and equivalent non-Windows
-capture, audio, firewall, and process-lifecycle tests. Windows native capture, hardware H.264,
-one shared Pion source feeding two Chrome transports, STUN candidate gathering,
-and a Local Client Host path have bounded physical gates. A remote Pion gate
-also received 30 video packets over a selected `srflx`-to-`srflx` pair; its
-signaling used a temporary reverse SSH test path. The Windows media gate now
-also receives non-zero process/system-loopback Opus on both native edges and
-verifies decoded audio energy. The native Host gate passes display and window
-source selection and bounded previews; its window arm closes the captured
-source, observes the current share end, restarts capture in the same room, and
-requires the existing Viewer to receive a different media object plus 30 new
-frames. The same product gate changes a live Native Host from default 1080p30
-to 1440p30, then changes resolution while paused and resumes the same Viewer
-media object through the Host UI. A separate two-Viewer media gate changes
-720p30 to 1440p60, then changes to 480p15 while paused and resumes both
-connections. Display-source lifecycle is not claimed by that arm.
-Native P2P quality evidence and the Browser-mediated native-source SFU happy
-path now have bounded gates. A focused unit gate proves that a quality candidate
-from a current Native sender edge selects the stock Browser sender, while ordinary
-candidates remain Native. Controlled weak-path commit/rollback, production
-package integration, SFU recovery and endurance, and physical non-Windows
-capture remain unproved.
-
-A five-second headless topology run with 20 Viewers passed the existing route
-capacity, no-orphan-publication, quality-propagation, and decoded-frame checks;
-it is topology evidence, not a long-running or public-network quality claim.
-An isolated LiveKit Server 1.13.6 run also delivered default 1080p native media,
-then 15 decoded 854x480 frames after a live source/publisher profile change,
-through the existing Browser SFU publisher and completed cleanup.
-
-The one-link gate started a session-scoped public origin from a Windows Client,
-confirmed that its ordinary invitation used that origin, and served the Viewer
-page plus the existing `/signal` WebSocket upgrade to an independent Linux host.
-A native Host then used that public signaling path with an independent Linux
-Pion Viewer; repeated runs delivered 30+ H.264 RTP packets over selected direct
-paths using a reflexive candidate. Client exit stopped Node and the public link.
-This still does not prove decoded Browser media on a physical second device.
-
-On 2026-09-05, a local Windows gate proved a Browser Host feeding a Client-
-activated Native Viewer: the Viewer held the v8 control session while Chrome
-decoded 621 frames at 1280x720. A separate Pion integration gate proves that the
-same inbound source forwards H.264 and Opus RTP to one downstream edge without
-re-encoding. A physical mixed-device relay and public-link Browser Viewer remain
-open.
-
-On 2026-09-05, a Native preflight showed that Pion's ordinary srflx gatherer
-used three temporary local ports for three public STUN destinations. The current
-Universal UDP mux adapter instead emitted an srflx observation related to the
-Engine's sole media port. A public-link run then delivered 35 H.264 RTP packets
-from that Windows Native Host to the independent Linux Pion Viewer over a
-selected direct host-to-srflx pair. The active TUN path exposed only one distinct
-mapping, so this proves shared-socket discovery and transport, not prediction.
-
-On 2026-09-04, a bounded Windows physical check held a static Notepad source
-open beyond seven seconds, produced a requested recovery keyframe from its
-retained image, and exited cleanly. The Native Host crash gate also terminated the
-Client process and observed the Host return to its start-share control within
-the bounded check. These results cover the current Windows build only.
-
-That same pre-port clean revision assembled into a self-contained Windows package
-with a matching Node runtime, application tree, and native capture process.
-Chrome 151 passed the package's Local startup gate and both Site
-loopback-permission arms; revision mismatch remains fail-closed before a listener
-starts.
-
-## Interpretation Rules
-
-The current Windows Native candidate additionally passed manual VP8 and Auto-
-selected H264 playback, with actual Host/Viewer RTP codec checks across live
-presets, paused changes and source replacement. A three-attempt NAT acquisition
-has deterministic controller/signaling coverage, not a field success-rate
-claim. Windows 10 monitor sharing was confirmed resolved by the owner on
-2026-09-09. Game-specific aspect/window-replacement behavior is not established
-by those checks. The matching bundle
-must be accepted before any coordinated private-wire deployment.
-
-- Configuration, unit tests, loopback, and synthetic signaling prove invariants,
-  not target-network or device behavior.
-- An automated/package gate is evidence from its scripted runner; a physical
-  gate requires the named target device, network, or desktop environment.
-- Missing RTCStats fields are unknown, not zero.
-- Requested quality values are ceilings; actual sender/receiver stats are truth.
-- A page-lifecycle correction is recovery logic, not a keepalive guarantee.
-- Expensive evidence remains applicable only while its protocol, component,
-  configuration, environment, and acceptance boundary remain materially the
-  same.
+Configuration/unit/loopback checks prove their named invariants. Physical results
+belong to the tested revision, device and workload. Missing counters remain
+unknown. A new diagnostic collector must be checked in a real exported report,
+including retention and failed-collector information; logging a method call alone
+does not establish useful evidence. Browser/OS suspension remains a physical
+limit rather than a keepalive guarantee.
