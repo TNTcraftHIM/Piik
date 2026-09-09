@@ -1,19 +1,19 @@
 # Cross-Restart Room Recovery
 
-- Research date: 2026-08-26
-- Status: SQLite stable room-authority mode implemented; production enabled
+- Research date: 2026-08-26; permanent-room revision reviewed 2026-09-10
+- Status: SQLite authority verified; current behavior is owned by
+  [rooms/access](../product/rooms-access.md)
 
 ## Current Conclusion
 
 SQLite has one cohesive current consumer: the room authorization aggregate. It
 is justified when application releases should retain not only a preferred code,
 but the exact Host ownership, existing Viewer invitation, revocation high-water,
-code-entry policy, password verifier and dormant lease. It is not a generic
+code-entry policy and password verifier. It is not a generic
 store for future features.
 
-`ROOM_DATABASE_PATH` absent remains the default lightweight mode. Configuring an
-exact file enables stable mode over the same RoomStore contract. Production uses
-stable mode after passing its persistent-state and restart-recovery gate.
+Hosted defaults to SQLite over the same RoomStore contract. Process-only mode
+remains an explicit composition; neither mode needs time-based room expiry.
 
 ## Stored Authority
 
@@ -25,10 +25,9 @@ stable mode after passing its persistent-state and restart-recovery gate.
 | Viewer authorization generation | Prevents rotate/revoke from rolling back across restart. |
 | `open | private` | Preserves code-entry policy. |
 | 48-byte scrypt material | Preserves optional password admission without plaintext. |
-| Dormant lease deadline or active marker | Retains an exact dormant deadline; crash-active becomes dormant for one configured lease from startup. |
 
 These values form one atomic row. Create, password/policy update, rotate/revoke,
-lease transition, expiry, abandon and room replacement update the row in the same
+abandon and room replacement update the row in the same
 RoomStore mutation that changes memory authority.
 
 ## Deliberately Ephemeral State
@@ -62,7 +61,7 @@ A signed Host capsule is smaller only when recovery may issue a new invitation.
 It cannot prove that an older capsule is not replaying a Viewer grant revoked by
 a newer one. Stable old invitations plus strong rotate/revoke therefore require
 a durable latest-authorization-generation high-water mark. Once that durable
-owner exists, keeping the code, credential digests, policy, verifier and lease in
+owner exists, keeping the code, credential digests, policy and verifier in
 the same SQLite row is simpler than a client capsule, signing key and second
 truth path.
 
@@ -76,19 +75,25 @@ second owner fails before signaling or LiveKit mutation.
 
 Production activation is not an app-only cutover. It requires an access-restricted
 writable directory, configuration backup, database backup/restore procedure and
-rollback that removes the new environment setting before starting a release that
-does not understand it. Old database backups can revive expired credentials, so
+rollback that restores matching data, environment and application together.
+Old database backups can revive revoked credentials, so
 restoring one later requires an explicit credential-invalidating decision.
+
+For the permanent-room revision, an offline `DROP COLUMN` transaction on a
+copy of the prior synthetic database preserved both active and formerly expired
+rooms. All six remaining authority fields matched exactly; the source backup
+was unchanged. The current reader accepted the converted schema without a
+compatibility path. The [deployment procedure](../deployment.md#permanent-room-schema-cutover)
+owns the operational steps and recovery boundary.
 
 ## Acceptance Matrix
 
 1. Both storage modes pass identical room behavior within one process.
 2. Stable restart preserves code, token/grant validation, password, policy,
-   generation and lease while restoring zero participants or media state.
+   generation while restoring zero participants or media state.
 3. A grant revoked before restart remains revoked afterward.
-4. Active-at-crash rows become dormant once; repeated restart does not repeatedly
-   extend an already stored dormant deadline.
-5. Expired rooms are deleted and their codes become free before readiness.
+4. Presence and elapsed time do not mutate durable authority.
+5. Explicit deletion/replacement releases codes; the allocation bound is unchanged.
 6. Corrupt/mismatched/multiply owned state fails before accepting traffic.
 7. Surviving Host/Viewer tabs reauthenticate and rebuild a fresh route; no test
    labels that bounded rebuild as uninterrupted media.

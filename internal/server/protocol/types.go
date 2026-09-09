@@ -45,7 +45,7 @@ var (
 	routeDiagnosticStages        = []string{"admission", "first-frame", "quality-proof"}
 	senderQualityStates          = []string{"unknown", "healthy", "degraded"}
 	senderQualityDegradedReasons = []string{"none", "bandwidth", "cpu"}
-	errorCodes                   = []string{"AUTH_REQUIRED", "INVALID_MESSAGE", "INVALID_TOKEN", "ROOM_ACCESS_DENIED", "ROOM_NOT_FOUND", "ROOM_EXPIRED", "ROOM_FULL", "HOST_ALREADY_CONNECTED", "PEER_NOT_FOUND", "FORBIDDEN", "SERVER_ERROR"}
+	errorCodes                   = []string{"AUTH_REQUIRED", "INVALID_MESSAGE", "INVALID_TOKEN", "ROOM_ACCESS_DENIED", "ROOM_NOT_FOUND", "ROOM_FULL", "HOST_ALREADY_CONNECTED", "PEER_NOT_FOUND", "FORBIDDEN", "SERVER_ERROR"}
 )
 
 func validRevision(revision Int) bool {

@@ -569,7 +569,12 @@ func (r *router) getViewerRouteUpstream(roomID, viewerPeerID string) protocol.Me
 	return assignmentFor(r.assignments(roomID, rm.controller.Snapshot(), nil, "", ""), viewerPeerID).Upstream
 }
 
-// peerSignalAuthorization ports peerSignalAuthorization.
+// A retired server candidate must never be mistaken for a parent-initiated
+// replacement. Its ID remains opaque to clients; no retired-ID history is needed.
+const candidateConnectionIDPrefix = "route_"
+
+// peerSignalAuthorization resolves candidate and retained media by connection,
+// since both may belong to the same parent/child pair during overlap.
 func (r *router) peerSignalAuthorization(input peerSignalInput) signalAuthorization {
 	rm, _ := r.rooms.Get(input.roomID)
 	if rm == nil || rm.controller == nil {
@@ -586,7 +591,7 @@ func (r *router) peerSignalAuthorization(input peerSignalInput) signalAuthorizat
 			input.targetPeerID == operation.ChildPeerID
 		childToParent := input.sourcePeerID == operation.ChildPeerID &&
 			input.targetPeerID == current.Tuple.ParentPeerID
-		if parentToChild || childToParent {
+		if (parentToChild || childToParent) && input.connectionID == current.ConnectionID {
 			parentSession, childSession := input.targetSessionID, input.sourceSessionID
 			if parentToChild {
 				parentSession, childSession = input.sourceSessionID, input.targetSessionID
@@ -594,7 +599,6 @@ func (r *router) peerSignalAuthorization(input peerSignalInput) signalAuthorizat
 			if hasParent && hasChild &&
 				parent.SessionID == parentSession &&
 				child.SessionID == childSession &&
-				input.connectionID == current.ConnectionID &&
 				(input.signalKind == "candidate" ||
 					(parentToChild && input.descriptionType == "offer") ||
 					(childToParent && input.descriptionType == "answer")) {
@@ -627,6 +631,9 @@ func (r *router) peerSignalAuthorization(input peerSignalInput) signalAuthorizat
 		input.signalKind == "description" &&
 		input.descriptionType == "offer" &&
 		input.connectionID != edge.ConnectionID {
+		if strings.HasPrefix(input.connectionID, candidateConnectionIDPrefix) {
+			return signalAuthorizationDenied
+		}
 		adopted := controller.AdoptDirectConnection(route.AdoptDirectConnectionInput{
 			EdgeGuard: route.EdgeGuard{
 				ChildPeerID:     childPeerID,
@@ -636,8 +643,13 @@ func (r *router) peerSignalAuthorization(input peerSignalInput) signalAuthorizat
 				ConnectionID:    edge.ConnectionID,
 			},
 			NewConnectionID: input.connectionID,
-		})
-		if adopted {
+		}, r.now())
+		if adopted.Accepted {
+			r.releaseResources(adopted.Released)
+			if adopted.ActiveRevision != snapshot.Revision {
+				r.broadcastActive(input.roomID, rm)
+				r.requestPump(input.roomID)
+			}
 			return signalAuthorizationAllowed
 		}
 		return signalAuthorizationDenied

@@ -77,16 +77,6 @@ func ValidViewerPassword(value string) bool {
 		viewerPasswordPattern.MatchString(value)
 }
 
-// isoDateTimePattern mirrors z.string().datetime(): an RFC 3339 UTC instant
-// with a "Z" designator and no offset.
-var isoDateTimePattern = regexp.MustCompile(
-	`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$`)
-
-// ValidISODateTime reports whether value is a zod `.datetime()` string.
-func ValidISODateTime(value string) bool {
-	return isoDateTimePattern.MatchString(value)
-}
-
 // forbiddenDisplayNameCharacters is FORBIDDEN_DISPLAY_NAME_CHARACTERS from
 // src/shared/protocol.ts.
 var forbiddenDisplayNameCharacters = regexp.MustCompile(

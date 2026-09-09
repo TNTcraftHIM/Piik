@@ -635,10 +635,24 @@ export function ViewerPage({
     const nativeViewerSessionId = createOpaqueId();
 
     const acquireNativeClient = async (): Promise<NativeClient | null> => {
-      if (!launchedByClient || !nativeViewerAvailable) return null;
-      nativeClientPromise ??= NativeClient.connect();
-      const client = await nativeClientPromise;
-      return nativeViewerAvailable ? client : null;
+      if (!active || !launchedByClient || !nativeViewerAvailable) return null;
+      if (!nativeClientPromise) {
+        const connecting: Promise<NativeClient | null> = NativeClient.connect().catch(() => null).then((client) => {
+          if (!client || !active) {
+            if (nativeClientPromise === connecting) nativeClientPromise = null;
+            client?.close();
+            return null;
+          }
+          client.onClose(() => {
+            if (nativeClientPromise === connecting) nativeClientPromise = null;
+          });
+          return client;
+        });
+        nativeClientPromise = connecting;
+      }
+      const connecting = nativeClientPromise;
+      const client = await connecting;
+      return active && nativeViewerAvailable && nativeClientPromise === connecting ? client : null;
     };
 
     function createViewerMediaPeer(
@@ -1746,6 +1760,7 @@ export function ViewerPage({
         void viewerRelay?.updateProfile(currentQualitySettings);
         const route = ensureViewerSfuRoute();
         route.setPaused(sharingPaused);
+        viewerRelay?.resyncSignaling();
         await route.resyncAuthoritative(
           {
             revision: message.routeRevision,
@@ -2019,8 +2034,7 @@ export function ViewerPage({
         dispatchPresentation({
           type: "access",
           access: "denied",
-          failure:
-            message.reason === "expired" ? "ROOM_EXPIRED" : "ROOM_CLOSED",
+          failure: "ROOM_CLOSED",
         });
         signal.stop();
         return;
@@ -2032,7 +2046,6 @@ export function ViewerPage({
             "INVALID_TOKEN",
             "ROOM_NOT_FOUND",
             "ROOM_ACCESS_DENIED",
-            "ROOM_EXPIRED",
             "ROOM_FULL",
           ].includes(message.code)
         ) {
@@ -2100,11 +2113,7 @@ export function ViewerPage({
       viewerRelay?.dispose();
       viewerRelay = null;
       viewerRelaySourceKey = null;
-      void nativeClientPromise?.then(async (client) => {
-        if (!client) return;
-        await client.stopReceive(nativeViewerSessionId).catch(() => undefined);
-        client.close();
-      });
+      void nativeClientPromise?.then((client) => client?.close());
     };
   }, [roomId, viewerGrant, viewerPasswordAttempt, launchedByClient]);
 
@@ -2260,13 +2269,11 @@ export function ViewerPage({
           : failureCode === "INVALID_TOKEN"
             ? "invalid-invite"
             : failureCode === "ROOM_NOT_FOUND" ||
-                failureCode === "ROOM_EXPIRED" ||
                 failureCode === "ROOM_CLOSED"
               ? "room-not-found"
               : "warning";
     const deniedIcon: GlyphName =
       failureCode === "ROOM_NOT_FOUND" ||
-      failureCode === "ROOM_EXPIRED" ||
       failureCode === "ROOM_CLOSED"
         ? "door"
         : failureCode === "ROOM_ACCESS_DENIED"
@@ -2277,7 +2284,6 @@ export function ViewerPage({
     const deniedHintKey: CopyKey = codeOnlyDenied
       ? "viewer.hint.denied"
       : failureCode === "ROOM_NOT_FOUND" ||
-          failureCode === "ROOM_EXPIRED" ||
           failureCode === "ROOM_CLOSED"
         ? "viewer.hint.notFound"
         : failureCode === "INVALID_TOKEN" ||

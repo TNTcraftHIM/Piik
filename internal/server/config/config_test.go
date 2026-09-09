@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"maps"
+	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -64,7 +65,11 @@ func TestLoadDevelopmentDefaults(t *testing.T) {
 	if !reflect.DeepEqual(config.AllowedOrigins, want) {
 		t.Errorf("AllowedOrigins = %v", config.AllowedOrigins)
 	}
-	if config.RoomDatabasePath != "" {
+	defaultDatabasePath, err := filepath.Abs("rooms.sqlite")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.RoomDatabasePath != defaultDatabasePath {
 		t.Errorf("RoomDatabasePath = %q", config.RoomDatabasePath)
 	}
 	if len(config.STUNURLs) != 0 {
@@ -88,11 +93,32 @@ func TestLoadDevelopmentDefaults(t *testing.T) {
 	if config.SFU != nil {
 		t.Errorf("SFU = %+v", config.SFU)
 	}
-	if config.RoomLeaseMs != 86_400_000 {
-		t.Errorf("RoomLeaseMs = %d", config.RoomLeaseMs)
-	}
 	if config.SiteAccessPassword != "" {
 		t.Error("SiteAccessPassword is set")
+	}
+}
+
+func TestLoadRoomStorage(t *testing.T) {
+	directory := t.TempDir()
+	t.Chdir(directory)
+	for _, base := range []map[string]string{nil, productionBase} {
+		for _, override := range []map[string]string{nil,
+			{"ROOM_DATABASE_PATH": ""}, {"ROOM_DATABASE_PATH": " \t"},
+			{"ROOM_DATABASE_PATH": ":memory:"},
+		} {
+			configuration := mustLoad(t, env(base, override))
+			want := filepath.Join(directory, "rooms.sqlite")
+			if override["ROOM_DATABASE_PATH"] == ":memory:" {
+				want = ""
+			}
+			if configuration.RoomDatabasePath != want {
+				t.Errorf("Load(%v): RoomDatabasePath = %q, want %q", override, configuration.RoomDatabasePath, want)
+			}
+		}
+	}
+	entries, err := os.ReadDir(directory)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("configuration loading created runtime files: %v, %v", entries, err)
 	}
 }
 
@@ -231,27 +257,10 @@ func TestLoadAccepts(t *testing.T) {
 				t.Error("NATPredictionEnabled = false")
 			}
 		}},
-		{"room lease default", map[string]string{}, func(t *testing.T, c Config) {
-			if c.RoomLeaseMs != 86_400_000 {
-				t.Errorf("RoomLeaseMs = %d", c.RoomLeaseMs)
-			}
-		}},
-		{"room lease override", map[string]string{"ROOM_LEASE_SECONDS": "3600"},
-			func(t *testing.T, c Config) {
-				if c.RoomLeaseMs != 3_600_000 {
-					t.Errorf("RoomLeaseMs = %d", c.RoomLeaseMs)
-				}
-			}},
 		{"file-backed room authority in development",
 			map[string]string{"ROOM_DATABASE_PATH": " " + developmentPath + " "},
 			func(t *testing.T, c Config) {
 				if c.RoomDatabasePath != developmentPath {
-					t.Errorf("RoomDatabasePath = %q", c.RoomDatabasePath)
-				}
-			}},
-		{"blank room database path", map[string]string{"ROOM_DATABASE_PATH": ""},
-			func(t *testing.T, c Config) {
-				if c.RoomDatabasePath != "" {
 					t.Errorf("RoomDatabasePath = %q", c.RoomDatabasePath)
 				}
 			}},
@@ -282,12 +291,6 @@ func TestLoadAccepts(t *testing.T) {
 				t.Errorf("Port = %d", c.Port)
 			}
 		}},
-		{"exponent room lease", map[string]string{"ROOM_LEASE_SECONDS": "1e3"},
-			func(t *testing.T, c Config) {
-				if c.RoomLeaseMs != 1_000_000 {
-					t.Errorf("RoomLeaseMs = %d", c.RoomLeaseMs)
-				}
-			}},
 	}
 
 	for _, testCase := range cases {
@@ -340,8 +343,6 @@ func TestLoadRejects(t *testing.T) {
 			"ENDPOINT_MEDIA_COPY_CAPACITY must be between 1 and 3"},
 		{"fractional copy capacity", map[string]string{"ENDPOINT_MEDIA_COPY_CAPACITY": "1.5"},
 			"ENDPOINT_MEDIA_COPY_CAPACITY must be a positive integer"},
-		{"zero room lease", map[string]string{"ROOM_LEASE_SECONDS": "0"},
-			"ROOM_LEASE_SECONDS must be a positive integer"},
 		{"port zero", map[string]string{"PORT": "0"}, "PORT must be a positive integer"},
 		{"port not a number", map[string]string{"PORT": "eight"}, "PORT must be a positive integer"},
 		{"port above the TCP ceiling", map[string]string{"PORT": "65536"}, "PORT must be at most 65535"},
@@ -434,8 +435,6 @@ func TestLoadRejects(t *testing.T) {
 			"NAT_PREDICTION_ENABLED must be true or false"},
 
 		// Room database path.
-		{"memory room database path", map[string]string{"ROOM_DATABASE_PATH": ":memory:"},
-			"ROOM_DATABASE_PATH must be an absolute file path"},
 		{"room database path with a NUL", map[string]string{"ROOM_DATABASE_PATH": "rooms\x00.sqlite"},
 			"ROOM_DATABASE_PATH must be an absolute file path"},
 		{"bare room database file name", map[string]string{"ROOM_DATABASE_PATH": "rooms.sqlite"},
@@ -461,7 +460,11 @@ func TestLoadRejects(t *testing.T) {
 		{"removed peer-assisted toggle", map[string]string{"PEER_ASSISTED_MEDIA": "true"},
 			"PEER_ASSISTED_MEDIA is no longer supported; peer-assisted media is always enabled"},
 		{"removed room TTL", map[string]string{"ROOM_TTL_SECONDS": ""},
-			"ROOM_TTL_SECONDS is no longer supported; use ROOM_LEASE_SECONDS"},
+			"ROOM_TTL_SECONDS is no longer supported; rooms do not expire"},
+		{"removed room lease", map[string]string{"ROOM_LEASE_SECONDS": "86400"},
+			"ROOM_LEASE_SECONDS is no longer supported; rooms do not expire"},
+		{"blank removed room lease", map[string]string{"ROOM_LEASE_SECONDS": ""},
+			"ROOM_LEASE_SECONDS is no longer supported; rooms do not expire"},
 		{"removed access password", map[string]string{"ACCESS_PASSWORD": "legacy-password"},
 			"ACCESS_PASSWORD is no longer supported; use SITE_ACCESS_PASSWORD"},
 		{"blank access password", map[string]string{"ACCESS_PASSWORD": ""},

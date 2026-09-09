@@ -14,8 +14,7 @@ service secret store or an untracked access-restricted environment file.
 | `PUBLIC_BASE_URL` | Exact public HTTP(S) origin; production requires HTTPS. |
 | `ALLOWED_ORIGINS` | Comma-separated exact HTTP(S) origins; wildcard is invalid. |
 | `SITE_ACCESS_PASSWORD` | Production-required independent 8-128 visible-ASCII byte secret. |
-| `ROOM_LEASE_SECONDS` | Positive dormant lease, default `86400`; active Host prevents expiry. |
-| `ROOM_DATABASE_PATH` | Optional absolute SQLite file path; unset selects memory mode. |
+| `ROOM_DATABASE_PATH` | Hosted defaults to `rooms.sqlite` in its working directory when unset or blank. An explicit absolute file path selects another SQLite file; `:memory:` opts into process-memory room authority. Client Local remains in memory. |
 | `MAX_VIEWERS_PER_ROOM` | `1..20`, default `8`. |
 | `ENDPOINT_MEDIA_COPY_CAPACITY` | Shared endpoint steady-copy cap `1..3`, default `2`. |
 | `STUN_URLS` | Comma-separated advertised `stun:` discovery URLs; at least one is required in production. These are not local bind addresses and may use an unproxied DNS name separate from the Web origin. |
@@ -35,7 +34,14 @@ separate control origin or infrastructure credentials are configured. Local and
 public-link Client construction create no SFU listener. The relay does not
 provide application E2EE.
 
-Removed access, room TTL, endpoint-tier, room-rollout, and TURN variables fail
+The SQLite parent directory must exist and be writable. The systemd template
+sets `/var/lib/screener/rooms.sqlite` under its managed state directory; the
+container image sets `/home/nonroot/rooms.sqlite` under its writable data
+directory. Keep the existing database path and data across application updates.
+Room authority has no idle expiry; the separate site-access cookie keeps its
+24-hour idle lifetime.
+
+Removed access, room TTL/lease, endpoint-tier, room-rollout, and TURN variables fail
 startup even when blank. A present `NODE_ENV` fails the same way, so a stale
 environment file cannot silently drop a deployment out of production. The
 private deployment is upgraded atomically; there are no compatibility aliases or

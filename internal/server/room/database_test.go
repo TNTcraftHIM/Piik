@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -21,21 +22,17 @@ func databasePath(t *testing.T) string {
 	return filepath.Join(t.TempDir(), "rooms.sqlite")
 }
 
-func stableStore(t *testing.T, path string, testClock *clock, options Options) *Store {
+func stableStore(t *testing.T, path string, options Options) *Store {
 	t.Helper()
 	database, err := NewDatabase(path)
 	if err != nil {
 		t.Fatalf("NewDatabase: %v", err)
-	}
-	if options.LeaseMs == 0 {
-		options.LeaseMs = 1_000
 	}
 	if options.MaxRooms == 0 {
 		options.MaxRooms = 8
 	}
 	options.MaxViewersPerRoom = 8
 	options.Database = database
-	options.Now = func() int64 { return testClock.nowMs }
 	store, err := New(options)
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -72,8 +69,7 @@ func dbViewerInput(roomID, sessionID, viewerGrant string) ConnectParticipantInpu
 
 func TestDoesNotPersistARoomWhenPasswordDerivationIsBusy(t *testing.T) {
 	path := databasePath(t)
-	testClock := &clock{nowMs: 1_000}
-	first := stableStore(t, path, testClock, Options{MaxRooms: 1})
+	first := stableStore(t, path, Options{MaxRooms: 1})
 
 	withSaturatedGate(t, first, func() {
 		_, err := tryCreateRoom(first, protocol.CodeEntryPrivate, "room-password", "4321")
@@ -86,7 +82,7 @@ func TestDoesNotPersistARoomWhenPasswordDerivationIsBusy(t *testing.T) {
 		t.Fatalf("Close: %v", err)
 	}
 
-	second := stableStore(t, path, testClock, Options{MaxRooms: 1})
+	second := stableStore(t, path, Options{MaxRooms: 1})
 	if second.Size() != 0 {
 		t.Fatalf("restored size = %d, want 0", second.Size())
 	}
@@ -97,8 +93,7 @@ func TestDoesNotPersistARoomWhenPasswordDerivationIsBusy(t *testing.T) {
 
 func TestRestoresTheExactAuthorityAggregateWithoutParticipants(t *testing.T) {
 	path := databasePath(t)
-	testClock := &clock{nowMs: 1_000}
-	first := stableStore(t, path, testClock, Options{})
+	first := stableStore(t, path, Options{})
 	room := createRoom(t, first, protocol.CodeEntryOpen, "", "4321")
 	if _, err := first.SetCodeEntryPolicy(
 		room.RoomID, protocol.CodeEntryPrivate, room.HostToken); err != nil {
@@ -124,8 +119,7 @@ func TestRestoresTheExactAuthorityAggregateWithoutParticipants(t *testing.T) {
 		t.Fatalf("Close: %v", err)
 	}
 
-	testClock.nowMs = 2_000
-	second := stableStore(t, path, testClock, Options{})
+	second := stableStore(t, path, Options{})
 	if second.Size() != 1 {
 		t.Fatalf("restored size = %d, want 1", second.Size())
 	}
@@ -139,9 +133,6 @@ func TestRestoresTheExactAuthorityAggregateWithoutParticipants(t *testing.T) {
 	expectCode(t, err, CodeInvalidToken)
 
 	granted := mustConnect(t, second, dbViewerInput(room.RoomID, "current-grant", rotated.ViewerGrant))
-	if granted.ExpiresAt == nil || *granted.ExpiresAt != "1970-01-01T00:00:03.000Z" {
-		t.Fatalf("expiresAt = %v", granted.ExpiresAt)
-	}
 	if granted.ViewerAuthorizationGeneration != rotated.ViewerAuthorizationGeneration {
 		t.Fatalf("generation = %q, want %q",
 			granted.ViewerAuthorizationGeneration, rotated.ViewerAuthorizationGeneration)
@@ -157,10 +148,7 @@ func TestRestoresTheExactAuthorityAggregateWithoutParticipants(t *testing.T) {
 	}
 	_, err = second.ConnectParticipant(hostInput(room.RoomID, "wrong-token"))
 	expectCode(t, err, CodeInvalidToken)
-	resumed := mustConnect(t, second, hostInput(room.RoomID, room.HostToken, "recovered-host"))
-	if resumed.ExpiresAt != nil {
-		t.Fatalf("resumed expiresAt = %v, want null", *resumed.ExpiresAt)
-	}
+	mustConnect(t, second, hostInput(room.RoomID, room.HostToken, "recovered-host"))
 	if err := second.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
@@ -178,7 +166,7 @@ func TestRestoresTheExactAuthorityAggregateWithoutParticipants(t *testing.T) {
 	want := []string{
 		"room_id", "host_token_digest", "viewer_grant_digest",
 		"viewer_authorization_generation", "code_entry_policy",
-		"viewer_password_material", "lease_expires_at_ms",
+		"viewer_password_material",
 	}
 	if strings.Join(columns, ",") != strings.Join(want, ",") {
 		t.Fatalf("columns = %v", columns)
@@ -187,16 +175,15 @@ func TestRestoresTheExactAuthorityAggregateWithoutParticipants(t *testing.T) {
 		t.Fatal("no stored room")
 	}
 	var (
-		roomID           string
-		hostDigest       []byte
-		grantDigest      []byte
-		generation       string
-		policy           string
-		material         []byte
-		leaseExpiresAtMs sql.NullInt64
+		roomID      string
+		hostDigest  []byte
+		grantDigest []byte
+		generation  string
+		policy      string
+		material    []byte
 	)
 	if err := rows.Scan(&roomID, &hostDigest, &grantDigest, &generation, &policy,
-		&material, &leaseExpiresAtMs); err != nil {
+		&material); err != nil {
 		t.Fatalf("Scan: %v", err)
 	}
 	hostTokenDigest := sha256.Sum256([]byte(room.HostToken))
@@ -219,58 +206,11 @@ func TestRestoresTheExactAuthorityAggregateWithoutParticipants(t *testing.T) {
 	}
 }
 
-func TestConvertsAnActiveMarkerOnceAndPreservesDormantDeadlines(t *testing.T) {
+func TestPreservesDisconnectedAuthorityAcrossRepeatedRestarts(t *testing.T) {
 	path := databasePath(t)
-	testClock := &clock{nowMs: 100}
-	first := stableStore(t, path, testClock, Options{})
-	room := createRoom(t, first, protocol.CodeEntryOpen, "", "5678")
-	mustConnect(t, first, hostInput(room.RoomID, room.HostToken))
-	if err := first.Close(); err != nil {
-		t.Fatalf("Close: %v", err)
-	}
-
-	testClock.nowMs = 500
-	second := stableStore(t, path, testClock, Options{})
-	firstRestart := mustConnect(t, second, dbViewerInput(room.RoomID, "first-restart", room.ViewerGrant))
-	if firstRestart.ExpiresAt == nil || *firstRestart.ExpiresAt != "1970-01-01T00:00:01.500Z" {
-		t.Fatalf("expiresAt = %v", firstRestart.ExpiresAt)
-	}
-	if err := second.Close(); err != nil {
-		t.Fatalf("Close: %v", err)
-	}
-
-	testClock.nowMs = 700
-	third := stableStore(t, path, testClock, Options{})
-	secondRestart := mustConnect(t, third, dbViewerInput(room.RoomID, "second-restart", room.ViewerGrant))
-	if secondRestart.ExpiresAt == nil || *secondRestart.ExpiresAt != "1970-01-01T00:00:01.500Z" {
-		t.Fatalf("expiresAt = %v", secondRestart.ExpiresAt)
-	}
-	if err := third.Close(); err != nil {
-		t.Fatalf("Close: %v", err)
-	}
-
-	testClock.nowMs = 1_501
-	fourth := stableStore(t, path, testClock, Options{})
-	if fourth.Size() != 0 {
-		t.Fatalf("size = %d, want 0", fourth.Size())
-	}
-	replacement := createRoom(t, fourth, protocol.CodeEntryOpen, "", room.RoomID)
-	if replacement.RoomID != room.RoomID {
-		t.Fatalf("replacement room = %q", replacement.RoomID)
-	}
-	_, err := fourth.ConnectParticipant(hostInput(room.RoomID, room.HostToken))
-	expectCode(t, err, CodeInvalidToken)
-	_, err = fourth.ConnectParticipant(dbViewerInput(room.RoomID, "stale-grant", room.ViewerGrant))
-	expectCode(t, err, CodeInvalidToken)
-}
-
-func TestPreservesTheExactHostDisconnectDeadline(t *testing.T) {
-	path := databasePath(t)
-	testClock := &clock{nowMs: 100}
-	first := stableStore(t, path, testClock, Options{})
+	first := stableStore(t, path, Options{})
 	room := createRoom(t, first, protocol.CodeEntryOpen, "", "5890")
 	host := mustConnect(t, first, hostInput(room.RoomID, room.HostToken))
-	testClock.nowMs = 250
 	if _, err := first.DisconnectParticipant(room.RoomID, host.PeerID, "host-session"); err != nil {
 		t.Fatalf("DisconnectParticipant: %v", err)
 	}
@@ -278,18 +218,25 @@ func TestPreservesTheExactHostDisconnectDeadline(t *testing.T) {
 		t.Fatalf("Close: %v", err)
 	}
 
-	testClock.nowMs = 500
-	second := stableStore(t, path, testClock, Options{})
-	dormant := mustConnect(t, second, dbViewerInput(room.RoomID, "dormant-viewer", room.ViewerGrant))
-	if dormant.ExpiresAt == nil || *dormant.ExpiresAt != "1970-01-01T00:00:01.250Z" {
-		t.Fatalf("expiresAt = %v", dormant.ExpiresAt)
+	for range 3 {
+		restored := stableStore(t, path, Options{})
+		if restored.Size() != 1 {
+			t.Fatalf("size = %d, want 1", restored.Size())
+		}
+		viewer := mustConnect(t, restored, dbViewerInput(room.RoomID, "dormant-viewer", room.ViewerGrant))
+		if viewer.HostOnline {
+			t.Fatal("restored room reported an online host")
+		}
+		mustConnect(t, restored, hostInput(room.RoomID, room.HostToken))
+		if err := restored.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
 	}
 }
 
 func TestPersistsExplicitRoomDeletionBeforeRecyclingItsCode(t *testing.T) {
 	path := databasePath(t)
-	testClock := &clock{nowMs: 10}
-	first := stableStore(t, path, testClock, Options{})
+	first := stableStore(t, path, Options{})
 	room := createRoom(t, first, protocol.CodeEntryOpen, "", "6789")
 	closed, err := first.AbandonRoom(room.RoomID)
 	if err != nil || closed == nil || closed.RoomID != room.RoomID {
@@ -299,7 +246,7 @@ func TestPersistsExplicitRoomDeletionBeforeRecyclingItsCode(t *testing.T) {
 		t.Fatalf("Close: %v", err)
 	}
 
-	second := stableStore(t, path, testClock, Options{})
+	second := stableStore(t, path, Options{})
 	if second.Size() != 0 {
 		t.Fatalf("size = %d, want 0", second.Size())
 	}
@@ -312,48 +259,9 @@ func TestPersistsExplicitRoomDeletionBeforeRecyclingItsCode(t *testing.T) {
 	}
 }
 
-func TestRollsBackABatchExpiryWhenAnyAuthorityIsStale(t *testing.T) {
-	path := databasePath(t)
-	testClock := &clock{nowMs: 10}
-	first := stableStore(t, path, testClock, Options{})
-	createRoom(t, first, protocol.CodeEntryOpen, "", "4321")
-	createRoom(t, first, protocol.CodeEntryOpen, "", "5678")
-	if err := first.Close(); err != nil {
-		t.Fatalf("Close: %v", err)
-	}
-
-	database, err := NewDatabase(path)
-	if err != nil {
-		t.Fatalf("NewDatabase: %v", err)
-	}
-	restored, err := database.Initialize(testClock.nowMs, 1_010)
-	if err != nil {
-		t.Fatalf("Initialize: %v", err)
-	}
-	if len(restored) != 2 {
-		t.Fatalf("restored %d rooms, want 2", len(restored))
-	}
-	err = database.DeleteRooms([]RoomIdentity{
-		{RoomID: restored[0].RoomID, HostTokenDigest: restored[0].HostTokenDigest},
-		{RoomID: restored[1].RoomID, HostTokenDigest: make([]byte, 32)},
-	})
-	if err == nil || err.Error() != "Room database delete did not match current authority" {
-		t.Fatalf("DeleteRooms: %v", err)
-	}
-	if err := database.Close(); err != nil {
-		t.Fatalf("Close: %v", err)
-	}
-
-	second := stableStore(t, path, testClock, Options{})
-	if second.Size() != 2 {
-		t.Fatalf("size = %d, want 2", second.Size())
-	}
-}
-
 func TestPersistsRoomReplacementAsOneAuthorityTransition(t *testing.T) {
 	path := databasePath(t)
-	testClock := &clock{nowMs: 10}
-	first := stableStore(t, path, testClock, Options{})
+	first := stableStore(t, path, Options{})
 	original := createRoom(t, first, protocol.CodeEntryOpen, "", "4321")
 	replacement, err := tryReplaceRoom(
 		first, original.RoomID, original.HostToken, protocol.CodeEntryPrivate, "new-password")
@@ -364,7 +272,7 @@ func TestPersistsRoomReplacementAsOneAuthorityTransition(t *testing.T) {
 		t.Fatalf("Close: %v", err)
 	}
 
-	second := stableStore(t, path, testClock, Options{})
+	second := stableStore(t, path, Options{})
 	if second.Size() != 1 {
 		t.Fatalf("size = %d, want 1", second.Size())
 	}
@@ -386,14 +294,44 @@ func TestPersistsRoomReplacementAsOneAuthorityTransition(t *testing.T) {
 	}
 }
 
+func TestRollsBackReplacementWhenOldAuthorityIsStale(t *testing.T) {
+	path := databasePath(t)
+	first := stableStore(t, path, Options{})
+	createRoom(t, first, protocol.CodeEntryPrivate, "room-password", "4321")
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+	database, err := NewDatabase(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	before, err := database.Initialize()
+	if err != nil || len(before) != 1 {
+		t.Fatalf("Initialize = %v, %v", before, err)
+	}
+	replacement := before[0]
+	replacement.RoomID = "5678"
+	err = database.ReplaceRoom("4321", make([]byte, 32), replacement)
+	if err == nil || err.Error() != "Room database replacement delete did not match current authority" {
+		t.Fatalf("ReplaceRoom = %v", err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	after, err := database.Initialize()
+	if err != nil || !reflect.DeepEqual(after, before) {
+		t.Fatalf("failed replacement changed durable authority: %v", err)
+	}
+}
+
 // TestOpensThePathWithURIReservedCharactersLiterally: `new DatabaseSync(path)`
 // opened the literal path, while the driver's DSN is a URI in which `%41`
 // decodes to `A` and `#` ends the file name; the file must still be the
 // configured one, and the busy-timeout pragma must survive the escaping.
 func TestOpensThePathWithURIReservedCharactersLiterally(t *testing.T) {
-	testClock := &clock{nowMs: 10}
 	path := filepath.Join(t.TempDir(), "rooms%41#1.sqlite")
-	first := stableStore(t, path, testClock, Options{})
+	first := stableStore(t, path, Options{})
 	createRoom(t, first, protocol.CodeEntryOpen, "", "4321")
 	if err := first.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
@@ -401,7 +339,7 @@ func TestOpensThePathWithURIReservedCharactersLiterally(t *testing.T) {
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("the configured file was not the one opened: %v", err)
 	}
-	if second := stableStore(t, path, testClock, Options{}); second.Size() != 1 {
+	if second := stableStore(t, path, Options{}); second.Size() != 1 {
 		t.Fatalf("restored size = %d, want 1", second.Size())
 	}
 }
@@ -412,14 +350,14 @@ func TestRejectsAnotherOwnerOfTheSameDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewDatabase: %v", err)
 	}
-	if _, err := first.Initialize(0, 1_000); err != nil {
+	if _, err := first.Initialize(); err != nil {
 		t.Fatalf("Initialize: %v", err)
 	}
 	contender, err := NewDatabase(path)
 	if err != nil {
 		t.Fatalf("NewDatabase: %v", err)
 	}
-	_, err = contender.Initialize(0, 1_000)
+	_, err = contender.Initialize()
 	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "locked") {
 		t.Fatalf("contender Initialize = %v, want a lock failure", err)
 	}
@@ -434,7 +372,7 @@ func TestRejectsAnotherOwnerOfTheSameDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewDatabase: %v", err)
 	}
-	restored, err := successor.Initialize(0, 1_000)
+	restored, err := successor.Initialize()
 	if err != nil || len(restored) != 0 {
 		t.Fatalf("successor Initialize = %v, %v", restored, err)
 	}
@@ -446,7 +384,7 @@ func TestRejectsAnotherOwnerOfTheSameDatabase(t *testing.T) {
 func TestRejectsAnUnknownDatabaseIdentity(t *testing.T) {
 	for _, testCase := range []struct{ name, mutation string }{
 		{"application identity", "PRAGMA application_id = 1"},
-		{"schema version", "PRAGMA user_version = 2"},
+		{"schema version", "PRAGMA user_version = 99"},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			path := databasePath(t)
@@ -454,7 +392,7 @@ func TestRejectsAnUnknownDatabaseIdentity(t *testing.T) {
 			if err != nil {
 				t.Fatalf("NewDatabase: %v", err)
 			}
-			if _, err := initial.Initialize(0, 1_000); err != nil {
+			if _, err := initial.Initialize(); err != nil {
 				t.Fatalf("Initialize: %v", err)
 			}
 			if err := initial.Close(); err != nil {
@@ -466,7 +404,7 @@ func TestRejectsAnUnknownDatabaseIdentity(t *testing.T) {
 			if err != nil {
 				t.Fatalf("NewDatabase: %v", err)
 			}
-			_, err = reopened.Initialize(0, 1_000)
+			_, err = reopened.Initialize()
 			if err == nil || !strings.Contains(err.Error(), "does not match") {
 				t.Fatalf("Initialize = %v", err)
 			}
@@ -483,7 +421,7 @@ func TestRejectsAnAlteredCurrentVersionSchema(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewDatabase: %v", err)
 	}
-	if _, err := initial.Initialize(0, 1_000); err != nil {
+	if _, err := initial.Initialize(); err != nil {
 		t.Fatalf("Initialize: %v", err)
 	}
 	if err := initial.Close(); err != nil {
@@ -495,7 +433,7 @@ func TestRejectsAnAlteredCurrentVersionSchema(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewDatabase: %v", err)
 	}
-	_, err = reopened.Initialize(0, 1_000)
+	_, err = reopened.Initialize()
 	if err == nil || err.Error() != "Room database columns do not match the current schema" {
 		t.Fatalf("Initialize = %v", err)
 	}
@@ -506,8 +444,7 @@ func TestRejectsAnAlteredCurrentVersionSchema(t *testing.T) {
 
 func TestRejectsCorruptAuthorityRows(t *testing.T) {
 	path := databasePath(t)
-	testClock := &clock{nowMs: 100}
-	initial := stableStore(t, path, testClock, Options{})
+	initial := stableStore(t, path, Options{})
 	createRoom(t, initial, protocol.CodeEntryOpen, "", "7890")
 	if err := initial.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
@@ -529,10 +466,8 @@ func TestRejectsCorruptAuthorityRows(t *testing.T) {
 		t.Fatalf("NewDatabase: %v", err)
 	}
 	reopened, err := New(Options{
-		LeaseMs:           1_000,
 		MaxRooms:          8,
 		MaxViewersPerRoom: 8,
-		Now:               func() int64 { return testClock.nowMs },
 		Database:          database,
 	})
 	if err != nil {
@@ -550,9 +485,7 @@ func TestRejectsCorruptAuthorityRows(t *testing.T) {
 	}
 }
 
-// TestRejectsInvalidAuthorityArguments keeps the assertions the TypeScript ran
-// before touching SQLite: STRICT would accept an integral REAL or a numeric
-// TEXT timestamp, and a caller mistake must not reach the file at all.
+// Invalid authority must be rejected before mutating SQLite.
 func TestRejectsInvalidAuthorityArguments(t *testing.T) {
 	valid := StoredRoomAuthority{
 		RoomID:                        "1234",
@@ -561,7 +494,6 @@ func TestRejectsInvalidAuthorityArguments(t *testing.T) {
 		ViewerAuthorizationGeneration: "MzMzMzMzMzMzMzMzMzMzMw",
 		CodeEntryPolicy:               protocol.CodeEntryOpen,
 	}
-	lease := int64(protocol.MaxSafeInteger + 1)
 	shortDigest := make([]byte, 31)
 	for _, testCase := range []struct {
 		name string
@@ -598,13 +530,8 @@ func TestRejectsInvalidAuthorityArguments(t *testing.T) {
 			room.ViewerPasswordMaterial = make([]byte, 47)
 			return d.InsertRoom(room)
 		}, "Viewer password material must contain 48 bytes"},
-		{"lease deadline", func(d *Database) error {
-			room := valid
-			room.LeaseExpiresAtMs = &lease
-			return d.InsertRoom(room)
-		}, "Room database lease deadline must be a safe positive integer"},
 		{"identity", func(d *Database) error {
-			return d.SetLeaseDeadline("123", make([]byte, 32), nil)
+			return d.DeleteRoom("123", make([]byte, 32))
 		}, "Room ID is invalid"},
 		{"update policy", func(d *Database) error {
 			return d.SetCodeEntryPolicy("1234", make([]byte, 32), "public")
@@ -618,7 +545,7 @@ func TestRejectsInvalidAuthorityArguments(t *testing.T) {
 			if err != nil {
 				t.Fatalf("NewDatabase: %v", err)
 			}
-			if _, err := database.Initialize(0, 1_000); err != nil {
+			if _, err := database.Initialize(); err != nil {
 				t.Fatalf("Initialize: %v", err)
 			}
 			defer func() { _ = database.Close() }()
@@ -644,10 +571,10 @@ func TestRejectsASecondInitialize(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewDatabase: %v", err)
 	}
-	if _, err := database.Initialize(0, 1_000); err != nil {
+	if _, err := database.Initialize(); err != nil {
 		t.Fatalf("Initialize: %v", err)
 	}
-	if _, err := database.Initialize(0, 1_000); err == nil ||
+	if _, err := database.Initialize(); err == nil ||
 		err.Error() != "Room database is already initialized" {
 		t.Fatalf("second Initialize = %v", err)
 	}
@@ -662,23 +589,5 @@ func TestRejectsASecondInitialize(t *testing.T) {
 		CodeEntryPolicy:               protocol.CodeEntryOpen,
 	}); err == nil || err.Error() != "Room database is not initialized" {
 		t.Fatalf("InsertRoom after Close = %v", err)
-	}
-}
-
-func TestRejectsAnActiveLeaseThatIsNotInTheFuture(t *testing.T) {
-	database, err := NewDatabase(databasePath(t))
-	if err != nil {
-		t.Fatalf("NewDatabase: %v", err)
-	}
-	if _, err := database.Initialize(1_000, 1_000); err == nil ||
-		err.Error() != "Room database active-room lease deadline must be in the future" {
-		t.Fatalf("Initialize = %v", err)
-	}
-	if _, err := database.Initialize(-1, 1_000); err == nil ||
-		err.Error() != "Room database startup time must be a safe positive integer" {
-		t.Fatalf("Initialize = %v", err)
-	}
-	if err := database.Close(); err != nil {
-		t.Fatalf("Close: %v", err)
 	}
 }

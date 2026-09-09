@@ -58,7 +58,6 @@ const (
 	defaultAuthenticationTimeoutMs = 5_000
 	defaultViewerDisconnectGraceMs = 5_000
 	defaultHeartbeatIntervalMs     = 30_000
-	defaultCleanupIntervalMs       = 30_000
 )
 
 // SfuFallback is the embedded media runtime the media router
@@ -91,7 +90,6 @@ type Options struct {
 	AuthenticationTimeoutMs       int
 	ViewerDisconnectGraceMs       int
 	HeartbeatIntervalMs           int
-	CleanupIntervalMs             int
 	MaxConnections                int
 	MaxUnauthenticatedConnections int
 	// AfterFunc is the timer factory (D5); nil uses time.AfterFunc.
@@ -138,7 +136,7 @@ type viewerQualityEvidenceAttempt struct {
 // (authenticate falls back to the session id), which is what made the TS
 // `undefined === undefined` comparisons meaningful.
 type roomShare struct {
-	// generation survives stopSharing; only terminateRoom drops the whole
+	// generation survives stopSharing; only closeRoom drops the whole
 	// record (hazard 2).
 	generation string
 	// qualitySettings and routePolicy are nil where the TS map had no entry;
@@ -182,7 +180,6 @@ type Server struct {
 	authenticationTimeoutMs       int
 	viewerDisconnectGraceMs       int
 	heartbeatIntervalMs           int
-	cleanupIntervalMs             int
 	maxConnections                int
 	maxUnauthenticatedConnections int
 
@@ -208,12 +205,11 @@ type Server struct {
 	deferredViewerPresenceRooms map[string]struct{}
 
 	heartbeatStop func() bool
-	cleanupStop   func() bool
 	closing       bool
 }
 
 // New is the SignalingServer constructor. It performs no I/O; the heartbeat
-// and cleanup tickers start immediately.
+// ticker starts immediately.
 func New(options Options) (*Server, error) {
 	if err := protocol.AssertEndpointMediaCopyCapacity(options.EndpointMediaCopyCapacity); err != nil {
 		return nil, err
@@ -239,7 +235,6 @@ func New(options Options) (*Server, error) {
 		authenticationTimeoutMs:       orDefault(options.AuthenticationTimeoutMs, defaultAuthenticationTimeoutMs),
 		viewerDisconnectGraceMs:       orDefault(options.ViewerDisconnectGraceMs, defaultViewerDisconnectGraceMs),
 		heartbeatIntervalMs:           orDefault(options.HeartbeatIntervalMs, defaultHeartbeatIntervalMs),
-		cleanupIntervalMs:             orDefault(options.CleanupIntervalMs, defaultCleanupIntervalMs),
 		maxConnections:                orDefault(options.MaxConnections, defaultMaxSignalConnections),
 		maxUnauthenticatedConnections: orDefault(options.MaxUnauthenticatedConnections, defaultMaxUnauthenticatedConnections),
 		sessionsByID:                  map[string]*session{},
@@ -295,7 +290,6 @@ func New(options Options) (*Server, error) {
 	s.router = mediaRouter
 	s.mu.Lock()
 	s.armHeartbeat()
-	s.armCleanup()
 	s.mu.Unlock()
 	return s, nil
 }
@@ -448,9 +442,6 @@ func (s *Server) Close(ctx context.Context) error {
 	s.closing = true
 	if s.heartbeatStop != nil {
 		s.heartbeatStop()
-	}
-	if s.cleanupStop != nil {
-		s.cleanupStop()
 	}
 	for key, timer := range s.viewerGraceTimers {
 		timer.stop()
@@ -639,8 +630,7 @@ func (s *Server) CreateRoom(
 ) (room.CreatedRoom, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	lease, err := s.store.BeginCreateRoom()
-	if err != nil {
+	if err := s.store.BeginCreateRoom(); err != nil {
 		return room.CreatedRoom{}, err
 	}
 	var material []byte
@@ -652,7 +642,7 @@ func (s *Server) CreateRoom(
 			material, derived = s.store.DeriveViewerPasswordMaterial(*roomPassword, nil)
 		}()
 	}
-	return s.store.CreateRoom(codeEntryPolicy, material, derived, preferredRoomID, lease)
+	return s.store.CreateRoom(codeEntryPolicy, material, derived, preferredRoomID)
 }
 
 // armHeartbeat is the heartbeat setInterval (T1): each tick re-arms the
@@ -671,19 +661,6 @@ func (s *Server) armHeartbeat() {
 		for _, sess := range pings {
 			go sess.ping(interval)
 		}
-	})
-}
-
-// armCleanup is the expireRooms setInterval (T2).
-func (s *Server) armCleanup() {
-	s.cleanupStop = s.afterFunc(time.Duration(s.cleanupIntervalMs)*time.Millisecond, func() {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		if s.closing {
-			return
-		}
-		s.expireRooms()
-		s.armCleanup()
 	})
 }
 
@@ -911,7 +888,7 @@ func (s *Server) completeAuthentication(sess *session, request authRequest, part
 	if s.closing || !s.sessions.Has(sess) || sess.revoked || !sess.open() {
 		if _, err := s.store.DisconnectParticipant(participant.RoomID, participant.PeerID, sess.sessionID); err != nil {
 			// The TS threw out of the async function; there is no catcher (D7).
-			panic(fmt.Errorf("room store write failed while releasing an aborted authentication: %w", err))
+			panic(fmt.Errorf("room store failed while releasing an aborted authentication: %w", err))
 		}
 		return
 	}
@@ -985,7 +962,6 @@ func (s *Server) completeAuthentication(sess *session, request authRequest, part
 			Type:                          "authenticated",
 			Protocol:                      protocol.SignalingProtocol,
 			PeerID:                        participant.PeerID,
-			RoomExpiresAt:                 participant.ExpiresAt,
 			MaxViewers:                    protocol.Int(s.store.MaxViewersPerRoom()),
 			EndpointMediaCopyCapacity:     protocol.Int(s.endpointMediaCopyCapacity),
 			HostOnline:                    participant.HostOnline,
@@ -1009,7 +985,6 @@ func (s *Server) completeAuthentication(sess *session, request authRequest, part
 			Type:                          "authenticated",
 			Protocol:                      protocol.SignalingProtocol,
 			PeerID:                        participant.PeerID,
-			RoomExpiresAt:                 participant.ExpiresAt,
 			MaxViewers:                    protocol.Int(s.store.MaxViewersPerRoom()),
 			EndpointMediaCopyCapacity:     protocol.Int(s.endpointMediaCopyCapacity),
 			HostOnline:                    participant.HostOnline,
@@ -1306,7 +1281,7 @@ func (s *Server) handleAuthenticatedMessage(sess *session, authenticated *authen
 		if s.sessions.Has(sess) && sess.authenticated == authenticated {
 			if _, err := s.store.DisconnectParticipant(authenticated.roomID, authenticated.peerID, sess.sessionID); err != nil {
 				// The TS threw out of the message handler; nothing caught it (D7).
-				panic(fmt.Errorf("room store write failed while stopping sharing: %w", err))
+				panic(fmt.Errorf("room store failed while stopping sharing: %w", err))
 			}
 		}
 		s.stopSharing(authenticated.roomID)
@@ -1643,15 +1618,13 @@ func authenticationErrorMessage(code string) string {
 	case "ROOM_ACCESS_DENIED":
 		return "Room access denied"
 	case "ROOM_NOT_FOUND":
-		return "Room not found or expired"
-	case "ROOM_EXPIRED":
-		return "Room has expired"
+		return "Room not found"
 	case "ROOM_FULL":
 		return "Room is full"
 	case "HOST_ALREADY_CONNECTED":
 		return "A host is already connected"
 	case "INVALID_TOKEN":
-		return "Room is invalid or expired"
+		return "Room credentials are invalid"
 	}
 	return "Authentication failed"
 }
@@ -1672,12 +1645,12 @@ func authenticationErrorCode(request authRequest, err error) string {
 		return string(roomError.Code)
 	}
 	if request.viewerGrant == "" {
-		if roomError.Code == room.CodeRoomNotFound || roomError.Code == room.CodeRoomExpired {
+		if roomError.Code == room.CodeRoomNotFound {
 			return "ROOM_NOT_FOUND"
 		}
 		return "ROOM_ACCESS_DENIED"
 	}
-	if roomError.Code == room.CodeRoomExpired || roomError.Code == room.CodeRoomNotFound {
+	if roomError.Code == room.CodeRoomNotFound {
 		return "INVALID_TOKEN"
 	}
 	return string(roomError.Code)

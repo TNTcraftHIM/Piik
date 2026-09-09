@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-09-09
+Last updated: 2026-09-10
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) owns unresolved physical limits,
@@ -29,6 +29,15 @@ descriptor, runtime REVISION and operator deployment record own exact identity.
   administrative capability was granted. The template correction is carried
   in the current Debug supplement.
 - This private deployment is not a public demonstration service.
+
+## Pending Experience Revision
+
+`feat/piik-experience` carries Browser/Client entry lifecycle repairs, current-edge
+reconnect ownership fixes and the permanent-room/Hosted SQLite-default revision.
+These are not deployed. The candidate uses signaling v23 and SQLite schema 2;
+[deployment](./deployment.md#permanent-room-schema-cutover) owns the coordinated
+cutover and preservation procedure. Piik design is paused until this revision
+is complete; [TODO](./todo.md) owns remaining work.
 
 ## Current Supplement
 

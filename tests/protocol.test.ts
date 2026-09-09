@@ -87,7 +87,7 @@ const qualityEvidence = {
 
 describe("client signaling protocol", () => {
   it("uses the current strict signaling generation", () => {
-    expect(SIGNALING_PROTOCOL).toBe("screener-v22");
+    expect(SIGNALING_PROTOCOL).toBe("screener-v23");
   });
 
   it("keeps signaling challenges strict and sequence-only", () => {
@@ -1249,7 +1249,6 @@ describe("server signaling protocol", () => {
       protocol: SIGNALING_PROTOCOL,
       role: "host",
       peerId: "host_12345678",
-      roomExpiresAt: "2026-08-18T18:00:00.000Z",
       maxViewers,
       endpointMediaCopyCapacity: 2,
       hostOnline: true,
@@ -1394,18 +1393,6 @@ describe("server signaling protocol", () => {
           },
         ],
       }).success,
-    ).toBe(true);
-  });
-
-  it("represents persistent rooms without a room expiry", () => {
-    expect(
-      serverMessageSchema.safeParse({
-        ...authenticatedMessage(8),
-        roomExpiresAt: null,
-      }).success,
-    ).toBe(true);
-    expect(
-      serverMessageSchema.safeParse({ type: "sharing-stopped" }).success,
     ).toBe(true);
   });
 

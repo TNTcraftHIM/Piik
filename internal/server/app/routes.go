@@ -371,10 +371,6 @@ func (s *Server) createRoomResponse(created room.CreatedRoom) protocol.CreateRoo
 		HostToken:       created.HostToken,
 		InviteURL:       signal.InviteURL(s.config.PublicBaseURL, created.RoomID, created.ViewerGrant),
 		CodeEntryPolicy: created.CodeEntryPolicy,
-		ExpiresAt:       created.ExpiresAt,
-		// The lease is configured in whole seconds; TS divided by 1000 into a
-		// JS number and the response schema declares an integer.
-		RoomLeaseSeconds: protocol.Int(s.config.RoomLeaseMs / 1_000),
 	}
 }
 
@@ -422,7 +418,7 @@ func replacementFailure(err error) (int, string, bool) {
 		return http.StatusServiceUnavailable, "Room capacity reached", true
 	case room.CodeRoomAccessDenied, room.CodeRoomBusy:
 		return http.StatusServiceUnavailable, "Room replacement unavailable", true
-	case room.CodeInvalidToken, room.CodeRoomNotFound, room.CodeRoomExpired:
+	case room.CodeInvalidToken, room.CodeRoomNotFound:
 		return http.StatusNotFound, "Room not found", true
 	}
 	return 0, "", false

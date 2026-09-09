@@ -2,7 +2,7 @@ package signal
 
 // Viewer presence, host status, disconnect handling and room termination of
 // src/server/signaling.ts (sendViewerPresence 1594, broadcastHostStatus
-// 1683, handleDisconnect 1397, stopSharing 1466, terminateRoom 1500,
+// 1683, handleDisconnect 1397, stopSharing 1466, closeRoom,
 // revokeGrantViewers 1016, closeRevokedViewerSession 1697 and the
 // viewer-keyed map helpers). Every function here runs with mu held.
 
@@ -123,8 +123,7 @@ func (s *Server) broadcastHostStatus(roomID string, online, paused bool) {
 }
 
 // handleDisconnect ports handleDisconnect. It runs once, from the reader
-// goroutine's exit (D6). The host lease write is one of the two paths the TS
-// left uncaught, so its failure panics (D7).
+// goroutine's exit (D6).
 func (s *Server) handleDisconnect(sess *session) {
 	if !s.sessions.Has(sess) {
 		return
@@ -149,7 +148,7 @@ func (s *Server) handleDisconnect(sess *session) {
 	disconnected, err := s.store.DisconnectParticipant(
 		sess.authenticated.roomID, sess.authenticated.peerID, sess.sessionID)
 	if err != nil {
-		panic(fmt.Errorf("room store write failed during host disconnect: %w", err))
+		panic(fmt.Errorf("room store failed during disconnect: %w", err))
 	}
 	if disconnected == nil {
 		return
@@ -215,26 +214,9 @@ func (s *Server) abandonRoom(roomID string) error {
 	return nil
 }
 
-// closeRoom ports closeRoom.
+// closeRoom closes the host session first, then
+// viewers in store order, each told room-closed then closed with 1000.
 func (s *Server) closeRoom(closed room.ClosedRoom) {
-	s.terminateRoom(closed, "host-ended", "Room abandoned")
-}
-
-// expireRooms ports expireRooms, the cleanup timer body. Its store write is
-// the second path the TS left uncaught (D7).
-func (s *Server) expireRooms() {
-	expired, err := s.store.ExpireRooms(s.now())
-	if err != nil {
-		panic(fmt.Errorf("room store write failed while expiring rooms: %w", err))
-	}
-	for _, closed := range expired {
-		s.terminateRoom(closed, "expired", "Room expired")
-	}
-}
-
-// terminateRoom ports terminateRoom (O4: the host session first, then
-// viewers in store order, each told room-closed then closed with 1000).
-func (s *Server) terminateRoom(closed room.ClosedRoom, reason, closeText string) {
 	s.clearRoomGraceTimers(closed.RoomID)
 	s.clearRoomViewerEvidence(closed.RoomID)
 	s.router.deleteRoom(closed.RoomID)
@@ -244,8 +226,8 @@ func (s *Server) terminateRoom(closed room.ClosedRoom, reason, closeText string)
 		if sess == nil {
 			continue
 		}
-		s.send(sess, protocol.RoomClosedMessage{Type: "room-closed", Reason: reason})
-		sess.close(websocket.StatusNormalClosure, closeText)
+		s.send(sess, protocol.RoomClosedMessage{Type: "room-closed", Reason: "host-ended"})
+		sess.close(websocket.StatusNormalClosure, "Room abandoned")
 	}
 }
 

@@ -308,7 +308,7 @@ func (r *router) prepareCandidate(
 	if !hasChild || child.SessionID != operation.ChildSessionID || shareGeneration == "" {
 		return denied(route.RejectionStale)
 	}
-	connectionID := opaqueID()
+	connectionID := candidateConnectionIDPrefix + opaqueID()
 	var overlap *route.Resource
 	if plan.EndpointTransition.Kind == route.TransitionOverlap {
 		producerPeerID := ""

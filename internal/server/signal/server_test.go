@@ -48,7 +48,7 @@ func TestCreateRoomReleasesLockWhenDerivationOrCommitPanics(t *testing.T) {
 	for _, password := range []string{"", "room-password"} {
 		t.Run(password, func(t *testing.T) {
 			store, err := room.New(room.Options{
-				LeaseMs: 86_400_000, MaxRooms: 1, MaxViewersPerRoom: 1,
+				MaxRooms: 1, MaxViewersPerRoom: 1,
 				Random: func(int) []byte { panic("test random source") },
 			})
 			if err != nil {
@@ -71,46 +71,27 @@ func TestCreateRoomReleasesLockWhenDerivationOrCommitPanics(t *testing.T) {
 	}
 }
 
-func TestIncomingStorageFailureReleasesLockWithoutSuppressingPanic(t *testing.T) {
+func TestStopSharingDoesNotWriteRoomAuthority(t *testing.T) {
 	database, err := room.NewDatabase(filepath.Join(t.TempDir(), "rooms.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	store := newStore(t, 1, nil, database)
-	defer store.Close()
-	created := createStoreRoom(t, store, protocol.CodeEntryOpen, "")
-	sess := newSession(nil, true)
-	defer sess.cancel()
-	participant, err := store.ConnectParticipant(room.ConnectParticipantInput{
-		RoomID: created.RoomID, Role: protocol.RoleHost, Token: created.HostToken,
-		ClientID: "failed-storage-host", SessionID: sess.sessionID,
+	store := newStore(t, 1, database)
+	h := startHarness(t, harnessOptions{store: store})
+	host := openClient(t, h)
+	authenticated := authenticate(t, host, h.room, protocol.RoleHost, "storage-free-host", 1, "", presenceOptions{})
+	h.locked(func() {
+		if err := database.Close(); err != nil {
+			t.Fatal(err)
+		}
 	})
-	if err != nil {
-		t.Fatal(err)
+	host.sendJSON(map[string]any{"type": "stop-sharing", "shareGeneration": authenticated.ShareGeneration})
+	expectClose(t, host, 1000, "Sharing stopped")
+	if h.storeSize() != 1 {
+		t.Fatal("stopping sharing removed room authority")
 	}
-	const generation = "failed_storage_share_generation"
-	sess.authenticated = &authenticatedSession{roomID: created.RoomID, role: protocol.RoleHost,
-		peerID: participant.PeerID, shareGeneration: generation}
-	server := &Server{store: store, shares: map[string]roomShare{created.RoomID: {generation: generation}}}
-	server.sessions.Set(sess, struct{}{})
-	if err = database.Close(); err != nil {
-		t.Fatal(err)
-	}
-	func() {
-		defer func() {
-			failure, ok := recover().(error)
-			if !ok || !strings.Contains(failure.Error(), "room store write failed while stopping sharing") {
-				t.Errorf("handler did not preserve its storage panic: %v", failure)
-			}
-		}()
-		server.handleIncoming(sess, websocket.MessageText,
-			[]byte(`{"type":"stop-sharing","shareGeneration":"`+generation+`"}`))
-	}()
-	if !server.mu.TryLock() {
-		server.mu.Unlock() // Allow test cleanup if the regression returns.
-		t.Fatal("storage panic left the message lock held before reader cleanup")
-	}
-	server.mu.Unlock()
+	resumed := openClient(t, h)
+	authenticate(t, resumed, h.room, protocol.RoleHost, "storage-free-host", 1, "", presenceOptions{})
 }
 
 // ---------------------------------------------------------------------------
@@ -128,7 +109,6 @@ type harnessOptions struct {
 	stunURLs                            []string
 	natPredictionEnabled                bool
 	now                                 func() int64
-	cleanupIntervalMs                   int
 	store                               *room.Store
 	room                                *room.CreatedRoom
 	afterFunc                           func(time.Duration, func()) func() bool
@@ -152,13 +132,11 @@ func orValue(value, fallback int) int {
 	return value
 }
 
-func newStore(t *testing.T, maxViewersPerRoom int, now func() int64, database *room.Database) *room.Store {
+func newStore(t *testing.T, maxViewersPerRoom int, database *room.Database) *room.Store {
 	t.Helper()
 	store, err := room.New(room.Options{
-		LeaseMs:           86_400_000,
 		MaxRooms:          room.Capacity,
 		MaxViewersPerRoom: maxViewersPerRoom,
-		Now:               now,
 		Database:          database,
 	})
 	if err != nil {
@@ -175,8 +153,7 @@ func newStore(t *testing.T, maxViewersPerRoom int, now func() int64, database *r
 // createStoreRoom is roomStore.createRoom() on a store no server guards yet.
 func createStoreRoom(t *testing.T, store *room.Store, policy protocol.CodeEntryPolicy, password string) room.CreatedRoom {
 	t.Helper()
-	lease, err := store.BeginCreateRoom()
-	if err != nil {
+	if err := store.BeginCreateRoom(); err != nil {
 		t.Fatalf("BeginCreateRoom: %v", err)
 	}
 	var material []byte
@@ -184,7 +161,7 @@ func createStoreRoom(t *testing.T, store *room.Store, policy protocol.CodeEntryP
 	if password != "" {
 		material, derived = store.DeriveViewerPasswordMaterial(password, nil)
 	}
-	created, err := store.CreateRoom(policy, material, derived, "", lease)
+	created, err := store.CreateRoom(policy, material, derived, "")
 	if err != nil {
 		t.Fatalf("CreateRoom: %v", err)
 	}
@@ -196,7 +173,7 @@ func startHarness(t *testing.T, options harnessOptions) *harness {
 	maxViewersPerRoom := orValue(options.maxViewersPerRoom, 8)
 	store := options.store
 	if store == nil {
-		store = newStore(t, maxViewersPerRoom, options.now, nil)
+		store = newStore(t, maxViewersPerRoom, nil)
 	}
 	var created room.CreatedRoom
 	if options.room != nil {
@@ -227,7 +204,6 @@ func startHarness(t *testing.T, options harnessOptions) *harness {
 		AuthenticationTimeoutMs:       orValue(options.authenticationTimeoutMs, 500),
 		ViewerDisconnectGraceMs:       orValue(options.viewerDisconnectGraceMs, 50),
 		HeartbeatIntervalMs:           60_000,
-		CleanupIntervalMs:             orValue(options.cleanupIntervalMs, 60_000),
 		MaxConnections:                options.maxSignalConnections,
 		MaxUnauthenticatedConnections: options.maxUnauthenticatedSignalConnections,
 		AfterFunc:                     options.afterFunc,
@@ -1163,7 +1139,7 @@ func TestSignalRebuildsRouteWhenViewerReconnectsBeforeHostAfterRestart(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	firstStore := newStore(t, 8, nil, firstDatabase)
+	firstStore := newStore(t, 8, firstDatabase)
 	rm := createStoreRoom(t, firstStore, protocol.CodeEntryOpen, "")
 	first := startHarness(t, harnessOptions{store: firstStore, room: &rm})
 	firstHost := openClient(t, first)
@@ -1178,7 +1154,7 @@ func TestSignalRebuildsRouteWhenViewerReconnectsBeforeHostAfterRestart(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	secondStore := newStore(t, 8, nil, secondDatabase)
+	secondStore := newStore(t, 8, secondDatabase)
 	second := startHarness(t, harnessOptions{store: secondStore, room: &rm})
 	secondViewer := openClient(t, second)
 	viewerAuth := authenticate(t, secondViewer, rm, protocol.RoleViewer, "restart-route-viewer", 1, "", presenceOptions{})
@@ -1913,11 +1889,11 @@ func TestSignalDistinguishesMissingRoomsFromExistingRoomCodeOnlyDenials(t *testi
 	})
 
 	protectedRoom := h.createRoom(protocol.CodeEntryPrivate, "correct-password")
-	expiring := h.createRoom(protocol.CodeEntryOpen, "")
+	abandoned := h.createRoom(protocol.CodeEntryOpen, "")
 	unusedRoomID := ""
 	for code := 1_000; code < 10_000; code++ {
 		candidate := fmt.Sprint(code)
-		if candidate != h.room.RoomID && candidate != protectedRoom.RoomID && candidate != expiring.RoomID {
+		if candidate != h.room.RoomID && candidate != protectedRoom.RoomID && candidate != abandoned.RoomID {
 			unusedRoomID = candidate
 			break
 		}
@@ -1936,7 +1912,7 @@ func TestSignalDistinguishesMissingRoomsFromExistingRoomCodeOnlyDenials(t *testi
 		sendCodeOnlyAuthenticate(client, roomID, clientID, extra)
 		message := "Room access denied"
 		if code == "ROOM_NOT_FOUND" {
-			message = "Room not found or expired"
+			message = "Room not found"
 		}
 		expectEqual(t, client.next("error").raw, fmt.Sprintf(`{"type":"error","code":%q,"message":%q}`, code, message))
 		expectClose(t, client, 4003, "Authentication failed")
@@ -1947,85 +1923,50 @@ func TestSignalDistinguishesMissingRoomsFromExistingRoomCodeOnlyDenials(t *testi
 	expectDenial(protectedRoom.RoomID, "wrong-password-viewer", "ROOM_ACCESS_DENIED", "wrong-password")
 	expectDenial(h.room.RoomID, "full-room-viewer", "ROOM_ACCESS_DENIED", "")
 
-	now.advance(86_400_001)
-	expectDenial(expiring.RoomID, "expired-room-viewer", "ROOM_NOT_FOUND", "")
-
-	expiredGrant := openClientWithCookie(t, h, siteAccessCookie)
-	sendCodeOnlyAuthenticate(expiredGrant, expiring.RoomID, "expired-grant-viewer",
-		map[string]any{"viewerGrant": expiring.ViewerGrant})
-	expectMatch(t, expiredGrant.next("error").raw, `{"code":"INVALID_TOKEN"}`)
-}
-
-// ---------------------------------------------------------------------------
-// room lease and expiry
-// ---------------------------------------------------------------------------
-
-func TestSignalDoesNotExpireActiveRoomAndArmsItsLeaseAfterHostDisconnect(t *testing.T) {
-	now := newClock(utcMillis(2026, time.August, 20, 12))
-	h := startHarness(t, harnessOptions{now: now.now})
-	host := openClient(t, h)
-	authenticated := authenticate(t, host, h.room, protocol.RoleHost, "active-lease-host", 1, "", presenceOptions{})
-	viewer := openClient(t, h)
-	authenticate(t, viewer, h.room, protocol.RoleViewer, "provisional-viewer", 1, "", presenceOptions{})
-	commitPreparedRoute(t, viewer)
-
-	now.advance(86_401_000)
-	expireAt := func(nowMs int64) []room.ClosedRoom {
-		t.Helper()
-		var expired []room.ClosedRoom
-		var err error
-		h.locked(func() { expired, err = h.store.ExpireRooms(nowMs) })
-		if err != nil {
-			t.Fatalf("ExpireRooms: %v", err)
+	h.locked(func() {
+		if _, err := h.store.AbandonRoom(abandoned.RoomID); err != nil {
+			t.Fatal(err)
 		}
-		return expired
-	}
-	if expired := expireAt(now.now()); len(expired) != 0 {
-		t.Fatalf("active room expired: %v", expired)
-	}
-	h.closeClient(host)
-	viewer.next("host-status")
-	var hostConnected bool
-	h.locked(func() { _, hostConnected = h.store.GetConnectedHost(h.room.RoomID) })
-	expectTrue(t, "host must be disconnected", !hostConnected)
-	if expired := expireAt(now.now() + 86_399_999); len(expired) != 0 {
-		t.Fatalf("room expired before its lease: %v", expired)
-	}
-	expired := expireAt(now.now() + 86_401_000)
-	if len(expired) != 1 || expired[0].RoomID != h.room.RoomID || len(expired[0].SessionIDs) != 1 {
-		t.Fatalf("expired rooms: %+v", expired)
-	}
-	h.closeClient(viewer)
-	expectString(t, "role", authenticated.Role, protocol.RoleHost)
+	})
+	expectDenial(abandoned.RoomID, "abandoned-room-viewer", "ROOM_NOT_FOUND", "")
+
+	abandonedGrant := openClientWithCookie(t, h, siteAccessCookie)
+	sendCodeOnlyAuthenticate(abandonedGrant, abandoned.RoomID, "abandoned-grant-viewer",
+		map[string]any{"viewerGrant": abandoned.ViewerGrant})
+	expectMatch(t, abandonedGrant.next("error").raw, `{"code":"INVALID_TOKEN"}`)
 }
 
-func TestSignalTerminatesExpiredDormantRoomThroughCleanupTimer(t *testing.T) {
+// ---------------------------------------------------------------------------
+// room lifetime
+// ---------------------------------------------------------------------------
+
+func TestSignalRetainsDormantAuthorityAcrossLongHostAbsence(t *testing.T) {
 	now := newClock(utcMillis(2026, time.August, 20, 12))
-	h := startHarness(t, harnessOptions{now: now.now, cleanupIntervalMs: 20})
+	h := startHarness(t, harnessOptions{now: now.now})
+	now.advance(30 * 24 * 60 * 60 * 1_000)
 	host := openClient(t, h)
-	authenticate(t, host, h.room, protocol.RoleHost, "expiring-host", 1, "", presenceOptions{})
+	authenticate(t, host, h.room, protocol.RoleHost, "returning-host", 1, "", presenceOptions{})
 	viewer := openClient(t, h)
-	authenticate(t, viewer, h.room, protocol.RoleViewer, "expiring-viewer", 1, "", presenceOptions{})
-	commitPreparedRoute(t, viewer)
+	authenticate(t, viewer, h.room, protocol.RoleViewer, "waiting-viewer", 1, "", presenceOptions{})
 	h.closeClient(host)
 	viewer.next("host-status")
-
-	now.advance(86_401_000)
-
-	expectEqual(t, viewer.next("room-closed").raw, `{"type":"room-closed","reason":"expired"}`)
-	expectClose(t, viewer, 1000, "Room expired")
-	if size := h.storeSize(); size != 0 {
-		t.Fatalf("store size %d", size)
+	now.advance(30 * 24 * 60 * 60 * 1_000)
+	resumed := openClient(t, h)
+	authenticate(t, resumed, h.room, protocol.RoleHost, "returning-host", 1, "", presenceOptions{})
+	lateViewer := openClient(t, h)
+	authenticate(t, lateViewer, h.room, protocol.RoleViewer, "late-viewer", 1, "", presenceOptions{})
+	if h.storeSize() != 1 || viewer.isClosed() {
+		t.Fatal("host absence retired the room or its Viewer")
 	}
 }
 
-func TestSignalKeepsPreHostViewerSessionCurrentAfterHostClearsRoomLease(t *testing.T) {
+func TestSignalKeepsPreHostViewerSessionCurrentAfterHostConnects(t *testing.T) {
 	now := newClock(utcMillis(2026, time.August, 20, 12))
 	h := startHarness(t, harnessOptions{now: now.now})
 	viewer := openClient(t, h)
-	authenticate(t, viewer, h.room, protocol.RoleViewer, "pre-host-lease-viewer", 1, "", presenceOptions{displayName: "Before"})
+	authenticate(t, viewer, h.room, protocol.RoleViewer, "pre-host-viewer", 1, "", presenceOptions{displayName: "Before"})
 	host := openClient(t, h)
-	authenticate(t, host, h.room, protocol.RoleHost, "pre-host-lease-host", 1, "", presenceOptions{viewerPresence: true})
+	authenticate(t, host, h.room, protocol.RoleHost, "pre-host-host", 1, "", presenceOptions{viewerPresence: true})
 	named := func(name string) func(presenceMessage) bool {
 		return func(message presenceMessage) bool {
 			return slices.ContainsFunc(viewerPresenceEntries(message), func(entry presenceEntry) bool {
@@ -2055,7 +1996,7 @@ func TestSignalLeavesEstablishedAuthorizationAndMediaUntouchedWhenGrantUpdateFai
 	if err != nil {
 		t.Fatal(err)
 	}
-	store := newStore(t, 8, nil, database)
+	store := newStore(t, 8, database)
 	h := startHarness(t, harnessOptions{store: store})
 	host := openClient(t, h)
 	hostAuth := authenticate(t, host, h.room, protocol.RoleHost, "persistence-failure-host", 1, "", presenceOptions{})
@@ -2676,7 +2617,7 @@ func (m *timerQueue) fireWhere(due func(time.Duration) bool) {
 
 func TestSignalHeartbeatTerminatesSilentConnectionAfterMissedPong(t *testing.T) {
 	timers := &timerQueue{}
-	h := startHarness(t, harnessOptions{afterFunc: timers.afterFunc, cleanupIntervalMs: 30_000})
+	h := startHarness(t, harnessOptions{afterFunc: timers.afterFunc})
 	heartbeat := 60_000 * time.Millisecond
 	responsive := openClient(t, h)
 	header := http.Header{}

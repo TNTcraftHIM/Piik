@@ -28,7 +28,6 @@ const HOST_SERVER_ERROR_NOTICE: Record<ServerErrorCode, CopyKey> = {
   INVALID_TOKEN: "host.err.invalidToken",
   ROOM_NOT_FOUND: "viewer.msg.notFound",
   ROOM_ACCESS_DENIED: "host.err.accessDenied",
-  ROOM_EXPIRED: "host.err.roomExpired",
   ROOM_FULL: "join.full",
   HOST_ALREADY_CONNECTED: "host.err.alreadyConnected",
   PEER_NOT_FOUND: "host.err.peerGone",
