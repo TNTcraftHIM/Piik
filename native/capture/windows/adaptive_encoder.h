@@ -21,7 +21,8 @@ class AdaptiveEncoder final {
   using FrameProducer = std::function<ComPtr<ID3D11Texture2D>(UINT32, UINT32)>;
 
   AdaptiveEncoder(OutputKind kind, VideoProfile ceiling, ID3D11Device* device,
-                  Factory create, std::unique_ptr<VideoEncoder> initial = nullptr);
+                  Factory create, std::unique_ptr<VideoEncoder> initial = nullptr,
+                  int output_index = -1);
   ~AdaptiveEncoder();
   AdaptiveEncoder(const AdaptiveEncoder&) = delete;
   AdaptiveEncoder& operator=(const AdaptiveEncoder&) = delete;

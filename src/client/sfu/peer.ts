@@ -1,3 +1,4 @@
+import { observeDebugConnection } from "../lib/debug-webrtc";
 import type {
   ServerMessage,
   SfuMedia,
@@ -32,6 +33,8 @@ export class SfuPeer {
     private config: SfuConnectionConfig,
     private readonly events: SfuPeerEvents,
   ) {
+    observeDebugConnection(this.pc, { connectionId: config.connectionId,
+      publicationGeneration: config.publicationGeneration, role: "sfu" });
     this.pc.onicecandidate = ({ candidate }) => {
       if (this.closed || !candidate || candidate.protocol === "tcp") return;
       const value = { ...candidate.toJSON(), candidate: candidate.candidate };

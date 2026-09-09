@@ -7,12 +7,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/TNTcraftHIM/Screener/internal/diagnostics"
 )
 
 const (
@@ -93,12 +96,14 @@ func Discover(parent context.Context, executable string) (Capabilities, error) {
 	ctx, cancel := context.WithTimeout(parent, probeTimeout)
 	defer cancel()
 	stdout := &boundedBuffer{limit: maxProbeOutputBytes}
-	stderr := &boundedBuffer{limit: maxProbeErrorBytes}
+	stderr := diagnostics.Writer("native-capture-probe")
+	defer stderr.Close()
 	command := exec.CommandContext(ctx, executable, "--probe")
 	command.Stdout = stdout
 	command.Stderr = stderr
 	hideWindow(command)
 	if err := command.Run(); err != nil {
+		slog.DebugContext(ctx, "screener-client", "event", "capture-probe-failed", diagnostics.Error(err), "canceled", ctx.Err() != nil)
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			return Capabilities{}, errors.New("native capture probe timed out")
 		}
@@ -178,12 +183,27 @@ func decodeProbe(payload []byte) (Capabilities, error) {
 }
 
 type boundedBuffer struct {
-	buffer bytes.Buffer
-	limit  int
+	buffer          bytes.Buffer
+	limit           int
+	discardOverflow bool
 }
 
 func (buffer *boundedBuffer) Write(payload []byte) (int, error) {
 	remaining := buffer.limit - buffer.buffer.Len()
+	if buffer.discardOverflow {
+		// Keep terminal failure codes even after a long stream of encoder statistics.
+		if len(payload) >= buffer.limit {
+			buffer.buffer.Reset()
+			payloadTail := payload[len(payload)-buffer.limit:]
+			_, _ = buffer.buffer.Write(payloadTail)
+		} else {
+			if len(payload) > remaining {
+				buffer.buffer.Next(len(payload) - remaining)
+			}
+			_, _ = buffer.buffer.Write(payload)
+		}
+		return len(payload), nil
+	}
 	if remaining <= 0 {
 		return 0, errors.New("native capture probe output exceeded its bound")
 	}

@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import { debugEvent } from "../lib/debug";
+import { debugError, debugEvent } from "../lib/debug";
 
 import type {
   IceConfig,
@@ -552,29 +552,31 @@ export class NativeClient {
       return Promise.reject(new Error("Screener Client is unavailable"));
     }
     const id = createOpaqueId();
+    const began = performance.now();
+    const details = { type, requestId: id };
     return new Promise<T>((resolveRequest, rejectRequest) => {
       const timer =
         timeoutMs === null
           ? null
           : window.setTimeout(() => {
               this.pending.delete(id);
-              debugEvent("native", "request-timeout", { type });
+              debugEvent("native", "request-timeout", { ...details, durationMs: performance.now() - began });
               rejectRequest(new Error("Screener Client request timed out"));
             }, timeoutMs);
       this.pending.set(id, {
         schema,
         resolve: (value) => {
-          debugEvent("native", "response", { type });
+          debugEvent("native", "response", { ...details, durationMs: performance.now() - began, applied: value });
           resolveRequest(value as T);
         },
         reject: (error) => {
-          debugEvent("native", "request-failed", { type });
+          debugError("native", "request-failed", error, { ...details, durationMs: performance.now() - began });
           rejectRequest(error);
         },
         timer,
       });
       try {
-        debugEvent("native", "request", { type });
+        debugEvent("native", "request", { ...details, requested: fields, timeoutMs });
         this.socket.send(
           JSON.stringify({
             version: NATIVE_CLIENT_PROTOCOL,
@@ -583,10 +585,10 @@ export class NativeClient {
             ...fields,
           }),
         );
-      } catch {
+      } catch (error) {
         if (timer !== null) window.clearTimeout(timer);
         this.pending.delete(id);
-        debugEvent("native", "request-failed", { type });
+        debugError("native", "request-failed", error, { ...details, durationMs: performance.now() - began });
         rejectRequest(new Error("Screener Client request failed"));
       }
     });
@@ -597,6 +599,7 @@ export class NativeClient {
     try {
       value = JSON.parse(String(raw));
     } catch {
+      debugEvent("native", "protocol-failed", { stage: "json-invalid" });
       this.failConnection();
       return;
     }
@@ -606,26 +609,26 @@ export class NativeClient {
       if (!pending) return;
       this.pending.delete(id);
       if (pending.timer !== null) window.clearTimeout(pending.timer);
-      if (requestFailedResponseSchema.safeParse(value).success) {
-        pending.reject(new Error("Screener Client request failed"));
+      const failure = requestFailedResponseSchema.safeParse(value);
+      if (failure.success) {
+        pending.reject(new Error("Screener Client request failed", { cause: { code: failure.data.code } }));
         return;
       }
       const parsed = pending.schema.safeParse(value);
       if (parsed.success) {
         pending.resolve(parsed.data);
       } else {
-        pending.reject(new Error("Screener Client response is invalid"));
+        pending.reject(new Error("Screener Client response is invalid", { cause: parsed.error }));
       }
       return;
     }
     const event = nativeEventSchema.safeParse(value);
     if (!event.success) {
+      debugError("native", "protocol-failed", event.error, { stage: "event-invalid" });
       this.failConnection();
       return;
     }
-    if (event.data.type === "capture-state" || event.data.type === "edge-state" || event.data.type === "publication-state") {
-      debugEvent("native", "state", { type: event.data.type, state: event.data.state });
-    } else if (event.data.type === "share-ended") debugEvent("native", "share-ended");
+    debugEvent("native", "event", event.data);
     for (const listener of this.listeners) {
       listener(event.data);
     }

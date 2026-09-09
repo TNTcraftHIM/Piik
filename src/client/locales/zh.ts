@@ -1,5 +1,8 @@
 // Canonical catalog: add keys here first; every other locale must match it.
 export const zh = {
+  "debug.export": "调试报告",
+  "debug.exportHint": "下载本地诊断，可能包含网络地址和设备信息",
+  "debug.exportFailed": "诊断下载失败，请重试",
   "brand.home": "Screener 首页",
 
   "common.roomCode": "房间号",

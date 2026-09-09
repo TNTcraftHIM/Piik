@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"slices"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/TNTcraftHIM/Screener/internal/client/mediaedge"
 	"github.com/TNTcraftHIM/Screener/internal/client/nativecapture"
+	"github.com/TNTcraftHIM/Screener/internal/diagnostics"
 	"github.com/TNTcraftHIM/Screener/internal/media/encoded"
 	"github.com/pion/webrtc/v4"
 )
@@ -122,11 +122,15 @@ func Start(parent context.Context, options Options) (*Session, error) {
 	}
 	var audioStream *nativecapture.Stream
 	if options.AudioEnabled {
-		audioStream, _ = startAudioCapture(
+		var audioErr error
+		audioStream, audioErr = startAudioCapture(
 			parent,
 			options.CaptureProcess,
 			options.Video.Target,
 		)
+		if audioErr != nil {
+			slog.DebugContext(parent, "screener-client", "event", "capture-audio-unavailable", "share", diagnostics.ID(options.ShareID), diagnostics.Error(audioErr))
+		}
 	}
 	ctx, cancel := context.WithCancel(parent)
 	session := &Session{
@@ -151,6 +155,7 @@ func Start(parent context.Context, options Options) (*Session, error) {
 			options.EdgeCapacity, options.Profile.AudioBitrate,
 		)
 		if audioErr != nil {
+			slog.DebugContext(ctx, "screener-client", "event", "capture-audio-source-failed", "share", diagnostics.ID(options.ShareID), diagnostics.Error(audioErr))
 			_ = audioStream.Close()
 			audioStream = nil
 			session.audioStream = nil
@@ -637,7 +642,7 @@ func (session *Session) run() {
 			_ = audioStream.Close()
 		}
 		if slog.Default().Enabled(session.ctx, slog.LevelDebug) {
-			slog.Debug("screener-client", "event", "share-ended", "failed", result != nil, "errorType", fmt.Sprintf("%T", result))
+			slog.Debug("screener-client", "event", "share-ended", "share", diagnostics.ID(session.shareID), "failed", result != nil, diagnostics.Error(result))
 		}
 		session.done <- result
 		close(session.done)
@@ -674,6 +679,8 @@ func (session *Session) runVideo() error {
 				}
 				continue
 			}
+			slog.DebugContext(session.ctx, "screener-client", "event", "capture-video-read-ended",
+				"share", diagnostics.ID(session.shareID), "canceled", session.ctx.Err() != nil, "eof", errors.Is(err, io.EOF), diagnostics.Error(err))
 			return fail(errors.New("native capture process stopped unexpectedly"))
 		}
 		if next := session.currentStream(); next != current {
@@ -735,7 +742,10 @@ func (session *Session) runVideo() error {
 			}
 			session.mu.Unlock()
 			slog.Debug("screener-client", "event", "capture-state", "state", status.State, "codec", status.Codec,
-				"width", status.Width, "height", status.Height, "fps", status.FPS)
+				"share", diagnostics.ID(session.shareID), "width", status.Width, "height", status.Height, "fps", status.FPS,
+				"hardware", status.HardwareOnly, "adapterIndex", status.AdapterIndex, "encoderIndex", status.EncoderIndex,
+				"adapterName", diagnostics.SafeText(status.AdapterName), "encoderName", diagnostics.SafeText(status.EncoderName),
+				"profileLevelId", status.ProfileLevelID, "outputs", status.Outputs)
 			session.emit(Event{Type: "capture-state", ShareID: session.shareID, State: status.State})
 			if !ready {
 				ready = true
@@ -780,6 +790,8 @@ func (session *Session) runVideo() error {
 				}
 			}
 		case nativecapture.FrameLayerUnavailable:
+			slog.DebugContext(session.ctx, "screener-client", "event", "capture-output-unavailable",
+				"share", diagnostics.ID(session.shareID), "layer", frame.Layer, "detail", diagnostics.SafeText(string(frame.Data)))
 			if session.source == nil {
 				return fail(errors.New("native output ended before its source state"))
 			}
@@ -853,7 +865,7 @@ func (session *Session) currentStream() *nativecapture.Stream {
 
 func captureProfileFailure(ctx context.Context, profile nativecapture.VideoProfile, stage string, err error) error {
 	slog.DebugContext(ctx, "screener-client", "event", "capture-profile-rejected", "stage", stage,
-		"width", profile.Width, "height", profile.Height, "fps", profile.Framerate, "bitrate", profile.Bitrate)
+		"width", profile.Width, "height", profile.Height, "fps", profile.Framerate, "bitrate", profile.Bitrate, diagnostics.Error(err))
 	return err
 }
 
@@ -908,6 +920,10 @@ func waitForCaptureProfile(
 				send(result{stage: "status-invalid", err: err})
 				return
 			}
+			slog.DebugContext(ctx, "screener-client", "event", "capture-profile-observed", "state", state.State,
+				"expectedCodec", codec, "actualCodec", state.Codec, "expectedProfile", profile,
+				"actualWidth", state.Width, "actualHeight", state.Height, "actualFPS", state.FPS,
+				"expectedOutputs", stream.Outputs(), "actualOutputs", state.Outputs)
 			if !slices.Equal(state.Outputs, stream.Outputs()) {
 				send(result{stage: "outputs-mismatch", err: errors.New("native capture outputs were not applied")})
 				return
@@ -1020,10 +1036,17 @@ func (session *Session) runAudio() {
 			session.mu.Lock()
 			paused := session.paused
 			session.mu.Unlock()
-			if paused || session.audioSource.WritePCM(frame.Data, frame.Duration) == nil {
+			if paused {
+				continue
+			}
+			err = session.audioSource.WritePCM(frame.Data, frame.Duration)
+			if err == nil {
 				continue
 			}
 		}
+		slog.DebugContext(session.ctx, "screener-client", "event", "capture-audio-stream-ended",
+			"share", diagnostics.ID(session.shareID), "frameKind", frame.Kind, "eof", errors.Is(err, io.EOF),
+			"canceled", session.ctx.Err() != nil, diagnostics.Error(err))
 		// Audio failure leaves video live. Only an explicit source replacement
 		// changes this owner; its buffered wake also covers an earlier commit.
 		for session.currentAudioStream() == current {

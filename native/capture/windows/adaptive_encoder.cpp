@@ -5,8 +5,10 @@
 #include <cmath>
 #include <exception>
 #include <future>
+#include <iostream>
 #include <limits>
 #include <mutex>
+#include <syncstream>
 #include <thread>
 
 #include "api/environment/environment_factory.h"
@@ -347,8 +349,8 @@ class AdaptiveEncoder::Impl final : public webrtc::VideoSourceInterface<webrtc::
                                     public webrtc::VideoEncoderFactory {
  public:
   Impl(OutputKind kind, VideoProfile ceiling, ID3D11Device* device,
-       Factory create, std::unique_ptr<VideoEncoder> initial)
-      : kind_(kind), ceiling_(ceiling), device_(device), create_(std::move(create)),
+       Factory create, std::unique_ptr<VideoEncoder> initial, int output_index)
+      : kind_(kind), ceiling_(ceiling), output_index_(output_index), device_(device), create_(std::move(create)),
         initial_(std::move(initial)), env_(webrtc::CreateEnvironment()),
         readback_(device, failure_), builtin_(webrtc::CreateBuiltinVideoEncoderFactory()),
         allocator_(webrtc::CreateBuiltinVideoBitrateAllocatorFactory()),
@@ -480,7 +482,7 @@ class AdaptiveEncoder::Impl final : public webrtc::VideoSourceInterface<webrtc::
     });
     // Both selected codecs complete synchronously; native frames cannot be retained by VSE.
     Sync(encode_queue_, [] {});
-    Sync(worker_.get(), [] {});
+    Sync(worker_.get(), [&] { TraceStats(); });
     failure_.Rethrow();
     std::lock_guard<std::mutex> lock(output_mutex_);
     return std::exchange(output_, std::nullopt);
@@ -550,8 +552,57 @@ class AdaptiveEncoder::Impl final : public webrtc::VideoSourceInterface<webrtc::
   }
 
  private:
+  void TraceStats() {
+    // Read the existing VSE observer on Encode's cadence; diagnostics never drive adaptation.
+    if (!debug_) return;
+    const auto now = env_.clock().TimeInMilliseconds();
+    if (last_stats_ms_ && now - *last_stats_ms_ < 2'000) return;
+    last_stats_ms_ = now;
+    const auto stats = stats_->GetStats();
+    std::osyncstream line(std::cerr);
+    line << "event=encoder-stats output=" << output_index_
+         << " codec=" << (kind_ == OutputKind::h264 ? "h264" : "vp8")
+         << " ceilingWidth=" << ceiling_.width << " ceilingHeight=" << ceiling_.height
+         << " ceilingFps=" << ceiling_.frame_rate << " ceilingBitrate=" << ceiling_.bit_rate
+         << " inputFps=" << stats.input_frame_rate << " encodeFps=" << stats.encode_frame_rate
+         << " inputFrames=" << stats.frames << " encodedFrames=" << stats.frames_encoded
+         << " encodeTimeMs=" << stats.total_encode_time_ms
+         << " averageEncodeTimeMs=" << stats.avg_encode_time_ms
+         << " encodeUsagePercent=" << stats.encode_usage_percent
+         << " targetBitrate=" << stats.target_media_bitrate_bps
+         << " encodedBitrate=" << stats.media_bitrate_bps
+         << " droppedCapturer=" << stats.frames_dropped_by_capturer
+         << " droppedTimestamp=" << stats.frames_dropped_by_bad_timestamp
+         << " droppedQueue=" << stats.frames_dropped_by_encoder_queue
+         << " droppedRateLimiter=" << stats.frames_dropped_by_rate_limiter
+         << " droppedCongestionWindow=" << stats.frames_dropped_by_congestion_window
+         << " droppedEncoder=" << stats.frames_dropped_by_encoder
+         << " cpuResolutionLimited=" << stats.cpu_limited_resolution
+         << " cpuFpsLimited=" << stats.cpu_limited_framerate
+         << " bandwidthResolutionLimited=" << stats.bw_limited_resolution
+         << " bandwidthFpsLimited=" << stats.bw_limited_framerate
+         << " cpuAdaptations=" << stats.number_of_cpu_adapt_changes
+         << " qualityAdaptations=" << stats.number_of_quality_adapt_changes
+         << " resolutionChanges=" << stats.quality_limitation_resolution_changes
+         << " suspended=" << stats.suspended;
+    for (const auto& [ssrc, stream] : stats.substreams) {
+      // This adapter has one local observer stream; no network identity is exported.
+      (void)ssrc;
+      line << " outputWidth=" << stream.width << " outputHeight=" << stream.height
+           << " outputFrames=" << stream.frames_encoded;
+      if (stream.qp_sum) line << " qpSum=" << *stream.qp_sum;
+    }
+    line << '\n';
+  }
+
   const OutputKind kind_;
   const VideoProfile ceiling_;
+  const int output_index_;
+  const bool debug_ = [] {
+    wchar_t value[2]{};
+    return GetEnvironmentVariableW(L"SCREENER_CAPTURE_DEBUG", value, 2) == 1 && value[0] == L'1';
+  }();
+  std::optional<INT64> last_stats_ms_;
   ComPtr<ID3D11Device> device_;
   Factory create_;
   std::unique_ptr<VideoEncoder> initial_;
@@ -576,7 +627,7 @@ class AdaptiveEncoder::Impl final : public webrtc::VideoSourceInterface<webrtc::
 };
 
 AdaptiveEncoder::AdaptiveEncoder(OutputKind kind, VideoProfile ceiling, ID3D11Device* device,
-    Factory create, std::unique_ptr<VideoEncoder> initial) {
+    Factory create, std::unique_ptr<VideoEncoder> initial, int output_index) {
   if ((kind != OutputKind::vp8 && kind != OutputKind::h264) || !device ||
       (kind == OutputKind::h264 && !create) ||
       ceiling.width == 0 || ceiling.height == 0 || (ceiling.width & 1) || (ceiling.height & 1) ||
@@ -584,7 +635,7 @@ AdaptiveEncoder::AdaptiveEncoder(OutputKind kind, VideoProfile ceiling, ID3D11De
       ceiling.frame_rate == 0 || ceiling.frame_rate > 1'000 || ceiling.bit_rate < 1'000 ||
       ceiling.bit_rate > static_cast<UINT32>(std::numeric_limits<int>::max()))
     Fail("adaptive-profile", "Invalid adaptive encoder profile");
-  impl_ = std::make_unique<Impl>(kind, ceiling, device, std::move(create), std::move(initial));
+  impl_ = std::make_unique<Impl>(kind, ceiling, device, std::move(create), std::move(initial), output_index);
   impl_->Start();
 }
 

@@ -30,7 +30,7 @@ func (session *Session) handlePublication(envelope requestEnvelope, payload []by
 		}
 		offer, media, err := host.PreparePublication(identity.PublicationGeneration, identity.ConnectionID, servers)
 		if err != nil {
-			return operationFailure(envelope), nil
+			return operationFailure(envelope, err), nil
 		}
 		result.responseEnvelope, result.SDP, result.Media = response(envelope, "publication-offer"), offer.SDP, media
 		return result, nil
@@ -44,7 +44,7 @@ func (session *Session) handlePublication(envelope requestEnvelope, payload []by
 	}
 	publication, err := host.Publication(identity.PublicationGeneration, identity.ConnectionID)
 	if err != nil {
-		return operationFailure(envelope), nil
+		return operationFailure(envelope, err), nil
 	}
 	accepted := ""
 	switch envelope.Type {
@@ -77,7 +77,7 @@ func (session *Session) handlePublication(envelope requestEnvelope, payload []by
 		accepted = "publication-layers-accepted"
 	}
 	if err != nil {
-		return operationFailure(envelope), nil
+		return operationFailure(envelope, err), nil
 	}
 	return response(envelope, accepted), nil
 }

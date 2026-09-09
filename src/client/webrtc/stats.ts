@@ -5,6 +5,7 @@ import {
 import { packetLossPercentFromDeltas } from "../../shared/packet-loss";
 import { deriveVideoCodecEvidence } from "../../shared/video-codec-evidence";
 import { isPredictedCandidateFoundation } from "../../shared/nat-candidate";
+import { debugRtcFailure, debugRtcStats } from "../lib/debug-webrtc";
 
 type StatsRecord = Record<string, unknown> & {
   id: string;
@@ -641,12 +642,14 @@ export async function collectConnectionMetrics(
   previous: StatsAccumulator,
   selector: StatsMediaSelector | null = null,
 ): Promise<ConnectionMetrics> {
-  return collectConnectionMetricsFromReport(
-    await connection.getStats(),
-    direction,
-    previous,
-    selector,
-  );
+  try {
+    const report = await connection.getStats();
+    debugRtcStats(connection, report);
+    return collectConnectionMetricsFromReport(report, direction, previous, selector);
+  } catch (error) {
+    debugRtcFailure(connection, error);
+    throw error;
+  }
 }
 
 export function collectConnectionMetricsFromReport(

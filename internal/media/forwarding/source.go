@@ -9,12 +9,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/TNTcraftHIM/Screener/internal/diagnostics"
 	"github.com/TNTcraftHIM/Screener/internal/media/encoded"
 	"github.com/livekit/livekit-server/pkg/sfu"
 	"github.com/livekit/livekit-server/pkg/sfu/buffer"
 	"github.com/livekit/mediatransportutil"
 	"github.com/livekit/protocol/livekit"
-	"github.com/livekit/protocol/logger"
 	"github.com/livekit/protocol/utils"
 	"github.com/livekit/protocol/utils/mono"
 	"github.com/pion/rtcp"
@@ -82,7 +82,7 @@ func NewSource(options SourceOptions) (*Source, error) {
 		ReceiverBase: sfu.NewReceiverBase(sfu.ReceiverBaseParams{
 			TrackID: livekit.TrackID(options.ID), StreamID: options.StreamID,
 			Kind: webrtc.RTPCodecTypeVideo, Codec: options.Codec,
-			HeaderExtensions: canonicalHeaderExtensions(options.HeaderExtensions), Logger: logger.GetDiscardLogger(),
+			HeaderExtensions: canonicalHeaderExtensions(options.HeaderExtensions), Logger: diagnostics.MediaLogger("source").WithValues("trackId", diagnostics.ID(options.ID)),
 			StreamTrackerManagerConfig: sfu.DefaultStreamTrackerManagerConfig,
 		}, info, sfu.ReceiverCodecStateNormal),
 		buffers:    make([]*buffer.Buffer, len(options.Formats)),
@@ -209,7 +209,7 @@ func (source *Source) BindLayer(layer int, ssrc uint32, parameters webrtc.RTPPar
 		}
 	}
 	input := buffer.NewBuffer(ssrc, source.maxPackets, buffer.InitPacketBufferSizeAudio)
-	input.SetLogger(logger.GetDiscardLogger())
+	input.SetLogger(diagnostics.MediaLogger("rtp-buffer").WithValues("trackId", diagnostics.ID(string(source.TrackID()))))
 	if err := input.Bind(parameters, codec.RTPCodecCapability, int(source.TrackInfo().Layers[layer].Bitrate)); err != nil {
 		_ = input.Close()
 		return err

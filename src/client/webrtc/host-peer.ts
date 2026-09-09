@@ -5,6 +5,8 @@ import {
   type SignalPayload,
 } from "../../shared/protocol";
 import { createOpaqueId } from "../lib/opaque-id";
+import { debugError, debugEvent } from "../lib/debug";
+import { debugTrack, observeDebugConnection } from "../lib/debug-webrtc";
 import {
   audioSenderParameterWarning,
   applyVideoCaptureProfile,
@@ -136,6 +138,7 @@ export class HostPeer {
         iceConfig.natPredictionStunUrls,
       ),
     });
+    observeDebugConnection(this.connection, { connectionId, peerId, role: "send" });
     this.localIceCandidates = new NatPredictionCandidateEmitter(
       this.natPredictionEnabled,
       (candidate) => this.sendIceCandidate(candidate),
@@ -678,6 +681,7 @@ export class HostPeer {
         },
       );
       const capture = captureMetrics(captureTrack);
+      debugTrack(captureTrack, { connectionId: this.connectionId, event: "sample" });
       const metrics = { ...(await metricsPromise), ...capture };
       if (
         this.disposed ||
@@ -713,7 +717,8 @@ export class HostPeer {
     }
   }
 
-  private setError(_error: unknown, fallback: string): void {
+  private setError(error: unknown, fallback: string): void {
+    debugError("webrtc", "sender-failed", error, { connectionId: this.connectionId, reason: fallback });
     this.snapshot = { ...this.snapshot, error: fallback };
     this.emit();
   }
@@ -745,8 +750,9 @@ export class HostPeer {
       try {
         senderParameters = await configureVideoSender(sender, profile);
         videoWarning = senderParameterWarning(senderParameters);
-      } catch {
+      } catch (error) {
         videoSucceeded = false;
+        debugError("webrtc", "sender-parameters-failed", error, { connectionId: this.connectionId, profileRevision, requested: profile });
         videoWarning = say("host.err.applySender");
       }
     }
@@ -767,8 +773,9 @@ export class HostPeer {
             profile.screenAudioQuality,
           );
           audioWarning = audioSenderParameterWarning(audioSenderParameters);
-        } catch {
+        } catch (error) {
           audioSucceeded = false;
+          debugError("webrtc", "audio-parameters-failed", error, { connectionId: this.connectionId, profileRevision });
           audioWarning = say("host.err.applyAudioSender");
         }
       } else {
@@ -787,6 +794,8 @@ export class HostPeer {
     }
     this.videoSenderWarning = videoWarning;
     this.audioSenderWarning = audioWarning;
+    debugEvent("webrtc", "sender-parameters", { connectionId: this.connectionId, profileRevision,
+      requested: profile, videoSucceeded, audioSucceeded, senderParameters, audioSenderParameters });
     if (mutation.video && videoSucceeded) {
       this.appliedVideoProfile = profile;
     }

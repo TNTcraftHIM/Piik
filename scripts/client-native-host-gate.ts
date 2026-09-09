@@ -766,7 +766,7 @@ async function main(): Promise<void> {
     stage = "host-page";
     const host = await createPage(
       cdp,
-      "http://localhost:" + appPort + "/#" + hostBootstrap,
+      "http://localhost:" + appPort + "/?debug=1#" + hostBootstrap,
       CODEC_PROBE,
       true,
     );

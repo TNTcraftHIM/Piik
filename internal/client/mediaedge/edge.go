@@ -2,13 +2,13 @@ package mediaedge
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"strconv"
 	"strings"
 	"sync"
 
+	"github.com/TNTcraftHIM/Screener/internal/diagnostics"
 	"github.com/TNTcraftHIM/Screener/internal/media/forwarding"
 	"github.com/pion/ice/v4"
 	"github.com/pion/webrtc/v4"
@@ -89,6 +89,7 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (*Edge, error
 		return nil, err
 	}
 	connection := transport.PC
+	log := slog.Default().With("connectionId", diagnostics.ID(options.ConnectionID), "rtcPeerId", diagnostics.ID(connection.ID()))
 	transport.SetAudioBitrate(options.Audio.configuredBitrate())
 	edge := &Edge{
 		connectionID:  options.ConnectionID,
@@ -137,22 +138,22 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (*Edge, error
 		edge.localCandidates.addPion(candidate)
 	})
 	connection.OnICEConnectionStateChange(func(state webrtc.ICEConnectionState) {
-		slog.Debug("screener-client", "event", "media-ice-state", "direction", "outbound", "local", options.Local, "state", state.String())
+		log.Debug("screener-client", "event", "media-ice-state", "direction", "outbound", "local", options.Local, "state", state.String())
 	})
 	if dtls := edge.sender.Transport(); dtls != nil {
 		dtls.OnStateChange(func(state webrtc.DTLSTransportState) {
-			slog.Debug("screener-client", "event", "media-dtls-state", "direction", "outbound", "local", options.Local, "state", state.String())
+			log.Debug("screener-client", "event", "media-dtls-state", "direction", "outbound", "local", options.Local, "state", state.String())
 		})
 	}
 	connection.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
 		debug := slog.Default().Enabled(engine.ctx, slog.LevelDebug)
 		if debug {
-			slog.Debug("screener-client", "event", "media-connection-state", "direction", "outbound", "local", options.Local, "state", state.String())
+			log.Debug("screener-client", "event", "media-connection-state", "direction", "outbound", "local", options.Local, "state", state.String())
 		}
 		if state == webrtc.PeerConnectionStateConnected {
 			if err := edge.transport.SetConnected(); err != nil {
 				if debug {
-					slog.Debug("screener-client", "event", "media-activation-failed", "errorType", fmt.Sprintf("%T", err))
+					log.Debug("screener-client", "event", "media-activation-failed", diagnostics.Error(err))
 				}
 				_ = connection.Close()
 				return
@@ -164,7 +165,7 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (*Edge, error
 			if pair, pairErr := edge.SelectedPair(); pairErr == nil {
 				selected = &pair
 				if debug {
-					slog.Debug("screener-client", "event", "media-selected-path", "direction", "outbound", "local", options.Local,
+					log.Debug("screener-client", "event", "media-selected-path", "direction", "outbound", "local", options.Local,
 						"localType", pair.Local.String(), "remoteType", pair.Remote.String(), "natTraversalPath", pair.NatTraversalPath)
 				}
 			}
@@ -251,13 +252,16 @@ func (edge *Edge) SetAnswer(answer webrtc.SessionDescription) error {
 	for _, candidate := range pending {
 		// Candidates are disposable edge input. The connection state callback
 		// remains the authority for a real media failure.
-		_ = edge.connection.AddICECandidate(candidate)
+		if err := edge.connection.AddICECandidate(candidate); err != nil {
+			slog.Debug("media-candidate-rejected", "connectionId", diagnostics.ID(edge.connectionID), "stage", "drain", diagnostics.Error(err))
+		}
 	}
 	return nil
 }
 
 func (edge *Edge) AddRemoteCandidate(candidate *webrtc.ICECandidateInit) error {
 	if malformedRemoteCandidate(candidate) {
+		slog.Debug("media-candidate-rejected", "connectionId", diagnostics.ID(edge.connectionID), "stage", "malformed")
 		return nil
 	}
 	value := webrtc.ICECandidateInit{}
@@ -272,6 +276,7 @@ func (edge *Edge) AddRemoteCandidate(candidate *webrtc.ICECandidateInit) error {
 	if !edge.remoteDescriptionSet {
 		if len(edge.pendingCandidates) >= maxPendingCandidates {
 			edge.mu.Unlock()
+			slog.Debug("media-candidate-rejected", "connectionId", diagnostics.ID(edge.connectionID), "stage", "queue-full", "capacity", maxPendingCandidates)
 			return nil
 		}
 		edge.pendingCandidates = append(edge.pendingCandidates, value)
@@ -282,7 +287,9 @@ func (edge *Edge) AddRemoteCandidate(candidate *webrtc.ICECandidateInit) error {
 	// A candidate may become stale between validation and delivery. Dropping
 	// that one edge input keeps the shared control session alive; ICE state
 	// events still report whether the edge itself can connect.
-	_ = edge.connection.AddICECandidate(value)
+	if err := edge.connection.AddICECandidate(value); err != nil {
+		slog.Debug("media-candidate-rejected", "connectionId", diagnostics.ID(edge.connectionID), "stage", "apply", diagnostics.Error(err))
+	}
 	return nil
 }
 

@@ -1,5 +1,7 @@
 import { say } from "../ui/copy";
 import type { IceConfig, SignalPayload } from "../../shared/protocol";
+import { debugError } from "../lib/debug";
+import { observeDebugConnection } from "../lib/debug-webrtc";
 import {
   EMPTY_METRICS,
   type PeerSnapshot,
@@ -255,6 +257,7 @@ export class ViewerPeer implements ViewerMediaPeer {
         this.currentIceConfig.natPredictionStunUrls,
       ),
     });
+    observeDebugConnection(connection, { connectionId, parentPeerId, role: "receive" });
     const localIceCandidates = new NatPredictionCandidateEmitter(
       this.natPredictionEnabled,
       (candidate) => {
@@ -641,6 +644,7 @@ export class ViewerPeer implements ViewerMediaPeer {
   }
 
   private setError(error: unknown, fallback: string): void {
+    debugError("webrtc", "receiver-failed", error, { connectionId: this.connectionId, reason: fallback });
     if (!this.snapshot) {
       return;
     }

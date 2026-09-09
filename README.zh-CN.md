@@ -45,7 +45,8 @@ Site 的访问规则。
 Chromium 系浏览器无法建立媒体连接时，请查看
 [Chromium WebRTC 常见问题](./cmd/screener-client/README.md#chromium-webrtc-connections)。
 反馈问题时，以 `--debug` 启动 Client，复现后在终端按 `D` 导出本地诊断 ZIP。
-浏览器诊断单独导出，详见 [诊断与导出](./docs/reference/configuration.md#diagnostics)。
+浏览器问题请在页面地址加上 `?debug=1`，然后点击语言控件旁的下载按钮。
+Client/浏览器协同问题请提供两份报告，详见 [诊断与导出](./docs/reference/configuration.md#diagnostics)。
 
 ## 自行部署
 

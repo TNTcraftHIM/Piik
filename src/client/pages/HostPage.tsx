@@ -78,6 +78,7 @@ import {
   type HostCreationProfile,
 } from "../lib/creation-profile";
 import { createOpaqueId } from "../lib/opaque-id";
+import { debugEvent, debugOperation } from "../lib/debug";
 import {
   defaultHostDisplayName,
   readDisplayName,
@@ -1603,6 +1604,7 @@ export function HostPage({
       return;
     }
     if (qualityChangeRef.current) {
+      debugEvent("quality", "queued", { requested: nextProfile, generation: activeGenerationRef.current });
       pendingQualityChangeRef.current = nextProfile;
       return;
     }
@@ -1623,6 +1625,10 @@ export function HostPage({
       return;
     }
     const token = {};
+    const complete = debugOperation("quality", "update", { generation,
+      requested: nextProfile, previous: previousProfile, native: nativeModeRef.current });
+    let outcome = "superseded";
+    let failure: unknown;
     qualityChangeRef.current = token;
     setChangingQuality(true);
     setNotice(null);
@@ -1666,6 +1672,8 @@ export function HostPage({
       }
 
       commitQuality(appliedProfile);
+      debugEvent("quality", "committed", { generation, applied: appliedProfile });
+      outcome = "applied";
       if (nativeUpdate) {
         setDetails(nativeCaptureDetails(appliedProfile, activeStream));
       } else if (captureChanged) {
@@ -1711,6 +1719,8 @@ export function HostPage({
         streamRef.current === activeStream
       ) {
         const failed = results.filter((updated) => !updated).length;
+        if (failed > 0 || !sfuUpdated) outcome = "partial";
+        debugEvent("quality", "sender-results", { generation, failed, sfuUpdated, senderCount: results.length });
         const sfuWarning =
           activeSfuRoute && hostSfuRouteRef.current === activeSfuRoute
             ? syncHostSfuQualityWarning(activeSfuRoute, generation)
@@ -1730,6 +1740,8 @@ export function HostPage({
         setNotice(connectionWarning ?? (sfuWarning ? null : successNotice));
       }
     } catch (error) {
+      failure = error;
+      outcome = "failed";
       if (
         isCurrentGeneration(generation) &&
         qualityChangeRef.current === token &&
@@ -1742,6 +1754,8 @@ export function HostPage({
         setNoticeError(error, "quality");
       }
     } finally {
+      complete(outcome, { generation,
+        ...(isCurrentGeneration(generation) ? { applied: qualitySettingsRef.current } : {}) }, failure);
       if (qualityChangeRef.current === token) {
         qualityChangeRef.current = null;
         const pending = pendingQualityChangeRef.current;
