@@ -140,6 +140,7 @@ ul { margin: 0; padding: 0; list-style: none; }
   transform: translateY(4px) scale(.82);
   transition: opacity 220ms ease, transform 260ms var(--spring);
 }
+.lr-brand-wordmark > span { display: inline-block; }
 .lr-brand-switcher-mascot {
   display: grid;
   place-items: center;
@@ -151,6 +152,14 @@ ul { margin: 0; padding: 0; list-style: none; }
 .lr-brand-switcher.is-mascot .lr-brand-switcher-mascot { opacity: 1; transform: translateY(0) scale(1); }
 .lr-brand-switcher.is-mascot .lr-brand-wordmark { transform: translateY(4px) scale(.82); }
 .lr-brand-switcher.is-wordmark .lr-brand-switcher-mascot { transform: translateY(-3px) scale(.78); }
+.lr-brand-switcher.is-entering-wordmark .lr-brand-wordmark { animation: lr-brand-wordmark-enter 560ms var(--spring) both; }
+.lr-brand-switcher.is-entering-mascot .lr-brand-switcher-mascot { animation: lr-brand-mascot-enter 560ms var(--spring) both; }
+.lr-brand-switcher.is-wordmark:not(.is-entering-wordmark) .lr-brand-wordmark > span {
+  animation: lr-brand-wordmark-idle 2.8s ease-in-out infinite;
+}
+.lr-brand-switcher.is-wordmark:not(.is-entering-wordmark) .lr-brand-wordmark > span:nth-child(2) { animation-delay: 70ms; }
+.lr-brand-switcher.is-wordmark:not(.is-entering-wordmark) .lr-brand-wordmark > span:nth-child(3) { animation-delay: 140ms; }
+.lr-brand-switcher.is-wordmark:not(.is-entering-wordmark) .lr-brand-wordmark > span:nth-child(4) { animation-delay: 210ms; }
 .lr-brand-loader {
   display: grid;
   width: 88px;
@@ -229,6 +238,20 @@ ul { margin: 0; padding: 0; list-style: none; }
   animation-delay: 45ms;
 }
 @keyframes lr-brand-draw { to { stroke-dashoffset: 0; } }
+@keyframes lr-brand-wordmark-enter {
+  0% { opacity: 0; transform: translateY(8px) scale(.72) rotate(-4deg); }
+  65% { opacity: 1; transform: translateY(-1px) scale(1.04) rotate(1deg); }
+  100% { opacity: 1; transform: translateY(0) scale(1) rotate(0); }
+}
+@keyframes lr-brand-mascot-enter {
+  0% { opacity: 0; transform: translateY(-6px) scale(.76) rotate(3deg); }
+  65% { opacity: 1; transform: translateY(1px) scale(1.05) rotate(-1deg); }
+  100% { opacity: 1; transform: translateY(0) scale(1) rotate(0); }
+}
+@keyframes lr-brand-wordmark-idle {
+  0%, 72%, 100% { transform: translateY(0); }
+  80% { transform: translateY(-1.5px); }
+}
 @keyframes lr-brand-bob {
   0%, 20%, 42%, 100% { transform: translateY(0) rotate(0); }
   26% { transform: translateY(-.8px) rotate(-2deg); }
@@ -296,6 +319,11 @@ html[data-theme="dark"] .lr-brand-sparkles { stroke: #f4c14d; }
 @media (prefers-reduced-motion: reduce) {
   .lr-brand-wordmark,
   .lr-brand-switcher-mascot { transition: none; }
+  .lr-brand-switcher.is-entering-wordmark .lr-brand-wordmark,
+  .lr-brand-switcher.is-entering-mascot .lr-brand-switcher-mascot,
+  .lr-brand-switcher.is-wordmark:not(.is-entering-wordmark) .lr-brand-wordmark > span {
+    animation: none;
+  }
 }
 
 .lr-top-right { display: inline-flex; gap: 10px; align-items: center; }
