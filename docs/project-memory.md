@@ -94,12 +94,12 @@ implementation and routine UI detail.
 
 ## Current Snapshot
 
-The permanent-room candidate uses strict `screener-v23` Browser/server signaling,
+The current contract uses strict `screener-v23` Browser/server signaling,
 Native control v9 and capture v7 together. Embedded SFU SDP/ICE and demand travel over the
 authenticated room WebSocket, without an external room service or media token.
 Committed first-frame readiness, bounded candidate-relative progress, durable
 room authority and the H.264/VP8 sender gate remain. [Status](./status.md)
-separates this source from last known production; protocol rollback requires
+indexes source and deployment evidence; protocol rollback requires
 matching Browser and Client artifacts, not only an application symlink.
 
 Current work is owned by the [TODO ledger](./todo.md). Open physical evidence is
