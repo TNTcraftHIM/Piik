@@ -1,8 +1,8 @@
 // Package room ports the room authority: src/server/room-store.ts (rooms,
 // participants, room codes, viewer credentials, the four-digit code pool) and
-// src/server/room-database.ts (the SQLite stable authority). Every mutation
-// writes SQLite before memory and returns the write error unchanged; there is
-// no catch-and-continue anywhere, exactly as in the TypeScript.
+// src/server/room-database.ts (the SQLite stable authority). Authority mutations
+// write SQLite before memory and return the write error unchanged. Participants
+// remain process-only.
 //
 // # Locking
 //
@@ -21,8 +21,7 @@
 // POST /api/rooms (createRoom):
 //
 //	mu.Lock()
-//	lease, err := store.BeginCreateRoom() // ROOM_LIMIT + lease deadline, pre-KDF
-//	if err != nil { mu.Unlock(); return err }
+//	if err := store.BeginCreateRoom(); err != nil { mu.Unlock(); return err }
 //	var material []byte
 //	var derived error
 //	if password != "" {
@@ -30,7 +29,7 @@
 //		material, derived = store.DeriveViewerPasswordMaterial(password, nil)
 //		mu.Lock()
 //	}
-//	created, err := store.CreateRoom(policy, material, derived, preferredRoomID, lease)
+//	created, err := store.CreateRoom(policy, material, derived, preferredRoomID)
 //	mu.Unlock()
 //
 // replaceRoom and set-viewer-password (the mayStart closure is the TypeScript
@@ -38,7 +37,7 @@
 // the derive goroutine, so it takes the lock itself):
 //
 //	mu.Lock()
-//	current, err := store.HostManagedRoom(roomID, hostToken) // may fail INVALID_TOKEN/ROOM_EXPIRED
+//	current, err := store.HostManagedRoom(roomID, hostToken) // may fail INVALID_TOKEN
 //	if err != nil { mu.Unlock(); return err }
 //	var material []byte
 //	var derived error

@@ -69,14 +69,13 @@ type routerHarness struct {
 func newRouterHarness(t *testing.T, options routerHarnessOptions) *routerHarness {
 	t.Helper()
 	h := &routerHarness{t: t, sent: map[string][]protocol.ServerMessage{}}
-	storeOptions := room.Options{LeaseMs: 60_000, MaxRooms: 4, MaxViewersPerRoom: 20}
+	storeOptions := room.Options{MaxRooms: 4, MaxViewersPerRoom: 20}
 	var now func() int64
 	var afterFunc func(time.Duration, func()) func() bool
 	if options.fakeTimers {
 		h.clock = &manualClock{settle: h.settle}
 		now = h.clock.now
 		afterFunc = h.clock.afterFunc
-		storeOptions.Now = now
 	}
 	store, err := room.New(storeOptions)
 	if err != nil {
@@ -156,10 +155,9 @@ func (h *routerHarness) createRoom() room.CreatedRoom {
 	var created room.CreatedRoom
 	var err error
 	h.locked(func() {
-		var lease int64
-		lease, err = h.store.BeginCreateRoom()
+		err = h.store.BeginCreateRoom()
 		if err == nil {
-			created, err = h.store.CreateRoom(protocol.CodeEntryOpen, nil, nil, "", lease)
+			created, err = h.store.CreateRoom(protocol.CodeEntryOpen, nil, nil, "")
 		}
 	})
 	if err != nil {

@@ -19,16 +19,17 @@ the storage decision; implementation detail belongs in code and tests.
   but duplicated-tab exclusion is not guaranteed. Closing the tab releases its
   claim; losing Host authority clears that tab without erasing another tab's
   resume hint.
-- Dormant rooms have a configurable lease, default 24 hours. An authenticated
-  online Host clears the lease deadline whether or not it is currently sharing;
-  Host absence starts the dormant lease. The exact Host token resumes an
-  unexpired room; Viewer activity never renews it.
+- Room identity and credentials do not expire with inactivity. The exact Host
+  token resumes the room until explicit replacement or deletion. Grant rotation
+  or revocation ends an invitation without changing the room code. No presence
+  event renews or shortens room authority.
 - The Host may replace its room code. Replacement atomically creates a different
   room and invalidates the old ownership, invitations, password, sessions,
   routes, and media resources. It ends an active share and stops its capture
   tracks; it does not migrate or automatically restart capture.
 - A locally remembered preferred code is only a request. The server remains the
-  authority and allocates another code when that code is unavailable or expired.
+  authority and allocates another code when that code is unavailable. The store
+  remains bounded by 9,000 codes; it rejects new rooms when full.
 
 ## Admission Paths
 
@@ -64,7 +65,7 @@ Code-only admission is independent of invitations:
 - `private` with a password additionally admits a site-authorized matching
   code-and-password attempt.
 
-An unknown, reclaimed, or expired code returns `ROOM_NOT_FOUND`. A current room
+An unknown or deleted code returns `ROOM_NOT_FOUND`. A current room
 that refuses a code-only attempt returns the generic `ROOM_ACCESS_DENIED` result
 without exposing its exact policy. Invalid grants and Host ownership failures
 remain separate.
@@ -79,10 +80,11 @@ code-only attempts and does not silently revoke invitations.
 
 ## Persistence Modes
 
-- **Lightweight mode:** without `ROOM_DATABASE_PATH`, room authority is process
-  memory and all rooms disappear on restart.
-- **Stable mode:** with an explicit SQLite path, one exact-schema owner persists
-  room authority across application restart.
+- **Stable mode (Hosted default):** one exact-schema SQLite owner persists room
+  authority across application restart. `ROOM_DATABASE_PATH` selects an absolute
+  file path; absent or empty uses `rooms.sqlite` in the working directory.
+- **Lightweight mode:** explicit `ROOM_DATABASE_PATH=:memory:` keeps room authority
+  in process memory and all rooms disappear on restart.
 - **Client Local mode:** the packaged Client composes the same memory RoomStore
   and ends every room when its local authority exits. It persists only its Site
   choice and optional Local site-access password, not rooms or media state. A
@@ -99,8 +101,8 @@ synchronizing two stores.
 
 Stable mode does not persist participants, signaling sessions, sharing state,
 routes, codec decisions, quality evidence, or SFU state. After restart, clients
-reauthenticate and rebuild media; a room that was active becomes dormant with a
-fresh lease. [Status](../status.md) owns the selected deployment mode and
+reauthenticate and rebuild media. No restored room is considered online until
+fresh sessions connect. [Status](../status.md) owns the selected deployment mode and
 ADR-0002 owns storage validation.
 
 The Host Browser may persist its creation preferences, including policy and an

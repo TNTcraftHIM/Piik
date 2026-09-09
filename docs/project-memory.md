@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-09-08
+Last updated: 2026-09-10
 
 Screener is private, low-latency game screen sharing for one Host and up to 20
 authenticated friends. The current product surface is Web Host, Web Viewer, and
@@ -40,7 +40,7 @@ blank keeps the self-contained site open.
 
 ## Product Map
 
-- [Rooms and access](./product/rooms-access.md) owns room codes, leases,
+- [Rooms and access](./product/rooms-access.md) owns room codes,
   invitations, code entry, credentials, and lightweight/SQLite persistence.
 - [Routing and transport](./product/routing-transport.md) owns P2P-first
   distribution, endpoint capacity, SFU fallback, recovery, and privacy limits.
@@ -56,8 +56,11 @@ implementation and routine UI detail.
 ## Core Invariants
 
 - Rooms use random four-digit codes, exact Host ownership, room-scoped Viewer
-  invitations, independent `open | private` code entry, and a 24-hour dormant
-  lease. Production enables optional SQLite stable room authority; live
+  invitations and independent `open | private` code entry. Room authority ends
+  through explicit replacement/deletion, with separate invitation rotation or
+  revocation. Hosted defaults to SQLite, with explicit process-memory opt-out;
+  Client Local remains process-only. Site access has a separate 24-hour idle
+  cookie lifetime. Production persists SQLite room authority; live
   participants, routes, and media remain process-only.
 - Media is automatic and distributed. Ordinary peers are STUN-only and prefer
   direct/peer UDP. A deployment may enable same-host auxiliary STUN for bounded,
@@ -91,11 +94,11 @@ implementation and routine UI detail.
 
 ## Current Snapshot
 
-The candidate uses strict `screener-v22` Browser/server signaling, Native control
-v9 and capture v7 together. Embedded SFU SDP/ICE and demand travel over the
+The permanent-room candidate uses strict `screener-v23` Browser/server signaling,
+Native control v9 and capture v7 together. Embedded SFU SDP/ICE and demand travel over the
 authenticated room WebSocket, without an external room service or media token.
-Committed first-frame readiness, bounded candidate-relative progress, optional
-SQLite room authority and the H.264/VP8 sender gate remain. [Status](./status.md)
+Committed first-frame readiness, bounded candidate-relative progress, durable
+room authority and the H.264/VP8 sender gate remain. [Status](./status.md)
 separates this source from last known production; protocol rollback requires
 matching Browser and Client artifacts, not only an application symlink.
 

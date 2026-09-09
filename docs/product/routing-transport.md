@@ -113,6 +113,9 @@ without admitted overlap.
 Framework reconnect runs before route reassignment. Manual media reconnect also
 recovers only the current P2P parent or current SFU subscription; it does not
 perform quality selection or choose another route.
+Current-edge P2P signaling remains valid during candidate overlap. Accepting a
+replacement from that parent cancels conflicting optional preparation so the
+replacement can complete; a retired candidate cannot take its place afterward.
 
 ## SFU Fallback
 

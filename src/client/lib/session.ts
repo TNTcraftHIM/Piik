@@ -17,9 +17,7 @@ const hostRoomStorageSchema = createRoomResponseSchema.pick({
   roomId: true,
   hostToken: true,
   inviteUrl: true,
-  expiresAt: true,
-  roomLeaseSeconds: true,
-});
+}).strip();
 const hostRoomPreferenceSchema = z
   .object({
     roomId: roomCodeSchema,
@@ -28,7 +26,7 @@ const hostRoomPreferenceSchema = z
 
 export type HostRoomIdentity = Pick<
   CreateRoomResponse,
-  "roomId" | "hostToken" | "expiresAt" | "roomLeaseSeconds"
+  "roomId" | "hostToken"
 > & { canonicalUrl: string };
 
 export interface HostRoomState extends HostRoomIdentity {
@@ -197,8 +195,6 @@ function readStoredHostRoom(
     const room: HostRoomIdentity = {
       roomId: parsed.data.roomId,
       hostToken: parsed.data.hostToken,
-      expiresAt: parsed.data.expiresAt,
-      roomLeaseSeconds: parsed.data.roomLeaseSeconds,
       canonicalUrl: canonicalViewerUrl(parsed.data.inviteUrl),
     };
     return room;
@@ -352,8 +348,6 @@ export async function writeHostRoom(
   const identity: HostRoomIdentity = {
     roomId: room.roomId,
     hostToken: room.hostToken,
-    expiresAt: room.expiresAt,
-    roomLeaseSeconds: room.roomLeaseSeconds,
     canonicalUrl:
       "canonicalUrl" in room
         ? room.canonicalUrl
@@ -383,8 +377,6 @@ function storeHostRoom(
       JSON.stringify({
         roomId: room.roomId,
         hostToken: room.hostToken,
-        expiresAt: room.expiresAt,
-        roomLeaseSeconds: room.roomLeaseSeconds,
         inviteUrl: room.canonicalUrl,
       }),
     );
@@ -495,7 +487,6 @@ export function readViewerGrant(roomId: string): string | null {
 export function mergeAuthenticatedHostRoom(
   current: HostRoomState | null,
   activeRoomId: string,
-  roomExpiresAt: string | null,
   codeEntryPolicy: CodeEntryPolicy,
 ): HostRoomState | null {
   if (!current || current.roomId !== activeRoomId) {
@@ -514,7 +505,6 @@ export function mergeAuthenticatedHostRoom(
 
   return {
     ...current,
-    expiresAt: roomExpiresAt,
     codeEntryPolicy,
     inviteUrl,
   };

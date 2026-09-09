@@ -1,7 +1,7 @@
 // Package config ports src/server/config.ts, src/server/local-config.ts and
 // src/server/ice.ts: the Hosted environment contract, the Client's local
-// composition, and the ICE configuration derived from either. It performs no
-// I/O; the caller supplies the environment as a map.
+// composition, and the ICE configuration derived from either. The caller
+// supplies the environment as a map; loading opens no runtime resources.
 package config
 
 import (
@@ -33,7 +33,6 @@ const (
 	minSiteAccessPasswordBytes = 8
 	maxSiteAccessPasswordBytes = 128
 	defaultMaxViewersPerRoom   = 8
-	defaultRoomLeaseSeconds    = 86_400
 	defaultPort                = 8787
 	maxPort                    = 65_535
 )
@@ -62,7 +61,8 @@ var removedEnvironmentVariables = []struct{ name, reason string }{
 	{"PEER_ASSISTED_MEDIA", "peer-assisted media is always enabled"},
 	{"HOST_ADMISSION_PASSWORD", "use SITE_ACCESS_PASSWORD"},
 	{"MAX_PEER_RELAY_DOWNSTREAM_EDGES", "use ENDPOINT_MEDIA_COPY_CAPACITY"},
-	{"ROOM_TTL_SECONDS", "use ROOM_LEASE_SECONDS"},
+	{"ROOM_TTL_SECONDS", "rooms do not expire"},
+	{"ROOM_LEASE_SECONDS", "rooms do not expire"},
 	{"ACCESS_PASSWORD", "use SITE_ACCESS_PASSWORD"},
 	{"NODE_ENV", "use SCREENER_ENV"},
 }
@@ -88,7 +88,6 @@ type Config struct {
 	AllowedOrigins            map[string]struct{}
 	SiteAccessPassword        string
 	RoomDatabasePath          string
-	RoomLeaseMs               int64
 	MaxViewersPerRoom         int
 	EndpointMediaCopyCapacity int
 	SFU                       *SFUConfig
@@ -208,14 +207,7 @@ func Load(env map[string]string) (Config, error) {
 		return Config{}, errors.New("STUN is required in production")
 	}
 
-	// ALLOWED_ORIGINS and ROOM_LEASE_SECONDS are validated inside the returned
-	// object literal, i.e. after every check above; keep that order.
 	allowedOrigins, err := parseOrigins(env["ALLOWED_ORIGINS"], Origin(publicBaseURL))
-	if err != nil {
-		return Config{}, err
-	}
-	roomLeaseSeconds, err := parsePositiveInteger(env["ROOM_LEASE_SECONDS"],
-		defaultRoomLeaseSeconds, "ROOM_LEASE_SECONDS")
 	if err != nil {
 		return Config{}, err
 	}
@@ -228,7 +220,6 @@ func Load(env map[string]string) (Config, error) {
 		AllowedOrigins:            allowedOrigins,
 		SiteAccessPassword:        siteAccessPassword,
 		RoomDatabasePath:          roomDatabasePath,
-		RoomLeaseMs:               roomLeaseSeconds * 1_000,
 		MaxViewersPerRoom:         int(maxViewersPerRoom),
 		EndpointMediaCopyCapacity: int(endpointMediaCopyCapacity),
 		SFU:                       sfu,
@@ -288,16 +279,18 @@ func parseBoundedInteger(value string, fallback int64, name string, minimum, max
 	return parsed, nil
 }
 
-// parseRoomDatabasePath ports parseRoomDatabasePath. DECISIONS D8: absoluteness
-// is filepath.IsAbs, which differs from Node's path.isAbsolute on Windows,
-// where "/var/lib/screener/rooms.sqlite" is relative to the current volume and
-// is therefore rejected here. Hosted runs on Linux.
+// Hosted defaults to durable room authority in its working directory. Explicit
+// paths stay absolute so a deployment cannot relocate an existing database
+// when its working directory changes. :memory: selects the in-memory RoomStore.
 func parseRoomDatabasePath(value string) (string, error) {
 	path := strings.TrimFunc(value, protocol.IsJSWhitespace)
 	if path == "" {
+		return filepath.Abs("rooms.sqlite")
+	}
+	if path == ":memory:" {
 		return "", nil
 	}
-	if path == ":memory:" || strings.ContainsRune(path, 0) || !filepath.IsAbs(path) {
+	if strings.ContainsRune(path, 0) || !filepath.IsAbs(path) {
 		return "", errors.New("ROOM_DATABASE_PATH must be an absolute file path")
 	}
 	return path, nil

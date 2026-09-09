@@ -246,6 +246,11 @@ WebRTC and LiveKit first own ICE/consent and transient reconnect on the current
 route. Only framework recovery exhaustion, hard failure, a non-paused decoded-
 frame stall, confirmed departure, or capacity invalidation enters route
 reconciliation. Manual reconnect remains on the exact current route.
+The retained connection and a same-parent candidate keep separate signaling
+authority. A replacement offer from the retained parent supersedes optional
+preparation for that child at adoption, including an SFU bootstrap carrier's
+trial. This retires its reservation and fences late candidate signaling;
+required availability work keeps priority and candidate budgets do not reopen.
 
 Authoritative Host pause aborts the pending operation and reservations, preserves
 the committed graph, suppresses decoded-stall authority, and leaves new Viewers

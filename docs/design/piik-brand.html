@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Piik · Brand study / 品牌预览</title>
+<style>
+  :root { color-scheme: light; --wall:#e9f2ee; --wall2:#dcebe4; --ink:#22303e; --paper:#fff; --orange:#e4572e; --green:#1f7a4a; --spark:#d08a22; }
+  :root[data-theme="dark"] { color-scheme:dark; --wall:#141e29; --wall2:#0e1620; --ink:#dde8f3; --paper:#22303e; --green:#9de8bf; --spark:#f4c14d; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--wall); color:var(--ink); font:16px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  a { color:inherit; text-underline-offset:3px; }
+  main { max-width:1100px; margin:auto; padding:28px 28px 44px; }
+  header, .controls, .section-head, .card-heading, footer { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+  header { padding-bottom:27px; border-bottom:1px solid color-mix(in srgb,var(--ink) 18%,transparent); }
+  .identity { display:flex; align-items:center; gap:10px; font-weight:750; letter-spacing:-.03em; }
+  .identity svg { width:32px; height:32px; }
+  .eyebrow, .number, .small-label { font-size:12px; font-weight:650; letter-spacing:.09em; text-transform:uppercase; }
+  .eyebrow { color:var(--green); }
+  h1,h2,h3,p { margin:0; }
+  h1 { font-size:clamp(32px,4.5vw,52px); line-height:1.1; letter-spacing:-.055em; max-width:520px; margin:12px 0 16px; }
+  h2 { font-size:25px; letter-spacing:-.035em; }
+  h3 { font-size:17px; letter-spacing:-.02em; }
+  .intro { display:grid; grid-template-columns:1fr 1fr; align-items:center; gap:32px; margin:44px 0 32px; }
+  .intro p { max-width:440px; }
+  .muted { opacity:.73; }
+  .hero { border:2px solid var(--ink); border-radius:22px; background:var(--paper); overflow:hidden; box-shadow:0 6px 0 var(--wall2); }
+  .stage { position:relative; padding:12px 16px 0; background:radial-gradient(ellipse at center,var(--wall2),transparent 70%); }
+  #morph { display:block; width:100%; height:auto; max-height:275px; overflow:visible; }
+  .caption { text-align:center; font-size:13px; padding:0 18px 17px; }
+  .controls { flex-wrap:wrap; justify-content:center; gap:8px; padding:15px; border-top:1px solid color-mix(in srgb,var(--ink) 15%,transparent); }
+  button { font:inherit; font-size:13px; font-weight:650; cursor:pointer; color:var(--ink); background:var(--paper); border:1.5px solid var(--ink); border-radius:9px; min-height:38px; padding:7px 12px; }
+  button:hover { background:var(--wall2); }
+  button:active { transform:translateY(1px); }
+  button:disabled { opacity:.45; cursor:default; }
+  button.primary { background:var(--ink); color:var(--paper); }
+  button:focus-visible,input:focus-visible { outline:3px solid var(--orange); outline-offset:3px; }
+  .motion-option { display:flex; align-items:center; justify-content:center; gap:7px; font-size:12px; padding:0 12px 13px; }
+  input { accent-color:var(--green); }
+  .section-head { margin:39px 0 15px; align-items:baseline; }
+  .section-head p { font-size:13px; }
+  .choices { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; }
+  article { padding:20px; border:1px solid color-mix(in srgb,var(--ink) 24%,transparent); border-radius:15px; background:var(--paper); }
+  article.recommended { border:2px solid var(--ink); padding:19px; }
+  .tag { padding:3px 8px; border-radius:20px; font-size:11px; color:var(--green); background:var(--wall); white-space:nowrap; }
+  .word { display:block; width:100%; height:105px; margin:10px 0 8px; }
+  article p { font-size:13px; margin-top:7px; }
+  .detail { display:grid; grid-template-columns:1fr 1.2fr; gap:30px; align-items:center; padding:24px; margin-top:18px; background:var(--wall2); border-radius:15px; }
+  .detail p { font-size:14px; margin-top:10px; }
+  .samples { width:100%; border-collapse:collapse; table-layout:fixed; text-align:left; }
+  th,td { border-bottom:1px solid color-mix(in srgb,var(--ink) 15%,transparent); padding:9px 6px; vertical-align:middle; }
+  th { font-size:12px; font-weight:650; }
+  th:first-child { width:58px; }
+  td svg { display:block; max-width:100%; }
+  .size { font-size:12px; white-space:nowrap; opacity:.7; }
+  .aside { display:flex; align-items:center; gap:12px; margin-top:15px; padding-top:13px; border-top:1px solid color-mix(in srgb,var(--ink) 15%,transparent); }
+  .aside svg { width:32px; height:32px; flex:none; }
+  .aside span { font-size:12px; }
+  .zh { display:block; margin-top:6px; font-size:13px; font-weight:400; letter-spacing:0; line-height:1.6; opacity:.75; }
+  .application { margin-top:18px; border:2px solid var(--ink); border-radius:18px; overflow:hidden; background:var(--paper); }
+  .application header { padding:16px 24px; }
+  .lockup { display:flex; align-items:center; gap:12px; }
+  .lockup .tv { width:36px; height:36px; }
+  .lockup .word { width:68px; height:38px; margin:0; }
+  .sample-nav { display:flex; flex-wrap:wrap; gap:16px; font-size:12px; opacity:.75; }
+  .site-hero { display:grid; grid-template-columns:1fr auto; align-items:center; gap:24px; padding:36px 32px; }
+  .site-hero h3 { font-size:clamp(25px,3vw,38px); line-height:1.2; letter-spacing:-.04em; }
+  .site-hero p { max-width:430px; margin-top:12px; font-size:14px; }
+  .site-hero > .tv { width:128px; height:128px; color:var(--ink); }
+  .steps { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); border-top:1px solid color-mix(in srgb,var(--ink) 18%,transparent); }
+  .steps > div { padding:18px 24px; }
+  .steps > div + div { border-left:1px solid color-mix(in srgb,var(--ink) 18%,transparent); }
+  .steps p { font-size:13px; margin-top:6px; }
+  .implementation { display:flex; flex-wrap:wrap; gap:10px 24px; margin:14px 0 0; font-size:12px; }
+  code { font-family:ui-monospace,"Cascadia Mono",monospace; }
+  footer { margin-top:27px; padding-top:18px; border-top:1px solid color-mix(in srgb,var(--ink) 18%,transparent); font-size:12px; flex-wrap:wrap; }
+  .fallback { font-weight:750; font-size:42px; letter-spacing:-.045em; }
+  .js .fallback { display:none; }
+  .no-js { font-size:13px; }
+  @media(max-width:760px) { main { padding:20px 18px 32px; } .intro { grid-template-columns:1fr; gap:24px; margin-top:30px; } .intro p { max-width:560px; } .hero { max-width:550px; width:100%; } .detail { grid-template-columns:1fr; gap:15px; } }
+  @media(max-width:500px) { .choices { grid-template-columns:1fr; gap:10px; } article { display:grid; grid-template-columns:1fr 1.3fr; column-gap:14px; align-items:center; } .card-heading { grid-column:1/-1; } .word { height:90px; grid-row:2/4; } article h3 { margin-top:12px; } article p { margin:4px 0; } .section-head { align-items:start; flex-direction:column; gap:3px; } .detail { padding:18px; } .eyebrow { font-size:11px; } .application header { padding:14px; } .sample-nav { gap:9px; font-size:11px; } .site-hero { padding:24px 18px; gap:12px; } .site-hero > .tv { width:70px; height:70px; } .steps { grid-template-columns:1fr; } .steps > div + div { border-left:0; border-top:1px solid color-mix(in srgb,var(--ink) 18%,transparent); } }
+  @media(prefers-reduced-motion:reduce) { button:active { transform:none; } }
+</style>
+<main>
+  <header>
+    <div class="identity"><svg class="tv" aria-hidden="true" viewBox="0 0 32 32"></svg><span>Piik / 品牌预览</span></div>
+    <button id="theme" type="button" aria-label="Switch to dark theme">Dark room</button>
+  </header>
+  <section class="intro" aria-labelledby="intro-title">
+    <div>
+      <div class="eyebrow">01 / A name taking shape</div>
+      <h1 id="intro-title">A little peek.<br>A familiar face.</h1>
+      <p>From <strong>“Peek” in games</strong> to a little TV for watching together. Keep the wink. Give it a name.</p>
+      <p class="muted" style="font-size:14px;margin-top:14px" lang="zh-CN">探个头，看看朋友在玩什么。名字换了，小电视还是那个小电视。</p>
+    </div>
+    <div class="hero">
+      <div class="stage">
+        <span class="fallback">Piik → TV</span>
+        <svg id="morph" viewBox="70 20 330 210" role="img" aria-labelledby="morph-title morph-desc">
+          <title id="morph-title">Piik becomes the winking TV</title>
+          <desc id="morph-desc">The P bowl opens into the screen, with the outer letter stems joining its sides. The two i dots become eyes, their stems become feet, and the k arms open into the TV antennae.</desc>
+        </svg>
+      </div>
+      <p class="caption">Same strokes. Familiar wink.<span class="zh" lang="zh-CN">P 撑开屏幕，ii 变成眼睛和脚，k 的两笔转成电视天线。</span></p>
+      <div class="controls">
+        <button id="replay" class="primary" type="button">重播 / Replay</button>
+        <button id="pause" type="button">暂停 / Pause</button>
+        <button id="word-state" type="button">字标 / Wordmark</button>
+        <button id="tv-state" type="button">电视 / TV</button>
+      </div>
+      <label class="motion-option"><input id="reduce" type="checkbox"> 减少动态 / Reduced motion</label>
+    </div>
+  </section>
+  <noscript><p class="no-js">Motion is optional. Piik is the recommended spelling; PiiK and piik are the two alternatives below. The original TV remains the small icon.</p></noscript>
+  <div class="section-head"><h2>Three ways to write it<span class="zh" lang="zh-CN">三个名字写法，同一套笔画</span></h2><p class="muted">One drawing style. Only the casing changes.</p></div>
+  <section class="choices" aria-label="Casing comparison">
+    <article class="recommended">
+      <div class="card-heading"><span class="number">01</span><span class="tag">Recommended</span></div>
+      <span class="fallback">Piik</span><svg class="word" data-case="Piik" role="img" aria-label="Piik, with an uppercase P and lowercase i i k"></svg>
+      <h3>Piik</h3><p>A clear name, with two curious eyes.<span class="zh" lang="zh-CN">主方案。首字母清楚，两个 i 留一点好奇心。</span></p>
+    </article>
+    <article>
+      <div class="card-heading"><span class="number">02</span><span class="tag">More contrast</span></div>
+      <span class="fallback">PiiK</span><svg class="word" data-case="PiiK" role="img" aria-label="PiiK, with uppercase P and K"></svg>
+      <h3>PiiK</h3><p>A stronger K gives the name a sharper silhouette.<span class="zh" lang="zh-CN">两侧更高、更硬朗，也更抢眼。</span></p>
+    </article>
+    <article>
+      <div class="card-heading"><span class="number">03</span><span class="tag">Softer</span></div>
+      <span class="fallback">piik</span><svg class="word" data-case="piik" role="img" aria-label="piik, all lowercase"></svg>
+      <h3>piik</h3><p>Relaxed and compact, with a lower centre of gravity.<span class="zh" lang="zh-CN">更轻松。小写 p 会伸到基线下方。</span></p>
+    </article>
+  </section>
+  <section class="detail" aria-labelledby="detail-title">
+    <div>
+      <div class="eyebrow">02 / The two little details</div>
+      <h2 id="detail-title">Two dots. Two curious eyes.</h2>
+      <p>Round dots keep the <strong>ii</strong> easy to read, then become the familiar TV eyes.</p>
+      <p class="muted">The wordmark below is shown at everyday sizes.</p>
+      <p class="zh" lang="zh-CN">两个圆点保留 ii 的辨识度，再变成小电视的眼睛。下面按实际尺寸查看。</p>
+      <div class="aside"><svg class="tv" aria-hidden="true" viewBox="0 0 32 32"></svg><span>Keep the existing TV for the tiny icon.<br>No four-letter favicon puzzle.</span></div>
+    </div>
+    <table class="samples" aria-label="Piik at actual sizes">
+      <thead><tr><th>Height</th><th>Piik</th></tr></thead>
+      <tbody>
+        <tr><td class="size">64 px</td><td><svg data-size="64" role="img" aria-label="Piik at 64 pixels"></svg></td></tr>
+        <tr><td class="size">32 px</td><td><svg data-size="32" role="img" aria-label="Piik at 32 pixels"></svg></td></tr>
+        <tr><td class="size">24 px</td><td><svg data-size="24" role="img" aria-label="Piik at 24 pixels"></svg></td></tr>
+      </tbody>
+    </table>
+  </section>
+  <div class="section-head"><h2>At home on a page<span class="zh" lang="zh-CN">放到页面上：官网首屏的方向草图</span></h2><p class="muted">A static website. The sharing app stays a tool.</p></div>
+  <section class="application" aria-label="Static homepage composition, not a live sharing service">
+    <header>
+      <div class="lockup" role="img" aria-label="TV mascot and Piik wordmark"><svg class="tv" aria-hidden="true" viewBox="0 0 32 32"></svg><svg class="word" data-case="Piik" aria-hidden="true"></svg></div>
+      <div class="sample-nav"><span>Download</span><span>Guide</span><span>GitHub</span></div>
+    </header>
+    <div class="site-hero">
+      <div><h3>Your game.<br>Their front row.</h3><p>Share your screen. Bring your friends.<br>They watch right in their browsers.</p><p class="zh" lang="zh-CN">开一局，朋友坐前排。<br>发个邀请，打开浏览器就能看。</p></div>
+      <svg class="tv" aria-hidden="true" viewBox="0 0 32 32"></svg>
+    </div>
+    <div class="steps">
+      <div><span class="number">01 / Pick</span><p>A screen, a window, a game.<span class="zh" lang="zh-CN">选好想分享的画面。</span></p></div>
+      <div><span class="number">02 / Invite</span><p>Send a link to your friends.<span class="zh" lang="zh-CN">把邀请链接发给朋友。</span></p></div>
+      <div><span class="number">03 / Hang out</span><p>A little room for your people.<span class="zh" lang="zh-CN">人到齐，就一起看。</span></p></div>
+    </div>
+  </section>
+  <div class="implementation"><span>Display / 显示名称 <strong>Piik</strong></span><span>Technical / 技术名称 <code>piik-client</code></span><span>Website / 官网 <code>piik.tv</code></span><span>Page title / 页签 <code>Piik | 6020 · 📺</code></span></div>
+  <footer><span>Design study · 09 Sep 2026 · 待讨论，尚未替换产品</span><span>Layout references: <a href="https://localsend.org/">LocalSend</a> · <a href="https://rustdesk.com/">RustDesk</a></span></footer>
+</main>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const ns = 'http://www.w3.org/2000/svg';
+  const tv = '<g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m11 4 5 4 5-4"/><rect x="4" y="8" width="24" height="18" rx="4"/><circle cx="11.5" cy="16.5" r="1.25" fill="currentColor" stroke="none"/><path d="M19 17c1.5-1.8 3.2-1.8 4.7 0M10 29l2-3m10 3-2-3"/></g>';
+  document.querySelectorAll('.tv').forEach((svg) => svg.innerHTML = tv);
+  // The k diagonals become antennae; the outer stems join the screen edges.
+  const parts = [
+    ['rect', {x:108,y:72,width:58,height:48,rx:20}, {x:172,y:76,width:136,height:102,rx:22.667}],
+    ['line', {x1:108,y1:72,x2:108,y2:164}, {x1:172,y1:98.667,x2:172,y2:155.333}],
+    ['line', {x1:194,y1:118,x2:194,y2:164}, {x1:217.333,y1:178,x2:206,y2:195}],
+    ['line', {x1:236,y1:118,x2:236,y2:164}, {x1:262.667,y1:178,x2:274,y2:195}],
+    ['line', {x1:282,y1:72,x2:282,y2:164}, {x1:308,y1:98.667,x2:308,y2:155.333}],
+    ['line', {x1:284,y1:139,x2:318,y2:111}, {x1:240,y1:76,x2:268.333,y2:53.333}],
+    ['line', {x1:294,y1:131,x2:326,y2:164}, {x1:211.667,y1:53.333,x2:240,y2:76}],
+  ];
+  const attributes = (node, values) => Object.entries(values).forEach(([key,value]) => node.setAttribute(key,String(value)));
+  function element(parent, tag, values) { const node = document.createElementNS(ns,tag); attributes(node,values); parent.append(node); return node; }
+  function animate(node, name, from, to, begin=.65, dur=1.25) {
+    return element(node,'animate',{attributeName:name,from,to,begin:begin+'s',dur:dur+'s',fill:'freeze',calcMode:'spline',keyTimes:'0;1',keySplines:'.4 0 .2 1'});
+  }
+  function drawWord(svg, casing='Piik', moving=false) {
+    if (!moving) svg.setAttribute('viewBox','96 58 244 138');
+    const group = element(svg,'g',{fill:'none',stroke:'currentColor','stroke-width':10,'stroke-linecap':'round','stroke-linejoin':'round'});
+    parts.forEach(([tag,start,end],index) => {
+      const shape = {...start};
+      if (casing === 'piik') { if(index===0) {shape.y=112;shape.height=48;} if(index===1) {shape.y1=112;shape.y2=188;} }
+      if (casing === 'PiiK') { if(index===5) {shape.y1=122;shape.y2=72;} if(index===6) {shape.x1=286;shape.y1=120;} }
+      const node = element(group,tag,shape);
+      if(moving) Object.keys(end).forEach(key => animate(node,key,shape[key],end[key]));
+    });
+    [194,236].forEach((cx,index) => {
+      const eyeX = index?270.317:214.5;
+      const eye = element(group,'ellipse',{cx,cy:95,rx:6.5,ry:6.5,fill:'currentColor',stroke:'none'});
+      if(moving) { animate(eye,'cx',cx,eyeX); animate(eye,'cy',95,124.167); animate(eye,'rx',6.5,7.083); animate(eye,'ry',6.5,7.083); if(index) animate(eye,'ry',7.083,0,2.2,.16); }
+    });
+    if(moving) {
+      animate(group,'stroke-width',10,13.6);
+      const wink = element(group,'path',{d:'M257 127c8.5-10.2 18.133-10.2 26.633 0',pathLength:1,'stroke-dasharray':1,'stroke-dashoffset':1});
+      animate(wink,'stroke-dashoffset',1,0,2.3,.23);
+      const sparkles = element(group,'g',{stroke:'var(--spark)','stroke-width':7.933,opacity:0});
+      element(sparkles,'path',{d:'M291 95.8L295.5 106.6L306.3 111.1L295.5 115.7L291 126.4L286.5 115.7L275.7 111.1L286.5 106.6Z'});
+      element(sparkles,'path',{d:'M291 128.1L293.6 134.4L299.8 136.9L293.6 139.5L291 145.7L288.5 139.5L282.2 136.9L288.5 134.4Z'});
+      animate(sparkles,'opacity',0,1,2.4,.15);
+      animate(sparkles,'opacity',1,0,2.8,.4);
+    }
+  }
+  drawWord($('morph'),'Piik',true);
+  document.querySelectorAll('[data-case]').forEach(svg => drawWord(svg,svg.dataset.case));
+  document.querySelectorAll('[data-size]').forEach(svg => { const height=Number(svg.dataset.size); attributes(svg,{height,width:height*244/138}); drawWord(svg); });
+  const morph=$('morph'), reduce=$('reduce'), pause=$('pause'), motion=matchMedia('(prefers-reduced-motion: reduce)');
+  const duration=3.3;
+  let frame;
+  function still(at) { cancelAnimationFrame(frame); morph.pauseAnimations(); morph.setCurrentTime(at); pause.textContent='继续 / Resume'; pause.disabled=reduce.checked||at>=duration; }
+  function watch() { if(morph.getCurrentTime()>=duration) { still(duration); return; } frame=requestAnimationFrame(watch); }
+  function replay() { still(0); if(reduce.checked) { still(duration); return; } pause.textContent='暂停 / Pause'; pause.disabled=false; morph.unpauseAnimations(); watch(); }
+  $('replay').onclick=replay;
+  pause.onclick=() => { if(morph.animationsPaused()) { pause.textContent='暂停 / Pause'; morph.unpauseAnimations(); watch(); } else still(morph.getCurrentTime()); };
+  $('word-state').onclick=() => still(0);
+  $('tv-state').onclick=() => still(duration);
+  reduce.checked=motion.matches;
+  reduce.onchange=() => still(reduce.checked?duration:0);
+  motion.addEventListener('change',event => { reduce.checked=event.matches; reduce.onchange(); });
+  const dark=matchMedia('(prefers-color-scheme: dark)');
+  function theme(isDark) { document.documentElement.dataset.theme=isDark?'dark':'light'; $('theme').textContent=isDark?'Light room':'Dark room'; $('theme').setAttribute('aria-label',isDark?'Switch to light theme':'Switch to dark theme'); }
+  theme(dark.matches);
+  $('theme').onclick=() => theme(document.documentElement.dataset.theme!=='dark');
+  document.documentElement.classList.add('js');
+  if(reduce.checked) still(0); else replay();
+</script>
+</html>

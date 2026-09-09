@@ -32,6 +32,7 @@ export function CaptureSourcePicker({
   onRefresh,
   onCancel,
   browserAvailable = true,
+  initialTab = "window",
   initialAudio = true,
   audioLocked = false,
 }: {
@@ -45,12 +46,13 @@ export function CaptureSourcePicker({
   onRefresh: () => void;
   onCancel: () => void;
   browserAvailable?: boolean;
+  initialTab?: SourceTab;
   initialAudio?: boolean;
   audioLocked?: boolean;
 }) {
   const { vis, t } = useCopy();
   const pickerId = useId();
-  const [tab, setTab] = useState<SourceTab>("window");
+  const [tab, setTab] = useState<SourceTab>(initialTab);
   const [shareAudio, setShareAudio] = useState(initialAudio);
   const activeTab = tab === "browser" && !browserAvailable ? "window" : tab;
 

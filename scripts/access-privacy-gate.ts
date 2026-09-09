@@ -261,6 +261,7 @@ async function main(): Promise<void> {
         PATH: process.env.PATH,
         SystemRoot: process.env.SystemRoot,
         SCREENER_ENV: "production",
+        ROOM_DATABASE_PATH: ":memory:",
         PORT: String(serverPort),
         LISTEN_HOST: "127.0.0.1",
         // Production requires an https public origin. The browser reaches the

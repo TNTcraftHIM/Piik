@@ -9,6 +9,7 @@ User=screener
 Group=screener
 WorkingDirectory=/opt/screener/current
 Environment=SCREENER_ENV=production
+Environment=ROOM_DATABASE_PATH=/var/lib/screener/rooms.sqlite
 EnvironmentFile=/etc/screener/screener.env
 ExecStart=/opt/screener/current/screener-server
 Restart=on-failure

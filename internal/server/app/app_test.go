@@ -58,7 +58,6 @@ func testConfig(t *testing.T) config.Config {
 		PublicBaseURL:             publicBaseURL,
 		AllowedOrigins:            map[string]struct{}{allowedOrigin: {}},
 		SiteAccessPassword:        testAccessPassword,
-		RoomLeaseMs:               86_400_000,
 		MaxViewersPerRoom:         8,
 		EndpointMediaCopyCapacity: 2,
 		NATPredictionEnabled:      false,
@@ -66,7 +65,7 @@ func testConfig(t *testing.T) config.Config {
 }
 
 // newServer builds a server without listening. It mirrors the TS harness: the
-// heartbeat and cleanup intervals are pushed out of the way and a fake room
+// heartbeat interval is pushed out of the way and a fake room
 // control is injected whenever a LiveKit fallback is configured.
 func newServer(t *testing.T, options Options) *Server {
 	t.Helper()
@@ -75,9 +74,6 @@ func newServer(t *testing.T, options Options) *Server {
 	}
 	if options.HeartbeatIntervalMs == 0 {
 		options.HeartbeatIntervalMs = 60_000
-	}
-	if options.CleanupIntervalMs == 0 {
-		options.CleanupIntervalMs = 60_000
 	}
 	server, err := New(options)
 	if err != nil {
@@ -734,18 +730,12 @@ func TestRoomCreationIssuesAnIndependentFragmentOnlyViewerGrant(t *testing.T) {
 	if created.CodeEntryPolicy != "open" {
 		t.Fatalf("codeEntryPolicy = %q", created.CodeEntryPolicy)
 	}
-	if created.ExpiresAt == nil || *created.ExpiresAt == "" {
-		t.Fatal("expiresAt is missing")
-	}
-	if created.RoomLeaseSeconds != 86_400 {
-		t.Fatalf("roomLeaseSeconds = %d", created.RoomLeaseSeconds)
-	}
-	// The response carries no viewer grant expiry and no ICE configuration.
+	// The response carries only room authority and no ICE configuration.
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(response.body), &raw); err != nil {
 		t.Fatalf("decode body: %v", err)
 	}
-	for _, absent := range []string{"viewerGrantExpiresAt", "iceConfig", "viewerGrant"} {
+	for _, absent := range []string{"iceConfig", "viewerGrant"} {
 		if _, present := raw[absent]; present {
 			t.Fatalf("response exposes %q", absent)
 		}
@@ -818,16 +808,10 @@ func TestRoomCreationAllocatesUniqueFourDigitCodesConcurrently(t *testing.T) {
 	if created[0].RoomID == created[1].RoomID {
 		t.Fatalf("both rooms took the code %q", created[0].RoomID)
 	}
-	for _, room := range created {
-		if room.ExpiresAt == nil {
-			t.Fatal("expiresAt is null")
-		}
-	}
 }
 
 func TestRoomCreationReusesAFreePreferredCodeAndNeverReplacesAnOccupiedRoom(t *testing.T) {
 	configuration := testConfig(t)
-	configuration.RoomLeaseMs = 90_000
 	server := start(t, Options{Config: configuration})
 	cookie := server.cookie()
 
@@ -838,9 +822,6 @@ func TestRoomCreationReusesAFreePreferredCodeAndNeverReplacesAnOccupiedRoom(t *t
 
 	if preferred.RoomID != "4321" {
 		t.Fatalf("preferred roomId = %q", preferred.RoomID)
-	}
-	if preferred.RoomLeaseSeconds != 90 {
-		t.Fatalf("roomLeaseSeconds = %d", preferred.RoomLeaseSeconds)
 	}
 	if fallback.RoomID == "4321" {
 		t.Fatal("the occupied preferred code was handed out twice")
@@ -933,7 +914,6 @@ func TestRoomMutationFailuresMapToTheHTTPTable(t *testing.T) {
 		{"replacement busy", replacementFailure, &room.Error{Code: room.CodeRoomBusy}, 503, "Room replacement unavailable", true},
 		{"replacement token", replacementFailure, &room.Error{Code: room.CodeInvalidToken}, 404, "Room not found", true},
 		{"replacement missing", replacementFailure, &room.Error{Code: room.CodeRoomNotFound}, 404, "Room not found", true},
-		{"replacement expired", replacementFailure, &room.Error{Code: room.CodeRoomExpired}, 404, "Room not found", true},
 		{"replacement full", replacementFailure, &room.Error{Code: room.CodeRoomFull}, 0, "", false},
 		{"replacement other", replacementFailure, otherError, 0, "", false},
 		{"access busy", accessFailure, &room.Error{Code: room.CodeRoomBusy}, 503, "Room access update unavailable", true},
@@ -965,10 +945,9 @@ func TestRoomMutationFailuresMapToTheHTTPTable(t *testing.T) {
 	}
 }
 
-func TestRoomAccessManagesADormantRoomWithoutStartingSharingOrRenewing(t *testing.T) {
+func TestRoomAccessManagesADormantRoomWithoutStartingSharing(t *testing.T) {
 	var now atomic.Int64
 	configuration := testConfig(t)
-	configuration.RoomLeaseMs = 1_000
 	server := start(t, Options{Config: configuration, Now: now.Load})
 	cookie := server.cookie()
 	created := server.createRoom(roomRequest{cookie: cookie}).
@@ -1024,20 +1003,11 @@ func TestRoomAccessManagesADormantRoomWithoutStartingSharingOrRenewing(t *testin
 		t.Fatal("managing access started a sharing session")
 	}
 
-	now.Store(1_001)
-	expired, err := server.Store().ExpireRooms(1_001)
-	if err != nil {
-		t.Fatalf("ExpireRooms: %v", err)
-	}
-	found := false
-	for _, closed := range expired {
-		if closed.RoomID == created.RoomID {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatalf("access management renewed the lease; expired = %v", expired)
-	}
+	now.Store(30 * 24 * 60 * 60 * 1_000)
+	server.updateRoomAccess(accessRequest{
+		roomID: created.RoomID, hostToken: created.HostToken, cookie: server.cookie(),
+		body: `{"action":"set-code-entry-policy","policy":"open"}`,
+	}).expectStatus(http.StatusOK)
 }
 
 func TestRoomAccessRequiresSameOriginSiteAccessAndTheExactHostToken(t *testing.T) {
@@ -1112,7 +1082,7 @@ func TestRoomCreationReturnsServiceUnavailableAtTheGlobalRoomBound(t *testing.T)
 	configuration := testConfig(t)
 	configuration.SiteAccessPassword = ""
 	store, err := room.New(room.Options{
-		LeaseMs: 86_400_000, MaxRooms: 1, MaxViewersPerRoom: 8,
+		MaxRooms: 1, MaxViewersPerRoom: 8,
 	})
 	if err != nil {
 		t.Fatalf("room.New: %v", err)
@@ -1173,7 +1143,6 @@ func TestRestoresStableRoomAuthorityAcrossAnApplicationRestart(t *testing.T) {
 	configuration := testConfig(t)
 	configuration.SiteAccessPassword = ""
 	configuration.RoomDatabasePath = databasePath
-	configuration.RoomLeaseMs = 1_000
 
 	first := start(t, Options{Config: configuration, Now: now.Load})
 	created := first.createRoom(roomRequest{codeEntryPolicy: "private"}).
@@ -1182,7 +1151,7 @@ func TestRestoresStableRoomAuthorityAcrossAnApplicationRestart(t *testing.T) {
 		t.Fatalf("close first: %v", err)
 	}
 
-	now.Store(200)
+	now.Store(30 * 24 * 60 * 60 * 1_000)
 	second := start(t, Options{Config: configuration, Now: now.Load})
 	if size := second.Store().Size(); size != 1 {
 		t.Fatalf("restored room count = %d, want 1", size)

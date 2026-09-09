@@ -78,7 +78,7 @@ import {
   type HostCreationProfile,
 } from "../lib/creation-profile";
 import { createOpaqueId } from "../lib/opaque-id";
-import { debugEvent, debugOperation } from "../lib/debug";
+import { debugError, debugEvent, debugOperation } from "../lib/debug";
 import {
   defaultHostDisplayName,
   readDisplayName,
@@ -384,8 +384,6 @@ function hostRoomFromCreated(room: CreateRoomResponse): HostRoomState {
   return {
     roomId: room.roomId,
     hostToken: room.hostToken,
-    expiresAt: room.expiresAt,
-    roomLeaseSeconds: room.roomLeaseSeconds,
     canonicalUrl: canonicalUrl.toString(),
     codeEntryPolicy: room.codeEntryPolicy,
     inviteUrl: room.inviteUrl,
@@ -964,6 +962,7 @@ export function HostPage({
     }
     roomMutationRef.current = null;
     setRoomMutation(null);
+    releaseUnusedNativeClient();
   }
 
   function endSharing(
@@ -1036,8 +1035,8 @@ export function HostPage({
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) {
         if (!wasSharing) {
-          // A lease can disappear while the host is idle (for example after a
-          // server restart). Creation is the canonical recovery path; do not
+          // A memory-only room can disappear after a server restart.
+          // Creation is the canonical recovery path; do not
           // clear the visible room before it succeeds.
           try {
             const response = await createRoom(
@@ -1249,8 +1248,10 @@ export function HostPage({
     let bridge: NativeMediaBridge | null = null;
     let shareStarted = false;
     try {
+      await nativeShareCleanupRef.current;
       await nativePreviewTailRef.current;
       if (!isCurrentShare(generation, shareGeneration)) return null;
+      if (nativeClientRef.current !== client) throw new Error("Screener Client is unavailable");
       const started = await client.startShare({
         shareId: shareGeneration,
         source: target,
@@ -1262,6 +1263,11 @@ export function HostPage({
         codec: videoCodecModeRef.current,
       });
       shareStarted = true;
+      if (!isCurrentShare(generation, shareGeneration)) {
+        await client.stopShare(shareGeneration).catch(() => discardNativeClient(client));
+        return null;
+      }
+      if (nativeClientRef.current !== client) throw new Error("Screener Client is unavailable");
       videoCodecRef.current = manualVideoCodecPreference(started.codec);
       bridge = new NativeMediaBridge(
         shareGeneration,
@@ -1300,7 +1306,8 @@ export function HostPage({
       nativeEventCleanupRef.current = nativeEventCleanup;
       const stream = await bridge.start();
       if (!isCurrentShare(generation, shareGeneration)) {
-        disposeNativeShare();
+        if (nativeMediaBridgeRef.current === bridge) disposeNativeShare();
+        else bridge.dispose();
         return null;
       }
       return stream;
@@ -1331,7 +1338,12 @@ export function HostPage({
     nativeClientCloseCleanupRef.current = client.onClose(() => {
       if (nativeClientRef.current !== client) return;
       nativeClientRef.current = null;
+      nativeClientConnectRef.current = null;
       nativeClientCloseCleanupRef.current = null;
+      if (nativeSourceRequestRef.current) {
+        nativeSourcePathRef.current = null;
+        setNativeSources({ kind: "unavailable" });
+      }
       if (nativeMediaIngressRef.current) {
         recoverBrowserFanout(nativeMediaIngressRef.current);
       } else if (nativeModeRef.current && activeGenerationRef.current !== null) {
@@ -1345,16 +1357,21 @@ export function HostPage({
       nativeClientCloseCleanupRef.current?.();
       nativeClientCloseCleanupRef.current = null;
       nativeClientRef.current = null;
+      nativeClientConnectRef.current = null;
     }
     client.close();
   }
 
-  async function acquireNativeClient(): Promise<NativeClient | null> {
-    await nativeShareCleanupRef.current;
-    const current = nativeClientRef.current;
-    if (current) return current;
+  function acquireNativeClient(): Promise<NativeClient | null> {
     if (nativeClientConnectRef.current) return nativeClientConnectRef.current;
-    const connecting = NativeClient.connect().then((client) => {
+    const connecting: Promise<NativeClient | null> = nativeShareCleanupRef.current.then(() =>
+      nativeClientConnectRef.current === connecting
+        ? nativeClientRef.current ?? NativeClient.connect()
+        : null,
+    ).catch((error) => {
+      debugError("native", "discovery-failed", error);
+      return null;
+    }).then((client) => {
       if (nativeClientConnectRef.current !== connecting) {
         client?.close();
         return null;
@@ -1368,10 +1385,21 @@ export function HostPage({
     return connecting;
   }
 
+  function releaseUnusedNativeClient(): void {
+    // The picker may hand its connection to a starting share; only Native media
+    // needs to keep it after startup. Merely visiting the page owns no session.
+    if (nativeSourceRequestRef.current || nativeShareGenerationRef.current ||
+      (activeGenerationRef.current !== null && roomMutationRef.current !== null)) return;
+    nativeClientConnectRef.current = null;
+    const client = nativeClientRef.current;
+    if (client) discardNativeClient(client);
+  }
+
   function closeCaptureSourcePicker(): void {
     nativeSourceRequestRef.current = null;
     nativeSourcePathRef.current = null;
     setNativeSources(null);
+    releaseUnusedNativeClient();
   }
 
   async function openCaptureSourcePicker(): Promise<void> {
@@ -1403,7 +1431,7 @@ export function HostPage({
         nativeModeRef.current ? videoCodecRef.current.primary : videoCodecModeRef.current,
         client.health.nativeMedia.softwareVP8,
       );
-      if (nativeSourceRequestRef.current !== request) {
+      if (nativeSourceRequestRef.current !== request || nativeClientRef.current !== client) {
         return;
       }
       if (!path) {
@@ -1418,12 +1446,11 @@ export function HostPage({
         systemAudio: client.health.nativeMedia.systemAudio,
       });
     } catch {
-      if (!nativeModeRef.current) {
+      if (nativeSourceRequestRef.current !== request || nativeClientRef.current !== client) return;
+      if (!nativeShareGenerationRef.current) {
         discardNativeClient(client);
       }
-      if (nativeSourceRequestRef.current === request) {
-        setNativeSources({ kind: "unavailable" });
-      }
+      setNativeSources({ kind: "unavailable" });
     }
   }
 
@@ -1434,8 +1461,10 @@ export function HostPage({
   ): Promise<void> {
     if (!launchedByClient || videoCodecRef.current.primary !== "h264" ||
       !routePolicyRef.current.topologyOptimization) return;
-    const client = await acquireNativeClient();
+    const client = nativeClientRef.current;
     if (!client || !isCurrentShare(generation, shareGeneration)) return;
+    await nativeShareCleanupRef.current;
+    if (nativeClientRef.current !== client || !isCurrentShare(generation, shareGeneration)) return;
     const ingress = new NativeMediaIngress(shareGeneration, client, () => {
       recoverBrowserFanout(ingress);
     }, () => qualitySettingsRef.current);
@@ -1477,8 +1506,8 @@ export function HostPage({
   }
 
   function startBrowserShareFromPicker(): void {
-    closeCaptureSourcePicker();
     void startSharing({ kind: "browser" });
+    closeCaptureSourcePicker();
   }
 
   async function loadNativeSourcePreview(
@@ -1524,7 +1553,8 @@ export function HostPage({
     void startSharing({ kind: "native", client, target, audio, path });
   }
 
-  function disposeNativeShare(): void {
+  function disposeNativeShare(expectedShare = nativeShareGenerationRef.current): void {
+    if (nativeShareGenerationRef.current !== expectedShare) return;
     const client = nativeClientRef.current;
     const shareGeneration = nativeShareGenerationRef.current;
     const ingress = nativeMediaIngressRef.current;
@@ -1538,12 +1568,14 @@ export function HostPage({
     nativeModeRef.current = false;
     setNativeActive(false);
     if (!client || !shareGeneration) {
+      releaseUnusedNativeClient();
       return;
     }
     nativeShareCleanupRef.current = (ingress
       ? client.stopReceive(shareGeneration)
       : client.stopShare(shareGeneration))
       .catch(() => discardNativeClient(client));
+    releaseUnusedNativeClient();
   }
 
   function finishSourceSwitch(token: object): void {
@@ -2042,17 +2074,12 @@ export function HostPage({
     peerId: string,
     generation: number,
   ): Promise<void> {
-    if (!isCurrentGeneration(generation) || !hostChildIsAssigned(peerId)) {
+    if (
+      !isCurrentGeneration(generation) ||
+      !hostChildIsAssigned(peerId) ||
+      peersRef.current.has(peerId)
+    ) {
       return;
-    }
-    // Preserve healthy media across control reconnects, but replace a stalled
-    // negotiation whose offer or answer may have been lost with the WebSocket.
-    const existing = peersRef.current.get(peerId);
-    if (existing) {
-      if (existing.isConnected()) {
-        return;
-      }
-      removePeer(peerId);
     }
     const activeStream = streamRef.current;
     const nativeClient = nativeClientRef.current;
@@ -2246,7 +2273,6 @@ export function HostPage({
         mergeAuthenticatedHostRoom(
           current,
           activeRoom.roomId,
-          message.roomExpiresAt,
           message.codeEntryPolicy,
         ),
       );
@@ -2254,6 +2280,10 @@ export function HostPage({
         pendingQualitySettings ?? message.qualitySettings;
       activeRouteRevisionRef.current = message.routeRevision;
       if (reauthenticated) {
+        // Offers or answers may have been lost with the previous WebSocket.
+        for (const [peerId, peer] of peersRef.current) {
+          if (!peer.isConnected()) removePeer(peerId);
+        }
         const draft = qualityChangeRef.current ? advancedQualityRef.current : null;
         commitQuality(currentQualitySettings);
         if (draft) {
@@ -2390,15 +2420,11 @@ export function HostPage({
       if (!forgetRoom(activeRoom)) {
         return;
       }
-      endSharing(
-        message.reason === "expired" ? say("host.roomExpired") : say("host.roomClosed"),
-        false,
-        "warning",
-      );
+      endSharing(say("host.roomClosed"), false, "warning");
       return;
     }
     if (message.type === "error") {
-      if (["INVALID_TOKEN", "ROOM_EXPIRED"].includes(message.code)) {
+      if (message.code === "INVALID_TOKEN") {
         if (!forgetRoom(activeRoom)) {
           return;
         }
@@ -2455,7 +2481,7 @@ export function HostPage({
       }
     } catch (error) {
       if (!isCurrentShare(generation, shareGeneration)) {
-        disposeNativeShare();
+        disposeNativeShare(shareGeneration);
         return;
       }
       activeGenerationRef.current = null;
@@ -2467,7 +2493,7 @@ export function HostPage({
 
     if (!isCurrentShare(generation, shareGeneration)) {
       captured?.getTracks().forEach((track) => track.stop());
-      if (nativeStarted) disposeNativeShare();
+      if (nativeStarted) disposeNativeShare(shareGeneration);
       return;
     }
     if (captured) {
@@ -2490,7 +2516,7 @@ export function HostPage({
     }
     if (!isCurrentShare(generation, shareGeneration)) {
       captured?.getTracks().forEach((track) => track.stop());
-      if (nativeStarted) disposeNativeShare();
+      if (nativeStarted) disposeNativeShare(shareGeneration);
       return;
     }
 
@@ -2509,7 +2535,7 @@ export function HostPage({
         createdRoom = hostRoomFromCreated(response);
         if (!isCurrentShare(generation, shareGeneration)) {
           captured?.getTracks().forEach((track) => track.stop());
-          if (nativeStarted) disposeNativeShare();
+          if (nativeStarted) disposeNativeShare(shareGeneration);
           closeAbandonedRoom(createdRoom);
           return;
         }
@@ -2588,8 +2614,7 @@ export function HostPage({
               if (
                 !authenticated &&
                 message.type === "error" &&
-                (message.code === "INVALID_TOKEN" ||
-                  message.code === "ROOM_EXPIRED") &&
+                message.code === "INVALID_TOKEN" &&
                 !replacementAttempted
               ) {
                 replacementAttempted = true;
@@ -2611,7 +2636,7 @@ export function HostPage({
                   peer.updateIceConfig(message.iceConfig),
                 );
                 void writeHostRoom(
-                  { ...activeRoom, expiresAt: message.roomExpiresAt },
+                  activeRoom,
                   () => isCurrentShare(generation, shareGeneration) &&
                     signalRef.current === signal,
                 );
@@ -2642,7 +2667,7 @@ export function HostPage({
           const replacement = hostRoomFromCreated(response);
           if (!isCurrentShare(generation, shareGeneration)) {
             captured?.getTracks().forEach((track) => track.stop());
-            disposeNativeShare();
+            disposeNativeShare(shareGeneration);
             closeAbandonedRoom(replacement);
             return;
           }
@@ -2660,7 +2685,7 @@ export function HostPage({
           replacementSignal.start();
         } catch (error) {
           if (!isCurrentShare(generation, shareGeneration)) {
-            if (nativeStarted) disposeNativeShare();
+            if (nativeStarted) disposeNativeShare(shareGeneration);
             return;
           }
           activeGenerationRef.current = null;
@@ -2683,7 +2708,7 @@ export function HostPage({
     } catch (error) {
       if (!isCurrentShare(generation, shareGeneration)) {
         captured?.getTracks().forEach((track) => track.stop());
-        if (nativeStarted) disposeNativeShare();
+        if (nativeStarted) disposeNativeShare(shareGeneration);
         if (createdRoom && !claimedRoom) {
           closeAbandonedRoom(createdRoom);
         }
@@ -3429,6 +3454,7 @@ export function HostPage({
             {nativeSources ? (
               <CaptureSourcePicker
                 nativeSources={nativeSources}
+                initialTab={nativeClientRef.current ? "window" : "browser"}
                 onBrowser={startBrowserShareFromPicker}
                 onNative={startNativeShareFromPicker}
                 onPreview={loadNativeSourcePreview}

@@ -13,7 +13,7 @@ const (
 	MaxViewersPerRoomLimit      = 20
 	MaxParticipantsPerRoomLimit = MaxViewersPerRoomLimit + 1
 	MaxSignalBytes              = 64 * 1024
-	SignalingProtocol           = "screener-v22"
+	SignalingProtocol           = "screener-v23"
 	RoomCodeLength              = 4
 	MaxMediaRouteRevision       = MaxSafeInteger
 	MaxIceServerURLs            = 8

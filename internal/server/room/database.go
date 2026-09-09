@@ -15,18 +15,14 @@ import (
 	"github.com/TNTcraftHIM/Screener/internal/server/protocol"
 )
 
-// roomDatabaseApplicationID and roomDatabaseSchemaVersion are the
-// APPLICATION_ID / SCHEMA_VERSION of src/server/room-database.ts, checked on
-// open so another SQLite file cannot be adopted as the room authority. The ID
-// is ASCII "SCRN"; roomSchema below repeats it in decimal because that literal
-// has to match the TypeScript statement text byte for byte.
+// Database identity and the single current schema are checked before adopting
+// room authority. The application ID is ASCII "SCRN".
 const (
 	roomDatabaseApplicationID = 0x5343524e
-	roomDatabaseSchemaVersion = 1
+	roomDatabaseSchemaVersion = 2
 )
 
-// roomSchema is the exact text src/server/room-database.ts executes, so a file
-// created here and one created by the TypeScript hold the same sqlite_schema.
+// roomSchema stores durable authority only, never presence or media state.
 const roomSchema = `
         CREATE TABLE rooms (
           room_id TEXT PRIMARY KEY NOT NULL
@@ -46,15 +42,10 @@ const roomSchema = `
             CHECK (
               viewer_password_material IS NULL OR
               (typeof(viewer_password_material) = 'blob' AND length(viewer_password_material) = 48)
-            ),
-          lease_expires_at_ms INTEGER NULL
-            CHECK (
-              lease_expires_at_ms IS NULL OR
-              (lease_expires_at_ms > 0 AND lease_expires_at_ms <= 9007199254740991)
             )
         ) STRICT;
         PRAGMA application_id = 1396920910;
-        PRAGMA user_version = 1;
+        PRAGMA user_version = 2;
       `
 
 const selectStoredRooms = `SELECT
@@ -63,8 +54,7 @@ const selectStoredRooms = `SELECT
          viewer_grant_digest,
          viewer_authorization_generation,
          code_entry_policy,
-         viewer_password_material,
-         lease_expires_at_ms
+         viewer_password_material
        FROM rooms
        ORDER BY room_id`
 
@@ -74,14 +64,12 @@ const insertStoredRoom = `INSERT INTO rooms (
          viewer_grant_digest,
          viewer_authorization_generation,
          code_entry_policy,
-         viewer_password_material,
-         lease_expires_at_ms
-       ) VALUES (?, ?, ?, ?, ?, ?, ?)`
+         viewer_password_material
+       ) VALUES (?, ?, ?, ?, ?, ?)`
 
 const deleteRoomStatement = "DELETE FROM rooms WHERE room_id = ? AND host_token_digest = ?"
 
-// StoredRoomAuthority is StoredRoomAuthority. A nil ViewerPasswordMaterial and
-// a nil LeaseExpiresAtMs are the TypeScript nulls.
+// StoredRoomAuthority excludes transient sessions and presence.
 type StoredRoomAuthority struct {
 	RoomID                        string
 	HostTokenDigest               []byte
@@ -89,13 +77,6 @@ type StoredRoomAuthority struct {
 	ViewerAuthorizationGeneration string
 	CodeEntryPolicy               protocol.CodeEntryPolicy
 	ViewerPasswordMaterial        []byte
-	LeaseExpiresAtMs              *int64
-}
-
-// RoomIdentity is the {roomId, hostTokenDigest} pair deleteRooms takes.
-type RoomIdentity struct {
-	RoomID          string
-	HostTokenDigest []byte
 }
 
 // Database is RoomDatabase: the SQLite stable authority. It holds one
@@ -119,24 +100,10 @@ func NewDatabase(path string) (*Database, error) {
 }
 
 // Initialize opens the file, takes the exclusive lock, creates or verifies the
-// schema and recovers the stored rooms: rooms whose lease has passed are
-// deleted and rooms that were active at shutdown take activeLeaseExpiresAtMs.
-func (d *Database) Initialize(
-	startupNowMs, activeLeaseExpiresAtMs int64,
-) (restored []StoredRoomAuthority, err error) {
+// schema and restores all stored room authority.
+func (d *Database) Initialize() (restored []StoredRoomAuthority, err error) {
 	if d.conn != nil {
 		return nil, errors.New("Room database is already initialized")
-	}
-	if err := assertTimestamp(startupNowMs, "Room database startup time", true); err != nil {
-		return nil, err
-	}
-	if err := assertTimestamp(
-		activeLeaseExpiresAtMs, "Room database active-room lease deadline", false); err != nil {
-		return nil, err
-	}
-	if activeLeaseExpiresAtMs <= startupNowMs {
-		return nil, errors.New(
-			"Room database active-room lease deadline must be in the future")
 	}
 
 	// `new DatabaseSync(this.path, { timeout: 0 })`: a lock conflict must fail
@@ -174,7 +141,7 @@ func (d *Database) Initialize(
 	if err = d.begin("BEGIN EXCLUSIVE"); err != nil {
 		return nil, err
 	}
-	restored, err = d.recover(startupNowMs, activeLeaseExpiresAtMs)
+	restored, err = d.recover()
 	if err != nil {
 		d.rollbackIfNeeded()
 		return nil, err
@@ -193,63 +160,14 @@ func uriPath(path string) string {
 	return strings.NewReplacer("%", "%25", "#", "%23", "?", "%3F").Replace(filepath.ToSlash(path))
 }
 
-func (d *Database) recover(
-	startupNowMs, activeLeaseExpiresAtMs int64,
-) ([]StoredRoomAuthority, error) {
+func (d *Database) recover() ([]StoredRoomAuthority, error) {
 	if err := d.ensureExactSchema(); err != nil {
 		return nil, err
 	}
 	if err := d.assertDatabaseIntegrity(); err != nil {
 		return nil, err
 	}
-	stored, err := d.readStoredRooms()
-	if err != nil {
-		return nil, err
-	}
-	expiredCount, activeCount := 0, 0
-	for _, room := range stored {
-		switch {
-		case room.LeaseExpiresAtMs == nil:
-			activeCount++
-		case *room.LeaseExpiresAtMs <= startupNowMs:
-			expiredCount++
-		}
-	}
-
-	deleted, err := d.exec(
-		`DELETE FROM rooms
-              WHERE lease_expires_at_ms IS NOT NULL
-                AND lease_expires_at_ms <= ?`, startupNowMs)
-	if err != nil {
-		return nil, err
-	}
-	if deleted != int64(expiredCount) {
-		return nil, errors.New("Room database expiry cleanup changed an unexpected row count")
-	}
-
-	converted, err := d.exec(
-		`UPDATE rooms
-                SET lease_expires_at_ms = ?
-              WHERE lease_expires_at_ms IS NULL`, activeLeaseExpiresAtMs)
-	if err != nil {
-		return nil, err
-	}
-	if converted != int64(activeCount) {
-		return nil, errors.New("Room database active-room recovery changed an unexpected row count")
-	}
-
-	restored := make([]StoredRoomAuthority, 0, len(stored))
-	for _, room := range stored {
-		if room.LeaseExpiresAtMs != nil && *room.LeaseExpiresAtMs <= startupNowMs {
-			continue
-		}
-		if room.LeaseExpiresAtMs == nil {
-			lease := activeLeaseExpiresAtMs
-			room.LeaseExpiresAtMs = &lease
-		}
-		restored = append(restored, room)
-	}
-	return restored, nil
+	return d.readStoredRooms()
 }
 
 // InsertRoom is insertRoom.
@@ -264,37 +182,11 @@ func (d *Database) InsertRoom(room StoredRoomAuthority) error {
 			room.ViewerGrantDigest,
 			room.ViewerAuthorizationGeneration,
 			room.CodeEntryPolicy,
-			room.ViewerPasswordMaterial,
-			room.LeaseExpiresAtMs)
+			room.ViewerPasswordMaterial)
 		if err != nil {
 			return err
 		}
 		return assertSingleChange(changes, "insert")
-	})
-}
-
-// SetLeaseDeadline is setLeaseDeadline; a nil deadline marks the room active.
-func (d *Database) SetLeaseDeadline(
-	roomID string, hostTokenDigest []byte, leaseExpiresAtMs *int64,
-) error {
-	if err := assertRoomIdentity(roomID, hostTokenDigest); err != nil {
-		return err
-	}
-	if leaseExpiresAtMs != nil {
-		if err := assertTimestamp(*leaseExpiresAtMs, "Room lease deadline", false); err != nil {
-			return err
-		}
-	}
-	return d.transaction(func() error {
-		changes, err := d.exec(
-			`UPDATE rooms
-              SET lease_expires_at_ms = ?
-            WHERE room_id = ? AND host_token_digest = ?`,
-			leaseExpiresAtMs, roomID, hostTokenDigest)
-		if err != nil {
-			return err
-		}
-		return assertSingleChange(changes, "lease update")
 	})
 }
 
@@ -374,31 +266,15 @@ func (d *Database) SetViewerGrant(
 
 // DeleteRoom is deleteRoom.
 func (d *Database) DeleteRoom(roomID string, hostTokenDigest []byte) error {
-	return d.DeleteRooms([]RoomIdentity{{RoomID: roomID, HostTokenDigest: hostTokenDigest}})
-}
-
-// DeleteRooms is deleteRooms: one transaction, and any room whose authority no
-// longer matches rolls the whole batch back.
-func (d *Database) DeleteRooms(rooms []RoomIdentity) error {
-	for _, room := range rooms {
-		if err := assertRoomIdentity(room.RoomID, room.HostTokenDigest); err != nil {
-			return err
-		}
-	}
-	if len(rooms) == 0 {
-		return nil
+	if err := assertRoomIdentity(roomID, hostTokenDigest); err != nil {
+		return err
 	}
 	return d.transaction(func() error {
-		for _, room := range rooms {
-			changes, err := d.exec(deleteRoomStatement, room.RoomID, room.HostTokenDigest)
-			if err != nil {
-				return err
-			}
-			if err := assertSingleChange(changes, "delete"); err != nil {
-				return err
-			}
+		changes, err := d.exec(deleteRoomStatement, roomID, hostTokenDigest)
+		if err != nil {
+			return err
 		}
-		return nil
+		return assertSingleChange(changes, "delete")
 	})
 }
 
@@ -423,8 +299,7 @@ func (d *Database) ReplaceRoom(
 			replacement.ViewerGrantDigest,
 			replacement.ViewerAuthorizationGeneration,
 			replacement.CodeEntryPolicy,
-			replacement.ViewerPasswordMaterial,
-			replacement.LeaseExpiresAtMs)
+			replacement.ViewerPasswordMaterial)
 		if err != nil {
 			return err
 		}
@@ -548,7 +423,6 @@ func (d *Database) assertExactColumns() error {
 		{"viewer_authorization_generation", "TEXT", 1, 0},
 		{"code_entry_policy", "TEXT", 1, 0},
 		{"viewer_password_material", "BLOB", 0, 0},
-		{"lease_expires_at_ms", "INTEGER", 0, 0},
 	}
 	rows, err := d.conn.QueryContext(context.Background(), "PRAGMA table_info(rooms)")
 	if err != nil {
@@ -597,7 +471,6 @@ func (d *Database) readStoredRooms() ([]StoredRoomAuthority, error) {
 		var (
 			room     StoredRoomAuthority
 			policy   string
-			lease    sql.NullInt64
 			material []byte
 		)
 		if err := rows.Scan(
@@ -606,8 +479,7 @@ func (d *Database) readStoredRooms() ([]StoredRoomAuthority, error) {
 			&room.ViewerGrantDigest,
 			&room.ViewerAuthorizationGeneration,
 			&policy,
-			&material,
-			&lease); err != nil {
+			&material); err != nil {
 			return nil, err
 		}
 		if err := readDigest(room.HostTokenDigest, "Host token"); err != nil {
@@ -625,12 +497,6 @@ func (d *Database) readStoredRooms() ([]StoredRoomAuthority, error) {
 				return nil, errors.New("Room database contains invalid Viewer password material")
 			}
 			room.ViewerPasswordMaterial = material
-		}
-		if lease.Valid {
-			if lease.Int64 <= 0 || lease.Int64 > protocol.MaxSafeInteger {
-				return nil, errors.New("Room database contains an invalid lease deadline")
-			}
-			room.LeaseExpiresAtMs = &lease.Int64
 		}
 		if err := assertStoredRoom(room); err != nil {
 			return nil, err
@@ -721,9 +587,6 @@ func assertStoredRoom(room StoredRoomAuthority) error {
 	if err := assertPasswordMaterial(room.ViewerPasswordMaterial); err != nil {
 		return err
 	}
-	if room.LeaseExpiresAtMs != nil {
-		return assertTimestamp(*room.LeaseExpiresAtMs, "Room database lease deadline", false)
-	}
 	return nil
 }
 
@@ -760,16 +623,6 @@ func assertAuthorizationGeneration(value string) error {
 	if err != nil || len(decoded) != 16 ||
 		base64.RawURLEncoding.EncodeToString(decoded) != value {
 		return errors.New("Viewer authorization generation is invalid")
-	}
-	return nil
-}
-
-// assertTimestamp is the TypeScript Number.isSafeInteger guard: SQLite STRICT
-// accepts an integral REAL and a numeric TEXT in an INTEGER column, so the
-// range check has to stay on this side.
-func assertTimestamp(value int64, name string, allowZero bool) error {
-	if value > protocol.MaxSafeInteger || (allowZero && value < 0) || (!allowZero && value <= 0) {
-		return fmt.Errorf("%s must be a safe positive integer", name)
 	}
 	return nil
 }

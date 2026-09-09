@@ -306,8 +306,8 @@ type ReconcileResult struct {
 	Released       []*Resource
 }
 
-// SettleResult is the outcome of a candidate settlement call. Committed is
-// true only when CandidateReady committed the attempt (TS: optional
+// SettleResult is the outcome of candidate settlement or active replacement.
+// Committed is true only when CandidateReady committed the attempt (TS: optional
 // committed, read as truthy by the router). TS: SettleResult.
 type SettleResult struct {
 	Accepted       bool

@@ -135,6 +135,39 @@ through the operator environment; never place it in the repository or command
 line. The command does not mutate files, services, containers, or persistent
 state. A different current-revision file may be supplied as its only argument.
 
+## Permanent-Room Schema Cutover
+
+Schema 2 / signaling `screener-v23` requires matching Web/Client/Server builds
+and an accepted active-session interruption. Native control stays v9; Browser
+credential keys stay unchanged. This is not an app-only release.
+
+1. Verify the candidate; record the current release, environment, absolute DB
+   path and ownership. Stop ingress and the old application; take and retain a
+   SQLite backup. Require `application_id=1396920910`, `user_version=1`, expected
+   columns and `PRAGMA quick_check='ok'` before touching a separate protected copy.
+2. On that copy, use SQLite with `DROP COLUMN` support and stop on SQL errors:
+
+   ```sql
+   BEGIN EXCLUSIVE;
+   ALTER TABLE rooms DROP COLUMN lease_expires_at_ms;
+   PRAGMA user_version = 2;
+   COMMIT;
+   ```
+
+3. Verify integrity, exact columns/version and equal row counts. Compare retained
+   columns in both directions against the backup using `EXCEPT`; both must be
+   empty. Record only counts/pass/fail, not private verifiers. The candidate must
+   open this copy successfully; no room is dropped because of its former deadline.
+4. Retain the absolute `ROOM_DATABASE_PATH`; remove `ROOM_LEASE_SECONDS`. Install
+   the verified copy and release while stopped, retaining permissions/ownership.
+   Start; check health and Host/Viewer reauthentication before reopening ingress.
+5. On failure, stop and restore prior database, environment and release together.
+   Once new authority mutations are accepted, restoring the backup could revive
+   revoked grants: preserve those changes or make an explicit recovery decision.
+
+The runtime reads only schema 2. SQLite's [column removal](https://www.sqlite.org/lang_altertable.html#altertabdropcol)
+and [backup guidance](https://www.sqlite.org/backup.html) define this offline operation.
+
 ## Atomic Cutover
 
 ### First embedded-media cutover prerequisite
@@ -142,7 +175,7 @@ state. A different current-revision file may be supplied as its only argument.
 The first move from external services to embedded STUN/SFU is a coordinated
 infrastructure and protocol transaction, including Node-to-Go where still
 needed. Complete the [self-hosting cutover procedure](./operations/self-hosting.md#coordinated-embedded-media-cutover)
-with matching `screener-v22` Web/Server and native protocol v9 Client builds,
+with matching Web/Server signaling and native protocol v9 Client builds,
 accepted active-session interruption, released UDP ports, and exact
 unit/environment/proxy/service recovery. The routine wrapper does not perform
 that transaction; it requires an already running packaged Go release and cannot
@@ -178,8 +211,8 @@ strict-shell error traps.
 
 Stable mode stores only room authority at the configured SQLite path. The
 systemd service owns its state directory and file permissions. Application
-restart retains room ownership, invitations, policy, password verifier, and
-lease; participants, signaling, routes, SFU state, and media reconnect from fresh
+restart retains room ownership, invitations, policy and password verifier;
+participants, signaling, routes, SFU state and media reconnect from fresh
 process state.
 
 Lightweight mode has no persistent room state and starts empty. A release does

@@ -1,7 +1,7 @@
-# ADR-0002: Optional Durable Room Authority And Scoped Viewer Access
+# ADR-0002: Durable Room Authority And Scoped Viewer Access
 
-- Status: Accepted; implemented; stable mode deployed
-- Date: 2026-08-26
+- Status: Accepted; implemented
+- Date: 2026-09-10
 
 ## Context
 
@@ -26,40 +26,41 @@ Every room owns:
 - one random free code from `1000` through `9999`;
 - a SHA-256 Host-token digest and Viewer-grant digest;
 - a monotonically increasing Viewer authorization generation;
-- `open | private` code entry and optional salted scrypt password material;
-- one absolute dormant lease deadline, or an active-Host marker.
+- `open | private` code entry and optional salted scrypt password material.
 
-`ROOM_LEASE_SECONDS` defaults to 86,400 seconds. An authenticated Host keeps the
-room active; stop or disconnect starts the dormant lease. The exact Host token
-may resume before expiry. Viewer activity never renews the room. Expiry or
-explicit replacement invalidates every credential and releases the code.
+Room authority has no time limit. Stop, disconnect and inactivity do not change
+it. Explicit replacement or deletion invalidates its credentials and releases
+the code; grant rotation or revocation retires the invitation independently.
+There is no lease, renewal, expiry timer or replacement garbage collector.
+The existing 9,000-code bound remains; a full store rejects new rooms.
+Site-access cookies retain their separate 24-hour rolling idle lifetime.
 
 ### Lightweight And Stable Storage
 
-`ROOM_DATABASE_PATH` is optional and absent by default:
+Hosted Server uses SQLite by default:
 
-- when absent, the bounded RoomStore is process memory and restart loses every
-  room and credential;
-- when present, the same RoomStore persists its authority aggregate in one
-  SQLite file. The production target enables this stable mode after its
-  persistent-state deployment and recovery checks pass.
+- absent or empty `ROOM_DATABASE_PATH` resolves `rooms.sqlite` in the working
+  directory; service/container templates select a writable persistent directory;
+- an explicit absolute path selects that SQLite file;
+- `ROOM_DATABASE_PATH=:memory:` explicitly selects process-only rooms, whose
+  authority ends at process exit. Client Local uses this memory composition
+  directly and does not inherit Hosted environment defaults.
 
 Stable mode stores only `roomId`, Host-token digest, Viewer-grant digest,
-authorization generation, code-entry policy, optional password verifier, and
-dormant lease deadline. It never stores raw tokens, grants, or passwords.
+authorization generation, code-entry policy and optional password verifier.
+It never stores raw tokens, grants, or passwords.
 
 The schema is one exact current version on an embedded SQLite driver, one
 connection, one writer, and transactional room mutations. An unknown schema,
 wrong application identity, corrupt row, inaccessible path, or second owner
 fails startup before signaling or LiveKit mutation. This private pre-release
-contract has no legacy reader or migration chain; an incompatible database must
-be explicitly replaced from a verified recovery boundary.
+contract has no legacy reader or migration chain. A schema cutover must preserve
+existing authority through an explicit offline operation on a verified copy,
+with the previous database and application retained for rollback. Removing the
+lease column never deletes rooms or rotates credentials.
 
-On restart, expired rows are deleted. A saved dormant deadline remains exact. A
-row last observed with an active Host becomes dormant until
-`startup time + ROOM_LEASE_SECONDS`; restart never claims that the old Host,
-socket, share, or media route is still online. Successful Host reauthentication
-marks it active again.
+On restart, every saved room authority is restored. No Host, socket, share or
+media route is considered online until fresh sessions establish it again.
 
 Participants, display names, client/peer/session IDs, share generation, pause,
 quality settings, codec decisions, route graph, pending operations, first-frame
@@ -78,7 +79,7 @@ never identity.
 
 The browser also remembers one non-secret preferred room code with no local
 expiry or renewal timer. It is only a future allocation hint. The server remains
-the sole owner of room existence, expiry and code allocation: it reuses the hint
+the sole owner of room existence and code allocation: it reuses the hint
 only when free, otherwise allocates another random free code and the browser
 replaces its preference.
 
@@ -104,7 +105,7 @@ the digest and authorization generation.
 `open` admits site-authorized code entry without a room password. `private`
 disables passwordless code entry; without a password it is invitation-only, and
 with a password it additionally admits a matching code-and-password attempt.
-Missing or expired codes return `ROOM_NOT_FOUND`; expected existing-room denial
+Missing or deleted codes return `ROOM_NOT_FOUND`; expected existing-room denial
 returns `ROOM_ACCESS_DENIED`.
 
 ## Consequences
@@ -112,7 +113,7 @@ returns `ROOM_ACCESS_DENIED`.
 - Lightweight mode remains the smallest complete server and leaves no durable
   room authority after process exit.
 - Stable mode preserves room code, Host ownership, invitations, revocation,
-  password policy and lease across application releases without persisting live
+  password policy across application releases without persisting live
   topology or media state.
 - Application restart in stable mode is a bounded reauthentication and media
   rebuild, not uninterrupted playback. LiveKit high availability remains a
@@ -124,10 +125,9 @@ returns `ROOM_ACCESS_DENIED`.
 ## Acceptance Gates
 
 - Both modes pass the same creation, ownership, admission, password,
-  rotate/revoke, expiry, replacement and 9,000-code-capacity behavior.
-- Stable restart preserves exact room authority and dormant deadlines, converts
-  crash-active rooms to one configured dormant lease, and restores no participant
-  or media authority.
+  rotate/revoke, replacement and 9,000-code-capacity behavior.
+- Inactivity cannot invalidate room authority. Stable restart preserves it
+  exactly and restores no participant or media authority.
 - A surviving Host and Viewer can reauthenticate after restart, receive fresh
   sessions/routes, and recommit media; an old revoked grant stays revoked.
 - Replacement never returns the old code, never partially retires the old room,

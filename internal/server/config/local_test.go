@@ -40,9 +40,6 @@ func TestLocalMapsClientInputs(t *testing.T) {
 	if config.SiteAccessPassword != "local-access-password" {
 		t.Errorf("SiteAccessPassword = %q", config.SiteAccessPassword)
 	}
-	if config.RoomLeaseMs != 86_400_000 {
-		t.Errorf("RoomLeaseMs = %d", config.RoomLeaseMs)
-	}
 	if config.MaxViewersPerRoom != 20 {
 		t.Errorf("MaxViewersPerRoom = %d", config.MaxViewersPerRoom)
 	}

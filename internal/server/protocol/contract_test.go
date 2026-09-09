@@ -75,9 +75,8 @@ const (
 func authenticatedHost() []member {
 	return []member{
 		{"type", `"authenticated"`},
-		{"protocol", `"screener-v22"`},
+		{"protocol", `"screener-v23"`},
 		{"peerId", `"host_12345678"`},
-		{"roomExpiresAt", `"2026-08-18T18:00:00.000Z"`},
 		{"maxViewers", `8`},
 		{"endpointMediaCopyCapacity", `2`},
 		{"hostOnline", `true`},
@@ -164,10 +163,7 @@ func TestAuthenticatedPasswordStateIsHostScoped(t *testing.T) {
 		object(with(viewer, member{"hostPaused", `true`})), true)
 }
 
-// "represents persistent rooms without a room expiry" and the revision bound.
-func TestAuthenticatedRoomLifetimeAndRevision(t *testing.T) {
-	assertServerMessage(t, "no expiry",
-		object(with(authenticatedHost(), member{"roomExpiresAt", `null`})), true)
+func TestAuthenticatedRoomRevision(t *testing.T) {
 	assertServerMessage(t, "revision at the ceiling",
 		object(with(authenticatedHost(), member{"routeRevision", `9007199254740991`})), true)
 	assertServerMessage(t, "revision past the ceiling",
@@ -584,7 +580,7 @@ func TestAuthenticatedKeyOrder(t *testing.T) {
 		}
 	}
 	want := []string{
-		"type", "protocol", "peerId", "roomExpiresAt", "maxViewers",
+		"type", "protocol", "peerId", "maxViewers",
 		"endpointMediaCopyCapacity", "hostOnline", "hostPaused", "connectionId",
 		"iceConfig", "routePolicy", "codeEntryPolicy", "viewerAuthorizationGeneration",
 		"mediaMode", "shareGeneration", "routeRevision", "routeAssignment",
@@ -622,7 +618,7 @@ func TestOptionalAndNullableAreExact(t *testing.T) {
 // A host authenticate without routePolicy takes DEFAULT_ROUTE_POLICY.
 func TestAuthenticateAppliesTheRoutePolicyDefault(t *testing.T) {
 	message, err := DecodeClientMessage([]byte(
-		`{"type":"authenticate","protocol":"screener-v22","roomId":"1234","role":"host",` +
+		`{"type":"authenticate","protocol":"screener-v23","roomId":"1234","role":"host",` +
 			`"token":"` + repeat("a", 43) + `","clientId":"client_12345678"}`))
 	if err != nil {
 		t.Fatal(err)

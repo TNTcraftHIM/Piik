@@ -141,7 +141,6 @@ export class ViewerRelay {
       : null;
     const replacesActive =
       replacedPeer?.connectionId === prepared?.replacesConnectionId;
-    let promotedPeerId: string | null = null;
     if (
       prepared?.revision === revision &&
       !prepared.failed &&
@@ -156,11 +155,10 @@ export class ViewerRelay {
       this.peers.set(prepared.childPeerId, prepared.peer);
       replacedPeer?.dispose();
       this.snapshots.set(prepared.childPeerId, prepared.peer.getSnapshot());
-      promotedPeerId = prepared.childPeerId;
     } else {
       this.discardPreparedChild();
     }
-    this.reconcileChildren(childPeerIds, promotedPeerId);
+    this.reconcileChildren(childPeerIds);
   }
 
   discardPreparedChild(): void {
@@ -178,7 +176,14 @@ export class ViewerRelay {
   }
 
   setChildren(childPeerIds: readonly string[]): void {
-    this.reconcileChildren(childPeerIds, null);
+    this.reconcileChildren(childPeerIds);
+  }
+
+  resyncSignaling(): void {
+    // Authoritative reconciliation recreates negotiations whose signals may be lost.
+    for (const [childPeerId, peer] of this.peers) {
+      if (!peer.isConnected()) this.disposePeer(childPeerId);
+    }
   }
 
   updateCapacity(maxMediaEdges: number): void {
@@ -189,13 +194,10 @@ export class ViewerRelay {
     if (this.plannedChildPeerIds.length > maxMediaEdges) {
       this.discardPreparedChild();
     }
-    this.reconcileChildren(this.childPeerIds, null);
+    this.reconcileChildren(this.childPeerIds);
   }
 
-  private reconcileChildren(
-    childPeerIds: readonly string[],
-    promotedPeerId: string | null,
-  ): void {
+  private reconcileChildren(childPeerIds: readonly string[]): void {
     if (this.disposed) {
       return;
     }
@@ -213,13 +215,7 @@ export class ViewerRelay {
       this.cancelCodecProbe();
     }
     for (const childPeerId of this.childPeerIds) {
-      const peer = this.peers.get(childPeerId);
-      if (
-        (this.stream || this.peerFactory?.requiresStream === false) &&
-        childPeerId !== promotedPeerId &&
-        (!peer || !peer.isConnected())
-      ) {
-        this.disposePeer(childPeerId);
+      if (this.stream || this.peerFactory?.requiresStream === false) {
         this.startPeer(childPeerId, this.stream);
       }
     }
