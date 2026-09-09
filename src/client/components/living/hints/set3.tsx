@@ -401,6 +401,24 @@ ${rmBlock(
   </>
 );
 
+const hintDebugExport: HintScene = ({ theme }) => (
+  <>
+    <Frame x={4} w={152} theme={theme} />
+    <Frame x={164} w={152} theme={theme} />
+    <path d="M32 72H128" stroke="var(--ink)" strokeWidth={2.5} strokeLinecap="round" />
+    <g fill="var(--ink)">
+      <rect x={40} y={54} width={12} height={18} rx={2.5} />
+      <rect x={62} y={36} width={12} height={36} rx={2.5} />
+      <rect x={84} y={46} width={12} height={26} rx={2.5} />
+      <rect x={106} y={26} width={12} height={46} rx={2.5} />
+    </g>
+    <rect x={218} y={14} width={44} height={42} rx={5} fill="var(--paper)" stroke="var(--ink)" strokeWidth={2.5} />
+    <path d="M228 45V35M240 45V25M252 45V31" stroke={LIVE} strokeWidth={5} strokeLinecap="round" />
+    <path d="M240 61V73M234 68L240 74L246 68M215 74V84H265V74" fill="none"
+      stroke="var(--ink)" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+  </>
+);
+
 export const SET3_SCENES: Record<Set3Kind, HintScene> = {
   "hint-quality": hintQuality,
   "hint-audio-quality": hintAudioQuality,
@@ -408,5 +426,6 @@ export const SET3_SCENES: Record<Set3Kind, HintScene> = {
   "hint-codec": hintCodec,
   "hint-advanced": hintAdvanced,
   "hint-details": hintDetails,
+  "hint-debug-export": hintDebugExport,
   "hint-more-metrics": hintMoreMetrics,
 };

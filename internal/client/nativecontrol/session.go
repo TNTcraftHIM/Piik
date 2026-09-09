@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/url"
@@ -14,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 	"unicode"
 
 	"github.com/TNTcraftHIM/Screener/internal/client/loopback"
@@ -21,6 +21,7 @@ import (
 	"github.com/TNTcraftHIM/Screener/internal/client/nativecapture"
 	"github.com/TNTcraftHIM/Screener/internal/client/nativehost"
 	"github.com/TNTcraftHIM/Screener/internal/client/nativeviewer"
+	"github.com/TNTcraftHIM/Screener/internal/diagnostics"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -82,11 +83,18 @@ func (session *Session) Events() <-chan any {
 	return session.events
 }
 
-func (session *Session) Handle(ctx context.Context, payload []byte) (any, error) {
+func (session *Session) Handle(ctx context.Context, payload []byte) (result any, returnedErr error) {
 	var envelope requestEnvelope
 	if err := decodeEnvelope(payload, &envelope); err != nil {
 		return nil, err
 	}
+	complete := session.traceRequest(envelope, payload)
+	asynchronous := false
+	defer func() {
+		if !asynchronous {
+			complete(result, returnedErr)
+		}
+	}()
 	switch envelope.Type {
 	case "prepare-publication", "publication-media", "publication-answer", "publication-candidate", "publication-layers", "close-publication":
 		return session.handlePublication(envelope, payload)
@@ -106,7 +114,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (any, error)
 		}
 		targets, err := nativecapture.ListSources(session.ctx, session.captureProcess)
 		if err != nil {
-			return operationFailure(envelope), nil
+			return operationFailure(envelope, err), nil
 		}
 		return sourceListResponse{
 			responseEnvelope: response(envelope, "source-list"),
@@ -125,6 +133,8 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (any, error)
 		data := ""
 		if err == nil {
 			data = base64.StdEncoding.EncodeToString(preview)
+		} else {
+			operationFailure(envelope, err)
 		}
 		return sourcePreviewResponse{
 			responseEnvelope: response(envelope, "source-preview"),
@@ -143,6 +153,9 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (any, error)
 			!validQualitySettings(request.Profile) {
 			return nil, errors.New("native start-share request is invalid")
 		}
+		slog.Debug("screener-client", "event", "native-profile-requested", "requestId", envelope.ID,
+			"share", diagnostics.ID(request.ShareID), "profile", nativeQualityProfile(request.Profile), "codec", request.Codec, "audio", request.Audio,
+			"sourceKind", request.Source.Kind, "adapterIndex", request.AdapterIndex, "encoderIndex", request.EncoderIndex)
 		return session.startShare(ctx, envelope, request)
 	case "update-share":
 		var request updateShareRequest
@@ -153,9 +166,13 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (any, error)
 			return nil, errors.New("native update-share request is invalid")
 		}
 		profile := nativeQualityProfile(request.Profile)
+		slog.Debug("screener-client", "event", "native-profile-requested", "requestId", envelope.ID,
+			"share", diagnostics.ID(request.ShareID), "profile", profile)
 		var err error
 		if host := session.current(request.ShareID); host != nil {
-			return session.updateHost(host, envelope, request.ShareID, profile), nil
+			result = session.updateHost(host, envelope, request.ShareID, profile, complete)
+			asynchronous = result == nil
+			return result, nil
 		} else if viewer := session.currentViewer(request.ShareID); viewer != nil {
 			err = viewer.UpdateProfile(profile.Video)
 		} else {
@@ -177,22 +194,24 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (any, error)
 		updating := session.updateDone != nil
 		session.mu.Unlock()
 		if updating {
-			return operationFailure(envelope), nil
+			return operationFailure(envelope, errors.New("native quality update is still active")), nil
 		}
 		audio := request.Audio && session.capabilities.Summary().AudioFor(
 			request.Source.Kind,
 		)
+		slog.Debug("screener-client", "event", "native-source-requested", "requestId", envelope.ID,
+			"share", diagnostics.ID(request.ShareID), "sourceKind", request.Source.Kind, "audio", audio,
+			"adapterIndex", request.AdapterIndex, "encoderIndex", request.EncoderIndex)
 		err := host.ReplaceSource(ctx, nativecapture.VideoOptions{
 			Target:       request.Source,
 			AdapterIndex: request.AdapterIndex,
 			EncoderIndex: request.EncoderIndex,
 		}, audio)
-		if slog.Default().Enabled(session.ctx, slog.LevelDebug) {
-			slog.Debug("screener-client", "event", "share-source-replace", "failed", err != nil, "errorType", fmt.Sprintf("%T", err))
-		}
 		if err != nil {
-			return operationFailure(envelope), nil
+			return operationFailure(envelope, err), nil
 		}
+		slog.Debug("screener-client", "event", "native-source-applied", "requestId", envelope.ID,
+			"share", diagnostics.ID(request.ShareID), "sourceKind", request.Source.Kind, "audio", audio)
 		return shareSourceReplacedResponse{
 			responseEnvelope: response(envelope, "share-source-replaced"),
 			ShareID:          request.ShareID,
@@ -312,9 +331,6 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (any, error)
 			return nil, errors.New("native stop-share request is invalid")
 		}
 		err := session.stopShare(request.ShareID)
-		if slog.Default().Enabled(session.ctx, slog.LevelDebug) {
-			slog.Debug("screener-client", "event", "share-stop", "failed", err != nil, "errorType", fmt.Sprintf("%T", err))
-		}
 		if err != nil {
 			return nil, err
 		}
@@ -331,6 +347,8 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (any, error)
 			return nil, errors.New("native share does not exist")
 		}
 		host.SetPaused(request.Paused)
+		slog.Debug("screener-client", "event", "native-share-paused", "requestId", envelope.ID,
+			"share", diagnostics.ID(request.ShareID), "paused", request.Paused)
 		return response(envelope, "share-paused"), nil
 	default:
 		return nil, errors.New("native control message is unsupported")
@@ -363,11 +381,11 @@ func (session *Session) Close() error {
 	return nil
 }
 
-func (session *Session) updateHost(host *nativehost.Session, request requestEnvelope, shareID string, profile nativehost.QualityProfile) any {
+func (session *Session) updateHost(host *nativehost.Session, request requestEnvelope, shareID string, profile nativehost.QualityProfile, complete func(any, error)) any {
 	session.mu.Lock()
 	if session.closed || session.host != host || session.updateDone != nil {
 		session.mu.Unlock()
-		return operationFailure(request)
+		return operationFailure(request, errors.New("native quality update is unavailable or already active"))
 	}
 	done := make(chan struct{})
 	session.updateDone = done
@@ -380,6 +398,7 @@ func (session *Session) updateHost(host *nativehost.Session, request requestEnve
 			err = errors.New("native share stopped during quality update")
 		}
 		result := session.shareUpdateResult(request, shareID, profile, err)
+		complete(result, err)
 		close(done)
 		if session.closed {
 			session.updateDone = nil
@@ -407,14 +426,11 @@ func (session *Session) updateHost(host *nativehost.Session, request requestEnve
 }
 
 func (session *Session) shareUpdateResult(request requestEnvelope, shareID string, profile nativehost.QualityProfile, err error) any {
-	if slog.Default().Enabled(session.ctx, slog.LevelDebug) {
-		slog.Debug("screener-client", "event", "share-update", "failed", err != nil, "errorType", fmt.Sprintf("%T", err),
-			"width", profile.Video.Width, "height", profile.Video.Height, "fps", profile.Video.Framerate,
-			"bitrate", profile.Video.Bitrate, "audioBitrate", profile.AudioBitrate)
-	}
 	if err != nil {
-		return operationFailure(request)
+		return operationFailure(request, err)
 	}
+	slog.Debug("screener-client", "event", "native-profile-applied", "requestId", request.ID,
+		"share", diagnostics.ID(shareID), "profile", profile)
 	return shareUpdatedResponse{responseEnvelope: response(request, "share-updated"), ShareID: shareID}
 }
 
@@ -422,21 +438,12 @@ func (session *Session) startShare(
 	ctx context.Context,
 	envelope requestEnvelope,
 	request startShareRequest,
-) (result any, returnedErr error) {
+) (any, error) {
 	profile := nativeQualityProfile(request.Profile)
-	codec := request.Codec
-	defer func() {
-		if slog.Default().Enabled(session.ctx, slog.LevelDebug) {
-			_, rejected := result.(requestFailedResponse)
-			slog.Debug("screener-client", "event", "share-start", "failed", returnedErr != nil || rejected, "errorType", fmt.Sprintf("%T", returnedErr),
-				"codec", codec, "width", profile.Video.Width, "height", profile.Video.Height,
-				"fps", profile.Video.Framerate, "bitrate", profile.Video.Bitrate)
-		}
-	}()
 	session.mu.Lock()
 	if session.updateDone != nil {
 		session.mu.Unlock()
-		return operationFailure(envelope), nil
+		return operationFailure(envelope, errors.New("native quality update is still active")), nil
 	}
 	if session.closed || session.host != nil || session.viewer != nil {
 		session.mu.Unlock()
@@ -472,7 +479,9 @@ func (session *Session) startShare(
 	}
 	session.host = host
 	session.mu.Unlock()
-	codec = host.Codec()
+	codec := host.Codec()
+	slog.Debug("screener-client", "event", "native-profile-applied", "requestId", envelope.ID,
+		"share", diagnostics.ID(request.ShareID), "profile", profile, "codec", codec, "audio", host.HasAudio())
 	go session.watchHost(host)
 	return shareStartedResponse{
 		responseEnvelope: response(envelope, "share-started"),
@@ -929,9 +938,37 @@ func response(request requestEnvelope, responseType string) responseEnvelope {
 	}
 }
 
-func operationFailure(request requestEnvelope) requestFailedResponse {
+func operationFailure(request requestEnvelope, causes ...error) requestFailedResponse {
+	if len(causes) > 0 {
+		slog.Debug("screener-client", "event", "native-operation-failed", "requestId", request.ID,
+			"requestType", diagnostics.SafeText(request.Type), diagnostics.Error(causes[0]))
+	}
 	return requestFailedResponse{
 		responseEnvelope: response(request, "request-failed"),
 		Code:             "operation-failed",
+	}
+}
+
+func (session *Session) traceRequest(request requestEnvelope, payload []byte) func(any, error) {
+	if !slog.Default().Enabled(session.ctx, slog.LevelDebug) {
+		return func(any, error) {}
+	}
+	// Read only identities: source titles, SDP, candidates and media never enter the log.
+	var identity struct {
+		ShareID               string `json:"shareId"`
+		ConnectionID          string `json:"connectionId"`
+		SourceConnectionID    string `json:"sourceConnectionId"`
+		PublicationGeneration string `json:"publicationGeneration"`
+	}
+	_ = json.Unmarshal(payload, &identity)
+	logger := slog.Default().With("requestId", request.ID, "requestType", diagnostics.SafeText(request.Type),
+		"share", diagnostics.ID(identity.ShareID), "connection", diagnostics.ID(identity.ConnectionID),
+		"sourceConnection", diagnostics.ID(identity.SourceConnectionID), "publication", diagnostics.ID(identity.PublicationGeneration))
+	started := time.Now()
+	logger.Debug("screener-client", "event", "native-request-started")
+	return func(result any, err error) {
+		failure, rejected := result.(requestFailedResponse)
+		logger.Debug("screener-client", "event", "native-request-ended", "durationMs", time.Since(started).Milliseconds(),
+			"failed", err != nil || rejected, "code", failure.Code, diagnostics.Error(err))
 	}
 }

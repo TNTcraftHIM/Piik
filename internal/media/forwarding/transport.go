@@ -1,13 +1,16 @@
 package forwarding
 
 import (
+	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/TNTcraftHIM/Screener/internal/diagnostics"
 	"github.com/livekit/livekit-server/pkg/sfu"
 	"github.com/livekit/livekit-server/pkg/sfu/buffer"
 	"github.com/livekit/livekit-server/pkg/sfu/bwe"
@@ -90,6 +93,9 @@ func NewTransport(options TransportOptions) (_ *Transport, err error) {
 	}
 	factory := buffer.NewFactoryOfBufferFactory(options.Source.maxPackets, buffer.InitPacketBufferSizeAudio).CreateBufferFactory()
 	settings := options.Settings
+	if slog.Default().Enabled(context.Background(), slog.LevelDebug) {
+		settings.LoggerFactory = diagnostics.PionLoggerFactory("connectionId", diagnostics.ID(options.ConnectionID))
+	}
 	settings.BufferFactory = func(kind packetio.BufferPacketType, ssrc uint32) io.ReadWriteCloser {
 		if kind == packetio.RTCPBufferPacket {
 			if reader := factory.GetRTCPReader(ssrc); reader != nil {
@@ -122,7 +128,9 @@ func NewTransport(options TransportOptions) (_ *Transport, err error) {
 	if err != nil {
 		return nil, err
 	}
-	log := logger.GetDiscardLogger()
+	log := diagnostics.MediaLogger("transport").WithValues("connectionId", diagnostics.ID(options.ConnectionID))
+	log.Debugw("transport-created", "rtcPeerId", diagnostics.ID(transport.PC.ID()), "codec", codec.MimeType,
+		"initialBitrate", options.InitialBitrate, "packetCapacity", options.Source.maxPackets)
 	transport.estimator = sendsidebwe.NewSendSideBWE(sendsidebwe.SendSideBWEParams{
 		Config: sendsidebwe.DefaultSendSideBWEConfig, Logger: log,
 	})
@@ -370,8 +378,14 @@ func (*Transport) BWEType() bwe.BWEType                                         
 func (*Transport) IsSubscribeMutable(*sfu.DownTrack) bool                       { return true }
 func (transport *Transport) OnSubscriptionChanged(*sfu.DownTrack)               { transport.Output.Reconcile() }
 func (*Transport) OnBindAndConnected()                                          {}
-func (*Transport) OnStatsUpdate(*livekit.AnalyticsStat)                         {}
-func (*Transport) OnMaxSubscribedLayerChanged(int32)                            {}
+func (transport *Transport) OnStatsUpdate(stats *livekit.AnalyticsStat) {
+	if slog.Default().Enabled(context.Background(), slog.LevelDebug) {
+		slog.Debug("media-stats", "scope", "forwarding", "rtcPeerId", diagnostics.ID(transport.PC.ID()),
+			"rtp", stats, "egress", transport.Egress(), "targetBitrate", transport.target.Load(),
+			"pendingPackets", transport.pacer.pendingCount(), "packetCapacity", transport.pacer.limit)
+	}
+}
+func (*Transport) OnMaxSubscribedLayerChanged(int32) {}
 func (transport *Transport) OnRttUpdate(rtt uint32) {
 	transport.mu.Lock()
 	defer transport.mu.Unlock()
@@ -601,6 +615,12 @@ func (queue *boundedPacer) TimeSinceLastSentPacket() time.Duration {
 
 func (queue *boundedPacer) stats() EgressStats {
 	return EgressStats{Packets: queue.packets.Load(), RTPBytes: queue.bytes.Load(), DroppedPackets: queue.dropped.Load()}
+}
+
+func (queue *boundedPacer) pendingCount() int {
+	queue.mu.Lock()
+	defer queue.mu.Unlock()
+	return len(queue.pending)
 }
 
 type pacedPacket struct {

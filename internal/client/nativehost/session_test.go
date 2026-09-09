@@ -277,12 +277,12 @@ func TestCandidateForRetiredEdgeIsIgnored(t *testing.T) {
 	}
 }
 
-func TestCaptureProfileFailureLogsFixedStageWithoutPrivateError(t *testing.T) {
+func TestCaptureProfileFailurePreservesCauseWithoutCredentials(t *testing.T) {
 	previous := slog.Default()
 	t.Cleanup(func() { slog.SetDefault(previous) })
 	var output bytes.Buffer
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&output, &slog.HandlerOptions{Level: slog.LevelDebug})))
-	failure := errors.New("private capture path and window title")
+	failure := errors.New("profile failed: hresult=0x887a0005 token=private-capture-token")
 	profile := nativecapture.VideoProfile{Width: 1280, Height: 720, Framerate: 30, Bitrate: 3_000_000}
 	if captureProfileFailure(t.Context(), profile, "wait-timeout", failure) != failure {
 		t.Fatal("diagnostic changed the failure result")
@@ -293,7 +293,8 @@ func TestCaptureProfileFailureLogsFixedStageWithoutPrivateError(t *testing.T) {
 	}
 	if record["event"] != "capture-profile-rejected" || record["stage"] != "wait-timeout" ||
 		record["width"] != float64(1280) || record["height"] != float64(720) ||
-		record["fps"] != float64(30) || record["bitrate"] != float64(3_000_000) || strings.Contains(output.String(), "private") {
+		record["fps"] != float64(30) || record["bitrate"] != float64(3_000_000) ||
+		!strings.Contains(output.String(), "0x887a0005") || strings.Contains(output.String(), "private-capture-token") {
 		t.Fatalf("profile diagnostic changed or leaked: %s", output.String())
 	}
 }

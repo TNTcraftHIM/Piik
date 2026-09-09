@@ -2,8 +2,10 @@ package mediaedge
 
 import (
 	"errors"
+	"log/slog"
 	"time"
 
+	"github.com/TNTcraftHIM/Screener/internal/diagnostics"
 	"github.com/TNTcraftHIM/Screener/internal/media/encoded"
 	"github.com/TNTcraftHIM/Screener/internal/media/forwarding"
 	"github.com/pion/rtcp"
@@ -93,6 +95,18 @@ func (source *Source) planGroups(demands []outputDemand) (OutputPlan, error) {
 			delete(source.memberships, consumer)
 		}
 	}
+	// The previous frame's active bit alone may outlive its last handoff.
+	inUse := func(group *outputGroup) bool {
+		if group == nil || !group.active {
+			return false
+		}
+		for _, demand := range demands {
+			if demand.active && (demand.consumer.CurrentSource() == group.media.Source || source.memberships[demand.consumer] == group) {
+				return true
+			}
+		}
+		return false
+	}
 	for _, demand := range demands {
 		if !demand.active || !demand.lower {
 			if source.memberships[demand.consumer] != nil {
@@ -105,14 +119,27 @@ func (source *Source) planGroups(demands []outputDemand) (OutputPlan, error) {
 		for slot := 0; slot < len(source.outputBitrates); slot++ {
 			group := source.groups[slot]
 			if group != nil && source.outputBitrates[slot] > 0 && group.budget == demand.budget {
-				selected = group
-				break
+				if selected == nil || inUse(group) {
+					selected = group
+				}
+				if inUse(group) {
+					break
+				}
 			}
 		}
-		if selected == nil {
+		if selected == nil || !inUse(selected) {
 			// A group's rates can change in place only when no other current or
 			// requested member still needs a different budget.
-			ordered := []*outputGroup{source.memberships[demand.consumer], source.groupForMedia(demand.consumer.CurrentSource())}
+			owned := []*outputGroup{source.memberships[demand.consumer], source.groupForMedia(demand.consumer.CurrentSource())}
+			var ordered []*outputGroup
+			for _, group := range owned {
+				if inUse(group) {
+					ordered = append(ordered, group)
+				}
+			}
+			// Keep an owned live pipeline before reviving an inactive cached match.
+			ordered = append(ordered, selected)
+			ordered = append(ordered, owned...)
 			for slot := 0; slot < len(source.outputBitrates); slot++ {
 				if group := source.groups[slot]; group != nil {
 					ordered = append(ordered, group)
@@ -156,6 +183,12 @@ func (source *Source) planGroups(demands []outputDemand) (OutputPlan, error) {
 			// membership. No timer, retry queue or temporary capacity exemption.
 			continue
 		}
+		if selected.budget != demand.budget || source.memberships[demand.consumer] != selected {
+			if slog.Default().Enabled(source.engine.ctx, slog.LevelDebug) {
+				slog.Debug("encoding-group", "event", "demand", "slot", selected.slot, "budget", demand.budget,
+					"localPort", source.engine.localPort, "rtcPeerId", groupConsumerID(demand.consumer))
+			}
+		}
 		selected.budget = demand.budget
 		if !selected.active {
 			selected.start = source.inputPTS
@@ -176,7 +209,11 @@ func (source *Source) planGroups(demands []outputDemand) (OutputPlan, error) {
 				active = true
 			}
 		}
-		group.active = active && source.outputBitrates[group.slot] > 0
+		nextActive := active && source.outputBitrates[group.slot] > 0
+		if group.active != nextActive {
+			slog.Debug("encoding-group", "event", "activity", "slot", group.slot, "active", nextActive, "localPort", source.engine.localPort)
+		}
+		group.active = nextActive
 		plan.Active[group.slot] = group.active
 		if group.active {
 			plan.Bitrates[group.slot] = uint32(max(1000, min(group.media.CodecBudget(0, int64(group.budget)), int64(source.outputBitrates[group.slot]))))
@@ -231,9 +268,27 @@ func (source *Source) installGroup(group *outputGroup, original bool) {
 	}
 	for consumer, wanted := range source.memberships {
 		if wanted == group && (original || group != nil) && consumer.CurrentSource() != next {
-			_ = consumer.ReplaceSource(next)
+			err := consumer.ReplaceSource(next)
+			if slog.Default().Enabled(source.engine.ctx, slog.LevelDebug) {
+				slot := -1
+				if group != nil {
+					slot = group.slot
+				}
+				slog.Debug("encoding-group", "event", "attachment", "slot", slot, "original", original,
+					"localPort", source.engine.localPort, "rtcPeerId", groupConsumerID(consumer), diagnostics.Error(err))
+			}
 		}
 	}
+}
+
+func groupConsumerID(consumer groupConsumer) string {
+	switch consumer := consumer.(type) {
+	case *forwarding.Transport:
+		return diagnostics.ID(consumer.PC.ID())
+	case *forwarding.Publication:
+		return diagnostics.ID(consumer.PC.ID())
+	}
+	return ""
 }
 
 func (source *Source) beginGroupFrame(pts time.Duration, at time.Time) error {

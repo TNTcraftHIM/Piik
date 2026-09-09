@@ -133,6 +133,7 @@ export class SignalingClient {
       return false;
     }
     this.socket.send(JSON.stringify(message));
+    debugEvent("signal", "sent", { generation: this.socketGeneration, message });
     return true;
   }
 
@@ -264,6 +265,7 @@ export class SignalingClient {
         this.acceptSignalingChallengeResponse(message.sequence, generation);
         return;
       }
+      debugEvent("signal", "received", { generation, message });
 
       if (message.type === "error") {
         debugEvent("signal", "server-error", { role: this.identity.role, code: message.code });

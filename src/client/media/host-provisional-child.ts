@@ -9,6 +9,7 @@ import { HostPeer, type HostMediaPeer } from "../webrtc/host-peer";
 import type { BrowserVideoCodecPreference } from "../webrtc/video-codec";
 import type { PeerSnapshot } from "../types";
 import type { QualityProfile } from "./quality";
+import type { BrowserEncodingPool } from "./browser-encoding-pool";
 
 interface HostProvisionalInput {
   revision: number;
@@ -24,6 +25,7 @@ interface HostProvisionalPrepareInput extends HostProvisionalInput {
   profile: QualityProfile;
   videoCodec: BrowserVideoCodecPreference;
   natPredictionEnabled: boolean;
+  videoPool?: BrowserEncodingPool;
 }
 
 interface HostProvisionalChildEvents {
@@ -139,6 +141,7 @@ export class HostProvisionalChild {
           input.videoCodec,
           candidate.connectionId,
           input.natPredictionEnabled,
+          candidate.qualityProbe ? null : input.videoPool ?? null,
         );
     this.signalingPeer = peer;
     this.prepared = {

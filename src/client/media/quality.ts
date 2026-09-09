@@ -8,7 +8,8 @@ import {
 } from "../../shared/protocol";
 import { joinItems, say, type CopyKey } from "../ui/copy";
 import { displayMediaOptions } from "./audio-capture";
-import { debugError, debugEvent } from "../lib/debug";
+import { browserDebugEnabled, debugOperation } from "../lib/debug";
+import { debugTrack } from "../lib/debug-webrtc";
 
 export type {
   DegradationPreference,
@@ -190,25 +191,30 @@ export async function captureDisplay(
     throw new Error(say("host.capture.unavailable"));
   }
 
-  debugEvent("capture", "requested", { resolution: profile.resolution, maxFramerate: profile.maxFramerate });
+  const complete = debugOperation("capture", "display", { requested: profile });
   let stream: MediaStream;
   try {
     stream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions(captureConstraints(profile)));
   } catch (error) {
-    debugError("capture", "failed", error);
+    complete("failed", {}, error);
     throw error;
   }
 
   const videoTrack = stream.getVideoTracks()[0];
   if (!videoTrack) {
     stream.getTracks().forEach((track) => track.stop());
+    complete("failed", { reason: "no-video-track" });
     throw new Error(say("host.capture.noSource"));
   }
   videoTrack.contentHint = "motion";
   for (const audioTrack of stream.getAudioTracks()) {
     audioTrack.contentHint = "music";
   }
-  debugEvent("capture", "started", { audio: stream.getAudioTracks().length > 0 });
+  complete("applied", { audio: stream.getAudioTracks().length > 0, trackId: videoTrack.id });
+  if (browserDebugEnabled) for (const track of stream.getTracks()) {
+    debugTrack(track, { event: "started" });
+    for (const event of ["mute", "unmute", "ended"]) track.addEventListener(event, () => debugTrack(track, { event }));
+  }
   return stream;
 }
 
@@ -239,12 +245,13 @@ export async function applyVideoCaptureProfile(
   if (!videoTrackOwnsCaptureConstraints(track)) {
     return;
   }
-  debugEvent("quality", "capture-requested", { resolution: profile.resolution, maxFramerate: profile.maxFramerate });
+  const complete = debugOperation("quality", "capture", { requested: profile, trackId: track.id });
   try {
     await track.applyConstraints(captureConstraints(profile));
-    debugEvent("quality", "capture-applied", { resolution: profile.resolution, maxFramerate: profile.maxFramerate });
+    complete("applied", { trackId: track.id });
+    debugTrack(track, { event: "profile-applied" });
   } catch (error) {
-    debugError("quality", "capture-failed", error);
+    complete("failed", { trackId: track.id }, error);
     throw error;
   }
 }
@@ -264,6 +271,7 @@ export function setMediaPaused(stream: MediaStream, paused: boolean): boolean {
   }
   for (const track of stream.getTracks()) {
     track.enabled = !paused;
+    debugTrack(track, { event: "pause", paused });
   }
   return true;
 }
@@ -345,6 +353,7 @@ function sameParameter(
 export async function configureVideoSender(
   sender: RTCRtpSender,
   profile: QualityProfile,
+  scaleResolutionDownBy?: number,
 ): Promise<VideoSenderParameterReadback> {
   const parameters = sender.getParameters();
   if (parameters.encodings.length === 0) {
@@ -356,7 +365,7 @@ export async function configureVideoSender(
   parameters.encodings[encodingIndex]!.maxFramerate = profile.maxFramerate;
   if (parameters.encodings.length === 1) {
     parameters.encodings[encodingIndex]!.scaleResolutionDownBy =
-      requestedScaleResolutionDownBy(sender, profile);
+      scaleResolutionDownBy ?? requestedScaleResolutionDownBy(sender, profile);
   }
   parameters.degradationPreference = profile.degradationPreference;
 
