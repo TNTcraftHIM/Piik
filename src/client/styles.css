@@ -151,6 +151,16 @@ ul { margin: 0; padding: 0; list-style: none; }
   animation: lr-brand-draw cubic-bezier(.45, .05, .35, 1) forwards;
 }
 .lr-brand-mark:is(.is-animated, .is-once) .lr-brand-frame { animation-duration: 380ms; }
+.lr-brand-mark:is(.is-animated, .is-once) .lr-brand-earcup-left,
+.lr-brand-mark:is(.is-animated, .is-once) .lr-brand-earcup-right {
+  animation-duration: 280ms;
+  animation-delay: 220ms;
+}
+.lr-brand-mark:is(.is-animated, .is-once) .lr-brand-earcup-bridge-left,
+.lr-brand-mark:is(.is-animated, .is-once) .lr-brand-earcup-bridge-right {
+  animation-duration: 180ms;
+  animation-delay: 420ms;
+}
 .lr-brand-mark:is(.is-animated, .is-once) .lr-brand-antenna {
   animation-duration: 260ms;
   animation-delay: 260ms;

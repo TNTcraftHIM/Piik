@@ -51,7 +51,27 @@ export function BrandMark({
       focusable="false"
     >
       <g className="lr-brand-shell">
+        <rect
+          className="lr-brand-earcup-left"
+          pathLength={1}
+          x="1.5"
+          y="12"
+          width="5"
+          height="9"
+          rx="2.5"
+        />
+        <path className="lr-brand-earcup-bridge-left" pathLength={1} d="M6.5 16.5H4" />
         <rect className="lr-brand-frame" pathLength={1} x="4" y="8" width="24" height="18" rx="4" />
+        <path className="lr-brand-earcup-bridge-right" pathLength={1} d="M25.5 16.5H28" />
+        <rect
+          className="lr-brand-earcup-right"
+          pathLength={1}
+          x="25.5"
+          y="12"
+          width="5"
+          height="9"
+          rx="2.5"
+        />
         <path className="lr-brand-antenna" pathLength={1} d="m11 4 5 4 5-4" />
         <path className="lr-brand-feet" pathLength={1} d="M10 29l2-3m10 3-2-3" />
       </g>
