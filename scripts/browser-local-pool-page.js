@@ -2,6 +2,7 @@
 import { BrowserEncodingPool as ProbePool } from '../src/client/media/browser-encoding-pool';
 import { HostPeer as ProbeHostPeer } from '../src/client/webrtc/host-peer';
 import { applyVideoCaptureProfile as probeApplyProfile } from '../src/client/media/quality';
+import { browserDebugEnabled, exportBrowserDebug } from '../src/client/lib/debug';
 
 const settings = new URLSearchParams(location.search);
 const mode = settings.get('mode') || 'carrier', codec = settings.get('codec') || 'VP8';
@@ -353,6 +354,13 @@ const configuration = { mode, codec, product: true, network, automatic, av, high
     background, nativeSource, lifecycle, relay, shapedRate, profile: selectedProfile() };
 try {
     window.probeResult = { ...configuration, ...await run(), controls, visibility, productTrace, errors };
+    if (browserDebugEnabled) {
+        const report = JSON.parse(await exportBrowserDebug());
+        window.probeResult.debug = report;
+        if (productPool && (!report.events.some(e => e.scope === 'encoding-pool' && e.event === 'sample') ||
+            !report.events.some(e => e.scope === 'webrtc' && e.event === 'stats' && e.details.role === 'pool-producer')))
+            throw Error('Debug report omitted the pool or producer evidence');
+    }
 } catch (error) {
     window.probeResult = { ...configuration, error: String(error?.stack || error?.message || error),
         progress: window.probeProgress(), controls, visibility, productTrace, errors };

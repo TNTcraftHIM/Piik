@@ -1,3 +1,5 @@
+import { debugError, debugEvent } from "../lib/debug";
+
 export function supportsBrowserEncoding(): boolean {
   return typeof RTCRtpSender !== "undefined" && typeof RTCEncodedVideoFrame === "function" &&
     typeof (RTCRtpSender.prototype as RTCRtpSender & { createEncodedStreams?: unknown }).createEncodedStreams === "function";
@@ -45,11 +47,11 @@ export class BrowserEncodingOutput {
   private readonly sample = { frames: 0, width: null as number | null, height: null as number | null,
     lastProducerId: null as string | null };
 
-  constructor(sender: RTCRtpSender, private readonly onFailure: () => void) {
+  constructor(sender: RTCRtpSender, private readonly onFailure: () => void, private readonly identity: object) {
     const streams = encodedStreams(sender);
     this.writer = streams.writable.getWriter();
     void streams.readable.pipeTo(new WritableStream({ write: (frame) => this.receive(frame) }),
-      { signal: this.abort.signal }).then(() => this.fail(), () => this.fail()).finally(() => {
+      { signal: this.abort.signal }).then(() => this.fail(), (error) => this.fail(error)).finally(() => {
         try { this.writer.releaseLock(); } catch { /* Owner abort retired the writer. */ }
       });
   }
@@ -59,6 +61,7 @@ export class BrowserEncodingOutput {
     this.epoch++;
     this.carrier = undefined;
     this.pending = { queue: { producerId, frames: [], needKey: true, requestKey }, onSelected };
+    debugEvent("encoding-pool", "selection-requested", { ...this.identity, producerId });
     if (!this.paused) this.request(this.pending.queue);
   }
 
@@ -72,7 +75,7 @@ export class BrowserEncodingOutput {
         if (!queue.needKey) queue.frames.push(copyFrame(frame));
       }
       void this.drain();
-    } catch { this.fail(); }
+    } catch (error) { this.fail(error); }
   }
 
   passthrough(requestKey: () => Promise<void>): void {
@@ -80,6 +83,7 @@ export class BrowserEncodingOutput {
     this.epoch++;
     this.current = undefined; this.pending = undefined; this.carrier = undefined;
     this.raw = "key";
+    debugEvent("encoding-pool", "ordinary-requested", this.identity);
     this.ownKey = requestKey;
     if (!this.paused) this.requestOwnKey();
   }
@@ -87,6 +91,7 @@ export class BrowserEncodingOutput {
   setPaused(paused: boolean): void {
     if (this.abort.signal.aborted || this.paused === paused) return;
     this.paused = paused;
+    debugEvent("encoding-pool", "paused", { ...this.identity, paused });
     this.epoch++;
     this.carrier = undefined;
     if (this.raw) this.raw = "key";
@@ -141,7 +146,7 @@ export class BrowserEncodingOutput {
       this.current = queue;
       this.raw = false;
       return this.write(copy, queue.producerId, selection);
-    } catch { this.fail(); }
+    } catch (error) { this.fail(error); }
   }
 
   private write(frame: RTCEncodedVideoFrame, producerId: string | null, selection?: Selection): Promise<void> {
@@ -155,33 +160,36 @@ export class BrowserEncodingOutput {
       if (key) this.raw = producerId === null;
       if (selection && this.pending === selection) {
         this.pending = undefined;
+        debugEvent("encoding-pool", "selected", { ...this.identity, producerId, width: metadata.width, height: metadata.height });
         selection.onSelected();
       }
-    }).catch(() => this.fail()).finally(() => { this.writing = undefined; void this.drain(); });
+    }).catch((error) => this.fail(error)).finally(() => { this.writing = undefined; void this.drain(); });
     this.writing = writing;
     return writing;
   }
 
   private recover(queue: Queue): void {
     if (queue.needKey) return;
+    debugEvent("encoding-pool", "recovery-requested", { ...this.identity, producerId: queue.producerId, queued: queue.frames.length });
     queue.frames.length = 0; queue.needKey = true;
     this.request(queue);
   }
 
   private request(queue: Queue): void {
     const epoch = this.epoch;
-    void queue.requestKey().catch(() => {
-      if (epoch === this.epoch && (this.current === queue || this.pending?.queue === queue)) this.fail();
+    void queue.requestKey().catch((error) => {
+      if (epoch === this.epoch && (this.current === queue || this.pending?.queue === queue)) this.fail(error);
     });
   }
 
   private requestOwnKey(): void {
     const epoch = this.epoch;
-    void this.ownKey?.().catch(() => { if (epoch === this.epoch) this.fail(); });
+    void this.ownKey?.().catch((error) => { if (epoch === this.epoch) this.fail(error); });
   }
 
-  private fail(): void {
+  private fail(error?: unknown): void {
     if (this.abort.signal.aborted) return;
+    debugError("encoding-pool", "output-failed", error, { ...this.identity, producerId: this.current?.producerId });
     this.dispose();
     this.onFailure();
   }

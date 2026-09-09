@@ -27,8 +27,10 @@ Native parents reuse suitable encoded outputs and derive a missing lower output
 only for direct-child demand. Source-owned groups retain the highest needed
 output and lower fallbacks, while each child receives its selected output.
 Native Host SFU publication reuses the encoded source directly; its loopback
-Browser edge owns preview only. Pure Browser capture and relay retain normal
-WebRTC senders. Windows, macOS and Linux producers share one encoded-frame
+Browser edge owns preview only. Eligible Browser capture and relay now share
+independent local WebRTC producers for compatible direct children under ADR-0014;
+unsupported APIs and failed pooling retain ordinary senders. Windows, macOS and
+Linux producers share one encoded-frame
 boundary and Host quality controls. Source replacement retains route and
 connection identity; lower-output adaptation preserves the original and higher
 sibling outputs. [Status](./status.md) owns the remaining physical and release

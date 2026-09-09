@@ -2,9 +2,11 @@ package portmapping
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 	"time"
 
+	"github.com/TNTcraftHIM/Screener/internal/diagnostics"
 	nat "github.com/netbirdio/go-nat"
 )
 
@@ -95,14 +97,18 @@ func (mapping *Mapping) Close() {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), deleteTimeout)
 	defer cancel()
-	_ = gateway.DeletePortMapping(ctx, "udp", mapping.localPort)
+	err := gateway.DeletePortMapping(ctx, "udp", mapping.localPort)
+	slog.Debug("nat-mapping", "event", "released", "localPort", mapping.localPort, diagnostics.Error(err))
 }
 
 func (mapping *Mapping) discover(parent context.Context) {
 	defer close(mapping.ready)
 	ctx, cancel := context.WithTimeout(parent, attemptTimeout)
 	defer cancel()
+	started := time.Now()
 	gateway, err := discoverGateway(ctx)
+	slog.Debug("nat-mapping", "event", "discovery", "localPort", mapping.localPort,
+		"durationMs", time.Since(started).Milliseconds(), "available", err == nil, diagnostics.Error(err))
 	if err != nil {
 		return
 	}
@@ -119,6 +125,8 @@ func (mapping *Mapping) mapPortLocked(ctx context.Context) {
 	externalPort, err := mapping.gateway.AddPortMapping(
 		ctx, "udp", mapping.localPort, "Screener", leaseDuration,
 	)
+	slog.Debug("nat-mapping", "event", "mapping-result", "localPort", mapping.localPort,
+		"externalPort", externalPort, "leaseSeconds", leaseDuration.Seconds(), diagnostics.Error(err))
 	if err != nil || externalPort < 1 || externalPort > 65535 {
 		mapping.mapped = false
 		mapping.externalPort = 0

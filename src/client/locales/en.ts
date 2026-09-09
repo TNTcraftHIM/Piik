@@ -2,6 +2,9 @@ import type { CopyKey, TitleFrameCatalog } from "./zh";
 
 // Community translations are data-only and type-checked against zh.
 export const en: Record<CopyKey, string> = {
+  "debug.export": "Debug report",
+  "debug.exportHint": "Download local diagnostics; may include network addresses and device details",
+  "debug.exportFailed": "Could not download diagnostics; try again",
   "brand.home": "Screener home",
 
   "common.roomCode": "Room code",

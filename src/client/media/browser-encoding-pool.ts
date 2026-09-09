@@ -1,4 +1,5 @@
 import { createOpaqueId } from "../lib/opaque-id";
+import { browserDebugEnabled, debugError, debugEvent } from "../lib/debug";
 import { EMPTY_METRICS, type ConnectionMetrics } from "../types";
 import { captureMetrics, collectConnectionMetricsFromReport, createStatsAccumulator } from "../webrtc/stats";
 import { BrowserEncodingProducer } from "./browser-encoding-producer";
@@ -143,6 +144,14 @@ export class BrowserEncodingPool {
         if (!member.pending && !member.replacement && member.output.frames > 0 &&
           member.output.lastProducerId === (member.current?.producer.id ?? null)) member.mixed = false;
       }
+      if (browserDebugEnabled) debugEvent("encoding-pool", "sample", {
+        members: [...this.members].map((member) => ({ memberId: member.id, trackId: member.source.id,
+          rtpStatsId: member.raw?.id, ssrc: member.raw?.ssrc,
+          producerId: member.current?.producer.id, pendingProducerId: member.pending?.group.producer.id,
+          budget: member.budget, carrier: member.carrier, paused: member.paused, disabled: member.disabled, output: member.output })),
+        groups: [...this.groups].map((group) => ({ producerId: group.producer.id, budget: group.budget,
+          ready: group.ready, failed: group.failed, output: group.output })),
+      });
     } finally { this.polling = false; }
   }
 
@@ -269,7 +278,9 @@ export class BrowserEncodingPool {
       () => { group.failed = true; this.failSource(member.source); });
     const group: Group = { producer, source: member.source, profile, codecKey: member.codecKey!, budget, ready: false, failed: false };
     this.groups.add(group);
-    void producer.start(budget).then(() => { if (this.groups.has(group)) group.ready = true; }, () => {
+    debugEvent("encoding-pool", "producer-preparing", { producerId: producer.id, trackId: member.source.id, codec: member.codecKey, budget, profile });
+    void producer.start(budget).then(() => { if (this.groups.has(group)) group.ready = true; }, (error) => {
+      debugError("encoding-pool", "producer-start-failed", error, { producerId: producer.id });
       if (this.groups.has(group)) { group.failed = true; this.failSource(group.source); }
     });
     return group;

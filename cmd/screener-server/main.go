@@ -80,23 +80,26 @@ func fail(err error) {
 // with Close rather than End: Hosted rooms are leased in the database and must
 // survive a restart (DECISIONS D6).
 func serve(debug bool) (returnedErr error) {
-	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{ReplaceAttr: diagnostics.ReplaceAttr}))
+	var recorder *diagnostics.Recorder
 	if debug || serverDebugEnabled(os.Getenv("SCREENER_DEBUG")) {
-		recorder, err := diagnostics.Open(serverLogDirectory(), "server", BuildRevision)
+		var err error
+		recorder, err = diagnostics.Open(serverLogDirectory(), "server", BuildRevision)
 		if err != nil {
 			return fmt.Errorf("Screener server diagnostics are unavailable: %w", err)
 		}
 		logger = slog.New(slog.NewMultiHandler(logger.Handler(), recorder.Logger().Handler()))
 		previous, previousWriter, previousFlags := slog.Default(), log.Writer(), log.Flags()
 		slog.SetDefault(logger)
-		// Unstructured dependency logs retain their existing journal destination.
-		log.SetOutput(previousWriter)
+		dependencyLog := diagnostics.Writer("stdlib")
+		log.SetOutput(dependencyLog)
 		log.SetFlags(previousFlags)
 		fmt.Fprintln(os.Stderr, "Screener diagnostic log:", recorder.LogPath())
 		stopExport := watchDiagnosticExport(recorder)
 		defer func() {
 			stopExport()
-			logger.Info("screener-server", "event", "stopped", "failed", returnedErr != nil)
+			_ = dependencyLog.Close()
+			logger.Info("screener-server", "event", "stopped", "failed", returnedErr != nil, diagnostics.Error(returnedErr))
 			returnedErr = errors.Join(returnedErr, exportServerDiagnostics(recorder), recorder.Close())
 			slog.SetDefault(previous)
 			log.SetOutput(previousWriter)
@@ -108,6 +111,15 @@ func serve(debug bool) (returnedErr error) {
 	if err != nil {
 		return err
 	}
+	if recorder != nil {
+		recorder.Context("configuration", map[string]any{
+			"environment": configuration.Env, "port": configuration.Port,
+			"sqlite": configuration.RoomDatabasePath != "", "siteAccessProtected": configuration.SiteAccessPassword != "",
+			"maxViewers": configuration.MaxViewersPerRoom, "endpointCapacity": configuration.EndpointMediaCopyCapacity,
+			"sfu": configuration.SFU, "stunURLs": configuration.STUNURLs,
+			"natPrediction": configuration.NATPredictionEnabled, "roomLeaseMs": configuration.RoomLeaseMs,
+		})
+	}
 	server, err := app.New(app.Options{
 		Config: configuration,
 		Assets: webassets.FS(),
@@ -116,12 +128,8 @@ func serve(debug bool) (returnedErr error) {
 	if err != nil {
 		return err
 	}
-	// Startup does not take the stop signal: index.ts registered its SIGINT and
-	// SIGTERM handlers only after `await server.listen()` resolved, so a stop
-	// during the LiveKit reconciliation ended the process by the signal's
-	// default disposition. Cancelling startup instead would abort it and exit
-	// non-zero, which systemd records as a failed unit. Each LiveKit call keeps
-	// its own 5 s bound (D1).
+	// Install ordered shutdown after startup; a stop during startup retains the
+	// operating system's default signal handling.
 	port, err := server.Listen(context.Background())
 	if err != nil {
 		return err

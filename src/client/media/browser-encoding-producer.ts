@@ -1,4 +1,6 @@
 import { createOpaqueId } from "../lib/opaque-id";
+import { debugError, debugEvent } from "../lib/debug";
+import { debugRtcFailure, debugRtcStats, debugTrack, observeDebugConnection } from "../lib/debug-webrtc";
 import { maxEncodedVideoFrames } from "../webrtc/stats";
 import { encodedStreams } from "./browser-encoding-output";
 import {
@@ -51,6 +53,8 @@ export class BrowserEncodingProducer {
       track.addEventListener("ended", this.fail);
       const send = this.send = new RTCPeerConnection({ iceServers: [], encodedInsertableStreams: true } as RTCConfiguration);
       const receive = this.receive = new RTCPeerConnection({ iceServers: [] });
+      observeDebugConnection(send, { producerId: this.id, role: "pool-producer" });
+      observeDebugConnection(receive, { producerId: this.id, role: "pool-local-receiver" });
       const transceiver = send.addTransceiver(track, { direction: "sendonly", streams: [new MediaStream([track])] });
       this.videoSender = transceiver.sender;
       const streams = encodedStreams(transceiver.sender), writer = streams.writable.getWriter();
@@ -131,7 +135,9 @@ export class BrowserEncodingProducer {
 
   async report(): Promise<RTCStatsReport> {
     this.requireSender();
-    const report = await this.send!.getStats();
+    const connection = this.send!;
+    const report = await connection.getStats().catch((error) => { debugRtcFailure(connection, error); throw error; });
+    debugRtcStats(connection, report);
     if (!this.disposed && this.startupPending &&
       maxEncodedVideoFrames(report, this.input!.id) >= STARTUP_VIDEO_ENCODED_FRAMES) {
       this.startupPending = false;
@@ -148,6 +154,7 @@ export class BrowserEncodingProducer {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    debugEvent("encoding-pool", "producer-retired", { producerId: this.id });
     this.source.removeEventListener("ended", this.fail);
     this.input?.removeEventListener("ended", this.fail);
     this.input?.stop();
@@ -163,8 +170,9 @@ export class BrowserEncodingProducer {
     this.input = this.videoSender = this.video = this.send = this.receive = null;
   }
 
-  private readonly fail = (): void => {
+  private readonly fail = (error?: unknown): void => {
     if (this.disposed) return;
+    debugError("encoding-pool", "producer-failed", error, { producerId: this.id });
     this.dispose();
     this.onFailure();
   };
@@ -194,7 +202,10 @@ export class BrowserEncodingProducer {
       if (senderChanged) await configureVideoSender(sender, parameters);
       this.checkAlive();
       this.applied = { capture: profile, sender: parameters };
+      debugEvent("encoding-pool", "producer-configured", { producerId: this.id, profile, parameters });
+      if (captureChanged) debugTrack(track, { producerId: this.id });
     } catch (error) {
+      debugError("encoding-pool", "producer-settings-failed", error, { producerId: this.id, requested: profile, parameters });
       if (captureChanged && previous && !this.disposed) {
         await applyVideoCaptureProfile(track, previous.capture).catch(this.fail);
       }

@@ -3,6 +3,7 @@ package mediaedge
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net"
 	"net/netip"
 	"strconv"
@@ -12,11 +13,11 @@ import (
 	"time"
 
 	"github.com/TNTcraftHIM/Screener/internal/client/portmapping"
+	"github.com/TNTcraftHIM/Screener/internal/diagnostics"
 	"github.com/TNTcraftHIM/Screener/internal/media/encoded"
 	"github.com/TNTcraftHIM/Screener/internal/media/forwarding"
 	"github.com/pion/ice/v4"
 	"github.com/pion/interceptor"
-	"github.com/pion/logging"
 	"github.com/pion/rtcp"
 	"github.com/pion/stun/v3"
 	"github.com/pion/webrtc/v4"
@@ -86,7 +87,7 @@ func NewEngine(options EngineOptions) (*Engine, error) {
 	if err != nil {
 		return nil, errors.New("native media UDP socket is unavailable")
 	}
-	loggerFactory := logging.NewDefaultLoggerFactory()
+	loggerFactory := diagnostics.PionLoggerFactory()
 	ready := make(chan struct{})
 	mux := ice.NewUniversalUDPMuxDefault(ice.UniversalUDPMuxParams{
 		Logger:  loggerFactory.NewLogger("screener-ice"),
@@ -190,6 +191,7 @@ func (engine *Engine) surveySTUN(
 			}
 			addresses, err := net.DefaultResolver.LookupNetIP(ctx, "ip4", uri.Host)
 			if err != nil || len(addresses) == 0 {
+				slog.DebugContext(ctx, "nat-survey", "event", "resolve-failed", "host", uri.Host, diagnostics.Error(err))
 				continue
 			}
 			serverAddress, err := net.ResolveUDPAddr(
@@ -207,6 +209,7 @@ func (engine *Engine) surveySTUN(
 	results := make(chan mappedAddress, len(targets))
 	for _, target := range targets {
 		go func(address *net.UDPAddr) {
+			started := time.Now()
 			mapped, err := engine.mux.GetXORMappedAddrContext(
 				surveyContext,
 				address,
@@ -214,8 +217,13 @@ func (engine *Engine) surveySTUN(
 			)
 			if err != nil || mapped == nil || mapped.IP.To4() == nil ||
 				mapped.Port < 1 || mapped.Port > 65_535 {
+				slog.DebugContext(surveyContext, "nat-survey", "event", "binding-failed", "serverPort", address.Port,
+					"durationMs", time.Since(started).Milliseconds(), diagnostics.Error(err))
 				return
 			}
+			slog.DebugContext(surveyContext, "nat-survey", "event", "binding", "serverPort", address.Port,
+				"localPort", engine.localPort, "mappedAddress", diagnostics.ID(mapped.IP.String()), "mappedPort", mapped.Port,
+				"durationMs", time.Since(started).Milliseconds())
 			select {
 			case results <- mappedAddress{address: mapped.IP.String(), port: mapped.Port}:
 			case <-surveyContext.Done():

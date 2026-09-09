@@ -14,6 +14,8 @@ import (
 	"sync"
 	"time"
 	"unicode/utf8"
+
+	"github.com/TNTcraftHIM/Screener/internal/diagnostics"
 )
 
 const (
@@ -125,6 +127,9 @@ type Stream struct {
 	controlMu sync.Mutex
 	closed    bool
 	closeOnce sync.Once
+	readEnd   sync.Once
+	logger    *slog.Logger
+	ctx       context.Context
 }
 
 func ListSources(parent context.Context, executable string) ([]CaptureTarget, error) {
@@ -133,9 +138,12 @@ func ListSources(parent context.Context, executable string) ([]CaptureTarget, er
 	stdout := &boundedBuffer{limit: maxProbeOutputBytes}
 	command := exec.CommandContext(ctx, executable, "--list")
 	command.Stdout = stdout
-	command.Stderr = &boundedBuffer{limit: maxProbeErrorBytes}
+	stderr := diagnostics.Writer("native-source-list")
+	defer stderr.Close()
+	command.Stderr = stderr
 	hideWindow(command)
 	if err := command.Run(); err != nil {
+		slog.DebugContext(ctx, "screener-client", "event", "capture-source-list-failed", diagnostics.Error(err), "canceled", ctx.Err() != nil)
 		return nil, errors.New("native capture source list is unavailable")
 	}
 	var targets []CaptureTarget
@@ -165,9 +173,12 @@ func PreviewSource(parent context.Context, executable string, target CaptureTarg
 		zeroWhenEmpty(target.CreationTime),
 	)
 	command.Stdout = stdout
-	command.Stderr = &boundedBuffer{limit: maxProbeErrorBytes}
+	stderr := diagnostics.Writer("native-source-preview")
+	defer stderr.Close()
+	command.Stderr = stderr
 	hideWindow(command)
 	if err := command.Run(); err != nil {
+		slog.DebugContext(ctx, "screener-client", "event", "capture-source-preview-failed", diagnostics.Error(err), "canceled", ctx.Err() != nil)
 		return nil, errors.New("native capture preview is unavailable")
 	}
 	preview := stdout.Bytes()
@@ -381,7 +392,14 @@ func startStreamWithEnvironment(
 		return nil, errors.New("native capture process is unavailable")
 	}
 	ctx, cancel := context.WithCancel(parent)
+	started := time.Now()
+	// A diagnostic-only process label correlates stderr while old/new captures overlap.
+	captureID := strconv.FormatInt(started.UnixNano(), 36)
+	logger := slog.Default().With("capture", captureID)
 	command := exec.CommandContext(ctx, executable, arguments...)
+	if logger.Enabled(ctx, slog.LevelDebug) {
+		environment = append(environment, "SCREENER_CAPTURE_DEBUG=1")
+	}
 	if len(environment) > 0 {
 		command.Env = append(os.Environ(), environment...)
 	}
@@ -395,22 +413,40 @@ func startStreamWithEnvironment(
 		cancel()
 		return nil, err
 	}
-	stderr := &boundedBuffer{limit: maxProbeErrorBytes}
-	command.Stderr = stderr
+	stderr := &boundedBuffer{limit: maxProbeErrorBytes, discardOverflow: true}
+	trace := diagnostics.Writer("native-capture/" + captureID)
+	command.Stderr = io.MultiWriter(stderr, trace)
 	hideWindow(command)
 	if err = command.Start(); err != nil {
+		_ = trace.Close()
 		cancel()
+		logger.DebugContext(ctx, "screener-client", "event", "capture-process-start-failed", diagnostics.Error(err))
 		return nil, fmt.Errorf("start native capture process: %w", err)
 	}
+	logger = logger.With("pid", command.Process.Pid)
+	mode := "capture"
+	if len(arguments) > 0 {
+		switch arguments[0] {
+		case "--capture-video", "--capture-audio", "--encoded-video":
+			mode = strings.TrimPrefix(arguments[0], "--")
+		}
+	}
+	logger.DebugContext(ctx, "screener-client", "event", "capture-process-started", "mode", mode)
 	stream := &Stream{
 		cancel: cancel,
 		input:  stdout,
 		key:    stdin,
 		done:   make(chan error, 1),
+		logger: logger,
+		ctx:    ctx,
 	}
 	go func() {
 		waitErr := command.Wait()
+		_ = trace.Close()
 		logCaptureFailure(ctx, waitErr, command.ProcessState.ExitCode(), stderr.Bytes())
+		logger.DebugContext(ctx, "screener-client", "event", "capture-process-ended", "mode", mode,
+			"durationMs", time.Since(started).Milliseconds(), "exitCode", command.ProcessState.ExitCode(),
+			"canceled", ctx.Err() != nil, "cancelReason", diagnostics.SafeText(fmt.Sprint(context.Cause(ctx))), diagnostics.Error(waitErr))
 		stream.done <- waitErr
 		close(stream.done)
 	}()
@@ -442,7 +478,14 @@ func logCaptureFailure(ctx context.Context, err error, exitCode int, stderr []by
 }
 
 func (stream *Stream) Read() (Frame, error) {
-	return readFrame(stream.input)
+	frame, err := readFrame(stream.input)
+	if err != nil && stream.logger != nil {
+		stream.readEnd.Do(func() {
+			stream.logger.DebugContext(stream.ctx, "screener-client", "event", "capture-stream-ended",
+				"eof", errors.Is(err, io.EOF), "canceled", stream.ctx.Err() != nil, diagnostics.Error(err))
+		})
+	}
+	return frame, err
 }
 
 // WriteFrame shares the existing stdin lock with control. Only encoded video

@@ -31,7 +31,8 @@ ProtectKernelLogs=true
 ProtectControlGroups=true
 ProtectClock=true
 ProtectHostname=true
-RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# Pion uses Go's net.Interfaces, which queries Linux through NETLINK_ROUTE.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
 RestrictNamespaces=true
 RestrictRealtime=true
 RestrictSUIDSGID=true

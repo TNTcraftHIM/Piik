@@ -125,7 +125,9 @@ and the [verified policy mechanism and field case](../../docs/research/native-cl
 
 Start the packaged executable with `--debug`, reproduce the problem, then press
 `D` in the interactive terminal to export a local ZIP. This does not stop the
-share or upload the archive. Browser diagnostics are separate; the
+share or upload the archive. Browser diagnostics are separate: open the page with
+`?debug=1` and use its header download button. For cooperation failures, include
+both reports from the same reproduction. The
 [diagnostic reference](../../docs/reference/configuration.md#diagnostics) owns
 log locations, export commands, retention and privacy boundaries.
 

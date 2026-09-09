@@ -42,6 +42,7 @@ export type Set3Kind =
   | "hint-codec"
   | "hint-advanced"
   | "hint-details"
+  | "hint-debug-export"
   | "hint-more-metrics";
 
 export type Set4Kind =
@@ -82,6 +83,7 @@ export const HINT_KINDS: readonly HintKind[] = [
   "hint-codec",
   "hint-advanced",
   "hint-details",
+  "hint-debug-export",
   "hint-more-metrics",
   "hint-topology",
   "hint-close",

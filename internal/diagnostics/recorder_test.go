@@ -6,12 +6,16 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"go.uber.org/zap/zapcore"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 )
 
@@ -52,7 +56,7 @@ func TestRecorderRotationAndExport(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer archive.Close()
-	expected := map[string]bool{"client.log": false, "client.log.1": false, "metadata.json": false, "memory.json": false, "heap.pprof": false, "goroutines.txt": false}
+	expected := map[string]bool{"client.log": false, "client.log.1": false, "metadata.json": false, "memory.json": false, "heap.pprof": false, "goroutines.txt": false, "context.json": false, "README.txt": false}
 	for _, file := range archive.File {
 		if _, ok := expected[file.Name]; !ok {
 			t.Fatalf("unexpected archive entry: %s", file.Name)
@@ -79,7 +83,7 @@ func TestRecorderRotationAndExport(t *testing.T) {
 			if err := json.Unmarshal(data, &metadata); err != nil {
 				t.Fatal(err)
 			}
-			if metadata["revision"] != "test-revision" || metadata["component"] != "client" || metadata["goos"] != runtime.GOOS || len(metadata) != 7 {
+			if metadata["revision"] != "test-revision" || metadata["component"] != "client" || metadata["goos"] != runtime.GOOS || metadata["reportId"] == "" || metadata["partial"] != true {
 				t.Fatalf("unexpected metadata: %v", metadata)
 			}
 		case "memory.json":
@@ -113,6 +117,15 @@ func TestRecorderRotationAndExport(t *testing.T) {
 	second, err := recorder.Export()
 	if err != nil || second == archivePath {
 		t.Fatalf("export must have a unique path: %q, %v", second, err)
+	}
+	_ = recorder.Close()
+	reopened, err := Open(directory, "client", "next-process")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	if reopened.log.retention()["earlierHistoryMayBeMissing"] != true {
+		t.Fatal("restart incorrectly claimed complete prior history")
 	}
 }
 
@@ -172,8 +185,26 @@ func TestRecorderCloseAndFailures(t *testing.T) {
 		t.Fatal(err)
 	}
 	failing.Logger().Error("write fails")
-	if _, err := failing.Export(); !errors.Is(err, os.ErrClosed) {
-		t.Fatalf("export hid a log write failure: %v", err)
+	partial, err := failing.Export()
+	if err != nil {
+		t.Fatalf("one failed log writer discarded usable runtime evidence: %v", err)
+	}
+	archive, err := zip.OpenReader(partial)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer archive.Close()
+	entry, err := archive.Open("metadata.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metadata map[string]any
+	if err = json.NewDecoder(entry).Decode(&metadata); err != nil {
+		t.Fatal(err)
+	}
+	_ = entry.Close()
+	if metadata["partial"] != true || len(metadata["collectorErrors"].([]any)) == 0 {
+		t.Fatalf("partial export hid failed collection: %v", metadata)
 	}
 	if err := failing.Close(); !errors.Is(err, os.ErrClosed) {
 		t.Fatalf("close hid a log write failure: %v", err)
@@ -181,4 +212,55 @@ func TestRecorderCloseAndFailures(t *testing.T) {
 	if _, err := (&boundedWriter{writer: io.Discard, remaining: 1}).Write([]byte("xx")); err == nil || !strings.Contains(err.Error(), "8 MiB") {
 		t.Fatalf("profile output limit: %v", err)
 	}
+}
+
+func TestDependencyDiagnosticsPreserveCausesWithoutSecrets(t *testing.T) {
+	recorder, err := Open(t.TempDir(), "client", "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer recorder.Close()
+	previous := slog.Default()
+	slog.SetDefault(recorder.Logger())
+	defer slog.SetDefault(previous)
+	const secret = "must-not-appear-in-report"
+	recorder.Logger().Error("operation", Error(fmt.Errorf("interface enumeration: %w", syscall.EAFNOSUPPORT)),
+		"requestId", "request-17", "nested", map[string]any{"instanceToken": secret, "state": "checking"})
+	PionLoggerFactory().NewLogger("ice").Debugf("Started agent: remoteUfrag: %q, remotePwd: %q", secret, secret)
+	PionLoggerFactory().NewLogger("ice").Warnf("mismatch username expected(%x) actual(%x)", secret, secret)
+	PionLoggerFactory().NewLogger("pc").Errorf("dropping candidate with ufrag %s because it doesn't match", secret)
+	PionLoggerFactory().NewLogger("ice").Warnf("Failed to get TCP connections by ufrag: tcp4 127.0.0.1:1 %s", secret)
+	PionLoggerFactory().NewLogger("pc").Debugf("got new track: &{id:%s streamID:private-track-identity peeked:[1 2]}", secret)
+	writer := Writer("capture")
+	for _, part := range []string{"stage=device-open\nAuthorization: Bear", "er " + secret + "\n",
+		"-----BEGIN PRIVATE KEY-----\n", secret + "\n-----END PRIVATE KEY-----\n",
+		"https://example.test/r/1234#v=" + secret + "\n", "hresult=0x80070005"} {
+		if _, err := writer.Write([]byte(part)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_ = writer.Close()
+	MediaLogger("test").Warnw("media initialization", fmt.Errorf("network adapter unavailable"), "trackId", "private-track-identity", "stats", diagnosticObject{value: secret})
+	data, err := os.ReadFile(recorder.LogPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{secret, fmt.Sprintf("%x", secret), "private-track-identity"} {
+		if bytes.Contains(data, []byte(forbidden)) {
+			t.Fatalf("sensitive value retained: %q", forbidden)
+		}
+	}
+	for _, useful := range []string{"request-17", "interface enumeration", "systemCode", "device-open", "0x80070005", "network adapter unavailable", "checking", `"jitter":12`} {
+		if !bytes.Contains(data, []byte(useful)) {
+			t.Fatalf("missing diagnostic context: %q", useful)
+		}
+	}
+}
+
+type diagnosticObject struct{ value string }
+
+func (object diagnosticObject) MarshalLogObject(encoder zapcore.ObjectEncoder) error {
+	encoder.AddInt("jitter", 12)
+	encoder.AddString("password", object.value)
+	return nil
 }

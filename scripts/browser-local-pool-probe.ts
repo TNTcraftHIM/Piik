@@ -9,7 +9,7 @@ import { createPoolShaper } from './browser-pool-shaper.mjs';
 
 const mode = process.argv[2] || 'carrier', args = process.argv.slice(3);
 const flags = new Set(['--product', '--1080', '--h264', '--single', '--av', '--late', '--background',
-    '--native-source', '--lifecycle', '--network', '--auto', '--relay']);
+    '--native-source', '--lifecycle', '--network', '--auto', '--relay', '--debug']);
 if (!['ordinary', 'carrier'].includes(mode)) throw Error('Expected ordinary|carrier');
 for (const arg of args) if (!flags.has(arg) && !arg.startsWith('--rate=') && !arg.startsWith('--preference='))
     throw Error('Unsupported option: ' + arg);
@@ -78,6 +78,7 @@ try {
     cdp = await CdpConnection.connect(version.webSocketDebuggerUrl, Date.now() + 5000);
     page = await createPage(cdp, 'about:blank');
     const query = new URLSearchParams({ mode, codec, rate: String(rate), preference });
+    if (process.argv.includes('--debug')) query.set('debug', '1');
     for (const [key, value] of Object.entries({ network, automatic, high, av, single, late, background, nativeSource, lifecycle, relay }))
         query.set(key, value ? '1' : '0');
     await cdp.call('Page.navigate', { url: 'http://127.0.0.1:' + port + '/?' + query }, page.sessionId, Date.now() + 5000);

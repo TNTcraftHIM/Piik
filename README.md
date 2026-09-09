@@ -57,8 +57,10 @@ If a Chromium-based Browser cannot establish media connections, see the
 [Chromium WebRTC FAQ](./cmd/screener-client/README.md#chromium-webrtc-connections).
 
 For feedback, start the Client with `--debug`, reproduce the problem, and press
-`D` in its terminal to export a local diagnostic ZIP. Browser diagnostics are
-separate; see [diagnostics and export](./docs/reference/configuration.md#diagnostics).
+`D` in its terminal to export a local diagnostic ZIP. For Browser issues, open
+the page with `?debug=1` and use the download button beside the language controls.
+Include both reports for Client/Browser cooperation issues;
+see [diagnostics and export](./docs/reference/configuration.md#diagnostics).
 
 ## Self-Hosting
 
