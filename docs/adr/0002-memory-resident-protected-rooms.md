@@ -1,6 +1,6 @@
 # ADR-0002: Durable Room Authority And Scoped Viewer Access
 
-- Status: Accepted; permanent-room revision pending integration
+- Status: Accepted; implemented
 - Date: 2026-09-10
 
 ## Context

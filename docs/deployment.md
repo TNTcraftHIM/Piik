@@ -211,8 +211,8 @@ strict-shell error traps.
 
 Stable mode stores only room authority at the configured SQLite path. The
 systemd service owns its state directory and file permissions. Application
-restart retains room ownership, invitations, policy, password verifier, and
-lease; participants, signaling, routes, SFU state, and media reconnect from fresh
+restart retains room ownership, invitations, policy and password verifier;
+participants, signaling, routes, SFU state and media reconnect from fresh
 process state.
 
 Lightweight mode has no persistent room state and starts empty. A release does

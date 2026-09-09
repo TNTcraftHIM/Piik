@@ -7,32 +7,17 @@ and Git/PRs own completed history. A parked idea is not implementation authority
 
 ## Now
 
-The prior media/Debug phase is integrated, deployed and cleaned up. Browser
-entry and Client lifecycle repair is locally complete on `feat/piik-experience`.
-[Presentation](./product/presentation-lifecycle.md) owns the behavior; these
-changes are not merged or deployed. Confirmed reconnect repairs and the accepted
-permanent-room/SQLite-default revision in
-[ADR-0002](./adr/0002-memory-resident-protected-rooms.md) are implemented.
-Complete matched Web/Client/Server acceptance and the coordinated schema/protocol
-cutover before resuming branding; old active pages need a reload at that boundary.
-The offline schema-copy proof preserves all existing authority fields; Browser
-credential keys are unchanged. Site access retains its separate 24-hour idle
-lifetime; Client Local remains process-only. Do not recreate databases or add a
-replacement garbage collector.
+Finish the owner-authorized PR386 squash, matched Web/Client/Server cutover and
+cleanup, then resume Piik appearance. Entry/Client lifecycle repairs, confirmed
+reconnect ownership fixes and the permanent-room/Hosted SQLite-default revision
+are implemented and verified. Product modules and
+[ADR-0002](./adr/0002-memory-resident-protected-rooms.md) own that accepted behavior.
 
-Investigate the owner's remaining Viewer background/reconnect reports before
-media acceptance. Persistent low resolution and the reported square black video
-remain unconfirmed: compare the actual upstream input and receiver at matching
-times before blaming the encoder pool. Local H264 relay background checks did
-not reproduce them.
-Manual current-edge recovery and session replacement intentionally have different
-candidate budgets; missing attempt text alone does not prove skipped NAT.
-If Native original-output adaptation is implicated, verify whether its VSE
-limitation is invisible to the current allocation-based sender-quality evidence;
-the diagnostic signal exists, but this incident has not established that cause.
-Do not add retry budgets, visibility resets or resolution heuristics without
-evidence. Sanitized live aggregates and the isolated reconnect reproduction are
-retained locally under `build/room7534-investigation/`.
+Use the [coordinated cutover](./deployment.md#permanent-room-schema-cutover) to
+preserve existing SQLite authority and unchanged Browser credential keys; old
+active pages reload at the signaling v23 boundary. Runtime release metadata and
+the operator record own deployment completion. Do not recreate databases or
+add a replacement garbage collector. Later manual feedback is nonblocking.
 
 ## Next — Awaiting Owner Direction
 
@@ -110,6 +95,16 @@ required to finish this phase. Run any new physical workload serially, with stab
 executable paths and cleanup before the next.
 
 ## Parked Product Work
+
+The reported persistent low resolution after Viewer backgrounding and square
+black video remain unconfirmed incident leads, separate from the closed,
+reproduced reconnect ownership bug. They do not block this release. Reopen from
+matching upstream/receiver evidence; local H264 relay background checks did not
+reproduce them. Missing NAT attempt text alone does not prove skipped attempts.
+If Native adaptation is implicated, compare actual VSE limitations with sender
+quality evidence before changing policy. Do not add retry budgets, visibility
+resets or resolution heuristics without proof. Sanitized aggregates and the
+isolated reconnect reproduction remain locally in `build/room7534-investigation/`.
 
 1. **Public distribution and updates.** Candidate packagers, immutable descriptors,
    notices, the runtime-only OCI recipe and release checks exist. Choose the
