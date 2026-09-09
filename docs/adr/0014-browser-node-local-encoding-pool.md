@@ -1,6 +1,6 @@
 # ADR-0014: Browser Node-Local Encoding Pool
 
-- Status: Accepted design; implementation/physical acceptance pending
+- Status: Accepted; bounded implementation evidence complete, broader limits in verification status
 - Date: 2026-09-09
 
 ## Context

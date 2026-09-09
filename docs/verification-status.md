@@ -33,14 +33,20 @@ The owner confirmed Windows 10 whole-display capture resolved. Chromium
 WebRTC/IP-handling policy explains the verified local-media failure; it is a
 Browser policy limitation, not a Vivaldi-specific transport workaround.
 
+NAT traversal and Auto codec selection are implemented features, not unfinished
+functionality. On 2026-09-09 the owner confirmed that the new NAT traversal is
+useful in actual use. That field confirmation is accepted; it does not claim a
+population success percentage or identify which candidate won without a trace.
+Neither a statistical NAT campaign nor exhaustive Auto hardware benchmarking
+is required to close this phase. Investigate further only from a new failure
+or a measured improvement worth its implementation and maintenance cost.
+
 ## Remaining Device And Network Acceptance
 
 The following are broader coverage and endurance tasks, not automatically new
 implementation mechanisms:
 
 - heterogeneous public-network P2P and multi-hop Browser/Native/SFU-fed relays;
-- Native NAT cases where mapping/prediction demonstrably rescues a path ordinary
-  STUN cannot establish, with success-rate and resource-cost measurements;
 - Host/Viewer TUN/VPN combinations, migration and all-UDP-blocked bounded failure;
 - two-room public SFU load, real-game audio/video synchronization and sustained
   packet loss/recovery;
@@ -75,9 +81,13 @@ successful and unsuccessful observations:
 - The 360-to-187 encode-call result compares a bounded prototype with independent
   encoders. It is not an old-versus-new Native product CPU benchmark.
 
-Pure Browser reuse has a measured negative result under the current independent
-quality/accounting contract; it is not a shipped feature. Native/SFU healthy
-forwarding remains encoded, while ordinary Browser relays still re-encode.
+The earlier borrowed-child Browser experiment failed independent quality and
+accounting. The independent producer in ADR-0014 now has bounded H264/VP8
+direct/relay, weak-path, lifecycle and A/V evidence on the acceptance candidate;
+[its research](./research/browser-local-encoding-pool.md) owns results and limits.
+The owner authorized its release on 2026-09-09. Browser relay shares local outputs
+among its direct children; it still re-encodes received media. Native/SFU healthy
+forwarding remains encoded.
 
 ## Interpretation
 

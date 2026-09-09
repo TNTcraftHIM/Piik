@@ -33,8 +33,9 @@ descriptor, runtime REVISION and operator deployment record own exact identity.
 ## Current Supplement
 
 Browser node-local pooling, the detailed Debug supplement and scoped Native
-ablation are combined for acceptance. Complete their matched build/package
-checks and owner review before another integration or deployment.
+ablation passed the combined checks and matching Client/Server packaging. The
+owner authorized complete integration and deployment on 2026-09-09, with later
+hands-on feedback. Runtime release metadata owns the actual cutover identity.
 
 The supplement retains the existing local recorder/export owners and adds
 correlated requests, meaningful error causes, media/dependency observations,
@@ -43,9 +44,10 @@ selected runtime context and explicit partial-report/history information.
 report contents and disclosure. The Linux service-template correction belongs
 to this same supplement.
 
-Public README/Quick Start refinement, the static GitHub Pages website and the
-planned piik rename are queued after this work. No public site or bulk rename
-has been deployed. [TODO](./todo.md) is the only work ledger.
+English/Chinese README, Quick Start, documentation map and license guidance are
+prepared. The piik naming/visual discussion, static GitHub Pages website and
+whole-repository ablation review follow closeout. No public site or bulk rename
+is part of this release. [TODO](./todo.md) is the only work ledger.
 
 ## Media Evidence And Limits
 
@@ -73,8 +75,9 @@ has been deployed. [TODO](./todo.md) is the only work ledger.
   fallback. Its native allocation and complete-frame output replace the earlier
   payload-only Worker path. Fewer full encodes are established; total CPU gains
   depend on codec/hardware. [Browser research](./research/browser-local-encoding-pool.md)
-  owns these measurements and failed controls. Production still uses ordinary
-  Browser senders and optional Client fanout until this phase is accepted.
+  owns these measurements and failed controls. The owner accepted this scoped
+  Browser composition for release; actual deployment identity stays in the
+  runtime descriptor.
 - Slow adaptation recovery, the extreme CPU-overload sampling limit and missing
   broad device/network/endurance results remain explicit in
   [encoder research](./research/webrtc-encoder-pool.md) and verification status.
