@@ -10,7 +10,7 @@ and Git/PRs own completed history. A parked idea is not implementation authority
 Finish the owner-authorized Browser encoding pool under
 [ADR-0014](./adr/0014-browser-node-local-encoding-pool.md), together with detailed
 Debug and their matched package acceptance. The independent source-owned producer
-is implemented using Chromium encoded streams, native scaled carriers and
+is implemented using Chromium encoded streams, event-driven tiny carriers and
 complete exposed codec metadata. The superseded payload-only Worker/canvas path
 has been removed. Unsupported APIs retain ordinary media; Native ingress,
 dedicated quality candidates and Browser SFU keep their established composition.

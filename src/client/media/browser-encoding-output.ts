@@ -1,7 +1,11 @@
 import { debugError, debugEvent } from "../lib/debug";
 
+// One codec-sized macroblock; transport timing is not a quality layer.
+export const BROWSER_CARRIER_SIZE = 16;
+
 export function supportsBrowserEncoding(): boolean {
   return typeof RTCRtpSender !== "undefined" && typeof RTCEncodedVideoFrame === "function" &&
+    typeof HTMLCanvasElement !== "undefined" && typeof HTMLCanvasElement.prototype.captureStream === "function" &&
     typeof (RTCRtpSender.prototype as RTCRtpSender & { createEncodedStreams?: unknown }).createEncodedStreams === "function";
 }
 
@@ -34,6 +38,10 @@ function copyFrame(frame: RTCEncodedVideoFrame, rtpTimestamp?: number): RTCEncod
 
 /** One connection-lifetime encoded stream, including ordinary fallback. */
 export class BrowserEncodingOutput {
+  private readonly clock = document.createElement("canvas");
+  private readonly clockContext: CanvasRenderingContext2D;
+  readonly track: CanvasCaptureMediaStreamTrack;
+  private clockFrame = 0;
   private readonly abort = new AbortController();
   private readonly writer: WritableStreamDefaultWriter<RTCEncodedVideoFrame>;
   private current: Queue | undefined;
@@ -48,6 +56,14 @@ export class BrowserEncodingOutput {
     lastProducerId: null as string | null };
 
   constructor(sender: RTCRtpSender, private readonly onFailure: () => void, private readonly identity: object) {
+    // A CPU-resident macroblock avoids repeatedly mapping/scaling a full GPU
+    // decoder surface merely to provide outgoing RTP timing.
+    this.clock.width = this.clock.height = BROWSER_CARRIER_SIZE;
+    const context = this.clock.getContext("2d");
+    if (!context) throw new Error("Browser carrier canvas unavailable");
+    this.clockContext = context;
+    this.track = this.clock.captureStream(0).getVideoTracks()[0] as CanvasCaptureMediaStreamTrack;
+    this.track.contentHint = "motion";
     const streams = encodedStreams(sender);
     this.writer = streams.writable.getWriter();
     void streams.readable.pipeTo(new WritableStream({ write: (frame) => this.receive(frame) }),
@@ -68,11 +84,19 @@ export class BrowserEncodingOutput {
   push(producerId: string, frame: RTCEncodedVideoFrame): void {
     if (this.abort.signal.aborted || this.paused || frame.data.byteLength === 0) return;
     try {
+      let accepted = false;
       for (const queue of new Set([this.current, this.pending?.queue])) {
         if (queue?.producerId !== producerId) continue;
         if (frame.type === "key") { queue.frames.length = 0; queue.needKey = false; }
         else if (queue.frames.length >= MAX_QUEUED_FRAMES) this.recover(queue);
-        if (!queue.needKey) queue.frames.push(copyFrame(frame));
+        if (!queue.needKey) { queue.frames.push(copyFrame(frame)); accepted = true; }
+      }
+      if (accepted) {
+        this.clockContext.fillStyle = "#080808";
+        this.clockContext.fillRect(0, 0, this.clock.width, this.clock.height);
+        this.clockContext.fillStyle = "#181818";
+        this.clockContext.fillRect(this.clockFrame++ % this.clock.width, 0, 1, 1);
+        this.track.requestFrame();
       }
       void this.drain();
     } catch (error) { this.fail(error); }
@@ -91,6 +115,7 @@ export class BrowserEncodingOutput {
   setPaused(paused: boolean): void {
     if (this.abort.signal.aborted || this.paused === paused) return;
     this.paused = paused;
+    this.track.enabled = !paused;
     debugEvent("encoding-pool", "paused", { ...this.identity, paused });
     this.epoch++;
     this.carrier = undefined;
@@ -109,6 +134,7 @@ export class BrowserEncodingOutput {
     this.epoch++;
     this.current = undefined; this.pending = undefined; this.carrier = undefined; this.ownKey = undefined;
     this.abort.abort();
+    this.track.stop();
     void this.writer.abort().catch(() => undefined);
   }
 

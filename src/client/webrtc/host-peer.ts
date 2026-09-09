@@ -292,7 +292,7 @@ export class HostPeer {
         this.pooledVideo?.dispose();
         this.pooledVideo = null;
         this.attachVideoPool(nextSourceVideoTrack);
-        previousVideoTrack.stop();
+        if (previousVideoTrack !== this.encodedOutput?.track) previousVideoTrack.stop();
         this.startupVideoProfilePending = needsStartupVideoProfile(
           this.desiredProfile,
         );
@@ -559,11 +559,29 @@ export class HostPeer {
     binding = this.videoPool.create(source, sender, this.connection, this.desiredProfile, this.encodedOutput,
       () => this.enqueueSenderMutation(async () => {
         if (!owns()) return false;
-        await configureVideoSender(sender,
-          this.startupVideoProfilePending ? startupVideoProfile(this.desiredProfile) : this.desiredProfile,
-          binding?.carrierScale());
-        this.statsAccumulator = createStatsAccumulator();
-        return owns();
+        const previous = this.senderVideoTrack!;
+        const next = binding?.carrierScale() === undefined ? cloneSenderVideoTrack(source) : this.encodedOutput!.track;
+        try {
+          this.applyPausedState(next, null);
+          await applyVideoCaptureProfile(next, this.desiredProfile);
+          if (!owns()) { if (next !== this.encodedOutput?.track) next.stop(); return false; }
+          if (next !== previous) await sender.replaceTrack(next);
+          await configureVideoSender(sender,
+            this.startupVideoProfilePending ? startupVideoProfile(this.desiredProfile) : this.desiredProfile,
+            binding?.carrierScale());
+          if (!owns()) throw new DOMException("Retired Browser pool binding", "AbortError");
+          this.senderVideoTrack = next;
+          if (previous !== next && previous !== this.encodedOutput?.track) previous.stop();
+          this.statsAccumulator = createStatsAccumulator();
+          return true;
+        } catch (error) {
+          if (!this.disposed && sender.track !== previous) {
+            try { await sender.replaceTrack(previous); } catch { this.dispose(); }
+          }
+          if (next !== previous && next !== this.encodedOutput?.track) next.stop();
+          debugError("encoding-pool", "carrier-attachment-failed", error, { connectionId: this.connectionId });
+          return false;
+        }
       }),
       requestKey,
       () => { if (owns()) { this.dispose(); this.emit(); } });

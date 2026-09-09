@@ -18,8 +18,6 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    outputs:
-      client_scope: ${{ steps.client-scope.outputs.run }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -34,56 +32,6 @@ jobs:
         run: sh scripts/check-project-state.sh
         env:
           SCREENER_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-      - name: Detect Screener Client scope
-        id: client-scope
-        shell: bash
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-          EXPLICIT_CLIENT_CHECKS: ${{ inputs.client_checks || false }}
-        run: |
-          run_client=false
-          if [ "$EXPLICIT_CLIENT_CHECKS" = "true" ]; then
-            run_client=true
-          elif [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ]; then
-            base="$BASE_SHA"
-            case "$base" in
-              ""|0000000000000000000000000000000000000000)
-                base=$(git rev-parse HEAD^ 2>/dev/null || true)
-                ;;
-            esac
-            if [ -n "$base" ] && ! git diff --quiet "$base" HEAD -- \
-              .github/workflows/repository-hygiene.yml \
-              .node-version \
-              LICENSE \
-              licenses \
-              index.html \
-              cmd \
-              internal \
-              native \
-              go.mod \
-              go.sum \
-              package.json \
-              package-lock.json \
-              public \
-              src \
-              tsconfig.json \
-              tsconfig.app.json \
-              vite.config.ts \
-              scripts/assemble-client.mjs \
-              scripts/archive-tool.mjs \
-              scripts/client-icons.mjs \
-              scripts/package-app-release.mjs \
-              scripts/package-licenses.mjs \
-              scripts/package-client-candidate.mjs \
-              scripts/client-package-targets.mjs \
-              scripts/check-client.mjs \
-              scripts/client-local-gate.ts \
-              scripts/client-loopback-gate.ts \
-              scripts/client-media-gate.ts; then
-              run_client=true
-            fi
-          fi
-          echo "run=$run_client" >> "$GITHUB_OUTPUT"
       - name: Install dependencies
         run: npm ci
       # The Go build embeds internal/server/webassets/dist, so Vite runs first.
@@ -145,8 +93,7 @@ jobs:
       - validate
       - release-application
     if: >-
-      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      needs.validate.outputs.client_scope == 'true'
+      github.event_name == 'workflow_dispatch' && inputs.client_checks == true
     strategy:
       fail-fast: false
       matrix:

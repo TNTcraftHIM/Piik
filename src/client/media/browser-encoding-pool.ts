@@ -3,7 +3,7 @@ import { browserDebugEnabled, debugError, debugEvent } from "../lib/debug";
 import { EMPTY_METRICS, type ConnectionMetrics } from "../types";
 import { captureMetrics, collectConnectionMetricsFromReport, createStatsAccumulator } from "../webrtc/stats";
 import { BrowserEncodingProducer } from "./browser-encoding-producer";
-import type { BrowserEncodingOutput } from "./browser-encoding-output";
+import { BROWSER_CARRIER_SIZE, type BrowserEncodingOutput } from "./browser-encoding-output";
 import { codecIdentity, fits, nativeVideoBudget, negotiatedCodec, noRegression, observeVideo,
   projectEncodingMetrics, videoOutbound, type Observation } from "./browser-encoding-stats";
 import { QUALITY_RESOLUTIONS, videoQualitySettingsEqual, type QualityProfile } from "./quality";
@@ -38,9 +38,6 @@ type Member = {
 // M152 exposes BWE through getStats, not a bandwidth callback. The paired
 // weak-entry probe bounds observation lag at this cadence; it is not a retry.
 const BUDGET_SAMPLE_MS = 500;
-// A carrier only supplies native RTP timing/feedback. Chromium clamps this
-// request to its codec's minimum size; it is not a delivered quality layer.
-const CARRIER_WIDTH = 16;
 
 /** One owner per captured source tree; connections retain their own RTP and transport. */
 export class BrowserEncodingPool {
@@ -67,8 +64,8 @@ export class BrowserEncodingPool {
     return {
       carrierScale: () => {
         if (!member.carrier) return;
-        const width = member.source.getSettings().width ?? QUALITY_RESOLUTIONS[member.profile.resolution].width;
-        return Math.max(1, width / CARRIER_WIDTH);
+        const width = member.sender.track?.getSettings().width ?? QUALITY_RESOLUTIONS[member.profile.resolution].width;
+        return Math.max(1, width / BROWSER_CARRIER_SIZE);
       },
       updateProfile: async (next) => {
         if (member.disposed || videoQualitySettingsEqual(member.profile, next)) return;
@@ -97,6 +94,10 @@ export class BrowserEncodingPool {
   private compatible(member: Member, group: Group): boolean {
     return member.source === group.source && member.codecKey === group.codecKey &&
       videoQualitySettingsEqual(member.profile, group.profile) && !group.failed;
+  }
+
+  private references(group: Group): Member[] {
+    return [...this.members].filter((member) => member.current === group || member.pending?.group === group);
   }
 
   private async poll(): Promise<void> {
@@ -158,7 +159,7 @@ export class BrowserEncodingPool {
   private reconcile(): void {
     const changing = new Set<Group>();
     for (const group of this.groups) {
-      const references = [...this.members].filter((member) => member.current === group || member.pending?.group === group);
+      const references = this.references(group);
       const profile = references[0]?.profile;
       if (!profile || group.failed || videoQualitySettingsEqual(profile, group.profile) ||
         !references.every((member) => member.source === group.source && member.codecKey === group.codecKey &&
@@ -184,6 +185,13 @@ export class BrowserEncodingPool {
       if ([member.current, member.pending?.group].some((group) => group && (group.updating || changing.has(group)))) continue;
       if (member.pending) {
         const pending = member.pending;
+        // A shared producer can outgrow a waiting child's native allocation.
+        // Replan that membership; never wait forever for its budget to catch up.
+        if (!pending.selecting && pending.group.budget > member.budget &&
+          !fits(pending.group.output, member.budget) && this.references(pending.group).some((other) => other !== member)) {
+          member.pending = undefined;
+          continue;
+        }
         if (!pending.selecting && member.current && this.compatible(member, member.current) &&
           fits(member.current.output, member.budget) && pending.group.budget < member.current.budget) {
           member.pending = undefined;
@@ -211,12 +219,10 @@ export class BrowserEncodingPool {
               member.current = pending.group;
               member.pending = undefined;
               member.encoderStats = createStatsAccumulator(); member.previousOutput = undefined;
-              if (!member.carrier) {
-                member.carrier = true;
-                member.replacement = member.configureCarrier().then((applied) => {
-                  if (!member.disposed && !applied) this.failSource(member.source);
-                }).catch(() => this.failSource(member.source)).finally(() => { member.replacement = undefined; });
-              }
+              member.carrier = true;
+              member.replacement = member.configureCarrier().then((applied) => {
+                if (!member.disposed && !applied) this.failSource(member.source);
+              }).catch(() => this.failSource(member.source)).finally(() => { member.replacement = undefined; });
               this.prune();
             });
           }
@@ -226,11 +232,15 @@ export class BrowserEncodingPool {
       const current = member.current;
       if (current && this.compatible(member, current) &&
         (!current.output || current.output.bitrate === 0 || current.output.fps === 0)) continue;
-      if (current && this.compatible(member, current) && fits(current.output, member.budget)) {
-        // Reuse an earlier producer only after this member's real encoder recovered.
+      if (current?.output && this.compatible(member, current) && fits(current.output, member.budget)) {
+        // Equal outputs converge to the earlier owner. A strictly better healthy
+        // output is also reusable when this encoder has not recovered itself.
+        let earlier = true;
         for (const group of this.groups) {
-          if (group === current) break;
-          if (this.compatible(member, group) && fits(group.output, member.budget) && current.output?.reason === "none" &&
+          if (group === current) { earlier = false; continue; }
+          const improves = group.output && current.output && (group.output.width > current.output.width ||
+            group.output.height > current.output.height || Math.round(group.output.fps) > Math.round(current.output.fps));
+          if ((earlier || improves) && this.compatible(member, group) && fits(group.output, member.budget) && group.output?.reason === "none" &&
             noRegression(group.output!, current.output.width, current.output.height, current.output.fps, member.profile)) {
             member.pending = { group }; break;
           }
@@ -239,8 +249,7 @@ export class BrowserEncodingPool {
       }
       // An unshared pipeline already has the right owner: let its native
       // encoder adapt to the updated budget instead of recreating it.
-      if (current && this.compatible(member, current) && ![...this.members].some((other) =>
-        other !== member && (other.current === current || other.pending?.group === current))) continue;
+      if (current && this.compatible(member, current) && !this.references(current).some((other) => other !== member)) continue;
       const candidates = [...this.groups].filter((group) => this.compatible(member, group));
       let target = candidates.find((group) => group !== current && fits(group.output, member.budget) &&
         (!current || group.budget === member.budget));
@@ -251,7 +260,7 @@ export class BrowserEncodingPool {
       member.pending = { group: target };
     }
     for (const group of this.groups) {
-      const references = [...this.members].filter((member) => member.current === group || member.pending?.group === group);
+      const references = this.references(group);
       const budgets = references.flatMap((member) => this.compatible(member, group) && member.budget !== undefined ? [member.budget] : []);
       if (group.ready && budgets.length) {
         const budget = Math.max(...budgets);
@@ -312,8 +321,7 @@ export class BrowserEncodingPool {
   }
 
   private updatePauses(): void {
-    for (const group of this.groups) group.producer.setPaused(![...this.members].some((member) =>
-      !member.paused && (member.current === group || member.pending?.group === group)));
+    for (const group of this.groups) group.producer.setPaused(!this.references(group).some((member) => !member.paused));
   }
 
   private metrics(member: Member, transport: ConnectionMetrics): ConnectionMetrics {
@@ -340,7 +348,7 @@ export class BrowserEncodingPool {
   }
 
   private prune(): void {
-    for (const group of this.groups) if (![...this.members].some((member) => member.current === group || member.pending?.group === group)) {
+    for (const group of this.groups) if (!this.references(group).length) {
       this.groups.delete(group); group.producer.dispose();
     }
     if (!this.members.size) {

@@ -121,7 +121,7 @@ Eligible Browser P2P parents use the source-owned pool in
 [ADR-0014](../adr/0014-browser-node-local-encoding-pool.md). Compatible direct
 children share one independent local WebRTC producer; incompatible demands
 remain separate. Each outgoing connection keeps native transport, allocation
-and recovery, with a tiny scaled clone supplying its RTP clock. Producers use
+and recovery, with a tiny carrier supplying its RTP clock. Producers use
 the existing native video target under Host ceilings. Actual forwarded-frame
 and producer observations remain distinct from the tiny carrier's statistics.
 The first eligible consumer follows the same path; unsupported APIs or failed

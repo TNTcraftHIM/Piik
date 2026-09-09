@@ -35,9 +35,12 @@ in [ADR-0011](./0011-browser-assisted-native-fanout.md) remains independently ow
 3. Reuse `HostPeer` and its existing signaling, sender-mutation and retirement
    owners. A connection-owned encoded output stays attached across source
    changes. It copies complete producer frames, preserving codec/reference
-   metadata, and assigns the outgoing carrier's RTP timestamp. Its native source
-   clone is scaled to a tiny encoder input with `scaleResolutionDownBy`; there
-   is no synthetic canvas clock. Chromium's `createEncodedStreams()` path is
+   metadata, and assigns the outgoing carrier's RTP timestamp. A scaled source
+   clone bootstraps negotiation; once the producer supplies real frames, the
+   existing track-replacement owner installs a tiny CPU-resident Canvas carrier.
+   Producer frame events drive it directly, without an independent clock timer
+   or Worker. This avoids processing a full received decoder surface for every
+   carrier. Chromium's `createEncodedStreams()` path is
    required for this composition. Do not force this through the standard
    `RTCRtpScriptTransform` owner restrictions, use feature flags to weaken them,
    or fabricate native frame statistics. Unsupported APIs use ordinary senders.
@@ -45,7 +48,9 @@ in [ADR-0011](./0011-browser-assisted-native-fanout.md) remains independently ow
    codec and codec parameters, Host ceilings, content intent, degradation
    preference and effective demand. Adapted dimensions alone are insufficient.
    Update an owned group's rates in place; a new observation does not itself
-   require recreating an encoder. Unproven compatibility uses ordinary encoding.
+   require recreating an encoder. Re-evaluate pending membership when a shared
+   producer outgrows a waiting child's allocation; it cannot depend on bandwidth
+   growth before delivering its first frame. Unproven compatibility uses ordinary encoding.
 5. The original captured or received track remains intact for presentation and
    source ownership. Producers own their input clones; outgoing bindings own
    their carriers. Group queues, retained frames and references are bounded by

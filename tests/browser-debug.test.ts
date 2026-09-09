@@ -39,14 +39,14 @@ describe("opt-in Browser diagnostics", () => {
     });
     debug.debugError("capture", "failed", error, {
       connectionId: "connection-123", address: "192.0.2.1", requested: { width: 1920, fps: 60 },
-      hostToken: "secret-host", nested: { icePwd: "secret-ice", cookie: "secret-cookie", sdp: "secret-sdp" },
+      hostToken: "secret-host", nested: { icePwd: "secret-ice", cookie: "secret-cookie", sdp: "secret-sdp", remoteSdp: "secret-remote-sdp" },
       data: "secret-pixels", payload: "secret-audio",
       viewerGrant: "secret-grant", passwordHash: "secret-hash",
       transportError: "screener-client-v9.secret-capability Basic secret-basic\nCookie: session=secret-session; refresh=secret-refresh",
     });
     const report = await page.__SCREENER_DEBUG__!.export();
     for (const secret of ["secret-password", "secret-auth", "secret-query", "secret-fragment", "secret-bearer",
-      "secret-host", "secret-ice", "secret-cookie", "secret-sdp", "secret-pixels", "secret-audio", "private-grant",
+      "secret-host", "secret-ice", "secret-cookie", "secret-sdp", "secret-remote-sdp", "secret-pixels", "secret-audio", "private-grant",
       "secret-grant", "secret-hash", "secret-capability", "secret-basic", "secret-session", "secret-refresh"])
       expect(report).not.toContain(secret);
     for (const useful of ["Encoding failed", "fetch", "stack", "cause", "connection-123", "192.0.2.1", "1920"])
@@ -112,6 +112,7 @@ describe("opt-in Browser diagnostics", () => {
     transport.dispatchEvent(new Event("statechange"));
     rtc.debugRtcStats(peer, new Map([
       ["video", { id: "video", type: "outbound-rtp", framesEncoded: 60, totalEncodeTime: 0.3 }],
+      ["codec", { id: "codec", type: "codec", mimeType: "video/H264", sdpFmtpLine: "packetization-mode=1;profile-level-id=42e01f" }],
       ["private", { id: "private", type: "certificate", base64Certificate: "private-certificate" }],
     ]) as unknown as RTCStatsReport);
     await vi.advanceTimersByTimeAsync(5_000);
@@ -122,6 +123,7 @@ describe("opt-in Browser diagnostics", () => {
     expect(history).toContainEqual(expect.objectContaining({ event: "dtls-state", details: expect.objectContaining({ state: "connected" }) }));
     const report = await debug.exportBrowserDebug();
     expect(report).toContain("framesEncoded");
+    expect(report).toContain("packetization-mode=1;profile-level-id=42e01f");
     expect(report).not.toContain("private-certificate");
   });
 

@@ -70,7 +70,8 @@ function sanitize(value: unknown): { value: DebugValue; truncated: boolean } {
       const keys = Object.keys(input);
       if (keys.length > 128) truncated = true;
       for (const key of keys.slice(0, 128)) {
-        if (secretKey.test(key) || /^(?:data|payload|body|__proto__|constructor)$/i.test(key)) continue;
+        // Codec fmtp parameters are not an SDP description or credential.
+        if ((key !== "sdpFmtpLine" && secretKey.test(key)) || /^(?:data|payload|body|__proto__|constructor)$/i.test(key)) continue;
         const name = safeText(key).slice(0, 128);
         remaining -= name.length;
         try { output[name] = visit((input as Record<string, unknown>)[key], depth + 1); }
