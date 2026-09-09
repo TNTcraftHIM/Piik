@@ -124,6 +124,7 @@ import {
   type ScreenAudioQuality,
 } from "../media/quality";
 import { HostSfuRoute } from "../media/host-sfu-route";
+import { BrowserEncodingPool } from "../media/browser-encoding-pool";
 import {
   HostProvisionalChild,
 } from "../media/host-provisional-child";
@@ -565,6 +566,7 @@ export function HostPage({
   }, [hasCustomDisplayName, lang, vis]);
   const iceConfigRef = useRef<IceConfig | null>(null);
   const peersRef = useRef(new Map<string, HostMediaPeer>());
+  const browserVideoPoolRef = useRef<BrowserEncodingPool | null>(null);
   const hostProvisionalChildRef = useRef<HostProvisionalChild | null>(null);
   const activeHostChildPeerIdsRef = useRef<string[]>([]);
   const endpointMediaCopyCapacityRef = useRef(MAX_ENDPOINT_MEDIA_CHILDREN);
@@ -708,6 +710,8 @@ export function HostPage({
       peersRef.current.clear();
       hostProvisionalChildRef.current?.discard();
       hostProvisionalChildRef.current = null;
+      browserVideoPoolRef.current?.dispose();
+      browserVideoPoolRef.current = null;
       activeHostChildPeerIdsRef.current = [];
       endpointMediaCopyCapacityRef.current = MAX_ENDPOINT_MEDIA_CHILDREN;
       hostPeerIdRef.current = null;
@@ -888,6 +892,8 @@ export function HostPage({
     peersRef.current.clear();
     hostProvisionalChildRef.current?.discard();
     hostProvisionalChildRef.current = null;
+    browserVideoPoolRef.current?.dispose();
+    browserVideoPoolRef.current = null;
     activeHostChildPeerIdsRef.current = [];
     endpointMediaCopyCapacityRef.current = MAX_ENDPOINT_MEDIA_CHILDREN;
     hostPeerIdRef.current = null;
@@ -1987,6 +1993,7 @@ export function HostPage({
       profile: qualitySettingsRef.current,
       videoCodec: videoCodecRef.current,
       natPredictionEnabled: routePolicyRef.current.natPrediction,
+      videoPool: nativeClient && nativeShareGeneration ? undefined : browserVideoPool(),
     });
   }
 
@@ -2011,6 +2018,10 @@ export function HostPage({
     } else {
       discardPreparedHostChild();
     }
+  }
+
+  function browserVideoPool(): BrowserEncodingPool {
+    return browserVideoPoolRef.current ??= new BrowserEncodingPool();
   }
 
   async function startPeer(
@@ -2086,6 +2097,7 @@ export function HostPage({
           videoCodecRef.current,
           undefined,
           routePolicyRef.current.natPrediction,
+          browserVideoPool(),
         );
     peersRef.current.set(peerId, peer);
     let started: boolean;

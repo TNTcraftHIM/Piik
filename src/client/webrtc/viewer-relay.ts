@@ -4,6 +4,7 @@ import type {
   SignalPayload,
 } from "../../shared/protocol";
 import type { QualityProfile } from "../media/quality";
+import { BrowserEncodingPool } from "../media/browser-encoding-pool";
 import type { PeerSnapshot } from "../types";
 import {
   HostPeer,
@@ -51,6 +52,7 @@ export class ViewerRelay {
   private childPeerIds: string[] = [];
   private stream: MediaStream | null = null;
   private readonly peers = new Map<string, HostMediaPeer>();
+  private readonly videoPool = new BrowserEncodingPool();
   private readonly snapshots = new Map<string, PeerSnapshot>();
   private preparedChild: PreparedChild | null = null;
   private preparedRevision: number | null = null;
@@ -360,6 +362,7 @@ export class ViewerRelay {
     this.discardPreparedChild();
     this.childPeerIds = [];
     this.disposePeers();
+    this.videoPool.dispose();
   }
 
   private startPreparedChild(
@@ -587,6 +590,7 @@ export class ViewerRelay {
       this.videoCodec,
       connectionId,
       this.natPredictionEnabled,
+      candidate?.qualityProbe ? null : this.videoPool,
     );
     return peer;
   }

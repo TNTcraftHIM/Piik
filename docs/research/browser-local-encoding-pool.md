@@ -184,10 +184,86 @@ reference correctness or A/V synchronization. Those remain required.
   of stats objects. The prototype's key realignment counter is not a decoder
   corruption counter.
 
-## Next Engineering Boundary
+## Product Adapter Refinement
+
+The owner accepted integration after refinement in
+[ADR-0014](../adr/0014-browser-node-local-encoding-pool.md). Current branch code
+uses separate producer, transform, pool-lifetime and stateless statistics modules
+behind the existing `HostPeer`; ordinary join and relay paths use that owner.
+Native ingress, dedicated quality candidates and the existing SFU simulcast
+publisher retain their independently accepted paths. Implementation is not
+production activation or completed acceptance.
+
+The owner prefers one pool path even for a singleton. Two singleton VP8 1080p30
+comparisons measured an extra 0.37 and 1.09 CPU-seconds per six-second window;
+H264 added 0.145 CPU-seconds in one paired window. That is roughly 0.06/0.18
+and 0.024 CPU cores averaged over those intervals, not system-wide percentage
+points or a universal overhead guarantee. Received frame cadence was preserved.
+Audience-count activation was removed; unsupported/failed pooling still uses
+ordinary encoding. Native already has one required-output model at either count.
+
+Refinement removed the hand-calculated BWE/audio/retransmission budget bridge.
+The adapter now forwards the native sender's `targetBitrate`, bounded by the Host
+ceiling. That is a native encoder allocation, distinct from actual bytes and from
+the connection-wide bandwidth estimate. The
+[statistics specification](https://www.w3.org/TR/webrtc-stats/#dom-rtcoutboundrtpstreamstats-targetbitrate)
+defines this distinction. This avoids another overhead model and application
+minimum bitrate. A valid lower-output keyframe may be selected before a full
+rate-measurement window; the worker already supplies the recovery-frame fence.
+An exclusively owned group adapts in place instead of recreating itself when
+its budget falls. Obsolete unsubmitted lower work is cancelled after recovery.
+
+Other measured corrections:
+
+- Common live settings update the existing producer. The shared owner receives
+  final Host intent, not HostPeer's temporary startup preference. Producers reuse
+  the existing five-encoded-frame startup rule, with queued work reading current
+  intent so it cannot replay an older bitrate/profile.
+- Tiny carriers are requested by real producer frame events. There is no main-
+  thread canvas timer. Normal Chrome background activation, without disabling
+  timer throttling, retained the native fake source's 20 fps at both receivers;
+  that source check does not establish real-game 60 fps endurance.
+- M152 `setTransform(null)` detaches without enabling native short-circuiting.
+  A dead worker therefore recovers by reattaching the existing own-frame
+  passthrough implementation, on the same sender and connection. VP8/H264
+  lifecycle checks delivered 181/180 frames per receiver over six seconds after
+  failure, with about 88-91 ms p95 source age and zero retained encoder groups.
+  [M152 sender source](https://chromium.googlesource.com/chromium/src/+/refs/tags/152.0.7977.82/third_party/blink/renderer/modules/peerconnection/rtc_rtp_sender.cc)
+  owns this implementation fact.
+- Receiver details remain actual inbound statistics. Sender projections combine
+  real forwarded dimensions/cadence and the assigned producer's native quality
+  window with that connection's transport counters. Shared encoder call counts
+  and total encode time are not duplicated as independent per-child work.
+
+## Remaining Acceptance
+
+Later 1080p product runs exposed intermittent VP8 startup stalls despite
+successful writes and live connections. Holding a carrier key can preserve its
+owner counter but introduces timing skew; payload-only replacement still
+retains the carrier's codec/reference metadata. This candidate is therefore
+not accepted merely because lower-resolution bounded comparisons improved.
+
+A narrower Chromium `createEncodedStreams()` comparison preserves the complete
+producer frame through the public `RTCEncodedVideoFrame` copy constructor, with
+the carrier's RTP timestamp supplied as constructor metadata. A source clone is
+scaled natively; no dummy canvas is needed. With 1080p30, 400 kbps shaped A and
+unshaped B, the first VP8 run decoded 183 A frames over the constrained fourteen
+seconds and 1,163 over the following forty seconds; B retained 1080p. H264
+decoded 404 and 1,206 respectively. Neither recorded backward IDs; synchronized
+audio pulses were received. These synthetic runs use maintain-resolution and
+are not game-content perceptual validation. Earlier legacy A/V attempts omitted
+the required audio stream passthrough and are not valid A/V evidence.
+
+This is a different API boundary from standard `RTCRtpScriptTransform` ownership,
+not a relaxed flag on that standard. [LiveKit capability detection](https://github.com/livekit/client-sdk-js/blob/main/src/e2ee/utils.ts)
+still recognizes the Chromium encoded-stream API; it does not provide a complete
+reusable encoding pool. Full-size adaptation, source switch, pause, cold/late
+join, fallback and lifecycle cost must be checked before choosing the replacement.
+Unsupported Browsers retain ordinary senders. No browser feature flags or future
+`RTCEncodedSource` implementation are assumed.
 
 Continue this candidate; do not reject Browser pooling on the older experiment.
-Before any product adapter, resolve these concrete obligations:
+Before product activation, resolve these concrete obligations:
 
 1. Integrate demand sampling with existing media-stat ownership, and compare
    faster event/feedback options against the measured weak-entry gap. No blind

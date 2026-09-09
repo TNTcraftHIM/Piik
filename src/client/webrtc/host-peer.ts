@@ -5,6 +5,7 @@ import {
   type SignalPayload,
 } from "../../shared/protocol";
 import { createOpaqueId } from "../lib/opaque-id";
+import type { BrowserEncodingPool, BrowserPooledSender } from "../media/browser-encoding-pool";
 import {
   audioSenderParameterWarning,
   applyVideoCaptureProfile,
@@ -84,6 +85,7 @@ export class HostPeer {
   private replacementVideoTrack: MediaStreamTrack | null = null;
   private replacementAudioTrack: MediaStreamTrack | null = null;
   private videoSender: RTCRtpSender | null = null;
+  private pooledVideo: BrowserPooledSender | null = null;
   private audioTransceiver: RTCRtpTransceiver | null = null;
   private audioSender: RTCRtpSender | null = null;
   private statsTimer: number | null = null;
@@ -120,6 +122,7 @@ export class HostPeer {
       VP8_ONLY_VIDEO_CODEC,
     connectionId = createOpaqueId(),
     natPredictionEnabled = false,
+    private readonly videoPool: BrowserEncodingPool | null = null,
   ) {
     this.connectionId = connectionId;
     this.natPredictionEnabled = natPredictionEnabled;
@@ -175,6 +178,7 @@ export class HostPeer {
       return false;
     }
     this.videoSender = videoTransceiver.sender;
+    this.attachVideoPool(this.stream.getVideoTracks()[0]!);
     this.audioTransceiver = this.connection.addTransceiver(audioTrack ?? "audio", {
       direction: audioTrack ? "sendonly" : "inactive",
       streams: [this.stream],
@@ -265,6 +269,9 @@ export class HostPeer {
         this.senderVideoTrack = nextVideoTrack;
         this.stream = nextStream;
         retainedNextVideoTrack = true;
+        this.pooledVideo?.dispose();
+        this.pooledVideo = null;
+        this.attachVideoPool(nextSourceVideoTrack);
         previousVideoTrack.stop();
         this.startupVideoProfilePending = needsStartupVideoProfile(
           this.desiredProfile,
@@ -305,6 +312,7 @@ export class HostPeer {
 
   setPaused(paused: boolean): void {
     this.paused = paused;
+    this.pooledVideo?.setPaused(paused);
     this.applyPausedState(this.senderVideoTrack, this.audioSender?.track ?? null);
     this.applyPausedState(this.replacementVideoTrack, this.replacementAudioTrack);
   }
@@ -472,6 +480,8 @@ export class HostPeer {
       this.statsTimer = null;
     }
     this.connection.close();
+    this.pooledVideo?.dispose();
+    this.pooledVideo = null;
     this.localIceCandidates.discard();
     this.senderVideoTrack?.stop();
     this.senderVideoTrack = null;
@@ -510,6 +520,58 @@ export class HostPeer {
       this.emit();
     });
     this.connection.addEventListener("iceconnectionstatechange", () => this.emit());
+  }
+
+  private attachVideoPool(source: MediaStreamTrack): void {
+    const sender = this.videoSender;
+    if (!sender || !this.videoPool) return;
+    let binding: BrowserPooledSender | null = null;
+    const owns = () => !this.disposed && this.pooledVideo === binding &&
+      this.videoSender === sender && this.stream.getVideoTracks()[0] === source;
+    binding = this.videoPool.create(source, sender, this.connection, this.desiredProfile,
+      (track) => this.enqueueSenderMutation(async () => {
+        const previous = this.senderVideoTrack;
+        if (!owns() || !previous) return false;
+        if (track === previous) return true;
+        const revision = this.profileRevision;
+        this.statsSamplingBlocked = true;
+        try {
+          this.applyPausedState(track, null);
+          await applyVideoCaptureProfile(track, this.desiredProfile);
+          if (!owns()) return false;
+          await sender.replaceTrack(track);
+          const parameters = await configureVideoSender(sender,
+            this.startupVideoProfilePending ? startupVideoProfile(this.desiredProfile) : this.desiredProfile);
+          if (!owns()) {
+            if (!this.disposed) await sender.replaceTrack(previous);
+            return false;
+          }
+          this.senderVideoTrack = track;
+          this.applyPausedState(track, null);
+          previous.stop();
+          this.snapshot = { ...this.snapshot,
+            ...(revision === this.profileRevision ? { senderParameters: parameters } : {}),
+            metrics: { ...EMPTY_METRICS } };
+          return true;
+        } catch {
+          if (!this.disposed && sender.track !== previous) {
+            try { await sender.replaceTrack(previous); } catch { this.dispose(); }
+          }
+          return false;
+        } finally {
+          this.statsAccumulator = createStatsAccumulator();
+          this.statsSamplingBlocked = false;
+        }
+      }),
+      () => this.enqueueSenderMutation(async () => {
+        if (!owns()) return;
+        const request = sender.setParameters as (parameters: RTCRtpSendParameters,
+          options: { encodingOptions: Array<{ keyFrame: boolean }> }) => Promise<void>;
+        await request.call(sender, sender.getParameters(), { encodingOptions: [{ keyFrame: true }] });
+      }),
+      () => { if (owns()) { this.dispose(); this.emit(); } });
+    this.pooledVideo = binding;
+    binding?.setPaused(this.paused);
   }
 
   private sendIceCandidate(candidate: SignalCandidate | null): void {
@@ -699,10 +761,11 @@ export class HostPeer {
         this.startupVideoProfilePending = false;
         void this.updateProfile(this.desiredProfile);
       }
-      this.updateLimitationWarning(metrics.qualityLimitationReason);
+      const deliveredMetrics = this.pooledVideo?.metrics(metrics) ?? metrics;
+      this.updateLimitationWarning(deliveredMetrics.qualityLimitationReason);
       this.snapshot = {
         ...this.snapshot,
-        metrics,
+        metrics: deliveredMetrics,
         ...this.qualityWarningSnapshot(),
       };
       this.emit();
@@ -757,6 +820,11 @@ export class HostPeer {
       (mutation.video && this.videoSender !== sender)
     ) {
       return false;
+    }
+
+    if (mutation.video && videoSucceeded && this.pooledVideo) {
+      try { await this.pooledVideo.updateProfile(this.desiredProfile); }
+      catch { videoSucceeded = false; videoWarning = say("host.err.applySender"); }
     }
 
     if (mutation.audio && audioSender) {

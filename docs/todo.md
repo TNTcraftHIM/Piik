@@ -24,11 +24,64 @@ The experimental budget bridge is not an accepted routing/media policy. Reuse
 existing Browser statistics owners in a proposed adapter; do not add a second
 congestion estimator, whole-tree cache, or periodic topology controller.
 
+The owner now authorizes product integration after refinement. Match ordinary
+WebRTC viewing quality and recovery under the same constraints; reasonable
+adaptation time is acceptable, perfect seamlessness is not required. First
+finish weak-entry/recovery and A/V evidence, then record the accepted adapter
+boundary in the media ADR before connecting it to product senders. Keep the
+pool source-owned, consider direct children only, and reuse existing connection,
+capture, settings and statistics owners. Receiver details must remain measured
+inbound data. Sender details and quality evidence must describe real transmitted
+media and its assigned encoder, never the dummy carrier's encoder statistics.
+Check lifecycle/pause/source replacement, mixed ordinary/pool receivers and
+whole-process cost before integration acceptance. Do not deploy a partial adapter.
+
+Use one Browser pool path from the first eligible consumer, as requested after
+the singleton overhead comparison. Do not add an audience-count threshold or
+switch back and forth as the audience crosses it. Ordinary encoding remains
+the capability/failure fallback. Native already uses one required-output model
+for singleton and shared consumers.
+
+Current integration hold: the standard payload-only carrier still has intermittent
+VP8 startup/dependency stalls at 1080p. Do not deploy that path or fix it with
+another keyframe timer. A scoped Chromium encoded-stream comparison now keeps
+the producer frame's complete metadata, retimes it to the local carrier, and
+uses a natively scaled source clone. It passes initial healthy/weak A/V checks
+for both codecs and may remove the canvas and key-type rendezvous. Validate the
+complete replacement, record its supported API boundary, and delete the
+superseded implementation in the same phase if selected. The current product
+adapter is not yet accepted for release.
+
 The embedded-media phase is already integrated and deployed. The detailed Debug
 supplement and matched review package are complete on their separate branch,
 held for owner acceptance. Do not re-merge or redeploy either checkpoint merely
 to continue this research. Public release and piik branding/site work remain
 separate product stages.
+
+The owner-confirmed phase order is:
+
+1. Finish Browser pooling and the completed-but-unmerged detailed Debug
+   supplement, including truthful viewing details and their combined acceptance.
+   Then apply the same ablation to the current Native Client encoding path:
+   inspect duplicate state/budget calculations, unnecessary encoder recreation,
+   and responsibilities already owned by mature media components. Transfer
+   Browser findings only when their ownership and measurements also apply to
+   Native; do not force identical adapters or reopen a broad rewrite. Preserve
+   each direct child's quality, independent adaptation and existing forwarding.
+2. Prepare publication: simplify English-first/bilingual README and quick start,
+   reuse the existing logo and add useful small diagrams, improve deployment
+   scripts and Docker packaging, and keep advanced configuration in developer
+   documentation. Reconcile the release-docs branch rather than recreating it.
+   Include update/replacement guidance, release artifacts/workflows, dependency
+   notices and the diagnostic export disclosure; keep Actions storage/CI cost
+   controlled. No public demo of the private production service is planned.
+3. Discuss the complete **piik** rename with the owner before implementing it.
+   The owner has acquired **piik.tv**. Decide casing, logo/wordmark treatment,
+   repository-owned names and identifiers, release migration and a GitHub Pages
+   website together. The website should provide concise tutorials and lively
+   demonstrations consistent with the product. Existing piik sketches are input,
+   not an accepted visual identity. Do not rename code, move domains, configure
+   DNS/Pages or publish the new brand during the preceding media/debug work.
 
 Current evidence and limits:
 

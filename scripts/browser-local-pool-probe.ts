@@ -1,6 +1,8 @@
 import { createServer } from 'node:http';
 import { readFile, mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import ts from 'typescript';
+import { build } from 'esbuild';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { CdpConnection, cleanupRun, createPage, evaluate, launchChrome, reservePort, waitForSample, waitForVersion } from './browser-gate-harness';
@@ -17,14 +19,51 @@ const derive = process.argv.includes('--derive');
 const feedback = process.argv.includes('--feedback');
 const late = process.argv.includes('--late');
 const automatic = process.argv.includes('--auto');
+const cadenceMs = Number(process.argv.find(arg => arg.startsWith('--cadence-ms='))?.split('=')[1] || 2000);
+if (!Number.isInteger(cadenceMs) || cadenceMs < 100 || cadenceMs > 2000)
+    throw Error('Experimental cadence must be 100..2000 ms');
 const high = process.argv.includes('--1080');
 const noLocalPli = process.argv.includes('--no-local-pli');
+const av = process.argv.includes('--av');
+const poolWorker = process.argv.includes('--pool-worker');
+const single = process.argv.includes('--single');
+const product = process.argv.includes('--product');
+const background = process.argv.includes('--background');
+const nativeSource = background || process.argv.includes('--native-source');
+const lifecycle = process.argv.includes('--lifecycle');
+const rate = Number(process.argv.find(arg => arg.startsWith('--rate='))?.split('=')[1] || 120000);
+const preference = process.argv.find(arg => arg.startsWith('--preference='))?.split('=')[1] || (high ? 'maintain-resolution' : 'balanced');
+const scaledSource = process.argv.includes('--scaled-source');
+if (!['balanced', 'maintain-resolution', 'maintain-framerate'].includes(preference)) throw Error('Unsupported degradation preference');
+if (!Number.isInteger(rate) || rate <= 0) throw Error('Rate must be a positive integer in bps');
+if (lifecycle && (!product || nativeSource || network)) throw Error('Lifecycle gate uses product canvas capture without network shaping');
+if (single && late) throw Error('Single-viewer control cannot also late-join B');
+if (product && (!['carrier', 'ordinary'].includes(mode) || poolWorker || split || derive || noLocalDecode)) throw Error('Product mode owns its pool and switching');
 const root = resolve(import.meta.dirname, '..');
-const body = await readFile(join(root, 'scripts/browser-local-pool-page.js'));
+let body = await readFile(join(root, 'scripts/browser-local-pool-page.js'));
+if (product) {
+    const bundle = await build({ stdin: { contents: 'import {BrowserEncodingPool} from "../src/client/media/browser-encoding-pool"; import {HostPeer} from "../src/client/webrtc/host-peer"; import {applyVideoCaptureProfile} from "../src/client/media/quality"; globalThis.ProbePool=BrowserEncodingPool; globalThis.ProbeHostPeer=HostPeer;globalThis.probeApplyProfile=applyVideoCaptureProfile;\n' + body.toString(), resolveDir: join(root, 'scripts'), loader: 'js', sourcefile: 'browser-pool-probe.js' }, bundle: true, write: false, format: 'esm', platform: 'browser', logLevel: 'error' });
+    body = Buffer.from(bundle.outputFiles[0].contents);
+}
+const workerBody = ts.transpileModule(await readFile(join(root, 'src/client/media/browser-encoding-worker.ts'), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2023, module: ts.ModuleKind.ESNext } }).outputText;
 let cdp: CdpConnection | null = null;
 const shaper = network ? await createPoolShaper() : null;
 const server = createServer((request, response) => {
     const url = new URL(request.url!, 'http://127.0.0.1');
+    if (url.pathname === '/pool-worker.js' || url.pathname === '/browser-encoding-worker.ts') {
+        response.setHeader('Content-Type', 'text/javascript');
+        response.end(workerBody);
+        return;
+    }
+    if (url.pathname === '/visibility' && cdp && page) {
+        void (async () => {
+            if (!originalTarget) originalTarget = (await cdp!.call<{ targetInfo: { targetId: string } }>('Target.getTargetInfo', {}, page!.sessionId, Date.now() + 3000)).targetInfo.targetId;
+            if (!backgroundTarget) backgroundTarget = (await cdp!.call<{ targetId: string }>('Target.createTarget', { url: 'about:blank', background: true }, undefined, Date.now() + 3000)).targetId;
+            await cdp!.call('Target.activateTarget', { targetId: url.searchParams.get('hidden') === '1' ? backgroundTarget : originalTarget }, undefined, Date.now() + 3000);
+            response.end('{}');
+        })().catch(() => { response.statusCode = 500; response.end('{}'); });
+        return;
+    }
     if (url.pathname === '/process' && cdp) {
         void cdp.call<{
             processInfo: Array<{
@@ -50,19 +89,23 @@ const port = (server.address() as {
     port: number;
 }).port, debugPort = await reservePort();
 const profile = await mkdtemp(join(tmpdir(), 'screener-client-media-'));
-const chrome = launchChrome(process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe', debugPort, profile, ['--headless=new', '--no-first-run', '--autoplay-policy=no-user-gesture-required', '--disable-background-timer-throttling', '--disable-renderer-backgrounding']);
+const chrome = launchChrome(process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe', debugPort, profile, ['--headless=new', '--no-first-run', '--autoplay-policy=no-user-gesture-required', ...(background ? [] : ['--disable-background-timer-throttling', '--disable-renderer-backgrounding']), ...(nativeSource ? ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] : [])]);
 chrome.stdout.resume();
 chrome.stderr.resume();
 let result: Record<string, unknown> = { mode, codec };
+let page: Awaited<ReturnType<typeof createPage>> | undefined;
+let originalTarget: string | undefined, backgroundTarget: string | undefined;
 try {
     const version = await waitForVersion(debugPort, chrome);
     cdp = await CdpConnection.connect(version.webSocketDebuggerUrl, Date.now() + 5000);
-    const page = await createPage(cdp, `http://127.0.0.1:${port}/?mode=${mode}&codec=${codec}&weak=${weak || network ? 1 : 0}&network=${network ? 1 : 0}&split=${split ? 1 : 0}&noLocalDecode=${noLocalDecode ? 1 : 0}&derive=${derive ? 1 : 0}&feedback=${feedback ? 1 : 0}&late=${late ? 1 : 0}&automatic=${automatic ? 1 : 0}&high=${high ? 1 : 0}&noLocalPli=${noLocalPli ? 1 : 0}`);
-    await waitForSample(() => evaluate<boolean>(cdp!, page, 'window.probeDone===true', Date.now() + 2000), Boolean, feedback || automatic ? 110000 : weak || network ? 60000 : 25000);
+    page = await createPage(cdp, 'about:blank');
+    await cdp.call('Page.navigate', { url: `http://127.0.0.1:${port}/?mode=${mode}&codec=${codec}&weak=${weak || network ? 1 : 0}&network=${network ? 1 : 0}&split=${split ? 1 : 0}&noLocalDecode=${noLocalDecode ? 1 : 0}&derive=${derive ? 1 : 0}&feedback=${feedback ? 1 : 0}&late=${late ? 1 : 0}&automatic=${automatic ? 1 : 0}&cadenceMs=${cadenceMs}&high=${high ? 1 : 0}&av=${av ? 1 : 0}&poolWorker=${poolWorker ? 1 : 0}&single=${single ? 1 : 0}&product=${product ? 1 : 0}&background=${background ? 1 : 0}&nativeSource=${nativeSource ? 1 : 0}&lifecycle=${lifecycle ? 1 : 0}&rate=${rate}&preference=${preference}&scaledSource=${scaledSource ? 1 : 0}&noLocalPli=${noLocalPli ? 1 : 0}` }, page.sessionId, Date.now() + 5000);
+    await waitForSample(() => evaluate<boolean>(cdp!, page!, 'window.probeDone===true', Date.now() + 2000), Boolean, feedback || automatic || lifecycle ? 110000 : weak || network || background ? 60000 : 25000);
     result = await evaluate<Record<string, unknown>>(cdp, page, 'window.probeResult', Date.now() + 3000);
 }
 catch (error) {
     result.error = String(error);
+    if (cdp && page) result.partial = await evaluate(cdp, page, 'window.probeResult || window.probeProgress?.()', Date.now() + 3000).catch(() => null);
 }
 finally {
     const clean = await cleanupRun({ cdp, native: null, chrome, server: { close: () => new Promise<void>((resolve, reject) => server.close(e => e ? reject(e) : resolve())) }, profile, ports: [port, debugPort] });
@@ -71,6 +114,7 @@ finally {
         await shaper.close();
     }
     result.probeSha256 = createHash('sha256').update(body).digest('hex');
+    if (poolWorker || product) result.workerSha256 = createHash('sha256').update(workerBody).digest('hex');
     result.cleanup = clean;
     await mkdir(join(root, 'build/browser-local-pool'), { recursive: true });
     const output = join(root, `build/browser-local-pool/${mode}-${codec.toLowerCase()}${network ? '-network' : weak ? '-weak' : ''}${split ? '-split' : ''}${noLocalDecode ? '-no-local-decode' : ''}${derive ? '-derive' : ''}${feedback ? '-feedback' : ''}${late ? '-late' : ''}${automatic ? '-auto' : ''}${high ? '-1080' : ''}${noLocalPli ? '-no-local-pli' : ''}-${Date.now()}.json`);
