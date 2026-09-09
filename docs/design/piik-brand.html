@@ -176,6 +176,8 @@
   let headphoneMode = false;
   function setIconMode() {
     document.querySelectorAll('.tv').forEach((svg) => { svg.innerHTML = headphoneMode ? tvWithHeadphones : tv; });
+    const morphEars = document.querySelector('.morph-headphones');
+    if (morphEars) morphEars.setAttribute('display', headphoneMode ? 'inline' : 'none');
     $('headphones-state').textContent = headphoneMode ? '原版电视 / Plain TV' : '耳罩 / Headphones';
   }
   setIconMode();
@@ -210,7 +212,7 @@
       if(moving) { animate(eye,'cx',cx,eyeX); animate(eye,'cy',95,124.167); animate(eye,'rx',6.5,7.083); animate(eye,'ry',6.5,7.083); if(index) animate(eye,'ry',7.083,0,2.2,.16); }
     });
     if(moving) {
-      const ears = element(group,'g',{opacity:0});
+      const ears = element(group,'g',{class:'morph-headphones',opacity:0});
       const leftEar = element(ears,'rect',{x:98,y:106,width:10,height:32,rx:5});
       const rightEar = element(ears,'rect',{x:278,y:106,width:10,height:32,rx:5});
       animate(leftEar,'x',98,157,1.05,.95); animate(leftEar,'y',106,116,1.05,.95);
@@ -229,6 +231,7 @@
     }
   }
   drawWord($('morph'),'Piik',true);
+  setIconMode();
   document.querySelectorAll('[data-case]').forEach(svg => drawWord(svg,svg.dataset.case));
   document.querySelectorAll('[data-size]').forEach(svg => { const height=Number(svg.dataset.size); attributes(svg,{height,width:height*244/138}); drawWord(svg); });
   const morph=$('morph'), reduce=$('reduce'), pause=$('pause'), motion=matchMedia('(prefers-reduced-motion: reduce)');
@@ -240,7 +243,7 @@
   $('replay').onclick=replay;
   pause.onclick=() => { if(morph.animationsPaused()) { pause.textContent='暂停 / Pause'; morph.unpauseAnimations(); watch(); } else still(morph.getCurrentTime()); };
   $('word-state').onclick=() => still(0);
-  $('tv-state').onclick=() => still(duration);
+  $('tv-state').onclick=() => { headphoneMode = false; setIconMode(); still(duration); };
   $('headphones-state').onclick=() => { headphoneMode = !headphoneMode; setIconMode(); };
   reduce.checked=motion.matches;
   reduce.onchange=() => still(reduce.checked?duration:0);
