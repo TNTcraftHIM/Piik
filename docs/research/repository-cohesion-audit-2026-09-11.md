@@ -144,11 +144,49 @@ a dependency without a separate accepted decision.
 - `go vet ./internal/... ./cmd/...` passed.
 - `go test ./internal/... ./cmd/...` passed, including route, signal, app,
   native and media packages.
+- `npm run check:client-core` passed: gofmt, client tests, `go vet ./...` and the
+  App, peer-gate and linux-amd64 Server cross-builds. darwin-arm64 is skipped by
+  design because its cgo dependencies need a macOS runner.
 - Local import-cycle scan across `src/client`: 17 cycles before, 0 after.
 - `node scripts/check-docs.mjs` and `scripts/check-project-state.ps1` passed
   with only the existing long-document gardening warnings.
 - Physical mixed-version, device and network acceptance remains outside this
   pass and is owned by [verification status](../verification-status.md).
+
+## Adversarial Review
+
+Checked after the change landed, against the ways this pass could be wrong:
+
+- **Copy cannot go stale by construction.** No snapshot field, SFU warning or
+  native failure stores resolved text; `say(` no longer appears under
+  `src/client/webrtc`, `sfu` or `native`, and the only media-layer `say()` left
+  is `qualitySettingsLabel`, which composes a transient notice at event time -
+  the tolerated pattern documented in `ui/copy.ts`. Event-time notices and
+  `ApiError` messages still resolve once, which is the accepted policy rather
+  than an oversight.
+- **One fact, one resolver.** Transport owners produce `MediaFailure`; only
+  `resolveMediaFailure` renders it. The focused test covers params, lists and
+  literal variables, and a mutation that drops `paramKeys` fails it.
+- **Deliberate residual.** `lib/display-name.ts` still resolves the default
+  display name once. That is presence data other participants see, so it must
+  not follow a local language switch; recorded instead of changed.
+- **Inert guard kept.** `hostSfuWarningText !== noticeText` can no longer match
+  through the notice composers, because none of them builds a warning string.
+  It stays as a cheap guard against rendering the same line twice, and is a
+  candidate for evidence-based removal later.
+- **Declined micro-cleanups.** `MediaFailure` lives in `ui/` and media modules
+  import it type-only; `CopyKey` type imports still point at `ui/copy` rather
+  than `locales`. Both are type-only edges with a cycle scan of 0, so repointing
+  them was not worth the review surface.
+- **No measured cost.** The SFU warning state is now a small array, so React no
+  longer bails out on identical primitive values. `syncHostSfuQualityWarning`
+  runs only on quality changes, route transitions and SFU config - never per
+  frame or per evidence message - so no structural-equality helper was added.
+- **UX deltas reviewed.** The only user-visible copy change is the
+  missing-video-track path, which now reports "no shareable screen source"
+  instead of "failed to create the connection"; Viewer failures no longer
+  surface raw browser messages; joined SFU warnings use the locale separator
+  instead of a hardcoded `"; "`.
 
 ## References
 
