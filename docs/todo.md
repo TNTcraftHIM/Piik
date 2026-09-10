@@ -102,6 +102,8 @@ owner's README-only Gitee target, validate final package sizes against its attac
 and exercise publication/anonymous download before enabling it. Build once;
 mirror uploads and update-source adapters must not create another release model
 or duplicate CI compilation. No Gitee publication is active yet.
+Rehearsal artifacts measure 13.5 MB (Server runtime) and 36 MB (Windows App);
+confirm the current Gitee attachment quota before enabling the mirror.
 
 ## Next — Awaiting Owner Direction
 
