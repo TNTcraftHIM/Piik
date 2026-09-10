@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { browserDebugEnabled, debugError, downloadBrowserDebug } from "../../lib/debug";
 import { VisGlyph } from "./primitives";
-import { BrandSwitcher } from "./BrandMark";
+import { BrandMark } from "./BrandMark";
 import { ComicTooltip } from "./ComicTooltip";
 import type { ComicKind } from "./Comic";
 import { useCopy, type Lang } from "../../ui/copy";
@@ -148,7 +148,7 @@ export function AppHeader({
         aria-label={t("brand.home")}
         title={vis ? undefined : t("brand.home")}
       >
-        <BrandSwitcher />
+        <BrandMark size={34} motion="once" />
       </a>
       <span className="lr-top-right">
         {led}
