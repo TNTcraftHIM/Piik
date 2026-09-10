@@ -140,7 +140,7 @@ that changes this boundary.
 Native libp2p, Tailscale, and mobile studies are useful operational evidence,
 but their relay reservation, raw-socket control, address discovery, native
 coordination, and sampled networks differ from browser WebRTC. Their success
-rates are not Screener coverage estimates.
+rates are not Piik coverage estimates.
 
 ## TURN Screening And No-Go
 
@@ -171,11 +171,11 @@ measured `B_pub` and `sum(B_s)`, so the SFU advantage is not assumed.
 This no-go is an application-scope decision, not a claim that TURN is broken.
 Coturn remains a valid BSD-3-Clause STUN/TURN implementation, and LiveKit
 supports TCP and embedded/external TURN options. Framework capability alone
-does not require enabling every transport in Screener.
+does not require enabling every transport in Piik.
 
 ## SFU Admission Evidence
 
-LiveKit controls do not directly express Screener's resource dimensions:
+LiveKit controls do not directly express Piik's resource dimensions:
 
 - room `maxParticipants` limits participant count;
 - `canPublishSources` is an authorization allowlist;

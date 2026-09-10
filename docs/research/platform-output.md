@@ -2,18 +2,18 @@
 
 Last reviewed: 2026-08-31
 
-This document owns evidence for showing a live Screener session on an AirPlay,
+This document owns evidence for showing a live Piik session on an AirPlay,
 Cast, or Presentation API display. It does not add a product output surface.
 
 ## Current Decision
 
 Do not add an application Cast or AirPlay button yet. Browser or operating-system
-tab/screen mirroring is already usable without Screener integration. The Web
+tab/screen mirroring is already usable without Piik integration. The Web
 platform does not give the current `video.srcObject = MediaStream` a portable
 remote-playback contract.
 
 The only application design worth a physical prototype is a custom Cast
-receiver acting as another authenticated Screener Viewer. It would receive its
+receiver acting as another authenticated Piik Viewer. It would receive its
 own WebRTC route and count toward room and endpoint capacity; it would not reuse
 or fling the controlling Browser's decoded video element.
 
@@ -24,7 +24,7 @@ or fling the controlling Browser's decoded video element.
 Browser and operating-system UI can mirror a tab, window, screen, or media
 element. The W3C Remote Playback model explicitly permits this implementation
 shape but does not standardize its transport, latency, quality, lifecycle, or
-device coverage. Screener needs no adapter for it and cannot claim its result.
+device coverage. Piik needs no adapter for it and cannot claim its result.
 
 ### Media Remoting Or Flinging
 
@@ -55,12 +55,12 @@ application with custom messaging.
 
 That makes a narrow architecture possible: launch a receiver page, deliver a
 short-lived room-scoped Viewer grant over the established control channel, and
-let that page join through the normal Screener Viewer and routing contracts. The
+let that page join through the normal Piik Viewer and routing contracts. The
 grant must not appear in the presentation URL, logs, storage, or device metadata.
 
 This is not accepted product behavior. Google's documented media matrix does
 not promise WebRTC in a Custom Web Receiver, the Presentation API is not a
-cross-Browser surface, and no target receiver has proved Screener's codec,
+cross-Browser surface, and no target receiver has proved Piik's codec,
 autoplay, audio, network, or lifecycle requirements.
 
 ## Physical Acceptance Gate

@@ -13,7 +13,7 @@ The installed Chrome is 152.0.7977.82. Its [DEPS][chromium-deps] pins libwebrtc
 to `6f37672d358475cd17544121a12494da454d85fb`; WebRTC references below use that
 revision, not a floating upstream branch. Source shows available mechanisms,
 not which field trials or hardware encoder a particular runtime selected.
-The Screener comparison uses the `3c192ddd` candidate, not production.
+The Piik comparison uses the `3c192ddd` candidate, not production.
 
 ## Actual Control Ownership
 
@@ -45,7 +45,7 @@ These are connected but different owners:
 
 For example, the adapter can request at most 3/5 of the current pixel count or
 reduce FPS to 2/3 under the corresponding preference. These are upstream rules,
-not proposed Screener constants. The default [encoder minimum][encoder-api] is
+not proposed Piik constants. The default [encoder minimum][encoder-api] is
 320x180 pixels and can be overridden; no universal 108p floor is established.
 VP8's [libvpx adapter][vp8] disables libvpx internal resizing because WebRTC owns
 that work outside the codec. Turning on libvpx resizing alone does not restore
@@ -53,7 +53,7 @@ the omitted control chain.
 
 ### Motion And Simulcast Are Not Synonyms
 
-Screener's `motion` hint becomes `kFluid` in the [Chromium sink][chromium-hint].
+Piik's `motion` hint becomes `kFluid` in the [Chromium sink][chromium-hint].
 [VideoRtpSender][sender-hint] then sets `is_screencast=false`; this follows the
 realtime-video path even for display capture. Explicit degradation preference
 still has precedence over the hint's default. Do not assume all display capture
@@ -584,7 +584,7 @@ software encoder. VSE invokes `OnEncodeStarted` on its encoder queue just
 before the codec call; raw arrival and `OnDiscardedFrame` do not supply CPU
 samples. Replaying dropped inputs as encoded work would misrepresent feedback.
 
-Screener's synchronous drain and latest-input mailbox reduce arrivals into VSE
+Piik's synchronous drain and latest-input mailbox reduce arrivals into VSE
 under this load, but the [same pinned VSE][vse] also skips queued frames before
 calling the CPU observer. Therefore moving admission or reporting source drops
 alone is not an established fix for multi-second encode gaps. Chromium's pinned

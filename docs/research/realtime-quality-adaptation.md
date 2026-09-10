@@ -230,7 +230,7 @@ default screen-share publication can expose original and lower representations,
 and server BWE can forward a lower representation to a constrained subscriber
 while another receives the highest available representation.
 
-Calling the pinned client's own encoding calculator with Screener's exact
+Calling the pinned client's own encoding calculator with Piik's exact
 publish options produces two VP8 encodings for every accepted profile:
 
 | Profile | Lower representation | Original representation |
@@ -239,7 +239,7 @@ publish options produces two VP8 encodings for every accepted profile:
 | 1080p30 | 1/2 scale, 1.25 Mbps, 30 fps | 5 Mbps, 30 fps |
 | 1080p60 | 1/2 scale, 2 Mbps, 60 fps | 8 Mbps, 60 fps |
 
-Both encodings start without an explicit RTP `priority` because Screener's
+Both encodings start without an explicit RTP `priority` because Piik's
 custom `screenShareEncoding` replaces LiveKit's priority-bearing preset while
 retaining its default `simulcast: true`. The audio encoding is `high` priority.
 Priority can only redistribute bandwidth within that PeerConnection and request

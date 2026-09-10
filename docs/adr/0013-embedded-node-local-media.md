@@ -5,7 +5,7 @@
 
 ## Context
 
-The owner accepts one self-contained Screener process for the current STUN and
+The owner accepts one self-contained Piik process for the current STUN and
 SFU services, and one shared encoded-media model for capable Native P2P nodes
 and the SFU. Bundling or supervising coturn/LiveKit executables does not meet
 this requirement. The existing product uses coturn only as STUN, not TURN.
@@ -28,7 +28,7 @@ acceptance. Mature simulcast implementations provide the starting model.
    produce the highest required output and its lower fallbacks, and stop upper
    outputs no child needs. This is not a promise of a single Host encode under
    all conditions. Representation settings come from the chosen media component
-   within Host ceilings, not a new Screener quality score or arbitrary ladder.
+   within Host ceilings, not a new Piik quality score or arbitrary ladder.
 4. Each child receives only its selected output. Multiple active encodings do
    not imply sending every output to every child. Preserve the original input,
    source clock and unaffected siblings. Playback quality, cadence and recovery

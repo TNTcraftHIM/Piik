@@ -136,7 +136,7 @@ It has three concrete failures/limits:
 
 - The secondary sender's `framesSent` stayed zero despite sending the complete
   payload. Its `qualityLimitationReason=none` is not useful proof that the
-  borrowed encoding fits that connection. Existing Screener sender evidence
+  borrowed encoding fits that connection. Existing Piik sender evidence
   cannot consume those counters unchanged.
 - In a VP8 late-join arm, the secondary received bytes but decoded zero frames
   and sent 34 PLI requests. Those requests did not make the primary encoder

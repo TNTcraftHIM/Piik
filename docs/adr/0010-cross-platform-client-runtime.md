@@ -15,12 +15,12 @@
 
 ## Context
 
-The Browser is the current Screener interaction surface, but it cannot own native
+The Browser is the current Piik interaction surface, but it cannot own native
 capture, hardware encode, or reusable native sockets. A self-contained package
 must add those capabilities without creating another room model, signaling
 protocol, route controller, or UI.
 
-Existing Screener room, admission, signaling, and routing behavior already has
+Existing Piik room, admission, signaling, and routing behavior already has
 one TypeScript implementation. Rewriting that behavior in the Helper would make
 Hosted and Local deployments diverge without improving the media path.
 
@@ -37,7 +37,7 @@ topologies and makes a saved Site unavailable while another room source runs.
    core and the same built Browser assets with local configuration; no
    deployment gets a second product core. Its implementation is owned by
    [ADR-0012](./0012-shared-go-backend-core.md).
-2. The packaged product is Screener Client. Its Go process is the cross-platform
+2. The packaged product is Piik Client. Its Go process is the cross-platform
    entry and native capability provider. It starts `/health` and one `/control`
    endpoint on IPv4 loopback within ports `39721` through `39730` before room-
    source selection and retains them until the process exits.
@@ -61,7 +61,7 @@ topologies and makes a saved Site unavailable while another room source runs.
    with the page; a picker, share, or room source does not own the socket. The
    Browser forwards current signaling and remains the participant.
 5. A platform package contains one Go executable carrying the same core and
-   embedded Browser assets used by Hosted Screener. It may also carry one
+   embedded Browser assets used by Hosted Piik. It may also carry one
    process-isolated capture binary and the pinned `cloudflared` sidecar. Those
    sidecars are the only supervised children and keep their bounded lifetime.
    Platform packaging is metadata around that entry, not another long-running
@@ -74,7 +74,7 @@ topologies and makes a saved Site unavailable while another room source runs.
    network permission. Clearing Site data simply requires opening it from the
    Client again.
 7. A self-contained Local deployment serves reachable LAN peers without a
-   central Screener service. Its explicit `--link` mode starts one accountless
+   central Piik service. Its explicit `--link` mode starts one accountless
    Cloudflare Quick Tunnel for the same HTTP/WebSocket surface. The Client
    reserves the exact IPv4 listener before creating that tunnel, then applies
    its HTTPS origin before the server starts serving that listener. It retains the same
@@ -162,7 +162,7 @@ topologies and makes a saved Site unavailable while another room source runs.
     target and must start the assembled Local authority, pass `/healthz`, and
     stop it cleanly before the candidate is accepted.
 14. The root package manifest is the single dependency contract for the Browser
-    bundle and repository tooling. No host installs packages to run Screener, so
+    bundle and repository tooling. No host installs packages to run Piik, so
     the manifest has no runtime half, and no second Client dependency list or
     post-install package surgery is used.
 

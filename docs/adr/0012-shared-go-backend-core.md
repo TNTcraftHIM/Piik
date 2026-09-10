@@ -26,7 +26,7 @@ the same Browser build.
 ## Decision
 
 1. One Go module at the repository root owns the product core.
-   `cmd/screener-server` (Hosted) and `cmd/screener-client` (Client) are entry
+   `cmd/piik-server` (Hosted) and `cmd/piik-client` (Client) are entry
    points over the same `internal/server` packages and own only their defaults,
    reachability, and lifecycle policy. Neither reimplements rooms, admission,
    signaling, or routing. The TypeScript server, its bundled runtime, the process
@@ -65,7 +65,7 @@ the same Browser build.
    [ADR-0002](./0002-memory-resident-protected-rooms.md). Both storage modes,
    their validation, and their failure policy are unchanged, and no build
    requires a C toolchain.
-8. The port changes no contract. Signaling stays `screener-v21`, the Client
+8. The port changed no contract. Signaling stayed on its then-current v21 wire; the Client
    loopback stays v8, capture framing stays v4, and the HTTP API, cookies, error
    codes, and close codes keep their exact shapes. No compatibility alias, dual
    reader, or migration is added for a change of implementation language.

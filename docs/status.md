@@ -23,7 +23,10 @@ and Git/PRs own completed history.
 
 ## Deployment
 
-The experience revision is integrated and deployed; Piik appearance is current.
+The experience revision is integrated and deployed; Piik renaming is current
+branch work and has not been deployed. GitHub repository and local worktree
+paths now use Piik. The strict wire label and stored-key rename require the
+separate [brand cutover](./research/piik-rename-plan.md).
 The immutable release descriptor, runtime `REVISION` and operator deployment
 record own exact identity and postflight results. The
 [schema cutover](./deployment.md#permanent-room-schema-cutover) preserved existing
@@ -35,8 +38,8 @@ Binding-only STUN on UDP 3478/3479/3480 and optional SFU on UDP 7882. nginx owns
 HTTPS; external LiveKit/coturn services remain disabled. Participants, routes and
 media remain process-only. This private service is not a public demonstration.
 
-[TODO](./todo.md) owns appearance, renaming, distribution
-and ablation work. No public site or bulk rename belongs to this release.
+[TODO](./todo.md) owns rename acceptance, distribution and ablation work.
+The public website is a later phase.
 
 ## Media Evidence And Limits
 

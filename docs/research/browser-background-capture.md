@@ -208,4 +208,4 @@ copies no source code and adds no dependency. W3C material uses the
 [W3C Document License](https://www.w3.org/copyright/document-license-2023/).
 Chromium and WebRTC source files carry BSD-style licenses. Chrome for Developers
 prose is CC BY 4.0, with samples under Apache 2.0. These sources are evidence
-only; their implementations are not incorporated into Screener.
+only; their implementations are not incorporated into Piik.

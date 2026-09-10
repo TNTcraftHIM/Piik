@@ -137,9 +137,11 @@ state. A different current-revision file may be supplied as its only argument.
 
 ## Permanent-Room Schema Cutover
 
-Schema 2 / signaling `piik-v23` requires matching Web/Client/Server builds
-and an accepted active-session interruption. Native control stays v9; Browser
-credential keys stay unchanged. This is not an app-only release.
+The schema 2 / signaling v23 cutover required matching Web/Client/Server builds
+and an accepted active-session interruption. Native control stayed v9; that
+schema change preserved Browser credential keys. It was not an app-only release.
+The separate [brand cutover](./research/piik-rename-plan.md) must preserve this
+database rather than repeat the schema change.
 
 1. Verify the candidate; record the current release, environment, absolute DB
    path and ownership. Stop ingress and the old application; take and retain a

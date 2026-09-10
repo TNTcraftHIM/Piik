@@ -132,7 +132,7 @@ function writeMacAssets(packageRoot, revision, entries) {
       "<key>CFBundleDisplayName</key><string>Piik Client</string>",
       "<key>CFBundleExecutable</key><string>Launcher</string>",
       "<key>CFBundleIconFile</key><string>piik.icns</string>",
-      "<key>CFBundleIdentifier</key><string>icu.bonfire.piik.client</string>",
+      "<key>CFBundleIdentifier</key><string>tv.piik.client</string>",
       "<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>",
       "<key>CFBundleName</key><string>Piik Client</string>",
       "<key>CFBundlePackageType</key><string>APPL</string>",

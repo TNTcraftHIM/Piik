@@ -7,30 +7,25 @@ and Git/PRs own completed history. A parked idea is not implementation authority
 
 ## Now
 
-Resume the [Piik brand study](./design/piik-brand.html) on the appearance branch
-from current main. Keep round i dots and the familiar TV silhouette; the tiny-e
-experiment was rejected. Display `Piik` and technical `piik` remain proposals.
-Settle identity before coordinated renaming or the public-site implementation.
+Complete the owner-authorized [Piik rename](./research/piik-rename-plan.md).
+Display `Piik`, technical `piik` and the repository name are accepted. The
+product keeps its TV mascot; the wordmark/morph study belongs to the future
+public website. Finish package/metadata checks and the isolated Git-message
+rewrite rehearsal before a coordinated Web/Client/Server cutover. Preserve the
+original repository backup and external-audit worktree.
+
+The Browser storage namespace and Client configuration directory change with
+the name. Preservation versus an explicit reset is awaiting the owner's answer;
+only their final cutover is dependent on that choice. Do not silently strand
+existing Host authority or reset the SQLite database.
 
 ## Next — Awaiting Owner Direction
 
-After the brand discussion, rename display copy, Go/npm source identity,
-Client/Server packages and OS icons, strict protocol/service identifiers,
-diagnostic redaction, configuration and deployment tooling in one coordinated
-phase. Inventory is complete. Browser storage contains room authority/grants
-and Client configuration contains a saved Site; decide preservation/reset
-explicitly before renaming their keys or directories. Preserve SQLite room
-authority when changing deployment paths. Use matching Web/Client/Server
-artifacts and one current reader/writer, without compatibility aliases.
-Keep third-party names/notices and historical evidence attribution accurate.
-
 The owner owns **piik.tv**.
-Agree on casing, TV mascot/wordmark treatment, repository and runtime identifiers,
-release names and the GitHub Pages website before implementing the rename.
-Keep one current internal contract and remove replaced names in the coordinated
-change; no private compatibility aliases. Existing sketches are input, not an
-accepted identity. Do not configure DNS/Pages or publish the brand before that
-design discussion. The private production service is not a public demo.
+Design the GitHub Pages website around the accepted brand study. Keep one
+current internal contract; third-party names/notices remain accurate. DNS/Pages
+and public publication are separate from the repository rename. The private
+production service is not a public demo.
 
 Include the owner-requested frontend/backend ablation review in that phase.
 Review duplicated behavior/state, module boundaries, interface clarity, lifecycle

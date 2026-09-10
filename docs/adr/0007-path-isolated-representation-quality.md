@@ -12,12 +12,12 @@ implementation; [media quality](../product/media-quality.md) owns current behavi
 
 ## Context
 
-Screener sends one realtime game-screen source through independent P2P
+Piik sends one realtime game-screen source through independent P2P
 connections and, when needed, one shared LiveKit publication. WebRTC and
 LiveKit already own congestion control, encoder adaptation, retransmission,
 simulcast construction, subscriber bandwidth estimation, and layer selection.
 
-Earlier experiments added a Screener-defined lower SFU encoding and treated
+Earlier experiments added a Piik-defined lower SFU encoding and treated
 quality preference as an application policy. Production evidence showed that
 an always-active lower encoding can compete with the highest encoding on a
 constrained Host-to-SFU path. It did not justify replacing LiveKit's native
@@ -123,7 +123,7 @@ than claiming complete source isolation.
 
 ## Consequences
 
-- Screener owns fewer media mechanisms and follows the pinned frameworks'
+- Piik owns fewer media mechanisms and follows the pinned frameworks'
   supported control surfaces.
 - A capable Browser Host or relay can use H.264 hardware encoding while another
   sender remains on VP8 without a room-protocol branch; the Host can explicitly
@@ -136,7 +136,7 @@ than claiming complete source isolation.
   outbound video sender but no additional capture or encoder beyond the sender
   that already exists.
 - A Host may need to lower its explicit share profile when encoder or uplink
-  capacity is insufficient; Screener does not silently remove constrained
+  capacity is insufficient; Piik does not silently remove constrained
   Viewer support.
 - ADR-0005's native-edge local convergence is deployed and performs bounded
   real-candidate comparisons without owning media adaptation. Weighted or global
@@ -144,7 +144,7 @@ than claiming complete source isolation.
 
 ## Stop Lines
 
-- No Screener resolution/FPS/bitrate ladder or representation formula.
+- No Piik resolution/FPS/bitrate ladder or representation formula.
 - No codec wire/state, GPU/MFT allowlist, persistent codec cache, parallel
   VP8/H.264 route, active-edge codec churn, or LiveKit backup publication. The
   local pre-share Host selector is the only manual codec surface.

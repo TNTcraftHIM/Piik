@@ -5,7 +5,7 @@ Baseline: `3da8ecd22a3499e660f498e527ad4ffbaef08c82`.
 
 ## Goal
 
-The owner requests source/library-level STUN and SFU inside the Screener Go
+The owner requests source/library-level STUN and SFU inside the Piik Go
 process. Bundled coturn/LiveKit executables, automatic installers, subprocess
 supervision and embedding the full LiveKit service do not meet this goal.
 The owner has also agreed to [node-local adaptive reuse](./node-local-adaptation.md):
@@ -25,7 +25,7 @@ meet this requirement and is not an SFU replacement candidate.
 Retain H264/VP8, Opus, per-subscriber adaptation, retransmission, recovery and
 the existing three STUN destinations. Do not trade weak-Viewer experience for a
 smaller package, invent an application quality score or add a media ladder.
-The media library, not Screener, must own congestion and layer decisions.
+The media library, not Piik, must own congestion and layer decisions.
 No recording, mixing, TURN relay, public port scanning or production test.
 Selective local transcoding is now in research scope under the agreed model;
 the existing fanout-only probe does not establish that capability.
@@ -53,7 +53,7 @@ because its example compiles. Keep test executables under the worktree's stable
   v3 and ICE v2. Do not introduce another older media stack by default.
 - inlivedev/sfu uses Pion WebRTC v4 and exposes room/client APIs. Its README
   explicitly warns that its API is early-stage; listed features are claims to
-  verify, not proof of Screener's required behavior.
+  verify, not proof of Piik's required behavior.
 - Galene is useful architectural reference, not yet an accepted library adapter.
 
 ## Current Evidence
@@ -91,7 +91,7 @@ Do not add that second transport merely to change the service's name.
 WHIP is HTTP signaling for WebRTC ingest, not a replacement media transport.
 Its no-renegotiation constraint must be checked against live audio/source changes;
 it is not adopted merely because the request/response looks simpler. The current
-Screener signaling owner remains authoritative during this evaluation.
+Piik signaling owner remains authoritative during this evaluation.
 
 ## Sources
 

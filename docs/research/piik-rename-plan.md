@@ -1,75 +1,131 @@
-# Piik rename plan
+# Piik rename
 
-Status: active planning document for the pre-publication rename.
+Status: implementation and isolated history rehearsal; release cutover pending.
+Last reviewed: 2026-09-10.
 
-## Goal
+## Accepted identity
 
-Rename the active product, repository-facing code, documentation and release
-surface from Screener to Piik while keeping the product mascot-only. The Piik
-wordmark and the Piik-to-mascot animation remain website and brand-study
-material, not runtime UI.
+Display `Piik`; use `piik` for executable, package, environment and service
+identifiers. GitHub is `TNTcraftHIM/Piik`; the Go module follows that exact case.
+The native macOS bundle identifier is `tv.piik.client`.
+The product keeps its TV mascot. The wordmark and morph animation remain in the
+[brand study](../design/piik-brand.html) for the future public website.
 
-## Recovery point
+This is a private pre-release rename. It changes names and deployment identity,
+not media policy, routing, capture behavior or SQLite room semantics.
 
-Before this phase, the complete local Git refs were exported to:
+## Recovery and local metadata
 
-External local backup: `piik-rename-backup-a8c4df6f98db/repository.bundle`.
+The external `Piik-recovery/rename-20260910` directory contains a verified
+`repository.bundle` and a complete `git-metadata` copy. The latter preserves
+reflogs and all ten stash entries, which a bundle of ordinary refs alone does
+not capture. Earlier recovery bundles also remain outside the repository.
+Backups keep their original names and contents so they remain identifiable.
 
-The same directory contains `refs.txt`, `worktrees.txt`, `status.txt` and
-`head.txt`. A second recovery bundle was created after the first rename commit
-as `piik-rename-backup-2e7da3a37d50/repository.bundle`. The bundle is the
-recovery source for this phase; no history rewrite is allowed without creating
-and validating another bundle first.
+The main directory is `Piik`; linked worktrees are `Piik-appearance`,
+`Piik-rename` and `Piik-external-audit`. Their private Git registration names,
+backlinks and shared remote are updated. The hook path is relative `.githooks`.
+The audit worktree's branch and source revision remain untouched. Main remains
+on the deployed experience revision until integration.
 
-## Rename classes
+On Windows, a terminal can hold the repository directory open. Move the entries
+into an empty verified destination and run `git worktree repair` from the new
+main directory. Do not terminate the user's terminal to release a path.
+Existing firewall rules name executable paths, so moved build binaries require
+their corresponding path rules to be reviewed before network acceptance.
 
-1. **Display and documentation:** product name, README, guides, website copy,
-   screenshots, release notes and public asset labels. These are safe to change
-   together.
-2. **Repository and package identity:** repository URL, Go module path, package
-   names, executable names, client folders and release asset names. These are
-   coordinated release changes.
-3. **Operational contracts:** environment variables, systemd unit/user/path,
-   deployment directories, service names and release API URLs. These require one
-   cutover and a tested upgrade path.
-4. **Wire and persisted contracts:** signaling protocol labels, browser storage
-   keys and database metadata. Rename only with an explicit version boundary;
-   do not add dual readers or compatibility aliases.
-5. **Git history:** keep existing commits, tags, audit evidence and revision
-   identifiers unchanged. Rewriting all commit messages changes every descendant
-   SHA and invalidates external audit and deployment references for no product
-   benefit. A separate archival rewrite would be a different project.
+## Runtime and data boundary
 
-## Order
+`piik-v23` and `piik-client-v9` are new exact protocol labels. Their message
+schemas retain versions 23 and 9; the full label, not only its numeric suffix,
+is checked. Native capture remains v7. Release Web, Server, Client and capture
+artifacts together; old pages and installed Clients cannot interoperate across
+the renamed control boundary. No alternate protocol reader is introduced.
 
-1. Inventory every active reference and classify it before editing.
-2. Rename display, docs, assets and source identifiers on this branch.
-3. Rename executable, service and release paths in one deployable cutover.
-4. Decide the protocol/storage version boundary from the current production
-   client set; update tests and deployment checks together.
-5. Build and run focused checks, then package server and client artifacts.
-6. Deploy a canary, verify old room links, new client/server interop, releases,
-   debug export and rollback from the saved bundle.
-7. Rename the GitHub repository only after the code cutover is accepted. Update
-   local remotes, workflow references, release URLs and the custom Pages domain.
+SQLite schema 2, its application ID, room codes, token/grant digests and password
+material remain unchanged. The four-byte database file identity is a format
+constant, not display branding. Copy the database only while the old process is
+stopped, verify integrity and retained columns, and preserve the original for
+rollback. Do not recreate rooms or repeat the earlier schema-1 cutover.
 
-## Risks and gates
+The implementation renames Browser storage prefixes, the site-access cookie
+and the Client configuration/cache directory. Those are real persistent
+contracts. Without a one-time transfer, old Host credentials and saved settings
+remain in the old namespace and become unreadable by the new product. The
+owner is choosing data preservation versus an explicit reset. No production
+cutover or local configuration move may silently decide that choice.
 
-- Existing production pages and clients may still speak the current signaling
-  label. A protocol rename is a deliberate breaking boundary, not a cosmetic
-  replacement.
-- Existing deployments may depend on `SCREENER_*`, `/opt/screener`,
-  `screener.service` and `screener-server`. The release must replace these
-  atomically or the deployment gate fails.
-- GitHub repository renames redirect most repository traffic, but GitHub does not
-  redirect Actions hosted by a renamed repository; project Pages URLs are also a
-  separate case. Use `piik.tv` as the stable public Pages origin.
-- `Piik` is already used by unrelated software, including `piik.me` and a mobile
-  app. Do a basic name/domain collision review before public publication.
+## Git history
 
-## Acceptance
+The owner authorized replacing the old name in Git history. Use the maintained
+`git-filter-repo` tool in a fresh, separate bare clone, never in the working
+repository. Scope this to commit/tag **messages**: historical source snapshots,
+authorship, dates and topology remain factual. Current tracked prose and code
+use the accepted identity; old snapshots remain recoverable at their mapped
+commits and in the original archive.
 
-The phase is complete only when a clean checkout contains no active Screener
-product identity outside explicitly retained historical/protocol evidence,
-server and client packages build, the production canary works, rollback is
-rehearsed, and the repository rename can be performed without a code change.
+The initial inventory found two matching commit bodies and no matching commit
+subjects or tag names. A small text change still changes descendant SHAs and
+invalidates their commit signatures. Preserve `commit-map` and `ref-map`; verify
+equal commit counts, identical source trees, mapped parents, authors and dates,
+no dropped commits and a clean repository integrity check. No replacement refs,
+duplicate compatibility branches or history-rewriting tool enter the product.
+
+The rehearsal verified all 546 reachable branch/tag commits: exactly two messages
+changed, all file trees and mapped parent relationships match, and authors/dates
+are preserved. Standard filtering rewrote 545 IDs and removed 374 signatures.
+Those signatures remain verifiable only in the original archive; a rewritten
+commit must not be presented as preserving its earlier GitHub verification.
+
+Apply a reviewed message rewrite only with the coordinated brand integration,
+using explicit ref targets and old-SHA leases. Do not use `push --mirror` from
+the rehearsal: it could overwrite unrelated refs. Preserve the external audit
+branch and stash history in the original repository. Old audit/deployment SHAs
+remain evidence identifiers, interpreted through the archive and commit map.
+
+## Operational cutover
+
+The following old identifiers are retained here only as operator recovery
+inputs, not as runtime aliases:
+
+| Surface | Before | After |
+| --- | --- | --- |
+| Service, user and group | `screener` | `piik` |
+| Installation root | `/opt/screener` | `/opt/piik` |
+| Environment file | `/etc/screener/screener.env` | `/etc/piik/piik.env` |
+| Branded environment prefix | `SCREENER_` | `PIIK_` |
+| Browser storage prefix | `screener:` | `piik:` |
+| Client config directory | `Screener` | `Piik` |
+
+Prepare the new immutable artifacts, service/environment/proxy configuration,
+permissions and database path before stopping the old service. Record original
+configuration and ownership for recovery. Do not run two room authorities on
+the same database or two media services on the same UDP ports.
+
+The routine `deploy/release-app.sh` assumes an existing **Piik** installation.
+It is not the first brand migration tool: its old-release checks and recovery
+target the Piik service/binary. Perform the first name cutover as one explicit
+infrastructure operation, then use the ordinary wrapper for future releases.
+On failure, stop the candidate and restore the old binary, service, environment,
+proxy and data together before reopening ingress.
+
+GitHub is already renamed and the remote works. There are no published releases
+or Pages site to migrate. Keep repository visibility private; `piik.tv` DNS and
+Pages publication remain a separate website task. Old GitHub deployment/PR
+records describe earlier operations and are not rewritten as new releases.
+
+## Validation and references
+
+Acceptance covers the tracked-name inventory, Web type/build checks, relevant
+contract/storage tests, native compilation, Client/Server packaging and a
+controlled local launch. Production release additionally requires credential
+preservation/reset acceptance, configuration/database recovery and postflight.
+
+Primary references, checked 2026-09-10:
+
+- [Git worktree repair](https://git-scm.com/docs/git-worktree): repair both
+  directions after moving the main repository or linked worktrees.
+- [git-filter-repo](https://github.com/newren/git-filter-repo/blob/main/Documentation/git-filter-repo.txt):
+  message replacement, fresh clones and old/new commit maps.
+- [GitHub repository rename](https://docs.github.com/en/repositories/creating-and-managing-repositories/renaming-a-repository):
+  ordinary URL redirects do not cover repository-hosted Actions or project Pages.

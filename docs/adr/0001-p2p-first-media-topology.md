@@ -5,7 +5,7 @@
 
 ## Durable Rationale
 
-Screener serves one broadcaster and a small group of trusted friends. Low
+Piik serves one broadcaster and a small group of trusted friends. Low
 latency, private access, browser viewing, and low server media cost matter more
 than public-broadcast scale. Direct WebRTC therefore remains the preferred
 media path, while centralized media is fallback infrastructure rather than the

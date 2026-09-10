@@ -12,7 +12,7 @@ describe the earlier implementation and its production history.
 
 ## Context
 
-Direct Browser WebRTC gives Screener its desired latency and distributed cost,
+Direct Browser WebRTC gives Piik its desired latency and distributed cost,
 but one Host cannot fan out to every Viewer and some endpoint pairs cannot
 establish usable direct media. The product needs automatic peer distribution and
 bounded server fallback without exposing topology choices to users or turning
@@ -214,7 +214,7 @@ tokens. Replacement, abort, timeout, confirmed media-participant loss, share
 rollover, stop, and room deletion transfer the resources they own into the same typed drain path.
 Only successful room deletion plus an absence readback releases that generation,
 so a stale token cannot recreate off-ledger media. The deployment must dedicate
-the LiveKit namespace to Screener and complete startup ownership/cleanup before
+the LiveKit namespace to Piik and complete startup ownership/cleanup before
 accepting traffic; [self-hosting operations](../operations/self-hosting.md) owns
 that procedure.
 
@@ -236,7 +236,7 @@ capacity poll or second resource-specific controller.
 
 Ordinary Peers use deployment STUN only. Browser SFU PeerConnections use an
 empty external ICE-server list while retaining LiveKit-signaled UDP candidates.
-Screener configures no TURN, ICE/TCP, media TCP, or TLS-relayed media. A future
+Piik configures no TURN, ICE/TCP, media TCP, or TLS-relayed media. A future
 strict-firewall transport must be accepted as a LiveKit-internal capability, not
 as another application route candidate.
 
@@ -270,7 +270,7 @@ they mean only one complete same-identity `qualityLimitationReason` delta in
 experiment; it does not locate the physical bottleneck or prove end-to-end
 quality. `other`, missing, reset, hidden, or stale evidence is unknown. SFU
 publication and subscription state remains owned by LiveKit plus the exact
-Viewer's continuing decoded progress. Screener does not combine loss, RTT,
+Viewer's continuing decoded progress. Piik does not combine loss, RTT,
 jitter, bitrate, FPS, resolution, or freezes into a weighted route score.
 
 Routing degradation requires three consecutive complete degraded deltas for the
