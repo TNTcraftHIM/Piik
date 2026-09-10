@@ -20,8 +20,10 @@ Web and Go checks pass.
 Snapshots now carry keyed media-failure facts that the presentation layer
 resolves during render, so a language switch re-renders instead of leaving
 stale copy; the same pass removed the vestigial `sourceSwitchNotice` warning
-parameter. Runtime lifecycles and a source index for re-orienting a fresh
-review live in `docs/reference/engineering.md`.
+parameter, wired the previously unrun packaging-target check into vitest, and
+linked four evidence documents from their owners. Runtime lifecycles and a
+source index for re-orienting a fresh review live in
+`docs/reference/engineering.md`.
 
 This audit does not replace physical mixed-version or target-package acceptance
 from the lifecycle plan below.

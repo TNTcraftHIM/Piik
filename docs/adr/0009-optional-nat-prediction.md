@@ -107,6 +107,8 @@ RTP packets to an independent Linux Pion Viewer over a selected direct
 host-to-srflx pair. This proves the shared-socket candidate carries DTLS-SRTP;
 the tested TUN network exposed only one distinct public mapping, so it does not
 prove a predicted candidate win.
+Survey inputs, platform limits and the measured boundaries live in
+[NAT traversal research](../research/nat-traversal.md).
 The current Native path maps selected Pion candidate foundations to the same
 anonymous `ordinary | predicted | unknown` evidence as Browser ICE.
 

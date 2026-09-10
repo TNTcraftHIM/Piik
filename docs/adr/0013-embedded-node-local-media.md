@@ -120,3 +120,4 @@ is introduced.
 - [RTP switching and source projection, RFC 7667](https://www.rfc-editor.org/rfc/rfc7667)
 - [LiveKit demand envelope](https://github.com/livekit/livekit/blob/v1.13.6/pkg/rtc/dynacast/dynacastmanagervideo.go)
 - [Implementation proposal and reuse map](../research/node-local-media-design.md)
+- [Embedded media evaluation](../research/embedded-media.md)

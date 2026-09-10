@@ -5,6 +5,8 @@
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "bundler",
+    // Tests import the plain-ESM tooling modules under scripts/.
+    "allowJs": true,
     "jsx": "react-jsx",
     "types": ["node", "vitest/globals"],
     "skipLibCheck": true,

@@ -90,6 +90,9 @@ code-only attempts and does not silently revoke invitations.
   choice and optional Local site-access password, not rooms or media state. A
   blank password leaves that local site open.
 
+Persistence evidence, limits and the earlier cross-restart evaluation live in
+[cross-restart recovery research](../research/cross-restart-room-recovery.md).
+
 The App opens its own localhost Host page with the configured password, when
 present, in a fragment. The page removes the fragment and uses the existing
 SiteAccess endpoint; this does not create a fourth admission authority. LAN and

@@ -114,6 +114,18 @@ a dependency without a separate accepted decision.
    parameter of `sourceSwitchNotice`, `null` at both call sites, was removed
    with its test-only branch, and three English-only native failures gained
    localized keys.
+9. **Dead verification test (confirmed defect).** `scripts/client-package-targets.test.mjs`
+   used `node:test`, but no runner included it: vitest only collects
+   `tests/**/*.test.ts` and no script invoked `node --test`, so its cgo-policy
+   assertion never ran. It is now `tests/client-package-targets.test.ts` under
+   the standard entry point; the tools TypeScript program allows JavaScript so a
+   test can import that plain-ESM tooling module.
+10. **Orphaned evidence documents (ownership cleanup).**
+    `docs/adr/0008-window-scoped-audio-capture.md` and
+    `docs/research/nat-traversal.md`, `embedded-media.md` and
+    `cross-restart-room-recovery.md` had no inbound link from the owner that
+    depends on them. Each is now cited by `media-quality.md`, ADR-0009, ADR-0013
+    and `rooms-access.md` respectively; the orphan sweep is now empty.
 
 ## Deferred Tradeoffs
 
@@ -136,7 +148,7 @@ a dependency without a separate accepted decision.
 
 ## Verification
 
-- `npm run check`: TypeScript build, 710 tests across 54 files and the production
+- `npm run check`: TypeScript build, 711 tests across 55 files and the production
   Browser bundle passed.
 - `tests/media-failure.test.ts` covers fact resolution per language, param-key
   joining, list rendering and literal variables; stale copy is now
@@ -182,6 +194,12 @@ Checked after the change landed, against the ways this pass could be wrong:
   longer bails out on identical primitive values. `syncHostSfuQualityWarning`
   runs only on quality changes, route transitions and SFU config - never per
   frame or per evidence message - so no structural-equality helper was added.
+- **Mechanical sweeps after the fixes.** Zero unreferenced copy keys across 394
+  catalog entries, zero unused icons across 49, zero orphan documents, zero
+  unreferenced `scripts/` tools, and every environment identifier read by Go is
+  either operator-documented or a test/sidecar-only handshake value. The
+  unreferenced npm aliases that remain are one-line operator conveniences over
+  real scripts (`gate:*`, `package:client*`, `test:watch`), so they stay.
 - **UX deltas reviewed.** The only user-visible copy change is the
   missing-video-track path, which now reports "no shareable screen source"
   instead of "failed to create the connection"; Viewer failures no longer
