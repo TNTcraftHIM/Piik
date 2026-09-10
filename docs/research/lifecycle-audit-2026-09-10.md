@@ -5,7 +5,9 @@
 - Scope: Piik-owned Browser/App orchestration, Server room/route effects,
   media/resource ownership, and interface/release scripts. Upstream dependency
   internals and deferred physical-device matrices are outside this pass.
-- Status: in progress; no repair or compatibility claim is made by this record.
+- Status: static/automated audit pass complete. Physical mixed-version and
+  target-package acceptance remain explicitly pending; no broad compatibility
+  claim is made by this record.
 
 ## Method
 
@@ -20,9 +22,9 @@ and state sequence.
 
 | Area | Status | Evidence and limits |
 | --- | --- | --- |
-| Browser Host/Viewer orchestration | In review | `HostPage.tsx`, `ViewerPage.tsx`, App entry, presentation/media adapters; static ownership trace plus focused existing tests |
-| Server room/route effects | In review | Room store, route controller, signaling serialization, unlocked password/media work and terminal cleanup |
-| Native/media resources | In review | Loopback/control sessions, capture sidecars, WebRTC peers, encoded outputs, SFU routes and relay fanout |
+| Browser Host/Viewer orchestration | Static pass complete | Host source/quality/native ownership, Viewer route/media proof/recovery, App discovery and unmount cleanup |
+| Server room/route effects | Static pass complete | Room KDF commit/revalidation, route resource release, session guards, shutdown/drain and unlocked password work |
+| Native/media resources | Static pass complete | Loopback/control sessions, capture replacement, host/viewer media edges, encoded groups, SFU routes and relay fanout |
 | Interface/release contracts | Initial pass complete | Shared protocol/fixtures, descriptive capability metadata, release planning/publishing, update readers and workflow/manual paths |
 
 ## Initial Interface/Release Observations
@@ -56,6 +58,51 @@ and state sequence.
   quality draft and replayed by the source-switch owner when it releases the
   share. A focused ownership test covers rejection during the switch and commit
   after replay.
+
+## Non-Findings And Evidence
+
+- Host start/stop, room replacement/access waits, App picker preview/start and
+  unmount retirement recheck the active generation, share identity, room
+  mutation token and current resource reference after awaits. The reviewed
+  stale paths either retire only their own resource or leave the replacement
+  owner untouched.
+- Viewer pending-route activation, active edge failure, decoded-frame proof,
+  page suspension and teardown distinguish current and obsolete media bindings.
+  A late callback from a discarded Browser or Native peer does not promote its
+  stream or connection identity.
+- Room password work holds the documented begin/derive/commit sequence. Creation
+  rechecks capacity; replacement/password changes recheck pointer identity and
+  Host ownership; viewer login rechecks room object, material and live session.
+  Route controller results return owned resources for the signaling layer to
+  retire; room close waits for exact physical resources and SFU drains.
+- Native `updateMu` serializes profile/source replacement. A replacement capture
+  is committed atomically, the old stream is retired, and the response waits for
+  that exact stream installation or owner cancellation. Native viewer and relay
+  consumers retire their own receiver/edge while sharing the control client.
+- Browser encoding-pool membership is reference-counted by actual current or
+  pending groups. Failure falls back that source to ordinary senders, prune
+  disposes unreferenced producers, and pool dispose removes every member before
+  pruning. This pass found no cross-source retirement authority.
+
+## Automated Evidence
+
+- Focused Host ownership test: 20 passed after the repair.
+- TypeScript typecheck passed.
+- `go test ./internal/server/...` passed across app, config, ordered, protocol,
+  room, route, SFU, signal, STUN and webassets packages.
+- `go test ./internal/app/...` passed across App, browser/launcher/loopback,
+  mediaedge, native audio/capture/control/host/viewer, port mapping and tunnel.
+- Full deterministic Web check passed after the repair: 53 files, 709 tests,
+  production Browser build. `-race` was not run: this Windows host has no C
+  compiler in PATH, so Go race detection cannot build.
+
+## Remaining Acceptance
+
+This static pass does not replace the already-owned public-release boundary:
+use two real builds with a supported common contract, check stale open pages,
+exercise Windows App/Go Server candidates and retained room/config authority,
+and rehearse manual release scripts. macOS/Linux physical capture and broad
+network/endurance matrices remain deferred as before.
 
 ## Repair Rule
 
