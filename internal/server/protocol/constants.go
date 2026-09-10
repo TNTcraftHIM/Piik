@@ -1,4 +1,4 @@
-// Package protocol is the Go owner of the Screener wire contract. It mirrors
+// Package protocol is the Go owner of the Piik wire contract. It mirrors
 // src/shared/protocol.ts (zod schemas) plus the four shared scalar helpers
 // (media-copy-accounting.ts, nat-candidate.ts, packet-loss.ts,
 // video-codec-evidence.ts). The package performs no I/O and imports nothing
@@ -13,7 +13,7 @@ const (
 	MaxViewersPerRoomLimit      = 20
 	MaxParticipantsPerRoomLimit = MaxViewersPerRoomLimit + 1
 	MaxSignalBytes              = 64 * 1024
-	SignalingProtocol           = "screener-v23"
+	SignalingProtocol           = "piik-v23"
 	RoomCodeLength              = 4
 	MaxMediaRouteRevision       = MaxSafeInteger
 	MaxIceServerURLs            = 8

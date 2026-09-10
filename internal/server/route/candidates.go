@@ -5,7 +5,7 @@ import (
 	"slices"
 	"sort"
 
-	"github.com/TNTcraftHIM/Screener/internal/server/protocol"
+	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 )
 
 // buildCandidates ports 2767: the full plan list filtered by the

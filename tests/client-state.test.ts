@@ -350,7 +350,7 @@ describe("client session identity", () => {
       hostToken: "a".repeat(32),
       canonicalUrl: "https://share.test/r/1234",
     });
-    expect(values.get("screener:host-room:v1")).toBe(
+    expect(values.get("piik:host-room:v1")).toBe(
       JSON.stringify({
         roomId: "1234",
         hostToken: "a".repeat(32),
@@ -358,67 +358,67 @@ describe("client session identity", () => {
       }),
     );
     expect([...values.values()].join(" ")).not.toContain(`${"b".repeat(21)}A`);
-    expect(session.get("screener:host-room:v1")).toBe(values.get("screener:host-room:v1"));
+    expect(session.get("piik:host-room:v1")).toBe(values.get("piik:host-room:v1"));
     clearHostRoom();
     expect(await readHostRoom()).toBeNull();
   });
 
   it("restores an origin resume hint only after claiming its room", async () => {
     const { local, session, request } = hostRoomStorage();
-    local.set("screener:host-room:v1", JSON.stringify(storedHost("1234", "h".repeat(32))));
+    local.set("piik:host-room:v1", JSON.stringify(storedHost("1234", "h".repeat(32))));
     expect(await readHostRoom()).toEqual({
       roomId: "1234",
       hostToken: "h".repeat(32),
       canonicalUrl: "https://share.test/r/1234",
     });
-    expect(JSON.parse(session.get("screener:host-room:v1")!)).toEqual(JSON.parse(local.get("screener:host-room:v1")!));
-    expect(request).toHaveBeenCalledWith(expect.stringMatching(/^screener:host-room:1234:[a-f0-9]{64}$/), { ifAvailable: true }, expect.any(Function));
+    expect(JSON.parse(session.get("piik:host-room:v1")!)).toEqual(JSON.parse(local.get("piik:host-room:v1")!));
+    expect(request).toHaveBeenCalledWith(expect.stringMatching(/^piik:host-room:1234:[a-f0-9]{64}$/), { ifAvailable: true }, expect.any(Function));
     expect(request.mock.calls[0]![0]).not.toContain("h".repeat(32));
   });
 
   it("keeps stored room authority despite unowned metadata and discards malformed records", async () => {
     const { local: values, session } = hostRoomStorage();
-    values.set("screener:host-room:v1", JSON.stringify({ ...storedHost(), unusedMetadata: 123 }));
+    values.set("piik:host-room:v1", JSON.stringify({ ...storedHost(), unusedMetadata: 123 }));
     expect(await readHostRoom()).toEqual({
       roomId: "1234", hostToken: "a".repeat(32), canonicalUrl: "https://share.test/r/1234",
     });
-    expect(JSON.parse(session.get("screener:host-room:v1")!)).toEqual(storedHost());
+    expect(JSON.parse(session.get("piik:host-room:v1")!)).toEqual(storedHost());
     releaseHostRoom();
-    session.delete("screener:host-room:v1");
-    values.set("screener:host-room:v1", "not-json");
+    session.delete("piik:host-room:v1");
+    values.set("piik:host-room:v1", "not-json");
     expect(await readHostRoom()).toBeNull();
-    expect(values.has("screener:host-room:v1")).toBe(false);
+    expect(values.has("piik:host-room:v1")).toBe(false);
   });
 
   it("rejects a copied tab room while another tab holds it without deleting that hint", async () => {
     const { local, session } = hostRoomStorage("held");
     const saved = JSON.stringify(storedHost());
-    local.set("screener:host-room:v1", saved);
-    session.set("screener:host-room:v1", saved);
+    local.set("piik:host-room:v1", saved);
+    session.set("piik:host-room:v1", saved);
     expect(await readHostRoom()).toBeNull();
-    expect(session.has("screener:host-room:v1")).toBe(false);
-    expect(local.get("screener:host-room:v1")).toBe(saved);
+    expect(session.has("piik:host-room:v1")).toBe(false);
+    expect(local.get("piik:host-room:v1")).toBe(saved);
   });
 
   it("prefers this tab's room over another tab's latest hint and preserves that hint when forgotten", async () => {
     const { local, session } = hostRoomStorage();
-    session.set("screener:host-room:v1", JSON.stringify(storedHost()));
+    session.set("piik:host-room:v1", JSON.stringify(storedHost()));
     const other = JSON.stringify(storedHost("5678", "b".repeat(32)));
-    local.set("screener:host-room:v1", other);
+    local.set("piik:host-room:v1", other);
     expect(await readHostRoom()).toMatchObject({ roomId: "1234" });
     clearHostRoom();
-    expect(session.has("screener:host-room:v1")).toBe(false);
-    expect(local.get("screener:host-room:v1")).toBe(other);
+    expect(session.has("piik:host-room:v1")).toBe(false);
+    expect(local.get("piik:host-room:v1")).toBe(other);
   });
 
   it("retains both records on unmount, reclaims on refresh, and releases the old claim on rotation", async () => {
     const { local, session, held, request } = hostRoomStorage();
     const room = storedHost();
     await writeHostRoom({ ...room, codeEntryPolicy: "open" });
-    const stored = local.get("screener:host-room:v1");
+    const stored = local.get("piik:host-room:v1");
     releaseHostRoom();
-    expect(session.get("screener:host-room:v1")).toBe(stored);
-    expect(local.get("screener:host-room:v1")).toBe(stored);
+    expect(session.get("piik:host-room:v1")).toBe(stored);
+    expect(local.get("piik:host-room:v1")).toBe(stored);
     expect(await readHostRoom()).toMatchObject({ roomId: "1234" });
     expect(request).toHaveBeenCalledTimes(2);
     await writeHostRoom({ ...storedHost("5678", "b".repeat(32)), codeEntryPolicy: "open" });
@@ -428,7 +428,7 @@ describe("client session identity", () => {
 
   it("coalesces concurrent restoration and preserves records when an unmounted restore is cancelled", async () => {
     const { local, session, request } = hostRoomStorage();
-    local.set("screener:host-room:v1", JSON.stringify(storedHost()));
+    local.set("piik:host-room:v1", JSON.stringify(storedHost()));
     const first = await Promise.all([readHostRoom(), readHostRoom()]);
     expect(first[0]).toEqual(first[1]);
     expect(request).toHaveBeenCalledOnce();
@@ -436,16 +436,16 @@ describe("client session identity", () => {
     const cancelled = readHostRoom();
     releaseHostRoom();
     expect(await cancelled).toBeNull();
-    expect(session.has("screener:host-room:v1")).toBe(true);
+    expect(session.has("piik:host-room:v1")).toBe(true);
     expect(await readHostRoom()).toMatchObject({ roomId: "1234" });
   });
 
   it("does not reuse the origin hint without Web Locks but keeps same-tab refresh authority", async () => {
     const { local, session } = hostRoomStorage("absent");
     const saved = JSON.stringify(storedHost());
-    local.set("screener:host-room:v1", saved);
+    local.set("piik:host-room:v1", saved);
     expect(await readHostRoom()).toBeNull();
-    session.set("screener:host-room:v1", saved);
+    session.set("piik:host-room:v1", saved);
     expect(await readHostRoom()).toMatchObject({ roomId: "1234" });
     releaseHostRoom();
     expect(await readHostRoom()).toMatchObject({ roomId: "1234" });
@@ -454,21 +454,21 @@ describe("client session identity", () => {
   it("does not erase the resume hint when the server replaces this Host session", async () => {
     const { local, session } = hostRoomStorage();
     await writeHostRoom({ ...storedHost(), codeEntryPolicy: "open" });
-    const saved = local.get("screener:host-room:v1");
+    const saved = local.get("piik:host-room:v1");
     clearHostRoom(true);
-    expect(session.has("screener:host-room:v1")).toBe(false);
-    expect(local.get("screener:host-room:v1")).toBe(saved);
+    expect(session.has("piik:host-room:v1")).toBe(false);
+    expect(local.get("piik:host-room:v1")).toBe(saved);
   });
 
   it("keeps same-tab authority when Web Locks are denied, without restoring the origin hint", async () => {
     const { local, session, request } = hostRoomStorage();
     request.mockRejectedValue(new DOMException("Blocked", "SecurityError"));
     const saved = JSON.stringify(storedHost());
-    local.set("screener:host-room:v1", saved);
+    local.set("piik:host-room:v1", saved);
     expect(await readHostRoom()).toBeNull();
-    session.set("screener:host-room:v1", saved);
+    session.set("piik:host-room:v1", saved);
     expect(await readHostRoom()).toMatchObject({ roomId: "1234" });
-    expect(session.get("screener:host-room:v1")).toBeTruthy();
+    expect(session.get("piik:host-room:v1")).toBeTruthy();
   });
 
   it("does not persist an obsolete creation and gives a reused code a distinct incarnation claim", async () => {
@@ -489,13 +489,13 @@ describe("client session identity", () => {
     const { held, request, local } = hostRoomStorage();
     const room = { ...storedHost(), codeEntryPolicy: "open" as const };
     await writeHostRoom(room);
-    const saved = local.get("screener:host-room:v1");
+    const saved = local.get("piik:host-room:v1");
     let owns = true;
     const writing = writeHostRoom({ ...room, inviteUrl: "https://new.test/r/1234" }, () => owns);
     owns = false;
     expect(await writing).toBe(false);
     expect(held.size).toBe(1);
-    expect(local.get("screener:host-room:v1")).toBe(saved);
+    expect(local.get("piik:host-room:v1")).toBe(saved);
     expect(await readHostRoom()).toMatchObject({ roomId: "1234", canonicalUrl: "https://share.test/r/1234" });
     expect(request).toHaveBeenCalledOnce();
   });
@@ -515,7 +515,7 @@ describe("client session identity", () => {
     });
 
     expect(readViewerRoute()).toEqual({ roomId: "1234", viewerGrant: grant });
-    expect(values.get("screener:viewer-grant:1234")).toBe(grant);
+    expect(values.get("piik:viewer-grant:1234")).toBe(grant);
     expect(replaceState).toHaveBeenCalledWith(
       { navigation: 1 },
       "",
@@ -527,7 +527,7 @@ describe("client session identity", () => {
   it("fails malformed Viewer fragments closed without leaking across rooms", () => {
     const values = new Map<string, string>();
     const oldGrant = `${"d".repeat(21)}w`;
-    values.set("screener:viewer-grant:1234", oldGrant);
+    values.set("piik:viewer-grant:1234", oldGrant);
     vi.stubGlobal("window", {
       location: new URL("https://share.test/r/1234#v=malformed"),
       history: { state: null, replaceState: vi.fn() },
@@ -550,7 +550,7 @@ describe("client session identity", () => {
   it("keeps the stored Viewer grant when the URL carries an unrelated fragment", () => {
     const values = new Map<string, string>();
     const grant = `${"d".repeat(21)}w`;
-    values.set("screener:viewer-grant:1234", grant);
+    values.set("piik:viewer-grant:1234", grant);
     const replaceState = vi.fn();
     vi.stubGlobal("window", {
       location: new URL("https://share.test/r/1234#:~:text=hello"),
@@ -647,14 +647,14 @@ describe("client session identity", () => {
 
     clearHostRoom();
     expect(readPreferredRoomId()).toBe("4321");
-    expect(values.get("screener:host-room-preference:v1")).toBe(
+    expect(values.get("piik:host-room-preference:v1")).toBe(
       JSON.stringify({ roomId: "4321" }),
     );
   });
 
   it("removes a legacy Viewer grant from room-scoped session storage", () => {
     const values = new Map<string, string>([
-      ["screener:viewer-grant:1234", `g1.1234.1.${"f".repeat(43)}`],
+      ["piik:viewer-grant:1234", `g1.1234.1.${"f".repeat(43)}`],
     ]);
     const removeItem = vi.fn((key: string) => values.delete(key));
     vi.stubGlobal("window", {
@@ -666,7 +666,7 @@ describe("client session identity", () => {
     });
 
     expect(readViewerGrant("1234")).toBeNull();
-    expect(removeItem).toHaveBeenCalledWith("screener:viewer-grant:1234");
+    expect(removeItem).toHaveBeenCalledWith("piik:viewer-grant:1234");
   });
 });
 
@@ -841,8 +841,8 @@ describe("room codes", () => {
 
   it("drops only the stored grant for an explicit valid room-code entry", () => {
     const values = new Map<string, string>([
-      ["screener:viewer-grant:1234", "AAAAAAAAAAAAAAAAAAAAAA"],
-      ["screener:viewer-grant:5678", "AAAAAAAAAAAAAAAAAAAAAA"],
+      ["piik:viewer-grant:1234", "AAAAAAAAAAAAAAAAAAAAAA"],
+      ["piik:viewer-grant:5678", "AAAAAAAAAAAAAAAAAAAAAA"],
     ]);
     vi.stubGlobal("window", {
       sessionStorage: {
@@ -851,11 +851,11 @@ describe("room codes", () => {
     });
 
     expect(roomRouteForExplicitEntry("1234")).toBe("/r/1234");
-    expect(values.has("screener:viewer-grant:1234")).toBe(false);
-    expect(values.has("screener:viewer-grant:5678")).toBe(true);
+    expect(values.has("piik:viewer-grant:1234")).toBe(false);
+    expect(values.has("piik:viewer-grant:5678")).toBe(true);
 
     expect(roomRouteForExplicitEntry(" 5678 ")).toBeNull();
-    expect(values.has("screener:viewer-grant:5678")).toBe(true);
+    expect(values.has("piik:viewer-grant:5678")).toBe(true);
   });
 
   it("classifies routes without normalizing malformed room input", () => {
@@ -940,7 +940,7 @@ describe("room codes", () => {
     const session = new Map<string, string>();
     vi.stubGlobal("window", {
       location: {
-        hash: `#client-access=${"a".repeat(32)}&screener-client=1&retained=yes`,
+        hash: `#client-access=${"a".repeat(32)}&piik-client=1&retained=yes`,
         pathname: "/",
         search: "?room=6020",
       },

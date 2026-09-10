@@ -6,10 +6,10 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/TNTcraftHIM/Screener/internal/server/protocol"
-	"github.com/TNTcraftHIM/Screener/internal/server/room"
-	"github.com/TNTcraftHIM/Screener/internal/server/route"
-	"github.com/TNTcraftHIM/Screener/internal/server/sfu"
+	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
+	"github.com/TNTcraftHIM/Piik/internal/server/room"
+	"github.com/TNTcraftHIM/Piik/internal/server/route"
+	"github.com/TNTcraftHIM/Piik/internal/server/sfu"
 )
 
 // preparedCandidate is PreparedCandidate; the optional TS keys are "" / nil.

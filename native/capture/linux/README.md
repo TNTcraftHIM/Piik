@@ -4,7 +4,7 @@ The Linux sidecar keeps the shared Native Client contract while delegating
 desktop integration to the standard Linux media stack. XDG Desktop Portal owns
 the screen/window choice, PipeWire supplies the selected stream, and GStreamer
 selects an installed element classified as a hardware H.264 video encoder.
-Screener adds only the current product profile, Annex-B access-unit framing,
+Piik adds only the current product profile, Annex-B access-unit framing,
 key-frame requests, and the bounded `SMED` output protocol.
 
 The Portal restore token remains in the active share process and lets a live

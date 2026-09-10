@@ -15,9 +15,9 @@
 #include "modules/video_coding/include/video_error_codes.h"
 #include "system_wrappers/include/clock.h"
 
-namespace screener::probe {
+namespace piik::probe {
 namespace {
-namespace native = screener::capture::windows;
+namespace native = piik::capture::windows;
 
 bool ValidDimensions(int width, int height) {
   return width >= 2 && width <= 2560 && height >= 2 && height <= 1440 &&
@@ -307,4 +307,4 @@ std::unique_ptr<webrtc::VideoEncoderFactory> CreateHardwareEncoderFactory(
   return std::make_unique<HardwareFactory>(adapter_index, encoder_index);
 }
 
-}  // namespace screener::probe
+}  // namespace piik::probe

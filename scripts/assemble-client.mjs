@@ -132,7 +132,7 @@ function readDescriptor(path) {
 function assertOutputDirectory(repositoryRoot, outputRoot, target) {
   const path = relative(repositoryRoot, outputRoot);
   const candidateOutput = join(repositoryRoot, "build", "client-package", target.id,
-    "candidate", `Screener-Client-${target.id}`);
+    "candidate", `Piik-Client-${target.id}`);
   if (outputRoot !== candidateOutput &&
       (path === "" || (path.split(/[\\/]/)[0] !== ".." && !isAbsolute(path)))) {
     fail("Client output must be outside the repository or its exact candidate workspace");
@@ -248,15 +248,15 @@ try {
 
   const clientName = target.clientName;
   const clientPath = join(packageRoot, clientName);
-  const goCommand = process.env.SCREENER_GO?.trim() || "go";
+  const goCommand = process.env.PIIK_GO?.trim() || "go";
   run(goCommand, [
     "build",
     "-trimpath",
     "-ldflags",
-    `-s -w -X github.com/TNTcraftHIM/Screener/internal/client/clientapp.BuildRevision=${revision}`,
+    `-s -w -X github.com/TNTcraftHIM/Piik/internal/client/clientapp.BuildRevision=${revision}`,
     "-o",
     clientPath,
-    "./cmd/screener-client",
+    "./cmd/piik-client",
   ], repositoryRoot, clientGoEnvironment(target));
   chmodSync(clientPath, 0o755);
   assertTargetExecutable(clientPath, target, "Client executable");
@@ -266,7 +266,7 @@ try {
     packageRoot,
     target,
     revision,
-    iconPath: join(repositoryRoot, "cmd", "screener-client", "screener.ico"),
+    iconPath: join(repositoryRoot, "cmd", "piik-client", "piik.ico"),
   });
   writeFileSync(join(packageRoot, "REVISION"), `${revision}\n`, "ascii");
 

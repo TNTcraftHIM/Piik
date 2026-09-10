@@ -154,7 +154,7 @@ func Start(
 }
 
 func writeTemporaryConfig() (string, error) {
-	file, err := os.CreateTemp("", "screener-cloudflared-*.yml")
+	file, err := os.CreateTemp("", "piik-cloudflared-*.yml")
 	if err != nil {
 		return "", errors.New("public tunnel configuration is unavailable")
 	}

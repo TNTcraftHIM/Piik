@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TNTcraftHIM/Screener/internal/media/encoded"
-	"github.com/TNTcraftHIM/Screener/internal/media/forwarding"
+	"github.com/TNTcraftHIM/Piik/internal/media/encoded"
+	"github.com/TNTcraftHIM/Piik/internal/media/forwarding"
 	"github.com/livekit/livekit-server/pkg/sfu"
 )
 

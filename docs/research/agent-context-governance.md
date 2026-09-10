@@ -11,7 +11,7 @@
 
 OpenAI's agent-first repository treats `AGENTS.md` as a map into a structured,
 versioned knowledge base. Its reported failure mode for one large instruction
-file is the same one observed in Screener: scarce context is crowded out, every
+file is the same one observed in Piik: scarce context is crowded out, every
 rule appears equally important, stale guidance accumulates, and ownership is
 hard to verify. The recommended corrective structure is progressive disclosure,
 cross-links, and mechanical freshness/structure checks. Codex concatenates the
@@ -34,7 +34,7 @@ below that value and using nested context for genuinely distinct subtrees. Its
 bounded-memory guidance starts consolidation at 80% rather than treating the
 hard limit as the normal operating target.
 
-Screener therefore warns at the published recommendation or 80% of a loader
+Piik therefore warns at the published recommendation or 80% of a loader
 limit, then fails only at a real loading boundary or a small explicit buffer:
 32 KiB for the Codex chain, 20,000 characters for Hermes, and 250 effective
 Claude lines above the 200-line recommendation. The same envelope applies to the
@@ -55,7 +55,7 @@ Sources:
 ### Documentation Shape
 
 Diataxis separates tutorial, how-to, reference, and explanation because mixing
-reader goals makes each form harder to use. Screener's internal product modules
+reader goals makes each form harder to use. Piik's internal product modules
 are compact reference; ADRs are explanation of a decision; deployment is a
 how-to/reference boundary; research is evidence and explanation. The framework
 does not require creating all four categories when there is no reader need.
@@ -76,7 +76,7 @@ Sources:
 
 ## Applicability
 
-Screener is small enough that a vector database, memory provider, generated code
+Piik is small enough that a vector database, memory provider, generated code
 map, parallel agent-context format, or separate RFC repository would add more
 ownership than it removes. The useful practices are bounded always-on context,
 one owner per fact, domain-shaped reference, evidence on demand, short ADRs,

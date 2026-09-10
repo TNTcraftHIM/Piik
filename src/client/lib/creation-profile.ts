@@ -4,7 +4,7 @@ import {
   type CodeEntryPolicy,
 } from "../../shared/protocol";
 
-const CREATION_PROFILE_STORAGE_KEY = "screener:host-creation-profile:v1";
+const CREATION_PROFILE_STORAGE_KEY = "piik:host-creation-profile:v1";
 
 export interface HostCreationProfile {
   codeEntryPolicy: CodeEntryPolicy;

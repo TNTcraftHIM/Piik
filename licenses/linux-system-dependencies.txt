@@ -1,7 +1,7 @@
 Linux capture dependencies (not bundled)
 
 The Linux native capture process dynamically uses the distribution's XDG
-Desktop Portal/libportal and GStreamer packages. Screener does not redistribute
+Desktop Portal/libportal and GStreamer packages. Piik does not redistribute
 those shared libraries. The Client package carries the applicable license texts
 for this linked capture path.
 
@@ -16,4 +16,4 @@ https://gstreamer.freedesktop.org/documentation/frequently-asked-questions/licen
 https://gstreamer.freedesktop.org/
 
 The runtime stack also depends on the host's Portal, PipeWire, and hardware
-encoder services. Those services are not part of the Screener Client package.
+encoder services. Those services are not part of the Piik Client package.

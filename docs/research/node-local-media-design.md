@@ -93,7 +93,7 @@ all layers are distinct costs.
    each transport still owns its packet headers and recovery.
 5. Reduced demand stops unused upper outputs through the framework's normal
    deactivation semantics. Any debounce belongs to that owner, not another
-   Screener timer beside it. No application-selected timer values in this draft.
+   Piik timer beside it. No application-selected timer values in this draft.
 6. Source replacement/failure/stop invalidates the same generation. No dormant
    warm pool survives and no old callback can resurrect an encoder.
 
@@ -127,8 +127,8 @@ an explicitly controlled input-frame boundary is required. In particular,
 
 | Existing module / primary source | Reuse or learn | Integration limit |
 | --- | --- | --- |
-| Screener `mediaedge.Source`, `Edge`, Native capture generations | Encoded-source ownership, Pion connections, existing share/route identity | Static RTP broadcast alone does not solve switching sequence spaces or codec descriptors |
-| [Pion GCC](https://github.com/pion/interceptor/blob/main/pkg/gcc/send_side_bwe.go) and RTP/RTCP interceptors | Existing mature feedback and bandwidth estimate | Current Screener path only observes GCC and uses a no-queue pacer; selection/pacing is not already implemented |
+| Piik `mediaedge.Source`, `Edge`, Native capture generations | Encoded-source ownership, Pion connections, existing share/route identity | Static RTP broadcast alone does not solve switching sequence spaces or codec descriptors |
+| [Pion GCC](https://github.com/pion/interceptor/blob/main/pkg/gcc/send_side_bwe.go) and RTP/RTCP interceptors | Existing mature feedback and bandwidth estimate | Current Piik path only observes GCC and uses a no-queue pacer; selection/pacing is not already implemented |
 | [LiveKit Dynacast manager](https://github.com/livekit/livekit/blob/v1.13.6/pkg/rtc/dynacast/dynacastmanagervideo.go) | Highest-needed activation and asymmetric demand handling | Apache-2.0; reference, not import the entire service or its downstream-node aggregation |
 | [LiveKit Simulcast selector](https://github.com/livekit/livekit/blob/v1.13.6/pkg/sfu/videolayerselector/simulcast.go), [RTPMunger](https://github.com/livekit/livekit/blob/v1.13.6/pkg/sfu/rtpmunger.go), [prober](https://github.com/livekit/livekit/blob/v1.13.6/pkg/sfu/ccutils/prober.go) | Keyframe switching, packet continuity, bounded recovery probes | Valuable source, but imports protocol/buffer/logger infrastructure; not a demonstrated tiny drop-in |
 | [libwebrtc VP8 adapter](https://github.com/webrtc-mirror/webrtc/blob/main/modules/video_coding/codecs/vp8/libvpx_vp8_encoder.cc) | Coordinated libvpx encoding, SetRates, active-stream keyframes, prepared scale buffers, separate codec and media timestamps | BSD-style; references many WebRTC types. Reuse the underlying libvpx API before copying a large wrapper |
@@ -141,7 +141,7 @@ or a proved adaptation replacement. Its inspected layer sender is coupled to
 Client, track, bitrate-controller and packet-map owners; don't copy it as an
 independent universal selector. No new dependency or upstream implementation
 source was copied in this design pass. Preserve upstream licenses/notices when
-an actual module is chosen; Screener's MIT does not replace them.
+an actual module is chosen; Piik's MIT does not replace them.
 
 Parallel inLive API inspection found work to validate before selecting it:
 publisher-demand change notification is not public; `AddRelayTrack` installs a
@@ -149,7 +149,7 @@ no-op PLI callback; the layer sender has its own packet mapping rather than a
 standalone codec-neutral switch API. Its inspected timestamp expression subtracts
 the layer origin twice. Manager room removal/locking, failed-PC closing and
 logger injection also need focused reproductions. These are candidate-library
-risks, not claims about deployed Screener bugs or reasons to expand the Native
+risks, not claims about deployed Piik bugs or reasons to expand the Native
 module into an SFU fork.
 
 ## Required Before Production
@@ -354,7 +354,7 @@ compare the selected complete media adapter against the same release trace.
 Run the probe explicitly from the repository root, optionally with
 `-frame-bursts`; it writes only ignored `build/embedded-media` diagnostics. It is
 not a default unit/CI task. The observed cadence sensitivity is a reason to test
-the real packet path, not to introduce a Screener congestion score.
+the real packet path, not to introduce a Piik congestion score.
 
 ### Embedded Service Composition
 
@@ -372,7 +372,7 @@ the existing Close/End owner retires STUN too. No service supervisor or second
 availability flag is needed. Deployment removes coturn in the final coordinated
 cutover, not while the media implementation is still under acceptance.
 
-The implementation candidate uses a thin Screener SFU with LiveKit **media-core
+The implementation candidate uses a thin Piik SFU with LiveKit **media-core
 components**, without its RTC room or service. A stock-Pion compile and actual
 ReceiverBase/DownTrack projection pass; two receiving PCs also demonstrate an
 unaffected high-output sibling and high/low/high allocation under forced budgets.
@@ -463,8 +463,8 @@ and the existing pinned libvpx build, using the same MSVC flags as the earlier
 CPU probe. Generate its JSONL under `build/embedded-media`, then run:
 
 ```powershell
-$env:SCREENER_ENCODED_FIXTURE = 'build/embedded-media/encoded-group.fixture.jsonl'
-$env:SCREENER_ENCODED_OUTPUT = 'build/embedded-media/encoded-group.received.json'
+$env:PIIK_ENCODED_FIXTURE = 'build/embedded-media/encoded-group.fixture.jsonl'
+$env:PIIK_ENCODED_OUTPUT = 'build/embedded-media/encoded-group.received.json'
 & .\build\embedded-media\mediaedge.test.exe '-test.run=TestEncodedGroupVP8Fixture' '-test.v' '-test.timeout=30s'
 node scripts/encoded-group-decode.mjs
 ```

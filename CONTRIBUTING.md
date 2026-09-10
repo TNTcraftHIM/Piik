@@ -55,7 +55,7 @@ Clean up worktrees and branches only after semantic review and integration are c
 - Use current community issues and operational reports to identify real compatibility failures, but label anecdotal evidence as such.
 - Include a date and direct URLs. Separate verified facts, measurements, assumptions, and recommendations.
 - Review licenses before copying implementation code. A useful reference is not automatically a compatible dependency.
-- Screener-owned code is [MIT-licensed](./LICENSE); third-party components retain
+- Piik-owned code is [MIT-licensed](./LICENSE); third-party components retain
   their own licenses and notices. GPL/AGPL implementation sources remain
   study-only unless a separate distribution decision accepts their obligations.
 

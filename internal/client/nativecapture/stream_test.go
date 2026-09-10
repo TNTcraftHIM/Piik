@@ -86,7 +86,7 @@ func TestCaptureFailureDebugUsesOnlyFixedFields(t *testing.T) {
 			if err := json.Unmarshal(output.Bytes(), &record); err != nil {
 				t.Fatal(err)
 			}
-			if len(record) != 8 || record["event"] != "capture-process-failed" || record["msg"] != "screener-client" ||
+			if len(record) != 8 || record["event"] != "capture-process-failed" || record["msg"] != "piik-client" ||
 				record["level"] != "DEBUG" || record["exitCode"] != float64(2) || record["stage"] != check.stage ||
 				record["hresult"] != check.hresult || record["canceled"] != check.canceled || strings.Contains(output.String(), "private") {
 				t.Fatalf("diagnostic leaked or changed fields: %s", output.String())

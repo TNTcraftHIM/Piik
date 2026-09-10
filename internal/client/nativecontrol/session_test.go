@@ -14,13 +14,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TNTcraftHIM/Screener/internal/client/loopback"
-	"github.com/TNTcraftHIM/Screener/internal/client/nativecapture"
-	"github.com/TNTcraftHIM/Screener/internal/client/nativehost"
+	"github.com/TNTcraftHIM/Piik/internal/client/loopback"
+	"github.com/TNTcraftHIM/Piik/internal/client/nativecapture"
+	"github.com/TNTcraftHIM/Piik/internal/client/nativehost"
 )
 
 func TestMain(tests *testing.M) {
-	if directory := os.Getenv("SCREENER_QUIET_CAPTURE_FIXTURE"); directory != "" {
+	if directory := os.Getenv("PIIK_QUIET_CAPTURE_FIXTURE"); directory != "" {
 		runQuietCaptureFixture(directory)
 		os.Exit(0)
 	}
@@ -103,7 +103,7 @@ func TestQuietHostUpdatePreservesControlAndCancelsCleanly(t *testing.T) {
 				slog.SetDefault(slog.New(slog.NewJSONHandler(&trace, &slog.HandlerOptions{Level: slog.LevelDebug})))
 			}
 			directory := t.TempDir()
-			t.Setenv("SCREENER_QUIET_CAPTURE_FIXTURE", directory)
+			t.Setenv("PIIK_QUIET_CAPTURE_FIXTURE", directory)
 			executable, err := os.Executable()
 			if err != nil {
 				t.Fatal(err)

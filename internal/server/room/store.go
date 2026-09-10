@@ -13,8 +13,8 @@ import (
 	"slices"
 	"strconv"
 
-	"github.com/TNTcraftHIM/Screener/internal/server/ordered"
-	"github.com/TNTcraftHIM/Screener/internal/server/protocol"
+	"github.com/TNTcraftHIM/Piik/internal/server/ordered"
+	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 )
 
 // Capacity is ROOM_CAPACITY: every four-digit room code.

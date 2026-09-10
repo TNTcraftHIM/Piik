@@ -7,7 +7,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace screener::capture {
+namespace piik::capture {
 
 // One codec worker consumes raw inputs; only its not-yet-encoded input is replaceable.
 template <typename Frame>
@@ -105,4 +105,4 @@ class OutputMailbox final {
   bool key_requested_ = true;
 };
 
-}  // namespace screener::capture
+}  // namespace piik::capture

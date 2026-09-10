@@ -1,24 +1,24 @@
 [Unit]
-Description=Screener web, signaling, STUN and SFU application
+Description=Piik web, signaling, STUN and SFU application
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=screener
-Group=screener
-WorkingDirectory=/opt/screener/current
-Environment=SCREENER_ENV=production
-Environment=ROOM_DATABASE_PATH=/var/lib/screener/rooms.sqlite
-EnvironmentFile=/etc/screener/screener.env
-ExecStart=/opt/screener/current/screener-server
+User=piik
+Group=piik
+WorkingDirectory=/opt/piik/current
+Environment=PIIK_ENV=production
+Environment=ROOM_DATABASE_PATH=/var/lib/piik/rooms.sqlite
+EnvironmentFile=/etc/piik/piik.env
+ExecStart=/opt/piik/current/piik-server
 Restart=on-failure
 RestartSec=3s
 TimeoutStopSec=20s
 UMask=0077
-StateDirectory=screener
+StateDirectory=piik
 StateDirectoryMode=0700
-LogsDirectory=screener
+LogsDirectory=piik
 LogsDirectoryMode=0700
 
 NoNewPrivileges=true

@@ -4,8 +4,8 @@ package sfu
 import (
 	"regexp"
 
-	"github.com/TNTcraftHIM/Screener/internal/server/ordered"
-	"github.com/TNTcraftHIM/Screener/internal/server/protocol"
+	"github.com/TNTcraftHIM/Piik/internal/server/ordered"
+	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 )
 
 // ResourceFence is SfuResourceFence. It is a comparable value, so the

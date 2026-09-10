@@ -5,7 +5,7 @@ import (
 	"errors"
 	"io"
 
-	"github.com/TNTcraftHIM/Screener/internal/client/nativecapture"
+	"github.com/TNTcraftHIM/Piik/internal/client/nativecapture"
 	mediacodec "github.com/livekit/mediatransportutil/pkg/codec"
 	"github.com/livekit/server-sdk-go/v2/pkg/samplebuilder"
 	"github.com/pion/rtp"

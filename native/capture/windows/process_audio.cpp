@@ -26,7 +26,7 @@ using Microsoft::WRL::RuntimeClass;
 using Microsoft::WRL::RuntimeClassFlags;
 using Microsoft::WRL::ClassicCom;
 
-namespace screener::capture {
+namespace piik::capture {
 namespace {
 class ActivationHandler final : public RuntimeClass<
     RuntimeClassFlags<ClassicCom>, FtmBase, IActivateAudioInterfaceCompletionHandler> {
@@ -270,4 +270,4 @@ HRESULT CaptureSystemAudio(HANDLE stop_event, const StopProbe& stop_probe,
   return result;
 }
 
-}  // namespace screener::capture
+}  // namespace piik::capture

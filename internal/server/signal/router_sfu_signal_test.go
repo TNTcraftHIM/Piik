@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TNTcraftHIM/Screener/internal/server/protocol"
-	"github.com/TNTcraftHIM/Screener/internal/server/sfu"
+	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
+	"github.com/TNTcraftHIM/Piik/internal/server/sfu"
 	livekitsfu "github.com/livekit/livekit-server/pkg/sfu"
 	"github.com/pion/webrtc/v4"
 	"github.com/pion/webrtc/v4/pkg/media"

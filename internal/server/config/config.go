@@ -15,14 +15,14 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/TNTcraftHIM/Screener/internal/server/protocol"
+	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 )
 
 // Environment ports RuntimeEnvironment. DECISIONS D8 renames NODE_ENV to
-// SCREENER_ENV and drops "test".
+// PIIK_ENV and drops "test".
 type Environment string
 
-// The two accepted SCREENER_ENV values.
+// The two accepted PIIK_ENV values.
 const (
 	EnvironmentDevelopment Environment = "development"
 	EnvironmentProduction  Environment = "production"
@@ -64,7 +64,7 @@ var removedEnvironmentVariables = []struct{ name, reason string }{
 	{"ROOM_TTL_SECONDS", "rooms do not expire"},
 	{"ROOM_LEASE_SECONDS", "rooms do not expire"},
 	{"ACCESS_PASSWORD", "use SITE_ACCESS_PASSWORD"},
-	{"NODE_ENV", "use SCREENER_ENV"},
+	{"NODE_ENV", "use PIIK_ENV"},
 }
 
 // SFUConfig enables the embedded UDP media listener.
@@ -229,11 +229,11 @@ func Load(env map[string]string) (Config, error) {
 	}, nil
 }
 
-// parseEnvironment ports parseEnvironment for SCREENER_ENV.
+// parseEnvironment ports parseEnvironment for PIIK_ENV.
 func parseEnvironment(env map[string]string) (Environment, error) {
 	// TS: value ?? "development" — a present empty value is not nullish and so
 	// reaches the check below.
-	value, present := env["SCREENER_ENV"]
+	value, present := env["PIIK_ENV"]
 	if !present {
 		return EnvironmentDevelopment, nil
 	}
@@ -241,7 +241,7 @@ func parseEnvironment(env map[string]string) (Environment, error) {
 	case EnvironmentDevelopment, EnvironmentProduction:
 		return Environment(value), nil
 	}
-	return "", errors.New("SCREENER_ENV must be development or production")
+	return "", errors.New("PIIK_ENV must be development or production")
 }
 
 // parseBoolean ports parseBoolean; every caller used a false fallback.

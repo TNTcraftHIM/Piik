@@ -7,43 +7,19 @@ and Git/PRs own completed history. A parked idea is not implementation authority
 
 ## Now
 
-Finish the owner-authorized PR386 squash, matched Web/Client/Server cutover and
-cleanup, then resume Piik appearance. Entry/Client lifecycle repairs, confirmed
-reconnect ownership fixes and the permanent-room/Hosted SQLite-default revision
-are implemented and verified. Product modules and
-[ADR-0002](./adr/0002-memory-resident-protected-rooms.md) own that accepted behavior.
-
-Use the [coordinated cutover](./deployment.md#permanent-room-schema-cutover) to
-preserve existing SQLite authority and unchanged Browser credential keys; old
-active pages reload at the signaling v23 boundary. Runtime release metadata and
-the operator record own deployment completion. Do not recreate databases or
-add a replacement garbage collector. Later manual feedback is nonblocking.
+No further product implementation is queued for the accepted Piik rename.
+Its coordinated Web/Client/Server and Git-history cutover follows the
+[rename plan](./research/piik-rename-plan.md); the immutable release descriptor
+and deployment record own rollout identity. Preserve the original repository
+backup and external-audit worktree. Website work starts on owner direction.
 
 ## Next — Awaiting Owner Direction
 
-1. Resume the [Piik brand study](./design/piik-brand.html) after the experience
-   repairs. Keep round i dots; the tiny-e experiment was rejected. Try using the
-   two outer stems as small headphones/earcups on the TV, retaining its familiar
-   silhouette and the k diagonals as antennae. Display `Piik` and technical
-   `piik` remain proposals. Settle identity before coordinated renaming or the
-   public-site implementation.
-2. After the brand discussion, rename display copy, Go/npm source identity,
-   Client/Server packages and OS icons, strict protocol/service identifiers,
-   diagnostic redaction, configuration and deployment tooling in one coordinated
-   phase. Inventory is complete. Browser storage contains room authority/grants
-   and Client configuration contains a saved Site; decide preservation/reset
-   explicitly before renaming their keys or directories. Preserve SQLite room
-   authority when changing deployment paths. Use matching Web/Client/Server
-   artifacts and one current reader/writer, without compatibility aliases.
-   Keep third-party names/notices and historical evidence attribution accurate.
-
 The owner owns **piik.tv**.
-Agree on casing, TV mascot/wordmark treatment, repository and runtime identifiers,
-release names and the GitHub Pages website before implementing the rename.
-Keep one current internal contract and remove replaced names in the coordinated
-change; no private compatibility aliases. Existing sketches are input, not an
-accepted identity. Do not configure DNS/Pages or publish the brand before that
-design discussion. The private production service is not a public demo.
+Design the GitHub Pages website around the accepted brand study. Keep one
+current internal contract; third-party names/notices remain accurate. DNS/Pages
+and public publication are separate from the repository rename. The private
+production service is not a public demo.
 
 Include the owner-requested frontend/backend ablation review in that phase.
 Review duplicated behavior/state, module boundaries, interface clarity, lifecycle

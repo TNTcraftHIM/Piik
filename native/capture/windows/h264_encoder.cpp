@@ -10,7 +10,7 @@
 #include <algorithm>
 #include <thread>
 
-namespace screener::capture::windows {
+namespace piik::capture::windows {
 
 namespace {
 constexpr DWORD kMaxEncodedSampleBytes = 4 * 1024 * 1024;
@@ -743,4 +743,4 @@ void LiveEncoder::WaitForInput(EncoderClock::time_point probe_deadline) {
   }
 }
 
-}  // namespace screener::capture::windows
+}  // namespace piik::capture::windows

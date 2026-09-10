@@ -11,7 +11,7 @@
 #include <mutex>
 #include <string>
 
-namespace screener::capture {
+namespace piik::capture {
 
 constexpr DWORD kMaxProductAccessUnitBytes = 4 * 1024 * 1024;
 constexpr DWORD kMaxStatusBytes = 4 * 1024;
@@ -85,4 +85,4 @@ class ProtocolWriter final {
   std::atomic<bool> stopped_{false};
 };
 
-}  // namespace screener::capture
+}  // namespace piik::capture

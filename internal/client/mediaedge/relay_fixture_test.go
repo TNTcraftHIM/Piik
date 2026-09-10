@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TNTcraftHIM/Screener/internal/client/nativecapture"
+	"github.com/TNTcraftHIM/Piik/internal/client/nativecapture"
 	"github.com/livekit/mediatransportutil"
 	mediacodec "github.com/livekit/mediatransportutil/pkg/codec"
 	"github.com/pion/rtcp"
@@ -20,9 +20,9 @@ import (
 // Explicit small native-codec acceptance, never launched by the ordinary suite.
 // Forced layer demand tests derivation ownership, not network adaptation.
 func TestRelayDerivationFixture(t *testing.T) {
-	executable, fixture := os.Getenv("SCREENER_NATIVE_CAPTURE"), os.Getenv("SCREENER_ENCODED_FIXTURE")
+	executable, fixture := os.Getenv("PIIK_NATIVE_CAPTURE"), os.Getenv("PIIK_ENCODED_FIXTURE")
 	if executable == "" || fixture == "" {
-		t.Skip("set SCREENER_NATIVE_CAPTURE and SCREENER_ENCODED_FIXTURE for native relay acceptance")
+		t.Skip("set PIIK_NATIVE_CAPTURE and PIIK_ENCODED_FIXTURE for native relay acceptance")
 	}
 	input, err := os.Open(fixture)
 	if err != nil {
@@ -291,9 +291,9 @@ func TestRelayDerivationFixture(t *testing.T) {
 // Forced direct-child budgets exercise real per-group WebRTC spatial adaptation;
 // they do not simulate transport loss or prove bandwidth-estimator behavior.
 func TestRelayIndependentSpatialFixture(t *testing.T) {
-	executable, fixture := os.Getenv("SCREENER_NATIVE_CAPTURE"), os.Getenv("SCREENER_GROUP_MOTION_INPUT")
+	executable, fixture := os.Getenv("PIIK_NATIVE_CAPTURE"), os.Getenv("PIIK_GROUP_MOTION_INPUT")
 	if executable == "" || fixture == "" {
-		t.Skip("set SCREENER_NATIVE_CAPTURE and SCREENER_GROUP_MOTION_INPUT")
+		t.Skip("set PIIK_NATIVE_CAPTURE and PIIK_GROUP_MOTION_INPUT")
 	}
 	check := func(err error) {
 		t.Helper()
@@ -457,7 +457,7 @@ func TestRelayIndependentSpatialFixture(t *testing.T) {
 		default:
 		}
 	}
-	if path := os.Getenv("SCREENER_GROUP_OUTPUT"); path != "" {
+	if path := os.Getenv("PIIK_GROUP_OUTPUT"); path != "" {
 		file, err := os.Create(path)
 		check(err)
 		check(json.NewEncoder(file).Encode(output))

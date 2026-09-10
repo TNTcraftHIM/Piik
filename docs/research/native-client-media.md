@@ -8,7 +8,7 @@
 
 ## Result
 
-Screener Client can own one process-isolated Windows capture and hardware H.264
+Piik Client can own one process-isolated Windows capture and hardware H.264
 encoder, feed its Annex-B access units into one Pion source, and deliver that
 source through independent WebRTC transports to unmodified Chrome receivers.
 The Browser remains the room, route, and signaling authority.

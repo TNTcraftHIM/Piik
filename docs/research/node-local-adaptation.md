@@ -16,7 +16,7 @@ alongside an identical `high` encoding.
 
 ## Two Workstreams
 
-- Self-contained Screener Server: library-level STUN/media components inside the
+- Self-contained Piik Server: library-level STUN/media components inside the
   executable, not bundled external service processes or an automatic installer.
 - Adaptive reuse: local derivation, shared lower outputs, independent child
   delivery and quality recovery, usable by Native Client and the server.
@@ -74,7 +74,7 @@ not inferred from the words "automatic" or "simulcast":
   counting. Do not claim every unused individual lower layer is always stopped.
 - A higher quality request is not subject to downgrade-only debounce. Reduced
   maximum demand is debounced; the pinned server default is five seconds. This
-  is an upstream implementation fact, not a proposed Screener timing constant.
+  is an upstream implementation fact, not a proposed Piik timing constant.
   Publisher deactivation debounce is not a five-second delay before reducing
   traffic to a congested subscriber.
 - The SDK applies the selected active flags through `RTCRtpSender.setParameters`
@@ -137,7 +137,7 @@ retire their resources immediately; warm retention cannot revive a retired sourc
 | Component | Useful capability | Boundary |
 | --- | --- | --- |
 | Existing `mediaedge.Source` and Pion RTP/WebRTC/interceptors | Encoded fanout, per-edge transport and feedback | No decoder/transcoder or shared-variant policy is supplied automatically |
-| Existing Native encoders and generation/keyframe ownership | Platform encode paths already integrated with Screener | Received-source decode/scale and shared derived outputs still need design |
+| Existing Native encoders and generation/keyframe ownership | Platform encode paths already integrated with Piik | Received-source decode/scale and shared derived outputs still need design |
 | LiveKit Dynacast, layer selector and prober sources | Reference for demand aggregation, safe switching and recovery probes | Apache-2.0 code; inspect imports/ownership before any extraction, not whole-service embedding |
 | libvpx multi-resolution VP8 API/example | Multiple spatial encodes through one coordinated API; libvpx is already used | VP8-specific; no promise that H264 hardware sessions have the same cost curve |
 | OpenH264 AVC simulcast API | Library H264 encode/decode and per-spatial-layer configuration | Software codec; inspect realtime cost and actual source/binary distribution terms before selection |

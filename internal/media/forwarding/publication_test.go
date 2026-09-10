@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TNTcraftHIM/Screener/internal/media/encoded"
+	"github.com/TNTcraftHIM/Piik/internal/media/encoded"
 	"github.com/livekit/livekit-server/pkg/sfu"
 	"github.com/livekit/livekit-server/pkg/sfu/bwe"
 	"github.com/livekit/livekit-server/pkg/sfu/bwe/sendsidebwe"

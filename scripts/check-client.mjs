@@ -52,9 +52,9 @@ function buildWebAssets() {
 
 function checkCore() {
   buildWebAssets();
-  const go = process.env.SCREENER_GO?.trim() || "go";
+  const go = process.env.PIIK_GO?.trim() || "go";
   const goRoot = run(go, ["env", "GOROOT"], { capture: true });
-  const gofmt = process.env.SCREENER_GOFMT?.trim() ||
+  const gofmt = process.env.PIIK_GOFMT?.trim() ||
     join(goRoot, "bin", process.platform === "win32" ? "gofmt.exe" : "gofmt");
   const unformatted = run(gofmt, ["-l", "."], { capture: true });
   if (unformatted) {
@@ -73,9 +73,9 @@ function checkCore() {
     return true;
   });
   const builds = buildTargets.flatMap((target) =>
-    ["screener-client", "screener-peer-gate"].map((command) => ({ target, command })),
+    ["piik-client", "piik-peer-gate"].map((command) => ({ target, command })),
   );
-  builds.push({ target: SERVER_TARGET, command: "screener-server" });
+  builds.push({ target: SERVER_TARGET, command: "piik-server" });
   for (const { target, command } of builds) {
     const outputName = target.goos === "windows"
       ? `${command}.exe`
@@ -132,7 +132,7 @@ function checkPlatformCapture() {
       "7",
       "pwsh.exe",
     );
-    const powershell = process.env.SCREENER_POWERSHELL?.trim() ||
+    const powershell = process.env.PIIK_POWERSHELL?.trim() ||
       (existsSync(modernPowerShell)
         ? modernPowerShell
         : (existsSync(systemPowerShell) ? systemPowerShell : "pwsh"));
@@ -146,13 +146,13 @@ function checkPlatformCapture() {
       buildRoot,
       "-Check",
     ]);
-    executable = join(buildRoot, "screener-client-capture.exe");
+    executable = join(buildRoot, "piik-client-capture.exe");
   } else if (process.platform === "darwin") {
     run("sh", [join(captureRoot, "darwin", "build.sh"), buildRoot]);
-    executable = join(buildRoot, "screener-client-capture");
+    executable = join(buildRoot, "piik-client-capture");
   } else {
     run("sh", [join(captureRoot, "linux", "build.sh"), buildRoot]);
-    executable = join(buildRoot, "screener-client-capture");
+    executable = join(buildRoot, "piik-client-capture");
   }
   if (!existsSync(executable)) {
     throw new Error("Native capture build did not produce its executable");
@@ -205,4 +205,4 @@ function checkPlatformCapture() {
 
 if (mode !== "--capture-only") checkCore();
 if (mode !== "--core") checkPlatformCapture();
-process.stdout.write("Screener Client checks passed.\n");
+process.stdout.write("Piik Client checks passed.\n");

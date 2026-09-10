@@ -1,14 +1,14 @@
-# Screener Client
+# Piik Client
 
-Screener Client is the self-contained and native-capability runtime for the same
-Browser application used by Hosted Screener. It does not implement another UI,
+Piik Client is the self-contained and native-capability runtime for the same
+Browser application used by Hosted Piik. It does not implement another UI,
 room store, signaling protocol, or route controller.
 
 ## Run A Package
 
 Extract the matching platform bundle in full and keep `runtime` beside the
-Client executable. Run `screener-client.exe` on Windows, `./screener-client` on
-Linux, or `Screener Client.app` on macOS. The launcher opens in the system Browser;
+Client executable. Run `piik-client.exe` on Windows, `./piik-client` on
+Linux, or `Piik Client.app` on macOS. The launcher opens in the system Browser;
 the Client does not embed a browser UI. Packaged execution needs no Node.js, npm,
 or Go installation. Linux native capture uses the system dependencies described
 in the [Linux capture guide](../../native/capture/linux/README.md).
@@ -111,7 +111,7 @@ to one Browser brand or to VPN use.
 
 Check the Browser's WebRTC/IP-handling policy and any extension's WebRTC or
 IP-leak protection setting. Restore a policy that permits WebRTC UDP, reload
-Screener, and verify that another extension or managed policy has not overridden
+Piik, and verify that another extension or managed policy has not overridden
 the choice. Setting names and availability differ between Browsers. For example,
 Vivaldi exposes **Settings > Privacy and Security > WebRTC IP Handling >
 Broadcast IP for Best WebRTC Performance**. Changing this policy can expose
@@ -139,7 +139,7 @@ The binary embeds the Browser assets, so build them before running it:
 npm run build:client
 go test ./...
 go vet ./...
-go run ./cmd/screener-client
+go run ./cmd/piik-client
 ```
 
 The repository-level entry used locally and by CI is:
@@ -200,11 +200,11 @@ explicit CI packaging, Release publication and updates are documented in
 The extracted bundle contains:
 
 ```text
-screener-client[.exe]
+piik-client[.exe]
 REVISION
 LICENSE
 THIRD-PARTY-NOTICES.txt
-runtime/native/screener-client-capture[.exe] # supported native-media packages
+runtime/native/piik-client-capture[.exe] # supported native-media packages
 runtime/tunnel/cloudflared[.exe] # packages that support --link
 ```
 
@@ -212,11 +212,11 @@ The executable embeds the Browser assets of the consumed application release and
 carries that same full Git revision as the package `REVISION`. No compatibility
 reader accepts a mismatched private build.
 
-The Windows Client embeds the shared Screener mark through the
-`cmd/screener-client/screener_windows_amd64.syso` resource; the platform
+The Windows Client embeds the shared Piik mark through the
+`cmd/piik-client/piik_windows_amd64.syso` resource; the platform
 suffix keeps that Windows resource out of Linux and macOS builds.
 Linux packages include the standard `share/applications` desktop entry and
-hicolor icon. macOS packages include a thin `Screener Client.app` launcher
+hicolor icon. macOS packages include a thin `Piik Client.app` launcher
 with an ICNS resource; the raw Go executable remains available beside it.
 
 For a native Host smoke run, launch the Client and select a window in the Host
@@ -235,53 +235,53 @@ and without Chromium Local Network Access permission. Environment syntax below
 is POSIX; use equivalent variables on Windows.
 
 ```sh
-SCREENER_CLIENT_LOCAL_GATE=true \
+PIIK_CLIENT_LOCAL_GATE=true \
 CHROME_PATH=/path/to/chrome \
-SCREENER_CLIENT_EXE=/path/to/screener-client \
-SCREENER_CLIENT_GATE_LAN_ADDRESS=192.168.1.10 \
+PIIK_CLIENT_EXE=/path/to/piik-client \
+PIIK_CLIENT_GATE_LAN_ADDRESS=192.168.1.10 \
 npm run gate:client-local
 
-SCREENER_CLIENT_LOOPBACK_GATE=true \
+PIIK_CLIENT_LOOPBACK_GATE=true \
 CHROME_PATH=/path/to/chrome \
-SCREENER_CLIENT_EXE=/path/to/screener-client \
+PIIK_CLIENT_EXE=/path/to/piik-client \
 npm run probe:client-loopback
 
-SCREENER_CLIENT_MEDIA_GATE=true \
+PIIK_CLIENT_MEDIA_GATE=true \
 CHROME_PATH=/path/to/chrome \
-SCREENER_CLIENT_GATE_STUN_URLS=stun:<stun-host>:3478 \
+PIIK_CLIENT_GATE_STUN_URLS=stun:<stun-host>:3478 \
 npm run gate:client-media
 
-SCREENER_CLIENT_NATIVE_HOST_GATE=true \
+PIIK_CLIENT_NATIVE_HOST_GATE=true \
 CHROME_PATH=/path/to/chrome \
-SCREENER_GO=/path/to/go \
+PIIK_GO=/path/to/go \
 npm run gate:client-native-host
 
-SCREENER_CLIENT_NATIVE_HOST_GATE=true \
-SCREENER_CLIENT_CROSS_NAT_GATE=true \
+PIIK_CLIENT_NATIVE_HOST_GATE=true \
+PIIK_CLIENT_CROSS_NAT_GATE=true \
 CHROME_PATH=/path/to/chrome \
-SCREENER_GO=/path/to/go \
-SCREENER_REMOTE_HOST=<public-test-host> \
-SCREENER_REMOTE_USER=<ssh-user> \
-SCREENER_REMOTE_SSH_KEY=/path/to/key \
-SCREENER_CLIENT_GATE_STUN_URLS=stun:<stun-host>:3478 \
+PIIK_GO=/path/to/go \
+PIIK_REMOTE_HOST=<public-test-host> \
+PIIK_REMOTE_USER=<ssh-user> \
+PIIK_REMOTE_SSH_KEY=/path/to/key \
+PIIK_CLIENT_GATE_STUN_URLS=stun:<stun-host>:3478 \
 npm run gate:client-native-host
 
-SCREENER_CLIENT_NATIVE_HOST_GATE=true \
-SCREENER_CLIENT_LINK_MEDIA_GATE=true \
+PIIK_CLIENT_NATIVE_HOST_GATE=true \
+PIIK_CLIENT_LINK_MEDIA_GATE=true \
 CHROME_PATH=/path/to/chrome \
-SCREENER_GO=/path/to/go \
-SCREENER_CLOUDFLARED=/path/to/cloudflared \
-SCREENER_REMOTE_HOST=<public-test-host> \
-SCREENER_REMOTE_USER=<ssh-user> \
-SCREENER_REMOTE_SSH_KEY=/path/to/key \
+PIIK_GO=/path/to/go \
+PIIK_CLOUDFLARED=/path/to/cloudflared \
+PIIK_REMOTE_HOST=<public-test-host> \
+PIIK_REMOTE_USER=<ssh-user> \
+PIIK_REMOTE_SSH_KEY=/path/to/key \
 npm run gate:client-native-host
 
-SCREENER_CLIENT_LINK_GATE=true \
-SCREENER_GO=/path/to/go \
-SCREENER_CLOUDFLARED=/path/to/cloudflared \
-SCREENER_REMOTE_HOST=<public-test-host> \
-SCREENER_REMOTE_USER=<ssh-user> \
-SCREENER_REMOTE_SSH_KEY=/path/to/key \
+PIIK_CLIENT_LINK_GATE=true \
+PIIK_GO=/path/to/go \
+PIIK_CLOUDFLARED=/path/to/cloudflared \
+PIIK_REMOTE_HOST=<public-test-host> \
+PIIK_REMOTE_USER=<ssh-user> \
+PIIK_REMOTE_SSH_KEY=/path/to/key \
 npm run gate:client-link
 ```
 

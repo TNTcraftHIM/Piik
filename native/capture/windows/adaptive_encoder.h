@@ -5,7 +5,7 @@
 #include <functional>
 #include <memory>
 
-namespace screener::capture::windows {
+namespace piik::capture::windows {
 
 struct AdaptiveAccessUnit final {
   EncodedAccessUnit access_unit;
@@ -36,4 +36,4 @@ class AdaptiveEncoder final {
   std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace screener::capture::windows
+}  // namespace piik::capture::windows

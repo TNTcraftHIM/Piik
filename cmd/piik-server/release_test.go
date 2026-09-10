@@ -16,7 +16,7 @@ import (
 const (
 	deployedRevision = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	latestRevision   = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-	latestReleaseURL = "https://github.com/TNTcraftHIM/Screener/releases/tag/" + latestRevision
+	latestReleaseURL = "https://github.com/TNTcraftHIM/Piik/releases/tag/" + latestRevision
 	latestRelease    = `{"tag_name":"` + latestRevision + `","html_url":"` + latestReleaseURL + `"}`
 )
 
@@ -40,29 +40,29 @@ func TestParseReleaseMetadataAcceptsOnlyTheStrictReleaseIdentity(t *testing.T) {
 		{"other host", tagged("https://evil.example"), "", ""},
 		{
 			"userinfo",
-			tagged("https://user@github.com/TNTcraftHIM/Screener/releases/tag/" + latestRevision),
+			tagged("https://user@github.com/TNTcraftHIM/Piik/releases/tag/" + latestRevision),
 			"", "",
 		},
 		{
 			"port",
-			tagged("https://github.com:8443/TNTcraftHIM/Screener/releases/tag/" + latestRevision),
+			tagged("https://github.com:8443/TNTcraftHIM/Piik/releases/tag/" + latestRevision),
 			"", "",
 		},
 		{
 			"plaintext page",
-			tagged("http://github.com/TNTcraftHIM/Screener/releases/tag/" + latestRevision),
+			tagged("http://github.com/TNTcraftHIM/Piik/releases/tag/" + latestRevision),
 			"", "",
 		},
 		{"query", tagged(latestReleaseURL + "?asset=1"), "", ""},
 		{"fragment", tagged(latestReleaseURL + "#assets"), "", ""},
 		{
 			"encoded path separator",
-			tagged("https://github.com/TNTcraftHIM%2FScreener/releases/tag/" + latestRevision),
+			tagged("https://github.com/TNTcraftHIM%2FPiik/releases/tag/" + latestRevision),
 			"", "",
 		},
 		{
 			"page tag disagrees with the release tag",
-			tagged("https://github.com/TNTcraftHIM/Screener/releases/tag/" + deployedRevision),
+			tagged("https://github.com/TNTcraftHIM/Piik/releases/tag/" + deployedRevision),
 			"", "",
 		},
 		{
@@ -144,7 +144,7 @@ func TestCheckReleaseReportsTheDeployedComparison(t *testing.T) {
 					if got := request.Header.Get("X-GitHub-Api-Version"); got != "2022-11-28" {
 						t.Errorf("X-GitHub-Api-Version = %q", got)
 					}
-					if got := request.Header.Get("User-Agent"); got != "Screener-release-check" {
+					if got := request.Header.Get("User-Agent"); got != "Piik-release-check" {
 						t.Errorf("User-Agent = %q", got)
 					}
 					writer.WriteHeader(testCase.status)

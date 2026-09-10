@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/TNTcraftHIM/Screener/internal/diagnostics"
+	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
 	"github.com/livekit/livekit-server/pkg/sfu"
 	"github.com/livekit/livekit-server/pkg/sfu/buffer"
 	"github.com/livekit/livekit-server/pkg/sfu/bwe"

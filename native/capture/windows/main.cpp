@@ -13,7 +13,7 @@
 #include <mfidl.h>
 #include <mftransform.h>
 #include <wmcodecdsp.h>
-#ifdef SCREENER_H264_FIXTURE
+#ifdef PIIK_H264_FIXTURE
 #include <pdh.h>
 #include <pdhmsg.h>
 #endif
@@ -33,7 +33,7 @@
 #include "capture_geometry.h"
 #include "process_audio.h"
 #include "h264_encoder.h"
-#ifndef SCREENER_H264_FIXTURE
+#ifndef PIIK_H264_FIXTURE
 #include "adaptive_encoder.h"
 #include "capture_control.h"
 #include "capture_input.h"
@@ -85,10 +85,10 @@ IGraphicsCaptureSession5 : public IInspectable {
 
 namespace {
 
-using namespace screener::capture::windows;
+using namespace piik::capture::windows;
 
 constexpr LONGLONG kFastCaptureUpdateInterval100ns = 40'000;
-#ifdef SCREENER_H264_FIXTURE
+#ifdef PIIK_H264_FIXTURE
 constexpr UINT32 kFrameRate = kDefaultVideoProfile.frame_rate;
 constexpr UINT32 kBitRate = kDefaultVideoProfile.bit_rate;
 constexpr UINT32 kGopFrames = kFrameRate * 2;
@@ -186,7 +186,7 @@ ComPtr<ID3D11Texture2D> CreateSyntheticTexture(
   return texture;
 }
 
-#ifdef SCREENER_H264_FIXTURE
+#ifdef PIIK_H264_FIXTURE
 ComPtr<IMFSample> CreateInputSample(ID3D11Device* device, UINT32 frame_index) {
   auto texture = CreateSyntheticTexture(device, frame_index);
   ComPtr<IMFMediaBuffer> buffer;
@@ -206,7 +206,7 @@ ComPtr<IMFSample> CreateInputSample(ID3D11Device* device, UINT32 frame_index) {
 }
 #endif
 
-#ifdef SCREENER_H264_FIXTURE
+#ifdef PIIK_H264_FIXTURE
 ULONGLONG ProcessCpu100ns() {
   FILETIME created = {};
   FILETIME exited = {};
@@ -367,7 +367,7 @@ struct RunEvidence final {
 };
 #endif
 
-#ifdef SCREENER_H264_FIXTURE
+#ifdef PIIK_H264_FIXTURE
 bool IsRecoveryFrame(UINT32 frame) {
   return frame % kGopFrames == 0;
 }
@@ -635,10 +635,10 @@ UINT ParseIndex(const wchar_t* value, const std::string& stage) {
   }
 }
 
-#ifndef SCREENER_H264_FIXTURE
-using screener::capture::kMaxProductAccessUnitBytes;
-using screener::capture::OutputKind;
-using screener::capture::ProtocolWriter;
+#ifndef PIIK_H264_FIXTURE
+using piik::capture::kMaxProductAccessUnitBytes;
+using piik::capture::OutputKind;
+using piik::capture::ProtocolWriter;
 
 class UniqueHandle final {
  public:
@@ -713,7 +713,7 @@ class FrameConverter final {
 
     RECT source_rect = {0, 0, static_cast<LONG>(width),
                         static_cast<LONG>(height)};
-    RECT target_rect = screener::capture::FitFrameRect(
+    RECT target_rect = piik::capture::FitFrameRect(
         presentation, {static_cast<LONG>(profile_.width),
                        static_cast<LONG>(profile_.height)});
     RECT output_rect = {0, 0, static_cast<LONG>(profile_.width),
@@ -841,7 +841,7 @@ std::string JSONString(const std::string& value) {
 
 class InputReader final {
  public:
-  std::vector<screener::capture::InputEnvelope> Read(bool blocking = false) {
+  std::vector<piik::capture::InputEnvelope> Read(bool blocking = false) {
     HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
     DWORD available = 0;
     if (input == INVALID_HANDLE_VALUE || input == nullptr) return {};
@@ -862,20 +862,20 @@ class InputReader final {
   }
 
  private:
-  std::vector<screener::capture::InputEnvelope> End() {
+  std::vector<piik::capture::InputEnvelope> End() {
     if (!envelopes_.Empty()) Fail("capture-input-eof", "native input ended within an envelope");
-    screener::capture::InputEnvelope stop;
+    piik::capture::InputEnvelope stop;
     stop.kind = 7;
     stop.data = {'Q'};
     return {std::move(stop)};
   }
-  screener::capture::InputEnvelopes envelopes_;
+  piik::capture::InputEnvelopes envelopes_;
 };
 
 class ControlReader final {
  public:
-  std::vector<screener::capture::CaptureControl> Read() {
-    std::vector<screener::capture::CaptureControl> controls;
+  std::vector<piik::capture::CaptureControl> Read() {
+    std::vector<piik::capture::CaptureControl> controls;
     for (const auto& envelope : input_.Read()) controls.push_back(envelope.Control());
     return controls;
   }
@@ -910,17 +910,17 @@ UINT64 ParseNonNegativeUint64(const wchar_t* value, const std::string& stage) {
   }
 }
 
-screener::capture::TargetKind ParseTargetKind(const wchar_t* value) {
+piik::capture::TargetKind ParseTargetKind(const wchar_t* value) {
   const std::wstring kind(value);
-  if (kind == L"window") return screener::capture::TargetKind::window;
-  if (kind == L"display") return screener::capture::TargetKind::display;
+  if (kind == L"window") return piik::capture::TargetKind::window;
+  if (kind == L"display") return piik::capture::TargetKind::display;
   Fail("argument-target-kind", "capture target kind is unsupported");
 }
 
 struct ProductArguments final {
   enum class Mode { list, probe, preview, audio, video, encoded } mode = Mode::list;
-  screener::capture::TargetKind target_kind =
-      screener::capture::TargetKind::window;
+  piik::capture::TargetKind target_kind =
+      piik::capture::TargetKind::window;
   DWORD pid = 0;
   UINT64 creation_time = 0;
   UINT64 source_id = 0;
@@ -1000,7 +1000,7 @@ ProductArguments ParseProductArguments(int count, wchar_t** values) {
   if (count == 5 && std::wstring(values[1]) == L"--capture-audio") {
     arguments.mode = ProductArguments::Mode::audio;
     arguments.target_kind = ParseTargetKind(values[2]);
-  } else if (count >= 16 && count <= 11 + 5 * screener::capture::kMaxOutputs && (count - 11) % 5 == 0 &&
+  } else if (count >= 16 && count <= 11 + 5 * piik::capture::kMaxOutputs && (count - 11) % 5 == 0 &&
              std::wstring(values[1]) == L"--encoded-video" &&
              std::wstring(values[2]) == L"--codec" &&
              std::wstring(values[4]) == L"--adapter-index" &&
@@ -1022,7 +1022,7 @@ ProductArguments ParseProductArguments(int count, wchar_t** values) {
       arguments.profile.bit_rate = std::max(arguments.profile.bit_rate, output.bit_rate);
     }
     return arguments;
-  } else if (count >= 28 && count <= 23 + 5 * screener::capture::kMaxOutputs && (count - 23) % 5 == 0 &&
+  } else if (count >= 28 && count <= 23 + 5 * piik::capture::kMaxOutputs && (count - 23) % 5 == 0 &&
              std::wstring(values[1]) == L"--capture-video" &&
              std::wstring(values[6]) == L"--adapter-index" &&
              std::wstring(values[8]) == L"--mft-index" &&
@@ -1067,11 +1067,11 @@ ProductArguments ParseProductArguments(int count, wchar_t** values) {
   arguments.pid = static_cast<DWORD>(pid);
   arguments.creation_time =
       ParseNonNegativeUint64(values[creation_index], "argument-creation-time");
-  if (arguments.target_kind == screener::capture::TargetKind::window &&
+  if (arguments.target_kind == piik::capture::TargetKind::window &&
       (arguments.pid == 0 || arguments.creation_time == 0)) {
     Fail("argument-window-identity", "window identity is incomplete");
   }
-  if (arguments.target_kind == screener::capture::TargetKind::display &&
+  if (arguments.target_kind == piik::capture::TargetKind::display &&
       (arguments.pid != 0 || arguments.creation_time != 0)) {
     Fail("argument-display-identity", "display identity is invalid");
   }
@@ -1094,14 +1094,14 @@ HRESULT RunAudioCapture(const ProductArguments& arguments) {
   };
   auto pcm = [&writer](UINT64 timestamp100ns, const BYTE* data, DWORD size) {
     return writer.Write(OutputKind::pcm, 0, timestamp100ns,
-                        screener::capture::kAudioChunkDuration100ns, data,
+                        piik::capture::kAudioChunkDuration100ns, data,
                         size);
   };
-  if (arguments.target_kind == screener::capture::TargetKind::display) {
-    return screener::capture::CaptureSystemAudio(
+  if (arguments.target_kind == piik::capture::TargetKind::display) {
+    return piik::capture::CaptureSystemAudio(
         stop.get(), should_stop, ready, pcm);
   }
-  return screener::capture::CaptureProcessAudio(
+  return piik::capture::CaptureProcessAudio(
       arguments.pid, arguments.creation_time, stop.get(),
       should_stop,
       ready, pcm);
@@ -1141,8 +1141,8 @@ void WriteCapabilityProbe() {
   }
   const bool process_audio =
       build >= kProcessLoopbackMinimumBuild &&
-      screener::capture::ProcessAudioAvailable();
-  const bool system_audio = screener::capture::SystemAudioAvailable();
+      piik::capture::ProcessAudioAvailable();
+  const bool system_audio = piik::capture::SystemAudioAvailable();
 
   std::vector<Adapter> adapters = EnumerateAdapters();
   std::ostringstream output;
@@ -1396,7 +1396,7 @@ class OutputWorker final {
   std::unique_ptr<VideoEncoder> initial_;
   std::function<void()> on_output_;
   std::function<void(std::exception_ptr)> on_failure_;
-  using Mailbox = screener::capture::OutputMailbox<CaptureInput>;
+  using Mailbox = piik::capture::OutputMailbox<CaptureInput>;
   Mailbox mailbox_;
   std::thread thread_;
 };
@@ -1484,7 +1484,7 @@ std::string OutputFailureDetail(std::exception_ptr error) {
   }
 }
 
-bool ApplyOutputControl(const screener::capture::CaptureControl& control,
+bool ApplyOutputControl(const piik::capture::CaptureControl& control,
                         const std::vector<std::unique_ptr<OutputWorker>>& workers) {
   if (control.layer >= static_cast<int>(workers.size())) Fail("control-layer", "output layer is unavailable");
   if (control.kind == 'A') {
@@ -1592,10 +1592,10 @@ void RunEncodedVideo(const ProductArguments& arguments) {
     for (auto& worker : workers) worker->Join();
   };
   try {
-    std::unique_ptr<screener::capture::H264Decoder> h264;
-    std::unique_ptr<screener::capture::Vp8Decoder> vp8;
-    if (hardware) h264 = std::make_unique<screener::capture::H264Decoder>(device.manager.Get());
-    else vp8 = std::make_unique<screener::capture::Vp8Decoder>();
+    std::unique_ptr<piik::capture::H264Decoder> h264;
+    std::unique_ptr<piik::capture::Vp8Decoder> vp8;
+    if (hardware) h264 = std::make_unique<piik::capture::H264Decoder>(device.manager.Get());
+    else vp8 = std::make_unique<piik::capture::Vp8Decoder>();
     InputReader reader;
     bool began = false;
     UINT64 last_timestamp = 0;
@@ -1649,12 +1649,12 @@ void RunEncodedVideo(const ProductArguments& arguments) {
 
 void RunVideoCapture(const ProductArguments& arguments) {
   const bool window_target =
-      arguments.target_kind == screener::capture::TargetKind::window;
+      arguments.target_kind == piik::capture::TargetKind::window;
   HRESULT identity = window_target
-                         ? screener::capture::ValidateWindowTarget(
+                         ? piik::capture::ValidateWindowTarget(
                                arguments.source_id, arguments.pid,
                                arguments.creation_time)
-                         : screener::capture::ValidateDisplayTarget(
+                         : piik::capture::ValidateDisplayTarget(
                                arguments.source_id);
   Check(identity, "target-identity");
 
@@ -1663,7 +1663,7 @@ void RunVideoCapture(const ProductArguments& arguments) {
   DeviceContext device = CreateDevice(adapter);
   auto encoder = SelectVideoEncoder(arguments, adapter, device);
   const bool hardware = encoder.kind == OutputKind::h264;
-  screener::capture::CapturePresentation presentation(arguments.target_kind,
+  piik::capture::CapturePresentation presentation(arguments.target_kind,
                                                       arguments.source_id);
   ProtocolWriter writer;
 
@@ -1679,9 +1679,9 @@ void RunVideoCapture(const ProductArguments& arguments) {
     Check(HRESULT_FROM_WIN32(GetLastError()), "target-process-handle");
   }
   Check(window_target
-            ? screener::capture::ValidateWindowTarget(
+            ? piik::capture::ValidateWindowTarget(
                   arguments.source_id, arguments.pid, arguments.creation_time)
-            : screener::capture::ValidateDisplayTarget(arguments.source_id),
+            : piik::capture::ValidateDisplayTarget(arguments.source_id),
         "target-identity-before-capture");
   auto capture_device = CreateCaptureDevice(device.device.Get());
   GraphicsCaptureItem item = window_target
@@ -1690,9 +1690,9 @@ void RunVideoCapture(const ProductArguments& arguments) {
                                  : CreateCaptureItem(reinterpret_cast<HMONITOR>(
                                        static_cast<UINT_PTR>(arguments.source_id)));
   Check(window_target
-            ? screener::capture::ValidateWindowTarget(
+            ? piik::capture::ValidateWindowTarget(
                   arguments.source_id, arguments.pid, arguments.creation_time)
-            : screener::capture::ValidateDisplayTarget(arguments.source_id),
+            : piik::capture::ValidateDisplayTarget(arguments.source_id),
         "target-identity-after-item");
   auto initial_size = item.Size();
   if (initial_size.Width <= 0 || initial_size.Height <= 0) {
@@ -1909,7 +1909,7 @@ void RunVideoCapture(const ProductArguments& arguments) {
 }
 #endif
 
-#ifdef SCREENER_H264_FIXTURE
+#ifdef PIIK_H264_FIXTURE
 struct Arguments final {
   bool list = false;
   std::optional<UINT> adapter_index;
@@ -1972,7 +1972,7 @@ void PrintEvidence(const Adapter& adapter, UINT mft_index,
 
 }  // namespace
 
-#ifdef SCREENER_H264_FIXTURE
+#ifdef PIIK_H264_FIXTURE
 int wmain(int argc, wchar_t** argv) {
   try {
     Arguments arguments = ParseArguments(argc, argv);
@@ -2024,12 +2024,12 @@ int wmain(int argc, wchar_t** argv) {
 }
 #endif
 
-#ifndef SCREENER_H264_FIXTURE
+#ifndef PIIK_H264_FIXTURE
 int wmain(int argc, wchar_t** argv) {
   try {
     ProductArguments arguments = ParseProductArguments(argc, argv);
     if (arguments.mode == ProductArguments::Mode::list) {
-      return screener::capture::WriteSourceList();
+      return piik::capture::WriteSourceList();
     }
     if (arguments.mode == ProductArguments::Mode::probe) {
       Runtime runtime;
@@ -2040,7 +2040,7 @@ int wmain(int argc, wchar_t** argv) {
       Fail("stdout-binary", "could not switch stdout to binary mode");
     }
     if (arguments.mode == ProductArguments::Mode::preview) {
-      Check(screener::capture::WriteSourcePreview(
+      Check(piik::capture::WriteSourcePreview(
                 arguments.target_kind, arguments.source_id, arguments.pid,
                 arguments.creation_time),
             "capture-preview");

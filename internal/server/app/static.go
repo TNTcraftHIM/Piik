@@ -7,7 +7,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/TNTcraftHIM/Screener/internal/server/protocol"
+	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 )
 
 // staticContentTypes freezes mrmime's answers for the extensions a Vite build

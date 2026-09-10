@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/TNTcraftHIM/Screener/internal/server/protocol"
+	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 )
 
 func TestSignalRebuildSupersedesOverlappingQualityPreparation(t *testing.T) {

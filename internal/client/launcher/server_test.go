@@ -59,7 +59,7 @@ func TestLauncherServesStateAndCompletesOneSelection(t *testing.T) {
 		if selection != (Selection{Mode: ModeLink, Language: "vis"}) {
 			t.Fatalf("selection = %+v", selection)
 		}
-		server.SetResult("http://localhost:8787/#screener-client=1", nil)
+		server.SetResult("http://localhost:8787/#piik-client=1", nil)
 	case <-time.After(time.Second):
 		t.Fatal("launcher did not emit a selection")
 	}
@@ -72,7 +72,7 @@ func TestLauncherServesStateAndCompletesOneSelection(t *testing.T) {
 			Target string `json:"target"`
 		}
 		if response.StatusCode != http.StatusOK || json.NewDecoder(response.Body).Decode(&launch) != nil ||
-			launch.Target != "http://localhost:8787/#screener-client=1" {
+			launch.Target != "http://localhost:8787/#piik-client=1" {
 			t.Fatalf("launcher result = %d, %+v", response.StatusCode, launch)
 		}
 	case <-time.After(time.Second):
@@ -135,7 +135,7 @@ func TestLauncherCarriesAndNormalizesAnOptionalLocalPassword(t *testing.T) {
 		if selection.Mode != ModeLocal || selection.Language != "zh" || selection.LocalAccessPassword != "new-local-pass" {
 			t.Fatalf("selection = %+v", selection)
 		}
-		server.SetResult("http://localhost:8787/#screener-client=1", nil)
+		server.SetResult("http://localhost:8787/#piik-client=1", nil)
 	case <-time.After(time.Second):
 		t.Fatal("launcher did not emit a selection")
 	}

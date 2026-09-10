@@ -3,7 +3,7 @@ package route
 import (
 	"errors"
 
-	"github.com/TNTcraftHIM/Screener/internal/server/protocol"
+	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 )
 
 // pruneDepartedLeaves ports 4015: removes departed viewers without

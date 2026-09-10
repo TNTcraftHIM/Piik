@@ -29,7 +29,7 @@ in [ADR-0011](./0011-browser-assisted-native-fanout.md) remains independently ow
    upstream subscription, room-wide minimum or topology operation is introduced.
 2. Each group uses stock WebRTC encoding and adaptation through an independent
    local producer. Each outgoing connection retains stock ICE, DTLS-SRTP,
-   bandwidth estimation, RTP packetization, pacing and loss recovery. Screener
+   bandwidth estimation, RTP packetization, pacing and loss recovery. Piik
    connects existing demand observations to group budgets and membership; it
    adds no congestion estimator, quality score or arbitrary resolution ladder.
 3. Reuse `HostPeer` and its existing signaling, sender-mutation and retirement

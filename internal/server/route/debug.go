@@ -7,11 +7,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/TNTcraftHIM/Screener/internal/server/protocol"
+	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 )
 
 func debugEnabled() bool {
-	return routeDebugEnabled(os.Getenv("SCREENER_DEBUG")) ||
+	return routeDebugEnabled(os.Getenv("PIIK_DEBUG")) ||
 		slog.Default().Enabled(context.Background(), slog.LevelDebug)
 }
 
@@ -44,7 +44,7 @@ func (c *Controller) debug(event string, details ...any) {
 		"revision", c.revision,
 		"factVersion", c.factVersion)
 	args = append(args, details...)
-	slog.Info("screener-route", args...)
+	slog.Info("piik-route", args...)
 }
 
 // debugPeer ports 4895: "host", "viewer-<joinOrder>" or "viewer-unknown".

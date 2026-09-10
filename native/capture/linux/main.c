@@ -291,7 +291,7 @@ static gboolean video_stack_available(void) {
   for (guint index = 0; index < G_N_ELEMENTS(required); ++index) {
     if (!has_factory(required[index])) return FALSE;
   }
-  return screener_portal_available();
+  return piik_portal_available();
 }
 
 static gboolean audio_stack_available(void) {
@@ -1000,7 +1000,7 @@ stopped:
   char *failure = g_strdup(run->failure);
   g_mutex_unlock(&run->lock);
   if (failure != NULL) {
-    fprintf(stderr, "Screener capture unavailable: %s\n", failure);
+    fprintf(stderr, "Piik capture unavailable: %s\n", failure);
     g_free(failure);
     return 2;
   }
@@ -1022,10 +1022,10 @@ static int capture_video(int count, char **values) {
   }
   const EncoderInfo *encoder_info = g_ptr_array_index(encoders, encoder_index);
   GError *error = NULL;
-  ScreenerPortalCapture portal = {.pipewire_fd = -1};
-  if (!encoded && !screener_portal_capture_open(
-          g_getenv("SCREENER_XDP_RESTORE_TOKEN"), &portal, &error)) {
-    fprintf(stderr, "Screener capture unavailable: %s\n",
+  PiikPortalCapture portal = {.pipewire_fd = -1};
+  if (!encoded && !piik_portal_capture_open(
+          g_getenv("PIIK_XDP_RESTORE_TOKEN"), &portal, &error)) {
+    fprintf(stderr, "Piik capture unavailable: %s\n",
             error == NULL ? "screen selection failed" : error->message);
     g_clear_error(&error);
     g_ptr_array_unref(encoders);
@@ -1063,11 +1063,11 @@ static int capture_video(int count, char **values) {
   GstElement *pipeline = gst_parse_launch(pipeline_text->str, &error);
   g_string_free(pipeline_text, TRUE);
   if (pipeline == NULL || error != NULL) {
-    fprintf(stderr, "Screener capture unavailable: %s\n",
+    fprintf(stderr, "Piik capture unavailable: %s\n",
             error == NULL ? "video pipeline failed" : error->message);
     g_clear_error(&error);
     if (pipeline != NULL) gst_object_unref(pipeline);
-    screener_portal_capture_close(&portal);
+    piik_portal_capture_close(&portal);
     g_ptr_array_unref(encoders);
     return 2;
   }
@@ -1099,7 +1099,7 @@ static int capture_video(int count, char **values) {
     output->encoder = gst_bin_get_by_name(GST_BIN(pipeline), name);
     g_free(name);
     if (output->encoder == NULL || !configure_encoder(output)) {
-      fprintf(stderr, "Screener capture unavailable: hardware encoder is incompatible\n");
+      fprintf(stderr, "Piik capture unavailable: hardware encoder is incompatible\n");
       write_frame(6, 0, (guint8)index, 0, 0, 0, 0,
           (const guint8 *)"hardware encoder configuration failed",
           strlen("hardware encoder configuration failed"));
@@ -1154,7 +1154,7 @@ cleanup:
   g_main_loop_unref(run.loop);
   g_mutex_clear(&run.lock);
   gst_object_unref(pipeline);
-  screener_portal_capture_close(&portal);
+  piik_portal_capture_close(&portal);
   g_ptr_array_unref(encoders);
   return result;
 }
@@ -1210,6 +1210,6 @@ int main(int argc, char **argv) {
   if (argc > 1 && strcmp(argv[1], "--capture-audio") == 0) {
     return capture_audio(argc, argv);
   }
-  fprintf(stderr, "Screener capture unavailable: unsupported command\n");
+  fprintf(stderr, "Piik capture unavailable: unsupported command\n");
   return 2;
 }

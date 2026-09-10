@@ -15,7 +15,7 @@ bootstrap/updater; do not call this wrapper generic.
 
 ## Release Boundary
 
-A routine application release changes only the built Screener server binary and
+A routine application release changes only the built Piik server binary and
 the Browser assets it embeds. It does not change infrastructure,
 service units, proxy/firewall rules, secrets, media listener configuration, or
 persistent room state.
@@ -42,16 +42,16 @@ The packager refuses a dirty tree, builds the Browser assets and the
 linux/amd64 server binary from that exact revision without cgo, records the
 full revision, emits a runtime archive plus path/size/SHA-256 manifest and release descriptor, and
 extracts its own artifact to verify it. The archive contains exactly
-`screener-server`, `LICENSE`, `THIRD-PARTY-NOTICES.txt`, and `REVISION`. Upload
-the archive, manifest, and descriptor together to `/opt/screener/uploads`.
+`piik-server`, `LICENSE`, `THIRD-PARTY-NOTICES.txt`, and `REVISION`. Upload
+the archive, manifest, and descriptor together to `/opt/piik/uploads`.
 
 The same application descriptor is also the Client assembly input. On each
 target platform, provide that platform's Go toolchain:
 
 ```sh
-SCREENER_GO=/path/to/go node scripts/assemble-client.mjs \
-  /outside/repository/app-release/screener-<revision>.release.json \
-  /outside/repository/Screener-Client \
+PIIK_GO=/path/to/go node scripts/assemble-client.mjs \
+  /outside/repository/app-release/piik-<revision>.release.json \
+  /outside/repository/Piik-Client \
   --target windows-amd64 \
   --capture /path/to/platform-capture \
   --tunnel /path/to/cloudflared
@@ -114,7 +114,7 @@ current CI workflow produces short-lived candidates but does not publish a
 GitHub Release; publication remains an explicit distribution decision.
 
 The default Client launcher starts immediately, then performs one background
-request to the official Screener GitHub Releases API. It shows a link only when
+request to the official Piik GitHub Releases API. It shows a link only when
 the latest release has a valid full revision different from the packaged one.
 The request sends no current revision, credentials, room data, or media data;
 network errors, private-repository responses, and missing releases are treated
@@ -127,7 +127,7 @@ bash deploy/check-release.sh
 ```
 
 The script runs the deployed binary's release check, which reads
-`/opt/screener/current/REVISION` and prints one JSON result.
+`/opt/piik/current/REVISION` and prints one JSON result.
 Exit status `0` means the deployed revision is current, `10` means a newer
 release is available, and `20` means the check could not establish a valid
 release identity. For a private repository, inject a short-lived `GITHUB_TOKEN`
@@ -137,9 +137,11 @@ state. A different current-revision file may be supplied as its only argument.
 
 ## Permanent-Room Schema Cutover
 
-Schema 2 / signaling `screener-v23` requires matching Web/Client/Server builds
-and an accepted active-session interruption. Native control stays v9; Browser
-credential keys stay unchanged. This is not an app-only release.
+The schema 2 / signaling v23 cutover required matching Web/Client/Server builds
+and an accepted active-session interruption. Native control stayed v9; that
+schema change preserved Browser credential keys. It was not an app-only release.
+The separate [brand cutover](./research/piik-rename-plan.md) must preserve this
+database rather than repeat the schema change.
 
 1. Verify the candidate; record the current release, environment, absolute DB
    path and ownership. Stop ingress and the old application; take and retain a
@@ -184,21 +186,21 @@ restore the previous infrastructure.
 Run the tracked server entry with the uploaded descriptor:
 
 ```sh
-sudo env SCREENER_PUBLIC_ORIGIN=https://share.example.com \
+sudo env PIIK_PUBLIC_ORIGIN=https://share.example.com \
   bash /path/to/repository/deploy/release-app.sh \
-  /opt/screener/uploads/screener-<revision>.release.json
+  /opt/piik/uploads/piik-<revision>.release.json
 ```
 
 The wrapper:
 
 1. takes a deployment lock and validates the descriptor, revision, archive,
-   manifest, current Go process, Screener/nginx service state, and public origin;
+   manifest, current Go process, Piik/nginx service state, and public origin;
 2. rejects unexpected archive paths, links, file types, or duplicate inodes;
 3. extracts to a new release directory and verifies every file hash and size;
 4. validates production configuration by running the packaged binary's
    configuration check as the service user under a bounded runtime;
 5. proves the old and new releases share no regular-file inode;
-6. atomically switches `/opt/screener/current`, starts the service, and polls
+6. atomically switches `/opt/piik/current`, starts the service, and polls
    bounded local/public health; and
 7. restores the exact prior symlink and service when cutover or health fails.
 
@@ -225,8 +227,8 @@ Verify only the surfaces relevant to the release:
 
 - local and public `/healthz` return `{"status":"ok"}`;
 - the public HTML references the new immutable main asset;
-- Screener and nginx have expected active/restart state;
-- Screener owns each configured STUN/SFU UDP listener and public reachability
+- Piik and nginx have expected active/restart state;
+- Piik owns each configured STUN/SFU UDP listener and public reachability
   matches the configuration;
 - the current symlink and served revision match the descriptor;
 - room creation, Host authentication, one direct Viewer, and configured SFU
@@ -240,7 +242,7 @@ to [verification status](./verification-status.md), not routine postflight.
 ## Recovery
 
 Before cutover, the wrapper keeps the exact prior release path. On failure after
-the switch begins, it stops Screener, restores that path atomically, restarts the
+the switch begins, it stops Piik, restores that path atomically, restarts the
 service, and waits for health. A failed recovery exits distinctly and requires
 operator intervention; it must not silently report the new release as active.
 

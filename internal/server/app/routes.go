@@ -7,10 +7,10 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/TNTcraftHIM/Screener/internal/server/config"
-	"github.com/TNTcraftHIM/Screener/internal/server/protocol"
-	"github.com/TNTcraftHIM/Screener/internal/server/room"
-	"github.com/TNTcraftHIM/Screener/internal/server/signal"
+	"github.com/TNTcraftHIM/Piik/internal/server/config"
+	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
+	"github.com/TNTcraftHIM/Piik/internal/server/room"
+	"github.com/TNTcraftHIM/Piik/internal/server/signal"
 )
 
 // The request router of src/server/app.ts. Route order is a contract (map

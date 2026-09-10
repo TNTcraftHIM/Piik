@@ -3,7 +3,7 @@ package nativehost
 import (
 	"errors"
 
-	"github.com/TNTcraftHIM/Screener/internal/client/mediaedge"
+	"github.com/TNTcraftHIM/Piik/internal/client/mediaedge"
 	"github.com/pion/webrtc/v4"
 )
 

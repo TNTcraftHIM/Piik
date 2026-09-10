@@ -28,7 +28,7 @@ interface AsyncCloseable {
 }
 
 // A gate's server is either an in-process page server it closes directly or a
-// spawned Screener server it stops like any other child.
+// spawned Piik server it stops like any other child.
 export type CleanupServer = AsyncCloseable | ChildProcessWithoutNullStreams;
 
 export interface CleanupResources {
@@ -495,11 +495,11 @@ function portClosed(port: number, deadline: number): Promise<boolean> {
 
 export const profileCleanupScript = String.raw`
 $ErrorActionPreference = 'Stop'
-$root = [IO.Path]::GetFullPath($env:SCREENER_GATE_PROFILE_TO_REMOVE)
+$root = [IO.Path]::GetFullPath($env:PIIK_GATE_PROFILE_TO_REMOVE)
 $temp = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd([IO.Path]::DirectorySeparatorChar)
 $parent = [IO.Path]::GetDirectoryName($root).TrimEnd([IO.Path]::DirectorySeparatorChar)
 $name = [IO.Path]::GetFileName($root)
-if ($parent -ine $temp -or $name -notmatch '^screener-(access-privacy|client-loopback|client-media)-[A-Za-z0-9_-]{6}$') { exit 31 }
+if ($parent -ine $temp -or $name -notmatch '^piik-(access-privacy|client-loopback|client-media)-[A-Za-z0-9_-]{6}$') { exit 31 }
 $rootEntries = @([IO.Directory]::EnumerateFileSystemEntries($parent, $name, [IO.SearchOption]::TopDirectoryOnly))
 if ($rootEntries.Count -eq 0) { exit 0 }
 if ($rootEntries.Count -ne 1) { exit 34 }
@@ -534,7 +534,7 @@ export function isExactGateProfile(
     ? dirname(candidate).toLowerCase() === temp.toLowerCase()
     : dirname(candidate) === temp;
   return same &&
-    /^screener-(?:access-privacy|client-loopback|client-media)-[A-Za-z0-9_-]{6}$/.test(
+    /^piik-(?:access-privacy|client-loopback|client-media)-[A-Za-z0-9_-]{6}$/.test(
       basename(candidate),
     );
 }
@@ -564,7 +564,7 @@ async function removeGateProfile(profile: string): Promise<boolean> {
     "powershell.exe",
     ["-NoProfile", "-NonInteractive", "-Command", profileCleanupScript],
     10_000,
-    { ...process.env, SCREENER_GATE_PROFILE_TO_REMOVE: profile },
+    { ...process.env, PIIK_GATE_PROFILE_TO_REMOVE: profile },
   );
 }
 

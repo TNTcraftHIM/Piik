@@ -1,6 +1,6 @@
 # Third-Party Licenses
 
-Screener-owned code uses the root [MIT license](../LICENSE). Dependencies retain
+Piik-owned code uses the root [MIT license](../LICENSE). Dependencies retain
 their own licenses; MIT does not replace their copyright notices or terms.
 
 The [pinned source index](./upstream.json) records exact upstream commits and
@@ -13,7 +13,7 @@ text also preserves Google's BSD-licensed varint attribution.
 The Windows capture adapter statically links the pinned WebRTC SDK, including
 its libvpx encoder. The Client's native notices retain the SDK's collected
 third-party license texts; these dependencies do not become MIT-licensed merely
-because Screener's adapter is MIT-licensed.
+because Piik's adapter is MIT-licensed.
 Linux packages that include the native capture binary include
 `linux-system-dependencies.txt`, the full LGPL-3.0-only text for libportal, and
 the full GPL-3.0 text referenced by that license. The system shared libraries
@@ -29,7 +29,7 @@ Client package also carries the pinned Cloudflared notices. Missing license
 texts or changed pinned contents stop packaging.
 
 LiveKit media-core packages are referenced as an unmodified, version-pinned Go
-module under Apache-2.0. Original Screener adapters remain MIT; adapted upstream
+module under Apache-2.0. Original Piik adapters remain MIT; adapted upstream
 probe orchestration retains its Apache-2.0 attribution in the source. Redistribution retains
 the module's license and applicable notices through the same Go notice collector.
 Any later copied or modified upstream file must retain its attribution and mark

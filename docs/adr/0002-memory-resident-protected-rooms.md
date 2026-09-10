@@ -5,7 +5,7 @@
 
 ## Context
 
-Screener serves one Host and at most 20 trusted Viewers. The application server
+Piik serves one Host and at most 20 trusted Viewers. The application server
 owns a small room and authorization aggregate while WebRTC and LiveKit own live
 media sessions. Frequent application releases should not force the Host to
 create another room or redistribute invitations, but a database must not become

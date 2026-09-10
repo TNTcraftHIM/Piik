@@ -1,8 +1,8 @@
 package route
 
 import (
-	"github.com/TNTcraftHIM/Screener/internal/server/ordered"
-	"github.com/TNTcraftHIM/Screener/internal/server/protocol"
+	"github.com/TNTcraftHIM/Piik/internal/server/ordered"
+	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 )
 
 // Resource is the caller-owned SFU/overlap allocation the controller stores,

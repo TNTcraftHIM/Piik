@@ -39,7 +39,7 @@ static void session_created(GObject *source, GAsyncResult *result,
   xdp_session_start(request->session, NULL, NULL, session_started, request);
 }
 
-gboolean screener_portal_available(void) {
+gboolean piik_portal_available(void) {
   GError *error = NULL;
   GDBusConnection *bus = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &error);
   if (bus == NULL) {
@@ -62,11 +62,11 @@ gboolean screener_portal_available(void) {
   return available;
 }
 
-gboolean screener_portal_capture_open(const char *restore_token,
-                                      ScreenerPortalCapture *capture,
+gboolean piik_portal_capture_open(const char *restore_token,
+                                      PiikPortalCapture *capture,
                                       GError **error) {
   g_return_val_if_fail(capture != NULL, FALSE);
-  *capture = (ScreenerPortalCapture){.pipewire_fd = -1};
+  *capture = (PiikPortalCapture){.pipewire_fd = -1};
 
   capture->portal = xdp_portal_initable_new(error);
   if (capture->portal == NULL) return FALSE;
@@ -85,7 +85,7 @@ gboolean screener_portal_capture_open(const char *restore_token,
   g_main_loop_unref(request.loop);
   if (request.error != NULL) {
     g_propagate_error(error, request.error);
-    screener_portal_capture_close(capture);
+    piik_portal_capture_close(capture);
     return FALSE;
   }
   capture->session = request.session;
@@ -94,7 +94,7 @@ gboolean screener_portal_capture_open(const char *restore_token,
   if (streams == NULL) {
     g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_FAILED,
                         "portal returned no screen-cast streams");
-    screener_portal_capture_close(capture);
+    piik_portal_capture_close(capture);
     return FALSE;
   }
   GVariantIter iterator;
@@ -114,7 +114,7 @@ gboolean screener_portal_capture_open(const char *restore_token,
   if (!found || capture->node_id == 0) {
     g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_FAILED,
                         "portal returned an invalid PipeWire stream");
-    screener_portal_capture_close(capture);
+    piik_portal_capture_close(capture);
     return FALSE;
   }
 
@@ -122,7 +122,7 @@ gboolean screener_portal_capture_open(const char *restore_token,
   if (capture->pipewire_fd < 0) {
     g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_FAILED,
                         "portal could not open its PipeWire remote");
-    screener_portal_capture_close(capture);
+    piik_portal_capture_close(capture);
     return FALSE;
   }
   if (capture->target_object == NULL) {
@@ -132,7 +132,7 @@ gboolean screener_portal_capture_open(const char *restore_token,
   return TRUE;
 }
 
-void screener_portal_capture_close(ScreenerPortalCapture *capture) {
+void piik_portal_capture_close(PiikPortalCapture *capture) {
   if (capture == NULL) return;
   if (capture->pipewire_fd >= 0) close(capture->pipewire_fd);
   capture->pipewire_fd = -1;

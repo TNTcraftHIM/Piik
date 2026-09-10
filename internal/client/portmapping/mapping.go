@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/TNTcraftHIM/Screener/internal/diagnostics"
+	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
 	nat "github.com/netbirdio/go-nat"
 )
 
@@ -123,7 +123,7 @@ func (mapping *Mapping) discover(parent context.Context) {
 func (mapping *Mapping) mapPortLocked(ctx context.Context) {
 	mapping.attempted = true
 	externalPort, err := mapping.gateway.AddPortMapping(
-		ctx, "udp", mapping.localPort, "Screener", leaseDuration,
+		ctx, "udp", mapping.localPort, "Piik", leaseDuration,
 	)
 	slog.Debug("nat-mapping", "event", "mapping-result", "localPort", mapping.localPort,
 		"externalPort", externalPort, "leaseSeconds", leaseDuration.Seconds(), diagnostics.Error(err))

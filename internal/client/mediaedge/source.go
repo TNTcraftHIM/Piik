@@ -7,9 +7,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/TNTcraftHIM/Screener/internal/client/nativecapture"
-	"github.com/TNTcraftHIM/Screener/internal/media/encoded"
-	"github.com/TNTcraftHIM/Screener/internal/media/forwarding"
+	"github.com/TNTcraftHIM/Piik/internal/client/nativecapture"
+	"github.com/TNTcraftHIM/Piik/internal/media/encoded"
+	"github.com/TNTcraftHIM/Piik/internal/media/forwarding"
 	mediacodec "github.com/livekit/mediatransportutil/pkg/codec"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"

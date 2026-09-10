@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       client_checks:
-        description: Run the optional Screener Client checks
+        description: Run the optional Piik Client checks
         required: false
         default: false
         type: boolean
@@ -31,7 +31,7 @@ jobs:
       - name: Validate tracked project state
         run: sh scripts/check-project-state.sh
         env:
-          SCREENER_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          PIIK_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
       - name: Install dependencies
         run: npm ci
       # The Go build embeds internal/server/webassets/dist, so Vite runs first.
@@ -83,7 +83,7 @@ jobs:
       - name: Upload application release
         uses: actions/upload-artifact@v7
         with:
-          name: screener-app-${{ github.sha }}
+          name: piik-app-${{ github.sha }}
           path: ${{ runner.temp }}/app-release/*
           if-no-files-found: error
           retention-days: 14
@@ -142,7 +142,7 @@ jobs:
       - name: Download application release
         uses: actions/download-artifact@v8
         with:
-          name: screener-app-${{ github.sha }}
+          name: piik-app-${{ github.sha }}
           path: ${{ runner.temp }}/app-release
       - name: Build and verify Client candidate
         run: >-
@@ -153,7 +153,7 @@ jobs:
       - name: Upload Client release candidate
         uses: actions/upload-artifact@v7
         with:
-          name: screener-client-${{ matrix.target }}-${{ github.sha }}
+          name: piik-client-${{ matrix.target }}-${{ github.sha }}
           path: ${{ runner.temp }}/client-release/*
           if-no-files-found: error
           compression-level: 0

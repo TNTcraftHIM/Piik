@@ -42,7 +42,7 @@ export function writeWebLicenseNotices(repositoryRoot, outputFile) {
   const visited = new Set();
   const entries = new Map();
   for (const [name, parent] of queue) {
-    const paths = createRequire(parent).resolve.paths("screener-license-lookup");
+    const paths = createRequire(parent).resolve.paths("piik-license-lookup");
     const directory = paths.map((path) => join(path, name))
       .find((path) => existsSync(join(path, "package.json")));
     if (!directory) throw new Error(`Missing installed runtime dependency ${name}`);
@@ -64,7 +64,7 @@ export function writeWebLicenseNotices(repositoryRoot, outputFile) {
   }
   mkdirSync(dirname(outputFile), { recursive: true });
   writeFileSync(outputFile, "Third-party software notices\n" +
-    "Screener's MIT license does not replace the following component licenses.\n" +
+    "Piik's MIT license does not replace the following component licenses.\n" +
     [...entries].sort(([a], [b]) => a.localeCompare(b)).map(([, body]) => body).join(""));
 }
 
@@ -109,10 +109,10 @@ function moduleSections(modules) {
 }
 
 // writeServerLicenseNotices produces the Hosted application release notice file,
-// which ships beside the single screener-server binary.
+// which ships beside the single piik-server binary.
 export function writeServerLicenseNotices(repositoryRoot, outputFile, goCommand, target) {
-  const notices = goNotices(repositoryRoot, goCommand, target, "./cmd/screener-server");
-  writeFileSync(outputFile, "Screener server third-party software notices\n" +
+  const notices = goNotices(repositoryRoot, goCommand, target, "./cmd/piik-server");
+  writeFileSync(outputFile, "Piik server third-party software notices\n" +
     WEB_NOTICE_LINE + notices.toolchain + moduleSections(notices.modules));
 }
 
@@ -122,7 +122,7 @@ export function writeClientLicenseNotices(repositoryRoot, packageRoot, goCommand
     writeFileSync(join(packageRoot, "runtime", "tunnel", "THIRD-PARTY-NOTICES.txt"),
       pinnedNotice(`cloudflared@${tunnelVersion}`));
   }
-  const notices = goNotices(repositoryRoot, goCommand, target, "./cmd/screener-client");
+  const notices = goNotices(repositoryRoot, goCommand, target, "./cmd/piik-client");
   let text = "Native Client third-party software notices\n" +
     WEB_NOTICE_LINE +
     (tunnelVersion ? "Cloudflared: runtime/tunnel/THIRD-PARTY-NOTICES.txt\n" : "") +

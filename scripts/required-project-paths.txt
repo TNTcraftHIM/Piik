@@ -39,10 +39,10 @@ scripts/client-icons.mjs
 scripts/package-client-candidate.mjs
 scripts/check-client.mjs
 scripts/client-native-host-gate.ts
-cmd/screener-server/main.go
-cmd/screener-peer-gate/main.go
-cmd/screener-client/screener.ico
-cmd/screener-client/screener_windows_amd64.syso
+cmd/piik-server/main.go
+cmd/piik-peer-gate/main.go
+cmd/piik-client/piik.ico
+cmd/piik-client/piik_windows_amd64.syso
 internal/server/webassets/dist/.gitkeep
 deploy/release-app.sh
 deploy/check-release.sh

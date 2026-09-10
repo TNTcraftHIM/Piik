@@ -16,7 +16,7 @@ import (
 
 // defaultReleaseAPIURL is DEFAULT_RELEASE_API_URL: the same published release
 // contract the Browser update notice uses (src/client/lib/release-update.ts).
-const defaultReleaseAPIURL = "https://api.github.com/repos/TNTcraftHIM/Screener/releases/latest"
+const defaultReleaseAPIURL = "https://api.github.com/repos/TNTcraftHIM/Piik/releases/latest"
 
 // Exit codes are UPDATE_EXIT_CODES. deploy/check-release.sh forwards them, so a
 // checker failure stays distinguishable from "an update exists".
@@ -31,13 +31,13 @@ const (
 
 // releaseUsage is the usage string parseArguments threw, with this binary's
 // name in place of the script's.
-const releaseUsage = "Usage: screener-server --check-release --current-file <REVISION> [--api-url <URL>]"
+const releaseUsage = "Usage: piik-server --check-release --current-file <REVISION> [--api-url <URL>]"
 
 const (
 	// releaseTimeout bounds the whole check; an operator runs it interactively.
 	releaseTimeout = 5 * time.Second
 	// releasePathPrefix is RELEASE_PATH_PREFIX: the only accepted release page.
-	releasePathPrefix = "/TNTcraftHIM/Screener/releases/tag/"
+	releasePathPrefix = "/TNTcraftHIM/Piik/releases/tag/"
 	releaseHost       = "github.com"
 	releaseAPIHost    = "api.github.com"
 )
@@ -116,7 +116,7 @@ func checkRelease(ctx context.Context, currentRevision, apiURL, token string) re
 	}
 	request.Header.Set("Accept", "application/vnd.github+json")
 	request.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	request.Header.Set("User-Agent", "Screener-release-check")
+	request.Header.Set("User-Agent", "Piik-release-check")
 	if authorizesGitHub(endpoint, token) {
 		request.Header.Set("Authorization", "Bearer "+strings.TrimSpace(token))
 	}
@@ -203,7 +203,7 @@ type releaseMetadata struct {
 
 // parseReleaseMetadata ports parseReleaseMetadata. It accepts one shape only: a
 // published, non-draft release whose tag is a full commit revision and whose
-// page is exactly https://github.com/TNTcraftHIM/Screener/releases/tag/<that
+// page is exactly https://github.com/TNTcraftHIM/Piik/releases/tag/<that
 // revision> with no credentials, port, query or fragment. The returned URL is
 // rebuilt from the validated parts so nothing unverified reaches the operator.
 func parseReleaseMetadata(payload []byte) (revision string, releaseURL string, ok bool) {

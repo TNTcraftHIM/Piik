@@ -26,7 +26,7 @@ describe("native Client private wire", () => {
     });
     const fetcher = vi.fn(async (url: string) => url.endsWith("/health")
       ? new Response(JSON.stringify({
-          protocol: 9, service: "screener-client", port: 39_721,
+          protocol: 9, service: "piik-client", port: 39_721,
           instanceToken: "a".repeat(43),
           nativeMedia: {video: true, processAudio: false, systemAudio: true, hardwareH264: true, softwareVP8: true},
         }), {status: 200})
@@ -53,7 +53,7 @@ describe("native Client private wire", () => {
       static readonly CLOSING = 2;
       static readonly CLOSED = 3;
       readyState = FakeWebSocket.OPEN;
-      protocol = `screener-client-v9.${token}`;
+      protocol = `piik-client-v9.${token}`;
       readonly close = vi.fn(() => {
         this.readyState = FakeWebSocket.CLOSING;
       });
@@ -94,7 +94,7 @@ describe("native Client private wire", () => {
     vi.stubGlobal("fetch", vi.fn(async () =>
       new Response(JSON.stringify({
         protocol: 9,
-        service: "screener-client",
+        service: "piik-client",
         port: 39_721,
         instanceToken: token,
         nativeMedia: {
@@ -112,7 +112,7 @@ describe("native Client private wire", () => {
     const unexpected = vi.fn();
     client!.onClose(unexpected);
     await expect(client!.updateShare("share_123456", DEFAULT_QUALITY_SETTINGS))
-      .rejects.toThrow("Screener Client request failed");
+      .rejects.toThrow("Piik Client request failed");
     await client!.ping();
     expect(sockets[0]!.close).not.toHaveBeenCalled();
     expect(unexpected).not.toHaveBeenCalled();
@@ -133,7 +133,7 @@ describe("native Client private wire", () => {
     expect(
       nativeHealthSchema.parse({
         protocol: 9,
-        service: "screener-client",
+        service: "piik-client",
         port: 39_721,
         instanceToken: "a".repeat(43),
         nativeMedia: {
@@ -148,7 +148,7 @@ describe("native Client private wire", () => {
     expect(
       nativeHealthSchema.safeParse({
         protocol: 7,
-        service: "screener-client",
+        service: "piik-client",
         port: 39_721,
         instanceToken: "a".repeat(43),
         nativeMedia: {

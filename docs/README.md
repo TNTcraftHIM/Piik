@@ -2,12 +2,12 @@
 
 [English Quick Start](../README.md) · [中文快速开始](../README.zh-CN.md)
 
-## Use Screener
+## Use Piik
 
 | What you need | Start here |
 | --- | --- |
 | Join a friend or share a screen | [Quick Start](../README.md) |
-| Run Client, choose a mode, or fix capture trouble | [Client guide](../cmd/screener-client/README.md) |
+| Run Client, choose a mode, or fix capture trouble | [Client guide](../cmd/piik-client/README.md) |
 | Collect a useful bug report | [Diagnostics and export](./reference/configuration.md#diagnostics) |
 | Host your own site | [Self-hosting](./operations/self-hosting.md) |
 | Configure ports, access or persistence | [Configuration reference](./reference/configuration.md) |
@@ -33,7 +33,7 @@ npm run dev
 In a second terminal, start the server. For a POSIX shell:
 
 ```sh
-PORT=8788 PUBLIC_BASE_URL=http://localhost:8787 go run ./cmd/screener-server
+PORT=8788 PUBLIC_BASE_URL=http://localhost:8787 go run ./cmd/piik-server
 ```
 
 Or in PowerShell:
@@ -41,8 +41,8 @@ Or in PowerShell:
 ```powershell
 $env:PORT = '8788'
 $env:PUBLIC_BASE_URL = 'http://localhost:8787'
-go build -o build/dev/screener-server.exe ./cmd/screener-server
-./build/dev/screener-server.exe
+go build -o build/dev/piik-server.exe ./cmd/piik-server
+./build/dev/piik-server.exe
 ```
 
 The fixed Windows executable path avoids repeated firewall prompts from `go run`.
@@ -87,7 +87,7 @@ Browse [all ADRs](./adr/) for their context and consequences.
   results, failed controls and limits; neither promises universal performance.
 - [Research directory](./research/): transport, capture, platform and backend evidence.
 - [Maintenance](./maintenance.md): document ownership and repository lifecycle.
-- [Licensing](../licenses/README.md): Screener's MIT scope and third-party notices.
+- [Licensing](../licenses/README.md): Piik's MIT scope and third-party notices.
 
 Research distinguishes observations from assumptions. Product modules own
 accepted behavior, source and tests own implementation detail, and Git/PRs own

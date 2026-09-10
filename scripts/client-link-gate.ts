@@ -86,21 +86,21 @@ function remoteOptions(): {
   key: string;
   ssh: string;
 } {
-  const host = process.env.SCREENER_REMOTE_HOST?.trim();
-  const key = process.env.SCREENER_REMOTE_SSH_KEY?.trim();
+  const host = process.env.PIIK_REMOTE_HOST?.trim();
+  const key = process.env.PIIK_REMOTE_SSH_KEY?.trim();
   if (!host || !key) {
-    throw new Error("SCREENER_REMOTE_HOST and SCREENER_REMOTE_SSH_KEY are required");
+    throw new Error("PIIK_REMOTE_HOST and PIIK_REMOTE_SSH_KEY are required");
   }
   return {
     host,
     key,
-    user: process.env.SCREENER_REMOTE_USER?.trim() || "root",
-    ssh: process.env.SCREENER_SSH?.trim() || "ssh",
+    user: process.env.PIIK_REMOTE_USER?.trim() || "root",
+    ssh: process.env.PIIK_SSH?.trim() || "ssh",
   };
 }
 
 function transportArgs(key: string): string[] {
-  const bindAddress = process.env.SCREENER_REMOTE_BIND_ADDRESS?.trim();
+  const bindAddress = process.env.PIIK_REMOTE_BIND_ADDRESS?.trim();
   return [
     "-o", "BatchMode=yes",
     "-o", "StrictHostKeyChecking=yes",
@@ -196,21 +196,21 @@ async function waitUntilLinkCloses(origin: string): Promise<boolean> {
 }
 
 async function main(): Promise<void> {
-  if (process.env.SCREENER_CLIENT_LINK_GATE !== "true") {
-    throw new Error("SCREENER_CLIENT_LINK_GATE=true is required");
+  if (process.env.PIIK_CLIENT_LINK_GATE !== "true") {
+    throw new Error("PIIK_CLIENT_LINK_GATE=true is required");
   }
   const remote = remoteOptions();
   const transport = transportArgs(remote.key);
   const destination = `${remote.user}@${remote.host}`;
-  const go = process.env.SCREENER_GO?.trim() || "go";
-  const configuredClient = process.env.SCREENER_CLIENT_EXE?.trim();
-  const tunnel = process.env.SCREENER_CLOUDFLARED?.trim() ||
+  const go = process.env.PIIK_GO?.trim() || "go";
+  const configuredClient = process.env.PIIK_CLIENT_EXE?.trim();
+  const tunnel = process.env.PIIK_CLOUDFLARED?.trim() ||
     join(BUILD_ROOT, process.platform === "win32" ? "cloudflared.exe" : "cloudflared");
-  const profile = await mkdtemp(join(tmpdir(), "screener-client-link-"));
+  const profile = await mkdtemp(join(tmpdir(), "piik-client-link-"));
   const port = await reservePort();
   const clientBinary = configuredClient || join(
     BUILD_ROOT,
-    process.platform === "win32" ? "screener-client.exe" : "screener-client",
+    process.platform === "win32" ? "piik-client.exe" : "piik-client",
   );
   let client: ChildProcessWithoutNullStreams | null = null;
   let publicOrigin = "";
@@ -236,7 +236,7 @@ async function main(): Promise<void> {
       } else {
         run("npm", ["run", "build:client"]);
       }
-      run(go, ["build", "-trimpath", "-o", clientBinary, "./cmd/screener-client"],
+      run(go, ["build", "-trimpath", "-o", clientBinary, "./cmd/piik-client"],
         ROOT);
     }
     result.stage = "client-start";
@@ -248,7 +248,7 @@ async function main(): Promise<void> {
       "--tunnel-process", tunnel,
     ], {
       cwd: ROOT,
-      env: { ...process.env, SCREENER_CLIENT_GATE_NO_BROWSER: "true" },
+      env: { ...process.env, PIIK_CLIENT_GATE_NO_BROWSER: "true" },
       stdio: "pipe",
       windowsHide: true,
     });

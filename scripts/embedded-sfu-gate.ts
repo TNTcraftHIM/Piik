@@ -22,9 +22,9 @@ const AUDIO_PROBE = `(() => {
   window.RTCPeerConnection = class extends BrowserPeer {
     constructor(...args) { super(...args); peers.push(this); }
   };
-  window.__screenerGateAudioEnergy = async () => {
+  window.__piikGateAudioEnergy = async () => {
     const trackId = document.querySelector('video')?.srcObject?.getAudioTracks()[0]?.id;
-    const diagnostic = window.__screenerGateAudioStats = { hasAudioTrack: !!trackId, peerCount: peers.length, inbound: [] };
+    const diagnostic = window.__piikGateAudioStats = { hasAudioTrack: !!trackId, peerCount: peers.length, inbound: [] };
     if (!trackId) return 0;
     for (const peer of peers) {
       if (peer.connectionState !== 'connected') continue;
@@ -54,26 +54,26 @@ async function udpPort(requested = 0): Promise<number> {
 }
 
 async function main(): Promise<void> {
-  if (process.env.SCREENER_EMBEDDED_SFU_GATE !== "true") {
-    throw new Error("SCREENER_EMBEDDED_SFU_GATE=true is required; this is an explicit local Browser media gate");
+  if (process.env.PIIK_EMBEDDED_SFU_GATE !== "true") {
+    throw new Error("PIIK_EMBEDDED_SFU_GATE=true is required; this is an explicit local Browser media gate");
   }
   const chromePath = process.env.CHROME_PATH?.trim();
   if (!chromePath) throw new Error("CHROME_PATH is required");
-  const nativeArm = process.env.SCREENER_EMBEDDED_SFU_NATIVE === "true";
-  const twoRooms = process.env.SCREENER_EMBEDDED_SFU_TWO_ROOMS === "true";
+  const nativeArm = process.env.PIIK_EMBEDDED_SFU_NATIVE === "true";
+  const twoRooms = process.env.PIIK_EMBEDDED_SFU_TWO_ROOMS === "true";
   if (twoRooms && !nativeArm) throw new Error("Two-room arm requires Native publication");
-  const codec = process.env.SCREENER_EMBEDDED_SFU_CODEC?.trim() || "vp8";
+  const codec = process.env.PIIK_EMBEDDED_SFU_CODEC?.trim() || "vp8";
   if (codec !== "vp8" && codec !== "h264") throw new Error("SFU gate codec must be vp8 or h264");
-  const captureBinary = process.env.SCREENER_CAPTURE_PROCESS?.trim();
+  const captureBinary = process.env.PIIK_CAPTURE_PROCESS?.trim();
   if (nativeArm && (process.platform !== "win32" || !captureBinary)) {
-    throw new Error("Native arm requires Windows and SCREENER_CAPTURE_PROCESS");
+    throw new Error("Native arm requires Windows and PIIK_CAPTURE_PROCESS");
   }
   await mkdir(BUILD_ROOT, { recursive: true });
-  const binary = join(BUILD_ROOT, `screener-server${process.platform === "win32" ? ".exe" : ""}`);
-  const clientBinary = join(BUILD_ROOT, "screener-client.exe");
-  for (const command of nativeArm ? ["screener-server", "screener-client"] : ["screener-server"]) {
-    const build = spawnSync(process.env.SCREENER_GO?.trim() || "go", [
-      "build", "-p", "1", "-trimpath", "-o", command === "screener-server" ? binary : clientBinary, `./cmd/${command}`,
+  const binary = join(BUILD_ROOT, `piik-server${process.platform === "win32" ? ".exe" : ""}`);
+  const clientBinary = join(BUILD_ROOT, "piik-client.exe");
+  for (const command of nativeArm ? ["piik-server", "piik-client"] : ["piik-server"]) {
+    const build = spawnSync(process.env.PIIK_GO?.trim() || "go", [
+      "build", "-p", "1", "-trimpath", "-o", command === "piik-server" ? binary : clientBinary, `./cmd/${command}`,
     ], { cwd: ROOT, env: { ...process.env, GOMAXPROCS: "2" }, encoding: "utf8", windowsHide: true, timeout: 120_000 });
     if (build.error || build.status !== 0) throw build.error ?? new Error(build.stderr || `${command} build failed`);
   }
@@ -82,8 +82,8 @@ async function main(): Promise<void> {
   ]);
   const origin = `http://127.0.0.1:${vitePort}`;
   const backend = `http://127.0.0.1:${serverPort}`;
-  const profile = await mkdtemp(join(tmpdir(), "screener-client-media-"));
-  const sourceProfile = nativeArm ? await mkdtemp(join(tmpdir(), "screener-client-media-")) : null;
+  const profile = await mkdtemp(join(tmpdir(), "piik-client-media-"));
+  const sourceProfile = nativeArm ? await mkdtemp(join(tmpdir(), "piik-client-media-")) : null;
   const [sourcePort, sourceDebugPort] = nativeArm ? [await reservePort(), await reservePort()] : [0, 0];
   const result = { passed: false, arm: `${nativeArm ? "native" : "browser"}-${codec}-simulcast${twoRooms ? "-two-rooms" : ""}`, stage: "start",
     startedAt: new Date().toISOString(), finishedAt: "", processes: [] as Array<{ role: string; pid: number | null }>,
@@ -132,7 +132,7 @@ async function main(): Promise<void> {
   try {
     server = spawn(binary, [], { cwd: ROOT, stdio: "pipe", windowsHide: true,
       env: { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot,
-        SCREENER_ENV: "development", LISTEN_HOST: "127.0.0.1", PORT: String(serverPort),
+        PIIK_ENV: "development", LISTEN_HOST: "127.0.0.1", PORT: String(serverPort),
         PUBLIC_BASE_URL: origin, ALLOWED_ORIGINS: origin,
         SFU_LISTEN_HOST: "127.0.0.1", SFU_UDP_PORT: String(mediaPort), SFU_PUBLIC_IP: "127.0.0.1" },
     });
@@ -157,7 +157,7 @@ async function main(): Promise<void> {
       result.stage = "native-client-start";
       client = spawn(clientBinary, ["--site", origin, "--capture-process", captureBinary!,
         "--config", join(profile, "client.json")], { cwd: ROOT, stdio: "pipe", windowsHide: true,
-        env: { ...process.env, GOMAXPROCS: "2", SCREENER_CLIENT_GATE_NO_BROWSER: "true" } });
+        env: { ...process.env, GOMAXPROCS: "2", PIIK_CLIENT_GATE_NO_BROWSER: "true" } });
       processStarted("client", client);
       client.stderr.resume();
       clientPort = (await readClientEndpoint(client, { timeoutMs: 15_000, ignoreNonEndpointLines: true })).port;
@@ -266,7 +266,7 @@ async function main(): Promise<void> {
   } catch (error) {
     result.error = error instanceof Error ? error.message : String(error);
     if (viewer && cdp && result.stage === "decoded-audio-energy") result.audioDiagnostics = await evaluate(
-      cdp, viewer, "window.__screenerGateAudioStats ?? null", Date.now() + 3_000).catch(() => null);
+      cdp, viewer, "window.__piikGateAudioStats ?? null", Date.now() + 3_000).catch(() => null);
     if (server?.exitCode !== null && serverError) result.error += `; server: ${serverError}`;
   } finally {
     const pagesStopped = await Promise.all([host, viewer, secondHost, secondViewer].map((page) =>

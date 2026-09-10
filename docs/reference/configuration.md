@@ -8,7 +8,7 @@ service secret store or an untracked access-restricted environment file.
 
 | Variable | Contract |
 | --- | --- |
-| `SCREENER_ENV` | `development` or `production`, default `development`; required for every server deployment: `production` enables production-only validation and the `Secure` site-access cookie. |
+| `PIIK_ENV` | `development` or `production`, default `development`; required for every server deployment: `production` enables production-only validation and the `Secure` site-access cookie. |
 | `LISTEN_HOST` | Defaults to `0.0.0.0`; bare-metal production normally uses `127.0.0.1`. |
 | `PORT` | Positive TCP port, default `8787`; the tracked release wrapper supports only that default. |
 | `PUBLIC_BASE_URL` | Exact public HTTP(S) origin; production requires HTTPS. |
@@ -35,7 +35,7 @@ public-link Client construction create no SFU listener. The relay does not
 provide application E2EE.
 
 The SQLite parent directory must exist and be writable. The systemd template
-sets `/var/lib/screener/rooms.sqlite` under its managed state directory; the
+sets `/var/lib/piik/rooms.sqlite` under its managed state directory; the
 container image sets `/home/nonroot/rooms.sqlite` under its writable data
 directory. Keep the existing database path and data across application updates.
 Room authority has no idle expiry; the separate site-access cookie keeps its
@@ -53,26 +53,26 @@ Diagnostics are local and opt-in. Enable them **before** reproducing the problem
 
 | Surface | Enable | Export |
 | --- | --- | --- |
-| Client | Start with `--debug` or `SCREENER_DEBUG=client` | Press `D` in the terminal for a ZIP |
+| Client | Start with `--debug` or `PIIK_DEBUG=client` | Press `D` in the terminal for a ZIP |
 | Browser Host/Viewer | Add `?debug=1` to the page URL, before any invitation fragment | Use the download button beside language/theme controls |
-| Hosted Server | Start with `--debug`, `SCREENER_DEBUG=server` or `SCREENER_DEBUG=route` | On Unix, `kill -USR1 <pid>`; also exported at orderly shutdown |
+| Hosted Server | Start with `--debug`, `PIIK_DEBUG=server` or `PIIK_DEBUG=route` | On Unix, `kill -USR1 <pid>`; also exported at orderly shutdown |
 
 Client/Server ZIP and Browser JSON reports are separate: when investigating
 Browser/Client cooperation, include both from the same reproduction. Neither
 action stops an active share or uploads anything. Browser export also remains
-available as `await window.__SCREENER_DEBUG__.export()` in DevTools.
+available as `await window.__PIIK_DEBUG__.export()` in DevTools.
 
-Client logs go to `logs` beside the executable, falling back to `Screener/logs`
+Client logs go to `logs` beside the executable, falling back to `Piik/logs`
 in the OS user-cache directory when that default is unwritable. The TUI shows
 the actual path and the exported ZIP. `--log-dir` overrides
-`SCREENER_LOG_DIR`; an explicit directory must be writable. Choosing a
+`PIIK_LOG_DIR`; an explicit directory must be writable. Choosing a
 directory alone does not enable collection. Non-interactive Clients export at
-orderly shutdown. On Client, `SCREENER_DEBUG=route` alone retains console route
+orderly shutdown. On Client, `PIIK_DEBUG=route` alone retains console route
 tracing; use `--debug` for file collection and the `D` action.
 
-Hosted logs use `SCREENER_LOG_DIR`, otherwise systemd `LOGS_DIRECTORY`,
+Hosted logs use `PIIK_LOG_DIR`, otherwise systemd `LOGS_DIRECTORY`,
 otherwise `logs` under the working directory. The service unit supplies
-`/var/log/screener` with mode `0700`. Normal service notices remain in the
+`/var/log/piik` with mode `0700`. Normal service notices remain in the
 journal; detailed dependency records go into the report. Windows Server has no
 Unix signal trigger; forced process termination cannot create a final snapshot.
 
@@ -129,10 +129,10 @@ project references and the reasons for this collection boundary.
 | Port | Scope | Owner |
 | ---: | --- | --- |
 | TCP 80/443 | public | HTTP redirect and HTTPS/WSS reverse proxy |
-| UDP 3478 | public | in-process STUN-only Screener listener |
-| UDP 3479/3480 | public when NAT prediction is enabled | in-process auxiliary STUN-only Screener listeners |
-| UDP 7882 (or `SFU_UDP_PORT`) | public when SFU enabled | in-process Screener WebRTC media |
-| TCP 8787 | private | Screener application |
+| UDP 3478 | public | in-process STUN-only Piik listener |
+| UDP 3479/3480 | public when NAT prediction is enabled | in-process auxiliary STUN-only Piik listeners |
+| UDP 7882 (or `SFU_UDP_PORT`) | public when SFU enabled | in-process Piik WebRTC media |
+| TCP 8787 | private | Piik application |
 
 TCP 3478, TCP/TLS 5349, TURN relay ranges, media TCP, and other media
 ports remain closed. HTTPS/WSS transport is independent of the UDP-only media
@@ -142,7 +142,7 @@ When `NAT_PREDICTION_ENABLED=true`, the server derives
 `stun:<same-hostname>:3479` and `:3480` from the first ordinary STUN authority
 on UDP 3478. The Host sees a pre-share switch that defaults on and may disable
 it. The capability adds no media route or third-party service. It needs both
-cloud security-group rules and the host's `/etc/nftables.conf` rule. Screener
+cloud security-group rules and the host's `/etc/nftables.conf` rule. Piik
 binds every required UDP listener before opening room persistence or accepting
 signaling; a bind failure rolls back all newly owned sockets. Close and End
 retire these listeners with the application. Existing coturn listeners must

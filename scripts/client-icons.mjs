@@ -92,19 +92,19 @@ function writeLinuxAssets(packageRoot, entries) {
   mkdirSync(iconDirectory, { recursive: true });
   mkdirSync(applicationDirectory, { recursive: true });
   writeFileSync(
-    join(iconDirectory, "screener-client.png"),
+    join(iconDirectory, "piik-client.png"),
     requireEntry(entries, 256),
   );
   writeFileSync(
-    join(applicationDirectory, "screener-client.desktop"),
+    join(applicationDirectory, "piik-client.desktop"),
     [
       "[Desktop Entry]",
       "Version=1.0",
       "Type=Application",
-      "Name=Screener Client",
-      "Exec=screener-client",
-      "TryExec=screener-client",
-      "Icon=screener-client",
+      "Name=Piik Client",
+      "Exec=piik-client",
+      "TryExec=piik-client",
+      "Icon=piik-client",
       "Terminal=false",
       "Categories=Network;Utility;",
       "StartupNotify=true",
@@ -115,13 +115,13 @@ function writeLinuxAssets(packageRoot, entries) {
 }
 
 function writeMacAssets(packageRoot, revision, entries) {
-  const bundleRoot = join(packageRoot, "Screener Client.app");
+  const bundleRoot = join(packageRoot, "Piik Client.app");
   const contents = join(bundleRoot, "Contents");
   const macos = join(contents, "MacOS");
   const resources = join(contents, "Resources");
   mkdirSync(macos, { recursive: true });
   mkdirSync(resources, { recursive: true });
-  writeIcns(entries, join(resources, "screener.icns"));
+  writeIcns(entries, join(resources, "piik.icns"));
   writeFileSync(
     join(contents, "Info.plist"),
     [
@@ -129,12 +129,12 @@ function writeMacAssets(packageRoot, revision, entries) {
       '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
       '<plist version="1.0"><dict>',
       "<key>CFBundleDevelopmentRegion</key><string>en</string>",
-      "<key>CFBundleDisplayName</key><string>Screener Client</string>",
+      "<key>CFBundleDisplayName</key><string>Piik Client</string>",
       "<key>CFBundleExecutable</key><string>Launcher</string>",
-      "<key>CFBundleIconFile</key><string>screener.icns</string>",
-      "<key>CFBundleIdentifier</key><string>icu.bonfire.screener.client</string>",
+      "<key>CFBundleIconFile</key><string>piik.icns</string>",
+      "<key>CFBundleIdentifier</key><string>tv.piik.client</string>",
       "<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>",
-      "<key>CFBundleName</key><string>Screener Client</string>",
+      "<key>CFBundleName</key><string>Piik Client</string>",
       "<key>CFBundlePackageType</key><string>APPL</string>",
       "<key>CFBundleShortVersionString</key><string>1.0</string>",
       "<key>NSScreenCaptureUsageDescription</key><string>Share a screen or application selected by you.</string>",
@@ -152,7 +152,7 @@ function writeMacAssets(packageRoot, revision, entries) {
       "#!/bin/sh",
       "set -eu",
       'base=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)',
-      'exec "$base/../../../screener-client" "$@"',
+      'exec "$base/../../../piik-client" "$@"',
       "",
     ].join("\n"),
     "utf8",
@@ -170,8 +170,8 @@ export function writeClientPlatformAssets({
   if (target.goos === "linux") writeLinuxAssets(packageRoot, entries);
   if (target.goos === "darwin") writeMacAssets(packageRoot, revision, entries);
   return target.goos === "linux"
-    ? "share/applications/screener-client.desktop"
+    ? "share/applications/piik-client.desktop"
     : target.goos === "darwin"
-      ? "Screener Client.app"
+      ? "Piik Client.app"
       : null;
 }

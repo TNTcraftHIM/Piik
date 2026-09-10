@@ -1,6 +1,6 @@
 package nativehost
 
-import "github.com/TNTcraftHIM/Screener/internal/client/nativecapture"
+import "github.com/TNTcraftHIM/Piik/internal/client/nativecapture"
 
 type QualityProfile struct {
 	Video        nativecapture.VideoProfile

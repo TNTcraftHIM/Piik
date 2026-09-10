@@ -5,7 +5,7 @@ import { useSyncExternalStore } from "react";
 
 export type Theme = "light" | "dark";
 
-const THEME_STORAGE_KEY = "screener:ui-theme";
+const THEME_STORAGE_KEY = "piik:ui-theme";
 const DARK_THEME_QUERY = "(prefers-color-scheme: dark)";
 
 function detectTheme(): Theme {

@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/TNTcraftHIM/Screener/internal/server/config"
-	"github.com/TNTcraftHIM/Screener/internal/server/protocol"
+	"github.com/TNTcraftHIM/Piik/internal/server/config"
+	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 )
 
 // Ported from src/server/access-session.ts.
@@ -159,9 +159,9 @@ func (a *siteAccessGate) createCookie() string {
 
 func (a *siteAccessGate) cookieName() string {
 	if a.secure {
-		return "__Host-screener-site-access"
+		return "__Host-piik-site-access"
 	}
-	return "screener-site-access"
+	return "piik-site-access"
 }
 
 func (a *siteAccessGate) sign(payload string) string {

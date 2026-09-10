@@ -23,21 +23,24 @@ and Git/PRs own completed history.
 
 ## Deployment
 
-The owner authorized integration, coordinated cutover and cleanup before the
-Piik appearance phase. Authorization is not deployment evidence: the immutable
-release descriptor, runtime `REVISION` and operator deployment record own the
-actual deployed identity and postflight result. The
-[schema cutover procedure](./deployment.md#permanent-room-schema-cutover) preserves
-existing room authority and Browser credential keys with a database/application
-rollback boundary.
+Source, package identity, GitHub repository and local worktree paths use Piik.
+The strict wire labels and stored keys move together at the coordinated
+[brand cutover](./research/piik-rename-plan.md). Directly compatible, accessible
+settings are transferred once; unavailable settings start fresh. Runtime code
+keeps only the Piik contract.
+The immutable release descriptor, runtime `REVISION` and operator deployment
+record own exact identity and postflight results. The
+[schema cutover](./deployment.md#permanent-room-schema-cutover) preserved existing
+room authority and Browser credential keys. Old active pages reload at the
+signaling v23 boundary.
 
 The existing deployment uses one Go process for Web, room authority/signaling,
 Binding-only STUN on UDP 3478/3479/3480 and optional SFU on UDP 7882. nginx owns
 HTTPS; external LiveKit/coturn services remain disabled. Participants, routes and
 media remain process-only. This private service is not a public demonstration.
 
-[TODO](./todo.md) owns closeout and subsequent appearance, renaming, distribution
-and ablation work. No public site or bulk rename belongs to this release.
+[TODO](./todo.md) owns rename acceptance, distribution and ablation work.
+The public website is a later phase.
 
 ## Media Evidence And Limits
 

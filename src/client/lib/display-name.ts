@@ -4,7 +4,7 @@ import {
 } from "../../shared/protocol";
 import { say } from "../ui/copy";
 
-const DISPLAY_NAME_STORAGE_KEY = "screener:display-name:v1";
+const DISPLAY_NAME_STORAGE_KEY = "piik:display-name:v1";
 
 export function readStoredDisplayName(): DisplayName | null {
   try {

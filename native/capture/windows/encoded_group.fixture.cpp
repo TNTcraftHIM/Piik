@@ -12,7 +12,7 @@
 namespace {
 
 using Clock = std::chrono::steady_clock;
-using screener::capture::Vp8Encoder;
+using piik::capture::Vp8Encoder;
 struct Profile { uint32_t width, height, bitrate; };
 // Codec fixtures, not product presets. Layers are L=0, M=1, H=2.
 constexpr std::array<Profile, 3> kProfiles{{
@@ -34,7 +34,7 @@ void DrawFrame(std::vector<uint8_t>& pixels, Profile profile, uint32_t frame) {
 }
 
 void WriteFrame(uint32_t index, int layer, Profile profile, uint64_t pts,
-                const screener::capture::Vp8Frame& packet) {
+                const piik::capture::Vp8Frame& packet) {
   std::cout << "{\"FrameIndex\":" << index << ",\"Layer\":" << layer
             << ",\"Width\":" << profile.width << ",\"Height\":" << profile.height
             << ",\"PTS\":" << pts << ",\"Recovery\":"

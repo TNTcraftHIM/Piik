@@ -23,7 +23,7 @@ constraint. GameViewer separates its UI, supervised media service, codec
 capability detector, streamer, health process, and updater. Discord keeps its
 Chromium UI separate from a native voice/media module and updater. Oopz ships
 Flutter, a second WebView, FFmpeg, Agora RTC, and Tencent LiteAV together; that
-stack is substantially larger and duplicates media ownership. Screener follows
+stack is substantially larger and duplicates media ownership. Piik follows
 the first two products' process separation but not their UI runtimes, and avoids
 Oopz's parallel RTC stacks: one Go process, one Pion media core, and one thin
 system capture sidecar per platform remain sufficient. No binary code or private
@@ -49,9 +49,9 @@ credentials or route policy; those stay in the Browser/server protocol.
 
 ## Client Composition
 
-The Client and Hosted Screener run the same server core, so the local package is
+The Client and Hosted Piik run the same server core, so the local package is
 one executable carrying the built Browser assets plus the optional capture and
-tunnel sidecars; [the Client README](../../cmd/screener-client/README.md) owns
+tunnel sidecars; [the Client README](../../cmd/piik-client/README.md) owns
 that layout. In Local mode the Client runs the server in its own process with
 explicit local configuration. In Site mode it starts no server, and the system
 Browser opens the saved Site while the same process remains its loopback
@@ -67,7 +67,7 @@ Linux remain package gates.
 ## Local And Hosted Reachability
 
 A local page completed discovery and the full control exchange in Chromium
-151.0.7922.138. The hosted Screener origin completed it after Chromium received
+151.0.7922.138. The hosted Piik origin completed it after Chromium received
 its `loopback-network` permission; without that permission the cross-origin
 request was blocked. The gate checks both expected outcomes.
 
@@ -97,7 +97,7 @@ Current WebView2 exposes `getDisplayMedia` screen-capture events and its
 Evergreen runtime updates independently; WebKitGTK exposes display capture and
 uses GStreamer for WebRTC. Electron instead bundles one Chromium and Node but
 makes the Client responsible for shipping those updates and adds substantial
-package size. These facts do not prove equivalent Screener media behavior.
+package size. These facts do not prove equivalent Piik media behavior.
 
 Only a reproduced Browser-launch failure should open a comparative physical
 gate for Electron, Tauri, Wails, Neutralino, or another shell. That gate must
@@ -147,7 +147,7 @@ The sidecar remains an explicit package input rather than a linked Client
 dependency.
 
 The peer topology gate now treats native `getStats()` RTP identity and frame
-totals as its portable core proof. Detailed Screener quality metrics enrich a
+totals as its portable core proof. Detailed Piik quality metrics enrich a
 development run when its source module is served, but their absence on a static
 deployment no longer erases valid native RTCStats.
 

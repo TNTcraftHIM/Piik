@@ -49,7 +49,7 @@ bounded graph controller; absent LiveKit configuration still means P2P-only
 service. Room privacy and topology-optimization controls remain independent.
 The old environment variable must be removed before the next deployment.
 There is no Host-star compatibility path to port. Removing the unused
-authentication fields requires the coordinated private `screener-v21` release;
+authentication fields required the coordinated private signaling v21 release;
 rollback to the prior server must also restore its environment configuration.
 
 [ADR-0009](../adr/0009-optional-nat-prediction.md) distinguishes server-owned

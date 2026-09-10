@@ -12,20 +12,20 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TNTcraftHIM/Screener/internal/client/mediaedge"
-	"github.com/TNTcraftHIM/Screener/internal/client/nativecapture"
+	"github.com/TNTcraftHIM/Piik/internal/client/mediaedge"
+	"github.com/TNTcraftHIM/Piik/internal/client/nativecapture"
 )
 
 func TestMain(tests *testing.M) {
-	if os.Getenv("SCREENER_NATIVEHOST_PIPE_FIXTURE") == "audio-recovery" {
+	if os.Getenv("PIIK_NATIVEHOST_PIPE_FIXTURE") == "audio-recovery" {
 		runAudioRecoveryCapture()
 		os.Exit(0)
 	}
-	if os.Getenv("SCREENER_NATIVEHOST_PIPE_FIXTURE") == "echo" {
+	if os.Getenv("PIIK_NATIVEHOST_PIPE_FIXTURE") == "echo" {
 		_, _ = io.Copy(os.Stdout, os.Stdin)
 		os.Exit(0)
 	}
-	if os.Getenv("SCREENER_NATIVEHOST_PIPE_FIXTURE") == "1" {
+	if os.Getenv("PIIK_NATIVEHOST_PIPE_FIXTURE") == "1" {
 		_, _ = io.Copy(io.Discard, os.Stdin)
 		os.Exit(0)
 	}
@@ -33,7 +33,7 @@ func TestMain(tests *testing.M) {
 }
 
 func TestCaptureCommitWaitsForReaderMetadataOrTermination(t *testing.T) {
-	t.Setenv("SCREENER_NATIVEHOST_PIPE_FIXTURE", "1")
+	t.Setenv("PIIK_NATIVEHOST_PIPE_FIXTURE", "1")
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -143,7 +143,7 @@ func TestCaptureCommitWaitsForReaderMetadataOrTermination(t *testing.T) {
 }
 
 func TestOutputPlanPreservesOriginalStartupAndIndependentActivation(t *testing.T) {
-	t.Setenv("SCREENER_NATIVEHOST_PIPE_FIXTURE", "echo")
+	t.Setenv("PIIK_NATIVEHOST_PIPE_FIXTURE", "echo")
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)

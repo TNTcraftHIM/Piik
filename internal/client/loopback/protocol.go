@@ -10,8 +10,8 @@ import (
 
 const (
 	ProtocolVersion        = 9
-	ServiceName            = "screener-client"
-	ControlSubprotocol     = "screener-client-v9"
+	ServiceName            = "piik-client"
+	ControlSubprotocol     = "piik-client-v9"
 	MaxControlMessageBytes = 256 << 10
 	DefaultPortStart       = 39721
 	DefaultPortEnd         = 39730

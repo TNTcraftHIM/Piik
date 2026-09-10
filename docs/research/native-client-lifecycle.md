@@ -208,7 +208,7 @@ extension forcibly disabled **Broadcast IP for Best WebRTC Performance**;
 correcting the setting/extension restored Native sharing. The confirmed cause
 is that extension's WebRTC policy, not unsupported Windows capture. VPN
 extensions may reapply the override; the
-[Chromium WebRTC FAQ](../../cmd/screener-client/README.md#chromium-webrtc-connections)
+[Chromium WebRTC FAQ](../../cmd/piik-client/README.md#chromium-webrtc-connections)
 owns the user steps. This does not authorize a Browser-specific transport fallback.
 
 An isolated Chrome 152.0.7977.82 data-channel A/B verifies the policy

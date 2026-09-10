@@ -129,7 +129,7 @@ Before native product consideration, one current-wire candidate must prove:
    and
 8. project, dependency, H.264 patent, and distribution license decisions.
 
-No native experiment may preserve an obsolete Screener wire, create another
+No native experiment may preserve an obsolete Piik wire, create another
 room/topology model, loosen endpoint capacity, or become production merely to
 make a diagnostic gate pass.
 

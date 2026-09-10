@@ -9,16 +9,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TNTcraftHIM/Screener/internal/media/encoded"
+	"github.com/TNTcraftHIM/Piik/internal/media/encoded"
 	"github.com/pion/rtp"
 	"github.com/pion/rtp/codecs"
 )
 
 // Explicit codec gate input; ordinary unit checks do not build/run a native codec.
 func TestEncodedGroupVP8Fixture(t *testing.T) {
-	inputPath := os.Getenv("SCREENER_ENCODED_FIXTURE")
+	inputPath := os.Getenv("PIIK_ENCODED_FIXTURE")
 	if inputPath == "" {
-		t.Skip("set SCREENER_ENCODED_FIXTURE to the bounded VP8 fixture JSONL")
+		t.Skip("set PIIK_ENCODED_FIXTURE to the bounded VP8 fixture JSONL")
 	}
 	input, err := os.Open(inputPath)
 	if err != nil {
@@ -228,7 +228,7 @@ func TestEncodedGroupVP8Fixture(t *testing.T) {
 			t.Fatal("sender evidence counted unused-layer bytes")
 		}
 	}
-	if outputPath := os.Getenv("SCREENER_ENCODED_OUTPUT"); outputPath != "" {
+	if outputPath := os.Getenv("PIIK_ENCODED_OUTPUT"); outputPath != "" {
 		data, err := json.Marshal(delivered)
 		if err != nil {
 			t.Fatal(err)

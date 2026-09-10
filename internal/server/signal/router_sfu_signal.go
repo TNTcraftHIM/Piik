@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/TNTcraftHIM/Screener/internal/media/forwarding"
-	"github.com/TNTcraftHIM/Screener/internal/server/protocol"
-	"github.com/TNTcraftHIM/Screener/internal/server/route"
-	"github.com/TNTcraftHIM/Screener/internal/server/sfu"
+	"github.com/TNTcraftHIM/Piik/internal/media/forwarding"
+	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
+	"github.com/TNTcraftHIM/Piik/internal/server/route"
+	"github.com/TNTcraftHIM/Piik/internal/server/sfu"
 	"github.com/pion/webrtc/v4"
 )
 

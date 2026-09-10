@@ -1,4 +1,4 @@
-// Command screener-server is the Hosted Screener entry point: it loads the
+// Command piik-server is the Hosted Piik entry point: it loads the
 // environment, serves the embedded Browser UI together with the signaling and
 // room API, and stops on SIGINT or SIGTERM. It replaces src/server/index.ts.
 //
@@ -23,10 +23,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/TNTcraftHIM/Screener/internal/diagnostics"
-	"github.com/TNTcraftHIM/Screener/internal/server/app"
-	"github.com/TNTcraftHIM/Screener/internal/server/config"
-	"github.com/TNTcraftHIM/Screener/internal/server/webassets"
+	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
+	"github.com/TNTcraftHIM/Piik/internal/server/app"
+	"github.com/TNTcraftHIM/Piik/internal/server/config"
+	"github.com/TNTcraftHIM/Piik/internal/server/webassets"
 )
 
 // shutdownTimeout bounds the ordered stop (signaling, listener, room store).
@@ -81,11 +81,11 @@ func fail(err error) {
 func serve(debug bool) (returnedErr error) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{ReplaceAttr: diagnostics.ReplaceAttr}))
 	var recorder *diagnostics.Recorder
-	if debug || serverDebugEnabled(os.Getenv("SCREENER_DEBUG")) {
+	if debug || serverDebugEnabled(os.Getenv("PIIK_DEBUG")) {
 		var err error
 		recorder, err = diagnostics.Open(serverLogDirectory(), "server", BuildRevision)
 		if err != nil {
-			return fmt.Errorf("Screener server diagnostics are unavailable: %w", err)
+			return fmt.Errorf("Piik server diagnostics are unavailable: %w", err)
 		}
 		logger = slog.New(slog.NewMultiHandler(logger.Handler(), recorder.Logger().Handler()))
 		previous, previousWriter, previousFlags := slog.Default(), log.Writer(), log.Flags()
@@ -93,18 +93,18 @@ func serve(debug bool) (returnedErr error) {
 		dependencyLog := diagnostics.Writer("stdlib")
 		log.SetOutput(dependencyLog)
 		log.SetFlags(previousFlags)
-		fmt.Fprintln(os.Stderr, "Screener diagnostic log:", recorder.LogPath())
+		fmt.Fprintln(os.Stderr, "Piik diagnostic log:", recorder.LogPath())
 		stopExport := watchDiagnosticExport(recorder)
 		defer func() {
 			stopExport()
 			_ = dependencyLog.Close()
-			logger.Info("screener-server", "event", "stopped", "failed", returnedErr != nil, diagnostics.Error(returnedErr))
+			logger.Info("piik-server", "event", "stopped", "failed", returnedErr != nil, diagnostics.Error(returnedErr))
 			returnedErr = errors.Join(returnedErr, exportServerDiagnostics(recorder), recorder.Close())
 			slog.SetDefault(previous)
 			log.SetOutput(previousWriter)
 			log.SetFlags(previousFlags)
 		}()
-		logger.Info("screener-server", "event", "start", "revision", BuildRevision)
+		logger.Info("piik-server", "event", "start", "revision", BuildRevision)
 	}
 	configuration, err := config.Load(environment())
 	if err != nil {
@@ -133,7 +133,7 @@ func serve(debug bool) (returnedErr error) {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Screener %s is listening on %s:%d; public URL %s\n",
+	fmt.Printf("Piik %s is listening on %s:%d; public URL %s\n",
 		BuildRevision, configuration.ListenHost, port, config.Origin(configuration.PublicBaseURL))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -155,7 +155,7 @@ func serverDebugEnabled(value string) bool {
 }
 
 func serverLogDirectory() string {
-	if directory := strings.TrimSpace(os.Getenv("SCREENER_LOG_DIR")); directory != "" {
+	if directory := strings.TrimSpace(os.Getenv("PIIK_LOG_DIR")); directory != "" {
 		return directory
 	}
 	if directories := filepath.SplitList(os.Getenv("LOGS_DIRECTORY")); len(directories) > 0 && directories[0] != "" {
@@ -167,10 +167,10 @@ func serverLogDirectory() string {
 func exportServerDiagnostics(recorder *diagnostics.Recorder) error {
 	path, err := recorder.Export()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "Screener diagnostic export failed:", err)
+		fmt.Fprintln(os.Stderr, "Piik diagnostic export failed:", err)
 		return err
 	}
-	fmt.Fprintln(os.Stderr, "Screener diagnostic bundle:", path)
+	fmt.Fprintln(os.Stderr, "Piik diagnostic bundle:", path)
 	return nil
 }
 

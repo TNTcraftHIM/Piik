@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/TNTcraftHIM/Screener/internal/client/nativeaudio"
+	"github.com/TNTcraftHIM/Piik/internal/client/nativeaudio"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4"
 	"github.com/pion/webrtc/v4/pkg/media"
@@ -59,7 +59,7 @@ func (engine *Engine) NewAudioSource(capacity, bitrate int) (*AudioSource, error
 	track, err := webrtc.NewTrackLocalStaticSample(
 		opusCapability,
 		"audio",
-		"screener-native",
+		"piik-native",
 	)
 	if err != nil {
 		return nil, err
@@ -82,7 +82,7 @@ func (engine *Engine) NewRelayedAudioSource(capacity int) (*AudioSource, error) 
 	track, err := webrtc.NewTrackLocalStaticRTP(
 		opusCapability,
 		"audio",
-		"screener-native",
+		"piik-native",
 	)
 	if err != nil {
 		return nil, err

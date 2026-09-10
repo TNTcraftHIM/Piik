@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/TNTcraftHIM/Screener/internal/media/forwarding"
+	"github.com/TNTcraftHIM/Piik/internal/media/forwarding"
 	"github.com/pion/webrtc/v4"
 )
 

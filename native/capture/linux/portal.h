@@ -1,5 +1,5 @@
-#ifndef SCREENER_LINUX_PORTAL_H
-#define SCREENER_LINUX_PORTAL_H
+#ifndef PIIK_LINUX_PORTAL_H
+#define PIIK_LINUX_PORTAL_H
 
 #include <glib.h>
 #include <libportal/portal.h>
@@ -11,12 +11,12 @@ typedef struct {
   char *target_object;
   int pipewire_fd;
   char *restore_token;
-} ScreenerPortalCapture;
+} PiikPortalCapture;
 
-gboolean screener_portal_available(void);
-gboolean screener_portal_capture_open(const char *restore_token,
-                                      ScreenerPortalCapture *capture,
+gboolean piik_portal_available(void);
+gboolean piik_portal_capture_open(const char *restore_token,
+                                      PiikPortalCapture *capture,
                                       GError **error);
-void screener_portal_capture_close(ScreenerPortalCapture *capture);
+void piik_portal_capture_close(PiikPortalCapture *capture);
 
 #endif

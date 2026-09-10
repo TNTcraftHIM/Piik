@@ -30,12 +30,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/TNTcraftHIM/Screener/internal/diagnostics"
-	"github.com/TNTcraftHIM/Screener/internal/server/config"
-	"github.com/TNTcraftHIM/Screener/internal/server/room"
-	"github.com/TNTcraftHIM/Screener/internal/server/sfu"
-	"github.com/TNTcraftHIM/Screener/internal/server/signal"
-	"github.com/TNTcraftHIM/Screener/internal/server/stun"
+	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
+	"github.com/TNTcraftHIM/Piik/internal/server/config"
+	"github.com/TNTcraftHIM/Piik/internal/server/room"
+	"github.com/TNTcraftHIM/Piik/internal/server/sfu"
+	"github.com/TNTcraftHIM/Piik/internal/server/signal"
+	"github.com/TNTcraftHIM/Piik/internal/server/stun"
 	"github.com/pion/ice/v4"
 	"github.com/pion/webrtc/v4"
 )
@@ -76,7 +76,7 @@ type Options struct {
 	RoomStore *room.Store
 }
 
-// Server is ScreenerServer.
+// Server is PiikServer.
 type Server struct {
 	config        config.Config
 	store         *room.Store
@@ -110,7 +110,7 @@ type Server struct {
 	shutdownErr  error
 }
 
-// New is createScreenerServer minus the listening: it builds the SFU fallback,
+// New is createPiikServer minus the listening: it builds the SFU fallback,
 // the room store, the site-access issuer, the frontend handler and the HTTP
 // server, none of which performs I/O.
 func New(options Options) (*Server, error) {
@@ -185,7 +185,7 @@ func New(options Options) (*Server, error) {
 	return server, nil
 }
 
-// newRoomStore builds the room store createScreenerServer would otherwise take
+// newRoomStore builds the room store createPiikServer would otherwise take
 // from Options.RoomStore. An empty RoomDatabasePath is the memory-only mode.
 func newRoomStore(options Options) (*room.Store, error) {
 	if options.RoomStore != nil {
@@ -211,7 +211,7 @@ func newRoomStore(options Options) (*room.Store, error) {
 // Handler is the composed router, exposed so a host process can mount it.
 func (s *Server) Handler() http.Handler { return s }
 
-// Store is ScreenerServer.roomStore. The signaling server's mutex guards it, so
+// Store is PiikServer.roomStore. The signaling server's mutex guards it, so
 // callers outside that lock may only read it while no request is in flight.
 func (s *Server) Store() *room.Store { return s.store }
 
@@ -220,11 +220,11 @@ func (s *Server) Listen(ctx context.Context) (int, error) {
 	s.mu.Lock()
 	if s.startupRequested {
 		s.mu.Unlock()
-		return 0, errors.New("Screener server startup was already requested")
+		return 0, errors.New("Piik server startup was already requested")
 	}
 	if s.closing {
 		s.mu.Unlock()
-		return 0, errors.New("Screener server is closing")
+		return 0, errors.New("Piik server is closing")
 	}
 	s.startupRequested = true
 	s.mu.Unlock()
@@ -253,14 +253,14 @@ func (s *Server) start(ctx context.Context) (int, error) {
 		s.stunServer, err = stun.Listen(ctx, s.config.STUNListenAddresses)
 		if err != nil {
 			_ = listener.Close()
-			return 0, fmt.Errorf("Screener STUN listener failed: %w", err)
+			return 0, fmt.Errorf("Piik STUN listener failed: %w", err)
 		}
 	}
 	if configuration := s.config.SFU; configuration != nil {
 		connection, listenErr := net.ListenPacket("udp4", net.JoinHostPort(configuration.ListenHost, strconv.Itoa(configuration.Port)))
 		if listenErr != nil {
 			_ = s.stopServing(ctx)
-			return 0, fmt.Errorf("Screener SFU listener failed: %w", listenErr)
+			return 0, fmt.Errorf("Piik SFU listener failed: %w", listenErr)
 		}
 		factory := diagnostics.PionLoggerFactory()
 		s.mediaMux = ice.NewUDPMuxDefault(ice.UDPMuxParams{UDPConn: connection, Logger: factory.NewLogger("sfu-udp")})
@@ -287,7 +287,7 @@ func (s *Server) start(ctx context.Context) (int, error) {
 		// ErrServerClosed on a permanent accept failure, which nothing here
 		// causes; report it rather than serving nothing in silence.
 		if err := s.httpServer.Serve(listener); !errors.Is(err, http.ErrServerClosed) {
-			s.logger.Error("Screener HTTP server stopped unexpectedly", "errorType", fmt.Sprintf("%T", err))
+			s.logger.Error("Piik HTTP server stopped unexpectedly", "errorType", fmt.Sprintf("%T", err))
 			s.logger.Debug("http-listener-failed", diagnostics.Error(err))
 		}
 	}()
@@ -303,7 +303,7 @@ func (s *Server) start(ctx context.Context) (int, error) {
 			cleanup = append(cleanup, closeErr)
 		}
 		if len(cleanup) > 0 {
-			return 0, fmt.Errorf("Screener startup reconciliation failed: %w",
+			return 0, fmt.Errorf("Piik startup reconciliation failed: %w",
 				errors.Join(append([]error{err}, cleanup...)...))
 		}
 		return 0, err
@@ -403,7 +403,7 @@ func (s *Server) runShutdown(ctx context.Context, endRooms bool) error {
 	failures = append(failures, s.stopServing(ctx))
 	failures = append(failures, s.store.Close())
 	if joined := errors.Join(failures...); joined != nil {
-		return fmt.Errorf("Screener server shutdown failed: %w", joined)
+		return fmt.Errorf("Piik server shutdown failed: %w", joined)
 	}
 	return nil
 }

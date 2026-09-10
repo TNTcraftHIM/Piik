@@ -10,7 +10,7 @@
 #include <utility>
 #include <vector>
 
-namespace screener::capture {
+namespace piik::capture {
 
 struct InputEnvelope final {
   uint8_t kind = 0;
@@ -98,4 +98,4 @@ class InputEnvelopes final {
   InputEnvelope frame_;
 };
 
-}  // namespace screener::capture
+}  // namespace piik::capture

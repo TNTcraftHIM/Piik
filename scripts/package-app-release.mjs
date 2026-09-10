@@ -26,7 +26,7 @@ import { resetBuildWorkspace } from "./build-workspace.mjs";
 // as the service user, so the release is always built for linux/amd64, and
 // CGO_ENABLED=0 keeps it self-contained.
 const SERVER_TARGET = { goos: "linux", goarch: "amd64" };
-const SERVER_NAME = "screener-server";
+const SERVER_NAME = "piik-server";
 
 // Everything the archive may contain. deploy/release-app.sh enforces the same
 // four names in its entry allowlist and manifest pattern; both change together.
@@ -198,7 +198,7 @@ const verifyRoot = join(temporaryRoot, "verify");
 try {
   mkdirSync(runtimeRoot, { recursive: true });
   copyFileSync(join(repositoryRoot, "LICENSE"), join(runtimeRoot, "LICENSE"));
-  const goCommand = process.env.SCREENER_GO?.trim() || "go";
+  const goCommand = process.env.PIIK_GO?.trim() || "go";
   const serverPath = join(runtimeRoot, SERVER_NAME);
   run(goCommand, [
     "build",
@@ -207,7 +207,7 @@ try {
     `-s -w -X main.BuildRevision=${revision}`,
     "-o",
     serverPath,
-    "./cmd/screener-server",
+    "./cmd/piik-server",
   ], repositoryRoot, {
     ...process.env,
     GOOS: SERVER_TARGET.goos,
@@ -225,9 +225,9 @@ try {
   writeFileSync(join(runtimeRoot, "REVISION"), `${revision}\n`, "ascii");
 
   const records = recordsFor(runtimeRoot);
-  const manifestName = `screener-${releaseId}.manifest.tsv`;
-  const artifactName = `screener-${releaseId}-runtime.tar.gz`;
-  const descriptorName = `screener-${releaseId}.release.json`;
+  const manifestName = `piik-${releaseId}.manifest.tsv`;
+  const artifactName = `piik-${releaseId}-runtime.tar.gz`;
+  const descriptorName = `piik-${releaseId}.release.json`;
   mkdirSync(outputRoot, { recursive: false, mode: 0o700 });
   const manifestPath = join(outputRoot, manifestName);
   const artifactPath = join(outputRoot, artifactName);

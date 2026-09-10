@@ -4,10 +4,10 @@ The authoritative license is the English [LICENSE](./LICENSE).
 This translation is for convenience and adds no terms or restrictions.
 
 本文件为方便阅读提供中文参考译文，不替代英文 [LICENSE](./LICENSE)，
-也不增加条件或限制。Screener 自有代码的 MIT 许可不替代
+也不增加条件或限制。Piik 自有代码的 MIT 许可不替代
 [第三方组件的许可与声明](./licenses/README.md)。
 
-版权所有 (c) 2026 TNTcraft 和 Screener 贡献者
+版权所有 (c) 2026 TNTcraft 和 Piik 贡献者
 
 特此免费授予任何获得本软件及相关文档文件（以下简称“软件”）副本的人，
 不受限制地处置本软件的权利，包括但不限于使用、复制、修改、合并、出版、

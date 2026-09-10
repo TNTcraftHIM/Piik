@@ -99,14 +99,14 @@ func (engine *Engine) NewReceiver(options ReceiverOptions) (*Receiver, webrtc.Se
 	connection.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
 		debug := slog.Default().Enabled(engine.ctx, slog.LevelDebug)
 		if debug {
-			slog.Debug("screener-client", "event", "media-connection-state", "direction", "inbound", "state", state.String())
+			slog.Debug("piik-client", "event", "media-connection-state", "direction", "inbound", "state", state.String())
 		}
 		var selected *SelectedPair
 		if state == webrtc.PeerConnectionStateConnected && (receiver.events.ConnectionState != nil || debug) {
 			if pair, pairErr := receiver.SelectedPair(); pairErr == nil {
 				selected = &pair
 				if debug {
-					slog.Debug("screener-client", "event", "media-selected-path", "direction", "inbound",
+					slog.Debug("piik-client", "event", "media-selected-path", "direction", "inbound",
 						"localType", pair.Local.String(), "remoteType", pair.Remote.String(), "natTraversalPath", pair.NatTraversalPath)
 				}
 			}

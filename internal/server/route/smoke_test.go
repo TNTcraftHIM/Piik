@@ -3,7 +3,7 @@ package route
 import (
 	"testing"
 
-	"github.com/TNTcraftHIM/Screener/internal/server/protocol"
+	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 )
 
 // TestSmokeCommitsOneDirectCandidate wires the controller end to end: a

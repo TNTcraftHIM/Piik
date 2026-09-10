@@ -17,7 +17,7 @@ room identity, current state, roster, and one manual media-reconnect action.
 Controls and text must remain usable without overlap or horizontal overflow on
 desktop and mobile viewports.
 
-Screener Client opens this same application in the system Browser. Its small
+Piik Client opens this same application in the system Browser. Its small
 startup surface selects Local, temporary public invitation, or a configured
 Site before entering the Host workspace. Viewer links opened at that activated
 origin may use the same running Client without changing the Viewer UI. Starting a share offers the

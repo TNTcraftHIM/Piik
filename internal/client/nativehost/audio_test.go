@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TNTcraftHIM/Screener/internal/client/nativeaudio"
-	"github.com/TNTcraftHIM/Screener/internal/client/nativecapture"
+	"github.com/TNTcraftHIM/Piik/internal/client/nativeaudio"
+	"github.com/TNTcraftHIM/Piik/internal/client/nativecapture"
 	"github.com/livekit/livekit-server/pkg/sfu"
 	"github.com/pion/webrtc/v4"
 )
@@ -76,7 +76,7 @@ func runAudioRecoveryCapture() {
 }
 
 func TestAudioEOFWaitsForExplicitSourceReplacement(t *testing.T) {
-	t.Setenv("SCREENER_NATIVEHOST_PIPE_FIXTURE", "audio-recovery")
+	t.Setenv("PIIK_NATIVEHOST_PIPE_FIXTURE", "audio-recovery")
 	check := func(err error) {
 		t.Helper()
 		if err != nil {

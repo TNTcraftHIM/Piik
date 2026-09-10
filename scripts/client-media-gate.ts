@@ -26,8 +26,8 @@ import {
 
 const ROOT = resolve(import.meta.dirname, "..");
 const BUILD_ROOT = join(ROOT, "build", "client-check");
-const SOURCE_TITLE = "Screener Native Gate Source";
-const GATE_STUN_URLS = process.env.SCREENER_CLIENT_GATE_STUN_URLS?.trim();
+const SOURCE_TITLE = "Piik Native Gate Source";
+const GATE_STUN_URLS = process.env.PIIK_CLIENT_GATE_STUN_URLS?.trim();
 
 interface Probe {
   protocol: number;
@@ -97,7 +97,7 @@ function run(command: string, args: string[], cwd = ROOT): string {
 }
 
 function powershell(): string {
-  const configured = process.env.SCREENER_POWERSHELL?.trim();
+  const configured = process.env.PIIK_POWERSHELL?.trim();
   if (configured) return configured;
   return join(
     process.env.SystemRoot || "C:\\Windows",
@@ -301,7 +301,7 @@ async function browserMediaGate(input: {
     const health = await healthResponse.json();
     if (
       health.protocol !== input.protocol ||
-      health.service !== "screener-client" ||
+      health.service !== "piik-client" ||
       health.instanceToken !== input.endpoint.instanceToken ||
       health.nativeMedia?.video !== true ||
       health.nativeMedia?.hardwareH264 !== true
@@ -657,16 +657,16 @@ async function main(): Promise<void> {
   if (process.platform !== "win32") {
     throw new Error("The native capture gate currently requires Windows");
   }
-  if (process.env.SCREENER_CLIENT_MEDIA_GATE !== "true") {
-    throw new Error("SCREENER_CLIENT_MEDIA_GATE=true is required");
+  if (process.env.PIIK_CLIENT_MEDIA_GATE !== "true") {
+    throw new Error("PIIK_CLIENT_MEDIA_GATE=true is required");
   }
   const chromePath = process.env.CHROME_PATH?.trim();
   if (!chromePath) throw new Error("CHROME_PATH is required");
   if (!GATE_STUN_URLS) {
-    throw new Error("SCREENER_CLIENT_GATE_STUN_URLS is required");
+    throw new Error("PIIK_CLIENT_GATE_STUN_URLS is required");
   }
 
-  const profile = await mkdtemp(join(tmpdir(), "screener-client-media-"));
+  const profile = await mkdtemp(join(tmpdir(), "piik-client-media-"));
   // Keep network-capable binaries at a stable repository path. Windows
   // associates its firewall decision with the full executable path; the
   // disposable Browser profile remains in the system temp directory.
@@ -734,7 +734,7 @@ async function main(): Promise<void> {
       "-OutputDirectory",
       buildRoot,
     ]);
-    const executable = join(buildRoot, "screener-client-capture.exe");
+    const executable = join(buildRoot, "piik-client-capture.exe");
     const probe = JSON.parse(run(executable, ["--probe"])) as Probe;
     const adapter = probe.adapters.find((candidate) => candidate.hardwareH264.length > 0);
     const encoder = adapter?.hardwareH264[0];
@@ -775,7 +775,7 @@ async function main(): Promise<void> {
         oscillator.frequency.value = 440;
         oscillator.connect(gain).connect(context.destination);
         oscillator.start();
-        globalThis.__screenerAudioGate = { context, oscillator };
+        globalThis.__piikAudioGate = { context, oscillator };
         return context.resume().then(() => context.state);
       })()`,
       Date.now() + 5_000,
@@ -785,7 +785,7 @@ async function main(): Promise<void> {
     }
     const targets = JSON.parse(run(executable, ["--list"])) as WindowTarget[];
     const sourceKind: "window" | "display" =
-      process.env.SCREENER_CLIENT_MEDIA_SOURCE === "display"
+      process.env.PIIK_CLIENT_MEDIA_SOURCE === "display"
         ? "display"
         : "window";
     const target = targets.find(
@@ -859,17 +859,17 @@ async function main(): Promise<void> {
     await mkdir(nativeRoot, { recursive: true });
     await copyFile(
       executable,
-      join(nativeRoot, "screener-client-capture.exe"),
+      join(nativeRoot, "piik-client-capture.exe"),
     );
-    const clientExecutable = join(packageRoot, "screener-client.exe");
-    const go = process.env.SCREENER_GO?.trim() || "go";
+    const clientExecutable = join(packageRoot, "piik-client.exe");
+    const go = process.env.PIIK_GO?.trim() || "go";
     // The Client embeds the Vite output, so the Web build precedes the Go build.
     run(process.env.ComSpec || "cmd.exe", [
       "/d", "/s", "/c", "npm run build:client",
     ], ROOT);
     run(
       go,
-      ["build", "-trimpath", "-o", clientExecutable, "./cmd/screener-client"],
+      ["build", "-trimpath", "-o", clientExecutable, "./cmd/piik-client"],
       ROOT,
     );
     client = spawn(clientExecutable, [
@@ -880,7 +880,7 @@ async function main(): Promise<void> {
     ], {
       stdio: "pipe",
       windowsHide: true,
-      env: { ...process.env, SCREENER_CLIENT_GATE_NO_BROWSER: "true" },
+      env: { ...process.env, PIIK_CLIENT_GATE_NO_BROWSER: "true" },
     });
     client.stderr.resume();
     const endpoint = await readClientEndpoint(client);
