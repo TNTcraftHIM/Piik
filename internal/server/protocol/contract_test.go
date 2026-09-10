@@ -8,6 +8,33 @@ import (
 	"testing"
 )
 
+func TestRuntimeCapabilities(t *testing.T) {
+	for _, test := range []struct {
+		data string
+		want RuntimeCapabilities
+	}{
+		{`{}`, RuntimeCapabilities{}},
+		{`{"sfu":true,"extra":{"enabled":true}}`, RuntimeCapabilities{Sfu: true}},
+		{`{"natPrediction":true,"SFU":true}`, RuntimeCapabilities{NatPrediction: true}},
+		{`{"sfu":true,"natPrediction":true}`, RuntimeCapabilities{Sfu: true, NatPrediction: true}},
+		{`{"sfu":"ignored duplicate","sfu":true}`, RuntimeCapabilities{Sfu: true}},
+	} {
+		got := RuntimeCapabilities{Sfu: true, NatPrediction: true}
+		if err := json.Unmarshal([]byte(test.data), &got); err != nil || got != test.want {
+			t.Errorf("decode %s = %+v, %v; want %+v", test.data, got, err, test.want)
+		}
+	}
+	for _, data := range []string{
+		`null`, `[]`, `true`, `{"sfu":null}`, `{"sfu":"true"}`,
+		`{"natPrediction":null}`, `{"natPrediction":1}`,
+	} {
+		var got RuntimeCapabilities
+		if err := json.Unmarshal([]byte(data), &got); err == nil {
+			t.Errorf("expected %s to be rejected", data)
+		}
+	}
+}
+
 // member is one JSON object key with its raw encoded value, so the tests can
 // reproduce the exact wire shapes from tests/protocol.test.ts (including key
 // presence, which a Go map cannot express).

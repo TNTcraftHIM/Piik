@@ -8,6 +8,7 @@ import {
   type QualitySettings,
 } from "../src/client/media/quality";
 import { NativeSenderPeer } from "../src/client/native/native-sender-peer";
+import { NativeCompatibilityError } from "../src/client/native/client";
 import { reconcileBoundedMediaChildren } from "../src/client/webrtc/media-assignment";
 import { debugError, debugEvent, debugOperation } from "../src/client/lib/debug";
 
@@ -61,7 +62,7 @@ function fixture(launchedByClient = true) {
     stopReceive: vi.fn(async () => undefined), stopShare: vi.fn(async () => undefined) };
   const route = { updateProfile: vi.fn(async () => true), resyncAuthoritative: vi.fn(async (): Promise<void> => undefined) };
   const state = {
-    debugError, debugEvent, debugOperation,
+    debugError, debugEvent, debugOperation, NativeCompatibilityError,
     launchedByClient, NativeClient: { connect: vi.fn(async (): Promise<typeof client | null> => null) },
     nativeClientConnectRef: ref<Promise<typeof client | null> | null>(null),
     ownNativeClient: vi.fn(), setJoiningRoom: vi.fn(), startSharing: vi.fn(), openCaptureSourcePicker: vi.fn(),
@@ -186,6 +187,45 @@ describe("Host quality ownership", () => {
     current.nativeClientRef.current = current.client;
     current.requestShare();
     expect(current.openCaptureSourcePicker).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows App incompatibility in the picker and clears it on a successful refresh", async () => {
+    const current = fixture();
+    current.nativeClientRef.current = null;
+    current.nativeShareGenerationRef.current = null;
+    current.NativeClient.connect.mockRejectedValueOnce(new NativeCompatibilityError(8));
+    await current.openPicker();
+    expect(current.setNativeSources).toHaveBeenLastCalledWith({ kind: "incompatible" });
+    expect(current.nativeClientConnectRef.current).toBeNull();
+    expect(current.nativeClientRef.current).toBeNull();
+    expect(current.client.sources).not.toHaveBeenCalled();
+    current.NativeClient.connect.mockResolvedValue(current.client);
+    await current.openPicker();
+    expect(current.NativeClient.connect).toHaveBeenCalledTimes(2);
+    expect(current.setNativeSources).toHaveBeenLastCalledWith(expect.objectContaining({ kind: "ready" }));
+    current.closePicker();
+  });
+
+  it("ignores a cancelled discovery mismatch after another picker owns a compatible App", async () => {
+    const current = fixture();
+    current.nativeClientRef.current = null;
+    current.nativeShareGenerationRef.current = null;
+    const discovery = deferred<void>();
+    current.NativeClient.connect.mockReturnValueOnce(discovery.promise.then(() => {
+      throw new NativeCompatibilityError(8);
+    }));
+    const obsolete = current.openPicker();
+    await vi.waitFor(() => expect(current.NativeClient.connect).toHaveBeenCalledOnce());
+    current.closePicker();
+    current.NativeClient.connect.mockResolvedValue(current.client);
+    await current.openPicker();
+    current.setNativeSources.mockClear();
+    discovery.resolve();
+    await obsolete;
+    expect(current.setNativeSources).not.toHaveBeenCalled();
+    expect(current.client.close).not.toHaveBeenCalled();
+    expect(current.nativeClientRef.current).toBe(current.client);
+    current.closePicker();
   });
 
   it("fails the full startup before room creation when App retires during cleanup", async () => {

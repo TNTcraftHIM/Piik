@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { CaptureSourcePicker } from "../src/client/components/living/CaptureSourcePicker";
+import { setCopy, t } from "../src/client/ui/copy";
 
 import {
   defaultNativeCapturePath,
@@ -28,6 +29,24 @@ function target(
 
 describe("native capture source selection", () => {
   const game = target("My Game", "1");
+  afterEach(() => setCopy({ lang: "en", vis: true }));
+
+  it.each(["en", "zh", "vis"] as const)("keeps Browser capture reachable with an actionable App mismatch in %s", (mode) => {
+    const lang = mode === "zh" ? "zh" : "en";
+    setCopy({ lang, vis: mode === "vis" });
+    const html = renderToStaticMarkup(createElement(CaptureSourcePicker, {
+      nativeSources: { kind: "incompatible" },
+      initialTab: "browser",
+      onBrowser: () => {}, onNative: () => {}, onPreview: async () => null,
+      onRefresh: () => {}, onCancel: () => {},
+    }));
+    expect(html).toContain(t(lang, "native.incompatible"));
+    expect(html).toContain(`aria-label="${t(lang, "host.sourcePicker.browser")}"`);
+    expect(html).not.toMatch(/data-source-tab="browser"[^>]*disabled=""/);
+    expect(html).not.toContain(t(lang, "host.sourcePicker.empty"));
+    expect(html).toContain('role="status"');
+    expect(html).toContain('tabindex="0"');
+  });
 
   it("uses the complete window identity as the UI key", () => {
     expect(nativeCaptureTargetKey(game)).toBe("window:1:10:123456");

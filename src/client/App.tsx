@@ -280,16 +280,16 @@ function SiteAccessGate({
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  function loadAccess(password?: string) {
+    return Promise.all([
+      password ? authenticateSiteAccess(password) : getSiteAccess(),
+      surface === "host" ? getRuntimeCapabilities() : Promise.resolve(null),
+    ]);
+  }
+
   useEffect(() => {
     let active = true;
-    void Promise.all([
-      clientAccessBootstrap
-        ? authenticateSiteAccess(clientAccessBootstrap)
-        : getSiteAccess(),
-      surface === "host"
-        ? getRuntimeCapabilities()
-        : Promise.resolve(null),
-    ]).then(
+    void loadAccess(clientAccessBootstrap ?? undefined).then(
       ([status, nextCapabilities]) => {
         if (!active) return;
         setCapabilities(nextCapabilities);
@@ -349,12 +349,7 @@ function SiteAccessGate({
   async function retry(): Promise<void> {
     setAccess({ kind: "checking" });
     try {
-      const [status, nextCapabilities] = await Promise.all([
-        getSiteAccess(),
-        surface === "host"
-          ? getRuntimeCapabilities()
-          : Promise.resolve(null),
-      ]);
+      const [status, nextCapabilities] = await loadAccess();
       setCapabilities(nextCapabilities);
       setAccess(stateFromStatus(status));
     } catch (error) {
@@ -373,17 +368,15 @@ function SiteAccessGate({
 
     setSubmitting(true);
     try {
-      setAccess(
-        stateFromStatus(await authenticateSiteAccess(submittedPassword)),
-      );
+      const [status, nextCapabilities] = await loadAccess(submittedPassword);
+      setCapabilities(nextCapabilities);
+      setAccess(stateFromStatus(status));
     } catch (error) {
-      setAccess({
-        kind: "required",
-        error:
-          error instanceof ApiError && error.status === 401
-            ? t("gate.wrong")
-            : readableError(error, t),
-      });
+      setAccess(
+        error instanceof ApiError && error.status === 401
+          ? { kind: "required", error: t("gate.wrong") }
+          : { kind: "unavailable", message: readableError(error, t) },
+      );
     } finally {
       setSubmitting(false);
     }

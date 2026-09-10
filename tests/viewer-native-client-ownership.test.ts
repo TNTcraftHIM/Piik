@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { createContext, runInContext } from "node:vm";
 import ts from "typescript";
 import { expect, it, vi } from "vitest";
+import { NativeCompatibilityError } from "../src/client/native/client";
 
 // Exercise the page's connection owner without mounting media or room signaling.
 const source = ts.createSourceFile("ViewerPage.tsx", readFileSync(
@@ -63,6 +64,17 @@ it.each([false, true])("retries an absent or rejected App on the next offer: rej
   current.dispose();
   await Promise.resolve();
   expect(client.close).toHaveBeenCalledOnce();
+});
+
+it("keeps Browser fallback available after an App mismatch and retries on the next offer", async () => {
+  const current = fixture();
+  current.connect.mockRejectedValueOnce(new NativeCompatibilityError(8));
+  await expect(current.acquire()).resolves.toBeNull();
+  const client = control();
+  current.connect.mockResolvedValue(client);
+  await expect(current.acquire()).resolves.toBe(client);
+  expect(current.connect).toHaveBeenCalledTimes(2);
+  current.dispose();
 });
 
 it("shares pending discovery and rediscovers after the idle App disconnects", async () => {

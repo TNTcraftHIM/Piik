@@ -98,6 +98,7 @@ export const en: Record<CopyKey, string> = {
   "host.sourcePicker.windowAudio": "Application sound",
   "host.sourcePicker.systemAudio": "System sound",
   "host.sourcePicker.empty": "No sources available",
+  "native.incompatible": "Piik App and this page are incompatible. Update Piik App and reload this page, or use Browser.",
   "host.sourcePicker.nativeAudio": "Piik App · with sound",
   "host.sourcePicker.window": "Share window: {title}",
   "host.sourcePicker.display": "Share screen: {title}",

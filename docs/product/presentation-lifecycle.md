@@ -11,6 +11,13 @@ available, starting a share and joining a room are equally discoverable actions;
 joining expands the four-digit room form in place, while `/join` remains a direct
 entry route. Users never choose a media topology.
 
+Host entry requires both site access and a validated capability description.
+Initial entry, retry and password recovery load the same prerequisites; failed
+authentication cannot leave a later successful entry using absent capability
+state. A capability-load failure remains retryable and does not imply that a
+service is available or disabled. Viewer/Join entry does not need this Host-only
+description.
+
 The Host workspace centers the capture preview, room code, invitation and common
 share controls. The Viewer workspace centers one persistent 16:9 video stage,
 room identity, current state, roster, and one manual media-reconnect action.
@@ -44,6 +51,13 @@ releases its unused control session; an obsolete operation cannot install or
 retire another operation's media. Optional native ingress uses an already
 available connection without another scan. If it is not ready at Browser
 startup, that share keeps Browser senders.
+
+A reachable Piik App with an incompatible control protocol is distinct from an
+absent App. Discovery continues looking for a compatible process before reporting
+the mismatch; the source selector retains Browser operation and offers update/
+refresh guidance. Discovery metadata may grow, while known identity and capability
+types remain validated. Missing optional capabilities are unavailable; control
+commands and responses retain their strict protocol contract.
 
 ## Visual Language
 

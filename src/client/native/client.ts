@@ -17,6 +17,7 @@ import {
   edgeOfferResponseSchema,
   nativeAckResponseSchema,
   nativeEventSchema,
+  nativeDiscoveryIdentitySchema,
   nativeHealthSchema,
   NATIVE_CLIENT_PORT_END,
   NATIVE_CLIENT_PORT_START,
@@ -61,7 +62,15 @@ export interface NativeShareInput {
   codec: NativeVideoCodec | "auto";
 }
 
+export class NativeCompatibilityError extends Error {
+  constructor(readonly actualProtocol: number) {
+    super(`Piik App control protocol ${actualProtocol} is incompatible with ${NATIVE_CLIENT_PROTOCOL}`);
+    this.name = "NativeCompatibilityError";
+  }
+}
+
 export async function discoverNativeHealth(): Promise<NativeHealth | null> {
+  let incompatible: NativeCompatibilityError | null = null;
   for (
     let port = NATIVE_CLIENT_PORT_START;
     port <= NATIVE_CLIENT_PORT_END;
@@ -79,16 +88,28 @@ export async function discoverNativeHealth(): Promise<NativeHealth | null> {
         targetAddressSpace: "loopback",
       } as RequestInit);
       if (!response.ok) continue;
-      const parsed = nativeHealthSchema.safeParse(await response.json());
-      if (parsed.success && parsed.data.port === port) {
-        return parsed.data;
+      const body: unknown = await response.json();
+      const identity = nativeDiscoveryIdentitySchema.safeParse(body);
+      if (!identity.success || identity.data.port !== port) continue;
+      if (identity.data.protocol !== NATIVE_CLIENT_PROTOCOL) {
+        incompatible ??= new NativeCompatibilityError(identity.data.protocol);
+        continue;
       }
+      const health = nativeHealthSchema.safeParse(body);
+      if (health.success) return health.data;
     } catch {
       // An absent App and a denied local-network permission are both
       // ordinary Browser-only operation.
     } finally {
       window.clearTimeout(timer);
     }
+  }
+  if (incompatible) {
+    debugEvent("native", "incompatible", {
+      expectedProtocol: NATIVE_CLIENT_PROTOCOL,
+      actualProtocol: incompatible.actualProtocol,
+    });
+    throw incompatible;
   }
   return null;
 }

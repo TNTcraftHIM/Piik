@@ -5,6 +5,7 @@ import { nativeCaptureTargetKey } from "../../native/capture-selection";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { Tooltip } from "./Tooltip";
+import { Pill } from "./primitives";
 
 const SOURCE_TABS = ["browser", "window", "display"] as const;
 type SourceTab = (typeof SOURCE_TABS)[number];
@@ -17,6 +18,7 @@ const SOURCE_ICONS = {
 export type NativeSourceList =
   | { kind: "loading" }
   | { kind: "unavailable" }
+  | { kind: "incompatible" }
   | {
       kind: "ready";
       sources: NativeCaptureTarget[];
@@ -282,7 +284,9 @@ export function CaptureSourcePicker({
             </div>
           ) : null}
 
-          {activeTab === "browser" ? null : nativeSources.kind === "loading" ? (
+          {nativeSources.kind === "incompatible" ? (
+            <Pill icon="alert" label={t("native.incompatible")} comic="warning" />
+          ) : activeTab === "browser" ? null : nativeSources.kind === "loading" ? (
             <span
               className="lr-source-picker-status"
               role="status"

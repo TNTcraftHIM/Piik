@@ -151,7 +151,7 @@ import type {
   SignalConnectionState,
 } from "../types";
 import { HostPeer, type HostMediaPeer } from "../webrtc/host-peer";
-import { NativeClient } from "../native/client";
+import { NativeClient, NativeCompatibilityError } from "../native/client";
 import {
   NativeSenderPeer,
   shouldUseBrowserQualityCandidate,
@@ -1329,6 +1329,7 @@ export function HostPage({
         : null,
     ).catch((error) => {
       debugError("native", "discovery-failed", error);
+      if (error instanceof NativeCompatibilityError) throw error;
       return null;
     }).then((client) => {
       if (nativeClientConnectRef.current !== connecting) {
@@ -1367,7 +1368,15 @@ export function HostPage({
     nativeSourcePathRef.current = null;
     setNativeSources({ kind: "loading" });
 
-    const client = await acquireNativeClient();
+    let client: NativeClient | null;
+    try {
+      client = await acquireNativeClient();
+    } catch (error) {
+      if (nativeSourceRequestRef.current === request) {
+        setNativeSources({ kind: error instanceof NativeCompatibilityError ? "incompatible" : "unavailable" });
+      }
+      return;
+    }
     if (nativeSourceRequestRef.current !== request) {
       return;
     }

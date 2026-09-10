@@ -19,6 +19,7 @@ import {
   replaceRoomRequestSchema,
   roomAccessUpdateRequestSchema,
   roomAccessUpdateResponseSchema,
+  runtimeCapabilitiesSchema,
   serverMessageSchema,
   viewerPasswordSchema,
 } from "../src/shared/protocol.js";
@@ -32,6 +33,25 @@ const qualitySettings = {
   maxBitrate: 8_000_000,
   degradationPreference: "maintain-resolution",
 } as const;
+
+describe("runtime capabilities", () => {
+  it("defaults missing capabilities off and ignores unknown descriptors", () => {
+    expect(runtimeCapabilitiesSchema.parse({})).toEqual({ sfu: false, natPrediction: false });
+    expect(runtimeCapabilitiesSchema.parse({ sfu: true, extra: { enabled: true } }))
+      .toEqual({ sfu: true, natPrediction: false });
+    expect(runtimeCapabilitiesSchema.parse({ natPrediction: true, SFU: true }))
+      .toEqual({ sfu: false, natPrediction: true });
+    expect(runtimeCapabilitiesSchema.parse({ sfu: true, natPrediction: true }))
+      .toEqual({ sfu: true, natPrediction: true });
+  });
+
+  it("rejects malformed known capabilities and non-object responses", () => {
+    for (const value of [null, [], true, { sfu: null }, { sfu: "true" },
+      { natPrediction: null }, { natPrediction: 1 }]) {
+      expect(runtimeCapabilitiesSchema.safeParse(value).success).toBe(false);
+    }
+  });
+});
 
 const qualitySettingsWithAudio = {
   ...qualitySettings,

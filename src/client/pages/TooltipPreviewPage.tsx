@@ -10,6 +10,7 @@ const EXAMPLES: { label: string; kind: HintKind | ComicKind; tone: ComicTone; mo
   { label: "说明 / Neutral", kind: "hint-volume", tone: "off", motion: "demo", text: "playback.volume" },
   { label: "成功 / Success", kind: "hint-copy-code", tone: "live", motion: "still", text: "common.copied" },
   { label: "受限 / Limited", kind: "hint-nat-unavailable", tone: "warn", motion: "still", text: "host.advanced.route.natPredictionUnavailable" },
+  { label: "App incompatible", kind: "warning", tone: "warn", motion: "still", text: "native.incompatible" },
   { label: "失败 / Failed", kind: "warning", tone: "bad", motion: "still", text: "common.copyFailed" },
   { label: "连接中 / Connecting", kind: "signal-connecting", tone: "busy", motion: "progress", text: "state.signal.connecting" },
   { label: "恢复中 / Recovering", kind: "recovering", tone: "warn", motion: "progress", text: "state.peer.reconnecting" },

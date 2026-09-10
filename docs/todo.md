@@ -7,20 +7,34 @@ and Git/PRs own completed history. A parked idea is not implementation authority
 
 ## Now
 
-Review the consolidated [engineering/interface map](./reference/engineering.md),
-[visual language](./design/visual-language.md) and
-[public version design](./reference/versioning.md) before expanding the website.
-Current code includes the accepted runtime-capability controls and presentation
-work; keep the pending phase together for integration. Main and production still
-retain their prior release. Preserve the rename recovery archive and external-audit
-worktree.
+Complete the confirmed Host access/capability recovery and Native discovery
+repairs before version/workflow work. Preserve Browser operation, strict command
+validation and the existing resource owners. Main and production retain their
+prior release; keep this phase together and preserve the rename recovery archive
+and external-audit worktree.
 
 Before declaring a public release, implement the readiness work owned by
 [versioning](./reference/versioning.md#first-public-release-readiness): product
-version plus SHA in the existing release pipeline, SemVer-aware update readers,
-observable native incompatibility, scoped metadata extensibility and actual
-mixed-version checks. Do not reset storage or live authority generations.
-This design has not changed the current private contracts or release tags.
+version plus SHA in the existing release pipeline, SemVer-aware update readers
+and actual mixed-version checks. Discovery mismatch and descriptive metadata
+handling are implemented; full public compatibility is not established. Do not
+reset storage or live authority generations or publish a first release implicitly.
+
+After these fixes, decide the owner-requested post-merge automation: a complete
+PR merged to main computes the release version, builds and publishes through one
+pipeline without version-record commits back to main. Use commit/PR semantics
+to express compatible fixes, features and breaking public changes. Protect main
+as PR-only when GitHub account/repository visibility permits it (the current
+private free repository rejects branch protection/ruleset APIs). Finish the
+held template/naming drafts then; no repository settings or release automation
+have been activated. Website/README expansion follows this work.
+
+Prepare GitHub-primary/Gitee-mirror distribution under the same
+[release-source policy](./reference/versioning.md#release-sources). Configure the
+owner's README-only Gitee target, validate final package sizes against its attachment quota,
+and exercise publication/anonymous download before enabling it. Build once;
+mirror uploads and update-source adapters must not create another release model
+or duplicate CI compilation. No Gitee publication is active yet.
 
 ## Next — Awaiting Owner Direction
 

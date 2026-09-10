@@ -217,12 +217,10 @@ export const DEFAULT_ROUTE_POLICY = {
   natPrediction: false,
 } as const satisfies RoutePolicy;
 
-export const runtimeCapabilitiesSchema = z
-  .object({
-    sfu: z.boolean(),
-    natPrediction: z.boolean(),
-  })
-  .strict();
+export const runtimeCapabilitiesSchema = z.object({
+  sfu: z.boolean().default(false),
+  natPrediction: z.boolean().default(false),
+});
 export type RuntimeCapabilities = z.infer<typeof runtimeCapabilitiesSchema>;
 
 export const relayDownstreamEdgesSchema = z

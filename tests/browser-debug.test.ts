@@ -164,4 +164,20 @@ describe("opt-in Browser diagnostics", () => {
     expect(history[0]!.details.requested).toMatchObject({ profile: DEFAULT_QUALITY_SETTINGS });
     expect(await debug.exportBrowserDebug()).not.toContain(token);
   });
+
+  it("reports an observed App mismatch without exposing its capability token", async () => {
+    const page = browser();
+    const token = "x".repeat(43);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      protocol: 8, service: "piik-client", port: 39721, instanceToken: token,
+    }))));
+    const debug = await import("../src/client/lib/debug");
+    debug.installBrowserDebug();
+    const { NativeClient } = await import("../src/client/native/client");
+    await expect(NativeClient.connect()).rejects.toMatchObject({ name: "NativeCompatibilityError" });
+    expect(page.__PIIK_DEBUG__!.events()).toContainEqual(expect.objectContaining({
+      scope: "native", event: "incompatible", details: { actualProtocol: 8, expectedProtocol: 9 },
+    }));
+    expect(await debug.exportBrowserDebug()).not.toContain(token);
+  });
 });

@@ -96,6 +96,7 @@ export const zh = {
   "host.sourcePicker.windowAudio": "应用声音",
   "host.sourcePicker.systemAudio": "系统声音",
   "host.sourcePicker.empty": "暂无可用来源",
+  "native.incompatible": "Piik App 与当前页面不兼容。请更新 Piik App 并刷新页面，或使用浏览器。",
   "host.sourcePicker.nativeAudio": "Piik App · 含声音",
   "host.sourcePicker.window": "分享窗口：{title}",
   "host.sourcePicker.display": "分享屏幕：{title}",

@@ -1,11 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { NativeClient, notifyNativePresentation } from "../src/client/native/client";
+import { discoverNativeHealth, NativeClient, NativeCompatibilityError, notifyNativePresentation } from "../src/client/native/client";
 import { DEFAULT_QUALITY_SETTINGS } from "../src/shared/protocol";
 
 import {
   nativeEventSchema,
   nativeHealthSchema,
+  NATIVE_CLIENT_PROTOCOL,
+  NATIVE_CLIENT_PORT_START,
+  NATIVE_CLIENT_PORT_END,
   nativeCaptureTargetSchema,
   shareSourceReplacedResponseSchema,
   shareStartedResponseSchema,
@@ -19,6 +22,80 @@ afterEach(() => {
 });
 
 describe("native App private wire", () => {
+  const health = {
+    protocol: NATIVE_CLIENT_PROTOCOL,
+    service: "piik-client",
+    port: NATIVE_CLIENT_PORT_START,
+    instanceToken: "a".repeat(43),
+    nativeMedia: { video: true, hardwareH264: true },
+  };
+
+  it.each([NATIVE_CLIENT_PROTOCOL - 1, NATIVE_CLIENT_PROTOCOL + 1])(
+    "reports observed Piik App protocol %s without opening control or presentation",
+    async (protocol) => {
+      vi.stubGlobal("window", { setTimeout, clearTimeout });
+      const socket = vi.fn();
+      vi.stubGlobal("WebSocket", socket);
+      const fetcher = vi.fn(async (url: string) => url === `http://127.0.0.1:${health.port}/health`
+        ? new Response(JSON.stringify({ ...health, protocol }))
+        : new Response(null, { status: 403 }));
+      vi.stubGlobal("fetch", fetcher);
+      await expect(NativeClient.connect()).rejects.toMatchObject({
+        name: "NativeCompatibilityError", actualProtocol: protocol,
+      });
+      await expect(notifyNativePresentation("en", new AbortController().signal))
+        .rejects.toBeInstanceOf(NativeCompatibilityError);
+      expect(socket).not.toHaveBeenCalled();
+      expect(fetcher.mock.calls.every(([url]) => url.endsWith("/health"))).toBe(true);
+      expect(fetcher).toHaveBeenCalledTimes(2 * (NATIVE_CLIENT_PORT_END - NATIVE_CLIENT_PORT_START + 1));
+    },
+  );
+
+  it("prefers a compatible App on a later port after observing an incompatible App", async () => {
+    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    const fetcher = vi.fn(async (url: string) => {
+      const port = Number(new URL(url).port);
+      return new Response(JSON.stringify({ ...health, port,
+        protocol: port === health.port ? NATIVE_CLIENT_PROTOCOL + 1 : NATIVE_CLIENT_PROTOCOL,
+      }));
+    });
+    vi.stubGlobal("fetch", fetcher);
+    await expect(discoverNativeHealth()).resolves.toMatchObject({
+      protocol: NATIVE_CLIENT_PROTOCOL, port: NATIVE_CLIENT_PORT_START + 1,
+    });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("identifies an incompatible App even when that protocol uses different token or media metadata", async () => {
+    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      ...health, protocol: NATIVE_CLIENT_PROTOCOL + 1,
+      instanceToken: { format: "different-protocol" }, nativeMedia: "different-protocol",
+    }))));
+    await expect(NativeClient.connect()).rejects.toMatchObject({
+      name: "NativeCompatibilityError", actualProtocol: NATIVE_CLIENT_PROTOCOL + 1,
+    });
+  });
+
+  it("treats denied, absent and malformed endpoints as ordinary Browser-only operation", async () => {
+    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    const malformed = [
+      { ...health, service: "another-service" },
+      { ...health, protocol: "8" },
+      { ...health, instanceToken: "invalid" },
+      { ...health, nativeMedia: { video: "yes" } },
+      { ...health, protocol: 8, port: NATIVE_CLIENT_PORT_END },
+    ];
+    let responseIndex = 0;
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      const body = malformed[responseIndex++];
+      if (body) return new Response(JSON.stringify(body));
+      if (responseIndex % 2 === 0) return new Response(null, { status: 403 });
+      throw new TypeError("Network unavailable");
+    }));
+    await expect(NativeClient.connect()).resolves.toBeNull();
+  });
+
   it("notifies only the current presentation request after App discovery", async () => {
     vi.stubGlobal("window", {
       setTimeout: globalThis.setTimeout,
@@ -129,7 +206,7 @@ describe("native App private wire", () => {
     expect(intentional).not.toHaveBeenCalled();
   });
 
-  it("keeps public discovery capability-only", () => {
+  it("accepts descriptive health extensions and treats absent media features as unavailable", () => {
     expect(
       nativeHealthSchema.parse({
         protocol: 9,
@@ -147,7 +224,7 @@ describe("native App private wire", () => {
     ).toMatchObject({ nativeMedia: { processAudio: false } });
     expect(
       nativeHealthSchema.safeParse({
-        protocol: 7,
+        protocol: NATIVE_CLIENT_PROTOCOL,
         service: "piik-client",
         port: 39_721,
         instanceToken: "a".repeat(43),
@@ -160,7 +237,21 @@ describe("native App private wire", () => {
         },
         adapters: ["private"],
       }).success,
-    ).toBe(false);
+    ).toBe(true);
+    expect(nativeHealthSchema.parse({
+      ...health, futureDescription: "ignored", nativeMedia: { video: true, futureFeature: true },
+    })).toEqual({
+      ...health, nativeMedia: {
+        video: true, processAudio: false, systemAudio: false, hardwareH264: false, softwareVP8: false,
+      },
+    });
+    expect(nativeHealthSchema.parse({ ...health, nativeMedia: undefined }).nativeMedia)
+      .toEqual({ video: false, processAudio: false, systemAudio: false, hardwareH264: false, softwareVP8: false });
+    for (const invalid of [
+      { protocol: 0 }, { protocol: 9.5 }, { protocol: Number.MAX_SAFE_INTEGER + 1 },
+      { service: "other" }, { port: NATIVE_CLIENT_PORT_END + 1 }, { instanceToken: "short" },
+      { nativeMedia: { softwareVP8: "true" } }, { nativeMedia: null },
+    ]) expect(nativeHealthSchema.safeParse({ ...health, ...invalid }).success).toBe(false);
   });
 
   it("keeps 64-bit Windows identities as exact decimal strings", () => {

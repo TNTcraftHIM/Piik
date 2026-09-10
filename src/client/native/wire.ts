@@ -13,30 +13,33 @@ const opaqueIdentifierSchema = z
   .max(256)
   .regex(/^[A-Za-z0-9_-]+$/);
 
-export const nativeHealthSchema = z
-  .object({
-    protocol: z.literal(NATIVE_CLIENT_PROTOCOL),
-    service: z.literal("piik-client"),
-    port: z
-      .number()
-      .int()
-      .min(NATIVE_CLIENT_PORT_START)
-      .max(NATIVE_CLIENT_PORT_END),
-    instanceToken: z
-      .string()
-      .length(43)
-      .regex(/^[A-Za-z0-9_-]+$/),
-    nativeMedia: z
-      .object({
-        video: z.boolean(),
-        processAudio: z.boolean(),
-        systemAudio: z.boolean(),
-        hardwareH264: z.boolean(),
-        softwareVP8: z.boolean(),
-      })
-      .strict(),
-  })
-  .strict();
+// Discovery descriptions may grow; control responses and events stay strict.
+export const nativeDiscoveryIdentitySchema = z.object({
+  protocol: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  service: z.literal("piik-client"),
+  port: z
+    .number()
+    .int()
+    .min(NATIVE_CLIENT_PORT_START)
+    .max(NATIVE_CLIENT_PORT_END),
+});
+
+export const nativeHealthSchema = nativeDiscoveryIdentitySchema.extend({
+  protocol: z.literal(NATIVE_CLIENT_PROTOCOL),
+  instanceToken: z
+    .string()
+    .length(43)
+    .regex(/^[A-Za-z0-9_-]+$/),
+  nativeMedia: z
+    .object({
+      video: z.boolean().default(false),
+      processAudio: z.boolean().default(false),
+      systemAudio: z.boolean().default(false),
+      hardwareH264: z.boolean().default(false),
+      softwareVP8: z.boolean().default(false),
+    })
+    .prefault({}),
+});
 export type NativeHealth = z.infer<typeof nativeHealthSchema>;
 
 const nativeWindowTargetSchema = z
