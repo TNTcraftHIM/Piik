@@ -7,6 +7,41 @@ and Git/PRs own completed history. A parked idea is not implementation authority
 
 ## Now
 
+### Active Phase: Repository Cohesion Audit
+
+Perform a repository-wide cohesion audit after the completed lifecycle static
+pass. Scope covers Piik-owned Browser frontend, Go Server/App, protocol and
+configuration surfaces, packaging/CI scripts, tests and durable documentation.
+It does not audit third-party dependency internals and does not authorize a
+rewrite. Keep canonical main unchanged.
+
+1. Build an ownership/import map for UI orchestration, media adapters, Go
+   room/route/signaling effects, Native control/capture, protocol, release and
+   operations. Identify reverse dependencies, duplicate owners and unreachable
+   or superseded paths.
+2. Audit semantic consistency: permission, capability, readiness, request,
+   applied state, observation and failure must not be conflated. Compare names
+   and behavior across UI copy, TypeScript, Go, protocol, configuration and
+   product documents.
+3. Review module boundaries and good coding practice. File size alone is not a
+   finding; look for mixed responsibilities, parallel truth, hidden global
+   state, needless wrappers, dead exports, magic behavior and unstable contracts.
+4. Review tests, checks, packaging and workflows for duplicated ceremony,
+   implementation-coupled tests, stale gates and scripts that no longer own
+   their stated result. Preserve checks that protect real contracts.
+5. Use current primary sources from mature projects where a practice is
+   non-obvious. Cite them in the audit report; do not import code or frameworks.
+6. Classify every result as confirmed defect, high-confidence improvement,
+   tradeoff requiring owner decision, or unproven lead. Fix only small,
+   high-confidence defects at the owning boundary with one focused check.
+   Record larger changes as recommendations with cost/risk.
+
+The report is `docs/research/repository-cohesion-audit-2026-09-11.md`.
+Complete when its coverage matrix accounts for every scoped owner, all
+confirmed phase-core P0/P1 defects are repaired, checks pass and remaining
+limits are explicit. This audit does not replace physical mixed-version or
+target-package acceptance from the lifecycle plan.
+
 Accept the current fixes and release-preparation changes together: Host
 access/capability recovery, observable Native incompatibility, extensible
 descriptive metadata, product version plus SHA, update comparison and queued
