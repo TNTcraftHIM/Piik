@@ -652,6 +652,45 @@ describe("Viewer presentation reducer", () => {
     ).toBe(true);
   });
 
+  it("re-arms observation without changing playback and accepts the next fresh frame", () => {
+    const playing = apply(
+      { type: "access", access: "ready" },
+      { type: "signal", signal: "connected" },
+      { type: "host", host: "online" },
+      { type: "route", revision: 3, phase: "active", kind: "p2p" },
+      { type: "media-bound", generation: 2, revision: 3 },
+      { type: "frame-presented", generation: 2, proofEpoch: 0, revision: 3 },
+    );
+    expect(deriveViewerPresentation(reduceViewerPresentation(playing, {
+      type: "autoplay-blocked", generation: 2, revision: 3,
+    }))).toMatchObject({
+      stage: "needs-play", hasCurrentFrame: true,
+    });
+    const cases = [
+      playing,
+      reduceViewerPresentation(playing, { type: "connection", revision: 3, connection: "reconnecting" }),
+      reduceViewerPresentation(playing, { type: "route-status", revision: 3, state: "failed" }),
+      reduceViewerPresentation(playing, { type: "host", host: "paused" }),
+      reduceViewerPresentation(playing, { type: "media-bound", generation: 3, revision: 3 }),
+    ];
+    for (const before of cases) {
+      const media = before.media!;
+      const rearmed = reduceViewerPresentation(before, {
+        type: "frame-proof-rearm", generation: media.generation,
+      });
+      expect(deriveViewerPresentation(rearmed)).toEqual(deriveViewerPresentation(before));
+      const frame = {
+        type: "frame-presented" as const,
+        generation: media.generation, revision: media.boundAtRevision, proofEpoch: media.proofEpoch,
+      };
+      expect(reduceViewerPresentation(rearmed, frame)).toBe(rearmed);
+      const fresh = reduceViewerPresentation(rearmed, { ...frame, proofEpoch: media.proofEpoch + 1 });
+      expect(fresh.connection).toBe("connected");
+      expect(fresh.routeStatus).toBeNull();
+      expect(deriveViewerPresentation(fresh).stage).toBe(before.host === "paused" ? "host-paused" : "playing");
+    }
+  });
+
   it("demotes the current frame when an exact route terminally fails", () => {
     const playing = apply(
       { type: "access", access: "ready" },

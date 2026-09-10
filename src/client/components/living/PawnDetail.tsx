@@ -4,7 +4,7 @@
 import { PawnSvg } from "./Couch";
 import { participantColor } from "./participant-color";
 import { Glyph } from "../../ui/icons";
-import { ComicTooltip } from "./ComicTooltip";
+import { Tooltip } from "./Tooltip";
 import { useCopy } from "../../ui/copy";
 import type { ConnectionMetrics } from "../../types";
 import { MetricCells } from "./Metrics";
@@ -14,9 +14,8 @@ export function RouteGlyph({ route }: { route: "p2p" | "sfu" }) {
   const cell = (
     <span
       className="lr-meter-cell"
-      title={vis ? undefined : t(route === "sfu" ? "state.route.sfu" : "state.route.p2p")}
-      // Hint-wrapped in vis: focusable so keyboard users reach the comic.
-      tabIndex={vis ? 0 : undefined}
+      // The route hint is available to keyboard users in every language.
+      tabIndex={0}
     >
       {route === "sfu" ? (
         <svg width="36" height="16" viewBox="0 0 36 16" fill="none" stroke="#53676a" strokeWidth="2" aria-hidden="true">
@@ -41,12 +40,13 @@ export function RouteGlyph({ route }: { route: "p2p" | "sfu" }) {
       )}
     </span>
   );
-  return vis ? (
-    <ComicTooltip kind={route === "sfu" ? "hint-route-sfu" : "hint-route-p2p"}>
+  return (
+    <Tooltip
+      kind={route === "sfu" ? "hint-route-sfu" : "hint-route-p2p"}
+      text={vis ? undefined : t(route === "sfu" ? "state.route.sfu" : "state.route.p2p")}
+    >
       {cell}
-    </ComicTooltip>
-  ) : (
-    cell
+    </Tooltip>
   );
 }
 
@@ -85,24 +85,22 @@ export function PawnDetail({
         <span className="lr-pawn-detail-name">{name}</span>
       )}
       {tag ? (
-        <span className="lr-meter-cell" title={vis ? undefined : tag.label}>
+        <span className="lr-meter-cell">
           <Glyph name={tag.icon} size={16} />
           {vis ? <span className="visually-hidden">{tag.label}</span> : <b>{tag.label}</b>}
         </span>
       ) : null}
       {error ? (
-        <ComicTooltip kind="route-failed">
+        <Tooltip kind="route-failed" text={vis ? undefined : error}>
           <span
             className="lr-pill is-bad"
             role="alert"
-            title={vis ? undefined : error}
-            // Comic-wrapped: focusable so keyboard users reach the comic.
-            tabIndex={vis ? 0 : undefined}
+            tabIndex={0}
           >
             <Glyph name="alert" size={16} />
             {vis ? <span className="visually-hidden">{error}</span> : <span>{error}</span>}
           </span>
-        </ComicTooltip>
+        </Tooltip>
       ) : null}
       {route ? <RouteGlyph route={route} /> : null}
       {metrics ? (
@@ -113,32 +111,20 @@ export function PawnDetail({
           onToggle={onToggleMetrics}
         />
       ) : null}
-      {vis ? (
-        <ComicTooltip kind="hint-close">
-          <button
-            type="button"
-            className="lr-pawn-detail-close"
-            aria-label={t("common.close")}
-            onClick={(event) => {
-              // Pointer activation must not leave the comic pinned by focus.
-              if (event.detail !== 0) event.currentTarget.blur();
-              onClose();
-            }}
-          >
-            <Glyph name="x" size={16} />
-          </button>
-        </ComicTooltip>
-      ) : (
+      <Tooltip kind="hint-close" text={vis ? undefined : t("common.close")}>
         <button
           type="button"
           className="lr-pawn-detail-close"
-          title={t("common.close")}
           aria-label={t("common.close")}
-          onClick={onClose}
+          onClick={(event) => {
+            // Pointer activation must not pin the hint open; keyboard keeps focus.
+            if (event.detail !== 0) event.currentTarget.blur();
+            onClose();
+          }}
         >
           <Glyph name="x" size={16} />
         </button>
-      )}
+      </Tooltip>
     </div>
   );
 }

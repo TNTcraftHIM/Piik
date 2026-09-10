@@ -1073,7 +1073,7 @@ func (s *Server) settleHostShare(roomID, sessionID string, request authRequest) 
 		}
 	}
 	if currentGeneration != shareGeneration || share.routePolicy == nil {
-		routePolicy := configuredRoutePolicy(request.routePolicy, s.natPredictionEnabled)
+		routePolicy := s.configuredRoutePolicy(request.routePolicy)
 		share.routePolicy = &routePolicy
 		for _, viewer := range s.store.GetConnectedViewers(roomID) {
 			message := protocol.RoutePolicyMessage{
@@ -1127,12 +1127,13 @@ func (s *Server) routePolicyOf(roomID string) protocol.RoutePolicy {
 	if policy := s.shares[roomID].routePolicy; policy != nil {
 		return *policy
 	}
-	return protocol.DefaultRoutePolicy
+	return s.configuredRoutePolicy(protocol.DefaultRoutePolicy)
 }
 
-// configuredRoutePolicy ports configuredRoutePolicy.
-func configuredRoutePolicy(policy protocol.RoutePolicy, natPredictionEnabled bool) protocol.RoutePolicy {
-	policy.NatPrediction = natPredictionEnabled && policy.NatPrediction
+// configuredRoutePolicy restricts share preferences to the services this runtime owns.
+func (s *Server) configuredRoutePolicy(policy protocol.RoutePolicy) protocol.RoutePolicy {
+	policy.PeerOnly = s.router.sfu == nil || policy.PeerOnly
+	policy.NatPrediction = s.natPredictionEnabled && policy.NatPrediction
 	return policy
 }
 

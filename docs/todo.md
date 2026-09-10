@@ -7,6 +7,40 @@ and Git/PRs own completed history. A parked idea is not implementation authority
 
 ## Now
 
+Align deployment capabilities with the shared Server/App controls: disabling SFU
+fixes Privacy mode on; unavailable NAT prediction leaves its switch visible and
+locked off. Keep one configuration owner and explain both states in text and
+pure-visual mode. Integrate after scoped local acceptance.
+
+Finish the related presentation changes in the same UI acceptance: use the
+controller for Host role markers and comics. Review the shared
+[status vocabulary and preview](./design/media-status.md): overlay, title,
+connection and media indicators project the same facts with distinct meanings;
+overlay is a consumer, not the source of truth. Background observation loss
+must not erase already-proved playback. Keep one status icon inside the lower
+television frame: comic tooltip in visual mode, localized hover text otherwise,
+without a permanent text bubble or repeated menu caption. Necessary notice pills
+remain near the stage; the Header explains signaling only.
+Host participant lamps and the Viewer overview use the same
+readiness/freeze projection; the Host itself and all Viewer-side pawns have no
+lamps. Viewer pawns only breathe while awaiting readiness. Verify that fresh
+matching receive evidence alone can show recent freezes, window `*Delta` values
+never inherit an older sample, and existing expiry clears warnings without new
+state or timers. Keep detailed per-edge diagnostics scoped to their owner.
+
+Accept the expanded paper Tooltip and Viewer playback bar locally at
+`/__tooltip-preview` and `/__playback-preview`. Theater and reconnect now live
+with playback/volume/picture-in-picture/fullscreen inside the TV. State-dependent
+tooltips describe the current action, including disclosure, theme, password
+visibility and capture audio. Apply the consolidated
+[visual language](./design/visual-language.md): neutral action demonstrations,
+shared success/limitation/failure/progress tones, stable cast identities and one
+motion grammar. Review control and status comics together in the catalogue.
+Host capture, relay audio and
+presentation authority retain their existing owners. Scoped Edge checks cover
+real 50%/100%/200% gain, mute/pause, stream replacement, PiP/fullscreen transitions
+and narrow layouts; iOS native window/audio behavior still needs a device check.
+
 After the accepted App naming release, draft the English/Chinese README,
 onboarding and GitHub Pages website as one coherent public introduction.
 Use the [naming convention](./reference/naming.md), the existing mascot and
@@ -17,14 +51,6 @@ recovery archive and external-audit worktree. Release metadata owns deployed ide
 ## Next — Awaiting Owner Direction
 
 The owner owns **piik.tv**.
-Review deployment feature switches, starting with an explicit P2P-only mode:
-the operator must be able to disable SFU in configuration while retaining STUN,
-room authority/signaling and P2P viewing. Current `SFU_UDP_PORT` already controls
-SFU availability; inspect that contract and the forced-private-mode UI before
-adding a second boolean with potentially conflicting meaning. Review which
-other options belong to deployment configuration, runtime parameters or fixed
-implementation constants. Keep this separate from public-facing documentation drafting.
-
 The owner proposes GitHub Pages for the public website and the dedicated US
 test server for a separate P2P-only demonstration site. Plan this after naming
 and configuration review; no public demo is deployed yet. The existing private

@@ -296,8 +296,7 @@ export function reduceViewerPresentation(
       if (
         !state.media ||
         state.media.generation !== action.generation ||
-        state.media.proofEpoch !== action.proofEpoch ||
-        state.media.framePresented
+        state.media.proofEpoch !== action.proofEpoch
       ) {
         return state;
       }
@@ -646,12 +645,13 @@ function presentation(
   failureCode: ViewerFailureCode | null =
     state.access === "denied" ? state.accessFailure : null,
 ): ViewerPresentation {
+  const currentFrame = hasCurrentFrame(state);
   return {
     stage,
     messageKey,
     noticeKey: null,
     overlay,
-    hasCurrentFrame: hasCurrentFrame(state),
+    hasCurrentFrame: currentFrame,
     hasRetainedFrame: state.retainedFrame,
     failureCode,
     connectionState:

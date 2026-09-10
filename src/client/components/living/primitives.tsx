@@ -1,10 +1,11 @@
 // Living-room control primitives. Every glyph control keeps its copy in
-// title/aria; text modes add a visible caption from the same catalog.
+// tooltip/aria; text modes add a visible caption from the same catalog.
 import type { CSSProperties, MouseEvent, ReactNode } from "react";
-import { ComicTooltip } from "./ComicTooltip";
+import { Tooltip } from "./Tooltip";
 import { participantColor } from "./participant-color";
 import type { ComicKind } from "./Comic";
 import type { HintKind } from "./hints";
+import type { ComicTone, ComicMotion } from "./comic-presentation";
 import { Glyph, type GlyphName } from "../../ui/icons";
 import { useCopy, type CopyKey } from "../../ui/copy";
 
@@ -62,6 +63,8 @@ export function Btn({
   onClick,
   type = "button",
   hint,
+  hintTone,
+  hintMotion,
   draw,
 }: {
   icon: GlyphName;
@@ -77,18 +80,19 @@ export function Btn({
   type?: "button" | "submit";
   /** Vis mode: 2-panel hint comic on hover/focus; native title stays off. */
   hint?: HintKind;
+  hintTone?: ComicTone;
+  hintMotion?: ComicMotion;
   /** Draw-in spot id for state-beat toggle icons (see Glyph). */
   draw?: string;
 }) {
   const { t, vis } = useCopy();
   const label = t(title);
-  const wrapped = vis && hint;
+  const wrapped = !vis || Boolean(hint);
   const softDisabled = Boolean(wrapped && disabled);
   const button = (
     <button
       type={type}
       className={`lr-btn${tone ? ` is-${tone}` : ""}`}
-      title={vis ? undefined : label}
       aria-label={label}
       disabled={disabled && !softDisabled}
       aria-disabled={softDisabled || undefined}
@@ -109,6 +113,7 @@ export function Btn({
       }
     >
       <Glyph
+        key={draw ? (busy ? "loader" : icon) : undefined}
         name={busy ? "loader" : icon}
         size={19}
         draw={draw}
@@ -118,7 +123,7 @@ export function Btn({
     </button>
   );
   return wrapped ? (
-    <ComicTooltip kind={wrapped}>{button}</ComicTooltip>
+    <Tooltip kind={hint} tone={hintTone} motion={hintMotion} text={vis ? undefined : label}>{button}</Tooltip>
   ) : (
     button
   );
@@ -145,7 +150,7 @@ export function Chip({
   children: ReactNode;
 }) {
   const { vis } = useCopy();
-  const wrapped = vis && hint;
+  const wrapped = !vis || Boolean(hint);
   const softDisabled = Boolean(wrapped && disabled);
   const chip = (
     <button
@@ -157,7 +162,6 @@ export function Chip({
       disabled={disabled && !softDisabled}
       aria-disabled={softDisabled || undefined}
       style={softDisabled ? SOFT_DISABLED_STYLE : undefined}
-      title={vis ? undefined : title}
       aria-label={title}
       onClick={
         softDisabled
@@ -174,7 +178,7 @@ export function Chip({
     </button>
   );
   return wrapped ? (
-    <ComicTooltip kind={wrapped}>{chip}</ComicTooltip>
+    <Tooltip kind={hint} text={vis ? undefined : title}>{chip}</Tooltip>
   ) : (
     chip
   );
@@ -216,20 +220,21 @@ export function Pill({
   label,
   alert,
   comic,
+  tooltipTone,
 }: {
   icon: GlyphName;
   tone?: "bad" | "good";
   label: string;
   alert?: boolean;
   comic?: ComicKind | HintKind;
+  tooltipTone?: ComicTone;
 }) {
   const { vis } = useCopy();
-  const wrapped = vis && comic;
+  const wrapped = !vis || Boolean(comic);
   const body = (
     <span
       className={`lr-pill${tone ? ` is-${tone}` : ""}`}
       role={alert ? "alert" : "status"}
-      title={vis ? undefined : label}
       // Hint-wrapped bodies must take keyboard focus, or the comic is
       // unreachable for keyboard users (spans never match :focus-visible).
       tabIndex={wrapped ? 0 : undefined}
@@ -239,7 +244,8 @@ export function Pill({
     </span>
   );
   return wrapped ? (
-    <ComicTooltip kind={wrapped}>{body}</ComicTooltip>
+    <Tooltip kind={comic} tone={tooltipTone ?? (tone === "good" ? "live" : tone === "bad" ? "bad" : "warn")}
+      motion={tone === "good" ? "still" : undefined} text={vis ? undefined : label}>{body}</Tooltip>
   ) : (
     body
   );
@@ -248,6 +254,7 @@ export function Pill({
 export function SwitchItem({
   checked,
   disabled,
+  locked,
   onChange,
   label,
   note,
@@ -255,16 +262,21 @@ export function SwitchItem({
 }: {
   checked: boolean;
   disabled?: boolean;
+  /** Configuration fixes this switch's value; keep the control and explain why. */
+  locked?: boolean;
   onChange: (checked: boolean) => void;
   label: string;
-  /** Text modes: extra sentence appended to the title tooltip. */
+  /** Text modes: extra sentence in the tooltip. */
   note?: string;
   /** Vis mode: 2-panel hint comic on hover/focus; native title stays off. */
   hint?: HintKind;
 }) {
-  const { vis } = useCopy();
-  const wrapped = vis && hint;
+  const { vis, t } = useCopy();
+  const wrapped = !vis || Boolean(hint);
   const softDisabled = Boolean(wrapped && disabled);
+  const description = note ? `${label} · ${note}` : label;
+  const tooltipText = disabled || locked ? description
+    : `${t(checked ? "common.disable" : "common.enable", { name: label })}${note ? ` · ${note}` : ""}`;
   const item = (
     <span className="lr-switch-item">
       <button
@@ -272,8 +284,7 @@ export function SwitchItem({
         className="lr-switch"
         role="switch"
         aria-checked={checked}
-        aria-label={label}
-        title={vis ? undefined : note ? `${label} · ${note}` : label}
+        aria-label={description}
         disabled={disabled && !softDisabled}
         aria-disabled={softDisabled || undefined}
         style={softDisabled ? SOFT_DISABLED_STYLE : undefined}
@@ -286,39 +297,32 @@ export function SwitchItem({
               }
         }
       />
+      {locked ? <Glyph name="lock" size={12} /> : null}
       {vis ? null : <span className="lr-cap">{label}</span>}
     </span>
   );
   return wrapped ? (
-    <ComicTooltip kind={wrapped}>{item}</ComicTooltip>
+    <Tooltip kind={hint} text={vis ? undefined : tooltipText}>{item}</Tooltip>
   ) : (
     item
   );
 }
 
 export function NameTag({ name, identity }: { name: string; identity: string }) {
-  const { t, vis } = useCopy();
   return (
-    <span className="lr-name-tag" title={vis ? undefined : t("host.name")}>
-      <i
-        aria-hidden="true"
-        style={{ backgroundColor: participantColor(identity) }}
-      />
-      <span>{name}</span>
-    </span>
+    <Tooltip text={name} className="lr-name-hint">
+      <span className="lr-name-tag" tabIndex={0}>
+        <i
+          aria-hidden="true"
+          style={{ backgroundColor: participantColor(identity) }}
+        />
+        <span>{name}</span>
+      </span>
+    </Tooltip>
   );
 }
 
 export function FieldCap({ k }: { k: CopyKey }) {
   const { vis, t } = useCopy();
   return vis ? null : <span className="lr-field-cap">{t(k)}</span>;
-}
-
-export function StatusText({ children }: { children: ReactNode }) {
-  const { vis } = useCopy();
-  return vis ? null : (
-    <span className="lr-status-text" role="status" aria-live="polite">
-      {children}
-    </span>
-  );
 }

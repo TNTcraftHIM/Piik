@@ -348,11 +348,11 @@ func expectGoroutinesSettled(t *testing.T, before int) {
 
 // --- runtime capabilities -------------------------------------------------
 
-func TestCapabilitiesKeepNATPredictionAbsentByDefault(t *testing.T) {
+func TestCapabilitiesReportServicesDisabledByDefault(t *testing.T) {
 	server := start(t, Options{Config: testConfig(t)})
 
 	server.do(http.MethodGet, "/api/capabilities").
-		expect(http.StatusOK, `{"natPrediction":false}`)
+		expect(http.StatusOK, `{"sfu":false,"natPrediction":false}`)
 }
 
 func TestCapabilitiesReportOptionalNATPredictionWithoutExposingConfiguration(t *testing.T) {
@@ -363,7 +363,7 @@ func TestCapabilitiesReportOptionalNATPredictionWithoutExposingConfiguration(t *
 	server := start(t, Options{Config: configuration})
 
 	server.do(http.MethodGet, "/api/capabilities").
-		expect(http.StatusOK, `{"natPrediction":true}`).
+		expect(http.StatusOK, `{"sfu":false,"natPrediction":true}`).
 		expectHeader("Cache-Control", "no-store").
 		expectHeader("X-Content-Type-Options", "nosniff")
 
@@ -405,6 +405,8 @@ func TestSFUListenerFollowsApplicationCloseAndEnd(t *testing.T) {
 			if server.signaling.Load() == nil || server.media == nil {
 				t.Fatal("missing runtime owner")
 			}
+			server.do(http.MethodGet, "/api/capabilities").
+				expect(http.StatusOK, `{"sfu":true,"natPrediction":false}`)
 			var err error
 			if ending {
 				err = server.End(context.Background())

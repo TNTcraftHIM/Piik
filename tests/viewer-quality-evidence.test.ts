@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { deriveParticipantStatus } from "../src/client/ui/media-status";
 
 import type {
   ClientMessage,
   ServerMessage,
   ViewerQualityEvidenceMetrics,
 } from "../src/shared/protocol.ts";
+import { VIEWER_QUALITY_EVIDENCE_EXPIRY_MS } from "../src/shared/protocol.ts";
 import {
   classifyHostViewerQualityEvidence,
   freshViewerQualityEvidence,
@@ -113,6 +115,25 @@ function serverEvidence(
 }
 
 describe("viewer quality evidence", () => {
+  it("annotates ready participants only with current receive-window freezes", () => {
+    const evidence = serverEvidence({ metrics: { freezeCountDelta: 1, freezeDurationMsDelta: 300 } });
+    const participant = { mediaReady: true, upstream: evidence.upstream };
+    const first = presentViewerQualityEvidence(null, evidence, 0);
+    expect(deriveParticipantStatus(participant, true, first).labelKey).toBe("state.peer.stuttering");
+    expect(deriveParticipantStatus({ ...participant, mediaReady: false }, true, first).tone).toBe("busy");
+    expect(deriveParticipantStatus({ ...participant, mediaReady: false }, false, first).tone).toBe("off");
+    expect(deriveParticipantStatus({ ...participant, upstream: { kind: "sfu" } }, true, first).tone).toBe("live");
+    expect(deriveParticipantStatus(participant, true,
+      refreshViewerQualityEvidencePresentation(first, VIEWER_QUALITY_EVIDENCE_EXPIRY_MS)).tone).toBe("live");
+    for (const count of [0, null]) {
+      const next = presentViewerQualityEvidence(first, serverEvidence({ sequence: 1,
+        metrics: { freezeCountDelta: count, freezeDurationMsDelta: count },
+      }), 2_000);
+      expect(next.evidence.metrics.freezeCountDelta).toBe(count);
+      expect(deriveParticipantStatus(participant, true, next).tone).toBe("live");
+    }
+  });
+
   it("normalizes only bounded adjacent receive evidence", () => {
     expect(qualityEvidenceWindowFromMetrics(receiveMetrics())).toEqual({
       windowMs: 2_000,

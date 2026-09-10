@@ -25,6 +25,13 @@ Browser picker and any exact App-owned native windows. It never chooses a
 window automatically. A reproduced Browser-window, capture, or background
 failure is required before introducing an embedded Web runtime.
 
+Server and App share one control layout and vocabulary. Deployment capabilities
+may fix a control on or off, but do not remove its place in the interface;
+disabled controls explain their reason in text and pure-visual modes. Real
+workflow differences remain explicit: site authorization, opt-in diagnostics
+and the capture/audio capabilities of the connected device are not alternate
+versions of the product UI.
+
 A remembered App activation permits discovery when choosing a source or
 receiving media; it does not make App a prerequisite for sharing. Idle Host
 pages hold no App control session. Ordinary Web entry opens the Browser picker
@@ -42,29 +49,20 @@ startup, that share keeps Browser senders.
 
 The interface presents one small shared living room rather than an operations
 dashboard. The television is the media stage, the couch and pawns make presence
-spatial, the shelf separates watching from controls, and the room display keeps
-the four-digit code prominent. This metaphor must clarify the same product
+spatial, and the room display keeps the four-digit code prominent. This metaphor
+must clarify the same product
 state on Host and Viewer pages; decoration never creates a second state model.
 
 Chinese, English, and pure-visual modes are three expressions of the same typed
 state and command catalog. A fresh Browser starts in visual mode and persists
-an explicit later choice. Text modes use concise copy. Visual mode uses one
-consistent stroke language for single concepts, small panel comics for causes
-and sequences, and literal scene objects for people, rooms, and media. Glyphs do
-not form sentences. Universal digits, transport symbols, URLs, and measured
+an explicit later choice. Text modes use concise copy. Universal digits,
+transport symbols, URLs, and measured
 values remain literal when users need the data.
 
-Control hints and state comics use the same television for shared or watched
-media. Browser chrome identifies the application UI; a window title bar or a
-display stand identifies the capture target. A server in a media path means
-actual SFU relay, not merely opening a configured Site.
-
-Motion explains entry, transition, progress, and control feedback. Operational
-status stays still; ambient motion is limited to the App brand mark's
-occasional idle wink.
-All meaning remains available with reduced motion. Functional
-controls remain native buttons or inputs with localized accessible names, and
-hover, keyboard focus, and touch receive equivalent guidance.
+The [visual language](../design/visual-language.md) is the single owner of
+illustrative roles and objects, semantic colour, panel grammar and motion.
+Functional controls remain native buttons or inputs with localized accessible
+names; hover, keyboard focus, and touch receive equivalent guidance.
 
 The visual hierarchy, interaction ownership, and information order remain the
 same across themes and viewport sizes. Responsive layout may reflow or scroll a
@@ -73,12 +71,47 @@ essential value, overlap controls, or change product semantics.
 
 ## Playback Ownership
 
-One native `<video>` element owns Viewer play/pause, volume, mute, and fullscreen.
-Those actions are local and never change Host capture, room state, routing, or
-other Viewers. The Host preview has no media controls; explicit Host actions own
-authoritative share pause and stop.
+One `<video>` element owns Viewer playback and frame proof. The shared playback
+bar reflects that element and provides local play/pause, mute, volume, theater,
+picture-in-picture, fullscreen and the existing reconnect action. It stays reachable while waiting
+or disconnected. Theater and fullscreen are separate modes; fullscreen includes
+the playback bar. Identity, connection details and topology stay in the deck.
 
-Autoplay rejection exposes the native play action. A connection, track object,
+The bar spans the screen's lower edge. Narrow screens separate audio controls
+from window actions into two rows and retain 44px action targets. Playing video hides the bar
+after two idle seconds, following [Media Chrome's default](https://github.com/muxinc/media-chrome/blob/main/docs/src/pages/docs/en/components/media-controller.md#autohide).
+Pause or unavailable playback keeps it visible. Control hover, keyboard focus,
+dragging and an open tooltip hold it open; mouse movement reveals it, and a
+touch tap on the picture toggles only visibility. One presentation-only idle
+timer owns this behavior; it never changes playback or route state. Controls
+follow the shared [motion grammar](../design/visual-language.md#motion-grammar).
+
+Volume starts on native audio output. An explicit setting away from 100% activates
+a local Web Audio stream source and gain, from silence to 200% amplitude. This also
+avoids iPhone's system-owned `video.volume`. This output
+exclusively owns sound while running, follows video pause and user mute, and
+rebinds when the audio track changes. It never modifies the received track or
+the stream relayed downstream. Unmount closes the graph. Browsers without gain
+support retain 0–100%; video-only system fullscreen also hands audio back to the
+native controls at at most 100%, rather than running two outputs.
+
+This uses the standard [Web Audio stream-source and gain nodes](https://www.w3.org/TR/webaudio/).
+The gain is amplitude scaling, so loud source peaks can clip above 100%.
+
+Picture-in-picture uses the browser's native video window, including Safari's
+presentation-mode API. Native enter/leave events own its displayed state; closing
+the window or replacing the received stream does not create another playback
+owner. Successful entry exits this video's other fullscreen mode, and unmount
+closes only this video's window. Unavailable capabilities remain disabled with
+an explanation. The native window contains video and system controls, not page
+overlays or the custom bar. See the [PiP specification](https://w3c.github.io/picture-in-picture/)
+and [Safari integration](https://developer.apple.com/documentation/webkitjs/adding_picture_in_picture_to_your_safari_media_controls).
+
+Local playback actions never change Host capture or another Viewer. Reconnect
+retains the existing route-operation owner. The Host preview remains muted and
+has no media controls; explicit Host actions own authoritative pause and stop.
+
+Autoplay rejection exposes the play action. A connection, track object,
 or `playing` event alone is not proof that the current route is visible. The
 Viewer removes its blocking presentation only after a current-generation frame
 is composited, using `requestVideoFrameCallback()` where available and a decoded-
@@ -97,9 +130,12 @@ a replacement controller restarted revision numbering; ordinary updates remain
 monotonic within that authority. A Viewer frame belongs to its local media generation and remains
 current across unrelated graph revisions until that exact binding is replaced,
 invalidated, or terminally failed. Pending candidates never own the primary
-badge, status line, or overlay while committed media remains proved. Those
-surfaces share the presentation reducer; raw transport snapshots provide route
-labels, reconnect authority, and diagnostics only.
+badge, status line, or overlay while committed media remains proved. A shared
+visual projection maps those facts to title, media status, notices and
+overlays. None of these views owns state for another. Connection availability,
+actual playback and quality limitation remain separate; raw transport snapshots
+do not prove playback or quality. The [status preview](../design/media-status.md)
+records the visual vocabulary and the evidence needed for participant lamps.
 
 Excluding time spent in the Browser's capture/play authorization UI, a Viewer
 request targets a first visible frame within three seconds. Until then, the page
@@ -107,9 +143,21 @@ must continuously show a truthful accessible connection stage rather than a
 black screen, ICE-connected state, or unproved `playing` event.
 
 - A proved current frame remains visible behind non-terminal recovery state.
-- Host roster connection state follows the server's committed physical media
-  path. A pending candidate or temporarily stale quality sample may annotate
-  optimization, but cannot downgrade an active Viewer to routing.
+- One media-status icon sits inside the television's lower frame. Visual mode
+  explains it with a comic tooltip; text modes show the specific localized
+  status on hover. No permanent text bubble or control-menu duplicate is shown.
+  Necessary notices and operation feedback remain near the stage without
+  becoming a second primary media status. Header indicators describe only the
+  page's signaling connection.
+- The Host's couch and Viewer overview share the
+  [participant projection](../design/media-status.md#projection-rules). The
+  Host's own pawn has no additional lamp. Committed `mediaReady` owns readiness;
+  transport diagnostics and quality samples cannot override it in either direction.
+- Viewer pawns have no round lamps. Gentle body breathing indicates waiting for
+  media readiness; stillness indicates readiness. They do not guess another
+  Viewer's quality or diagnose missing readiness as a terminal failure.
+- An overlay explains the absence of a usable picture, authoritative Host pause,
+  or a required user action. Ordinary quality warnings never cover playback.
 - Host pause retains the current frame and waits for resume.
 - Host signaling loss alone does not invalidate media that is still healthy.
 - Exact media failure or terminal route failure invalidates current-frame proof
@@ -121,10 +169,11 @@ black screen, ICE-connected state, or unproved `playing` event.
   state never forces the user out of fullscreen.
 
 Visibility, page freeze, and pagehide suppress application decoded-stall
-authority. Returning to the page rebaselines time and proves a current frame
-again before clearing recovery. SFU media is retained independently of transient
-room-signaling loss, but Browser or OS suspension and page reclamation remain
-outside Web guarantees.
+authority and invalidate quality observations, not already-proved playback.
+Returning to the page rebaselines time and re-arms frame observation; an existing
+recovery state still requires a fresh current frame to clear. SFU media is
+retained independently of transient room-signaling loss, but Browser or OS
+suspension and page reclamation remain outside Web guarantees.
 
 Failure of the local Native media bridge disables Native reception for the
 current Viewer session before route recovery runs. Future peers in that session
@@ -147,6 +196,13 @@ loss; deeper fields appear only when meaningful. Topology is a separate view.
 Native bandwidth or CPU limitation warnings describe the exact outbound sender
 that reported adaptation; they do not by themselves locate the physical
 bottleneck or describe the Viewer's receive path.
+The Host's participant freeze warning requires fresh receive evidence matching
+the current upstream and a positive freeze count or duration for that window.
+Window `*Delta` fields never inherit older values; other fields may retain their
+existing details-display cache. The existing evidence expiry removes stale
+warnings. No additional participant state, broadcast, timer or quality score is
+introduced. Detailed per-edge observations remain available without a global
+warning selected from the first limited child.
 Locally exposed selected-candidate addresses may be shown only on the Browser
 that owns that PeerConnection and are never uploaded, persisted, or used for
 identity or route selection. Explicit Debug mode can export a bounded diagnostic

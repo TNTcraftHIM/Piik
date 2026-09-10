@@ -85,6 +85,9 @@
 
 ## Engineering Defaults
 
+- UI changes must follow the shared [visual language](./docs/design/visual-language.md):
+  cast, semantic colours, result panels and motion have one owner. Extend the
+  existing preview when adding a new meaning; do not invent scene-local rules.
 - Prefer the simplest cohesive design that is easy to use and maintain. Reuse
   mature components, keep ownership explicit, and remove superseded paths in
   the same change instead of retaining speculative flexibility or technical debt.

@@ -1,26 +1,25 @@
-// The TV stage: frame, screen, chin LED. Pages render their own <video>
+// The TV stage: frame, screen, status slot. Pages render their own <video>
 // (stream binding stays with the page); overlays and the connecting
 // storyboard are provided here.
 import type { ReactNode } from "react";
 import { Glyph, type GlyphName } from "../../ui/icons";
 import { useCopy, type CopyKey } from "../../ui/copy";
 import { Comic, type ComicKind } from "./Comic";
+import type { ComicTone } from "./comic-presentation";
 import { BrandLoader, BrandMark } from "./BrandMark";
 
-export type ChinState = "off" | "on" | "warn" | "bad" | "busy";
-
 export function StageTv({
-  chin,
   hasEntry,
   live,
   children,
   label,
+  indicator,
 }: {
-  chin: ChinState;
   hasEntry?: boolean;
   live?: boolean;
   children: ReactNode;
   label: string;
+  indicator?: ReactNode;
 }) {
   return (
     <div className="lr-tv">
@@ -31,9 +30,7 @@ export function StageTv({
       >
         {children}
       </div>
-      <div className="lr-tv-chin">
-        <i className={chin === "off" ? "" : `is-${chin}`} />
-      </div>
+      <div className="lr-tv-chin">{indicator}</div>
     </div>
   );
 }
@@ -88,6 +85,7 @@ export function StageOverlay({
   transition,
   spin,
   comic,
+  tone,
   progress,
   onActivate,
 }: {
@@ -97,6 +95,7 @@ export function StageOverlay({
   transition?: boolean;
   spin?: boolean;
   comic?: ComicKind;
+  tone?: ComicTone;
   progress?: string;
   onActivate?: () => void;
 }) {
@@ -107,7 +106,8 @@ export function StageOverlay({
       (Boolean(spin) || comic === "waiting-for-host" || comic === "recovering"));
   const content = (
     <>
-      {vis && comic ? <Comic kind={comic} theme="stage" /> : null}
+      {vis && comic ? <Comic kind={comic} theme="stage" tone={tone}
+        motion={transition || spin ? "progress" : undefined} /> : null}
       <span className="lr-tv-status-content">
       {showMascot ? (
         <BrandLoader />
@@ -136,7 +136,7 @@ export function StageOverlay({
   return (
     <div
       // Passive state layer: it must not intercept clicks meant for the
-      // native <video> controls it covers (it owns no controls itself).
+      // playback controls it covers (it owns no controls itself).
       className={`lr-tv-overlay is-passive${dim ? " is-dim" : ""}${vis && comic ? " has-comic" : ""}`}
       role="status"
       aria-label={message}

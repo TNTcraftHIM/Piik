@@ -30,5 +30,12 @@ export function bindSvgReplayOnPointerEnter(
     replaySvgAnimations(graphic);
   };
   owner.addEventListener("pointerover", handlePointerOver);
-  return () => owner.removeEventListener("pointerover", handlePointerOver);
+  const handleFocus = () => {
+    if (owner.matches(":focus-visible")) replaySvgAnimations(graphic);
+  };
+  owner.addEventListener("focusin", handleFocus);
+  return () => {
+    owner.removeEventListener("pointerover", handlePointerOver);
+    owner.removeEventListener("focusin", handleFocus);
+  };
 }

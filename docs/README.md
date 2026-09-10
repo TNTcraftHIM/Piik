@@ -73,6 +73,10 @@ Current behavior belongs to four product modules:
 - [Capture, audio and media quality](./product/media-quality.md)
 - [Presentation and lifecycle](./product/presentation-lifecycle.md)
 
+The [visual language](./design/visual-language.md) collects UI conventions for
+cast, colours, panels, motion and tooltips. [Media status](./design/media-status.md)
+defines the evidence and scope behind their status meanings.
+
 Key decisions cover [automatic routing](./adr/0005-automatic-hybrid-media-routing.md),
 the [shared Go core](./adr/0012-shared-go-backend-core.md),
 [embedded media and Native output groups](./adr/0013-embedded-node-local-media.md),

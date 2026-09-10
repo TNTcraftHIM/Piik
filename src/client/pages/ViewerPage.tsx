@@ -18,12 +18,11 @@ import {
   type ServerMessage,
   type RoutePolicy,
 } from "../../shared/protocol";
-import { qualityLimitationSummary } from "../components/connection-details";
 import {
   viewerReconnectRoute,
   viewerRouteEvidence,
 } from "../components/status-badge-model";
-import { AppHeader, LedStrip, type LedState } from "../components/living/Header";
+import { AppHeader, LedStrip } from "../components/living/Header";
 import { Couch, PawnSvg, type CouchEntry } from "../components/living/Couch";
 import { participantColor } from "../components/living/participant-color";
 import { MetricCells, useMetricsExpanded } from "../components/living/Metrics";
@@ -31,13 +30,14 @@ import { PawnDetail, RouteGlyph } from "../components/living/PawnDetail";
 import { Lcd } from "../components/living/RoomChip";
 import { RouteTree } from "../components/living/RouteTree";
 import { Comic, type ComicKind } from "../components/living/Comic";
-import { ComicTooltip } from "../components/living/ComicTooltip";
+import { Tooltip } from "../components/living/Tooltip";
 import type { HintKind } from "../components/living/hints";
 import {
   StageOverlay,
   StageTv,
-  type ChinState,
 } from "../components/living/Stage";
+import { StatusIndicator } from "../components/living/StatusIndicator";
+import { PlaybackControls } from "../components/living/PlaybackControls";
 import { BrandLoader } from "../components/living/BrandMark";
 import {
   Btn,
@@ -45,7 +45,6 @@ import {
   NameTag,
   Pill,
   Row,
-  StatusText,
 } from "../components/living/primitives";
 import { Glyph, type GlyphName } from "../ui/icons";
 import { useCopy, type CopyKey } from "../ui/copy";
@@ -56,6 +55,7 @@ import {
   saveDisplayName,
 } from "../lib/display-name";
 import { useDocumentTitle } from "../ui/document-title";
+import { deriveViewerStatus, deriveParticipantStatus } from "../ui/media-status";
 import { clearViewerGrant, getStableClientId } from "../lib/session";
 import { createOpaqueId } from "../lib/opaque-id";
 import { SignalingClient } from "../lib/signaling";
@@ -88,10 +88,8 @@ import {
   deriveViewerPresentation,
   reduceViewerPresentation,
   viewerFailureFromServerCode,
-  type ViewerNoticeKey,
   type ViewerPresentationAction,
   type ViewerRouteKind,
-  type ViewerStage,
 } from "../media/viewer-presentation";
 import { prepareViewerPlayback } from "../media/viewer-playback";
 import {
@@ -163,112 +161,10 @@ interface RemoteMediaBinding {
   audioTrackKey: string;
 }
 
-function stageOverlayGlyph(stage: ViewerStage): { icon: GlyphName; spin: boolean } {
-  switch (stage) {
-    case "needs-play":
-      return { icon: "play", spin: false };
-    case "host-paused":
-      return { icon: "pause", spin: false };
-    case "host-offline":
-      return { icon: "wifiOff", spin: false };
-    case "route-failed":
-    case "playback-failed":
-    case "server-error":
-    case "stale-client":
-    case "session-replaced":
-    case "signal-terminated":
-      return { icon: "alert", spin: false };
-    case "recovering":
-    case "waiting-sfu":
-    case "preparing-p2p":
-    case "preparing-sfu":
-    case "receiving":
-    case "allocating":
-      return { icon: "loader", spin: true };
-    case "waiting-host":
-      return { icon: "moon", spin: false };
-    default:
-      return { icon: "tv", spin: false };
-  }
-}
-
-// Visual mode tells the stage as a panel comic; the glyph stays as its marker.
-function stageOverlayComic(
-  stage: ViewerStage,
-  route: "p2p" | "sfu" | null,
-): ComicKind | undefined {
-  switch (stage) {
-    case "waiting-host":
-      return "waiting-for-host";
-    case "preparing-p2p":
-      return "connecting-p2p";
-    case "preparing-sfu":
-    case "waiting-sfu":
-      return "connecting-sfu";
-    case "needs-play":
-      return "tap-to-play";
-    case "host-paused":
-      return "host-paused";
-    case "recovering":
-      return "recovering";
-    case "route-failed":
-      return "route-failed";
-    case "server-error":
-    case "stale-client":
-    case "session-replaced":
-    case "signal-terminated":
-      return "warning";
-    case "playback-failed":
-      return "playback-failed";
-    case "host-offline":
-      return "host-offline";
-    case "receiving":
-    case "allocating":
-      return route === "sfu" ? "connecting-sfu" : "connecting-p2p";
-    default:
-      return undefined;
-  }
-}
-
-function viewerNoticeVisual(
-  noticeKey: ViewerNoticeKey,
-): { icon: GlyphName; comic: ComicKind } {
-  switch (noticeKey) {
-    case "viewer.notice.hostOffline":
-      return { icon: "wifiOff", comic: "host-offline" };
-    case "viewer.notice.signalRecovering":
-      return { icon: "wifiOff", comic: "recovering" };
-    case "viewer.notice.mediaRecovering":
-      return { icon: "refresh", comic: "recovering" };
-  }
-}
-
-function stageChin(stage: ViewerStage): ChinState {
-  switch (stage) {
-    case "playing":
-      return "on";
-    case "host-paused":
-    case "recovering":
-      return "warn";
-    case "route-failed":
-    case "playback-failed":
-    case "host-offline":
-    case "server-error":
-    case "stale-client":
-    case "session-replaced":
-    case "signal-terminated":
-      return "bad";
-    case "waiting-host":
-      return "off";
-    default:
-      return "busy";
-  }
-}
-
 function MeterTag({ icon, label }: { icon: GlyphName; label: string }) {
   const { vis } = useCopy();
   return (
-    <span className="lr-meter-tag" title={vis ? undefined : label} role="img" aria-label={label}>
+    <span className="lr-meter-tag" role="img" aria-label={label}>
       <Glyph name={icon} size={17} />
       {vis ? null : <span className="lr-cap">{label}</span>}
     </span>
@@ -359,35 +255,12 @@ export function ViewerPage({
     };
   }, [theaterMode]);
 
-  const qualityLimitation = useMemo(
-    () =>
-      qualityLimitationSummary(
-        [peerSnapshot, relaySnapshot].filter(
-          (snapshot): snapshot is PeerSnapshot => snapshot !== null,
-        ),
-      ),
-    [peerSnapshot, relaySnapshot],
-  );
   const { host: labeledHostPresence, viewers } = useMemo(
     () => labelParticipantSnapshot(participantPresence ?? []),
     [participantPresence],
   );
   const currentHostDisplayName = labeledHostPresence?.label ?? null;
   const hostDisplayName = currentHostDisplayName ?? lastHostDisplayName;
-  const titleFrameKey =
-    presentationState.host === "paused"
-      ? "paused"
-      : presentation.hasCurrentFrame
-        ? "viewerActive"
-        : "viewerWaiting";
-  const titleContent = titleFrames(titleFrameKey);
-  useDocumentTitle(
-    [
-      accessState === "ready" ? roomId : null,
-      accessState === "ready" ? titleContent[0] : null,
-    ],
-    accessState === "ready" ? titleContent.slice(1) : [],
-  );
 
   function clearParticipantPresence(): void {
     setParticipantPresence(null);
@@ -436,6 +309,28 @@ export function ViewerPage({
     assignedRoute?.upstream ?? null,
     peerSnapshot,
     sfuUpstream,
+  );
+  const assignedRouteKind =
+    assignedRoute?.upstream.kind === "sfu"
+      ? "sfu"
+      : assignedRoute?.upstream.kind === "peer"
+        ? "p2p"
+        : routePresentation.route;
+  const viewerStatus = deriveViewerStatus(
+    presentation,
+    signalStatus,
+    undefined,
+    assignedRouteKind,
+  );
+  const titleContent = titleFrames(viewerStatus.titleFrameKey).map((frame) =>
+    [frame, viewerStatus.titleMarker].filter(Boolean).join(" "),
+  );
+  useDocumentTitle(
+    [
+      accessState === "ready" ? roomId : null,
+      accessState === "ready" ? titleContent[0] : null,
+    ],
+    accessState === "ready" ? titleContent.slice(1) : [],
   );
   const peerConnectionIdentity = peerRef.current?.getConnectionIdentity() ?? null;
   const reconnectRoute = viewerReconnectRoute(
@@ -679,7 +574,9 @@ export function ViewerPage({
       decodedFrameStall.setPaused(currentHostPaused || pageSuspended);
     };
     const suspendForPageLifecycle = (): void => {
-      invalidatePresentedMedia();
+      // Losing observation does not invalidate media already proved playable.
+      invalidateQualityPresentation();
+      rearmCurrentFrameProof();
       const newlySuspended = !pageSuspended;
       pageSuspended = true;
       viewerSfuRoute?.resetQualityProbe();
@@ -694,7 +591,8 @@ export function ViewerPage({
       }
     };
     const recoverFromPageLifecycle = (): void => {
-      invalidatePresentedMedia();
+      invalidateQualityPresentation();
+      rearmCurrentFrameProof();
       pageSuspended = document.visibilityState !== "visible";
       syncDecodedFrameStallPause();
       if (pageSuspended) return;
@@ -2319,7 +2217,7 @@ export function ViewerPage({
             <div className="lr-join-panel">
               {vis ? (
                 <>
-                  <Comic kind={deniedComic} theme="paper" />
+                  <Comic kind={deniedComic} theme="paper" tone={viewerStatus.activity.tone} />
                   <span className="visually-hidden" role="alert">
                     {t(presentation.messageKey)} · {t(deniedHintKey)}
                   </span>
@@ -2332,7 +2230,6 @@ export function ViewerPage({
                   color: "var(--ink)",
                   background: "var(--paper)",
                 }}
-                title={t(presentation.messageKey)}
                 role="img"
                 aria-label={t(presentation.messageKey)}
               >
@@ -2407,19 +2304,6 @@ export function ViewerPage({
     );
   }
 
-  const chin = stageChin(presentation.stage);
-  const ledState: LedState = chin === "on" ? "live" : chin;
-  const overlayGlyph = stageOverlayGlyph(presentation.stage);
-  const assignedRouteKind =
-    assignedRoute?.upstream.kind === "sfu"
-      ? "sfu"
-      : assignedRoute?.upstream.kind === "peer"
-        ? "p2p"
-        : routePresentation.route;
-  const overlayComic = stageOverlayComic(
-    presentation.stage,
-    assignedRouteKind,
-  );
   const connectionAttempt = presentation.stage === "preparing-p2p" &&
     assignedRoute?.phase === "prepare" &&
     assignedRoute.revision === presentationState.revision
@@ -2439,13 +2323,10 @@ export function ViewerPage({
         current: String(retryAttempt.current),
         total: String(retryAttempt.total),
       })
-    : t(presentation.messageKey);
+    : t(viewerStatus.activity.labelKey);
   const connectionProgress = retryAttempt
     ? `${retryAttempt.current}/${retryAttempt.total}`
     : undefined;
-  const noticeVisual = presentation.noticeKey
-    ? viewerNoticeVisual(presentation.noticeKey)
-    : null;
   const selectedChildEvidence =
     selectedPawn !== null && selectedPawn !== selfPeerId
       ? freshViewerQualityEvidence(relayChildEvidence.get(selectedPawn))
@@ -2473,14 +2354,7 @@ export function ViewerPage({
     return {
       key: viewer.peerId,
       name: viewer.label,
-      connected: viewer.mediaReady === true,
-      statusLabel: t(
-        isSelf
-          ? (`state.peer.${presentation.connectionState}` as CopyKey)
-          : viewer.upstream.kind === "none"
-            ? "state.peer.routing"
-            : "state.peer.connecting",
-      ),
+      status: deriveParticipantStatus(viewer, presentationState.host === "online"),
       you: isSelf,
       selectable: isChild ? undefined : false,
     };
@@ -2494,18 +2368,16 @@ export function ViewerPage({
     )
     .map((viewer) => viewer.peerId);
 
-  // Vis mode swaps native title tooltips for 2-panel hint comics; text modes
-  // render the trigger unchanged, so markup structure stays identical. Edge
-  // alignment keeps the panel on-screen for triggers near a viewport edge.
+  // Btn owns its text tooltip; these wrappers supply only its visual comic.
   const hintWrap = (
     kind: HintKind,
     node: ReactNode,
     align: "start" | "center" | "end" = "center",
   ): ReactNode =>
     vis ? (
-      <ComicTooltip kind={kind} align={align}>
+      <Tooltip kind={kind} align={align}>
         {node}
-      </ComicTooltip>
+      </Tooltip>
     ) : (
       node
     );
@@ -2519,7 +2391,13 @@ export function ViewerPage({
 .lr-tv-screen:has(:focus-visible) { outline: 3px solid var(--action); outline-offset: 2px; }
 `}</style>
       <AppHeader
-        led={<LedStrip state={ledState} label={stageMessage} />}
+        led={
+          <LedStrip
+            state={viewerStatus.connection.tone}
+            label={t(viewerStatus.connection.labelKey)}
+            comic={viewerStatus.connection.comic}
+          />
+        }
       />
       <main className={`lr-room${theaterMode ? " is-theater" : ""}`}>
         <h1 className="visually-hidden">
@@ -2529,22 +2407,16 @@ export function ViewerPage({
         </h1>
         <div className="lr-scene" id="viewer-stage">
           <StageTv
-            chin={chin}
             live={presentation.stage === "playing"}
             label={t("viewer.stageAria")}
+            indicator={<StatusIndicator status={viewerStatus.television}
+              label={retryAttempt ? stageMessage : undefined} />}
           >
             <video
               ref={videoRef}
               autoPlay
               tabIndex={0}
               aria-label={t("viewer.stageAria")}
-              controls={
-                presentation.overlay === "none" ||
-                presentation.stage === "needs-play" ||
-                (presentation.stage === "receiving" &&
-                  presentation.hasRetainedFrame)
-              }
-              controlsList={theaterMode ? "nofullscreen" : undefined}
               playsInline
               onPlay={() => {
                 invalidateQualityPresentation();
@@ -2560,12 +2432,30 @@ export function ViewerPage({
               onPause={invalidateQualityPresentation}
               onEnded={invalidateQualityPresentation}
             />
+            <PlaybackControls
+              videoRef={videoRef}
+              stream={remoteMedia?.stream ?? null}
+              audioTrackKey={remoteMedia?.audioTrackKey}
+              theaterMode={theaterMode}
+              onToggleTheater={() => setTheaterMode((current) => !current)}
+              onReconnect={retryConnection}
+              reconnectAvailable={reconnectAvailable}
+              canPlay={presentation.overlay === "none" ||
+                presentation.stage === "needs-play" ||
+                (presentation.stage === "receiving" && presentation.hasRetainedFrame)}
+              onPlay={() => {
+                const video = videoRef.current;
+                const binding = remoteMediaRef.current;
+                if (video && binding) attemptPlayback(video, binding);
+              }}
+            />
             {presentation.overlay === "blocking" && (
               <StageOverlay
                 dim
-                icon={overlayGlyph.icon}
-                transition={overlayGlyph.spin}
-                comic={overlayComic}
+                icon={viewerStatus.activity.icon}
+                transition={viewerStatus.activity.pulse}
+                comic={viewerStatus.activity.comic}
+                tone={viewerStatus.activity.tone}
                 message={stageMessage}
                 progress={connectionProgress}
               />
@@ -2574,8 +2464,9 @@ export function ViewerPage({
               presentation.stage === "needs-play" && (
                 <StageOverlay
                   dim
-                  icon="play"
-                  comic="tap-to-play"
+                  icon={viewerStatus.activity.icon}
+                  comic={viewerStatus.activity.comic}
+                  tone={viewerStatus.activity.tone}
                   message={t(presentation.messageKey)}
                   onActivate={() => {
                     const video = videoRef.current;
@@ -2588,77 +2479,33 @@ export function ViewerPage({
               presentation.stage !== "needs-play" && (
                 <StageOverlay
                   dim
-                  icon={overlayGlyph.icon}
-                  comic={overlayComic}
+                  icon={viewerStatus.activity.icon}
+                  comic={viewerStatus.activity.comic}
+                  tone={viewerStatus.activity.tone}
                   message={stageMessage}
                   progress={connectionProgress}
-                  spin={overlayGlyph.spin}
+                  spin={viewerStatus.activity.pulse}
                 />
               )}
           </StageTv>
-          {(presentation.noticeKey ||
-            (routePresentation.evidence === peerSnapshot &&
-              peerSnapshot?.error) ||
-            relaySnapshot?.error ||
-            qualityLimitation) && (
-            <div className="lr-stage-notices">
-              {presentation.noticeKey && noticeVisual ? (
-                <Pill
-                  icon={noticeVisual.icon}
-                  label={t(presentation.noticeKey)}
-                  comic={noticeVisual.comic}
-                />
-              ) : null}
-              {routePresentation.evidence === peerSnapshot &&
-              peerSnapshot?.error ? (
-                <Pill
-                  icon="alert"
-                  tone="bad"
-                  label={t("viewer.error.p2p")}
-                  comic="warning"
-                />
-              ) : null}
-              {relaySnapshot?.error ? (
-                <Pill
-                  icon="alert"
-                  tone="bad"
-                  label={t("viewer.error.relay")}
-                  comic="warning"
-                />
-              ) : null}
-              {qualityLimitation ? (
-                <Pill
-                  icon="alert"
-                  label={qualityLimitation.message}
-                  comic={
-                    qualityLimitation.kind === "bandwidth"
-                      ? "bandwidth-limited"
-                      : qualityLimitation.kind === "cpu"
-                        ? "encoder-limited"
-                        : "warning"
-                  }
-                />
-              ) : null}
-            </div>
-          )}
-          {theaterMode ? (
-            <div className="lr-theater-exit">
-              <Btn
-                icon="contract"
-                cap="viewer.theater.exit"
-                title="viewer.theater.exit"
-                hint="hint-theater-exit"
-                onClick={() => setTheaterMode(false)}
+          <div className="lr-stage-notices" role="status" aria-live="polite">
+            {viewerStatus.notice && (
+              <Pill
+                icon={viewerStatus.notice.icon}
+                label={t(viewerStatus.notice.labelKey)}
+                comic={viewerStatus.notice.comic}
+                tooltipTone={viewerStatus.notice.tone}
               />
-            </div>
-          ) : null}
-          <div className="lr-shelf" aria-hidden="true" />
+            )}
+          </div>
           <Couch
+            view="viewer"
             host={
               labeledHostPresence
                 ? {
                     key: labeledHostPresence.peerId,
                     name: labeledHostPresence.label,
+                    online: true,
                   }
                 : null
             }
@@ -2684,9 +2531,6 @@ export function ViewerPage({
             >
               <Glyph name="tv" size={17} />
               <b>{hostDisplayName ?? t("common.host")}</b>
-            </div>
-            <div className="lr-row-group lr-viewer-state-slot">
-              <StatusText>{t(presentation.messageKey)}</StatusText>
             </div>
             <div className="lr-viewer-personal-controls">
               <form
@@ -2769,43 +2613,12 @@ export function ViewerPage({
                 />
                 <span className="lr-viewer-action-cluster">
                   <Btn
-                    icon={theaterMode ? "contract" : "expand"}
-                    cap={theaterMode ? "viewer.theater.exit" : "viewer.theater"}
-                    title={
-                      theaterMode ? "viewer.theater.exit" : "viewer.theater"
-                    }
-                    hint={
-                      theaterMode ? "hint-theater-exit" : "hint-theater"
-                    }
-                    tone={theaterMode ? "on" : undefined}
-                    pressed={theaterMode}
-                    controls="viewer-stage"
-                    onClick={() => setTheaterMode((current) => !current)}
-                  />
-                  {hintWrap(
-                    "hint-reconnect",
-                    <Btn
-                      icon="refresh"
-                      cap="viewer.reconnect"
-                      title="viewer.reconnect"
-                      disabled={!reconnectAvailable}
-                      onClick={retryConnection}
-                    />,
-                    "end",
-                  )}
-                </span>
-                <span
-                  className="lr-viewer-action-separator"
-                  aria-hidden="true"
-                />
-                <span className="lr-viewer-action-cluster">
-                  <Btn
                     icon="gauge"
                     cap="host.details"
                     title={
                       showConnectionDetails ? "host.details.hide" : "host.details"
                     }
-                    hint="hint-details"
+                    hint={showConnectionDetails ? "hint-collapse" : "hint-details"}
                     tone={showConnectionDetails ? "on" : undefined}
                     expanded={showConnectionDetails}
                     controls="viewer-details-panel"
@@ -2819,7 +2632,7 @@ export function ViewerPage({
                     }
                   />
                   {hintWrap(
-                    "hint-topology",
+                    labeledHostPresence && showTopology ? "hint-collapse" : "hint-topology",
                     <Btn
                       icon="network"
                       cap="host.topology"

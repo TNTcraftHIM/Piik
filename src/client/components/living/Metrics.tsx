@@ -3,7 +3,7 @@
 import { useId, useState, type ReactNode } from "react";
 import { Glyph, type GlyphName } from "../../ui/icons";
 import { useCopy, type CopyKey } from "../../ui/copy";
-import { ComicTooltip } from "./ComicTooltip";
+import { Tooltip } from "./Tooltip";
 import { Pill } from "./primitives";
 import type { ConnectionMetrics } from "../../types";
 import { formatPacketLossPercent } from "../connection-details";
@@ -12,7 +12,6 @@ interface MetricValue {
   icon: GlyphName;
   label: CopyKey;
   value: string;
-  title?: string;
   /** Visual mode shows the glyph alone; the value stays in the a11y name. */
   glyphOnly?: boolean;
 }
@@ -49,10 +48,9 @@ function secondaryMetrics(
     value: number | null,
     unit: string,
     digits = 0,
-    title?: string,
   ) => {
     if (value !== null && Number.isFinite(value)) {
-      values.push({ icon, label, value: `${readable(value, digits)} ${unit}`, title });
+      values.push({ icon, label, value: `${readable(value, digits)} ${unit}` });
     }
   };
   const qualityReason = (value: string): string => {
@@ -176,10 +174,10 @@ export function MetricCells({
   onToggle: (expanded: boolean) => void;
 }) {
   const { t, vis } = useCopy();
-  const cell = ({ icon, label, value, title, glyphOnly }: MetricValue): ReactNode => {
+  const cell = ({ icon, label, value, glyphOnly }: MetricValue): ReactNode => {
     const display = vis && value === t("stats.unknown") ? "—" : value;
     return (
-    <span className="lr-meter-cell" title={vis ? undefined : title ?? t(label)} key={label + display}>
+    <span className="lr-meter-cell" key={label + display}>
       <Glyph name={icon} size={16} />
       {vis ? (
         <>
@@ -224,19 +222,17 @@ export function MetricCells({
     <button
       type="button"
       className={`lr-btn lr-metrics-more${expanded ? " is-open" : ""}`}
-      title={vis ? undefined : moreTitle}
       aria-label={moreTitle}
       aria-expanded={expanded}
       aria-controls={secondaryId}
       onClick={(event) => {
-        // Hint-wrapped in vis: pointer activation must not leave the comic
-        // pinned open by focus (keyboard clicks keep focus).
-        if (vis && event.detail !== 0) event.currentTarget.blur();
+        // Pointer activation must not pin the hint open; keyboard keeps focus.
+        if (event.detail !== 0) event.currentTarget.blur();
         onToggle(!expanded);
       }}
     >
       <Glyph name="chevron" size={15} />
-      {vis ? null : <span className="lr-cap">{t("stats.more")}</span>}
+      {vis ? null : <span className="lr-cap">{moreTitle}</span>}
     </button>
   );
 
@@ -247,14 +243,9 @@ export function MetricCells({
       </div>
       {secondary.length > 0 ? (
         <>
-          {vis ? (
-            // This button lands at the card's left edge (the meter takes a
-            // full flex basis), so prefer start; ComicTooltip re-picks from
-            // live geometry if that would clip.
-            <ComicTooltip kind="hint-more-metrics" align="start">{moreButton}</ComicTooltip>
-          ) : (
-            moreButton
-          )}
+          <Tooltip kind={expanded ? "hint-collapse" : "hint-more-metrics"} text={vis ? undefined : moreTitle} align="start">
+            {moreButton}
+          </Tooltip>
           {expanded ? (
             <div id={secondaryId} className="lr-meter" role="group" aria-label={t("stats.more")}>
               {secondary.map(cell)}

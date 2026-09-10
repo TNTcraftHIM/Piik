@@ -1,4 +1,4 @@
-// The connection topology as a real tree: host (crowned) roots direct P2P
+// The connection topology as a real tree: the host roots direct P2P
 // viewers and the SFU node; relay children hang off their parent viewer.
 // Data comes from deriveParticipantTopology.
 import { memo, useLayoutEffect, useRef, useState } from "react";
@@ -83,7 +83,7 @@ function topologyVisibleLabel(
   const peerIdSuffix = peerId?.slice(-6) ?? "";
   const withoutRedundantRole =
     peerIdSuffix &&
-    (label === `👑 (${peerIdSuffix})` || label === `👤 (${peerIdSuffix})`)
+    (label === `🎮 (${peerIdSuffix})` || label === `👤 (${peerIdSuffix})`)
       ? peerIdSuffix
       : label;
   return compactVisibleLabel(withoutRedundantRole, maximumCodePoints);
@@ -366,7 +366,7 @@ export const RouteTree = memo(function RouteTree({
         >
           <PawnSvg
             color={participantColor(hostPeerId ?? hostIdentity ?? "host-pending")}
-            crown
+            host
           />
         </g>
         <text

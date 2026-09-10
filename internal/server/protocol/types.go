@@ -168,6 +168,7 @@ func (v *RoutePolicy) UnmarshalJSON(data []byte) error {
 
 // RuntimeCapabilities mirrors runtimeCapabilitiesSchema.
 type RuntimeCapabilities struct {
+	Sfu           bool `json:"sfu"`
 	NatPrediction bool `json:"natPrediction"`
 }
 
@@ -179,7 +180,7 @@ func (v *RuntimeCapabilities) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	return present.require("natPrediction")
+	return present.require("sfu", "natPrediction")
 }
 
 // ---------------------------------------------------------------------------

@@ -23,8 +23,7 @@ import {
   type CodeEntryPolicy,
   type RoutePolicy,
 } from "../../shared/protocol";
-import { qualityLimitationSummary } from "../components/connection-details";
-import { AppHeader, LedStrip, type LedState } from "../components/living/Header";
+import { AppHeader, LedStrip } from "../components/living/Header";
 import { Couch, type CouchEntry } from "../components/living/Couch";
 import {
   CaptureSourcePicker,
@@ -42,7 +41,7 @@ import {
   type ViewerOverviewEntry,
 } from "../components/living/ViewerOverview";
 import type { ComicKind } from "../components/living/Comic";
-import { ComicTooltip } from "../components/living/ComicTooltip";
+import { Tooltip } from "../components/living/Tooltip";
 import type { HintKind } from "../components/living/hints";
 import {
   StageOverlay,
@@ -50,6 +49,7 @@ import {
   StaticNoise,
   StoryBoard,
 } from "../components/living/Stage";
+import { StatusIndicator } from "../components/living/StatusIndicator";
 import {
   Btn,
   Cap,
@@ -59,7 +59,6 @@ import {
   Pill,
   Row,
   RowGroup,
-  StatusText,
   SwitchItem,
   VisGlyph,
 } from "../components/living/primitives";
@@ -86,6 +85,7 @@ import {
   saveDisplayName,
 } from "../lib/display-name";
 import { useDocumentTitle } from "../ui/document-title";
+import { deriveHostStatus, deriveParticipantStatus, type HostPhase } from "../ui/media-status";
 import {
   clearHostRoom,
   getStableClientId,
@@ -186,25 +186,9 @@ import {
   type HostAction,
 } from "./host-page-notices";
 
-type HostPhase = "idle" | "starting" | "live" | "ended" | "error";
-
 type NoticeValue =
   | { kind: "text"; text: string }
   | { kind: "key"; key: CopyKey; vars?: Record<string, string> };
-
-const SIGNAL_LED_STATE: Record<SignalConnectionState, LedState> = {
-  connected: "live",
-  connecting: "busy",
-  reconnecting: "warn",
-  offline: "off",
-};
-
-const SIGNAL_LED_LABEL: Record<SignalConnectionState, CopyKey> = {
-  connected: "state.signal.connected",
-  connecting: "state.signal.connecting",
-  reconnecting: "state.signal.reconnecting",
-  offline: "state.signal.offline",
-};
 
 const QUALITY_PROFILE_CAPTIONS: Record<QualityProfileId, CopyKey> = {
   "720p30": "host.quality.720p30",
@@ -237,24 +221,6 @@ const AUDIO_QUALITY_CAPTIONS: Record<ScreenAudioQuality, CopyKey> = {
   saver: "host.advanced.audio.saver",
   music: "host.advanced.audio.music",
   "very-high": "host.advanced.audio.veryHigh",
-};
-
-type PresentedPeerState =
-  | RTCPeerConnectionState
-  | "routing"
-  | "waiting"
-  | "reconnecting";
-
-const PEER_STATE_CAPTIONS: Record<PresentedPeerState, CopyKey> = {
-  new: "state.peer.new",
-  connecting: "state.peer.connecting",
-  connected: "state.peer.connected",
-  routing: "state.peer.routing",
-  waiting: "state.peer.waiting",
-  reconnecting: "state.peer.reconnecting",
-  failed: "state.peer.failed",
-  disconnected: "state.peer.disconnected",
-  closed: "state.peer.closed",
 };
 
 // Scanline glyph on each quality tile: denser scanlines (plus a motion wave
@@ -402,6 +368,7 @@ function hostTerminationKey(reason: SignalingTerminationReason): CopyKey {
 }
 
 interface HostPageProps {
+  sfuAvailable?: boolean;
   natPredictionAvailable?: boolean;
   launchedByClient?: boolean;
   onAuthorizationRequired?: () => void;
@@ -418,6 +385,7 @@ type ShareSourceSelection =
     };
 
 export function HostPage({
+  sfuAvailable = false,
   natPredictionAvailable = false,
   launchedByClient = false,
   onAuthorizationRequired,
@@ -432,6 +400,7 @@ export function HostPage({
   const [routePolicy, setRoutePolicy] = useState<RoutePolicy>(
     () => ({
       ...DEFAULT_ROUTE_POLICY,
+      peerOnly: !sfuAvailable,
       natPrediction: natPredictionAvailable,
     }),
   );
@@ -482,7 +451,6 @@ export function HostPage({
     creationProfile.roomPassword ?? "",
   );
   const [viewerPasswordVisible, setViewerPasswordVisible] = useState(false);
-  const [maxViewers, setMaxViewers] = useState<number | null>(null);
   const [peerSnapshots, setPeerSnapshots] = useState<Map<string, PeerSnapshot>>(
     () => new Map(),
   );
@@ -608,10 +576,6 @@ export function HostPage({
   const nativeSourcePathRef = useRef<NativeCapturePath | null>(null);
   const nativeShareCleanupRef = useRef<Promise<void>>(Promise.resolve());
 
-  const mediaViewers = useMemo(
-    () => Array.from(peerSnapshots.values()),
-    [peerSnapshots],
-  );
   const { host: labeledHostPresence, viewers } = useMemo(
     () => labelParticipantSnapshot(participantPresence),
     [participantPresence],
@@ -629,10 +593,6 @@ export function HostPage({
   const selectedQualityProfileId = useMemo(
     () => matchingQualityProfileId(qualitySettings),
     [qualitySettings],
-  );
-  const qualityLimitation = useMemo(
-    () => qualityLimitationSummary(mediaViewers),
-    [mediaViewers],
   );
   const displayedVideoCodecMode =
     phase === "live" && resolvedVideoCodec
@@ -905,7 +865,6 @@ export function HostPage({
     iceConfigRef.current = null;
     setStream(null);
     setDetails(null);
-    setMaxViewers(null);
     setPeerSnapshots(new Map());
     setParticipantPresence([]);
     viewerQualityEvidenceTimersRef.current.forEach((timer) =>
@@ -2266,7 +2225,6 @@ export function HostPage({
       setViewerPasswordEnabled(message.viewerPasswordEnabled);
       setViewerPasswordDraft(authenticatedProfile.roomPassword ?? "");
       setViewerPasswordVisible(false);
-      setMaxViewers(message.maxViewers);
       routePolicyRef.current = { ...message.routePolicy };
       setRoutePolicy({ ...message.routePolicy });
       setRoom((current) =>
@@ -3236,32 +3194,10 @@ export function HostPage({
   const hostIdentity = hostPeerId ?? hostClientIdRef.current ?? "host-pending";
 
   const couchEntries: CouchEntry[] = viewers.map((viewer) => {
-    const snapshot =
-      viewer.upstream.kind === "peer" && viewer.upstream.peerId === hostPeerId
-        ? peerSnapshots.get(viewer.peerId)
-        : undefined;
-    const qualityPresentation = viewerQualityEvidence.get(viewer.peerId);
-    const qualityEvidence = qualityPresentation?.evidence;
-    const hasCurrentQualityEvidence =
-      qualityEvidence !== undefined &&
-      qualityEvidenceUpstreamMatches(qualityEvidence, viewer.upstream) &&
-      qualityPresentation?.fresh === true;
-    const hasCommittedMedia = viewer.mediaReady === true;
-    const connected =
-      snapshot?.connectionState === "connected" ||
-      hasCurrentQualityEvidence ||
-      hasCommittedMedia;
-    const viewerState = connected
-      ? "connected"
-      : (snapshot?.connectionState ??
-        (viewer.upstream.kind === "none" ? "routing" : "connecting"));
     return {
       key: viewer.peerId,
       name: viewer.label,
-      connected,
-      statusLabel: t(
-        PEER_STATE_CAPTIONS[viewerState] ?? "state.peer.connecting",
-      ),
+      status: deriveParticipantStatus(viewer, phase === "live", viewerQualityEvidence.get(viewer.peerId)),
     };
   });
 
@@ -3289,13 +3225,6 @@ export function HostPage({
       hasPeerRouteEvidence(snapshot) ||
       hasCurrentQualityEvidence ||
       hasCommittedMedia;
-    const connected =
-      snapshot?.connectionState === "connected" ||
-      hasCurrentQualityEvidence ||
-      hasCommittedMedia;
-    const viewerState = connected
-      ? "connected"
-      : (snapshot?.connectionState ?? "routing");
     const detailMetrics = hasCurrentQualityEvidence
       ? metricsFromQualityEvidence(qualityEvidence)
       : snapshot && hasPeerRouteEvidence(snapshot)
@@ -3310,12 +3239,14 @@ export function HostPage({
           : null,
       metrics: detailMetrics,
       direction: hasCurrentQualityEvidence ? "receive" : "send",
-      tag: connected
+      tag: hasCommittedMedia
         ? undefined
         : {
             icon: "loader",
             label: t(
-              PEER_STATE_CAPTIONS[viewerState] ?? "state.peer.connecting",
+              viewer.upstream.kind === "none"
+                ? "state.peer.routing"
+                : "state.peer.connecting",
             ),
           },
       error: snapshot?.error ?? null,
@@ -3335,7 +3266,6 @@ export function HostPage({
       const detail = viewerDetails.get(entry.key);
       return {
         ...entry,
-        statusLabel: entry.statusLabel ?? t("state.peer.connecting"),
         route: detail?.route ?? null,
         metrics: detail?.metrics ?? null,
       };
@@ -3351,39 +3281,21 @@ export function HostPage({
       : t(noticeValue.key, noticeValue.vars)
     : null;
 
-  const phaseLine =
-    phase === "live"
-      ? t("host.onlineCount", {
-          n: String(viewers.length),
-          max: String(maxViewers ?? "-"),
-        })
-      : phase === "starting"
-        ? `${t("host.starting")}…`
-        : phase === "ended"
-          ? t("host.ended")
-          : room
-            ? t("host.roomReady")
-            : t("host.notStarted");
-  const titleFrameKey =
-    phase === "live"
-      ? sharingPaused
-        ? "paused"
-        : "hostActive"
-      : phase === "starting"
-        ? "hostStarting"
-        : phase === "ended"
-          ? "hostEnded"
-          : room
-            ? "hostReady"
-            : "hostIdle";
-  const titleContent = titleFrames(titleFrameKey);
+  const hostStatus = deriveHostStatus({
+    phase,
+    paused: sharingPaused,
+    signal: signalStatus,
+    roomReady: Boolean(room),
+  });
+  const titleContent = titleFrames(hostStatus.titleFrameKey).map((frame) =>
+    [frame, hostStatus.titleMarker].filter(Boolean).join(" "),
+  );
   useDocumentTitle([room?.roomId, titleContent[0]], titleContent.slice(1));
 
-  // Vis mode swaps native title tooltips for 2-panel hint comics; text modes
-  // render the trigger unchanged, so markup structure stays identical.
+  // These Btn triggers already own their text tooltip; add only their visual comic.
   // wrapStyle adds a layout span around the tooltip wrapper (vis mode only)
   // for triggers whose flex context would otherwise stretch the wrapper away
-  // from the trigger it must hug, or collapse a control's text-mode geometry.
+  // from the trigger it must hug.
   const hintWrap = (
     kind: HintKind,
     node: ReactNode,
@@ -3393,14 +3305,14 @@ export function HostPage({
     vis ? (
       wrapStyle ? (
         <span style={wrapStyle}>
-          <ComicTooltip kind={kind} align={align}>
+          <Tooltip kind={kind} align={align}>
             {node}
-          </ComicTooltip>
+          </Tooltip>
         </span>
       ) : (
-        <ComicTooltip kind={kind} align={align}>
+        <Tooltip kind={kind} align={align}>
           {node}
-        </ComicTooltip>
+        </Tooltip>
       )
     ) : (
       node
@@ -3411,13 +3323,9 @@ export function HostPage({
       <AppHeader
         led={
           <LedStrip
-            state={SIGNAL_LED_STATE[signalStatus]}
-            label={t(SIGNAL_LED_LABEL[signalStatus])}
-            comic={
-              signalStatus === "reconnecting" || signalStatus === "offline"
-                ? "recovering"
-                : undefined
-            }
+            state={hostStatus.connection.tone}
+            label={t(hostStatus.connection.labelKey)}
+            comic={hostStatus.connection.comic}
           />
         }
       />
@@ -3428,20 +3336,12 @@ export function HostPage({
         </h1>
         <div className="lr-scene">
           <StageTv
-            chin={
-              phase === "live"
-                ? sharingPaused
-                  ? "warn"
-                  : "on"
-                : phase === "starting"
-                  ? "busy"
-                  : "off"
-            }
             live={phase === "live"}
             hasEntry={
               phase === "idle" || phase === "ended" || phase === "error"
             }
             label={t("host.stageAria")}
+            indicator={<StatusIndicator status={hostStatus.television} />}
           >
             {stream ? (
               <video ref={videoRef} autoPlay muted playsInline />
@@ -3482,40 +3382,34 @@ export function HostPage({
                 ) : null}
                 <div className="lr-entry-actions">
                   <span className="lr-entry-action">
-                    {hintWrap(
-                      "hint-share-start",
+                    <Tooltip kind="hint-share-start" text={vis ? undefined : t("host.start")} align="start">
                       <button
                         type="button"
                         className="lr-tv-big is-action is-ripple"
-                        title={vis ? undefined : t("host.start")}
                         aria-label={t("host.start")}
                         disabled={roomMutating}
                         onClick={requestSharing}
                       >
                         <VisGlyph name="cast" size={34} draw="entry-cast" />
-                      </button>,
-                      "start",
-                    )}
+                      </button>
+                    </Tooltip>
                     {vis ? null : (
                       <span className="lr-tv-msg">{t("host.start")}</span>
                     )}
                   </span>
                   <span className="lr-entry-action">
-                    {hintWrap(
-                      "hint-join-go",
+                    <Tooltip kind={joiningRoom ? "hint-collapse" : "hint-join-go"} text={vis ? undefined : t(joiningRoom ? "host.join.hide" : "host.join")} align="end">
                       <button
                         type="button"
                         className="lr-tv-big"
-                        title={vis ? undefined : t("host.join")}
-                        aria-label={t("host.join")}
+                        aria-label={t(joiningRoom ? "host.join.hide" : "host.join")}
                         aria-expanded={joiningRoom}
                         aria-controls="host-room-code-entry"
                         onClick={() => setJoiningRoom((current) => !current)}
                       >
                         <VisGlyph name="door" size={30} draw="entry-door" />
-                      </button>,
-                      "end",
-                    )}
+                      </button>
+                    </Tooltip>
                     {vis ? null : (
                       <span className="lr-tv-msg">{t("host.join")}</span>
                     )}
@@ -3577,18 +3471,16 @@ export function HostPage({
                         )}
                       </>
                     ) : null}
-                    {hintWrap(
-                      "hint-join-go",
+                    <Tooltip kind="hint-join-go" text={vis ? undefined : t("join.submit")}>
                       <button
                         className="lr-join-go"
                         type="submit"
-                        title={vis ? undefined : t("join.submit")}
                         aria-label={t("join.submit")}
                         disabled={joinRoomCode.length !== 4}
                       >
                         <Glyph name="arrowRight" size={24} />
-                      </button>,
-                    )}
+                      </button>
+                    </Tooltip>
                   </form>
                 ) : null}
               </div>
@@ -3603,7 +3495,7 @@ export function HostPage({
                 message={t("host.switchingSource")}
               />
             ) : sharingPaused ? (
-              <StageOverlay icon="pause" dim comic="host-paused" message={t("host.pauseNotice")} />
+              <StageOverlay icon="pause" dim comic="host-paused" tone={hostStatus.activity.tone} message={t("host.pauseNotice")} />
             ) : phase === "starting" ? (
               <>
                 <StaticNoise />
@@ -3623,11 +3515,25 @@ export function HostPage({
               />
             ) : null}
           </StageTv>
-          <div className="lr-shelf" aria-hidden="true" />
+          <div className="lr-stage-notices" role="status" aria-live="polite">
+            {!details?.hasAudio && stream ? (
+              <Pill icon="speaker" label={t("host.noAudio")} comic="no-audio" />
+            ) : null}
+            {hostSfuQualityWarning && hostSfuQualityWarning !== noticeText ? (
+              <Pill icon="alert" label={hostSfuQualityWarning} comic="warning" />
+            ) : null}
+            {noticeText && noticeText !== t(hostStatus.activity.labelKey) ? (
+              <Pill icon={noticeComic ? "alert" : "check"}
+                tone={noticeComic ? undefined : "good"} label={noticeText}
+                comic={noticeComic ?? undefined} />
+            ) : null}
+          </div>
           <Couch
+            view="host"
             host={{
               key: hostIdentity,
               name: labeledHostPresence?.label ?? displayName,
+              online: signalStatus === "connected",
               you: true,
               selected:
                 hostDiagnosticsAvailable &&
@@ -3676,41 +3582,6 @@ export function HostPage({
                 ) : null}
               </RowGroup>
             ) : null}
-            <RowGroup>
-              <StatusText>{phaseLine}</StatusText>
-              {!details?.hasAudio && stream ? (
-                <Pill icon="speaker" label={t("host.noAudio")} comic="no-audio" />
-              ) : null}
-              {qualityLimitation ? (
-                <Pill
-                  icon="alert"
-                  label={qualityLimitation.message}
-                  comic={
-                    qualityLimitation.kind === "bandwidth"
-                      ? "bandwidth-limited"
-                      : qualityLimitation.kind === "cpu"
-                        ? "encoder-limited"
-                        : "warning"
-                  }
-                />
-              ) : null}
-              {hostSfuQualityWarning &&
-              hostSfuQualityWarning !== noticeText ? (
-                <Pill
-                  icon="alert"
-                  label={hostSfuQualityWarning}
-                  comic="warning"
-                />
-              ) : null}
-              {noticeText && (vis || noticeText !== phaseLine) ? (
-                <Pill
-                  icon={noticeComic ? "alert" : "check"}
-                  tone={noticeComic ? undefined : "good"}
-                  label={noticeText}
-                  comic={noticeComic ?? undefined}
-                />
-              ) : null}
-            </RowGroup>
             <span className="lr-spacer" />
             <div className="lr-host-personal-controls">
               <div className="lr-row-group lr-group-name lr-host-identity-slot">
@@ -3793,7 +3664,7 @@ export function HostPage({
               </div>
               <div className="lr-row-group lr-group-actions lr-host-diagnostics-slot">
                 {hintWrap(
-                  "hint-details",
+                  showConnectionDetails ? "hint-collapse" : "hint-details",
                   <Btn
                     icon="gauge"
                     cap={
@@ -3817,7 +3688,7 @@ export function HostPage({
                   "start",
                 )}
                 {hintWrap(
-                  "hint-topology",
+                  showTopology ? "hint-collapse" : "hint-topology",
                   <Btn
                     icon="network"
                     cap="host.topology"
@@ -3893,7 +3764,6 @@ export function HostPage({
               <div id="host-details-panel" style={{ display: "contents" }}>
                 <span
                   className="lr-meter-tag"
-                  title={vis ? undefined : t("host.captureAria")}
                 >
                   <Glyph name="arrowUp" size={17} />
                   {vis ? null : (
@@ -3907,7 +3777,6 @@ export function HostPage({
                 >
                   <span
                     className="lr-meter-cell"
-                    title={vis ? undefined : t("stats.resolution")}
                   >
                     <Glyph name="expand" size={16} />
                     <b>
@@ -3921,7 +3790,6 @@ export function HostPage({
                   </span>
                   <span
                     className="lr-meter-cell"
-                    title={vis ? undefined : t("stats.fps")}
                   >
                     <Glyph name="wave" size={16} />
                     <b>
@@ -3937,7 +3805,6 @@ export function HostPage({
                   </span>
                   <span
                     className="lr-meter-cell"
-                    title={vis ? undefined : t("stats.codec")}
                   >
                     <Glyph name="cpu" size={16} />
                     <b>
@@ -3950,7 +3817,6 @@ export function HostPage({
                   </span>
                   <span
                     className="lr-meter-cell"
-                    title={vis ? undefined : t("stats.audio")}
                   >
                     {vis ? (
                       <span
@@ -4038,18 +3904,17 @@ export function HostPage({
           {room ? (
             <Row label={t("host.invite")}>
               <RowGroup actions>
-                {hintWrap(
-                  "hint-copy-invite",
-                  <Btn
-                    icon={copied ? "check" : "link"}
-                    tone={room.inviteUrl ? "primary" : undefined}
-                    cap="common.copy"
-                    title={copied ? "common.copied" : "host.invite.copy"}
-                    disabled={!room.inviteUrl || roomMutating}
-                    onClick={() => void copyInvite()}
-                  />,
-                  "start",
-                )}
+                <Btn
+                  icon={copied ? "check" : "link"}
+                  tone={room.inviteUrl ? "primary" : undefined}
+                  cap="common.copy"
+                  title={copied ? "common.copied" : "host.invite.copy"}
+                  hint="hint-copy-invite"
+                  hintTone={copied ? "live" : undefined}
+                  hintMotion={copied ? "still" : undefined}
+                  disabled={!room.inviteUrl || roomMutating}
+                  onClick={() => void copyInvite()}
+                />
                 <Btn
                   icon="refresh"
                   cap="host.invite.rotateShort"
@@ -4069,17 +3934,18 @@ export function HostPage({
                 />
               </RowGroup>
               {room.inviteUrl ? (
-                <input
-                  className="lr-invite-url"
-                  type="text"
-                  dir="ltr"
-                  value={room.inviteUrl}
-                  readOnly
-                  spellCheck={false}
-                  aria-label={t("host.invite")}
-                  title={room.inviteUrl}
-                  onFocus={(event) => event.currentTarget.select()}
-                />
+                <Tooltip text={room.inviteUrl} className="lr-invite-hint">
+                  <input
+                    className="lr-invite-url"
+                    type="text"
+                    dir="ltr"
+                    value={room.inviteUrl}
+                    readOnly
+                    spellCheck={false}
+                    aria-label={t("host.invite")}
+                    onFocus={(event) => event.currentTarget.select()}
+                  />
+                </Tooltip>
               ) : null}
               <span className="lr-divider" aria-hidden="true" />
               <RowGroup>
@@ -4089,17 +3955,12 @@ export function HostPage({
                   aria-label={t("host.policy")}
                   data-selected={activeCodeEntryPolicy}
                 >
-                  {hintWrap(
-                    "hint-policy-open",
+                  <Tooltip kind="hint-policy-open"
+                    text={vis ? undefined : `${t("host.policy.open")} · ${t("host.policy.openHint")}`}>
                     <button
                       type="button"
                       className={
                         activeCodeEntryPolicy === "open" ? "is-selected" : undefined
-                      }
-                      title={
-                        vis
-                          ? undefined
-                          : `${t("host.policy.open")} · ${t("host.policy.openHint")}`
                       }
                       aria-label={t("host.policy.open")}
                       aria-pressed={activeCodeEntryPolicy === "open"}
@@ -4108,27 +3969,16 @@ export function HostPage({
                     >
                       <VisGlyph name="globe" size={19} />
                       <Cap k="host.policy.open" />
-                    </button>,
-                    "center",
-                    // Vis mode interposes the tooltip wrapper between the
-                    // toggle and its buttons, breaking the text-mode
-                    // `.lr-toggle button { flex: 1 }` halves (and the sliding
-                    // thumb's 50% geometry). Give each wrapper its half back.
-                    { flex: 1, display: "grid" },
-                  )}
-                  {hintWrap(
-                    "hint-policy-private",
+                    </button>
+                  </Tooltip>
+                  <Tooltip kind="hint-policy-private"
+                    text={vis ? undefined : `${t("host.policy.private")} · ${t("host.policy.privateHint")}`}>
                     <button
                       type="button"
                       className={
                         activeCodeEntryPolicy === "private"
                           ? "is-selected"
                           : undefined
-                      }
-                      title={
-                        vis
-                          ? undefined
-                          : `${t("host.policy.private")} · ${t("host.policy.privateHint")}`
                       }
                       aria-label={t("host.policy.private")}
                       aria-pressed={activeCodeEntryPolicy === "private"}
@@ -4137,27 +3987,16 @@ export function HostPage({
                     >
                       <VisGlyph name="lock" size={19} />
                       <Cap k="host.policy.private" />
-                    </button>,
-                    "center",
-                    { flex: 1, display: "grid" },
-                  )}
+                    </button>
+                  </Tooltip>
                 </span>
                 {activeCodeEntryPolicy === "private" ? (
-                  hintWrap(
-                    "hint-password",
+                  <Tooltip kind={passwordOpen ? "hint-collapse" : "hint-password"} align="end"
+                    text={vis ? undefined : `${t(passwordOpen ? "host.password.settingsHide" : "host.password.setAction")} · ${t(viewerPasswordEnabled ? "host.password.set" : "host.password.unset")}`}>
                     <button
                       type="button"
                       className="lr-btn"
-                      title={
-                        vis
-                          ? undefined
-                          : t(
-                              viewerPasswordEnabled
-                                ? "host.password.set"
-                                : "host.password.unset",
-                            )
-                      }
-                      aria-label={t("host.password.setAction")}
+                      aria-label={t(passwordOpen ? "host.password.settingsHide" : "host.password.setAction")}
                       aria-expanded={passwordOpen}
                       aria-controls="host-password-form"
                       onClick={() => setPasswordOpen((current) => !current)}
@@ -4167,9 +4006,8 @@ export function HostPage({
                         <i className="lr-chip-dot" aria-hidden="true" />
                       ) : null}
                       <Cap k="join.password" />
-                    </button>,
-                    "end",
-                  )
+                    </button>
+                  </Tooltip>
                 ) : null}
                 {!room.inviteUrl ? (
                   <Pill
@@ -4229,6 +4067,7 @@ export function HostPage({
                     {viewerPasswordEnabled && viewerPasswordDraft.length > 0 ? (
                       <Btn
                         icon={viewerPasswordVisible ? "eyeOff" : "eye"}
+                        hint={viewerPasswordVisible ? "hint-password-hide" : "hint-password-show"}
                         title={
                           viewerPasswordVisible
                             ? "host.password.hide"
@@ -4279,24 +4118,17 @@ export function HostPage({
                 {(Object.keys(QUALITY_PROFILES) as QualityProfileId[]).map(
                   (id, index) => (
                     <Fragment key={id}>
-                      {hintWrap(
-                        "hint-quality",
+                      <Tooltip kind="hint-quality" align={index === 0 ? "start" : "center"}
+                        text={vis ? undefined : t("host.quality.title", {
+                          label: t(QUALITY_PROFILE_CAPTIONS[id]),
+                          mbps: (QUALITY_PROFILES[id].maxBitrate / 1_000_000).toFixed(0),
+                        })}>
                         <button
                           type="button"
                           className={`lr-tile${
                             selectedQualityProfileId === id ? " is-selected" : ""
                           }`}
                           aria-pressed={selectedQualityProfileId === id}
-                          title={
-                            vis
-                              ? undefined
-                              : t("host.quality.title", {
-                                  label: t(QUALITY_PROFILE_CAPTIONS[id]),
-                                  mbps: (
-                                    QUALITY_PROFILES[id].maxBitrate / 1_000_000
-                                  ).toFixed(0),
-                                })
-                          }
                           aria-label={t(QUALITY_PROFILE_CAPTIONS[id])}
                           disabled={phase === "starting" || switchingSource}
                           onClick={() =>
@@ -4314,9 +4146,8 @@ export function HostPage({
                               ? `${QUALITY_PROFILES[id].resolution.replace("p", "")}·${QUALITY_PROFILES[id].maxFramerate}`
                               : t(QUALITY_PROFILE_CAPTIONS[id])}
                           </small>
-                        </button>,
-                        index === 0 ? "start" : "center",
-                      )}
+                        </button>
+                      </Tooltip>
                     </Fragment>
                   ),
                 )}
@@ -4324,12 +4155,12 @@ export function HostPage({
             </RowGroup>
             <span className="lr-spacer" />
             {hintWrap(
-              "hint-advanced",
+              showAdvanced ? "hint-collapse" : "hint-advanced",
               <Btn
                 icon="sliders"
                 busy={changingQuality}
                 cap="host.advanced"
-                title="host.advanced"
+                title={showAdvanced ? "host.advanced.hide" : "host.advanced"}
                 tone={showAdvanced ? "on" : undefined}
                 expanded={showAdvanced}
                 controls="host-advanced-door"
@@ -4361,7 +4192,6 @@ export function HostPage({
                   <div className="lr-door-group">
                     <span
                       className="lr-door-glyph"
-                      title={vis ? undefined : t("host.advanced.resolution")}
                     >
                       <VisGlyph name="expand" size={19} />
                       <Cap k="host.advanced.resolution" />
@@ -4392,7 +4222,6 @@ export function HostPage({
                   <div className="lr-door-group">
                     <span
                       className="lr-door-glyph"
-                      title={vis ? undefined : t("host.advanced.framerate")}
                     >
                       <VisGlyph name="wave" size={19} />
                       <Cap k="host.advanced.framerate" />
@@ -4418,7 +4247,6 @@ export function HostPage({
                   <div className="lr-door-group">
                     <span
                       className="lr-door-glyph"
-                      title={vis ? undefined : t("host.advanced.bitrate")}
                     >
                       <VisGlyph name="gauge" size={19} />
                       <Cap k="host.advanced.bitrate" />
@@ -4447,7 +4275,6 @@ export function HostPage({
                   <div className="lr-door-group">
                     <span
                       className="lr-door-glyph"
-                      title={vis ? undefined : t("host.advanced.preference")}
                     >
                       <VisGlyph name="mountain" size={19} />
                       <Cap k="host.advanced.preference" />
@@ -4490,7 +4317,6 @@ export function HostPage({
                   <div className="lr-door-group">
                     <span
                       className="lr-door-glyph"
-                      title={vis ? undefined : t("host.advanced.audio")}
                     >
                       <VisGlyph name="speaker" size={19} />
                       <Cap k="host.advanced.audio" />
@@ -4533,7 +4359,6 @@ export function HostPage({
                   <div className="lr-door-group">
                     <span
                       className="lr-door-glyph"
-                      title={vis ? undefined : t("host.advanced.route")}
                     >
                       <VisGlyph name="branch" size={19} />
                       <Cap k="host.advanced.route" />
@@ -4549,34 +4374,47 @@ export function HostPage({
                         note={t("host.advanced.route.topoHint")}
                         hint="hint-topology"
                       />
-                      {natPredictionAvailable ? (
-                        <SwitchItem
-                          checked={routePolicy.natPrediction}
-                          disabled={phase === "starting" || phase === "live"}
-                          onChange={(checked) =>
-                            changeRoutePolicy({ natPrediction: checked })
-                          }
-                          label={t("host.advanced.route.natPrediction")}
-                          note={t("host.advanced.route.natPredictionHint")}
-                          hint="hint-nat-prediction"
-                        />
-                      ) : null}
+                      <SwitchItem
+                        checked={routePolicy.natPrediction}
+                        disabled={
+                          !natPredictionAvailable || phase === "starting" || phase === "live"
+                        }
+                        locked={!natPredictionAvailable}
+                        onChange={(checked) =>
+                          changeRoutePolicy({ natPrediction: checked })
+                        }
+                        label={t("host.advanced.route.natPrediction")}
+                        note={t(
+                          natPredictionAvailable
+                            ? "host.advanced.route.natPredictionHint"
+                            : "host.advanced.route.natPredictionUnavailable",
+                        )}
+                        hint={
+                          natPredictionAvailable ? "hint-nat-prediction" : "hint-nat-unavailable"
+                        }
+                      />
                       <SwitchItem
                         checked={routePolicy.peerOnly}
-                        disabled={phase === "starting" || phase === "live"}
+                        disabled={
+                          !sfuAvailable || phase === "starting" || phase === "live"
+                        }
+                        locked={!sfuAvailable}
                         onChange={(checked) =>
                           changeRoutePolicy({ peerOnly: checked })
                         }
                         label={t("host.advanced.route.peerOnly")}
-                        note={t("host.advanced.route.peerOnlyHint")}
-                        hint="hint-route-p2p"
+                        note={t(
+                          sfuAvailable
+                            ? "host.advanced.route.peerOnlyHint"
+                            : "host.advanced.route.peerOnlyRequired",
+                        )}
+                        hint={sfuAvailable ? "hint-route-p2p" : "hint-route-p2p-required"}
                       />
                     </div>
                   </div>
                   <div className="lr-door-group">
                     <span
                       className="lr-door-glyph"
-                      title={vis ? undefined : t("host.advanced.codec")}
                     >
                       <VisGlyph name="cpu" size={19} />
                       <Cap k="host.advanced.codec" />

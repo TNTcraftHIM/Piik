@@ -39,7 +39,7 @@ export function OverlayPreviewPage() {
           {STATES.map((state) => (
             <section className="lr-overlay-preview-card" key={state.title}>
               <h2>{state.title}</h2>
-              <StageTv chin={state.progress ? "busy" : "off"} label={state.message}>
+              <StageTv label={state.message}>
                 <StageOverlay
                   icon={state.icon}
                   comic={state.comic}

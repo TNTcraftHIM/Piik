@@ -1062,23 +1062,37 @@ func expectTrue(t *testing.T, name string, condition bool) {
 // ---------------------------------------------------------------------------
 
 func TestSignalEchoesExactPerShareRoutePolicyAuthority(t *testing.T) {
-	h := startHarness(t, harnessOptions{
-		stunURLs:             []string{"stun:share.example.test:3478"},
-		natPredictionEnabled: true,
-	})
-	viewer := openClient(t, h)
-	waiting := authenticate(t, viewer, h.room, protocol.RoleViewer, "route-policy-viewer", 1, "", presenceOptions{})
-	expectTrue(t, "waiting shareGeneration must be null", waiting.ShareGeneration == nil)
-	host := openClient(t, h)
-	routePolicy := protocol.RoutePolicy{PeerOnly: true, TopologyOptimization: true, NatPrediction: true}
-	authenticated := authenticate(t, host, h.room, protocol.RoleHost, "route-policy-host", 1,
-		"route_policy_share_generation_12345678", presenceOptions{routePolicy: &routePolicy})
-	if authenticated.RoutePolicy != routePolicy {
-		t.Fatalf("routePolicy: %+v", authenticated.RoutePolicy)
+	for _, sfuEnabled := range []bool{false, true} {
+		for _, peerOnly := range []bool{false, true} {
+			t.Run(fmt.Sprintf("sfu=%t/peerOnly=%t", sfuEnabled, peerOnly), func(t *testing.T) {
+				options := harnessOptions{natPredictionEnabled: true}
+				if sfuEnabled {
+					options.sfu = &SfuFallback{
+						Media:     sfutest.New(),
+						Admission: sfu.NewAdmission(sfu.AdmissionOptions{IngressCapacity: 2, EgressCapacity: 20}),
+					}
+				}
+				h := startHarness(t, options)
+				viewer := openClient(t, h)
+				waiting := authenticate(t, viewer, h.room, protocol.RoleViewer, "route-policy-viewer", 1, "", presenceOptions{})
+				if waiting.ShareGeneration != nil || waiting.RoutePolicy.PeerOnly != !sfuEnabled {
+					t.Fatalf("waiting policy: %+v", waiting.RoutePolicy)
+				}
+				host := openClient(t, h)
+				requested := protocol.RoutePolicy{PeerOnly: peerOnly, TopologyOptimization: true, NatPrediction: true}
+				expected := requested
+				expected.PeerOnly = !sfuEnabled || peerOnly
+				authenticated := authenticate(t, host, h.room, protocol.RoleHost, "route-policy-host", 1,
+					"route_policy_share_generation_12345678", presenceOptions{routePolicy: &requested})
+				if authenticated.RoutePolicy != expected {
+					t.Fatalf("routePolicy: %+v; want %+v", authenticated.RoutePolicy, expected)
+				}
+				expectTrue(t, "sfuStandbyUrl must be absent", !hasKey(t, authenticated.raw, "sfuStandbyUrl"))
+				expectEqual(t, viewer.next("route-policy").raw, fmt.Sprintf(
+					`{"type":"route-policy","shareGeneration":"route_policy_share_generation_12345678","routePolicy":{"peerOnly":%t,"topologyOptimization":true,"natPrediction":true}}`, expected.PeerOnly))
+			})
+		}
 	}
-	expectTrue(t, "sfuStandbyUrl must be absent", !hasKey(t, authenticated.raw, "sfuStandbyUrl"))
-	expectEqual(t, viewer.next("route-policy").raw,
-		`{"type":"route-policy","shareGeneration":"route_policy_share_generation_12345678","routePolicy":{"peerOnly":true,"topologyOptimization":true,"natPrediction":true}}`)
 }
 
 func TestSignalBroadcastsConfiguredNatPredictionInLightweightRooms(t *testing.T) {
@@ -1095,11 +1109,12 @@ func TestSignalBroadcastsConfiguredNatPredictionInLightweightRooms(t *testing.T)
 	routePolicy.NatPrediction = true
 	hostAuth := authenticate(t, host, h.room, protocol.RoleHost, "ordinary-nat-host", -1,
 		"ordinary_nat_share_generation_12345678", presenceOptions{routePolicy: &routePolicy})
+	routePolicy.PeerOnly = true
 	if hostAuth.RoutePolicy != routePolicy {
 		t.Fatalf("routePolicy: %+v", hostAuth.RoutePolicy)
 	}
 	expectMatch(t, waitingViewer.next("route-policy").raw,
-		`{"routePolicy":{"peerOnly":false,"topologyOptimization":true,"natPrediction":true}}`)
+		`{"routePolicy":{"peerOnly":true,"topologyOptimization":true,"natPrediction":true}}`)
 
 	joiningViewer := openClient(t, h)
 	joined := authenticate(t, joiningViewer, h.room, protocol.RoleViewer, "ordinary-nat-joining-viewer", -1, "", presenceOptions{})

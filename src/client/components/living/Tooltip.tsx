@@ -1,4 +1,4 @@
-// Comic tooltip: a floating paper panel showing a panel comic above (or below)
+// Shared tooltip: a floating paper panel showing text or a comic above (or below)
 // its trigger. Visibility is three-channel, matching platform conventions:
 // hover on fine pointers, keyboard focus via :has(:focus-visible), and the
 // Material long-press on touch (500ms hold → open, ~1.5s after release →
@@ -6,25 +6,30 @@
 // Alignment: the align prop is a desktop-tuned preference; whenever a show
 // channel opens, the trigger's live viewport position is measured and
 // start/center/end is re-picked so the panel never clips off-screen (rows
-// wrap at narrow widths, so a static choice cannot hold). The caret lives on
-// the wrapper, so it stays centered on the trigger whatever the panel picks.
+// wrap at narrow widths, so a static choice cannot hold). The native top layer
+// avoids clipping by scrolling lists; the caret points back to the trigger.
 // Styling in styles.css under "comic tooltip" / "glyph draw-in". SSR-safe:
 // handlers only run in the browser.
 
 import {
+  cloneElement,
   isValidElement,
   useEffect,
+  useId,
+  useLayoutEffect,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from "react";
 import { Comic, type ComicKind } from "./Comic";
 import { HintComic, isHintKind, type HintKind } from "./hints";
 import { isCopyKey, say } from "../../ui/copy";
+import { comicStyle, getComicPresentation, type ComicTone, type ComicMotion } from "./comic-presentation";
 
 const LONG_PRESS_MS = 500;
 const TOUCH_HIDE_MS = 1500;
-const COMIC_EXIT_MS = 160;
+const PANEL_EXIT_MS = 160;
 // Minimum clearance the re-picked alignment keeps to each viewport edge.
 const EDGE_MARGIN = 8;
 // Paper panel before it is measured: 240-wide comic strip plus its padding.
@@ -32,60 +37,71 @@ const FALLBACK_PANEL_HEIGHT = 96;
 
 type Align = "center" | "start" | "end";
 
-export function ComicTooltip({
+export function Tooltip({
   kind,
+  text,
+  tone,
+  motion,
+  className,
   place = "above",
   align = "center",
   children,
 }: {
-  kind: ComicKind | HintKind;
+  kind?: ComicKind | HintKind;
+  text?: string;
+  tone?: ComicTone;
+  motion?: ComicMotion;
+  className?: string;
   /** below = for controls pinned to the viewport top (header). */
   place?: "above" | "below";
   /** Preferred alignment; re-picked at open time if it would clip off-screen. */
   align?: Align;
   children: ReactNode;
 }) {
+  const defaults = getComicPresentation(kind);
+  const resolvedTone = tone ?? defaults.tone;
+  const resolvedMotion = motion ?? defaults.motion;
+  const tooltipId = useId();
   const wrapRef = useRef<HTMLSpanElement | null>(null);
   const tipRef = useRef<HTMLSpanElement | null>(null);
   const pressTimer = useRef<number | null>(null);
   const hideTimer = useRef<number | null>(null);
-  const comicUnmountTimer = useRef<number | null>(null);
+  const panelUnmountTimer = useRef<number | null>(null);
   const longPressed = useRef(false);
   const pressPoint = useRef<{ x: number; y: number } | null>(null);
   const [hoverOpen, setHoverOpen] = useState(false);
   const [focusOpen, setFocusOpen] = useState(false);
   const [touchOpen, setTouchOpen] = useState(false);
-  const [comicMounted, setComicMounted] = useState(false);
-  const [liveAlign, setLiveAlign] = useState<Align | null>(null);
-  const [livePlace, setLivePlace] = useState<"above" | "below" | null>(null);
+  const [panelMounted, setPanelMounted] = useState(false);
+  const [position, setPosition] = useState({ left: 0, top: 0, caret: 0, below: place === "below" });
   // True while the current gesture is a touch, so contextmenu can tell a
   // long-press from a mouse right-click without reading vendor event fields.
   const touchGesture = useRef(false);
   const interactionOpen = hoverOpen || focusOpen || touchOpen;
-  const disabledTrigger =
-    isValidElement<{
+  const trigger = isValidElement<{
       disabled?: boolean;
       "aria-label"?: string;
+      "aria-describedby"?: string;
       label?: string;
       title?: string;
-    }>(children) &&
-    children.props.disabled === true;
-  const rawDisabledTriggerLabel = disabledTrigger
-    ? children.props["aria-label"] ??
-      children.props.label ??
-      children.props.title
+    }>(children) ? children : null;
+  const disabledTrigger = trigger?.props.disabled === true;
+  const rawDisabledTriggerLabel = disabledTrigger && trigger
+    ? trigger.props["aria-label"] ??
+      trigger.props.label ??
+      trigger.props.title
     : undefined;
   const disabledTriggerLabel =
     rawDisabledTriggerLabel && isCopyKey(rawDisabledTriggerLabel)
       ? say(rawDisabledTriggerLabel)
       : rawDisabledTriggerLabel;
 
-  const mountComic = () => {
-    if (comicUnmountTimer.current !== null) {
-      window.clearTimeout(comicUnmountTimer.current);
-      comicUnmountTimer.current = null;
+  const mountPanel = () => {
+    if (panelUnmountTimer.current !== null) {
+      window.clearTimeout(panelUnmountTimer.current);
+      panelUnmountTimer.current = null;
     }
-    setComicMounted(true);
+    setPanelMounted(true);
   };
 
   // Re-pick alignment from the trigger's live geometry. The configured align
@@ -98,24 +114,23 @@ export function ComicTooltip({
     const vw = window.innerWidth;
     if (!vw) return; // no layout (SSR/test): keep the prop alignment
     const rect = wrap.getBoundingClientRect();
-    const measured = comicMounted ? (tipRef.current?.offsetWidth ?? 0) : 0;
+    const measured = panelMounted ? (tipRef.current?.offsetWidth ?? 0) : 0;
     const width = Math.max(0, Math.min(measured || 320, vw - EDGE_MARGIN * 2));
     // Same idea vertically: a control scrolled near the top has no room above,
     // and the panel would be cut off by the viewport edge.
     const vh = window.innerHeight;
     const panelHeight =
-      (comicMounted ? tipRef.current?.offsetHeight : 0) || FALLBACK_PANEL_HEIGHT;
+      (panelMounted ? tipRef.current?.offsetHeight : 0) || FALLBACK_PANEL_HEIGHT;
     const fitsAbove = rect.top - panelHeight - EDGE_MARGIN >= 0;
     const fitsBelow = !vh || rect.bottom + panelHeight + EDGE_MARGIN <= vh;
-    setLivePlace(
+    const livePlace =
       place === "above"
         ? fitsAbove || !fitsBelow
           ? "above"
           : "below"
         : fitsBelow || !fitsAbove
           ? "below"
-          : "above",
-    );
+          : "above";
     const center = rect.left + rect.width / 2;
     const boxes: Record<Align, { left: number; right: number }> = {
       center: { left: center - width / 2, right: center + width / 2 },
@@ -130,10 +145,14 @@ export function ComicTooltip({
       ...(["center", "start", "end"] as Align[]).filter((a) => a !== align),
     ];
     const fits = order.find((a) => clipped(boxes[a]) === 0);
-    setLiveAlign(
-      fits ??
-        order.reduce((a, b) => (clipped(boxes[a]) <= clipped(boxes[b]) ? a : b)),
-    );
+    const selected = fits ?? order.reduce((a, b) => (clipped(boxes[a]) <= clipped(boxes[b]) ? a : b));
+    const left = Math.max(EDGE_MARGIN, Math.min(boxes[selected].left, vw - width - EDGE_MARGIN));
+    setPosition({
+      left,
+      top: livePlace === "below" ? rect.bottom + EDGE_MARGIN : rect.top - panelHeight - EDGE_MARGIN,
+      caret: Math.max(14, Math.min(center - left, width - 14)),
+      below: livePlace === "below",
+    });
   };
 
   // Single owner of panel placement: while the tooltip may be open (hover,
@@ -141,8 +160,19 @@ export function ComicTooltip({
   // the panel stays inside the viewport mid-open — no page-level clamps.
   const pickAlignRef = useRef(pickAlign);
   pickAlignRef.current = pickAlign;
+  useLayoutEffect(() => {
+    const tip = tipRef.current;
+    if (panelMounted) {
+      // Native top layer escapes couch, table and source-list overflow without
+      // a portal or a second set of trigger/interaction owners.
+      tip?.showPopover?.();
+      pickAlignRef.current();
+    } else {
+      tip?.hidePopover?.();
+    }
+  }, [panelMounted, text, kind]);
   useEffect(() => {
-    if (!interactionOpen || !comicMounted) return;
+    if (!interactionOpen || !panelMounted) return;
     let frame = 0;
     const schedulePick = () => {
       window.cancelAnimationFrame(frame);
@@ -156,28 +186,41 @@ export function ComicTooltip({
       window.removeEventListener("resize", schedulePick);
       window.removeEventListener("scroll", schedulePick, true);
     };
-  }, [comicMounted, interactionOpen]);
+  }, [panelMounted, interactionOpen, text, kind]);
 
   useEffect(() => {
-    if (interactionOpen || !comicMounted) return;
-    comicUnmountTimer.current = window.setTimeout(() => {
-      comicUnmountTimer.current = null;
-      setComicMounted(false);
-    }, COMIC_EXIT_MS);
+    if (!interactionOpen) return;
+    // Hover does not move keyboard focus into the trigger.
+    const dismiss = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setHoverOpen(false);
+      setTouchOpen(false);
+      setFocusOpen(false);
+    };
+    document.addEventListener("keydown", dismiss);
+    return () => document.removeEventListener("keydown", dismiss);
+  }, [interactionOpen]);
+
+  useEffect(() => {
+    if (interactionOpen || !panelMounted) return;
+    panelUnmountTimer.current = window.setTimeout(() => {
+      panelUnmountTimer.current = null;
+      setPanelMounted(false);
+    }, PANEL_EXIT_MS);
     return () => {
-      if (comicUnmountTimer.current !== null) {
-        window.clearTimeout(comicUnmountTimer.current);
-        comicUnmountTimer.current = null;
+      if (panelUnmountTimer.current !== null) {
+        window.clearTimeout(panelUnmountTimer.current);
+        panelUnmountTimer.current = null;
       }
     };
-  }, [comicMounted, interactionOpen]);
+  }, [panelMounted, interactionOpen]);
 
   useEffect(
     () => () => {
       if (pressTimer.current !== null) window.clearTimeout(pressTimer.current);
       if (hideTimer.current !== null) window.clearTimeout(hideTimer.current);
-      if (comicUnmountTimer.current !== null) {
-        window.clearTimeout(comicUnmountTimer.current);
+      if (panelUnmountTimer.current !== null) {
+        window.clearTimeout(panelUnmountTimer.current);
       }
     },
     [],
@@ -202,20 +245,18 @@ export function ComicTooltip({
     }
   };
 
-  const placeClass = (livePlace ?? place) === "below" ? " is-below" : "";
-  const shownAlign = liveAlign ?? align;
-  const alignClass =
-    shownAlign === "start" ? " is-start" : shownAlign === "end" ? " is-end" : "";
+  const placeClass = position.below ? " is-below" : "";
   return (
     <span
       ref={wrapRef}
-      className={`lr-comic-tip-wrap${disabledTrigger ? " is-disabled-trigger" : ""}${hoverOpen ? " is-hover-open" : ""}${focusOpen ? " is-focus-open" : ""}${touchOpen ? " is-tip-open" : ""}`}
+      className={`lr-comic-tip-wrap${className ? ` ${className}` : ""}${disabledTrigger ? " is-disabled-trigger" : ""}${hoverOpen ? " is-hover-open" : ""}${focusOpen ? " is-focus-open" : ""}${touchOpen ? " is-tip-open" : ""}`}
       tabIndex={disabledTrigger ? 0 : undefined}
       aria-label={disabledTriggerLabel}
+      aria-describedby={disabledTrigger && text && interactionOpen ? tooltipId : undefined}
       onPointerEnter={(event) => {
         pickAlign();
         if (event.pointerType !== "touch") {
-          mountComic();
+          mountPanel();
           setHoverOpen(true);
         }
       }}
@@ -225,7 +266,7 @@ export function ComicTooltip({
       onFocus={(event) => {
         pickAlign();
         if ((event.target as HTMLElement).matches(":focus-visible")) {
-          mountComic();
+          mountPanel();
           setFocusOpen(true);
         }
       }}
@@ -245,7 +286,7 @@ export function ComicTooltip({
         pressTimer.current = window.setTimeout(() => {
           pressTimer.current = null;
           longPressed.current = true;
-          mountComic();
+          mountPanel();
           pickAlign();
           setTouchOpen(true);
         }, LONG_PRESS_MS);
@@ -305,22 +346,25 @@ export function ComicTooltip({
         }
       }}
       onKeyDown={(event) => {
-        if (event.key === "Escape") {
-          setHoverOpen(false);
-          setTouchOpen(false);
-          setFocusOpen(false);
-        } else if ((event.target as HTMLElement).matches(":focus-visible")) {
-          mountComic();
+        if (event.key !== "Escape" && (event.target as HTMLElement).matches(":focus-visible")) {
+          mountPanel();
           setFocusOpen(true);
         }
       }}
     >
-      {children}
-      <span ref={tipRef} className={`lr-comic-tip${placeClass}${alignClass}`} role="note">
-        {comicMounted
-          ? isHintKind(kind)
-            ? <HintComic kind={kind} size={240} />
-            : <Comic kind={kind} theme="paper" size={240} />
+      {trigger && text ? cloneElement(trigger, {
+        "aria-describedby": [trigger.props["aria-describedby"], interactionOpen ? tooltipId : undefined].filter(Boolean).join(" ") || undefined,
+      }) : children}
+      <span ref={tipRef} id={tooltipId} popover="manual"
+        data-tone={resolvedTone}
+        style={{ ...comicStyle(resolvedTone, resolvedMotion), left: position.left, top: position.top, "--tooltip-caret": `${position.caret}px` } as CSSProperties}
+        className={`lr-comic-tip${text !== undefined ? " is-text" : ""}${placeClass}`} role="tooltip" aria-hidden={!interactionOpen}>
+        {panelMounted
+          ? text ?? (kind
+            ? isHintKind(kind)
+              ? <HintComic kind={kind} size={240} tone={resolvedTone} motion={resolvedMotion} />
+              : <Comic kind={kind} theme="paper" size={240} tone={resolvedTone} motion={resolvedMotion} />
+            : null)
           : null}
       </span>
     </span>

@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { z } from "zod";
 
 import { BrandLoader, BrandMark } from "../components/living/BrandMark";
-import { ComicTooltip } from "../components/living/ComicTooltip";
+import { Tooltip } from "../components/living/Tooltip";
 import { AppHeader } from "../components/living/Header";
 import { Btn, Pill } from "../components/living/primitives";
 import type { HintKind } from "../components/living/hints";
@@ -127,7 +127,6 @@ export function AppLauncherPage() {
         spellCheck={false}
         placeholder={vis ? "" : t("client.launch.localAccessPlaceholder")}
         aria-label={t("client.launch.localAccess")}
-        title={vis ? undefined : t("client.launch.localAccessHint")}
         onChange={(event) => {
           setLocalAccessPassword(event.target.value);
           setError(null);
@@ -135,6 +134,20 @@ export function AppLauncherPage() {
       />
     </label>
   );
+  const updateLink = update ? (
+    <a
+      className="lr-client-update"
+      href={update.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label={t("client.update.available")}
+    >
+      <Glyph name="arrowUp" size={17} />
+      <span className={vis ? "visually-hidden" : undefined}>
+        {t("client.update.available")}
+      </span>
+    </a>
+  ) : null;
 
   return (
     <div className="lr-app">
@@ -182,25 +195,9 @@ export function AppLauncherPage() {
               </header>
             )}
 
-            {update ? (
-              <a
-                className="lr-client-update"
-                href={update.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label={t("client.update.available")}
-                title={vis ? undefined : t("client.update.available")}
-              >
-                <Glyph name="arrowUp" size={17} />
-                {vis ? (
-                  <span className="visually-hidden">
-                    {t("client.update.available")}
-                  </span>
-                ) : (
-                  <span>{t("client.update.available")}</span>
-                )}
-              </a>
-            ) : null}
+            {updateLink && (vis ? updateLink : (
+              <Tooltip text={t("client.update.available")}>{updateLink}</Tooltip>
+            ))}
 
             <div
               className="lr-client-modes"
@@ -216,7 +213,6 @@ export function AppLauncherPage() {
                     className={`lr-client-mode${mode === choice.mode ? " is-selected" : ""}`}
                     aria-checked={mode === choice.mode}
                     aria-label={t(choice.label)}
-                    title={vis ? undefined : t(choice.hint)}
                     onClick={() => {
                       setMode(choice.mode);
                       setError(null);
@@ -231,12 +227,10 @@ export function AppLauncherPage() {
                     )}
                   </button>
                 );
-                return vis ? (
-                  <ComicTooltip key={choice.mode} kind={choice.comic}>
+                return (
+                  <Tooltip key={choice.mode} kind={choice.comic} text={vis ? undefined : t(choice.hint)}>
                     {button}
-                  </ComicTooltip>
-                ) : (
-                  button
+                  </Tooltip>
                 );
               })}
             </div>
@@ -261,13 +255,9 @@ export function AppLauncherPage() {
             ) : null}
 
             {mode !== "site" ? (
-              vis ? (
-                <ComicTooltip kind="hint-password">
-                  {accessField}
-                </ComicTooltip>
-              ) : (
-                accessField
-              )
+              <Tooltip kind="hint-password" text={vis ? undefined : t("client.launch.localAccessHint")}>
+                {accessField}
+              </Tooltip>
             ) : null}
 
             {error === "launch" ? (

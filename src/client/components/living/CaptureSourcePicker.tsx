@@ -4,7 +4,7 @@ import type { NativeCaptureTarget } from "../../native/wire";
 import { nativeCaptureTargetKey } from "../../native/capture-selection";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
-import { ComicTooltip } from "./ComicTooltip";
+import { Tooltip } from "./Tooltip";
 
 const SOURCE_TABS = ["browser", "window", "display"] as const;
 type SourceTab = (typeof SOURCE_TABS)[number];
@@ -76,10 +76,47 @@ export function CaptureSourcePicker({
       ? nativeSources.processAudio
       : nativeSources.systemAudio);
   const anyNativeAudio = sources.some(supportsAudio);
+  const refreshLabel = t(nativeSources.kind === "loading" ? "host.sourcePicker.loading" : "host.sourcePicker.refresh");
+  const audioAction = t(!anyNativeAudio ? "host.noAudio" : audioLocked
+    ? "host.sourcePicker.audioLocked"
+    : shareAudio ? "host.sourcePicker.audioOff" : "host.sourcePicker.audioOn");
   const audioLabel = t(
     activeTab === "window" && sources.some((target) => target.kind === "window")
       ? "host.sourcePicker.windowAudio"
       : "host.sourcePicker.systemAudio",
+  );
+  const refreshButton = (
+    <button
+      type="button"
+      className="lr-source-picker-refresh"
+      aria-label={refreshLabel}
+      disabled={nativeSources.kind === "loading"}
+      onClick={onRefresh}
+    >
+      <Glyph name="refresh" size={18} className={nativeSources.kind === "loading" ? "lr-spin" : undefined} />
+    </button>
+  );
+  const closeButton = (
+    <button
+      type="button"
+      className="lr-source-picker-close"
+      aria-label={t("common.cancel")}
+      onClick={onCancel}
+      autoFocus
+    >
+      <Glyph name="x" size={18} />
+    </button>
+  );
+  const audioSwitch = (
+    <button
+      type="button"
+      className="lr-switch"
+      role="switch"
+      aria-checked={shareAudio && anyNativeAudio}
+      aria-label={audioLabel}
+      disabled={audioLocked || !anyNativeAudio}
+      onClick={() => setShareAudio((current) => !current)}
+    />
   );
 
   return (
@@ -99,32 +136,16 @@ export function CaptureSourcePicker({
               <strong>{t("host.sourcePicker.title")}</strong>
             </span>
           )}
-          <button
-            type="button"
-            className="lr-source-picker-refresh"
-            title={vis ? undefined : t("host.sourcePicker.refresh")}
-            aria-label={t("host.sourcePicker.refresh")}
-            disabled={nativeSources.kind === "loading"}
-            onClick={onRefresh}
-          >
-            <Glyph
-              name="refresh"
-              size={18}
-              className={
-                nativeSources.kind === "loading" ? "lr-spin" : undefined
-              }
-            />
-          </button>
-          <button
-            type="button"
-            className="lr-source-picker-close"
-            title={vis ? undefined : t("common.cancel")}
-            aria-label={t("common.cancel")}
-            onClick={onCancel}
-            autoFocus
-          >
-            <Glyph name="x" size={18} />
-          </button>
+          {vis ? refreshButton : (
+            <Tooltip text={refreshLabel} place="below" align="end">
+              {refreshButton}
+            </Tooltip>
+          )}
+          {vis ? closeButton : (
+            <Tooltip text={t("common.cancel")} place="below" align="end">
+              {closeButton}
+            </Tooltip>
+          )}
         </header>
 
         <div
@@ -181,12 +202,15 @@ export function CaptureSourcePicker({
                 )}
               </button>
             );
-            return vis ? (
-              <ComicTooltip key={value} kind={`hint-capture-${value}`} place="below">
+            return (
+              <Tooltip
+                key={value}
+                kind={`hint-capture-${value}`}
+                text={vis ? undefined : t(`host.sourcePicker.tab.${value}`)}
+                place="below"
+              >
                 {button}
-              </ComicTooltip>
-            ) : (
-              <span key={value}>{button}</span>
+              </Tooltip>
             );
           })}
         </div>
@@ -247,16 +271,14 @@ export function CaptureSourcePicker({
                 <Glyph name="speaker" size={19} />
               </span>
               {vis ? null : <span>{audioLabel}</span>}
-              <button
-                type="button"
-                className="lr-switch"
-                role="switch"
-                aria-checked={shareAudio && anyNativeAudio}
-                aria-label={audioLabel}
-                title={vis ? undefined : t("host.sourcePicker.audioHint")}
-                disabled={audioLocked || !anyNativeAudio}
-                onClick={() => setShareAudio((current) => !current)}
-              />
+              <Tooltip
+                kind={!anyNativeAudio ? "no-audio" : audioLocked
+                  ? (shareAudio ? "hint-share-audio-fixed" : "hint-silent-share-fixed")
+                  : shareAudio ? "hint-stop-audio" : "hint-share-audio"}
+                text={vis ? undefined : `${audioAction} · ${t("host.sourcePicker.audioHint")}`}
+              >
+                {audioSwitch}
+              </Tooltip>
             </div>
           ) : null}
 
@@ -348,36 +370,37 @@ function CaptureSourceOption({
         );
 
   return (
-    <button
-      ref={buttonRef}
-      type="button"
-      className="lr-source-option"
-      data-native-source={nativeCaptureTargetKey(target)}
-      title={title}
-      aria-label={action}
-      disabled={disabled}
-      onMouseEnter={requestPreview}
-      onFocus={requestPreview}
-      onClick={onSelect}
-    >
-      <span className="lr-source-option-copy">
-        <strong>{title}</strong>
-        {audio ? (
-          <span>
-            <Glyph name="speaker" size={16} />
-            <span className="visually-hidden">
-              {t("host.sourcePicker.nativeAudio")}
+    <Tooltip text={title} className="lr-source-option-hint">
+      <button
+        ref={buttonRef}
+        type="button"
+        className="lr-source-option"
+        data-native-source={nativeCaptureTargetKey(target)}
+        aria-label={action}
+        disabled={disabled}
+        onMouseEnter={requestPreview}
+        onFocus={requestPreview}
+        onClick={onSelect}
+      >
+        <span className="lr-source-option-copy">
+          <strong>{title}</strong>
+          {audio ? (
+            <span>
+              <Glyph name="speaker" size={16} />
+              <span className="visually-hidden">
+                {t("host.sourcePicker.nativeAudio")}
+              </span>
             </span>
-          </span>
-        ) : null}
-      </span>
-      <span className="lr-source-option-preview" aria-hidden="true">
-        {preview ? (
-          <img src={preview} alt="" />
-        ) : (
-          <Glyph name={target.kind === "window" ? "share" : "tv"} size={23} />
-        )}
-      </span>
-    </button>
+          ) : null}
+        </span>
+        <span className="lr-source-option-preview" aria-hidden="true">
+          {preview ? (
+            <img src={preview} alt="" />
+          ) : (
+            <Glyph name={target.kind === "window" ? "share" : "tv"} size={23} />
+          )}
+        </span>
+      </button>
+    </Tooltip>
   );
 }
