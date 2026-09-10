@@ -41,7 +41,9 @@ media remain process-only. This private service is not a public demonstration.
 
 [TODO](./todo.md) owns release preparation before further public-website work.
 The working branch includes capability/UI fixes and the public-introduction
-draft; main/production have not changed in this pass. Version-plus-SHA metadata,
+draft, and carries the completed repository-cohesion and lifecycle audits owned
+by [their record](./research/repository-cohesion-audit-2026-09-11.md); main and
+production have not changed. Version-plus-SHA metadata,
 release comparisons and the post-main publishing pipeline are implemented with
 local checks. Public compatibility acceptance and publishing activation remain
 pending under [versioning](./reference/versioning.md).

@@ -5,8 +5,9 @@
 - Scope: Piik-owned source, tests, scripts, workflows and durable documentation.
   Third-party implementation internals and deferred physical-device matrices are
   outside this audit.
-- Status: static audit and deterministic verification complete on this branch.
-  Physical and deferred acceptance remains owned by
+- Status: static audit and deterministic verification complete on
+  `audit/repository-cohesion` (local branch, not pushed or merged). Physical and
+  deferred acceptance remains owned by
   [verification status](../verification-status.md).
 
 ## Audit Questions
@@ -164,6 +165,24 @@ a dependency without a separate accepted decision.
   with only the existing long-document gardening warnings.
 - Physical mixed-version, device and network acceptance remains outside this
   pass and is owned by [verification status](../verification-status.md).
+
+## Sweep Method
+
+The mechanical sweeps behind the adversarial review are repeatable with a
+reference scan over tracked files:
+
+- Copy keys: every key in `src/client/locales/zh.ts` must appear outside
+  `src/client/locales` in a source, test, script or document.
+- Icons and comic kinds: every `PATHS` entry in `src/client/ui/icons.tsx` and
+  every `ComicKind` member must be referenced outside its definition file, with
+  preview pages excluded when counting product producers.
+- Documents and tools: every `docs/**/*.md` filename and every `scripts/`
+  basename must be mentioned by at least one other tracked file.
+- Configuration: every environment identifier read by Go is either documented
+  for operators or a test or sidecar handshake value.
+- Import cycles: build the static import graph over `src/**/*.ts` and `tsx` and
+  look for strongly connected components; the count is 0 after the shared
+  visual-kind owner landed.
 
 ## Adversarial Review
 
