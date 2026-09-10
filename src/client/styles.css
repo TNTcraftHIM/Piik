@@ -153,9 +153,11 @@ ul { margin: 0; padding: 0; list-style: none; }
 .lr-brand-switcher.is-mascot .lr-brand-wordmark { transform: translateY(4px) scale(.82); }
 .lr-brand-switcher.is-wordmark .lr-brand-switcher-mascot { transform: translateY(-3px) scale(.78); }
 .lr-brand-switcher.is-entering-wordmark .lr-brand-wordmark { animation: lr-brand-wordmark-enter 560ms var(--spring) both; }
+.lr-brand-switcher.is-entering-wordmark .lr-brand-switcher-mascot { animation: lr-brand-mascot-exit 560ms ease-in both; }
 .lr-brand-switcher.is-entering-mascot .lr-brand-switcher-mascot { animation: lr-brand-mascot-enter 560ms var(--spring) both; }
+.lr-brand-switcher.is-entering-mascot .lr-brand-wordmark { animation: lr-brand-wordmark-exit 560ms ease-in both; }
 .lr-brand-switcher.is-wordmark:not(.is-entering-wordmark) .lr-brand-wordmark > span {
-  animation: lr-brand-wordmark-idle 2.8s ease-in-out infinite;
+  animation: lr-brand-wordmark-idle 2.8s ease-in-out 1 both;
 }
 .lr-brand-switcher.is-wordmark:not(.is-entering-wordmark) .lr-brand-wordmark > span:nth-child(2) { animation-delay: 70ms; }
 .lr-brand-switcher.is-wordmark:not(.is-entering-wordmark) .lr-brand-wordmark > span:nth-child(3) { animation-delay: 140ms; }
@@ -247,6 +249,16 @@ ul { margin: 0; padding: 0; list-style: none; }
   0% { opacity: 0; transform: translateY(-6px) scale(.76) rotate(3deg); }
   65% { opacity: 1; transform: translateY(1px) scale(1.05) rotate(-1deg); }
   100% { opacity: 1; transform: translateY(0) scale(1) rotate(0); }
+}
+@keyframes lr-brand-wordmark-exit {
+  0% { opacity: 1; transform: translateY(0) scale(1) rotate(0); }
+  45% { opacity: .15; transform: translateY(-4px) scale(.72) rotate(4deg); }
+  100% { opacity: 0; transform: translateY(4px) scale(.82) rotate(0); }
+}
+@keyframes lr-brand-mascot-exit {
+  0% { opacity: 1; transform: translateY(0) scale(1) rotate(0); }
+  45% { opacity: .15; transform: translateY(4px) scale(.72) rotate(-4deg); }
+  100% { opacity: 0; transform: translateY(-3px) scale(.78) rotate(0); }
 }
 @keyframes lr-brand-wordmark-idle {
   0%, 72%, 100% { transform: translateY(0); }
