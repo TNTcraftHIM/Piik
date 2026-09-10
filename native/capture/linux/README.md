@@ -1,6 +1,6 @@
 # Linux Capture Process
 
-The Linux sidecar keeps the shared Native Client contract while delegating
+The Linux sidecar keeps the shared Native App contract while delegating
 desktop integration to the standard Linux media stack. XDG Desktop Portal owns
 the screen/window choice, PipeWire supplies the selected stream, and GStreamer
 selects an installed element classified as a hardware H.264 video encoder.
@@ -21,10 +21,10 @@ sh native/capture/linux/build.sh /outside/repository/build
 
 Runtime requirements are the desktop Portal/PipeWire services, a GStreamer
 PipeWire source, and an installed GStreamer hardware H.264 encoder. If any part
-is unavailable, the Client reports no Linux Native path and the same Browser
+is unavailable, the App reports no Linux Native path and the same Browser
 capture choice remains available. These system libraries and services are not
 bundled; their distribution-provided license notices remain applicable. Linux
-Client packages repeat the dependency and source links in
+App packages repeat the dependency and source links in
 `THIRD-PARTY-NOTICES.txt`.
 
 Primary references:

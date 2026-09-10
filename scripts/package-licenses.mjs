@@ -122,8 +122,8 @@ export function writeClientLicenseNotices(repositoryRoot, packageRoot, goCommand
     writeFileSync(join(packageRoot, "runtime", "tunnel", "THIRD-PARTY-NOTICES.txt"),
       pinnedNotice(`cloudflared@${tunnelVersion}`));
   }
-  const notices = goNotices(repositoryRoot, goCommand, target, "./cmd/piik-client");
-  let text = "Native Client third-party software notices\n" +
+  const notices = goNotices(repositoryRoot, goCommand, target, "./cmd/piik-app");
+  let text = "Piik App third-party software notices\n" +
     WEB_NOTICE_LINE +
     (tunnelVersion ? "Cloudflared: runtime/tunnel/THIRD-PARTY-NOTICES.txt\n" : "") +
     notices.toolchain;

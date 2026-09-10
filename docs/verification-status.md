@@ -9,10 +9,10 @@ implementation and obsolete package history.
 
 ## Current Evidence
 
-Windows Client and Browser are the owner's primary acceptance targets. Current
+Windows App and Browser are the owner's primary acceptance targets. Current
 Go packages embed their Web assets and do not run a Node backend. The current
 contract is Browser/server v22, Native control v9 and capture v7; pre-port
-Client/Node package checks do not prove this package.
+App/Node package checks do not prove this package.
 
 Bounded current checks cover:
 
@@ -21,7 +21,7 @@ Bounded current checks cover:
 - Windows live/paused/quiet-source settings, source replacement and subsequent
   sharing, including media-object continuity where required;
 - Native H264 SFU video and decoded Opus through a profile change and closure;
-- Browser-to-Client fanout and Client-exit fallback;
+- Browser-to-App fanout and App-exit fallback;
 - concurrent Native sessions with independent media and retirement;
 - complete large encoded access-unit transport and bounded queue/cache behavior;
 - Linux container startup as non-root with a read-only filesystem, memory/SQLite

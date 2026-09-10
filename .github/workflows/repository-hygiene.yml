@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       client_checks:
-        description: Run the optional Piik Client checks
+        description: Run the optional Piik App checks
         required: false
         default: false
         type: boolean
@@ -83,7 +83,7 @@ jobs:
       - name: Upload application release
         uses: actions/upload-artifact@v7
         with:
-          name: piik-app-${{ github.sha }}
+          name: piik-server-${{ github.sha }}
           path: ${{ runner.temp }}/app-release/*
           if-no-files-found: error
           retention-days: 14
@@ -125,7 +125,7 @@ jobs:
           go-version: 1.26.6
           cache-dependency-path: go.sum
       # scripts/assemble-client.mjs runs `npm run build:client` for the Web
-      # assets the Client binary embeds, so Vite and the license inputs must be
+      # assets the App binary embeds, so Vite and the license inputs must be
       # installed here too.
       - name: Install dependencies
         run: npm ci
@@ -142,18 +142,18 @@ jobs:
       - name: Download application release
         uses: actions/download-artifact@v8
         with:
-          name: piik-app-${{ github.sha }}
+          name: piik-server-${{ github.sha }}
           path: ${{ runner.temp }}/app-release
-      - name: Build and verify Client candidate
+      - name: Build and verify App candidate
         run: >-
           node scripts/package-client-candidate.mjs
           "${{ runner.temp }}/app-release"
           "${{ matrix.target }}"
           "${{ runner.temp }}/client-release"
-      - name: Upload Client release candidate
+      - name: Upload App release candidate
         uses: actions/upload-artifact@v7
         with:
-          name: piik-client-${{ matrix.target }}-${{ github.sha }}
+          name: piik-app-${{ matrix.target }}-${{ github.sha }}
           path: ${{ runner.temp }}/client-release/*
           if-no-files-found: error
           compression-level: 0

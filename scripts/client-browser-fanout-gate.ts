@@ -163,9 +163,9 @@ async function main(): Promise<void> {
   let stage = "startup", error: string | null = null;
   try {
     server = await startRoomServer(appPort, profile);
-    client = spawn(process.env.PIIK_CLIENT_EXE || join(BUILD_ROOT, "piik-client.exe"), [
+    client = spawn(process.env.PIIK_CLIENT_EXE || join(BUILD_ROOT, "piik-app.exe"), [
       "--site", origin, "--config", join(profile, "client.json"),
-      "--capture-process", join(BUILD_ROOT, "piik-client-capture.exe"),
+      "--capture-process", join(BUILD_ROOT, "piik-capture.exe"),
     ], { windowsHide: true, stdio: "pipe", env: { ...process.env, PIIK_CLIENT_GATE_NO_BROWSER: "true" } });
     client.stderr.resume();
     let output = "";
@@ -211,9 +211,9 @@ async function main(): Promise<void> {
     let invite = await evaluate<string>(cdp, host, "document.querySelector('.lr-invite-url').value", Date.now()+5000);
     const url = new URL(invite); url.host = `localhost:${appPort}`; invite = url.toString();
     const relayOrigin = `http://127.0.0.1:${appPort}`;
-    relayClient = spawn(process.env.PIIK_CLIENT_EXE || join(BUILD_ROOT,"piik-client.exe"), [
+    relayClient = spawn(process.env.PIIK_CLIENT_EXE || join(BUILD_ROOT,"piik-app.exe"), [
       "--site", relayOrigin, "--config", join(profile,"relay-client.json"),
-      "--capture-process", join(BUILD_ROOT,"piik-client-capture.exe"),
+      "--capture-process", join(BUILD_ROOT,"piik-capture.exe"),
     ], { windowsHide:true, stdio:"pipe", env:{...process.env,PIIK_CLIENT_GATE_NO_BROWSER:"true"} });
     relayClient.stderr.resume(); let relayOutput="";
     relayClient.stdout.on("data", (chunk:Buffer) => {

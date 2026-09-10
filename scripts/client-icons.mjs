@@ -92,19 +92,19 @@ function writeLinuxAssets(packageRoot, entries) {
   mkdirSync(iconDirectory, { recursive: true });
   mkdirSync(applicationDirectory, { recursive: true });
   writeFileSync(
-    join(iconDirectory, "piik-client.png"),
+    join(iconDirectory, "piik-app.png"),
     requireEntry(entries, 256),
   );
   writeFileSync(
-    join(applicationDirectory, "piik-client.desktop"),
+    join(applicationDirectory, "piik-app.desktop"),
     [
       "[Desktop Entry]",
       "Version=1.0",
       "Type=Application",
-      "Name=Piik Client",
-      "Exec=piik-client",
-      "TryExec=piik-client",
-      "Icon=piik-client",
+      "Name=Piik App",
+      "Exec=piik-app",
+      "TryExec=piik-app",
+      "Icon=piik-app",
       "Terminal=false",
       "Categories=Network;Utility;",
       "StartupNotify=true",
@@ -115,7 +115,7 @@ function writeLinuxAssets(packageRoot, entries) {
 }
 
 function writeMacAssets(packageRoot, revision, entries) {
-  const bundleRoot = join(packageRoot, "Piik Client.app");
+  const bundleRoot = join(packageRoot, "Piik App.app");
   const contents = join(bundleRoot, "Contents");
   const macos = join(contents, "MacOS");
   const resources = join(contents, "Resources");
@@ -129,12 +129,12 @@ function writeMacAssets(packageRoot, revision, entries) {
       '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
       '<plist version="1.0"><dict>',
       "<key>CFBundleDevelopmentRegion</key><string>en</string>",
-      "<key>CFBundleDisplayName</key><string>Piik Client</string>",
-      "<key>CFBundleExecutable</key><string>Launcher</string>",
+      "<key>CFBundleDisplayName</key><string>Piik App</string>",
+      "<key>CFBundleExecutable</key><string>launcher</string>",
       "<key>CFBundleIconFile</key><string>piik.icns</string>",
-      "<key>CFBundleIdentifier</key><string>tv.piik.client</string>",
+      "<key>CFBundleIdentifier</key><string>tv.piik.app</string>",
       "<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>",
-      "<key>CFBundleName</key><string>Piik Client</string>",
+      "<key>CFBundleName</key><string>Piik App</string>",
       "<key>CFBundlePackageType</key><string>APPL</string>",
       "<key>CFBundleShortVersionString</key><string>1.0</string>",
       "<key>NSScreenCaptureUsageDescription</key><string>Share a screen or application selected by you.</string>",
@@ -145,14 +145,14 @@ function writeMacAssets(packageRoot, revision, entries) {
     ].join("\n"),
     "utf8",
   );
-  const launcher = join(macos, "Launcher");
+  const launcher = join(macos, "launcher");
   writeFileSync(
     launcher,
     [
       "#!/bin/sh",
       "set -eu",
       'base=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)',
-      'exec "$base/../../../piik-client" "$@"',
+      'exec "$base/../../../piik-app" "$@"',
       "",
     ].join("\n"),
     "utf8",
@@ -170,8 +170,8 @@ export function writeClientPlatformAssets({
   if (target.goos === "linux") writeLinuxAssets(packageRoot, entries);
   if (target.goos === "darwin") writeMacAssets(packageRoot, revision, entries);
   return target.goos === "linux"
-    ? "share/applications/piik-client.desktop"
+    ? "share/applications/piik-app.desktop"
     : target.goos === "darwin"
-      ? "Piik Client.app"
+      ? "Piik App.app"
       : null;
 }

@@ -51,6 +51,10 @@ Clean up worktrees and branches only after semantic review and integration are c
 
 ## Research Standard
 
+Follow the [naming convention](./docs/reference/naming.md) for product copy,
+commands, packages and code ownership. Keep display names separate from stable
+protocol identifiers; use normal language-specific identifier conventions.
+
 - Prefer specifications, official product documentation, primary source code, maintainers' design notes, and original papers.
 - Use current community issues and operational reports to identify real compatibility failures, but label anecdotal evidence as such.
 - Include a date and direct URLs. Separate verified facts, measurements, assumptions, and recommendations.

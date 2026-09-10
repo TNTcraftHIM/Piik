@@ -1,6 +1,6 @@
 # Windows Capture Process
 
-This isolated Windows process is the capture candidate for Piik Client. It
+This isolated Windows process is the capture candidate for Piik App. It
 enumerates local displays and visible top-level windows, binds each window to
 its PID and process creation time, and has independent modes for:
 
@@ -25,7 +25,7 @@ Auto compares target-profile encoding work within a four-second selection
 budget; H.264 that meets the target needs no software comparison. The selected
 codec remains fixed across profile and source changes. VP8 reads the existing
 NV12 surface through one staging texture and uses the same encoded-frame
-boundary. The process has no network fallback. The Client
+boundary. The process has no network fallback. The App
 consumes the selected process or system-audio stream through its native media
 edge when the capability probe reports support. Build to the stable project
 `build/client-check` directory for a bounded capability run:

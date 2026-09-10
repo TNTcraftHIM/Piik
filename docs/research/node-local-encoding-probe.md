@@ -102,7 +102,7 @@ healthy forwarding relay would violate the one-encode reuse objective.
 
 ## Reproduction
 
-Use the existing pinned libvpx build produced by the Windows Client build. From
+Use the existing pinned libvpx build produced by the Windows App build. From
 a Visual Studio x64 developer shell, with `VPX_INCLUDE` and `VPX_LIBRARY` pointing
 to that build:
 

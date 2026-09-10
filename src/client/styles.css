@@ -525,7 +525,7 @@ body.lr-theater-open { overflow: hidden; }
 .lr-entry-actions { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; }
 .lr-entry-action { display: grid; justify-items: center; gap: 8px; align-content: start; }
 
-/* Client capture source picker */
+/* App capture source picker */
 .lr-source-picker {
   place-content: stretch;
   justify-items: stretch;

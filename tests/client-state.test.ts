@@ -887,7 +887,7 @@ describe("room codes", () => {
     expect(parseAppRoute("/other")).toEqual({ kind: "unknown" });
   });
 
-  it("consumes one exact Client access bootstrap without retaining it in the URL", () => {
+  it("consumes one exact App access bootstrap without retaining it in the URL", () => {
     const replaceState = vi.fn();
     vi.stubGlobal("window", {
       location: {
@@ -909,7 +909,7 @@ describe("room codes", () => {
     );
   });
 
-  it("removes a malformed Client bootstrap without authenticating it", () => {
+  it("removes a malformed App bootstrap without authenticating it", () => {
     const replaceState = vi.fn();
     vi.stubGlobal("window", {
       location: { hash: "#client-access=short", pathname: "/", search: "" },
@@ -920,7 +920,7 @@ describe("room codes", () => {
     expect(replaceState).toHaveBeenCalledWith(null, "", "/");
   });
 
-  it("accepts a bounded user-chosen Client access value", () => {
+  it("accepts a bounded user-chosen App access value", () => {
     const replaceState = vi.fn();
     vi.stubGlobal("window", {
       location: {
@@ -935,7 +935,7 @@ describe("room codes", () => {
     expect(replaceState).toHaveBeenCalledWith(null, "", "/");
   });
 
-  it("consumes the Client launch marker from a server-private fragment", () => {
+  it("consumes the App launch marker from a server-private fragment", () => {
     const replaceState = vi.fn();
     const session = new Map<string, string>();
     vi.stubGlobal("window", {

@@ -2,7 +2,7 @@ Linux capture dependencies (not bundled)
 
 The Linux native capture process dynamically uses the distribution's XDG
 Desktop Portal/libportal and GStreamer packages. Piik does not redistribute
-those shared libraries. The Client package carries the applicable license texts
+those shared libraries. The App package carries the applicable license texts
 for this linked capture path.
 
 libportal headers and library are LGPL-3.0-only. Source:
@@ -16,4 +16,4 @@ https://gstreamer.freedesktop.org/documentation/frequently-asked-questions/licen
 https://gstreamer.freedesktop.org/
 
 The runtime stack also depends on the host's Portal, PipeWire, and hardware
-encoder services. Those services are not part of the Piik Client package.
+encoder services. Those services are not part of the Piik App package.

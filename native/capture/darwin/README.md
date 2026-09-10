@@ -1,6 +1,6 @@
 # macOS Capture Process
 
-This process keeps the native Client media boundary used on Windows while
+This process keeps the native App media boundary used on Windows while
 replacing only the platform implementation. It lists current ScreenCaptureKit
 displays and windows, captures one exact source with the current product profile,
 requires a VideoToolbox hardware H.264 encoder, and writes Annex-B Baseline H.264
@@ -13,8 +13,8 @@ Build on Apple Silicon macOS 13 or newer:
 
 ```sh
 sh native/capture/darwin/build.sh /outside/repository/build
-/outside/repository/build/piik-client-capture --self-test
-/outside/repository/build/piik-client-capture --probe
+/outside/repository/build/piik-capture --self-test
+/outside/repository/build/piik-capture --probe
 ```
 
 `--self-test` encodes one in-memory 420v frame through the same hardware-only

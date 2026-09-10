@@ -30,7 +30,7 @@ export interface NativeMediaIngressControl {
   onEvent(listener: (event: NativeClientEvent) => void): () => void;
 }
 
-/** One ordinary Browser sender supplies the Client's encoded fanout source. */
+/** One ordinary Browser sender supplies the App's encoded fanout source. */
 export class NativeMediaIngress {
   readonly connectionId = createOpaqueId();
   readonly source: NativeSenderSource = {

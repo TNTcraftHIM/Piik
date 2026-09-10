@@ -17,19 +17,19 @@ room identity, current state, roster, and one manual media-reconnect action.
 Controls and text must remain usable without overlap or horizontal overflow on
 desktop and mobile viewports.
 
-Piik Client opens this same application in the system Browser. Its small
+Piik App opens this same application in the system Browser. Its small
 startup surface selects Local, temporary public invitation, or a configured
 Site before entering the Host workspace. Viewer links opened at that activated
-origin may use the same running Client without changing the Viewer UI. Starting a share offers the
-Browser picker and any exact Client-owned native windows. It never chooses a
+origin may use the same running App without changing the Viewer UI. Starting a share offers the
+Browser picker and any exact App-owned native windows. It never chooses a
 window automatically. A reproduced Browser-window, capture, or background
 failure is required before introducing an embedded Web runtime.
 
-A remembered Client activation permits discovery when choosing a source or
-receiving media; it does not make Client a prerequisite for sharing. Idle Host
-pages hold no Client control session. Ordinary Web entry opens the Browser picker
+A remembered App activation permits discovery when choosing a source or
+receiving media; it does not make App a prerequisite for sharing. Idle Host
+pages hold no App control session. Ordinary Web entry opens the Browser picker
 directly. Activated origins offer the shared source selector, initially on its
-Browser tab unless Client is already connected. Discovery never blocks Browser
+Browser tab unless App is already connected. Discovery never blocks Browser
 selection or changes the chosen tab. Native tabs and refresh remain reachable
 after absence or disconnection; pending attempts are shared, completed failures
 do not suppress later discovery. Cancelling the selector or ending a share
@@ -60,7 +60,7 @@ display stand identifies the capture target. A server in a media path means
 actual SFU relay, not merely opening a configured Site.
 
 Motion explains entry, transition, progress, and control feedback. Operational
-status stays still; ambient motion is limited to the Client brand mark's
+status stays still; ambient motion is limited to the App brand mark's
 occasional idle wink.
 All meaning remains available with reduced motion. Functional
 controls remain native buttons or inputs with localized accessible names, and
@@ -155,7 +155,7 @@ ordinary connection details do not collect or expose that report.
 
 Current scope includes Web Host, Web Viewer, Browser relay, and optional Native
 Host/Viewer media beneath those same pages. Desktop and mobile Browsers are
-Viewer targets; mobile Web capture, reliable background relay, Client-owned SFU,
+Viewer targets; mobile Web capture, reliable background relay, App-owned SFU,
 and physical non-Windows native acceptance remain later platform work.
 
 ## Primary References

@@ -1,6 +1,6 @@
 # Capture, Audio, And Media Quality
 
-This file owns the current Browser and Client media contract. Detailed measurements and
+This file owns the current Browser and App media contract. Detailed measurements and
 platform limits live in [realtime quality research](../research/realtime-quality-adaptation.md)
 and [screen-audio research](../research/browser-screen-audio-quality.md).
 [ADR-0007](../adr/0007-path-isolated-representation-quality.md) owns Browser
@@ -13,7 +13,7 @@ production behavior and remaining acceptance.
 
 - The Web Host may share a display, application window, or Browser tab and may
   stop, synchronously pause/resume audio and video, or switch source.
-- A Client-launched Host explicitly chooses either that Browser capture path or
+- An App-launched Host explicitly chooses either that Browser capture path or
   one native screen/window enumerated by the packaged platform capture boundary. The
   latter uses one supported native codec path and never infers a target from
   a title. An ordinary Web Host does not probe localhost.
@@ -36,7 +36,7 @@ production behavior and remaining acceptance.
 - Live quality changes update the current capture and Host sender-track
   constraints plus sender ceilings without reopening source selection or
   replacing a healthy route.
-- Native quality changes use the same room settings. The Client prepares a new
+- Native quality changes use the same room settings. The App prepares a new
   platform capture/encoder generation, then replaces the old generation behind
   the same encoded source and PeerConnections; audio-only changes update the
   current Opus encoder directly. A live profile update may remain pending while
@@ -49,7 +49,7 @@ production behavior and remaining acceptance.
   estimation, forwarding allocation, pacing and recovery.
   Windows VP8 uses libvpx's realtime mode; it does not claim the same hardware
   quality-versus-speed control or per-edge Browser adaptation.
-- With Client available, Browser H.264 capture can use one local sender and the
+- With App available, Browser H.264 capture can use one local sender and the
   existing Native encoded fanout while topology optimization is enabled. The
   Browser still owns preview, pause, capture settings, and source selection.
   Loss of that optional ingress retains capture and rebuilds the assigned

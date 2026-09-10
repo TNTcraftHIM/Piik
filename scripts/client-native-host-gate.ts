@@ -596,8 +596,8 @@ async function main(): Promise<void> {
   const sourceDebugPort = await reservePort();
   const clientConfig = join(profile, "client.json");
   const captureBuild = BUILD_ROOT;
-  const clientBinary = join(BUILD_ROOT, "piik-client.exe");
-  const captureBinary = join(captureBuild, "piik-client-capture.exe");
+  const clientBinary = join(BUILD_ROOT, "piik-app.exe");
+  const captureBinary = join(captureBuild, "piik-capture.exe");
   const remoteBinary = join(BUILD_ROOT, "piik-peer-gate-linux");
   let source: { close(): Promise<void> } | null = null;
   let client: ChildProcessWithoutNullStreams | null = null;
@@ -669,7 +669,7 @@ async function main(): Promise<void> {
     process.stderr.write(`${JSON.stringify({ stage, status: "finished", at: new Date().toISOString() })}\n`);
     stage = "client-build";
     run(go, [
-      "build", "-p", "1", "-trimpath", "-o", clientBinary, "./cmd/piik-client",
+      "build", "-p", "1", "-trimpath", "-o", clientBinary, "./cmd/piik-app",
     ], ROOT, { ...process.env, GOMAXPROCS: "2" });
     if (remote) {
       stage = "remote-peer-build";

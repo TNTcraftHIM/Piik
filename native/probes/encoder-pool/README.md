@@ -83,9 +83,9 @@ Export the first 180 real AUs from sender A for the opt-in Go forwarding check:
 ```powershell
 & ./build/encoder-pool/probe/Release/encoder-pool-probe.exe `
   --pooled --group-adjuster --healthy-only --export build/encoder-pool/chain-input.jsonl
-go test -c -o build/embedded-media/mediaedge.test.exe ./internal/client/mediaedge
+go test -c -o build/embedded-media/mediaedge.test.exe ./internal/app/mediaedge
 $env:PIIK_POOL_CHAIN_FIXTURE = "$PWD/build/encoder-pool/chain-input.jsonl"
-$env:PIIK_NATIVE_CAPTURE = "$PWD/build/client-check/piik-client-capture.exe"
+$env:PIIK_NATIVE_CAPTURE = "$PWD/build/client-check/piik-capture.exe"
 $env:PIIK_POOL_CHAIN_OUTPUT = "$PWD/build/encoder-pool/chain-result.json"
 & ./build/embedded-media/mediaedge.test.exe `
   '-test.run=^TestRelayChainEncodedFixture$' '-test.v' '-test.timeout=30s'

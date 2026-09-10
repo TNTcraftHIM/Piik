@@ -58,7 +58,7 @@ first restarts ICE, then rebuilds the connection if needed. Uncommitted candidat
 return failure to their route operation; the unreachable extra local restart
 branch was removed. Neither kind of restart guarantees a new NAT mapping.
 
-The Client launch marker remains origin activation, not proof that the process
+The App launch marker remains origin activation, not proof that the process
 is alive. One failed discovery can mean contention or a permission delay, so
 automatically deleting the marker would break the accepted saved-Site workflow.
 Browser capture remains available in the existing picker.

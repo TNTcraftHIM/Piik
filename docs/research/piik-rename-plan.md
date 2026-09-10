@@ -7,7 +7,7 @@ Last reviewed: 2026-09-10.
 
 Display `Piik`; use `piik` for executable, package, environment and service
 identifiers. GitHub is `TNTcraftHIM/Piik`; the Go module follows that exact case.
-The native macOS bundle identifier is `tv.piik.client`.
+The [naming convention](../reference/naming.md) owns current App display and package names.
 The product keeps its TV mascot. The wordmark and morph animation remain in the
 [brand study](../design/piik-brand.html) for the future public website.
 
@@ -39,8 +39,8 @@ their corresponding path rules to be reviewed before network acceptance.
 
 `piik-v23` and `piik-client-v9` are new exact protocol labels. Their message
 schemas retain versions 23 and 9; the full label, not only its numeric suffix,
-is checked. Native capture remains v7. Release Web, Server, Client and capture
-artifacts together; old pages and installed Clients cannot interoperate across
+is checked. Native capture remains v7. Release Web, Server, App and capture
+artifacts together; old pages and installed Apps cannot interoperate across
 the renamed control boundary. No alternate protocol reader is introduced.
 
 SQLite schema 2, its application ID, room codes, token/grant digests and password
@@ -50,12 +50,12 @@ stopped, verify integrity and retained columns, and preserve the original for
 rollback. Do not recreate rooms or repeat the earlier schema-1 cutover.
 
 The implementation renames Browser storage prefixes, the site-access cookie
-and the Client configuration/cache directory. The owner accepts a clean break:
+and the App configuration/cache directory. The owner accepts a clean break:
 copy directly compatible, accessible settings once during cutover; discard
 unavailable or incompatible settings. The product reads only Piik names, with
 no migration code, alternate reader or old-name alias.
 
-The local Client configuration is unchanged JSON version 1 and can be copied
+The local App configuration is unchanged JSON version 1 and can be copied
 byte-for-byte into the Piik directory without replacing an existing new config.
 Browser credentials and settings are origin/session-owned. Transfer them only
 through an available original Browser session; do not modify a live Browser's
@@ -63,7 +63,7 @@ storage database or introduce a product bridge to recover them. Otherwise the
 new namespace starts empty, requiring login, room creation and preference setup.
 Old room authority remains in SQLite, but an unavailable Host credential cannot
 be reconstructed from its stored digest. Site-access cookies and remembered
-Client activation are renewed normally under the new contract.
+App activation are renewed normally under the new contract.
 
 ## Git history
 
@@ -105,7 +105,7 @@ inputs, not as runtime aliases:
 | Environment file | `/etc/screener/screener.env` | `/etc/piik/piik.env` |
 | Branded environment prefix | `SCREENER_` | `PIIK_` |
 | Browser storage prefix | `screener:` | `piik:` |
-| Client config directory | `Screener` | `Piik` |
+| App config directory | `Screener` | `Piik` |
 
 Prepare the new immutable artifacts, service/environment/proxy configuration,
 permissions and database path before stopping the old service. Record original
@@ -127,7 +127,7 @@ records describe earlier operations and are not rewritten as new releases.
 ## Validation and references
 
 Acceptance covers the tracked-name inventory, Web type/build checks, relevant
-contract/storage tests, native compilation, Client/Server packaging and a
+contract/storage tests, native compilation, App/Server packaging and a
 controlled local launch. Production release additionally requires the accepted
 best-effort settings transfer, configuration/database recovery and postflight.
 

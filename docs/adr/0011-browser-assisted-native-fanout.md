@@ -15,7 +15,7 @@ share one encoder.
 
 The later [Chromium legacy probe](../research/advanced-peer-distribution.md#chromium-legacy-fanout-probe)
 demonstrates a non-standard clean-path exception, with unresolved feedback and
-statistics. It is not an accepted replacement for this Browser/Client boundary.
+statistics. It is not an accepted replacement for this Browser/App boundary.
 
 The repository already has the required Native boundary: a Pion receiver can
 accept H.264/Opus RTP and its encoded source can feed bounded downstream Pion
@@ -24,7 +24,7 @@ UI and capture owner.
 
 ## Decision
 
-1. A Client-launched Browser Host whose current codec is H.264 and whose
+1. An App-launched Browser Host whose current codec is H.264 and whose
    topology optimization is enabled uses one local Browser-to-Native ingress.
    The existing `HostPeer` owns its sender, clone, quality settings and pause;
    the existing Native receiver owns encoded fanout. VP8 and disabled quality
@@ -38,7 +38,7 @@ UI and capture owner.
    Browser sender candidate for one degraded edge; that candidate is an
    exception when sharing an encoding cannot sustain that path. Savings never
    justify worse delivery or disabling native Browser quality adaptation.
-4. If the Client is absent or the local ingress fails, the Host keeps the
+4. If the App is absent or the local ingress fails, the Host keeps the
    Browser capture and recreates affected senders on their current assigned
    routes. Capture and room authority survive loss of the optional fanout.
    Ordinary Browser pages retain their existing media path.
@@ -49,7 +49,7 @@ UI and capture owner.
 
 ## Consequences
 
-- A Client-launched Browser Host can use one Browser encode plus Native encoded
+- An App-launched Browser Host can use one Browser encode plus Native encoded
   fanout while preserving the existing UI and room behavior.
 - A pure Browser relay remains framework-owned and may encode per child because
   the standard Browser API has no cross-connection encoded-frame injection
@@ -62,7 +62,7 @@ UI and capture owner.
   children; failure retains Browser capture through ordinary sender recovery.
 - A Windows/Chrome two-child gate proves one local encode, 1080p at about 30 fps
   on both Viewers, live quality changes, pause/resume, source audio changes, and
-  Client-exit recovery. Weak-path automatic adaptation and its cost remain
+  App-exit recovery. Weak-path automatic adaptation and its cost remain
   physical acceptance, not a consequence of the clean-path result.
 
 ## References

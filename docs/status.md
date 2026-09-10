@@ -9,13 +9,13 @@ and Git/PRs own completed history.
 ## Accepted Release Contract
 
 - Browser/server v23, Native control v9 and capture v7 form one private contract.
-  The release requires matching Web/Client/Server artifacts and a reload of old
+  The release requires matching Web/App/Server artifacts and a reload of old
   active pages at cutover.
 - Hosted Server defaults to SQLite schema 2. Room authority has no inactivity
   expiry; explicit replacement/deletion or grant rotation/revocation ends the
-  corresponding authority. Explicit memory mode and Client Local end rooms at
+  corresponding authority. Explicit memory mode and App Local end rooms at
   process exit. Site access retains its separate 24-hour idle lifetime.
-- Browser/Client entry lifecycle and current-edge reconnect ownership repairs
+- Browser/App entry lifecycle and current-edge reconnect ownership repairs
   are implemented. Browser node-local pooling and detailed local Debug export
   remain part of the accepted media surface. Product modules own their behavior;
   [configuration](./reference/configuration.md#diagnostics) owns Debug activation,
@@ -57,7 +57,7 @@ The public website is a later phase.
   confirmed Windows 10 whole-display capture resolved. Specific new game/device
   failures should be reopened from new evidence.
 - Native Host publication through embedded SFU retains video/audio; Browser to
-  Client fanout and Client-exit fallback have bounded physical checks. Two
+  App fanout and App-exit fallback have bounded physical checks. Two
   independent Native sessions have simultaneous media/retirement evidence.
 - The Linux runtime container has non-root/read-only, memory/SQLite, diagnostic
   export, STUN and listener-lifecycle evidence. This does not establish every
@@ -74,5 +74,5 @@ The public website is a later phase.
 - Slow adaptation recovery, the extreme CPU-overload sampling limit and missing
   broad device/network/endurance results remain explicit in
   [encoder research](./research/webrtc-encoder-pool.md) and verification status.
-  macOS/Linux physical capture is deferred by the owner; Windows Client and
+  macOS/Linux physical capture is deferred by the owner; Windows App and
   Browser are this phase's primary targets.

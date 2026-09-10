@@ -11,7 +11,7 @@ The current source embeds STUN and SFU in the Piik process under
 advertises ordinary discovery and enables the UDP 3478 listener on
 `STUN_LISTEN_HOST` (IPv4, default `0.0.0.0`). Enabling
 `NAT_PREDICTION_ENABLED` also binds UDP 3479/3480 on that address. Local and
-public-link Client modes use discovery without creating media-service listeners.
+public-link App modes use discovery without creating media-service listeners.
 
 Set `SFU_UDP_PORT=7882` to enable automatic embedded SFU fallback. Its IPv4 bind
 address is `SFU_LISTEN_HOST`, default `0.0.0.0`; `SFU_PUBLIC_IP` optionally
@@ -151,8 +151,8 @@ needed, is one explicitly authorized infrastructure and protocol transaction.
 The routine application wrapper cannot perform or recover it.
 
 1. Prepare and verify matching Web/Server signaling and native protocol v9
-   Client artifacts. Check active sessions and obtain the owner's acceptance of
-   share interruption before cutover; old pages and Clients must reload or
+   App artifacts. Check active sessions and obtain the owner's acceptance of
+   share interruption before cutover; old pages and Apps must reload or
    update together.
 2. Retain the exact prior release path, Piik unit and drop-ins, environment,
    nginx configuration, and external media-service units, configuration, secrets,
@@ -183,7 +183,7 @@ The routine application wrapper cannot perform or recover it.
    and changed infrastructure configuration; reload systemd and validate nginx.
    Restore the previous external service states before starting the previous
    application with its matching unit, then prove health and media. Restore
-   matching pages and Clients as part of protocol rollback. A symlink-only
+   matching pages and Apps as part of protocol rollback. A symlink-only
    rollback cannot recover this transaction.
 
 Retain the recovery material through the agreed acceptance window. This is a

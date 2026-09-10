@@ -11,7 +11,7 @@ The Cloudflared text includes its source distribution's root and all vendored
 LICENSE, COPYING, and NOTICE files, including platform variants. The protobuf
 text also preserves Google's BSD-licensed varint attribution.
 The Windows capture adapter statically links the pinned WebRTC SDK, including
-its libvpx encoder. The Client's native notices retain the SDK's collected
+its libvpx encoder. The App's native notices retain the SDK's collected
 third-party license texts; these dependencies do not become MIT-licensed merely
 because Piik's adapter is MIT-licensed.
 Linux packages that include the native capture binary include
@@ -23,9 +23,9 @@ capture-specific notices.
 
 `npm run dev` and `npm run build:client` generate `/third-party-licenses.txt`
 offline from installed, lockfile-matched Web runtime dependencies.
-The application release and Client assembly each add the Go toolchain notice
+The application release and App assembly each add the Go toolchain notice
 and the license files of the modules actually compiled into that binary; the
-Client package also carries the pinned Cloudflared notices. Missing license
+App package also carries the pinned Cloudflared notices. Missing license
 texts or changed pinned contents stop packaging.
 
 LiveKit media-core packages are referenced as an unmodified, version-pinned Go

@@ -1,4 +1,4 @@
-// Explicit synthetic experiment. Not part of Client, Server, unit tests or CI.
+// Explicit synthetic experiment. Not part of App, Server, unit tests or CI.
 #include "pool.h"
 #include "h264_encoder_adapter.h"
 

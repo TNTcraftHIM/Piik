@@ -14,11 +14,11 @@ service secret store or an untracked access-restricted environment file.
 | `PUBLIC_BASE_URL` | Exact public HTTP(S) origin; production requires HTTPS. |
 | `ALLOWED_ORIGINS` | Comma-separated exact HTTP(S) origins; wildcard is invalid. |
 | `SITE_ACCESS_PASSWORD` | Production-required independent 8-128 visible-ASCII byte secret. |
-| `ROOM_DATABASE_PATH` | Hosted defaults to `rooms.sqlite` in its working directory when unset or blank. An explicit absolute file path selects another SQLite file; `:memory:` opts into process-memory room authority. Client Local remains in memory. |
+| `ROOM_DATABASE_PATH` | Hosted defaults to `rooms.sqlite` in its working directory when unset or blank. An explicit absolute file path selects another SQLite file; `:memory:` opts into process-memory room authority. App Local remains in memory. |
 | `MAX_VIEWERS_PER_ROOM` | `1..20`, default `8`. |
 | `ENDPOINT_MEDIA_COPY_CAPACITY` | Shared endpoint steady-copy cap `1..3`, default `2`. |
 | `STUN_URLS` | Comma-separated advertised `stun:` discovery URLs; at least one is required in production. These are not local bind addresses and may use an unproxied DNS name separate from the Web origin. |
-| `STUN_LISTEN_HOST` | Hosted IPv4 STUN bind address, default `0.0.0.0` when `STUN_URLS` is configured; independent of HTTP `LISTEN_HOST`. Local Client construction creates no STUN listeners. |
+| `STUN_LISTEN_HOST` | Hosted IPv4 STUN bind address, default `0.0.0.0` when `STUN_URLS` is configured; independent of HTTP `LISTEN_HOST`. Local App construction creates no STUN listeners. |
 | `NAT_PREDICTION_ENABLED` | Optional bounded NAT prediction capability, default `false`; requires an ordinary `STUN_URLS` endpoint on UDP 3478. Hosted startup binds UDP 3479/3480 before advertising the capability. Firewall reachability remains an operator requirement. |
 
 Automatic SFU fallback runs inside the Hosted process when `SFU_UDP_PORT` is set:
@@ -31,7 +31,7 @@ Automatic SFU fallback runs inside the Hosted process when `SFU_UDP_PORT` is set
 
 SFU control uses the application's authenticated signaling connection. No
 separate control origin or infrastructure credentials are configured. Local and
-public-link Client construction create no SFU listener. The relay does not
+public-link App construction create no SFU listener. The relay does not
 provide application E2EE.
 
 The SQLite parent directory must exist and be writable. The systemd template
@@ -53,21 +53,21 @@ Diagnostics are local and opt-in. Enable them **before** reproducing the problem
 
 | Surface | Enable | Export |
 | --- | --- | --- |
-| Client | Start with `--debug` or `PIIK_DEBUG=client` | Press `D` in the terminal for a ZIP |
+| App | Start with `--debug` or `PIIK_DEBUG=client` | Press `D` in the terminal for a ZIP |
 | Browser Host/Viewer | Add `?debug=1` to the page URL, before any invitation fragment | Use the download button beside language/theme controls |
 | Hosted Server | Start with `--debug`, `PIIK_DEBUG=server` or `PIIK_DEBUG=route` | On Unix, `kill -USR1 <pid>`; also exported at orderly shutdown |
 
-Client/Server ZIP and Browser JSON reports are separate: when investigating
-Browser/Client cooperation, include both from the same reproduction. Neither
+App/Server ZIP and Browser JSON reports are separate: when investigating
+Browser/App cooperation, include both from the same reproduction. Neither
 action stops an active share or uploads anything. Browser export also remains
 available as `await window.__PIIK_DEBUG__.export()` in DevTools.
 
-Client logs go to `logs` beside the executable, falling back to `Piik/logs`
+App logs go to `logs` beside the executable, falling back to `Piik/logs`
 in the OS user-cache directory when that default is unwritable. The TUI shows
 the actual path and the exported ZIP. `--log-dir` overrides
 `PIIK_LOG_DIR`; an explicit directory must be writable. Choosing a
-directory alone does not enable collection. Non-interactive Clients export at
-orderly shutdown. On Client, `PIIK_DEBUG=route` alone retains console route
+directory alone does not enable collection. Non-interactive Apps export at
+orderly shutdown. On App, `PIIK_DEBUG=route` alone retains console route
 tracing; use `--debug` for file collection and the `D` action.
 
 Hosted logs use `PIIK_LOG_DIR`, otherwise systemd `LOGS_DIRECTORY`,

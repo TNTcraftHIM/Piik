@@ -132,7 +132,7 @@ function readDescriptor(path) {
 function assertOutputDirectory(repositoryRoot, outputRoot, target) {
   const path = relative(repositoryRoot, outputRoot);
   const candidateOutput = join(repositoryRoot, "build", "client-package", target.id,
-    "candidate", `Piik-Client-${target.id}`);
+    "candidate", `piik-app-${target.id}`);
   if (outputRoot !== candidateOutput &&
       (path === "" || (path.split(/[\\/]/)[0] !== ".." && !isAbsolute(path)))) {
     fail("Client output must be outside the repository or its exact candidate workspace");
@@ -253,10 +253,10 @@ try {
     "build",
     "-trimpath",
     "-ldflags",
-    `-s -w -X github.com/TNTcraftHIM/Piik/internal/client/clientapp.BuildRevision=${revision}`,
+    `-s -w -X github.com/TNTcraftHIM/Piik/internal/app.BuildRevision=${revision}`,
     "-o",
     clientPath,
-    "./cmd/piik-client",
+    "./cmd/piik-app",
   ], repositoryRoot, clientGoEnvironment(target));
   chmodSync(clientPath, 0o755);
   assertTargetExecutable(clientPath, target, "Client executable");
@@ -266,7 +266,7 @@ try {
     packageRoot,
     target,
     revision,
-    iconPath: join(repositoryRoot, "cmd", "piik-client", "piik.ico"),
+    iconPath: join(repositoryRoot, "cmd", "piik-app", "piik.ico"),
   });
   writeFileSync(join(packageRoot, "REVISION"), `${revision}\n`, "ascii");
 

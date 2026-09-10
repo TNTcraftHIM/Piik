@@ -41,8 +41,8 @@ scripts/check-client.mjs
 scripts/client-native-host-gate.ts
 cmd/piik-server/main.go
 cmd/piik-peer-gate/main.go
-cmd/piik-client/piik.ico
-cmd/piik-client/piik_windows_amd64.syso
+cmd/piik-app/piik.ico
+cmd/piik-app/piik_windows_amd64.syso
 internal/server/webassets/dist/.gitkeep
 deploy/release-app.sh
 deploy/check-release.sh

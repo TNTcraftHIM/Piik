@@ -63,9 +63,9 @@ const server = createServer(async (request, response) => {
     for (const path of ["go.mod", "go.sum", "internal/media/encoded/packetizer.go",
       "internal/media/forwarding/source.go", "internal/media/forwarding/encoded_source.go",
       "internal/media/forwarding/output.go", "internal/media/forwarding/transport.go",
-      "internal/client/mediaedge/engine.go", "internal/client/mediaedge/source.go",
-      "internal/client/mediaedge/edge.go", "internal/client/mediaedge/group_fixture_test.go",
-      "internal/client/mediaedge/relay_network_fixture_test.go", "internal/client/mediaedge/relay_derivation.go",
+      "internal/app/mediaedge/engine.go", "internal/app/mediaedge/source.go",
+      "internal/app/mediaedge/edge.go", "internal/app/mediaedge/group_fixture_test.go",
+      "internal/app/mediaedge/relay_network_fixture_test.go", "internal/app/mediaedge/relay_derivation.go",
       "native/capture/windows/encoded_group.fixture.cpp"]) {
       result.sources[path] = createHash("sha256").update(await readFile(new URL(`../${path}`, import.meta.url))).digest("hex");
     }

@@ -50,9 +50,9 @@ function fixture(launchedByClient = true) {
   };
 }
 
-it.each([false, true])("retries an absent or rejected Client on the next offer: reject=%s", async (reject) => {
+it.each([false, true])("retries an absent or rejected App on the next offer: reject=%s", async (reject) => {
   const current = fixture();
-  if (reject) current.connect.mockRejectedValueOnce(new Error("Client unavailable"));
+  if (reject) current.connect.mockRejectedValueOnce(new Error("App unavailable"));
   await expect(current.acquire()).resolves.toBeNull();
   expect(current.connect).toHaveBeenCalledOnce();
   const client = control();
@@ -65,7 +65,7 @@ it.each([false, true])("retries an absent or rejected Client on the next offer: 
   expect(client.close).toHaveBeenCalledOnce();
 });
 
-it("shares pending discovery and rediscovers after the idle Client disconnects", async () => {
+it("shares pending discovery and rediscovers after the idle App disconnects", async () => {
   const current = fixture();
   const client = control();
   let resolve!: (value: typeof client) => void;

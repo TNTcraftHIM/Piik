@@ -26,7 +26,7 @@ func env(parts ...map[string]string) map[string]string {
 }
 
 var productionBase = map[string]string{
-	"PIIK_ENV":         "production",
+	"PIIK_ENV":             "production",
 	"PUBLIC_BASE_URL":      "https://share.test",
 	"SITE_ACCESS_PASSWORD": "host-password-12",
 	"STUN_URLS":            "stun:stun.test:3478",

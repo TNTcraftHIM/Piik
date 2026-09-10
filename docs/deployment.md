@@ -45,36 +45,36 @@ extracts its own artifact to verify it. The archive contains exactly
 `piik-server`, `LICENSE`, `THIRD-PARTY-NOTICES.txt`, and `REVISION`. Upload
 the archive, manifest, and descriptor together to `/opt/piik/uploads`.
 
-The same application descriptor is also the Client assembly input. On each
+The same application descriptor is also the App assembly input. On each
 target platform, provide that platform's Go toolchain:
 
 ```sh
 PIIK_GO=/path/to/go node scripts/assemble-client.mjs \
   /outside/repository/app-release/piik-<revision>.release.json \
-  /outside/repository/Piik-Client \
+  /outside/repository/piik-app \
   --target windows-amd64 \
   --capture /path/to/platform-capture \
   --tunnel /path/to/cloudflared
 ```
 
 Assembly refuses a dirty or different revision and emits one directory with the
-Client executable, the Browser assets taken from that release and embedded in
+App executable, the Browser assets taken from that release and embedded in
 it, the selected sidecars, notices, and matching `REVISION`. Its required target
 is one of `windows-amd64`, `linux-amd64`, or `darwin-arm64`; every supplied
 binary input must match it. It does not create an installer, auto-updater,
 release tag, or compatibility bundle.
 
-Darwin Client assembly runs on macOS with its SDK and cgo enabled: the pinned
+Darwin App assembly runs on macOS with its SDK and cgo enabled: the pinned
 LiveKit dependency's [Darwin CPU statistics](https://github.com/mackerelio/go-osstat/blob/v0.2.8/cpu/cpu_darwin_cgo.go)
 call Mach APIs. Windows and Linux
-Client builds keep cgo disabled. A core check on those hosts explicitly skips
+App builds keep cgo disabled. A core check on those hosts explicitly skips
 the Darwin binaries; macOS build and package verification belong to the existing
 native runner. This does not change the cgo-free linux/amd64 Server artifact.
 
 The platform package also carries its native presentation metadata: Windows
 embeds the icon in the Go executable, Linux emits a freedesktop desktop entry
 under `share/`, and macOS emits a thin `.app` launcher with an ICNS resource.
-The latter two are packaging metadata only and do not duplicate the Client
+The latter two are packaging metadata only and do not duplicate the App
 executable.
 
 CI and local release-candidate builds use the same wrapper on the target's
@@ -88,7 +88,7 @@ node scripts/package-client-candidate.mjs \
 ```
 
 The wrapper downloads the pinned public-link sidecar, verifies its digest,
-builds the target Client and available capture process, executes every packaged
+builds the target App and available capture process, executes every packaged
 runtime, and emits one `tar.gz` plus its SHA-256 file.
 
 Retain the descriptor and successful deployment output as release metadata. Do
@@ -97,7 +97,7 @@ or hashes.
 
 After `validate` succeeds on an explicit workflow dispatch with
 `client_checks=true`, CI packages the Server application release and the
-three-platform Client candidates that consume it. The artifacts are retained
+three-platform App candidates that consume it. The artifacts are retained
 for 14 days. Ordinary `main` pushes do not run these packaging jobs. This
 workflow does not create a tag, public GitHub Release, or deployment.
 
@@ -107,13 +107,13 @@ install.
 
 ## Update Check
 
-The application, Server deployment, and platform Client all use the full Git
+The application, Server deployment, and platform App all use the full Git
 revision as their release identity. A formal GitHub Release must use that exact
 40-character revision as its tag and keep the corresponding release URL. The
 current CI workflow produces short-lived candidates but does not publish a
 GitHub Release; publication remains an explicit distribution decision.
 
-The default Client launcher starts immediately, then performs one background
+The default App launcher starts immediately, then performs one background
 request to the official Piik GitHub Releases API. It shows a link only when
 the latest release has a valid full revision different from the packaged one.
 The request sends no current revision, credentials, room data, or media data;
@@ -137,7 +137,7 @@ state. A different current-revision file may be supplied as its only argument.
 
 ## Permanent-Room Schema Cutover
 
-The schema 2 / signaling v23 cutover required matching Web/Client/Server builds
+The schema 2 / signaling v23 cutover required matching Web/App/Server builds
 and an accepted active-session interruption. Native control stayed v9; that
 schema change preserved Browser credential keys. It was not an app-only release.
 The separate [brand cutover](./research/piik-rename-plan.md) must preserve this
@@ -177,7 +177,7 @@ and [backup guidance](https://www.sqlite.org/backup.html) define this offline op
 The first move from external services to embedded STUN/SFU is a coordinated
 infrastructure and protocol transaction, including Node-to-Go where still
 needed. Complete the [self-hosting cutover procedure](./operations/self-hosting.md#coordinated-embedded-media-cutover)
-with matching Web/Server signaling and native protocol v9 Client builds,
+with matching Web/Server signaling and native protocol v9 App builds,
 accepted active-session interruption, released UDP ports, and exact
 unit/environment/proxy/service recovery. The routine wrapper does not perform
 that transaction; it requires an already running packaged Go release and cannot

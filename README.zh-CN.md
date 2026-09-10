@@ -12,7 +12,7 @@ Piik 是一个私密屏幕分享工具：一位房主，最多 20 位受邀好�
 ```mermaid
 flowchart LR
   Browser[浏览器] --> Host[开房分享]
-  Client[Piik Client] --> Host
+  App[Piik App] --> Host
   Host -->|邀请链接| Friends[好友用浏览器观看]
 ```
 
@@ -33,28 +33,28 @@ flowchart LR
 浏览器采集需要 HTTPS 或 `localhost`；可选来源和声音支持取决于浏览器与平台。
 界面提供中文、英文和图示模式，以及明暗主题。
 
-## 用 Client 自己开房
+## 用 App 自己开房
 
-拿到对应平台的 Client 程序包后：
+拿到对应平台的 App 程序包后：
 
 1. 完整解压，保留可执行文件旁的 `runtime` 目录。
-2. Windows 打开 `piik-client.exe`，macOS 打开 `Piik Client.app`，
-   Linux 运行 `./piik-client`。
-3. 选择模式和分享来源，发出邀请。分享期间保持 Client 运行。
+2. Windows 打开 `piik-app.exe`，macOS 打开 `Piik App.app`，
+   Linux 运行 `./piik-app`。
+3. 选择模式和分享来源，发出邀请。分享期间保持 App 运行。
 
 | 模式 | 适合什么情况 |
 | --- | --- |
 | **本地房间** | 与同一局域网内的好友分享，可设置站点访问密码。 |
-| **公网邀请** | 生成本次 Client 运行期间有效的临时邀请链接；媒体仍走 P2P。 |
-| **连接站点** | 使用已有 Piik 站点，并在同一浏览器界面使用 Client 的采集与媒体能力。 |
+| **公网邀请** | 生成本次 App 运行期间有效的临时邀请链接；媒体仍走 P2P。 |
+| **连接站点** | 使用已有 Piik 站点，并在同一浏览器界面使用 App 的采集与媒体能力。 |
 
-Client 会打开系统浏览器。程序包包含 Go 应用和采集、临时链接辅助程序，
+App 会打开系统浏览器。程序包包含 Go 应用和采集、临时链接辅助程序，
 运行时无须安装 Node.js、npm 或 Go。Linux 原生采集使用系统的 Portal、PipeWire
-和 GStreamer，平台细节见 [Client 指南](./cmd/piik-client/README.md)。
+和 GStreamer，平台细节见 [App 指南](./cmd/piik-app/README.md)。
 
 临时公网链接使用 Cloudflare Quick Tunnel，不保证持续可用。
 媒体需要可用的 UDP 路径；网络限制、浏览器或系统挂起都可能中断分享。
-当前以 Windows Client 和浏览器为验收重点，macOS/Linux 原生采集的实机验证另行进行。
+当前以 Windows App 和浏览器为验收重点，macOS/Linux 原生采集的实机验证另行进行。
 候选版本与发布准备情况见 [当前状态](./docs/status.md)。
 
 ## 自建站点或参与开发
@@ -68,10 +68,10 @@ SFU 后备路径。搭建自己的站点，请看 [自托管指南](./docs/opera
 ## 遇到问题？
 
 反馈时附上版本、系统与浏览器、预期结果和复现步骤。
-Client 可用 `--debug` 启动后按 `D` 导出本地报告；浏览器网址加上 `?debug=1`
+App 可用 `--debug` 启动后按 `D` 导出本地报告；浏览器网址加上 `?debug=1`
 后（放在 `#` 之前），可点击顶部下载按钮。分享前请检查报告内容，详见
 [诊断与导出](./docs/reference/configuration.md#diagnostics)。
-连接不上时，也可以查看 [Chromium WebRTC 常见问题](./cmd/piik-client/README.md#chromium-webrtc-connections)。
+连接不上时，也可以查看 [Chromium WebRTC 常见问题](./cmd/piik-app/README.md#chromium-webrtc-connections)。
 
 ## 许可
 

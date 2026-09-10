@@ -12,7 +12,7 @@ Friends watch in their browsers, with no installation.
 ```mermaid
 flowchart LR
   Browser[Browser] --> Host[Host a room]
-  Client[Piik Client] --> Host
+  App[Piik App] --> Host
   Host -->|Invite link| Friends[Friends watch in browsers]
 ```
 
@@ -34,29 +34,29 @@ Capture needs HTTPS or `localhost`; available sources and sound depend on the
 browser and platform. English, Chinese and an illustrated visual mode share the
 same controls, with light and dark themes.
 
-## Start your own room with Client
+## Start your own room with Piik App
 
-With a Client package for your platform:
+With the Piik App package for your platform:
 
 1. Extract the whole package, keeping `runtime` beside the executable.
-2. Open `piik-client.exe` on Windows, `Piik Client.app` on macOS, or
-   `./piik-client` on Linux.
-3. Choose a mode, pick what to share, and send the invitation. Keep Client running.
+2. Open `piik-app.exe` on Windows, `Piik App.app` on macOS, or
+   `./piik-app` on Linux.
+3. Choose a mode, pick what to share, and send the invitation. Keep the app running.
 
 | Mode | Use it for |
 | --- | --- |
 | **Local room** | Friends on the same local network. An optional site password controls access. |
-| **Public invite** | A temporary Internet invitation. The link lasts for this Client run; media remains P2P. |
-| **Connect to Site** | An existing Piik site, with Client capture and media capabilities available in the same browser UI. |
+| **Public invite** | A temporary Internet invitation. The link lasts for this App run; media remains P2P. |
+| **Connect to Site** | An existing Piik site, with App capture and media capabilities available in the same browser UI. |
 
-Client opens your system browser. Its package includes the Go application and
+Piik App opens your system browser. Its package includes the Go application and
 capture/link helpers; running it needs no Node.js, npm or Go installation.
 Linux native capture uses the system Portal, PipeWire and GStreamer stack.
-See the [Client guide](./cmd/piik-client/README.md) for platform details.
+See the [App guide](./cmd/piik-app/README.md) for platform details.
 
 Temporary public links use Cloudflare Quick Tunnel, which has no uptime guarantee.
 Media needs a working UDP path; restrictive networks or browser/OS suspension
-can interrupt sharing. Windows Client and Browser are the current acceptance
+can interrupt sharing. Windows App and Browser are the current acceptance
 focus; macOS/Linux physical capture checks remain separate. See
 [current status](./docs/status.md) for candidate and release readiness.
 
@@ -72,10 +72,10 @@ For source builds, tests and architecture, start with the
 ## Something went wrong?
 
 Include your version, OS/browser, expected result and steps to reproduce.
-For a local report, start Client with `--debug` and press `D`, or add `?debug=1`
+For a local report, start Piik App with `--debug` and press `D`, or add `?debug=1`
 before any `#` in the Browser page URL and use its header download button. Review reports before
 sharing; see [diagnostics and export](./docs/reference/configuration.md#diagnostics).
-Connection trouble? Try the [Chromium WebRTC FAQ](./cmd/piik-client/README.md#chromium-webrtc-connections).
+Connection trouble? Try the [Chromium WebRTC FAQ](./cmd/piik-app/README.md#chromium-webrtc-connections).
 
 ## License
 

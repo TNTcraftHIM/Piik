@@ -73,7 +73,7 @@ function checkCore() {
     return true;
   });
   const builds = buildTargets.flatMap((target) =>
-    ["piik-client", "piik-peer-gate"].map((command) => ({ target, command })),
+    ["piik-app", "piik-peer-gate"].map((command) => ({ target, command })),
   );
   builds.push({ target: SERVER_TARGET, command: "piik-server" });
   for (const { target, command } of builds) {
@@ -146,13 +146,13 @@ function checkPlatformCapture() {
       buildRoot,
       "-Check",
     ]);
-    executable = join(buildRoot, "piik-client-capture.exe");
+    executable = join(buildRoot, "piik-capture.exe");
   } else if (process.platform === "darwin") {
     run("sh", [join(captureRoot, "darwin", "build.sh"), buildRoot]);
-    executable = join(buildRoot, "piik-client-capture");
+    executable = join(buildRoot, "piik-capture");
   } else {
     run("sh", [join(captureRoot, "linux", "build.sh"), buildRoot]);
-    executable = join(buildRoot, "piik-client-capture");
+    executable = join(buildRoot, "piik-capture");
   }
   if (!existsSync(executable)) {
     throw new Error("Native capture build did not produce its executable");
@@ -205,4 +205,4 @@ function checkPlatformCapture() {
 
 if (mode !== "--capture-only") checkCore();
 if (mode !== "--core") checkPlatformCapture();
-process.stdout.write("Piik Client checks passed.\n");
+process.stdout.write("Piik App checks passed.\n");

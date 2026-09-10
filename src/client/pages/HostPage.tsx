@@ -1251,7 +1251,7 @@ export function HostPage({
       await nativeShareCleanupRef.current;
       await nativePreviewTailRef.current;
       if (!isCurrentShare(generation, shareGeneration)) return null;
-      if (nativeClientRef.current !== client) throw new Error("Piik Client is unavailable");
+      if (nativeClientRef.current !== client) throw new Error("Piik App is unavailable");
       const started = await client.startShare({
         shareId: shareGeneration,
         source: target,
@@ -1267,7 +1267,7 @@ export function HostPage({
         await client.stopShare(shareGeneration).catch(() => discardNativeClient(client));
         return null;
       }
-      if (nativeClientRef.current !== client) throw new Error("Piik Client is unavailable");
+      if (nativeClientRef.current !== client) throw new Error("Piik App is unavailable");
       videoCodecRef.current = manualVideoCodecPreference(started.codec);
       bridge = new NativeMediaBridge(
         shareGeneration,

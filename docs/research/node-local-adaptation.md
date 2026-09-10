@@ -19,7 +19,7 @@ alongside an identical `high` encoding.
 - Self-contained Piik Server: library-level STUN/media components inside the
   executable, not bundled external service processes or an automatic installer.
 - Adaptive reuse: local derivation, shared lower outputs, independent child
-  delivery and quality recovery, usable by Native Client and the server.
+  delivery and quality recovery, usable by Native App and the server.
 
 These share media-source and lifetime concepts but need separate acceptance.
 A forwarding-only SFU library does not provide the second workstream by itself;

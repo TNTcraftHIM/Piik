@@ -7,15 +7,15 @@
 
 One TypeScript/Node server owned HTTP, room authority, admission, signaling, and
 routing. Hosted and Local composed the same application from it, and the packaged
-Client supervised it as a Node child beside a pinned runtime and an extracted
+App supervised it as a Node child beside a pinned runtime and an extracted
 application tree. [ADR-0010](./0010-cross-platform-client-runtime.md) accepted
 that shape because a second implementation of rooms, signaling, or routing would
 make the two deployments diverge without improving the media path.
 
-That boundary is paid for in every deployment. The Client package carries a
+That boundary is paid for in every deployment. The App package carries a
 language runtime and an installed dependency tree beside its Go entry, a
 production host needs Node and npm to install and validate a release, and one
-user entry runs two processes whose lifetime a supervisor owns. The Client
+user entry runs two processes whose lifetime a supervisor owns. The App
 already owns a Go process, Pion media, and its capture sidecars, so the second
 runtime buys only the existing server code.
 
@@ -26,11 +26,11 @@ the same Browser build.
 ## Decision
 
 1. One Go module at the repository root owns the product core.
-   `cmd/piik-server` (Hosted) and `cmd/piik-client` (Client) are entry
+   `cmd/piik-server` (Hosted) and `cmd/piik-app` (App) are entry
    points over the same `internal/server` packages and own only their defaults,
    reachability, and lifecycle policy. Neither reimplements rooms, admission,
    signaling, or routing. The TypeScript server, its bundled runtime, the process
-   supervisor, and the Client's runtime/application selection flags are deleted in
+   supervisor, and the App's runtime/application selection flags are deleted in
    the same boundary.
 2. The Browser UI stays React/TypeScript. Node, npm, Vite, vitest, and `tsx`
    remain build and gate tooling and stop being a runtime requirement on any
@@ -65,19 +65,19 @@ the same Browser build.
    [ADR-0002](./0002-memory-resident-protected-rooms.md). Both storage modes,
    their validation, and their failure policy are unchanged, and no build
    requires a C toolchain.
-8. The port changed no contract. Signaling stayed on its then-current v21 wire; the Client
+8. The port changed no contract. Signaling stayed on its then-current v21 wire; the App
    loopback stays v8, capture framing stays v4, and the HTTP API, cookies, error
    codes, and close codes keep their exact shapes. No compatibility alias, dual
    reader, or migration is added for a change of implementation language.
 
 ## Consequences
 
-- The Client is one process. Room authority, the loopback capability service, and
+- The App is one process. Room authority, the loopback capability service, and
   native media share it, so a panic in the server ends the Local session exactly
   as a crashed Node child did, and the capability service no longer survives a
   failed room authority. Hosted exits non-zero and systemd restarts it; nothing
   restarts a vanished authority in place.
-- Package and runtime cost falls in three places: the Client package loses its
+- Package and runtime cost falls in three places: the App package loses its
   bundled runtime and dependency tree, the application release becomes the server
   binary with its notices and revision, and a production host installs no
   packages during a release. One Windows 11 before/after run measured cold start

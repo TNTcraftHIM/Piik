@@ -1,9 +1,9 @@
-# Native Client Lifecycle
+# Native App Lifecycle
 
 - Reviewed: 2026-09-09
 - Scope: Windows capture idle semantics, native loopback input isolation, and
-  Browser visibility of an unexpected Client disconnect.
-- Status: quiet-source, preview-queue and Client-crash checks pass. The owner
+  Browser visibility of an unexpected App disconnect.
+- Status: quiet-source, preview-queue and App-crash checks pass. The owner
   confirmed Windows 10 monitor sharing resolved; game-specific window replacement
   is not established by the quiet-source checks.
 
@@ -18,7 +18,7 @@ virtual-time reproduction with three three-second previews made the real
 `NativeClient.startShare()` time out at eight seconds, before its handler ran
 at nine seconds. The picker now sends one preview at a time, cancels unsent
 work when its source view is retired, and waits for the remaining preview before
-starting native media. Refresh and Client replacement fence old results.
+starting native media. Refresh and App replacement fence old results.
 
 ## Scope Decisions
 
@@ -53,7 +53,7 @@ runtime change for either is claimed here.
   exited cleanly. This validates the quiet-source and retained-frame path on the
   current Windows host; it does not claim a cross-version Windows matrix.
 - The same day, the local Native Host gate started a real Host/Viewer share,
-  terminated the Client process, and observed the Host return to its start-share
+  terminated the App process, and observed the Host return to its start-share
   control within the bounded gate. Browser, capture, server, ports, and profile
   cleanup all passed.
 - On 2026-09-05, a Windows 11 build 26200 display-source check produced 91
@@ -208,7 +208,7 @@ extension forcibly disabled **Broadcast IP for Best WebRTC Performance**;
 correcting the setting/extension restored Native sharing. The confirmed cause
 is that extension's WebRTC policy, not unsupported Windows capture. VPN
 extensions may reapply the override; the
-[Chromium WebRTC FAQ](../../cmd/piik-client/README.md#chromium-webrtc-connections)
+[Chromium WebRTC FAQ](../../cmd/piik-app/README.md#chromium-webrtc-connections)
 owns the user steps. This does not authorize a Browser-specific transport fallback.
 
 An isolated Chrome 152.0.7977.82 data-channel A/B verifies the policy
@@ -236,9 +236,9 @@ and [independent panel fitting/MPO](https://learn.microsoft.com/en-us/windows/wi
 - A malformed/stale ICE candidate or repeated per-edge answer does not close the
   control session or terminate sibling edges; a real edge lifecycle failure
   remains observable.
-- Killing the Client causes the active Host owner to leave the native share
+- Killing the App causes the active Host owner to leave the native share
   path promptly, while ordinary user-initiated cleanup does not recurse.
-- `npm run check` and the relevant Client checks pass; no credentials or raw
+- `npm run check` and the relevant App checks pass; no credentials or raw
   media identifiers enter logs or documentation.
 
 Cross-version capture and browser matrices remain separate acceptance work. They

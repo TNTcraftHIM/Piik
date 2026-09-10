@@ -402,7 +402,7 @@ bitstream validation, not a claim that both actual consumers received 180.
 
 [Structured results](./data/webrtc-h264-pipeline.json) retain that narrow scope.
 These initial checks do not establish independent weak-child adaptation,
-overload, actual capture throughput, transport overhead or Client integration.
+overload, actual capture throughput, transport overhead or App integration.
 
 The concrete product attachment is `OutputWorker::Run`, shared by WGC and
 encoded-input derivation. Its fixed-size/FPS/direct-rate block can become a
@@ -499,7 +499,7 @@ budgets. All three platform producers implement that contract. Windows builds
 and normal tests pass; Linux production compilation and CPU-only GStreamer
 slot retirement checks pass. The macOS change is source-reviewed, not SDK or
 physical acceptance. No Browser/server signaling change is needed for private
-encoder grouping; matched Client and capture artifacts are required.
+encoder grouping; matched App and capture artifacts are required.
 
 Actual VP8 relay checks exercise two equal 300 kbps consumers sharing one
 derived output, splitting to 80/300 kbps and rejoining at 300/300 kbps. Both
@@ -602,10 +602,10 @@ CPU controller.
 | LiveKit forwarding/BWE/projection and Pion transport | Keep for existing encoded forwarding. Replace a Native endpoint owner only if the new library actually assumes that responsibility; never run two controllers on one edge. |
 | Native output construction, `Source.BeginFrame`, codec workers | Review together against the replacement's capabilities. Remove superseded activation, rate and switching policy in the same integration, not through a permanent legacy path. |
 | Native profile handoff, source clock, bounded queues and retirement | Preserve their verified behavior even if their implementation moves. Do not lose the profile-install acknowledgement or reintroduce double FPS limiting. |
-| Client sessions, Global Link, UI, diagnostics and packaging | Outside an encoder-policy replacement. Preserve the separately useful fixes/enhancements recorded in TODO and Git. |
+| App sessions, Global Link, UI, diagnostics and packaging | Outside an encoder-policy replacement. Preserve the separately useful fixes/enhancements recorded in TODO and Git. |
 
 An engine migration must also retain direct Native SFU publication, independent
-Native room sessions, native ICE improvements and mixed Browser/Client relay.
+Native room sessions, native ICE improvements and mixed Browser/App relay.
 Changing transport libraries does not automatically preserve these APIs. No
 unrelated page rewrite or platform-adapter deletion is justified by this review.
 

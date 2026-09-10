@@ -45,8 +45,8 @@ const joinPageModule =
   appRoute.kind === "join" ? import("./pages/JoinPage") : null;
 const viewerPageModule =
   appRoute.kind === "viewer" ? import("./pages/ViewerPage") : null;
-const clientLauncherPageModule =
-  appRoute.kind === "client" ? import("./pages/ClientLauncherPage") : null;
+const appLauncherPageModule =
+  appRoute.kind === "client" ? import("./pages/AppLauncherPage") : null;
 const HostPage = lazy(async () => ({
   default: (await (hostPageModule ?? import("./pages/HostPage"))).HostPage,
 }));
@@ -57,10 +57,10 @@ const ViewerPage = lazy(async () => ({
   default: (await (viewerPageModule ?? import("./pages/ViewerPage")))
     .ViewerPage,
 }));
-const ClientLauncherPage = lazy(async () => ({
+const AppLauncherPage = lazy(async () => ({
   default: (await (
-    clientLauncherPageModule ?? import("./pages/ClientLauncherPage")
-  )).ClientLauncherPage,
+    appLauncherPageModule ?? import("./pages/AppLauncherPage")
+  )).AppLauncherPage,
 }));
 const SITE_ACCESS_RENEWAL_INTERVAL_MS = 60 * 60 * 1_000;
 
@@ -136,7 +136,7 @@ function AppRoute() {
     return <TooltipPreviewPage />;
   }
   if (appRoute.kind === "client") {
-    return <ClientLauncherPage />;
+    return <AppLauncherPage />;
   }
   if (appRoute.kind === "viewer" && viewerRoute) {
     return viewerRoute.viewerGrant ? (

@@ -21,4 +21,4 @@ cc \
     gstreamer-1.0 \
     gstreamer-app-1.0 \
     gstreamer-video-1.0) \
-  -o "$output/piik-client-capture"
+  -o "$output/piik-capture"

@@ -77,7 +77,7 @@ it does not need a second bitrate, resolution, FPS, or layer-control system.
    from the exact sender and comparative delivery proof from the same Viewer over
    a real prepared candidate. It does not set bitrate, resolution, FPS, or layer,
    infer a physical bottleneck, or combine quality measurements into a score. A
-   native Client P2P edge obtains that category from Pion GCC: after real
+   native App P2P edge obtains that category from Pion GCC: after real
    transport feedback and encoded-frame progress, a target payload bitrate below
    the source's measured H.264 plus Opus payload is `bandwidth`; sufficient
    target payload is `none`; missing feedback or source progress is `unknown`.

@@ -5,9 +5,9 @@ Last updated: 2026-09-10
 Piik is private, low-latency game screen sharing for one Host and up to 20
 authenticated friends. The current product surface is Web Host, Web Viewer, and
 Browser relay; desktop and mobile Browsers are Viewer targets. It is not a
-public broadcast service. Hosted and Client run one shared Go core
+public broadcast service. Hosted and App run one shared Go core
 ([ADR-0012](./adr/0012-shared-go-backend-core.md)); Node and Vite build the
-Browser UI and are not a runtime. Source includes a cross-platform Client that
+Browser UI and are not a runtime. Source includes a cross-platform App that
 runs that same core in a self-contained Local deployment or opens one configured
 Site through the system Browser. Its single Go process presents Local, temporary
 public-link, and saved-Site choices on every launch, starts one process-level
@@ -18,7 +18,7 @@ Browser and Native peers without changing participant, signaling, capacity, or
 route identity. Local is LAN-first; explicit one-link mode exposes that same
 authority through a temporary public control tunnel while media remains P2P.
 Host authority belongs to a tab, with one separate persistent origin resume
-hint. The Client admits two independent native control sessions under its one
+hint. The App admits two independent native control sessions under its one
 loopback service.
 
 The current source embeds Binding-only STUN and optional SFU forwarding in
@@ -59,7 +59,7 @@ implementation and routine UI detail.
   invitations and independent `open | private` code entry. Room authority ends
   through explicit replacement/deletion, with separate invitation rotation or
   revocation. Hosted defaults to SQLite, with explicit process-memory opt-out;
-  Client Local remains process-only. Site access has a separate 24-hour idle
+  App Local remains process-only. Site access has a separate 24-hour idle
   cookie lifetime. Production persists SQLite room authority; live
   participants, routes, and media remain process-only.
 - Media is automatic and distributed. Ordinary peers are STUN-only and prefer
@@ -100,7 +100,7 @@ authenticated room WebSocket, without an external room service or media token.
 Committed first-frame readiness, bounded candidate-relative progress, durable
 room authority and the H.264/VP8 sender gate remain. [Status](./status.md)
 indexes source and deployment evidence; protocol rollback requires
-matching Browser and Client artifacts, not only an application symlink.
+matching Browser and App artifacts, not only an application symlink.
 
 Current work is owned by the [TODO ledger](./todo.md). Open physical evidence is
 owned by [verification status](./verification-status.md). Environment and initial

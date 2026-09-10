@@ -261,7 +261,7 @@ ${rmBlock(
   </>
 );
 
-// The Client's public-link choice reuses the established invite animation and
+// The App's public-link choice reuses the established invite animation and
 // adds one small globe mark so the destination is clear without text.
 const HintClientLink: HintScene = ({ theme }) => (
   <>

@@ -121,7 +121,7 @@ is isolated behind a small adapter.
 On 2026-09-08, an isolated installed Chrome 152 session demonstrated one Browser
 encoder feeding two PeerConnections through legacy `createEncodedStreams()`.
 The [manual probe](../../scripts/browser-encoded-fanout-probe.mjs) serves only a
-synthetic 640x360 canvas over loopback HTTP; it uses neither Client nor SFU.
+synthetic 640x360 canvas over loopback HTTP; it uses neither App nor SFU.
 No browser feature flags were added to permit encoded-frame forwarding.
 
 The secondary sender has a non-updating canvas track to establish its RTP path.
@@ -247,7 +247,7 @@ It does not reject an independent local producer. The later
 [node-local producer/carrier experiments](./browser-local-encoding-pool.md)
 establish a working standard-transform prototype with separate findings and
 remaining quality/accounting obligations. Product media still uses normal
-Browser senders and the verified optional Client fanout pending that acceptance.
+Browser senders and the verified optional App fanout pending that acceptance.
 
 A relevant future input API is Chromium's experimental
 [`RTCEncodedSource` implementation](https://chromium-review.googlesource.com/c/chromium/src/+/8097283),

@@ -138,7 +138,7 @@ an explicitly controlled input-frame boundary is required. In particular,
 
 inLive remains an embedded forwarding candidate, not the answer to derivation
 or a proved adaptation replacement. Its inspected layer sender is coupled to
-Client, track, bitrate-controller and packet-map owners; don't copy it as an
+App, track, bitrate-controller and packet-map owners; don't copy it as an
 independent universal selector. No new dependency or upstream implementation
 source was copied in this design pass. Preserve upstream licenses/notices when
 an actual module is chosen; Piik's MIT does not replace them.
@@ -332,7 +332,7 @@ wrap without another timer or packet queue.
 
 ### Native Feedback Probe
 
-The explicit [GCC/TWCC probe](../../internal/client/mediaedge/testdata/gcc_feedback_probe.go)
+The explicit [GCC/TWCC probe](../../internal/app/mediaedge/testdata/gcc_feedback_probe.go)
 and [recorded traces](./data/node-local-feedback.json)
 use the pinned Pion interceptor v0.1.47, with its thresholds unchanged. Two
 40-second memory-transport traces use a 6 Mbps -> 500 kbps -> 6 Mbps link,
@@ -363,8 +363,8 @@ or three on 3478/3479/3480 when prediction is enabled. `STUN_LISTEN_HOST`
 defaults to `0.0.0.0` and is separate from HTTP binding. Existing `STUN_URLS`
 remain advertised discovery addresses: their DNS may intentionally differ
 from the Web origin, so they must not be resolved as local bind addresses.
-The Local Client constructor supplies no listeners; using public discovery
-does not turn a Client into a public STUN service.
+The Local App constructor supplies no listeners; using public discovery
+does not turn an App into a public STUN service.
 
 The application binds HTTP and every required UDP listener before opening the
 room database or accepting signaling. Failed startup returns all sockets;

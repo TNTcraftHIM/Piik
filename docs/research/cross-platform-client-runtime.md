@@ -1,8 +1,8 @@
-# Cross-Platform Client Runtime Research
+# Cross-Platform App Runtime Research
 
 - Reviewed: 2026-09-04
 - Scope: loopback control and self-contained packaging boundary
-- Status: Client and Local composition implemented; Windows native Host video
+- Status: App and Local composition implemented; Windows native Host video
   and a cross-NAT media gate proved
 
 ## Reusable Evidence
@@ -31,7 +31,7 @@ application data was copied or inspected.
 
 ## Current Control Boundary
 
-The Client binds IPv4 loopback on a bounded range (`39721`-`39730`). `/health`
+The App binds IPv4 loopback on a bounded range (`39721`-`39730`). `/health`
 returns the protocol version, service identity, selected port, and an
 `instanceToken`. `/control` admits one WebSocket session whose subprotocol
 contains that same value. The first frame must be `hello`; subsequent requests
@@ -47,12 +47,12 @@ The current protocol advertises only the native capabilities and
 generation-fenced media commands that have consumers. It carries no room
 credentials or route policy; those stay in the Browser/server protocol.
 
-## Client Composition
+## App Composition
 
-The Client and Hosted Piik run the same server core, so the local package is
+The App and Hosted Piik run the same server core, so the local package is
 one executable carrying the built Browser assets plus the optional capture and
-tunnel sidecars; [the Client README](../../cmd/piik-client/README.md) owns
-that layout. In Local mode the Client runs the server in its own process with
+tunnel sidecars; [the App README](../../cmd/piik-app/README.md) owns
+that layout. In Local mode the App runs the server in its own process with
 explicit local configuration. In Site mode it starts no server, and the system
 Browser opens the saved Site while the same process remains its loopback
 native-media owner. The system Browser remains the UI.
@@ -72,7 +72,7 @@ its `loopback-network` permission; without that permission the cross-origin
 request was blocked. The gate checks both expected outcomes.
 
 A self-contained LAN room uses a localhost Host URL and a selected LAN IPv4
-Viewer URL backed by the same local Client process. The Client persists an
+Viewer URL backed by the same local App process. The App persists an
 optional user-chosen access password and passes it only to its Host page in a
 consumed fragment; a blank value leaves the Local site open. Explicit `--link`
 mode launches the packaged Cloudflare Quick
@@ -85,9 +85,9 @@ public STUN and remains P2P-only.
 
 ## UI Runtime Boundary
 
-The current Client opens the system Browser rather than embedding another Web
+The current App opens the system Browser rather than embedding another Web
 runtime. A lightweight launcher chooses the authority mode, then navigates to
-the same Host page, where a Client-launched Host can select an exact native
+the same Host page, where an App-launched Host can select an exact native
 window. This keeps the existing UI, Site cookies, WebRTC behavior, Browser
 updates, and permission model intact. Syncthing and Sunshine establish this as a
 practical native-process plus Browser-UI deployment shape.
@@ -96,7 +96,7 @@ An embedded shell remains a decision gate rather than a rejected category.
 Current WebView2 exposes `getDisplayMedia` screen-capture events and its
 Evergreen runtime updates independently; WebKitGTK exposes display capture and
 uses GStreamer for WebRTC. Electron instead bundles one Chromium and Node but
-makes the Client responsible for shipping those updates and adds substantial
+makes the App responsible for shipping those updates and adds substantial
 package size. These facts do not prove equivalent Piik media behavior.
 
 Only a reproduced Browser-launch failure should open a comparative physical
@@ -110,40 +110,40 @@ result selects one UI runtime; it does not create parallel products.
 The runs below are pre-port evidence: they exercised the package that bundled a
 Node runtime and an extracted application tree. Their capture, discovery, media,
 and network results still apply; every package composition, startup, and
-shutdown claim must be re-verified on the single-binary Client before that build
+shutdown claim must be re-verified on the single-binary App before that build
 is accepted.
 
 On Windows with Chrome for Testing 151.0.7922.138:
 
-- the Local Client started its built static application and reached `/healthz`;
+- the Local App started its built static application and reached `/healthz`;
 - the Host fragment was removed, existing SiteAccess became authenticated, and
   the ordinary Host page loaded;
 - the room API generated an invitation from the selected LAN origin;
 - one synthetic Host and three Viewers formed a P2P-only tree with one relay,
   every Viewer advanced decoded frames, and no SFU publication appeared; and
-- Enter-driven Client shutdown released the Browser, Client, Node, loopback and
+- Enter-driven App shutdown released the Browser, App, Node, loopback and
   application ports, and disposable profile.
-- the immutable App release was assembled with Node 24.19.0 and the Go Client
+- the immutable App release was assembled with Node 24.19.0 and the Go App
   from the same full revision; that packaged directory passed the Local and Site
   gates, while a deliberately mismatched `app/REVISION` was rejected before a
   listener started.
 - the explicit target assembler produced Windows amd64, Linux amd64, and macOS
   arm64 outputs from one clean revision. The Linux package ran its bundled Node
   Local authority on Ubuntu, and its full package exposed and then closed a
-  public link reachable from another network. The macOS Client and Node inputs
+  public link reachable from another network. The macOS App and Node inputs
   are both Mach-O arm64; execution there remains unproved.
 - the native Host path created a Local room and a remote Pion Viewer received
   30 packets over a selected `srflx`-to-`srflx` pair; the reverse SSH link in
   that gate carried signaling only.
-- a Windows Client created an accountless Quick Tunnel, generated its ordinary
+- a Windows App created an accountless Quick Tunnel, generated its ordinary
   invitation on that origin, and served the Viewer page plus `/signal` WebSocket
   upgrade to an independent Linux host; a native Host then repeatedly delivered
   30+ H.264 RTP packets to a Linux Pion Viewer over selected direct paths using
-  a reflexive candidate. Stopping the Client closed the URL.
+  a reflexive candidate. Stopping the App closed the URL.
 
 The one-link gate used the official Windows amd64 `cloudflared` 2026.8.3 asset
 with SHA-256 `83e726ed18ea78c5ad5213c4c3a3a27051393950d2bc8ed4de69bec12d14eaae`.
-The sidecar remains an explicit package input rather than a linked Client
+The sidecar remains an explicit package input rather than a linked App
 dependency.
 
 The peer topology gate now treats native `getStats()` RTP identity and frame

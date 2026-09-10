@@ -17,7 +17,7 @@ type PublicationControl = Pick<
   | "onEvent"
 >;
 
-// The page owns room signaling. The Client publishes its existing encoded source.
+// The page owns room signaling. The App publishes its existing encoded source.
 export class NativeSfuPublisher implements HostPublisherTransport {
   private config: SfuConnectionConfig | null = null;
   private pending: Array<

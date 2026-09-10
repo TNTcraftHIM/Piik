@@ -17,7 +17,7 @@ const release = {
   html_url: `https://github.com/TNTcraftHIM/Piik/releases/tag/${latestRevision}`,
 };
 
-describe("Client release update notice", () => {
+describe("App release update notice", () => {
   it("compares a strict release identity without sending the current revision", async () => {
     const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
       expect(String(input)).toBe(DEFAULT_RELEASE_API_URL);

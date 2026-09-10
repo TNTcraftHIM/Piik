@@ -14,7 +14,7 @@ current room, signaling, routing, audio, packaging, and Browser Viewer contract.
 ## Decision
 
 The fixed-HIGH native sender candidate is not a product surface and its private
-wire remains deleted. The current native Client boundary is defined by
+wire remains deleted. The current native App boundary is defined by
 [ADR-0010](./0010-cross-platform-client-runtime.md).
 
 The deleted one-Viewer loopback proved that a fixed 1280x720@30 source could

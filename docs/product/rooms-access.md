@@ -85,12 +85,12 @@ code-only attempts and does not silently revoke invitations.
   file path; absent or empty uses `rooms.sqlite` in the working directory.
 - **Lightweight mode:** explicit `ROOM_DATABASE_PATH=:memory:` keeps room authority
   in process memory and all rooms disappear on restart.
-- **Client Local mode:** the packaged Client composes the same memory RoomStore
+- **App Local mode:** the packaged App composes the same memory RoomStore
   and ends every room when its local authority exits. It persists only its Site
   choice and optional Local site-access password, not rooms or media state. A
   blank password leaves that local site open.
 
-The Client opens its own localhost Host page with the configured password, when
+The App opens its own localhost Host page with the configured password, when
 present, in a fragment. The page removes the fragment and uses the existing
 SiteAccess endpoint; this does not create a fourth admission authority. LAN and
 one-link Internet Viewers use the same room-scoped invitation grant; its

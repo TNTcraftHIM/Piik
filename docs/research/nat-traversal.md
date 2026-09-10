@@ -57,7 +57,7 @@ supports an opt-in mechanism, not a default or a participant-wide classifier.
 ## Current Decision
 
 An ordinary STUN endpoint remains the discovery service. A Site may enable
-same-host STUN-only listeners on 3479 and 3480. Public-link Client mode supplies
+same-host STUN-only listeners on 3479 and 3480. Public-link App mode supplies
 one ordinary public endpoint plus two public survey destinations; pure LAN mode
 supplies none. Available authorities expose the same per-share Host switch,
 which defaults on and remains locked while sharing.

@@ -159,7 +159,7 @@ describe("Host quality ownership", () => {
     expect(createPeer).toHaveBeenCalledOnce();
   });
 
-  it("keeps Browser capture immediate and Client selection reachable after absent discovery", async () => {
+  it("keeps Browser capture immediate and App selection reachable after absent discovery", async () => {
     const browser = fixture(false);
     browser.nativeClientRef.current = null;
     browser.requestShare();
@@ -188,7 +188,7 @@ describe("Host quality ownership", () => {
     expect(current.openCaptureSourcePicker).toHaveBeenCalledTimes(2);
   });
 
-  it("fails the full startup before room creation when Client retires during cleanup", async () => {
+  it("fails the full startup before room creation when App retires during cleanup", async () => {
     const current = fixture();
     current.context.phase = "idle";
     current.activeGenerationRef.current = null;
@@ -249,7 +249,7 @@ describe("Host quality ownership", () => {
     expect(current.setNativeActive).not.toHaveBeenCalled();
   });
 
-  it("ignores a stale listing failure after a newer picker owns the Client", async () => {
+  it("ignores a stale listing failure after a newer picker owns the App", async () => {
     const current = fixture();
     current.nativeShareGenerationRef.current = null;
     const listing = deferred<never>();

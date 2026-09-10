@@ -190,7 +190,7 @@ encrypted hop-by-hop with DTLS-SRTP but terminates at the SFU; the product does
 not claim operator-blind media without a separately accepted application E2EE
 design. All-UDP-blocked networks currently end in bounded failure.
 
-Client Local mode runs this graph without SFU, NAT prediction, or default STUN.
+App Local mode runs this graph without SFU, NAT prediction, or default STUN.
 One-link mode tunnels only HTTP/WebSocket control and adds public STUN to the
 same Browser/Native P2P edges. Reachable peers form one mixed relay tree; an
 unreachable path adds no route type or score. Site mode uses Site transport.

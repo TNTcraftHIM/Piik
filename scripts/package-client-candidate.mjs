@@ -262,7 +262,7 @@ async function verifyPackage(root, target, revision, temporaryRoot) {
 
 function verifyPlatformAssets(root, target) {
   if (target.goos === "linux") {
-    const desktop = join(root, "share", "applications", "piik-client.desktop");
+    const desktop = join(root, "share", "applications", "piik-app.desktop");
     const icon = join(
       root,
       "share",
@@ -270,12 +270,12 @@ function verifyPlatformAssets(root, target) {
       "hicolor",
       "256x256",
       "apps",
-      "piik-client.png",
+      "piik-app.png",
     );
     if (!existsSync(desktop) || !existsSync(icon)) {
       fail("Linux Client icon assets are missing");
     }
-    if (!readFileSync(desktop, "utf8").includes("Icon=piik-client\n")) {
+    if (!readFileSync(desktop, "utf8").includes("Icon=piik-app\n")) {
       fail("Linux desktop entry does not name its icon");
     }
     if (!readFileSync(icon).subarray(0, 8).equals(Buffer.from([
@@ -285,8 +285,8 @@ function verifyPlatformAssets(root, target) {
     }
   }
   if (target.goos === "darwin") {
-    const bundle = join(root, "Piik Client.app");
-    const launcher = join(bundle, "Contents", "MacOS", "Launcher");
+    const bundle = join(root, "Piik App.app");
+    const launcher = join(bundle, "Contents", "MacOS", "launcher");
     const plist = join(bundle, "Contents", "Info.plist");
     const icon = join(bundle, "Contents", "Resources", "piik.icns");
     if (!existsSync(launcher) || !existsSync(plist) || !existsSync(icon)) {
@@ -352,7 +352,7 @@ try {
     capture = join(repositoryRoot, "build", "client-check", target.captureName);
   }
 
-  const packageRoot = join(temporaryRoot, `Piik-Client-${target.id}`);
+  const packageRoot = join(temporaryRoot, `piik-app-${target.id}`);
   const assembleArguments = [
     join(repositoryRoot, "scripts", "assemble-client.mjs"),
     applicationDescriptor(applicationRoot),
@@ -368,7 +368,7 @@ try {
 
   mkdirSync(outputRoot, { recursive: false, mode: 0o700 });
   const shortRevision = revision.slice(0, 7);
-  const archiveName = `Piik-Client-${target.id}-${shortRevision}.tar.gz`;
+  const archiveName = `piik-app-${target.id}-${shortRevision}.tar.gz`;
   const archive = join(outputRoot, archiveName);
   run(tarExecutable(), ["-czf", archive, "-C", packageRoot, "."], repositoryRoot);
   const digest = sha256(archive);

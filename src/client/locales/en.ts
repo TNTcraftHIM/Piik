@@ -75,7 +75,7 @@ export const en: Record<CopyKey, string> = {
   "host.sourcePicker.windowAudio": "Application sound",
   "host.sourcePicker.systemAudio": "System sound",
   "host.sourcePicker.empty": "No sources available",
-  "host.sourcePicker.nativeAudio": "Client · with sound",
+  "host.sourcePicker.nativeAudio": "Piik App · with sound",
   "host.sourcePicker.window": "Share window: {title}",
   "host.sourcePicker.display": "Share screen: {title}",
   "host.sourcePicker.system": "System screen or window picker",

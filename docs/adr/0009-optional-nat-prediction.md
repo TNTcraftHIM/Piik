@@ -1,12 +1,12 @@
 # ADR-0009: Optional Connection-Local NAT Prediction
 
-- Status: accepted as an optional Site and Client capability
+- Status: accepted as an optional Site and App capability
 - Date: 2026-09-02
 
 ## Context
 
 The self-hosted deployment has two auxiliary STUN-only listeners for controlled
-NAT measurements, while a self-contained Client needs public discovery without
+NAT measurements, while a self-contained App needs public discovery without
 depending on that deployment. A disposable namespace lab showed that a sequential,
 endpoint-dependent mapping can sometimes be reached when the remote peer
 receives a small set of adjacent server-reflexive candidates. The result is
@@ -25,7 +25,7 @@ connection acquisition reuses the route controller's existing opportunity ledger
    defaults on, remains Host-controllable, locks while sharing, and is not
    persisted beyond that share generation.
 2. An enabled Site derives ports 3479 and 3480 from its first ordinary STUN
-   authority on UDP 3478. Public-link Client mode instead supplies one ordinary
+   authority on UDP 3478. Public-link App mode instead supplies one ordinary
    public STUN destination and two fixed public survey destinations; pure LAN
    mode supplies none. The same share switch and ICE configuration cover every
    Browser or Native P2P edge. SFU PeerConnections remain unchanged.
@@ -69,7 +69,7 @@ connection acquisition reuses the route controller's existing opportunity ledger
 
 Positive:
 
-- Sites with their own listeners and self-contained public-link Clients can use
+- Sites with their own listeners and self-contained public-link Apps can use
   the same bounded mechanism while pure Browser/LAN operation stays unchanged;
 - normal ICE remains immediately available, so an unavailable auxiliary STUN
   listener or unsuccessful prediction cannot delay direct or SFU fallback;

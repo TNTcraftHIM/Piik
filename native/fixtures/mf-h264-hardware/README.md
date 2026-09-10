@@ -1,7 +1,7 @@
 # Media Foundation H.264 Hardware Fixture
 
 This is an offline Windows-only decision fixture. Its build compiles the same
-Media Foundation encoder source used by Piik Client's Windows capture
+Media Foundation encoder source used by Piik App's Windows capture
 process, under a
 fixture-only macro for synthetic input and telemetry. The generated fixture is
 not linked into the sender and does not contact a room, signaling service,

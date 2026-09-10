@@ -210,7 +210,7 @@ async function main(): Promise<void> {
   const port = await reservePort();
   const clientBinary = configuredClient || join(
     BUILD_ROOT,
-    process.platform === "win32" ? "piik-client.exe" : "piik-client",
+    process.platform === "win32" ? "piik-app.exe" : "piik-app",
   );
   let client: ChildProcessWithoutNullStreams | null = null;
   let publicOrigin = "";
@@ -236,7 +236,7 @@ async function main(): Promise<void> {
       } else {
         run("npm", ["run", "build:client"]);
       }
-      run(go, ["build", "-trimpath", "-o", clientBinary, "./cmd/piik-client"],
+      run(go, ["build", "-trimpath", "-o", clientBinary, "./cmd/piik-app"],
         ROOT);
     }
     result.stage = "client-start";

@@ -70,8 +70,8 @@ async function main(): Promise<void> {
   }
   await mkdir(BUILD_ROOT, { recursive: true });
   const binary = join(BUILD_ROOT, `piik-server${process.platform === "win32" ? ".exe" : ""}`);
-  const clientBinary = join(BUILD_ROOT, "piik-client.exe");
-  for (const command of nativeArm ? ["piik-server", "piik-client"] : ["piik-server"]) {
+  const clientBinary = join(BUILD_ROOT, "piik-app.exe");
+  for (const command of nativeArm ? ["piik-server", "piik-app"] : ["piik-server"]) {
     const build = spawnSync(process.env.PIIK_GO?.trim() || "go", [
       "build", "-p", "1", "-trimpath", "-o", command === "piik-server" ? binary : clientBinary, `./cmd/${command}`,
     ], { cwd: ROOT, env: { ...process.env, GOMAXPROCS: "2" }, encoding: "utf8", windowsHide: true, timeout: 120_000 });

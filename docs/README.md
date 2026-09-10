@@ -7,7 +7,7 @@
 | What you need | Start here |
 | --- | --- |
 | Join a friend or share a screen | [Quick Start](../README.md) |
-| Run Client, choose a mode, or fix capture trouble | [Client guide](../cmd/piik-client/README.md) |
+| Run App, choose a mode, or fix capture trouble | [App guide](../cmd/piik-app/README.md) |
 | Collect a useful bug report | [Diagnostics and export](./reference/configuration.md#diagnostics) |
 | Host your own site | [Self-hosting](./operations/self-hosting.md) |
 | Configure ports, access or persistence | [Configuration reference](./reference/configuration.md) |
@@ -16,6 +16,9 @@
 
 The public entry points have English and Chinese versions. Technical references
 keep one owner rather than duplicate the full documentation tree.
+
+Contributors should follow the [naming convention](./reference/naming.md) for
+display names, commands, packages and App/Server/Browser code boundaries.
 
 ## Run from source
 

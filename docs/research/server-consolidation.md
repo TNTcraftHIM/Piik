@@ -3,11 +3,11 @@
 - Reviewed: 2026-09-06
 - Status: implemented in the candidate; the acceptance list below is the
   remaining boundary
-- Scope: one shared Go backend for Hosted and self-contained Client operation
+- Scope: one shared Go backend for Hosted and self-contained App operation
 
 ## Current Ownership
 
-`cmd/piik-server` (Hosted) and `cmd/piik-client` (Client) compose the
+`cmd/piik-server` (Hosted) and `cmd/piik-app` (App) compose the
 same application from `internal/server` and own only their defaults,
 reachability, and lifecycle policy. Within that scope `protocol` owns wire types,
 strict decoding, and shared scalars; `config` owns environment validation plus
@@ -16,7 +16,7 @@ the SQLite database; `route` decides graph transitions without I/O; `signal`
 executes signaling and SFU effects under one lock; `sfu` owns admission, LiveKit
 room control, and token issue; `app` owns HTTP composition, site access, static
 assets, and lifecycle; and `webassets` carries the embedded Browser bundle.
-`internal/client` keeps the native, launcher, and platform boundaries and
+`internal/app` keeps the native, launcher, and platform boundaries and
 supervises no server process. These are useful boundaries, not duplication to
 remove.
 
@@ -47,9 +47,9 @@ share one route authority and LiveKit remains an optional fallback of that graph
 ```text
 one Go module
 cmd/piik-server -> shared server application
-cmd/piik-client -> shared server application + launcher + native media
+cmd/piik-app -> shared server application + launcher + native media
 internal/server    -> rooms, routing, HTTP/signaling, persistence, SFU adapters
-internal/client    -> current native and platform boundaries
+internal/app       -> current native and platform boundaries
 one React/Vite static artifact -> embedded in both binaries
 ```
 
@@ -69,7 +69,7 @@ unrelated locks around each map.
 
 - Standard [`net/http`](https://pkg.go.dev/net/http) and
   [`embed`](https://pkg.go.dev/embed) serve HTTP and the built assets.
-- Signaling reuses the Client's
+- Signaling reuses the App's
   [`coder/websocket`](https://pkg.go.dev/github.com/coder/websocket).
 - LiveKit room control and tokens use the standard library only: HS256 JWTs and
   Twirp JSON requests. The official
@@ -90,7 +90,7 @@ rollback, including stale asynchronous completions. Preserve short-lived SFU
 authority and release resources only after physical drain confirmation.
 
 Use the same Browser contract scenarios against Hosted and Local, plus one
-physical mixed Browser/Client media flow. Package size, startup and idle memory
+physical mixed Browser/App media flow. Package size, startup and idle memory
 are measured below. Keep one strict wire contract and one schema owner;
 avoid hand-maintained parallel TypeScript/Go validation rules. The Node server,
 bundled runtime, supervisor and old packaging paths retire in this same accepted
@@ -119,8 +119,8 @@ The before total is the Node runtime (91,694,408 B), the production
 and `dist/server` (856,898 B). The after total is the linux/amd64
 `piik-server` built with `-s -w` and embedded assets (13,983,906 B) plus its
 notices and `REVISION`. For reference, the windows/amd64 binaries are
-14,276,608 B (`piik-server`) and 22,703,104 B (`piik-client`, which also
-carries Pion and the terminal UI); the Client package additionally drops the
+14,276,608 B (`piik-server`) and 22,703,104 B (`piik-app`, which also
+carries Pion and the terminal UI); the App package additionally drops the
 Node runtime and dependency tree it used to ship beside its Go executable.
 
 The first two starts of a freshly built binary took 469 ms and 336 ms, which is

@@ -18,8 +18,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("native Client private wire", () => {
-  it("notifies only the current presentation request after Client discovery", async () => {
+describe("native App private wire", () => {
+  it("notifies only the current presentation request after App discovery", async () => {
     vi.stubGlobal("window", {
       setTimeout: globalThis.setTimeout,
       clearTimeout: globalThis.clearTimeout,
@@ -112,7 +112,7 @@ describe("native Client private wire", () => {
     const unexpected = vi.fn();
     client!.onClose(unexpected);
     await expect(client!.updateShare("share_123456", DEFAULT_QUALITY_SETTINGS))
-      .rejects.toThrow("Piik Client request failed");
+      .rejects.toThrow("Piik App request failed");
     await client!.ping();
     expect(sockets[0]!.close).not.toHaveBeenCalled();
     expect(unexpected).not.toHaveBeenCalled();

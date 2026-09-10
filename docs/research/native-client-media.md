@@ -1,4 +1,4 @@
-# Native Client Media Evidence
+# Native App Media Evidence
 
 - Reviewed: 2026-09-05
 - Scope: platform capture, one shared H.264/Opus source, Pion transport, Browser
@@ -8,19 +8,19 @@
 
 ## Result
 
-Piik Client can own one process-isolated Windows capture and hardware H.264
+Piik App can own one process-isolated Windows capture and hardware H.264
 encoder, feed its Annex-B access units into one Pion source, and deliver that
 source through independent WebRTC transports to unmodified Chrome receivers.
 The Browser remains the room, route, and signaling authority.
 
-The same Client can run the Local authority, open the normal Host page, and
+The same App can run the Local authority, open the normal Host page, and
 attach that native source to the current route. A remote Pion Viewer then
 received 30 packets over a selected `srflx`-to-`srflx` pair. The validation
 session carried signaling through a temporary reverse SSH path only; media was
 negotiated directly by ICE.
 
 On 2026-09-05, a separate Windows Local gate used a Browser Host with synthetic
-1280x720 motion and a Client-activated Viewer. The Viewer exclusively claimed
+1280x720 motion and an App-activated Viewer. The Viewer exclusively claimed
 the v8 loopback control session and real Chrome decoded 621 frames at 1280x720.
 This proves the Browser-to-Native receive/local-bridge path rather than a silent
 Browser fallback. A Pion integration gate separately forwards the same H.264
@@ -37,14 +37,14 @@ An isolated LiveKit 1.13.6 gate carried the same native source through one
 reserved local Pion edge into the existing Browser `SfuPublisher`; an ordinary
 LiveKit Viewer received the default 1080p source, then 15 consecutive 854x480
 frames after one live Native/SFU profile change. The direct native P2P path,
-Browser, Client, LiveKit process, ports, and profiles all cleaned up.
+Browser, App, LiveKit process, ports, and profiles all cleaned up.
 
 The opt-in `gate:client-media` run proved, in order:
 
 - WGC capture and adapter-bound Media Foundation H.264 became active;
 - 30+ encoded 1280x720 frames crossed the bounded process protocol;
 - a PLI caused a later recovery unit;
-- the packaged Client exposed only separately probed video, process-audio,
+- the packaged App exposed only separately probed video, process-audio,
   system-audio, and hardware-H.264 capability booleans before control connected;
 - two Pion ICE/DTLS/SRTP edges each delivered 30+ decoded 1280x720 frames
   to Chrome from that one encoded source;
@@ -56,7 +56,7 @@ The opt-in `gate:client-media` run proved, in order:
 - closing the captured source ended its share, released the old media path, and
   a second capture generation in the same room delivered a different media
   object plus 30 new frames to the existing Viewer;
-- Client, capture, Browser, ports, and the isolated profile all closed.
+- App, capture, Browser, ports, and the isolated profile all closed.
 
 Unit coverage separately enforces the supplied edge capacity, forwards PLI/FIR
 to the shared video source, validates the same PeerConnection's Opus section,
@@ -70,7 +70,7 @@ The audio adapter uses `github.com/thesyncim/gopus` behind the private
 `nativeaudio` boundary. It accepts fixed 48 kHz stereo PCM16/20 ms frames,
 encodes into a caller-owned Opus buffer, and can be replaced without changing
 the media edge or control wire. The dependency is BSD-3-Clause licensed and
-requires Go 1.25; Client CI uses Go 1.26.6.
+requires Go 1.25; App CI uses Go 1.26.6.
 
 ## Current Boundary
 
@@ -90,7 +90,7 @@ and resumes both Viewers. It proves the same Pion source survives two hardware
 capture/encoder generations; direct capture probes also produced every current
 resolution/FPS extreme, and the same route survives an explicit native source
 switch. The result does not yet prove macOS/Linux physical capture or endurance.
-Native Host media is exposed only through an explicit Client-launched Host
+Native Host media is exposed only through an explicit App-launched Host
 selection; an ordinary Web Host retains Browser capture.
 
 Native code does not publish directly to LiveKit. One local Pion edge gives the
@@ -133,7 +133,7 @@ Native shares use the same Pion UDP socket for all edges. Site and one-link
 shares make one bounded, best-effort PCP, UPnP, or NAT-PMP mapping through
 NetBird's standalone Go NAT package; pure LAN Local mode does not. A physical
 router created and removed an ephemeral UPnP mapping; the Apache-2.0 dependency
-added about 0.38 MiB to the stripped Windows Client. Mapping begins
+added about 0.38 MiB to the stripped Windows App. Mapping begins
 with the share, is awaited before the first PeerConnection, refreshes only when
 a later edge arrives after half the requested lease, and is removed with the
 engine. Failure is cached for that share and leaves ordinary ICE/STUN unchanged.
@@ -171,7 +171,7 @@ Discarding padding kept the reader alive but introduced downstream sequence
 gaps, NACKs and reduced decoded cadence. Forwarding valid padding through Pion's
 existing `WriteRTP`, while excluding it from media-frame counts, restored two
 1080p Viewers to about 30 fps with zero packet loss. The same gate passed live
-quality, pause/resume, audio-presence source changes and Client-exit fallback.
+quality, pause/resume, audio-presence source changes and App-exit fallback.
 Native payload-capacity evidence does not require decoded dimensions; encoded
 receivers can supply real transport evidence without opening a decoder.
 

@@ -734,7 +734,7 @@ async function main(): Promise<void> {
       "-OutputDirectory",
       buildRoot,
     ]);
-    const executable = join(buildRoot, "piik-client-capture.exe");
+    const executable = join(buildRoot, "piik-capture.exe");
     const probe = JSON.parse(run(executable, ["--probe"])) as Probe;
     const adapter = probe.adapters.find((candidate) => candidate.hardwareH264.length > 0);
     const encoder = adapter?.hardwareH264[0];
@@ -859,9 +859,9 @@ async function main(): Promise<void> {
     await mkdir(nativeRoot, { recursive: true });
     await copyFile(
       executable,
-      join(nativeRoot, "piik-client-capture.exe"),
+      join(nativeRoot, "piik-capture.exe"),
     );
-    const clientExecutable = join(packageRoot, "piik-client.exe");
+    const clientExecutable = join(packageRoot, "piik-app.exe");
     const go = process.env.PIIK_GO?.trim() || "go";
     // The Client embeds the Vite output, so the Web build precedes the Go build.
     run(process.env.ComSpec || "cmd.exe", [
@@ -869,7 +869,7 @@ async function main(): Promise<void> {
     ], ROOT);
     run(
       go,
-      ["build", "-trimpath", "-o", clientExecutable, "./cmd/piik-client"],
+      ["build", "-trimpath", "-o", clientExecutable, "./cmd/piik-app"],
       ROOT,
     );
     client = spawn(clientExecutable, [

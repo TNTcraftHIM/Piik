@@ -43,7 +43,7 @@ Hosted Server uses SQLite by default:
   directory; service/container templates select a writable persistent directory;
 - an explicit absolute path selects that SQLite file;
 - `ROOM_DATABASE_PATH=:memory:` explicitly selects process-only rooms, whose
-  authority ends at process exit. Client Local uses this memory composition
+  authority ends at process exit. App Local uses this memory composition
   directly and does not inherit Hosted environment defaults.
 
 Stable mode stores only `roomId`, Host-token digest, Viewer-grant digest,

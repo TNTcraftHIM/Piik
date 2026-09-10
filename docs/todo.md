@@ -7,15 +7,36 @@ and Git/PRs own completed history. A parked idea is not implementation authority
 
 ## Now
 
-No further product implementation is queued for the accepted Piik rename.
-Its coordinated Web/Client/Server and Git-history cutover follows the
-[rename plan](./research/piik-rename-plan.md); the immutable release descriptor
-and deployment record own rollout identity. Preserve the original repository
-backup and external-audit worktree. Website work starts on owner direction.
+After the accepted App naming release, draft the English/Chinese README,
+onboarding and GitHub Pages website as one coherent public introduction.
+Use the [naming convention](./reference/naming.md), the existing mascot and
+the accepted website-only brand animation. Preview locally before publication;
+keep private deployment details out of the public site. Preserve the rename
+recovery archive and external-audit worktree. Release metadata owns deployed identity.
 
 ## Next — Awaiting Owner Direction
 
 The owner owns **piik.tv**.
+Review deployment feature switches, starting with an explicit P2P-only mode:
+the operator must be able to disable SFU in configuration while retaining STUN,
+room authority/signaling and P2P viewing. Current `SFU_UDP_PORT` already controls
+SFU availability; inspect that contract and the forced-private-mode UI before
+adding a second boolean with potentially conflicting meaning. Review which
+other options belong to deployment configuration, runtime parameters or fixed
+implementation constants. Keep this separate from public-facing documentation drafting.
+
+The owner proposes GitHub Pages for the public website and the dedicated US
+test server for a separate P2P-only demonstration site. Plan this after naming
+and configuration review; no public demo is deployed yet. The existing private
+production site remains private. P2P-only has no SFU fallback when direct/peer
+paths cannot connect; the demonstration must describe that actual capability.
+
+Redesign the README, onboarding guides and Wiki/documentation navigation as one
+coherent release-preparation task. The owner is dissatisfied with the current
+structure; do not keep polishing it piecemeal. Until then, change only necessary
+names, runnable commands and links. Keep the new public entry brief, visual and
+easy to follow, with deeper technical detail in developer guides.
+
 Design the GitHub Pages website around the accepted brand study. Keep one
 current internal contract; third-party names/notices remain accurate. DNS/Pages
 and public publication are separate from the repository rename. The private
@@ -28,8 +49,8 @@ The primary goal is lower total complexity, not perfect performance: small gains
 do not justify permanent mechanisms or larger maintenance cost. Preserve viewing
 quality and product behavior; fewer lines alone do not justify a rewrite.
 
-Use the Client discovery and settings-ownership findings as leads for a
-repository-wide lifecycle audit across Web UI, shared Go server, Client and
+Use the App discovery and settings-ownership findings as leads for a
+repository-wide lifecycle audit across Web UI, shared Go server, App and
 media adapters. This is future work, not an expansion of the current entry fix.
 Look for these recurring patterns:
 
