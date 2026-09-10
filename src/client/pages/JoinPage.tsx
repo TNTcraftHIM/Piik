@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { AppHeader } from "../components/living/Header";
-import { ComicTooltip } from "../components/living/ComicTooltip";
+import { Tooltip } from "../components/living/Tooltip";
 import { Glyph } from "../ui/icons";
 import { useCopy } from "../ui/copy";
 import { roomRouteForExplicitEntry } from "../lib/session";
@@ -27,7 +27,6 @@ export function JoinPage() {
     <button
       className="lr-join-go"
       type="submit"
-      title={vis ? undefined : t("join.submit")}
       aria-label={t("join.submit")}
       disabled={roomId.length !== 4}
     >
@@ -43,7 +42,6 @@ export function JoinPage() {
           <span
             key={rejectedAttempt}
             className={`lr-join-door${error ? " is-shake" : ""}`}
-            title={vis ? undefined : t("join.title")}
             role="img"
             aria-label={t("join.title")}
           >
@@ -99,11 +97,9 @@ export function JoinPage() {
               )}
             </>
           ) : null}
-          {vis ? (
-            <ComicTooltip kind="hint-join-go">{goButton}</ComicTooltip>
-          ) : (
-            goButton
-          )}
+          <Tooltip kind="hint-join-go" text={vis ? undefined : t("join.submit")}>
+            {goButton}
+          </Tooltip>
           {vis ? null : <span className="lr-cap">{t("join.submit")}</span>}
         </form>
       </main>

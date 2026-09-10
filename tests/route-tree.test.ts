@@ -3,12 +3,39 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { RouteTree } from "../src/client/components/living/RouteTree.tsx";
+import { Couch } from "../src/client/components/living/Couch.tsx";
 import { participantColor } from "../src/client/components/living/participant-color.ts";
 import { topologyLayoutForWidth } from "../src/client/components/living/route-tree-layout.ts";
 import { labelParticipantSnapshot } from "../src/client/lib/viewer-presence.ts";
 import { setCopy } from "../src/client/ui/copy.ts";
+import { deriveParticipantStatus } from "../src/client/ui/media-status";
 
 afterEach(() => setCopy({ lang: "zh", vis: false }));
+
+it("keeps presence and readiness available in participant descriptions", () => {
+  setCopy({ lang: "en", vis: true });
+  const render = (online: boolean) => renderToStaticMarkup(createElement(Couch, {
+    view: online ? "viewer" : "host",
+    host: { key: "host", name: "Host name", online, you: !online },
+    entries: [{
+      key: "viewer", name: "Viewer name",
+      status: deriveParticipantStatus({ mediaReady: false, upstream: { kind: "none" } }, true), you: online,
+    }],
+  }));
+  const offline = render(false);
+  expect(offline).toContain('aria-label="Host name · Host · you · Offline"');
+  expect(offline).toContain('class="lr-pawn-led" data-tone="busy"');
+  const online = render(true);
+  expect(online).toContain('title="Host name"');
+  expect(online).toContain('aria-label="Viewer name · you · Routing"');
+  expect(online).toContain('title="Viewer name"');
+  expect(online).not.toContain('class="lr-pawn-led"');
+  expect(online).toContain('is-waiting');
+  setCopy({ vis: false });
+  const textMode = render(true);
+  expect(textMode).toContain('title="Host name · Host · Online"');
+  expect(textMode).toContain('title="Viewer name · you · Routing"');
+});
 
 describe("RouteTree", () => {
   it("sorts every Viewer by stable peer identity", () => {
@@ -223,7 +250,7 @@ describe("RouteTree", () => {
       {
         role: "host",
         peerId: hostPeerId,
-        displayName: "👑 (abc123)",
+        displayName: "🎮 (abc123)",
         upstream: { kind: "none" },
       },
       {
@@ -253,7 +280,7 @@ describe("RouteTree", () => {
     expect(html).toContain(">abc123</text>");
     expect(html).toContain(">def456</text>");
     expect(html).toContain(">👤-custom</text>");
-    expect(html).not.toContain(">👑 (abc123)</text>");
+    expect(html).not.toContain(">🎮 (abc123)</text>");
     expect(html).not.toContain(">👤 (def456)</text>");
     expect(html).toContain("scale(0.82)");
   });

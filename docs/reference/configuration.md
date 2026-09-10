@@ -4,6 +4,18 @@ The tracked [`.env.example`](../../.env.example) is the executable schema
 companion; `internal/server/config` is validation truth. Keep real values in the
 service secret store or an untracked access-restricted environment file.
 
+## Ownership
+
+- Deployment configuration owns listeners, advertised origins, persistence,
+  admission, capacity and optional services. Change it before starting the process.
+- The Host owns share settings and the available per-share route switches in the
+  shared Web UI. Server and App use the same controls, order and semantics;
+  configuration changes availability, not which controls exist. A fixed switch
+  remains visible and explains the reason in text or its pure-visual hint.
+- Protocol versions, queue bounds and routing/adaptation constants stay in code.
+  They are not deployment tuning knobs. Debug and report destinations are
+  explicit diagnostic options, not normal share settings.
+
 ## Application Environment
 
 | Variable | Contract |
@@ -19,13 +31,13 @@ service secret store or an untracked access-restricted environment file.
 | `ENDPOINT_MEDIA_COPY_CAPACITY` | Shared endpoint steady-copy cap `1..3`, default `2`. |
 | `STUN_URLS` | Comma-separated advertised `stun:` discovery URLs; at least one is required in production. These are not local bind addresses and may use an unproxied DNS name separate from the Web origin. |
 | `STUN_LISTEN_HOST` | Hosted IPv4 STUN bind address, default `0.0.0.0` when `STUN_URLS` is configured; independent of HTTP `LISTEN_HOST`. Local App construction creates no STUN listeners. |
-| `NAT_PREDICTION_ENABLED` | Optional bounded NAT prediction capability, default `false`; requires an ordinary `STUN_URLS` endpoint on UDP 3478. Hosted startup binds UDP 3479/3480 before advertising the capability. Firewall reachability remains an operator requirement. |
+| `NAT_PREDICTION_ENABLED` | Optional bounded NAT prediction capability, default `false`; requires an ordinary `STUN_URLS` endpoint on UDP 3478. Hosted startup binds UDP 3479/3480 before advertising the capability. When unavailable, the visible NAT switch is locked off; ordinary ICE remains. Firewall reachability remains an operator requirement. |
 
 Automatic SFU fallback runs inside the Hosted process when `SFU_UDP_PORT` is set:
 
 | Variable | Contract |
 | --- | --- |
-| `SFU_UDP_PORT` | Optional UDP media port `1..65535`; unset or blank disables SFU. Set `7882` for the standard public listener. |
+| `SFU_UDP_PORT` | Optional UDP media port `1..65535`; unset or blank disables SFU and fixes Privacy mode on for every room. Set `7882` for the standard public listener and allow the Host to choose Privacy mode. |
 | `SFU_LISTEN_HOST` | IPv4 bind address, default `0.0.0.0`; independent of HTTP `LISTEN_HOST`. Read only when SFU is enabled. |
 | `SFU_PUBLIC_IP` | Optional explicit IPv4 advertised-address override for a host behind NAT. Read only when SFU is enabled. |
 
@@ -33,6 +45,11 @@ SFU control uses the application's authenticated signaling connection. No
 separate control origin or infrastructure credentials are configured. Local and
 public-link App construction create no SFU listener. The relay does not
 provide application E2EE.
+
+For a P2P-only Server, leave `SFU_UDP_PORT` blank. Room authority, signaling,
+configured STUN and peer relays remain; no media-server fallback is possible.
+The server enforces this even if a Host requests hybrid mode. There is no
+separate `SFU_ENABLED` flag to conflict with the listener configuration.
 
 The SQLite parent directory must exist and be writable. The systemd template
 sets `/var/lib/piik/rooms.sqlite` under its managed state directory; the
@@ -45,7 +62,8 @@ Removed access, room TTL/lease, endpoint-tier, room-rollout, and TURN variables 
 startup even when blank. A present `NODE_ENV` fails the same way, so a stale
 environment file cannot silently drop a deployment out of production. The
 private deployment is upgraded atomically; there are no compatibility aliases or
-dual configuration readers.
+dual configuration readers. [Versioning](./versioning.md) owns the planned public
+upgrade promise and the work required before its first release.
 
 ## Diagnostics
 

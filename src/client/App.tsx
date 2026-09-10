@@ -30,6 +30,13 @@ import { installBrowserDebug } from "./lib/debug";
 import { OverlayPreviewPage } from "./pages/OverlayPreviewPage";
 import { TooltipPreviewPage } from "./pages/TooltipPreviewPage";
 
+const StatusPreviewPage = import.meta.env.DEV
+  ? lazy(() => import("./pages/StatusPreviewPage").then((module) => ({ default: module.StatusPreviewPage })))
+  : null;
+const PlaybackPreviewPage = import.meta.env.DEV
+  ? lazy(() => import("./pages/PlaybackPreviewPage").then((module) => ({ default: module.PlaybackPreviewPage })))
+  : null;
+
 const appRoute = parseAppRoute(window.location.pathname);
 const overlayPreview = import.meta.env.DEV && window.location.pathname === "/__overlay-preview";
 const tooltipPreview = import.meta.env.DEV && window.location.pathname === "/__tooltip-preview";
@@ -129,6 +136,12 @@ class RouteBoundary extends Component<
 }
 
 function AppRoute() {
+  if (PlaybackPreviewPage && window.location.pathname === "/__playback-preview") {
+    return <PlaybackPreviewPage />;
+  }
+  if (StatusPreviewPage && window.location.pathname === "/__status-preview") {
+    return <StatusPreviewPage />;
+  }
   if (overlayPreview) {
     return <OverlayPreviewPage />;
   }
@@ -275,7 +288,7 @@ function SiteAccessGate({
         : getSiteAccess(),
       surface === "host"
         ? getRuntimeCapabilities()
-        : Promise.resolve<RuntimeCapabilities>({ natPrediction: false }),
+        : Promise.resolve(null),
     ]).then(
       ([status, nextCapabilities]) => {
         if (!active) return;
@@ -340,7 +353,7 @@ function SiteAccessGate({
         getSiteAccess(),
         surface === "host"
           ? getRuntimeCapabilities()
-          : Promise.resolve<RuntimeCapabilities>({ natPrediction: false }),
+          : Promise.resolve(null),
       ]);
       setCapabilities(nextCapabilities);
       setAccess(stateFromStatus(status));
@@ -391,6 +404,7 @@ function SiteAccessGate({
     return (
       <HostPage
         launchedByClient={clientLaunchBootstrap?.launchedByClient}
+        sfuAvailable={capabilities?.sfu === true}
         natPredictionAvailable={capabilities?.natPrediction === true}
         onAuthorizationRequired={() =>
           setAccess({ kind: "required", error: t("gate.expired") })

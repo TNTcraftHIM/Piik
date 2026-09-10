@@ -30,22 +30,18 @@ revision; they are evidence rather than current command examples.
 
 ## Code ownership and vocabulary
 
-- `internal/app` owns the standalone application and its native/launcher
-  components; `cmd/piik-app` is its thin command entry.
-- `internal/server` owns the reusable room service and Hosted runtime;
-  `cmd/piik-server` is its command entry. The App runs that same service for
-  Local/public-link rooms, without a second backend implementation.
-- `src/client` is the Browser frontend. HTTP/WebSocket clients, signaling
-  `clientId`, protocol clients and similar connection roles remain `client`.
+The [engineering module map](./engineering.md#module-map) owns directory
+responsibilities. HTTP/WebSocket clients, signaling `clientId`, protocol clients
+and similar connection roles remain `client`; they do not name the standalone App.
+
 - Follow each language's semantics: lowercase Go packages, exported `PascalCase`
   and unexported `camelCase`; existing TypeScript component/type conventions.
   Brand casing must not change visibility or create unnecessary name prefixes.
 
 Renaming the standalone product is not a protocol or persistence change.
-Keep `piik-client-v9`, the discovery service name, Browser activation/storage
-keys, the `Piik` configuration directory and diagnostic categories at their
-current exact contracts. Change such identifiers only with a separate behavior
-or contract decision; do not add aliases or dual readers for display renames.
+Keep discovery, wire and stored identifiers at their current contracts. Their
+change rules belong to [versioning](./versioning.md); do not add aliases or dual
+readers merely for a display rename.
 
 ## Basis
 

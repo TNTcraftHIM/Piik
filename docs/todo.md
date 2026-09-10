@@ -7,109 +7,57 @@ and Git/PRs own completed history. A parked idea is not implementation authority
 
 ## Now
 
-Finish the in-flight README/first-use corrections and homepage review, then
-consolidate repository conventions before expanding the public website. The
-owner accepted the general visual direction; keep App/Server behavior unchanged.
-The website, domain and demo have not been published. Preserve the rename recovery
-archive and external-audit worktree.
+Review the consolidated [engineering/interface map](./reference/engineering.md),
+[visual language](./design/visual-language.md) and
+[public version design](./reference/versioning.md) before expanding the website.
+Current code includes the accepted runtime-capability controls and presentation
+work; keep the pending phase together for integration. Main and production still
+retain their prior release. Preserve the rename recovery archive and external-audit
+worktree.
 
-Inventory design, documentation, naming/coding rules, API contracts, frontend/
-backend responsibilities and module boundaries. For each topic identify its
-existing owner, callers and any conflicting or duplicated prescriptions. Merge
-duplicate requirements into that owner and link from the shared documentation
-entry; do not turn one giant document into a new source of coupling. Keep
-accepted rules distinct from historical research and proposed changes. Trace
-code before treating a wording mismatch as an implementation defect. Fix proven
-low-cost inconsistencies; plan material contract or module changes separately.
-The shared visual-language consolidation is the first example of this work.
-
-Define the public version/compatibility policy in that same preparation pass.
-Inventory App/Server release identity, build SHA, Web/native signaling and
-capture protocols, persisted schema and room/route generations before choosing
-their rules. Compare mature projects and primary specifications; decide whether
-the first public release is `v1.0.0` or SHA-labelled, how an installed App and a
-newer site negotiate support, and how incompatible upgrades are presented and
-recovered. A release label, compatibility version and live generation are not
-interchangeable counters. Preserve traceable build identity and establish one
-documented compatibility promise; avoid coordinated resets, automatic broad
-compatibility layers or data migrations before the policy is accepted. The
-current pre-release single-contract rule still applies in the meantime.
-
-Resume the [public introduction](./design/public-introduction.md), English/Chinese
-guides and `site/` once this conventions pass is complete. Local preview and the
-manual Pages workflow remain the baseline; publication is a separate step.
+Before declaring a public release, implement the readiness work owned by
+[versioning](./reference/versioning.md#first-public-release-readiness): product
+version plus SHA in the existing release pipeline, SemVer-aware update readers,
+observable native incompatibility, scoped metadata extensibility and actual
+mixed-version checks. Do not reset storage or live authority generations.
+This design has not changed the current private contracts or release tags.
 
 ## Next — Awaiting Owner Direction
 
-The owner owns **piik.tv**.
-Review deployment feature switches, starting with an explicit P2P-only mode:
-the operator must be able to disable SFU in configuration while retaining STUN,
-room authority/signaling and P2P viewing. Current `SFU_UDP_PORT` already controls
-SFU availability; inspect that contract and the forced-private-mode UI before
-adding a second boolean with potentially conflicting meaning. Review which
-other options belong to deployment configuration, runtime parameters or fixed
-implementation constants. Keep this separate from public-facing documentation drafting.
+Resume the accepted [public introduction](./design/public-introduction.md):
+short English/Chinese README and first-use guides, the static site and its
+mascot-only interactions. Keep detailed technical help in developer/operations
+owners. No further website expansion precedes the conventions/version review.
 
-The owner proposes GitHub Pages for the public website and the dedicated US
-test server for a separate P2P-only demonstration site. Plan this after naming
-and configuration review; no public demo is deployed yet. The existing private
-production site remains private. P2P-only has no SFU fallback when direct/peer
-paths cannot connect; the demonstration must describe that actual capability.
+The owner owns **piik.tv**. GitHub Pages is the proposed public website; the
+dedicated US server is a proposed separate P2P-only demonstration. Neither is
+published. Choose source visibility, public assets, release notes, download/demo
+destinations and DNS/Pages settings before publication. The existing private
+production service is not the public demo. P2P-only has no media-server fallback.
+Runtime capability configuration is implemented; do not reopen it as a second
+boolean or duplicate UI mode.
 
-Choose public download assets and source visibility before enabling website
-download links or publishing Pages. Keep the public introduction brief and
-visual, with deeper detail in the linked developer guides. DNS/Pages and public
-publication are separate from the private production service. Retain accurate
-third-party names, notices and platform limitations.
+The repository-wide lifecycle and ablation audit remains broader than this
+documentation/contract-map pass. Use [engineering review](./reference/engineering.md#ablation-and-review)
+and the App-discovery/settings failures to find:
 
-Include the owner-requested frontend/backend ablation review in that phase.
-Review duplicated behavior/state, module boundaries, interface clarity, lifecycle
-ownership, cohesion and coupling. Reuse mature modules and stable shared behavior.
-The primary goal is lower total complexity, not perfect performance: small gains
-do not justify permanent mechanisms or larger maintenance cost. Preserve viewing
-quality and product behavior; fewer lines alone do not justify a rewrite.
+- Permission, activation, capability, readiness and operation ownership conflated.
+- Failed promises/resources cached beyond their lifetime.
+- Obsolete async completion or cleanup modifying a replacement operation.
+- Cancellation, failure or absence interpreted as success.
+- Shared resources acquired too early, retained unused or retired by one consumer.
+- Draft/requested/applied settings or duplicated presentation writers overwriting
+  the current authority.
 
-Use the App discovery and settings-ownership findings as leads for a
-repository-wide lifecycle audit across Web UI, shared Go server, App and
-media adapters. This is future work, not an expansion of the current entry fix.
-Look for these recurring patterns:
+Search hits are leads. Trace real acquisition, use, commit and retirement,
+including A replaced by B before A finishes; fix proven owning boundaries.
+Keep uncertain observations separate from repairs. No generic manager, extra
+state machine or repository rewrite follows from a wording mismatch.
 
-- Permission, remembered activation, capability, connection readiness and live
-  operation ownership represented by the same flag or inferred from UI state.
-- Cached promises retaining `null`, rejection or a closed resource indefinitely;
-  failure latches whose lifetime exceeds the evidence that justified them.
-- Results after `await`, callbacks and `finally` writing shared state or closing
-  the current resource without checking the original operation/resource owner.
-- Cancellation, failure and absent observation sharing a return value that a
-  caller interprets as success; review the complete caller chain.
-- Connections, slots, listeners and queues acquired before actual demand, kept
-  after their consumer ends, or retired while another consumer still owns them.
-- Draft, requested, applied and server-acknowledged settings overwriting one
-  another; duplicated writers or status models that can contradict real media.
-
-Search results are leads, not defect evidence. Trace acquisition through use,
-commit and retirement, including error paths and shared consumers. Reproduce
-representative interleavings: A starts, is cancelled/replaced, B starts, then A
-completes or fails. Check both obsolete writes and obsolete cleanup, plus
-stop/restart and transient-failure recovery. Fix the owning boundary and remove
-redundant state rather than add case-specific flags, timers or a generic manager.
-Keep confirmed repairs separate from documented tradeoffs and unsupported
-suspicions; retain only focused checks that demonstrate a meaningful failure.
-
-English/Chinese Quick Start, documentation map and license guidance are prepared.
-Keep the README short and friendly, with the logo and a small usage illustration;
-detailed deployment/development guidance belongs in the linked guides. Draft a
-static GitHub Pages homepage with tutorials and self-contained demonstrations
-matching the living-room UI. Review final release assets, update/replacement
-guidance and public distribution alongside the new brand; existing packagers and
-Docker recipe are the baseline.
-Keep expensive packaging manual and branch CI quiet. No broad media redesign is
-part of naming or documentation work.
-
-[Verification status](./verification-status.md) owns broader physical limits.
-NAT and Auto are complete features; further statistical/hardware research is not
-required to finish this phase. Run any new physical workload serially, with stable
-executable paths and cleanup before the next.
+[Verification status](./verification-status.md) owns remaining device/network
+limits, including iOS playback/window/audio behavior. NAT and Auto are complete
+features; broader statistics are not a new blocker. Keep packaging manual,
+branch CI quiet, physical workloads serial and executables at stable paths.
 
 ## Parked Product Work
 
@@ -125,8 +73,9 @@ isolated reconnect reproduction remain locally in `build/room7534-investigation/
 
 1. **Public distribution and updates.** Candidate packagers, immutable descriptors,
    notices, the runtime-only OCI recipe and release checks exist. Choose the
-   public asset set and release notes before publishing a full-SHA GitHub Release
-   or image. Do not add automatic installation, container self-update, Watchtower,
+   public asset set and release notes before publishing a product-versioned
+   GitHub Release or image with retained full-SHA provenance, following
+   [versioning](./reference/versioning.md). Do not add automatic installation, container self-update, Watchtower,
    compatibility ranges or active-share interruption without distribution and
    recovery evidence. Ordinary branch pushes must not run expensive CI packaging.
 2. **Representative device/network acceptance.** Exercise public-network direct

@@ -219,6 +219,7 @@ export const DEFAULT_ROUTE_POLICY = {
 
 export const runtimeCapabilitiesSchema = z
   .object({
+    sfu: z.boolean(),
     natPrediction: z.boolean(),
   })
   .strict();

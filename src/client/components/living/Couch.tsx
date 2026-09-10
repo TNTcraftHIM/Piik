@@ -1,22 +1,20 @@
 // The couch: the roster as pawns watching the TV. Joining pawns hop in,
-// self carries the green pointer, and the host wears a crown.
+// self carries the green pointer, and the host carries a controller badge.
 import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
+import { ControllerMark } from "./ControllerMark";
 import { participantColor } from "./participant-color";
+import type { StatusDescriptor } from "../../ui/media-status";
+import { Tooltip } from "./Tooltip";
 
-export function PawnSvg({ color, crown }: { color: string; crown?: boolean }) {
+export function PawnSvg({ color, host }: { color: string; host?: boolean }) {
   return (
     <svg viewBox="0 0 40 48" width="40" height="48" aria-hidden="true">
-      {crown ? (
-        <path
-          d="M14 12.5 L11.5 2 L17 6.5 L20 0 L23 6.5 L28.5 2 L26 12.5 Z"
-          fill="var(--pawn-2)"
-        />
-      ) : null}
       <circle cx="20" cy="14" r="8.5" fill={color} />
       <path d="M5 46c0-13 6.5-17 15-17s15 4 15 17Z" fill={color} />
       <circle cx="17" cy="13" r="1.6" fill="var(--stage)" />
       <circle cx="23" cy="13" r="1.6" fill="var(--stage)" />
+      {host ? <ControllerMark x={20} y={29} width={19} /> : null}
     </svg>
   );
 }
@@ -24,8 +22,7 @@ export function PawnSvg({ color, crown }: { color: string; crown?: boolean }) {
 export interface CouchEntry {
   key: string;
   name: string;
-  connected: boolean;
-  statusLabel?: string;
+  status: StatusDescriptor;
   you?: boolean;
   selectable?: boolean;
 }
@@ -33,6 +30,7 @@ export interface CouchEntry {
 export interface CouchHostEntry {
   key: string;
   name: string;
+  online: boolean;
   you?: boolean;
   selected?: boolean;
   controls?: string;
@@ -40,12 +38,14 @@ export interface CouchHostEntry {
 }
 
 export function Couch({
+  view,
   host,
   entries,
   selectedKey,
   onSelect,
   emptyHint,
 }: {
+  view: "host" | "viewer";
   host?: CouchHostEntry | null;
   entries: CouchEntry[];
   selectedKey?: string | null;
@@ -54,6 +54,9 @@ export function Couch({
 }) {
   const { vis, t } = useCopy();
   const crowded = entries.length + (host ? 1 : 0) > 10;
+  const hostLabel = host
+    ? `${host.name} · ${t("common.host")}${host.you ? ` · ${t("common.you")}` : ""} · ${t(host.online ? "state.presence.online" : "state.presence.offline")}`
+    : undefined;
 
   return (
     <div className="lr-couch">
@@ -72,49 +75,41 @@ export function Couch({
           role="group"
           aria-label={`${t("common.host")} · ${t("common.viewers")}`}
         >
-          {host
-            ? host.onSelect
-              ? (
+          {host ? (
+            <Tooltip text={vis ? host.name : hostLabel}>
+              {host.onSelect ? (
                   <button
                     type="button"
                     className={`lr-pawn is-host${host.you ? " is-you" : ""}${host.selected ? " is-selected" : ""}`}
-                    title={host.name}
-                    aria-label={`${host.name} · ${t("common.host")}`}
+                    aria-label={hostLabel}
                     aria-pressed={host.selected}
                     aria-controls={host.controls}
                     onClick={host.onSelect}
                   >
-                    <PawnSvg color={participantColor(host.key)} crown />
-                    <i className="lr-pawn-led" aria-hidden="true" />
+                    <PawnSvg color={participantColor(host.key)} host />
                     <span className="lr-pawn-name">{host.name}</span>
                   </button>
-                )
-              : (
+                ) : (
                   <span
                     className={`lr-pawn is-host is-static${host.you ? " is-you" : ""}`}
-                    title={host.name}
-                    aria-label={`${host.name} · ${t("common.host")}`}
+                    aria-label={hostLabel}
+                    tabIndex={0}
                   >
-                    <PawnSvg color={participantColor(host.key)} crown />
-                    <i className="lr-pawn-led" aria-hidden="true" />
+                    <PawnSvg color={participantColor(host.key)} host />
                     <span className="lr-pawn-name">{host.name}</span>
                   </span>
-                )
-            : null}
+                )}
+            </Tooltip>
+          ) : null}
           {entries.map((entry, index) => {
-            const stateLabel = entry.connected
-              ? t("state.peer.connected")
-              : (entry.statusLabel ?? t("state.peer.connecting"));
-            const label = entry.you
-              ? `${entry.name} · ${t("common.you")}`
-              : `${entry.name} · ${stateLabel}`;
+            const stateLabel = t(entry.status.labelKey);
+            const hint = entry.status.tooltip ?? entry.status.comic;
+            const label = `${entry.name}${entry.you ? ` · ${t("common.you")}` : ""} · ${stateLabel}`;
             const inner = (
               <>
                 <PawnSvg color={participantColor(entry.key)} />
-                <i
-                  className={`lr-pawn-led${entry.connected ? "" : " is-wait"}`}
-                  aria-hidden="true"
-                />
+                {view === "host" ? <i className="lr-pawn-led" data-tone={entry.status.tone}
+                  data-pulse={entry.status.pulse || undefined} aria-hidden="true" /> : null}
                 <span className="lr-pawn-name">
                   {entry.name}
                 </span>
@@ -126,33 +121,37 @@ export function Couch({
             };
             const className = `lr-pawn${entry.you ? " is-you" : ""}${
               entry.selectable === false ? " is-static" : ""
-            }${selectedKey === entry.key ? " is-selected" : ""}`;
-            if (entry.selectable === false) {
-              return (
-                <span
-                  key={entry.key}
-                  className={className}
-                  style={style}
-                  title={entry.name}
-                  aria-label={label}
-                >
-                  {inner}
-                </span>
-              );
-            }
-            return (
+            }${selectedKey === entry.key ? " is-selected" : ""}${view === "viewer" && entry.status.pulse ? " is-waiting" : ""}`;
+            const pawn = entry.selectable === false ? (
+              <span
+                className={className}
+                style={style}
+                aria-label={label}
+                tabIndex={0}
+              >
+                {inner}
+              </span>
+            ) : (
               <button
-                key={entry.key}
                 type="button"
                 className={className}
                 style={style}
-                title={entry.name}
                 aria-label={label}
                 aria-pressed={selectedKey === entry.key}
                 onClick={() => onSelect?.(entry.key)}
               >
                 {inner}
               </button>
+            );
+            return (
+              <Tooltip key={entry.key}
+                kind={hint}
+                tone={entry.status.tone}
+                motion={entry.status.pulse ? "progress" : undefined}
+                text={vis ? hint ? undefined : entry.name : label}
+              >
+                {pawn}
+              </Tooltip>
             );
           })}
         </div>
@@ -167,7 +166,8 @@ export function Couch({
       {entries.length === 0 && !host ? (
         <div
           className="lr-couch-empty"
-          title={vis ? undefined : (emptyHint ?? t("host.viewers.empty"))}
+          role="img"
+          aria-label={emptyHint ?? t("host.viewers.empty")}
         >
           <Glyph name="users" size={22} />
         </div>

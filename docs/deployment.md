@@ -107,11 +107,11 @@ install.
 
 ## Update Check
 
-The application, Server deployment, and platform App all use the full Git
-revision as their release identity. A formal GitHub Release must use that exact
-40-character revision as its tag and keep the corresponding release URL. The
-current CI workflow produces short-lived candidates but does not publish a
-GitHub Release; publication remains an explicit distribution decision.
+Current private builds use the full Git revision as build identity. Their update
+readers accept only 40-character revision tags and the corresponding release URL.
+The [public version policy](./reference/versioning.md) requires updating these
+readers before publishing SemVer tags. CI currently produces candidates without
+publishing a GitHub Release; publication remains an explicit distribution decision.
 
 The default App launcher starts immediately, then performs one background
 request to the official Piik GitHub Releases API. It shows a link only when
@@ -128,8 +128,9 @@ bash deploy/check-release.sh
 
 The script runs the deployed binary's release check, which reads
 `/opt/piik/current/REVISION` and prints one JSON result.
-Exit status `0` means the deployed revision is current, `10` means a newer
-release is available, and `20` means the check could not establish a valid
+Exit status `0` means the deployed revision matches, `10` means a different
+release is advertised (the current reader does not establish ancestry/order),
+and `20` means the check could not establish a valid
 release identity. For a private repository, inject a short-lived `GITHUB_TOKEN`
 through the operator environment; never place it in the repository or command
 line. The command does not mutate files, services, containers, or persistent

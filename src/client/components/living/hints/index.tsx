@@ -12,6 +12,9 @@ import { SET1_SCENES } from "./set1";
 import { SET2_SCENES } from "./set2";
 import { SET3_SCENES } from "./set3";
 import { SET4_SCENES } from "./set4";
+import { PLAYBACK_SCENES, type PlaybackHintKind } from "./playback";
+import { CONTROL_SCENES, type ControlHintKind } from "./controls";
+import { comicStyle, getComicPresentation, type ComicTone, type ComicMotion } from "../comic-presentation";
 
 export type Set1Kind =
   | "hint-share-start"
@@ -49,17 +52,20 @@ export type Set4Kind =
   | "hint-topology"
   | "hint-close"
   | "hint-rename"
-  | "hint-theme"
+  | "hint-theme-light"
+  | "hint-theme-dark"
   | "hint-join-go"
   | "hint-theater"
   | "hint-theater-exit"
   | "hint-route-p2p"
+  | "hint-route-p2p-required"
   | "hint-route-sfu"
   | "hint-nat-prediction"
+  | "hint-nat-unavailable"
   | "hint-client-local"
   | "hint-client-site";
 
-export type HintKind = Set1Kind | Set2Kind | Set3Kind | Set4Kind;
+export type HintKind = Set1Kind | Set2Kind | Set3Kind | Set4Kind | PlaybackHintKind | ControlHintKind;
 
 export const HINT_KINDS: readonly HintKind[] = [
   "hint-share-start",
@@ -88,18 +94,40 @@ export const HINT_KINDS: readonly HintKind[] = [
   "hint-topology",
   "hint-close",
   "hint-rename",
-  "hint-theme",
+  "hint-theme-light",
+  "hint-theme-dark",
+  "hint-collapse",
+  "hint-password-show",
+  "hint-password-hide",
+  "hint-share-audio",
+  "hint-stop-audio",
+  "hint-share-audio-fixed",
+  "hint-silent-share-fixed",
   "hint-join-go",
   "hint-theater",
   "hint-theater-exit",
   "hint-route-p2p",
+  "hint-route-p2p-required",
   "hint-route-sfu",
   "hint-nat-prediction",
+  "hint-nat-unavailable",
   "hint-client-local",
   "hint-client-site",
   "hint-capture-browser",
   "hint-capture-window",
   "hint-capture-display",
+  "hint-local-play",
+  "hint-local-pause",
+  "hint-volume",
+  "hint-volume-basic",
+  "hint-mute",
+  "hint-unmute",
+  "hint-no-audio",
+  "hint-fullscreen",
+  "hint-fullscreen-exit",
+  "hint-pip",
+  "hint-pip-exit",
+  "hint-pip-unavailable",
 ];
 
 export type HintScene = (props: { theme: ComicTheme }) => ReactNode;
@@ -109,6 +137,8 @@ export const HINT_SCENES: Record<HintKind, HintScene> = {
   ...SET2_SCENES,
   ...SET3_SCENES,
   ...SET4_SCENES,
+  ...PLAYBACK_SCENES,
+  ...CONTROL_SCENES,
 };
 
 const HINT_KIND_SET: ReadonlySet<string> = new Set(HINT_KINDS);
@@ -121,11 +151,19 @@ export function isHintKind(kind: string): kind is HintKind {
 export const HintComic = memo(function HintComic({
   kind,
   size,
+  tone,
+  motion,
 }: {
   kind: HintKind;
   size?: number;
+  tone?: ComicTone;
+  motion?: ComicMotion;
 }) {
+  const defaults = getComicPresentation(kind);
+  const resolvedTone = tone ?? defaults.tone;
+  const resolvedMotion = motion ?? defaults.motion;
   const style: CSSProperties = {
+    ...comicStyle(resolvedTone, resolvedMotion),
     width: size != null ? `${size}px` : "min(320px, 86%)",
     height: "auto",
     display: "block",
@@ -134,6 +172,8 @@ export const HintComic = memo(function HintComic({
     "svg",
     {
       viewBox: "0 0 320 96",
+      "data-comic-tone": resolvedTone,
+      "data-comic-motion": resolvedMotion,
       style,
       "aria-hidden": true,
       focusable: false,

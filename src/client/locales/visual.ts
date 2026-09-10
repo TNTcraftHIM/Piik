@@ -53,6 +53,9 @@ export const visualTitleFrames = {
     "📺 🫧",
     "💤 ✨",
   ],
+  viewerReady: ["▶️"],
+  viewerUnavailable: ["❗"],
+  hostUnavailable: ["❗"],
   viewerWaiting: [
     "⏳",
     "⏳ 👀",

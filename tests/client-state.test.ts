@@ -94,7 +94,7 @@ describe("browser-local display name", () => {
     expect(defaultHostDisplayName(false)).toBe("Host");
 
     expect(defaultViewerDisplayName(true)).toBe("👤");
-    expect(defaultHostDisplayName(true)).toBe("👑");
+    expect(defaultHostDisplayName(true)).toBe("🎮");
   });
 
   it("stores only the canonical preference and falls back when cleared", () => {

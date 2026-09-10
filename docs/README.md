@@ -87,6 +87,18 @@ and [website preview and publishing](./operations/website.md).
 | Why a design was chosen | [Architecture decisions](./adr/) |
 | Measurements and platform limits | [Research](./research/) and [verification status](./verification-status.md) |
 
+## Shared conventions
+
+| When changing… | Follow this owner |
+| --- | --- |
+| Module responsibilities or interfaces | [Engineering and contract map](./reference/engineering.md) |
+| Product, package or code names | [Naming](./reference/naming.md) |
+| UI colour, illustration, motion or layout | [Visual language](./design/visual-language.md) |
+| Overlays, titles or state indicators | [Media status](./design/media-status.md) |
+| Releases, protocols or stored formats | [Versions and compatibility](./reference/versioning.md) |
+| Documentation or a duplicated rule | [Documentation ownership](./maintenance.md) |
+| Checks, PRs, integration or cleanup | [Contributing](../CONTRIBUTING.md) |
+
 For ongoing work, use [TODO](./todo.md). [Project memory](./project-memory.md)
-provides the compact project map; [maintenance](./maintenance.md) explains
-document ownership. Completed work lives in Git history and pull requests.
+provides the compact product map; [status](./status.md) indexes current source
+and deployment boundaries. Completed work lives in Git history and pull requests.

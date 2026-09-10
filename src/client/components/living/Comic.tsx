@@ -1,16 +1,20 @@
 // Panel comics (四宫格漫画): pictorial state strips that carry meaning with no
 // human language. Each
-// scene is a self-contained inline SVG: own <style>, vls- prefixed keyframes,
-// own prefers-reduced-motion block pinning informative final frames. Motion
-// constitution: state-change beats only, loops rest >=40%, max 2 movers per
-// panel, stamps play once and hold. SSR-safe: pure static markup, no hooks.
+// scene has its own vls- prefixed keyframes. Shared presentation owns tone,
+// duration and repetition; settled states and reduced motion share informative
+// poses. SSR-safe: pure static markup, no hooks.
 
 import { memo, type CSSProperties, type ReactNode } from "react";
+import { ControllerMark } from "./ControllerMark";
+import { comicStyle, getComicPresentation, type ComicMotion, type ComicTone } from "./comic-presentation";
 
 export type ComicKind =
   | "waiting-for-host"
   | "connecting-p2p"
   | "connecting-sfu"
+  | "signal-connecting"
+  | "signal-recovering"
+  | "signal-offline"
   | "tap-to-play"
   | "host-paused"
   | "recovering"
@@ -33,6 +37,9 @@ const DEFAULT_THEME: Record<ComicKind, ComicTheme> = {
   "waiting-for-host": "stage",
   "connecting-p2p": "stage",
   "connecting-sfu": "stage",
+  "signal-connecting": "paper",
+  "signal-recovering": "paper",
+  "signal-offline": "paper",
   "tap-to-play": "stage",
   "host-paused": "stage",
   recovering: "stage",
@@ -55,13 +62,11 @@ const DEFAULT_THEME: Record<ComicKind, ComicTheme> = {
  * (CSS motion would override it), so helpers bake positions into paths.
  * ------------------------------------------------------------------ */
 
-/* Cast is exported for the hint-scene sets under ./hints (control tooltips);
-   scene functions only dereference these at render time, so the hints ↔ Comic
-   module cycle is safe (function declarations hoist; consts read post-init). */
+/* Control hints reuse these scene objects and stable identity colours. */
 export const YOU = "#2fa66a";
-export const LIVE = "#2fa66a";
-export const WARN = "#d98e04";
-export const DANGER = "#d64541";
+export const LIVE = "var(--live)";
+export const WARN = "var(--warn)";
+export const DANGER = "var(--danger)";
 export const INK_STAGE = "#dfe8f2";
 export const MINT = "#9de8bf";
 export const SKY = "#7ea4f5";
@@ -79,14 +84,15 @@ export function Frame({
   x,
   w,
   theme,
-  accent,
+  result = false,
 }: {
   x: number;
   w: number;
   theme: ComicTheme;
-  accent?: string;
+  result?: boolean;
 }) {
   const paper = theme === "paper";
+  const border = paper ? "var(--ink)" : "#48597a";
   return (
     <rect
       x={x}
@@ -95,7 +101,7 @@ export function Frame({
       height={88}
       rx={w > 100 ? 14 : 12}
       fill={paper ? "var(--paper)" : "#0d1526"}
-      stroke={accent ?? (paper ? "var(--ink)" : "#48597a")}
+      stroke={result ? `var(--comic-tone, ${border})` : border}
       strokeWidth={2.5}
     />
   );
@@ -220,49 +226,6 @@ export function Moon({
   );
 }
 
-/** Host crown outline; dashed = the host is gone, not asleep. */
-const CROWN_PTS: ReadonlyArray<readonly [number, number]> = [
-  [-6, 0],
-  [-8.5, -10.5],
-  [-3, -6],
-  [0, -12.5],
-  [3, -6],
-  [8.5, -10.5],
-  [6, 0],
-];
-export function Crown({
-  x,
-  y,
-  k = 1,
-  dashed = false,
-  className,
-  baseOpacity,
-}: {
-  x: number;
-  y: number;
-  k?: number;
-  dashed?: boolean;
-  className?: string;
-  baseOpacity?: number;
-}) {
-  const d = `M${CROWN_PTS.map(([px, py]) => `${r2(x + px * k)} ${r2(y + py * k)}`).join(" L")} Z`;
-  return dashed ? (
-    <path
-      className={className}
-      opacity={baseOpacity}
-      d={d}
-      fill="none"
-      stroke={STAR_GOLD}
-      strokeWidth={2}
-      strokeDasharray="4 3"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  ) : (
-    <path className={className} opacity={baseOpacity} d={d} fill={STAR_GOLD} />
-  );
-}
-
 /** SFU relay server box; two slot lines light --live as the dot passes. */
 export function ServerBox({
   x,
@@ -381,7 +344,7 @@ export function RedX({
     <path
       className={className}
       d={`M${cx - arm} ${cy - arm} L${cx + arm} ${cy + arm} M${cx + arm} ${cy - arm} L${cx - arm} ${cy + arm}`}
-      stroke={DANGER}
+      stroke={`var(--comic-tone, ${DANGER})`}
       strokeWidth={3}
       strokeLinecap="round"
       fill="none"
@@ -444,26 +407,28 @@ export function Static({
   );
 }
 
-/** SVG-local reduced-motion block: kill keyframes, pin informative poses. */
+/** Settled and reduced-motion scenes share the same informative poses. */
 export function rmBlock(kills: string[], pins: Array<readonly [string, string]>): string {
-  const kill = kills.map((c) => `.${c}{animation:none}`).join("");
-  const pin = pins.map(([s, c]) => `${s}{${c}}`).join("");
-  return `@media (prefers-reduced-motion:reduce){${kill}${pin}}`;
+  const rules = [...kills.map((c) => [`.${c}`, "animation:none"] as const), ...pins];
+  const block = (scope: string) => rules.map(([selectors, styles]) =>
+    `${selectors.split(",").map((selector) => scope + selector.trim()).join(",")}{${styles}}`,
+  ).join("");
+  return `${block('svg[data-comic-motion="still"] ')}@media (prefers-reduced-motion:reduce){${block("")}}`;
 }
 
 /* ------------------------------ scenes ------------------------------ */
 
-/** 1. waiting-for-host: 1 wide panel, loop 3.2s. */
+/** 1. waiting-for-host: 1 wide panel. */
 function SceneWaiting({ theme }: { theme: ComicTheme }) {
   return (
     <>
       <style>{`
-.vls-wf-moon{transform-box:fill-box;transform-origin:center;animation:vlsWfMoon 3.2s ease-in-out infinite}
-.vls-wf-z1{animation:vlsWfZ 3.2s ease-in-out infinite}
-.vls-wf-z2{animation:vlsWfZ 3.2s ease-in-out .45s infinite}
-.vls-wf-z3{animation:vlsWfZ 3.2s ease-in-out .9s infinite}
-.vls-wf-eyes{transform-box:fill-box;transform-origin:center;animation:vlsWfBlink 3.2s ease-in-out infinite}
-.vls-wf-led{animation:vlsWfLed 1.1s ease-in-out infinite}
+.vls-wf-moon{transform-box:fill-box;transform-origin:center;animation:vlsWfMoon var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-wf-z1{animation:vlsWfZ var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-wf-z2{animation:vlsWfZ var(--comic-duration,3.2s) ease-in-out .45s var(--comic-repeat,1) both}
+.vls-wf-z3{animation:vlsWfZ var(--comic-duration,3.2s) ease-in-out .9s var(--comic-repeat,1) both}
+.vls-wf-eyes{transform-box:fill-box;transform-origin:center;animation:vlsWfBlink var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-wf-led{animation:vlsWfLed var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 @keyframes vlsWfMoon{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
 @keyframes vlsWfZ{0%{opacity:0;transform:translateY(3px)}8%{opacity:.9}20%,100%{opacity:0;transform:translateY(-3px)}}
 @keyframes vlsWfBlink{0%,66%,74%,100%{transform:scaleY(1)}70%{transform:scaleY(.12)}}
@@ -473,7 +438,7 @@ ${rmBlock(
   [[".vls-wf-z1,.vls-wf-z2,.vls-wf-z3", "opacity:.55"], [".vls-wf-led", "opacity:1"]],
 )}
 `}</style>
-      <Frame x={4} w={312} theme={theme} />
+      <Frame x={4} w={312} theme={theme} result />
       <Floor x1={24} x2={296} />
       <Pawn x={69} yb={76} s={11} />
       <g className="vls-wf-eyes">
@@ -494,7 +459,7 @@ ${rmBlock(
   );
 }
 
-/** 2/3. connecting P2P / SFU: 3 panels, loop 2.8s. */
+/** 2/3. connecting P2P / SFU: 3 panels. */
 function SceneConnecting({ theme, sfu }: { theme: ComicTheme; sfu: boolean }) {
   const k = sfu ? "vls-cs" : "vls-cn";
   const dotKf = sfu
@@ -513,11 +478,11 @@ function SceneConnecting({ theme, sfu }: { theme: ComicTheme; sfu: boolean }) {
   return (
     <>
       <style>{`
-.${k}-line{animation:${k}March 1.1s linear infinite}
-.${k}-dot{animation:${k}Dot 2.8s ease-in-out infinite}
-${sfu ? `.${k}-slots{animation:${k}Slots 2.8s ease-in-out infinite}` : ""}
-.${k}-warm{animation:${k}Warm 2.8s ease-in-out infinite}
-.${k}-led{animation:${k}Led .8s ease-in-out infinite}
+.${k}-line{animation:${k}March var(--comic-duration,3.2s) linear var(--comic-repeat,1) both}
+.${k}-dot{animation:${k}Dot var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+${sfu ? `.${k}-slots{animation:${k}Slots var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}` : ""}
+.${k}-warm{animation:${k}Warm var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.${k}-led{animation:${k}Led var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 @keyframes ${k}March{to{stroke-dashoffset:-16}}
 ${dotKf}
 @keyframes ${k}Warm{0%,52%{opacity:0}60%{opacity:.25}66%{opacity:.1}74%{opacity:.3}100%{opacity:.18}}
@@ -526,7 +491,7 @@ ${rmBlock(kills, pins)}
 `}</style>
       <Frame x={8} w={96} theme={theme} />
       <Frame x={112} w={96} theme={theme} />
-      <Frame x={216} w={96} theme={theme} />
+      <Frame x={216} w={96} theme={theme} result />
       <Floor x1={20} x2={92} />
       <Pawn x={56} yb={76} s={11} eyes />
       <Pawn x={128} yb={74} s={7} eyes color={SKY} />
@@ -570,18 +535,71 @@ ${rmBlock(kills, pins)}
   );
 }
 
-/** 4. tap-to-play: 2 panels, loop 2.4s. Companion to the real big button. */
+/** The page's control link, not a media path: no TV or video packets here. */
+function SceneSignal({ theme, state }: {
+  theme: ComicTheme;
+  state: "connecting" | "recovering" | "offline";
+}) {
+  const color = state === "connecting" ? SKY : state === "recovering" ? WARN : FAINT;
+  return (
+    <>
+      <style>{`
+.vls-signal-message{animation:vlsSignalMessage var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-signal-retry{transform-box:fill-box;transform-origin:center;animation:vlsSignalRetry var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+@keyframes vlsSignalMessage{0%{transform:translateX(0);opacity:0}8%{opacity:1}40%{transform:translateX(82px);opacity:1}55%,100%{transform:translateX(82px);opacity:0}}
+@keyframes vlsSignalRetry{0%{transform:rotate(0)}55%,100%{transform:rotate(360deg)}}
+${rmBlock(["vls-signal-message", "vls-signal-retry"], [
+  [".vls-signal-message", "opacity:1;transform:translateX(41px)"],
+  [".vls-signal-retry", "transform:none"],
+])}
+`}</style>
+      <Frame x={4} w={312} theme={theme} result />
+      <BrowserWindow x={24} y={23} w={96} h={50}>
+        <circle cx={37} cy={43} r={3} fill={color} />
+        <path d="M47 43h56 M34 55h36 M77 55h26 M34 64h69" stroke={LINE} strokeWidth={2} strokeLinecap="round" />
+      </BrowserWindow>
+      <ServerBox x={254} y={25} w={42} h={46} />
+      <path
+        d={state === "connecting" ? "M130 48H244" : "M130 48H164 M204 48H244"}
+        stroke={color}
+        strokeWidth={2.5}
+        strokeDasharray="4 5"
+        strokeLinecap="round"
+        fill="none"
+      />
+      {state === "connecting" ? (
+        <>
+          <path d="M140 42l-6 6 6 6 M234 42l6 6-6 6" stroke={color} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+          <g className="vls-signal-message">
+            <rect x={136} y={40} width={16} height={13} rx={2} fill="var(--paper)" stroke={color} strokeWidth={2} />
+            <path d="M137 42l7 5 7-5" stroke={color} strokeWidth={1.5} strokeLinejoin="round" fill="none" />
+          </g>
+        </>
+      ) : state === "recovering" ? (
+        <g className="vls-signal-retry" stroke={color} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" fill="none">
+          <path d="M175 43a11 11 0 0 1 19-2l2 3 M190 44h6v-6 M193 53a11 11 0 0 1-19 2l-2-3 M178 52h-6v6" />
+        </g>
+      ) : (
+        <g stroke={color} strokeWidth={2.5} strokeLinecap="round" fill="none">
+          <path d="M174 43h5 M174 53h5 M189 43h5 M189 53h5 M176 59l16-22" />
+        </g>
+      )}
+    </>
+  );
+}
+
+/** 4. tap-to-play: 2 panels. Companion to the real big button. */
 function SceneTap({ theme }: { theme: ComicTheme }) {
   return (
     <>
       <style>{`
-.vls-tp-finger{animation:vlsTpFinger 2.4s ease-in-out infinite}
-.vls-tp-btn{transform-box:fill-box;transform-origin:center;animation:vlsTpBtn 2.4s ease-in-out infinite}
-.vls-tp-ripple{transform-box:fill-box;transform-origin:center;animation:vlsTpRipple 2.4s ease-out infinite}
-.vls-tp-flash{animation:vlsTpFlash 2.4s ease-in-out infinite}
-.vls-tp-play{transform-box:fill-box;transform-origin:center;animation:vlsTpPlay 2.4s ease-in-out infinite}
-.vls-tp-led{animation:vlsTpLed 2.4s ease-in-out infinite}
-.vls-tp-arcs{animation:vlsTpArcs 2.4s ease-in-out infinite}
+.vls-tp-finger{animation:vlsTpFinger var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-tp-btn{transform-box:fill-box;transform-origin:center;animation:vlsTpBtn var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-tp-ripple{transform-box:fill-box;transform-origin:center;animation:vlsTpRipple var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
+.vls-tp-flash{animation:vlsTpFlash var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-tp-play{transform-box:fill-box;transform-origin:center;animation:vlsTpPlay var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-tp-led{animation:vlsTpLed var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-tp-arcs{animation:vlsTpArcs var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 @keyframes vlsTpFinger{0%,18%{transform:translate(0,0)}42%,52%{transform:translate(30px,-18px)}78%,100%{transform:translate(0,0)}}
 @keyframes vlsTpBtn{0%,40%{transform:scale(1)}46%{transform:scale(.86)}54%{transform:scale(1.05)}60%,100%{transform:scale(1)}}
 @keyframes vlsTpRipple{0%,42%{transform:scale(1);opacity:0}45%{opacity:.75}72%,100%{transform:scale(1.65);opacity:0}}
@@ -599,7 +617,7 @@ ${rmBlock(
 )}
 `}</style>
       <Frame x={4} w={152} theme={theme} />
-      <Frame x={164} w={152} theme={theme} />
+      <Frame x={164} w={152} theme={theme} result />
       <circle className="vls-tp-ripple" cx={80} cy={48} r={24} fill="none" stroke={SKY} strokeWidth={3} />
       <g className="vls-tp-btn">
         <circle cx={80} cy={48} r={24} fill="#2f6fed" />
@@ -621,16 +639,16 @@ ${rmBlock(
   );
 }
 
-/** 5. host-paused: 2 panels, loop 3s. Cozy, not broken — no z's, no red. */
+/** 5. host-paused: 2 panels. Cozy, not broken — no z's, no red. */
 function ScenePaused({ theme }: { theme: ComicTheme }) {
   return (
     <>
       <style>{`
-.vls-hp-bars{animation:vlsHpBars 3s ease-in-out infinite}
-.vls-hp-led{animation:vlsHpLed 1.1s ease-in-out infinite}
-.vls-hp-eyes{transform-box:fill-box;transform-origin:center;animation:vlsHpBlink 3s ease-in-out infinite}
-.vls-hp-steam1{animation:vlsHpSteam 3s ease-in-out infinite}
-.vls-hp-steam2{animation:vlsHpSteam 3s ease-in-out 1.5s infinite}
+.vls-hp-bars{animation:vlsHpBars var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-hp-led{animation:vlsHpLed var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-hp-eyes{transform-box:fill-box;transform-origin:center;animation:vlsHpBlink var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-hp-steam1{animation:vlsHpSteam var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-hp-steam2{animation:vlsHpSteam var(--comic-duration,3.2s) ease-in-out 1.5s var(--comic-repeat,1) both}
 @keyframes vlsHpBars{0%,100%{opacity:.55}50%{opacity:1}}
 @keyframes vlsHpLed{0%,100%{opacity:1}50%{opacity:.3}}
 @keyframes vlsHpBlink{0%,44%,52%,100%{transform:scaleY(1)}48%{transform:scaleY(.12)}}
@@ -645,7 +663,7 @@ ${rmBlock(
 )}
 `}</style>
       <Frame x={4} w={152} theme={theme} />
-      <Frame x={164} w={152} theme={theme} />
+      <Frame x={164} w={152} theme={theme} result />
       <MiniTv x={36} y={16} w={88} h={54} />
       <rect x={42} y={22} width={76} height={38} rx={4} fill="#0a101c" opacity={0.5} />
       <g className="vls-hp-bars" fill={INK_STAGE}>
@@ -668,18 +686,18 @@ ${rmBlock(
   );
 }
 
-/** 6. recovering: 3 panels, loop 3.2s. Plug re-seats, LEDs chase, one sweat drop. */
+/** 6. recovering: 3 panels. Plug re-seats, LEDs chase, one sweat drop. */
 function SceneRecovering({ theme }: { theme: ComicTheme }) {
   return (
     <>
       <style>{`
-.vls-rc-spark{animation:vlsRcSpark 3.2s ease-in-out infinite}
-.vls-rc-plug{transform-box:fill-box;transform-origin:center;animation:vlsRcPlug 3.2s ease-in-out infinite}
-.vls-rc-plug-lines{animation:vlsRcPlugLines 3.2s ease-in-out infinite}
-.vls-rc-sweat{transform-box:fill-box;transform-origin:center;animation:vlsRcSweat 3.2s ease-in-out infinite}
-.vls-rc-c1{animation:vlsRcC1 3.2s ease-in-out infinite}
-.vls-rc-c2{animation:vlsRcC2 3.2s ease-in-out infinite}
-.vls-rc-c3{animation:vlsRcC3 3.2s ease-in-out infinite}
+.vls-rc-spark{animation:vlsRcSpark var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-rc-plug{transform-box:fill-box;transform-origin:center;animation:vlsRcPlug var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-rc-plug-lines{animation:vlsRcPlugLines var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-rc-sweat{transform-box:fill-box;transform-origin:center;animation:vlsRcSweat var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-rc-c1{animation:vlsRcC1 var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-rc-c2{animation:vlsRcC2 var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-rc-c3{animation:vlsRcC3 var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 @keyframes vlsRcSpark{0%{opacity:0}10%{opacity:1}30%,100%{opacity:.55}}
 @keyframes vlsRcPlug{0%{transform:translate(-4px,-9px) rotate(-6deg)}12%{transform:translate(-2px,-4px) rotate(5deg)}22%{transform:translate(0,-1px) rotate(-2deg)}30%,100%{transform:translate(0,0) rotate(0)}}
 @keyframes vlsRcPlugLines{0%{opacity:0}6%{opacity:.9}28%,100%{opacity:0}}
@@ -700,7 +718,7 @@ ${rmBlock(
 `}</style>
       <Frame x={8} w={96} theme={theme} />
       <Frame x={112} w={96} theme={theme} />
-      <Frame x={216} w={96} theme={theme} />
+      <Frame x={216} w={96} theme={theme} result />
       <Floor x1={20} x2={92} />
       <Pawn x={40} yb={76} s={8} eyes />
       <MiniTv x={66} y={44} w={26} h={18} />
@@ -719,9 +737,9 @@ ${rmBlock(
         fill={SKY}
         opacity={0}
       />
-      <circle className="vls-rc-c1" cx={272} cy={34} r={3} fill={LIVE} opacity={0.25} />
-      <circle className="vls-rc-c2" cx={284} cy={34} r={3} fill={LIVE} opacity={0.25} />
-      <circle className="vls-rc-c3" cx={296} cy={34} r={3} fill={LIVE} opacity={0.25} />
+      <circle className="vls-rc-c1" cx={272} cy={34} r={3} fill={`var(--comic-tone, ${WARN})`} opacity={0.25} />
+      <circle className="vls-rc-c2" cx={284} cy={34} r={3} fill={`var(--comic-tone, ${WARN})`} opacity={0.25} />
+      <circle className="vls-rc-c3" cx={296} cy={34} r={3} fill={`var(--comic-tone, ${WARN})`} opacity={0.25} />
     </>
   );
 }
@@ -731,11 +749,11 @@ function SceneRouteFailed({ theme }: { theme: ComicTheme }) {
   return (
     <>
       <style>{`
-.vls-rf-panel{transform-box:fill-box;transform-origin:center;animation:vlsRfIn .5s cubic-bezier(.3,1.5,.5,1) backwards}
+.vls-rf-panel{transform-box:fill-box;transform-origin:center;animation:vlsRfIn var(--comic-duration,3.2s) cubic-bezier(.3,1.5,.5,1) var(--comic-repeat,1) both}
 .vls-rf-p2{animation-delay:.2s}
-.vls-rf-march{animation:vlsRfMarch .4s linear .4s 3 both}
-.vls-rf-x{transform-box:fill-box;transform-origin:center;animation:vlsRfX .4s ease-out .8s backwards}
-.vls-rf-sweat{animation:vlsRfSweat 3s ease-in-out 1.2s infinite}
+.vls-rf-march{animation:vlsRfMarch var(--comic-duration,3.2s) linear .4s var(--comic-repeat,1) both}
+.vls-rf-x{transform-box:fill-box;transform-origin:center;animation:vlsRfX var(--comic-duration,3.2s) ease-out .8s var(--comic-repeat,1) both}
+.vls-rf-sweat{animation:vlsRfSweat var(--comic-duration,3.2s) ease-in-out 1.2s var(--comic-repeat,1) both}
 @keyframes vlsRfIn{from{opacity:0;transform:translateY(6px) scale(.9)}}
 @keyframes vlsRfMarch{from{stroke-dashoffset:0}to{stroke-dashoffset:-16}}
 @keyframes vlsRfX{from{opacity:0;transform:scale(1.5)}to{opacity:1;transform:scale(1)}}
@@ -757,7 +775,7 @@ ${rmBlock(
         <path d="M66 49 l-3 6 7 0 -3 6" stroke={DANGER} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" fill="none" />
       </g>
       <g className="vls-rf-panel vls-rf-p2">
-        <Frame x={164} w={152} theme={theme} accent={DANGER} />
+        <Frame x={164} w={152} theme={theme} result />
         <Floor x1={176} x2={304} />
         <Pawn x={192} yb={76} s={10} eyes />
         <MiniTv x={254} y={36} w={44} h={30} />
@@ -770,16 +788,16 @@ ${rmBlock(
   );
 }
 
-/** 8. playback-failed: 2 panels, loop 3s. Link fine, picture dead. */
+/** 8. playback-failed: 2 panels. The current picture is unavailable. */
 function ScenePlaybackFailed({ theme }: { theme: ComicTheme }) {
   return (
     <>
       <style>{`
-.vls-pf-s1{animation:vlsPfStaticA .36s steps(3) infinite}
-.vls-pf-s2{animation:vlsPfStaticB .36s steps(3) infinite}
-.vls-pf-rip{animation:vlsPfRip 3s ease-in-out infinite}
-.vls-pf-pawn{transform-box:fill-box;transform-origin:50% 100%;animation:vlsPfTap 3s ease-in-out infinite}
-.vls-pf-ring{animation:vlsPfRing 3s ease-in-out infinite}
+.vls-pf-s1{animation:vlsPfStaticA var(--comic-duration,3.2s) steps(3) var(--comic-repeat,1) both}
+.vls-pf-s2{animation:vlsPfStaticB var(--comic-duration,3.2s) steps(3) var(--comic-repeat,1) both}
+.vls-pf-rip{animation:vlsPfRip var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-pf-pawn{transform-box:fill-box;transform-origin:50% 100%;animation:vlsPfTap var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-pf-ring{animation:vlsPfRing var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 @keyframes vlsPfStaticA{0%{transform:translate(0,0);opacity:.5}33%{transform:translate(1px,-1px);opacity:.8}66%{transform:translate(-1px,1px);opacity:.35}100%{transform:translate(0,0);opacity:.5}}
 @keyframes vlsPfStaticB{0%{transform:translate(0,0);opacity:.35}33%{transform:translate(-1px,1px);opacity:.7}66%{transform:translate(1px,-1px);opacity:.45}100%{transform:translate(0,0);opacity:.35}}
 @keyframes vlsPfRip{0%,18%{opacity:.35}22%{opacity:.7}28%{opacity:.35}33%{opacity:.7}42%,100%{opacity:.35}}
@@ -794,10 +812,10 @@ ${rmBlock(
 )}
 `}</style>
       <Frame x={4} w={152} theme={theme} />
-      <Frame x={164} w={152} theme={theme} />
+      <Frame x={164} w={152} theme={theme} result />
       <Floor x1={16} x2={60} />
       <Pawn x={34} yb={76} s={8} eyes />
-      <path d="M44 62 H68" stroke={LIVE} strokeWidth={2.5} strokeLinecap="round" fill="none" />
+      <path d="M44 62 H68" stroke={LINE} strokeWidth={2.5} strokeLinecap="round" fill="none" />
       <MiniTv x={70} y={30} w={64} h={40} />
       <Static
         cls="vls-pf-s1"
@@ -822,36 +840,36 @@ ${rmBlock(
   );
 }
 
-/** 9. host-offline: 2 panels, loop 3.4s. Plug pulled; dashed crown = gone. */
+/** 9. host-offline: 2 panels. Plug pulled; dashed controller = gone. */
 function SceneHostOffline({ theme }: { theme: ComicTheme }) {
   return (
     <>
       <style>{`
-.vls-ho-plug{transform-box:fill-box;transform-origin:50% 0%;animation:vlsHoSway 3.4s ease-in-out infinite}
-.vls-ho-pawn{transform-box:fill-box;transform-origin:50% 100%;animation:vlsHoWave 3.4s ease-in-out infinite}
-.vls-ho-crown{animation:vlsHoCrown 3.4s ease-in-out infinite}
+.vls-ho-plug{transform-box:fill-box;transform-origin:50% 0%;animation:vlsHoSway var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-ho-pawn{transform-box:fill-box;transform-origin:50% 100%;animation:vlsHoWave var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-ho-controller{animation:vlsHoController var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 @keyframes vlsHoSway{0%{transform:rotate(-6deg)}10%{transform:rotate(6deg)}20%{transform:rotate(-5deg)}30%{transform:rotate(4deg)}40%,100%{transform:rotate(0)}}
 @keyframes vlsHoWave{0%,10%{transform:rotate(0)}14%{transform:rotate(-8deg)}18%{transform:rotate(8deg)}22%{transform:rotate(-8deg)}26%{transform:rotate(8deg)}30%,100%{transform:rotate(0)}}
-@keyframes vlsHoCrown{0%,30%{opacity:.2}40%{opacity:.7}50%,100%{opacity:.2}}
+@keyframes vlsHoController{0%,30%{opacity:.2}40%{opacity:.7}50%,100%{opacity:.2}}
 ${rmBlock(
-  ["vls-ho-plug", "vls-ho-pawn", "vls-ho-crown"],
-  [[".vls-ho-plug", "transform:none"], [".vls-ho-crown", "opacity:.5"]],
+  ["vls-ho-plug", "vls-ho-pawn", "vls-ho-controller"],
+  [[".vls-ho-plug", "transform:none"], [".vls-ho-controller", "opacity:.5"]],
 )}
 `}</style>
       <Frame x={4} w={152} theme={theme} />
-      <Frame x={164} w={152} theme={theme} />
+      <Frame x={164} w={152} theme={theme} result />
       <MiniTv x={30} y={22} w={70} h={44} />
       <rect x={36} y={28} width={58} height={30} rx={4} fill="#0a101c" />
       <path d="M65 66 c0 6 -4 8 -8 10" stroke={TV_EDGE} strokeWidth={2.5} fill="none" strokeLinecap="round" />
       <Plug x={57} y={76} className="vls-ho-plug" />
       <Floor x1={176} x2={304} y={78} />
       <Pawn x={210} yb={78} s={9} eyes className="vls-ho-pawn" />
-      <Crown x={272} y={42} k={1.1} dashed className="vls-ho-crown" baseOpacity={0.5} />
+      <ControllerMark x={257} y={38} width={30} dashed className="vls-ho-controller" opacity={0.5} />
     </>
   );
 }
 
-/** 10. no-audio: 2 panels, loop 3s. Before: TV alive (mint play triangle,
+/** 10. no-audio: 2 panels. Before: TV alive (mint play triangle,
  * flicker ticks), three healthy LIVE-green sound arcs. After: picture still
  * alive, sound dashed + red-slashed, and a big you-pawn (s=18) presses BOTH
  * mitten-hands to its head — arms stamp up once and hold, head micro-shakes
@@ -860,13 +878,13 @@ function SceneNoAudio({ theme }: { theme: ComicTheme }) {
   return (
     <>
       <style>{`
-.vls-na-flick{animation:vlsNaFlick 3s ease-in-out infinite}
-.vls-na-a1{animation:vlsNaArc 3s ease-in-out infinite}
-.vls-na-a2{animation:vlsNaArc 3s ease-in-out -.3s infinite}
-.vls-na-a3{animation:vlsNaArc 3s ease-in-out -.6s infinite}
-.vls-na-pawn{transform-box:fill-box;transform-origin:50% 100%;animation:vlsNaShake 3s ease-in-out infinite}
-.vls-na-arm{transform-box:fill-box;transform-origin:50% 100%;animation:vlsNaArm 3s cubic-bezier(.3,1.4,.5,1) infinite}
-.vls-na-slash{transform-box:fill-box;transform-origin:center;animation:vlsNaSlash 3s ease-out infinite}
+.vls-na-flick{animation:vlsNaFlick var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-na-a1{animation:vlsNaArc var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-na-a2{animation:vlsNaArc var(--comic-duration,3.2s) ease-in-out -.3s var(--comic-repeat,1) both}
+.vls-na-a3{animation:vlsNaArc var(--comic-duration,3.2s) ease-in-out -.6s var(--comic-repeat,1) both}
+.vls-na-pawn{transform-box:fill-box;transform-origin:50% 100%;animation:vlsNaShake var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-na-arm{transform-box:fill-box;transform-origin:50% 100%;animation:vlsNaArm var(--comic-duration,3.2s) cubic-bezier(.3,1.4,.5,1) var(--comic-repeat,1) both}
+.vls-na-slash{transform-box:fill-box;transform-origin:center;animation:vlsNaSlash var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
 @keyframes vlsNaFlick{0%{opacity:.15}10%{opacity:.8}20%{opacity:.2}30%{opacity:.7}40%,100%{opacity:.15}}
 @keyframes vlsNaArc{0%{opacity:.45}12%{opacity:1}26%{opacity:.45}42%,100%{opacity:.8}}
 @keyframes vlsNaArm{0%,8%{transform:scaleY(.05)}20%,100%{transform:scaleY(1)}}
@@ -883,7 +901,7 @@ ${rmBlock(
 )}
 `}</style>
       <Frame x={4} w={152} theme={theme} />
-      <Frame x={164} w={152} theme={theme} />
+      <Frame x={164} w={152} theme={theme} result />
       {/* panel 1 (before): picture alive, three healthy sound arcs */}
       <MiniTv x={26} y={20} w={76} h={48} />
       <path d="M54 34 L74 42 L54 50 Z" fill={MINT} />
@@ -942,16 +960,16 @@ ${rmBlock(
   );
 }
 
-/** 11. room-not-found: 2 paper panels, loop 3s. The door isn't there. */
+/** 11. room-not-found: 2 paper panels. The door isn't there. */
 function SceneNotFound({ theme }: { theme: ComicTheme }) {
   return (
     <>
       <style>{`
-.vls-rn-knock{animation:vlsRnKnock 3s ease-in-out infinite}
-.vls-rn-kn{animation:vlsRnKn 3s ease-in-out infinite}
-.vls-rn-solid{animation:vlsRnSolid 3s ease-in-out infinite}
-.vls-rn-ghost{animation:vlsRnGhost 3s ease-in-out infinite}
-.vls-rn-puff{animation:vlsRnPuff 3s ease-in-out infinite}
+.vls-rn-knock{animation:vlsRnKnock var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-rn-kn{animation:vlsRnKn var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-rn-solid{animation:vlsRnSolid var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-rn-ghost{animation:vlsRnGhost var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-rn-puff{animation:vlsRnPuff var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 @keyframes vlsRnKnock{0%{transform:translateX(0)}6%{transform:translateX(5px)}12%{transform:translateX(0)}18%{transform:translateX(5px)}25%,100%{transform:translateX(0)}}
 @keyframes vlsRnKn{0%,3%{opacity:0}7%{opacity:.9}11%{opacity:0}19%{opacity:.9}24%,100%{opacity:0}}
 @keyframes vlsRnSolid{0%,30%{opacity:1}45%,80%{opacity:0}92%,100%{opacity:1}}
@@ -963,7 +981,7 @@ ${rmBlock(
 )}
 `}</style>
       <Frame x={4} w={152} theme={theme} />
-      <Frame x={164} w={152} theme={theme} />
+      <Frame x={164} w={152} theme={theme} result />
       <g className="vls-rn-knock">
         <path d="M52 74 c0-11 5-16 11-16 s11 5 11 16 Z" fill={YOU} />
         <circle cx={63} cy={49} r={6} fill={YOU} />
@@ -999,19 +1017,19 @@ ${rmBlock(
   );
 }
 
-/** 12. access-denied: 2 paper panels, loop 3s. Door there, won't open. */
+/** 12. access-denied: 2 paper panels. Door there, won't open. */
 function SceneAccessDenied({ theme }: { theme: ComicTheme }) {
   return (
     <>
       <style>{`
-.vls-ad-door{transform-box:fill-box;transform-origin:center;animation:vlsAdShake 3s ease-in-out infinite}
-.vls-ad-x{transform-box:fill-box;transform-origin:center;animation:vlsAdX 3s ease-out infinite}
+.vls-ad-door{transform-box:fill-box;transform-origin:center;animation:vlsAdShake var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-ad-x{transform-box:fill-box;transform-origin:center;animation:vlsAdX var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
 @keyframes vlsAdShake{0%{transform:translateX(0)}3%{transform:translateX(-3px)}6%{transform:translateX(3px)}9%{transform:translateX(-2px)}12%{transform:translateX(2px)}15%,100%{transform:translateX(0)}}
 @keyframes vlsAdX{0%,18%{opacity:0;transform:scale(1.6) rotate(8deg)}24%,100%{opacity:1;transform:scale(1) rotate(8deg)}}
 ${rmBlock(["vls-ad-door", "vls-ad-x"], [[".vls-ad-x", "opacity:1;transform:scale(1) rotate(8deg)"]])}
 `}</style>
       <Frame x={4} w={152} theme={theme} />
-      <Frame x={164} w={152} theme={theme} />
+      <Frame x={164} w={152} theme={theme} result />
       <Pawn x={48} yb={76} s={9} eyes />
       <rect x={60} y={38} width={16} height={11} rx={2} fill="var(--paper)" stroke="var(--ink)" strokeWidth={2} />
       <circle cx={72} cy={43.5} r={1.6} fill="var(--ink)" />
@@ -1031,14 +1049,14 @@ ${rmBlock(["vls-ad-door", "vls-ad-x"], [[".vls-ad-x", "opacity:1;transform:scale
   );
 }
 
-/** 13. invalid-invite: 2 paper panels, loop 3.2s. The ticket is broken. */
+/** 13. invalid-invite: 2 paper panels. The ticket is broken. */
 function SceneInvalidInvite({ theme }: { theme: ComicTheme }) {
   return (
     <>
       <style>{`
-.vls-ii-l{transform-box:fill-box;transform-origin:center;animation:vlsIiL 3.2s ease-in-out infinite}
-.vls-ii-r{transform-box:fill-box;transform-origin:center;animation:vlsIiR 3.2s ease-in-out infinite}
-.vls-ii-x{transform-box:fill-box;transform-origin:center;animation:vlsIiX 3.2s ease-out infinite}
+.vls-ii-l{transform-box:fill-box;transform-origin:center;animation:vlsIiL var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-ii-r{transform-box:fill-box;transform-origin:center;animation:vlsIiR var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-ii-x{transform-box:fill-box;transform-origin:center;animation:vlsIiX var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
 @keyframes vlsIiL{0%{transform:translate(0,0) rotate(0)}35%,100%{transform:translate(-3px,1px) rotate(-5deg)}}
 @keyframes vlsIiR{0%{transform:translate(0,0) rotate(0)}35%,100%{transform:translate(3px,-1px) rotate(5deg)}}
 @keyframes vlsIiX{0%,38%{opacity:0;transform:scale(1.6) rotate(8deg)}45%,100%{opacity:1;transform:scale(1) rotate(8deg)}}
@@ -1052,7 +1070,7 @@ ${rmBlock(
 )}
 `}</style>
       <Frame x={4} w={152} theme={theme} />
-      <Frame x={164} w={152} theme={theme} />
+      <Frame x={164} w={152} theme={theme} result />
       <Pawn x={48} yb={76} s={9} eyes />
       <rect x={62} y={40} width={20} height={13} rx={2} fill="var(--paper)" stroke="var(--ink)" strokeWidth={2} />
       <path d="M62 42 L72 48 L82 42" stroke="var(--ink)" strokeWidth={1.5} fill="none" />
@@ -1080,7 +1098,7 @@ ${rmBlock(
   );
 }
 
-/** 14. room-full: 2 paper panels, loop 3.2s. Cute first, verdict clear. */
+/** 14. room-full: 2 paper panels. Cute first, verdict clear. */
 function SceneRoomFull({ theme }: { theme: ComicTheme }) {
   const crowd = [
     "var(--pawn-1)",
@@ -1094,15 +1112,15 @@ function SceneRoomFull({ theme }: { theme: ComicTheme }) {
   return (
     <>
       <style>{`
-.vls-fl-c1{animation:vlsFlSquish 3.2s ease-in-out infinite}
-.vls-fl-c2{animation:vlsFlSquish 3.2s ease-in-out .09s infinite}
-.vls-fl-c3{animation:vlsFlSquish 3.2s ease-in-out .18s infinite}
-.vls-fl-c4{animation:vlsFlSquish 3.2s ease-in-out .27s infinite}
-.vls-fl-c5{animation:vlsFlSquish 3.2s ease-in-out .36s infinite}
-.vls-fl-c6{animation:vlsFlSquish 3.2s ease-in-out .45s infinite}
-.vls-fl-c7{animation:vlsFlSquish 3.2s ease-in-out .54s infinite}
-.vls-fl-you{transform-box:fill-box;transform-origin:50% 100%;animation:vlsFlBob 3.2s ease-in-out infinite}
-.vls-fl-ghost{animation:vlsFlGhost 3.2s ease-in-out infinite}
+.vls-fl-c1{animation:vlsFlSquish var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-fl-c2{animation:vlsFlSquish var(--comic-duration,3.2s) ease-in-out .09s var(--comic-repeat,1) both}
+.vls-fl-c3{animation:vlsFlSquish var(--comic-duration,3.2s) ease-in-out .18s var(--comic-repeat,1) both}
+.vls-fl-c4{animation:vlsFlSquish var(--comic-duration,3.2s) ease-in-out .27s var(--comic-repeat,1) both}
+.vls-fl-c5{animation:vlsFlSquish var(--comic-duration,3.2s) ease-in-out .36s var(--comic-repeat,1) both}
+.vls-fl-c6{animation:vlsFlSquish var(--comic-duration,3.2s) ease-in-out .45s var(--comic-repeat,1) both}
+.vls-fl-c7{animation:vlsFlSquish var(--comic-duration,3.2s) ease-in-out .54s var(--comic-repeat,1) both}
+.vls-fl-you{transform-box:fill-box;transform-origin:50% 100%;animation:vlsFlBob var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-fl-ghost{animation:vlsFlGhost var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 @keyframes vlsFlSquish{0%{transform:translateY(0)}8%{transform:translateY(-1.5px)}16%,100%{transform:translateY(0)}}
 @keyframes vlsFlBob{0%,14%{transform:translate(0,0)}20%{transform:translate(0,-3px)}26%,30%{transform:translate(0,0)}36%{transform:translate(0,-3px)}44%,100%{transform:translate(0,0)}}
 @keyframes vlsFlGhost{0%,45%{opacity:.55}50%{opacity:.15}52%{opacity:.5}55%,100%{opacity:0}}
@@ -1112,7 +1130,7 @@ ${rmBlock(
 )}
 `}</style>
       <Frame x={4} w={152} theme={theme} />
-      <Frame x={164} w={152} theme={theme} />
+      <Frame x={164} w={152} theme={theme} result />
       {crowd.map((color, i) => (
         <Pawn key={i} x={40 + i * 12} yb={56} s={5.5} color={color} className={`vls-fl-c${i + 1}`} />
       ))}
@@ -1146,10 +1164,10 @@ function SceneBandwidthLimited({ theme }: { theme: ComicTheme }) {
   return (
     <>
       <style>{`
-.vls-bw-flow-a{animation:vlsBwFlowA 2.8s ease-in-out infinite}
-.vls-bw-flow-b{animation:vlsBwFlowB 2.8s ease-in-out infinite}
-.vls-bw-throat{transform-box:fill-box;transform-origin:center;animation:vlsBwThroat 2.8s ease-in-out infinite}
-.vls-bw-small{transform-box:fill-box;transform-origin:center;animation:vlsBwSmall 2.8s ease-in-out infinite}
+.vls-bw-flow-a{animation:vlsBwFlowA var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-bw-flow-b{animation:vlsBwFlowB var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-bw-throat{transform-box:fill-box;transform-origin:center;animation:vlsBwThroat var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-bw-small{transform-box:fill-box;transform-origin:center;animation:vlsBwSmall var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 @keyframes vlsBwFlowA{0%,12%{transform:translateX(-8px);opacity:0}26%,58%{transform:none;opacity:1}72%,100%{transform:translateX(8px);opacity:0}}
 @keyframes vlsBwFlowB{0%,32%{transform:translateX(-7px);opacity:0}48%,72%{transform:none;opacity:1}86%,100%{transform:translateX(5px);opacity:0}}
 @keyframes vlsBwThroat{0%,30%,100%{transform:scaleY(1)}48%,76%{transform:scaleY(.62)}}
@@ -1164,7 +1182,7 @@ ${rmBlock(
 )}
 `}</style>
       <Frame x={4} w={152} theme={theme} />
-      <Frame x={164} w={152} theme={theme} accent={WARN} />
+      <Frame x={164} w={152} theme={theme} result />
       <Floor x1={18} x2={142} />
       <Floor x1={178} x2={302} />
       <Pawn x={28} yb={76} s={7} eyes />
@@ -1203,11 +1221,11 @@ function SceneEncoderLimited({ theme }: { theme: ComicTheme }) {
   return (
     <>
       <style>{`
-.vls-en-frame-a{animation:vlsEnFlow 2.9s ease-in-out infinite}
-.vls-en-frame-b{animation:vlsEnFlow 2.9s ease-in-out .3s infinite}
-.vls-en-drop{transform-box:fill-box;transform-origin:center;animation:vlsEnDrop 2.9s ease-in infinite}
-.vls-en-heat{animation:vlsEnHeat 2.9s ease-out infinite}
-.vls-en-small{transform-box:fill-box;transform-origin:center;animation:vlsEnSmall 2.9s ease-in-out infinite}
+.vls-en-frame-a{animation:vlsEnFlow var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-en-frame-b{animation:vlsEnFlow var(--comic-duration,3.2s) ease-in-out .3s var(--comic-repeat,1) both}
+.vls-en-drop{transform-box:fill-box;transform-origin:center;animation:vlsEnDrop var(--comic-duration,3.2s) ease-in var(--comic-repeat,1) both}
+.vls-en-heat{animation:vlsEnHeat var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
+.vls-en-small{transform-box:fill-box;transform-origin:center;animation:vlsEnSmall var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 @keyframes vlsEnFlow{0%,12%{transform:translateX(-7px);opacity:0}28%,60%{transform:none;opacity:1}76%,100%{transform:translateX(8px);opacity:0}}
 @keyframes vlsEnDrop{0%,42%{transform:none;opacity:1}64%,100%{transform:translateY(16px) rotate(12deg);opacity:0}}
 @keyframes vlsEnHeat{0%,34%{transform:translateY(3px);opacity:0}48%,72%{transform:none;opacity:1}86%,100%{opacity:0}}
@@ -1222,7 +1240,7 @@ ${rmBlock(
 )}
 `}</style>
       <Frame x={4} w={152} theme={theme} />
-      <Frame x={164} w={152} theme={theme} accent={WARN} />
+      <Frame x={164} w={152} theme={theme} result />
       <Floor x1={18} x2={142} />
       <Floor x1={178} x2={302} />
       <Pawn x={27} yb={76} s={6.5} eyes />
@@ -1258,17 +1276,17 @@ ${rmBlock(
   );
 }
 
-/** Generic warning: 1 wide panel, loop 2.6s. Persistent condition: the you-pawn
+/** Generic warning: 1 wide panel. Persistent condition: the you-pawn
  * stands beside the big Hearth coal-bowl warning glyph; heat-rays rise in a
  * staggered 0-55% window, the pawn blinks at 70%, rest >=50%. */
 function SceneWarning({ theme }: { theme: ComicTheme }) {
   return (
     <>
       <style>{`
-.vls-wn-ray1{animation:vlsWnRay 2.6s ease-out infinite}
-.vls-wn-ray2{animation:vlsWnRay 2.6s ease-out .25s infinite}
-.vls-wn-ray3{animation:vlsWnRay 2.6s ease-out .5s infinite}
-.vls-wn-eyes{transform-box:fill-box;transform-origin:center;animation:vlsWnBlink 2.6s ease-in-out infinite}
+.vls-wn-ray1{animation:vlsWnRay var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
+.vls-wn-ray2{animation:vlsWnRay var(--comic-duration,3.2s) ease-out .25s var(--comic-repeat,1) both}
+.vls-wn-ray3{animation:vlsWnRay var(--comic-duration,3.2s) ease-out .5s var(--comic-repeat,1) both}
+.vls-wn-eyes{transform-box:fill-box;transform-origin:center;animation:vlsWnBlink var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 @keyframes vlsWnRay{0%{opacity:0;transform:translateY(3px)}9%{opacity:1}24%{transform:translateY(-2px)}50%,100%{transform:translateY(-2px);opacity:1}}
 @keyframes vlsWnBlink{0%,66%,74%,100%{transform:scaleY(1)}70%{transform:scaleY(.12)}}
 ${rmBlock(
@@ -1276,7 +1294,7 @@ ${rmBlock(
   [[".vls-wn-ray1,.vls-wn-ray2,.vls-wn-ray3", "opacity:1;transform:none"]],
 )}
 `}</style>
-      <Frame x={4} w={312} theme={theme} />
+      <Frame x={4} w={312} theme={theme} result />
       <Floor x1={24} x2={296} />
       <Pawn x={96} yb={76} s={11} />
       <g className="vls-wn-eyes">
@@ -1288,12 +1306,12 @@ ${rmBlock(
           baked at origin (168, 9.5). */}
       <path
         d="M189 55 a21 21 0 0 0 42 0"
-        stroke={WARN}
+        stroke="var(--comic-tone, var(--warn))"
         strokeWidth={2.5}
         strokeLinecap="round"
         fill="none"
       />
-      <g stroke={WARN} strokeWidth={2.5} strokeLinecap="round" fill="none">
+      <g stroke="var(--comic-tone, var(--warn))" strokeWidth={2.5} strokeLinecap="round" fill="none">
         <g className="vls-wn-ray1" opacity={0}>
           <path d="M197.75 42.75 L192.5 35.75" />
           <path d="M188.5 41 l-4 -3.5" stroke={FAINT} strokeWidth={2} />
@@ -1315,6 +1333,9 @@ const SCENES: Record<ComicKind, (props: { theme: ComicTheme }) => ReactNode> = {
   "waiting-for-host": SceneWaiting,
   "connecting-p2p": (p) => <SceneConnecting {...p} sfu={false} />,
   "connecting-sfu": (p) => <SceneConnecting {...p} sfu />,
+  "signal-connecting": (p) => <SceneSignal {...p} state="connecting" />,
+  "signal-recovering": (p) => <SceneSignal {...p} state="recovering" />,
+  "signal-offline": (p) => <SceneSignal {...p} state="offline" />,
   "tap-to-play": SceneTap,
   "host-paused": ScenePaused,
   recovering: SceneRecovering,
@@ -1340,21 +1361,32 @@ export const Comic = memo(function Comic({
   kind,
   size,
   theme,
+  tone,
+  motion,
 }: {
   kind: ComicKind;
   size?: number;
   theme?: ComicTheme;
+  tone?: ComicTone;
+  motion?: ComicMotion;
 }) {
   const resolvedTheme = theme ?? DEFAULT_THEME[kind];
-  const style: CSSProperties = {
+  const presentation = getComicPresentation(kind);
+  const resolvedTone = tone ?? presentation.tone;
+  const resolvedMotion = motion ?? presentation.motion;
+  const style = {
+    ...comicStyle(resolvedTone, resolvedMotion),
+    "--comic-neutral": resolvedTheme === "paper" ? "var(--ink)" : "#48597a",
     width: size != null ? `${size}px` : "min(320px, 86%)",
     height: "auto",
     display: "block",
-  };
+  } as CSSProperties;
   return (
     <svg
       viewBox="0 0 320 96"
       style={style}
+      data-comic-tone={resolvedTone}
+      data-comic-motion={resolvedMotion}
       aria-hidden="true"
       focusable="false"
       xmlns="http://www.w3.org/2000/svg"

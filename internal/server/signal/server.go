@@ -1,17 +1,14 @@
-// Package signal ports src/server/signaling.ts (SignalingServer) and
-// src/server/hybrid-media-router.ts (HybridMediaRouter) from baseline
-// b20fd88. server.go is the signaling server's lifecycle, upgrade ladder,
-// HTTP-facing room mutations and message dispatch; session.go the
-// per-connection state; presence.go the viewer presence, host status and
-// room termination paths; router*.go the media router.
+// Package signal owns authenticated signaling and room/media effects. It
+// serializes session and presence changes, HTTP-facing room mutations, and
+// execution of the synchronous route controller's decisions.
 //
 // # Locking
 //
 // Server.mu is the one lock of the effect layer: it guards every field of
 // the server and the router, the room.Store and the route controllers. Every
 // handler, timer callback and goroutine takes it; it is released only around
-// I/O (the password KDF and media transport), after which exactly the guard
-// the TypeScript ran after its await is re-run. Router methods and hooks are
+// I/O (the password KDF and media transport), after which current session,
+// room and operation identities must be revalidated. Router methods and hooks are
 // called with mu held and never lock.
 package signal
 
@@ -1073,7 +1070,7 @@ func (s *Server) settleHostShare(roomID, sessionID string, request authRequest) 
 		}
 	}
 	if currentGeneration != shareGeneration || share.routePolicy == nil {
-		routePolicy := configuredRoutePolicy(request.routePolicy, s.natPredictionEnabled)
+		routePolicy := s.configuredRoutePolicy(request.routePolicy)
 		share.routePolicy = &routePolicy
 		for _, viewer := range s.store.GetConnectedViewers(roomID) {
 			message := protocol.RoutePolicyMessage{
@@ -1127,12 +1124,13 @@ func (s *Server) routePolicyOf(roomID string) protocol.RoutePolicy {
 	if policy := s.shares[roomID].routePolicy; policy != nil {
 		return *policy
 	}
-	return protocol.DefaultRoutePolicy
+	return s.configuredRoutePolicy(protocol.DefaultRoutePolicy)
 }
 
-// configuredRoutePolicy ports configuredRoutePolicy.
-func configuredRoutePolicy(policy protocol.RoutePolicy, natPredictionEnabled bool) protocol.RoutePolicy {
-	policy.NatPrediction = natPredictionEnabled && policy.NatPrediction
+// configuredRoutePolicy restricts share preferences to the services this runtime owns.
+func (s *Server) configuredRoutePolicy(policy protocol.RoutePolicy) protocol.RoutePolicy {
+	policy.PeerOnly = s.router.sfu == nil || policy.PeerOnly
+	policy.NatPrediction = s.natPredictionEnabled && policy.NatPrediction
 	return policy
 }
 

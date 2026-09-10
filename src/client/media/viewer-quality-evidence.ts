@@ -378,6 +378,9 @@ export function presentViewerQualityEvidence(
 
   for (const metric of viewerQualityEvidenceMetricKeys(evidence.metrics)) {
     if (
+      // Window deltas describe this observation only. Inheriting an older
+      // freeze/loss count would turn an unavailable window into fresh evidence.
+      !metric.endsWith("Delta") &&
       evidence.metrics[metric] === null &&
       current !== null &&
       current.evidence.metrics[metric] !== null

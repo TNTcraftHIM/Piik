@@ -170,8 +170,9 @@ admits at most two independent strict v9 control sessions. After `hello`, each
 session may list local capture choices, own one generation-fenced Host share,
 or receive one native Viewer source and its bounded encoded child edges. Closing
 one session retires only its resources. Its public `instanceToken`
-distinguishes the discovered process but is not authentication; room authority
-and remote signaling remain in the Browser. Viewer receive/relay remains
+distinguishes the discovered process but is not authentication. The shared Go
+service owns room authority; the Browser owns the room protocol client and
+orchestrates native media through this control session. Viewer receive/relay remains
 available even when this machine has no accepted native capture encoder.
 Capture sidecars must match the App's current probe/encoded-output contract;
 the package-candidate wrapper validates that version before accepting its artifact.

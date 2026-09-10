@@ -4,7 +4,7 @@ import { useState } from "react";
 import { browserDebugEnabled, debugError, downloadBrowserDebug } from "../../lib/debug";
 import { VisGlyph } from "./primitives";
 import { BrandMark } from "./BrandMark";
-import { ComicTooltip } from "./ComicTooltip";
+import { Tooltip } from "./Tooltip";
 import type { ComicKind } from "./Comic";
 import { useCopy, type Lang } from "../../ui/copy";
 import { useTheme } from "../../ui/theme";
@@ -22,13 +22,12 @@ export function LedStrip({
   comic?: ComicKind;
 }) {
   const { vis } = useCopy();
-  const wrapped = vis && comic;
+  const wrapped = !vis || comic;
   const strip = (
     <span
       className="lr-leds"
       data-state={state}
       role="status"
-      title={vis ? undefined : label}
       aria-label={label}
       tabIndex={wrapped ? 0 : undefined}
     >
@@ -39,9 +38,9 @@ export function LedStrip({
     </span>
   );
   return wrapped ? (
-    <ComicTooltip kind={wrapped} place="below" align="start">
+    <Tooltip kind={comic} tone={state} text={vis ? undefined : label} place="below" align="start">
       {strip}
-    </ComicTooltip>
+    </Tooltip>
   ) : (
     strip
   );
@@ -57,7 +56,6 @@ export function HeaderControls() {
       <button
         type="button"
         className={active ? "is-selected" : ""}
-        title={vis ? undefined : t(tipKey)}
         aria-label={t(tipKey)}
         aria-pressed={active}
         onClick={() => (mode === "vis" ? setVis(true) : setLang(mode))}
@@ -72,12 +70,10 @@ export function HeaderControls() {
       type="button"
       className="lr-btn"
       style={{ minWidth: 40, height: 40, borderRadius: 999 }}
-      title={vis ? undefined : themeTitle}
       aria-label={themeTitle}
       onClick={(event) => {
-        // Hint-wrapped in vis: pointer activation must not leave the comic
-        // pinned open by focus over the stage (keyboard clicks keep focus).
-        if (vis && event.detail !== 0) event.currentTarget.blur();
+        // Pointer activation must not pin the hint open; keyboard keeps focus.
+        if (event.detail !== 0) event.currentTarget.blur();
         toggle();
       }}
     >
@@ -93,10 +89,9 @@ export function HeaderControls() {
   const debugButton = (
     <button
       type="button" className="lr-btn" disabled={debugExport === "busy"}
-      title={vis ? undefined : debugTitle}
       aria-label={debugTitle} aria-busy={debugExport === "busy" || undefined}
       onClick={(event) => {
-        if (vis && event.detail !== 0) event.currentTarget.blur();
+        if (event.detail !== 0) event.currentTarget.blur();
         setDebugExport("busy");
         void downloadBrowserDebug().then(() => setDebugExport("idle")).catch((error) => {
           debugError("export", "collector-failed", error, { collector: "download" });
@@ -111,23 +106,19 @@ export function HeaderControls() {
   );
   return (
     <span className="lr-top-right lr-header-controls">
-      {browserDebugEnabled && (vis ? (
-        <ComicTooltip kind="hint-debug-export" place="below" align="end">
+      {browserDebugEnabled && (
+        <Tooltip kind="hint-debug-export" text={vis ? undefined : debugTitle} place="below" align="end">
           {debugButton}
-        </ComicTooltip>
-      ) : debugButton)}
+        </Tooltip>
+      )}
       <span className="lr-lang" role="group" aria-label={t("mode.language")}>
         {option("zh", "中", "mode.zh")}
         {option("en", "EN", "mode.en")}
         {option("vis", "✦", "mode.vis")}
       </span>
-      {vis ? (
-        <ComicTooltip kind="hint-theme" place="below" align="end">
-          {themeButton}
-        </ComicTooltip>
-      ) : (
-        themeButton
-      )}
+      <Tooltip kind={theme === "dark" ? "hint-theme-light" : "hint-theme-dark"} text={vis ? undefined : themeTitle} place="below" align="end">
+        {themeButton}
+      </Tooltip>
     </span>
   );
 }
@@ -139,14 +130,13 @@ export function AppHeader({
   led?: React.ReactNode;
   homeHref?: string;
 }) {
-  const { t, vis } = useCopy();
+  const { t } = useCopy();
   return (
     <header className="lr-top">
       <a
         className="lr-brand"
         href={homeHref}
         aria-label={t("brand.home")}
-        title={vis ? undefined : t("brand.home")}
       >
         <BrandMark size={34} motion="once" />
       </a>

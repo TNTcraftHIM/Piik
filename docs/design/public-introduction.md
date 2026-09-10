@@ -19,6 +19,10 @@ do not maintain a second GitHub Wiki copy of the same instructions.
 
 ## Presentation
 
+Use the [shared visual language](./visual-language.md) for cast, objects,
+accessible interaction and motion. This document owns the website's editorial
+layout and introduction, not a separate product-status vocabulary.
+
 Use the existing mint walls, dark outlines, warm orange sofa and curious TV
 mascot. The site is a welcoming room, not a monitoring dashboard. Keep one
 primary action, native navigation and short instructions. English is the first
@@ -28,8 +32,8 @@ Respect reduced motion and retain useful content without JavaScript.
 Present Piik as an open-source project: plain explanations, room for tinkering,
 and an invitation to contribute. Keep the friendly illustration and avoid
 company-style pitches, repeated slogans or claims about a support team.
-Animation illustrates actions (choose, invite, join), plays briefly and stops.
-Hover belongs to the whole illustrated step, with tap and keyboard replay too.
+The short comics illustrate choosing, inviting and joining, following the
+shared motion grammar and whole-control replay rule.
 The same tone and shared room illustration carry into both READMEs.
 
 The product UI remains mascot-only. On the website, keep the header's TV

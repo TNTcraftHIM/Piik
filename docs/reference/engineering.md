@@ -1,0 +1,100 @@
+# Engineering And Interface Boundaries
+
+This is the shared engineering convention for Browser, App and Server work.
+[AGENTS.md](../../AGENTS.md) owns task authority and hard product constraints;
+[CONTRIBUTING.md](../../CONTRIBUTING.md) owns the delivery workflow. The required
+[ponytail guidance](../../.agents/skills/ponytail/SKILL.md) selects the smallest
+correct implementation. This file owns module responsibilities and interface
+discipline, not a second copy of the product contracts or wire fields.
+
+## Module Map
+
+| Owner | Responsibility and dependency boundary |
+| --- | --- |
+| `cmd/piik-server`, `cmd/piik-app` | Thin entry points: defaults, startup and shutdown; compose the same Go room service |
+| `internal/server/app` | HTTP, site access, runtime capabilities, static assets and listener lifecycle; room mutations go through `signal` |
+| `internal/server/signal` | Authenticated command/effect owner; serializes room, session and route mutations and executes controller decisions |
+| `internal/server/room` | Room authority, credentials and persistence; caller holds the signaling lock, durable writes precede in-memory changes |
+| `internal/server/route` | Synchronous room graph and single-operation decisions; no I/O, locks or timer creation |
+| `internal/server/sfu`, `internal/app/mediaedge` | Server forwarding and native peer adapters over the shared `internal/media/forwarding`; Pion/LiveKit own transport and adaptation |
+| `internal/app` | Local/public-link/Site composition, loopback service, native sessions and App lifecycle; never a second room backend |
+| `internal/app/nativecapture`, `native/capture/*` | App-side capture contract and minimal platform adapters; platform-specific capture/encoding stays here |
+| `src/client/pages`, `lib`, `media`, `native` | Browser orchestration and endpoint adapters; bind current media and retire owned resources |
+| `src/client/media/viewer-presentation.ts`, `ui/media-status.ts` | Playback facts and their derived status projection; UI indicators do not create recovery or quality policy |
+| `src/client/components`, `locales`, `ui` | Shared interaction, visual primitives and localized copy; same product interface for Server and App |
+| `internal/server/webassets` | One built Browser bundle embedded by both binaries; Node/Vite are development tooling |
+
+Names follow [naming](./naming.md). Architecture decisions explain why these
+boundaries exist: [shared core](../adr/0012-shared-go-backend-core.md),
+[embedded media](../adr/0013-embedded-node-local-media.md) and
+[Browser pooling](../adr/0014-browser-node-local-encoding-pool.md).
+Directory names are a map, not a requirement to introduce another layer.
+
+## Contract Map
+
+| Boundary | Schema/validation owners |
+| --- | --- |
+| Room HTTP and Browser/Server signaling | `src/shared/protocol.ts` and `internal/server/protocol`; HTTP dispatch in `internal/server/app`, WS dispatch in `signal` |
+| Site access HTTP | `src/client/lib/api.ts` and `internal/server/app/json.go`; cookies and access behavior belong to [rooms/access](../product/rooms-access.md) |
+| Browser/App discovery and control | `src/client/native/wire.ts`, `internal/app/loopback/protocol.go`, `internal/app/nativecontrol/wire.go` |
+| App/capture sidecar | `internal/app/nativecapture` and each platform capture adapter; probe/commands and encoded-frame envelope are distinct formats |
+| Configuration and persistence | `internal/server/config`, `internal/app/config`, `internal/server/room/database.go`; operator semantics in [configuration](./configuration.md) |
+| Release and update metadata | Existing packaging scripts, `src/client/lib/release-update.ts`, `cmd/piik-server/release.go`; identity/compatibility in [versioning](./versioning.md), operations in [deployment](../deployment.md) |
+
+The shared `tests/fixtures/wire-samples.json` is consumed by TypeScript and Go
+fixture tests. It covers room requests and signaling; it is not a universal
+schema for all HTTP, Native or capture traffic. Change the actual two ends and
+the relevant existing fixture/check together. Do not create another handwritten
+field list in documentation, parallel DTO hierarchy or schema generator without
+a demonstrated reduction in ownership or drift.
+
+## Implementation Rules
+
+- Reuse a current owner, standard API or mature dependency before adding a
+  mechanism. Extract around a responsibility shared by real callers; file size
+  alone does not justify wrappers, a generic manager or a framework.
+  Remove superseded paths in the same change; retain no unused legacy copy.
+- State has one writer and a clear lifetime. Separate permission, capability,
+  connection readiness, requested settings, applied settings and observation.
+  Derive presentation from facts; do not synchronize parallel booleans or let
+  a cached failure outlive its evidence.
+- The operation that acquires a connection, clone, listener or queue owns its
+  retirement. After an await/callback, and inside cleanup, validate the original
+  operation/resource identity before changing current state. Cancellation,
+  failure, missing observation and success must retain distinct meanings.
+- Keep decisions separate from effects. Respect documented lock ordering and
+  revalidate after unlocked work. Local native capability never grants room
+  authority; the shared Go service remains authoritative.
+- Validate input at the boundary, keep domain error meanings stable, and map
+  them into shared localized UI. [Versioning](./versioning.md) determines which
+  extensions are compatible; an optional field is not automatically compatible.
+- Deployment configuration describes available services; room preferences
+  request allowed behavior. The server enforces the policy even when a client
+  requests more. The UI retains the same controls and explains locked choices.
+  See [configuration](./configuration.md); avoid a second flag with the same job.
+- Browser/App/Server share [visual language](../design/visual-language.md) and
+  [status projection](../design/media-status.md). A new page, locale or deployment
+  does not invent a new palette, status model or user-role metaphor.
+- Keep package comments about current responsibilities and invariants. Historical
+  migration paths belong in ADR/research unless they explain a surviving constraint.
+  Support Windows, macOS and Linux; new text files use LF and new filenames use
+  ASCII, with format exceptions in [`.gitattributes`](../../.gitattributes).
+  Scripts use stable executable paths; physical confidence stays explicit in
+  [verification status](../verification-status.md).
+
+## Ablation And Review
+
+Judge a change by verified user value against implementation, maintenance,
+compatibility, runtime and failure cost. After a material module, remove any
+new state, dependency, branch or abstraction that the accepted behavior does
+not need. A small performance gain does not justify permanent complexity;
+do not reduce viewing quality or requested functionality merely to save lines.
+
+Trace acquisition, use, commit and retirement, including replacement and failure.
+For async ownership, check A starting, B replacing it, then A completing or
+cleaning up. Where compatibility is promised or being established for public
+release, check actual old/new readers as well as the happy path. Ordinary private
+changes do not require support for stale private clients. Run proportionate checks through
+[the standard entry points](../../CONTRIBUTING.md#verification-entrypoints).
+This discipline does not authorize an unrelated repository rewrite or a new
+test suite for every helper.

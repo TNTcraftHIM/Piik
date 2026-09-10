@@ -134,10 +134,10 @@ function OpenDoorway({ x, y }: { x: number; y: number }) {
 const SceneCopyCode: HintScene = ({ theme }) => (
   <>
     <style>{`
-.vls-copy-pawn{transform-box:fill-box;transform-origin:50% 100%;animation:vlsCopyLean 2.6s ease-in-out infinite}
-.vls-copy-ring{transform-box:fill-box;transform-origin:center;animation:vlsCopyRing 2.6s ease-out infinite}
-.vls-copy-front{transform-box:fill-box;transform-origin:50% 100%;animation:vlsCopyHop 2.6s ease-in-out infinite}
-.vls-copy-star{transform-box:fill-box;transform-origin:center;animation:vlsCopyStar 2.6s cubic-bezier(.3,1.5,.5,1) infinite}
+.vls-copy-pawn{transform-box:fill-box;transform-origin:50% 100%;animation:vlsCopyLean var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-copy-ring{transform-box:fill-box;transform-origin:center;animation:vlsCopyRing var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
+.vls-copy-front{transform-box:fill-box;transform-origin:50% 100%;animation:vlsCopyHop var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-copy-star{transform-box:fill-box;transform-origin:center;animation:vlsCopyStar var(--comic-duration,3.2s) cubic-bezier(.3,1.5,.5,1) var(--comic-repeat,1) both}
 @keyframes vlsCopyLean{0%,8%{transform:rotate(0)}18%,30%{transform:rotate(7deg)}42%,100%{transform:rotate(0)}}
 @keyframes vlsCopyRing{0%,14%{transform:scale(.6);opacity:0}20%{opacity:.8}38%,100%{transform:scale(1.7);opacity:0}}
 @keyframes vlsCopyHop{0%,12%{transform:translateY(0)}20%{transform:translateY(-2.5px)}30%,100%{transform:translateY(0)}}
@@ -151,7 +151,7 @@ ${rmBlock(
 )}
 `}</style>
     <Frame x={4} w={152} theme={theme} />
-    <Frame x={164} w={152} theme={theme} />
+    <Frame x={164} w={152} theme={theme} result />
     <LcdBase x={58} y={22} />
     <LcdSlots x={58} y={22} />
     <circle
@@ -181,8 +181,8 @@ const SceneShuffleCode: HintScene = ({ theme }) => (
   <>
     <style>{`
 .vls-shuf-slots{opacity:.45}
-.vls-shuf-roll{animation:vlsShufRoll 2.4s linear infinite}
-.vls-shuf-spark{transform-box:fill-box;transform-origin:center;animation:vlsShufSpark 2.4s ease-out infinite}
+.vls-shuf-roll{animation:vlsShufRoll var(--comic-duration,3.2s) linear var(--comic-repeat,1) both}
+.vls-shuf-spark{transform-box:fill-box;transform-origin:center;animation:vlsShufSpark var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
 @keyframes vlsShufRoll{0%{transform:translateY(-2px)}8%{transform:translateY(2px)}16%{transform:translateY(-2px)}24%{transform:translateY(2px)}32%{transform:translateY(-1px)}40%,100%{transform:translateY(0)}}
 @keyframes vlsShufSpark{0%,8%{opacity:0;transform:scale(.5)}16%{opacity:1;transform:scale(1.1)}22%,70%{opacity:1;transform:scale(1)}82%,100%{opacity:0}}
 ${rmBlock(
@@ -194,7 +194,7 @@ ${rmBlock(
 )}
 `}</style>
     <Frame x={4} w={152} theme={theme} />
-    <Frame x={164} w={152} theme={theme} />
+    <Frame x={164} w={152} theme={theme} result />
     <LcdBase x={41} y={25} />
     <LcdSlots x={41} y={25} />
     <LcdBase x={201} y={25} />
@@ -218,10 +218,10 @@ ${rmBlock(
 const SceneCopyInvite: HintScene = ({ theme }) => (
   <>
     <style>{`
-.vls-cinv-eyes{transform-box:fill-box;transform-origin:center;animation:vlsCinvBlink 2.8s ease-in-out infinite}
-.vls-cinv-fly{animation:vlsCinvFly 2.8s ease-in-out infinite}
-.vls-cinv-arc{animation:vlsCinvArc 2.8s ease-in-out infinite}
-.vls-cinv-star{transform-box:fill-box;transform-origin:center;animation:vlsCinvStar 2.8s cubic-bezier(.3,1.5,.5,1) infinite}
+.vls-cinv-eyes{transform-box:fill-box;transform-origin:center;animation:vlsCinvBlink var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-cinv-fly{animation:vlsCinvFly var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-cinv-arc{animation:vlsCinvArc var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-cinv-star{transform-box:fill-box;transform-origin:center;animation:vlsCinvStar var(--comic-duration,3.2s) cubic-bezier(.3,1.5,.5,1) var(--comic-repeat,1) both}
 @keyframes vlsCinvBlink{0%,60%,68%,100%{transform:scaleY(1)}64%{transform:scaleY(.12)}}
 @keyframes vlsCinvFly{0%,6%{transform:translate(-92px,0);opacity:0}10%{opacity:1}32%{transform:translate(-46px,-20px)}50%{transform:translate(0,0)}56%{transform:translate(0,-3px)}62%,100%{transform:translate(0,0)}}
 @keyframes vlsCinvArc{0%,10%{opacity:0}20%{opacity:.7}55%{opacity:.7}72%,100%{opacity:0}}
@@ -236,7 +236,7 @@ ${rmBlock(
 )}
 `}</style>
     <Frame x={4} w={152} theme={theme} />
-    <Frame x={164} w={152} theme={theme} />
+    <Frame x={164} w={152} theme={theme} result />
     <Pawn x={62} yb={76} s={10} />
     <g className="vls-cinv-eyes" fill="#101a2c">
       <circle cx={59.8} cy={56} r={1.1} />
@@ -279,8 +279,8 @@ const HintClientLink: HintScene = ({ theme }) => (
 const SceneRotateInvite: HintScene = ({ theme }) => (
   <>
     <style>{`
-.vls-rinv-ring{transform-box:view-box;transform-origin:240px 48px;animation:vlsRinvSpin 2.6s ease-in-out infinite}
-.vls-rinv-spark{transform-box:fill-box;transform-origin:center;animation:vlsRinvSpark 2.6s ease-out infinite}
+.vls-rinv-ring{transform-box:view-box;transform-origin:240px 48px;animation:vlsRinvSpin var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-rinv-spark{transform-box:fill-box;transform-origin:center;animation:vlsRinvSpark var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
 @keyframes vlsRinvSpin{0%,10%{transform:rotate(0)}50%,100%{transform:rotate(360deg)}}
 @keyframes vlsRinvSpark{0%,44%{opacity:0;transform:scale(.5)}54%{opacity:1;transform:scale(1.1)}62%,82%{opacity:1;transform:scale(1)}92%,100%{opacity:0}}
 ${rmBlock(
@@ -289,7 +289,7 @@ ${rmBlock(
 )}
 `}</style>
     <Frame x={4} w={152} theme={theme} />
-    <Frame x={164} w={152} theme={theme} />
+    <Frame x={164} w={152} theme={theme} result />
     <LinkRing x={65} y={40} w={30} h={16} tilt={-15} />
     <LinkRing x={225} y={40} w={30} h={16} tilt={-15} />
     <g
@@ -312,9 +312,9 @@ ${rmBlock(
 const SceneRevokeInvite: HintScene = ({ theme }) => (
   <>
     <style>{`
-.vls-rev-l{transform-box:view-box;transform-origin:223px 52.5px;animation:vlsRevL 2.8s ease-in-out infinite}
-.vls-rev-r{transform-box:view-box;transform-origin:257px 52.5px;animation:vlsRevR 2.8s ease-in-out infinite}
-.vls-rev-x{transform-box:fill-box;transform-origin:center;animation:vlsRevX 2.8s ease-out infinite}
+.vls-rev-l{transform-box:view-box;transform-origin:223px 52.5px;animation:vlsRevL var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-rev-r{transform-box:view-box;transform-origin:257px 52.5px;animation:vlsRevR var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-rev-x{transform-box:fill-box;transform-origin:center;animation:vlsRevX var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
 @keyframes vlsRevL{0%,10%{transform:translate(9px,-4.5px) rotate(-18deg)}20%{transform:translate(-2px,1px) rotate(5deg)}30%,100%{transform:translate(0,0) rotate(0)}}
 @keyframes vlsRevR{0%,10%{transform:translate(-9px,-4.5px) rotate(18deg)}20%{transform:translate(2px,1px) rotate(-5deg)}30%,100%{transform:translate(0,0) rotate(0)}}
 @keyframes vlsRevX{0%,30%{opacity:0;transform:scale(1.6) rotate(8deg)}38%,100%{opacity:1;transform:scale(1) rotate(8deg)}}
@@ -324,7 +324,7 @@ ${rmBlock(
 )}
 `}</style>
     <Frame x={4} w={152} theme={theme} />
-    <Frame x={164} w={152} theme={theme} />
+    <Frame x={164} w={152} theme={theme} result />
     <LinkRing x={56} y={41} w={28} h={14} />
     <LinkRing x={76} y={41} w={28} h={14} />
     <g className="vls-rev-l">
@@ -365,13 +365,13 @@ ${rmBlock(
 const ScenePolicyOpen: HintScene = ({ theme }) => (
   <>
     <style>{`
-.vls-open-p1{transform-box:fill-box;transform-origin:50% 100%;animation:vlsOpenHop 2.8s ease-in-out infinite}
-.vls-open-p2{transform-box:fill-box;transform-origin:50% 100%;animation:vlsOpenHop 2.8s ease-in-out .2s infinite}
+.vls-open-p1{transform-box:fill-box;transform-origin:50% 100%;animation:vlsOpenHop var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-open-p2{transform-box:fill-box;transform-origin:50% 100%;animation:vlsOpenHop var(--comic-duration,3.2s) ease-in-out .2s var(--comic-repeat,1) both}
 @keyframes vlsOpenHop{0%,6%{transform:translateY(0)}14%{transform:translateY(-5px)}22%{transform:translateY(0)}28%{transform:translateY(-3px)}34%,100%{transform:translateY(0)}}
 ${rmBlock(["vls-open-p1", "vls-open-p2"], [])}
 `}</style>
     <Frame x={4} w={152} theme={theme} />
-    <Frame x={164} w={152} theme={theme} />
+    <Frame x={164} w={152} theme={theme} result />
     <Door x={64} y={20} />
     <OpenDoorway x={224} y={18} />
     <Pawn x={238} yb={74} s={6.5} eyes className="vls-open-p1" />
@@ -386,11 +386,11 @@ ${rmBlock(["vls-open-p1", "vls-open-p2"], [])}
 const ScenePolicyPrivate: HintScene = ({ theme }) => (
   <>
     <style>{`
-.vls-priv-eyes{transform-box:fill-box;transform-origin:center;animation:vlsPrivBlink 3s ease-in-out infinite}
-.vls-priv-card{transform-box:fill-box;transform-origin:center;animation:vlsPrivCard 3s ease-in-out infinite}
-.vls-priv-door{transform-box:fill-box;transform-origin:0% 50%;animation:vlsPrivDoor 3s cubic-bezier(.3,.8,.35,1) infinite}
-.vls-priv-lock{transform-box:fill-box;transform-origin:center;animation:vlsPrivLock 3s cubic-bezier(.3,1.4,.45,1) infinite}
-.vls-priv-click{transform-box:fill-box;transform-origin:center;animation:vlsPrivClick 3s ease-out infinite}
+.vls-priv-eyes{transform-box:fill-box;transform-origin:center;animation:vlsPrivBlink var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-priv-card{transform-box:fill-box;transform-origin:center;animation:vlsPrivCard var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-priv-door{transform-box:fill-box;transform-origin:0% 50%;animation:vlsPrivDoor var(--comic-duration,3.2s) cubic-bezier(.3,.8,.35,1) var(--comic-repeat,1) both}
+.vls-priv-lock{transform-box:fill-box;transform-origin:center;animation:vlsPrivLock var(--comic-duration,3.2s) cubic-bezier(.3,1.4,.45,1) var(--comic-repeat,1) both}
+.vls-priv-click{transform-box:fill-box;transform-origin:center;animation:vlsPrivClick var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
 @keyframes vlsPrivBlink{0%,52%,60%,100%{transform:scaleY(1)}56%{transform:scaleY(.12)}}
 @keyframes vlsPrivCard{0%,8%{transform:translateY(2px) rotate(-3deg)}18%{transform:translateY(-3px) rotate(4deg)}28%,100%{transform:none}}
 @keyframes vlsPrivDoor{0%,10%{transform:scaleX(.18);opacity:.45}28%,100%{transform:scaleX(1);opacity:1}}
@@ -405,7 +405,7 @@ ${rmBlock(
 )}
 `}</style>
     <Frame x={4} w={152} theme={theme} />
-    <Frame x={164} w={152} theme={theme} />
+    <Frame x={164} w={152} theme={theme} result />
     <OpenDoorway x={64} y={18} />
     <Pawn x={204} yb={76} s={8} />
     <g className="vls-priv-eyes" fill="#101a2c">
@@ -463,11 +463,11 @@ ${rmBlock(
 const ScenePassword: HintScene = ({ theme }) => (
   <>
     <style>{`
-.vls-pass-key{animation:vlsPassKey 2.8s ease-in-out infinite}
-.vls-pass-lines{animation:vlsPassLines 2.8s ease-in-out infinite}
-.vls-pass-shackle{transform-box:view-box;transform-origin:190px 44px;animation:vlsPassShackle 2.8s ease-in-out infinite}
-.vls-pass-glow{animation:vlsPassGlow 2.8s ease-in-out infinite}
-@keyframes vlsPassKey{0%{transform:translateX(0);opacity:0}6%{opacity:1}30%{transform:translateX(26px)}68%{transform:translateX(26px);opacity:1}80%{transform:translateX(26px);opacity:0}82%,100%{transform:translateX(0);opacity:0}}
+.vls-pass-key{animation:vlsPassKey var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-pass-lines{animation:vlsPassLines var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-pass-shackle{transform-box:view-box;transform-origin:190px 44px;animation:vlsPassShackle var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-pass-glow{animation:vlsPassGlow var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+@keyframes vlsPassKey{0%{transform:translateX(0);opacity:0}6%{opacity:1}30%,100%{transform:translateX(26px);opacity:1}}
 @keyframes vlsPassLines{0%,4%{opacity:0}10%{opacity:.9}24%{opacity:.9}32%,100%{opacity:0}}
 @keyframes vlsPassShackle{0%,8%{transform:rotate(34deg)}20%{transform:rotate(-6deg)}28%,100%{transform:rotate(0)}}
 @keyframes vlsPassGlow{0%,30%{opacity:.3}42%{opacity:.65}55%,100%{opacity:.3}}
@@ -481,7 +481,7 @@ ${rmBlock(
 )}
 `}</style>
     <Frame x={4} w={152} theme={theme} />
-    <Frame x={164} w={152} theme={theme} />
+    <Frame x={164} w={152} theme={theme} result />
     <g className="vls-pass-lines" opacity={0}>
       <path d="M42 42 l-7 -2 M42 52 l-7 2" stroke={FAINT} strokeWidth={2} strokeLinecap="round" />
     </g>

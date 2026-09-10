@@ -4,12 +4,13 @@ import { Glyph, type GlyphName } from "../../ui/icons";
 import { useCopy, type CopyKey } from "../../ui/copy";
 import { PawnSvg } from "./Couch";
 import { participantColor } from "./participant-color";
+import type { StatusDescriptor } from "../../ui/media-status";
+import { Tooltip } from "./Tooltip";
 
 export interface ViewerOverviewEntry {
   key: string;
   name: string;
-  connected: boolean;
-  statusLabel: string;
+  status: StatusDescriptor;
   route: "p2p" | "sfu" | null;
   metrics: ConnectionMetrics | null;
 }
@@ -36,7 +37,7 @@ export function ViewerOverview({
   ): string =>
     finite(value ?? null) ? `${value!.toFixed(digits)}${unit}` : unknown;
   const heading = (key: CopyKey, icon: GlyphName) => (
-    <span title={vis ? t(key) : undefined} aria-label={t(key)}>
+    <span aria-label={t(key)}>
       {vis ? <Glyph name={icon} size={14} /> : t(key)}
     </span>
   );
@@ -59,6 +60,8 @@ export function ViewerOverview({
         </div>
         <div className="lr-viewer-overview-body">
           {entries.map((entry) => {
+            const statusLabel = t(entry.status.labelKey);
+            const hint = entry.status.tooltip ?? entry.status.comic;
             const metrics = entry.metrics;
             const resolution = metrics?.resolution ?? unknown;
             const fps = numberValue(metrics?.framesPerSecond, 1);
@@ -73,23 +76,23 @@ export function ViewerOverview({
                 : entry.route === "p2p"
                   ? "P2P"
                   : "—";
-            return (
+            const row = (
               <button
-                key={entry.key}
                 type="button"
                 className={`lr-viewer-overview-row${selectedKey === entry.key ? " is-selected" : ""}`}
                 aria-pressed={selectedKey === entry.key}
-                aria-label={`${entry.name} · ${entry.statusLabel} · ${route}`}
+                aria-label={`${entry.name} · ${statusLabel} · ${route}`}
                 onClick={() => onSelect(entry.key)}
               >
-                <span className="lr-viewer-overview-person" title={entry.statusLabel}>
+                <span className="lr-viewer-overview-person">
                   <span className="lr-viewer-overview-pawn">
                     <PawnSvg color={participantColor(entry.key)} />
-                    <i className={entry.connected ? "" : "is-wait"} aria-hidden="true" />
+                    <i className="lr-pawn-led" data-tone={entry.status.tone}
+                      data-pulse={entry.status.pulse || undefined} aria-hidden="true" />
                   </span>
                   <span className="lr-viewer-overview-person-copy">
                     <b>{entry.name}</b>
-                    {vis ? null : <small>{entry.statusLabel}</small>}
+                    {vis ? null : <small>{statusLabel}</small>}
                   </span>
                 </span>
                 <span className={`lr-viewer-overview-route is-${entry.route ?? "pending"}`}>
@@ -123,6 +126,19 @@ export function ViewerOverview({
                 <span>{loss}</span>
                 <span>{rtt}</span>
               </button>
+            );
+            return (
+              <Tooltip
+                key={entry.key}
+                className="lr-overview-row-hint"
+                kind={hint}
+                tone={entry.status.tone}
+                motion={entry.status.pulse ? "progress" : undefined}
+                text={vis ? hint ? undefined : entry.name : `${entry.name} · ${statusLabel}`}
+                align="start"
+              >
+                {row}
+              </Tooltip>
             );
           })}
         </div>

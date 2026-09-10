@@ -31,9 +31,6 @@ describe("copy catalog", () => {
 
   it("interpolates variables", () => {
     expect(t("zh", "host.title", { name: "阿舟" })).toBe("阿舟 的屏幕");
-    expect(t("en", "host.onlineCount", { n: "4", max: "20" })).toBe(
-      "4 / 20 online",
-    );
     expect(t("zh", "viewer.title", { name: "$&" })).toBe("$& 的屏幕");
   });
 

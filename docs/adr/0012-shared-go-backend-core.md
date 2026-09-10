@@ -56,18 +56,19 @@ the same Browser build.
    stay synchronous inside the lock and keep the current fail-fast storage
    policy: an unrecoverable authority write ends the process instead of
    continuing on divergent state.
-6. LiveKit access uses the standard library: HS256 participant and service tokens
-   plus Twirp JSON RoomService calls over `net/http`, with the current grants,
-   bounded per-request timeout, per-managed-room serialization, and not-found
-   rule. No LiveKit SDK is added.
+6. Superseded by [ADR-0013](./0013-embedded-node-local-media.md): the port initially
+   used standard-library tokens and Twirp calls for external LiveKit. Current
+   App/Server media adapters share embedded Pion/LiveKit forwarding and the
+   authenticated room signaling path; that external service/token layer is gone.
 7. Room persistence uses the pure-Go `modernc.org/sqlite` driver over the schema,
    pragmas, single exclusive connection, and recovery accepted in
    [ADR-0002](./0002-memory-resident-protected-rooms.md). Both storage modes,
    their validation, and their failure policy are unchanged, and no build
    requires a C toolchain.
-8. The port changed no contract. Signaling stayed on its then-current v21 wire; the App
-   loopback stays v8, capture framing stays v4, and the HTTP API, cookies, error
-   codes, and close codes keep their exact shapes. No compatibility alias, dual
+8. The port changed no contract. At that boundary signaling was v21, App loopback
+   v8 and the capture probe v4; the HTTP API, cookies, error codes and close codes
+   retained their shapes. [Status](../status.md#accepted-release-contract) owns
+   the current contract tuple. No compatibility alias, dual
    reader, or migration is added for a change of implementation language.
 
 ## Consequences
@@ -91,7 +92,7 @@ the same Browser build.
   production host need no Node; [deployment](../deployment.md) owns their exact
   commands.
 - Development runs two processes: the Vite dev server for the Browser bundle and
-  the Go application server behind it. The [README](../../README.md) owns those
+  the Go application server behind it. The [development guide](../README.md#run-from-source) owns those
   commands.
 - ADR-0010 items 1, 5, 7, 12 (its supervisor sentence), 13, 14, and its
   two-internal-process consequence are superseded and amended in place. The rest

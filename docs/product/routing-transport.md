@@ -17,14 +17,17 @@ owns ports and [self-hosting](../operations/self-hosting.md) owns service setup.
 - A route ends in usable media, explicit bounded waiting, or clear failure.
 
 Every deployment uses this controller. Leaving embedded SFU disabled keeps the
-same bounded P2P graph without its SFU fallback; there is no separate Host-star mode.
+same bounded P2P graph without its SFU fallback and fixes Privacy mode on for all
+rooms, including App Local and public-link rooms. The server enforces that policy
+for waiting and active participants; there is no separate Host-star mode.
 
 ## Per-Share Route Policy
 
 The Host chooses route policy before sharing and it remains fixed for that
 share generation:
 
-- default hybrid mode keeps P2P first and permits the bounded SFU suffix;
+- when SFU is available, default hybrid mode keeps P2P first and permits the
+  bounded SFU suffix;
 - peer-only mode excludes SFU publication, subscription, bootstrap, and quality
   candidates, while retaining the same bounded Peer graph and clear exhausted
   failure; and

@@ -369,21 +369,8 @@ body.lr-theater-open { overflow: hidden; }
   border-radius: 0;
 }
 .lr-room.is-theater .lr-tv-chin,
-.lr-room.is-theater .lr-shelf,
 .lr-room.is-theater .lr-couch,
 .lr-room.is-theater .lr-deck { display: none; }
-.lr-theater-exit {
-  position: absolute;
-  z-index: 3;
-  top: max(14px, env(safe-area-inset-top));
-  right: max(14px, env(safe-area-inset-right));
-}
-.lr-theater-exit .lr-btn {
-  border-color: rgba(223, 232, 242, .82);
-  background: rgba(10, 16, 28, .72);
-  color: #fff;
-  backdrop-filter: blur(8px);
-}
 
 /* ---------- the TV ---------- */
 
@@ -413,30 +400,11 @@ body.lr-theater-open { overflow: hidden; }
   justify-content: center;
   height: 26px;
 }
-.lr-tv-chin i {
-  width: 8px; height: 8px;
-  border-radius: 50%;
-  background: #57697f;
-  transition: background 300ms ease;
-}
-.lr-tv-chin i.is-on { background: var(--live); }
-.lr-tv-chin i.is-warn { background: var(--warn); animation: lr-blink 1.1s infinite; }
-.lr-tv-chin i.is-bad { background: var(--danger); }
-.lr-tv-chin i.is-busy { background: var(--action); animation: lr-blink .8s infinite; }
 
 @keyframes lr-crt {
   0% { filter: brightness(3); transform: scaleY(.012); }
   55% { filter: brightness(1.6); transform: scaleY(1.02); }
   100% { filter: brightness(1); transform: scaleY(1); }
-}
-
-.lr-shelf {
-  width: min(640px, 84%);
-  height: 10px;
-  margin: 14px auto 0;
-  border: 3px solid var(--ink);
-  border-radius: 6px;
-  background: var(--paper);
 }
 
 /* TV overlays */
@@ -467,12 +435,14 @@ body.lr-theater-open { overflow: hidden; }
 .lr-tooltip-preview { max-width: 1440px; }
 .lr-tooltip-preview-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin: 8px 0 20px; }
 .lr-tooltip-preview-head h1 { margin: 0; font-size: 1.1rem; }
-.lr-tooltip-preview-head p { margin: 0; color: var(--muted); }
-.lr-tooltip-preview-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 18px; }
-.lr-tooltip-preview-card { min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: color-mix(in srgb, var(--panel) 88%, transparent); }
+.lr-tooltip-preview-head p { margin: 0; opacity: .7; }
+.lr-tooltip-preview h2 { margin: 24px 0 12px; font-size: 1rem; }
+.lr-tooltip-preview-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr)); gap: 18px; }
+.lr-tooltip-preview-card { min-width: 0; padding: 10px; border: 1px solid var(--wall-2); border-radius: 8px; background: var(--paper); }
 .lr-tooltip-preview-card > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
-.lr-tooltip-preview-card code { color: var(--muted); font-size: .75rem; overflow-wrap: anywhere; }
-.lr-tooltip-preview-trigger { width: 30px; height: 30px; padding: 0; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--accent); cursor: help; }
+.lr-tooltip-preview-card code, .lr-tooltip-preview-card small { font-size: .75rem; overflow-wrap: anywhere; opacity: .7; }
+.lr-tooltip-preview-actions { display: flex; gap: 4px; }
+.lr-tooltip-preview-trigger { width: 36px; height: 36px; padding: 0; border: 1px solid var(--wall-2); border-radius: 999px; background: transparent; color: var(--ink); cursor: help; }
 .lr-tooltip-preview-art { min-height: 106px; display: grid; place-items: center; overflow: hidden; }
 .lr-tooltip-preview-art svg { max-width: 100%; height: auto; }
 .lr-tv-overlay.has-comic { gap: 8px; padding: 10px; }
@@ -591,6 +561,7 @@ body.lr-theater-open { overflow: hidden; }
   transition: transform 140ms var(--spring), background 120ms ease;
 }
 .lr-source-picker-refresh { margin-left: auto; }
+.lr-source-picker-head > .lr-comic-tip-wrap:has(> .lr-source-picker-refresh) { margin-left: auto; }
 .lr-source-picker-refresh:hover,
 .lr-source-picker-close:hover { background: rgba(255, 255, 255, .1); }
 .lr-source-picker-refresh:active,
@@ -841,9 +812,14 @@ body.lr-theater-open { overflow: hidden; }
   border: 2px solid var(--wall);
   border-radius: 50%;
   background: var(--live);
-  transition: background 200ms ease;
 }
-.lr-pawn-led.is-wait { background: var(--warn); animation: lr-blink 1.2s infinite; }
+.lr-pawn-led[data-tone="busy"] { background: var(--action); }
+.lr-pawn-led[data-tone="warn"] { background: var(--warn); }
+.lr-pawn-led[data-tone="bad"] { background: var(--danger); }
+.lr-pawn-led[data-tone="off"] { background: var(--ink-soft, #8ea3b8); }
+.lr-pawn-led[data-pulse] { animation: lr-blink 1.6s ease-in-out infinite; }
+.lr-pawn.is-waiting > svg { opacity: .65; animation: lr-pawn-breathe 1.6s ease-in-out infinite; }
+@keyframes lr-pawn-breathe { 50% { opacity: .35; } }
 .lr-pawn.is-you::after {
   content: "";
   position: absolute;
@@ -868,7 +844,7 @@ body.lr-theater-open { overflow: hidden; }
 .lr-pawns.is-crowded { gap: 6px; }
 .lr-pawns.is-crowded .lr-pawn { min-width: 33px; }
 .lr-pawns.is-crowded .lr-pawn svg { width: 29px; height: 35px; }
-.lr-pawns.is-crowded .lr-pawn-led { width: 8px; height: 8px; }
+.lr-pawns.is-crowded .lr-pawn-led { left: calc(50% + 8px); width: 9px; height: 9px; }
 .lr-pawn-name {
   max-width: 112px;
   margin-top: -4px;
@@ -974,8 +950,6 @@ html[data-theme="dark"] .lr-viewer-host-slot svg { color: #9bb0c5; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.lr-viewer-state-slot { flex: 0 1 auto; min-width: 0; }
-.lr-viewer-state-slot:empty { display: none; }
 .lr-viewer-self-slot {
   display: flex;
   flex: 0 1 auto;
@@ -1011,6 +985,12 @@ html[data-theme="dark"] .lr-viewer-host-slot svg { color: #9bb0c5; }
   background: var(--wall-2);
 }
 .lr-viewer-self-slot .lr-name-tag { flex: 0 1 auto; width: auto; }
+.lr-name-hint { min-width: 0; max-width: 100%; }
+.lr-comic-tip-wrap.lr-overview-row-hint { display: flex; width: 100%; }
+.lr-source-option-hint { min-width: 0; }
+.lr-source-option-hint > .lr-source-option { width: 100%; height: 100%; }
+.lr-invite-hint { width: 100%; min-width: 0; max-width: 340px; flex: 1 1 240px; }
+.lr-invite-hint > .lr-invite-url { width: 100%; }
 .lr-spacer { flex: 1; }
 .lr-divider { width: 2.5px; align-self: stretch; border-radius: 2px; background: var(--wall-2); }
 .lr-row.is-sub .lr-divider { background: #c3d4cb; }
@@ -1037,16 +1017,6 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
 /* Touch only: the compact mono URL would auto-zoom iOS on focus under 16px,
    and the zoom never returns. Pointer devices keep the dense line. */
 @media (pointer: coarse) { .lr-invite-url { font-size: 16px; } }
-.lr-status-text {
-  min-width: 0;
-  overflow: hidden;
-  font-size: 13.5px;
-  font-weight: 600;
-  opacity: .78;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* LCD room code */
 .lr-lcd {
   display: inline-flex;
@@ -1185,10 +1155,9 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
 }
 .lr-toggle button.is-selected { color: var(--paper); }
 .lr-toggle button:active { transform: scale(.94); }
-/* Vis mode hint-wraps each option button, so the wrap (not the button) is the
-   grid item; it stretches to its track, and without centering the icon-only
-   button would pin to the left of its half. */
-.lr-toggle .lr-comic-tip-wrap { justify-content: center; }
+/* The wrapper owns each half in both language modes. */
+.lr-toggle > .lr-comic-tip-wrap { flex: 1; justify-content: center; }
+.lr-toggle > .lr-comic-tip-wrap > button { width: 100%; }
 
 /* iOS-style switch */
 .lr-switch {
@@ -1275,14 +1244,6 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
   font-size: 13.5px;
   font-weight: 700;
   max-width: 100%;
-}
-.lr-stage-notices {
-  display: flex;
-  width: min(960px, 100%);
-  margin: 10px auto 0;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
 }
 .lr-name-tag i { width: 9px; height: 9px; border-radius: 50%; background: var(--you); flex: 0 0 auto; }
 .lr-name-tag span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1506,16 +1467,13 @@ html[data-theme="dark"] .lr-meter-cell svg { color: #7d92a8; }
 .lr-viewer-overview-pawn { position: relative; flex: 0 0 auto; }
 .lr-viewer-overview-pawn svg { display: block; width: 24px; height: 29px; }
 .lr-viewer-overview-pawn i {
-  position: absolute;
   top: 0;
+  left: auto;
   right: -2px;
   width: 7px;
   height: 7px;
   border: 1.5px solid var(--paper);
-  border-radius: 50%;
-  background: var(--live);
 }
-.lr-viewer-overview-pawn i.is-wait { background: var(--warn); }
 .lr-viewer-overview-route {
   display: inline-flex;
   align-items: center;
@@ -1805,7 +1763,6 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
     min-width: 0;
     max-width: 180px;
   }
-  .lr-viewer-state-slot { flex: 0 1 auto; min-width: 0; }
   .lr-viewer-self-slot { flex: 1 1 auto; gap: 8px; margin-left: 0; }
   .lr-host-personal-controls {
     width: 100%;
@@ -1848,7 +1805,6 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
   .lr-toggle { flex: 1; }
   .lr-door-body { padding: 12px; }
   .lr-dial { width: 54px; height: 66px; font-size: 28px; }
-  .lr-status-text { width: 100%; }
   .lr-tv-screen.has-entry { aspect-ratio: auto; min-height: 292px; }
   .lr-tv-screen:has(.lr-source-picker) { aspect-ratio: auto; min-height: 440px; }
   .lr-tv-big { width: 72px; height: 72px; }
@@ -1862,6 +1818,16 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
   .lr-header-controls .lr-btn .lr-cap { display: none; }
 }
 
+.lr-stage-notices {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: min(960px, 100%);
+  margin: 10px auto 0;
+}
+.lr-stage-notices:empty { display: none; }
 .lr-room.is-theater .lr-stage-notices {
   position: absolute;
   z-index: 3;
@@ -1871,7 +1837,9 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
   width: min(92vw, 720px);
   margin: 0;
   transform: translateX(-50%);
+  pointer-events: none;
 }
+.lr-room.is-theater .lr-stage-notices > * { pointer-events: auto; }
 @media (max-width: 360px) {
   .lr-top { gap: 6px; padding-inline: 10px; }
   .lr-top-right { gap: 6px; }
@@ -1903,27 +1871,28 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
   }
 }
 
-/* ---------- comic tooltip ---------- */
+/* ---------- shared text / comic tooltip ---------- */
 
 /* Stateful hover/focus panel carrying a paper Comic above its trigger. The
    trigger stays focusable; when it is natively disabled, the wrapper owns the
    explanation focus instead. Enter is delayed ~120ms, exit is immediate. Under
    prefers-reduced-motion the global block collapses the transition to instant
    and the comic's own RM block pins its final frame. */
-/* Visibility is three-channel state owned by ComicTooltip: fine-pointer hover,
+/* Visibility is three-channel state owned by Tooltip: fine-pointer hover,
    keyboard focus-visible, and Material-style touch long-press. */
 .lr-comic-tip-wrap { position: relative; display: inline-flex; }
 .lr-comic-tip-wrap.is-disabled-trigger > :disabled { pointer-events: none; }
 .lr-comic-tip {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 50%;
-  transform: translateX(-50%) translateY(4px);
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  overflow: visible;
+  transform: translateY(4px);
   width: max-content;
   max-width: 320px;
   z-index: 30;
   background: var(--paper);
-  border: 2.5px solid var(--ink);
+  border: 2.5px solid var(--comic-tone, var(--ink));
   border-radius: 14px;
   padding: 10px;
   box-shadow: 0 6px 18px rgb(16 26 44 / .18);
@@ -1932,39 +1901,52 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
   transition: opacity .16s ease, transform .16s ease;
 }
 .lr-comic-tip * { animation-play-state: paused !important; }
-/* Caret lives on the wrapper (not the panel) so it always centers on the
-   trigger button, whatever the panel alignment is. The diamond's center sits
-   on the panel's edge; the half inside the panel hides behind its paper
-   background (z 29 vs 30), leaving a clean point aimed at the trigger. */
-.lr-comic-tip-wrap::before {
+.lr-comic-tip.is-text {
+  padding: 10px 14px;
+  max-width: min(320px, calc(100vw - 16px));
+  color: var(--ink);
+  font: 600 14px/1.6 var(--font);
+  text-align: start;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+/* Keep the panel reachable across the small gap while reading it. */
+.lr-comic-tip::after {
   content: "";
   position: absolute;
-  bottom: calc(100% + 3px);
-  left: 50%;
+  inset: 100% 0 auto;
+  height: 10px;
+}
+.lr-comic-tip.is-below::after { inset: auto 0 100%; }
+.lr-comic-tip-wrap:is(.is-hover-open, .is-focus-open, .is-tip-open) > .lr-comic-tip {
+  pointer-events: auto;
+}
+/* The caret follows the trigger, including in a scrolled/clipped list. */
+.lr-comic-tip::before {
+  content: "";
+  position: absolute;
+  bottom: -7px;
+  left: var(--tooltip-caret);
   width: 10px;
   height: 10px;
   margin-left: -5px;
   background: var(--paper);
-  border: 2.5px solid var(--ink);
-  transform: rotate(45deg) scale(.6);
-  z-index: 29;
-  opacity: 0;
+  border: solid var(--comic-tone, var(--ink));
+  border-width: 0 2.5px 2.5px 0;
+  transform: rotate(45deg);
   pointer-events: none;
-  transition: opacity .16s ease, transform .16s ease;
 }
-.lr-comic-tip-wrap:has(.lr-comic-tip.is-below)::before {
+.lr-comic-tip.is-below::before {
   bottom: auto;
-  top: calc(100% + 3px);
+  top: -7px;
+  border-width: 2.5px 0 0 2.5px;
 }
 
 /* channel 1: fine-pointer hover */
 @media (hover: hover) and (pointer: fine) {
-  .lr-comic-tip-wrap.is-hover-open .lr-comic-tip { opacity: 1; transform: translateX(-50%) translateY(0); transition-delay: .12s; }
+  .lr-comic-tip-wrap.is-hover-open .lr-comic-tip { opacity: 1; transform: translateY(0); transition-delay: .12s; }
   .lr-comic-tip-wrap.is-hover-open .lr-comic-tip * { animation-play-state: running !important; }
-  .lr-comic-tip-wrap.is-hover-open .lr-comic-tip.is-below { transform: translateX(-50%) translateY(0); }
-  .lr-comic-tip-wrap.is-hover-open .lr-comic-tip.is-start,
-  .lr-comic-tip-wrap.is-hover-open .lr-comic-tip.is-end { transform: translateX(0) translateY(0); }
-  .lr-comic-tip-wrap.is-hover-open::before { opacity: 1; transform: rotate(45deg) scale(1); transition-delay: .12s; }
 
   /* Panel mutex: keyboard focus (channel 2) can hold one wrap's panel open
      while the pointer hovers a neighboring trigger, and two 320px panels at
@@ -1978,11 +1960,7 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
   :is(.lr-row-group, .lr-pawn-detail, .lr-entry-actions):has(.lr-comic-tip-wrap.is-focus-open)
     .lr-comic-tip-wrap:not(.is-focus-open).is-hover-open .lr-comic-tip {
     opacity: 0;
-    transition-delay: 0s;
-  }
-  :is(.lr-row-group, .lr-pawn-detail, .lr-entry-actions):has(.lr-comic-tip-wrap.is-focus-open)
-    .lr-comic-tip-wrap:not(.is-focus-open).is-hover-open::before {
-    opacity: 0;
+    pointer-events: none;
     transition-delay: 0s;
   }
 }
@@ -1991,36 +1969,16 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
 .lr-comic-tip-wrap.is-focus-open .lr-comic-tip,
 .lr-comic-tip-wrap.is-tip-open .lr-comic-tip {
   opacity: 1;
-  transform: translateX(-50%) translateY(0);
+  transform: translateY(0);
   transition-delay: .12s;
 }
 .lr-comic-tip-wrap.is-focus-open .lr-comic-tip *,
 .lr-comic-tip-wrap.is-tip-open .lr-comic-tip * {
   animation-play-state: running !important;
 }
-.lr-comic-tip-wrap.is-focus-open .lr-comic-tip.is-below,
-.lr-comic-tip-wrap.is-tip-open .lr-comic-tip.is-below { transform: translateX(-50%) translateY(0); }
-.lr-comic-tip-wrap.is-focus-open .lr-comic-tip.is-start,
-.lr-comic-tip-wrap.is-focus-open .lr-comic-tip.is-end,
-.lr-comic-tip-wrap.is-tip-open .lr-comic-tip.is-start,
-.lr-comic-tip-wrap.is-tip-open .lr-comic-tip.is-end { transform: translateX(0) translateY(0); }
-.lr-comic-tip-wrap.is-focus-open::before,
-.lr-comic-tip-wrap.is-tip-open::before {
-  opacity: 1;
-  transform: rotate(45deg) scale(1);
-  transition-delay: .12s;
-}
 
-/* Below-placement: header controls sit at the viewport top, so their panel
-   opens downward; the wrapper caret flips to the trigger's bottom edge. */
-.lr-comic-tip.is-below { bottom: auto; top: calc(100% + 8px); transform: translateX(-50%) translateY(-4px); }
-
-/* Edge alignment: triggers near a viewport edge anchor the panel's near edge
-   instead of centering, so the comic never clips off-screen. */
-.lr-comic-tip.is-start { left: 0; transform: translateX(0) translateY(4px); }
-.lr-comic-tip.is-end { left: auto; right: 0; transform: translateX(0) translateY(4px); }
-.lr-comic-tip.is-below.is-start { transform: translateX(0) translateY(-4px); }
-.lr-comic-tip.is-below.is-end { transform: translateX(0) translateY(-4px); }
+/* Below-placement: header controls sit at the viewport top. */
+.lr-comic-tip.is-below { transform: translateY(-4px); }
 
 /* On mobile the wrapper (not the button) is the flex item, so equal-width
    action buttons keep their stretch when hint-wrapped. */
@@ -2103,8 +2061,6 @@ html[data-theme="dark"] .lr-tile small { color: #8ba0b4; }
 }
 
 
-/* Entry overlay hosts hint tooltips: let them escape the screens clip. */
-.lr-tv-screen.has-entry { overflow: visible; }
 @media (max-width: 640px) {
   .lr-tv-screen .lr-comic-tip { max-width: 62vw; }
 }

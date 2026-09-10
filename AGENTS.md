@@ -45,10 +45,9 @@
   [status](./docs/status.md), [TODO](./docs/todo.md), and only the relevant
   product module, ADR, research, or operations document. Then inspect branch,
   HEAD, status, staged diff, and worktrees.
-- Product modules own current behavior; ADRs own non-obvious decisions and
-  consequences; research owns evidence and license boundaries; deployment owns
-  operational reference. Status is the current execution/deployment index, TODO
-  is the only work ledger, and Git/PRs own completed history.
+- Use the [documentation owner map](./docs/maintenance.md#owners): product
+  behavior, engineering, visual language, versions, evidence and operations each
+  have one owner. TODO is the only work ledger; Git/PRs own completed history.
 - Give every durable fact one owner. Update memory or status only when its compact
   snapshot materially changes. Ordinary UI detail, protocol field listings,
   self-evident code, test inventories, routine validation, and agent process do
@@ -71,40 +70,28 @@
 - Canonical root must be clean current `main` at audit/integration boundaries.
   Create branches/worktrees from that exact commit; old branches and worktrees
   are never truth sources.
-- `main` is a low-frequency integration branch, never a workbench. Keep work on
-  branches/worktrees and merge only one complete, user-accepted phase per PR,
-  after its related implementation, tests, documentation, and acceptance are
-  complete. Use one squash commit and leave `main` unchanged between phases.
-  Do not merge intermediate checkpoints, release records, metadata-only edits,
-  or follow-up cleanup; fold them into the next phase. A P0/P1 emergency may
-  bypass batching only when the user explicitly authorizes it, still through
-  one coherent PR.
+- `main` remains low-frequency: one complete, user-accepted phase per squash PR,
+  with no intermediate release-record or cleanup commits. Keep implementation
+  on worktrees; [CONTRIBUTING.md](./CONTRIBUTING.md#full-integration-and-release-workflow)
+  owns the full workflow and explicit emergency exception.
 - Preserve user work. Branch, truth-checkpoint, PR, release, recovery, and
   cleanup rules are owned by [CONTRIBUTING.md](./CONTRIBUTING.md); do not mirror
   that workflow here.
 
 ## Engineering Defaults
 
-- Prefer the simplest cohesive design that is easy to use and maintain. Reuse
-  mature components, keep ownership explicit, and remove superseded paths in
-  the same change instead of retaining speculative flexibility or technical debt.
-- Apply good coding practice to every change: split modules around clear
-  responsibilities and state/lifecycle ownership, with cohesive internals and
-  narrow interfaces. Reuse proven shared behavior and abstract stable common
-  responsibilities; avoid both duplicate implementations and needless wrappers.
-  Review coupling and readability, not only file size or line count.
-- Judge a change by evidenced user value against its full implementation,
-  maintenance, compatibility, and failure cost. A large measured gain may
-  justify broad or breaking work; a small or speculative gain does not justify
-  material complexity or risk.
-- After completing a material module, run one ablation pass and remove every new
-  component, state, dependency, or branch that is not needed for the verified
-  result or an accepted contract. Its primary goal is lower total system
-  complexity, not perfect performance; marginal gains do not justify permanent
-  mechanisms or a materially larger maintenance surface.
+- UI changes must follow the shared [visual language](./docs/design/visual-language.md):
+  cast, semantic colours, result panels and motion have one owner. Extend the
+  existing preview when adding a new meaning; do not invent scene-local rules.
+- Follow [engineering and interface boundaries](./docs/reference/engineering.md):
+  simple cohesive modules, clear state/resource owners, mature reuse and narrow
+  contracts. After a material module, remove additions that the accepted result
+  does not need; total complexity matters more than marginal performance gains.
+- [Versioning](./docs/reference/versioning.md) separates build identity, wire,
+  storage and live generations, and owns the public compatibility design.
+  Its pending public-release policy does not replace today's private contract.
 - Use primary sources for non-trivial design and bugs. Add focused tests in
   proportion to risk; batch full browser/network/endurance checks at acceptance.
-- Keep scripts deterministic, fast, cross-platform, and CI-runnable. Support
-  Windows, macOS, and Linux; use LF and ASCII filenames for new files.
+- Keep scripts deterministic, fast, cross-platform and CI-runnable.
 - Before finishing material work, inspect status, report untracked artifacts,
   and stage requested files unless told otherwise.

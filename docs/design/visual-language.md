@@ -1,0 +1,132 @@
+# Visual Language
+
+This is the single design requirement for Piik's shared Web/App interface:
+illustration, semantic colour, panel grammar, motion and tooltip presentation.
+New UI work follows this file and the local `/__tooltip-preview` catalogue.
+[Media status](./media-status.md) owns which facts justify each status;
+[presentation lifecycle](../product/presentation-lifecycle.md) owns interaction
+and playback. Neither an illustration nor its colour creates product state.
+
+Use one stroke language for single concepts, small panel comics for causes and
+sequences, and literal scene objects for people, rooms and media. Glyphs do not
+form sentences. The same meaning and visual hierarchy must work in Chinese,
+English and pure-visual modes, in both themes and at narrow widths.
+
+## Layout And Input
+
+Present a small shared living room: the television is the media stage, the
+couch and pawns make presence spatial, and the four-digit room code stays
+prominent. Decoration must clarify product facts without creating another state
+model. Universal digits, transport symbols, URLs and measured values remain
+literal when the user needs the data.
+
+Functional controls use native buttons/inputs and localized accessible names.
+Hover, keyboard focus and touch receive equivalent guidance. Keep information
+order and interaction ownership consistent across languages, themes and viewport
+sizes. Reflow or bounded scrolling must not hide a primary action, truncate an
+essential value, overlap controls or change meaning.
+
+## Cast And Objects
+
+| Meaning | Representation |
+| --- | --- |
+| The person using the pictured action | Green pawn (`YOU` / `--you`), in every panel |
+| Somebody else | Blue pawn (`SKY`), or another distinct non-green illustration colour |
+| Host role | Game-controller mark on a pawn; never a crown or television as the person |
+| Shared or watched media | The same small television, including antenna, body and feet |
+| Browser application | Browser chrome around content; not a second design of television |
+| A captured window or display | Window title bar or display stand, with the shared media metaphor kept distinct |
+| Server forwarding media | A server on the media path; opening a Site alone does not imply SFU |
+
+These are **identity/object colours**, not status. A green pawn remains green
+in a failed scene; a successful scene does not turn other people green. Real
+roster identities retain the shared UUID colour function, not the illustrative
+"you versus others" palette. Actor positions and identities remain stable from
+the first panel to the result.
+
+## Semantic Colour And Shape
+
+Use the existing theme tokens in `src/client/styles.css`. The shared
+`comic-presentation.ts` maps meanings to those tokens for tooltip outlines,
+carets, result panels and verdict marks. Do not choose independent hex colours
+or animation rules inside an individual scene.
+
+| Meaning | Token / code tone | Panel and symbol |
+| --- | --- | --- |
+| Explanation, preference, ordinary action, intentional closure or unknown state | Neutral ink / `off` | Neutral panels; illustrate the action/object without a success stamp |
+| Confirmed completion or delivered media | Green `--live` / `live` | Neutral before, green result; check or completed object |
+| Still usable with a limitation, unavailable optional capability, or intentional media pause | Amber `--warn` / `warn` | Neutral before, amber result; limit, pause, lock or unavailable mark on the affected part |
+| Confirmed failed or blocked action | Red `--danger` / `bad` | Neutral before, red result; cross, broken path or other explicit failure mark |
+| Work in progress or awaiting an action/frame | Blue `--action` / `busy` | Neutral before, blue current/result panel; connection, progress or play symbol |
+
+Recovery retains amber because service is interrupted while work continues.
+Waiting for a Host and unknown observations remain neutral. A control's
+prospective action is not proof of success: opening details, switching theme,
+adjusting volume or offering P2P stays neutral. Actual copy feedback can change
+that same hint to green or red, using the existing operation result.
+
+Two-panel comics always read before/context on the left and result/current
+condition on the right. Only the result carries the semantic accent; a single
+panel carries the current condition. Tooltip outline and caret use that same
+tone in Chinese, English and visual modes. Neutral uses theme ink, not literal
+white. Keep paper fills quiet; do not tint the whole scene green/yellow/red.
+Meaning must also survive without colour through objects, symbols and accessible
+localized names. Never show celebration or a completed live path as the verdict
+of a failed or unavailable operation.
+
+A missing optional feature is not a failed media path. For example, unavailable
+NAT prediction marks only extra candidate paths; ordinary P2P remains a neutral
+possibility. A rejected PiP request is failure; lack of PiP support is a limitation.
+
+## Motion Grammar
+
+| Presentation | Rule |
+| --- | --- |
+| Action demonstration (`demo`) | Play one meaningful transition when shown, then hold its result |
+| Work actually continuing (`progress`) | Repeat a gentle connection/recovery beat while that state exists |
+| Settled success, failure, limitation, pause or idle (`still`) | Show the informative final pose immediately; no repeated stamping, shaking, blinking or celebration |
+
+Demonstrations and progress share the existing 3.2-second comic beat. The main
+action belongs in its first half, followed by a readable hold; small internal
+staggering is allowed. At most two independent movers per panel. An explanatory
+slider describes purpose and available range, not its live numeric value.
+Decorative sparkle must support the pictured action, never fake current success.
+
+Reduced motion and settled states reuse each scene's **same explicit final
+pose**. Disabling animation alone is insufficient if the base SVG hides the
+result or shows a misleading starting pose. Static styling is scoped to its SVG;
+one still tooltip must not freeze another progress scene. New keyframes must end
+in the documented result rather than reset for an obsolete loop.
+
+The tooltip panel itself uses the same restrained entrance/exit for every tone.
+Replay belongs to opening/hovering/focusing the whole control, not just its SVG.
+Control icons use the shared drawing/replay animation for hover and keyboard
+focus; they do not invent another trigger region inside the button.
+Do not add a per-scene timer or another interaction/state owner. Only the brand
+mascot has occasional ambient idle motion; its styling is not a status vocabulary.
+
+## Ownership And Incremental Review
+
+- Existing status/operation facts outrank the scene default. Reused `warning`
+  artwork can represent a warning or a confirmed failure; pass the actual tone.
+- `comic-presentation.ts` owns defaults and semantic tokens; `Frame`, `RedX`,
+  `rmBlock`, `Comic` and `HintComic` apply the shared grammar. Scenes own only
+  their cast, causal illustration and final pose. `Tooltip` owns interaction
+  and placement. Do not duplicate these rules in each scene or page.
+- Keep the semantic kind and tone in all languages; localized text changes
+  expression, not severity. Symbol-only controls retain accessible names.
+- For each changed scene inspect its start, transition and settled pose in
+  both themes, reduced motion and narrow layouts. Compare success, failure,
+  limitation and neutral neighbours in the catalogue. Code-level tests do not
+  establish visual clarity.
+- Update this owner when accepting a new convention. Product documents link
+  here instead of copying the palette, cast or animation table.
+
+## Design References
+
+[Carbon status indicators](https://v10.carbondesignsystem.com/patterns/status-indicator-pattern/)
+supports combining semantic colour with shape and symbols;
+[Carbon motion](https://carbondesignsystem.com/elements/motion/overview/)
+distinguishes functional feedback from occasional expressive movement. Piik
+keeps its own playful television/pawn artwork and restrained spring motion.
+These references inform the grammar; they do not add a UI framework.

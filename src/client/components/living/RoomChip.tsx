@@ -5,7 +5,7 @@ import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
 import { copyRoomCode } from "../room-code";
 import { Btn, Pill } from "./primitives";
-import { ComicTooltip } from "./ComicTooltip";
+import { Tooltip } from "./Tooltip";
 
 export function Lcd({ code }: { code: string }) {
   const { t, vis } = useCopy();
@@ -41,12 +41,10 @@ export function Lcd({ code }: { code: string }) {
   const copyButton = (
     <button
       type="button"
-      title={vis ? undefined : t("common.copy")}
       aria-label={copyFeedback || t("common.copy")}
       onClick={(event) => {
-        // Hint-wrapped in vis: pointer activation must not leave the comic
-        // pinned open by focus (keyboard clicks keep focus).
-        if (vis && event.detail !== 0) event.currentTarget.blur();
+        // Pointer activation must not pin the hint open; keyboard keeps focus.
+        if (event.detail !== 0) event.currentTarget.blur();
         void copy();
       }}
     >
@@ -69,7 +67,6 @@ export function Lcd({ code }: { code: string }) {
       className="lr-lcd"
       role="group"
       aria-label={`${t("common.roomCode")} ${code}`}
-      title={vis ? undefined : t("common.roomCode")}
     >
       <span className="lr-lcd-roll" aria-hidden="true">
         {[...code].map((digit, index) => (
@@ -78,11 +75,12 @@ export function Lcd({ code }: { code: string }) {
           </span>
         ))}
       </span>
-      {vis ? (
-        <ComicTooltip kind="hint-copy-code">{copyButton}</ComicTooltip>
-      ) : (
-        copyButton
-      )}
+      <Tooltip kind={copyState === "failed" ? "warning" : "hint-copy-code"}
+        tone={copyState === "copied" ? "live" : copyState === "failed" ? "bad" : "off"}
+        motion={copyState === "idle" ? "demo" : "still"}
+        text={vis ? undefined : copyFeedback || t("common.copy")}>
+        {copyButton}
+      </Tooltip>
       <span className="visually-hidden" role="status" aria-live="polite">
         {copyFeedback}
       </span>

@@ -1,6 +1,5 @@
-// Package app ports src/server/app.ts: the HTTP composition, the startup and
-// shutdown lifecycle, and the request router. access.go ports
-// src/server/access-session.ts and static.go the sirv frontend handler.
+// Package app composes the shared HTTP service, site access, embedded assets,
+// media listeners, and startup/shutdown lifecycle for Hosted Server and App.
 //
 // # Locking
 //
