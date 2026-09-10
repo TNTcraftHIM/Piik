@@ -39,8 +39,8 @@ Binding-only STUN on UDP 3478/3479/3480 and optional SFU on UDP 7882. nginx owns
 HTTPS; external LiveKit/coturn services remain disabled. Participants, routes and
 media remain process-only. This private service is not a public demonstration.
 
-[TODO](./todo.md) owns rename acceptance, distribution and ablation work.
-The public website is a later phase.
+[TODO](./todo.md) owns public-introduction acceptance, distribution and ablation
+work. The public website has a local static draft; publication remains separate.
 
 ## Media Evidence And Limits
 

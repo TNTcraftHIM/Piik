@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="Your game. Their front row. Piik is private screen sharing for one host and up to 20 invited friends. Watch in your browser, with no installation.">
+  <meta name="theme-color" content="#e9f2ee">
+  <title>Piik — Your game. Their front row.</title>
+  <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./main.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main"><span lang="en">Skip to content</span><span lang="zh-CN">跳到正文</span></a>
+  <svg class="symbols" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="tv-mark" viewBox="0 0 32 32">
+      <g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m11 4 5 4 5-4"/><rect x="4" y="8" width="24" height="18" rx="4"/><circle cx="11.5" cy="16.5" r="1.25" fill="currentColor" stroke="none"/><path d="M19 17c1.5-1.8 3.2-1.8 4.7 0M10 29l2-3m10 3-2-3"/></g>
+    </symbol>
+    <symbol id="arrow" viewBox="0 0 24 24"><path d="M4 12h15m-6-6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  </svg>
+
+  <header class="site-header wrap">
+    <a class="identity" href="#" aria-label="Piik"><svg aria-hidden="true"><use href="#tv-mark"/></svg><span>Piik<span class="identity-dot">.</span></span></a>
+    <nav aria-label="Main / 主导航">
+      <a href="#how"><span lang="en">How it works</span><span lang="zh-CN">怎么玩</span></a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <div class="preferences" hidden>
+      <button id="language" type="button" lang="zh-CN" aria-label="切换到简体中文">简体中文</button>
+      <label class="theme-picker"><span class="sr-only"><span lang="en">Color theme</span><span lang="zh-CN">外观</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 4.5a7.5 7.5 0 0 1 0 15Z" fill="currentColor"/></svg><select id="theme"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero wrap" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="eyebrow"><span class="status-dot"></span><span lang="en">Good company. Great games.</span><span lang="zh-CN">好游戏，和好朋友一起。</span></p>
+        <h1 id="hero-title"><span lang="en">Your game.<br>Their <span class="highlight">front row.</span></span><span lang="zh-CN">开一局，<br>朋友坐<span class="highlight">前排。</span></span></h1>
+        <p class="hero-description"><span lang="en">Share your screen. Bring your friends.<br>They watch right in their browsers.</span><span lang="zh-CN">分享你的屏幕，叫上朋友一起看。<br>打开浏览器，就能坐到你身边。</span></p>
+        <a class="button primary" href="#start"><span lang="en">Get started</span><span lang="zh-CN">一起开场</span><svg aria-hidden="true"><use href="#arrow"/></svg></a>
+        <p class="hero-note"><span lang="en">One host. Up to 20 friends. No viewer installation.</span><span lang="zh-CN">一位房主，最多 20 位好友。观看无须安装。</span></p>
+      </div>
+      <div class="hero-scene">
+        <div class="brand-play">
+          <svg id="brand-morph" viewBox="70 20 330 210" aria-hidden="true"><text class="brand-fallback" x="108" y="145">Piik</text></svg>
+          <button class="replay" id="replay" type="button" hidden><span aria-hidden="true">↻</span><span lang="en">A little Piik</span><span lang="zh-CN">探个头</span></button>
+        </div>
+        <img class="living-room" src="./assets/living-room.svg" width="900" height="590" alt="An illustrated game night: a green host shares a game with friends on an orange sofa.">
+        <p class="scene-caption"><span class="caption-line"></span><span lang="en">Same game. Your kind of crowd.</span><span lang="zh-CN">同一场游戏，熟悉的那群人。</span></p>
+      </div>
+    </section>
+
+    <section class="how-section" id="how" aria-labelledby="how-title">
+      <div class="wrap">
+        <div class="section-heading"><p class="eyebrow"><span lang="en">Less setup, more hanging out</span><span lang="zh-CN">少点折腾，多点相聚</span></p><h2 id="how-title"><span lang="en">A good night is three steps away.</span><span lang="zh-CN">三步，把朋友叫到前排。</span></h2></div>
+        <ol class="steps">
+          <li>
+            <div class="step-art"><svg viewBox="0 0 250 136" aria-hidden="true"><g fill="none" stroke="var(--drawing)" stroke-width="3" stroke-linejoin="round"><rect x="47" y="17" width="141" height="90" rx="12" fill="var(--art-mint)"/><path d="M105 108v14m-20 0h65"/><rect x="64" y="31" width="64" height="57" rx="7" fill="var(--art-paper)"/><rect x="137" y="31" width="34" height="23" rx="5" fill="var(--art-blue)"/><rect x="137" y="64" width="34" height="24" rx="5" fill="var(--art-yellow)"/><path d="m79 76 12-15 9 7 12-19"/><path d="m172 82 3 33 9-8 8 13 9-5-8-13 11-2Z" fill="var(--art-orange)"/></g><path d="m33 35-8-4m12-8-4-8m169 22 9-5" stroke="var(--drawing)" stroke-width="3" stroke-linecap="round"/></svg></div>
+            <p class="step-number">01 <span aria-hidden="true">/</span></p><h3><span lang="en">Pick your picture.</span><span lang="zh-CN">选好画面。</span></h3><p><span lang="en">A screen, a window, a game.<br>You choose what gets the spotlight.</span><span lang="zh-CN">一块屏幕、一个窗口、一场游戏。<br>想分享什么，由你决定。</span></p>
+          </li>
+          <li>
+            <div class="step-art"><svg viewBox="0 0 250 136" aria-hidden="true"><g stroke="var(--drawing)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="44" y="31" width="143" height="73" rx="16" fill="var(--art-paper)" transform="rotate(-5 115 67)"/><path d="m80 77-6-6a13 13 0 0 1 0-18l10-10a13 13 0 0 1 18 0l6 6m-10 8 6 6a13 13 0 0 1 0 18L94 91a13 13 0 0 1-18 0l-6-6m11-10 16-16" fill="none"/><path d="M125 58h38m-38 15h24"/><circle cx="191" cy="96" r="25" fill="var(--art-blue)"/><path d="m174 94 34-12-12 33-7-14Z" fill="var(--art-paper)"/><path d="m189 101 8-9"/><path d="M190 24v10m-5-5h10M33 93v8m-4-4h8"/></g></svg></div>
+            <p class="step-number">02 <span aria-hidden="true">/</span></p><h3><span lang="en">Send the invitation.</span><span lang="zh-CN">发出邀请。</span></h3><p><span lang="en">Drop the room link in your group chat.<br>Your friends open it in a browser.</span><span lang="zh-CN">把房间链接发到你们的群聊。<br>朋友用浏览器打开，就能加入。</span></p>
+          </li>
+          <li>
+            <div class="step-art"><svg viewBox="0 0 250 136" aria-hidden="true"><g stroke="var(--drawing)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M55 112v9m139-9v9"/><rect x="46" y="53" width="157" height="60" rx="17" fill="var(--art-orange)"/><path d="M80 109V85m85 24V85M46 73h18a12 12 0 0 1 12 12v24m127-36h-18a12 12 0 0 0-12 12v24" fill="none"/><path d="M79 81V69a20 20 0 0 1 40 0v20m11 0V66a20 20 0 0 1 40 0v15" fill="var(--art-blue)"/><path d="M130 89V66a20 20 0 0 1 40 0v15" fill="var(--art-pink)"/><circle cx="99" cy="47" r="16" fill="var(--art-blue)"/><circle cx="150" cy="44" r="16" fill="var(--art-pink)"/><path d="M94 47h1m8 0h1m-8 7q4 4 7 0m42-10h1m8 0h1m-8 7q4 4 7 0" fill="none"/><path d="m185 20 3 8 8 3-8 3-3 8-3-8-8-3 8-3Z" fill="var(--art-yellow)"/></g></svg></div>
+            <p class="step-number">03 <span aria-hidden="true">/</span></p><h3><span lang="en">Make room for your people.</span><span lang="zh-CN">一起看，就对了。</span></h3><p><span lang="en">Big wins. Close calls. One more round.<br>It’s better with your friends watching.</span><span lang="zh-CN">精彩操作、惊险翻盘，再来一局。<br>有人一起看，才更有意思。</span></p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="start-section wrap" id="start" aria-labelledby="start-title">
+      <div class="section-heading"><p class="eyebrow"><span lang="en">Come on in</span><span lang="zh-CN">前排有你的位置</span></p><h2 id="start-title"><span lang="en">Which seat is yours?</span><span lang="zh-CN">今天，你坐哪一边？</span></h2><p><span lang="en">Watch a friend, share a screen, or bring your own room.</span><span lang="zh-CN">看朋友玩、分享屏幕，或自己开个房间。</span></p></div>
+      <div class="start-cards">
+        <article class="start-card viewer-card" aria-labelledby="watch-title">
+          <div class="card-top"><span class="card-label"><span lang="en">For the front row</span><span lang="zh-CN">来看朋友玩</span></span><span class="seat-icon blue" aria-hidden="true">☺</span></div>
+          <h3 id="watch-title"><span lang="en">Join a friend</span><span lang="zh-CN">加入朋友</span></h3>
+          <ol><li><span lang="en">Open the invitation your friend sent.</span><span lang="zh-CN">打开朋友发来的邀请链接。</span></li><li><span lang="en">Press Play if your browser asks.</span><span lang="zh-CN">如果浏览器提示，点一下播放。</span></li><li><span lang="en">Set the sound, go fullscreen, settle in.</span><span lang="zh-CN">调好声音，切到全屏，坐稳开看。</span></li></ol>
+          <p class="card-foot"><span lang="en">Nothing to install. A room code also works on the same Piik site, with its access settings.</span><span lang="zh-CN">无须安装。也可在同一个 Piik 站点输入房间号，按站点和房间的访问设置加入。</span></p>
+        </article>
+        <article class="start-card host-card" aria-labelledby="share-title">
+          <div class="card-top"><span class="card-label"><span lang="en">For the player</span><span lang="zh-CN">轮到你上场</span></span><span class="seat-icon green" aria-hidden="true">☺</span></div>
+          <h3 id="share-title"><span lang="en">Share from a browser</span><span lang="zh-CN">用浏览器分享</span></h3>
+          <ol><li><span lang="en">Open the Piik site your group uses.</span><span lang="zh-CN">打开你们使用的 Piik 站点。</span></li><li><span lang="en">Choose <strong>Start sharing</strong>, then pick a screen, window or tab.</span><span lang="zh-CN">选择<strong>开始分享</strong>，再选屏幕、窗口或标签页。</span></li><li><span lang="en">Check the sound switch and send your invitation.</span><span lang="zh-CN">确认声音开关，发出邀请。</span></li></ol>
+          <p class="card-foot"><span lang="en">Keep the sharing tab open. Sound and available sources depend on your browser and system.</span><span lang="zh-CN">保持分享标签页打开。可选画面和声音支持因浏览器及系统而异。</span></p>
+        </article>
+        <article class="start-card app-card" aria-labelledby="app-title">
+          <div class="card-top"><span class="card-label"><span lang="en">For your own setup</span><span lang="zh-CN">带上自己的小房间</span></span><svg class="app-icon" aria-hidden="true"><use href="#tv-mark"/></svg></div>
+          <h3 id="app-title"><span lang="en">Start with Piik App</span><span lang="zh-CN">使用 Piik App</span></h3>
+          <p><span lang="en">Have a Piik App package? Extract it in full, open the app, and choose:</span><span lang="zh-CN">已有 Piik App 安装包？完整解压，打开应用，再选择：</span></p>
+          <dl class="modes"><div><dt><span lang="en">Local room</span><span lang="zh-CN">本地房间</span></dt><dd><span lang="en">Friends on the same network.</span><span lang="zh-CN">和同一局域网里的朋友一起看。</span></dd></div><div><dt><span lang="en">Public invite</span><span lang="zh-CN">公网邀请</span></dt><dd><span lang="en">A temporary Internet invitation.</span><span lang="zh-CN">生成临时的互联网邀请。</span></dd></div><div><dt><span lang="en">Connect to Site</span><span lang="zh-CN">连接站点</span></dt><dd><span lang="en">Use an existing Piik site.</span><span lang="zh-CN">连接已有的 Piik 站点。</span></dd></div></dl>
+          <p class="card-foot"><span lang="en">The app opens in your browser. Keep it running while you share.</span><span lang="zh-CN">应用会打开系统浏览器。分享时，请保持应用运行。</span></p>
+        </article>
+      </div>
+      <p class="availability"><svg aria-hidden="true"><use href="#tv-mark"/></svg><span lang="en">Public downloads and a public demo aren’t available yet. For now, start with an invitation, a Piik site, or an App package shared with you.</span><span lang="zh-CN">公开下载和公开演示尚未上线。目前，请使用朋友提供的邀请、Piik 站点或 App 安装包。</span></p>
+    </section>
+
+    <section class="faq-section wrap" id="faq" aria-labelledby="faq-title">
+      <div class="faq-intro"><p class="eyebrow"><span lang="en">Before the next round</span><span lang="zh-CN">开场前，聊两句</span></p><h2 id="faq-title"><span lang="en">A few good<br>questions.</span><span lang="zh-CN">你可能<br>还想知道。</span></h2><svg class="faq-tv" aria-hidden="true"><use href="#tv-mark"/></svg></div>
+      <div class="questions">
+        <details><summary><span lang="en">Does everyone need Piik App?</span><span lang="zh-CN">每个人都需要安装 Piik App 吗？</span></summary><p><span lang="en">No. Friends watch in a desktop or mobile browser without installing anything. You can also host from a supported desktop browser on an existing Piik site. Piik App is another way to host.</span><span lang="zh-CN">不需要。朋友用电脑或手机浏览器就能看，无须安装。你也可以在已有 Piik 站点上，用支持屏幕分享的桌面浏览器当房主。Piik App 是另一种开房方式。</span></p></details>
+        <details><summary><span lang="en">How many friends can join?</span><span lang="zh-CN">最多能叫多少朋友？</span></summary><p><span lang="en">One host and up to 20 invited viewers fit in a room. Piik is made for a private group hanging out around one screen.</span><span lang="zh-CN">一个房间支持一位房主和最多 20 位受邀观众。Piik 适合熟悉的一群人，围着同一块屏幕一起看。</span></p></details>
+        <details><summary><span lang="en">Can my friends hear the game?</span><span lang="zh-CN">朋友能听到游戏声音吗？</span></summary><p><span lang="en">Yes, when the selected source and capture method support audio. Check the sound option when choosing what to share. Browser and operating-system support varies; viewers may need to press Play and turn on the video’s sound.</span><span lang="zh-CN">可以，前提是选择的画面来源和采集方式支持声音。选择分享内容时，检查声音选项。浏览器和系统支持有所不同；观众可能需要先点播放，再打开视频声音。</span></p></details>
+        <details><summary><span lang="en">What’s different about a public invitation?</span><span lang="zh-CN">“公网邀请”有什么不同？</span></summary><p><span lang="en">Piik App can create a temporary Internet link for its local room. That link lasts for the current App run and has no uptime guarantee. Video still needs a working direct or peer UDP connection; some restrictive networks won’t connect.</span><span lang="zh-CN">Piik App 可以为本地房间生成临时互联网链接。链接只在本次应用运行期间有效，不保证持续可用。视频仍需可用的直连或对等 UDP 连接，部分受限网络可能无法连通。</span></p></details>
+        <details><summary><span lang="en">Which platforms are ready?</span><span lang="zh-CN">目前支持哪些平台？</span></summary><p><span lang="en">Windows App and Browser are the current testing focus. Viewers use desktop or mobile browsers. macOS and Linux App builds exist, but physical capture and audio checks on those platforms are still pending.</span><span lang="zh-CN">目前重点验证 Windows App 和浏览器。观众可使用电脑或手机浏览器。macOS 和 Linux 已有 App 构建，但这两个平台的实机画面及音频采集验证仍待完成。</span></p></details>
+      </div>
+    </section>
+
+    <div class="closing wrap"><span class="closing-star" aria-hidden="true">✳</span><p><span lang="en">Save a seat for someone.</span><span lang="zh-CN">给朋友，留个前排。</span></p><a href="#start"><span lang="en">Let’s get started</span><span lang="zh-CN">一起开场</span><svg aria-hidden="true"><use href="#arrow"/></svg></a></div>
+  </main>
+
+  <footer class="site-footer wrap">
+    <div class="footer-identity"><svg aria-hidden="true"><use href="#tv-mark"/></svg><span>Piik</span><p><span lang="en">A little room for your people.</span><span lang="zh-CN">和朋友，一起看的小房间。</span></p></div>
+    <div class="footer-links"><a href="https://github.com/TNTcraftHIM/Piik"><span lang="en">Source on GitHub</span><span lang="zh-CN">GitHub 源码</span><span aria-hidden="true"> ↗</span></a><a href="https://github.com/TNTcraftHIM/Piik/blob/main/LICENSE"><span lang="en">MIT license</span><span lang="zh-CN">MIT 许可证</span></a></div>
+    <p class="footer-note"><span lang="en">Source repository is currently private.</span><span lang="zh-CN">源码仓库目前为私有。</span></p>
+  </footer>
+</body>
+</html>

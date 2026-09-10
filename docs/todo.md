@@ -7,12 +7,12 @@ and Git/PRs own completed history. A parked idea is not implementation authority
 
 ## Now
 
-After the accepted App naming release, draft the English/Chinese README,
-onboarding and GitHub Pages website as one coherent public introduction.
-Use the [naming convention](./reference/naming.md), the existing mascot and
-the accepted website-only brand animation. Preview locally before publication;
-keep private deployment details out of the public site. Preserve the rename
-recovery archive and external-audit worktree. Release metadata owns deployed identity.
+Review and refine the [public introduction draft](./design/public-introduction.md):
+English/Chinese READMEs, first-use guides and the static `site/` homepage.
+The local preview and manual Pages workflow are ready; the website, domain and
+demo have not been published. Use owner feedback to finish the public copy and
+visuals before integrating this phase. Keep App/Server behavior unchanged and
+preserve the rename recovery archive and external-audit worktree.
 
 ## Next — Awaiting Owner Direction
 
@@ -31,16 +31,11 @@ and configuration review; no public demo is deployed yet. The existing private
 production site remains private. P2P-only has no SFU fallback when direct/peer
 paths cannot connect; the demonstration must describe that actual capability.
 
-Redesign the README, onboarding guides and Wiki/documentation navigation as one
-coherent release-preparation task. The owner is dissatisfied with the current
-structure; do not keep polishing it piecemeal. Until then, change only necessary
-names, runnable commands and links. Keep the new public entry brief, visual and
-easy to follow, with deeper technical detail in developer guides.
-
-Design the GitHub Pages website around the accepted brand study. Keep one
-current internal contract; third-party names/notices remain accurate. DNS/Pages
-and public publication are separate from the repository rename. The private
-production service is not a public demo.
+Choose public download assets and source visibility before enabling website
+download links or publishing Pages. Keep the public introduction brief and
+visual, with deeper detail in the linked developer guides. DNS/Pages and public
+publication are separate from the private production service. Retain accurate
+third-party names, notices and platform limitations.
 
 Include the owner-requested frontend/backend ablation review in that phase.
 Review duplicated behavior/state, module boundaries, interface clarity, lifecycle

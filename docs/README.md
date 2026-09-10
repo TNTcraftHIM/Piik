@@ -1,32 +1,32 @@
-# Documentation
+# Find your way around Piik
 
-[English Quick Start](../README.md) · [中文快速开始](../README.zh-CN.md)
+[About Piik](../README.md) · [中文介绍](../README.zh-CN.md) · [中文上手指南](./guide/getting-started.zh-CN.md)
 
-## Use Piik
+## What would you like to do?
 
-| What you need | Start here |
+| I want to… | Start here |
 | --- | --- |
-| Join a friend or share a screen | [Quick Start](../README.md) |
-| Run App, choose a mode, or fix capture trouble | [App guide](../cmd/piik-app/README.md) |
-| Collect a useful bug report | [Diagnostics and export](./reference/configuration.md#diagnostics) |
-| Host your own site | [Self-hosting](./operations/self-hosting.md) |
-| Configure ports, access or persistence | [Configuration reference](./reference/configuration.md) |
-| Update an existing deployment | [Deployment and recovery](./deployment.md) |
-| Check platform and release readiness | [Current status](./status.md) |
+| Watch a friend or share my first screen | [Getting started](./guide/getting-started.md) |
+| Choose an App mode or fix sound and connection trouble | [First-use help](./guide/getting-started.md#choose-an-app-mode) |
+| Run Piik App, check platform requirements, or build a package | [App guide](../cmd/piik-app/README.md) |
+| Try or change the source code | [Run from source](#run-from-source) |
+| Host a site for my group | [Self-hosting](./operations/self-hosting.md) |
+| Set passwords, ports, or room storage | [Configuration](./reference/configuration.md) |
+| Update or recover a deployment | [Deployment guide](./deployment.md) |
+| Send a useful bug report | [Diagnostics and export](./reference/configuration.md#diagnostics) |
+| Check release and platform readiness | [Current status](./status.md) |
 
-The public entry points have English and Chinese versions. Technical references
-keep one owner rather than duplicate the full documentation tree.
-
-Contributors should follow the [naming convention](./reference/naming.md) for
-display names, commands, packages and App/Server/Browser code boundaries.
+The introduction and getting-started guide are available in English and Chinese.
+Technical references keep one shared version.
 
 ## Run from source
 
-Use Node from [.node-version](../.node-version), npm from
-[package.json](../package.json), and Go 1.26 as specified by [go.mod](../go.mod).
-Node builds and serves the development UI; the application server runs in Go.
+There are no public App downloads or demo site yet. You can try the Browser
+application locally with Node from [.node-version](../.node-version), npm from
+[package.json](../package.json), and Go 1.26 from [go.mod](../go.mod).
+Run these commands from the repository root.
 
-Start the UI:
+Start the web UI:
 
 ```sh
 npm ci
@@ -49,49 +49,44 @@ go build -o build/dev/piik-server.exe ./cmd/piik-server
 ```
 
 The fixed Windows executable path avoids repeated firewall prompts from `go run`.
+Open [localhost:8787](http://localhost:8787), start sharing, and open the invitation
+in another browser tab to try watching. This localhost invitation stays on your
+computer; remote invitations need a reachable origin as described in
+[configuration](./reference/configuration.md).
+Browser capture requires `localhost` or HTTPS.
 
-Open `http://localhost:8787`. The development UI also listens on the LAN;
-screen capture requires `localhost` or HTTPS. For another invitation origin,
-follow the [configuration reference](./reference/configuration.md).
+For the self-contained App, follow [App development](../cmd/piik-app/README.md#development)
+and [packaging](../cmd/piik-app/README.md#packaging), including the platform's
+native capture requirements.
 
-The standard checks are:
+## Work on Piik
+
+[Contributing](../CONTRIBUTING.md) covers the workflow and choosing focused checks.
+The main verification commands are:
 
 ```sh
 npm run check
 npm run check:client
 ```
 
-The [contributing guide](../CONTRIBUTING.md#verification-entrypoints) explains
-native build prerequisites, focused checks and separate physical gates.
+Use the [naming guide](./reference/naming.md) for product names and commands.
+Piik-owned code uses [MIT](../LICENSE); see the
+[licensing guide](../licenses/README.md) for third-party components.
 
-## Product and design
+For the public website, see the [introduction design](./design/public-introduction.md)
+and [website preview and publishing](./operations/website.md).
 
-Current behavior belongs to four product modules:
+## Understand the product
 
-- [Rooms and access](./product/rooms-access.md)
-- [Routing and transport](./product/routing-transport.md)
-- [Capture, audio and media quality](./product/media-quality.md)
-- [Presentation and lifecycle](./product/presentation-lifecycle.md)
+| Topic | Its reference |
+| --- | --- |
+| Invitations, room codes and passwords | [Rooms and access](./product/rooms-access.md) |
+| How viewers connect | [Routing and transport](./product/routing-transport.md) |
+| Screen capture, quality controls and sound | [Media quality](./product/media-quality.md) |
+| Host and viewer behavior | [Presentation and lifecycle](./product/presentation-lifecycle.md) |
+| Why a design was chosen | [Architecture decisions](./adr/) |
+| Measurements and platform limits | [Research](./research/) and [verification status](./verification-status.md) |
 
-Key decisions cover [automatic routing](./adr/0005-automatic-hybrid-media-routing.md),
-the [shared Go core](./adr/0012-shared-go-backend-core.md),
-[embedded media and Native output groups](./adr/0013-embedded-node-local-media.md),
-and the [Browser encoding-pool candidate](./adr/0014-browser-node-local-encoding-pool.md).
-Browse [all ADRs](./adr/) for their context and consequences.
-
-## Evidence and current work
-
-- [Project memory](./project-memory.md): compact product map and invariants.
-- [Status](./status.md): current source, production and acceptance boundaries.
-- [TODO](./todo.md): the only work ledger.
-- [Verification status](./verification-status.md): remaining physical evidence.
-- [Native encoding research](./research/webrtc-encoder-pool.md) and
-  [Browser pooling research](./research/browser-local-encoding-pool.md): measured
-  results, failed controls and limits; neither promises universal performance.
-- [Research directory](./research/): transport, capture, platform and backend evidence.
-- [Maintenance](./maintenance.md): document ownership and repository lifecycle.
-- [Licensing](../licenses/README.md): Piik's MIT scope and third-party notices.
-
-Research distinguishes observations from assumptions. Product modules own
-accepted behavior, source and tests own implementation detail, and Git/PRs own
-completed history.
+For ongoing work, use [TODO](./todo.md). [Project memory](./project-memory.md)
+provides the compact project map; [maintenance](./maintenance.md) explains
+document ownership. Completed work lives in Git history and pull requests.
