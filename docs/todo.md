@@ -14,6 +14,47 @@ post-main publication. Existing resource owners and strict control commands stay
 intact. Main and production retain their prior release; preserve the rename
 recovery archive and external-audit worktree.
 
+### Next Phase Plan: Lifecycle Audit And Candidate Acceptance
+
+Review the pending implementation against its recorded candidate baseline
+`ebea1c49`; keep canonical main unchanged during the audit. This is a bounded
+review of Piik-owned runtime code and its adapters, not a rewrite or an audit of
+every upstream dependency. The plan is recorded; this audit is not yet complete.
+
+1. Inventory every owning runtime area and its boundaries. Split read-only work
+   across Browser/App orchestration, Server room/route/SFU effects, media/capture
+   resource ownership, and interface/package/update contracts. Keep a coverage
+   map with reviewed areas, findings and explicit unreviewed limits.
+2. Trace acquisition, use, commit and retirement, including A replaced by B before
+   A completes or cleans up. Prioritize discovery retry, authentication recovery,
+   live settings/source replacement, App exit/restart, two Native sessions, room
+   revocation during preparation, reconnect and repeated start/stop. Look for
+   conflated permission/capability/readiness, failed-promise latches, stale writes,
+   shared resources retired by one consumer, and cancellation treated as success.
+3. Reproduce or prove concrete defects before editing. Fix the owning boundary,
+   retain one focused check per meaningful repaired behavior, then remove newly
+   unnecessary state/branches. Separate confirmed defects from documented costs
+   and uncertain leads. Larger contract/media changes need their own justified
+   decision; no generic lifecycle manager, quality heuristic or size-only split.
+4. Exercise two real distinct builds with a deliberately supported common
+   contract: older App/newer Site, newer App/older Site, and an open page across
+   a compatible update. Different protocol versions are negative recovery checks,
+   not authority to support stale private clients. Relabelled builds are not
+   compatibility evidence; if no meaningful pair exists, record that limit.
+5. Accept Windows App and Go Server candidates through the existing checks,
+   including synthetic stored-room/config preservation and usable subsequent
+   sharing. Rehearse the same local release scripts when Actions is unavailable,
+   using dry-run publication and matching artifacts. Document the native-platform
+   build prerequisites; do not pretend one Windows machine produces every App.
+
+Finish when the coverage map accounts for the scoped owners, confirmed phase-core
+P0/P1 failures are resolved, the selected candidate scenarios pass and remaining
+limits are explicit. This does not establish universal compatibility or exhaustive
+race/endurance coverage. Retain the owner's deferred macOS/Linux physical capture
+and broad network matrices unless a concrete finding makes them relevant.
+Then provide the Windows candidate for owner acceptance and one coherent PR;
+merge/deployment/publication remain separate authorized delivery actions.
+
 [Versioning](./reference/versioning.md#first-public-release-readiness) owns the
 remaining public-readiness boundary: real target packages, first supported
 mixed-version acceptance, source/asset publication and activation. The pipeline
@@ -48,22 +89,9 @@ production service is not the public demo. P2P-only has no media-server fallback
 Runtime capability configuration is implemented; do not reopen it as a second
 boolean or duplicate UI mode.
 
-The repository-wide lifecycle and ablation audit remains broader than this
-documentation/contract-map pass. Use [engineering review](./reference/engineering.md#ablation-and-review)
-and the App-discovery/settings failures to find:
-
-- Permission, activation, capability, readiness and operation ownership conflated.
-- Failed promises/resources cached beyond their lifetime.
-- Obsolete async completion or cleanup modifying a replacement operation.
-- Cancellation, failure or absence interpreted as success.
-- Shared resources acquired too early, retained unused or retired by one consumer.
-- Draft/requested/applied settings or duplicated presentation writers overwriting
-  the current authority.
-
-Search hits are leads. Trace real acquisition, use, commit and retirement,
-including A replaced by B before A finishes; fix proven owning boundaries.
-Keep uncertain observations separate from repairs. No generic manager, extra
-state machine or repository rewrite follows from a wording mismatch.
+The lifecycle audit above follows [engineering review](./reference/engineering.md#ablation-and-review).
+Its results determine repairs; search hits and file size alone do not authorize
+a repository rewrite.
 
 [Verification status](./verification-status.md) owns remaining device/network
 limits, including iOS playback/window/audio behavior. NAT and Auto are complete
