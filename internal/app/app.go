@@ -28,6 +28,7 @@ import (
 	serverapp "github.com/TNTcraftHIM/Piik/internal/server/app"
 	serverconfig "github.com/TNTcraftHIM/Piik/internal/server/config"
 	"github.com/TNTcraftHIM/Piik/internal/server/webassets"
+	"golang.org/x/mod/semver"
 )
 
 const (
@@ -41,7 +42,16 @@ const (
 	localShutdownTimeout = 5 * time.Second
 )
 
+var BuildVersion = "development"
 var BuildRevision = "development"
+
+func buildVersion() string {
+	version := strings.TrimSpace(BuildVersion)
+	if version != "" && semver.Canonical(version) == version && semver.Prerelease(version) == "" {
+		return version
+	}
+	return "development"
+}
 
 type Options struct {
 	Site           string
@@ -87,6 +97,7 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 		if err != nil {
 			return fmt.Errorf("Piik App diagnostics are unavailable: %w", err)
 		}
+		recorder.Context("build", map[string]any{"version": buildVersion(), "revision": BuildRevision})
 		previous, previousWriter, previousFlags := slog.Default(), log.Writer(), log.Flags()
 		var dependencyLog *diagnostics.LineWriter
 		restoreLogger = func() {
@@ -102,7 +113,7 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 		log.SetFlags(previousFlags)
 		options.console.send(consoleDebug{logPath: recorder.LogPath(), export: recorder.Export})
 	}
-	slog.Debug("piik-client", "event", "start", "revision", BuildRevision)
+	slog.Debug("piik-client", "event", "start", "version", buildVersion(), "revision", BuildRevision)
 	options.console.show(consoleView{state: "starting"})
 	if err := validateMode(options); err != nil {
 		return err
@@ -192,6 +203,7 @@ func runLauncher(
 		ctx,
 		webassets.FS(),
 		config.Site,
+		buildVersion(),
 		BuildRevision,
 		config.LocalAccessPassword,
 	)

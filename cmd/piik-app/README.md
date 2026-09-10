@@ -177,6 +177,13 @@ available even when this machine has no accepted native capture encoder.
 Capture sidecars must match the App's current probe/encoded-output contract;
 the package-candidate wrapper validates that version before accepting its artifact.
 
+Packaged builds report the product version and source SHA in the launcher,
+terminal and diagnostic context. Updates distinguish a newer version, a different
+build of the same version, and an official release offered to a development build;
+the link never installs or interrupts a share. [Versioning](../../docs/reference/versioning.md)
+owns these meanings and [GitHub operations](../../docs/operations/github.md)
+owns automatic publication.
+
 ## Packaging
 
 From a clean revision, build the application release and run the platform's

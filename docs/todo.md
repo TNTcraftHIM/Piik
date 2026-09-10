@@ -7,27 +7,24 @@ and Git/PRs own completed history. A parked idea is not implementation authority
 
 ## Now
 
-Complete the confirmed Host access/capability recovery and Native discovery
-repairs before version/workflow work. Preserve Browser operation, strict command
-validation and the existing resource owners. Main and production retain their
-prior release; keep this phase together and preserve the rename recovery archive
-and external-audit worktree.
+Accept the current fixes and release-preparation changes together: Host
+access/capability recovery, observable Native incompatibility, extensible
+descriptive metadata, product version plus SHA, update comparison and queued
+post-main publication. Existing resource owners and strict control commands stay
+intact. Main and production retain their prior release; preserve the rename
+recovery archive and external-audit worktree.
 
-Before declaring a public release, implement the readiness work owned by
-[versioning](./reference/versioning.md#first-public-release-readiness): product
-version plus SHA in the existing release pipeline, SemVer-aware update readers
-and actual mixed-version checks. Discovery mismatch and descriptive metadata
-handling are implemented; full public compatibility is not established. Do not
-reset storage or live authority generations or publish a first release implicitly.
+[Versioning](./reference/versioning.md#first-public-release-readiness) owns the
+remaining public-readiness boundary: real target packages, first supported
+mixed-version acceptance, source/asset publication and activation. The pipeline
+and local checks exist; no GitHub Release was published and automatic publication
+is still disabled. Do not reset storage or live authority generations.
 
-After these fixes, decide the owner-requested post-merge automation: a complete
-PR merged to main computes the release version, builds and publishes through one
-pipeline without version-record commits back to main. Use commit/PR semantics
-to express compatible fixes, features and breaking public changes. Protect main
-as PR-only when GitHub account/repository visibility permits it (the current
-private free repository rejects branch protection/ruleset APIs). Finish the
-held template/naming drafts then; no repository settings or release automation
-have been activated. Website/README expansion follows this work.
+Templates and naming are prepared; GitHub now permits squash merges only and
+uses the PR title/body. Main protection remains blocked by the current private
+free-repository plan. Once eligible, apply the PR-only policy and complete
+[one-time activation](./operations/github.md) after explicit first-release
+acceptance. Website/README expansion follows this preparation.
 
 Prepare GitHub-primary/Gitee-mirror distribution under the same
 [release-source policy](./reference/versioning.md#release-sources). Configure the
@@ -70,8 +67,9 @@ state machine or repository rewrite follows from a wording mismatch.
 
 [Verification status](./verification-status.md) owns remaining device/network
 limits, including iOS playback/window/audio behavior. NAT and Auto are complete
-features; broader statistics are not a new blocker. Keep packaging manual,
-branch CI quiet, physical workloads serial and executables at stable paths.
+features; broader statistics are not a new blocker. Keep branch CI quiet,
+physical workloads serial and executables at stable paths. Packaging remains
+manual until the accepted main-release automation is activated.
 
 ## Parked Product Work
 

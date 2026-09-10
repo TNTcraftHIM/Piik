@@ -60,6 +60,8 @@ export const zh = {
   "client.launch.error": "暂时无法启动，请检查设置后重试",
   "client.launch.loadFailed": "无法读取启动设置，请重试",
   "client.update.available": "发现新的 Piik 版本",
+  "client.update.differentBuild": "当前构建与官方发行版不同",
+  "client.update.official": "可获取 Piik 正式发行版",
 
   "gate.title": "站点访问",
   "gate.hint": "请输入站点口令",

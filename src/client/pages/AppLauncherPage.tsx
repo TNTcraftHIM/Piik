@@ -21,8 +21,8 @@ const launcherStateSchema = z
     localAccessPassword: z.string().max(128),
     defaultMode: z.enum(["local", "site"]),
     revision: z.string(),
-  })
-  .strict();
+    version: z.string().default("development"),
+  });
 const launcherResultSchema = z.object({ target: z.string().url() }).strict();
 
 const MODES: Array<{
@@ -78,7 +78,7 @@ export function AppLauncherPage() {
         setSite(state.site);
         setLocalAccessPassword(state.localAccessPassword);
         setLoading(false);
-        void checkReleaseUpdate(state.revision).then((notice) => {
+        void checkReleaseUpdate({ version: state.version, revision: state.revision }).then((notice) => {
           if (current && notice) setUpdate(notice);
         }).catch(() => undefined);
       })
@@ -134,17 +134,21 @@ export function AppLauncherPage() {
       />
     </label>
   );
+  const updateKey: CopyKey = update?.kind === "different-build"
+    ? "client.update.differentBuild"
+    : update?.kind === "official-release" ? "client.update.official" : "client.update.available";
+  const updateText = update ? `${t(updateKey)} · ${update.version}` : "";
   const updateLink = update ? (
     <a
       className="lr-client-update"
       href={update.url}
       target="_blank"
       rel="noopener noreferrer"
-      aria-label={t("client.update.available")}
+      aria-label={updateText}
     >
       <Glyph name="arrowUp" size={17} />
       <span className={vis ? "visually-hidden" : undefined}>
-        {t("client.update.available")}
+        {updateText}
       </span>
     </a>
   ) : null;
@@ -196,7 +200,7 @@ export function AppLauncherPage() {
             )}
 
             {updateLink && (vis ? updateLink : (
-              <Tooltip text={t("client.update.available")}>{updateLink}</Tooltip>
+              <Tooltip text={updateText}>{updateLink}</Tooltip>
             ))}
 
             <div

@@ -323,6 +323,8 @@ if (process.platform !== target.nodePlatform || process.arch !== target.nodeArch
 assertOutsideRepository(repositoryRoot, outputRoot);
 
 const revision = run("git", ["rev-parse", "HEAD"], repositoryRoot).toLowerCase();
+const descriptorPath = applicationDescriptor(applicationRoot);
+const { version } = JSON.parse(readFileSync(descriptorPath, "utf8"));
 const temporaryRoot = resetBuildWorkspace(repositoryRoot, "client-package", target.id, "candidate");
 try {
   const tunnelDownload = join(temporaryRoot, target.tunnelAsset);
@@ -355,7 +357,7 @@ try {
   const packageRoot = join(temporaryRoot, `piik-app-${target.id}`);
   const assembleArguments = [
     join(repositoryRoot, "scripts", "assemble-client.mjs"),
-    applicationDescriptor(applicationRoot),
+    descriptorPath,
     packageRoot,
     "--target",
     target.id,
@@ -373,8 +375,12 @@ try {
   run(tarExecutable(), ["-czf", archive, "-C", packageRoot, "."], repositoryRoot);
   const digest = sha256(archive);
   writeFileSync(join(outputRoot, `${archiveName}.sha256`), `${digest}  ${archiveName}\n`, "ascii");
+  writeFileSync(join(outputRoot, archiveName.replace(/\.tar\.gz$/, ".release.json")),
+    `${JSON.stringify({ schema: 2, version, revision, target: target.id,
+      artifact: archiveName, artifactSha256: digest }, null, 2)}\n`);
   process.stdout.write(`${JSON.stringify({
     target: target.id,
+    version,
     revision,
     archive,
     sha256: digest,

@@ -21,6 +21,7 @@ import { fileURLToPath } from "node:url";
 import { writeServerLicenseNotices } from "./package-licenses.mjs";
 import { tarExecutable } from "./archive-tool.mjs";
 import { resetBuildWorkspace } from "./build-workspace.mjs";
+import { buildVersion } from "./release-version.mjs";
 
 // The Hosted deployment target. deploy/release-app.sh runs the archived binary
 // as the service user, so the release is always built for linux/amd64, and
@@ -184,6 +185,9 @@ if (relativeOutput === "" || (relativeOutput.split(/[\\/]/)[0] !== ".." && !isAb
 if (existsSync(outputRoot)) fail("Output directory must not already exist");
 
 const revision = assertCleanRevision(repositoryRoot);
+const version = buildVersion(repositoryRoot, revision);
+process.env.VITE_PIIK_VERSION = version;
+process.env.VITE_PIIK_REVISION = revision;
 
 if (!existsSync(join(repositoryRoot, "LICENSE"))) fail("Missing release input: LICENSE");
 buildClient(repositoryRoot);
@@ -204,7 +208,7 @@ try {
     "build",
     "-trimpath",
     "-ldflags",
-    `-s -w -X main.BuildRevision=${revision}`,
+    `-s -w -X main.BuildRevision=${revision} -X main.BuildVersion=${version}`,
     "-o",
     serverPath,
     "./cmd/piik-server",
@@ -246,7 +250,8 @@ try {
   compareRecords(records, recordsFor(verifyRoot));
 
   const descriptor = {
-    schema: 1,
+    schema: 2,
+    version,
     revision,
     releaseId,
     artifact: artifactName,

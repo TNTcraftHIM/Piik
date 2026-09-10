@@ -1,6 +1,5 @@
 {
   "name": "piik",
-  "version": "0.1.0",
   "license": "MIT",
   "private": true,
   "type": "module",
@@ -32,17 +31,18 @@
     "test:watch": "vitest",
     "check": "npm run typecheck && npm test && npm run build"
   },
-  "dependencies": {},
   "devDependencies": {
     "@types/node": "24.13.3",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.4",
     "@types/sdp-transform": "3.0.0",
+    "@types/semver": "7.8.0",
     "@types/ws": "8.18.1",
     "@vitejs/plugin-react": "6.0.5",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "sdp-transform": "3.0.0",
+    "semver": "7.8.5",
     "tsx": "4.23.12",
     "typescript": "~6.0.3",
     "vite": "8.2.1",

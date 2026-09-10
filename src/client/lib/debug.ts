@@ -137,6 +137,7 @@ function snapshot(): BrowserDebugEvent[] {
 }
 
 export async function exportBrowserDebug(): Promise<string> {
+  const buildEnvironment = (import.meta as ImportMeta & { env?: Record<string, string> }).env;
   const collectorErrors: object[] = [];
   let environment: object = {};
   try {
@@ -161,6 +162,8 @@ export async function exportBrowserDebug(): Promise<string> {
   }
   return JSON.stringify({
     capturedAt: new Date().toISOString(), startedAt, protocol: SIGNALING_PROTOCOL,
+    build: { version: buildEnvironment?.VITE_PIIK_VERSION ?? "development",
+      revision: buildEnvironment?.VITE_PIIK_REVISION ?? "development" },
     asset: new URL(import.meta.url).pathname.split("/").at(-1),
     environment: sanitize(environment).value,
     history: { maxEvents: MAX_EVENTS, maxBytes: MAX_BYTES, retainedBytes,

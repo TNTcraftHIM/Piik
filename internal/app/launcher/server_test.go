@@ -31,11 +31,12 @@ func TestLauncherServesStateAndCompletesOneSelection(t *testing.T) {
 		Site                string `json:"site"`
 		LocalAccessPassword string `json:"localAccessPassword"`
 		DefaultMode         Mode   `json:"defaultMode"`
+		Version             string `json:"version"`
 		Revision            string `json:"revision"`
 	}
 	if response.StatusCode != http.StatusOK || json.NewDecoder(response.Body).Decode(&state) != nil ||
 		state.Site != "https://share.example" || state.DefaultMode != ModeSite ||
-		state.Revision != "" || state.LocalAccessPassword != "" {
+		state.Version != "development" || state.Revision != "" || state.LocalAccessPassword != "" {
 		t.Fatalf("launcher state = %d, %+v", response.StatusCode, state)
 	}
 
@@ -80,9 +81,10 @@ func TestLauncherServesStateAndCompletesOneSelection(t *testing.T) {
 	}
 }
 
-func TestLauncherIncludesTheInjectedBuildRevision(t *testing.T) {
+func TestLauncherIncludesTheInjectedBuildVersionAndRevision(t *testing.T) {
+	const version = "v1.2.3"
 	const revision = "0123456789abcdef0123456789abcdef01234567"
-	server := startFixtureWithRevision(t, "", revision)
+	server := startFixtureWithBuildAndPassword(t, "", version, revision, "")
 	origin := strings.TrimSuffix(server.URL(), "/client")
 	response, err := http.Get(origin + "/api/client-launcher")
 	if err != nil {
@@ -90,11 +92,12 @@ func TestLauncherIncludesTheInjectedBuildRevision(t *testing.T) {
 	}
 	defer response.Body.Close()
 	var state struct {
+		Version  string `json:"version"`
 		Revision string `json:"revision"`
 	}
 	if response.StatusCode != http.StatusOK || json.NewDecoder(response.Body).Decode(&state) != nil ||
-		state.Revision != revision {
-		t.Fatalf("launcher revision = %d, %+v", response.StatusCode, state)
+		state.Version != version || state.Revision != revision {
+		t.Fatalf("launcher build = %d, %+v", response.StatusCode, state)
 	}
 }
 
@@ -147,17 +150,17 @@ func TestLauncherCarriesAndNormalizesAnOptionalLocalPassword(t *testing.T) {
 }
 
 func TestLauncherRejectsAnInvalidSavedSite(t *testing.T) {
-	if _, err := Start(t.Context(), appAssets(), "https://example.test/path", "", ""); err == nil {
+	if _, err := Start(t.Context(), appAssets(), "https://example.test/path", "development", "", ""); err == nil {
 		t.Fatal("launcher accepted a Site path")
 	}
 }
 
 // A binary built without the Browser build has nothing to launch.
 func TestLauncherRequiresTheEmbeddedBrowserBuild(t *testing.T) {
-	if _, err := Start(t.Context(), nil, "", "", ""); err == nil {
+	if _, err := Start(t.Context(), nil, "", "development", "", ""); err == nil {
 		t.Fatal("launcher started without embedded assets")
 	}
-	if _, err := Start(t.Context(), fstest.MapFS{}, "", "", ""); err == nil {
+	if _, err := Start(t.Context(), fstest.MapFS{}, "", "development", "", ""); err == nil {
 		t.Fatal("launcher started without an index document")
 	}
 }
@@ -238,23 +241,19 @@ func TestLauncherRejectsCrossOriginControl(t *testing.T) {
 }
 
 func startFixture(t *testing.T, site string) *Server {
-	return startFixtureWithRevisionAndPassword(t, site, "", "")
-}
-
-func startFixtureWithRevision(t *testing.T, site, revision string) *Server {
-	return startFixtureWithRevisionAndPassword(t, site, revision, "")
+	return startFixtureWithBuildAndPassword(t, site, "development", "", "")
 }
 
 func startFixtureWithPassword(t *testing.T, site, password string) *Server {
-	return startFixtureWithRevisionAndPassword(t, site, "", password)
+	return startFixtureWithBuildAndPassword(t, site, "development", "", password)
 }
 
-func startFixtureWithRevisionAndPassword(
+func startFixtureWithBuildAndPassword(
 	t *testing.T,
-	site, revision, password string,
+	site, version, revision, password string,
 ) *Server {
 	t.Helper()
-	server, err := Start(t.Context(), appAssets(), site, revision, password)
+	server, err := Start(t.Context(), appAssets(), site, version, revision, password)
 	if err != nil {
 		t.Fatal(err)
 	}

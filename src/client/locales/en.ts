@@ -62,6 +62,8 @@ export const en: Record<CopyKey, string> = {
   "client.launch.error": "Piik could not start; check the setting and retry",
   "client.launch.loadFailed": "Could not read the launcher settings; retry",
   "client.update.available": "A newer Piik release is available",
+  "client.update.differentBuild": "This build differs from the official release",
+  "client.update.official": "An official Piik release is available",
 
   "gate.title": "Site access",
   "gate.hint": "Enter the site passphrase",

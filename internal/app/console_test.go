@@ -111,6 +111,27 @@ func TestConsolePresentationAndShutdown(t *testing.T) {
 	}
 }
 
+func TestConsoleBuildVersionAndRevision(t *testing.T) {
+	previousVersion, previousRevision := BuildVersion, BuildRevision
+	t.Cleanup(func() { BuildVersion, BuildRevision = previousVersion, previousRevision })
+	BuildRevision = strings.Repeat("a", 40)
+	for _, test := range []struct{ version, want string }{
+		{"v1.2.3", "v1.2.3"},
+		{"development", "development"},
+		{"", "development"},
+		{"v01.2.3", "development"},
+		{"v1.2", "development"},
+		{"v1.2.3-preview.1", "development"},
+		{"v1.2.3+build", "development"},
+	} {
+		BuildVersion = test.version
+		content := (consoleModel{width: 80, language: "en", view: consoleView{state: "ready"}}).content(false)
+		if !strings.Contains(content, test.want) || !strings.Contains(content, "aaaaaaa") || strings.Contains(content, BuildRevision) {
+			t.Fatalf("console identity for %q: %s", test.version, content)
+		}
+	}
+}
+
 func TestConsoleDiagnosticExportRunsOutsideUpdate(t *testing.T) {
 	called := 0
 	path := filepath.Join(t.TempDir(), "client-report.zip")

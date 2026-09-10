@@ -114,7 +114,8 @@ function writeLinuxAssets(packageRoot, entries) {
   );
 }
 
-function writeMacAssets(packageRoot, revision, entries) {
+function writeMacAssets(packageRoot, version, revision, entries) {
+  const bundleVersion = version === "development" ? "0.0.0" : version.slice(1);
   const bundleRoot = join(packageRoot, "Piik App.app");
   const contents = join(bundleRoot, "Contents");
   const macos = join(contents, "MacOS");
@@ -136,10 +137,11 @@ function writeMacAssets(packageRoot, revision, entries) {
       "<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>",
       "<key>CFBundleName</key><string>Piik App</string>",
       "<key>CFBundlePackageType</key><string>APPL</string>",
-      "<key>CFBundleShortVersionString</key><string>1.0</string>",
+      `<key>CFBundleShortVersionString</key><string>${bundleVersion}</string>`,
       "<key>NSScreenCaptureUsageDescription</key><string>Share a screen or application selected by you.</string>",
       "<key>NSAudioCaptureUsageDescription</key><string>Share sound from the selected screen or application.</string>",
-      `<key>CFBundleVersion</key><string>${revision}</string>`,
+      `<key>CFBundleVersion</key><string>${bundleVersion}</string>`,
+      `<key>PiikSourceRevision</key><string>${revision}</string>`,
       "</dict></plist>",
       "",
     ].join("\n"),
@@ -163,12 +165,13 @@ function writeMacAssets(packageRoot, revision, entries) {
 export function writeClientPlatformAssets({
   packageRoot,
   target,
+  version,
   revision,
   iconPath,
 }) {
   const entries = readPngEntries(iconPath);
   if (target.goos === "linux") writeLinuxAssets(packageRoot, entries);
-  if (target.goos === "darwin") writeMacAssets(packageRoot, revision, entries);
+  if (target.goos === "darwin") writeMacAssets(packageRoot, version, revision, entries);
   return target.goos === "linux"
     ? "share/applications/piik-app.desktop"
     : target.goos === "darwin"

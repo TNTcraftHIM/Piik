@@ -25,6 +25,7 @@ import { writeClientPlatformAssets } from "./client-icons.mjs";
 import { writeClientLicenseNotices } from "./package-licenses.mjs";
 import { tarExecutable } from "./archive-tool.mjs";
 import { resetBuildWorkspace } from "./build-workspace.mjs";
+import { isReleaseVersion } from "./release-version.mjs";
 
 function fail(message) {
   throw new Error(message);
@@ -114,7 +115,8 @@ function readDescriptor(path) {
     fail("Application release descriptor is invalid");
   }
   if (
-    value?.schema !== 1 ||
+    value?.schema !== 2 ||
+    (value.version !== "development" && !isReleaseVersion(value.version)) ||
     typeof value.revision !== "string" ||
     !/^[0-9a-f]{40}$/.test(value.revision) ||
     typeof value.artifactSha256 !== "string" ||
@@ -123,6 +125,7 @@ function readDescriptor(path) {
     fail("Application release descriptor is invalid");
   }
   return {
+    version: value.version,
     revision: value.revision,
     artifact: plainName(value.artifact, "artifact"),
     artifactSha256: value.artifactSha256,
@@ -198,6 +201,9 @@ if (capturePath) assertTargetExecutable(capturePath, target, "Capture runtime");
 if (tunnelPath) assertTargetExecutable(tunnelPath, target, "Public tunnel runtime");
 
 const descriptor = readDescriptor(descriptorPath);
+const version = descriptor.version;
+process.env.VITE_PIIK_VERSION = version;
+process.env.VITE_PIIK_REVISION = descriptor.revision;
 const revision = run("git", ["rev-parse", "HEAD"], repositoryRoot).toLowerCase();
 if (revision !== descriptor.revision) {
   fail("Client source and application release revisions do not match");
@@ -253,7 +259,7 @@ try {
     "build",
     "-trimpath",
     "-ldflags",
-    `-s -w -X github.com/TNTcraftHIM/Piik/internal/app.BuildRevision=${revision}`,
+    `-s -w -X github.com/TNTcraftHIM/Piik/internal/app.BuildRevision=${revision} -X github.com/TNTcraftHIM/Piik/internal/app.BuildVersion=${version}`,
     "-o",
     clientPath,
     "./cmd/piik-app",
@@ -265,6 +271,7 @@ try {
   const platformAssets = writeClientPlatformAssets({
     packageRoot,
     target,
+    version,
     revision,
     iconPath: join(repositoryRoot, "cmd", "piik-app", "piik.ico"),
   });
@@ -277,6 +284,7 @@ try {
   });
   process.stdout.write(`${JSON.stringify({
     root: outputRoot,
+    version,
     revision,
     target: target.id,
     platform: target.goos,

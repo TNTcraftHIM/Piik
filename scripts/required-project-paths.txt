@@ -32,6 +32,7 @@ docs/product/media-quality.md
 docs/product/presentation-lifecycle.md
 docs/deployment.md
 docs/operations/self-hosting.md
+docs/operations/github.md
 docs/reference/configuration.md
 docs/reference/naming.md
 docs/reference/engineering.md
@@ -39,6 +40,8 @@ docs/reference/versioning.md
 docs/design/visual-language.md
 docs/design/media-status.md
 scripts/package-app-release.mjs
+scripts/release-version.mjs
+scripts/publish-release.mjs
 scripts/assemble-client.mjs
 scripts/client-icons.mjs
 scripts/package-client-candidate.mjs

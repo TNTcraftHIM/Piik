@@ -281,7 +281,11 @@ func (model consoleModel) content(styled bool) string {
 		revision = revision[:7]
 	}
 	var out strings.Builder
-	heading := "Piik\nApp\n" + muted.Render(revision)
+	version := buildVersion()
+	heading := "Piik\nApp\n" + muted.Render(version)
+	if revision != "" && revision != version {
+		heading = "Piik App\n" + muted.Render(version) + "\n" + muted.Render(revision)
+	}
 	animated := styled && model.animating()
 	mascot := accent.Render(consoleTV(model.frame, animated, compact || width < 34))
 	if styled && model.colors && width >= 36 && !compactDebug {

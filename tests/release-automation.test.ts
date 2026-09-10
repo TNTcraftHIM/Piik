@@ -1,0 +1,70 @@
+import { execFileSync, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, expect, it } from "vitest";
+
+const planner = fileURLToPath(new URL("../scripts/release-version.mjs", import.meta.url));
+const publisher = fileURLToPath(new URL("../scripts/publish-release.mjs", import.meta.url));
+const sha = (value: string) => createHash("sha256").update(value).digest("hex");
+
+describe("release automation", () => {
+  it("plans from immutable tags and all unreleased main changes without editing version files", () => {
+    const root = mkdtempSync(join(tmpdir(), "piik-release-plan-"));
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+    const plan = () => JSON.parse(execFileSync(process.execPath, [planner, "plan"], { cwd: root, encoding: "utf8" }));
+    try {
+      git("init", "--quiet", "--initial-branch=main");
+      git("config", "user.name", "Piik fixture");
+      git("config", "user.email", "fixture@example.invalid");
+      git("config", "commit.gpgSign", "false");
+      git("commit", "--allow-empty", "-m", "chore: initial");
+      expect(plan().version).toBe("v1.0.0");
+      git("tag", "v1.0.0");
+      // The tag might belong to an unfinished draft: publication can resume.
+      expect(plan()).toMatchObject({ version: "v1.0.0", publish: true });
+      git("commit", "--allow-empty", "-m", "fix: repair playback\n\nExample text:\nfeat: is not this commit's type");
+      expect(plan().version).toBe("v1.0.1");
+      git("commit", "--allow-empty", "-m", "feat(app): add a sharing option");
+      expect(plan().version).toBe("v1.1.0");
+      git("commit", "--allow-empty", "-m", "refactor!: replace the public contract");
+      expect(plan().version).toBe("v2.0.0");
+      expect(git("tag")).toBe("v1.0.0");
+      const reused = spawnSync(process.execPath, [planner, "build"], {
+        cwd: root, encoding: "utf8", env: { ...process.env, PIIK_BUILD_VERSION: "v1.0.0" },
+      });
+      expect(reused.status).not.toBe(0);
+      expect(reused.stderr).toContain("two source revisions");
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("accepts only a complete same-build package set before contacting GitHub", () => {
+    const root = mkdtempSync(join(tmpdir(), "piik-release-assets-"));
+    const version = "v1.0.0";
+    const revision = "a".repeat(40);
+    const run = () => spawnSync(process.execPath, [publisher, root, version, revision, "--dry-run"], { encoding: "utf8" });
+    try {
+      for (const target of ["server", "windows-amd64", "linux-amd64", "darwin-arm64"]) {
+        const artifact = `${target}.tar.gz`;
+        writeFileSync(join(root, artifact), target);
+        const descriptor = { schema: 2, version, revision, artifact, artifactSha256: sha(target),
+          ...(target === "server" ? { manifest: "server.manifest.tsv", manifestSha256: sha("manifest") } : { target }) };
+        writeFileSync(join(root, `${target}.release.json`), JSON.stringify(descriptor));
+        if (target === "server") writeFileSync(join(root, "server.manifest.tsv"), "manifest");
+        else writeFileSync(join(root, `${artifact}.sha256`), `${sha(target)}  ${artifact}\n`);
+      }
+      const complete = run();
+      expect(complete.status, complete.stderr).toBe(0);
+      expect(JSON.parse(complete.stdout).targets).toHaveLength(4);
+      const path = join(root, "windows-amd64.release.json");
+      const original = readFileSync(path, "utf8");
+      writeFileSync(path, JSON.stringify({ ...JSON.parse(original), revision: "b".repeat(40) }));
+      expect(run().stderr).toContain("Release identity mismatch");
+      writeFileSync(path, original);
+      writeFileSync(join(root, "windows-amd64.tar.gz"), "changed bytes");
+      expect(run().stderr).toContain("checksum mismatch");
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+});

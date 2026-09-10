@@ -1,10 +1,10 @@
 # Versions And Compatibility
 
-Prepared 2026-09-10. This is the version-policy design for the first public
-release, not a claim that the current private build already implements it.
-Use `v1.0.0` for that release, with one product version for App, Server and the
-embedded Web build. Keep the full Git SHA alongside it for exact provenance.
-Public release declaration and the readiness work below remain pending.
+Reviewed 2026-09-10. Release identity, update comparisons and descriptive metadata
+rules are implemented; the public compatibility promise starts with the first
+declared public release. Use `v1.0.0` for it, with one product version for App,
+Server and the embedded Web build, plus the full Git SHA for source provenance.
+Automatic publication remains disabled until the readiness boundary below.
 
 ## Give Each Identifier One Job
 
@@ -13,6 +13,7 @@ Public release declaration and the readiness work below remain pending.
 | `vMAJOR.MINOR.PATCH` | Public Git tag/product release | Patch: compatible fixes; minor: compatible features; major: incompatible public contract |
 | Full Git SHA / `REVISION` | Exact source revision | Changes with the source commit; never use SHA inequality as release ordering or compatibility proof |
 | Artifact SHA-256 | Exact packaged bytes in the release descriptor | Each artifact; one source SHA can produce different platform/toolchain binaries |
+| Platform application version fields | Generated package metadata | Product version in the platform's numeric format; source SHA stays separate. XML/desktop-format versions remain specification values |
 | Browser/Server signaling identifier | WS contract in `src/shared/protocol.ts` and Go protocol constants | Change for an incompatible wire contract, not UI edits or every release |
 | Browser/App control identifier | `src/client/native/wire.ts` and App loopback/control | Independent compatibility boundary; installed App and Site can update separately |
 | Capture probe and encoded-frame envelope | `internal/app/nativecapture` and platform adapters | Internal matched bundle; change only the affected format |
@@ -24,7 +25,7 @@ Current numeric values are in source and [status](../status.md#accepted-release-
 Keep those internal values at the first public release: resetting schema or
 authorization counters for visual consistency can invalidate data or stale-work
 fences. A room number is a user-facing address, not a software version.
-The npm package version currently does not own release identity.
+The private tooling-only npm package carries no independent product version.
 
 ## Public Compatibility Promise
 
@@ -79,16 +80,43 @@ an active share just because an unrelated product/build label changed.
 
 ## Release And Recovery
 
-The accepted public tag is the product-version input to packaging; the full SHA
-remains the immutable build input. Inject both into binaries, embedded Web/debug
-metadata and the existing release descriptor. Do not maintain independent
-hand-edited App/Server/Web version files. Keep archive naming and packaging
-layout under their current owners; do not rebuild artifacts to relabel a release.
+A single release plan computes the next tag and full source SHA. Packagers inject
+both into binaries, embedded Web/debug metadata and the schema-2 release descriptors.
+Local candidates use an exact release tag or `development`; an explicit CI version
+cannot reuse a tag owned by another source revision. Do not maintain independent
+hand-edited App/Server/Web version files. Archive layout and checks stay in the
+existing packagers; a new build never replaces an already-published package.
 
 Update checks compare actual release precedence and link to the matching release.
-Stable users do not receive prereleases by default. An untagged development build
-is identified by SHA; it must not claim that every different stable SHA is newer.
-Existing SHA-only readers need updating before publishing SemVer tags.
+Newer version wins even when the source SHA is unchanged. Same version with a
+different known SHA reports a different official build, not a newer one. A
+development build with a known differing SHA offers the official release as a
+manual choice; it makes no ordering claim. Older releases never cause an update
+notice. Unknown SHA is not inferred from a branch name in GitHub metadata.
+The publisher records a full SHA in `target_commitish` and verifies actual tag
+identity separately. Stable update notices ignore prereleases.
+
+## Automatic Publication
+
+After one-time activation, a complete squash PR merged to main runs the existing
+CI and packaging pipeline. `scripts/release-version.mjs` examines unreleased
+first-parent commit messages: `feat` selects minor, `!` or `BREAKING CHANGE`
+selects major, and other accepted changes select patch. The first release is
+`v1.0.0`. PR/commit naming is owned by [CONTRIBUTING](../../CONTRIBUTING.md#commit-pr-and-branch-names).
+Code size or an internal refactor does not itself imply a breaking release.
+
+No version/changelog commit is written back to main. The workflow queues main
+runs, uses the same source SHA for Server and all App targets, and publishes only
+after all required artifacts and checks pass. The publisher verifies matching
+version, source SHA and checksums, then creates/uploads/publishes one GitHub draft.
+Failed draft uploads can resume; published artifacts are never overwritten.
+An older draft retried after a newer release cannot take over `latest`.
+
+`PIIK_RELEASES_ENABLED` is a GitHub repository activation variable, not a product
+setting. It is currently unset. Until the first release is explicitly enabled,
+main runs validation and manual `client_checks` dispatches create candidates only.
+Ordinary branches and PRs do not run cloud CI. [GitHub operations](../operations/github.md)
+owns activation and main protection; no workflow changes repository visibility.
 
 Updates remain explicit, outside an active share, using complete matching
 packages. [Deployment](../deployment.md) owns artifact verification, cutover and
@@ -134,9 +162,9 @@ to permit cross-origin fetch, even when a normal download works.
 
 The current private single-contract rule remains until this boundary is ready:
 
-1. Teach existing packagers and Web/Server update readers about product versions
-   plus SHA and the primary/mirror release sources; validate artifact/descriptor
-   identity through the same pipeline.
+1. Accept real target packages and the queued GitHub publication path before
+   enabling automatic releases. Current local checks exercise planning, identity
+   injection, update decisions and publisher failure/retry paths without publishing.
 2. Freeze the first public baseline and explicit feature-support rules after
    checking the implemented discovery and descriptive-metadata behavior above.
 3. Exercise the first supported old/new App-Site pair in both directions,
@@ -158,6 +186,15 @@ a public-release gap, not evidence that the current matched private build fails.
   minor-release REST-breaking exception for the protected interfaces above.
 - [Go compatibility](https://go.dev/doc/go1compat): name the protected contract
   and its limits instead of promising universal binary/runtime compatibility.
+- [Debug Adapter Protocol evolution](https://microsoft.github.io/debug-adapter-protocol/overview.html):
+  stable baseline messages and explicit optional capabilities allow independent
+  endpoints to evolve. Piik uses that principle within its existing WebSocket/JSON
+  contracts; it does not replace them with DAP or a generic negotiation framework.
+- [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) provides
+  the small release-intent vocabulary; standard SemVer libraries perform ordering.
+- Apple's [bundle build version](https://developer.apple.com/documentation/bundleresources/information-property-list/cfbundleversion)
+  and [release version](https://developer.apple.com/documentation/bundleresources/information-property-list/cfbundleshortversionstring)
+  are numeric; package generation derives both from the release and keeps SHA separately.
 - [GitHub Releases API](https://docs.github.com/en/rest/releases/releases) and
   [Gitee's official API SDK reference](https://gitee.com/sdk/gitee5j/blob/main/docs/RepositoriesApi.md):
   provider endpoints and metadata. [Gitee Release documentation](https://help.gitee.com/repository/release/intro)

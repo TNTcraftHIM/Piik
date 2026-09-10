@@ -4,7 +4,7 @@
 //
 // Two maintenance modes exit without serving: --check-config validates the
 // environment (the release wrapper runs it as the service user before cutover)
-// and --check-release compares the deployed revision with the latest published
+// and --check-release compares this binary with the latest published
 // release (see release.go).
 package main
 
@@ -37,17 +37,16 @@ const shutdownTimeout = 15 * time.Second
 // release directory. Hosted keeps its real values in the service secret store.
 const environmentFile = ".env"
 
-// BuildRevision is the full Git revision the release packager links in with
-// -ldflags. It matches the REVISION file shipped beside the binary and is
-// reported at startup so one journal line identifies the running release.
-var BuildRevision = "development"
+// The packager injects the product version and full source revision together.
+var (
+	BuildVersion  = "development"
+	BuildRevision = "development"
+)
 
 func main() {
 	checkConfig := flag.Bool("check-config", false, "validate the environment and exit")
 	checkRelease := flag.Bool("check-release", false,
 		"report whether a newer published release exists and exit")
-	currentFile := flag.String("current-file", "",
-		"path to the deployed REVISION file read by --check-release")
 	apiURL := flag.String("api-url", defaultReleaseAPIURL,
 		"release metadata endpoint used by --check-release")
 	debug := flag.Bool("debug", false, "save opt-in server diagnostics to rotated files")
@@ -58,7 +57,7 @@ func main() {
 	}
 	switch {
 	case *checkRelease:
-		os.Exit(checkDeployedRelease(context.Background(), *currentFile, *apiURL, os.Stdout))
+		os.Exit(checkDeployedRelease(context.Background(), *apiURL, os.Stdout))
 	case *checkConfig:
 		if _, err := config.Load(environment()); err != nil {
 			fail(err)
@@ -104,7 +103,7 @@ func serve(debug bool) (returnedErr error) {
 			log.SetOutput(previousWriter)
 			log.SetFlags(previousFlags)
 		}()
-		logger.Info("piik-server", "event", "start", "revision", BuildRevision)
+		logger.Info("piik-server", "event", "start", "version", BuildVersion, "revision", BuildRevision)
 	}
 	configuration, err := config.Load(environment())
 	if err != nil {
@@ -133,8 +132,8 @@ func serve(debug bool) (returnedErr error) {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Piik %s is listening on %s:%d; public URL %s\n",
-		BuildRevision, configuration.ListenHost, port, config.Origin(configuration.PublicBaseURL))
+	fmt.Printf("Piik %s (%s) is listening on %s:%d; public URL %s\n",
+		BuildVersion, BuildRevision, configuration.ListenHost, port, config.Origin(configuration.PublicBaseURL))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

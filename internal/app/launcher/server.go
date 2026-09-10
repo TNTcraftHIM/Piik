@@ -48,6 +48,7 @@ type Server struct {
 	static              http.Handler
 	site                string
 	localAccessPassword string
+	version             string
 	revision            string
 	selection           chan Selection
 	resultReady         chan struct{}
@@ -68,7 +69,7 @@ type Server struct {
 // Start serves the launcher page and its API on a loopback port. assets is the
 // built Browser UI, which the App embeds; a nil file system means the binary
 // carries no build and the launcher cannot run.
-func Start(parent context.Context, assets fs.FS, site, revision, localAccessPassword string) (*Server, error) {
+func Start(parent context.Context, assets fs.FS, site, version, revision, localAccessPassword string) (*Server, error) {
 	if parent == nil {
 		parent = context.Background()
 	}
@@ -100,6 +101,7 @@ func Start(parent context.Context, assets fs.FS, site, revision, localAccessPass
 		static:              http.FileServer(http.FS(assets)),
 		site:                site,
 		localAccessPassword: normalizedPassword,
+		version:             version,
 		revision:            strings.TrimSpace(revision),
 		selection:           make(chan Selection, 1),
 		resultReady:         make(chan struct{}),
@@ -201,6 +203,7 @@ func (server *Server) handleState(response http.ResponseWriter, request *http.Re
 	writeJSON(response, http.StatusOK, map[string]any{
 		"site":                server.site,
 		"localAccessPassword": server.localAccessPassword,
+		"version":             server.version,
 		"revision":            server.revision,
 		"defaultMode": func() Mode {
 			if server.site != "" {

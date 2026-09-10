@@ -96,6 +96,7 @@ and [website preview and publishing](./operations/website.md).
 | UI colour, illustration, motion or layout | [Visual language](./design/visual-language.md) |
 | Overlays, titles or state indicators | [Media status](./design/media-status.md) |
 | Releases, protocols or stored formats | [Versions and compatibility](./reference/versioning.md) |
+| Main protection or automatic publishing | [GitHub operations](./operations/github.md) |
 | Documentation or a duplicated rule | [Documentation ownership](./maintenance.md) |
 | Checks, PRs, integration or cleanup | [Contributing](../CONTRIBUTING.md) |
 

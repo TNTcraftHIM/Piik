@@ -83,6 +83,7 @@ func TestAppDiagnosticsUseFilesOnlyWhenEnabled(t *testing.T) {
 			continue
 		}
 		if readErr != nil || !strings.Contains(string(content), `"event":"start"`) ||
+			!strings.Contains(string(content), `"version":"`+buildVersion()+`"`) ||
 			!strings.Contains(string(content), `"revision":`) ||
 			!strings.Contains(string(content), `"event":"stopped","failed":true`) {
 			t.Fatalf("missing file lifecycle events: %s, %v", content, readErr)

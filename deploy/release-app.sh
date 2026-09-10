@@ -26,7 +26,8 @@ descriptor_text() {
   sed -n "s|^  \"$1\": \"\([A-Za-z0-9._/-]*\)\",\{0,1\}\$|\1|p" "$descriptor"
 }
 
-grep -qx '  "schema": 1,' "$descriptor"
+grep -qx '  "schema": 2,' "$descriptor"
+version="$(descriptor_text version)"
 revision="$(descriptor_text revision)"
 release_id="$(descriptor_text releaseId)"
 artifact_name="$(descriptor_text artifact)"
@@ -37,6 +38,7 @@ file_count="$(sed -n 's|^  "fileCount": \([0-9]\{1,\}\),\{0,1\}$|\1|p' "$descrip
 main_asset="$(descriptor_text mainAsset)"
 
 [[ "$revision" =~ ^[0-9a-f]{40}$ ]]
+[[ "$version" = development || "$version" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
 [[ "$release_id" =~ ^[0-9a-f]{7}$ ]]
 test "$release_id" = "${revision:0:7}"
 test "$artifact_name" = "piik-${release_id}-runtime.tar.gz"

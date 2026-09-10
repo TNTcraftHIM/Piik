@@ -26,15 +26,14 @@ it("keeps presence and readiness available in participant descriptions", () => {
   expect(offline).toContain('aria-label="Host name · Host · you · Offline"');
   expect(offline).toContain('class="lr-pawn-led" data-tone="busy"');
   const online = render(true);
-  expect(online).toContain('title="Host name"');
+  expect(online).toContain('aria-label="Host name · Host · Online"');
   expect(online).toContain('aria-label="Viewer name · you · Routing"');
-  expect(online).toContain('title="Viewer name"');
   expect(online).not.toContain('class="lr-pawn-led"');
   expect(online).toContain('is-waiting');
   setCopy({ vis: false });
   const textMode = render(true);
-  expect(textMode).toContain('title="Host name · Host · Online"');
-  expect(textMode).toContain('title="Viewer name · you · Routing"');
+  expect(textMode).toContain('aria-label="Host name · Host · Online"');
+  expect(textMode).toContain('aria-label="Viewer name · you · Routing"');
 });
 
 describe("RouteTree", () => {

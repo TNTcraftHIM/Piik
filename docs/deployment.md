@@ -95,11 +95,12 @@ Retain the descriptor and successful deployment output as release metadata. Do
 not create a follow-up source commit solely to duplicate their revision, asset,
 or hashes.
 
-After `validate` succeeds on an explicit workflow dispatch with
-`client_checks=true`, CI packages the Server application release and the
-three-platform App candidates that consume it. The artifacts are retained
-for 14 days. Ordinary `main` pushes do not run these packaging jobs. This
-workflow does not create a tag, public GitHub Release, or deployment.
+Manual `client_checks=true` dispatch packages Server and three-platform App
+candidates after validation. Once [automatic publication](./operations/github.md)
+is explicitly enabled, accepted main merges run that same pipeline and publish
+the verified artifacts. Candidate artifacts are retained for 14 days. Branches
+and PRs do not start cloud CI; no release-record commit is written back to main.
+The workflow does not deploy into a running application service.
 
 Do not build or run the full repository check on a constrained production host.
 That host runs only the packaged binary and needs no Node, npm, or dependency
@@ -107,15 +108,17 @@ install.
 
 ## Update Check
 
-Current private builds use the full Git revision as build identity. Their update
-readers accept only 40-character revision tags and the corresponding release URL.
-The [public version policy](./reference/versioning.md) requires updating these
-readers before publishing SemVer tags. CI currently produces candidates without
-publishing a GitHub Release; publication remains an explicit distribution decision.
+Builds carry a product version plus full source revision. Packagers use one
+release plan or exact Git tag and inject its identity into Server, App and Web;
+untagged local candidates use `development`. Schema-2 package descriptors carry
+the same pair and artifact hashes. The [version policy](./reference/versioning.md)
+owns ordering and first-public-release readiness.
 
 The default App launcher starts immediately, then performs one background
 request to the official Piik GitHub Releases API. It shows a link only when
-the latest release has a valid full revision different from the packaged one.
+the latest stable release is newer, the same version has a known different source
+SHA, or a development build can choose the official release. These notices are
+distinct; a different SHA alone is not called newer.
 The request sends no current revision, credentials, room data, or media data;
 network errors, private-repository responses, and missing releases are treated
 as no notice. It never downloads, replaces, or interrupts a running share.
@@ -126,15 +129,15 @@ An operator can perform the corresponding read-only Server check:
 bash deploy/check-release.sh
 ```
 
-The script runs the deployed binary's release check, which reads
-`/opt/piik/current/REVISION` and prints one JSON result.
-Exit status `0` means the deployed revision matches, `10` means a different
-release is advertised (the current reader does not establish ancestry/order),
-and `20` means the check could not establish a valid
-release identity. For a private repository, inject a short-lived `GITHUB_TOKEN`
+The script runs the deployed binary's `--check-release`, using that binary's
+injected identity, and prints one JSON result with versions, available source
+SHAs and the release URL. Exit `0` means no newer/different official build,
+`10` means `update-available`, `different-build` or `official-release`, and `20`
+means the check is unavailable. It does not accept a separate revision file.
+For a private repository, inject a short-lived `GITHUB_TOKEN`
 through the operator environment; never place it in the repository or command
 line. The command does not mutate files, services, containers, or persistent
-state. A different current-revision file may be supplied as its only argument.
+state.
 
 ## Permanent-Room Schema Cutover
 

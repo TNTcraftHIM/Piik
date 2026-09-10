@@ -15,9 +15,17 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: false
+  queue: max
+
 jobs:
   validate:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      publish: ${{ steps.release.outputs.publish }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -34,9 +42,19 @@ jobs:
           PIIK_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
       - name: Install dependencies
         run: npm ci
+      - name: Determine release identity
+        id: release
+        run: >-
+          node scripts/release-version.mjs
+          ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.PIIK_RELEASES_ENABLED == 'true' && 'plan' || 'build' }}
+          --github-output
       # The Go build embeds internal/server/webassets/dist, so Vite runs first.
       - name: Build the Browser client
         run: npm run build:client
+        env:
+          PIIK_BUILD_VERSION: ${{ steps.release.outputs.version }}
+          VITE_PIIK_VERSION: ${{ steps.release.outputs.version }}
+          VITE_PIIK_REVISION: ${{ github.sha }}
       - name: Cache Go toolchain
         uses: actions/cache@v4
         with:
@@ -51,13 +69,20 @@ jobs:
         run: npm run check:client-core
       - name: Type-check, test, and build
         run: npm run check
+        env:
+          PIIK_BUILD_VERSION: ${{ steps.release.outputs.version }}
+          VITE_PIIK_VERSION: ${{ steps.release.outputs.version }}
+          VITE_PIIK_REVISION: ${{ github.sha }}
 
   release-application:
     needs: validate
     if: >-
-      github.event_name == 'workflow_dispatch' && inputs.client_checks == true
+      needs.validate.outputs.publish == 'true' ||
+      (github.event_name == 'workflow_dispatch' && inputs.client_checks == true)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      PIIK_BUILD_VERSION: ${{ needs.validate.outputs.version }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -93,7 +118,8 @@ jobs:
       - validate
       - release-application
     if: >-
-      github.event_name == 'workflow_dispatch' && inputs.client_checks == true
+      needs.validate.outputs.publish == 'true' ||
+      (github.event_name == 'workflow_dispatch' && inputs.client_checks == true)
     strategy:
       fail-fast: false
       matrix:
@@ -106,6 +132,8 @@ jobs:
             runner: macos-15
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
+    env:
+      PIIK_BUILD_VERSION: ${{ needs.validate.outputs.version }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -158,3 +186,44 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           retention-days: 14
+
+  publish:
+    needs:
+      - validate
+      - release-application
+      - release-clients
+    if: needs.validate.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Download application release
+        uses: actions/download-artifact@v8
+        with:
+          name: piik-server-${{ github.sha }}
+          path: ${{ runner.temp }}/publish-release
+      - name: Download App release candidates
+        uses: actions/download-artifact@v8
+        with:
+          pattern: piik-app-*-${{ github.sha }}
+          path: ${{ runner.temp }}/publish-release
+          merge-multiple: true
+      - name: Publish verified release
+        run: >-
+          node scripts/publish-release.mjs
+          "$RUNNER_TEMP/publish-release" "$PIIK_RELEASE_VERSION" "$GITHUB_SHA"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PIIK_RELEASE_VERSION: ${{ needs.validate.outputs.version }}

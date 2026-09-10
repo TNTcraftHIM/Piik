@@ -1,20 +1,13 @@
-## Summary
+<!-- Title: type(scope): outcome. One accepted phase per squash PR. 标题遵循提交命名，一次 PR 完成一个阶段。 -->
 
-Describe the problem and the outcome of this change.
+## Problem and outcome / 问题与结果
 
-## Verification
+<!-- Describe the trigger and resulting behavior. Link a related issue or decision when useful. 说明问题、结果及相关依据。 -->
 
-List automated tests, manual checks, environments, and meaningful measurements.
+## Verification / 验证
 
-## Research And Decisions
+<!-- List exact local checks and results, relevant environments, and material untested cases. 列出检查命令、结果与未验证项。 -->
 
-Link the relevant product owner, research note, issue, and ADR, or explain why none is needed.
+## Impact / 影响
 
-## Checklist
-
-- [ ] The branch contains one coherent change and no unrelated churn.
-- [ ] Required local tests and repository hygiene checks pass, and their exact evidence is listed above.
-- [ ] Security, privacy, compatibility, and licensing effects were considered.
-- [ ] Product owners, operational docs, ADRs, project memory, and status were updated only where their facts changed.
-- [ ] Stale or conflicting memory and documentation were removed rather than preserved as a diary.
-- [ ] No credentials, personal data, machine-specific paths, or required untracked artifacts are included.
+<!-- Note relevant compatibility, release interruption/recovery, and updated owner docs. Explain any breaking change marked by ! in the title; write “None” if not applicable. 说明兼容、发布及文档影响，解释标题中 ! 标记的破坏性变更；不适用填“无”。 -->
