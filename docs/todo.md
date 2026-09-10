@@ -19,7 +19,10 @@ recovery archive and external-audit worktree.
 Review the pending implementation against its recorded candidate baseline
 `ebea1c49`; keep canonical main unchanged during the audit. This is a bounded
 review of Piik-owned runtime code and its adapters, not a rewrite or an audit of
-every upstream dependency. The plan is recorded; this audit is not yet complete.
+every upstream dependency. Steps 1-3 are complete through `e36c7a34`: the
+static/automated ownership audit, one confirmed source-switch quality repair and
+its coverage record are in `docs/research/lifecycle-audit-2026-09-10.md`.
+Steps 4-5, real mixed-version acceptance and target-package acceptance, remain.
 
 1. Inventory every owning runtime area and its boundaries. Split read-only work
    across Browser/App orchestration, Server room/route/SFU effects, media/capture
