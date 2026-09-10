@@ -7,7 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/TNTcraftHIM/Screener/internal/diagnostics"
+	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
 )
 
 func watchDiagnosticExport(recorder *diagnostics.Recorder) func() {

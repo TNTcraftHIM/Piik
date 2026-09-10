@@ -14,7 +14,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/TNTcraftHIM/Screener/internal/client/browser"
+	"github.com/TNTcraftHIM/Piik/internal/client/browser"
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/term"
@@ -72,7 +72,7 @@ var consoleCopy = map[string][3]string{
 	"mode":         {"Mode", "模式", ""},
 	"local":        {"Local network", "局域网", "□"},
 	"link":         {"Public link", "公网链接", "↗"},
-	"site":         {"Screener Site", "Screener 站点", "@"},
+	"site":         {"Piik Site", "Piik 站点", "@"},
 	"setup":        {"Choose a mode in the browser", "在浏览器中选择模式", "?"},
 	"starting":     {"Starting", "正在启动", "…"},
 	"ready":        {"Ready", "已就绪", "✓"},
@@ -141,10 +141,10 @@ func (console *clientConsole) finish(err error) error {
 	if console.program != nil {
 		terminalErr := <-console.done
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "Screener Client:", err)
+			fmt.Fprintln(os.Stderr, "Piik Client:", err)
 		}
 		if terminalErr != nil {
-			fmt.Fprintln(os.Stderr, "Screener Client:", terminalErr)
+			fmt.Fprintln(os.Stderr, "Piik Client:", terminalErr)
 		}
 		return terminalErr
 	}
@@ -260,7 +260,7 @@ func (model consoleModel) text(key string) string {
 
 func (model consoleModel) View() tea.View {
 	view := tea.NewView(model.content(true))
-	view.WindowTitle = "Screener Client"
+	view.WindowTitle = "Piik Client"
 	view.AltScreen = true
 	return view
 }
@@ -281,7 +281,7 @@ func (model consoleModel) content(styled bool) string {
 		revision = revision[:7]
 	}
 	var out strings.Builder
-	heading := "Screener\nClient\n" + muted.Render(revision)
+	heading := "Piik\nClient\n" + muted.Render(revision)
 	animated := styled && model.animating()
 	mascot := accent.Render(consoleTV(model.frame, animated, compact || width < 34))
 	if styled && model.colors && width >= 36 && !compactDebug {

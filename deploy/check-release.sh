@@ -6,6 +6,6 @@ if [ "$#" -gt 1 ]; then
   exit 2
 fi
 
-current_file="${1:-/opt/screener/current/REVISION}"
+current_file="${1:-/opt/piik/current/REVISION}"
 
-exec /opt/screener/current/screener-server --check-release --current-file "$current_file"
+exec /opt/piik/current/piik-server --check-release --current-file "$current_file"

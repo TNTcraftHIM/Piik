@@ -15,7 +15,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/TNTcraftHIM/Screener/internal/diagnostics"
+	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
 )
 
 const (
@@ -143,7 +143,7 @@ func ListSources(parent context.Context, executable string) ([]CaptureTarget, er
 	command.Stderr = stderr
 	hideWindow(command)
 	if err := command.Run(); err != nil {
-		slog.DebugContext(ctx, "screener-client", "event", "capture-source-list-failed", diagnostics.Error(err), "canceled", ctx.Err() != nil)
+		slog.DebugContext(ctx, "piik-client", "event", "capture-source-list-failed", diagnostics.Error(err), "canceled", ctx.Err() != nil)
 		return nil, errors.New("native capture source list is unavailable")
 	}
 	var targets []CaptureTarget
@@ -178,7 +178,7 @@ func PreviewSource(parent context.Context, executable string, target CaptureTarg
 	command.Stderr = stderr
 	hideWindow(command)
 	if err := command.Run(); err != nil {
-		slog.DebugContext(ctx, "screener-client", "event", "capture-source-preview-failed", diagnostics.Error(err), "canceled", ctx.Err() != nil)
+		slog.DebugContext(ctx, "piik-client", "event", "capture-source-preview-failed", diagnostics.Error(err), "canceled", ctx.Err() != nil)
 		return nil, errors.New("native capture preview is unavailable")
 	}
 	preview := stdout.Bytes()
@@ -198,7 +198,7 @@ func StartVideo(parent context.Context, executable string, options VideoOptions)
 	}
 	environment := []string(nil)
 	if options.RestoreToken != "" {
-		environment = []string{"SCREENER_XDP_RESTORE_TOKEN=" + options.RestoreToken}
+		environment = []string{"PIIK_XDP_RESTORE_TOKEN=" + options.RestoreToken}
 	}
 	arguments := []string{
 		"--capture-video",
@@ -398,7 +398,7 @@ func startStreamWithEnvironment(
 	logger := slog.Default().With("capture", captureID)
 	command := exec.CommandContext(ctx, executable, arguments...)
 	if logger.Enabled(ctx, slog.LevelDebug) {
-		environment = append(environment, "SCREENER_CAPTURE_DEBUG=1")
+		environment = append(environment, "PIIK_CAPTURE_DEBUG=1")
 	}
 	if len(environment) > 0 {
 		command.Env = append(os.Environ(), environment...)
@@ -420,7 +420,7 @@ func startStreamWithEnvironment(
 	if err = command.Start(); err != nil {
 		_ = trace.Close()
 		cancel()
-		logger.DebugContext(ctx, "screener-client", "event", "capture-process-start-failed", diagnostics.Error(err))
+		logger.DebugContext(ctx, "piik-client", "event", "capture-process-start-failed", diagnostics.Error(err))
 		return nil, fmt.Errorf("start native capture process: %w", err)
 	}
 	logger = logger.With("pid", command.Process.Pid)
@@ -431,7 +431,7 @@ func startStreamWithEnvironment(
 			mode = strings.TrimPrefix(arguments[0], "--")
 		}
 	}
-	logger.DebugContext(ctx, "screener-client", "event", "capture-process-started", "mode", mode)
+	logger.DebugContext(ctx, "piik-client", "event", "capture-process-started", "mode", mode)
 	stream := &Stream{
 		cancel: cancel,
 		input:  stdout,
@@ -444,7 +444,7 @@ func startStreamWithEnvironment(
 		waitErr := command.Wait()
 		_ = trace.Close()
 		logCaptureFailure(ctx, waitErr, command.ProcessState.ExitCode(), stderr.Bytes())
-		logger.DebugContext(ctx, "screener-client", "event", "capture-process-ended", "mode", mode,
+		logger.DebugContext(ctx, "piik-client", "event", "capture-process-ended", "mode", mode,
 			"durationMs", time.Since(started).Milliseconds(), "exitCode", command.ProcessState.ExitCode(),
 			"canceled", ctx.Err() != nil, "cancelReason", diagnostics.SafeText(fmt.Sprint(context.Cause(ctx))), diagnostics.Error(waitErr))
 		stream.done <- waitErr
@@ -473,7 +473,7 @@ func logCaptureFailure(ctx context.Context, err error, exitCode int, stderr []by
 	if canceled && stage == "" && hresult == "" {
 		return
 	}
-	slog.DebugContext(ctx, "screener-client", "event", "capture-process-failed",
+	slog.DebugContext(ctx, "piik-client", "event", "capture-process-failed",
 		"exitCode", exitCode, "stage", stage, "hresult", hresult, "canceled", canceled)
 }
 
@@ -481,7 +481,7 @@ func (stream *Stream) Read() (Frame, error) {
 	frame, err := readFrame(stream.input)
 	if err != nil && stream.logger != nil {
 		stream.readEnd.Do(func() {
-			stream.logger.DebugContext(stream.ctx, "screener-client", "event", "capture-stream-ended",
+			stream.logger.DebugContext(stream.ctx, "piik-client", "event", "capture-stream-ended",
 				"eof", errors.Is(err, io.EOF), "canceled", stream.ctx.Err() != nil, diagnostics.Error(err))
 		})
 	}

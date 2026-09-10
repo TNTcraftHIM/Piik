@@ -31,7 +31,7 @@
 #include "video/send_statistics_proxy.h"
 #include "video/video_stream_encoder.h"
 
-namespace screener::capture::windows {
+namespace piik::capture::windows {
 namespace {
 
 template <typename F>
@@ -163,7 +163,7 @@ class HardwareEncoder final : public webrtc::VideoEncoder {
  public:
   HardwareEncoder(const webrtc::Environment& env, VideoProfile ceiling,
                   AdaptiveEncoder::Factory create,
-                  std::unique_ptr<screener::capture::windows::VideoEncoder> initial,
+                  std::unique_ptr<piik::capture::windows::VideoEncoder> initial,
                   Failure& failure)
       : env_(env), ceiling_(ceiling), create_(std::move(create)),
         initial_(std::move(initial)), failure_(failure) {
@@ -325,7 +325,7 @@ class HardwareEncoder final : public webrtc::VideoEncoder {
   const webrtc::Environment env_;
   const VideoProfile ceiling_;
   AdaptiveEncoder::Factory create_;
-  std::unique_ptr<screener::capture::windows::VideoEncoder> initial_, encoder_;
+  std::unique_ptr<piik::capture::windows::VideoEncoder> initial_, encoder_;
   Failure& failure_;
   VideoProfile profile_;
   webrtc::EncodedImageCallback* callback_ = nullptr;
@@ -600,7 +600,7 @@ class AdaptiveEncoder::Impl final : public webrtc::VideoSourceInterface<webrtc::
   const int output_index_;
   const bool debug_ = [] {
     wchar_t value[2]{};
-    return GetEnvironmentVariableW(L"SCREENER_CAPTURE_DEBUG", value, 2) == 1 && value[0] == L'1';
+    return GetEnvironmentVariableW(L"PIIK_CAPTURE_DEBUG", value, 2) == 1 && value[0] == L'1';
   }();
   std::optional<INT64> last_stats_ms_;
   ComPtr<ID3D11Device> device_;
@@ -648,4 +648,4 @@ std::optional<AdaptiveAccessUnit> AdaptiveEncoder::Encode(FrameProducer produce,
                        key_frame, bitrate);
 }
 
-}  // namespace screener::capture::windows
+}  // namespace piik::capture::windows

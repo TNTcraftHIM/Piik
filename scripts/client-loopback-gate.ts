@@ -73,7 +73,7 @@ async function browserHandshake(
             });
             if (!response.ok) continue;
             const health = await response.json();
-            if (health.protocol === ${NATIVE_PROTOCOL} && health.service === "screener-client" &&
+            if (health.protocol === ${NATIVE_PROTOCOL} && health.service === "piik-client" &&
                 health.port === port && typeof health.instanceToken === "string" &&
                 typeof health.nativeMedia?.video === "boolean" &&
                 typeof health.nativeMedia?.processAudio === "boolean" &&
@@ -137,18 +137,18 @@ async function main(): Promise<void> {
   if (process.platform !== "win32" && process.platform !== "darwin" && process.platform !== "linux") {
     throw new Error("loopback gate requires a desktop platform");
   }
-  if (process.env.SCREENER_CLIENT_LOOPBACK_GATE !== "true") {
+  if (process.env.PIIK_CLIENT_LOOPBACK_GATE !== "true") {
     throw new Error("loopback gate was not explicitly enabled");
   }
   const browserPath = process.env.CHROME_PATH?.trim();
-  const clientPath = process.env.SCREENER_CLIENT_EXE?.trim();
+  const clientPath = process.env.PIIK_CLIENT_EXE?.trim();
   if (!browserPath || !clientPath) {
-    throw new Error("CHROME_PATH and SCREENER_CLIENT_EXE are required");
+    throw new Error("CHROME_PATH and PIIK_CLIENT_EXE are required");
   }
   const disposableNoSandbox =
-    process.env.SCREENER_CLIENT_GATE_NO_SANDBOX === "true";
+    process.env.PIIK_CLIENT_GATE_NO_SANDBOX === "true";
   const grantLoopback =
-    process.env.SCREENER_CLIENT_GATE_GRANT_LOOPBACK === "true";
+    process.env.PIIK_CLIENT_GATE_GRANT_LOOPBACK === "true";
 
   const report: GateReport = {
     passed: false,
@@ -173,14 +173,14 @@ async function main(): Promise<void> {
   let cdp: CdpConnection | null = null;
   let debugPort = 0;
   try {
-    profile = await mkdtemp(join(tmpdir(), "screener-client-loopback-"));
+    profile = await mkdtemp(join(tmpdir(), "piik-client-loopback-"));
     client = spawn(clientPath, [
       "--site", PAGE_URL,
       "--config", join(profile, "client.json"),
     ], {
       stdio: "pipe",
       windowsHide: true,
-      env: { ...process.env, SCREENER_CLIENT_GATE_NO_BROWSER: "true" },
+      env: { ...process.env, PIIK_CLIENT_GATE_NO_BROWSER: "true" },
     });
     client.stderr.resume();
     const endpoint = await readClientEndpoint(client, { timeoutMs: 8_000 });

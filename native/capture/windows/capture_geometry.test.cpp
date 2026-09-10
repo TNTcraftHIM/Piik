@@ -5,7 +5,7 @@
 #include <iostream>
 
 int main() {
-  using namespace screener::capture;
+  using namespace piik::capture;
   const SIZE captured{1280, 960};
   const SIZE monitor{1920, 1080};
   const auto presentation = [&](DISPLAYCONFIG_SCALING scaling,

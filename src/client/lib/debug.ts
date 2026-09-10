@@ -28,7 +28,7 @@ function safeText(value: string): string {
     .replace(/\bv=0\r?\n[\s\S]*/g, "[redacted SDP]")
     .replace(/\b(?:set-cookie|cookie|authorization)\s*:[^\r\n]*/gi, "[redacted credential header]")
     .replace(/\b(?:Bearer|Basic)\s+[^\s,;"']+/gi, "[redacted authorization]")
-    .replace(/screener-client-v\d+\.[A-Za-z0-9_-]+/g, "[redacted Client capability]")
+    .replace(/piik-client-v\d+\.[A-Za-z0-9_-]+/g, "[redacted Client capability]")
     .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, "[redacted token]")
     .replace(/\b(?:[a-z]*token|[a-z]*grant|password|passwd|secret|authorization|cookie|ice-pwd)["']?\s*[=:]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi, "[redacted credential]")
     .replace(/(?:https?|wss?):\/\/[^\s<>"')]+/gi, (text) => {
@@ -111,7 +111,7 @@ export function debugEvent(scope: string, event: string, details: DebugDetails =
       retainedBytes -= events.shift()!.bytes;
       evictedEvents++;
     }
-    console.info("[screener]", record);
+    console.info("[piik]", record);
   } catch { /* Diagnostics must not interrupt the operation being observed. */ }
 }
 
@@ -179,14 +179,14 @@ export async function downloadBrowserDebug(): Promise<void> {
   try {
     const link = document.createElement("a");
     link.href = url;
-    link.download = `screener-browser-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+    link.download = `piik-browser-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
     link.click();
   } finally { setTimeout(() => URL.revokeObjectURL(url), 0); }
 }
 
 export function installBrowserDebug(): (() => void) | undefined {
   if (!browserDebugEnabled) return;
-  window.__SCREENER_DEBUG__ = {
+  window.__PIIK_DEBUG__ = {
     events: snapshot,
     clear: () => { evictedEvents += events.length; events.length = 0; retainedBytes = 0; },
     export: exportBrowserDebug,
@@ -204,7 +204,7 @@ export function installBrowserDebug(): (() => void) | undefined {
 
 declare global {
   interface Window {
-    __SCREENER_DEBUG__?: {
+    __PIIK_DEBUG__?: {
       events: () => readonly BrowserDebugEvent[];
       clear: () => void;
       export: () => Promise<string>;

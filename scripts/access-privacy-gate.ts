@@ -35,8 +35,8 @@ import {
 const root = resolve(import.meta.dirname, "..");
 const nginxConfigPath = resolve(root, "deploy/nginx/share.bonfire.icu.conf.example");
 const serverExecutable = join(root, "build", "client-check",
-  process.platform === "win32" ? "screener-server.exe" : "screener-server");
-// SCREENER_ENV=production refuses to start without STUN. Nothing listens on
+  process.platform === "win32" ? "piik-server.exe" : "piik-server");
+// PIIK_ENV=production refuses to start without STUN. Nothing listens on
 // this address, so the gate still never leaves the loopback interface.
 const gateStunUrl = "stun:127.0.0.1:3478";
 const hostClientId = "privacy-gate-host";
@@ -55,7 +55,7 @@ const fragmentProbe = `(() => {
     if (location.hash) { state.replaced = true; state.beforeDomContentLoaded = !domContentLoaded; }
     return replaceState.apply(this, args);
   };
-  Object.defineProperty(globalThis, "__SCREENER_ACCESS_GATE__", { value: state });
+  Object.defineProperty(globalThis, "__PIIK_ACCESS_GATE__", { value: state });
 })();`;
 interface GateReport {
   passed: boolean; serverReady: boolean; roomPrepared: boolean;
@@ -96,13 +96,13 @@ async function reserveDistinctPorts(count: number): Promise<number[]> {
   return ports;
 }
 function buildServer(): void {
-  const go = process.env.SCREENER_GO?.trim() || "go";
-  const result = spawnSync(go, ["build", "-trimpath", "-o", serverExecutable, "./cmd/screener-server"], {
+  const go = process.env.PIIK_GO?.trim() || "go";
+  const result = spawnSync(go, ["build", "-trimpath", "-o", serverExecutable, "./cmd/piik-server"], {
     cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env, CGO_ENABLED: "0" },
   });
   if (result.error) throw result.error;
-  if (result.status !== 0) throw new Error("screener-server build failed");
+  if (result.status !== 0) throw new Error("piik-server build failed");
 }
 function forwardedHeaders(headers: IncomingHttpHeaders): OutgoingHttpHeaders {
   return Object.fromEntries(
@@ -244,7 +244,7 @@ async function main(): Promise<void> {
   try {
     await access(chromePath);
     [proxyPort, serverPort, debugPort] = await reserveDistinctPorts(3);
-    profile = await mkdtemp(join(tmpdir(), "screener-access-privacy-"));
+    profile = await mkdtemp(join(tmpdir(), "piik-access-privacy-"));
     const baseUrl = `http://127.0.0.1:${proxyPort}`;
     await mkdir(dirname(serverExecutable), { recursive: true });
     buildServer();
@@ -260,7 +260,7 @@ async function main(): Promise<void> {
       env: {
         PATH: process.env.PATH,
         SystemRoot: process.env.SystemRoot,
-        SCREENER_ENV: "production",
+        PIIK_ENV: "production",
         ROOM_DATABASE_PATH: ":memory:",
         PORT: String(serverPort),
         LISTEN_HOST: "127.0.0.1",
@@ -346,7 +346,7 @@ async function main(): Promise<void> {
     const expected = JSON.stringify({ roomId: room.roomId, grant });
     const audit = await evaluate<BrowserAudit>(cdp, page, `(() => {
         const expected = ${expected};
-        const fragment = globalThis.__SCREENER_ACCESS_GATE__;
+        const fragment = globalThis.__PIIK_ACCESS_GATE__;
         const entries = (storage) => Object.keys(storage).map((key) => [key, storage.getItem(key)]);
         const session = entries(sessionStorage); const local = entries(localStorage);
         return {
@@ -355,8 +355,8 @@ async function main(): Promise<void> {
           fragmentClearedBeforeDomContentLoaded: fragment?.beforeDomContentLoaded === true,
           fragmentCleared: location.hash === "",
           canonicalRoomPath: location.pathname === "/r/" + expected.roomId && location.search === "",
-          roomSessionGrantMatches: session.filter(([key, value]) => key === "screener:viewer-grant:" + expected.roomId && value === expected.grant).length,
-          otherSessionGrantMatches: session.filter(([key, value]) => value?.includes(expected.grant) && key !== "screener:viewer-grant:" + expected.roomId).length,
+          roomSessionGrantMatches: session.filter(([key, value]) => key === "piik:viewer-grant:" + expected.roomId && value === expected.grant).length,
+          otherSessionGrantMatches: session.filter(([key, value]) => value?.includes(expected.grant) && key !== "piik:viewer-grant:" + expected.roomId).length,
           localGrantMatches: local.filter(([, value]) => value && value.includes(expected.grant)).length,
           resourceGrantMatches: performance.getEntriesByType("resource").filter((entry) => entry.name.includes(expected.grant)).length,
         };

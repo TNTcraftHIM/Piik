@@ -13,8 +13,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/TNTcraftHIM/Screener/internal/client/clientconfig"
-	serverconfig "github.com/TNTcraftHIM/Screener/internal/server/config"
+	"github.com/TNTcraftHIM/Piik/internal/client/clientconfig"
+	serverconfig "github.com/TNTcraftHIM/Piik/internal/server/config"
 )
 
 func TestOccupiedPortRejectsLinkBeforeStartingATunnel(t *testing.T) {
@@ -41,7 +41,7 @@ func TestClientLaunchURLMarksThePageWithoutChangingOrigin(t *testing.T) {
 		t.Fatalf("launch URL = %q, %v", value, err)
 	}
 	fragment, err := url.ParseQuery(parsed.Fragment)
-	if err != nil || fragment.Get("screener-client") != "1" {
+	if err != nil || fragment.Get("piik-client") != "1" {
 		t.Fatalf("Client launch fragment = %q, %v", parsed.Fragment, err)
 	}
 }
@@ -64,7 +64,7 @@ func TestClientDiagnosticsUseFilesOnlyWhenEnabled(t *testing.T) {
 		log.SetOutput(previousOutput)
 		slog.SetLogLoggerLevel(previousLevel)
 	})
-	t.Setenv("SCREENER_DEBUG", "")
+	t.Setenv("PIIK_DEBUG", "")
 	for _, enabled := range []bool{false, true} {
 		output.Reset()
 		directory := t.TempDir()
@@ -72,7 +72,7 @@ func TestClientDiagnosticsUseFilesOnlyWhenEnabled(t *testing.T) {
 		if err == nil {
 			t.Fatal("invalid mode must stop before starting capture or services")
 		}
-		if strings.Contains(output.String(), "screener-client") {
+		if strings.Contains(output.String(), "piik-client") {
 			t.Fatalf("Client diagnostics reached stderr: %s", output.String())
 		}
 		content, readErr := os.ReadFile(filepath.Join(directory, "client.log"))
@@ -92,7 +92,7 @@ func TestClientDiagnosticsUseFilesOnlyWhenEnabled(t *testing.T) {
 
 func TestClientDiagnosticDirectoryHonorsExplicitSelection(t *testing.T) {
 	environmentDirectory := t.TempDir()
-	t.Setenv("SCREENER_LOG_DIR", environmentDirectory)
+	t.Setenv("PIIK_LOG_DIR", environmentDirectory)
 	for _, directory := range []string{"", t.TempDir()} {
 		recorder, err := openClientDiagnostics(directory)
 		if err != nil {
@@ -139,7 +139,7 @@ func TestLaunchURLPreservesLocalAccessInsideThePrivateFragment(t *testing.T) {
 	}
 	fragment, err := url.ParseQuery(parsed.Fragment)
 	if err != nil || fragment.Get("client-access") != "secret" ||
-		fragment.Get("screener-client") != "1" {
+		fragment.Get("piik-client") != "1" {
 		t.Fatalf("local native launch fragment = %q, %v", parsed.Fragment, err)
 	}
 }
@@ -155,7 +155,7 @@ func TestLaunchURLEncodesAndClearsOptionalLocalAccess(t *testing.T) {
 	}
 	fragment, err := url.ParseQuery(parsed.Fragment)
 	if err != nil || fragment.Get("client-access") != "a+b&c?d=e" ||
-		fragment.Get("screener-client") != "1" || fragment.Get("retained") != "yes" {
+		fragment.Get("piik-client") != "1" || fragment.Get("retained") != "yes" {
 		t.Fatalf("encoded local launch fragment = %q, %v", parsed.Fragment, err)
 	}
 
@@ -165,7 +165,7 @@ func TestLaunchURLEncodesAndClearsOptionalLocalAccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	fragment, err = url.ParseQuery(parsed.Fragment)
-	if err != nil || fragment.Get("client-access") != "" || fragment.Get("screener-client") != "1" {
+	if err != nil || fragment.Get("client-access") != "" || fragment.Get("piik-client") != "1" {
 		t.Fatalf("open local launch fragment = %q, %v", parsed.Fragment, err)
 	}
 }

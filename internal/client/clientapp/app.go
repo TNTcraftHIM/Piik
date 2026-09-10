@@ -16,18 +16,18 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/TNTcraftHIM/Screener/internal/client/browser"
-	"github.com/TNTcraftHIM/Screener/internal/client/clientconfig"
-	"github.com/TNTcraftHIM/Screener/internal/client/lan"
-	"github.com/TNTcraftHIM/Screener/internal/client/launcher"
-	"github.com/TNTcraftHIM/Screener/internal/client/loopback"
-	"github.com/TNTcraftHIM/Screener/internal/client/nativecapture"
-	"github.com/TNTcraftHIM/Screener/internal/client/nativecontrol"
-	"github.com/TNTcraftHIM/Screener/internal/client/publictunnel"
-	"github.com/TNTcraftHIM/Screener/internal/diagnostics"
-	serverapp "github.com/TNTcraftHIM/Screener/internal/server/app"
-	serverconfig "github.com/TNTcraftHIM/Screener/internal/server/config"
-	"github.com/TNTcraftHIM/Screener/internal/server/webassets"
+	"github.com/TNTcraftHIM/Piik/internal/client/browser"
+	"github.com/TNTcraftHIM/Piik/internal/client/clientconfig"
+	"github.com/TNTcraftHIM/Piik/internal/client/lan"
+	"github.com/TNTcraftHIM/Piik/internal/client/launcher"
+	"github.com/TNTcraftHIM/Piik/internal/client/loopback"
+	"github.com/TNTcraftHIM/Piik/internal/client/nativecapture"
+	"github.com/TNTcraftHIM/Piik/internal/client/nativecontrol"
+	"github.com/TNTcraftHIM/Piik/internal/client/publictunnel"
+	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
+	serverapp "github.com/TNTcraftHIM/Piik/internal/server/app"
+	serverconfig "github.com/TNTcraftHIM/Piik/internal/server/config"
+	"github.com/TNTcraftHIM/Piik/internal/server/webassets"
 )
 
 const (
@@ -63,14 +63,14 @@ type Options struct {
 
 func Run(ctx context.Context, options Options) (returnedErr error) {
 	ctx, cancel := context.WithCancel(ctx)
-	options.Debug = options.Debug || clientDebugEnabled(os.Getenv("SCREENER_DEBUG"))
+	options.Debug = options.Debug || clientDebugEnabled(os.Getenv("PIIK_DEBUG"))
 	options.console = newClientConsole(cancel, options.DisableBrowser)
 	var recorder *diagnostics.Recorder
 	var restoreLogger func()
 	defer func() {
 		cancel()
 		if recorder != nil {
-			slog.Debug("screener-client", "event", "stopped", "failed", returnedErr != nil, diagnostics.Error(returnedErr))
+			slog.Debug("piik-client", "event", "stopped", "failed", returnedErr != nil, diagnostics.Error(returnedErr))
 			if options.console.program == nil {
 				path, err := recorder.Export()
 				options.console.send(consoleExportResult{path: path, err: err})
@@ -85,7 +85,7 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 		var err error
 		recorder, err = openClientDiagnostics(options.LogDir)
 		if err != nil {
-			return fmt.Errorf("Screener Client diagnostics are unavailable: %w", err)
+			return fmt.Errorf("Piik Client diagnostics are unavailable: %w", err)
 		}
 		previous, previousWriter, previousFlags := slog.Default(), log.Writer(), log.Flags()
 		var dependencyLog *diagnostics.LineWriter
@@ -102,7 +102,7 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 		log.SetFlags(previousFlags)
 		options.console.send(consoleDebug{logPath: recorder.LogPath(), export: recorder.Export})
 	}
-	slog.Debug("screener-client", "event", "start", "revision", BuildRevision)
+	slog.Debug("piik-client", "event", "start", "revision", BuildRevision)
 	options.console.show(consoleView{state: "starting"})
 	if err := validateMode(options); err != nil {
 		return err
@@ -115,21 +115,21 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 		var err error
 		configPath, err = clientconfig.DefaultPath()
 		if err != nil {
-			return errors.New("Screener Client configuration is unavailable")
+			return errors.New("Piik Client configuration is unavailable")
 		}
 	}
 	config, err := clientconfig.LoadOrCreate(configPath)
 	if err != nil {
-		return errors.New("Screener Client configuration is unavailable")
+		return errors.New("Piik Client configuration is unavailable")
 	}
 	config, err = applyMode(config, options)
 	if err != nil {
 		return err
 	}
-	slog.Debug("screener-client", "event", "configuration", "siteConfigured", config.Site != "", "localAccessProtected", config.LocalAccessPassword != "")
+	slog.Debug("piik-client", "event", "configuration", "siteConfigured", config.Site != "", "localAccessProtected", config.LocalAccessPassword != "")
 	if options.SiteSet || options.Local {
 		if err = clientconfig.Save(configPath, config); err != nil {
-			return errors.New("Screener Client configuration is unavailable")
+			return errors.New("Piik Client configuration is unavailable")
 		}
 	}
 	nativeMedia := discoverNativeMedia(ctx, options.CaptureProcess)
@@ -139,7 +139,7 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 		recorder.Context("capture", nativeMedia.capture)
 		recorder.Binary("captureExecutable", nativeMedia.captureProcess)
 	}
-	slog.Debug("screener-client", "event", "native-capabilities",
+	slog.Debug("piik-client", "event", "native-capabilities",
 		"video", nativeMedia.capabilities.Video, "processAudio", nativeMedia.capabilities.ProcessAudio,
 		"systemAudio", nativeMedia.capabilities.SystemAudio, "hardwareH264", nativeMedia.capabilities.HardwareH264,
 		"softwareVP8", nativeMedia.capabilities.SoftwareVP8)
@@ -150,10 +150,10 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 		Presentation:   options.console.setLanguage,
 	})
 	if err != nil {
-		return errors.New("Screener Client could not start")
+		return errors.New("Piik Client could not start")
 	}
 	defer client.Close()
-	slog.Debug("screener-client", "event", "control-ready")
+	slog.Debug("piik-client", "event", "control-ready")
 	if options.console.machine {
 		if err = printEndpoint(client.Endpoint()); err != nil {
 			return err
@@ -209,7 +209,7 @@ func runLauncher(
 	))
 	options.console.show(consoleView{state: "setup", entry: launch.URL()})
 	if err = browser.Open(launch.URL()); err != nil {
-		return errors.New("Screener Client could not open its launcher")
+		return errors.New("Piik Client could not open its launcher")
 	}
 
 	var selection launcher.Selection
@@ -219,7 +219,7 @@ func runLauncher(
 		return nil
 	case err = <-launch.Done():
 		if err != nil {
-			return errors.New("Screener Client launcher stopped unexpectedly")
+			return errors.New("Piik Client launcher stopped unexpectedly")
 		}
 		return nil
 	}
@@ -232,7 +232,7 @@ func runLauncher(
 	if err = clientconfig.Save(configPath, config); err != nil {
 		launch.SetResult("", err)
 		<-launch.Handled()
-		return errors.New("Screener Client configuration is unavailable")
+		return errors.New("Piik Client configuration is unavailable")
 	}
 	client.SetAllowedOrigins(clientOrigins(config.Site, options.Port))
 	options.SiteSet = false
@@ -289,7 +289,7 @@ func applyMode(config clientconfig.Config, options Options) (clientconfig.Config
 		var err error
 		config.Site, err = clientconfig.NormalizeSite(options.Site)
 		if err != nil || config.Site == "" {
-			return clientconfig.Config{}, errors.New("Screener Site must be an HTTP or HTTPS origin")
+			return clientconfig.Config{}, errors.New("Piik Site must be an HTTP or HTTPS origin")
 		}
 	} else if options.Local {
 		config.Site = ""
@@ -315,7 +315,7 @@ func clientDebugEnabled(value string) bool {
 
 func openClientDiagnostics(directory string) (*diagnostics.Recorder, error) {
 	if directory = strings.TrimSpace(directory); directory == "" {
-		directory = strings.TrimSpace(os.Getenv("SCREENER_LOG_DIR"))
+		directory = strings.TrimSpace(os.Getenv("PIIK_LOG_DIR"))
 	}
 	if directory != "" {
 		return diagnostics.Open(directory, "client", BuildRevision)
@@ -332,33 +332,33 @@ func openClientDiagnostics(directory string) (*diagnostics.Recorder, error) {
 	if cacheErr != nil {
 		return nil, errors.Join(err, cacheErr)
 	}
-	return diagnostics.Open(filepath.Join(cache, "Screener", "logs"), "client", BuildRevision)
+	return diagnostics.Open(filepath.Join(cache, "Piik", "logs"), "client", BuildRevision)
 }
 
-// runSite opens the configured Screener Site in the Browser and waits for the
+// runSite opens the configured Piik Site in the Browser and waits for the
 // loopback server, which is the only thing this mode owns. It takes no context:
 // cancellation reaches it through client.Done().
 func runSite(site string, options Options, client *loopback.Server) error {
 	var err error
-	slog.Debug("screener-client", "event", "mode", "mode", "site")
+	slog.Debug("piik-client", "event", "mode", "mode", "site")
 	launchURL := clientLaunchURL(site)
 	view := consoleView{mode: "site", state: "starting", entry: launchURL}
 	options.console.show(view)
 	if options.console.machine {
-		fmt.Printf("Screener Site: %s\n", site)
+		fmt.Printf("Piik Site: %s\n", site)
 	}
 	if !options.DisableBrowser {
 		if err = browser.Open(launchURL); err != nil {
-			return errors.New("Screener Client could not open the Site")
+			return errors.New("Piik Client could not open the Site")
 		}
 	} else if options.Ready != nil {
 		options.Ready(launchURL)
 	}
 	view.state = "ready"
-	slog.Debug("screener-client", "event", "site-ready")
+	slog.Debug("piik-client", "event", "site-ready")
 	options.console.show(view)
 	if err = <-client.Done(); err != nil {
-		return errors.New("Screener Client stopped unexpectedly")
+		return errors.New("Piik Client stopped unexpectedly")
 	}
 	return nil
 }
@@ -370,7 +370,7 @@ func runLocal(ctx context.Context, options Options, config clientconfig.Config,
 	if options.Link {
 		view.mode = "link"
 	}
-	slog.Debug("screener-client", "event", "mode", "mode", view.mode)
+	slog.Debug("piik-client", "event", "mode", "mode", view.mode)
 	options.console.show(view)
 	listener, err := net.ListenTCP("tcp4", &net.TCPAddr{IP: net.IPv4zero, Port: options.Port})
 	if err != nil {
@@ -402,7 +402,7 @@ func runLocal(ctx context.Context, options Options, config clientconfig.Config,
 		}
 		defer tunnel.Close()
 		publicOrigin = tunnel.Origin()
-		slog.Debug("screener-client", "event", "public-link-ready")
+		slog.Debug("piik-client", "event", "public-link-ready")
 	}
 
 	stunURLs, natPredictionStunURLs := localSTUNURLs(options.Link)
@@ -436,7 +436,7 @@ func runLocal(ctx context.Context, options Options, config clientconfig.Config,
 	if _, err = localServer.Listen(ctx); err != nil {
 		return err
 	}
-	slog.Debug("screener-client", "event", "local-server-ready", "port", options.Port, "publicLink", publicOrigin != "")
+	slog.Debug("piik-client", "event", "local-server-ready", "port", options.Port, "publicLink", publicOrigin != "")
 
 	// The readiness lines follow the listener, which the packaged smoke and the
 	// public-link gate both read from stdout before they probe the port.
@@ -458,7 +458,7 @@ func runLocal(ctx context.Context, options Options, config clientconfig.Config,
 	)
 	if !options.DisableBrowser {
 		if err = browser.Open(launchURL); err != nil {
-			return errors.New("Screener Client could not open the Local page")
+			return errors.New("Piik Client could not open the Local page")
 		}
 	} else if options.Ready != nil {
 		options.Ready(launchURL)
@@ -478,7 +478,7 @@ func runLocal(ctx context.Context, options Options, config clientconfig.Config,
 		return endLocalServer(localServer)
 	case err = <-client.Done():
 		if err != nil {
-			return errors.New("Screener Client runtime stopped unexpectedly")
+			return errors.New("Piik Client runtime stopped unexpectedly")
 		}
 		return nil
 	case <-tunnelDone:
@@ -495,7 +495,7 @@ func clientLaunchURL(raw string) string {
 	if err != nil {
 		return raw
 	}
-	fragment.Set("screener-client", "1")
+	fragment.Set("piik-client", "1")
 	parsed.Fragment = fragment.Encode()
 	return parsed.String()
 }
@@ -513,7 +513,7 @@ func clientLaunchURLWithLocalAccess(raw, password string) string {
 	if password != "" {
 		fragment.Set("client-access", password)
 	}
-	fragment.Set("screener-client", "1")
+	fragment.Set("piik-client", "1")
 	parsed.Fragment = fragment.Encode()
 	return parsed.String()
 }
@@ -604,7 +604,7 @@ func tunnelExecutable(configured string) string {
 func printEndpoint(endpoint loopback.Endpoint) error {
 	payload, err := json.Marshal(endpoint)
 	if err != nil {
-		return errors.New("Screener Client endpoint is unavailable")
+		return errors.New("Piik Client endpoint is unavailable")
 	}
 	fmt.Println(string(payload))
 	return nil

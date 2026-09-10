@@ -2,7 +2,7 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = (git rev-parse --show-toplevel).Trim()
 if ($LASTEXITCODE -ne 0) {
-    throw "This command must run inside the Screener Git repository."
+    throw "This command must run inside the Piik Git repository."
 }
 Set-Location $repoRoot
 
@@ -19,8 +19,8 @@ if ($LASTEXITCODE -ne 0) { throw "Working-tree whitespace check failed." }
 git diff --cached --check
 if ($LASTEXITCODE -ne 0) { throw "Staged whitespace check failed." }
 
-if ($env:SCREENER_BASE_SHA -and $env:SCREENER_BASE_SHA -notmatch '^0{40}$') {
-    git diff --check "$env:SCREENER_BASE_SHA...HEAD"
+if ($env:PIIK_BASE_SHA -and $env:PIIK_BASE_SHA -notmatch '^0{40}$') {
+    git diff --check "$env:PIIK_BASE_SHA...HEAD"
     if ($LASTEXITCODE -ne 0) { throw "Commit-range whitespace check failed." }
 }
 

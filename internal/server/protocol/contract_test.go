@@ -75,7 +75,7 @@ const (
 func authenticatedHost() []member {
 	return []member{
 		{"type", `"authenticated"`},
-		{"protocol", `"screener-v23"`},
+		{"protocol", `"piik-v23"`},
 		{"peerId", `"host_12345678"`},
 		{"maxViewers", `8`},
 		{"endpointMediaCopyCapacity", `2`},
@@ -618,7 +618,7 @@ func TestOptionalAndNullableAreExact(t *testing.T) {
 // A host authenticate without routePolicy takes DEFAULT_ROUTE_POLICY.
 func TestAuthenticateAppliesTheRoutePolicyDefault(t *testing.T) {
 	message, err := DecodeClientMessage([]byte(
-		`{"type":"authenticate","protocol":"screener-v23","roomId":"1234","role":"host",` +
+		`{"type":"authenticate","protocol":"piik-v23","roomId":"1234","role":"host",` +
 			`"token":"` + repeat("a", 43) + `","clientId":"client_12345678"}`))
 	if err != nil {
 		t.Fatal(err)

@@ -1680,11 +1680,11 @@ function buildBenchmarkInitScript(options: {
 }): string {
   const serialized = JSON.stringify(options);
   return `(() => {
-    if (globalThis.__SCREENER_BENCHMARK__) return;
+    if (globalThis.__PIIK_BENCHMARK__) return;
     const options = ${serialized};
     const expectedRoleCap = options.expectedEndpointCap;
     if (options.clearHostRoom) {
-      try { localStorage.removeItem("screener:host-room:v1"); } catch {}
+      try { localStorage.removeItem("piik:host-room:v1"); } catch {}
     }
     const state = {
       label: options.label,
@@ -2226,7 +2226,7 @@ function buildBenchmarkInitScript(options: {
     function markShareRequested() {
       state.shareRequestedAtEpochMs = Date.now();
     }
-    Object.defineProperty(globalThis, "__SCREENER_BENCHMARK__", {
+    Object.defineProperty(globalThis, "__PIIK_BENCHMARK__", {
       configurable: false,
       value: { sample, progress, snapshot, canarySnapshot, senderDegradationPreferences, sendViewerQualityEvidence, markShareRequested, requestRouteDiagnosticSnapshot, routeDiagnosticTimingSamples, stop: () => clearInterval(videoObserver) },
     });
@@ -2262,23 +2262,23 @@ function buildStep(command: string, args: string[], failure: string): void {
   }
 }
 
-// buildServer compiles the Screener server this run starts. The Web assets are
+// buildServer compiles the Piik server this run starts. The Web assets are
 // embedded, so the Vite build precedes the Go build and the Browser reaches the
 // same bundle the binary serves.
 function buildServer(): string {
-  const go = process.env.SCREENER_GO?.trim() || "go";
+  const go = process.env.PIIK_GO?.trim() || "go";
   const buildRoot = join(REPO_ROOT, "build", "peer-benchmark");
   mkdirSync(buildRoot, { recursive: true });
   const output = join(buildRoot,
-    process.platform === "win32" ? "screener-server.exe" : "screener-server");
+    process.platform === "win32" ? "piik-server.exe" : "piik-server");
   if (process.platform === "win32") {
     buildStep(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", "npm run build:client"],
       "Browser client build failed");
   } else {
     buildStep("npm", ["run", "build:client"], "Browser client build failed");
   }
-  buildStep(go, ["build", "-trimpath", "-o", output, "./cmd/screener-server"],
-    "Screener server build failed");
+  buildStep(go, ["build", "-trimpath", "-o", output, "./cmd/piik-server"],
+    "Piik server build failed");
   return output;
 }
 
@@ -2431,7 +2431,7 @@ async function createPage(
     await waitForPage(
       cdp,
       page,
-      "document.readyState === 'complete' && Boolean(globalThis.__SCREENER_BENCHMARK__)",
+      "document.readyState === 'complete' && Boolean(globalThis.__PIIK_BENCHMARK__)",
       15_000,
       "page initialization",
       signal,
@@ -2484,7 +2484,7 @@ async function quickSnapshot(
   return evaluate<PageObservation>(
     cdp,
     page,
-    "globalThis.__SCREENER_BENCHMARK__.snapshot()",
+    "globalThis.__PIIK_BENCHMARK__.snapshot()",
   );
 }
 
@@ -2495,7 +2495,7 @@ async function detailedSample(
   return evaluate<PageObservation>(
     cdp,
     page,
-    "globalThis.__SCREENER_BENCHMARK__.sample()",
+    "globalThis.__PIIK_BENCHMARK__.sample()",
   );
 }
 
@@ -2506,7 +2506,7 @@ async function progressSample(
   return evaluate<PageObservation>(
     cdp,
     page,
-    "globalThis.__SCREENER_BENCHMARK__.progress()",
+    "globalThis.__PIIK_BENCHMARK__.progress()",
   );
 }
 
@@ -2600,7 +2600,7 @@ async function startHost(
       profile.click();
       const start = document.querySelector('.lr-entry-actions button.lr-tv-big.is-action[aria-label]');
       if (!(start instanceof HTMLButtonElement)) throw new Error('Start button missing');
-      globalThis.__SCREENER_BENCHMARK__.markShareRequested();
+      globalThis.__PIIK_BENCHMARK__.markShareRequested();
       start.click();
       return true;
     })()`,
@@ -2608,7 +2608,7 @@ async function startHost(
   await waitForPage(
     cdp,
     page,
-    "globalThis.__SCREENER_BENCHMARK__.snapshot().peerId !== null",
+    "globalThis.__PIIK_BENCHMARK__.snapshot().peerId !== null",
     timeoutMs,
     "host signaling authentication",
     signal,
@@ -2655,7 +2655,7 @@ async function requestRouteTimingSummary(
   const requested = await evaluate<boolean>(
     cdp,
     hostPage,
-    "globalThis.__SCREENER_BENCHMARK__.requestRouteDiagnosticSnapshot()",
+    "globalThis.__PIIK_BENCHMARK__.requestRouteDiagnosticSnapshot()",
   );
   if (!requested) {
     throw new Error("Host route diagnostic request was unavailable");
@@ -2663,7 +2663,7 @@ async function requestRouteTimingSummary(
   await waitForPage(
     cdp,
     hostPage,
-    "globalThis.__SCREENER_BENCHMARK__.routeDiagnosticTimingSamples() !== null",
+    "globalThis.__PIIK_BENCHMARK__.routeDiagnosticTimingSamples() !== null",
     timeoutMs,
     "Host route diagnostic snapshot",
     signal,
@@ -2671,7 +2671,7 @@ async function requestRouteTimingSummary(
   const samples = await evaluate<BenchmarkRouteTimingSamples>(
     cdp,
     hostPage,
-    "globalThis.__SCREENER_BENCHMARK__.routeDiagnosticTimingSamples()",
+    "globalThis.__PIIK_BENCHMARK__.routeDiagnosticTimingSamples()",
   );
   return summarizeBenchmarkRouteTiming(samples);
 }
@@ -2849,7 +2849,7 @@ async function runQualityControlSmoke(
         waitForPage(
           cdp,
           page,
-          `JSON.stringify(globalThis.__SCREENER_BENCHMARK__.snapshot().qualitySettings) === ${serializedSettings}`,
+          `JSON.stringify(globalThis.__PIIK_BENCHMARK__.snapshot().qualitySettings) === ${serializedSettings}`,
           10_000,
           `${settings.degradationPreference} quality propagation`,
           signal,
@@ -2878,7 +2878,7 @@ async function runQualityControlSmoke(
       sendingPages.map(async (page) => {
         const expectedCount = activeSenderCounts.get(page.label) ?? 0;
         const predicate = `(() => {
-          const values = globalThis.__SCREENER_BENCHMARK__.senderDegradationPreferences();
+          const values = globalThis.__PIIK_BENCHMARK__.senderDegradationPreferences();
           return values.length === ${expectedCount} &&
             values.every((value) => value === ${JSON.stringify(preference)});
         })()`;
@@ -3236,7 +3236,7 @@ async function runViewerMbbCanary(
     const oldFrames = old.receiveTotals?.framesTotal ?? 0;
     const revision = target.routeRevision;
     const send = (page: PageHandle, method: string, message: unknown) =>
-      evaluate<boolean>(cdp, page, `globalThis.__SCREENER_BENCHMARK__.${method}(${JSON.stringify(message)})`);
+      evaluate<boolean>(cdp, page, `globalThis.__PIIK_BENCHMARK__.${method}(${JSON.stringify(message)})`);
     let windows = 0;
     for (let sequence = 0; sequence < 3; sequence += 1) {
       const windowSent = await send(targetHandle, "sendViewerQualityEvidence", {
@@ -3303,7 +3303,7 @@ async function canary(cdp: CdpConnection, page: PageHandle): Promise<{
   prepareUpdates: number; activeUpdates: number; routeFailed: number;
   maxActiveOutboundMediaEdges: number;
 }> {
-  return evaluate(cdp, page, "globalThis.__SCREENER_BENCHMARK__.canarySnapshot()");
+  return evaluate(cdp, page, "globalThis.__PIIK_BENCHMARK__.canarySnapshot()");
 }
 
 function canaryChecks(result: ViewerMbbCanaryResult): RunCheck[] {
@@ -3360,7 +3360,7 @@ async function runCase(
       cdp,
       hostPage,
       `(() => {
-        const grant = sessionStorage.getItem('screener:viewer-grant:${roomId}');
+        const grant = sessionStorage.getItem('piik:viewer-grant:${roomId}');
         return grant ? location.origin + '/r/${roomId}#v=' + grant : '';
       })()`,
     );
@@ -3702,7 +3702,7 @@ async function main(): Promise<number> {
     const appPort = externalServer ? null : await reservePort();
     const debugPort = await reservePort();
     const baseUrl = externalServer?.origin ?? `http://127.0.0.1:${appPort}`;
-    profileDirectory = await mkdtemp(join(tmpdir(), "screener-peer-benchmark-"));
+    profileDirectory = await mkdtemp(join(tmpdir(), "piik-peer-benchmark-"));
     if (appPort !== null) {
       // An explicit environment and a profile working directory: the measured
       // configuration is exactly these values, never the repository's .env or
@@ -3711,7 +3711,7 @@ async function main(): Promise<number> {
       server = startProcess(buildServer(), [], {
         PATH: process.env.PATH,
         SystemRoot: process.env.SystemRoot,
-        SCREENER_ENV: "development",
+        PIIK_ENV: "development",
         PORT: String(appPort),
         LISTEN_HOST: "127.0.0.1",
         PUBLIC_BASE_URL: baseUrl,

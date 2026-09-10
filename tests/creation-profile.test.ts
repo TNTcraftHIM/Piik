@@ -40,7 +40,7 @@ describe("Host creation profile", () => {
       codeEntryPolicy: "private",
       roomPassword: "room-password",
     });
-    expect(values.get("screener:host-creation-profile:v1")).not.toContain(
+    expect(values.get("piik:host-creation-profile:v1")).not.toContain(
       "SITE_ACCESS_PASSWORD",
     );
 

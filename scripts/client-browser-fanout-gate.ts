@@ -15,10 +15,10 @@ const BUILD_ROOT = join(ROOT, "build/client-check");
 // Client does on a real network.
 const LAN_ADDRESS = "192.0.2.1";
 
-const initialAudio = process.env.SCREENER_CLIENT_GATE_AUDIO !== "false";
+const initialAudio = process.env.PIIK_CLIENT_GATE_AUDIO !== "false";
 const probe = String.raw`(() => {
-  localStorage.setItem('screener:ui-lang', 'en');
-  localStorage.setItem('screener:ui-mode', 'text');
+  localStorage.setItem('piik:ui-lang', 'en');
+  localStorage.setItem('piik:ui-mode', 'text');
   const pcs = [], requests = [], sockets = [], errors = [];
   window.addEventListener('unhandledrejection', (e) => errors.push(String(e.reason)));
   const codecPreferences = RTCRtpTransceiver.prototype.setCodecPreferences;
@@ -103,20 +103,20 @@ function build(command: string, args: string[]): void {
   }
 }
 
-// startRoomServer builds and starts the Screener server the Browser pages and
-// both Clients share. SCREENER_ENV stays development because production
+// startRoomServer builds and starts the Piik server the Browser pages and
+// both Clients share. PIIK_ENV stays development because production
 // requires an https public origin, a site password and STUN; the Web assets are
 // embedded either way.
 async function startRoomServer(
   port: number,
   workingDirectory: string,
 ): Promise<ChildProcessWithoutNullStreams> {
-  const go = process.env.SCREENER_GO?.trim() || "go";
+  const go = process.env.PIIK_GO?.trim() || "go";
   await mkdir(BUILD_ROOT, { recursive: true });
   // The server embeds the Vite output, so the Web build precedes the Go build.
   build(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", "npm run build:client"]);
-  const binary = join(BUILD_ROOT, "screener-server.exe");
-  build(go, ["build", "-trimpath", "-o", binary, "./cmd/screener-server"]);
+  const binary = join(BUILD_ROOT, "piik-server.exe");
+  build(go, ["build", "-trimpath", "-o", binary, "./cmd/piik-server"]);
   const origins = [`http://localhost:${port}`, `http://127.0.0.1:${port}`, `http://${LAN_ADDRESS}:${port}`];
   const child = spawn(binary, [], {
     // The gate profile has no .env, and the environment is explicit: the
@@ -126,7 +126,7 @@ async function startRoomServer(
     env: {
       PATH: process.env.PATH,
       SystemRoot: process.env.SystemRoot,
-      SCREENER_ENV: "development",
+      PIIK_ENV: "development",
       ROOM_DATABASE_PATH: ":memory:",
       PORT: String(port),
       LISTEN_HOST: "127.0.0.1",
@@ -145,10 +145,10 @@ async function startRoomServer(
 }
 
 async function main(): Promise<void> {
-  if (process.env.SCREENER_CLIENT_BROWSER_FANOUT_GATE !== "true") throw new Error("Browser fanout gate was not enabled");
+  if (process.env.PIIK_CLIENT_BROWSER_FANOUT_GATE !== "true") throw new Error("Browser fanout gate was not enabled");
   const chromePath = process.env.CHROME_PATH;
   if (!chromePath) throw new Error("CHROME_PATH is required");
-  const profile = await mkdtemp(join(tmpdir(), "screener-client-media-"));
+  const profile = await mkdtemp(join(tmpdir(), "piik-client-media-"));
   const appPort = await reservePort(), debugPort = await reservePort();
   const origin = `http://localhost:${appPort}`;
   let client: ChildProcessWithoutNullStreams | null = null;
@@ -163,10 +163,10 @@ async function main(): Promise<void> {
   let stage = "startup", error: string | null = null;
   try {
     server = await startRoomServer(appPort, profile);
-    client = spawn(process.env.SCREENER_CLIENT_EXE || join(BUILD_ROOT, "screener-client.exe"), [
+    client = spawn(process.env.PIIK_CLIENT_EXE || join(BUILD_ROOT, "piik-client.exe"), [
       "--site", origin, "--config", join(profile, "client.json"),
-      "--capture-process", join(BUILD_ROOT, "screener-client-capture.exe"),
-    ], { windowsHide: true, stdio: "pipe", env: { ...process.env, SCREENER_CLIENT_GATE_NO_BROWSER: "true" } });
+      "--capture-process", join(BUILD_ROOT, "piik-client-capture.exe"),
+    ], { windowsHide: true, stdio: "pipe", env: { ...process.env, PIIK_CLIENT_GATE_NO_BROWSER: "true" } });
     client.stderr.resume();
     let output = "";
     client.stdout.on("data", (chunk: Buffer) => {
@@ -185,7 +185,7 @@ async function main(): Promise<void> {
     checks.browser = version.Browser;
     cdp = await CdpConnection.connect(version.webSocketDebuggerUrl, Date.now() + 10000);
     await cdp.call("Browser.setPermission", { origin, permission: {name:"loopback-network"}, setting:"granted" }, undefined, Date.now()+5000);
-    const host = await createPage(cdp, `${origin}/#screener-client=1`, probe);
+    const host = await createPage(cdp, `${origin}/#piik-client=1`, probe);
     pages.push(host);
     const read = async (page: PageHandle) => {
       const sample = await evaluate<any>(cdp!, page, "fanoutGate.sample()", Date.now()+5000);
@@ -211,10 +211,10 @@ async function main(): Promise<void> {
     let invite = await evaluate<string>(cdp, host, "document.querySelector('.lr-invite-url').value", Date.now()+5000);
     const url = new URL(invite); url.host = `localhost:${appPort}`; invite = url.toString();
     const relayOrigin = `http://127.0.0.1:${appPort}`;
-    relayClient = spawn(process.env.SCREENER_CLIENT_EXE || join(BUILD_ROOT,"screener-client.exe"), [
+    relayClient = spawn(process.env.PIIK_CLIENT_EXE || join(BUILD_ROOT,"piik-client.exe"), [
       "--site", relayOrigin, "--config", join(profile,"relay-client.json"),
-      "--capture-process", join(BUILD_ROOT,"screener-client-capture.exe"),
-    ], { windowsHide:true, stdio:"pipe", env:{...process.env,SCREENER_CLIENT_GATE_NO_BROWSER:"true"} });
+      "--capture-process", join(BUILD_ROOT,"piik-client-capture.exe"),
+    ], { windowsHide:true, stdio:"pipe", env:{...process.env,PIIK_CLIENT_GATE_NO_BROWSER:"true"} });
     relayClient.stderr.resume(); let relayOutput="";
     relayClient.stdout.on("data", (chunk:Buffer) => {
       relayOutput+=chunk.toString();
@@ -226,7 +226,7 @@ async function main(): Promise<void> {
       stage = `viewer-${index+1}`;
       const context = await cdp.call<{browserContextId: string}>("Target.createBrowserContext", {}, undefined, Date.now()+5000);
       await cdp.call("Browser.setPermission", { origin:index===0?relayOrigin:origin, permission: {name:"loopback-network"}, setting:"granted", browserContextId: context.browserContextId }, undefined, Date.now()+5000);
-      const viewerURL = index===0 ? invite.replace(origin,relayOrigin)+"&screener-client=1" : invite;
+      const viewerURL = index===0 ? invite.replace(origin,relayOrigin)+"&piik-client=1" : invite;
       const viewer = await createPage(cdp, viewerURL, probe, true, context.browserContextId);
       viewers.push(viewer);
       pages.push(viewer);

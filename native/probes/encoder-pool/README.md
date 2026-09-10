@@ -11,7 +11,7 @@ Use Shiguredo `m152.7977.0.2` Windows x64 SDK (WebRTC commit
 ZIP SHA-256: `3250ee091eb745b9885482d92db352e6bcd5426940021ff90a095747d84d2137`.
 Keep the extracted SDK, official compiler dependencies and executable under
 ignored `build/encoder-pool`; preserve the SDK's notices. Do not ship this SDK
-as part of Screener based on this probe.
+as part of Piik based on this probe.
 
 With CMake and Visual Studio 2022 x64 tools available:
 
@@ -71,7 +71,7 @@ This is synthetic I420 upload to NV12/MFT, not WGC capture or zero-copy input.
 The pinned SDK has no H264 decoder, so this arm records payload equality and
 encoded dimensions with decoded counters at zero. Validate the exported AUs
 separately in Chrome. The existing `scripts/encoded-group-decode.mjs` accepts
-`SCREENER_ENCODED_CODEC=avc1.42c033` and `SCREENER_ENCODED_OUTPUT` pointing to two
+`PIIK_ENCODED_CODEC=avc1.42c033` and `PIIK_ENCODED_OUTPUT` pointing to two
 arrays of `{Index, Width, Height, PTS, Recovery, Data}` frames (nanosecond PTS,
 base64 Annex-B data). A repeated export in those two arrays proves decoding of
 that bitstream, not two Pion transports or weak-budget/resource adaptation.
@@ -84,9 +84,9 @@ Export the first 180 real AUs from sender A for the opt-in Go forwarding check:
 & ./build/encoder-pool/probe/Release/encoder-pool-probe.exe `
   --pooled --group-adjuster --healthy-only --export build/encoder-pool/chain-input.jsonl
 go test -c -o build/embedded-media/mediaedge.test.exe ./internal/client/mediaedge
-$env:SCREENER_POOL_CHAIN_FIXTURE = "$PWD/build/encoder-pool/chain-input.jsonl"
-$env:SCREENER_NATIVE_CAPTURE = "$PWD/build/client-check/screener-client-capture.exe"
-$env:SCREENER_POOL_CHAIN_OUTPUT = "$PWD/build/encoder-pool/chain-result.json"
+$env:PIIK_POOL_CHAIN_FIXTURE = "$PWD/build/encoder-pool/chain-input.jsonl"
+$env:PIIK_NATIVE_CAPTURE = "$PWD/build/client-check/piik-client-capture.exe"
+$env:PIIK_POOL_CHAIN_OUTPUT = "$PWD/build/encoder-pool/chain-result.json"
 & ./build/embedded-media/mediaedge.test.exe `
   '-test.run=^TestRelayChainEncodedFixture$' '-test.v' '-test.timeout=30s'
 ```

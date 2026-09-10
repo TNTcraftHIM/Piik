@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TNTcraftHIM/Screener/internal/media/encoded"
+	"github.com/TNTcraftHIM/Piik/internal/media/encoded"
 	"github.com/livekit/livekit-server/pkg/sfu"
 	"github.com/pion/ice/v4"
 	"github.com/pion/interceptor"
@@ -20,8 +20,8 @@ import (
 // ICE/DTLS/RTP/TWCC, and the production allocator/pacer/probe driver. No decoder,
 // capture device or physical network participates.
 func TestTransportConstrainedDormantRecovery(t *testing.T) {
-	if os.Getenv("SCREENER_TRANSPORT_RECOVERY") == "" {
-		t.Skip("set SCREENER_TRANSPORT_RECOVERY=1 for the bounded virtual-network gate")
+	if os.Getenv("PIIK_TRANSPORT_RECOVERY") == "" {
+		t.Skip("set PIIK_TRANSPORT_RECOVERY=1 for the bounded virtual-network gate")
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 32*time.Second)
 	defer cancel()

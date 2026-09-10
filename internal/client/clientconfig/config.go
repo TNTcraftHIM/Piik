@@ -32,7 +32,7 @@ func DefaultPath() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("find user configuration directory: %w", err)
 	}
-	return filepath.Join(directory, "Screener", "client.json"), nil
+	return filepath.Join(directory, "Piik", "client.json"), nil
 }
 
 func LoadOrCreate(path string) (Config, error) {
@@ -99,7 +99,7 @@ func NormalizeSite(value string) (string, error) {
 		parsed.Host == "" || parsed.User != nil ||
 		(parsed.Path != "" && parsed.Path != "/") ||
 		parsed.RawQuery != "" || parsed.Fragment != "" {
-		return "", errors.New("Screener Site must be an HTTP or HTTPS origin")
+		return "", errors.New("Piik Site must be an HTTP or HTTPS origin")
 	}
 	return parsed.Scheme + "://" + parsed.Host, nil
 }

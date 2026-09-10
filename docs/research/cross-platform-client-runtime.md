@@ -51,7 +51,7 @@ credentials or route policy; those stay in the Browser/server protocol.
 
 The Client and Hosted Screener run the same server core, so the local package is
 one executable carrying the built Browser assets plus the optional capture and
-tunnel sidecars; [the Client README](../../cmd/screener-client/README.md) owns
+tunnel sidecars; [the Client README](../../cmd/piik-client/README.md) owns
 that layout. In Local mode the Client runs the server in its own process with
 explicit local configuration. In Site mode it starts no server, and the system
 Browser opens the saved Site while the same process remains its loopback

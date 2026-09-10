@@ -555,7 +555,7 @@ private final class HardwareEncoder {
         self.layer = layer
         self.onActive = onActive
         self.onFailure = onFailure ?? { done.signal($0) }
-        self.queue = DispatchQueue(label: "screener.capture.encoder.\(layer)")
+        self.queue = DispatchQueue(label: "piik.capture.encoder.\(layer)")
         desiredBitrate = profile.bitrate
         currentBitrate = profile.bitrate
         let specification = [
@@ -1661,7 +1661,7 @@ private func capture(_ arguments: [String]) async throws {
     let done = StopSignal()
     let encoders = try EncoderGroup(writer: writer, done: done, profile: profile, outputs: profiles)
     defer { encoders.close() }
-    let captureQueue = DispatchQueue(label: "screener.capture.video")
+    let captureQueue = DispatchQueue(label: "piik.capture.video")
     let output = CaptureOutput(
         encoders: encoders,
         done: done,
@@ -1732,7 +1732,7 @@ private func captureAudio(_ arguments: [String]) async throws {
     configuration.excludesCurrentProcessAudio = true
     configuration.sampleRate = 48_000
     configuration.channelCount = 2
-    let queue = DispatchQueue(label: "screener.capture.audio")
+    let queue = DispatchQueue(label: "piik.capture.audio")
     let stream = SCStream(
         filter: filter,
         configuration: configuration,
@@ -1753,7 +1753,7 @@ private func captureAudio(_ arguments: [String]) async throws {
 }
 
 @main
-private struct ScreenerCapture {
+private struct PiikCapture {
     static func main() async {
         do {
             let arguments = CommandLine.arguments
@@ -1771,7 +1771,7 @@ private struct ScreenerCapture {
                 try await capture(arguments)
             }
         } catch {
-            let message = "Screener capture unavailable: \(error)\n"
+            let message = "Piik capture unavailable: \(error)\n"
             FileHandle.standardError.write(message.data(using: .utf8) ?? Data())
             Darwin.exit(2)
         }

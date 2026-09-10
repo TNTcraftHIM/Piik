@@ -12,10 +12,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/TNTcraftHIM/Screener/internal/client/portmapping"
-	"github.com/TNTcraftHIM/Screener/internal/diagnostics"
-	"github.com/TNTcraftHIM/Screener/internal/media/encoded"
-	"github.com/TNTcraftHIM/Screener/internal/media/forwarding"
+	"github.com/TNTcraftHIM/Piik/internal/client/portmapping"
+	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
+	"github.com/TNTcraftHIM/Piik/internal/media/encoded"
+	"github.com/TNTcraftHIM/Piik/internal/media/forwarding"
 	"github.com/pion/ice/v4"
 	"github.com/pion/interceptor"
 	"github.com/pion/rtcp"
@@ -90,7 +90,7 @@ func NewEngine(options EngineOptions) (*Engine, error) {
 	loggerFactory := diagnostics.PionLoggerFactory()
 	ready := make(chan struct{})
 	mux := ice.NewUniversalUDPMuxDefault(ice.UniversalUDPMuxParams{
-		Logger:  loggerFactory.NewLogger("screener-ice"),
+		Logger:  loggerFactory.NewLogger("piik-ice"),
 		UDPConn: &initializingUDPConn{UDPConn: connection, ready: ready},
 	})
 	close(ready)
@@ -288,7 +288,7 @@ func (engine *Engine) NewSource(codec string, capacity, layers int, requestKeyFr
 		publications: make(map[*Publication]struct{}),
 	}
 	media, err := forwarding.NewEncodedSource(forwarding.SourceOptions{
-		ID: "screen", StreamID: "screener-native", Codec: videoCodecs[codec],
+		ID: "screen", StreamID: "piik-native", Codec: videoCodecs[codec],
 		Formats: make([]forwarding.LayerFormat, layers), MaxPackets: encoded.MaxPacketWindow,
 		OnRTCP: func(layer int, packets []rtcp.Packet) {
 			for _, packet := range packets {

@@ -87,7 +87,7 @@ const qualityEvidence = {
 
 describe("client signaling protocol", () => {
   it("uses the current strict signaling generation", () => {
-    expect(SIGNALING_PROTOCOL).toBe("screener-v23");
+    expect(SIGNALING_PROTOCOL).toBe("piik-v23");
   });
 
   it("keeps signaling challenges strict and sequence-only", () => {

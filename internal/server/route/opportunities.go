@@ -3,8 +3,8 @@ package route
 import (
 	"strings"
 
-	"github.com/TNTcraftHIM/Screener/internal/server/ordered"
-	"github.com/TNTcraftHIM/Screener/internal/server/protocol"
+	"github.com/TNTcraftHIM/Piik/internal/server/ordered"
+	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 )
 
 // candidateOpportunityBase ports 2900: the NUL-joined ledger key. A session

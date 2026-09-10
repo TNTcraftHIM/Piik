@@ -26,7 +26,7 @@ if ([string]::IsNullOrWhiteSpace($installationPath)) {
 }
 
 $developerCommand = Join-Path $installationPath 'Common7\Tools\VsDevCmd.bat'
-$executablePath = Join-Path $outputPath 'screener-client-capture.exe'
+$executablePath = Join-Path $outputPath 'piik-client-capture.exe'
 New-Item -ItemType Directory -Path $outputPath -Force | Out-Null
 $webrtc = & (Join-Path $helperDirectory 'get-webrtc.ps1')
 $includeFlags = @('', 'third_party\abseil-cpp', 'third_party\boringssl\src\include',

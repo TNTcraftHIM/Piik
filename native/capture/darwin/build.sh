@@ -19,4 +19,4 @@ xcrun swiftc \
   -framework ScreenCaptureKit \
   -framework VideoToolbox \
   "$(dirname "$0")/main.swift" \
-  -o "$output/screener-client-capture"
+  -o "$output/piik-client-capture"

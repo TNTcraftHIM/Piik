@@ -5,9 +5,9 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/TNTcraftHIM/Screener/internal/diagnostics"
-	"github.com/TNTcraftHIM/Screener/internal/media/encoded"
-	"github.com/TNTcraftHIM/Screener/internal/media/forwarding"
+	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
+	"github.com/TNTcraftHIM/Piik/internal/media/encoded"
+	"github.com/TNTcraftHIM/Piik/internal/media/forwarding"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v4"
 )

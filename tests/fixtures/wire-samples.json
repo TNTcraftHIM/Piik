@@ -1,6 +1,6 @@
 {
   "constants": {
-    "signalingProtocol": "screener-v23",
+    "signalingProtocol": "piik-v23",
     "maxViewersPerRoomLimit": 20,
     "maxParticipantsPerRoomLimit": 21,
     "maxSignalBytes": 65536,
@@ -41,79 +41,79 @@
     {
       "name": "authenticate-host-minimal",
       "schema": "client",
-      "json": "{\"type\":\"authenticate\",\"protocol\":\"screener-v23\",\"roomId\":\"1234\",\"role\":\"host\",\"token\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"clientId\":\"client_12345678\"}",
+      "json": "{\"type\":\"authenticate\",\"protocol\":\"piik-v23\",\"roomId\":\"1234\",\"role\":\"host\",\"token\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"clientId\":\"client_12345678\"}",
       "valid": true
     },
     {
       "name": "authenticate-host-full",
       "schema": "client",
-      "json": "{\"type\":\"authenticate\",\"protocol\":\"screener-v23\",\"roomId\":\"1234\",\"role\":\"host\",\"token\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"clientId\":\"client_12345678\",\"shareGeneration\":\"share_generation_12345678\",\"sharingPaused\":false,\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\",\"screenAudioQuality\":\"music\"},\"routePolicy\":{\"peerOnly\":false,\"topologyOptimization\":true,\"natPrediction\":false},\"viewerPresence\":true,\"displayName\":\"小明\"}",
+      "json": "{\"type\":\"authenticate\",\"protocol\":\"piik-v23\",\"roomId\":\"1234\",\"role\":\"host\",\"token\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"clientId\":\"client_12345678\",\"shareGeneration\":\"share_generation_12345678\",\"sharingPaused\":false,\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\",\"screenAudioQuality\":\"music\"},\"routePolicy\":{\"peerOnly\":false,\"topologyOptimization\":true,\"natPrediction\":false},\"viewerPresence\":true,\"displayName\":\"小明\"}",
       "valid": true
     },
     {
       "name": "authenticate-host-carries-viewer-grant",
       "schema": "client",
-      "json": "{\"type\":\"authenticate\",\"protocol\":\"screener-v23\",\"roomId\":\"1234\",\"role\":\"host\",\"token\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"clientId\":\"client_12345678\",\"viewerGrant\":\"bbbbbbbbbbbbbbbbbbbbbg\"}",
+      "json": "{\"type\":\"authenticate\",\"protocol\":\"piik-v23\",\"roomId\":\"1234\",\"role\":\"host\",\"token\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"clientId\":\"client_12345678\",\"viewerGrant\":\"bbbbbbbbbbbbbbbbbbbbbg\"}",
       "valid": false
     },
     {
       "name": "authenticate-host-carries-viewer-password",
       "schema": "client",
-      "json": "{\"type\":\"authenticate\",\"protocol\":\"screener-v23\",\"roomId\":\"1234\",\"role\":\"host\",\"token\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"clientId\":\"client_12345678\",\"viewerPassword\":\"easy-password\"}",
+      "json": "{\"type\":\"authenticate\",\"protocol\":\"piik-v23\",\"roomId\":\"1234\",\"role\":\"host\",\"token\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"clientId\":\"client_12345678\",\"viewerPassword\":\"easy-password\"}",
       "valid": false
     },
     {
       "name": "authenticate-host-short-token",
       "schema": "client",
-      "json": "{\"type\":\"authenticate\",\"protocol\":\"screener-v23\",\"roomId\":\"1234\",\"role\":\"host\",\"token\":\"short\",\"clientId\":\"client_12345678\"}",
+      "json": "{\"type\":\"authenticate\",\"protocol\":\"piik-v23\",\"roomId\":\"1234\",\"role\":\"host\",\"token\":\"short\",\"clientId\":\"client_12345678\"}",
       "valid": false
     },
     {
       "name": "authenticate-host-unknown-key",
       "schema": "client",
-      "json": "{\"type\":\"authenticate\",\"protocol\":\"screener-v23\",\"roomId\":\"1234\",\"role\":\"host\",\"token\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"clientId\":\"client_12345678\",\"admin\":true}",
+      "json": "{\"type\":\"authenticate\",\"protocol\":\"piik-v23\",\"roomId\":\"1234\",\"role\":\"host\",\"token\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"clientId\":\"client_12345678\",\"admin\":true}",
       "valid": false
     },
     {
       "name": "authenticate-viewer-minimal",
       "schema": "client",
-      "json": "{\"type\":\"authenticate\",\"protocol\":\"screener-v23\",\"roomId\":\"1234\",\"role\":\"viewer\",\"clientId\":\"client_12345678\"}",
+      "json": "{\"type\":\"authenticate\",\"protocol\":\"piik-v23\",\"roomId\":\"1234\",\"role\":\"viewer\",\"clientId\":\"client_12345678\"}",
       "valid": true
     },
     {
       "name": "authenticate-viewer-full",
       "schema": "client",
-      "json": "{\"type\":\"authenticate\",\"protocol\":\"screener-v23\",\"roomId\":\"1234\",\"role\":\"viewer\",\"clientId\":\"client_12345678\",\"viewerGrant\":\"bbbbbbbbbbbbbbbbbbbbbg\",\"viewerPassword\":\"easy-password\",\"displayName\":\"Café 朋友\",\"viewerPresence\":true}",
+      "json": "{\"type\":\"authenticate\",\"protocol\":\"piik-v23\",\"roomId\":\"1234\",\"role\":\"viewer\",\"clientId\":\"client_12345678\",\"viewerGrant\":\"bbbbbbbbbbbbbbbbbbbbbg\",\"viewerPassword\":\"easy-password\",\"displayName\":\"Café 朋友\",\"viewerPresence\":true}",
       "valid": true
     },
     {
       "name": "authenticate-viewer-carries-host-token",
       "schema": "client",
-      "json": "{\"type\":\"authenticate\",\"protocol\":\"screener-v23\",\"roomId\":\"1234\",\"role\":\"viewer\",\"clientId\":\"client_12345678\",\"token\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}",
+      "json": "{\"type\":\"authenticate\",\"protocol\":\"piik-v23\",\"roomId\":\"1234\",\"role\":\"viewer\",\"clientId\":\"client_12345678\",\"token\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}",
       "valid": false
     },
     {
       "name": "authenticate-viewer-carries-route-policy",
       "schema": "client",
-      "json": "{\"type\":\"authenticate\",\"protocol\":\"screener-v23\",\"roomId\":\"1234\",\"role\":\"viewer\",\"clientId\":\"client_12345678\",\"routePolicy\":{\"peerOnly\":false,\"topologyOptimization\":true,\"natPrediction\":false}}",
+      "json": "{\"type\":\"authenticate\",\"protocol\":\"piik-v23\",\"roomId\":\"1234\",\"role\":\"viewer\",\"clientId\":\"client_12345678\",\"routePolicy\":{\"peerOnly\":false,\"topologyOptimization\":true,\"natPrediction\":false}}",
       "valid": false
     },
     {
       "name": "authenticate-viewer-malformed-grant",
       "schema": "client",
-      "json": "{\"type\":\"authenticate\",\"protocol\":\"screener-v23\",\"roomId\":\"1234\",\"role\":\"viewer\",\"clientId\":\"client_12345678\",\"viewerGrant\":\"bbbbbbbbbbbbbbbbbbbbb\"}",
+      "json": "{\"type\":\"authenticate\",\"protocol\":\"piik-v23\",\"roomId\":\"1234\",\"role\":\"viewer\",\"clientId\":\"client_12345678\",\"viewerGrant\":\"bbbbbbbbbbbbbbbbbbbbb\"}",
       "valid": false
     },
     {
       "name": "authenticate-viewer-grant-bad-final-character",
       "schema": "client",
-      "json": "{\"type\":\"authenticate\",\"protocol\":\"screener-v23\",\"roomId\":\"1234\",\"role\":\"viewer\",\"clientId\":\"client_12345678\",\"viewerGrant\":\"bbbbbbbbbbbbbbbbbbbbbb\"}",
+      "json": "{\"type\":\"authenticate\",\"protocol\":\"piik-v23\",\"roomId\":\"1234\",\"role\":\"viewer\",\"clientId\":\"client_12345678\",\"viewerGrant\":\"bbbbbbbbbbbbbbbbbbbbbb\"}",
       "valid": false
     },
     {
       "name": "authenticate-viewer-unknown-capabilities",
       "schema": "client",
-      "json": "{\"type\":\"authenticate\",\"protocol\":\"screener-v23\",\"roomId\":\"1234\",\"role\":\"viewer\",\"clientId\":\"client_12345678\",\"capabilities\":{\"peerIceTurn\":true}}",
+      "json": "{\"type\":\"authenticate\",\"protocol\":\"piik-v23\",\"roomId\":\"1234\",\"role\":\"viewer\",\"clientId\":\"client_12345678\",\"capabilities\":{\"peerIceTurn\":true}}",
       "valid": false
     },
     {
@@ -131,55 +131,55 @@
     {
       "name": "authenticate-viewer-leading-zero-room",
       "schema": "client",
-      "json": "{\"type\":\"authenticate\",\"protocol\":\"screener-v23\",\"roomId\":\"0123\",\"role\":\"viewer\",\"clientId\":\"client_12345678\"}",
+      "json": "{\"type\":\"authenticate\",\"protocol\":\"piik-v23\",\"roomId\":\"0123\",\"role\":\"viewer\",\"clientId\":\"client_12345678\"}",
       "valid": false
     },
     {
       "name": "authenticate-viewer-long-room",
       "schema": "client",
-      "json": "{\"type\":\"authenticate\",\"protocol\":\"screener-v23\",\"roomId\":\"11111\",\"role\":\"viewer\",\"clientId\":\"client_12345678\"}",
+      "json": "{\"type\":\"authenticate\",\"protocol\":\"piik-v23\",\"roomId\":\"11111\",\"role\":\"viewer\",\"clientId\":\"client_12345678\"}",
       "valid": false
     },
     {
       "name": "authenticate-viewer-noncanonical-display-name",
       "schema": "client",
-      "json": "{\"type\":\"authenticate\",\"protocol\":\"screener-v23\",\"roomId\":\"1234\",\"role\":\"viewer\",\"clientId\":\"client_12345678\",\"displayName\":\" Café \"}",
+      "json": "{\"type\":\"authenticate\",\"protocol\":\"piik-v23\",\"roomId\":\"1234\",\"role\":\"viewer\",\"clientId\":\"client_12345678\",\"displayName\":\" Café \"}",
       "valid": false
     },
     {
       "name": "authenticate-viewer-display-name-too-long",
       "schema": "client",
-      "json": "{\"type\":\"authenticate\",\"protocol\":\"screener-v23\",\"roomId\":\"1234\",\"role\":\"viewer\",\"clientId\":\"client_12345678\",\"displayName\":\"名名名名名名名名名名名名名名名名名名名名名名名名名\"}",
+      "json": "{\"type\":\"authenticate\",\"protocol\":\"piik-v23\",\"roomId\":\"1234\",\"role\":\"viewer\",\"clientId\":\"client_12345678\",\"displayName\":\"名名名名名名名名名名名名名名名名名名名名名名名名名\"}",
       "valid": false
     },
     {
       "name": "authenticate-viewer-display-name-at-limit",
       "schema": "client",
-      "json": "{\"type\":\"authenticate\",\"protocol\":\"screener-v23\",\"roomId\":\"1234\",\"role\":\"viewer\",\"clientId\":\"client_12345678\",\"displayName\":\"名名名名名名名名名名名名名名名名名名名名名名名名\"}",
+      "json": "{\"type\":\"authenticate\",\"protocol\":\"piik-v23\",\"roomId\":\"1234\",\"role\":\"viewer\",\"clientId\":\"client_12345678\",\"displayName\":\"名名名名名名名名名名名名名名名名名名名名名名名名\"}",
       "valid": true
     },
     {
       "name": "authenticate-viewer-display-name-bidi-override",
       "schema": "client",
-      "json": "{\"type\":\"authenticate\",\"protocol\":\"screener-v23\",\"roomId\":\"1234\",\"role\":\"viewer\",\"clientId\":\"client_12345678\",\"displayName\":\"a‮b\"}",
+      "json": "{\"type\":\"authenticate\",\"protocol\":\"piik-v23\",\"roomId\":\"1234\",\"role\":\"viewer\",\"clientId\":\"client_12345678\",\"displayName\":\"a‮b\"}",
       "valid": false
     },
     {
       "name": "authenticate-viewer-display-name-newline",
       "schema": "client",
-      "json": "{\"type\":\"authenticate\",\"protocol\":\"screener-v23\",\"roomId\":\"1234\",\"role\":\"viewer\",\"clientId\":\"client_12345678\",\"displayName\":\"a\\nb\"}",
+      "json": "{\"type\":\"authenticate\",\"protocol\":\"piik-v23\",\"roomId\":\"1234\",\"role\":\"viewer\",\"clientId\":\"client_12345678\",\"displayName\":\"a\\nb\"}",
       "valid": false
     },
     {
       "name": "authenticate-viewer-null-display-name",
       "schema": "client",
-      "json": "{\"type\":\"authenticate\",\"protocol\":\"screener-v23\",\"roomId\":\"1234\",\"role\":\"viewer\",\"clientId\":\"client_12345678\",\"displayName\":null}",
+      "json": "{\"type\":\"authenticate\",\"protocol\":\"piik-v23\",\"roomId\":\"1234\",\"role\":\"viewer\",\"clientId\":\"client_12345678\",\"displayName\":null}",
       "valid": false
     },
     {
       "name": "authenticate-unknown-role",
       "schema": "client",
-      "json": "{\"type\":\"authenticate\",\"protocol\":\"screener-v23\",\"roomId\":\"1234\",\"role\":\"relay\",\"clientId\":\"client_12345678\"}",
+      "json": "{\"type\":\"authenticate\",\"protocol\":\"piik-v23\",\"roomId\":\"1234\",\"role\":\"relay\",\"clientId\":\"client_12345678\"}",
       "valid": false
     },
     {
@@ -810,19 +810,19 @@
   "serverMessages": [
     {
       "name": "authenticated-host-minimal",
-      "json": "{\"type\":\"authenticated\",\"protocol\":\"screener-v23\",\"peerId\":\"host_12345678\",\"maxViewers\":8,\"endpointMediaCopyCapacity\":2,\"hostOnline\":true,\"connectionId\":null,\"iceConfig\":{\"iceServers\":[],\"natPredictionStunUrls\":[]},\"routePolicy\":{\"peerOnly\":false,\"topologyOptimization\":true,\"natPrediction\":false},\"codeEntryPolicy\":\"open\",\"viewerAuthorizationGeneration\":\"viewer_generation_12345678\",\"mediaMode\":\"peer-assisted\",\"shareGeneration\":\"share_generation_12345678\",\"routeRevision\":0,\"routeAssignment\":{\"upstream\":{\"kind\":\"none\"},\"childPeerIds\":[],\"sfuPublicationGeneration\":null},\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\",\"screenAudioQuality\":\"music\"},\"role\":\"host\",\"viewerPasswordEnabled\":false}"
+      "json": "{\"type\":\"authenticated\",\"protocol\":\"piik-v23\",\"peerId\":\"host_12345678\",\"maxViewers\":8,\"endpointMediaCopyCapacity\":2,\"hostOnline\":true,\"connectionId\":null,\"iceConfig\":{\"iceServers\":[],\"natPredictionStunUrls\":[]},\"routePolicy\":{\"peerOnly\":false,\"topologyOptimization\":true,\"natPrediction\":false},\"codeEntryPolicy\":\"open\",\"viewerAuthorizationGeneration\":\"viewer_generation_12345678\",\"mediaMode\":\"peer-assisted\",\"shareGeneration\":\"share_generation_12345678\",\"routeRevision\":0,\"routeAssignment\":{\"upstream\":{\"kind\":\"none\"},\"childPeerIds\":[],\"sfuPublicationGeneration\":null},\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\",\"screenAudioQuality\":\"music\"},\"role\":\"host\",\"viewerPasswordEnabled\":false}"
     },
     {
       "name": "authenticated-host-full",
-      "json": "{\"type\":\"authenticated\",\"protocol\":\"screener-v23\",\"peerId\":\"host_12345678\",\"maxViewers\":8,\"endpointMediaCopyCapacity\":2,\"hostOnline\":true,\"connectionId\":\"connection_12345678\",\"iceConfig\":{\"iceServers\":[{\"urls\":\"stun:stun.example.test:3478\"},{\"urls\":[\"stun:stun-1.example.test:3478\",\"stun:[2001:db8::1]:3478\"]}],\"natPredictionStunUrls\":[\"stun:nat.example.test:3478\"]},\"routePolicy\":{\"peerOnly\":false,\"topologyOptimization\":true,\"natPrediction\":false},\"codeEntryPolicy\":\"open\",\"viewerAuthorizationGeneration\":\"viewer_generation_12345678\",\"mediaMode\":\"peer-assisted\",\"shareGeneration\":\"share_generation_12345678\",\"routeRevision\":0,\"routeAssignment\":{\"upstream\":{\"kind\":\"sfu\"},\"childPeerIds\":[],\"sfuPublicationGeneration\":\"generation_12345678\"},\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\",\"screenAudioQuality\":\"music\"},\"role\":\"host\",\"viewerPasswordEnabled\":false}"
+      "json": "{\"type\":\"authenticated\",\"protocol\":\"piik-v23\",\"peerId\":\"host_12345678\",\"maxViewers\":8,\"endpointMediaCopyCapacity\":2,\"hostOnline\":true,\"connectionId\":\"connection_12345678\",\"iceConfig\":{\"iceServers\":[{\"urls\":\"stun:stun.example.test:3478\"},{\"urls\":[\"stun:stun-1.example.test:3478\",\"stun:[2001:db8::1]:3478\"]}],\"natPredictionStunUrls\":[\"stun:nat.example.test:3478\"]},\"routePolicy\":{\"peerOnly\":false,\"topologyOptimization\":true,\"natPrediction\":false},\"codeEntryPolicy\":\"open\",\"viewerAuthorizationGeneration\":\"viewer_generation_12345678\",\"mediaMode\":\"peer-assisted\",\"shareGeneration\":\"share_generation_12345678\",\"routeRevision\":0,\"routeAssignment\":{\"upstream\":{\"kind\":\"sfu\"},\"childPeerIds\":[],\"sfuPublicationGeneration\":\"generation_12345678\"},\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\",\"screenAudioQuality\":\"music\"},\"role\":\"host\",\"viewerPasswordEnabled\":false}"
     },
     {
       "name": "authenticated-viewer-minimal",
-      "json": "{\"type\":\"authenticated\",\"protocol\":\"screener-v23\",\"peerId\":\"viewer_12345678\",\"maxViewers\":8,\"endpointMediaCopyCapacity\":2,\"hostOnline\":true,\"hostPaused\":false,\"connectionId\":null,\"iceConfig\":{\"iceServers\":[],\"natPredictionStunUrls\":[]},\"routePolicy\":{\"peerOnly\":false,\"topologyOptimization\":true,\"natPrediction\":false},\"codeEntryPolicy\":\"open\",\"viewerAuthorizationGeneration\":\"viewer_generation_12345678\",\"mediaMode\":\"peer-assisted\",\"shareGeneration\":\"share_generation_12345678\",\"routeRevision\":0,\"routeAssignment\":{\"upstream\":{\"kind\":\"none\"},\"childPeerIds\":[],\"sfuPublicationGeneration\":null},\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\",\"screenAudioQuality\":\"music\"},\"role\":\"viewer\"}"
+      "json": "{\"type\":\"authenticated\",\"protocol\":\"piik-v23\",\"peerId\":\"viewer_12345678\",\"maxViewers\":8,\"endpointMediaCopyCapacity\":2,\"hostOnline\":true,\"hostPaused\":false,\"connectionId\":null,\"iceConfig\":{\"iceServers\":[],\"natPredictionStunUrls\":[]},\"routePolicy\":{\"peerOnly\":false,\"topologyOptimization\":true,\"natPrediction\":false},\"codeEntryPolicy\":\"open\",\"viewerAuthorizationGeneration\":\"viewer_generation_12345678\",\"mediaMode\":\"peer-assisted\",\"shareGeneration\":\"share_generation_12345678\",\"routeRevision\":0,\"routeAssignment\":{\"upstream\":{\"kind\":\"none\"},\"childPeerIds\":[],\"sfuPublicationGeneration\":null},\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\",\"screenAudioQuality\":\"music\"},\"role\":\"viewer\"}"
     },
     {
       "name": "authenticated-viewer-full",
-      "json": "{\"type\":\"authenticated\",\"protocol\":\"screener-v23\",\"peerId\":\"viewer_12345678\",\"maxViewers\":8,\"endpointMediaCopyCapacity\":2,\"hostOnline\":true,\"hostPaused\":true,\"connectionId\":\"connection_12345678\",\"iceConfig\":{\"iceServers\":[],\"natPredictionStunUrls\":[]},\"routePolicy\":{\"peerOnly\":false,\"topologyOptimization\":true,\"natPrediction\":false},\"codeEntryPolicy\":\"open\",\"viewerAuthorizationGeneration\":\"viewer_generation_12345678\",\"mediaMode\":\"peer-assisted\",\"shareGeneration\":\"share_generation_12345678\",\"routeRevision\":0,\"routeAssignment\":{\"upstream\":{\"kind\":\"peer\",\"peerId\":\"parent_12345678\"},\"childPeerIds\":[\"child_12345678\",\"child_87654321\"],\"sfuPublicationGeneration\":null},\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\",\"screenAudioQuality\":\"music\"},\"role\":\"viewer\"}"
+      "json": "{\"type\":\"authenticated\",\"protocol\":\"piik-v23\",\"peerId\":\"viewer_12345678\",\"maxViewers\":8,\"endpointMediaCopyCapacity\":2,\"hostOnline\":true,\"hostPaused\":true,\"connectionId\":\"connection_12345678\",\"iceConfig\":{\"iceServers\":[],\"natPredictionStunUrls\":[]},\"routePolicy\":{\"peerOnly\":false,\"topologyOptimization\":true,\"natPrediction\":false},\"codeEntryPolicy\":\"open\",\"viewerAuthorizationGeneration\":\"viewer_generation_12345678\",\"mediaMode\":\"peer-assisted\",\"shareGeneration\":\"share_generation_12345678\",\"routeRevision\":0,\"routeAssignment\":{\"upstream\":{\"kind\":\"peer\",\"peerId\":\"parent_12345678\"},\"childPeerIds\":[\"child_12345678\",\"child_87654321\"],\"sfuPublicationGeneration\":null},\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\",\"screenAudioQuality\":\"music\"},\"role\":\"viewer\"}"
     },
     {
       "name": "signaling-challenge-response",

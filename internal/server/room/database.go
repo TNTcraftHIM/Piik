@@ -12,7 +12,7 @@ import (
 	// The pure-Go driver: the port must build with CGO_ENABLED=0 (D2).
 	_ "modernc.org/sqlite"
 
-	"github.com/TNTcraftHIM/Screener/internal/server/protocol"
+	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 )
 
 // Database identity and the single current schema are checked before adopting

@@ -13,8 +13,8 @@ Build on Apple Silicon macOS 13 or newer:
 
 ```sh
 sh native/capture/darwin/build.sh /outside/repository/build
-/outside/repository/build/screener-client-capture --self-test
-/outside/repository/build/screener-client-capture --probe
+/outside/repository/build/piik-client-capture --self-test
+/outside/repository/build/piik-client-capture --probe
 ```
 
 `--self-test` encodes one in-memory 420v frame through the same hardware-only

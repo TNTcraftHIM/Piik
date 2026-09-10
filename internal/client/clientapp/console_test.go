@@ -166,11 +166,11 @@ func TestConsoleDiagnosticsFitCompactTerminal(t *testing.T) {
 	model := consoleModel{
 		view:  consoleView{mode: "local", state: "ready", entry: "http://localhost:8787/"},
 		width: 30, height: 18, colors: true,
-		debug: consoleDebug{logPath: "C:/Screener/logs/client.log", export: func() (string, error) { return "", nil }},
+		debug: consoleDebug{logPath: "C:/Piik/logs/client.log", export: func() (string, error) { return "", nil }},
 	}
 	for _, language := range []string{"en", "zh", "vis"} {
 		model.language = language
-		for _, path := range []string{"", "C:/Screener/logs/client-20260908T120000Z.zip", "C:/Users/Example/Documents/Workspaces/Screener-embedded-media/build/client-check/logs/client-diagnostics-20260908T120000Z-123456789.zip"} {
+		for _, path := range []string{"", "C:/Piik/logs/client-20260908T120000Z.zip", "C:/Users/Example/Documents/Workspaces/Piik-embedded-media/build/client-check/logs/client-diagnostics-20260908T120000Z-123456789.zip"} {
 			model.exportPath = path
 			content := model.content(true)
 			if lipgloss.Width(content) > model.width || lipgloss.Height(content) > model.height {

@@ -27,12 +27,12 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/TNTcraftHIM/Screener/internal/server/config"
-	"github.com/TNTcraftHIM/Screener/internal/server/ordered"
-	"github.com/TNTcraftHIM/Screener/internal/server/protocol"
-	"github.com/TNTcraftHIM/Screener/internal/server/room"
-	"github.com/TNTcraftHIM/Screener/internal/server/route"
-	"github.com/TNTcraftHIM/Screener/internal/server/sfu"
+	"github.com/TNTcraftHIM/Piik/internal/server/config"
+	"github.com/TNTcraftHIM/Piik/internal/server/ordered"
+	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
+	"github.com/TNTcraftHIM/Piik/internal/server/room"
+	"github.com/TNTcraftHIM/Piik/internal/server/route"
+	"github.com/TNTcraftHIM/Piik/internal/server/sfu"
 )
 
 // Ceilings and option defaults ported from src/server/signaling.ts. The first

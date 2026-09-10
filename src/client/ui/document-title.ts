@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-const BRAND_TITLE = "Screener";
+const BRAND_TITLE = "Piik";
 const TITLE_VARIATION_INTERVAL_MS = 15_000;
 
 export function composeDocumentTitle(

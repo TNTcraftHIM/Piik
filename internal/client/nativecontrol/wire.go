@@ -1,8 +1,8 @@
 package nativecontrol
 
 import (
-	"github.com/TNTcraftHIM/Screener/internal/client/mediaedge"
-	"github.com/TNTcraftHIM/Screener/internal/client/nativecapture"
+	"github.com/TNTcraftHIM/Piik/internal/client/mediaedge"
+	"github.com/TNTcraftHIM/Piik/internal/client/nativecapture"
 	"github.com/pion/webrtc/v4"
 )
 

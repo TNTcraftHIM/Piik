@@ -50,7 +50,7 @@ func TestSiteAccessIssuesStatelessDayLongCookie(t *testing.T) {
 	}
 
 	setCookie := access.createCookie()
-	if want := "screener-site-access=v1."; !strings.Contains(setCookie, want) {
+	if want := "piik-site-access=v1."; !strings.Contains(setCookie, want) {
 		t.Fatalf("Set-Cookie %q does not contain %q", setCookie, want)
 	}
 	for _, attribute := range []string{"Path=/", "Max-Age=86400", "HttpOnly", "SameSite=Strict"} {
@@ -92,12 +92,12 @@ func TestSiteAccessCookieAttributeOrder(t *testing.T) {
 
 	// now = 1000 ms -> floor(1) + 12 = 13 seconds.
 	wantValue := "v1.13." + signature
-	want := "screener-site-access=" + wantValue +
+	want := "piik-site-access=" + wantValue +
 		"; Path=/; Max-Age=12; HttpOnly; SameSite=Strict"
 	if got := insecure.createCookie(); got != want {
 		t.Fatalf("CreateCookie() = %q, want %q", got, want)
 	}
-	wantSecure := "__Host-screener-site-access=" + wantValue +
+	wantSecure := "__Host-piik-site-access=" + wantValue +
 		"; Path=/; Max-Age=12; HttpOnly; SameSite=Strict; Secure"
 	if got := secure.createCookie(); got != wantSecure {
 		t.Fatalf("secure CreateCookie() = %q, want %q", got, wantSecure)
@@ -114,7 +114,7 @@ func TestSiteAccessUsesHostPrefixedCookieWhenSecure(t *testing.T) {
 	setCookie := access.createCookie()
 
 	for _, attribute := range []string{
-		"__Host-screener-site-access=", "Secure", "HttpOnly", "SameSite=Strict", "Path=/",
+		"__Host-piik-site-access=", "Secure", "HttpOnly", "SameSite=Strict", "Path=/",
 	} {
 		if !strings.Contains(setCookie, attribute) {
 			t.Fatalf("Set-Cookie %q is missing %q", setCookie, attribute)
@@ -259,7 +259,7 @@ func TestSiteAccessWithoutPassword(t *testing.T) {
 	if !access.isAuthenticated("") {
 		t.Fatal("every request must be authenticated without a password")
 	}
-	if !access.isAuthenticated("screener-site-access=nonsense") {
+	if !access.isAuthenticated("piik-site-access=nonsense") {
 		t.Fatal("a bogus cookie must not matter without a password")
 	}
 	if !access.passwordMatches("") || !access.passwordMatches("anything") {

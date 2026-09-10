@@ -1,4 +1,4 @@
-module github.com/TNTcraftHIM/Screener
+module github.com/TNTcraftHIM/Piik
 
 go 1.26
 

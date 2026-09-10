@@ -9,7 +9,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/TNTcraftHIM/Screener/internal/server/protocol"
+	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 )
 
 // localPasswordPattern is VISIBLE_ASCII_PATTERN from local-config.ts. Because

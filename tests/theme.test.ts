@@ -9,9 +9,9 @@ afterEach(() => {
 describe("theme preference", () => {
   it("keeps room state compact and the product name first", () => {
     expect(composeDocumentTitle("7063", "Sharing")).toBe(
-      "Screener | 7063 · Sharing",
+      "Piik | 7063 · Sharing",
     );
-    expect(composeDocumentTitle()).toBe("Screener");
+    expect(composeDocumentTitle()).toBe("Piik");
   });
 
   it("follows the system until the user chooses explicitly", async () => {
@@ -45,7 +45,7 @@ describe("theme preference", () => {
     expect(dataset.theme).toBe("dark");
 
     theme.applyTheme("light");
-    expect(values.get("screener:ui-theme")).toBe("light");
+    expect(values.get("piik:ui-theme")).toBe("light");
     onChange({ matches: true });
     expect(dataset.theme).toBe("light");
   });

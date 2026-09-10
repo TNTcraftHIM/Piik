@@ -6,7 +6,7 @@
 #include <string>
 #include <string_view>
 
-namespace screener::capture {
+namespace piik::capture {
 
 constexpr int kMaxOutputs = 6;
 
@@ -55,4 +55,4 @@ class CaptureControls final {
   }
 };
 
-}  // namespace screener::capture
+}  // namespace piik::capture

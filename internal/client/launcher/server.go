@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/TNTcraftHIM/Screener/internal/client/clientconfig"
+	"github.com/TNTcraftHIM/Piik/internal/client/clientconfig"
 )
 
 const (
@@ -255,7 +255,7 @@ func (server *Server) handleLaunch(response http.ResponseWriter, request *http.R
 	server.mu.Unlock()
 	if !resultSet || resultErr != nil {
 		writeJSON(response, http.StatusServiceUnavailable, map[string]string{
-			"error": "Screener Client could not start",
+			"error": "Piik Client could not start",
 		})
 		server.markHandled()
 		return

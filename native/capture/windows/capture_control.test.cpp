@@ -15,10 +15,10 @@
 void CheckOutputPipe() {
   HANDLE input = nullptr, output = nullptr;
   assert(CreatePipe(&input, &output, nullptr, 4096));
-  screener::capture::ProtocolWriter writer(output);
+  piik::capture::ProtocolWriter writer(output);
   assert(SUCCEEDED(writer.WriteBegin(333'333, 333'333)));
   const std::array<BYTE, 3> payload{1, 2, 3};
-  assert(SUCCEEDED(writer.Write(screener::capture::OutputKind::vp8, 1,
+  assert(SUCCEEDED(writer.Write(piik::capture::OutputKind::vp8, 1,
       333'333, 333'333, payload.data(), static_cast<DWORD>(payload.size()), 1, 320, 180)));
   std::array<BYTE, 67> data{};
   DWORD received = 0;
@@ -30,7 +30,7 @@ void CheckOutputPipe() {
   std::vector<BYTE> large(256 * 1024, 128);
   HRESULT result = S_OK;
   std::thread blocked([&]() {
-    result = writer.Write(screener::capture::OutputKind::vp8, 0,
+    result = writer.Write(piik::capture::OutputKind::vp8, 0,
         666'666, 333'333, large.data(), static_cast<DWORD>(large.size()), 1, 320, 180);
   });
   const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
@@ -54,7 +54,7 @@ void CheckOutputPipe() {
 
 void CheckWorkers() {
   struct Input { uint32_t index; };
-  using Mailbox = screener::capture::OutputMailbox<Input>;
+  using Mailbox = piik::capture::OutputMailbox<Input>;
   std::array<Mailbox, 3> mailboxes{Mailbox(90'000), Mailbox(300'000), Mailbox(1'200'000)};
   std::array<std::thread, 3> workers;
   std::array<uint32_t, 3> last{}, count{}, retired{};
@@ -71,7 +71,7 @@ void CheckWorkers() {
         const uint32_t width = 160u << layer;
         const uint32_t height = 90u << layer;
         std::vector<uint8_t> pixels(static_cast<size_t>(width) * height * 3 / 2, 128);
-        std::unique_ptr<screener::capture::Vp8Encoder> encoder;
+        std::unique_ptr<piik::capture::Vp8Encoder> encoder;
         for (;;) {
           const auto work = mailboxes[layer].Take();
           if (work.action == Mailbox::Action::stop) break;
@@ -86,7 +86,7 @@ void CheckWorkers() {
             entered.set_value();
             released.wait();
           }
-          if (!encoder) encoder = std::make_unique<screener::capture::Vp8Encoder>(width, height, 30, work.bitrate);
+          if (!encoder) encoder = std::make_unique<piik::capture::Vp8Encoder>(width, height, 30, work.bitrate);
           encoder->SetBitrate(work.bitrate);
           const auto output = encoder->Encode(pixels.data(), width,
               static_cast<uint64_t>(work.input->index) * 10'000'000 / 30, work.recovery);
@@ -138,7 +138,7 @@ void CheckWorkers() {
 }
 
 void CheckDroppedRecoveryInput() {
-  using Mailbox = screener::capture::OutputMailbox<int>;
+  using Mailbox = piik::capture::OutputMailbox<int>;
   Mailbox mailbox(90'000);
   mailbox.Submit(std::make_shared<int>(1));
   const auto dropped = mailbox.Take();
@@ -155,7 +155,7 @@ void CheckDroppedRecoveryInput() {
 }
 
 void CheckIndependentActivation() {
-  using Mailbox = screener::capture::OutputMailbox<int>;
+  using Mailbox = piik::capture::OutputMailbox<int>;
   Mailbox original(300'000), extra(90'000, false);
   original.Submit(std::make_shared<int>(1));
   const auto original_frame = original.Take();
@@ -189,7 +189,7 @@ void CheckInputEnvelopes() {
   control[5] = 7;
   control[31] = 4;
   control += "K -1";
-  screener::capture::InputEnvelopes parser;
+  piik::capture::InputEnvelopes parser;
   assert(parser.Feed(std::string_view(control).substr(0, 11)).empty());
   assert(!parser.Empty());
   const auto controls = parser.Feed(std::string_view(control).substr(11));
@@ -203,7 +203,7 @@ void CheckInputEnvelopes() {
 }
 
 int main() {
-  using screener::capture::CaptureControls;
+  using piik::capture::CaptureControls;
   assert(CaptureControls::Parse("K -1").layer == -1);
   assert(CaptureControls::Parse("A 5 1").layer == 5);
   assert(CaptureControls::Parse("A 5 1").value == 1);
@@ -222,8 +222,8 @@ int main() {
   catch (const std::runtime_error&) { rejected = true; }
   assert(rejected);
 
-  screener::capture::Vp8Encoder encoder(160, 90, 30, 90'000);
-  screener::capture::Vp8Decoder decoder;
+  piik::capture::Vp8Encoder encoder(160, 90, 30, 90'000);
+  piik::capture::Vp8Decoder decoder;
   std::vector<uint8_t> pixels(160 * 90 * 3 / 2, 128);
   for (uint32_t frame = 0; frame < 12; ++frame) {
     if (frame == 4) encoder.SetBitrate(30'000);

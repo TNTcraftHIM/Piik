@@ -1,8 +1,8 @@
 export const DEFAULT_RELEASE_API_URL =
-  "https://api.github.com/repos/TNTcraftHIM/Screener/releases/latest";
+  "https://api.github.com/repos/TNTcraftHIM/Piik/releases/latest";
 
 const FULL_REVISION = /^[0-9a-f]{40}$/i;
-const RELEASE_PATH_PREFIX = "/TNTcraftHIM/Screener/releases/tag/";
+const RELEASE_PATH_PREFIX = "/TNTcraftHIM/Piik/releases/tag/";
 
 export interface ReleaseUpdateNotice {
   revision: string;

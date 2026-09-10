@@ -179,7 +179,7 @@ func (r *Recorder) Export() (path string, returnedErr error) {
 			return "", err
 		}
 	}
-	if err := add("README.txt", []byte("Screener diagnostic report / Screener 诊断报告\n\n"+
+	if err := add("README.txt", []byte("Piik diagnostic report / Piik 诊断报告\n\n"+
 		"Local opt-in report. Review before sharing: technical identifiers, paths and network/system details may remain.\n"+
 		"Credentials are filtered; raw media and process-memory contents are not collected. heap.pprof is an allocation profile.\n"+
 		"metadata.json lists retained files and collector failures. Rotated logs are a bounded history, not the entire session.\n\n"+

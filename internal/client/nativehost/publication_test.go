@@ -3,7 +3,7 @@ package nativehost
 import (
 	"testing"
 
-	"github.com/TNTcraftHIM/Screener/internal/client/mediaedge"
+	"github.com/TNTcraftHIM/Piik/internal/client/mediaedge"
 )
 
 func TestPublicationGenerationFencesNativeControl(t *testing.T) {

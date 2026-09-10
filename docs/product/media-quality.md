@@ -132,7 +132,7 @@ Each ordinary Browser PeerConnection owns stock WebRTC congestion control and
 sender adaptation. Clones share one underlying media source and therefore do not provide
 complete simultaneous isolation: framework source-wants aggregation may still
 partially reduce frames available to sibling clones. Sibling outputs may differ;
-Screener does not impose a room-wide minimum. The Host's one Browser SFU
+Piik does not impose a room-wide minimum. The Host's one Browser SFU
 publication uses the share-generation codec and selected ceilings. Its ordinary
 simulcast outputs follow pinned LiveKit screen-share construction: original and
 half size at the same frame rate, with a quarter-bitrate lower ceiling and its
@@ -200,7 +200,7 @@ native source. This gives one difficult path stock per-sender adaptation without
 lowering the shared representation for healthy paths. It adds no quality score,
 timer, or room-wide media setting.
 
-Screener does not maintain an application bitrate/resolution ladder, scene
+Piik does not maintain an application bitrate/resolution ladder, scene
 detector, periodic quality controller, manual SFU layer selector, or
 application-defined whole-room lowest-common-denominator target.
 

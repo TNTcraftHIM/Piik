@@ -10,9 +10,9 @@ import { createOpaqueId } from "./opaque-id";
 
 const CLIENT_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
 const CLIENT_ACCESS_BOOTSTRAP_PATTERN = /^[\x21-\x7e]{8,128}$/;
-const CLIENT_LAUNCH_STORAGE_KEY = "screener:client-launch:v1";
-const HOST_ROOM_STORAGE_KEY = "screener:host-room:v1";
-const HOST_ROOM_PREFERENCE_STORAGE_KEY = "screener:host-room-preference:v1";
+const CLIENT_LAUNCH_STORAGE_KEY = "piik:client-launch:v1";
+const HOST_ROOM_STORAGE_KEY = "piik:host-room:v1";
+const HOST_ROOM_PREFERENCE_STORAGE_KEY = "piik:host-room-preference:v1";
 const hostRoomStorageSchema = createRoomResponseSchema.pick({
   roomId: true,
   hostToken: true,
@@ -104,11 +104,11 @@ export function takeClientLaunchBootstrap(): ClientLaunchBootstrap {
   const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
   const keys = [
     "client-access",
-    "screener-client",
+    "piik-client",
   ] as const;
   const present = keys.some((key) => params.has(key));
   const accessValue = params.get("client-access");
-  const launchedFromFragment = params.get("screener-client") === "1";
+  const launchedFromFragment = params.get("piik-client") === "1";
   let launchedByClient = launchedFromFragment;
   try {
     if (launchedFromFragment) {
@@ -283,7 +283,7 @@ function claimHostRoom(
         byte.toString(16).padStart(2, "0"),
       ).join("");
       await locks.request(
-        `screener:host-room:${room.roomId}:${identity}`,
+        `piik:host-room:${room.roomId}:${identity}`,
         { ifAvailable: true },
         async (lock) => {
           resolveReady(lock !== null);
@@ -519,7 +519,7 @@ export function clearViewerGrant(roomId: string): void {
 }
 
 function viewerGrantStorageKey(roomId: string): string {
-  return `screener:viewer-grant:${roomId}`;
+  return `piik:viewer-grant:${roomId}`;
 }
 
 function isValidViewerGrant(value: string): boolean {
@@ -527,7 +527,7 @@ function isValidViewerGrant(value: string): boolean {
 }
 
 export function getStableClientId(role: "host" | "viewer", roomId: string): string {
-  const storageKey = `screener:client-id:${role}:${roomId}`;
+  const storageKey = `piik:client-id:${role}:${roomId}`;
   const existing = readSessionValue(storageKey);
   if (existing && CLIENT_ID_PATTERN.test(existing)) {
     return existing;

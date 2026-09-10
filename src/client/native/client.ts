@@ -549,7 +549,7 @@ export class NativeClient {
     timeoutMs: number | null = REQUEST_TIMEOUT_MS,
   ): Promise<T> {
     if (this.closed || this.socket.readyState !== WebSocket.OPEN) {
-      return Promise.reject(new Error("Screener Client is unavailable"));
+      return Promise.reject(new Error("Piik Client is unavailable"));
     }
     const id = createOpaqueId();
     const began = performance.now();
@@ -561,7 +561,7 @@ export class NativeClient {
           : window.setTimeout(() => {
               this.pending.delete(id);
               debugEvent("native", "request-timeout", { ...details, durationMs: performance.now() - began });
-              rejectRequest(new Error("Screener Client request timed out"));
+              rejectRequest(new Error("Piik Client request timed out"));
             }, timeoutMs);
       this.pending.set(id, {
         schema,
@@ -589,7 +589,7 @@ export class NativeClient {
         if (timer !== null) window.clearTimeout(timer);
         this.pending.delete(id);
         debugError("native", "request-failed", error, { ...details, durationMs: performance.now() - began });
-        rejectRequest(new Error("Screener Client request failed"));
+        rejectRequest(new Error("Piik Client request failed"));
       }
     });
   }
@@ -611,14 +611,14 @@ export class NativeClient {
       if (pending.timer !== null) window.clearTimeout(pending.timer);
       const failure = requestFailedResponseSchema.safeParse(value);
       if (failure.success) {
-        pending.reject(new Error("Screener Client request failed", { cause: { code: failure.data.code } }));
+        pending.reject(new Error("Piik Client request failed", { cause: { code: failure.data.code } }));
         return;
       }
       const parsed = pending.schema.safeParse(value);
       if (parsed.success) {
         pending.resolve(parsed.data);
       } else {
-        pending.reject(new Error("Screener Client response is invalid", { cause: parsed.error }));
+        pending.reject(new Error("Piik Client response is invalid", { cause: parsed.error }));
       }
       return;
     }
@@ -655,7 +655,7 @@ export class NativeClient {
   private rejectPending(): void {
     for (const request of this.pending.values()) {
       if (request.timer !== null) window.clearTimeout(request.timer);
-      request.reject(new Error("Screener Client disconnected"));
+      request.reject(new Error("Piik Client disconnected"));
     }
     this.pending.clear();
   }

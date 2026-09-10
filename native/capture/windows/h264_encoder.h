@@ -23,11 +23,11 @@
 #include <utility>
 #include <vector>
 
-namespace screener::capture {
+namespace piik::capture {
 enum class OutputKind : UINT8;
 }
 
-namespace screener::capture::windows {
+namespace piik::capture::windows {
 
 using Microsoft::WRL::ComPtr;
 
@@ -250,4 +250,4 @@ class LiveEncoder final : public VideoEncoder {
   bool started_ = false;
 };
 
-}  // namespace screener::capture::windows
+}  // namespace piik::capture::windows

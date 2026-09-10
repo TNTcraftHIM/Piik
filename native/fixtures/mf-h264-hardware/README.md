@@ -1,7 +1,7 @@
 # Media Foundation H.264 Hardware Fixture
 
 This is an offline Windows-only decision fixture. Its build compiles the same
-Media Foundation encoder source used by Screener Client's Windows capture
+Media Foundation encoder source used by Piik Client's Windows capture
 process, under a
 fixture-only macro for synthetic input and telemetry. The generated fixture is
 not linked into the sender and does not contact a room, signaling service,
@@ -27,10 +27,10 @@ fallback. Exit code zero requires all of these checks in one 360-frame run:
 The generated executable must stay outside the repository. From PowerShell:
 
 ```powershell
-$out = Join-Path ([IO.Path]::GetTempPath()) 'screener-mf-h264-fixture-build'
+$out = Join-Path ([IO.Path]::GetTempPath()) 'piik-mf-h264-fixture-build'
 ./native/fixtures/mf-h264-hardware/build.ps1 -OutputDirectory $out
-& "$out/screener-mf-h264-fixture.exe" --list-adapters
-& "$out/screener-mf-h264-fixture.exe" --adapter-index 0 --mft-index 0
+& "$out/piik-mf-h264-fixture.exe" --list-adapters
+& "$out/piik-mf-h264-fixture.exe" --adapter-index 0 --mft-index 0
 ```
 
 Select the adapter index explicitly from the first command. The MFT index

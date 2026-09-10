@@ -7,7 +7,7 @@ package signal
 // goroutines the router starts (pump driver, media prepares, drains and timer
 // callbacks) take it themselves. Every I/O window is an
 // unlock / I/O / lock window followed by exactly the guard the TS code ran
-// after that await (map C:/tmp/screener-go/maps/effect-layer.md, section 2.2).
+// after that await (map C:/tmp/piik-go/maps/effect-layer.md, section 2.2).
 
 import (
 	"context"
@@ -21,11 +21,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/TNTcraftHIM/Screener/internal/server/ordered"
-	"github.com/TNTcraftHIM/Screener/internal/server/protocol"
-	"github.com/TNTcraftHIM/Screener/internal/server/room"
-	"github.com/TNTcraftHIM/Screener/internal/server/route"
-	"github.com/TNTcraftHIM/Screener/internal/server/sfu"
+	"github.com/TNTcraftHIM/Piik/internal/server/ordered"
+	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
+	"github.com/TNTcraftHIM/Piik/internal/server/room"
+	"github.com/TNTcraftHIM/Piik/internal/server/route"
+	"github.com/TNTcraftHIM/Piik/internal/server/sfu"
 )
 
 const (
@@ -33,7 +33,7 @@ const (
 )
 
 func routeDebugEnabled() bool {
-	return routeDebugFlag(os.Getenv("SCREENER_DEBUG")) ||
+	return routeDebugFlag(os.Getenv("PIIK_DEBUG")) ||
 		slog.Default().Enabled(context.Background(), slog.LevelDebug)
 }
 
@@ -1436,7 +1436,7 @@ func (r *router) debug(roomID, event string, details ...any) {
 	args := make([]any, 0, 4+len(details))
 	args = append(args, "event", event, "roomId", roomID)
 	args = append(args, details...)
-	slog.Info("screener-route", args...)
+	slog.Info("piik-route", args...)
 }
 
 // sendRoomError ports sendRoomError: only the connected host is told.

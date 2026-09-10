@@ -15,8 +15,8 @@ done < scripts/required-project-paths.txt
 git diff --check
 git diff --cached --check
 
-if [ -n "${SCREENER_BASE_SHA:-}" ] && [ "$SCREENER_BASE_SHA" != "0000000000000000000000000000000000000000" ]; then
-  git diff --check "$SCREENER_BASE_SHA"...HEAD
+if [ -n "${PIIK_BASE_SHA:-}" ] && [ "$PIIK_BASE_SHA" != "0000000000000000000000000000000000000000" ]; then
+  git diff --check "$PIIK_BASE_SHA"...HEAD
 fi
 
 node scripts/check-docs.mjs

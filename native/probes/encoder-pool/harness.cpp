@@ -433,7 +433,7 @@ int main(int argc, char** argv) {
     const auto env = CreateEnvironment(std::make_unique<Trials>(no_adjuster));
     const bool unsafe_skip = has("--unsafe-skip");
     PoolFactory factory(pooled, group_adjuster, unsafe_skip,
-        h264 ? screener::probe::CreateHardwareEncoderFactory() : nullptr);
+        h264 ? piik::probe::CreateHardwareEncoderFactory() : nullptr);
     auto allocator = CreateBuiltinVideoBitrateAllocatorFactory();
     auto worker = env.task_queue_factory().CreateTaskQueue(
         "PoolProbeWorker", TaskQueueFactory::Priority::kNormal);

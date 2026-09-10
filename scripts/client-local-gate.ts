@@ -45,22 +45,22 @@ const LOCAL_PAGE_STATE = `fetch('/api/site-access')
   .then((response) => response.json())
   .catch(() => null)
   .then((access) => ({
-  bootstrapPresent: ['client-access', 'screener-client']
+  bootstrapPresent: ['client-access', 'piik-client']
     .some((key) => new URLSearchParams(location.hash.slice(1)).has(key)),
   access,
   hostReady: Boolean(document.querySelector('.lr-host-personal-controls')),
 }))`;
 
 async function main(): Promise<void> {
-  if (process.env.SCREENER_CLIENT_LOCAL_GATE !== "true") {
+  if (process.env.PIIK_CLIENT_LOCAL_GATE !== "true") {
     throw new Error("Local Client gate was not explicitly enabled");
   }
   const browserPath = process.env.CHROME_PATH?.trim();
-  const clientPath = process.env.SCREENER_CLIENT_EXE?.trim();
-  const lanAddress = process.env.SCREENER_CLIENT_GATE_LAN_ADDRESS?.trim();
+  const clientPath = process.env.PIIK_CLIENT_EXE?.trim();
+  const lanAddress = process.env.PIIK_CLIENT_GATE_LAN_ADDRESS?.trim();
   if (!browserPath || !clientPath || !lanAddress) {
     throw new Error(
-      "CHROME_PATH, SCREENER_CLIENT_EXE, and SCREENER_CLIENT_GATE_LAN_ADDRESS are required",
+      "CHROME_PATH, PIIK_CLIENT_EXE, and PIIK_CLIENT_GATE_LAN_ADDRESS are required",
     );
   }
 
@@ -82,7 +82,7 @@ async function main(): Promise<void> {
   };
   const appPort = await reservePort();
   const debugPort = await reservePort();
-  const profile = await mkdtemp(join(tmpdir(), "screener-client-loopback-"));
+  const profile = await mkdtemp(join(tmpdir(), "piik-client-loopback-"));
   const configPath = join(profile, "client.json");
   let client: ChildProcessWithoutNullStreams | null = null;
   let browser: ChildProcessWithoutNullStreams | null = null;
@@ -97,7 +97,7 @@ async function main(): Promise<void> {
     ], {
       stdio: "pipe",
       windowsHide: true,
-      env: { ...process.env, SCREENER_CLIENT_GATE_NO_BROWSER: "true" },
+      env: { ...process.env, PIIK_CLIENT_GATE_NO_BROWSER: "true" },
     });
     client.stderr.resume();
     const endpoint = await readClientEndpoint(client);
@@ -121,12 +121,12 @@ async function main(): Promise<void> {
     const localAccessPassword = config.localAccessPassword;
     const bootstrap = new URLSearchParams({
       ...(localAccessPassword ? { "client-access": localAccessPassword } : {}),
-      "screener-client": "1",
+      "piik-client": "1",
     }).toString();
 
     browser = launchChrome(browserPath, debugPort, profile, [
       "--headless=new",
-      ...(process.env.SCREENER_CLIENT_GATE_NO_SANDBOX === "true"
+      ...(process.env.PIIK_CLIENT_GATE_NO_SANDBOX === "true"
         ? ["--no-sandbox"]
         : []),
       "--no-first-run",

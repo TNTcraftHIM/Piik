@@ -29,7 +29,7 @@ import {
 
 const ROOT = resolve(import.meta.dirname, "..");
 const BUILD_ROOT = join(ROOT, "build", "client-check");
-export const SOURCE_TITLE = "Screener Native Gate Source";
+export const SOURCE_TITLE = "Piik Native Gate Source";
 
 type GateMode = "local" | "cross-nat" | "one-link";
 type VideoCodec = "h264" | "vp8";
@@ -40,7 +40,7 @@ const CODEC_PROBE = `(() => {
   window.WebSocket = class extends BrowserSocket {
     constructor(...args) { super(...args); sockets.push(this); }
   };
-  window.__screenerGatePublicSignal = () => sockets.some((socket) => {
+  window.__piikGatePublicSignal = () => sockets.some((socket) => {
     const url = new URL(socket.url);
     return socket.readyState === WebSocket.OPEN && url.protocol === 'wss:' &&
       url.host === location.host && url.pathname === '/signal';
@@ -48,7 +48,7 @@ const CODEC_PROBE = `(() => {
   window.RTCPeerConnection = class extends BrowserPeer {
     constructor(...args) { super(...args); peers.push(this); }
   };
-  window.__screenerGateVideoCodec = async () => {
+  window.__piikGateVideoCodec = async () => {
     const trackId = document.querySelector('video')?.srcObject?.getVideoTracks()[0]?.id;
     if (!trackId) return null;
     for (const peer of peers) {
@@ -240,7 +240,7 @@ async function clickHostControl(
 
 async function readVideoCodec(cdp: CdpConnection, page: PageHandle): Promise<VideoCodec> {
   const codec = await waitForValue(
-    (deadline) => evaluate<VideoCodec | null>(cdp, page, "window.__screenerGateVideoCodec()", deadline),
+    (deadline) => evaluate<VideoCodec | null>(cdp, page, "window.__piikGateVideoCodec()", deadline),
     (value) => value === "vp8" || value === "h264",
     5_000,
   );
@@ -254,14 +254,14 @@ async function assertVideoCodec(cdp: CdpConnection, page: PageHandle, expected: 
 }
 
 function remoteOptions(): RemoteGateOptions {
-  const host = process.env.SCREENER_REMOTE_HOST?.trim();
-  const user = process.env.SCREENER_REMOTE_USER?.trim() || "root";
-  const key = process.env.SCREENER_REMOTE_SSH_KEY?.trim();
-  const signalPortText = process.env.SCREENER_REMOTE_SIGNAL_PORT?.trim() || "49721";
+  const host = process.env.PIIK_REMOTE_HOST?.trim();
+  const user = process.env.PIIK_REMOTE_USER?.trim() || "root";
+  const key = process.env.PIIK_REMOTE_SSH_KEY?.trim();
+  const signalPortText = process.env.PIIK_REMOTE_SIGNAL_PORT?.trim() || "49721";
   const signalPort = Number(signalPortText);
   if (!host || !key || !Number.isInteger(signalPort) || signalPort < 1024 || signalPort > 65_535) {
     throw new Error(
-      "SCREENER_REMOTE_HOST, SCREENER_REMOTE_SSH_KEY, and a valid SCREENER_REMOTE_SIGNAL_PORT are required",
+      "PIIK_REMOTE_HOST, PIIK_REMOTE_SSH_KEY, and a valid PIIK_REMOTE_SIGNAL_PORT are required",
     );
   }
   return {
@@ -269,7 +269,7 @@ function remoteOptions(): RemoteGateOptions {
     user,
     key,
     signalPort,
-    bindAddress: process.env.SCREENER_REMOTE_BIND_ADDRESS?.trim() || null,
+    bindAddress: process.env.PIIK_REMOTE_BIND_ADDRESS?.trim() || null,
   };
 }
 
@@ -293,10 +293,10 @@ async function runRemotePeerGate(
   viewerGrant: string,
   origin: string,
 ): Promise<RemoteGateResult> {
-  const ssh = process.env.SCREENER_SSH?.trim() || "ssh";
-  const scp = process.env.SCREENER_SCP?.trim() || "scp";
+  const ssh = process.env.PIIK_SSH?.trim() || "ssh";
+  const scp = process.env.PIIK_SCP?.trim() || "scp";
   const destination = `${options.user}@${options.host}`;
-  const remotePath = `/tmp/screener-peer-gate-${randomBytes(8).toString("hex")}`;
+  const remotePath = `/tmp/piik-peer-gate-${randomBytes(8).toString("hex")}`;
   const transportOptions = remoteTransportOptions(options);
   try {
     run(scp, [...transportOptions, binary, `${destination}:${remotePath}`]);
@@ -376,7 +376,7 @@ async function runRemotePeerGate(
 }
 
 export function powershell(): string {
-  return process.env.SCREENER_POWERSHELL?.trim() || join(
+  return process.env.PIIK_POWERSHELL?.trim() || join(
     process.env.SystemRoot || "C:\\Windows",
     "System32",
     "WindowsPowerShell",
@@ -550,44 +550,44 @@ async function main(): Promise<void> {
   if (process.platform !== "win32") {
     throw new Error("The native Host gate currently requires Windows");
   }
-  if (process.env.SCREENER_CLIENT_NATIVE_HOST_GATE !== "true") {
-    throw new Error("SCREENER_CLIENT_NATIVE_HOST_GATE=true is required");
+  if (process.env.PIIK_CLIENT_NATIVE_HOST_GATE !== "true") {
+    throw new Error("PIIK_CLIENT_NATIVE_HOST_GATE=true is required");
   }
-  const crossNat = process.env.SCREENER_CLIENT_CROSS_NAT_GATE === "true";
-  const linkMedia = process.env.SCREENER_CLIENT_LINK_MEDIA_GATE === "true";
+  const crossNat = process.env.PIIK_CLIENT_CROSS_NAT_GATE === "true";
+  const linkMedia = process.env.PIIK_CLIENT_LINK_MEDIA_GATE === "true";
   if (crossNat && linkMedia) {
     throw new Error("Cross-NAT and one-link gate modes are mutually exclusive");
   }
   const mode: GateMode = linkMedia ? "one-link" : crossNat ? "cross-nat" : "local";
-  const gateStunUrls = process.env.SCREENER_CLIENT_GATE_STUN_URLS?.trim();
+  const gateStunUrls = process.env.PIIK_CLIENT_GATE_STUN_URLS?.trim();
   if (mode === "cross-nat" && !gateStunUrls) {
-    throw new Error("SCREENER_CLIENT_GATE_STUN_URLS is required for the cross-NAT gate");
+    throw new Error("PIIK_CLIENT_GATE_STUN_URLS is required for the cross-NAT gate");
   }
   const crashGate =
-    process.env.SCREENER_CLIENT_NATIVE_HOST_CRASH_GATE === "true";
+    process.env.PIIK_CLIENT_NATIVE_HOST_CRASH_GATE === "true";
   if (crashGate && mode !== "local") {
     throw new Error("Client crash gate requires local mode");
   }
   const sourceKind: "window" | "display" =
-    process.env.SCREENER_CLIENT_NATIVE_HOST_SOURCE === "display"
+    process.env.PIIK_CLIENT_NATIVE_HOST_SOURCE === "display"
       ? "display"
       : "window";
-  const requestedCodec = process.env.SCREENER_CLIENT_NATIVE_HOST_CODEC?.trim() || "auto";
+  const requestedCodec = process.env.PIIK_CLIENT_NATIVE_HOST_CODEC?.trim() || "auto";
   if (requestedCodec !== "auto" && requestedCodec !== "h264" && requestedCodec !== "vp8") {
-    throw new Error("SCREENER_CLIENT_NATIVE_HOST_CODEC must be auto, h264, or vp8");
+    throw new Error("PIIK_CLIENT_NATIVE_HOST_CODEC must be auto, h264, or vp8");
   }
   const remote = mode === "cross-nat" || mode === "one-link" &&
-    Boolean(process.env.SCREENER_REMOTE_HOST?.trim() || process.env.SCREENER_REMOTE_SSH_KEY?.trim())
+    Boolean(process.env.PIIK_REMOTE_HOST?.trim() || process.env.PIIK_REMOTE_SSH_KEY?.trim())
       ? remoteOptions() : null;
   const chromePath = process.env.CHROME_PATH?.trim();
   if (!chromePath) throw new Error("CHROME_PATH is required");
-  const go = process.env.SCREENER_GO?.trim() || "go";
-  const tunnel = process.env.SCREENER_CLOUDFLARED?.trim() || join(
+  const go = process.env.PIIK_GO?.trim() || "go";
+  const tunnel = process.env.PIIK_CLOUDFLARED?.trim() || join(
     BUILD_ROOT,
     "cloudflared.exe",
   );
-  const profile = await mkdtemp(join(tmpdir(), "screener-client-media-"));
-  const sourceProfile = await mkdtemp(join(tmpdir(), "screener-client-media-"));
+  const profile = await mkdtemp(join(tmpdir(), "piik-client-media-"));
+  const sourceProfile = await mkdtemp(join(tmpdir(), "piik-client-media-"));
   await mkdir(BUILD_ROOT, { recursive: true });
   const diagnosticDirectory = await mkdtemp(join(BUILD_ROOT, "native-host-gate-"));
   const sourcePort = await reservePort();
@@ -596,9 +596,9 @@ async function main(): Promise<void> {
   const sourceDebugPort = await reservePort();
   const clientConfig = join(profile, "client.json");
   const captureBuild = BUILD_ROOT;
-  const clientBinary = join(BUILD_ROOT, "screener-client.exe");
-  const captureBinary = join(captureBuild, "screener-client-capture.exe");
-  const remoteBinary = join(BUILD_ROOT, "screener-peer-gate-linux");
+  const clientBinary = join(BUILD_ROOT, "piik-client.exe");
+  const captureBinary = join(captureBuild, "piik-client-capture.exe");
+  const remoteBinary = join(BUILD_ROOT, "piik-peer-gate-linux");
   let source: { close(): Promise<void> } | null = null;
   let client: ChildProcessWithoutNullStreams | null = null;
   let sourceChrome: ChildProcessWithoutNullStreams | null = null;
@@ -669,13 +669,13 @@ async function main(): Promise<void> {
     process.stderr.write(`${JSON.stringify({ stage, status: "finished", at: new Date().toISOString() })}\n`);
     stage = "client-build";
     run(go, [
-      "build", "-p", "1", "-trimpath", "-o", clientBinary, "./cmd/screener-client",
+      "build", "-p", "1", "-trimpath", "-o", clientBinary, "./cmd/piik-client",
     ], ROOT, { ...process.env, GOMAXPROCS: "2" });
     if (remote) {
       stage = "remote-peer-build";
       run(
         go,
-        ["build", "-trimpath", "-o", remoteBinary, "./cmd/screener-peer-gate"],
+        ["build", "-trimpath", "-o", remoteBinary, "./cmd/piik-peer-gate"],
         ROOT,
         { ...process.env, GOOS: "linux", GOARCH: "amd64", CGO_ENABLED: "0" },
       );
@@ -703,8 +703,8 @@ async function main(): Promise<void> {
       windowsHide: true,
       env: {
         ...process.env,
-        SCREENER_DEBUG: "",
-        SCREENER_CLIENT_GATE_NO_BROWSER: "true",
+        PIIK_DEBUG: "",
+        PIIK_CLIENT_GATE_NO_BROWSER: "true",
         // STUN_URLS reaches only the Client's own Pion edge: the in-process
         // room server never reads it, so the cross-NAT arm stays isolated.
         ...(mode === "cross-nat" && gateStunUrls
@@ -719,7 +719,7 @@ async function main(): Promise<void> {
     if (mode === "cross-nat" && remote) {
       stage = "signaling-tunnel";
       const tunnel = spawn(
-        process.env.SCREENER_SSH?.trim() || "ssh",
+        process.env.PIIK_SSH?.trim() || "ssh",
         [
           "-N", "-T",
           ...remoteTransportOptions(remote),
@@ -761,7 +761,7 @@ async function main(): Promise<void> {
     cdp = await CdpConnection.connect(version.webSocketDebuggerUrl, Date.now() + 10_000);
     const hostBootstrap = new URLSearchParams({
       ...(clientInfo.password ? { "client-access": clientInfo.password } : {}),
-      "screener-client": "1",
+      "piik-client": "1",
     }).toString();
     stage = "host-page";
     const host = await createPage(
@@ -942,7 +942,7 @@ async function main(): Promise<void> {
           `location.origin === ${JSON.stringify(clientInfo.publicOrigin)} && location.pathname === ${JSON.stringify(viewerURL.pathname)}`,
           Date.now() + 5_000);
         result.publicViewerSignal = await evaluate<boolean>(cdp, viewer,
-          "window.__screenerGatePublicSignal()", Date.now() + 5_000);
+          "window.__piikGatePublicSignal()", Date.now() + 5_000);
       } else {
       await evaluate<boolean>(
         cdp,
@@ -950,8 +950,8 @@ async function main(): Promise<void> {
         `(() => {
           const video = document.querySelector('video');
           if (!video) return false;
-          window.__screenerGateMedia = video.srcObject;
-          return window.__screenerGateMedia !== null;
+          window.__piikGateMedia = video.srcObject;
+          return window.__piikGateMedia !== null;
         })()`,
         Date.now() + 5_000,
       );
@@ -1151,7 +1151,7 @@ async function main(): Promise<void> {
               frames: video?.getVideoPlaybackQuality().totalVideoFrames ?? 0,
               width: video?.videoWidth ?? 0,
               height: video?.videoHeight ?? 0,
-              sameMedia: Boolean(video && video.srcObject === window.__screenerGateMedia),
+              sameMedia: Boolean(video && video.srcObject === window.__piikGateMedia),
             };
           })()`,
           deadline,
@@ -1213,7 +1213,7 @@ async function main(): Promise<void> {
           await waitForValue((deadline) => evaluate<boolean>(cdp!, viewer,
             `(() => {
               const video = document.querySelector('video');
-              return Boolean(video && video.srcObject === window.__screenerGateMedia &&
+              return Boolean(video && video.srcObject === window.__piikGateMedia &&
                 video.videoWidth === ${width} && video.videoHeight === ${height} &&
                 video.getVideoPlaybackQuality().totalVideoFrames >= ${before + 10});
             })()`, deadline,
@@ -1275,7 +1275,7 @@ async function main(): Promise<void> {
           `(() => {
             const video = document.querySelector('video');
             return Boolean(
-              video && video.srcObject === window.__screenerGateMedia &&
+              video && video.srcObject === window.__piikGateMedia &&
               video.videoWidth === 854 && video.videoHeight === 480 &&
               video.getVideoPlaybackQuality().totalVideoFrames >= ${framesBeforeSourceChange + 10}
             );
@@ -1298,7 +1298,7 @@ async function main(): Promise<void> {
           return diagnostics.split(/\r?\n/).some((line) => {
             try {
               const record = JSON.parse(line);
-              return record.msg === "screener-route" && record.event === "sender-quality-evidence" &&
+              return record.msg === "piik-route" && record.event === "sender-quality-evidence" &&
                 (record.state === "healthy" || record.state === "degraded");
             } catch {
               return false;
@@ -1383,7 +1383,7 @@ async function main(): Promise<void> {
           `(() => {
             const video = document.querySelector('video');
             return Boolean(video && video.srcObject &&
-              video.srcObject !== window.__screenerGateMedia &&
+              video.srcObject !== window.__piikGateMedia &&
               video.videoWidth === 854 && video.videoHeight === 480);
           })()`,
           deadline,

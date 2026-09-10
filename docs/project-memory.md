@@ -2,7 +2,7 @@
 
 Last updated: 2026-09-10
 
-Screener is private, low-latency game screen sharing for one Host and up to 20
+Piik is private, low-latency game screen sharing for one Host and up to 20
 authenticated friends. The current product surface is Web Host, Web Viewer, and
 Browser relay; desktop and mobile Browsers are Viewer targets. It is not a
 public broadcast service. Hosted and Client run one shared Go core
@@ -68,7 +68,7 @@ implementation and routine UI detail.
   available, and anonymous provenance distinguishes ordinary from predicted
   selected paths. The configuration default remains stock ICE. The only
   application fallback is one bounded embedded SFU/UDP
-  publication; Screener configures no TURN or TCP media route. A pre-share
+  publication; Piik configures no TURN or TCP media route. A pre-share
   peer-only policy can exclude that SFU suffix for one share generation.
 - Every endpoint shares one steady outbound-copy cap, default `2` and limited to
   `1..3`. One room controller owns one committed graph, one reconcile loop, and
@@ -94,7 +94,7 @@ implementation and routine UI detail.
 
 ## Current Snapshot
 
-The current contract uses strict `screener-v23` Browser/server signaling,
+The current contract uses strict `piik-v23` Browser/server signaling,
 Native control v9 and capture v7 together. Embedded SFU SDP/ICE and demand travel over the
 authenticated room WebSocket, without an external room service or media token.
 Committed first-frame readiness, bounded candidate-relative progress, durable

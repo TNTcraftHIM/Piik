@@ -6,15 +6,15 @@ import {
   parseReleaseMetadata,
 } from "../src/client/lib/release-update";
 
-// The operator checker (cmd/screener-server --check-release, covered by
-// cmd/screener-server/release_test.go) shares this release contract while
+// The operator checker (cmd/piik-server --check-release, covered by
+// cmd/piik-server/release_test.go) shares this release contract while
 // keeping its runtime boundary independent.
 
 const currentRevision = "a".repeat(40);
 const latestRevision = "b".repeat(40);
 const release = {
   tag_name: latestRevision,
-  html_url: `https://github.com/TNTcraftHIM/Screener/releases/tag/${latestRevision}`,
+  html_url: `https://github.com/TNTcraftHIM/Piik/releases/tag/${latestRevision}`,
 };
 
 describe("Client release update notice", () => {
@@ -45,7 +45,7 @@ describe("Client release update notice", () => {
     expect(
       parseReleaseMetadata({
         ...release,
-        html_url: `https://user@github.com/TNTcraftHIM/Screener/releases/tag/${latestRevision}`,
+        html_url: `https://user@github.com/TNTcraftHIM/Piik/releases/tag/${latestRevision}`,
       }),
     ).toBeNull();
     expect(parseReleaseMetadata({ ...release, draft: true })).toBeNull();

@@ -3,7 +3,7 @@ package nativeviewer
 import (
 	"testing"
 
-	"github.com/TNTcraftHIM/Screener/internal/client/nativecapture"
+	"github.com/TNTcraftHIM/Piik/internal/client/nativecapture"
 )
 
 func TestViewerProfileHasNoImplicitCaptureDefault(t *testing.T) {

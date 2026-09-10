@@ -23,7 +23,7 @@
 
 ## Product Contract
 
-- Screener is private game screen sharing for one Host and up to 20 authenticated
+- Piik is private game screen sharing for one Host and up to 20 authenticated
   Viewers, with Web Host/Viewer/relay as the current product surface.
 - Current product truth is split by owner:
   [rooms/access](./docs/product/rooms-access.md),

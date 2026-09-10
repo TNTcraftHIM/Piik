@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace screener::capture {
+namespace piik::capture {
 
 inline SIZE DisplayedFrameSize(SIZE captured, SIZE desktop, SIZE target,
                                DISPLAYCONFIG_SCALING scaling,
@@ -40,4 +40,4 @@ inline RECT FitFrameRect(SIZE content, SIZE output) {
   return {left, top, left + width, top + height};
 }
 
-}  // namespace screener::capture
+}  // namespace piik::capture

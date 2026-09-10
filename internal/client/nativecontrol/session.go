@@ -16,12 +16,12 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/TNTcraftHIM/Screener/internal/client/loopback"
-	"github.com/TNTcraftHIM/Screener/internal/client/mediaedge"
-	"github.com/TNTcraftHIM/Screener/internal/client/nativecapture"
-	"github.com/TNTcraftHIM/Screener/internal/client/nativehost"
-	"github.com/TNTcraftHIM/Screener/internal/client/nativeviewer"
-	"github.com/TNTcraftHIM/Screener/internal/diagnostics"
+	"github.com/TNTcraftHIM/Piik/internal/client/loopback"
+	"github.com/TNTcraftHIM/Piik/internal/client/mediaedge"
+	"github.com/TNTcraftHIM/Piik/internal/client/nativecapture"
+	"github.com/TNTcraftHIM/Piik/internal/client/nativehost"
+	"github.com/TNTcraftHIM/Piik/internal/client/nativeviewer"
+	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -153,7 +153,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 			!validQualitySettings(request.Profile) {
 			return nil, errors.New("native start-share request is invalid")
 		}
-		slog.Debug("screener-client", "event", "native-profile-requested", "requestId", envelope.ID,
+		slog.Debug("piik-client", "event", "native-profile-requested", "requestId", envelope.ID,
 			"share", diagnostics.ID(request.ShareID), "profile", nativeQualityProfile(request.Profile), "codec", request.Codec, "audio", request.Audio,
 			"sourceKind", request.Source.Kind, "adapterIndex", request.AdapterIndex, "encoderIndex", request.EncoderIndex)
 		return session.startShare(ctx, envelope, request)
@@ -166,7 +166,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 			return nil, errors.New("native update-share request is invalid")
 		}
 		profile := nativeQualityProfile(request.Profile)
-		slog.Debug("screener-client", "event", "native-profile-requested", "requestId", envelope.ID,
+		slog.Debug("piik-client", "event", "native-profile-requested", "requestId", envelope.ID,
 			"share", diagnostics.ID(request.ShareID), "profile", profile)
 		var err error
 		if host := session.current(request.ShareID); host != nil {
@@ -199,7 +199,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 		audio := request.Audio && session.capabilities.Summary().AudioFor(
 			request.Source.Kind,
 		)
-		slog.Debug("screener-client", "event", "native-source-requested", "requestId", envelope.ID,
+		slog.Debug("piik-client", "event", "native-source-requested", "requestId", envelope.ID,
 			"share", diagnostics.ID(request.ShareID), "sourceKind", request.Source.Kind, "audio", audio,
 			"adapterIndex", request.AdapterIndex, "encoderIndex", request.EncoderIndex)
 		err := host.ReplaceSource(ctx, nativecapture.VideoOptions{
@@ -210,7 +210,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 		if err != nil {
 			return operationFailure(envelope, err), nil
 		}
-		slog.Debug("screener-client", "event", "native-source-applied", "requestId", envelope.ID,
+		slog.Debug("piik-client", "event", "native-source-applied", "requestId", envelope.ID,
 			"share", diagnostics.ID(request.ShareID), "sourceKind", request.Source.Kind, "audio", audio)
 		return shareSourceReplacedResponse{
 			responseEnvelope: response(envelope, "share-source-replaced"),
@@ -347,7 +347,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 			return nil, errors.New("native share does not exist")
 		}
 		host.SetPaused(request.Paused)
-		slog.Debug("screener-client", "event", "native-share-paused", "requestId", envelope.ID,
+		slog.Debug("piik-client", "event", "native-share-paused", "requestId", envelope.ID,
 			"share", diagnostics.ID(request.ShareID), "paused", request.Paused)
 		return response(envelope, "share-paused"), nil
 	default:
@@ -429,7 +429,7 @@ func (session *Session) shareUpdateResult(request requestEnvelope, shareID strin
 	if err != nil {
 		return operationFailure(request, err)
 	}
-	slog.Debug("screener-client", "event", "native-profile-applied", "requestId", request.ID,
+	slog.Debug("piik-client", "event", "native-profile-applied", "requestId", request.ID,
 		"share", diagnostics.ID(shareID), "profile", profile)
 	return shareUpdatedResponse{responseEnvelope: response(request, "share-updated"), ShareID: shareID}
 }
@@ -480,7 +480,7 @@ func (session *Session) startShare(
 	session.host = host
 	session.mu.Unlock()
 	codec := host.Codec()
-	slog.Debug("screener-client", "event", "native-profile-applied", "requestId", envelope.ID,
+	slog.Debug("piik-client", "event", "native-profile-applied", "requestId", envelope.ID,
 		"share", diagnostics.ID(request.ShareID), "profile", profile, "codec", codec, "audio", host.HasAudio())
 	go session.watchHost(host)
 	return shareStartedResponse{
@@ -940,7 +940,7 @@ func response(request requestEnvelope, responseType string) responseEnvelope {
 
 func operationFailure(request requestEnvelope, causes ...error) requestFailedResponse {
 	if len(causes) > 0 {
-		slog.Debug("screener-client", "event", "native-operation-failed", "requestId", request.ID,
+		slog.Debug("piik-client", "event", "native-operation-failed", "requestId", request.ID,
 			"requestType", diagnostics.SafeText(request.Type), diagnostics.Error(causes[0]))
 	}
 	return requestFailedResponse{
@@ -965,10 +965,10 @@ func (session *Session) traceRequest(request requestEnvelope, payload []byte) fu
 		"share", diagnostics.ID(identity.ShareID), "connection", diagnostics.ID(identity.ConnectionID),
 		"sourceConnection", diagnostics.ID(identity.SourceConnectionID), "publication", diagnostics.ID(identity.PublicationGeneration))
 	started := time.Now()
-	logger.Debug("screener-client", "event", "native-request-started")
+	logger.Debug("piik-client", "event", "native-request-started")
 	return func(result any, err error) {
 		failure, rejected := result.(requestFailedResponse)
-		logger.Debug("screener-client", "event", "native-request-ended", "durationMs", time.Since(started).Milliseconds(),
+		logger.Debug("piik-client", "event", "native-request-ended", "durationMs", time.Since(started).Milliseconds(),
 			"failed", err != nil || rejected, "code", failure.Code, diagnostics.Error(err))
 	}
 }

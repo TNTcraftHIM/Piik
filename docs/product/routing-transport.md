@@ -128,9 +128,9 @@ SFU offer/answer, ICE and output demand use the existing authenticated room
 WebSocket. The server binds each physical connection to the current participant,
 share and publication; it issues no separate media token or room-service URL.
 Browser SFU PeerConnections use the server's UDP candidates and no external
-ICE-server list. Ordinary peer connections use deployment STUN. Hosted Screener
+ICE-server list. Ordinary peer connections use deployment STUN. Hosted Piik
 owns its configured Binding-only STUN listeners and optional SFU UDP listener in
-the same Go process. Screener
+the same Go process. Piik
 configures no TURN, ICE/TCP, media TCP, or TLS-relayed media path. HTTPS/WSS is a
 separate control transport and remains TLS/TCP.
 
@@ -151,7 +151,7 @@ the same bounded route recovery. Source capture remains Host-owned throughout.
 Browser WebRTC and the shared Pion/LiveKit media adapter own ICE, consent,
 congestion control, bitrate, frame rate, resolution, retransmission, pacing and
 layer selection. Direct-child media demand does not create a topology operation.
-When the per-share convergence gate is enabled, Screener uses an exact persistent native
+When the per-share convergence gate is enabled, Piik uses an exact persistent native
 sender limitation only to trigger one measured experiment through the existing
 serial operation. Three fresh complete limited deltas from one exact sender may
 trigger that experiment on a newly committed availability or direct-convergence
@@ -181,7 +181,7 @@ frame rate, or bitrate across persistent complete windows and produces no
 freeze or pause; otherwise the old Peer route stays. The Host publication
 ingress and every Viewer subscription are separate quality paths. One Viewer's
 SFU proof never authorizes another Viewer. Disabling the gate leaves quality
-state diagnostic. Screener has no weighted route score, general parent-wide
+state diagnostic. Piik has no weighted route score, general parent-wide
 prediction, all-pairs probe, periodic rebalance, persistent parent blacklist,
 NAT classification, or independent depth cap.
 

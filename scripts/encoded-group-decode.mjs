@@ -4,8 +4,8 @@ import { readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { resolve } from "node:path";
 
-const customInput = process.env.SCREENER_ENCODED_OUTPUT;
-const codec = process.env.SCREENER_ENCODED_CODEC ?? "vp8";
+const customInput = process.env.PIIK_ENCODED_OUTPUT;
+const codec = process.env.PIIK_ENCODED_CODEC ?? "vp8";
 assert.ok(["vp8", "avc1.42c033"].includes(codec), "Expected VP8 or constrained-baseline H264");
 const inputPath = customInput ? resolve(customInput) : new URL("../build/embedded-media/encoded-group.received.json", import.meta.url);
 const input = await readFile(inputPath);

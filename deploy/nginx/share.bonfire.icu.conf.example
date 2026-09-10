@@ -1,9 +1,9 @@
-map $http_upgrade $screener_connection_upgrade {
+map $http_upgrade $piik_connection_upgrade {
     default upgrade;
     '' close;
 }
 
-limit_req_zone $binary_remote_addr zone=screener_site_access:10m rate=5r/m;
+limit_req_zone $binary_remote_addr zone=piik_site_access:10m rate=5r/m;
 
 server {
     listen 80;
@@ -30,8 +30,8 @@ server {
     include /etc/letsencrypt/options-ssl-nginx.conf;
     ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
 
-    access_log /var/log/nginx/screener.access.log;
-    error_log /var/log/nginx/screener.error.log warn;
+    access_log /var/log/nginx/piik.access.log;
+    error_log /var/log/nginx/piik.error.log warn;
 
     add_header Strict-Transport-Security "max-age=31536000" always;
     add_header X-Content-Type-Options "nosniff" always;
@@ -48,7 +48,7 @@ server {
     }
 
     location = /api/site-access {
-        limit_req zone=screener_site_access burst=5 nodelay;
+        limit_req zone=piik_site_access burst=5 nodelay;
         limit_req_status 429;
         proxy_pass http://127.0.0.1:8787;
         proxy_http_version 1.1;
@@ -65,7 +65,7 @@ server {
         proxy_set_header X-Forwarded-Host $host;
         proxy_set_header X-Forwarded-Proto https;
         proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $screener_connection_upgrade;
+        proxy_set_header Connection $piik_connection_upgrade;
         proxy_read_timeout 5h;
         proxy_send_timeout 5h;
         proxy_buffering off;

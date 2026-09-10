@@ -249,7 +249,7 @@ export function snapshot() {
 }
 
 export async function audioEnergy(): Promise<number> {
-  const probe = (window as unknown as { __screenerGateAudioEnergy: () => Promise<number> }).__screenerGateAudioEnergy;
+  const probe = (window as unknown as { __piikGateAudioEnergy: () => Promise<number> }).__piikGateAudioEnergy;
   return await probe();
 }
 

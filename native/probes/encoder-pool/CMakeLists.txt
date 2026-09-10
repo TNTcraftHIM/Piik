@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(screener_encoder_pool_probe LANGUAGES CXX)
+project(piik_encoder_pool_probe LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreaded)
 set(WEBRTC_SDK "" CACHE PATH "Extracted matching Shiguredo WebRTC SDK")

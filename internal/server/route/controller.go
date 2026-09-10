@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/TNTcraftHIM/Screener/internal/server/ordered"
-	"github.com/TNTcraftHIM/Screener/internal/server/protocol"
+	"github.com/TNTcraftHIM/Piik/internal/server/ordered"
+	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 )
 
 // File-local constants of room-route-controller.ts (lines 112-114).
