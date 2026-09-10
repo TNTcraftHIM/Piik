@@ -13,11 +13,13 @@ material, not runtime UI.
 
 Before this phase, the complete local Git refs were exported to:
 
-`C:\Users\TNTcraft\Documents\Screener-builds\piik-rename-backup-a8c4df6f98db\repository.bundle`
+External local backup: `piik-rename-backup-a8c4df6f98db/repository.bundle`.
 
 The same directory contains `refs.txt`, `worktrees.txt`, `status.txt` and
-`head.txt`. The bundle is the recovery source for this phase; no history rewrite
-is allowed without creating and validating a second bundle first.
+`head.txt`. A second recovery bundle was created after the first rename commit
+as `piik-rename-backup-2e7da3a37d50/repository.bundle`. The bundle is the
+recovery source for this phase; no history rewrite is allowed without creating
+and validating another bundle first.
 
 ## Rename classes
 
