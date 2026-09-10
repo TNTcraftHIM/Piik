@@ -1,6 +1,6 @@
 # Piik rename
 
-Status: implementation and isolated history rehearsal; release cutover pending.
+Status: accepted rename and coordinated cutover plan.
 Last reviewed: 2026-09-10.
 
 ## Accepted identity
@@ -22,11 +22,12 @@ reflogs and all ten stash entries, which a bundle of ordinary refs alone does
 not capture. Earlier recovery bundles also remain outside the repository.
 Backups keep their original names and contents so they remain identifiable.
 
-The main directory is `Piik`; linked worktrees are `Piik-appearance`,
-`Piik-rename` and `Piik-external-audit`. Their private Git registration names,
-backlinks and shared remote are updated. The hook path is relative `.githooks`.
-The audit worktree's branch and source revision remain untouched. Main remains
-on the deployed experience revision until integration.
+The main directory is `Piik`; preparation worktrees are `Piik-appearance` and
+`Piik-rename`, with `Piik-external-audit` retained separately. Their private Git
+registration names, backlinks and shared remote are updated. The hook path is
+relative `.githooks`. Retire integrated preparation worktrees after cutover.
+The audit worktree's branch and source revision remain untouched. Integration
+keeps one complete phase commit on main.
 
 On Windows, a terminal can hold the repository directory open. Move the entries
 into an empty verified destination and run `git worktree repair` from the new
@@ -49,11 +50,20 @@ stopped, verify integrity and retained columns, and preserve the original for
 rollback. Do not recreate rooms or repeat the earlier schema-1 cutover.
 
 The implementation renames Browser storage prefixes, the site-access cookie
-and the Client configuration/cache directory. Those are real persistent
-contracts. Without a one-time transfer, old Host credentials and saved settings
-remain in the old namespace and become unreadable by the new product. The
-owner is choosing data preservation versus an explicit reset. No production
-cutover or local configuration move may silently decide that choice.
+and the Client configuration/cache directory. The owner accepts a clean break:
+copy directly compatible, accessible settings once during cutover; discard
+unavailable or incompatible settings. The product reads only Piik names, with
+no migration code, alternate reader or old-name alias.
+
+The local Client configuration is unchanged JSON version 1 and can be copied
+byte-for-byte into the Piik directory without replacing an existing new config.
+Browser credentials and settings are origin/session-owned. Transfer them only
+through an available original Browser session; do not modify a live Browser's
+storage database or introduce a product bridge to recover them. Otherwise the
+new namespace starts empty, requiring login, room creation and preference setup.
+Old room authority remains in SQLite, but an unavailable Host credential cannot
+be reconstructed from its stored digest. Site-access cookies and remembered
+Client activation are renewed normally under the new contract.
 
 ## Git history
 
@@ -118,8 +128,8 @@ records describe earlier operations and are not rewritten as new releases.
 
 Acceptance covers the tracked-name inventory, Web type/build checks, relevant
 contract/storage tests, native compilation, Client/Server packaging and a
-controlled local launch. Production release additionally requires credential
-preservation/reset acceptance, configuration/database recovery and postflight.
+controlled local launch. Production release additionally requires the accepted
+best-effort settings transfer, configuration/database recovery and postflight.
 
 Primary references, checked 2026-09-10:
 

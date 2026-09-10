@@ -23,10 +23,11 @@ and Git/PRs own completed history.
 
 ## Deployment
 
-The experience revision is integrated and deployed; Piik renaming is current
-branch work and has not been deployed. GitHub repository and local worktree
-paths now use Piik. The strict wire label and stored-key rename require the
-separate [brand cutover](./research/piik-rename-plan.md).
+Source, package identity, GitHub repository and local worktree paths use Piik.
+The strict wire labels and stored keys move together at the coordinated
+[brand cutover](./research/piik-rename-plan.md). Directly compatible, accessible
+settings are transferred once; unavailable settings start fresh. Runtime code
+keeps only the Piik contract.
 The immutable release descriptor, runtime `REVISION` and operator deployment
 record own exact identity and postflight results. The
 [schema cutover](./deployment.md#permanent-room-schema-cutover) preserved existing

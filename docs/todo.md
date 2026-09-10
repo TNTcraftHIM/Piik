@@ -7,17 +7,11 @@ and Git/PRs own completed history. A parked idea is not implementation authority
 
 ## Now
 
-Complete the owner-authorized [Piik rename](./research/piik-rename-plan.md).
-Display `Piik`, technical `piik` and the repository name are accepted. The
-product keeps its TV mascot; the wordmark/morph study belongs to the future
-public website. Finish package/metadata checks and the isolated Git-message
-rewrite rehearsal before a coordinated Web/Client/Server cutover. Preserve the
-original repository backup and external-audit worktree.
-
-The Browser storage namespace and Client configuration directory change with
-the name. Preservation versus an explicit reset is awaiting the owner's answer;
-only their final cutover is dependent on that choice. Do not silently strand
-existing Host authority or reset the SQLite database.
+No further product implementation is queued for the accepted Piik rename.
+Its coordinated Web/Client/Server and Git-history cutover follows the
+[rename plan](./research/piik-rename-plan.md); the immutable release descriptor
+and deployment record own rollout identity. Preserve the original repository
+backup and external-audit worktree. Website work starts on owner direction.
 
 ## Next — Awaiting Owner Direction
 
