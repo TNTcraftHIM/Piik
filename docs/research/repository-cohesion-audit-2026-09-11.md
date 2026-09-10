@@ -53,8 +53,8 @@ a dependency without a separate accepted decision.
 | Go signaling and route effects | Complete | Test-only route seeding moved to the test harness. Route diagnostics now use an injected sink, so the route package no longer reads the environment or global logger. |
 | Native App control/capture/mediaedge | Complete | `nativecontrol` composes, `nativehost` owns sessions, and `mediaedge` owns media resources without reverse ownership. No lifecycle failure was established. |
 | Protocol, HTTP, configuration and release contracts | Complete | Shared fixtures and strict command contracts remain aligned. A stale v22 evidence snapshot was corrected to the current v23 contract. |
-| Tests, gates, packaging, workflows | Complete | The main workflow built the Browser bundle twice; the duplicate build was removed. Dead-feature tests were deleted with their state. No unused product exports remain. |
-| Documentation and public copy ownership | Complete | Product/design/reference ownership is one-directional; `engineering.md` now also carries runtime lifecycles and a source index, and long-document warnings remain accepted gardening notices. |
+| Tests, gates, packaging, workflows | Complete | The main workflow built the Browser bundle twice; the duplicate build was removed. Dead-feature tests were deleted with their state, and a packaging-target check that no runner collected now runs under vitest. No unused product exports remain. |
+| Documentation and public copy ownership | Complete | Product/design/reference ownership is one-directional; `engineering.md` now also carries runtime lifecycles and a source index, four ownerless evidence documents are cited by their owners, and long-document warnings remain accepted gardening notices. |
 
 ## Finding Classification
 
