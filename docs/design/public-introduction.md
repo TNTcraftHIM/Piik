@@ -10,7 +10,7 @@ understand what Piik does, choose an entry and complete the first useful action.
 | Surface | Reader's question | Content |
 | --- | --- | --- |
 | README, English and Chinese | What is this, and how do I start? | Mascot, one illustration, watch/share/App entry paths, guide links |
-| `site/`, for GitHub Pages | What does using it feel like? | Front-row gaming story, approved wordmark/TV animation, illustrated steps, first-use guide and practical FAQ |
+| `site/`, for GitHub Pages | What does using it feel like? | Friendly room illustration, playful TV mascot, illustrated steps, first-use guide and practical FAQ |
 | Getting-started guides | Which button or mode do I use? | Browser invitation, sharing, App setup and three mode choices |
 | Developer and operations docs | How do I build or host it? | Existing configuration, deployment, architecture and diagnostic owners |
 
@@ -25,10 +25,19 @@ primary action, native navigation and short instructions. English is the first
 view with an explicit Chinese choice; theme follows the system unless changed.
 Respect reduced motion and retain useful content without JavaScript.
 
-The product UI remains mascot-only. The approved Piik-to-TV stroke animation
-belongs on the website, without the brand study's casing experiments or control
-panel. An original room illustration is shared by the site and READMEs. No real
-room codes, user identities, private media, external fonts or tracking are needed.
+Present Piik as an open-source project: plain explanations, room for tinkering,
+and an invitation to contribute. Keep the friendly illustration and avoid
+company-style pitches, repeated slogans or claims about a support team.
+Animation illustrates actions (choose, invite, join), plays briefly and stops.
+Hover belongs to the whole illustrated step, with tap and keyboard replay too.
+The same tone and shared room illustration carry into both READMEs.
+
+The product UI remains mascot-only. On the website, keep the header's TV
+mascot before the Piik name. The wordmark and mascot do not need to transform
+into one another; the earlier morph remains a design study. Match the product's
+playful style through the mascot's wink and short comic interactions. An
+original room illustration is shared by the site and READMEs. No real room
+codes, user identities, private media, external fonts or tracking are needed.
 
 ## Small implementation
 

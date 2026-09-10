@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Piik — Host marker studies</title>
+  <style>
+    :root { color-scheme: light dark; --wall:#f5f2e9; --surface:#fffdf5; --ink:#22303e; --muted:#586977; --line:#cbd7cd; --self:#59ac87; --blue:#709cce; --pink:#d899b5; --accent:#9c661e; --sofa:#e99b62; --sofa-dark:#c98355; }
+    @media (prefers-color-scheme: dark) { :root { --wall:#151f28; --surface:#22303e; --ink:#e3eaf0; --muted:#a8b7c2; --line:#425666; --accent:#f0b667; } }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--wall); color:var(--ink); font:16px/1.65 ui-sans-serif,system-ui,sans-serif; }
+    main { max-width:1280px; margin:auto; padding:44px 24px 60px; }
+    .intro { max-width:780px; margin-bottom:32px; }
+    .eyebrow { font-size:13px; letter-spacing:.12em; color:var(--muted); }
+    h1 { font-size:clamp(28px,4vw,46px); line-height:1.12; margin:12px 0 18px; letter-spacing:-.04em; }
+    h1 span { font-size:.57em; margin-top:10px; }
+    [lang="zh-CN"] { display:block; }
+    .intro p { margin:10px 0; color:var(--muted); }
+    .grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:20px; align-items:stretch; }
+    article { border:1.5px solid var(--line); border-radius:22px; background:var(--surface); padding:22px; }
+    article.recommended { border-color:var(--self); box-shadow:0 0 0 2px color-mix(in srgb,var(--self) 22%,transparent); }
+    article header { display:flex; align-items:flex-start; gap:12px; }
+    .index { font-size:13px; color:var(--muted); padding-top:4px; }
+    h2 { margin:0; font-size:20px; line-height:1.4; }
+    h2 span { font-size:13px; font-weight:500; color:var(--muted); margin-top:3px; }
+    .samples { display:flex; justify-content:center; align-items:center; gap:32px; min-height:147px; margin:18px 0 10px; }
+    .large { width:91px; height:105px; overflow:visible; }
+    .small-sample { display:grid; justify-items:center; gap:10px; font-size:11px; color:var(--muted); }
+    .contexts { display:grid; gap:12px; padding-top:14px; border-top:1px dashed var(--line); }
+    .contexts svg { display:block; width:100%; max-width:280px; margin:auto; }
+    .labels { font:11px ui-sans-serif,system-ui,sans-serif; fill:var(--ink); text-anchor:middle; }
+    .sofa-labels { fill:#22303e; }
+    .edge { fill:none; stroke:var(--accent); stroke-width:2; stroke-linecap:round; stroke-linejoin:round; stroke-dasharray:4 5; }
+    article p { font-size:13px; color:var(--muted); margin:14px 0 0; }
+    article p span { margin-top:7px; }
+    .legend { display:flex; flex-wrap:wrap; gap:10px 24px; margin:24px 0 0; color:var(--muted); font-size:13px; }
+    .legend i { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:7px; background:var(--self); }
+    footer { max-width:860px; margin-top:30px; font-size:14px; color:var(--muted); }
+    @media (max-width:950px) { .grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+    @media (max-width:590px) { main { padding:28px 16px 44px; } .grid { grid-template-columns:1fr; } article { padding:20px; } }
+  </style>
+</head>
+<body>
+  <svg width="0" height="0" aria-hidden="true" style="position:absolute">
+    <defs>
+      <!-- Pawn geometry is copied from Couch.tsx solely for this static study. -->
+      <g id="pawn">
+        <circle cx="20" cy="14" r="8.5" fill="currentColor"/>
+        <path d="M5 46c0-13 6.5-17 15-17s15 4 15 17Z" fill="currentColor"/>
+        <circle cx="17" cy="13" r="1.6" fill="var(--surface)"/>
+        <circle cx="23" cy="13" r="1.6" fill="var(--surface)"/>
+      </g>
+      <g id="crown"><path d="M14 12.5 11.5 2 17 6.5 20 0 23 6.5 28.5 2 26 12.5Z" fill="var(--accent)"/><use href="#pawn"/></g>
+      <g id="tv"><use href="#pawn"/><g fill="var(--surface)" stroke="var(--accent)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="25" y="27" width="15" height="12" rx="3"/><path d="m29 23 3.5 4 3.5-4m-8 19 1.5-3m7 3-1.5-3"/></g></g>
+      <g id="spark"><use href="#pawn"/><path d="m30 0 2.6 6.4L39 9l-6.4 2.6L30 18l-2.6-6.4L21 9l6.4-2.6Z" fill="var(--accent)"/></g>
+      <g id="flag"><use href="#pawn"/><g stroke="var(--accent)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M32 39V18"/><path d="M32 18h10l-3 4 3 4H32Z" fill="var(--accent)"/></g></g>
+      <g id="pad"><use href="#pawn"/><g fill="var(--surface)" stroke="var(--accent)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M28 29h9c3 0 5 5 5 9 0 3-2 3-4 1l-2-2h-7l-2 2c-2 2-4 2-4-1 0-4 2-9 5-9Z"/><path d="M28 32v4m-2-2h4"/><circle cx="36" cy="33" r=".7"/><circle cx="38" cy="35" r=".7"/></g></g>
+      <g id="sofa">
+        <path d="M32 91v12m176-12v12" stroke="var(--ink)" stroke-width="6" stroke-linecap="round"/>
+        <rect x="16" y="41" width="208" height="52" rx="20" fill="var(--sofa-dark)"/>
+        <rect x="25" y="33" width="190" height="46" rx="19" fill="var(--sofa)"/>
+        <rect x="22" y="67" width="196" height="29" rx="14" fill="var(--sofa)"/>
+        <path d="M90 70v22m63-22v22" stroke="var(--sofa-dark)" stroke-width="2"/>
+      </g>
+    </defs>
+  </svg>
+  <main>
+    <div class="intro">
+      <div class="eyebrow">PIIK · VISUAL STUDY / 视觉草案</div>
+      <h1>A host, without a throne.<span lang="zh-CN">用什么标记“房主”？</span></h1>
+      <p>Same pawn. Same colours. A small sign that says “the picture starts here”.<span lang="zh-CN">保留圆头、点眼和简单身体，只替换表示画面来源的小标记。</span></p>
+      <p>Selected direction: the controller. The other studies stay here for comparison.<span lang="zh-CN">已选择小手柄方向；其余草案保留作对照。</span></p>
+      <div class="legend"><span><i></i>Green = you / 绿色代表自己</span><span>Badge = host / 徽章代表房主</span><span>Colours stay independent of roles / 颜色与角色分开</span></div>
+    </div>
+    <div class="grid">
+      <article>
+        <header><span class="index">00</span><h2>Crown<span lang="zh-CN">皇冠 · 原版</span></h2></header>
+        <div class="samples">
+          <svg class="large" viewBox="-4 -8 52 60" aria-label="Crown on a green host pawn"><use href="#crown" color="var(--self)"/></svg>
+          <div class="small-sample"><svg width="40" height="48" viewBox="-4 -8 52 60" aria-hidden="true"><use href="#crown" color="var(--self)"/></svg><span>40 px</span></div>
+        </div>
+        <div class="contexts">
+          <svg viewBox="0 0 240 112" role="img" aria-label="Crown marker on a sofa">
+            <use href="#sofa"/>
+            <use href="#crown" transform="translate(37 6)" color="var(--self)"/>
+            <use href="#pawn" transform="translate(100 6)" color="var(--blue)"/>
+            <use href="#pawn" transform="translate(163 6)" color="var(--pink)"/>
+            <g class="labels sofa-labels"><text x="57" y="67">You</text><text x="120" y="67">Ari</text><text x="183" y="67">Momo</text></g>
+          </svg>
+          <svg viewBox="0 0 240 112" role="img" aria-label="Crown marker on a topology root; here the host is blue and you are green">
+            <path d="M66 49h45l42-26m-42 26 42 26" class="edge"/>
+            <use href="#crown" transform="translate(28 22)" color="var(--blue)"/>
+            <use href="#pawn" transform="translate(154 -4) scale(.8)" color="var(--self)"/>
+            <use href="#pawn" transform="translate(154 48) scale(.8)" color="var(--pink)"/>
+            <g class="labels"><text x="48" y="91">Ari · Host</text><text x="199" y="21">You</text><text x="202" y="76">Momo</text></g>
+          </svg>
+        </div>
+        <p>Easy to recognise, but suggests rank or ownership more than sharing.<span lang="zh-CN">识别成本低，但更像等级或身份，不太像“正在分享”。</span></p>
+      </article>
+      <article>
+        <header><span class="index">01</span><h2>Little TV<span lang="zh-CN">小电视徽章</span></h2></header>
+        <div class="samples">
+          <svg class="large" viewBox="-4 -8 52 60" aria-label="Little TV on a green host pawn"><use href="#tv" color="var(--self)"/></svg>
+          <div class="small-sample"><svg width="40" height="48" viewBox="-4 -8 52 60" aria-hidden="true"><use href="#tv" color="var(--self)"/></svg><span>40 px</span></div>
+        </div>
+        <div class="contexts">
+          <svg viewBox="0 0 240 112" role="img" aria-label="Little TV marker on a sofa">
+            <use href="#sofa"/>
+            <use href="#tv" transform="translate(37 6)" color="var(--self)"/>
+            <use href="#pawn" transform="translate(100 6)" color="var(--blue)"/>
+            <use href="#pawn" transform="translate(163 6)" color="var(--pink)"/>
+            <g class="labels sofa-labels"><text x="57" y="67">You</text><text x="120" y="67">Ari</text><text x="183" y="67">Momo</text></g>
+          </svg>
+          <svg viewBox="0 0 240 112" role="img" aria-label="Little TV marker on a topology root; here the host is blue and you are green">
+            <path d="M66 49h45l42-26m-42 26 42 26" class="edge"/>
+            <use href="#tv" transform="translate(28 22)" color="var(--blue)"/>
+            <use href="#pawn" transform="translate(154 -4) scale(.8)" color="var(--self)"/>
+            <use href="#pawn" transform="translate(154 48) scale(.8)" color="var(--pink)"/>
+            <g class="labels"><text x="48" y="91">Ari · Host</text><text x="199" y="21">You</text><text x="202" y="76">Momo</text></g>
+          </svg>
+        </div>
+        <p>Names the role by its purpose: this is where the picture comes from.<span lang="zh-CN">用画面来源表达分享者，与我们的电视语义相连，游戏之外也通用。</span></p>
+      </article>
+      <article>
+        <header><span class="index">02</span><h2>Little spark<span lang="zh-CN">小星光</span></h2></header>
+        <div class="samples">
+          <svg class="large" viewBox="-4 -8 52 60" aria-label="Little spark on a green host pawn"><use href="#spark" color="var(--self)"/></svg>
+          <div class="small-sample"><svg width="40" height="48" viewBox="-4 -8 52 60" aria-hidden="true"><use href="#spark" color="var(--self)"/></svg><span>40 px</span></div>
+        </div>
+        <div class="contexts">
+          <svg viewBox="0 0 240 112" role="img" aria-label="Little spark marker on a sofa">
+            <use href="#sofa"/>
+            <use href="#spark" transform="translate(37 6)" color="var(--self)"/>
+            <use href="#pawn" transform="translate(100 6)" color="var(--blue)"/>
+            <use href="#pawn" transform="translate(163 6)" color="var(--pink)"/>
+            <g class="labels sofa-labels"><text x="57" y="67">You</text><text x="120" y="67">Ari</text><text x="183" y="67">Momo</text></g>
+          </svg>
+          <svg viewBox="0 0 240 112" role="img" aria-label="Little spark marker on a topology root; here the host is blue and you are green">
+            <path d="M66 49h45l42-26m-42 26 42 26" class="edge"/>
+            <use href="#spark" transform="translate(28 22)" color="var(--blue)"/>
+            <use href="#pawn" transform="translate(154 -4) scale(.8)" color="var(--self)"/>
+            <use href="#pawn" transform="translate(154 48) scale(.8)" color="var(--pink)"/>
+            <g class="labels"><text x="48" y="91">Ari · Host</text><text x="199" y="21">You</text><text x="202" y="76">Momo</text></g>
+          </svg>
+        </div>
+        <p>Light and playful; could also mean favourite or selected.<span lang="zh-CN">轻巧俏皮，但容易被理解为收藏、选中，分享者语义偏弱。</span></p>
+      </article>
+      <article>
+        <header><span class="index">03</span><h2>Source flag<span lang="zh-CN">起点小旗</span></h2></header>
+        <div class="samples">
+          <svg class="large" viewBox="-4 -8 52 60" aria-label="Source flag on a green host pawn"><use href="#flag" color="var(--self)"/></svg>
+          <div class="small-sample"><svg width="40" height="48" viewBox="-4 -8 52 60" aria-hidden="true"><use href="#flag" color="var(--self)"/></svg><span>40 px</span></div>
+        </div>
+        <div class="contexts">
+          <svg viewBox="0 0 240 112" role="img" aria-label="Source flag marker on a sofa">
+            <use href="#sofa"/>
+            <use href="#flag" transform="translate(37 6)" color="var(--self)"/>
+            <use href="#pawn" transform="translate(100 6)" color="var(--blue)"/>
+            <use href="#pawn" transform="translate(163 6)" color="var(--pink)"/>
+            <g class="labels sofa-labels"><text x="57" y="67">You</text><text x="120" y="67">Ari</text><text x="183" y="67">Momo</text></g>
+          </svg>
+          <svg viewBox="0 0 240 112" role="img" aria-label="Source flag marker on a topology root; here the host is blue and you are green">
+            <path d="M66 49h45l42-26m-42 26 42 26" class="edge"/>
+            <use href="#flag" transform="translate(28 22)" color="var(--blue)"/>
+            <use href="#pawn" transform="translate(154 -4) scale(.8)" color="var(--self)"/>
+            <use href="#pawn" transform="translate(154 48) scale(.8)" color="var(--pink)"/>
+            <g class="labels"><text x="48" y="91">Ari · Host</text><text x="199" y="21">You</text><text x="202" y="76">Momo</text></g>
+          </svg>
+        </div>
+        <p>Reads well as the root of a tree; less obvious on the sofa.<span lang="zh-CN">拓扑里像出发点，沙发上则要多想一步。</span></p>
+      </article>
+      <article class="recommended">
+        <header><span class="index">04</span><h2>Controller<span lang="zh-CN">小手柄 · 已选择</span></h2></header>
+        <div class="samples">
+          <svg class="large" viewBox="-4 -8 52 60" aria-label="Controller on a green host pawn"><use href="#pad" color="var(--self)"/></svg>
+          <div class="small-sample"><svg width="40" height="48" viewBox="-4 -8 52 60" aria-hidden="true"><use href="#pad" color="var(--self)"/></svg><span>40 px</span></div>
+        </div>
+        <div class="contexts">
+          <svg viewBox="0 0 240 112" role="img" aria-label="Controller marker on a sofa">
+            <use href="#sofa"/>
+            <use href="#pad" transform="translate(37 6)" color="var(--self)"/>
+            <use href="#pawn" transform="translate(100 6)" color="var(--blue)"/>
+            <use href="#pawn" transform="translate(163 6)" color="var(--pink)"/>
+            <g class="labels sofa-labels"><text x="57" y="67">You</text><text x="120" y="67">Ari</text><text x="183" y="67">Momo</text></g>
+          </svg>
+          <svg viewBox="0 0 240 112" role="img" aria-label="Controller marker on a topology root; here the host is blue and you are green">
+            <path d="M66 49h45l42-26m-42 26 42 26" class="edge"/>
+            <use href="#pad" transform="translate(28 22)" color="var(--blue)"/>
+            <use href="#pawn" transform="translate(154 -4) scale(.8)" color="var(--self)"/>
+            <use href="#pawn" transform="translate(154 48) scale(.8)" color="var(--pink)"/>
+            <g class="labels"><text x="48" y="91">Ari · Host</text><text x="199" y="21">You</text><text x="202" y="76">Momo</text></g>
+          </svg>
+        </div>
+        <p>A small, playful host badge. It marks the person sharing, whatever is on screen.<span lang="zh-CN">轻巧俏皮的小房主徽章，表示正在分享的人，不限制分享的内容。</span></p>
+      </article>
+    </div>
+    <footer>The controller identifies the host; the television still represents the shared picture. Pawn colours keep their existing meaning.
+      <span lang="zh-CN">手柄表示房主，电视仍然表示分享的画面；人物颜色维持原有含义。</span>
+    </footer>
+  </main>
+</body>
+</html>

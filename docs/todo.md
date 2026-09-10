@@ -7,12 +7,37 @@ and Git/PRs own completed history. A parked idea is not implementation authority
 
 ## Now
 
-Review and refine the [public introduction draft](./design/public-introduction.md):
-English/Chinese READMEs, first-use guides and the static `site/` homepage.
-The local preview and manual Pages workflow are ready; the website, domain and
-demo have not been published. Use owner feedback to finish the public copy and
-visuals before integrating this phase. Keep App/Server behavior unchanged and
-preserve the rename recovery archive and external-audit worktree.
+Finish the in-flight README/first-use corrections and homepage review, then
+consolidate repository conventions before expanding the public website. The
+owner accepted the general visual direction; keep App/Server behavior unchanged.
+The website, domain and demo have not been published. Preserve the rename recovery
+archive and external-audit worktree.
+
+Inventory design, documentation, naming/coding rules, API contracts, frontend/
+backend responsibilities and module boundaries. For each topic identify its
+existing owner, callers and any conflicting or duplicated prescriptions. Merge
+duplicate requirements into that owner and link from the shared documentation
+entry; do not turn one giant document into a new source of coupling. Keep
+accepted rules distinct from historical research and proposed changes. Trace
+code before treating a wording mismatch as an implementation defect. Fix proven
+low-cost inconsistencies; plan material contract or module changes separately.
+The shared visual-language consolidation is the first example of this work.
+
+Define the public version/compatibility policy in that same preparation pass.
+Inventory App/Server release identity, build SHA, Web/native signaling and
+capture protocols, persisted schema and room/route generations before choosing
+their rules. Compare mature projects and primary specifications; decide whether
+the first public release is `v1.0.0` or SHA-labelled, how an installed App and a
+newer site negotiate support, and how incompatible upgrades are presented and
+recovered. A release label, compatibility version and live generation are not
+interchangeable counters. Preserve traceable build identity and establish one
+documented compatibility promise; avoid coordinated resets, automatic broad
+compatibility layers or data migrations before the policy is accepted. The
+current pre-release single-contract rule still applies in the meantime.
+
+Resume the [public introduction](./design/public-introduction.md), English/Chinese
+guides and `site/` once this conventions pass is complete. Local preview and the
+manual Pages workflow remain the baseline; publication is a separate step.
 
 ## Next — Awaiting Owner Direction
 

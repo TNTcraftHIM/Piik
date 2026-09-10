@@ -15,7 +15,12 @@ used below. **中** switches to Chinese; **✦** returns to the illustrations.
 
 1. Open the invitation link your friend sent in a desktop or mobile browser.
 2. Wait for their screen to appear. If the browser blocks autoplay, press **Play**.
-3. Use the video's controls for sound and fullscreen. These controls affect only your view.
+3. Move the pointer over the picture or tap it to show the playback bar.
+
+The bar controls playback and sound only on your device. **Theater mode** fills
+the browser tab; **Fullscreen** fills the screen. **Picture in picture** opens a
+floating video where supported. Volume goes up to 200% when audio boost is
+available, or 100% otherwise. Turn it back down if the sound distorts.
 
 With just a four-digit room code, open the same Piik site and choose
 **Join a room**. You may need the site's passphrase and the room's password.
@@ -29,7 +34,7 @@ App Local rooms and temporary public invitations end when that App run stops.
 1. Open your group's Piik site on your computer. Enter its site passphrase if asked.
 2. Choose **Start sharing**. In the browser picker, select the screen, window or
    tab you want friends to see, and enable audio if offered.
-3. Check the preview, then copy the room's invitation link and send it to your friends.
+3. Check the preview, then choose **Copy invite link** and send it to your friends.
 4. Keep the sharing tab open. Use **Pause sharing**, **Switch source**, or
    **Stop sharing** when you need them.
 
@@ -40,7 +45,7 @@ Invitation links grant access to that room; share them with the people you want 
 ## Share with Piik App
 
 1. Extract the whole package for your platform. Keep the `runtime` folder beside
-   the executable; it contains the App's capture and public-link helpers.
+   the executable.
 2. Open `piik-app.exe` on Windows, `Piik App.app` on macOS, or `./piik-app` on Linux.
    The launcher opens in your system browser.
 3. Choose a mode below, then select **Open Piik**.
@@ -48,10 +53,10 @@ Invitation links grant access to that room; share them with the people you want 
    **Screens** as available. Pick the actual source and sound option.
 5. Copy and send the room invitation. Keep both the App and sharing tab open.
 
-Packaged use needs no Node.js, npm or Go. Linux native capture also needs
+Windows App and browser sharing are the current focus. macOS/Linux native
+capture still needs physical validation; Linux also needs
 [system capture components](../../native/capture/linux/README.md).
-Windows App and Browser are the current acceptance focus; macOS/Linux native
-capture still needs physical validation. See [platform status](../status.md).
+See the [App guide](../../cmd/piik-app/README.md) for package and runtime details.
 
 ### Choose an App mode
 
@@ -63,20 +68,16 @@ capture still needs physical validation. See [platform status](../status.md).
 
 Public invite uses Cloudflare Quick Tunnel for the room's web connection.
 The media itself uses peer connections, with no server media fallback in this mode,
-and the tunnel has no uptime guarantee. If this mode cannot connect on your network,
-a Piik site with media fallback enabled may help. All modes need a working UDP
-media path.
-
-For runtime options and package details, see the [App guide](../../cmd/piik-app/README.md).
+and the tunnel has no uptime guarantee. All modes need a working UDP media path.
 
 ## When something gets in the way
 
 | What you see | Try this |
 | --- | --- |
-| Picture but no sound | Unmute the viewer's video. The host should check the source's audio option and use **Switch source** to select it again if needed. Some sources have no shareable audio. |
+| Picture but no sound | Unmute the video. The host should choose a source with shareable audio; if sound was disabled, stop and start sharing with it enabled. App window/screen capture keeps that setting when switching sources. |
 | No screen picker | Allow the browser or App to record the screen when the OS asks. Browser capture needs HTTPS or `localhost`; try sharing from a desktop computer. |
 | Local invitation will not open | Check that both devices are on the same network and can reach each other. Guest Wi-Fi or firewall rules can block local access. |
-| Page opens but video will not connect | Use the viewer's reconnect control. Check [WebRTC connection settings](../../cmd/piik-app/README.md#chromium-webrtc-connections) if the failure persists; page access alone does not prove media can connect. |
+| Page opens but video will not connect | Choose **Reconnect** in the playback bar. If it still fails, check [WebRTC connection settings](../../cmd/piik-app/README.md#chromium-webrtc-connections) or try a site with media fallback. |
 | Sharing stops after sleep or suspension | Wake the device and return to the sharing tab; start sharing again if needed. Browser and OS suspension can interrupt capture or playback. |
 
 For a bug report, include the version, OS/browser, what you expected, and how
