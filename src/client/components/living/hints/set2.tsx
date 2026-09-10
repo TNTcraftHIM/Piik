@@ -19,7 +19,7 @@ import {
   TV_SCREEN,
   rmBlock,
 } from "../Comic";
-import type { HintScene, Set2Kind } from "./index";
+import type { HintScene, Set2Kind } from "../../../ui/visual-kinds";
 
 /* LCD code card: pale body, dark screen, 4 abstract digit slots at +12/+27/
    +42/+57 inside the 78x46 body. */

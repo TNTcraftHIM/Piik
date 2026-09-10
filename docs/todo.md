@@ -1,46 +1,30 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-09-10
+Last reviewed: 2026-09-11
 
 Only **Now** is executable. Product modules own behavior, research owns evidence,
 and Git/PRs own completed history. A parked idea is not implementation authority.
 
 ## Now
 
-### Active Phase: Repository Cohesion Audit
+### Completed Phase: Repository Cohesion Audit
 
-Perform a repository-wide cohesion audit after the completed lifecycle static
-pass. Scope covers Piik-owned Browser frontend, Go Server/App, protocol and
-configuration surfaces, packaging/CI scripts, tests and durable documentation.
-It does not audit third-party dependency internals and does not authorize a
-rewrite. Keep canonical main unchanged.
+The static repository audit completed on branch `audit/repository-cohesion`.
+`docs/research/repository-cohesion-audit-2026-09-11.md` owns the coverage map,
+landed findings and verification. Landed: v23 evidence correction, test-only
+route seeding moved to the route harness, duplicate CI Browser build removed,
+historical commentary ablated, one shared visual-kind owner (17 cycles -> 0),
+dead media-warning chain removed and injected route diagnostics. Deterministic
+Web and Go checks pass.
 
-1. Build an ownership/import map for UI orchestration, media adapters, Go
-   room/route/signaling effects, Native control/capture, protocol, release and
-   operations. Identify reverse dependencies, duplicate owners and unreachable
-   or superseded paths.
-2. Audit semantic consistency: permission, capability, readiness, request,
-   applied state, observation and failure must not be conflated. Compare names
-   and behavior across UI copy, TypeScript, Go, protocol, configuration and
-   product documents.
-3. Review module boundaries and good coding practice. File size alone is not a
-   finding; look for mixed responsibilities, parallel truth, hidden global
-   state, needless wrappers, dead exports, magic behavior and unstable contracts.
-4. Review tests, checks, packaging and workflows for duplicated ceremony,
-   implementation-coupled tests, stale gates and scripts that no longer own
-   their stated result. Preserve checks that protect real contracts.
-5. Use current primary sources from mature projects where a practice is
-   non-obvious. Cite them in the audit report; do not import code or frameworks.
-6. Classify every result as confirmed defect, high-confidence improvement,
-   tradeoff requiring owner decision, or unproven lead. Fix only small,
-   high-confidence defects at the owning boundary with one focused check.
-   Record larger changes as recommendations with cost/risk.
+One owner decision remains from this pass: media/peer layers persist localized
+strings in snapshots, so a live language switch can leave stale copy until the
+next media event. The root fix is a typed `{ key, detail? }` fact resolved by
+the presentation layer across host/viewer peers, SFU routes and both pages; no
+caller-level patch was applied. Keep this entry until accepted or dropped.
 
-The report is `docs/research/repository-cohesion-audit-2026-09-11.md`.
-Complete when its coverage matrix accounts for every scoped owner, all
-confirmed phase-core P0/P1 defects are repaired, checks pass and remaining
-limits are explicit. This audit does not replace physical mixed-version or
-target-package acceptance from the lifecycle plan.
+This audit does not replace physical mixed-version or target-package acceptance
+from the lifecycle plan below.
 
 Accept the current fixes and release-preparation changes together: Host
 access/capability recovery, observable Native incompatibility, extensible

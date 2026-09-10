@@ -24,9 +24,7 @@ const (
 )
 
 var (
-	// TS: /^\d+$/ over the expiry segment.
-	accessExpiresPattern = regexp.MustCompile(`^[0-9]+$`)
-	// TS: /^[A-Za-z0-9_-]{43}$/ — base64url of a 32-byte HMAC, unpadded.
+	accessExpiresPattern   = regexp.MustCompile(`^[0-9]+$`)
 	accessSignaturePattern = regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`)
 )
 
@@ -75,7 +73,6 @@ func newSiteAccess(options siteAccessOptions) (*siteAccessGate, error) {
 	if ttlSeconds == 0 {
 		ttlSeconds = defaultSessionTTLSeconds
 	}
-	// TS: !Number.isSafeInteger(ttlSeconds) || ttlSeconds <= 0.
 	if ttlSeconds < 0 || int64(ttlSeconds) > protocol.MaxSafeInteger {
 		return nil, errors.New("Access session TTL must be a positive integer")
 	}
@@ -111,7 +108,6 @@ func (a *siteAccessGate) isAuthenticated(cookieHeader string) bool {
 	if value == "" {
 		return false
 	}
-	// TS: const [version, expiresText, signature, ...extra] = value.split(".")
 	// Fewer than three segments fail the two regexes below (an absent segment
 	// is tested as ""), more than three fill `extra`.
 	segments := strings.Split(value, ".")
@@ -121,7 +117,6 @@ func (a *siteAccessGate) isAuthenticated(cookieHeader string) bool {
 		!accessSignaturePattern.MatchString(segments[2]) {
 		return false
 	}
-	// TS: Number(expiresText) then Number.isSafeInteger. The segment is all
 	// digits, so only an out-of-range value can fail here.
 	expiresAt, err := strconv.ParseInt(segments[1], 10, 64)
 	if err != nil || expiresAt > protocol.MaxSafeInteger {

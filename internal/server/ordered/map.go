@@ -1,7 +1,6 @@
-// Package ordered provides an insertion-ordered map with the iteration
-// semantics of a JavaScript Map. The TypeScript server relied on those
-// semantics wherever it iterated a Map or Set: wire-visible participant order,
-// candidate ordering, round-robin state, and delete-during-iteration loops.
+// Package ordered provides an insertion-ordered map with live iteration.
+// Wire-visible participant order, candidate ordering, round-robin state and
+// deletion during iteration depend on those semantics.
 package ordered
 
 import "iter"
@@ -13,9 +12,9 @@ type entry[K comparable, V any] struct {
 }
 
 // Map keeps keys in first-insertion order. Set on an existing key keeps its
-// position; MoveToBack reproduces the JavaScript delete-then-set idiom.
-// Iteration is live: an entry deleted before it is visited is skipped and an
-// entry appended during iteration is visited, exactly like a JavaScript Map.
+// position; MoveToBack removes and reinserts it at the end. Iteration is live:
+// an entry deleted before it is visited is skipped and an entry appended
+// during iteration is visited.
 // The zero value is ready to use.
 type Map[K comparable, V any] struct {
 	entries   []entry[K, V]

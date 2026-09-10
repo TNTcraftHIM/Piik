@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-09-09
+Last updated: 2026-09-11
 
 This file owns physical evidence limits that change how the product may be
 described. [Status](./status.md) owns the execution/deployment index.
@@ -11,8 +11,7 @@ implementation and obsolete package history.
 
 Windows App and Browser are the owner's primary acceptance targets. Current
 Go packages embed their Web assets and do not run a Node backend. The current
-contract is Browser/server v22, Native control v9 and capture v7; pre-port
-App/Node package checks do not prove this package.
+contract is Browser/server v23, Native control v9 and capture v7.
 
 Bounded current checks cover:
 

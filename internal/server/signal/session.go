@@ -195,7 +195,6 @@ func (s *Server) handleIncoming(sess *session, kind websocket.MessageType, data 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if kind == websocket.MessageBinary {
-		// TS: if (isBinary) rejectInvalidMessage(socket)
 		s.rejectInvalidMessage(sess)
 	} else {
 		s.handleMessage(sess, data)

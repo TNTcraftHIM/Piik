@@ -1,21 +1,7 @@
 import {
   BrowserWindow, FAINT, Frame, INK_STAGE, LIVE, MiniTv, Pawn, SKY, TV_BODY, TV_EDGE, YOU, rmBlock,
 } from "../Comic";
-import type { HintScene } from "./index";
-
-export type PlaybackHintKind =
-  | "hint-local-play"
-  | "hint-local-pause"
-  | "hint-volume"
-  | "hint-volume-basic"
-  | "hint-mute"
-  | "hint-unmute"
-  | "hint-no-audio"
-  | "hint-fullscreen"
-  | "hint-fullscreen-exit"
-  | "hint-pip"
-  | "hint-pip-exit"
-  | "hint-pip-unavailable";
+import type { HintScene, PlaybackHintKind } from "../../../ui/visual-kinds";
 
 // One action, a small response, then rest. Reduced motion keeps the result.
 function PlaybackMotion() {

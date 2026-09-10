@@ -1,14 +1,13 @@
-// Package protocol is the Go owner of the Piik wire contract. It mirrors
-// src/shared/protocol.ts (zod schemas) plus the four shared scalar helpers
-// (media-copy-accounting.ts, nat-candidate.ts, packet-loss.ts,
-// video-codec-evidence.ts). The package performs no I/O and imports nothing
-// from other internal packages.
+// Package protocol is the Go owner of the Piik wire contract. Its shared
+// fixtures and scalar helpers are kept semantics-compatible with the Browser
+// implementation. The package performs no I/O and imports nothing from other
+// internal packages.
 package protocol
 
 // MaxSafeInteger is JavaScript's Number.MAX_SAFE_INTEGER.
 const MaxSafeInteger = 9007199254740991
 
-// Limits and identifiers mirrored from src/shared/protocol.ts.
+// Limits and identifiers in the Piik wire contract.
 const (
 	MaxViewersPerRoomLimit      = 20
 	MaxParticipantsPerRoomLimit = MaxViewersPerRoomLimit + 1

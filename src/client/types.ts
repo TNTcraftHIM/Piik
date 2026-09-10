@@ -5,8 +5,6 @@ export type SignalConnectionState =
 
 export type MediaPath = "direct" | "unknown";
 export type NativeEdgeQualityState = "unknown" | "healthy" | "degraded";
-export type QualityWarningKind =
-  "bandwidth" | "cpu" | "other" | "configuration";
 
 export interface ConnectionMetrics {
   sampleTimestampMs: number | null;
@@ -92,8 +90,6 @@ export interface PeerSnapshot {
     import("./media/quality").VideoSenderParameterReadback | null;
   audioSenderParameters?:
     import("./media/quality").AudioSenderParameterReadback | null;
-  qualityWarning?: string | null;
-  qualityWarningKind?: QualityWarningKind | null;
 }
 
 export const EMPTY_METRICS: ConnectionMetrics = {

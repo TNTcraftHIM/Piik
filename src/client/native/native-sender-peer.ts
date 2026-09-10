@@ -55,8 +55,6 @@ export class NativeSenderPeer implements HostMediaPeer {
       error: null,
       senderParameters: null,
       audioSenderParameters: null,
-      qualityWarning: null,
-      qualityWarningKind: null,
     };
     this.edge = new NativeSenderEdge(
       peerId,

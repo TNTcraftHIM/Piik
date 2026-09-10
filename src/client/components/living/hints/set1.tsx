@@ -24,7 +24,7 @@ import {
   YOU,
   rmBlock,
 } from "../Comic";
-import type { HintScene, Set1Kind } from "./index";
+import type { HintScene, Set1Kind } from "../../../ui/visual-kinds";
 
 function SourceWindow({ x, y, alternate = false }: { x: number; y: number; alternate?: boolean }) {
   return <>

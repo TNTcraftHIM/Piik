@@ -1,9 +1,6 @@
 import { FAINT, Frame, LIVE, MiniTv, Pawn, SKY, STAR_GOLD, rmBlock } from "../Comic";
 import type { ComicTheme } from "../Comic";
-import type { HintScene } from "./index";
-
-export type ControlHintKind = "hint-collapse" | "hint-password-show" | "hint-password-hide"
-  | "hint-share-audio" | "hint-stop-audio" | "hint-share-audio-fixed" | "hint-silent-share-fixed";
+import type { ControlHintKind, HintScene } from "../../../ui/visual-kinds";
 
 // One folding idiom for every disclosure: keep the header, put its contents away.
 const CollapseHint: HintScene = ({ theme }) => (

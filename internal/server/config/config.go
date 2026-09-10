@@ -1,7 +1,6 @@
-// Package config ports src/server/config.ts, src/server/local-config.ts and
-// src/server/ice.ts: the Hosted environment contract, the Client's local
-// composition, and the ICE configuration derived from either. The caller
-// supplies the environment as a map; loading opens no runtime resources.
+// Package config owns the Hosted environment contract and its ICE discovery
+// configuration. The caller supplies the environment as a map; loading opens
+// no runtime resources.
 package config
 
 import (
@@ -18,8 +17,8 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 )
 
-// Environment ports RuntimeEnvironment. DECISIONS D8 renames NODE_ENV to
-// PIIK_ENV and drops "test".
+// Environment selects development-only behavior. A stale unit file must fail
+// closed rather than fall back to development.
 type Environment string
 
 // The two accepted PIIK_ENV values.
@@ -28,7 +27,7 @@ const (
 	EnvironmentProduction  Environment = "production"
 )
 
-// Bounds and defaults from src/server/config.ts.
+// Bounds and defaults for Hosted configuration.
 const (
 	minSiteAccessPasswordBytes = 8
 	maxSiteAccessPasswordBytes = 128
@@ -42,9 +41,8 @@ var visibleASCIIPattern = regexp.MustCompile(`^[\x21-\x7e]+$`)
 
 const removedTurnReason = "ordinary ICE accepts STUN_URLS only"
 
-// removedEnvironmentVariables ports REMOVED_ENVIRONMENT_VARIABLES together with
-// the two names the TypeScript checked separately, and NODE_ENV (DECISIONS D8:
-// a stale unit file must not fail open). An empty reason takes the TURN default.
+// removedEnvironmentVariables names settings with no current equivalent. An
+// empty reason takes the TURN default.
 // The order is the report order when several removed names are present.
 var removedEnvironmentVariables = []struct{ name, reason string }{
 	{"TURN_URLS", ""},
@@ -74,17 +72,14 @@ type SFUConfig struct {
 	PublicIP   string
 }
 
-// Config ports ServerConfig. Fields the TypeScript left `undefined` are the
-// zero value here: an empty SiteAccessPassword means site access is open, an
-// empty RoomDatabasePath means memory mode, and a nil SFU means no SFU
-// fallback.
+// Config is the Hosted runtime configuration. Zero values mean open site
+// access, process-memory rooms, and no SFU fallback.
 type Config struct {
 	Env           Environment
 	Port          int
 	ListenHost    string
 	PublicBaseURL *url.URL
-	// AllowedOrigins is a membership test only; Go map order is not observable
-	// here (src/server/app.ts only ever calls `allowedOrigins.has(origin)`).
+	// AllowedOrigins is a membership test only; map order is not observable.
 	AllowedOrigins            map[string]struct{}
 	SiteAccessPassword        string
 	RoomDatabasePath          string
@@ -96,15 +91,14 @@ type Config struct {
 	// discovery URLs do not make the Client an externally reachable STUN server.
 	STUNListenAddresses  []string
 	NATPredictionEnabled bool
-	// NATPredictionSTUNURLs is nil where the TypeScript left it `undefined`,
-	// which IceConfig distinguishes from a configured empty list.
+	// NATPredictionSTUNURLs is nil when unset, which IceConfig distinguishes
+	// from a configured empty list.
 	NATPredictionSTUNURLs []string
 }
 
-// Load ports loadConfig. env is the whole process environment: cmd passes
-// os.Environ() as a map, tests pass a literal. A key present with an empty
-// value is `""` in TypeScript too, so presence is the only distinction that
-// needs the two-value lookup.
+// Load validates the whole process environment. Presence, not emptiness,
+// distinguishes an explicit value from an unset value where that distinction
+// is part of the contract.
 func Load(env map[string]string) (Config, error) {
 	for _, removed := range removedEnvironmentVariables {
 		if _, present := env[removed.name]; present {
@@ -132,8 +126,8 @@ func Load(env map[string]string) (Config, error) {
 		listenHost = "0.0.0.0"
 	}
 
-	// TS: environment.PUBLIC_BASE_URL ?? `http://localhost:${port}` — only an
-	// absent variable takes the default.
+	// Only an absent variable takes the default; an explicit empty value is
+	// invalid below.
 	rawPublicBaseURL, present := env["PUBLIC_BASE_URL"]
 	if !present {
 		rawPublicBaseURL = fmt.Sprintf("http://localhost:%d", port)
@@ -231,7 +225,6 @@ func Load(env map[string]string) (Config, error) {
 
 // parseEnvironment ports parseEnvironment for PIIK_ENV.
 func parseEnvironment(env map[string]string) (Environment, error) {
-	// TS: value ?? "development" — a present empty value is not nullish and so
 	// reaches the check below.
 	value, present := env["PIIK_ENV"]
 	if !present {
@@ -342,8 +335,7 @@ func parseURLList(value string, name string) ([]string, error) {
 	return list, nil
 }
 
-// parseStunURLList ports parseStunUrlList. The TypeScript `maximum` parameter
-// was only ever the default.
+// parseStunURLList validates the bounded ordinary-STUN list.
 func parseStunURLList(value string, name string) ([]string, error) {
 	values, err := parseURLList(value, name)
 	if err != nil {
@@ -380,8 +372,7 @@ func parseOrigins(value string, fallback string) (map[string]struct{}, error) {
 	return set, nil
 }
 
-// toOrigin ports toOrigin. The TypeScript let an unparsable entry escape as a
-// raw TypeError from `new URL`; it fails startup here with a message instead.
+// toOrigin validates one allowed HTTP(S) origin.
 func toOrigin(value string) (string, error) {
 	parsed, err := url.Parse(value)
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
@@ -405,8 +396,7 @@ func parseOriginURL(value, name, scheme, alternative string) (*url.URL, error) {
 	if parsed.Scheme != scheme && parsed.Scheme != alternative {
 		return nil, fmt.Errorf("%s must use %s or %s", name, scheme, alternative)
 	}
-	// TS: url.username || url.password || url.pathname !== "/" || url.search ||
-	// url.hash. WHATWG reports "/" for an empty path, which net/url leaves "".
+	// WHATWG reports "/" for an empty path, while net/url leaves it "".
 	if hasUserinfo(parsed) || (parsed.Path != "" && parsed.Path != "/") ||
 		parsed.RawQuery != "" || parsed.Fragment != "" {
 		return nil, fmt.Errorf(

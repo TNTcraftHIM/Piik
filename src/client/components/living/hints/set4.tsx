@@ -22,7 +22,7 @@ import {
 } from "../Comic";
 import { ControllerMark } from "../ControllerMark";
 import type { ComicTheme } from "../Comic";
-import type { HintScene, Set4Kind } from "./index";
+import type { HintScene, Set4Kind } from "../../../ui/visual-kinds";
 
 const INK = "var(--ink)";
 const WALL2 = "var(--wall-2)";

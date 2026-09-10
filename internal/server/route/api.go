@@ -229,20 +229,6 @@ type CommittedEdge struct {
 	Resource              *Resource
 }
 
-// committedEdgeSeed is CommittedEdge without the session fields the
-// controller derives at hydrateEdge. TS: CommittedEdgeSeed, which like
-// hydrateEdge only ever had test callers.
-type committedEdgeSeed struct {
-	Kind                  UpstreamKind
-	ParentPeerID          string
-	PublicationGeneration string
-	Transport             Transport
-	ConnectionID          string
-	Usable                bool
-	PhysicalActive        bool
-	Resource              *Resource
-}
-
 // HostPublication is the single live SFU ingress. TS: HostPublication.
 type HostPublication struct {
 	Generation     string
@@ -288,7 +274,6 @@ type OperationSnapshot struct {
 // RouteSnapshot is the committed graph as the router reads it.
 // UpstreamByViewer is a fresh insertion-ordered copy (child peerId -> edge);
 // HostPublication is a shallow copy or nil; Operation is nil when idle.
-// TS: RouteSnapshot.
 type RouteSnapshot struct {
 	Revision         int64
 	Paused           bool
@@ -323,7 +308,6 @@ type SettleResult struct {
 type SenderQualityEvidenceResult = SettleResult
 
 // BeginResult is the outcome of the cursor-guarded candidate calls.
-// TS: BeginResult.
 type BeginResult struct {
 	Accepted      bool
 	Operation     *OperationSnapshot
@@ -351,7 +335,6 @@ type EdgeGuard struct {
 }
 
 // ParentEdgeGuard identifies a direct edge from the parent's side.
-// TS: the inline input of invalidateDirectEdgeFromParent.
 type ParentEdgeGuard struct {
 	ParentPeerID    string
 	ParentSessionID string
@@ -410,7 +393,6 @@ type BeginInput struct {
 }
 
 // CandidateProof carries the Viewer's one-shot relative quality approval.
-// TS: the proof parameter of candidateReady ({ relativeQualityApproved? }).
 type CandidateProof struct {
 	RelativeQualityApproved bool
 }
@@ -425,7 +407,6 @@ type QualityUpstream struct {
 // RouteQualityEvidenceInput is one receiver-side quality window. Only
 // FramesDecodedDelta, FreezeCountDelta, FreezeDurationMsDelta,
 // PauseCountDelta and PauseDurationMsDelta of Metrics are read.
-// TS: RouteQualityEvidenceInput.
 type RouteQualityEvidenceInput struct {
 	ChildPeerID       string
 	ChildSessionID    string
@@ -440,7 +421,6 @@ type RouteQualityEvidenceInput struct {
 
 // SenderQualityEvidenceInput is one sender-side health sample from a parent
 // about one child. SenderIdentity and SampleTimestampMs are nullable.
-// TS: SenderQualityEvidenceInput.
 type SenderQualityEvidenceInput struct {
 	ParentPeerID      string
 	ParentSessionID   string
@@ -454,7 +434,6 @@ type SenderQualityEvidenceInput struct {
 }
 
 // SfuPublisherQualityEvidenceInput is one Host->SFU ingress health sample.
-// TS: SfuPublisherQualityEvidenceInput.
 type SfuPublisherQualityEvidenceInput struct {
 	HostPeerID            string
 	HostSessionID         string
@@ -468,8 +447,11 @@ type SfuPublisherQualityEvidenceInput struct {
 // Options configures a Controller. DebugRoomID empty disables the sanitised
 // route debug events. TS: ControllerOptions.
 type Options struct {
-	HostPeerID                string
-	DebugRoomID               string
+	HostPeerID  string
+	DebugRoomID string
+	// DebugLog receives sanitized route events. nil disables them; the effect
+	// layer owns environment, logger and retention policy.
+	DebugLog                  func(string, ...any)
 	EndpointMediaCopyCapacity int
 	OperationTimeoutMs        int64
 	SfuEnabled                bool
@@ -487,6 +469,7 @@ type Controller struct {
 	// options are copied once and never change.
 	hostPeerID                string
 	debugRoomID               string
+	debugLog                  func(string, ...any)
 	endpointMediaCopyCapacity int
 	operationTimeoutMs        int64
 	sfuEnabled                bool

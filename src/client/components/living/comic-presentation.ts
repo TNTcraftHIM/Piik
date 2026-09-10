@@ -1,6 +1,5 @@
 import type { CSSProperties } from "react";
-import type { ComicKind } from "./Comic";
-import type { HintKind } from "./hints";
+import type { ComicKind, HintKind } from "../../ui/visual-kinds";
 
 // Visual grammar only. Current status/operation owners may supply a more
 // specific tone; a reused illustration must never override their evidence.

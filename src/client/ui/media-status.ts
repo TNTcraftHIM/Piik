@@ -1,7 +1,6 @@
 // One visual vocabulary; facts stay with the media/session owners. This module
 // only projects current facts. It has no state, timers, scores or recovery work.
-import type { ComicKind } from "../components/living/Comic";
-import type { HintKind } from "../components/living/hints";
+import type { ComicKind, HintKind } from "./visual-kinds";
 import type { ViewerPresentation, ViewerStage } from "../media/viewer-presentation";
 import type { SignalConnectionState } from "../types";
 import type { MediaRouteUpstream } from "../../shared/protocol";

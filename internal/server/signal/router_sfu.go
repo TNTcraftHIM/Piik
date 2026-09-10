@@ -185,7 +185,6 @@ func (r *router) scheduleSfuDrain(kind drainKind, fence sfu.SubscriptionFence) {
 		r.sfuDrainTasks.Set(key, task)
 	}
 	if task.operation == nil {
-		// TS: void this.runSfuDrain(key, task).catch(() => undefined)
 		r.runSfuDrain(key, task)
 	}
 }

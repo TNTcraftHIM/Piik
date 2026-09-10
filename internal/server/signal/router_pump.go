@@ -279,7 +279,6 @@ func (r *router) selectCandidate(
 		return pumpCandidate{}, true
 	}
 	if operation.Cursor < 0 || operation.Cursor >= len(operation.Candidates) {
-		// TS: `if (!plan)` -- note: no clearDeadline here.
 		r.resourceWaiters.Delete(roomID)
 		return pumpCandidate{}, true
 	}

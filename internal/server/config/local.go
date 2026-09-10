@@ -12,18 +12,13 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 )
 
-// localPasswordPattern is VISIBLE_ASCII_PATTERN from local-config.ts. Because
-// it admits one byte per character the TypeScript's extra Buffer.byteLength
-// bounds are already implied by {8,128}.
+// localPasswordPattern admits 8..128 one-byte visible ASCII characters.
 var localPasswordPattern = regexp.MustCompile(`^[\x21-\x7e]{8,128}$`)
 
-// LocalOptions ports LocalServerConfigOptions. loadLocalServerConfig, the
-// environment form, went away with the Node child process, so Local never
-// reads the process environment.
+// LocalOptions describes App-selected Local composition. It never reads the
+// process environment.
 type LocalOptions struct {
-	// Port of 0 selects the default 8787, as TypeScript's absent `port` did.
-	// An explicit 0 is indistinguishable from absent here, where TypeScript
-	// rejected it; 0 is not a usable port either way.
+	// Port 0 selects the default 8787.
 	Port                  int
 	PublicAddress         string
 	PublicOrigin          string
@@ -65,8 +60,7 @@ func Local(options LocalOptions) (Config, error) {
 		}
 	}
 
-	// TS spreads `?? []`, so both lists are always arrays; keeping them non-nil
-	// is what tells IceConfig that NAT prediction URLs were configured.
+	// Copy both lists so nil/unset and configured-empty remain distinct.
 	stunURLs := append([]string{}, options.STUNURLs...)
 	natPredictionSTUNURLs := append([]string{}, options.NATPredictionSTUNURLs...)
 	if len(stunURLs)+len(natPredictionSTUNURLs) > protocol.MaxIceServerURLs ||
@@ -78,9 +72,7 @@ func Local(options LocalOptions) (Config, error) {
 		return Config{}, errors.New("Local STUN URLs are invalid")
 	}
 
-	// TS builds these with a template string, so a non-default port is always
-	// spelled out and port 80 would produce "http://host:80", which is not the
-	// serialised origin. Kept as-is: Local never runs on 80.
+	// Local is loopback/LAN HTTP; its origin always spells out the port.
 	origin := func(host string) string { return fmt.Sprintf("http://%s:%d", host, port) }
 	publicBaseURL := &url.URL{Scheme: "http", Host: fmt.Sprintf("%s:%d", publicAddress, port), Path: "/"}
 	if options.PublicOrigin != "" {

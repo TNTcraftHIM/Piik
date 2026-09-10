@@ -1,28 +1,10 @@
 package route
 
 import (
-	"context"
-	"log/slog"
-	"os"
 	"strconv"
-	"strings"
 
 	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 )
-
-func debugEnabled() bool {
-	return routeDebugEnabled(os.Getenv("PIIK_DEBUG")) ||
-		slog.Default().Enabled(context.Background(), slog.LevelDebug)
-}
-
-func routeDebugEnabled(value string) bool {
-	for _, section := range strings.Split(value, ",") {
-		if strings.TrimSpace(section) == "route" {
-			return true
-		}
-	}
-	return false
-}
 
 // debugCandidate is the `{route, transition}` item of "operation-started".
 type debugCandidate struct {
@@ -30,11 +12,15 @@ type debugCandidate struct {
 	Transition TransitionKind
 }
 
+func (c *Controller) debugEnabled() bool {
+	return c.debugLog != nil && c.debugRoomID != ""
+}
+
 // debug emits one sanitized event with a diagnostic room ID and current facts.
 // Never pass raw peer IDs, session IDs or connection IDs; use debugPeer and
-// debugTuple. The environment or diagnostic logger enables these Info events.
+// debugTuple. The effect layer injects the sink and owns its enabling policy.
 func (c *Controller) debug(event string, details ...any) {
-	if !debugEnabled() || c.debugRoomID == "" {
+	if !c.debugEnabled() {
 		return
 	}
 	args := make([]any, 0, 8+len(details))
@@ -44,7 +30,7 @@ func (c *Controller) debug(event string, details ...any) {
 		"revision", c.revision,
 		"factVersion", c.factVersion)
 	args = append(args, details...)
-	slog.Info("piik-route", args...)
+	c.debugLog("piik-route", args...)
 }
 
 // debugPeer ports 4895: "host", "viewer-<joinOrder>" or "viewer-unknown".

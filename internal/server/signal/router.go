@@ -46,6 +46,15 @@ func routeDebugFlag(value string) bool {
 	return false
 }
 
+// routeDebugSink is the injected route-diagnostic sink; nil disables route
+// events. The signaling effect layer owns environment and logger policy.
+func routeDebugSink() func(string, ...any) {
+	if !routeDebugEnabled() {
+		return nil
+	}
+	return slog.Info
+}
+
 // sfuFallback is SfuFallbackOptions. A zero timeout means the TS default.
 type sfuFallback struct {
 	media            sfu.Runtime
@@ -299,7 +308,6 @@ func (r *router) completeAuthentication(participant authenticatedRouteParticipan
 		return
 	}
 	r.broadcastActive(participant.roomID, rm)
-	// TS: void this.sendFreshSfuConfig(participant).catch(() => undefined)
 	r.sendFreshSfuConfig(participant)
 	r.requestPump(participant.roomID)
 }
@@ -1002,6 +1010,7 @@ func (r *router) createController(roomID string, rm *roomRuntime, host authentic
 	rm.controller = route.New(route.Options{
 		HostPeerID:                host.peerID,
 		DebugRoomID:               roomID,
+		DebugLog:                  routeDebugSink(),
 		EndpointMediaCopyCapacity: r.capacity,
 		OperationTimeoutMs:        operationTimeoutMs,
 		SfuEnabled:                r.sfu != nil && !(routePolicy != nil && routePolicy.PeerOnly),

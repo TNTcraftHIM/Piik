@@ -67,8 +67,8 @@ jobs:
           cache-dependency-path: go.sum
       - name: Check Go core
         run: npm run check:client-core
-      - name: Type-check, test, and build
-        run: npm run check
+      - name: Type-check and test
+        run: npm run typecheck && npm test
         env:
           PIIK_BUILD_VERSION: ${{ steps.release.outputs.version }}
           VITE_PIIK_VERSION: ${{ steps.release.outputs.version }}

@@ -333,7 +333,6 @@ func InviteURL(publicBaseURL *url.URL, roomID, viewerGrant string) string {
 // ServeHTTP is the "upgrade" listener: the TS rejection ladder, then the
 // accept (D4).
 func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
-	// TS: new URL(request.url ?? "/", "http://localhost") throws. net/http
 	// accepts a scheme-relative target such as "//[" as a plain path, so
 	// the WHATWG authority parse is re-run on the raw target.
 	if _, err := url.Parse(request.RequestURI); err != nil {
@@ -378,7 +377,6 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		InsecureSkipVerify: true,
 		CompressionMode:    websocket.CompressionDisabled,
 		OnPongReceived: func(context.Context, []byte) {
-			// TS: socket.on("pong", () => { state.alive = true })
 			s.mu.Lock()
 			if sess != nil {
 				sess.alive = true

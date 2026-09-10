@@ -28,7 +28,7 @@ function snapshot(connectionState: RTCPeerConnectionState): PeerSnapshot {
   return {
     peerId: "ingress-peer", connectionId: "ingress-connection", connectionState,
     iceConnectionState: "connected", metrics: { ...EMPTY_METRICS }, error: null,
-    senderParameters: null, audioSenderParameters: null, qualityWarning: null, qualityWarningKind: null,
+    senderParameters: null, audioSenderParameters: null,
   };
 }
 

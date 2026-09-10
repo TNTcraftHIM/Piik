@@ -1,6 +1,6 @@
 // Command piik-server is the Hosted Piik entry point: it loads the
 // environment, serves the embedded Browser UI together with the signaling and
-// room API, and stops on SIGINT or SIGTERM. It replaces src/server/index.ts.
+// room API, and stops on SIGINT or SIGTERM.
 //
 // Two maintenance modes exit without serving: --check-config validates the
 // environment (the release wrapper runs it as the service user before cutover)
@@ -184,9 +184,9 @@ func environment() map[string]string {
 	return values
 }
 
-// loadEnvironmentFile ports the src/server/index.ts loadEnvFile() call: an
-// absent file is the ordinary case and every other read failure stops startup.
-// Like Node, a name the process already carries is never overwritten, so a
+// loadEnvironmentFile reads optional startup overrides. An absent file is the
+// ordinary case and every other read failure stops startup. A name the process
+// already carries is never overwritten, so a
 // systemd EnvironmentFile still wins over a stale file in the release
 // directory. The accepted syntax is DECISIONS D8: KEY=value lines, whole-line
 // '#' comments, an optional 'export ' prefix, and a single- or double-quoted

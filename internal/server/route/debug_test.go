@@ -1,24 +1,26 @@
 package route
 
-import (
-	"io"
-	"log/slog"
-	"testing"
-)
+import "testing"
 
-func TestDebugUsesCurrentEnvironmentAndLogger(t *testing.T) {
-	previous := slog.Default()
-	t.Cleanup(func() { slog.SetDefault(previous) })
-	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
-	for value, want := range map[string]bool{"": false, "client": false, "route": true, "client, route": true} {
-		t.Setenv("PIIK_DEBUG", value)
-		if got := debugEnabled(); got != want {
-			t.Fatalf("debugEnabled with %q = %v, want %v", value, got, want)
+func TestControllerDebugRequiresInjectedSinkAndRoom(t *testing.T) {
+	var kinds, events []string
+	sink := func(kind string, args ...any) {
+		kinds = append(kinds, kind)
+		if len(args) >= 2 {
+			if event, ok := args[1].(string); ok {
+				events = append(events, event)
+			}
 		}
 	}
-	t.Setenv("PIIK_DEBUG", "")
-	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelDebug})))
-	if !debugEnabled() {
-		t.Fatal("the active diagnostic logger did not enable route events")
+	c := &Controller{debugRoomID: "1234", debugLog: sink}
+	c.debug("operation-started", "child", "viewer-1")
+	if len(kinds) != 1 || kinds[0] != "piik-route" ||
+		len(events) != 1 || events[0] != "operation-started" {
+		t.Fatalf("injected sink received kinds=%v events=%v", kinds, events)
+	}
+	(&Controller{debugRoomID: "1234"}).debug("no-sink")
+	(&Controller{debugLog: sink}).debug("no-room")
+	if len(kinds) != 1 {
+		t.Fatalf("disabled controller emitted %v", kinds)
 	}
 }

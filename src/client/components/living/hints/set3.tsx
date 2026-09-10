@@ -17,7 +17,7 @@ import {
   TV_EDGE,
   rmBlock,
 } from "../Comic";
-import type { HintScene, Set3Kind } from "./index";
+import type { HintScene, Set3Kind } from "../../../ui/visual-kinds";
 
 /** hint-quality: soft TV (few fat scanlines, squinting pawn) → sharp TV (many
  * thin crisp lines, one light sweep, star pop). Demonstrates once, then holds. */

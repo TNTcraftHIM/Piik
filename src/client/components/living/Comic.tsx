@@ -7,31 +7,9 @@
 import { memo, type CSSProperties, type ReactNode } from "react";
 import { ControllerMark } from "./ControllerMark";
 import { comicStyle, getComicPresentation, type ComicMotion, type ComicTone } from "./comic-presentation";
+import type { ComicKind, ComicTheme } from "../../ui/visual-kinds";
 
-export type ComicKind =
-  | "waiting-for-host"
-  | "connecting-p2p"
-  | "connecting-sfu"
-  | "signal-connecting"
-  | "signal-recovering"
-  | "signal-offline"
-  | "tap-to-play"
-  | "host-paused"
-  | "recovering"
-  | "route-failed"
-  | "playback-failed"
-  | "host-offline"
-  | "no-audio"
-  | "room-not-found"
-  | "access-denied"
-  | "invalid-invite"
-  | "room-full"
-  | "bandwidth-limited"
-  | "encoder-limited"
-  | "warning";
-
-/** stage = dark TV overlay (default for overlay states); paper = join rows. */
-export type ComicTheme = "stage" | "paper";
+export type { ComicKind, ComicTheme };
 
 const DEFAULT_THEME: Record<ComicKind, ComicTheme> = {
   "waiting-for-host": "stage",

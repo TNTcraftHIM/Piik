@@ -10,12 +10,11 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 )
 
-// Ported from src/server/ice.ts.
 const natPredictionBasePort = 3478
 
-// natPredictionAuxiliaryPorts are NAT_PREDICTION_AUXILIARY_PORTS: the two
-// listeners a NAT-prediction STUN deployment binds beside the base port, whose
-// answers reveal the peer's port-allocation stride.
+// natPredictionAuxiliaryPorts are the two listeners a NAT-prediction STUN
+// deployment binds beside the base port; their answers reveal the peer's
+// port-allocation stride.
 var natPredictionAuxiliaryPorts = [...]int{natPredictionBasePort + 1, natPredictionBasePort + 2}
 
 func stunListenAddresses(host string, prediction bool) ([]string, error) {
@@ -40,7 +39,6 @@ func stunListenAddresses(host string, prediction bool) ([]string, error) {
 // listeners derived from the first ordinary STUN authority on UDP 3478.
 func NATPredictionStunURLs(stunURLs []string) []string {
 	for _, stunURL := range stunURLs {
-		// TS: stunUrl.slice(stunUrl.indexOf(":") + 1) — a URL without a colon
 		// keeps its whole text, which then fails to yield a host below.
 		authorityText := stunURL[strings.IndexByte(stunURL, ':')+1:]
 		authority, err := url.Parse("http://" + authorityText)
@@ -77,7 +75,6 @@ func NATPredictionStunURLs(stunURLs []string) []string {
 
 // IceConfig ports createIceConfig.
 func IceConfig(c Config) protocol.IceConfig {
-	// TS: options.natPredictionStunUrls ?? natPredictionStunUrls(stunUrls). A
 	// configured empty list (Local without prediction) is kept as-is; only an
 	// absent one is derived, so nil and empty differ here.
 	prediction := c.NATPredictionSTUNURLs

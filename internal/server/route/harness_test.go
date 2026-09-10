@@ -212,6 +212,69 @@ func sfuCreateOverlap(edge, publication, overlap string) CandidateReservation {
 	return reservation
 }
 
+type committedEdgeSeed struct {
+	Kind                  UpstreamKind
+	ParentPeerID          string
+	PublicationGeneration string
+	Transport             Transport
+	ConnectionID          string
+	Usable                bool
+	PhysicalActive        bool
+	Resource              *Resource
+}
+
+func (c *Controller) hydrateEdge(childPeerID string, edge committedEdgeSeed) {
+	if c.operation != nil {
+		panic("Cannot hydrate while an operation is active")
+	}
+	c.assertViewer(childPeerID)
+	child, _ := c.participants.Get(childPeerID)
+	if child.sessionID == "" {
+		panic("Route child has no current session")
+	}
+	committed := &CommittedEdge{
+		Kind:                  edge.Kind,
+		ChildSessionID:        child.sessionID,
+		ParentPeerID:          edge.ParentPeerID,
+		PublicationGeneration: edge.PublicationGeneration,
+		Transport:             edge.Transport,
+		ConnectionID:          edge.ConnectionID,
+		Usable:                edge.Usable,
+		PhysicalActive:        edge.PhysicalActive,
+		Resource:              edge.Resource,
+	}
+	if edge.Kind == UpstreamPeer {
+		if parent, ok := c.participants.Get(edge.ParentPeerID); ok {
+			committed.ParentSessionID = parent.sessionID
+		}
+	}
+	c.upstreamByViewer.Set(childPeerID, committed)
+	c.requireSenderQualityBaseline(childPeerID, false)
+	c.assertGraph()
+}
+
+func (c *Controller) hydrateHostPublication(generation string, resource *Resource, connectionID string) {
+	if c.operation != nil {
+		panic("Cannot hydrate while an operation is active")
+	}
+	host, _ := c.participants.Get(c.hostPeerID)
+	if host == nil || host.sessionID == "" {
+		panic("Route Host has no current session")
+	}
+	if connectionID == "" {
+		connectionID = "publication:" + generation
+	}
+	c.hostPublication = &HostPublication{
+		Generation:     generation,
+		HostSessionID:  host.sessionID,
+		ConnectionID:   connectionID,
+		Usable:         true,
+		PhysicalActive: true,
+		Resource:       resource,
+	}
+	c.assertGraph()
+}
+
 func peerEdge(parentPeerID, connectionID string) committedEdgeSeed {
 	return committedEdgeSeed{
 		Kind:           UpstreamPeer,

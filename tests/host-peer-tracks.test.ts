@@ -1040,9 +1040,6 @@ describe("HostPeer source replacement", () => {
     expect(peer.getSnapshot().audioSenderParameters?.appliedMaxBitrate).toBe(
       128_000,
     );
-    expect(peer.getSnapshot().qualityWarning).toContain(
-      "应用音频发送参数失败",
-    );
 
     await expect(
       peer.updateProfile({
@@ -1051,7 +1048,6 @@ describe("HostPeer source replacement", () => {
       }),
     ).resolves.toBe(true);
     expect(audioSender.getParameters().encodings[0]?.maxBitrate).toBe(192_000);
-    expect(peer.getSnapshot().qualityWarning).toBeNull();
   });
 
   it("keeps rapid audio ceiling changes last-wins", async () => {
@@ -1226,13 +1222,11 @@ describe("HostPeer source replacement", () => {
   });
 
   it("continues queued profile updates after initial configuration rejects", async () => {
-    const updates: PeerSnapshot[] = [];
     const peer = createPeer(
       createStream(
         createTrack("video", "video"),
         createTrack("audio", "audio"),
       ),
-      (snapshot) => updates.push(snapshot),
     );
 
     const starting = peer.start();
@@ -1241,11 +1235,6 @@ describe("HostPeer source replacement", () => {
     await expect(starting).resolves.toBe(true);
     await acceptPeerAnswer(peer);
 
-    const failureWarning = updates.find((snapshot) =>
-      snapshot.qualityWarning?.startsWith("应用发送参数失败"),
-    )?.qualityWarning;
-    expect(failureWarning).toBe("应用发送参数失败");
-    expect(failureWarning).not.toContain("setParameters failed");
     await expect(
       peer.updateProfile(QUALITY_PROFILES["1080p60"]),
     ).resolves.toBe(true);
@@ -1601,95 +1590,6 @@ describe("HostPeer source replacement", () => {
       captureHeight: committed === "old" ? 720 : 1080,
       captureFramesPerSecond: committed === "old" ? 30 : 60,
     });
-  });
-
-  it("explains a sustained browser quality limitation without changing settings", async () => {
-    const updates: PeerSnapshot[] = [];
-    const peer = createPeer(
-      createStream(createTrack("video", "video"), null),
-      (snapshot) => updates.push(snapshot),
-    );
-    await expect(peer.start()).resolves.toBe(true);
-    await acceptPeerAnswer(peer);
-    const connection = FakePeerConnection.latest!;
-    const sender = connection.senders[0]!;
-    connection.statsReports.push(
-      sendStatsReport({
-        bytesSent: 1_000_000,
-        framesEncoded: 30,
-        timestamp: 1_000,
-        qualityLimitationReason: "bandwidth",
-      }),
-      sendStatsReport({
-        bytesSent: 1_500_000,
-        framesEncoded: 60,
-        timestamp: 2_000,
-        qualityLimitationReason: "bandwidth",
-      }),
-      sendStatsReport({
-        bytesSent: 2_000_000,
-        framesEncoded: 90,
-        timestamp: 3_000,
-        qualityLimitationReason: "bandwidth",
-      }),
-      sendStatsReport({
-        bytesSent: 2_500_000,
-        framesEncoded: 120,
-        timestamp: 4_000,
-        qualityLimitationReason: "none",
-      }),
-    );
-
-    const sample = async (): Promise<void> => {
-      const updateCount = updates.length;
-      statsCallbacks[0]!();
-      await vi.waitFor(() => expect(updates.length).toBeGreaterThan(updateCount));
-    };
-    await sample();
-    await sample();
-    expect(updates.at(-1)?.qualityWarning).toBeNull();
-    await sample();
-    expect(updates.at(-1)?.qualityWarning).toBe(
-      "当前连接带宽受限，画质已自动降低",
-    );
-    expect(updates.at(-1)?.qualityWarningKind).toBe("bandwidth");
-    expect(sender.setParameters).toHaveBeenCalledTimes(2);
-
-    await sample();
-    expect(updates.at(-1)?.qualityWarning).toBeNull();
-    expect(updates.at(-1)?.qualityWarningKind).toBeNull();
-    expect(sender.setParameters).toHaveBeenCalledTimes(2);
-  });
-
-  it("does not expose an unknown browser quality-limitation value", async () => {
-    const updates: PeerSnapshot[] = [];
-    const peer = createPeer(
-      createStream(createTrack("video", "video"), null),
-      (snapshot) => updates.push(snapshot),
-    );
-    await expect(peer.start()).resolves.toBe(true);
-    const connection = FakePeerConnection.latest!;
-    for (const timestamp of [1_000, 2_000, 3_000]) {
-      connection.statsReports.push(
-        sendStatsReport({
-          bytesSent: timestamp * 1_000,
-          framesEncoded: timestamp / 10,
-          timestamp,
-          qualityLimitationReason: "browser-internal-sentinel",
-        }),
-      );
-    }
-
-    for (let index = 0; index < 3; index += 1) {
-      const updateCount = updates.length;
-      statsCallbacks[0]!();
-      await vi.waitFor(() => expect(updates.length).toBeGreaterThan(updateCount));
-    }
-
-    expect(updates.at(-1)?.qualityWarning).toBe(
-      "浏览器持续报告未分类的画质限制",
-    );
-    expect(updates.at(-1)?.qualityWarningKind).toBe("other");
   });
 
   it("rolls the first sender back when the second replacement fails", async () => {

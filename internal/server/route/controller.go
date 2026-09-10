@@ -275,6 +275,7 @@ func New(options Options) *Controller {
 	c := &Controller{
 		hostPeerID:                      options.HostPeerID,
 		debugRoomID:                     options.DebugRoomID,
+		debugLog:                        options.DebugLog,
 		endpointMediaCopyCapacity:       options.EndpointMediaCopyCapacity,
 		operationTimeoutMs:              options.OperationTimeoutMs,
 		sfuEnabled:                      options.SfuEnabled,
@@ -640,68 +641,6 @@ func (c *Controller) TouchExternalFacts() {
 	c.clearSfuCandidateOpportunities()
 	c.sfuBootstrapIntent = nil
 	c.touchFacts()
-}
-
-// hydrateEdge installs a committed edge for a connected viewer while no
-// operation is active, without changing revision or fact version. Panics
-// on an active operation, a non-viewer child or a child without a session.
-func (c *Controller) hydrateEdge(childPeerID string, edge committedEdgeSeed) {
-	if c.operation != nil {
-		panic(errors.New("Cannot hydrate while an operation is active"))
-	}
-	c.assertViewer(childPeerID)
-	child, _ := c.participants.Get(childPeerID)
-	childSessionID := child.sessionID
-	if childSessionID == "" {
-		panic(errors.New("Route child has no current session"))
-	}
-	committed := &CommittedEdge{
-		Kind:                  edge.Kind,
-		ChildSessionID:        childSessionID,
-		ParentPeerID:          edge.ParentPeerID,
-		PublicationGeneration: edge.PublicationGeneration,
-		Transport:             edge.Transport,
-		ConnectionID:          edge.ConnectionID,
-		Usable:                edge.Usable,
-		PhysicalActive:        edge.PhysicalActive,
-		Resource:              edge.Resource,
-	}
-	if edge.Kind == UpstreamPeer {
-		// TS 750: `this.participants.get(edge.parentPeerId)?.sessionId ?? ""`.
-		if parent, ok := c.participants.Get(edge.ParentPeerID); ok {
-			committed.ParentSessionID = parent.sessionID
-		}
-	}
-	// Map.set keeps the position of an existing child (§4.2 #15).
-	c.upstreamByViewer.Set(childPeerID, committed)
-	c.requireSenderQualityBaseline(childPeerID, false)
-	c.assertGraph()
-}
-
-// hydrateHostPublication installs a usable, physically active publication
-// while no operation is active; connectionID empty selects the TS default
-// "publication:<generation>". Panics on an active operation or a Host
-// without a session.
-func (c *Controller) hydrateHostPublication(generation string, resource *Resource, connectionID string) {
-	if c.operation != nil {
-		panic(errors.New("Cannot hydrate while an operation is active"))
-	}
-	host, _ := c.participants.Get(c.hostPeerID)
-	if host == nil || host.sessionID == "" {
-		panic(errors.New("Route Host has no current session"))
-	}
-	if connectionID == "" {
-		connectionID = "publication:" + generation
-	}
-	c.hostPublication = &HostPublication{
-		Generation:     generation,
-		HostSessionID:  host.sessionID,
-		ConnectionID:   connectionID,
-		Usable:         true,
-		PhysicalActive: true,
-		Resource:       resource,
-	}
-	c.assertGraph()
 }
 
 // InvalidateEdge marks the exactly identified edge unusable and records an
