@@ -98,11 +98,30 @@ and state sequence.
 
 ## Remaining Acceptance
 
-This static pass does not replace the already-owned public-release boundary:
-use two real builds with a supported common contract, check stale open pages,
-exercise Windows App/Go Server candidates and retained room/config authority,
-and rehearse manual release scripts. macOS/Linux physical capture and broad
-network/endurance matrices remain deferred as before.
+Local release rehearsal completed on 2026-09-11 from candidate revision
+`98b29ec`:
+
+- `npm run check:client-core` passed through the standard stable-path entry
+  (Go tests, vet, three cross-builds, Windows capture compile/probe). Darwin's
+  cgo build was skipped as designed on this host.
+- The Server release packaged as schema-2 descriptor `v1.0.0` / `98b29ec`
+  (`piik-98b29ec-runtime.tar.gz`, artifact SHA-256
+  `f959fc2e139d6d146e97b67fb100c26508b452fdb156417a992dba8561c37f6e`).
+- The Windows App candidate built and passed its packaged smoke check
+  (`piik-app-windows-amd64-98b29ec.tar.gz`, SHA-256
+  `02e5780322cb6ecc1c1f91ef3a61bc3453c1dda9dcc9829091979d2ac879a800`).
+
+The full publisher dry run was not executed: it requires all three App targets
+in one artifact set, and macOS needs a native SDK/toolchain. Fabricating Linux
+or macOS descriptors to satisfy the check would be relabelled evidence, not
+acceptance. The same limit applies to a supported old/new mixed-version pair:
+the private pre-release contract keeps one current version, so the meaningful
+boundary is the focused negative coverage (incompatible Native protocol and
+same-version different-SHA update notice) plus the first public release, when a
+supported pair actually exists.
+
+macOS/Linux physical capture and broad network/endurance matrices remain
+deferred as before.
 
 ## Repair Rule
 

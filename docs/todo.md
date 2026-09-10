@@ -40,8 +40,13 @@ Review the pending implementation against its recorded candidate baseline
 review of Piik-owned runtime code and its adapters, not a rewrite or an audit of
 every upstream dependency. Steps 1-3 are complete through `e36c7a34`: the
 static/automated ownership audit, one confirmed source-switch quality repair and
-its coverage record are in `docs/research/lifecycle-audit-2026-09-10.md`.
-Steps 4-5, real mixed-version acceptance and target-package acceptance, remain.
+its coverage record are in `docs/research/lifecycle-audit-2026-09-10.md`. Step 5
+is complete for the locally reachable scope: the standard Go entry point, the
+schema-2 Server release and a verified Windows App candidate were produced from
+`98b29ec`. Step 4's mixed-version pair is recorded as a public-release boundary:
+the private contract keeps one current version, so only the focused negative
+coverage exists until the first supported public release. macOS/Linux physical
+capture and broad network/endurance matrices remain deferred.
 
 1. Inventory every owning runtime area and its boundaries. Split read-only work
    across Browser/App orchestration, Server room/route/SFU effects, media/capture
