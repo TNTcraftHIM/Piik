@@ -1,4 +1,5 @@
-import { say, type CopyKey } from "../ui/copy";
+import type { CopyKey } from "../ui/copy";
+import type { MediaFailure } from "../ui/media-failure";
 import type {
   ClientMessage,
   MediaRoutePhase,
@@ -35,7 +36,7 @@ export interface HostPublisherTransport {
   replaceStream(stream: MediaStream): Promise<boolean>;
   updateProfile(profile: QualityProfile): Promise<boolean>;
   setPaused(paused: boolean): void;
-  getQualityWarning?(): string | null;
+  getQualityWarning?(): MediaFailure[] | null;
   getFailureStage?(): SfuPublisherFailureStage | null;
   disconnect(): Promise<void>;
 }
@@ -342,12 +343,12 @@ export class HostSfuRoute {
         ).then((results) => results.every(Boolean));
   }
 
-  getQualityWarning(): string | null {
+  getQualityWarning(): MediaFailure[] | null {
     if (this.active?.active) {
       return this.active.publisher.getQualityWarning?.() ?? null;
     }
     return this.lastFailureStage
-      ? sfuFailureWarning(this.lastFailureStage)
+      ? [sfuFailureWarning(this.lastFailureStage)]
       : null;
   }
 
@@ -730,7 +731,7 @@ async function disconnectPublisher(
   await publisher.disconnect().catch(() => undefined);
 }
 
-function sfuFailureWarning(stage: SfuPublisherFailureStage): string {
+function sfuFailureWarning(stage: SfuPublisherFailureStage): MediaFailure {
   const stageKey: Record<SfuPublisherFailureStage, CopyKey> = {
     connect: "host.warn.sfuStage.connect",
     source: "host.warn.sfuStage.source",
@@ -739,5 +740,5 @@ function sfuFailureWarning(stage: SfuPublisherFailureStage): string {
     "audio-publish": "host.warn.sfuStage.audioPublish",
     transport: "host.warn.sfuStage.transport",
   };
-  return say("host.warn.sfuRecover", { stage: say(stageKey[stage]) });
+  return { key: "host.warn.sfuRecover", paramKeys: [stageKey[stage]] };
 }

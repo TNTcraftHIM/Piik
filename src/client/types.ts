@@ -1,4 +1,5 @@
 import type { NatTraversalPath } from "../shared/nat-candidate";
+import type { MediaFailure } from "./ui/media-failure";
 
 export type SignalConnectionState =
   "connecting" | "connected" | "reconnecting" | "offline";
@@ -85,7 +86,8 @@ export interface PeerSnapshot {
   connectionState: RTCPeerConnectionState;
   iceConnectionState: RTCIceConnectionState;
   metrics: ConnectionMetrics;
-  error: string | null;
+  /** Keyed failure fact; the UI resolves the copy so it follows the language. */
+  error: MediaFailure | null;
   senderParameters?:
     import("./media/quality").VideoSenderParameterReadback | null;
   audioSenderParameters?:

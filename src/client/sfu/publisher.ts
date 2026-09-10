@@ -1,5 +1,5 @@
 import type { SfuMedia, SfuSignalMessage } from "../../shared/protocol";
-import { say } from "../ui/copy";
+import type { MediaFailure } from "../ui/media-failure";
 import { debugRtcFailure, debugRtcStats, debugTrack } from "../lib/debug-webrtc";
 import {
   audioSenderParameterWarning,
@@ -69,8 +69,8 @@ export class SfuPublisher {
   private failureStage: SfuPublisherFailureStage | null = null;
   private senderParameters: VideoSenderParameterReadback | null = null;
   private audioSenderParameters: AudioSenderParameterReadback | null = null;
-  private videoWarning: string | null = null;
-  private audioWarning: string | null = null;
+  private videoWarning: MediaFailure | null = null;
+  private audioWarning: MediaFailure | null = null;
   private stats = createStatsAccumulator();
   private nativeStats = createNativeSenderQualityAccumulator();
   private statsInFlight: typeof this.stats | null = null;
@@ -256,7 +256,7 @@ export class SfuPublisher {
           await videoSender.replaceTrack(previousVideo);
           await audioSender.replaceTrack(previousAudio);
           await this.configure(profile);
-          this.videoWarning = say("host.fail.sfuSwitch");
+          this.videoWarning = { key: "host.fail.sfuSwitch" };
           return false;
         } catch {
           this.fail("source");
@@ -298,7 +298,7 @@ export class SfuPublisher {
         try {
           if (videoChanged) await applyVideoCaptureProfile(video, previous);
           await this.configure(previous, configureVideo);
-          this.videoWarning = say("host.fail.sfuParams");
+          this.videoWarning = { key: "host.fail.sfuParams" };
           return false;
         } catch {
           this.fail("sender-config");
@@ -308,10 +308,11 @@ export class SfuPublisher {
     });
   }
 
-  getQualityWarning(): string | null {
-    return (
-      [this.videoWarning, this.audioWarning].filter(Boolean).join("; ") || null
+  getQualityWarning(): MediaFailure[] | null {
+    const warnings = [this.videoWarning, this.audioWarning].filter(
+      (warning): warning is MediaFailure => warning !== null,
     );
+    return warnings.length > 0 ? warnings : null;
   }
   getFailureStage(): SfuPublisherFailureStage | null {
     return this.failureStage;
@@ -483,7 +484,7 @@ export class SfuPublisher {
       this.audioWarning = audioSenderParameterWarning(audio);
       return true;
     } catch {
-      this.audioWarning = say("host.fail.sfuAudioParams");
+      this.audioWarning = { key: "host.fail.sfuAudioParams" };
       return false;
     }
   }

@@ -331,9 +331,10 @@ describe("realtime quality controls", () => {
       appliedMaxBitrate: 96_000,
       mismatch: true,
     });
-    expect(audioSenderParameterWarning(readback)).toBe(
-      "浏览器将音频码率上限改写为 96 kbps",
-    );
+    expect(audioSenderParameterWarning(readback)).toEqual({
+      key: "host.warn.audioRewritten",
+      vars: { kbps: "96" },
+    });
   });
 
   it("does not mutate prior audio parameters when setParameters fails", async () => {
@@ -379,9 +380,14 @@ describe("realtime quality controls", () => {
       "scaleResolutionDownBy",
       "degradationPreference",
     ]);
-    expect(senderParameterWarning(readback)).toContain("帧率上限");
-    expect(senderParameterWarning(readback)).toContain("分辨率缩放");
-    expect(senderParameterWarning(readback)).toContain("质量优先级");
+    expect(senderParameterWarning(readback)).toEqual({
+      key: "host.warn.senderPartial",
+      paramKeys: [
+        "host.warn.param.maxFramerate",
+        "host.warn.param.scaleResolutionDownBy",
+        "host.warn.param.degradationPreference",
+      ],
+    });
   });
 
   it("reports an applied default scalability mode without claiming a request", async () => {

@@ -118,12 +118,17 @@ export function say(key: CopyKey, vars?: Record<string, string>): string {
   return t(state.lang, key, vars);
 }
 
-// Locale-aware joins for composed notices (say() composites).
-export function joinSentences(parts: string[]): string {
-  return parts.join(state.lang === "zh" ? "；" : "; ");
+// The selected language for composers that run outside React render (say()).
+export function currentLang(): Lang {
+  return state.lang;
 }
-export function joinItems(parts: string[]): string {
-  return parts.join(state.lang === "zh" ? "、" : ", ");
+
+// Locale-aware joins for composed notices.
+export function joinSentences(lang: Lang, parts: string[]): string {
+  return parts.join(lang === "zh" ? "；" : "; ");
+}
+export function joinItems(lang: Lang, parts: string[]): string {
+  return parts.join(lang === "zh" ? "、" : ", ");
 }
 
 export interface Copy {

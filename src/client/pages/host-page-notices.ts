@@ -1,6 +1,6 @@
 import type { ServerMessage } from "../../shared/protocol";
 import { NativeMediaBridgeError } from "../native/media-bridge";
-import { joinSentences, say, type CopyKey } from "../ui/copy";
+import { currentLang, joinSentences, say, type CopyKey } from "../ui/copy";
 
 export type HostAction =
   | "capture"
@@ -65,26 +65,18 @@ export function hostServerErrorNotice(code: ServerErrorCode): string {
 export function sourceSwitchNotice({
   failedPeerCount,
   sfuReplaced,
-  sfuWarning,
 }: {
   failedPeerCount: number;
   sfuReplaced: boolean;
-  sfuWarning: string | null;
 }): string {
   const peerWarning =
     failedPeerCount > 0 ? say("host.notice.reconnecting") : null;
   if (!sfuReplaced) {
     const parts = [
-      sfuWarning ?? say("host.notice.sfuRecovering"),
+      say("host.notice.sfuRecovering"),
       peerWarning,
     ].filter((message): message is string => message !== null);
-    return joinSentences(parts);
-  }
-  if (sfuWarning) {
-    const parts = [sfuWarning, peerWarning].filter(
-      (message): message is string => message !== null,
-    );
-    return joinSentences(parts);
+    return joinSentences(currentLang(), parts);
   }
   return peerWarning
     ? say("host.notice.sourceSwitch.partial", { warning: peerWarning })

@@ -17,11 +17,11 @@ historical commentary ablated, one shared visual-kind owner (17 cycles -> 0),
 dead media-warning chain removed and injected route diagnostics. Deterministic
 Web and Go checks pass.
 
-One owner decision remains from this pass: media/peer layers persist localized
-strings in snapshots, so a live language switch can leave stale copy until the
-next media event. The root fix is a typed `{ key, detail? }` fact resolved by
-the presentation layer across host/viewer peers, SFU routes and both pages; no
-caller-level patch was applied. Keep this entry until accepted or dropped.
+Snapshots now carry keyed media-failure facts that the presentation layer
+resolves during render, so a language switch re-renders instead of leaving
+stale copy; the same pass removed the vestigial `sourceSwitchNotice` warning
+parameter. Runtime lifecycles and a source index for re-orienting a fresh
+review live in `docs/reference/engineering.md`.
 
 This audit does not replace physical mixed-version or target-package acceptance
 from the lifecycle plan below.

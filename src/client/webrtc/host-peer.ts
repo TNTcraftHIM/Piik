@@ -1,4 +1,4 @@
-import { say } from "../ui/copy";
+import type { CopyKey } from "../ui/copy";
 import type { IceConfig, SignalPayload } from "../../shared/protocol";
 import { createOpaqueId } from "../lib/opaque-id";
 import type { BrowserEncodingPool, BrowserPooledSender } from "../media/browser-encoding-pool";
@@ -157,7 +157,7 @@ export class HostPeer {
   async start(): Promise<boolean> {
     const videoTrack = this.senderVideoTrack;
     if (!videoTrack) {
-      this.setError(new Error(say("host.capture.noSource")), say("host.err.createConnection"));
+      this.setError(null, "host.capture.noSource");
       return false;
     }
     const audioTrack = this.stream.getAudioTracks()[0] ?? null;
@@ -166,7 +166,7 @@ export class HostPeer {
       streams: [this.stream],
     });
     if (!applyVideoCodecPreference(videoTransceiver, this.videoCodec)) {
-      this.setError(null, say("host.err.codecUnsupported"));
+      this.setError(null, "host.err.codecUnsupported");
       return false;
     }
     this.videoSender = videoTransceiver.sender;
@@ -262,7 +262,7 @@ export class HostPeer {
           if (videoRollback.status === "rejected") {
             this.dispose();
           }
-          this.setError(error, say("host.fail.source"));
+          this.setError(error, "host.fail.source");
           return false;
         }
 
@@ -421,7 +421,7 @@ export class HostPeer {
         this.pendingCandidates.push(payload.candidate);
       }
     } catch (error) {
-      this.setError(error, say("host.err.createConnection"));
+      this.setError(error, "host.err.createConnection");
     }
   }
 
@@ -464,7 +464,7 @@ export class HostPeer {
         ),
       );
     } catch (error) {
-      this.setError(error, say("host.err.createConnection"));
+      this.setError(error, "host.err.createConnection");
     }
   }
 
@@ -638,7 +638,7 @@ export class HostPeer {
           },
         })
       ) {
-        throw new Error(say("host.err.serverError"));
+        throw new Error("signal send rejected");
       }
       this.snapshot = { ...this.snapshot, error: null };
       this.emit();
@@ -650,7 +650,7 @@ export class HostPeer {
       if (this.ordinaryAnswerEpoch === epoch) {
         this.ordinaryAnswerEpoch = null;
       }
-      this.setError(error, say("host.err.createConnection"));
+      this.setError(error, "host.err.createConnection");
       return false;
     }
   }
@@ -768,9 +768,9 @@ export class HostPeer {
     }
   }
 
-  private setError(error: unknown, fallback: string): void {
-    debugError("webrtc", "sender-failed", error, { connectionId: this.connectionId, reason: fallback });
-    this.snapshot = { ...this.snapshot, error: fallback };
+  private setError(error: unknown, key: CopyKey): void {
+    debugError("webrtc", "sender-failed", error, { connectionId: this.connectionId, reason: key });
+    this.snapshot = { ...this.snapshot, error: { key } };
     this.emit();
   }
 

@@ -531,8 +531,8 @@ describe("HostPeer source replacement", () => {
 
     await expect(peer.start()).resolves.toBe(false);
 
-    expect(updates.at(-1)?.error).toBe("创建连接失败");
-    expect(updates.at(-1)?.error).not.toContain("createOffer failed");
+    // The snapshot carries a copy key, so raw WebRTC text cannot leak.
+    expect(updates.at(-1)?.error).toEqual({ key: "host.err.createConnection" });
   });
 
   it("offers only advertised VP8 and repair codecs", async () => {
@@ -658,7 +658,7 @@ describe("HostPeer source replacement", () => {
 
     expect(FakePeerConnection.latest!.createOfferCallCount).toBe(0);
     expect(FakePeerConnection.latest!.localDescription).toBeNull();
-    expect(updates.at(-1)?.error).toBe("当前浏览器无法使用支持的视频编码");
+    expect(updates.at(-1)?.error).toEqual({ key: "host.err.codecUnsupported" });
   });
 
   it("fails before creating an offer when VP8 is unavailable", async () => {
@@ -681,7 +681,7 @@ describe("HostPeer source replacement", () => {
 
     expect(FakePeerConnection.latest!.createOfferCallCount).toBe(0);
     expect(FakePeerConnection.latest!.localDescription).toBeNull();
-    expect(updates.at(-1)?.error).toBe("当前浏览器无法使用支持的视频编码");
+    expect(updates.at(-1)?.error).toEqual({ key: "host.err.codecUnsupported" });
   });
 
   it("fails before creating an offer when codec preference setup fails", async () => {
@@ -696,7 +696,7 @@ describe("HostPeer source replacement", () => {
 
     expect(FakePeerConnection.latest!.createOfferCallCount).toBe(0);
     expect(FakePeerConnection.latest!.localDescription).toBeNull();
-    expect(updates.at(-1)?.error).toBe("当前浏览器无法使用支持的视频编码");
+    expect(updates.at(-1)?.error).toEqual({ key: "host.err.codecUnsupported" });
   });
 
   it("applies STUN-only ICE configuration at creation and update", () => {
@@ -2025,8 +2025,13 @@ describe("ViewerRelay downstream ownership", () => {
     );
 
     relay.activateChildren(7, ["native-a", "native-b"]);
-    prepared.events.onUpdate({ ...nativeSnapshot(prepared.peer), error: "late" });
-    expect(relay.getSnapshot("native-b")?.error).toBe("late");
+    prepared.events.onUpdate({
+      ...nativeSnapshot(prepared.peer),
+      error: { key: "host.err.serverError" },
+    });
+    expect(relay.getSnapshot("native-b")?.error).toEqual({
+      key: "host.err.serverError",
+    });
     relay.dispose();
   });
 

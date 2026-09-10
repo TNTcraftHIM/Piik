@@ -6,7 +6,8 @@ import {
   type QualitySettings,
   type ScreenAudioQuality,
 } from "../../shared/protocol";
-import { joinItems, say, type CopyKey } from "../ui/copy";
+import { say, type CopyKey } from "../ui/copy";
+import type { MediaFailure } from "../ui/media-failure";
 import { displayMediaOptions } from "./audio-capture";
 import { browserDebugEnabled, debugOperation } from "../lib/debug";
 import { debugTrack } from "../lib/debug-webrtc";
@@ -188,7 +189,7 @@ export async function captureDisplay(
   profile: QualityProfile,
 ): Promise<MediaStream> {
   if (!navigator.mediaDevices?.getDisplayMedia) {
-    throw new Error(say("host.capture.unavailable"));
+    throw new Error("getDisplayMedia unavailable");
   }
 
   const complete = debugOperation("capture", "display", { requested: profile });
@@ -204,7 +205,7 @@ export async function captureDisplay(
   if (!videoTrack) {
     stream.getTracks().forEach((track) => track.stop());
     complete("failed", { reason: "no-video-track" });
-    throw new Error(say("host.capture.noSource"));
+    throw new Error("display capture produced no video track");
   }
   videoTrack.contentHint = "motion";
   for (const audioTrack of stream.getAudioTracks()) {
@@ -224,7 +225,7 @@ export async function applyCaptureProfile(
 ): Promise<void> {
   const videoTrack = stream.getVideoTracks()[0];
   if (!videoTrack) {
-    throw new Error(say("host.capture.noSource"));
+    throw new Error("capture stream has no video track");
   }
   await applyVideoCaptureProfile(videoTrack, profile);
 }
@@ -405,13 +406,16 @@ export async function configureScreenAudioSender(
 
 export function audioSenderParameterWarning(
   readback: AudioSenderParameterReadback,
-): string | null {
+): MediaFailure | null {
   if (!readback.mismatch) {
     return null;
   }
   return readback.appliedMaxBitrate === null
-    ? say("host.warn.audioUnread")
-    : say("host.warn.audioRewritten", { kbps: String(Math.round(readback.appliedMaxBitrate / 1_000)) });
+    ? { key: "host.warn.audioUnread" }
+    : {
+        key: "host.warn.audioRewritten",
+        vars: { kbps: String(Math.round(readback.appliedMaxBitrate / 1_000)) },
+      };
 }
 
 const PARAMETER_KEYS = {
@@ -424,12 +428,11 @@ const PARAMETER_KEYS = {
 
 export function senderParameterWarning(
   readback: VideoSenderParameterReadback,
-): string | null {
+): MediaFailure | null {
   return readback.mismatches.length > 0
-    ? say("host.warn.senderPartial", {
-        params: joinItems(
-          readback.mismatches.map((key) => say(PARAMETER_KEYS[key])),
-        ),
-      })
+    ? {
+        key: "host.warn.senderPartial",
+        paramKeys: readback.mismatches.map((key) => PARAMETER_KEYS[key]),
+      }
     : null;
 }

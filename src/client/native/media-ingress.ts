@@ -167,7 +167,7 @@ export class NativeMediaIngress {
   private onUpdate(snapshot: PeerSnapshot): void {
     if (this.disposed) return;
     if (snapshot.connectionState === "failed" || snapshot.connectionState === "closed" ||
-      (!this.ready && snapshot.error)) {
+      (!this.ready && snapshot.error !== null)) {
       this.fail();
     } else if (!this.ready && snapshot.connectionState === "connected") {
       this.ready = true;

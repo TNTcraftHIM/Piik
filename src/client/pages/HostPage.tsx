@@ -65,6 +65,7 @@ import {
 import { hasPeerRouteEvidence } from "../components/status-badge-model";
 import { Glyph, type GlyphName } from "../ui/icons";
 import { say, useCopy, type CopyKey } from "../ui/copy";
+import { resolveMediaFailure, type MediaFailure } from "../ui/media-failure";
 import {
   ApiError,
   createRoom,
@@ -390,7 +391,8 @@ export function HostPage({
   launchedByClient = false,
   onAuthorizationRequired,
 }: HostPageProps = {}) {
-  const { lang, vis, t, titleFrames } = useCopy();
+  const copy = useCopy();
+  const { lang, vis, t, titleFrames } = copy;
   const [qualitySettings, setQualitySettings] = useState<QualitySettings>(
     DEFAULT_QUALITY_SETTINGS,
   );
@@ -472,7 +474,7 @@ export function HostPage({
   const [noticeValue, setNoticeValue] = useState<NoticeValue | null>(null);
   const [noticeComic, setNoticeComic] = useState<ComicKind | null>(null);
   const [hostSfuQualityWarning, setHostSfuQualityWarning] = useState<
-    string | null
+    MediaFailure[] | null
   >(null);
   function setNotice(value: string | null, comic: ComicKind | null = null): void {
     setNoticeValue(value ? { kind: "text", text: value } : null);
@@ -810,7 +812,7 @@ export function HostPage({
   function syncHostSfuQualityWarning(
     route: HostSfuRoute,
     generation: number,
-  ): string | null {
+  ): MediaFailure[] | null {
     if (
       !isCurrentGeneration(generation) ||
       hostSfuRouteRef.current !== route
@@ -2774,7 +2776,6 @@ export function HostPage({
       setNotice(sourceSwitchNotice({
         failedPeerCount: 0,
         sfuReplaced: sfuUpdated,
-        sfuWarning: null,
       }));
     } catch (error) {
       if (
@@ -2964,7 +2965,6 @@ export function HostPage({
             : sourceSwitchNotice({
                 failedPeerCount: failedPeerIds.length,
                 sfuReplaced,
-                sfuWarning: null,
               });
         setNotice(
           sourceNotice,
@@ -3226,7 +3226,7 @@ export function HostPage({
     metrics: ConnectionMetrics | null;
     direction: "send" | "receive";
     tag?: { icon: "loader"; label: string };
-    error: string | null;
+    error: MediaFailure | null;
   };
   const detailForViewer = (viewer: (typeof viewers)[number]): ViewerDetail => {
     const snapshot =
@@ -3300,6 +3300,7 @@ export function HostPage({
       ? noticeValue.text
       : t(noticeValue.key, noticeValue.vars)
     : null;
+  const hostSfuWarningText = resolveMediaFailure(hostSfuQualityWarning, copy);
 
   const hostStatus = deriveHostStatus({
     phase,
@@ -3539,8 +3540,8 @@ export function HostPage({
             {!details?.hasAudio && stream ? (
               <Pill icon="speaker" label={t("host.noAudio")} comic="no-audio" />
             ) : null}
-            {hostSfuQualityWarning && hostSfuQualityWarning !== noticeText ? (
-              <Pill icon="alert" label={hostSfuQualityWarning} comic="warning" />
+            {hostSfuWarningText && hostSfuWarningText !== noticeText ? (
+              <Pill icon="alert" label={hostSfuWarningText} comic="warning" />
             ) : null}
             {noticeText && noticeText !== t(hostStatus.activity.labelKey) ? (
               <Pill icon={noticeComic ? "alert" : "check"}

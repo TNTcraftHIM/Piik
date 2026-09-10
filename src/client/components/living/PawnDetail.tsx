@@ -6,6 +6,7 @@ import { participantColor } from "./participant-color";
 import { Glyph } from "../../ui/icons";
 import { Tooltip } from "./Tooltip";
 import { useCopy } from "../../ui/copy";
+import { resolveMediaFailure, type MediaFailure } from "../../ui/media-failure";
 import type { ConnectionMetrics } from "../../types";
 import { MetricCells } from "./Metrics";
 
@@ -68,12 +69,14 @@ export function PawnDetail({
   metrics?: ConnectionMetrics | null;
   direction: "send" | "receive";
   tag?: { icon: "arrowUp" | "loader"; label: string };
-  error?: string | null;
+  error?: MediaFailure | null;
   expanded: boolean;
   onToggleMetrics: (expanded: boolean) => void;
   onClose: () => void;
 }) {
-  const { t, vis } = useCopy();
+  const copy = useCopy();
+  const { t, vis } = copy;
+  const errorText = resolveMediaFailure(error, copy);
   return (
     <div className="lr-row is-sub lr-pawn-detail" role="group" aria-label={name}>
       <span className="lr-pawn-mini">
@@ -90,15 +93,15 @@ export function PawnDetail({
           {vis ? <span className="visually-hidden">{tag.label}</span> : <b>{tag.label}</b>}
         </span>
       ) : null}
-      {error ? (
-        <Tooltip kind="route-failed" text={vis ? undefined : error}>
+      {errorText ? (
+        <Tooltip kind="route-failed" text={vis ? undefined : errorText}>
           <span
             className="lr-pill is-bad"
             role="alert"
             tabIndex={0}
           >
             <Glyph name="alert" size={16} />
-            {vis ? <span className="visually-hidden">{error}</span> : <span>{error}</span>}
+            {vis ? <span className="visually-hidden">{errorText}</span> : <span>{errorText}</span>}
           </span>
         </Tooltip>
       ) : null}

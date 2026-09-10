@@ -48,6 +48,42 @@ the relevant existing fixture/check together. Do not create another handwritten
 field list in documentation, parallel DTO hierarchy or schema generator without
 a demonstrated reduction in ownership or drift.
 
+## Runtime Lifecycles
+
+Read each runtime as acquisition, the authoritative commit that makes its work
+visible, and the retirement that ends it. Revalidate the acquiring identity
+after every await or callback; presentation derives from the committed fact
+instead of mirroring it.
+
+| Runtime | Acquire | Commit | Retire |
+| --- | --- | --- | --- |
+| Browser Host share | `pages/HostPage.tsx` captures one source and creates its peers and route | current generation plus the owning identity: local-offer epoch, publisher slot revision, source-switch and quality-change tokens | `disposeResources` stops owned tracks, disposes peers and sends `stop-sharing`; a replaced source retires through `retiringStreamRef` |
+| Browser Viewer route | `pages/ViewerPage.tsx` binds one parent peer (Browser or Native) and its relay children | parent, connection and message identity, then playback facts | a new viewer generation retires the old binding; relay children follow `activateChildren` revisions |
+| Browser relay fanout | `webrtc/viewer-relay.ts` prepares a child before it is needed | `activateChildren(revision, childPeerIds)` commits the prepared set | replaced or emptied sets disconnect the child peers they own |
+| Browser local encoding pool | `webrtc/host-peer.ts` attaches a pool carrier when capture and APIs support it ([ADR-0014](../adr/0014-browser-node-local-encoding-pool.md)) | the carrier binding owns its pooled producer while attached | source change or disposal releases the carrier; unsupported APIs keep ordinary senders |
+| App native session | the loopback service admits native control sessions and the Web UI selects the native path | session identity plus the explicit media-path choice | session end, share end or process exit retires that edge and its capture sidecar |
+| Server room authority | `signal` authenticates one Host or Viewer command | `room` writes durably before the in-memory commit; the signaling lock serializes mutations | explicit replacement or deletion, grant rotation or revocation, or process exit for memory-mode rooms |
+| Server route and SFU | `signal` feeds `route` one serial child operation; `sfu/admission.go` accepts one bounded publication | one committed graph per controller and the forwarding publication | superseded assignments retire inside the same operation; deactivate retires the publication |
+
+## Source Index
+
+Start a change at the owning entry point, then follow the interfaces listed
+above rather than searching the tree.
+
+| Change | Start at |
+| --- | --- |
+| Host workflow, share lifecycle, notices | `src/client/pages/HostPage.tsx`, `src/client/pages/host-page-notices.ts` |
+| Viewer workflow, playback, status projection | `src/client/pages/ViewerPage.tsx`, `src/client/media/viewer-presentation.ts`, `src/client/ui/media-status.ts` |
+| Browser peer and route mechanics | `src/client/webrtc/host-peer.ts`, `viewer-peer.ts`, `viewer-relay.ts`, `src/client/media/host-sfu-route.ts`, `viewer-sfu-route.ts`, `route-transition.ts` |
+| Capture, profiles and sender parameters | `src/client/media/quality.ts`, `src/client/media/browser-encoding-pool.ts`, `browser-encoding-output.ts` |
+| SFU endpoints | `src/client/sfu/publisher.ts`, `subscriber.ts`, `peer.ts`, `internal/server/sfu` |
+| Localized copy and failure facts | `src/client/locales`, `src/client/ui/copy.ts`, `src/client/ui/media-failure.ts` |
+| Native bridge, capture and media edges | `src/client/native`, `internal/app/loopback`, `internal/app/nativecontrol`, `nativehost`, `nativeviewer`, `nativecapture` |
+| Room authority, persistence and graph | `internal/server/signal`, `internal/server/room`, `internal/server/route` |
+| Shared wire contract | `src/shared/protocol.ts`, `internal/server/protocol`, `tests/fixtures/wire-samples.json` |
+| Diagnostics and logging | `src/client/lib/debug.ts`, `internal/diagnostics`, [configuration](./configuration.md#diagnostics) |
+| Configuration and deployment | `internal/server/config`, `internal/app/config`, [configuration](./configuration.md), [deployment](../deployment.md) |
+
 ## Implementation Rules
 
 - Reuse a current owner, standard API or mature dependency before adding a

@@ -694,7 +694,7 @@ class NativeViewerPeer implements ViewerMediaPeer {
               : this.state === "disconnected"
                 ? "disconnected"
                 : "checking",
-      error: this.state === "failed" ? "Native media receiver failed" : null,
+      error: this.state === "failed" ? { key: "native.fail.receiver" } : null,
     };
     this.events.onUpdate({
       ...this.snapshot,

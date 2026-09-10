@@ -48,13 +48,13 @@ a dependency without a separate accepted decision.
 | Area | Status | Findings |
 | --- | --- | --- |
 | Browser UI orchestration and state projection | Complete | Requested/applied quality, route facts and derived presentation have distinct owners. The 17 local type cycles around comic/hint kinds were removed by one shared kind module. Page size remains a tradeoff below. |
-| Browser media/WebRTC/native adapters | Complete | Pooling and encoded-group boundaries match ADR-0013/0014. The dead `PeerSnapshot` warning chain was removed. Localized strings inside media snapshots remain a recorded tradeoff. |
+| Browser media/WebRTC/native adapters | Complete | Pooling and encoded-group boundaries match ADR-0013/0014. The dead `PeerSnapshot` warning chain was removed, and snapshots now carry keyed failure facts instead of resolved copy. |
 | Go room authority and persistence | Complete | Durable-before-memory authority and caller locking remain coherent; no parallel room backend was found. |
 | Go signaling and route effects | Complete | Test-only route seeding moved to the test harness. Route diagnostics now use an injected sink, so the route package no longer reads the environment or global logger. |
 | Native App control/capture/mediaedge | Complete | `nativecontrol` composes, `nativehost` owns sessions, and `mediaedge` owns media resources without reverse ownership. No lifecycle failure was established. |
 | Protocol, HTTP, configuration and release contracts | Complete | Shared fixtures and strict command contracts remain aligned. A stale v22 evidence snapshot was corrected to the current v23 contract. |
 | Tests, gates, packaging, workflows | Complete | The main workflow built the Browser bundle twice; the duplicate build was removed. Dead-feature tests were deleted with their state. No unused product exports remain. |
-| Documentation and public copy ownership | Complete | Product/design/reference ownership is one-directional; long-document warnings remain accepted gardening notices. |
+| Documentation and public copy ownership | Complete | Product/design/reference ownership is one-directional; `engineering.md` now also carries runtime lifecycles and a source index, and long-document warnings remain accepted gardening notices. |
 
 ## Finding Classification
 
@@ -101,16 +101,22 @@ a dependency without a separate accepted decision.
    parser. `route.Options.DebugLog` is now an injected sink, and `signal` owns
    environment, logger and retention policy. The route debug test now verifies
    injection rather than environment parsing.
+8. **Resolved copy persisted inside media/transport layers (boundary
+   violation).** `HostPeer`, `ViewerPeer`, the SFU publisher/route and the
+   native peers resolved user copy with `say()` and stored the string in
+   `PeerSnapshot.error` or their warning fields. A live language switch kept
+   stale text until the next media event, and `ViewerPeer` could persist a raw
+   DOMException message. Snapshots now carry `MediaFailure` facts
+   (`{ key, paramKeys?, vars? }`) that the presentation layer resolves during
+   render (`src/client/ui/media-failure.ts`); raw exceptions stay in the debug
+   log. `joinItems`/`joinSentences` take the language explicitly and
+   `currentLang()` serves non-React notices. The vestigial `sfuWarning`
+   parameter of `sourceSwitchNotice`, `null` at both call sites, was removed
+   with its test-only branch, and three English-only native failures gained
+   localized keys.
 
 ## Deferred Tradeoffs
 
-- **Localized copy inside media/transport layers.** `HostPeer`, `ViewerPeer`
-  and SFU adapters call `say()` and persist translated warning/error strings in
-  snapshots; a live language switch can leave stale-language copy until the
-  next media event. The root fix is a typed `{ key, detail? }` fact resolved by
-  the presentation layer. It changes an internal snapshot contract across
-  host/viewer peers, SFU routes and both pages, so it is recorded for owner
-  decision instead of being patched at each call site.
 - **Large orchestration surfaces.** `HostPage.tsx` and `ViewerPage.tsx` remain
   large owners, and `signal` serializes room effects with one lock. No measured
   contention or behavior failure justifies a speculative split; extraction
@@ -130,8 +136,11 @@ a dependency without a separate accepted decision.
 
 ## Verification
 
-- `npm run check`: TypeScript build, 707 tests across 53 files and the production
+- `npm run check`: TypeScript build, 710 tests across 54 files and the production
   Browser bundle passed.
+- `tests/media-failure.test.ts` covers fact resolution per language, param-key
+  joining, list rendering and literal variables; stale copy is now
+  unrepresentable because no snapshot stores resolved text.
 - `go vet ./internal/... ./cmd/...` passed.
 - `go test ./internal/... ./cmd/...` passed, including route, signal, app,
   native and media packages.

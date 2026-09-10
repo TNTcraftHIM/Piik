@@ -1,4 +1,4 @@
-import { say } from "../ui/copy";
+import type { CopyKey } from "../ui/copy";
 import type { IceConfig, SignalPayload } from "../../shared/protocol";
 import { debugError } from "../lib/debug";
 import { observeDebugConnection } from "../lib/debug-webrtc";
@@ -157,7 +157,7 @@ export class ViewerPeer implements ViewerMediaPeer {
         ),
       );
     } catch (error) {
-      this.setError(error, say("host.fail.connection"));
+      this.setError(error, "host.fail.connection");
     }
   }
 
@@ -385,7 +385,7 @@ export class ViewerPeer implements ViewerMediaPeer {
           sdp: connection.localDescription.sdp,
         },
       })) {
-        throw new Error(say("viewer.msg.serverError"));
+        throw new Error("signal send rejected");
       }
       this.clearRecoveryTimer();
       this.offerRecoveryAttempts = 0;
@@ -394,7 +394,7 @@ export class ViewerPeer implements ViewerMediaPeer {
       if (!this.isCurrentConnection(connection, connectionId)) {
         return;
       }
-      this.setError(error, say("host.fail.connection"));
+      this.setError(error, "host.fail.connection");
       if (
         this.offerRecoveryAttempts < 1 &&
         this.events.sendRestartRequest(parentPeerId, connectionId, true)
@@ -427,7 +427,7 @@ export class ViewerPeer implements ViewerMediaPeer {
       await addRemoteIceCandidate(connection, payload.candidate);
     } catch (error) {
       if (this.isCurrentConnection(connection, connectionId)) {
-        this.setError(error, say("host.fail.connection"));
+        this.setError(error, "host.fail.connection");
       }
     }
   }
@@ -643,13 +643,12 @@ export class ViewerPeer implements ViewerMediaPeer {
     );
   }
 
-  private setError(error: unknown, fallback: string): void {
-    debugError("webrtc", "receiver-failed", error, { connectionId: this.connectionId, reason: fallback });
+  private setError(error: unknown, key: CopyKey): void {
+    debugError("webrtc", "receiver-failed", error, { connectionId: this.connectionId, reason: key });
     if (!this.snapshot) {
       return;
     }
-    const message = error instanceof Error ? error.message : fallback;
-    this.snapshot = { ...this.snapshot, error: message || fallback };
+    this.snapshot = { ...this.snapshot, error: { key } };
     this.emit();
   }
 
