@@ -7,13 +7,13 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **External audit preparation.** After the owner reviews the branch-work/TODO
-  inventory, prepare an isolated checkout and handoff for the proposed external
-  review. Cover repository-wide simplification, module/resource ownership,
-  lifecycle and state synchronization, dead code, useful comments and recurring
-  failure modes, plus changes since the previous external audit. Establish exact
-  review revisions from Git. Preserve the owner's sequence: inventory, audit
-  preparation, then final acceptance and release readiness.
+- [ ] **External audit.** Review the accepted candidate in an isolated checkout:
+  repository-wide simplification, module/resource ownership, lifecycle and state
+  synchronization, dead code, useful comments and recurring failure modes, plus
+  changes since the previous external audit. Use exact Git revisions and separate
+  confirmed defects, structural improvements, tradeoffs and unproven leads.
+  Review findings with the owner before implementing them, then resume final
+  acceptance and release readiness.
 - [ ] **Release and repository readiness.** Review the prepared Windows test
   candidate. Retry native CI after the Actions artifact quota refreshes, then
   rehearse the publisher with genuine matching Server and App packages. Old cloud
