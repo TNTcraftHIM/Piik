@@ -1,7 +1,8 @@
+import { PawnSvg } from "../components/living/Pawn";
 import { useState } from "react";
 import { AppHeader, LedStrip } from "../components/living/Header";
 import { StageOverlay, StageTv } from "../components/living/Stage";
-import { Couch, PawnSvg } from "../components/living/Couch";
+import { Couch } from "../components/living/Couch";
 import { StatusIndicator } from "../components/living/StatusIndicator";
 import { Pill } from "../components/living/primitives";
 import { deriveViewerPresentation } from "../media/viewer-presentation";
@@ -150,8 +151,8 @@ export function StatusPreviewPage() {
             <p className="sp-caption">沿用服务端已确认的媒体路径和有新鲜度的质量样本，不扩大全房广播。</p></article>
         </section>
         <section className="sp-catalog">
-          <header><h2>分享者：源状态与控制连接</h2>
-            <p>本地预览代表正在分享的源；某个观众的弱网不改变分享者的源状态。</p></header>
+          <header><h2>房主：源状态与控制连接</h2>
+            <p>本地预览代表正在分享的源；某个观众的弱网不改变房主的源状态。</p></header>
           <div className="sp-host-grid">
             {HOST_STATUS_SCENARIOS.map(({ name, facts }) => {
               const host = deriveHostStatus(facts);

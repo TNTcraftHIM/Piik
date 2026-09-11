@@ -1,113 +1,122 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="900" height="590" viewBox="0 0 900 590" fill="none" role="img" aria-labelledby="title desc">
-  <title id="title">A front-row seat with your friends</title>
-  <desc id="desc">Four softly rounded friends settle into a little living room. The green player holds a controller; blue, orange and pink friends lean together on the sofa. A television shows an original little platform adventure, with rolling hills, a star and a finish flag.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" id="still" width="900" height="590" viewBox="0 0 900 590" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">Room for your people</title>
+  <desc id="desc">A green host wearing a small gold crown plays a game with a small gamepad. On the screen, a little television hops between floating islands and collects two golden lights. Three round-headed friends watch from a warm orange sofa, while the Piik mascot keeps the group company.</desc>
   <defs>
-    <clipPath id="screen"><rect x="281" y="91" width="374" height="214" rx="16"/></clipPath>
-    <!-- Rounded avatar silhouettes, with just enough posture to feel seated. -->
-    <g id="friend" stroke="#22303E" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M15 23h10v6c8 2 12 10 12 19 0 6-8 8-17 8S3 54 3 48c0-9 4-17 12-19Z" fill="currentColor"/>
-      <rect x="10" y="3" width="20" height="23" rx="9.5" fill="currentColor"/>
-      <g fill="#22303E" stroke="none">
-        <circle cx="17" cy="14" r="1.1"/>
-        <circle cx="23" cy="14" r="1.1"/>
-      </g>
-      <path d="M18 20q2 2 4 0" fill="none" stroke-width=".8"/>
+    <g id="person" fill="currentColor" stroke="none">
+      <circle cx="0" cy="-31" r="20"/>
+      <path d="M-35 51.5c0-32.5 12.5-50 35-50s35 17.5 35 50q0 7.5-7.5 7.5h-55Q-35 59-35 51.5Z"/>
     </g>
+    <g id="eyes" fill="#22303e" stroke="none"><ellipse cx="-7" cy="-30.75" rx="2.75" ry="3.75"/><ellipse cx="7" cy="-30.75" rx="2.75" ry="3.75"/></g>
+    <clipPath id="screen"><rect x="284" y="111" width="370" height="190" rx="13"/></clipPath>
   </defs>
   <style>
-    @media (prefers-reduced-motion: no-preference) {
-      .game-player { animation: game-jump 3.6s ease-in-out; }
-      .game-star { transform-box: fill-box; transform-origin: center; animation: star-cheer 3.6s ease-in-out; }
-      .controller { animation: controller-tap 3.6s ease-in-out; }
-      @keyframes controller-tap { 0%, 13%, 22%, 100% { transform: translateY(0); } 17% { transform: translateY(2px); } }
-      @keyframes game-jump { 0%, 20%, 52%, 100% { transform: translate(0, 0); } 35% { transform: translate(8px, -32px); } }
-      @keyframes star-cheer { 0%, 31%, 55%, 100% { transform: scale(1) rotate(0deg); } 39% { transform: scale(1.2) rotate(12deg); } 46% { transform: scale(1.08) rotate(-7deg); } }
+    .game-player { transform-box:fill-box; transform-origin:50% 100%; }
+    .person-body { transform-origin:0 59px; }
+    .person-eyes { transform-origin:0 -30.75px; }
+    @media (prefers-reduced-motion:no-preference) {
+      .game-player { animation:hop-across 8.8s ease-in-out infinite; }
+      .game-token-first { animation:collect-first 8.8s linear infinite; }
+      .game-token-second { animation:collect-second 8.8s linear infinite; }
+      .person-body { animation:lean var(--pace) ease-in-out var(--phase) infinite; }
+      .person-eyes { animation:look var(--pace) ease-in-out var(--phase) infinite; }
+      .game-hand { animation:play 7.4s ease-in-out var(--tap-delay,0s) infinite; }
     }
+    :root:target .game-player, :root:target .game-token-first, :root:target .game-token-second, :root:target .person-body, :root:target .person-eyes, :root:target .game-hand { animation:none; }
+    @keyframes lean { 0%,36%,43%,100%{transform:none} 38%,41%{transform:rotate(3deg)} }
+    @keyframes look { 0%,3%,3.6%,12%,16%,47%,47.6%,61%,67%,100%{transform:none} 3.3%,47.3%{transform:scaleY(.14)} 13%,15%{transform:translate(2px,-2px)} 62%,63%{transform:translateX(-2px)} 65%,66%{transform:translateX(2px)} }
+    @keyframes hop-across {
+      0%,8%,100% { transform:none; opacity:1; }
+      12% { transform:translateY(2px) scale(1.08,.9); }
+      25% { transform:translate(54px,-68px) rotate(-8deg); }
+      38% { transform:translate(108px,-29px) scale(1.08,.92); }
+      42%,46% { transform:translate(108px,-29px); }
+      58% { transform:translate(163px,-81px) rotate(7deg); }
+      70% { transform:translate(218px,-2px) scale(1.08,.92); }
+      74%,86% { transform:translate(218px,-2px); opacity:1; }
+      91% { transform:translate(218px,-2px); opacity:0; }
+      92%,95% { transform:none; opacity:0; }
+    }
+    @keyframes collect-first { 0%,24%,100%{opacity:1} 28%,93%{opacity:0} }
+    @keyframes collect-second { 0%,57%,100%{opacity:1} 61%,93%{opacity:0} }
+    @keyframes play { 0%,19%,27%,54%,64%,100%{transform:none} 22%,25%{transform:translate(-2px,-2px)} 57%,61%{transform:translate(2px,-1px)} }
   </style>
-
-  <!-- A self-contained room, with transparent space around its edges. -->
-  <path d="M80 244C80 117 187 47 329 46C445 45 478 18 589 36C737 60 829 162 839 302C849 444 764 531 607 546L282 541C131 532 53 452 64 350Z" fill="#F5F2E9"/>
-  <path d="M137 231C147 114 257 82 369 85C496 89 562 54 666 114C755 165 783 239 772 335H131Z" fill="#DEEBDF"/>
-  <ellipse cx="455" cy="509" rx="348" ry="48" fill="#C8DACC"/>
-  <ellipse cx="455" cy="509" rx="295" ry="30" stroke="#F5F2E9" stroke-width="3"/>
-
-  <g stroke="#22303E" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
-    <!-- The screen is an illustration, not a product screenshot. -->
-    <path d="m324 328-15 27m300-27 15 27"/>
-    <rect x="263" y="73" width="410" height="252" rx="27" fill="#22303E"/>
-    <rect x="281" y="91" width="374" height="214" rx="16" fill="#CDE7E7" stroke="none"/>
+  <path d="M78 277C63 147 164 70 302 62c127-8 186-50 314-20 130 30 214 127 216 249 3 159-91 247-245 252l-292-3C145 536 70 457 78 277Z" fill="#f7f4e9"/>
+  <path d="M122 267c2-113 90-171 211-171 138 0 163-39 277 5 101 39 149 104 158 216H122Z" fill="#dcebe1"/>
+  <ellipse cx="460" cy="504" rx="350" ry="48" fill="#c8dccf"/>
+  <ellipse cx="460" cy="504" rx="296" ry="30" stroke="#f7f4e9" stroke-width="3"/>
+  <g stroke="#22303e" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
+    <!-- A short, original platform-game loop: two hops, two pickups, then a hold. -->
+    <path d="m439 52 30 25 30-25"/><path d="m331 324-14 22m289-22 14 22" stroke-width="6"/>
+    <rect x="264" y="78" width="410" height="248" rx="29" fill="#22303e"/>
+    <rect x="279" y="93" width="380" height="211" rx="16" fill="#fffdf5" stroke="none"/>
+    <g stroke="none"><circle cx="292" cy="103" r="2.5" fill="#e58b69"/><circle cx="301" cy="103" r="2.5" fill="#edc969"/><circle cx="310" cy="103" r="2.5" fill="#77b29a"/><rect x="434" y="100" width="70" height="4" rx="2" fill="#dce7df"/></g>
     <g clip-path="url(#screen)" stroke="none">
-      <circle cx="591" cy="130" r="22" fill="#F8D474"/>
-      <path d="M261 251C314 157 370 169 423 229C475 154 549 170 591 229C623 204 650 205 678 229V322H261Z" fill="#9DCAB9"/>
-      <path d="M259 281C333 231 357 250 404 269C487 203 542 234 589 269C620 236 651 244 682 263V322H259Z" fill="#6CADA0"/>
-      <path d="M281 284H405V306H281Zm181-42h85v13h-85Zm105 38h84v26h-84Z" fill="#F5F2E9"/>
-      <path d="M281 302H405V320H281Zm181-47h85v10h-85Zm105 43h84v19h-84Z" fill="#D4B58E"/>
-      <g class="game-star">
-        <path d="m443 146 7 14 16 3-12 11 3 16-14-8-14 8 3-16-12-11 16-3Z" fill="#FFD578"/>
+      <path d="M284 111h370v190H284Z" fill="#cce5e6"/>
+      <circle cx="582" cy="150" r="23" fill="#f6d57c"/>
+      <path d="M275 267q46-87 105-29t105-12 92 1 86-19v98H275Z" fill="#b1d4c7"/>
+      <path d="M277 294q75-68 132-19t113-10 140-13v53H277Z" fill="#8ebfb0"/>
+      <g fill="#fffdf5" opacity=".85"><rect x="337" y="153" width="44" height="9" rx="4.5"/><rect x="351" y="147" width="22" height="11" rx="5.5"/><rect x="492" y="137" width="34" height="7" rx="3.5"/></g>
+      <g fill="#6eaa96"><path d="M318 264h66l-9 18q-23 13-48-1Z"/><path d="M429 235h62l-9 18q-22 10-45-1Z"/><path d="M542 262h78l-13 23q-26 14-53-2Z"/></g>
+      <g fill="#fff6dc" stroke="#567c6f" stroke-width="1.8"><rect x="313" y="260" width="76" height="10" rx="5"/><rect x="424" y="231" width="72" height="10" rx="5"/><rect x="537" y="258" width="88" height="10" rx="5"/></g>
+      <g fill="#f3c864" stroke="#bd8c39" stroke-width="1.5">
+        <g class="game-token-first"><circle cx="410" cy="182" r="7"/><path d="M410 178v8" stroke="#fff5d4" stroke-width="2"/></g>
+        <g class="game-token-second"><circle cx="519" cy="168" r="7"/><path d="M519 164v8" stroke="#fff5d4" stroke-width="2"/></g>
       </g>
-      <path d="M393 234C396 220 404 208 419 201" stroke="#F5F2E9" stroke-width="4" stroke-linecap="round" stroke-dasharray="3 10"/>
-      <g class="game-player">
-        <rect x="422" y="205" width="26" height="30" rx="11" fill="#F7B471" transform="rotate(-12 435 220)"/>
-        <path d="m428 236-5 5m18-8 6 4" stroke="#22303E" stroke-width="3" stroke-linecap="round"/>
-        <circle cx="439" cy="215" r="2" fill="#22303E"/>
+      <path d="M604 255v-39" stroke="#567c6f" stroke-width="2.4"/>
+      <path d="M605 218h19l-5 7 5 7h-19Z" fill="#df875e"/>
+      <g transform="translate(335 231)"><g class="game-player" stroke="#36564f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="m9 3 5 4 5-4" fill="none"/>
+        <rect x="2" y="7" width="25" height="19" rx="6" fill="#f9d78d"/>
+        <g fill="#36564f" stroke="none"><circle cx="10" cy="15" r="1.4"/><circle cx="19" cy="15" r="1.4"/></g>
+        <path d="m8 29 3-3m11 3-3-3" fill="none"/>
+      </g></g>
+      <g fill="#fffdf5"><rect x="298" y="124" width="38" height="13" rx="6.5" opacity=".9"/><circle cx="306" cy="130.5" r="2" fill="#77ad98"/><circle cx="317" cy="130.5" r="2" fill="#77ad98"/><circle cx="328" cy="130.5" r="2" fill="#77ad98"/></g>
+    </g>
+    <circle cx="470" cy="316" r="2.5" fill="#f7f4e9" stroke="none"/>
+    <rect x="245" y="346" width="447" height="18" rx="9" fill="#d6b58d"/><path d="M267 365v47m403-47v47"/>
+    <!-- Familiar room objects and the Piik mascot. -->
+    <path d="M126 343v-76m0 45c-27-3-40-18-36-38 25 3 36 17 36 38Zm0-22c28-3 39-19 35-37-24 2-34 18-35 37Z" fill="#79b398"/>
+    <path d="M126 272c-21-8-27-26-17-42 19 11 24 25 17 42Z" fill="#a0c7a2"/>
+    <path d="m103 334 6 40c2 9 32 9 34 0l6-40Z" fill="#e0bd99"/><path d="M103 334h46"/>
+    <g transform="rotate(8 746 154)">
+      <rect x="702" y="109" width="88" height="79" rx="26" fill="#fffdf5" stroke="none"/>
+      <g transform="translate(715 117) scale(1.9)" stroke-width="2.3"><path d="m11 4 5 4 5-4"/><rect x="4" y="8" width="24" height="18" rx="5"/><circle cx="11.5" cy="16.5" r="1.25" fill="#22303e" stroke="none"/><path d="M19 17q2.3-3 4.7 0M10 29l2-3m10 3-2-3"/></g>
+    </g>
+    <path d="m749 237 5 11 12 3-12 4-5 11-3-12-11-3 11-4Z" fill="#f4cc74" stroke="none"/>
+    <!-- The same simple figures as the UI; each has its own quiet cadence. -->
+    <path d="m355 490-5 29m387-29 5 29M162 482v28m128-28v28" stroke-width="5"/>
+    <rect x="322" y="373" width="453" height="115" rx="39" fill="#edbb72" stroke="none"/>
+    <path d="M474 382v99m148-99v99" stroke="#d99a56" stroke-width="2.5"/>
+    <rect x="119" y="366" width="196" height="125" rx="40" fill="#d99a56" stroke="none"/>
+    <rect x="137" y="379" width="160" height="98" rx="30" fill="#edbb72" stroke="none"/>
+    <g transform="translate(216 362) rotate(6 0 59)" color="#83c4a5" style="--pace:43s;--phase:-4s">
+      <g class="person-body"><use href="#person"/><g transform="translate(3 -2)"><g class="person-eyes"><use href="#eyes"/></g></g>
+        <!-- Crown geometry and colours match the shared UI HostMark. -->
+        <g transform="translate(-15 -66) scale(2.5)" stroke="#846634" stroke-width=".85">
+          <path d="m1.2 6.3-1.2-3.7q-.2-.7.5-.4L3 3.6l2.4-2.5q.6-.7 1.2 0L9 3.6l2.5-1.4q.7-.3.5.4l-1.2 3.7q-.2.9-1.2.9H2.4q-1 0-1.2-.9Z" fill="#edc35d"/>
+          <path d="M2.1 6.5h7.8" stroke="#ba8b39" stroke-width="1"/>
+        </g>
+        <g transform="translate(3 40) rotate(-10) scale(.68)">
+          <path d="M-29-20h58c9 0 15 7 18 20l3 14c2 10-9 15-15 7l-12-13h-46l-12 13c-6 8-17 3-15-7l3-14c3-13 9-20 18-20Z" fill="#fffdf5" stroke-width="3"/>
+          <path d="M-28-7V6m-6.5-6.5h13" stroke-width="3.5"/>
+          <g stroke="none"><circle cx="28" cy="-8" r="3" fill="#e58b69"/><circle cx="36" cy="0" r="3" fill="#7eadde"/><circle cx="20" cy="0" r="3" fill="#74b297"/><circle cx="28" cy="8" r="3" fill="#edc969"/></g>
+          <path d="M-6-6h4m4 0h4" stroke-width="2"/>
+          <g fill="currentColor" stroke="none"><circle class="game-hand" cx="-34" cy="5" r="8" style="--tap-delay:-3.2s"/><circle class="game-hand" cx="31" cy="4" r="8"/></g>
+        </g>
       </g>
-      <path d="M599 279v-75" stroke="#22303E" stroke-width="3" stroke-linecap="round"/>
-      <path d="M601 206h31l-9 12 9 12h-31Z" fill="#F29A78"/>
-      <path d="M309 125h24m-12-7v14m25-7h11" stroke="#F5F2E9" stroke-width="5" stroke-linecap="round"/>
     </g>
-    <path d="M469 315h0" stroke="#EAEFE2" stroke-width="4"/>
-    <rect x="245" y="352" width="445" height="19" rx="9" fill="#D4B58E"/>
-    <path d="M267 373v57m402-57v57"/>
-
-    <!-- A plant and a small, winking Piik mascot. -->
-    <path d="M133 348v-77m0 43c-29-2-40-17-40-35 26 0 40 15 40 35Zm0-23c28-2 41-19 40-39-26 2-40 17-40 39Zm0-14c-22-13-26-33-17-50 21 14 25 31 17 50Z" fill="#77AB88" stroke-width="3.5"/>
-    <path d="m111 338 5 40c1 8 34 8 35 0l5-40Z" fill="#D7AC81" stroke-width="3.5"/>
-    <path d="M109 339h49" stroke-width="3.5"/>
-    <path d="M704 90c0-15 12-27 27-27h57c15 0 27 12 27 27v34c0 15-12 27-27 27h-41l-22 16 3-17c-14-2-24-12-24-26Z" fill="#FFFCF4" stroke="none"/>
-    <g transform="translate(726 74) scale(2.05)" stroke-width="2.4">
-      <path d="m11 4 5 4 5-4"/>
-      <rect x="4" y="8" width="24" height="18" rx="4"/>
-      <circle cx="11.5" cy="16.5" r="1.25" fill="#22303E" stroke="none"/>
-      <path d="M19 17c1.5-1.8 3.2-1.8 4.7 0M10 29l2-3m10 3-2-3"/>
+    <g transform="translate(414 371) rotate(-3)" color="#9ac8e4" style="--pace:47s;--phase:-17s">
+      <g class="person-body"><use href="#person"/><g class="person-eyes"><use href="#eyes"/></g></g>
+      <path d="M-21 39h43l-7 24h-29Z" fill="#fff5d4"/><path d="M-17 38q-4-12 6-11 1-12 10-5 9-8 11 2 12-2 9 14" fill="#fff9de" stroke-width="2.5"/>
+      <g fill="currentColor" stroke="none"><circle cx="-24" cy="45" r="6.5"/><circle cx="24" cy="45" r="6.5"/></g>
     </g>
-    <path d="m724 226 9-7m17 17 12-1m-17-32 2-11" stroke="#CB9270" stroke-width="4"/>
-
-    <!-- Warm seating, and one green player with the controller. -->
-    <path d="m352 494-5 28m397-28 5 28"/>
-    <rect x="323" y="376" width="450" height="118" rx="34" fill="#EBA064"/>
-    <path d="M466 386v89m147-89v89" stroke="#C98355" stroke-width="3"/>
-    <path d="M165 472v38m118-38v38"/>
-    <rect x="124" y="365" width="188" height="124" rx="36" fill="#D58655"/>
-    <path d="M143 393c0-20 11-32 30-32h84c20 0 34 14 34 33v55H143Z" fill="#F0AE76" stroke="none"/>
-    <use href="#friend" transform="translate(152 277) scale(3.2)" color="#6AB798"/>
-    <g class="controller">
-      <path d="M183 391q-4 21 20 14m50-14q9 17-11 17" stroke="#22303E" stroke-width="16"/>
-      <path d="M183 391q-4 21 20 14m50-14q9 17-11 17" stroke="#6AB798" stroke-width="10"/>
-      <path d="M210 386c-9 0-16 12-17 23-1 8 5 12 10 6l8-8h24l8 8c5 6 11 2 10-6-1-11-8-23-17-23Z" fill="#F5F2E9" stroke-width="3.5"/>
-      <path d="M210 394v10m-5-5h10" stroke-width="3"/>
-      <circle cx="237" cy="396" r="2.5" fill="#E59C6F" stroke="none"/>
-      <circle cx="242" cy="403" r="2.5" fill="#6AB798" stroke="none"/>
+    <g transform="translate(552 370) rotate(2)" color="#f1c776" style="--pace:53s;--phase:-29s">
+      <g class="person-body"><use href="#person"/><g class="person-eyes"><use href="#eyes"/></g></g>
     </g>
-    <path d="M136 423h34v49h-10c-14 0-24-10-24-24Z" fill="#E99B62"/>
-
-    <!-- Friends have distinct blue, orange and pink avatar colors. -->
-    <g transform="rotate(-5 424 433)">
-      <use href="#friend" transform="translate(360 279) scale(3.2)" color="#81AED7"/>
-      <path d="M387 401q1 24 30 24m45-23q-1 20-20 23" stroke="#22303E" stroke-width="15"/>
-      <path d="M387 401q1 24 30 24m45-23q-1 20-20 23" stroke="#81AED7" stroke-width="9"/>
+    <g transform="translate(694 369) rotate(-2)" color="#e9adc1" style="--pace:59s;--phase:-9s">
+      <g class="person-body"><use href="#person"/><g class="person-eyes"><use href="#eyes"/></g></g>
     </g>
-    <g transform="rotate(3 550 435)">
-      <use href="#friend" transform="translate(486 285) scale(3.2)" color="#F0B26C"/>
-      <path d="M514 405q-2 22 23 22m45-23q2 23-23 23" stroke="#22303E" stroke-width="15"/>
-      <path d="M514 405q-2 22 23 22m45-23q2 23-23 23" stroke="#F0B26C" stroke-width="9"/>
-    </g>
-    <g transform="rotate(6 677 435)">
-      <use href="#friend" transform="translate(612 276) scale(3.2)" color="#DFA1B6"/>
-      <path d="M641 401q5 23 28 24m47-27q12 6 28 2" stroke="#22303E" stroke-width="15"/>
-      <path d="M641 401q5 23 28 24m47-27q12 6 28 2" stroke="#DFA1B6" stroke-width="9"/>
-    </g>
-    <path d="M322 430c0-11 8-19 18-19s18 8 18 19v47h381v-47c0-11 8-19 18-19s18 8 18 19v47c0 15-12 27-27 27H349c-15 0-27-12-27-27Z" fill="#E99B62"/>
-    <path d="M370 478h357" stroke="#C98355" stroke-width="3"/>
-    <path d="m169 248-9-8m28-7-2-12m-39 45-12-1" stroke="#77AB88" stroke-width="4"/>
+    <path d="M322 434c0-13 8-21 19-21s20 8 20 21v40h376v-40c0-13 8-21 19-21s19 8 19 21v44c0 17-13 29-30 29H352c-17 0-30-12-30-29Z" fill="#d99a56" stroke="none"/>
+    <path d="M130 431c0-12 7-20 17-20s18 8 18 20v51h-12c-13 0-23-11-23-24Z" fill="#d99a56" stroke="none"/>
   </g>
 </svg>

@@ -1,81 +1,54 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-09-11
+Last reviewed: 2026-09-12
 
-Only **Now** is executable. Product modules own behavior, research owns evidence,
-and Git/PRs own completed history. A parked idea is not implementation authority.
+Only **Now** is executable. Product modules own behavior; Git/PRs own completed
+history. A parked idea is not implementation authority.
 
 ## Now
 
-Run candidate acceptance for the current audited source before the README,
-documentation and website redesign.
+- [ ] **External audit preparation.** After the owner reviews the branch-work/TODO
+  inventory, prepare an isolated checkout and handoff for the proposed external
+  review. Cover repository-wide simplification, module/resource ownership,
+  lifecycle and state synchronization, dead code, useful comments and recurring
+  failure modes, plus changes since the previous external audit. Establish exact
+  review revisions from Git. Preserve the owner's sequence: inventory, audit
+  preparation, then final acceptance and release readiness.
+- [ ] **Release and repository readiness.** Review the prepared Windows test
+  candidate. Retry native CI after the Actions artifact quota refreshes, then
+  rehearse the publisher with genuine matching Server and App packages. Old cloud
+  artifacts have already been removed; if quota rejection persists, inspect
+  account billing and Packages usage with credentials that can read those scopes.
+  Run the final source's required regression checks, prepare one coherent squash
+  PR, accept the [first public release](./reference/versioning.md#first-public-release-readiness),
+  and finish [repository protection and publishing activation](./operations/github.md).
+  Test-candidate checks do not accept the public release. Keep the owner's
+  [device/network deferrals](./verification-status.md#candidate-evidence-boundary).
+- [ ] **Gitee distribution.** After the promised credentials arrive, configure the
+  README/Release mirror, implement uploads and update-source selection over the
+  existing [release model](./reference/versioning.md#release-sources), and verify
+  package limits, anonymous downloads and update checks with the same artifacts.
+  These mirror/update paths are not implemented yet.
+- [ ] **Website and demo launch.** Complete repository visibility, Release,
+  GitHub Pages and DNS setup for piik.tv. Deploy and verify the password-free,
+  P2P-only demo.piik.tv on the separate US server under
+  [website operations](./operations/website.md). Verify all public destinations;
+  the current private production service remains private.
 
-### Candidate Acceptance
+Keep implementation on the existing phase branch. Main and production stay
+unchanged until the related acceptance and delivery actions are complete.
 
-Accept the pending fixes and release preparation together on one phase branch.
-Keep main and production unchanged until owner acceptance; preserve the rename
-recovery archive and external-audit worktree. No new wire/quality/lifecycle
-mechanism is implied by the remaining checks.
+## Next: P2P Connection And Feedback Review
 
-1. Build Windows App and Go Server candidates from one exact audited
-   revision through the existing packagers. The `98b29ec1` rehearsal predates
-   later source changes and is not final-candidate acceptance.
-2. Exercise two real builds sharing the current contract in both App/Site
-   directions and an already-open page across a compatible update. The recorded
-   `98b29ec1` candidate and the final candidate are a possible pair; verify exact
-   artifact identities first. These checks remain unrun. A private contract
-   does not prevent this rehearsal or require stale-protocol compatibility code.
-3. Verify synthetic stored-room/config preservation and usable subsequent
-   sharing across the candidate update. Package startup/probe checks do not
-   establish those behaviors. Keep the owner's macOS/Linux physical capture and
-   broader device/network deferrals unless a new concrete finding is relevant.
-4. Rehearse the local publisher dry run with genuine matching target artifacts;
-   the full set remains unverified because macOS needs its native toolchain.
-   Do not fabricate descriptors or relabel packages to satisfy it.
-5. Provide the Windows candidate for owner acceptance before continuing the
-   documentation/website redesign and remaining release preparation.
-
-## Next — Public Introduction And Distribution
-
-Finish the documentation/website redesign and distribution preparation below,
-then run regression checks for the final changes and package that exact source.
-Prepare one coherent squash PR for the accepted phase. Merge, deployment and
-public publication remain separate delivery actions.
-
-### Public Distribution And Activation
-
-Choose source visibility, the public asset set and release notes under the
-[first-public-release boundary](./reference/versioning.md#first-public-release-readiness).
-Apply main protection once the repository is eligible and complete
-[one-time activation](./operations/github.md) after explicit first-release
-acceptance. Automatic publication remains disabled pending that acceptance.
-
-Prepare GitHub-primary/Gitee-mirror distribution under the same
-[release-source policy](./reference/versioning.md#release-sources). Configure the
-owner's README-only Gitee target and implement mirror uploads and update-source
-adapters over the existing release model. Validate final package sizes against
-the current attachment quota and exercise publication/anonymous download before
-enabling the mirror. Reuse the same built artifacts; no Gitee publication or
-multi-source update checking is implemented yet.
-
-### Public Introduction
-
-After release preparation, rework the English/Chinese README, first-use guides,
-documentation content/navigation and public website as one coherent task.
-Prioritize clearer writing and information structure in the README and guides;
-the existing drafts still need substantial revision. Include the requested
-shared design-language and visual-effect changes, updating the
-[public introduction](./design/public-introduction.md) and
-[visual language](./design/visual-language.md) as new design decisions are
-accepted. This work remains open despite the completed structural audits.
-
-The owner owns **piik.tv**. GitHub Pages is the proposed public website; the
-dedicated US server is a proposed separate P2P-only demonstration. Neither is
-published. Choose download/demo destinations and finish DNS/Pages setup through
-[website operations](./operations/website.md) before approved publication.
-Plan the separate US demo deployment before exposing a demo link; the existing
-private production service remains private. Describe P2P-only's lack of a
-media-server fallback accurately.
+After the current phase, measure connection success, time to first picture and
+failure causes on representative networks, especially App and P2P-only sites.
+Review user progress/failure feedback and useful privacy-conscious diagnostics.
+Trace the existing ICE and P2P/SFU handoffs, including background P2P attempts
+behind working SFU media; compare SFU-first startup with measured current behavior
+before choosing changes. Preserve one graph and one operation under the
+[routing contract](./product/routing-transport.md) and
+[ADR-0005](./adr/0005-automatic-hybrid-media-routing.md). Prior ownership audits do
+not establish better connection success or speed; this note adds no retry policy.
 
 ## Parked Product Work
 
@@ -123,3 +96,7 @@ reopen from actual control actions and matching requested/applied media evidence
 6. **Platform output.** Reopen for a registered receiver acting as an ordinary
    Viewer only after the [platform-output gate](./research/platform-output.md)
    passes.
+7. **Full UI themes.** After the base version, research layout/composition/motion
+   overhauls, the owner's TeamSpeak skin comparison and Arknights PV art direction
+   with original Piik assets; retain old figures as possible theme material.
+   Assess extension boundaries and cost before scheduling any theme/plugin API.

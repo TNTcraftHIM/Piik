@@ -1,28 +1,31 @@
-# Find your way around Piik
+# Piik Documentation
 
 [About Piik](../README.md) · [中文介绍](../README.zh-CN.md) · [中文上手指南](./guide/getting-started.zh-CN.md)
 
-## What would you like to do?
+## Guides And References
 
-| I want to… | Start here |
+| Task | Guide |
 | --- | --- |
 | Watch a friend or share my first screen | [Getting started](./guide/getting-started.md) |
 | Choose an App mode or fix sound and connection trouble | [First-use help](./guide/getting-started.md#choose-an-app-mode) |
 | Run Piik App, check platform requirements, or build a package | [App guide](../cmd/piik-app/README.md) |
 | Try or change the source code | [Run from source](#run-from-source) |
-| Host a site for my group | [Self-hosting](./operations/self-hosting.md) |
+| Find a directory or the module responsible for a behavior | [Repository layout and module map](./reference/engineering.md#repository-layout) |
+| Host a site for my group | [Self-hosting](./operations/self-hosting.md) · [中文部署](./operations/self-hosting.zh-CN.md) |
+| Keep a server running with systemd or Docker | [Service management](./operations/service-management.md) |
 | Set passwords, ports, or room storage | [Configuration](./reference/configuration.md) |
-| Update or recover a deployment | [Deployment guide](./deployment.md) |
+| Update my server | [Server updates](./operations/self-hosting.md#keep-it-running-and-update) |
+| Build, publish or recover a maintained release | [Maintainer release tooling](./deployment.md) |
 | Send a useful bug report | [Diagnostics and export](./reference/configuration.md#diagnostics) |
 | Check release and platform readiness | [Current status](./status.md) |
 
-The introduction and getting-started guide are available in English and Chinese.
+The introduction, getting-started and self-hosting guides are available in English and Chinese.
 Technical references keep one shared version.
 
 ## Run from source
 
-There are no public App downloads or demo site yet. You can try the Browser
-application locally with Node from [.node-version](../.node-version), npm from
+You can try the Browser application locally with Node from
+[.node-version](../.node-version), npm from
 [package.json](../package.json), and Go 1.26 from [go.mod](../go.mod).
 Run these commands from the repository root.
 
@@ -69,7 +72,8 @@ npm run check
 npm run check:client
 ```
 
-Use the [naming guide](./reference/naming.md) for product names and commands.
+Use the [naming and copy guide](./reference/naming.md) for product names,
+commands, role labels and Chinese/English voice.
 Piik-owned code uses [MIT](../LICENSE); see the
 [licensing guide](../licenses/README.md) for third-party components.
 
@@ -92,7 +96,7 @@ and [website preview and publishing](./operations/website.md).
 | When changing… | Follow this owner |
 | --- | --- |
 | Module responsibilities or interfaces | [Engineering and contract map](./reference/engineering.md) |
-| Product, package or code names | [Naming](./reference/naming.md) |
+| Product/tool names, role labels or copy | [Naming and copy](./reference/naming.md) |
 | UI colour, illustration, motion or layout | [Visual language](./design/visual-language.md) |
 | Overlays, titles or state indicators | [Media status](./design/media-status.md) |
 | Releases, protocols or stored formats | [Versions and compatibility](./reference/versioning.md) |

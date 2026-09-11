@@ -4,6 +4,48 @@ The website source is `site/`. It explains Piik; it does not run rooms, signalin
 or media. The [public introduction plan](../design/public-introduction.md) owns
 the draft's content and design boundary.
 
+## Public Destinations
+
+| Entry | Destination |
+| --- | --- |
+| Website | [piik.tv](https://piik.tv) |
+| P2P-only demo on the separate US server | [demo.piik.tv](https://demo.piik.tv) |
+| App downloads and release notes | [GitHub Releases](https://github.com/TNTcraftHIM/Piik/releases) |
+| Documentation index | [Repository documentation](../README.md) |
+
+The introduction is prepared with these links. DNS, deployment and release
+publication must be verified when publishing.
+
+GitHub Pages can serve the complete website: it hosts
+[static HTML, CSS and JavaScript](https://docs.github.com/en/pages/getting-started-with-github-pages/what-is-github-pages).
+The demo also needs the Go service for room authority, WebSocket signaling and
+UDP STUN, so it runs on the separate US server rather than Pages.
+
+## Public Demo Configuration
+
+The chosen demo allows entry without a site password and provides P2P sharing
+without SFU fallback. Use the [self-hosting runbook](./self-hosting.md) with:
+
+```dotenv
+PIIK_ENV=production
+LISTEN_HOST=127.0.0.1
+PORT=8787
+PUBLIC_BASE_URL=https://demo.piik.tv
+ALLOWED_ORIGINS=https://demo.piik.tv
+SITE_ACCESS_PASSWORD=
+ROOM_DATABASE_PATH=/var/lib/piik/rooms.sqlite
+MAX_VIEWERS_PER_ROOM=20
+STUN_URLS=stun:demo.piik.tv:3478
+NAT_PREDICTION_ENABLED=true
+SFU_UDP_PORT=
+```
+
+Point `demo.piik.tv` directly at the US server so UDP reaches its STUN listeners;
+allow UDP 3478/3479/3480 and terminate HTTPS/WSS at nginx. The service unit
+provides the SQLite state directory. Room ownership, invitations and private-room
+admission still apply. The [configuration reference](../reference/configuration.md)
+owns each setting and its bounds.
+
 ## Preview
 
 With the repository's development dependencies installed:
@@ -18,9 +60,8 @@ domain and GitHub's `/Piik/` project path work.
 
 ## Publish when approved
 
-1. Confirm the public copy, download/demo destinations and repository visibility.
-   A private-source Pages site requires an eligible GitHub plan; its published
-   website is not made private simply by keeping the source repository private.
+1. Verify the public copy and destinations above, publish the release artifacts
+   and open the source repository as part of the approved public launch.
 2. In repository **Settings > Pages**, choose **GitHub Actions** as the source.
    Use the dedicated Pages workflow, not publication of the repository root or
    all of `docs/`, which includes internal research and operational reference.
@@ -33,7 +74,7 @@ domain and GitHub's `/Piik/` project path work.
 
 There is no automatic deployment on branch pushes. The workflow is prepared,
 but writing it does not enable Pages or change DNS. The private production
-site and any future US P2P-only demo remain separate deployments.
+site and the US P2P-only demo remain separate deployments.
 
 For rollback, dispatch the previously accepted site revision from a reviewed
 revert on `main`; runtime App/Server binaries and databases are unaffected.

@@ -1,0 +1,38 @@
+.cp-nav { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 20px 0 28px; }
+.cp-nav a { color: var(--ink); font-size: 13px; text-underline-offset: 5px; }
+.cp-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.cp-card { min-width: 0; padding: 24px; border: 1px solid var(--control-edge); border-radius: 24px; background: var(--paper); }
+.cp-card > header, .cp-section-head { display: flex; align-items: baseline; gap: 12px; }
+.cp-card > header h2, .cp-section-head h2 { margin: 0; font-size: 19px; }
+.cp-number { font: 600 11px var(--mono); color: var(--ink); }
+.cp-card p, .cp-section-head p { margin: 12px 0 20px; color: var(--muted); font-size: 13px; line-height: 1.7; }
+.cp-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 16px 0; }
+.cp-tools > [role="group"]:not(.lr-lcd) { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.cp-tools .lr-input { max-width: 100%; }
+.cp-tools .lr-input input { width: 160px; }
+.cp-tools .lr-pill { max-width: 100%; }
+.cp-feedback { min-height: 2em; }
+.cp-card .cp-input-error { color: var(--danger); }
+.cp-dials { width: fit-content; max-width: 100%; margin: 20px 0 0; }
+.cp-dials .lr-dial { width: 46px; height: 58px; font-size: 28px; }
+.cp-section { margin-top: 44px; scroll-margin-top: 24px; }
+.cp-people-room { padding: 24px 12px 8px; border-radius: 26px; background: var(--wall-2); }
+.cp-sync { display: flex; align-items: center; justify-content: center; gap: 24px; }
+.cp-sync > span { display: grid; justify-items: center; gap: 8px; }
+.cp-sync .lr-person { width: 56px; height: 65px; }
+.cp-sync-caption { max-width: 12ch; color: var(--muted); text-align: center; font-size: 12px; line-height: 1.7; }
+.cp-sync small { color: var(--muted); font-size: 11px; }
+.cp-connection-panel { padding: 12px; border: 1px solid var(--control-edge); border-radius: 22px; background: var(--paper); }
+.cp-disclosure { margin-top: 12px; }
+.cp-disclosure summary { padding: 12px 0; cursor: pointer; }
+.cp-stage { max-width: 780px; margin: 22px auto; }
+.cp-poster { width: 100%; height: 100%; object-fit: cover; }
+.cp-stage-action { position: absolute; inset: 0; display: grid; place-items: center; }
+@media (max-width: 850px) { .cp-grid { grid-template-columns: 1fr; } }
+@media (max-width: 480px) {
+  .cp-card { padding: 18px; }
+  .cp-section-head h2, .cp-card > header h2 { font-size: 17px; }
+  .cp-sync { gap: 16px; }
+  .cp-people-room { padding-inline: 0; }
+  .cp-connection-panel { padding: 4px; }
+}

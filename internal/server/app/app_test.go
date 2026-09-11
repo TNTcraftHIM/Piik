@@ -673,16 +673,21 @@ func TestSiteAccessRejectsAnExpiredOrModifiedCookie(t *testing.T) {
 }
 
 func TestSiteAccessIsImmediateWhenTheAccessPasswordIsEmpty(t *testing.T) {
-	configuration := testConfig(t)
-	configuration.SiteAccessPassword = ""
-	server := start(t, Options{Config: configuration})
+	for _, environment := range []config.Environment{config.EnvironmentDevelopment, config.EnvironmentProduction} {
+		t.Run(string(environment), func(t *testing.T) {
+			configuration := testConfig(t)
+			configuration.Env = environment
+			configuration.SiteAccessPassword = ""
+			server := start(t, Options{Config: configuration})
 
-	server.do(http.MethodGet, "/api/site-access").
-		expect(http.StatusOK, `{"required":false,"authenticated":true}`).
-		expectHeader("Set-Cookie", "")
-	server.do(http.MethodPost, "/api/site-access", withOrigin(allowedOrigin)).
-		expect(http.StatusOK, `{"required":false,"authenticated":true}`).
-		expectHeader("Set-Cookie", "")
+			server.do(http.MethodGet, "/api/site-access").
+				expect(http.StatusOK, `{"required":false,"authenticated":true}`).
+				expectHeader("Set-Cookie", "")
+			server.do(http.MethodPost, "/api/site-access", withOrigin(allowedOrigin)).
+				expect(http.StatusOK, `{"required":false,"authenticated":true}`).
+				expectHeader("Set-Cookie", "")
+		})
+	}
 }
 
 // --- room HTTP API --------------------------------------------------------
@@ -776,8 +781,9 @@ func TestRoomCreationCreatesPrivateRoomsWithOptionalPasswordsAtomically(t *testi
 	}
 }
 
-func TestRoomCreationAllowsExplicitOpenCreationWithoutSiteAccess(t *testing.T) {
+func TestProductionAllowsRoomCreationWithoutSiteAccessButRequiresRoomOwnership(t *testing.T) {
 	configuration := testConfig(t)
+	configuration.Env = config.EnvironmentProduction
 	configuration.SiteAccessPassword = ""
 	server := start(t, Options{Config: configuration})
 
@@ -789,6 +795,14 @@ func TestRoomCreationAllowsExplicitOpenCreationWithoutSiteAccess(t *testing.T) {
 	if !strings.Contains(created.InviteURL, "#v=") {
 		t.Fatalf("inviteUrl = %q", created.InviteURL)
 	}
+	server.updateRoomAccess(accessRequest{
+		roomID: created.RoomID, hostToken: "wrong-token",
+		body: `{"action":"set-code-entry-policy","policy":"private"}`,
+	}).expectStatus(http.StatusNotFound)
+	server.updateRoomAccess(accessRequest{
+		roomID: created.RoomID, hostToken: created.HostToken,
+		body: `{"action":"set-code-entry-policy","policy":"private"}`,
+	}).expectStatus(http.StatusOK)
 }
 
 func TestRoomCreationAllocatesUniqueFourDigitCodesConcurrently(t *testing.T) {

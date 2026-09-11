@@ -1,7 +1,57 @@
-# Naming
+# Naming And Copy
 
 This is the naming convention for new and changed Piik code, UI and packaging.
 Use the brand for people and predictable lowercase identifiers for tools.
+
+## Voice And Terminology
+
+Use the same role and action vocabulary in the App, Browser, website and guides.
+Role labels describe permission; a person's chosen nickname stays unchanged.
+
+| Meaning | English | Chinese |
+| --- | --- | --- |
+| Person sharing and controlling the room | Host | 房主 |
+| Person watching | Viewer | 观众 |
+| Product capability | Screen sharing | 屏幕共享 |
+| Start sending a chosen screen/window | Start sharing | 开始分享 |
+| Enter another person's room | Join a room | 加入房间 |
+| Site-wide access secret | Site passphrase | 站点口令 |
+| Room-specific access secret | Room password | 房间密码 |
+
+Write each language for its own audience. Chinese headings and welcomes may
+sound like friends inviting each other: “来，给你看个好东西。” or “沙发给你留着呢。”
+Do not translate English sentence structure or possessive screen metaphors
+literally (“和朋友一起看你的屏幕”). Use familiar Chinese verbs and a light touch;
+forced memes, baby talk and repeated slogans quickly become tiring.
+
+Set the register by the reader's task:
+
+| Surface | Register |
+| --- | --- |
+| Website | Light, everyday language in introductions and illustration captions; keep the current restraint |
+| README | A friendly introduction, followed by direct explanations of features, limits and first steps |
+| Documentation index | Clear topic names and short descriptions that help readers choose a guide |
+| Deployment, configuration and maintenance guides | Formal, precise instructions: prerequisites, actions, expected results and recovery steps |
+
+Formal means clear and factual, not bureaucratic. Keep detailed procedures free
+of jokes and promotional slogans; do not carry the website's playful headings
+into technical instructions.
+
+Download/availability labels, platform requirements, instructions, permission
+prompts, status and errors stay plain and specific. Use the exact visible action
+names in tutorials; a playful caption never replaces “Download”, “Join a room”
+or a platform/connection limitation. Explain what happened, what the user can do
+next, and any real limitation. Jokes belong
+in the welcome or illustration caption. Do not soften a failure into a joke,
+invent connection progress or promise guaranteed connectivity or absolute privacy.
+Screen sharing includes games, creative work and showing a useful discovery.
+
+Opening lines are original, brief nods to game and movie conventions. Keep a
+small bilingual set without a quotation service or attribution to real works.
+Avoid copying recognizable dialogue, catchphrases or an existing brand's voice.
+The [visual language](../design/visual-language.md) owns where these lines appear.
+
+## Product And Tool Names
 
 | Surface | Convention | Example |
 | --- | --- | --- |

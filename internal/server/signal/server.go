@@ -1241,7 +1241,7 @@ func (s *Server) handleAuthenticatedMessage(sess *session, authenticated *authen
 		s.sendViewerPresence(authenticated.roomID)
 	case protocol.SetSharingPausedMessage:
 		if authenticated.role != protocol.RoleHost {
-			s.sendError(sess, "FORBIDDEN", "只有当前分享者可以暂停分享")
+			s.sendError(sess, "FORBIDDEN", "只有当前房主可以暂停分享")
 			return
 		}
 		connectedHost, hasHost := s.store.GetConnectedHost(authenticated.roomID)
@@ -1263,7 +1263,7 @@ func (s *Server) handleAuthenticatedMessage(sess *session, authenticated *authen
 		s.broadcastHostStatus(authenticated.roomID, true, m.Paused)
 	case protocol.StopSharingMessage:
 		if authenticated.role != protocol.RoleHost {
-			s.sendError(sess, "FORBIDDEN", "只有当前分享者可以停止分享")
+			s.sendError(sess, "FORBIDDEN", "只有当前房主可以停止分享")
 			return
 		}
 		if authenticated.shareGeneration == "" ||

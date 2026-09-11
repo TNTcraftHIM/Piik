@@ -4,6 +4,7 @@ import { z } from "zod";
 import { BrandLoader, BrandMark } from "../components/living/BrandMark";
 import { Tooltip } from "../components/living/Tooltip";
 import { AppHeader } from "../components/living/Header";
+import { WelcomeLine } from "../components/living/WelcomeLine";
 import { Btn, Pill } from "../components/living/primitives";
 import type { HintKind } from "../components/living/hints";
 import { Glyph, type GlyphName } from "../ui/icons";
@@ -192,12 +193,11 @@ export function AppLauncherPage() {
         ) : (
           <form className="lr-client-launch-panel" onSubmit={launch}>
             <BrandMark size={68} motion="once" />
-            {vis ? null : (
-              <header className="lr-client-launch-copy">
-                <h1>{t("client.launch.title")}</h1>
-                <p>{t("client.launch.hint")}</p>
-              </header>
-            )}
+            <WelcomeLine />
+            <header className={vis ? "visually-hidden" : "lr-client-launch-copy"}>
+              <h1>{t("client.launch.title")}</h1>
+              <p>{t("client.launch.hint")}</p>
+            </header>
 
             {updateLink && (vis ? updateLink : (
               <Tooltip text={updateText}>{updateLink}</Tooltip>

@@ -425,7 +425,7 @@ describe("RouteTree", () => {
     expect(html).not.toContain('aria-label="Alice · 显示连接详情"');
   });
 
-  it("gives every reachable depth its own horizontal column", () => {
+  it("keeps every person and parent edge in a full-room relay chain within the panel", () => {
     const participants = [
       {
         role: "host" as const,
@@ -433,7 +433,7 @@ describe("RouteTree", () => {
         displayName: "Host",
         upstream: { kind: "none" as const },
       },
-      ...Array.from({ length: 5 }, (_, index) => ({
+      ...Array.from({ length: 20 }, (_, index) => ({
         role: "viewer" as const,
         peerId: `viewer-${index}`,
         displayName: `Viewer ${index}`,
@@ -454,12 +454,17 @@ describe("RouteTree", () => {
     );
     const width = Number(html.match(/viewBox="0 0 (\d+) /)?.[1]);
 
-    expect(width).toBe(1_520);
-    expect(html).toContain(`style="width:${width}px;max-width:none"`);
-    expect(
-      new Set(
-        [...html.matchAll(/translate\(([\d.]+),/g)].map((match) => match[1]),
-      ).size,
-    ).toBeGreaterThanOrEqual(6);
+    expect(width).toBe(640);
+    expect(html).toContain('class="lr-route is-outline"');
+    expect(html).not.toContain("max-width:none");
+    expect(html.match(/class="lr-route-edge is-p2p"/g)).toHaveLength(20);
+    expect(html.match(/class="lr-person"/g)).toHaveLength(21);
+    const points = [...html.matchAll(/class="lr-route-node[^\"]*" transform="translate\(([\d.]+), ([\d.]+)\)/g)]
+      .map((match) => ({ x: Number(match[1]), y: Number(match[2]) }));
+    expect(new Set(points.map((point) => point.y)).size).toBe(21);
+    expect(points.every((point) => point.x >= 0 && point.x + 40 < width)).toBe(true);
+    for (let index = 0; index < 20; index++) {
+      expect(html).toContain(`Viewer ${index} ← ${index === 0 ? "Host" : `Viewer ${index - 1}`}`);
+    }
   });
 });

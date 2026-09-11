@@ -8,6 +8,16 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { bindSvgReplayOnPointerEnter } from "./animation";
 
 const PATHS: Record<string, { body: ReactNode; solid?: boolean }> = {
+  couch: { body: (<><path pathLength={1} d="M5 12V8a3 3 0 0 1 3-3h8a3 3 0 0 1 3 3v4M6 19v2m12-2v2"/><path pathLength={1} d="M5 15h14v-3a2 2 0 0 1 4 0v5a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2v-5a2 2 0 0 1 4 0Z"/></>) },
+  gamepad: { body: (<><path pathLength={1} d="M8 7h8c3 0 4 2 5 6l1 5c.3 2-2 3-3.5 1.5L16 17H8l-2.5 2.5C4 21 1.7 20 2 18l1-5c1-4 2-6 5-6Z"/><path pathLength={1} d="M6 12h4m-2-2v4m8-3h.01M18 14h.01"/></>) },
+  save: { body: (<><path pathLength={1} d="M5 3h12l4 4v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path pathLength={1} d="M7 3v6h9V3M7 21v-7h10v7"/></>) },
+  popcorn: { body: (<><path pathLength={1} d="M5 9c-3-3 0-6 3-5 0-4 6-4 7-1 4-1 7 3 4 6M5 9h14l-2 12H7Z"/><path pathLength={1} d="m9 12 1 6m5-6-1 6"/></>) },
+  clapperboard: { body: (<><path pathLength={1} d="m3 9-1-5 19-3 1 5ZM3 10h19v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path pathLength={1} d="m7 3 3 4m4-5 3 4"/></>) },
+  trophy: { body: (<><path pathLength={1} d="M7 3h10v6a5 5 0 0 1-10 0ZM7 5H3v3a4 4 0 0 0 5 4m9-7h4v3a4 4 0 0 1-5 4M12 14v6m-5 1h10"/></>) },
+  gift: { body: (<><rect pathLength={1} x="3" y="8" width="18" height="5" rx="1"/><path pathLength={1} d="M5 13v8h14v-8M12 8v13m0-13C5 8 4 3 7 3c3 0 5 5 5 5s2-5 5-5c3 0 2 5-5 5Z"/></>) },
+  flag: { body: (<><path pathLength={1} d="M5 22V3h14l-4 5 4 5H5"/></>) },
+  heart: { body: (<><path pathLength={1} d="M12 21 3.6 12.6C-2 7 5.5.5 12 7 18.5.5 26 7 20.4 12.6Z"/></>) },
+  bulb: { body: (<><path pathLength={1} d="M8 17v-2c-6-5-3-13 4-13s10 8 4 13v2ZM9 21h6m-3-4v-7m-3 0 3 3 3-3"/></>) },
   copy: { body: (<><rect pathLength={1} x="9" y="9" width="12" height="12" rx="2"/><path pathLength={1} d="M5 15V5a2 2 0 0 1 2-2h10"/></>) },
   check: { body: (<><path pathLength={1} d="M4 12.5 9.5 18 20 6.5"/></>) },
   refresh: { body: (<><path pathLength={1} d="M3 12a9 9 0 0 1 9-9 9.7 9.7 0 0 1 6.7 2.7L21 8"/><path pathLength={1} d="M21 3v5h-5"/><path pathLength={1} d="M21 12a9 9 0 0 1-9 9 9.7 9.7 0 0 1-6.7-2.7L3 16"/><path pathLength={1} d="M8 16H3v5"/></>) },
@@ -74,16 +84,17 @@ export function Glyph({
   size?: number;
   className?: string;
   /**
-   * Declares an explicit draw-in spot. Marked icons replay on state swaps,
-   * genuine remounts, and pointer entry; unmarked icons stay static.
+   * Declares an explicit state-entry drawing. Hover/focus replay belongs only
+   * to primary actions; ordinary controls keep their icon visible.
    */
   draw?: string;
 }) {
   const icon = PATHS[name] ?? PATHS.alert;
   const isSolid = icon?.solid === true;
-  const drawClass = [
+  const glyphClass = [
+    "lr-glyph",
     draw ? "lr-glyph-draw" : null,
-    draw && isSolid ? "is-solid" : null,
+    isSolid ? "is-solid" : null,
     className ?? null,
   ]
     .filter(Boolean)
@@ -91,8 +102,9 @@ export function Glyph({
   const graphicRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
-    if (!draw || !graphicRef.current) return;
-    return bindSvgReplayOnPointerEnter(graphicRef.current);
+    const graphic = graphicRef.current;
+    if (!draw || !graphic?.closest("button:is(.lr-btn.is-primary, .lr-tv-big, .lr-join-go)")) return;
+    return bindSvgReplayOnPointerEnter(graphic);
   }, [draw]);
 
   return (
@@ -108,7 +120,7 @@ export function Glyph({
       strokeLinejoin="round"
       aria-hidden="true"
       focusable="false"
-      className={drawClass || undefined}
+      className={glyphClass}
     >
       {icon?.body}
     </svg>

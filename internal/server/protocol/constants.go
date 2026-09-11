@@ -26,7 +26,7 @@ const (
 
 	MaxDisplayNameCodePoints     = 24
 	DefaultViewerDisplayName     = "观众"
-	DefaultHostDisplayNamePrefix = "分享者"
+	DefaultHostDisplayNamePrefix = "房主"
 
 	MinViewerPasswordLength = 1
 	MaxViewerPasswordLength = 64

@@ -82,9 +82,11 @@ an active share just because an unrelated product/build label changed.
 
 A single release plan computes the next tag and full source SHA. Packagers inject
 both into binaries, embedded Web/debug metadata and the schema-2 release descriptors.
-Local candidates use an exact release tag or `development`; an explicit CI version
-cannot reuse a tag owned by another source revision. Do not maintain independent
-hand-edited App/Server/Web version files. Archive layout and checks stay in the
+Local candidates use an exact release tag, `development` or an explicit candidate
+version. An explicit version labels an unpublished test artifact; it does not
+declare or freeze a public release. It cannot reuse a tag owned by another source
+revision. Do not maintain independent hand-edited App/Server/Web version files.
+Archive layout and checks stay in the
 existing packagers; a new build never replaces an already-published package.
 
 Update checks compare actual release precedence and link to the matching release.

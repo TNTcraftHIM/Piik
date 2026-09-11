@@ -64,7 +64,7 @@ ${rmBlock(["vls-share-audio-change"], [[".vls-share-audio-change", "opacity:1"],
         <Frame x={x} w={152} theme={theme} result={index === 1} />
         <MiniTv x={x + 20} y={28} w={65} h={42} />
         <path d={`M${x + 37} 56 l12 -11 10 6 10 -8`} fill="none" stroke={SKY} strokeWidth={2.5} />
-        <Pawn x={x + 29} yb={85} s={6} eyes />
+        <Pawn x={x + 29} yb={85} s={6} eyes host />
         <Pawn x={x + 121} yb={75} s={9} color={SKY} eyes />
         <path d={`M${x + 85} 62 h15`} fill="none" stroke={FAINT} strokeWidth={2} strokeDasharray="3 3" />
         <g opacity={audible ? 1 : 0} className={index && !locked ? `vls-share-audio-change${enabled ? "" : " vls-share-audio-off"}` : undefined}>

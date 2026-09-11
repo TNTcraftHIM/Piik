@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="192" viewBox="0 0 900 192" role="img" aria-labelledby="title desc">
+  <title id="title">Pick a screen, send an invitation, watch together</title>
+  <desc id="desc">Three illustrated steps: choose a window, send its room invitation, and join friends on the sofa. Each loop pauses to let the scene settle.</desc>
+  <style>
+    :root { --drawing:#22303e; --panel:#fafaf3; --line:#c6d6cc; --label:#256b47; --art-mint:#c4e3ce; --art-paper:#fffdf4; --art-blue:#a2c8e8; --art-yellow:#f5d37a; --art-orange:#ee8955; --art-pink:#e9b1bb; --couch:#edbb72; --couch-dark:#d99a56; }
+    @media (prefers-color-scheme:dark) { :root { --panel:#1b2d34; --line:#3b5155; --label:#9bdbb2; } }
+    text { fill:var(--label); font:600 13px system-ui,sans-serif; letter-spacing:2px; }
+    @media (prefers-reduced-motion:no-preference) {
+      g[class] { transform-box:fill-box; transform-origin:center; }
+      .screen-cursor { animation:choose-screen 6.4s ease-in-out infinite both; }
+      .chosen-window { animation:window-response 6.4s ease-in-out infinite both; }
+      .invite-plane { animation:send-invite 6.4s ease-in-out .2s infinite both; }
+      .invite-note { animation:note-response 6.4s ease-in-out .2s infinite both; }
+      .sofa-friend { animation:take-a-seat 6.4s ease-out .4s infinite both; }
+      .sofa-friend + .sofa-friend { animation-delay:.52s; }
+    }
+    @keyframes choose-screen {
+  0%, 8%, 48%, 100% { transform: none; }
+  22%, 34% { transform: translate(-62px, -19px); }
+  28% { transform: translate(-62px, -19px) scale(.85); }
+}
+@keyframes window-response { 0%, 22%, 46%, 100% { transform: none; } 30% { transform: scale(1.07); } 38% { transform: scale(.99); } }
+@keyframes send-invite {
+  0%, 6%, 48%, 100% { transform: none; opacity: 1; }
+  12% { transform: translate(-4px, 3px) rotate(7deg); opacity: 1; }
+  32% { transform: translate(42px, -36px) rotate(-12deg); opacity: 0; }
+  33% { transform: translate(-8px, 8px); opacity: 0; }
+}
+@keyframes note-response { 0%, 10%, 42%, 100% { transform: none; } 20% { transform: translateY(1px) rotate(-4deg); } 32% { transform: rotate(1deg); } }
+@keyframes take-a-seat { 0% { transform: translateY(-8px); } 22% { transform: translateY(2px); } 32%, 100% { transform: none; } }
+  </style>
+  <g transform="translate(0 2)">
+    <rect x="1" y="1" width="278" height="186" rx="18" fill="var(--panel)" stroke="var(--line)" stroke-width="1.5"/>
+    <text x="20" y="28">01</text>
+    <g transform="translate(15 40)"><g fill="none" stroke="var(--drawing)" stroke-width="3" stroke-linejoin="round">
+                <rect x="47" y="17" width="141" height="90" rx="12" fill="var(--art-mint)"/><path d="M105 108v14m-20 0h65"/>
+                <g class="chosen-window"><rect x="64" y="31" width="64" height="57" rx="7" fill="var(--art-paper)"/><path d="m79 76 12-15 9 7 12-19"/></g>
+                <rect x="137" y="31" width="34" height="23" rx="5" fill="var(--art-blue)"/><rect x="137" y="64" width="34" height="24" rx="5" fill="var(--art-yellow)"/>
+                <g class="screen-cursor"><path d="m172 82 3 33 9-8 8 13 9-5-8-13 11-2Z" fill="var(--art-orange)"/></g>
+              </g><path d="m33 35-8-4m12-8-4-8m169 22 9-5" stroke="var(--drawing)" stroke-width="3" stroke-linecap="round"/></g>
+  </g>
+  <g transform="translate(310 2)">
+    <rect x="1" y="1" width="278" height="186" rx="18" fill="var(--panel)" stroke="var(--line)" stroke-width="1.5"/>
+    <text x="20" y="28">02</text>
+    <g transform="translate(15 40)"><g stroke="var(--drawing)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <g class="invite-note"><rect x="44" y="31" width="143" height="73" rx="16" fill="var(--art-paper)" transform="rotate(-5 115 67)"/><path d="m80 77-6-6a13 13 0 0 1 0-18l10-10a13 13 0 0 1 18 0l6 6m-10 8 6 6a13 13 0 0 1 0 18L94 91a13 13 0 0 1-18 0l-6-6m11-10 16-16" fill="none"/><path d="M125 58h38m-38 15h24"/></g>
+                <circle cx="191" cy="96" r="25" fill="var(--art-blue)"/><g class="invite-plane"><path d="m174 94 34-12-12 33-7-14Z" fill="var(--art-paper)"/><path d="m189 101 8-9"/></g>
+                <path class="invite-spark" d="M190 24v10m-5-5h10M33 93v8m-4-4h8"/>
+              </g></g>
+  </g>
+  <g transform="translate(620 2)">
+    <rect x="1" y="1" width="278" height="186" rx="18" fill="var(--panel)" stroke="var(--line)" stroke-width="1.5"/>
+    <text x="20" y="28">03</text>
+    <g transform="translate(15 40)"><g stroke="var(--drawing)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M55 112v9m139-9v9"/><rect x="46" y="63" width="157" height="50" rx="17" fill="var(--couch)" stroke="none"/>
+                <g class="sofa-friend"><g fill="var(--art-blue)" stroke="none"><circle cx="99" cy="39" r="12"/><path d="M78 88c0-19.5 7.5-30 21-30s21 10.5 21 30q0 4.5-4.5 4.5h-33Q78 92.5 78 88Z"/></g><path d="M95 39v1m8-1v1"/></g>
+                <g class="sofa-friend"><g fill="var(--art-pink)" stroke="none"><circle cx="150" cy="37" r="12"/><path d="M129 88c0-19.5 7.5-30 21-30s21 10.5 21 30q0 4.5-4.5 4.5h-33Q129 92.5 129 88Z"/></g><path d="M146 37v1m8-1v1"/></g>
+                <path d="M125 99v10M46 73h18a10 10 0 0 1 10 10v26m129-36h-18a10 10 0 0 0-10 10v26" fill="none" stroke="var(--couch-dark)"/>
+                <g class="sofa-spark"><path d="m185 20 3 8 8 3-8 3-3 8-3-8-8-3 8-3Z" fill="var(--art-yellow)"/></g>
+              </g></g>
+  </g>
+  <path d="M288 102h15m-5-5 5 5-5 5m300-5h15m-5-5 5 5-5 5" fill="none" stroke="var(--label)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

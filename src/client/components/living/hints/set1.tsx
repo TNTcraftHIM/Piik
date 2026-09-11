@@ -21,7 +21,6 @@ import {
   TV_EDGE,
   TV_SCREEN,
   WARN,
-  YOU,
   rmBlock,
 } from "../Comic";
 import type { HintScene, Set1Kind } from "../../../ui/visual-kinds";
@@ -68,10 +67,7 @@ ${rmBlock(
     <MiniTv x={55} y={24} w={66} h={42} />
     <circle cx={88} cy={73} r={3} fill={TV_EDGE} />
     <g className="vls-hs-reach">
-      <path d="M20 78 c0-11 4.5-15.5 10-15.5 s10 4.5 10 15.5 Z" fill={YOU} />
-      <circle cx={30} cy={58} r={6} fill={YOU} />
-      <circle cx={31.5} cy={57.5} r={1.2} fill="#101a2c" />
-      <circle cx={34.9} cy={57.5} r={1.2} fill="#101a2c" />
+      <Pawn x={30} yb={78} s={9} eyes host gaze={2} />
     </g>
     <g className="vls-hs-intent" opacity={0} stroke={FAINT} strokeWidth={2.5} strokeLinecap="round">
       <path d="M43 45 l7 -5 M46 55 l8 -3" />
@@ -88,7 +84,7 @@ ${rmBlock(
     <Star x={272} y={15} r={7} className="vls-hs-star" />
     <circle cx={240} cy={73} r={3} fill={LIVE} />
     <g className="vls-hs-hop">
-      <Pawn x={184} yb={78} s={9} eyes />
+      <Pawn x={184} yb={78} s={9} eyes host />
     </g>
   </>
 );
@@ -127,12 +123,7 @@ ${rmBlock(
       <path d="M62 17 l-6 -7 M80 14 V6 M98 17 l6 -7" />
     </g>
     <circle cx={80} cy={73} r={3} fill={LIVE} />
-    <path d="M15 78 c0-9.9 4.05-13.95 9-13.95 s9 4.05 9 13.95 Z" fill={YOU} />
-    <circle cx={24} cy={60} r={5.4} fill={YOU} />
-    <g className="vls-hx-eyes" fill="#101a2c">
-      <circle cx={24} cy={59.5} r={1.1} />
-      <circle cx={27.6} cy={59.5} r={1.1} />
-    </g>
+    <Pawn x={24} yb={78} s={8} eyes host gaze={2} eyeClassName="vls-hx-eyes" />
     <Floor x1={174} x2={306} y={78} />
     <MiniTv x={207} y={24} w={66} h={42} />
     <rect className="vls-hx-dim" x={211.62} y={28.62} width={56.76} height={27.72} rx={4} fill="#0a101c" />
@@ -142,15 +133,7 @@ ${rmBlock(
       <Moon x={240} y={42} k={0.8} />
     </g>
     <g className="vls-hx-settle">
-      <path d="M187 78 c0-9.9 4.05-13.95 9-13.95 s9 4.05 9 13.95 Z" fill={YOU} />
-      <circle cx={196} cy={60} r={5.4} fill={YOU} />
-      <path
-        d="M191.8 59.5 q1.7 -2.2 3.4 0 M198.8 59.5 q1.7 -2.2 3.4 0"
-        stroke="#101a2c"
-        strokeWidth={1.8}
-        strokeLinecap="round"
-        fill="none"
-      />
+      <Pawn x={196} yb={78} s={8} eyes="closed" host />
     </g>
   </>
 );
@@ -322,7 +305,7 @@ ${rmBlock(["vls-capture-choice"], [[".vls-capture-choice", "opacity:1;transform:
       <rect x={237} y={34} width={37} height={23} rx={2} fill={TV_SCREEN} stroke={SKY} strokeWidth={1.5} />
       <path d="M237 39h37 M243 53l7-10 5 6 4-4 7 8Z" stroke={SKY} strokeWidth={1} fill={SKY} />
     </g> : <path className="vls-capture-choice" d="M229 54l10-14 7 8 5-5 8 11Z" fill={SKY} />}
-    <Pawn x={190} yb={78} s={8} eyes />
+    <Pawn x={190} yb={78} s={8} eyes host />
   </>;
 }
 

@@ -1,3 +1,5 @@
+import { PawnSvg } from "../components/living/Pawn";
+import { HostMark } from "../components/living/HostMark";
 import {
   useEffect,
   useMemo,
@@ -23,7 +25,7 @@ import {
   viewerRouteEvidence,
 } from "../components/status-badge-model";
 import { AppHeader, LedStrip } from "../components/living/Header";
-import { Couch, PawnSvg, type CouchEntry } from "../components/living/Couch";
+import { Couch, type CouchEntry } from "../components/living/Couch";
 import { participantColor } from "../components/living/participant-color";
 import { MetricCells, useMetricsExpanded } from "../components/living/Metrics";
 import { PawnDetail, RouteGlyph } from "../components/living/PawnDetail";
@@ -2529,7 +2531,9 @@ export function ViewerPage({
                 hostDisplayName ? { name: hostDisplayName } : undefined,
               )}
             >
-              <Glyph name="tv" size={17} />
+              <svg className="lr-glyph" width="17" height="17" viewBox="0 0 24 24" aria-hidden="true">
+                <HostMark x={3} y={6} width={18} />
+              </svg>
               <b>{hostDisplayName ?? t("common.host")}</b>
             </div>
             <div className="lr-viewer-personal-controls">
@@ -2689,7 +2693,7 @@ export function ViewerPage({
                 <Row sub key={viewer.peerId} label={viewer.label}>
                   <MeterTag icon="arrowUp" label={t("stats.downstream")} />
                   <span className="lr-pawn-mini">
-                    <PawnSvg color={participantColor(viewer.peerId)} />
+                    <PawnSvg color={participantColor(viewer.peerId)} identity={viewer.peerId} />
                   </span>
                   <span className="lr-pawn-detail-name">{viewer.label}</span>
                   <MetricCells

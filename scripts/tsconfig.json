@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "tsBuildInfoFile": "./node_modules/.cache/tsconfig.tools.tsbuildinfo",
+    "tsBuildInfoFile": "../node_modules/.cache/tsconfig.tools.tsbuildinfo",
     "target": "ES2023",
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "module": "ESNext",
@@ -19,18 +19,18 @@
     "noUnusedParameters": true
   },
   "include": [
-    "vite.config.ts",
-    "vitest.config.ts",
-    "scripts/access-privacy-gate.ts",
-    "scripts/client-browser-fanout-gate.ts",
-    "scripts/client-media-gate.ts",
-    "scripts/client-native-host-gate.ts",
-    "scripts/embedded-sfu-gate.ts",
-    "scripts/embedded-sfu-page.ts",
-    "scripts/client-loopback-gate.ts",
-    "scripts/client-local-gate.ts",
-    "scripts/client-link-gate.ts",
-    "scripts/peer-assisted-benchmark.ts",
-    "tests"
+    "../vite.config.ts",
+    "../vitest.config.ts",
+    "access-privacy-gate.ts",
+    "client-browser-fanout-gate.ts",
+    "client-media-gate.ts",
+    "client-native-host-gate.ts",
+    "embedded-sfu-gate.ts",
+    "embedded-sfu-page.ts",
+    "client-loopback-gate.ts",
+    "client-local-gate.ts",
+    "client-link-gate.ts",
+    "peer-assisted-benchmark.ts",
+    "../tests"
   ]
 }

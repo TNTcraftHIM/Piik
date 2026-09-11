@@ -5,7 +5,8 @@
 // poses. SSR-safe: pure static markup, no hooks.
 
 import { memo, type CSSProperties, type ReactNode } from "react";
-import { ControllerMark } from "./ControllerMark";
+import { HostMark } from "./HostMark";
+import { PersonShape } from "./Pawn";
 import { comicStyle, getComicPresentation, type ComicMotion, type ComicTone } from "./comic-presentation";
 import type { ComicKind, ComicTheme } from "../../ui/visual-kinds";
 
@@ -35,9 +36,8 @@ const DEFAULT_THEME: Record<ComicKind, ComicTheme> = {
 };
 
 /* ------------------------------------------------------------------ *
- * Cast + idiom helpers. Everything is absolute-coordinates: any element
- * whose class animates `transform` must not carry a transform attribute
- * (CSS motion would override it), so helpers bake positions into paths.
+ * Cast + idiom helpers. Keep animated transform classes on an outer
+ * wrapper so CSS motion cannot replace an inner positioning transform.
  * ------------------------------------------------------------------ */
 
 /* Control hints reuse these scene objects and stable identity colours. */
@@ -97,37 +97,32 @@ export function Floor({ x1, x2, y = 76 }: { x1: number; x2: number; y?: number }
   );
 }
 
-/** Mini pawn, feet on (x, yb), s = half-width. Green you-pawn by default. */
+/** Mini participant, feet centered on (x, yb); s is the head diameter. */
 export function Pawn({
   x,
   yb,
   s,
   color = YOU,
   eyes = false,
+  host,
+  gaze,
+  eyeClassName,
   className,
 }: {
   x: number;
   yb: number;
   s: number;
   color?: string;
-  eyes?: boolean;
+  eyes?: boolean | "closed";
+  host?: boolean;
+  gaze?: number;
+  eyeClassName?: string;
   className?: string;
 }) {
-  const body = `M${r2(x - s)} ${yb} c0-${r2(s * 1.1)} ${r2(s * 0.45)}-${r2(s * 1.55)} ${s}-${r2(s * 1.55)} s${s} ${r2(s * 0.45)} ${s} ${r2(s * 1.55)} Z`;
-  const headR = r2(s * 0.6);
-  const hy = r2(yb - s * 1.55 - headR * 0.75);
-  const inner = (
-    <>
-      <path d={body} fill={color} />
-      <circle cx={x} cy={hy} r={headR} fill={color} />
-      {eyes ? (
-        <>
-          <circle cx={x - 2.2} cy={hy} r={r2(s * 0.11)} fill="#101a2c" />
-          <circle cx={x + 2.2} cy={hy} r={r2(s * 0.11)} fill="#101a2c" />
-        </>
-      ) : null}
-    </>
-  );
+  const scale = s / 16;
+  const inner = <g transform={`translate(${r2(x - 24 * scale)} ${r2(yb - 50 * scale)}) scale(${scale})`} fill={color}>
+    <PersonShape eyes={eyes} gaze={gaze} eyeClassName={eyeClassName} host={host} />
+  </g>;
   return className ? <g className={className}>{inner}</g> : inner;
 }
 
@@ -418,11 +413,7 @@ ${rmBlock(
 `}</style>
       <Frame x={4} w={312} theme={theme} result />
       <Floor x1={24} x2={296} />
-      <Pawn x={69} yb={76} s={11} />
-      <g className="vls-wf-eyes">
-        <circle cx={71} cy={53} r={1.1} fill="#101a2c" />
-        <circle cx={74.6} cy={53} r={1.1} fill="#101a2c" />
-      </g>
+      <Pawn x={69} yb={76} s={11} eyes gaze={2} eyeClassName="vls-wf-eyes" />
       <MiniTv x={206} y={28} w={64} h={42} />
       <g className="vls-wf-moon">
         <Moon x={229} y={48} />
@@ -650,12 +641,7 @@ ${rmBlock(
       </g>
       <circle className="vls-hp-led" cx={80} cy={76} r={3.5} fill={WARN} />
       <Floor x1={176} x2={304} y={78} />
-      <path d="M198 78 c0-16 8-22 18-22 s18 6 18 22 Z" fill={YOU} />
-      <circle cx={216} cy={50} r={9} fill={YOU} />
-      <g className="vls-hp-eyes" fill="#101a2c">
-        <circle cx={212.5} cy={49} r={1.5} />
-        <circle cx={219.5} cy={49} r={1.5} />
-      </g>
+      <Pawn x={216} yb={78} s={14} eyes eyeClassName="vls-hp-eyes" />
       <rect x={240} y={66} width={12} height={12} rx={3} fill="#e4572e" />
       <path d="M252 69 a5 5 0 0 1 0 6" stroke="#e4572e" strokeWidth={2.5} fill="none" />
       <path className="vls-hp-steam1" d="M243 60 q3 -4 0 -8" stroke={LINE} strokeWidth={2} strokeLinecap="round" fill="none" opacity={0} />
@@ -818,20 +804,20 @@ ${rmBlock(
   );
 }
 
-/** 9. host-offline: 2 panels. Plug pulled; dashed controller = gone. */
+/** 9. host-offline: 2 panels. Plug pulled; dashed Host crown = gone. */
 function SceneHostOffline({ theme }: { theme: ComicTheme }) {
   return (
     <>
       <style>{`
 .vls-ho-plug{transform-box:fill-box;transform-origin:50% 0%;animation:vlsHoSway var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-ho-pawn{transform-box:fill-box;transform-origin:50% 100%;animation:vlsHoWave var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
-.vls-ho-controller{animation:vlsHoController var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-ho-badge{animation:vlsHoBadge var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 @keyframes vlsHoSway{0%{transform:rotate(-6deg)}10%{transform:rotate(6deg)}20%{transform:rotate(-5deg)}30%{transform:rotate(4deg)}40%,100%{transform:rotate(0)}}
 @keyframes vlsHoWave{0%,10%{transform:rotate(0)}14%{transform:rotate(-8deg)}18%{transform:rotate(8deg)}22%{transform:rotate(-8deg)}26%{transform:rotate(8deg)}30%,100%{transform:rotate(0)}}
-@keyframes vlsHoController{0%,30%{opacity:.2}40%{opacity:.7}50%,100%{opacity:.2}}
+@keyframes vlsHoBadge{0%,30%{opacity:.2}40%{opacity:.7}50%,100%{opacity:.2}}
 ${rmBlock(
-  ["vls-ho-plug", "vls-ho-pawn", "vls-ho-controller"],
-  [[".vls-ho-plug", "transform:none"], [".vls-ho-controller", "opacity:.5"]],
+  ["vls-ho-plug", "vls-ho-pawn", "vls-ho-badge"],
+  [[".vls-ho-plug", "transform:none"], [".vls-ho-badge", "opacity:.5"]],
 )}
 `}</style>
       <Frame x={4} w={152} theme={theme} />
@@ -842,7 +828,7 @@ ${rmBlock(
       <Plug x={57} y={76} className="vls-ho-plug" />
       <Floor x1={176} x2={304} y={78} />
       <Pawn x={210} yb={78} s={9} eyes className="vls-ho-pawn" />
-      <ControllerMark x={257} y={38} width={30} dashed className="vls-ho-controller" opacity={0.5} />
+      <HostMark x={257} y={43} width={30} dashed className="vls-ho-badge" opacity={0.5} />
     </>
   );
 }
@@ -865,7 +851,7 @@ function SceneNoAudio({ theme }: { theme: ComicTheme }) {
 .vls-na-slash{transform-box:fill-box;transform-origin:center;animation:vlsNaSlash var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
 @keyframes vlsNaFlick{0%{opacity:.15}10%{opacity:.8}20%{opacity:.2}30%{opacity:.7}40%,100%{opacity:.15}}
 @keyframes vlsNaArc{0%{opacity:.45}12%{opacity:1}26%{opacity:.45}42%,100%{opacity:.8}}
-@keyframes vlsNaArm{0%,8%{transform:scaleY(.05)}20%,100%{transform:scaleY(1)}}
+@keyframes vlsNaArm{0%,8%{opacity:0;transform:translateY(10px)}20%,100%{opacity:1;transform:translateY(0)}}
 @keyframes vlsNaSlash{0%,22%{opacity:0;transform:scale(1.7)}30%,100%{opacity:1;transform:scale(1)}}
 @keyframes vlsNaShake{0%,36%,56%,100%{transform:rotate(0)}40%{transform:rotate(-2.5deg)}44%{transform:rotate(2.5deg)}48%{transform:rotate(-1.8deg)}52%{transform:rotate(1.8deg)}}
 ${rmBlock(
@@ -894,9 +880,8 @@ ${rmBlock(
         <path className="vls-na-a3" d="M118 26a22 22 0 0 1 0 36" />
       </g>
       {/* panel 2 (after): picture still alive on the mini TV, but the sound
-          arcs arrive dashed and carry a stamped red slash; big pawn (s=18)
-          presses both mitten-hands to its head — arms are body-green with a
-          dark halo outline so the pose reads on both themes. */}
+          arcs arrive dashed and carry a stamped red slash; the pawn raises
+          two floating round hands toward its ears. */}
       <MiniTv x={172} y={30} w={42} h={30} />
       <path d="M187 37.5 L199 43 L187 48.5 Z" fill={MINT} />
       <Floor x1={176} x2={308} y={85} />
@@ -921,17 +906,12 @@ ${rmBlock(
         fill="none"
       />
       <g className="vls-na-pawn">
-        <path d="M264 85 c0-19.8 8.1-27.9 18-27.9 s18 8.1 18 27.9 Z" fill={YOU} />
-        <circle cx={282} cy={49} r={10.8} fill={YOU} />
-        <circle cx={276} cy={48} r={2} fill="#101a2c" />
-        <circle cx={281} cy={48} r={2} fill="#101a2c" />
+        <Pawn x={282} yb={85} s={16} eyes gaze={-2} />
         <g className="vls-na-arm">
-          <path d="M267 72 Q256 57 272 45" stroke="#101a2c" strokeWidth={6.5} strokeLinecap="round" fill="none" />
-          <path d="M267 72 Q256 57 272 45" stroke={YOU} strokeWidth={3.5} strokeLinecap="round" fill="none" />
+          <circle cx={269} cy={52} r={3.5} fill={YOU} />
         </g>
         <g className="vls-na-arm">
-          <path d="M297 72 Q308 57 292 45" stroke="#101a2c" strokeWidth={6.5} strokeLinecap="round" fill="none" />
-          <path d="M297 72 Q308 57 292 45" stroke={YOU} strokeWidth={3.5} strokeLinecap="round" fill="none" />
+          <circle cx={295} cy={52} r={3.5} fill={YOU} />
         </g>
       </g>
     </>
@@ -961,10 +941,7 @@ ${rmBlock(
       <Frame x={4} w={152} theme={theme} />
       <Frame x={164} w={152} theme={theme} result />
       <g className="vls-rn-knock">
-        <path d="M52 74 c0-11 5-16 11-16 s11 5 11 16 Z" fill={YOU} />
-        <circle cx={63} cy={49} r={6} fill={YOU} />
-        <circle cx={66} cy={48} r={1} fill="#101a2c" />
-        <circle cx={70} cy={48} r={1} fill="#101a2c" />
+        <Pawn x={63} yb={74} s={11} eyes gaze={2} />
       </g>
       <g className="vls-rn-kn" stroke="var(--ink)" strokeWidth={2} strokeLinecap="round" opacity={0}>
         <path d="M84 36l-7-3M82 46h-8M84 56l-7 3" />
@@ -1109,15 +1086,25 @@ ${rmBlock(
 `}</style>
       <Frame x={4} w={152} theme={theme} />
       <Frame x={164} w={152} theme={theme} result />
+      <path d="M34 78v6m86-6v6M202 78v6m88-6v6" stroke="var(--ink)" strokeWidth={2} strokeLinecap="round" />
+      <rect x={26} y={58} width={102} height={19} rx={9} fill="var(--couch)" stroke="none" />
       {crowd.map((color, i) => (
-        <Pawn key={i} x={40 + i * 12} yb={56} s={5.5} color={color} className={`vls-fl-c${i + 1}`} />
+        <Pawn key={i} x={40 + i * 12} yb={67} s={5.5} color={color} eyes className={`vls-fl-c${i + 1}`} />
       ))}
-      <rect x={30} y={48} width={92} height={20} rx={10} fill="var(--couch)" />
-      <rect x={24} y={62} width={104} height={16} rx={8} fill="var(--couch)" />
-      <g className="vls-fl-you">
-        <Pawn x={240} yb={64} s={7} eyes />
+      <g fill="var(--couch-dark)" stroke="none">
+        <rect x={26} y={69} width={102} height={10} rx={4} />
+        <rect x={22} y={63} width={11} height={16} rx={5} />
+        <rect x={121} y={63} width={11} height={16} rx={5} />
+        <rect x={196} y={58} width={100} height={19} rx={9} fill="var(--couch)" />
       </g>
-      <rect x={196} y={58} width={100} height={22} rx={11} fill="var(--couch)" />
+      <g className="vls-fl-you">
+        <Pawn x={240} yb={67} s={7} eyes />
+      </g>
+      <g fill="var(--couch-dark)" stroke="none">
+        <rect x={196} y={69} width={100} height={10} rx={4} />
+        <rect x={192} y={63} width={11} height={16} rx={5} />
+        <rect x={289} y={63} width={11} height={16} rx={5} />
+      </g>
       <rect
         className="vls-fl-ghost"
         x={268}
@@ -1274,11 +1261,7 @@ ${rmBlock(
 `}</style>
       <Frame x={4} w={312} theme={theme} result />
       <Floor x1={24} x2={296} />
-      <Pawn x={96} yb={76} s={11} />
-      <g className="vls-wn-eyes">
-        <circle cx={98} cy={53} r={1.1} fill="#101a2c" />
-        <circle cx={101.6} cy={53} r={1.1} fill="#101a2c" />
-      </g>
+      <Pawn x={96} yb={76} s={11} eyes gaze={2} eyeClassName="vls-wn-eyes" />
       {/* Hearth warning glyph x3.5 (~54% panel height), bowl feet on the floor:
           M6 13a6 6 0 0 0 12 0 + rays M12 9V5.5 / M8.5 9.5 7 7.5 / M15.5 9.5 17 7.5,
           baked at origin (168, 9.5). */}

@@ -40,7 +40,7 @@ export function defaultViewerDisplayName(
 export function defaultHostDisplayName(
   visual = false,
 ): DisplayName {
-  return (visual ? "🎮" : say("common.name.hostDefault")) as DisplayName;
+  return (visual ? "👤" : say("common.name.hostDefault")) as DisplayName;
 }
 
 export function saveDisplayName(

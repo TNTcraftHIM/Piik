@@ -98,6 +98,21 @@ func TestLoadDevelopmentDefaults(t *testing.T) {
 	}
 }
 
+func TestLoadProductionAllowsAnUnsetOrEmptySiteAccessPassword(t *testing.T) {
+	for _, name := range []string{"unset", "empty"} {
+		t.Run(name, func(t *testing.T) {
+			environment := env(productionBase, map[string]string{"SITE_ACCESS_PASSWORD": ""})
+			if name == "unset" {
+				delete(environment, "SITE_ACCESS_PASSWORD")
+			}
+			configuration := mustLoad(t, environment)
+			if configuration.Env != EnvironmentProduction || configuration.SiteAccessPassword != "" {
+				t.Fatal("expected a production site without an access password")
+			}
+		})
+	}
+}
+
 func TestLoadRoomStorage(t *testing.T) {
 	directory := t.TempDir()
 	t.Chdir(directory)
@@ -377,10 +392,6 @@ func TestLoadRejects(t *testing.T) {
 			"PIIK_ENV": "production", "PUBLIC_BASE_URL": "https://share.test",
 			"SITE_ACCESS_PASSWORD": "host-password-12",
 		}, "STUN is required in production"},
-		{"production without a site password", map[string]string{
-			"PIIK_ENV": "production", "PUBLIC_BASE_URL": "https://share.test",
-			"STUN_URLS": "stun:stun.test:3478",
-		}, "SITE_ACCESS_PASSWORD is required in production"},
 
 		// Site access password bounds (UTF-8 bytes).
 		{"site password too short", map[string]string{"SITE_ACCESS_PASSWORD": strings.Repeat("x", 7)},

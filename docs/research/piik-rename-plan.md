@@ -8,8 +8,8 @@ Last reviewed: 2026-09-10.
 Display `Piik`; use `piik` for executable, package, environment and service
 identifiers. GitHub is `TNTcraftHIM/Piik`; the Go module follows that exact case.
 The [naming convention](../reference/naming.md) owns current App display and package names.
-The product keeps its TV mascot. The wordmark and morph animation remain in the
-[brand study](../design/piik-brand.html) for the future public website.
+The product keeps its TV mascot; the [visual language](../design/visual-language.md)
+owns the current wordmark and motion direction.
 
 This is a private pre-release rename. It changes names and deployment identity,
 not media policy, routing, capture behavior or SQLite room semantics.

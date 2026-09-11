@@ -1,9 +1,11 @@
+@import "./components/living/pawn.css";
+
 /* Piik living-room UI — the production design system.
    The stage is a TV on the wall, viewers are pawns on the couch, connection
-   state is what the TV shows and what the LEDs say. Copy lives in tooltips
+   state is what the TV shows and what the LEDs say. Control copy lives in tooltips
    and aria in visual mode; text modes add visible captions.
-   Motion serves state changes and control feedback only, and collapses
-   entirely under prefers-reduced-motion. */
+   Status and control motion stays distinct from quiet participant gestures;
+   all respect prefers-reduced-motion. */
 
 :root {
   color-scheme: light;
@@ -11,8 +13,10 @@
   --wall-2: #dcebe4;
   --ink: #22303e;
   --paper: #ffffff;
-  --couch: #e4572e;
-  --couch-dark: #c8492b;
+  --muted: color-mix(in srgb, var(--ink) 75%, var(--paper));
+  /* Fixed warm upholstery; shade changes define the cushions and arms. */
+  --couch: #edbb72;
+  --couch-dark: #d99a56;
   --you: #2fa66a;
   --pawn-1: #3b7dd8;
   --pawn-2: #efb23f;
@@ -35,6 +39,9 @@
   --stage: #101a2c;
   --frame: #22303e;
   --radius: 16px;
+  --control-radius: 18px;
+  --control-edge: color-mix(in srgb, var(--ink) 62%, var(--paper));
+  --control-shadow: 0 3px 0 color-mix(in srgb, var(--ink) 13%, transparent);
   --spring: cubic-bezier(.3, 1.45, .45, 1);
   --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
@@ -75,7 +82,7 @@ body {
 }
 
 button, input, select { font: inherit; color: inherit; }
-button { cursor: pointer; }
+button { cursor: pointer; touch-action: manipulation; }
 button:disabled { cursor: not-allowed; opacity: 0.4; }
 h1, h2, h3, p, dl, dd, dt { margin: 0; }
 ul { margin: 0; padding: 0; list-style: none; }
@@ -297,14 +304,10 @@ html[data-theme="dark"] .lr-brand-sparkles { stroke: #f4c14d; }
 
 /* language + theme controls */
 .lr-lang {
-  display: inline-flex;
-  gap: 4px;
-  padding: 4px;
   border: 2.5px solid var(--ink);
-  border-radius: 999px;
-  background: var(--paper);
 }
 .lr-lang button {
+  position: relative;
   display: inline-grid;
   min-width: 38px;
   height: 34px;
@@ -316,12 +319,13 @@ html[data-theme="dark"] .lr-brand-sparkles { stroke: #f4c14d; }
   color: var(--ink);
   font-size: 12px;
   font-weight: 700;
-  opacity: .55;
-  transition: opacity 120ms ease, transform 140ms var(--spring);
+  opacity: .68;
+  transition: opacity 120ms ease, color 140ms ease, background-color 140ms ease, transform 180ms var(--spring);
 }
-.lr-lang button:hover:not(.is-selected) { opacity: .85; }
+.lr-lang button:is(:hover, :focus-visible) { opacity: 1; transform: translateY(-1px); }
+.lr-lang button:is(:hover, :focus-visible):not(.is-selected) { background: var(--wall-2); }
 .lr-lang button:active { transform: scale(.9); }
-.lr-lang button.is-selected { background: var(--ink); color: var(--paper); opacity: 1; }
+.lr-lang button.is-selected { color: var(--paper); opacity: 1; }
 
 /* ---------- room layout ---------- */
 
@@ -489,9 +493,6 @@ body.lr-theater-open { overflow: hidden; }
   text-shadow: 0 1px 8px rgba(0, 0, 0, .65);
 }
 
-.lr-entry-text { display: grid; gap: 6px; margin-bottom: 4px; }
-.lr-entry-text h1 { font-size: clamp(19px, 2.6vw, 24px); font-weight: 800; color: #f2efe7; letter-spacing: -0.01em; text-wrap: balance; }
-.lr-entry-text p { max-width: 400px; margin: 0 auto; color: #9aa0b0; font-size: 13.5px; text-wrap: balance; }
 .lr-entry-actions { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; }
 .lr-entry-action { display: grid; justify-items: center; gap: 8px; align-content: start; }
 
@@ -657,7 +658,6 @@ body.lr-theater-open { overflow: hidden; }
   overflow-wrap: anywhere;
   line-height: 1.35;
 }
-.lr-source-option-copy > span { flex: 0 0 auto; }
 .lr-source-option-icon {
   width: 38px;
   height: 38px;
@@ -768,28 +768,23 @@ body.lr-theater-open { overflow: hidden; }
 .lr-couch {
   position: relative;
   width: min(720px, 96%);
-  margin: 34px auto 0;
+  margin: 20px auto 0;
 }
-.lr-couch > svg { display: block; width: 100%; height: auto; }
-.lr-pawns-window {
+.lr-couch-seating { position: relative; max-width: 100%; margin: auto; }
+.lr-couch-benches {
   position: absolute;
-  inset: 0 8% auto;
-  top: -35px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding: 20px 12px 10px;
-  scrollbar-color: var(--route-sfu) transparent;
-  scrollbar-width: thin;
+  inset: 0;
+  pointer-events: none;
 }
+.lr-couch-benches > svg { display: block; width: 100%; height: 108px; }
 .lr-pawns {
-  display: flex;
-  width: max-content;
-  min-width: 100%;
-  flex-wrap: nowrap;
-  justify-content: center;
+  position: relative;
+  display: grid;
+  grid-auto-rows: 108px;
+  margin: 0 32px;
   align-items: start;
-  gap: 2px 10px;
 }
+.lr-seat { display: grid; min-width: 0; justify-items: center; padding-top: 24px; }
 .lr-pawn {
   position: relative;
   display: grid;
@@ -799,11 +794,10 @@ body.lr-theater-open { overflow: hidden; }
   padding: 0;
   border: 0;
   background: transparent;
-  animation: lr-hop .55s var(--spring) backwards;
   transition: transform 150ms var(--spring);
 }
-.lr-pawn:hover:not(.is-static) { transform: translateY(-5px) rotate(-4deg); }
-.lr-pawn svg { width: 40px; height: 48px; display: block; }
+.lr-pawn:is(:hover, :focus-visible):not(.is-static) { transform: translateY(-3px); }
+.lr-pawn svg { width: 48px; height: 56px; display: block; }
 .lr-pawn-led {
   position: absolute;
   top: 2px;
@@ -830,7 +824,6 @@ body.lr-theater-open { overflow: hidden; }
   transform: translateX(-50%);
 }
 .lr-pawn.is-you { z-index: 1; }
-.lr-pawn.is-host { margin-right: 6px; }
 .lr-pawn.is-host .lr-pawn-name { font-weight: 850; }
 .lr-pawn.is-static { cursor: default; }
 .lr-pawn.is-selected { transform: translateY(-5px); }
@@ -841,34 +834,27 @@ body.lr-theater-open { overflow: hidden; }
   border: 2.5px solid var(--action);
   border-radius: 13px;
 }
-.lr-pawns.is-crowded { gap: 6px; }
-.lr-pawns.is-crowded .lr-pawn { min-width: 33px; }
-.lr-pawns.is-crowded .lr-pawn svg { width: 29px; height: 35px; }
-.lr-pawns.is-crowded .lr-pawn-led { left: calc(50% + 8px); width: 9px; height: 9px; }
 .lr-pawn-name {
-  max-width: 112px;
+  max-width: 70px;
   margin-top: -4px;
   padding: 1px 6px;
   border-radius: 7px;
   background: var(--paper);
   color: var(--ink);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   box-shadow: 0 1px 0 rgba(0, 0, 0, .12);
 }
-.lr-pawns.is-crowded .lr-pawn-name { max-width: 80px; }
+.lr-couch-footer { display: flex; align-items: center; justify-content: center; gap: 12px; min-height: 32px; color: var(--muted); }
 .lr-couch-count {
-  position: absolute;
-  right: 4%;
-  bottom: 8px;
   display: inline-flex;
   align-items: center;
   gap: 5px;
   padding: 4px 8px;
-  border: 2px solid var(--ink);
+  border: 1px solid var(--wall-2);
   border-radius: 999px;
   background: var(--paper);
   color: var(--ink);
@@ -879,16 +865,11 @@ body.lr-theater-open { overflow: hidden; }
 .lr-couch-count b { font-size: inherit; }
 .lr-couch-empty {
   position: absolute;
-  inset: -8px 0 auto;
+  inset: 45px 0 auto;
   display: grid;
   place-items: center;
   color: #6f8579;
   opacity: .85;
-}
-@keyframes lr-hop {
-  0% { transform: translateY(-16px) scale(.7); opacity: 0; }
-  60% { transform: translateY(3px) scale(1.04); opacity: 1; }
-  100% { transform: translateY(0) scale(1); opacity: 1; }
 }
 
 /* ---------- deck: control rows ---------- */
@@ -994,7 +975,7 @@ html[data-theme="dark"] .lr-viewer-host-slot svg { color: #9bb0c5; }
 .lr-spacer { flex: 1; }
 .lr-divider { width: 2.5px; align-self: stretch; border-radius: 2px; background: var(--wall-2); }
 .lr-row.is-sub .lr-divider { background: #c3d4cb; }
-.lr-field-cap { opacity: .55; font-size: 12px; font-weight: 600; }
+.lr-field-cap { opacity: .68; font-size: 12px; font-weight: 600; }
 .lr-invite-url {
   width: 100%;
   min-width: 0;
@@ -1058,19 +1039,21 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
   gap: 8px;
   min-width: 52px; height: 52px;
   padding: 0 14px;
-  border: 2.5px solid var(--ink);
-  border-radius: 15px;
+  border: 2px solid var(--control-edge);
+  border-radius: 999px;
   background: var(--paper);
   color: var(--ink);
   white-space: nowrap;
-  transition: transform 120ms var(--spring), background 120ms ease, box-shadow 160ms ease;
+  box-shadow: var(--control-shadow);
+  transition: transform 260ms var(--spring), background-color 140ms ease, border-color 140ms ease;
 }
-.lr-btn:hover:not(:disabled) { background: var(--wall-2); transform: translateY(-1px); }
-.lr-btn:active:not(:disabled) { transform: scale(.93); }
-.lr-btn.is-primary { border-color: var(--action); background: var(--action); color: #fff; }
-.lr-btn.is-primary:hover:not(:disabled) { background: var(--action-deep); box-shadow: 0 4px 14px rgba(47, 111, 237, .35); }
-.lr-btn.is-danger { border-color: var(--danger); color: var(--danger); }
-.lr-btn.is-danger:hover:not(:disabled) { background: rgba(214, 69, 65, .1); }
+.lr-btn:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]) { transform: translateY(-2px); }
+.lr-btn:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]):not(.is-primary):not(.is-on):not(.is-danger) { background: var(--wall-2); border-color: var(--ink); }
+.lr-btn:active:not(:disabled):not([aria-disabled="true"]) { transform: translateY(2px) scale(.95); box-shadow: none; transition-duration: 80ms; }
+.lr-btn.is-primary { border-color: var(--action-deep); background: var(--action-deep); color: #fff; }
+.lr-btn.is-primary:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]) { background: color-mix(in srgb, var(--action-deep) 88%, #000); }
+.lr-btn.is-danger { border-color: var(--danger); color: color-mix(in srgb, var(--danger) 70%, var(--ink)); }
+.lr-btn.is-danger:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]) { background: color-mix(in srgb, var(--danger) 10%, var(--paper)); }
 .lr-btn.is-on { border-color: var(--ink); background: var(--ink); color: var(--paper); }
 .lr-btn .lr-cap { margin-left: 2px; font-size: 12.5px; font-weight: 600; }
 
@@ -1081,18 +1064,19 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
   align-items: center;
   gap: 6px;
   padding: 9px 14px;
-  border: 2.5px solid var(--ink);
-  border-radius: 10px;
+  border: 2px solid var(--control-edge);
+  border-radius: 999px;
   background: var(--paper);
   font-family: var(--mono);
   font-size: 13px;
   font-weight: 700;
   letter-spacing: .1em;
-  transition: transform 120ms var(--spring), background 120ms ease;
+  box-shadow: var(--control-shadow);
+  transition: transform 180ms var(--spring), background-color 140ms ease;
 }
-.lr-chip:hover:not(:disabled) { background: var(--wall-2); }
-.lr-chip:active:not(:disabled) { transform: scale(.94); }
-.lr-chip.is-selected { background: var(--ink); color: var(--paper); animation: lr-pop .2s var(--spring); }
+.lr-chip:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]):not(.is-selected) { background: var(--wall-2); transform: translateY(-2px); }
+.lr-chip:active:not(:disabled):not([aria-disabled="true"]) { transform: translateY(2px) scale(.97); box-shadow: none; }
+.lr-chip.is-selected { background: var(--ink); color: var(--paper); border-color: var(--ink); animation: lr-pop .2s var(--spring); }
 .lr-chip .lr-cap { font-family: var(--font); letter-spacing: 0; }
 .lr-chip small { margin-left: 5px; font-size: 10.5px; opacity: .6; }
 .lr-chip .lr-audio-rate {
@@ -1111,31 +1095,32 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
 }
 @keyframes lr-pop { 50% { transform: scale(1.06); } }
 
-/* policy segmented toggle with sliding thumb. inline-grid + 1fr auto columns
-   makes every option exactly half the toggle (equal to the widest caption),
-   so the 50%/translateX(100%) thumb lines up in every language — flex sizing
-   let EN "Open"/"Private" run unequal and the thumb underlapped the selected
-   button. */
-.lr-toggle {
+/* Segmented controls share a sliding thumb. Equal grid columns keep it aligned
+   across captions; the selected button remains the only selection state. */
+.lr-toggle, .lr-lang {
   position: relative;
   display: inline-grid;
   grid-auto-flow: column;
   grid-auto-columns: 1fr;
   padding: 4px;
-  border: 2.5px solid var(--ink);
-  border-radius: 15px;
+  border-radius: 999px;
   background: var(--paper);
 }
-.lr-toggle::before {
+.lr-toggle { border: 2px solid var(--control-edge); }
+.lr-toggle::before, .lr-lang::before {
   content: "";
   position: absolute;
   top: 4px; bottom: 4px; left: 4px;
-  width: calc(50% - 4px);
-  border-radius: 11px;
+  border-radius: 999px;
   background: var(--ink);
   transition: transform 260ms var(--spring);
+  pointer-events: none;
 }
+.lr-toggle::before { width: calc(50% - 4px); }
+.lr-lang::before { width: calc((100% - 8px) / 3); }
 .lr-toggle[data-selected="private"]::before { transform: translateX(100%); }
+.lr-lang:has(button:nth-child(2).is-selected)::before { transform: translateX(100%); }
+.lr-lang:has(button:nth-child(3).is-selected)::before { transform: translateX(200%); }
 .lr-toggle button {
   position: relative;
   z-index: 1;
@@ -1146,7 +1131,7 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
   min-width: 44px; height: 44px;
   padding: 0 10px;
   border: 0;
-  border-radius: 11px;
+  border-radius: 999px;
   background: transparent;
   /* 68% ink clears AA on both themes (light 4.89:1, dark 5.89:1) while the
      selected option keeps its stronger contrast. */
@@ -1159,12 +1144,12 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
 .lr-toggle > .lr-comic-tip-wrap { flex: 1; justify-content: center; }
 .lr-toggle > .lr-comic-tip-wrap > button { width: 100%; }
 
-/* iOS-style switch */
+/* Sliding switch; its thumb stays inside the track at either end. */
 .lr-switch {
   position: relative;
   display: inline-flex;
   width: 58px; height: 34px;
-  border: 2.5px solid var(--ink);
+  border: 2px solid var(--control-edge);
   border-radius: 999px;
   background: var(--paper);
   flex: 0 0 auto;
@@ -1173,7 +1158,7 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
 .lr-switch::after {
   content: "";
   position: absolute;
-  top: 2.5px; left: 3px;
+  top: 3px; left: 3px;
   width: 24px; height: 24px;
   border-radius: 50%;
   background: var(--ink);
@@ -1197,14 +1182,15 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
   gap: 6px;
   min-width: 76px;
   padding: 12px 10px 9px;
-  border: 2.5px solid var(--ink);
-  border-radius: 14px;
+  border: 2px solid var(--control-edge);
+  border-radius: var(--control-radius);
   background: var(--paper);
   color: var(--ink);
-  transition: transform 140ms var(--spring), background 120ms ease;
+  box-shadow: var(--control-shadow);
+  transition: transform 180ms var(--spring), background-color 140ms ease;
 }
-.lr-tile:hover:not(:disabled):not(.is-selected) { background: var(--wall-2); transform: translateY(-2px); }
-.lr-tile:active:not(:disabled) { transform: scale(.95); }
+.lr-tile:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]):not(.is-selected) { background: var(--wall-2); transform: translateY(-2px); }
+.lr-tile:active:not(:disabled):not([aria-disabled="true"]) { transform: translateY(2px) scale(.97); box-shadow: none; }
 .lr-tile.is-selected { background: var(--ink); color: var(--paper); animation: lr-pop .2s var(--spring); }
 .lr-tile small { font-family: var(--mono); font-size: 11px; letter-spacing: .02em; color: #5d7086; white-space: nowrap; }
 .lr-tile.is-selected small { color: var(--paper); opacity: .75; }
@@ -1217,14 +1203,25 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
   min-width: 0;
   height: 48px;
   padding: 0 12px;
-  border: 2.5px solid var(--ink);
-  border-radius: 13px;
+  border: 2px solid var(--control-edge);
+  border-radius: var(--control-radius);
   background: var(--paper);
   transition: border-color 140ms ease;
 }
 .lr-input:focus-within { border-color: var(--action); outline: 3px solid var(--action); outline-offset: 2px; }
 .lr-input input { min-width: 0; flex: 1; height: 100%; border: 0; outline: 0; background: transparent; font: inherit; font-size: 16px; }
 .lr-input input[type="password"]:not(:placeholder-shown) { letter-spacing: .25em; }
+.lr-welcome { width: 100%; min-width: 0; max-width: 100%; margin: 0; overflow: hidden; color: inherit; font-size: 15px; font-weight: 600; line-height: 1.7; text-align: center; white-space: nowrap; text-overflow: ellipsis; }
+.lr-welcome:not(.is-cipher)::before { content: "✦"; color: var(--pawn-2); margin-right: 8px; }
+.lr-welcome-cipher { display: inline-flex; align-items: center; gap: 8px; vertical-align: middle; opacity: .72; white-space: nowrap; }
+.lr-welcome-cipher i { width: 3px; height: 3px; background: var(--pawn-2); transform: rotate(45deg); }
+.lr-tv-overlay > .lr-welcome { position: absolute; top: clamp(20px, 3vw, 32px); left: 18px; right: 18px; width: auto; font-size: clamp(13px, 1.5vw, 16px); }
+.lr-tv-overlay:has(> .lr-join-panel) > .lr-welcome { display: none; }
+.lr-welcome-catalog { margin-block: 0 24px; }
+.lr-welcome-catalog summary { cursor: pointer; width: fit-content; padding-block: 12px; font-weight: 650; }
+.lr-welcome-catalog ol { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap: 12px 32px; padding-inline-start: 28px; }
+.lr-welcome-catalog li > span:first-child { display: block; }
+.lr-welcome-catalog .lr-welcome-cipher { margin-top: 6px; }
 .lr-input.lr-name-editor {
   width: clamp(140px, 18vw, 200px);
   height: 40px;
@@ -1333,12 +1330,9 @@ html[data-theme="dark"] .lr-meter-cell svg { color: #7d92a8; }
   min-width: 0;
   max-width: 100%;
   flex: 1 1 100%;
-  overflow-x: auto;
+  overflow-x: hidden;
   padding: 6px 2px;
   box-sizing: border-box;
-  overscroll-behavior-inline: contain;
-  scrollbar-color: var(--route-sfu) transparent;
-  scrollbar-width: thin;
 }
 .lr-route > svg { display: block; width: 100%; max-width: 880px; height: auto; margin: 0 auto; }
 .lr-route:focus-visible { border-radius: 10px; }
@@ -1532,7 +1526,7 @@ html[data-theme="dark"] .lr-door-glyph { color: #7d92a8; }
   text-align: center;
 }
 .lr-client-launch-copy h1 { font-size: 24px; }
-.lr-client-launch-copy p { color: #607283; font-size: 13.5px; }
+.lr-client-launch-copy p { color: color-mix(in srgb, var(--ink) 70%, var(--paper)); font-size: 13.5px; }
 .lr-client-launch-status { color: var(--ink); font-size: 14px; font-weight: 650; }
 .lr-client-update {
   display: inline-flex;
@@ -1568,15 +1562,16 @@ html[data-theme="dark"] .lr-door-glyph { color: #7d92a8; }
   align-content: center;
   gap: 10px;
   padding: 14px;
-  border: 2.5px solid var(--ink);
-  border-radius: 14px;
+  border: 2px solid var(--control-edge);
+  border-radius: var(--control-radius);
   background: var(--paper);
   color: var(--ink);
   text-align: center;
+  box-shadow: var(--control-shadow);
   transition: transform 160ms var(--spring), background 120ms ease, color 120ms ease;
 }
-.lr-client-mode:hover:not(.is-selected) { background: var(--wall-2); transform: translateY(-2px); }
-.lr-client-mode:active { transform: scale(.97); }
+.lr-client-mode:is(:hover, :focus-visible):not(:disabled):not(.is-selected) { background: var(--wall-2); transform: translateY(-2px); }
+.lr-client-mode:active:not(:disabled) { transform: translateY(2px) scale(.97); box-shadow: none; }
 .lr-client-mode.is-selected { background: var(--ink); color: var(--paper); }
 .lr-client-mode > span {
   display: grid;
@@ -1584,7 +1579,7 @@ html[data-theme="dark"] .lr-door-glyph { color: #7d92a8; }
   gap: 3px;
 }
 .lr-client-mode strong { font-size: 14px; }
-.lr-client-mode small { font-size: 11px; opacity: .66; }
+.lr-client-mode small { font-size: 11px; opacity: .7; }
 .lr-client-site { width: min(460px, 100%); }
 .lr-client-access {
   width: min(460px, 100%);
@@ -1712,14 +1707,13 @@ html[data-theme="dark"] .lr-join-go:disabled { background: #1a2634; color: #4860
 
 /* ---------- dark theme refinements ---------- */
 
-html[data-theme="dark"] .lr-btn:hover:not(:disabled) { background: #2b3d4f; }
+html[data-theme="dark"] .lr-btn:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]):not(.is-primary):not(.is-on):not(.is-danger) { background: #2b3d4f; }
 html[data-theme="dark"] .lr-btn.is-on { background: var(--ink); color: #22303e; }
-html[data-theme="dark"] .lr-btn.is-danger:hover:not(:disabled) { background: #3d2626; }
-html[data-theme="dark"] .lr-chip:hover:not(:disabled),
-html[data-theme="dark"] .lr-tile:hover:not(:disabled):not(.is-selected) { background: #2b3d4f; }
+html[data-theme="dark"] .lr-btn.is-danger:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]) { background: #3d2626; }
+html[data-theme="dark"] .lr-chip:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]):not(.is-selected),
+html[data-theme="dark"] .lr-tile:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]):not(.is-selected) { background: #2b3d4f; }
 html[data-theme="dark"] .lr-chip.is-selected,
 html[data-theme="dark"] .lr-tile.is-selected { background: var(--ink); color: #22303e; }
-html[data-theme="dark"] .lr-tile.is-selected small { color: #4a5f78; }
 html[data-theme="dark"] .lr-row.is-sub { background: #1a2634; }
 html[data-theme="dark"] .lr-meter-cell { background: #1a2634; }
 html[data-theme="dark"] .lr-meter-tag { color: #7d92a8; }
@@ -1747,10 +1741,6 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
     grid-template-columns: 1fr;
     justify-items: center;
   }
-  .lr-pawns-window { inset-inline: 4%; }
-  .lr-pawns { gap: 2px 6px; }
-  .lr-pawn { min-width: 36px; }
-  .lr-pawn svg { width: 32px; height: 39px; }
   .lr-route { padding-inline: 0; }
   .lr-row { flex-direction: column; align-items: stretch; gap: 12px; padding: 14px; }
   .lr-row > .lr-spacer,
@@ -1803,6 +1793,7 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
   .lr-group-name .lr-name-tag { flex: 1; }
   .lr-viewer-self-slot .lr-name-tag { flex: 0 1 auto; }
   .lr-toggle { flex: 1; }
+  .lr-invite-hint, .lr-invite-url { flex: 0 1 auto; max-width: none; min-height: 44px; }
   .lr-door-body { padding: 12px; }
   .lr-dial { width: 54px; height: 66px; font-size: 28px; }
   .lr-tv-screen.has-entry { aspect-ratio: auto; min-height: 292px; }
@@ -1845,7 +1836,8 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
   .lr-top-right { gap: 6px; }
   .lr-leds { gap: 4px; padding: 6px; }
   .lr-leds i { width: 8px; height: 8px; }
-  .lr-lang { gap: 1px; padding: 2px; border-width: 2px; }
+  .lr-lang { padding: 2px; border-width: 2px; }
+  .lr-lang::before { top: 2px; bottom: 2px; left: 2px; width: calc((100% - 4px) / 3); }
   .lr-lang button { min-width: 30px; height: 32px; padding-inline: 5px; }
   .lr-header-controls .lr-btn {
     min-width: 36px !important;
@@ -2007,6 +1999,7 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
     transition-duration: 0.01ms !important;
   }
   .lr-tv-static { animation: none; opacity: .35; }
+  .lr-btn, .lr-chip, .lr-tile, .lr-client-mode, .lr-toggle button, .lr-lang button { transform: none !important; }
   .lr-route-edge.is-pending,
   .lr-route-edge.is-recovering { animation: none; }
   .lr-brand-mark:is(.is-animated, .is-once) .lr-brand-shell > * {
@@ -2044,7 +2037,7 @@ html[data-theme="dark"] .lr-pill { color: #e8a33d; }
 html[data-theme="dark"] .lr-pill.is-bad { color: #e88a85; }
 html[data-theme="dark"] .lr-pill.is-good { color: #63c78a; }
 /* Dark-mode preset tiles: lift the unselected caption off the tile fill. */
-html[data-theme="dark"] .lr-tile small { color: #8ba0b4; }
+html[data-theme="dark"] .lr-tile:not(.is-selected) small { color: #8ba0b4; }
 
 @media (max-width: 640px) {
   /* Pawn drill-down: the shared .lr-row column stack breaks this card —
@@ -2067,47 +2060,29 @@ html[data-theme="dark"] .lr-tile small { color: #8ba0b4; }
 
 /* ---------- glyph draw-in (一笔一划) ---------- */
 
-/* One-shot state-entry beat, gated by Glyph: only on an icon SWAP (play↔pause,
-   copy→check, moon↔sun — innerHTML remounts and replays) or on explicit
-   theatrical mounts (entry cast/door, stage overlay, join door, gate key).
-   Everyday interactions never retrigger it. */
-/* Every shape carries pathLength=1 (injected by Glyph), so dasharray/offset
-   in [0,1] paces each stroke evenly no matter its real length. The pen
-   grammar: one stroke at a time — 210ms draw per stroke, next stroke starts
-   as the current one lands (190ms stagger, ~10% overlap) — with a fast-in,
-   settle-out pen curve. Solid icons and filled dots pop with the spring.
-   Reduced motion pins the final pose via the global collapse plus the pins. */
-.lr-glyph-draw :is(path, circle, rect, line) {
-  stroke-dasharray: 1;
-  stroke-dashoffset: 1;
-  animation: lr-glyph-in 210ms cubic-bezier(.45, .05, .35, 1) forwards;
-}
-.lr-glyph-draw.is-solid > :is(path, circle, rect),
-.lr-glyph-draw :is([fill="currentColor"], [fill^="#"]) {
-  stroke-dasharray: none;
-  stroke-dashoffset: 0;
-  transform-box: fill-box;
-  transform-origin: center;
-  /* spring curve inlined: a var() reference would make Chromium restart the
-     animation whenever :root custom properties change (theme flip). */
-  animation: lr-glyph-pop 220ms cubic-bezier(.3, 1.45, .45, 1) both;
-}
-.lr-glyph-draw > *:nth-child(2) { animation-delay: 190ms; }
-.lr-glyph-draw > *:nth-child(3) { animation-delay: 380ms; }
-.lr-glyph-draw > *:nth-child(4) { animation-delay: 570ms; }
-.lr-glyph-draw > *:nth-child(5) { animation-delay: 760ms; }
-.lr-glyph-draw > *:nth-child(6) { animation-delay: 950ms; }
 @keyframes lr-glyph-in { to { stroke-dashoffset: 0; } }
 @keyframes lr-glyph-pop {
   0% { opacity: 0; transform: scale(.3); }
   100% { opacity: 1; transform: scale(1); }
 }
-@media (prefers-reduced-motion: reduce) {
-  .lr-glyph-draw :is(path, circle, rect, line) {
-    animation: none !important;
-    stroke-dashoffset: 0 !important;
-    opacity: 1 !important;
-    transform: none !important;
+/* Drawing is reserved for primary actions and explicit state-entry feedback.
+   Both finish in one beat regardless of stroke count; pathLength=1 normalizes
+   each stroke. Reduced motion and ordinary controls use the unanimated SVG. */
+@media (prefers-reduced-motion: no-preference) {
+  .lr-glyph-draw:not(.lr-spin),
+  button:is(.lr-btn.is-primary, .lr-tv-big, .lr-join-go):not(:disabled):not([aria-disabled="true"]):is(:hover, :focus-visible) .lr-glyph:not(.lr-glyph-draw):not(.lr-spin) {
+    & > :is(path, circle, rect, line) {
+      stroke-dasharray: 1;
+      stroke-dashoffset: 1;
+      animation: lr-glyph-in 280ms cubic-bezier(.45, .05, .35, 1) both;
+    }
+    &.is-solid > :is(path, circle, rect), & > :is([fill="currentColor"], [fill^="#"]) {
+      stroke-dasharray: none;
+      stroke-dashoffset: 0;
+      transform-box: fill-box;
+      transform-origin: center;
+      animation-name: lr-glyph-pop;
+    }
   }
 }
 

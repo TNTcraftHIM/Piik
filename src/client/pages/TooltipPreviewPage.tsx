@@ -1,6 +1,7 @@
 import { AppHeader } from "../components/living/Header";
 import { Tooltip } from "../components/living/Tooltip";
-import { Btn, SwitchItem } from "../components/living/primitives";
+import { ControlsPreview } from "./ControlsPreview";
+import { WelcomeLine, WelcomeCipher, WELCOME_LINES } from "../components/living/WelcomeLine";
 import { HINT_KINDS, HintComic, isHintKind, type HintKind } from "../components/living/hints";
 import { Comic, type ComicKind } from "../components/living/Comic";
 import { COMIC_KINDS, getComicPresentation, type ComicTone, type ComicMotion } from "../components/living/comic-presentation";
@@ -41,24 +42,32 @@ function PreviewCard({ kind, tone, motion, label, text }: {
 }
 
 export function TooltipPreviewPage() {
-  const { vis, t } = useCopy();
+  const { t, lang } = useCopy();
+  const en = lang === "en";
   return (
     <div className="lr-app">
       <AppHeader />
       <main className="lr-room lr-tooltip-preview">
         <header className="lr-tooltip-preview-head">
-          <h1>Tooltip preview</h1>
-          <p>{vis ? "统一语义 · 操作与状态漫画" : "Shared grammar · control and status comics"}</p>
+          <h1>{en ? "Piik · UI catalogue" : "Piik · UI 控件大全"}</h1>
+          <p>{en ? "Actual components, sample data. Try mouse, keyboard and touch." : "正式组件，示例数据。鼠标、键盘、触屏都可以试。"}</p>
         </header>
-        <div className="lr-row-group" style={{ flexWrap: "wrap", marginBottom: 24 }}>
-          <Btn icon="gauge" title="host.details" cap="host.details" hint="hint-details" />
-          <Btn icon="refresh" title="viewer.reconnect" cap="viewer.reconnect" hint="hint-reconnect" disabled />
-          <SwitchItem checked disabled locked onChange={() => undefined}
-            label={t("host.advanced.route.peerOnly")}
-            note={t("host.advanced.route.peerOnlyRequired")}
-            hint="hint-route-p2p-required" />
-        </div>
-        <h2>语义规则 / Semantic grammar</h2>
+        <nav className="cp-nav" aria-label={en ? "Preview sections" : "预览目录"}>
+          <a href="#button-preview">{en ? "Buttons" : "按钮"}</a><a href="#option-preview">{en ? "Options" : "选择与开关"}</a>
+          <a href="#input-preview">{en ? "Inputs" : "输入与房间号"}</a><a href="#feedback-preview">{en ? "Feedback" : "反馈"}</a>
+          <a href="#people-preview">{en ? "People & connections" : "人物、沙发与连接图"}</a><a href="#source-preview">{en ? "Source picker" : "画面选择"}</a>
+          <a href="#playback-preview">{en ? "Playback" : "播放栏"}</a><a href="#comic-preview">{en ? "Tooltips & comics" : "提示与漫画"}</a>
+          <a href="#welcome-preview">{en ? "20 opening lines" : "20 句开场白"}</a>
+          <a href="/__status-preview">{en ? "Status gallery" : "完整状态预览"}</a>
+        </nav>
+        <ControlsPreview />
+        <WelcomeLine />
+        <details id="welcome-preview" className="lr-welcome-catalog" open>
+          <summary>20 句开场白 / 20 opening lines</summary>
+          <p>{en ? "One line per visit to the App launcher or the browser's sharing screen. Pure visual mode uses matching pictograms and pixel lettering; switching modes keeps the same line." : "进入 App 启动页或网页版的分享准备画面时，随机选一句。纯视觉模式显示对应的图形与像素暗号；切换模式还是同一句。"}</p>
+          <ol>{WELCOME_LINES.map(({ key }, index) => <li key={key}><span>{t(key)}</span><WelcomeCipher line={index} /></li>)}</ol>
+        </details>
+        <h2 id="comic-preview">语义规则 / Semantic grammar</h2>
         <div className="lr-tooltip-preview-grid">
           {EXAMPLES.map((example) => <PreviewCard key={example.label} {...example} text={t(example.text)} />)}
         </div>

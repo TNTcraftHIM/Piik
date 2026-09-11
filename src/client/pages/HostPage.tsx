@@ -24,6 +24,7 @@ import {
   type RoutePolicy,
 } from "../../shared/protocol";
 import { AppHeader, LedStrip } from "../components/living/Header";
+import { WelcomeLine } from "../components/living/WelcomeLine";
 import { Couch, type CouchEntry } from "../components/living/Couch";
 import {
   CaptureSourcePicker,
@@ -3381,12 +3382,7 @@ export function HostPage({
             ) : !stream &&
               (phase === "idle" || phase === "ended" || phase === "error") ? (
               <div className="lr-tv-overlay">
-                {vis ? null : (
-                  <div className="lr-entry-text">
-                    <h1>{t("host.idle.heading")}</h1>
-                    <p>{t("host.idle.hint")}</p>
-                  </div>
-                )}
+                {phase === "idle" ? <WelcomeLine /> : null}
                 {phase === "ended" && !vis ? (
                   <span className="lr-tv-msg">{t("host.ended")}</span>
                 ) : null}
@@ -3916,7 +3912,6 @@ export function HostPage({
               <RowGroup actions>
                 <Btn
                   icon={copied ? "check" : "link"}
-                  tone={room.inviteUrl ? "primary" : undefined}
                   cap="common.copy"
                   title={copied ? "common.copied" : "host.invite.copy"}
                   hint="hint-copy-invite"

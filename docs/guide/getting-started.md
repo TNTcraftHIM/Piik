@@ -2,29 +2,43 @@
 
 English · [简体中文](./getting-started.zh-CN.md) · [Back to Piik](../../README.md)
 
-Bring a game, a screen, and a few friends. One person shares; up to 20 friends
+Bring a game, a work in progress, or a new discovery. One person shares; up to 20 friends
 watch in their browsers.
 
-Public App downloads and a demo site are not available yet. Use your group's
-Piik site or App package, or [run from source](../README.md#run-from-source).
+[Join a room](#join-a-friends-room) · [Share in a browser](#share-from-your-browser) ·
+[Set up Piik App](#share-with-piik-app) · [Fix a problem](#when-something-gets-in-the-way)
+
+Download the package for your system from
+[GitHub Releases](https://github.com/TNTcraftHIM/Piik/releases), use your group's
+Piik site, or [run from source](../README.md#run-from-source).
 
 Piik opens in illustrated mode. Choose **EN** in the header to show the labels
 used below. **中** switches to Chinese; **✦** returns to the illustrations.
 
-## Watch a friend
+## Join a friend's room
 
 1. Open the invitation link your friend sent in a desktop or mobile browser.
 2. Wait for their screen to appear. If the browser blocks autoplay, press **Play**.
 3. Move the pointer over the picture or tap it to show the playback bar.
 
-The bar controls playback and sound only on your device. **Theater mode** fills
-the browser tab; **Fullscreen** fills the screen. **Picture in picture** opens a
-floating video where supported. Volume goes up to 200% when audio boost is
-available, or 100% otherwise. Turn it back down if the sound distorts.
+The playback bar controls only your own picture and sound.
+
+<details>
+<summary>Playback controls, at a glance</summary>
+
+| Control | What it does |
+| --- | --- |
+| **Theater mode** | Expands the picture inside the browser tab. |
+| **Fullscreen** | Fills your screen. |
+| **Picture in picture** | Opens a floating video where supported. |
+| **Volume** | Goes up to 200% with audio boost, or 100% otherwise. Lower it if the sound distorts. |
+
+</details>
 
 With just a four-digit room code, open the same Piik site and choose
 **Join a room**. You may need the site's passphrase and the room's password.
-A room set to invitation-only needs its invitation link.
+The host decides whether code entry is available; ask for an invitation link if
+you cannot join by code.
 
 If an old link no longer works, ask the host for the current invitation.
 App Local rooms and temporary public invitations end when that App run stops.
@@ -44,8 +58,7 @@ Invitation links grant access to that room; share them with the people you want 
 
 ## Share with Piik App
 
-1. Extract the whole package for your platform. Keep the `runtime` folder beside
-   the executable.
+1. Extract the whole package for your platform and keep its directory structure intact.
 2. Open `piik-app.exe` on Windows, `Piik App.app` on macOS, or `./piik-app` on Linux.
    The launcher opens in your system browser.
 3. Choose a mode below, then select **Open Piik**.
@@ -62,13 +75,15 @@ See the [App guide](../../cmd/piik-app/README.md) for package and runtime detail
 
 | Mode | When to choose it | What to keep in mind |
 | --- | --- | --- |
-| **Local room** | Friends are on the same local network. | Your computer must be reachable from theirs. A local site password is optional. |
+| **Local room** | Friends are on the same local network. | Your computer must be reachable from theirs. A local site passphrase is optional. |
 | **Public invite** | Friends are elsewhere and you want a temporary invitation. | Needs Internet access. The public address lasts for this App run. |
 | **Connect to Site** | Your group already has a Piik site. | Enter its address; the App adds capture capabilities to the site's sharing page. |
 
-Public invite uses Cloudflare Quick Tunnel for the room's web connection.
-The media itself uses peer connections, with no server media fallback in this mode,
-and the tunnel has no uptime guarantee. All modes need a working UDP media path.
+**A page that opens does not guarantee a video connection.** Public invite gives
+your room a temporary web address; picture and sound still travel between
+participants. This mode has no media-server fallback, and the temporary address
+has no uptime guarantee. All modes need a working UDP media path.
+The [App guide](../../cmd/piik-app/README.md#modes) explains the connection setup.
 
 ## When something gets in the way
 

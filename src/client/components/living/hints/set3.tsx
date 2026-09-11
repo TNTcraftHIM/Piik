@@ -10,6 +10,7 @@ import {
   MINT,
   MiniTv,
   Pawn,
+  YOU,
   SKY,
   STAR_GOLD,
   Star,
@@ -42,8 +43,7 @@ ${rmBlock(
     <Frame x={4} w={152} theme={theme} />
     <Frame x={164} w={152} theme={theme} result />
     {/* BEFORE: pawn squints at a soft picture (3 fat faint scanlines) */}
-    <Pawn x={26} yb={80} s={8} />
-    <path d="M24 64h2.8 M27.6 64h2.8" stroke="#101a2c" strokeWidth={2} strokeLinecap="round" fill="none" />
+    <Pawn x={26} yb={80} s={8} eyes="closed" host gaze={2} />
     <MiniTv x={52} y={22} w={76} h={46} />
     <g className="vls-vq-soft" fill={LINE} opacity={0.4}>
       <rect x={63} y={33} width={52} height={6} rx={3} />
@@ -51,9 +51,7 @@ ${rmBlock(
       <rect x={63} y={51} width={52} height={6} rx={3} />
     </g>
     {/* AFTER: crisp thin scanlines + sweep + star; pawn brightens up */}
-    <Pawn x={186} yb={80} s={8} />
-    <circle cx={187} cy={62.8} r={1.2} fill="#101a2c" />
-    <circle cx={190} cy={62.8} r={1.2} fill="#101a2c" />
+    <Pawn x={186} yb={80} s={8} eyes host gaze={2} />
     <MiniTv x={212} y={22} w={76} h={46} />
     <g fill={MINT} opacity={0.95}>
       <rect x={221} y={30} width={58} height={2.5} rx={1.25} />
@@ -99,10 +97,8 @@ ${rmBlock(
     <path d="M53 47 L67 38 V64 L53 55 Z" fill={TV_BODY} stroke={TV_EDGE} strokeWidth={2} strokeLinejoin="round" />
     <path className="vls-aq-weak" d="M73 45 a9 9 0 0 1 0 12" stroke={LINE} strokeWidth={2} strokeLinecap="round" fill="none" opacity={0.4} />
     <g className="vls-aq-listen">
-      <Pawn x={122} yb={80} s={9} />
-      <circle cx={118.5} cy={61.3} r={1.3} fill="#101a2c" />
-      <circle cx={122} cy={61.3} r={1.3} fill="#101a2c" />
-      <path d="M116 55 a7 7 0 0 0 0 12" stroke="#23804f" strokeWidth={2.5} strokeLinecap="round" fill="none" />
+      <Pawn x={122} yb={80} s={9} eyes host gaze={-2} />
+      <circle cx={115} cy={61} r={2} fill={YOU} />
     </g>
     {/* AFTER: three bold arcs, happy-eye pawn static, star */}
     <rect x={200} y={42} width={13} height={18} rx={3} fill={TV_BODY} stroke={TV_EDGE} strokeWidth={2} />
@@ -112,8 +108,7 @@ ${rmBlock(
       <path className="vls-aq-a2" d="M237 41 a13 13 0 0 1 0 20" />
       <path className="vls-aq-a3" d="M242 36 a18 18 0 0 1 0 30" />
     </g>
-    <Pawn x={282} yb={80} s={9} />
-    <path d="M277.5 62 q1.7 -2.3 3.4 0 M282.5 62 q1.7 -2.3 3.4 0" stroke="#101a2c" strokeWidth={1.8} strokeLinecap="round" fill="none" />
+    <Pawn x={282} yb={80} s={9} eyes="closed" host />
     <Star x={257} y={21} r={6.5} className="vls-aq-star" baseOpacity={0} />
   </>
 );
@@ -140,9 +135,7 @@ ${rmBlock(
     <Frame x={4} w={152} theme={theme} />
     <Frame x={164} w={152} theme={theme} result />
     {/* BEFORE: pawn watches the scale wobble — crisp frame vs blur frame */}
-    <Pawn x={26} yb={80} s={7.5} />
-    <circle cx={27.3} cy={64} r={1.1} fill="#101a2c" />
-    <circle cx={29.7} cy={64} r={1.1} fill="#101a2c" />
+    <Pawn x={26} yb={80} s={7.5} eyes host gaze={2} />
     <path d="M84 78 V34 M70 78 H98" stroke="var(--ink)" strokeWidth={2.5} strokeLinecap="round" fill="none" />
     <g className="vls-dp-beam" stroke="var(--ink)" strokeWidth={2.5} strokeLinecap="round" fill="none">
       <path d="M52 34 H116" />
@@ -157,8 +150,7 @@ ${rmBlock(
     </g>
     <circle cx={84} cy={34} r={2.5} fill="var(--ink)" />
     {/* AFTER: settle once, level, star; pawn pleased */}
-    <Pawn x={298} yb={80} s={7.5} />
-    <path d="M294 65 q1.6 -2.2 3.2 0 M299 65 q1.6 -2.2 3.2 0" stroke="#101a2c" strokeWidth={1.8} strokeLinecap="round" fill="none" />
+    <Pawn x={298} yb={80} s={7.5} eyes="closed" host />
     <path d="M244 78 V34 M230 78 H258" stroke="var(--ink)" strokeWidth={2.5} strokeLinecap="round" fill="none" />
     <g className="vls-dp-settle" stroke="var(--ink)" strokeWidth={2.5} strokeLinecap="round" fill="none">
       <path d="M212 34 H276" />
@@ -257,11 +249,7 @@ ${rmBlock(
     <circle cx={64} cy={36} r={2.5} fill="var(--ink)" />
     <circle cx={70} cy={46} r={2.5} fill="var(--ink)" />
     <circle cx={87} cy={48} r={2.5} fill="var(--ink)" />
-    <Pawn x={122} yb={80} s={7.5} />
-    <g className="vls-adv-blink">
-      <circle cx={118.6} cy={64.2} r={1.2} fill="#101a2c" />
-      <circle cx={122} cy={64.2} r={1.2} fill="#101a2c" />
-    </g>
+    <Pawn x={122} yb={80} s={7.5} eyes host gaze={-2} eyeClassName="vls-adv-blink" />
     {/* AFTER: tracks + set knobs revealed as the door swings open */}
     <rect x={204} y={18} width={56} height={60} rx={8} fill="var(--wall-2)" stroke="var(--ink)" strokeWidth={2.5} />
     <g stroke={FAINT} strokeWidth={2.5} strokeLinecap="round" fill="none">
@@ -276,9 +264,7 @@ ${rmBlock(
       <rect x={209} y={23} width={44} height={50} rx={5} fill="var(--paper)" stroke="var(--ink)" strokeWidth={2} />
     </g>
     <g className="vls-adv-hop">
-      <Pawn x={284} yb={80} s={7.5} />
-      <circle cx={281} cy={64.2} r={1.2} fill="#101a2c" />
-      <circle cx={284.4} cy={64.2} r={1.2} fill="#101a2c" />
+      <Pawn x={284} yb={80} s={7.5} eyes host gaze={-2} />
     </g>
   </>
 );
@@ -311,9 +297,7 @@ ${rmBlock(
       <rect x={82} y={44} width={8} height={30} rx={2.5} />
       <rect x={98} y={52} width={8} height={22} rx={2.5} />
     </g>
-    <Pawn x={132} yb={80} s={7} />
-    <circle cx={129.8} cy={65.2} r={1.2} fill="#101a2c" />
-    <circle cx={132.6} cy={65.2} r={1.2} fill="#101a2c" />
+    <Pawn x={132} yb={80} s={7} eyes gaze={-2} />
     {/* AFTER: magnifier over the same bars, enlarged inside the lens */}
     <path d="M188 74 H276" stroke="var(--ink)" strokeWidth={2.5} strokeLinecap="round" fill="none" />
     <g fill="var(--ink)">
@@ -332,11 +316,7 @@ ${rmBlock(
         <rect x={240} y={40} width={10} height={32} rx={3} />
       </g>
     </g>
-    <Pawn x={296} yb={80} s={7} />
-    <g className="vls-dt-blink">
-      <circle cx={293.4} cy={65.6} r={1.2} fill="#101a2c" />
-      <circle cx={296.2} cy={65.6} r={1.2} fill="#101a2c" />
-    </g>
+    <Pawn x={296} yb={80} s={7} eyes gaze={-2} eyeClassName="vls-dt-blink" />
   </>
 );
 
@@ -369,9 +349,7 @@ ${rmBlock(
       <circle cx={80} cy={39.5} r={2} />
     </g>
     <path className="vls-mm-chev" d="M70 62 l10 8 l10 -8" stroke="var(--ink)" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" fill="none" />
-    <Pawn x={140} yb={80} s={6} />
-    <circle cx={138.2} cy={67.4} r={1} fill="#101a2c" />
-    <circle cx={140.6} cy={67.4} r={1} fill="#101a2c" />
+    <Pawn x={140} yb={80} s={6} eyes gaze={-2} />
     {/* AFTER: three rows unfolded, chevron-up on top */}
     <path d="M230 22 l10 -7 l10 7" stroke="var(--ink)" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" fill="none" />
     <rect x={194} y={28} width={92} height={15} rx={7.5} fill="var(--wall-2)" stroke="var(--ink)" strokeWidth={2} />
@@ -395,9 +373,7 @@ ${rmBlock(
       <rect x={226} y={69} width={5} height={6} rx={1.5} fill={STAR_GOLD} />
       <circle cx={240} cy={71.5} r={2} fill={STAR_GOLD} />
     </g>
-    <Pawn x={300} yb={80} s={6} />
-    <circle cx={298.2} cy={67.4} r={1} fill="#101a2c" />
-    <circle cx={300.6} cy={67.4} r={1} fill="#101a2c" />
+    <Pawn x={300} yb={80} s={6} eyes gaze={-2} />
   </>
 );
 

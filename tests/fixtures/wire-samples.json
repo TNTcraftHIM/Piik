@@ -14,7 +14,7 @@
     "persistentNativeEdgeDegradedWindows": 3,
     "maxDisplayNameCodePoints": 24,
     "defaultViewerDisplayName": "观众",
-    "defaultHostDisplayNamePrefix": "分享者",
+    "defaultHostDisplayNamePrefix": "房主",
     "minViewerPasswordLength": 1,
     "maxViewerPasswordLength": 64,
     "defaultEndpointMediaCopyCapacity": 2,

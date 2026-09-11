@@ -74,7 +74,7 @@ export const STATUS_SCENARIOS: readonly StatusScenario[] = [
   scenario("signal-recovering", "信令断开，画面仍在播放", "控制连接正在恢复；媒体仍有当前画面，标题保留观看状态。", [
     ...playing, { type: "signal", signal: "reconnecting" },
   ]),
-  scenario("host-offline-playing", "分享者离线，仍有当前画面", "房主在线状态和正在接收的媒体不是同一件事；先给提示，不直接覆盖画面。", [
+  scenario("host-offline-playing", "房主离线，仍有当前画面", "房主在线状态和正在接收的媒体不是同一件事；先给提示，不直接覆盖画面。", [
     ...playing, { type: "host", host: "offline" },
   ]),
   scenario("joining", "正在加入房间", "尚未完成准入；不能把 WebSocket 连通当成视频已播放。", []),
@@ -92,7 +92,7 @@ export const STATUS_SCENARIOS: readonly StatusScenario[] = [
   scenario("needs-play", "需要点击播放", "浏览器阻止了自动播放；画面上的按钮是真正可操作的。", [
     ...receiving, { type: "autoplay-blocked", generation: 1, revision: 1 },
   ]),
-  scenario("paused", "分享者暂停", "主动暂停与连接失败分开；保留最后画面。", [
+  scenario("paused", "房主暂停", "主动暂停与连接失败分开；保留最后画面。", [
     ...playing, { type: "host", host: "paused" },
   ]),
   scenario("recovering", "媒体恢复，保留最后画面", "当前帧证明失效，但有最后画面可保留；真实新帧才能清掉恢复状态。", [
@@ -106,8 +106,8 @@ export const STATUS_SCENARIOS: readonly StatusScenario[] = [
   scenario("playback-failed", "浏览器播放失败", "连接存在，但播放器无法呈现画面。", [
     ...receiving, { type: "playback-failed", generation: 1, revision: 1 },
   ]),
-  scenario("waiting-host", "等待分享者开播", "房间存在，当前没有共享源。", [{ type: "access", access: "ready" }]),
-  scenario("host-offline", "分享者离线，没有画面", "没有当前或留存画面，说明分享者离线。", [
+  scenario("waiting-host", "等待房主开始分享", "房间存在，当前没有共享源。", [{ type: "access", access: "ready" }]),
+  scenario("host-offline", "房主离线，没有画面", "没有当前或留存画面，说明房主离线。", [
     ...ready, { type: "host", host: "offline" },
   ]),
   scenario("stopped", "分享已经停止", "正常结束，不伪装为正在恢复或播放失败。", [...playing, { type: "sharing-stopped" }]),

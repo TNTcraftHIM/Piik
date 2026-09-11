@@ -1,7 +1,7 @@
 // Per-viewer drill-down: name, route glyph, primary metrics, expandable
 // detailed metrics. Host sees every Viewer; a Viewer uses this only for relay
 // children because its own route already has the canonical details panel.
-import { PawnSvg } from "./Couch";
+import { PawnSvg } from "./Pawn";
 import { participantColor } from "./participant-color";
 import { Glyph } from "../../ui/icons";
 import { Tooltip } from "./Tooltip";
@@ -80,7 +80,7 @@ export function PawnDetail({
   return (
     <div className="lr-row is-sub lr-pawn-detail" role="group" aria-label={name}>
       <span className="lr-pawn-mini">
-        <PawnSvg color={participantColor(pawnKey)} />
+        <PawnSvg color={participantColor(pawnKey)} identity={pawnKey} />
       </span>
       {vis ? (
         <span className="visually-hidden">{name}</span>

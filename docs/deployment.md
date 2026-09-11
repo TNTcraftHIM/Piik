@@ -176,16 +176,10 @@ and [backup guidance](https://www.sqlite.org/backup.html) define this offline op
 
 ## Atomic Cutover
 
-### First embedded-media cutover prerequisite
-
-The first move from external services to embedded STUN/SFU is a coordinated
-infrastructure and protocol transaction, including Node-to-Go where still
-needed. Complete the [self-hosting cutover procedure](./operations/self-hosting.md#coordinated-embedded-media-cutover)
-with matching Web/Server signaling and native protocol v9 App builds,
-accepted active-session interruption, released UDP ports, and exact
-unit/environment/proxy/service recovery. The routine wrapper does not perform
-that transaction; it requires an already running packaged Go release and cannot
-restore the previous infrastructure.
+The wrapper requires an already running packaged Go release and the service
+layout described above. For a new installation, use the
+[self-hosting guide](./operations/self-hosting.md). Infrastructure changes need
+their own scoped recovery procedure under [CONTRIBUTING](../CONTRIBUTING.md).
 
 Run the tracked server entry with the uploaded descriptor:
 

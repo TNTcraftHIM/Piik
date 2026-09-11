@@ -7,6 +7,36 @@ This is the shared engineering convention for Browser, App and Server work.
 correct implementation. This file owns module responsibilities and interface
 discipline, not a second copy of the product contracts or wire fields.
 
+## Repository Layout
+
+Keep conventional project entry points and tool-discovered configuration at the
+root. Scope-specific configuration belongs with its owner: `src/tsconfig.json`
+checks the Browser, `scripts/tsconfig.json` checks tooling/tests, and root
+`tsconfig.json` only connects those projects.
+
+| Location | What belongs here |
+| --- | --- |
+| Root README, contribution and agent files | Project introduction and shared working constraints; detailed documents live in `docs/` |
+| Root manifests, lockfiles, Vite/Vitest config, `index.html` | Go/npm entry points and Browser build/test startup; root `LICENSE` is authoritative |
+| `src/client`, `src/shared` | Browser UI/media orchestration and its shared wire types; the same UI serves Hosted and App modes |
+| `public/` | Static assets shipped with that Browser application |
+| `cmd/`, `internal/` | Go executable composition and private application, server, media and diagnostics packages |
+| `native/capture`, `native/fixtures`, `native/probes` | Platform capture implementations, synthetic workloads and standalone capability probes |
+| `site/` | Independently published static introduction; its assets do not implement product behavior |
+| `scripts/` | Development checks, browser/media gates, dependency assembly and release packaging/publishing tools |
+| `tests/` | TypeScript/tooling tests and cross-language fixtures; Go tests stay beside their packages |
+| `deploy/` | Operator scripts and container, proxy, service and certificate templates |
+| `docs/` | User guides, contracts, decisions and operations; [documentation ownership](../maintenance.md) defines each owner |
+| `licenses/` | Third-party license texts, pinned notice sources and their redistribution reference |
+| `.github/`, `.githooks/`, `.agents/`, `.codex/` | Platform automation and scoped agent/tool integration |
+| `build/`, `node_modules/`, `coverage/` | Ignored local output and dependencies; never current product truth |
+
+`site/` introduces Piik; `src/client/` is Piik's interactive application.
+`internal/app/nativecapture` adapts the capture contract in Go; `native/capture/`
+implements it using platform APIs. `scripts/` prepares and verifies artifacts;
+`deploy/` operates them. Move files with their actual consumers, and update paths
+and checks together; a smaller root alone does not justify another abstraction.
+
 ## Module Map
 
 | Owner | Responsibility and dependency boundary |

@@ -237,11 +237,7 @@ ${rmBlock(
 `}</style>
     <Frame x={4} w={152} theme={theme} />
     <Frame x={164} w={152} theme={theme} result />
-    <Pawn x={62} yb={76} s={10} />
-    <g className="vls-cinv-eyes" fill="#101a2c">
-      <circle cx={59.8} cy={56} r={1.1} />
-      <circle cx={64.2} cy={56} r={1.1} />
-    </g>
+    <Pawn x={62} yb={76} s={10} eyes host eyeClassName="vls-cinv-eyes" />
     <LinkRing x={50} y={27.5} w={24} h={13} tilt={-12} />
     <path
       className="vls-cinv-arc"
@@ -252,7 +248,7 @@ ${rmBlock(
       fill="none"
       opacity={0}
     />
-    <Pawn x={196} yb={76} s={8.5} eyes />
+    <Pawn x={196} yb={76} s={8.5} eyes host />
     <Pawn x={288} yb={76} s={8.5} eyes color={SKY} />
     <g className="vls-cinv-fly" opacity={0}>
       <LinkRing x={278} y={31.5} w={20} h={11} tilt={-12} />
@@ -407,11 +403,7 @@ ${rmBlock(
     <Frame x={4} w={152} theme={theme} />
     <Frame x={164} w={152} theme={theme} result />
     <OpenDoorway x={64} y={18} />
-    <Pawn x={204} yb={76} s={8} />
-    <g className="vls-priv-eyes" fill="#101a2c">
-      <circle cx={201.8} cy={60} r={0.9} />
-      <circle cx={206.2} cy={60} r={0.9} />
-    </g>
+    <Pawn x={204} yb={76} s={8} eyes eyeClassName="vls-priv-eyes" />
     <g className="vls-priv-card">
       <g transform="rotate(-10 202 44)">
         <rect

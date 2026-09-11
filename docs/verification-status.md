@@ -42,18 +42,26 @@ or a measured improvement worth its implementation and maintenance cost.
 
 ## Candidate Evidence Boundary
 
-The `98b29ec1` rehearsal covered Server and Windows App packaging, the Windows
-capture compile/probe, and Local startup/shutdown. These packages predate later
-media/copy changes and do not accept the final candidate. Exact package identity
-belongs to the release descriptors; Git retains the earlier rehearsal record.
+The 2026-09-11 functional test acceptance used two genuine Windows App packages
+and matching Server source/Web builds under the same private contract. Both App/Site version
+directions delivered decoded 1080p H264 from an isolated native test window.
+Replacing the Server process preserved SQLite Host authority, private code-entry
+policy, Viewer grant/password authorization and App configuration. Already-open
+Host/Viewer pages reauthenticated without reloading and completed subsequent
+sharing. Exact measured identity belongs to the package descriptors and local
+structured acceptance result; Git retains the preparation history.
 
-The lifecycle/cohesion audits did not run Go race detection or establish real
-mixed-build App/Site operation, an already-open page across a compatible update,
-or room/config preservation and usable sharing after a candidate update.
-Startup/probe and incompatible-contract rejection tests do not establish those
-behaviors. The full publisher dry run with genuine matching target artifacts remains
-unverified; Darwin packaging needs its native toolchain. [TODO](./todo.md) owns
-remaining candidate checks; the broader platform deferrals below still apply.
+This is bounded single-machine Windows evidence. The local Server executables
+were built for Windows from the matching source; this run did not execute the
+Linux release archives. Process replacement used a forced stop on Windows and
+does not promise uninterrupted media. It does not cover game/audio endurance,
+storage faults, the wider device/network matrix or Go race detection.
+
+The full publisher dry run with genuine matching target artifacts remains
+unverified. The native CI candidate run passed validation and Server packaging
+but hit the Actions artifact-storage quota before App jobs could start. Native
+macOS tooling remains necessary. [TODO](./todo.md) owns the remaining publisher
+rehearsal and owner acceptance; the broader platform deferrals below still apply.
 
 ## Remaining Device And Network Acceptance
 

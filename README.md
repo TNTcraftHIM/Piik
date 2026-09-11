@@ -1,54 +1,100 @@
-<img src="./public/favicon.svg" width="64" height="64" alt="Piik TV logo">
+<p align="center"><img src="./public/favicon.svg" width="64" height="64" alt="Piik mascot"></p>
+<h1 align="center">Piik</h1>
+<p align="center"><strong>Good things. Shared.</strong><br>Private screen sharing for you and up to 20 friends.</p>
+<p align="center">
+  <a href="https://piik.tv">Website</a> ·
+  <a href="https://github.com/TNTcraftHIM/Piik/releases">Download</a> ·
+  <a href="https://demo.piik.tv">Try the demo</a> ·
+  <a href="./docs/README.md">Documentation</a>
+</p>
+<p align="center">
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-36564f?style=flat-square" alt="License: MIT"></a>
+  <img src="https://img.shields.io/badge/viewers-up_to_20-36564f?style=flat-square" alt="Up to 20 viewers">
+  <img src="https://img.shields.io/badge/media-P2P_first-36564f?style=flat-square" alt="P2P-first media">
+</p>
+<p align="center">English · <a href="./README.zh-CN.md">简体中文</a></p>
 
-# Piik
+Share a game, a drawing or something you just found. Open a room, send an
+invitation, and your friends can watch in their browsers.
 
-English · [简体中文](./README.zh-CN.md)
+<details open>
+<summary>A little room · Show / hide animation</summary>
 
-**Share a game. Hang out together.**
+<p align="center"><img src="./site/assets/living-room.svg" width="720" height="472" alt="A host with a little gold crown plays a television's island-hopping game while friends watch from the sofa."></p>
 
-Piik is an [MIT-licensed](./LICENSE) screen sharing project for you and up to 20 invited friends.
-You play; they watch in a desktop or mobile browser, with nothing to install.
+</details>
 
-<img src="./site/assets/living-room.svg" width="720" height="472" alt="One player shares a game while three friends settle onto a sofa to watch.">
+[Features](#features) · [Get started](#get-started) · [Self-hosting](#self-hosting) · [Contributing](#contributing)
 
-Piik starts in illustrated mode. Choose **EN** in the header for these button labels.
+## Features
 
-## Got an invitation? Take a seat.
+- **Watch without installing.** Friends join by invitation in a desktop or mobile browser.
+- **Share from a browser or Piik App.** Capture a screen, window or browser tab; available sources and audio depend on the platform.
+- **P2P first.** Media travels between participants where possible. A self-hosted server can provide automatic SFU fallback.
+- **Rooms you control.** Invitations, room codes and optional passwords, for one host and up to 20 viewers.
+- **A little room for everyone.** Light and dark themes, playback controls, picture-in-picture and a view of the connections behind the picture.
+- **A single server binary.** Web UI, signaling, STUN and optional media forwarding in one Go process.
 
-1. Open the link your friend sent.
-2. Press **Play** if needed, turn up the sound, and go fullscreen.
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./docs/assets/room-en-dark.png">
+    <img src="./docs/assets/room-en-light.png" width="860" alt="Piik room: a shared game, playback controls and friends on a sofa. The host wears a small gold crown.">
+  </picture><br>
+  <sub>Interface preview · Sample room with a generated game scene</sub>
+</p>
 
-Only have a room code? Open your group's Piik site and choose **Join a room**.
-The site and room may require a password.
+## Get started
 
-## Share from your browser
+**To watch:** open the invitation your friend sends you. Select **Play** if the
+picture does not start automatically. No App installation is needed.
 
-1. Open your group's Piik site and enter its site passphrase if asked.
-2. Choose **Start sharing**, pick a screen, window or tab, and enable sound if available.
-3. Copy the room's invitation link and send it to your friends. Keep the sharing tab open.
+**To share:**
 
-Screen and audio choices depend on your browser and operating system.
+<p align="center"><img src="./docs/assets/quickstart.svg" width="640" alt="Choose a screen, send an invitation, watch together."></p>
 
-## Open a room with Piik App
+1. Open a Piik site, or [download Piik App](https://github.com/TNTcraftHIM/Piik/releases) and choose a room mode on launch.
+2. Select **Start sharing**, then choose the picture and audio to share.
+3. Copy the invitation and send it to your friends. Keep the sharing tab open.
 
-Piik App is a self-contained package that opens the sharing controls in your browser.
+Piik uses icon controls by default; select **EN** in the header to show labels.
+The App offers a local room, a temporary public link, or a connection to your own
+site. Keep the App running while sharing through it.
 
-1. Extract the complete package for your platform, keeping the `runtime` folder beside the executable.
-2. Open `piik-app.exe` on Windows, `Piik App.app` on macOS, or `./piik-app` on Linux.
-3. Choose **Local room**, **Public invite**, or **Connect to Site**, then **Open Piik**.
+| App package | Platform |
+| --- | --- |
+| `windows-amd64` | Windows x64 |
+| `darwin-arm64` | macOS, Apple silicon |
+| `linux-amd64` | Linux x64 |
 
-Start sharing and send the invitation. Keep the App and sharing tab open.
-[Choose a mode →](./docs/guide/getting-started.md#choose-an-app-mode)
+[**Full setup guide →**](./docs/guide/getting-started.md) · [**Open the demo →**](https://demo.piik.tv)
 
-> We're preparing the first public release; the source repository is still private.
-> Public App downloads and a demo site are not available yet.
-> To try Piik now, [run it from source](./docs/README.md#run-from-source) or use a site or package provided by your group.
+Browser capture requires HTTPS or `localhost`. Windows App and desktop browser
+sharing are the primary tested paths; macOS/Linux native capture still needs
+physical-device acceptance. P2P-only modes, including the App's temporary public
+link and the demo, may not connect on restrictive networks.
 
-[Getting started & common fixes](./docs/guide/getting-started.md) ·
-[Host your own site](./docs/operations/self-hosting.md) ·
-[Documentation](./docs/README.md)
+## Self-hosting
 
-A confusing button, a bug report, a clearer explanation — [small contributions are welcome](./CONTRIBUTING.md).
+Piik Server is a standalone binary with the web interface built in.
+Download the Linux x64 Server package, extract it, and run:
 
-Piik-owned code uses the MIT license; dependencies keep their own licenses.
-[Third-party licenses and notices](./licenses/README.md).
+```sh
+./piik-server
+```
+
+Open `http://localhost:8787` to try it locally. For a public site, configure your
+domain, HTTPS reverse proxy and STUN address. No separate database or media server
+is required; room data is stored in SQLite.
+
+[**Deploy your own site →**](./docs/operations/self-hosting.md) · [Configuration](./docs/reference/configuration.md) · [Run from source](./docs/README.md#run-from-source)
+
+## Contributing
+
+Bug reports, documentation improvements and pull requests are welcome.
+Start with [CONTRIBUTING.md](./CONTRIBUTING.md), or see the
+[repository layout](./docs/reference/engineering.md#repository-layout) to find your way around.
+
+## License
+
+Piik-owned code is [MIT licensed](./LICENSE). Dependencies retain their own
+[licenses and notices](./licenses/README.md).

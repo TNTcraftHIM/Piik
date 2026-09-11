@@ -193,9 +193,6 @@ func Load(env map[string]string) (Config, error) {
 		return Config{}, fmt.Errorf("SITE_ACCESS_PASSWORD must contain %d to %d visible ASCII bytes",
 			minSiteAccessPasswordBytes, maxSiteAccessPasswordBytes)
 	}
-	if environment == EnvironmentProduction && siteAccessPassword == "" {
-		return Config{}, errors.New("SITE_ACCESS_PASSWORD is required in production")
-	}
 	if environment == EnvironmentProduction && len(stunURLs) == 0 {
 		return Config{}, errors.New("STUN is required in production")
 	}

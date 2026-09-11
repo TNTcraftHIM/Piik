@@ -20,15 +20,13 @@ import {
   TV_SCREEN,
   rmBlock,
 } from "../Comic";
-import { ControllerMark } from "../ControllerMark";
 import type { ComicTheme } from "../Comic";
 import type { HintScene, Set4Kind } from "../../../ui/visual-kinds";
 
 const INK = "var(--ink)";
 const WALL2 = "var(--wall-2)";
-const EYE = "#101a2c";
 
-/* hint-topology: [one host pawn with a controller] → [host with two leaf
+/* hint-topology: [one pawn with a Host badge] → [host with two leaf
    pawns on live-green edges]. Demo: leaves hop in turn (8-20%, 26-38%),
    everyone blinks at 62%; rest >=55%. */
 const HintTopology: HintScene = ({ theme }) => (
@@ -47,22 +45,12 @@ ${rmBlock(
 `}</style>
     <Frame x={4} w={152} theme={theme} />
     <Frame x={164} w={152} theme={theme} result />
-    <Pawn x={80} yb={78} s={12} />
-    <ControllerMark x={81} y={63} width={18} />
-    <g className="vls-top-eyes" fill={EYE}>
-      <circle cx={77.4} cy={54} r={1.3} />
-      <circle cx={82.6} cy={54} r={1.3} />
-    </g>
+    <Pawn x={80} yb={78} s={12} eyes host eyeClassName="vls-top-eyes" />
     <g stroke={LIVE} strokeWidth={3} strokeLinecap="round" fill="none">
-      <path d="M240 47 C231 55 222 58 213 65" />
-      <path d="M240 47 C249 55 258 58 267 65" />
+      <path d="M240 47 C231 50 218 52 210 56" />
+      <path d="M240 47 C249 50 262 52 270 56" />
     </g>
-    <Pawn x={240} yb={46} s={7} />
-    <g className="vls-top-eyes" fill={EYE}>
-      <circle cx={237.8} cy={32} r={0.9} />
-      <circle cx={242.2} cy={32} r={0.9} />
-    </g>
-    <ControllerMark x={241} y={38} width={13} />
+    <Pawn x={240} yb={46} s={7} eyes host eyeClassName="vls-top-eyes" />
     <Pawn x={210} yb={80} s={7} color={SKY} eyes className="vls-top-leaf1" />
     <Pawn x={270} yb={80} s={7} color={STAR_GOLD} eyes className="vls-top-leaf2" />
   </>
@@ -201,11 +189,7 @@ ${rmBlock(
 `}</style>
     <Frame x={4} w={152} theme={theme} />
     <Frame x={164} w={152} theme={theme} result />
-    <Pawn x={32} yb={76} s={9} />
-    <g className="vls-jgo-eyes" fill={EYE}>
-      <circle cx={34.6} cy={58} r={1} />
-      <circle cx={38.2} cy={58} r={1} />
-    </g>
+    <Pawn x={32} yb={76} s={9} eyes gaze={2} eyeClassName="vls-jgo-eyes" />
     <g fill={WALL2} stroke={INK} strokeWidth={2}>
       <rect x={58} y={32} width={15} height={24} rx={4} />
       <rect x={79} y={32} width={15} height={24} rx={4} />
@@ -316,16 +300,8 @@ ${rmBlock(
 `}</style>
     <Frame x={4} w={152} theme={theme} />
     <Frame x={164} w={152} theme={theme} result />
-    <Pawn x={42} yb={74} s={9} />
-    <g className="vls-p2p-eyes" fill={EYE}>
-      <circle cx={45} cy={56} r={1} />
-      <circle cx={48.5} cy={56} r={1} />
-    </g>
-    <Pawn x={118} yb={74} s={9} color={SKY} />
-    <g className="vls-p2p-eyes" fill={EYE}>
-      <circle cx={111.5} cy={56} r={1} />
-      <circle cx={115} cy={56} r={1} />
-    </g>
+    <Pawn x={42} yb={74} s={9} eyes gaze={2} eyeClassName="vls-p2p-eyes" />
+    <Pawn x={118} yb={74} s={9} color={SKY} eyes gaze={-2} eyeClassName="vls-p2p-eyes" />
     <g fill={FAINT}>
       <circle cx={74} cy={60} r={1.5} />
       <circle cx={88} cy={60} r={1.5} />
@@ -380,16 +356,8 @@ ${rmBlock(
 `}</style>
     <Frame x={4} w={152} theme={theme} />
     <Frame x={164} w={152} theme={theme} result />
-    <Pawn x={42} yb={74} s={9} />
-    <g className="vls-sfu-eyes" fill={EYE}>
-      <circle cx={45} cy={56} r={1} />
-      <circle cx={48.5} cy={56} r={1} />
-    </g>
-    <Pawn x={118} yb={74} s={9} color={SKY} />
-    <g className="vls-sfu-eyes" fill={EYE}>
-      <circle cx={111.5} cy={56} r={1} />
-      <circle cx={115} cy={56} r={1} />
-    </g>
+    <Pawn x={42} yb={74} s={9} eyes gaze={2} eyeClassName="vls-sfu-eyes" />
+    <Pawn x={118} yb={74} s={9} color={SKY} eyes gaze={-2} eyeClassName="vls-sfu-eyes" />
     <g fill={FAINT}>
       <circle cx={74} cy={60} r={1.5} />
       <circle cx={88} cy={60} r={1.5} />

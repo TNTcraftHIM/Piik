@@ -2,9 +2,21 @@
 const root = document.documentElement;
 const language = document.getElementById('language');
 const theme = document.getElementById('theme');
+const description = document.querySelector('meta[name="description"]');
+const roomIllustration = document.querySelector('.living-room');
 const copy = {
-  en: { title: 'Piik — Screen sharing with friends', themes: ['System', 'Light', 'Dark'], image: 'An illustrated game night: a green host shares a game with friends on an orange sofa.' },
-  'zh-CN': { title: 'Piik — 和朋友分享屏幕', themes: ['跟随系统', '浅色', '深色'], image: '游戏之夜插画：绿色房主分享游戏，朋友们坐在橙色沙发上一起看。' },
+  en: {
+    title: document.title,
+    description: description.content,
+    themes: Object.fromEntries(Array.from(theme.options, (option) => [option.value, option.textContent])),
+    image: roomIllustration.alt,
+  },
+  'zh-CN': {
+    title: 'Piik — 和朋友分享屏幕',
+    description: '游戏、画画、新鲜事，都能叫朋友来围观。Piik 支持私密屏幕共享，最多 20 位观众，点开邀请就能看。',
+    themes: { system: '跟随系统', light: '浅色', dark: '深色' },
+    image: '戴着金色小皇冠的房主操作手柄，游戏里的小电视在浮岛间跳跃、收集光点，三位朋友坐在沙发上围观。',
+  },
 };
 language.addEventListener('click', () => {
   const chinese = root.lang !== 'zh-CN';
@@ -14,27 +26,59 @@ language.addEventListener('click', () => {
   language.setAttribute('aria-label', chinese ? 'Switch to English' : '切换到简体中文');
   const current = copy[root.lang];
   document.title = current.title;
-  document.querySelector('.living-room').alt = current.image;
-  Array.from(theme.options).forEach((option, index) => { option.textContent = current.themes[index]; });
+  description.content = current.description;
+  roomIllustration.alt = current.image;
+  for (const option of theme.options) option.textContent = current.themes[option.value];
 });
 function syncThemeColor() {
   document.querySelector('meta[name="theme-color"]').content = getComputedStyle(root).getPropertyValue('--wall').trim();
 }
-theme.addEventListener('change', () => { root.dataset.theme = theme.value; syncThemeColor(); });
+theme.addEventListener('change', () => {
+  root.dataset.theme = theme.value;
+  syncThemeColor();
+});
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', syncThemeColor);
 syncThemeColor();
 document.querySelector('.preferences').hidden = false;
 
+// Native disclosures remain usable without scripts; section links also reveal them.
+function revealGuide(hash) {
+  const target = document.getElementById(hash.slice(1));
+  if (target?.matches('details.guide')) target.open = true;
+}
+document.querySelectorAll('a[href^="#"]').forEach((link) => {
+  link.addEventListener('click', () => revealGuide(link.hash));
+});
+window.addEventListener('hashchange', () => revealGuide(location.hash));
+revealGuide(location.hash);
+
 const motion = matchMedia('(prefers-reduced-motion: reduce)');
 const illustrations = document.querySelectorAll('.step-art');
-document.querySelectorAll('.identity, .step-art').forEach(control => {
-  const replayScene = () => control.getAnimations({ subtree: true }).forEach(animation => { animation.currentTime = 0; });
+const sceneMotion = document.getElementById('scene-motion');
+sceneMotion.addEventListener('click', () => {
+  sceneMotion.setAttribute('aria-pressed', String(sceneMotion.getAttribute('aria-pressed') !== 'true'));
+  syncMotionControls();
+});
+document.querySelectorAll('.identity, .step-art').forEach((control) => {
+  const replayScene = () =>
+    control.getAnimations({ subtree: true }).forEach((animation) => {
+      if (animation instanceof CSSAnimation) animation.currentTime = 0;
+    });
   (control.closest('li') ?? control).addEventListener('pointerenter', replayScene);
   control.addEventListener('focus', replayScene);
-  control.addEventListener('click', () => { control.focus({ preventScroll: true }); replayScene(); });
+  control.addEventListener('click', () => {
+    control.focus({ preventScroll: true });
+    replayScene();
+  });
 });
 function syncMotionControls() {
-  illustrations.forEach(button => { button.disabled = motion.matches; });
+  illustrations.forEach((button) => {
+    button.disabled = motion.matches;
+  });
+  sceneMotion.hidden = motion.matches;
+  roomIllustration.src =
+    './assets/living-room.svg' +
+    (motion.matches || sceneMotion.getAttribute('aria-pressed') !== 'true' ? '#still' : '');
 }
 motion.addEventListener('change', syncMotionControls);
 syncMotionControls();

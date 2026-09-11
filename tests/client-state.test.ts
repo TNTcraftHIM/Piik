@@ -87,14 +87,14 @@ describe("browser-local display name", () => {
   it("localizes text defaults and uses visual emoji identities", () => {
     setCopy({ lang: "zh", vis: false });
     expect(defaultViewerDisplayName(false)).toBe("观众");
-    expect(defaultHostDisplayName(false)).toBe("分享者");
+    expect(defaultHostDisplayName(false)).toBe("房主");
 
     setCopy({ lang: "en", vis: false });
     expect(defaultViewerDisplayName(false)).toBe("Viewer");
     expect(defaultHostDisplayName(false)).toBe("Host");
 
     expect(defaultViewerDisplayName(true)).toBe("👤");
-    expect(defaultHostDisplayName(true)).toBe("🎮");
+    expect(defaultHostDisplayName(true)).toBe("👤");
   });
 
   it("stores only the canonical preference and falls back when cleared", () => {

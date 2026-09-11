@@ -1,0 +1,22 @@
+.lr-person { overflow: visible; }
+.lr-person-body { transform-origin: 24px 48px; }
+.lr-person-eyes { transform-origin: 24px 14.1px; }
+@media (prefers-reduced-motion: no-preference) {
+  .lr-person[data-motion] .lr-person-body { animation: lr-person-lean var(--person-duration) ease-in-out infinite; }
+  .lr-person[data-motion] .lr-person-eyes { animation: lr-person-eyes var(--person-duration) ease-in-out infinite; }
+}
+@keyframes lr-person-lean {
+  0%, 36%, 43%, 100% { transform: none; }
+  38%, 41% { transform: rotate(var(--person-lean)); }
+}
+@keyframes lr-person-eyes {
+  0%, 3%, 3.6%, 12%, 16%, 47%, 47.6%, 61%, 67%, 88%, 91%, 100% { transform: none; }
+  3.3%, 47.3% { transform: scaleY(.14); }
+  13%, 15% { transform: translate(var(--person-gaze-x), var(--person-gaze-y)); }
+  62%, 63% { transform: translateX(-1.5px); }
+  65%, 66% { transform: translateX(1.5px); }
+  88.6% { transform: translate(0, -1.5px); }
+  89.2% { transform: translate(1.3px, -.3px); }
+  89.8% { transform: translate(0, 1.1px); }
+  90.4% { transform: translate(-1.3px, -.3px); }
+}

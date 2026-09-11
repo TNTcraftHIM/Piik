@@ -252,7 +252,6 @@ export function CaptureSourcePicker({
                   <CaptureSourceOption
                     key={nativeCaptureTargetKey(target)}
                     target={target}
-                    audio={shareAudio && supportsAudio(target)}
                     disabled={
                       audioLocked && shareAudio && !supportsAudio(target)
                     }
@@ -313,13 +312,11 @@ export function CaptureSourcePicker({
 
 function CaptureSourceOption({
   target,
-  audio,
   disabled,
   onPreview,
   onSelect,
 }: {
   target: NativeCaptureTarget;
-  audio: boolean;
   disabled: boolean;
   onPreview: (
     target: NativeCaptureTarget,
@@ -388,14 +385,6 @@ function CaptureSourceOption({
       >
         <span className="lr-source-option-copy">
           <strong>{title}</strong>
-          {audio ? (
-            <span>
-              <Glyph name="speaker" size={16} />
-              <span className="visually-hidden">
-                {t("host.sourcePicker.nativeAudio")}
-              </span>
-            </span>
-          ) : null}
         </span>
         <span className="lr-source-option-preview" aria-hidden="true">
           {preview ? (

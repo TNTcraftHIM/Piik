@@ -1,15 +1,16 @@
 // The connection topology as a real tree: the host roots direct P2P
 // viewers and the SFU node; relay children hang off their parent viewer.
 // Data comes from deriveParticipantTopology.
-import { memo, useLayoutEffect, useRef, useState } from "react";
+import { memo, useState } from "react";
 
 import type { LabeledViewerPresence } from "../../lib/viewer-presence";
+import { useElementWidth } from "../../lib/use-element-width";
 import {
   deriveParticipantTopology,
   type TopologyBranch,
 } from "../../lib/participant-topology";
 import { useCopy } from "../../ui/copy";
-import { PawnSvg } from "./Couch";
+import { PawnSvg } from "./Pawn";
 import { participantColor } from "./participant-color";
 import {
   topologyLayoutForWidth,
@@ -118,29 +119,8 @@ export const RouteTree = memo(function RouteTree({
   onSelectPeer?: (peerId: string) => void;
 }) {
   const { t } = useCopy();
-  const routeRef = useRef<HTMLDivElement>(null);
-  const [containerWidth, setContainerWidth] = useState(
-    DEFAULT_TOPOLOGY_WIDTH,
-  );
+  const [routeRef, containerWidth] = useElementWidth(DEFAULT_TOPOLOGY_WIDTH);
   const [hoveredPeerId, setHoveredPeerId] = useState<string | null>(null);
-  useLayoutEffect(() => {
-    const route = routeRef.current;
-    if (!route) return;
-    const updateWidth = () => {
-      const width = Math.round(route.getBoundingClientRect().width);
-      if (width > 0) {
-        setContainerWidth((current) => (current === width ? current : width));
-      }
-    };
-    updateWidth();
-    if (typeof ResizeObserver === "undefined") {
-      window.addEventListener("resize", updateWidth);
-      return () => window.removeEventListener("resize", updateWidth);
-    }
-    const observer = new ResizeObserver(updateWidth);
-    observer.observe(route);
-    return () => observer.disconnect();
-  }, []);
   const layoutConfig = topologyLayoutForWidth(containerWidth);
   const topology = deriveParticipantTopology(hostPeerId, viewers);
   const selectable = new Set(
@@ -221,7 +201,7 @@ export const RouteTree = memo(function RouteTree({
     return { viewer, ...point };
   });
 
-  const height = Math.max(140, row * spacing + 64);
+  let height = Math.max(140, row * spacing + 64);
   const rootYs = [
     ...(childrenOf.get(null) ?? []).map((node) => pos.get(node.key)!.y),
     ...(sfuPos ? [sfuPos.y] : []),
@@ -234,7 +214,7 @@ export const RouteTree = memo(function RouteTree({
         ? rootYs.reduce((sum, y) => sum + y, 0) / rootYs.length
         : height / 2,
   };
-  const width = Math.max(
+  let width = Math.max(
     layoutConfig.baseWidth,
     ...[
       ...pos.values(),
@@ -265,15 +245,58 @@ export const RouteTree = memo(function RouteTree({
 
   const labelByPeer = new Map(nodes.map((node) => [node.key, node.label]));
   const topologyTitleId = "room-topology-title";
-  const scrollableCanvas = width > layoutConfig.baseWidth;
+  const depths = new Map([...pos].map(([key, point]) => [key,
+    Math.round((point.x - layoutConfig.hostX) / layoutConfig.columnGap)]));
+  const maxDepth = Math.max(1, ...depths.values());
+  let fittedGap = layoutConfig.columnGap;
+  // Spend spare spacing before changing orientation; keep 96px hit targets apart.
+  if (width > layoutConfig.baseWidth && (layoutConfig.baseWidth - 120) / maxDepth >= 104) {
+    fittedGap = (layoutConfig.baseWidth - 120) / maxDepth;
+    hostPos.x = 60;
+    for (const [key, point] of pos) point.x = 60 + depths.get(key)! * fittedGap;
+    if (sfuPos) sfuPos.x = 60 + fittedGap;
+    for (const point of pendingPos) point.x = 60 + fittedGap;
+    width = layoutConfig.baseWidth;
+  }
+  // Deep routes become a vertical outline at real pawn size. Every participant
+  // and actual parent edge remains present; only horizontal indentation compresses.
+  const outline = width > layoutConfig.baseWidth;
+  if (outline) {
+    const indent = Math.min(36, (layoutConfig.baseWidth - 196) / maxDepth);
+    hostPos.x = 40;
+    hostPos.y = 36;
+    let nextRow = 1;
+    for (const node of nodes) {
+      if (sfuPos && node.key === sfuChildren[0]?.key) {
+        sfuPos.x = 40 + indent;
+        sfuPos.y = 36 + nextRow++ * spacing;
+      }
+      pos.set(node.key, { x: 40 + depths.get(node.key)! * indent, y: 36 + nextRow++ * spacing });
+    }
+    for (const point of pendingPos) {
+      point.x = 40 + indent;
+      point.y = 36 + nextRow++ * spacing;
+    }
+    width = layoutConfig.baseWidth;
+    height = nextRow * spacing + 20;
+  }
+  const labelX = (point: { x: number }) => outline ? point.x + 28 : point.x;
+  const labelY = (point: { y: number }) => outline ? point.y + 4 : pawnLabelY(point.y, PAWN_SCALE);
+  const labelAnchor = outline ? "start" : "middle";
+  const labelLimit = (point: { x: number }) => outline
+    ? Math.min(layoutConfig.maxVisibleLabelCodePoints, Math.floor((width - point.x - 40) / 11))
+    : Math.min(layoutConfig.maxVisibleLabelCodePoints, Math.floor((fittedGap - 12) / 11));
+  const linkPath = (parent: { x: number; y: number }, child: { x: number; y: number }) => outline
+    ? `M ${parent.x - 17} ${parent.y} H ${parent.x - 28} V ${child.y} H ${child.x - 18}`
+    : `M ${parent.x + 20} ${parent.y} Q ${(parent.x + child.x) / 2} ${parent.y + (child.y - parent.y) * 0.55}, ${child.x - 18} ${child.y}`;
   const sfuChildPoints = sfuChildren.map((child) => ({
     child,
     point: pos.get(child.key)!,
   }));
   const sfuRail =
-    sfuPos && sfuChildPoints.length > 1
+    !outline && sfuPos && sfuChildPoints.length > 1
       ? {
-          x: sfuPos.x + layoutConfig.columnGap * 0.45,
+          x: sfuPos.x + fittedGap * 0.45,
           minY: Math.min(...sfuChildPoints.map(({ point }) => point.y)),
           maxY: Math.max(...sfuChildPoints.map(({ point }) => point.y)),
         }
@@ -282,7 +305,7 @@ export const RouteTree = memo(function RouteTree({
   return (
     <div
       ref={routeRef}
-      className="lr-route"
+      className={`lr-route${outline ? " is-outline" : ""}`}
       role="group"
       aria-labelledby={topologyTitleId}
       id="room-topology"
@@ -296,14 +319,7 @@ export const RouteTree = memo(function RouteTree({
         aria-hidden={onSelectPeer ? undefined : true}
         aria-label={onSelectPeer ? t("host.topology") : undefined}
         focusable={onSelectPeer ? undefined : "false"}
-        style={
-          scrollableCanvas
-            ? { width, maxWidth: "none" }
-            : {
-                width: "100%",
-                maxWidth: nodes.length > 10 ? layoutConfig.baseWidth : 880,
-              }
-        }
+        style={{ width: "100%", maxWidth: outline || nodes.length > 10 ? layoutConfig.baseWidth : 880 }}
       >
         {nodes
           .filter((node) => !node.sfu)
@@ -313,7 +329,7 @@ export const RouteTree = memo(function RouteTree({
             return (
               <path
                 key={`edge-${node.key}`}
-                d={`M ${parent.x + 20} ${parent.y} Q ${(parent.x + point.x) / 2} ${parent.y + (point.y - parent.y) * 0.55}, ${point.x - 18} ${point.y}`}
+                d={linkPath(parent, point)}
                 className={edgeClass("p2p", node.ready)}
               />
             );
@@ -322,10 +338,11 @@ export const RouteTree = memo(function RouteTree({
         {sfuPos ? (
           <>
             <path
-              d={`M ${hostPos.x + 20} ${hostPos.y} L ${sfuPos.x - 20} ${sfuPos.y}`}
+              d={linkPath(hostPos, sfuPos)}
               className={edgeClass("sfu")}
             />
-            {sfuChildren.length === 1 ? (
+            {outline ? sfuChildPoints.map(({ child, point }) => <path key={`edge-${child.key}`}
+              d={linkPath(sfuPos!, point)} className={edgeClass("sfu", child.ready)} />) : sfuChildren.length === 1 ? (
               <path
                 d={`M ${sfuPos.x + 20} ${sfuPos.y} L ${pos.get(sfuChildren[0]!.key)!.x - 18} ${pos.get(sfuChildren[0]!.key)!.y}`}
                 className={edgeClass("sfu", sfuChildren[0]!.ready)}
@@ -355,7 +372,7 @@ export const RouteTree = memo(function RouteTree({
         {pendingPos.map((point) => (
           <path
             key={`edge-pending-${point.viewer.peerId}`}
-            d={`M ${hostPos.x + 20} ${hostPos.y} Q ${(hostPos.x + point.x) / 2} ${hostPos.y + (point.y - hostPos.y) * 0.55}, ${point.x - 18} ${point.y}`}
+            d={linkPath(hostPos, point)}
             className="lr-route-edge is-pending"
           />
         ))}
@@ -366,19 +383,20 @@ export const RouteTree = memo(function RouteTree({
         >
           <PawnSvg
             color={participantColor(hostPeerId ?? hostIdentity ?? "host-pending")}
+            identity={hostPeerId ?? hostIdentity ?? undefined}
             host
           />
         </g>
         <text
           className="lr-route-label is-host"
-          x={hostPos.x}
-          y={pawnLabelY(hostPos.y, PAWN_SCALE)}
-          textAnchor="middle"
+          x={labelX(hostPos)}
+          y={labelY(hostPos)}
+          textAnchor={labelAnchor}
         >
           {topologyVisibleLabel(
             hostLabel,
             hostPeerId,
-            layoutConfig.maxVisibleLabelCodePoints,
+            labelLimit(hostPos),
           )}
         </text>
 
@@ -393,9 +411,9 @@ export const RouteTree = memo(function RouteTree({
             </g>
             <text
               className="lr-route-label is-sfu"
-              x={sfuPos.x}
-              y={sfuPos.y + 32}
-              textAnchor="middle"
+              x={labelX(sfuPos)}
+              y={outline ? sfuPos.y + 4 : sfuPos.y + 32}
+              textAnchor={labelAnchor}
             >
               SFU
             </text>
@@ -412,7 +430,7 @@ export const RouteTree = memo(function RouteTree({
               className={`lr-route-node${node.ready ? "" : " is-recovering"}${hovered ? " is-hovered" : ""}${selected ? " is-selected" : ""}`}
               transform={`translate(${centeredPawnX(point.x, PAWN_SCALE)}, ${centeredPawnY(point.y, PAWN_SCALE)}) scale(${PAWN_SCALE})`}
             >
-              <PawnSvg color={participantColor(node.key)} />
+              <PawnSvg color={participantColor(node.key)} identity={node.key} />
               {hovered && !selected ? (
                 <PawnOutline className="lr-route-hover" />
               ) : null}
@@ -435,7 +453,7 @@ export const RouteTree = memo(function RouteTree({
               className={`lr-route-node is-recovering${hovered ? " is-hovered" : ""}${selected ? " is-selected" : ""}`}
               transform={`translate(${centeredPawnX(point.x, PAWN_SCALE)}, ${centeredPawnY(point.y, PAWN_SCALE)}) scale(${PAWN_SCALE})`}
             >
-              <PawnSvg color={participantColor(point.viewer.peerId)} />
+              <PawnSvg color={participantColor(point.viewer.peerId)} identity={point.viewer.peerId} />
               {hovered && !selected ? (
                 <PawnOutline className="lr-route-hover" />
               ) : null}
@@ -455,14 +473,14 @@ export const RouteTree = memo(function RouteTree({
             <text
               key={`label-${node.key}`}
               className={`lr-route-label${hoveredPeerId === node.key ? " is-hovered" : ""}${selectedPeerId === node.key ? " is-selected" : ""}`}
-              x={point.x}
-              y={pawnLabelY(point.y, PAWN_SCALE)}
-              textAnchor="middle"
+              x={labelX(point)}
+              y={labelY(point)}
+              textAnchor={labelAnchor}
             >
               {topologyVisibleLabel(
                 node.label,
                 node.key,
-                layoutConfig.maxVisibleLabelCodePoints,
+                labelLimit(point),
               )}
             </text>
           );
@@ -471,14 +489,14 @@ export const RouteTree = memo(function RouteTree({
           <text
             key={`label-pending-${point.viewer.peerId}`}
             className={`lr-route-label is-recovering${hoveredPeerId === point.viewer.peerId ? " is-hovered" : ""}${selectedPeerId === point.viewer.peerId ? " is-selected" : ""}`}
-            x={point.x}
-            y={pawnLabelY(point.y, PAWN_SCALE)}
-            textAnchor="middle"
+            x={labelX(point)}
+            y={labelY(point)}
+            textAnchor={labelAnchor}
           >
             {topologyVisibleLabel(
               point.viewer.label,
               point.viewer.peerId,
-              layoutConfig.maxVisibleLabelCodePoints,
+              labelLimit(point),
             )}
           </text>
         ))}
@@ -496,11 +514,11 @@ export const RouteTree = memo(function RouteTree({
               <rect
                 key={`hit-${node.key}`}
                 className="lr-route-hit"
-                x={point.x - 48}
+                x={outline ? point.x - 24 : point.x - 48}
                 // Bound the target to the row pitch: a taller rect would cover
                 // the next row's label and steal its clicks (later rect wins).
                 y={point.y - 26}
-                width={96}
+                width={outline ? width - point.x + 16 : 96}
                 height={spacing}
                 rx={12}
                 role="button"

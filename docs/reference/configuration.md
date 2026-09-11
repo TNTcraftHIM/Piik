@@ -25,7 +25,7 @@ service secret store or an untracked access-restricted environment file.
 | `PORT` | Positive TCP port, default `8787`; the tracked release wrapper supports only that default. |
 | `PUBLIC_BASE_URL` | Exact public HTTP(S) origin; production requires HTTPS. |
 | `ALLOWED_ORIGINS` | Comma-separated exact HTTP(S) origins; wildcard is invalid. |
-| `SITE_ACCESS_PASSWORD` | Production-required independent 8-128 visible-ASCII byte secret. |
+| `SITE_ACCESS_PASSWORD` | Optional in every environment. Unset or empty allows entry without a site password. A non-empty value must contain 8-128 visible ASCII bytes; room ownership and Viewer admission remain independent. |
 | `ROOM_DATABASE_PATH` | Hosted defaults to `rooms.sqlite` in its working directory when unset or blank. An explicit absolute file path selects another SQLite file; `:memory:` opts into process-memory room authority. App Local remains in memory. |
 | `MAX_VIEWERS_PER_ROOM` | `1..20`, default `8`. |
 | `ENDPOINT_MEDIA_COPY_CAPACITY` | Shared endpoint steady-copy cap `1..3`, default `2`. |
@@ -64,6 +64,32 @@ environment file cannot silently drop a deployment out of production. The
 private deployment is upgraded atomically; there are no compatibility aliases or
 dual configuration readers. [Versioning](./versioning.md) owns the planned public
 upgrade promise and the work required before its first release.
+
+## Piik App Configuration
+
+Piik App stores `Piik/client.json` under the operating system's user configuration
+directory (`%APPDATA%` on Windows, `~/Library/Application Support` on macOS,
+and `$XDG_CONFIG_HOME` or `~/.config` on Linux). The App manages its `version`
+schema field. The user settings are:
+
+| Setting | Contract |
+| --- | --- |
+| `site` | Saved Piik Site origin; omit it for Local mode. The launcher or `--site` updates it. |
+| `localAccessPassword` | Empty by default. Optional password for the App's Local room authority, using the same 8-128 visible ASCII bounds. It is separate from a hosted site's password. |
+
+Command-line options select entry and local runtime behavior:
+
+| Option | Purpose |
+| --- | --- |
+| `--site <origin>` / `--local` | Save and use a Site, or select the self-contained Local mode. Mutually exclusive. |
+| `--link` | Create a public Viewer invitation for Local mode. |
+| `--config <path>` | Select another App configuration file. |
+| `--lan-address <IPv4>` / `--port <port>` | Override the Local invitation address or HTTP port (default `8787`). |
+| `--capture-process <path>` / `--tunnel-process <path>` | Override packaged native capture or public tunnel helpers. Ordinary installations use the packaged paths. |
+| `--debug` / `--log-dir <path>` | Enable diagnostics or choose their destination as described below. |
+
+Share quality, room access policy, language, theme and motion are configured in
+the shared Web UI, not through Server environment variables or App JSON.
 
 ## Diagnostics
 

@@ -2,7 +2,7 @@ import type { ConnectionMetrics } from "../../types";
 import { formatPacketLossPercent } from "../connection-details";
 import { Glyph, type GlyphName } from "../../ui/icons";
 import { useCopy, type CopyKey } from "../../ui/copy";
-import { PawnSvg } from "./Couch";
+import { PawnSvg } from "./Pawn";
 import { participantColor } from "./participant-color";
 import type { StatusDescriptor } from "../../ui/media-status";
 import { Tooltip } from "./Tooltip";
@@ -86,7 +86,7 @@ export function ViewerOverview({
               >
                 <span className="lr-viewer-overview-person">
                   <span className="lr-viewer-overview-pawn">
-                    <PawnSvg color={participantColor(entry.key)} />
+                    <PawnSvg color={participantColor(entry.key)} identity={entry.key} />
                     <i className="lr-pawn-led" data-tone={entry.status.tone}
                       data-pulse={entry.status.pulse || undefined} aria-hidden="true" />
                   </span>

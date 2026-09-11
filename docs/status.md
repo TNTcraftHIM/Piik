@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-09-11
+Last updated: 2026-09-12
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) owns unresolved physical limits,
@@ -9,8 +9,8 @@ and Git/PRs own completed history.
 ## Accepted Release Contract
 
 - Browser/server v23, Native control v9 and capture v7 form one private contract.
-  The release requires matching Web/App/Server artifacts and a reload of old
-  active pages at cutover.
+  The coordinated brand/protocol cutover requires matching Web/App/Server
+  artifacts and a reload of incompatible active pages.
 - Hosted Server defaults to SQLite schema 2. Room authority has no inactivity
   expiry; explicit replacement/deletion or grant rotation/revocation ends the
   corresponding authority. Explicit memory mode and App Local end rooms at
@@ -39,11 +39,16 @@ Binding-only STUN on UDP 3478/3479/3480 and optional SFU on UDP 7882. nginx owns
 HTTPS; external LiveKit/coturn services remain disabled. Participants, routes and
 media remain process-only. This private service is not a public demonstration.
 
-[TODO](./todo.md) owns candidate/release preparation and the subsequent README,
-documentation and website redesign. The working branch includes capability/UI
-fixes, the initial public-introduction draft and completed lifecycle/cohesion
-audit corrections and ablation. Current candidate acceptance is underway;
-main and production have not changed. Shared lessons live in
+[TODO](./todo.md) owns external audit preparation and remaining release/launch
+work. The owner accepted the website, README/guides and UI presentation on
+2026-09-12; final functional and release acceptance remains pending. The working
+branch includes capability/UI fixes, the public-introduction revision and
+completed lifecycle/cohesion audit corrections and ablation. The Windows test
+candidate is prepared for owner review; bounded two-build interoperability and
+update checks passed. This is
+functional test acceptance, not final public-release acceptance. The
+complete publisher rehearsal is blocked by the Actions artifact-storage quota.
+Main and production have not changed. Shared lessons live in
 [engineering](./reference/engineering.md); [verification status](./verification-status.md#candidate-evidence-boundary)
 owns the remaining evidence limits. Version-plus-SHA metadata,
 release comparisons and the post-main publishing pipeline are implemented with

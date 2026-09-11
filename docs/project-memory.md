@@ -1,8 +1,8 @@
 # Project Memory
 
-Last updated: 2026-09-10
+Last updated: 2026-09-11
 
-Piik is private, low-latency game screen sharing for one Host and up to 20
+Piik is private, low-latency screen sharing for one Host and up to 20
 authenticated friends. The current product surface is Web Host, Web Viewer, and
 Browser relay; desktop and mobile Browsers are Viewer targets. It is not a
 public broadcast service. Hosted and App run one shared Go core

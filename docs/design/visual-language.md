@@ -12,6 +12,17 @@ sequences, and literal scene objects for people, rooms and media. Glyphs do not
 form sentences. The same meaning and visual hierarchy must work in Chinese,
 English and pure-visual modes, in both themes and at narrow widths.
 
+The visual direction is led by Nintendo Switch's approachable, tactile feel:
+simple silhouettes, generous space, rounded controls and a small responsive
+bounce. Material contributes clear hierarchy and legible interaction. These
+are references for Piik's own living room, not assets or a component framework.
+The [copy guide](../reference/naming.md#voice-and-terminology) owns its voice.
+
+Keep playfulness restrained: clean silhouettes, balanced proportions, quiet
+expressions and brief gestures. Aim for Nintendo's approachable game-interface
+feel; avoid pushing ordinary characters toward infant proportions, exaggerated
+grins, dense cute decoration or children's picture-book styling.
+
 ## Layout And Input
 
 Present a small shared living room: the television is the media stage, the
@@ -26,14 +37,23 @@ order and interaction ownership consistent across languages, themes and viewport
 sizes. Reflow or bounded scrolling must not hide a primary action, truncate an
 essential value, overlap controls or change meaning.
 
+Shared buttons and chips use pill shapes, a quiet lower edge and a short lift
+on hover or keyboard focus, then compress on press. Inputs and option tiles
+share softer corners. Keep a distinct focus ring and a persistent selected
+state; disabled controls must not pretend to activate. Reduced motion keeps
+the colour, outline and selected position without decorative displacement.
+
 ## Cast And Objects
+
+The brand mascot keeps its own identity, separate from ordinary participants.
+Participant characters should leave room for that distinctive presence.
 
 | Meaning | Representation |
 | --- | --- |
 | The person using the pictured action | Green pawn (`YOU` / `--you`), in every panel |
 | Somebody else | Blue pawn (`SKY`), or another distinct non-green illustration colour |
-| Host role | Game-controller mark on a pawn; never a crown or television as the person |
-| Shared or watched media | The same small television, including antenna, body and feet |
+| Host role | Gold C1 crown above the head: rounded three-point outline, dark gold edge and a quiet lower rim; the standalone absent-Host symbol uses the same outline, unfilled and dashed |
+| Shared or watched media | Small television, including antenna, body and feet |
 | Browser application | Browser chrome around content; not a second design of television |
 | A captured window or display | Window title bar or display stand, with the shared media metaphor kept distinct |
 | Server forwarding media | A server on the media path; opening a Site alone does not imply SFU |
@@ -43,6 +63,30 @@ in a failed scene; a successful scene does not turn other people green. Real
 roster identities retain the shared UUID colour function, not the illustrative
 "you versus others" palette. Actor positions and identities remain stable from
 the first panel to the result.
+
+Room pawns, tooltip/status comics and introduction participants use the accepted
+A figure: a round head, half-oval body and two restrained eyes. Reuse the shared
+figure and face geometry in product illustrations so expressions stay inside
+the head as it scales. Larger scenes can add a small lean; small status panels
+may omit facial detail to keep the action clear. When a gesture needs hands,
+use small floating round shapes. A held gamepad is a scene prop; a separate role
+crown identifies the host and moves with the body. Its gold is an identity colour,
+not a warning or achievement. The share control retains its
+cast icon. The cast represents friends sharing games, drawings
+and other screen content. Exploratory figures are not alternate
+participant identities. Keep the brand mascot distinct.
+
+The couch has a back, seat, arms and feet. A full room reflows into rows of seats
+without hiding people or requiring horizontal scrolling. Topology preserves
+each participant and actual parent edge at a readable scale; reduce spare
+spacing, then use a vertical outline when depth exceeds the available width.
+
+Couch upholstery uses the fixed warm orange/yellow `--couch` / `--couch-dark`
+palette. Never draw upholstery from the participant palette or randomize it by
+room. Figures and exterior upholstery use flat fills without outline strokes.
+Use differences in tone, spacing and name tags to keep people readable; retain
+only the few interior seams that clarify cushions. Apply this convention to
+the website and README cast as well as the product UI.
 
 ## Semantic Colour And Shape
 
@@ -100,10 +144,38 @@ in the documented result rather than reset for an obsolete loop.
 
 The tooltip panel itself uses the same restrained entrance/exit for every tone.
 Replay belongs to opening/hovering/focusing the whole control, not just its SVG.
-Control icons use the shared drawing/replay animation for hover and keyboard
-focus; they do not invent another trigger region inside the button.
-Do not add a per-scene timer or another interaction/state owner. Only the brand
-mascot has occasional ambient idle motion; its styling is not a status vocabulary.
+Ordinary controls keep their icons visible during hover and keyboard focus;
+surface colour, lift, focus and press feedback carry the interaction. Reserve
+icon drawing/replay for primary actions such as starting a share or joining a
+room, and for explicit state-entry feedback. The whole control owns the trigger.
+Stroke and solid drawings share one total duration and easing; stroke count
+must not lengthen the animation. Disabled controls and passive status icons
+retain their informative pose; busy indicators retain their progress beat.
+Do not add a per-scene timer or another interaction/state owner. Outside status
+comics, the brand mascot and participant figures may blink or glance occasionally;
+a pictured screen can guide the Host's gaze. Keep eye gestures and small body
+leans brief, separated by long pauses and offset between people. A participant's
+UUID seeds the cadence; align its phase to wall time in every view, including
+later mounts and return from background. Names, roster order and the observer's
+role do not reseed it. Device clock skew bounds cross-device precision; cosmetic
+motion adds no signaling or media state. They express personality independently
+of connection feedback. Follow the system's reduced-motion preference, keeping a
+natural, open-eyed pose when enabled; participant gestures have no separate
+product playback control. Status comics still follow the table above.
+
+Introduction artwork is separate from product status. Website/README scenes may
+repeat a short action with a generous pause. Keep broad movement to one or two
+focal elements; small participant gestures follow the quiet cadence above.
+Provide a pause or hide control for automatic loops, and a useful static pose
+for reduced motion. Product-state comics still follow the table above.
+
+Entry screens may carry one quiet, original welcome line in Chinese or English
+text mode. Pure-visual mode pairs familiar pictograms with static pixel
+pseudo-lettering tied to the same line. This decoration is hidden from assistive
+technology. The selected line stays stable during that visit, including mode
+changes, and never replaces an action, error, loading message or connection
+progress. Keep it on one line, apart from the actions; primary controls take
+precedence when space is tight.
 
 ## Ownership And Incremental Review
 
@@ -124,9 +196,18 @@ mascot has occasional ambient idle motion; its styling is not a status vocabular
 
 ## Design References
 
+[Nintendo's HOME Menu overview](https://www.nintendo.com/au/support/articles/home-menu-overview/)
+is the primary visual reference for simple, spacious controls;
+[Material's expressive design research](https://design.google/library/expressive-material-design-google-research)
+informs selective use of shape, colour and motion to guide attention. The
+Nintendo-led balance is the owner's direction, not a claim made by either source.
+
 [Carbon status indicators](https://v10.carbondesignsystem.com/patterns/status-indicator-pattern/)
 supports combining semantic colour with shape and symbols;
 [Carbon motion](https://carbondesignsystem.com/elements/motion/overview/)
 distinguishes functional feedback from occasional expressive movement. Piik
 keeps its own playful television/pawn artwork and restrained spring motion.
 These references inform the grammar; they do not add a UI framework.
+
+[Web Animations start time](https://developer.mozilla.org/en-US/docs/Web/API/Animation/startTime)
+provides the native timeline alignment used by participant gestures.

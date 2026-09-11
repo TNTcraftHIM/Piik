@@ -35,8 +35,10 @@ the storage decision; implementation detail belongs in code and tests.
 
 Three independent authorities exist:
 
-1. **Site access.** Production requires an independent
-   `SITE_ACCESS_PASSWORD`. Successful entry creates a stateless, HttpOnly,
+1. **Site access.** `SITE_ACCESS_PASSWORD` is optional in every environment,
+   including production. Unset or empty makes site access immediate without a
+   cookie; room ownership and Viewer admission still apply. When configured,
+   successful password entry creates a stateless, HttpOnly,
    `SameSite=Strict` cookie with a 24-hour rolling idle lifetime. An already
    authorized page renews it through the site-access check while it remains
    active. It authorizes room creation, Host role, and code-only Viewer

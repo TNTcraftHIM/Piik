@@ -27,8 +27,13 @@ import { Comic, type ComicKind } from "./components/living/Comic";
 import { Glyph, type GlyphName } from "./ui/icons";
 import { useCopy } from "./ui/copy";
 import { installBrowserDebug } from "./lib/debug";
-import { OverlayPreviewPage } from "./pages/OverlayPreviewPage";
-import { TooltipPreviewPage } from "./pages/TooltipPreviewPage";
+
+const OverlayPreviewPage = import.meta.env.DEV
+  ? lazy(() => import("./pages/OverlayPreviewPage").then((module) => ({ default: module.OverlayPreviewPage })))
+  : null;
+const TooltipPreviewPage = import.meta.env.DEV
+  ? lazy(() => import("./pages/TooltipPreviewPage").then((module) => ({ default: module.TooltipPreviewPage })))
+  : null;
 
 const StatusPreviewPage = import.meta.env.DEV
   ? lazy(() => import("./pages/StatusPreviewPage").then((module) => ({ default: module.StatusPreviewPage })))
@@ -38,8 +43,6 @@ const PlaybackPreviewPage = import.meta.env.DEV
   : null;
 
 const appRoute = parseAppRoute(window.location.pathname);
-const overlayPreview = import.meta.env.DEV && window.location.pathname === "/__overlay-preview";
-const tooltipPreview = import.meta.env.DEV && window.location.pathname === "/__tooltip-preview";
 const clientLaunchBootstrap =
   appRoute.kind === "host" || appRoute.kind === "viewer"
     ? takeClientLaunchBootstrap()
@@ -142,10 +145,10 @@ function AppRoute() {
   if (StatusPreviewPage && window.location.pathname === "/__status-preview") {
     return <StatusPreviewPage />;
   }
-  if (overlayPreview) {
+  if (OverlayPreviewPage && window.location.pathname === "/__overlay-preview") {
     return <OverlayPreviewPage />;
   }
-  if (tooltipPreview) {
+  if (TooltipPreviewPage && window.location.pathname === "/__tooltip-preview") {
     return <TooltipPreviewPage />;
   }
   if (appRoute.kind === "client") {
