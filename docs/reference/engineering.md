@@ -121,6 +121,8 @@ above rather than searching the tree.
   alone does not justify wrappers, a generic manager or a framework.
   Remove superseded paths in the same change; retain no unused legacy copy.
   Keep test-only state seeding and setup in test harnesses.
+  Do not export mutable resources solely for tests; preserve the production
+  construction path when verifying defaults or restoration.
 - Review dependency direction for source/type imports as well as runtime
   imports. Shared types belong to a common owner. A type-only cycle is an
   ownership concern; it does not by itself establish a runtime or performance
@@ -144,6 +146,9 @@ above rather than searching the tree.
   Retained media state carries failure facts; the presentation layer resolves
   localized copy during render. Keep raw exceptions in diagnostics. Transient
   event notices may resolve once when the event occurs.
+  Values with a defined canonical form, such as HTTP origins, use one shared
+  normalizer before storage and comparison. Verify the actual producer and
+  consumer together instead of weakening an authorization comparison.
 - Deployment configuration describes available services; room preferences
   request allowed behavior. The server enforces the policy even when a client
   requests more. The UI retains the same controls and explains locked choices.
@@ -157,6 +162,9 @@ above rather than searching the tree.
   ASCII, with format exceptions in [`.gitattributes`](../../.gitattributes).
   Scripts use stable executable paths; physical confidence stays explicit in
   [verification status](../verification-status.md).
+- Retained tools declare their direct package dependencies. Documented TypeScript
+  tools join the normal type-check entry point; a transitive dependency or a
+  one-off manual check is not an owned toolchain contract.
 
 ## Ablation And Review
 

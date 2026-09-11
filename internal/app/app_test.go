@@ -3,19 +3,73 @@ package app
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"log"
 	"log/slog"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	appconfig "github.com/TNTcraftHIM/Piik/internal/app/config"
+	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
 	serverconfig "github.com/TNTcraftHIM/Piik/internal/server/config"
 )
+
+func TestSavedSiteAllowsBrowserOriginAtNativeControl(t *testing.T) {
+	for _, site := range []struct{ input, origin string }{
+		{"https://Share.Example:443", "https://share.example"},
+		{"http://share.example:80", "http://share.example"},
+		{"http://share.example:8787", "http://share.example:8787"},
+	} {
+		t.Run(site.input, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "client.json")
+			payload := fmt.Sprintf(`{"version":1,"localAccessPassword":"","site":%q}`, site.input)
+			if err := os.WriteFile(path, []byte(payload), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			configuration, err := appconfig.LoadOrCreate(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			control, err := loopback.Start(t.Context(), loopback.Options{
+				AllowedOrigins: allowedOrigins(configuration.Site, 8787),
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = control.Close() })
+			client := &http.Client{Timeout: 3 * time.Second}
+			for _, probe := range []struct {
+				method, origin string
+				status         int
+			}{
+				{http.MethodOptions, site.origin, http.StatusNoContent},
+				{http.MethodGet, site.origin, http.StatusOK},
+				{http.MethodOptions, "https://other.example", http.StatusForbidden},
+			} {
+				request, err := http.NewRequest(probe.method, control.Endpoint().URL+"/health", nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				request.Header.Set("Origin", probe.origin)
+				response, err := client.Do(request)
+				if err != nil {
+					t.Fatal(err)
+				}
+				response.Body.Close()
+				if response.StatusCode != probe.status {
+					t.Fatalf("%s health from %q = %d, want %d", probe.method, probe.origin, response.StatusCode, probe.status)
+				}
+			}
+		})
+	}
+}
 
 func TestOccupiedPortRejectsLinkBeforeStartingATunnel(t *testing.T) {
 	listener, err := net.ListenTCP("tcp4", &net.TCPAddr{IP: net.IPv4zero})

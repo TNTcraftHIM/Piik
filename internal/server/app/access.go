@@ -17,7 +17,6 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 )
 
-// Ported from src/server/access-session.ts.
 const (
 	defaultSessionTTLSeconds = 24 * 60 * 60
 	cookieVersion            = "v1"
@@ -28,7 +27,7 @@ var (
 	accessSignaturePattern = regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`)
 )
 
-// siteAccessOptions mirrors SiteAccessOptions in access-session.ts.
+// siteAccessOptions configures cookie lifetime, signing and transport policy.
 type siteAccessOptions struct {
 	// Password empty means site access is not required.
 	Password string
@@ -36,7 +35,7 @@ type siteAccessOptions struct {
 	Secure bool
 	// Now returns Unix milliseconds; nil uses the wall clock.
 	Now func() int64
-	// TTLSeconds of 0 stands for TS's absent `ttlSeconds`, i.e. 24 hours.
+	// TTLSeconds of 0 selects the default 24-hour lifetime.
 	TTLSeconds int
 }
 

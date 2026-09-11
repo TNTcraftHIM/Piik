@@ -207,13 +207,6 @@ func newRoomStore(options Options) (*room.Store, error) {
 	})
 }
 
-// Handler is the composed router, exposed so a host process can mount it.
-func (s *Server) Handler() http.Handler { return s }
-
-// Store is PiikServer.roomStore. The signaling server's mutex guards it, so
-// callers outside that lock may only read it while no request is in flight.
-func (s *Server) Store() *room.Store { return s.store }
-
 // Listen binds application sockets before recovering room authority and accepting traffic.
 func (s *Server) Listen(ctx context.Context) (int, error) {
 	s.mu.Lock()

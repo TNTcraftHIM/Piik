@@ -11,10 +11,7 @@ type ServerMessage interface {
 	isServerMessage()
 }
 
-// AuthenticatedHostMessage is the host member of authenticatedMessageSchema.
-// The field order is the emission order of the object literal in
-// src/server/signaling.ts (`role` and `viewerPasswordEnabled` are appended
-// after the shared base spread).
+// AuthenticatedHostMessage returns the Host's current room and transport facts.
 type AuthenticatedHostMessage struct {
 	Type                          string                     `json:"type"`
 	Protocol                      string                     `json:"protocol"`

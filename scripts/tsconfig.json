@@ -22,6 +22,7 @@
     "../vite.config.ts",
     "../vitest.config.ts",
     "access-privacy-gate.ts",
+    "browser-local-pool-probe.ts",
     "client-browser-fanout-gate.ts",
     "client-media-gate.ts",
     "client-native-host-gate.ts",

@@ -10,11 +10,11 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 )
 
-// staticContentTypes freezes mrmime's answers for the extensions a Vite build
-// of this repo can emit. Go's mime.TypeByExtension overlays the Windows
+// staticContentTypes fixes the MIME types for this repository's Web assets.
+// Go's mime.TypeByExtension overlays the Windows
 // registry or /etc/mime.types, so the served Content-Type would otherwise
 // depend on the machine; with X-Content-Type-Options: nosniff a wrong type on a
-// font or a webmanifest is user visible. See evidence/runtime.md section 4.2.
+// font or a webmanifest is user visible.
 var staticContentTypes = map[string]string{
 	".html":        "text/html;charset=utf-8", // sirv appends ";charset=utf-8" with no space
 	".htm":         "text/html;charset=utf-8",
@@ -42,20 +42,16 @@ var staticContentTypes = map[string]string{
 	".ico":         "", // mrmime has no .ico, so sirv sends an EMPTY Content-Type
 }
 
-// staticHandler reproduces `sirv(directory, { single: true, setHeaders })` as
-// src/server/app.ts used it, over an fs.FS instead of a directory walk.
-// notFound is the app's JSON 404, which sirv reached through its next()
-// callback. Verified against sirv@3.0.2 in evidence/runtime.md section 4.4.
+// staticHandler serves embedded assets and falls back to index.html for SPA
+// routes. Missing files use the application's JSON 404 handler.
 func staticHandler(assets fs.FS, notFound http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		// sirv never inspects req.method: app.ts routes /healthz and /api/**
-		// first, so everything else reaches the frontend handler as-is.
+		// API and health routes have already been handled by ServeHTTP.
 		cleaned := path.Clean("/" + request.URL.Path)
 		name := strings.TrimPrefix(cleaned, "/")
 
 		serve := func(candidate string) bool {
-			// path.Clean already dropped any "..", and totalist never indexed a
-			// dot-prefixed segment, so neither can be served.
+			// Clean traversal segments and exclude hidden assets before opening.
 			if candidate == "" || hasDotSegment(candidate) {
 				return false
 			}
@@ -72,15 +68,12 @@ func staticHandler(assets fs.FS, notFound http.Handler) http.Handler {
 			if !ok {
 				return false
 			}
-			// app.ts setHeaders.
 			writer.Header().Set("X-Content-Type-Options", "nosniff")
 			writer.Header().Set("Referrer-Policy", "no-referrer")
 			// Set Content-Type explicitly, possibly to "", so ServeContent
 			// never sniffs; the empty name keeps it from guessing either.
 			writer.Header()["Content-Type"] = []string{staticContentTypes[strings.ToLower(path.Ext(candidate))]}
-			// embed.FS reports a zero ModTime, so no Last-Modified is emitted
-			// and no conditional request is honoured. sirv sends
-			// Last-Modified but never answers 304 either; do not fabricate one.
+			// embed.FS reports a zero ModTime; do not fabricate Last-Modified.
 			http.ServeContent(writer, request, "", info.ModTime(), seeker)
 			return true
 		}

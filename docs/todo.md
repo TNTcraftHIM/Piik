@@ -7,13 +7,6 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **External audit.** Review the accepted candidate in an isolated checkout:
-  repository-wide simplification, module/resource ownership, lifecycle and state
-  synchronization, dead code, useful comments and recurring failure modes, plus
-  changes since the previous external audit. Use exact Git revisions and separate
-  confirmed defects, structural improvements, tradeoffs and unproven leads.
-  Review findings with the owner before implementing them, then resume final
-  acceptance and release readiness.
 - [ ] **Release and repository readiness.** Review the prepared Windows test
   candidate. Retry native CI after the Actions artifact quota refreshes, then
   rehearse the publisher with genuine matching Server and App packages. Old cloud
@@ -63,6 +56,9 @@ resets or resolution heuristics without proof. Sanitized aggregates and the
 isolated reconnect reproduction remain locally in `build/room7534-investigation/`.
 Game/background settings behavior also remains an unconfirmed incident lead;
 reopen from actual control actions and matching requested/applied media evidence.
+Clarify whether Viewer-local pause should survive replacement media before
+adding playback-intent state; the current binding starts new media unless the
+Host is paused. No preservation policy has been accepted for that transition.
 
 1. **Representative device/network acceptance.** Resume the remaining matrix in
    [verification status](./verification-status.md#remaining-device-and-network-acceptance)

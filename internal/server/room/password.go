@@ -19,8 +19,7 @@ const (
 	viewerPasswordScryptR = 8
 	viewerPasswordScryptP = 1
 
-	// AsyncGate bounds from src/server/room-store.ts (DECISIONS D11): scrypt at
-	// N=16384 costs ~16 MiB and tens of milliseconds, so two concurrent
+	// Scrypt at N=16384 costs ~16 MiB per derivation, so two concurrent
 	// derivations bound the memory and CPU a room burst can claim, and sixteen
 	// waiters bound the queue before the next caller is told ROOM_BUSY.
 	gateActiveLimit  = 2

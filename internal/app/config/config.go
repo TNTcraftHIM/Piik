@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	serverconfig "github.com/TNTcraftHIM/Piik/internal/server/config"
 )
 
 const (
@@ -101,7 +103,7 @@ func NormalizeSite(value string) (string, error) {
 		parsed.RawQuery != "" || parsed.Fragment != "" {
 		return "", errors.New("Piik Site must be an HTTP or HTTPS origin")
 	}
-	return parsed.Scheme + "://" + parsed.Host, nil
+	return serverconfig.Origin(parsed), nil
 }
 
 // NormalizeLocalAccessPassword keeps the local authority open by default while

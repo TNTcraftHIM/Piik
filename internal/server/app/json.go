@@ -10,10 +10,7 @@ import (
 	"strings"
 )
 
-// Request and response helpers ported from src/server/app.ts.
-
-// maxJSONRequestBytes is the readJsonBody(request, 1_024) budget every JSON
-// route shares.
+// maxJSONRequestBytes bounds the body every JSON route accepts.
 const maxJSONRequestBytes = 1024
 
 // errorBody is the { error } shape every failing route answers with.
@@ -26,13 +23,13 @@ type healthBody struct {
 	Status string `json:"status"`
 }
 
-// siteAccessBody is siteAccessStatus(); the key order is the TS literal's.
+// siteAccessBody reports whether site access is required and already granted.
 type siteAccessBody struct {
 	Required      bool `json:"required"`
 	Authenticated bool `json:"authenticated"`
 }
 
-// sendJSON always sets the exact Content-Length and the charset, as app.ts did.
+// sendJSON sets the exact Content-Length and the JSON charset.
 // Encoding one of this package's own values cannot fail, so a marshal error is
 // a programming error and reaches the recover wrapper.
 func sendJSON(writer http.ResponseWriter, status int, body any) {

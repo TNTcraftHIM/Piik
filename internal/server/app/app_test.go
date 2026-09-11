@@ -756,7 +756,7 @@ func TestRoomCreationPassesTheSharedViewerCeilingToRoomAdmission(t *testing.T) {
 	server := start(t, Options{Config: configuration})
 
 	server.createRoom(roomRequest{}).expectStatus(http.StatusCreated)
-	if got := server.Store().MaxViewersPerRoom(); got != protocol.MaxViewersPerRoomLimit {
+	if got := server.store.MaxViewersPerRoom(); got != protocol.MaxViewersPerRoomLimit {
 		t.Fatalf("maxViewersPerRoom = %d, want %d", got, protocol.MaxViewersPerRoomLimit)
 	}
 }
@@ -856,7 +856,7 @@ func TestRoomReplacementReplacesAuthorityAndClosesOldMembership(t *testing.T) {
 		password: &password, preferredRoomID: "4321",
 	}).expectStatus(http.StatusCreated).room()
 
-	store := server.Store()
+	store := server.store
 	host, err := store.ConnectParticipant(room.ConnectParticipantInput{
 		RoomID: original.RoomID, Role: protocol.RoleHost, Token: original.HostToken,
 		ClientID: "host-client", SessionID: "host-session",
@@ -1015,7 +1015,7 @@ func TestRoomAccessManagesADormantRoomWithoutStartingSharing(t *testing.T) {
 		!strings.Contains(revoked.body, `"type":"viewer-grant-updated"`) {
 		t.Fatalf("revocation body = %s", revoked.body)
 	}
-	if _, connected := server.Store().GetConnectedHost(created.RoomID); connected {
+	if _, connected := server.store.GetConnectedHost(created.RoomID); connected {
 		t.Fatal("managing access started a sharing session")
 	}
 
@@ -1169,7 +1169,7 @@ func TestRestoresStableRoomAuthorityAcrossAnApplicationRestart(t *testing.T) {
 
 	now.Store(30 * 24 * 60 * 60 * 1_000)
 	second := start(t, Options{Config: configuration, Now: now.Load})
-	if size := second.Store().Size(); size != 1 {
+	if size := second.store.Size(); size != 1 {
 		t.Fatalf("restored room count = %d, want 1", size)
 	}
 	second.updateRoomAccess(accessRequest{

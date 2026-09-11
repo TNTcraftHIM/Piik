@@ -32,9 +32,8 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/server/sfu"
 )
 
-// Ceilings and option defaults ported from src/server/signaling.ts. The first
-// five are its module constants; the last four are the `??` defaults of
-// SignalingOptions.
+// Connection admission, queue and timeout bounds limit the signaling resources
+// a stalled or unauthenticated peer can retain.
 const (
 	// maxBufferedSignalBytes is MAX_BUFFERED_SIGNAL_BYTES: once a connection's
 	// unsent queue passes it the peer is not draining and the connection is
@@ -57,16 +56,15 @@ const (
 	defaultHeartbeatIntervalMs     = 30_000
 )
 
-// SfuFallback is the embedded media runtime the media router
-// may use. A zero timeout means the TypeScript default.
+// SfuFallback configures embedded media; a zero prepare timeout selects the
+// router's default.
 type SfuFallback struct {
 	Media            sfu.Runtime
 	Admission        *sfu.Admission
 	PrepareTimeoutMs int64
 }
 
-// Options is SignalingOptions. Every zero value is the TypeScript `undefined`
-// and takes the same default.
+// Options supplies room authority, runtime capabilities and signaling limits.
 type Options struct {
 	Store                     *room.Store
 	EndpointMediaCopyCapacity int

@@ -13,16 +13,15 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/server/signal"
 )
 
-// The request router of src/server/app.ts. Route order is a contract (map
-// section 4.3, O34): the first match wins and the /api/ catch-all sits after
-// every concrete route.
+// The first matching route wins. The /api/ catch-all follows every concrete
+// route so unknown API requests cannot fall through to the frontend.
 
 var (
 	roomReplacementPath = regexp.MustCompile(`^/api/rooms/([1-9][0-9]{3})/replacement$`)
 	roomAccessPath      = regexp.MustCompile(`^/api/rooms/([1-9][0-9]{3})/access$`)
 )
 
-// ServeHTTP is the createServer request listener of app.ts.
+// ServeHTTP dispatches requests and contains handler panics at the HTTP boundary.
 func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	recorder := &responseRecorder{ResponseWriter: writer}
 	defer func() {

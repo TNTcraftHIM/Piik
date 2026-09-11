@@ -1,10 +1,7 @@
 package signal
 
-// The per-connection state of src/server/signaling.ts (SocketState,
-// accept(), the socket event handlers, send()/sendEncodedToSession(),
-// heartbeat()). One reader goroutine and one writer goroutine per
-// connection; the writer drains an outbound queue that handlers fill under
-// mu, which is what the ws library's own send buffer did (D4).
+// Each connection has one reader and one writer goroutine. Handlers enqueue
+// outgoing frames under Server.mu; only the writer drains that bounded queue.
 
 import (
 	"context"
@@ -15,10 +12,9 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 )
 
-// authenticatedSession is AuthenticatedSession. Handlers compare it by
-// pointer (hazard 1): `state.authenticated !== authenticated` detects a
-// re-authentication between dispatch and use. shareGeneration is "" where
-// the TS had null; displayName is nil where the TS had null.
+// Handlers compare authenticatedSession pointers to reject work from an
+// authentication replaced between dispatch and use. Empty shareGeneration
+// means no share; nil displayName means the participant has no display name.
 type authenticatedSession struct {
 	roomID          string
 	role            protocol.Role

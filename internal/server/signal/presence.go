@@ -1,10 +1,7 @@
 package signal
 
-// Viewer presence, host status, disconnect handling and room termination of
-// src/server/signaling.ts (sendViewerPresence 1594, broadcastHostStatus
-// 1683, handleDisconnect 1397, stopSharing 1466, closeRoom,
-// revokeGrantViewers 1016, closeRevokedViewerSession 1697 and the
-// viewer-keyed map helpers). Every function here runs with mu held.
+// Viewer presence, Host status, disconnect handling and room termination run
+// with Server.mu held, so each effect observes the current room membership.
 
 import (
 	"fmt"
