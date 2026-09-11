@@ -69,6 +69,10 @@ protocol identifiers; use normal language-specific identifier conventions.
 
 ## Verification Entrypoints
 
+Every retained test must be collected by a documented verification entry point.
+Confirm runner inclusion when adding or moving a test; a file's presence alone
+does not establish coverage.
+
 - `npm run check` owns deterministic Web type-check, unit, and build acceptance.
 - `npm run check:client` owns Go formatting, unit tests, vet, three-platform
   builds, and the Windows capture compile/probe when run on Windows. The server

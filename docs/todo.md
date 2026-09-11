@@ -7,21 +7,17 @@ and Git/PRs own completed history. A parked idea is not implementation authority
 
 ## Now
 
-Hold after the completed audit and follow-up corrections, as requested by the
-owner. The [cohesion record](./research/repository-cohesion-audit-2026-09-11.md)
-and [lifecycle record](./research/lifecycle-audit-2026-09-10.md) own findings,
-rejected changes and evidence limits. The
-[engineering reference](./reference/engineering.md) retains the useful runtime
-lifecycle map and source index. Await direction to resume the release line.
+Run candidate acceptance for the current audited source before the README,
+documentation and website redesign.
 
-## Next — Candidate Acceptance And Release Preparation
+### Candidate Acceptance
 
 Accept the pending fixes and release preparation together on one phase branch.
 Keep main and production unchanged until owner acceptance; preserve the rename
 recovery archive and external-audit worktree. No new wire/quality/lifecycle
 mechanism is implied by the remaining checks.
 
-1. Build final Windows App and Go Server candidates from one exact audited
+1. Build Windows App and Go Server candidates from one exact audited
    revision through the existing packagers. The `98b29ec1` rehearsal predates
    later source changes and is not final-candidate acceptance.
 2. Exercise two real builds sharing the current contract in both App/Site
@@ -36,54 +32,50 @@ mechanism is implied by the remaining checks.
 4. Rehearse the local publisher dry run with genuine matching target artifacts;
    the full set remains unverified because macOS needs its native toolchain.
    Do not fabricate descriptors or relabel packages to satisfy it.
-5. Provide the Windows candidate for owner acceptance, then prepare one coherent
-   squash PR. Merge, deployment and public publication are separate delivery
-   actions; no release or main update is authorized by this audit closure.
+5. Provide the Windows candidate for owner acceptance before continuing the
+   documentation/website redesign and remaining release preparation.
 
-[Versioning](./reference/versioning.md#first-public-release-readiness) owns the
-remaining public-readiness boundary: real target packages, first supported
-mixed-version acceptance, source/asset publication and activation. The pipeline
-and local checks exist; no GitHub Release was published and automatic publication
-is still disabled. Do not reset storage or live authority generations.
+## Next — Public Introduction And Distribution
 
-Templates and naming are prepared; GitHub now permits squash merges only and
-uses the PR title/body. Main protection remains blocked by the current private
-free-repository plan. Once eligible, apply the PR-only policy and complete
+Finish the documentation/website redesign and distribution preparation below,
+then run regression checks for the final changes and package that exact source.
+Prepare one coherent squash PR for the accepted phase. Merge, deployment and
+public publication remain separate delivery actions.
+
+### Public Distribution And Activation
+
+Choose source visibility, the public asset set and release notes under the
+[first-public-release boundary](./reference/versioning.md#first-public-release-readiness).
+Apply main protection once the repository is eligible and complete
 [one-time activation](./operations/github.md) after explicit first-release
-acceptance. Website/README expansion follows this preparation.
+acceptance. Automatic publication remains disabled pending that acceptance.
 
 Prepare GitHub-primary/Gitee-mirror distribution under the same
 [release-source policy](./reference/versioning.md#release-sources). Configure the
-owner's README-only Gitee target, validate final package sizes against its attachment quota,
-and exercise publication/anonymous download before enabling it. Build once;
-mirror uploads and update-source adapters must not create another release model
-or duplicate CI compilation. No Gitee publication is active yet.
-Rehearsal artifacts measure 13.5 MB (Server runtime) and 36 MB (Windows App);
-confirm the current Gitee attachment quota before enabling the mirror.
+owner's README-only Gitee target and implement mirror uploads and update-source
+adapters over the existing release model. Validate final package sizes against
+the current attachment quota and exercise publication/anonymous download before
+enabling the mirror. Reuse the same built artifacts; no Gitee publication or
+multi-source update checking is implemented yet.
 
 ### Public Introduction
 
-Resume the accepted [public introduction](./design/public-introduction.md):
-short English/Chinese README and first-use guides, the static site and its
-mascot-only interactions. Keep detailed technical help in developer/operations
-owners. No further website expansion precedes the conventions/version review.
+After release preparation, rework the English/Chinese README, first-use guides,
+documentation content/navigation and public website as one coherent task.
+Prioritize clearer writing and information structure in the README and guides;
+the existing drafts still need substantial revision. Include the requested
+shared design-language and visual-effect changes, updating the
+[public introduction](./design/public-introduction.md) and
+[visual language](./design/visual-language.md) as new design decisions are
+accepted. This work remains open despite the completed structural audits.
 
 The owner owns **piik.tv**. GitHub Pages is the proposed public website; the
 dedicated US server is a proposed separate P2P-only demonstration. Neither is
-published. Choose source visibility, public assets, release notes, download/demo
-destinations and DNS/Pages settings before publication. The existing private
-production service is not the public demo. P2P-only has no media-server fallback.
-Runtime capability configuration is implemented; do not reopen it as a second
-boolean or duplicate UI mode.
-
-Further reviews follow [engineering review](./reference/engineering.md#ablation-and-review).
-Search hits and file size alone do not authorize a repository rewrite.
-
-[Verification status](./verification-status.md) owns remaining device/network
-limits, including iOS playback/window/audio behavior. NAT and Auto are complete
-features; broader statistics are not a new blocker. Keep branch CI quiet,
-physical workloads serial and executables at stable paths. Packaging remains
-manual until the accepted main-release automation is activated.
+published. Choose download/demo destinations and finish DNS/Pages setup through
+[website operations](./operations/website.md) before approved publication.
+Plan the separate US demo deployment before exposing a demo link; the existing
+private production service remains private. Describe P2P-only's lack of a
+media-server fallback accurately.
 
 ## Parked Product Work
 
@@ -96,41 +88,38 @@ If Native adaptation is implicated, compare actual VSE limitations with sender
 quality evidence before changing policy. Do not add retry budgets, visibility
 resets or resolution heuristics without proof. Sanitized aggregates and the
 isolated reconnect reproduction remain locally in `build/room7534-investigation/`.
+Game/background settings behavior also remains an unconfirmed incident lead;
+reopen from actual control actions and matching requested/applied media evidence.
 
-1. **Public distribution and updates.** Candidate packagers, immutable descriptors,
-   notices, the runtime-only OCI recipe and release checks exist. Choose the
-   public asset set and release notes before publishing a product-versioned
-   GitHub Release or image with retained full-SHA provenance, following
-   [versioning](./reference/versioning.md). Do not add automatic installation, container self-update, Watchtower,
-   compatibility ranges or active-share interruption without distribution and
-   recovery evidence. Ordinary branch pushes must not run expensive CI packaging.
-2. **Representative device/network acceptance.** Exercise public-network direct
-   and relay paths, two-room SFU, real-game A/V, twenty-Viewer endurance,
-   sustained loss/recovery and all-UDP-blocked bounded failure. Correlate freezes
-   with publisher/receiver evidence before changing representation policy.
-   Physical Android/iOS work includes autoplay, background/lock, rotation,
-   network migration and relay survival. Secondary desktop platform matrices
-   remain explicitly deferred; compilation does not prove capture.
-3. **Broader quality work.** Reopen from measured benefit at acceptable complexity.
+1. **Representative device/network acceptance.** Resume the remaining matrix in
+   [verification status](./verification-status.md#remaining-device-and-network-acceptance)
+   when directed, preserving the owner's platform deferrals. Correlate freezes
+   with publisher/receiver evidence before changing media policy. Run physical
+   workloads serially from stable executable paths with cleanup between runs.
+2. **Broader quality work.** Reopen from measured benefit at acceptable complexity.
    Preserve chosen profiles, bitrate ceilings, endpoint capacity and P2P-first
    routing unless a new accepted decision supports changing them. No weighted
    score, all-pairs probes, periodic rebalancing, parent-wide prediction or
    room-wide minimum. Check whether a quality move merely shifts pressure to
    another parent's siblings before widening policy.
-4. **Control/resource fairness and input review.** Reassess the authenticated
+3. **Control/resource fairness and input review.** Reassess the authenticated
    WebSocket/SFU owner, HTTP/body/resource bounds, authorization and error/log
    handling before adding a queue or limiter. No parallel security framework,
    accounts, risk score or speculative policy layer.
-5. **Reachable ownership/refactor work.** Extract page media-session owners only
-   alongside behavior changes; file size alone is not a rewrite reason. Reopen
-   C=3 structural-intent retention, SFU failure during unrelated prepare and
-   multi-child evidence ownership only with current-contract reproductions.
+   Measure signaling-lock contention and synchronous diagnostic I/O before
+   changing the lock or execution model; their cost remains a tradeoff.
+4. **Reachable ownership/refactor work.** Retain Host/Viewer page media-session
+   extraction as a candidate alongside related behavior changes. Evaluate clear
+   resource owners, fewer shared writers and a smaller change surface under
+   [engineering review](./reference/engineering.md#ablation-and-review); file
+   size alone does not justify a split. The completed audits do not close this
+   candidate. Reopen C=3 structural-intent retention, SFU failure during unrelated
+   prepare and multi-child evidence ownership only with current-contract
+   reproductions.
    No new revision namespace, failure-state mirror or topology queue by default.
-6. **Storage fault recovery.** Ordinary transactions persist before memory
-    changes; failures must preserve authority. Message-handler panics must unwind
-    locks. Damaged-disk/COMMIT/ROLLBACK recovery is not established; choose its
-    policy explicitly rather than adding catch-and-continue or retries.
-7. **Platform output.** System/tab mirroring needs no adapter. Remote Playback,
-    Cast and AirPlay do not provide a portable live MediaStream receiver.
-    Reopen for a registered receiver acting as an ordinary Viewer after the
-    [platform-output gate](./research/platform-output.md) passes.
+5. **Storage fault recovery.** Choose and verify a damaged-disk/COMMIT/ROLLBACK
+   recovery policy before adding catch-and-continue or retries. This failure
+   boundary remains unestablished after ordinary persistence checks.
+6. **Platform output.** Reopen for a registered receiver acting as an ordinary
+   Viewer only after the [platform-output gate](./research/platform-output.md)
+   passes.

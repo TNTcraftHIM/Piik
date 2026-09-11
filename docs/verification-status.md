@@ -40,6 +40,21 @@ Neither a statistical NAT campaign nor exhaustive Auto hardware benchmarking
 is required to close this phase. Investigate further only from a new failure
 or a measured improvement worth its implementation and maintenance cost.
 
+## Candidate Evidence Boundary
+
+The `98b29ec1` rehearsal covered Server and Windows App packaging, the Windows
+capture compile/probe, and Local startup/shutdown. These packages predate later
+media/copy changes and do not accept the final candidate. Exact package identity
+belongs to the release descriptors; Git retains the earlier rehearsal record.
+
+The lifecycle/cohesion audits did not run Go race detection or establish real
+mixed-build App/Site operation, an already-open page across a compatible update,
+or room/config preservation and usable sharing after a candidate update.
+Startup/probe and incompatible-contract rejection tests do not establish those
+behaviors. The full publisher dry run with genuine matching target artifacts remains
+unverified; Darwin packaging needs its native toolchain. [TODO](./todo.md) owns
+remaining candidate checks; the broader platform deferrals below still apply.
+
 ## Remaining Device And Network Acceptance
 
 The following are broader coverage and endurance tasks, not automatically new

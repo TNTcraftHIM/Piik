@@ -90,6 +90,11 @@ above rather than searching the tree.
   mechanism. Extract around a responsibility shared by real callers; file size
   alone does not justify wrappers, a generic manager or a framework.
   Remove superseded paths in the same change; retain no unused legacy copy.
+  Keep test-only state seeding and setup in test harnesses.
+- Review dependency direction for source/type imports as well as runtime
+  imports. Shared types belong to a common owner. A type-only cycle is an
+  ownership concern; it does not by itself establish a runtime or performance
+  defect.
 - State has one writer and a clear lifetime. Separate permission, capability,
   connection readiness, requested settings, applied settings and observation.
   Derive presentation from facts; do not synchronize parallel booleans or let
@@ -101,9 +106,14 @@ above rather than searching the tree.
 - Keep decisions separate from effects. Respect documented lock ordering and
   revalidate after unlocked work. Local native capability never grants room
   authority; the shared Go service remains authoritative.
+  Injected callbacks still execute in their caller's context; include their
+  blocking I/O in the caller's lock and latency analysis.
 - Validate input at the boundary, keep domain error meanings stable, and map
   them into shared localized UI. [Versioning](./versioning.md) determines which
   extensions are compatible; an optional field is not automatically compatible.
+  Retained media state carries failure facts; the presentation layer resolves
+  localized copy during render. Keep raw exceptions in diagnostics. Transient
+  event notices may resolve once when the event occurs.
 - Deployment configuration describes available services; room preferences
   request allowed behavior. The server enforces the policy even when a client
   requests more. The UI retains the same controls and explains locked choices.
@@ -125,6 +135,18 @@ compatibility, runtime and failure cost. After a material module, remove any
 new state, dependency, branch or abstraction that the accepted behavior does
 not need. A small performance gain does not justify permanent complexity;
 do not reduce viewing quality or requested functionality merely to save lines.
+
+A concrete reduction in duplicated writers, cross-module dependencies or
+repeated edit sites can justify structural refactoring without a reproduced
+runtime failure. Name that gain and its regression risk. A completed audit is
+bounded evidence, not a claim that every current module boundary is optimal.
+
+Before changing production recovery or state, trace the real request producers
+and their guards. A test that bypasses disabled controls or writes private state
+does not alone establish a reachable product defect. Reference scans, including
+hits from tests and previews, are leads rather than proof of product use or
+absence. Follow the actual producer-to-consumer path and check the changed
+boundary; isolated helper tests can miss a mismatch between the two ends.
 
 Trace acquisition, use, commit and retirement, including replacement and failure.
 For async ownership, check A starting, B replacing it, then A completing or

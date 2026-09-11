@@ -39,13 +39,13 @@ Binding-only STUN on UDP 3478/3479/3480 and optional SFU on UDP 7882. nginx owns
 HTTPS; external LiveKit/coturn services remain disabled. Participants, routes and
 media remain process-only. This private service is not a public demonstration.
 
-[TODO](./todo.md) owns release preparation before further public-website work.
-The working branch includes capability/UI fixes and the public-introduction
-draft, and carries the completed repository-cohesion and lifecycle audits owned
-by [their record](./research/repository-cohesion-audit-2026-09-11.md), including
-follow-up corrections and ablation. Audit work is complete and paused before
-release preparation at the owner's request; main and production have not
-changed. Version-plus-SHA metadata,
+[TODO](./todo.md) owns candidate/release preparation and the subsequent README,
+documentation and website redesign. The working branch includes capability/UI
+fixes, the initial public-introduction draft and completed lifecycle/cohesion
+audit corrections and ablation. Current candidate acceptance is underway;
+main and production have not changed. Shared lessons live in
+[engineering](./reference/engineering.md); [verification status](./verification-status.md#candidate-evidence-boundary)
+owns the remaining evidence limits. Version-plus-SHA metadata,
 release comparisons and the post-main publishing pipeline are implemented with
 local checks. Public compatibility acceptance and publishing activation remain
 pending under [versioning](./reference/versioning.md).
