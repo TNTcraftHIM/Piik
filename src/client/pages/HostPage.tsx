@@ -1554,14 +1554,6 @@ export function HostPage({
     }
     sourceSwitchRef.current = null;
     setSwitchingSource(false);
-    // A source switch rejects direct quality changes, but the control already
-    // showed the requested draft. Replay that request once the source owner is
-    // finished; an ended share clears both fences through disposeResources().
-    const pending = pendingQualityChangeRef.current;
-    if (pending) {
-      pendingQualityChangeRef.current = null;
-      void changeQuality(pending);
-    }
   }
 
   function commitQuality(settings: QualitySettings): void {
@@ -1638,9 +1630,6 @@ export function HostPage({
       !isCurrentGeneration(generation) ||
       sourceSwitchRef.current
     ) {
-      if (sourceSwitchRef.current) {
-        pendingQualityChangeRef.current = nextProfile;
-      }
       return;
     }
     const token = {};
@@ -3540,7 +3529,7 @@ export function HostPage({
             {!details?.hasAudio && stream ? (
               <Pill icon="speaker" label={t("host.noAudio")} comic="no-audio" />
             ) : null}
-            {hostSfuWarningText && hostSfuWarningText !== noticeText ? (
+            {hostSfuWarningText ? (
               <Pill icon="alert" label={hostSfuWarningText} comic="warning" />
             ) : null}
             {noticeText && noticeText !== t(hostStatus.activity.labelKey) ? (

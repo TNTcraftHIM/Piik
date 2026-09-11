@@ -13,6 +13,8 @@ import {
   reportActivePeerRouteFailure,
 } from "../src/client/media/route-transition.ts";
 import { ViewerSfuRoute } from "../src/client/media/viewer-sfu-route.ts";
+import { t } from "../src/client/ui/copy.ts";
+import { resolveMediaFailure } from "../src/client/ui/media-failure.ts";
 import {
   EMPTY_METRICS,
   type ConnectionMetrics,
@@ -420,6 +422,41 @@ describe("minimal route transition contracts", () => {
     expect(publishers[0]?.deactivate).toHaveBeenCalledOnce();
     expect(publishers[0]?.disconnect).toHaveBeenCalledOnce();
     expect(publishers[1]?.disconnect).not.toHaveBeenCalled();
+  });
+
+  it("renders an SFU connection failure in each language without placeholders", async () => {
+    const publisher = createFakePublisher([], "publisher");
+    publisher.connect.mockResolvedValue(false);
+    const route = new HostSfuRoute({
+      getStream: () => ({}) as MediaStream,
+      getProfile: () => QUALITY_PROFILES["720p30"],
+      getVideoCodec: () => "vp8",
+      reconcileChildren: () => undefined,
+      send: () => true,
+      createPublisher: () => ({
+        ...publisher,
+        getFailureStage: () => "connect",
+      }),
+    });
+    route.accept({
+      revision: 1,
+      phase: "prepare",
+      assignment: hostAssignment("publication"),
+      candidate: candidate(1, "viewer_12345678", "sfu"),
+    });
+    await route.acceptConfig(sfuConfig(1, "publication"));
+    const warning = route.getQualityWarning();
+
+    for (const lang of ["en", "zh"] as const) {
+      const text = resolveMediaFailure(warning, {
+        lang,
+        t: (key, vars) => t(lang, key, vars),
+      });
+      expect(text).toBe(t(lang, "host.warn.sfuRecover", {
+        params: t(lang, "host.warn.sfuStage.connect"),
+      }));
+      expect(text).not.toMatch(/\{[^}]+\}/);
+    }
   });
 
   it("changes Host children only after active authority commits", async () => {

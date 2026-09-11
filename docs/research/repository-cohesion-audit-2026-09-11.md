@@ -2,6 +2,7 @@
 
 - Started: 2026-09-11
 - Candidate baseline: `fe199cf4`
+- Follow-up review baseline: `b9d8348c`; corrections are included in this record.
 - Scope: Piik-owned source, tests, scripts, workflows and durable documentation.
   Third-party implementation internals and deferred physical-device matrices are
   outside this audit.
@@ -48,13 +49,13 @@ a dependency without a separate accepted decision.
 
 | Area | Status | Findings |
 | --- | --- | --- |
-| Browser UI orchestration and state projection | Complete | Requested/applied quality, route facts and derived presentation have distinct owners. The 17 local type cycles around comic/hint kinds were removed by one shared kind module. Page size remains a tradeoff below. |
+| Browser UI orchestration and state projection | Complete | Requested/applied quality, route facts and derived presentation have distinct owners. One shared kind module removes the comic/hint source dependency cycle. Unproven source-switch replay was removed after caller review; page size remains a tradeoff below. |
 | Browser media/WebRTC/native adapters | Complete | Pooling and encoded-group boundaries match ADR-0013/0014. The dead `PeerSnapshot` warning chain was removed, and snapshots now carry keyed failure facts instead of resolved copy. |
 | Go room authority and persistence | Complete | Durable-before-memory authority and caller locking remain coherent; no parallel room backend was found. |
 | Go signaling and route effects | Complete | Test-only route seeding moved to the test harness. Route diagnostics now use an injected sink, so the route package no longer reads the environment or global logger. |
 | Native App control/capture/mediaedge | Complete | `nativecontrol` composes, `nativehost` owns sessions, and `mediaedge` owns media resources without reverse ownership. No lifecycle failure was established. |
 | Protocol, HTTP, configuration and release contracts | Complete | Shared fixtures and strict command contracts remain aligned. A stale v22 evidence snapshot was corrected to the current v23 contract. |
-| Tests, gates, packaging, workflows | Complete | The main workflow built the Browser bundle twice; the duplicate build was removed. Dead-feature tests were deleted with their state, and a packaging-target check that no runner collected now runs under vitest. No unused product exports remain. |
+| Tests, gates, packaging, workflows | Complete | The main workflow built the Browser bundle twice; the duplicate build was removed. Dead-feature tests were deleted with their state, and a packaging-target check that no runner collected now runs under vitest. No additional unused product export was established by the scoped scan. |
 | Documentation and public copy ownership | Complete | Product/design/reference ownership is one-directional; `engineering.md` now also carries runtime lifecycles and a source index, four ownerless evidence documents are cited by their owners, and long-document warnings remain accepted gardening notices. |
 
 ## Finding Classification
@@ -87,9 +88,10 @@ a dependency without a separate accepted decision.
    older implementation lineage.
 5. **Type-kind dependency cycles (confirmed cohesion defect).**
    `Comic.tsx`, `comic-presentation.ts`, `hints/*` and `ui/media-status.ts`
-   formed 17 local cycles and inverted the documented UI boundary. A shared
+   formed one cyclic source/type dependency group and inverted the documented UI boundary. A shared
    `src/client/ui/visual-kinds.ts` now owns the kind unions, theme and scene
-   signature; scene implementations did not move. Cycle scan: 17 -> 0.
+   signature; scene implementations did not move. The type-erased runtime graph
+   was already acyclic. This improves source ownership, not runtime performance.
 6. **Dead media-warning state chain (dead state removed).**
    `PeerSnapshot.qualityWarning`/`qualityWarningKind`, `QualityWarningKind` and
    the `HostPeer` sender-warning/limitation sampling that fed them had no
@@ -97,11 +99,13 @@ a dependency without a separate accepted decision.
    `senderQualityEvidenceFromSnapshot` metrics. The two tests that asserted the
    dead fields were deleted with the state; suite 709 -> 707.
 7. **Route diagnostics read the environment and global logger (boundary
-   violation).** `internal/server/route` is documented as no-I/O but read
+   violation).** `internal/server/route` directly read
    `PIIK_DEBUG` and wrote `slog`; `internal/server/signal` duplicated the
    parser. `route.Options.DebugLog` is now an injected sink, and `signal` owns
    environment, logger and retention policy. The route debug test now verifies
-   injection rather than environment parsing.
+   injection rather than environment parsing. The sink still runs synchronously
+   under the caller's lock and may perform file I/O; injection does not remove
+   that existing cost. Package and engineering descriptions now say so.
 8. **Resolved copy persisted inside media/transport layers (boundary
    violation).** `HostPeer`, `ViewerPeer`, the SFU publisher/route and the
    native peers resolved user copy with `say()` and stored the string in
@@ -149,22 +153,39 @@ a dependency without a separate accepted decision.
 
 ## Verification
 
+The external verification below belongs to `b9d8348c` and its recorded rehearsal
+revision, not to a newly accepted release:
+
 - `npm run check`: TypeScript build, 711 tests across 55 files and the production
-  Browser bundle passed.
+  Browser bundle passed; independently repeated at that revision.
 - `tests/media-failure.test.ts` covers fact resolution per language, param-key
-  joining, list rendering and literal variables; stale copy is now
-  unrepresentable because no snapshot stores resolved text.
+  joining, list rendering and literal variables. The original tests missed the
+  real SFU producer's `{params}` / `{stage}` mismatch; follow-up added a failing
+  route-to-resolver regression and aligned both locale templates.
 - `go vet ./internal/... ./cmd/...` passed.
 - `go test ./internal/... ./cmd/...` passed, including route, signal, app,
   native and media packages.
-- `npm run check:client-core` passed: gofmt, client tests, `go vet ./...` and the
-  App, peer-gate and linux-amd64 Server cross-builds. darwin-arm64 is skipped by
-  design because its cgo dependencies need a macOS runner.
-- Local import-cycle scan across `src/client`: 17 cycles before, 0 after.
+- `npm run check:client-core` passed: gofmt, Go tests, vet, Windows/Linux App and
+  peer-gate builds, and the Linux Server build. This core entry excludes capture
+  checks; Darwin requires a macOS toolchain. The
+  [rehearsal record](./lifecycle-audit-2026-09-10.md#remaining-acceptance) separately
+  attributes capture and package-smoke evidence.
+- The source import graph had one cyclic component with nine modules, now zero.
+  Counting each import declaration as an edge gives 17 elementary cycles;
+  deduplicating module-pair edges gives 15. The type-erased runtime graph had
+  zero cycles before and after.
 - `node scripts/check-docs.mjs` and `scripts/check-project-state.ps1` passed
   with only the existing long-document gardening warnings.
 - Physical mixed-version, device and network acceptance remains outside this
-  pass and is owned by [verification status](../verification-status.md).
+  pass. Candidate/package work remains in [TODO](../todo.md); broader physical
+  limits remain in [verification status](../verification-status.md).
+
+Follow-up closure reran `npm run check`: 55 files and 711 tests passed, with
+typecheck and the Browser build. One unproven replay test was removed and one
+real SFU failure-to-localized-warning check added. Repository hygiene and diff
+checks passed; only existing document-length and bundle-size warnings remain.
+The follow-up Go edits correct comments only, so the earlier Go verification
+was not repeated. No new App/Server package or physical acceptance is claimed.
 
 ## Sweep Method
 
@@ -180,16 +201,22 @@ reference scan over tracked files:
   basename must be mentioned by at least one other tracked file.
 - Configuration: every environment identifier read by Go is either documented
   for operators or a test or sidecar handshake value.
-- Import cycles: build the static import graph over `src/**/*.ts` and `tsx` and
-  look for strongly connected components; the count is 0 after the shared
-  visual-kind owner landed.
+- Import cycles: resolve local imports under `src/client` and distinguish the
+  source/type graph from the type-erased runtime graph. Count strongly connected
+  components separately from elementary cycles as described above.
+
+Reference hits, including tests and documents, establish references rather than
+product reachability. These scans are leads for caller tracing, not proof that
+the entire repository has no remaining dead code.
 
 ## Adversarial Review
 
 Checked after the change landed, against the ways this pass could be wrong:
 
-- **Copy cannot go stale by construction.** No snapshot field, SFU warning or
-  native failure stores resolved text; `say(` no longer appears under
+- **Current snapshot producers retain copy keys.** Reviewed media snapshots,
+  SFU warnings and native failures retain keys and resolve during render;
+  `MediaFailure.vars` still admits strings, so the type alone cannot prevent
+  every future producer from storing resolved copy. `say(` no longer appears under
   `src/client/webrtc`, `sfu` or `native`, and the only media-layer `say()` left
   is `qualitySettingsLabel`, which composes a transient notice at event time -
   the tolerated pattern documented in `ui/copy.ts`. Event-time notices and
@@ -201,29 +228,39 @@ Checked after the change landed, against the ways this pass could be wrong:
 - **Deliberate residual.** `lib/display-name.ts` still resolves the default
   display name once. That is presence data other participants see, so it must
   not follow a local language switch; recorded instead of changed.
-- **Inert guard kept.** `hostSfuWarningText !== noticeText` can no longer match
-  through the notice composers, because none of them builds a warning string.
-  It stays as a cheap guard against rendering the same line twice, and is a
-  candidate for evidence-based removal later.
+- **Inert guard removed.** No current notice composer produces the separate SFU
+  warning. Follow-up removed `hostSfuWarningText !== noticeText` rather than
+  preserving a comparison for a hypothetical future producer.
 - **Declined micro-cleanups.** `MediaFailure` lives in `ui/` and media modules
   import it type-only; `CopyKey` type imports still point at `ui/copy` rather
   than `locales`. Both are type-only edges with a cycle scan of 0, so repointing
   them was not worth the review surface.
-- **No measured cost.** The SFU warning state is now a small array, so React no
+- **No extra equality helper.** The SFU warning state is now a small array, so React no
   longer bails out on identical primitive values. `syncHostSfuQualityWarning`
   runs only on quality changes, route transitions and SFU config - never per
   frame or per evidence message - so no structural-equality helper was added.
-- **Mechanical sweeps after the fixes.** Zero unreferenced copy keys across 394
-  catalog entries, zero unused icons across 49, zero orphan documents, zero
-  unreferenced `scripts/` tools, and every environment identifier read by Go is
-  either operator-documented or a test/sidecar-only handshake value. The
+- **Mechanical sweeps after the fixes.** The external reference scan reported
+  hits for all 394 copy keys and 49 icons, no orphan documents or unreferenced
+  `scripts/` tools, and documentation or a test/sidecar-only role for every
+  environment identifier read by Go. This is bounded reference evidence. The
   unreferenced npm aliases that remain are one-line operator conveniences over
   real scripts (`gate:*`, `package:client*`, `test:watch`), so they stay.
-- **UX deltas reviewed.** The only user-visible copy change is the
-  missing-video-track path, which now reports "no shareable screen source"
-  instead of "failed to create the connection"; Viewer failures no longer
-  surface raw browser messages; joined SFU warnings use the locale separator
-  instead of a hardcoded `"; "`.
+- **UX deltas reviewed.** The missing-video-track path now reports
+  "no shareable screen source" instead of "failed to create the connection";
+  Viewer failures no longer
+  retain raw browser messages in snapshots, though the current Viewer page does
+  not display that field directly. Joined SFU warnings use the locale separator
+  instead of a hardcoded `"; "`, and follow-up fixed their recovery-stage text.
+- **Unproven lifecycle repair removed.** The initial source-switch replay test
+  bypassed disabled controls. Follow-up removed that path and its test after
+  tracing all callers; the existing live quality queue remains intact. The
+  [lifecycle record](./lifecycle-audit-2026-09-10.md#rejected-source-switch-replay)
+  owns the evidence and reopening condition.
+- **Comment correctness.** Local configuration intentionally copies STUN lists
+  into non-nil slices so configured-empty prediction does not derive auxiliary URLs;
+  the audit's comment claiming nil was preserved was corrected without changing
+  the implementation. Dangling comment fragments left by mechanical deletion in
+  config/access parsing were also removed or corrected.
 
 ## References
 
@@ -231,6 +268,11 @@ Checked after the change landed, against the ways this pass could be wrong:
   [You Might Not Need an Effect](https://react.dev/learn/you-might-not-need-an-effect)
   support deriving presentation from current facts rather than synchronizing
   parallel UI state.
+- [React: Queueing State Updates](https://react.dev/learn/queueing-a-series-of-state-updates)
+  explains why separate user clicks see the disabled state from the previous
+  event; direct-function tests still need a real request producer.
+- [TypeScript: Type-Only Imports](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-3-8.html)
+  distinguishes source/type dependencies from runtime imports.
 - [Go Code Review Comments](https://go.dev/wiki/CodeReviewComments) supports
   package-level responsibility and avoiding historical commentary in current
   interfaces.

@@ -60,7 +60,7 @@ func Local(options LocalOptions) (Config, error) {
 		}
 	}
 
-	// Copy both lists so nil/unset and configured-empty remain distinct.
+	// Copy non-nil lists so configured-empty prediction does not derive auxiliary URLs.
 	stunURLs := append([]string{}, options.STUNURLs...)
 	natPredictionSTUNURLs := append([]string{}, options.NATPredictionSTUNURLs...)
 	if len(stunURLs)+len(natPredictionSTUNURLs) > protocol.MaxIceServerURLs ||

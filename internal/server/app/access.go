@@ -108,8 +108,6 @@ func (a *siteAccessGate) isAuthenticated(cookieHeader string) bool {
 	if value == "" {
 		return false
 	}
-	// Fewer than three segments fail the two regexes below (an absent segment
-	// is tested as ""), more than three fill `extra`.
 	segments := strings.Split(value, ".")
 	if len(segments) != 3 ||
 		segments[0] != cookieVersion ||
@@ -117,7 +115,7 @@ func (a *siteAccessGate) isAuthenticated(cookieHeader string) bool {
 		!accessSignaturePattern.MatchString(segments[2]) {
 		return false
 	}
-	// digits, so only an out-of-range value can fail here.
+	// Expiry is already decimal; parsing still enforces integer bounds.
 	expiresAt, err := strconv.ParseInt(segments[1], 10, 64)
 	if err != nil || expiresAt > protocol.MaxSafeInteger {
 		return false

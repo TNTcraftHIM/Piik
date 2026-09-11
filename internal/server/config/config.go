@@ -1,6 +1,5 @@
-// Package config owns the Hosted environment contract and its ICE discovery
-// configuration. The caller supplies the environment as a map; loading opens
-// no runtime resources.
+// Package config owns Hosted and App Local configuration and ICE discovery.
+// Callers provide configuration inputs; loading opens no runtime resources.
 package config
 
 import (
@@ -72,7 +71,7 @@ type SFUConfig struct {
 	PublicIP   string
 }
 
-// Config is the Hosted runtime configuration. Zero values mean open site
+// Config describes runtime configuration. Zero values mean open site
 // access, process-memory rooms, and no SFU fallback.
 type Config struct {
 	Env           Environment
@@ -225,7 +224,6 @@ func Load(env map[string]string) (Config, error) {
 
 // parseEnvironment ports parseEnvironment for PIIK_ENV.
 func parseEnvironment(env map[string]string) (Environment, error) {
-	// reaches the check below.
 	value, present := env["PIIK_ENV"]
 	if !present {
 		return EnvironmentDevelopment, nil

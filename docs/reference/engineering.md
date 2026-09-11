@@ -15,7 +15,7 @@ discipline, not a second copy of the product contracts or wire fields.
 | `internal/server/app` | HTTP, site access, runtime capabilities, static assets and listener lifecycle; room mutations go through `signal` |
 | `internal/server/signal` | Authenticated command/effect owner; serializes room, session and route mutations and executes controller decisions |
 | `internal/server/room` | Room authority, credentials and persistence; caller holds the signaling lock, durable writes precede in-memory changes |
-| `internal/server/route` | Synchronous room graph and single-operation decisions; no I/O, locks or timer creation |
+| `internal/server/route` | Synchronous room graph and single-operation decisions; returns resource effects to `signal`, owns no locks or timers, and calls its optional diagnostic sink synchronously |
 | `internal/server/sfu`, `internal/app/mediaedge` | Server forwarding and native peer adapters over the shared `internal/media/forwarding`; Pion/LiveKit own transport and adaptation |
 | `internal/app` | Local/public-link/Site composition, loopback service, native sessions and App lifecycle; never a second room backend |
 | `internal/app/nativecapture`, `native/capture/*` | App-side capture contract and minimal platform adapters; platform-specific capture/encoding stays here |

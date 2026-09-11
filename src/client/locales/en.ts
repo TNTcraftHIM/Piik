@@ -411,7 +411,7 @@ export const en: Record<CopyKey, string> = {
   "host.warn.param.scaleResolutionDownBy": "resolution scaling",
   "host.warn.param.degradationPreference": "quality preference",
   "host.warn.param.scalabilityMode": "scalability mode",
-  "host.warn.sfuRecover": "SFU {stage} failed; automatic recovery started",
+  "host.warn.sfuRecover": "SFU {params} failed; automatic recovery started",
   "host.warn.sfuStage.connect": "connect",
   "host.warn.sfuStage.source": "source",
   "host.warn.sfuStage.videoPublish": "video publish",

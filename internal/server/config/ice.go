@@ -39,7 +39,6 @@ func stunListenAddresses(host string, prediction bool) ([]string, error) {
 // listeners derived from the first ordinary STUN authority on UDP 3478.
 func NATPredictionStunURLs(stunURLs []string) []string {
 	for _, stunURL := range stunURLs {
-		// keeps its whole text, which then fails to yield a host below.
 		authorityText := stunURL[strings.IndexByte(stunURL, ':')+1:]
 		authority, err := url.Parse("http://" + authorityText)
 		if err != nil || authority.Hostname() == "" {
@@ -75,7 +74,7 @@ func NATPredictionStunURLs(stunURLs []string) []string {
 
 // IceConfig ports createIceConfig.
 func IceConfig(c Config) protocol.IceConfig {
-	// configured empty list (Local without prediction) is kept as-is; only an
+	// A configured empty list (Local without prediction) is kept as-is; only an
 	// absent one is derived, so nil and empty differ here.
 	prediction := c.NATPredictionSTUNURLs
 	if prediction == nil {

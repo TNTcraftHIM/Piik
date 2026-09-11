@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-09-10
+Last updated: 2026-09-11
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) owns unresolved physical limits,
@@ -42,8 +42,10 @@ media remain process-only. This private service is not a public demonstration.
 [TODO](./todo.md) owns release preparation before further public-website work.
 The working branch includes capability/UI fixes and the public-introduction
 draft, and carries the completed repository-cohesion and lifecycle audits owned
-by [their record](./research/repository-cohesion-audit-2026-09-11.md); main and
-production have not changed. Version-plus-SHA metadata,
+by [their record](./research/repository-cohesion-audit-2026-09-11.md), including
+follow-up corrections and ablation. Audit work is complete and paused before
+release preparation at the owner's request; main and production have not
+changed. Version-plus-SHA metadata,
 release comparisons and the post-main publishing pipeline are implemented with
 local checks. Public compatibility acceptance and publishing activation remain
 pending under [versioning](./reference/versioning.md).

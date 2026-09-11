@@ -7,82 +7,38 @@ and Git/PRs own completed history. A parked idea is not implementation authority
 
 ## Now
 
-### Completed Phase: Repository Cohesion Audit
+Hold after the completed audit and follow-up corrections, as requested by the
+owner. The [cohesion record](./research/repository-cohesion-audit-2026-09-11.md)
+and [lifecycle record](./research/lifecycle-audit-2026-09-10.md) own findings,
+rejected changes and evidence limits. The
+[engineering reference](./reference/engineering.md) retains the useful runtime
+lifecycle map and source index. Await direction to resume the release line.
 
-The static repository audit completed on branch `audit/repository-cohesion`.
-`docs/research/repository-cohesion-audit-2026-09-11.md` owns the coverage map,
-landed findings and verification. Landed: v23 evidence correction, test-only
-route seeding moved to the route harness, duplicate CI Browser build removed,
-historical commentary ablated, one shared visual-kind owner (17 cycles -> 0),
-dead media-warning chain removed and injected route diagnostics. Deterministic
-Web and Go checks pass.
+## Next — Candidate Acceptance And Release Preparation
 
-Snapshots now carry keyed media-failure facts that the presentation layer
-resolves during render, so a language switch re-renders instead of leaving
-stale copy; the same pass removed the vestigial `sourceSwitchNotice` warning
-parameter, wired the previously unrun packaging-target check into vitest, and
-linked four evidence documents from their owners. Runtime lifecycles and a
-source index for re-orienting a fresh review live in
-`docs/reference/engineering.md`.
+Accept the pending fixes and release preparation together on one phase branch.
+Keep main and production unchanged until owner acceptance; preserve the rename
+recovery archive and external-audit worktree. No new wire/quality/lifecycle
+mechanism is implied by the remaining checks.
 
-This audit does not replace physical mixed-version or target-package acceptance
-from the lifecycle plan below.
-
-Accept the current fixes and release-preparation changes together: Host
-access/capability recovery, observable Native incompatibility, extensible
-descriptive metadata, product version plus SHA, update comparison and queued
-post-main publication. Existing resource owners and strict control commands stay
-intact. Main and production retain their prior release; preserve the rename
-recovery archive and external-audit worktree.
-
-### Next Phase Plan: Lifecycle Audit And Candidate Acceptance
-
-Review the pending implementation against its recorded candidate baseline
-`ebea1c49`; keep canonical main unchanged during the audit. This is a bounded
-review of Piik-owned runtime code and its adapters, not a rewrite or an audit of
-every upstream dependency. Steps 1-3 are complete through `e36c7a34`: the
-static/automated ownership audit, one confirmed source-switch quality repair and
-its coverage record are in `docs/research/lifecycle-audit-2026-09-10.md`. Step 5
-is complete for the locally reachable scope: the standard Go entry point, the
-schema-2 Server release and a verified Windows App candidate were produced from
-`98b29ec`. Step 4's mixed-version pair is recorded as a public-release boundary:
-the private contract keeps one current version, so only the focused negative
-coverage exists until the first supported public release. macOS/Linux physical
-capture and broad network/endurance matrices remain deferred.
-
-1. Inventory every owning runtime area and its boundaries. Split read-only work
-   across Browser/App orchestration, Server room/route/SFU effects, media/capture
-   resource ownership, and interface/package/update contracts. Keep a coverage
-   map with reviewed areas, findings and explicit unreviewed limits.
-2. Trace acquisition, use, commit and retirement, including A replaced by B before
-   A completes or cleans up. Prioritize discovery retry, authentication recovery,
-   live settings/source replacement, App exit/restart, two Native sessions, room
-   revocation during preparation, reconnect and repeated start/stop. Look for
-   conflated permission/capability/readiness, failed-promise latches, stale writes,
-   shared resources retired by one consumer, and cancellation treated as success.
-3. Reproduce or prove concrete defects before editing. Fix the owning boundary,
-   retain one focused check per meaningful repaired behavior, then remove newly
-   unnecessary state/branches. Separate confirmed defects from documented costs
-   and uncertain leads. Larger contract/media changes need their own justified
-   decision; no generic lifecycle manager, quality heuristic or size-only split.
-4. Exercise two real distinct builds with a deliberately supported common
-   contract: older App/newer Site, newer App/older Site, and an open page across
-   a compatible update. Different protocol versions are negative recovery checks,
-   not authority to support stale private clients. Relabelled builds are not
-   compatibility evidence; if no meaningful pair exists, record that limit.
-5. Accept Windows App and Go Server candidates through the existing checks,
-   including synthetic stored-room/config preservation and usable subsequent
-   sharing. Rehearse the same local release scripts when Actions is unavailable,
-   using dry-run publication and matching artifacts. Document the native-platform
-   build prerequisites; do not pretend one Windows machine produces every App.
-
-Finish when the coverage map accounts for the scoped owners, confirmed phase-core
-P0/P1 failures are resolved, the selected candidate scenarios pass and remaining
-limits are explicit. This does not establish universal compatibility or exhaustive
-race/endurance coverage. Retain the owner's deferred macOS/Linux physical capture
-and broad network matrices unless a concrete finding makes them relevant.
-Then provide the Windows candidate for owner acceptance and one coherent PR;
-merge/deployment/publication remain separate authorized delivery actions.
+1. Build final Windows App and Go Server candidates from one exact audited
+   revision through the existing packagers. The `98b29ec1` rehearsal predates
+   later source changes and is not final-candidate acceptance.
+2. Exercise two real builds sharing the current contract in both App/Site
+   directions and an already-open page across a compatible update. The recorded
+   `98b29ec1` candidate and the final candidate are a possible pair; verify exact
+   artifact identities first. These checks remain unrun. A private contract
+   does not prevent this rehearsal or require stale-protocol compatibility code.
+3. Verify synthetic stored-room/config preservation and usable subsequent
+   sharing across the candidate update. Package startup/probe checks do not
+   establish those behaviors. Keep the owner's macOS/Linux physical capture and
+   broader device/network deferrals unless a new concrete finding is relevant.
+4. Rehearse the local publisher dry run with genuine matching target artifacts;
+   the full set remains unverified because macOS needs its native toolchain.
+   Do not fabricate descriptors or relabel packages to satisfy it.
+5. Provide the Windows candidate for owner acceptance, then prepare one coherent
+   squash PR. Merge, deployment and public publication are separate delivery
+   actions; no release or main update is authorized by this audit closure.
 
 [Versioning](./reference/versioning.md#first-public-release-readiness) owns the
 remaining public-readiness boundary: real target packages, first supported
@@ -105,7 +61,7 @@ or duplicate CI compilation. No Gitee publication is active yet.
 Rehearsal artifacts measure 13.5 MB (Server runtime) and 36 MB (Windows App);
 confirm the current Gitee attachment quota before enabling the mirror.
 
-## Next — Awaiting Owner Direction
+### Public Introduction
 
 Resume the accepted [public introduction](./design/public-introduction.md):
 short English/Chinese README and first-use guides, the static site and its
@@ -120,9 +76,8 @@ production service is not the public demo. P2P-only has no media-server fallback
 Runtime capability configuration is implemented; do not reopen it as a second
 boolean or duplicate UI mode.
 
-The lifecycle audit above follows [engineering review](./reference/engineering.md#ablation-and-review).
-Its results determine repairs; search hits and file size alone do not authorize
-a repository rewrite.
+Further reviews follow [engineering review](./reference/engineering.md#ablation-and-review).
+Search hits and file size alone do not authorize a repository rewrite.
 
 [Verification status](./verification-status.md) owns remaining device/network
 limits, including iOS playback/window/audio behavior. NAT and Auto are complete

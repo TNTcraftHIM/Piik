@@ -409,23 +409,6 @@ describe("Host quality ownership", () => {
     expect(current.pendingQualityChangeRef.current).toBeNull();
   });
 
-  it('replays a quality draft requested while a source switch owns the share', async () => {
-    const current = fixture();
-    const sourceSwitch = {};
-    current.sourceSwitchRef.current = sourceSwitch;
-    await current.change(lower);
-    expect(current.qualitySettingsRef.current).toEqual(original);
-    expect(current.advancedQualityRef.current).toEqual(lower);
-    expect(current.pendingQualityChangeRef.current).toEqual(lower);
-    expect(current.applyCaptureProfile).not.toHaveBeenCalled();
-    current.sourceSwitchRef.current = sourceSwitch;
-    current.context.finishSourceSwitch(sourceSwitch);
-    await vi.waitFor(() => expect(current.qualitySettingsRef.current).toEqual(lower));
-    expect(current.advancedQualityRef.current).toEqual(lower);
-    expect(current.pendingQualityChangeRef.current).toBeNull();
-    expect(current.signalRef.current.setHostQualitySettings).toHaveBeenCalledWith(lower);
-  });
-
   it("does not overwrite a new notice after a stale Native source-switch SFU update", async () => {
     const current = fixture();
     const pending = deferred<boolean>();

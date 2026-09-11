@@ -409,7 +409,7 @@ export const zh = {
   "host.warn.param.scaleResolutionDownBy": "分辨率缩放",
   "host.warn.param.degradationPreference": "质量优先级",
   "host.warn.param.scalabilityMode": "伸缩模式",
-  "host.warn.sfuRecover": "SFU {stage}失败，已启动自动恢复",
+  "host.warn.sfuRecover": "SFU {params}失败，已启动自动恢复",
   "host.warn.sfuStage.connect": "连接",
   "host.warn.sfuStage.source": "分享源",
   "host.warn.sfuStage.videoPublish": "视频发布",
