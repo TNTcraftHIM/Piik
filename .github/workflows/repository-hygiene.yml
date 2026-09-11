@@ -11,6 +11,10 @@ on:
         required: false
         default: false
         type: boolean
+      candidate_version:
+        description: Optional candidate version (vMAJOR.MINOR.PATCH); never publishes
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -44,6 +48,8 @@ jobs:
         run: npm ci
       - name: Determine release identity
         id: release
+        env:
+          PIIK_BUILD_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.candidate_version || '' }}
         run: >-
           node scripts/release-version.mjs
           ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.PIIK_RELEASES_ENABLED == 'true' && 'plan' || 'build' }}

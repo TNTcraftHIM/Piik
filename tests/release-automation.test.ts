@@ -22,6 +22,11 @@ describe("release automation", () => {
       git("config", "commit.gpgSign", "false");
       git("commit", "--allow-empty", "-m", "chore: initial");
       expect(plan().version).toBe("v1.0.0");
+      const candidate = JSON.parse(execFileSync(process.execPath, [planner, "build"], {
+        cwd: root, encoding: "utf8", env: { ...process.env, PIIK_BUILD_VERSION: "v1.0.0" },
+      }));
+      expect(candidate).toMatchObject({ version: "v1.0.0", publish: false });
+      expect(git("tag")).toBe("");
       git("tag", "v1.0.0");
       // The tag might belong to an unfinished draft: publication can resume.
       expect(plan()).toMatchObject({ version: "v1.0.0", publish: true });

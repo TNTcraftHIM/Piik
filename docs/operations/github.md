@@ -37,6 +37,14 @@ artifacts. Runs queue rather than overlap or cancel one another. Branches/PRs
 stay quiet; manual `client_checks` dispatch remains available for candidates.
 Writing a new version back to main is unnecessary and prohibited.
 
+For a complete publisher rehearsal, dispatch with `client_checks: true` and an
+explicit `candidate_version` such as `v1.0.0`. This builds genuine Server and
+native App artifacts under one revision and version without tagging or
+publishing. Download that run's artifacts and pass their directory, version and
+full revision to `scripts/publish-release.mjs --dry-run` (put the flag after
+the three positional arguments). An omitted candidate version keeps the usual
+development/exact-tag identity.
+
 Enable GitHub's built-in release immutability for formal publication where
 available. Upload all assets to the draft before publishing. A failed upload can
 resume its same-source draft; a published version is never clobbered. If its
