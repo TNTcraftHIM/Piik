@@ -5,12 +5,53 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { releaseNotes } from "../scripts/release-notes.mjs";
 
 const planner = fileURLToPath(new URL("../scripts/release-version.mjs", import.meta.url));
 const publisher = fileURLToPath(new URL("../scripts/publish-release.mjs", import.meta.url));
 const sha = (value: string) => createHash("sha256").update(value).digest("hex");
 
 describe("release automation", () => {
+  it("publishes reviewed notes, excludes private history and retains every unreleased phase on retries", () => {
+    const root = mkdtempSync(join(tmpdir(), "piik-release-notes-"));
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+    const commit = (message: string) => {
+      git("commit", "--allow-empty", "-m", message);
+      return git("rev-parse", "HEAD");
+    };
+    try {
+      git("init", "--quiet", "--initial-branch=main");
+      git("config", "user.name", "Piik fixture");
+      git("config", "user.email", "fixture@example.invalid");
+      git("config", "commit.gpgSign", "false");
+      commit("chore: private history without release copy");
+      const launch = commit("feat: launch\n\n## Problem\nInternal discussion\n\n## Release notes\n" +
+        "<!-- Editor guidance -->\n### 开始分享\n\n- 一起玩，一起看。\n\n## Verification\nInternal log");
+      const first = releaseNotes(root, "v1.0.0", launch, "fixture/Piik");
+      expect(first).toContain("### 开始分享\n\n- 一起玩，一起看。");
+      expect(first).toContain(`/tree/${launch}`);
+      expect(first).not.toMatch(/private history|Internal|Editor guidance/);
+      git("tag", "-a", "v1.0.0", "-m", "Launch");
+      expect(releaseNotes(root, "v1.0.0", launch, "fixture/Piik")).toBe(first);
+      commit("fix: repair playback\n\n## Release notes\n- Playback resumes after reconnecting.");
+      const next = commit("feat: add a sharing option\n\n## Release notes\n- Choose a window to share.");
+      const notes = releaseNotes(root, "v1.1.0", next, "fixture/Piik");
+      expect(notes).toContain("- Playback resumes after reconnecting.\n\n- Choose a window to share.");
+      expect(notes).toContain(`/compare/v1.0.0...${next}`);
+      expect(notes).not.toContain("开始分享");
+      git("tag", "v1.1.0");
+      expect(releaseNotes(root, "v1.1.0", next, "fixture/Piik")).toBe(notes);
+      // A checkout may have advanced; generation still uses the requested SHA.
+      expect(releaseNotes(root, "v1.0.0", launch, "fixture/Piik")).toBe(first);
+      for (const section of ["", "## Release notes", "## Release notes\n<!-- Fill in -->\n### Changes",
+        "## Release notes\n- One\n## Release notes\n- Two"]) {
+        git("checkout", "--quiet", "--detach", next);
+        const invalid = commit(`chore: maintenance\n\n${section}`);
+        expect(() => releaseNotes(root, "v1.1.1", invalid, "fixture/Piik")).toThrow("one nonempty");
+      }
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
   it("plans from immutable tags and all unreleased main changes without editing version files", () => {
     const root = mkdtempSync(join(tmpdir(), "piik-release-plan-"));
     const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();

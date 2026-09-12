@@ -127,6 +127,28 @@ restoring an old authority database after newer grants/revocations is not a safe
 routine downgrade. No automatic updater or generic migration framework is
 introduced by this policy.
 
+## Release Notes
+
+GitHub Releases owns the published changelog. Each accepted PR supplies reviewed
+Chinese and English user-facing copy under the exact `## Release notes` heading
+in its squash commit; `###` headings structure that copy. Explain benefits,
+fixes and required upgrade actions, including breaking changes. Keep internal
+work logs, audit handoffs and unverified claims outside this public section.
+
+`scripts/release-notes.mjs` collects these sections from all unreleased
+first-parent commits since the previous stable tag. The first release uses
+only its launch commit's product introduction; private development history is
+not a launch changelog. Missing, empty or duplicate sections fail validation
+before packaging/publication. GitHub Actions shows the generated text in its
+run summary. A manual candidate with an explicit version also previews it, so
+prepare its commit text before dispatching a release rehearsal.
+
+The publisher passes the same text through a temporary notes file to GitHub,
+then removes that file. Gitee copies the GitHub description. Retrying the same
+release preserves its draft/published description; an exact tag does not move
+the changelog's starting point. Keep no `CHANGELOG.md`, versioned note directory
+or generated history commits. PRs and Git retain editorial provenance.
+
 ## Release Sources
 
 GitHub Releases is the primary publication; Gitee is an optional official mirror

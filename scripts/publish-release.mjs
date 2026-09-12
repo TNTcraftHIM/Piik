@@ -1,7 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { basename } from "node:path";
+import { randomUUID } from "node:crypto";
+import { rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, join } from "node:path";
 import semver from "semver";
 import { readReleaseArtifacts } from "./release-artifacts.mjs";
+import { releaseNotes } from "./release-notes.mjs";
 
 const [directory, version, revision, option] = process.argv.slice(2);
 if (option && option !== "--dry-run") {
@@ -47,8 +51,15 @@ if (option === "--dry-run") {
       process.exit(0);
     }
   } else {
-    gh("release", "create", version, "--repo", repository, "--target", revision,
-      "--draft", "--title", `Piik ${version}`, "--generate-notes");
+    const body = releaseNotes(process.cwd(), version, revision, repository);
+    const notes = join(tmpdir(), `piik-release-notes-${randomUUID()}.md`);
+    writeFileSync(notes, body, { flag: "wx" });
+    try {
+      gh("release", "create", version, "--repo", repository, "--target", revision,
+        "--draft", "--title", `Piik ${version}`, "--notes-file", notes);
+    } finally {
+      rmSync(notes);
+    }
   }
   // Clobber is limited to our same-revision draft; published versions are never changed.
   gh("release", "upload", version, "--repo", repository, "--clobber", ...files);

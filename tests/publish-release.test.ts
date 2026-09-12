@@ -1,11 +1,14 @@
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
 
-const { command } = vi.hoisted(() => ({ command: vi.fn<(program: string, args: string[]) => string>() }));
+const { command, notes } = vi.hoisted(() => ({
+  command: vi.fn<(program: string, args: string[]) => string>(), notes: vi.fn<() => string>(),
+}));
 vi.mock("node:child_process", () => ({ execFileSync: command }));
+vi.mock("../scripts/release-notes.mjs", () => ({ releaseNotes: notes }));
 
 const directory = mkdtempSync(join(tmpdir(), "piik-publisher-"));
 const version = "v1.0.1", revision = "a".repeat(40);
@@ -134,12 +137,25 @@ describe("Gitee mirror publication", () => {
   });
 });
 
-async function publish(releases: Release[], tag: "absent" | "annotated" | "wrong" | "api-error") {
+async function publish(releases: Release[], tag: "absent" | "annotated" | "wrong" | "api-error",
+  failureAt?: "notes" | "create") {
   const mutations: string[][] = [];
+  const copy = "### 更新\n\n- Share `windows` and $literal text.\n";
+  let notesPath: string | undefined;
+  notes.mockImplementation(() => {
+    if (failureAt === "notes") throw new Error("Missing release notes");
+    return copy;
+  });
   let published = releases.some((item) => item.tag_name === version && !item.draft);
   command.mockImplementation((_program, args) => {
     if (args[0] === "release") {
       mutations.push(args);
+      if (args[1] === "create") {
+        notesPath = args[args.indexOf("--notes-file") + 1];
+        expect(readFileSync(notesPath, "utf8")).toBe(copy);
+        expect(args).not.toContain("--generate-notes");
+        if (failureAt === "create") throw new Error("GitHub create failed");
+      }
       if (args[1] === "edit") published = true;
       return "";
     }
@@ -171,6 +187,7 @@ async function publish(releases: Release[], tag: "absent" | "annotated" | "wrong
     process.argv = argv;
     exit.mockRestore();
     output.mockRestore();
+    if (notesPath) expect(existsSync(notesPath)).toBe(false);
   }
   return { failure, mutations };
 }
@@ -193,6 +210,14 @@ describe("publisher recovery", () => {
     expect(result.failure).toBeUndefined();
     expect(result.mutations.find((args) => args[1] === "create")).toContain(revision);
     expect(result.mutations.find((args) => args[1] === "edit")).toContain("--latest=true");
+  });
+
+  it("rejects missing public copy before writes and removes temporary notes after a failed create", async () => {
+    expect(await publish([], "absent", "notes")).toEqual({ failure: "Missing release notes", mutations: [] });
+    const failed = await publish([], "absent", "create");
+    expect(failed.failure).toBe("GitHub create failed");
+    expect(failed.mutations).toHaveLength(1);
+    expect(failed.mutations[0][1]).toBe("create");
   });
 
   it("leaves complete published releases unchanged and rejects incomplete published releases", async () => {

@@ -7,7 +7,7 @@ const git = (root, ...args) => execFileSync("git", args, { cwd: root, encoding: 
 export const isReleaseVersion = (value) => typeof value === "string" &&
   /^v\d+\.\d+\.\d+$/.test(value) && semver.valid(value) !== null;
 
-function stableTags(root, ...filter) {
+export function stableTags(root, ...filter) {
   return git(root, "tag", ...filter).split("\n").filter(isReleaseVersion).sort(semver.rcompare);
 }
 

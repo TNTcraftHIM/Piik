@@ -40,7 +40,10 @@ Writing a new version back to main is unnecessary and prohibited.
 For a complete publisher rehearsal, dispatch with `client_checks: true` and an
 explicit `candidate_version` such as `v1.0.0`. This builds genuine Server and
 native App artifacts under one revision and version without tagging or
-publishing. Download that run's artifacts and pass their directory, version and
+publishing. Prepare its [release-note section](../reference/versioning.md#release-notes)
+and inspect the generated preview in the run summary. For a local preview, run
+`node scripts/release-notes.mjs v1.0.0 FULL_SOURCE_SHA` from the checkout with
+full history and tags. Download that run's artifacts and pass their directory, version and
 full revision to `scripts/publish-release.mjs --dry-run` (put the flag after
 the three positional arguments). An omitted candidate version keeps the usual
 development/exact-tag identity.

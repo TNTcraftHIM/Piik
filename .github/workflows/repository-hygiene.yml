@@ -54,6 +54,11 @@ jobs:
           node scripts/release-version.mjs
           ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.PIIK_RELEASES_ENABLED == 'true' && 'plan' || 'build' }}
           --github-output
+      - name: Preview release notes
+        if: steps.release.outputs.publish == 'true' || inputs.candidate_version != ''
+        run: node scripts/release-notes.mjs "$PIIK_RELEASE_VERSION" "$GITHUB_SHA" --github-summary
+        env:
+          PIIK_RELEASE_VERSION: ${{ steps.release.outputs.version }}
       # The Go build embeds internal/server/webassets/dist, so Vite runs first.
       - name: Build the Browser client
         run: npm run build:client
