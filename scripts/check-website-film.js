@@ -50,6 +50,7 @@
   // Hold two native play promises: a cancelled attempt must not mute its successor.
   const nativePlay = media.play;
   const pending = [];
+  Object.defineProperty(media, 'paused', { configurable: true, get: () => false });
   media.play = () => new Promise((resolve, reject) => pending.push({ resolve, reject }));
   try {
     seek(2);
@@ -75,11 +76,19 @@
     await settle();
     assert(!playing() && position() === Number(el('seek').max), 'Native audio ending must hold the final frame');
     assert(el('sound').getAttribute('aria-pressed') === 'true', 'Finishing the soundtrack must preserve sound for replay');
+    el('replay').click();
+    Object.defineProperty(media, 'paused', { configurable: true, get: () => true });
+    media.dispatchEvent(new Event('pause'));
+    pending[3].resolve();
+    await settle();
+    const playLabel = document.documentElement.lang === 'zh-CN' ? '播放' : 'Play';
+    assert(!playing() && el('play').getAttribute('aria-label') === playLabel, 'Native media pause must pause the picture and its controls');
   } finally {
     media.play = nativePlay;
+    delete media.paused;
     if (playing()) el('play').click();
     media.pause();
   }
   assert(document.documentElement.scrollWidth <= innerWidth, 'The page must not overflow horizontally');
-  return { passed: ['lazy audio', 'muted play', 'pause', 'seek/replay determinism', 'twenty viewers', 'end hold', 'language round trip', 'stale play rejection', 'audio failure', 'native ending', 'page width'] };
+  return { passed: ['lazy audio', 'muted play', 'pause', 'seek/replay determinism', 'twenty viewers', 'end hold', 'language round trip', 'stale play rejection', 'audio failure', 'native ending', 'native media pause', 'page width'] };
 })()

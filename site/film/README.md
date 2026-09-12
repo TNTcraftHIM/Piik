@@ -48,6 +48,6 @@ ffmpeg -i Funkorama.mp3 -vn -t 38.019802 \
 Open a fresh local film page in a named `agent-browser` session, then evaluate
 [`scripts/check-website-film.js`](../../scripts/check-website-film.js) using
 `agent-browser --session <session> eval --stdin`. The browser check covers lazy
-audio, playback/seek/replay, language links, obsolete play promises and audio
-failure/ending. Visual acceptance still requires watching the complete film,
-checking both languages, narrow layouts and the clean recording view.
+audio, playback/seek/replay, language links, obsolete play promises, native media
+pause and audio failure/ending. Visual acceptance still requires watching the
+complete film, checking both languages, narrow layouts and the clean recording view.

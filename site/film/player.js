@@ -174,6 +174,10 @@ audio.addEventListener('waiting', () => {
   if (playing && sound) byId('player-status').textContent = say('Loading music…', '正在加载音乐…');
 });
 audio.addEventListener('playing', () => { byId('player-status').textContent = ''; });
+audio.addEventListener('pause', () => {
+  // Native/OS media controls share the same pause owner as the visible button.
+  if (playing && sound && audio.paused && !audio.ended && !audio.error) pause();
+});
 audio.addEventListener('error', () => { if (playing && sound) continueMuted(); });
 audio.addEventListener('ended', () => {
   if (!playing || !sound) return;
