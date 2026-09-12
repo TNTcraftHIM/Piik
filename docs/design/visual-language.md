@@ -85,7 +85,10 @@ spacing, then use a vertical outline when depth exceeds the available width.
 
 Couch upholstery uses the fixed warm orange/yellow `--couch` / `--couch-dark`
 palette. Never draw upholstery from the participant palette or randomize it by
-room. Figures and exterior upholstery use flat fills without outline strokes.
+room. Keep automatic participant colours outside the upholstery's amber/orange
+range and the crown's gold; check all eight tokens against both objects in light
+and dark themes. The crown retains a bright gold fill with a dark gold edge.
+Figures and exterior upholstery use flat fills without outline strokes.
 Use differences in tone, spacing and name tags to keep people readable; retain
 only the few interior seams that clarify cushions. Apply this convention to
 the website and README cast as well as the product UI.

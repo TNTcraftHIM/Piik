@@ -11,6 +11,7 @@ import { NativeSenderPeer } from "../src/client/native/native-sender-peer";
 import { NativeCompatibilityError } from "../src/client/native/client";
 import { reconcileBoundedMediaChildren } from "../src/client/webrtc/media-assignment";
 import { debugError, debugEvent, debugOperation } from "../src/client/lib/debug";
+import { hostActionErrorNotice } from "../src/client/pages/host-page-notices";
 
 // Exercise the actual page owners without mounting capture hardware or a Browser.
 const source = ts.createSourceFile("HostPage.tsx", readFileSync(
@@ -21,7 +22,7 @@ const owners = new Set(["changeQuality", "commitQuality", "handleSignalMessage",
   "acquireNativeClient", "requestSharing", "startNativeShare", "startBrowserNativeIngress",
   "ownNativeClient", "discardNativeClient", "releaseUnusedNativeClient", "closeCaptureSourcePicker",
   "openCaptureSourcePicker", "startSharing", "beginRoomMutation", "finishRoomMutation",
-  "startPeer", "reconcileHostChildren"]);
+  "startPeer", "reconcileHostChildren", "setNoticeError", "endSharing"]);
 const functions: string[] = [];
 function collect(node: ts.Node): void {
   if (ts.isFunctionDeclaration(node) && node.name && owners.has(node.name.text)) {
@@ -110,6 +111,8 @@ function fixture(launchedByClient = true) {
   const start = context.startSharing;
   const startChild = context.startPeer;
   const openPicker = context.openCaptureSourcePicker;
+  const writeNoticeError = context.setNoticeError;
+  context.setNoticeError = state.setNoticeError;
   context.startSharing = state.startSharing;
   context.startPeer = state.startPeer;
   context.openCaptureSourcePicker = state.openCaptureSourcePicker;
@@ -119,6 +122,8 @@ function fixture(launchedByClient = true) {
     releaseUnused: context.releaseUnusedNativeClient as () => void,
     disposeNative: context.disposeNativeShare as (expectedShare?: string) => void,
     start: () => start( { kind: "native", client, target: {}, audio: false, path: {} }) as Promise<void>,
+    startBrowser: () => start({ kind: "browser" }) as Promise<void>,
+    writeNoticeError,
     discover: context.acquireNativeClient as () => Promise<typeof client | null>,
     requestShare: context.requestSharing as () => void,
     startNative: () => context.startNativeShare(1, "share", { client, target: {}, audio: false, path: {} }) as Promise<unknown>,
@@ -131,6 +136,60 @@ function fixture(launchedByClient = true) {
 }
 
 describe("Host quality ownership", () => {
+  it.each(["browser", "app-browser", "native"])("keeps %s capture cancellation in the television status", async (entry) => {
+    const current = fixture(entry !== "browser");
+    const denied = new DOMException("private capture detail", "NotAllowedError");
+    const setNoticeValue = vi.fn();
+    Object.assign(current.context, {
+      phase: "idle", setNoticeValue, setNoticeError: current.writeNoticeError,
+      readableError: hostActionErrorNotice,
+      captureDisplay: vi.fn(async () => { throw denied; }),
+    });
+    current.activeGenerationRef.current = null;
+    current.nativeShareGenerationRef.current = null;
+    current.client.startShare.mockRejectedValue(denied);
+    await (entry === "native" ? current.start() : current.startBrowser());
+    expect(setNoticeValue).toHaveBeenCalledExactlyOnceWith({
+      kind: "text", text: hostActionErrorNotice(denied, "capture"),
+      target: "television", comic: "warning",
+    });
+    expect(current.setPhase).toHaveBeenLastCalledWith("error");
+    expect(current.createRoom).not.toHaveBeenCalled();
+    expect(current.roomMutationRef.current).toBeNull();
+  });
+
+  it("keeps a rejected source change as operation feedback while the current share stays live", async () => {
+    const current = fixture();
+    const denied = new DOMException("private capture detail", "NotAllowedError");
+    const setNoticeValue = vi.fn();
+    Object.assign(current.context, {
+      setNoticeValue, setNoticeError: current.writeNoticeError,
+      readableError: hostActionErrorNotice,
+    });
+    current.client.replaceShareSource.mockRejectedValue(denied);
+    await current.switchSource();
+    expect(setNoticeValue).toHaveBeenCalledExactlyOnceWith({
+      kind: "text", text: hostActionErrorNotice(denied, "source"),
+      target: "operation", comic: "warning",
+    });
+    expect(current.setPhase).not.toHaveBeenCalled();
+    expect(current.track.stop).not.toHaveBeenCalled();
+  });
+
+  it.each([null, "warning"])("keeps the share ending reason and tone together in the television: %s", (comic) => {
+    const current = fixture();
+    const setNoticeValue = vi.fn();
+    current.context.setNoticeValue = setNoticeValue;
+    current.generationRef.current = 1;
+    current.context.endSharing({ key: "host.shareEnded" }, false, comic);
+    expect(setNoticeValue).toHaveBeenCalledExactlyOnceWith({
+      kind: "key", key: "host.shareEnded", vars: undefined,
+      target: "television", comic,
+    });
+    expect(current.setPhase).toHaveBeenLastCalledWith("ended");
+    expect(current.activeGenerationRef.current).toBeNull();
+  });
+
   it("retains connecting children during reconciliation and rebuilds them after reauthentication", async () => {
     const current = fixture(false);
     current.nativeClientRef.current = null;

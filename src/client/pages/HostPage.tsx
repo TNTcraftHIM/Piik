@@ -188,9 +188,13 @@ import {
   type HostAction,
 } from "./host-page-notices";
 
-type NoticeValue =
+type NoticeValue = (
   | { kind: "text"; text: string }
-  | { kind: "key"; key: CopyKey; vars?: Record<string, string> };
+  | { kind: "key"; key: CopyKey; vars?: Record<string, string> }
+) & {
+  target: "television" | "operation";
+  comic: ComicKind | null;
+};
 
 const QUALITY_PROFILE_CAPTIONS: Record<QualityProfileId, CopyKey> = {
   "720p30": "host.quality.720p30",
@@ -473,29 +477,29 @@ export function HostPage({
     Map<string, ViewerQualityEvidencePresentation>
   >(() => new Map());
   const [noticeValue, setNoticeValue] = useState<NoticeValue | null>(null);
-  const [noticeComic, setNoticeComic] = useState<ComicKind | null>(null);
   const [hostSfuQualityWarning, setHostSfuQualityWarning] = useState<
     MediaFailure[] | null
   >(null);
   function setNotice(value: string | null, comic: ComicKind | null = null): void {
-    setNoticeValue(value ? { kind: "text", text: value } : null);
-    setNoticeComic(comic);
+    setNoticeValue(value ? { kind: "text", text: value, target: "operation", comic } : null);
   }
   function setNoticeKey(key: CopyKey, vars?: Record<string, string>): void {
-    setNoticeValue({ kind: "key", key, vars });
-    setNoticeComic(null);
+    setNoticeValue({ kind: "key", key, vars, target: "operation", comic: null });
   }
-  function setNoticeError(error: unknown, action: HostAction): void {
-    setNoticeValue({ kind: "text", text: readableError(error, action) });
-    setNoticeComic(action === "connection" ? "route-failed" : "warning");
+  function setNoticeError(
+    error: unknown,
+    action: HostAction,
+    target: NoticeValue["target"] = "operation",
+  ): void {
+    setNoticeValue({ kind: "text", text: readableError(error, action), target,
+      comic: action === "connection" ? "route-failed" : "warning" });
   }
   function setNoticeErrorKey(
     key: CopyKey,
     comic: ComicKind = "warning",
     vars?: Record<string, string>,
   ): void {
-    setNoticeValue({ kind: "key", key, vars });
-    setNoticeComic(comic);
+    setNoticeValue({ kind: "key", key, vars, target: "operation", comic });
   }
   const [copied, setCopied] = useState(false);
   const copiedResetTimerRef = useRef<number | null>(null);
@@ -930,8 +934,6 @@ export function HostPage({
   function endSharing(
     message: string | { key: CopyKey; vars?: Record<string, string> },
     notifyServer = true,
-    // Involuntary endings keep the failure tone: the notice pill reads its
-    // icon/tone from the comic, so a bare key would render as green success.
     comic: ComicKind | null = null,
   ): void {
     const generation = activeGenerationRef.current;
@@ -945,12 +947,13 @@ export function HostPage({
       writePreferredRoom(currentRoom.roomId);
     }
     disposeResources(notifyServer);
-    setNoticeValue(
-      typeof message === "string"
+    setNoticeValue({
+      ...(typeof message === "string"
         ? { kind: "text", text: message }
-        : { kind: "key", key: message.key, vars: message.vars },
-    );
-    setNoticeComic(comic);
+        : { kind: "key", key: message.key, vars: message.vars }),
+      target: "television",
+      comic,
+    });
     setPhase("ended");
   }
 
@@ -1822,7 +1825,7 @@ export function HostPage({
           if (!sent) {
             setNoticeErrorKey("host.pause.signalRecovering");
           } else {
-            setNoticeKey(nextPaused ? "host.pauseNotice" : "host.resumeNotice");
+            setNotice(null);
           }
         })
         .catch((error: unknown) => {
@@ -1856,7 +1859,7 @@ export function HostPage({
       }
       sharingPausedRef.current = false;
       setSharingPaused(false);
-      setNoticeKey("host.resumeNotice");
+      setNotice(null);
       return;
     }
     if (!setMediaPaused(activeStream, true)) {
@@ -1871,7 +1874,7 @@ export function HostPage({
     hostSfuRouteRef.current?.setPaused(true);
     discardPreparedHostChild();
     if (signalRef.current?.setSharingPaused(true) === true) {
-      setNoticeKey("host.pauseNotice");
+      setNotice(null);
     } else {
       setNoticeErrorKey("host.pause.signalRecovering");
     }
@@ -2456,7 +2459,7 @@ export function HostPage({
       }
       activeGenerationRef.current = null;
       shareGenerationRef.current = null;
-      setNoticeError(error, "capture");
+      setNoticeError(error, "capture", "television");
       setPhase("error");
       return;
     }
@@ -2668,7 +2671,7 @@ export function HostPage({
             onAuthorizationRequired();
             return;
           }
-          setNoticeError(error, "room");
+          setNoticeError(error, "room", "television");
           setPhase("error");
         }
       };
@@ -2694,7 +2697,7 @@ export function HostPage({
         onAuthorizationRequired();
         return;
       }
-      setNoticeError(error, "room");
+      setNoticeError(error, "room", "television");
       setPhase("error");
     }
     } finally {
@@ -3298,6 +3301,13 @@ export function HostPage({
     signal: signalStatus,
     roomReady: Boolean(room),
   });
+  // Startup and termination reasons refine the source status. Independent
+  // operation results may coexist with it; wording is not a status identity.
+  const statusNotice = noticeValue?.target === "television" ? noticeValue : null;
+  const televisionStatus = statusNotice?.comic
+    ? { ...hostStatus.television, tone: "bad" as const, icon: "alert" as const,
+      comic: statusNotice.comic }
+    : hostStatus.television;
   const titleContent = titleFrames(hostStatus.titleFrameKey).map((frame) =>
     [frame, hostStatus.titleMarker].filter(Boolean).join(" "),
   );
@@ -3352,7 +3362,8 @@ export function HostPage({
               phase === "idle" || phase === "ended" || phase === "error"
             }
             label={t("host.stageAria")}
-            indicator={<StatusIndicator status={hostStatus.television} />}
+            indicator={<StatusIndicator status={televisionStatus}
+              label={statusNotice ? noticeText ?? undefined : undefined} />}
           >
             {stream ? (
               <video ref={videoRef} autoPlay muted playsInline />
@@ -3383,9 +3394,6 @@ export function HostPage({
               (phase === "idle" || phase === "ended" || phase === "error") ? (
               <div className="lr-tv-overlay">
                 {phase === "idle" ? <WelcomeLine /> : null}
-                {phase === "ended" && !vis ? (
-                  <span className="lr-tv-msg">{t("host.ended")}</span>
-                ) : null}
                 <div className="lr-entry-actions">
                   <span className="lr-entry-action">
                     <Tooltip kind="hint-share-start" text={vis ? undefined : t("host.start")} align="start">
@@ -3528,10 +3536,10 @@ export function HostPage({
             {hostSfuWarningText ? (
               <Pill icon="alert" label={hostSfuWarningText} comic="warning" />
             ) : null}
-            {noticeText && noticeText !== t(hostStatus.activity.labelKey) ? (
-              <Pill icon={noticeComic ? "alert" : "check"}
-                tone={noticeComic ? undefined : "good"} label={noticeText}
-                comic={noticeComic ?? undefined} />
+            {noticeValue?.target === "operation" && noticeText ? (
+              <Pill icon={noticeValue.comic ? "alert" : "check"}
+                tone={noticeValue.comic ? undefined : "good"} label={noticeText}
+                comic={noticeValue.comic ?? undefined} />
             ) : null}
           </div>
           <Couch

@@ -34,16 +34,16 @@ function readStored(): Partial<CopyPrefs> {
 }
 
 function detectLang(): Lang {
-  return typeof navigator !== "undefined" &&
-    navigator.language?.toLowerCase().startsWith("zh")
-    ? "zh"
-    : "en";
+  const language = typeof navigator === "undefined"
+    ? undefined
+    : navigator.language?.split("-")[0]?.toLowerCase();
+  return language === "zh" ? "zh" : "en";
 }
 
-const stored = readStored();
 const state: CopyPrefs = {
-  lang: stored.lang ?? detectLang(),
-  vis: stored.vis ?? true,
+  lang: detectLang(),
+  vis: false,
+  ...readStored(),
 };
 
 function syncDocumentLanguage(): void {

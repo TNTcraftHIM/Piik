@@ -37,7 +37,7 @@ body[data-ready] .fallback { display:none; }
 .play-film:hover { transform:translateY(-3px); background:#314557; }
 .play-film:active { transform:translateY(2px); }
 #reduced-note { flex-basis:100%; text-align:center; font-size:12px; margin:0; }
-.transport { --wall-2:#ffffff18; position:relative; display:flex; align-items:center; gap:4px; width:min(620px,calc(100% - 48px)); margin:12px auto 14px; border:1px solid #ffffff20; border-radius:16px; padding:4px 10px; background:#22303ef2; color:#fafaf3; box-shadow:0 4px 20px #14232b15; }
+.transport { --wall-2:#ffffff18; position:relative; display:flex; align-items:center; gap:4px; width:min(620px,calc(100% - 48px)); margin:12px auto 14px; border:1px solid #ffffff20; border-radius:16px; padding:4px 10px; background:rgb(34 48 62 / 78%); color:#fafaf3; box-shadow:0 4px 20px #14232b15; }
 .lr-btn svg { display:block; }
 .play-icon,.sound-off,.contract-icon { display:none; }
 body:not([data-playing]) .pause-icon { display:none; }

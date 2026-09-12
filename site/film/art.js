@@ -39,8 +39,8 @@ function mascot(id,x,y,scale,colour=PAPER) {
 function couch(x, y, width) {
   return `<g transform="translate(${x} ${y})">
     <path d="M24 77v20m${width - 48}-20v20" stroke="${INK}" stroke-width="8" stroke-linecap="round"/>
-    ${rect(0, 0, width, 86, 28, '#edbb72')}${rect(12, 62, width - 24, 27, 13, '#d99a56')}
-    ${rect(-7, 35, 26, 58, 13, '#d99a56')}${rect(width - 19, 35, 26, 58, 13, '#d99a56')}
+    ${rect(0, 0, width, 86, 28, '#e9ad63')}${rect(12, 62, width - 24, 27, 13, '#cd8845')}
+    ${rect(-7, 35, 26, 58, 13, '#cd8845')}${rect(width - 19, 35, 26, 58, 13, '#cd8845')}
   </g>`;
 }
 
@@ -82,7 +82,7 @@ export function createArt(svg, language, onUI = () => {}) {
     <clipPath id="title-bottom"><rect x="-1600" y="324" width="4800" height="1476"/></clipPath>
     <g id="wordmark">${text(85, 477, 'Piik', 407, PAPER)}</g>
     <g id="pawn"><circle cy="-31" r="20"/><path d="M-35 51.5c0-32.5 12.5-50 35-50s35 17.5 35 50q0 7.5-7.5 7.5h-55Q-35 59-35 51.5Z"/></g>
-    <g id="crown" fill="#edc35d" stroke="#846634" stroke-width=".85" stroke-linejoin="round"><path d="m1.2 6.3-1.2-3.7q-.2-.7.5-.4L3 3.6l2.4-2.5q.6-.7 1.2 0L9 3.6l2.5-1.4q.7-.3.5.4l-1.2 3.7q-.2.9-1.2.9H2.4q-1 0-1.2-.9Z"/><path d="M2.1 6.5h7.8" stroke="#ba8b39" stroke-width="1"/></g>
+    <g id="crown" fill="#f7d861" stroke="#705025" stroke-width="1" stroke-linejoin="round"><path d="m1.2 6.3-1.2-3.7q-.2-.7.5-.4L3 3.6l2.4-2.5q.6-.7 1.2 0L9 3.6l2.5-1.4q.7-.3.5.4l-1.2 3.7q-.2.9-1.2.9H2.4q-1 0-1.2-.9Z"/><path d="M2.1 6.5h7.8" stroke="#b58a2f" stroke-width="1"/></g>
     <g id="game-still">${gameMarkup('card-game')}</g>
     <g id="pad">
       <path d="M-115-52h230q47 0 66 61l20 74q12 49-34 49-29 0-72-55H-95q-43 55-72 55-46 0-34-49l20-74q19-61 66-61Z" fill="${PAPER}"/>
@@ -219,7 +219,7 @@ export function createArt(svg, language, onUI = () => {}) {
         <path d="M1220 429v111M990 627v-87h426v87m-284-87v87m142-87v87" fill="none" stroke="${INK}" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
         ${screen('encode-picture',1000,168,410,drawing,-5)}
         <g id="encode-audience">
-          ${['#99c9e6','#e6a8bc','#b6addc','#85baa8'].map((colour,i)=>`<g transform="translate(${990+i*142} 690)"><circle cy="-5" r="61" fill="${PAPER}"/>${person(`encode-person-${i}`,0,1,1.1,colour)}</g>`).join('')}
+          ${[colours[0],colours[1],colours[3],colours[4]].map((colour,i)=>`<g transform="translate(${990+i*142} 690)"><circle cy="-5" r="61" fill="${PAPER}"/>${person(`encode-person-${i}`,0,1,1.1,colour)}</g>`).join('')}
         </g>
         ${[0,1,2,3].map(i=>`<g id="encode-packet-${i}">${rect(-12,-9,24,18,5,PAPER,`stroke="${INK}" stroke-width="3"`)}</g>`).join('')}
         ${small(1220,110,say('ONE PICTURE, SHARED.','一份画面，多人共享。'),INK,'text-anchor="middle"')}
@@ -274,7 +274,7 @@ export function createArt(svg, language, onUI = () => {}) {
     <g transform="rotate(-12 1120 450)"><g id="people-seats">
       ${[0, 1, 2, 3].map((row) => `<g id="seat-row-${row}" transform="translate(${674 + row * 15} ${167 + row * 180})">
         ${couch(0, 0, 790)}
-        ${[0, 1, 2, 3, 4].map((col) => person(`seat-${row * 5 + col}`, 79 + col * 157, -11, 1.02, colours[(row + col) % 5])).join('')}
+        ${[0, 1, 2, 3, 4].map((col) => person(`seat-${row * 5 + col}`, 79 + col * 157, -11, 1.02, colours[(row + col) % colours.length])).join('')}
       </g>`).join('')}
     </g></g>
     <g id="people-host"><g transform="translate(495 379) rotate(-12)">${couch(-61, 9, 122)}${person('host', 0, -7, .91, '#83c4a5', true)}</g></g>
@@ -340,7 +340,7 @@ export function createArt(svg, language, onUI = () => {}) {
     <g id="end-room"><g transform="translate(961 637) rotate(-12)">
       ${couch(0, 0, 577)}
       ${person('end-host', 77, -13, 1.25, '#83c4a5', true)}
-      ${person('end-friend-0', 221, -13, 1.25, '#99c9e6')}${person('end-friend-1', 365, -13, 1.25, '#b6addc')}${person('end-friend-2', 509, -13, 1.25, '#e6a8bc')}
+      ${person('end-friend-0', 221, -13, 1.25, colours[0])}${person('end-friend-1', 365, -13, 1.25, colours[3])}${person('end-friend-2', 509, -13, 1.25, colours[1])}
       <g id="end-gamepad" transform="translate(77 32) rotate(-9) scale(.25)"><use href="#pad"/>${circle(-167, 70, 35, '#83c4a5')}${circle(167, 70, 35, '#83c4a5')}</g>
     </g></g>
     <g id="end-label">${sceneLabel(say('SCREEN SHARING FOR FRIENDS', '开个房间，叫朋友来。'), MINT)}</g>
@@ -575,14 +575,16 @@ export function createArt(svg, language, onUI = () => {}) {
       attr('slash-path', 'd', `M${edge} 0H1600V900H${edge - 360}Z`);
       node(`scene-${incoming.id}`).setAttribute('clip-path', 'url(#slash)');
     }
-    // The loading mascot's CSS follows this same seekable clock. Only the held
-    // card after natural completion lets its native idle loop keep running.
+    // Fit three loading-mascot loops into the settled closing card. End in the
+    // loop's quiet tail so both sparkles finish before the music, including the
+    // last exported frame. Native idle playback continues from this same phase.
+    const closingProgress = clamp((t - (27 * BAR + BEAT)) / (DURATION - (27 * BAR + BEAT)));
     endMark.getAnimations({subtree: true}).forEach(animation => {
       if (idle) {
         if (animation.playState !== 'running') animation.play();
       } else {
         animation.pause();
-        animation.currentTime = Math.max(0, t - (27 * BAR + BEAT)) * 1000;
+        animation.currentTime = closingProgress * (3 * Number(animation.effect.getTiming().duration) - BEAT * 250);
       }
     });
     const product=!poster&&['website','desktop','launch','share','invite'].includes(incoming.id);

@@ -57,6 +57,26 @@ describe("media status projection", () => {
     expect(peerConnectionStatus("closed").tone).toBe("off");
   });
 
+  it.each(["reconnecting", "failed"] as const)("shows media recovery only on the television: %s", (connection) => {
+    const result = deriveViewerStatus(presentation({ type: "connection", revision: 1, connection }), "connected");
+    expect(result.television).toMatchObject({
+      tone: "warn", icon: "refresh", labelKey: "viewer.notice.mediaRecovering",
+    });
+    expect(result.notice).toBeNull();
+    expect(result.overlay).toBeNull();
+    expect(result.connection.tone).toBe("live");
+    const recovered = deriveViewerStatus(presentation({ type: "connection", revision: 1, connection: "connected" }), "connected");
+    expect(recovered.television.labelKey).toBe("viewer.msg.playing");
+    expect(recovered.notice).toBeNull();
+  });
+
+  it("keeps the independent Host availability notice alongside a current picture", () => {
+    const result = deriveViewerStatus(presentation({ type: "host", host: "offline" }), "connected");
+    expect(result.television.labelKey).toBe("viewer.msg.playing");
+    expect(result.notice?.labelKey).toBe("viewer.notice.hostOffline");
+    expect(result.overlay).toBeNull();
+  });
+
   it("keeps Host source activity separate from signaling and ignores a previous share's pause", () => {
     const sharing = deriveHostStatus({ phase: "live", paused: false, signal: "reconnecting", roomReady: true });
     expect(sharing.television.tone).toBe("live");

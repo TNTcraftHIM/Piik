@@ -1,3 +1,4 @@
+// Theme tokens reserve warm upholstery and gold for the room and Host crown.
 const PARTICIPANT_COLORS = [
   "var(--pawn-1)", "var(--pawn-2)", "var(--pawn-3)", "var(--pawn-4)",
   "var(--pawn-5)", "var(--pawn-6)", "var(--pawn-7)", "var(--pawn-8)",

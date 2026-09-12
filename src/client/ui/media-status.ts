@@ -156,11 +156,13 @@ export function deriveViewerStatus(
   route: "p2p" | "sfu" | null = null,
 ) {
   // Control recovery does not interrupt a picture that remains proved.
-  const playable = presentation.overlay === "none" && presentation.noticeKey !== "viewer.notice.mediaRecovering";
+  const mediaRecovering = presentation.noticeKey === "viewer.notice.mediaRecovering";
+  const playable = presentation.overlay === "none" && !mediaRecovering;
   const stage = playable ? "playing" : presentation.stage;
   const activity: StatusDescriptor = {
     ...STAGE_VISUALS[stage],
-    labelKey: playable ? "viewer.msg.playing" : presentation.messageKey,
+    labelKey: mediaRecovering ? "viewer.notice.mediaRecovering"
+      : playable ? "viewer.msg.playing" : presentation.messageKey,
     ...(stage === "receiving" ? { comic: route === "sfu" ? "connecting-sfu" as const : "connecting-p2p" as const } : {}),
   };
   const warning = qualityWarning(observation);
@@ -173,9 +175,6 @@ export function deriveViewerStatus(
       break;
     case "viewer.notice.signalRecovering":
       notice = { ...SIGNAL_VISUALS.reconnecting, icon: "signal", labelKey: presentation.noticeKey };
-      break;
-    case "viewer.notice.mediaRecovering":
-      notice = { ...STATUS_CATALOG.reconnecting, labelKey: presentation.noticeKey };
       break;
   }
   const overlay = presentation.overlay === "none"

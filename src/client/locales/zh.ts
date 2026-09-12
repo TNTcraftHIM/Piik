@@ -141,7 +141,6 @@ export const zh = {
   "host.noAudio": "当前来源没有可共享音频",
   "host.localPreviewPaused": "本地预览已暂停，分享仍在继续",
   "host.pauseNotice": "音视频分享已暂停",
-  "host.resumeNotice": "音视频分享已恢复",
   "host.stopNotice": "已停止分享",
   "host.roomReplaced": "房间号已更换",
   "host.roomInvalid": "房间已失效，再次点击将创建新房",

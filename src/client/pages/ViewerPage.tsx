@@ -1,5 +1,4 @@
 import { PawnSvg } from "../components/living/Pawn";
-import { HostMark } from "../components/living/HostMark";
 import {
   useEffect,
   useMemo,
@@ -2531,9 +2530,7 @@ export function ViewerPage({
                 hostDisplayName ? { name: hostDisplayName } : undefined,
               )}
             >
-              <svg className="lr-glyph" width="17" height="17" viewBox="0 0 24 24" aria-hidden="true">
-                <HostMark x={3} y={6} width={18} />
-              </svg>
+              <Glyph name="tv" size={17} />
               <b>{hostDisplayName ?? t("common.host")}</b>
             </div>
             <div className="lr-viewer-personal-controls">

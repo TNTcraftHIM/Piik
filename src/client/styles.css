@@ -16,16 +16,16 @@
   --paper: #ffffff;
   --muted: color-mix(in srgb, var(--ink) 75%, var(--paper));
   /* Fixed warm upholstery; shade changes define the cushions and arms. */
-  --couch: #edbb72;
-  --couch-dark: #d99a56;
+  --couch: #e9ad63;
+  --couch-dark: #cd8845;
   --you: #2fa66a;
   --pawn-1: #3b7dd8;
-  --pawn-2: #efb23f;
+  --pawn-2: #559bb7;
   --pawn-3: #8e6fd8;
   --pawn-4: #2fa8a0;
   --pawn-5: #e2698f;
-  --pawn-6: #7d9c3f;
-  --pawn-7: #e08a3c;
+  --pawn-6: #4e9c74;
+  --pawn-7: #a978bd;
   --pawn-8: #5f7dd8;
   --action: #2f6fed;
   --action-deep: #2058c9;
@@ -1066,9 +1066,9 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
 .lr-input input { min-width: 0; flex: 1; height: 100%; border: 0; outline: 0; background: transparent; font: inherit; font-size: 16px; }
 .lr-input input[type="password"]:not(:placeholder-shown) { letter-spacing: .25em; }
 .lr-welcome { width: 100%; min-width: 0; max-width: 100%; margin: 0; overflow: hidden; color: inherit; font-size: 15px; font-weight: 600; line-height: 1.7; text-align: center; white-space: nowrap; text-overflow: ellipsis; }
-.lr-welcome:not(.is-cipher)::before { content: "✦"; color: var(--pawn-2); margin-right: 8px; }
+.lr-welcome:not(.is-cipher)::before { content: "✦"; color: #d7982b; margin-right: 8px; }
 .lr-welcome-cipher { display: inline-flex; align-items: center; gap: 8px; vertical-align: middle; opacity: .72; white-space: nowrap; }
-.lr-welcome-cipher i { width: 3px; height: 3px; background: var(--pawn-2); transform: rotate(45deg); }
+.lr-welcome-cipher i { width: 3px; height: 3px; background: #d7982b; transform: rotate(45deg); }
 .lr-tv-overlay > .lr-welcome { position: absolute; top: clamp(20px, 3vw, 32px); left: 18px; right: 18px; width: auto; font-size: clamp(13px, 1.5vw, 16px); }
 .lr-tv-overlay:has(> .lr-join-panel) > .lr-welcome { display: none; }
 .lr-welcome-catalog { margin-block: 0 24px; }

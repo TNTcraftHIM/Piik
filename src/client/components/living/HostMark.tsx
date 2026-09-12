@@ -19,8 +19,8 @@ export function HostMark({
     <g
       transform={`translate(${x} ${y}) scale(${width / 12})`}
       fill="none"
-      stroke={dashed ? "var(--ink)" : "#846634"}
-      strokeWidth={0.85}
+      stroke={dashed ? "var(--ink)" : "#705025"}
+      strokeWidth={1}
       strokeLinecap="round"
       strokeLinejoin="round"
       className={className}
@@ -29,8 +29,8 @@ export function HostMark({
       aria-hidden="true"
     >
       <path d="m1.2 6.3-1.2-3.7q-.2-.7.5-.4L3 3.6l2.4-2.5q.6-.7 1.2 0L9 3.6l2.5-1.4q.7-.3.5.4l-1.2 3.7q-.2.9-1.2.9H2.4q-1 0-1.2-.9Z"
-        fill={dashed ? "none" : "#edc35d"} />
-      {!dashed ? <path d="M2.1 6.5h7.8" stroke="#ba8b39" strokeWidth={1} /> : null}
+        fill={dashed ? "none" : "#f7d861"} />
+      {!dashed ? <path d="M2.1 6.5h7.8" stroke="#b58a2f" strokeWidth={1} /> : null}
     </g>
   );
 }

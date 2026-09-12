@@ -113,6 +113,11 @@ or tracking are needed.
 
 ## Small implementation
 
+The website and film initially follow the browser's primary language: Chinese
+uses Chinese copy, and other languages use English. An explicit language choice
+is shared between these two pages and remembered; linked language choices take
+precedence when following a link.
+
 Use static HTML, CSS, SVG and small scripts for the public pages; no router,
 CMS, translation dependency or new application backend. The film's isolated
 demonstration frame bundles the existing React product components and styles,

@@ -62,8 +62,11 @@ commands and responses retain their strict protocol contract.
 ## Visual Language
 
 Chinese, English, and pure-visual modes are three expressions of the same typed
-state and command catalog. A fresh Browser starts in visual mode and persists
-an explicit later choice. Text modes use concise copy.
+state and command catalog. On first use, the App and Server UI follow the
+Browser's primary system language: Chinese uses Chinese text, and other
+languages use English. Pure-visual mode remains an explicit choice. An explicit
+later choice is persisted and takes precedence over that default. Text modes
+use concise copy.
 
 The [visual language](../design/visual-language.md) is the single owner of
 illustrative roles and objects, semantic colour, panel grammar, motion,

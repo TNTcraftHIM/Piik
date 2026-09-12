@@ -1,6 +1,7 @@
 import { createArt, DURATION } from './art.js';
 import { BEAT, DOWNLOAD_AT } from './score.js';
 import { mountBrands } from '../assets/brand.js';
+import { initialLanguage, rememberLanguage } from '../assets/language.js';
 mountBrands();
 
 const root = document.documentElement;
@@ -8,7 +9,7 @@ const body = document.body;
 const byId = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
 body.classList.toggle('embedded', params.get('embedded') === '1');
-root.lang = params.get('lang') === 'zh-CN' ? 'zh-CN' : 'en';
+root.lang = initialLanguage();
 if (['light', 'dark'].includes(params.get('theme'))) root.dataset.theme = params.get('theme');
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const audio = byId('soundtrack');
@@ -158,6 +159,7 @@ byId('sound').addEventListener('click', toggleSound);
 seek.addEventListener('input', () => seekTo(Number(seek.value)));
 byId('language').addEventListener('click', () => {
   root.lang = root.lang === 'en' ? 'zh-CN' : 'en';
+  rememberLanguage(root.lang);
   art = createArt(byId('film-art'), root.lang, presentUI);
   localize();
   // The active loop will render the new artwork at the same media position.

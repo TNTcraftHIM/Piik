@@ -143,18 +143,24 @@
   const lastPose = endingPose();
   seek(DOWNLOAD_AT-BEAT);
   assert(el('download').hidden, 'Rewinding must hide the ending action');
-  seek(27 * BAR + BEAT + 1.8);
+  seek(DURATION - 3 * BEAT);
   const endingAnimations = () => el('end-tv').getAnimations({subtree:true});
   assert(endingAnimations().length === 5 && endingAnimations().every(animation => animation.playState === 'paused' && animation.effect.getTiming().duration === 3600), 'The ending must reuse the loading mascot loop, held at the requested film frame');
   assert(getComputedStyle(el('end-tv-wink')).opacity === '1' && Number(getComputedStyle(el('end-tv-sparkles').firstElementChild).opacity) > .5, 'The loading mascot must wink with its gold sparkles');
+  for (const time of [DURATION - BEAT / 2, DURATION - 1 / 60]) {
+    seek(time);
+    assert(getComputedStyle(el('end-tv-wink')).opacity === '0' && getComputedStyle(el('end-tv-open')).opacity === '1' && [...el('end-tv-sparkles').children].every(star => getComputedStyle(star).opacity === '0'), 'The final wink and both sparkles must settle before the music and last exported frame');
+  }
   assert(!el('scene-download') && el('download-banner').closest('#scene-end') && el('end-brand').checkVisibility(), 'The download must overlay the existing brand and room instead of starting another scene');
   seek(Number(el('seek').max));
   assert(endingPose() === lastPose, 'The final pose must survive reverse seeking');
+  const endingPhase = endingAnimations().map(animation => animation.currentTime);
   seek(DURATION - .1);
   el('play').click();
   await until(() => !playing(), 'The film must finish naturally');
   await settle();
   assert(endingAnimations().every(animation => animation.playState === 'running'), 'Natural completion must leave only the mascot idle loop running');
+  assert(endingAnimations().every((animation, index) => animation.currentTime >= endingPhase[index] && animation.currentTime < endingPhase[index] + 250), 'Natural completion must continue the same phase without restarting the wink');
   seek(DURATION);
   const frozenEnding = endingAnimations().map(animation => animation.currentTime);
   await settle();
@@ -376,7 +382,7 @@
       for (const animation of animations) { animation.pause(); animation.currentTime = (index+.5)*HERO_CUT*1000; }
       const shown = HERO_KINDS.filter(name=>win.getComputedStyle(doc.getElementById('activity-'+name)).opacity==='1');
       assert(shown.length===1 && shown[0]===kind, `The hero must show only ${kind}`);
-      assert(win.getComputedStyle(doc.getElementById('hero-gamepad')).opacity===(kind==='rpg'?'1':'0'), 'The gamepad must match the activity');
+      assert(win.getComputedStyle(doc.getElementById('hero-gamepad')).opacity==='1' && doc.querySelectorAll('#hero-gamepad .game-hand').length===2, 'The original controller and floating hands must stay visible throughout the activity loop');
       for (const [id,style] of Object.entries(heroFrame(kind,.5))) {
         const actual = win.getComputedStyle(doc.getElementById(id));
         if (style.opacity !== undefined) assert(Math.abs(Number(actual.opacity)-Number(style.opacity))<.01, `Hero visibility differs: ${id}`);

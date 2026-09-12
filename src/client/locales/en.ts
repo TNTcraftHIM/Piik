@@ -143,7 +143,6 @@ export const en: Record<CopyKey, string> = {
   "host.noAudio": "This source has no shareable audio",
   "host.localPreviewPaused": "Local preview paused; sharing continues",
   "host.pauseNotice": "Audio and video sharing paused",
-  "host.resumeNotice": "Audio and video sharing resumed",
   "host.stopNotice": "Sharing stopped",
   "host.roomReplaced": "Room code replaced",
   "host.roomInvalid": "Room no longer available; press again to create a new one",

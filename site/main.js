@@ -1,4 +1,5 @@
 import { mountBrands } from './assets/brand.js';
+import { initialLanguage, rememberLanguage } from './assets/language.js';
 mountBrands();
 // Content stays HTML; scripts only add preferences and replayable illustrations.
 const root = document.documentElement;
@@ -30,9 +31,9 @@ const copy = {
     image: '戴着小金冠的房主分享 RPG 游戏、绘画、旅行照片和动画电影，三位朋友坐在沙发上观看。',
   },
 };
-language.addEventListener('click', () => {
-  const chinese = root.lang !== 'zh-CN';
-  root.lang = chinese ? 'zh-CN' : 'en';
+function setLanguage(lang) {
+  root.lang = lang;
+  const chinese = lang === 'zh-CN';
   language.lang = chinese ? 'en' : 'zh-CN';
   language.textContent = chinese ? 'English' : '简体中文';
   language.setAttribute('aria-label', chinese ? 'Switch to English' : '切换到简体中文');
@@ -42,6 +43,10 @@ language.addEventListener('click', () => {
   roomIllustration.alt = current.image;
   for (const option of theme.options) option.textContent = current.themes[option.value];
   syncFilmPreferences();
+}
+language.addEventListener('click', () => {
+  setLanguage(root.lang === 'zh-CN' ? 'en' : 'zh-CN');
+  rememberLanguage(root.lang);
 });
 function syncThemeColor() {
   document.querySelector('meta[name="theme-color"]').content = getComputedStyle(root).getPropertyValue('--wall').trim();
@@ -55,10 +60,9 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', syncThemeC
 syncThemeColor();
 document.querySelector('.preferences').hidden = false;
 
-// Carry explicit choices through the film's ordinary links, without a second
-// preference store or making either page depend on the other being open.
+// Ordinary links carry explicit choices between the page and its film.
 const preferences = new URLSearchParams(location.search);
-if (preferences.get('lang') === 'zh-CN') language.click();
+setLanguage(initialLanguage());
 if (['light', 'dark'].includes(preferences.get('theme'))) {
   theme.value = preferences.get('theme');
   root.dataset.theme = theme.value;

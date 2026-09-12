@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { initialLanguage, rememberLanguage } from "../site/assets/language.js";
 
 import {
   getTitleFrames,
@@ -13,6 +14,51 @@ describe("copy catalog", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     setCopy({ lang: "zh", vis: false });
+  });
+
+  it.each([
+    ["zh-CN", "zh:false"],
+    ["zh-TW", "zh:false"],
+    ["en-US", "en:false"],
+    ["ja-JP", "en:false"],
+    [undefined, "en:false"],
+  ])("uses the primary system language on first use: %s", async (language, expected) => {
+    vi.resetModules();
+    vi.stubGlobal("navigator", { language });
+    const [{ useCopy }, { createElement }, { renderToStaticMarkup }] = await Promise.all([
+      import("../src/client/ui/copy.ts"),
+      import("react"),
+      import("react-dom/server"),
+    ]);
+    function Selection() {
+      const { lang, vis } = useCopy();
+      return `${lang}:${vis}`;
+    }
+    expect(renderToStaticMarkup(createElement(Selection))).toBe(expected);
+  });
+
+  it.each([
+    ["zh", "text", "zh:false"],
+    ["en", "vis", "en:true"],
+  ])("keeps an explicit %s/%s choice over the system default", async (lang, mode, expected) => {
+    vi.resetModules();
+    vi.stubGlobal("navigator", { language: "ja-JP" });
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: (key: string) => key === "piik:ui-lang" ? lang : mode,
+      },
+      addEventListener: () => {},
+    });
+    const [{ useCopy }, { createElement }, { renderToStaticMarkup }] = await Promise.all([
+      import("../src/client/ui/copy.ts"),
+      import("react"),
+      import("react-dom/server"),
+    ]);
+    function Selection() {
+      const { lang, vis } = useCopy();
+      return `${lang}:${vis}`;
+    }
+    expect(renderToStaticMarkup(createElement(Selection))).toBe(expected);
   });
 
   it("renders zh and en for every key", () => {
@@ -76,5 +122,33 @@ describe("copy catalog", () => {
     expect(documentElement.lang).toBe("en");
     setCopy({ lang: "zh" });
     expect(documentElement.lang).toBe("zh-CN");
+  });
+});
+
+describe("website language", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it.each([
+    ["zh-TW", null, "", "zh-CN"],
+    ["en-US", null, "", "en"],
+    ["ja-JP", null, "", "en"],
+    ["ja-JP", "zh-CN", "", "zh-CN"],
+    ["zh-CN", "zh-CN", "?lang=en", "en"],
+  ])("resolves system, saved and linked language: %s/%s/%s", (language, saved, search, expected) => {
+    vi.stubGlobal("navigator", { language });
+    vi.stubGlobal("location", { search });
+    vi.stubGlobal("localStorage", { getItem: () => saved });
+    expect(initialLanguage()).toBe(expected);
+  });
+
+  it("uses the system default when storage is unavailable", () => {
+    vi.stubGlobal("navigator", { language: "zh-CN" });
+    vi.stubGlobal("location", { search: "" });
+    vi.stubGlobal("localStorage", {
+      getItem: () => { throw new Error("blocked"); },
+      setItem: () => { throw new Error("blocked"); },
+    });
+    expect(initialLanguage()).toBe("zh-CN");
+    expect(() => rememberLanguage("en")).not.toThrow();
   });
 });

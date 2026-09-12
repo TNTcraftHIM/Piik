@@ -98,3 +98,12 @@ Host is paused. No preservation policy has been accepted for that transition.
    direction with original Piik assets. Assess extension boundaries and cost
    before scheduling any theme/plugin API. Design experiments remain in Git
    history, outside the main source tree.
+8. **Visual presentation and community translations.** In a later version,
+   explore bringing the pure-visual mode's illustrations and motion into the
+   Chinese and English interfaces. Evaluate whether a separate pure-visual mode
+   remains useful, and prepare the existing locale catalogs for community
+   translations. No removal or new translation framework is scheduled for this
+   release.
+9. **Website illustration polish.** Match the Host's held prop to the four
+   existing hero activities: gamepad, paintbrush, camera and remote. Keep the
+   accepted bright cast, floating hands and shared activity timing.

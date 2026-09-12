@@ -8,7 +8,7 @@
   padding: 6px 12px max(6px, env(safe-area-inset-bottom));
   border-top: 1.5px solid color-mix(in srgb, var(--ink) 24%, transparent);
   color: var(--ink);
-  background: color-mix(in srgb, var(--paper) 94%, transparent);
+  background: color-mix(in srgb, var(--paper) 78%, transparent);
   box-shadow: 0 -4px 18px rgb(0 0 0 / 8%);
   transition: opacity 180ms ease, transform 220ms var(--spring);
 }
