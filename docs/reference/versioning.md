@@ -94,7 +94,12 @@ release descriptor. Fixed names allow GitHub's native latest-asset links;
 [website operations](../operations/website.md#preview) owns download presentation
 and verification of the matching Gitee mirror.
 
-Update checks compare actual release precedence and link to the matching release.
+Update checks compare actual release precedence. The App reports its compiled
+OS/architecture and links to that platform's ZIP in the selected release metadata;
+the release page remains the fallback when no matching attachment is available.
+Fixed archive names and published names with that release's SHA suffix are
+accepted only with the provider's exact release download URL. Downloads start on
+click; checking for an update does not fetch the archive.
 Newer version wins even when the source SHA is unchanged. Same version with a
 different known SHA reports a different official build, not a newer one. A
 development build with a known differing SHA offers the official release as a

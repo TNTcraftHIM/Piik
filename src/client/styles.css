@@ -303,9 +303,24 @@ body.lr-theater-open { overflow: hidden; }
 .lr-tooltip-preview-trigger { width: 36px; height: 36px; padding: 0; border: 1px solid var(--wall-2); border-radius: 999px; background: transparent; color: var(--ink); cursor: help; }
 .lr-tooltip-preview-art { min-height: 106px; display: grid; place-items: center; overflow: hidden; }
 .lr-tooltip-preview-art svg { max-width: 100%; height: auto; }
-.lr-tv-overlay.has-comic { gap: 8px; padding: 10px; }
+.lr-tv-overlay.has-comic {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px;
+}
+.lr-tv-overlay.has-comic > svg { min-height: 0; flex-shrink: 1; }
+.lr-tv-overlay.has-comic .lr-tv-status-content {
+  flex: none;
+  flex-direction: row;
+  gap: 8px;
+  max-width: 100%;
+}
+.lr-tv-overlay.has-comic .lr-tv-msg { line-height: 1.35; }
 .lr-tv-overlay.has-comic .lr-brand-loader,
-.lr-tv-overlay.has-comic .lr-tv-big { width: 40px; height: 40px; }
+.lr-tv-overlay.has-comic .lr-tv-big { width: 40px; height: 40px; flex-shrink: 0; }
 .lr-tv-overlay.has-comic .lr-brand-mark { width: 32px; height: 32px; }
 
 .lr-tv-big {

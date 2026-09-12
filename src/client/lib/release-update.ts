@@ -29,7 +29,23 @@ function normalizeVersion(value: unknown): string | null {
   return version ? `v${version}` : null;
 }
 
-export function parseReleaseMetadata(value: unknown): PublishedRelease | null {
+function packageDownloadURL(release: PublishedRelease, assets: unknown, target?: string): string {
+  if (!target || !/^[a-z0-9]+-[a-z0-9]+$/.test(target) || !Array.isArray(assets)) return release.url;
+  const names = [`piik-app-${target}.zip`];
+  if (release.revision) names.push(`piik-app-${target}-${release.revision.slice(0, 7)}.zip`);
+  for (const name of names) {
+    const matches = assets.filter(asset => asset?.name === name);
+    if (!matches.length) continue;
+    const asset = matches[0];
+    const expectedURL = `${release.url.replace("/releases/tag/", "/releases/download/")}/${name}`;
+    return matches.length === 1 && (release.url.startsWith(MIRROR_RELEASE_PAGE) ||
+      (Number.isSafeInteger(asset.size) && asset.size > 0 && asset.state === "uploaded")) &&
+      asset.browser_download_url === expectedURL ? asset.browser_download_url : release.url;
+  }
+  return release.url;
+}
+
+export function parseReleaseMetadata(value: unknown, packageTarget?: string): PublishedRelease | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const release = value as Record<string, unknown>;
   if ((release.draft !== undefined && release.draft !== false) ||
@@ -37,15 +53,16 @@ export function parseReleaseMetadata(value: unknown): PublishedRelease | null {
   const version = normalizeVersion(release.tag_name);
   if (!version || version !== release.tag_name || !/^v\d+\.\d+\.\d+$/.test(version) ||
       release.html_url !== RELEASE_PAGE + version) return null;
-  return {
+  const normalized = {
     version,
     // GitHub permits a branch here; only our publisher's full SHA is provenance.
     revision: normalizeReleaseRevision(release.target_commitish),
     url: RELEASE_PAGE + version,
   };
+  return { ...normalized, url: packageDownloadURL(normalized, release.assets, packageTarget) };
 }
 
-export function parseMirrorReleaseMetadata(value: unknown): PublishedRelease | null {
+export function parseMirrorReleaseMetadata(value: unknown, packageTarget?: string): PublishedRelease | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const release = value as Record<string, unknown>;
   if (release.prerelease !== false || typeof release.body !== "string") return null;
@@ -56,7 +73,9 @@ export function parseMirrorReleaseMetadata(value: unknown): PublishedRelease | n
     tag_name: release.tag_name, html_url: RELEASE_PAGE + String(release.tag_name),
     target_commitish: sources[0][1],
   });
-  return normalized ? { ...normalized, url: MIRROR_RELEASE_PAGE + normalized.version } : null;
+  if (!normalized) return null;
+  const mirror = { ...normalized, url: MIRROR_RELEASE_PAGE + normalized.version };
+  return { ...mirror, url: packageDownloadURL(mirror, release.assets, packageTarget) };
 }
 
 export function releaseUpdateNotice(
@@ -85,6 +104,7 @@ export async function checkReleaseUpdate(
     mirrorAPIURL?: string;
     fetchImpl?: typeof fetch;
     timeoutMs?: number;
+    packageTarget?: string;
   } = {},
 ): Promise<ReleaseUpdateNotice | null> {
   if (!normalizeVersion(current.version) && !normalizeReleaseRevision(current.revision)) return null;
@@ -117,13 +137,13 @@ export async function checkReleaseUpdate(
         if (!response.ok) break;
         const data: unknown = await response.json();
         if (!source.mirror) {
-          latest = parseReleaseMetadata(data);
+          latest = parseReleaseMetadata(data, options.packageTarget);
           if (latest) return releaseUpdateNotice(current, latest);
           break;
         }
         if (!Array.isArray(data) || data.length > 100) break;
         for (const value of data) {
-          const candidate = parseMirrorReleaseMetadata(value);
+          const candidate = parseMirrorReleaseMetadata(value, options.packageTarget);
           if (candidate && (!latest || compare(candidate.version, latest.version) > 0)) latest = candidate;
         }
         if (data.length < 100) {

@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -201,6 +202,7 @@ func (server *Server) handleState(response http.ResponseWriter, request *http.Re
 		"localAccessPassword": server.localAccessPassword,
 		"version":             server.version,
 		"revision":            server.revision,
+		"packageTarget":       runtime.GOOS + "-" + runtime.GOARCH,
 		"defaultMode": func() Mode {
 			if server.site != "" {
 				return ModeSite

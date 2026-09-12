@@ -39,12 +39,13 @@ order and interaction ownership consistent across languages, themes and viewport
 sizes. Reflow or bounded scrolling must not hide a primary action, truncate an
 essential value, overlap controls or change meaning.
 
-Tooltips reuse the same illustrative scene in every mode. Chinese and English
-add a concise caption beneath it; pure-visual mode keeps the scene and its
-playful pictograms as an explicit alternative. Names, addresses and other literal
+Tooltips and state overlays reuse the same illustrative scene in every mode.
+Chinese and English add a concise caption beneath it; pure-visual mode keeps the
+scene and its playful pictograms as an explicit alternative. Names, addresses and other literal
 values without a corresponding scene remain text. Illustration and caption
 explain the same action or current fact, with one tone and motion owner. Mount
-scenes only while their tooltip is shown; captions remain readable throughout.
+scenes only while their tooltip or overlay is shown; captions remain readable
+throughout.
 
 Shared buttons and chips use pill shapes, a quiet lower edge and a short lift
 on hover or keyboard focus, then compress on press. Inputs and option tiles

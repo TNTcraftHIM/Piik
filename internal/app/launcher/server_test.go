@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io/fs"
 	"net/http"
+	"runtime"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -92,11 +93,13 @@ func TestLauncherIncludesTheInjectedBuildVersionAndRevision(t *testing.T) {
 	}
 	defer response.Body.Close()
 	var state struct {
-		Version  string `json:"version"`
-		Revision string `json:"revision"`
+		Version       string `json:"version"`
+		Revision      string `json:"revision"`
+		PackageTarget string `json:"packageTarget"`
 	}
 	if response.StatusCode != http.StatusOK || json.NewDecoder(response.Body).Decode(&state) != nil ||
-		state.Version != version || state.Revision != revision {
+		state.Version != version || state.Revision != revision ||
+		state.PackageTarget != runtime.GOOS+"-"+runtime.GOARCH {
 		t.Fatalf("launcher build = %d, %+v", response.StatusCode, state)
 	}
 }

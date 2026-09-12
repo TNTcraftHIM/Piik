@@ -12,8 +12,66 @@ const release = {
   target_commitish: latestRevision,
   html_url: "https://github.com/TNTcraftHIM/Piik/releases/tag/v1.2.0",
 };
+const packageAsset = (target: string, suffix = "") => {
+  const name = `piik-app-${target}${suffix}.zip`;
+  return { name, size: 1024, state: "uploaded",
+    browser_download_url: `https://github.com/TNTcraftHIM/Piik/releases/download/${release.tag_name}/${name}` };
+};
 
 describe("App release update notice", () => {
+  it.each(["windows-amd64", "darwin-arm64", "linux-amd64"])("links the published %s ZIP without downloading it during the check", async (packageTarget) => {
+    const assets = ["windows-amd64", "darwin-arm64", "linux-amd64"].map(target => packageAsset(target));
+    const fetchImpl = vi.fn<typeof fetch>(async () => Response.json({ ...release, assets }));
+    await expect(checkReleaseUpdate({ version: "v1.1.0", revision: currentRevision }, { fetchImpl, packageTarget }))
+      .resolves.toMatchObject({ kind: "update-available", version: release.tag_name,
+        url: assets.find(asset => asset.name === `piik-app-${packageTarget}.zip`)!.browser_download_url });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(String(fetchImpl.mock.calls[0][0])).toBe(DEFAULT_RELEASE_API_URL);
+  });
+
+  it("uses a listed older SHA-suffixed ZIP and prefers the fixed name when both exist", () => {
+    const older = packageAsset("windows-amd64", `-${latestRevision.slice(0, 7)}`);
+    expect(parseReleaseMetadata({ ...release, assets: [older] }, "windows-amd64")?.url)
+      .toBe(older.browser_download_url);
+    const current = packageAsset("windows-amd64");
+    expect(parseReleaseMetadata({ ...release, assets: [older, current] }, "windows-amd64")?.url)
+      .toBe(current.browser_download_url);
+  });
+
+  it("keeps the release page when a matching safe ZIP is missing, without trying another provider", async () => {
+    const asset = packageAsset("windows-amd64");
+    for (const assets of [[], [packageAsset("linux-amd64")], [packageAsset("windows-amd64", "-aaaaaaa")],
+      [{ ...asset, state: "new" }], [{ ...asset, size: 0 }], [{ ...asset, size: undefined }], [asset, asset],
+      [{ ...asset, browser_download_url: asset.browser_download_url.replace("github.com", "evil.example") }],
+      [{ ...asset, browser_download_url: asset.browser_download_url.replace("v1.2.0", "v1.1.0") }],
+    ]) {
+      const fetchImpl = vi.fn<typeof fetch>(async () => Response.json({ ...release, assets }));
+      await expect(checkReleaseUpdate({ version: "v1.1.0", revision: currentRevision },
+        { fetchImpl, packageTarget: "windows-amd64" })).resolves.toMatchObject({ url: release.html_url });
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+    }
+    expect(parseReleaseMetadata({ ...release, assets: [asset] }, "windows-386")?.url).toBe(release.html_url);
+    expect(parseReleaseMetadata({ ...release, assets: [asset] })?.url).toBe(release.html_url);
+  });
+
+  it.each(["windows-amd64", "darwin-arm64", "linux-amd64"])("uses a listed mirror %s ZIP only after the existing primary check fails", async (packageTarget) => {
+    const name = `piik-app-${packageTarget}.zip`;
+    const mirrorAsset = { name,
+      browser_download_url: `https://gitee.com/TNTcraftHIM/Piik/releases/download/${release.tag_name}/${name}` };
+    const mirrored = { tag_name: release.tag_name, prerelease: false,
+      body: `<!-- piik-source: ${latestRevision} -->`, assets: [mirrorAsset] };
+    const fetchImpl = vi.fn<typeof fetch>(async (input) => String(input) === DEFAULT_RELEASE_API_URL
+      ? new Response(null, { status: 503 }) : Response.json([mirrored]));
+    await expect(checkReleaseUpdate({ version: "v1.1.0", revision: currentRevision },
+      { fetchImpl, packageTarget })).resolves.toMatchObject({ url: mirrorAsset.browser_download_url });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    for (const assets of [[], [mirrorAsset, mirrorAsset],
+      [{ ...mirrorAsset, browser_download_url: mirrorAsset.browser_download_url.replace("gitee.com", "evil.example") }],
+      [{ ...mirrorAsset, browser_download_url: mirrorAsset.browser_download_url.replace("v1.2.0", "v1.1.0") }],
+    ]) expect(parseMirrorReleaseMetadata({ ...mirrored, assets }, packageTarget)?.url)
+      .toBe(`https://gitee.com/TNTcraftHIM/Piik/releases/tag/${release.tag_name}`);
+  });
+
   it("checks a release without sending installed identity or credentials", async () => {
     const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
       expect(String(input)).toBe(DEFAULT_RELEASE_API_URL);

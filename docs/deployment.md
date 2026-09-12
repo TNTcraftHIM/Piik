@@ -126,7 +126,8 @@ SHA, or a development build can choose the official release. These notices are
 distinct; a different SHA alone is not called newer.
 The request sends no current revision, credentials, room data, or media data;
 network errors, private-repository responses, and missing releases are treated
-as no notice. It never downloads, replaces, or interrupts a running share.
+as no notice. Checking does not download an archive, replace files, or interrupt
+a running share; the user can follow the update link to download the App ZIP.
 
 An operator can perform the corresponding read-only Server check:
 

@@ -21,6 +21,7 @@ const launcherStateSchema = z.object({
   defaultMode: z.enum(["local", "site"]),
   revision: z.string(),
   version: z.string().default("development"),
+  packageTarget: z.string().optional(),
 });
 const launcherResultSchema = z.object({ target: z.string().url() }).strict();
 
@@ -50,7 +51,7 @@ export function AppLauncherPage() {
         void checkReleaseUpdate({
           version: state.version,
           revision: state.revision,
-        })
+        }, { packageTarget: state.packageTarget })
           .then((notice) => {
             if (current && notice) setUpdate(notice);
           })

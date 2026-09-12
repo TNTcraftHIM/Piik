@@ -106,29 +106,28 @@ export function StageOverlay({
       (Boolean(spin) || comic === "waiting-for-host" || comic === "recovering"));
   const content = (
     <>
-      {vis && comic ? <Comic kind={comic} theme="stage" tone={tone}
+      {comic ? <Comic kind={comic} theme="stage" tone={tone}
         motion={transition || spin ? "progress" : undefined} /> : null}
       <span className="lr-tv-status-content">
-      {showMascot ? (
-        <BrandLoader />
-      ) : (
-        <span className={`lr-tv-big${spin ? " lr-spin" : ""}${onActivate ? " is-action is-ripple" : ""}`}>
-          <Glyph name={icon} size={30} draw="stage-overlay" />
-        </span>
-      )}
-      {vis ? progress && (
-        <span className="lr-tv-progress" aria-label={progress}>
-          <Glyph name="refresh" size={17} className="lr-spin" />
-          <span className="lr-tv-msg">{progress}</span>
-        </span>
-      ) :
-        <span className="lr-tv-msg">{message}</span>}
+        {(vis || !comic || onActivate) && (showMascot ? (
+          <BrandLoader />
+        ) : (
+          <span className={`lr-tv-big${spin ? " lr-spin" : ""}${onActivate ? " is-action is-ripple" : ""}`}>
+            <Glyph name={icon} size={30} draw="stage-overlay" />
+          </span>
+        ))}
+        {vis ? progress && (
+          <span className="lr-tv-progress" aria-label={progress}>
+            <Glyph name="refresh" size={17} className="lr-spin" />
+            <span className="lr-tv-msg">{progress}</span>
+          </span>
+        ) : <span className="lr-tv-msg">{message}</span>}
       </span>
     </>
   );
   if (onActivate) {
     return (
-      <button type="button" className={`lr-tv-overlay${dim ? " is-dim" : ""}${vis && comic ? " has-comic" : ""}`} onClick={onActivate} aria-label={message}>
+      <button type="button" className={`lr-tv-overlay${dim ? " is-dim" : ""}${comic ? " has-comic" : ""}`} onClick={onActivate} aria-label={message}>
         {content}
       </button>
     );
@@ -137,7 +136,7 @@ export function StageOverlay({
     <div
       // Passive state layer: it must not intercept clicks meant for the
       // playback controls it covers (it owns no controls itself).
-      className={`lr-tv-overlay is-passive${dim ? " is-dim" : ""}${vis && comic ? " has-comic" : ""}`}
+      className={`lr-tv-overlay is-passive${dim ? " is-dim" : ""}${comic ? " has-comic" : ""}`}
       role="status"
       aria-label={message}
     >
