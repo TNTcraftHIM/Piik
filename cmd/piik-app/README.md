@@ -1,21 +1,20 @@
 # Piik App
 
-Piik App is the self-contained and native-capability runtime for the same
-Browser application used by Hosted Piik. It does not implement another UI,
-room store, signaling protocol, or route controller.
+Piik App provides local rooms and native screen capture through the Piik web
+interface in your system Browser.
 
 ## Run A Package
 
 Extract the matching platform bundle in full and keep `runtime` beside the
 App executable. Run `piik-app.exe` on Windows, `./piik-app` on
-Linux, or `Piik App.app` on macOS. The launcher opens in the system Browser;
-the App does not embed a browser UI. Packaged execution needs no Node.js, npm,
-or Go installation. Linux native capture uses the system dependencies described
+Linux, or `Piik App.app` on macOS. The launcher opens in the system Browser.
+Linux native capture uses the system dependencies described
 in the [Linux capture guide](../../native/capture/linux/README.md).
 
-Windows App and Browser are this phase's acceptance targets. Other platform
-builds do not establish physical capture/audio acceptance; see
-[current status](../../docs/status.md). Package construction and public Release
+Windows App and browser sharing are the primary tested paths. The macOS and
+Linux apps have not yet been tested on physical devices; test results and
+[feedback](https://github.com/TNTcraftHIM/Piik/issues) are welcome. macOS native
+capture requires Apple silicon and macOS 13 or newer. Package construction and public Release
 publication are separate steps in [deployment](../../docs/deployment.md).
 
 ## Modes
@@ -25,11 +24,9 @@ publication are separate steps in [deployment](../../docs/deployment.md).
   Site, then enters the normal Host page.
 - The launcher remembers the Site address but keeps the per-run room source
   separate. The App RPC starts before this choice and accepts the saved Site
-  alongside the Local Host origin, so Local or Public invite does not disable
-  Site enhancement. An App-opened Site remembers the opt-in in that Browser
+  alongside the Local Host origin. An App-opened Site remembers the opt-in in that Browser
   origin; later manually opened Host pages may reuse the running App.
-- `--site`, `--local`, and `--link` remain deterministic automation inputs for
-  CI and development. They are not required for normal use.
+- The `--site`, `--local`, and `--link` flags select a mode for CI and development.
 - The default launcher checks the official GitHub Releases metadata after it
   opens and shows a notice when a newer full-SHA release exists. The check is
   best-effort and never installs or replaces the App.
@@ -72,9 +69,8 @@ reuse suitable H.264/VP8 outputs and derive a missing lower output only for
 direct-child demand. Compatible children share that output; each edge receives
 only its selected representation. SFU publication combines its requested output
 prefix with one aggregate upstream budget. A lower-output constraint does not
-replace the original input or higher sibling outputs. The existing route
-controller still owns persistent quality evidence and any route replacement;
-there is no room-wide score or periodic rebalance. See
+replace the original input or higher sibling outputs. The route controller owns
+persistent quality evidence and route replacement. See
 [media quality](../../docs/product/media-quality.md) for the implemented behavior
 and [status](../../docs/status.md) for its acceptance limits.
 
@@ -89,7 +85,7 @@ The terminal shows the current mode, entry links and startup state; its language
 follows the launcher and App-enabled pages.
 Press `o` to reopen the Browser, or `q` / Ctrl+C to end Local
 rooms and stop the local server and temporary public link. Plain-text output
-uses Ctrl+C. A Site-loaded Browser tab does not own the App process.
+uses Ctrl+C. The App keeps running after a Site tab closes.
 
 For one-link Internet sharing, open the App launcher, choose **Public invite**,
 create a room in the opened Browser, and send its normal invitation link. The
@@ -106,8 +102,7 @@ use a configured Site when persistent control availability or SFU fallback matte
 Chromium-based Browsers can restrict WebRTC UDP through Browser settings,
 extensions or managed policies. Disabling non-proxied UDP can prevent even the
 local Browser-to-App media connection; successful capture or page loading
-does not prove that this separate connection is available. This is not specific
-to one Browser brand or to VPN use.
+does not prove that this separate connection is available.
 
 Check the Browser's WebRTC/IP-handling policy and any extension's WebRTC or
 IP-leak protection setting. Restore a policy that permits WebRTC UDP, reload

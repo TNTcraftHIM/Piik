@@ -1,9 +1,12 @@
 // One seekable score, measured in musical bars. No scene owns a timer.
 import { gameMarkup, createGame } from '../assets/game.js';
+import { mascotMarkup } from '../assets/brand.js';
+import { montageMarkup, createMontage } from '../assets/games.js';
+import { sketchMarkup, createSketch } from '../assets/sketch.js';
+import { photoMarkup, movieMarkup, moviePlanePose } from '../assets/activities.js';
+import { BEAT, BAR, DURATION } from './score.js';
+export { DURATION } from './score.js';
 
-const BAR = 240 / 101;
-export const DURATION = 24 * BAR;
-const BEAT = BAR / 4;
 const INK = '#203037';
 const PAPER = '#faf5e7';
 const ORANGE = '#f47843';
@@ -28,13 +31,8 @@ function person(id, x, y, scale, colour, host = false) {
   </g></g>`;
 }
 
-function mascot(id, x, y, scale, colour = PAPER) {
-  return `<g transform="translate(${x} ${y}) scale(${scale})"><g id="${id}">
-    <g transform="translate(-16 -16)" fill="none" stroke="${INK}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-      <path d="m11 4 5 4 5-4M10 29l2-3m10 3-2-3"/>
-      <rect x="4" y="8" width="24" height="18" rx="4" fill="${colour}"/>
-      <g id="${id}-eyes"><circle cx="11.5" cy="16.5" r="1.25" fill="${INK}" stroke="none"/><path d="M19 17q2.3-3 4.7 0"/></g>
-    </g></g></g>`;
+function mascot(id,x,y,scale,colour=PAPER) {
+  return `<g transform="translate(${x} ${y}) scale(${scale})"><g id="${id}" style="color:${INK}"><g transform="translate(-16 -16)">${mascotMarkup(id,colour)}</g></g></g>`;
 }
 
 function couch(x, y, width) {
@@ -55,34 +53,27 @@ function screen(id, x, y, width, content, angle = 0) {
   </g></g></g>`;
 }
 
-export function createArt(svg, language) {
+export function createArt(svg, language, onUI = () => {}) {
   const zh = language === 'zh-CN';
   const say = (en, cn) => zh ? cn : en;
-  const ui = (id, shot, height, gameId = '', viewer = false) => `<g id="${id}">
-    <image href="${new URL(`./assets/ui/${shot}-${zh ? 'zh' : 'en'}.webp`, import.meta.url)}" width="1100" height="${height}"/>
-    ${gameId ? `<clipPath id="${gameId}-clip"><rect x="85" y="89" width="930" height="523.125" rx="14"/></clipPath><g clip-path="url(#${gameId}-clip)"><svg x="85" y="89" width="930" height="${viewer ? 469 : 523.125}" viewBox="0 0 1600 ${viewer ? 806.9 : 900}" overflow="hidden">${gameMarkup(gameId)}</svg></g>` : ''}
-  </g>`;
-  const launcher = (id, choice) => `<g id="${id}"><image href="${new URL(`./assets/ui/launcher-${zh ? 'zh' : 'en'}-${choice}.webp`, import.meta.url)}" width="1100" height="740"/></g>`;
-  const appWindow = (id, content) => `<g transform="translate(540 144)"><g id="${id}">
+  const appWindow = (id) => `<g transform="translate(540 144)"><g id="${id}">
     ${rect(17, 20, 1010, 726, 23, INK)}${rect(0, 0, 1010, 726, 23, PAPER, `stroke="${INK}" stroke-width="3"`)}
     ${[26, 43, 60].map((cx, i) => circle(cx, 24, 5, [ORANGE, YELLOW, '#85baa8'][i])).join('')}
-    ${small(499, 31, 'PIIK', INK, 'text-anchor="middle"')}
-    <svg id="${id}-camera" x="12" y="47" width="986" height="663.31" viewBox="0 0 1100 740" overflow="hidden">${rect(-1000, -1000, 4000, 4000, 0, '#e8f3ef')}${content}</svg>
+    ${small(499, 31, 'Piik', INK, 'text-anchor="middle"')}
+    <svg id="${id}-camera" x="12" y="47" width="986" height="663.31" viewBox="0 0 1100 740" overflow="hidden">${rect(-1000, -1000, 4000, 4000, 0, '#e8f3ef')}</svg>
   </g></g>`;
-  const pointer = id => `<g id="${id}" fill="${INK}" stroke="${PAPER}" stroke-width="4" stroke-linejoin="round"><path d="M0 0v55l16-16 13 27 14-6-14-27 27-3Z"/></g>`;
   const chapter = (number, first, second, note) => `${small(62, 68, `PIIK / ${number}`, INK)}
     ${text(57, 286, first, zh ? 112 : 92)}${text(57, 419, second, zh ? 112 : 92)}
     ${text(62, 533, note, zh ? 29 : 26, INK, 'style="letter-spacing:-.02em;font-weight:650"')}`;
   const game = '<use href="#game-still"/>';
-  const drawing = `<rect width="1600" height="900" fill="${YELLOW}"/>
-    <path d="M-130 750Q220-60 600 580T1720 300" fill="none" stroke="${ORANGE}" stroke-width="190"/>
-    <g transform="translate(690 370) rotate(-12)">${rect(-185, -260, 370, 520, 9, PAPER)}
-      <path d="m-48-102 46 40 47-40M-90 155l25-35m155 35-25-35" fill="none" stroke="${INK}" stroke-width="11" stroke-linecap="round"/>
-      ${rect(-119, -59, 239, 178, 38, 'none', `stroke="${INK}" stroke-width="11"`)}
-      ${circle(-53, 19, 10, INK)}<path d="M24 23q23-29 46 0" fill="none" stroke="${INK}" stroke-width="10" stroke-linecap="round"/>
-    </g>`;
-  const code = `${field(INK)}${text(80, 480, '{', 600, MINT)}${text(1100, 810, '}', 600, ORANGE)}
-    ${[370, 250, 490, 330, 210].map((w, i) => rect(520 + i % 2 * 52, 205 + i * 99, w, 23, 11.5, [MINT, YELLOW, '#e6a8bc'][i % 3])).join('')}`;
+  const drawing = `${field(YELLOW)}<path d="M-130 750Q220-60 600 580T1720 300" fill="none" stroke="${ORANGE}" stroke-width="190"/>
+    <g transform="translate(490 85) rotate(8 310 360)">${sketchMarkup('card-sketch')}</g>`;
+  // Captions have a fixed left column; the objects on the right stay unobscured.
+  const scenarioTitle = (id, first, second, cn, fill) => `<g id="${id}" transform="rotate(-8 380 450)">
+    ${rect(-100, 270, 815, 342, 0, fill)}
+    ${zh ? text(43, 492, cn, 126, fill===INK?PAPER:INK) : text(43,413,first,140,fill===INK?PAPER:INK)+text(43,555,second,140,fill===INK?PAPER:INK)}
+  </g>`;
+  const photos = photoMarkup();
 
   svg.innerHTML = `<defs>
     <pattern id="dots" width="18" height="18" patternUnits="userSpaceOnUse">${circle(4, 4, 2, INK)}</pattern>
@@ -109,61 +100,50 @@ export function createArt(svg, language) {
     </g>
     <g id="hello-word" transform="rotate(-12 740 450)">
       <path d="M-70 171h945l-34 386H-105Z" fill="${PAPER}"/>
-      ${text(58, 472, say('HEY.', '嘿。'), zh ? 307 : 365)}
-      ${small(92, 640, say('PIIK / SCREEN SHARING WITH FRIENDS', 'PIIK / 给朋友的屏幕共享'), PAPER)}
+      ${text(70, 465, say('LOOK!', '快看！'), zh ? 248 : 270)}
+      ${small(92, 640, say('PIIK / SCREEN SHARING FOR FRIENDS', 'PIIK / 和朋友分享屏幕'), PAPER)}
     </g>
     <g id="hello-character"><g transform="translate(1190 436) rotate(14)">
       ${mascot('hello-tv', 0, -15, 21, PAPER)}
       ${small(0, 294, 'PIIK / HELLO THERE', INK, 'text-anchor="middle"')}
     </g></g>
-    <g id="hello-label">${small(64, 64, 'SCREEN SHARING / GOOD COMPANY', MINT)}${small(1536, 836, 'PIIK.TV', INK, 'text-anchor="end"')}</g>
+    <g id="hello-label">${small(64, 64, 'PIIK / SHARE THE GOOD STUFF', MINT)}${small(1536, 836, 'PIIK.TV', INK, 'text-anchor="end"')}</g>
     ${circle(800, 450, 0, ORANGE, 'id="hello-dot"')}
   </g>
 
   <g id="scene-discover">
     ${field(PAPER)}
     <g id="discover-type" transform="rotate(-12 800 450)">
-      <g id="discover-line-top">${text(-70, 180, say('GOOD STUFF', '好东西'), zh ? 345 : 265, 'none', `stroke="${INK}" stroke-width="2"`)}</g>
-      <g id="discover-line-middle">${text(-60, 533, say('GOOD STUFF', '好东西'), zh ? 345 : 265)}</g>
-      <g id="discover-line-bottom">${text(-60, 886, say('GOOD STUFF', '好东西'), zh ? 345 : 265, ORANGE)}</g>
+      <g id="discover-line-top">${text(-70, 180, say('MOMENTS', '这一刻'), zh ? 345 : 265, 'none', `stroke="${INK}" stroke-width="2"`)}</g>
+      <g id="discover-line-middle">${text(-60, 533, say('MOMENTS', '这一刻'), zh ? 345 : 265)}</g>
+      <g id="discover-line-bottom">${text(-60, 886, say('MOMENTS', '这一刻'), zh ? 345 : 265, ORANGE)}</g>
     </g>
     <g id="discover-photo">
       ${rect(910, -170, 580, 1210, 0, MINT, 'transform="rotate(12 1200 450)"')}
       ${screen('discover-drawing', 976, -134, 530, drawing, 12)}
       ${screen('discover-game', 842, 310, 655, game, -12)}
-      ${screen('discover-code', 1025, 798, 530, code, 12)}
+      ${screen('discover-photos', 1025, 798, 530, photos, 12)}
     </g>
     <g id="discover-ticket" transform="translate(130 632) rotate(-12)">
       ${rect(12, 13, zh ? 661 : 795, 159, 0, ORANGE)}${rect(0, 0, zh ? 661 : 795, 159, 0, INK)}
-      ${text(28, 120, say('SHARE IT.', '别藏着。'), zh ? 125 : 150, PAPER)}
+      ${text(28, 120, say('SHARE IT.', '一起看。'), zh ? 125 : 150, PAPER)}
     </g>
-    <g id="discover-label">${small(58, 55, say('SOMETHING WORTH SHARING', '总有些画面，想让朋友也看看。'))}</g>
+    <g id="discover-label">${small(58, 55, say('SOME MOMENTS DESERVE AN AUDIENCE.', '这一刻，想让朋友也看看。'))}</g>
     <g id="discover-pointer"><path d="M0 0v91l25-24 21 43 23-11-22-43 39-5Z" fill="${INK}" stroke="${PAPER}" stroke-width="6" stroke-linejoin="round"/></g>
   </g>
 
   <g id="scene-game">
-    ${field(INK)}
-    <g id="game-camera">${gameMarkup('full-game')}</g>
-    <g id="game-title" transform="rotate(-12 300 150)">${rect(-70, 5, zh ? 645 : 790, 181, 0, INK)}${text(34, 150, say('WATCH THIS.', '看这一跳。'), zh ? 117 : 120, PAPER)}</g>
-    <g id="game-cheer">
-      <path d="M-30 900 197 0H570L344 900Z" fill="${ORANGE}"/>
-      <path d="M570 0h490L817 900H344Z" fill="${PAPER}"/>
-      <path d="M1060 0h570v900H817Z" fill="${MINT}"/>
-      <g transform="translate(1270 360) rotate(15)">${mascot('cheer-tv', 0, 0, 20, YELLOW)}</g>
-      <g id="game-cheer-type" transform="rotate(-12 720 540)">
-        ${text(45, 675, say('NICE.', '漂亮！'), zh ? 307 : 405, INK, `stroke="${PAPER}" stroke-width="10" paint-order="stroke"`)}
-      </g>
-      ${small(1502, 814, say('YOU SAW THAT, RIGHT?', '看到了吧！'), INK, 'text-anchor="end"')}
-    </g>
+    ${montageMarkup(zh)}
+    <g id="montage-cheer" transform="rotate(-8 435 670)"><path d="M-70 552h945l-34 227H-105Z" fill="${YELLOW}"/>${text(63,736,say('NICE!','漂亮！'),zh?180:206)}</g>
   </g>
 
   <g id="scene-launch">
     ${field(YELLOW)}<path d="m1170-50 230 0-254 1000H870Z" fill="${ORANGE}"/>
-    <g id="launch-type">${chapter('01', say('Download.', '下载，'), say('Open.', '打开。'), say('No server of your own needed.', '无需自备服务器。'))}
-      ${small(62, 587, say('UNPACK / OPEN / PUBLIC INVITE', '解压并打开 APP → 选择「公网邀请」'))}
+    <g id="launch-type">${chapter('01', say('Download.', '下载，'), say('Open.', '打开。'), say('Ready when you are.', '开箱即用。'))}
+      ${small(62, 587, say('OPEN PIIK. PICK A SCREEN.', '打开 Piik，选好要分享的画面。'))}
       ${text(55, 788, '01', 190, 'none', `stroke="${INK}" stroke-width="2" opacity=".3"`)}
     </g>
-    ${appWindow('launch-window', launcher('launcher-local', 'local') + launcher('launcher-link', 'link') + pointer('launch-pointer'))}
+    ${appWindow('launch-window')}
   </g>
 
   <g id="scene-share">
@@ -172,7 +152,7 @@ export function createArt(svg, language) {
       ${small(62, 587, say('PICTURE + SOUND', '画面与声音，一起分享'))}
       ${text(55, 788, '02', 190, 'none', `stroke="${INK}" stroke-width="2" opacity=".3"`)}
     </g>
-    ${appWindow('share-window', ui('share-idle', 'idle', 740) + ui('share-picker', 'picker', 740) + ui('share-live', 'live', 1300, 'share-game') + pointer('share-pointer'))}
+    ${appWindow('share-window')}
   </g>
 
   <g id="scene-invite">
@@ -181,33 +161,52 @@ export function createArt(svg, language) {
       ${small(62, 587, say('NO VIEWER INSTALL', '观众无需安装客户端'))}
       ${text(55, 788, '03', 190, 'none', `stroke="${INK}" stroke-width="2" opacity=".3"`)}
     </g>
-    ${appWindow('invite-window', ui('invite-host', 'live', 1300, 'invite-game') + ui('invite-viewer', 'viewer', 1100, 'viewer-game', true) + pointer('invite-pointer'))}
-    <g id="invite-flight">${rect(-180, -42, 360, 84, 42, INK)}${text(0, 14, say('Send it to a friend', '把链接发给朋友'), 31, PAPER, 'text-anchor="middle"')}</g>
+    ${appWindow('invite-window')}
   </g>
 
   <g id="scene-features">
     <g id="feature-free">${field(INK)}
       <path d="m1030-100 750 0-220 1100H820Z" fill="${ORANGE}"/>
       ${text(805, 874, '0', 1070, YELLOW, 'transform="rotate(12 1160 470)"')}
-      <g id="free-type" transform="rotate(-12 740 450)">${text(70, 370, say('FREE.', '免费。'), 248, PAPER)}${zh ? text(57, 628, '开源。', 248, MINT) : text(57, 525, 'OPEN', 160, MINT) + text(57, 680, 'SOURCE.', 160, MINT)}</g>
-      ${small(60, 72, 'MIT LICENSE', PAPER)}${small(62, 833, say('USE IT. BUILD ON IT. MAKE IT YOURS.', '自由使用，也欢迎一起改进。'), PAPER)}
+      ${text(1220, 151, say('COST TO USE', '使用费用'), 42, INK, 'text-anchor="middle" style="letter-spacing:0;font-weight:800"')}
+      ${zh ? text(1418, 800, '元', 87, INK) : ''}
+      <g id="free-type" transform="rotate(-12 740 450)">${text(82, 370, say('FREE.', '免费。'), 248, PAPER)}${zh ? text(57, 628, '开源。', 248, MINT) : text(57, 525, 'OPEN', 160, MINT) + text(57, 680, 'SOURCE.', 160, MINT)}</g>
+      ${small(60, 72, say('YOURS TO USE. YOURS TO IMPROVE.', '免费使用，也欢迎一起改进。'), PAPER)}${small(62, 833, 'OPEN SOURCE / MIT', PAPER)}
     </g>
     <g id="feature-p2p">${field(MINT)}
-      ${text(-38, 761, 'P2P', 675, PAPER, 'transform="rotate(-12 740 450)"')}
-      <g id="p2p-type" transform="rotate(-12 700 450)">${rect(-170, 316, 1970, 209, 0, INK)}${text(65, 481, say('DIRECT FIRST.', '优先直连。'), zh ? 173 : 171, PAPER)}</g>
-      ${small(60, 72, say('LESS DISTANCE BETWEEN YOU', '让画面，直接到朋友身边。'))}
-      ${text(68, 802, say('Peer-to-peer screen sharing.', '优先建立点对点连接。'), 35, INK, 'style="letter-spacing:0;font-weight:650"')}
+      <path d="M1255-80h475v1080H929Z" fill="${PAPER}"/>
+      <g id="p2p-diagram">
+        <path id="p2p-link" d="M1087 399 1347 506m-47 9 47-9-27-39" fill="none" stroke="${INK}" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>
+        <g id="p2p-packet">${rect(-22,-14,44,28,8,ORANGE,`stroke="${PAPER}" stroke-width="4"`)}</g>
+        ${screen('p2p-source',900,181,274,game,-8)}
+        ${screen('p2p-viewer',1226,559,274,game,-8)}
+      </g>
+      <g id="p2p-type" transform="rotate(-8 600 450)">
+        ${text(74,315,say('DIRECT.','直连。'),zh?202:184)}
+        ${rect(-115,383,950,200,0,INK)}${text(57,538,say('LOW LATENCY.','低延迟。'),zh?160:106,PAPER)}
+      </g>
+      ${small(60,72,say('LESS WAITING. MORE WATCHING.','少一点等待，多一点尽兴。'))}
+      ${text(65,793,say('A direct path from your screen to theirs.','画面直达朋友，精彩及时跟上。'),30,INK,'style="letter-spacing:0;font-weight:650"')}
+      ${text(65,841,say('Direct connections are preferred; latency varies with the network.','优先使用直连，实际延迟取决于网络环境。'),22,INK,'style="letter-spacing:0;font-weight:500"')}
     </g>
     <g id="feature-encode">${field(YELLOW)}
-      <path d="M930-100h850v1100H610Z" fill="${PAPER}"/>
-      <g id="encode-diagram">
-        <path d="M933 470h170m0 0 131-185m-131 185h131m-131 0 131 185" stroke="${INK}" stroke-width="13" stroke-linecap="round" fill="none"/>
-        ${rect(771, 397, 157, 145, 24, INK)}${text(849, 491, '01', 69, MINT, 'text-anchor="middle"')}
-        ${[280, 470, 660].map(y=>`<g transform="translate(1335 ${y})">${rect(-94, -63, 188, 126, 24, ORANGE)}${text(0, 23, '01', 66, INK, 'text-anchor="middle"')}</g>`).join('')}
+      <path d="M1200-100h580v1100H871Z" fill="${ORANGE}"/>
+      <g id="encode-pictures">
+        <path d="M1220 429v111M990 627v-87h426v87m-284-87v87m142-87v87" fill="none" stroke="${INK}" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+        ${screen('encode-picture',1000,168,410,drawing,-5)}
+        <g id="encode-audience">
+          ${['#99c9e6','#e6a8bc','#b6addc','#85baa8'].map((colour,i)=>`<g transform="translate(${990+i*142} 690)"><circle cy="-5" r="61" fill="${PAPER}"/>${person(`encode-person-${i}`,0,1,1.1,colour)}</g>`).join('')}
+        </g>
+        ${[0,1,2,3].map(i=>`<g id="encode-packet-${i}">${rect(-12,-9,24,18,5,PAPER,`stroke="${INK}" stroke-width="3"`)}</g>`).join('')}
+        ${small(1220,110,say('ONE PICTURE, SHARED.','一份画面，多人共享。'),INK,'text-anchor="middle"')}
       </g>
-      <g id="encode-type" transform="rotate(-12 600 450)">${text(41, 365, say('REUSE', '复用'), zh ? 225 : 195)}${text(37, 617, say('THE WORK.', '编码。'), zh ? 225 : 132)}</g>
-      ${small(60, 72, say('LESS REPEATED ENCODING', '减少重复编码'))}
-      ${text(65, 823, say('Compatible connections share encoded frames.', '兼容的连接复用编码结果，减少重复处理。'), 31, INK, 'style="letter-spacing:0;font-weight:650"')}
+      <g id="encode-type" transform="rotate(-8 600 450)">
+        ${text(62,321,say('EFFICIENT','高效分享。'),zh?155:140)}
+        ${rect(-110,388,945,197,0,INK)}${text(48,541,say('SHARING.','轻负担。'),zh?164:153,PAPER)}
+      </g>
+      ${small(60,72,say('MORE ROOM TO PLAY.','把余力，留给正在做的事。'))}
+      ${text(65,793,say('Less repeated work. More room for what you love.','少些重复处理，把性能留给手头的事。'),30,INK,'style="letter-spacing:0;font-weight:650"')}
+      ${text(65,841,say('Compatible connections share processed video; device and codec affect resource use.','兼容连接共用已处理的画面；资源占用因设备与编码方式而异。'),22,INK,'style="letter-spacing:0;font-weight:500"')}
     </g>
   </g>
 
@@ -229,7 +228,7 @@ export function createArt(svg, language) {
       </g>`).join('')}
     </g></g>
     <g id="people-host"><g transform="translate(495 379) rotate(-12)">${couch(-61, 9, 122)}${person('host', 0, -7, .91, '#83c4a5', true)}</g></g>
-    ${small(55, 55, say('A LITTLE ROOM. A LOT OF COMPANY.', '一个房间，就聚齐了。'))}
+    ${small(55, 55, say('SAVE YOUR FRIENDS A SEAT.', '给朋友留个位置。'))}
     <g id="people-close">
       ${field(INK)}
       ${[PAPER, ORANGE, MINT].map((colour, i) => `<g id="close-panel-${i}">
@@ -239,34 +238,39 @@ export function createArt(svg, language) {
         </g>
         ${text(66 + i * 536, 180, ['01', '02', '03'][i], 159, 'none', `stroke="${INK}" stroke-width="2" opacity=".28"`)}
       </g>`).join('')}
-      <g id="people-close-type" transform="rotate(-8 800 650)">${rect(-50, 640, 1710, 190, 0, INK)}${text(88, 786, say('GOOD COMPANY.', '都在这儿。'), zh ? 175 : 159, PAPER)}</g>
+      <g id="people-close-type" transform="rotate(-8 800 650)">${rect(-50, 590, 1710, 190, 0, INK)}${text(150, 736, say('ALL TOGETHER.', '朋友到齐。'), zh ? 175 : 159, PAPER)}</g>
       ${small(63, 55, say('THAT’S MORE LIKE IT.', '这下热闹了。'))}
     </g>
   </g>
 
   <g id="scene-more">
     <g id="more-game">${field(ORANGE)}
-      <g transform="rotate(-12 800 450)">${text(-60, 364, say('ONE MORE', '再来'), zh ? 378 : 278)}
-        ${rect(-240, 537, 2120, 343, 0, INK)}
+      <g transform="rotate(-12 800 450)">${text(85, 358, say('ONE MORE', '再开一局。'), 230)}
+        ${rect(-240, 450, 2120, 320, 0, INK)}
       </g>
-      <g id="more-game-picture"><g transform="translate(910 370) rotate(14) scale(2.3)"><use href="#pad"/></g></g>
-      <g transform="rotate(-12 800 450)">${text(zh ? 620 : 490, 800, say('ROUND.', '一局。'), zh ? 255 : 240, PAPER, `stroke="${INK}" stroke-width="10" paint-order="stroke"`)}</g>
-      ${small(58, 60, say('PLAY / PASS THE GOOD TIMES ON', '玩游戏。也玩在一起。'))}
+      <g id="more-game-picture"><g transform="translate(1270 425) rotate(14) scale(1.2)"><use href="#pad"/></g></g>
+      <g transform="rotate(-12 800 450)">${text(zh ? 130 : 95, 660, say('ROUND.', '叫上朋友。'), zh ? 168 : 210, PAPER)}</g>
+      ${small(58, 60, say('PLAY / GIVE YOUR FRIENDS A FRONT-ROW SEAT', '这一把，让朋友也看看。'))}
     </g>
     <g id="more-art">${field(YELLOW)}
-      <g id="more-art-picture"><svg x="160" y="-86" width="1660" height="1040" viewBox="0 0 1600 900">${drawing}</svg></g>
-      <g id="more-art-type" transform="rotate(-12 800 450)">
-        ${rect(-110, 347, 616, 414, 0, INK)}${text(46, 509, say('MAKE', '画'), zh ? 177 : 127, PAPER)}${text(37, 715, say('A LITTLE.', '两笔。'), zh ? 192 : 101, PAPER)}
-      </g>
-      <g id="more-pencil" transform="translate(1190 150) rotate(32)">${rect(0, 0, 57, 435, 14, INK)}<path d="m0 435 28.5 85 28.5-85Z" fill="${PAPER}"/><path d="m18 489 10.5 31 10.5-31Z" fill="${INK}"/></g>
-      ${small(58, 60, say('MAKE / FOLLOW A LITTLE SPARK', '灵感，现场发生。'))}
+      <path d="M140-40q-89 356 207 441T246 981" fill="none" stroke="${ORANGE}" stroke-width="118"/>
+      <g id="more-art-picture"><g transform="translate(844 110) rotate(8 310 360)">
+        ${rect(13, 17, 620, 720, 5, INK, 'opacity=".16"')}
+        <g id="sketch-paper">${sketchMarkup('film-sketch')}</g>
+        <g id="more-pencil"><g transform="rotate(35)">${rect(-10, -188, 20, 160, 4, INK)}<path d="m-10-28 10 28 10-28Z" fill="#d6b68b"/><path d="M-3-9 0 0 3-9Z" fill="${INK}"/><path d="M-4-172v133" stroke="${PAPER}" stroke-width="2" opacity=".4"/></g></g>
+      </g></g>
+      ${scenarioTitle('more-art-type','MAKE A','MARK.','画上两笔。',INK)}
+      ${small(58, 60, say('DRAW / FROM FIRST LINE TO FINAL TOUCH', '从第一笔，看到最后一笔。'))}
     </g>
-    <g id="more-code">${field(INK)}
-      <g id="more-code-picture"><svg x="-156" y="-80" width="1870" height="1130" viewBox="0 0 1600 900">${code}</svg></g>
-      <g id="more-code-type" transform="rotate(-12 800 450)">
-        ${rect(-170, 300, 1940, 289, 0, MINT)}${text(51, 529, say('WHAT IF?', '一起折腾。'), zh ? 218 : 255)}
-      </g>
-      ${small(58, 60, say('EXPLORE / FIND YOUR NEXT THING', '新发现，一起试。'), PAPER)}
+    <g id="more-photos">${field(INK)}
+      <g id="more-photos-picture"><svg x="746" y="74" width="810" height="748" viewBox="100 0 1380 900">${photos}</svg></g>
+      ${scenarioTitle('more-photos-type','PHOTO','TIME.','翻翻相册。',MINT)}
+      ${small(58, 60, say('REMEMBER / THERE’S A STORY IN EVERY PHOTO', '这张照片，还有个故事。'), PAPER)}
+    </g>
+    <g id="more-movie">${field('#324458')}
+      <g id="more-movie-picture">${movieMarkup('movie-plane')}</g>
+      ${scenarioTitle('more-movie-type','MOVIE','NIGHT.','看场电影。',PAPER)}
+      ${small(58, 60, say('WATCH / SAVE ME SOME POPCORN', '爆米花，分你一半。'), PAPER)}
     </g>
   </g>
 
@@ -279,7 +283,7 @@ export function createArt(svg, language) {
       <g clip-path="url(#title-bottom)"><use id="end-brand-bottom" href="#wordmark"/></g>
       <g id="end-brand-dot">${circle(809, 442, 33, ORANGE)}</g>
     </g>
-    <g id="end-type">${text(96, 604, say('Good things.', '好东西，'), zh ? 114 : 112, PAPER)}${text(96, 734, say('Shared.', '一起看。'), zh ? 114 : 119, MINT)}</g>
+    <g id="end-type">${text(96, 604, say('Share the', '来，'), zh ? 114 : 112, PAPER)}${text(96, 734, say('good stuff.', '看点好康的。'), zh ? 114 : 112, MINT)}</g>
     <g id="end-character"><g transform="translate(1290 294) rotate(14)">
       ${circle(0, 0, 242, ORANGE)}${circle(35, 24, 242, 'url(#dots)', 'opacity=".25"')}${mascot('end-tv', 0, 0, 15, PAPER)}
     </g></g>
@@ -289,14 +293,16 @@ export function createArt(svg, language) {
       ${person('end-friend-0', 221, -13, 1.25, '#99c9e6')}${person('end-friend-1', 365, -13, 1.25, '#b6addc')}${person('end-friend-2', 509, -13, 1.25, '#e6a8bc')}
       <g id="end-gamepad" transform="translate(77 32) rotate(-9) scale(.25)"><use href="#pad"/>${circle(-167, 70, 35, '#83c4a5')}${circle(167, 70, 35, '#83c4a5')}</g>
     </g></g>
-    <g id="end-label">${small(65, 67, say('SCREEN SHARING / GOOD COMPANY', '开个房间，叫朋友来。'), MINT)}</g>
+    <g id="end-label">${small(65, 67, say('SCREEN SHARING FOR FRIENDS', '开个房间，叫朋友来。'), MINT)}</g>
     <g id="end-url">${text(1500, 799, 'piik.tv', 46, INK, 'text-anchor="end"')}${small(98, 802, say('FREE & OPEN SOURCE / GET PIIK', '免费开源 · 下载 PIIK'), PAPER)}</g>
     <g id="end-credit">${rect(0, 846, 1600, 54, 0, PAPER)}${text(800, 869, 'Music: “Funkorama” — Kevin MacLeod · incompetech.com · CC BY 4.0 · edited excerpt', 15, INK, 'text-anchor="middle" style="letter-spacing:0;font-weight:450"')}${text(800, 890, 'creativecommons.org/licenses/by/4.0/', 14, INK, 'text-anchor="middle" style="letter-spacing:0;font-weight:450"')}</g>
   </g>`;
 
   const nodes = new Map(Array.from(svg.querySelectorAll('[id]'), (el) => [el.id, el]));
   const node = (id) => nodes.get(id);
-  const games = ['card-game', 'full-game', 'share-game', 'invite-game', 'viewer-game'].map(id => createGame(svg, id));
+  const drawGame = createGame(svg, 'card-game');
+  const drawMontage = createMontage(svg, BAR);
+  const drawSketch = createSketch(svg, 'film-sketch');
   const attr = (id, key, value) => node(id).setAttribute(key, String(value));
   const transform = (id, value) => attr(id, 'transform', value);
   const opacity = (id, value) => attr(id, 'opacity', clamp(value));
@@ -311,109 +317,90 @@ export function createArt(svg, language) {
   };
 
   function hello(t) {
-    const open = ease((t - .12) / .58);
-    slide('hello-slab', open, 1100, 0);
-    slide('hello-word', (t - .17) / .32, -1380, 265, 'rotate(-12 740 450)');
-    const arrive = pop((t - .33) / .47);
+    slide('hello-slab', t / (BEAT / 2), 1100, 0);
+    slide('hello-word', (t - BEAT / 4) / (BEAT / 2), -1380, 265, 'rotate(-12 740 450)');
+    const arrive = pop((t - BEAT / 2) / BEAT);
     scaleAt('hello-character', mix(2.7, 1, arrive), 1190, 436, mix(-19, 0, arrive));
-    opacity('hello-character', (t - .26) / .1);
-    transform('hello-tv-eyes', `translate(${2 * Math.sin(clamp((t - 1.25) / .6) * Math.PI)} 0)`);
+    opacity('hello-character', (t - BEAT / 2) / (BEAT / 4));
+    opacity('hello-tv-open',t<1.5*BEAT?1:0);
+    opacity('hello-tv-wink',t<1.5*BEAT?0:1);
+    const wink=clamp((t-1.5*BEAT)/BEAT);
+    opacity('hello-tv-sparkles',Math.sin(wink*Math.PI));
+    transform('hello-tv-sparkles',`translate(${wink*5} ${wink*-5})`);
     transform('hello-echo', `translate(${-18 * t} 0)`);
-    opacity('hello-label', (t - .64) / .2);
+    opacity('hello-label', (t - BEAT) / (BEAT / 2));
     // The brand dot begins the film and opens the next cut, like an aperture.
-    attr('hello-dot', 'r', t < .35 ? 19 * (1 - ease(t / .35)) : 1080 * ease((t - 1.99) / .386));
+    attr('hello-dot', 'r', t < BEAT / 2 ? 19 * (1 - ease(t / (BEAT / 2))) : 1080 * ease((t - 3.5 * BEAT) / (BEAT / 2)));
   }
 
   function discover(t) {
-    t *= 2;
-    transform('discover-type', `translate(${-30 * t} ${12 * t}) rotate(-12 800 450)`);
-    slide('discover-line-top', t / .34, -920, 0);
-    slide('discover-line-middle', (t - .08) / .36, 1230, 0);
-    slide('discover-line-bottom', (t - .16) / .34, -1380, 0);
-    slide('discover-photo', t / .48, 770, -160);
-    slide('discover-ticket', (t - BEAT * 2) / .26, -1100, 220, 'translate(130 632) rotate(-12)');
-    const click = ease((t - 2.7) / .5);
-    transform('discover-pointer', `translate(${mix(1640, 1230, click)} ${mix(940, 586, click)}) scale(${1 - .22 * Math.sin(clamp((t - 3.15) / .24) * Math.PI)})`);
-    opacity('discover-pointer', click * (1 - ease((t - 3.6) / .22)));
-  }
-
-  function point(id, x, y, time, clickAt) {
-    const press = Math.sin(clamp((time - clickAt) / .24) * Math.PI);
-    transform(id, `translate(${x} ${y}) scale(${.7 - .13 * press})`);
+    transform('discover-type', `translate(${-60 * t} ${24 * t}) rotate(-12 800 450)`);
+    slide('discover-line-top', t / (BEAT / 2), -920, 0);
+    slide('discover-line-middle', (t - BEAT / 8) / (BEAT / 2), 1230, 0);
+    slide('discover-line-bottom', (t - BEAT / 4) / (BEAT / 2), -1380, 0);
+    slide('discover-photo', t / BEAT, 770, -160);
+    slide('discover-ticket', (t - BEAT) / (BEAT / 2), -1100, 220, 'translate(130 632) rotate(-12)');
+    const click = ease((t - 2 * BEAT) / (BEAT / 2));
+    transform('discover-pointer', `translate(${mix(1640, 1230, click)} ${mix(940, 586, click)}) scale(${1 - .22 * Math.sin(clamp((t - 3 * BEAT) / (BEAT / 2)) * Math.PI)})`);
+    opacity('discover-pointer', click * (1 - ease((t - 3.5 * BEAT) / (BEAT / 2))));
   }
 
   function launch(t) {
-    slide('launch-window', t / .5, 1150, 190);
-    slide('launch-type', t / .38, -610, 130);
-    const zoom = ease((t - .5) / .75);
-    attr('launch-window-camera', 'viewBox', `${145 * zoom} ${150 * zoom} ${1100 - 290 * zoom} ${740 - 195 * zoom}`);
-    opacity('launcher-link', t >= 2.15 ? 1 : 0);
-    const enter = ease((t - 3.8) / .75);
-    const arrive = ease((t - .75) / .8);
-    point('launch-pointer', mix(1000, 550, arrive), mix(720, mix(405, 575, enter), arrive), t, enter ? 5.1 : 2.05);
-    opacity('launch-pointer', arrive * (1 - ease((t - 5.5) / .3)));
+    slide('launch-window',t/BEAT,1150,190);
+    slide('launch-type',t/(BEAT/2),-610,130);
   }
-
   function share(t) {
-    slide('share-window', t / .45, 1180, 140);
-    slide('share-type', t / .35, -610, 130);
-    opacity('share-picker', t >= 1.65 && t < 4.15 ? 1 : 0);
-    opacity('share-live', t >= 4.15 ? 1 : 0);
-    const pick = ease((t - 2.1) / .7);
-    const arrive = ease((t - .45) / .6);
-    point('share-pointer', mix(1030, mix(485, 365, pick), arrive), mix(710, 352, arrive), t, pick ? 3.95 : 1.4);
-    opacity('share-pointer', arrive * (1 - ease((t - 4.15) / .2)));
-    // Match the actual preview's video rectangle before cutting into gameplay.
-    const zoom = ease((t - 6.15) / (3 * BAR - 6.15));
-    const scale = mix(1, 1600 / (930 * 986 / 1100), zoom);
-    transform('scene-share', `translate(${-628.19 * scale * zoom} ${-270.78 * scale * zoom}) scale(${scale})`);
+    // The same product window stays in place as the chapter changes.
+    transform('share-window','translate(0 0)');
+    slide('share-type',t/(BEAT/2),-610,130);
+    const zoom=ease((t-12*BEAT)/(2*BEAT));
+    const scale=mix(1,1600/(930*986/1100),zoom);
+    transform('scene-share',`translate(${-628.19*scale*zoom} ${-270.78*scale*zoom}) scale(${scale})`);
   }
 
   function gameScene(t) {
-    slide('game-title', t / .26, -920, 170, 'rotate(-12 300 150)');
-    opacity('game-title', 1 - ease((t - 1.1) / .35));
-    const cheer = t - 3.65;
-    node('game-cheer').style.display = cheer >= 0 ? '' : 'none';
-    scaleAt('game-cheer', mix(1.25, 1, ease(cheer / .22)), 900, 450);
-    transform('game-cheer-type', `translate(${-18 * clamp(cheer, 0, 2)} 0) rotate(-12 720 540)`);
-    transform('cheer-tv', `rotate(${-5 * Math.sin(clamp((cheer - .13) / 1.1) * Math.PI)})`);
+    drawMontage(t, 8 * BAR + t);
   }
 
   function invite(t) {
-    slide('invite-window', t / .42, 1140, 140);
-    slide('invite-type', t / .35, -610, 130);
-    const join = ease((t - 3.4) / .45);
-    attr('invite-window-camera', 'viewBox', `0 ${mix(535, 70, join)} 1100 ${mix(740, 830, join)}`);
-    transform('invite-host', `translate(${-1200 * join} 0)`);
-    transform('invite-viewer', `translate(${1200 * (1 - join)} 0)`);
-    opacity('invite-viewer', join);
-    const arrive = ease((t - .5) / .7);
-    point('invite-pointer', mix(1010, 105, arrive), mix(1300, zh ? 1050 : 1110, arrive), t, 1.6);
-    opacity('invite-pointer', arrive * (1 - ease((t - 2.1) / .25)));
-    const flight = ease((t - 2.2) / 1.3);
-    transform('invite-flight', `translate(${mix(778, 1170, flight)} ${mix(437, 450, flight)}) rotate(${-12 * Math.sin(flight * Math.PI)})`);
-    opacity('invite-flight', ease((t - 1.8) / .22) * (1 - ease((t - 3.35) / .2)));
+    slide('invite-window',t/BEAT,1140,140);
+    slide('invite-type',t/(BEAT/2),-610,130);
   }
 
   function features(t) {
-    const cut = Math.min(2, Math.floor(t / BAR));
-    const local = t - cut * BAR;
+    const cut = t < BAR ? 0 : t < 3 * BAR ? 1 : 2;
+    const local = t - [0, BAR, 3 * BAR][cut];
     ['free', 'p2p', 'encode'].forEach((name, i) => { node(`feature-${name}`).style.display = i === cut ? '' : 'none'; });
-    slide('free-type', local / .3, -1500, 290, 'rotate(-12 740 450)');
-    slide('p2p-type', local / .28, 1840, -380, 'rotate(-12 700 450)');
-    slide('encode-type', local / .28, -1200, 230, 'rotate(-12 600 450)');
-    scaleAt('encode-diagram', mix(1.35, 1, pop(local / .5)), 1085, 450);
+    slide('free-type', local / (BEAT / 2), -1500, 290, 'rotate(-12 740 450)');
+    slide('p2p-type', local / (BEAT / 2), -1150, 180, 'rotate(-8 600 450)');
+    slide('p2p-diagram',local/BEAT,600,0);
+    const packet=clamp((local-1.5*BEAT)/(1.5*BEAT));
+    transform('p2p-packet',`translate(${mix(1087,1347,packet)} ${mix(399,506,packet)}) rotate(22)`);
+    opacity('p2p-packet',local>=1.5*BEAT&&local<3*BEAT?1:0);
+    slide('encode-type', local / (BEAT / 2), -1200, 180, 'rotate(-8 600 450)');
+    slide('encode-pictures',local/BEAT,610,0);
+    for(let i=0;i<4;i++) {
+      const p=clamp((local-(1.5+i*.2)*BEAT)/(2*BEAT));
+      const x=990+i*142;
+      // One frame leaves the source and follows the shared trunk to each viewer.
+      const point=p<.35?[1220,mix(429,540,p/.35)]:p<.72?[mix(1220,x,(p-.35)/.37),540]:[x,mix(540,620,(p-.72)/.28)];
+      transform(`encode-packet-${i}`,`translate(${point[0]} ${point[1]})`);
+      opacity(`encode-packet-${i}`,p>0&&p<1?1:0);
+      const arrive=pop((local-(3.5+i*.2)*BEAT)/BEAT);
+      transform(`encode-person-${i}`,`translate(0 ${-9*Math.sin(clamp(arrive)*Math.PI)})`);
+      blink(`encode-person-${i}`,local,3.1+i*.23);
+    }
   }
 
   function people(t) {
-    slide('people-type', (t - .25) / .42, -640, 140, 'rotate(-12 280 450)');
-    slide('people-host', (t - .55) / .42, 0, 700);
-    const zoom = mix(2.6, 1, ease(t / 1.62));
+    slide('people-type', (t - BEAT / 2) / (BEAT / 2), -640, 140, 'rotate(-12 280 450)');
+    slide('people-host', (t - BEAT) / (BEAT / 2), 0, 700);
+    const zoom = mix(2.6, 1, ease(t / (2.5 * BEAT)));
     scaleAt('people-seats', zoom, 1100, 300);
     transform('people-backdrop', `translate(${-13 * t} 0) rotate(-12 800 450)`);
     for (let i = 0; i < 20; i++) {
-      const p = pop((t - .2 - i * .045) / .4);
-      const wave = Math.sin(clamp((t - 2.1 - i * .085) / .6) * Math.PI);
+      const p = pop((t - BEAT / 2 - i * BEAT / 16) / (BEAT / 2));
+      const wave = Math.sin(clamp((t - 4 * BEAT - i * BEAT / 8) / BEAT) * Math.PI);
       transform(`seat-${i}`, `translate(0 ${-135 * (1 - p) - wave * 10}) rotate(${wave * (i % 2 ? -5 : 5)} 0 59)`);
       opacity(`seat-${i}`, p);
       blink(`seat-${i}`, t, 4.2 + i * .103);
@@ -423,43 +410,47 @@ export function createArt(svg, language) {
     const close = t - 7 * BEAT;
     node('people-close').style.display = close >= 0 ? '' : 'none';
     for (let i = 0; i < 3; i++) {
-      slide(`close-panel-${i}`, (close - i * .12) / .28, 0, i % 2 ? 980 : -980);
+      slide(`close-panel-${i}`, (close - i * BEAT / 4) / (BEAT / 2), 0, i % 2 ? 980 : -980);
       const lean = Math.sin(clamp((close - .7 - i * .19) / 1.1) * Math.PI) * (i % 2 ? -5 : 5);
       transform(`close-person-${i}`, `rotate(${lean} 0 59)`);
       blink(`close-person-${i}`, close, 1.5 + i * .2);
     }
-    slide('people-close-type', (close - .37) / .24, -1740, 240, 'rotate(-8 800 650)');
+    slide('people-close-type', (close - BEAT) / (BEAT / 2), -1740, 240, 'rotate(-8 800 650)');
   }
 
   function more(t) {
-    const cut = Math.min(2, Math.floor(t / (BAR * 2 / 3)));
-    const local = t - cut * BAR * 2 / 3;
-    ['game', 'art', 'code'].forEach((name, index) => { node(`more-${name}`).style.display = index === cut ? '' : 'none'; });
-    const hit = pop(local / .34);
-    scaleAt('more-game-picture', mix(1.75, 1, hit), 910, 370, mix(-22, 0, hit));
-    transform('more-art-picture', `translate(800 450) rotate(${mix(8, -3, ease(local / 1.58))}) scale(1.05) translate(-800 -450)`);
-    slide('more-art-type', local / .23, -850, 170, 'rotate(-12 800 450)');
-    transform('more-pencil', `translate(${1190 - local * 62} ${150 + 20 * Math.sin(local * 3)}) rotate(32)`);
-    scaleAt('more-code-picture', 1 + .035 * local);
-    slide('more-code-type', local / .24, 1880, -400, 'rotate(-12 800 450)');
+    const cut = Math.min(3, Math.floor(t / (BAR * 3 / 4)));
+    const local = t - cut * BAR * 3 / 4;
+    ['game', 'art', 'photos', 'movie'].forEach((name, index) => { node(`more-${name}`).style.display = index === cut ? '' : 'none'; });
+    const hit = pop(local / (BEAT / 2));
+    scaleAt('more-game-picture', mix(1.75, 1, hit), 1270, 425, mix(-22, 0, hit));
+    slide('more-art-picture',local/(BEAT/2),480,80);
+    slide('more-art-type', local / (BEAT/2), -850, 120, 'rotate(-8 380 450)');
+    const tip=drawSketch((local-BEAT/4)/(2*BEAT));
+    transform('more-pencil',`translate(${tip.x} ${tip.y})`);
+    opacity('more-pencil',1-ease((local-2.5*BEAT)/(BEAT/2)));
+    scaleAt('more-photos-picture', 1 + .015 * local,1200,450);
+    slide('more-photos-type', local / (BEAT/2), -850, 120, 'rotate(-8 380 450)');
+    slide('more-movie-type', local / (BEAT/2), -850, 120, 'rotate(-8 380 450)');
+    node('movie-plane').style.transform = moviePlanePose(local/(3*BEAT));
   }
 
   function end(t, poster) {
-    const p = poster ? 1 : ease(t / .66);
-    slide('end-slab', p, -1200, 0);
+    const p = poster ? 1 : ease(t / BEAT);
+    slide('end-slab', poster ? 1 : t / BEAT, -1200, 0);
     scaleAt('end-brand', mix(2.15, 1, p), 510, 420, mix(-12, 0, p));
-    slide('end-brand-top', poster ? 1 : (t - .08) / .55, -800, 0);
-    slide('end-brand-bottom', poster ? 1 : (t - .2) / .48, 800, 0);
-    const dot = poster ? 1 : pop((t - .62) / .48);
+    slide('end-brand-top', poster ? 1 : (t - BEAT / 4) / BEAT, -800, 0);
+    slide('end-brand-bottom', poster ? 1 : (t - BEAT / 2) / BEAT, 800, 0);
+    const dot = poster ? 1 : pop((t - BEAT) / BEAT);
     transform('end-brand-dot', `translate(0 ${-450 * (1 - dot)})`);
-    slide('end-type', poster ? 1 : (t - .55) / .42, -1040, 0);
-    const character = poster ? 1 : pop((t - .45) / .57);
+    slide('end-type', poster ? 1 : (t - BEAT) / (BEAT / 2), -1040, 0);
+    const character = poster ? 1 : pop((t - BEAT) / BEAT);
     scaleAt('end-character', mix(2, 1, character), 1290, 294, mix(-25, 0, character));
-    opacity('end-character', poster ? 1 : (t - .4) / .13);
-    slide('end-room', poster ? 1 : (t - .9) / .46, 600, 400);
-    opacity('end-label', poster ? 1 : (t - .65) / .3);
-    opacity('end-url', poster ? 1 : (t - 1.3) / .35);
-    opacity('end-credit', poster ? 0 : (t - 3.3) / .5);
+    opacity('end-character', poster ? 1 : (t - .75 * BEAT) / (BEAT / 2));
+    slide('end-room', poster ? 1 : (t - 2 * BEAT) / BEAT, 600, 400);
+    opacity('end-label', poster ? 1 : (t - BEAT) / (BEAT / 2));
+    opacity('end-url', poster ? 1 : (t - 3 * BEAT) / (BEAT / 2));
+    opacity('end-credit', poster ? 0 : (t - 6 * BEAT) / BEAT);
     transform('end-echo', `translate(${poster ? 0 : -12 * t} 0) rotate(-12 1100 450)`);
     transform('end-tv', `rotate(${poster ? 0 : -6 * Math.sin(clamp((t - 2.8) / 1.1) * Math.PI)})`);
     transform('end-host', `rotate(${poster ? 0 : 4 * Math.sin(clamp((t - 2) / 1.1) * Math.PI)} 0 59)`);
@@ -471,23 +462,23 @@ export function createArt(svg, language) {
     { id: 'hello', start: 0, render: hello },
     { id: 'discover', start: BAR, render: discover },
     { id: 'launch', start: 2 * BAR, render: launch },
-    { id: 'share', start: 5 * BAR, render: share },
+    { id: 'share', start: 4.5 * BAR, render: share },
     { id: 'game', start: 8 * BAR, render: gameScene },
-    { id: 'invite', start: 10 * BAR, render: invite },
-    { id: 'people', start: 13 * BAR, render: people },
-    { id: 'features', start: 16 * BAR, render: features },
-    { id: 'more', start: 19 * BAR, render: more },
-    { id: 'end', start: 21 * BAR, render: end },
+    { id: 'invite', start: 13 * BAR, render: invite },
+    { id: 'people', start: 16 * BAR, render: people },
+    { id: 'features', start: 19 * BAR, render: features },
+    { id: 'more', start: 24 * BAR, render: more },
+    { id: 'end', start: 27 * BAR, render: end },
   ];
   function render(time, poster = false) {
     const t = clamp(time, 0, DURATION);
-    games.forEach(draw => draw(poster ? 1.7 : t));
+    drawGame(poster ? 1.7 : t);
     const index = poster ? scenes.length - 1 : scenes.findLastIndex((scene) => t >= scene.start);
     const incoming = scenes[index];
     const local = poster ? 5 : t - incoming.start;
     // The shared preview fills the frame before the game; other edits use a
     // short diagonal cut. Long holds between edits keep the score from flickering.
-    const cut = poster || index === 0 || incoming.id === 'game' ? 1 : ease(local / .25);
+    const cut = poster || index === 0 || incoming.id === 'game' ? 1 : ease(local / (BEAT / 2));
     scenes.forEach((scene, i) => {
       const visible = i === index || (i === index - 1 && cut < 1);
       node(`scene-${scene.id}`).style.display = visible ? '' : 'none';
@@ -499,6 +490,10 @@ export function createArt(svg, language) {
       attr('slash-path', 'd', `M${edge} 0H1600V900H${edge - 360}Z`);
       node(`scene-${incoming.id}`).setAttribute('clip-path', 'url(#slash)');
     }
+    const product=!poster&&['launch','share','invite'].includes(incoming.id);
+    const camera=product?node(`${incoming.id}-window-camera`):null;
+    const matrix=camera?svg.getCTM()?.inverse().multiply(camera.getCTM()):null;
+    onUI({scene:product?incoming.id:null,local,time:t,matrix});
   }
   render(0, true);
   return { render };

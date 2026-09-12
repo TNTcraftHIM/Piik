@@ -1,16 +1,25 @@
 import { createArt, DURATION } from './art.js';
+import { mountBrands } from '../assets/brand.js';
+mountBrands();
 
 const root = document.documentElement;
 const body = document.body;
 const byId = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
+body.classList.toggle('embedded', params.get('embedded') === '1');
 root.lang = params.get('lang') === 'zh-CN' ? 'zh-CN' : 'en';
 if (['light', 'dark'].includes(params.get('theme'))) root.dataset.theme = params.get('theme');
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const audio = byId('soundtrack');
 const seek = byId('seek');
 seek.max = String(Math.ceil(DURATION * 100) / 100);
-let art = createArt(byId('film-art'), root.lang);
+function presentUI({scene,local,time,matrix}) {
+  byId('film-ui').toggleAttribute('hidden', !scene);
+  if (!scene || !matrix) return;
+  byId('ui-placement').setAttribute('transform', `matrix(${matrix.a} ${matrix.b} ${matrix.c} ${matrix.d} ${matrix.e} ${matrix.f})`);
+  byId('product-ui').contentWindow?.postMessage({type:'piik-film-ui',scene,local,time,lang:root.lang}, '*');
+}
+let art = createArt(byId('film-art'), root.lang, presentUI);
 let time = 0;
 let origin = 0;
 let playing = false;
@@ -20,7 +29,7 @@ let frame = 0;
 let generation = 0;
 const say = (en, zh) => root.lang === 'zh-CN' ? zh : en;
 const bounded = (value) => Math.min(DURATION, Math.max(0, value));
-const stamp = (value) => `0:${String(Math.floor(value)).padStart(2, '0')}`;
+const stamp = (value) => `${Math.floor(value / 60)}:${String(Math.floor(value % 60)).padStart(2, '0')}`;
 
 // Audible playback follows the media clock, including buffering/seeking. Muted
 // playback needs no audio request and uses one monotonic anchor instead.
@@ -36,7 +45,8 @@ function showState() {
   byId('replay').setAttribute('aria-label', say('Replay', '从头播放'));
   byId('sound').setAttribute('aria-label', say('Sound', '声音'));
   byId('sound').setAttribute('aria-pressed', String(sound));
-  byId('capture').setAttribute('aria-label', say('Clean fullscreen view', '全屏干净画面'));
+  byId('capture').setAttribute('aria-label', body.classList.contains('fullscreen') ? say('Exit fullscreen', '退出全屏') : say('Fullscreen', '全屏'));
+  byId('transport').setAttribute('aria-label', say('Playback controls', '播放控件'));
   byId('curtain').hidden = started;
   byId('transport').hidden = !started;
 }
@@ -118,7 +128,7 @@ function localize() {
   const language = byId('language');
   language.textContent = say('简体中文', 'English');
   language.setAttribute('aria-label', say('切换到简体中文', 'Switch to English'));
-  document.title = say('Piik — Good things. Shared.', 'Piik — 好东西，一起看。');
+  document.title = say('Piik — Share the good stuff.', 'Piik — 来，看点好康的。');
   document.querySelectorAll('[data-home]').forEach((link) => {
     const url = new URL(link.getAttribute('href'), location.href);
     url.searchParams.set('lang', root.lang);
@@ -137,35 +147,60 @@ byId('sound').addEventListener('click', toggleSound);
 seek.addEventListener('input', () => seekTo(Number(seek.value)));
 byId('language').addEventListener('click', () => {
   root.lang = root.lang === 'en' ? 'zh-CN' : 'en';
-  art = createArt(byId('film-art'), root.lang);
+  art = createArt(byId('film-art'), root.lang, presentUI);
   localize();
   // The active loop will render the new artwork at the same media position.
   if (!playing) paint();
 });
 byId('capture').addEventListener('click', async () => {
-  body.classList.add('clean');
-  byId('capture').blur();
-  try { await root.requestFullscreen(); } catch { /* A clean window also supports ordinary browser/OS capture. */ }
+  if (body.classList.contains('fullscreen')) {
+    body.classList.remove('fullscreen', 'recording');
+    if (document.fullscreenElement) await document.exitFullscreen();
+  } else {
+    body.classList.add('fullscreen');
+    try { await root.requestFullscreen(); } catch { /* Keep an in-page fullscreen view when the browser lacks this API. */ }
+  }
+  showState();
 });
 document.addEventListener('fullscreenchange', () => {
-  if (!document.fullscreenElement) body.classList.remove('clean');
+  if (!document.fullscreenElement) body.classList.remove('fullscreen', 'recording');
+  showState();
 });
 byId('about').addEventListener('click', () => {
   pause();
   byId('credits').showModal();
 });
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && body.classList.contains('clean')) {
-    body.classList.remove('clean');
+  if (event.key === 'Escape' && body.classList.contains('fullscreen')) {
+    body.classList.remove('fullscreen', 'recording');
     if (document.fullscreenElement) void document.exitFullscreen();
+    showState();
   }
   if (byId('credits').open || event.repeat || event.ctrlKey || event.altKey || event.metaKey || event.target.closest('input,select,textarea,[contenteditable="true"]')) return;
   if (event.code === 'Space' && !event.target.closest('button,a')) { event.preventDefault(); if (playing) pause(); else void play(); }
   if (event.key.toLowerCase() === 'r') void play(sound, true);
   if (event.key.toLowerCase() === 'm') toggleSound();
+  if (event.key.toLowerCase() === 'c' && body.classList.contains('fullscreen')) body.classList.toggle('recording');
 });
 document.addEventListener('visibilitychange', () => { if (document.hidden && playing) pause(); });
 window.addEventListener('pagehide', pause);
+window.addEventListener('message', event => {
+  if (parent !== window && event.source === parent && event.origin === location.origin && event.data?.type === 'piik-film-preferences') {
+    const {lang, theme} = event.data;
+    if (!['en', 'zh-CN'].includes(lang) || !['system', 'light', 'dark'].includes(theme)) return;
+    root.lang = lang;
+    if (theme === 'system') delete root.dataset.theme;
+    else root.dataset.theme = theme;
+    art = createArt(byId('film-art'), root.lang, presentUI);
+    localize();
+    if (!playing) paint();
+    return;
+  }
+  if (event.source === byId('product-ui').contentWindow && event.data?.type === 'piik-film-ui-ready') {
+    cancelAnimationFrame(frame);
+    paint();
+  }
+});
 reduceMotion.addEventListener('change', () => {
   if (reduceMotion.matches && playing) pause();
   byId('reduced-note').hidden = !reduceMotion.matches;

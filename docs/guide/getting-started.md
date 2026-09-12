@@ -2,18 +2,17 @@
 
 English · [简体中文](./getting-started.zh-CN.md) · [Back to Piik](../../README.md)
 
-Bring a game, a work in progress, or a new discovery. One person shares; up to 20 friends
-watch in their browsers.
+Piik shares one person's screen with up to 20 invited viewers. This guide covers
+watching, trying the online demo, using Piik App and sharing through an existing site.
 
-[Join a room](#join-a-friends-room) · [Share in a browser](#share-from-your-browser) ·
-[Set up Piik App](#share-with-piik-app) · [Fix a problem](#when-something-gets-in-the-way)
+[Join a room](#join-a-friends-room) · [Online demo](#try-the-online-demo) ·
+[Piik App](#share-with-piik-app) · [Existing site](#share-from-your-browser) ·
+[Troubleshooting](#when-something-gets-in-the-way)
 
-Download the package for your system from
-[GitHub Releases](https://github.com/TNTcraftHIM/Piik/releases) or the
-[Gitee mirror](https://gitee.com/TNTcraftHIM/Piik/releases), use your group's
-Piik site, or [run from source](../README.md#run-from-source).
+Viewers need a browser and an invitation. To try sharing, use the online demo
+or **Public invite** in Piik App.
 
-Piik opens in illustrated mode. Choose **EN** in the header to show the labels
+If Piik shows icons only, choose **EN** in the header to show the labels
 used below. **中** switches to Chinese; **✦** returns to the illustrations.
 
 ## Join a friend's room
@@ -44,32 +43,43 @@ you cannot join by code.
 If an old link no longer works, ask the host for the current invitation.
 App Local rooms and temporary public invitations end when that App run stops.
 
-## Share from your browser
+## Try the online demo
 
-1. Open your group's Piik site on your computer. Enter its site passphrase if asked.
-2. Choose **Start sharing**. In the browser picker, select the screen, window or
-   tab you want friends to see, and enable audio if offered.
-3. Check the preview, then choose **Copy invite link** and send it to your friends.
-4. Keep the sharing tab open. Use **Pause sharing**, **Switch source**, or
-   **Stop sharing** when you need them.
+1. Open [demo.piik.tv](https://demo.piik.tv) in a desktop browser that supports
+   screen sharing.
+2. Select **Start sharing**, choose a screen, window or tab, and enable audio if
+   needed and offered by the browser.
+3. Confirm the preview and select **Copy invite link**. Open that link on a
+   second device or send it to a friend.
+4. Select **Stop sharing** when finished.
 
-Screen capture requires an HTTPS site or `localhost`. The sources and audio
-offered by the picker depend on your browser and operating system.
-Invitation links grant access to that room; share them with the people you want there.
+The project hosts this site for you. It uses direct media connections (P2P);
+restrictive networks may load the page but block video.
 
 ## Share with Piik App
 
-1. Extract the whole package for your platform and keep its directory structure intact.
+1. Download a **`piik-app`** archive for your platform from
+   [GitHub Releases](https://github.com/TNTcraftHIM/Piik/releases) or the
+   [Gitee mirror](https://gitee.com/TNTcraftHIM/Piik/releases). Extract the whole
+   archive and keep its directory structure intact.
 2. Open `piik-app.exe` on Windows, `Piik App.app` on macOS, or `./piik-app` on Linux.
    The launcher opens in your system browser.
-3. Choose a mode below, then select **Open Piik**.
+3. Choose **Public invite** for friends outside your local network, then select
+   **Open Piik**. Other modes are explained below.
 4. Choose **Start sharing**, then select **Browser**, **Apps / Windows**, or
    **Screens** as available. Pick the actual source and sound option.
 5. Copy and send the room invitation. Keep both the App and sharing tab open.
 
-Windows App and browser sharing are the current focus. macOS/Linux native
-capture still needs physical validation; Linux also needs
-[system capture components](../../native/capture/linux/README.md).
+| Filename contains | Platform |
+| --- | --- |
+| `windows-amd64` | Windows x64 |
+| `darwin-arm64` | Apple silicon; native capture requires macOS 13+ |
+| `linux-amd64` | Linux x64 |
+
+Windows App and browser sharing are the primary tested paths. The macOS and
+Linux apps have not yet been tested on physical devices;
+[test results and feedback are welcome](https://github.com/TNTcraftHIM/Piik/issues).
+Linux native capture also needs [system components](../../native/capture/linux/README.md).
 See the [App guide](../../cmd/piik-app/README.md) for package and runtime details.
 
 ### Choose an App mode
@@ -85,6 +95,25 @@ your room a temporary web address; picture and sound still travel between
 participants. This mode has no media-server fallback, and the temporary address
 has no uptime guarantee. All modes need a working UDP media path.
 The [App guide](../../cmd/piik-app/README.md#modes) explains the connection setup.
+
+## Share from your browser
+
+You need an existing HTTPS site running Piik Server, provided by a friend or
+administrator. If you do not have one, start with the [demo](#try-the-online-demo)
+or [Piik App](#share-with-piik-app). Hosting a site yourself is an advanced option:
+follow the [self-hosting guide](../operations/self-hosting.md) for server, HTTPS
+and network setup.
+
+1. Open your group's Piik site on your computer. Enter its site passphrase if asked.
+2. Choose **Start sharing**. In the browser picker, select the screen, window or
+   tab you want friends to see, and enable audio if offered.
+3. Check the preview, then choose **Copy invite link** and send it to your friends.
+4. Keep the sharing tab open. Use **Pause sharing**, **Switch source**, or
+   **Stop sharing** when you need them.
+
+Screen capture requires an HTTPS site or `localhost`. The sources and audio
+offered by the picker depend on your browser and operating system.
+Invitation links grant access to that room; share them with the people you want there.
 
 ## When something gets in the way
 

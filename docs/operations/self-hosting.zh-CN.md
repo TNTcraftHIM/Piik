@@ -2,10 +2,12 @@
 
 [English](./self-hosting.md) · 简体中文 · [文档导航](../README.md)
 
-Piik 只需要**一个服务端程序**。网页、信令、STUN 和可选的媒体转发均已内置，
-房间数据保存在 SQLite 中，无须安装 Node.js、独立数据库或媒体服务器。
+Piik Server 将网页、房间管理和可选的媒体转发打包在**一个服务端程序**中。
+解压后即可运行，房间数据保存在 SQLite 中。
 
 ## 先在本机试用
+
+以下服务端操作在 Linux x64 环境中执行。
 
 从 [GitHub Releases](https://github.com/TNTcraftHIM/Piik/releases) 或
 [Gitee 镜像](https://gitee.com/TNTcraftHIM/Piik/releases)下载 **Linux x64 服务端**程序包，

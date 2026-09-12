@@ -4,57 +4,23 @@ import { z } from "zod";
 import { BrandLoader, BrandMark } from "../components/living/BrandMark";
 import { Tooltip } from "../components/living/Tooltip";
 import { AppHeader } from "../components/living/Header";
-import { WelcomeLine } from "../components/living/WelcomeLine";
+import { LauncherForm, type AppMode } from "../components/living/LauncherForm";
 import { Btn, Pill } from "../components/living/primitives";
-import type { HintKind } from "../components/living/hints";
-import { Glyph, type GlyphName } from "../ui/icons";
+import { Glyph } from "../ui/icons";
 import { useCopy, type CopyKey } from "../ui/copy";
 import {
   checkReleaseUpdate,
   type ReleaseUpdateNotice,
 } from "../lib/release-update";
 
-type AppMode = "local" | "link" | "site";
-
-const launcherStateSchema = z
-  .object({
-    site: z.string(),
-    localAccessPassword: z.string().max(128),
-    defaultMode: z.enum(["local", "site"]),
-    revision: z.string(),
-    version: z.string().default("development"),
-  });
+const launcherStateSchema = z.object({
+  site: z.string(),
+  localAccessPassword: z.string().max(128),
+  defaultMode: z.enum(["local", "site"]),
+  revision: z.string(),
+  version: z.string().default("development"),
+});
 const launcherResultSchema = z.object({ target: z.string().url() }).strict();
-
-const MODES: Array<{
-  mode: AppMode;
-  icon: GlyphName;
-  label: CopyKey;
-  hint: CopyKey;
-  comic: HintKind;
-}> = [
-  {
-    mode: "local",
-    icon: "users",
-    label: "client.launch.local",
-    hint: "client.launch.localHint",
-    comic: "hint-client-local",
-  },
-  {
-    mode: "link",
-    icon: "globe",
-    label: "client.launch.link",
-    hint: "client.launch.linkHint",
-    comic: "hint-client-link",
-  },
-  {
-    mode: "site",
-    icon: "server",
-    label: "client.launch.site",
-    hint: "client.launch.siteHint",
-    comic: "hint-client-site",
-  },
-];
 
 export function AppLauncherPage() {
   const { lang, vis, t } = useCopy();
@@ -79,9 +45,14 @@ export function AppLauncherPage() {
         setSite(state.site);
         setLocalAccessPassword(state.localAccessPassword);
         setLoading(false);
-        void checkReleaseUpdate({ version: state.version, revision: state.revision }).then((notice) => {
-          if (current && notice) setUpdate(notice);
-        }).catch(() => undefined);
+        void checkReleaseUpdate({
+          version: state.version,
+          revision: state.revision,
+        })
+          .then((notice) => {
+            if (current && notice) setUpdate(notice);
+          })
+          .catch(() => undefined);
       })
       .catch(() => {
         if (!current) return;
@@ -117,27 +88,12 @@ export function AppLauncherPage() {
     }
   }
 
-  const accessField = (
-    <label className="lr-input lr-client-access">
-      <Glyph name="lock" size={18} />
-      <input
-        type="text"
-        value={localAccessPassword}
-        maxLength={128}
-        autoComplete="off"
-        spellCheck={false}
-        placeholder={vis ? "" : t("client.launch.localAccessPlaceholder")}
-        aria-label={t("client.launch.localAccess")}
-        onChange={(event) => {
-          setLocalAccessPassword(event.target.value);
-          setError(null);
-        }}
-      />
-    </label>
-  );
-  const updateKey: CopyKey = update?.kind === "different-build"
-    ? "client.update.differentBuild"
-    : update?.kind === "official-release" ? "client.update.official" : "client.update.available";
+  const updateKey: CopyKey =
+    update?.kind === "different-build"
+      ? "client.update.differentBuild"
+      : update?.kind === "official-release"
+        ? "client.update.official"
+        : "client.update.available";
   const updateText = update ? `${t(updateKey)} · ${update.version}` : "";
   const updateLink = update ? (
     <a
@@ -148,9 +104,7 @@ export function AppLauncherPage() {
       aria-label={updateText}
     >
       <Glyph name="arrowUp" size={17} />
-      <span className={vis ? "visually-hidden" : undefined}>
-        {updateText}
-      </span>
+      <span className={vis ? "visually-hidden" : undefined}>{updateText}</span>
       {vis && <span aria-hidden="true">{update.version}</span>}
     </a>
   ) : null;
@@ -192,96 +146,32 @@ export function AppLauncherPage() {
             />
           </div>
         ) : (
-          <form className="lr-client-launch-panel" onSubmit={launch}>
-            <BrandMark size={68} motion="once" />
-            <WelcomeLine />
-            <h1 className={vis ? "visually-hidden" : "lr-client-launch-title"}>
-              {t("client.launch.title")}
-            </h1>
-
-            {updateLink && (vis ? updateLink : (
-              <Tooltip text={updateText}>{updateLink}</Tooltip>
-            ))}
-
-            <div
-              className="lr-client-modes"
-              role="radiogroup"
-              aria-label={t("client.launch.title")}
-            >
-              {MODES.map((choice) => {
-                const button = (
-                  <button
-                    key={choice.mode}
-                    type="button"
-                    role="radio"
-                    className={`lr-client-mode${mode === choice.mode ? " is-selected" : ""}`}
-                    aria-checked={mode === choice.mode}
-                    aria-label={t(choice.label)}
-                    onClick={() => {
-                      setMode(choice.mode);
-                      setError(null);
-                    }}
-                  >
-                    <Glyph name={choice.icon} size={27} />
-                    {vis ? null : (
-                      <span>
-                        <strong>{t(choice.label)}</strong>
-                        <small>{t(choice.hint)}</small>
-                      </span>
-                    )}
-                  </button>
-                );
-                return (
-                  <Tooltip key={choice.mode} kind={choice.comic} text={vis ? undefined : t(choice.hint)}>
-                    {button}
-                  </Tooltip>
-                );
-              })}
-            </div>
-
-            {mode === "site" ? (
-              <label className="lr-input lr-client-site">
-                <Glyph name="link" size={18} />
-                <input
-                  type="url"
-                  value={site}
-                  autoFocus
-                  spellCheck={false}
-                  inputMode="url"
-                  placeholder="https://share.example"
-                  aria-label={t("client.launch.siteAddress")}
-                  onChange={(event) => {
-                    setSite(event.target.value);
-                    setError(null);
-                  }}
-                />
-              </label>
-            ) : null}
-
-            {mode !== "site" ? (
-              <Tooltip kind="hint-password" text={vis ? undefined : t("client.launch.localAccessHint")}>
-                {accessField}
-              </Tooltip>
-            ) : null}
-
-            {error === "launch" ? (
-              <Pill
-                icon="alert"
-                tone="bad"
-                label={t("client.launch.error")}
-                alert
-                comic="warning"
-              />
-            ) : null}
-            <Btn
-              icon="arrowRight"
-              title="client.launch.go"
-              cap="client.launch.go"
-              tone="primary"
-              type="submit"
-              disabled={mode === "site" && !site.trim()}
-            />
-          </form>
+          <LauncherForm
+            mode={mode}
+            site={site}
+            localAccessPassword={localAccessPassword}
+            onModeChange={(value) => {
+              setMode(value);
+              setError(null);
+            }}
+            onSiteChange={(value) => {
+              setSite(value);
+              setError(null);
+            }}
+            onLocalAccessPasswordChange={(value) => {
+              setLocalAccessPassword(value);
+              setError(null);
+            }}
+            error={error === "launch"}
+            onSubmit={launch}
+          >
+            {updateLink &&
+              (vis ? (
+                updateLink
+              ) : (
+                <Tooltip text={updateText}>{updateLink}</Tooltip>
+              ))}
+          </LauncherForm>
         )}
       </main>
     </div>

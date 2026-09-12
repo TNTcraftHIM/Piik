@@ -19,10 +19,17 @@ Role labels describe permission; a person's chosen nickname stays unchanged.
 | Room-specific access secret | Room password | 房间密码 |
 
 Write each language for its own audience. Chinese headings and welcomes may
-sound like friends inviting each other: “来，给你看个好东西。” or “沙发给你留着呢。”
+sound like friends inviting each other: “叫朋友来一起看。” or “沙发给你留着呢。”
 Do not translate English sentence structure or possessive screen metaphors
 literally (“和朋友一起看你的屏幕”). Use familiar Chinese verbs and a light touch;
 forced memes, baby talk and repeated slogans quickly become tiring.
+
+Keep the public brand line consistent in the homepage, film ending and README
+opening, beside a plain screen-sharing description. Scene titles should name
+the action or benefit; do not turn every section into another slogan. Games, drawings, photos and
+movie nights show the range of screen sharing without implying voice chat,
+shared input or synchronized playback controls. Each locale must read naturally
+as a complete sequence, without depending on a pun from the other language.
 
 Set the register by the reader's task:
 
@@ -37,6 +44,47 @@ Formal means clear and factual, not bureaucratic. Keep detailed procedures free
 of jokes and promotional slogans; do not carry the website's playful headings
 into technical instructions.
 
+State the requirement, action or result directly. Omit negative comparisons that
+answer an abandoned design or an internal discussion: “解压后运行” is enough;
+listing the runtimes a packaged App does not require adds no useful next step.
+Include an exclusion only when it resolves a real reader choice or limitation.
+
+Write tutorials from an explicit starting point: what the reader needs, which
+visible action to take, and what appears next. Distinguish watching an invitation,
+creating an App room, using an existing site, and deploying a server. Say where
+the site or download comes from; “follow the prompts” cannot stand in for a
+missing prerequisite. Mark passwords and audio options as conditional when they
+are optional. Keep App and Server package names distinguishable at download links.
+Public platform notes say what has been tested and invite useful feedback;
+internal phrases such as “this phase's acceptance target” belong in status.
+
+Use progressive disclosure on the website and in the film:
+
+| Information layer | Reader's question | Content |
+| --- | --- | --- |
+| First view: navigation, headings, feature cards, film titles | What does it do, how do I start, what does it cost? | Familiar actions and concrete benefits: “开箱即用”, “免费使用”, “朋友点开就能看” |
+| Expanded details, supporting text and FAQ answers | Will this work for me, and why? | Platform/network conditions, explained technical terms and links to the relevant guide |
+| README, wiki and operational guides | How do I configure, verify or troubleshoot it? | Exact action names, prerequisites, commands, configuration and evidence limits |
+
+The layer follows the reader's task, not font size alone. Keep material costs,
+availability and limitations beside the claim or action they qualify; do not
+hide them behind a collapse. Never promote an implementation mechanism such as
+encoding reuse or STUN as an unexplained headline. Explain technical terms on
+first use even in detailed documentation. Plain wording must preserve the
+original bounds: “开箱即用” does not promise offline use or guaranteed connection,
+and reduced repeated work does not establish a universal CPU saving.
+Lead performance copy with the user benefit (low latency, efficient sharing),
+then explain the supporting mechanism and its conditions. “Lowest latency”,
+“zero delay” and comparative resource savings require matching measurements;
+an architectural preference alone does not establish a benchmark result.
+
+Write Chinese and English headings independently. Break lines at complete
+phrases, never inside a short action such as “画上两笔”. A decorative number must
+have an adjacent meaning/unit (“使用费用 0 元”), and its label must remain visible
+in both languages and at the smallest supported width. Check the actual rendered
+headline after rotation and animation settle: all meaningful words need room
+inside the frame. Oversized background lettering may crop; primary copy may not.
+
 Download/availability labels, platform requirements, instructions, permission
 prompts, status and errors stay plain and specific. Use the exact visible action
 names in tutorials; a playful caption never replaces “Download”, “Join a room”
@@ -49,9 +97,12 @@ Screen sharing includes games, creative work and showing a useful discovery.
 Operational pages omit introductory sentences that repeat their controls.
 Helper text should explain a meaningful choice or prevent an error.
 
-Opening lines are original, brief nods to game and movie conventions. Keep a
-small bilingual set without a quotation service or attribution to real works.
-Avoid copying recognizable dialogue, catchphrases or an existing brand's voice.
+Use short, contextual references in opening lines and illustration reactions.
+A familiar expression may work when its ordinary meaning still makes sense to
+someone who does not recognize it. Keep each language independent and avoid
+long dialogue, borrowed brand slogans or a stream of unrelated memes. Match a
+celebration to a visible successful action; it must not precede the result.
+Keep the small bilingual set local, without a quotation service.
 The [visual language](../design/visual-language.md) owns where these lines appear.
 
 ## Product And Tool Names
@@ -71,11 +122,9 @@ The [visual language](../design/visual-language.md) owns where these lines appea
 | Environment variables | Uppercase snake case | `PIIK_DEBUG`, `PIIK_LOG_DIR` |
 | Go module path | Exact repository spelling | `github.com/TNTcraftHIM/Piik` |
 
-An `.exe` is lowercase on Windows too; `.app` is a user-facing bundle, not the
-raw executable. There is no universal OS rule requiring lowercase binaries:
-this project chooses one spelling across platforms for predictable commands.
-Archive contents and directory layout are owned by the existing packager; a
-name change does not change that layout.
+Use the same lowercase binary names across platforms for predictable commands.
+`Piik App.app` is the user-facing macOS bundle. The packager owns archive contents
+and directory layout.
 Keep platform/standard spellings such as `Info.plist`, `LICENSE`, `README.md`
 and `REVISION`. Do not change third-party names or notices to fit this table.
 Immutable measurement records keep the paths and hashes of their measured
@@ -97,6 +146,16 @@ change rules belong to [versioning](./versioning.md); do not add aliases or dual
 readers merely for a display rename.
 
 ## Basis
+
+Content layering reviewed 2026-09-12:
+[NN/g's progressive disclosure](https://www.nngroup.com/articles/progressive-disclosure/)
+defers secondary detail while preserving the primary task;
+[GOV.UK's clear-language guidance](https://guidance.publishing.service.gov.uk/writing-to-gov-uk-standards/writing-guidelines/clear-language/)
+keeps specialist content understandable. The layer assignments and Chinese
+examples above are Piik's application of those principles.
+[NN/g's microcopy guidance](https://www.nngroup.com/articles/3-cs-microcopy/)
+puts clarity before concision and character; this also guides the balance
+between Piik's playful introductions and factual instructions.
 
 Reviewed 2026-09-10. Desktop standards explicitly separate display names from
 executable identifiers; lowercase executable names are our portability convention.

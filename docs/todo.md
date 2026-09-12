@@ -7,6 +7,11 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
+- [ ] **Website introduction acceptance.** Review the revised bilingual film,
+  four-use homepage/README illustration and brand line options together.
+  Accept or reject the separate Host armchair preview before applying it to
+  the room UI and refreshing its film/README appearances. Record/export the
+  film only after visual acceptance. Keep the film phase on its separate worktree.
 - [ ] **Release and repository readiness.** Review the prepared Windows test
   candidate. Retry native CI after the Actions artifact quota refreshes, then
   rehearse the publisher with genuine matching Server and App packages. Old cloud
@@ -30,14 +35,6 @@ history. A parked idea is not implementation authority.
 
 Keep implementation on the existing phase branch. Main and production stay
 unchanged until the related acceptance and delivery actions are complete.
-
-## Next: Website Intro
-
-After the release preflight, prepare a separate worktree and creative handoff for
-a cinematic website introduction that can also be recorded as a promotional
-film. Keep Piik's playful visual identity, Pages hosting, optional licensed music
-and useful homepage access. The handoff should leave room for independent art
-direction; the current task records the idea without implementing it.
 
 ## Next: P2P Connection And Feedback Review
 

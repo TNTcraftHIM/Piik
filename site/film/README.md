@@ -1,32 +1,59 @@
 # Piik film
 
-The homepage links to this optional, 57-second introduction. Serve `site/` with
-any static HTTP server and open `/film/`. It also works below a project prefix,
-such as `/Piik/film/`; GitHub Pages needs no additional service or build step.
+The homepage expands this optional, 71-second introduction in an iframe loaded
+only on request. Closing it unloads playback; the standalone page remains useful
+for recording. Both entries use the same player. From the repository
+root, run `npm run build:website` and `npm run preview:website`, then open
+`http://127.0.0.1:18890/film/`. Publish the static `build/site/` output. A project
+prefix such as `/Piik/film/` also works; GitHub Pages needs no application server.
 
-`art.js` owns the original SVG artwork and seekable musical score. `player.js`
+`score.js` owns the 101 BPM beat/bar grid used by cuts and staged UI actions.
+`art.js` owns the original SVG artwork and seekable sequence; `../assets/games.js`
+owns the five original gameplay vignettes and their action/result sequence. `player.js`
 owns playback, sound and controls. Audible playback follows the audio element's
-clock, including buffering. Muted playback uses a monotonic clock and does not
-request the soundtrack. All artwork follows the same position; there are no
-independent CSS animation loops or scene timers.
+clock, including buffering. The host must support HTTP byte ranges for seeking;
+the Vite preview command does. Muted playback uses a monotonic clock and does not
+request the soundtrack. Artwork and the demonstration's CSS animations follow
+this same position, including pause, seek and replay.
 
 The film follows the actual App flow: unpack/open, choose **Public invite**,
 select a source, then copy the invite for friends to watch in a browser.
-“No server of your own” refers to App public-invite mode, which still uses a
-temporary control tunnel and needs Internet access. The encoding-reuse claim
-applies to compatible connections; it is not a universal CPU-usage benchmark.
+The “ready to use” introduction does not promise offline use or guaranteed
+connectivity: public invitations need Internet access and a temporary control
+tunnel. Avoiding repeated work applies to compatible connections; it is not a
+universal CPU-usage benchmark. The public pages use the
+[copy guide's information layers](../../docs/reference/naming.md#voice-and-terminology).
 
-`assets/ui/` contains lossless WebP captures at 2× resolution from the accepted
-UI at `0109030d`: the actual launcher, Host page, source picker and production
-Viewer components. Window names, room information and participants are samples;
-the sequence is staged. Update these captures when the product UI changes, and
-check the video rectangles and cursor targets in `art.js` after recapturing.
+`ui/main.tsx` uses the product's actual launcher form, source picker, TV, sofa and
+control primitives with sample inputs. It runs in an opaque, inert iframe with
+script permission only; it cannot persist preferences to the App or request
+capture. No room connection, API interception or media permission is simulated.
+The existing build dependency bundles these components; rebuilding the website
+picks up their styling and copy. Review scene selection and camera framing when
+the product workflow changes. Cursor targets follow component elements, not
+screenshot coordinates.
 
-[`../assets/game.js`](../assets/game.js) owns the original **DOT DASH** scene.
-The film composites it into the captured video surfaces using the film clock.
-The homepage's standalone SVG embeds CSS sampled from that same score, so it
-also works as a README image without scripts or external asset references.
-After changing the game, run `node scripts/update-website-game.mjs` from the
+Each cursor movement starts at the preceding control and has its own travel
+interval. Derive the entire pose from the requested time; do not accumulate
+cursor history or start a second animation clock. The source preview and drawing
+scene share `../assets/sketch.js`, including a seekable pencil trace.
+Opening the App changes the staged UI to the room. Keep the window's position
+continuous through that handoff; the next chapter changes its surrounding graphics.
+
+The film reuses the product's playback control CSS and `Glyph` icons, rendered
+to static markup during the website build. Its score and audio remain owned by
+`player.js`; the live viewer's stream binding, audio gain, reconnect and picture
+in picture remain in `PlaybackControls`. A shared appearance does not require
+giving a recorded sequence live-room state.
+
+[`../assets/game.js`](../assets/game.js) owns the original **LITTLE WANDER** RPG
+scene. The film and demonstration TV render it using the film clock.
+The film's five game vignettes share pure poses in `../assets/games.js`.
+`../assets/activities.js` composes the homepage's RPG, drawing, photos and movie
+from shared artwork. Its standalone SVG embeds sampled CSS at five seconds per
+activity, and also serves as the README image. The build tool removes repeated
+samples during holds.
+After changing the artwork, run `node scripts/update-website-hero.mjs` from the
 repository root; `--check` detects an out-of-date hero. Its `#still` fragment
 and the system reduced-motion preference disable the loop.
 
@@ -38,8 +65,9 @@ external fonts, analytics or new runtime dependencies are used.
 
 ## Recording
 
-1. Open the film in the desired language, start playback and select the
-   fullscreen button. This removes all site navigation and player controls.
+1. Open the standalone film in the desired language, start playback and select
+   fullscreen. Normal fullscreen keeps playback and exit controls available.
+   Press **C** to hide or restore controls for recording.
 2. Capture browser video and audio at **1920 × 1080, 60 fps**. Press **R** to
    restart from the first frame; **Space** pauses and **M** toggles sound.
    Switching away from the page pauses playback.
@@ -51,23 +79,27 @@ external fonts, analytics or new runtime dependencies are used.
 “[Funkorama](https://incompetech.com/music/royalty-free/index.html?Search=Search&isrc=USUAN1100474)”
 by Kevin MacLeod (incompetech.com), under
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
-The excerpt uses the opening 57.029703 seconds, fading out from 54.653465 seconds.
+The excerpt uses the opening 71.287129 seconds, fading out from 68.910891 seconds.
 [The asset notice](./assets/NOTICE.txt) retains source, attribution and modification
 details. The music keeps its own license, separate from Piik's MIT license.
 
 To reproduce the audio edit from the linked original:
 
 ```sh
-ffmpeg -i Funkorama.mp3 -vn -t 57.029703 \
-  -af afade=t=out:st=54.653465:d=2.376238 \
+ffmpeg -i Funkorama.mp3 -vn -t 71.287129 \
+  -af afade=t=out:st=68.910891:d=2.376238 \
   -c:a libmp3lame -b:a 160k -map_metadata -1 funkorama.mp3
 ```
 
 ## Focused check
 
-Open a fresh local film page in a named `agent-browser` session, then evaluate
+Open a fresh local film page in a named `agent-browser` session and run
+`agent-browser --session <session> click '#language'` to grant the user gesture
+required by native audio. Then evaluate
 [`scripts/check-website-film.js`](../../scripts/check-website-film.js) using
 `agent-browser --session <session> eval --stdin`. The browser check covers lazy
 audio, playback/seek/replay, language links, obsolete play promises, native media
-pause and audio failure/ending. Visual acceptance still requires watching the
+pause, audio failure/ending, bilingual headline bounds, unobscured scenario
+objects, cursor continuity/reverse seeking and the standalone hero's CSS poses
+against the shared game score. Visual acceptance still requires watching the
 complete film, checking both languages, narrow layouts and the clean recording view.

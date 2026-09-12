@@ -8,7 +8,7 @@
     // Tests import the plain-ESM tooling modules under scripts/.
     "allowJs": true,
     "jsx": "react-jsx",
-    "types": ["node", "vitest/globals"],
+    "types": ["node", "vitest/globals", "vite/client"],
     "skipLibCheck": true,
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
@@ -21,6 +21,7 @@
   "include": [
     "../vite.config.ts",
     "../vitest.config.ts",
+    "../site/film/ui/main.tsx",
     "access-privacy-gate.ts",
     "browser-local-pool-probe.ts",
     "client-browser-fanout-gate.ts",

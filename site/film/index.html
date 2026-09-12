@@ -5,15 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light dark" />
     <meta name="theme-color" content="#e9f2ee" />
-    <meta name="description" content="Good things. Shared. A little film about Piik, screen sharing, and your people." />
-    <title>Piik — Good things. Shared.</title>
+    <meta name="description" content="Share the good stuff. See how Piik shares games, movies, drawings and photos with friends, in a 71-second film." />
+    <title>Piik — Share the good stuff.</title>
     <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./playback-controls.css" />
     <link rel="stylesheet" href="./film.css" />
+    <link rel="stylesheet" href="../assets/brand.css" />
     <script type="module" src="./player.js"></script>
   </head>
   <body>
     <header class="masthead">
-      <a class="wordmark" href="../" data-home aria-label="Piik"><img src="../assets/favicon.svg" width="28" height="28" alt="" />Piik<span>.</span></a>
+      <a class="identity" href="../" data-home data-brand aria-label="Piik">Piik<span class="identity-dot">.</span></a>
       <nav aria-label="Navigation / 导航">
         <button id="language" type="button" hidden>简体中文</button>
         <a href="../#download" data-home><span lang="en">Download</span><span lang="zh-CN">下载</span><span aria-hidden="true"> ↗</span></a>
@@ -21,50 +23,54 @@
       </nav>
     </header>
     <main>
-      <h1 class="sr-only"><span lang="en">Good things. Shared. — A Piik film</span><span lang="zh-CN">好东西，一起看。—— Piik 短片</span></h1>
+      <h1 class="sr-only"><span lang="en">Share the good stuff. — A Piik film</span><span lang="zh-CN">来，看点好康的。—— Piik 短片</span></h1>
       <div class="cinema">
         <audio id="soundtrack" preload="none"></audio>
         <div class="picture">
           <svg id="film-art" viewBox="0 0 1600 900" xmlns="http://www.w3.org/2000/svg" font-family="ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,PingFang SC,Microsoft YaHei,sans-serif" aria-hidden="true"></svg>
+          <svg id="film-ui" viewBox="0 0 1600 900" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" hidden><g id="ui-placement"><foreignObject width="1100" height="740"><iframe xmlns="http://www.w3.org/1999/xhtml" id="product-ui" src="./ui/index.html" sandbox="allow-scripts" tabindex="-1" inert title="Piik demonstration"></iframe></foreignObject></g></svg>
           <img class="fallback" src="../assets/living-room.svg#still" width="900" height="590" alt="Friends watching a host play a game from a warm orange sofa." />
         </div>
         <div class="curtain" id="curtain" hidden>
           <button class="play-film" id="start" type="button">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7Z" fill="currentColor" /></svg>
-            <span lang="en">Watch the film</span><span lang="zh-CN">看看短片</span><span class="duration">57s</span>
+            <span lang="en">Watch the film</span><span lang="zh-CN">看看短片</span><span class="duration">71s</span>
           </button>
           <button class="quiet-play" id="start-muted" type="button"><span lang="en">Play without sound</span><span lang="zh-CN">静音播放</span></button>
           <p id="reduced-note" hidden><span lang="en">A still preview follows your motion preference. Play when you're ready.</span><span lang="zh-CN">已按系统偏好显示静态画面，也可以手动播放。</span></p>
         </div>
-        <div class="transport" id="transport" hidden>
-          <button id="play" class="icon-button" type="button" aria-label="Pause">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path class="pause-icon" d="M8 6v12M16 6v12" /><path class="play-icon" d="m8 5 11 7-11 7Z" /></svg>
+        <div class="lr-playback transport" id="transport" role="group" aria-label="Playback controls" hidden>
+          <button id="play" class="lr-btn" type="button" aria-label="Pause">
+            <span class="pause-icon"><span data-glyph="pause"></span></span><span class="play-icon"><span data-glyph="play"></span></span>
           </button>
-          <button id="replay" class="icon-button" type="button" aria-label="Replay"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11a8 8 0 1 1 2 7M4 4v7h7" /></svg></button>
-          <label class="scrubber"><span class="sr-only"><span lang="en">Film position</span><span lang="zh-CN">播放进度</span></span><input id="seek" type="range" min="0" max="57.03" step="0.01" value="0" /></label>
-          <output id="time" for="seek" aria-live="off">0:00 / 0:57</output>
-          <button id="sound" class="icon-button" type="button" aria-pressed="true" aria-label="Sound">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4 6 8H3v8h3l5 4Z" /><path class="sound-on" d="M15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14" /><path class="sound-off" d="m16 9 6 6m0-6-6 6" /></svg>
+          <button id="replay" class="lr-btn" type="button" aria-label="Replay"><span data-glyph="refresh"></span></button>
+          <label class="scrubber"><span class="sr-only"><span lang="en">Film position</span><span lang="zh-CN">播放进度</span></span><input id="seek" type="range" min="0" max="71.29" step="0.01" value="0" /></label>
+          <output id="time" for="seek" aria-live="off">0:00 / 1:11</output>
+          <button id="sound" class="lr-btn" type="button" aria-pressed="true" aria-label="Sound">
+            <span class="sound-on"><span data-glyph="speaker"></span></span><span class="sound-off"><span data-glyph="speakerOff"></span></span>
           </button>
-          <button id="capture" class="icon-button" type="button" aria-label="Clean fullscreen view"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m8 0h5v-5" /></svg></button>
+          <button id="capture" class="lr-btn" type="button" aria-label="Fullscreen"><span class="expand-icon"><span data-glyph="expand"></span></span><span class="contract-icon"><span data-glyph="contract"></span></span></button>
         </div>
       </div>
       <p id="player-status" role="status"></p>
       <div class="film-footer">
-        <p><span lang="en">A screen. Your people. A good time.</span><span lang="zh-CN">有画面，有朋友，就挺好。</span></p>
+        <p><span lang="en">Screen sharing for friends. Free &amp; open source.</span><span lang="zh-CN">和朋友分享屏幕，免费开源。</span></p>
         <button id="about" type="button" hidden><span lang="en">Music & recording</span><span lang="zh-CN">配乐与录制</span><span aria-hidden="true"> ↗</span></button>
       </div>
-      <p class="sr-only"><span lang="en">Piik shares your screen with friends. Download and open the App, choose Public invite, select a window or screen, then copy the invitation link and send it to your friends. You do not need a server of your own; viewers do not need to install an app. The film shows Piik's actual interface with sample content. A little television rides a hoverboard while friends watch. One host, up to twenty viewers. Piik is free and open source, prefers peer-to-peer connections, and reuses encoded frames across compatible connections.</span><span lang="zh-CN">Piik 用来和朋友分享屏幕。下载并打开 App，选择公网邀请，选好要分享的窗口或屏幕，再把邀请链接发给朋友。无需自备服务器，观众无需安装客户端。短片展示了 Piik 的实际界面，使用示例内容：小电视踩着滑板冲刺，朋友们在房间里围观。一位房主，最多二十位观众。Piik 免费开源、优先直连；兼容的连接复用编码结果，减少重复处理。</span></p>
+      <p class="sr-only"><span lang="en">Piik shares your screen with friends. Download and open the App, choose Public invite, select a window or screen, then copy the invitation link and send it to your friends. Viewers watch in a browser. The film uses Piik's actual interface with sample content. An original game montage shows an RPG discovery, three accurate shots, a platform jump, a tactical flank and a dodge followed by a successful counterattack. Friends cheer after the play. One host, up to twenty viewers. Piik is free and open source. It prioritizes direct connections for low latency and shares picture processing across compatible connections for efficiency. Actual latency and resource use depend on the network, device and codec. Share a game, a drawing, travel photos or a movie.</span><span lang="zh-CN">Piik 用来和朋友分享屏幕。下载并打开 App，选择“公网邀请”，选好要分享的窗口或屏幕，再把邀请链接发给朋友。观众用浏览器就能看。短片展示了 Piik 的实际界面，使用示例内容。原创游戏蒙太奇依次展示 RPG 探索、连续命中靶心、横版跳跃、战术绕后，以及闪避后的反击；精彩操作完成后，朋友才喊出“漂亮！”。一位房主，最多二十位观众。Piik 免费开源。优先直连，减少中转等待；共用画面处理，减少重复开销。实际延迟和资源占用取决于网络、设备及编码方式。游戏、绘画、旅行照片和电影，都能分享给朋友看。</span></p>
       <noscript><p class="no-script">This film needs JavaScript. <a href="../">Explore Piik / 回到官网</a></p></noscript>
     </main>
     <dialog id="credits" aria-labelledby="credits-title">
       <form method="dialog"><button class="close" aria-label="Close / 关闭">×</button></form>
       <h2 id="credits-title"><span lang="en">Behind the film</span><span lang="zh-CN">关于这支短片</span></h2>
-      <p><span lang="en">Original Piik artwork and animation, with captures of the actual Piik interface. The operation sequence is staged; windows, participants and links are examples. DOT DASH is an original demonstration game.</span><span lang="zh-CN">原创画面与动画，结合 Piik 的实际界面截图编排操作过程。窗口、参与者和链接均为示例；DOT DASH 是原创游戏演示画面。</span></p>
+      <p><span lang="en">Original Piik artwork and animation, using the same interface components as the App. The operation sequence is staged; windows, participants and links are examples. LITTLE WANDER and the other game scenes are original illustrations, not captured game footage or performance benchmarks.</span><span lang="zh-CN">原创画面与动画，演示界面与 App 共用控件。操作过程经过编排，窗口、参与者和链接均为示例；LITTLE WANDER 与其他游戏场景均为原创绘制，并非游戏实录或性能测试。</span></p>
+      <p><a href="../LICENSE"><span lang="en">Piik license</span><span lang="zh-CN">Piik 许可证</span></a> · <a href="./ui/third-party-licenses.txt"><span lang="en">Component licenses</span><span lang="zh-CN">组件许可证</span></a></p>
       <h3><span lang="en">Music</span><span lang="zh-CN">配乐</span></h3>
       <p>“<a href="https://incompetech.com/music/royalty-free/index.html?Search=Search&amp;isrc=USUAN1100474">Funkorama</a>” — Kevin MacLeod (incompetech.com). <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>. <span lang="en">Excerpt, with a fade-out.</span><span lang="zh-CN">使用了剪辑与淡出的片段。</span></p>
+      <h3><span lang="en">Playback interrupted by a download tool?</span><span lang="zh-CN">播放被下载工具打断？</span></h3>
+      <p><span lang="en">In IDM, enable “Don't start downloading from web-players automatically”, or temporarily disable its extension for this tab, then try again. See <a href="https://www.internetdownloadmanager.com/register/new_faq/video14.html">IDM's instructions</a>. You can also play the film without sound.</span><span lang="zh-CN">可以在 IDM 中开启“不自动从网页播放器开始下载”，或在当前标签页暂时关闭 IDM 扩展，再重试播放。具体操作见 <a href="https://www.internetdownloadmanager.com/register/new_faq/video14.html">IDM 官方说明</a>，也可以先静音观看。</span></p>
       <h3><span lang="en">Recording</span><span lang="zh-CN">录制</span></h3>
-      <p><span lang="en">Use the fullscreen button for a clean 16:9 picture. Record the browser and its audio at 1920 × 1080, 60 fps. Press R to restart, Space to pause, M to mute, and Escape to return. Keep the music credit in the film and its description.</span><span lang="zh-CN">全屏按钮可以切到干净的 16:9 画面。建议以 1920 × 1080、60 fps 录制浏览器画面和声音。R 从头播放，空格暂停，M 静音，Esc 返回。发布时保留片尾与简介中的音乐署名。</span></p>
+      <p><span lang="en">Enter fullscreen, then press C to hide or show the controls for recording. Record the browser and its audio at 1920 × 1080, 60 fps. Press R to restart, Space to pause, M to mute, and Escape to return. Keep the music credit in the film and its description.</span><span lang="zh-CN">进入全屏后，按 C 隐藏或显示播控，便于录制。建议以 1920 × 1080、60 fps 录制浏览器画面和声音。R 从头播放，空格暂停，M 静音，Esc 返回。发布时保留片尾与简介中的音乐署名。</span></p>
     </dialog>
   </body>
 </html>

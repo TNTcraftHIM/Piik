@@ -52,11 +52,14 @@ owns each setting and its bounds.
 With the repository's development dependencies installed:
 
 ```sh
-npx vite site --host 127.0.0.1 --port 18887 --strictPort
+npm run build:website
+npm run preview:website
 ```
 
-Open `http://127.0.0.1:18887`. Publishing needs no Vite build or Node runtime:
-the site is static HTML/CSS/JS/SVG. Keep asset links relative so both a custom
+Open `http://127.0.0.1:18890`. Rebuild after editing source. The build bundles the
+film's real product components into an isolated demonstration frame; publishing
+`build/site/` needs no Node runtime or backend. Vite preview supplies HTTP byte
+ranges for seeking the soundtrack. Keep asset links relative so both a custom
 domain and GitHub's `/Piik/` project path work.
 
 ## Publish when approved
@@ -70,7 +73,7 @@ domain and GitHub's `/Piik/` project path work.
    DNS using GitHub's [current domain instructions](https://docs.github.com/en/pages/configuring-a-custom-domain-for-your-github-pages-site/managing-a-custom-domain-for-your-github-pages-site).
    Actions publishing does not need a `CNAME` file in the source tree.
 4. Dispatch **Website** from `main` after the reviewed site is merged. The
-   workflow uploads only `site/`; no App/Server packaging is run. Verify the
+   workflow builds and uploads only `build/site/`; no App/Server packaging is run. Verify the
    domain, HTTPS, both languages, relative asset paths and primary links.
 
 There is no automatic deployment on branch pushes. The workflow is prepared,

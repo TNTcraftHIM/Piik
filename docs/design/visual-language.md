@@ -16,6 +16,9 @@ Piik's living room uses simple silhouettes, generous space, rounded controls
 and a small responsive bounce. Clear hierarchy and legible interaction keep
 the playful details easy to use.
 The [copy guide](../reference/naming.md#voice-and-terminology) owns its voice.
+The [public introduction guide](./public-introduction.md) owns website and film
+hierarchy: shared identity, current product demonstrations and promotional
+composition. It applies the copy guide's audience and technical-detail layers.
 
 Keep playfulness restrained: clean silhouettes, balanced proportions, quiet
 expressions and brief gestures. Keep the interface approachable; avoid

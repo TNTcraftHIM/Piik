@@ -2,11 +2,12 @@
 
 English · [简体中文](./self-hosting.zh-CN.md) · [Documentation](../README.md)
 
-Piik needs **one server binary**. It includes the web interface, signaling,
-STUN and optional media forwarding. It stores room data in SQLite; Node.js,
-an external database and a separate media server are not required.
+Piik Server packages the web interface, room management and optional media
+forwarding in **one server binary**. Extract and run it; room data is stored in SQLite.
 
 ## Try it locally
+
+These server instructions use a Linux x64 machine.
 
 Download the **Linux x64 Server** archive from [GitHub Releases](https://github.com/TNTcraftHIM/Piik/releases)
 or the [Gitee mirror](https://gitee.com/TNTcraftHIM/Piik/releases),
@@ -17,7 +18,7 @@ extract it, and run the following in its directory:
 ```
 
 Open `http://localhost:8787`. This is a local trial; use the configuration below
-to let friends connect over the internet. For a desktop room without a server,
+to let friends connect over the internet. To start a temporary room on your computer,
 use the [Piik App guide](../guide/getting-started.md).
 
 ## Put it online

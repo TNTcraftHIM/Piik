@@ -1,9 +1,21 @@
+import { mountBrands } from './assets/brand.js';
+mountBrands();
 // Content stays HTML; scripts only add preferences and replayable illustrations.
 const root = document.documentElement;
 const language = document.getElementById('language');
 const theme = document.getElementById('theme');
 const description = document.querySelector('meta[name="description"]');
 const roomIllustration = document.querySelector('.living-room');
+const film = document.getElementById('film-preview');
+const filmFrame = document.getElementById('website-film');
+const filmLink = document.querySelector('[data-film-link]');
+function syncFilmPreferences() {
+  const target = new URL(filmLink.href);
+  target.searchParams.set('lang', root.lang);
+  target.searchParams.set('theme', theme.value);
+  filmLink.href = target.href;
+  filmFrame.contentWindow?.postMessage({type:'piik-film-preferences',lang:root.lang,theme:theme.value}, location.origin);
+}
 const copy = {
   en: {
     title: document.title,
@@ -12,10 +24,10 @@ const copy = {
     image: roomIllustration.alt,
   },
   'zh-CN': {
-    title: 'Piik — 和朋友分享屏幕',
-    description: '游戏、画画、新鲜事，都能叫朋友来围观。Piik 支持私密屏幕共享，最多 20 位观众，点开邀请就能看。',
+    title: 'Piik — 来，看点好康的。',
+    description: '游戏、绘画、电影、照片。Piik 是免费开源的屏幕共享工具，邀请最多 20 位朋友用浏览器观看。',
     themes: { system: '跟随系统', light: '浅色', dark: '深色' },
-    image: '戴着金色小皇冠的房主操作手柄，游戏里的小电视踩着滑板冲刺、跃过障碍、收集金环，三位朋友坐在沙发上围观。',
+    image: '戴着小金冠的房主分享 RPG 游戏、绘画、旅行照片和动画电影，三位朋友坐在沙发上观看。',
   },
 };
 language.addEventListener('click', () => {
@@ -29,6 +41,7 @@ language.addEventListener('click', () => {
   description.content = current.description;
   roomIllustration.alt = current.image;
   for (const option of theme.options) option.textContent = current.themes[option.value];
+  syncFilmPreferences();
 });
 function syncThemeColor() {
   document.querySelector('meta[name="theme-color"]').content = getComputedStyle(root).getPropertyValue('--wall').trim();
@@ -36,6 +49,7 @@ function syncThemeColor() {
 theme.addEventListener('change', () => {
   root.dataset.theme = theme.value;
   syncThemeColor();
+  syncFilmPreferences();
 });
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', syncThemeColor);
 syncThemeColor();
@@ -50,11 +64,28 @@ if (['light', 'dark'].includes(preferences.get('theme'))) {
   root.dataset.theme = theme.value;
   syncThemeColor();
 }
-document.querySelector('[data-film-link]').addEventListener('click', (event) => {
+syncFilmPreferences();
+filmLink.setAttribute('aria-controls', 'film-preview');
+filmLink.setAttribute('aria-expanded', 'false');
+filmLink.addEventListener('click', (event) => {
+  if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+  event.preventDefault();
   const target = new URL(event.currentTarget.href);
-  target.searchParams.set('lang', root.lang);
-  target.searchParams.set('theme', theme.value);
-  event.currentTarget.href = target.href;
+  target.searchParams.set('embedded', '1');
+  if (!film.open) filmFrame.src = target.href;
+  film.hidden = false;
+  film.open = true;
+  filmLink.setAttribute('aria-expanded', 'true');
+  film.querySelector('summary').focus({preventScroll:true});
+  film.scrollIntoView({block:'start'});
+});
+film.addEventListener('toggle', () => {
+  if (film.open) return;
+  // Closing releases the frame, its music and its animation loop together.
+  filmFrame.removeAttribute('src');
+  film.hidden = true;
+  filmLink.setAttribute('aria-expanded', 'false');
+  filmLink.focus({preventScroll:true});
 });
 
 // Native disclosures remain usable without scripts; section links also reveal them.
@@ -70,7 +101,7 @@ revealGuide(location.hash);
 
 const motion = matchMedia('(prefers-reduced-motion: reduce)');
 const illustrations = document.querySelectorAll('.step-art');
-document.querySelectorAll('.identity, .step-art').forEach((control) => {
+document.querySelectorAll('.step-art').forEach((control) => {
   const replayScene = () =>
     control.getAnimations({ subtree: true }).forEach((animation) => {
       if (animation instanceof CSSAnimation) animation.currentTime = 0;

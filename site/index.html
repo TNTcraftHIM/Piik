@@ -6,13 +6,14 @@
     <meta name="color-scheme" content="light dark" />
     <meta
       name="description"
-      content="Share a game, a drawing or anything on your screen with up to 20 invited friends. They watch in a browser, with nothing to install."
+      content="Share the good stuff. Piik is free screen sharing for games, movie nights, drawings and photos. Invite up to 20 friends to watch in their browsers."
     />
     <meta name="theme-color" content="#e9f2ee" />
-    <title>Piik — Screen sharing with friends</title>
+    <title>Piik — Share the good stuff.</title>
     <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="./styles.css" />
-    <script src="./main.js" defer></script>
+    <link rel="stylesheet" href="./assets/brand.css" />
+    <script type="module" src="./main.js"></script>
   </head>
   <body>
     <a class="skip-link" href="#main"><span lang="en">Skip to content</span><span lang="zh-CN">跳到正文</span></a>
@@ -38,35 +39,7 @@
     </svg>
 
     <header class="site-header wrap">
-      <a class="identity" href="#" aria-label="Piik">
-        <!-- Same geometry and one-shot sequence as the product's BrandMark. -->
-        <svg
-          class="mascot"
-          viewBox="0 0 32 32"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2.4"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <g class="mascot-shell">
-            <rect class="mascot-frame" pathLength="1" x="4" y="8" width="24" height="18" rx="4" />
-            <path class="mascot-antenna" pathLength="1" d="m11 4 5 4 5-4" />
-            <path class="mascot-feet" pathLength="1" d="M10 29l2-3m10 3-2-3" />
-          </g>
-          <g class="mascot-face">
-            <circle cx="11.5" cy="16.5" r="1.25" fill="currentColor" stroke="none" />
-            <circle class="mascot-eye-open" cx="21.35" cy="16.5" r="1.25" fill="currentColor" stroke="none" />
-            <path class="mascot-eye-wink" pathLength="1" d="M19 17c1.5-1.8 3.2-1.8 4.7 0" />
-          </g>
-          <g class="mascot-sparkles">
-            <path d="m25 11.5 .8 1.9 1.9.8-1.9.8-.8 1.9-.8-1.9-1.9-.8 1.9-.8.8-1.9Z" />
-            <path d="m25 17.2 .45 1.1 1.1.45-1.1.45-.45 1.1-.45-1.1-1.1-.45 1.1-.45.45-1.1Z" />
-          </g>
-        </svg>
-        <span>Piik<span class="identity-dot">.</span></span>
-      </a>
+      <a class="identity" href="#" aria-label="Piik" data-brand>Piik<span class="identity-dot">.</span></a>
       <nav aria-label="Main / 主导航">
         <a href="#start"><span lang="en">Get started</span><span lang="zh-CN">使用教程</span></a>
         <a href="#demo"><span lang="en">Demo</span><span lang="zh-CN">在线演示</span></a>
@@ -94,16 +67,16 @@
       <section class="hero wrap" aria-labelledby="hero-title">
         <div class="hero-copy">
           <p class="eyebrow">
-            <span class="status-dot" aria-hidden="true"></span><span lang="en">Screen sharing · MIT license</span
-            ><span lang="zh-CN">屏幕共享 · MIT 开源许可</span>
+            <span class="status-dot" aria-hidden="true"></span><span lang="en">Screen sharing · Free &amp; open source</span
+            ><span lang="zh-CN">屏幕共享 · 免费开源</span>
           </p>
           <h1 id="hero-title">
-            <span lang="en">Good things.<br /><span class="highlight">Shared.</span></span
-            ><span lang="zh-CN">来，给你看个<br /><span class="highlight">好东西。</span></span>
+            <span lang="en">Share the<br /><span class="highlight">good stuff.</span></span
+            ><span lang="zh-CN">来，<br /><span class="highlight">看点好康的。</span></span>
           </h1>
           <p class="hero-description">
-            <span lang="en">A game, a drawing, a rabbit hole.<br />Share your screen. Bring your friends along.</span
-            ><span lang="zh-CN">打游戏、画画、折腾新玩意儿。<br />开个房间，叫朋友来围观。</span>
+            <span lang="en">A great play. A movie night. Photos from your trip.<br />Share your screen and invite your friends.</span
+            ><span lang="zh-CN">游戏高光、周末电影、旅行照片。<br />开个房间，叫朋友来一起看。</span>
           </p>
           <div class="hero-actions">
             <a class="button primary" href="#download"
@@ -121,7 +94,7 @@
           <a class="film-link" href="./film/" data-film-link>
             <span class="film-play" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m9 6 9 6-9 6Z" fill="currentColor" /></svg></span>
             <span lang="en">A little film about Piik</span><span lang="zh-CN">用一支短片，认识 Piik</span>
-            <span class="film-length">57s <span aria-hidden="true">↗</span></span>
+            <span class="film-length">71s</span>
           </a>
         </div>
         <div class="hero-scene">
@@ -131,7 +104,7 @@
             width="900"
             height="590"
             fetchpriority="high"
-            alt="A host wearing a small gold crown plays a game where a little television rides a hoverboard, clears a bumper and collects a golden ring. Three friends watch from the sofa."
+            alt="A host with a small gold crown shares an RPG, a drawing, travel photos and an animated film. Three friends watch from the sofa."
           />
           <div class="scene-caption">
             <span class="caption-line"></span>
@@ -139,6 +112,11 @@
           </div>
         </div>
       </section>
+
+      <details class="film-preview wrap" id="film-preview" hidden>
+        <summary><span lang="en">A little film about Piik</span><span lang="zh-CN">用一支短片，认识 Piik</span><span class="film-collapse"><span lang="en">Close</span><span lang="zh-CN">收起</span> ×</span></summary>
+        <iframe id="website-film" title="Piik introduction / Piik 宣传片" allow="fullscreen" allowfullscreen></iframe>
+      </details>
 
       <section class="how-section" id="how" aria-labelledby="how-title">
         <div class="wrap">
@@ -148,7 +126,7 @@
               <span lang="en"
                 ><span class="phrase">Pick a screen.</span> <span class="phrase">Send a link.</span>
                 <span class="phrase">Watch together.</span></span
-              ><span lang="zh-CN"><span class="phrase">画面选好，</span><span class="phrase">朋友叫来。</span></span>
+              ><span lang="zh-CN"><span class="phrase">选好画面，</span><span class="phrase">发个邀请。</span></span>
             </h2>
           </div>
           <ol class="steps">
@@ -179,10 +157,10 @@
                 ><span class="art-replay" aria-hidden="true">↻</span>
               </button>
               <p class="step-number">01 <span aria-hidden="true">/</span></p>
-              <h3><span lang="en">Pick your picture.</span><span lang="zh-CN">选好画面。</span></h3>
+              <h3><span lang="en">Choose what to share.</span><span lang="zh-CN">选好画面。</span></h3>
               <p>
                 <span lang="en">Your whole screen or just one window.<br />You choose what to let people see.</span
-                ><span lang="zh-CN">整个屏幕，或只分享一个窗口。<br />想给朋友看哪儿，就选哪儿。</span>
+                ><span lang="zh-CN">整个屏幕，或只分享一个窗口。<br />分享哪些内容，由你决定。</span>
               </p>
             </li>
             <li>
@@ -218,10 +196,10 @@
                 ><span class="art-replay" aria-hidden="true">↻</span>
               </button>
               <p class="step-number">02 <span aria-hidden="true">/</span></p>
-              <h3><span lang="en">Send the invitation.</span><span lang="zh-CN">发出邀请。</span></h3>
+              <h3><span lang="en">Send a link.</span><span lang="zh-CN">发个邀请。</span></h3>
               <p>
                 <span lang="en">Drop the room link in your group chat.<br />Your friends open it in a browser.</span
-                ><span lang="zh-CN">邀请链接往群里一发。<br />朋友点开，就能进来。</span>
+                ><span lang="zh-CN">把邀请链接发给朋友。<br />对方用浏览器打开，就能加入。</span>
               </p>
             </li>
             <li>
@@ -267,33 +245,33 @@
         <div class="section-heading">
           <p class="eyebrow"><span lang="en">Quick start</span><span lang="zh-CN">使用教程</span></p>
           <h2 id="start-title">
-            <span lang="en">Your first room, step by step.</span><span lang="zh-CN">第一次分享，跟着做就好。</span>
+            <span lang="en">Start your first room.</span><span lang="zh-CN">开始第一次分享。</span>
           </h2>
           <p>
             <span lang="en"
-              >Choose the browser, desktop App or demo guide.<br />In Piik, select <strong>EN</strong> in the header to
-              show the button labels used here.</span
+              >Try the online demo first, or download the App to create your own room.<br />If Piik shows icons only,
+              select <strong>EN</strong> in its header to show English labels.</span
             ><span lang="zh-CN"
-              >选择网页版、客户端或在线演示教程。<br />进入 Piik
-              后，先点击顶部的<strong>中</strong>，即可显示教程中的按钮文字。</span
+              >想先体验？从在线 Demo 开始；想自己开房间，可以下载客户端。<br />如果 Piik
+              只显示图标，点击顶部的<strong>中</strong>即可显示中文按钮文字。</span
             >
           </p>
         </div>
         <nav class="guide-links" aria-label="Guides / 教程目录">
-          <a href="#guide-web"><span lang="en">Browser</span><span lang="zh-CN">网页版</span></a
+          <a href="#demo"><span lang="en">Online demo</span><span lang="zh-CN">在线 Demo</span></a
           ><a href="#guide-app"><span lang="en">Piik App</span><span lang="zh-CN">客户端</span></a
-          ><a href="#demo"><span lang="en">Online demo</span><span lang="zh-CN">在线演示</span></a
+          ><a href="#guide-web"><span lang="en">Existing Piik site</span><span lang="zh-CN">网页版</span></a
           ><a href="#watch"><span lang="en">Join as a viewer</span><span lang="zh-CN">加入房间</span></a>
         </nav>
         <div class="guides">
-          <details class="guide" id="guide-web" open>
+          <details class="guide" id="demo" open>
             <summary>
               <span class="guide-number">01</span
               ><span class="guide-heading"
-                ><span lang="en">Share from a browser</span><span lang="zh-CN">用网页版分享</span
+                ><span lang="en">Try the online demo</span><span lang="zh-CN">体验在线 Demo</span
                 ><small
-                  ><span lang="en">For a Piik site you already have access to</span
-                  ><span lang="zh-CN">已有可访问的 Piik 站点</span></small
+                  ><span lang="en">Open in your browser and start sharing</span
+                  ><span lang="zh-CN">在浏览器打开，直接体验屏幕共享</span></small
                 ></span
               >
             </summary>
@@ -301,76 +279,71 @@
               <ol class="guide-steps">
                 <li>
                   <strong
-                    ><span lang="en">Open the site on a computer.</span
-                    ><span lang="zh-CN">在电脑上打开站点。</span></strong
+                    ><span lang="en">Open the demo on a computer.</span
+                    ><span lang="zh-CN">在电脑上打开演示站。</span></strong
                   >
                   <p>
                     <span lang="en"
-                      >Use the Piik address provided by your friend or administrator. Enter the site passphrase if
-                      required.</span
-                    ><span lang="zh-CN">使用朋友或管理员提供的 Piik 地址，按提示输入站点口令。</span>
-                  </p>
-                </li>
-                <li>
-                  <strong
-                    ><span lang="en">Choose Start sharing.</span><span lang="zh-CN">点击「开始分享」。</span></strong
-                  >
-                  <p>
-                    <span lang="en"
-                      >Select a screen, window or tab in the browser’s capture dialog. Enable audio if the selected
-                      source supports it, then confirm.</span
+                      >Visit <a href="https://demo.piik.tv">demo.piik.tv</a> in a desktop browser that supports screen sharing.
+                      </span
                     ><span lang="zh-CN"
-                      >在浏览器弹窗中选择屏幕、窗口或标签页；如需声音，勾选可用的音频选项，然后确认分享。</span
+                      >用支持屏幕共享的电脑浏览器打开 <a href="https://demo.piik.tv">demo.piik.tv</a>。
+                      </span
                     >
                   </p>
                 </li>
                 <li>
                   <strong
-                    ><span lang="en">Check the preview and invite a friend.</span
-                    ><span lang="zh-CN">确认预览，发送邀请。</span></strong
+                    ><span lang="en">Share a screen and copy its invitation.</span
+                    ><span lang="zh-CN">分享画面，复制邀请。</span></strong
                   >
                   <p>
                     <span lang="en"
-                      >Check the picture, then select <strong>Copy invite link</strong>. Send that link to the friends
-                      you want to invite.</span
+                      >Select <strong>Start sharing</strong>, choose a window, then select
+                      <strong>Copy invite link</strong>.</span
                     ><span lang="zh-CN"
-                      >确认画面无误后，点击<strong>复制邀请链接</strong>，将链接发给要邀请的朋友。</span
+                      >点击<strong>开始分享</strong>，选择一个窗口，再点击<strong>复制邀请链接</strong>。</span
                     >
                   </p>
                 </li>
                 <li>
                   <strong
-                    ><span lang="en">Keep the sharing tab open.</span
-                    ><span lang="zh-CN">分享期间保持标签页打开。</span></strong
+                    ><span lang="en">Open the invitation on a second device.</span
+                    ><span lang="zh-CN">用另一台设备打开邀请。</span></strong
                   >
                   <p>
                     <span lang="en"
-                      >Use <strong>Switch source</strong> to change the picture, <strong>Pause sharing</strong> for a
-                      break, and <strong>Stop sharing</strong> to finish.</span
+                      >Use a phone or another computer, or invite a friend. Select <strong>Play</strong> if the browser
+                      does not start playback.</span
                     ><span lang="zh-CN"
-                      >更换画面时点击<strong>切换来源</strong>，暂时中断时点击<strong>暂停分享</strong>，结束时点击<strong>停止分享</strong>。</span
+                      >使用手机、另一台电脑，或邀请朋友加入。如果没有自动播放，点击<strong>播放</strong>。</span
                     >
+                  </p>
+                </li>
+                <li>
+                  <strong><span lang="en">Finish the demonstration.</span><span lang="zh-CN">结束体验。</span></strong>
+                  <p>
+                    <span lang="en"
+                      >Try the volume and fullscreen controls, then select <strong>Stop sharing</strong> on the host’s
+                      page.</span
+                    ><span lang="zh-CN">试用音量、全屏等播放功能，完成后在房主页面点击<strong>停止分享</strong>。</span>
                   </p>
                 </li>
               </ol>
               <aside class="guide-note">
-                <h3><span lang="en">Before you start</span><span lang="zh-CN">开始前确认</span></h3>
-                <p>
+                <h3><span lang="en">About this demo</span><span lang="zh-CN">演示站说明</span></h3>
+                <p id="demo-status">
                   <span lang="en"
-                    >Browser capture requires HTTPS or <code>localhost</code>. Available sources and audio depend on
-                    your browser and operating system.</span
+                    >We host this demo for you. It uses direct device-to-device connections (P2P).
+                    Restrictive networks may open the page but block the video.</span
                   ><span lang="zh-CN"
-                    >浏览器采集需要 HTTPS 站点或
-                    <code>localhost</code>。可选画面和声音支持取决于浏览器及操作系统。</span
+                    >演示站由项目提供，画面通过设备间直连（P2P）传输。
+                    在受限网络下，可能出现页面能打开、画面无法连接的情况。</span
                   >
                 </p>
-                <p>
-                  <span lang="en">Piik App is optional for browser sharing. Your viewers do not need it either.</span
-                  ><span lang="zh-CN">使用浏览器分享不要求安装 Piik App，观众也无须安装。</span>
-                </p>
-                <a href="#watch"
-                  ><span lang="en">What your friends do next</span><span lang="zh-CN">朋友收到邀请后怎么操作</span
-                  ><span aria-hidden="true"> →</span></a
+                <a class="button download-button" href="https://demo.piik.tv" aria-describedby="demo-status"
+                  ><span lang="en">Open the demo</span><span lang="zh-CN">进入演示站</span
+                  ><span aria-hidden="true"> ↗</span></a
                 >
               </aside>
             </div>
@@ -381,8 +354,8 @@
               ><span class="guide-heading"
                 ><span lang="en">Share with Piik App</span><span lang="zh-CN">用客户端分享</span
                 ><small
-                  ><span lang="en">Create a room or connect to an existing site</span
-                  ><span lang="zh-CN">自己创建房间，或连接已有站点</span></small
+                  ><span lang="en">Download, open and create a room</span
+                  ><span lang="zh-CN">下载后直接开房间</span></small
                 ></span
               >
             </summary>
@@ -390,12 +363,12 @@
               <ol class="guide-steps">
                 <li>
                   <strong
-                    ><span lang="en">Extract the complete package.</span
-                    ><span lang="zh-CN">完整解压程序包。</span></strong
+                    ><span lang="en">Download and extract Piik App.</span
+                    ><span lang="zh-CN">下载并解压 Piik App。</span></strong
                   >
                   <p>
-                    <span lang="en">Keep the extracted folder intact. Do not move only the executable out of it.</span
-                    ><span lang="zh-CN">保留解压后的目录结构，运行时需要使用完整程序包。</span>
+                    <span lang="en"><a href="#download">Download the App package for your system</a>, extract it completely and keep the folder intact.</span
+                    ><span lang="zh-CN"><a href="#download">下载对应系统的客户端程序包</a>，完整解压并保留目录结构。</span>
                   </p>
                   <dl class="launch-files">
                     <div>
@@ -414,14 +387,14 @@
                 </li>
                 <li>
                   <strong
-                    ><span lang="en">Choose a mode, then Open Piik.</span
-                    ><span lang="zh-CN">选择模式，点击「进入 Piik」。</span></strong
+                    ><span lang="en">Choose Public invite, then Open Piik.</span
+                    ><span lang="zh-CN">选择「公网邀请」，点击「进入 Piik」。</span></strong
                   >
                   <p>
                     <span lang="en"
-                      >The launcher opens in your system browser. Choose a mode using the descriptions alongside this
-                      guide.</span
-                    ><span lang="zh-CN">启动页会在系统浏览器里打开。根据本节的模式说明，选择适合你们的方式。</span>
+                      >The launcher opens in your system browser. Public invite creates a temporary Internet address
+                      for friends outside your network. If you are on the same network or already have a site, see the other modes alongside.</span
+                    ><span lang="zh-CN">启动页会在系统浏览器里打开。「公网邀请」会生成临时公网地址，方便不在同一网络的朋友加入。同一局域网或已有站点的情况，见旁边的模式说明。</span>
                   </p>
                 </li>
                 <li>
@@ -492,27 +465,28 @@
                 </p>
                 <p>
                   <span lang="en"
-                    >macOS/Linux capture validation is pending. For Linux native capture, install the desktop Portal,
-                    PipeWire and GStreamer with its PipeWire source and a hardware H.264 encoder. See
-                    <code>THIRD-PARTY-NOTICES.txt</code> in the package for component links. Browser capture remains
-                    available if these components are missing.</span
+                    >The macOS and Linux apps have not yet been tested on physical devices. Test reports are welcome on
+                    <a href="https://github.com/TNTcraftHIM/Piik/issues">GitHub Issues</a>.
+                    Native capture needs macOS 13+ on Apple silicon, or <a href="https://github.com/TNTcraftHIM/Piik/blob/main/native/capture/linux/README.md">additional Linux system components</a>. You can also use browser capture.</span
                   ><span lang="zh-CN"
-                    >macOS/Linux 的实机采集验证待完成。Linux 原生采集需安装桌面 Portal、PipeWire，以及带 PipeWire
-                    来源和硬件 H.264 编码器的 GStreamer。组件链接见程序包中的
-                    <code>THIRD-PARTY-NOTICES.txt</code>。这些组件不可用时，仍可选择浏览器采集。</span
+                    >macOS 和 Linux 客户端尚未经过实机测试，欢迎有设备的朋友试用并在
+                    <a href="https://github.com/TNTcraftHIM/Piik/issues">GitHub Issues</a> 反馈。
+                    原生采集需要 Apple 芯片和 macOS 13 及以上，或 Linux 的<a href="https://github.com/TNTcraftHIM/Piik/blob/main/native/capture/linux/README.md">额外系统组件</a>，也可以先用浏览器采集。</span
                   >
                 </p>
+                <a href="https://github.com/TNTcraftHIM/Piik/blob/main/docs/guide/getting-started.md" lang="en">Full App guide →</a>
+                <a href="https://github.com/TNTcraftHIM/Piik/blob/main/docs/guide/getting-started.zh-CN.md" lang="zh-CN">完整客户端使用指南 →</a>
               </aside>
             </div>
           </details>
-          <details class="guide" id="demo">
+          <details class="guide" id="guide-web">
             <summary>
               <span class="guide-number">03</span
               ><span class="guide-heading"
-                ><span lang="en">Try the online demo</span><span lang="zh-CN">试用在线演示</span
+                ><span lang="en">Browser &amp; self-hosting · Advanced</span><span lang="zh-CN">网页版与自建站点 · 进阶</span
                 ><small
-                  ><span lang="en">A two-device sharing walkthrough</span
-                  ><span lang="zh-CN">用两台设备体验一次分享</span></small
+                  ><span lang="en">Requires an existing site running Piik Server</span
+                  ><span lang="zh-CN">需要一个已部署 Piik Server 的站点</span></small
                 ></span
               >
             </summary>
@@ -520,71 +494,77 @@
               <ol class="guide-steps">
                 <li>
                   <strong
-                    ><span lang="en">Open the demo on a computer.</span
-                    ><span lang="zh-CN">在电脑上打开演示站。</span></strong
+                    ><span lang="en">Open the site on a computer.</span
+                    ><span lang="zh-CN">在电脑上打开站点。</span></strong
                   >
                   <p>
                     <span lang="en"
-                      >Visit <a href="https://demo.piik.tv">demo.piik.tv</a> in your browser and follow the site’s
-                      prompts to reach the sharing page.</span
+                      >Use the Piik address provided by your friend or administrator. Enter the site passphrase if
+                      required.</span
+                    ><span lang="zh-CN">使用朋友或管理员提供的 Piik 地址。如果站点设置了口令，先输入口令。</span>
+                  </p>
+                </li>
+                <li>
+                  <strong
+                    ><span lang="en">Choose Start sharing.</span><span lang="zh-CN">点击「开始分享」。</span></strong
+                  >
+                  <p>
+                    <span lang="en"
+                      >Select a screen, window or tab in the browser’s capture dialog. Enable audio if the selected
+                      source supports it, then confirm.</span
                     ><span lang="zh-CN"
-                      >在浏览器打开 <a href="https://demo.piik.tv">demo.piik.tv</a>，按站点提示进入分享页面。</span
+                      >在浏览器弹窗中选择屏幕、窗口或标签页；如需声音，勾选可用的音频选项，然后确认分享。</span
                     >
                   </p>
                 </li>
                 <li>
                   <strong
-                    ><span lang="en">Share a screen and copy its invitation.</span
-                    ><span lang="zh-CN">分享画面，复制邀请。</span></strong
+                    ><span lang="en">Check the preview and invite a friend.</span
+                    ><span lang="zh-CN">确认预览，发送邀请。</span></strong
                   >
                   <p>
                     <span lang="en"
-                      >Select <strong>Start sharing</strong>, choose a window, then select
-                      <strong>Copy invite link</strong>.</span
+                      >Check the picture, then select <strong>Copy invite link</strong>. Send that link to the friends
+                      you want to invite.</span
                     ><span lang="zh-CN"
-                      >点击<strong>开始分享</strong>，选择一个窗口，再点击<strong>复制邀请链接</strong>。</span
+                      >确认画面无误后，点击<strong>复制邀请链接</strong>，将链接发给要邀请的朋友。</span
                     >
                   </p>
                 </li>
                 <li>
                   <strong
-                    ><span lang="en">Open the invitation on a second device.</span
-                    ><span lang="zh-CN">用另一台设备打开邀请。</span></strong
+                    ><span lang="en">Keep the sharing tab open.</span
+                    ><span lang="zh-CN">分享期间保持标签页打开。</span></strong
                   >
                   <p>
                     <span lang="en"
-                      >Use a phone or another computer, or invite a friend. Select <strong>Play</strong> if the browser
-                      does not start playback.</span
+                      >Use <strong>Switch source</strong> to change the picture, <strong>Pause sharing</strong> for a
+                      break, and <strong>Stop sharing</strong> to finish.</span
                     ><span lang="zh-CN"
-                      >使用手机、另一台电脑，或邀请朋友加入。如果没有自动播放，点击<strong>播放</strong>。</span
+                      >更换画面时点击<strong>切换来源</strong>，暂时中断时点击<strong>暂停分享</strong>，结束时点击<strong>停止分享</strong>。</span
                     >
-                  </p>
-                </li>
-                <li>
-                  <strong><span lang="en">Finish the demonstration.</span><span lang="zh-CN">结束体验。</span></strong>
-                  <p>
-                    <span lang="en"
-                      >Try the volume and fullscreen controls, then select <strong>Stop sharing</strong> on the host’s
-                      page.</span
-                    ><span lang="zh-CN">试用音量、全屏等播放功能，完成后在房主页面点击<strong>停止分享</strong>。</span>
                   </p>
                 </li>
               </ol>
               <aside class="guide-note">
-                <h3><span lang="en">About this demo</span><span lang="zh-CN">演示站说明</span></h3>
-                <p id="demo-status">
+                <h3><span lang="en">Where does the site come from?</span><span lang="zh-CN">Piik 站点从哪里来？</span></h3>
+                <p>
                   <span lang="en"
-                    >The demo uses P2P connections without a media-server fallback. On restrictive networks, the page
-                    may open while the video cannot connect.</span
+                    >Use a site provided by a friend or administrator. Hosting your own is an advanced option: run Piik Server,
+                    configure HTTPS and open the required network ports. Follow the
+                    <a href="https://github.com/TNTcraftHIM/Piik/blob/main/docs/operations/self-hosting.md">self-hosting guide</a>.</span
                   ><span lang="zh-CN"
-                    >演示站使用 P2P
-                    连接，不提供媒体服务器转发兜底。在受限网络下，可能出现页面能打开、画面无法连接的情况。</span
+                    >可以直接使用朋友或管理员提供的站点。自己部署属于进阶操作，需要运行 Piik Server、配置 HTTPS 并开放相应网络端口，
+                    具体步骤见<a href="https://github.com/TNTcraftHIM/Piik/blob/main/docs/operations/self-hosting.zh-CN.md">部署指南</a>。</span
                   >
                 </p>
-                <a class="button download-button" href="https://demo.piik.tv" aria-describedby="demo-status"
-                  ><span lang="en">Open the demo</span><span lang="zh-CN">进入演示站</span
-                  ><span aria-hidden="true"> ↗</span></a
-                >
+                <p>
+                  <span lang="en">Share from a desktop browser on an HTTPS site. Sources and audio options vary by browser and operating system. No site yet? Start with the <a href="#demo">demo</a> or <a href="#guide-app">App</a>.</span
+                  ><span lang="zh-CN">请用支持屏幕共享的电脑浏览器访问 HTTPS 站点。可分享的画面和声音取决于浏览器及系统。还没有站点时，可以先用<a href="#demo">在线 Demo</a> 或<a href="#guide-app">客户端</a>。</span>
+                </p>
+                <a href="https://github.com/TNTcraftHIM/Piik/blob/main/docs/guide/getting-started.md" lang="en">Full browser guide →</a>
+                <a href="https://github.com/TNTcraftHIM/Piik/blob/main/docs/guide/getting-started.zh-CN.md" lang="zh-CN">完整网页版使用指南 →</a>
+                <a href="#docs"><span lang="en">Documentation &amp; deployment</span><span lang="zh-CN">文档中心与部署教程</span><span aria-hidden="true"> →</span></a>
               </aside>
             </div>
           </details>
@@ -627,13 +607,20 @@
 
       <section class="faq-section wrap" id="faq" aria-labelledby="faq-title">
         <div class="faq-intro">
-          <p class="eyebrow"><span lang="en">Before the next round</span><span lang="zh-CN">开场前，聊两句</span></p>
+          <p class="eyebrow"><span lang="en">FAQ</span><span lang="zh-CN">常见问题</span></p>
           <h2 id="faq-title">
-            <span lang="en">A few good <br />questions.</span><span lang="zh-CN">你可能<br />还想知道。</span>
+            <span lang="en">Good to know.</span><span lang="zh-CN">你可能<br />还想知道。</span>
           </h2>
           <svg class="faq-tv" aria-hidden="true"><use href="#tv-mark" /></svg>
         </div>
         <div class="questions">
+          <details>
+            <summary><span lang="en">Do I need my own server?</span><span lang="zh-CN">需要自己搭服务器吗？</span></summary>
+            <p>
+              <span lang="en">No. Try the <a href="#demo">online demo</a>, or choose <strong>Public invite</strong> in Piik App to create a temporary room. You can also use a Piik site provided by someone else. For a permanent site under your own domain, follow the <a href="https://github.com/TNTcraftHIM/Piik/blob/main/docs/operations/self-hosting.md">self-hosting guide</a>.</span>
+              <span lang="zh-CN">不需要。可以直接体验<a href="#demo">在线 Demo</a>，或在 Piik App 中选择<strong>公网邀请</strong>创建临时房间，也可以使用别人提供的 Piik 站点。想用自己的域名长期运行一个站点，再看<a href="https://github.com/TNTcraftHIM/Piik/blob/main/docs/operations/self-hosting.zh-CN.md">部署指南</a>。</span>
+            </p>
+          </details>
           <details>
             <summary>
               <span lang="en">Does everyone need Piik App?</span
@@ -679,17 +666,18 @@
           </details>
           <details>
             <summary>
-              <span lang="en">What’s different about a public invitation?</span
-              ><span lang="zh-CN">“公网邀请”有什么不同？</span>
+              <span lang="en">Can we watch from different places?</span
+              ><span lang="zh-CN">不在同一个地方，也能一起看吗？</span>
             </summary>
             <p>
               <span lang="en"
-                >It gives your App’s local room a temporary Internet address, without an uptime guarantee. Closing the
-                App ends the room and invitation. Video still travels between participants, without a media-server
-                fallback in this mode; restrictive networks may block it even when the page opens.</span
+                >Yes. Use the demo, an Internet-accessible Piik site, or Public invite in the App. Public invite gives
+                your room a temporary address that can change or become unavailable; closing the App ends the room.
+                The demo and Public invite use direct media connections without server forwarding, so some networks
+                may load the page but block the video.</span
               ><span lang="zh-CN"
-                >它给 App 的本地房间一个临时互联网地址，地址可能中断或变化。退出 App
-                后，这次房间和邀请也会结束。这个模式的视频靠参与者之间的连接传输，没有媒体服务器兜底，所以部分受限网络可能出现页面能打开、画面连不上的情况。</span
+                >可以使用在线 Demo、能从外网访问的 Piik 站点，或客户端的“公网邀请”。公网邀请的地址是临时的，可能中断或变化，退出 App 后房间也会结束。
+                Demo 和公网邀请的画面靠设备间直连传输，没有服务器转发兜底；部分网络可能出现页面能打开、画面连不上的情况。</span
               >
             </p>
           </details>
@@ -699,12 +687,12 @@
             </summary>
             <p>
               <span lang="en"
-                >Windows App and Browser are the current testing focus. Viewers use desktop or mobile browsers. macOS
-                and Linux App builds exist, but physical capture and audio checks on those platforms are still
-                pending.</span
+                >Windows App and browser sharing are the primary tested paths. Viewers can use a computer or phone browser.
+                The macOS and Linux apps have not yet been tested on physical devices; if you have a device,
+                we'd welcome your test results and <a href="https://github.com/TNTcraftHIM/Piik/issues">feedback</a>.</span
               ><span lang="zh-CN"
-                >目前重点验证 Windows App 和浏览器。观众可使用电脑或手机浏览器。macOS 和 Linux 已有 App
-                构建，但这两个平台的实机画面及音频采集验证仍待完成。</span
+                >目前主要测试 Windows 客户端和浏览器分享，观众可使用电脑或手机浏览器。
+                macOS 和 Linux 客户端尚未经过实机测试，欢迎有设备的朋友试用并<a href="https://github.com/TNTcraftHIM/Piik/issues">反馈问题</a>。</span
               >
             </p>
           </details>
@@ -724,9 +712,9 @@
         <p class="release-note" id="download-status">
           <span class="release-label">GitHub · Gitee</span
           ><span lang="en"
-            >Choose the package for your system on the release page. Check the release notes, then follow the setup
-            guide.</span
-          ><span lang="zh-CN">在发布页选择对应系统的程序包，查看版本说明，再按使用教程开始分享。</span>
+            >On the release page, choose a file beginning with piik-app for your system. Read the release notes and
+            follow the App guide.</span
+          ><span lang="zh-CN">在发布页下载以 piik-app 开头、对应系统的客户端程序包，查看版本说明，再按客户端教程开始分享。</span>
         </p>
         <div class="download-cards">
           <article class="download-card" aria-labelledby="download-windows">
@@ -749,9 +737,6 @@
               ><span lang="zh-CN">GitHub 下载</span></a
             ><a href="https://gitee.com/TNTcraftHIM/Piik/releases"
               ><span lang="en">Gitee mirror</span><span lang="zh-CN">Gitee 国内镜像</span></a
-            ><a href="#guide-app"
-              ><span lang="en">Windows setup</span><span lang="zh-CN">查看 Windows 使用教程</span
-              ><span aria-hidden="true"> →</span></a
             >
           </article>
           <article class="download-card" aria-labelledby="download-macos">
@@ -770,8 +755,8 @@
             </div>
             <h3 id="download-macos">macOS</h3>
             <p>
-              <span lang="en">For Apple silicon Macs. Choose the package marked</span
-              ><span lang="zh-CN">适用于 Apple 芯片的 Mac。请选择文件名含</span> <code>darwin-arm64</code
+              <span lang="en">Apple silicon; native capture needs macOS 13+. Choose the package marked</span
+              ><span lang="zh-CN">适用于 Apple 芯片；原生采集需 macOS 13 及以上。请选择文件名含</span> <code>darwin-arm64</code
               ><span lang="en">.</span><span lang="zh-CN"> 的程序包。</span>
             </p>
             <a
@@ -782,9 +767,6 @@
               ><span lang="zh-CN">GitHub 下载</span></a
             ><a href="https://gitee.com/TNTcraftHIM/Piik/releases"
               ><span lang="en">Gitee mirror</span><span lang="zh-CN">Gitee 国内镜像</span></a
-            ><a href="#guide-app"
-              ><span lang="en">macOS setup</span><span lang="zh-CN">查看 macOS 使用教程</span
-              ><span aria-hidden="true"> →</span></a
             >
           </article>
           <article class="download-card" aria-labelledby="download-linux">
@@ -815,11 +797,12 @@
               ><span lang="zh-CN">GitHub 下载</span></a
             ><a href="https://gitee.com/TNTcraftHIM/Piik/releases"
               ><span lang="en">Gitee mirror</span><span lang="zh-CN">Gitee 国内镜像</span></a
-            ><a href="#guide-app"
-              ><span lang="en">Linux setup</span><span lang="zh-CN">查看 Linux 使用教程</span
-              ><span aria-hidden="true"> →</span></a
             >
           </article>
+        </div>
+        <div class="download-help">
+          <a href="#guide-app"><span lang="en">Piik App setup guide</span><span lang="zh-CN">客户端使用教程</span><span aria-hidden="true"> →</span></a>
+          <p><span lang="en">The macOS and Linux apps have not yet been tested on physical devices. If you have a device, we'd welcome your <a href="https://github.com/TNTcraftHIM/Piik/issues">test results and feedback</a>.</span><span lang="zh-CN">macOS 和 Linux 客户端尚未经过实机测试，欢迎有设备的朋友试用并<a href="https://github.com/TNTcraftHIM/Piik/issues">反馈问题</a>。</span></p>
         </div>
       </section>
 
@@ -854,8 +837,8 @@
                 >部署自己的站点<span aria-hidden="true"> ↗</span></a
               >
               <p>
-                <span lang="en">One binary, a domain and HTTPS</span
-                ><span lang="zh-CN">一个程序，配置域名和 HTTPS 即可</span>
+                <span lang="en">One binary, with domain and network setup</span
+                ><span lang="zh-CN">从运行程序到配置域名与网络</span>
               </p>
             </li>
             <li>
@@ -893,7 +876,7 @@
       <div class="footer-identity">
         <svg aria-hidden="true"><use href="#tv-mark" /></svg
         ><span>Piik<span class="identity-dot" aria-hidden="true">.</span></span>
-        <p><span lang="en">Good things are better shared.</span><span lang="zh-CN">好东西，叫朋友一起来看。</span></p>
+        <p><span lang="en">Share the good stuff.</span><span lang="zh-CN">来，看点好康的。</span></p>
       </div>
       <div class="footer-links">
         <a href="https://github.com/TNTcraftHIM/Piik/blob/main/docs/README.md"
