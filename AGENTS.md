@@ -89,7 +89,7 @@
   does not need; total complexity matters more than marginal performance gains.
 - [Versioning](./docs/reference/versioning.md) separates build identity, wire,
   storage and live generations, and owns the public compatibility design.
-  Its pending public-release policy does not replace today's private contract.
+  The declared public release is the compatibility baseline for subsequent work.
 - Use primary sources for non-trivial design and bugs. Add focused tests in
   proportion to risk; batch full browser/network/endurance checks at acceptance.
 - Keep scripts deterministic, fast, cross-platform and CI-runnable.

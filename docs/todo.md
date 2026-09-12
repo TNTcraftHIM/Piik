@@ -7,30 +7,16 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **Release and repository readiness.** Review the prepared Windows test
-  candidate. Run native CI on the now-public repository, then
-  rehearse the publisher with genuine matching Server and App packages. Old cloud
-  artifacts have already been removed; if quota rejection persists, inspect
-  account billing and Packages usage with credentials that can read those scopes.
-  Run the final source's required regression checks, prepare one coherent squash
-  PR, accept the [first public release](./reference/versioning.md#first-public-release-readiness),
-  and finish [publishing activation](./operations/github.md).
-  Test-candidate checks do not accept the public release. Keep the owner's
-  [device/network deferrals](./verification-status.md#candidate-evidence-boundary).
-- [ ] **Gitee package acceptance.** The public README mirror, publisher secret,
-  upload pipeline and App/Server update fallback are implemented. The complete
-  Windows test archive passed anonymous download, checksum and App entry
-  acceptance. Verify the complete matching Server and three-platform
-  App release, total attachment capacity and real update/download flow
-  under the [release model](./reference/versioning.md#release-sources) before launch.
-- [ ] **Website launch.** Publish the accepted website through GitHub Pages
-  and verify piik.tv under
-  [website operations](./operations/website.md). Verify all public destinations,
-  including the deployed password-free, P2P-only demo.piik.tv;
-  the current private production service remains private.
+- [ ] **Post-launch polish.** Accept the website's shared random greeting and
+  clearly labeled, per-platform GitHub/Gitee package downloads. Verify the
+  download snapshot refreshes after publication; website and documentation
+  commits must not create App/Server versions or affect their release notes.
+  Complete the scoped checks and one phase integration, then enable
+  [automatic publication](./operations/github.md#enable-automatic-publication-once).
+  Preserve the owner's [device/network deferrals](./verification-status.md#candidate-evidence-boundary).
 
-Keep implementation on the existing phase branch. Main and the private service stay
-unchanged until the related acceptance and delivery actions are complete.
+Keep this phase on its maintenance branch until acceptance. The public release
+is the compatibility baseline; private service deployment stays independent.
 
 ## Next: P2P Connection And Feedback Review
 

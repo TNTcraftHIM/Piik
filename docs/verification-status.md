@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-09-11
+Last updated: 2026-09-12
 
 This file owns physical evidence limits that change how the product may be
 described. [Status](./status.md) owns the execution/deployment index.
@@ -57,11 +57,10 @@ Linux release archives. Process replacement used a forced stop on Windows and
 does not promise uninterrupted media. It does not cover game/audio endurance,
 storage faults, the wider device/network matrix or Go race detection.
 
-The full publisher dry run with genuine matching target artifacts remains
-unverified. The native CI candidate run passed validation and Server packaging
-but hit the Actions artifact-storage quota before App jobs could start. Native
-macOS tooling remains necessary. [TODO](./todo.md) owns the remaining publisher
-rehearsal and owner acceptance; the broader platform deferrals below still apply.
+The first public release passed real Server/three-platform App packaging and
+GitHub/Gitee publication, including anonymous mirror checksum verification.
+These packaging checks do not establish physical macOS/Linux capture or expand the device/network evidence
+below. [Status](./status.md) owns current publication and activation state.
 
 ## Remaining Device And Network Acceptance
 

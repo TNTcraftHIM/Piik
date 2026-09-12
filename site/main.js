@@ -10,6 +10,11 @@ const roomIllustration = document.querySelector('.living-room');
 const film = document.getElementById('film-preview');
 const filmFrame = document.getElementById('website-film');
 const filmLink = document.querySelector('[data-film-link]');
+const welcomeLines = document.getElementById('welcome-lines')?.content.children;
+if (welcomeLines?.length) {
+  const line = Math.floor(Math.random() * welcomeLines.length);
+  document.getElementById('welcome-line').replaceChildren(welcomeLines[line].cloneNode(true));
+}
 function syncFilmPreferences() {
   const target = new URL(filmLink.href);
   target.searchParams.set('lang', root.lang);

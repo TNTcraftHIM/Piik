@@ -1,10 +1,9 @@
 # Versions And Compatibility
 
-Reviewed 2026-09-12. Release identity, update comparisons and descriptive metadata
-rules are implemented; the public compatibility promise starts with the first
-declared public release. Use `v1.0.0` for it, with one product version for App,
-Server and the embedded Web build, plus the full Git SHA for source provenance.
-Automatic publication remains disabled until the readiness boundary below.
+Reviewed 2026-09-12. `v1.0.0` is the declared public compatibility baseline.
+App, Server and the embedded Web build share one product version, plus the full
+Git SHA for source provenance. Automatic publication remains disabled while the
+current maintenance phase completes its narrower release boundary.
 
 ## Give Each Identifier One Job
 
@@ -101,16 +100,27 @@ identity separately. Stable update notices ignore prereleases.
 ## Automatic Publication
 
 After one-time activation, a complete squash PR merged to main runs the existing
-CI and packaging pipeline. `scripts/release-version.mjs` examines unreleased
-first-parent commit messages: `feat` selects minor, `!` or `BREAKING CHANGE`
-selects major, and other accepted changes select patch. The first release is
-`v1.0.0`. PR/commit naming is owned by [CONTRIBUTING](../../CONTRIBUTING.md#commit-pr-and-branch-names).
+CI pipeline. `scripts/release-version.mjs` filters unreleased first-parent
+commits by actual changed paths. Website/film, documentation, research, agent
+instructions and standalone maintenance tools do not create product versions.
+Shared product UI, runtime code, public assets, licenses, dependencies and
+packaging inputs remain eligible; unknown paths are treated as product inputs.
+The script owns the exclusion list, shared with release-note generation.
+
+Only eligible commit messages select the increment: `feat` selects minor,
+`!` or `BREAKING CHANGE` selects major, and other accepted product changes select
+patch. A website-only `feat` cannot increase the next product version. Earlier
+unpublished product changes remain eligible when a later website commit reaches
+main. PR/commit naming is owned by [CONTRIBUTING](../../CONTRIBUTING.md#commit-pr-and-branch-names).
 Code size or an internal refactor does not itself imply a breaking release.
 
 No version/changelog commit is written back to main. The workflow queues main
 runs, uses the same source SHA for Server and all App targets, and publishes only
 after all required artifacts and checks pass. The publisher verifies matching
 version, source SHA and checksums, then creates/uploads/publishes one GitHub draft.
+When there are no unpublished product changes, CI validates a development build
+and skips packaging and publication; it never assigns an old release version to
+a new source SHA. The separate Website workflow updates the static site after CI.
 Failed draft uploads can resume; published artifacts are never overwritten.
 An older draft retried after a newer release cannot take over `latest`.
 
@@ -129,19 +139,22 @@ introduced by this policy.
 
 ## Release Notes
 
-GitHub Releases owns the published changelog. Each accepted PR supplies reviewed
+GitHub Releases owns the published changelog. Each product-changing PR supplies reviewed
 Chinese and English user-facing copy under the exact `## Release notes` heading
 in its squash commit; `###` headings structure that copy. Explain benefits,
 fixes and required upgrade actions, including breaking changes. Keep internal
 work logs, audit handoffs and unverified claims outside this public section.
 
-`scripts/release-notes.mjs` collects these sections from all unreleased
-first-parent commits since the previous stable tag. The first release uses
+`scripts/release-notes.mjs` collects these sections from the same eligible
+first-parent commits since the previous stable tag. Standalone website and
+documentation phases need no product release notes. The first release uses
 only its launch commit's product introduction; private development history is
 not a launch changelog. Missing, empty or duplicate sections fail validation
 before packaging/publication. GitHub Actions shows the generated text in its
 run summary. A manual candidate with an explicit version also previews it, so
-prepare its commit text before dispatching a release rehearsal.
+prepare its commit text before dispatching a release rehearsal. A manual
+candidate with no product changes may still be built; its summary reports that
+there are no product release notes, and publication remains disabled.
 
 The publisher passes the same text through a temporary notes file to GitHub,
 then removes that file. Gitee copies the GitHub description. Retrying the same
@@ -189,29 +202,17 @@ Gitee currently documents 100 MB per attachment and 1 GB total repository
 attachments for ordinary projects. The mirror rejects files above 100,000,000
 bytes before writing. Check aggregate capacity before each release; exhausted
 storage leaves a pending preview rather than deleting older downloads.
-Target authentication, uploads, anonymous metadata/CORS and a small download's
-SHA-256 have been verified. Acceptance of the full matching release packages
-remains pending with the first public release.
+Target authentication, uploads, anonymous metadata/CORS and the complete matching
+Server/three-platform App downloads and SHA-256 checks passed for the public release.
 Use API metadata in the Browser; ordinary asset-link redirects are not guaranteed
 to permit cross-origin fetch, even when a normal download works.
 
-## First Public Release Readiness
+## Public Release Baseline
 
-The current private single-contract rule remains until this boundary is ready:
-
-1. Accept real target packages and the queued GitHub publication path before
-   enabling automatic releases. Current local checks exercise planning, identity
-   injection, update decisions and publisher failure/retry paths without publishing.
-2. Freeze the first public baseline and explicit feature-support rules after
-   checking the implemented discovery and descriptive-metadata behavior above.
-3. Exercise the first supported old/new App-Site pair in both directions,
-   a stale open page, incompatible-contract recovery and retained room/config
-   authority. Bundled capture checks remain within their existing package gate.
-4. Freeze the supported baseline and release notes, then explicitly declare
-   `v1.0.0`. Do not manufacture compatibility by merely renumbering private builds.
-
-These implementation tasks are tracked in [TODO](../todo.md). Their absence is
-a public-release gap, not evidence that the current matched private build fails.
+The declared `v1.0.0` release starts the compatibility promise above. Its packages,
+reviewed notes and descriptors are immutable. Subsequent releases preserve this
+baseline through compatible upgrades; the remaining physical device/network
+limits stay in [verification status](../verification-status.md).
 
 ## References
 

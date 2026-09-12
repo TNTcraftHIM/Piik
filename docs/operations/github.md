@@ -30,9 +30,11 @@ copy and repository visibility; finish main protection. Then set repository
 Actions variable `PIIK_RELEASES_ENABLED` to `true`. This is a repository setting,
 not an environment variable for Piik App or Server.
 
-Subsequent accepted PRs merged to main use the existing CI workflow: calculate
-one version, validate, package Server and all App targets, and publish the same
-artifacts. Runs queue rather than overlap or cancel one another. Branches/PRs
+Subsequent accepted PRs merged to main use the existing CI workflow. Product
+changes calculate one version, validate, package Server and all App targets,
+and publish the same artifacts. Standalone website/docs changes validate without
+packaging or releasing; [versioning](../reference/versioning.md#automatic-publication)
+owns that boundary. Runs queue rather than overlap or cancel one another. Branches/PRs
 stay quiet; manual `client_checks` dispatch remains available for candidates.
 Writing a new version back to main is unnecessary and prohibited.
 
@@ -84,8 +86,8 @@ Use the release's actual version and full `target_commitish` SHA, with
 `GITEE_TOKEN` supplied through the publisher environment. `--dry-run` after the
 three arguments checks local identity, checksums and attachment sizes without
 publishing. The [release-source policy](../reference/versioning.md#release-sources)
-owns provenance, selection and quota limits. Small-file upload/download acceptance
-has passed; full-package mirror acceptance remains part of release readiness.
+owns provenance, selection and quota limits. The first public release passed
+complete matching Server and three-platform App mirror download acceptance.
 
 ## Platform References
 

@@ -108,7 +108,7 @@
           />
           <div class="scene-caption">
             <span class="caption-line"></span>
-            <p><span lang="en">“I saved you a seat.”</span><span lang="zh-CN">“沙发给你留着呢。”</span></p>
+            <p id="welcome-line"><span lang="en">“Your seat is right here.”</span><span lang="zh-CN">“沙发给你留着呢。”</span></p>
           </div>
         </div>
       </section>
@@ -716,11 +716,8 @@
           </p>
         </div>
         <p class="release-note" id="download-status">
-          <span class="release-label">GitHub · Gitee</span
-          ><span lang="en"
-            >On the release page, choose a file beginning with piik-app for your system. Read the release notes and
-            follow the App guide.</span
-          ><span lang="zh-CN">在发布页下载以 piik-app 开头、对应系统的客户端程序包，查看版本说明，再按客户端教程开始分享。</span>
+          <span lang="en">Choose Piik App for your system on the release page.</span>
+          <span lang="zh-CN">在发布页选择对应系统的 Piik App 程序包。</span>
         </p>
         <div class="download-cards">
           <article class="download-card" aria-labelledby="download-windows">
@@ -731,18 +728,17 @@
             </div>
             <h3 id="download-windows">Windows</h3>
             <p>
-              <span lang="en">For x64 PCs. Choose the package marked</span
-              ><span lang="zh-CN">适用于 x64 电脑。请选择文件名含</span> <code>windows-amd64</code
-              ><span lang="en">.</span><span lang="zh-CN"> 的程序包。</span>
+              <span lang="en">For x64 PCs.</span><span lang="zh-CN">适用于 x64 电脑。</span>
             </p>
             <a
               class="button download-button"
+              data-download="windows-amd64" data-provider="github"
               href="https://github.com/TNTcraftHIM/Piik/releases"
               aria-describedby="download-status"
-              ><svg aria-hidden="true"><use href="#download-mark" /></svg><span lang="en">GitHub download</span
-              ><span lang="zh-CN">GitHub 下载</span></a
-            ><a href="https://gitee.com/TNTcraftHIM/Piik/releases"
-              ><span lang="en">Gitee mirror</span><span lang="zh-CN">Gitee 国内镜像</span></a
+              ><svg aria-hidden="true"><use href="#download-mark" /></svg><span lang="en">View GitHub releases</span
+              ><span lang="zh-CN">查看 GitHub 版本</span></a
+            ><a data-download="windows-amd64" data-provider="gitee" href="https://gitee.com/TNTcraftHIM/Piik/releases"
+              ><span lang="en">View Gitee mirror</span><span lang="zh-CN">查看 Gitee 镜像</span></a
             >
           </article>
           <article class="download-card" aria-labelledby="download-macos">
@@ -761,18 +757,18 @@
             </div>
             <h3 id="download-macos">macOS</h3>
             <p>
-              <span lang="en">Apple silicon; native capture needs macOS 13+. Choose the package marked</span
-              ><span lang="zh-CN">适用于 Apple 芯片；原生采集需 macOS 13 及以上。请选择文件名含</span> <code>darwin-arm64</code
-              ><span lang="en">.</span><span lang="zh-CN"> 的程序包。</span>
+              <span lang="en">Apple silicon. Native capture needs macOS 13+.</span
+              ><span lang="zh-CN">适用于 Apple 芯片。原生采集需 macOS 13 及以上。</span>
             </p>
             <a
               class="button download-button"
+              data-download="darwin-arm64" data-provider="github"
               href="https://github.com/TNTcraftHIM/Piik/releases"
               aria-describedby="download-status"
-              ><svg aria-hidden="true"><use href="#download-mark" /></svg><span lang="en">GitHub download</span
-              ><span lang="zh-CN">GitHub 下载</span></a
-            ><a href="https://gitee.com/TNTcraftHIM/Piik/releases"
-              ><span lang="en">Gitee mirror</span><span lang="zh-CN">Gitee 国内镜像</span></a
+              ><svg aria-hidden="true"><use href="#download-mark" /></svg><span lang="en">View GitHub releases</span
+              ><span lang="zh-CN">查看 GitHub 版本</span></a
+            ><a data-download="darwin-arm64" data-provider="gitee" href="https://gitee.com/TNTcraftHIM/Piik/releases"
+              ><span lang="en">View Gitee mirror</span><span lang="zh-CN">查看 Gitee 镜像</span></a
             >
           </article>
           <article class="download-card" aria-labelledby="download-linux">
@@ -791,23 +787,25 @@
             </div>
             <h3 id="download-linux">Linux</h3>
             <p>
-              <span lang="en">For x64 PCs. Choose the package marked</span
-              ><span lang="zh-CN">适用于 x64 电脑。请选择文件名含</span> <code>linux-amd64</code><span lang="en">.</span
-              ><span lang="zh-CN"> 的程序包。</span>
+              <span lang="en">For x64 PCs.</span><span lang="zh-CN">适用于 x64 电脑。</span>
             </p>
             <a
               class="button download-button"
+              data-download="linux-amd64" data-provider="github"
               href="https://github.com/TNTcraftHIM/Piik/releases"
               aria-describedby="download-status"
-              ><svg aria-hidden="true"><use href="#download-mark" /></svg><span lang="en">GitHub download</span
-              ><span lang="zh-CN">GitHub 下载</span></a
-            ><a href="https://gitee.com/TNTcraftHIM/Piik/releases"
-              ><span lang="en">Gitee mirror</span><span lang="zh-CN">Gitee 国内镜像</span></a
+              ><svg aria-hidden="true"><use href="#download-mark" /></svg><span lang="en">View GitHub releases</span
+              ><span lang="zh-CN">查看 GitHub 版本</span></a
+            ><a data-download="linux-amd64" data-provider="gitee" href="https://gitee.com/TNTcraftHIM/Piik/releases"
+              ><span lang="en">View Gitee mirror</span><span lang="zh-CN">查看 Gitee 镜像</span></a
             >
           </article>
         </div>
         <div class="download-help">
-          <a href="#guide-app"><span lang="en">Piik App setup guide</span><span lang="zh-CN">客户端使用教程</span><span aria-hidden="true"> →</span></a>
+          <div class="download-links">
+            <a class="button" href="https://github.com/TNTcraftHIM/Piik/releases"><span lang="en">More downloads</span><span lang="zh-CN">更多下载</span><span aria-hidden="true"> ↗</span></a>
+            <a class="text-link" href="#guide-app"><span lang="en">Piik App setup guide</span><span lang="zh-CN">客户端使用教程</span><span aria-hidden="true"> →</span></a>
+          </div>
           <p><span lang="en">The macOS and Linux apps have not yet been tested on physical devices. If you have a device, we'd welcome your <a href="https://github.com/TNTcraftHIM/Piik/issues">test results and feedback</a>.</span><span lang="zh-CN">macOS 和 Linux 客户端尚未经过实机测试，欢迎有设备的朋友试用并<a href="https://github.com/TNTcraftHIM/Piik/issues">反馈问题</a>。</span></p>
         </div>
       </section>

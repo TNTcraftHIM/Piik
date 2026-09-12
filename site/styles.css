@@ -86,12 +86,13 @@ h1 { font-size: clamp(49px, 5.7vw, 76px); line-height: 1.06; margin-block: 22px 
 .film-collapse { margin-left:auto; font-size:12px; color:var(--muted); }
 .film-preview iframe { display:block; width:100%; height:calc(56.25cqw + 144px); border:0; }
 .download-help { margin-top:22px; text-align:center; }
-.download-help > a { display:inline-flex; align-items:center; min-height:44px; font-size:14px; font-weight:650; }
+.download-links { display:flex; justify-content:center; align-items:center; flex-wrap:wrap; gap:12px 24px; margin-bottom:14px; }
 .download-help p { max-width:760px; margin:6px auto 0; color:var(--muted); font-size:13px; }
 .hero-scene { min-width: 0; }
 .living-room { display: block; width: 108%; height: auto; max-width: none; margin-left: -5%; }
 .scene-caption { display: flex; justify-content: center; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); margin-top: 2px; }
-.caption-line { width: 23px; height: 1px; background: var(--orange); transform: rotate(-6deg); }
+.scene-caption p { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.caption-line { flex: none; width: 23px; height: 1px; background: var(--orange); transform: rotate(-6deg); }
 .how-section { padding-block: 67px 63px; background: var(--paper); border-block: 1px solid var(--line); }
 .section-heading { text-align: center; }
 .section-heading .eyebrow { justify-content: center; }

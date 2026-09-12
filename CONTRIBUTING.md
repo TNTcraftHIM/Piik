@@ -44,9 +44,10 @@ history without explicit approval.
 For deployment work, a routine application-only release verifies a new immutable artifact, switches to it atomically, and guarantees the pre-cutover application release only through bounded health and postflight checks; it has no retention contract afterward and is not a maintained backup. Define recovery only for the infrastructure, configuration, secrets, persistent state, or irreversible surfaces the task actually touches, before changing them.
 
 Use the [version/compatibility policy](./docs/reference/versioning.md) to classify
-release changes. In today's private contract an incompatible signaling cutover
-forces old pages to reload and ends Browser capture; include that interruption
-in the accepted cutover. Compatible UI/internal work does not require a wire bump.
+release changes. An incompatible signaling cutover forces old pages to reload
+and ends Browser capture; follow the public compatibility promise and include
+that interruption in the accepted cutover. Compatible UI/internal work does not
+require a wire bump.
 
 Clean up worktrees and branches only after semantic review and integration are complete and the normal merged-head, open-reference, clean-tree, and non-following link checks pass. Never merge an old branch wholesale after a newer truth checkpoint.
 
@@ -119,12 +120,14 @@ reserve `spike/` for experiments. No issue number is required. 中文说明：PR
 
 A pull request should explain the problem, the chosen design, verification performed, user-visible or operational effects, and remaining risks.
 
-Before an integration PR is accepted, fill its exact `## Release notes` section
+Before a product-changing integration PR is accepted, fill its exact `## Release notes` section
 with concise public copy in Chinese and English: user-visible changes, fixes and
 required upgrade actions. Use `###` for subsections. Review this text as product
 copy; it is published automatically from the squash commit, without PR discussion
 or verification logs. The [release-note policy](./docs/reference/versioning.md#release-notes)
 owns aggregation and preview. Do not add a changelog file or release-note archive.
+Standalone website, documentation and maintenance phases do not need product
+release notes; their public description stays in the PR.
 
 Durable semantic or current-snapshot changes must update their single owner in the same integration boundary. Ordinary implementation and bug fixes may be complete with code plus focused evidence.
 

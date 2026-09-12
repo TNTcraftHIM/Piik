@@ -71,8 +71,8 @@ understandable; a genre label or a score burst does not replace the action.
 
 Use mint walls, clear control edges, a warm orange/yellow sofa and the curious TV
 mascot. The site is a welcoming room, not a monitoring dashboard. Keep one
-primary action, native navigation and short instructions. English is the first
-view with an explicit Chinese choice; theme follows the system unless changed.
+primary action, native navigation and short instructions. Language and theme
+follow the system unless explicitly changed; unsupported languages use English.
 Respect reduced motion and retain useful content without JavaScript.
 
 The room illustration cycles through four distinct uses: an RPG, drawing,
@@ -133,8 +133,11 @@ are not automatically included in the website artifact.
 
 The [website operations guide](../operations/website.md) owns Pages publication,
 public destinations and the separate P2P-only demo. The primary action leads
-to the platform download section. Use permanent release-page links for downloads;
-archive names include a revision. Verify destinations as part of publication.
+to the platform download section. Build static package links from a published
+GitHub release, showing its version and each supported platform. Gitee links must
+match that release and its source revision. Keep release notes separate; when a
+package is unverified, label the fallback as a release-page link. Archive names
+include a revision. Verify destinations as part of publication.
 Demo, App and existing-site walkthroughs
 use real action names and explain the first sharing and viewing steps. Keep
 platform requirements and connection limitations beside the relevant steps.

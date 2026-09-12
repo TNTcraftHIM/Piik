@@ -38,23 +38,23 @@ media remain process-only. This private service is not a public demonstration.
 
 The separate US [public demo](https://demo.piik.tv) is deployed with open site
 entry, persistent room authority and P2P-only media. Caddy owns HTTPS, and the
-standard systemd service runs the verified Server test candidate. Public DNS,
+standard systemd service runs the published Server package. Public DNS,
 HTTPS, runtime assets, all three STUN listeners and a bounded browser P2P
 sharing/stop check passed; the browser check used synthetic video on one network.
 The operator record owns exact identity and postflight evidence.
 
-[TODO](./todo.md) owns remaining publication work. The owner accepted the public
-introduction and authorized launch on 2026-09-12. The source repository is public,
-main protection is active, and GitHub Pages is configured for `piik.tv`. The
-private service remains a separate deployment. Release descriptors and GitHub
-deployment records identify published artifacts and website revisions.
+[TODO](./todo.md) owns the current maintenance phase. The owner declared the first
+public release on 2026-09-12. Source is public, main protection is active, and
+`piik.tv` runs on GitHub Pages behind Cloudflare with HTTPS. The private service
+remains a separate deployment. Release descriptors and GitHub deployment records
+identify published artifacts and website revisions.
 
-The Windows test archive passed complete anonymous Gitee download, checksum,
-App entry/presentation and update-link acceptance. Bounded two-build
-interoperability also passed. The complete publisher rehearsal previously hit
-the private repository's Actions artifact quota and must complete on the public
-repository before package publication. GitHub/Gitee release comparison, mirror
-publishing and PR-sourced release notes are implemented under
+The matching Server and three App packages are published on GitHub and Gitee;
+anonymous mirror downloads match the original checksums. Public-repository CI
+and native packaging passed. App entry, update links
+and bounded two-build interoperability have acceptance evidence. Automatic
+publication remains off while the current phase narrows release triggers.
+GitHub/Gitee release comparison, mirror publishing and PR-sourced notes follow
 [versioning](./reference/versioning.md). [Verification status](./verification-status.md#candidate-evidence-boundary)
 owns the remaining physical limits; shared lessons live in
 [engineering](./reference/engineering.md).

@@ -1,8 +1,8 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { releaseNotes } from "../scripts/release-notes.mjs";
@@ -15,8 +15,11 @@ describe("release automation", () => {
   it("publishes reviewed notes, excludes private history and retains every unreleased phase on retries", () => {
     const root = mkdtempSync(join(tmpdir(), "piik-release-notes-"));
     const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
-    const commit = (message: string) => {
-      git("commit", "--allow-empty", "-m", message);
+    const commit = (message: string, path = "index.html") => {
+      mkdirSync(dirname(join(root, path)), { recursive: true });
+      writeFileSync(join(root, path), message);
+      git("add", "--", path);
+      git("commit", "-m", message);
       return git("rev-parse", "HEAD");
     };
     try {
@@ -33,12 +36,20 @@ describe("release automation", () => {
       expect(first).not.toMatch(/private history|Internal|Editor guidance/);
       git("tag", "-a", "v1.0.0", "-m", "Launch");
       expect(releaseNotes(root, "v1.0.0", launch, "fixture/Piik")).toBe(first);
+      const website = commit("feat(site)!: redesign the homepage", "site/index.html");
+      expect(() => releaseNotes(root, "v1.0.1", website, "fixture/Piik")).toThrow("No release changes");
+      expect(releaseNotes(root, "v1.0.1", website, "fixture/Piik", { allowEmpty: true })).toBe("");
+      const candidate = JSON.parse(execFileSync(process.execPath, [planner, "build"], {
+        cwd: root, encoding: "utf8", env: { ...process.env, PIIK_BUILD_VERSION: "v1.0.1" },
+      }));
+      expect(candidate).toMatchObject({ version: "v1.0.1", publish: false });
       commit("fix: repair playback\n\n## Release notes\n- Playback resumes after reconnecting.");
       const next = commit("feat: add a sharing option\n\n## Release notes\n- Choose a window to share.");
       const notes = releaseNotes(root, "v1.1.0", next, "fixture/Piik");
       expect(notes).toContain("- Playback resumes after reconnecting.\n\n- Choose a window to share.");
       expect(notes).toContain(`/compare/v1.0.0...${next}`);
       expect(notes).not.toContain("开始分享");
+      expect(notes).not.toContain("redesign");
       git("tag", "v1.1.0");
       expect(releaseNotes(root, "v1.1.0", next, "fixture/Piik")).toBe(notes);
       // A checkout may have advanced; generation still uses the requested SHA.
@@ -56,12 +67,18 @@ describe("release automation", () => {
     const root = mkdtempSync(join(tmpdir(), "piik-release-plan-"));
     const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
     const plan = () => JSON.parse(execFileSync(process.execPath, [planner, "plan"], { cwd: root, encoding: "utf8" }));
+    const commit = (message: string, path = "index.html") => {
+      mkdirSync(dirname(join(root, path)), { recursive: true });
+      writeFileSync(join(root, path), message);
+      git("add", "--", path);
+      git("commit", "-m", message);
+    };
     try {
       git("init", "--quiet", "--initial-branch=main");
       git("config", "user.name", "Piik fixture");
       git("config", "user.email", "fixture@example.invalid");
       git("config", "commit.gpgSign", "false");
-      git("commit", "--allow-empty", "-m", "chore: initial");
+      commit("chore: initial");
       expect(plan().version).toBe("v1.0.0");
       const candidate = JSON.parse(execFileSync(process.execPath, [planner, "build"], {
         cwd: root, encoding: "utf8", env: { ...process.env, PIIK_BUILD_VERSION: "v1.0.0" },
@@ -71,11 +88,22 @@ describe("release automation", () => {
       git("tag", "v1.0.0");
       // The tag might belong to an unfinished draft: publication can resume.
       expect(plan()).toMatchObject({ version: "v1.0.0", publish: true });
-      git("commit", "--allow-empty", "-m", "fix: repair playback\n\nExample text:\nfeat: is not this commit's type");
+      for (const path of ["site/film/art.js", "docs/deployment.md", "README.zh-CN.md",
+        "scripts/build-website.mjs", "scripts/check-docs.mjs", "scripts/release-notes.mjs",
+        "tests/room.test.ts", ".agents/skills/ponytail/SKILL.md", ".github/workflows/website.yml"]) {
+        mkdirSync(dirname(join(root, path)), { recursive: true });
+        writeFileSync(join(root, path), "Peripheral content");
+      }
+      git("add", ".");
+      git("commit", "-m", "feat(site)!: redesign the website\n\nBREAKING CHANGE: website layout only");
+      expect(plan()).toMatchObject({ version: "development", publish: false });
+      commit("fix: repair playback\n\nExample text:\nfeat: is not this commit's type");
       expect(plan().version).toBe("v1.0.1");
-      git("commit", "--allow-empty", "-m", "feat(app): add a sharing option");
+      commit("feat(site)!: refresh the film", "site/film/art.js");
+      expect(plan()).toMatchObject({ version: "v1.0.1", revision: git("rev-parse", "HEAD"), publish: true });
+      commit("feat(app): add a sharing option");
       expect(plan().version).toBe("v1.1.0");
-      git("commit", "--allow-empty", "-m", "refactor!: replace the public contract");
+      commit("refactor!: replace the public contract");
       expect(plan().version).toBe("v2.0.0");
       expect(git("tag")).toBe("v1.0.0");
       const reused = spawnSync(process.execPath, [planner, "build"], {
@@ -85,6 +113,45 @@ describe("release automation", () => {
       expect(reused.stderr).toContain("two source revisions");
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
+
+  it("keeps shipped assets, build inputs and moves across the website boundary release-worthy", () => {
+    const root = mkdtempSync(join(tmpdir(), "piik-release-paths-"));
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+    const plan = () => JSON.parse(execFileSync(process.execPath, [planner, "plan"], { cwd: root, encoding: "utf8" }));
+    try {
+      git("init", "--quiet", "--initial-branch=main");
+      git("config", "user.name", "Piik fixture");
+      git("config", "user.email", "fixture@example.invalid");
+      git("config", "commit.gpgSign", "false");
+      mkdirSync(join(root, "public"));
+      writeFileSync(join(root, "public", "asset.svg"), "Shared artwork");
+      git("add", ".");
+      git("commit", "-m", "feat: launch");
+      git("tag", "v1.0.0");
+      for (const path of ["src/client/styles.css", "src/shared/protocol.ts", "internal/server/app/app.go",
+        "cmd/piik-app/piik.ico", "native/capture/windows/build.ps1", "public/guide.md",
+        "licenses/NOTICE.md", "LICENSE", "package-lock.json", "go.mod",
+        "scripts/check-client.mjs", "scripts/client-package-targets.mjs", ".github/workflows/repository-hygiene.yml",
+        "new-product-input.json"]) {
+        git("checkout", "--quiet", "--detach", "v1.0.0");
+        mkdirSync(dirname(join(root, path)), { recursive: true });
+        writeFileSync(join(root, path), "Changed product input");
+        git("add", "--", path);
+        git("commit", "-m", "fix: update product input");
+        expect(plan(), path).toMatchObject({ version: "v1.0.1", publish: true });
+      }
+      git("checkout", "--quiet", "--detach", "v1.0.0");
+      mkdirSync(join(root, "site"), { recursive: true });
+      git("mv", "public/asset.svg", "site/asset.svg");
+      git("commit", "-m", "fix: retire the product asset");
+      expect(plan()).toMatchObject({ version: "v1.0.1", publish: true });
+      git("tag", "v1.0.1");
+      mkdirSync(join(root, "public"), { recursive: true });
+      git("mv", "site/asset.svg", "public/asset.svg");
+      git("commit", "-m", "feat: add the product asset");
+      expect(plan()).toMatchObject({ version: "v1.1.0", publish: true });
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }, 15_000);
 
   it("accepts only a complete same-build package set before contacting GitHub", () => {
     const root = mkdtempSync(join(tmpdir(), "piik-release-assets-"));
