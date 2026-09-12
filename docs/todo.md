@@ -7,9 +7,22 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
+- [ ] **Maintenance acceptance and release.** Verify and accept the implemented
+  password-input fix, stable latest ZIP downloads, Viewer playback gestures and
+  Windows CI toolchain-cache fix before publishing the matching packages and
+  website. Stable download links require the new package filenames to be live.
+- [ ] **Illustrated tooltip acceptance.** Review the shared tooltip scenes
+  with their Chinese/English captions in the local UI catalogue. Pure-visual
+  mode keeps its pictograms and pixel lettering as an optional discovery.
+  Accept the combined meaning, motion and layout before release; the
+  [visual language](./design/visual-language.md) owns this shared presentation.
 - [ ] **Post-launch monitoring.** Collect App/Server feedback and verify the
   public download path after product releases. Preserve the owner's
   [device/network deferrals](./verification-status.md#candidate-evidence-boundary).
+- [ ] **Private service deployment.** After the current fixes are accepted,
+  deploy the matching published Server/Web package to the existing private
+  service and verify its runtime revision, entry and sharing path. Use the
+  [deployment runbook](./deployment.md); public demo deployment stays separate.
 
 Keep fixes on a maintenance branch until acceptance. The public release is the
 compatibility baseline; private service deployment stays independent.
@@ -80,12 +93,9 @@ Host is paused. No preservation policy has been accepted for that transition.
    direction with original Piik assets. Assess extension boundaries and cost
    before scheduling any theme/plugin API. Design experiments remain in Git
    history, outside the main source tree.
-8. **Visual presentation and community translations.** In a later version,
-   explore bringing the pure-visual mode's illustrations and motion into the
-   Chinese and English interfaces. Evaluate whether a separate pure-visual mode
-   remains useful, and prepare the existing locale catalogs for community
-   translations. No removal or new translation framework is scheduled for this
-   release.
+8. **Community translations.** Prepare the existing locale catalogs for
+   community contributions when scheduled. No new translation framework is
+   needed for the current Chinese, English and optional pure-visual modes.
 9. **Website illustration polish.** Match the Host's held prop to the four
    existing hero activities: gamepad, paintbrush, camera and remote. Keep the
    accepted bright cast, floating hands and shared activity timing.
@@ -95,7 +105,8 @@ Host is paused. No preservation policy has been accepted for that transition.
     [startup regression](./research/realtime-quality-adaptation.md) and check
     whether later audits or refactors bypassed a necessary guard. Do not remove
     the workaround without evidence that first-share quality remains correct.
-11. **32-bit App packages.** Assess support for the next small release, starting
-    with Windows x86. Check the native capture runtime, public-link sidecar,
-    toolchain and supported operating systems before choosing the target set;
-    include packaging and a real launch/capture check before advertising support.
+11. **32-bit App packages.** Deferred until suitable native capture dependencies
+    are available. Windows x86 core compilation alone does not establish App
+    support: the pinned capture SDK currently has no Windows x86 package.
+    Complete native packaging and real launch/capture acceptance before
+    advertising a 32-bit target.

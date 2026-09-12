@@ -1,6 +1,6 @@
 // Control hint scenes (操作提示漫画): small 2-panel before→after idioms used
-// as hover/focus tooltips on controls in pure-visual mode, where no human
-// language may appear. Same cast, palette, 320x96 canvas, and motion
+// as hover/focus tooltips in every mode, with captions added by Tooltip.
+// Same cast, palette, 320x96 canvas, and motion
 // constitution as the state comics. Sets live in set1..set4.tsx;
 // each must define exactly its SetNKind keys — the merge below then proves
 // completeness at compile time. JSX-free shell: this module is also loaded

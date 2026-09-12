@@ -1750,6 +1750,13 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
   overflow-wrap: anywhere;
   text-wrap: pretty;
 }
+.lr-comic-tip.has-comic.is-text { width: 272px; }
+.lr-comic-tip > svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin-inline: auto;
+}
 /* Keep the panel reachable across the small gap while reading it. */
 .lr-comic-tip::after {
   content: "";
@@ -1830,12 +1837,8 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
 
 .lr-comic-tip-caption {
   display: block;
-  margin-top: 6px;
-  font-size: 11px;
-  font-weight: 600;
-  text-align: center;
-  opacity: .72;
 }
+.lr-comic-tip > svg + .lr-comic-tip-caption { margin-top: 8px; }
 
 /* ---------- reduced motion: everything collapses to instant ---------- */
 

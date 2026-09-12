@@ -5,7 +5,6 @@ import {
   useReducer,
   useRef,
   useState,
-  type ReactNode,
 } from "react";
 import {
   DEFAULT_QUALITY_SETTINGS,
@@ -31,8 +30,6 @@ import { PawnDetail, RouteGlyph } from "../components/living/PawnDetail";
 import { Lcd } from "../components/living/RoomChip";
 import { RouteTree } from "../components/living/RouteTree";
 import { Comic, type ComicKind } from "../components/living/Comic";
-import { Tooltip } from "../components/living/Tooltip";
-import type { HintKind } from "../components/living/hints";
 import {
   StageOverlay,
   StageTv,
@@ -2369,20 +2366,6 @@ export function ViewerPage({
     )
     .map((viewer) => viewer.peerId);
 
-  // Btn owns its text tooltip; these wrappers supply only its visual comic.
-  const hintWrap = (
-    kind: HintKind,
-    node: ReactNode,
-    align: "start" | "center" | "end" = "center",
-  ): ReactNode =>
-    vis ? (
-      <Tooltip kind={kind} align={align}>
-        {node}
-      </Tooltip>
-    ) : (
-      node
-    );
-
   return (
     <div className="lr-app">
       <style>{`
@@ -2581,20 +2564,17 @@ export function ViewerPage({
                       name={displayName}
                       identity={selfPeerId ?? viewerClientId}
                     />
-                    {hintWrap(
-                      "hint-rename",
-                      <Btn
-                        icon="pencil"
-                        cap="common.edit"
-                        title="host.nameEdit"
-                        onClick={() => {
-                          setDisplayNameDraft(displayName);
-                          setDisplayNameError(false);
-                          setEditingDisplayName(true);
-                        }}
-                      />,
-                      "end",
-                    )}
+                    <Btn
+                      icon="pencil"
+                      cap="common.edit"
+                      title="host.nameEdit"
+                      hint="hint-rename"
+                      onClick={() => {
+                        setDisplayNameDraft(displayName);
+                        setDisplayNameError(false);
+                        setEditingDisplayName(true);
+                      }}
+                    />
                   </>
                 )}
                 {displayNameError && (
@@ -2632,28 +2612,25 @@ export function ViewerPage({
                       setShowConnectionDetails((current) => !current)
                     }
                   />
-                  {hintWrap(
-                    labeledHostPresence && showTopology ? "hint-collapse" : "hint-topology",
-                    <Btn
-                      icon="network"
-                      cap="host.topology"
-                      title={
-                        labeledHostPresence && showTopology
-                          ? "host.topology.hide"
-                          : "host.topology.show"
-                      }
-                      tone={
-                        labeledHostPresence && showTopology ? "on" : undefined
-                      }
-                      expanded={Boolean(labeledHostPresence && showTopology)}
-                      controls="room-topology"
-                      disabled={!labeledHostPresence}
-                      onClick={() =>
-                        setShowTopology((current) => !current)
-                      }
-                    />,
-                    "start",
-                  )}
+                  <Btn
+                    icon="network"
+                    cap="host.topology"
+                    title={
+                      labeledHostPresence && showTopology
+                        ? "host.topology.hide"
+                        : "host.topology.show"
+                    }
+                    hint={labeledHostPresence && showTopology ? "hint-collapse" : "hint-topology"}
+                    tone={
+                      labeledHostPresence && showTopology ? "on" : undefined
+                    }
+                    expanded={Boolean(labeledHostPresence && showTopology)}
+                    controls="room-topology"
+                    disabled={!labeledHostPresence}
+                    onClick={() =>
+                      setShowTopology((current) => !current)
+                    }
+                  />
                 </span>
               </div>
             </div>

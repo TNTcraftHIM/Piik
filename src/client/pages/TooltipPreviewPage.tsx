@@ -68,6 +68,7 @@ export function TooltipPreviewPage() {
           <ol>{WELCOME_LINES.map(({ key }, index) => <li key={key}><span>{t(key)}</span><WelcomeCipher line={index} /></li>)}</ol>
         </details>
         <h2 id="comic-preview">语义规则 / Semantic grammar</h2>
+        <p>{en ? "Aa pairs the scene with a caption; ✦ shows the pure-visual version." : "Aa 查看图示与文字说明，✦ 查看纯视觉版本。"}</p>
         <div className="lr-tooltip-preview-grid">
           {EXAMPLES.map((example) => <PreviewCard key={example.label} {...example} text={t(example.text)} />)}
         </div>

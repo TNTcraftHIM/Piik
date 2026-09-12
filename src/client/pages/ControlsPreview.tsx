@@ -49,7 +49,7 @@ export function ControlsPreview() {
           <Btn icon="stop" tone="danger" title="host.stop" cap="host.stop" hint="hint-share-stop" onClick={notify} />
           <Btn icon={paused ? "play" : "pause"} title={paused ? "host.resume" : "host.pause"} cap={paused ? "host.resume" : "host.pause"}
             hint={paused ? "hint-resume" : "hint-pause"} draw="preview-pause" pressed={paused} onClick={() => setPaused(!paused)} />
-          <Btn icon="gauge" tone="on" title="host.details" cap="host.details" pressed onClick={notify} />
+          <Btn icon="gauge" tone="on" title="host.details" cap="host.details" hint="hint-details" pressed onClick={notify} />
           <Btn icon="refresh" title="viewer.reconnect" cap="viewer.reconnect" hint="hint-reconnect" disabled />
           <Btn icon="cast" title="host.starting" cap="host.starting" busy disabled hint="hint-share-start" />
         </div>
@@ -58,13 +58,13 @@ export function ControlsPreview() {
           <Btn icon="link" title="host.invite.copy" hint="hint-copy-invite" onClick={notify} />
           <Btn icon="linkOff" title="host.invite.revoke" hint="hint-revoke-invite" onClick={notify} />
           <Btn icon="network" title="host.topology" hint="hint-topology" onClick={notify} />
-          <Btn icon="sliders" title="host.advanced" onClick={notify} />
+          <Btn icon="sliders" title="host.advanced" hint="hint-advanced" onClick={notify} />
         </div>
       </section>
       <section id="option-preview" className="cp-card">
         <header><span className="cp-number">02</span><h2>{en ? "Pick, toggle, adjust" : "选一个，再拨一下。"}</h2></header>
         <div className="lr-tiles" role="group" aria-label={t("host.quality")}>
-          {(["720p30", "1080p30", "1080p60"] as const).map((value, index) => <Tooltip key={value} kind="hint-quality" text={t(`host.quality.${value}`)}>
+          {(["720p30", "1080p30", "1080p60"] as const).map((value, index) => <Tooltip key={value} kind="hint-quality" text={vis ? undefined : t(`host.quality.${value}`)}>
             <button type="button" className={`lr-tile${preset === value ? " is-selected" : ""}`} aria-pressed={preset === value}
               aria-label={t(`host.quality.${value}`)} onClick={() => setPreset(value)}>
               <Glyph name={["mountain", "balance", "zap"][index]!} size={23} /><small>{value.replace("p", "p · ")}</small>
@@ -77,7 +77,7 @@ export function ControlsPreview() {
         </div>
         <div className="cp-tools">
           <span className="lr-toggle" role="group" aria-label={t("host.policy")} data-selected={policy}>
-            {(["open", "private"] as const).map(value => <Tooltip key={value} kind={value === "open" ? "hint-policy-open" : "hint-policy-private"} text={t(`host.policy.${value}`)}>
+            {(["open", "private"] as const).map(value => <Tooltip key={value} kind={value === "open" ? "hint-policy-open" : "hint-policy-private"} text={vis ? undefined : t(`host.policy.${value}`)}>
               <button type="button" className={policy === value ? "is-selected" : undefined} aria-pressed={policy === value}
                 aria-label={t(`host.policy.${value}`)} onClick={() => setPolicy(value)}>
                 <Glyph name={value === "open" ? "globe" : "lock"} size={19} />{vis ? null : <span className="lr-cap">{t(`host.policy.${value}`)}</span>}
@@ -95,7 +95,8 @@ export function ControlsPreview() {
           <label className="lr-input"><Glyph name="key" size={17} /><input type={passwordVisible ? "text" : "password"}
             placeholder={t("join.password")} aria-label={t("join.password")} aria-invalid={invalid} aria-describedby={invalid ? "preview-input-error" : undefined} autoComplete="off" />
           </label>
-          <Btn icon={passwordVisible ? "eyeOff" : "eye"} title={passwordVisible ? "host.password.hide" : "host.password.show"} onClick={() => setPasswordVisible(!passwordVisible)} />
+          <Btn icon={passwordVisible ? "eyeOff" : "eye"} title={passwordVisible ? "host.password.hide" : "host.password.show"}
+            hint={passwordVisible ? "hint-password-hide" : "hint-password-show"} onClick={() => setPasswordVisible(!passwordVisible)} />
           <SwitchItem checked={invalid} onChange={setInvalid} label={en ? "Show error" : "看看错误态"} />
         </div>
         {invalid ? <p id="preview-input-error" className="cp-input-error" role="alert">{en ? "That password did not match. Try again." : "密码没对上，再试一次。"}</p> : null}
@@ -134,7 +135,7 @@ export function ControlsPreview() {
         {sourceOpen ? <CaptureSourcePicker nativeSources={sourceState === "ready" ? SOURCES : { kind: sourceState }}
           onBrowser={() => { setSourceOpen(false); notify(); }} onNative={() => { setSourceOpen(false); notify(); }}
           onPreview={previewSource} onRefresh={() => setSourceState("ready")} onCancel={() => setSourceOpen(false)} />
-          : <div className="cp-stage-action"><Btn icon="cast" tone="primary" title="host.start" cap="host.start" onClick={() => setSourceOpen(true)} /></div>}
+          : <div className="cp-stage-action"><Btn icon="cast" tone="primary" title="host.start" cap="host.start" hint="hint-share-start" onClick={() => setSourceOpen(true)} /></div>}
       </StageTv></div>
     </section>
     <section id="playback-preview" className="cp-section">

@@ -32,8 +32,8 @@ over a reused comic's default; text and pure-visual tooltips retain that context
   or a required user action. Ordinary quality warnings never cover playback.
   Initial connection guidance is not an error even though it occupies the stage.
 - Television: one media-status icon sits inside the lower television frame
-  (`lr-tv-chin`). Visual mode explains it with the existing comic tooltip;
-  text modes expose the specific localized status in the same paper tooltip.
+  (`lr-tv-chin`). Every mode explains it with the same comic tooltip;
+  text modes add the specific localized status beneath the scene.
   Both reuse `Tooltip` for hover, keyboard focus, touch hold and viewport
   placement; no native `title` competes with the custom status hint. There is no
   permanent text bubble, additional round lamp, or repeated control-menu caption.

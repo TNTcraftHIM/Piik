@@ -78,7 +78,7 @@ export function Btn({
   controls?: string;
   onClick?: () => void;
   type?: "button" | "submit";
-  /** Vis mode: 2-panel hint comic on hover/focus; native title stays off. */
+  /** Shared hint comic; text modes add the localized caption. */
   hint?: HintKind;
   hintTone?: ComicTone;
   hintMotion?: ComicMotion;
@@ -143,7 +143,7 @@ export function Chip({
   disabled?: boolean;
   onClick?: () => void;
   title: string;
-  /** Vis mode: 2-panel hint comic on hover/focus; native title stays off. */
+  /** Shared hint comic; text modes add the localized caption. */
   hint?: HintKind;
   name?: string;
   value?: string;

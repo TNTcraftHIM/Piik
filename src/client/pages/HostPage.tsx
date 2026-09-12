@@ -4,9 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
   type FormEvent,
-  type ReactNode,
 } from "react";
 import {
   DEFAULT_QUALITY_SETTINGS,
@@ -43,7 +41,6 @@ import {
 } from "../components/living/ViewerOverview";
 import type { ComicKind } from "../components/living/Comic";
 import { Tooltip } from "../components/living/Tooltip";
-import type { HintKind } from "../components/living/hints";
 import {
   StageOverlay,
   StageTv,
@@ -3313,32 +3310,6 @@ export function HostPage({
   );
   useDocumentTitle([room?.roomId, titleContent[0]], titleContent.slice(1));
 
-  // These Btn triggers already own their text tooltip; add only their visual comic.
-  // wrapStyle adds a layout span around the tooltip wrapper (vis mode only)
-  // for triggers whose flex context would otherwise stretch the wrapper away
-  // from the trigger it must hug.
-  const hintWrap = (
-    kind: HintKind,
-    node: ReactNode,
-    align: "start" | "center" | "end" = "center",
-    wrapStyle?: CSSProperties,
-  ): ReactNode =>
-    vis ? (
-      wrapStyle ? (
-        <span style={wrapStyle}>
-          <Tooltip kind={kind} align={align}>
-            {node}
-          </Tooltip>
-        </span>
-      ) : (
-        <Tooltip kind={kind} align={align}>
-          {node}
-        </Tooltip>
-      )
-    ) : (
-      node
-    );
-
   return (
     <div className="lr-app">
       <AppHeader
@@ -3630,19 +3601,16 @@ export function HostPage({
                       type="submit"
                       disabled={displayNameDraft === displayName}
                     />
-                    {hintWrap(
-                      "hint-close",
-                      <Btn
-                        icon="x"
-                        title="host.nameCancel"
-                        onClick={() => {
-                          setDisplayNameDraft(displayName);
-                          setDisplayNameError(null);
-                          setEditingDisplayName(false);
-                        }}
-                      />,
-                      "end",
-                    )}
+                    <Btn
+                      icon="x"
+                      title="host.nameCancel"
+                      hint="hint-close"
+                      onClick={() => {
+                        setDisplayNameDraft(displayName);
+                        setDisplayNameError(null);
+                        setEditingDisplayName(false);
+                      }}
+                    />
                   </form>
                 ) : (
                   <>
@@ -3650,20 +3618,17 @@ export function HostPage({
                       name={labeledHostPresence?.label ?? displayName}
                       identity={hostIdentity}
                     />
-                    {hintWrap(
-                      "hint-rename",
-                      <Btn
-                        icon="pencil"
-                        cap="common.edit"
-                        title="host.nameEdit"
-                        onClick={() => {
-                          setDisplayNameDraft(displayName);
-                          setDisplayNameError(null);
-                          setEditingDisplayName(true);
-                        }}
-                      />,
-                      "end",
-                    )}
+                    <Btn
+                      icon="pencil"
+                      cap="common.edit"
+                      title="host.nameEdit"
+                      hint="hint-rename"
+                      onClick={() => {
+                        setDisplayNameDraft(displayName);
+                        setDisplayNameError(null);
+                        setEditingDisplayName(true);
+                      }}
+                    />
                   </>
                 )}
                 {displayNameError ? (
@@ -3677,47 +3642,41 @@ export function HostPage({
                 ) : null}
               </div>
               <div className="lr-row-group lr-group-actions lr-host-diagnostics-slot">
-                {hintWrap(
-                  showConnectionDetails ? "hint-collapse" : "hint-details",
-                  <Btn
-                    icon="gauge"
-                    cap={
-                      showConnectionDetails
-                        ? "host.details.hide"
-                        : "host.details"
-                    }
-                    title={
-                      showConnectionDetails
-                        ? "host.details.hide"
-                        : "host.details"
-                    }
-                    tone={showConnectionDetails ? "on" : undefined}
-                    expanded={showConnectionDetails}
-                    controls="host-details-panel host-viewer-overview"
-                    disabled={!hostDiagnosticsAvailable}
-                    onClick={() =>
-                      setShowConnectionDetails((current) => !current)
-                    }
-                  />,
-                  "start",
-                )}
-                {hintWrap(
-                  showTopology ? "hint-collapse" : "hint-topology",
-                  <Btn
-                    icon="network"
-                    cap="host.topology"
-                    title={
-                      showTopology
-                        ? "host.topology.hide"
-                        : "host.topology.show"
-                    }
-                    tone={showTopology ? "on" : undefined}
-                    expanded={showTopology}
-                    controls="room-topology"
-                    onClick={() => setShowTopology((current) => !current)}
-                  />,
-                  "end",
-                )}
+                <Btn
+                  icon="gauge"
+                  cap={
+                    showConnectionDetails
+                      ? "host.details.hide"
+                      : "host.details"
+                  }
+                  title={
+                    showConnectionDetails
+                      ? "host.details.hide"
+                      : "host.details"
+                  }
+                  hint={showConnectionDetails ? "hint-collapse" : "hint-details"}
+                  tone={showConnectionDetails ? "on" : undefined}
+                  expanded={showConnectionDetails}
+                  controls="host-details-panel host-viewer-overview"
+                  disabled={!hostDiagnosticsAvailable}
+                  onClick={() =>
+                    setShowConnectionDetails((current) => !current)
+                  }
+                />
+                <Btn
+                  icon="network"
+                  cap="host.topology"
+                  title={
+                    showTopology
+                      ? "host.topology.hide"
+                      : "host.topology.show"
+                  }
+                  hint={showTopology ? "hint-collapse" : "hint-topology"}
+                  tone={showTopology ? "on" : undefined}
+                  expanded={showTopology}
+                  controls="room-topology"
+                  onClick={() => setShowTopology((current) => !current)}
+                />
               </div>
               {phase === "live" || phase === "starting" ? (
                 <div className="lr-row-group lr-group-actions lr-host-share-slot">
@@ -3732,41 +3691,32 @@ export function HostPage({
                         disabled={switchingSource || changingQuality}
                         onClick={toggleSharingPause}
                       />
-                      {hintWrap(
-                        "hint-switch-source",
-                        <Btn
-                          icon="switchSource"
-                          cap={switchingSource ? "host.switching" : "host.switchSource"}
-                          title="host.switchSource"
-                          disabled={switchingSource || changingQuality}
-                          onClick={() => void switchSource()}
-                        />,
-                        "end",
-                      )}
-                      {hintWrap(
-                        "hint-share-stop",
-                        <Btn
-                          icon="stop"
-                          tone="danger"
-                          cap="host.stop"
-                          title="host.stop"
-                          onClick={() => endSharing({ key: "host.stopNotice" })}
-                        />,
-                        "end",
-                      )}
+                      <Btn
+                        icon="switchSource"
+                        cap={switchingSource ? "host.switching" : "host.switchSource"}
+                        title="host.switchSource"
+                        hint="hint-switch-source"
+                        disabled={switchingSource || changingQuality}
+                        onClick={() => void switchSource()}
+                      />
+                      <Btn
+                        icon="stop"
+                        tone="danger"
+                        cap="host.stop"
+                        title="host.stop"
+                        hint="hint-share-stop"
+                        onClick={() => endSharing({ key: "host.stopNotice" })}
+                      />
                     </>
                   ) : (
-                    hintWrap(
-                      "hint-share-stop",
-                      <Btn
-                        icon="x"
-                        tone="danger"
-                        cap="host.cancelStart"
-                        title="host.cancelStart"
-                        onClick={() => endSharing({ key: "host.startCancelled" })}
-                      />,
-                      "end",
-                    )
+                    <Btn
+                      icon="x"
+                      tone="danger"
+                      cap="host.cancelStart"
+                      title="host.cancelStart"
+                      hint="hint-close"
+                      onClick={() => endSharing({ key: "host.startCancelled" })}
+                    />
                   )}
                 </div>
               ) : null}
@@ -4167,28 +4117,20 @@ export function HostPage({
               </div>
             </RowGroup>
             <span className="lr-spacer" />
-            {hintWrap(
-              showAdvanced ? "hint-collapse" : "hint-advanced",
+            {/* Keep the tooltip trigger compact when mobile rows stretch. */}
+            <span style={{ display: "flex", justifyContent: "flex-end" }}>
               <Btn
                 icon="sliders"
                 busy={changingQuality}
                 cap="host.advanced"
                 title={showAdvanced ? "host.advanced.hide" : "host.advanced"}
+                hint={showAdvanced ? "hint-collapse" : "hint-advanced"}
                 tone={showAdvanced ? "on" : undefined}
                 expanded={showAdvanced}
                 controls="host-advanced-door"
                 onClick={() => setShowAdvanced((current) => !current)}
-              />,
-              "end",
-              // Mobile stacks `.lr-row` into a stretch column, which would
-              // stretch the tooltip wrapper to full row width and leave its
-              // wrapper-centered caret (and end-aligned panel) floating in
-              // empty card space away from the button. Take the stretch on a
-              // layout span instead and park the wrapper at the row's end,
-              // matching the desktop row-right placement; in the desktop row
-              // layout the span shrink-wraps and this is a no-op.
-              { display: "flex", justifyContent: "flex-end" },
-            )}
+              />
+            </span>
           </Row>
           <div
             id="host-advanced-door"

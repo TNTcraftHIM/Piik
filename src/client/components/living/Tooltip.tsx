@@ -1,5 +1,5 @@
-// Shared tooltip: a floating paper panel showing text or a comic above (or below)
-// its trigger. Visibility is three-channel, matching platform conventions:
+// Shared tooltip: the same comic in every mode, with a localized caption in
+// text modes. Literal names and values can stand alone. Visibility has three channels:
 // hover on fine pointers, keyboard focus via :has(:focus-visible), and the
 // Material long-press on touch (500ms hold → open, ~1.5s after release →
 // auto-hide, context menu and the trailing synthetic click suppressed).
@@ -358,14 +358,15 @@ export function Tooltip({
       <span ref={tipRef} id={tooltipId} popover="manual"
         data-tone={resolvedTone}
         style={{ ...comicStyle(resolvedTone, resolvedMotion), left: position.left, top: position.top, "--tooltip-caret": `${position.caret}px` } as CSSProperties}
-        className={`lr-comic-tip${text !== undefined ? " is-text" : ""}${placeClass}`} role="tooltip" aria-hidden={!interactionOpen}>
-        {panelMounted
-          ? text ?? (kind
+        className={`lr-comic-tip${text !== undefined ? " is-text" : ""}${kind ? " has-comic" : ""}${placeClass}`} role="tooltip" aria-hidden={!interactionOpen}>
+        {panelMounted ? <>
+          {kind
             ? isHintKind(kind)
               ? <HintComic kind={kind} size={240} tone={resolvedTone} motion={resolvedMotion} />
               : <Comic kind={kind} theme="paper" size={240} tone={resolvedTone} motion={resolvedMotion} />
-            : null)
-          : null}
+            : null}
+          {text !== undefined ? <span className="lr-comic-tip-caption">{text}</span> : null}
+        </> : null}
       </span>
     </span>
   );
