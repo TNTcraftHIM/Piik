@@ -94,12 +94,6 @@ h1 { font-size: clamp(49px, 5.7vw, 76px); line-height: 1.06; margin-block: 22px 
 .living-room { display: block; width: 108%; height: auto; max-width: none; margin-left: -5%; }
 .scene-caption { display: flex; justify-content: center; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); margin-top: 2px; }
 .caption-line { width: 23px; height: 1px; background: var(--orange); transform: rotate(-6deg); }
-#scene-motion { display: inline-flex; align-items: center; gap: 5px; min-height: 44px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 999px; font-size: 11px; }
-#scene-motion svg { width: 12px; height: 12px; stroke: currentColor; stroke-width: 1.7; fill: none; }
-#scene-motion[aria-pressed="true"] { color: var(--green); background: var(--paper); }
-#scene-motion:is(:hover, :focus-visible) { border-color: var(--green); }
-#scene-motion .motion-play, #scene-motion[aria-pressed="false"] .motion-pause { display: none; }
-#scene-motion[aria-pressed="false"] .motion-play { display: block; }
 .how-section { padding-block: 67px 63px; background: var(--paper); border-block: 1px solid var(--line); }
 .section-heading { text-align: center; }
 .section-heading .eyebrow { justify-content: center; }

@@ -1,6 +1,8 @@
 // One seekable score, measured in musical bars. No scene owns a timer.
+import { gameMarkup, createGame } from '../assets/game.js';
+
 const BAR = 240 / 101;
-export const DURATION = 16 * BAR;
+export const DURATION = 24 * BAR;
 const BEAT = BAR / 4;
 const INK = '#203037';
 const PAPER = '#faf5e7';
@@ -56,6 +58,21 @@ function screen(id, x, y, width, content, angle = 0) {
 export function createArt(svg, language) {
   const zh = language === 'zh-CN';
   const say = (en, cn) => zh ? cn : en;
+  const ui = (id, shot, height, gameId = '', viewer = false) => `<g id="${id}">
+    <image href="${new URL(`./assets/ui/${shot}-${zh ? 'zh' : 'en'}.webp`, import.meta.url)}" width="1100" height="${height}"/>
+    ${gameId ? `<clipPath id="${gameId}-clip"><rect x="85" y="89" width="930" height="523.125" rx="14"/></clipPath><g clip-path="url(#${gameId}-clip)"><svg x="85" y="89" width="930" height="${viewer ? 469 : 523.125}" viewBox="0 0 1600 ${viewer ? 806.9 : 900}" overflow="hidden">${gameMarkup(gameId)}</svg></g>` : ''}
+  </g>`;
+  const launcher = (id, choice) => `<g id="${id}"><image href="${new URL(`./assets/ui/launcher-${zh ? 'zh' : 'en'}-${choice}.webp`, import.meta.url)}" width="1100" height="740"/></g>`;
+  const appWindow = (id, content) => `<g transform="translate(540 144)"><g id="${id}">
+    ${rect(17, 20, 1010, 726, 23, INK)}${rect(0, 0, 1010, 726, 23, PAPER, `stroke="${INK}" stroke-width="3"`)}
+    ${[26, 43, 60].map((cx, i) => circle(cx, 24, 5, [ORANGE, YELLOW, '#85baa8'][i])).join('')}
+    ${small(499, 31, 'PIIK', INK, 'text-anchor="middle"')}
+    <svg id="${id}-camera" x="12" y="47" width="986" height="663.31" viewBox="0 0 1100 740" overflow="hidden">${rect(-1000, -1000, 4000, 4000, 0, '#e8f3ef')}${content}</svg>
+  </g></g>`;
+  const pointer = id => `<g id="${id}" fill="${INK}" stroke="${PAPER}" stroke-width="4" stroke-linejoin="round"><path d="M0 0v55l16-16 13 27 14-6-14-27 27-3Z"/></g>`;
+  const chapter = (number, first, second, note) => `${small(62, 68, `PIIK / ${number}`, INK)}
+    ${text(57, 286, first, zh ? 112 : 92)}${text(57, 419, second, zh ? 112 : 92)}
+    ${text(62, 533, note, zh ? 29 : 26, INK, 'style="letter-spacing:-.02em;font-weight:650"')}`;
   const game = '<use href="#game-still"/>';
   const drawing = `<rect width="1600" height="900" fill="${YELLOW}"/>
     <path d="M-130 750Q220-60 600 580T1720 300" fill="none" stroke="${ORANGE}" stroke-width="190"/>
@@ -75,18 +92,7 @@ export function createArt(svg, language) {
     <g id="wordmark">${text(85, 477, 'Piik', 407, PAPER)}</g>
     <g id="pawn"><circle cy="-31" r="20"/><path d="M-35 51.5c0-32.5 12.5-50 35-50s35 17.5 35 50q0 7.5-7.5 7.5h-55Q-35 59-35 51.5Z"/></g>
     <g id="crown" fill="#edc35d" stroke="#846634" stroke-width=".85" stroke-linejoin="round"><path d="m1.2 6.3-1.2-3.7q-.2-.7.5-.4L3 3.6l2.4-2.5q.6-.7 1.2 0L9 3.6l2.5-1.4q.7-.3.5.4l-1.2 3.7q-.2.9-1.2.9H2.4q-1 0-1.2-.9Z"/><path d="M2.1 6.5h7.8" stroke="#ba8b39" stroke-width="1"/></g>
-    <g id="landscape">
-      ${field(MINT)}${circle(1270, 214, 259, YELLOW)}
-      <path d="M-60 785 376 176 551 722 855 128 1150 759 1650 210v690H-60Z" fill="#8cbda8"/>
-      <path d="m-100 846 500-316 480 368 420-560 360 443v180H-100Z" fill="#507e6e"/>
-      ${text(570, 390, 'GO', 465, PAPER, 'transform="rotate(-12 800 300)" opacity=".55"')}
-      <g fill="${INK}"><path d="M215 649h342l-52 96-242 24Z"/><path d="M637 508h275l-43 90-193 19Z"/><path d="M1028 666h372l-71 107-248 31Z"/></g>
-      <g fill="${PAPER}"><rect x="205" y="625" width="360" height="42" rx="21"/><rect x="624" y="480" width="301" height="43" rx="21"/><rect x="1013" y="639" width="397" height="43" rx="21"/></g>
-      <path d="M1340 628V481" stroke="${INK}" stroke-width="7" stroke-linecap="round"/>
-      <path d="M1344 483h95l-23 29 23 29h-95Z" fill="${ORANGE}"/>
-      ${circle(1530, 860, 265, 'url(#dots)', 'opacity=".35"')}
-    </g>
-    <g id="game-still"><use href="#landscape"/>${mascot('card-tv', 380, 552, 5, YELLOW)}${circle(775, 330, 29, ORANGE)}${circle(995, 215, 24, ORANGE)}</g>
+    <g id="game-still">${gameMarkup('card-game')}</g>
     <g id="pad">
       <path d="M-115-52h230q47 0 66 61l20 74q12 49-34 49-29 0-72-55H-95q-43 55-72 55-46 0-34-49l20-74q19-61 66-61Z" fill="${PAPER}"/>
       <path d="M-103-9v58m-29-29h58" fill="none" stroke="${INK}" stroke-width="15" stroke-linecap="round"/>
@@ -104,7 +110,7 @@ export function createArt(svg, language) {
     <g id="hello-word" transform="rotate(-12 740 450)">
       <path d="M-70 171h945l-34 386H-105Z" fill="${PAPER}"/>
       ${text(58, 472, say('HEY.', '嘿。'), zh ? 307 : 365)}
-      ${small(92, 640, say('GOT A MINUTE?', '给你看个好东西。'), PAPER)}
+      ${small(92, 640, say('PIIK / SCREEN SHARING WITH FRIENDS', 'PIIK / 给朋友的屏幕共享'), PAPER)}
     </g>
     <g id="hello-character"><g transform="translate(1190 436) rotate(14)">
       ${mascot('hello-tv', 0, -15, 21, PAPER)}
@@ -137,15 +143,7 @@ export function createArt(svg, language) {
 
   <g id="scene-game">
     ${field(INK)}
-    <g id="game-camera"><use href="#landscape"/>
-      <g id="game-coin">${circle(775, 330, 29, ORANGE)}<path d="M775 315v30" stroke="${PAPER}" stroke-width="6" stroke-linecap="round"/></g>
-      <g id="game-coin-two">${circle(995, 215, 24, ORANGE)}<path d="M995 203v24" stroke="${PAPER}" stroke-width="5" stroke-linecap="round"/></g>
-      <ellipse id="game-shadow" cx="380" cy="624" rx="67" ry="12" fill="#20303730"/>
-      <g id="game-runner">${mascot('runner-tv', 0, 0, 5, YELLOW)}</g>
-      <g id="game-burst" fill="none" stroke="${PAPER}" stroke-width="7" stroke-linecap="round">
-        ${Array.from({ length: 8 }, (_, i) => `<path id="burst-${i}" d="M0-20v-31"/>`).join('')}
-      </g>
-    </g>
+    <g id="game-camera">${gameMarkup('full-game')}</g>
     <g id="game-title" transform="rotate(-12 300 150)">${rect(-70, 5, zh ? 645 : 790, 181, 0, INK)}${text(34, 150, say('WATCH THIS.', '看这一跳。'), zh ? 117 : 120, PAPER)}</g>
     <g id="game-cheer">
       <path d="M-30 900 197 0H570L344 900Z" fill="${ORANGE}"/>
@@ -159,31 +157,58 @@ export function createArt(svg, language) {
     </g>
   </g>
 
+  <g id="scene-launch">
+    ${field(YELLOW)}<path d="m1170-50 230 0-254 1000H870Z" fill="${ORANGE}"/>
+    <g id="launch-type">${chapter('01', say('Download.', '下载，'), say('Open.', '打开。'), say('No server of your own needed.', '无需自备服务器。'))}
+      ${small(62, 587, say('UNPACK / OPEN / PUBLIC INVITE', '解压并打开 APP → 选择「公网邀请」'))}
+      ${text(55, 788, '01', 190, 'none', `stroke="${INK}" stroke-width="2" opacity=".3"`)}
+    </g>
+    ${appWindow('launch-window', launcher('launcher-local', 'local') + launcher('launcher-link', 'link') + pointer('launch-pointer'))}
+  </g>
+
+  <g id="scene-share">
+    ${field(PAPER)}<path d="M960-100h770v1100H640Z" fill="${MINT}"/>
+    <g id="share-type">${chapter('02', say('Pick.', '选个'), say('Share.', '画面。'), say('A window. A screen. Your call.', '窗口、屏幕，都能分享。'))}
+      ${small(62, 587, say('PICTURE + SOUND', '画面与声音，一起分享'))}
+      ${text(55, 788, '02', 190, 'none', `stroke="${INK}" stroke-width="2" opacity=".3"`)}
+    </g>
+    ${appWindow('share-window', ui('share-idle', 'idle', 740) + ui('share-picker', 'picker', 740) + ui('share-live', 'live', 1300, 'share-game') + pointer('share-pointer'))}
+  </g>
+
   <g id="scene-invite">
-    ${field(ORANGE)}
-    <g id="invite-echo" transform="rotate(-12 800 450)">
-      ${text(-140, 281, 'PASS IT ON', 335, 'none', `stroke="${INK}" stroke-width="2"`)}
-      ${text(-135, 951, 'PASS IT ON', 335, 'none', `stroke="${INK}" stroke-width="2"`)}
+    ${field(ORANGE)}<path d="M1060-100h650v1100H760Z" fill="${YELLOW}"/>
+    <g id="invite-type">${chapter('03', say('Send a', '发个'), say('link.', '邀请。'), say('Friends watch in their browser.', '朋友用浏览器就能看。'))}
+      ${small(62, 587, say('NO VIEWER INSTALL', '观众无需安装客户端'))}
+      ${text(55, 788, '03', 190, 'none', `stroke="${INK}" stroke-width="2" opacity=".3"`)}
     </g>
-    <g id="invite-strip" transform="rotate(-12 800 450)">
-      ${rect(-250, 234, 2120, 349, 0, INK)}
-      <g id="invite-title">${zh ? text(48, 497, '发个链接。', 207, PAPER) : text(58, 329, 'SEND', 78, PAPER) + text(48, 527, 'A LINK.', 219, PAPER)}</g>
-      <g id="invite-link" transform="translate(214 628)">
-        ${rect(0, 0, 560, 81, 40.5, PAPER)}
-        <g transform="translate(32 16)" stroke="${INK}" stroke-width="5" fill="none" stroke-linecap="round"><path d="m22 18 12-12a14 14 0 0 1 20 20L42 38M32 36 20 48A14 14 0 0 1 0 28l12-12M18 32l18-18"/></g>
-        ${text(116, 55, say('Your invite link', '邀请链接'), 37)}
-        <path id="invite-check" d="m492 39 11 11 24-25" fill="none" stroke="#427862" stroke-width="6" stroke-linecap="round"/>
+    ${appWindow('invite-window', ui('invite-host', 'live', 1300, 'invite-game') + ui('invite-viewer', 'viewer', 1100, 'viewer-game', true) + pointer('invite-pointer'))}
+    <g id="invite-flight">${rect(-180, -42, 360, 84, 42, INK)}${text(0, 14, say('Send it to a friend', '把链接发给朋友'), 31, PAPER, 'text-anchor="middle"')}</g>
+  </g>
+
+  <g id="scene-features">
+    <g id="feature-free">${field(INK)}
+      <path d="m1030-100 750 0-220 1100H820Z" fill="${ORANGE}"/>
+      ${text(805, 874, '0', 1070, YELLOW, 'transform="rotate(12 1160 470)"')}
+      <g id="free-type" transform="rotate(-12 740 450)">${text(70, 370, say('FREE.', '免费。'), 248, PAPER)}${zh ? text(57, 628, '开源。', 248, MINT) : text(57, 525, 'OPEN', 160, MINT) + text(57, 680, 'SOURCE.', 160, MINT)}</g>
+      ${small(60, 72, 'MIT LICENSE', PAPER)}${small(62, 833, say('USE IT. BUILD ON IT. MAKE IT YOURS.', '自由使用，也欢迎一起改进。'), PAPER)}
+    </g>
+    <g id="feature-p2p">${field(MINT)}
+      ${text(-38, 761, 'P2P', 675, PAPER, 'transform="rotate(-12 740 450)"')}
+      <g id="p2p-type" transform="rotate(-12 700 450)">${rect(-170, 316, 1970, 209, 0, INK)}${text(65, 481, say('DIRECT FIRST.', '优先直连。'), zh ? 173 : 171, PAPER)}</g>
+      ${small(60, 72, say('LESS DISTANCE BETWEEN YOU', '让画面，直接到朋友身边。'))}
+      ${text(68, 802, say('Peer-to-peer screen sharing.', '优先建立点对点连接。'), 35, INK, 'style="letter-spacing:0;font-weight:650"')}
+    </g>
+    <g id="feature-encode">${field(YELLOW)}
+      <path d="M930-100h850v1100H610Z" fill="${PAPER}"/>
+      <g id="encode-diagram">
+        <path d="M933 470h170m0 0 131-185m-131 185h131m-131 0 131 185" stroke="${INK}" stroke-width="13" stroke-linecap="round" fill="none"/>
+        ${rect(771, 397, 157, 145, 24, INK)}${text(849, 491, '01', 69, MINT, 'text-anchor="middle"')}
+        ${[280, 470, 660].map(y=>`<g transform="translate(1335 ${y})">${rect(-94, -63, 188, 126, 24, ORANGE)}${text(0, 23, '01', 66, INK, 'text-anchor="middle"')}</g>`).join('')}
       </g>
+      <g id="encode-type" transform="rotate(-12 600 450)">${text(41, 365, say('REUSE', '复用'), zh ? 225 : 195)}${text(37, 617, say('THE WORK.', '编码。'), zh ? 225 : 132)}</g>
+      ${small(60, 72, say('LESS REPEATED ENCODING', '减少重复编码'))}
+      ${text(65, 823, say('Compatible connections share encoded frames.', '兼容的连接复用编码结果，减少重复处理。'), 31, INK, 'style="letter-spacing:0;font-weight:650"')}
     </g>
-    <g id="invite-arrivals">
-      <path d="M1160-60h510v1030H901Z" fill="${MINT}"/>
-      ${[0, 1, 2].map((i) => `<g id="invite-tile-${i}" transform="translate(${1309 - i * 90} ${156 + i * 274}) rotate(12)">
-        ${rect(-104, -106, 208, 224, 28, PAPER)}${person(`invite-person-${i}`, 0, -6, 1.65, colours[i])}
-      </g>`).join('')}
-    </g>
-    <g id="invite-arrow"><path d="M-126-27H4v-80L134 0 4 107V27h-130Z" fill="${YELLOW}"/></g>
-    ${small(59, 58, say('INVITE YOUR PEOPLE', '叫上朋友。'))}
-    ${small(57, 842, say('THEY WATCH IN A BROWSER.', '点开邀请，在浏览器里就能看。'))}
   </g>
 
   <g id="scene-people">
@@ -265,12 +290,13 @@ export function createArt(svg, language) {
       <g id="end-gamepad" transform="translate(77 32) rotate(-9) scale(.25)"><use href="#pad"/>${circle(-167, 70, 35, '#83c4a5')}${circle(167, 70, 35, '#83c4a5')}</g>
     </g></g>
     <g id="end-label">${small(65, 67, say('SCREEN SHARING / GOOD COMPANY', '开个房间，叫朋友来。'), MINT)}</g>
-    <g id="end-url">${text(1500, 799, 'piik.tv', 46, INK, 'text-anchor="end"')}${small(98, 802, say('OPEN SOURCE. MAKE IT YOURS.', '开源 · 把好东西分享给朋友'), PAPER)}</g>
+    <g id="end-url">${text(1500, 799, 'piik.tv', 46, INK, 'text-anchor="end"')}${small(98, 802, say('FREE & OPEN SOURCE / GET PIIK', '免费开源 · 下载 PIIK'), PAPER)}</g>
     <g id="end-credit">${rect(0, 846, 1600, 54, 0, PAPER)}${text(800, 869, 'Music: “Funkorama” — Kevin MacLeod · incompetech.com · CC BY 4.0 · edited excerpt', 15, INK, 'text-anchor="middle" style="letter-spacing:0;font-weight:450"')}${text(800, 890, 'creativecommons.org/licenses/by/4.0/', 14, INK, 'text-anchor="middle" style="letter-spacing:0;font-weight:450"')}</g>
   </g>`;
 
   const nodes = new Map(Array.from(svg.querySelectorAll('[id]'), (el) => [el.id, el]));
   const node = (id) => nodes.get(id);
+  const games = ['card-game', 'full-game', 'share-game', 'invite-game', 'viewer-game'].map(id => createGame(svg, id));
   const attr = (id, key, value) => node(id).setAttribute(key, String(value));
   const transform = (id, value) => attr(id, 'transform', value);
   const opacity = (id, value) => attr(id, 'opacity', clamp(value));
@@ -299,6 +325,7 @@ export function createArt(svg, language) {
   }
 
   function discover(t) {
+    t *= 2;
     transform('discover-type', `translate(${-30 * t} ${12 * t}) rotate(-12 800 450)`);
     slide('discover-line-top', t / .34, -920, 0);
     slide('discover-line-middle', (t - .08) / .36, 1230, 0);
@@ -308,58 +335,74 @@ export function createArt(svg, language) {
     const click = ease((t - 2.7) / .5);
     transform('discover-pointer', `translate(${mix(1640, 1230, click)} ${mix(940, 586, click)}) scale(${1 - .22 * Math.sin(clamp((t - 3.15) / .24) * Math.PI)})`);
     opacity('discover-pointer', click * (1 - ease((t - 3.6) / .22)));
-    const zoom = ease((t - 3.63) / 1.12);
-    const scale = mix(1, 1600 / 631, zoom);
-    transform('discover-game', `translate(${(-842 - 12 * scale) * zoom} ${(-310 - 44 * scale) * zoom}) scale(${scale})`);
-    transform('discover-game-tilt', `rotate(${-12 * (1 - zoom)})`);
-    opacity('discover-drawing', 1 - zoom); opacity('discover-code', 1 - zoom);
-    opacity('discover-ticket', 1 - ease((zoom - .1) / .4));
-    opacity('discover-label', 1 - zoom);
+  }
+
+  function point(id, x, y, time, clickAt) {
+    const press = Math.sin(clamp((time - clickAt) / .24) * Math.PI);
+    transform(id, `translate(${x} ${y}) scale(${.7 - .13 * press})`);
+  }
+
+  function launch(t) {
+    slide('launch-window', t / .5, 1150, 190);
+    slide('launch-type', t / .38, -610, 130);
+    const zoom = ease((t - .5) / .75);
+    attr('launch-window-camera', 'viewBox', `${145 * zoom} ${150 * zoom} ${1100 - 290 * zoom} ${740 - 195 * zoom}`);
+    opacity('launcher-link', t >= 2.15 ? 1 : 0);
+    const enter = ease((t - 3.8) / .75);
+    const arrive = ease((t - .75) / .8);
+    point('launch-pointer', mix(1000, 550, arrive), mix(720, mix(405, 575, enter), arrive), t, enter ? 5.1 : 2.05);
+    opacity('launch-pointer', arrive * (1 - ease((t - 5.5) / .3)));
+  }
+
+  function share(t) {
+    slide('share-window', t / .45, 1180, 140);
+    slide('share-type', t / .35, -610, 130);
+    opacity('share-picker', t >= 1.65 && t < 4.15 ? 1 : 0);
+    opacity('share-live', t >= 4.15 ? 1 : 0);
+    const pick = ease((t - 2.1) / .7);
+    const arrive = ease((t - .45) / .6);
+    point('share-pointer', mix(1030, mix(485, 365, pick), arrive), mix(710, 352, arrive), t, pick ? 3.95 : 1.4);
+    opacity('share-pointer', arrive * (1 - ease((t - 4.15) / .2)));
+    // Match the actual preview's video rectangle before cutting into gameplay.
+    const zoom = ease((t - 6.15) / (3 * BAR - 6.15));
+    const scale = mix(1, 1600 / (930 * 986 / 1100), zoom);
+    transform('scene-share', `translate(${-628.19 * scale * zoom} ${-270.78 * scale * zoom}) scale(${scale})`);
   }
 
   function gameScene(t) {
-    // A brief hold near the second coin gives the leap an impact pose.
-    const action = t < 4.32 ? t : t < 4.5 ? 4.32 : t - .18;
-    const first = clamp((action - .48) / 1.75);
-    const second = clamp((action - 3.13) / 1.72);
-    const x = second > 0 ? mix(775, 1200, second) : mix(380, 775, first);
-    const y = second > 0 ? mix(412, 566, second) - Math.sin(second * Math.PI) * 286 : mix(552, 412, first) - Math.sin(first * Math.PI) * 235;
-    const jump = second > 0 ? second : first;
-    const squash = Math.sin(clamp((action - 2.23) / .3) * Math.PI) * .14 + Math.sin(clamp((action - 4.85) / .3) * Math.PI) * .14;
-    transform('game-runner', `translate(${x} ${y}) rotate(${-Math.sin(jump * Math.PI * 2) * 14}) scale(${1 + squash} ${1 - squash})`);
-    attr('game-shadow', 'cx', x); attr('game-shadow', 'cy', second > 0 ? mix(480, 639, second) : mix(625, 480, first));
-    attr('game-shadow', 'rx', 67 - Math.sin(jump * Math.PI) * 35);
-    scaleAt('game-camera', 1 + .08 * Math.sin(clamp(t / 5.1) * Math.PI), 800, 450);
-    slide('game-title', t / .36, -920, 170, 'rotate(-12 300 150)');
-    opacity('game-title', 1 - ease((t - 2.2) / .4));
-    opacity('game-coin', 1 - clamp((first - .8) * 14));
-    opacity('game-coin-two', 1 - clamp((second - .56) * 14));
-    const burst = clamp((action - (action < 3.13 ? 1.88 : 4.09)) / .5);
-    transform('game-burst', action < 3.13 ? 'translate(775 330)' : 'translate(995 215)');
-    opacity('game-burst', Math.sin(burst * Math.PI));
-    for (let i = 0; i < 8; i++) transform(`burst-${i}`, `rotate(${i * 45}) translate(0 ${-93 * burst})`);
-    node('game-cheer').style.display = t >= 5.32 ? '' : 'none';
-    const hit = ease((t - 5.32) / .22);
-    scaleAt('game-cheer', mix(1.25, 1, hit), 900, 450);
-    transform('game-cheer-type', `translate(${-18 * clamp(t - 5.32, 0, 2)} 0) rotate(-12 720 540)`);
-    transform('cheer-tv', `rotate(${-5 * Math.sin(clamp((t - 5.45) / 1.1) * Math.PI)})`);
+    slide('game-title', t / .26, -920, 170, 'rotate(-12 300 150)');
+    opacity('game-title', 1 - ease((t - 1.1) / .35));
+    const cheer = t - 3.65;
+    node('game-cheer').style.display = cheer >= 0 ? '' : 'none';
+    scaleAt('game-cheer', mix(1.25, 1, ease(cheer / .22)), 900, 450);
+    transform('game-cheer-type', `translate(${-18 * clamp(cheer, 0, 2)} 0) rotate(-12 720 540)`);
+    transform('cheer-tv', `rotate(${-5 * Math.sin(clamp((cheer - .13) / 1.1) * Math.PI)})`);
   }
 
   function invite(t) {
-    transform('invite-echo', `translate(${-24 * t} 0) rotate(-12 800 450)`);
-    slide('invite-title', t / .29, -1390, 0);
-    slide('invite-link', (t - .55) / .36, -1090, 0, 'translate(214 628)');
-    opacity('invite-check', (t - 1.03) / .13);
-    slide('invite-arrivals', (t - 1.15) / .45, 810, -170);
-    const flight = ease((t - .9) / 1.5);
-    transform('invite-arrow', `translate(${mix(-180, 1030, flight)} ${mix(680, 450, flight)}) rotate(-12) scale(${1 - ease((t - 3.3) / .25)})`);
-    opacity('invite-arrow', (t - .9) / .1);
-    for (let i = 0; i < 3; i++) {
-      const p = pop((t - 1.5 - i * BEAT / 2) / .4);
-      transform(`invite-person-${i}`, `translate(0 ${-75 * (1 - p)}) rotate(${Math.sin(clamp((t - 2.7 - i * .2) / .6) * Math.PI) * 5} 0 59)`);
-      opacity(`invite-person-${i}`, p);
-      blink(`invite-person-${i}`, t, 3.3 + i * .32);
-    }
+    slide('invite-window', t / .42, 1140, 140);
+    slide('invite-type', t / .35, -610, 130);
+    const join = ease((t - 3.4) / .45);
+    attr('invite-window-camera', 'viewBox', `0 ${mix(535, 70, join)} 1100 ${mix(740, 830, join)}`);
+    transform('invite-host', `translate(${-1200 * join} 0)`);
+    transform('invite-viewer', `translate(${1200 * (1 - join)} 0)`);
+    opacity('invite-viewer', join);
+    const arrive = ease((t - .5) / .7);
+    point('invite-pointer', mix(1010, 105, arrive), mix(1300, zh ? 1050 : 1110, arrive), t, 1.6);
+    opacity('invite-pointer', arrive * (1 - ease((t - 2.1) / .25)));
+    const flight = ease((t - 2.2) / 1.3);
+    transform('invite-flight', `translate(${mix(778, 1170, flight)} ${mix(437, 450, flight)}) rotate(${-12 * Math.sin(flight * Math.PI)})`);
+    opacity('invite-flight', ease((t - 1.8) / .22) * (1 - ease((t - 3.35) / .2)));
+  }
+
+  function features(t) {
+    const cut = Math.min(2, Math.floor(t / BAR));
+    const local = t - cut * BAR;
+    ['free', 'p2p', 'encode'].forEach((name, i) => { node(`feature-${name}`).style.display = i === cut ? '' : 'none'; });
+    slide('free-type', local / .3, -1500, 290, 'rotate(-12 740 450)');
+    slide('p2p-type', local / .28, 1840, -380, 'rotate(-12 700 450)');
+    slide('encode-type', local / .28, -1200, 230, 'rotate(-12 600 450)');
+    scaleAt('encode-diagram', mix(1.35, 1, pop(local / .5)), 1085, 450);
   }
 
   function people(t) {
@@ -427,20 +470,24 @@ export function createArt(svg, language) {
   const scenes = [
     { id: 'hello', start: 0, render: hello },
     { id: 'discover', start: BAR, render: discover },
-    { id: 'game', start: 3 * BAR, render: gameScene },
-    { id: 'invite', start: 6 * BAR, render: invite },
-    { id: 'people', start: 8 * BAR, render: people },
-    { id: 'more', start: 11 * BAR, render: more },
-    { id: 'end', start: 13 * BAR, render: end },
+    { id: 'launch', start: 2 * BAR, render: launch },
+    { id: 'share', start: 5 * BAR, render: share },
+    { id: 'game', start: 8 * BAR, render: gameScene },
+    { id: 'invite', start: 10 * BAR, render: invite },
+    { id: 'people', start: 13 * BAR, render: people },
+    { id: 'features', start: 16 * BAR, render: features },
+    { id: 'more', start: 19 * BAR, render: more },
+    { id: 'end', start: 21 * BAR, render: end },
   ];
   function render(time, poster = false) {
     const t = clamp(time, 0, DURATION);
+    games.forEach(draw => draw(poster ? 1.7 : t));
     const index = poster ? scenes.length - 1 : scenes.findLastIndex((scene) => t >= scene.start);
     const incoming = scenes[index];
     const local = poster ? 5 : t - incoming.start;
-    // The selected window fills the frame before the game; other edits use a
+    // The shared preview fills the frame before the game; other edits use a
     // short diagonal cut. Long holds between edits keep the score from flickering.
-    const cut = poster || index === 0 || index === 2 ? 1 : ease(local / .25);
+    const cut = poster || index === 0 || incoming.id === 'game' ? 1 : ease(local / .25);
     scenes.forEach((scene, i) => {
       const visible = i === index || (i === index - 1 && cut < 1);
       node(`scene-${scene.id}`).style.display = visible ? '' : 'none';

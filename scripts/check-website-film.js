@@ -24,15 +24,24 @@
   assert(position() === paused && !playing(), 'Pause must freeze the picture');
 
   // Seeking out of order and returning to a frame must produce the same pose.
-  seek(10);
+  seek(20);
   const firstPose = el('scene-game').outerHTML;
-  seek(23);
+  seek(33);
   assert(scene().includes('scene-people'), 'Seeking must select the correct scene');
   assert(document.querySelectorAll('[id^="seat-"]:not([id^="seat-row"]):not([id$="-eyes"])').length === 20, 'The room must have exactly twenty viewer figures');
-  seek(37);
+  seek(56);
   assert(scene().includes('scene-end'), 'Seeking to the ending must render the ending');
-  seek(10);
+  seek(20);
   assert(el('scene-game').outerHTML === firstPose, 'Revisiting a frame must not depend on earlier scenes');
+  for (const [time, name] of [[8, 'launch'], [15, 'share'], [29, 'invite'], [41, 'features']]) {
+    seek(time);
+    assert(scene().includes(`scene-${name}`), `The product sequence must show ${name}`);
+  }
+  const decodePlates = () => Promise.all([...new Set([...document.querySelectorAll('#film-art image')].map(image => image.getAttribute('href')))].map(async href => {
+    const image = new Image(); image.src = href; await image.decode();
+    assert(image.naturalWidth === 2200, 'UI captures must load at 2x resolution');
+  }));
+  await decodePlates();
   el('replay').click();
   await settle();
   assert(position() < 1 && playing() && scene().includes('scene-hello'), 'Replay must start a fresh film');
@@ -43,6 +52,7 @@
   const beforeLanguage = document.documentElement.lang;
   el('language').click();
   assert(document.documentElement.lang !== beforeLanguage && scene().includes('scene-end'), 'Language changes must preserve playback position');
+  await decodePlates();
   assert([...document.querySelectorAll('[data-home]')].every((a) => new URL(a.href).searchParams.get('lang') === document.documentElement.lang), 'Return links must carry the current language');
   el('language').click();
   assert([...document.querySelectorAll('[data-home]')].every((a) => new URL(a.href).searchParams.get('lang') === beforeLanguage), 'Return links must update on subsequent language changes');
@@ -90,5 +100,5 @@
     media.pause();
   }
   assert(document.documentElement.scrollWidth <= innerWidth, 'The page must not overflow horizontally');
-  return { passed: ['lazy audio', 'muted play', 'pause', 'seek/replay determinism', 'twenty viewers', 'end hold', 'language round trip', 'stale play rejection', 'audio failure', 'native ending', 'native media pause', 'page width'] };
+  return { passed: ['lazy audio', 'muted play', 'pause', 'seek/replay determinism', 'product sequence and UI assets', 'twenty viewers', 'end hold', 'language round trip', 'stale play rejection', 'audio failure', 'native ending', 'native media pause', 'page width'] };
 })()

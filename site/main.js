@@ -15,7 +15,7 @@ const copy = {
     title: 'Piik — 和朋友分享屏幕',
     description: '游戏、画画、新鲜事，都能叫朋友来围观。Piik 支持私密屏幕共享，最多 20 位观众，点开邀请就能看。',
     themes: { system: '跟随系统', light: '浅色', dark: '深色' },
-    image: '戴着金色小皇冠的房主操作手柄，游戏里的小电视在浮岛间跳跃、收集光点，三位朋友坐在沙发上围观。',
+    image: '戴着金色小皇冠的房主操作手柄，游戏里的小电视踩着滑板冲刺、跃过障碍、收集金环，三位朋友坐在沙发上围观。',
   },
 };
 language.addEventListener('click', () => {
@@ -70,11 +70,6 @@ revealGuide(location.hash);
 
 const motion = matchMedia('(prefers-reduced-motion: reduce)');
 const illustrations = document.querySelectorAll('.step-art');
-const sceneMotion = document.getElementById('scene-motion');
-sceneMotion.addEventListener('click', () => {
-  sceneMotion.setAttribute('aria-pressed', String(sceneMotion.getAttribute('aria-pressed') !== 'true'));
-  syncMotionControls();
-});
 document.querySelectorAll('.identity, .step-art').forEach((control) => {
   const replayScene = () =>
     control.getAnimations({ subtree: true }).forEach((animation) => {
@@ -87,14 +82,11 @@ document.querySelectorAll('.identity, .step-art').forEach((control) => {
     replayScene();
   });
 });
-function syncMotionControls() {
+function syncMotionPreference() {
   illustrations.forEach((button) => {
     button.disabled = motion.matches;
   });
-  sceneMotion.hidden = motion.matches;
-  roomIllustration.src =
-    './assets/living-room.svg' +
-    (motion.matches || sceneMotion.getAttribute('aria-pressed') !== 'true' ? '#still' : '');
+  roomIllustration.src = './assets/living-room.svg' + (motion.matches ? '#still' : '');
 }
-motion.addEventListener('change', syncMotionControls);
-syncMotionControls();
+motion.addEventListener('change', syncMotionPreference);
+syncMotionPreference();

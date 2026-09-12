@@ -1,6 +1,6 @@
 # Piik film
 
-The homepage links to this optional, 38-second introduction. Serve `site/` with
+The homepage links to this optional, 57-second introduction. Serve `site/` with
 any static HTTP server and open `/film/`. It also works below a project prefix,
 such as `/Piik/film/`; GitHub Pages needs no additional service or build step.
 
@@ -9,6 +9,26 @@ owns playback, sound and controls. Audible playback follows the audio element's
 clock, including buffering. Muted playback uses a monotonic clock and does not
 request the soundtrack. All artwork follows the same position; there are no
 independent CSS animation loops or scene timers.
+
+The film follows the actual App flow: unpack/open, choose **Public invite**,
+select a source, then copy the invite for friends to watch in a browser.
+“No server of your own” refers to App public-invite mode, which still uses a
+temporary control tunnel and needs Internet access. The encoding-reuse claim
+applies to compatible connections; it is not a universal CPU-usage benchmark.
+
+`assets/ui/` contains lossless WebP captures at 2× resolution from the accepted
+UI at `0109030d`: the actual launcher, Host page, source picker and production
+Viewer components. Window names, room information and participants are samples;
+the sequence is staged. Update these captures when the product UI changes, and
+check the video rectangles and cursor targets in `art.js` after recapturing.
+
+[`../assets/game.js`](../assets/game.js) owns the original **DOT DASH** scene.
+The film composites it into the captured video surfaces using the film clock.
+The homepage's standalone SVG embeds CSS sampled from that same score, so it
+also works as a README image without scripts or external asset references.
+After changing the game, run `node scripts/update-website-game.mjs` from the
+repository root; `--check` detects an out-of-date hero. Its `#still` fragment
+and the system reduced-motion preference disable the loop.
 
 The poster waits for an explicit play action. System reduced-motion preferences
 keep a still preview, with manual playback available. System colour preference
@@ -31,15 +51,15 @@ external fonts, analytics or new runtime dependencies are used.
 “[Funkorama](https://incompetech.com/music/royalty-free/index.html?Search=Search&isrc=USUAN1100474)”
 by Kevin MacLeod (incompetech.com), under
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
-The excerpt uses the opening 38.019802 seconds, fading out from 35.64 seconds.
+The excerpt uses the opening 57.029703 seconds, fading out from 54.653465 seconds.
 [The asset notice](./assets/NOTICE.txt) retains source, attribution and modification
 details. The music keeps its own license, separate from Piik's MIT license.
 
 To reproduce the audio edit from the linked original:
 
 ```sh
-ffmpeg -i Funkorama.mp3 -vn -t 38.019802 \
-  -af afade=t=out:st=35.64:d=2.379802 \
+ffmpeg -i Funkorama.mp3 -vn -t 57.029703 \
+  -af afade=t=out:st=54.653465:d=2.376238 \
   -c:a libmp3lame -b:a 160k -map_metadata -1 funkorama.mp3
 ```
 
