@@ -71,6 +71,13 @@ A local page completed discovery and the full control exchange in Chromium
 its `loopback-network` permission; without that permission the cross-origin
 request was blocked. The gate checks both expected outcomes.
 
+Run `npm run probe:client-loopback` with `PIIK_CLIENT_LOOPBACK_GATE=true`,
+`CHROME_PATH`, `PIIK_CLIENT_EXE`, and `PIIK_CLIENT_GATE_SITE_URL` pointing to
+the reachable HTTPS Site being tested. Use `PIIK_CLIENT_GATE_GRANT_LOOPBACK=true`
+for the permission-granted run; omit it for the permission-blocked run. The gate
+uses an isolated App configuration and Browser profile, and rejects navigation
+failures or redirects to another origin as acceptance evidence.
+
 A self-contained LAN room uses a localhost Host URL and a selected LAN IPv4
 Viewer URL backed by the same local App process. The App persists an
 optional user-chosen access password and passes it only to its Host page in a

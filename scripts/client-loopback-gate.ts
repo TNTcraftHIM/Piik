@@ -23,7 +23,6 @@ import {
   NATIVE_CLIENT_SUBPROTOCOL,
 } from "../src/client/native/wire";
 
-const PAGE_URL = "https://share.bonfire.icu/";
 const NATIVE_PROTOCOL = NATIVE_CLIENT_PROTOCOL;
 const NATIVE_SUBPROTOCOL = NATIVE_CLIENT_SUBPROTOCOL;
 
@@ -142,9 +141,11 @@ async function main(): Promise<void> {
   }
   const browserPath = process.env.CHROME_PATH?.trim();
   const clientPath = process.env.PIIK_CLIENT_EXE?.trim();
-  if (!browserPath || !clientPath) {
-    throw new Error("CHROME_PATH and PIIK_CLIENT_EXE are required");
+  const pageUrl = process.env.PIIK_CLIENT_GATE_SITE_URL?.trim();
+  if (!browserPath || !clientPath || !pageUrl) {
+    throw new Error("CHROME_PATH, PIIK_CLIENT_EXE and PIIK_CLIENT_GATE_SITE_URL are required");
   }
+  const pageOrigin = new URL(pageUrl).origin;
   const disposableNoSandbox =
     process.env.PIIK_CLIENT_GATE_NO_SANDBOX === "true";
   const grantLoopback =
@@ -175,7 +176,7 @@ async function main(): Promise<void> {
   try {
     profile = await mkdtemp(join(tmpdir(), "piik-client-loopback-"));
     client = spawn(clientPath, [
-      "--site", PAGE_URL,
+      "--site", pageUrl,
       "--config", join(profile, "client.json"),
     ], {
       stdio: "pipe",
@@ -216,7 +217,7 @@ async function main(): Promise<void> {
         {
           permission: { name: "loopback-network" },
           setting: "granted",
-          origin: PAGE_URL,
+          origin: pageOrigin,
         },
         undefined,
         Date.now() + 5_000,
@@ -230,7 +231,11 @@ async function main(): Promise<void> {
     report.localPageError = localResult.error;
     report.localPageEvents = localResult.events;
 
-    const hostedPage = await createPage(cdp, PAGE_URL);
+    const hostedPage = await createPage(cdp, pageUrl);
+    // A failed navigation or cross-origin redirect is not LNA rejection evidence.
+    if (await evaluate(cdp, hostedPage, "location.origin", Date.now() + 5_000) !== pageOrigin) {
+      throw new Error("Hosted page did not load at the configured Site origin");
+    }
     const hostedResult = await browserHandshake(cdp, hostedPage, endpoint);
     report.hostedPageConnected = hostedResult.health &&
       hostedResult.responses.join(",") === "ready,pong";

@@ -8,7 +8,7 @@ limit_req_zone $binary_remote_addr zone=piik_site_access:10m rate=5r/m;
 server {
     listen 80;
     listen [::]:80;
-    server_name share.bonfire.icu;
+    server_name share.example.com;
 
     location ^~ /.well-known/acme-challenge/ {
         root /var/www/letsencrypt;
@@ -16,17 +16,17 @@ server {
     }
 
     location / {
-        return 301 https://share.bonfire.icu$request_uri;
+        return 301 https://share.example.com$request_uri;
     }
 }
 
 server {
     listen 443 ssl http2;
     listen [::]:443 ssl http2;
-    server_name share.bonfire.icu;
+    server_name share.example.com;
 
-    ssl_certificate /etc/letsencrypt/live/share.bonfire.icu/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/share.bonfire.icu/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/share.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/share.example.com/privkey.pem;
     include /etc/letsencrypt/options-ssl-nginx.conf;
     ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
 

@@ -12,6 +12,9 @@ media, bare-metal nginx, nftables, and application port 8787. It requires an
 existing running Go release. Another proxy, firewall owner, application port,
 first installation, or initial embedded-media cutover needs its own scoped
 bootstrap/updater; do not call this wrapper generic.
+Its firewall check compares the nftables ruleset without traffic counters; it
+does not depend on a particular table name. Coordinate other firewall writers
+outside the cutover window. See [nft output options](https://netfilter.org/projects/nftables/manpage.html).
 
 ## Release Boundary
 
@@ -114,8 +117,10 @@ untagged local candidates use `development`. Schema-2 package descriptors carry
 the same pair and artifact hashes. The [version policy](./reference/versioning.md)
 owns ordering and first-public-release readiness.
 
-The default App launcher starts immediately, then performs one background
-request to the official Piik GitHub Releases API. It shows a link only when
+The default App launcher starts immediately, then checks GitHub Releases in the
+background, falling back to the Gitee mirror if GitHub is unavailable. The
+[release-source policy](./reference/versioning.md#release-sources) owns selection
+and provenance checks. It shows a link only when
 the latest stable release is newer, the same version has a known different source
 SHA, or a development build can choose the official release. These notices are
 distinct; a different SHA alone is not called newer.
@@ -138,42 +143,6 @@ For a private repository, inject a short-lived `GITHUB_TOKEN`
 through the operator environment; never place it in the repository or command
 line. The command does not mutate files, services, containers, or persistent
 state.
-
-## Permanent-Room Schema Cutover
-
-The schema 2 / signaling v23 cutover required matching Web/App/Server builds
-and an accepted active-session interruption. Native control stayed v9; that
-schema change preserved Browser credential keys. It was not an app-only release.
-Display or installation-path changes preserve the database, its application ID
-and existing room authority; they do not justify repeating a schema cutover.
-The release wrapper operates an existing Piik installation. Service, path or
-protocol changes require their own coordinated infrastructure cutover and recovery.
-1. Verify the candidate; record the current release, environment, absolute DB
-   path and ownership. Stop ingress and the old application; take and retain a
-   SQLite backup. Require `application_id=1396920910`, `user_version=1`, expected
-   columns and `PRAGMA quick_check='ok'` before touching a separate protected copy.
-2. On that copy, use SQLite with `DROP COLUMN` support and stop on SQL errors:
-
-   ```sql
-   BEGIN EXCLUSIVE;
-   ALTER TABLE rooms DROP COLUMN lease_expires_at_ms;
-   PRAGMA user_version = 2;
-   COMMIT;
-   ```
-
-3. Verify integrity, exact columns/version and equal row counts. Compare retained
-   columns in both directions against the backup using `EXCEPT`; both must be
-   empty. Record only counts/pass/fail, not private verifiers. The candidate must
-   open this copy successfully; no room is dropped because of its former deadline.
-4. Retain the absolute `ROOM_DATABASE_PATH`; remove `ROOM_LEASE_SECONDS`. Install
-   the verified copy and release while stopped, retaining permissions/ownership.
-   Start; check health and Host/Viewer reauthentication before reopening ingress.
-5. On failure, stop and restore prior database, environment and release together.
-   Once new authority mutations are accepted, restoring the backup could revive
-   revoked grants: preserve those changes or make an explicit recovery decision.
-
-The runtime reads only schema 2. SQLite's [column removal](https://www.sqlite.org/lang_altertable.html#altertabdropcol)
-and [backup guidance](https://www.sqlite.org/backup.html) define this offline operation.
 
 ## Atomic Cutover
 
@@ -248,3 +217,8 @@ operator intervention; it must not silently report the new release as active.
 Infrastructure or persistent-state recovery is separate and limited to the
 surfaces changed by that task. Do not restore an entire server, old firewall, or
 old secret set for an application-only failure.
+
+If a task changes persistent room data, prepare and verify a separate
+[SQLite backup](https://www.sqlite.org/backup.html) and recover matching data,
+configuration and application together. Restoring old data can revive revoked
+credentials; account for later authority changes before reopening ingress.

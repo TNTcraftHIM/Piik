@@ -28,10 +28,8 @@ Runtime code keeps only the Piik wire labels and stored keys. The coordinated
 private cutover requires matching App/Server/Web packages; unavailable old
 Browser credentials cannot be reconstructed from stored digests.
 The immutable release descriptor, runtime `REVISION` and operator deployment
-record own exact identity and postflight results. The
-[schema cutover](./deployment.md#permanent-room-schema-cutover) preserved existing
-room authority and Browser credential keys. Old active pages reload at the
-signaling v23 boundary.
+record own exact identity and postflight results. Old active pages reload at
+the signaling v23 boundary.
 
 The existing deployment uses one Go process for Web, room authority/signaling,
 Binding-only STUN on UDP 3478/3479/3480 and optional SFU on UDP 7882. nginx owns

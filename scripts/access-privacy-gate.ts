@@ -33,7 +33,7 @@ import {
   withDeadline,
 } from "./browser-gate-harness";
 const root = resolve(import.meta.dirname, "..");
-const nginxConfigPath = resolve(root, "deploy/nginx/share.bonfire.icu.conf.example");
+const nginxConfigPath = resolve(root, "deploy/nginx/piik.conf.example");
 const serverExecutable = join(root, "build", "client-check",
   process.platform === "win32" ? "piik-server.exe" : "piik-server");
 // PIIK_ENV=production refuses to start without STUN. Nothing listens on
@@ -122,7 +122,7 @@ function upgradeStatus(chunk: Buffer): number {
   return match ? Number(match[1]) : 0;
 }
 // startProxy stands in for the nginx reverse proxy the deployment runs in
-// front of the server (deploy/nginx/share.bonfire.icu.conf.example). It
+// front of the server (deploy/nginx/piik.conf.example). It
 // observes every request line the browser and the gate emit, which is what the
 // in-process httpServer.prependListener("request") hook used to do, and it is
 // the only origin the browser ever sees.

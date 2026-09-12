@@ -83,8 +83,8 @@ For the permanent-room revision, an offline `DROP COLUMN` transaction on a
 copy of the prior synthetic database preserved both active and formerly expired
 rooms. All six remaining authority fields matched exactly; the source backup
 was unchanged. The current reader accepted the converted schema without a
-compatibility path. The [deployment procedure](../deployment.md#permanent-room-schema-cutover)
-owns the operational steps and recovery boundary.
+compatibility path. The completed cutover is retained in Git; current
+[deployment recovery](../deployment.md#recovery) owns the operational boundary.
 
 ## Acceptance Matrix
 

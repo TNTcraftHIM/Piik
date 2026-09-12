@@ -23,7 +23,7 @@ sudo systemctl status piik
 
 Keep HTTP bound to loopback when the HTTPS proxy runs on the same host.
 STUN and optional SFU use their own public UDP listeners. An existing nginx
-installation can use the [proxy example](../../deploy/nginx/share.bonfire.icu.conf.example)
+installation can use the [proxy example](../../deploy/nginx/piik.conf.example)
 after adapting the domain and certificate paths.
 
 ## Container

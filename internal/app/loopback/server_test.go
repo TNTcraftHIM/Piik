@@ -17,7 +17,7 @@ import (
 	"github.com/coder/websocket/wsjson"
 )
 
-const testOrigin = "https://share.bonfire.icu"
+const testOrigin = "https://share.example.com"
 
 func TestStartServesHealthAndStrictControlHandshake(t *testing.T) {
 	expectedMedia := NativeMediaCapabilities{

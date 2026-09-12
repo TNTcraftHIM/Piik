@@ -165,6 +165,9 @@ above rather than searching the tree.
 - Retained tools declare their direct package dependencies. Documented TypeScript
   tools join the normal type-check entry point; a transitive dependency or a
   one-off manual check is not an owned toolchain contract.
+  Shipped templates use reserved example values. Checks provision isolated
+  resources or require explicit targets; they must not depend on a maintainer's
+  workstation, private deployment or machine-specific infrastructure names.
 
 ## Ablation And Review
 

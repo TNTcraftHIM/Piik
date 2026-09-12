@@ -234,7 +234,8 @@ test -d "$release"
 test ! -L "$release"
 test "$(stat -c '%U:%G %a' "$release")" = 'root:root 755'
 
-firewall_before="$(nft list table inet bonfire_filter | sha256sum | awk '{print $1}')"
+# Compare rules without traffic counters; no operator-specific table name.
+firewall_before="$(nft --stateless list ruleset | sha256sum | awk '{print $1}')"
 nginx_restarts="$(systemctl show nginx.service -p NRestarts --value)"
 cutover_since="$(date '+%Y-%m-%d %H:%M:%S')"
 cutover_start="$(date +%s%3N)"
@@ -251,7 +252,7 @@ health_ready="$(date +%s%3N)"
 test "$(systemctl show piik.service -p ActiveState --value)" = 'active'
 test "$(systemctl show piik.service -p NRestarts --value)" = '0'
 test "$(systemctl show nginx.service -p NRestarts --value)" = "$nginx_restarts"
-test "$(nft list table inet bonfire_filter | sha256sum | awk '{print $1}')" = "$firewall_before"
+test "$(nft --stateless list ruleset | sha256sum | awk '{print $1}')" = "$firewall_before"
 test "$(readlink -f -- "$current")" = "$release"
 pid="$(systemctl show piik.service -p MainPID --value)"
 test "$pid" -gt 1
