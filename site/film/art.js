@@ -21,6 +21,7 @@ const rect = (x, y, w, h, r, fill, extra = '') => `<rect x="${x}" y="${y}" width
 const circle = (x, y, r, fill, extra = '') => `<circle cx="${x}" cy="${y}" r="${r}" fill="${fill}" ${extra}/>`;
 const text = (x, y, value, size, fill = INK, extra = '') => `<text x="${x}" y="${y}" font-size="${size}" font-weight="900" letter-spacing="-.06em" fill="${fill}" ${extra}>${value}</text>`;
 const small = (x, y, value, fill = INK, extra = '') => text(x, y, value, 19, fill, `style="letter-spacing:.1em;font-weight:650" ${extra}`);
+const sceneLabel = (value, fill = INK) => small(64, 64, value, fill, 'class="scene-label"');
 const field = (fill) => rect(0, 0, 1600, 900, 0, fill);
 
 function person(id, x, y, scale, colour, host = false) {
@@ -62,8 +63,7 @@ export function createArt(svg, language, onUI = () => {}) {
     ${small(499, 31, 'Piik', INK, 'text-anchor="middle"')}
     <svg id="${id}-camera" x="12" y="47" width="986" height="663.31" viewBox="0 0 1100 740" overflow="hidden">${rect(-1000, -1000, 4000, 4000, 0, '#e8f3ef')}</svg>
   </g></g>`;
-  const chapter = (number, first, second, note) => `${small(62, 68, `PIIK / ${number}`, INK)}
-    ${text(57, 286, first, zh ? 112 : 92)}${text(57, 419, second, zh ? 112 : 92)}
+  const chapter = (first, second, note) => `${text(57, 286, first, zh ? 112 : 92)}${text(57, 419, second, zh ? 112 : 92)}
     ${text(62, 533, note, zh ? 29 : 26, INK, 'style="letter-spacing:-.02em;font-weight:650"')}`;
   const game = '<use href="#game-still"/>';
   const drawing = `${field(YELLOW)}<path d="M-130 750Q220-60 600 580T1720 300" fill="none" stroke="${ORANGE}" stroke-width="190"/>
@@ -107,7 +107,7 @@ export function createArt(svg, language, onUI = () => {}) {
       ${mascot('hello-tv', 0, -15, 21, PAPER)}
       ${small(0, 294, 'PIIK / HELLO THERE', INK, 'text-anchor="middle"')}
     </g></g>
-    <g id="hello-label">${small(64, 64, 'PIIK / SHARE THE GOOD STUFF', MINT)}${small(1536, 836, 'PIIK.TV', INK, 'text-anchor="end"')}</g>
+    <g id="hello-label">${sceneLabel('PIIK / SHARE THE GOOD STUFF', MINT)}${small(1536, 836, 'PIIK.TV', INK, 'text-anchor="end"')}</g>
     ${circle(800, 450, 0, ORANGE, 'id="hello-dot"')}
   </g>
 
@@ -128,7 +128,7 @@ export function createArt(svg, language, onUI = () => {}) {
       ${rect(12, 13, zh ? 661 : 795, 159, 0, ORANGE)}${rect(0, 0, zh ? 661 : 795, 159, 0, INK)}
       ${text(28, 120, say('SHARE IT.', '一起看。'), zh ? 125 : 150, PAPER)}
     </g>
-    <g id="discover-label">${small(58, 55, say('SOME MOMENTS DESERVE AN AUDIENCE.', '这一刻，想让朋友也看看。'))}</g>
+    <g id="discover-label">${sceneLabel(say('SOME MOMENTS DESERVE AN AUDIENCE.', '这一刻，想让朋友也看看。'))}</g>
     <g id="discover-pointer"><path d="M0 0v91l25-24 21 43 23-11-22-43 39-5Z" fill="${INK}" stroke="${PAPER}" stroke-width="6" stroke-linejoin="round"/></g>
   </g>
 
@@ -139,7 +139,8 @@ export function createArt(svg, language, onUI = () => {}) {
 
   <g id="scene-launch">
     ${field(YELLOW)}<path d="m1170-50 230 0-254 1000H870Z" fill="${ORANGE}"/>
-    <g id="launch-type">${chapter('01', say('Download.', '下载，'), say('Open.', '打开。'), say('Ready when you are.', '开箱即用。'))}
+    ${sceneLabel('PIIK / 01')}
+    <g id="launch-type">${chapter(say('Download.', '下载，'), say('Open.', '打开。'), say('Ready when you are.', '开箱即用。'))}
       ${small(62, 587, say('OPEN PIIK. PICK A SCREEN.', '打开 Piik，选好要分享的画面。'))}
       ${text(55, 788, '01', 190, 'none', `stroke="${INK}" stroke-width="2" opacity=".3"`)}
     </g>
@@ -148,7 +149,8 @@ export function createArt(svg, language, onUI = () => {}) {
 
   <g id="scene-share">
     ${field(PAPER)}<path d="M960-100h770v1100H640Z" fill="${MINT}"/>
-    <g id="share-type">${chapter('02', say('Pick.', '选个'), say('Share.', '画面。'), say('A window. A screen. Your call.', '窗口、屏幕，都能分享。'))}
+    ${sceneLabel('PIIK / 02')}
+    <g id="share-type">${chapter(say('Pick.', '选个'), say('Share.', '画面。'), say('A window. A screen. Your call.', '窗口、屏幕，都能分享。'))}
       ${small(62, 587, say('PICTURE + SOUND', '画面与声音，一起分享'))}
       ${text(55, 788, '02', 190, 'none', `stroke="${INK}" stroke-width="2" opacity=".3"`)}
     </g>
@@ -157,7 +159,8 @@ export function createArt(svg, language, onUI = () => {}) {
 
   <g id="scene-invite">
     ${field(ORANGE)}<path d="M1060-100h650v1100H760Z" fill="${YELLOW}"/>
-    <g id="invite-type">${chapter('03', say('Send a', '发个'), say('link.', '邀请。'), say('Friends watch in their browser.', '朋友用浏览器就能看。'))}
+    ${sceneLabel('PIIK / 03')}
+    <g id="invite-type">${chapter(say('Send a', '发个'), say('link.', '邀请。'), say('Friends watch in their browser.', '朋友用浏览器就能看。'))}
       ${small(62, 587, say('NO VIEWER INSTALL', '观众无需安装客户端'))}
       ${text(55, 788, '03', 190, 'none', `stroke="${INK}" stroke-width="2" opacity=".3"`)}
     </g>
@@ -171,7 +174,7 @@ export function createArt(svg, language, onUI = () => {}) {
       ${text(1220, 151, say('COST TO USE', '使用费用'), 42, INK, 'text-anchor="middle" style="letter-spacing:0;font-weight:800"')}
       ${zh ? text(1418, 800, '元', 87, INK) : ''}
       <g id="free-type" transform="rotate(-12 740 450)">${text(82, 370, say('FREE.', '免费。'), 248, PAPER)}${zh ? text(57, 628, '开源。', 248, MINT) : text(57, 525, 'OPEN', 160, MINT) + text(57, 680, 'SOURCE.', 160, MINT)}</g>
-      ${small(60, 72, say('YOURS TO USE. YOURS TO IMPROVE.', '免费使用，也欢迎一起改进。'), PAPER)}${small(62, 833, 'OPEN SOURCE / MIT', PAPER)}
+      ${sceneLabel(say('PIIK / FEATURES', 'PIIK / 产品特点'), PAPER)}${small(64, 833, say('MIT LICENSE / MAKE IT YOUR OWN', 'MIT 许可 / 按自己的想法改。'), PAPER)}
     </g>
     <g id="feature-p2p">${field(MINT)}
       <path d="M1255-80h475v1080H929Z" fill="${PAPER}"/>
@@ -185,9 +188,8 @@ export function createArt(svg, language, onUI = () => {}) {
         ${text(74,315,say('DIRECT.','直连。'),zh?202:184)}
         ${rect(-115,383,950,200,0,INK)}${text(57,538,say('LOW LATENCY.','低延迟。'),zh?160:106,PAPER)}
       </g>
-      ${small(60,72,say('LESS WAITING. MORE WATCHING.','少一点等待，多一点尽兴。'))}
-      ${text(65,793,say('A direct path from your screen to theirs.','画面直达朋友，精彩及时跟上。'),30,INK,'style="letter-spacing:0;font-weight:650"')}
-      ${text(65,841,say('Direct connections are preferred; latency varies with the network.','优先使用直连，实际延迟取决于网络环境。'),22,INK,'style="letter-spacing:0;font-weight:500"')}
+      ${sceneLabel(say('PIIK / FEATURES', 'PIIK / 产品特点'))}
+      ${text(65,793,say('Piik prefers a direct path to help friends keep up with the action.','画面优先直达朋友，精彩及时跟上。'),30,INK,'style="letter-spacing:0;font-weight:650"')}
     </g>
     <g id="feature-encode">${field(YELLOW)}
       <path d="M1200-100h580v1100H871Z" fill="${ORANGE}"/>
@@ -204,9 +206,8 @@ export function createArt(svg, language, onUI = () => {}) {
         ${text(62,321,say('EFFICIENT','高效分享。'),zh?155:140)}
         ${rect(-110,388,945,197,0,INK)}${text(48,541,say('SHARING.','轻负担。'),zh?164:153,PAPER)}
       </g>
-      ${small(60,72,say('MORE ROOM TO PLAY.','把余力，留给正在做的事。'))}
-      ${text(65,793,say('Less repeated work. More room for what you love.','少些重复处理，把性能留给手头的事。'),30,INK,'style="letter-spacing:0;font-weight:650"')}
-      ${text(65,841,say('Compatible connections share processed video; device and codec affect resource use.','兼容连接共用已处理的画面；资源占用因设备与编码方式而异。'),22,INK,'style="letter-spacing:0;font-weight:500"')}
+      ${sceneLabel(say('PIIK / FEATURES', 'PIIK / 产品特点'))}
+      ${text(65,793,say('Lighter on resources, with more power left for games and creative work.','少占些资源，给游戏和创作多留些性能。'),30,INK,'style="letter-spacing:0;font-weight:650"')}
     </g>
   </g>
 
@@ -228,7 +229,7 @@ export function createArt(svg, language, onUI = () => {}) {
       </g>`).join('')}
     </g></g>
     <g id="people-host"><g transform="translate(495 379) rotate(-12)">${couch(-61, 9, 122)}${person('host', 0, -7, .91, '#83c4a5', true)}</g></g>
-    ${small(55, 55, say('SAVE YOUR FRIENDS A SEAT.', '给朋友留个位置。'))}
+    ${sceneLabel(say('SAVE YOUR FRIENDS A SEAT.', '给朋友留个位置。'))}
     <g id="people-close">
       ${field(INK)}
       ${[PAPER, ORANGE, MINT].map((colour, i) => `<g id="close-panel-${i}">
@@ -239,7 +240,7 @@ export function createArt(svg, language, onUI = () => {}) {
         ${text(66 + i * 536, 180, ['01', '02', '03'][i], 159, 'none', `stroke="${INK}" stroke-width="2" opacity=".28"`)}
       </g>`).join('')}
       <g id="people-close-type" transform="rotate(-8 800 650)">${rect(-50, 590, 1710, 190, 0, INK)}${text(150, 736, say('ALL TOGETHER.', '朋友到齐。'), zh ? 175 : 159, PAPER)}</g>
-      ${small(63, 55, say('THAT’S MORE LIKE IT.', '这下热闹了。'))}
+      ${sceneLabel(say('THAT’S MORE LIKE IT.', '这下热闹了。'))}
     </g>
   </g>
 
@@ -250,7 +251,7 @@ export function createArt(svg, language, onUI = () => {}) {
       </g>
       <g id="more-game-picture"><g transform="translate(1270 425) rotate(14) scale(1.2)"><use href="#pad"/></g></g>
       <g transform="rotate(-12 800 450)">${text(zh ? 130 : 95, 660, say('ROUND.', '叫上朋友。'), zh ? 168 : 210, PAPER)}</g>
-      ${small(58, 60, say('PLAY / GIVE YOUR FRIENDS A FRONT-ROW SEAT', '这一把，让朋友也看看。'))}
+      ${sceneLabel(say('PLAY / GIVE YOUR FRIENDS A FRONT-ROW SEAT', '这一把，让朋友也看看。'))}
     </g>
     <g id="more-art">${field(YELLOW)}
       <path d="M140-40q-89 356 207 441T246 981" fill="none" stroke="${ORANGE}" stroke-width="118"/>
@@ -260,17 +261,17 @@ export function createArt(svg, language, onUI = () => {}) {
         <g id="more-pencil"><g transform="rotate(35)">${rect(-10, -188, 20, 160, 4, INK)}<path d="m-10-28 10 28 10-28Z" fill="#d6b68b"/><path d="M-3-9 0 0 3-9Z" fill="${INK}"/><path d="M-4-172v133" stroke="${PAPER}" stroke-width="2" opacity=".4"/></g></g>
       </g></g>
       ${scenarioTitle('more-art-type','MAKE A','MARK.','画上两笔。',INK)}
-      ${small(58, 60, say('DRAW / FROM FIRST LINE TO FINAL TOUCH', '从第一笔，看到最后一笔。'))}
+      ${sceneLabel(say('DRAW / FROM FIRST LINE TO FINAL TOUCH', '从第一笔，看到最后一笔。'))}
     </g>
     <g id="more-photos">${field(INK)}
       <g id="more-photos-picture"><svg x="746" y="74" width="810" height="748" viewBox="100 0 1380 900">${photos}</svg></g>
       ${scenarioTitle('more-photos-type','PHOTO','TIME.','翻翻相册。',MINT)}
-      ${small(58, 60, say('REMEMBER / THERE’S A STORY IN EVERY PHOTO', '这张照片，还有个故事。'), PAPER)}
+      ${sceneLabel(say('REMEMBER / THERE’S A STORY IN EVERY PHOTO', '这张照片，还有个故事。'), PAPER)}
     </g>
     <g id="more-movie">${field('#324458')}
       <g id="more-movie-picture">${movieMarkup('movie-plane')}</g>
       ${scenarioTitle('more-movie-type','MOVIE','NIGHT.','看场电影。',PAPER)}
-      ${small(58, 60, say('WATCH / SAVE ME SOME POPCORN', '爆米花，分你一半。'), PAPER)}
+      ${sceneLabel(say('WATCH / SAVE ME SOME POPCORN', '爆米花，分你一半。'), PAPER)}
     </g>
   </g>
 
@@ -293,7 +294,7 @@ export function createArt(svg, language, onUI = () => {}) {
       ${person('end-friend-0', 221, -13, 1.25, '#99c9e6')}${person('end-friend-1', 365, -13, 1.25, '#b6addc')}${person('end-friend-2', 509, -13, 1.25, '#e6a8bc')}
       <g id="end-gamepad" transform="translate(77 32) rotate(-9) scale(.25)"><use href="#pad"/>${circle(-167, 70, 35, '#83c4a5')}${circle(167, 70, 35, '#83c4a5')}</g>
     </g></g>
-    <g id="end-label">${small(65, 67, say('SCREEN SHARING FOR FRIENDS', '开个房间，叫朋友来。'), MINT)}</g>
+    <g id="end-label">${sceneLabel(say('SCREEN SHARING FOR FRIENDS', '开个房间，叫朋友来。'), MINT)}</g>
     <g id="end-url">${text(1500, 799, 'piik.tv', 46, INK, 'text-anchor="end"')}${small(98, 802, say('FREE & OPEN SOURCE / GET PIIK', '免费开源 · 下载 PIIK'), PAPER)}</g>
     <g id="end-credit">${rect(0, 846, 1600, 54, 0, PAPER)}${text(800, 869, 'Music: “Funkorama” — Kevin MacLeod · incompetech.com · CC BY 4.0 · edited excerpt', 15, INK, 'text-anchor="middle" style="letter-spacing:0;font-weight:450"')}${text(800, 890, 'creativecommons.org/licenses/by/4.0/', 14, INK, 'text-anchor="middle" style="letter-spacing:0;font-weight:450"')}</g>
   </g>`;

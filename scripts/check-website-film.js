@@ -132,7 +132,7 @@
       [1.4, '#hello-word text'], [4.3, '#discover-ticket text'],
       [8, '#launch-type text'], [15, '#share-type text'], [35, '#invite-type text'],
       [44, '#people-close-type text'], [46.5, '#free-type text'],
-      [50, '#p2p-type text'], [54.5, '#encode-type text'],
+      [50, '#p2p-type text, #feature-p2p > text'], [54.5, '#encode-type text, #feature-encode > text'],
       [58.3, '#more-game > g > text'], [60, '#more-art-type text'],
       [61.8, '#more-photos-type text'], [63.6, '#more-movie-type text'],
       [68, '#end-type text'],
@@ -145,6 +145,24 @@
           assert(p.x >= 20 && p.x <= 1580 && p.y >= 20 && p.y <= 880, `Headline clipped: ${text.textContent}`);
         }
       }
+    }
+    // Stable corner labels share a baseline even when nearby artwork moves.
+    for (const [time, selector] of [
+      [1.4, '#hello-label'], [4.3, '#discover-label'],
+      [8, '#scene-launch'], [15, '#scene-share'], [35, '#scene-invite'],
+      [40, '#scene-people'], [44, '#people-close'], [46.5, '#feature-free'],
+      [50, '#feature-p2p'], [54.5, '#feature-encode'],
+      [58.3, '#more-game'], [60, '#more-art'], [61.8, '#more-photos'],
+      [63.6, '#more-movie'], [68, '#end-label'],
+    ]) {
+      seek(time);
+      const label = document.querySelector(`${selector} > .scene-label`);
+      const matrix = el('film-art').getCTM().inverse().multiply(label.getCTM());
+      const baseline = label.getStartPositionOfChar(0).matrixTransform(matrix);
+      const style = getComputedStyle(label);
+      assert(Math.abs(baseline.x-64)<.01 && Math.abs(baseline.y-64)<.01, `Scene label moved: ${label.textContent}`);
+      assert(Math.abs(matrix.a-1)<.01 && Math.abs(matrix.b)<.01 && Math.abs(matrix.c)<.01 && Math.abs(matrix.d-1)<.01, `Scene label rotated or scaled: ${label.textContent}`);
+      assert(style.fontSize==='19px' && style.fontWeight==='650' && Math.abs(parseFloat(style.letterSpacing)-1.9)<.01, `Scene label typography differs: ${label.textContent}`);
     }
     el('language').click();
   }
@@ -360,6 +378,7 @@
       'seek/replay determinism',
       'game montage and reaction timing',
       'bilingual headline bounds',
+      'bilingual scene label alignment',
       'scenario composition and seekable sketch',
       'continuous cursor paths, click targets and reverse seeking',
       'standalone hero montage, shared poses and still image',
