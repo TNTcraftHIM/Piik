@@ -7,11 +7,12 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **Website introduction acceptance.** Review the revised bilingual film,
-  four-use homepage/README illustration and brand line options together.
-  Accept or reject the separate Host armchair preview before applying it to
-  the room UI and refreshing its film/README appearances. Record/export the
-  film only after visual acceptance. Keep the film phase on its separate worktree.
+- [ ] **Brand line selection.** Choose the final Chinese and English slogans,
+  then align the homepage, film ending, README openings and public page metadata.
+- [ ] **Website introduction acceptance.** Review the revised bilingual film
+  and four-use homepage/README illustration with the approved brand lines.
+  Record/export the film only after visual acceptance. Keep the film phase on
+  its separate worktree.
 - [ ] **Release and repository readiness.** Review the prepared Windows test
   candidate. Retry native CI after the Actions artifact quota refreshes, then
   rehearse the publisher with genuine matching Server and App packages. Old cloud
