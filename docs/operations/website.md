@@ -11,6 +11,7 @@ its content and design boundary.
 | Website | [piik.tv](https://piik.tv) |
 | P2P-only demo on the separate US server | [demo.piik.tv](https://demo.piik.tv) |
 | App downloads and release notes | [GitHub Releases](https://github.com/TNTcraftHIM/Piik/releases) |
+| Download mirror for domestic access | [Gitee Releases](https://gitee.com/TNTcraftHIM/Piik/releases) |
 | Documentation index | [Repository documentation](../README.md) |
 
 The introduction is prepared with these links. DNS, deployment and release

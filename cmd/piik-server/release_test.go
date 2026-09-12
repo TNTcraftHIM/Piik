@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 )
@@ -92,7 +93,7 @@ func TestCheckReleaseReportsTheDeployedComparison(t *testing.T) {
 				_, _ = writer.Write([]byte(testCase.body))
 			}))
 			defer server.Close()
-			result := checkRelease(t.Context(), testCase.version, testCase.revision, server.URL, "")
+			result := checkRelease(t.Context(), testCase.version, testCase.revision, server.URL, "", "")
 			assertResult(t, result, testCase.wantStatus, testCase.version, latestVersion, testCase.revision, testCase.wantLatest, latestReleaseURL)
 		})
 	}
@@ -129,11 +130,11 @@ func TestCheckReleaseFailsClosedWithoutAUsableEndpoint(t *testing.T) {
 		{"unusable metadata", malformed.URL, t.Context()},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
-			result := checkRelease(testCase.ctx, deployedVersion, deployedRevision, testCase.apiURL, "")
+			result := checkRelease(testCase.ctx, deployedVersion, deployedRevision, testCase.apiURL, "", "")
 			assertResult(t, result, statusUnavailable, deployedVersion, "", deployedRevision, "", "")
 		})
 	}
-	result := checkRelease(t.Context(), "development", "unknown", "", "")
+	result := checkRelease(t.Context(), "development", "unknown", "", "", "")
 	assertResult(t, result, statusUnavailable, "development", "", "", "", "")
 }
 
@@ -167,7 +168,7 @@ func TestOperatorTokenReachesGitHubOnly(t *testing.T) {
 		_, _ = writer.Write([]byte(latestRelease))
 	}))
 	defer fixture.Close()
-	checkRelease(t.Context(), deployedVersion, deployedRevision, fixture.URL, "fixture-secret")
+	checkRelease(t.Context(), deployedVersion, deployedRevision, fixture.URL, "fixture-secret", "")
 	if authorization := received.Get("Authorization"); authorization != "" {
 		t.Fatalf("fixture endpoint received %q", authorization)
 	}
@@ -207,6 +208,73 @@ func TestCheckDeployedReleaseUsesTheBinaryIdentityAndOperatorExitCode(t *testing
 				assertResult(t, result, testCase.status, testCase.version, latestVersion, testCase.revision, latestRevision, latestReleaseURL)
 			}
 		})
+	}
+}
+
+func TestMirrorFallbackUsesOriginalSourceAndCompleteStablePagination(t *testing.T) {
+	payload, err := os.ReadFile("../../tests/fixtures/mirror-releases.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var releases []json.RawMessage
+	if err := json.Unmarshal(payload, &releases); err != nil {
+		t.Fatal(err)
+	}
+	for i, raw := range releases {
+		_, revision, _, ok := parseMirrorReleaseMetadata(raw)
+		if ok != (i < 2) || (ok && revision != latestRevision) {
+			t.Fatalf("mirror fixture %d: accepted=%t revision=%s", i, ok, revision)
+		}
+	}
+	primaryAvailable, truncate := false, false
+	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if primaryAvailable {
+			_, _ = w.Write([]byte(latestRelease))
+		} else {
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}
+	}))
+	defer primary.Close()
+	mirrorCalls := 0
+	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mirrorCalls++
+		if r.Header.Get("Authorization") != "" || r.Header.Get("X-GitHub-Api-Version") != "" ||
+			r.Header.Get("Accept") != "application/json" {
+			t.Error("mirror received credentials or GitHub headers")
+		}
+		if r.URL.Query().Get("per_page") != "100" || r.URL.Query().Get("direction") != "desc" {
+			t.Error("mirror pagination missing")
+		}
+		if r.URL.Query().Get("page") == "1" || truncate {
+			page := make([]json.RawMessage, 100)
+			for i := range page {
+				page[i] = releases[0]
+			}
+			_ = json.NewEncoder(w).Encode(page)
+		} else {
+			_, _ = w.Write(payload)
+		}
+	}))
+	defer mirror.Close()
+	result := checkRelease(t.Context(), deployedVersion, deployedRevision, primary.URL, "operator-secret", mirror.URL)
+	assertResult(t, result, statusUpdateAvailable, deployedVersion, latestVersion, deployedRevision, latestRevision, mirrorReleasePrefix+latestVersion)
+	if mirrorCalls != 2 {
+		t.Fatalf("mirror calls = %d", mirrorCalls)
+	}
+	result = checkRelease(t.Context(), "v2.0.0", deployedRevision, primary.URL, "", mirror.URL)
+	if result.Status != statusUpToDate {
+		t.Fatal("a lagging mirror offered a downgrade")
+	}
+	truncate = true
+	result = checkRelease(t.Context(), deployedVersion, deployedRevision, primary.URL, "", mirror.URL)
+	if result.Status != statusUnavailable {
+		t.Fatal("an incomplete mirror list was accepted")
+	}
+	primaryAvailable = true
+	mirrorCalls = 0
+	result = checkRelease(t.Context(), latestVersion, latestRevision, primary.URL, "", mirror.URL)
+	if result.Status != statusUpToDate || mirrorCalls != 0 {
+		t.Fatal("a usable primary release consulted the mirror")
 	}
 }
 

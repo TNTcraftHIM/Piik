@@ -8,7 +8,8 @@ an external database and a separate media server are not required.
 
 ## Try it locally
 
-Download the **Linux x64 Server** archive from [Releases](https://github.com/TNTcraftHIM/Piik/releases),
+Download the **Linux x64 Server** archive from [GitHub Releases](https://github.com/TNTcraftHIM/Piik/releases)
+or the [Gitee mirror](https://gitee.com/TNTcraftHIM/Piik/releases),
 extract it, and run the following in its directory:
 
 ```sh

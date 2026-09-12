@@ -7,7 +7,8 @@ Piik 只需要**一个服务端程序**。网页、信令、STUN 和可选的媒
 
 ## 先在本机试用
 
-从 [Releases](https://github.com/TNTcraftHIM/Piik/releases) 下载 **Linux x64 服务端**程序包，
+从 [GitHub Releases](https://github.com/TNTcraftHIM/Piik/releases) 或
+[Gitee 镜像](https://gitee.com/TNTcraftHIM/Piik/releases)下载 **Linux x64 服务端**程序包，
 解压后，在该目录运行：
 
 ```sh

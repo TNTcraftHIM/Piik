@@ -4,6 +4,7 @@
 <p align="center">
   <a href="https://piik.tv">官网</a> ·
   <a href="https://github.com/TNTcraftHIM/Piik/releases">下载</a> ·
+  <a href="https://gitee.com/TNTcraftHIM/Piik/releases">Gitee 镜像</a> ·
   <a href="https://demo.piik.tv">在线演示</a> ·
   <a href="./docs/README.md">文档</a>
 </p>

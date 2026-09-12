@@ -1,6 +1,6 @@
 # Versions And Compatibility
 
-Reviewed 2026-09-10. Release identity, update comparisons and descriptive metadata
+Reviewed 2026-09-12. Release identity, update comparisons and descriptive metadata
 rules are implemented; the public compatibility promise starts with the first
 declared public release. Use `v1.0.0` for it, with one product version for App,
 Server and the embedded Web build, plus the full Git SHA for source provenance.
@@ -150,13 +150,26 @@ Synchronize only an explicitly published release; branch pushes stay quiet.
 Retrying a failed mirror upload reuses the original package. Advertise a mirrored
 package as available only after its required attachments and matching metadata
 are present. Tokens belong only to publishing, never the distributed Browser/App.
-The target Gitee repository is still to be configured; neither mirror publishing
-nor multi-source update checking is implemented by this design.
+The public mirror is [TNTcraftHIM/Piik](https://gitee.com/TNTcraftHIM/Piik).
+The publisher reuses the shared artifact validator, checks every local file
+against GitHub's published asset digest, then uploads and verifies anonymous
+Gitee downloads. Gitee has no draft API: an incomplete mirror remains a preview
+release, and becomes stable only after every file passes. A source marker in
+the release body (`<!-- piik-source: <full-SHA> -->`) preserves the GitHub revision;
+the mirror's `target_commitish` identifies only its own README commit.
+App notices and the operator check share their existing version comparison
+across providers. Each provider has its own deadline; the mirror checks at most
+ten pages of 100 releases and rejects an incomplete listing. An explicit operator
+`--api-url` override checks that endpoint alone. A valid primary result, including
+an up-to-date result, does not consult the mirror.
 
 Gitee currently documents 100 MB per attachment and 1 GB total repository
-attachments for ordinary projects. Check final package size and mirror retention
-before enabling uploads. Anonymous metadata and a small asset worked in read-only
-checks on an official public repository; target upload/download acceptance remains.
+attachments for ordinary projects. The mirror rejects files above 100,000,000
+bytes before writing. Check aggregate capacity before each release; exhausted
+storage leaves a pending preview rather than deleting older downloads.
+Target authentication, uploads, anonymous metadata/CORS and a small download's
+SHA-256 have been verified. Acceptance of the full matching release packages
+remains pending with the first public release.
 Use API metadata in the Browser; ordinary asset-link redirects are not guaranteed
 to permit cross-origin fetch, even when a normal download works.
 
@@ -200,4 +213,4 @@ a public-release gap, not evidence that the current matched private build fails.
 - [GitHub Releases API](https://docs.github.com/en/rest/releases/releases) and
   [Gitee's official API SDK reference](https://gitee.com/sdk/gitee5j/blob/main/docs/RepositoriesApi.md):
   provider endpoints and metadata. [Gitee Release documentation](https://help.gitee.com/repository/release/intro)
-  owns its current attachment limits. Provider checks were made on 2026-09-10.
+  owns its current attachment limits. Provider checks were made on 2026-09-12.

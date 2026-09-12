@@ -56,11 +56,34 @@ this does not alter existing releases or a currently running workflow. Inspect
 the active run separately. No pipeline step changes visibility or installs an
 update into a running Piik deployment.
 
-Gitee is an optional download mirror with a README linking here, not a second
-source repository. Its target, quota and upload acceptance remain to be configured;
-the [release-source policy](../reference/versioning.md#release-sources) owns this
-boundary. GitHub authentication for publication stays in the workflow's scoped
-token, not in distributed packages.
+## Gitee Download Mirror
+
+[TNTcraftHIM/Piik](https://gitee.com/TNTcraftHIM/Piik) is a public README/Release
+mirror. Source, documentation and issues stay on GitHub. The publishing job uses
+the repository Actions secret `GITEE_TOKEN`, which is configured; rotate it there
+when needed. Never put it in source, a remote URL or a distributed package.
+GitHub publication continues to use the workflow's scoped token.
+
+After GitHub publication, the same job runs `scripts/mirror-release.mjs` on the
+original artifacts. Upload failure leaves the Gitee release marked as a preview.
+Rerun the failed publishing job to verify existing files and upload only missing
+ones. GitHub's published release remains unchanged. Both publishers reject
+changing a published package; use a corrected new version if its bytes are wrong.
+
+If the original Actions artifacts have expired, download that release's files
+from GitHub into an external working directory, then run:
+
+```sh
+gh release download v1.0.0 --repo TNTcraftHIM/Piik --dir /tmp/piik-mirror
+node scripts/mirror-release.mjs /tmp/piik-mirror v1.0.0 FULL_SOURCE_SHA
+```
+
+Use the release's actual version and full `target_commitish` SHA, with
+`GITEE_TOKEN` supplied through the publisher environment. `--dry-run` after the
+three arguments checks local identity, checksums and attachment sizes without
+publishing. The [release-source policy](../reference/versioning.md#release-sources)
+owns provenance, selection and quota limits. Small-file upload/download acceptance
+has passed; full-package mirror acceptance remains part of release readiness.
 
 ## Platform References
 

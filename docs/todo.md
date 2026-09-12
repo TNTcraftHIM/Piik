@@ -17,11 +17,11 @@ history. A parked idea is not implementation authority.
   and finish [repository protection and publishing activation](./operations/github.md).
   Test-candidate checks do not accept the public release. Keep the owner's
   [device/network deferrals](./verification-status.md#candidate-evidence-boundary).
-- [ ] **Gitee distribution.** After the promised credentials arrive, configure the
-  README/Release mirror, implement uploads and update-source selection over the
-  existing [release model](./reference/versioning.md#release-sources), and verify
-  package limits, anonymous downloads and update checks with the same artifacts.
-  These mirror/update paths are not implemented yet.
+- [ ] **Gitee package acceptance.** The public README mirror, publisher secret,
+  upload pipeline and App/Server update fallback are implemented. Small-file
+  upload and anonymous download checks passed. Verify the complete matching
+  release packages, total attachment capacity and real update/download flow
+  under the [release model](./reference/versioning.md#release-sources) before launch.
 - [ ] **Website and demo launch.** Complete repository visibility, Release,
   GitHub Pages and DNS setup for piik.tv. Deploy and verify the password-free,
   P2P-only demo.piik.tv on the separate US server under

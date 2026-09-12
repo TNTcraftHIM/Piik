@@ -9,7 +9,8 @@ watch in their browsers.
 [Set up Piik App](#share-with-piik-app) · [Fix a problem](#when-something-gets-in-the-way)
 
 Download the package for your system from
-[GitHub Releases](https://github.com/TNTcraftHIM/Piik/releases), use your group's
+[GitHub Releases](https://github.com/TNTcraftHIM/Piik/releases) or the
+[Gitee mirror](https://gitee.com/TNTcraftHIM/Piik/releases), use your group's
 Piik site, or [run from source](../README.md#run-from-source).
 
 Piik opens in illustrated mode. Choose **EN** in the header to show the labels

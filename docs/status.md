@@ -50,8 +50,10 @@ complete publisher rehearsal is blocked by the Actions artifact-storage quota.
 Main and production have not changed. Shared lessons live in
 [engineering](./reference/engineering.md); [verification status](./verification-status.md#candidate-evidence-boundary)
 owns the remaining evidence limits. Version-plus-SHA metadata,
-release comparisons and the post-main publishing pipeline are implemented with
-local checks. Public compatibility acceptance and publishing activation remain
+release comparisons, GitHub/Gitee update fallback and the post-main publishing
+pipeline are implemented with local checks. The public Gitee README mirror and
+publisher secret are configured; small-file upload and anonymous download passed.
+Full-package mirror acceptance, public compatibility and publishing activation remain
 pending under [versioning](./reference/versioning.md).
 
 ## Media Evidence And Limits

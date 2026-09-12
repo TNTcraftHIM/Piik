@@ -7,7 +7,8 @@
 [加入房间](#加入朋友的房间) · [用浏览器分享](#用浏览器分享) ·
 [设置 Piik App](#用-piik-app-分享) · [解决问题](#遇到问题了)
 
-从 [GitHub Releases](https://github.com/TNTcraftHIM/Piik/releases) 下载对应系统的程序包，
+从 [GitHub Releases](https://github.com/TNTcraftHIM/Piik/releases) 或
+[Gitee 镜像](https://gitee.com/TNTcraftHIM/Piik/releases)下载对应系统的程序包，
 或使用朋友提供的 Piik 站点。也可以[从源码运行](../README.md#run-from-source)。
 
 Piik 首次打开是图示模式。点击顶部的 **中**，就能看到下文提到的按钮文字。

@@ -4,6 +4,7 @@
 <p align="center">
   <a href="https://piik.tv">Website</a> ·
   <a href="https://github.com/TNTcraftHIM/Piik/releases">Download</a> ·
+  <a href="https://gitee.com/TNTcraftHIM/Piik/releases">Gitee mirror</a> ·
   <a href="https://demo.piik.tv">Try the demo</a> ·
   <a href="./docs/README.md">Documentation</a>
 </p>

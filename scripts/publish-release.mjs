@@ -1,53 +1,16 @@
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
-import { readFileSync, readdirSync } from "node:fs";
-import { basename, join, resolve } from "node:path";
+import { basename } from "node:path";
 import semver from "semver";
+import { readReleaseArtifacts } from "./release-artifacts.mjs";
 
 const [directory, version, revision, option] = process.argv.slice(2);
-if (!directory || !/^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version ?? "") ||
-    !/^[0-9a-f]{40}$/.test(revision ?? "") || (option && option !== "--dry-run")) {
+if (option && option !== "--dry-run") {
   throw new Error("Use publish-release.mjs <artifacts> <version> <full-SHA> [--dry-run]");
 }
-const root = resolve(directory);
-const files = new Set();
-const targets = new Set();
-const digest = (path) => createHash("sha256").update(readFileSync(path)).digest("hex");
-function asset(name) {
-  if (typeof name !== "string" || basename(name) !== name || !/^[a-zA-Z0-9._-]+$/.test(name)) {
-    throw new Error("Release asset name is invalid");
-  }
-  const path = join(root, name);
-  files.add(path);
-  return path;
-}
-
-for (const name of readdirSync(root).filter((name) => name.endsWith(".release.json"))) {
-  const descriptor = JSON.parse(readFileSync(asset(name), "utf8"));
-  if (descriptor.schema !== 2 || descriptor.version !== version || descriptor.revision !== revision) {
-    throw new Error(`Release identity mismatch: ${name}`);
-  }
-  const target = descriptor.target ?? "server";
-  if (targets.has(target)) throw new Error(`Duplicate release target: ${target}`);
-  targets.add(target);
-  if (digest(asset(descriptor.artifact)) !== descriptor.artifactSha256) {
-    throw new Error(`Release artifact checksum mismatch: ${name}`);
-  }
-  if (target === "server") {
-    if (digest(asset(descriptor.manifest)) !== descriptor.manifestSha256) {
-      throw new Error("Server manifest checksum mismatch");
-    }
-  } else if (readFileSync(asset(`${descriptor.artifact}.sha256`), "utf8").trim() !==
-      `${descriptor.artifactSha256}  ${descriptor.artifact}`) {
-    throw new Error(`App checksum file mismatch: ${target}`);
-  }
-}
-const expected = ["server", "windows-amd64", "linux-amd64", "darwin-arm64"];
-if (targets.size !== expected.length || expected.some((target) => !targets.has(target))) {
-  throw new Error("Publication requires one matching Server and every App target");
-}
+const artifacts = readReleaseArtifacts(directory, version, revision);
+const files = artifacts.files.map((file) => file.path);
 if (option === "--dry-run") {
-  process.stdout.write(`${JSON.stringify({ version, revision, targets: [...targets], files: files.size })}\n`);
+  process.stdout.write(`${JSON.stringify({ version, revision, targets: artifacts.targets, files: files.length })}\n`);
 } else {
   const repository = process.env.GITHUB_REPOSITORY || "TNTcraftHIM/Piik";
   const gh = (...args) => execFileSync("gh", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
