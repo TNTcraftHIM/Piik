@@ -41,8 +41,8 @@ if (process.env.PIIK_WEBSITE_RELEASE_DATA) {
   const release = websiteDownloads(JSON.parse(await readFile(process.env.PIIK_WEBSITE_RELEASE_DATA, "utf8")));
   homepage = homepage.replace(/<p class="release-note" id="download-status">[\s\S]*?<\/p>/,
     `<p class="release-note" id="download-status"><span class="release-label">${release.version}</span>` +
-    `<span lang="en">Download for your system, then extract the archive.</span>` +
-    `<span lang="zh-CN">选择对应系统，下载后解压。</span>` +
+    `<span lang="en">Download the ZIP for your system, then extract it.</span>` +
+    `<span lang="zh-CN">选择对应系统，下载 ZIP 后解压。</span>` +
     `<a href="${release.notes}"><span lang="en">Release notes</span><span lang="zh-CN">版本说明</span></a></p>`);
   homepage = homepage.replace(/<a\b([^>]*data-download="([^"]+)"[^>]*data-provider="([^"]+)"[^>]*)>([\s\S]*?)<\/a\s*>/g,
     (original, attributes, target, provider, content) => {
@@ -50,8 +50,8 @@ if (process.env.PIIK_WEBSITE_RELEASE_DATA) {
       const href = provider === 'github' ? item?.url : item?.mirrorURL;
       if (!href) return original;
       const label = provider === 'github'
-        ? { en: 'Download from GitHub', zh: 'GitHub 下载' }
-        : { en: 'Download from Gitee', zh: 'Gitee 备用下载' };
+        ? { en: 'Download ZIP · GitHub', zh: '下载 ZIP · GitHub' }
+        : { en: 'Gitee alternative (ZIP)', zh: 'Gitee 备用下载（ZIP）' };
       return `<a${attributes.replace(/href="[^"]*"/, `href="${href}"`)}>` + content
         .replace(/<span lang="en">[\s\S]*?<\/span\s*>/, `<span lang="en">${label.en}</span>`)
         .replace(/<span lang="zh-CN">[\s\S]*?<\/span\s*>/, `<span lang="zh-CN">${label.zh}</span>`) + '</a>';

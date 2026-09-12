@@ -21,7 +21,7 @@ import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 
 import { clientPackageTarget, CLOUDFLARED_VERSION } from "./client-package-targets.mjs";
-import { tarExecutable } from "./archive-tool.mjs";
+import { createZip, extractZip, tarExecutable } from "./archive-tool.mjs";
 import { resetBuildWorkspace } from "./build-workspace.mjs";
 
 function fail(message) {
@@ -366,16 +366,19 @@ try {
   ];
   if (capture) assembleArguments.push("--capture", capture);
   run(process.execPath, assembleArguments, repositoryRoot);
-  await verifyPackage(packageRoot, target, revision, temporaryRoot);
 
   mkdirSync(outputRoot, { recursive: false, mode: 0o700 });
   const shortRevision = revision.slice(0, 7);
-  const archiveName = `piik-app-${target.id}-${shortRevision}.tar.gz`;
+  const archiveName = `piik-app-${target.id}-${shortRevision}.zip`;
   const archive = join(outputRoot, archiveName);
-  run(tarExecutable(), ["-czf", archive, "-C", packageRoot, "."], repositoryRoot);
+  createZip(packageRoot, archive);
+  const extractedRoot = join(temporaryRoot, "extracted");
+  mkdirSync(extractedRoot);
+  extractZip(archive, extractedRoot);
+  await verifyPackage(extractedRoot, target, revision, temporaryRoot);
   const digest = sha256(archive);
   writeFileSync(join(outputRoot, `${archiveName}.sha256`), `${digest}  ${archiveName}\n`, "ascii");
-  writeFileSync(join(outputRoot, archiveName.replace(/\.tar\.gz$/, ".release.json")),
+  writeFileSync(join(outputRoot, archiveName.replace(/\.zip$/, ".release.json")),
     `${JSON.stringify({ schema: 2, version, revision, target: target.id,
       artifact: archiveName, artifactSha256: digest }, null, 2)}\n`);
   process.stdout.write(`${JSON.stringify({

@@ -168,10 +168,12 @@ jobs:
       # installed here too.
       - name: Install dependencies
         run: npm ci
-      - name: Install Linux native capture dependencies
+      - name: Install Linux packaging and native capture dependencies
         if: matrix.target == 'linux-amd64'
         run: >-
           sudo apt-get update && sudo apt-get install -y
+          zip
+          unzip
           libportal-dev
           libgstreamer1.0-dev
           libgstreamer-plugins-base1.0-dev

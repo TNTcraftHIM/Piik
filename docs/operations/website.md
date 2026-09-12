@@ -74,7 +74,7 @@ ranges for seeking the soundtrack. Keep asset links relative so both a custom
 domain and GitHub's `/Piik/` project path work.
 
 Downloads are static links to the latest published GitHub packages, with explicit
-Windows x64, macOS Apple silicon and Linux x64 cards. `PIIK_WEBSITE_RELEASE_DATA`
+Windows x64, macOS Apple silicon and Linux x64 ZIP cards. `PIIK_WEBSITE_RELEASE_DATA`
 can point the build at a temporary JSON containing the GitHub release and the
 same-tag Gitee release with its attachment list. CI supplies this input; the
 builder validates version, source identity and platform URLs. A missing/incomplete

@@ -7,7 +7,7 @@ const github = {
   tag_name: version, target_commitish: revision, draft: false, prerelease: false,
   html_url: `https://github.com/TNTcraftHIM/Piik/releases/tag/${version}`,
   assets: ["windows-amd64", "darwin-arm64", "linux-amd64"].map(target => {
-    const name = `piik-app-${target}-${revision.slice(0, 7)}.tar.gz`;
+    const name = `piik-app-${target}-${revision.slice(0, 7)}.zip`;
     return { name, state: "uploaded", size: 1024,
       browser_download_url: `https://github.com/TNTcraftHIM/Piik/releases/download/${version}/${name}` };
   }),
@@ -43,7 +43,7 @@ describe("website package downloads", () => {
       { ...mirror, tag_name: "v1.1.0" }, { ...mirror, assets: [] }]) {
       expect(websiteDownloads({ github, mirror: changed }).packages.every(item => item.mirrorURL === null)).toBe(true);
     }
-    for (const change of [{ size: 2048 }, { browser_download_url: "https://evil.example/package.tar.gz" }]) {
+    for (const change of [{ size: 2048 }, { browser_download_url: "https://evil.example/package.zip" }]) {
       const result = websiteDownloads({ github,
         mirror: { ...mirror, assets: [{ ...mirror.assets[0], ...change }, ...mirror.assets.slice(1)] } });
       expect(result.packages[0]!.mirrorURL).toBeNull();

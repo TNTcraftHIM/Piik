@@ -160,7 +160,7 @@ describe("release automation", () => {
     const run = () => spawnSync(process.execPath, [publisher, root, version, revision, "--dry-run"], { encoding: "utf8" });
     try {
       for (const target of ["server", "windows-amd64", "linux-amd64", "darwin-arm64"]) {
-        const artifact = `${target}.tar.gz`;
+        const artifact = `${target}.${target === "server" ? "tar.gz" : "zip"}`;
         writeFileSync(join(root, artifact), target);
         const descriptor = { schema: 2, version, revision, artifact, artifactSha256: sha(target),
           ...(target === "server" ? { manifest: "server.manifest.tsv", manifestSha256: sha("manifest") } : { target }) };
@@ -176,7 +176,7 @@ describe("release automation", () => {
       writeFileSync(path, JSON.stringify({ ...JSON.parse(original), revision: "b".repeat(40) }));
       expect(run().stderr).toContain("Release identity mismatch");
       writeFileSync(path, original);
-      writeFileSync(join(root, "windows-amd64.tar.gz"), "changed bytes");
+      writeFileSync(join(root, "windows-amd64.zip"), "changed bytes");
       expect(run().stderr).toContain("checksum mismatch");
     } finally { rmSync(root, { recursive: true, force: true }); }
   });

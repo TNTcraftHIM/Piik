@@ -92,7 +92,7 @@ node scripts/package-client-candidate.mjs \
 
 The wrapper downloads the pinned public-link sidecar, verifies its digest,
 builds the target App and available capture process, executes every packaged
-runtime, and emits one `tar.gz` plus its SHA-256 file.
+runtime from the extracted ZIP, and emits one `.zip` plus its SHA-256 file.
 
 Retain the descriptor and successful deployment output as release metadata. Do
 not create a follow-up source commit solely to duplicate their revision, asset,

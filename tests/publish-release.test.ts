@@ -14,7 +14,7 @@ const directory = mkdtempSync(join(tmpdir(), "piik-publisher-"));
 const version = "v1.0.1", revision = "a".repeat(40);
 const hash = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
 for (const target of ["server", "windows-amd64", "linux-amd64", "darwin-arm64"]) {
-  const artifact = `${target}.tar.gz`;
+  const artifact = `${target}.${target === "server" ? "tar.gz" : "zip"}`;
   writeFileSync(join(directory, artifact), target);
   writeFileSync(join(directory, `${target}.release.json`), JSON.stringify({
     schema: 2, version, revision, artifact, artifactSha256: hash(target),

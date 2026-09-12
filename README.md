@@ -67,7 +67,7 @@ Piik uses icon controls by default; select **EN** in the header to show labels.
 The App offers a local room, a temporary public link, or a connection to your own
 site. Keep the App running while sharing through it.
 
-Download an archive beginning with **`piik-app`**. The filename also identifies the platform:
+Download a ZIP beginning with **`piik-app`**. The filename also identifies the platform:
 
 | Filename contains | Platform |
 | --- | --- |

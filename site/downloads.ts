@@ -21,7 +21,7 @@ export function websiteDownloads(data: { github: unknown; mirror?: unknown }) {
     version: release.version,
     notes: release.url,
     packages: targets.map(target => {
-      const name = `piik-app-${target}-${release.revision!.slice(0, 7)}.tar.gz`;
+      const name = `piik-app-${target}-${release.revision!.slice(0, 7)}.zip`;
       const url = `https://github.com/TNTcraftHIM/Piik/releases/download/${release.version}/${name}`;
       const matches = primaryAssets.filter(asset => asset.name === name);
       const asset = matches[0];
