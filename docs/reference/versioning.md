@@ -2,8 +2,8 @@
 
 Reviewed 2026-09-12. `v1.0.0` is the declared public compatibility baseline.
 App, Server and the embedded Web build share one product version, plus the full
-Git SHA for source provenance. Automatic publication remains disabled while the
-current maintenance phase completes its narrower release boundary.
+Git SHA for source provenance. [Status](../status.md) owns the current publication
+state; automatic publication follows the product-change boundary below.
 
 ## Give Each Identifier One Job
 

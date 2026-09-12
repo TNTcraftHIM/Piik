@@ -52,8 +52,9 @@ identify published artifacts and website revisions.
 The matching Server and three App packages are published on GitHub and Gitee;
 anonymous mirror downloads match the original checksums. Public-repository CI
 and native packaging passed. App entry, update links
-and bounded two-build interoperability have acceptance evidence. Automatic
-publication remains off while the current phase narrows release triggers.
+and bounded two-build interoperability have acceptance evidence. Accepted
+product changes publish automatically; standalone website and documentation
+changes validate and deploy the website without creating App/Server versions.
 GitHub/Gitee release comparison, mirror publishing and PR-sourced notes follow
 [versioning](./reference/versioning.md). [Verification status](./verification-status.md#candidate-evidence-boundary)
 owns the remaining physical limits; shared lessons live in

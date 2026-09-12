@@ -42,7 +42,6 @@ export function gameMarkup(prefix) {
     <g id="${prefix}-player" style="color:${INK}"><g transform="translate(-36 -44) scale(2.4)"><rect x="1" y="13" width="10" height="14" rx="3" fill="#db8755"/>${mascotMarkup(prefix+'-hero','#faf5e7')}</g></g>
     <g id="${prefix}-treasure"><circle r="53" fill="#fff3bd" opacity=".22"/><path d="m0-31 24 31-24 31-24-31Z" fill="#ffe391" stroke="#bb8537" stroke-width="3"/><path d="m0-31 0 62-24-31Z" fill="#fff5cd"/><path d="m-45-8-12-6m11 37-10 9m102-40 12-6m-11 37 10 9M0-55v-12" stroke="#fff5ce" stroke-width="5" stroke-linecap="round"/></g>
     ${tree(1435,779,1.6)}${tree(744,952,1.22)}
-    <g transform="translate(63 56)"><rect width="253" height="56" rx="28" fill="${INK}"/><text x="126.5" y="36" text-anchor="middle" font-family="ui-sans-serif,system-ui,sans-serif" font-size="22" font-weight="750" fill="#faf5e7" letter-spacing="2">LITTLE WANDER</text></g>
     <g transform="translate(1415 94)" stroke="#faf5e7" stroke-width="4" fill="none"><circle r="32"/><path d="m0-19 8 19-8 19-8-19Z" fill="#faf5e7"/><path d="M0-41v-8m41 49h8m-49 41v8m-41-49h-8"/></g>`;
 }
 

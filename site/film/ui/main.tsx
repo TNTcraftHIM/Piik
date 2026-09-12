@@ -77,7 +77,7 @@ const sources = [
     sourceId: "101",
     pid: 1,
     creationTime: "1",
-    title: "Little Wander",
+    title: "RPG",
   },
   {
     kind: "window" as const,

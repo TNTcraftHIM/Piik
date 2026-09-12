@@ -7,16 +7,12 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **Post-launch polish.** Accept the website's shared random greeting and
-  clearly labeled, per-platform GitHub/Gitee package downloads. Verify the
-  download snapshot refreshes after publication; website and documentation
-  commits must not create App/Server versions or affect their release notes.
-  Complete the scoped checks and one phase integration, then enable
-  [automatic publication](./operations/github.md#enable-automatic-publication-once).
-  Preserve the owner's [device/network deferrals](./verification-status.md#candidate-evidence-boundary).
+- [ ] **Post-launch monitoring.** Collect App/Server feedback and verify the
+  public download path after product releases. Preserve the owner's
+  [device/network deferrals](./verification-status.md#candidate-evidence-boundary).
 
-Keep this phase on its maintenance branch until acceptance. The public release
-is the compatibility baseline; private service deployment stays independent.
+Keep fixes on a maintenance branch until acceptance. The public release is the
+compatibility baseline; private service deployment stays independent.
 
 ## Next: P2P Connection And Feedback Review
 

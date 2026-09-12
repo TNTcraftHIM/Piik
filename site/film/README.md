@@ -52,7 +52,7 @@ to static markup during the website build. Its score and audio remain owned by
 in picture remain in `PlaybackControls`. A shared appearance does not require
 giving a recorded sequence live-room state.
 
-[`../assets/game.js`](../assets/game.js) owns the original **LITTLE WANDER** RPG
+[`../assets/game.js`](../assets/game.js) owns the original RPG
 scene. The film and demonstration TV render it using the film clock.
 The film's six game vignettes share pure poses in `../assets/games.js`.
 `../assets/activities.js` composes the homepage's RPG, drawing, photos and movie
