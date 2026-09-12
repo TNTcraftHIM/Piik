@@ -85,6 +85,11 @@ h1 { font-size: clamp(49px, 5.7vw, 76px); line-height: 1.06; margin-block: 22px 
 .button:not(:disabled):is(:hover, :focus-visible) svg { transform: translateY(3px); }
 .button:not(:disabled):active { transform: translateY(2px); box-shadow: 0 1px 0 color-mix(in srgb, var(--ink) 18%, transparent); }
 .hero-note { color: var(--muted); font-size: 12px; line-height: 1.7; margin-top: 18px; }
+.film-link { display:inline-flex; align-items:center; gap:10px; min-height:44px; margin-top:18px; text-decoration:none; font-size:12px; font-weight:650; }
+.film-play { display:grid; place-items:center; width:33px; height:33px; border-radius:50%; color:var(--orange); background:var(--paper); transition:transform .22s cubic-bezier(.2,.9,.3,1.4); }
+.film-play svg { width:23px; height:23px; }
+.film-link:is(:hover,:focus-visible) .film-play { transform:scale(1.12); }
+.film-length { color:var(--muted); font-size:10px; font-weight:400; padding-left:4px; }
 .hero-scene { min-width: 0; }
 .living-room { display: block; width: 108%; height: auto; max-width: none; margin-left: -5%; }
 .scene-caption { display: flex; justify-content: center; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); margin-top: 2px; }

@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#e9f2ee" />
+    <meta name="description" content="Good things. Shared. A little film about Piik, screen sharing, and your people." />
+    <title>Piik — Good things. Shared.</title>
+    <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./film.css" />
+    <script type="module" src="./player.js"></script>
+  </head>
+  <body>
+    <header class="masthead">
+      <a class="wordmark" href="../" data-home aria-label="Piik"><img src="../assets/favicon.svg" width="28" height="28" alt="" />Piik<span>.</span></a>
+      <nav aria-label="Navigation / 导航">
+        <button id="language" type="button" hidden>简体中文</button>
+        <a href="../#download" data-home><span lang="en">Download</span><span lang="zh-CN">下载</span><span aria-hidden="true"> ↗</span></a>
+        <a href="../" data-home><span lang="en">Explore Piik</span><span lang="zh-CN">回到官网</span></a>
+      </nav>
+    </header>
+    <main>
+      <h1 class="sr-only"><span lang="en">Good things. Shared. — A Piik film</span><span lang="zh-CN">好东西，一起看。—— Piik 短片</span></h1>
+      <div class="cinema">
+        <audio id="soundtrack" preload="none"></audio>
+        <div class="picture">
+          <svg id="film-art" viewBox="0 0 1600 900" xmlns="http://www.w3.org/2000/svg" font-family="ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,PingFang SC,Microsoft YaHei,sans-serif" aria-hidden="true"></svg>
+          <img class="fallback" src="../assets/living-room.svg#still" width="900" height="590" alt="Friends watching a host play a game from a warm orange sofa." />
+        </div>
+        <div class="curtain" id="curtain" hidden>
+          <button class="play-film" id="start" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7Z" fill="currentColor" /></svg>
+            <span lang="en">Watch the film</span><span lang="zh-CN">看看短片</span><span class="duration">38s</span>
+          </button>
+          <button class="quiet-play" id="start-muted" type="button"><span lang="en">Play without sound</span><span lang="zh-CN">静音播放</span></button>
+          <p id="reduced-note" hidden><span lang="en">A still preview follows your motion preference. Play when you're ready.</span><span lang="zh-CN">已按系统偏好显示静态画面，也可以手动播放。</span></p>
+        </div>
+        <div class="transport" id="transport" hidden>
+          <button id="play" class="icon-button" type="button" aria-label="Pause">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path class="pause-icon" d="M8 6v12M16 6v12" /><path class="play-icon" d="m8 5 11 7-11 7Z" /></svg>
+          </button>
+          <button id="replay" class="icon-button" type="button" aria-label="Replay"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11a8 8 0 1 1 2 7M4 4v7h7" /></svg></button>
+          <label class="scrubber"><span class="sr-only"><span lang="en">Film position</span><span lang="zh-CN">播放进度</span></span><input id="seek" type="range" min="0" max="38.02" step="0.01" value="0" /></label>
+          <output id="time" for="seek" aria-live="off">0:00 / 0:38</output>
+          <button id="sound" class="icon-button" type="button" aria-pressed="true" aria-label="Sound">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4 6 8H3v8h3l5 4Z" /><path class="sound-on" d="M15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14" /><path class="sound-off" d="m16 9 6 6m0-6-6 6" /></svg>
+          </button>
+          <button id="capture" class="icon-button" type="button" aria-label="Clean fullscreen view"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m8 0h5v-5" /></svg></button>
+        </div>
+      </div>
+      <p id="player-status" role="status"></p>
+      <div class="film-footer">
+        <p><span lang="en">A screen. Your people. A good time.</span><span lang="zh-CN">有画面，有朋友，就挺好。</span></p>
+        <button id="about" type="button" hidden><span lang="en">Music & recording</span><span lang="zh-CN">配乐与录制</span><span aria-hidden="true"> ↗</span></button>
+      </div>
+      <p class="sr-only"><span lang="en">An orange dot wakes a little television. A game opens up, an invitation travels, and friends settle onto the sofa. Games, drawings, and new discoveries: share your screen privately with up to twenty friends. They watch in a browser. Piik is open source.</span><span lang="zh-CN">橙色圆点叫醒小电视。游戏开始，邀请发出，朋友们在沙发上坐好。游戏、画画、新发现，都能私下分享给最多二十位朋友。点开邀请，在浏览器里就能看。Piik 是开源的。</span></p>
+      <noscript><p class="no-script">This film needs JavaScript. <a href="../">Explore Piik / 回到官网</a></p></noscript>
+    </main>
+    <dialog id="credits" aria-labelledby="credits-title">
+      <form method="dialog"><button class="close" aria-label="Close / 关闭">×</button></form>
+      <h2 id="credits-title"><span lang="en">Behind the film</span><span lang="zh-CN">关于这支短片</span></h2>
+      <p><span lang="en">Original Piik artwork and animation. The pictured game is an illustration.</span><span lang="zh-CN">画面与动画为 Piik 原创，片中的游戏是演示画面。</span></p>
+      <h3><span lang="en">Music</span><span lang="zh-CN">配乐</span></h3>
+      <p>“<a href="https://incompetech.com/music/royalty-free/index.html?Search=Search&amp;isrc=USUAN1100474">Funkorama</a>” — Kevin MacLeod (incompetech.com). <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>. <span lang="en">Excerpt, with a fade-out.</span><span lang="zh-CN">使用了剪辑与淡出的片段。</span></p>
+      <h3><span lang="en">Recording</span><span lang="zh-CN">录制</span></h3>
+      <p><span lang="en">Use the fullscreen button for a clean 16:9 picture. Record the browser and its audio at 1920 × 1080, 60 fps. Press R to restart, Space to pause, M to mute, and Escape to return. Keep the music credit in the film and its description.</span><span lang="zh-CN">全屏按钮可以切到干净的 16:9 画面。建议以 1920 × 1080、60 fps 录制浏览器画面和声音。R 从头播放，空格暂停，M 静音，Esc 返回。发布时保留片尾与简介中的音乐署名。</span></p>
+    </dialog>
+  </body>
+</html>

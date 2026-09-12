@@ -41,6 +41,22 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', syncThemeC
 syncThemeColor();
 document.querySelector('.preferences').hidden = false;
 
+// Carry explicit choices through the film's ordinary links, without a second
+// preference store or making either page depend on the other being open.
+const preferences = new URLSearchParams(location.search);
+if (preferences.get('lang') === 'zh-CN') language.click();
+if (['light', 'dark'].includes(preferences.get('theme'))) {
+  theme.value = preferences.get('theme');
+  root.dataset.theme = theme.value;
+  syncThemeColor();
+}
+document.querySelector('[data-film-link]').addEventListener('click', (event) => {
+  const target = new URL(event.currentTarget.href);
+  target.searchParams.set('lang', root.lang);
+  target.searchParams.set('theme', theme.value);
+  event.currentTarget.href = target.href;
+});
+
 // Native disclosures remain usable without scripts; section links also reveal them.
 function revealGuide(hash) {
   const target = document.getElementById(hash.slice(1));
