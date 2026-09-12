@@ -8,6 +8,8 @@ import { LauncherForm, type AppMode } from "../components/living/LauncherForm";
 import { Btn, Pill } from "../components/living/primitives";
 import { Glyph } from "../ui/icons";
 import { useCopy, type CopyKey } from "../ui/copy";
+import { currentThemePreference } from "../ui/theme";
+import { clientLaunchURL } from "../lib/session";
 import {
   checkReleaseUpdate,
   type ReleaseUpdateNotice,
@@ -69,6 +71,7 @@ export function AppLauncherPage() {
     if (starting || (mode === "site" && !site.trim())) return;
     setStarting(true);
     setError(null);
+    const presentation = { lang, vis, theme: currentThemePreference() };
     try {
       const response = await fetch("/api/client-launcher/launch", {
         method: "POST",
@@ -81,7 +84,7 @@ export function AppLauncherPage() {
       });
       if (!response.ok) throw new Error();
       const result = launcherResultSchema.parse(await response.json());
-      window.location.replace(result.target);
+      window.location.replace(clientLaunchURL(result.target, presentation));
     } catch {
       setError("launch");
       setStarting(false);

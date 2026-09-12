@@ -56,10 +56,22 @@ export function applyTheme(theme: Theme): void {
   }
 }
 
-export function initTheme(): void {
-  const stored = storedTheme();
+export function currentThemePreference(): Theme | null {
+  return state.explicit ? state.theme : null;
+}
+
+export function initTheme(preference?: Theme | null): void {
+  if (preference !== undefined) {
+    try {
+      if (preference === null) window.localStorage.removeItem(THEME_STORAGE_KEY);
+      else window.localStorage.setItem(THEME_STORAGE_KEY, preference);
+    } catch {
+      // The launch choice still applies when persistence is unavailable.
+    }
+  }
+  const stored = preference === undefined ? storedTheme() : preference;
   state.explicit = stored !== null;
-  state.theme = stored ?? readInitial();
+  state.theme = stored ?? (preference === null ? detectTheme() : readInitial());
   document.documentElement.dataset.theme = state.theme;
   if (!state.initialized && typeof window.matchMedia === "function") {
     state.initialized = true;

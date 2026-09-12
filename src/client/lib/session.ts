@@ -98,6 +98,23 @@ export function parseAppRoute(pathname: string): AppRoute {
 export interface ClientLaunchBootstrap {
   accessToken: string | null;
   launchedByClient: boolean;
+  presentation: ClientLaunchPresentation | null;
+}
+
+export interface ClientLaunchPresentation {
+  lang: "zh" | "en";
+  vis: boolean;
+  theme: "light" | "dark" | null;
+}
+
+export function clientLaunchURL(target: string, presentation: ClientLaunchPresentation): string {
+  const url = new URL(target);
+  const params = new URLSearchParams(url.hash.slice(1));
+  params.set("piik-lang", presentation.lang);
+  params.set("piik-mode", presentation.vis ? "vis" : "text");
+  params.set("piik-theme", presentation.theme ?? "system");
+  url.hash = params.toString();
+  return url.toString();
 }
 
 export function takeClientLaunchBootstrap(): ClientLaunchBootstrap {
@@ -105,10 +122,16 @@ export function takeClientLaunchBootstrap(): ClientLaunchBootstrap {
   const keys = [
     "client-access",
     "piik-client",
+    "piik-lang",
+    "piik-mode",
+    "piik-theme",
   ] as const;
   const present = keys.some((key) => params.has(key));
   const accessValue = params.get("client-access");
   const launchedFromFragment = params.get("piik-client") === "1";
+  const lang = params.get("piik-lang");
+  const mode = params.get("piik-mode");
+  const theme = params.get("piik-theme");
   let launchedByClient = launchedFromFragment;
   try {
     if (launchedFromFragment) {
@@ -126,6 +149,11 @@ export function takeClientLaunchBootstrap(): ClientLaunchBootstrap {
         ? accessValue
         : null,
     launchedByClient,
+    presentation: launchedFromFragment && (lang === "zh" || lang === "en") &&
+      (mode === "vis" || mode === "text") &&
+      (theme === "light" || theme === "dark" || theme === "system")
+      ? { lang, vis: mode === "vis", theme: theme === "system" ? null : theme }
+      : null,
   };
   if (present) {
     for (const key of keys) params.delete(key);

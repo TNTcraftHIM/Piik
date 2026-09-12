@@ -25,7 +25,8 @@ import { BrandLoader } from "./components/living/BrandMark";
 import { Btn, Pill } from "./components/living/primitives";
 import { Comic, type ComicKind } from "./components/living/Comic";
 import { Glyph, type GlyphName } from "./ui/icons";
-import { useCopy } from "./ui/copy";
+import { setCopy, useCopy } from "./ui/copy";
+import { initTheme } from "./ui/theme";
 import { installBrowserDebug } from "./lib/debug";
 
 const OverlayPreviewPage = import.meta.env.DEV
@@ -47,6 +48,10 @@ const clientLaunchBootstrap =
   appRoute.kind === "host" || appRoute.kind === "viewer"
     ? takeClientLaunchBootstrap()
     : null;
+initTheme(clientLaunchBootstrap?.presentation?.theme);
+if (clientLaunchBootstrap?.presentation) {
+  setCopy(clientLaunchBootstrap.presentation);
+}
 const clientAccessBootstrap = clientLaunchBootstrap?.accessToken ?? null;
 const viewerRoute = appRoute.kind === "viewer" ? readViewerRoute() : null;
 const hostPageModule =

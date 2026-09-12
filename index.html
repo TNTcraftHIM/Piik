@@ -8,11 +8,17 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Piik</title>
     <script>
-      try {
-        var theme = localStorage.getItem("piik:ui-theme") ||
-          (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-        document.documentElement.dataset.theme = theme;
-      } catch (e) {}
+      var systemTheme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      var theme;
+      try { theme = localStorage.getItem("piik:ui-theme"); } catch (e) {}
+      var launch = new URLSearchParams(location.hash.slice(1));
+      var launchTheme = launch.get("piik-theme");
+      if (launch.get("piik-client") === "1" &&
+          (launchTheme === "light" || launchTheme === "dark" || launchTheme === "system")) {
+        theme = launchTheme === "system" ? systemTheme : launchTheme;
+      }
+      document.documentElement.dataset.theme =
+        theme === "light" || theme === "dark" ? theme : systemTheme;
     </script>
   </head>
   <body>
