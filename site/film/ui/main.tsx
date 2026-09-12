@@ -97,9 +97,9 @@ function Screen({ shot }: { shot: Shot }) {
   const { t, lang } = useCopy();
   const launcher = shot === "local" || shot === "link";
   const live = shot === "host" || shot === "copied" || shot === "viewer";
-  const name = lang === "zh" ? "华安" : "The Dude";
+  const name = lang === "zh" ? "摸鱼办主任" : "ThisIsFine";
   const names =
-    lang === "zh" ? ["秋香", "包租婆", "石榴姐"] : ["Leeroy", "Neo", "Inigo"];
+    lang === "zh" ? ["派大星", "大聪明", "咸鱼突刺"] : ["Leeroy", "Kenobi", "NotABot"];
   return (
     <div className="lr-app">
       <AppHeader

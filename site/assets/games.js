@@ -13,7 +13,7 @@ const ease = (n) => {
   return p * p * (3 - 2 * p);
 };
 const mix = (a, b, p) => a + (b - a) * p;
-export const GAME_KINDS = ["rpg", "fps", "platform", "rts", "moba"];
+export const GAME_KINDS = ["rpg", "fps", "platform", "rts", "moba", "fighting"];
 // Actions are authored over one bar; each surface chooses its playback speed.
 export const GAME_CUT = 240 / 101;
 const round = n => Math.round(n * 100) / 100;
@@ -23,16 +23,25 @@ const burst = (id, x, y, colour = GOLD) =>
   `<g transform="translate(${x} ${y})"><g id="${id}" fill="none" stroke="${colour}" stroke-width="8" stroke-linecap="round"><circle r="35"/>${[0, 60, 120, 180, 240, 300].map((a) => `<path d="M49 0h25" transform="rotate(${a})"/>`).join("")}</g></g>`;
 const unit = (id, colour) =>
   `<g id="${id}"><ellipse cy="19" rx="27" ry="11" fill="${INK}" opacity=".2"/><path d="M-23 11q0-33 23-33t23 33Z" fill="${colour}" stroke="${INK}" stroke-width="3"/><path d="M-8-6H8" stroke="${PAPER}" stroke-width="5" stroke-linecap="round"/></g>`;
+const fighter = (id, colour, direction) => `<g id="${id}"><g transform="scale(${direction} 1)">
+  <path d="M-34 95-51 184h-35m119-89 32 89h35" fill="none" stroke="${INK}" stroke-width="23" stroke-linecap="round"/>
+  <path d="M-58 55h116v58H-58Z" fill="${colour}"/><path d="M-58 70h116" stroke="${INK}" stroke-width="10"/>
+  ${hero(id+'-head',5)}
+  <circle cx="-103" cy="61" r="29" fill="${colour}" stroke="${INK}" stroke-width="6"/>
+  <path id="${id}-arm" d="M0 0h100" stroke="${colour}" stroke-width="24" stroke-linecap="round"/>
+  <g id="${id}-glove"><circle cx="106" cy="4" r="30" fill="${colour}" stroke="${INK}" stroke-width="6"/><path d="M93-8h21" stroke="${PAPER}" stroke-width="7" stroke-linecap="round"/></g>
+</g></g>`;
 
-export function montageMarkup(zh) {
+export function montageMarkup() {
   return `<g id="montage-rpg">${gameMarkup("full-game")}</g>
     <g id="montage-fps">
-      <rect width="1600" height="900" fill="#28374b"/>
-      <path d="M0 0h1600L1130 270H470Z" fill="#3f526a"/><path d="M0 900h1600l-470-540H470Z" fill="#506b79"/>
-      <path d="M0 0 470 270v90L0 900m1600-900-470 270v90l470 540" fill="none" stroke="#99c3c9" stroke-width="7"/>
-      <path d="M140 900 555 360m245 540V360m660 540-415-540M225 640h1150M380 460h840" fill="none" stroke="#6d929c" stroke-width="4"/>
-      <path d="M470 270h660v90H470Z" fill="#203037"/><path d="M505 304h590" stroke="${GOLD}" stroke-width="7"/>
-      <g fill="${CORAL}"><path d="M40 150 93 183v303l-53 60Z"/><path d="m1560 150-53 33v303l53 60Z"/></g>
+      <rect width="1600" height="900" fill="#91afba"/>
+      <path d="M0 116h300V56h266v96h522V77h295v78h217v481H0Z" fill="#536e7b"/>
+      <path d="M344 138h770v356H344Z" fill="#405965"/><path d="M728 243h249v251H728Z" fill="${INK}"/>
+      <path d="M378 189h221v41H378Zm657 0h46v220h-46Z" fill="#adc6c9"/>
+      <path d="M0 489h1600v411H0Z" fill="#768c94"/><path d="M650 489 170 900m316-250h775m-221-161 477 411" fill="none" stroke="#a6b4b3" stroke-width="5"/>
+      <path d="M0 251 257 348v552H0Zm1600-74-229 93v630h229Z" fill="#344d5c"/>
+      <path d="m0 251 257 97v43L0 299Zm1600-74-229 93v44l229-96Z" fill="#b5c7c5"/>
       ${[
         [610, 477],
         [863, 358],
@@ -40,15 +49,24 @@ export function montageMarkup(zh) {
       ]
         .map(
           ([x, y], i) =>
-            `<g transform="translate(${x} ${y})"><g id="fps-target-${i}"><ellipse cy="106" rx="67" ry="18" fill="${INK}" opacity=".35"/><circle r="54" fill="${CORAL}" stroke="${PAPER}" stroke-width="9"/><circle r="29" fill="${INK}"/><path d="M-14 0h28M0-14v28" stroke="${GOLD}" stroke-width="5"/></g></g>${burst("fps-hit-" + i, x, y)}`,
+            `<g transform="translate(${x} ${y})"><g id="fps-target-${i}"><g transform="scale(2.4)">${unit('fps-opponent-'+i,CORAL)}</g></g></g>${burst("fps-hit-" + i, x, y)}`,
         )
         .join("")}
-      <path id="fps-tracer" d="M0 0h100" fill="none" stroke="${GOLD}" stroke-width="10" stroke-linecap="round"/>
-      <g id="fps-tool"><path d="m853 940 22-188 113-90 53 7 73 243Z" fill="${INK}"/><path d="m894 848 18-120 84-50 31 8 24 115Z" fill="${PAPER}"/><path d="m961 716 34-22 27 12 10 52-59-2Z" fill="#98c7c7"/><path d="m984 691 4-32 35-5 10 31" fill="${GOLD}"/><path d="m853 940 27-93 71-26 54 33-8 86Z" fill="${CORAL}"/></g>
+      <g fill="#486472" stroke="#8ba5ad" stroke-width="5"><path d="M469 535h274v225H469Z"/><path d="M746 419h249v155H746Z"/><path d="M1023 552h305v213h-305Z"/></g>
+      <path d="M489 557h233M508 557v178M605 557v178M766 443h209M790 443v106M882 443v106M1043 574h265M1068 574v166M1185 574v166" fill="none" stroke="#718b95" stroke-width="8"/>
+      <path id="fps-tracer" d="M0 0h100" fill="none" stroke="${GOLD}" stroke-width="8" stroke-linecap="round"/>
+      <g id="fps-tool">
+        <path d="M-257 250-130 23-56 40-67 250Z" fill="${CORAL}"/><path d="m-134 18 49-51 47 40-24 77-49-6Z" fill="${INK}"/>
+        <path d="M253 250 67 43-6 73 62 250Z" fill="#d5b68a"/><path d="m57 35-51-14-24 57 45 53 44-45Z" fill="${INK}"/>
+        <path d="M-71 213-68 42h132l56 171Z" fill="${INK}"/>
+        <path d="M-45-148h90V50L22 99h-67Z" fill="#81989f" stroke="${INK}" stroke-width="9"/>
+        <path d="M-17-145v-172h34v172" fill="#b8c8c9" stroke="${INK}" stroke-width="10"/>
+        <rect x="-28" y="-340" width="56" height="40" rx="7" fill="${INK}"/>
+        <path d="M-31-145v-53q0-12 12-12h38q12 0 12 12v53Z" fill="${INK}" stroke="${PAPER}" stroke-width="6"/><circle cy="-177" r="5" fill="${CORAL}"/>
+        <path d="m15 47 49-10 29 103-47 12Z" fill="${INK}"/><path d="M-46-111h24m-24 24h24m-24 24h24" stroke="${INK}" stroke-width="7"/>
+        <g id="fps-muzzle"><path d="m0-338-15-28-21 4 7-25-17-18 31-3 15-35 14 35 31 3-17 18 7 25-21-4Z" fill="${GOLD}"/><path d="m0-344-13-33 13-35 13 35Z" fill="${PAPER}"/></g>
+      </g>
       <g id="fps-crosshair" fill="none" stroke="${PAPER}" stroke-width="4"><path d="M-27-11v-16h16m22 0h16v16m0 22v16H11m-22 0h-16V11"/><circle r="3" fill="${PAPER}"/></g>
-      <rect x="1272" y="59" width="252" height="126" rx="18" fill="${INK}"/>
-      ${[0,1,2,3].map(n=>`<text id="fps-count-${n}" x="1490" y="124" text-anchor="end" fill="${PAPER}" font-size="52" font-weight="850">${n} / 3</text>`).join('')}
-      <text x="1485" y="161" text-anchor="end" fill="#a4c8d1" font-size="19" font-weight="650" letter-spacing="2">${zh ? "练练手" : "TARGET PRACTICE"}</text>
     </g>
     <g id="montage-platform">
       <rect width="1600" height="900" fill="#b9dbdc"/>
@@ -133,7 +151,19 @@ export function montageMarkup(zh) {
       <path id="moba-shot" d="M0 0h100" stroke="${PAPER}" stroke-width="27" stroke-linecap="round"/>
       <g id="moba-result" transform="translate(1402 772)"><circle r="56" fill="${INK}"/><text y="20" text-anchor="middle" font-size="58" font-weight="900" fill="${GOLD}">×3</text></g>
     </g>
-    <g id="montage-label"><rect x="60" y="801" width="235" height="47" rx="23.5" fill="${INK}"/>${["RPG", "FPS", "PLATFORMER", "RTS", "MOBA"].map((label,i)=>`<text id="montage-kind-${i}" x="177.5" y="832" text-anchor="middle" font-size="22" font-weight="750" letter-spacing="2" fill="${PAPER}">${label}</text>`).join('')}</g>`;
+    <g id="montage-fighting">
+      <rect width="1600" height="900" fill="#c6b7c7"/><circle cx="800" cy="298" r="213" fill="#f4d79e"/>
+      <path d="M0 486 205 337 428 486l232-144 292 144 205-115 443 115v183H0Z" fill="#879aa1"/>
+      <path d="M197 194h72v445h-72Zm1134 0h72v445h-72Z" fill="#526773"/><path d="M163 193h141v31H163Zm1131 0h141v31h-141Z" fill="#758996"/>
+      <path d="M0 647h1600v253H0Z" fill="#344c5a"/><path d="M0 647h1600M0 775h1600M431 647 240 900m937-253 190 253" fill="none" stroke="#728993" stroke-width="6"/>
+      <ellipse cx="611" cy="647" rx="137" ry="27" fill="${INK}" opacity=".25"/><ellipse cx="1080" cy="647" rx="166" ry="27" fill="${INK}" opacity=".25"/>
+      <rect x="146" y="75" width="542" height="37" rx="12" fill="${INK}"/><rect x="157" y="84" width="520" height="19" rx="8" fill="#83c4a5"/>
+      <rect x="912" y="75" width="542" height="37" rx="12" fill="${INK}"/><rect id="fighting-health" x="923" y="84" width="520" height="19" rx="8" fill="${CORAL}"/>
+      <path d="m777 61 46 0-23 39h24l-47 51 17-42h-20Z" fill="${INK}"/>
+      ${fighter('fighting-opponent',CORAL,-1)}${fighter('fighting-player','#83c4a5',1)}
+      <g id="fighting-guard"><path d="M0-55q35 51 0 105" fill="none" stroke="${PAPER}" stroke-width="13" stroke-linecap="round"/><path d="M18-38 39-48M22 0h29m-33 34 23 15" stroke="${GOLD}" stroke-width="8" stroke-linecap="round"/></g>
+      ${burst('fighting-hit',976,488)}
+    </g>`;
 }
 
 export function gameFrame(kind, t, rpgTime) {
@@ -163,22 +193,22 @@ export function gameFrame(kind, t, rpgTime) {
     const next = Math.min(count, 2),
       from = next ? targets[next - 1] : [405, 565];
     const aim = ease((t - (next ? shots[next - 1] + 0.09 : 0)) / 0.34);
-    position(
-      "fps-crosshair",
-      mix(from[0], targets[next][0], aim),
-      mix(from[1], targets[next][1], aim),
-    );
-    [0,1,2,3].forEach(n=>show('fps-count-'+n,n===count));
+    const aimPoint = from.map((n,i)=>mix(n,targets[next][i],aim));
+    position("fps-crosshair", ...aimPoint);
     const last = count ? t - shots[count - 1] : -1;
-    line("fps-tracer", [1010, 704], targets[Math.max(0, count - 1)]);
+    const kick = last >= 0 ? Math.sin(clamp(last/.18)*Math.PI) : 0;
+    const origin = [1180,810+18*kick], weaponScale=.85;
+    const angle = Math.atan2(aimPoint[1]-origin[1],aimPoint[0]-origin[0])+Math.PI/2;
+    transform('fps-tool',`translate(${origin[0]}px,${round(origin[1])}px) rotate(${round(angle*180/Math.PI-3*kick)}deg) scale(${weaponScale})`);
+    const muzzleAngle=angle-3*kick*Math.PI/180;
+    const muzzle=[origin[0]+340*weaponScale*Math.sin(muzzleAngle),origin[1]-340*weaponScale*Math.cos(muzzleAngle)];
+    line("fps-tracer", muzzle, targets[Math.max(0, count - 1)]);
     opacity("fps-tracer", last >= 0 ? 1 - last / 0.1 : 0);
-    position(
-      "fps-tool",
-      0,
-      last >= 0 ? 15 * Math.sin(clamp(last / 0.2) * Math.PI) : 0,
-    );
+    opacity('fps-muzzle',last>=0?1-last/.09:0);
     targets.forEach((_, i) => {
-      transform("fps-target-" + i, `scale(${round(1 - ease((t - shots[i]) / 0.15))})`);
+      const fall=ease((t-shots[i])/.18);
+      transform("fps-target-" + i, `translate(0px,${round(75*fall)}px) rotate(${round(-24*fall)}deg)`);
+      opacity('fps-target-'+i,1-fall);
       pulse("fps-hit-" + i, t - shots[i]);
     });
   }
@@ -278,9 +308,29 @@ export function gameFrame(kind, t, rpgTime) {
     show("moba-result", t >= 1.6);
   }
 
+  function fighting(t) {
+    const p=clamp(t/GAME_CUT), approach=ease(p/.18);
+    const jab=ease((p-.21)/.1)*(1-ease((p-.34)/.12));
+    const guard=ease((p-.27)/.035)*(1-ease((p-.39)/.08));
+    const counter=ease((p-.44)/.11)*(1-ease((p-.59)/.15));
+    const recoil=ease((p-.55)/.13);
+    const playerX=mix(460,610,approach)+55*counter, opponentX=mix(1140,965,approach)+185*recoil;
+    transform('fighting-player',`translate(${round(playerX)}px,452px) rotate(${round(-4*guard+6*counter)}deg)`);
+    transform('fighting-opponent',`translate(${round(opponentX)}px,452px) rotate(${round(22*recoil-4*jab)}deg)`);
+    position('fighting-player-glove',205*counter,-12*guard);
+    position('fighting-opponent-glove',145*jab,0);
+    line('fighting-player-arm',[57,71],[106+205*counter,4-12*guard]);
+    line('fighting-opponent-arm',[57,71],[106+145*jab,4]);
+    position('fighting-guard',716,448);
+    opacity('fighting-guard',guard);
+    pulse('fighting-hit',(p-.55)*GAME_CUT);
+    transform('fighting-health',`translate(1443px,0px) scaleX(${round(1-ease((p-.55)/.08))}) translate(-1443px,0px)`);
+    show('fighting-player-head-tv-open',p<.76);
+    show('fighting-player-head-tv-wink',p>=.76);
+  }
+
   if(kind === 'rpg') for(const [key,value] of Object.entries(poses(rpgTime))) transform('full-game-'+key,value);
-  else ({fps,platform,rts,moba})[kind](t);
-  GAME_KINDS.forEach((name,i)=>show('montage-kind-'+i,name===kind));
+  else ({fps,platform,rts,moba,fighting})[kind](t);
   return frame;
 }
 
@@ -292,9 +342,9 @@ export function createMontage(svg, bar) {
     const kind = GAME_KINDS[cut], local = (time-cut*bar)/bar*GAME_CUT;
     for(const [id,style] of Object.entries(gameFrame(kind,local,filmTime))) Object.assign(nodes.get(id).style,style);
     // The full film adds a friend's reaction; the standalone hero is just play.
-    const cheer = kind==='moba' && local>=1.7;
+    const cheerAt=GAME_CUT*.74;
+    const cheer = kind==='fighting' && local>=cheerAt;
     nodes.get('montage-cheer').style.opacity = cheer?'1':'0';
-    nodes.get('montage-label').style.opacity = cheer?'0':'1';
-    nodes.get('montage-cheer').style.transform = `translate(${round(-980*(1-ease((local-1.7)/(GAME_CUT/8))))}px,0px) translate(435px,670px) rotate(-8deg) translate(-435px,-670px)`;
+    nodes.get('montage-cheer').style.transform = `translate(${round(-980*(1-ease((local-cheerAt)/(GAME_CUT/8))))}px,0px) translate(435px,670px) rotate(-8deg) translate(-435px,-670px)`;
   };
 }

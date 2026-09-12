@@ -61,7 +61,7 @@
     seek(time);
     assert(scene().includes(`scene-${name}`), `The product sequence must show ${name}`);
   }
-  const {BEAT,BAR} = await import('./score.js');
+  const {BEAT,BAR,DOWNLOAD_AT,DURATION} = await import('./score.js');
   for (const [bar, feature] of [[19.5, 'free'], [20.5, 'p2p'], [21.5, 'encode'], [23, 'devices']]) {
     seek(bar * BAR);
     const visible = [...el('scene-features').children].filter(node => node.style.display !== 'none');
@@ -79,14 +79,10 @@
   seek(4.5 * BAR + BEAT / 2);
   const afterHandoff = el('ui-placement').transform.baseVal.consolidate().matrix;
   assert(['a','b','c','d','e','f'].every(key=>Math.abs(beforeHandoff[key]-afterHandoff[key])<.01), 'The App window must stay in place between opening and choosing a screen');
-  for (const [time, kind] of [
-    [20, 'rpg'],
-    [22, 'fps'],
-    [24.5, 'platform'],
-    [27, 'rts'],
-    [29, 'moba'],
-  ]) {
-    seek(time);
+  const gameKinds = ['rpg', 'fps', 'platform', 'rts', 'moba', 'fighting'];
+  const gameCut = 5 * BAR / gameKinds.length;
+  for (const [index, kind] of gameKinds.entries()) {
+    seek(8 * BAR + (index + .35) * gameCut);
     const shown = [...document.querySelectorAll('#scene-game > g[id^="montage-"]')].filter((g) => g.style.display !== 'none');
     assert(
       shown.some((g) => g.id === `montage-${kind}`),
@@ -94,18 +90,33 @@
     );
     assert(el('montage-cheer').style.opacity === '0', 'Applause must not precede the successful play');
   }
-  seek(29.5);
+  assert(!document.querySelector('#montage-label, [id^="montage-kind-"], [id^="fps-count-"]'), 'The games must read through their action without category or practice labels');
+  for (const [index, shot] of [.55, 1.1, 1.65].entries()) {
+    const at = local => seek(8 * BAR + gameCut * (1 + local / BAR));
+    at(shot - .04);
+    const aim = el('fps-tool').style.transform;
+    at(shot + .025);
+    assert(Number(el('fps-muzzle').style.opacity) > 0 && Number(el('fps-tracer').style.opacity) > 0 && el('fps-tool').style.transform !== aim, 'The foreground weapon must fire and recoil toward its crosshair');
+    at(shot + .19);
+    assert(el(`fps-target-${index}`).style.opacity === '0' && el('fps-muzzle').style.opacity === '0', 'Each shot must leave a clear hit after the flash');
+  }
+  seek(8 * BAR + 4.5 * gameCut);
   const health = () => new DOMMatrix(getComputedStyle(el('moba-health-0')).transform).a;
   assert(health() > 0 && el('montage-cheer').style.opacity === '0', 'The counterattack must leave time to see its target before the hit');
-  seek(30.4);
+  seek(8 * BAR + 4.85 * gameCut);
   assert(
     health() === 0 && el('moba-result').style.opacity === '1',
     'The skill shot must resolve before celebrating',
   );
-  assert(el('montage-cheer').style.opacity === '1', 'The reaction must follow the visible success');
+  seek(8 * BAR + 5.48 * gameCut);
+  const fighterHealth = () => new DOMMatrix(getComputedStyle(el('fighting-health')).transform).a;
+  assert(fighterHealth() > 0 && el('montage-cheer').style.opacity === '0', 'The guard must leave time to see the counterattack before the hit');
+  const finalHit = 8 * BAR + 5.85 * gameCut;
+  seek(finalHit);
+  assert(fighterHealth() === 0 && el('montage-cheer').style.opacity === '1', 'The reaction must follow the successful counterattack');
   const finishPose = gamePose();
   seek(22);
-  seek(30.4);
+  seek(finalHit);
   assert(gamePose() === finishPose, 'Montage effects must remain deterministic after seeking backwards');
   const product = el('product-ui');
   assert(product.sandbox.value === 'allow-scripts' && product.hasAttribute('inert'), 'The demonstration must remain an isolated, non-interactive frame');
@@ -121,13 +132,28 @@
   await settle();
   assert(position() < 1 && playing() && scene().includes('scene-hello'), 'Replay must start a fresh film');
   seek(Number(el('seek').max));
-  assert(!playing() && scene().includes('scene-end'), 'Seeking to the end must hold the ending');
-  assert(el('time').textContent === '1:11 / 1:11', 'The player must format durations longer than one minute');
+  assert(!playing() && scene().includes('scene-download'), 'Seeking to the end must hold the download card');
+  assert(el('time').textContent === '1:16 / 1:16', 'The player must format durations longer than one minute');
+  assert(!el('download').hidden && new URL(el('download').href).hash === '#download' && el('download').target === '_top', 'The final action must reach the homepage downloads, including from the embedded player');
+  const endingPose = () => el('scene-download').outerHTML;
+  const lastPose = endingPose();
+  seek(DOWNLOAD_AT-BEAT);
+  assert(el('download').hidden, 'Rewinding must hide the ending action');
+  seek(DURATION-BEAT/2);
+  assert(el('download-tv-wink').getAttribute('opacity') === '1' && Number(el('download-tv-sparkles').getAttribute('opacity')) > .9, 'The mascot must wink on the final beat');
+  seek(Number(el('seek').max));
+  assert(endingPose() === lastPose, 'The final pose must survive reverse seeking');
+  seek(DOWNLOAD_AT + BAR);
+  el('play').click();
+  el('download').addEventListener('click', event => event.preventDefault(), {once:true});
+  el('download').click();
+  assert(!playing() && media.paused, 'The ending action must pause playback before navigation');
+  seek(Number(el('seek').max));
 
   // The language switch must preserve the frame and keep return links current.
   const beforeLanguage = document.documentElement.lang;
   el('language').click();
-  assert(document.documentElement.lang !== beforeLanguage && scene().includes('scene-end'), 'Language changes must preserve playback position');
+  assert(document.documentElement.lang !== beforeLanguage && scene().includes('scene-download'), 'Language changes must preserve playback position');
   assert(
     [...document.querySelectorAll('[data-home]')].every((a) => new URL(a.href).searchParams.get('lang') === document.documentElement.lang),
     'Return links must carry the current language',
@@ -137,6 +163,15 @@
     [...document.querySelectorAll('[data-home]')].every((a) => new URL(a.href).searchParams.get('lang') === beforeLanguage),
     'Return links must update on subsequent language changes',
   );
+  const previousTheme = document.documentElement.dataset.theme;
+  document.documentElement.dataset.theme = 'dark';
+  el('language').click();
+  delete document.documentElement.dataset.theme;
+  el('language').click();
+  assert([...document.querySelectorAll('[data-home]')].every(a => !new URL(a.href).searchParams.has('theme')), 'Returning to system theme must clear the old explicit theme from links');
+  if (previousTheme) document.documentElement.dataset.theme = previousTheme;
+  el('language').click();
+  el('language').click();
 
   // Rotated primary copy needs a safe frame, not just an overflow-free page.
   for (let language = 0; language < 2; language++) {
@@ -148,7 +183,7 @@
       [55.5, '#devices-type text, #feature-devices > text'],
       [58.3, '#more-game > g > text'], [60, '#more-art-type text'],
       [61.8, '#more-photos-type text'], [63.6, '#more-movie-type text'],
-      [68, '#end-type text'],
+      [68, '#end-type text'], [71.5, '#download-type text, #download-url text'],
     ]) {
       seek(time);
       for (const text of document.querySelectorAll(selector)) {
@@ -166,7 +201,7 @@
       [40, '#scene-people'], [44, '#people-close'], [46.5, '#feature-free'],
       [48.8, '#feature-p2p'], [52, '#feature-encode'], [55.5, '#feature-devices'],
       [58.3, '#more-game'], [60, '#more-art'], [61.8, '#more-photos'],
-      [63.6, '#more-movie'], [68, '#end-label'],
+      [63.6, '#more-movie'], [68, '#end-label'], [71.5, '#scene-download'],
     ]) {
       seek(time);
       const label = document.querySelector(`${selector} > .scene-label`);
@@ -181,7 +216,7 @@
   }
 
   const bounds = (node) => {
-    const b = node.getBBox(), m = el('film-art').getCTM().inverse().multiply(node.getCTM());
+    const b = node.getBBox(), m = el('film-art').getScreenCTM().inverse().multiply(node.getScreenCTM());
     const points = [[b.x,b.y],[b.x+b.width,b.y],[b.x,b.y+b.height],[b.x+b.width,b.y+b.height]]
       .map(([x,y]) => new DOMPoint(x,y).matrixTransform(m));
     return {left:Math.min(...points.map(p=>p.x)),right:Math.max(...points.map(p=>p.x))};
@@ -191,12 +226,14 @@
     [52, 'encode-type', '#encode-picture, #encode-audience'],
     [55.5, 'devices-type', '#devices-laptop, #devices-tablet, #devices-phone'],
     [60, 'more-art-type', '#sketch-paper'],
-    [61.8, 'more-photos-type', '#more-photos-picture svg > g'],
+    // The card frames bound the visible crop; nested scenery extends behind it.
+    [61.8, 'more-photos-type', '#more-photos-picture > svg > g > rect'],
     [63.6, 'more-movie-type', '#movie-plane'],
+    [71.5, 'download-type', '#download-character'],
   ]) {
     seek(time);
     for (const subject of document.querySelectorAll(object))
-      assert(bounds(el(title)).right + 20 < bounds(subject).left, 'Scenario captions must leave room for their main object');
+      assert(bounds(el(title)).right + 20 < bounds(subject).left, `Scenario caption must leave room for its main object: ${title}`);
   }
   seek(48.8);
   const link = el('p2p-link'), length = link.getTotalLength();
@@ -401,7 +438,8 @@
       'touch-accessible fullscreen',
       'native audible seek/resume',
       'twenty viewers',
-      'end hold and minute formatting',
+      'download ending, final beat and minute formatting',
+      'download pause and preference round trip',
       'language round trip',
       'stale play rejection',
       'audio failure',

@@ -1,4 +1,5 @@
 import { createArt, DURATION } from './art.js';
+import { BEAT, DOWNLOAD_AT } from './score.js';
 import { mountBrands } from '../assets/brand.js';
 mountBrands();
 
@@ -57,6 +58,7 @@ function paint() {
   seek.value = String(current);
   seek.setAttribute('aria-valuetext', `${stamp(current)} / ${stamp(DURATION)}`);
   byId('time').textContent = `${stamp(current)} / ${stamp(DURATION)}`;
+  byId('download').hidden = !started || current < DOWNLOAD_AT + BEAT;
   if (playing && current >= DURATION) {
     pause();
   } else if (playing) {
@@ -133,6 +135,7 @@ function localize() {
     const url = new URL(link.getAttribute('href'), location.href);
     url.searchParams.set('lang', root.lang);
     if (root.dataset.theme) url.searchParams.set('theme', root.dataset.theme);
+    else url.searchParams.delete('theme');
     link.href = url.href;
   });
   byId('reduced-note').hidden = !reduceMotion.matches;
@@ -143,6 +146,7 @@ byId('start').addEventListener('click', () => { void play(true, true); byId('pla
 byId('start-muted').addEventListener('click', () => { void play(false, true); byId('play').focus({ preventScroll: true }); });
 byId('play').addEventListener('click', () => playing ? pause() : void play());
 byId('replay').addEventListener('click', () => void play(sound, true));
+byId('download').addEventListener('click', pause);
 byId('sound').addEventListener('click', toggleSound);
 seek.addEventListener('input', () => seekTo(Number(seek.value)));
 byId('language').addEventListener('click', () => {

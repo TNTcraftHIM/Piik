@@ -1,6 +1,6 @@
 # Piik film
 
-The homepage expands this optional, 71-second introduction in an iframe loaded
+The homepage expands this optional, 76-second introduction in an iframe loaded
 only on request. Closing it unloads playback; the standalone page remains useful
 for recording. Both entries use the same player. From the repository
 root, run `npm run build:website` and `npm run preview:website`, then open
@@ -9,7 +9,7 @@ prefix such as `/Piik/film/` also works; GitHub Pages needs no application serve
 
 `score.js` owns the 101 BPM beat/bar grid used by cuts and staged UI actions.
 `art.js` owns the original SVG artwork and seekable sequence; `../assets/games.js`
-owns the five original gameplay vignettes and their action/result sequence. `player.js`
+owns the six original gameplay vignettes and their action/result sequence. `player.js`
 owns playback, sound and controls. Audible playback follows the audio element's
 clock, including buffering. The host must support HTTP byte ranges for seeking;
 the Vite preview command does. Muted playback uses a monotonic clock and does not
@@ -48,7 +48,7 @@ giving a recorded sequence live-room state.
 
 [`../assets/game.js`](../assets/game.js) owns the original **LITTLE WANDER** RPG
 scene. The film and demonstration TV render it using the film clock.
-The film's five game vignettes share pure poses in `../assets/games.js`.
+The film's six game vignettes share pure poses in `../assets/games.js`.
 `../assets/activities.js` composes the homepage's RPG, drawing, photos and movie
 from shared artwork. Its standalone SVG embeds sampled CSS at five seconds per
 activity, and also serves as the README image. The build tool removes repeated
@@ -79,15 +79,17 @@ external fonts, analytics or new runtime dependencies are used.
 “[Funkorama](https://incompetech.com/music/royalty-free/index.html?Search=Search&isrc=USUAN1100474)”
 by Kevin MacLeod (incompetech.com), under
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
-The excerpt uses the opening 71.287129 seconds, fading out from 68.910891 seconds.
+The excerpt uses the opening 76.039604 seconds (32 bars), fading out over the
+last two beats from 74.851485 seconds. The download card closes the sequence;
+its link uses the homepage's platform download section.
 [The asset notice](./assets/NOTICE.txt) retains source, attribution and modification
 details. The music keeps its own license, separate from Piik's MIT license.
 
 To reproduce the audio edit from the linked original:
 
 ```sh
-ffmpeg -i Funkorama.mp3 -vn -t 71.287129 \
-  -af afade=t=out:st=68.910891:d=2.376238 \
+ffmpeg -i Funkorama.mp3 -vn -t 76.039604 \
+  -af afade=t=out:st=74.851485:d=1.188119 \
   -c:a libmp3lame -b:a 160k -map_metadata -1 funkorama.mp3
 ```
 

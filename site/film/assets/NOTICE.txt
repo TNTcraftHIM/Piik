@@ -7,7 +7,7 @@ Original track and attribution (verified 2026-09-12):
 https://incompetech.com/music/royalty-free/index.html?Search=Search&isrc=USUAN1100474
 https://incompetech.com/music/royalty-free/mp3-royaltyfree/Funkorama.mp3
 
-Piik uses the opening 71.29 seconds, with a fade-out from 68.91 seconds,
+Piik uses the opening 76.04 seconds, with a fade-out from 74.85 seconds,
 re-encoded as a 160 kbit/s MP3. No endorsement by the composer is implied.
 The music retains its CC BY 4.0 license; Piik's MIT license does not replace it.
 Keep attribution, the source/license links and this modification notice when

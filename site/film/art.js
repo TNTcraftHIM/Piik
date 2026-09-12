@@ -1,10 +1,10 @@
 // One seekable score, measured in musical bars. No scene owns a timer.
 import { gameMarkup, createGame } from '../assets/game.js';
 import { mascotMarkup } from '../assets/brand.js';
-import { montageMarkup, createMontage } from '../assets/games.js';
+import { GAME_KINDS, montageMarkup, createMontage } from '../assets/games.js';
 import { sketchMarkup, createSketch } from '../assets/sketch.js';
 import { photoMarkup, movieMarkup, moviePlanePose } from '../assets/activities.js';
-import { BEAT, BAR, DURATION } from './score.js';
+import { BEAT, BAR, DOWNLOAD_AT, DURATION } from './score.js';
 export { DURATION } from './score.js';
 
 const INK = '#203037';
@@ -133,7 +133,7 @@ export function createArt(svg, language, onUI = () => {}) {
   </g>
 
   <g id="scene-game">
-    ${montageMarkup(zh)}
+    ${montageMarkup()}
     <g id="montage-cheer" transform="rotate(-8 435 670)"><path d="M-70 552h945l-34 227H-105Z" fill="${YELLOW}"/>${text(63,736,say('NICE!','漂亮！'),zh?180:206)}</g>
   </g>
 
@@ -295,12 +295,12 @@ export function createArt(svg, language, onUI = () => {}) {
     <g id="more-photos">${field(INK)}
       <g id="more-photos-picture"><svg x="746" y="74" width="810" height="748" viewBox="100 0 1380 900">${photos}</svg></g>
       ${scenarioTitle('more-photos-type','PHOTO','TIME.','翻翻相册。',MINT)}
-      ${sceneLabel(say('REMEMBER / THERE’S A STORY IN EVERY PHOTO', '这张照片，还有个故事。'), PAPER)}
+      ${sceneLabel(say('PHOTO DUMP / SOMEONE STOLE THE SHOT.', '这位海鸥，戏有点多。'), PAPER)}
     </g>
     <g id="more-movie">${field('#324458')}
       <g id="more-movie-picture">${movieMarkup('movie-plane')}</g>
       ${scenarioTitle('more-movie-type','MOVIE','NIGHT.','看场电影。',PAPER)}
-      ${sceneLabel(say('WATCH / SAVE ME SOME POPCORN', '爆米花，分你一半。'), PAPER)}
+      ${sceneLabel(say('MOVIE NIGHT / THAT ESCALATED QUICKLY.', '好家伙，这也能起飞？'), PAPER)}
     </g>
   </g>
 
@@ -325,13 +325,29 @@ export function createArt(svg, language, onUI = () => {}) {
     </g></g>
     <g id="end-label">${sceneLabel(say('SCREEN SHARING FOR FRIENDS', '开个房间，叫朋友来。'), MINT)}</g>
     <g id="end-url">${text(1500, 799, 'piik.tv', 46, INK, 'text-anchor="end"')}${small(98, 802, say('FREE & OPEN SOURCE / GET PIIK', '免费开源 · 下载 PIIK'), PAPER)}</g>
-    <g id="end-credit">${rect(0, 846, 1600, 54, 0, PAPER)}${text(800, 869, 'Music: “Funkorama” — Kevin MacLeod · incompetech.com · CC BY 4.0 · edited excerpt', 15, INK, 'text-anchor="middle" style="letter-spacing:0;font-weight:450"')}${text(800, 890, 'creativecommons.org/licenses/by/4.0/', 14, INK, 'text-anchor="middle" style="letter-spacing:0;font-weight:450"')}</g>
+  </g>
+
+  <g id="scene-download">
+    ${field(INK)}<path d="M1190-80h500v1010H910Z" fill="${MINT}"/>
+    <g id="download-type" transform="rotate(-8 660 400)">
+      ${text(80,282,say('DOWNLOAD','现在'),zh?215:139,PAPER)}
+      ${text(75,501,say('NOW.','下载。'),zh?215:225,YELLOW)}
+    </g>
+    <g id="download-character"><g transform="translate(1260 362) rotate(10)">
+      ${circle(0,0,255,ORANGE)}${mascot('download-tv',0,0,17,PAPER)}
+    </g></g>
+    <g id="download-url">
+      ${text(90,705,'piik.tv',118,MINT)}
+      ${small(95,790,'Windows · macOS · Linux',PAPER)}
+    </g>
+    ${sceneLabel(say('PIIK / YOUR TURN', 'PIIK / 轮到你了'),MINT)}
+    <g id="download-credit">${rect(0,846,1600,54,0,PAPER)}${text(800,869,'Music: “Funkorama” — Kevin MacLeod · incompetech.com · CC BY 4.0 · edited excerpt',15,INK,'text-anchor="middle" style="letter-spacing:0;font-weight:450"')}${text(800,890,'creativecommons.org/licenses/by/4.0/',14,INK,'text-anchor="middle" style="letter-spacing:0;font-weight:450"')}</g>
   </g>`;
 
   const nodes = new Map(Array.from(svg.querySelectorAll('[id]'), (el) => [el.id, el]));
   const node = (id) => nodes.get(id);
   const drawGame = createGame(svg, 'card-game');
-  const drawMontage = createMontage(svg, BAR);
+  const drawMontage = createMontage(svg, 5 * BAR / GAME_KINDS.length);
   const drawSketch = createSketch(svg, 'film-sketch');
   const attr = (id, key, value) => node(id).setAttribute(key, String(value));
   const transform = (id, value) => attr(id, 'transform', value);
@@ -488,12 +504,25 @@ export function createArt(svg, language, onUI = () => {}) {
     slide('end-room', poster ? 1 : (t - 2 * BEAT) / BEAT, 600, 400);
     opacity('end-label', poster ? 1 : (t - BEAT) / (BEAT / 2));
     opacity('end-url', poster ? 1 : (t - 3 * BEAT) / (BEAT / 2));
-    opacity('end-credit', poster ? 0 : (t - 6 * BEAT) / BEAT);
     transform('end-echo', `translate(${poster ? 0 : -12 * t} 0) rotate(-12 1100 450)`);
     transform('end-tv', `rotate(${poster ? 0 : -6 * Math.sin(clamp((t - 2.8) / 1.1) * Math.PI)})`);
     transform('end-host', `rotate(${poster ? 0 : 4 * Math.sin(clamp((t - 2) / 1.1) * Math.PI)} 0 59)`);
     blink('end-host', poster ? 0 : t, 3.3);
     for (let i = 0; i < 3; i++) blink(`end-friend-${i}`, poster ? 0 : t, 4.1 + i * .42);
+  }
+
+  function download(t) {
+    slide('download-type',t/(BEAT/2),-1200,160,'rotate(-8 660 400)');
+    const arrive=pop(t/BEAT);
+    scaleAt('download-character',mix(.45,1,arrive),1260,362,mix(-22,0,arrive));
+    opacity('download-character',t/(BEAT/2));
+    slide('download-url',(t-BEAT/2)/BEAT,-780,0);
+    opacity('download-credit',(t-BEAT)/BEAT);
+    const wink=clamp((t-(DURATION-DOWNLOAD_AT-BEAT))/BEAT);
+    opacity('download-tv-open',wink>0?0:1);
+    opacity('download-tv-wink',wink>0?1:0);
+    opacity('download-tv-sparkles',Math.sin(wink*Math.PI));
+    transform('download-tv-sparkles',`translate(${wink*5} ${wink*-5})`);
   }
 
   const scenes = [
@@ -507,11 +536,12 @@ export function createArt(svg, language, onUI = () => {}) {
     { id: 'features', start: 19 * BAR, render: features },
     { id: 'more', start: 24 * BAR, render: more },
     { id: 'end', start: 27 * BAR, render: end },
+    { id: 'download', start: DOWNLOAD_AT, render: download },
   ];
   function render(time, poster = false) {
     const t = clamp(time, 0, DURATION);
     drawGame(poster ? 1.7 : t);
-    const index = poster ? scenes.length - 1 : scenes.findLastIndex((scene) => t >= scene.start);
+    const index = poster ? scenes.findIndex(scene => scene.id === 'end') : scenes.findLastIndex((scene) => t >= scene.start);
     const incoming = scenes[index];
     const local = poster ? 5 : t - incoming.start;
     // The shared preview fills the frame before the game; other edits use a

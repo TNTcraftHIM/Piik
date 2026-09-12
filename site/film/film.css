@@ -54,6 +54,8 @@ body:not([data-playing]) .play-icon { display:block; }
 .film-footer { display:flex; align-items:center; justify-content:space-between; gap:20px; padding:18px 14px; font-size:12px; color:var(--muted); }
 .film-footer p { margin:0; }
 .film-footer button { min-height:44px; font-size:12px; }
+#download { display:inline-flex; align-items:center; gap:4px; min-height:44px; font-weight:700; }
+.film-footer:has(#download:not([hidden])) p { display:none; }
 dialog { width:min(540px,calc(100% - 32px)); max-height:calc(100% - 48px); overflow:auto; border:1px solid var(--line); border-radius:24px; padding:32px; background:var(--paper); color:var(--ink); }
 dialog::backdrop { background:#14232b90; }
 dialog .close { position:absolute; right:12px; top:10px; width:44px; height:44px; font-size:28px; }
@@ -100,6 +102,7 @@ dialog p { font-size:13px; color:var(--muted); margin:0; }
 .embedded { background:transparent; }
 .embedded .masthead,.embedded .film-footer p { display:none; }
 .embedded .film-footer { justify-content:flex-end; padding:0 8px; }
+.embedded #download { margin-right:auto; }
 .embedded main { width:100%; max-width:none; }
 .embedded #player-status { font-size:11px; }
 
