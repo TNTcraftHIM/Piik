@@ -3782,42 +3782,12 @@ export function HostPage({
                   <span
                     className="lr-meter-cell"
                   >
-                    {vis ? (
-                      <span
-                        style={{ position: "relative", display: "inline-flex" }}
-                      >
-                        <Glyph name="speaker" size={16} />
-                        {details.hasAudio ? null : (
-                          <span
-                            aria-hidden="true"
-                            style={{
-                              position: "absolute",
-                              top: -3,
-                              bottom: -3,
-                              left: "50%",
-                              width: 2.5,
-                              borderRadius: 2,
-                              background: "currentColor",
-                              transform: "translateX(-50%) rotate(45deg)",
-                            }}
-                          />
-                        )}
-                        <span className="visually-hidden">
-                          {details.hasAudio
-                            ? t("host.capture.hasAudio")
-                            : t("host.capture.noAudio")}
-                        </span>
-                      </span>
-                    ) : (
-                      <>
-                        <Glyph name="speaker" size={16} />
-                        <b>
-                          {details.hasAudio
-                            ? t("host.capture.hasAudio")
-                            : t("host.capture.noAudio")}
-                        </b>
-                      </>
-                    )}
+                    <Glyph name={details.hasAudio ? "speaker" : "speakerOff"} size={16} />
+                    <b className={vis ? "visually-hidden" : undefined}>
+                      {details.hasAudio
+                        ? t("host.capture.hasAudio")
+                        : t("host.capture.noAudio")}
+                    </b>
                   </span>
                 </div>
               </div>

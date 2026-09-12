@@ -1,6 +1,6 @@
 # Versions And Compatibility
 
-Reviewed 2026-09-12. `v1.0.0` is the declared public compatibility baseline.
+Reviewed 2026-09-13. `v1.0.0` is the declared public compatibility baseline.
 App, Server and the embedded Web build share one product version, plus the full
 Git SHA for source provenance. [Status](../status.md) owns the current publication
 state; automatic publication follows the product-change boundary below.
@@ -109,6 +109,14 @@ The publisher records a full SHA in `target_commitish` and verifies actual tag
 identity separately. Stable update notices ignore prereleases.
 
 ## Automatic Publication
+
+Before a product-changing merge or manual run that can publish, present the
+planned version and complete Chinese/English release notes to the owner and
+obtain explicit authorization for that release. Implementation or UI acceptance
+does not authorize publication. Each later release needs fresh confirmation;
+previous release/deployment permission is not standing authority. Once a release
+is authorized, its packaging, mirror retries and matching deployments may proceed
+within that scope without asking again. Automation executes the approved release.
 
 After one-time activation, a complete squash PR merged to main runs the existing
 CI pipeline. `scripts/release-version.mjs` filters unreleased first-parent

@@ -163,7 +163,8 @@ html[data-theme="dark"] .lr-brand-sparkles { stroke: #f4c14d; }
     stroke-dashoffset: 0 !important;
   }
   .lr-brand-mark:is(.is-animated, .is-once) .lr-brand-eye-open,
-  .lr-brand-mark:is(.is-animated, .is-once) .lr-brand-sparkles {
+  .lr-brand-mark:is(.is-animated, .is-once) .lr-brand-sparkles,
+  .lr-brand-mark:is(.is-animated, .is-once) .lr-brand-sparkles > * {
     animation: none !important;
     opacity: 0 !important;
   }

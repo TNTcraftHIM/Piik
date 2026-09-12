@@ -2168,15 +2168,6 @@ export function ViewerPage({
                 failureCode === "ROOM_CLOSED"
               ? "room-not-found"
               : "warning";
-    const deniedIcon: GlyphName =
-      failureCode === "ROOM_NOT_FOUND" ||
-      failureCode === "ROOM_CLOSED"
-        ? "door"
-        : failureCode === "ROOM_ACCESS_DENIED"
-          ? "lock"
-          : failureCode === "ROOM_FULL"
-            ? "users"
-            : "alert";
     const deniedHintKey: CopyKey = codeOnlyDenied
       ? "viewer.hint.denied"
       : failureCode === "ROOM_NOT_FOUND" ||
@@ -2213,27 +2204,10 @@ export function ViewerPage({
             </div>
           ) : (
             <div className="lr-join-panel">
-              {vis ? (
-                <>
-                  <Comic kind={deniedComic} theme="paper" tone={viewerStatus.activity.tone} />
-                  <span className="visually-hidden" role="alert">
-                    {t(presentation.messageKey)} · {t(deniedHintKey)}
-                  </span>
-                </>
-              ) : (
-              <span
-                className="lr-tv-big"
-                style={{
-                  borderColor: "var(--ink)",
-                  color: "var(--ink)",
-                  background: "var(--paper)",
-                }}
-                role="img"
-                aria-label={t(presentation.messageKey)}
-              >
-                <Glyph name={deniedIcon} size={30} />
+              <Comic kind={deniedComic} theme="paper" tone={viewerStatus.activity.tone} />
+              <span className="visually-hidden" role="alert">
+                {t(presentation.messageKey)} · {t(deniedHintKey)}
               </span>
-              )}
               {vis ? null : (
                 <div className="lr-access-text">
                   <h1>{t(presentation.messageKey)}</h1>
@@ -2246,6 +2220,7 @@ export function ViewerPage({
                     icon="key"
                     cap="join.passwordAction"
                     title="join.passwordAction"
+                    hint={viewerPasswordExpanded ? "hint-collapse" : "hint-password"}
                     expanded={viewerPasswordExpanded}
                     controls="viewer-password-retry"
                     onClick={() => setViewerPasswordExpanded((current) => !current)}
@@ -2545,12 +2520,14 @@ export function ViewerPage({
                     <Btn
                       icon="check"
                       title="host.nameSave"
+                      hint="hint-rename"
                       type="submit"
                       disabled={displayNameDraft === displayName}
                     />
                     <Btn
                       icon="x"
                       title="host.nameCancel"
+                      hint="hint-close"
                       onClick={() => {
                         setDisplayNameDraft(displayName);
                         setDisplayNameError(false);

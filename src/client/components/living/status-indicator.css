@@ -10,6 +10,11 @@
   border-radius: 8px;
   vertical-align: middle;
 }
+button.lr-status-indicator {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
 .lr-status-indicator[data-tone="live"] { --status-colour: var(--live); }
 .lr-status-indicator[data-tone="busy"] { --status-colour: var(--action); }
 .lr-status-indicator[data-tone="warn"] { --status-colour: var(--warn); }

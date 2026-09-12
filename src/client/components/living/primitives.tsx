@@ -231,23 +231,23 @@ export function Pill({
 }) {
   const { vis } = useCopy();
   const wrapped = !vis || Boolean(comic);
+  const Trigger = wrapped ? "button" : "span";
   const body = (
-    <span
+    <Trigger
+      type={wrapped ? "button" : undefined}
       className={`lr-pill${tone ? ` is-${tone}` : ""}`}
-      role={alert ? "alert" : "status"}
-      // Hint-wrapped bodies must take keyboard focus, or the comic is
-      // unreachable for keyboard users (spans never match :focus-visible).
-      tabIndex={wrapped ? 0 : undefined}
     >
       <Glyph name={icon} size={16} />
       {vis ? <span className="visually-hidden">{label}</span> : <span>{label}</span>}
-    </span>
+    </Trigger>
   );
-  return wrapped ? (
-    <Tooltip kind={comic} tone={tooltipTone ?? (tone === "good" ? "live" : tone === "bad" ? "bad" : "warn")}
-      motion={tone === "good" ? "still" : undefined} text={vis ? undefined : label}>{body}</Tooltip>
-  ) : (
-    body
+  return (
+    <span role={alert ? "alert" : "status"}>
+      {wrapped ? (
+        <Tooltip toggleOnClick kind={comic} tone={tooltipTone ?? (tone === "good" ? "live" : tone === "bad" ? "bad" : "warn")}
+          motion={tone === "good" ? "still" : undefined} text={vis ? undefined : label}>{body}</Tooltip>
+      ) : body}
+    </span>
   );
 }
 
@@ -268,7 +268,7 @@ export function SwitchItem({
   label: string;
   /** Text modes: extra sentence in the tooltip. */
   note?: string;
-  /** Vis mode: 2-panel hint comic on hover/focus; native title stays off. */
+  /** Shared hint comic; native title stays off. */
   hint?: HintKind;
 }) {
   const { vis, t } = useCopy();

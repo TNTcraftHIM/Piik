@@ -143,11 +143,9 @@ export function CaptureSourcePicker({
               {refreshButton}
             </Tooltip>
           )}
-          {vis ? closeButton : (
-            <Tooltip text={t("common.cancel")} place="below" align="end">
-              {closeButton}
-            </Tooltip>
-          )}
+          <Tooltip kind="hint-close" text={vis ? undefined : t("common.cancel")} place="below" align="end">
+            {closeButton}
+          </Tooltip>
         </header>
 
         <div

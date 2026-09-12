@@ -23,26 +23,28 @@ export function LedStrip({
 }) {
   const { vis } = useCopy();
   const wrapped = !vis || comic;
+  const Trigger = wrapped ? "button" : "span";
   const strip = (
-    <span
+    <Trigger
+      type={wrapped ? "button" : undefined}
       className="lr-leds"
       data-state={state}
-      role="status"
       aria-label={label}
-      tabIndex={wrapped ? 0 : undefined}
     >
       <i />
       <i />
       <i />
       {vis ? null : <span className="lr-leds-label">{label}</span>}
-    </span>
+    </Trigger>
   );
-  return wrapped ? (
-    <Tooltip kind={comic} tone={state} text={vis ? undefined : label} place="below" align="start">
-      {strip}
-    </Tooltip>
-  ) : (
-    strip
+  return (
+    <span role="status">
+      {wrapped ? (
+        <Tooltip toggleOnClick kind={comic} tone={state} text={vis ? undefined : label} place="below" align="start">
+          {strip}
+        </Tooltip>
+      ) : strip}
+    </span>
   );
 }
 

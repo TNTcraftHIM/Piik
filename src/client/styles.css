@@ -134,6 +134,7 @@ ul { margin: 0; padding: 0; list-style: none; }
   gap: 7px;
   align-items: center;
   padding: 8px 12px;
+  border: 0;
   border-radius: 999px;
   background: var(--wall-2);
 }
@@ -1732,8 +1733,8 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
    explanation focus instead. Enter is delayed ~120ms, exit is immediate. Under
    prefers-reduced-motion the global block collapses the transition to instant
    and the comic's own RM block pins its final frame. */
-/* Visibility is three-channel state owned by Tooltip: fine-pointer hover,
-   keyboard focus-visible, and Material-style touch long-press. */
+/* Tooltip owns hover, keyboard focus and press. Help buttons toggle on tap;
+   action controls retain long-press guidance. */
 .lr-comic-tip-wrap { position: relative; display: inline-flex; }
 .lr-comic-tip-wrap.is-disabled-trigger > :disabled { pointer-events: none; }
 .lr-comic-tip {
@@ -1826,7 +1827,7 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
   }
 }
 
-/* channels 2+3: keyboard focus-visible and touch long-press */
+/* Keyboard focus and click/long-press guidance. */
 .lr-comic-tip-wrap.is-focus-open .lr-comic-tip,
 .lr-comic-tip-wrap.is-tip-open .lr-comic-tip {
   opacity: 1;

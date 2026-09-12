@@ -74,8 +74,12 @@ schema field. The user settings are:
 
 | Setting | Contract |
 | --- | --- |
-| `site` | Saved Piik Site origin; omit it for Local mode. The launcher or `--site` updates it. |
+| `site` | Saved Piik Site origin. The launcher or `--site` updates it. |
 | `localAccessPassword` | Empty by default. Optional password for the App's Local room authority, with the same exact-match behavior as `SITE_ACCESS_PASSWORD`. It is separate from a hosted site's password. |
+
+The launcher preselects a saved Site when present; otherwise it preselects the
+public invitation link. Selecting a mode does not start it: the user confirms
+with the launch button. Local mode remains available for the same network.
 
 Command-line options select entry and local runtime behavior:
 

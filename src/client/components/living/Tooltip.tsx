@@ -1,8 +1,8 @@
 // Shared tooltip: the same comic in every mode, with a localized caption in
-// text modes. Literal names and values can stand alone. Visibility has three channels:
-// hover on fine pointers, keyboard focus via :has(:focus-visible), and the
-// Material long-press on touch (500ms hold → open, ~1.5s after release →
-// auto-hide, context menu and the trailing synthetic click suppressed).
+// text modes. Literal names and values can stand alone. Hover and keyboard
+// focus show guidance; help-only controls also toggle it on click/tap.
+// Action controls keep their click and use a 500ms touch hold for guidance,
+// hiding 1.5s after release and suppressing the trailing synthetic click.
 // Alignment: the align prop is a desktop-tuned preference; whenever a show
 // channel opens, the trigger's live viewport position is measured and
 // start/center/end is re-picked so the panel never clips off-screen (rows
@@ -45,6 +45,7 @@ export function Tooltip({
   className,
   place = "above",
   align = "center",
+  toggleOnClick = false,
   children,
 }: {
   kind?: ComicKind | HintKind;
@@ -56,6 +57,8 @@ export function Tooltip({
   place?: "above" | "below";
   /** Preferred alignment; re-picked at open time if it would clip off-screen. */
   align?: Align;
+  /** For help-only buttons; action controls keep click and touch long-press. */
+  toggleOnClick?: boolean;
   children: ReactNode;
 }) {
   const defaults = getComicPresentation(kind);
@@ -71,17 +74,19 @@ export function Tooltip({
   const pressPoint = useRef<{ x: number; y: number } | null>(null);
   const [hoverOpen, setHoverOpen] = useState(false);
   const [focusOpen, setFocusOpen] = useState(false);
-  const [touchOpen, setTouchOpen] = useState(false);
+  const [pressOpen, setPressOpen] = useState(false);
   const [panelMounted, setPanelMounted] = useState(false);
   const [position, setPosition] = useState({ left: 0, top: 0, caret: 0, below: place === "below" });
   // True while the current gesture is a touch, so contextmenu can tell a
   // long-press from a mouse right-click without reading vendor event fields.
   const touchGesture = useRef(false);
-  const interactionOpen = hoverOpen || focusOpen || touchOpen;
+  const interactionOpen = hoverOpen || focusOpen || pressOpen;
   const trigger = isValidElement<{
       disabled?: boolean;
       "aria-label"?: string;
       "aria-describedby"?: string;
+      "aria-expanded"?: boolean;
+      "aria-controls"?: string;
       label?: string;
       title?: string;
     }>(children) ? children : null;
@@ -194,7 +199,7 @@ export function Tooltip({
     const dismiss = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       setHoverOpen(false);
-      setTouchOpen(false);
+      setPressOpen(false);
       setFocusOpen(false);
     };
     document.addEventListener("keydown", dismiss);
@@ -226,17 +231,19 @@ export function Tooltip({
     [],
   );
 
-  // While long-press-open, any tap elsewhere dismisses (WCAG dismissible).
+  // A click/touch-open hint stays until dismissed or focus leaves its trigger.
   useEffect(() => {
-    if (!touchOpen) return;
+    if (!pressOpen) return;
     const dismiss = (event: PointerEvent) => {
       if (!wrapRef.current?.contains(event.target as Node)) {
-        setTouchOpen(false);
+        setPressOpen(false);
+        setHoverOpen(false);
+        setFocusOpen(false);
       }
     };
     document.addEventListener("pointerdown", dismiss);
     return () => document.removeEventListener("pointerdown", dismiss);
-  }, [touchOpen]);
+  }, [pressOpen]);
 
   const cancelPress = () => {
     if (pressTimer.current !== null) {
@@ -249,7 +256,7 @@ export function Tooltip({
   return (
     <span
       ref={wrapRef}
-      className={`lr-comic-tip-wrap${className ? ` ${className}` : ""}${disabledTrigger ? " is-disabled-trigger" : ""}${hoverOpen ? " is-hover-open" : ""}${focusOpen ? " is-focus-open" : ""}${touchOpen ? " is-tip-open" : ""}`}
+      className={`lr-comic-tip-wrap${className ? ` ${className}` : ""}${disabledTrigger ? " is-disabled-trigger" : ""}${hoverOpen ? " is-hover-open" : ""}${focusOpen ? " is-focus-open" : ""}${pressOpen ? " is-tip-open" : ""}`}
       tabIndex={disabledTrigger ? 0 : undefined}
       aria-label={disabledTriggerLabel}
       aria-describedby={disabledTrigger && text && interactionOpen ? tooltipId : undefined}
@@ -273,6 +280,7 @@ export function Tooltip({
       onBlur={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
           setFocusOpen(false);
+          if (toggleOnClick) setPressOpen(false);
         }
       }}
       onPointerDown={(event) => {
@@ -282,13 +290,14 @@ export function Tooltip({
         // completed long-press. A later touch starts a new, actionable gesture.
         longPressed.current = false;
         cancelPress();
+        if (toggleOnClick) return;
         pressPoint.current = { x: event.clientX, y: event.clientY };
         pressTimer.current = window.setTimeout(() => {
           pressTimer.current = null;
           longPressed.current = true;
           mountPanel();
           pickAlign();
-          setTouchOpen(true);
+          setPressOpen(true);
         }, LONG_PRESS_MS);
       }}
       onPointerUp={() => {
@@ -299,7 +308,7 @@ export function Tooltip({
           hideTimer.current = window.setTimeout(() => {
             hideTimer.current = null;
             longPressed.current = false;
-            setTouchOpen(false);
+            setPressOpen(false);
           }, TOUCH_HIDE_MS);
         }
       }}
@@ -311,7 +320,7 @@ export function Tooltip({
           window.clearTimeout(hideTimer.current);
           hideTimer.current = null;
         }
-        setTouchOpen(false);
+        setPressOpen(false);
       }}
       onPointerMove={(event) => {
         // Only a real drag (scroll intent) cancels the hold — Chrome emits
@@ -345,6 +354,18 @@ export function Tooltip({
           event.stopPropagation();
         }
       }}
+      onClick={(event) => {
+        if (!toggleOnClick || disabledTrigger || tipRef.current?.contains(event.target as Node)) return;
+        if (pressOpen) {
+          setPressOpen(false);
+          setHoverOpen(false);
+          setFocusOpen(false);
+        } else {
+          mountPanel();
+          pickAlign();
+          setPressOpen(true);
+        }
+      }}
       onKeyDown={(event) => {
         if (event.key !== "Escape" && (event.target as HTMLElement).matches(":focus-visible")) {
           mountPanel();
@@ -352,8 +373,10 @@ export function Tooltip({
         }
       }}
     >
-      {trigger && text ? cloneElement(trigger, {
+      {trigger && (text || toggleOnClick) ? cloneElement(trigger, {
         "aria-describedby": [trigger.props["aria-describedby"], interactionOpen ? tooltipId : undefined].filter(Boolean).join(" ") || undefined,
+        "aria-expanded": toggleOnClick ? interactionOpen : trigger.props["aria-expanded"],
+        "aria-controls": toggleOnClick ? tooltipId : trigger.props["aria-controls"],
       }) : children}
       <span ref={tipRef} id={tooltipId} popover="manual"
         data-tone={resolvedTone}

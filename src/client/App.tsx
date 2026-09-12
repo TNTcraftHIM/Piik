@@ -24,7 +24,7 @@ import { AppHeader } from "./components/living/Header";
 import { BrandLoader } from "./components/living/BrandMark";
 import { Btn, Pill } from "./components/living/primitives";
 import { Comic, type ComicKind } from "./components/living/Comic";
-import { Glyph, type GlyphName } from "./ui/icons";
+import { Glyph } from "./ui/icons";
 import { setCopy, useCopy } from "./ui/copy";
 import { initTheme } from "./ui/theme";
 import { installBrowserDebug } from "./lib/debug";
@@ -132,7 +132,6 @@ class RouteBoundary extends Component<
   render(): ReactNode {
     return this.state.failed ? (
       <StaticRoute
-        icon="alert"
         comic="warning"
         titleKey="gate.unavailableRoute"
         action="reload"
@@ -177,14 +176,13 @@ function AppRoute() {
   }
   return appRoute.kind === "malformed-room" ? (
     <StaticRoute
-      icon="door"
       comic="room-not-found"
       titleKey="gate.malformed"
       hintKey="gate.malformedHint"
       action="join"
     />
   ) : (
-    <StaticRoute icon="alert" comic="warning" titleKey="gate.unavailableRoute" />
+    <StaticRoute comic="warning" titleKey="gate.unavailableRoute" />
   );
 }
 
@@ -215,13 +213,11 @@ function RouteLoader() {
 }
 
 function StaticRoute({
-  icon,
   comic,
   titleKey,
   hintKey,
   action,
 }: {
-  icon: GlyphName;
   comic: ComicKind;
   titleKey: "gate.malformed" | "gate.unavailableRoute";
   hintKey?: "gate.malformedHint";
@@ -233,15 +229,7 @@ function StaticRoute({
       <AppHeader />
       <main className="lr-join">
         <div className="lr-join-panel">
-          {vis ? (
-            // The scene states this exact situation, so the meaning needs no
-            // hover: a tooltip trigger would leave it pointer-only.
-            <Comic kind={comic} theme="paper" />
-          ) : (
-            <span className="lr-tv-big" style={{ borderColor: "var(--ink)", color: "var(--ink)", background: "var(--paper)" }}>
-              <Glyph name={icon} size={30} />
-            </span>
-          )}
+          <Comic kind={comic} theme="paper" />
           {vis ? null : (
             <div className="lr-access-text">
               <h1>{t(titleKey)}</h1>

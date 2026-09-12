@@ -168,6 +168,7 @@ export function LauncherForm({
         cap="client.launch.go"
         tone="primary"
         type="submit"
+        hint={MODES.find((choice) => choice.mode === mode)?.comic}
         disabled={mode === "site" && !site.trim()}
       />
     </form>

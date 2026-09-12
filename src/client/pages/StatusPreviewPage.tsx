@@ -166,7 +166,7 @@ export function StatusPreviewPage() {
           </div>
         </section>
         <section className="sp-catalog">
-          <header><h2>图标状态词典</h2><p>一个图标表达一件事。悬停、键盘聚焦或长按查看对应文字或漫画。</p></header>
+          <header><h2>图标状态词典</h2><p>一个图标表达一件事。悬停、键盘聚焦或点击查看对应图解；再次点击或点外部关闭。</p></header>
           <div className="sp-catalog-grid">
             {Object.entries(STATUS_CATALOG).map(([key, item]) => <article key={key}>
               <StatusIndicator status={item} /><span>{t(item.labelKey)}</span><code>{key}</code>

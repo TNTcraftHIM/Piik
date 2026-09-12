@@ -39,7 +39,13 @@ order and interaction ownership consistent across languages, themes and viewport
 sizes. Reflow or bounded scrolling must not hide a primary action, truncate an
 essential value, overlap controls or change meaning.
 
-Tooltips and state overlays reuse the same illustrative scene in every mode.
+Help-only indicators toggle their guidance on click or tap and dismiss on a
+second activation, outside tap, Escape or focus leaving. Action controls keep
+their direct click action and offer touch guidance on long-press. `Tooltip`
+owns both interactions; pages do not add their own open state or timers.
+
+Tooltips, state overlays and entry/error pages reuse the same illustrative scene
+in every mode.
 Chinese and English add a concise caption beneath it; pure-visual mode keeps the
 scene and its playful pictograms as an explicit alternative. Names, addresses and other literal
 values without a corresponding scene remain text. Illustration and caption

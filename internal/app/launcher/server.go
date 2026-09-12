@@ -207,7 +207,7 @@ func (server *Server) handleState(response http.ResponseWriter, request *http.Re
 			if server.site != "" {
 				return ModeSite
 			}
-			return ModeLocal
+			return ModeLink
 		}(),
 	})
 }

@@ -27,7 +27,7 @@ fix.
 2. Update only the single durable owner for changed semantics and any materially changed current snapshot. If semantics remain disputed, record a hold and stop dependent work.
 3. Implement and run repository hygiene, `npm run check`, the relevant browser/network gates, and review in proportion to the whole acceptance boundary.
 4. Keep accepted truth checkpoints and dependent candidates on branches until the phase is complete. Rebase or rebuild a retained candidate from exact `main` only when starting a new phase, preserving main's owning truth on conflicts and transplanting only approved scoped code, tests, and new facts.
-5. Open one pull request for the complete phase, resolve required review/checks, squash-merge it once, deploy that merged revision when authorized, perform scoped postflight, then audit references and reparse safety before cleanup.
+5. Open one pull request for the complete phase, resolve required review/checks, meet the [release approval boundary](./docs/reference/versioning.md#automatic-publication) before a publishing merge, squash-merge it once, deploy that merged revision when authorized, perform scoped postflight, then audit references and reparse safety before cleanup.
 
 One coherent phase should leave one meaningful squash commit on `main`. Include
 its source, tests, owned semantic documentation, and materially changed status

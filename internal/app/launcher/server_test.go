@@ -96,10 +96,11 @@ func TestLauncherIncludesTheInjectedBuildVersionAndRevision(t *testing.T) {
 		Version       string `json:"version"`
 		Revision      string `json:"revision"`
 		PackageTarget string `json:"packageTarget"`
+		DefaultMode   Mode   `json:"defaultMode"`
 	}
 	if response.StatusCode != http.StatusOK || json.NewDecoder(response.Body).Decode(&state) != nil ||
 		state.Version != version || state.Revision != revision ||
-		state.PackageTarget != runtime.GOOS+"-"+runtime.GOARCH {
+		state.PackageTarget != runtime.GOOS+"-"+runtime.GOARCH || state.DefaultMode != ModeLink {
 		t.Fatalf("launcher build = %d, %+v", response.StatusCode, state)
 	}
 }
