@@ -97,7 +97,6 @@ func serve(debug bool) (returnedErr error) {
 		defer func() {
 			stopExport()
 			_ = dependencyLog.Close()
-			logger.Info("piik-server", "event", "stopped", "failed", returnedErr != nil, diagnostics.Error(returnedErr))
 			returnedErr = errors.Join(returnedErr, exportServerDiagnostics(recorder), recorder.Close())
 			slog.SetDefault(previous)
 			log.SetOutput(previousWriter)
@@ -105,6 +104,9 @@ func serve(debug bool) (returnedErr error) {
 		}()
 		logger.Info("piik-server", "event", "start", "version", BuildVersion, "revision", BuildRevision)
 	}
+	defer func() {
+		logger.Info("piik-server", "event", "stopped", "failed", returnedErr != nil, diagnostics.Error(returnedErr))
+	}()
 	configuration, err := config.Load(environment())
 	if err != nil {
 		return err
@@ -132,11 +134,26 @@ func serve(debug bool) (returnedErr error) {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Piik %s (%s) is listening on %s:%d; public URL %s\n",
-		BuildVersion, BuildRevision, configuration.ListenHost, port, config.Origin(configuration.PublicBaseURL))
+	logger.Info("Piik server is listening", "event", "ready", "version", BuildVersion, "revision", BuildRevision,
+		"host", configuration.ListenHost, "port", port, "publicUrl", config.Origin(configuration.PublicBaseURL),
+		"sqlite", configuration.RoomDatabasePath != "", "siteAccessProtected", configuration.SiteAccessPassword != "",
+		"sfu", configuration.SFU != nil, "natPrediction", configuration.NATPredictionEnabled)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
+	// One bounded background lookup never delays serving. Join it before closing
+	// diagnostic outputs so shutdown cannot leave a late writer behind.
+	releaseChecked := make(chan struct{})
+	go func() {
+		defer close(releaseChecked)
+		result := checkRelease(ctx, BuildVersion, BuildRevision, defaultReleaseAPIURL, os.Getenv("GITHUB_TOKEN"), mirrorReleaseAPIURL)
+		if ctx.Err() == nil {
+			logReleaseNotice(logger, result)
+		}
+	}()
+	defer func() {
+		stop()
+		<-releaseChecked
+	}()
 	<-ctx.Done()
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()

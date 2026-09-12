@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -105,6 +106,28 @@ func checkRelease(ctx context.Context, currentVersion, currentRevision, apiURL, 
 		}
 	}
 	return result
+}
+
+// Routine startup only announces actionable release choices. An unavailable
+// provider is not a server failure, and never changes the running installation.
+func logReleaseNotice(logger *slog.Logger, result releaseResult) {
+	var message string
+	switch result.Status {
+	case statusUpdateAvailable:
+		message = "A newer Piik release is available"
+	case statusDifferentBuild:
+		message = "This Piik build differs from the official release"
+	case statusOfficialRelease:
+		message = "An official Piik release is available"
+	default:
+		return
+	}
+	current := "development"
+	if result.CurrentVersion != nil {
+		current = *result.CurrentVersion
+	}
+	logger.Info(message, "event", "release-check", "status", result.Status,
+		"currentVersion", current, "latestVersion", *result.LatestVersion, "releaseUrl", *result.ReleaseURL)
 }
 
 func fetchLatestRelease(ctx context.Context, apiURL, token string, mirror bool) (version, revision, releaseURL string, ok bool) {

@@ -31,6 +31,14 @@ history. A parked idea is not implementation authority.
 Keep implementation on the existing phase branch. Main and production stay
 unchanged until the related acceptance and delivery actions are complete.
 
+## Next: Website Intro
+
+After the release preflight, prepare a separate worktree and creative handoff for
+a cinematic website introduction that can also be recorded as a promotional
+film. Keep Piik's playful visual identity, Pages hosting, optional licensed music
+and useful homepage access. The handoff should leave room for independent art
+direction; the current task records the idea without implementing it.
+
 ## Next: P2P Connection And Feedback Review
 
 After the current phase, measure connection success, time to first picture and

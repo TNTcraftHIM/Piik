@@ -65,7 +65,6 @@ export const zh = {
   "welcome.seats": "二十个座位，凑一场热闹。",
 
   "client.launch.title": "打开 Piik",
-  "client.launch.hint": "朋友从哪里加入？选一种方式开始。",
   "client.launch.local": "本地房间",
   "client.launch.localHint": "同一局域网内使用",
   "client.launch.link": "公网邀请",

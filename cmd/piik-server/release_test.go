@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -20,6 +21,35 @@ const (
 	latestReleaseURL = "https://github.com/TNTcraftHIM/Piik/releases/tag/" + latestVersion
 	latestRelease    = `{"tag_name":"` + latestVersion + `","html_url":"` + latestReleaseURL + `","target_commitish":"` + latestRevision + `"}`
 )
+
+func TestReleaseNoticeUsesOperatorLogsOnlyForAvailableChoices(t *testing.T) {
+	for _, status := range []string{statusUpdateAvailable, statusDifferentBuild, statusOfficialRelease, statusUpToDate, statusUnavailable} {
+		t.Run(status, func(t *testing.T) {
+			var output bytes.Buffer
+			version, releaseURL := latestVersion, latestReleaseURL
+			logReleaseNotice(slog.New(slog.NewJSONHandler(&output, nil)), releaseResult{
+				Status: status, LatestVersion: &version, ReleaseURL: &releaseURL,
+			})
+			if status == statusUpToDate || status == statusUnavailable {
+				if output.Len() != 0 {
+					t.Fatalf("non-actionable check produced a notice: %s", output.String())
+				}
+				return
+			}
+			var entry map[string]any
+			if err := json.Unmarshal(output.Bytes(), &entry); err != nil {
+				t.Fatal(err)
+			}
+			if entry["status"] != status || entry["currentVersion"] != "development" ||
+				entry["latestVersion"] != latestVersion || entry["releaseUrl"] != latestReleaseURL || entry["level"] != "INFO" {
+				t.Fatalf("release notice lost its version or download action: %v", entry)
+			}
+			if status == statusDifferentBuild && strings.Contains(entry["msg"].(string), "newer") {
+				t.Fatal("SHA inequality was presented as release ordering")
+			}
+		})
+	}
+}
 
 func TestParseReleaseMetadataAcceptsOnlyTheStrictReleaseIdentity(t *testing.T) {
 	tagged := func(version, page string) string {

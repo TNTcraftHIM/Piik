@@ -93,6 +93,10 @@ the shared Web UI, not through Server environment variables or App JSON.
 
 ## Diagnostics
 
+Normal Server logs record startup identity, listener and enabled services,
+unexpected failures, orderly shutdown and any available release found by the
+single background startup check. Detailed room/ICE/media traces require Debug.
+
 Diagnostics are local and opt-in. Enable them **before** reproducing the problem:
 
 | Surface | Enable | Export |
@@ -100,6 +104,11 @@ Diagnostics are local and opt-in. Enable them **before** reproducing the problem
 | App | Start with `--debug` or `PIIK_DEBUG=client` | Press `D` in the terminal for a ZIP |
 | Browser Host/Viewer | Add `?debug=1` to the page URL, before any invitation fragment | Use the download button beside language/theme controls |
 | Hosted Server | Start with `--debug`, `PIIK_DEBUG=server` or `PIIK_DEBUG=route` | On Unix, `kill -USR1 <pid>`; also exported at orderly shutdown |
+
+Server Debug is controlled by its startup environment or CLI, never by a remote
+page or room role. Browser `?debug=1` only enables that page's local collection;
+it cannot change Server logging or download Server reports. The Server exposes
+no HTTP diagnostic export or pprof endpoint.
 
 App/Server ZIP and Browser JSON reports are separate: when investigating
 Browser/App cooperation, include both from the same reproduction. Neither

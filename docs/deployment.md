@@ -134,6 +134,10 @@ An operator can perform the corresponding read-only Server check:
 bash deploy/check-release.sh
 ```
 
+The Server also checks once in the background after startup and logs an available
+release with its download URL. It does not delay startup, periodically poll,
+notify room participants or install anything.
+
 The script runs the deployed binary's `--check-release`, using that binary's
 injected identity, and prints one JSON result with versions, available source
 SHAs and the release URL. Exit `0` means no newer/different official build,

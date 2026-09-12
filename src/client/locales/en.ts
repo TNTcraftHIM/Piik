@@ -67,7 +67,6 @@ export const en: Record<CopyKey, string> = {
   "welcome.seats": "Twenty seats. Plenty of stories.",
 
   "client.launch.title": "Open Piik",
-  "client.launch.hint": "Choose how to connect this time",
   "client.launch.local": "Local room",
   "client.launch.localHint": "Use on the same local network",
   "client.launch.link": "Public invite",

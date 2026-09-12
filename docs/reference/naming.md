@@ -46,6 +46,9 @@ in the welcome or illustration caption. Do not soften a failure into a joke,
 invent connection progress or promise guaranteed connectivity or absolute privacy.
 Screen sharing includes games, creative work and showing a useful discovery.
 
+Operational pages omit introductory sentences that repeat their controls.
+Helper text should explain a meaningful choice or prevent an error.
+
 Opening lines are original, brief nods to game and movie conventions. Keep a
 small bilingual set without a quotation service or attribution to real works.
 Avoid copying recognizable dialogue, catchphrases or an existing brand's voice.

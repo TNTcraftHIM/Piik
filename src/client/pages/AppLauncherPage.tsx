@@ -151,6 +151,7 @@ export function AppLauncherPage() {
       <span className={vis ? "visually-hidden" : undefined}>
         {updateText}
       </span>
+      {vis && <span aria-hidden="true">{update.version}</span>}
     </a>
   ) : null;
 
@@ -194,10 +195,9 @@ export function AppLauncherPage() {
           <form className="lr-client-launch-panel" onSubmit={launch}>
             <BrandMark size={68} motion="once" />
             <WelcomeLine />
-            <header className={vis ? "visually-hidden" : "lr-client-launch-copy"}>
-              <h1>{t("client.launch.title")}</h1>
-              <p>{t("client.launch.hint")}</p>
-            </header>
+            <h1 className={vis ? "visually-hidden" : "lr-client-launch-title"}>
+              {t("client.launch.title")}
+            </h1>
 
             {updateLink && (vis ? updateLink : (
               <Tooltip text={updateText}>{updateLink}</Tooltip>
