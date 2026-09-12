@@ -32,9 +32,8 @@ remove.
    and exact direct/peer-relayed evidence sources.
 
 These are structural simplifications, not reproduced functional failures.
-The [audit reconciliation](./backend-audit-1b01048.md) separates verified fixes
-from disputed recommendations. Its external staged plan is not an instruction
-to perform extractions for their own sake.
+The [engineering reference](../reference/engineering.md#ablation-and-review)
+requires a concrete ownership gain before further extraction.
 
 ## Product Choice
 

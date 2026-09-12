@@ -1,7 +1,7 @@
 # Public introduction
 
-Status: README rewrite and website refinement authorized, 2026-09-11;
-local drafts remain subject to owner review.
+This file owns the website and README content structure. The
+[visual language](./visual-language.md) owns their shared illustration and motion.
 
 ## One story, three readers
 
@@ -29,7 +29,7 @@ Use the [shared visual language](./visual-language.md) for cast, objects,
 accessible interaction and motion. This document owns the website's editorial
 layout and introduction, not a separate product-status vocabulary.
 
-Use the existing mint walls, dark outlines, warm orange/yellow sofa and curious TV
+Use mint walls, clear control edges, a warm orange/yellow sofa and the curious TV
 mascot. The site is a welcoming room, not a monitoring dashboard. Keep one
 primary action, native navigation and short instructions. English is the first
 view with an explicit Chinese choice; theme follows the system unless changed.
@@ -50,8 +50,7 @@ loops follow that owner's separate pause/hide and reduced-motion requirements.
 Both READMEs share the friendly opening and room illustration. Their feature,
 limitation and setup sections use the factual register in the copy guide.
 
-The owner is broadly happy with the website's overall design; retain its visual
-direction while improving reading order, motion and copy. Use a familiar README structure:
+Use a consistent README structure:
 a distinct brand opening, bold headings and key phrases, regular explanatory
 text, quiet captions and optional detail. Use images and short demonstrations
 to explain different things rather than filling space. Keep essential setup and
@@ -76,14 +75,11 @@ continues to own sharing. The homepage explains it rather than simulating a
 second room authority. Public copies of advanced product/research documents
 are not automatically included in the website artifact.
 
-Use one manual Pages workflow to publish only `site/`. Branch pushes do not
-build or deploy it. Local review does not change DNS, repository visibility,
-Pages settings or the private production service. The proposed US P2P-only
-demo is separate runtime work. The primary action leads to the platform
-download section. Prepare the public-launch draft with the final website,
-documentation, release-page and demo destinations. Use the permanent GitHub
-Releases page for downloads; archive names include a revision. Verify the
-destinations as part of publication. Browser, App and demo walkthroughs
+The [website operations guide](../operations/website.md) owns Pages publication,
+public destinations and the separate P2P-only demo. The primary action leads
+to the platform download section. Use permanent release-page links for downloads;
+archive names include a revision. Verify destinations as part of publication.
+Browser, App and demo walkthroughs
 use real action names and explain the first sharing and viewing steps. Keep
 platform requirements and connection limitations beside the relevant steps.
 
@@ -94,15 +90,3 @@ reduced motion, no JavaScript and a nested project URL. Check links, accurate
 platform/connection claims and a single copy of each responsibility. Remove
 decorative controls or code that do not improve understanding. This is a public
 introduction overhaul, not an excuse to change configuration or media policy.
-
-## References
-
-Reviewed 2026-09-11. These inform structure; Piik copy and illustrations are original.
-
-- [Cloudreve](https://cloudreve.org/) and its [README](https://github.com/cloudreve/Cloudreve): a centered identity, features, deployment and contribution, with detailed operations outside the introduction.
-- [LocalSend](https://localsend.org/): user benefit followed by a short sequence.
-- [LocalSend README](https://github.com/localsend/localsend): a concise purpose and clear user/developer entry points.
-- [Excalidraw README](https://github.com/excalidraw/excalidraw): a recognizable visual introduction with a separate product showcase and documentation links.
-- [Syncthing](https://syncthing.net/) and its [getting-started guide](https://docs.syncthing.net/intro/getting-started.html): simple executable plus Browser interface, with technical detail elsewhere.
-- [GitHub Pages custom workflows](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages): deploy a selected static directory with the official actions.
-- [GitHub Pages scope and availability](https://docs.github.com/en/pages/getting-started-with-github-pages/what-is-github-pages): static hosting, plan requirements and project URL prefixes.

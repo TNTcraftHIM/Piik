@@ -52,6 +52,14 @@ implementation. At handoff or a material phase change, persist accepted rules,
 remaining work and actual blockers before relying on a conversation summary.
 Do not store tool transcripts, raw logs, temporary paths or repeated completed
 checklists as product truth.
+After an audit, put accepted constraints in their existing owners and unresolved
+work in TODO, then remove the report and handoff bundle. Do not create dated
+audit-summary directories or replacement archives of completed work.
+
+Published copy describes Piik's behavior and design directly. Remove discarded
+design labels, private operational details and conversational comparisons to
+other products. Retain primary technical evidence and required attribution or
+license notices; rewriting prose must not obscure the origin of reused work.
 
 ## Consolidation And Ablation
 

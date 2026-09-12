@@ -53,7 +53,7 @@ reproduce them. Missing NAT attempt text alone does not prove skipped attempts.
 If Native adaptation is implicated, compare actual VSE limitations with sender
 quality evidence before changing policy. Do not add retry budgets, visibility
 resets or resolution heuristics without proof. Sanitized aggregates and the
-isolated reconnect reproduction remain locally in `build/room7534-investigation/`.
+isolated reconnect reproductions are diagnostic evidence, not a recovery policy.
 Game/background settings behavior also remains an unconfirmed incident lead;
 reopen from actual control actions and matching requested/applied media evidence.
 Clarify whether Viewer-local pause should survive replacement media before
@@ -92,7 +92,8 @@ Host is paused. No preservation policy has been accepted for that transition.
 6. **Platform output.** Reopen for a registered receiver acting as an ordinary
    Viewer only after the [platform-output gate](./research/platform-output.md)
    passes.
-7. **Full UI themes.** After the base version, research layout/composition/motion
-   overhauls, the owner's TeamSpeak skin comparison and Arknights PV art direction
-   with original Piik assets; retain old figures as possible theme material.
-   Assess extension boundaries and cost before scheduling any theme/plugin API.
+7. **Full UI themes.** After the base version, research themes that can change
+   layout, composition and motion, including a restrained graphic/cinematic
+   direction with original Piik assets. Assess extension boundaries and cost
+   before scheduling any theme/plugin API. Design experiments remain in Git
+   history, outside the main source tree.

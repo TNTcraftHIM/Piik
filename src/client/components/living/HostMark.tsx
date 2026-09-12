@@ -1,4 +1,4 @@
-/** The accepted gold C1 crown, shared by room pawns and explanatory comics. */
+/** The gold Host crown, shared by room pawns and explanatory comics. */
 
 export function HostMark({
   x,

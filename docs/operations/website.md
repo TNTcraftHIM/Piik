@@ -1,8 +1,8 @@
 # Public website
 
 The website source is `site/`. It explains Piik; it does not run rooms, signaling
-or media. The [public introduction plan](../design/public-introduction.md) owns
-the draft's content and design boundary.
+or media. The [public introduction guide](../design/public-introduction.md) owns
+its content and design boundary.
 
 ## Public Destinations
 
@@ -64,7 +64,7 @@ domain and GitHub's `/Piik/` project path work.
    and open the source repository as part of the approved public launch.
 2. In repository **Settings > Pages**, choose **GitHub Actions** as the source.
    Use the dedicated Pages workflow, not publication of the repository root or
-   all of `docs/`, which includes internal research and operational reference.
+   all of `docs/`, which includes developer research and operational reference.
 3. Set the approved `piik.tv` custom domain in Pages settings and configure its
    DNS using GitHub's [current domain instructions](https://docs.github.com/en/pages/configuring-a-custom-domain-for-your-github-pages-site/managing-a-custom-domain-for-your-github-pages-site).
    Actions publishing does not need a `CNAME` file in the source tree.

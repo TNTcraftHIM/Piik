@@ -144,9 +144,10 @@ state.
 The schema 2 / signaling v23 cutover required matching Web/App/Server builds
 and an accepted active-session interruption. Native control stayed v9; that
 schema change preserved Browser credential keys. It was not an app-only release.
-The separate [brand cutover](./research/piik-rename-plan.md) must preserve this
-database rather than repeat the schema change.
-
+Display or installation-path changes preserve the database, its application ID
+and existing room authority; they do not justify repeating a schema cutover.
+The release wrapper operates an existing Piik installation. Service, path or
+protocol changes require their own coordinated infrastructure cutover and recovery.
 1. Verify the candidate; record the current release, environment, absolute DB
    path and ownership. Stop ingress and the old application; take and retain a
    SQLite backup. Require `application_id=1396920910`, `user_version=1`, expected

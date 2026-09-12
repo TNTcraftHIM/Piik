@@ -25,7 +25,7 @@ browser-first product surface but did not establish a sustainable fanout,
 fallback order, or server-resource policy.
 
 The MVP explicitly excluded always-SFU conferencing, public-broadcast scaling,
-MCU transcoding, and a custom Parsec-like transport. Those workloads either
+MCU transcoding, and a custom low-latency media transport. Those workloads either
 contradict the private-room cost model or duplicate mature WebRTC capabilities.
 
 ## Current Ownership

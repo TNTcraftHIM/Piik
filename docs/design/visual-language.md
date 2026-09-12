@@ -12,15 +12,14 @@ sequences, and literal scene objects for people, rooms and media. Glyphs do not
 form sentences. The same meaning and visual hierarchy must work in Chinese,
 English and pure-visual modes, in both themes and at narrow widths.
 
-The visual direction is led by Nintendo Switch's approachable, tactile feel:
-simple silhouettes, generous space, rounded controls and a small responsive
-bounce. Material contributes clear hierarchy and legible interaction. These
-are references for Piik's own living room, not assets or a component framework.
+Piik's living room uses simple silhouettes, generous space, rounded controls
+and a small responsive bounce. Clear hierarchy and legible interaction keep
+the playful details easy to use.
 The [copy guide](../reference/naming.md#voice-and-terminology) owns its voice.
 
 Keep playfulness restrained: clean silhouettes, balanced proportions, quiet
-expressions and brief gestures. Aim for Nintendo's approachable game-interface
-feel; avoid pushing ordinary characters toward infant proportions, exaggerated
+expressions and brief gestures. Keep the interface approachable; avoid
+pushing ordinary characters toward infant proportions, exaggerated
 grins, dense cute decoration or children's picture-book styling.
 
 ## Layout And Input
@@ -52,7 +51,7 @@ Participant characters should leave room for that distinctive presence.
 | --- | --- |
 | The person using the pictured action | Green pawn (`YOU` / `--you`), in every panel |
 | Somebody else | Blue pawn (`SKY`), or another distinct non-green illustration colour |
-| Host role | Gold C1 crown above the head: rounded three-point outline, dark gold edge and a quiet lower rim; the standalone absent-Host symbol uses the same outline, unfilled and dashed |
+| Host role | Gold crown above the head: rounded three-point outline, dark gold edge and a quiet lower rim; the standalone absent-Host symbol uses the same outline, unfilled and dashed |
 | Shared or watched media | Small television, including antenna, body and feet |
 | Browser application | Browser chrome around content; not a second design of television |
 | A captured window or display | Window title bar or display stand, with the shared media metaphor kept distinct |
@@ -64,8 +63,8 @@ roster identities retain the shared UUID colour function, not the illustrative
 "you versus others" palette. Actor positions and identities remain stable from
 the first panel to the result.
 
-Room pawns, tooltip/status comics and introduction participants use the accepted
-A figure: a round head, half-oval body and two restrained eyes. Reuse the shared
+Room pawns, tooltip/status comics and introduction participants use
+a round head, half-oval body and two restrained eyes. Reuse the shared
 figure and face geometry in product illustrations so expressions stay inside
 the head as it scales. Larger scenes can add a small lean; small status panels
 may omit facial detail to keep the action clear. When a gesture needs hands,
@@ -194,13 +193,7 @@ precedence when space is tight.
 - Update this owner when accepting a new convention. Product documents link
   here instead of copying the palette, cast or animation table.
 
-## Design References
-
-[Nintendo's HOME Menu overview](https://www.nintendo.com/au/support/articles/home-menu-overview/)
-is the primary visual reference for simple, spacious controls;
-[Material's expressive design research](https://design.google/library/expressive-material-design-google-research)
-informs selective use of shape, colour and motion to guide attention. The
-Nintendo-led balance is the owner's direction, not a claim made by either source.
+## Interaction References
 
 [Carbon status indicators](https://v10.carbondesignsystem.com/patterns/status-indicator-pattern/)
 supports combining semantic colour with shape and symbols;
