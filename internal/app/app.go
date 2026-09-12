@@ -503,13 +503,13 @@ func launchURL(raw string) string {
 	if err != nil {
 		return raw
 	}
-	fragment, err := url.ParseQuery(parsed.Fragment)
+	fragment, err := url.ParseQuery(parsed.EscapedFragment())
 	if err != nil {
 		return raw
 	}
 	fragment.Set("piik-client", "1")
-	parsed.Fragment = fragment.Encode()
-	return parsed.String()
+	parsed.Fragment, parsed.RawFragment = "", ""
+	return parsed.String() + "#" + fragment.Encode()
 }
 
 func launchURLWithLocalAccess(raw, password string) string {
@@ -517,7 +517,7 @@ func launchURLWithLocalAccess(raw, password string) string {
 	if err != nil {
 		return raw
 	}
-	fragment, err := url.ParseQuery(parsed.Fragment)
+	fragment, err := url.ParseQuery(parsed.EscapedFragment())
 	if err != nil {
 		return launchURL(raw)
 	}
@@ -526,8 +526,8 @@ func launchURLWithLocalAccess(raw, password string) string {
 		fragment.Set("client-access", password)
 	}
 	fragment.Set("piik-client", "1")
-	parsed.Fragment = fragment.Encode()
-	return parsed.String()
+	parsed.Fragment, parsed.RawFragment = "", ""
+	return parsed.String() + "#" + fragment.Encode()
 }
 
 type nativeRuntime struct {

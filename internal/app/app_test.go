@@ -94,7 +94,7 @@ func TestAppLaunchURLMarksThePageWithoutChangingOrigin(t *testing.T) {
 		parsed.RawQuery != "" {
 		t.Fatalf("launch URL = %q, %v", value, err)
 	}
-	fragment, err := url.ParseQuery(parsed.Fragment)
+	fragment, err := url.ParseQuery(parsed.EscapedFragment())
 	if err != nil || fragment.Get("piik-client") != "1" {
 		t.Fatalf("App launch fragment = %q, %v", parsed.Fragment, err)
 	}
@@ -192,7 +192,7 @@ func TestLaunchURLPreservesLocalAccessInsideThePrivateFragment(t *testing.T) {
 	if err != nil || parsed.RawQuery != "" {
 		t.Fatalf("local native launch URL = %q, %v", value, err)
 	}
-	fragment, err := url.ParseQuery(parsed.Fragment)
+	fragment, err := url.ParseQuery(parsed.EscapedFragment())
 	if err != nil || fragment.Get("client-access") != "secret" ||
 		fragment.Get("piik-client") != "1" {
 		t.Fatalf("local native launch fragment = %q, %v", parsed.Fragment, err)
@@ -200,26 +200,36 @@ func TestLaunchURLPreservesLocalAccessInsideThePrivateFragment(t *testing.T) {
 }
 
 func TestLaunchURLEncodesAndClearsOptionalLocalAccess(t *testing.T) {
-	value := launchURLWithLocalAccess(
-		"http://localhost:8787/#retained=yes&client-access=old",
-		" 中文 a+b&c?d=e ",
-	)
-	parsed, err := url.Parse(value)
-	if err != nil {
-		t.Fatal(err)
-	}
-	fragment, err := url.ParseQuery(parsed.Fragment)
-	if err != nil || fragment.Get("client-access") != " 中文 a+b&c?d=e " ||
-		fragment.Get("piik-client") != "1" || fragment.Get("retained") != "yes" {
-		t.Fatalf("encoded local launch fragment = %q, %v", parsed.Fragment, err)
+	for _, password := range []string{"x", "好", " ", "+", "%", "#&?=", " 中文 a+b&c?d=e% "} {
+		t.Run(password, func(t *testing.T) {
+			value := launchURLWithLocalAccess(
+				"http://localhost:8787/?retained=query#retained=a%2Bb%25&client-access=old&piik-lang=zh&piik-mode=text&piik-theme=dark",
+				password,
+			)
+			for _, target := range []string{value, launchURL(value)} {
+				parsed, err := url.Parse(target)
+				if err != nil || parsed.RawQuery != "retained=query" {
+					t.Fatalf("local launch URL = %q, %v", target, err)
+				}
+				// location.hash stays escaped. Parsing Fragment instead would decode
+				// twice and hide the browser's percent-encoded-password regression.
+				fragment, err := url.ParseQuery(parsed.EscapedFragment())
+				if err != nil || fragment.Get("client-access") != password ||
+					fragment.Get("piik-client") != "1" || fragment.Get("retained") != "a+b%" ||
+					fragment.Get("piik-lang") != "zh" || fragment.Get("piik-mode") != "text" ||
+					fragment.Get("piik-theme") != "dark" {
+					t.Fatalf("browser-visible launch fragment = %q, %v", parsed.EscapedFragment(), err)
+				}
+			}
+		})
 	}
 
 	open := launchURLWithLocalAccess("http://localhost:8787/#client-access=old", "")
-	parsed, err = url.Parse(open)
+	parsed, err := url.Parse(open)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fragment, err = url.ParseQuery(parsed.Fragment)
+	fragment, err := url.ParseQuery(parsed.EscapedFragment())
 	if err != nil || fragment.Get("client-access") != "" || fragment.Get("piik-client") != "1" {
 		t.Fatalf("open local launch fragment = %q, %v", parsed.Fragment, err)
 	}
