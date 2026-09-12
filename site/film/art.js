@@ -148,13 +148,15 @@ export function createArt(svg, language, onUI = () => {}) {
   </g>
 
   <g id="scene-share">
-    ${field(PAPER)}<path d="M960-100h770v1100H640Z" fill="${MINT}"/>
-    ${sceneLabel('PIIK / 02')}
-    <g id="share-type">${chapter(say('Pick.', '选个'), say('Share.', '画面。'), say('A window. A screen. Your call.', '窗口、屏幕，都能分享。'))}
-      ${small(62, 587, say('PICTURE + SOUND', '画面与声音，一起分享'))}
-      ${text(55, 788, '02', 190, 'none', `stroke="${INK}" stroke-width="2" opacity=".3"`)}
+    <g id="share-picture">
+      ${field(PAPER)}<path d="M960-100h770v1100H640Z" fill="${MINT}"/>
+      <g id="share-type">${chapter(say('Pick.', '选个'), say('Share.', '画面。'), say('A window. A screen. Your call.', '窗口、屏幕，都能分享。'))}
+        ${small(62, 587, say('PICTURE + SOUND', '画面与声音，一起分享'))}
+        ${text(55, 788, '02', 190, 'none', `stroke="${INK}" stroke-width="2" opacity=".3"`)}
+      </g>
+      ${appWindow('share-window')}
     </g>
-    ${appWindow('share-window')}
+    <g id="share-label">${sceneLabel('PIIK / 02')}</g>
   </g>
 
   <g id="scene-invite">
@@ -189,7 +191,7 @@ export function createArt(svg, language, onUI = () => {}) {
         ${rect(-115,383,950,200,0,INK)}${text(57,538,say('LOW LATENCY.','低延迟。'),zh?160:106,PAPER)}
       </g>
       ${sceneLabel(say('PIIK / FEATURES', 'PIIK / 产品特点'))}
-      ${text(65,793,say('Piik prefers a direct path to help friends keep up with the action.','画面优先直达朋友，精彩及时跟上。'),30,INK,'style="letter-spacing:0;font-weight:650"')}
+      ${text(65,793,say('A direct path, so friends can keep up.','画面优先直达朋友，精彩及时跟上。'),30,INK,'style="letter-spacing:0;font-weight:650"')}
     </g>
     <g id="feature-encode">${field(YELLOW)}
       <path d="M1200-100h580v1100H871Z" fill="${ORANGE}"/>
@@ -208,6 +210,33 @@ export function createArt(svg, language, onUI = () => {}) {
       </g>
       ${sceneLabel(say('PIIK / FEATURES', 'PIIK / 产品特点'))}
       ${text(65,793,say('Lighter on resources, with more power left for games and creative work.','少占些资源，给游戏和创作多留些性能。'),30,INK,'style="letter-spacing:0;font-weight:650"')}
+    </g>
+    <g id="feature-devices">${field(INK)}
+      <path d="M1210-80h480v1060H908Z" fill="${MINT}"/>
+      ${circle(1250,422,274,ORANGE)}
+      <g id="devices-laptop"><g transform="translate(922 225) rotate(-8)">
+        ${screen('devices-browser',0,0,480,game)}
+        <path d="M-25 313h530v10q-6 15-28 15H3q-22 0-28-15Z" fill="${PAPER}"/>
+        <path d="M190 314h100l-7 8h-86Z" fill="#b8c9bf"/>
+      </g></g>
+      <g id="devices-tablet"><g transform="translate(976 568) rotate(-8)">
+        ${rect(10,12,310,194,24,INK)}${rect(0,0,310,194,24,PAPER)}
+        ${rect(12,12,286,170,14,INK)}
+        <svg x="14" y="18" width="282" height="158.625" viewBox="0 0 1600 900">${game}</svg>
+        ${rect(124,183,62,4,2,'#b8c9bf')}
+      </g></g>
+      <g id="devices-phone"><g transform="translate(1352 380) rotate(9)">
+        ${rect(10,12,174,330,28,INK)}${rect(0,0,174,330,28,PAPER)}
+        ${rect(11,32,152,266,15,INK)}${rect(62,14,50,5,2.5,'#b8c9bf')}
+        <svg x="11" y="122" width="152" height="85.5" viewBox="0 0 1600 900">${game}</svg>
+        ${rect(58,312,58,5,2.5,'#b8c9bf')}
+      </g></g>
+      <g id="devices-type" transform="rotate(-8 600 450)">
+        ${text(62,321,say('DESKTOP.','电脑手机。'),zh?155:146,PAPER)}
+        ${rect(-110,388,945,197,0,YELLOW)}${text(48,541,say('MOBILE.','都能看。'),zh?180:174)}
+      </g>
+      ${sceneLabel(say('PIIK / FEATURES', 'PIIK / 产品特点'),PAPER)}
+      ${text(65,793,say('Open the invite. Watch in your browser.','点开邀请链接，用浏览器加入。'),30,PAPER,'style="letter-spacing:0;font-weight:650"')}
     </g>
   </g>
 
@@ -356,7 +385,8 @@ export function createArt(svg, language, onUI = () => {}) {
     slide('share-type',t/(BEAT/2),-610,130);
     const zoom=ease((t-12*BEAT)/(2*BEAT));
     const scale=mix(1,1600/(930*986/1100),zoom);
-    transform('scene-share',`translate(${-628.19*scale*zoom} ${-270.78*scale*zoom}) scale(${scale})`);
+    opacity('share-label',1-ease((t-11.5*BEAT)/(BEAT/2)));
+    transform('share-picture',`translate(${-628.19*scale*zoom} ${-270.78*scale*zoom}) scale(${scale})`);
   }
 
   function gameScene(t) {
@@ -369,9 +399,10 @@ export function createArt(svg, language, onUI = () => {}) {
   }
 
   function features(t) {
-    const cut = t < BAR ? 0 : t < 3 * BAR ? 1 : 2;
-    const local = t - [0, BAR, 3 * BAR][cut];
-    ['free', 'p2p', 'encode'].forEach((name, i) => { node(`feature-${name}`).style.display = i === cut ? '' : 'none'; });
+    // Four benefits fit the same five bars; no long hold after the direct hop.
+    const cut = t < BAR ? 0 : t < 2 * BAR ? 1 : t < 3.5 * BAR ? 2 : 3;
+    const local = t - [0, BAR, 2 * BAR, 3.5 * BAR][cut];
+    ['free', 'p2p', 'encode', 'devices'].forEach((name, i) => { node(`feature-${name}`).style.display = i === cut ? '' : 'none'; });
     slide('free-type', local / (BEAT / 2), -1500, 290, 'rotate(-12 740 450)');
     slide('p2p-type', local / (BEAT / 2), -1150, 180, 'rotate(-8 600 450)');
     slide('p2p-diagram',local/BEAT,600,0);
@@ -391,6 +422,12 @@ export function createArt(svg, language, onUI = () => {}) {
       transform(`encode-person-${i}`,`translate(0 ${-9*Math.sin(clamp(arrive)*Math.PI)})`);
       blink(`encode-person-${i}`,local,3.1+i*.23);
     }
+    slide('devices-type',local/(BEAT/2),-1200,180,'rotate(-8 600 450)');
+    ['laptop','tablet','phone'].forEach((device,i) => {
+      const progress=pop((local-i*BEAT*.65)/BEAT);
+      transform(`devices-${device}`,`translate(${420*(1-progress)} ${110*(1-progress)})`);
+      opacity(`devices-${device}`,progress);
+    });
   }
 
   function people(t) {

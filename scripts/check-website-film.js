@@ -62,6 +62,18 @@
     assert(scene().includes(`scene-${name}`), `The product sequence must show ${name}`);
   }
   const {BEAT,BAR} = await import('./score.js');
+  for (const [bar, feature] of [[19.5, 'free'], [20.5, 'p2p'], [21.5, 'encode'], [23, 'devices']]) {
+    seek(bar * BAR);
+    const visible = [...el('scene-features').children].filter(node => node.style.display !== 'none');
+    assert(visible.length === 1 && visible[0].id === `feature-${feature}`, 'The four benefits must advance within the same musical phrase');
+  }
+  seek(22.5 * BAR + BEAT / 2);
+  const devices = () => ['laptop', 'tablet', 'phone'].map(id => el(`devices-${id}`).outerHTML).join('');
+  const arrivingDevices = devices();
+  seek(23.5 * BAR);
+  assert(devices() !== arrivingDevices && ['laptop', 'tablet', 'phone'].every(id => el(`devices-${id}`).getAttribute('opacity') === '1'), 'The devices must enter in sequence and settle into a readable frame');
+  seek(22.5 * BAR + BEAT / 2);
+  assert(devices() === arrivingDevices, 'Device arrival must be deterministic after reverse seeking');
   seek(4.5 * BAR - .1);
   const beforeHandoff = el('ui-placement').transform.baseVal.consolidate().matrix;
   seek(4.5 * BAR + BEAT / 2);
@@ -132,7 +144,8 @@
       [1.4, '#hello-word text'], [4.3, '#discover-ticket text'],
       [8, '#launch-type text'], [15, '#share-type text'], [35, '#invite-type text'],
       [44, '#people-close-type text'], [46.5, '#free-type text'],
-      [50, '#p2p-type text, #feature-p2p > text'], [54.5, '#encode-type text, #feature-encode > text'],
+      [48.8, '#p2p-type text, #feature-p2p > text'], [52, '#encode-type text, #feature-encode > text'],
+      [55.5, '#devices-type text, #feature-devices > text'],
       [58.3, '#more-game > g > text'], [60, '#more-art-type text'],
       [61.8, '#more-photos-type text'], [63.6, '#more-movie-type text'],
       [68, '#end-type text'],
@@ -149,9 +162,9 @@
     // Stable corner labels share a baseline even when nearby artwork moves.
     for (const [time, selector] of [
       [1.4, '#hello-label'], [4.3, '#discover-label'],
-      [8, '#scene-launch'], [15, '#scene-share'], [35, '#scene-invite'],
+      [8, '#scene-launch'], [15, '#share-label'], [17.9, '#share-label'], [35, '#scene-invite'],
       [40, '#scene-people'], [44, '#people-close'], [46.5, '#feature-free'],
-      [50, '#feature-p2p'], [54.5, '#feature-encode'],
+      [48.8, '#feature-p2p'], [52, '#feature-encode'], [55.5, '#feature-devices'],
       [58.3, '#more-game'], [60, '#more-art'], [61.8, '#more-photos'],
       [63.6, '#more-movie'], [68, '#end-label'],
     ]) {
@@ -174,8 +187,9 @@
     return {left:Math.min(...points.map(p=>p.x)),right:Math.max(...points.map(p=>p.x))};
   };
   for (const [time,title,object] of [
-    [50, 'p2p-type', '#p2p-source, #p2p-viewer'],
-    [54.5, 'encode-type', '#encode-picture, #encode-audience'],
+    [48.8, 'p2p-type', '#p2p-source, #p2p-viewer'],
+    [52, 'encode-type', '#encode-picture, #encode-audience'],
+    [55.5, 'devices-type', '#devices-laptop, #devices-tablet, #devices-phone'],
     [60, 'more-art-type', '#sketch-paper'],
     [61.8, 'more-photos-type', '#more-photos-picture svg > g'],
     [63.6, 'more-movie-type', '#movie-plane'],
@@ -184,7 +198,7 @@
     for (const subject of document.querySelectorAll(object))
       assert(bounds(el(title)).right + 20 < bounds(subject).left, 'Scenario captions must leave room for their main object');
   }
-  seek(50);
+  seek(48.8);
   const link = el('p2p-link'), length = link.getTotalLength();
   for (let i=0;i<=20;i++) {
     const point = link.getPointAtLength(length*i/20).matrixTransform(link.getScreenCTM());
@@ -379,6 +393,7 @@
       'game montage and reaction timing',
       'bilingual headline bounds',
       'bilingual scene label alignment',
+      'four benefit cuts and seekable device arrivals',
       'scenario composition and seekable sketch',
       'continuous cursor paths, click targets and reverse seeking',
       'standalone hero montage, shared poses and still image',
