@@ -201,9 +201,7 @@ precedence when space is tight.
 [Carbon status indicators](https://v10.carbondesignsystem.com/patterns/status-indicator-pattern/)
 supports combining semantic colour with shape and symbols;
 [Carbon motion](https://carbondesignsystem.com/elements/motion/overview/)
-distinguishes functional feedback from occasional expressive movement. Piik
-keeps its own playful television/pawn artwork and restrained spring motion.
-These references inform the grammar; they do not add a UI framework.
+distinguishes functional feedback from occasional expressive movement.
 
 [Web Animations start time](https://developer.mozilla.org/en-US/docs/Web/API/Animation/startTime)
 provides the native timeline alignment used by participant gestures.

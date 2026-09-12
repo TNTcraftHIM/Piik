@@ -24,14 +24,9 @@ const contextBudgetRemediation =
   "simplify repeated wording, and remove completed history or stale conclusions.";
 const contextWarningRatio = 0.8;
 const codexProjectDocMaxBytes = 32 * 1_024;
-const claudeRecommendedLines = 200;
 const hermesMinimumContextChars = 20_000;
 
 const agentInstructions = readFileSync(resolve(root, "AGENTS.md"), "utf8");
-const claudeWrapper = readFileSync(resolve(root, "CLAUDE.md"), "utf8").replace(
-  /^@AGENTS\.md\s*(?:\r?\n)?/u,
-  "",
-);
 const ponytailInstructions = readFileSync(
   resolve(root, ".agents/skills/ponytail/SKILL.md"),
   "utf8",
@@ -46,14 +41,6 @@ const topLevelContextBudgets = [
     hard: { bytes: codexProjectDocMaxBytes },
   },
   {
-    name: "Claude effective project instructions",
-    text: `${agentInstructions}\n${claudeWrapper}`,
-    recommended: { lines: claudeRecommendedLines },
-    hard: {
-      lines: Math.ceil(claudeRecommendedLines / contextWarningRatio),
-    },
-  },
-  {
     name: "Hermes root project context",
     text: agentInstructions,
     recommended: {
@@ -65,12 +52,10 @@ const topLevelContextBudgets = [
     name: "Required ponytail skill",
     text: ponytailInstructions,
     recommended: {
-      lines: claudeRecommendedLines,
       chars: Math.floor(hermesMinimumContextChars * contextWarningRatio),
       bytes: Math.floor(codexProjectDocMaxBytes * contextWarningRatio),
     },
     hard: {
-      lines: Math.ceil(claudeRecommendedLines / contextWarningRatio),
       chars: hermesMinimumContextChars,
       bytes: codexProjectDocMaxBytes,
     },

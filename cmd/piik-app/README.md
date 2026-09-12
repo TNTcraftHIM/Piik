@@ -27,9 +27,9 @@ publication are separate steps in [deployment](../../docs/deployment.md).
   alongside the Local Host origin. An App-opened Site remembers the opt-in in that Browser
   origin; later manually opened Host pages may reuse the running App.
 - The `--site`, `--local`, and `--link` flags select a mode for CI and development.
-- The default launcher checks the official GitHub Releases metadata after it
-  opens and shows a notice when a newer full-SHA release exists. The check is
-  best-effort and never installs or replaces the App.
+- The default launcher checks official releases after it opens, using GitHub
+  first and Gitee if GitHub is unavailable. It links to an available release
+  without installing or replacing the App.
 
 Local mode uses memory-only rooms, P2P relay, no SFU listener, and no public
 discovery. Ordinary Local works on a reachable LAN. The **Public invite** mode
@@ -172,10 +172,11 @@ available even when this machine has no accepted native capture encoder.
 Capture sidecars must match the App's current probe/encoded-output contract;
 the package-candidate wrapper validates that version before accepting its artifact.
 
-Packaged builds report the product version and source SHA in the launcher,
-terminal and diagnostic context. Updates distinguish a newer version, a different
-build of the same version, and an official release offered to a development build;
-the link never installs or interrupts a share. [Versioning](../../docs/reference/versioning.md)
+Packaged builds report the product version and source SHA in the terminal and
+diagnostic context. The launcher uses that identity to distinguish a newer
+version, a different build of the same version, and an official release offered
+to a development build; the link never installs or interrupts a share.
+[Versioning](../../docs/reference/versioning.md)
 owns these meanings and [GitHub operations](../../docs/operations/github.md)
 owns automatic publication.
 

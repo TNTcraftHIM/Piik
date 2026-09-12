@@ -11,8 +11,7 @@ history. A parked idea is not implementation authority.
   then align the homepage, film ending, README openings and public page metadata.
 - [ ] **Website introduction acceptance.** Review the revised bilingual film
   and four-use homepage/README illustration with the approved brand lines.
-  Record/export the film only after visual acceptance. Keep the film phase on
-  its separate worktree.
+  Record/export the film only after visual acceptance.
 - [ ] **Release and repository readiness.** Review the prepared Windows test
   candidate. Retry native CI after the Actions artifact quota refreshes, then
   rehearse the publisher with genuine matching Server and App packages. Old cloud

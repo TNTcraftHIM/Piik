@@ -141,17 +141,3 @@ reduced motion, no JavaScript and a nested project URL. Check links, accurate
 platform/connection claims and a single copy of each responsibility. Remove
 decorative controls or code that do not improve understanding. This is a public
 introduction overhaul, not an excuse to change configuration or media policy.
-
-## Structure references
-
-Reviewed 2026-09-12: [Parsec's feature page](https://parsec.app/features) pairs
-everyday activities with download, technology and support links;
-[RustDesk's open-source page](https://rustdesk.com/open-source/) separates
-community, documentation, App and server destinations. These are information
-architecture examples, not Piik feature or performance evidence. The copy guide
-owns the underlying progressive-disclosure and clear-language sources.
-[LocalSend](https://localsend.org/) keeps download actions in navigation and its
-first view, with illustrated steps below; [Syncthing](https://syncthing.net/)
-places downloads and its getting-started guide together. Piik applies the same
-direct access while explaining its browser-only viewing path before the detailed
-App download section; section order is based on Piik's entry choices.

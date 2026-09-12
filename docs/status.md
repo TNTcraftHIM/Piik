@@ -39,8 +39,8 @@ media remain process-only. This private service is not a public demonstration.
 [TODO](./todo.md) owns the remaining release/launch
 work. The owner accepted the website, README/guides and UI presentation on
 2026-09-12; final functional and release acceptance remains pending. The working
-branch includes capability/UI fixes, the public-introduction revision and
-completed lifecycle/cohesion and external-audit corrections. The Windows test
+branch combines the App/UI revision, public guides, website and versioned
+distribution pipeline. The Windows test
 candidate is prepared for owner review; bounded two-build interoperability and
 update checks passed. This is
 functional test acceptance, not final public-release acceptance. The
