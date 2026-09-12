@@ -70,7 +70,7 @@ export function LauncherForm({
         maxLength={128}
         autoComplete="off"
         spellCheck={false}
-        placeholder={vis ? "" : t("client.launch.localAccessPlaceholder")}
+        placeholder={vis ? "" : t("client.launch.localAccess")}
         aria-label={t("client.launch.localAccess")}
         onChange={(event) => {
           onLocalAccessPasswordChange(event.target.value);

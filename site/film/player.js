@@ -18,7 +18,10 @@ function presentUI({scene,local,time,matrix}) {
   byId('film-ui').toggleAttribute('hidden', !scene);
   if (!scene || !matrix) return;
   byId('ui-placement').setAttribute('transform', `matrix(${matrix.a} ${matrix.b} ${matrix.c} ${matrix.d} ${matrix.e} ${matrix.f})`);
-  byId('product-ui').contentWindow?.postMessage({type:'piik-film-ui',scene,local,time,lang:root.lang}, '*');
+  const website = scene === 'website';
+  byId('website-ui').hidden = !website;
+  byId('product-ui').hidden = website;
+  byId(website ? 'website-ui' : 'product-ui').contentWindow?.postMessage({type:'piik-film-ui',scene,local,time,lang:root.lang}, '*');
 }
 let art = createArt(byId('film-art'), root.lang, presentUI);
 let time = 0;
@@ -26,6 +29,7 @@ let origin = 0;
 let playing = false;
 let sound = true;
 let started = false;
+let finished = false;
 let frame = 0;
 let generation = 0;
 const say = (en, zh) => root.lang === 'zh-CN' ? zh : en;
@@ -54,21 +58,24 @@ function showState() {
 
 function paint() {
   const current = position();
-  art.render(current, !started);
+  art.render(current, !started, finished && !document.hidden);
   seek.value = String(current);
   seek.setAttribute('aria-valuetext', `${stamp(current)} / ${stamp(DURATION)}`);
   byId('time').textContent = `${stamp(current)} / ${stamp(DURATION)}`;
   byId('download').hidden = !started || current < DOWNLOAD_AT + BEAT;
   if (playing && current >= DURATION) {
-    pause();
+    pause(true);
   } else if (playing) {
     frame = requestAnimationFrame(paint);
   }
 }
 
-function pause() {
+function pause(atEnd = false) {
   time = position();
   playing = false;
+  // Only natural completion releases the decorative mascot into its idle loop.
+  // An explicit pause or seek still holds every part of the requested frame.
+  finished = atEnd === true;
   generation++;
   audio.pause();
   cancelAnimationFrame(frame);
@@ -186,7 +193,10 @@ document.addEventListener('keydown', (event) => {
   if (event.key.toLowerCase() === 'm') toggleSound();
   if (event.key.toLowerCase() === 'c' && body.classList.contains('fullscreen')) body.classList.toggle('recording');
 });
-document.addEventListener('visibilitychange', () => { if (document.hidden && playing) pause(); });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && playing) pause();
+  else if (finished) paint();
+});
 window.addEventListener('pagehide', pause);
 window.addEventListener('message', event => {
   if (parent !== window && event.source === parent && event.origin === location.origin && event.data?.type === 'piik-film-preferences') {
@@ -200,13 +210,14 @@ window.addEventListener('message', event => {
     if (!playing) paint();
     return;
   }
-  if (event.source === byId('product-ui').contentWindow && event.data?.type === 'piik-film-ui-ready') {
+  if (['product-ui','website-ui'].some(id => event.source === byId(id).contentWindow) && event.data?.type === 'piik-film-ui-ready') {
     cancelAnimationFrame(frame);
     paint();
   }
 });
 reduceMotion.addEventListener('change', () => {
   if (reduceMotion.matches && playing) pause();
+  else if (!playing) paint();
   byId('reduced-note').hidden = !reduceMotion.matches;
 });
 audio.addEventListener('waiting', () => {
@@ -224,7 +235,7 @@ audio.addEventListener('ended', () => {
   if (audio.currentTime >= DURATION - 1 / 60) {
     time = DURATION;
     playing = false;
-    pause();
+    pause(true);
   } else {
     continueMuted();
   }

@@ -9,6 +9,7 @@
     <title>Piik — Share the good stuff.</title>
     <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="./playback-controls.css" />
+    <link rel="stylesheet" href="./brand-mark.css" />
     <link rel="stylesheet" href="./film.css" />
     <link rel="stylesheet" href="../assets/brand.css" />
     <script type="module" src="./player.js"></script>
@@ -28,8 +29,9 @@
         <audio id="soundtrack" preload="none"></audio>
         <div class="picture">
           <svg id="film-art" viewBox="0 0 1600 900" xmlns="http://www.w3.org/2000/svg" font-family="ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,PingFang SC,Microsoft YaHei,sans-serif" aria-hidden="true"></svg>
-          <svg id="film-ui" viewBox="0 0 1600 900" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" hidden><g id="ui-placement"><foreignObject width="1100" height="740"><iframe xmlns="http://www.w3.org/1999/xhtml" id="product-ui" src="./ui/index.html" sandbox="allow-scripts" tabindex="-1" inert title="Piik demonstration"></iframe></foreignObject></g></svg>
+          <svg id="film-ui" viewBox="0 0 1600 900" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" hidden><g id="ui-placement"><foreignObject width="1100" height="740"><iframe xmlns="http://www.w3.org/1999/xhtml" id="website-ui" src="./ui/website.html" sandbox="allow-scripts" tabindex="-1" inert hidden title="Piik website demonstration"></iframe><iframe xmlns="http://www.w3.org/1999/xhtml" id="product-ui" src="./ui/index.html" sandbox="allow-scripts" tabindex="-1" inert title="Piik demonstration"></iframe></foreignObject></g></svg>
           <img class="fallback" src="../assets/living-room.svg#still" width="900" height="590" alt="Friends watching a host play a game from a warm orange sofa." />
+          <a id="download" href="../#download" data-home target="_top" hidden><span class="sr-only"><span lang="en">Download Piik</span><span lang="zh-CN">下载 Piik</span></span></a>
         </div>
         <div class="curtain" id="curtain" hidden>
           <button class="play-film" id="start" type="button">
@@ -55,23 +57,19 @@
       <p id="player-status" role="status"></p>
       <div class="film-footer">
         <p><span lang="en">Screen sharing for friends. Free &amp; open source.</span><span lang="zh-CN">和朋友分享屏幕，免费开源。</span></p>
-        <a id="download" href="../#download" data-home target="_top" hidden><span lang="en">Download Piik</span><span lang="zh-CN">下载 Piik</span><span aria-hidden="true"> ↗</span></a>
-        <button id="about" type="button" hidden><span lang="en">Music & recording</span><span lang="zh-CN">配乐与录制</span><span aria-hidden="true"> ↗</span></button>
+        <button id="about" type="button" hidden><span lang="en">Behind the scenes</span><span lang="zh-CN">幕后花絮</span><span aria-hidden="true"> ↗</span></button>
       </div>
       <p class="sr-only"><span lang="en">Piik shares your screen with friends. Download and open the App, choose Public invite, select a window or screen, then copy the invitation link and send it to your friends. Viewers watch in a browser. The film uses Piik's actual interface with sample content. An original game montage shows exploration, first-person shooting, a platform jump, a tactical flank, a skill-shot counterattack and a fighting-game block and counter. Friends cheer after the final hit. One host, up to twenty viewers. Piik is free and open source under the MIT license, ready for you to use and improve. It prefers direct connections to help friends keep up with the action. Sharing is lighter on resources, with more power left for games and creative work. Friends can open the invite in a desktop or mobile browser. Share a game, a drawing, travel photos or a movie.</span><span lang="zh-CN">Piik 用来和朋友分享屏幕。下载并打开 App，选择“公网邀请”，选好要分享的窗口或屏幕，再把邀请链接发给朋友。观众用浏览器就能看。短片展示了 Piik 的实际界面，使用示例内容。原创游戏蒙太奇依次展示探索、第一人称射击、横版跳跃、战术绕后、技能反击，以及格斗中的格挡和反击；最后一击命中后，朋友才喊出“漂亮！”。一位房主，最多二十位观众。Piik 免费开源，采用 MIT 许可，可以按自己的想法改进。画面优先直达朋友，精彩及时跟上。少占些资源，给游戏和创作多留些性能。朋友用电脑或手机浏览器点开邀请链接就能看。游戏、绘画、旅行照片和电影，都能分享给朋友看。</span></p>
       <noscript><p class="no-script">This film needs JavaScript. <a href="../">Explore Piik / 回到官网</a></p></noscript>
     </main>
     <dialog id="credits" aria-labelledby="credits-title">
       <form method="dialog"><button class="close" aria-label="Close / 关闭">×</button></form>
-      <h2 id="credits-title"><span lang="en">Behind the film</span><span lang="zh-CN">关于这支短片</span></h2>
-      <p><span lang="en">Original Piik artwork and animation, using the same interface components as the App. The operation sequence is staged; windows, participants and links are examples. LITTLE WANDER and the other game scenes are original illustrations, not captured game footage or performance benchmarks.</span><span lang="zh-CN">原创画面与动画，演示界面与 App 共用控件。操作过程经过编排，窗口、参与者和链接均为示例；LITTLE WANDER 与其他游戏场景均为原创绘制，并非游戏实录或性能测试。</span></p>
+      <h2 id="credits-title"><span lang="en">Behind the scenes</span><span lang="zh-CN">幕后花絮</span></h2>
+      <h3><span lang="en">Drawn for Piik</span><span lang="zh-CN">为 Piik 画的小世界</span></h3>
+      <p><span lang="en">The game, photo and movie scenes are original illustrations. The App demonstration uses Piik's actual controls with sample rooms and participants.</span><span lang="zh-CN">游戏、照片和电影场景都是为 Piik 绘制的；App 演示使用真实控件，搭配示例房间和昵称。</span></p>
       <p><a href="../LICENSE"><span lang="en">Piik license</span><span lang="zh-CN">Piik 许可证</span></a> · <a href="./ui/third-party-licenses.txt"><span lang="en">Component licenses</span><span lang="zh-CN">组件许可证</span></a></p>
       <h3><span lang="en">Music</span><span lang="zh-CN">配乐</span></h3>
       <p>“<a href="https://incompetech.com/music/royalty-free/index.html?Search=Search&amp;isrc=USUAN1100474">Funkorama</a>” — Kevin MacLeod (incompetech.com). <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>. <span lang="en">Excerpt, with a fade-out.</span><span lang="zh-CN">使用了剪辑与淡出的片段。</span></p>
-      <h3><span lang="en">Playback interrupted by a download tool?</span><span lang="zh-CN">播放被下载工具打断？</span></h3>
-      <p><span lang="en">In IDM, enable “Don't start downloading from web-players automatically”, or temporarily disable its extension for this tab, then try again. See <a href="https://www.internetdownloadmanager.com/register/new_faq/video14.html">IDM's instructions</a>. You can also play the film without sound.</span><span lang="zh-CN">可以在 IDM 中开启“不自动从网页播放器开始下载”，或在当前标签页暂时关闭 IDM 扩展，再重试播放。具体操作见 <a href="https://www.internetdownloadmanager.com/register/new_faq/video14.html">IDM 官方说明</a>，也可以先静音观看。</span></p>
-      <h3><span lang="en">Recording</span><span lang="zh-CN">录制</span></h3>
-      <p><span lang="en">Enter fullscreen, then press C to hide or show the controls for recording. Record the browser and its audio at 1920 × 1080, 60 fps. Press R to restart, Space to pause, M to mute, and Escape to return. Keep the music credit in the film and its description.</span><span lang="zh-CN">进入全屏后，按 C 隐藏或显示播控，便于录制。建议以 1920 × 1080、60 fps 录制浏览器画面和声音。R 从头播放，空格暂停，M 静音，Esc 返回。发布时保留片尾与简介中的音乐署名。</span></p>
     </dialog>
   </body>
 </html>

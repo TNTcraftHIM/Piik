@@ -53,7 +53,9 @@
   seek(20);
   assert(gamePose() === firstPose, 'Revisiting a frame must not depend on earlier scenes');
   for (const [time, name] of [
-    [8, 'launch'],
+    [7, 'website'],
+    [9.8, 'desktop'],
+    [12, 'launch'],
     [15, 'share'],
     [33, 'invite'],
     [49, 'features'],
@@ -74,11 +76,13 @@
   assert(devices() !== arrivingDevices && ['laptop', 'tablet', 'phone'].every(id => el(`devices-${id}`).getAttribute('opacity') === '1'), 'The devices must enter in sequence and settle into a readable frame');
   seek(22.5 * BAR + BEAT / 2);
   assert(devices() === arrivingDevices, 'Device arrival must be deterministic after reverse seeking');
-  seek(4.5 * BAR - .1);
-  const beforeHandoff = el('ui-placement').transform.baseVal.consolidate().matrix;
-  seek(4.5 * BAR + BEAT / 2);
-  const afterHandoff = el('ui-placement').transform.baseVal.consolidate().matrix;
-  assert(['a','b','c','d','e','f'].every(key=>Math.abs(beforeHandoff[key]-afterHandoff[key])<.01), 'The App window must stay in place between opening and choosing a screen');
+  for (const bar of [3.5, 4.5, 6]) {
+    seek(bar * BAR - .1);
+    const beforeHandoff = el('ui-placement').transform.baseVal.consolidate().matrix;
+    seek(bar * BAR + BEAT / 2);
+    const afterHandoff = el('ui-placement').transform.baseVal.consolidate().matrix;
+    assert(['a','b','c','d','e','f'].every(key=>Math.abs(beforeHandoff[key]-afterHandoff[key])<.01), 'The desktop, App and source steps must keep a continuous window position');
+  }
   const gameKinds = ['rpg', 'fps', 'platform', 'rts', 'moba', 'fighting'];
   const gameCut = 5 * BAR / gameKinds.length;
   for (const [index, kind] of gameKinds.entries()) {
@@ -119,7 +123,7 @@
   seek(finalHit);
   assert(gamePose() === finishPose, 'Montage effects must remain deterministic after seeking backwards');
   const product = el('product-ui');
-  assert(product.sandbox.value === 'allow-scripts' && product.hasAttribute('inert'), 'The demonstration must remain an isolated, non-interactive frame');
+  assert([product, el('website-ui')].every(frame => frame.sandbox.value === 'allow-scripts' && frame.hasAttribute('inert')), 'Both real pages must remain isolated, non-interactive frames');
   seek(33);
   await settle();
   assert(
@@ -132,17 +136,29 @@
   await settle();
   assert(position() < 1 && playing() && scene().includes('scene-hello'), 'Replay must start a fresh film');
   seek(Number(el('seek').max));
-  assert(!playing() && scene().includes('scene-download'), 'Seeking to the end must hold the download card');
+  assert(!playing() && scene().includes('scene-end') && el('download-banner').style.display !== 'none', 'Seeking to the end must hold the download overlay on the original ending');
   assert(el('time').textContent === '1:16 / 1:16', 'The player must format durations longer than one minute');
   assert(!el('download').hidden && new URL(el('download').href).hash === '#download' && el('download').target === '_top', 'The final action must reach the homepage downloads, including from the embedded player');
-  const endingPose = () => el('scene-download').outerHTML;
+  const endingPose = () => el('scene-end').outerHTML;
   const lastPose = endingPose();
   seek(DOWNLOAD_AT-BEAT);
   assert(el('download').hidden, 'Rewinding must hide the ending action');
-  seek(DURATION-BEAT/2);
-  assert(el('download-tv-wink').getAttribute('opacity') === '1' && Number(el('download-tv-sparkles').getAttribute('opacity')) > .9, 'The mascot must wink on the final beat');
+  seek(27 * BAR + BEAT + 1.8);
+  const endingAnimations = () => el('end-tv').getAnimations({subtree:true});
+  assert(endingAnimations().length === 5 && endingAnimations().every(animation => animation.playState === 'paused' && animation.effect.getTiming().duration === 3600), 'The ending must reuse the loading mascot loop, held at the requested film frame');
+  assert(getComputedStyle(el('end-tv-wink')).opacity === '1' && Number(getComputedStyle(el('end-tv-sparkles').firstElementChild).opacity) > .5, 'The loading mascot must wink with its gold sparkles');
+  assert(!el('scene-download') && el('download-banner').closest('#scene-end') && el('end-brand').checkVisibility(), 'The download must overlay the existing brand and room instead of starting another scene');
   seek(Number(el('seek').max));
   assert(endingPose() === lastPose, 'The final pose must survive reverse seeking');
+  seek(DURATION - .1);
+  el('play').click();
+  await until(() => !playing(), 'The film must finish naturally');
+  await settle();
+  assert(endingAnimations().every(animation => animation.playState === 'running'), 'Natural completion must leave only the mascot idle loop running');
+  seek(DURATION);
+  const frozenEnding = endingAnimations().map(animation => animation.currentTime);
+  await settle();
+  assert(endingAnimations().every((animation, index) => animation.playState === 'paused' && animation.currentTime === frozenEnding[index]), 'Seeking after completion must freeze the mascot again');
   seek(DOWNLOAD_AT + BAR);
   el('play').click();
   el('download').addEventListener('click', event => event.preventDefault(), {once:true});
@@ -153,7 +169,7 @@
   // The language switch must preserve the frame and keep return links current.
   const beforeLanguage = document.documentElement.lang;
   el('language').click();
-  assert(document.documentElement.lang !== beforeLanguage && scene().includes('scene-download'), 'Language changes must preserve playback position');
+  assert(document.documentElement.lang !== beforeLanguage && scene().includes('scene-end'), 'Language changes must preserve playback position');
   assert(
     [...document.querySelectorAll('[data-home]')].every((a) => new URL(a.href).searchParams.get('lang') === document.documentElement.lang),
     'Return links must carry the current language',
@@ -177,13 +193,14 @@
   for (let language = 0; language < 2; language++) {
     for (const [time, selector] of [
       [1.4, '#hello-word text'], [4.3, '#discover-ticket text'],
-      [8, '#launch-type text'], [15, '#share-type text'], [35, '#invite-type text'],
+      [7, '#website-type text'], [9.8, '#desktop-type text'],
+      [12, '#launch-type text'], [15, '#share-type text'], [35, '#invite-type text'],
       [44, '#people-close-type text'], [46.5, '#free-type text'],
       [48.8, '#p2p-type text, #feature-p2p > text'], [52, '#encode-type text, #feature-encode > text'],
       [55.5, '#devices-type text, #feature-devices > text'],
       [58.3, '#more-game > g > text'], [60, '#more-art-type text'],
       [61.8, '#more-photos-type text'], [63.6, '#more-movie-type text'],
-      [68, '#end-type text'], [71.5, '#download-type text, #download-url text'],
+      [68, '#end-type text'], [71.5, '#download-banner text'],
     ]) {
       seek(time);
       for (const text of document.querySelectorAll(selector)) {
@@ -197,11 +214,12 @@
     // Stable corner labels share a baseline even when nearby artwork moves.
     for (const [time, selector] of [
       [1.4, '#hello-label'], [4.3, '#discover-label'],
-      [8, '#scene-launch'], [15, '#share-label'], [17.9, '#share-label'], [35, '#scene-invite'],
+      [7, '#scene-website'], [9.8, '#scene-desktop'], [12, '#scene-launch'],
+      [15, '#share-label'], [17.9, '#share-label'], [35, '#scene-invite'],
       [40, '#scene-people'], [44, '#people-close'], [46.5, '#feature-free'],
       [48.8, '#feature-p2p'], [52, '#feature-encode'], [55.5, '#feature-devices'],
       [58.3, '#more-game'], [60, '#more-art'], [61.8, '#more-photos'],
-      [63.6, '#more-movie'], [68, '#end-label'], [71.5, '#scene-download'],
+      [63.6, '#more-movie'], [68, '#end-label'], [71.5, '#end-label'],
     ]) {
       seek(time);
       const label = document.querySelector(`${selector} > .scene-label`);
@@ -228,8 +246,7 @@
     [60, 'more-art-type', '#sketch-paper'],
     // The card frames bound the visible crop; nested scenery extends behind it.
     [61.8, 'more-photos-type', '#more-photos-picture > svg > g > rect'],
-    [63.6, 'more-movie-type', '#movie-plane'],
-    [71.5, 'download-type', '#download-character'],
+    [63.6, 'more-movie-type', '#movie-answer-machine'],
   ]) {
     seek(time);
     for (const subject of document.querySelectorAll(object))
@@ -255,46 +272,73 @@
   // A separate instance makes the real staged controls observable, while the
   // presented film iframe keeps its opaque sandbox and non-interactive contract.
   const demo = document.createElement('iframe');
-  let demoReady = false;
-  const ready = event => { if (event.source===demo.contentWindow && event.data?.type==='piik-film-ui-ready') demoReady=true; };
+  const websiteDemo = document.createElement('iframe');
+  let demoReady = false, websiteReady = false;
+  const ready = event => {
+    if (event.data?.type !== 'piik-film-ui-ready') return;
+    if (event.source===demo.contentWindow) demoReady=true;
+    if (event.source===websiteDemo.contentWindow) websiteReady=true;
+  };
   window.addEventListener('message',ready);
   demo.style.cssText = 'position:absolute;left:-10000px;width:1100px;height:740px';
   demo.src = new URL('./ui/index.html', location.href).href;
-  document.body.append(demo);
+  websiteDemo.style.cssText = demo.style.cssText;
+  websiteDemo.src = new URL('./ui/website.html', location.href).href;
+  document.body.append(demo, websiteDemo);
   try {
-    await until(() => demoReady, 'The staged UI must load');
+    await until(() => demoReady && websiteReady, 'The staged App and actual homepage must load');
     const doc = demo.contentDocument, win = demo.contentWindow;
     const at = async (scene,local,lang) => {
-      win.postMessage({type:'piik-film-ui',scene,local,time:({launch:2,share:4.5,invite:13}[scene])*BAR+local,lang}, '*');
+      const frame = {type:'piik-film-ui',scene,local,time:({website:2,desktop:3.5,launch:4.5,share:6,invite:13}[scene])*BAR+local,lang};
+      const target = scene === 'website' ? websiteDemo : demo;
+      target.contentWindow.postMessage(frame, '*');
       await settle();
-      const pointer = doc.getElementById('cursor'), box = pointer.getBoundingClientRect();
-      return {x:box.x,y:box.y,pan:new DOMMatrix(doc.getElementById('camera').style.transform).f,visible:!pointer.hidden && Number(pointer.style.opacity)>.05};
+      const pointer = target.contentDocument.getElementById('cursor'), box = pointer.getBoundingClientRect();
+      return {x:box.x,y:box.y,pan:scene==='website'?0:new DOMMatrix(doc.getElementById('camera').style.transform).f,visible:!pointer.hidden && Number(pointer.style.opacity)>.05};
     };
     for (const lang of ['zh-CN','en']) {
-      await at('launch',9*BEAT,lang);
+      await at('website',0,lang);
+      const homepage = websiteDemo.contentDocument;
+      assert(homepage.documentElement.lang === lang && homepage.defaultView.scrollY === 0, 'The opening must show the actual homepage in the film language');
+      const downloaded = await at('website',4.5*BEAT,lang);
+      const downloadButton = homepage.querySelector('#download .download-button').getBoundingClientRect();
+      assert(homepage.defaultView.scrollY > 1000 && downloaded.visible &&
+        downloaded.x >= downloadButton.left && downloaded.x <= downloadButton.right &&
+        downloaded.y >= downloadButton.top && downloaded.y <= downloadButton.bottom && downloadButton.bottom < 740,
+        'The website must scroll to a visible system download button before clicking');
+      await at('website',0,lang);
+      const downloadedAgain = await at('website',4.5*BEAT,lang);
+      assert(Math.hypot(downloadedAgain.x-downloaded.x, downloadedAgain.y-downloaded.y)<.01, 'The website scroll and click must survive reverse seeking');
+      await at('launch',5*BEAT,lang);
       assert(doc.querySelector('.lr-room') && doc.body.textContent.includes('9527'), 'Opening Piik must reveal the sample room before the next step');
-      const beforeViewer = await at('invite',6*BEAT-1/60,lang);
-      const afterViewer = await at('invite',6*BEAT+1/60,lang);
+      await at('invite',4.5*BEAT,lang);
+      assert(doc.querySelector('#chat-draft').value.includes('/r/9527') && doc.querySelector('.film-chat'), 'The invite must be pasted into an external chat example');
+      await at('invite',7*BEAT,lang);
+      assert(doc.querySelector('.chat-mine').textContent.includes('/r/9527') && !doc.querySelector('#chat-draft').value, 'The chat must show the sent link before friends enter');
+      const beforeViewer = await at('invite',8*BEAT-1/60,lang);
+      const afterViewer = await at('invite',8*BEAT+1/60,lang);
       assert(Math.abs(beforeViewer.pan-afterViewer.pan)<2, 'The camera must return smoothly before the viewer joins');
       for (const [scene,beat,selector] of [
-        ['launch',3,'[role="radio"]'], ['launch',8,'button[type="submit"]'],
-        ['share',2,'.lr-entry-action button'], ['share',6,'.lr-source-option'],
-        ['invite',3,'.lr-invite-url'],
+        ['desktop',2.5,'#desktop-app'],
+        ['launch',1.5,'[role="radio"]'], ['launch',4,'button[type="submit"]'],
+        ['share',1.5,'.lr-entry-action button'], ['share',4,'.lr-source-option'],
+        ['invite',1.5,'.lr-invite-url'], ['invite',4,'#chat-draft'], ['invite',6,'#chat-send'],
       ]) {
         const p = await at(scene,beat*BEAT,lang);
         const element = doc.querySelectorAll(selector)[selector==='[role="radio"]'?1:0];
-        const target = scene==='invite' ? element.closest('.lr-row').querySelector('button') : element;
+        const target = selector==='.lr-invite-url' ? element.closest('.lr-row').querySelector('button') : element;
         const b = target.getBoundingClientRect();
         assert(p.visible && p.x>=b.left && p.x<=b.right && p.y>=b.top && p.y<=b.bottom, 'Clicks must land on visible controls');
       }
       for (const [scene,moment] of [
-        ['launch',3.25*BEAT], ['launch',4*BEAT], ['launch',3.8],
-        ['share',2.25*BEAT], ['share',3*BEAT], ['share',2.1], ['invite',3.25*BEAT],
+        ['launch',1.75*BEAT], ['launch',2*BEAT], ['launch',3.5*BEAT],
+        ['share',1.75*BEAT], ['share',2.25*BEAT], ['share',3.5*BEAT],
+        ['invite',1.75*BEAT], ['invite',3*BEAT], ['invite',4*BEAT], ['invite',4.5*BEAT], ['invite',6.25*BEAT],
       ]) {
         let previous;
         for (const offset of [-2,-1,0,1,2]) {
           const p = await at(scene,moment+offset/60,lang);
-          assert(p.visible, 'The cursor must remain visible across a target or state change');
+          assert(p.visible, `The cursor must remain visible across ${scene} at ${moment.toFixed(3)}s (${offset} frames)`);
           if (previous) assert(Math.hypot(p.x-previous.x,p.y-previous.y)<30, 'The cursor must not teleport between controls');
           previous=p;
         }
@@ -303,7 +347,7 @@
         assert(Math.hypot(revisited.x-previous.x,revisited.y-previous.y)<.01, 'Cursor paths must not depend on playback history');
       }
     }
-  } finally { window.removeEventListener('message',ready); demo.remove(); }
+  } finally { window.removeEventListener('message',ready); demo.remove(); websiteDemo.remove(); }
 
   el('capture').click();
   await settle();
@@ -432,13 +476,13 @@
       'bilingual scene label alignment',
       'four benefit cuts and seekable device arrivals',
       'scenario composition and seekable sketch',
-      'continuous cursor paths, click targets and reverse seeking',
+      'website download, desktop launch, chat sending and continuous cursor paths',
       'standalone hero montage, shared poses and still image',
       'isolated product sequence',
       'touch-accessible fullscreen',
       'native audible seek/resume',
       'twenty viewers',
-      'download ending, final beat and minute formatting',
+      'download overlay, shared mascot idle/pause/seek and minute formatting',
       'download pause and preference round trip',
       'language round trip',
       'stale play rejection',

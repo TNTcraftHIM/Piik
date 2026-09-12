@@ -7,33 +7,29 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **Brand line selection.** Choose the final Chinese and English slogans,
-  then align the homepage, film ending, README openings and public page metadata.
-- [ ] **Website introduction acceptance.** Review the revised bilingual film
-  and four-use homepage/README illustration with the approved brand lines.
-  Record/export the film only after visual acceptance.
 - [ ] **Release and repository readiness.** Review the prepared Windows test
-  candidate. Retry native CI after the Actions artifact quota refreshes, then
+  candidate. Run native CI on the now-public repository, then
   rehearse the publisher with genuine matching Server and App packages. Old cloud
   artifacts have already been removed; if quota rejection persists, inspect
   account billing and Packages usage with credentials that can read those scopes.
   Run the final source's required regression checks, prepare one coherent squash
   PR, accept the [first public release](./reference/versioning.md#first-public-release-readiness),
-  and finish [repository protection and publishing activation](./operations/github.md).
+  and finish [publishing activation](./operations/github.md).
   Test-candidate checks do not accept the public release. Keep the owner's
   [device/network deferrals](./verification-status.md#candidate-evidence-boundary).
 - [ ] **Gitee package acceptance.** The public README mirror, publisher secret,
-  upload pipeline and App/Server update fallback are implemented. Small-file
-  upload and anonymous download checks passed. Verify the complete matching
-  release packages, total attachment capacity and real update/download flow
+  upload pipeline and App/Server update fallback are implemented. The complete
+  Windows test archive passed anonymous download, checksum and App entry
+  acceptance. Verify the complete matching Server and three-platform
+  App release, total attachment capacity and real update/download flow
   under the [release model](./reference/versioning.md#release-sources) before launch.
-- [ ] **Website and demo launch.** Complete repository visibility, Release,
-  GitHub Pages and DNS setup for piik.tv. Deploy and verify the password-free,
-  P2P-only demo.piik.tv on the separate US server under
-  [website operations](./operations/website.md). Verify all public destinations;
+- [ ] **Website launch.** Publish the accepted website through GitHub Pages
+  and verify piik.tv under
+  [website operations](./operations/website.md). Verify all public destinations,
+  including the deployed password-free, P2P-only demo.piik.tv;
   the current private production service remains private.
 
-Keep implementation on the existing phase branch. Main and production stay
+Keep implementation on the existing phase branch. Main and the private service stay
 unchanged until the related acceptance and delivery actions are complete.
 
 ## Next: P2P Connection And Feedback Review

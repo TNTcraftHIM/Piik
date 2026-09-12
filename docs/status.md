@@ -8,7 +8,7 @@ and Git/PRs own completed history.
 
 ## Accepted Release Contract
 
-- Browser/server v23, Native control v9 and capture v7 form one private contract.
+- Browser/server v23, Native control v9 and capture v7 form the current contract.
   The coordinated brand/protocol cutover requires matching Web/App/Server
   artifacts and a reload of incompatible active pages.
 - Hosted Server defaults to SQLite schema 2. Room authority has no inactivity
@@ -36,23 +36,28 @@ Binding-only STUN on UDP 3478/3479/3480 and optional SFU on UDP 7882. nginx owns
 HTTPS; external LiveKit/coturn services remain disabled. Participants, routes and
 media remain process-only. This private service is not a public demonstration.
 
-[TODO](./todo.md) owns the remaining release/launch
-work. The owner accepted the website, README/guides and UI presentation on
-2026-09-12; final functional and release acceptance remains pending. The working
-branch combines the App/UI revision, public guides, website and versioned
-distribution pipeline. The Windows test
-candidate is prepared for owner review; bounded two-build interoperability and
-update checks passed. This is
-functional test acceptance, not final public-release acceptance. The
-complete publisher rehearsal is blocked by the Actions artifact-storage quota.
-Main and production have not changed. Shared lessons live in
-[engineering](./reference/engineering.md); [verification status](./verification-status.md#candidate-evidence-boundary)
-owns the remaining evidence limits. Version-plus-SHA metadata,
-release comparisons, GitHub/Gitee update fallback and the post-main publishing
-pipeline are implemented with local checks. The public Gitee README mirror and
-publisher secret are configured; small-file upload and anonymous download passed.
-Full-package mirror acceptance, public compatibility and publishing activation remain
-pending under [versioning](./reference/versioning.md).
+The separate US [public demo](https://demo.piik.tv) is deployed with open site
+entry, persistent room authority and P2P-only media. Caddy owns HTTPS, and the
+standard systemd service runs the verified Server test candidate. Public DNS,
+HTTPS, runtime assets, all three STUN listeners and a bounded browser P2P
+sharing/stop check passed; the browser check used synthetic video on one network.
+The operator record owns exact identity and postflight evidence.
+
+[TODO](./todo.md) owns remaining publication work. The owner accepted the public
+introduction and authorized launch on 2026-09-12. The source repository is public,
+main protection is active, and GitHub Pages is configured for `piik.tv`. The
+private service remains a separate deployment. Release descriptors and GitHub
+deployment records identify published artifacts and website revisions.
+
+The Windows test archive passed complete anonymous Gitee download, checksum,
+App entry/presentation and update-link acceptance. Bounded two-build
+interoperability also passed. The complete publisher rehearsal previously hit
+the private repository's Actions artifact quota and must complete on the public
+repository before package publication. GitHub/Gitee release comparison, mirror
+publishing and PR-sourced release notes are implemented under
+[versioning](./reference/versioning.md). [Verification status](./verification-status.md#candidate-evidence-boundary)
+owns the remaining physical limits; shared lessons live in
+[engineering](./reference/engineering.md).
 
 ## Media Evidence And Limits
 

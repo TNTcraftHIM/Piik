@@ -22,6 +22,7 @@
     "../vite.config.ts",
     "../vitest.config.ts",
     "../site/film/ui/main.tsx",
+    "../site/film/ui/website.ts",
     "access-privacy-gate.ts",
     "browser-local-pool-probe.ts",
     "client-browser-fanout-gate.ts",

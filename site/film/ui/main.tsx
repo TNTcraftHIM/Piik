@@ -28,13 +28,15 @@ import { setCopy, useCopy } from "../../../src/client/ui/copy";
 import { deriveParticipantStatus } from "../../../src/client/ui/media-status";
 import { gameMarkup, createGame } from "../../assets/game.js";
 import { sketchMarkup } from "../../assets/sketch.js";
-import { BEAT } from "../score.js";
+import { BEAT, INVITE_CUES } from "../score.js";
+import { point } from "./cursor";
 import "../../../src/client/styles.css";
 import "./ui.css";
 
-type Shot = "local" | "link" | "idle" | "picker" | "host" | "copied" | "viewer";
+type Shot = "desktop" | "local" | "link" | "idle" | "picker" | "host" | "copied" | "chat" | "draft" | "sent" | "viewer";
 const noop = () => {};
 const roomId = "9527";
+const inviteUrl = `https://invite.piik.example/r/${roomId}`;
 const host = "d27a938b-61f5-4ab2-b8e4-3fc090c3ae18";
 const guests = [
   "779594c8-a92c-48d9-918f-a7d0befa46d1",
@@ -93,10 +95,42 @@ const preview = async (target: { sourceId: string }) =>
         `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 720">${sketchMarkup('thumb-sketch')}</svg>`,
       );
 
+function Folder({size}: {size: number}) {
+  return <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true"><path d="M3 10V7q0-2 2-2h8l4 4h10q2 0 2 2v14q0 2-2 2H5q-2 0-2-2Z" fill="#f3cc68" stroke="#203037" strokeWidth="1.6" /><path d="M3 12h26" stroke="#203037" strokeWidth="1.6" /></svg>;
+}
+
+function Chat({shot}: {shot: Shot}) {
+  const {lang} = useCopy();
+  const zh = lang === "zh";
+  return <section className="film-chat" aria-label={zh ? "聊天软件示意" : "Chat app example"}>
+    <header><span className="chat-avatar"><VisGlyph name="users" size={36} /></span><div><small>{zh ? "聊天软件示意" : "CHAT APP EXAMPLE"}</small><strong>{zh ? "周末小分队" : "Weekend crew"}</strong></div></header>
+    <div className="chat-messages"><p className="chat-bubble">{zh ? "人呢？" : "You joining?"}</p>
+      {shot === "sent" && <p className="chat-bubble chat-mine">{inviteUrl}<span>✓</span></p>}
+    </div>
+    <div className="chat-compose"><input id="chat-draft" value={shot === "draft" ? inviteUrl : ""} readOnly aria-label={zh ? "消息" : "Message"} /><button id="chat-send" type="button"><VisGlyph name="arrowRight" size={24} />{zh ? "发送" : "Send"}</button></div>
+  </section>;
+}
+
 function Screen({ shot }: { shot: Shot }) {
   const { t, lang } = useCopy();
+  if (shot === "desktop") return (
+    <main className="desktop">
+      <div className="desktop-folder">
+        <div className="desktop-path"><Folder size={25} /> Piik App</div>
+        <div className="desktop-files">
+          <button id="desktop-app" type="button">
+            <img src="../../assets/favicon.svg" width="96" height="96" alt="" />
+            <span>piik-app.exe</span>
+          </button>
+          <div className="desktop-runtime"><Folder size={70} /><span>runtime</span></div>
+        </div>
+      </div>
+      <div className="desktop-taskbar"><img src="../../assets/favicon.svg" width="34" height="34" alt="" /></div>
+    </main>
+  );
   const launcher = shot === "local" || shot === "link";
-  const live = shot === "host" || shot === "copied" || shot === "viewer";
+  const chat = shot === "chat" || shot === "draft" || shot === "sent";
+  const live = shot === "host" || shot === "copied" || shot === "viewer" || chat;
   const name = lang === "zh" ? "摸鱼办主任" : "ThisIsFine";
   const names =
     lang === "zh" ? ["派大星", "大聪明", "咸鱼突刺"] : ["Leeroy", "Kenobi", "NotABot"];
@@ -221,10 +255,10 @@ function Screen({ shot }: { shot: Shot }) {
                 <Row label={t("host.invite")}>
                   <RowGroup actions>
                     <Btn
-                      icon={shot === "copied" ? "check" : "link"}
+                      icon={shot === "copied" || chat ? "check" : "link"}
                       cap="common.copy"
                       title={
-                        shot === "copied" ? "common.copied" : "host.invite.copy"
+                        shot === "copied" || chat ? "common.copied" : "host.invite.copy"
                       }
                     />
                     <Btn
@@ -241,7 +275,7 @@ function Screen({ shot }: { shot: Shot }) {
                   <input
                     className="lr-invite-url"
                     readOnly
-                    value={`https://invite.piik.example/r/${roomId}`}
+                    value={inviteUrl}
                     aria-label={t("host.invite")}
                   />
                 </Row>
@@ -250,6 +284,7 @@ function Screen({ shot }: { shot: Shot }) {
           </div>
         </main>
       )}
+      {chat && <Chat shot={shot} />}
     </div>
   );
 }
@@ -261,16 +296,15 @@ let current = "";
 const clamp = (n: number) => Math.min(1, Math.max(0, n));
 const ease = (n: number) => 1 - (1 - clamp(n)) ** 4;
 const cues = {
-  mode: 3 * BEAT,
-  launch: 8 * BEAT,
-  share: 2 * BEAT,
-  source: 6 * BEAT,
-  live: 7 * BEAT,
-  copy: 3 * BEAT,
-  viewer: 6 * BEAT,
+  mode: 1.5 * BEAT,
+  launch: 4 * BEAT,
+  share: 1.5 * BEAT,
+  source: 4 * BEAT,
+  live: 4.5 * BEAT,
+  ...INVITE_CUES,
 };
 type Frame = {
-  scene: "launch" | "share" | "invite";
+  scene: "desktop" | "launch" | "share" | "invite";
   local: number;
   time: number;
   lang: "en" | "zh-CN";
@@ -282,7 +316,7 @@ window.addEventListener("message", (event) => {
   if (
     event.source !== parent ||
     data?.type !== "piik-film-ui" ||
-    !["launch", "share", "invite"].includes(data.scene) ||
+    !["desktop", "launch", "share", "invite"].includes(data.scene) ||
     !["en", "zh-CN"].includes(data.lang) ||
     !Number.isFinite(data.time) ||
     !Number.isFinite(data.local)
@@ -290,7 +324,9 @@ window.addEventListener("message", (event) => {
     return;
   const t = data.local;
   const shot: Shot =
-    data.scene === "launch"
+    data.scene === "desktop"
+      ? data.scene
+      : data.scene === "launch"
       ? t >= cues.launch + BEAT / 2
         ? "idle"
         : t < cues.mode + BEAT / 4
@@ -304,9 +340,10 @@ window.addEventListener("message", (event) => {
             : "host"
         : t < cues.copy + BEAT / 4
           ? "host"
-          : t < cues.viewer
-            ? "copied"
-            : "viewer";
+          : t < cues.chat ? "copied"
+          : t < cues.paste ? "chat"
+          : t < cues.send + BEAT / 4 ? "draft"
+          : t < cues.viewer ? "sent" : "viewer";
   const key = `${data.lang}:${shot}`;
   if (key !== current) {
     current = key;
@@ -332,23 +369,40 @@ function paint(data: Frame) {
     animation.currentTime = data.time * 1000;
   });
   camera.style.transform = "none";
+  let pan = 0;
+  if (data.scene === "invite") {
+    const row = document.querySelector<HTMLElement>(".lr-invite-url");
+    pan = row ? Math.max(0, row.getBoundingClientRect().top - 490) : 130;
+    pan += (130 - pan) * ease((t - 7 * BEAT) / BEAT);
+    pan *= ease(t / BEAT);
+    const chat = document.querySelector<HTMLElement>(".film-chat");
+    if (chat) chat.style.transform = `translateY(${pan}px)`;
+  }
   const center = (element: HTMLElement | null | undefined) => {
     const box = element?.getBoundingClientRect();
     return box ? { x: box.x + box.width / 2, y: box.y + box.height / 2 } : undefined;
   };
   let from = { x: 1040, y: 710 };
   let target: ReturnType<typeof center>;
-  let moveAt = BEAT / 2, moveFor = 2 * BEAT, clickAt = 0, hideAt = 0;
+  let moveAt = BEAT / 2, moveFor = BEAT, clickAt = 0, hideAt = 0;
+  if (data.scene === "desktop") {
+    target = center(document.getElementById("desktop-app"));
+    clickAt = 2.5 * BEAT;
+    hideAt = 4 * BEAT;
+    moveFor = 1.5 * BEAT;
+    const press = Math.sin(clamp((t - clickAt) / (BEAT / 2)) * Math.PI);
+    document.getElementById("desktop-app")!.style.transform = `scale(${1 - .04 * press})`;
+  }
   if (data.scene === "launch") {
     const mode = center(document.querySelectorAll<HTMLElement>('[role="radio"]')[1]);
     target = mode;
     clickAt = cues.mode;
     hideAt = cues.launch + BEAT / 2;
-    if (t >= 4 * BEAT && mode) {
+    if (t >= 2 * BEAT && mode) {
       from = mode;
       target = center(document.querySelector<HTMLElement>('button[type="submit"]'));
-      moveAt = 4 * BEAT;
-      moveFor = 3 * BEAT;
+      moveAt = 2 * BEAT;
+      moveFor = 1.5 * BEAT;
       clickAt = cues.launch;
     }
   }
@@ -360,39 +414,40 @@ function paint(data: Frame) {
     moveFor = BEAT;
     clickAt = cues.share;
     hideAt = cues.live;
-    if (t >= 3 * BEAT && entry) {
+    if (t >= 2.25 * BEAT && entry) {
       from = entry;
       target = center(document.querySelector<HTMLElement>(".lr-source-option"));
-      moveAt = 3 * BEAT;
-      moveFor = 2.5 * BEAT;
+      moveAt = 2.25 * BEAT;
+      moveFor = 1.25 * BEAT;
       clickAt = cues.source;
     }
   }
   if (data.scene === "invite") {
-    target = center(
+    const copy = center(
       document
         .querySelector<HTMLElement>(".lr-invite-url")
         ?.closest(".lr-row")
         ?.querySelector<HTMLElement>("button"),
     );
+    target = copy;
     clickAt = cues.copy;
-    hideAt = cues.copy + BEAT;
+    hideAt = cues.send + BEAT;
+    if (t >= cues.chat && copy) {
+      from = copy;
+      target = center(document.getElementById('chat-draft'));
+      moveAt = cues.chat;
+      moveFor = BEAT;
+      clickAt = cues.paste;
+    }
+    if (t >= cues.paste + BEAT / 2) {
+      from = center(document.getElementById('chat-draft')) ?? from;
+      target = center(document.getElementById('chat-send'));
+      moveAt = cues.paste + BEAT / 2;
+      moveFor = BEAT;
+      clickAt = cues.send;
+    }
   }
-  let pan = 0;
-  if (data.scene === "invite") {
-    const row = document.querySelector<HTMLElement>(".lr-invite-url");
-    pan = row ? Math.max(0, row.getBoundingClientRect().top - 490) : 130;
-    pan += (130 - pan) * ease((t - 4 * BEAT) / (2 * BEAT));
-    pan *= ease(t / BEAT);
-  }
-  if (target) {
-    const p = clamp((t - moveAt) / moveFor), arrive = p * p * (3 - 2 * p);
-    const x = from.x + (target.x - from.x) * arrive,
-      y = from.y + (target.y - from.y) * arrive;
-    cursor.style.transform = `translate(${x}px,${y}px) scale(${1 - 0.18 * Math.sin(clamp((t - clickAt) / (BEAT / 2)) * Math.PI)})`;
-  }
-  cursor.style.opacity = String(ease(t / (BEAT / 2)) * (1 - ease((t - hideAt + BEAT / 2) / (BEAT / 2))));
-  cursor.toggleAttribute("hidden", !target || t >= hideAt);
+  point(cursor, t, from, target, moveAt, moveFor, clickAt, hideAt);
   camera.style.transform = `translateY(${-pan}px)`;
 }
 parent.postMessage({ type: "piik-film-ui-ready" }, "*");

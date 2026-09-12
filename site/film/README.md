@@ -14,19 +14,23 @@ owns playback, sound and controls. Audible playback follows the audio element's
 clock, including buffering. The host must support HTTP byte ranges for seeking;
 the Vite preview command does. Muted playback uses a monotonic clock and does not
 request the soundtrack. Artwork and the demonstration's CSS animations follow
-this same position, including pause, seek and replay.
+this same position, including pause, seek and replay. After natural completion,
+only the closing mascot continues its native idle loop; an explicit pause or
+seek freezes it, and reduced motion keeps it still.
 
-The film follows the actual App flow: unpack/open, choose **Public invite**,
-select a source, then copy the invite for friends to watch in a browser.
-The “ready to use” introduction does not promise offline use or guaranteed
-connectivity: public invitations need Internet access and a temporary control
-tunnel. Avoiding repeated work applies to compatible connections; it is not a
-universal CPU-usage benchmark. The public pages use the
+The film follows the App flow in five steps: scroll to the website downloads,
+unpack the complete package and open the App, choose **Public invite**, select a
+source, then copy and send the invite through an external chat example before
+friends watch in a browser. Public invitations
+need Internet access and a temporary control tunnel. The public pages use the
 [copy guide's information layers](../../docs/reference/naming.md#voice-and-terminology).
 
 `ui/main.tsx` uses the product's actual launcher form, source picker, TV, sofa and
-control primitives with sample inputs. It runs in an opaque, inert iframe with
-script permission only; it cannot persist preferences to the App or request
+control primitives with sample inputs. The build also supplies the current
+homepage HTML and styles to `ui/website.ts`, whose scrolling follows the same
+film position; the desktop is an illustration of the unpacked Windows package.
+The website and App run in separate opaque, inert iframes with
+script permission only; they cannot persist preferences to the App or request
 capture. No room connection, API interception or media permission is simulated.
 The existing build dependency bundles these components; rebuilding the website
 picks up their styling and copy. Review scene selection and camera framing when
@@ -37,10 +41,12 @@ Each cursor movement starts at the preceding control and has its own travel
 interval. Derive the entire pose from the requested time; do not accumulate
 cursor history or start a second animation clock. The source preview and drawing
 scene share `../assets/sketch.js`, including a seekable pencil trace.
-Opening the App changes the staged UI to the room. Keep the window's position
-continuous through that handoff; the next chapter changes its surrounding graphics.
+Opening the App leads to its mode form and then the room. Keep the window's
+position continuous through these steps. The neutral chat example retains the
+copy control beneath it to anchor the next cursor movement, with its own title
+and sample message clearly outside Piik's interface.
 
-The film reuses the product's playback control CSS and `Glyph` icons, rendered
+The film reuses the product's playback control and `BrandMark` CSS, plus `Glyph` icons rendered
 to static markup during the website build. Its score and audio remain owned by
 `player.js`; the live viewer's stream binding, audio gain, reconnect and picture
 in picture remain in `PlaybackControls`. A shared appearance does not require
@@ -80,8 +86,9 @@ external fonts, analytics or new runtime dependencies are used.
 by Kevin MacLeod (incompetech.com), under
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 The excerpt uses the opening 76.039604 seconds (32 bars), fading out over the
-last two beats from 74.851485 seconds. The download card closes the sequence;
-its link uses the homepage's platform download section.
+last two beats from 74.851485 seconds. At bar 29, the download banner enters over
+the existing brand and living room. Its link uses the homepage's platform downloads;
+the mascot uses the loading screen's repeating wink and gold sparkles.
 [The asset notice](./assets/NOTICE.txt) retains source, attribution and modification
 details. The music keeps its own license, separate from Piik's MIT license.
 

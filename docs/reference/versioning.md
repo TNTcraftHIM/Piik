@@ -115,7 +115,7 @@ Failed draft uploads can resume; published artifacts are never overwritten.
 An older draft retried after a newer release cannot take over `latest`.
 
 `PIIK_RELEASES_ENABLED` is a GitHub repository activation variable, not a product
-setting. It is currently unset. Until the first release is explicitly enabled,
+setting. Until the first release is explicitly enabled,
 main runs validation and manual `client_checks` dispatches create candidates only.
 Ordinary branches and PRs do not run cloud CI. [GitHub operations](../operations/github.md)
 owns activation and main protection; no workflow changes repository visibility.

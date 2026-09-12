@@ -24,8 +24,9 @@ Do not translate English sentence structure or possessive screen metaphors
 literally (“和朋友一起看你的屏幕”). Use familiar Chinese verbs and a light touch;
 forced memes, baby talk and repeated slogans quickly become tiring.
 
-The Chinese brand line should use familiar internet phrasing and a playful
-invitation. Keep the joke understandable without recognizing its reference.
+The brand line is “Share the good stuff.” in English and “来，看点好康的。” in
+Chinese. Display the Chinese headline on two lines: “来，看点” / “好康的。”
+Keep metadata and ordinary prose as the continuous sentence.
 
 Keep the public brand line consistent in the homepage, film ending and README
 opening, beside a plain screen-sharing description. Scene titles should name

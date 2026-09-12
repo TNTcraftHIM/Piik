@@ -13,11 +13,20 @@ await mkdir(output, { recursive: true });
 await cp(source, output, {
   recursive: true,
   filter: (path) =>
+    !path.endsWith(".ts") &&
     !path.endsWith(".tsx") &&
     !path.endsWith("tsconfig.json") &&
     !path.endsWith("README.md"),
 });
 await cp(new URL("../LICENSE", import.meta.url), new URL("LICENSE", output));
+// The opening shot uses the current homepage, with only its film clock adapter
+// substituted for the ordinary page script. Keep its layout and copy in one place.
+await writeFile(new URL("film/ui/website.html", output),
+  (await readFile(new URL("index.html", source), "utf8"))
+    .replace('<head>', '<head><base href="../../" />')
+    .replace('<script type="module" src="./main.js"></script>', '<script src="./film/ui/website.js" defer></script>')
+    .replace('</body>', (await readFile(new URL("film/ui/index.html", source), "utf8")).match(/<svg id="cursor"[\s\S]*?<\/svg>/)[0] + '</body>'),
+);
 // Static controls use the product icon owner without shipping another React
 // runtime to the film page. The live demonstration remains its isolated bundle.
 const filmPage = new URL("film/index.html", output);
@@ -33,16 +42,20 @@ await cp(
   new URL("../src/client/components/living/playback-controls.css", import.meta.url),
   new URL("film/playback-controls.css", output),
 );
+await cp(
+  new URL("../src/client/components/living/brand-mark.css", import.meta.url),
+  new URL("film/brand-mark.css", output),
+);
 writeWebLicenseNotices(
   fileURLToPath(new URL("../", import.meta.url)),
   fileURLToPath(new URL("film/ui/third-party-licenses.txt", output)),
 );
 await build({
-  entryPoints: [
-    fileURLToPath(new URL("../site/film/ui/main.tsx", import.meta.url)),
-  ],
+  entryPoints: {
+    ui: fileURLToPath(new URL("../site/film/ui/main.tsx", import.meta.url)),
+    website: fileURLToPath(new URL("../site/film/ui/website.ts", import.meta.url)),
+  },
   outdir: fileURLToPath(new URL("film/ui/", output)),
-  entryNames: "ui",
   bundle: true,
   format: "iife",
   jsx: "automatic",

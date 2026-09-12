@@ -72,7 +72,7 @@
           </p>
           <h1 id="hero-title">
             <span lang="en">Share the<br /><span class="highlight">good stuff.</span></span
-            ><span lang="zh-CN">来，<br /><span class="highlight">看点好康的。</span></span>
+            ><span lang="zh-CN">来，看点<br /><span class="highlight">好康的。</span></span>
           </h1>
           <p class="hero-description">
             <span lang="en">A great play. A movie night. Photos from your trip.<br />Share your screen and invite your friends.</span
@@ -334,12 +334,16 @@
                 <h3><span lang="en">About this demo</span><span lang="zh-CN">演示站说明</span></h3>
                 <p id="demo-status">
                   <span lang="en"
-                    >We host this demo for you. It uses direct device-to-device connections (P2P).
+                    >This demo uses direct device-to-device connections (P2P), with media forwarding disabled.
                     Restrictive networks may open the page but block the video.</span
                   ><span lang="zh-CN"
-                    >演示站由项目提供，画面通过设备间直连（P2P）传输。
+                    >演示站仅使用设备间直连（P2P），未启用媒体转发。
                     在受限网络下，可能出现页面能打开、画面无法连接的情况。</span
                   >
+                </p>
+                <p>
+                  <span lang="en">Self-hosted Piik sites can <a href="https://github.com/TNTcraftHIM/Piik/blob/main/docs/operations/self-hosting.md#optional-media-fallback">enable media forwarding (SFU)</a> as a fallback when a direct connection cannot be established.</span
+                  ><span lang="zh-CN">自行部署的 Piik 站点可以<a href="https://github.com/TNTcraftHIM/Piik/blob/main/docs/operations/self-hosting.zh-CN.md#可选启用媒体兜底">启用媒体转发（SFU）</a>，为直连失败提供兜底。</span>
                 </p>
                 <a class="button download-button" href="https://demo.piik.tv" aria-describedby="demo-status"
                   ><span lang="en">Open the demo</span><span lang="zh-CN">进入演示站</span
@@ -674,10 +678,12 @@
                 >Yes. Use the demo, an Internet-accessible Piik site, or Public invite in the App. Public invite gives
                 your room a temporary address that can change or become unavailable; closing the App ends the room.
                 The demo and Public invite use direct media connections without server forwarding, so some networks
-                may load the page but block the video.</span
+                may load the page but block the video. You can also use a Piik site with media forwarding enabled
+                for a fallback connection.</span
               ><span lang="zh-CN"
                 >可以使用在线 Demo、能从外网访问的 Piik 站点，或客户端的“公网邀请”。公网邀请的地址是临时的，可能中断或变化，退出 App 后房间也会结束。
-                Demo 和公网邀请的画面靠设备间直连传输，没有服务器转发兜底；部分网络可能出现页面能打开、画面连不上的情况。</span
+                Demo 和公网邀请的画面靠设备间直连传输，没有服务器转发兜底；部分网络可能出现页面能打开、画面连不上的情况。
+                也可以使用已启用媒体转发兜底的 Piik 站点。</span
               >
             </p>
           </details>

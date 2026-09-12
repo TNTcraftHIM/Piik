@@ -2,6 +2,28 @@ html,body { width:1100px; height:740px; margin:0; overflow:hidden; background:va
 #camera { width:1100px; transform-origin:0 0; }
 .lr-app { min-height:740px; }
 .sample-game { display:block; width:100%; height:100%; }
+.desktop { position:relative; display:grid; place-items:center; width:1100px; height:740px; background:linear-gradient(125deg,#b8e2c9 0 58%,#f3cc68 58% 76%,#e8f3ef 76%); color:#203037; }
+.desktop-folder { width:690px; height:425px; border:2px solid #203037; border-radius:16px; background:#faf5e7; box-shadow:9px 10px 0 #203037; }
+.desktop-path { display:flex; align-items:center; gap:12px; height:66px; padding:0 26px; border-bottom:2px solid #203037; font-weight:700; font-size:22px; }
+.desktop-files { display:flex; align-items:flex-start; gap:60px; padding:62px 72px; }
+.desktop-files > * { display:flex; flex-direction:column; align-items:center; gap:19px; width:190px; padding:16px; font:650 22px var(--font); }
+#desktop-app { border:2px solid #85baa8; border-radius:12px; color:inherit; background:#e8f3ef; }
+.desktop-runtime { color:#81622e; }
+.desktop-runtime > svg { margin:13px 0; }
+.desktop-taskbar { position:absolute; bottom:0; left:0; right:0; height:58px; display:grid; place-items:center; border-top:1px solid #20303744; background:#faf5e7dd; }
+.film-chat { position:absolute; z-index:40; left:0; top:0; width:1100px; height:740px; display:flex; flex-direction:column; background:#e8f3ef; color:#203037; }
+.film-chat header { display:flex; align-items:center; gap:21px; padding:28px 42px; border-bottom:2px solid #20303722; background:#faf5e7; }
+.chat-avatar { display:grid; place-items:center; width:65px; height:65px; border-radius:20px; background:#f3cc68; }
+.film-chat header div { display:grid; gap:8px; }
+.film-chat small { font-size:14px; letter-spacing:.08em; color:#53696b; }
+.film-chat strong { font-size:27px; }
+.chat-messages { display:flex; flex:1; flex-direction:column; align-items:flex-start; gap:42px; padding:48px 42px; }
+.chat-bubble { margin:0; border:1px solid #b5c7bd; border-radius:20px; padding:23px 28px; background:#faf5e7; font-size:24px; }
+.chat-mine { align-self:flex-end; background:#b8e2c9; }
+.chat-mine span { margin-left:22px; color:#37765a; }
+.chat-compose { display:flex; gap:18px; padding:28px 36px; border-top:1px solid #b5c7bd; background:#faf5e7; }
+.chat-compose input { flex:1; min-width:0; padding:19px 23px; border:2px solid #b5c7bd; border-radius:16px; font-size:24px; color:inherit; background:#fffefa; }
+.chat-compose button { display:flex; align-items:center; gap:12px; padding:16px 25px; border:0; border-radius:16px; font:700 23px var(--font); color:#faf5e7; background:#203037; }
 #cursor { position:absolute; left:0; top:0; z-index:100; pointer-events:none; transform-origin:0 0; }
 [hidden] { display:none !important; }
 /* The film supplies actions and samples; these controls retain product markup. */

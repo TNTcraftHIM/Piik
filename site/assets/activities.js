@@ -37,22 +37,37 @@ export function photoMarkup() {
       <rect x="12" y="14" width="720" height="562" rx="12" fill="#111f26" opacity=".3"/>
       <rect width="720" height="562" rx="12" fill="${PAPER}"/>
       <svg x="24" y="24" width="672" height="440" viewBox="0 0 672 440" overflow="hidden">
-        <rect width="672" height="440" fill="#b8dce0"/>
-        <path d="M0 167h672v273H0Z" fill="#639f9e"/>
-        <path d="M-12 299q210-41 696 48v98H-12Z" fill="#efd39a"/>
-        <path d="M0 278q252-42 672 62" fill="none" stroke="${PAPER}" stroke-width="9"/>
-        <path d="M31 220h73m42 13h65m52-37h40m237 45h62" stroke="#b9d9c8" stroke-width="5" stroke-linecap="round"/>
-        <path d="m138 189 31-122 71 122Z" fill="${PAPER}"/><path d="m172 74 62 106h-62Z" fill="#e88955"/><path d="m124 199 126-2-23 21h-76Z" fill="${INK}"/>
-        <path d="M469 178V64h45v121" fill="#edcf93"/><path d="M459 73h65l-32-34Z" fill="#b6644c"/><rect x="477" y="87" width="28" height="28" rx="3" fill="#395f66"/>
-        <path d="m450 184 91-4 54 31-166-2Z" fill="#4f827d"/>
-        <path d="M309 127q16-14 32 0m13 7q13-13 26 0" fill="none" stroke="#456d70" stroke-width="5" stroke-linecap="round"/>
-        <path d="m89 340 42 9-10 21-30-6Z" fill="#b66e50"/><path d="m100 355 8-10m1 15 9-11" stroke="#e8ad72" stroke-width="5"/>
-        <path d="M379 471q-35-109 4-192 22-44 80-38 60 6 68 72l93 161Z" fill="#c5d6cb"/>
-        <path d="M451 477q-58-107-21-191 16-35 58-37 52-3 67 55l40 173Z" fill="${PAPER}"/>
-        <path d="m533 302 73 25-68 23Z" fill="#edb74f"/>
-        <circle cx="512" cy="292" r="7" fill="${INK}"/><circle cx="510" cy="290" r="2" fill="${PAPER}"/>
-        <path d="M438 337q-58 22-32 96" fill="none" stroke="#8aa7a2" stroke-width="7" stroke-linecap="round"/>
-        <path d="m560 338 22 19-26 9-17-19Z" fill="#ba7952"/><path d="m558 343 11 10" stroke="#edba70" stroke-width="5"/>
+        <rect width="672" height="440" fill="#b9d4d8"/>
+        <path d="M0 228h672v212H0Z" fill="#6f9d9f"/>
+        <path d="M0 246h83m25 17h91m52-20h69m44 5h112m19 21h51m53-23h73" stroke="#dbe8dc" stroke-width="5" stroke-linecap="round"/>
+        <svg width="328" height="440" viewBox="0 0 328 440" overflow="hidden">
+          <path d="M-37 471q10-118 78-173 28-23 28-73-3-49 37-62 49-18 82 11 24 22 27 60l-3 53q34 53 46 184Z" fill="#faf5e7"/>
+          <path d="M-30 414q29-55 91-63 60-6 89 104H-30Z" fill="#8fa8aa"/>
+          <path d="M14 391q27-28 55-22m-69 46q31-24 67-21" fill="none" stroke="#64878b" stroke-width="5" stroke-linecap="round"/>
+          <path d="M178 221q56-6 100 32l-15 17q-39-24-84-22Z" fill="#e2b64c"/>
+          <path d="m183 260 78 30q-34 10-71-4Z" fill="#c6993b"/>
+          <path d="M183 245q49-1 83 20" fill="none" stroke="#657064" stroke-width="4"/>
+          <circle cx="160" cy="201" r="11" fill="#e0ba57"/><circle cx="160" cy="201" r="5" fill="${INK}"/>
+          <path d="m123 188 10-3m-24 22 10 1m-24 18 12 4m-13 19 11 2" stroke="#b7c6ba" stroke-width="3" stroke-linecap="round"/>
+          <path d="M39 21h233q20 0 20 20v62q0 20-20 20H115l-29 28 5-28H39q-20 0-20-20V41q0-20 20-20Z" fill="#faf5e7"/>
+          <circle cx="153" cy="71" r="25" fill="#60868b"/><ellipse cx="153" cy="71" rx="51" ry="11" transform="rotate(-24 153 71)" fill="none" stroke="#e0b858" stroke-width="7"/>
+          <path d="m224 43 3 8 8 3-8 3-3 8-3-8-8-3 8-3Zm-127-1 2 5 5 2-5 2-2 5-2-5-5-2 5-2Z" fill="#60868b"/>
+        </svg>
+        <rect x="328" width="16" height="440" fill="#faf5e7"/>
+        <svg x="344" width="328" height="440" viewBox="0 0 328 440" overflow="hidden">
+          <path d="M-44 471q0-110 77-143 31-14 37-73l29-68 128 51-4 81q70 32 89 152Z" fill="#9cafb0"/>
+          <path d="M50 291q21-23 22-62-3-47 29-68 36-24 73-8 41 17 40 71l-2 50q-64-19-89 5-41 38-73 12Z" fill="#faf5e7"/>
+          <path d="M204 211q53 0 99 31l-7 13q-49-22-93-19Z" fill="#e2b64c"/>
+          <path d="m205 247 92 23q-31 10-87-6Z" fill="#c6993b"/>
+          <path d="M212 231q44 1 85 18" fill="none" stroke="#657064" stroke-width="4"/>
+          <circle cx="185" cy="198" r="10" fill="#e0ba57"/><circle cx="185" cy="198" r="5" fill="${INK}"/>
+          <path d="M79 315q69 3 91 70m-149-27q77 4 98 82m45-95q55 22 60 83" fill="none" stroke="#6e8a8f" stroke-width="6" stroke-linecap="round"/>
+          <path d="M67 20h197q22 0 22 22v61q0 22-22 22h-47l-20 29-5-29H67q-22 0-22-22V42q0-22 22-22Z" fill="#faf5e7"/>
+          <g transform="translate(167 75) rotate(-8)">
+            <path d="M-22 2v-33m12 31v-42m12 42v-32m12 32v-39m12 38v-27" stroke="#e1b449" stroke-width="9" stroke-linecap="round"/>
+            <path d="m-35-4 10 44q24 9 46 0l11-44q-35 13-67 0Z" fill="#df8a57"/><circle cy="23" r="7" fill="#faf5e7"/>
+          </g>
+        </svg>
       </svg>
       <path d="M60 501h181m-181 17h114" stroke="#b2b5a3" stroke-width="6" stroke-linecap="round"/>
       <text x="625" y="523" fill="#597b69" font-family="ui-monospace,monospace" font-size="36" font-weight="700">02</text>
@@ -60,54 +75,43 @@ export function photoMarkup() {
     </g>`;
 }
 
-export function movieMarkup(planeId) {
-  return `<path d="M0 378q448-63 832 24t768-5v503H0Z" fill="#3e6172"/>
-    <circle cx="1254" cy="260" r="146" fill="#edc875"/>
-    <path d="M0 409h88V287h113v79h84V243h116v181h82V320h116v67h127V293h86v125h147V331h138v90h147V295h76v124h118V267h146v169h119v464H0Z" fill="#365267"/>
-    <path d="M0 579q416-59 770-5t830-3v329H0Z" fill="#274657"/>
-    ${[160,393,640,980,1450].map((x,i)=>`<circle cx="${x}" cy="${119+i%3*58}" r="2.5" fill="${PAPER}" opacity=".8"/>`).join('')}
-    <path d="M565 656h256m-333 37h374m-273 51h314m-239 47h373m-184 46h401" stroke="#507682" stroke-width="8" stroke-linecap="round"/>
-    <path d="M228 754q390-380 788-92l55 65-77 20-38-46q-301-207-659 107Z" fill="#688386"/>
-    <path d="M202 772q417-398 850-64" fill="none" stroke="#a0aaa0" stroke-width="13"/>
-    <path d="M292 707v117m186-215v178m212-193v197m210-143v165" stroke="#416173" stroke-width="31"/>
-    <g fill="#ebbc70" opacity=".9">${[0,1,2,3].map(i=>`<rect x="${102+i*31}" y="320" width="11" height="24" rx="2"/><rect x="${316+i*24}" y="276" width="9" height="18" rx="2"/><rect x="${519+i*26}" y="351" width="11" height="22" rx="2"/>`).join('')}</g>
-    <g transform="translate(870 537)">
-      <path d="M0 87h202v276H0Z" fill="#496a70"/><path d="m-24 87 121-102 130 102Z" fill="#233a4d"/>
-      <path d="M119 20h34v-73h-34Z" fill="#233a4d"/><path d="M48 145h102v94H48Z" fill="#e5bd7b"/><path d="M99 145v94m-51-47h102" stroke="#6e8280" stroke-width="9"/>
-      <path d="M-21 113h244" stroke="#91a9a1" stroke-width="10"/>
-      <path d="M38 302h51v61H38Z" fill="#233a4d"/>
+export function movieMarkup(answerId) {
+  return `<rect width="1600" height="900" fill="#293e50"/>
+    <circle cx="1220" cy="387" r="302" fill="#516d76"/>
+    <path d="M1108 105a298 298 0 0 1 403 331" fill="none" stroke="#83938a" stroke-width="2"/>
+    ${[150,365,632,859,1042,1491].map((x,i)=>`<path d="M${x} ${107+i%3*66}v10m-5-5h10" stroke="#b5c9c1" stroke-width="3" stroke-linecap="round"/>`).join('')}
+    <path d="M0 631 244 465 415 579 681 425 911 586 1211 466 1600 589v311H0Z" fill="#385661"/>
+    <path d="M0 728 312 650 594 700 859 616 1142 740 1600 644v256H0Z" fill="#233a47"/>
+    <path d="M837 805h727l-22-38H868Z" fill="#91a499"/>
+    <path d="M870 763h670l-24-37H902Z" fill="#a4b0a0"/>
+    <path d="M904 722h610l-29-38H936Z" fill="#bbc0a5"/>
+    <path d="M938 681h545l-25-38H970Z" fill="#d2ccb0"/>
+    <g id="${answerId}-machine">
+      <path d="m1112 581-68 67h321l-77-67Z" fill="#b69360"/>
+      <path d="m1164 478-42 132h155l-29-121Z" fill="#a48150"/>
+      <path d="m1137 535 11 66 19-42 29-2 45 54 9-84Z" fill="#354851"/>
+      <path d="m999 176 52-45 424 43q17 2 15 19l-28 290-56 53Z" fill="#a7804d"/>
+      <path d="m1001 176 50-45 422 44-50 46Z" fill="#efd78f"/>
+      <path d="M1009 176 1420 219q15 1 13 18l-26 294q-2 16-18 14L987 499q-17-2-16-20l22-287q1-18 16-16Z" fill="#d6ae65"/>
+      <path d="m1010 194 399 42-22 289-397-44Z" fill="#e6c580"/>
+      <path d="M1067 285 1349 314l-12 139-282-30Z" fill="#263d43"/>
+      <path d="m1077 297 258 27-8 113-260-28Z" fill="#365654"/>
+      <path d="m1016 241 76 8m235 25 65 7m-376 209 58 6m192 21 77 8" stroke="#b49155" stroke-width="5" stroke-linecap="round"/>
+      <path d="m1456 225-19 213m6-160-12 134" stroke="#806843" stroke-width="6" stroke-linecap="round"/>
+      <circle cx="1304" cy="487" r="6" fill="#9bba93"/><circle cx="1327" cy="490" r="6" fill="#9bba93"/><circle cx="1350" cy="493" r="6" fill="#9bba93"/>
+      <g id="${answerId}" transform="translate(1202 368) rotate(6)" fill="none" stroke="#f3d786" stroke-width="15" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M-51-42-80 13h59m-14-55v89M4-23q0-26 27-26t27 24q0 13-16 27L7 42h54"/>
+      </g>
     </g>
-    <g transform="translate(1460 427)">
-      <path d="M0 81h149v392H0Z" fill="#759291"/><path d="M16 102h117v371H16Z" fill="#4e7279"/>
-      <path d="M10 15h129v80H10Z" fill="#a3b2a4"/><path d="m-18 15 91-113 96 113Z" fill="#20364a"/>
-      <circle cx="74" cy="48" r="29" fill="#e9ce94"/><path d="M74 28v22l15 8" fill="none" stroke="#45586a" stroke-width="6" stroke-linecap="round"/>
-      <rect x="48" y="142" width="54" height="68" rx="25" fill="#ebbd76"/>
-      <path d="M-27 238h202" stroke="#9da99a" stroke-width="12"/>
-      <path d="M-13 242v36m172-36v36" stroke="#6f9998" stroke-width="9"/>
-    </g>
-    <path d="M1336 420q-124 13-219 139" fill="none" stroke="#9eaaa0" stroke-width="3" stroke-dasharray="4 16" opacity=".45"/>
-    <g id="${planeId}">
-      <path d="m-48 26 61-18m-30 30 44-10" stroke="#a9c0bf" stroke-width="5" stroke-linecap="round" opacity=".65"/>
-      <path d="M67-31q-8-33 10-43 19-8 31 17l14 28Z" fill="#8fc1ad"/><circle cx="81" cy="-88" r="18" fill="#8fc1ad"/>
-      <path d="m77-87 3 1m10-3 3 1" stroke="${INK}" stroke-width="3.5" stroke-linecap="round"/>
-      <path d="M66-68q-32 0-51-18-19-16-39-7 19 21 45 28l47 5Z" fill="#e58d61"/>
-      <path d="m0 0 221-66-85 122-34-42Z" fill="${PAPER}"/>
-      <path d="m221-66-119 80 3 44 31-2Z" fill="#b8d0c8"/>
-      <path d="m221-66-95 95-21 29-3-44Z" fill="#789ba2"/>
-      <path d="m0 0 102 14 119-80" fill="none" stroke="#d8e5d7" stroke-width="3"/>
-      <path d="m52-19 35-12 17 24-38 11Z" fill="#cfac79"/><path d="m67-24 15 23" stroke="#f1d49c" stroke-width="5"/>
-      <circle cx="72" cy="-26" r="7" fill="#8fc1ad"/>
-    </g>
-    <path d="M-48 722 37 677 172 752v148H-48Zm1161 178 238-136 296 143Z" fill="#1c3043"/>
-    <path d="M1290 900V653q0-37 34-37h65m-65 0-12 47h74l-13-47" fill="none" stroke="#1c3043" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M1318 656h62l-6-27h-50Z" fill="#e9c176"/>
+    ${[[907,753,'#97bbad'],[1031,784,'#d69883'],[1410,738,'#a6b9cf'],[1514,790,'#d7bb7c']].map(([x,y,colour],i)=>`<g transform="translate(${x} ${y}) rotate(${i%2?-7:6})"><path d="M-14 45q0-37 14-37t14 37Z" fill="${colour}"/><circle cy="-7" r="10" fill="${colour}"/><path d="M-4-8v2m8-2v2" stroke="#263b43" stroke-width="2" stroke-linecap="round"/></g>`).join('')}
     <path d="M0 28h1600M0 873h1600" stroke="#152b3b" stroke-width="56"/>`;
 }
 
-export function moviePlanePose(progress) {
-  const p = Math.min(1, Math.max(0, progress)), bank = Math.sin(p*Math.PI);
-  return `translate(${935+255*p}px,${601-226*p-28*bank}px) rotate(${-14+6*bank}deg)`;
+export function movieAnswerPose(progress) {
+  const p = Math.min(1, Math.max(0, progress)/.36), reveal = 1-(1-p)**3;
+  return `translate(1202px,${368+12*(1-reveal)}px) rotate(6deg) scale(${.92+.08*reveal},${.08+.92*reveal})`;
 }
+
 
 export function heroMarkup() {
   return `<g id="activity-rpg">${gameMarkup('hero-rpg')}</g>
@@ -118,7 +122,7 @@ export function heroMarkup() {
       <g id="hero-pencil"><path d="M-11-255h22v217l-11 38-11-38Z" fill="${INK}"/><path d="m-11-38 11 38 11-38Z" fill="#d6b68b"/><path d="M-3-10 0 0 3-10Z" fill="${INK}"/><path d="M-4-240v188" stroke="${PAPER}" stroke-width="3"/></g>
     </g>
     <g id="activity-photos"><rect width="1600" height="900" fill="${INK}"/><g id="hero-photos">${photoMarkup()}</g></g>
-    <g id="activity-movie"><rect width="1600" height="900" fill="#324458"/>${movieMarkup('hero-plane')}</g>`;
+    <g id="activity-movie"><rect width="1600" height="900" fill="#324458"/>${movieMarkup('hero-answer')}</g>`;
 }
 
 // The generator samples this score into CSS, so README images need no script.
@@ -129,5 +133,5 @@ export function heroFrame(kind, progress) {
     'hero-pencil': {transform:`translate(${1160+18*Math.sin(progress*Math.PI*2)}px,${660+10*Math.cos(progress*Math.PI*2)}px) rotate(${28+3*Math.sin(progress*Math.PI*2)}deg)`},
   };
   if (kind === 'photos') return {'hero-photos':{transform:`translate(800px,450px) scale(${.97+progress*.045}) translate(-800px,-450px)`}};
-  return {'hero-plane':{transform:moviePlanePose(progress)}};
+  return {'hero-answer':{transform:movieAnswerPose(progress)}};
 }

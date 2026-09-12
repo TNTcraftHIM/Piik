@@ -42,10 +42,19 @@ SFU_UDP_PORT=
 ```
 
 Point `demo.piik.tv` directly at the US server so UDP reaches its STUN listeners;
-allow UDP 3478/3479/3480 and terminate HTTPS/WSS at nginx. The service unit
-provides the SQLite state directory. Room ownership, invitations and private-room
+allow UDP 3478/3479/3480 and terminate HTTPS/WSS at Caddy. The demo uses the
+standard [systemd service](./service-management.md#systemd), with its release
+under `/opt/piik/current` and configuration at `/etc/piik/piik.env`. The service
+unit provides the SQLite state directory. Room ownership, invitations and private-room
 admission still apply. The [configuration reference](../reference/configuration.md)
 owns each setting and its bounds.
+
+For updates, verify the release descriptor and manifest before placing a new
+release under `/opt/piik/releases/`. Stop Piik, back up its SQLite state, switch
+`current` to the verified release, and restart. Check local/public health,
+WebSocket room access and STUN. Keep the previous release and state backup until
+acceptance; restore both with Piik stopped if rollback is needed. The nginx-specific
+maintainer wrapper does not manage this Caddy installation.
 
 ## Preview
 

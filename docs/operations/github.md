@@ -2,8 +2,8 @@
 
 [Versioning](../reference/versioning.md) owns release meaning and compatibility;
 [CONTRIBUTING](../../CONTRIBUTING.md) owns review and local validation. This file
-owns the one-time GitHub settings. The source remains private and automatic
-publication is not enabled.
+owns the one-time GitHub settings. The source repository is public; automatic
+package publication has its own activation gate below.
 
 ## Main And Pull Requests
 
@@ -18,11 +18,10 @@ quiet; local validation and acceptance precede the squash merge. PR/issue
 templates live in `.github/`; [naming](../../CONTRIBUTING.md#commit-pr-and-branch-names)
 is shared with automatic version selection.
 
-GitHub currently rejects protection/ruleset requests for this private repository
-with a plan-required 403. Protection is therefore **not active**. GitHub Free
-supports it for public repositories; a private repository needs an eligible paid
-plan. Once eligible, configure it in Settings → Branches/Rules and verify the
-result. Do not substitute a local hook or change visibility implicitly.
+These protections are active, including conversation resolution. GitHub Pages
+uses the **GitHub Actions** publishing source and the `piik.tv` custom domain;
+the repository homepage points to `https://piik.tv`. The dedicated Website
+workflow publishes the static site under [website operations](./website.md).
 
 ## Enable Automatic Publication Once
 
