@@ -1,28 +1,17 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-09-12
+Last reviewed: 2026-09-13
 
 Only **Now** is executable. Product modules own behavior; Git/PRs own completed
 history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **Maintenance acceptance and release.** Verify and accept the implemented
-  password-input fix, stable latest ZIP downloads, Viewer playback gestures and
-  Windows CI toolchain-cache fix before publishing the matching packages and
-  website. Stable download links require the new package filenames to be live.
-- [ ] **Illustrated tooltip acceptance.** Review the shared tooltip scenes
-  with their Chinese/English captions in the local UI catalogue. Pure-visual
-  mode keeps its pictograms and pixel lettering as an optional discovery.
-  Accept the combined meaning, motion and layout before release; the
-  [visual language](./design/visual-language.md) owns this shared presentation.
 - [ ] **Post-launch monitoring.** Collect App/Server feedback and verify the
-  public download path after product releases. Preserve the owner's
+  public download path and deployed services after product releases. Follow the
+  [deployment runbook](./deployment.md) for the private service and keep public
+  demo deployment separate. Preserve the owner's
   [device/network deferrals](./verification-status.md#candidate-evidence-boundary).
-- [ ] **Private service deployment.** After the current fixes are accepted,
-  deploy the matching published Server/Web package to the existing private
-  service and verify its runtime revision, entry and sharing path. Use the
-  [deployment runbook](./deployment.md); public demo deployment stays separate.
 
 Keep fixes on a maintenance branch until acceptance. The public release is the
 compatibility baseline; private service deployment stays independent.
