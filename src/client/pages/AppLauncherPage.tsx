@@ -17,7 +17,7 @@ import {
 
 const launcherStateSchema = z.object({
   site: z.string(),
-  localAccessPassword: z.string().max(128),
+  localAccessPassword: z.string(),
   defaultMode: z.enum(["local", "site"]),
   revision: z.string(),
   version: z.string().default("development"),

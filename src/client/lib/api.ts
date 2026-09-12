@@ -93,8 +93,9 @@ export async function authenticateSiteAccess(
     method: "POST",
     headers: {
       Accept: "application/json",
-      Authorization: `Bearer ${password.trim()}`,
+      "Content-Type": "application/json",
     },
+    body: JSON.stringify({ password }),
   });
   const body = await responseBody(response);
   if (!response.ok) {

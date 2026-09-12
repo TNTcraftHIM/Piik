@@ -672,7 +672,7 @@ describe("client session identity", () => {
 });
 
 describe("site access API", () => {
-  it("checks and authenticates site access without a request body", async () => {
+  it("checks site access and sends the exact password in a Unicode-capable JSON body", async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
@@ -693,7 +693,7 @@ describe("site access API", () => {
       required: true,
       authenticated: false,
     });
-    await expect(authenticateSiteAccess("  instance-password  ")).resolves.toEqual({
+    await expect(authenticateSiteAccess("  中文 +&  ")).resolves.toEqual({
       required: true,
       authenticated: true,
     });
@@ -704,10 +704,9 @@ describe("site access API", () => {
     ]);
     const post = fetchMock.mock.calls[1][1];
     expect(post?.method).toBe("POST");
-    expect(post?.body).toBeUndefined();
-    expect(new Headers(post?.headers).get("Authorization")).toBe(
-      "Bearer instance-password",
-    );
+    expect(JSON.parse(String(post?.body))).toEqual({ password: "  中文 +&  " });
+    expect(new Headers(post?.headers).get("Content-Type")).toBe("application/json");
+    expect(new Headers(post?.headers).has("Authorization")).toBe(false);
   });
 
   it("uses a clear Chinese message for a rejected password", async () => {
@@ -910,10 +909,10 @@ describe("room codes", () => {
     );
   });
 
-  it("removes a malformed App bootstrap without authenticating it", () => {
+  it("removes an empty App bootstrap without authenticating it", () => {
     const replaceState = vi.fn();
     vi.stubGlobal("window", {
-      location: { hash: "#client-access=short", pathname: "/", search: "" },
+      location: { hash: "#client-access=", pathname: "/", search: "" },
       history: { state: null, replaceState },
     });
 
@@ -921,18 +920,18 @@ describe("room codes", () => {
     expect(replaceState).toHaveBeenCalledWith(null, "", "/");
   });
 
-  it("accepts a bounded user-chosen App access value", () => {
+  it.each(["x", "中文", " ", "  中文 +&  ", "x".repeat(256)])("preserves a chosen App access value: %s", (password) => {
     const replaceState = vi.fn();
     vi.stubGlobal("window", {
       location: {
-        hash: "#client-access=a%2Bb%26c%3Fd%3De",
+        hash: `#${new URLSearchParams({ "client-access": password })}`,
         pathname: "/",
         search: "",
       },
       history: { state: null, replaceState },
     });
 
-    expect(takeClientLaunchBootstrap().accessToken).toBe("a+b&c?d=e");
+    expect(takeClientLaunchBootstrap().accessToken).toBe(password);
     expect(replaceState).toHaveBeenCalledWith(null, "", "/");
   });
 

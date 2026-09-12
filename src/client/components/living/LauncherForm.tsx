@@ -67,7 +67,6 @@ export function LauncherForm({
       <input
         type="text"
         value={localAccessPassword}
-        maxLength={128}
         autoComplete="off"
         spellCheck={false}
         placeholder={vis ? "" : t("client.launch.localAccess")}

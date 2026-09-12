@@ -9,19 +9,12 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	serverconfig "github.com/TNTcraftHIM/Piik/internal/server/config"
 )
 
-const (
-	currentVersion         = 1
-	minAccessPasswordBytes = 8
-	maxAccessPasswordBytes = 128
-)
-
-var passwordPattern = regexp.MustCompile(`^[\x21-\x7e]{8,128}$`)
+const currentVersion = 1
 
 type Config struct {
 	Version             int    `json:"version"`
@@ -106,20 +99,6 @@ func NormalizeSite(value string) (string, error) {
 	return serverconfig.Origin(parsed), nil
 }
 
-// NormalizeLocalAccessPassword keeps the local authority open by default while
-// retaining a bounded, user-chosen password when one is supplied.
-func NormalizeLocalAccessPassword(value string) (string, error) {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return "", nil
-	}
-	if len(value) < minAccessPasswordBytes || len(value) > maxAccessPasswordBytes ||
-		!passwordPattern.MatchString(value) {
-		return "", errors.New("Local access password must contain 8 to 128 visible ASCII bytes")
-	}
-	return value, nil
-}
-
 func load(path string) (Config, error) {
 	payload, err := os.ReadFile(path)
 	if err != nil {
@@ -132,10 +111,6 @@ func load(path string) (Config, error) {
 		config.Version != currentVersion {
 		return Config{}, errors.New("App configuration is invalid")
 	}
-	normalizedPassword, passwordErr := NormalizeLocalAccessPassword(config.LocalAccessPassword)
-	if passwordErr != nil || normalizedPassword != config.LocalAccessPassword {
-		return Config{}, errors.New("App configuration is invalid")
-	}
 	if config.Site, err = NormalizeSite(config.Site); err != nil {
 		return Config{}, errors.New("App configuration is invalid")
 	}
@@ -144,10 +119,6 @@ func load(path string) (Config, error) {
 
 func encode(config Config) ([]byte, error) {
 	if config.Version != currentVersion {
-		return nil, errors.New("App configuration is invalid")
-	}
-	password, passwordErr := NormalizeLocalAccessPassword(config.LocalAccessPassword)
-	if passwordErr != nil || password != config.LocalAccessPassword {
 		return nil, errors.New("App configuration is invalid")
 	}
 	site, err := NormalizeSite(config.Site)

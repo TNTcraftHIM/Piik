@@ -19,19 +19,19 @@ export function websiteDownloads(data: { github: unknown; mirror?: unknown }) {
     ? assets(data.mirror) : [];
   return {
     version: release.version,
-    notes: release.url,
     packages: targets.map(target => {
-      const name = `piik-app-${target}-${release.revision!.slice(0, 7)}.zip`;
-      const url = `https://github.com/TNTcraftHIM/Piik/releases/download/${release.version}/${name}`;
+      const name = `piik-app-${target}.zip`;
+      const publishedURL = `https://github.com/TNTcraftHIM/Piik/releases/download/${release.version}/${name}`;
       const matches = primaryAssets.filter(asset => asset.name === name);
       const asset = matches[0];
-      if (matches.length !== 1 || asset?.state !== "uploaded" || asset.browser_download_url !== url ||
+      if (matches.length !== 1 || asset?.state !== "uploaded" || asset.browser_download_url !== publishedURL ||
           !Number.isSafeInteger(asset.size) || Number(asset.size) <= 0) {
         throw new Error(`Website download is missing or invalid: ${target}`);
       }
       const mirrorURL = `https://gitee.com/TNTcraftHIM/Piik/releases/download/${release.version}/${name}`;
       const mirrored = mirrorAssets.filter(candidate => candidate.name === name);
-      return { target, url, mirrorURL: mirrored.length === 1 && mirrored[0]!.size === asset.size &&
+      return { target, url: `https://github.com/TNTcraftHIM/Piik/releases/latest/download/${name}`,
+        mirrorURL: mirrored.length === 1 && mirrored[0]!.size === asset.size &&
         mirrored[0]!.browser_download_url === mirrorURL ? mirrorURL : null };
     }),
   };

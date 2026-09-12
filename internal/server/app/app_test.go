@@ -632,7 +632,7 @@ func TestLocalPasswordUsesConfiguredDestinationCookieAcrossLANAndPublicLink(t *t
 	}
 }
 
-func TestSiteAccessRequiresAnAllowedOriginAndAnEmptyLoginBody(t *testing.T) {
+func TestSiteAccessRequiresAnAllowedOriginAndAValidLoginBody(t *testing.T) {
 	server := start(t, Options{Config: testConfig(t)})
 	forbidden := `{"error":"Forbidden"}`
 
@@ -647,11 +647,51 @@ func TestSiteAccessRequiresAnAllowedOriginAndAnEmptyLoginBody(t *testing.T) {
 	server.do(http.MethodPost, "/api/site-access",
 		withBearer(testAccessPassword), withOrigin(allowedOrigin),
 		withBody("text/plain;charset=UTF-8", "{}")).
-		expect(http.StatusBadRequest, `{"error":"Request body is not accepted"}`)
+		expect(http.StatusBadRequest, `{"error":"Invalid site access request"}`)
+	for _, payload := range []string{
+		`{`, `{}`, `null`, `[]`, `{"password":null}`, `{"password":123}`,
+		`{"password":"wrong","extra":true}`, `{"password":"wrong"} {}`,
+		`{"password":"` + strings.Repeat("x", maxJSONRequestBytes) + `"}`,
+	} {
+		server.do(http.MethodPost, "/api/site-access", withOrigin(allowedOrigin),
+			withBearer(testAccessPassword), withJSON(payload)).
+			expect(http.StatusBadRequest, `{"error":"Invalid site access request"}`)
+	}
+	server.do(http.MethodPost, "/api/site-access", withOrigin(allowedOrigin),
+		withBearer(testAccessPassword), withJSON(`{"password":"wrong"}`)).
+		expectStatus(http.StatusUnauthorized)
 
 	server.do(http.MethodDelete, "/api/site-access", withOrigin(allowedOrigin)).
 		expect(http.StatusMethodNotAllowed, `{"error":"Method not allowed"}`).
 		expectHeader("Allow", "GET, POST")
+}
+
+func TestLocalSiteAcceptsTheExactPasswordThroughJSON(t *testing.T) {
+	for index, password := range []string{"x", "中文", " ", "  中文 +&  ", strings.Repeat("x", 256)} {
+		t.Run(fmt.Sprint(index), func(t *testing.T) {
+			configuration, err := config.Local(config.LocalOptions{
+				Port: freePort(t), PublicAddress: "192.0.2.10", SiteAccessPassword: password,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			server := start(t, Options{Config: configuration})
+			origin := config.Origin(configuration.PublicBaseURL)
+			for _, wrong := range []string{"", password + "!"} {
+				payload, _ := json.Marshal(map[string]string{"password": wrong})
+				server.do(http.MethodPost, "/api/site-access", withOrigin(origin), withJSON(string(payload))).
+					expectStatus(http.StatusUnauthorized).expectHeader("Set-Cookie", "")
+			}
+			payload, _ := json.Marshal(map[string]string{"password": password})
+			login := server.do(http.MethodPost, "/api/site-access", withOrigin(origin), withJSON(string(payload))).
+				expect(http.StatusOK, `{"required":true,"authenticated":true}`)
+			cookie := cookiePair(t, login.header.Get("Set-Cookie"))
+			server.do(http.MethodGet, "/api/site-access", withCookie(cookie)).
+				expect(http.StatusOK, `{"required":true,"authenticated":true}`)
+			server.do(http.MethodPost, "/api/rooms", withOrigin(origin), withCookie(cookie),
+				withJSON(`{"codeEntryPolicy":"open"}`)).expectStatus(http.StatusCreated)
+		})
+	}
 }
 
 func TestSiteAccessRejectsAnExpiredOrModifiedCookie(t *testing.T) {
@@ -684,6 +724,9 @@ func TestSiteAccessIsImmediateWhenTheAccessPasswordIsEmpty(t *testing.T) {
 				expect(http.StatusOK, `{"required":false,"authenticated":true}`).
 				expectHeader("Set-Cookie", "")
 			server.do(http.MethodPost, "/api/site-access", withOrigin(allowedOrigin)).
+				expect(http.StatusOK, `{"required":false,"authenticated":true}`).
+				expectHeader("Set-Cookie", "")
+			server.do(http.MethodPost, "/api/site-access", withOrigin(allowedOrigin), withJSON(`{"password":""}`)).
 				expect(http.StatusOK, `{"required":false,"authenticated":true}`).
 				expectHeader("Set-Cookie", "")
 		})

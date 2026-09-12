@@ -39,22 +39,15 @@ let homepage = (await readFile(new URL("index.html", source), "utf8"))
 if (process.env.PIIK_WEBSITE_RELEASE_DATA) {
   const { websiteDownloads } = await tsImport("../site/downloads.ts", { parentURL: import.meta.url });
   const release = websiteDownloads(JSON.parse(await readFile(process.env.PIIK_WEBSITE_RELEASE_DATA, "utf8")));
-  homepage = homepage.replace(/<p class="release-note" id="download-status">[\s\S]*?<\/p>/,
-    `<p class="release-note" id="download-status"><span class="release-label">${release.version}</span>` +
-    `<span lang="en">Download the ZIP for your system, then extract it.</span>` +
-    `<span lang="zh-CN">选择对应系统，下载 ZIP 后解压。</span>` +
-    `<a href="${release.notes}"><span lang="en">Release notes</span><span lang="zh-CN">版本说明</span></a></p>`);
   homepage = homepage.replace(/<a\b([^>]*data-download="([^"]+)"[^>]*data-provider="([^"]+)"[^>]*)>([\s\S]*?)<\/a\s*>/g,
     (original, attributes, target, provider, content) => {
       const item = release.packages.find(item => item.target === target);
       const href = provider === 'github' ? item?.url : item?.mirrorURL;
       if (!href) return original;
-      const label = provider === 'github'
-        ? { en: 'Download ZIP · GitHub', zh: '下载 ZIP · GitHub' }
-        : { en: 'Gitee alternative (ZIP)', zh: 'Gitee 备用下载（ZIP）' };
-      return `<a${attributes.replace(/href="[^"]*"/, `href="${href}"`)}>` + content
-        .replace(/<span lang="en">[\s\S]*?<\/span\s*>/, `<span lang="en">${label.en}</span>`)
-        .replace(/<span lang="zh-CN">[\s\S]*?<\/span\s*>/, `<span lang="zh-CN">${label.zh}</span>`) + '</a>';
+      if (provider === 'gitee') content = content
+        .replace(/<span lang="en">[\s\S]*?<\/span\s*>/, `<span lang="en">Gitee alternative · ${release.version} ZIP</span>`)
+        .replace(/<span lang="zh-CN">[\s\S]*?<\/span\s*>/, `<span lang="zh-CN">Gitee 备用 · ${release.version} ZIP</span>`);
+      return `<a${attributes.replace(/href="[^"]*"/, `href="${href}"`)}>${content}</a>`;
     });
 }
 await writeFile(new URL("index.html", output), homepage.replace(

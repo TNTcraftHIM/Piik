@@ -133,11 +133,11 @@ are not automatically included in the website artifact.
 
 The [website operations guide](../operations/website.md) owns Pages publication,
 public destinations and the separate P2P-only demo. The primary action leads
-to the platform download section. Build static package links from a published
-GitHub release, showing its version and each supported platform. Gitee links must
-match that release and its source revision. Keep release notes separate; when a
-package is unverified, label the fallback as a release-page link. Archive names
-include a revision. Verify destinations as part of publication.
+to the platform download section. Each supported platform has a direct ZIP link
+using GitHub's native latest-release asset route. Build verified Gitee links from
+the matching release and source revision, showing the mirror's specific version.
+Keep release notes separate; when a mirror package is unverified, label its
+fallback as a release-page link. Verify destinations as part of publication.
 Demo, App and existing-site walkthroughs
 use real action names and explain the first sharing and viewing steps. Keep
 platform requirements and connection limitations beside the relevant steps.

@@ -73,14 +73,18 @@ film's real product components into an isolated demonstration frame; publishing
 ranges for seeking the soundtrack. Keep asset links relative so both a custom
 domain and GitHub's `/Piik/` project path work.
 
-Downloads are static links to the latest published GitHub packages, with explicit
-Windows x64, macOS Apple silicon and Linux x64 ZIP cards. `PIIK_WEBSITE_RELEASE_DATA`
-can point the build at a temporary JSON containing the GitHub release and the
-same-tag Gitee release with its attachment list. CI supplies this input; the
-builder validates version, source identity and platform URLs. A missing/incomplete
-GitHub release fails deployment, preserving the current site. An unavailable
-mirror retains a labeled release-page link. Local builds without metadata use
-release-page links as well; no visitor API call or hard-coded package SHA is needed.
+The Windows x64, macOS Apple silicon and Linux x64 ZIP cards use GitHub's native
+[`releases/latest/download/asset-name.zip` links](https://docs.github.com/en/repositories/releasing-projects-on-github/linking-to-releases).
+Fixed App filenames follow [versioning](../reference/versioning.md#release-and-recovery),
+so these primary links also work in local builds and follow new releases without
+a website rebuild. `PIIK_WEBSITE_RELEASE_DATA` points the build at temporary JSON
+containing the published GitHub release and same-tag Gitee attachment metadata.
+CI supplies this input; the builder validates source identity, uploaded ZIPs,
+sizes and platform URLs. A missing/incomplete GitHub release fails deployment,
+preserving the current site. Verified Gitee links show their specific version
+and refresh after publication. Without matching metadata, Gitee retains its
+labeled release-page link. The page makes no visitor API request or inferred
+version claim when metadata is absent.
 
 ## Publish
 

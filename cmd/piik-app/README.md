@@ -75,8 +75,8 @@ persistent quality evidence and route replacement. See
 and [status](../../docs/status.md) for its acceptance limits.
 
 The App configuration keeps an optional Local site-access password. Leave it
-blank for an open Local site, or set a visible-ASCII password (8 to 128 bytes)
-in the launcher before starting. When present, the App passes it to its own
+blank for an open Local site, or enter a password in the launcher before
+starting. When present, the App passes it to its own
 Host page in a URL fragment; the page uses the existing SiteAccess endpoint and
 removes the fragment before continuing. Viewer invitations keep using the
 existing room-scoped grant.

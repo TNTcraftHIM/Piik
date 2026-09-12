@@ -101,51 +101,59 @@ func TestLauncherIncludesTheInjectedBuildVersionAndRevision(t *testing.T) {
 	}
 }
 
-func TestLauncherCarriesAndNormalizesAnOptionalLocalPassword(t *testing.T) {
-	server := startFixtureWithPassword(t, "", "existing-pass")
-	origin := strings.TrimSuffix(server.URL(), "/client")
-	stateResponse, err := http.Get(origin + "/api/client-launcher")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var state struct {
-		LocalAccessPassword string `json:"localAccessPassword"`
-	}
-	if stateResponse.StatusCode != http.StatusOK ||
-		json.NewDecoder(stateResponse.Body).Decode(&state) != nil {
-		_ = stateResponse.Body.Close()
-		t.Fatal("launcher state was unavailable")
-	}
-	_ = stateResponse.Body.Close()
-	if state.LocalAccessPassword != "existing-pass" {
-		t.Fatal("launcher did not expose the saved Local access setting")
-	}
-	result := make(chan *http.Response, 1)
-	go func() {
-		response, err := http.Post(
-			origin+"/api/client-launcher/launch",
-			"application/json",
-			bytes.NewBufferString(`{"mode":"local","language":"zh","localAccessPassword":"new-local-pass"}`),
-		)
-		if err != nil {
-			t.Error(err)
-			return
-		}
-		result <- response
-	}()
-	select {
-	case selection := <-server.Selection():
-		if selection.Mode != ModeLocal || selection.Language != "zh" || selection.LocalAccessPassword != "new-local-pass" {
-			t.Fatalf("selection = %+v", selection)
-		}
-		server.SetResult("http://localhost:8787/#piik-client=1", nil)
-	case <-time.After(time.Second):
-		t.Fatal("launcher did not emit a selection")
-	}
-	response := <-result
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		t.Fatalf("launch status = %d", response.StatusCode)
+func TestLauncherPreservesAnOptionalLocalPassword(t *testing.T) {
+	for _, password := range []string{"", "x", "中文", " ", "  中文 +&  ", strings.Repeat("x", 256)} {
+		t.Run(password, func(t *testing.T) {
+			server := startFixtureWithPassword(t, "", password)
+			origin := strings.TrimSuffix(server.URL(), "/client")
+			stateResponse, err := http.Get(origin + "/api/client-launcher")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var state struct {
+				LocalAccessPassword string `json:"localAccessPassword"`
+			}
+			if stateResponse.StatusCode != http.StatusOK ||
+				json.NewDecoder(stateResponse.Body).Decode(&state) != nil {
+				_ = stateResponse.Body.Close()
+				t.Fatal("launcher state was unavailable")
+			}
+			_ = stateResponse.Body.Close()
+			if state.LocalAccessPassword != password {
+				t.Fatal("launcher did not expose the saved Local access setting")
+			}
+			result := make(chan *http.Response, 1)
+			payload, err := json.Marshal(Selection{Mode: ModeLocal, Language: "zh", LocalAccessPassword: password})
+			if err != nil {
+				t.Fatal(err)
+			}
+			go func() {
+				response, err := http.Post(
+					origin+"/api/client-launcher/launch",
+					"application/json",
+					bytes.NewReader(payload),
+				)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				result <- response
+			}()
+			select {
+			case selection := <-server.Selection():
+				if selection.Mode != ModeLocal || selection.Language != "zh" || selection.LocalAccessPassword != password {
+					t.Fatalf("selection = %+v", selection)
+				}
+				server.SetResult("http://localhost:8787/#piik-client=1", nil)
+			case <-time.After(time.Second):
+				t.Fatal("launcher did not emit a selection")
+			}
+			response := <-result
+			defer response.Body.Close()
+			if response.StatusCode != http.StatusOK {
+				t.Fatalf("launch status = %d", response.StatusCode)
+			}
+		})
 	}
 }
 
@@ -173,7 +181,7 @@ func TestLauncherRejectsInvalidSelections(t *testing.T) {
 		"site-path":        `{"mode":"site","language":"en","site":"https://share.example/path"}`,
 		"site-password":    `{"mode":"site","language":"en","site":"https://share.example","localAccessPassword":"valid-pass"}`,
 		"unknown-field":    `{"mode":"local","language":"en","extra":true}`,
-		"short-password":   `{"mode":"local","language":"en","localAccessPassword":"short"}`,
+		"password-type":    `{"mode":"local","language":"en","localAccessPassword":123}`,
 		"missing-language": `{"mode":"local"}`,
 		"unknown-language": `{"mode":"local","language":"other"}`,
 	} {

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/url"
@@ -168,15 +169,25 @@ func (s *Server) handleSiteAccess(writer http.ResponseWriter, request *http.Requ
 		sendJSON(writer, http.StatusForbidden, errorBody{"Forbidden"})
 		return
 	}
+	// Released clients send a bodyless Bearer request. JSON preserves passwords
+	// that cannot be represented in an HTTP header and takes precedence when sent.
+	provided := bearerToken(request)
 	if hasRequestBody(request) {
-		sendJSON(writer, http.StatusBadRequest, errorBody{"Request body is not accepted"})
-		return
+		body, err := readJSONBody(request)
+		var fields map[string]json.RawMessage
+		var password *string
+		if err != nil || json.Unmarshal(body, &fields) != nil || len(fields) != 1 ||
+			json.Unmarshal(fields["password"], &password) != nil || password == nil {
+			sendJSON(writer, http.StatusBadRequest, errorBody{"Invalid site access request"})
+			return
+		}
+		provided = *password
 	}
 	if !access.required() {
 		sendJSON(writer, http.StatusOK, siteAccessBody{Required: false, Authenticated: true})
 		return
 	}
-	if provided := bearerToken(request); provided == "" || !access.passwordMatches(provided) {
+	if !access.passwordMatches(provided) {
 		writer.Header().Set("WWW-Authenticate", "Bearer")
 		sendJSON(writer, http.StatusUnauthorized, errorBody{"Unauthorized"})
 		return

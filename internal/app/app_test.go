@@ -202,14 +202,14 @@ func TestLaunchURLPreservesLocalAccessInsideThePrivateFragment(t *testing.T) {
 func TestLaunchURLEncodesAndClearsOptionalLocalAccess(t *testing.T) {
 	value := launchURLWithLocalAccess(
 		"http://localhost:8787/#retained=yes&client-access=old",
-		"a+b&c?d=e",
+		" 中文 a+b&c?d=e ",
 	)
 	parsed, err := url.Parse(value)
 	if err != nil {
 		t.Fatal(err)
 	}
 	fragment, err := url.ParseQuery(parsed.Fragment)
-	if err != nil || fragment.Get("client-access") != "a+b&c?d=e" ||
+	if err != nil || fragment.Get("client-access") != " 中文 a+b&c?d=e " ||
 		fragment.Get("piik-client") != "1" || fragment.Get("retained") != "yes" {
 		t.Fatalf("encoded local launch fragment = %q, %v", parsed.Fragment, err)
 	}

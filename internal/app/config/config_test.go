@@ -23,15 +23,15 @@ func TestLoadOrCreatePersistsOneValidConfiguration(t *testing.T) {
 	}
 }
 
-func TestUserChosenLocalAccessPasswordIsBounded(t *testing.T) {
-	for _, value := range []string{"", "valid-local-password", strings.Repeat("x", 128)} {
-		if normalized, err := NormalizeLocalAccessPassword(value); err != nil || normalized != value {
-			t.Fatalf("NormalizeLocalAccessPassword(%q) = %q, %v", value, normalized, err)
+func TestUserChosenLocalAccessPasswordIsPreserved(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "client.json")
+	for _, value := range []string{"", "x", "中文", " ", "  中文 +&  ", strings.Repeat("x", 256)} {
+		if err := Save(path, Config{Version: currentVersion, LocalAccessPassword: value}); err != nil {
+			t.Fatal(err)
 		}
-	}
-	for _, value := range []string{"short", strings.Repeat("x", 129), "has space"} {
-		if _, err := NormalizeLocalAccessPassword(value); err == nil {
-			t.Fatalf("invalid local password accepted: %q", value)
+		loaded, err := LoadOrCreate(path)
+		if err != nil || loaded.LocalAccessPassword != value {
+			t.Fatalf("saved password changed: %v", err)
 		}
 	}
 }
@@ -86,7 +86,7 @@ func TestLoadOrCreateRejectsUnknownOrMalformedState(t *testing.T) {
 	for name, payload := range map[string]string{
 		"unknown":  `{"version":1,"localAccessPassword":"abcdefghijklmnopqrstuvwxyzABCDEF","extra":true}`,
 		"version":  `{"version":2,"localAccessPassword":"abcdefghijklmnopqrstuvwxyzABCDEF"}`,
-		"password": `{"version":1,"localAccessPassword":"short"}`,
+		"password": `{"version":1,"localAccessPassword":123}`,
 		"trailing": `{"version":1,"localAccessPassword":"abcdefghijklmnopqrstuvwxyzABCDEF"} trailing`,
 	} {
 		t.Run(name, func(t *testing.T) {

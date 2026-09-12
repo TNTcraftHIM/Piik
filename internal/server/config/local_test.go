@@ -136,6 +136,15 @@ func TestLocalDefaults(t *testing.T) {
 	}
 }
 
+func TestLocalPreservesTheChosenPassword(t *testing.T) {
+	for _, password := range []string{"", "x", "中文", " ", "  中文 +&  ", strings.Repeat("x", 256)} {
+		config := mustLocal(t, LocalOptions{PublicAddress: "192.0.2.10", SiteAccessPassword: password})
+		if config.SiteAccessPassword != password {
+			t.Fatal("Local password changed")
+		}
+	}
+}
+
 func TestLocalRejects(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -153,14 +162,6 @@ func TestLocalRejects(t *testing.T) {
 		{"unspecified public address", LocalOptions{PublicAddress: "0.0.0.0",
 			SiteAccessPassword: "valid-password"},
 			"Local server public address must be reachable from the LAN"},
-		{"short password", LocalOptions{PublicAddress: "192.168.1.2", SiteAccessPassword: "short"},
-			"Local access password must contain 8 to 128 visible ASCII bytes"},
-		{"password outside ASCII", LocalOptions{PublicAddress: "192.168.1.2",
-			SiteAccessPassword: "密码密码密码密码"},
-			"Local access password must contain 8 to 128 visible ASCII bytes"},
-		{"long password", LocalOptions{PublicAddress: "192.168.1.2",
-			SiteAccessPassword: strings.Repeat("x", 129)},
-			"Local access password must contain 8 to 128 visible ASCII bytes"},
 		{"port above the TCP ceiling", LocalOptions{Port: 70_000, PublicAddress: "192.168.1.2"},
 			"Local server port must be an integer between 1 and 65535"},
 		{"negative port", LocalOptions{Port: -1, PublicAddress: "192.168.1.2"},

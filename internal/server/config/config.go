@@ -28,15 +28,10 @@ const (
 
 // Bounds and defaults for Hosted configuration.
 const (
-	minSiteAccessPasswordBytes = 8
-	maxSiteAccessPasswordBytes = 128
-	defaultMaxViewersPerRoom   = 8
-	defaultPort                = 8787
-	maxPort                    = 65_535
+	defaultMaxViewersPerRoom = 8
+	defaultPort              = 8787
+	maxPort                  = 65_535
 )
-
-// VISIBLE_ASCII_PATTERN.
-var visibleASCIIPattern = regexp.MustCompile(`^[\x21-\x7e]+$`)
 
 const removedTurnReason = "ordinary ICE accepts STUN_URLS only"
 
@@ -184,15 +179,6 @@ func Load(env map[string]string) (Config, error) {
 		return Config{}, err
 	}
 
-	// Buffer.byteLength is the UTF-8 length, which is len() in Go. The pattern
-	// already restricts the value to one byte per character.
-	if siteAccessPassword != "" &&
-		(!visibleASCIIPattern.MatchString(siteAccessPassword) ||
-			len(siteAccessPassword) < minSiteAccessPasswordBytes ||
-			len(siteAccessPassword) > maxSiteAccessPasswordBytes) {
-		return Config{}, fmt.Errorf("SITE_ACCESS_PASSWORD must contain %d to %d visible ASCII bytes",
-			minSiteAccessPasswordBytes, maxSiteAccessPasswordBytes)
-	}
 	if environment == EnvironmentProduction && len(stunURLs) == 0 {
 		return Config{}, errors.New("STUN is required in production")
 	}

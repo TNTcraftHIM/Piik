@@ -113,6 +113,17 @@ func TestLoadProductionAllowsAnUnsetOrEmptySiteAccessPassword(t *testing.T) {
 	}
 }
 
+func TestLoadPreservesTheChosenSiteAccessPassword(t *testing.T) {
+	for _, base := range []map[string]string{nil, productionBase} {
+		for _, password := range []string{"", "x", "中文", " ", "  中文 +&  ", strings.Repeat("x", 256)} {
+			configuration := mustLoad(t, env(base, map[string]string{"SITE_ACCESS_PASSWORD": password}))
+			if configuration.SiteAccessPassword != password {
+				t.Fatal("site password changed")
+			}
+		}
+	}
+}
+
 func TestLoadRoomStorage(t *testing.T) {
 	directory := t.TempDir()
 	t.Chdir(directory)
@@ -392,16 +403,6 @@ func TestLoadRejects(t *testing.T) {
 			"PIIK_ENV": "production", "PUBLIC_BASE_URL": "https://share.test",
 			"SITE_ACCESS_PASSWORD": "host-password-12",
 		}, "STUN is required in production"},
-
-		// Site access password bounds (UTF-8 bytes).
-		{"site password too short", map[string]string{"SITE_ACCESS_PASSWORD": strings.Repeat("x", 7)},
-			"SITE_ACCESS_PASSWORD must contain 8 to 128 visible ASCII bytes"},
-		{"site password outside ASCII", map[string]string{"SITE_ACCESS_PASSWORD": "密码密码密码密码"},
-			"SITE_ACCESS_PASSWORD must contain 8 to 128 visible ASCII bytes"},
-		{"site password with spaces", map[string]string{"SITE_ACCESS_PASSWORD": "contains spaces"},
-			"SITE_ACCESS_PASSWORD must contain 8 to 128 visible ASCII bytes"},
-		{"site password too long", map[string]string{"SITE_ACCESS_PASSWORD": strings.Repeat("x", 129)},
-			"SITE_ACCESS_PASSWORD must contain 8 to 128 visible ASCII bytes"},
 
 		// STUN lists.
 		{"STUN path", map[string]string{"STUN_URLS": "stun:stun.test/path"},

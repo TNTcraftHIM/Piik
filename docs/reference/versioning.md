@@ -88,6 +88,12 @@ revision. Do not maintain independent hand-edited App/Server/Web version files.
 Archive layout and checks stay in the
 existing packagers; a new build never replaces an already-published package.
 
+App archive names are fixed per target: `piik-app-{target}.zip`. Each published
+tag owns its archive bytes; the full source SHA remains in `REVISION` and the
+release descriptor. Fixed names allow GitHub's native latest-asset links;
+[website operations](../operations/website.md#preview) owns download presentation
+and verification of the matching Gitee mirror.
+
 Update checks compare actual release precedence and link to the matching release.
 Newer version wins even when the source SHA is unchanged. Same version with a
 different known SHA reports a different official build, not a newer one. A

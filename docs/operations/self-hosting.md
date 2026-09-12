@@ -48,8 +48,8 @@ Run these commands from that directory as a regular user:
 
 The server reads `.env` automatically and stores rooms in `rooms.sqlite` in the
 working directory. A blank `SITE_ACCESS_PASSWORD` allows
-entry without a site passphrase; set 8–128 visible ASCII characters to require
-one. Room invitations and access settings still apply.
+entry without a site passphrase; enter a passphrase to require one.
+Room invitations and access settings still apply.
 
 ### 2. Enable HTTPS
 

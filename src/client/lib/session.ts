@@ -9,7 +9,6 @@ import { z } from "zod";
 import { createOpaqueId } from "./opaque-id";
 
 const CLIENT_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
-const CLIENT_ACCESS_BOOTSTRAP_PATTERN = /^[\x21-\x7e]{8,128}$/;
 const CLIENT_LAUNCH_STORAGE_KEY = "piik:client-launch:v1";
 const HOST_ROOM_STORAGE_KEY = "piik:host-room:v1";
 const HOST_ROOM_PREFERENCE_STORAGE_KEY = "piik:host-room-preference:v1";
@@ -144,10 +143,7 @@ export function takeClientLaunchBootstrap(): ClientLaunchBootstrap {
     // The launch fragment still enables the current load when storage is blocked.
   }
   const result: ClientLaunchBootstrap = {
-    accessToken:
-      accessValue && CLIENT_ACCESS_BOOTSTRAP_PATTERN.test(accessValue)
-        ? accessValue
-        : null,
+    accessToken: accessValue || null,
     launchedByClient,
     presentation: launchedFromFragment && (lang === "zh" || lang === "en") &&
       (mode === "vis" || mode === "text") &&

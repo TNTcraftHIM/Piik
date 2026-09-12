@@ -368,8 +368,7 @@ try {
   run(process.execPath, assembleArguments, repositoryRoot);
 
   mkdirSync(outputRoot, { recursive: false, mode: 0o700 });
-  const shortRevision = revision.slice(0, 7);
-  const archiveName = `piik-app-${target.id}-${shortRevision}.zip`;
+  const archiveName = `piik-app-${target.id}.zip`;
   const archive = join(outputRoot, archiveName);
   createZip(packageRoot, archive);
   const extractedRoot = join(temporaryRoot, "extracted");

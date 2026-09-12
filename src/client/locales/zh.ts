@@ -73,7 +73,7 @@ export const zh = {
   "client.launch.siteHint": "使用已有的 Piik 站点",
   "client.launch.siteAddress": "Piik 站点地址",
   "client.launch.localAccess": "站点口令（可选）",
-  "client.launch.localAccessHint": "设置后，访问此站点需要先输入口令。使用 8–128 位英文字母、数字或半角符号，不含空格。",
+  "client.launch.localAccessHint": "设置后，访问此站点需要先输入口令。",
   "client.launch.go": "进入 Piik",
   "client.launch.starting": "正在准备 Piik",
   "client.launch.error": "暂时无法启动，请检查设置后重试",

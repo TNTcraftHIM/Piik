@@ -75,7 +75,7 @@ export const en: Record<CopyKey, string> = {
   "client.launch.siteHint": "Use an existing Piik Site",
   "client.launch.siteAddress": "Piik Site address",
   "client.launch.localAccess": "Site passphrase (optional)",
-  "client.launch.localAccessHint": "If set, visitors enter this passphrase before accessing your site. Use 8–128 English letters, numbers or keyboard symbols, without spaces.",
+  "client.launch.localAccessHint": "If set, visitors enter this passphrase before accessing your site.",
   "client.launch.go": "Open Piik",
   "client.launch.starting": "Preparing Piik",
   "client.launch.error": "Piik could not start; check the setting and retry",

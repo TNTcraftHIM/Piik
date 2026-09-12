@@ -25,7 +25,7 @@ service secret store or an untracked access-restricted environment file.
 | `PORT` | Positive TCP port, default `8787`; the tracked release wrapper supports only that default. |
 | `PUBLIC_BASE_URL` | Exact public HTTP(S) origin; production requires HTTPS. |
 | `ALLOWED_ORIGINS` | Comma-separated exact HTTP(S) origins; wildcard is invalid. |
-| `SITE_ACCESS_PASSWORD` | Optional in every environment. Unset or empty allows entry without a site password. A non-empty value must contain 8-128 visible ASCII bytes; room ownership and Viewer admission remain independent. |
+| `SITE_ACCESS_PASSWORD` | Optional in every environment. Unset or empty allows entry without a site password. A configured value is matched exactly, including spaces and Unicode; there are no password length or character rules. General HTTP request limits still apply. Room ownership and Viewer admission remain independent. |
 | `ROOM_DATABASE_PATH` | Hosted defaults to `rooms.sqlite` in its working directory when unset or blank. An explicit absolute file path selects another SQLite file; `:memory:` opts into process-memory room authority. App Local remains in memory. |
 | `MAX_VIEWERS_PER_ROOM` | `1..20`, default `8`. |
 | `ENDPOINT_MEDIA_COPY_CAPACITY` | Shared endpoint steady-copy cap `1..3`, default `2`. |
@@ -75,7 +75,7 @@ schema field. The user settings are:
 | Setting | Contract |
 | --- | --- |
 | `site` | Saved Piik Site origin; omit it for Local mode. The launcher or `--site` updates it. |
-| `localAccessPassword` | Empty by default. Optional password for the App's Local room authority, using the same 8-128 visible ASCII bounds. It is separate from a hosted site's password. |
+| `localAccessPassword` | Empty by default. Optional password for the App's Local room authority, with the same exact-match behavior as `SITE_ACCESS_PASSWORD`. It is separate from a hosted site's password. |
 
 Command-line options select entry and local runtime behavior:
 

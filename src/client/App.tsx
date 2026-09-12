@@ -369,7 +369,7 @@ function SiteAccessGate({
     event.preventDefault();
     const submittedPassword = password;
     setPassword("");
-    if (!submittedPassword.trim()) {
+    if (!submittedPassword) {
       setAccess({ kind: "required", error: t("gate.hint") });
       return;
     }

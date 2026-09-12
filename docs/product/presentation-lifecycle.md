@@ -86,8 +86,13 @@ after two idle seconds, following [Media Chrome's default](https://github.com/mu
 Pause or unavailable playback keeps it visible. Control hover, keyboard focus,
 dragging and an open tooltip hold it open; mouse movement reveals it, and a
 touch tap on the picture toggles only visibility. One presentation-only idle
-timer owns this behavior; it never changes playback or route state. Controls
+timer owns visibility; it never changes playback or route state. Controls
 follow the shared [motion grammar](../design/visual-language.md#motion-grammar).
+
+A desktop primary click on the picture toggles local playback after a brief
+double-click window; double-click toggles the available fullscreen action without
+first toggling playback. Controls, overlays and keyboard actions keep their own
+immediate behavior.
 
 Volume starts on native audio output. An explicit setting away from 100% activates
 a local Web Audio stream source and gain, from silence to 200% amplitude. This also

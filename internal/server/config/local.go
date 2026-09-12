@@ -5,15 +5,11 @@ import (
 	"fmt"
 	"net"
 	"net/url"
-	"regexp"
 	"slices"
 	"strings"
 
 	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 )
-
-// localPasswordPattern admits 8..128 one-byte visible ASCII characters.
-var localPasswordPattern = regexp.MustCompile(`^[\x21-\x7e]{8,128}$`)
 
 // LocalOptions describes App-selected Local composition. It never reads the
 // process environment.
@@ -44,11 +40,6 @@ func Local(options LocalOptions) (Config, error) {
 	if publicAddress == "0.0.0.0" || strings.HasPrefix(publicAddress, "127.") {
 		return Config{}, errors.New("Local server public address must be reachable from the LAN")
 	}
-	siteAccessPassword := strings.TrimFunc(options.SiteAccessPassword, protocol.IsJSWhitespace)
-	if siteAccessPassword != "" && !localPasswordPattern.MatchString(siteAccessPassword) {
-		return Config{}, errors.New("Local access password must contain 8 to 128 visible ASCII bytes")
-	}
-
 	allowedAddresses := []string{publicAddress}
 	for _, address := range options.AllowedAddresses {
 		normalized, err := localIPv4(address, "allowed address")
@@ -97,7 +88,7 @@ func Local(options LocalOptions) (Config, error) {
 		ListenHost:                "0.0.0.0",
 		PublicBaseURL:             publicBaseURL,
 		AllowedOrigins:            allowedOrigins,
-		SiteAccessPassword:        siteAccessPassword,
+		SiteAccessPassword:        options.SiteAccessPassword,
 		MaxViewersPerRoom:         protocol.MaxViewersPerRoomLimit,
 		EndpointMediaCopyCapacity: protocol.DefaultEndpointMediaCopyCapacity,
 		STUNURLs:                  stunURLs,

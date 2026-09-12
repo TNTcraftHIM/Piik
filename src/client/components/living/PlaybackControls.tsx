@@ -5,6 +5,7 @@ import { Btn } from "./primitives";
 import { Tooltip } from "./Tooltip";
 import { usePlaybackControlsVisibility } from "./use-playback-controls-visibility";
 import { leavePictureInPicture, usePictureInPicture } from "./use-picture-in-picture";
+import { bindPlaybackGestures } from "./playback-gestures";
 import "./playback-controls.css";
 
 type FullscreenVideo = HTMLVideoElement & {
@@ -51,8 +52,22 @@ export function PlaybackControls({
       video.pause();
     }
   };
-  const togglePlaybackRef = useRef(togglePlayback);
-  togglePlaybackRef.current = togglePlayback;
+  const toggleFullscreen = () => {
+    if (!canFullscreen || theaterMode) return;
+    const video = videoRef.current as FullscreenVideo | null;
+    if (fullscreen) {
+      void document.exitFullscreen().catch(() => undefined);
+    } else if (document.fullscreenEnabled && video?.parentElement) {
+      void video.parentElement.requestFullscreen()
+        .then(() => leavePictureInPicture(video))
+        .catch(() => undefined);
+    } else {
+      audioRef.current?.useNativeControls();
+      video?.webkitEnterFullscreen?.();
+    }
+  };
+  const actionsRef = useRef({ togglePlayback, toggleFullscreen });
+  actionsRef.current = { togglePlayback, toggleFullscreen };
 
   useEffect(() => {
     const video = videoRef.current as FullscreenVideo | null;
@@ -64,7 +79,7 @@ export function PlaybackControls({
     const onKey = (event: KeyboardEvent) => {
       if (event.code !== "Space" || event.target !== video) return;
       event.preventDefault();
-      togglePlaybackRef.current();
+      actionsRef.current.togglePlayback();
     };
     syncPlayback();
     syncFullscreen();
@@ -72,7 +87,11 @@ export function PlaybackControls({
     for (const event of ["play", "pause", "ended", "emptied"]) video.addEventListener(event, syncPlayback);
     video.addEventListener("keydown", onKey);
     document.addEventListener("fullscreenchange", syncFullscreen);
+    const unbindGestures = bindPlaybackGestures(video,
+      () => actionsRef.current.togglePlayback(),
+      () => actionsRef.current.toggleFullscreen());
     return () => {
+      unbindGestures();
       output.dispose();
       audioRef.current = null;
       for (const event of ["play", "pause", "ended", "emptied"]) video.removeEventListener(event, syncPlayback);
@@ -90,19 +109,6 @@ export function PlaybackControls({
     return () => track?.removeEventListener("ended", syncAudio);
   }, [stream, audioTrackKey]);
 
-  const toggleFullscreen = () => {
-    const video = videoRef.current as FullscreenVideo | null;
-    if (fullscreen) {
-      void document.exitFullscreen().catch(() => undefined);
-    } else if (document.fullscreenEnabled && video?.parentElement) {
-      void video.parentElement.requestFullscreen()
-        .then(() => leavePictureInPicture(video))
-        .catch(() => undefined);
-    } else {
-      audioRef.current?.useNativeControls();
-      video?.webkitEnterFullscreen?.();
-    }
-  };
   const silent = audio.muted || audio.level === 0;
   const percent = Math.round(audio.level * 100);
 
