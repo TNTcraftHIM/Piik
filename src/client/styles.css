@@ -157,10 +157,10 @@ ul { margin: 0; padding: 0; list-style: none; }
 @keyframes lr-chase { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
 @keyframes lr-blink { 50% { opacity: .3; } }
 
-/* Keep the three familiar shortcuts; extra locales share one native picker. */
+/* Keep the three familiar shortcuts; extra locales share one menu. */
 .lr-lang { --lang-count: 3; border: 2.5px solid var(--ink); }
 .lr-lang:has(.lr-lang-more) { --lang-count: 4; }
-.lr-lang > button, .lr-lang-more {
+.lr-lang > button {
   position: relative;
   display: inline-grid;
   min-width: 38px;
@@ -176,23 +176,62 @@ ul { margin: 0; padding: 0; list-style: none; }
   opacity: .68;
   transition: opacity 120ms ease, color 140ms ease, background-color 140ms ease, transform 180ms var(--spring);
 }
-.lr-lang > button:is(:hover, :focus-visible),
-.lr-lang-more:is(:hover, :focus-within) { opacity: 1; transform: translateY(-1px); }
-.lr-lang > button:is(:hover, :focus-visible):not(.is-selected),
-.lr-lang-more:is(:hover, :focus-within):not(.is-selected) { background: var(--wall-2); }
-.lr-lang > button:active, .lr-lang-more:active { transform: scale(.9); }
+.lr-lang > button:is(:hover, :focus-visible) { opacity: 1; transform: translateY(-1px); }
+.lr-lang > button:is(:hover, :focus-visible):not(.is-selected) { background: var(--wall-2); }
+.lr-lang > button:active { transform: scale(.9); }
 .lr-lang > .is-selected { color: var(--paper); opacity: 1; }
 .lr-lang-more > span { display: inline-flex; align-items: center; gap: 2px; pointer-events: none; }
-.lr-lang-more select {
-  position: absolute;
-  inset: 0;
-  width: 100%; height: 100%;
-  opacity: 0;
-  cursor: pointer;
+.lr-lang-more .lr-glyph:last-child { transition: transform 180ms var(--spring); }
+.lr-header-controls:has(.lr-language-menu:popover-open) .lr-lang-more .lr-glyph:last-child { transform: rotate(180deg); }
+.lr-language-menu {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  width: min(252px, calc(100vw - 16px));
+  padding: 8px;
+  border: 2.5px solid var(--ink);
+  border-radius: var(--control-radius);
   color: var(--ink);
   background: var(--paper);
+  box-shadow: var(--control-shadow), 0 8px 24px rgb(16 26 44 / .16);
+  overflow: auto;
+  overscroll-behavior: contain;
+  font: 600 14px/1.4 var(--font);
+  transform-origin: top right;
 }
-.lr-lang-more:has(select:focus-visible) { outline: 3px solid var(--action); outline-offset: 2px; }
+.lr-language-menu:popover-open { animation: lr-language-open 180ms var(--spring); }
+@keyframes lr-language-open { from { opacity: 0; transform: translateY(-5px) scale(.97); } }
+.lr-language-menu button {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  text-align: start;
+  overflow-wrap: anywhere;
+  transition: background-color 140ms ease, color 140ms ease, transform 180ms var(--spring);
+}
+.lr-language-menu button + button { margin-top: 4px; }
+.lr-language-menu button:is(:hover, :focus-visible) { background: var(--wall-2); transform: translateX(2px); }
+.lr-language-menu button:focus-visible { outline-offset: -3px; }
+.lr-language-menu button:active { transform: scale(.98); }
+.lr-language-menu button[aria-checked="true"] { background: var(--ink); color: var(--paper); }
+.lr-language-mark {
+  display: grid;
+  place-items: center;
+  height: 32px;
+  border-radius: 9px;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  font-size: 12px;
+  font-weight: 800;
+}
+.lr-language-menu .is-unselected { visibility: hidden; }
 
 /* ---------- room layout ---------- */
 
@@ -1715,7 +1754,7 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
   .lr-leds i { width: 8px; height: 8px; }
   .lr-lang { padding: 2px; border-width: 2px; }
   .lr-lang::before { top: 2px; bottom: 2px; left: 2px; width: calc((100% - 4px) / var(--lang-count)); }
-  .lr-lang > button, .lr-lang-more { min-width: 30px; height: 32px; padding-inline: 5px; }
+  .lr-lang > button { min-width: 30px; height: 32px; padding-inline: 5px; }
   .lr-header-controls button.lr-btn {
     min-width: 36px !important;
     width: 36px;
@@ -1879,7 +1918,7 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
     transition-duration: 0.01ms !important;
   }
   .lr-tv-static { animation: none; opacity: .35; }
-  .lr-btn, .lr-chip, .lr-tile, .lr-client-mode, .lr-toggle button, .lr-lang > button, .lr-lang-more { transform: none !important; }
+  .lr-btn, .lr-chip, .lr-tile, .lr-client-mode, .lr-toggle button, .lr-lang > button, .lr-language-menu button { transform: none !important; }
   .lr-route-edge.is-pending,
   .lr-route-edge.is-recovering { animation: none; }
 }

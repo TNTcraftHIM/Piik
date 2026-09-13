@@ -6,7 +6,7 @@ import { BrandMark } from "./BrandMark";
 import { Tooltip } from "./Tooltip";
 import type { ComicKind } from "./Comic";
 import { useCopy } from "../../ui/copy";
-import { isLang, locales } from "../../locales";
+import { LanguageControl } from "./LanguageControl";
 import { useTheme } from "../../ui/theme";
 import { Glyph } from "../../ui/icons";
 
@@ -49,11 +49,9 @@ export function LedStrip({
 }
 
 export function HeaderControls() {
-  const { lang, vis, t, setLang, setVis } = useCopy();
+  const { vis, t } = useCopy();
   const { theme, toggle } = useTheme();
   const [debugExport, setDebugExport] = useState<"idle" | "busy" | "failed">("idle");
-  const extraLanguages = Object.entries(locales).filter(([key]) => key !== "zh" && key !== "en");
-  const selectedExtra = !vis && extraLanguages.find(([key]) => key === lang);
   const themeTitle = t(theme === "dark" ? "theme.light" : "theme.dark");
   const themeButton = (
     <button
@@ -101,41 +99,7 @@ export function HeaderControls() {
           {debugButton}
         </Tooltip>
       )}
-      <span className="lr-lang" role="group" aria-label={t("mode.language")}>
-        {(["zh", "en"] as const).map((key) => (
-          <button
-            key={key} type="button" lang={locales[key].tag}
-            className={!vis && lang === key ? "is-selected" : ""}
-            aria-label={locales[key].name} aria-pressed={!vis && lang === key}
-            onClick={() => setLang(key)}
-          >
-            {locales[key].short}
-          </button>
-        ))}
-        <button
-          type="button" className={vis ? "is-selected" : ""}
-          aria-label={t("mode.vis")} aria-pressed={vis} onClick={() => setVis(true)}
-        >✦</button>
-        {extraLanguages.length > 0 && (
-          <span className={`lr-lang-more${selectedExtra ? " is-selected" : ""}`}>
-            <span aria-hidden="true" lang={selectedExtra ? selectedExtra[1].tag : undefined}>
-              {selectedExtra ? selectedExtra[1].short : <Glyph name="globe" size={14} />}<Glyph name="chevron" size={10} />
-            </span>
-            <select
-              aria-label={t("mode.more")}
-              value={selectedExtra ? lang : ""}
-              onChange={(event) => {
-                if (isLang(event.currentTarget.value)) setLang(event.currentTarget.value);
-              }}
-            >
-              <option value="" disabled>{t("mode.more")}</option>
-              {extraLanguages.map(([key, locale]) => (
-                <option key={key} value={key} lang={locale.tag}>{locale.name}</option>
-              ))}
-            </select>
-          </span>
-        )}
-      </span>
+      <LanguageControl />
       <Tooltip kind={theme === "dark" ? "hint-theme-light" : "hint-theme-dark"} text={vis ? undefined : themeTitle} place="below" align="end">
         {themeButton}
       </Tooltip>

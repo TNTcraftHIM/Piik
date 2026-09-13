@@ -113,6 +113,8 @@ layout questions, so contributors can coordinate work and review.
    language's short label appears on that slot, with its full name in the menu.
    Initial selection matches a registered tag or key, then its base language;
    unregistered languages use English. A saved choice takes precedence.
+   The shared [system-language policy](../product/presentation-lifecycle.md#visual-language)
+   also covers Chinese script and region variants across App, Server UI and website.
 3. Check complete screens and the launch flow. New UI languages use English in
    the App console until its own translation is added. Console additions also
    require updating the launcher and loopback accepted-language checks together;

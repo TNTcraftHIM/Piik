@@ -92,6 +92,8 @@ App 与 Server 使用同一套网页操作界面。请修改源码，构建目�
    选中额外语言后，该格显示它的简称，菜单内显示全名。
    首次使用先匹配已登记的标签或键名，再匹配基础语言；没有对应翻译时使用英文。
    用户保存的选择优先。
+   App、Server 网页界面及官网对中文地区和文字变体的默认选择，遵循
+   [统一的系统语言规则](../product/presentation-lifecycle.md#visual-language)。
 3. 检查完整界面与启动流程。新增的界面语言在 App 黑窗口中暂用英文；
    翻译黑窗口时，还需同步启动服务和 loopback 对语言的校验，相关位置见
    [App 模块地图](../reference/engineering.md#module-map)。

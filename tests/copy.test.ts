@@ -20,6 +20,11 @@ describe("copy catalog", () => {
   it.each([
     ["zh-CN", "zh:false"],
     ["zh-TW", "zh:false"],
+    ["zh-HK", "zh:false"],
+    ["zh-SG", "zh:false"],
+    ["zh-Hans", "zh:false"],
+    ["zh-Hant", "zh:false"],
+    ["zh-Hant-HK", "zh:false"],
     ["en-US", "en:false"],
     ["ja-JP", "en:false"],
     [undefined, "en:false"],
@@ -180,7 +185,13 @@ describe("website language", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it.each([
+    ["zh-CN", null, "", "zh-CN"],
     ["zh-TW", null, "", "zh-CN"],
+    ["zh-HK", null, "", "zh-CN"],
+    ["zh-SG", null, "", "zh-CN"],
+    ["zh-Hans", null, "", "zh-CN"],
+    ["zh-Hant", null, "", "zh-CN"],
+    ["zh-Hant-HK", null, "", "zh-CN"],
     ["en-US", null, "", "en"],
     ["ja-JP", null, "", "en"],
     ["ja-JP", "zh-CN", "", "zh-CN"],
