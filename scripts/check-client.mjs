@@ -15,6 +15,9 @@ import { CLIENT_PACKAGE_TARGETS, clientPackageTarget, clientGoEnvironment } from
 // fail without it. The Hosted binary is cross-built for its deployment target.
 const CLIENT_INDEX = join("internal", "server", "webassets", "dist", "index.html");
 const SERVER_TARGET = clientPackageTarget("linux-amd64");
+// Local dependency repairs retain upstream tests, including PCPv6 composition.
+// Nested modules need explicit test patterns; remove these with the replacements.
+const GO_TEST_PACKAGES = ["./...", "github.com/netbirdio/go-nat/...", "github.com/jackpal/go-nat-pmp"];
 
 const root = realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), ".."));
 const captureRoot = join(root, "native", "capture");
@@ -61,7 +64,7 @@ function checkCore() {
     throw new Error(`Go source is not formatted:\n${unformatted}`);
   }
   runClientTests(go);
-  run(go, ["vet", "./..."]);
+  run(go, ["vet", ...GO_TEST_PACKAGES]);
 
   const buildRoot = join(root, "build", "client-check");
   mkdirSync(buildRoot, { recursive: true });
@@ -88,13 +91,13 @@ function checkCore() {
 
 function runClientTests(go) {
   if (process.platform !== "win32") {
-    run(go, ["test", "./..."]);
+    run(go, ["test", ...GO_TEST_PACKAGES]);
     return;
   }
 
   // Windows firewall permissions follow executable paths, including tests that
   // open sockets indirectly. Never execute a test from Go's temporary directory.
-  const packages = run(go, ["list", "-f", '{{if or .TestGoFiles .XTestGoFiles}}[{{printf "%q" .ImportPath}},{{printf "%q" .Dir}}]{{end}}', "./..."], { capture: true })
+  const packages = run(go, ["list", "-f", '{{if or .TestGoFiles .XTestGoFiles}}[{{printf "%q" .ImportPath}},{{printf "%q" .Dir}}]{{end}}', ...GO_TEST_PACKAGES], { capture: true })
     .split(/\r?\n/)
     .map((value) => value.trim())
     .filter(Boolean)

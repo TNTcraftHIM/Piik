@@ -45,4 +45,6 @@ The Linux license texts come from the GNU license pages:
 `https://www.gnu.org/licenses/gpl-3.0.txt`.
 
 Update the corresponding source text and index when a pinned runtime changes.
-No dependency source tree, plugin, or license-scanning dependency is bundled.
+The two [scoped NAT dependency repairs](../internal/thirdparty/README.md) retain
+upstream source and Apache-2.0 attribution; their license files enter App notices
+through the same Go module collector. No license-scanning dependency is needed.

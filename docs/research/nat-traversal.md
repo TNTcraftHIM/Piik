@@ -125,23 +125,25 @@ That proves the same-socket ICE mechanism, not rescue through a physical NAT.
 
 ### Gateway And Survey Limits
 
-The pinned `go-nat` NAT-PMP adapter ignores context cancellation. Its underlying
-client can retry each proposed port for about 128 seconds, with several port
-proposals per call. Piik bounds the mapping caller's wait to three seconds;
-an abandoned worker may continue to the dependency's own retry limit. Failed
-attempts are not relaunched by later edges. Cleanup must not call Delete while
-that worker still owns the adapter's unsynchronized port bookkeeping.
+The root module uses [scoped local repairs](../../internal/thirdparty/README.md)
+for `go-nat` and its NAT-PMP client. The unmodified upstream revisions discard
+gateway-assigned ports, send no deletion and ignore context cancellation.
+The repaired adapter retains `MappedExternalPort` on creation and renewal,
+sends lifetime-zero deletion under [RFC 6886](https://www.rfc-editor.org/rfc/rfc6886.html#section-3.4),
+and propagates discovery, mapping and deletion cancellation to socket I/O.
+Packet-level loopback regressions cover reassignment, renewal, deletion,
+cancellation and the existing PCPv6 combination. They do not establish physical
+router coverage or a higher field connection-success rate.
 
-NAT-PMP Delete in this dependency clears only its local bookkeeping; it sends
-no router deletion. A successful mapping can therefore remain until its requested
-two-hour lease expires, including a late success after Piik stops waiting.
-Caller timeout and router lease expiry are distinct lifecycle boundaries.
-The same adapter discards the gateway's `MappedExternalPort` response and returns
-its requested port. A gateway may assign a different port under
-[RFC 6886](https://www.rfc-editor.org/rfc/rfc6886.html#section-3.3), making that
-optional mapped candidate incorrect. Ordinary ICE candidates remain available.
-Fix this inside the dependency so its combined NAT-PMP/PCPv6 adapter retains
-IPv6 pinholes; a second mapping writer would add another failure and lease owner.
+Piik still bounds a mapping caller's wait to three seconds. PCPv6 rollback can
+finish after that wait, so cleanup must wait for the in-flight gateway call
+before accessing its bookkeeping. Failed attempts are not relaunched by later
+edges. Close attempts deletion even after a failed request, because losing a
+reply does not prove the router rejected the mapping. Cleanup is best effort:
+an unreachable gateway or unsettled rollback can leave a lease to expire.
+Caller cancellation and router lease expiry remain distinct lifecycle boundaries.
+The gateway selector and its NAT-PMP/PCPv6 combination retain one mapping owner;
+ordinary ICE candidates remain independent.
 
 Binding all three STUN listeners proves local startup, not public reachability.
 A local self-probe also cannot prove traversal through an operator's firewall.

@@ -29,7 +29,7 @@ func (gateway *fakeGateway) AddPortMapping(
 	addErr := gateway.addErr
 	gateway.mu.Unlock()
 	if block != nil {
-		// Like the pinned NAT-PMP client: never observes the context.
+		// Exercise the caller's bound even if a gateway fails to observe context.
 		<-block
 	}
 	if addErr != nil {
@@ -103,7 +103,7 @@ func TestMappingFailureIsNotRetriedForEveryEdge(t *testing.T) {
 
 	fake.mu.Lock()
 	defer fake.mu.Unlock()
-	if len(fake.added) != 1 || len(fake.deleted) != 0 {
+	if len(fake.added) != 1 || len(fake.deleted) != 1 {
 		t.Fatalf("mapping calls = add %v delete %v", fake.added, fake.deleted)
 	}
 }

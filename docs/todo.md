@@ -7,6 +7,11 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
+- [ ] **NAT-PMP maintenance acceptance.** The scoped dependency repairs handle
+  assigned ports, real deletion and cancellation, retaining PCPv6 composition.
+  Complete owner acceptance and release preparation for the next approved
+  version. Physical router coverage remains part of the
+  [network evidence boundary](./verification-status.md#candidate-evidence-boundary).
 - [ ] **Post-launch monitoring.** Collect App/Server feedback and verify the
   public download path and deployed services after product releases. Follow the
   [deployment runbook](./deployment.md) for the private service and keep public
@@ -17,14 +22,6 @@ Keep fixes on a maintenance branch until acceptance. The public release is the
 compatibility baseline; private service deployment stays independent.
 
 ## Next: P2P Connection And Feedback Evidence
-
-**Next release: NAT-PMP dependency correctness.** Integrate an upstream fix or
-maintained dependency revision that uses the gateway-assigned external port,
-sends an actual deletion request and honors cancellation/deadlines. Preserve
-the existing PCPv6 combination and bounded mapping lifecycle. The current
-optional path can advertise a requested port that the router reassigned;
-ordinary ICE remains available. Keep this out of the current release. See the
-[dependency boundary](./research/nat-traversal.md#gateway-and-survey-limits).
 
 After the current phase, measure connection success, time to first picture and
 failure causes on representative networks, especially App and P2P-only sites.
@@ -45,9 +42,9 @@ not establish better connection success or speed; this note adds no retry policy
 
 The reported persistent low resolution after Viewer backgrounding and square
 black video remain unconfirmed incident leads, separate from the closed,
-reproduced reconnect ownership bug. They do not block this release. Reopen from
-matching upstream/receiver evidence; local H264 relay background checks did not
-reproduce them. Missing NAT attempt text alone does not prove skipped attempts.
+reproduced reconnect ownership bug. Reopen from matching upstream/receiver
+evidence; local H264 relay background checks did not reproduce them. Missing NAT
+attempt text alone does not prove skipped attempts.
 If Native adaptation is implicated, compare actual VSE limitations with sender
 quality evidence before changing policy. Do not add retry budgets, visibility
 resets or resolution heuristics without proof. Sanitized aggregates and the
@@ -113,3 +110,7 @@ Host is paused. No preservation policy has been accepted for that transition.
     published image and simple HTTPS, port and persistent-volume setup. Reuse
     that server artifact and the existing release identity rather than adding
     another service stack.
+11. **Windows code signing.** Revisit after enrollment in a trusted signing
+    service. Sign Piik's executables before archive checksums are computed;
+    signing improves publisher identity but does not guarantee that antivirus
+    cloud scanning stops. Service selection and enrollment remain pending.

@@ -21,6 +21,7 @@ checks the Browser, `scripts/tsconfig.json` checks tooling/tests, and root
 | `src/client`, `src/shared` | Browser UI/media orchestration and its shared wire types; the same UI serves Hosted and App modes |
 | `public/` | Static assets shipped with that Browser application |
 | `cmd/`, `internal/` | Go executable composition and private application, server, media and diagnostics packages |
+| `internal/thirdparty/` | Scoped Go dependency repairs with pinned upstream provenance, licenses and tests; removal criteria live beside the source |
 | `native/capture`, `native/fixtures`, `native/probes` | Platform capture implementations, synthetic workloads and standalone capability probes |
 | `site/` | Independently published static introduction; its assets do not implement product behavior |
 | `scripts/` | Development checks, browser/media gates, dependency assembly and release packaging/publishing tools |

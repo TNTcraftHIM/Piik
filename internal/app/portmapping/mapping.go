@@ -36,15 +36,14 @@ type Mapping struct {
 	cancel    context.CancelFunc
 	ready     chan struct{}
 
-	mu             sync.Mutex
-	gateway        gateway
-	attempted      bool
-	mapped         bool
-	externalPort   int
-	deleteRequired bool
-	attemptDone    chan struct{}
-	renewAfter     time.Time
-	closed         bool
+	mu           sync.Mutex
+	gateway      gateway
+	attempted    bool
+	mapped       bool
+	externalPort int
+	attemptDone  chan struct{}
+	renewAfter   time.Time
+	closed       bool
 }
 
 func Start(localPort int) *Mapping {
@@ -88,18 +87,16 @@ func (mapping *Mapping) Close() {
 	}
 	mapping.closed = true
 	gateway := mapping.gateway
-	deleteRequired := mapping.deleteRequired
+	attempted := mapping.attempted
 	attemptDone := mapping.attemptDone
 	mapping.mapped = false
 	mapping.externalPort = 0
-	mapping.deleteRequired = false
 	mapping.mu.Unlock()
-	if gateway == nil || !deleteRequired {
+	if gateway == nil || !attempted {
 		return
 	}
-	// A still-abandoned attempt may be retrying inside the dependency
-	// (NAT-PMP keeps unsynchronized state); give it a brief window to return
-	// rather than racing its bookkeeping with the Delete.
+	// A gateway call may still be finishing detached PCPv6 rollback. Allow
+	// a brief settlement window before touching its mapping bookkeeping.
 	if attemptDone != nil {
 		select {
 		case <-attemptDone:
@@ -133,12 +130,12 @@ func (mapping *Mapping) discover(parent context.Context) {
 }
 
 func (mapping *Mapping) mapPortLocked(ctx context.Context) {
+	// A request can succeed on the gateway even if its reply is lost. Close
+	// must attempt cleanup once the request settles, including failed renewal.
 	mapping.attempted = true
-	// NAT-PMP ignores cancellation and retries each proposed port for ~128 s.
-	// Bound our wait; the dependency may continue until its own retry limit.
-	// The buffered result lets that worker finish after abandonment. Failed
-	// attempts are not retried by Prepare, and Close waits for attemptDone
-	// before touching the dependency's unsynchronized port bookkeeping.
+	// Keep the caller bounded even while a gateway finishes detached rollback.
+	// The buffered result lets it settle after our wait ends. Failed attempts
+	// are not retried by Prepare; Close waits before accessing its bookkeeping.
 	type mappingResult struct {
 		externalPort int
 		err          error
@@ -175,6 +172,5 @@ func (mapping *Mapping) mapPortLocked(ctx context.Context) {
 	}
 	mapping.mapped = true
 	mapping.externalPort = externalPort
-	mapping.deleteRequired = true
 	mapping.renewAfter = time.Now().Add(leaseDuration / 2)
 }
