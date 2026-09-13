@@ -36,7 +36,7 @@ if (option === "--dry-run") {
   }
   verifyTag();
   const releases = gh("api", `repos/${repository}/releases?per_page=100`, "--paginate", "--jq",
-    ".[] | {tag_name,target_commitish,draft,prerelease,assets:[.assets[] | {name,state}]} | @json")
+    ".[] | {tag_name,target_commitish,draft,prerelease,body,assets:[.assets[] | {name,state}]} | @json")
     .trim().split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
   const existing = releases.find((release) => release.tag_name === version);
   if (existing) {
@@ -50,20 +50,33 @@ if (option === "--dry-run") {
       process.stdout.write(`Release ${version} is already published; left unchanged.\n`);
       process.exit(0);
     }
-  } else {
-    const checksums = artifacts.files.map((file) => `${file.sha256}  ${file.name}`).join("\n");
-    const body = releaseNotes(process.cwd(), version, revision, repository) +
-      `\n<details>\n<summary>构建与校验 / Build and checksums</summary>\n\n` +
-      `[Source / 源码: ${revision}](https://github.com/${repository}/commit/${revision})\n\n` +
-      `SHA-256:\n\n\`\`\`text\n${checksums}\n\`\`\`\n\n</details>\n`;
-    const notes = join(tmpdir(), `piik-release-notes-${randomUUID()}.md`);
-    writeFileSync(notes, body, { flag: "wx" });
-    try {
+  }
+  const checksums = artifacts.files.map((file) => `${file.sha256}  ${file.name}`).join("\n");
+  const start = "<!-- piik-build-checksums:start -->", end = "<!-- piik-build-checksums:end -->";
+  const generated = `${start}\n<details>\n<summary>构建与校验 / Build and checksums</summary>\n\n` +
+    `[Source / 源码: ${revision}](https://github.com/${repository}/commit/${revision})\n\n` +
+    `SHA-256:\n\n\`\`\`text\n${checksums}\n\`\`\`\n\n</details>\n${end}`;
+  const copy = existing ? existing.body ?? "" : releaseNotes(process.cwd(), version, revision, repository);
+  const begin = copy.indexOf(start), finish = copy.indexOf(end);
+  if ((begin < 0) !== (finish < 0) || finish < begin ||
+      (begin >= 0 && (copy.indexOf(start, begin + start.length) >= 0 || copy.indexOf(end, finish + end.length) >= 0))) {
+    throw new Error("Draft build/checksum section is ambiguous; repair its markers before retrying");
+  }
+  // A retried build may have different archive bytes at the same source SHA.
+  // Preserve reviewed prose while refreshing only this generated draft section.
+  const body = begin < 0 ? `${copy}\n\n${generated}\n`
+    : copy.slice(0, begin) + generated + copy.slice(finish + end.length);
+  const notes = join(tmpdir(), `piik-release-notes-${randomUUID()}.md`);
+  writeFileSync(notes, body, { flag: "wx" });
+  try {
+    if (!existing) {
       gh("release", "create", version, "--repo", repository, "--target", revision,
         "--draft", "--title", `Piik ${version}`, "--notes-file", notes);
-    } finally {
-      rmSync(notes);
+    } else {
+      gh("release", "edit", version, "--repo", repository, "--notes-file", notes);
     }
+  } finally {
+    rmSync(notes);
   }
   // Clobber is limited to our same-revision draft; published versions are never changed.
   gh("release", "upload", version, "--repo", repository, "--clobber", ...files);

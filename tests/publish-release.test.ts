@@ -28,7 +28,7 @@ afterAll(() => rmSync(directory, { recursive: true, force: true }));
 const packageNames = readdirSync(directory).filter((name) => /\.(zip|tar\.gz)$/.test(name));
 const completeAssets = packageNames.map((name) => ({ name, state: "uploaded" }));
 type Release = { tag_name: string; target_commitish: string; draft: boolean;
-  prerelease: boolean; assets: typeof completeAssets };
+  prerelease: boolean; body?: string; assets: typeof completeAssets };
 const release = (draft: boolean): Release => ({
   tag_name: version, target_commitish: revision, draft, prerelease: false, assets: completeAssets,
 });
@@ -139,11 +139,11 @@ describe("Gitee mirror publication", () => {
 });
 
 async function publish(releases: Release[], tag: "absent" | "annotated" | "wrong" | "api-error",
-  failureAt?: "notes" | "create") {
+  failureAt?: "notes" | "create" | "upload", inspectBody?: (body: string) => void) {
   const mutations: string[][] = [];
   const copy = "### 更新\n\n- Share `windows` and $literal text.\n";
   let notesPath: string | undefined;
-  notes.mockImplementation(() => {
+  notes.mockReset().mockImplementation(() => {
     if (failureAt === "notes") throw new Error("Missing release notes");
     return copy;
   });
@@ -151,10 +151,10 @@ async function publish(releases: Release[], tag: "absent" | "annotated" | "wrong
   command.mockImplementation((_program, args) => {
     if (args[0] === "release") {
       mutations.push(args);
-      if (args[1] === "create") {
+      if (args.includes("--notes-file")) {
         notesPath = args[args.indexOf("--notes-file") + 1];
         const body = readFileSync(notesPath, "utf8");
-        expect(body.startsWith(copy)).toBe(true);
+        if (args[1] === "create") expect(body.startsWith(copy)).toBe(true);
         expect(body).toContain(`<summary>构建与校验 / Build and checksums</summary>`);
         expect(body).toContain(`/commit/${revision})`);
         for (const name of packageNames) {
@@ -162,12 +162,14 @@ async function publish(releases: Release[], tag: "absent" | "annotated" | "wrong
         }
         expect(body).not.toMatch(/\.release\.json|\.zip\.sha256|\.manifest\.tsv/);
         expect(args).not.toContain("--generate-notes");
+        inspectBody?.(body);
         if (failureAt === "create") throw new Error("GitHub create failed");
       }
-      if (args[1] === "edit") published = true;
+      if (args[1] === "edit" && args.includes("--draft=false")) published = true;
       if (args[1] === "upload") {
         expect(args.slice(args.indexOf("--clobber") + 1).sort())
           .toEqual(packageNames.map((name) => join(directory, name)).sort());
+        if (failureAt === "upload") throw new Error("GitHub upload failed");
       }
       return "";
     }
@@ -214,7 +216,43 @@ describe("publisher recovery", () => {
   it("accepts annotated tags and preserves a newer stable release when resuming an older draft", async () => {
     const result = await publish([release(true), { ...release(false), tag_name: "v1.1.0" }], "annotated");
     expect(result.failure).toBeUndefined();
-    expect(result.mutations.find((args) => args[1] === "edit")).toContain("--latest=false");
+    expect(result.mutations.find((args) => args.includes("--draft=false"))).toContain("--latest=false");
+  });
+
+  it("refreshes draft checksums after rebuilding the same SHA while retaining reviewed prose", async () => {
+    let draftBody = "";
+    const initial = await publish([], "absent", "upload", body => { draftBody = body; });
+    expect(initial.failure).toBe("GitHub upload failed");
+    const names = ["windows-amd64.zip", "windows-amd64.release.json", "windows-amd64.zip.sha256"];
+    const original = names.map(name => readFileSync(join(directory, name)));
+    const oldDigest = hash(original[0]!);
+    const newBytes = Buffer.from("rebuilt Windows archive at the same source SHA");
+    const newDigest = hash(newBytes);
+    try {
+      writeFileSync(join(directory, names[0]!), newBytes);
+      writeFileSync(join(directory, names[1]!), JSON.stringify({
+        ...JSON.parse(original[1]!.toString()), artifactSha256: newDigest,
+      }));
+      writeFileSync(join(directory, names[2]!), `${newDigest}  ${names[0]}\n`);
+      const reviewed = `Owner-edited introduction\n\n${draftBody}\nOwner-edited final note`;
+      let updated = "";
+      const resumed = await publish([{ ...release(true), body: reviewed }], "annotated", undefined,
+        body => { updated = body; });
+      expect(resumed.failure).toBeUndefined();
+      expect(notes).not.toHaveBeenCalled();
+      expect(updated).toBe(reviewed.replace(oldDigest, newDigest));
+      expect(updated.match(/piik-build-checksums:start/g)).toHaveLength(1);
+      const published = await publish([{ ...release(false), body: reviewed }], "annotated");
+      expect(published).toEqual({ failure: undefined, mutations: [] });
+    } finally {
+      names.forEach((name, index) => writeFileSync(join(directory, name), original[index]!));
+    }
+  });
+
+  it("rejects ambiguous draft checksum sections before modifying a release", async () => {
+    const result = await publish([{ ...release(true), body: "Reviewed text\n<!-- piik-build-checksums:start -->" }], "annotated");
+    expect(result.failure).toContain("ambiguous");
+    expect(result.mutations).toEqual([]);
   });
 
   it("creates a new release without a pre-existing tag and verifies the resulting tag", async () => {

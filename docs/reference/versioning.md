@@ -187,7 +187,9 @@ there are no product release notes, and publication remains disabled.
 The publisher appends generated build identity and package checksums to the
 reviewed text, passes it through a temporary notes file to GitHub, then removes
 that file. Gitee copies the GitHub description. Retrying the same
-release preserves its draft/published description; an exact tag does not move
+release preserves its reviewed prose; draft retries refresh only the marked
+generated build/checksum section to match the uploaded bytes. Published releases
+remain unchanged. An exact tag does not move
 the changelog's starting point. Keep no `CHANGELOG.md`, versioned note directory
 or generated history commits. PRs and Git retain editorial provenance.
 
