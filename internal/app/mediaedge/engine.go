@@ -180,6 +180,8 @@ func (engine *Engine) surveySTUN(
 ) {
 	surveyContext, cancel := context.WithTimeout(ctx, stunSurveyTimeout)
 	defer cancel()
+	// One survey retains its resolver even while canceled workers are settling.
+	resolver := net.DefaultResolver
 	results := make(chan mappedAddress)
 	var pending sync.WaitGroup
 	for _, server := range servers {
@@ -194,7 +196,7 @@ func (engine *Engine) surveySTUN(
 				defer pending.Done()
 				// Resolve each destination independently inside the same bound as
 				// its Binding request; one broken resolver must not stall healthy STUN.
-				addresses, err := net.DefaultResolver.LookupNetIP(surveyContext, "ip4", uri.Host)
+				addresses, err := resolver.LookupNetIP(surveyContext, "ip4", uri.Host)
 				if err != nil || len(addresses) == 0 {
 					slog.DebugContext(surveyContext, "nat-survey", "event", "resolve-failed", "host", uri.Host, diagnostics.Error(err))
 					return
