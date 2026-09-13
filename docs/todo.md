@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-09-13
+Last reviewed: 2026-09-14
 
 Only **Now** is executable. Product modules own behavior; Git/PRs own completed
 history. A parked idea is not implementation authority.
@@ -12,6 +12,32 @@ history. A parked idea is not implementation authority.
   Follow the [deployment runbook](./deployment.md) for the private service and keep public
   demo deployment separate. Preserve the owner's
   [device/network deferrals](./verification-status.md#candidate-evidence-boundary).
+- [ ] **Browser sharing startup failure.** Reproduce [#399](https://github.com/TNTcraftHIM/Piik/issues/399):
+  the local encoding connection can remain connecting without producing frames
+  or entering the existing ordinary-sender fallback. Verify bounded startup and
+  retirement at that owner before changing room routing or ICE configuration.
+- [ ] **App startup feedback.** Verify [#396](https://github.com/TNTcraftHIM/Piik/issues/396)
+  against the current release. Its older build predates the LAN selector,
+  detailed launcher errors and Windows error-exit pause; those repairs do not
+  establish resolution on the reporting machine. Use a current Debug report if
+  startup still fails.
+- [ ] **Chrome mirror download warning.** Verify the current Gitee download in
+  Chrome and resolve its download-source warning using the recorded verdict and
+  package checksums. Keep GitHub primary; ordinary link changes do not establish
+  that Safe Browsing has cleared the mirror.
+- [ ] **App launch-mode preference.** Check why a saved Site keeps selecting
+  Site mode after the user chooses another mode. Review last-used-mode behavior
+  and its configuration owner before changing startup selection.
+- [ ] **Display-name editing.** Reproduce the edit button immediately closing
+  or failing to open the editor. Check Host and Viewer forms, including native
+  submit behavior when React reuses action buttons, before changing signaling.
+- [ ] **Theater centering.** Keep expansion and collapse centered. The current
+  width spring overshoots the viewport before settling; verify motion at wide
+  and narrow sizes without changing playback state.
+- [ ] **Tooltip motion consistency.** Review all tooltip entries and explanatory
+  comics for missing motion across languages, themes and pointer/touch input.
+  Check trigger reuse and static rendering against the shared visual grammar;
+  resolve any intended change to settled-state motion in that owner.
 
 Keep fixes on a maintenance branch until acceptance. The public release is the
 compatibility baseline; private service deployment stays independent.

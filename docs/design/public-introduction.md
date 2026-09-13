@@ -133,11 +133,9 @@ are not automatically included in the website artifact.
 
 The [website operations guide](../operations/website.md) owns Pages publication,
 public destinations and the separate P2P-only demo. The primary action leads
-to the platform download section. Each supported platform uses the native latest
-download routes of GitHub and Gitee, as owned by the website operations guide.
-Use “Download” / “下载” for the primary action and name Gitee on the alternative.
-Keep archive formats and build-time versions out of button labels, and link
-release notes separately. Verify destinations as part of publication.
+to the platform download section. The website operations guide owns each
+platform's latest download routes and provider labels. Link release notes
+separately and verify destinations as part of publication.
 Demo, App and existing-site walkthroughs
 use real action names and explain the first sharing and viewing steps. Keep
 platform requirements and connection limitations beside the relevant steps.

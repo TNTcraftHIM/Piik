@@ -10,7 +10,7 @@ Piik Server 将网页、房间管理和可选的媒体转发打包在**一个服
 以下服务端操作在 Linux x64 环境中执行。
 
 从 [GitHub Releases](https://github.com/TNTcraftHIM/Piik/releases) 或
-[Gitee 镜像](https://gitee.com/TNTcraftHIM/Piik/releases)下载 **Linux x64 服务端**程序包，
+[Gitee 镜像](https://gitee.com/TNTcraftHIM/Piik/releases)下载 **`piik-<revision>-runtime.tar.gz`**，即 Linux x64 服务端程序包。
 解压后，在该目录运行：
 
 ```sh

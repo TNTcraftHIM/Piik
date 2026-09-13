@@ -87,7 +87,8 @@ link and the demo, may not connect on restrictive networks.
 ## Self-hosting
 
 Piik Server is a standalone binary with the web interface built in.
-Download the Linux x64 Server package, extract it, and run:
+Download the Linux x64 Server package (`piik-<revision>-runtime.tar.gz`),
+extract it, and run:
 
 ```sh
 ./piik-server

@@ -82,8 +82,9 @@ each provider's native latest-attachment route:
   ([Windows download](https://gitee.com/TNTcraftHIM/Piik/releases/download/latest/piik-app-windows-amd64.zip)).
 
 Both links follow provider publication without a website rebuild or a release
-API request from the build or visitor. Buttons say “Download” / “下载”; the
-secondary link names Gitee. Keep versions and archive formats out of these labels.
+API request from the build or visitor. Platform buttons say “Download from GitHub” /
+“GitHub 下载”; the secondary link says “Download from Gitee” /
+“Gitee 国内镜像下载”. Keep versions and archive formats out of these labels.
 [Versioning](../reference/versioning.md#release-sources) owns package verification
 and completion of mirror publication. GitHub remains the primary source; the
 Gitee download can temporarily lag while a mirror publication completes.

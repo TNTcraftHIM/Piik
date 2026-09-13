@@ -83,7 +83,7 @@ macOS 和 Linux 客户端尚未经过实机测试，欢迎有设备的朋友试�
 ## 自行部署
 
 Piik Server 是一个内置网页界面的独立程序。
-下载 Linux x64 服务端程序包，解压后运行：
+下载 Linux x64 服务端程序包 `piik-<revision>-runtime.tar.gz`，解压后运行：
 
 ```sh
 ./piik-server

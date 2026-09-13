@@ -9,9 +9,10 @@ forwarding in **one server binary**. Extract and run it; room data is stored in 
 
 These server instructions use a Linux x64 machine.
 
-Download the **Linux x64 Server** archive from [GitHub Releases](https://github.com/TNTcraftHIM/Piik/releases)
-or the [Gitee mirror](https://gitee.com/TNTcraftHIM/Piik/releases),
-extract it, and run the following in its directory:
+Download **`piik-<revision>-runtime.tar.gz`**, the Linux x64 Server archive,
+from [GitHub Releases](https://github.com/TNTcraftHIM/Piik/releases)
+or the [Gitee mirror](https://gitee.com/TNTcraftHIM/Piik/releases).
+Extract it and run the following in its directory:
 
 ```sh
 ./piik-server
