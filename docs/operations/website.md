@@ -73,18 +73,21 @@ film's real product components into an isolated demonstration frame; publishing
 ranges for seeking the soundtrack. Keep asset links relative so both a custom
 domain and GitHub's `/Piik/` project path work.
 
-The Windows x64, macOS Apple silicon and Linux x64 ZIP cards use GitHub's native
-[`releases/latest/download/asset-name.zip` links](https://docs.github.com/en/repositories/releasing-projects-on-github/linking-to-releases).
-Fixed App filenames follow [versioning](../reference/versioning.md#release-and-recovery),
-so these primary links also work in local builds and follow new releases without
-a website rebuild. `PIIK_WEBSITE_RELEASE_DATA` points the build at temporary JSON
-containing the published GitHub release and same-tag Gitee attachment metadata.
-CI supplies this input; the builder validates source identity, uploaded ZIPs,
-sizes and platform URLs. A missing/incomplete GitHub release fails deployment,
-preserving the current site. Verified Gitee links target the matched release
-and refresh after publication. Without matching metadata, Gitee retains its
-labeled release-page link. Download captions omit build-time version snapshots;
-the page makes no visitor API request.
+The Windows x64, macOS Apple silicon and Linux x64 cards use fixed filenames and
+each provider's native latest-attachment route:
+
+- GitHub: `releases/latest/download/asset-name.zip`
+  ([documentation](https://docs.github.com/en/repositories/releasing-projects-on-github/linking-to-releases)).
+- Gitee: `releases/download/latest/asset-name.zip`
+  ([Windows download](https://gitee.com/TNTcraftHIM/Piik/releases/download/latest/piik-app-windows-amd64.zip)).
+
+Both links follow provider publication without a website rebuild or a release
+API request from the build or visitor. Buttons say “Download” / “下载”; the
+secondary link names Gitee. Keep versions and archive formats out of these labels.
+[Versioning](../reference/versioning.md#release-sources) owns package verification
+and completion of mirror publication. GitHub remains the primary source; the
+Gitee download can temporarily lag while a mirror publication completes.
+Verify the latest redirects and package checksums after releases.
 
 ## Publish
 
@@ -97,11 +100,9 @@ the page makes no visitor API request.
    DNS using GitHub's [current domain instructions](https://docs.github.com/en/pages/configuring-a-custom-domain-for-your-github-pages-site/managing-a-custom-domain-for-your-github-pages-site).
    Actions publishing does not need a `CNAME` file in the source tree.
 4. Accepted main pushes run CI first; its completion triggers **Website**, which
-   checks out current main and reads the latest published download metadata.
-   Waiting for CI includes its package publication and mirror attempt, so the
-   page picks up the resulting release. A CI failure leaves downloads pointing
-   to the latest successful public release. Manual **Website** dispatch from
-   `main` can refresh links after an operator publication or mirror retry.
+   checks out current main. Manual **Website** dispatch from `main` republishes
+   the site when needed. Download links resolve through each provider, so
+   publishing a package or retrying its mirror needs no link refresh.
    Only `build/site/` is uploaded; website work does not package App/Server.
    Verify HTTPS, both languages, relative assets and per-platform download links.
 

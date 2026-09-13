@@ -34,22 +34,8 @@ const welcomeLines = WELCOME_LINES.map(({ key }) => renderToStaticMarkup(
     createElement("span", { lang: "zh-CN" }, `“${locales.zh.copy[key]}”`),
   ),
 ));
-let homepage = (await readFile(new URL("index.html", source), "utf8"))
+const homepage = (await readFile(new URL("index.html", source), "utf8"))
   .replace(/<p id="welcome-line">.*?<\/p>/, `<p id="welcome-line">${welcomeLines[0]}</p>`);
-if (process.env.PIIK_WEBSITE_RELEASE_DATA) {
-  const { websiteDownloads } = await tsImport("../site/downloads.ts", { parentURL: import.meta.url });
-  const release = websiteDownloads(JSON.parse(await readFile(process.env.PIIK_WEBSITE_RELEASE_DATA, "utf8")));
-  homepage = homepage.replace(/<a\b([^>]*data-download="([^"]+)"[^>]*data-provider="([^"]+)"[^>]*)>([\s\S]*?)<\/a\s*>/g,
-    (original, attributes, target, provider, content) => {
-      const item = release.packages.find(item => item.target === target);
-      const href = provider === 'github' ? item?.url : item?.mirrorURL;
-      if (!href) return original;
-      if (provider === 'gitee') content = content
-        .replace(/<span lang="en">[\s\S]*?<\/span\s*>/, '<span lang="en">Download via Gitee</span>')
-        .replace(/<span lang="zh-CN">[\s\S]*?<\/span\s*>/, '<span lang="zh-CN">Gitee 备用下载</span>');
-      return `<a${attributes.replace(/href="[^"]*"/, `href="${href}"`)}>${content}</a>`;
-    });
-}
 await writeFile(new URL("index.html", output), homepage.replace(
   '</body>', `<template id="welcome-lines">${welcomeLines.join('')}</template></body>`,
 ));

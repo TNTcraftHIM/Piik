@@ -1,7 +1,7 @@
 name: Website
 
 on:
-  # Wait for CI/packaging to settle so new downloads reach the same site build.
+  # Publish the website after main's checks complete.
   workflow_run:
     workflows: [CI]
     types: [completed]
@@ -39,35 +39,7 @@ jobs:
           node-version-file: .node-version
           cache: npm
       - run: npm ci
-      - name: Read published downloads
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PIIK_WEBSITE_RELEASE_DATA: ${{ runner.temp }}/website-release.json
-        run: |
-          node --input-type=module <<'JS'
-          import { execFileSync } from 'node:child_process';
-          import { writeFileSync } from 'node:fs';
-          const repository = 'TNTcraftHIM/Piik';
-          const github = JSON.parse(execFileSync('gh', ['api', `repos/${repository}/releases/latest`], { encoding: 'utf8' }));
-          let mirror = null;
-          try {
-            const api = `https://gitee.com/api/v5/repos/${repository}`;
-            const read = async path => {
-              const response = await fetch(api + path, { signal: AbortSignal.timeout(20000) });
-              if (!response.ok) throw new Error(`Mirror metadata: HTTP ${response.status}`);
-              return response.json();
-            };
-            const release = await read(`/releases/tags/${encodeURIComponent(github.tag_name)}`);
-            if (!Number.isSafeInteger(release.id) || release.id <= 0) throw new Error('Invalid mirror release ID');
-            mirror = { ...release, assets: await read(`/releases/${release.id}/attach_files?per_page=100`) };
-          } catch {
-            console.log('Mirror metadata unavailable; keeping the mirror release-page link.');
-          }
-          writeFileSync(process.env.PIIK_WEBSITE_RELEASE_DATA, JSON.stringify({ github, mirror }));
-          JS
       - run: npm run build:website
-        env:
-          PIIK_WEBSITE_RELEASE_DATA: ${{ runner.temp }}/website-release.json
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:
