@@ -81,10 +81,10 @@ a website rebuild. `PIIK_WEBSITE_RELEASE_DATA` points the build at temporary JSO
 containing the published GitHub release and same-tag Gitee attachment metadata.
 CI supplies this input; the builder validates source identity, uploaded ZIPs,
 sizes and platform URLs. A missing/incomplete GitHub release fails deployment,
-preserving the current site. Verified Gitee links show their specific version
+preserving the current site. Verified Gitee links target the matched release
 and refresh after publication. Without matching metadata, Gitee retains its
-labeled release-page link. The page makes no visitor API request or inferred
-version claim when metadata is absent.
+labeled release-page link. Download captions omit build-time version snapshots;
+the page makes no visitor API request.
 
 ## Publish
 

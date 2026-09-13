@@ -22,7 +22,6 @@ const mirror = {
 describe("website package downloads", () => {
   it("links each uploaded platform package and rejects an incomplete or mismatched GitHub release", () => {
     const result = websiteDownloads({ github, mirror });
-    expect(result.version).toBe(version);
     expect(result.packages.map(item => item.url)).toEqual(github.assets.map(asset =>
       `https://github.com/TNTcraftHIM/Piik/releases/latest/download/${asset.name}`));
     expect(result.packages.map(item => item.mirrorURL)).toEqual(mirror.assets.map(asset => asset.browser_download_url));

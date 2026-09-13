@@ -135,7 +135,8 @@ The [website operations guide](../operations/website.md) owns Pages publication,
 public destinations and the separate P2P-only demo. The primary action leads
 to the platform download section. Each supported platform has a direct ZIP link
 using GitHub's native latest-release asset route. Build verified Gitee links from
-the matching release and source revision, showing the mirror's specific version.
+the matching release and source revision. Keep build-time versions out of
+download captions.
 Keep release notes separate; when a mirror package is unverified, label its
 fallback as a release-page link. Verify destinations as part of publication.
 Demo, App and existing-site walkthroughs
