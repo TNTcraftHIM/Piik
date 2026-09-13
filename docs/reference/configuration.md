@@ -99,8 +99,8 @@ Command-line options select entry and local runtime behavior:
 | `--capture-process <path>` / `--tunnel-process <path>` | Override packaged native capture or public tunnel helpers. Ordinary installations use the packaged paths. |
 | `--debug` / `--log-dir <path>` | Enable diagnostics or choose their destination as described below. |
 
-Share quality, room access policy, language, theme and motion are configured in
-the shared Web UI, not through Server environment variables or App JSON.
+Share quality, room access policy, language and theme are configured in
+the shared Web UI. Decorative motion follows the system's reduced-motion preference.
 
 ## Diagnostics
 
@@ -112,8 +112,8 @@ Diagnostics are local and opt-in. Enable them **before** reproducing the problem
 
 | Surface | Enable | Export |
 | --- | --- | --- |
-| App | Enable **Debug launch** in the mode selector before opening Piik, or start with `--debug` / `PIIK_DEBUG=client` | Press `D` in the terminal for a ZIP |
-| Browser Host/Viewer | Click **Debug** beside the language/theme controls and confirm the reload, or add `?debug=1` before any invitation fragment | Use the same control to download the report |
+| App | Enable **Debug launch** with the small chip icon after the theme control in the mode selector, or start with `--debug` / `PIIK_DEBUG=client` | Press `D` in the terminal for a ZIP |
+| Browser Host/Viewer | Click the **Debug** chip icon after the theme control and confirm the reload, or add `?debug=1` before any invitation fragment | The same control becomes a download arrow for the web report |
 | Hosted Server | Start with `--debug`, `PIIK_DEBUG=server` or `PIIK_DEBUG=route` | On Unix, `kill -USR1 <pid>`; also exported at orderly shutdown |
 
 App **Debug launch** enables App and Browser collection for that run before

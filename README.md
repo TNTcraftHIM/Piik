@@ -63,7 +63,8 @@ picture does not start automatically.
 1. Select **Start sharing**, then choose the picture and audio to share.
 2. Select **Copy invite link** and send it to your friends. Keep the sharing tab open.
 
-Piik uses icon controls by default; select **EN** in the header to show labels.
+Piik follows your system language: Chinese or English, with English as the fallback.
+Use **中 / EN / ✦** in the header to switch language or try the visual mode.
 The App offers a local room, a temporary public link, or a connection to your own
 site. Keep the App running while sharing through it.
 

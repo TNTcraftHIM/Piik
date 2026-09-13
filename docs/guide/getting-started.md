@@ -22,6 +22,9 @@ used below. **中** switches to Chinese; **✦** returns to the illustrations.
 3. Move the pointer over the picture or tap it to show the playback bar.
 
 The playback bar controls only your own picture and sound.
+On a computer, click the picture to pause or resume; double-click to enter or
+leave fullscreen where supported. On a phone, tap the picture to show the bar
+and use its buttons. Safari may show system controls in video fullscreen.
 
 <details>
 <summary>Playback controls, at a glance</summary>
@@ -121,6 +124,7 @@ Invitation links grant access to that room; share them with the people you want 
 | --- | --- |
 | Picture but no sound | Unmute the video. The host should choose a source with shareable audio; if sound was disabled, stop and start sharing with it enabled. App window/screen capture keeps that setting when switching sources. |
 | No screen picker | Allow the browser or App to record the screen when the OS asks. Browser capture needs HTTPS or `localhost`; try sharing from a desktop computer. |
+| App startup fails | Read the reason on the page and in the terminal. Reopen the App and enable the chip-shaped **Debug launch** control after the theme button before trying again. A failed startup then exports a report; its path appears in the terminal. |
 | Local invitation will not open | Check that both devices are on the same network and can reach each other. Guest Wi-Fi or firewall rules can block local access. |
 | Page opens but video will not connect | Choose **Reconnect** in the playback bar. If it still fails, check [WebRTC connection settings](../../cmd/piik-app/README.md#chromium-webrtc-connections) or try a site with media fallback. |
 | Sharing stops after sleep or suspension | Wake the device and return to the sharing tab; start sharing again if needed. Browser and OS suspension can interrupt capture or playback. |
