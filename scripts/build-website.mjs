@@ -45,8 +45,8 @@ if (process.env.PIIK_WEBSITE_RELEASE_DATA) {
       const href = provider === 'github' ? item?.url : item?.mirrorURL;
       if (!href) return original;
       if (provider === 'gitee') content = content
-        .replace(/<span lang="en">[\s\S]*?<\/span\s*>/, '<span lang="en">Gitee alternative · ZIP</span>')
-        .replace(/<span lang="zh-CN">[\s\S]*?<\/span\s*>/, '<span lang="zh-CN">Gitee 备用 · ZIP</span>');
+        .replace(/<span lang="en">[\s\S]*?<\/span\s*>/, '<span lang="en">Download via Gitee</span>')
+        .replace(/<span lang="zh-CN">[\s\S]*?<\/span\s*>/, '<span lang="zh-CN">Gitee 备用下载</span>');
       return `<a${attributes.replace(/href="[^"]*"/, `href="${href}"`)}>${content}</a>`;
     });
 }

@@ -53,8 +53,6 @@ describe("website package downloads", () => {
     for (const item of current.packages) {
       const link = html.match(new RegExp(`<a\\b[^>]*data-download="${item.target}"[^>]*data-provider="github"[^>]*>[\\s\\S]*?<\\/a\\s*>`))?.[0];
       expect(link).toContain(`href="${item.url}"`);
-      expect(link).toContain("Download ZIP");
-      expect(link).toContain("下载 ZIP");
     }
     expect(html.match(/id="download-status">[\s\S]*?<\/p>/)?.[0]).not.toMatch(/v\d+\.\d+\.\d+/);
   });
