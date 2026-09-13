@@ -13,7 +13,7 @@ import (
 )
 
 // Use the protocol's real UDP endpoint so the adapter and its client are tested
-// together. The client module uses 127.0.0.2, allowing parallel package checks.
+// together. The check runner serializes gateway fixture packages on port 5351.
 func natpmpServer(t *testing.T, reply func([]byte) []byte) (net.IP, <-chan []byte) {
 	t.Helper()
 	ip := net.IPv4(127, 0, 0, 1)

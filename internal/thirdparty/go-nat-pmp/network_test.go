@@ -10,8 +10,8 @@ import (
 )
 
 func TestRequestCancellationAndDeadline(t *testing.T) {
-	// The adapter's packet tests use 127.0.0.1; keep package checks independent.
-	ip := net.IPv4(127, 0, 0, 2)
+	// The check runner serializes the gateway fixture packages on this endpoint.
+	ip := net.IPv4(127, 0, 0, 1)
 	for _, operation := range []string{"discovery", "mapping", "deletion"} {
 		for _, cause := range []string{"cancel", "deadline", "client-timeout"} {
 			t.Run(operation+"/"+cause, func(t *testing.T) {
