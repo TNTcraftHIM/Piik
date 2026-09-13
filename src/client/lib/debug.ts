@@ -14,6 +14,16 @@ interface BrowserDebugEvent {
 
 export const browserDebugEnabled = typeof window !== "undefined" &&
   new URLSearchParams(window.location.search).get("debug") === "1";
+
+// Keep the explicit opt-in through App launch and room entry without carrying
+// any other source-page parameters or credentials into the destination.
+export function withBrowserDebug(target: string, enabled = browserDebugEnabled): string {
+  if (!enabled) return target;
+  const url = new URL(target, window.location.href);
+  url.searchParams.set("debug", "1");
+  return url.href;
+}
+
 const MAX_EVENTS = 8_192;
 const MAX_BYTES = 8 * 1024 * 1024;
 const events: Array<{ record: BrowserDebugEvent; bytes: number }> = [];

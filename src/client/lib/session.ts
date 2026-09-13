@@ -8,6 +8,7 @@ import {
 import { z } from "zod";
 import { createOpaqueId } from "./opaque-id";
 import { isLang, type Lang } from "../locales";
+import { withBrowserDebug } from "./debug";
 
 const CLIENT_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
 const CLIENT_LAUNCH_STORAGE_KEY = "piik:client-launch:v1";
@@ -72,7 +73,7 @@ export function roomRouteForExplicitEntry(value: string): string | null {
   if (route) {
     clearViewerGrant(value);
   }
-  return route;
+  return route ? withBrowserDebug(route) : null;
 }
 
 export function parseAppRoute(pathname: string): AppRoute {
@@ -114,7 +115,7 @@ export function clientLaunchURL(target: string, presentation: ClientLaunchPresen
   params.set("piik-mode", presentation.vis ? "vis" : "text");
   params.set("piik-theme", presentation.theme ?? "system");
   url.hash = params.toString();
-  return url.toString();
+  return withBrowserDebug(url.toString());
 }
 
 export function takeClientLaunchBootstrap(): ClientLaunchBootstrap {
@@ -452,7 +453,7 @@ export function readViewerRoute(): ViewerRoute | null {
     } else {
       clearViewerGrant(roomId);
     }
-    window.history.replaceState(window.history.state, "", `/r/${roomId}`);
+    window.history.replaceState(window.history.state, "", withBrowserDebug(`/r/${roomId}`));
     return validGrant
       ? { roomId, viewerGrant: validGrant }
       : { roomId, invalidGrant: true };

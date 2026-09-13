@@ -1,6 +1,6 @@
 // App header: brand mark, LED connection state, language selection and theme.
 import { useState } from "react";
-import { browserDebugEnabled, debugError, downloadBrowserDebug } from "../../lib/debug";
+import { browserDebugEnabled, debugError, downloadBrowserDebug, withBrowserDebug } from "../../lib/debug";
 import { VisGlyph } from "./primitives";
 import { BrandMark } from "./BrandMark";
 import { Tooltip } from "./Tooltip";
@@ -73,13 +73,21 @@ export function HeaderControls() {
       )}
     </button>
   );
-  const debugTitle = t(debugExport === "failed" ? "debug.exportFailed" : "debug.exportHint");
+  const debugTitle = t(!browserDebugEnabled ? "debug.startHint" :
+    debugExport === "failed" ? "debug.exportFailed" : "debug.exportHint");
   const debugButton = (
     <button
       type="button" className="lr-btn" disabled={debugExport === "busy"}
       aria-label={debugTitle} aria-busy={debugExport === "busy" || undefined}
       onClick={(event) => {
         if (event.detail !== 0) event.currentTarget.blur();
+        if (!browserDebugEnabled) {
+          // Start collection before connection owners attach their observers.
+          // Preserve the current route, access parameters and invitation fragment.
+          if (!window.confirm(t("debug.startConfirm"))) return;
+          window.location.assign(withBrowserDebug(window.location.href, true));
+          return;
+        }
         setDebugExport("busy");
         void downloadBrowserDebug().then(() => setDebugExport("idle")).catch((error) => {
           debugError("export", "collector-failed", error, { collector: "download" });
@@ -87,18 +95,19 @@ export function HeaderControls() {
         });
       }}
     >
-      <Glyph name={debugExport === "busy" ? "loader" : debugExport === "failed" ? "alert" : "arrowDown"}
+      <Glyph name={!browserDebugEnabled ? "cpu" :
+        debugExport === "busy" ? "loader" : debugExport === "failed" ? "alert" : "arrowDown"}
         size={16} className={debugExport === "busy" ? "lr-spin" : undefined} />
-      {vis ? null : <span className="lr-cap">{t(debugExport === "failed" ? "common.retry" : "debug.export")}</span>}
+      {vis ? null : <span className="lr-cap">{t(!browserDebugEnabled ? "debug.start" :
+        debugExport === "failed" ? "common.retry" : "debug.export")}</span>}
     </button>
   );
   return (
     <span className="lr-top-right lr-header-controls">
-      {browserDebugEnabled && (
-        <Tooltip kind="hint-debug-export" text={vis ? undefined : debugTitle} place="below" align="end">
-          {debugButton}
-        </Tooltip>
-      )}
+      <Tooltip kind={browserDebugEnabled ? "hint-debug-export" : "hint-details"}
+        text={vis ? undefined : debugTitle} place="below" align="end">
+        {debugButton}
+      </Tooltip>
       <LanguageControl />
       <Tooltip kind={theme === "dark" ? "hint-theme-light" : "hint-theme-dark"} text={vis ? undefined : themeTitle} place="below" align="end">
         {themeButton}
@@ -119,7 +128,7 @@ export function AppHeader({
     <header className="lr-top">
       <a
         className="lr-brand"
-        href={homeHref}
+        href={withBrowserDebug(homeHref)}
         aria-label={t("brand.home")}
       >
         <BrandMark size={34} motion="once" />

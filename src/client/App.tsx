@@ -28,7 +28,7 @@ import { Glyph } from "./ui/icons";
 import { setCopy, useCopy } from "./ui/copy";
 import { consoleLanguage } from "./locales";
 import { initTheme } from "./ui/theme";
-import { installBrowserDebug } from "./lib/debug";
+import { installBrowserDebug, withBrowserDebug } from "./lib/debug";
 
 const OverlayPreviewPage = import.meta.env.DEV
   ? lazy(() => import("./pages/OverlayPreviewPage").then((module) => ({ default: module.OverlayPreviewPage })))
@@ -246,7 +246,7 @@ function StaticRoute({
               title="join.title"
               cap="join.title"
               hint="hint-join-go"
-              onClick={() => window.location.assign("/join")}
+              onClick={() => window.location.assign(withBrowserDebug("/join"))}
             />
           ) : action === "reload" ? (
             <Btn

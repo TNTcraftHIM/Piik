@@ -106,18 +106,24 @@ Diagnostics are local and opt-in. Enable them **before** reproducing the problem
 | Surface | Enable | Export |
 | --- | --- | --- |
 | App | Start with `--debug` or `PIIK_DEBUG=client` | Press `D` in the terminal for a ZIP |
-| Browser Host/Viewer | Add `?debug=1` to the page URL, before any invitation fragment | Use the download button beside language/theme controls |
+| Browser Host/Viewer | Click **Debug** beside the language/theme controls and confirm the reload, or add `?debug=1` before any invitation fragment | Use the same control to download the report |
 | Hosted Server | Start with `--debug`, `PIIK_DEBUG=server` or `PIIK_DEBUG=route` | On Unix, `kill -USR1 <pid>`; also exported at orderly shutdown |
+
+The Browser entry reloads the current page so collection includes connection
+startup. The opt-in follows App launch and room entry. Enabling it keeps the
+current URL parameters and any invitation fragment, but interrupts active
+sharing/viewing; enable it before reproducing the problem. Reports remain local
+until exported and shared by the user.
 
 Server Debug is controlled by its startup environment or CLI, never by a remote
 page or room role. Browser `?debug=1` only enables that page's local collection;
-it cannot change Server logging or download Server reports. The Server exposes
-no HTTP diagnostic export or pprof endpoint.
+it does not enable App Native/capture or Server logging, or download their
+reports. The Server exposes no HTTP diagnostic export or pprof endpoint.
 
 App/Server ZIP and Browser JSON reports are separate: when investigating
-Browser/App cooperation, include both from the same reproduction. Neither
-action stops an active share or uploads anything. Browser export also remains
-available as `await window.__PIIK_DEBUG__.export()` in DevTools.
+Browser/App cooperation, include both from the same reproduction. Exporting
+either report does not stop an active share or upload anything. Browser export
+also remains available as `await window.__PIIK_DEBUG__.export()` in DevTools.
 
 App logs go to `logs` beside the executable, falling back to `Piik/logs`
 in the OS user-cache directory when that default is unwritable. The TUI shows
