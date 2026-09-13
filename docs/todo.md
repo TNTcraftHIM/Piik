@@ -7,14 +7,9 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **NAT-PMP and Docker release acceptance.** Confirm the next version and
-  complete Chinese/English release notes, then publish the matching App/Server
-  packages and verified container. Set the first GHCR package public and verify
-  anonymous version/latest pulls. Physical router coverage remains part of the
-  [network evidence boundary](./verification-status.md#candidate-evidence-boundary).
 - [ ] **Post-launch monitoring.** Collect App/Server feedback and verify the
-  public download path and deployed services after product releases. Follow the
-  [deployment runbook](./deployment.md) for the private service and keep public
+  public downloads, container pulls and deployed services after product releases.
+  Follow the [deployment runbook](./deployment.md) for the private service and keep public
   demo deployment separate. Preserve the owner's
   [device/network deferrals](./verification-status.md#candidate-evidence-boundary).
 
