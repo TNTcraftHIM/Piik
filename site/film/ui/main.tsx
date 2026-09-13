@@ -157,7 +157,6 @@ function Screen({ shot }: { shot: Shot }) {
             onSiteChange={noop}
             localAccessPassword=""
             onLocalAccessPasswordChange={noop}
-            error={false}
             onSubmit={(event) => event.preventDefault()}
           />
         </main>

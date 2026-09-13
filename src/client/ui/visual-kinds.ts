@@ -81,6 +81,7 @@ export type PlaybackHintKind =
   | "hint-no-audio"
   | "hint-fullscreen"
   | "hint-fullscreen-exit"
+  | "hint-fullscreen-unavailable"
   | "hint-pip"
   | "hint-pip-exit"
   | "hint-pip-unavailable";

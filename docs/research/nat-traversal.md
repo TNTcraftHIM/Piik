@@ -84,7 +84,7 @@ prediction produces candidates.
 ### Native Shared-Socket Preflight
 
 Native requests one dual-stack wildcard UDP socket through Go and Pion's existing
-UDP mux. IPv4 remains usable on IPv4-only systems, and explicit IPv4 bindings
+UDP mux. IPv4 remains usable on IPv4-only systems, and concrete IPv4 bindings
 remain IPv4-only. Usable IPv6 interfaces can supply direct ICE candidates on the
 same port; IPv4 discovery, prediction and gateway mapping retain their current
 owners. IPv6 does not remove firewall restrictions or prove a reachable peer.

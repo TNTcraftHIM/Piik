@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/url"
 	"os"
@@ -17,6 +19,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
 )
 
 const (
@@ -85,30 +89,44 @@ func Start(
 	if err != nil {
 		cancel()
 		_ = os.Remove(configPath)
-		return nil, errors.New("public tunnel output is unavailable")
+		return nil, fmt.Errorf("public tunnel output is unavailable: %w", err)
 	}
 	stderr, err := child.StderrPipe()
 	if err != nil {
 		cancel()
 		_ = os.Remove(configPath)
-		return nil, errors.New("public tunnel output is unavailable")
+		return nil, fmt.Errorf("public tunnel output is unavailable: %w", err)
 	}
 	child.WaitDelay = shutdownTimeout
 	if err = child.Start(); err != nil {
 		cancel()
 		_ = os.Remove(configPath)
-		return nil, errors.New("public tunnel could not start")
+		return nil, fmt.Errorf("public tunnel could not start: %w", err)
 	}
 	process := &Process{cancel: cancel, done: make(chan struct{})}
 	discovered := make(chan string, 1)
 	connected := make(chan struct{}, 1)
 	var discoverOnce sync.Once
 	var connectOnce sync.Once
+	var outputDone sync.WaitGroup
+	outputDone.Add(2)
 	readOutput := func(reader io.Reader) {
+		defer outputDone.Done()
 		scanner := bufio.NewScanner(reader)
 		scanner.Buffer(make([]byte, 4096), maxLogLineBytes)
 		for scanner.Scan() {
 			line := scanner.Text()
+			var entry struct {
+				Level   string `json:"level"`
+				Message string `json:"message"`
+				Error   string `json:"error"`
+			}
+			if json.Unmarshal([]byte(line), &entry) != nil {
+				slog.Debug("public-tunnel", "event", "dependency-output", "message", diagnostics.SafeText(line))
+			} else if entry.Level == "error" || entry.Level == "warn" || entry.Level == "fatal" {
+				slog.Debug("public-tunnel", "event", "dependency-output", "level", entry.Level,
+					"message", diagnostics.SafeText(entry.Message), "cause", diagnostics.SafeText(entry.Error))
+			}
 			if origin, ok := originFromLogLine(line); ok {
 				discoverOnce.Do(func() { discovered <- origin })
 			}
@@ -116,11 +134,17 @@ func Start(
 				connectOnce.Do(func() { connected <- struct{}{} })
 			}
 		}
+		if err := scanner.Err(); err != nil {
+			slog.Debug("public-tunnel", "event", "output-read-failed", diagnostics.Error(err))
+		}
 	}
 	go readOutput(stdout)
 	go readOutput(stderr)
 	go func() {
 		waitErr := child.Wait()
+		// Wait closes the pipe readers; join them before App closes its recorder.
+		// Do not wait before Wait: that would bypass its bounded pipe shutdown.
+		outputDone.Wait()
 		_ = os.Remove(configPath)
 		if ctx.Err() != nil {
 			waitErr = nil
@@ -141,10 +165,10 @@ func Start(
 			registered = true
 		case <-process.done:
 			cancel()
-			return nil, errors.New("public tunnel exited before it became available")
+			return nil, errors.Join(errors.New("public invitation service exited before connecting; reopen Piik to try again"), process.Err())
 		case <-timer.C:
 			_ = process.Close()
-			return nil, errors.New("public tunnel startup timed out")
+			return nil, errors.New("public invitation service did not connect within 30 seconds; check your Internet connection and reopen Piik to try again")
 		case <-parent.Done():
 			_ = process.Close()
 			return nil, parent.Err()
@@ -156,17 +180,17 @@ func Start(
 func writeTemporaryConfig() (string, error) {
 	file, err := os.CreateTemp("", "piik-cloudflared-*.yml")
 	if err != nil {
-		return "", errors.New("public tunnel configuration is unavailable")
+		return "", fmt.Errorf("public tunnel temporary file could not be created: %w", err)
 	}
 	path := file.Name()
 	if _, err = file.WriteString("metrics: 127.0.0.1:0\n"); err != nil {
 		_ = file.Close()
 		_ = os.Remove(path)
-		return "", errors.New("public tunnel configuration is unavailable")
+		return "", fmt.Errorf("public tunnel temporary file could not be written: %w", err)
 	}
 	if err = file.Close(); err != nil {
 		_ = os.Remove(path)
-		return "", errors.New("public tunnel configuration is unavailable")
+		return "", fmt.Errorf("public tunnel temporary file could not be saved: %w", err)
 	}
 	return path, nil
 }
@@ -227,8 +251,11 @@ func logMessage(line string) string {
 func validateExecutable(path string) error {
 	path = strings.TrimSpace(path)
 	metadata, err := os.Stat(path)
-	if err != nil || !metadata.Mode().IsRegular() {
-		return errors.New("packaged public tunnel is unavailable")
+	if err != nil {
+		return fmt.Errorf("packaged public tunnel is unavailable; extract the complete Piik archive again: %w", err)
+	}
+	if !metadata.Mode().IsRegular() {
+		return errors.New("packaged public tunnel is not a file; extract the complete Piik archive again")
 	}
 	return nil
 }

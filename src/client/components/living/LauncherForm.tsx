@@ -2,7 +2,7 @@ import type { FormEvent, ReactNode } from "react";
 import { BrandMark } from "./BrandMark";
 import { Tooltip } from "./Tooltip";
 import { WelcomeLine } from "./WelcomeLine";
-import { Btn, Pill } from "./primitives";
+import { Btn } from "./primitives";
 import type { HintKind } from "./hints";
 import { Glyph, type GlyphName } from "../../ui/icons";
 import { useCopy, type CopyKey } from "../../ui/copy";
@@ -46,7 +46,6 @@ export function LauncherForm({
   onSiteChange,
   localAccessPassword,
   onLocalAccessPasswordChange,
-  error,
   onSubmit,
   children,
 }: {
@@ -56,7 +55,6 @@ export function LauncherForm({
   onSiteChange: (site: string) => void;
   localAccessPassword: string;
   onLocalAccessPasswordChange: (password: string) => void;
-  error: boolean;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   children?: ReactNode;
 }) {
@@ -153,15 +151,6 @@ export function LauncherForm({
         </Tooltip>
       ) : null}
 
-      {error ? (
-        <Pill
-          icon="alert"
-          tone="bad"
-          label={t("client.launch.error")}
-          alert
-          comic="warning"
-        />
-      ) : null}
       <Btn
         icon="arrowRight"
         title="client.launch.go"

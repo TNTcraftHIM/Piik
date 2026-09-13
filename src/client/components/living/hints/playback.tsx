@@ -142,13 +142,17 @@ function PlaybackViewport({ x, fullscreen, animate = false }: { x: number; fulls
   </>;
 }
 
-function FullscreenHint({ theme, exit }: Parameters<HintScene>[0] & { exit: boolean }) {
+function FullscreenHint({ theme, exit = false, unavailable = false }: Parameters<HintScene>[0] & {
+  exit?: boolean; unavailable?: boolean;
+}) {
   return <>
     <PlaybackMotion />
     <Frame x={4} w={152} theme={theme} />
     <Frame x={164} w={152} theme={theme} result />
     <PlaybackViewport x={0} fullscreen={exit} />
-    <PlaybackViewport x={160} fullscreen={!exit} animate />
+    <PlaybackViewport x={160} fullscreen={!unavailable && !exit} animate={!unavailable} />
+    {unavailable ? <path d="M276 28h14v14m0-14-18 18m-2-16 18 18"
+      fill="none" stroke="var(--comic-tone)" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" /> : null}
   </>;
 }
 
@@ -186,6 +190,7 @@ export const PLAYBACK_SCENES: Record<PlaybackHintKind, HintScene> = {
   "hint-no-audio": NoAudioHint,
   "hint-fullscreen": (props) => <FullscreenHint {...props} exit={false} />,
   "hint-fullscreen-exit": (props) => <FullscreenHint {...props} exit />,
+  "hint-fullscreen-unavailable": (props) => <FullscreenHint {...props} unavailable />,
   "hint-pip": (props) => <PictureHint {...props} />,
   "hint-pip-exit": (props) => <PictureHint {...props} exit />,
   "hint-pip-unavailable": (props) => <PictureHint {...props} unavailable />,

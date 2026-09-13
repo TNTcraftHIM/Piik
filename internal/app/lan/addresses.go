@@ -63,5 +63,5 @@ func Select(addresses []string, preferred string) (string, error) {
 	if len(private) == 1 {
 		return private[0], nil
 	}
-	return "", fmt.Errorf("multiple LAN addresses are active; select one of: %s", strings.Join(addresses, ", "))
+	return "", fmt.Errorf("multiple LAN addresses are active; restart with --local --lan-address <address>, choosing from: %s; public-link mode does not require this selection", strings.Join(addresses, ", "))
 }

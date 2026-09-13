@@ -1,16 +1,14 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { ViewerAudio, type ViewerAudioSnapshot } from "../../media/viewer-audio";
 import { useCopy } from "../../ui/copy";
+import { debugError } from "../../lib/debug";
 import { Btn } from "./primitives";
 import { Tooltip } from "./Tooltip";
 import { usePlaybackControlsVisibility } from "./use-playback-controls-visibility";
-import { leavePictureInPicture, usePictureInPicture } from "./use-picture-in-picture";
+import { usePictureInPicture } from "./use-picture-in-picture";
 import { bindPlaybackGestures } from "./playback-gestures";
+import { toggleVideoFullscreen, videoFullscreenState, type FullscreenVideo } from "./video-fullscreen";
 import "./playback-controls.css";
-
-type FullscreenVideo = HTMLVideoElement & {
-  webkitEnterFullscreen?: () => void;
-};
 
 // Reflect the existing media element; binding, autoplay recovery and room
 // presentation retain their existing owners.
@@ -36,8 +34,8 @@ export function PlaybackControls({
   });
   const [paused, setPaused] = useState(true);
   const [hasAudio, setHasAudio] = useState(false);
-  const [fullscreen, setFullscreen] = useState(false);
-  const [canFullscreen, setCanFullscreen] = useState(false);
+  const [fullscreen, setFullscreen] = useState({ supported: false, ready: false, active: false });
+  const [fullscreenFailed, setFullscreenFailed] = useState(false);
   const hidden = usePlaybackControlsVisibility(videoRef, controlsRef, paused || !canPlay);
   const picture = usePictureInPicture(videoRef);
 
@@ -53,18 +51,14 @@ export function PlaybackControls({
     }
   };
   const toggleFullscreen = () => {
-    if (!canFullscreen || theaterMode) return;
+    if (theaterMode) return;
     const video = videoRef.current as FullscreenVideo | null;
-    if (fullscreen) {
-      void document.exitFullscreen().catch(() => undefined);
-    } else if (document.fullscreenEnabled && video?.parentElement) {
-      void video.parentElement.requestFullscreen()
-        .then(() => leavePictureInPicture(video))
-        .catch(() => undefined);
-    } else {
-      audioRef.current?.useNativeControls();
-      video?.webkitEnterFullscreen?.();
-    }
+    if (!video) return;
+    setFullscreenFailed(false);
+    void toggleVideoFullscreen(video).catch((error: unknown) => {
+      debugError("playback", "fullscreen-failed", error);
+      if (videoRef.current === video) setFullscreenFailed(true);
+    });
   };
   const actionsRef = useRef({ togglePlayback, toggleFullscreen });
   actionsRef.current = { togglePlayback, toggleFullscreen };
@@ -75,7 +69,13 @@ export function PlaybackControls({
     const output = new ViewerAudio(video, setAudio);
     audioRef.current = output;
     const syncPlayback = () => setPaused(video.paused);
-    const syncFullscreen = () => setFullscreen(document.fullscreenElement === video.parentElement);
+    const syncFullscreen = () => {
+      const state = videoFullscreenState(video);
+      setFullscreen(state);
+      setFullscreenFailed(false);
+      if (state.nativeActive) output.useNativeControls();
+    };
+    const fullscreenEvents = ["loadedmetadata", "loadeddata", "emptied", "webkitbeginfullscreen", "webkitendfullscreen", "webkitpresentationmodechanged"];
     const onKey = (event: KeyboardEvent) => {
       if (event.code !== "Space" || event.target !== video) return;
       event.preventDefault();
@@ -83,8 +83,8 @@ export function PlaybackControls({
     };
     syncPlayback();
     syncFullscreen();
-    setCanFullscreen(Boolean(document.fullscreenEnabled || video.webkitEnterFullscreen));
     for (const event of ["play", "pause", "ended", "emptied"]) video.addEventListener(event, syncPlayback);
+    for (const event of fullscreenEvents) video.addEventListener(event, syncFullscreen);
     video.addEventListener("keydown", onKey);
     document.addEventListener("fullscreenchange", syncFullscreen);
     const unbindGestures = bindPlaybackGestures(video,
@@ -95,6 +95,7 @@ export function PlaybackControls({
       output.dispose();
       audioRef.current = null;
       for (const event of ["play", "pause", "ended", "emptied"]) video.removeEventListener(event, syncPlayback);
+      for (const event of fullscreenEvents) video.removeEventListener(event, syncFullscreen);
       video.removeEventListener("keydown", onKey);
       document.removeEventListener("fullscreenchange", syncFullscreen);
     };
@@ -154,16 +155,21 @@ export function PlaybackControls({
           hint={!picture.supported || picture.failed ? "hint-pip-unavailable" : picture.active ? "hint-pip-exit" : "hint-pip"}
           pressed={picture.active} disabled={!picture.supported || (!picture.active && !canPlay)}
           onClick={() => { void picture.toggle(); }} />
-        {!fullscreen ? <Btn icon={theaterMode ? "theaterExit" : "theater"}
+        {!fullscreen.active ? <Btn icon={theaterMode ? "theaterExit" : "theater"}
           draw="playback-theater"
           title={theaterMode ? "viewer.theater.exit" : "viewer.theater"}
           hint={theaterMode ? "hint-theater-exit" : "hint-theater"}
           pressed={theaterMode} onClick={onToggleTheater} /> : null}
-        {canFullscreen && !theaterMode ? (
-          <Btn icon={fullscreen ? "contract" : "expand"}
+        {fullscreen.supported && !theaterMode ? (
+          <Btn icon={fullscreen.active ? "contract" : "expand"}
             draw="playback-fullscreen"
-            title={fullscreen ? "playback.exitFullscreen" : "playback.fullscreen"}
-            hint={fullscreen ? "hint-fullscreen-exit" : "hint-fullscreen"}
+            title={fullscreenFailed ? "playback.fullscreenFailed" : fullscreen.active ? "playback.exitFullscreen"
+              : !fullscreen.ready ? "playback.fullscreenWaiting" : "playback.fullscreen"}
+            hint={fullscreenFailed || (!fullscreen.active && !fullscreen.ready) ? "hint-fullscreen-unavailable"
+              : fullscreen.active ? "hint-fullscreen-exit" : "hint-fullscreen"}
+            hintTone={fullscreenFailed ? "bad" : !fullscreen.ready ? "warn" : undefined}
+            disabled={!fullscreen.active && !fullscreen.ready}
+            pressed={fullscreen.active}
             onClick={toggleFullscreen} />
         ) : null}
       </span>

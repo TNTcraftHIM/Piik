@@ -45,6 +45,7 @@ const PRESENTATIONS: Partial<Record<ComicKind | HintKind, ComicPresentation>> = 
   "hint-volume-basic": LIMITED,
   "hint-no-audio": LIMITED,
   "hint-pip-unavailable": LIMITED,
+  "hint-fullscreen-unavailable": LIMITED,
   "hint-share-audio-fixed": LIMITED,
   "hint-silent-share-fixed": LIMITED,
 };

@@ -108,14 +108,14 @@ export interface ClientLaunchPresentation {
   theme: "light" | "dark" | null;
 }
 
-export function clientLaunchURL(target: string, presentation: ClientLaunchPresentation): string {
+export function clientLaunchURL(target: string, presentation: ClientLaunchPresentation, debug?: boolean): string {
   const url = new URL(target);
   const params = new URLSearchParams(url.hash.slice(1));
   params.set("piik-lang", presentation.lang);
   params.set("piik-mode", presentation.vis ? "vis" : "text");
   params.set("piik-theme", presentation.theme ?? "system");
   url.hash = params.toString();
-  return withBrowserDebug(url.toString());
+  return withBrowserDebug(url.toString(), debug);
 }
 
 export function takeClientLaunchBootstrap(): ClientLaunchBootstrap {

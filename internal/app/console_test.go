@@ -14,6 +14,17 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+func TestConsoleStartsWithSystemLanguageAndAcceptsVisualSelection(t *testing.T) {
+	console := newConsole(func() {}, true)
+	if console.plain.language != defaultConsoleLanguage() || console.plain.language == "vis" {
+		t.Fatalf("initial console language = %q", console.plain.language)
+	}
+	updated, _ := console.plain.Update(consoleLanguage("vis"))
+	if updated.(consoleModel).language != "vis" {
+		t.Fatal("explicit visual selection was ignored")
+	}
+}
+
 func TestConsolePresentationAndShutdown(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

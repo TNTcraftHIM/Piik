@@ -82,8 +82,10 @@ accessible input and responsive hierarchy.
 One `<video>` element owns Viewer playback and frame proof. The shared playback
 bar reflects that element and provides local play/pause, mute, volume, theater,
 picture-in-picture, fullscreen and the existing reconnect action. It stays reachable while waiting
-or disconnected. Theater and fullscreen are separate modes; fullscreen includes
-the playback bar. Identity, connection details and topology stay in the deck.
+or disconnected. Theater and fullscreen are separate modes. Page-element
+fullscreen includes the playback bar; Safari's video-only fullscreen uses
+system controls and native video events to reflect playback and exit.
+Identity, connection details and topology stay in the deck.
 
 The bar spans the screen's lower edge. Narrow screens separate audio controls
 from window actions into two rows and retain 44px action targets. Playing video hides the bar

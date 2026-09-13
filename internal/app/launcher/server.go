@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"net"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	appconfig "github.com/TNTcraftHIM/Piik/internal/app/config"
+	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
 )
 
 const (
@@ -38,6 +40,7 @@ type Selection struct {
 	Language            string `json:"language"`
 	Site                string `json:"site,omitempty"`
 	LocalAccessPassword string `json:"localAccessPassword"`
+	Debug               bool   `json:"debug,omitempty"`
 }
 
 type Server struct {
@@ -51,6 +54,7 @@ type Server struct {
 	localAccessPassword string
 	version             string
 	revision            string
+	debug               bool
 	selection           chan Selection
 	resultReady         chan struct{}
 	handled             chan struct{}
@@ -70,13 +74,13 @@ type Server struct {
 // Start serves the launcher page and its API on a loopback port. assets is the
 // built Browser UI, which the App embeds; a nil file system means the binary
 // carries no build and the launcher cannot run.
-func Start(parent context.Context, assets fs.FS, site, version, revision, localAccessPassword string) (*Server, error) {
+func Start(parent context.Context, assets fs.FS, site, version, revision, localAccessPassword string, debug bool) (*Server, error) {
 	if parent == nil {
 		parent = context.Background()
 	}
 	normalizedSite, err := appconfig.NormalizeSite(site)
 	if err != nil {
-		return nil, errors.New("App launcher Site is invalid")
+		return nil, fmt.Errorf("App launcher Site is invalid: %w", err)
 	}
 	site = normalizedSite
 	if assets == nil {
@@ -87,7 +91,7 @@ func Start(parent context.Context, assets fs.FS, site, version, revision, localA
 	}
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
-		return nil, errors.New("App launcher could not start")
+		return nil, fmt.Errorf("App launcher could not start: %w", err)
 	}
 	ctx, cancel := context.WithCancel(parent)
 	server := &Server{
@@ -100,6 +104,7 @@ func Start(parent context.Context, assets fs.FS, site, version, revision, localA
 		localAccessPassword: localAccessPassword,
 		version:             version,
 		revision:            strings.TrimSpace(revision),
+		debug:               debug,
 		selection:           make(chan Selection, 1),
 		resultReady:         make(chan struct{}),
 		handled:             make(chan struct{}),
@@ -203,6 +208,7 @@ func (server *Server) handleState(response http.ResponseWriter, request *http.Re
 		"version":             server.version,
 		"revision":            server.revision,
 		"packageTarget":       runtime.GOOS + "-" + runtime.GOARCH,
+		"debug":               server.debug,
 		"defaultMode": func() Mode {
 			if server.site != "" {
 				return ModeSite
@@ -221,13 +227,17 @@ func (server *Server) handleLaunch(response http.ResponseWriter, request *http.R
 	request.Body = http.MaxBytesReader(response, request.Body, maxRequestBytes)
 	selection, err := decodeSelection(request.Body)
 	if err != nil {
-		http.Error(response, "invalid launch request", http.StatusBadRequest)
+		writeJSON(response, http.StatusBadRequest, map[string]string{
+			"error": "invalid launch request", "detail": errorDetail(err),
+		})
 		return
 	}
 	server.mu.Lock()
 	if server.selected {
 		server.mu.Unlock()
-		http.Error(response, "launch already requested", http.StatusConflict)
+		writeJSON(response, http.StatusConflict, map[string]string{
+			"error": "launch already requested", "detail": "Close and reopen Piik before starting again.",
+		})
 		return
 	}
 	server.selected = true
@@ -256,13 +266,25 @@ func (server *Server) handleLaunch(response http.ResponseWriter, request *http.R
 	server.mu.Unlock()
 	if !resultSet || resultErr != nil {
 		writeJSON(response, http.StatusServiceUnavailable, map[string]string{
-			"error": "Piik App could not start",
+			"error": "Piik App could not start", "detail": errorDetail(resultErr),
 		})
 		server.markHandled()
 		return
 	}
 	writeJSON(response, http.StatusOK, map[string]string{"target": target})
 	server.markHandled()
+}
+
+func errorDetail(err error) string {
+	if err == nil {
+		return ""
+	}
+	// Redact before truncation so a long credential cannot lose its delimiter.
+	detail := []rune(diagnostics.SafeText(err.Error()))
+	if len(detail) > 2048 {
+		return string(detail[:2048]) + "..."
+	}
+	return string(detail)
 }
 
 func (server *Server) markHandled() {

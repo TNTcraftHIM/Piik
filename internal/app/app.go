@@ -81,7 +81,7 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 		cancel()
 		if recorder != nil {
 			slog.Debug("piik-client", "event", "stopped", "failed", returnedErr != nil, diagnostics.Error(returnedErr))
-			if options.console.program == nil {
+			if options.console.program == nil || returnedErr != nil {
 				path, err := recorder.Export()
 				options.console.send(consoleExportResult{path: path, err: err})
 				returnedErr = errors.Join(returnedErr, err)
@@ -91,7 +91,10 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 		}
 		returnedErr = errors.Join(returnedErr, options.console.finish(returnedErr))
 	}()
-	if options.Debug {
+	enableDiagnostics := func() error {
+		if recorder != nil {
+			return nil
+		}
 		var err error
 		recorder, err = openDiagnostics(options.LogDir)
 		if err != nil {
@@ -112,6 +115,13 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 		log.SetOutput(dependencyLog)
 		log.SetFlags(previousFlags)
 		options.console.send(consoleDebug{logPath: recorder.LogPath(), export: recorder.Export})
+		slog.Debug("piik-client", "event", "diagnostics-enabled")
+		return nil
+	}
+	if options.Debug {
+		if err := enableDiagnostics(); err != nil {
+			return err
+		}
 	}
 	slog.Debug("piik-client", "event", "start", "version", buildVersion(), "revision", BuildRevision)
 	options.console.show(consoleView{state: "starting"})
@@ -126,12 +136,12 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 		var err error
 		configPath, err = appconfig.DefaultPath()
 		if err != nil {
-			return errors.New("Piik App configuration is unavailable")
+			return fmt.Errorf("Piik App configuration is unavailable: %w", err)
 		}
 	}
 	config, err := appconfig.LoadOrCreate(configPath)
 	if err != nil {
-		return errors.New("Piik App configuration is unavailable")
+		return fmt.Errorf("Piik App configuration is unavailable: %w", err)
 	}
 	config, err = applyMode(config, options)
 	if err != nil {
@@ -140,20 +150,24 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 	slog.Debug("piik-client", "event", "configuration", "siteConfigured", config.Site != "", "localAccessProtected", config.LocalAccessPassword != "")
 	if options.SiteSet || options.Local {
 		if err = appconfig.Save(configPath, config); err != nil {
-			return errors.New("Piik App configuration is unavailable")
+			return fmt.Errorf("Piik App configuration is unavailable: %w", err)
 		}
 	}
 	nativeMedia := discoverNativeMedia(ctx, options.CaptureProcess)
-	if recorder != nil {
-		recorder.Context("configuration", map[string]any{"siteConfigured": config.Site != "", "local": options.Local,
-			"link": options.Link, "port": options.Port, "localAccessProtected": config.LocalAccessPassword != ""})
+	recordContext := func(selected Options, config appconfig.Config) {
+		if recorder == nil {
+			return
+		}
+		recorder.Context("configuration", map[string]any{"siteConfigured": config.Site != "", "local": selected.Local,
+			"link": selected.Link, "port": selected.Port, "localAccessProtected": config.LocalAccessPassword != ""})
 		recorder.Context("capture", nativeMedia.capture)
 		recorder.Binary("captureExecutable", nativeMedia.captureProcess)
+		slog.Debug("piik-client", "event", "native-capabilities",
+			"video", nativeMedia.capabilities.Video, "processAudio", nativeMedia.capabilities.ProcessAudio,
+			"systemAudio", nativeMedia.capabilities.SystemAudio, "hardwareH264", nativeMedia.capabilities.HardwareH264,
+			"softwareVP8", nativeMedia.capabilities.SoftwareVP8, diagnostics.Error(nativeMedia.discoveryErr))
 	}
-	slog.Debug("piik-client", "event", "native-capabilities",
-		"video", nativeMedia.capabilities.Video, "processAudio", nativeMedia.capabilities.ProcessAudio,
-		"systemAudio", nativeMedia.capabilities.SystemAudio, "hardwareH264", nativeMedia.capabilities.HardwareH264,
-		"softwareVP8", nativeMedia.capabilities.SoftwareVP8)
+	recordContext(options, config)
 	control, err := loopback.Start(ctx, loopback.Options{
 		AllowedOrigins: allowedOrigins(config.Site, options.Port),
 		NativeMedia:    nativeMedia.capabilities,
@@ -161,7 +175,7 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 		Presentation:   options.console.setLanguage,
 	})
 	if err != nil {
-		return errors.New("Piik App could not start")
+		return fmt.Errorf("Piik App native control could not start: %w", err)
 	}
 	defer control.Close()
 	slog.Debug("piik-client", "event", "control-ready")
@@ -171,7 +185,16 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 		}
 	}
 	if !explicitMode(options) {
-		return runLauncher(ctx, options, configPath, config, control)
+		return runLauncher(ctx, options, configPath, config, control, func(selected *Options, config appconfig.Config) error {
+			if selected.Debug {
+				if err := enableDiagnostics(); err != nil {
+					return err
+				}
+				selected.logger = recorder.Logger()
+			}
+			recordContext(*selected, config)
+			return nil
+		})
 	}
 	return runConfigured(ctx, options, config, control)
 }
@@ -198,6 +221,7 @@ func runLauncher(
 	configPath string,
 	config appconfig.Config,
 	control *loopback.Server,
+	configureDiagnostics func(*Options, appconfig.Config) error,
 ) error {
 	launch, err := launcher.Start(
 		ctx,
@@ -206,6 +230,7 @@ func runLauncher(
 		buildVersion(),
 		BuildRevision,
 		config.LocalAccessPassword,
+		options.Debug,
 	)
 	if err != nil {
 		return err
@@ -221,7 +246,7 @@ func runLauncher(
 	))
 	options.console.show(consoleView{state: "setup", entry: launch.URL()})
 	if err = browser.Open(launch.URL()); err != nil {
-		return errors.New("Piik App could not open its launcher")
+		return fmt.Errorf("Piik App could not open its launcher: %w", err)
 	}
 
 	var selection launcher.Selection
@@ -231,7 +256,7 @@ func runLauncher(
 		return nil
 	case err = <-launch.Done():
 		if err != nil {
-			return errors.New("Piik App launcher stopped unexpectedly")
+			return fmt.Errorf("Piik App launcher stopped unexpectedly: %w", err)
 		}
 		return nil
 	}
@@ -241,15 +266,22 @@ func runLauncher(
 	} else {
 		config.LocalAccessPassword = selection.LocalAccessPassword
 	}
-	if err = appconfig.Save(configPath, config); err != nil {
-		launch.SetResult("", err)
-		<-launch.Handled()
-		return errors.New("Piik App configuration is unavailable")
-	}
-	control.SetAllowedOrigins(allowedOrigins(config.Site, options.Port))
 	options.SiteSet = false
 	options.Local = selection.Mode == launcher.ModeLocal
 	options.Link = selection.Mode == launcher.ModeLink
+	options.Debug = options.Debug || selection.Debug
+	if err = configureDiagnostics(&options, config); err != nil {
+		launch.SetResult("", err)
+		<-launch.Handled()
+		return err
+	}
+	if err = appconfig.Save(configPath, config); err != nil {
+		err = fmt.Errorf("Piik App configuration could not be saved: %w", err)
+		launch.SetResult("", err)
+		<-launch.Handled()
+		return err
+	}
+	control.SetAllowedOrigins(allowedOrigins(config.Site, options.Port))
 	options.DisableBrowser = true
 	ready := make(chan string, 1)
 	options.Ready = func(target string) { ready <- target }
@@ -361,7 +393,7 @@ func runSite(site string, options Options, control *loopback.Server) error {
 	}
 	if !options.DisableBrowser {
 		if err = browser.Open(targetURL); err != nil {
-			return errors.New("Piik App could not open the Site")
+			return fmt.Errorf("Piik App could not open the Site: %w", err)
 		}
 	} else if options.Ready != nil {
 		options.Ready(targetURL)
@@ -370,7 +402,7 @@ func runSite(site string, options Options, control *loopback.Server) error {
 	slog.Debug("piik-client", "event", "site-ready")
 	options.console.show(view)
 	if err = <-control.Done(); err != nil {
-		return errors.New("Piik App stopped unexpectedly")
+		return fmt.Errorf("Piik App native control stopped unexpectedly: %w", err)
 	}
 	return nil
 }
@@ -473,7 +505,7 @@ func runLocal(ctx context.Context, options Options, config appconfig.Config,
 	)
 	if !options.DisableBrowser {
 		if err = browser.Open(launchURL); err != nil {
-			return errors.New("Piik App could not open the Local page")
+			return fmt.Errorf("Piik App could not open the Local page: %w", err)
 		}
 	} else if options.Ready != nil {
 		options.Ready(launchURL)
@@ -493,11 +525,11 @@ func runLocal(ctx context.Context, options Options, config appconfig.Config,
 		return endLocalServer(localServer)
 	case err = <-control.Done():
 		if err != nil {
-			return errors.New("Piik App runtime stopped unexpectedly")
+			return fmt.Errorf("Piik App native control stopped unexpectedly: %w", err)
 		}
 		return nil
 	case <-tunnelDone:
-		return errors.New("public invitation link stopped unexpectedly")
+		return errors.Join(errors.New("public invitation link stopped; reopen Piik to create a new link"), tunnel.Err())
 	}
 }
 
@@ -537,6 +569,7 @@ type nativeRuntime struct {
 	capabilities   loopback.NativeMediaCapabilities
 	capture        nativecapture.Capabilities
 	captureProcess string
+	discoveryErr   error
 }
 
 func (runtime nativeRuntime) controlFactory() func() loopback.ControlSession {
@@ -563,7 +596,7 @@ func discoverNativeMedia(ctx context.Context, configuredPath string) nativeRunti
 	}
 	capabilities, err := nativecapture.Discover(ctx, path)
 	if err != nil {
-		return nativeRuntime{}
+		return nativeRuntime{captureProcess: path, discoveryErr: err}
 	}
 	summary := capabilities.Summary()
 	return nativeRuntime{

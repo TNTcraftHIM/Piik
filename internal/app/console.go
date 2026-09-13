@@ -97,7 +97,7 @@ var consoleCopy = map[string][3]string{
 func newConsole(cancel context.CancelFunc, machine bool) *console {
 	console := &console{
 		machine: machine,
-		plain: consoleModel{view: consoleView{state: "starting"}, language: "vis", width: 76, cancel: cancel,
+		plain: consoleModel{view: consoleView{state: "starting"}, language: defaultConsoleLanguage(), width: 76, cancel: cancel,
 			colors: colorprofile.Detect(os.Stdout, os.Environ()) > colorprofile.ASCII},
 	}
 	if machine {

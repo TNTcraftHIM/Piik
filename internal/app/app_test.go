@@ -142,6 +142,23 @@ func TestAppDiagnosticsUseFilesOnlyWhenEnabled(t *testing.T) {
 			!strings.Contains(string(content), `"event":"stopped","failed":true`) {
 			t.Fatalf("missing file lifecycle events: %s, %v", content, readErr)
 		}
+		reports, err := filepath.Glob(filepath.Join(directory, "*.zip"))
+		if err != nil || len(reports) != 1 {
+			t.Fatalf("failed App did not export its diagnostic report: %v, %v", reports, err)
+		}
+	}
+}
+
+func TestAppConfigurationFailurePreservesSystemCause(t *testing.T) {
+	t.Setenv("PIIK_DEBUG", "")
+	blocked := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(blocked, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := Run(t.Context(), Options{DisableBrowser: true, ConfigPath: filepath.Join(blocked, "client.json")})
+	var cause *os.PathError
+	if !errors.As(err, &cause) || !strings.Contains(err.Error(), "Piik App configuration is unavailable") {
+		t.Fatalf("configuration failure lost its path/system cause: %v", err)
 	}
 }
 
@@ -184,6 +201,14 @@ func TestMissingCaptureKeepsViewerControlAvailable(t *testing.T) {
 		t.Fatal("missing capture disabled the native Viewer control")
 	}
 	_ = control.Close()
+}
+
+func TestFailedCaptureProbeRetainsItsCause(t *testing.T) {
+	path := t.TempDir() // A directory exists but cannot run as a capture sidecar.
+	native := discoverNativeMedia(t.Context(), path)
+	if native.discoveryErr == nil || native.captureProcess != path || native.capabilities.Video {
+		t.Fatalf("failed probe lost its diagnostic context: %+v", native)
+	}
 }
 
 func TestLaunchURLPreservesLocalAccessInsideThePrivateFragment(t *testing.T) {

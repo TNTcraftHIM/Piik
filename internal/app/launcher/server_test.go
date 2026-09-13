@@ -3,6 +3,7 @@ package launcher
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io/fs"
 	"net/http"
 	"runtime"
@@ -34,10 +35,11 @@ func TestLauncherServesStateAndCompletesOneSelection(t *testing.T) {
 		DefaultMode         Mode   `json:"defaultMode"`
 		Version             string `json:"version"`
 		Revision            string `json:"revision"`
+		Debug               *bool  `json:"debug"`
 	}
 	if response.StatusCode != http.StatusOK || json.NewDecoder(response.Body).Decode(&state) != nil ||
 		state.Site != "https://share.example" || state.DefaultMode != ModeSite ||
-		state.Version != "development" || state.Revision != "" || state.LocalAccessPassword != "" {
+		state.Version != "development" || state.Revision != "" || state.LocalAccessPassword != "" || state.Debug == nil || *state.Debug {
 		t.Fatalf("launcher state = %d, %+v", response.StatusCode, state)
 	}
 
@@ -47,7 +49,7 @@ func TestLauncherServesStateAndCompletesOneSelection(t *testing.T) {
 		response, err := http.Post(
 			origin+"/api/client-launcher/launch",
 			"application/json",
-			bytes.NewBufferString(`{"mode":"link","language":"vis"}`),
+			bytes.NewBufferString(`{"mode":"link","language":"vis","debug":true}`),
 		)
 		if err != nil {
 			requestErr <- err
@@ -58,7 +60,7 @@ func TestLauncherServesStateAndCompletesOneSelection(t *testing.T) {
 
 	select {
 	case selection := <-server.Selection():
-		if selection != (Selection{Mode: ModeLink, Language: "vis"}) {
+		if selection != (Selection{Mode: ModeLink, Language: "vis", Debug: true}) {
 			t.Fatalf("selection = %+v", selection)
 		}
 		server.SetResult("http://localhost:8787/#piik-client=1", nil)
@@ -162,17 +164,17 @@ func TestLauncherPreservesAnOptionalLocalPassword(t *testing.T) {
 }
 
 func TestLauncherRejectsAnInvalidSavedSite(t *testing.T) {
-	if _, err := Start(t.Context(), appAssets(), "https://example.test/path", "development", "", ""); err == nil {
+	if _, err := Start(t.Context(), appAssets(), "https://example.test/path", "development", "", "", false); err == nil {
 		t.Fatal("launcher accepted a Site path")
 	}
 }
 
 // A binary built without the Browser build has nothing to launch.
 func TestLauncherRequiresTheEmbeddedBrowserBuild(t *testing.T) {
-	if _, err := Start(t.Context(), nil, "", "development", "", ""); err == nil {
+	if _, err := Start(t.Context(), nil, "", "development", "", "", false); err == nil {
 		t.Fatal("launcher started without embedded assets")
 	}
-	if _, err := Start(t.Context(), fstest.MapFS{}, "", "development", "", ""); err == nil {
+	if _, err := Start(t.Context(), fstest.MapFS{}, "", "development", "", "", false); err == nil {
 		t.Fatal("launcher started without an index document")
 	}
 }
@@ -186,6 +188,7 @@ func TestLauncherRejectsInvalidSelections(t *testing.T) {
 		"site-password":    `{"mode":"site","language":"en","site":"https://share.example","localAccessPassword":"valid-pass"}`,
 		"unknown-field":    `{"mode":"local","language":"en","extra":true}`,
 		"password-type":    `{"mode":"local","language":"en","localAccessPassword":123}`,
+		"debug-type":       `{"mode":"local","language":"en","debug":"true"}`,
 		"missing-language": `{"mode":"local"}`,
 		"unknown-language": `{"mode":"local","language":"other"}`,
 	} {
@@ -204,7 +207,44 @@ func TestLauncherRejectsInvalidSelections(t *testing.T) {
 			if response.StatusCode != http.StatusBadRequest {
 				t.Fatalf("status = %d", response.StatusCode)
 			}
+			var failure struct{ Error, Detail string }
+			if err := json.NewDecoder(response.Body).Decode(&failure); err != nil || failure.Detail == "" {
+				t.Fatalf("invalid selection lost its reason: %+v, %v", failure, err)
+			}
 		})
+	}
+}
+
+func TestLauncherReportsSafeBoundedFailureDetails(t *testing.T) {
+	server, err := Start(t.Context(), appAssets(), "", "development", "", "", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = server.Close() })
+	origin := strings.TrimSuffix(server.URL(), "/client")
+	response, err := http.Get(origin + "/api/client-launcher")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var state struct{ Debug bool }
+	if err := json.NewDecoder(response.Body).Decode(&state); err != nil || !state.Debug {
+		t.Fatalf("CLI debug was not advertised: %+v, %v", state, err)
+	}
+	_ = response.Body.Close()
+	server.SetResult("", errors.New("public tunnel failed: token=private-secret "+strings.Repeat("network unavailable ", 200)))
+	response, err = http.Post(origin+"/api/client-launcher/launch", "application/json",
+		strings.NewReader(`{"mode":"link","language":"en"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	var failure struct{ Error, Detail string }
+	if err := json.NewDecoder(response.Body).Decode(&failure); err != nil || response.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("failure response = %d, %v", response.StatusCode, err)
+	}
+	if failure.Error != "Piik App could not start" || !strings.Contains(failure.Detail, "public tunnel failed") ||
+		strings.Contains(failure.Detail, "private-secret") || len([]rune(failure.Detail)) > 2051 {
+		t.Fatalf("unsafe or missing failure detail: %+v", failure)
 	}
 }
 
@@ -265,7 +305,7 @@ func startFixtureWithBuildAndPassword(
 	site, version, revision, password string,
 ) *Server {
 	t.Helper()
-	server, err := Start(t.Context(), appAssets(), site, version, revision, password)
+	server, err := Start(t.Context(), appAssets(), site, version, revision, password, false)
 	if err != nil {
 		t.Fatal(err)
 	}

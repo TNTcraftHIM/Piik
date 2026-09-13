@@ -105,9 +105,14 @@ Diagnostics are local and opt-in. Enable them **before** reproducing the problem
 
 | Surface | Enable | Export |
 | --- | --- | --- |
-| App | Start with `--debug` or `PIIK_DEBUG=client` | Press `D` in the terminal for a ZIP |
+| App | Enable **Debug launch** in the mode selector before opening Piik, or start with `--debug` / `PIIK_DEBUG=client` | Press `D` in the terminal for a ZIP |
 | Browser Host/Viewer | Click **Debug** beside the language/theme controls and confirm the reload, or add `?debug=1` before any invitation fragment | Use the same control to download the report |
 | Hosted Server | Start with `--debug`, `PIIK_DEBUG=server` or `PIIK_DEBUG=route` | On Unix, `kill -USR1 <pid>`; also exported at orderly shutdown |
+
+App **Debug launch** enables App and Browser collection for that run before
+starting the selected mode. It records Native capability results and subsequent
+capture, connection and local-server activity. Use `--debug` for failures before
+the mode selector opens. This choice does not change the saved App configuration.
 
 The Browser entry reloads the current page so collection includes connection
 startup. The opt-in follows App launch and room entry. Enabling it keeps the
@@ -130,7 +135,8 @@ in the OS user-cache directory when that default is unwritable. The TUI shows
 the actual path and the exported ZIP. `--log-dir` overrides
 `PIIK_LOG_DIR`; an explicit directory must be writable. Choosing a
 directory alone does not enable collection. Non-interactive Apps export at
-orderly shutdown. On App, `PIIK_DEBUG=route` alone retains console route
+orderly shutdown; a returned App error also exports before the terminal closes.
+On App, `PIIK_DEBUG=route` alone retains console route
 tracing; use `--debug` for file collection and the `D` action.
 
 Hosted logs use `PIIK_LOG_DIR`, otherwise systemd `LOGS_DIRECTORY`,

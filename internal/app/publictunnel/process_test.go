@@ -1,9 +1,20 @@
 package publictunnel
 
 import (
+	"errors"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
+
+func TestMissingTunnelExplainsHowToRestoreThePackage(t *testing.T) {
+	_, err := Start(t.Context(), filepath.Join(t.TempDir(), "missing-tunnel"), "http://127.0.0.1:8787")
+	var cause *os.PathError
+	if !errors.As(err, &cause) || !strings.Contains(err.Error(), "extract the complete Piik archive") {
+		t.Fatalf("missing tunnel lost its cause or recovery instruction: %v", err)
+	}
+}
 
 func TestOriginFromCloudflaredLog(t *testing.T) {
 	for _, line := range []string{

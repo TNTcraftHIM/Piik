@@ -32,6 +32,10 @@ describe("opt-in Browser diagnostics", () => {
     expect(launched.search).toBe("?existing=1&debug=1");
     expect(new URLSearchParams(launched.hash.slice(1)).get("client-access")).toBe("target-capability");
     expect(launched.href).not.toContain("source-secret");
+    expect(new URL(clientLaunchURL("https://site.example/",
+      { lang: "en", vis: false, theme: "light" }, false)).search).toBe("");
+    expect(new URL(clientLaunchURL("https://site.example/",
+      { lang: "en", vis: false, theme: "light" }, true)).search).toBe("?debug=1");
     expect(roomRouteForExplicitEntry("5678")).toBe("https://private.example/r/5678?debug=1");
     expect(withBrowserDebug("/join")).toBe("https://private.example/join?debug=1");
     const replaceState = vi.fn();

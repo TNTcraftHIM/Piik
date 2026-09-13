@@ -121,10 +121,11 @@ and the [verified policy mechanism and field case](../../docs/research/native-cl
 
 ### Diagnostics
 
-Start the packaged executable with `--debug`, reproduce the problem, then press
-`D` in the interactive terminal to export a local ZIP. This does not stop the
-share or upload the archive. For Browser diagnostics, click **Debug** beside the
-language controls, confirm the reload, then use **Debug report** to download.
+Enable **Debug launch** in the mode selector before opening Piik, reproduce the
+problem, then press `D` in the interactive terminal to export a local ZIP.
+Use `--debug` for failures before the selector opens. Exporting does not stop
+the share or upload the archive. For Browser diagnostics, click **Debug** beside
+the language controls, confirm the reload, then use **Web report** to download.
 For cooperation failures, include both reports from the same reproduction. The
 [diagnostic reference](../../docs/reference/configuration.md#diagnostics) owns
 log locations, export commands, retention and privacy boundaries.

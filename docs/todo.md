@@ -105,3 +105,9 @@ Host is paused. No preservation policy has been accepted for that transition.
     support: the pinned capture SDK currently has no Windows x86 package.
     Complete native packaging and real launch/capture acceptance before
     advertising a 32-bit target.
+10. **Ready-to-run Docker distribution.** Publish a maintained image and a short
+    deployment recipe. The existing runtime image already contains Web, room
+    signaling, STUN and optional embedded SFU in one process; the gap is a
+    published image and simple HTTPS, port and persistent-volume setup. Reuse
+    that server artifact and the existing release identity rather than adding
+    another service stack.

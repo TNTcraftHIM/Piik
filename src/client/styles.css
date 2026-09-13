@@ -1442,6 +1442,7 @@ html[data-theme="dark"] .lr-door-glyph { color: #7d92a8; }
 }
 .lr-client-launch-title { font-size: 24px; text-align: center; }
 .lr-client-launch-status { color: var(--ink); font-size: 14px; font-weight: 650; }
+.lr-client-launch-detail { max-width: 100%; overflow-wrap: anywhere; white-space: pre-wrap; font: 13px/1.6 var(--mono); }
 .lr-client-update {
   display: inline-flex;
   align-items: center;

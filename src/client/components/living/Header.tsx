@@ -48,7 +48,7 @@ export function LedStrip({
   );
 }
 
-export function HeaderControls() {
+export function HeaderControls({ diagnosticControl }: { diagnosticControl?: React.ReactNode } = {}) {
   const { vis, t } = useCopy();
   const { theme, toggle } = useTheme();
   const [debugExport, setDebugExport] = useState<"idle" | "busy" | "failed">("idle");
@@ -104,10 +104,10 @@ export function HeaderControls() {
   );
   return (
     <span className="lr-top-right lr-header-controls">
-      <Tooltip kind={browserDebugEnabled ? "hint-debug-export" : "hint-details"}
+      {diagnosticControl === undefined ? <Tooltip kind={browserDebugEnabled ? "hint-debug-export" : "hint-details"}
         text={vis ? undefined : debugTitle} place="below" align="end">
         {debugButton}
-      </Tooltip>
+      </Tooltip> : diagnosticControl}
       <LanguageControl />
       <Tooltip kind={theme === "dark" ? "hint-theme-light" : "hint-theme-dark"} text={vis ? undefined : themeTitle} place="below" align="end">
         {themeButton}
@@ -119,9 +119,11 @@ export function HeaderControls() {
 export function AppHeader({
   led,
   homeHref = "/",
+  diagnosticControl,
 }: {
   led?: React.ReactNode;
   homeHref?: string;
+  diagnosticControl?: React.ReactNode;
 }) {
   const { t } = useCopy();
   return (
@@ -135,7 +137,7 @@ export function AppHeader({
       </a>
       <span className="lr-top-right">
         {led}
-        <HeaderControls />
+        <HeaderControls diagnosticControl={diagnosticControl} />
       </span>
     </header>
   );
