@@ -26,6 +26,7 @@ import { Btn, Pill } from "./components/living/primitives";
 import { Comic, type ComicKind } from "./components/living/Comic";
 import { Glyph } from "./ui/icons";
 import { setCopy, useCopy } from "./ui/copy";
+import { consoleLanguage } from "./locales";
 import { initTheme } from "./ui/theme";
 import { installBrowserDebug } from "./lib/debug";
 
@@ -103,7 +104,7 @@ export function App() {
     const controller = new AbortController();
     void import("./native/client")
       .then(({ notifyNativePresentation }) =>
-        notifyNativePresentation(vis ? "vis" : lang, controller.signal))
+        notifyNativePresentation(consoleLanguage(lang, vis), controller.signal))
       .catch(() => undefined);
     return () => controller.abort();
   }, [lang, vis]);

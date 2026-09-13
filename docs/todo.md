@@ -82,9 +82,10 @@ Host is paused. No preservation policy has been accepted for that transition.
    direction with original Piik assets. Assess extension boundaries and cost
    before scheduling any theme/plugin API. Design experiments remain in Git
    history, outside the main source tree.
-8. **Community translations.** Prepare the existing locale catalogs for
-   community contributions when scheduled. No new translation framework is
-   needed for the current Chinese, English and optional pure-visual modes.
+8. **Additional languages.** Review community catalogs and their rendered UI
+   following the [translation guide](./guide/translating.md). Add website,
+   documentation or App console translations as contributed; verify text
+   direction and layout when a language requires it.
 9. **First-share startup quality.** Verify that the existing five-frame startup
     protection for `motion + balanced` still takes effect on every active sender
     and shared-encoding path. Compare with the documented

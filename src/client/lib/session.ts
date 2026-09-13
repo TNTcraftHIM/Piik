@@ -7,6 +7,7 @@ import {
 } from "../../shared/protocol";
 import { z } from "zod";
 import { createOpaqueId } from "./opaque-id";
+import { isLang, type Lang } from "../locales";
 
 const CLIENT_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
 const CLIENT_LAUNCH_STORAGE_KEY = "piik:client-launch:v1";
@@ -101,7 +102,7 @@ export interface ClientLaunchBootstrap {
 }
 
 export interface ClientLaunchPresentation {
-  lang: "zh" | "en";
+  lang: Lang;
   vis: boolean;
   theme: "light" | "dark" | null;
 }
@@ -145,7 +146,7 @@ export function takeClientLaunchBootstrap(): ClientLaunchBootstrap {
   const result: ClientLaunchBootstrap = {
     accessToken: accessValue || null,
     launchedByClient,
-    presentation: launchedFromFragment && (lang === "zh" || lang === "en") &&
+    presentation: launchedFromFragment && isLang(lang) &&
       (mode === "vis" || mode === "text") &&
       (theme === "light" || theme === "dark" || theme === "system")
       ? { lang, vis: mode === "vis", theme: theme === "system" ? null : theme }

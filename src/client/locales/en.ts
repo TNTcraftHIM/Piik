@@ -349,8 +349,6 @@ export const en: Record<CopyKey, string> = {
   "viewer.error.relay": "Downstream media connection error",
 
   "mode.language": "Interface language",
-  "mode.zh": "中文",
-  "mode.en": "English",
   "mode.vis": "Visual only",
   "theme.dark": "Switch to dark mode",
   "theme.light": "Switch to light mode",

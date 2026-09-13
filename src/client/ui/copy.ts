@@ -1,8 +1,9 @@
 // Locale selection and persistence. Catalog content lives in ../locales.
 import { useSyncExternalStore } from "react";
 import {
-  catalogs,
-  titleFrameCatalogs,
+  locales,
+  isLang,
+  resolveLang,
   visualTitleFrames,
   type CopyKey,
   type Lang,
@@ -25,7 +26,7 @@ function readStored(): Partial<CopyPrefs> {
     const lang = window.localStorage.getItem(LANG_STORAGE_KEY);
     const mode = window.localStorage.getItem(MODE_STORAGE_KEY);
     return {
-      ...(lang === "zh" || lang === "en" ? { lang } : {}),
+      ...(isLang(lang) ? { lang } : {}),
       ...(mode === "text" || mode === "vis" ? { vis: mode === "vis" } : {}),
     };
   } catch {
@@ -33,22 +34,15 @@ function readStored(): Partial<CopyPrefs> {
   }
 }
 
-function detectLang(): Lang {
-  const language = typeof navigator === "undefined"
-    ? undefined
-    : navigator.language?.split("-")[0]?.toLowerCase();
-  return language === "zh" ? "zh" : "en";
-}
-
 const state: CopyPrefs = {
-  lang: detectLang(),
+  lang: resolveLang(typeof navigator === "undefined" ? undefined : navigator.language),
   vis: false,
   ...readStored(),
 };
 
 function syncDocumentLanguage(): void {
   if (typeof document !== "undefined") {
-    document.documentElement.lang = state.lang === "zh" ? "zh-CN" : "en";
+    document.documentElement.lang = locales[state.lang].tag;
   }
 }
 
@@ -86,15 +80,15 @@ if (typeof window !== "undefined") {
   });
 }
 
-// Non-React setter (used by the mode pill and by tests).
+// Non-React setter for launch handoff and tests.
 export const setCopy = commit;
 
 export function isCopyKey(value: string): value is CopyKey {
-  return Object.prototype.hasOwnProperty.call(catalogs.zh, value);
+  return Object.hasOwn(locales.zh.copy, value);
 }
 
 export function t(lang: Lang, key: CopyKey, vars?: Record<string, string>): string {
-  let value = catalogs[lang][key];
+  let value = locales[lang].copy[key];
   if (vars) {
     for (const [name, replacement] of Object.entries(vars)) {
       value = value.replace(`{${name}}`, () => replacement);
@@ -108,7 +102,7 @@ export function getTitleFrames(
   visual: boolean,
   key: TitleFrameKey,
 ): readonly string[] {
-  return visual ? visualTitleFrames[key] : titleFrameCatalogs[lang][key];
+  return visual ? visualTitleFrames[key] : locales[lang].titleFrames[key];
 }
 
 // Non-hook accessor for transient notices composed outside React render

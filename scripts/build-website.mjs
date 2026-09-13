@@ -19,7 +19,7 @@ await cp(source, output, {
     !path.endsWith("README.md"),
 });
 await cp(new URL("../LICENSE", import.meta.url), new URL("LICENSE", output));
-const [{ WELCOME_LINES }, { catalogs }, { Glyph }] = await Promise.all([
+const [{ WELCOME_LINES }, { locales }, { Glyph }] = await Promise.all([
   "../src/client/components/living/WelcomeLine.tsx",
   "../src/client/locales/index.ts",
   "../src/client/ui/icons.tsx",
@@ -30,8 +30,8 @@ const [{ WELCOME_LINES }, { catalogs }, { Glyph }] = await Promise.all([
 // Reuse the product's paired lines as inert HTML, without a runtime catalog.
 const welcomeLines = WELCOME_LINES.map(({ key }) => renderToStaticMarkup(
   createElement("span", { "data-welcome-key": key },
-    createElement("span", { lang: "en" }, `“${catalogs.en[key]}”`),
-    createElement("span", { lang: "zh-CN" }, `“${catalogs.zh[key]}”`),
+    createElement("span", { lang: "en" }, `“${locales.en.copy[key]}”`),
+    createElement("span", { lang: "zh-CN" }, `“${locales.zh.copy[key]}”`),
   ),
 ));
 let homepage = (await readFile(new URL("index.html", source), "utf8"))

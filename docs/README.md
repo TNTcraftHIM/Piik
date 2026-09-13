@@ -18,9 +18,10 @@
 | Update my server | [Server updates](./operations/self-hosting.md#keep-it-running-and-update) |
 | Build, publish or recover a maintained release | [Maintainer release tooling](./deployment.md) |
 | Send a useful bug report | [Diagnostics and export](./reference/configuration.md#diagnostics) |
+| Translate Piik or improve wording | [Translation guide](./guide/translating.md) · [中文翻译教程](./guide/translating.zh-CN.md) |
 | Check release and platform readiness | [Current status](./status.md) |
 
-The introduction, getting-started and self-hosting guides are available in English and Chinese.
+The introduction, getting-started, self-hosting and translation guides are available in English and Chinese.
 Technical references keep one shared version.
 
 ## Run from source

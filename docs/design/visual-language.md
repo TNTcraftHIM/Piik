@@ -39,6 +39,11 @@ order and interaction ownership consistent across languages, themes and viewport
 sizes. Reflow or bounded scrolling must not hide a primary action, truncate an
 essential value, overlap controls or change meaning.
 
+The application language control uses a fixed-width native select with each
+language's own name and the optional visual presentation. Additional languages
+extend the menu without widening the header. Reuse control tokens and motion;
+the native menu owns keyboard navigation and the mobile picker.
+
 Help-only indicators toggle their guidance on click or tap and dismiss on a
 second activation, outside tap, Escape or focus leaving. Action controls keep
 their direct click action and offer touch guidance on long-press. `Tooltip`

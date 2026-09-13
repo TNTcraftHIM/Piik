@@ -1,5 +1,26 @@
 # Contributing
 
+## Ways To Help
+
+Corrections, translations, bug reports and code contributions are welcome.
+English and Chinese are both welcome in issues and PRs.
+欢迎用中文或英文参与讨论，从一处文案修正或一次问题反馈开始也很好。
+
+| Contribution / 参与方式 | Start here / 从这里开始 |
+| --- | --- |
+| Translate or improve wording / 翻译、校对文案 | [Translation guide](./docs/guide/translating.md) · [中文翻译教程](./docs/guide/translating.zh-CN.md) |
+| Report a bug / 反馈问题 | [Issue templates](https://github.com/TNTcraftHIM/Piik/issues/new/choose); include version, environment, steps and actual result / 附版本、环境、步骤与实际结果 |
+| Improve a guide / 改进教程 | [Documentation map](./docs/README.md); identify the confusing step and explain the expected result / 指出不清楚的步骤及预期结果 |
+| Suggest a feature / 功能建议 | Search [existing issues](https://github.com/TNTcraftHIM/Piik/issues) first, then describe the use case / 先搜索已有讨论，再说明使用场景 |
+| Contribute code / 参与开发 | [Run from source](./docs/README.md#run-from-source), then follow the workflow below / 从源码启动，按下文流程修改 |
+
+Keep feedback specific and respectful. Explain a wording or design disagreement
+with context and a suggested improvement. Review screenshots and diagnostics for
+private content before attaching them. If you cannot run a check, say so in the
+PR; maintainers can help identify what still needs verification.
+讨论时请结合实际场景提出建议，尊重不同意见；分享截图或日志前移除隐私内容。
+无法运行的检查请如实说明，便于维护者协助验证。
+
 ## Lean Workflow
 
 This is the default for an ordinary scoped implementation or bug fix.

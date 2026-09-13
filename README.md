@@ -99,8 +99,9 @@ domain, HTTPS reverse proxy and STUN address. Room data is stored in SQLite.
 
 ## Contributing
 
-Bug reports, documentation improvements and pull requests are welcome.
-Start with [CONTRIBUTING.md](./CONTRIBUTING.md), or see the
+Bug reports, translations, documentation improvements and pull requests are welcome.
+See [ways to contribute](./CONTRIBUTING.md#ways-to-help) or
+[help translate Piik](./docs/guide/translating.md). Use the
 [repository layout](./docs/reference/engineering.md#repository-layout) to find your way around.
 
 ## License

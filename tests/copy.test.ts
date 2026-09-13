@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { initialLanguage, rememberLanguage } from "../site/assets/language.js";
+import { locales } from "../src/client/locales";
 
 import {
   getTitleFrames,
@@ -80,12 +81,62 @@ describe("copy catalog", () => {
     expect(t("zh", "viewer.title", { name: "$&" })).toBe("$& 的屏幕");
   });
 
-  it("keeps zh and en key sets identical", () => {
-    // Type-level parity is enforced by Record<keyof typeof zh, string>;
-    // this guards runtime drift if the catalog shape changes.
-    for (const key of ["host.start", "viewer.msg.playing", "stats.more"] as CopyKey[]) {
-      expect(t("zh", key).length).toBeGreaterThan(0);
-      expect(t("en", key).length).toBeGreaterThan(0);
+  it("keeps every registered translation complete with matching placeholders", () => {
+    const keys = Object.keys(locales.zh.copy) as CopyKey[];
+    const placeholders = (value: string) => (value.match(/\{\w+\}/g) ?? []).sort();
+    for (const [lang, locale] of Object.entries(locales)) {
+      expect(Object.keys(locale.copy).sort(), lang).toEqual([...keys].sort());
+      for (const key of keys) {
+        expect(locale.copy[key].trim(), `${lang}: ${key}`).not.toBe("");
+        expect(placeholders(locale.copy[key]), `${lang}: ${key}`)
+          .toEqual(placeholders(locales.zh.copy[key]));
+      }
+      for (const frames of Object.values(locale.titleFrames)) {
+        expect(frames.length, lang).toBeGreaterThan(0);
+        expect(frames.every((frame: string) => frame.trim().length > 0), lang).toBe(true);
+      }
+    }
+  });
+
+  it("carries a contributed locale through selection and App handoff", async () => {
+    vi.resetModules();
+    const registry = await import("../src/client/locales");
+    // Exercise registration without shipping an unreviewed translation.
+    Object.assign(registry.locales, {
+      fr: { ...registry.locales.en, name: "Français", tag: "fr" },
+    });
+    try {
+      const stored = new Map<string, string>([["piik:ui-lang", "fr"]]);
+      vi.stubGlobal("navigator", { language: "en-US" });
+      vi.stubGlobal("document", { documentElement: { lang: "en" } });
+      vi.stubGlobal("window", {
+        localStorage: {
+          getItem: (key: string) => stored.get(key) ?? null,
+          setItem: (key: string, value: string) => stored.set(key, value),
+        },
+        addEventListener: () => {},
+        location: new URL("https://site.example/"),
+        history: { state: null, replaceState: vi.fn() },
+      });
+      const copy = await import("../src/client/ui/copy");
+      const { clientLaunchURL, takeClientLaunchBootstrap } = await import("../src/client/lib/session");
+
+      expect(registry.resolveLang("FR-ca")).toBe("fr");
+      expect(registry.resolveLang("zh-CN")).toBe("zh");
+      expect(registry.isLang("toString")).toBe(false);
+      expect(copy.currentLang()).toBe("fr");
+      expect(document.documentElement.lang).toBe("fr");
+      expect(copy.t(copy.currentLang(), "common.host")).toBe("Host");
+
+      const presentation = { lang: copy.currentLang(), vis: false, theme: null };
+      window.location.hash = new URL(clientLaunchURL("https://site.example/#piik-client=1", presentation)).hash;
+      expect(takeClientLaunchBootstrap().presentation).toEqual(presentation);
+      expect(registry.consoleLanguage(presentation.lang, false)).toBe("en");
+      expect(registry.consoleLanguage(presentation.lang, true)).toBe("vis");
+      expect(registry.consoleLanguage("zh", false)).toBe("zh");
+    } finally {
+      Reflect.deleteProperty(registry.locales, "fr");
+      vi.resetModules();
     }
   });
 

@@ -347,8 +347,6 @@ export const zh = {
   "viewer.error.relay": "下游媒体连接异常",
 
   "mode.language": "界面语言",
-  "mode.zh": "中文",
-  "mode.en": "English",
   "mode.vis": "纯视觉",
   "theme.dark": "切换到暗色模式",
   "theme.light": "切换到浅色模式",

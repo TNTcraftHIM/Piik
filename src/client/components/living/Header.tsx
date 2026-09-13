@@ -1,12 +1,12 @@
-// App header: brand mark, LED connection state, language-mode pill
-// (中文 / EN / 纯视觉), and theme toggle.
+// App header: brand mark, LED connection state, language selection and theme.
 import { useState } from "react";
 import { browserDebugEnabled, debugError, downloadBrowserDebug } from "../../lib/debug";
 import { VisGlyph } from "./primitives";
 import { BrandMark } from "./BrandMark";
 import { Tooltip } from "./Tooltip";
 import type { ComicKind } from "./Comic";
-import { useCopy, type Lang } from "../../ui/copy";
+import { useCopy } from "../../ui/copy";
+import { isLang, locales } from "../../locales";
 import { useTheme } from "../../ui/theme";
 import { Glyph } from "../../ui/icons";
 
@@ -52,20 +52,6 @@ export function HeaderControls() {
   const { lang, vis, t, setLang, setVis } = useCopy();
   const { theme, toggle } = useTheme();
   const [debugExport, setDebugExport] = useState<"idle" | "busy" | "failed">("idle");
-  const option = (mode: Lang | "vis", label: string, tipKey: "mode.zh" | "mode.en" | "mode.vis") => {
-    const active = mode === "vis" ? vis : !vis && lang === mode;
-    return (
-      <button
-        type="button"
-        className={active ? "is-selected" : ""}
-        aria-label={t(tipKey)}
-        aria-pressed={active}
-        onClick={() => (mode === "vis" ? setVis(true) : setLang(mode))}
-      >
-        {label}
-      </button>
-    );
-  };
   const themeTitle = t(theme === "dark" ? "theme.light" : "theme.dark");
   const themeButton = (
     <button
@@ -113,11 +99,21 @@ export function HeaderControls() {
           {debugButton}
         </Tooltip>
       )}
-      <span className="lr-lang" role="group" aria-label={t("mode.language")}>
-        {option("zh", "中", "mode.zh")}
-        {option("en", "EN", "mode.en")}
-        {option("vis", "✦", "mode.vis")}
-      </span>
+      <select
+        className="lr-btn lr-language-select"
+        aria-label={t("mode.language")}
+        value={vis ? "vis" : lang}
+        onChange={(event) => {
+          const value = event.currentTarget.value;
+          if (value === "vis") setVis(true);
+          else if (isLang(value)) setLang(value);
+        }}
+      >
+        {Object.entries(locales).map(([key, locale]) => (
+          <option key={key} value={key} lang={locale.tag}>{locale.name}</option>
+        ))}
+        <option value="vis">✦ {t("mode.vis")}</option>
+      </select>
       <Tooltip kind={theme === "dark" ? "hint-theme-light" : "hint-theme-dark"} text={vis ? undefined : themeTitle} place="below" align="end">
         {themeButton}
       </Tooltip>

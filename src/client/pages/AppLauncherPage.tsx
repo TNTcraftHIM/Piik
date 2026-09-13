@@ -8,6 +8,7 @@ import { LauncherForm, type AppMode } from "../components/living/LauncherForm";
 import { Btn, Pill } from "../components/living/primitives";
 import { Glyph } from "../ui/icons";
 import { useCopy, type CopyKey } from "../ui/copy";
+import { consoleLanguage } from "../locales";
 import { currentThemePreference } from "../ui/theme";
 import { clientLaunchURL } from "../lib/session";
 import {
@@ -79,7 +80,7 @@ export function AppLauncherPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           mode,
-          language: vis ? "vis" : lang,
+          language: consoleLanguage(lang, vis),
           ...(mode === "site" ? { site } : { localAccessPassword }),
         }),
       });

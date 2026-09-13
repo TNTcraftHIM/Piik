@@ -95,8 +95,9 @@ Piik Server 是一个内置网页界面的独立程序。
 
 ## 参与贡献
 
-欢迎提交问题、改进文档或参与开发。
-修改前请阅读[贡献指南](./CONTRIBUTING.md)，也可以从
+欢迎反馈问题、参与翻译、改进文档或贡献代码。
+从[社区参与方式](./CONTRIBUTING.md#ways-to-help)或
+[翻译教程](./docs/guide/translating.zh-CN.md)开始，也可以从
 [项目目录说明](./docs/reference/engineering.md#repository-layout)了解代码结构。
 
 ## 许可

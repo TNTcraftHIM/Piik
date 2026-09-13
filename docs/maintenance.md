@@ -14,6 +14,7 @@ verification procedures stay in [CONTRIBUTING.md](../CONTRIBUTING.md).
 | Branches, review, validation, PRs, releases and cleanup | `CONTRIBUTING.md` | Executable workflow |
 | Module boundaries, interface discipline and ablation | [Engineering](./reference/engineering.md) | Current responsibility map and shared coding rules |
 | Names, terminology and voice | [Naming and copy](./reference/naming.md) | Product/tool names, role labels and Chinese/English writing conventions |
+| Translation contributions | [Translation guide](./guide/translating.md) and its Chinese counterpart | Catalog editing, new-language registration and translation review |
 | Illustration, palette, motion and accessible layout | [Visual language](./design/visual-language.md) | Shared Browser/App design grammar |
 | Status projection | [Media status](./design/media-status.md) | Which facts each display surface may express |
 | Release identity and compatibility | [Versioning](./reference/versioning.md) | Version roles, protected interfaces and public-readiness boundary |

@@ -157,31 +157,6 @@ ul { margin: 0; padding: 0; list-style: none; }
 @keyframes lr-chase { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
 @keyframes lr-blink { 50% { opacity: .3; } }
 
-/* language + theme controls */
-.lr-lang {
-  border: 2.5px solid var(--ink);
-}
-.lr-lang button {
-  position: relative;
-  display: inline-grid;
-  min-width: 38px;
-  height: 34px;
-  place-items: center;
-  padding: 0 9px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--ink);
-  font-size: 12px;
-  font-weight: 700;
-  opacity: .68;
-  transition: opacity 120ms ease, color 140ms ease, background-color 140ms ease, transform 180ms var(--spring);
-}
-.lr-lang button:is(:hover, :focus-visible) { opacity: 1; transform: translateY(-1px); }
-.lr-lang button:is(:hover, :focus-visible):not(.is-selected) { background: var(--wall-2); }
-.lr-lang button:active { transform: scale(.9); }
-.lr-lang button.is-selected { color: var(--paper); opacity: 1; }
-
 /* ---------- room layout ---------- */
 
 /* overflow-x: clip keeps invisible absolutely-positioned decor (the resting
@@ -926,6 +901,15 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
 .lr-btn.is-danger:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]) { background: color-mix(in srgb, var(--danger) 10%, var(--paper)); }
 .lr-btn.is-on { border-color: var(--ink); background: var(--ink); color: var(--paper); }
 .lr-btn .lr-cap { margin-left: 2px; font-size: 12.5px; font-weight: 600; }
+.lr-btn.lr-language-select {
+  width: 132px;
+  min-width: 0;
+  height: 40px;
+  border-radius: 999px;
+  padding: 0 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
 
 .lr-cap { font-size: 12.5px; font-weight: 600; color: inherit; white-space: nowrap; }
 
@@ -967,7 +951,7 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
 
 /* Segmented controls share a sliding thumb. Equal grid columns keep it aligned
    across captions; the selected button remains the only selection state. */
-.lr-toggle, .lr-lang {
+.lr-toggle {
   position: relative;
   display: inline-grid;
   grid-auto-flow: column;
@@ -977,7 +961,7 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
   background: var(--paper);
 }
 .lr-toggle { border: 2px solid var(--control-edge); }
-.lr-toggle::before, .lr-lang::before {
+.lr-toggle::before {
   content: "";
   position: absolute;
   top: 4px; bottom: 4px; left: 4px;
@@ -987,10 +971,7 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
   pointer-events: none;
 }
 .lr-toggle::before { width: calc(50% - 4px); }
-.lr-lang::before { width: calc((100% - 8px) / 3); }
 .lr-toggle[data-selected="private"]::before { transform: translateX(100%); }
-.lr-lang:has(button:nth-child(2).is-selected)::before { transform: translateX(100%); }
-.lr-lang:has(button:nth-child(3).is-selected)::before { transform: translateX(200%); }
 .lr-toggle button {
   position: relative;
   z-index: 1;
@@ -1699,10 +1680,8 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
   .lr-top-right { gap: 6px; }
   .lr-leds { gap: 4px; padding: 6px; }
   .lr-leds i { width: 8px; height: 8px; }
-  .lr-lang { padding: 2px; border-width: 2px; }
-  .lr-lang::before { top: 2px; bottom: 2px; left: 2px; width: calc((100% - 4px) / 3); }
-  .lr-lang button { min-width: 30px; height: 32px; padding-inline: 5px; }
-  .lr-header-controls .lr-btn {
+  .lr-btn.lr-language-select { width: 112px; height: 36px; padding-inline: 6px; }
+  .lr-header-controls button.lr-btn {
     min-width: 36px !important;
     width: 36px;
     height: 36px !important;
@@ -1865,7 +1844,7 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
     transition-duration: 0.01ms !important;
   }
   .lr-tv-static { animation: none; opacity: .35; }
-  .lr-btn, .lr-chip, .lr-tile, .lr-client-mode, .lr-toggle button, .lr-lang button { transform: none !important; }
+  .lr-btn, .lr-chip, .lr-tile, .lr-client-mode, .lr-toggle button { transform: none !important; }
   .lr-route-edge.is-pending,
   .lr-route-edge.is-recovering { animation: none; }
 }
