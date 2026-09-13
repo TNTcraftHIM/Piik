@@ -23,3 +23,10 @@ func TestSelectUsesOneAddressOrAnExplicitActiveAddress(t *testing.T) {
 		t.Fatal("inactive selection was accepted")
 	}
 }
+
+func TestSelectReportsNoAvailableAddress(t *testing.T) {
+	selected, err := Select(nil, "")
+	if selected != "" || err == nil || err.Error() != "no active LAN IPv4 address is available" {
+		t.Fatalf("empty selection must explain the missing LAN address: %q, %v", selected, err)
+	}
+}

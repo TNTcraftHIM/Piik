@@ -73,6 +73,9 @@ func Select(addresses []string, preferred string) (string, error) {
 		}
 		return "", errors.New("selected LAN address is not active")
 	}
+	if len(addresses) == 0 {
+		return "", errors.New("no active LAN IPv4 address is available")
+	}
 	if len(addresses) == 1 {
 		return addresses[0], nil
 	}
