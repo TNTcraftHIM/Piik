@@ -171,6 +171,12 @@ describe("release automation", () => {
       const complete = run();
       expect(complete.status, complete.stderr).toBe(0);
       expect(JSON.parse(complete.stdout).targets).toHaveLength(4);
+      expect(JSON.parse(complete.stdout).files).toBe(4);
+      const checksum = join(root, "windows-amd64.zip.sha256");
+      const originalChecksum = readFileSync(checksum, "utf8");
+      writeFileSync(checksum, "wrong checksum");
+      expect(run().stderr).toContain("App checksum file mismatch");
+      writeFileSync(checksum, originalChecksum);
       const path = join(root, "windows-amd64.release.json");
       const original = readFileSync(path, "utf8");
       writeFileSync(path, JSON.stringify({ ...JSON.parse(original), revision: "b".repeat(40) }));

@@ -118,7 +118,7 @@ The [visual language](../design/visual-language.md) owns where these lines appea
 | Hosted service in prose | `Piik Server` | Deployment instructions |
 | Executables and command directories | Lowercase, hyphen-separated | `piik-app[.exe]`, `piik-server[.exe]`, `cmd/piik-app` |
 | Native capture executable | Lowercase component name | `piik-capture[.exe]` |
-| Download archives | Lowercase, target and revision suffix | `piik-app-windows-amd64-<revision>.tar.gz` |
+| App download archives | Lowercase, fixed target name within each release | `piik-app-windows-amd64.zip` |
 | Package/build directory names | Lowercase and target suffix | `piik-app-windows-amd64` |
 | macOS application bundle | Display name, standard extension | `Piik App.app` |
 | Linux desktop entry | Lowercase file/Exec, display Name | `piik-app.desktop`, `Exec=piik-app`, `Name=Piik App` |

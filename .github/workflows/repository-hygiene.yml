@@ -218,7 +218,9 @@ jobs:
           pattern: piik-app-*-${{ github.sha }}
           path: ${{ runner.temp }}/publish-release
           merge-multiple: true
-      - name: Publish verified release
+      # Local descriptors/manifests/checksums are validated before publishing.
+      # Release assets contain packages only; checksums appear in the release body.
+      - name: Publish packages with release notes and checksums
         run: >-
           node scripts/publish-release.mjs
           "$RUNNER_TEMP/publish-release" "$PIIK_RELEASE_VERSION" "$GITHUB_SHA"

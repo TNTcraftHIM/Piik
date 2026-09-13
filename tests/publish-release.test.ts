@@ -25,7 +25,8 @@ for (const target of ["server", "windows-amd64", "linux-amd64", "darwin-arm64"])
 }
 afterAll(() => rmSync(directory, { recursive: true, force: true }));
 
-const completeAssets = readdirSync(directory).map((name) => ({ name, state: "uploaded" }));
+const packageNames = readdirSync(directory).filter((name) => /\.(zip|tar\.gz)$/.test(name));
+const completeAssets = packageNames.map((name) => ({ name, state: "uploaded" }));
 type Release = { tag_name: string; target_commitish: string; draft: boolean;
   prerelease: boolean; assets: typeof completeAssets };
 const release = (draft: boolean): Release => ({
@@ -36,7 +37,7 @@ describe("Gitee mirror publication", () => {
   const marker = `<!-- piik-source: ${revision} -->`;
   const api = "https://gitee.com/api/v5/repos/TNTcraftHIM/Piik";
   const download = `https://gitee.com/TNTcraftHIM/Piik/releases/download/${version}/`;
-  const sourceAssets = readdirSync(directory).map((name) => {
+  const sourceAssets = packageNames.map((name) => {
     const bytes = readFileSync(join(directory, name));
     return { name, size: bytes.length, digest: `sha256:${hash(bytes)}`, state: "uploaded" };
   });
@@ -152,11 +153,22 @@ async function publish(releases: Release[], tag: "absent" | "annotated" | "wrong
       mutations.push(args);
       if (args[1] === "create") {
         notesPath = args[args.indexOf("--notes-file") + 1];
-        expect(readFileSync(notesPath, "utf8")).toBe(copy);
+        const body = readFileSync(notesPath, "utf8");
+        expect(body.startsWith(copy)).toBe(true);
+        expect(body).toContain(`<summary>构建与校验 / Build and checksums</summary>`);
+        expect(body).toContain(`/commit/${revision})`);
+        for (const name of packageNames) {
+          expect(body).toContain(`${hash(readFileSync(join(directory, name)))}  ${name}\n`);
+        }
+        expect(body).not.toMatch(/\.release\.json|\.zip\.sha256|\.manifest\.tsv/);
         expect(args).not.toContain("--generate-notes");
         if (failureAt === "create") throw new Error("GitHub create failed");
       }
       if (args[1] === "edit") published = true;
+      if (args[1] === "upload") {
+        expect(args.slice(args.indexOf("--clobber") + 1).sort())
+          .toEqual(packageNames.map((name) => join(directory, name)).sort());
+      }
       return "";
     }
     if (args[1].includes("/matching-refs/")) {

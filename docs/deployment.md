@@ -48,6 +48,12 @@ extracts its own artifact to verify it. The archive contains exactly
 `piik-server`, `LICENSE`, `THIRD-PARTY-NOTICES.txt`, and `REVISION`. Upload
 the archive, manifest, and descriptor together to `/opt/piik/uploads`.
 
+Public Release pages expose the runnable packages and put package checksums in
+the release body. Retain the original complete build output outside the checkout
+for later managed deployment or mirror retries: descriptors and manifests are
+available in CI artifacts for 14 days and are not public Release attachments.
+Do not rebuild an existing published version to replace missing metadata or bytes.
+
 The same application descriptor is also the App assembly input. On each
 target platform, provide that platform's Go toolchain:
 

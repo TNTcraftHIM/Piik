@@ -51,7 +51,11 @@ if (option === "--dry-run") {
       process.exit(0);
     }
   } else {
-    const body = releaseNotes(process.cwd(), version, revision, repository);
+    const checksums = artifacts.files.map((file) => `${file.sha256}  ${file.name}`).join("\n");
+    const body = releaseNotes(process.cwd(), version, revision, repository) +
+      `\n<details>\n<summary>构建与校验 / Build and checksums</summary>\n\n` +
+      `[Source / 源码: ${revision}](https://github.com/${repository}/commit/${revision})\n\n` +
+      `SHA-256:\n\n\`\`\`text\n${checksums}\n\`\`\`\n\n</details>\n`;
     const notes = join(tmpdir(), `piik-release-notes-${randomUUID()}.md`);
     writeFileSync(notes, body, { flag: "wx" });
     try {

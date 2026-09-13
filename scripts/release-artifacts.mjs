@@ -9,6 +9,7 @@ export function readReleaseArtifacts(directory, version, revision) {
   }
   const root = resolve(directory);
   const files = new Map();
+  const packages = [];
   const targets = new Set();
   function asset(name) {
     if (typeof name !== "string" || basename(name) !== name || !/^[a-zA-Z0-9._-]+$/.test(name)) {
@@ -29,9 +30,11 @@ export function readReleaseArtifacts(directory, version, revision) {
     const target = descriptor.target ?? "server";
     if (targets.has(target)) throw new Error(`Duplicate release target: ${target}`);
     targets.add(target);
-    if (asset(descriptor.artifact).sha256 !== descriptor.artifactSha256) {
+    const archive = asset(descriptor.artifact);
+    if (archive.sha256 !== descriptor.artifactSha256) {
       throw new Error(`Release artifact checksum mismatch: ${name}`);
     }
+    packages.push(archive);
     if (target === "server") {
       if (asset(descriptor.manifest).sha256 !== descriptor.manifestSha256) {
         throw new Error("Server manifest checksum mismatch");
@@ -45,5 +48,6 @@ export function readReleaseArtifacts(directory, version, revision) {
   if (targets.size !== expected.length || expected.some((target) => !targets.has(target))) {
     throw new Error("Publication requires one matching Server and every App target");
   }
-  return { files: [...files.values()], targets: [...targets] };
+  // Sidecars prove the local build; only installable packages are public assets.
+  return { files: packages, targets: [...targets] };
 }
