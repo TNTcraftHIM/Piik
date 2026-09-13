@@ -1,0 +1,29 @@
+name: piik
+
+services:
+  piik:
+    image: ${PIIK_IMAGE:-ghcr.io/tntcrafthim/piik:latest}
+    platform: linux/amd64
+    restart: unless-stopped
+    stop_grace_period: 20s
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    env_file: .env
+    environment:
+      PIIK_ENV: production
+      LISTEN_HOST: 0.0.0.0
+      ROOM_DATABASE_PATH: /home/nonroot/rooms.sqlite
+      PIIK_LOG_DIR: /home/nonroot/logs
+    ports:
+      - "127.0.0.1:8787:8787/tcp"
+      - "3478:3478/udp"
+      # Auxiliary STUN and SFU listen only when enabled in .env.
+      - "3479:3479/udp"
+      - "3480:3480/udp"
+      - "7882:7882/udp"
+    volumes:
+      - piik-data:/home/nonroot
+
+volumes:
+  piik-data:

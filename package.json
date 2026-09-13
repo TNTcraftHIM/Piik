@@ -17,6 +17,8 @@
     "package:client-candidate": "node scripts/package-client-candidate.mjs",
     "check:client": "node scripts/check-client.mjs",
     "check:client-core": "node scripts/check-client.mjs --core",
+    "check:client-race": "node scripts/check-client.mjs --race",
+    "check:container": "node scripts/check-container.mjs",
     "check:client-capture": "node scripts/check-client.mjs --capture-only",
     "gate:client-media": "tsx scripts/client-media-gate.ts",
     "gate:client-native-host": "tsx scripts/client-native-host-gate.ts",

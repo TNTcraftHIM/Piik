@@ -95,6 +95,7 @@ Download the Linux x64 Server package, extract it, and run:
 
 Open `http://localhost:8787` to try it locally. For a public site, configure your
 domain, HTTPS reverse proxy and STUN address. Room data is stored in SQLite.
+For containers, use the [Docker Compose setup](./docs/operations/self-hosting.md#docker-compose).
 
 [**Deploy your own site →**](./docs/operations/self-hosting.md) · [Configuration](./docs/reference/configuration.md) · [Run from source](./docs/README.md#run-from-source)
 

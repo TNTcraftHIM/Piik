@@ -91,6 +91,7 @@ Piik Server 是一个内置网页界面的独立程序。
 
 打开 `http://localhost:8787` 即可在本机试用。对外提供服务时，
 再配置域名、HTTPS 反向代理和 STUN 地址。房间数据保存在 SQLite 中。
+也可以使用 [Docker Compose 部署](./docs/operations/self-hosting.zh-CN.md#使用-docker-compose)。
 
 [**部署自己的站点 →**](./docs/operations/self-hosting.zh-CN.md) · [配置参考](./docs/reference/configuration.md) · [从源码运行](./docs/README.md#run-from-source)
 

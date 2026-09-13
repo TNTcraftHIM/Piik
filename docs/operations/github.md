@@ -60,6 +60,21 @@ this does not alter existing releases or a currently running workflow. Inspect
 the active run separately. No pipeline step changes visibility or installs an
 update into a running Piik deployment.
 
+## Container Registry
+
+The Server image uses `ghcr.io/tntcrafthim/piik`. The publishing job authenticates
+with `GITHUB_TOKEN` and `packages: write`; no additional registry secret is needed.
+The image's source label links it to this repository. GitHub's
+[Container registry guide](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry)
+owns the registry permission and visibility behavior.
+
+At first publication, set the Piik container package's visibility to **public**
+in its GitHub package settings; repository visibility alone does not do this.
+Verify both its version tag and `latest` with an anonymous pull before announcing
+the Docker download. Keep repository Actions access enabled for later releases.
+Image checks, version identity and retries follow
+[container distribution](../reference/versioning.md#container-distribution).
+
 ## Gitee Download Mirror
 
 [TNTcraftHIM/Piik](https://gitee.com/TNTcraftHIM/Piik) is a public README/Release

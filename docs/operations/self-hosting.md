@@ -21,6 +21,30 @@ Open `http://localhost:8787`. This is a local trial; use the configuration below
 to let friends connect over the internet. To start a temporary room on your computer,
 use the [Piik App guide](../guide/getting-started.md).
 
+## Docker Compose
+
+On a Linux x64 server with Docker Compose v2, download the two deployment files
+into an empty directory:
+
+```sh
+curl -fsSLo compose.yaml https://raw.githubusercontent.com/TNTcraftHIM/Piik/main/deploy/container/compose.yaml
+curl -fsSLo .env https://raw.githubusercontent.com/TNTcraftHIM/Piik/main/deploy/container/.env.example
+```
+
+Replace `share.example.com` in `.env` with your domain, then start Piik:
+
+```sh
+docker compose run --rm piik --check-config
+docker compose up -d
+```
+
+The `ghcr.io/tntcrafthim/piik:latest` image includes the Web UI, signaling, STUN
+and optional SFU. Complete [HTTPS](#2-enable-https) and
+[firewall configuration](#3-open-the-ports-and-verify) below. The default is P2P;
+the sample `.env` also shows how to enable SFU fallback. Keep the `piik-data`
+volume, which stores room data and optional diagnostics. See
+[container maintenance](./service-management.md#container) for updates and backups.
+
 ## Put it online
 
 You need a Linux x64 server and a domain pointing to its public IP.

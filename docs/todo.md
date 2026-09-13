@@ -12,6 +12,10 @@ history. A parked idea is not implementation authority.
   Complete owner acceptance and release preparation for the next approved
   version. Physical router coverage remains part of the
   [network evidence boundary](./verification-status.md#candidate-evidence-boundary).
+- [ ] **Ready-to-run Docker distribution.** Build and check a maintained image
+  from the existing Server release, with a short Compose/HTTPS/volume recipe.
+  Publish it with the next approved product release using the same version and
+  source identity. Verify anonymous pulls after the first GHCR publication.
 - [ ] **Post-launch monitoring.** Collect App/Server feedback and verify the
   public download path and deployed services after product releases. Follow the
   [deployment runbook](./deployment.md) for the private service and keep public
@@ -39,21 +43,6 @@ Preserve one graph and one operation under the
 not establish better connection success or speed; this note adds no retry policy.
 
 ## Parked Product Work
-
-The reported persistent low resolution after Viewer backgrounding and square
-black video remain unconfirmed incident leads, separate from the closed,
-reproduced reconnect ownership bug. Reopen from matching upstream/receiver
-evidence; local H264 relay background checks did not reproduce them. Missing NAT
-attempt text alone does not prove skipped attempts.
-If Native adaptation is implicated, compare actual VSE limitations with sender
-quality evidence before changing policy. Do not add retry budgets, visibility
-resets or resolution heuristics without proof. Sanitized aggregates and the
-isolated reconnect reproductions are diagnostic evidence, not a recovery policy.
-Game/background settings behavior also remains an unconfirmed incident lead;
-reopen from actual control actions and matching requested/applied media evidence.
-Clarify whether Viewer-local pause should survive replacement media before
-adding playback-intent state; the current binding starts new media unless the
-Host is paused. No preservation policy has been accepted for that transition.
 
 1. **Representative device/network acceptance.** Resume the remaining matrix in
    [verification status](./verification-status.md#remaining-device-and-network-acceptance)
@@ -104,13 +93,7 @@ Host is paused. No preservation policy has been accepted for that transition.
     support: the pinned capture SDK currently has no Windows x86 package.
     Complete native packaging and real launch/capture acceptance before
     advertising a 32-bit target.
-10. **Ready-to-run Docker distribution.** Publish a maintained image and a short
-    deployment recipe. The existing runtime image already contains Web, room
-    signaling, STUN and optional embedded SFU in one process; the gap is a
-    published image and simple HTTPS, port and persistent-volume setup. Reuse
-    that server artifact and the existing release identity rather than adding
-    another service stack.
-11. **Windows code signing.** Revisit after enrollment in a trusted signing
+10. **Windows code signing.** Revisit after enrollment in a trusted signing
     service. Sign Piik's executables before archive checksums are computed;
     signing improves publisher identity but does not guarantee that antivirus
     cloud scanning stops. Service selection and enrollment remain pending.

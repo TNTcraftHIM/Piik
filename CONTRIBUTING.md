@@ -101,6 +101,14 @@ does not establish coverage.
   core is Go, so its acceptance runs here. It builds the Vite client first when
   that output is missing, because both binaries embed it. CI invokes these same
   package commands rather than rebuilding their steps in YAML.
+- `npm run check:client-race` checks port mapping, media-edge ownership and their
+  scoped NAT dependencies with Go's race detector. It requires a supported cgo
+  toolchain; CI runs it on Linux.
+- `npm run check:container -- <local-image> <full-SHA>` checks the Compose recipe
+  against a packaged linux/amd64 image: embedded Web, P2P/STUN, optional SFU
+  startup, room persistence across recreation, diagnostics and clean shutdown.
+  It requires Docker Compose v2 and available recipe ports on an isolated runner;
+  its temporary project and volumes are removed after the check.
 - `gate:*` commands are explicit physical or network acceptance. They must use
   isolated profiles, bounded deadlines, shared cleanup helpers, and a structured
   result. A manual diagnostic may locate a failure, but is not retained as pass

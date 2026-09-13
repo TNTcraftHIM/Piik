@@ -87,6 +87,11 @@ fullscreen includes the playback bar; Safari's video-only fullscreen uses
 system controls and native video events to reflect playback and exit.
 Identity, connection details and topology stay in the deck.
 
+Viewer-local pause is not retained across replacement media bindings. A new
+binding starts playback unless the Host is paused, subject to browser autoplay
+permission. There is no separate remembered playback intent for source changes
+or reconnects.
+
 The bar spans the screen's lower edge. Narrow screens separate audio controls
 from window actions into two rows and retain 44px action targets. Playing video hides the bar
 after two idle seconds, following [Media Chrome's default](https://github.com/muxinc/media-chrome/blob/main/docs/src/pages/docs/en/components/media-controller.md#autohide).

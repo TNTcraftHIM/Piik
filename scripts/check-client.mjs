@@ -23,8 +23,8 @@ const root = realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), "..")
 const captureRoot = join(root, "native", "capture");
 const mode = process.argv[2] ?? "--all";
 
-if (!["--all", "--core", "--capture-only"].includes(mode)) {
-  throw new Error("Usage: node scripts/check-client.mjs [--all|--core|--capture-only]");
+if (!["--all", "--core", "--capture-only", "--race"].includes(mode)) {
+  throw new Error("Usage: node scripts/check-client.mjs [--all|--core|--capture-only|--race]");
 }
 
 function run(command, args, options = {}) {
@@ -89,15 +89,15 @@ function checkCore() {
   }
 }
 
-function runClientTests(go) {
+function runClientTests(go, packagesToTest = GO_TEST_PACKAGES, flags = []) {
   if (process.platform !== "win32") {
-    run(go, ["test", ...GO_TEST_PACKAGES]);
+    run(go, ["test", ...flags, ...packagesToTest]);
     return;
   }
 
   // Windows firewall permissions follow executable paths, including tests that
   // open sockets indirectly. Never execute a test from Go's temporary directory.
-  const packages = run(go, ["list", "-f", '{{if or .TestGoFiles .XTestGoFiles}}[{{printf "%q" .ImportPath}},{{printf "%q" .Dir}}]{{end}}', ...GO_TEST_PACKAGES], { capture: true })
+  const packages = run(go, ["list", "-f", '{{if or .TestGoFiles .XTestGoFiles}}[{{printf "%q" .ImportPath}},{{printf "%q" .Dir}}]{{end}}', ...packagesToTest], { capture: true })
     .split(/\r?\n/)
     .map((value) => value.trim())
     .filter(Boolean)
@@ -106,8 +106,8 @@ function runClientTests(go) {
   mkdirSync(stableRoot, { recursive: true });
   for (const [entry, directory] of packages) {
     const binary = join(stableRoot, `${basename(entry)}.test.exe`);
-    run(go, ["test", "-c", "-o", binary, entry]);
-    run(binary, [], { cwd: directory });
+    run(go, ["test", ...flags, "-c", "-o", binary, entry]);
+    run(binary, flags.includes("-race") ? ["-test.timeout=2m"] : [], { cwd: directory });
   }
 }
 
@@ -206,6 +206,14 @@ function checkPlatformCapture() {
   }
 }
 
-if (mode !== "--capture-only") checkCore();
-if (mode !== "--core") checkPlatformCapture();
+if (mode === "--race") {
+  buildWebAssets();
+  runClientTests(process.env.PIIK_GO?.trim() || "go", [
+    "./internal/app/portmapping", "./internal/app/mediaedge",
+    "github.com/netbirdio/go-nat/...", "github.com/jackpal/go-nat-pmp",
+  ], ["-race", "-count=1", "-timeout=2m"]);
+} else {
+  if (mode !== "--capture-only") checkCore();
+  if (mode !== "--core") checkPlatformCapture();
+}
 process.stdout.write("Piik App checks passed.\n");

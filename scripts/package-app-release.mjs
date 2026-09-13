@@ -172,8 +172,13 @@ function mainAssetOf(distributionRoot) {
   return match[1];
 }
 
-if (process.argv.length !== 3) {
-  fail("Usage: node scripts/package-app-release.mjs <new-output-directory>");
+if (process.argv.length !== 3 &&
+    !(process.argv.length === 5 && process.argv[3] === "--container-image")) {
+  fail("Usage: node scripts/package-app-release.mjs <new-output-directory> [--container-image <tag>]");
+}
+const containerImage = process.argv[4];
+if (containerImage && !/^[a-z0-9][a-z0-9._/:+-]*$/.test(containerImage)) {
+  fail("Container image tag is invalid");
 }
 
 const repositoryRoot = realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), ".."));
@@ -262,6 +267,17 @@ try {
     mainAsset,
   };
   writeFileSync(descriptorPath, `${JSON.stringify(descriptor, null, 2)}\n`, "ascii");
+  if (containerImage) {
+    // Reuse the verified, extracted release: no second Server or Web build.
+    run("docker", [
+      "build", "--platform", "linux/amd64",
+      "--file", join(repositoryRoot, "deploy", "container", "Dockerfile"),
+      "--build-arg", `PIIK_VERSION=${version}`,
+      "--build-arg", `PIIK_REVISION=${revision}`,
+      "--build-arg", `PIIK_SERVER_SHA256=${descriptor.artifactSha256}`,
+      "--tag", containerImage, verifyRoot,
+    ], repositoryRoot);
+  }
   process.stdout.write(`${JSON.stringify({ descriptor: descriptorPath, ...descriptor })}\n`);
 } finally {
   rmSync(temporaryRoot, { recursive: true, force: true });

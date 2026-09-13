@@ -165,6 +165,19 @@ restoring an old authority database after newer grants/revocations is not a safe
 routine downgrade. No automatic updater or generic migration framework is
 introduced by this policy.
 
+## Container Distribution
+
+`ghcr.io/tntcrafthim/piik` wraps the same verified linux/amd64 Server archive as
+the GitHub release. The packager's optional `--container-image <tag>` builds from
+that extraction; CI checks its Compose recipe and transfers the verified image
+between jobs as a CI artifact, outside public Release attachments.
+`publish-container.mjs` requires matching published GitHub source, version and
+Server digest in the image labels. Existing version tags are retained; `latest`
+moves only when that version is GitHub's latest. Manual candidates never publish.
+The [release approval boundary](#automatic-publication) and
+[first-publication visibility check](../operations/github.md#container-registry)
+apply. Preserve the original image and packages for retries.
+
 ## Release Notes
 
 GitHub Releases owns the published changelog. Each product-changing PR supplies reviewed

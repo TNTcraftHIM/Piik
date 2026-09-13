@@ -20,6 +20,28 @@ Piik Server 将网页、房间管理和可选的媒体转发打包在**一个服
 打开 `http://localhost:8787` 即可试用。需要让朋友通过互联网访问时，
 继续完成下方配置。如果只想在自己的电脑上临时开房间，可直接使用 [Piik App](../guide/getting-started.zh-CN.md#用-piik-app-分享)。
 
+## 使用 Docker Compose
+
+在已安装 Docker Compose v2 的 Linux x64 服务器上，将两个部署文件下载到空目录中：
+
+```sh
+curl -fsSLo compose.yaml https://raw.githubusercontent.com/TNTcraftHIM/Piik/main/deploy/container/compose.yaml
+curl -fsSLo .env https://raw.githubusercontent.com/TNTcraftHIM/Piik/main/deploy/container/.env.example
+```
+
+将 `.env` 中的 `share.example.com` 换成自己的域名，然后启动：
+
+```sh
+docker compose run --rm piik --check-config
+docker compose up -d
+```
+
+`ghcr.io/tntcrafthim/piik:latest` 镜像包含网页、信令、STUN 和可选 SFU。
+接着完成下方的 [HTTPS 配置](#2-配置-https)和[端口放行](#3-放行端口并检查)。
+默认使用 P2P；如需 SFU 兜底，按 `.env` 中的说明启用即可。
+请保留 `piik-data` 数据卷，房间数据和可选诊断文件都保存在其中。
+更新与备份见[容器维护说明](./service-management.md#container)。
+
 ## 对外提供服务
 
 准备一台 Linux x64 服务器，以及一个指向服务器公网 IP 的域名。

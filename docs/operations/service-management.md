@@ -1,7 +1,7 @@
 # Service Management
 
 For first installation, use the [short self-hosting guide](./self-hosting.md).
-This reference covers a persistent Linux service and the optional container recipe.
+This reference covers a persistent Linux service and container maintenance.
 
 ## systemd
 
@@ -28,24 +28,18 @@ after adapting the domain and certificate paths.
 
 ## Container
 
-The [runtime-only Dockerfile](../../deploy/container/Dockerfile) consumes the
-existing linux/amd64 Server release; it does not rebuild Go or Browser assets.
-Its pinned [Distroless static non-root base](https://github.com/GoogleContainerTools/distroless)
-includes CA certificates for HTTPS release checks and has no shell or package
-manager. This is an optional recipe, not a published image or automatic installer.
+Use the [Docker Compose setup](./self-hosting.md#docker-compose) for installation.
+The image is `ghcr.io/tntcrafthim/piik`, with `latest` and matching product version
+tags (`vMAJOR.MINOR.PATCH`). It supports **linux/amd64**. Set `PIIK_IMAGE` in `.env`
+to pin a version or image digest. Updates are explicit; pulling an image does not
+replace a running container.
 
-Verify the release archive against its descriptor and manifest using the
-[release procedure](../deployment.md), then extract its four files into a new
-build-context directory: `piik-server`, `LICENSE`, `THIRD-PARTY-NOTICES.txt`
-and `REVISION`. Use that directory, not the repository or a secrets directory:
-
-```sh
-docker build --platform linux/amd64 \
-  -f /path/to/Piik/deploy/container/Dockerfile \
-  -t piik:<full-revision> /path/to/extracted-runtime
-docker run --rm --env-file /path/to/piik.env \
-  piik:<full-revision> --check-config
-```
+The [runtime Dockerfile](../../deploy/container/Dockerfile) wraps the verified
+Server archive, including its Web UI, license notices and `REVISION`.
+Its pinned [Distroless non-root base](https://github.com/GoogleContainerTools/distroless)
+includes CA certificates and has no shell or package manager. The
+[release workflow](../reference/versioning.md#container-distribution) owns
+building, checking and publishing the image.
 
 Use the existing [production configuration](../reference/configuration.md).
 Keep `LISTEN_HOST=0.0.0.0` inside the container and retain the host's existing
@@ -54,20 +48,12 @@ reachable server IPv4 address when SFU is enabled; container-private candidates
 are not Internet-reachable. Advertised STUN names must resolve to the server's
 public address, and UDP must reach the container directly.
 
-The following example publishes the standard listeners and keeps HTTP private
-to a proxy running on the same host. Omit UDP publish options for disabled SFU
-or auxiliary STUN listeners; use the matching port if configuration changes it.
-
-```sh
-docker run -d --name piik --restart unless-stopped --stop-timeout 20 \
-  --read-only --cap-drop ALL --security-opt no-new-privileges \
-  --env-file /path/to/piik.env \
-  --mount type=volume,source=piik-data,target=/home/nonroot \
-  -e ROOM_DATABASE_PATH=/home/nonroot/rooms.sqlite \
-  -p 127.0.0.1:8787:8787/tcp \
-  -p 3478:3478/udp -p 3479:3479/udp -p 3480:3480/udp -p 7882:7882/udp \
-  piik:<full-revision>
-```
+The [Compose file](../../deploy/container/compose.yaml) keeps HTTP on host
+loopback, publishes the standard UDP ports and enables automatic restart.
+Publishing a port does not enable its service; `.env` controls optional listeners.
+Edit both the application setting and port mapping if changing a listener port.
+Run a host proxy, or adapt the proxy's container networking deliberately: its
+own `127.0.0.1` does not reach Piik in another container.
 
 The image's `/home/nonroot` is owned by UID/GID `65532:65532` with mode `0700`.
 A new named volume inherits that directory; an existing volume or bind mount
@@ -75,16 +61,29 @@ must already be writable by that identity. Keep this volume when replacing the
 container. Set `ROOM_DATABASE_PATH=:memory:` for memory-only room authority. Diagnostics
 remain opt-in and use `/home/nonroot/logs`; [export and retention](../reference/configuration.md#diagnostics)
 remain the operator's responsibility. Do not mount application files writable.
-With diagnostics enabled, `docker kill --signal=USR1 piik` requests a local
+With diagnostics enabled, `docker compose kill --signal=SIGUSR1 piik` requests a local
 export without stopping the container; the ZIP remains in the mounted log directory.
 
 Check `/healthz` from the host and public proxy, then verify configured STUN/SFU
 UDP and room/media behavior using [operational verification](#operational-verification).
 There is no shell-based healthcheck in the image. Retain the previous image,
-environment and volume backup before replacement. Stop the old container before
-reusing its listeners or SQLite volume, and recreate with the previous image and
-environment if verification fails. The bare-metal `release-app.sh` wrapper does
-not manage containers. This recipe changes no proxy or firewall itself.
+environment and volume backup before replacement. From the deployment directory:
+
+```sh
+docker compose pull
+docker compose stop
+docker compose cp piik:/home/nonroot ./piik-data-backup
+docker compose up -d
+docker compose logs --tail=50 piik
+```
+
+Use a new backup directory each time. Stop Piik before copying SQLite so its
+database and journal are consistent. Preserve `.env` separately and protect both
+backups as room credentials. Keep the same Compose project/directory so the named
+volume is reused; `docker compose down --volumes` deletes that data. To roll back,
+restore the previous image setting and compatible configuration, then recreate
+the service. Read release notes before crossing a storage-format boundary.
+The bare-metal `release-app.sh` wrapper does not manage containers.
 
 ## Operational Verification
 
