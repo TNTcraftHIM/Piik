@@ -21,7 +21,7 @@ for(const [index,kind] of HERO_KINDS.entries()) {
 }
 const initial = Object.assign({},...HERO_KINDS.map(kind=>heroFrame(kind,0)));
 const base = Object.entries(initial).map(([id,style])=>`#${id}{${declaration(style)}}`).join('')+
-  HERO_KINDS.map((kind,i)=>`#activity-${kind}{opacity:${i===0?1:0}}`).join('');
+  HERO_KINDS.map((kind,i)=>`#activity-${kind},#hero-prop-${kind}{opacity:${i===0?1:0}}`).join('');
 const keyframes = [...tracks].map(([id,track])=>{
   const entries=[...track];
   // Keep both ends of a hold, but remove its repeated samples. Reset at the
@@ -36,10 +36,10 @@ const cuts = HERO_KINDS.map((kind,i)=>{
   const points=new Map([[0,0],[i*span,1],[(i+1)*span,0],[100,0]]);
   return `@keyframes activity-${kind}{${[...points].sort((a,b)=>a[0]-b[0]).map(([p,value])=>`${p}%{opacity:${value}}`).join('')}}`;
 }).join('');
-// The host keeps its controller while the screen cycles through activities.
-const animated = [...tracks.keys(),...HERO_KINDS.map(kind=>'activity-'+kind)];
+// Screen and held prop use the same cut, including the still-image pose.
+const animated = [...tracks.keys(),...HERO_KINDS.flatMap(kind=>['activity-'+kind,'hero-prop-'+kind])];
 const animation = [...tracks.keys()].map(id=>`#${id}{animation:${id} ${LOOP}s linear infinite}`).join('')+
-  HERO_KINDS.map(kind=>`#activity-${kind}{animation:activity-${kind} ${LOOP}s steps(1,end) infinite}`).join('');
+  HERO_KINDS.map(kind=>`#activity-${kind},#hero-prop-${kind}{animation:activity-${kind} ${LOOP}s steps(1,end) infinite}`).join('');
 const loopMarkup = `${heroMarkup()}<style>${base}
   @media(prefers-reduced-motion:no-preference){${animation}}
   ${animated.map(id=>`:root:target #${id}`).join(',')}{animation:none}

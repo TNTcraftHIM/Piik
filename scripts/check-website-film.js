@@ -382,7 +382,9 @@
       for (const animation of animations) { animation.pause(); animation.currentTime = (index+.5)*HERO_CUT*1000; }
       const shown = HERO_KINDS.filter(name=>win.getComputedStyle(doc.getElementById('activity-'+name)).opacity==='1');
       assert(shown.length===1 && shown[0]===kind, `The hero must show only ${kind}`);
-      assert(win.getComputedStyle(doc.getElementById('hero-gamepad')).opacity==='1' && doc.querySelectorAll('#hero-gamepad .game-hand').length===2, 'The original controller and floating hands must stay visible throughout the activity loop');
+      const held = HERO_KINDS.filter(name=>win.getComputedStyle(doc.getElementById('hero-prop-'+name)).opacity==='1');
+      assert(held.length===1 && held[0]===kind, 'The held prop must match the screen activity');
+      assert(doc.querySelectorAll('#hero-gamepad .game-hand').length===2, 'The game scene must retain its original controller and floating hands');
       for (const [id,style] of Object.entries(heroFrame(kind,.5))) {
         const actual = win.getComputedStyle(doc.getElementById(id));
         if (style.opacity !== undefined) assert(Math.abs(Number(actual.opacity)-Number(style.opacity))<.01, `Hero visibility differs: ${id}`);
@@ -396,11 +398,14 @@
       for(const animation of animations) animation.currentTime=time;
       const shown=HERO_KINDS.filter(kind=>win.getComputedStyle(doc.getElementById('activity-'+kind)).opacity==='1');
       assert(shown.length===1 && shown[0]===HERO_KINDS[(time/(HERO_CUT*1000))%HERO_KINDS.length], 'Hero cuts must not show a blank or overlapping frame');
+      const held=HERO_KINDS.filter(kind=>win.getComputedStyle(doc.getElementById('hero-prop-'+kind)).opacity==='1');
+      assert(held.length===1 && held[0]===shown[0], 'The prop and screen must cut together at the loop boundary');
     }
     win.location.hash='still';
     await settle();
     assert(doc.getAnimations().length===0, 'The still image must stop every decorative animation');
     assert(win.getComputedStyle(doc.getElementById('activity-rpg')).opacity==='1', 'The still image must retain a useful game scene');
+    assert(win.getComputedStyle(doc.getElementById('hero-prop-rpg')).opacity==='1', 'The still image must retain its gamepad');
   } finally { hero.remove(); }
 
   // Use the real audio element and server: a muted-only check misses broken

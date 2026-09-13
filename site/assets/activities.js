@@ -131,7 +131,14 @@ export function heroFrame(kind, progress) {
   if (kind === 'drawing') return {
     'hero-paper': {transform:`translate(0px,${6*Math.sin(progress*Math.PI*2)}px)`},
     'hero-pencil': {transform:`translate(${1160+18*Math.sin(progress*Math.PI*2)}px,${660+10*Math.cos(progress*Math.PI*2)}px) rotate(${28+3*Math.sin(progress*Math.PI*2)}deg)`},
+    'hero-brush': {transform:`translate(${26+3*Math.sin(progress*Math.PI*2)}px,${27+2*Math.cos(progress*Math.PI*2)}px) rotate(${18+8*Math.sin(progress*Math.PI*2)}deg)`},
   };
-  if (kind === 'photos') return {'hero-photos':{transform:`translate(800px,450px) scale(${.97+progress*.045}) translate(-800px,-450px)`}};
-  return {'hero-answer':{transform:movieAnswerPose(progress)}};
+  if (kind === 'photos') return {
+    'hero-photos':{transform:`translate(800px,450px) scale(${.97+progress*.045}) translate(-800px,-450px)`},
+    'hero-camera':{transform:`translate(0px,${26-40*Math.sin(Math.PI*progress)**4}px) rotate(${-4+4*Math.sin(Math.PI*progress)**4}deg)`},
+  };
+  return {
+    'hero-answer':{transform:movieAnswerPose(progress)},
+    'hero-remote':{transform:`translate(20px,${34-3*Math.sin(Math.PI*progress)**4}px) rotate(${20-8*Math.sin(Math.PI*progress)**4}deg)`},
+  };
 }

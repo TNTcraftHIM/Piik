@@ -22,7 +22,7 @@ watch in their browsers.
 <details open>
 <summary>A little room · Show / hide animation</summary>
 
-<p align="center"><img src="./site/assets/living-room.svg" width="720" height="472" alt="A host with a small gold crown shares an RPG, a drawing, photos and an animated film while friends watch from the sofa."></p>
+<p align="center"><img src="./site/assets/living-room.svg" width="720" height="472" alt="A host with a gold crown switches between a gamepad, paintbrush, camera and remote as friends watch games, drawings, photos and a film."></p>
 
 </details>
 

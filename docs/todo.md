@@ -85,16 +85,13 @@ Host is paused. No preservation policy has been accepted for that transition.
 8. **Community translations.** Prepare the existing locale catalogs for
    community contributions when scheduled. No new translation framework is
    needed for the current Chinese, English and optional pure-visual modes.
-9. **Website illustration polish.** Match the Host's held prop to the four
-   existing hero activities: gamepad, paintbrush, camera and remote. Keep the
-   accepted bright cast, floating hands and shared activity timing.
-10. **First-share startup quality.** Verify that the existing five-frame startup
+9. **First-share startup quality.** Verify that the existing five-frame startup
     protection for `motion + balanced` still takes effect on every active sender
     and shared-encoding path. Compare with the documented
     [startup regression](./research/realtime-quality-adaptation.md) and check
     whether later audits or refactors bypassed a necessary guard. Do not remove
     the workaround without evidence that first-share quality remains correct.
-11. **32-bit App packages.** Deferred until suitable native capture dependencies
+10. **32-bit App packages.** Deferred until suitable native capture dependencies
     are available. Windows x86 core compilation alone does not establish App
     support: the pinned capture SDK currently has no Windows x86 package.
     Complete native packaging and real launch/capture acceptance before

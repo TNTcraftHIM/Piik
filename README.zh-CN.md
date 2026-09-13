@@ -21,7 +21,7 @@ Piik 是一个免费开源的屏幕共享工具，适合游戏围观、一起看
 <details open>
 <summary>客厅小剧场 · 展开 / 收起动画</summary>
 
-<p align="center"><img src="./site/assets/living-room.svg" width="720" height="472" alt="戴着小金冠的房主分享 RPG 游戏、绘画、照片和动画电影，朋友们坐在沙发上观看。"></p>
+<p align="center"><img src="./site/assets/living-room.svg" width="720" height="472" alt="戴着小金冠的房主换上手柄、画笔、相机和遥控器，朋友们坐在沙发上一起看游戏、画作、照片和电影。"></p>
 
 </details>
 
