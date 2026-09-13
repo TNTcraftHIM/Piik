@@ -250,6 +250,7 @@ jobs:
       # Local descriptors/manifests/checksums are validated before publishing.
       # Release assets contain packages only; checksums appear in the release body.
       - name: Publish packages with release notes and checksums
+        id: github_release
         run: >-
           node scripts/publish-release.mjs
           "$RUNNER_TEMP/publish-release" "$PIIK_RELEASE_VERSION" "$GITHUB_SHA"
@@ -264,6 +265,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PIIK_RELEASE_VERSION: ${{ needs.validate.outputs.version }}
       - name: Mirror verified release to Gitee
+        if: ${{ !cancelled() && steps.github_release.outcome == 'success' }}
         run: >-
           node scripts/mirror-release.mjs
           "$RUNNER_TEMP/publish-release" "$PIIK_RELEASE_VERSION" "$GITHUB_SHA"
