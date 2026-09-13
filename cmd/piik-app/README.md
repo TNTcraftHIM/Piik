@@ -123,9 +123,9 @@ and the [verified policy mechanism and field case](../../docs/research/native-cl
 
 Start the packaged executable with `--debug`, reproduce the problem, then press
 `D` in the interactive terminal to export a local ZIP. This does not stop the
-share or upload the archive. Browser diagnostics are separate: open the page with
-`?debug=1` and use its header download button. For cooperation failures, include
-both reports from the same reproduction. The
+share or upload the archive. For Browser diagnostics, click **Debug** beside the
+language controls, confirm the reload, then use **Debug report** to download.
+For cooperation failures, include both reports from the same reproduction. The
 [diagnostic reference](../../docs/reference/configuration.md#diagnostics) owns
 log locations, export commands, retention and privacy boundaries.
 
@@ -200,7 +200,7 @@ Supported targets are `windows-amd64`, `linux-amd64`, and `darwin-arm64`.
 Use the matching target name in the command above. Darwin assembly requires a
 native macOS runner with its SDK and enables cgo; Windows and Linux assembly keep
 cgo disabled.
-The result is a `tar.gz` bundle and SHA-256 file. Manual sidecar assembly,
+The result is a ZIP bundle and SHA-256 file. Manual sidecar assembly,
 explicit CI packaging, Release publication and updates are documented in
 [deployment](../../docs/deployment.md); creating a candidate does not publish it.
 
