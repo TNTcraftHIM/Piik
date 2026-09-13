@@ -55,7 +55,7 @@ This is bounded single-machine Windows evidence. The local Server executables
 were built for Windows from the matching source; this run did not execute the
 Linux release archives. Process replacement used a forced stop on Windows and
 does not promise uninterrupted media. It does not cover game/audio endurance,
-storage faults, the wider device/network matrix or Go race detection.
+storage faults or the wider device/network matrix.
 
 The first public release passed real Server/three-platform App packaging and
 GitHub/Gitee publication, including anonymous mirror checksum verification.

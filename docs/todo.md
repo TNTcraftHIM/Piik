@@ -7,15 +7,11 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **NAT-PMP maintenance acceptance.** The scoped dependency repairs handle
-  assigned ports, real deletion and cancellation, retaining PCPv6 composition.
-  Complete owner acceptance and release preparation for the next approved
-  version. Physical router coverage remains part of the
+- [ ] **NAT-PMP and Docker release acceptance.** Confirm the next version and
+  complete Chinese/English release notes, then publish the matching App/Server
+  packages and verified container. Set the first GHCR package public and verify
+  anonymous version/latest pulls. Physical router coverage remains part of the
   [network evidence boundary](./verification-status.md#candidate-evidence-boundary).
-- [ ] **Ready-to-run Docker distribution.** Build and check a maintained image
-  from the existing Server release, with a short Compose/HTTPS/volume recipe.
-  Publish it with the next approved product release using the same version and
-  source identity. Verify anonymous pulls after the first GHCR publication.
 - [ ] **Post-launch monitoring.** Collect App/Server feedback and verify the
   public download path and deployed services after product releases. Follow the
   [deployment runbook](./deployment.md) for the private service and keep public
