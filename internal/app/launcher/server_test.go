@@ -11,6 +11,8 @@ import (
 	"testing"
 	"testing/fstest"
 	"time"
+
+	"github.com/TNTcraftHIM/Piik/internal/app/lan"
 )
 
 // appAssets stands in for the embedded Vite build the App ships.
@@ -107,6 +109,76 @@ func TestLauncherIncludesTheInjectedBuildVersionAndRevision(t *testing.T) {
 	}
 }
 
+func TestLauncherLANChoicesUseCurrentAddressesAndTheExplicitPreference(t *testing.T) {
+	for _, test := range []struct {
+		name, preferred, selected string
+		addresses                 []lan.Address
+	}{
+		{name: "one", selected: "192.168.1.4", addresses: []lan.Address{{Address: "192.168.1.4", Name: "Wi-Fi"}}},
+		{name: "one-private", selected: "192.168.1.4", addresses: []lan.Address{{Address: "192.168.1.4", Name: "Wi-Fi"}, {Address: "198.18.0.1", Name: "Tunnel"}}},
+		{name: "ambiguous", addresses: []lan.Address{{Address: "10.0.0.2", Name: "Ethernet"}, {Address: "192.168.1.4", Name: "Wi-Fi"}}},
+		{name: "cli-preferred", preferred: "192.168.1.4", selected: "192.168.1.4", addresses: []lan.Address{{Address: "10.0.0.2", Name: "Ethernet"}, {Address: "192.168.1.4", Name: "Wi-Fi"}}},
+		{name: "stale-preference", preferred: "192.168.1.4", addresses: []lan.Address{{Address: "10.0.0.2", Name: "Ethernet"}}},
+		{name: "unavailable"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			original := listLANAddresses
+			t.Cleanup(func() { listLANAddresses = original })
+			listLANAddresses = func() ([]lan.Address, error) {
+				if test.addresses == nil {
+					return nil, errors.New("interfaces are unavailable")
+				}
+				return test.addresses, nil
+			}
+			server, err := Start(t.Context(), appAssets(), Options{Site: "https://share.example", LANAddress: test.preferred})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = server.Close() })
+			response, err := http.Get(strings.TrimSuffix(server.URL(), "/client") + "/api/client-launcher")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer response.Body.Close()
+			var state struct {
+				DefaultMode Mode
+				LAN         *struct {
+					Addresses []lan.Address
+					Selected  string
+				}
+			}
+			if err := json.NewDecoder(response.Body).Decode(&state); err != nil || response.StatusCode != http.StatusOK ||
+				state.DefaultMode != ModeSite || state.LAN == nil || state.LAN.Addresses == nil ||
+				state.LAN.Selected != test.selected || len(state.LAN.Addresses) != len(test.addresses) {
+				t.Fatalf("LAN choices = %+v, status %d, %v", state, response.StatusCode, err)
+			}
+			for index, address := range state.LAN.Addresses {
+				if address != test.addresses[index] {
+					t.Fatalf("LAN interface label lost: %+v", address)
+				}
+			}
+		})
+	}
+}
+
+func TestLauncherPassesTheChosenLANAddressToTheApp(t *testing.T) {
+	server := startFixture(t, "")
+	server.SetResult("http://localhost:8787/#piik-client=1", nil)
+	response, err := http.Post(strings.TrimSuffix(server.URL(), "/client")+"/api/client-launcher/launch",
+		"application/json", strings.NewReader(`{"mode":"local","language":"en","lanAddress":"192.168.1.4"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("selection status = %d", response.StatusCode)
+	}
+	selection := <-server.Selection()
+	if selection.LANAddress == nil || *selection.LANAddress != "192.168.1.4" {
+		t.Fatalf("selected invitation address was lost: %+v", selection)
+	}
+}
+
 func TestLauncherPreservesAnOptionalLocalPassword(t *testing.T) {
 	for _, password := range []string{"", "x", "中文", " ", "  中文 +&  ", strings.Repeat("x", 256)} {
 		t.Run(password, func(t *testing.T) {
@@ -164,17 +236,17 @@ func TestLauncherPreservesAnOptionalLocalPassword(t *testing.T) {
 }
 
 func TestLauncherRejectsAnInvalidSavedSite(t *testing.T) {
-	if _, err := Start(t.Context(), appAssets(), "https://example.test/path", "development", "", "", false); err == nil {
+	if _, err := Start(t.Context(), appAssets(), Options{Site: "https://example.test/path", Version: "development"}); err == nil {
 		t.Fatal("launcher accepted a Site path")
 	}
 }
 
 // A binary built without the Browser build has nothing to launch.
 func TestLauncherRequiresTheEmbeddedBrowserBuild(t *testing.T) {
-	if _, err := Start(t.Context(), nil, "", "development", "", "", false); err == nil {
+	if _, err := Start(t.Context(), nil, Options{Version: "development"}); err == nil {
 		t.Fatal("launcher started without embedded assets")
 	}
-	if _, err := Start(t.Context(), fstest.MapFS{}, "", "development", "", "", false); err == nil {
+	if _, err := Start(t.Context(), fstest.MapFS{}, Options{Version: "development"}); err == nil {
 		t.Fatal("launcher started without an index document")
 	}
 }
@@ -189,6 +261,12 @@ func TestLauncherRejectsInvalidSelections(t *testing.T) {
 		"unknown-field":    `{"mode":"local","language":"en","extra":true}`,
 		"password-type":    `{"mode":"local","language":"en","localAccessPassword":123}`,
 		"debug-type":       `{"mode":"local","language":"en","debug":"true"}`,
+		"lan-type":         `{"mode":"local","language":"en","lanAddress":123}`,
+		"lan-invalid":      `{"mode":"local","language":"en","lanAddress":"bad-address"}`,
+		"lan-ipv6":         `{"mode":"local","language":"en","lanAddress":"::1"}`,
+		"link-lan":         `{"mode":"link","language":"en","lanAddress":"192.168.1.4"}`,
+		"link-lan-empty":   `{"mode":"link","language":"en","lanAddress":""}`,
+		"site-lan":         `{"mode":"site","language":"en","site":"https://share.example","lanAddress":"192.168.1.4"}`,
 		"missing-language": `{"mode":"local"}`,
 		"unknown-language": `{"mode":"local","language":"other"}`,
 	} {
@@ -216,7 +294,7 @@ func TestLauncherRejectsInvalidSelections(t *testing.T) {
 }
 
 func TestLauncherReportsSafeBoundedFailureDetails(t *testing.T) {
-	server, err := Start(t.Context(), appAssets(), "", "development", "", "", true)
+	server, err := Start(t.Context(), appAssets(), Options{Version: "development", Debug: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -305,7 +383,7 @@ func startFixtureWithBuildAndPassword(
 	site, version, revision, password string,
 ) *Server {
 	t.Helper()
-	server, err := Start(t.Context(), appAssets(), site, version, revision, password, false)
+	server, err := Start(t.Context(), appAssets(), Options{Site: site, Version: version, Revision: revision, LocalAccessPassword: password})
 	if err != nil {
 		t.Fatal(err)
 	}

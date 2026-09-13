@@ -25,6 +25,10 @@ const launcherStateSchema = z.object({
   version: z.string().default("development"),
   packageTarget: z.string().optional(),
   debug: z.boolean().optional(),
+  lan: z.object({
+    addresses: z.array(z.object({ address: z.string(), name: z.string() })),
+    selected: z.string(),
+  }).optional(),
 });
 const launcherResultSchema = z.object({ target: z.string().url() }).strict();
 const launcherErrorSchema = z.object({ detail: z.string() });
@@ -39,6 +43,7 @@ export function AppLauncherPage() {
   const [error, setError] = useState<{ kind: "load" | "launch"; detail?: string } | null>(null);
   const [appDebug, setAppDebug] = useState<boolean | undefined>();
   const [debug, setDebug] = useState(false);
+  const [lan, setLan] = useState<z.infer<typeof launcherStateSchema>["lan"]>();
   const [update, setUpdate] = useState<ReleaseUpdateNotice | null>(null);
 
   useEffect(() => {
@@ -55,6 +60,7 @@ export function AppLauncherPage() {
         setLocalAccessPassword(state.localAccessPassword);
         setAppDebug(state.debug);
         setDebug(state.debug === true || browserDebugEnabled);
+        setLan(state.lan);
         setLoading(false);
         void checkReleaseUpdate({
           version: state.version,
@@ -77,7 +83,8 @@ export function AppLauncherPage() {
 
   async function launch(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    if (starting || (mode === "site" && !site.trim())) return;
+    if (starting || (mode === "site" && !site.trim()) ||
+      (mode === "local" && lan !== undefined && !lan.selected)) return;
     setStarting(true);
     setError(null);
     const presentation = { lang, vis, theme: currentThemePreference() };
@@ -89,6 +96,7 @@ export function AppLauncherPage() {
           mode,
           language: consoleLanguage(lang, vis),
           ...(appDebug !== undefined && debug ? { debug: true } : {}),
+          ...(mode === "local" && lan ? { lanAddress: lan.selected } : {}),
           ...(mode === "site" ? { site } : { localAccessPassword }),
         }),
       });
@@ -179,6 +187,7 @@ export function AppLauncherPage() {
             onModeChange={setMode}
             onSiteChange={setSite}
             onLocalAccessPasswordChange={setLocalAccessPassword}
+            lan={lan && { ...lan, onChange: (selected) => setLan({ ...lan, selected }) }}
             onSubmit={launch}
           >
             {updateLink &&

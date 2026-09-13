@@ -17,6 +17,7 @@ import (
 	"time"
 
 	appconfig "github.com/TNTcraftHIM/Piik/internal/app/config"
+	"github.com/TNTcraftHIM/Piik/internal/app/lan"
 	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
 	serverconfig "github.com/TNTcraftHIM/Piik/internal/server/config"
 )
@@ -84,6 +85,23 @@ func TestOccupiedPortRejectsLinkBeforeStartingATunnel(t *testing.T) {
 	var bindError *net.OpError
 	if !errors.As(err, &bindError) || bindError.Op != "listen" {
 		t.Fatalf("occupied port must fail before tunnel work: %v", err)
+	}
+}
+
+func TestLocalLaunchRevalidatesTheChosenLANAddress(t *testing.T) {
+	addresses, err := lan.Addresses()
+	if err != nil {
+		t.Skipf("test requires an active LAN address: %v", err)
+	}
+	const inactive = "192.0.2.254"
+	if slices.Contains(addresses, inactive) {
+		t.Skip("documentation address is configured on this test machine")
+	}
+	err = runLocal(t.Context(), Options{
+		Local: true, LANAddress: inactive, console: &console{machine: true},
+	}, appconfig.Config{}, nil)
+	if err == nil || !strings.Contains(err.Error(), "selected LAN address is not active") {
+		t.Fatalf("Local launch accepted an unavailable invitation address: %v", err)
 	}
 }
 

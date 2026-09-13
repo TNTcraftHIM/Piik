@@ -80,6 +80,13 @@ schema field. The user settings are:
 The launcher preselects a saved Site when present; otherwise it preselects the
 public invitation link. Selecting a mode does not start it: the user confirms
 with the launch button. Local mode remains available for the same network.
+For Local mode, the launcher selects a sole active address or sole private IPv4
+address automatically. With several choices it shows interface names and IPs;
+an ambiguous choice must be selected before launch. `--lan-address` preselects
+an active address. Selection applies to this launch and is revalidated at startup.
+It sets the local invitation origin; HTTP still listens on the existing wildcard
+listener and ICE remains free to use available media interfaces. Public Link and
+Site mode require no local address selection.
 
 Command-line options select entry and local runtime behavior:
 

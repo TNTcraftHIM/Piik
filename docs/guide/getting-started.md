@@ -86,7 +86,7 @@ See the [App guide](../../cmd/piik-app/README.md) for package and runtime detail
 
 | Mode | When to choose it | What to keep in mind |
 | --- | --- | --- |
-| **Local room** | Friends are on the same local network. | Your computer must be reachable from theirs. A local site passphrase is optional. |
+| **Local room** | Friends are on the same local network. | If several **Local invitation addresses** appear, choose the interface and IP on your friends' network. Your computer must be reachable from theirs. A local site passphrase is optional. |
 | **Public invite** | Friends are elsewhere and you want a temporary invitation. | Needs Internet access. The public address lasts for this App run. |
 | **Connect to Site** | Your group already has a Piik site. | Enter its address; the App adds capture capabilities to the site's sharing page. |
 

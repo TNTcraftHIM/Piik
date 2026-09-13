@@ -159,7 +159,8 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 			return
 		}
 		recorder.Context("configuration", map[string]any{"siteConfigured": config.Site != "", "local": selected.Local,
-			"link": selected.Link, "port": selected.Port, "localAccessProtected": config.LocalAccessPassword != ""})
+			"link": selected.Link, "port": selected.Port, "lanAddress": selected.LANAddress,
+			"localAccessProtected": config.LocalAccessPassword != ""})
 		recorder.Context("capture", nativeMedia.capture)
 		recorder.Binary("captureExecutable", nativeMedia.captureProcess)
 		slog.Debug("piik-client", "event", "native-capabilities",
@@ -226,11 +227,11 @@ func runLauncher(
 	launch, err := launcher.Start(
 		ctx,
 		webassets.FS(),
-		config.Site,
-		buildVersion(),
-		BuildRevision,
-		config.LocalAccessPassword,
-		options.Debug,
+		launcher.Options{
+			Site: config.Site, Version: buildVersion(), Revision: BuildRevision,
+			LocalAccessPassword: config.LocalAccessPassword,
+			Debug:               options.Debug, LANAddress: options.LANAddress,
+		},
 	)
 	if err != nil {
 		return err
@@ -270,6 +271,9 @@ func runLauncher(
 	options.Local = selection.Mode == launcher.ModeLocal
 	options.Link = selection.Mode == launcher.ModeLink
 	options.Debug = options.Debug || selection.Debug
+	if selection.LANAddress != nil {
+		options.LANAddress = *selection.LANAddress
+	}
 	if err = configureDiagnostics(&options, config); err != nil {
 		launch.SetResult("", err)
 		<-launch.Handled()
