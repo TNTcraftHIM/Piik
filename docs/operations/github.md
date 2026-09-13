@@ -74,13 +74,23 @@ Rerun the failed publishing job to verify existing files and upload only missing
 ones. GitHub's published release remains unchanged. Both publishers reject
 changing a published package; use a corrected new version if its bytes are wrong.
 
-If the original Actions artifacts have expired, download that release's files
-from GitHub into an external working directory, then run:
+For a local retry, use the original complete build output retained outside the
+checkout. While the publishing run's artifacts are available, download all four
+into one directory (replace `RUN_ID`, `FULL_SOURCE_SHA` and `VERSION`):
 
 ```sh
-gh release download v1.0.0 --repo TNTcraftHIM/Piik --dir /tmp/piik-mirror
-node scripts/mirror-release.mjs /tmp/piik-mirror v1.0.0 FULL_SOURCE_SHA
+for artifact in piik-server piik-app-windows-amd64 piik-app-linux-amd64 piik-app-darwin-arm64; do
+  gh run download RUN_ID --repo TNTcraftHIM/Piik \
+    --name "$artifact-FULL_SOURCE_SHA" --dir /tmp/piik-mirror
+done
+node scripts/mirror-release.mjs /tmp/piik-mirror VERSION FULL_SOURCE_SHA
 ```
+
+Use a fresh directory. Public Release downloads contain only runtime archives;
+mirror verification also needs the original descriptors, manifest and checksum
+files. If CI artifacts have expired, recover that complete output from the
+operator's retained copy. Rebuilding a published version is not a metadata
+recovery procedure. See [artifact retention](../deployment.md#build-host).
 
 Use the release's actual version and full `target_commitish` SHA, with
 `GITEE_TOKEN` supplied through the publisher environment. `--dry-run` after the

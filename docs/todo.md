@@ -7,21 +7,11 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **NAT-PMP dependency correctness.** Integrate an upstream fix or maintained
-  dependency revision that uses the gateway-assigned external port and sends
-  an actual deletion request. Preserve the existing PCPv6 combination and bounded
-  mapping lifecycle. The current optional path can advertise the requested port
-  when a router assigned another; ordinary ICE remains available. See the
-  [dependency boundary](./research/nat-traversal.md#gateway-and-survey-limits).
-- [ ] **Maintenance candidate acceptance.** Review Windows App and Browser
-  startup, password retry and Native signaling recovery in one candidate.
-  Verify first-share and source-switch quality with a real game and H.264;
-  test public-link startup and the Local invitation-address picker on a machine
-  with several LAN addresses. Review diagnostic startup, actionable
-  launch failures and native mobile fullscreen. Run physical capture/network
-  workloads serially from stable build paths. Verify Native IPv6 across networks
-  with usable IPv6 connectivity; local dual-stack checks do not establish that
-  field result. Approve the version and bilingual release notes before publishing.
+- [ ] **Maintenance release.** Finish candidate packaging and release checks,
+  confirm the version and bilingual release notes, then integrate and publish
+  the accepted phase. Keep the remaining physical device/network checks in
+  [verification status](./verification-status.md#remaining-device-and-network-acceptance);
+  source review and local probes do not establish those field results.
 - [ ] **Post-launch monitoring.** Collect App/Server feedback and verify the
   public download path and deployed services after product releases. Follow the
   [deployment runbook](./deployment.md) for the private service and keep public
@@ -32,6 +22,14 @@ Keep fixes on a maintenance branch until acceptance. The public release is the
 compatibility baseline; private service deployment stays independent.
 
 ## Next: P2P Connection And Feedback Evidence
+
+**Next release: NAT-PMP dependency correctness.** Integrate an upstream fix or
+maintained dependency revision that uses the gateway-assigned external port,
+sends an actual deletion request and honors cancellation/deadlines. Preserve
+the existing PCPv6 combination and bounded mapping lifecycle. The current
+optional path can advertise a requested port that the router reassigned;
+ordinary ICE remains available. Keep this out of the current release. See the
+[dependency boundary](./research/nat-traversal.md#gateway-and-survey-limits).
 
 After the current phase, measure connection success, time to first picture and
 failure causes on representative networks, especially App and P2P-only sites.
@@ -105,7 +103,10 @@ Host is paused. No preservation policy has been accepted for that transition.
 8. **Additional languages.** Review community catalogs and their rendered UI
    following the [translation guide](./guide/translating.md). Add website,
    documentation or App console translations as contributed; verify text
-   direction and layout when a language requires it.
+   direction and layout when a language requires it. Before registering the
+   first extra UI language, fix the overflow menu's placement near the viewport
+   bottom: it currently permits zero content height. Check native popover
+   expanded/collapsed accessibility state with the rendered menu.
 9. **32-bit App packages.** Deferred until suitable native capture dependencies
     are available. Windows x86 core compilation alone does not establish App
     support: the pinned capture SDK currently has no Windows x86 package.

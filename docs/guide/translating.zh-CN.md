@@ -36,7 +36,7 @@ Piik 目前提供简体中文和英文。欢迎改进按钮措辞、校对教程
 | 随机欢迎语、浏览器标签页的轮换标题 | 同一语言文件中的 `welcome.*` 及文件末尾的标题词库 |
 | 官网 | [页面正文](../../site/index.html)和[交互文案](../../site/main.js)，按 `en`、`zh-CN` 成对组织 |
 | 宣传短片 | [短片源码说明](../../site/film/README.md)，字幕、插画和播放控件有各自的中英文内容 |
-| App 黑窗口 | [console.go](../../internal/app/console.go) 中的 `consoleCopy`，每项按英文、中文排列 |
+| App 黑窗口 | [console.go](../../internal/app/console.go) 中的 `consoleCopy`，每项按英文、中文、纯视觉排列；第三项即使为空也需保留 |
 | README 与入门教程 | [README](../../README.md)、[使用指南](./getting-started.md)、[部署指南](../operations/self-hosting.md)，均有对应的 `.zh-CN.md` 文件 |
 
 App 与 Server 使用同一套网页操作界面。请修改源码，构建目录和发布包由工具生成。
@@ -119,6 +119,7 @@ npm test -- tests/copy.test.ts
 
 按源码指南启动本地界面与服务端，通过右上角控件选择语言，进入被修改的页面。
 结合长昵称、数量等实际内容，检查窄窗口、键盘焦点、tooltip 和无障碍标签。
+登记额外语言后，检查下拉菜单在视口边缘仍可操作，并能向辅助技术提供展开与收起状态。
 新增语言还应检查刷新、App 启动、切回英文及纯视觉模式。
 按完整语义断句，避免用空格或强制换行去适配单一桌面尺寸。
 

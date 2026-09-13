@@ -44,7 +44,7 @@ suggestion does not require a development environment.
 | Welcome lines and changing browser-tab titles | `welcome.*` messages and the title-frame catalog at the end of those same files |
 | Website | [Page markup](../../site/index.html) and [interactive labels](../../site/main.js); text is paired by `en` and `zh-CN` |
 | Introduction film | [Film sources](../../site/film/README.md); captions, artwork and playback labels have their own bilingual text |
-| App console window | `consoleCopy` in [console.go](../../internal/app/console.go); entries are ordered English, Chinese |
+| App console window | `consoleCopy` in [console.go](../../internal/app/console.go); entries are ordered English, Chinese, visual; retain the third slot even when empty |
 | README and entry guides | [README pair](../../README.md), [getting started](./getting-started.md) and [self-hosting](../operations/self-hosting.md), each with a `.zh-CN.md` counterpart |
 
 The App and Server serve the same web UI. Edit source files; build output and
@@ -146,6 +146,8 @@ Tests do not judge translation quality.
 Run the local UI and server as described in the source guide. Choose the language
 from the top-right controls, open the affected screen and inspect long names or counts
 in context. Check narrow windows, keyboard focus, tooltips and accessible labels.
+With extra languages registered, verify that the dropdown stays usable near
+viewport edges and exposes its expanded/collapsed state to assistive technology.
 For new languages, also check a reload, App launch, switching back to English,
 and the optional visual mode. Keep meaningful phrases together instead of adding
 spaces or hard line breaks to force one desktop layout.

@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-09-12
+Last updated: 2026-09-13
 
 This file owns physical evidence limits that change how the product may be
 described. [Status](./status.md) owns the execution/deployment index.
@@ -68,6 +68,8 @@ The following are broader coverage and endurance tasks, not automatically new
 implementation mechanisms:
 
 - heterogeneous public-network P2P and multi-hop Browser/Native/SFU-fed relays;
+- Native IPv6 direct connections across separate networks with usable IPv6;
+  local dual-stack checks establish socket and candidate behavior only;
 - Host/Viewer TUN/VPN combinations, migration and all-UDP-blocked bounded failure;
 - two-room public SFU load, real-game audio/video synchronization and sustained
   packet loss/recovery;

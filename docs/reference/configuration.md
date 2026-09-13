@@ -120,6 +120,8 @@ App **Debug launch** enables App and Browser collection for that run before
 starting the selected mode. It records Native capability results and subsequent
 capture, connection and local-server activity. Use `--debug` for failures before
 the mode selector opens. This choice does not change the saved App configuration.
+When bypassing the mode selector, `--debug` and `PIIK_DEBUG=client` enable backend
+collection; enable the Browser control separately for browser-side diagnosis.
 
 The Browser entry reloads the current page so collection includes connection
 startup. The opt-in follows App launch and room entry. Enabling it keeps the
@@ -185,12 +187,14 @@ or C++ memory dumps. A failed optional collector leaves useful files available;
 failure still reports an export failure. Rotation and preexisting history are
 identified; retained logs do not claim a complete session history.
 
+Exported ZIPs remain until the user moves or deletes them; rotation manages only
+the current logs. Repeated exports and Debug-mode error exits accumulate archives,
+so manage that directory's disk usage separately.
+
 Browser retains up to 8,192 events and 8 MiB of compact event data in the current
 page. Reports identify retained sequence/time ranges, evicted/truncated events
 and collector failures. Field/record limits are explicit in the report.
 Browser reload/close loses that in-page history; export before closing it.
-Go ZIP exports remain until the user/operator removes them; rotation only
-manages the current logs.
 
 Credentials, authorization/cookies, invitation secrets, ICE passwords/fragments
 and private keys are filtered before persistence/export. Application media

@@ -130,8 +130,8 @@ and the [verified policy mechanism and field case](../../docs/research/native-cl
 Enable **Debug launch** in the mode selector before opening Piik, reproduce the
 problem, then press `D` in the interactive terminal to export a local ZIP.
 Use `--debug` for failures before the selector opens. Exporting does not stop
-the share or upload the archive. For Browser diagnostics, click **Debug** beside
-the language controls, confirm the reload, then use **Web report** to download.
+the share or upload the archive. For Browser diagnostics, click the **Debug**
+chip icon after the theme control, confirm the reload, then use **Web report** to download.
 For cooperation failures, include both reports from the same reproduction. The
 [diagnostic reference](../../docs/reference/configuration.md#diagnostics) owns
 log locations, export commands, retention and privacy boundaries.
