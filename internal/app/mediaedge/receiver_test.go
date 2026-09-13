@@ -281,7 +281,7 @@ func connectedReceiverForSources(
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	receiver := newReceiverWithAudio(t, audio != nil)
+	receiver := newReceiverWithAudio(t, audio != nil, "127.0.0.1:0")
 	t.Cleanup(func() { _ = receiver.Close() })
 	packets := make(chan *rtp.Packet, 4)
 	audioPackets := make(chan *rtp.Packet, 4)

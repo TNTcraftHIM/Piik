@@ -77,13 +77,15 @@ type Engine struct {
 func NewEngine(options EngineOptions) (*Engine, error) {
 	bindAddress := options.BindAddress
 	if bindAddress == "" {
-		bindAddress = "0.0.0.0:0"
+		bindAddress = ":0"
 	}
-	address, err := net.ResolveUDPAddr("udp4", bindAddress)
+	// Go keeps wildcard UDP on one dual-stack socket where supported.
+	// Concrete IPv4 bindings remain IPv4-only.
+	address, err := net.ResolveUDPAddr("udp", bindAddress)
 	if err != nil {
 		return nil, errors.New("native media UDP bind address is invalid")
 	}
-	connection, err := net.ListenUDP("udp4", address)
+	connection, err := net.ListenUDP("udp", address)
 	if err != nil {
 		return nil, errors.New("native media UDP socket is unavailable")
 	}

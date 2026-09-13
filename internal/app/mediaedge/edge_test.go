@@ -749,14 +749,14 @@ func connectEdgeToReceiver(
 }
 
 func newReceiver(t *testing.T) *webrtc.PeerConnection {
-	return newReceiverWithAudio(t, false)
+	return newReceiverWithAudio(t, false, "127.0.0.1:0")
 }
 
 func newAudioReceiver(t *testing.T) *webrtc.PeerConnection {
-	return newReceiverWithAudio(t, true)
+	return newReceiverWithAudio(t, true, "127.0.0.1:0")
 }
 
-func newReceiverWithAudio(t *testing.T, includeAudio bool) *webrtc.PeerConnection {
+func newReceiverWithAudio(t *testing.T, includeAudio bool, bindAddress string) *webrtc.PeerConnection {
 	t.Helper()
 	mediaEngine := &webrtc.MediaEngine{}
 	for _, codec := range []string{"h264", "vp8"} {
@@ -781,8 +781,11 @@ func newReceiverWithAudio(t *testing.T, includeAudio bool) *webrtc.PeerConnectio
 	}
 	settings := webrtc.SettingEngine{}
 	settings.SetIncludeLoopbackCandidate(true)
-	settings.SetNetworkTypes([]webrtc.NetworkType{webrtc.NetworkTypeUDP4})
-	udp, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.ParseIP("127.0.0.1")})
+	address, err := net.ResolveUDPAddr("udp", bindAddress)
+	if err != nil {
+		t.Fatal(err)
+	}
+	udp, err := net.ListenUDP("udp", address)
 	if err != nil {
 		t.Fatal(err)
 	}

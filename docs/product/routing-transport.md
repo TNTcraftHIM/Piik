@@ -37,7 +37,8 @@ share generation:
 - NAT traversal requires an exact three-destination STUN survey: a Site may use
   self-hosted 3478/3479/3480, Public Link uses its bounded public survey, and
   pure LAN supplies none. Its default-on Host switch augments Browser and Native
-  P2P edges; Native also uses its media socket and best-effort gateway mapping.
+  P2P edges. Native uses one media socket for IPv4 and, where available, IPv6
+  direct connections; its STUN survey and best-effort gateway mapping use IPv4.
   Availability and background direct acquisition share a bounded budget of
   three actual connection attempts per eligible parent/session opportunity.
   Retries use the same serial controller and normal operation deadlines;

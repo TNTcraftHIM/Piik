@@ -83,6 +83,12 @@ prediction produces candidates.
 
 ### Native Shared-Socket Preflight
 
+Native requests one dual-stack wildcard UDP socket through Go and Pion's existing
+UDP mux. IPv4 remains usable on IPv4-only systems, and explicit IPv4 bindings
+remain IPv4-only. Usable IPv6 interfaces can supply direct ICE candidates on the
+same port; IPv4 discovery, prediction and gateway mapping retain their current
+owners. IPv6 does not remove firewall restrictions or prove a reachable peer.
+
 On 2026-09-05, the unmodified Pion srflx gatherer contacted three public STUN
 destinations from three different temporary local ports, despite the media
 engine's ordinary UDP mux. This invalidated the prior assumption that Native
@@ -155,12 +161,11 @@ remained independent. The flagship deployment enables the bounded capability
 to continue attributable field observation without claiming a demonstrated
 reachability gain.
 
-After an SFU commit, the current route controller gives each deferred Peer
-parent one full direct-convergence attempt and then consumes that continuation.
-Further generations come from a new participant session, publication, or share,
-not a periodic retry loop. This bounds current field exposure. A fixed repeat
-budget remains unjustified until attributable runs show that fresh generations
-repeatedly recover a usable arithmetic shape.
+Background P2P acquisition behind SFU uses the same bounded opportunity budget
+as foreground acquisition under [ADR-0005](../adr/0005-automatic-hybrid-media-routing.md).
+Fresh connection attempts do not guarantee a new socket, mapping or predictable
+port sequence; field measurements must attribute the selected path to its actual
+connection generation.
 
 The Browser-only alternatives do not yet have an accepted implementation:
 
@@ -240,6 +245,8 @@ a new Peer route.
 - [coturn listener and auxiliary endpoint reference](https://github.com/coturn/coturn/blob/master/examples/etc/turnserver.conf)
 - [Cloudflare Realtime STUN service](https://developers.cloudflare.com/realtime/turn/)
 - [Pion Universal UDP mux](https://github.com/pion/ice/blob/main/udp_mux_universal.go)
+- [Pion dual-stack candidate enumeration](https://github.com/pion/ice/blob/v4.4.0/udp_mux.go)
+- [Go wildcard socket family selection](https://go.dev/src/net/ipsock_posix.go)
 - [WebRTC selected candidate stats](https://www.w3.org/TR/webrtc-stats/#dom-rtcicecandidatestats-foundation)
 - [Pinned go-nat NAT-PMP adapter](https://github.com/netbirdio/go-nat/blob/6b2c8c5c74e8331ed41811cfd2fdc4c3dd8c3ff0/natpmp.go)
 - [NAT-PMP client timeout and mapping calls](https://github.com/jackpal/go-nat-pmp/blob/v1.0.2/natpmp.go)

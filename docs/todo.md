@@ -13,8 +13,9 @@ history. A parked idea is not implementation authority.
   test public-link startup on a machine with several LAN addresses, while
   Local retains explicit LAN selection. Run physical capture/network workloads
   serially from stable build paths. Run Go race checks for gateway mapping when
-  a supported cgo environment is available. Approve the version and bilingual
-  release notes before publishing.
+  a supported cgo environment is available. Verify Native IPv6 across networks
+  with usable IPv6 connectivity; local dual-stack checks do not establish that
+  field result. Approve the version and bilingual release notes before publishing.
 - [ ] **Post-launch monitoring.** Collect App/Server feedback and verify the
   public download path and deployed services after product releases. Follow the
   [deployment runbook](./deployment.md) for the private service and keep public
