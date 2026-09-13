@@ -99,7 +99,7 @@ try {
   assert.ok(container.HostConfig.SecurityOpt.some((value) => value.startsWith("no-new-privileges")));
 
   // Recreate with optional services on the same persistent room volume.
-  writeFileSync(join(workspace, ".env"), `${sample}\nSFU_UDP_PORT=7882\nSFU_PUBLIC_IP=127.0.0.1\nNAT_PREDICTION_ENABLED=true\nPIIK_DEBUG=1\n`);
+  writeFileSync(join(workspace, ".env"), `${sample}\nSFU_UDP_PORT=7882\nSFU_PUBLIC_IP=127.0.0.1\nNAT_PREDICTION_ENABLED=true\nPIIK_DEBUG=server\n`);
   compose("up", "-d", "--force-recreate", "--pull", "never");
   await until(async () => assert.deepEqual(await (await request("/api/capabilities")).json(), { sfu: true, natPrediction: true }), "optional services");
   await request(`/api/rooms/${room.roomId}/access`, {
