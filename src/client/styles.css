@@ -979,6 +979,12 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
 .lr-btn .lr-cap { margin-left: 2px; font-size: 12.5px; font-weight: 600; }
 .lr-cap { font-size: 12.5px; font-weight: 600; color: inherit; white-space: nowrap; }
 
+/* Diagnostics stay quiet until explicitly enabled; keep the shared input feedback. */
+.lr-header-diagnostic { display: inline-flex; }
+.lr-header-diagnostic .lr-btn { min-width: 40px; width: 40px; height: 40px; padding: 0; box-shadow: none; }
+.lr-header-diagnostic .lr-btn:not(.is-on) { background: transparent; border-color: transparent; color: var(--muted); }
+.lr-header-diagnostic .lr-cap { display: none; }
+
 .lr-chip {
   display: inline-flex;
   align-items: center;

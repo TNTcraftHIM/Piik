@@ -77,7 +77,7 @@ export function HeaderControls({ diagnosticControl }: { diagnosticControl?: Reac
     debugExport === "failed" ? "debug.exportFailed" : "debug.exportHint");
   const debugButton = (
     <button
-      type="button" className="lr-btn" disabled={debugExport === "busy"}
+      type="button" className={`lr-btn${browserDebugEnabled ? " is-on" : ""}`} disabled={debugExport === "busy"}
       aria-label={debugTitle} aria-busy={debugExport === "busy" || undefined}
       onClick={(event) => {
         if (event.detail !== 0) event.currentTarget.blur();
@@ -104,14 +104,16 @@ export function HeaderControls({ diagnosticControl }: { diagnosticControl?: Reac
   );
   return (
     <span className="lr-top-right lr-header-controls">
-      {diagnosticControl === undefined ? <Tooltip kind={browserDebugEnabled ? "hint-debug-export" : "hint-details"}
-        text={vis ? undefined : debugTitle} place="below" align="end">
-        {debugButton}
-      </Tooltip> : diagnosticControl}
       <LanguageControl />
       <Tooltip kind={theme === "dark" ? "hint-theme-light" : "hint-theme-dark"} text={vis ? undefined : themeTitle} place="below" align="end">
         {themeButton}
       </Tooltip>
+      {diagnosticControl !== null && <span className="lr-header-diagnostic">
+        {diagnosticControl === undefined ? <Tooltip kind={browserDebugEnabled ? "hint-debug-export" : "hint-details"}
+          text={vis ? undefined : debugTitle} place="below" align="end">
+          {debugButton}
+        </Tooltip> : diagnosticControl}
+      </span>}
     </span>
   );
 }
