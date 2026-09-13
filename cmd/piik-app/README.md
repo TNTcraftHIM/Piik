@@ -86,6 +86,9 @@ follows the launcher and App-enabled pages.
 Press `o` to reopen the Browser, or `q` / Ctrl+C to end Local
 rooms and stop the local server and temporary public link. Plain-text output
 uses Ctrl+C. The App keeps running after a Site tab closes.
+When launched in its own Windows console, a startup or runtime error leaves the
+error visible until Enter is pressed. Normal shutdown, existing terminals and
+redirected or automated runs exit directly.
 
 For one-link Internet sharing, open the App launcher, choose **Public invite**,
 create a room in the opened Browser, and send its normal invitation link. The
