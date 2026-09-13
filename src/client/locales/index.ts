@@ -6,8 +6,8 @@ export type { CopyKey, TitleFrameKey } from "./zh";
 
 // One registration supplies the menu, browser-language matching and copy.
 export const locales = {
-  zh: { name: "简体中文", tag: "zh-CN", copy: zh, titleFrames: zhTitleFrames },
-  en: { name: "English", tag: "en", copy: en, titleFrames: enTitleFrames },
+  zh: { name: "简体中文", short: "中", tag: "zh-CN", copy: zh, titleFrames: zhTitleFrames },
+  en: { name: "English", short: "EN", tag: "en", copy: en, titleFrames: enTitleFrames },
 };
 export type Lang = keyof typeof locales;
 

@@ -103,7 +103,7 @@ describe("copy catalog", () => {
     const registry = await import("../src/client/locales");
     // Exercise registration without shipping an unreviewed translation.
     Object.assign(registry.locales, {
-      fr: { ...registry.locales.en, name: "Français", tag: "fr" },
+      fr: { ...registry.locales.en, name: "Français", short: "FR", tag: "fr" },
     });
     try {
       const stored = new Map<string, string>([["piik:ui-lang", "fr"]]);

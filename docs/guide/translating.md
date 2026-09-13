@@ -100,12 +100,17 @@ layout questions, so contributors can coordinate work and review.
    and add one registry entry. For example, **after translating** the two exports:
 
    ```ts
-   fr: { name: "Français", tag: "fr", copy: fr, titleFrames: frTitleFrames },
+   fr: { name: "Français", short: "FR", tag: "fr", copy: fr, titleFrames: frTitleFrames },
    ```
 
-   Use an ASCII locale filename/key, the language's own name in `name`, and a
-   matching language tag in `tag`. The registry supplies the fixed-width native
-   language menu, document language, saved selection and App launch handoff.
+   Use an ASCII locale filename/key, the language's own name in `name`, a compact
+   button label in `short`, and a matching language tag in `tag`. Keep the short
+   label recognizable in one to three characters, such as `中`, `EN` or `FR`;
+   distinguish regional/script variants when they coexist. The registry supplies
+   the language controls, document language, saved selection and App launch handoff.
+   Chinese, English and visual mode retain their direct buttons; additional
+   languages share one dropdown slot after visual mode. The selected extra
+   language's short label appears on that slot, with its full name in the menu.
    Initial selection matches a registered tag or key, then its base language;
    unregistered languages use English. A saved choice takes precedence.
 3. Check complete screens and the launch flow. New UI languages use English in
@@ -137,7 +142,7 @@ empty text and mismatched placeholders, plus language selection and handoff.
 Tests do not judge translation quality.
 
 Run the local UI and server as described in the source guide. Choose the language
-from the top-right menu, open the affected screen and inspect long names or counts
+from the top-right controls, open the affected screen and inspect long names or counts
 in context. Check narrow windows, keyboard focus, tooltips and accessible labels.
 For new languages, also check a reload, App launch, switching back to English,
 and the optional visual mode. Keep meaningful phrases together instead of adding
@@ -156,3 +161,5 @@ preservation; Piik's contribution steps above use its own repository workflow.
 - [OBS translation guide](https://github.com/obsproject/obs-studio/wiki/How-To-Contribute-Translations-For-OBS): proofread in the running application and understand technical terms.
 - [Godot translation guide](https://contributing.godotengine.org/en/latest/other/translations.html): locate source context and coordinate terminology.
 - [Weblate translation guidance](https://docs.weblate.org/en/latest/user/translating.html#translating-special-text-safely): handle placeholders and markup carefully.
+- [W3C language-tag guidance](https://www.w3.org/International/questions/qa-choosing-language-tags): use BCP 47 tags to identify languages and their variants.
+- [Unicode CLDR language names](https://cldr.unicode.org/translation/displaynames/languagelocale-names): reference names for menus. Browser `Intl.DisplayNames` can help look up native names. Piik's one-to-three-character button labels are editorial choices, not standardized CLDR language names; keep them in the registry with each reviewed translation.

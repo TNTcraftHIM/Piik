@@ -81,11 +81,15 @@ App 与 Server 使用同一套网页操作界面。请修改源码，构建目�
    例如，**完成这两个词库的翻译后**：
 
    ```ts
-   fr: { name: "Français", tag: "fr", copy: fr, titleFrames: frTitleFrames },
+   fr: { name: "Français", short: "FR", tag: "fr", copy: fr, titleFrames: frTitleFrames },
    ```
 
-   文件名和键名使用 ASCII 语言代码，`name` 填写该语言自己的名称，`tag` 填写对应语言标签。
-   此登记供固定宽度的原生语言菜单、页面语言、偏好保存及 App 启动跳转共用。
+   文件名和键名使用 ASCII 语言代码，`name` 填写该语言自己的名称，`short` 填写按钮简称，
+   `tag` 填写对应语言标签。简称采用一至三个易识别的字符，例如 `中`、`EN`、`FR`；
+   同时提供地区或文字变体时，简称也应能区分。
+   此登记供语言控件、页面语言、偏好保存及 App 启动跳转共用。
+   中文、英文和纯视觉保留直接切换按钮；有其他语言时，在纯视觉后增加一个共用的下拉入口。
+   选中额外语言后，该格显示它的简称，菜单内显示全名。
    首次使用先匹配已登记的标签或键名，再匹配基础语言；没有对应翻译时使用英文。
    用户保存的选择优先。
 3. 检查完整界面与启动流程。新增的界面语言在 App 黑窗口中暂用英文；
@@ -111,7 +115,7 @@ npm test -- tests/copy.test.ts
 类型检查能发现缺少的键名；文案测试会检查已登记词库的空文案、占位符不一致，
 以及语言选择和启动跳转。测试不能代替语言质量的校对。
 
-按源码指南启动本地界面与服务端，在右上角菜单选择语言，进入被修改的页面。
+按源码指南启动本地界面与服务端，通过右上角控件选择语言，进入被修改的页面。
 结合长昵称、数量等实际内容，检查窄窗口、键盘焦点、tooltip 和无障碍标签。
 新增语言还应检查刷新、App 启动、切回英文及纯视觉模式。
 按完整语义断句，避免用空格或强制换行去适配单一桌面尺寸。
@@ -128,3 +132,5 @@ Piik 的提交流程以本页和贡献指南为准。
 - [OBS 翻译指南](https://github.com/obsproject/obs-studio/wiki/How-To-Contribute-Translations-For-OBS)：在运行中的界面校对，理解技术术语。
 - [Godot 翻译指南](https://contributing.godotengine.org/en/latest/other/translations.html)：查找源码上下文，协作统一术语。
 - [Weblate 翻译说明](https://docs.weblate.org/en/latest/user/translating.html#translating-special-text-safely)：处理占位符与标记语法。
+- [W3C 语言标签指南](https://www.w3.org/International/questions/qa-choosing-language-tags)：用 BCP 47 标签区分语言及其变体。
+- [Unicode CLDR 语言名称](https://cldr.unicode.org/translation/displaynames/languagelocale-names)：菜单名称的参考来源，也可以用浏览器的 `Intl.DisplayNames` 查找语言本名。Piik 按钮上的一至三个字符由项目选定，不是 CLDR 规定的标准简称；随经过校对的译文一起维护在语言登记表中。
