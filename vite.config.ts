@@ -18,6 +18,8 @@ export default defineConfig({
     host: true,
     port: 8787,
     strictPort: true,
+    // Packaging and the embedded Go bundle are outputs, not live UI sources.
+    watch: { ignored: ["**/build/**", "**/internal/server/webassets/dist/**"] },
     proxy: {
       "/api": { target: server },
       "/healthz": { target: server },
