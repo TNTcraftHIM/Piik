@@ -103,7 +103,9 @@ try {
   compose("up", "-d", "--force-recreate", "--pull", "never");
   await until(async () => assert.deepEqual(await (await request("/api/capabilities")).json(), { sfu: true, natPrediction: true }), "optional services");
   await request(`/api/rooms/${room.roomId}/access`, {
-    headers: { Origin: "https://share.example.com", Authorization: `Bearer ${room.hostToken}` },
+    method: "POST",
+    headers: { Origin: "https://share.example.com", Authorization: `Bearer ${room.hostToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "set-code-entry-policy", policy: "private" }),
   });
   for (const port of [3478, 3479, 3480]) await binding(port);
   compose("kill", "--signal", "SIGUSR1", "piik");
