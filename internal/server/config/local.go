@@ -33,14 +33,23 @@ func Local(options LocalOptions) (Config, error) {
 	if port < 1 || port > maxPort {
 		return Config{}, fmt.Errorf("Local server port must be an integer between 1 and %d", maxPort)
 	}
-	publicAddress, err := localIPv4(options.PublicAddress, "public address")
-	if err != nil {
-		return Config{}, err
-	}
-	if publicAddress == "0.0.0.0" || strings.HasPrefix(publicAddress, "127.") {
+	publicAddress := ""
+	if options.PublicAddress != "" {
+		parsed, err := localIPv4(options.PublicAddress, "public address")
+		if err != nil {
+			return Config{}, err
+		}
+		if parsed == "0.0.0.0" || strings.HasPrefix(parsed, "127.") {
+			return Config{}, errors.New("Local server public address must be reachable from the LAN")
+		}
+		publicAddress = parsed
+	} else if options.PublicOrigin == "" {
 		return Config{}, errors.New("Local server public address must be reachable from the LAN")
 	}
-	allowedAddresses := []string{publicAddress}
+	allowedAddresses := make([]string, 0, 1+len(options.AllowedAddresses))
+	if publicAddress != "" {
+		allowedAddresses = append(allowedAddresses, publicAddress)
+	}
 	for _, address := range options.AllowedAddresses {
 		normalized, err := localIPv4(address, "allowed address")
 		if err != nil {
@@ -65,12 +74,15 @@ func Local(options LocalOptions) (Config, error) {
 
 	// Local is loopback/LAN HTTP; its origin always spells out the port.
 	origin := func(host string) string { return fmt.Sprintf("http://%s:%d", host, port) }
-	publicBaseURL := &url.URL{Scheme: "http", Host: fmt.Sprintf("%s:%d", publicAddress, port), Path: "/"}
+	var publicBaseURL *url.URL
 	if options.PublicOrigin != "" {
-		publicBaseURL, err = publicHTTPSOrigin(options.PublicOrigin)
+		parsed, err := publicHTTPSOrigin(options.PublicOrigin)
 		if err != nil {
 			return Config{}, err
 		}
+		publicBaseURL = parsed
+	} else {
+		publicBaseURL = &url.URL{Scheme: "http", Host: fmt.Sprintf("%s:%d", publicAddress, port), Path: "/"}
 	}
 
 	allowedOrigins := map[string]struct{}{

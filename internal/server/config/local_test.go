@@ -117,6 +117,29 @@ func TestLocalTunnelledClient(t *testing.T) {
 	}
 }
 
+func TestLocalTunnelledClientWithoutLANAddress(t *testing.T) {
+	config := mustLocal(t, LocalOptions{
+		Port:               9235,
+		PublicOrigin:       "https://quiet-fancy-room.trycloudflare.com",
+		AllowedAddresses:   []string{"172.18.0.1", "192.168.1.10"},
+		SiteAccessPassword: "persistent-local-password",
+	})
+
+	if got := Origin(config.PublicBaseURL); got != "https://quiet-fancy-room.trycloudflare.com" {
+		t.Errorf("public origin = %q", got)
+	}
+	want := map[string]struct{}{
+		"http://localhost:9235":                      {},
+		"http://127.0.0.1:9235":                      {},
+		"http://172.18.0.1:9235":                     {},
+		"http://192.168.1.10:9235":                   {},
+		"https://quiet-fancy-room.trycloudflare.com": {},
+	}
+	if !reflect.DeepEqual(config.AllowedOrigins, want) {
+		t.Errorf("AllowedOrigins = %v, want %v", config.AllowedOrigins, want)
+	}
+}
+
 func TestLocalDefaults(t *testing.T) {
 	config := mustLocal(t, LocalOptions{PublicAddress: "192.168.1.10"})
 
@@ -154,6 +177,9 @@ func TestLocalRejects(t *testing.T) {
 		{"hostname public address", LocalOptions{PublicAddress: "localhost",
 			SiteAccessPassword: "valid-password"},
 			"Local server public address must be an IPv4 address"},
+		{"missing public address without an origin", LocalOptions{
+			SiteAccessPassword: "valid-password"},
+			"Local server public address must be reachable from the LAN"},
 		{"IPv6 public address", LocalOptions{PublicAddress: "::ffff:192.168.1.10"},
 			"Local server public address must be an IPv4 address"},
 		{"loopback public address", LocalOptions{PublicAddress: "127.0.0.1",

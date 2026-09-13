@@ -139,7 +139,7 @@ export class BrowserEncodingProducer {
     const report = await connection.getStats().catch((error) => { debugRtcFailure(connection, error); throw error; });
     debugRtcStats(connection, report);
     if (!this.disposed && this.startupPending &&
-      maxEncodedVideoFrames(report, this.input!.id) >= STARTUP_VIDEO_ENCODED_FRAMES) {
+      (maxEncodedVideoFrames(report, this.input!.id) ?? 0) >= STARTUP_VIDEO_ENCODED_FRAMES) {
       this.startupPending = false;
       void this.serialize(() => this.applyCurrent()).catch(this.fail);
     }

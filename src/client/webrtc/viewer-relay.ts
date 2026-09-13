@@ -4,6 +4,7 @@ import type {
   SignalPayload,
 } from "../../shared/protocol";
 import type { QualityProfile } from "../media/quality";
+import { debugEvent } from "../lib/debug";
 import { BrowserEncodingPool } from "../media/browser-encoding-pool";
 import type { PeerSnapshot } from "../types";
 import {
@@ -92,17 +93,22 @@ export class ViewerRelay {
   ): boolean {
     const stream = this.stream;
     const planned = [...new Set(plannedChildPeerIds)];
-    if (
-      this.disposed ||
-      (!stream && (this.peerFactory?.requiresStream ?? true)) ||
-      candidate.transport === "sfu" ||
-      !planned.includes(candidate.childPeerId) ||
-      planned.length !== plannedChildPeerIds.length ||
-      planned.length < this.childPeerIds.length ||
-      planned.length > this.childPeerIds.length + 1 ||
-      planned.length > this.maxMediaEdges ||
-      this.childPeerIds.some((peerId) => !planned.includes(peerId))
-    ) {
+    let refusal: string | null = null;
+    if (this.disposed) refusal = "disposed";
+    else if (!stream && (this.peerFactory?.requiresStream ?? true)) refusal = "no-stream";
+    else if (candidate.transport === "sfu") refusal = "sfu-transport";
+    else if (!planned.includes(candidate.childPeerId)) refusal = "child-unplanned";
+    else if (planned.length !== plannedChildPeerIds.length) refusal = "plan-duplicate";
+    else if (planned.length < this.childPeerIds.length) refusal = "plan-shrinks";
+    else if (planned.length > this.childPeerIds.length + 1) refusal = "plan-skips";
+    else if (planned.length > this.maxMediaEdges) refusal = "over-capacity";
+    else if (this.childPeerIds.some((peerId) => !planned.includes(peerId))) refusal = "drops-current";
+    if (refusal !== null) {
+      debugEvent("webrtc", "relay-prepare-refused", {
+        revision,
+        childPeerId: candidate.childPeerId,
+        reason: refusal,
+      });
       this.discardPreparedChild();
       return false;
     }

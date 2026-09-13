@@ -13,6 +13,7 @@ type fakeGateway struct {
 	added   []int
 	deleted []int
 	addErr  error
+	block   chan struct{}
 }
 
 func (gateway *fakeGateway) AddPortMapping(
@@ -23,10 +24,16 @@ func (gateway *fakeGateway) AddPortMapping(
 	_ time.Duration,
 ) (int, error) {
 	gateway.mu.Lock()
-	defer gateway.mu.Unlock()
 	gateway.added = append(gateway.added, port)
-	if gateway.addErr != nil {
-		return 0, gateway.addErr
+	block := gateway.block
+	addErr := gateway.addErr
+	gateway.mu.Unlock()
+	if block != nil {
+		// Like the pinned NAT-PMP client: never observes the context.
+		<-block
+	}
+	if addErr != nil {
+		return 0, addErr
 	}
 	return port + 1, nil
 }
@@ -98,6 +105,63 @@ func TestMappingFailureIsNotRetriedForEveryEdge(t *testing.T) {
 	defer fake.mu.Unlock()
 	if len(fake.added) != 1 || len(fake.deleted) != 0 {
 		t.Fatalf("mapping calls = add %v delete %v", fake.added, fake.deleted)
+	}
+}
+
+func TestMappingAttemptStaysBoundedWhenTheClientIgnoresContext(t *testing.T) {
+	original := discoverGateway
+	t.Cleanup(func() { discoverGateway = original })
+	fake := &fakeGateway{block: make(chan struct{})}
+	discoverGateway = func(context.Context) (gateway, error) {
+		return fake, nil
+	}
+	t.Cleanup(func() { close(fake.block) })
+
+	mapping := Start(43210)
+	started := time.Now()
+	if port := mapping.Prepare(); port != 0 {
+		t.Fatalf("mapped port = %d, want 0 for an unanswered attempt", port)
+	}
+	if elapsed := time.Since(started); elapsed > attemptTimeout+2*time.Second {
+		t.Fatalf("Prepare blocked %v, want within the attempt bound", elapsed)
+	}
+	mapping.Close()
+}
+
+func TestCloseSkipsDeleteWhileAnAttemptIsStillAbandoned(t *testing.T) {
+	original := discoverGateway
+	t.Cleanup(func() { discoverGateway = original })
+	fake := &fakeGateway{}
+	discoverGateway = func(context.Context) (gateway, error) {
+		return fake, nil
+	}
+
+	mapping := Start(43210)
+	if port := mapping.Prepare(); port != 43211 {
+		t.Fatalf("mapped port = %d, want 43211", port)
+	}
+	mapping.mu.Lock()
+	mapping.renewAfter = time.Now().Add(-time.Second)
+	mapping.mu.Unlock()
+	fake.mu.Lock()
+	fake.block = make(chan struct{})
+	fake.mu.Unlock()
+	t.Cleanup(func() { close(fake.block) })
+
+	// The renewal attempt is abandoned after attemptTimeout while the fake
+	// keeps ignoring the context. Close must stay bounded and must not race
+	// the dependency's still-running call with a Delete.
+	mapping.Prepare()
+	started := time.Now()
+	mapping.Close()
+	if elapsed := time.Since(started); elapsed > 2*deleteTimeout+time.Second {
+		t.Fatalf("Close blocked %v, want a brief bounded wait", elapsed)
+	}
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	if len(fake.added) != 2 || len(fake.deleted) != 0 {
+		t.Fatalf("mapping calls = add %v delete %v, want the Delete skipped",
+			fake.added, fake.deleted)
 	}
 }
 

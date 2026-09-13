@@ -393,13 +393,16 @@ func runLocal(ctx context.Context, options Options, config appconfig.Config,
 			_ = listener.Close()
 		}
 	}()
-	addresses, err := lan.Addresses()
-	if err != nil {
-		return err
+	addresses, lanErr := lan.Addresses()
+	selectedAddress := ""
+	if lanErr == nil {
+		selectedAddress, lanErr = lan.Select(addresses, options.LANAddress)
 	}
-	selectedAddress, err := lan.Select(addresses, options.LANAddress)
-	if err != nil {
-		return err
+	// A public invitation only needs the tunnel origin; keep any resolved LAN
+	// addresses as allowed local origins but never block link startup on LAN
+	// selection (multi-interface hosts may not have one obvious address).
+	if lanErr != nil && !options.Link {
+		return lanErr
 	}
 	var tunnel *publictunnel.Process
 	publicOrigin := ""

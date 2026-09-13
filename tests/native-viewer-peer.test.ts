@@ -70,6 +70,128 @@ it("does not create a browser backend after deferred native discovery is dispose
   expect(peer.getConnectionIdentity()).toBeNull();
 });
 
+it.each(["route", "viewer"] as const)("recovers an answer signaling failure without disabling native (%s)", async (recoveryOwner) => {
+  vi.stubGlobal("window", globalThis);
+  vi.stubGlobal("MediaStream", class { getTracks() { return []; } });
+  vi.stubGlobal("RTCPeerConnection", class { close() {} });
+  const receiveOffer = vi.fn(async () => ({
+    answer: { type: "answer", sdp: "v=0\r\n" }, audio: false, codec: "vp8",
+  }));
+  const closeReceiver = vi.fn(async () => undefined);
+  const client = {
+    receiveOffer,
+    onEvent: () => () => undefined,
+    onClose: () => () => undefined,
+    closeReceiver,
+    closeEdge: vi.fn(async () => undefined),
+  } as unknown as NativeClient;
+  let available = true;
+  const acquire = vi.fn(async () => available ? client : null);
+  const unavailable = vi.fn(() => { available = false; });
+  const restart = vi.fn(() => true);
+  const exhausted = vi.fn(() => true);
+  let signalOnline = false;
+  const peer = new NativeCapableViewerPeer(
+    { iceServers: [] },
+    {
+      sendSignal: () => signalOnline,
+      sendRestartRequest: restart,
+      onStream: () => undefined,
+      onUpdate: () => undefined,
+      onRecoveryExhausted: exhausted,
+    },
+    { recoveryOwner },
+    acquire,
+    unavailable,
+    "session",
+    2,
+  );
+  const offer = (connectionId: string): SignalPayload => ({
+    kind: "description", connectionId,
+    description: { type: "offer", sdp: "v=0\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\na=sendonly\r\na=rtpmap:96 VP8/90000\r\n" },
+  });
+  try {
+    // A transient room-signaling outage at the answer must not disable
+    // Native reception for the session: close only this receiver and run
+    // the ordinary recovery path.
+    await peer.acceptSignal("parent", offer("first"));
+    expect(unavailable).not.toHaveBeenCalled();
+    expect(peer.nativeSource).toBeNull();
+    expect(closeReceiver).toHaveBeenCalledWith("session", "first");
+    if (recoveryOwner === "viewer") {
+      expect(restart).toHaveBeenCalledWith("parent", "first", true);
+      expect(exhausted).not.toHaveBeenCalled();
+    } else {
+      expect(exhausted).toHaveBeenCalledWith("parent", "first");
+      expect(restart).not.toHaveBeenCalled();
+    }
+
+    // With signaling back online, the next offer re-acquires the native path.
+    signalOnline = true;
+    vi.spyOn(NativeMediaBridge.prototype, "start").mockResolvedValue(
+      new (class {})() as never,
+    );
+    await peer.acceptSignal("parent", offer("second"));
+    expect(acquire).toHaveBeenCalledTimes(2);
+    expect(receiveOffer).toHaveBeenCalledTimes(2);
+    expect(unavailable).not.toHaveBeenCalled();
+  } finally {
+    peer.dispose();
+  }
+});
+
+it("still disables native on a genuine failure after a signaling failure", async () => {
+  vi.stubGlobal("window", globalThis);
+  vi.stubGlobal("MediaStream", class { getTracks() { return []; } });
+  vi.stubGlobal("RTCPeerConnection", class { close() {} });
+  let eventHandler: ((event: unknown) => void) | null = null;
+  const receiveOffer = vi.fn(async () => ({
+    answer: { type: "answer", sdp: "v=0\r\n" }, audio: false, codec: "vp8",
+  }));
+  const client = {
+    receiveOffer,
+    onEvent: (handler: (event: unknown) => void) => {
+      eventHandler = handler;
+      return () => undefined;
+    },
+    onClose: () => () => undefined,
+    closeReceiver: vi.fn(async () => undefined),
+    closeEdge: vi.fn(async () => undefined),
+  } as unknown as NativeClient;
+  const unavailable = vi.fn();
+  const peer = new NativeCapableViewerPeer(
+    { iceServers: [] },
+    {
+      sendSignal: () => false,
+      sendRestartRequest: () => true,
+      onStream: () => undefined,
+      onUpdate: () => undefined,
+      onRecoveryExhausted: () => true,
+    },
+    {},
+    async () => client,
+    unavailable,
+    "session",
+    2,
+  );
+  try {
+    await peer.acceptSignal("parent", {
+      kind: "description",
+      connectionId: "first",
+      description: { type: "offer", sdp: "v=0\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\na=sendonly\r\na=rtpmap:96 VP8/90000\r\n" },
+    });
+    expect(unavailable).not.toHaveBeenCalled();
+
+    // A genuine native failure on the same connection must still disable
+    // Native for the session: the signaling path must not have latched the
+    // failure state.
+    eventHandler!({ shareId: "session", type: "share-ended", failed: true });
+    expect(unavailable).toHaveBeenCalledOnce();
+  } finally {
+    peer.dispose();
+  }
+});
+
 it.each(["route", "viewer"] as const)("keeps %s bridge failure unavailable across replacement peers", async (recoveryOwner) => {
   vi.stubGlobal("window", globalThis);
   vi.stubGlobal("MediaStream", class { getTracks() { return []; } });

@@ -7,6 +7,14 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
+- [ ] **Maintenance candidate acceptance.** Review Windows App and Browser
+  startup, password retry and Native signaling recovery in one candidate.
+  Verify first-share and source-switch quality with a real game and H.264;
+  test public-link startup on a machine with several LAN addresses, while
+  Local retains explicit LAN selection. Run physical capture/network workloads
+  serially from stable build paths. Run Go race checks for gateway mapping when
+  a supported cgo environment is available. Approve the version and bilingual
+  release notes before publishing.
 - [ ] **Post-launch monitoring.** Collect App/Server feedback and verify the
   public download path and deployed services after product releases. Follow the
   [deployment runbook](./deployment.md) for the private service and keep public
@@ -16,14 +24,19 @@ history. A parked idea is not implementation authority.
 Keep fixes on a maintenance branch until acceptance. The public release is the
 compatibility baseline; private service deployment stays independent.
 
-## Next: P2P Connection And Feedback Review
+## Next: P2P Connection And Feedback Evidence
 
 After the current phase, measure connection success, time to first picture and
 failure causes on representative networks, especially App and P2P-only sites.
-Review user progress/failure feedback and useful privacy-conscious diagnostics.
-Trace the existing ICE and P2P/SFU handoffs, including background P2P attempts
-behind working SFU media; compare SFU-first startup with measured current behavior
-before choosing changes. Preserve one graph and one operation under the
+Use existing Debug provenance and selected-path events before adding runtime
+counters. Separate emitted candidates, actual connection attempts, successful
+paths and timeouts; keep observations scoped to connection generations and
+exclude raw endpoints. Establish survey response visibility without treating
+local listener binding as proof of public reachability. The
+[NAT evidence](./research/nat-traversal.md#gateway-and-survey-limits) owns the
+dependency and observation limits. Compare current P2P/SFU handoffs, including
+background P2P attempts behind working SFU media, before choosing changes.
+Preserve one graph and one operation under the
 [routing contract](./product/routing-transport.md) and
 [ADR-0005](./adr/0005-automatic-hybrid-media-routing.md). Prior ownership audits do
 not establish better connection success or speed; this note adds no retry policy.
@@ -86,13 +99,7 @@ Host is paused. No preservation policy has been accepted for that transition.
    following the [translation guide](./guide/translating.md). Add website,
    documentation or App console translations as contributed; verify text
    direction and layout when a language requires it.
-9. **First-share startup quality.** Verify that the existing five-frame startup
-    protection for `motion + balanced` still takes effect on every active sender
-    and shared-encoding path. Compare with the documented
-    [startup regression](./research/realtime-quality-adaptation.md) and check
-    whether later audits or refactors bypassed a necessary guard. Do not remove
-    the workaround without evidence that first-share quality remains correct.
-10. **32-bit App packages.** Deferred until suitable native capture dependencies
+9. **32-bit App packages.** Deferred until suitable native capture dependencies
     are available. Windows x86 core compilation alone does not establish App
     support: the pinned capture SDK currently has no Windows x86 package.
     Complete native packaging and real launch/capture acceptance before

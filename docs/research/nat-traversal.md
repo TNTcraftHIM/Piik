@@ -1,6 +1,6 @@
 # Browser And Native NAT Traversal
 
-Last reviewed: 2026-09-02
+Last reviewed: 2026-09-13
 
 This document owns evidence for improving direct ICE without adding a
 new relay or a custom transport. The current product contract remains standard
@@ -75,6 +75,12 @@ the independently mapped-port candidate does not. The switch applies to Host,
 Viewer upstream, and Viewer relay P2P connections. Its exact scope is recorded in
 [ADR-0009](../adr/0009-optional-nat-prediction.md).
 
+Browser and Native candidate adapters use the same generation-scoped predictor;
+Native observations do not need a second Go predictor. Predictions can trickle
+as soon as the third qualifying survey observation arrives. Route scheduling
+continues to use the operation deadline in ADR-0005, independently of whether
+prediction produces candidates.
+
 ### Native Shared-Socket Preflight
 
 On 2026-09-05, the unmodified Pion srflx gatherer contacted three public STUN
@@ -99,6 +105,30 @@ can make it unusable without delaying or replacing ordinary ICE.
 A local UDP-forwarding gate then withheld every ordinary Host candidate and
 connected Pion ICE/DTLS in 1.26 seconds through the advertised `mp1` endpoint.
 That proves the same-socket ICE mechanism, not rescue through a physical NAT.
+
+### Gateway And Survey Limits
+
+The pinned `go-nat` NAT-PMP adapter ignores context cancellation. Its underlying
+client can retry each proposed port for about 128 seconds, with several port
+proposals per call. Piik bounds the mapping caller's wait to three seconds;
+an abandoned worker may continue to the dependency's own retry limit. Failed
+attempts are not relaunched by later edges. Cleanup must not call Delete while
+that worker still owns the adapter's unsynchronized port bookkeeping.
+
+NAT-PMP Delete in this dependency clears only its local bookkeeping; it sends
+no router deletion. A successful mapping can therefore remain until its requested
+two-hour lease expires, including a late success after Piik stops waiting.
+Caller timeout and router lease expiry are distinct lifecycle boundaries.
+
+Binding all three STUN listeners proves local startup, not public reachability.
+A local self-probe also cannot prove traversal through an operator's firewall.
+Missing prediction may reflect unreachable survey destinations or insufficient
+distinct mappings. Library packet logs remain disabled because they expose
+remote addresses; future health summaries must retain that privacy boundary.
+Candidate provenance, selected paths and connection outcomes already have Debug
+owners. Count emitted candidates separately from successful connections; zero
+predicted selections alone does not establish a broken predictor or a success
+rate. Further observation work belongs to [TODO](../todo.md).
 
 ### Independent Observation And Attribution Preflight
 
@@ -211,3 +241,5 @@ a new Peer route.
 - [Cloudflare Realtime STUN service](https://developers.cloudflare.com/realtime/turn/)
 - [Pion Universal UDP mux](https://github.com/pion/ice/blob/main/udp_mux_universal.go)
 - [WebRTC selected candidate stats](https://www.w3.org/TR/webrtc-stats/#dom-rtcicecandidatestats-foundation)
+- [Pinned go-nat NAT-PMP adapter](https://github.com/netbirdio/go-nat/blob/6b2c8c5c74e8331ed41811cfd2fdc4c3dd8c3ff0/natpmp.go)
+- [NAT-PMP client timeout and mapping calls](https://github.com/jackpal/go-nat-pmp/blob/v1.0.2/natpmp.go)

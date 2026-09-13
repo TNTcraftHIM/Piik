@@ -1965,7 +1965,7 @@ export function ViewerPage({
         }
         if (message.code === "ROOM_ACCESS_DENIED") {
           if (viewerPasswordAttempt) {
-            setViewerPasswordError("viewer.msg.denied");
+            setViewerPasswordError("join.passwordError");
             setViewerPasswordExpanded(true);
           }
           return;
@@ -2173,10 +2173,9 @@ export function ViewerPage({
       : failureCode === "ROOM_NOT_FOUND" ||
           failureCode === "ROOM_CLOSED"
         ? "viewer.hint.notFound"
-        : failureCode === "INVALID_TOKEN" ||
-            // A grant that the room no longer accepts is not a retry case:
-            // the recovery is a new invite, not another attempt.
-            failureCode === "ROOM_ACCESS_DENIED"
+        : failureCode === "INVALID_TOKEN"
+          // A grant that the room no longer accepts is not a retry case:
+          // the recovery is a new invite, not another attempt.
           ? "viewer.hint.invite"
           : "viewer.hint.generic";
     return (

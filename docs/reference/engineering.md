@@ -131,10 +131,15 @@ above rather than searching the tree.
   connection readiness, requested settings, applied settings and observation.
   Derive presentation from facts; do not synchronize parallel booleans or let
   a cached failure outlive its evidence.
+  Cumulative observations need a valid baseline for the resource generation
+  they describe; missing measurements are not zero. Serialized recovery reads
+  current committed intent when it executes rather than replaying a queued snapshot.
 - The operation that acquires a connection, clone, listener or queue owns its
   retirement. After an await/callback, and inside cleanup, validate the original
   operation/resource identity before changing current state. Cancellation,
   failure, missing observation and success must retain distinct meanings.
+  A caller deadline does not cancel a dependency that ignores it. Keep late
+  work bounded and serialize its cleanup; verify the dependency's actual lifetime.
 - Keep decisions separate from effects. Respect documented lock ordering and
   revalidate after unlocked work. Local native capability never grants room
   authority; the shared Go service remains authoritative.

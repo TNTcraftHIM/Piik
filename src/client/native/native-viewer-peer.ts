@@ -434,7 +434,20 @@ class NativeViewerPeer implements ViewerMediaPeer {
       connectionId,
       description: result.answer,
     })) {
-      throw new Error("Native Viewer answer could not be signaled");
+      // A room-signaling outage is not evidence the local Native capability is
+      // unavailable: close only this receiver and use the ordinary recovery
+      // path, like the Browser peer's "signal send rejected" handling.
+      this.sourceReady = false;
+      this.sourceCodec = null;
+      void this.client.closeReceiver(this.sessionId, connectionId).catch(
+        () => undefined,
+      );
+      if (this.recoveryOwner === "route") {
+        this.reportRecoveryExhausted();
+      } else if (!this.requestRecovery(true)) {
+        this.reportRecoveryExhausted();
+      }
+      return;
     }
     this.scheduleInitialConnectionDeadline(connectionId);
     const bridge = new NativeMediaBridge(

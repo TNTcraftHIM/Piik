@@ -1,5 +1,6 @@
 import type { SfuMedia, SfuSignalMessage } from "../../shared/protocol";
 import type { MediaFailure } from "../ui/media-failure";
+import { debugError } from "../lib/debug";
 import { debugRtcFailure, debugRtcStats, debugTrack } from "../lib/debug-webrtc";
 import {
   audioSenderParameterWarning,
@@ -65,6 +66,9 @@ export class SfuPublisher {
   private closed = false;
   private readonly ownedTracks = new Set<MediaStreamTrack>();
   private startupPending = false;
+  // RTP frame counts can survive replaceTrack; 0 suits a fresh sender, while
+  // a replacement needs a valid current-track sample to establish its baseline.
+  private startupFramesBaseline: number | null = null;
   private operationTail: Promise<void> = Promise.resolve();
   private failureStage: SfuPublisherFailureStage | null = null;
   private senderParameters: VideoSenderParameterReadback | null = null;
@@ -138,6 +142,7 @@ export class SfuPublisher {
       this.profile = profile;
       this.codec = codec;
       this.startupPending = needsStartupVideoProfile(profile);
+      this.startupFramesBaseline = 0;
       let video: MediaStreamTrack | null = null;
       try {
         this.failureStage = "source";
@@ -195,6 +200,9 @@ export class SfuPublisher {
         this.startStats();
         return true;
       } catch (error) {
+        debugError("webrtc", "sfu-activate-failed", error, {
+          stage: this.failureStage ?? "connect",
+        });
         if (video && this.video !== video) this.releaseTrack(video);
         if (this.peer === peer) this.fail(this.failureStage ?? "connect");
         throw error;
@@ -239,6 +247,7 @@ export class SfuPublisher {
         this.video = nextVideo;
         this.audio = nextAudio;
         this.startupPending = needsStartupVideoProfile(profile);
+        this.startupFramesBaseline = null;
         await this.configure(profile);
         if (this.peer !== peer) return false;
         if (!peer.send({ kind: "media", media: this.media(profile) }))
@@ -248,7 +257,8 @@ export class SfuPublisher {
         this.releaseTrack(previousAudio);
         this.setPaused(this.paused);
         return true;
-      } catch {
+      } catch (error) {
+        debugError("webrtc", "sfu-source-failed", error);
         if (this.peer !== peer) return false;
         this.video = previousVideo;
         this.audio = previousAudio;
@@ -272,40 +282,43 @@ export class SfuPublisher {
   }
 
   updateProfile(profile: QualityProfile): Promise<boolean> {
-    return this.enqueue(async () => {
-      const peer = this.peer;
-      const video = this.video;
-      const previous = this.profile;
-      if (!peer || !video || !previous) return false;
-      if (!needsStartupVideoProfile(profile)) this.startupPending = false;
-      const videoChanged = !videoQualitySettingsEqual(previous, profile);
-      const configureVideo =
-        videoChanged ||
-        this.senderParameters?.applied.degradationPreference !==
-          (this.startupPending ? startupVideoProfile(profile) : profile)
-            .degradationPreference;
-      if (configureVideo) this.resetStats();
+    return this.enqueue(() => this.applyProfile(profile));
+  }
+
+  private async applyProfile(profile: QualityProfile): Promise<boolean> {
+    const peer = this.peer;
+    const video = this.video;
+    const previous = this.profile;
+    if (!peer || !video || !previous) return false;
+    if (!needsStartupVideoProfile(profile)) this.startupPending = false;
+    const videoChanged = !videoQualitySettingsEqual(previous, profile);
+    const configureVideo =
+      videoChanged ||
+      this.senderParameters?.applied.degradationPreference !==
+        (this.startupPending ? startupVideoProfile(profile) : profile)
+          .degradationPreference;
+    if (configureVideo) this.resetStats();
+    try {
+      if (videoChanged) await applyVideoCaptureProfile(video, profile);
+      const result = await this.configure(profile, configureVideo);
+      if (this.peer !== peer) return false;
+      if (!peer.send({ kind: "media", media: this.media(profile) }))
+        throw new Error("SFU signaling is unavailable");
+      this.profile = profile;
+      return result;
+    } catch (error) {
+      debugError("webrtc", "sfu-profile-failed", error, { requested: profile });
+      if (this.peer !== peer) return false;
       try {
-        if (videoChanged) await applyVideoCaptureProfile(video, profile);
-        const result = await this.configure(profile, configureVideo);
-        if (this.peer !== peer) return false;
-        if (!peer.send({ kind: "media", media: this.media(profile) }))
-          throw new Error("SFU signaling is unavailable");
-        this.profile = profile;
-        return result;
+        if (videoChanged) await applyVideoCaptureProfile(video, previous);
+        await this.configure(previous, configureVideo);
+        this.videoWarning = { key: "host.fail.sfuParams" };
+        return false;
       } catch {
-        if (this.peer !== peer) return false;
-        try {
-          if (videoChanged) await applyVideoCaptureProfile(video, previous);
-          await this.configure(previous, configureVideo);
-          this.videoWarning = { key: "host.fail.sfuParams" };
-          return false;
-        } catch {
-          this.fail("sender-config");
-          return false;
-        }
+        this.fail("sender-config");
+        return false;
       }
-    });
+    }
   }
 
   getQualityWarning(): MediaFailure[] | null {
@@ -549,12 +562,23 @@ export class SfuPublisher {
               intervalFramesEncoded: native.intervalFramesEncoded,
             }),
       });
-      if (
-        this.startupPending &&
-        maxEncodedVideoFrames(report, video.id) >= STARTUP_VIDEO_ENCODED_FRAMES
-      ) {
-        this.startupPending = false;
-        if (this.profile) void this.updateProfile(this.profile);
+      if (this.startupPending) {
+        const encodedFrames = maxEncodedVideoFrames(report, video.id);
+        if (encodedFrames === null) return;
+        if (this.startupFramesBaseline === null) {
+          this.startupFramesBaseline = encodedFrames;
+        } else if (
+          encodedFrames - this.startupFramesBaseline >=
+          STARTUP_VIDEO_ENCODED_FRAMES
+        ) {
+          this.startupPending = false;
+          // Re-read at execution: an in-flight user update commits this.profile
+          // first, so the recovery must not replay a stats-time snapshot.
+          void this.enqueue(async () => {
+            const profile = this.profile;
+            return profile ? this.applyProfile(profile) : false;
+          });
+        }
       }
     } catch (error) {
       debugRtcFailure(peer.pc, error);

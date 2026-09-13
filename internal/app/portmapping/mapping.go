@@ -42,6 +42,7 @@ type Mapping struct {
 	mapped         bool
 	externalPort   int
 	deleteRequired bool
+	attemptDone    chan struct{}
 	renewAfter     time.Time
 	closed         bool
 }
@@ -88,12 +89,23 @@ func (mapping *Mapping) Close() {
 	mapping.closed = true
 	gateway := mapping.gateway
 	deleteRequired := mapping.deleteRequired
+	attemptDone := mapping.attemptDone
 	mapping.mapped = false
 	mapping.externalPort = 0
 	mapping.deleteRequired = false
 	mapping.mu.Unlock()
 	if gateway == nil || !deleteRequired {
 		return
+	}
+	// A still-abandoned attempt may be retrying inside the dependency
+	// (NAT-PMP keeps unsynchronized state); give it a brief window to return
+	// rather than racing its bookkeeping with the Delete.
+	if attemptDone != nil {
+		select {
+		case <-attemptDone:
+		case <-time.After(deleteTimeout):
+			return
+		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), deleteTimeout)
 	defer cancel()
@@ -122,9 +134,38 @@ func (mapping *Mapping) discover(parent context.Context) {
 
 func (mapping *Mapping) mapPortLocked(ctx context.Context) {
 	mapping.attempted = true
-	externalPort, err := mapping.gateway.AddPortMapping(
-		ctx, "udp", mapping.localPort, "Piik", leaseDuration,
-	)
+	// NAT-PMP ignores cancellation and retries each proposed port for ~128 s.
+	// Bound our wait; the dependency may continue until its own retry limit.
+	// The buffered result lets that worker finish after abandonment. Failed
+	// attempts are not retried by Prepare, and Close waits for attemptDone
+	// before touching the dependency's unsynchronized port bookkeeping.
+	type mappingResult struct {
+		externalPort int
+		err          error
+	}
+	result := make(chan mappingResult, 1)
+	done := make(chan struct{})
+	mapping.attemptDone = done
+	go func() {
+		defer close(done)
+		externalPort, err := mapping.gateway.AddPortMapping(
+			ctx, "udp", mapping.localPort, "Piik", leaseDuration,
+		)
+		result <- mappingResult{externalPort, err}
+	}()
+	var externalPort int
+	var err error
+	select {
+	case outcome := <-result:
+		externalPort, err = outcome.externalPort, outcome.err
+	case <-ctx.Done():
+		select {
+		case outcome := <-result:
+			externalPort, err = outcome.externalPort, outcome.err
+		default:
+			externalPort, err = 0, ctx.Err()
+		}
+	}
 	slog.Debug("nat-mapping", "event", "mapping-result", "localPort", mapping.localPort,
 		"externalPort", externalPort, "leaseSeconds", leaseDuration.Seconds(), diagnostics.Error(err))
 	if err != nil || externalPort < 1 || externalPort > 65535 {

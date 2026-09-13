@@ -473,8 +473,9 @@ export function decodedVideoFrames(
 export function maxEncodedVideoFrames(
   report: RTCStatsReport,
   trackIdentifier: string,
-): number {
-  let frames = 0;
+): number | null {
+  // An absent current-track counter is unknown, not a fresh encoder at zero.
+  let frames: number | null = null;
   report.forEach((raw) => {
     const record = raw as StatsRecord;
     if (
@@ -483,7 +484,10 @@ export function maxEncodedVideoFrames(
       record.isRemote !== true &&
       mediaTrackIdentifier(report, record, "send") === trackIdentifier
     ) {
-      frames = Math.max(frames, numberValue(record, "framesEncoded") ?? 0);
+      const encodedFrames = numberValue(record, "framesEncoded");
+      if (encodedFrames !== null) {
+        frames = Math.max(frames ?? 0, encodedFrames);
+      }
     }
   });
   return frames;

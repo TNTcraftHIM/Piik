@@ -220,8 +220,28 @@ one/two-second timers are unnecessary.
 
 Current senders therefore start with the requested ceiling and temporary
 `maintain-resolution`, then the existing stats path applies the user's desired
-preference once the exact sender has encoded five frames. The application does
+preference once the current source has proved five encoded frames. A fresh RTP
+stream starts at zero; source replacement establishes a baseline from its first
+valid current-track sample. Missing counters and unmatched old-source reports
+remain unknown. Queued restoration reads the current committed user profile
+when it executes. The application does
 not add an SDP bitrate hint, periodic rewrite, or custom adaptation ladder.
+
+### Source Replacement Evidence
+
+On 2026-09-13, six isolated Chrome 152.0.7977.84 loopbacks used a 1920x1080@30
+canvas, `motion`, VP8 software encoding and a 5 Mbps ceiling. Protected startup
+initially delivered 1080p, dipped to 720p during ordinary bandwidth ramp-up,
+then recovered to 1080p around 14 seconds. After an established connection's
+`replaceTrack`, immediate `balanced`, a two-second delay and five-new-frame
+protection all retained 1080p with limitation `none` in their 15-second windows.
+Two 16x16-to-1080p replacements likewise reached 1080p with and without protection.
+
+The RTP stream's `framesEncoded` counter survived replacement. These runs did
+not reproduce a new startup restriction on an established connection; they do
+not justify removing protection for H.264, other browsers or cold recovery.
+The [WebRTC statistics model](https://www.w3.org/TR/webrtc-stats/#dom-rtcoutboundrtpstreamstats-framesencoded)
+defines this counter per RTP stream, independently of a capture-track lifetime.
 
 ## LiveKit Representation Evidence
 

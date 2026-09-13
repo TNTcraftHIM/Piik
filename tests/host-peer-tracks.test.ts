@@ -1131,6 +1131,68 @@ describe("HostPeer source replacement", () => {
     expect(connection.senders[1]?.setParameters).toHaveBeenCalledOnce();
   });
 
+  it.each([0, 250])("counts new source frames from a valid baseline of %s", async (baseline) => {
+    const video = createTrack("video", "video");
+    const peer = createPeer(createStream(video, createTrack("audio", "audio")));
+
+    await expect(peer.start()).resolves.toBe(true);
+    const connection = FakePeerConnection.latest!;
+    await acceptPeerAnswer(peer);
+    expect(
+      connection.senders[0]?.setParameters.mock.calls.at(-1)?.[0],
+    ).toMatchObject({ degradationPreference: "balanced" });
+
+    const nextVideo = createTrack("video", "next-video");
+    await expect(
+      peer.replaceStream(createStream(nextVideo, null)),
+    ).resolves.toBe(true);
+    expect(
+      connection.senders[0]?.setParameters.mock.calls.at(-1)?.[0],
+    ).toMatchObject({ degradationPreference: "maintain-resolution" });
+    const configureCalls =
+      connection.senders[0]!.setParameters.mock.calls.length;
+
+    const staleReport = sendStatsReport({
+      bytesSent: 10_000,
+      framesEncoded: 250,
+      timestamp: 1_000,
+      qualityLimitationReason: "none",
+      trackIdentifier: video.id,
+    });
+    const missingCount = sendStatsReport({
+      bytesSent: 10_000,
+      framesEncoded: 0,
+      timestamp: 1_000,
+      qualityLimitationReason: "none",
+      trackIdentifier: connection.senders[0]!.track!.id,
+    });
+    delete missingCount.get("outbound-video").framesEncoded;
+    // Missing/currently unmatched stats cannot seed the new baseline as zero.
+    for (const report of [emptyStatsReport(), staleReport, missingCount]) {
+      connection.statsReports.push(report);
+      statsCallbacks.at(-1)!();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+
+    // A valid zero is different from missing stats. An existing RTP stream may
+    // instead retain a large cumulative count across replaceTrack.
+    await completeVideoStartup(connection, baseline);
+    expect(connection.senders[0]!.setParameters.mock.calls.length).toBe(
+      configureCalls,
+    );
+    await completeVideoStartup(connection, baseline + 4);
+    expect(connection.senders[0]!.setParameters.mock.calls.length).toBe(
+      configureCalls,
+    );
+    await completeVideoStartup(connection, baseline + 5);
+    expect(connection.senders[0]!.setParameters.mock.calls.length).toBe(
+      configureCalls + 1,
+    );
+    expect(
+      connection.senders[0]?.setParameters.mock.calls.at(-1)?.[0],
+    ).toMatchObject({ degradationPreference: "balanced" });
+  });
+
   it("applies the latest pre-answer profile once negotiation completes", async () => {
     const peer = createPeer(
       createStream(

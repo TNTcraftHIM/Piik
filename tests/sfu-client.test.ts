@@ -216,6 +216,30 @@ async function publisher(audio = true) {
   };
 }
 
+function feedVideoStats(
+  pc: FakePc,
+  trackId: string,
+  framesEncoded: number,
+): void {
+  pc.report.clear();
+  pc.report.set("outbound-video", {
+    id: "outbound-video",
+    type: "outbound-rtp",
+    kind: "video",
+    timestamp: 1_000,
+    ssrc: 10,
+    framesEncoded,
+    mediaSourceId: "media-source-video",
+  });
+  pc.report.set("media-source-video", {
+    id: "media-source-video",
+    type: "media-source",
+    kind: "video",
+    timestamp: 1_000,
+    trackIdentifier: trackId,
+  });
+}
+
 describe("embedded SFU browser transport", () => {
   it("publishes one bounded simulcast PC, offers before ICE and admits only the selected codec", async () => {
     const { publisher: host, pc, send, video } = await publisher();
@@ -319,6 +343,72 @@ describe("embedded SFU browser transport", () => {
     expect(nextVideo.stop).not.toHaveBeenCalled();
     expect(nextAudio.stop).not.toHaveBeenCalled();
     expect(pc.close).toHaveBeenCalledOnce();
+  });
+
+  it.each([0, 250])("counts new publication frames from a valid baseline of %s", async (baseline) => {
+    const { publisher: host, pc, video } = await publisher();
+    const sender = pc.transceivers[0]!.sender;
+    expect(sender.parameters.degradationPreference).toBe(
+      "maintain-resolution",
+    );
+    feedVideoStats(pc, video.clones[0]!.id, 6);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(sender.parameters.degradationPreference).toBe("balanced");
+
+    const nextVideo = new FakeTrack("video");
+    expect(await host.replaceStream(stream(nextVideo))).toBe(true);
+    expect(sender.parameters.degradationPreference).toBe(
+      "maintain-resolution",
+    );
+
+    // The old source, an empty report, and an absent counter are all unknown.
+    await vi.advanceTimersByTimeAsync(2_000);
+    pc.report.clear();
+    await vi.advanceTimersByTimeAsync(2_000);
+    feedVideoStats(pc, nextVideo.clones[0]!.id, 0);
+    delete pc.report.get("outbound-video").framesEncoded;
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    feedVideoStats(pc, nextVideo.clones[0]!.id, baseline);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(sender.parameters.degradationPreference).toBe(
+      "maintain-resolution",
+    );
+    feedVideoStats(pc, nextVideo.clones[0]!.id, baseline + 4);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(sender.parameters.degradationPreference).toBe(
+      "maintain-resolution",
+    );
+    feedVideoStats(pc, nextVideo.clones[0]!.id, baseline + 5);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(sender.parameters.degradationPreference).toBe("balanced");
+  });
+
+  it("applies the latest committed profile when startup recovery lands", async () => {
+    const { publisher: host, pc, video } = await publisher();
+    const sender = pc.transceivers[0]!.sender;
+    const clone = video.clones[0]!;
+    let releaseConstraints!: () => void;
+    clone.applyConstraints.mockImplementationOnce(
+      () =>
+        new Promise<undefined>((resolve) => {
+          releaseConstraints = () => resolve(undefined);
+        }),
+    );
+    const update = host.updateProfile(QUALITY_PROFILES["720p30"]);
+    await vi.advanceTimersByTimeAsync(0);
+    feedVideoStats(pc, clone.id, 6);
+    await vi.advanceTimersByTimeAsync(2_000);
+    releaseConstraints();
+    expect(await update).toBe(true);
+    await vi.advanceTimersByTimeAsync(0);
+
+    // The user's 720p30 change must survive the queued startup recovery; a
+    // stats-time snapshot must not re-apply the previous 1080p30 profile.
+    expect(sender.parameters.degradationPreference).toBe("balanced");
+    expect(sender.parameters.encodings[1]).toMatchObject({
+      maxBitrate: 3_000_000,
+    });
   });
 
   it("rolls back a failed source replacement and releases its unused clone", async () => {
