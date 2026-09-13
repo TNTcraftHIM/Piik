@@ -13,8 +13,6 @@ services:
     environment:
       PIIK_ENV: production
       LISTEN_HOST: 0.0.0.0
-      ROOM_DATABASE_PATH: /home/nonroot/rooms.sqlite
-      PIIK_LOG_DIR: /home/nonroot/logs
     ports:
       - "127.0.0.1:8787:8787/tcp"
       - "3478:3478/udp"
