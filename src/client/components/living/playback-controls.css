@@ -13,6 +13,7 @@
   transition: opacity 180ms ease, transform 220ms var(--spring);
 }
 .lr-playback.is-hidden { opacity: 0; transform: translateY(6px); pointer-events: none; }
+.lr-tv-screen:has(> .lr-playback[data-can-play="true"]) > video { cursor: pointer; }
 .lr-tv-screen:has(> .lr-playback.is-hidden) > video { cursor: none; }
 .lr-playback .lr-btn {
   display: grid; place-items: center; flex: none;
