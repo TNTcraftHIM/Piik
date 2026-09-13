@@ -136,6 +136,12 @@ NAT-PMP Delete in this dependency clears only its local bookkeeping; it sends
 no router deletion. A successful mapping can therefore remain until its requested
 two-hour lease expires, including a late success after Piik stops waiting.
 Caller timeout and router lease expiry are distinct lifecycle boundaries.
+The same adapter discards the gateway's `MappedExternalPort` response and returns
+its requested port. A gateway may assign a different port under
+[RFC 6886](https://www.rfc-editor.org/rfc/rfc6886.html#section-3.3), making that
+optional mapped candidate incorrect. Ordinary ICE candidates remain available.
+Fix this inside the dependency so its combined NAT-PMP/PCPv6 adapter retains
+IPv6 pinholes; a second mapping writer would add another failure and lease owner.
 
 Binding all three STUN listeners proves local startup, not public reachability.
 A local self-probe also cannot prove traversal through an operator's firewall.

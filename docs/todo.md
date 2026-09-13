@@ -7,11 +7,17 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
+- [ ] **NAT-PMP dependency correctness.** Integrate an upstream fix or maintained
+  dependency revision that uses the gateway-assigned external port and sends
+  an actual deletion request. Preserve the existing PCPv6 combination and bounded
+  mapping lifecycle. The current optional path can advertise the requested port
+  when a router assigned another; ordinary ICE remains available. See the
+  [dependency boundary](./research/nat-traversal.md#gateway-and-survey-limits).
 - [ ] **Maintenance candidate acceptance.** Review Windows App and Browser
   startup, password retry and Native signaling recovery in one candidate.
   Verify first-share and source-switch quality with a real game and H.264;
-  test public-link startup on a machine with several LAN addresses, while
-  Local retains explicit LAN selection. Review diagnostic startup, actionable
+  test public-link startup and the Local invitation-address picker on a machine
+  with several LAN addresses. Review diagnostic startup, actionable
   launch failures and native mobile fullscreen. Run physical capture/network
   workloads serially from stable build paths. Verify Native IPv6 across networks
   with usable IPv6 connectivity; local dual-stack checks do not establish that
