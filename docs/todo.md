@@ -7,11 +7,6 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **Maintenance release.** Finish candidate packaging and release checks,
-  confirm the version and bilingual release notes, then integrate and publish
-  the accepted phase. Keep the remaining physical device/network checks in
-  [verification status](./verification-status.md#remaining-device-and-network-acceptance);
-  source review and local probes do not establish those field results.
 - [ ] **Post-launch monitoring.** Collect App/Server feedback and verify the
   public download path and deployed services after product releases. Follow the
   [deployment runbook](./deployment.md) for the private service and keep public
