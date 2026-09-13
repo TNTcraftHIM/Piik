@@ -20,6 +20,7 @@ function syncFilmPreferences() {
   target.searchParams.set('lang', root.lang);
   target.searchParams.set('theme', theme.value);
   filmLink.href = target.href;
+  document.querySelector('[data-film-page]').href = target.href;
   filmFrame.contentWindow?.postMessage({type:'piik-film-preferences',lang:root.lang,theme:theme.value}, location.origin);
 }
 const copy = {

@@ -1,8 +1,9 @@
 # Piik film
 
 The homepage expands this optional, 76-second introduction in an iframe loaded
-only on request. Closing it unloads playback; the standalone page remains useful
-for recording. Both entries use the same player. From the repository
+only on request. Closing it unloads playback; the adjacent **Open film page** link
+opens the same player on its own page and carries the current language and theme.
+Use `/film/?lang=en` for an English direct link. From the repository
 root, run `npm run build:website` and `npm run preview:website`, then open
 `http://127.0.0.1:18890/film/`. Publish the static `build/site/` output. A project
 prefix such as `/Piik/film/` also works; GitHub Pages needs no application server.
