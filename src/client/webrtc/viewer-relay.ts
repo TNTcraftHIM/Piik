@@ -24,6 +24,7 @@ export interface ViewerRelayEvents {
   sendSignal: (peerId: string, payload: SignalPayload) => boolean;
   onUpdate?: (snapshot: PeerSnapshot | null) => void;
   onSenderUpdate?: (snapshot: PeerSnapshot, revision: number | null) => void;
+  onPreparedChildFailed?: (revision: number, connectionId: string) => void;
 }
 interface PreparedChild {
   revision: number;
@@ -649,11 +650,15 @@ export class ViewerRelay {
 
   private failPreparedChild(peer: HostMediaPeer): void {
     const prepared = this.preparedChild;
-    if (prepared?.peer !== peer) {
+    if (prepared?.peer !== peer || prepared.failed) {
       return;
     }
     prepared.failed = true;
     peer.dispose();
+    this.events.onPreparedChildFailed?.(
+      prepared.revision,
+      prepared.candidate.connectionId,
+    );
   }
 
   private disposePeers(): void {

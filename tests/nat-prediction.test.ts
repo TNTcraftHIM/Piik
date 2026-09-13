@@ -296,4 +296,45 @@ describe("NAT prediction ICE adapter", () => {
     ).toBe(false);
     expect(sent.filter((value) => value !== null)).toHaveLength(3);
   });
+
+  it("retires an unfinished generation without ending the restarted ICE session", () => {
+    const sent: SignalCandidate[] = [];
+    const survey = [
+      "stun:share.example.test:3478",
+      "stun:survey-a.example.test:3478",
+      "stun:survey-b.example.test:3478",
+    ];
+    const emitter = new NatPredictionCandidateEmitter(
+      true,
+      (value) => sent.push(value),
+      new Set(survey),
+    );
+    const emit = (port: number, usernameFragment: string, url: string) => {
+      emitter.add({
+        ...candidate(port),
+        usernameFragment,
+        url,
+      } as unknown as RTCIceCandidate);
+    };
+
+    emit(40_000, "previous", survey[0]!);
+    emit(40_003, "previous", survey[1]!);
+    emit(40_006, "restarted", survey[0]!);
+    expect(sent).toHaveLength(3);
+    expect(sent.every((value) => value !== null)).toBe(true);
+
+    emit(40_009, "restarted", survey[1]!);
+    emit(40_012, "restarted", survey[2]!);
+    const predictions = sent.filter((value) =>
+      value?.candidate.startsWith("candidate:sp") ||
+      value?.candidate.startsWith("candidate:sm"),
+    );
+    expect(predictions).toHaveLength(MAX_NAT_PREDICTION_CANDIDATES);
+    expect(predictions.every((value) => value?.usernameFragment === "restarted")).toBe(true);
+
+    emitter.gatheringComplete();
+    emitter.add(null);
+    expect(sent.filter((value) => value === null)).toHaveLength(1);
+    expect(sent.at(-1)).toBeNull();
+  });
 });

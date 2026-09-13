@@ -1966,6 +1966,9 @@ export function HostPage({
           reportSenderQuality(snapshot, revision);
         }
       },
+      onPreparedChildFailed: (revision, connectionId) => {
+        reportPreparedHostChildFailure(revision, connectionId, generation);
+      },
       createPeer:
         nativeClient && nativeShareGeneration
           ? (candidate, input, events) => {
@@ -2211,6 +2214,21 @@ export function HostPage({
     );
   }
 
+  function reportPreparedHostChildFailure(
+    revision: number,
+    connectionId: string,
+    generation: number,
+  ): void {
+    if (isCurrentGeneration(generation)) {
+      signalRef.current?.send({
+        type: "route-failed",
+        revision,
+        phase: "prepare",
+        connectionId,
+      });
+    }
+  }
+
   function handleSignalMessage(
     message: ServerMessage,
     generation: number,
@@ -2324,13 +2342,22 @@ export function HostPage({
       const accepted = route.accept(message);
       if (accepted === "stale") return;
       if (message.phase === "prepare") {
+        if (accepted === "duplicate") return;
         if (message.candidate.transport === "direct") {
-          prepareHostChild(
-            message.revision,
-            message.assignment,
-            message.candidate,
-            generation,
-          );
+          if (
+            !prepareHostChild(
+              message.revision,
+              message.assignment,
+              message.candidate,
+              generation,
+            )
+          ) {
+            reportPreparedHostChildFailure(
+              message.revision,
+              message.candidate.connectionId,
+              generation,
+            );
+          }
         } else {
           discardPreparedHostChild();
         }

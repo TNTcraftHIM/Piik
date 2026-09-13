@@ -164,6 +164,10 @@ The report combines operation history and existing runtime evidence:
   Pool observations distinguish native carrier reports, actual output and its
   assigned producer. Export adds Browser/platform metadata; diagnostic collection
   does not replace media APIs or control transport.
+  Each RTC sample includes a compact ICE summary ahead of the bounded raw stats:
+  reported pair states and selected-path type, prediction provenance, check
+  responses and RTT when available. Pair counts describe that sample, not route
+  attempts or a connection-success rate.
 
 Each Go component keeps an 8 MiB current log and one 8 MiB backup. ZIPs contain
 these retained logs, a report marker, selected startup context, build/module and

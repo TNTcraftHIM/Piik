@@ -419,10 +419,19 @@ export class HostPeer {
           return;
         }
         await this.enqueueNegotiation(() => this.acceptAnswer(payload));
-      } else if (this.connection.remoteDescription) {
-        await addRemoteIceCandidate(this.connection, payload.candidate);
-      } else if (this.pendingCandidates.length < MAX_PENDING_CANDIDATES) {
-        this.pendingCandidates.push(payload.candidate);
+      } else {
+        await this.enqueueNegotiation(async () => {
+          if (this.disposed) return;
+          // Native trickle events may precede a restart answer. The retained
+          // remote description still belongs to the previous ICE generation.
+          if (this.ordinaryAnswerEpoch !== null || !this.connection.remoteDescription) {
+            if (this.pendingCandidates.length < MAX_PENDING_CANDIDATES) {
+              this.pendingCandidates.push(payload.candidate);
+            }
+          } else {
+            await addRemoteIceCandidate(this.connection, payload.candidate);
+          }
+        });
       }
     } catch (error) {
       this.setError(error, "host.err.createConnection");

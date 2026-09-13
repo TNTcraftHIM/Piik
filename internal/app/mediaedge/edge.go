@@ -60,9 +60,9 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (*Edge, error
 	if options.Audio != nil && options.Audio.engine != engine {
 		return nil, errors.New("native audio edge source belongs to another engine")
 	}
-	mappedPort := 0
+	var prepareMapping func() int
 	if engine.portMapping != nil && !options.Local && len(options.ICEServers) > 0 {
-		mappedPort = engine.portMapping.Prepare()
+		prepareMapping = engine.portMapping.Prepare
 	}
 	if err := source.reserve(options.Local); err != nil {
 		return nil, err
@@ -131,7 +131,7 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (*Edge, error
 	edge.localCandidates = newLocalCandidateGathering(
 		engine,
 		options.ICEServers,
-		mappedPort,
+		prepareMapping,
 		options.Events.LocalCandidate,
 	)
 	connection.OnICECandidate(func(candidate *webrtc.ICECandidate) {

@@ -1,6 +1,6 @@
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
-import { networkInterfaces, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { reservePort, withDeadline } from "./browser-gate-harness";
@@ -108,18 +108,6 @@ function transportArgs(key: string): string[] {
     ...(bindAddress ? ["-o", `BindAddress=${bindAddress}`] : []),
     "-i", key,
   ];
-}
-
-function localLANAddress(): string {
-  const addresses = Object.values(networkInterfaces())
-    .flatMap((entries) => entries ?? [])
-    .filter((entry) => entry.family === "IPv4" && !entry.internal)
-    .map((entry) => entry.address);
-  const address = addresses.find((value) =>
-    /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(value),
-  );
-  if (!address) throw new Error("A private LAN IPv4 address is required");
-  return address;
 }
 
 async function waitForRemotePage(
@@ -244,7 +232,6 @@ async function main(): Promise<void> {
       "--link",
       "--config", join(profile, "client.json"),
       "--port", String(port),
-      "--lan-address", localLANAddress(),
       "--tunnel-process", tunnel,
     ], {
       cwd: ROOT,

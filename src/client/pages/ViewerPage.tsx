@@ -921,6 +921,7 @@ export function ViewerPage({
               signal.send(evidence);
             }
           },
+          onPreparedChildFailed: reportPreparedChildFailure,
         },
         endpointMediaCopyCapacity,
         currentRoutePolicy.natPrediction,
@@ -929,6 +930,20 @@ export function ViewerPage({
       viewerRelaySourceKey = sourceKey;
       viewerRelay.setChildren(currentAssignment.childPeerIds);
       return viewerRelay;
+    }
+
+    function reportPreparedChildFailure(
+      revision: number,
+      connectionId: string,
+    ): void {
+      if (active) {
+        signal.send({
+          type: "route-failed",
+          revision,
+          phase: "prepare",
+          connectionId,
+        });
+      }
     }
 
     function reconcileRelayChildren(
@@ -1154,7 +1169,9 @@ export function ViewerPage({
             return;
           }
           if (candidate && childPeerIds && revision !== undefined) {
-            ensureViewerRelay()?.prepareChild(revision, candidate, childPeerIds);
+            if (!ensureViewerRelay()?.prepareChild(revision, candidate, childPeerIds)) {
+              reportPreparedChildFailure(revision, candidate.connectionId);
+            }
           } else {
             viewerRelay?.discardPreparedChild();
           }

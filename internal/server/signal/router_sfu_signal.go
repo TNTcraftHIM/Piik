@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
 	"github.com/TNTcraftHIM/Piik/internal/media/forwarding"
 	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 	"github.com/TNTcraftHIM/Piik/internal/server/route"
@@ -117,6 +118,9 @@ func (r *router) handleSfuSignal(participant authenticatedRouteParticipant, mess
 		return
 	}
 	if err != nil {
+		r.debug(participant.roomID, "sfu-signal-failed",
+			"participant", r.debugPeer(participant.roomID, participant.peerID),
+			"role", participant.role, "kind", message.Kind, diagnostics.Error(err))
 		r.failSfuConnection(participant, message)
 		return
 	}
@@ -162,6 +166,8 @@ func (r *router) prepareSfuSubscriber(roomID string, operation *route.OperationS
 			return
 		}
 		if err != nil {
+			r.debug(roomID, "sfu-subscriber-prepare-failed",
+				"participant", r.debugPeer(roomID, participant.peerID), diagnostics.Error(err))
 			r.failSfuConnection(participant, message)
 			return
 		}

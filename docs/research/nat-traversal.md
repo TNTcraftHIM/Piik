@@ -80,6 +80,12 @@ Native observations do not need a second Go predictor. Predictions can trickle
 as soon as the third qualifying survey observation arrives. Route scheduling
 continues to use the operation deadline in ADR-0005, independently of whether
 prediction produces candidates.
+On an ICE restart, discard the old prediction batch rather than emitting an
+unscoped end marker into the new generation. The real gathering owner supplies
+completion, following [Trickle ICE generation rules](https://www.rfc-editor.org/rfc/rfc8838.html#section-13).
+An earlier remote description is not readiness for a new generation's candidates.
+Native event delivery can precede its offer/answer response; the existing
+negotiation queue retains those candidates until the matching answer is applied.
 
 ### Native Shared-Socket Preflight
 
@@ -108,6 +114,11 @@ mapping for that same socket. The returned port is advertised as a
 lower-priority candidate using a public address already observed by ordinary
 STUN. This is additive and bounded; a VPN, double NAT, or absent mapping service
 can make it unusable without delaying or replacing ordinary ICE.
+Gateway preparation runs alongside ordinary gathering. Each survey destination
+resolves and sends Binding independently within one shared deadline; an unhealthy
+DNS target cannot withhold a healthy target's result. End-of-candidates follows
+both the ordinary gatherer and the bounded supplemental work, and retirement
+discards that gathering generation's late output.
 A local UDP-forwarding gate then withheld every ordinary Host candidate and
 connected Pion ICE/DTLS in 1.26 seconds through the advertised `mp1` endpoint.
 That proves the same-socket ICE mechanism, not rescue through a physical NAT.

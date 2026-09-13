@@ -98,6 +98,9 @@ not abandon its only possible route at the foreground boundary.
 The pending Viewer transport reports an actual Browser failure but installs no
 shorter initial or disconnected-state deadline. Viewer-owned reconnect timing
 begins only after that exact candidate commits as the active route.
+Either preparing endpoint reports local rejection or connection-start failure
+to that same operation immediately; it does not wait out a silent candidate's
+deadline or start an independent recovery loop.
 When NAT traversal is enabled, another operation may use the remaining
 connection-attempt budget after rollback. The waiting display uses the actual
 server-issued attempt ordinal; it never counts time as an attempted connection.

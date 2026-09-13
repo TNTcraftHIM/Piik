@@ -236,6 +236,7 @@ func TestEmbeddedSfuAuthenticatedWebSocketCarriesActualRTP(t *testing.T) {
 }
 
 func TestEmbeddedSfuRejectsBadPublisherOfferAtPendingRevision(t *testing.T) {
+	diagnostics := captureRouteDebug(t)
 	h := newRouterHarness(t, routerHarnessOptions{capacity: 1, withSfu: true})
 	service := sfu.NewMedia(sfu.MediaOptions{})
 	defer service.Close()
@@ -262,6 +263,11 @@ func TestEmbeddedSfuRejectsBadPublisherOfferAtPendingRevision(t *testing.T) {
 		})
 	})
 	h.waitUsage(sfu.Usage{})
+	if !diagnostics.calledWith(created.RoomID, "sfu-signal-failed", map[string]any{
+		"role": "host", "kind": "description",
+	}) {
+		t.Fatal("failed publisher preparation did not retain diagnostic context")
+	}
 	if _, ok := h.activeAfter(viewer.sessionID, int64(prepared.Revision)); !ok {
 		t.Fatal("failed pending media did not broadcast a newer rollback revision")
 	}

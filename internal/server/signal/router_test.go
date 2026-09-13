@@ -1438,6 +1438,58 @@ func TestRouterWakesAtDerivedDirectBoundaryAndPreparesSfuAutomatically(t *testin
 	}
 }
 
+func TestRouterRelayPreparationFailureAdvancesWithoutWaitingForDeadline(t *testing.T) {
+	h := newRouterHarness(t, routerHarnessOptions{capacity: 2, withSfu: true, fakeTimers: true})
+	created := h.createRoom()
+	host := h.connectHost(created, nil, "", "")
+	relay := h.connectViewer(created, "relay")
+	h.locked(func() {
+		h.doComplete(host)
+		h.doComplete(relay)
+	})
+	h.settle()
+	root, ok := h.preparedFor(relay.sessionID)
+	if !ok {
+		t.Fatal("relay must prepare its Host upstream")
+	}
+	h.locked(func() {
+		h.doReady(relay, int64(root.Revision))
+		h.doRelay(relay, 2)
+	})
+	child := h.connectViewer(created, "child")
+	h.complete(child)
+	h.settle()
+	direct, ok := h.preparedFor(child.sessionID)
+	if !ok || direct.Assignment.Upstream != protocol.PeerUpstream(host.peerID) {
+		t.Fatal("child must try the Host first")
+	}
+	h.routeFailed(host, routeFailedMessage(int64(direct.Revision), "prepare", direct.Candidate.ConnectionID))
+	h.settle()
+	prepared, ok := h.preparedFor(child.sessionID)
+	if !ok || prepared.Assignment.Upstream != protocol.PeerUpstream(relay.peerID) {
+		t.Fatal("child must next try the relay")
+	}
+	failure := routeFailedMessage(int64(prepared.Revision), "prepare", prepared.Candidate.ConnectionID)
+	h.routeFailed(relay, failure)
+	h.settle()
+	fallback, ok := h.preparedFor(child.sessionID)
+	if !ok || fallback.Candidate.Transport != "sfu" || fallback.Revision <= prepared.Revision {
+		t.Fatalf("relay rejection must prepare SFU immediately: %+v", fallback)
+	}
+	h.routeFailed(relay, failure)
+	h.settle()
+	current, _ := h.preparedFor(child.sessionID)
+	if current.Candidate.ConnectionID != fallback.Candidate.ConnectionID {
+		t.Fatal("duplicate relay failure disturbed the next candidate")
+	}
+	if h.clock.now() != 0 {
+		t.Fatal("preparation failure must advance without a timer wake")
+	}
+	if retained := h.mustActiveEdge(created.RoomID, relay.peerID); retained.connectionID != root.Candidate.ConnectionID {
+		t.Fatal("relay preparation failure disturbed its active upstream")
+	}
+}
+
 func TestRouterKeepsExactTransportConnectedDirectCandidatePastBoundary(t *testing.T) {
 	h := newRouterHarness(t, routerHarnessOptions{capacity: 2, withSfu: true, prepareTimeoutMs: 300, fakeTimers: true})
 	created := h.createRoom()

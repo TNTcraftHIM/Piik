@@ -11,9 +11,9 @@ history. A parked idea is not implementation authority.
   startup, password retry and Native signaling recovery in one candidate.
   Verify first-share and source-switch quality with a real game and H.264;
   test public-link startup on a machine with several LAN addresses, while
-  Local retains explicit LAN selection. Run physical capture/network workloads
-  serially from stable build paths. Run Go race checks for gateway mapping when
-  a supported cgo environment is available. Verify Native IPv6 across networks
+  Local retains explicit LAN selection. Review diagnostic startup, actionable
+  launch failures and native mobile fullscreen. Run physical capture/network
+  workloads serially from stable build paths. Verify Native IPv6 across networks
   with usable IPv6 connectivity; local dual-stack checks do not establish that
   field result. Approve the version and bilingual release notes before publishing.
 - [ ] **Post-launch monitoring.** Collect App/Server feedback and verify the

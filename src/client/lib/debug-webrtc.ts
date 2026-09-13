@@ -1,4 +1,5 @@
 import { browserDebugEnabled, debugError, debugEvent } from "./debug";
+import { isPredictedCandidateFoundation } from "../../shared/nat-candidate";
 
 const connections = new WeakMap<RTCPeerConnection, object>();
 const statsTypes = new Set([
@@ -43,7 +44,31 @@ export function debugRtcStats(connection: RTCPeerConnection, report: RTCStatsRep
   if (!identity) return;
   const stats: object[] = [];
   report.forEach((record) => { if (statsTypes.has(record.type)) stats.push(record); });
-  debugEvent("webrtc", "stats", { ...identity, stats });
+  // Preserve a small connectivity summary before the bounded raw array. With
+  // many interfaces, raw pairs can otherwise push the selected path past it.
+  const pairs = { total: 0, waiting: 0, "in-progress": 0, succeeded: 0, failed: 0, frozen: 0, unknown: 0 };
+  const selected: object[] = [];
+  report.forEach((record) => {
+    if (record.type === "candidate-pair") {
+      pairs.total++;
+      const state = record.state as keyof typeof pairs;
+      pairs[Object.hasOwn(pairs, state) && state !== "total" ? state : "unknown"]++;
+    }
+    if (record.type !== "transport" || typeof record.selectedCandidatePairId !== "string") return;
+    const pair = report.get(record.selectedCandidatePairId);
+    if (pair?.type !== "candidate-pair") return;
+    const local = report.get(pair.localCandidateId), remote = report.get(pair.remoteCandidateId);
+    selected.push({
+      state: pair.state ?? null, dtlsState: record.dtlsState ?? null,
+      localType: local?.candidateType ?? null, remoteType: remote?.candidateType ?? null,
+      protocol: local?.protocol ?? null,
+      natTraversalPath: typeof remote?.foundation !== "string" ? "unknown"
+        : isPredictedCandidateFoundation(remote.foundation) ? "predicted" : "ordinary",
+      requestsSent: pair.requestsSent ?? null, responsesReceived: pair.responsesReceived ?? null,
+      currentRoundTripTime: pair.currentRoundTripTime ?? null,
+    });
+  });
+  debugEvent("webrtc", "stats", { ...identity, ice: { pairs, selected }, stats });
 }
 
 export function debugRtcFailure(connection: RTCPeerConnection, error: unknown): void {

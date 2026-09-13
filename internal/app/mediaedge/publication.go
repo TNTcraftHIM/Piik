@@ -73,7 +73,7 @@ func (engine *Engine) NewPublication(source *Source, options EdgeOptions) (*Publ
 	publication.transport = transport
 	transport.SetAudioBitrate(options.Audio.configuredBitrate())
 	publication.signaling.connection = transport.PC
-	publication.signaling.localCandidates = newLocalCandidateGathering(engine, options.ICEServers, 0, options.Events.LocalCandidate)
+	publication.signaling.localCandidates = newLocalCandidateGathering(engine, options.ICEServers, nil, options.Events.LocalCandidate)
 	transport.PC.OnICECandidate(publication.signaling.localCandidates.addPion)
 	transport.PC.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
 		if state == webrtc.PeerConnectionStateConnected {

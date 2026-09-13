@@ -14,17 +14,18 @@ const (
 )
 
 type localCandidateGathering struct {
-	engine     *Engine
-	servers    []webrtc.ICEServer
-	mappedPort int
-	emit       func(*webrtc.ICECandidateInit)
-	ctx        context.Context
-	cancel     context.CancelFunc
-	once       sync.Once
+	engine         *Engine
+	servers        []webrtc.ICEServer
+	mappedPort     int
+	prepareMapping func() int
+	emit           func(*webrtc.ICECandidateInit)
+	ctx            context.Context
+	cancel         context.CancelFunc
+	once           sync.Once
 
 	mu               sync.Mutex
 	pionDone         bool
-	surveyDone       bool
+	supplementalDone bool
 	endSent          bool
 	closed           bool
 	mappedCandidates map[string]struct{}
@@ -33,14 +34,14 @@ type localCandidateGathering struct {
 func newLocalCandidateGathering(
 	engine *Engine,
 	servers []webrtc.ICEServer,
-	mappedPort int,
+	prepareMapping func() int,
 	emit func(*webrtc.ICECandidateInit),
 ) *localCandidateGathering {
 	ctx, cancel := context.WithCancel(engine.ctx)
 	surveyServers := stunServers(servers)
 	return &localCandidateGathering{
-		engine: engine, servers: surveyServers, mappedPort: mappedPort, emit: emit,
-		ctx: ctx, cancel: cancel, surveyDone: len(surveyServers) == 0,
+		engine: engine, servers: surveyServers, prepareMapping: prepareMapping, emit: emit,
+		ctx: ctx, cancel: cancel, supplementalDone: len(surveyServers) == 0,
 		mappedCandidates: make(map[string]struct{}),
 	}
 }
@@ -98,11 +99,42 @@ func (gathering *localCandidateGathering) start() {
 	}
 	gathering.once.Do(func() {
 		go func() {
+			// Gateway discovery and STUN are additive: neither delays the SDP or
+			// ordinary candidates. Keep end-of-candidates behind both owners.
+			var mapping <-chan int
+			if gathering.prepareMapping != nil && len(gathering.servers) > 0 {
+				result := make(chan int, 1)
+				mapping = result
+				go func() { result <- gathering.prepareMapping() }()
+			}
+			survey := make(chan mappedAddress)
+			go func() {
+				defer close(survey)
+				gathering.engine.surveySTUN(gathering.ctx, gathering.servers, func(mapped mappedAddress) {
+					select {
+					case survey <- mapped:
+					case <-gathering.ctx.Done():
+					}
+				})
+			}()
 			index := 0
-			gathering.engine.surveySTUN(
-				gathering.ctx,
-				gathering.servers,
-				func(mapped mappedAddress) {
+			var observed []mappedAddress
+			for survey != nil || mapping != nil {
+				select {
+				case <-gathering.ctx.Done():
+					return
+				case port := <-mapping:
+					gathering.mappedPort = port
+					mapping = nil
+					for _, mapped := range observed {
+						gathering.emitMappedCandidate(mapped)
+					}
+					observed = nil
+				case mapped, ok := <-survey:
+					if !ok {
+						survey = nil
+						continue
+					}
 					index++
 					mid := "0"
 					line := uint16(0)
@@ -114,11 +146,15 @@ func (gathering *localCandidateGathering) start() {
 							strconv.Itoa(gathering.engine.localPort),
 						SDPMid: &mid, SDPMLineIndex: &line,
 					})
-					gathering.emitMappedCandidate(mapped)
-				},
-			)
+					if mapping != nil {
+						observed = append(observed, mapped)
+					} else {
+						gathering.emitMappedCandidate(mapped)
+					}
+				}
+			}
 			gathering.mu.Lock()
-			gathering.surveyDone = true
+			gathering.supplementalDone = true
 			sendEnd := gathering.finishLocked()
 			gathering.mu.Unlock()
 			if sendEnd {
@@ -150,7 +186,7 @@ func (gathering *localCandidateGathering) emitCandidate(candidate *webrtc.ICECan
 
 func (gathering *localCandidateGathering) finishLocked() bool {
 	if gathering.closed || gathering.endSent || !gathering.pionDone ||
-		!gathering.surveyDone || gathering.emit == nil {
+		!gathering.supplementalDone || gathering.emit == nil {
 		return false
 	}
 	gathering.endSent = true

@@ -180,62 +180,59 @@ func (engine *Engine) surveySTUN(
 ) {
 	surveyContext, cancel := context.WithTimeout(ctx, stunSurveyTimeout)
 	defer cancel()
-	type surveyTarget struct {
-		address *net.UDPAddr
-	}
-	targets := make([]surveyTarget, 0)
+	results := make(chan mappedAddress)
+	var pending sync.WaitGroup
 	for _, server := range servers {
 		for _, rawURL := range server.URLs {
 			uri, err := stun.ParseURI(rawURL)
 			if err != nil || uri.Scheme != stun.SchemeTypeSTUN ||
-				uri.Proto != stun.ProtoTypeUDP {
+				uri.Proto != stun.ProtoTypeUDP || uri.Port < 1 || uri.Port > 65_535 {
 				continue
 			}
-			addresses, err := net.DefaultResolver.LookupNetIP(ctx, "ip4", uri.Host)
-			if err != nil || len(addresses) == 0 {
-				slog.DebugContext(ctx, "nat-survey", "event", "resolve-failed", "host", uri.Host, diagnostics.Error(err))
-				continue
-			}
-			serverAddress, err := net.ResolveUDPAddr(
-				"udp4",
-				net.JoinHostPort(addresses[0].String(), strconv.Itoa(uri.Port)),
-			)
-			if err == nil {
-				targets = append(targets, surveyTarget{address: serverAddress})
-			}
+			pending.Add(1)
+			go func() {
+				defer pending.Done()
+				// Resolve each destination independently inside the same bound as
+				// its Binding request; one broken resolver must not stall healthy STUN.
+				addresses, err := net.DefaultResolver.LookupNetIP(surveyContext, "ip4", uri.Host)
+				if err != nil || len(addresses) == 0 {
+					slog.DebugContext(surveyContext, "nat-survey", "event", "resolve-failed", "host", uri.Host, diagnostics.Error(err))
+					return
+				}
+				address := net.UDPAddrFromAddrPort(netip.AddrPortFrom(addresses[0], uint16(uri.Port)))
+				started := time.Now()
+				mapped, err := engine.mux.GetXORMappedAddrContext(
+					surveyContext,
+					address,
+					stunSurveyTimeout,
+				)
+				if err != nil || mapped == nil || mapped.IP.To4() == nil ||
+					mapped.Port < 1 || mapped.Port > 65_535 {
+					slog.DebugContext(surveyContext, "nat-survey", "event", "binding-failed", "serverPort", address.Port,
+						"durationMs", time.Since(started).Milliseconds(), diagnostics.Error(err))
+					return
+				}
+				slog.DebugContext(surveyContext, "nat-survey", "event", "binding", "serverPort", address.Port,
+					"localPort", engine.localPort, "mappedAddress", diagnostics.ID(mapped.IP.String()), "mappedPort", mapped.Port,
+					"durationMs", time.Since(started).Milliseconds())
+				select {
+				case results <- mappedAddress{address: mapped.IP.String(), port: mapped.Port}:
+				case <-surveyContext.Done():
+				}
+			}()
 		}
 	}
-	if len(targets) == 0 {
-		return
-	}
-	results := make(chan mappedAddress, len(targets))
-	for _, target := range targets {
-		go func(address *net.UDPAddr) {
-			started := time.Now()
-			mapped, err := engine.mux.GetXORMappedAddrContext(
-				surveyContext,
-				address,
-				stunSurveyTimeout,
-			)
-			if err != nil || mapped == nil || mapped.IP.To4() == nil ||
-				mapped.Port < 1 || mapped.Port > 65_535 {
-				slog.DebugContext(surveyContext, "nat-survey", "event", "binding-failed", "serverPort", address.Port,
-					"durationMs", time.Since(started).Milliseconds(), diagnostics.Error(err))
+	go func() {
+		pending.Wait()
+		close(results)
+	}()
+	seen := map[string]struct{}{}
+	for {
+		select {
+		case value, ok := <-results:
+			if !ok {
 				return
 			}
-			slog.DebugContext(surveyContext, "nat-survey", "event", "binding", "serverPort", address.Port,
-				"localPort", engine.localPort, "mappedAddress", diagnostics.ID(mapped.IP.String()), "mappedPort", mapped.Port,
-				"durationMs", time.Since(started).Milliseconds())
-			select {
-			case results <- mappedAddress{address: mapped.IP.String(), port: mapped.Port}:
-			case <-surveyContext.Done():
-			}
-		}(target.address)
-	}
-	seen := map[string]struct{}{}
-	for remaining := len(targets); remaining > 0; remaining-- {
-		select {
-		case value := <-results:
 			key := value.address + ":" + strconv.Itoa(value.port)
 			if _, found := seen[key]; found {
 				continue

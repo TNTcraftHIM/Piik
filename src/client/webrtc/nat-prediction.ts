@@ -386,7 +386,9 @@ export class NatPredictionCandidateEmitter {
       next.usernameFragment &&
       next.usernameFragment !== this.usernameFragment
     ) {
-      this.completeBatch();
+      // An ICE restart retires old observations; an unscoped end marker here
+      // would end the new remote generation before its candidates arrive.
+      this.discard();
     }
     if (!this.batch) {
       this.usernameFragment = next.usernameFragment ?? null;

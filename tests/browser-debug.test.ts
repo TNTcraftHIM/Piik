@@ -156,6 +156,36 @@ describe("opt-in Browser diagnostics", () => {
     expect(report).not.toContain("private-certificate");
   });
 
+  it("keeps selected ICE evidence when many interface pairs exceed the raw report limit", async () => {
+    browser();
+    const debug = await import("../src/client/lib/debug");
+    const rtc = await import("../src/client/lib/debug-webrtc");
+    const connection = Object.assign(new EventTarget(), { getSenders: () => [], getReceivers: () => [] });
+    const peer = connection as unknown as RTCPeerConnection;
+    rtc.observeDebugConnection(peer, { connectionId: "many-interfaces", role: "receive" });
+    const records = new Map<string, object>();
+    for (let index = 0; index < 70; index++) {
+      records.set(`pair-${index}`, { type: "candidate-pair", state: "failed" });
+    }
+    records.set("chosen", { type: "candidate-pair", state: "succeeded",
+      localCandidateId: "local", remoteCandidateId: "remote", requestsSent: 4, responsesReceived: 3 });
+    records.set("local", { type: "local-candidate", candidateType: "host", protocol: "udp", address: "192.0.2.1" });
+    records.set("remote", { type: "remote-candidate", candidateType: "srflx", foundation: "sp1", address: "192.0.2.2" });
+    records.set("transport", { type: "transport", selectedCandidatePairId: "chosen" });
+    rtc.debugRtcStats(peer, records as unknown as RTCStatsReport);
+    const report = JSON.parse(await debug.exportBrowserDebug());
+    const sample = report.events.find((entry: { event: string }) => entry.event === "stats");
+    expect(report.partial).toBe(true);
+    expect(sample.details.stats).toHaveLength(64);
+    expect(sample.details.ice.pairs).toMatchObject({ total: 71, failed: 70, succeeded: 1 });
+    expect(sample.details.ice.selected).toEqual([{
+      state: "succeeded", dtlsState: null,
+      localType: "host", remoteType: "srflx", protocol: "udp", natTraversalPath: "predicted",
+      requestsSent: 4, responsesReceived: 3, currentRoundTripTime: null,
+    }]);
+    expect(JSON.stringify(sample.details.ice)).not.toContain("192.0.2.");
+  });
+
   it("correlates actual Native request and response using their existing wire identity", async () => {
     const page = browser();
     const token = "x".repeat(43);

@@ -48,9 +48,9 @@ func (engine *Engine) NewReceiver(options ReceiverOptions) (*Receiver, webrtc.Se
 	if err != nil {
 		return nil, webrtc.SessionDescription{}, err
 	}
-	mappedPort := 0
+	var prepareMapping func() int
 	if engine.portMapping != nil && len(options.ICEServers) > 0 {
-		mappedPort = engine.portMapping.Prepare()
+		prepareMapping = engine.portMapping.Prepare
 	}
 	connection, err := engine.api.NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
@@ -92,7 +92,7 @@ func (engine *Engine) NewReceiver(options ReceiverOptions) (*Receiver, webrtc.Se
 	receiver.localCandidates = newLocalCandidateGathering(
 		engine,
 		options.ICEServers,
-		mappedPort,
+		prepareMapping,
 		options.Events.LocalCandidate,
 	)
 	connection.OnICECandidate(receiver.localCandidates.addPion)

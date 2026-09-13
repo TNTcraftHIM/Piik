@@ -1083,6 +1083,40 @@ describe("HostPeer source replacement", () => {
     );
   });
 
+  it("retains restart candidates that arrive before the new answer", async () => {
+    const peer = createPeer(createStream(createTrack("video", "video"), null));
+    await peer.start();
+    const connection = FakePeerConnection.latest!;
+    await peer.acceptSignal({
+      kind: "description", connectionId: peer.connectionId,
+      description: { type: "answer", sdp: "previous-answer" },
+    });
+    await expect(peer.restartIce()).resolves.toBe(true);
+    const nextCandidate = {
+      candidate: "candidate:next 1 udp 2122260223 192.0.2.8 50001 typ host ufrag next",
+      usernameFragment: "next", sdpMid: "0", sdpMLineIndex: 0,
+    };
+    await peer.acceptSignal({
+      kind: "candidate", connectionId: peer.connectionId, candidate: nextCandidate,
+    });
+    // Native receiver events can precede the receive-offer RPC response.
+    expect(connection.addedIceCandidates).toEqual([]);
+    connection.deferRemoteDescriptionCall = 2;
+    const answer = peer.acceptSignal({
+      kind: "description", connectionId: peer.connectionId,
+      description: { type: "answer", sdp: "next-answer" },
+    });
+    await vi.waitFor(() => expect(connection.remoteDescriptionCallCount).toBe(2));
+    const end = peer.acceptSignal({
+      kind: "candidate", connectionId: peer.connectionId, candidate: null,
+    });
+    connection.releaseDeferredRemoteDescription();
+    await Promise.all([answer, end]);
+    expect(connection.remoteDescription?.sdp).toBe("next-answer");
+    expect(connection.addedIceCandidates).toEqual([nextCandidate, null]);
+    peer.dispose();
+  });
+
   it("enables the selected balanced profile after startup frames", async () => {
     const video = createTrack("video", "video");
     const peer = createPeer(createStream(video, createTrack("audio", "audio")));
@@ -1795,7 +1829,8 @@ describe("Host provisional child runtime ownership", () => {
   });
 
   it("disposes stale prepares on replacement, rollback, and auth reset", async () => {
-    const owner = new HostProvisionalChild({ sendSignal: () => true });
+    const onPreparedChildFailed = vi.fn();
+    const owner = new HostProvisionalChild({ sendSignal: () => true, onPreparedChildFailed });
     const stream = createStream(createTrack("video", "host-cleanup-video"), null);
 
     expect(owner.prepare(hostProvisionalInput(7, ["first-probe"], stream))).toBe(true);
@@ -1817,6 +1852,27 @@ describe("Host provisional child runtime ownership", () => {
     owner.discard();
     expect(authProbe.connectionState).toBe("closed");
     expect(FakePeerConnection.activeCount).toBe(0);
+    expect(onPreparedChildFailed).not.toHaveBeenCalled();
+  });
+
+  it("reports failed Host preparation once and fences retired attempts", async () => {
+    const onPreparedChildFailed = vi.fn();
+    const owner = new HostProvisionalChild({ sendSignal: () => true, onPreparedChildFailed });
+    const stream = createStream(createTrack("video", "host-failure-video"), null);
+    FakePeerConnection.offersFailing = 1;
+    owner.prepare(hostProvisionalInput(7, ["first"], stream));
+    await vi.waitFor(() => expect(onPreparedChildFailed).toHaveBeenCalledExactlyOnceWith(7, "candidate-connection-7"));
+
+    owner.prepare(hostProvisionalInput(8, ["second"], stream));
+    const connection = FakePeerConnection.latest!;
+    connection.connectionState = "failed";
+    connection.dispatchEvent(new Event("connectionstatechange"));
+    connection.dispatchEvent(new Event("connectionstatechange"));
+    expect(onPreparedChildFailed).toHaveBeenCalledTimes(2);
+    expect(onPreparedChildFailed).toHaveBeenLastCalledWith(8, "candidate-connection-8");
+    owner.discard();
+    connection.dispatchEvent(new Event("connectionstatechange"));
+    expect(onPreparedChildFailed).toHaveBeenCalledTimes(2);
   });
 
   it("updates the prepared stream before promotion", async () => {
@@ -2145,10 +2201,11 @@ describe("ViewerRelay downstream ownership", () => {
   });
 
   it("cleans prepared children on failure, replacement, rollback, session reset, and share stop", async () => {
+    const onPreparedChildFailed = vi.fn();
     const relay = new ViewerRelay(
       { iceServers: [] },
       QUALITY_PROFILES["720p30"],
-      { sendSignal: () => true },
+      { sendSignal: () => true, onPreparedChildFailed },
     );
     relay.setStream(createStream(createTrack("video", "rollback-video"), null));
     expect(relay.prepareChild(7, routeCandidate(7, "first-probe"), ["first-probe"])).toBe(true);
@@ -2159,6 +2216,7 @@ describe("ViewerRelay downstream ownership", () => {
     expect(firstProbe.connectionState).toBe("closed");
     relay.activateChildren(9, []);
     expect(secondProbe.connectionState).toBe("closed");
+    expect(onPreparedChildFailed).not.toHaveBeenCalled();
 
     FakePeerConnection.offersFailing = 1;
     const instancesBeforeFailure = FakePeerConnection.instances.length;
@@ -2166,6 +2224,7 @@ describe("ViewerRelay downstream ownership", () => {
     const failedProbe = FakePeerConnection.latest!;
     await vi.waitFor(() => expect(failedProbe.connectionState).toBe("closed"));
     expect(FakePeerConnection.instances).toHaveLength(instancesBeforeFailure + 1);
+    expect(onPreparedChildFailed).toHaveBeenCalledExactlyOnceWith(10, "relay-candidate-10");
 
     expect(relay.prepareChild(11, routeCandidate(11, "session-probe"), ["session-probe"])).toBe(true);
     const sessionProbe = FakePeerConnection.latest!;
@@ -2176,6 +2235,33 @@ describe("ViewerRelay downstream ownership", () => {
     const stoppedProbe = FakePeerConnection.latest!;
     relay.stop();
     expect(stoppedProbe.connectionState).toBe("closed");
+    relay.dispose();
+    expect(onPreparedChildFailed).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports a failed prepared transport once without blaming retained children", async () => {
+    const onPreparedChildFailed = vi.fn();
+    const relay = new ViewerRelay(
+      { iceServers: [] },
+      QUALITY_PROFILES["720p30"],
+      { sendSignal: () => true, onPreparedChildFailed },
+    );
+    relay.setStream(createStream(createTrack("video", "failure-video"), null));
+    relay.prepareChild(1, routeCandidate(1, "retained"), ["retained"]);
+    await vi.waitFor(() => expect(FakePeerConnection.latest).not.toBeNull());
+    const retained = FakePeerConnection.latest!;
+    retained.connectionState = "connected";
+    relay.activateChildren(1, ["retained"]);
+    relay.prepareChild(2, routeCandidate(2, "candidate"), ["retained", "candidate"]);
+    const candidate = FakePeerConnection.latest!;
+    candidate.connectionState = "failed";
+    candidate.dispatchEvent(new Event("connectionstatechange"));
+    candidate.dispatchEvent(new Event("connectionstatechange"));
+    expect(onPreparedChildFailed).toHaveBeenCalledExactlyOnceWith(2, "relay-candidate-2");
+    expect(retained.connectionState).toBe("connected");
+    relay.activateChildren(3, ["retained"]);
+    candidate.dispatchEvent(new Event("connectionstatechange"));
+    expect(onPreparedChildFailed).toHaveBeenCalledTimes(1);
     relay.dispose();
   });
 
