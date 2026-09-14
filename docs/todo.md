@@ -27,6 +27,11 @@ history. A parked idea is not implementation authority.
   detailed launcher errors and Windows error-exit pause; those repairs do not
   establish resolution on the reporting machine. Use a current Debug report if
   startup still fails.
+- [ ] **Windows launcher exit after opening the page.** A user reports that the
+  mode-selection page opens, then the App console reports
+  `Piik App could not open its launcher: exit status 0xc0000005`.
+  Investigation is deferred at the owner's request. Establish the affected build
+  and failing process before changing startup, browser handoff or exit behavior.
 - [ ] **Tooltip placement around video.** After the current motion/meaning
   acceptance, review placement that keeps the picture visible, including
   side placement and restrained translucency. Keep neighbouring actions
