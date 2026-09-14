@@ -143,7 +143,7 @@ function Screen({ shot }: { shot: Shot }) {
               state={live ? "live" : "off"}
               comic={live ? "signal-connected" : "signal-offline"}
               label={t(
-                live ? "state.presence.online" : "state.presence.offline",
+                live ? "state.signal.connected" : "state.signal.offline",
               )}
             />
           )
@@ -212,7 +212,7 @@ function Screen({ shot }: { shot: Shot }) {
             <div className="lr-stage-notices" />
             <Couch
               view={shot === "viewer" ? "viewer" : "host"}
-              host={{ key: host, name, online: true, you: shot !== "viewer" }}
+              host={{ key: host, name, you: shot !== "viewer" }}
               entries={
                 shot === "viewer"
                   ? guests.map((key, i) => ({
@@ -246,9 +246,9 @@ function Screen({ shot }: { shot: Shot }) {
               <>
                 <Row>
                   <Btn icon="pause" cap="host.pause" title="host.pause" hint="hint-pause" />
-                  <Btn icon="square" cap="host.stop" title="host.stop" hint="hint-share-stop" />
+                  <Btn icon="stop" cap="host.stop" title="host.stop" hint="hint-share-stop" />
                   <Btn
-                    icon="share"
+                    icon="switchSource"
                     cap="host.switchSource"
                     title="host.switchSource"
                     hint="hint-switch-source"

@@ -27,7 +27,6 @@ export type ComicKind =
   | "source-failed"
   | "settings-failed"
   | "name-invalid"
-  | "participant-name"
   | "transport-connected"
   | "tap-to-play"
   | "host-paused"
@@ -63,8 +62,6 @@ export type Set2Kind =
   | "hint-client-link"
   | "hint-rotate-invite"
   | "hint-revoke-invite"
-  | "hint-policy-open"
-  | "hint-policy-private"
   | "hint-password";
 
 export type Set3Kind =

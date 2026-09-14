@@ -6,6 +6,7 @@
 
 import { memo, type CSSProperties, type ReactNode } from "react";
 import { HostMark } from "./HostMark";
+import { Glyph } from "../../ui/icons";
 import { PersonShape } from "./Pawn";
 import { comicStyle, getComicPresentation, type ComicMotion, type ComicTone } from "./comic-presentation";
 import type { ComicKind, ComicTheme } from "../../ui/visual-kinds";
@@ -39,7 +40,6 @@ const DEFAULT_THEME: Record<ComicKind, ComicTheme> = {
   "source-failed": "stage",
   "settings-failed": "paper",
   "name-invalid": "paper",
-  "participant-name": "paper",
   "transport-connected": "paper",
   "tap-to-play": "stage",
   "host-paused": "stage",
@@ -200,6 +200,17 @@ export function BrowserWindow({ x, y, w, h, children }: {
     </g>
     {children}
   </>;
+}
+
+/** Invitation URL: the same 24-unit chain as the link control icon. */
+export function InviteLink({ x, y, size = 24, className }: {
+  x: number; y: number; size?: number; className?: string;
+}) {
+  return <g className={className}>
+    <g transform={`translate(${x} ${y})`} color="var(--ink)">
+      <Glyph name="link" size={size} />
+    </g>
+  </g>;
 }
 
 /** Crescent moon (host not live / room asleep). Static; safe to transform. */
@@ -1042,53 +1053,23 @@ ${rmBlock(["vls-ad-door"], [[".vls-ad-door", "transform:none"]], false)}
   );
 }
 
-/** 13. invalid-invite: 2 paper panels. The ticket is broken. */
+/** 13. invalid-invite: this invitation URL cannot admit the viewer. */
 function SceneInvalidInvite({ theme }: { theme: ComicTheme }) {
   return (
     <>
       <style>{`
-.vls-ii-l{transform-box:fill-box;transform-origin:center;animation:vlsIiL var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
-.vls-ii-r{transform-box:fill-box;transform-origin:center;animation:vlsIiR var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
-.vls-ii-x{transform-box:fill-box;transform-origin:center;animation:vlsIiX var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
-@keyframes vlsIiL{0%{transform:translate(0,0) rotate(0)}35%,100%{transform:translate(-3px,1px) rotate(-5deg)}}
-@keyframes vlsIiR{0%{transform:translate(0,0) rotate(0)}35%,100%{transform:translate(3px,-1px) rotate(5deg)}}
-@keyframes vlsIiX{0%,38%{opacity:0;transform:scale(1.6) rotate(8deg)}45%,100%{opacity:1;transform:scale(1) rotate(8deg)}}
-${rmBlock(
-  ["vls-ii-x"],
-  [
-    [".vls-ii-x", "opacity:1;transform:scale(1) rotate(8deg)"],
-  ],
-)}
-${rmBlock(["vls-ii-l", "vls-ii-r"], [
-  [".vls-ii-l", "transform:translate(-3px,1px) rotate(-5deg)"],
-  [".vls-ii-r", "transform:translate(3px,-1px) rotate(5deg)"],
-], false)}
+.vls-ii-link{animation:vlsIiLink var(--comic-duration,3.2s) ease-in-out 1 both}
+@keyframes vlsIiLink{0%,8%,36%,100%{transform:none}17%{transform:translateX(-4px)}26%{transform:translateX(3px)}}
+${rmBlock(["vls-ii-link"], [[".vls-ii-link", "transform:none"]], false)}
 `}</style>
-      <Frame x={4} w={152} theme={theme} />
-      <Frame x={164} w={152} theme={theme} result />
-      <Pawn x={48} yb={76} s={9} eyes />
-      <rect x={62} y={40} width={20} height={13} rx={2} fill="var(--paper)" stroke="var(--ink)" strokeWidth={2} />
-      <path d="M62 42 L72 48 L82 42" stroke="var(--ink)" strokeWidth={1.5} fill="none" />
-      <Pawn x={186} yb={76} s={9} eyes />
-      <g className="vls-ii-l">
-        <path
-          d="M228 38 H241 L238 42 L242 46 L238 50 L241 54 H228 Z"
-          fill="var(--paper)"
-          stroke="var(--ink)"
-          strokeWidth={2}
-          strokeLinejoin="round"
-        />
-      </g>
-      <g className="vls-ii-r">
-        <path
-          d="M252 38 H241 L244 42 L240 46 L244 50 L241 54 H252 Z"
-          fill="var(--paper)"
-          stroke="var(--ink)"
-          strokeWidth={2}
-          strokeLinejoin="round"
-        />
-      </g>
-      <RedX cx={240} cy={46} arm={6} className="vls-ii-x" />
+      <Frame x={4} w={312} theme={theme} result />
+      <Pawn x={53} yb={81} s={15} eyes gaze={2} />
+      <BrowserWindow x={94} y={15} w={200} h={65}>
+        <rect x={106} y={33} width={176} height={35} rx={5} fill="var(--wall-2)" stroke={FAINT} strokeWidth={1.5} />
+        <InviteLink x={114} y={34} size={32} className="vls-ii-link" />
+        <path d="M160 44h69m-69 12h52" stroke={FAINT} strokeWidth={2} strokeLinecap="round" />
+        <RedX cx={264} cy={51} arm={8} className="vls-ii-x" />
+      </BrowserWindow>
     </>
   );
 }
@@ -1486,22 +1467,20 @@ ${rmBlock(["vls-source-host"], [], false)}
   </>;
 }
 
-function SceneParticipantName({ theme, invalid = false }: { theme: ComicTheme; invalid?: boolean }) {
+function SceneNameInvalid({ theme }: { theme: ComicTheme }) {
   return <>
     <style>{`
-.vls-name-card{animation:vlsNamePresent var(--comic-duration,3.2s) ease-in-out 1 both}
-.vls-name-invalid{animation-name:vlsNameRefuse}
-@keyframes vlsNamePresent{0%{transform:translateX(-7px)}30%,100%{transform:none}}
+.vls-name-card{animation:vlsNameRefuse var(--comic-duration,3.2s) ease-in-out 1 both}
 @keyframes vlsNameRefuse{0%{transform:none}10%{transform:translateX(-3px)}18%{transform:translateX(3px)}26%,100%{transform:none}}
 ${rmBlock(["vls-name-card"], [], false)}
 `}</style>
     <Frame x={4} w={312} theme={theme} result />
     <Pawn x={71} yb={76} s={16} eyes gaze={2} />
-    <g className={`vls-name-card${invalid ? " vls-name-invalid" : ""}`}>
+    <g className="vls-name-card">
       <rect x={125} y={27} width={136} height={39} rx={10} fill="var(--paper)" stroke={LINE} strokeWidth={2.5} />
       <path d="M142 40h66M142 52h47" stroke={LINE} strokeWidth={3} strokeLinecap="round" />
     </g>
-    {invalid && <RedX cx={246} cy={64} arm={10} />}
+    <RedX cx={246} cy={64} arm={10} />
   </>;
 }
 
@@ -1533,8 +1512,7 @@ const SCENES: Record<ComicKind, (props: { theme: ComicTheme }) => ReactNode> = {
   "source-starting": (p) => <SceneSourceSwitching {...p} state="starting" />,
   "source-failed": (p) => <SceneSourceSwitching {...p} state="failed" />,
   "settings-failed": (p) => <SceneBrowserAction {...p} action="settings-failed" />,
-  "name-invalid": (p) => <SceneParticipantName {...p} invalid />,
-  "participant-name": SceneParticipantName,
+  "name-invalid": SceneNameInvalid,
   "tap-to-play": SceneTap,
   "host-paused": ScenePaused,
   recovering: SceneRecovering,

@@ -77,20 +77,6 @@ function compactVisibleLabel(label: string, maximumCodePoints: number): string {
   return `${codePoints.slice(0, maximumCodePoints - 1).join("")}…`;
 }
 
-function topologyVisibleLabel(
-  label: string,
-  peerId: string | null,
-  maximumCodePoints: number,
-): string {
-  const peerIdSuffix = peerId?.slice(-6) ?? "";
-  const withoutRedundantRole =
-    peerIdSuffix &&
-    (label === `🎮 (${peerIdSuffix})` || label === `👤 (${peerIdSuffix})`)
-      ? peerIdSuffix
-      : label;
-  return compactVisibleLabel(withoutRedundantRole, maximumCodePoints);
-}
-
 function xForDepth(depth: number, layout: TopologyLayout): number {
   return layout.hostX + (depth + 1) * layout.columnGap;
 }
@@ -394,9 +380,8 @@ export const RouteTree = memo(function RouteTree({
           y={labelY(hostPos)}
           textAnchor={labelAnchor}
         >
-          {topologyVisibleLabel(
+          {compactVisibleLabel(
             hostLabel,
-            hostPeerId,
             labelLimit(hostPos),
           )}
         </text>
@@ -478,9 +463,8 @@ export const RouteTree = memo(function RouteTree({
               y={labelY(point)}
               textAnchor={labelAnchor}
             >
-              {topologyVisibleLabel(
+              {compactVisibleLabel(
                 node.label,
-                node.key,
                 labelLimit(point),
               )}
             </text>
@@ -494,9 +478,8 @@ export const RouteTree = memo(function RouteTree({
             y={labelY(point)}
             textAnchor={labelAnchor}
           >
-            {topologyVisibleLabel(
+            {compactVisibleLabel(
               point.viewer.label,
-              point.viewer.peerId,
               labelLimit(point),
             )}
           </text>

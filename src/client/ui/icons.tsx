@@ -4,10 +4,12 @@
 // render pass, which would restart the draw-in animation on unrelated state
 // changes; reconciled children stay put, so the draw only replays on a true
 // icon swap). pathLength={1} on every shape paces the draw-in evenly.
+// Meanings are shared across controls, comics and text placeholders; see
+// docs/design/visual-language.md#symbol-reference before adding a symbol.
 import { useEffect, useRef, type ReactNode } from "react";
 import { bindSvgReplayOnPointerEnter } from "./animation";
 
-const PATHS: Record<string, { body: ReactNode; solid?: boolean }> = {
+const PATHS = {
   couch: { body: (<><path pathLength={1} d="M5 12V8a3 3 0 0 1 3-3h8a3 3 0 0 1 3 3v4M6 19v2m12-2v2"/><path pathLength={1} d="M5 15h14v-3a2 2 0 0 1 4 0v5a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2v-5a2 2 0 0 1 4 0Z"/></>) },
   gamepad: { body: (<><path pathLength={1} d="M8 7h8c3 0 4 2 5 6l1 5c.3 2-2 3-3.5 1.5L16 17H8l-2.5 2.5C4 21 1.7 20 2 18l1-5c1-4 2-6 5-6Z"/><path pathLength={1} d="M6 12h4m-2-2v4m8-3h.01M18 14h.01"/></>) },
   save: { body: (<><path pathLength={1} d="M5 3h12l4 4v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path pathLength={1} d="M7 3v6h9V3M7 21v-7h10v7"/></>) },
@@ -49,9 +51,7 @@ const PATHS: Record<string, { body: ReactNode; solid?: boolean }> = {
   server: { body: (<><rect pathLength={1} x="3" y="4" width="18" height="7" rx="2"/><rect pathLength={1} x="3" y="13" width="18" height="7" rx="2"/><path pathLength={1} d="M7 7.5h.01M7 16.5h.01"/></>) },
   tv: { body: (<><rect pathLength={1} x="2" y="5" width="20" height="14" rx="2"/><path pathLength={1} d="M8 2l4 3 4-3"/></>) },
   door: { body: (<><path pathLength={1} d="M4 21V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v16"/><path pathLength={1} d="M2 21h20"/><path pathLength={1} d="M12.5 12h.01"/></>) },
-  plug: { body: (<><path pathLength={1} d="M9 7V3m6 4V3"/><path pathLength={1} d="M6 7h12v4a6 6 0 0 1-12 0V7Z"/><path pathLength={1} d="M12 17v4"/></>) },
   gauge: { body: (<><path pathLength={1} d="M4 14.5a8 8 0 1 1 16 0"/><path pathLength={1} d="m12 14 3.5-4"/><path pathLength={1} d="M3.5 17.5h17"/></>) },
-  drop: { body: (<><path pathLength={1} d="M12 3s6 6.4 6 11a6 6 0 0 1-12 0c0-4.6 6-11 6-11Z"/></>) },
   expand: { body: (<><path pathLength={1} d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></>) },
   contract: { body: (<><path pathLength={1} d="M8 3v5H3m13-5v5h5M8 21v-5H3m13 5v-5h5"/></>) },
   pip: { body: (<><rect pathLength={1} x="2" y="4" width="20" height="16" rx="2"/><rect pathLength={1} x="12" y="12" width="7" height="5" rx="1"/><path pathLength={1} d="m6 8 3 3M6 11h3V8"/></>) },
@@ -76,7 +76,7 @@ const PATHS: Record<string, { body: ReactNode; solid?: boolean }> = {
   zap: { body: (<><path pathLength={1} d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></>) },
   cast: { body: (<><path pathLength={1} d="M4 16a4 4 0 0 1 4 4M4 12a8 8 0 0 1 8 8"/><circle pathLength={1} cx="4" cy="20" r="1.2" fill="currentColor" stroke="none"/><path pathLength={1} d="M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5"/></>) },
   sun: { body: (<><circle pathLength={1} cx="12" cy="12" r="4"/><path pathLength={1} d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></>) },
-};
+} satisfies Record<string, { body: ReactNode; solid?: boolean }>;
 
 export type GlyphName = keyof typeof PATHS;
 
@@ -86,7 +86,7 @@ export function Glyph({
   className,
   draw,
 }: {
-  name: GlyphName | string;
+  name: GlyphName;
   size?: number;
   className?: string;
   /**
@@ -95,8 +95,8 @@ export function Glyph({
    */
   draw?: string;
 }) {
-  const icon = PATHS[name] ?? PATHS.alert;
-  const isSolid = icon?.solid === true;
+  const icon: { body: ReactNode; solid?: boolean } = PATHS[name];
+  const isSolid = icon.solid === true;
   const glyphClass = [
     "lr-glyph",
     draw ? "lr-glyph-draw" : null,
@@ -128,7 +128,7 @@ export function Glyph({
       focusable="false"
       className={glyphClass}
     >
-      {icon?.body}
+      {icon.body}
     </svg>
   );
 }

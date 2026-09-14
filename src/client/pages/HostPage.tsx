@@ -219,7 +219,7 @@ const PREFERENCE_PRESENTATION: Record<
     hint: "host.advanced.preference.balancedHint",
   },
   "maintain-framerate": {
-    icon: "zap",
+    icon: "frames",
     cap: "host.advanced.preference.framerate",
     hint: "host.advanced.preference.framerateHint",
   },
@@ -3526,7 +3526,6 @@ export function HostPage({
             host={{
               key: hostIdentity,
               name: labeledHostPresence?.label ?? displayName,
-              online: signalStatus === "connected",
               you: true,
               selected:
                 hostDiagnosticsAvailable &&
@@ -3853,7 +3852,7 @@ export function HostPage({
                   aria-label={t("host.policy")}
                   data-selected={activeCodeEntryPolicy}
                 >
-                  <Tooltip kind="hint-policy-open"
+                  <Tooltip kind="hint-admission-code"
                     text={vis ? undefined : `${t("host.policy.open")} · ${t("host.policy.openHint")}`}>
                     <button
                       type="button"
@@ -3869,8 +3868,8 @@ export function HostPage({
                       <Cap k="host.policy.open" />
                     </button>
                   </Tooltip>
-                  <Tooltip kind="hint-policy-private"
-                    text={vis ? undefined : `${t("host.policy.private")} · ${t("host.policy.privateHint")}`}>
+                  <Tooltip kind={roomAdmission("private", viewerPasswordEnabled).comic}
+                    text={vis ? undefined : `${t("host.policy.private")} · ${t(viewerPasswordEnabled ? "host.policy.privatePasswordHint" : "host.policy.privateHint")}`}>
                     <button
                       type="button"
                       className={

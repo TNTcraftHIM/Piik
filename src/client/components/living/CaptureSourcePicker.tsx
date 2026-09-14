@@ -3,7 +3,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { NativeCaptureTarget } from "../../native/wire";
 import { nativeCaptureTargetKey } from "../../native/capture-selection";
 import { useCopy } from "../../ui/copy";
-import { Glyph } from "../../ui/icons";
+import { Glyph, type GlyphName } from "../../ui/icons";
 import { Tooltip } from "./Tooltip";
 import { HintComic } from "./hints";
 import { Pill } from "./primitives";
@@ -14,7 +14,7 @@ const SOURCE_ICONS = {
   browser: "globe",
   window: "switchSource",
   display: "tv",
-};
+} satisfies Record<SourceTab, GlyphName>;
 
 export type NativeSourceList =
   | { kind: "loading" }

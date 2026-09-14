@@ -77,7 +77,7 @@ export function PeoplePreview() {
         <span className="cp-sync-caption">{en ? "One person, the same gesture" : "同一个人，同一个小动作"}</span>
         <span><PawnSvg color={participantColor(HOST_ID)} identity={HOST_ID} host /><small>{en ? "Viewer view" : "朋友那边"}</small></span>
       </div>
-      <Couch view={view} host={{ key: HOST_ID, name: hostName, online: true, you: view === "host" }}
+      <Couch view={view} host={{ key: HOST_ID, name: hostName, you: view === "host" }}
         entries={entries} selectedKey={selectedViewer?.peerId} onSelect={select} />
     </div>
     <div className="cp-tools" role="group" aria-label={en ? "Connection example" : "连接示例"}>

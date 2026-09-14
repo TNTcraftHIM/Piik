@@ -307,15 +307,13 @@ export function SwitchItem({
 
 export function NameTag({ name, identity }: { name: string; identity: string }) {
   return (
-    <Tooltip kind="participant-name" text={name} className="lr-name-hint">
-      <span className="lr-name-tag" tabIndex={0}>
-        <i
-          aria-hidden="true"
-          style={{ backgroundColor: participantColor(identity) }}
-        />
-        <span>{name}</span>
-      </span>
-    </Tooltip>
+    <span className="lr-name-tag" title={name}>
+      <i
+        aria-hidden="true"
+        style={{ backgroundColor: participantColor(identity) }}
+      />
+      <span>{name}</span>
+    </span>
   );
 }
 

@@ -111,7 +111,7 @@ export function StatusPreviewPage() {
                 </button>)}
               </div>
               <Couch view={couchView}
-                host={{ key: "preview-host", name: "Host", online: sourceActive, you: couchView === "host" }}
+                host={{ key: "preview-host", name: "Host", you: couchView === "host" }}
                 entries={[
                   { key: "preview-you", name: "You", status: readyParticipant, you: couchView === "viewer", selectable: false },
                   { key: "preview-friend", name: "Friend", selectable: false,

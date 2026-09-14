@@ -12,28 +12,41 @@ import { deriveParticipantStatus } from "../src/client/ui/media-status";
 
 afterEach(() => setCopy({ lang: "zh", vis: false }));
 
-it("keeps presence and readiness available in participant descriptions", () => {
+it("keeps participant identity and actual Viewer readiness in their descriptions", () => {
   setCopy({ lang: "en", vis: true });
-  const render = (online: boolean) => renderToStaticMarkup(createElement(Couch, {
-    view: online ? "viewer" : "host",
-    host: { key: "host", name: "Host name", online, you: !online },
+  const render = (view: "host" | "viewer") => renderToStaticMarkup(createElement(Couch, {
+    view,
+    host: { key: "host", name: "Host name", you: view === "host" },
     entries: [{
       key: "viewer", name: "Viewer name",
-      status: deriveParticipantStatus({ mediaReady: false, upstream: { kind: "none" } }, true), you: online,
+      status: deriveParticipantStatus({ mediaReady: false, upstream: { kind: "none" } }, true), you: view === "viewer",
     }],
   }));
-  const offline = render(false);
-  expect(offline).toContain('aria-label="Host name · Host · you · Offline"');
-  expect(offline).toContain('class="lr-pawn-led" data-tone="busy"');
-  const online = render(true);
-  expect(online).toContain('aria-label="Host name · Host · Online"');
-  expect(online).toContain('aria-label="Viewer name · you · Routing"');
-  expect(online).not.toContain('class="lr-pawn-led"');
-  expect(online).toContain('is-waiting');
+  const hostView = render("host");
+  expect(hostView).toContain('aria-label="Host name · Host · you"');
+  expect(hostView).toContain('class="lr-pawn-led" data-tone="busy"');
+  const viewerView = render("viewer");
+  expect(viewerView).toContain('aria-label="Host name · Host"');
+  expect(viewerView).toContain('aria-label="Viewer name · you · Routing"');
+  expect(viewerView).not.toContain('class="lr-pawn-led"');
+  expect(viewerView).toContain('is-waiting');
   setCopy({ vis: false });
-  const textMode = render(true);
-  expect(textMode).toContain('aria-label="Host name · Host · Online"');
+  const textMode = render("viewer");
+  expect(textMode).toContain('aria-label="Host name · Host"');
   expect(textMode).toContain('aria-label="Viewer name · you · Routing"');
+});
+
+it.each([
+  ["zh", "房主", "你"],
+  ["en", "Host", "you"],
+] as const)("does not repeat the default Host name or invent presence in %s", (lang, name, self) => {
+  setCopy({ lang, vis: false });
+  const html = renderToStaticMarkup(createElement(Couch, {
+    view: "host", host: { key: "host", name, you: true }, entries: [],
+  }));
+  expect(html).toContain(`aria-label="${name} · ${self}"`);
+  expect(html).not.toContain(`${name} · ${name}`);
+  expect(html).not.toMatch(/Offline|离线|lr-comic-tip-wrap/);
 });
 
 describe("RouteTree", () => {
@@ -242,7 +255,7 @@ describe("RouteTree", () => {
     expect(html).not.toContain("<title");
   });
 
-  it("centers visual default IDs without repeating the pawn role", () => {
+  it("preserves emoji nicknames that resemble a default role label", () => {
     const hostPeerId = "host-abc123";
     const viewerPeerId = "viewer-def456";
     const { host, viewers } = labelParticipantSnapshot([
@@ -276,11 +289,11 @@ describe("RouteTree", () => {
       }),
     );
 
-    expect(html).toContain(">abc123</text>");
-    expect(html).toContain(">def456</text>");
+    expect(html).toContain(">🎮 (abc123)</text>");
+    expect(html).toContain(">👤 (def456)</text>");
     expect(html).toContain(">👤-custom</text>");
-    expect(html).not.toContain(">🎮 (abc123)</text>");
-    expect(html).not.toContain(">👤 (def456)</text>");
+    expect(html).not.toContain(">abc123</text>");
+    expect(html).not.toContain(">def456</text>");
     expect(html).toContain("scale(0.82)");
   });
 

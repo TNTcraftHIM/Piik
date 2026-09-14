@@ -41,7 +41,6 @@ const STATES: Record<ComicKind, ComicPresentation> = {
   "source-failed": FAILED,
   "settings-failed": FAILED,
   "name-invalid": FAILED,
-  "participant-name": { tone: "off", motion: "still" },
   "tap-to-play": { tone: "busy", motion: "demo" },
   "host-paused": LIMITED,
   recovering: RECOVERING,

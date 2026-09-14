@@ -2471,7 +2471,6 @@ export function ViewerPage({
                 ? {
                     key: labeledHostPresence.peerId,
                     name: labeledHostPresence.label,
-                    online: true,
                   }
                 : null
             }

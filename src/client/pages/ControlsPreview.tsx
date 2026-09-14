@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { Btn, Chip, NameTag, Pill, SwitchItem } from "../components/living/primitives";
-import { RoomChip, RoomAdmissionBadge } from "../components/living/RoomChip";
+import { RoomChip, RoomAdmissionBadge, roomAdmission } from "../components/living/RoomChip";
 import { CaptureSourcePicker, type NativeSourceList } from "../components/living/CaptureSourcePicker";
 import { LedStrip } from "../components/living/Header";
 import { StageTv } from "../components/living/Stage";
@@ -29,6 +29,7 @@ export function ControlsPreview() {
   const [sound, setSound] = useState(true);
   const [preset, setPreset] = useState("1080p30");
   const [policy, setPolicy] = useState<"open" | "private">("open");
+  const [roomPassword, setRoomPassword] = useState(false);
   const [paused, setPaused] = useState(false);
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [name, setName] = useState("Piik friend");
@@ -79,12 +80,14 @@ export function ControlsPreview() {
         </div>
         <div className="cp-tools">
           <span className="lr-toggle" role="group" aria-label={t("host.policy")} data-selected={policy}>
-            {(["open", "private"] as const).map(value => <Tooltip key={value} kind={value === "open" ? "hint-policy-open" : "hint-policy-private"} text={vis ? undefined : t(`host.policy.${value}`)}>
+            {(["open", "private"] as const).map(value => <Tooltip key={value} kind={roomAdmission(value, roomPassword).comic}
+              text={vis ? undefined : `${t(`host.policy.${value}`)} · ${t(value === "private" && roomPassword ? "host.policy.privatePasswordHint" : `host.policy.${value}Hint`)}`}>
               <button type="button" className={policy === value ? "is-selected" : undefined} aria-pressed={policy === value}
                 aria-label={t(`host.policy.${value}`)} onClick={() => setPolicy(value)}>
                 <Glyph name={value === "open" ? "globe" : "lock"} size={19} />{vis ? null : <span className="lr-cap">{t(`host.policy.${value}`)}</span>}
               </button></Tooltip>)}
           </span>
+          <SwitchItem checked={roomPassword} onChange={setRoomPassword} label={t("host.password.set")} />
         </div>
         <div className="cp-tools">
           <RoomAdmissionBadge policy="open" passwordEnabled={false} />

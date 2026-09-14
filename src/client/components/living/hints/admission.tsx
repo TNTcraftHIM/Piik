@@ -1,4 +1,4 @@
-import { Frame, INK_STAGE, MiniTv, Pawn, SKY, TV_SCREEN, YOU, rmBlock } from "../Comic";
+import { BrowserWindow, Frame, INK_STAGE, InviteLink, MiniTv, Pawn, SKY, TV_SCREEN, YOU, rmBlock } from "../Comic";
 import type { AdmissionHintKind, ComicTheme, HintScene } from "../../../ui/visual-kinds";
 
 // The credential admits this person; the room stays open throughout.
@@ -20,26 +20,25 @@ ${rmBlock(["vls-admission-person"], [[".vls-admission-person", "transform:none"]
     <g className="vls-admission-person">
       <Pawn x={245} yb={82} s={16} eyes gaze={2} />
     </g>
-    <Pawn x={125} yb={82} s={16} eyes gaze={2} />
-    <circle cx={105} cy={62} r={4} fill={YOU} />
-    <g transform="translate(22 0)">
-      <rect y={password ? 19 : 26} width={78} height={password ? 60 : 46} rx={8}
-        fill="var(--paper)" stroke="var(--ink)" strokeWidth={2.5} />
-      {credential === "invite" ? <g className="vls-admission-invite" fill="none" stroke="var(--ink)" strokeWidth={3}>
-        <rect x={15} y={42} width={28} height={14} rx={7} transform="rotate(-25 29 49)" />
-        <rect x={35} y={42} width={28} height={14} rx={7} transform="rotate(-25 49 49)" />
-        <path d="m32 52 14-6" strokeLinecap="round" />
+    <Pawn x={132} yb={82} s={16} eyes gaze={-2} />
+    <circle cx={113} cy={65} r={3.5} fill={YOU} />
+    <BrowserWindow x={20} y={18} w={87} h={62}>
+      {credential === "invite" ? <g className="vls-admission-invite">
+        <rect x={28} y={38} width={71} height={27} rx={5} fill="var(--wall-2)" />
+        <InviteLink x={31} y={39} size={25} />
+        <path d="M62 51h28" fill="none" stroke="var(--ink)" strokeWidth={2} strokeLinecap="round" />
       </g> : <>
         <g className="vls-admission-code">
-          <rect x={6} y={password ? 25 : 32} width={66} height={password ? 24 : 34} rx={5} fill={TV_SCREEN} />
-          {[12, 27, 42, 57].map(x => <rect key={x} x={x} y={password ? 32 : 43} width={9} height={10} rx={2}
+          <rect x={28} y={password ? 32 : 38} width={71} height={password ? 21 : 28} rx={5} fill={TV_SCREEN} />
+          {[36, 51, 66, 81].map(x => <rect key={x} x={x} y={password ? 37 : 46} width={9} height={10} rx={2}
             fill="none" stroke={INK_STAGE} strokeWidth={2} />)}
         </g>
-        {password ? <g className="vls-admission-password" fill="var(--ink)">
-          {[17, 32, 47, 62].map(cx => <circle key={cx} cx={cx} cy={64} r={3} />)}
+        {password ? <g className="vls-admission-password">
+          <rect x={28} y={58} width={71} height={15} rx={4} fill="var(--wall-2)" stroke="var(--ink)" strokeWidth={1.5} />
+          {[41, 56, 71, 86].map(cx => <circle key={cx} cx={cx} cy={65.5} r={2.5} fill="var(--ink)" />)}
         </g> : null}
       </>}
-    </g>
+    </BrowserWindow>
   </>;
 }
 

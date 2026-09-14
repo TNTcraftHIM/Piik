@@ -31,7 +31,7 @@ export const visualTitleFrames = {
     "📺 🪄",
   ],
   paused: ["⏸️"],
-  hostStarting: ["⏳", "⏳ 🔗", "⏳ 📶"],
+  hostStarting: ["⏳", "⏳ 📺"],
   hostEnded: ["⏹️"],
   hostReady: [
     "🛋️",

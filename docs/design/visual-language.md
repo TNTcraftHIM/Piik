@@ -55,6 +55,11 @@ second activation, outside tap, Escape or focus leaving. Action controls keep
 their direct click action and offer touch guidance on long-press. `Tooltip`
 owns both interactions; pages do not add their own open state or timers.
 
+Add a tooltip when it explains an action, a limitation or a status that needs
+context. Plain names, decorative participants and self-explanatory text do not
+need another popup. Keep participant details on their existing click action and
+state explanations on the dedicated status indicator.
+
 Tooltips, state overlays and entry/error pages reuse the same illustrative scene
 in every mode.
 Chinese and English add a concise caption beneath it; pure-visual mode keeps the
@@ -124,6 +129,71 @@ Figures and exterior upholstery use flat fills without outline strokes.
 Use differences in tone, spacing and name tags to keep people readable; retain
 only the few interior seams that clarify cushions. Apply this convention to
 the website and README cast as well as the product UI.
+
+## Symbol Reference
+
+This reference applies to controls, status strips, comics, overlays, document
+titles, placeholders and public product demonstrations. A symbol keeps its
+basic meaning across those surfaces. Its nearby label identifies the affected
+object; it must not silently acquire a different measurement or permission.
+
+[Glyph](../../src/client/ui/icons.tsx) owns small-icon geometry and the accepted
+`GlyphName` union. Use it for controls and embedded comic symbols; reuse `MiniTv`,
+`Pawn`, `InviteLink` and the other shared scene objects for illustrations. Select
+existing meanings before adding an icon. A new meaning needs a row here and a
+rendered example in the existing catalogue. A typo or missing icon must fail
+type checking rather than silently render a warning triangle.
+
+| Meaning / 含义 | Symbols | Use and boundary |
+| --- | --- | --- |
+| Participants and room / 人与房间 | `users`, `couch`, `door` | People, shared room, room entry. Use the shared pawn for a person and `HostMark` for Host authority. |
+| Shared screen / 共享画面 | `tv`, `MiniTv`, 📺 | Media or its sharing source. The TV beside the Host name identifies the source; the crown on a person identifies the role. |
+| Start and choose a source / 分享与选源 | `cast`, `share`, `switchSource` | Start sharing, capture a screen, replace the current capture source respectively. A captured window keeps window chrome or a display stand. |
+| Invitation URL / 邀请链接 | `link`, `InviteLink`, `linkOff` | A URL and its disabled/revoked form. Keep the chain when copying or rejecting it. Copying is local; a send-to-chat scene is a separate action. |
+| Credential / 凭证 | `key`, password dots | Site passphrase or room password, identified by the field label. Room-code admission with a password shows both fields. |
+| Restriction / 受限 | `lock` | Restricted entry, concealed password or a setting fixed by availability; show the affected object. A lock never promises anonymity or secure media. |
+| Site and public entry / 站点与公开入口 | `globe` | Browser/Site entry or code-based public entry. It does not claim internet reachability. |
+| Connections / 连接 | `network`, `branch`, `signal`, `wifiOff`, `server` | Topology, branching, signaling, disconnected signaling and media-server forwarding. An invitation chain does not represent signaling. |
+| Playback / 播放 | `play`, `pause`, `stop` | Play/resume, pause, end. The control label states whether it affects local viewing or the Host's share. Stop is distinct from a paused or idle room. |
+| Audio / 声音 | `speaker`, `speakerOff`, `wave` | Audio, mute/no audio, audio waveform. A source track's presence does not establish delivered sound. |
+| Size and viewing mode / 尺寸与观看模式 | `expand`, `contract`, `pip`, `pipExit`, `theater`, `theaterExit` | Expand/restore, enter/leave picture in picture, enter/leave theatre mode. The same size symbol can accompany a resolution measurement. |
+| Local actions / 本地操作 | `copy`, `save`, `pencil`, `eye`, `eyeOff` | Copy, save, edit, reveal and conceal the named object. An action icon does not prove completion. |
+| Repeat and disclosure / 重试与展开 | `refresh`, `chevron`, `arrowRight` | Repeat/refresh, expand/collapse, proceed/enter. Direction follows the control's action; no arrow alone establishes delivery. |
+| Transfer direction / 传输方向 | `arrowUp`, `arrowDown` | Outbound/inbound or upload/download, qualified by the adjacent label. They are not connection-quality ratings. |
+| Settings / 设置 | `sliders`, `mountain`, `balance`, `frames` | Settings, preserve image detail, balanced preference, preserve frame rate. The frame-rate preference uses the same frames as the measured value. |
+| Progress and result / 进度与结果 | `loader`, `alert`, `check`, `x` | In progress, a problem, confirmation/positive result, cancellation/negative result. The status owner supplies severity; the shape alone cannot set it. |
+| Theme / 主题 | `sun`, `moon` | Light/dark appearance in theme controls. A moon in an idle-room scene means rest, with the idle scene providing that context. |
+| Welcome decoration / 开场装饰 | `gamepad`, `popcorn`, `clapperboard`, `trophy`, `gift`, `flag`, `heart`, `bulb`, `zap` | Games, snacks, film, achievement, gift, next stop, affection, discovery and energy. These may decorate the welcome line, never a measured speed, failure or connection verdict. |
+
+Metrics use [METRIC_PRESENTATION](../../src/client/components/living/metric-presentation.ts)
+in both summaries and details. Labels, units and stage-specific comics distinguish
+related values; views do not choose their own symbols.
+
+| Measurement / 指标 | Symbol | Boundary |
+| --- | --- | --- |
+| Frame rate / 帧率 | `frames` | Video frames per second, including capture/input frame rate. |
+| Packet loss / 丢包 | `packetLoss` | Missing network packets, including audio packets. |
+| Dropped frames / 丢帧 | `frameDrop` | Discarded video frames; never substitute packet loss. |
+| Jitter / 抖动 | `jitter` | Variation in arrival timing, including audio jitter. |
+| Audio concealment / 音频补偿 | `audioRepair` | Missing audio concealed by the decoder. |
+| Rate / 速率 | `gauge`, `speaker` for audio rate | Bitrate or outgoing rate; the unit remains visible. |
+| Duration / 耗时 | `clock` | RTT, encode/decode time, freeze duration, playout or buffer time. The label and comic identify the measured stage. |
+| Freeze count / 卡顿次数 | `pause` | Count of interrupted video progress, distinguished by its metric label from intentional pause. |
+| Encoder and codec / 编码器与编码格式 | `cpu`, `puzzle` | Processing implementation and encoded format respectively. |
+
+Text-only surfaces retain the same meanings:
+
+| Surface | Standard and owner |
+| --- | --- |
+| Activity in document titles | [Title catalogs](../../src/client/locales/visual.ts): 📺 sharing/viewing, 🛋️ ready room, 💤 idle, ⏳ waiting/starting, ⏸️ paused, ▶️ waiting for playback, ⏹️ ended, ❗ unavailable. Secondary decorations cannot replace this leading meaning or imply new progress. |
+| A problem beside an activity | [Media status](../../src/client/ui/media-status.ts) supplies ⚠️ from actual facts; [document-title](../../src/client/ui/document-title.ts) only composes and rotates titles. |
+| Default names | [display-name](../../src/client/lib/display-name.ts) owns 📺 for the sharing source and 👤 for a Viewer in visual mode. Preserve user-entered emoji names as data; never infer role from their characters. [viewer-presence](../../src/client/lib/viewer-presence.ts) owns duplicate-name suffixes. |
+| Visual-mode shortcut | ✦ in the language control and its documentation; not a success or quality mark. |
+| Input placeholders | Four slots represent the four-digit room code. Password dots mask a field; their illustrated count imposes no password length. Real inputs retain localized labels. |
+| Unknown values | `—` means unavailable/unknown, never zero or a healthy result. Keep exact values and units whenever known. |
+| Capability values | `✓` / `✗` answer the adjacent boolean capability, not whether an entire route or share succeeded. |
+| Shortened text | `…` means truncation. Preserve the full nickname/URL for reading and copying; never turn an exact value into a decorative code. |
+| Welcome cipher | [WelcomeLine](../../src/client/components/living/WelcomeLine.tsx) owns the paired symbols and pixel words, tied to the same selected line. They are decoration, not hidden connection state. |
 
 ## Semantic Colour And Shape
 
@@ -261,3 +331,7 @@ distinguishes functional feedback from occasional expressive movement.
 
 [Web Animations start time](https://developer.mozilla.org/en-US/docs/Web/API/Animation/startTime)
 provides the native timeline alignment used by participant gestures.
+
+[Carbon tooltip guidance](https://carbondesignsystem.com/components/tooltip/usage/)
+supports concise, contextual help where it adds information; required instructions
+stay visible beside the action.
