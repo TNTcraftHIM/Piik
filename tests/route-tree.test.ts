@@ -46,7 +46,7 @@ it.each([
   }));
   expect(html).toContain(`aria-label="${name} · ${self}"`);
   expect(html).not.toContain(`${name} · ${name}`);
-  expect(html).not.toMatch(/Offline|离线|lr-comic-tip-wrap/);
+  expect(html).not.toMatch(/Offline|离线|has-comic|tabindex="0"/);
 });
 
 describe("RouteTree", () => {
@@ -202,7 +202,7 @@ describe("RouteTree", () => {
         viewers,
       }),
     );
-    const visibleLabels = [...html.matchAll(/<text[^>]*>([^<]*)<\/text>/g)].map(
+    const visibleLabels = [...html.matchAll(/<span class="lr-route-label[^>]*>([^<]*)<\/span>/g)].map(
       (match) => match[1]!,
     );
     const firstDuplicate = visibleLabels.find((label) =>
@@ -250,8 +250,8 @@ describe("RouteTree", () => {
       }),
     );
 
-    expect(html).toContain(">Alice</text>");
-    expect(html).toContain(">Bob</text>");
+    expect(html).toContain(">Alice</span>");
+    expect(html).toContain(">Bob</span>");
     expect(html).not.toContain("<title");
   });
 
@@ -289,11 +289,11 @@ describe("RouteTree", () => {
       }),
     );
 
-    expect(html).toContain(">🎮 (abc123)</text>");
-    expect(html).toContain(">👤 (def456)</text>");
-    expect(html).toContain(">👤-custom</text>");
-    expect(html).not.toContain(">abc123</text>");
-    expect(html).not.toContain(">def456</text>");
+    expect(html).toContain(">🎮 (abc123)</span>");
+    expect(html).toContain(">👤 (def456)</span>");
+    expect(html).toContain(">👤-custom</span>");
+    expect(html).not.toContain(">abc123</span>");
+    expect(html).not.toContain(">def456</span>");
     expect(html).toContain("scale(0.82)");
   });
 
@@ -336,7 +336,7 @@ describe("RouteTree", () => {
         viewers,
       }),
     );
-    const visibleLabels = [...html.matchAll(/<text[^>]*>([^<]*)<\/text>/g)].map(
+    const visibleLabels = [...html.matchAll(/<span class="lr-route-label[^>]*>([^<]*)<\/span>/g)].map(
       (match) => match[1]!,
     );
 
@@ -433,9 +433,33 @@ describe("RouteTree", () => {
     );
 
     expect(html.match(/class="lr-route-hit"/g)).toHaveLength(1);
-    expect(html).toContain('role="button"');
+    expect(html).toContain('<button class="lr-route-hit" type="button"');
     expect(html).toContain('aria-label="Bob · 显示连接详情"');
     expect(html).not.toContain('aria-label="Alice · 显示连接详情"');
+  });
+
+  it("keeps truncated Host, unselectable and pending names in visible tooltip targets", () => {
+    const name = "这是一个需要完整查看而不是只能读省略号的参与者名字";
+    const html = renderToStaticMarkup(createElement(RouteTree, {
+      hostPeerId: "host", hostLabel: `${name}房主`,
+      viewers: labelParticipantSnapshot([
+        { role: "viewer", peerId: "ready", displayName: `${name}观众`, upstream: { kind: "peer", peerId: "host" }, mediaReady: true },
+        { role: "viewer", peerId: "pending", displayName: `${name}等待`, upstream: { kind: "none" } },
+      ]).viewers,
+      selectablePeerIds: ["pending"], onSelectPeer: () => undefined,
+    }));
+    const targets = [...html.matchAll(/<foreignObject[^>]*>(.*?)<\/foreignObject>/g)].map(match => match[1]!);
+    expect(targets).toHaveLength(3);
+    for (const [index, suffix] of ["房主", "观众", "等待"].entries()) {
+      expect(targets[index]).toContain(`aria-label="${name}${suffix}${index === 2 ? " · 显示连接详情" : ""}"`);
+      expect(targets[index]).toMatch(/class="lr-route-label lr-route-name[^>]*>[^<]*…<\/span>/);
+      expect(targets[index]).toContain('popover="manual"');
+      expect(targets[index]).not.toContain("data-comic-motion");
+    }
+    expect(targets[0]).not.toContain("<button");
+    expect(targets[1]).not.toContain("<button");
+    expect(targets[2]).toContain('<button class="lr-route-hit"');
+    expect(targets[2]).toContain('class="lr-route-label lr-route-name is-pending"');
   });
 
   it("keeps every person and parent edge in a full-room relay chain within the panel", () => {

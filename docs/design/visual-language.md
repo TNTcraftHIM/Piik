@@ -60,11 +60,20 @@ context. Plain names, decorative participants and self-explanatory text do not
 need another popup. Keep participant details on their existing click action and
 state explanations on the dedicated status indicator.
 
+When a nickname is clipped, the shared tooltip reveals its complete literal
+text in every language mode, without a comic or repeated role/status labels.
+Show this only after detecting actual truncation; resize and name changes must
+recheck it. Preserve hover, keyboard and touch-hold access, and the participant's
+existing click action. A complete or wrapping name needs no extra focus stop or
+popup. If a status tooltip already wraps the row, add the clipped name there
+rather than nesting another tooltip.
+
 Tooltips, state overlays and entry/error pages reuse the same illustrative scene
 in every mode.
 Chinese and English add a concise caption beneath it; pure-visual mode keeps the
 scene and its playful pictograms as an explicit alternative. Literal names and
-addresses keep their exact text beside a matching identity or invitation scene.
+addresses keep their exact text. An invitation explanation retains its link
+scene; simply revealing a clipped name needs only the name.
 Do not substitute an unrelated action just to fill a tooltip. Illustration and caption
 explain the same action or current fact, with one tone and motion owner. Mount
 scenes only while their tooltip or overlay is shown; captions remain readable
@@ -169,6 +178,10 @@ Metrics use [METRIC_PRESENTATION](../../src/client/components/living/metric-pres
 in both summaries and details. Labels, units and stage-specific comics distinguish
 related values; views do not choose their own symbols.
 
+Topology hover and keyboard focus use neutral outlines; selection adds a heavier
+outline and text weight. Connection colours remain owned by route/readiness
+facts, so interacting with a node cannot look like a connection-state change.
+
 | Measurement / 指标 | Symbol | Boundary |
 | --- | --- | --- |
 | Frame rate / 帧率 | `frames` | Video frames per second, including capture/input frame rate. |
@@ -189,7 +202,7 @@ Text-only surfaces retain the same meanings:
 | A problem beside an activity | [Media status](../../src/client/ui/media-status.ts) supplies ⚠️ from actual facts; [document-title](../../src/client/ui/document-title.ts) only composes and rotates titles. |
 | Default names | [display-name](../../src/client/lib/display-name.ts) owns 📺 for the sharing source and 👤 for a Viewer in visual mode. Preserve user-entered emoji names as data; never infer role from their characters. [viewer-presence](../../src/client/lib/viewer-presence.ts) owns duplicate-name suffixes. |
 | Visual-mode shortcut | ✦ in the language control and its documentation; not a success or quality mark. |
-| Input placeholders | Four slots represent the four-digit room code. Password dots mask a field; their illustrated count imposes no password length. Real inputs retain localized labels. |
+| Input placeholders | Four slots represent the four-digit room code. Password dots mask a field; their illustrated count imposes no password length. Numeric samples reuse the actual field's `--mono` typeface and weight. Real inputs retain localized labels. |
 | Unknown values | `—` means unavailable/unknown, never zero or a healthy result. Keep exact values and units whenever known. |
 | Capability values | `✓` / `✗` answer the adjacent boolean capability, not whether an entire route or share succeeded. |
 | Shortened text | `…` means truncation. Preserve the full nickname/URL for reading and copying; never turn an exact value into a decorative code. |

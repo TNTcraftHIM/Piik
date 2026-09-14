@@ -137,7 +137,8 @@ export function ViewerOverview({
                 kind={hint}
                 tone={entry.status.tone}
                 motion={entry.status.pulse ? "progress" : undefined}
-                text={vis ? hint ? undefined : entry.name : `${entry.name} · ${statusLabel}`}
+                text={vis ? undefined : statusLabel}
+                overflow={{ text: entry.name, selector: ".lr-viewer-overview-person-copy > b" }}
                 align="start"
               >
                 {row}

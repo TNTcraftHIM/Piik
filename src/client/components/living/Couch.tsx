@@ -6,6 +6,7 @@ import { useElementWidth } from "../../lib/use-element-width";
 import { PawnSvg } from "./Pawn";
 import { participantColor } from "./participant-color";
 import type { StatusDescriptor } from "../../ui/media-status";
+import { Tooltip } from "./Tooltip";
 
 export interface CouchEntry {
   key: string;
@@ -77,7 +78,7 @@ export function Couch({
           aria-label={`${t("common.host")} · ${t("common.viewers")}`}
         >
           {host ? (
-            <span className="lr-seat" style={seatStyle(0)}>
+            <span className="lr-seat" style={seatStyle(0)}><Tooltip overflow={{ text: host.name, selector: ".lr-pawn-name" }}>
               {host.onSelect ? (
                   <button
                     type="button"
@@ -88,7 +89,7 @@ export function Couch({
                     onClick={host.onSelect}
                   >
                     <PawnSvg color={participantColor(host.key)} identity={host.key} host />
-                    <span className="lr-pawn-name" title={host.name}>{host.name}</span>
+                    <span className="lr-pawn-name">{host.name}</span>
                   </button>
                 ) : (
                   <span
@@ -97,10 +98,10 @@ export function Couch({
                     aria-label={hostLabel}
                   >
                     <PawnSvg color={participantColor(host.key)} identity={host.key} host />
-                    <span className="lr-pawn-name" title={host.name}>{host.name}</span>
+                    <span className="lr-pawn-name">{host.name}</span>
                   </span>
                 )}
-            </span>
+            </Tooltip></span>
           ) : null}
           {entries.map((entry, index) => {
             const stateLabel = t(entry.status.labelKey);
@@ -110,7 +111,7 @@ export function Couch({
                 <PawnSvg color={participantColor(entry.key)} identity={entry.key} />
                 {view === "host" ? <i className="lr-pawn-led" data-tone={entry.status.tone}
                   data-pulse={entry.status.pulse || undefined} aria-hidden="true" /> : null}
-                <span className="lr-pawn-name" title={entry.name}>
+                <span className="lr-pawn-name">
                   {entry.name}
                 </span>
               </>
@@ -138,9 +139,9 @@ export function Couch({
               </button>
             );
             return (
-              <span key={entry.key} className="lr-seat" style={seatStyle(index + (host ? 1 : 0))}>
+              <span key={entry.key} className="lr-seat" style={seatStyle(index + (host ? 1 : 0))}><Tooltip overflow={{ text: entry.name, selector: ".lr-pawn-name" }}>
                 {pawn}
-              </span>
+              </Tooltip></span>
             );
           })}
         </div>

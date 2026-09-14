@@ -431,35 +431,29 @@ function SceneWaiting({ theme }: { theme: ComicTheme }) {
   return (
     <>
       <style>{`
-.vls-wf-moon{transform-box:fill-box;transform-origin:center;animation:vlsWfMoon var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
-.vls-wf-z1{animation:vlsWfZ var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
-.vls-wf-z2{animation:vlsWfZ var(--comic-duration,3.2s) ease-in-out .45s var(--comic-repeat,1) both}
-.vls-wf-z3{animation:vlsWfZ var(--comic-duration,3.2s) ease-in-out .9s var(--comic-repeat,1) both}
-.vls-wf-eyes{transform-box:fill-box;transform-origin:center;animation:vlsWfBlink var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
-.vls-wf-led{animation:vlsWfLed var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
-@keyframes vlsWfMoon{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
-@keyframes vlsWfZ{0%{opacity:0;transform:translateY(3px)}8%{opacity:.9}20%,100%{opacity:0;transform:translateY(-3px)}}
-@keyframes vlsWfBlink{0%,66%,74%,100%{transform:scaleY(1)}70%{transform:scaleY(.12)}}
-@keyframes vlsWfLed{0%,100%{opacity:1}50%{opacity:.35}}
+.vls-wf-z1{animation:vlsWfZNear var(--comic-duration,3.2s) ease-out 1 both}
+.vls-wf-z2{animation:vlsWfZFar var(--comic-duration,3.2s) ease-out 1 both}
+@keyframes vlsWfZNear{0%{opacity:.85;transform:translate(-5px,10px)}42%,100%{opacity:.65;transform:none}}
+@keyframes vlsWfZFar{0%,6%{opacity:.75;transform:translate(-12px,14px)}48%,100%{opacity:.55;transform:none}}
 ${rmBlock(
-  ["vls-wf-z1", "vls-wf-z2", "vls-wf-z3", "vls-wf-eyes", "vls-wf-led"],
-  [[".vls-wf-z1,.vls-wf-z2,.vls-wf-z3", "opacity:.55"], [".vls-wf-led", "opacity:1"]],
+  ["vls-wf-z1", "vls-wf-z2"],
+  [[".vls-wf-z1", "opacity:.65;transform:none"], [".vls-wf-z2", "opacity:.55;transform:none"]],
+  false,
 )}
-${rmBlock(["vls-wf-moon"], [[".vls-wf-moon", "transform:none"]], false)}
 `}</style>
       <Frame x={4} w={312} theme={theme} result />
       <Floor x1={24} x2={296} />
-      <Pawn x={69} yb={76} s={11} eyes gaze={2} eyeClassName="vls-wf-eyes" />
+      <Pawn x={69} yb={76} s={11} eyes gaze={2} />
       <MiniTv x={206} y={28} w={64} h={42} />
-      <g className="vls-wf-moon">
-        <Moon x={229} y={48} />
+      <Moon x={229} y={48} />
+      <g stroke={LINE} strokeWidth={2.5} strokeLinecap="round" fill="none">
+        <path className="vls-wf-z1" opacity={0.65} d="M246 40h8l-8 6h8" />
+        <g className="vls-wf-z2" opacity={0.55}>
+          <path d="M258 28h9l-9 7h9" />
+          <path d="M273 14h10l-10 8h10" />
+        </g>
       </g>
-      <g stroke="#a9bcd4" strokeWidth={2} strokeLinecap="round" fill="none">
-        <path className="vls-wf-z1" opacity={0.55} d="M244 51h6l-6 4h6" />
-        <path className="vls-wf-z2" opacity={0.55} d="M251 44h7l-7 5h7" />
-        <path className="vls-wf-z3" opacity={0.55} d="M258 36h8l-8 6h8" />
-      </g>
-      <circle className="vls-wf-led" cx={238} cy={76} r={3.5} fill={WARN} />
+      <circle cx={238} cy={76} r={3.5} fill={WARN} />
     </>
   );
 }

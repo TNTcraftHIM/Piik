@@ -35,6 +35,7 @@ import {
   StageTv,
 } from "../components/living/Stage";
 import { StatusIndicator } from "../components/living/StatusIndicator";
+import { Tooltip } from "../components/living/Tooltip";
 import { PlaybackControls } from "../components/living/PlaybackControls";
 import {
   Btn,
@@ -2495,7 +2496,9 @@ export function ViewerPage({
               )}
             >
               <Glyph name="tv" size={17} />
-              <b>{hostDisplayName ?? t("common.host")}</b>
+              <Tooltip overflow={{ text: hostDisplayName ?? t("common.host"), selector: "b" }} className="lr-name-hint">
+                <b>{hostDisplayName ?? t("common.host")}</b>
+              </Tooltip>
             </div>
             <div className="lr-viewer-personal-controls">
               <form

@@ -41,7 +41,7 @@ ${rmBlock(["vls-password-new", "vls-password-clear"], [[".vls-password-new", "op
         <rect x={x + 22} y={35} width={108} height={31} rx={7} fill="var(--wall-2)" stroke="var(--ink)" strokeWidth={2} />
         <g className={index ? clear ? "vls-password-clear" : "vls-password-new" : undefined}
           opacity={clear && index ? 0 : undefined} fill="var(--ink)">
-          {visible ? <text x={x + 76} y={57} textAnchor="middle" fontSize={21} fontFamily="monospace">1234</text>
+          {visible ? <text x={x + 76} y={57} textAnchor="middle" fontSize={21} fontFamily="var(--mono)" fontWeight={700}>1234</text>
             : [49, 67, 85, 103].map((cx) => <circle key={cx} cx={x + cx} cy={51} r={3.5} />)}
         </g>
         {clear ? <path d={`M${x + 66} 24 l12 -12 10 10 -8 8 h-8 Z m7 -2 9 8 m-10 0 h18`}

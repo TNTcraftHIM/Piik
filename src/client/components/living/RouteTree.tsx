@@ -11,6 +11,7 @@ import {
 } from "../../lib/participant-topology";
 import { useCopy } from "../../ui/copy";
 import { PawnSvg } from "./Pawn";
+import { Tooltip } from "./Tooltip";
 import { participantColor } from "./participant-color";
 import {
   topologyLayoutForWidth,
@@ -272,7 +273,37 @@ export const RouteTree = memo(function RouteTree({
   const labelAnchor = outline ? "start" : "middle";
   const labelLimit = (point: { x: number }) => outline
     ? Math.min(layoutConfig.maxVisibleLabelCodePoints, Math.floor((width - point.x - 40) / 11))
-    : Math.min(layoutConfig.maxVisibleLabelCodePoints, Math.floor((fittedGap - 12) / 11));
+    : Math.min(layoutConfig.maxVisibleLabelCodePoints,
+      Math.floor((Math.min(fittedGap, point.x * 2, (width - point.x) * 2) - 12) / 11));
+  const renderName = (key: string, label: string, point: { x: number; y: number }, state = "") => {
+    const canSelect = selectable.has(key);
+    const Control = canSelect ? "button" : "span";
+    // Keep the original hit box and row pitch; native buttons own Enter/Space.
+    // HTML lets the shared Tooltip measure the label and use the top layer.
+    return <foreignObject key={`name-${key}`} className="lr-route-name-target"
+      x={outline ? point.x - 24 : point.x - 48} y={point.y - 26}
+      width={outline ? width - point.x + 16 : 96} height={spacing}>
+      <Tooltip overflow={{ text: label, selector: ".lr-route-name" }} className="lr-route-name-hint">
+        <Control className={canSelect ? "lr-route-hit" : "lr-route-name-static"}
+          type={canSelect ? "button" : undefined}
+          aria-label={canSelect ? `${label} · ${t("host.details")}` : label}
+          onPointerEnter={canSelect ? () => setHoveredPeerId(key) : undefined}
+          onPointerLeave={canSelect ? () => setHoveredPeerId(current => current === key ? null : current) : undefined}
+          onFocus={canSelect ? () => setHoveredPeerId(key) : undefined}
+          onBlur={canSelect ? () => setHoveredPeerId(current => current === key ? null : current) : undefined}
+          onClick={canSelect ? event => {
+            selectPeer(key);
+            if (event.detail !== 0) event.currentTarget.blur();
+          } : undefined}>
+          <span className={`lr-route-label lr-route-name${state}${hoveredPeerId === key ? " is-hovered" : ""}${selectedPeerId === key ? " is-selected" : ""}`}
+            style={{ left: outline ? 52 : "50%", top: Math.min(spacing - 14, labelY(point) - point.y + 14),
+              width: outline ? width - point.x - 36 : labelLimit(point) * 11 }}>
+            {compactVisibleLabel(label, labelLimit(point))}
+          </span>
+        </Control>
+      </Tooltip>
+    </foreignObject>;
+  };
   const linkPath = (parent: { x: number; y: number }, child: { x: number; y: number }) => outline
     ? `M ${parent.x - 17} ${parent.y} H ${parent.x - 28} V ${child.y} H ${child.x - 18}`
     : `M ${parent.x + 20} ${parent.y} Q ${(parent.x + child.x) / 2} ${parent.y + (child.y - parent.y) * 0.55}, ${child.x - 18} ${child.y}`;
@@ -303,9 +334,7 @@ export const RouteTree = memo(function RouteTree({
       </span>
       <svg
         viewBox={`0 0 ${width} ${height}`}
-        aria-hidden={onSelectPeer ? undefined : true}
-        aria-label={onSelectPeer ? t("host.topology") : undefined}
-        focusable={onSelectPeer ? undefined : "false"}
+        aria-label={t("host.topology")}
         style={{ width: "100%", maxWidth: outline || nodes.length > 10 ? layoutConfig.baseWidth : 880 }}
       >
         {nodes
@@ -374,17 +403,6 @@ export const RouteTree = memo(function RouteTree({
             host
           />
         </g>
-        <text
-          className="lr-route-label is-host"
-          x={labelX(hostPos)}
-          y={labelY(hostPos)}
-          textAnchor={labelAnchor}
-        >
-          {compactVisibleLabel(
-            hostLabel,
-            labelLimit(hostPos),
-          )}
-        </text>
 
         {sfuPos ? (
           <>
@@ -453,86 +471,9 @@ export const RouteTree = memo(function RouteTree({
           );
         })}
 
-        {nodes.map((node) => {
-          const point = pos.get(node.key)!;
-          return (
-            <text
-              key={`label-${node.key}`}
-              className={`lr-route-label${hoveredPeerId === node.key ? " is-hovered" : ""}${selectedPeerId === node.key ? " is-selected" : ""}`}
-              x={labelX(point)}
-              y={labelY(point)}
-              textAnchor={labelAnchor}
-            >
-              {compactVisibleLabel(
-                node.label,
-                labelLimit(point),
-              )}
-            </text>
-          );
-        })}
-        {pendingPos.map((point) => (
-          <text
-            key={`label-pending-${point.viewer.peerId}`}
-            className={`lr-route-label is-pending${hoveredPeerId === point.viewer.peerId ? " is-hovered" : ""}${selectedPeerId === point.viewer.peerId ? " is-selected" : ""}`}
-            x={labelX(point)}
-            y={labelY(point)}
-            textAnchor={labelAnchor}
-          >
-            {compactVisibleLabel(
-              point.viewer.label,
-              labelLimit(point),
-            )}
-          </text>
-        ))}
-        {[...nodes, ...pendingPos.map(({ viewer }) => ({
-          key: viewer.peerId,
-          label: viewer.label,
-        }))]
-          .filter((node) => selectable.has(node.key))
-          .map((node) => {
-            const point = pos.get(node.key) ?? pendingPos.find(
-              (pending) => pending.viewer.peerId === node.key,
-            );
-            if (!point) return null;
-            return (
-              <rect
-                key={`hit-${node.key}`}
-                className="lr-route-hit"
-                x={outline ? point.x - 24 : point.x - 48}
-                // Bound the target to the row pitch: a taller rect would cover
-                // the next row's label and steal its clicks (later rect wins).
-                y={point.y - 26}
-                width={outline ? width - point.x + 16 : 96}
-                height={spacing}
-                rx={12}
-                role="button"
-                tabIndex={0}
-                aria-label={`${node.label} · ${t("host.details")}`}
-                onPointerEnter={() => setHoveredPeerId(node.key)}
-                onPointerLeave={() =>
-                  setHoveredPeerId((current) =>
-                    current === node.key ? null : current,
-                  )
-                }
-                onFocus={() => setHoveredPeerId(node.key)}
-                onBlur={() =>
-                  setHoveredPeerId((current) =>
-                    current === node.key ? null : current,
-                  )
-                }
-                onClick={(event) => {
-                  selectPeer(node.key);
-                  if (event.detail !== 0) event.currentTarget.blur();
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    selectPeer(node.key);
-                  }
-                }}
-              />
-            );
-          })}
+        {renderName(hostPeerId ?? "host", hostLabel, hostPos, " is-host")}
+        {nodes.map(node => renderName(node.key, node.label, pos.get(node.key)!))}
+        {pendingPos.map(point => renderName(point.viewer.peerId, point.viewer.label, point, " is-pending"))}
       </svg>
 
       <ul className="visually-hidden">

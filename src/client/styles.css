@@ -866,6 +866,7 @@ html[data-theme="dark"] .lr-viewer-host-slot svg { color: #9bb0c5; }
   background: var(--wall-2);
 }
 .lr-viewer-self-slot .lr-name-tag { flex: 0 1 auto; width: auto; }
+.lr-name-hint { min-width: 0; max-width: 100%; }
 .lr-comic-tip-wrap.lr-overview-row-hint { display: flex; width: 100%; }
 .lr-source-option-hint { min-width: 0; }
 .lr-source-option-hint > .lr-source-option { width: 100%; height: 100%; }
@@ -1248,7 +1249,7 @@ html[data-theme="dark"] .lr-meter-cell svg { color: #7d92a8; }
   box-sizing: border-box;
 }
 .lr-route > svg { display: block; width: 100%; max-width: 880px; height: auto; margin: 0 auto; }
-.lr-route:focus-visible { border-radius: 10px; }
+.lr-route:focus-visible { border-radius: 10px; outline-color: var(--ink); }
 .lr-route-edge {
   fill: none;
   stroke-width: 2.5;
@@ -1270,13 +1271,14 @@ html[data-theme="dark"] .lr-meter-cell svg { color: #7d92a8; }
 .lr-route-hover,
 .lr-route-selection,
 .lr-route-you { fill: none; vector-effect: non-scaling-stroke; }
-.lr-route-hover { stroke: color-mix(in srgb, var(--action) 62%, transparent); stroke-width: 2; }
-.lr-route-selection { stroke: var(--action); stroke-width: 3; }
+.lr-route-hover { stroke: var(--ink); stroke-width: 2; }
+.lr-route-selection { stroke: var(--ink); stroke-width: 3; }
 .lr-route-you { stroke: var(--route-p2p); stroke-width: 2.5; stroke-dasharray: 4 3; }
 .lr-route-sfu { fill: none; stroke: var(--route-sfu); stroke-width: 2.5; }
 .lr-route-sfu path { stroke-linecap: round; }
 .lr-route-label {
   fill: var(--ink);
+  color: var(--ink);
   font-size: 11px;
   font-weight: 650;
   opacity: .78;
@@ -1287,21 +1289,26 @@ html[data-theme="dark"] .lr-meter-cell svg { color: #7d92a8; }
 }
 .lr-route-label.is-host { font-weight: 800; opacity: 1; }
 .lr-route-label.is-sfu { fill: var(--route-sfu); font-weight: 800; opacity: 1; }
-.lr-route-label.is-pending { fill: var(--route-pending); opacity: 1; }
-.lr-route-label.is-hovered { fill: var(--action-deep); opacity: 1; }
-.lr-route-label.is-selected { fill: var(--action-deep); font-weight: 800; opacity: 1; }
+.lr-route-label.is-pending { fill: var(--route-pending); color: var(--route-pending); opacity: 1; }
+.lr-route-label.is-hovered { opacity: 1; }
+.lr-route-label.is-selected { font-weight: 800; opacity: 1; }
 .lr-route-hit {
-  fill: transparent;
-  stroke: transparent;
-  stroke-width: 2px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
   cursor: pointer;
-  transition: stroke 140ms ease, fill 140ms ease;
 }
+.lr-route-name-target { overflow: visible; }
+.lr-route-name-hint,
+.lr-route-hit,
+.lr-route-name-static { position: relative; display: block; width: 100%; height: 100%; }
+.lr-route-name { position: absolute; display: block; line-height: 14px; text-align: center; transform: translateX(-50%); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lr-route.is-outline .lr-route-name { text-align: left; transform: none; }
+.lr-route-name-hint:focus-visible { outline: 2px solid var(--ink); border-radius: 8px; }
 .lr-route-hit:hover,
 .lr-route-hit:focus,
 .lr-route-hit:focus-visible {
-  fill: transparent;
-  stroke: transparent;
   outline: none;
 }
 @keyframes lr-flow { to { stroke-dashoffset: -24; } }
@@ -1888,7 +1895,7 @@ svg[data-comic-motion="still"] .lr-person-eyes > ellipse {
      Scoped to the containers that hold adjacent wrapped triggers; the guard
      keys on the component-owned focus state, so plain mouse clicks (no panel
      held open) never suppress anything. */
-  :is(.lr-row-group, .lr-pawn-detail, .lr-entry-actions):has(.lr-comic-tip-wrap.is-focus-open)
+  :is(.lr-row-group, .lr-pawn-detail, .lr-entry-actions, .lr-pawns, .lr-route):has(.lr-comic-tip-wrap.is-focus-open)
     .lr-comic-tip-wrap:not(.is-focus-open).is-hover-open .lr-comic-tip {
     opacity: 0;
     pointer-events: none;
