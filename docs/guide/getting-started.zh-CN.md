@@ -75,7 +75,7 @@ App 的本地房间和临时公网邀请会随本次 App 退出而结束。
 目前主要测试 Windows 客户端和浏览器分享。macOS 和 Linux 客户端尚未经过实机测试，
 欢迎有设备的朋友试用并[反馈问题](https://github.com/TNTcraftHIM/Piik/issues)。
 Linux 原生采集还需要[系统组件](../../native/capture/linux/README.md)。
-程序包与启动参数的细节见 [App 指南](../../cmd/piik-app/README.md)。
+程序包与启动参数的细节见 [App 指南](../../cmd/piik-app/README.zh-CN.md)。
 
 ### 选择 App 模式
 
@@ -88,7 +88,7 @@ Linux 原生采集还需要[系统组件](../../native/capture/linux/README.md)�
 **网页能打开，不代表视频一定能连通。** 公网邀请为房间提供临时网页地址，
 画面和声音仍靠参与者之间的连接传输。此模式没有媒体服务器兜底，
 临时地址也不保证持续可用。所有模式都需要可用的 UDP 媒体路径。
-具体连接方式见 [App 指南](../../cmd/piik-app/README.md#modes)。
+具体连接方式见 [App 指南](../../cmd/piik-app/README.zh-CN.md#运行模式)。
 
 ## 用浏览器分享
 
@@ -114,7 +114,7 @@ Linux 原生采集还需要[系统组件](../../native/capture/linux/README.md)�
 | 没有屏幕选择弹窗 | 按系统提示允许浏览器或 App 录制屏幕。浏览器采集需要 HTTPS 或 `localhost`，请在电脑上尝试分享。 |
 | App 启动失败 | 先查看页面和黑窗口中的具体原因。重新打开 App，在主题按钮后的芯片图标开启「诊断启动」再重试。启动失败时会自动导出报告，保存位置见黑窗口。 |
 | 本地邀请打不开 | 确认两台设备在同一网络且可以互相访问。访客 Wi-Fi 或防火墙规则可能阻止本地连接。 |
-| 网页能打开，画面连不上 | 点击播放控制栏的 **重新连接**；仍然失败时，检查 [WebRTC 连接设置](../../cmd/piik-app/README.md#chromium-webrtc-connections)，或尝试有媒体服务器兜底的站点。 |
+| 网页能打开，画面连不上 | 点击播放控制栏的 **重新连接**；仍然失败时，检查 [WebRTC 连接设置](../../cmd/piik-app/README.zh-CN.md#chromium-webrtc-连接)，或尝试有媒体服务器兜底的站点。 |
 | 休眠或挂起后分享中断 | 唤醒设备，回到分享标签页，必要时重新开始分享。浏览器或系统挂起可能中断采集和播放。 |
 
 反馈问题时，请附上版本、系统与浏览器、预期结果和复现步骤。

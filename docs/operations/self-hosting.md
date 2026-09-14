@@ -76,6 +76,11 @@ working directory. A blank `SITE_ACCESS_PASSWORD` allows
 entry without a site passphrase; enter a passphrase to require one.
 Room invitations and access settings still apply.
 
+`MAX_VIEWERS_PER_ROOM` sets the room's Viewer limit, excluding the Host. Choose
+`1..20` and restart to apply it. More Viewers can require more network and relay
+resources. See [room capacity](../reference/configuration.md#room-capacity)
+for defaults and the difference from App rooms.
+
 ### 2. Enable HTTPS
 
 Use your existing HTTPS reverse proxy to forward to `127.0.0.1:8787` with

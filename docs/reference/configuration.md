@@ -33,6 +33,22 @@ service secret store or an untracked access-restricted environment file.
 | `STUN_LISTEN_HOST` | Hosted IPv4 STUN bind address, default `0.0.0.0` when `STUN_URLS` is configured; independent of HTTP `LISTEN_HOST`. Local App construction creates no STUN listeners. |
 | `NAT_PREDICTION_ENABLED` | Optional bounded NAT prediction capability, default `false`; requires an ordinary `STUN_URLS` endpoint on UDP 3478. Hosted startup binds UDP 3479/3480 before advertising the capability. When unavailable, the visible NAT switch is locked off; ordinary ICE remains. Firewall reachability remains an operator requirement. |
 
+### Room capacity
+
+`MAX_VIEWERS_PER_ROOM` counts authenticated Viewers per room, excluding the Host.
+Self-hosted Server accepts `1..20`; unset defaults to `8`, while the container
+and self-hosting examples explicitly use `20`. Apply changes by restarting the
+Server (with Compose, run `docker compose up -d` to recreate it after editing
+`.env`). Restart interrupts active connections; excess Viewers receive `ROOM_FULL`
+when joining again. App Local and public-invite modes stay fixed at `20`.
+
+Values above `20` are rejected at startup. This is also a wire-contract bound,
+so increasing it in source requires a compatibility and capacity review. More
+Viewers can add relay hops, routing wait and total media load. The setting does
+not increase the per-endpoint copy cap or guarantee available bandwidth.
+
+### Media fallback
+
 Automatic SFU fallback runs inside the Hosted process when `SFU_UDP_PORT` is set:
 
 | Variable | Contract |
@@ -77,9 +93,13 @@ schema field. The user settings are:
 | `site` | Saved Piik Site origin. The launcher or `--site` updates it. |
 | `localAccessPassword` | Empty by default. Optional password for the App's Local room authority, with the same exact-match behavior as `SITE_ACCESS_PASSWORD`. It is separate from a hosted site's password. |
 
-The launcher preselects a saved Site when present; otherwise it preselects the
-public invitation link. Selecting a mode does not start it: the user confirms
-with the launch button. Local mode remains available for the same network.
+The launcher remembers the last mode confirmed with the launch button. This
+optional preference lives beside the configuration as `client.json.mode` (or
+`<custom-config-path>.mode`); removing it restores the initial selection without
+changing saved settings. Older App versions ignore this file. Without a valid
+preference, a saved Site is selected when present; otherwise the public
+invitation link is selected. Choosing a mode does not start it until confirmed.
+Local mode remains available for the same network.
 For Local mode, the launcher selects a sole active address or sole private IPv4
 address automatically. With several choices it shows interface names and IPs;
 an ambiguous choice must be selected before launch. `--lan-address` preselects

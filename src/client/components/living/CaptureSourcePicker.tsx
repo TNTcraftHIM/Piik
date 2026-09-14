@@ -138,11 +138,12 @@ export function CaptureSourcePicker({
               <strong>{t("host.sourcePicker.title")}</strong>
             </span>
           )}
-          {vis ? refreshButton : (
-            <Tooltip text={refreshLabel} place="below" align="end">
-              {refreshButton}
-            </Tooltip>
-          )}
+          <Tooltip kind="hint-refresh-sources" text={vis ? undefined : refreshLabel}
+            tone={nativeSources.kind === "loading" ? "busy" : undefined}
+            motion={nativeSources.kind === "loading" ? "progress" : undefined}
+            place="below" align="end">
+            {refreshButton}
+          </Tooltip>
           <Tooltip kind="hint-close" text={vis ? undefined : t("common.cancel")} place="below" align="end">
             {closeButton}
           </Tooltip>

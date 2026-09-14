@@ -224,11 +224,16 @@ func runLauncher(
 	control *loopback.Server,
 	configureDiagnostics func(*Options, appconfig.Config) error,
 ) error {
+	mode, err := launcher.LoadMode(configPath)
+	if err != nil {
+		slog.Warn("Could not restore the last launcher mode", diagnostics.Error(err))
+	}
 	launch, err := launcher.Start(
 		ctx,
 		webassets.FS(),
 		launcher.Options{
-			Site: config.Site, Version: buildVersion(), Revision: BuildRevision,
+			DefaultMode: mode,
+			Site:        config.Site, Version: buildVersion(), Revision: BuildRevision,
 			LocalAccessPassword: config.LocalAccessPassword,
 			Debug:               options.Debug, LANAddress: options.LANAddress,
 		},
@@ -262,6 +267,9 @@ func runLauncher(
 		return nil
 	}
 	options.console.setLanguage(selection.Language)
+	if err := launcher.SaveMode(configPath, selection.Mode); err != nil {
+		slog.Warn("Could not save the launcher mode", diagnostics.Error(err))
+	}
 	if selection.Mode == launcher.ModeSite {
 		config.Site = selection.Site
 	} else {

@@ -2534,6 +2534,7 @@ export function ViewerPage({
                       />
                     </span>
                     <Btn
+                      key="save-name"
                       icon="check"
                       title="host.nameSave"
                       hint="hint-rename"
@@ -2558,6 +2559,7 @@ export function ViewerPage({
                       identity={selfPeerId ?? viewerClientId}
                     />
                     <Btn
+                      key="edit-name"
                       icon="pencil"
                       cap="common.edit"
                       title="host.nameEdit"

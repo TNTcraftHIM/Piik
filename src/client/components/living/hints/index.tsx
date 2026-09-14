@@ -24,6 +24,7 @@ export const HINT_KINDS: readonly HintKind[] = [
   "hint-pause",
   "hint-resume",
   "hint-switch-source",
+  "hint-refresh-sources",
   "hint-reconnect",
   "hint-copy-code",
   "hint-shuffle-code",

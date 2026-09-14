@@ -47,6 +47,7 @@ type Selection struct {
 }
 
 type Options struct {
+	DefaultMode         Mode
 	Site                string
 	Version             string
 	Revision            string
@@ -65,6 +66,7 @@ type Server struct {
 	assets              fs.FS
 	static              http.Handler
 	site                string
+	defaultMode         Mode
 	localAccessPassword string
 	version             string
 	revision            string
@@ -115,6 +117,7 @@ func Start(parent context.Context, assets fs.FS, options Options) (*Server, erro
 		assets:              assets,
 		static:              http.FileServer(http.FS(assets)),
 		site:                normalizedSite,
+		defaultMode:         options.DefaultMode,
 		localAccessPassword: options.LocalAccessPassword,
 		version:             options.Version,
 		revision:            strings.TrimSpace(options.Revision),
@@ -238,6 +241,9 @@ func (server *Server) handleState(response http.ResponseWriter, request *http.Re
 		"debug":               server.debug,
 		"lan":                 map[string]any{"addresses": addresses, "selected": selected},
 		"defaultMode": func() Mode {
+			if validMode(server.defaultMode) && (server.defaultMode != ModeSite || server.site != "") {
+				return server.defaultMode
+			}
 			if server.site != "" {
 				return ModeSite
 			}

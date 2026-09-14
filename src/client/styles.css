@@ -292,7 +292,7 @@ body.lr-theater-open { overflow: hidden; }
   border: 3px solid var(--frame);
   border-radius: 26px 26px 20px 20px;
   background: var(--frame);
-  transition: width 240ms var(--spring);
+  transition: width 240ms ease-out;
 }
 .lr-tv-screen {
   position: relative;
@@ -1812,7 +1812,7 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
   inset: auto;
   margin: 0;
   overflow: visible;
-  transform: translateY(4px);
+  transform: translateY(var(--tooltip-offset, 4px));
   width: max-content;
   max-width: 320px;
   z-index: 30;
@@ -1910,7 +1910,16 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
 }
 
 /* Below-placement: header controls sit at the viewport top. */
-.lr-comic-tip.is-below { transform: translateY(-4px); }
+.lr-comic-tip.is-below { --tooltip-offset: -4px; }
+
+/* Native popovers start at display:none, so their first visible style needs
+   an explicit entrance baseline as well as the ordinary exit transition. */
+@starting-style {
+  .lr-comic-tip-wrap:is(.is-hover-open, .is-focus-open, .is-tip-open) > .lr-comic-tip {
+    opacity: 0;
+    transform: translateY(var(--tooltip-offset, 4px));
+  }
+}
 
 /* On mobile the wrapper (not the button) is the flex item, so equal-width
    action buttons keep their stretch when hint-wrapped. */

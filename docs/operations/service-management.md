@@ -1,5 +1,7 @@
 # Service Management
 
+English · [简体中文](./service-management.zh-CN.md) · [Documentation](../README.md)
+
 For first installation, use the [short self-hosting guide](./self-hosting.md).
 This reference covers a persistent Linux service and container maintenance.
 
@@ -93,8 +95,8 @@ The bare-metal `release-app.sh` wrapper does not manage containers.
 - The official Trickle ICE sample obtains an ordinary UDP `srflx` candidate from
   the configured STUN service and no relay candidate.
 - A direct room presents media on two networks when Peer ICE succeeds.
-- A constrained route creates one managed Host publication and only admitted
-  subscriptions over embedded SFU UDP; Peer descendants remain ordinary P2P.
+- When SFU is enabled, a constrained route creates one managed Host publication
+  and only admitted subscriptions over embedded SFU UDP; Peer descendants remain ordinary P2P.
 - Blocking all UDP reaches a clear bounded failure.
 - Restarting Piik in stable mode retains room authority while Browser
   sessions and media reconnect from fresh process state.

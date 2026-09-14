@@ -96,9 +96,9 @@ Confirm runner inclusion when adding or moving a test; a file's presence alone
 does not establish coverage.
 
 - `npm run check` owns deterministic Web type-check, unit, and build acceptance.
-- `npm run check:client` owns Go formatting, unit tests, vet, three-platform
-  builds, and the Windows capture compile/probe when run on Windows. The server
-  core is Go, so its acceptance runs here. It builds the Vite client first when
+- `npm run check:client` owns Go formatting, unit tests, vet, Windows/Linux
+  builds, Darwin builds on macOS, and the current platform's capture compile/probe.
+  The server core is Go, so its acceptance runs here. It builds the Vite client first when
   that output is missing, because both binaries embed it. CI invokes these same
   package commands rather than rebuilding their steps in YAML.
 - `npm run check:client-race` checks port mapping, media-edge ownership and their

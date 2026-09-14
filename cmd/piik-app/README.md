@@ -1,5 +1,7 @@
 # Piik App
 
+English · [简体中文](./README.zh-CN.md) · [Getting started](../../docs/guide/getting-started.md)
+
 Piik App provides local rooms and native screen capture through the Piik web
 interface in your system Browser.
 
@@ -22,8 +24,11 @@ publication are separate steps in [deployment](../../docs/deployment.md).
 - With no mode argument, the App opens a small launcher in the system
   Browser. It selects Local, a temporary public HTTPS invitation, or a saved
   Site, then enters the normal Host page.
-- The launcher remembers the Site address but keeps the per-run room source
-  separate. The App RPC starts before this choice and accepts the saved Site
+- The launcher remembers the last mode confirmed with **Open Piik** and the saved
+  Site address. Without a saved mode, it selects Site when an address is saved,
+  otherwise Public invite; it waits for confirmation before starting.
+  [App configuration](../../docs/reference/configuration.md#piik-app-configuration)
+  owns the saved settings. The App RPC starts before this choice and accepts the saved Site
   alongside the Local Host origin. An App-opened Site remembers the opt-in in that Browser
   origin; later manually opened Host pages may reuse the running App.
 - The `--site`, `--local`, and `--link` flags select a mode for CI and development.
@@ -138,14 +143,31 @@ log locations, export commands, retention and privacy boundaries.
 
 ## Development
 
-The binary embeds the Browser assets, so build them before running it:
+Use the Node/npm/Go versions in [Run from source](../../docs/README.md#run-from-source).
+The binary embeds the Browser assets, so build them from the repository root first:
 
 ```sh
+npm ci
 npm run build:client
-go test ./...
-go vet ./...
+```
+
+On Linux or macOS:
+
+```sh
 go run ./cmd/piik-app
 ```
+
+On Windows, build and run from a stable executable path for the system firewall:
+
+```powershell
+go build -o build/dev/piik-app.exe ./cmd/piik-app
+./build/dev/piik-app.exe
+```
+
+These commands build the App only. Choose **Local room** or a configured Site
+for Browser capture. Native capture and **Public invite** need their helpers;
+use `--capture-process` / `--tunnel-process` to select built helpers, or follow
+[packaging](#packaging) for a complete bundle.
 
 The repository-level entry used locally and by CI is:
 
@@ -163,8 +185,8 @@ The Darwin App and peer gate build only on macOS with cgo enabled and an
 installed SDK; other hosts report that skipped platform explicitly. The pinned
 media dependency's Darwin CPU statistics use Mach APIs through cgo, so a Windows
 or Linux core check does not establish Darwin build acceptance.
-Each target compiles its isolated capture process and validates its bounded
-capability response. macOS additionally encodes one in-memory hardware H.264
+The check compiles the current platform's isolated capture process and validates
+its bounded capability response. macOS additionally encodes one in-memory hardware H.264
 IDR; Linux probes the Portal/PipeWire/GStreamer adapter. Real capture, GPU
 attribution, Browser decode, and public-network paths remain explicit physical
 gates rather than environment-dependent unit tests.
@@ -198,9 +220,7 @@ verifies the pinned public-link helper, and assembles and checks the App:
 
 ```sh
 node scripts/package-app-release.mjs /outside/repository/app-release
-node scripts/package-client-candidate.mjs \
-  /outside/repository/app-release windows-amd64 \
-  /outside/repository/client-candidate
+node scripts/package-client-candidate.mjs /outside/repository/app-release windows-amd64 /outside/repository/client-candidate
 ```
 
 Supported targets are `windows-amd64`, `linux-amd64`, and `darwin-arm64`.
@@ -223,8 +243,9 @@ runtime/tunnel/cloudflared[.exe] # packages that support --link
 ```
 
 The executable embeds the Browser assets of the consumed application release and
-carries that same full Git revision as the package `REVISION`. No compatibility
-reader accepts a mismatched private build.
+carries that same full Git revision as the package `REVISION`. App/Site
+interoperability follows the
+[public compatibility contract](../../docs/reference/versioning.md#public-compatibility-promise).
 
 The Windows App embeds the shared Piik mark through the
 `cmd/piik-app/piik_windows_amd64.syso` resource; the platform
@@ -236,8 +257,8 @@ with an ICNS resource; the raw Go executable remains available beside it.
 For a native Host smoke run, launch the App and select a window in the Host
 page. The App never guesses among multiple targets. The page still creates
 the room and sends the current SDP/ICE through the selected authority. A
-configured Site supplies its normal Internet routing and SFU fallback. Without
-a Site, the **Public invite** choice exposes the Local control surface while
+configured Site supplies its normal Internet routing and any enabled SFU fallback.
+Without a Site, the **Public invite** choice exposes the Local control surface while
 media remains P2P-only.
 
 ## Gates

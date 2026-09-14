@@ -88,6 +88,7 @@ export type PlaybackHintKind =
 
 export type ControlHintKind =
   | "hint-collapse"
+  | "hint-refresh-sources"
   | "hint-password-show"
   | "hint-password-hide"
   | "hint-share-audio"

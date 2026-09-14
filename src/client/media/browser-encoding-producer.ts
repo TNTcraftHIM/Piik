@@ -9,6 +9,10 @@ import {
   videoQualitySettingsEqual, type QualityProfile,
 } from "./quality";
 
+// Leave time for ordinary encoding before the outer Viewer/route deadline.
+// Bound local transport setup, not frame production from a quiet source.
+const LOCAL_CONNECTION_TIMEOUT_MS = 8_000;
+
 export class BrowserEncodingProducer {
   readonly id = createOpaqueId();
   private send: RTCPeerConnection | null = null;
@@ -23,6 +27,7 @@ export class BrowserEncodingProducer {
   private paused: boolean;
   private budget: number;
   private startupPending: boolean;
+  private startupTimer: ReturnType<typeof setTimeout> | undefined;
   private applied: { capture: QualityProfile; sender: QualityProfile } | null = null;
 
   constructor(
@@ -80,6 +85,9 @@ export class BrowserEncodingProducer {
       for (const connection of [send, receive]) {
         connection.onconnectionstatechange = () => {
           if (connection.connectionState === "failed") this.fail();
+          else if (send.connectionState === "connected" && receive.connectionState === "connected") {
+            this.clearStartupTimer();
+          }
         };
       }
       const forward = (from: RTCPeerConnection, to: RTCPeerConnection) => {
@@ -97,6 +105,9 @@ export class BrowserEncodingProducer {
         };
       };
       const flushReceive = forward(send, receive), flushSend = forward(receive, send);
+      this.startupTimer = setTimeout(() => {
+        this.fail(new DOMException("Local encoding connection timed out", "TimeoutError"));
+      }, LOCAL_CONNECTION_TIMEOUT_MS);
       await this.serialize(() => this.applyCurrent());
       await send.setLocalDescription(await send.createOffer());
       this.checkAlive();
@@ -154,6 +165,7 @@ export class BrowserEncodingProducer {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.clearStartupTimer();
     debugEvent("encoding-pool", "producer-retired", { producerId: this.id });
     this.source.removeEventListener("ended", this.fail);
     this.input?.removeEventListener("ended", this.fail);
@@ -176,6 +188,11 @@ export class BrowserEncodingProducer {
     this.dispose();
     this.onFailure();
   };
+
+  private clearStartupTimer(): void {
+    clearTimeout(this.startupTimer);
+    this.startupTimer = undefined;
+  }
 
   private checkAlive(): void {
     if (this.disposed) throw new DOMException("Browser encoding producer was retired", "AbortError");

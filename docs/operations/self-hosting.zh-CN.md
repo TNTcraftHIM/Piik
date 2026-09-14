@@ -40,7 +40,7 @@ docker compose up -d
 接着完成下方的 [HTTPS 配置](#2-配置-https)和[端口放行](#3-放行端口并检查)。
 默认使用 P2P；如需 SFU 兜底，按 `.env` 中的说明启用即可。
 请保留 `piik-data` 数据卷，房间数据和可选诊断文件都保存在其中。
-更新与备份见[容器维护说明](./service-management.md#container)。
+更新与备份见[容器维护说明](./service-management.zh-CN.md#容器)。
 
 ## 对外提供服务
 
@@ -70,6 +70,10 @@ SITE_ACCESS_PASSWORD=
 程序会自动读取 `.env`，并将房间数据保存在工作目录的 `rooms.sqlite` 中。
 `SITE_ACCESS_PASSWORD` 留空时，进入站点无须口令；
 如需设置口令，填写你想使用的口令即可。房间邀请与加入权限仍由房主管理。
+
+`MAX_VIEWERS_PER_ROOM` 可设置每房观众上限，不含房主，支持 `1..20`，修改后重启生效。
+人数越多，对网络和转发资源的需求也可能增加。默认值及 App 房间的区别见
+[人数限制](../reference/configuration.md#room-capacity)。
 
 ### 2. 配置 HTTPS
 
@@ -102,7 +106,7 @@ TCP 8787 仅供本机反向代理访问。STUN 域名需要直接解析到服务
 
 ## 长期运行与更新
 
-需要开机启动时，参阅 [systemd 与容器配置](./service-management.md)。
+需要开机启动时，参阅 [systemd 与容器配置](./service-management.zh-CN.md)。
 更新时保留 `.env` 和 `rooms.sqlite`：停止服务、备份房间数据、替换新版程序，再启动并检查健康状态和房间访问。
 涉及数据格式变化的版本，请先阅读发布说明。
 

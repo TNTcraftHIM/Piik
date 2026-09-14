@@ -63,7 +63,10 @@ in [ADR-0011](./0011-browser-assisted-native-fanout.md) remains independently ow
    stale completion, and release the old group only after the owning operation
    commits. Failure preserves the prior applied state. Pause synchronously gates
    borrowed payload, including pending output; stop cancels pending preparation
-   and releases resources. A quiet source is not evidence of failure.
+   and releases resources. Local transport startup is bounded so a stalled
+   producer yields to ordinary encoding before the outer route readiness
+   deadline. Both local connections must connect; once connected, a quiet or
+   paused source is not evidence of failure.
 7. Switching requires an accepted recovery frame and compatible key/delta,
    dependency, codec and packetization metadata. Preserve ordering and discard
    obsolete data only at a valid recovery boundary. Carrier timestamps and

@@ -9,11 +9,11 @@
 | Try the online demo | [Online demo](https://demo.piik.tv) · [Demo steps](./guide/getting-started.md#try-the-online-demo) |
 | Watch a friend or share my first screen | [Getting started](./guide/getting-started.md) |
 | Choose an App mode or fix sound and connection trouble | [First-use help](./guide/getting-started.md#choose-an-app-mode) |
-| Run Piik App, check platform requirements, or build a package | [App guide](../cmd/piik-app/README.md) |
+| Run Piik App, check platform requirements, or build a package | [App guide](../cmd/piik-app/README.md) · [中文 App 指南](../cmd/piik-app/README.zh-CN.md) |
 | Try or change the source code | [Run from source](#run-from-source) |
 | Find a directory or the module responsible for a behavior | [Repository layout and module map](./reference/engineering.md#repository-layout) |
 | Host a site for my group | [Self-hosting](./operations/self-hosting.md) · [中文部署](./operations/self-hosting.zh-CN.md) |
-| Keep a server running with systemd or Docker | [Service management](./operations/service-management.md) |
+| Keep a server running with systemd or Docker | [Service management](./operations/service-management.md) · [中文服务管理](./operations/service-management.zh-CN.md) |
 | Set passwords, ports, or room storage | [Configuration](./reference/configuration.md) |
 | Update my server | [Server updates](./operations/self-hosting.md#keep-it-running-and-update) |
 | Build, publish or recover a maintained release | [Maintainer release tooling](./deployment.md) |
@@ -21,7 +21,7 @@
 | Translate Piik or improve wording | [Translation guide](./guide/translating.md) · [中文翻译教程](./guide/translating.zh-CN.md) |
 | Check release and platform readiness | [Current status](./status.md) |
 
-The introduction, getting-started, self-hosting and translation guides are available in English and Chinese.
+The introduction, getting-started, App, self-hosting, service-management and translation guides are available in English and Chinese.
 Technical references keep one shared version.
 
 ## Run from source

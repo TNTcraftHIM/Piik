@@ -81,8 +81,34 @@ ${rmBlock(["vls-share-audio-change"], [[".vls-share-audio-change", "opacity:1"],
   </>;
 }
 
+const RefreshSourcesHint: HintScene = ({ theme }) => <>
+  <style>{`
+.vls-refresh-path{stroke-dasharray:1;animation:vlsRefreshPath var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
+.vls-refresh-source{animation:vlsRefreshSource var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
+@keyframes vlsRefreshPath{0%,8%{stroke-dashoffset:1}24%,100%{stroke-dashoffset:0}}
+@keyframes vlsRefreshSource{0%,24%{opacity:0;transform:translateY(5px)}42%,100%{opacity:1;transform:none}}
+${rmBlock(["vls-refresh-path", "vls-refresh-source"], [[".vls-refresh-path", "stroke-dashoffset:0"], [".vls-refresh-source", "opacity:1;transform:none"]])}
+`}</style>
+  {[4, 164].map((x, index) => <g key={x}>
+    <Frame x={x} w={152} theme={theme} result={index === 1} />
+    <path d={`M${x + 123} 26 a8 8 0 1 1 9 -10 l-5 1 m5 -1 v-5`} pathLength={1}
+      className={index ? "vls-refresh-path" : undefined}
+      fill="none" stroke="var(--ink)" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+    {[22, 82].map((offset, tile) => <g key={offset} className={index && tile ? "vls-refresh-source" : undefined}>
+      <rect x={x + offset} y={37} width={48} height={35} rx={5}
+        fill="var(--paper)" stroke={index || !tile ? "var(--ink)" : FAINT} strokeWidth={2}
+        strokeDasharray={!index && tile ? "3 3" : undefined} />
+      {index || !tile ? <>
+        <path d={`M${x + offset} 47 h48`} stroke="var(--ink)" strokeWidth={2} />
+        <path d={`M${x + offset + 9} 63 l10 -9 9 6 10 -6`} fill="none" stroke={tile ? SKY : LIVE} strokeWidth={2.5} />
+      </> : null}
+    </g>)}
+  </g>)}
+</>;
+
 export const CONTROL_SCENES: Record<ControlHintKind, HintScene> = {
   "hint-collapse": CollapseHint,
+  "hint-refresh-sources": RefreshSourcesHint,
   "hint-password-show": (props) => <PasswordHint {...props} reveal />,
   "hint-password-hide": (props) => <PasswordHint {...props} reveal={false} />,
   "hint-share-audio": (props) => <ShareAudioHint {...props} enabled />,
