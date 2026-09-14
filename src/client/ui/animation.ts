@@ -19,7 +19,7 @@ export function bindSvgReplayOnPointerEnter(
 ): () => void {
   const owner =
     graphic.closest<HTMLElement>(
-      "button, a, [role='button'], [role='img'], .lr-tv-big",
+      "button, a, [role='button'], [role='img']",
     ) ?? graphic;
   const handlePointerOver = (event: Event) => {
     const pointer = event as PointerEvent;

@@ -29,7 +29,7 @@ function MetricMotion() {
 ${rmBlock(["vls-metric-flow", "vls-metric-loss", "vls-metric-sampling", "vls-metric-measure", "vls-metric-hand", "vls-metric-outbound", "vls-metric-return", "vls-metric-drop", "vls-metric-lag"], [
   [".vls-metric-flow,.vls-metric-loss,.vls-metric-measure,.vls-metric-hand,.vls-metric-drop,.vls-metric-lag", "transform:none;opacity:1"],
   [".vls-metric-sampling,.vls-metric-outbound,.vls-metric-return", "stroke-dashoffset:0"],
-])}
+], false)}
 `}</style>;
 }
 

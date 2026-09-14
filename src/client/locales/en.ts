@@ -2,6 +2,7 @@ import type { CopyKey, TitleFrameCatalog } from "./zh";
 
 // Community translations are data-only and type-checked against zh.
 export const en: Record<CopyKey, string> = {
+  "common.loading": "Loading",
   "playback.controls": "Local playback controls",
   "playback.play": "Play",
   "playback.pause": "Pause on this device",
@@ -158,7 +159,7 @@ export const en: Record<CopyKey, string> = {
   "host.roomReplaced": "Room code replaced",
   "host.roomInvalid": "Room no longer available; press again to create a new one",
   "host.roomReplace": "Replace room code",
-  "host.roomReplaceConfirm": "Confirm replacing the room code",
+  "host.roomReplaceConfirm": "Replace the room code: this ends the current share and disconnects viewers",
   "host.terminated.stale": "Page updated; refresh to continue",
   "host.terminated.session": "This page's session was taken over by another tab",
   "host.terminated.signal": "Server connection terminated; refresh to continue",
@@ -174,13 +175,13 @@ export const en: Record<CopyKey, string> = {
   "host.nameCancel": "Cancel editing",
   "host.nameEdit": "Edit display name",
   "host.nameError": "Invalid name, or longer than 24 characters",
-  "host.nameOffline": "Display name can only change while sharing and connected",
+  "host.nameOffline": "Name saved; others will see it when the connection recovers",
 
   "host.invite": "Invite link",
   "host.invite.copy": "Copy invite link",
   "host.invite.copyFailed": "Could not copy the invite link; try again",
-  "host.invite.rotate": "Rotate invite link",
-  "host.invite.revoke": "Revoke invite link",
+  "host.invite.rotate": "Rotate invite link; viewers using the old link will need to rejoin",
+  "host.invite.revoke": "Revoke invite link and disconnect viewers who joined with it",
   "host.invite.rotateShort": "Rotate link",
   "host.invite.revokeShort": "Revoke link",
   "host.invite.updated": "Invite link rotated",
@@ -216,7 +217,6 @@ export const en: Record<CopyKey, string> = {
   "host.accessFailed": "Cannot update room settings right now; try again later",
 
   "host.viewers.empty": "No viewers yet",
-  "host.viewers.waiting": "Waiting for friends to join",
   "host.viewerOverview": "All viewer connections",
 
   "host.quality": "Video preset",
@@ -245,12 +245,12 @@ export const en: Record<CopyKey, string> = {
   "host.advanced.route.peerOnlyHint":
     "Share over peer-to-peer (P2P) connections only. Viewers cannot watch if those connections fail",
   "host.advanced.route.peerOnlyRequired":
-    "This site supports peer-to-peer (P2P) media only, so Privacy mode is always on",
+    "This service supports peer-to-peer (P2P) media only, so Privacy mode is always on",
   "host.advanced.route.natPrediction": "NAT traversal",
   "host.advanced.route.natPredictionHint":
-    "Use self-hosted STUN for a bounded set of extra direct attempts; ordinary ICE is unchanged",
+    "Use extra STUN observations to try more direct paths",
   "host.advanced.route.natPredictionUnavailable":
-    "Extra NAT traversal is not enabled on this instance; ordinary P2P still works",
+    "Extra NAT traversal is not enabled on this service; ordinary P2P remains available",
   "host.advanced.codec": "Video codec",
   "host.advanced.codec.auto": "Auto",
   "host.advanced.codec.autoHint": "Pick automatically",
@@ -273,10 +273,7 @@ export const en: Record<CopyKey, string> = {
   "state.peer.routing": "Routing",
   "state.peer.waiting": "Waiting for share",
   "state.peer.reconnecting": "Recovering",
-  "state.peer.failed": "Connection failed",
   "state.peer.disconnected": "Connection lost",
-  "state.peer.closed": "Closed",
-  "state.peer.new": "Preparing",
   "state.route.p2p": "P2P direct",
   "state.route.sfu": "Via server",
 
@@ -292,7 +289,7 @@ export const en: Record<CopyKey, string> = {
   "stats.rtt": "RTT",
   "stats.codec": "Video codec",
   "stats.jitter": "Jitter",
-  "stats.dropped": "Dropped frames",
+  "stats.dropped": "Dropped frames (interval)",
   "stats.encoder": "Encoder",
   "stats.audio": "Audio bitrate",
   "stats.unknown": "Unknown",
@@ -344,7 +341,10 @@ export const en: Record<CopyKey, string> = {
   "viewer.msg.denied": "This room cannot be joined by code right now",
   "viewer.msg.invalidInvite": "Invite link is no longer valid",
   "viewer.msg.closed": "Room closed",
-  "viewer.msg.full": "Cannot join the room right now",
+  "viewer.msg.full": "Room is full",
+  "viewer.msg.accessFailed": "Unable to join the room",
+  "viewer.hint.accessFailed": "Reload this page to try again, or use an invite link from the host.",
+  "viewer.hint.full": "Try again when a seat opens up.",
   "viewer.msg.stale": "Page updated; refresh to continue",
   "viewer.msg.sessionReplaced": "This page's session was taken over by another tab",
   "viewer.msg.signalTerminated": "Connection terminated; refresh to continue",
@@ -355,8 +355,6 @@ export const en: Record<CopyKey, string> = {
   "viewer.hint.notFound": "Check the room code, or ask the host for a new invite link.",
   "viewer.hint.invite": "Ask the host for a new invite link.",
   "viewer.hint.generic": "Check your entry point and try again.",
-  "viewer.error.p2p": "P2P media connection error",
-  "viewer.error.relay": "Downstream media connection error",
 
   "mode.language": "Interface language",
   "mode.more": "More languages",
@@ -390,8 +388,6 @@ export const en: Record<CopyKey, string> = {
   "host.fail.start": "Failed to start sharing",
   "host.err.createConnection": "Failed to create the connection",
   "host.err.codecUnsupported": "This browser cannot use a supported video codec",
-  "host.err.applySender": "Failed to apply sender parameters",
-  "host.err.applyAudioSender": "Failed to apply audio sender parameters",
   "host.fail.source": "Failed to switch share source",
   "host.fail.quality": "Failed to apply quality settings",
   "host.fail.connection": "Viewer connection handling failed",
@@ -409,8 +405,8 @@ export const en: Record<CopyKey, string> = {
   "host.capture.noSource": "No shareable screen source available",
   "host.capture.readFailed": "The browser cannot read the selected source right now",
   "host.capture.unavailable": "This page cannot start screen sharing",
-  "host.notice.reconnecting": "Some viewers are reconnecting",
-  "host.notice.sfuRecovering": "SFU source switch failed; restoring viewer connections",
+  "host.notice.reconnecting": "some viewers are reconnecting",
+  "host.notice.sfuRecovering": "Server forwarding source switch failed; restoring viewer connections",
   "host.password.inputPlaceholder": "Enter password",
 
   "stats.warn.codec": "Video codec is {codec}; expected H264 or VP8",
@@ -420,10 +416,6 @@ export const en: Record<CopyKey, string> = {
   "viewer.stageAria": "Shared picture",
 
   "host.warn.audioUnread": "The browser did not report the audio bitrate ceiling",
-  "host.warn.bandwidth": "This connection is bandwidth-limited; quality was reduced automatically",
-  "host.warn.encoding": "Encoding performance is limited; quality was reduced automatically",
-  "host.warn.other": "The browser keeps reporting other quality limits",
-  "host.warn.unclassified": "The browser keeps reporting an unclassified quality limit",
   "host.warn.audioRewritten": "The browser rewrote the audio bitrate ceiling to {kbps} kbps",
   "host.warn.senderPartial": "The browser did not fully accept {params}",
   "host.warn.param.maxBitrate": "bitrate ceiling",
@@ -431,16 +423,16 @@ export const en: Record<CopyKey, string> = {
   "host.warn.param.scaleResolutionDownBy": "resolution scaling",
   "host.warn.param.degradationPreference": "quality preference",
   "host.warn.param.scalabilityMode": "scalability mode",
-  "host.warn.sfuRecover": "SFU {params} failed; automatic recovery started",
+  "host.warn.sfuRecover": "Server forwarding: {params} failed; automatic recovery started",
   "host.warn.sfuStage.connect": "connect",
   "host.warn.sfuStage.source": "source",
   "host.warn.sfuStage.videoPublish": "video publish",
   "host.warn.sfuStage.senderConfig": "sender config",
   "host.warn.sfuStage.audioPublish": "audio publish",
   "host.warn.sfuStage.transport": "transport",
-  "host.fail.sfuSwitch": "Failed to switch the SFU share source",
-  "host.fail.sfuAudioParams": "Failed to apply SFU audio sender parameters",
-  "host.fail.sfuParams": "Failed to apply SFU sender parameters",
+  "host.fail.sfuSwitch": "Failed to switch the server forwarding source",
+  "host.fail.sfuAudioParams": "Failed to apply audio parameters for server forwarding",
+  "host.fail.sfuParams": "Failed to apply sender parameters for server forwarding",
 };
 
 export const enTitleFrames = {

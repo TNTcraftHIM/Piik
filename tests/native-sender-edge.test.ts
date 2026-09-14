@@ -27,6 +27,10 @@ function fixture(natPrediction = false) {
   };
   const sent: SignalPayload[] = [];
   const states: RTCPeerConnectionState[] = [];
+  const sendSignal = vi.fn((_peerId: string, payload: SignalPayload) => {
+    sent.push(payload);
+    return true;
+  });
   const edge = new NativeSenderEdge(
     "viewer_123456",
     "edge_12345678",
@@ -43,10 +47,7 @@ function fixture(natPrediction = false) {
     natPrediction,
     control,
     {
-      sendSignal: (_peerId, payload) => {
-        sent.push(payload);
-        return true;
-      },
+      sendSignal,
       onState: (state) => states.push(state),
     },
   );
@@ -55,11 +56,49 @@ function fixture(natPrediction = false) {
     control,
     sent,
     states,
+    sendSignal,
     emit: (event: NativeClientEvent) => listener?.(event),
   };
 }
 
 describe("native sender edge adapter", () => {
+  it.each([null, { candidate: "candidate:1 1 udp 1 127.0.0.1 9 typ host" }])(
+    "keeps connected media when trickle signaling is unavailable: %j", async (candidate) => {
+      const current = fixture();
+      expect(await current.edge.start()).toBe(true);
+      current.emit({ version: 9, type: "edge-state", shareId: "share_1234567", connectionId: "edge_12345678", state: "connected" });
+      current.sendSignal.mockReturnValue(false);
+      current.emit({ version: 9, type: "edge-candidate", shareId: "share_1234567", connectionId: "edge_12345678", candidate });
+      expect(current.edge.isConnected()).toBe(true);
+      expect(current.control.closeEdge).not.toHaveBeenCalled();
+      expect(current.states).toEqual(["connected"]);
+      current.emit({ version: 9, type: "edge-state", shareId: "share_1234567", connectionId: "edge_12345678", state: "failed" });
+      expect(current.edge.isConnected()).toBe(false);
+      expect(current.states).toEqual(["connected", "failed"]);
+      current.edge.dispose();
+      current.emit({ version: 9, type: "edge-state", shareId: "share_1234567", connectionId: "edge_12345678", state: "connected" });
+      expect(current.edge.isConnected()).toBe(false);
+      expect(current.control.closeEdge).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("retires an offer that could not be sent, but leaves gathered candidates to edge recovery", async () => {
+    const rejected = fixture();
+    rejected.sendSignal.mockReturnValue(false);
+    expect(await rejected.edge.start()).toBe(false);
+    expect(rejected.control.closeEdge).toHaveBeenCalledOnce();
+
+    const current = fixture();
+    vi.mocked(current.control.prepareEdge).mockImplementationOnce(async () => {
+      current.emit({ version: 9, type: "edge-candidate", shareId: "share_1234567", connectionId: "edge_12345678", candidate: null });
+      return { type: "offer", sdp: "v=0\r\n" };
+    });
+    current.sendSignal.mockImplementation((_peer, payload) => payload.kind === "description");
+    expect(await current.edge.start()).toBe(true);
+    expect(current.control.closeEdge).not.toHaveBeenCalled();
+    current.edge.dispose();
+  });
+
   it("sends the offer before candidates gathered during preparation", async () => {
     const current = fixture();
     const prepare = vi.mocked(current.control.prepareEdge);

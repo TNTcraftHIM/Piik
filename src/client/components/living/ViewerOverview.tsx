@@ -67,8 +67,8 @@ export function ViewerOverview({
             const hint = entry.status.tooltip ?? entry.status.comic;
             const metrics = entry.metrics;
             const resolution = metrics?.resolution ?? unknown;
-            const fps = numberValue(metrics?.framesPerSecond, 1);
-            const bitrate = numberValue(metrics?.bitrateKbps, 0);
+            const fps = numberValue(metrics?.framesPerSecond, 1, " fps");
+            const bitrate = numberValue(metrics?.bitrateKbps, 0, " kbps");
             const loss = metrics
               ? formatPacketLossPercent(metrics.packetLossPercent, unknown)
               : unknown;

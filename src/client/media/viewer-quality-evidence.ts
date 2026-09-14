@@ -516,7 +516,6 @@ export function metricsFromQualityEvidence(
         ? `${metrics.width}x${metrics.height}`
         : null,
     bitrateKbps: metrics.bitrateKbps,
-    packetsLost: metrics.packetsLostDelta,
     intervalPacketsReceived: metrics.packetsReceivedDelta,
     intervalPacketsLost: metrics.packetsLostDelta,
     packetLossPercent: packetLossPercentFromDeltas(
@@ -525,7 +524,6 @@ export function metricsFromQualityEvidence(
     ),
     rttMs: metrics.rttMs,
     jitterMs: metrics.jitterMs,
-    framesDropped: metrics.framesDroppedDelta,
     intervalFramesDecoded: metrics.framesDecodedDelta,
     intervalFramesDropped: metrics.framesDroppedDelta,
     intervalDecodeMs: metrics.decodeMsPerFrame,

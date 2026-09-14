@@ -85,7 +85,7 @@ persistent quality evidence and route replacement. See
 [media quality](../../docs/product/media-quality.md) for the implemented behavior
 and [status](../../docs/status.md) for its acceptance limits.
 
-The App configuration keeps an optional Local site-access password. Leave it
+The App configuration keeps an optional Local site passphrase. Leave it
 blank for an open Local site, or enter a password in the launcher before
 starting. When present, the App passes it to its own
 Host page in a URL fragment; the page uses the existing SiteAccess endpoint and

@@ -135,7 +135,7 @@ describe("copy catalog", () => {
 
       const presentation = { lang: copy.currentLang(), vis: false, theme: null };
       window.location.hash = new URL(clientLaunchURL("https://site.example/#piik-client=1", presentation)).hash;
-      expect(takeClientLaunchBootstrap().presentation).toEqual(presentation);
+      expect(takeClientLaunchBootstrap().presentation).toEqual({ ...presentation, explicit: [] });
       expect(registry.consoleLanguage(presentation.lang, false)).toBe("en");
       expect(registry.consoleLanguage(presentation.lang, true)).toBe("vis");
       expect(registry.consoleLanguage("zh", false)).toBe("zh");

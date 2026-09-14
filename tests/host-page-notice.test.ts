@@ -78,7 +78,7 @@ describe("sourceSwitchNotice", () => {
         failedPeerCount: 0,
         sfuReplaced: false,
       }),
-    ).toBe("SFU 分享来源未切换成功，正在恢复观看连接");
+    ).toBe("服务器中转的画面来源未切换成功，正在恢复观看连接");
   });
 
   it("reports success only when every active route replacement succeeded", () => {

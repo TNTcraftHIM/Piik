@@ -63,7 +63,7 @@ const DEFAULT_THEME: Record<ComicKind, ComicTheme> = {
  * ------------------------------------------------------------------ */
 
 /* Control hints reuse these scene objects and stable identity colours. */
-export const YOU = "#2fa66a";
+export const YOU = "var(--you)";
 export const LIVE = "var(--live)";
 export const WARN = "var(--warn)";
 export const DANGER = "var(--danger)";
@@ -921,7 +921,7 @@ ${rmBlock(["vls-na-pawn"], [[".vls-na-pawn", "transform:none"]], false)}
         <path className="vls-na-a3" d="M118 26a22 22 0 0 1 0 36" />
       </g>
       {/* panel 2 (after): picture still alive on the mini TV, but the sound
-          arcs arrive dashed and carry a stamped red slash; the pawn raises
+          arcs arrive dashed and carry an unavailable mark; the pawn raises
           two floating round hands toward its ears. */}
       <MiniTv x={172} y={30} w={42} h={30} />
       <path d="M187 37.5 L199 43 L187 48.5 Z" fill={MINT} />
@@ -941,7 +941,7 @@ ${rmBlock(["vls-na-pawn"], [[".vls-na-pawn", "transform:none"]], false)}
       <path
         className="vls-na-slash"
         d="M216 29 L250 63"
-        stroke={DANGER}
+        stroke="var(--comic-tone)"
         strokeWidth={3.5}
         strokeLinecap="round"
         fill="none"
@@ -1062,7 +1062,7 @@ ${rmBlock(["vls-ii-link"], [[".vls-ii-link", "transform:none"]], false)}
         <rect x={106} y={33} width={176} height={35} rx={5} fill="var(--wall-2)" stroke={FAINT} strokeWidth={1.5} />
         <InviteLink x={114} y={34} size={32} className="vls-ii-link" />
         <path d="M160 44h69m-69 12h52" stroke={FAINT} strokeWidth={2} strokeLinecap="round" />
-        <RedX cx={264} cy={51} arm={8} className="vls-ii-x" />
+        <RedX cx={264} cy={51} arm={8} />
       </BrowserWindow>
     </>
   );

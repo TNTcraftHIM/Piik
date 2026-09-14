@@ -82,11 +82,7 @@ export function PawnDetail({
       <span className="lr-pawn-mini">
         <PawnSvg color={participantColor(pawnKey)} identity={pawnKey} />
       </span>
-      {vis ? (
-        <span className="visually-hidden">{name}</span>
-      ) : (
-        <span className="lr-pawn-detail-name">{name}</span>
-      )}
+      <span className="lr-pawn-detail-name">{name}</span>
       {tag ? (
         <span className="lr-meter-cell">
           <Glyph name={tag.icon} size={16} />

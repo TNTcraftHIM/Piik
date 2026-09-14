@@ -87,7 +87,7 @@ export function PlaybackPreviewPage() {
   useEffect(() => {
     if (!theaterMode) return;
     function exit(event: KeyboardEvent) {
-      if (event.key === "Escape") setTheaterMode(false);
+      if (event.key === "Escape" && !event.defaultPrevented) setTheaterMode(false);
     }
     document.body.classList.add("lr-theater-open");
     window.addEventListener("keydown", exit);

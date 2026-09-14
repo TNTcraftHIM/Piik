@@ -35,18 +35,22 @@ const HOST_SERVER_ERROR_NOTICE: Record<ServerErrorCode, CopyKey> = {
   SERVER_ERROR: "host.err.serverError",
 };
 
+export function isCapturePermissionFailure(error: unknown, action: HostAction): boolean {
+  return (action === "capture" || action === "source") &&
+    error instanceof DOMException && error.name === "NotAllowedError";
+}
+
 export function hostActionErrorNotice(
   error: unknown,
   action: HostAction,
 ): string {
   if (error instanceof NativeMediaBridgeError) return say(HOST_ACTION_FALLBACK.connection);
+  if (isCapturePermissionFailure(error, action)) return say("host.capture.cancelled");
   if (
     error instanceof DOMException &&
     (action === "capture" || action === "source")
   ) {
     switch (error.name) {
-      case "NotAllowedError":
-        return say("host.capture.cancelled");
       case "NotFoundError":
         return say("host.capture.noSource");
       case "NotReadableError":

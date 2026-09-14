@@ -143,10 +143,6 @@ export interface ViewerPresentation {
   hasCurrentFrame: boolean;
   hasRetainedFrame: boolean;
   failureCode: ViewerFailureCode | null;
-  connectionState:
-    | "routing"
-    | "waiting"
-    | Exclude<ViewerPresentationState["connection"], "idle">;
 }
 
 export const INITIAL_VIEWER_PRESENTATION_STATE: ViewerPresentationState = {
@@ -654,11 +650,5 @@ function presentation(
     hasCurrentFrame: currentFrame,
     hasRetainedFrame: state.retainedFrame,
     failureCode,
-    connectionState:
-      state.connection === "idle"
-        ? state.host === "online" || state.host === "paused"
-          ? "routing"
-          : "waiting"
-        : state.connection,
   };
 }

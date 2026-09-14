@@ -21,6 +21,16 @@ interface MetricValue {
   glyphOnly?: boolean;
 }
 
+// One display for each observed sender reason. Unknown reasons remain explicit;
+// none describes this field, not a verdict about the whole connection.
+const QUALITY_REASONS = {
+  none: { valueKey: "stats.quality.normal", icon: "check", hint: "hint-metric-quality", tone: "off" },
+  bandwidth: { valueKey: "stats.quality.bandwidth", icon: "gauge", hint: "bandwidth-limited", tone: "warn" },
+  cpu: { valueKey: "stats.quality.cpu", icon: "cpu", hint: "encoder-limited", tone: "warn" },
+  other: { valueKey: "stats.quality.other", icon: "alert", hint: "hint-metric-quality", tone: "warn" },
+  unclassified: { valueKey: "stats.quality.unclassified", icon: "alert", hint: "hint-metric-quality", tone: "warn" },
+} satisfies Record<string, { valueKey: CopyKey; icon: GlyphName; hint: ComicKind | HintKind; tone: ComicTone }>;
+
 export function codecContractWarnings(
   metrics: ConnectionMetrics,
   t: (key: CopyKey, vars?: Record<string, string>) => string,
@@ -57,24 +67,6 @@ function secondaryMetrics(
       values.push({ label, value: `${readable(value, digits)} ${unit}` });
     }
   };
-  const qualityReason = (value: string): string => {
-    const keys: Record<string, CopyKey> = {
-      none: "stats.quality.normal",
-      bandwidth: "stats.quality.bandwidth",
-      cpu: "stats.quality.cpu",
-      other: "stats.quality.other",
-    };
-    return t(keys[value] ?? "stats.quality.unclassified");
-  };
-  const qualityReasonIcon = (value: string): GlyphName =>
-    value === "none"
-      ? "check"
-      : value === "bandwidth"
-        ? "gauge"
-        : value === "cpu"
-          ? "cpu"
-          : "alert";
-
   addNumber("stats.rtt", metrics.rttMs, "ms");
   if (metrics.codec) {
     values.push({
@@ -86,13 +78,13 @@ function secondaryMetrics(
   if (direction === "send") {
     addNumber("stats.outgoing", metrics.availableOutgoingKbps, "kbps");
     if (metrics.qualityLimitationReason) {
+      const { valueKey, ...presentation } = Object.hasOwn(QUALITY_REASONS, metrics.qualityLimitationReason)
+        ? QUALITY_REASONS[metrics.qualityLimitationReason as keyof typeof QUALITY_REASONS]
+        : QUALITY_REASONS.unclassified;
       values.push({
-        icon: qualityReasonIcon(metrics.qualityLimitationReason),
+        ...presentation,
         label: "stats.qualityState",
-        value: qualityReason(metrics.qualityLimitationReason),
-        hint: metrics.qualityLimitationReason === "bandwidth" ? "bandwidth-limited"
-          : metrics.qualityLimitationReason === "cpu" ? "encoder-limited" : "hint-metric-quality",
-        tone: metrics.qualityLimitationReason === "none" ? "off" : "warn",
+        value: t(valueKey),
         // A limitation reason is a sentence, not a measured value: visual
         // mode states it with the glyph and keeps the words for AT.
         glyphOnly: true,
@@ -134,7 +126,7 @@ function secondaryMetrics(
     addNumber("stats.encodeMs", metrics.intervalEncodeMs, "ms", 1);
   } else {
     addNumber("stats.jitter", metrics.jitterMs, "ms", 1);
-    addNumber("stats.dropped", metrics.framesDropped, "", 0);
+    addNumber("stats.dropped", metrics.intervalFramesDropped, "", 0);
     addNumber("stats.decodeMs", metrics.intervalDecodeMs, "ms", 1);
     addNumber("stats.freezeCount", metrics.intervalFreezeCount, "", 0);
     addNumber("stats.freezeDuration", metrics.intervalFreezeDurationMs, "ms", 1);

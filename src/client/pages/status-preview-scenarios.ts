@@ -5,14 +5,13 @@ import {
   type ViewerPresentationAction,
   type ViewerPresentationState,
 } from "../media/viewer-presentation";
-import type { QualityObservation, deriveHostStatus } from "../ui/media-status";
+import type { deriveHostStatus } from "../ui/media-status";
 
 export interface StatusScenario {
   id: string;
   name: string;
   note: string;
   state: ViewerPresentationState;
-  quality?: QualityObservation;
 }
 
 const ready: ViewerPresentationAction[] = [
@@ -36,10 +35,9 @@ function scenario(
   name: string,
   note: string,
   actions: ViewerPresentationAction[],
-  quality?: QualityObservation,
 ): StatusScenario {
   return {
-    id, name, note, quality,
+    id, name, note,
     state: actions.reduce(reduceViewerPresentation, INITIAL_VIEWER_PRESENTATION_STATE),
   };
 }
@@ -57,17 +55,7 @@ const denied: [ViewerFailureCode, string][] = [
 ];
 
 export const STATUS_SCENARIOS: readonly StatusScenario[] = [
-  scenario("playing", "正常观看", "已呈现当前连接的画面；没有新鲜的质量受限证据。", playing),
-  scenario("bandwidth", "带宽受限，仍在播放", "示例：该画面上游 sender 报告 bandwidth；黄色提示适配，不把画面盖住。", playing,
-    { reason: "bandwidth", fresh: true }),
-  scenario("cpu", "编码受限，仍在播放", "示例：该画面上游 sender 报告 cpu；描述编码受限，不猜测是哪块硬件。", playing,
-    { reason: "cpu", fresh: true }),
-  scenario("other", "其他质量限制", "示例：该画面上游 sender 报告 other；保留原因的不确定性。", playing,
-    { reason: "other", fresh: true }),
-  scenario("stale", "质量样本过期", "旧的 bandwidth 观测已经过期；不能继续把灯染黄。", playing,
-    { reason: "bandwidth", fresh: false }),
-  scenario("unknown", "质量未知", "没有可用的质量原因不等于质量良好，也不等于断线。", playing,
-    { reason: "unknown", fresh: true }),
+  scenario("playing", "正常观看", "已呈现当前连接的画面；逐连接测量留在详情中。", playing),
   scenario("background", "切到后台后回来", "重新武装帧观察，保留之前的播放证明；页面可见性本身不是播放故障。", [
     ...playing, { type: "frame-proof-rearm", generation: 1 },
   ]),

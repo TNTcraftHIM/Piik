@@ -11,7 +11,7 @@ import { NativeSenderPeer } from "../src/client/native/native-sender-peer";
 import { NativeCompatibilityError } from "../src/client/native/client";
 import { reconcileBoundedMediaChildren } from "../src/client/webrtc/media-assignment";
 import { debugError, debugEvent, debugOperation } from "../src/client/lib/debug";
-import { hostActionErrorNotice } from "../src/client/pages/host-page-notices";
+import { hostActionErrorNotice, isCapturePermissionFailure } from "../src/client/pages/host-page-notices";
 
 // Exercise the actual page owners without mounting capture hardware or a Browser.
 const source = ts.createSourceFile("HostPage.tsx", readFileSync(
@@ -22,7 +22,7 @@ const owners = new Set(["changeQuality", "commitQuality", "handleSignalMessage",
   "acquireNativeClient", "requestSharing", "startNativeShare", "startBrowserNativeIngress",
   "ownNativeClient", "discardNativeClient", "releaseUnusedNativeClient", "closeCaptureSourcePicker",
   "openCaptureSourcePicker", "startSharing", "beginRoomMutation", "finishRoomMutation",
-  "startPeer", "reconcileHostChildren", "setNotice", "setNoticeKey", "setNoticeError", "setNoticeErrorKey", "endSharing", "copyInvite"]);
+  "startPeer", "reconcileHostChildren", "setNotice", "setNoticeKey", "setNoticeError", "setNoticeErrorKey", "endSharing", "copyInvite", "isCurrentRoomAuthority"]);
 const functions: string[] = [];
 function collect(node: ts.Node): void {
   if (ts.isFunctionDeclaration(node) && node.name && owners.has(node.name.text)) {
@@ -42,8 +42,9 @@ const lower = QUALITY_PROFILES["720p30"];
 function ref<T>(current: T) { return { current }; }
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((next) => { resolve = next; });
-  return { promise, resolve };
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((next, fail) => { resolve = next; reject = fail; });
+  return { promise, resolve, reject };
 }
 function ingress() {
   return { updateProfile: vi.fn(async (_profile: QualitySettings) => true), dispose: vi.fn() };
@@ -63,18 +64,19 @@ function fixture(launchedByClient = true) {
     stopReceive: vi.fn(async () => undefined), stopShare: vi.fn(async () => undefined) };
   const route = { updateProfile: vi.fn(async () => true), resyncAuthoritative: vi.fn(async (): Promise<void> => undefined) };
   const state = {
-    debugError, debugEvent, debugOperation, NativeCompatibilityError,
+    debugError, debugEvent, debugOperation, NativeCompatibilityError, isCapturePermissionFailure,
     launchedByClient, NativeClient: { connect: vi.fn(async (): Promise<typeof client | null> => null) },
     nativeClientConnectRef: ref<Promise<typeof client | null> | null>(null),
     ownNativeClient: vi.fn(), setJoiningRoom: vi.fn(), startSharing: vi.fn(), openCaptureSourcePicker: vi.fn(),
     videoCodecRef: ref({ primary: "h264" }),
     videoCodecModeRef: ref("h264"), MAX_ENDPOINT_MEDIA_CHILDREN: 2,
     nativeClientCloseCleanupRef: ref<(() => void) | null>(null),
+    sourcePickerReturnRef: ref<{ id: string; restore: boolean } | null>(null),
     nativeSourceRequestRef: ref<object | null>(null), nativeSourcePathRef: ref<unknown>(null),
     setNativeSources: vi.fn(), defaultNativeCapturePath: () => ({ adapterIndex: 0, encoderIndex: 0 }),
     roomMutationRef: ref<object | null>(null), setRoomMutation: vi.fn(),
     generationRef: ref(0), shareGenerationRef: ref<string | null>("share"), createOpaqueId: () => "share",
-    setCopied: vi.fn(), setPhase: vi.fn(), roomInitializationRef: ref(Promise.resolve()), roomRef: ref(null),
+    setCopiedInviteUrl: vi.fn(), setPhase: vi.fn(), roomInitializationRef: ref(Promise.resolve()), roomRef: ref(null),
     createRoom: vi.fn(async () => { throw new Error("must not create an empty room"); }),
     readPreferredRoomId: () => null, disposeResources: vi.fn(), ApiError: class extends Error {},
     NativeMediaBridge: vi.fn(), manualVideoCodecPreference: vi.fn(),
@@ -90,7 +92,7 @@ function fixture(launchedByClient = true) {
     setNoticeValue: vi.fn(), setNoticeError: vi.fn(), readableError: hostActionErrorNotice,
     setDetails: vi.fn(), setNativeActive: vi.fn(),
     applyCaptureProfile: vi.fn(async (_stream: unknown, profile: QualitySettings) => { physical = profile; }),
-    captureDetails: () => ({}), nativeCaptureDetails: () => ({}),
+    captureDetails: () => ({}),
     qualitySettingsEqual, videoQualitySettingsEqual, resolveScreenAudioQuality, qualitySettingsLabel,
     say: (key: string) => key, syncHostSfuQualityWarning: () => null,
     NativeSenderPeer, discardPreparedHostChild: vi.fn(), removePeer: vi.fn(), startPeer: vi.fn(async () => undefined),
@@ -99,7 +101,7 @@ function fixture(launchedByClient = true) {
     sourceSwitchNotice: () => "source-switch-result", hostPeerIdRef: ref(null), endpointMediaCopyCapacityRef: ref(2),
     creationProfileRef: ref({ roomPassword: null }), saveCreationProfile: vi.fn(), setCreationProfile: vi.fn(),
     setViewerPasswordEnabled: vi.fn(), setViewerPasswordDraft: vi.fn(), setViewerPasswordVisible: vi.fn(),
-    setMaxViewers: vi.fn(), setRoutePolicy: vi.fn(), setRoom: vi.fn(), activeRouteRevisionRef: ref(1),
+    setRoutePolicy: vi.fn(), setRoom: vi.fn(), activeRouteRevisionRef: ref(1),
     ensureHostSfuRoute: () => route,
     reconcileBoundedMediaChildren, activeHostChildPeerIdsRef: ref<string[]>([]),
   };
@@ -140,20 +142,24 @@ function fixture(launchedByClient = true) {
 describe("Host invite copy feedback", () => {
   function copyFixture() {
     const current = fixture();
-    let copied = false;
+    let copiedUrl: string | null = null;
     let notice: unknown = null;
-    current.setCopied.mockImplementation((next: boolean) => { copied = next; });
+    current.setCopiedInviteUrl.mockImplementation((next: string | null) => { copiedUrl = next; });
+    const room = { roomId: "1234", hostToken: "host-token", inviteUrl: "https://example.test/r/1234#v=example" };
+    Object.assign(current.roomRef, { current: room });
     current.setNoticeValue.mockImplementation((next: unknown) => {
       notice = typeof next === "function" ? next(notice) : next;
     });
     const writeText = vi.fn(async (_value: string) => {});
     Object.assign(current.context, {
-      room: { inviteUrl: "https://example.test/r/1234#invite=example" },
+
       navigator: { clipboard: { writeText } },
       copiedResetTimerRef: ref<number | null>(null),
+      copyInviteRequestRef: ref<object | null>(null),
       window: { setTimeout: vi.fn(() => 1), clearTimeout: vi.fn() },
     });
-    return { ...current, writeText, copied: () => copied, notice: () => notice,
+    return { ...current, writeText, copied: () => copiedUrl !== null && copiedUrl === current.context.roomRef.current?.inviteUrl,
+      replaceInvite: (inviteUrl: string | null) => { current.context.roomRef.current = { ...room, inviteUrl }; }, notice: () => notice,
       copy: current.context.copyInvite as () => Promise<void> };
   }
 
@@ -191,6 +197,37 @@ describe("Host invite copy feedback", () => {
     expect(current.copied()).toBe(true);
     expect(current.notice()).toBe(newer);
   });
+
+  it.each([false, true])("ignores a retired invite's late clipboard completion (failure=%s)", async (failed) => {
+    const current = copyFixture();
+    const pending = deferred<void>();
+    current.writeText.mockReturnValueOnce(pending.promise);
+    const oldCopy = current.copy();
+    current.replaceInvite("https://example.test/r/1234#v=replacement");
+    expect(current.copied()).toBe(false);
+    await current.copy();
+    expect(current.copied()).toBe(true);
+    if (failed) pending.reject(new Error("old clipboard failure"));
+    else pending.resolve();
+    await oldCopy;
+    expect(current.copied()).toBe(true);
+    expect(current.notice()).toBeNull();
+  });
+
+  it.each([false, true])("keeps the latest result for concurrent copies of the same URL (latest failed=%s)", async (latestFailed) => {
+    const current = copyFixture();
+    const pending = deferred<void>();
+    current.writeText.mockReturnValueOnce(pending.promise);
+    const older = current.copy();
+    if (latestFailed) current.writeText.mockRejectedValueOnce(new Error("latest denied"));
+    await current.copy();
+    const latestNotice = current.notice();
+    if (latestFailed) pending.resolve();
+    else pending.reject(new Error("older denied"));
+    await older;
+    expect(current.copied()).toBe(!latestFailed);
+    expect(current.notice()).toBe(latestNotice);
+  });
 });
 
 describe("Host quality ownership", () => {
@@ -209,9 +246,9 @@ describe("Host quality ownership", () => {
     await (entry === "native" ? current.start() : current.startBrowser());
     expect(setNoticeValue).toHaveBeenLastCalledWith({
       kind: "text", text: hostActionErrorNotice(denied, "capture"),
-      target: "television", comic: "source-failed", tone: "bad",
+      target: "television", comic: "hint-capture-browser", tone: "warn",
     });
-    expect(current.setPhase).toHaveBeenLastCalledWith("error");
+    expect(current.setPhase).toHaveBeenLastCalledWith("idle");
     expect(current.createRoom).not.toHaveBeenCalled();
     expect(current.roomMutationRef.current).toBeNull();
   });
@@ -228,7 +265,7 @@ describe("Host quality ownership", () => {
     await current.switchSource();
     expect(setNoticeValue).toHaveBeenLastCalledWith({
       kind: "text", text: hostActionErrorNotice(denied, "source"),
-      target: "operation", comic: "source-failed", tone: "bad",
+      target: "operation", comic: "hint-capture-browser", tone: "warn",
     });
     expect(current.setPhase).not.toHaveBeenCalled();
     expect(current.track.stop).not.toHaveBeenCalled();

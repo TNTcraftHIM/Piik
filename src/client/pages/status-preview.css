@@ -35,13 +35,9 @@
 .sp-caption { color: var(--muted); font-size: .74rem; line-height: 1.6; }
 .sp-stage-panel > .sp-caption { text-align: center; }
 .sp-status { display: inline-flex; align-items: center; gap: 7px; padding: 5px 0; font-size: .8rem; }
-.sp-explanation { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; padding: 24px 0; border-top: 1px solid color-mix(in srgb, var(--ink) 16%, transparent); margin-top: 25px; }
+.sp-explanation { padding: 24px 0; border-top: 1px solid color-mix(in srgb, var(--ink) 16%, transparent); margin-top: 25px; }
 .sp-explanation h2, .sp-catalog h2 { margin: 0 0 9px; font-size: 1.1rem; }
 .sp-explanation p { margin: 5px 0; line-height: 1.6; font-size: .83rem; }
-.sp-quality-controls { display: flex; flex-wrap: wrap; align-content: start; align-items: center; gap: 8px; }
-.sp-quality-controls p { flex-basis: 100%; }
-.sp-quality-controls .lr-btn { min-height: 36px; height: auto; padding: 7px 11px; font-size: .75rem; }
-.sp-quality-controls .lr-btn[aria-pressed="true"] { border-color: var(--action); color: var(--action); }
 .sp-surfaces { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .sp-surfaces article, .sp-catalog-grid article { border: 1px solid color-mix(in srgb, var(--ink) 20%, transparent); background: var(--paper); border-radius: 14px; padding: 17px; }
 .sp-surfaces h3 { margin: 8px 0 10px; font-size: .94rem; }
@@ -60,12 +56,6 @@
 .sp-catalog-grid .sp-status { font-size: .7rem; }
 .sp-footnote { padding-top: 24px; margin-top: 28px; border-top: 1px solid color-mix(in srgb, var(--ink) 16%, transparent); font-size: .75rem; color: var(--muted); line-height: 1.7; }
 .sp-footnote a { color: var(--action); }
-.sp-reduced-motion *, .sp-reduced-motion *::before, .sp-reduced-motion *::after {
-  animation-duration: .01ms !important;
-  animation-delay: 0s !important;
-  animation-iteration-count: 1 !important;
-  transition-duration: .01ms !important;
-}
 @media (max-width: 800px) {
   .sp-main { padding: 22px 16px 48px; }
   .sp-heading { align-items: start; flex-direction: column; gap: 14px; }
@@ -74,7 +64,6 @@
   .sp-mobile-scenario { display: flex; gap: 8px; align-items: center; font-size: .8rem; }
   .sp-mobile-scenario select { min-width: 0; flex: 1; padding: 10px 8px; border: 1px solid color-mix(in srgb, var(--ink) 25%, transparent); border-radius: 10px; background: var(--paper); color: var(--ink); font: inherit; }
   .sp-surfaces { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .sp-explanation { grid-template-columns: 1fr; gap: 14px; }
 }
 @media (max-width: 400px) {
   .sp-stage-toolbar { gap: 8px; }

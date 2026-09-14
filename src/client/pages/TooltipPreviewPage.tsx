@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { AppHeader } from "../components/living/Header";
 import { Tooltip } from "../components/living/Tooltip";
 import { ControlsPreview } from "./ControlsPreview";
@@ -7,6 +8,8 @@ import { Comic, type ComicKind } from "../components/living/Comic";
 import { COMIC_KINDS, getComicPresentation, type ComicTone, type ComicMotion } from "../components/living/comic-presentation";
 import { useCopy, type CopyKey } from "../ui/copy";
 import { replaySvgAnimations } from "../ui/animation";
+import { MetricCells } from "../components/living/Metrics";
+import { EMPTY_METRICS } from "../types";
 
 const EXAMPLES: { label: string; kind: HintKind | ComicKind; tone: ComicTone; motion: ComicMotion; text: CopyKey }[] = [
   { label: "说明 / Neutral", kind: "hint-volume", tone: "off", motion: "demo", text: "playback.volume" },
@@ -54,23 +57,28 @@ function PreviewCard({ kind, tone, motion, label, text }: {
 export function TooltipPreviewPage() {
   const { t, lang } = useCopy();
   const en = lang === "en";
+  const [reducedMotion, setReducedMotion] = useState(false);
   return (
-    <div className="lr-app">
+    <div className="lr-app" data-comic-reduced-motion={reducedMotion || undefined}>
       <AppHeader />
       <main className="lr-room lr-tooltip-preview">
         <header className="lr-tooltip-preview-head">
           <h1>{en ? "Piik · UI catalogue" : "Piik · UI 控件大全"}</h1>
           <p>{en ? "Actual components, sample data. Hover or tap a comic to replay it; use its corner button to open the tooltip." : "正式组件，示例数据。悬停或轻点漫画可重播，角上的按钮可查看实际提示。"}</p>
+          <label><input type="checkbox" checked={reducedMotion} onChange={event => setReducedMotion(event.target.checked)} />
+            {en ? "Reduced motion" : "减少动态效果"}</label>
         </header>
         <nav className="cp-nav" aria-label={en ? "Preview sections" : "预览目录"}>
           <a href="#button-preview">{en ? "Buttons" : "按钮"}</a><a href="#option-preview">{en ? "Options" : "选择与开关"}</a>
           <a href="#input-preview">{en ? "Inputs" : "输入与房间号"}</a><a href="#feedback-preview">{en ? "Feedback" : "反馈"}</a>
           <a href="#people-preview">{en ? "People & connections" : "人物、沙发与连接图"}</a><a href="#source-preview">{en ? "Source picker" : "画面选择"}</a>
           <a href="#playback-preview">{en ? "Playback" : "播放栏"}</a><a href="#comic-preview">{en ? "Tooltips & comics" : "提示与漫画"}</a>
+          <a href="#metrics-preview">{en ? "Metrics" : "连接数据"}</a>
           <a href="#welcome-preview">{en ? "20 opening lines" : "20 句开场白"}</a>
           <a href="/__status-preview">{en ? "Status gallery" : "完整状态预览"}</a>
         </nav>
         <ControlsPreview />
+        <MetricPreview />
         <WelcomeLine />
         <details id="welcome-preview" className="lr-welcome-catalog" open>
           <summary>20 句开场白 / 20 opening lines</summary>
@@ -93,4 +101,41 @@ export function TooltipPreviewPage() {
       </main>
     </div>
   );
+}
+
+function MetricPreview() {
+  const { t, lang } = useCopy();
+  const en = lang === "en";
+  const [reason, setReason] = useState("other");
+  const [sendExpanded, setSendExpanded] = useState(true);
+  const [receiveExpanded, setReceiveExpanded] = useState(true);
+  const metrics = {
+    ...EMPTY_METRICS,
+    resolution: "1920x1080", framesPerSecond: 59.8, bitrateKbps: 7200,
+    packetLossPercent: .2, rttMs: 24, codec: "video/H264",
+    availableOutgoingKbps: 12000, qualityLimitationReason: reason,
+    captureWidth: 2560, captureHeight: 1440, captureFramesPerSecond: 60,
+    mediaSourceFramesPerSecond: 60, encoderImplementation: "Sample encoder",
+    powerEfficientEncoder: true, intervalEncodeMs: 2.4,
+    jitterMs: 1.2, intervalFramesDropped: 2, intervalDecodeMs: 1.4,
+    intervalFreezeCount: 1, intervalFreezeDurationMs: 120,
+    audioBitrateKbps: 96, audioPacketLossPercent: .1, audioJitterMs: .8,
+    audioVideoPlayoutDeltaMs: 3, videoJitterBufferDelayMs: 12,
+    audioJitterBufferDelayMs: 15, audioConcealedSamplesPercent: .2,
+    intervalAudioConcealmentEvents: 1,
+  };
+  return <section id="metrics-preview" className="cp-section">
+    <h2>{en ? "Connection metrics" : "连接数据"}</h2>
+    <p>{en ? "Sample observations in the actual detail cells. Sender limits do not describe the receiver's playback."
+      : "用正式详情控件展示示例观测。发送端的限制不代表观众的播放状态。"}</p>
+    <label>{t("stats.qualityState")} <select value={reason} onChange={event => setReason(event.target.value)}>
+      {(["none", "bandwidth", "cpu", "other", "unclassified"] as const).map(value => <option key={value} value={value}>
+        {t(value === "none" ? "stats.quality.normal" : `stats.quality.${value}`)}
+      </option>)}
+    </select></label>
+    <h3>{en ? "Sending" : "发送"}</h3>
+    <MetricCells metrics={metrics} direction="send" expanded={sendExpanded} onToggle={setSendExpanded} />
+    <h3>{en ? "Receiving" : "接收"}</h3>
+    <MetricCells metrics={metrics} direction="receive" expanded={receiveExpanded} onToggle={setReceiveExpanded} />
+  </section>;
 }

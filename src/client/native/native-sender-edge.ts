@@ -105,10 +105,7 @@ export class NativeSenderEdge {
       }
       this.offerSent = true;
       for (const candidate of this.pendingCandidates.splice(0)) {
-        if (!this.events.sendSignal(this.peerId, candidate)) {
-          this.dispose();
-          return false;
-        }
+        this.events.sendSignal(this.peerId, candidate);
       }
       return true;
     } catch {
@@ -204,9 +201,8 @@ export class NativeSenderEdge {
       this.pendingCandidates.push(payload);
       return;
     }
-    if (!this.events.sendSignal(this.peerId, payload)) {
-      this.dispose();
-      this.events.onState("failed");
-    }
+    // Trickle signaling can be unavailable while media is still healthy.
+    // As with Browser senders, the actual edge/route owns failure and recovery.
+    this.events.sendSignal(this.peerId, payload);
   }
 }

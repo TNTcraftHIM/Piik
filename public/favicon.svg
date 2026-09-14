@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-  <style>svg { color: #182535; } @media (prefers-color-scheme: dark) { svg { color: #dfe8f2; } }</style>
+  <style>svg { color: #22303e; } @media (prefers-color-scheme: dark) { svg { color: #dde8f3; } }</style>
   <path d="m11 4 5 4 5-4"/>
   <rect x="4" y="8" width="24" height="18" rx="4"/>
   <circle cx="11.5" cy="16.5" r="1.25" fill="currentColor" stroke="none"/>

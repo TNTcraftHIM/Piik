@@ -8,10 +8,10 @@ import { AppHeader } from "../components/living/Header";
 import { LauncherForm, type AppMode } from "../components/living/LauncherForm";
 import { Btn, Pill } from "../components/living/primitives";
 import { Glyph } from "../ui/icons";
-import { useCopy, type CopyKey } from "../ui/copy";
+import { hasCopyPreference, useCopy, type CopyKey } from "../ui/copy";
 import { consoleLanguage } from "../locales";
 import { currentThemePreference } from "../ui/theme";
-import { clientLaunchURL } from "../lib/session";
+import { clientLaunchURL, type ClientLaunchPresentation } from "../lib/session";
 import { browserDebugEnabled } from "../lib/debug";
 import {
   checkReleaseUpdate,
@@ -88,7 +88,14 @@ export function AppLauncherPage() {
       (mode === "local" && lan !== undefined && !lan.selected)) return;
     setStarting(true);
     setError(null);
-    const presentation = { lang, vis, theme: currentThemePreference() };
+    const theme = currentThemePreference();
+    const presentation: ClientLaunchPresentation = {
+      lang, vis, theme,
+      explicit: [
+        ...(hasCopyPreference() ? ["copy" as const] : []),
+        ...(theme !== null ? ["theme" as const] : []),
+      ],
+    };
     try {
       const response = await fetch("/api/client-launcher/launch", {
         method: "POST",
@@ -150,13 +157,13 @@ export function AppLauncherPage() {
             className="lr-loading"
             role="status"
             aria-label={t(
-              starting ? "client.launch.starting" : "gate.checking",
+              starting ? "client.launch.starting" : "common.loading",
             )}
           >
             <Comic kind="signal-connecting" theme="paper" />
             {vis ? null : (
               <span className="lr-client-launch-status">
-                {t(starting ? "client.launch.starting" : "gate.checking")}
+                {t(starting ? "client.launch.starting" : "common.loading")}
               </span>
             )}
           </div>

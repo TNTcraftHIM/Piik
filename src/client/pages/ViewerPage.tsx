@@ -89,7 +89,7 @@ import {
   type ViewerPresentationAction,
   type ViewerRouteKind,
 } from "../media/viewer-presentation";
-import { prepareViewerPlayback } from "../media/viewer-playback";
+import { nextViewerMediaBinding, prepareViewerPlayback, type RemoteMediaBinding } from "../media/viewer-playback";
 import {
   isAutoplayPolicyRejection,
   observeCompositedVideoFrame,
@@ -126,6 +126,7 @@ import { NativeSenderPeer } from "../native/native-sender-peer";
 interface ViewerPageProps {
   roomId: string;
   viewerGrant?: string;
+  invalidGrant?: boolean;
   launchedByClient?: boolean;
 }
 
@@ -151,14 +152,6 @@ interface PendingPeerRoute {
   qualityResult: CandidateQualityProbeResult;
 }
 
-interface RemoteMediaBinding {
-  stream: MediaStream;
-  generation: number;
-  boundAtRevision: number;
-  videoTrackKey: string;
-  audioTrackKey: string;
-}
-
 function MeterTag({ icon, label }: { icon: GlyphName; label: string }) {
   const { vis } = useCopy();
   return (
@@ -172,6 +165,7 @@ function MeterTag({ icon, label }: { icon: GlyphName; label: string }) {
 export function ViewerPage({
   roomId,
   viewerGrant,
+  invalidGrant = false,
   launchedByClient = false,
 }: ViewerPageProps) {
   const { lang, t, vis, titleFrames } = useCopy();
@@ -243,7 +237,7 @@ export function ViewerPage({
   useEffect(() => {
     if (!theaterMode) return;
     const exitOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setTheaterMode(false);
+      if (event.key === "Escape" && !event.defaultPrevented) setTheaterMode(false);
     };
     document.body.classList.add("lr-theater-open");
     window.addEventListener("keydown", exitOnEscape);
@@ -317,7 +311,6 @@ export function ViewerPage({
   const viewerStatus = deriveViewerStatus(
     presentation,
     signalStatus,
-    undefined,
     assignedRouteKind,
   );
   const titleContent = titleFrames(viewerStatus.titleFrameKey).map((frame) =>
@@ -344,34 +337,15 @@ export function ViewerPage({
   const routeMetrics = routePresentation.evidence?.metrics ?? null;
 
   function bindRemoteStream(stream: MediaStream, revision: number): void {
-    const videoTrackKey = stream
-      .getVideoTracks()
-      .map((track) => track.id)
-      .sort()
-      .join(":");
-    const audioTrackKey = stream
-      .getAudioTracks()
-      .map((track) => track.id)
-      .sort()
-      .join(":");
     const current = remoteMediaRef.current;
-    if (
-      current?.stream === stream &&
-      current.videoTrackKey === videoTrackKey &&
-      current.audioTrackKey === audioTrackKey
-    ) {
-      return;
-    }
-    const next: RemoteMediaBinding = {
-      stream,
-      boundAtRevision: revision,
-      videoTrackKey,
-      audioTrackKey,
-      generation: ++mediaGenerationRef.current,
-    };
-    invalidateQualityPresentation();
+    const next = nextViewerMediaBinding(current, stream, revision, mediaGenerationRef.current + 1);
+    if (next === current) return;
+    const pictureChanged = next.generation !== current?.generation;
+    mediaGenerationRef.current = next.generation;
     remoteMediaRef.current = next;
     setRemoteMedia(next);
+    if (!pictureChanged) return;
+    invalidateQualityPresentation();
     dispatchPresentation({
       type: "media-bound",
       generation: next.generation,
@@ -1953,20 +1927,12 @@ export function ViewerPage({
         return;
       }
       if (message.type === "error") {
-        if (
-          [
-            "AUTH_REQUIRED",
-            "INVALID_TOKEN",
-            "ROOM_NOT_FOUND",
-            "ROOM_ACCESS_DENIED",
-            "ROOM_FULL",
-          ].includes(message.code)
-        ) {
+        const failure = viewerFailureFromServerCode(message.code);
+        if (failure !== null && failure !== "SERVER_ERROR") {
           setAssignedRoute(null);
           clearViewerSfuRoute();
           clearPeerState(true);
           clearParticipantPresence();
-          const failure = viewerFailureFromServerCode(message.code);
           dispatchPresentation({
             type: "access",
             access: "denied",
@@ -1987,7 +1953,6 @@ export function ViewerPage({
           }
           return;
         }
-        const failure = viewerFailureFromServerCode(message.code);
         if (failure === "SERVER_ERROR") {
           dispatchPresentation({ type: "server-error" });
         }
@@ -2047,7 +2012,7 @@ export function ViewerPage({
     ) {
       attemptPlayback(video, remoteMedia);
     }
-  }, [remoteMedia]);
+  }, [remoteMedia?.generation]);
 
   useEffect(() => {
     const paused = presentationState.host === "paused";
@@ -2070,7 +2035,7 @@ export function ViewerPage({
     if (shouldResume && video && remoteMedia) {
       attemptPlayback(video, remoteMedia);
     }
-  }, [presentationState.host, remoteMedia]);
+  }, [presentationState.host, remoteMedia?.generation]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -2108,7 +2073,7 @@ export function ViewerPage({
     mediaProofEpoch,
     mediaProofGeneration,
     presentationState.host,
-    remoteMedia,
+    remoteMedia?.generation,
   ]);
 
   function retryConnection(): void {
@@ -2161,10 +2126,14 @@ export function ViewerPage({
 
   if (accessState !== "ready") {
     const failureCode = presentation.failureCode;
+    const missingCredential = failureCode === "INVALID_TOKEN" && !viewerGrant && !invalidGrant;
+    const malformedInvite = invalidGrant && (failureCode === "INVALID_TOKEN" || failureCode === "ROOM_ACCESS_DENIED");
+    const deniedMessageKey = malformedInvite ? "viewer.msg.invalidInvite"
+      : missingCredential ? "viewer.msg.accessFailed" : presentation.messageKey;
     const codeOnlyDenied =
       !viewerGrant && failureCode === "ROOM_ACCESS_DENIED";
     const canRefresh =
-      failureCode === null ||
+      failureCode === null || missingCredential ||
       // ROOM_FULL is transient by nature: a seat frees when a Viewer leaves,
       // so the hint that says "try again" needs something to try.
       [
@@ -2174,8 +2143,12 @@ export function ViewerPage({
         "SESSION_REPLACED",
         "SIGNAL_TERMINATED",
       ].includes(failureCode);
-    const deniedComic: ComicKind = viewerStatus.activity.comic ?? "signal-failed";
-    const deniedHintKey: CopyKey = codeOnlyDenied
+    const deniedComic: ComicKind = malformedInvite ? "invalid-invite"
+      : missingCredential ? "access-denied" : viewerStatus.activity.comic ?? "signal-failed";
+    const deniedHintKey: CopyKey = malformedInvite ? "viewer.hint.invite"
+      : missingCredential ? "viewer.hint.accessFailed"
+      : failureCode === "ROOM_FULL" ? "viewer.hint.full"
+      : codeOnlyDenied
       ? "viewer.hint.denied"
       : failureCode === "ROOM_NOT_FOUND" ||
           failureCode === "ROOM_CLOSED"
@@ -2200,23 +2173,21 @@ export function ViewerPage({
               <span
                 className="lr-viewer-entry-brand"
                 role="status"
-                aria-label={t(presentation.messageKey)}
+                style={{ display: "grid", justifyItems: "center", gap: 14 }}
               >
                 <Comic kind="signal-connecting" theme="paper" />
+                <span className={vis ? "visually-hidden" : "lr-tv-msg"}>{t(presentation.messageKey)}</span>
               </span>
-              {vis ? null : (
-                <span className="lr-tv-msg">{t(presentation.messageKey)}</span>
-              )}
             </div>
           ) : (
             <div className="lr-join-panel">
               <Comic kind={deniedComic} theme="paper" tone={viewerStatus.activity.tone} />
               <span className="visually-hidden" role="alert">
-                {t(presentation.messageKey)} · {t(deniedHintKey)}
+                {t(deniedMessageKey)} · {t(deniedHintKey)}
               </span>
               {vis ? null : (
                 <div className="lr-access-text">
-                  <h1>{t(presentation.messageKey)}</h1>
+                  <h1>{t(deniedMessageKey)}</h1>
                   <p>{t(deniedHintKey)}</p>
                 </div>
               )}
@@ -2237,7 +2208,7 @@ export function ViewerPage({
                       style={{ display: "grid", justifyItems: "center", gap: 14 }}
                       onSubmit={submitViewerPassword}
                     >
-                  <span className="lr-input" style={{ minWidth: 220 }}>
+                  <span className="lr-input is-password">
                     <Glyph name="key" size={17} />
                     <input
                       type="password"
@@ -2334,7 +2305,7 @@ export function ViewerPage({
     return {
       key: viewer.peerId,
       name: viewer.label,
-      status: deriveParticipantStatus(viewer, presentationState.host === "online"),
+      status: deriveParticipantStatus(viewer, presentationState.host === "online" || presentationState.host === "paused"),
       you: isSelf,
       selectable: isChild ? undefined : false,
     };
@@ -2350,12 +2321,6 @@ export function ViewerPage({
 
   return (
     <div className="lr-app">
-      <style>{`
-/* The video fills the screen exactly, so its own :focus-visible outline is
-   clipped by .lr-tv-screen's overflow: hidden. Ring the screen container
-   instead; :focus-visible keeps mouse clicks ring-free like every control. */
-.lr-tv-screen:has(:focus-visible) { outline: 3px solid var(--action); outline-offset: 2px; }
-`}</style>
       <AppHeader
         led={
           <LedStrip
@@ -2373,7 +2338,7 @@ export function ViewerPage({
         </h1>
         <div className="lr-scene" id="viewer-stage">
           <StageTv
-            live={presentation.stage === "playing"}
+            live={presentation.hasCurrentFrame || presentation.hasRetainedFrame}
             label={t("viewer.stageAria")}
             indicator={<StatusIndicator status={viewerStatus.television}
               label={retryAttempt ? stageMessage : undefined} />}
@@ -2490,10 +2455,6 @@ export function ViewerPage({
             </div>
             <div
               className="lr-row-group lr-viewer-host-slot"
-              aria-label={t(
-                hostDisplayName ? "viewer.title" : "viewer.titleFallback",
-                hostDisplayName ? { name: hostDisplayName } : undefined,
-              )}
             >
               <Glyph name="tv" size={17} />
               <Tooltip overflow={{ text: hostDisplayName ?? t("common.host"), selector: "b" }} className="lr-name-hint">

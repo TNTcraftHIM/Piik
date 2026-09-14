@@ -5,8 +5,9 @@ import { CaptureSourcePicker, type NativeSourceList } from "../components/living
 import { LedStrip } from "../components/living/Header";
 import { StageTv } from "../components/living/Stage";
 import { PlaybackControls } from "../components/living/PlaybackControls";
-import { QualityTileGlyph } from "../components/living/QualityTileGlyph";
-import { QUALITY_PROFILES } from "../media/quality";
+import { QualityPresets } from "../components/living/QualityPresets";
+import { RoomCodeInput } from "../components/living/RoomCodeInput";
+import type { QualityProfileId } from "../media/quality";
 import { Tooltip } from "../components/living/Tooltip";
 import { StatusIndicator } from "../components/living/StatusIndicator";
 import { deriveParticipantStatus } from "../ui/media-status";
@@ -27,7 +28,7 @@ export function ControlsPreview() {
   const { t, lang, vis } = useCopy();
   const en = lang === "en";
   const [sound, setSound] = useState(true);
-  const [preset, setPreset] = useState("1080p30");
+  const [preset, setPreset] = useState<QualityProfileId>("1080p30");
   const [policy, setPolicy] = useState<"open" | "private">("open");
   const [roomPassword, setRoomPassword] = useState(false);
   const [paused, setPaused] = useState(false);
@@ -66,13 +67,7 @@ export function ControlsPreview() {
       </section>
       <section id="option-preview" className="cp-card">
         <header><span className="cp-number">02</span><h2>{en ? "Pick, toggle, adjust" : "选一个，再拨一下。"}</h2></header>
-        <div className="lr-tiles" role="group" aria-label={t("host.quality")}>
-          {(["720p30", "1080p30", "1080p60"] as const).map(value => <Tooltip key={value} kind="hint-quality" text={vis ? undefined : t(`host.quality.${value}`)}>
-            <button type="button" className={`lr-tile${preset === value ? " is-selected" : ""}`} aria-pressed={preset === value}
-              aria-label={t(`host.quality.${value}`)} onClick={() => setPreset(value)}>
-              <QualityTileGlyph resolution={QUALITY_PROFILES[value].resolution} framerate={QUALITY_PROFILES[value].maxFramerate} /><small>{value.replace("p", "p · ")}</small>
-            </button></Tooltip>)}
-        </div>
+        <QualityPresets selected={preset} onSelect={setPreset} />
         <div className="cp-tools">
           <SwitchItem checked={sound} onChange={setSound} label={t("host.sourcePicker.audioOn")} hint="hint-share-audio" />
           <SwitchItem checked disabled locked onChange={() => undefined} label={t("host.advanced.route.peerOnly")}
@@ -102,7 +97,7 @@ export function ControlsPreview() {
             autoComplete="off" onChange={event => setName(event.target.value)} /></label>
         </div>
         <div className="cp-tools">
-          <label className="lr-input"><Glyph name="key" size={17} /><input type={passwordVisible ? "text" : "password"}
+          <label className="lr-input is-password"><Glyph name="key" size={17} /><input type={passwordVisible ? "text" : "password"}
             placeholder={t("join.password")} aria-label={t("join.password")} aria-invalid={invalid} aria-describedby={invalid ? "preview-input-error" : undefined} autoComplete="off" />
           </label>
           <Btn icon={passwordVisible ? "eyeOff" : "eye"} title={passwordVisible ? "host.password.hide" : "host.password.show"}
@@ -111,11 +106,7 @@ export function ControlsPreview() {
         </div>
         {invalid ? <p id="preview-input-error" className="cp-input-error" role="alert">{en ? "That password did not match. Try again." : "密码没对上，再试一次。"}</p> : null}
         <div className="cp-tools"><RoomChip roomId={roomCode} onReplace={() => setRoomCode(code => code === "6020" ? "2048" : "6020")} /></div>
-        <div className="lr-dials-wrap cp-dials"><div className="lr-dials" aria-hidden="true">{[0, 1, 2, 3].map(index =>
-          <span key={index} className={`lr-dial${dial[index] ? " is-filled" : index === dial.length ? " is-active" : ""}`}>{dial[index] ?? ""}</span>)}</div>
-          <input value={dial} inputMode="numeric" maxLength={4} autoComplete="off" aria-label={t("join.field")}
-            onChange={event => setDial(event.target.value.replace(/\D/g, "").slice(0, 4))} />
-        </div>
+        <RoomCodeInput value={dial} onChange={setDial} />
       </section>
       <section id="feedback-preview" className="cp-card">
         <header><span className="cp-number">04</span><h2>{en ? "Clear feedback" : "每种反馈，都说清楚。"}</h2></header>

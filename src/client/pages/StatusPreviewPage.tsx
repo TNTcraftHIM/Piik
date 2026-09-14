@@ -7,8 +7,8 @@ import { StatusIndicator } from "../components/living/StatusIndicator";
 import { Pill } from "../components/living/primitives";
 import { deriveViewerPresentation } from "../media/viewer-presentation";
 import {
-  deriveHostStatus, deriveParticipantStatus, deriveViewerStatus, peerConnectionStatus, STATUS_CATALOG,
-  type QualityObservation, type StatusDescriptor,
+  deriveHostStatus, deriveParticipantStatus, deriveViewerStatus, STATUS_CATALOG,
+  type StatusDescriptor,
 } from "../ui/media-status";
 import { Glyph } from "../ui/icons";
 import { useCopy } from "../ui/copy";
@@ -28,14 +28,12 @@ function StatusMark({ status }: { status: StatusDescriptor }) {
 
 export function StatusPreviewPage() {
   const { t, titleFrames } = useCopy();
-  const [selected, setSelected] = useState("bandwidth");
-  const [qualityOverride, setQualityOverride] = useState<QualityObservation | null>(null);
+  const [selected, setSelected] = useState("playing");
   const [reducedMotion, setReducedMotion] = useState(false);
   const [couchView, setCouchView] = useState<"host" | "viewer">("viewer");
   const scenario = STATUS_SCENARIOS.find((item) => item.id === selected)!;
   const presentation = deriveViewerPresentation(scenario.state);
-  const quality = qualityOverride ?? scenario.quality;
-  const status = deriveViewerStatus(presentation, scenario.state.signal, quality,
+  const status = deriveViewerStatus(presentation, scenario.state.signal,
     scenario.state.route?.kind === "none" ? null : scenario.state.route?.kind);
   const sourceActive = scenario.state.host === "online" || scenario.state.host === "paused";
   const readyParticipant = deriveParticipantStatus({
@@ -48,15 +46,14 @@ export function StatusPreviewPage() {
 
   function choose(id: string) {
     setSelected(id);
-    setQualityOverride(null);
   }
 
   return (
-    <div className={`lr-app sp-page${reducedMotion ? " sp-reduced-motion" : ""}`} data-comic-reduced-motion={reducedMotion || undefined}>
+    <div className="lr-app sp-page" data-comic-reduced-motion={reducedMotion || undefined}>
       <AppHeader homeHref="/__status-preview" />
       <main className="sp-main">
         <header className="sp-heading">
-          <div><p className="sp-kicker">PIIK · 状态语义提案</p><h1>同一事实，各有分寸。</h1>
+          <div><p className="sp-kicker">Piik · 状态语义</p><h1>同一事实，各有分寸。</h1>
             <p>标题说正在做什么，顶部说明信令，电视下沿图标说明画面；悬停查看图示与文字说明。</p></div>
           <label className="sp-motion"><input type="checkbox" checked={reducedMotion}
             onChange={(event) => setReducedMotion(event.target.checked)} />减少动态效果</label>
@@ -126,21 +123,11 @@ export function StatusPreviewPage() {
           <div><h2>{scenario.name}</h2><p>{scenario.note}</p>
             <p className="sp-caption">舞台状态：<code>{presentation.stage}</code> · 画面层：<code>{status.overlay?.mode ?? "none"}</code></p>
           </div>
-          <div className="sp-quality-controls" role="group" aria-label="更新当前质量证据">
-            <p>手动推入一次观测，检查质量提示能否正确恢复：</p>
-            {([
-              ["带宽受限", { reason: "bandwidth", fresh: true }],
-              ["恢复正常", { reason: "none", fresh: true }],
-              ["旧样本过期", { reason: "bandwidth", fresh: false }],
-            ] as const).map(([label, observation]) => <button className="lr-btn" key={label}
-              type="button" aria-pressed={qualityOverride?.reason === observation.reason && qualityOverride.fresh === observation.fresh}
-              onClick={() => setQualityOverride(observation)}>{label}</button>)}
-          </div>
         </section>
         <section className="sp-surfaces" aria-label="各显示位置的含义">
           {([
             ["能否联系服务器", "顶部 · 信令连接", status.connection],
-            ["正在播放什么状态", "电视 · 画面与质量", status.television],
+            ["正在播放什么状态", "电视 · 画面状态", status.television],
           ] as const).map(([name, location, item]) => <article key={name}>
             <p className="sp-kicker">{location}</p><h3>{name}</h3><StatusMark status={item} />
             <p className="sp-caption">{t(item.labelKey)}</p>
@@ -174,18 +161,9 @@ export function StatusPreviewPage() {
           </div>
         </section>
         <footer className="sp-footnote">
-          <details>
-            <summary>原生 WebRTC 状态怎么映射？</summary>
-            <p>这只说明传输：connected 不证明首帧已呈现；disconnected 可以恢复；closed 是连接退役，不代表新连接失败。</p>
-            <div className="sp-host-grid">
-              {(["new", "connecting", "connected", "disconnected", "failed", "closed"] as const).map((state) =>
-                <article key={state}><code>{state}</code><StatusMark status={peerConnectionStatus(state)} /></article>,
-              )}
-            </div>
-          </details>
           <p>这是开发预览：说明固定中文，控件和漫画跟随右上角中 / EN / ✦ 与明暗主题。</p>
           <p>Host 人物灯使用已有的新鲜证据，详情仍在观众列表。Viewer 仅使用服务端已确认的媒体就绪事实，不新增全房质量广播。</p>
-          <a href="/__tooltip-preview">全部操作漫画</a><span> · </span><a href="/__overlay-preview">旧版画面层画廊</a>
+          <a href="/__tooltip-preview">全部操作漫画与指标</a>
         </footer>
       </main>
     </div>

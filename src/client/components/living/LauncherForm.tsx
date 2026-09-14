@@ -67,9 +67,9 @@ export function LauncherForm({
   const { vis, t } = useCopy();
   const accessField = (
     <label className="lr-input lr-client-access">
-      <Glyph name="lock" size={18} />
+      <Glyph name="key" size={18} />
       <input
-        type="text"
+        type="password"
         value={localAccessPassword}
         autoComplete="off"
         spellCheck={false}
@@ -95,6 +95,14 @@ export function LauncherForm({
         className="lr-client-modes"
         role="radiogroup"
         aria-label={t("client.launch.title")}
+        onKeyDown={(event) => {
+          if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
+          event.preventDefault();
+          const direction = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : -1;
+          const index = (MODES.findIndex((choice) => choice.mode === mode) + direction + MODES.length) % MODES.length;
+          onModeChange(MODES[index]!.mode);
+          event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="radio"]')[index]?.focus();
+        }}
       >
         {MODES.map((choice) => {
           const button = (
@@ -104,6 +112,7 @@ export function LauncherForm({
               role="radio"
               className={`lr-client-mode${mode === choice.mode ? " is-selected" : ""}`}
               aria-checked={mode === choice.mode}
+              tabIndex={mode === choice.mode ? 0 : -1}
               aria-label={t(choice.label)}
               onClick={() => {
                 onModeChange(choice.mode);
@@ -156,7 +165,6 @@ export function LauncherForm({
           <input
             type="url"
             value={site}
-            autoFocus
             spellCheck={false}
             inputMode="url"
             placeholder="https://share.example"

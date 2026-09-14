@@ -145,6 +145,9 @@ This reference applies to controls, status strips, comics, overlays, document
 titles, placeholders and public product demonstrations. A symbol keeps its
 basic meaning across those surfaces. Its nearby label identifies the affected
 object; it must not silently acquire a different measurement or permission.
+This reference describes functional meaning in context, not exclusive ownership
+of every shape. Decorative lettering, welcome ornaments and shared screen
+content do not become controls or measurements by using a familiar symbol.
 
 [Glyph](../../src/client/ui/icons.tsx) owns small-icon geometry and the accepted
 `GlyphName` union. Use it for controls and embedded comic symbols; reuse `MiniTv`,
@@ -158,17 +161,19 @@ type checking rather than silently render a warning triangle.
 | Participants and room / 人与房间 | `users`, `couch`, `door` | People, shared room, room entry. Use the shared pawn for a person and `HostMark` for Host authority. |
 | Shared screen / 共享画面 | `tv`, `MiniTv`, 📺 | Media or its sharing source. The TV beside the Host name identifies the source; the crown on a person identifies the role. |
 | Start and choose a source / 分享与选源 | `cast`, `share`, `switchSource` | Start sharing, capture a screen, replace the current capture source respectively. A captured window keeps window chrome or a display stand. |
+| Capture source / 采集来源 | `window`, `display` | An application window or a whole display; these nouns remain distinct from the source-switch action. |
 | Invitation URL / 邀请链接 | `link`, `InviteLink`, `linkOff` | A URL and its disabled/revoked form. Keep the chain when copying or rejecting it. Copying is local; a send-to-chat scene is a separate action. |
 | Credential / 凭证 | `key`, password dots | Site passphrase or room password, identified by the field label. Room-code admission with a password shows both fields. |
 | Restriction / 受限 | `lock` | Restricted entry, concealed password or a setting fixed by availability; show the affected object. A lock never promises anonymity or secure media. |
 | Site and public entry / 站点与公开入口 | `globe` | Browser/Site entry or code-based public entry. It does not claim internet reachability. |
-| Connections / 连接 | `network`, `branch`, `signal`, `wifiOff`, `server` | Topology, branching, signaling, disconnected signaling and media-server forwarding. An invitation chain does not represent signaling. |
+| Connections / 连接 | `network`, `branch`, `signal`, `wifiOff`, `server` | Topology, branching, signaling, disconnected signaling and the named server. A server on a media path means forwarding; a Site backend or control-link server alone does not imply SFU. An invitation chain does not represent signaling. |
 | Playback / 播放 | `play`, `pause`, `stop` | Play/resume, pause, end. The control label states whether it affects local viewing or the Host's share. Stop is distinct from a paused or idle room. |
-| Audio / 声音 | `speaker`, `speakerOff`, `wave` | Audio, mute/no audio, audio waveform. A source track's presence does not establish delivered sound. |
+| Audio / 声音 | `speaker`, `speakerOff` | Audio and mute/no audio, qualified by the source or local playback label. A source track's presence does not establish delivered sound. |
 | Size and viewing mode / 尺寸与观看模式 | `expand`, `contract`, `pip`, `pipExit`, `theater`, `theaterExit` | Expand/restore, enter/leave picture in picture, enter/leave theatre mode. The same size symbol can accompany a resolution measurement. |
 | Local actions / 本地操作 | `copy`, `save`, `pencil`, `eye`, `eyeOff` | Copy, save, edit, reveal and conceal the named object. An action icon does not prove completion. |
 | Repeat and disclosure / 重试与展开 | `refresh`, `chevron`, `arrowRight` | Repeat/refresh, expand/collapse, proceed/enter. Direction follows the control's action; no arrow alone establishes delivery. |
-| Transfer direction / 传输方向 | `arrowUp`, `arrowDown` | Outbound/inbound or upload/download, qualified by the adjacent label. They are not connection-quality ratings. |
+| Transfer and upgrade / 传输与更新 | `arrowUp`, `arrowDown` | Outbound/inbound or upload/download, qualified by the adjacent label. An explicit update label may use the upward arrow for upgrade; neither arrow is a connection-quality rating. |
+| Diagnostics / 诊断 | `cpu` | Technical diagnostics in the labelled diagnostic control; in metrics the same processor identifies encoding work. The surrounding control or measured field states the scope. |
 | Settings / 设置 | `sliders`, `mountain`, `balance`, `frames` | Settings, preserve image detail, balanced preference, preserve frame rate. The frame-rate preference uses the same frames as the measured value. |
 | Progress and result / 进度与结果 | `loader`, `alert`, `check`, `x` | In progress, a problem, confirmation/positive result, cancellation/negative result. The status owner supplies severity; the shape alone cannot set it. |
 | Theme / 主题 | `sun`, `moon` | Light/dark appearance in theme controls. A moon in an idle-room scene means rest, with the idle scene providing that context. |
@@ -186,7 +191,7 @@ facts, so interacting with a node cannot look like a connection-state change.
 | --- | --- | --- |
 | Frame rate / 帧率 | `frames` | Video frames per second, including capture/input frame rate. |
 | Packet loss / 丢包 | `packetLoss` | Missing network packets, including audio packets. |
-| Dropped frames / 丢帧 | `frameDrop` | Discarded video frames; never substitute packet loss. |
+| Dropped frames / 丢帧 | `frameDrop` | Discarded video frames in the stated observation interval; never substitute packet loss or a cumulative total under the same interval label. |
 | Jitter / 抖动 | `jitter` | Variation in arrival timing, including audio jitter. |
 | Audio concealment / 音频补偿 | `audioRepair` | Missing audio concealed by the decoder. |
 | Rate / 速率 | `gauge`, `speaker` for audio rate | Bitrate or outgoing rate; the unit remains visible. |
@@ -312,8 +317,8 @@ for reduced motion. Product-state comics still follow the table above.
 
 Entry screens may carry one quiet, original welcome line in Chinese or English
 text mode. Pure-visual mode pairs familiar pictograms with static pixel
-pseudo-lettering tied to the same line. This decoration is hidden from assistive
-technology. The selected line stays stable during that visit, including mode
+pseudo-lettering tied to the same line. Hide that visual cipher from assistive
+technology; the ordinary text sentence remains readable. The selected line stays stable during that visit, including mode
 changes, and never replaces an action, error, loading message or connection
 progress. Keep it on one line, apart from the actions; primary controls take
 precedence when space is tight.

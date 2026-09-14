@@ -266,16 +266,6 @@ export function createStatsAccumulator(): StatsAccumulator {
   };
 }
 
-export function mergeStatsReports(
-  reports: readonly (RTCStatsReport | undefined)[],
-): RTCStatsReport | null {
-  const merged = new Map<string, unknown>();
-  for (const report of reports) {
-    report?.forEach((record, id) => merged.set(id, record));
-  }
-  return merged.size > 0 ? (merged as unknown as RTCStatsReport) : null;
-}
-
 function intervalDelta(
   current: number | null,
   previous: number | null,
@@ -824,14 +814,11 @@ export function collectConnectionMetricsFromReport(
           sampleWindowMs !== null,
         )
       : null;
-  const intervalPacketsLost =
-    direction === "receive" || direction === "send"
-      ? intervalDelta(
-          packetsLost,
-          previous.previousPacketsLost,
-          sampleWindowMs !== null && sameLossSource,
-        )
-      : null;
+  const intervalPacketsLost = intervalDelta(
+    packetsLost,
+    previous.previousPacketsLost,
+    sampleWindowMs !== null && sameLossSource,
+  );
   // RTCP already defines fractionLost over its own report interval. Consume a
   // report once instead of mixing that remote interval with local send deltas.
   const senderPacketLossPercent =

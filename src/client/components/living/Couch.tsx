@@ -31,14 +31,12 @@ export function Couch({
   entries,
   selectedKey,
   onSelect,
-  emptyHint,
 }: {
   view: "host" | "viewer";
   host?: CouchHostEntry | null;
   entries: CouchEntry[];
   selectedKey?: string | null;
   onSelect?: (key: string) => void;
-  emptyHint?: string;
 }) {
   const { t } = useCopy();
   const [couchRef, containerWidth] = useElementWidth();
@@ -155,7 +153,7 @@ export function Couch({
         <div
           className="lr-couch-empty"
           role="img"
-          aria-label={emptyHint ?? t("host.viewers.empty")}
+          aria-label={t("host.viewers.empty")}
         >
           <Glyph name="users" size={22} />
         </div>

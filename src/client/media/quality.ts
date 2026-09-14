@@ -41,7 +41,7 @@ export const QUALITY_PROFILES = {
   },
 } as const satisfies Record<QualityProfileId, QualitySettings>;
 
-const QUALITY_PROFILE_KEYS = {
+export const QUALITY_PROFILE_KEYS = {
   "720p30": "host.quality.720p30",
   "1080p30": "host.quality.1080p30",
   "1080p60": "host.quality.1080p60",
@@ -57,7 +57,7 @@ export const QUALITY_RESOLUTIONS = {
   { width: number; height: number; label: string }
 >;
 
-const DEGRADATION_PREFERENCE_KEYS = {
+export const DEGRADATION_PREFERENCE_KEYS = {
   "maintain-resolution": "host.advanced.preference.resolution",
   balanced: "host.advanced.preference.balanced",
   "maintain-framerate": "host.advanced.preference.framerate",
@@ -170,7 +170,7 @@ export function qualitySettingsLabel(settings: QualitySettings): string {
   if (profileId) {
     return say(QUALITY_PROFILE_KEYS[profileId]);
   }
-  return `${QUALITY_RESOLUTIONS[settings.resolution].label} ${settings.maxFramerate} · ${(settings.maxBitrate / 1_000_000).toFixed(1)} Mbps · ${say(DEGRADATION_PREFERENCE_KEYS[settings.degradationPreference])}`;
+  return `${QUALITY_RESOLUTIONS[settings.resolution].label} ${settings.maxFramerate} fps · ${(settings.maxBitrate / 1_000_000).toFixed(1)} Mbps · ${say(DEGRADATION_PREFERENCE_KEYS[settings.degradationPreference])}`;
 }
 
 function captureConstraints(profile: QualityProfile): MediaTrackConstraints {

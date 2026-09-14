@@ -242,6 +242,10 @@ export function Tooltip({
     // Hover does not move keyboard focus into the trigger.
     const dismiss = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
+      // Close every hint channel, including a hover panel suppressed by a
+      // focused neighbour. Only visible guidance consumes the outer action.
+      const style = tipRef.current && getComputedStyle(tipRef.current);
+      if (style?.visibility === "visible" && style.pointerEvents !== "none") event.preventDefault();
       setHoverOpen(false);
       setPressOpen(false);
       setFocusOpen(false);
@@ -415,7 +419,7 @@ export function Tooltip({
       onKeyDown={(event) => {
         if (!enabled) return;
         if (event.key !== "Escape" && (event.target as HTMLElement).matches(":focus-visible")) {
-          mountPanel();
+          mountPanel(!interactionOpen);
           setFocusOpen(true);
         }
       }}

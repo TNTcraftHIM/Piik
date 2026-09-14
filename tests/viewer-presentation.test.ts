@@ -53,7 +53,6 @@ describe("Viewer presentation reducer", () => {
       stage: "playing",
       overlay: "none",
       hasCurrentFrame: true,
-      connectionState: "connected",
     });
   });
 
@@ -713,7 +712,6 @@ describe("Viewer presentation reducer", () => {
       hasCurrentFrame: false,
       hasRetainedFrame: true,
       failureCode: "ROUTE_EXHAUSTED",
-      connectionState: "failed",
     });
 
     const lateFrame = reduceViewerPresentation(failed, {

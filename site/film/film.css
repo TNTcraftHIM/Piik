@@ -7,6 +7,7 @@
 body { margin:0; background:var(--wall); color:var(--ink); font:15px/1.6 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; -webkit-font-smoothing:antialiased; }
 [hidden] { display:none !important; }
 html[lang="en"] [lang="zh-CN"], html[lang="zh-CN"] [lang="en"] { display:none; }
+html .no-script [lang] { display:inline; }
 button,a,input { -webkit-tap-highlight-color:transparent; touch-action:manipulation; }
 button,a { color:inherit; }
 button { font:inherit; cursor:pointer; }
@@ -18,7 +19,7 @@ button,a,input { outline-offset:5px; }
 .sr-only { position:absolute; width:1px; height:1px; margin:-1px; padding:0; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
 .masthead { width:calc(100% - 96px); max-width:1600px; margin:auto; height:90px; display:flex; align-items:center; justify-content:space-between; gap:20px; }
 .masthead nav { display:flex; align-items:center; gap:28px; font-size:13px; font-weight:650; }
-.masthead nav a,.masthead button { min-height:44px; display:inline-flex; align-items:center; text-decoration:none; }
+.masthead nav a,.masthead button,#language { min-height:44px; display:inline-flex; align-items:center; text-decoration:none; }
 .masthead button { font-size:12px; }
 .masthead nav :is(a,button):hover { color:var(--accent); }
 main { width:calc(100% - 64px); max-width:min(1664px,calc((100svh - 248px) * 16 / 9)); margin:auto; }

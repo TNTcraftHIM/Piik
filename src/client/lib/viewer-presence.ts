@@ -93,12 +93,6 @@ function labelPresence<T extends PresenceIdentity>(
   });
 }
 
-export function labelViewerPresence(
-  viewers: readonly ViewerPresenceEntry[],
-): LabeledViewerPresence[] {
-  return labelPresence(viewers).sort(comparePeerIdentity);
-}
-
 export function labelParticipantSnapshot(
   participants: readonly ParticipantPresenceEntry[],
 ): LabeledParticipantSnapshot {
@@ -116,10 +110,4 @@ export function labelParticipantSnapshot(
       )
       .sort(comparePeerIdentity),
   };
-}
-
-export function labelViewerParticipants(
-  participants: readonly ParticipantPresenceEntry[],
-): LabeledViewerPresence[] {
-  return labelParticipantSnapshot(participants).viewers;
 }

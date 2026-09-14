@@ -84,21 +84,24 @@ describe("theme preference", () => {
     if (!blocked) expect(values.get("piik:ui-theme")).toBe("light");
   });
 
-  it("uses the launch theme before first paint, including system and restricted storage", () => {
+  it("keeps saved themes before first paint unless the launcher explicitly chose one", () => {
     const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
     const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
     expect(script).toBeTruthy();
-    for (const [fragment, expected] of [
-      ["piik-client=1&piik-theme=light", "light"],
-      ["piik-client=1&piik-theme=system", "light"],
-      ["piik-theme=light", "dark"],
-      ["piik-client=1&piik-theme=invalid", "dark"],
+    for (const [fragment, search, expected] of [
+      ["piik-client=1&piik-theme=light", "", "dark"],
+      ["piik-client=1&piik-theme=system", "", "dark"],
+      ["piik-client=1&piik-theme=light", "?piik-preferences=theme", "light"],
+      ["piik-client=1&piik-theme=system", "?piik-preferences=theme", "light"],
+      ["piik-client=1&piik-theme=light", "?piik-preferences=copy", "dark"],
+      ["piik-theme=light", "?piik-preferences=theme", "dark"],
+      ["piik-client=1&piik-theme=invalid", "?piik-preferences=theme", "dark"],
     ]) {
       const dataset: Record<string, string> = {};
       runInNewContext(script!, {
         document: { documentElement: { dataset } },
         matchMedia: () => ({ matches: false }),
-        location: { hash: `#${fragment}` },
+        location: { hash: `#${fragment}`, search },
         localStorage: { getItem: () => "dark" },
         URLSearchParams,
       });

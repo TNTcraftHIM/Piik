@@ -13,8 +13,6 @@
 .cp-tools .lr-pill { max-width: 100%; }
 .cp-feedback { min-height: 2em; }
 .cp-card .cp-input-error { color: var(--danger); }
-.cp-dials { width: fit-content; max-width: 100%; margin: 20px 0 0; }
-.cp-dials .lr-dial { width: 46px; height: 58px; font-size: 28px; }
 .cp-section { margin-top: 44px; scroll-margin-top: 24px; }
 .cp-people-room { padding: 24px 12px 8px; border-radius: 26px; background: var(--wall-2); }
 .cp-sync { display: flex; align-items: center; justify-content: center; gap: 24px; }

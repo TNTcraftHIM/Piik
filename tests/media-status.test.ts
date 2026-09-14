@@ -5,7 +5,7 @@ import {
   reduceViewerPresentation,
   type ViewerPresentationAction,
 } from "../src/client/media/viewer-presentation";
-import { deriveHostStatus, deriveParticipantStatus, deriveViewerStatus, peerConnectionStatus } from "../src/client/ui/media-status";
+import { deriveHostStatus, deriveParticipantStatus, deriveViewerStatus } from "../src/client/ui/media-status";
 
 const playingActions: ViewerPresentationAction[] = [
   { type: "access", access: "ready" },
@@ -20,41 +20,32 @@ const presentation = (...extra: ViewerPresentationAction[]) => deriveViewerPrese
 );
 
 describe("media status projection", () => {
-  it("annotates quality without masking playback, and releases stale warnings", () => {
-    const current = presentation();
-    const limited = deriveViewerStatus(current, "connected", { reason: "bandwidth", fresh: true });
-    expect(limited.television.tone).toBe("warn");
-    expect(limited.overlay).toBeNull();
-    expect(limited.titleFrameKey).toBe("viewerActive");
-    expect(limited.connection.tone).toBe("live");
-    for (const observation of [{ reason: "none", fresh: true }, { reason: "bandwidth", fresh: false }] as const) {
-      const result = deriveViewerStatus(current, "connected", observation);
-      expect(result.television.tone).toBe("live");
-      expect(result.quality.tone).toBe(observation.fresh ? "live" : "off");
-      expect(result.titleMarker).toBeNull();
-    }
+  it.each(["p2p", "sfu"] as const)("keeps %s setup distinct from proved playback", route => {
+    const receiving = deriveViewerPresentation(playingActions.slice(0, -1)
+      .reduce(reduceViewerPresentation, INITIAL_VIEWER_PRESENTATION_STATE));
+    const pending = deriveViewerStatus(receiving, "connected", route);
+    expect(pending.overlay?.status.comic).toBe(route === "sfu" ? "connecting-sfu" : "connecting-p2p");
+    expect(pending.titleFrameKey).toBe("viewerWaiting");
+    const live = deriveViewerStatus(presentation(), "connected", route);
+    expect(live.television.tone).toBe("live");
+    expect(live.overlay).toBeNull();
+    expect(live.titleFrameKey).toBe("viewerActive");
   });
 
-  it("separates signaling recovery from media loss and keeps failure above quality", () => {
+  it("separates signaling recovery from media loss", () => {
     const signaling = deriveViewerStatus(presentation({ type: "signal", signal: "reconnecting" }), "reconnecting");
     expect(signaling.connection.tone).toBe("warn");
     expect(signaling.television.tone).toBe("live");
     expect(signaling.overlay).toBeNull();
     expect(signaling.activity.labelKey).toBe("viewer.msg.playing");
     expect(signaling.notice?.comic).toBe("signal-recovering");
-    const failed = deriveViewerStatus(presentation({ type: "route-status", revision: 1, state: "failed" }), "connected", { reason: "cpu", fresh: true });
+    const failed = deriveViewerStatus(presentation({ type: "route-status", revision: 1, state: "failed" }), "connected");
     expect(failed.television.tone).toBe("bad");
     expect(failed.overlay?.mode).toBe("status");
     expect(failed.titleFrameKey).toBe("viewerUnavailable");
     expect(failed.connection.tone).toBe("live");
     const tapToPlay = deriveViewerStatus(presentation({ type: "autoplay-blocked", generation: 1, revision: 1 }), "connected");
     expect(tapToPlay.titleFrameKey).toBe("viewerReady");
-  });
-
-  it("does not turn transient ICE loss or intentional retirement into failure", () => {
-    expect(peerConnectionStatus("disconnected").tone).toBe("warn");
-    expect(peerConnectionStatus("failed").tone).toBe("bad");
-    expect(peerConnectionStatus("closed").tone).toBe("off");
   });
 
   it.each(["reconnecting", "failed"] as const)("shows media recovery only on the television: %s", (connection) => {

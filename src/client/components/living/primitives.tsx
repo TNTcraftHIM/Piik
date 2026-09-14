@@ -51,6 +51,7 @@ export function Cap({ k }: { k: CopyKey }) {
 }
 
 export function Btn({
+  id,
   icon,
   cap,
   tone,
@@ -67,6 +68,7 @@ export function Btn({
   hintMotion,
   draw,
 }: {
+  id?: string;
   icon: GlyphName;
   cap?: CopyKey;
   tone?: "primary" | "danger" | "on";
@@ -91,6 +93,7 @@ export function Btn({
   const softDisabled = Boolean(wrapped && disabled);
   const button = (
     <button
+      id={id}
       type={type}
       className={`lr-btn${tone ? ` is-${tone}` : ""}`}
       aria-label={label}

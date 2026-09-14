@@ -13,8 +13,10 @@
       try { theme = localStorage.getItem("piik:ui-theme"); } catch (e) {}
       var launch = new URLSearchParams(location.hash.slice(1));
       var launchTheme = launch.get("piik-theme");
+      var explicitTheme = (new URLSearchParams(location.search).get("piik-preferences") || "").split(",").includes("theme");
       if (launch.get("piik-client") === "1" &&
-          (launchTheme === "light" || launchTheme === "dark" || launchTheme === "system")) {
+          (launchTheme === "light" || launchTheme === "dark" || launchTheme === "system") &&
+          (explicitTheme || (theme !== "light" && theme !== "dark"))) {
         theme = launchTheme === "system" ? systemTheme : launchTheme;
       }
       document.documentElement.dataset.theme =

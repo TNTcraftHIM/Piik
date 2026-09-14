@@ -12,8 +12,8 @@ const SOURCE_TABS = ["browser", "window", "display"] as const;
 type SourceTab = (typeof SOURCE_TABS)[number];
 const SOURCE_ICONS = {
   browser: "globe",
-  window: "switchSource",
-  display: "tv",
+  window: "window",
+  display: "display",
 } satisfies Record<SourceTab, GlyphName>;
 
 export type NativeSourceList =
@@ -55,13 +55,17 @@ export function CaptureSourcePicker({
 }) {
   const { vis, t } = useCopy();
   const pickerId = useId();
+  const panelRef = useRef<HTMLDivElement>(null);
   const [tab, setTab] = useState<SourceTab>(initialTab);
   const [shareAudio, setShareAudio] = useState(initialAudio);
   const activeTab = tab === "browser" && !browserAvailable ? "window" : tab;
 
   useEffect(() => {
     const cancelOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onCancel();
+      if (event.key !== "Escape" || event.defaultPrevented ||
+          !panelRef.current?.contains(event.target as Node | null)) return;
+      event.preventDefault();
+      onCancel();
     };
     window.addEventListener("keydown", cancelOnEscape);
     return () => window.removeEventListener("keydown", cancelOnEscape);
@@ -124,9 +128,9 @@ export function CaptureSourcePicker({
 
   return (
     <div
+      ref={panelRef}
       className={`lr-tv-overlay lr-source-picker${vis ? " is-visual" : ""}`}
       role="dialog"
-      aria-modal="true"
       aria-label={t("host.sourcePicker.title")}
     >
       <div className="lr-source-picker-panel">
@@ -390,7 +394,7 @@ function CaptureSourceOption({
           {preview ? (
             <img src={preview} alt="" />
           ) : (
-            <Glyph name={target.kind === "window" ? "share" : "tv"} size={23} />
+            <Glyph name={target.kind === "picker" ? "share" : target.kind} size={23} />
           )}
         </span>
       </button>

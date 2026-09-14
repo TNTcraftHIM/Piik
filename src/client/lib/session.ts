@@ -99,13 +99,15 @@ export function parseAppRoute(pathname: string): AppRoute {
 export interface ClientLaunchBootstrap {
   accessToken: string | null;
   launchedByClient: boolean;
-  presentation: ClientLaunchPresentation | null;
+  presentation: Partial<ClientLaunchPresentation> | null;
 }
 
 export interface ClientLaunchPresentation {
   lang: Lang;
   vis: boolean;
   theme: "light" | "dark" | null;
+  /** Domains explicitly chosen in the launcher, rather than system defaults. */
+  explicit?: readonly ("copy" | "theme")[];
 }
 
 export function clientLaunchURL(target: string, presentation: ClientLaunchPresentation, debug?: boolean): string {
@@ -114,6 +116,12 @@ export function clientLaunchURL(target: string, presentation: ClientLaunchPresen
   params.set("piik-lang", presentation.lang);
   params.set("piik-mode", presentation.vis ? "vis" : "text");
   params.set("piik-theme", presentation.theme ?? "system");
+  // Keep the public tuple for older Sites. The non-secret provenance goes in
+  // the query: an unknown fragment key would corrupt their exact #v= parser.
+  url.searchParams.delete("piik-preferences");
+  if (presentation.explicit?.length) {
+    url.searchParams.set("piik-preferences", presentation.explicit.join(","));
+  }
   url.hash = params.toString();
   return withBrowserDebug(url.toString(), debug);
 }
@@ -127,12 +135,20 @@ export function takeClientLaunchBootstrap(): ClientLaunchBootstrap {
     "piik-mode",
     "piik-theme",
   ] as const;
-  const present = keys.some((key) => params.has(key));
+  const query = new URLSearchParams(window.location.search);
+  const present = keys.some((key) => params.has(key)) || query.has("piik-preferences");
   const accessValue = params.get("client-access");
   const launchedFromFragment = params.get("piik-client") === "1";
   const lang = params.get("piik-lang");
   const mode = params.get("piik-mode");
   const theme = params.get("piik-theme");
+  const preferenceFields = query.get("piik-preferences")?.split(",") ?? [];
+  const presentation: Partial<ClientLaunchPresentation> = {
+    ...(isLang(lang) ? { lang } : {}),
+    ...(mode === "vis" || mode === "text" ? { vis: mode === "vis" } : {}),
+    ...(theme === "light" || theme === "dark" || theme === "system"
+      ? { theme: theme === "system" ? null : theme } : {}),
+  };
   let launchedByClient = launchedFromFragment;
   try {
     if (launchedFromFragment) {
@@ -147,19 +163,22 @@ export function takeClientLaunchBootstrap(): ClientLaunchBootstrap {
   const result: ClientLaunchBootstrap = {
     accessToken: accessValue || null,
     launchedByClient,
-    presentation: launchedFromFragment && isLang(lang) &&
-      (mode === "vis" || mode === "text") &&
-      (theme === "light" || theme === "dark" || theme === "system")
-      ? { lang, vis: mode === "vis", theme: theme === "system" ? null : theme }
+    presentation: launchedFromFragment && Object.keys(presentation).length > 0
+      ? {
+          ...presentation,
+          explicit: (["copy", "theme"] as const).filter((key) => preferenceFields.includes(key)),
+        }
       : null,
   };
   if (present) {
     for (const key of keys) params.delete(key);
+    query.delete("piik-preferences");
+    const search = query.toString();
     const remaining = params.toString();
     window.history.replaceState(
       window.history.state,
       "",
-      `${window.location.pathname}${window.location.search}${remaining ? `#${remaining}` : ""}`,
+      `${window.location.pathname}${search ? `?${search}` : ""}${remaining ? `#${remaining}` : ""}`,
     );
   }
   return result;

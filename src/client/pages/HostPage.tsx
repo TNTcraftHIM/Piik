@@ -1,6 +1,6 @@
 import {
-  Fragment,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -40,11 +40,12 @@ import {
   ViewerOverview,
   type ViewerOverviewEntry,
 } from "../components/living/ViewerOverview";
-import { Comic, type ComicKind } from "../components/living/Comic";
+import type { ComicKind } from "../components/living/Comic";
 import type { HintKind } from "../ui/visual-kinds";
 import type { ComicTone } from "../components/living/comic-presentation";
 import { Tooltip } from "../components/living/Tooltip";
-import { QualityTileGlyph } from "../components/living/QualityTileGlyph";
+import { QualityPresets } from "../components/living/QualityPresets";
+import { RoomCodeInput, RoomCodeError } from "../components/living/RoomCodeInput";
 import { MetricCell } from "../components/living/Metrics";
 import {
   StageOverlay,
@@ -114,6 +115,7 @@ import {
   captureDisplay,
   matchingQualityProfileId,
   QUALITY_PROFILES,
+  DEGRADATION_PREFERENCE_KEYS,
   QUALITY_RESOLUTIONS,
   qualitySettingsEqual,
   qualitySettingsLabel,
@@ -122,7 +124,6 @@ import {
   setMediaPaused,
   videoQualitySettingsEqual,
   type DegradationPreference,
-  type QualityProfileId,
   type QualityResolution,
   type QualitySettings,
   type ScreenAudioQuality,
@@ -186,6 +187,7 @@ import {
   hostServerErrorNotice,
   shouldPauseLocalPreview,
   sourceSwitchNotice,
+  isCapturePermissionFailure,
   type HostAction,
 } from "./host-page-notices";
 
@@ -198,29 +200,20 @@ type NoticeValue = (
   tone: ComicTone;
 };
 
-const QUALITY_PROFILE_CAPTIONS: Record<QualityProfileId, CopyKey> = {
-  "720p30": "host.quality.720p30",
-  "1080p30": "host.quality.1080p30",
-  "1080p60": "host.quality.1080p60",
-};
-
 const PREFERENCE_PRESENTATION: Record<
   DegradationPreference,
-  { icon: GlyphName; cap: CopyKey; hint: CopyKey }
+  { icon: GlyphName; hint: CopyKey }
 > = {
   "maintain-resolution": {
     icon: "mountain",
-    cap: "host.advanced.preference.resolution",
     hint: "host.advanced.preference.resolutionHint",
   },
   balanced: {
     icon: "balance",
-    cap: "host.advanced.preference.balanced",
     hint: "host.advanced.preference.balancedHint",
   },
   "maintain-framerate": {
     icon: "frames",
-    cap: "host.advanced.preference.framerate",
     hint: "host.advanced.preference.framerateHint",
   },
 };
@@ -249,26 +242,15 @@ interface CaptureDetails {
   hasAudio: boolean;
 }
 
-function captureDetails(stream: MediaStream): CaptureDetails {
-  const settings = stream.getVideoTracks()[0]?.getSettings();
+function captureDetails(stream: MediaStream, native = false): CaptureDetails {
+  // A Native preview is a received track, not an observation of raw capture.
+  const settings = native ? undefined : stream.getVideoTracks()[0]?.getSettings();
   return {
     resolution:
       settings?.width && settings.height
         ? `${settings.width}x${settings.height}`
         : null,
     frameRate: settings?.frameRate ?? null,
-    hasAudio: stream.getAudioTracks().length > 0,
-  };
-}
-
-function nativeCaptureDetails(
-  settings: QualitySettings,
-  stream: MediaStream,
-): CaptureDetails {
-  const resolution = QUALITY_RESOLUTIONS[settings.resolution];
-  return {
-    resolution: `${resolution.width}x${resolution.height}`,
-    frameRate: settings.maxFramerate,
     hasAudio: stream.getAudioTracks().length > 0,
   };
 }
@@ -395,6 +377,37 @@ export function HostPage({
   const [nativeActive, setNativeActive] = useState(false);
   const [nativeSources, setNativeSources] =
     useState<NativeSourceList | null>(null);
+  const sourcePickerReturnRef = useRef<{ id: string; restore: boolean } | null>(null);
+  const sourcePickerOpen = nativeSources !== null;
+  useLayoutEffect(() => {
+    if (sourcePickerOpen) {
+      const panel = document.querySelector(".lr-source-picker");
+      const returning = sourcePickerReturnRef.current;
+      return () => {
+        if (returning) returning.restore = !!panel?.contains(document.activeElement) ||
+          document.activeElement === document.body;
+      };
+    }
+    const returning = sourcePickerReturnRef.current;
+    if (!returning) return;
+    if (!returning.restore || (document.activeElement !== document.body &&
+        document.activeElement?.id !== "host-cancel-share")) {
+      sourcePickerReturnRef.current = null;
+      return;
+    }
+    if (phase === "starting") {
+      // Keep cancellation reachable during the OS picker. Its removal on
+      // completion must not strand focus, unless the user moved it elsewhere.
+      document.getElementById("host-cancel-share")?.focus({ preventScroll: true });
+      return;
+    }
+    sourcePickerReturnRef.current = null;
+    // Opening removes Start; the committed phase supplies its logical successor.
+    const target = document.getElementById(returning.id) ??
+      document.getElementById("host-switch-source") ??
+      document.getElementById("host-start-share");
+    target?.focus({ preventScroll: true });
+  }, [sourcePickerOpen, phase]);
   const [details, setDetails] = useState<CaptureDetails | null>(null);
   const [room, setRoom] = useState<HostRoomState | null>(null);
   const roomRef = useRef(room);
@@ -463,8 +476,9 @@ export function HostPage({
     action: HostAction,
     target: NoticeValue["target"] = "operation",
   ): void {
-    setNoticeValue({ kind: "text", text: readableError(error, action), target, tone: "bad",
-      comic: action === "connection" ? "route-failed" : action === "capture" || action === "source"
+    const permissionMissing = isCapturePermissionFailure(error, action);
+    setNoticeValue({ kind: "text", text: readableError(error, action), target, tone: permissionMissing ? "warn" : "bad",
+      comic: permissionMissing ? "hint-capture-browser" : action === "connection" ? "route-failed" : action === "capture" || action === "source"
         ? "source-failed" : action === "quality" ? "settings-failed" : "warning" });
   }
   function setNoticeErrorKey(
@@ -475,8 +489,10 @@ export function HostPage({
   ): void {
     setNoticeKey(key, comic, tone, vars);
   }
-  const [copied, setCopied] = useState(false);
+  const [copiedInviteUrl, setCopiedInviteUrl] = useState<string | null>(null);
+  const copied = copiedInviteUrl !== null && copiedInviteUrl === room?.inviteUrl;
   const copiedResetTimerRef = useRef<number | null>(null);
+  const copyInviteRequestRef = useRef<object | null>(null);
   const [switchingSource, setSwitchingSource] = useState(false);
   const [changingQuality, setChangingQuality] = useState(false);
   const [sharingPaused, setSharingPaused] = useState(false);
@@ -486,7 +502,7 @@ export function HostPage({
   const [joiningRoom, setJoiningRoom] = useState(false);
   const [selectedPawn, setSelectedPawn] = useState<string | null>(null);
   const [joinRoomCode, setJoinRoomCode] = useState("");
-  const [joinRoomError, setJoinRoomError] = useState(false);
+  const [joinRejectedAttempt, setJoinRejectedAttempt] = useState(0);
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [metricsExpanded, setMetricsExpanded] = useMetricsExpanded();
@@ -659,6 +675,7 @@ export function HostPage({
         window.clearTimeout(copiedResetTimerRef.current);
         copiedResetTimerRef.current = null;
       }
+      copyInviteRequestRef.current = null;
       viewerQualityEvidenceTimersRef.current.forEach((timer) =>
         window.clearTimeout(timer),
       );
@@ -878,7 +895,7 @@ export function HostPage({
     clearHostRoom(keepResumeHint);
     roomRef.current = null;
     setRoom(null);
-    setCopied(false);
+    setCopiedInviteUrl(null);
     setViewerPasswordDraft(creationProfileRef.current.roomPassword ?? "");
     setViewerPasswordVisible(false);
     return true;
@@ -965,7 +982,7 @@ export function HostPage({
       writePreferredRoom(replacement.roomId);
       roomRef.current = replacement;
       setRoom(replacement);
-      setCopied(false);
+      setCopiedInviteUrl(null);
       setViewerPasswordEnabled(profile.roomPassword !== null);
       setViewerPasswordDraft(profile.roomPassword ?? "");
       setViewerPasswordVisible(false);
@@ -1005,7 +1022,7 @@ export function HostPage({
             writePreferredRoom(replacement.roomId);
             roomRef.current = replacement;
             setRoom(replacement);
-            setCopied(false);
+            setCopiedInviteUrl(null);
             setViewerPasswordEnabled(profile.roomPassword !== null);
             setViewerPasswordDraft(profile.roomPassword ?? "");
             setViewerPasswordVisible(false);
@@ -1346,6 +1363,11 @@ export function HostPage({
   }
 
   async function openCaptureSourcePicker(): Promise<void> {
+    if (!nativeSourceRequestRef.current) {
+      sourcePickerReturnRef.current = {
+        id: phase === "live" ? "host-switch-source" : "host-start-share", restore: false,
+      };
+    }
     const request = {};
     nativeSourceRequestRef.current = request;
     nativeSourcePathRef.current = null;
@@ -1664,7 +1686,7 @@ export function HostPage({
       debugEvent("quality", "committed", { generation, applied: appliedProfile });
       outcome = "applied";
       if (nativeUpdate) {
-        setDetails(nativeCaptureDetails(appliedProfile, activeStream));
+        setDetails(captureDetails(activeStream, true));
       } else if (captureChanged) {
         setDetails(captureDetails(activeStream));
       }
@@ -2441,7 +2463,7 @@ export function HostPage({
     activeGenerationRef.current = generation;
     shareGenerationRef.current = shareGeneration;
     setNoticeValue(null);
-    setCopied(false);
+    setCopiedInviteUrl(null);
     setPhase("starting");
 
     let captured: MediaStream | null = null;
@@ -2466,7 +2488,7 @@ export function HostPage({
       activeGenerationRef.current = null;
       shareGenerationRef.current = null;
       setNoticeError(error, "capture", "television");
-      setPhase("error");
+      setPhase(isCapturePermissionFailure(error, "capture") ? "idle" : "error");
       return;
     }
 
@@ -2481,7 +2503,7 @@ export function HostPage({
       watchCaptureEnd(captured, generation);
       if (selection.kind === "native") {
         setDetails(
-          nativeCaptureDetails(qualitySettingsRef.current, captured),
+          captureDetails(captured, true),
         );
       } else {
         setDetails(captureDetails(captured));
@@ -2761,7 +2783,7 @@ export function HostPage({
       const activeStream = streamRef.current;
       if (activeStream) {
         setDetails(
-          nativeCaptureDetails(qualitySettingsRef.current, activeStream),
+          captureDetails(activeStream, true),
         );
       }
       const sfuUpdated = await hostSfuRouteRef.current?.updateProfile(qualitySettingsRef.current) ?? true;
@@ -2984,13 +3006,19 @@ export function HostPage({
   }
 
   async function copyInvite(): Promise<void> {
-    const inviteUrl = room?.inviteUrl;
+    const activeRoom = roomRef.current;
+    const inviteUrl = activeRoom?.inviteUrl;
     if (!inviteUrl) {
       return;
     }
+    const request = {};
+    copyInviteRequestRef.current = request;
+    const current = () => copyInviteRequestRef.current === request &&
+      isCurrentRoomAuthority(activeRoom) && roomRef.current?.inviteUrl === inviteUrl;
     try {
       await navigator.clipboard.writeText(inviteUrl);
-      setCopied(true);
+      if (!current()) return;
+      setCopiedInviteUrl(inviteUrl);
       setNoticeValue((current) => current?.kind === "key" && current.key === "host.invite.copyFailed" ? null : current);
       // One owner for the confirmation window: a second copy restarts it
       // instead of inheriting the first click's expiry.
@@ -2999,10 +3027,11 @@ export function HostPage({
       }
       copiedResetTimerRef.current = window.setTimeout(() => {
         copiedResetTimerRef.current = null;
-        setCopied(false);
+        setCopiedInviteUrl(null);
       }, 1_500);
     } catch {
-      setCopied(false);
+      if (!current()) return;
+      setCopiedInviteUrl(null);
       setNoticeErrorKey("host.invite.copyFailed", "copy-failed");
     }
   }
@@ -3198,7 +3227,7 @@ export function HostPage({
     setDisplayNameError(null);
     setEditingDisplayName(false);
     setHasCustomDisplayName(readStoredDisplayName() !== null);
-    if (!signalRef.current?.setDisplayName(saved)) {
+    if (signalRef.current && !signalRef.current.setDisplayName(saved)) {
       setNoticeErrorKey("host.nameOffline", "signal-offline", undefined, "warn");
     }
   }
@@ -3207,7 +3236,7 @@ export function HostPage({
     event.preventDefault();
     const route = roomRouteForExplicitEntry(joinRoomCode);
     if (!route) {
-      setJoinRoomError(true);
+      setJoinRejectedAttempt(attempt => attempt + 1);
       return;
     }
     window.location.assign(route);
@@ -3352,9 +3381,6 @@ export function HostPage({
             {stream ? (
               <video ref={videoRef} autoPlay muted playsInline />
             ) : null}
-            {nativeActive && !stream && phase === "live" ? (
-              <StageOverlay icon="cast" comic="share-live" tone="live" message={t("host.live")} />
-            ) : null}
             {nativeSources ? (
               <CaptureSourcePicker
                 nativeSources={nativeSources}
@@ -3380,6 +3406,7 @@ export function HostPage({
                   <span className="lr-entry-action">
                     <Tooltip kind="hint-share-start" text={vis ? undefined : t("host.start")} align="start">
                       <button
+                        id="host-start-share"
                         type="button"
                         className="lr-tv-big is-action is-ripple"
                         aria-label={t("host.start")}
@@ -3418,54 +3445,9 @@ export function HostPage({
                     style={{ gap: 12 }}
                     onSubmit={joinRoomFromStage}
                   >
-                    <div
-                      className={`lr-dials-wrap${
-                        joinRoomError ? " lr-join-door is-shake" : ""
-                      }`}
-                    >
-                      <div className="lr-dials" aria-hidden="true">
-                        {[0, 1, 2, 3].map((index) => (
-                          <span
-                            key={index}
-                            className={`lr-dial${
-                              joinRoomCode[index] ? " is-filled" : ""
-                            }${index === joinRoomCode.length ? " is-active" : ""}`}
-                          >
-                            {joinRoomCode[index] ?? ""}
-                          </span>
-                        ))}
-                      </div>
-                      <input
-                        value={joinRoomCode}
-                        inputMode="numeric"
-                        autoComplete="off"
-                        maxLength={4}
-                        autoFocus
-                        aria-label={t("join.field")}
-                        aria-invalid={joinRoomError ? "true" : undefined}
-                        onChange={(event) => {
-                          setJoinRoomCode(
-                            event.target.value.replace(/\D/g, "").slice(0, 4),
-                          );
-                          setJoinRoomError(false);
-                        }}
-                      />
-                    </div>
-                    {joinRoomError ? (
-                      <>
-                        <span
-                          role="alert"
-                          aria-label={t("join.invalid")}
-                        >
-                          <Comic kind="room-code-invalid" theme="stage" size={240} />
-                        </span>
-                        {vis ? null : (
-                          <span className="lr-cap" style={{ color: "var(--danger)" }}>
-                            {t("join.invalid")}
-                          </span>
-                        )}
-                      </>
-                    ) : null}
+                    <RoomCodeInput value={joinRoomCode} rejectedAttempt={joinRejectedAttempt} autoFocus
+                      onChange={value => { setJoinRoomCode(value); setJoinRejectedAttempt(0); }} />
+                    <RoomCodeError attempt={joinRejectedAttempt} theme="stage" />
                     <Tooltip kind="hint-join-go" text={vis ? undefined : t("join.submit")}>
                       <button
                         className="lr-join-go"
@@ -3550,9 +3532,6 @@ export function HostPage({
             onSelect={(key) =>
               setSelectedPawn((current) => (current === key ? null : key))
             }
-            emptyHint={t(
-              phase === "live" ? "host.viewers.waiting" : "host.viewers.empty",
-            )}
           />
         </div>
 
@@ -3622,7 +3601,7 @@ export function HostPage({
                 ) : (
                   <>
                     <NameTag
-                      name={labeledHostPresence?.label ?? displayName}
+                      name={displayName}
                       identity={hostIdentity}
                     />
                     <Btn
@@ -3699,6 +3678,7 @@ export function HostPage({
                         onClick={toggleSharingPause}
                       />
                       <Btn
+                        id="host-switch-source"
                         icon="switchSource"
                         cap={switchingSource ? "host.switching" : "host.switchSource"}
                         title="host.switchSource"
@@ -3717,6 +3697,7 @@ export function HostPage({
                     </>
                   ) : (
                     <Btn
+                      id="host-cancel-share"
                       icon="x"
                       tone="danger"
                       cap="host.cancelStart"
@@ -3736,7 +3717,7 @@ export function HostPage({
                 <span
                   className="lr-meter-tag"
                 >
-                  <Glyph name="arrowUp" size={17} />
+                  <Glyph name="share" size={17} />
                   {vis ? null : (
                     <span className="lr-cap">{t("stats.capture")}</span>
                   )}
@@ -3749,10 +3730,16 @@ export function HostPage({
                   <MetricCell label="stats.resolution" value={details.resolution ?? t("stats.unknown")} />
                   <MetricCell label="stats.fps" value={details.frameRate ? `${details.frameRate.toFixed(0)} fps` : vis ? "—" : t("host.capture.fpsUnknown")} />
                   <MetricCell label="stats.codec" value={resolvedVideoCodec?.toUpperCase() ?? (vis ? "—" : t("host.capture.codecPending"))} />
-                  <MetricCell label="stats.audio" icon={details.hasAudio ? "speaker" : "speakerOff"}
-                    value={t(details.hasAudio ? "host.capture.hasAudio" : "host.capture.noAudio")}
-                    hint={details.hasAudio ? "hint-source-audio" : "no-audio"}
-                    tone={details.hasAudio ? "off" : "warn"} glyphOnly />
+                  <Tooltip toggleOnClick kind={details.hasAudio ? "hint-source-audio" : "no-audio"}
+                    text={vis ? undefined : t(details.hasAudio ? "host.capture.hasAudio" : "host.capture.noAudio")}
+                    tone={details.hasAudio ? "off" : "warn"}>
+                    <button type="button" className="lr-meter-cell"
+                      style={{ border: 0, color: "inherit", font: "inherit", textAlign: "start", cursor: "help" }}
+                      aria-label={t(details.hasAudio ? "host.capture.hasAudio" : "host.capture.noAudio")}>
+                      <Glyph name={details.hasAudio ? "speaker" : "speakerOff"} size={16} />
+                      {!vis && <b>{t(details.hasAudio ? "host.capture.hasAudio" : "host.capture.noAudio")}</b>}
+                    </button>
+                  </Tooltip>
                 </div>
               </div>
             </Row>
@@ -3800,7 +3787,7 @@ export function HostPage({
           ) : null}
 
           {room ? (
-            <Row label={t("host.invite")}>
+            <Row label={t("host.policy")}>
               <RowGroup actions>
                 <Btn
                   icon={copied ? "check" : "link"}
@@ -3916,12 +3903,8 @@ export function HostPage({
                           ? "host.invite.emptyPassword"
                           : "host.invite.emptyPrivate",
                     )}
-                    comic={
-                      activeCodeEntryPolicy === "private" &&
-                      !viewerPasswordEnabled
-                        ? "invalid-invite"
-                        : roomAdmission(activeCodeEntryPolicy, viewerPasswordEnabled).comic
-                    }
+                    comic="hint-invite-link"
+                    tone="off"
                   />
                 ) : null}
               </RowGroup>
@@ -3936,8 +3919,8 @@ export function HostPage({
                     }}
                   >
                     <span
-                      className="lr-input"
-                      style={{ flex: 1, minWidth: 180 }}
+                      className="lr-input is-password"
+                      style={{ flex: 1 }}
                     >
                       <Glyph name="key" size={17} />
                       <input
@@ -4012,44 +3995,11 @@ export function HostPage({
 
           <Row label={t("host.quality")}>
             <RowGroup>
-              <div className="lr-tiles" aria-busy={changingQuality}>
-                {(Object.keys(QUALITY_PROFILES) as QualityProfileId[]).map(
-                  (id, index) => (
-                    <Fragment key={id}>
-                      <Tooltip kind="hint-quality" align={index === 0 ? "start" : "center"}
-                        text={vis ? undefined : t("host.quality.title", {
-                          label: t(QUALITY_PROFILE_CAPTIONS[id]),
-                          mbps: (QUALITY_PROFILES[id].maxBitrate / 1_000_000).toFixed(0),
-                        })}>
-                        <button
-                          type="button"
-                          className={`lr-tile${
-                            selectedQualityProfileId === id ? " is-selected" : ""
-                          }`}
-                          aria-pressed={selectedQualityProfileId === id}
-                          aria-label={t(QUALITY_PROFILE_CAPTIONS[id])}
-                          disabled={phase === "starting" || switchingSource}
-                          onClick={() =>
-                            void changeQuality({
-                              ...QUALITY_PROFILES[id],
-                              screenAudioQuality: resolveScreenAudioQuality(
-                                advancedQualityRef.current.screenAudioQuality,
-                              ),
-                            })
-                          }
-                        >
-                          <QualityTileGlyph resolution={QUALITY_PROFILES[id].resolution} framerate={QUALITY_PROFILES[id].maxFramerate} />
-                          <small>
-                            {vis
-                              ? `${QUALITY_PROFILES[id].resolution.replace("p", "")}·${QUALITY_PROFILES[id].maxFramerate}`
-                              : t(QUALITY_PROFILE_CAPTIONS[id])}
-                          </small>
-                        </button>
-                      </Tooltip>
-                    </Fragment>
-                  ),
-                )}
-              </div>
+              <QualityPresets selected={selectedQualityProfileId} busy={changingQuality}
+                disabled={phase === "starting" || switchingSource}
+                onSelect={id => void changeQuality({ ...QUALITY_PROFILES[id],
+                  screenAudioQuality: resolveScreenAudioQuality(advancedQualityRef.current.screenAudioQuality),
+                })} />
             </RowGroup>
             <span className="lr-spacer" />
             {/* Keep the tooltip trigger compact when mobile rows stretch. */}
@@ -4191,7 +4141,7 @@ export function HostPage({
                             advancedQuality.degradationPreference === preference
                           }
                           disabled={phase === "starting" || switchingSource}
-                          title={`${t(PREFERENCE_PRESENTATION[preference].cap)} · ${t(PREFERENCE_PRESENTATION[preference].hint)}`}
+                          title={`${t(DEGRADATION_PREFERENCE_KEYS[preference])} · ${t(PREFERENCE_PRESENTATION[preference].hint)}`}
                           hint={preference === "maintain-resolution" ? "hint-prefer-resolution" : preference === "maintain-framerate" ? "hint-prefer-framerate" : "hint-degrade-pref"}
                           onClick={() =>
                             changeAdvancedQuality({
@@ -4203,7 +4153,7 @@ export function HostPage({
                             name={PREFERENCE_PRESENTATION[preference].icon}
                             size={18}
                           />
-                          <Cap k={PREFERENCE_PRESENTATION[preference].cap} />
+                          <Cap k={DEGRADATION_PREFERENCE_KEYS[preference]} />
                         </Chip>
                       ))}
                     </div>

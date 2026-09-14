@@ -1,5 +1,5 @@
 .lr-status-indicator {
-  --status-colour: var(--ink-soft, #8ea3b8);
+  --status-colour: #8ea3b8;
   display: inline-flex;
   align-items: center;
   justify-content: center;

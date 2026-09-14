@@ -51,7 +51,7 @@ ${rmBlock(
     </g>
     <Pawn x={240} yb={46} s={7} eyes host eyeClassName="vls-top-eyes" />
     <Pawn x={210} yb={80} s={7} color={SKY} eyes className="vls-top-leaf1" />
-    <Pawn x={270} yb={80} s={7} color={STAR_GOLD} eyes className="vls-top-leaf2" />
+    <Pawn x={270} yb={80} s={7} color="var(--pawn-3)" eyes className="vls-top-leaf2" />
   </>
 );
 

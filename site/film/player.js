@@ -137,8 +137,16 @@ function toggleSound() {
 function localize() {
   const language = byId('language');
   language.textContent = say('简体中文', 'English');
+  language.lang = say('zh-CN', 'en');
   language.setAttribute('aria-label', say('切换到简体中文', 'Switch to English'));
   document.title = say('Piik — Share the good stuff.', 'Piik — 来，看点好康的。');
+  document.querySelector('meta[name="description"]').content = say(
+    'Share the good stuff. See how Piik shares games, movies, drawings and photos with friends, in a 76-second film.',
+    '来，看点好康的。用一支 76 秒短片，看看如何用 Piik 和朋友分享游戏、电影、绘画和照片。',
+  );
+  document.querySelector('.masthead nav').setAttribute('aria-label', say('Navigation', '导航'));
+  byId('credits').querySelector('.close').setAttribute('aria-label', say('Close', '关闭'));
+  syncThemeColor();
   document.querySelectorAll('[data-home]').forEach((link) => {
     const url = new URL(link.getAttribute('href'), location.href);
     url.searchParams.set('lang', root.lang);
@@ -149,6 +157,11 @@ function localize() {
   byId('reduced-note').hidden = !reduceMotion.matches;
   showState();
 }
+
+function syncThemeColor() {
+  document.querySelector('meta[name="theme-color"]').content = getComputedStyle(root).getPropertyValue('--wall').trim();
+}
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', syncThemeColor);
 
 byId('start').addEventListener('click', () => { void play(true, true); byId('play').focus({ preventScroll: true }); });
 byId('start-muted').addEventListener('click', () => { void play(false, true); byId('play').focus({ preventScroll: true }); });

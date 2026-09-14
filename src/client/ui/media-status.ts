@@ -18,25 +18,13 @@ export type StatusDescriptor = {
   | { comic?: ComicKind; tooltip: ComicKind | HintKind }
 );
 
-export interface QualityObservation {
-  // Only the current, matching media path; callers own identity and freshness.
-  // A relay's outbound limitation says nothing about its own received picture.
-  reason: RTCQualityLimitationReason | "unknown";
-  fresh: boolean;
-}
-
 export const STATUS_CATALOG = {
   idle: { tone: "off", labelKey: "state.peer.waiting", icon: "moon", comic: "waiting-for-host" },
   connected: { tone: "live", labelKey: "state.peer.connected", icon: "check", comic: "media-ready" },
   joining: { tone: "busy", labelKey: "state.peer.connecting", icon: "loader", comic: "connecting-p2p", pulse: true },
   reconnecting: { tone: "warn", labelKey: "state.peer.reconnecting", icon: "refresh", comic: "recovering", pulse: true },
   disconnected: { tone: "bad", labelKey: "state.peer.disconnected", icon: "wifiOff", comic: "route-failed" },
-  qualityUnknown: { tone: "off", labelKey: "stats.unknown", icon: "gauge", tooltip: "hint-details" },
-  qualityNormal: { tone: "live", labelKey: "stats.quality.normal", icon: "check", tooltip: "hint-details" },
   stuttering: { tone: "warn", labelKey: "state.peer.stuttering", icon: "pause", comic: "warning" },
-  bandwidth: { tone: "warn", labelKey: "stats.quality.bandwidth", icon: "gauge", comic: "bandwidth-limited" },
-  cpu: { tone: "warn", labelKey: "stats.quality.cpu", icon: "cpu", comic: "encoder-limited" },
-  other: { tone: "warn", labelKey: "stats.quality.other", icon: "alert", comic: "warning" },
 } as const satisfies Record<string, StatusDescriptor>;
 
 export function deriveParticipantStatus(
@@ -89,28 +77,6 @@ const STAGE_VISUALS = {
   allocating: { tone: "busy", icon: "loader", comic: "signal-connecting", pulse: true },
 } as const satisfies Record<ViewerStage, Omit<StatusDescriptor, "labelKey">>;
 
-function qualityWarning(observation?: QualityObservation): StatusDescriptor | null {
-  if (!observation?.fresh) return null;
-  switch (observation.reason) {
-    case "bandwidth": return STATUS_CATALOG.bandwidth;
-    case "cpu": return STATUS_CATALOG.cpu;
-    case "other": return STATUS_CATALOG.other;
-    default: return null;
-  }
-}
-
-export function peerConnectionStatus(state: RTCPeerConnectionState): StatusDescriptor {
-  // WebRTC disconnected can recover. Red is reserved for a confirmed failure,
-  // not a temporary loss of checks; closed is intentional retirement/idle.
-  switch (state) {
-    case "connected": return { ...STATUS_CATALOG.connected, comic: "transport-connected" };
-    case "disconnected": return STATUS_CATALOG.reconnecting;
-    case "failed": return STATUS_CATALOG.disconnected;
-    case "closed": return STATUS_CATALOG.idle;
-    default: return STATUS_CATALOG.joining;
-  }
-}
-
 export type HostPhase = "idle" | "starting" | "live" | "ended" | "error";
 
 const HOST_VISUALS = {
@@ -159,7 +125,6 @@ export function deriveHostStatus({ phase, paused, signal, roomReady, sourceNotic
 export function deriveViewerStatus(
   presentation: ViewerPresentation,
   signal: SignalConnectionState,
-  observation?: QualityObservation,
   route: "p2p" | "sfu" | null = null,
 ) {
   // Control recovery does not interrupt a picture that remains proved.
@@ -172,9 +137,6 @@ export function deriveViewerStatus(
       : playable ? "viewer.msg.playing" : presentation.messageKey,
     ...(stage === "receiving" ? { comic: route === "sfu" ? "connecting-sfu" as const : "connecting-p2p" as const } : {}),
   };
-  const warning = qualityWarning(observation);
-  const quality: StatusDescriptor = warning ?? (observation?.fresh && observation.reason === "none"
-    ? STATUS_CATALOG.qualityNormal : STATUS_CATALOG.qualityUnknown);
   let notice: (StatusDescriptor & { comic: ComicKind }) | null = null;
   switch (presentation.noticeKey) {
     case "viewer.notice.hostOffline":
@@ -187,9 +149,7 @@ export function deriveViewerStatus(
   const overlay = presentation.overlay === "none"
     ? null
     : { mode: presentation.overlay, status: activity };
-  const television: StatusDescriptor = playable
-    ? warning ?? activity
-    : activity;
+  const television = activity;
   const connection: StatusDescriptor = SIGNAL_VISUALS[signal];
   const titleFrameKey: TitleFrameKey = presentation.stage === "room-closed" ? "viewerClosed"
     : presentation.stage === "host-paused"
@@ -199,7 +159,7 @@ export function deriveViewerStatus(
     : !overlay && presentation.hasCurrentFrame ? "viewerActive"
     : "viewerWaiting";
   return {
-    activity, television, connection, quality, notice, overlay,
+    activity, television, connection, notice, overlay,
     titleFrameKey,
     titleMarker: (television.tone === "warn" && presentation.stage !== "host-paused") || notice ? "⚠️" : null,
   };

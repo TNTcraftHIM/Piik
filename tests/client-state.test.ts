@@ -45,11 +45,7 @@ import {
   SignalingClient,
 } from "../src/client/lib/signaling.ts";
 import { deriveParticipantTopology } from "../src/client/lib/participant-topology.ts";
-import {
-  labelParticipantSnapshot,
-  labelViewerParticipants,
-  labelViewerPresence,
-} from "../src/client/lib/viewer-presence.ts";
+import { labelParticipantSnapshot } from "../src/client/lib/viewer-presence.ts";
 import { qualityEvidenceWindowFromMetrics } from "../src/client/media/viewer-quality-evidence.ts";
 import {
   collectConnectionMetrics,
@@ -118,7 +114,7 @@ describe("browser-local display name", () => {
   });
 
   it("extends only colliding room-scoped peer ID suffixes", () => {
-    const labeled = labelViewerPresence([
+    const { viewers: labeled } = labelParticipantSnapshot([
       {
         role: "viewer",
         peerId: "viewer_AAAAAAsuffix",
@@ -148,7 +144,7 @@ describe("browser-local display name", () => {
   });
 
   it("keeps the shortest hidden suffix for distinct display names", () => {
-    const labeled = labelViewerPresence([
+    const { viewers: labeled } = labelParticipantSnapshot([
       {
         role: "viewer",
         peerId: "viewer_AAAAAAsuffix",
@@ -168,7 +164,7 @@ describe("browser-local display name", () => {
   });
 
   it("uses the minimum suffix when duplicate names are already distinct", () => {
-    const labeled = labelViewerPresence([
+    const { viewers: labeled } = labelParticipantSnapshot([
       {
         role: "viewer",
         peerId: "viewer_AAAAAA111111",
@@ -194,7 +190,7 @@ describe("browser-local display name", () => {
   });
 
   it("labels every Viewer in a participant snapshot without including the Host", () => {
-    const labeled = labelViewerParticipants([
+    const { viewers: labeled } = labelParticipantSnapshot([
       {
         role: "host",
         peerId: "host_12345678",
@@ -260,7 +256,7 @@ describe("browser-local display name", () => {
     ) => ({ role: "viewer" as const, peerId, displayName: peerId, upstream });
     const topology = deriveParticipantTopology(
       "host_12345678",
-      labelViewerPresence([
+      labelParticipantSnapshot([
         viewer("viewer_root_1", { kind: "peer", peerId: "host_12345678" }),
         viewer("viewer_child_1", { kind: "peer", peerId: "viewer_root_1" }),
         viewer("viewer_sfu_1", { kind: "sfu" }),
@@ -270,7 +266,7 @@ describe("browser-local display name", () => {
         }),
         viewer("viewer_pending", { kind: "none" }),
         viewer("viewer_orphan", { kind: "peer", peerId: "viewer_offline" }),
-      ]),
+      ]).viewers,
     );
 
     expect(topology.peerRoots[0].viewer.peerId).toBe("viewer_root_1");
@@ -988,17 +984,17 @@ describe("room codes", () => {
     expect(takeClientLaunchBootstrap()).toEqual({
       accessToken: "a+b&c?d=e",
       launchedByClient: true,
-      presentation,
+      presentation: { ...presentation, explicit: [] },
     });
     expect(replaceState).toHaveBeenCalledWith(null, "", "/?room=9527#retained=yes");
   });
 
   it.each([
-    "piik-lang=zh&piik-mode=text&piik-theme=light",
-    "piik-client=1&piik-lang=other&piik-mode=text&piik-theme=light",
-    "piik-client=1&piik-lang=zh&piik-mode=other&piik-theme=light",
-    "piik-client=1&piik-lang=zh&piik-mode=text&piik-theme=other",
-  ])("ignores invalid presentation without losing App access: %s", (fragment) => {
+    ["piik-lang=zh&piik-mode=text&piik-theme=light", null],
+    ["piik-client=1&piik-lang=other&piik-mode=text&piik-theme=light", { vis: false, theme: "light", explicit: [] }],
+    ["piik-client=1&piik-lang=zh&piik-mode=other&piik-theme=light", { lang: "zh", theme: "light", explicit: [] }],
+    ["piik-client=1&piik-lang=zh&piik-mode=text&piik-theme=other", { lang: "zh", vis: false, explicit: [] }],
+  ])("ignores invalid preference fields without losing App access: %s", (fragment, presentation) => {
     const replaceState = vi.fn();
     vi.stubGlobal("window", {
       location: { hash: `#${fragment}&client-access=${"a".repeat(32)}`, pathname: "/", search: "" },
@@ -1006,7 +1002,7 @@ describe("room codes", () => {
     });
     expect(takeClientLaunchBootstrap()).toMatchObject({
       accessToken: "a".repeat(32),
-      presentation: null,
+      presentation,
     });
     expect(replaceState).toHaveBeenCalledWith(null, "", "/");
   });

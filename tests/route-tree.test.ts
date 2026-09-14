@@ -451,7 +451,11 @@ describe("RouteTree", () => {
     const targets = [...html.matchAll(/<foreignObject[^>]*>(.*?)<\/foreignObject>/g)].map(match => match[1]!);
     expect(targets).toHaveLength(3);
     for (const [index, suffix] of ["房主", "观众", "等待"].entries()) {
-      expect(targets[index]).toContain(`aria-label="${name}${suffix}${index === 2 ? " · 显示连接详情" : ""}"`);
+      // The hidden topology list retains every full identity before client
+      // layout measures clipping; generic static spans must not be named.
+      expect(html).toContain(`${name}${suffix}`);
+      if (index === 2) expect(targets[index]).toContain(`aria-label="${name}${suffix} · 显示连接详情"`);
+      else expect(targets[index]).not.toContain("aria-label=");
       expect(targets[index]).toMatch(/class="lr-route-label lr-route-name[^>]*>[^<]*…<\/span>/);
       expect(targets[index]).toContain('popover="manual"');
       expect(targets[index]).not.toContain("data-comic-motion");

@@ -15,6 +15,8 @@
 .lr-playback.is-hidden { opacity: 0; transform: translateY(6px); pointer-events: none; }
 .lr-tv-screen:has(> .lr-playback[data-can-play="true"]) > video { cursor: pointer; }
 .lr-tv-screen:has(> .lr-playback.is-hidden) > video { cursor: none; }
+/* The video's own focus outline is clipped by the screen; mark its container. */
+.lr-tv-screen:has(> .lr-playback):has(:focus-visible) { outline: 3px solid var(--action); outline-offset: 2px; }
 .lr-playback .lr-btn {
   display: grid; place-items: center; flex: none;
   min-width: 0; width: 44px; height: 44px; padding: 0;
@@ -28,7 +30,7 @@
 .lr-playback-audio { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .lr-playback-separator { width: 1px; height: 20px; background: currentColor; opacity: .22; }
 .lr-playback-volume { min-width: 0; }
-.lr-playback-volume input { width: clamp(64px, 14vw, 144px); min-width: 0; height: 36px; padding: 0; margin: 0; accent-color: var(--action); cursor: pointer; }
+.lr-playback-volume input { width: clamp(64px, 14vw, 144px); min-width: 0; height: 44px; padding: 0; margin: 0; accent-color: var(--action); cursor: pointer; }
 .lr-playback-level { width: 4ch; text-align: right; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .lr-playback-level.is-boosted { color: var(--action); }
 .lr-playback-view { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; border-left: 1px solid var(--wall-2); padding-left: 8px; }

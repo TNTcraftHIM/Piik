@@ -286,7 +286,7 @@ export const RouteTree = memo(function RouteTree({
       <Tooltip overflow={{ text: label, selector: ".lr-route-name" }} className="lr-route-name-hint">
         <Control className={canSelect ? "lr-route-hit" : "lr-route-name-static"}
           type={canSelect ? "button" : undefined}
-          aria-label={canSelect ? `${label} · ${t("host.details")}` : label}
+          aria-label={canSelect ? `${label} · ${t("host.details")}` : undefined}
           onPointerEnter={canSelect ? () => setHoveredPeerId(key) : undefined}
           onPointerLeave={canSelect ? () => setHoveredPeerId(current => current === key ? null : current) : undefined}
           onFocus={canSelect ? () => setHoveredPeerId(key) : undefined}

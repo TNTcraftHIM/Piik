@@ -211,7 +211,7 @@ export function createArt(svg, language, onUI = () => {}) {
         ${rect(-115,383,950,200,0,INK)}${text(57,538,say('LOW LATENCY.','低延迟。'),zh?160:106,PAPER)}
       </g>
       ${sceneLabel(say('PIIK / FEATURES', 'PIIK / 产品特点'))}
-      ${text(65,793,say('A direct path, so friends can keep up.','画面优先直达朋友，精彩及时跟上。'),30,INK,'style="letter-spacing:0;font-weight:650"')}
+      ${text(65,793,say('A direct path first, so friends can keep up.','画面优先直达朋友，精彩及时跟上。'),30,INK,'style="letter-spacing:0;font-weight:650"')}
     </g>
     <g id="feature-encode">${field(YELLOW)}
       <path d="M1200-100h580v1100H871Z" fill="${ORANGE}"/>
@@ -229,7 +229,7 @@ export function createArt(svg, language, onUI = () => {}) {
         ${rect(-110,388,945,197,0,INK)}${text(48,541,say('SHARING.','轻负担。'),zh?164:153,PAPER)}
       </g>
       ${sceneLabel(say('PIIK / FEATURES', 'PIIK / 产品特点'))}
-      ${text(65,793,say('Lighter on resources, with more power left for games and creative work.','少占些资源，给游戏和创作多留些性能。'),30,INK,'style="letter-spacing:0;font-weight:650"')}
+      ${text(65,793,say('Reuse picture processing where supported, for efficient sharing with friends.','能共用的画面处理，就不重复做；多人分享也讲效率。'),30,INK,'style="letter-spacing:0;font-weight:650"')}
     </g>
     <g id="feature-devices">${field(INK)}
       <path d="M1210-80h480v1060H908Z" fill="${MINT}"/>

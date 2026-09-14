@@ -56,7 +56,8 @@ const PATHS = {
   contract: { body: (<><path pathLength={1} d="M8 3v5H3m13-5v5h5M8 21v-5H3m13 5v-5h5"/></>) },
   pip: { body: (<><rect pathLength={1} x="2" y="4" width="20" height="16" rx="2"/><rect pathLength={1} x="12" y="12" width="7" height="5" rx="1"/><path pathLength={1} d="m6 8 3 3M6 11h3V8"/></>) },
   pipExit: { body: (<><rect pathLength={1} x="2" y="4" width="20" height="16" rx="2"/><rect pathLength={1} x="12" y="12" width="7" height="5" rx="1"/><path pathLength={1} d="m9 11-3-3m0 3V8h3"/></>) },
-  wave: { body: (<><path pathLength={1} d="M2 12c1.7 0 1.7-2.5 3.4-2.5S7 12 8.7 12s1.6-2.5 3.3-2.5S13.6 12 15.3 12s1.7-2.5 3.4-2.5S20.3 12 22 12"/></>) },
+  window: { body: (<><rect pathLength={1} x="2" y="4" width="20" height="16" rx="2"/><path pathLength={1} d="M2 9h20M6 6.5h.01M9 6.5h.01"/></>) },
+  display: { body: (<><rect pathLength={1} x="2" y="3" width="20" height="14" rx="2"/><path pathLength={1} d="M12 17v4m-4 0h8"/></>) },
   frames: { body: (<><rect pathLength={1} x="8" y="8" width="13" height="12" rx="2"/><path pathLength={1} d="M16 4H5a2 2 0 0 0-2 2v10M12 11l5 3-5 3Z"/></>) },
   jitter: { body: (<><path pathLength={1} d="M2 18h20M4 8v6m4-9v9m7-5v5m5-10v10"/></>) },
   packetLoss: { body: (<><rect pathLength={1} x="2" y="8" width="5" height="6" rx="1"/><rect pathLength={1} x="17" y="8" width="5" height="6" rx="1"/><path pathLength={1} d="m10 8 4 6m0-6-4 6M12 17v5m-2-2 2 2 2-2"/></>) },
@@ -109,7 +110,7 @@ export function Glyph({
 
   useEffect(() => {
     const graphic = graphicRef.current;
-    if (!draw || !graphic?.closest("button:is(.lr-btn.is-primary, .lr-tv-big, .lr-join-go)")) return;
+    if (!draw || !graphic?.closest("button:is(.lr-btn.is-primary, .lr-tv-big, .lr-join-go, .lr-tv-overlay)")) return;
     return bindSvgReplayOnPointerEnter(graphic);
   }, [draw]);
 

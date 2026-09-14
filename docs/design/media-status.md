@@ -101,8 +101,8 @@ Participant status reads the current evidence directly; it adds no stored
 status, timer, threshold or score. Detailed sender/receiver metrics
 remain available in connection details and Debug with their original scope.
 
-The preview labels supplied example quality facts for the displayed stream.
-Examples do not authorize guessing unavailable production facts.
+Previews render the production projection and metric components with explicit
+sample inputs. They do not add quality facts absent from the real workflow.
 
 ## References
 

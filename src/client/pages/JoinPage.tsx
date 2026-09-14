@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { AppHeader } from "../components/living/Header";
 import { Tooltip } from "../components/living/Tooltip";
-import { Comic } from "../components/living/Comic";
+import { RoomCodeInput, RoomCodeError } from "../components/living/RoomCodeInput";
 import { HintComic } from "../components/living/hints";
 import { Glyph } from "../ui/icons";
 import { useCopy } from "../ui/copy";
@@ -13,7 +13,6 @@ export function JoinPage() {
   // Counts rejected submits so a repeated one still restarts the shake and
   // re-announces the alert; a plain boolean would already be true.
   const [rejectedAttempt, setRejectedAttempt] = useState(0);
-  const error = rejectedAttempt > 0;
 
   function join(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
@@ -42,8 +41,7 @@ export function JoinPage() {
       <main className="lr-join">
         <form className="lr-join-panel" onSubmit={join} noValidate>
           <span
-            key={rejectedAttempt}
-            className={`lr-join-door${error ? " is-shake" : ""}`}
+            className="lr-join-door"
             role="img"
             aria-label={t("join.title")}
           >
@@ -55,49 +53,9 @@ export function JoinPage() {
               <p>{t("join.hint")}</p>
             </div>
           )}
-          <div className="lr-dials-wrap">
-            <div className="lr-dials" aria-hidden="true">
-              {[0, 1, 2, 3].map((index) => (
-                <span
-                  key={index}
-                  className={`lr-dial${roomId[index] ? " is-filled" : index === roomId.length ? " is-active" : ""}`}
-                >
-                  {roomId[index] ?? ""}
-                </span>
-              ))}
-            </div>
-            <input
-              value={roomId}
-              inputMode="numeric"
-              autoComplete="off"
-              maxLength={4}
-              autoFocus
-              aria-label={t("join.field")}
-              aria-invalid={error}
-              onChange={(event) => {
-                setRoomId(event.target.value.replace(/\D/g, "").slice(0, 4));
-                setRejectedAttempt(0);
-              }}
-            />
-          </div>
-          {error ? (
-            <>
-              <span
-                key={rejectedAttempt}
-                role="alert"
-                aria-label={t("join.invalid")}
-              >
-                <Comic kind="room-code-invalid" size={240} />
-              </span>
-              {vis ? (
-                <span className="visually-hidden">{t("join.invalid")}</span>
-              ) : (
-                <span className="lr-cap" style={{ color: "var(--danger)" }}>
-                  {t("join.invalid")}
-                </span>
-              )}
-            </>
-          ) : null}
+          <RoomCodeInput value={roomId} rejectedAttempt={rejectedAttempt} autoFocus
+            onChange={value => { setRoomId(value); setRejectedAttempt(0); }} />
+          <RoomCodeError attempt={rejectedAttempt} />
           <Tooltip kind="hint-join-go" text={vis ? undefined : t("join.submit")}>
             {goButton}
           </Tooltip>

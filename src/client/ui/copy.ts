@@ -34,10 +34,12 @@ function readStored(): Partial<CopyPrefs> {
   }
 }
 
+const stored = readStored();
+let explicit = Object.keys(stored).length > 0;
 const state: CopyPrefs = {
   lang: resolveLang(typeof navigator === "undefined" ? undefined : navigator.language),
   vis: false,
-  ...readStored(),
+  ...stored,
 };
 
 function syncDocumentLanguage(): void {
@@ -60,6 +62,7 @@ function apply(next: Partial<CopyPrefs>): void {
 }
 
 function commit(next: Partial<CopyPrefs>): void {
+  explicit = true;
   apply(next);
   try {
     window.localStorage.setItem(LANG_STORAGE_KEY, state.lang);
@@ -75,13 +78,26 @@ function commit(next: Partial<CopyPrefs>): void {
 if (typeof window !== "undefined") {
   window.addEventListener("storage", (event) => {
     if (event.key === LANG_STORAGE_KEY || event.key === MODE_STORAGE_KEY) {
-      apply(readStored());
+      const stored = readStored();
+      explicit = Object.keys(stored).length > 0;
+      apply(stored);
     }
   });
 }
 
-// Non-React setter for launch handoff and tests.
+// Non-React setter for local choices and product previews.
 export const setCopy = commit;
+
+export function hasCopyPreference(): boolean {
+  return explicit;
+}
+
+// Older launchers do not distinguish a user choice from their system default.
+// Treat unmarked handoff values as temporary defaults, never persisted choices.
+export function applyLaunchCopy(next: Partial<CopyPrefs>, explicitChoice: boolean): void {
+  if (explicitChoice) commit(next);
+  else if (!explicit) apply(next);
+}
 
 export function isCopyKey(value: string): value is CopyKey {
   return Object.hasOwn(locales.zh.copy, value);

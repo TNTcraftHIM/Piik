@@ -47,6 +47,9 @@ function setLanguage(lang) {
   document.title = current.title;
   description.content = current.description;
   roomIllustration.alt = current.image;
+  document.querySelector('.site-header nav').setAttribute('aria-label', chinese ? '主导航' : 'Main');
+  document.querySelector('.guide-links').setAttribute('aria-label', chinese ? '教程目录' : 'Guides');
+  filmFrame.title = chinese ? 'Piik 宣传片' : 'Piik introduction';
   for (const option of theme.options) option.textContent = current.themes[option.value];
   syncFilmPreferences();
 }
