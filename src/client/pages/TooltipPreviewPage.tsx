@@ -6,6 +6,7 @@ import { HINT_KINDS, HintComic, isHintKind, type HintKind } from "../components/
 import { Comic, type ComicKind } from "../components/living/Comic";
 import { COMIC_KINDS, getComicPresentation, type ComicTone, type ComicMotion } from "../components/living/comic-presentation";
 import { useCopy, type CopyKey } from "../ui/copy";
+import { replaySvgAnimations } from "../ui/animation";
 
 const EXAMPLES: { label: string; kind: HintKind | ComicKind; tone: ComicTone; motion: ComicMotion; text: CopyKey }[] = [
   { label: "说明 / Neutral", kind: "hint-volume", tone: "off", motion: "demo", text: "playback.volume" },
@@ -23,7 +24,14 @@ function PreviewCard({ kind, tone, motion, label, text }: {
   kind: ComicKind | HintKind; tone?: ComicTone; motion?: ComicMotion; label?: string; text?: string;
 }) {
   const defaults = getComicPresentation(kind);
-  return <section className="lr-tooltip-preview-card">
+  const replay = (card: HTMLElement) => {
+    const scene = card.querySelector(".lr-tooltip-preview-art > svg");
+    if (scene) replaySvgAnimations(scene);
+  };
+  return <section className="lr-tooltip-preview-card"
+    onPointerEnter={(event) => { if (event.pointerType !== "touch") replay(event.currentTarget); }}
+    onPointerDown={(event) => { if (event.pointerType === "touch") replay(event.currentTarget); }}
+    onFocusCapture={(event) => replay(event.currentTarget)}>
     <header>
       <code>{label ?? kind}</code>
       <span className="lr-tooltip-preview-actions">
@@ -52,7 +60,7 @@ export function TooltipPreviewPage() {
       <main className="lr-room lr-tooltip-preview">
         <header className="lr-tooltip-preview-head">
           <h1>{en ? "Piik · UI catalogue" : "Piik · UI 控件大全"}</h1>
-          <p>{en ? "Actual components, sample data. Try mouse, keyboard and touch." : "正式组件，示例数据。鼠标、键盘、触屏都可以试。"}</p>
+          <p>{en ? "Actual components, sample data. Hover or tap a comic to replay it; use its corner button to open the tooltip." : "正式组件，示例数据。悬停或轻点漫画可重播，角上的按钮可查看实际提示。"}</p>
         </header>
         <nav className="cp-nav" aria-label={en ? "Preview sections" : "预览目录"}>
           <a href="#button-preview">{en ? "Buttons" : "按钮"}</a><a href="#option-preview">{en ? "Options" : "选择与开关"}</a>

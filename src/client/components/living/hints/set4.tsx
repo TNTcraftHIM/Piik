@@ -326,8 +326,15 @@ ${rmBlock(
 const HintRouteP2pRequired: HintScene = ({ theme }) => (
   <>
     <HintRouteP2p theme={theme} />
-    <ServerBox x={64} y={16} w={32} h={24} />
-    <RedX cx={80} cy={28} arm={7} />
+    <style>{`
+.vls-p2p-unavailable{animation:vlsP2pUnavailable var(--comic-duration,3.2s) ease-in-out 1 both}
+@keyframes vlsP2pUnavailable{0%,8%,36%,100%{transform:none}16%{transform:translateX(-4px)}26%{transform:translateX(3px)}}
+${rmBlock(["vls-p2p-unavailable"], [[".vls-p2p-unavailable", "transform:none"]], false)}
+`}</style>
+    <g className="vls-p2p-unavailable">
+      <ServerBox x={64} y={16} w={32} h={24} />
+      <RedX cx={80} cy={28} arm={7} />
+    </g>
   </>
 );
 
@@ -433,12 +440,15 @@ const HintNatPrediction = ({ theme, available = true }: { theme: ComicTheme; ava
     <style>{`
 .vls-nat-path{stroke-dasharray:1;animation:vlsNatPath var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-nat-dots{animation:vlsNatDots var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-nat-unavailable{transform-box:fill-box;transform-origin:center;animation:vlsNatUnavailable var(--comic-duration,3.2s) ease-in-out 1 both}
 @keyframes vlsNatPath{0%,8%{stroke-dashoffset:1}30%,100%{stroke-dashoffset:0}}
 @keyframes vlsNatDots{0%,32%,100%{opacity:.35}44%{opacity:1}}
+@keyframes vlsNatUnavailable{0%,8%{transform:scale(1.3) rotate(-8deg)}28%,100%{transform:none}}
 ${rmBlock(
   ["vls-nat-path", "vls-nat-dots"],
   [[".vls-nat-path", "stroke-dashoffset:0"], [".vls-nat-dots", "opacity:1"]],
 )}
+${rmBlock(["vls-nat-unavailable"], [[".vls-nat-unavailable", "transform:none"]], false)}
 `}</style>
     <Frame x={4} w={152} theme={theme} />
     <Frame x={164} w={152} theme={theme} result />
@@ -467,7 +477,7 @@ ${rmBlock(
     </g>
     {available ? <Spark x={240} y={24} /> : <>
       <circle cx={240} cy={39} r={11} fill={theme === "paper" ? "var(--paper)" : "#0d1526"} />
-      <RedX cx={240} cy={39} arm={7} />
+      <RedX cx={240} cy={39} arm={7} className="vls-nat-unavailable" />
     </>}
   </>
 );

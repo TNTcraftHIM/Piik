@@ -25,6 +25,7 @@ function PlaybackMotion() {
 .vls-pb-popout,.vls-pb-popin{transform-box:fill-box;transform-origin:center}
 .vls-pb-popout{animation:vlsPbPopout var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
 .vls-pb-popin{animation:vlsPbPopin var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
+.vls-pb-unavailable{animation:vlsPbUnavailable var(--comic-duration,3.2s) ease-in-out 1 both}
 @keyframes vlsPbCue{0%,8%,34%,100%{transform:scale(1)}16%{transform:scale(.86)}25%{transform:scale(1.08)}}
 @keyframes vlsPbPlay{0%,18%{transform:translateX(-12px)}40%,100%{transform:none}}
 @keyframes vlsPbFreeze{0%{transform:translateX(-12px)}18%,100%{transform:none}}
@@ -38,14 +39,19 @@ function PlaybackMotion() {
 @keyframes vlsPbChromeIn{0%,8%{opacity:0}30%,100%{opacity:1}}
 @keyframes vlsPbPopout{0%,8%{transform:translate(-28px,-14px) scale(1.4)}34%,100%{transform:none}}
 @keyframes vlsPbPopin{0%,8%{transform:translate(32px,16px) scale(.65)}34%,100%{transform:none}}
+@keyframes vlsPbUnavailable{0%,8%,36%,100%{transform:none}16%{transform:translateX(-4px)}26%{transform:translateX(3px)}}
 ${rmBlock(
   ["vls-pb-cue", "vls-pb-play", "vls-pb-freeze", "vls-pb-waves .vls-pb-wave",
-    "vls-pb-waves.is-muting .vls-pb-wave", "vls-pb-cross", "vls-pb-listen",
-    "vls-pb-flat", "vls-pb-expand", "vls-pb-contract", "vls-pb-chrome-out", "vls-pb-chrome-in", "vls-pb-popout", "vls-pb-popin"],
-  [[".vls-pb-wave,.vls-pb-flat", "stroke-dashoffset:0;opacity:1"],
+    "vls-pb-waves.is-muting .vls-pb-wave", "vls-pb-cross",
+    "vls-pb-expand", "vls-pb-contract", "vls-pb-chrome-out", "vls-pb-chrome-in", "vls-pb-popout", "vls-pb-popin"],
+  [[".vls-pb-wave", "stroke-dashoffset:0;opacity:1"],
     [".vls-pb-waves.is-muting .vls-pb-wave,.vls-pb-chrome-out", "opacity:0"],
     [".vls-pb-cross,.vls-pb-chrome-in", "opacity:1"]],
 )}
+${rmBlock(["vls-pb-listen", "vls-pb-flat", "vls-pb-unavailable"], [
+  [".vls-pb-listen,.vls-pb-unavailable", "transform:none"],
+  [".vls-pb-flat", "stroke-dashoffset:0;opacity:1"],
+], false)}
 `}</style>;
 }
 
@@ -126,7 +132,7 @@ const NoAudioHint: HintScene = ({ theme }) => <>
   <rect x={35} y={79} width={90} height={7} rx={3.5} fill="none" stroke={FAINT} strokeWidth={1.5} strokeDasharray="3 3" />
   <path className="vls-pb-flat" pathLength={1} d="M45 82.5h70" stroke={FAINT} strokeWidth={1.5} strokeLinecap="round" />
   <LocalSpeaker x={160} silent="absent" />
-  <Pawn x={283} yb={79} s={11} color={YOU} eyes />
+  <Pawn x={283} yb={79} s={11} color={YOU} eyes className="vls-pb-listen" />
 </>;
 
 function PlaybackViewport({ x, fullscreen, animate = false }: { x: number; fullscreen: boolean; animate?: boolean }) {
@@ -151,7 +157,7 @@ function FullscreenHint({ theme, exit = false, unavailable = false }: Parameters
     <Frame x={164} w={152} theme={theme} result />
     <PlaybackViewport x={0} fullscreen={exit} />
     <PlaybackViewport x={160} fullscreen={!unavailable && !exit} animate={!unavailable} />
-    {unavailable ? <path d="M276 28h14v14m0-14-18 18m-2-16 18 18"
+    {unavailable ? <path className="vls-pb-unavailable" d="M276 28h14v14m0-14-18 18m-2-16 18 18"
       fill="none" stroke="var(--comic-tone)" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" /> : null}
   </>;
 }
@@ -168,7 +174,7 @@ function PictureHint({ theme, exit = false, unavailable = false }: Parameters<Hi
         <Frame x={x + 4} w={152} theme={theme} result={index === 1} />
         <BrowserWindow x={x + 14} y={14} w={112} h={65} />
         <path d={`M${x + 28} 37h65m-65 9h45m-45 9h31`} stroke={FAINT} strokeWidth={2} opacity={.35} />
-        <g className={index && !unavailable ? floating ? "vls-pb-popout" : "vls-pb-popin" : undefined}>
+        <g className={index ? unavailable ? "vls-pb-unavailable" : floating ? "vls-pb-popout" : "vls-pb-popin" : undefined}>
           <MiniTv x={x + (floating ? 92 : 38)} y={floating ? 51 : 31}
             w={floating ? 54 : 70} h={floating ? 31 : 41} />
           <path d={floating ? `M${x + 113} 58l10 6-10 6Z` : `M${x + 65} 42l14 8-14 8Z`} fill={SKY} />

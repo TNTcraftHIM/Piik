@@ -146,13 +146,16 @@ const ScenePause: HintScene = ({ theme }) => (
 .vls-pz-flick{animation:vlsPzFlick var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-pz-hold{animation:vlsPzHold var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
 .vls-pz-bars{transform-box:fill-box;transform-origin:center;animation:vlsPzBars var(--comic-duration,3.2s) cubic-bezier(.3,1.5,.5,1) var(--comic-repeat,1) both}
+:where(svg[data-comic-motion="still"]) .vls-pz-bars{animation-name:vlsPzRest}
 @keyframes vlsPzFlick{0%{opacity:.5}10%{opacity:.9}20%{opacity:.2}32%{opacity:.85}44%,100%{opacity:.5}}
 @keyframes vlsPzHold{0%{opacity:0}12%,100%{opacity:1}}
 @keyframes vlsPzBars{0%,5%{opacity:0;transform:scale(1.45)}16%,100%{opacity:1;transform:scale(1)}}
+@keyframes vlsPzRest{0%,8%{transform:scale(1.15)}30%,100%{transform:none}}
 ${rmBlock(
-  ["vls-pz-flick", "vls-pz-hold", "vls-pz-bars"],
-  [[".vls-pz-flick", "opacity:.5"], [".vls-pz-hold,.vls-pz-bars", "opacity:1;transform:none"]],
+  ["vls-pz-flick", "vls-pz-hold"],
+  [[".vls-pz-flick", "opacity:.5"], [".vls-pz-hold", "opacity:1;transform:none"]],
 )}
+${rmBlock(["vls-pz-bars"], [[".vls-pz-bars", "opacity:1;transform:none"]], false)}
 `}</style>
     <Frame x={4} w={152} theme={theme} />
     <Frame x={164} w={152} theme={theme} result />
@@ -184,13 +187,16 @@ const SceneResume: HintScene = ({ theme }) => (
 .vls-rs-play{transform-box:fill-box;transform-origin:center;animation:vlsRsPlay var(--comic-duration,3.2s) cubic-bezier(.3,1.5,.5,1) var(--comic-repeat,1) both}
 .vls-rs-led{animation:vlsRsLed var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
 .vls-rs-flick{animation:vlsRsFlick var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+:where(svg[data-comic-motion="still"]) .vls-rs-play{animation-name:vlsRsRest}
 @keyframes vlsRsPlay{0%{transform:scale(.55);opacity:.5}14%{transform:scale(1.18);opacity:1}22%,100%{transform:scale(1);opacity:1}}
 @keyframes vlsRsLed{0%{opacity:.2}10%,100%{opacity:1}}
 @keyframes vlsRsFlick{0%,12%{opacity:0}20%{opacity:.9}30%{opacity:.25}40%{opacity:.85}54%,100%{opacity:.5}}
+@keyframes vlsRsRest{0%,8%{transform:translateX(-3px)}30%,100%{transform:none}}
 ${rmBlock(
-  ["vls-rs-play", "vls-rs-led", "vls-rs-flick"],
-  [[".vls-rs-play,.vls-rs-led", "opacity:1;transform:none"], [".vls-rs-flick", "opacity:.5"]],
+  ["vls-rs-led", "vls-rs-flick"],
+  [[".vls-rs-led", "opacity:1;transform:none"], [".vls-rs-flick", "opacity:.5"]],
 )}
+${rmBlock(["vls-rs-play"], [[".vls-rs-play", "opacity:1;transform:none"]], false)}
 `}</style>
     <Frame x={4} w={152} theme={theme} />
     <Frame x={164} w={152} theme={theme} result />
@@ -217,9 +223,12 @@ const SceneSwitchSource: HintScene = ({ theme }) => (
     <style>{`
 .vls-sw-d1{animation:vlsSwD1 var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-sw-d2{animation:vlsSwD2 var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+:where(svg[data-comic-motion="still"]) .vls-sw-selected{animation:vlsSwSelected var(--comic-duration,3.2s) ease-out 1 both}
 @keyframes vlsSwD1{0%{transform:translate(0,0);opacity:0}8%{opacity:1}22%{transform:translate(11px,-6px)}36%{transform:translate(22px,0);opacity:1}46%,100%{transform:translate(22px,0);opacity:0}}
 @keyframes vlsSwD2{0%{transform:translate(0,0);opacity:0}8%{opacity:1}22%{transform:translate(-11px,6px)}36%{transform:translate(-22px,0);opacity:1}46%,100%{transform:translate(-22px,0);opacity:0}}
+@keyframes vlsSwSelected{0%,8%{transform:translateY(-4px)}30%,100%{transform:none}}
 ${rmBlock(["vls-sw-d1", "vls-sw-d2"], [[".vls-sw-d1,.vls-sw-d2", "opacity:0;transform:none"]])}
+${rmBlock(["vls-sw-selected"], [[".vls-sw-selected", "transform:none"]], false)}
 `}</style>
     <Frame x={4} w={152} theme={theme} />
     <Frame x={164} w={152} theme={theme} result />
@@ -228,7 +237,8 @@ ${rmBlock(["vls-sw-d1", "vls-sw-d2"], [[".vls-sw-d1,.vls-sw-d2", "opacity:0;tran
     <SourceWindow x={187} y={28} />
     <SourceWindow x={247} y={28} alternate />
     <g stroke={LIVE} strokeWidth={2.5} strokeLinecap="round" fill="none">
-      <path d="M41 70l5 5 10-10 M261 70l5 5 10-10" />
+      <path d="M41 70l5 5 10-10" />
+      <path className="vls-sw-selected" d="M261 70l5 5 10-10" />
     </g>
     <g stroke={SKY} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" fill="none">
       <path d="M229 29 C236 16 244 16 251 29 M244.5 26.5 L251 29 L249 22.5" />

@@ -61,9 +61,12 @@ function ShareAudioHint({ theme, enabled, locked = false }: { theme: ComicTheme;
     <style>{`
 .vls-share-audio-change{animation:vlsShareAudioChange var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-share-audio-off{animation-name:vlsShareAudioOff}
+.vls-share-audio-lock{transform-box:fill-box;transform-origin:center;animation:vlsShareAudioLock var(--comic-duration,3.2s) ease-in-out 1 both}
 @keyframes vlsShareAudioChange{0%,12%{opacity:0}36%,100%{opacity:1}}
 @keyframes vlsShareAudioOff{0%,12%{opacity:1}36%,100%{opacity:0}}
+@keyframes vlsShareAudioLock{0%,8%,34%,100%{transform:none}16%{transform:translateX(-3px) rotate(-12deg)}25%{transform:translateX(2px) rotate(8deg)}}
 ${rmBlock(["vls-share-audio-change"], [[".vls-share-audio-change", "opacity:1"], [".vls-share-audio-off", "opacity:0"]])}
+${rmBlock(["vls-share-audio-lock"], [[".vls-share-audio-lock", "transform:none"]], false)}
 `}</style>
     {[4, 164].map((x, index) => {
       const audible = locked || index ? enabled : !enabled;
@@ -79,7 +82,7 @@ ${rmBlock(["vls-share-audio-change"], [[".vls-share-audio-change", "opacity:1"],
           <ellipse cx={x + 94} cy={38} rx={4} ry={3} fill={STAR_GOLD} />
           <ellipse cx={x + 107} cy={35} rx={4} ry={3} fill={STAR_GOLD} />
         </g>
-        {locked && index ? <g stroke="var(--ink)" strokeWidth={1.5}>
+        {locked && index ? <g className="vls-share-audio-lock" stroke="var(--ink)" strokeWidth={1.5}>
           <path d={`M${x + 87} 77 v-3 a3 3 0 0 1 6 0 v3`} fill="none" />
           <rect x={x + 85} y={77} width={10} height={8} rx={2} fill={STAR_GOLD} />
         </g> : null}
@@ -115,8 +118,15 @@ ${rmBlock(["vls-refresh-path", "vls-refresh-source"], [[".vls-refresh-path", "st
 
 function SourceListHint({ theme, empty = false }: { theme: ComicTheme; empty?: boolean }) {
   return <>
+    <style>{`
+.vls-source-cursor{animation:vlsSourceCursor var(--comic-duration,3.2s) ease-in-out 1 both}
+.vls-source-look{transform-box:fill-box;transform-origin:50% 100%;animation:vlsSourceLook var(--comic-duration,3.2s) ease-in-out 1 both}
+@keyframes vlsSourceCursor{0%,8%{transform:translate(35px,9px)}30%,100%{transform:none}}
+@keyframes vlsSourceLook{0%,8%,42%,100%{transform:none}22%{transform:rotate(7deg)}}
+${rmBlock(["vls-source-cursor", "vls-source-look"], [[".vls-source-cursor,.vls-source-look", "transform:none"]], false)}
+`}</style>
     <Frame x={4} w={312} theme={theme} result />
-    <Pawn x={53} yb={79} s={15} eyes gaze={2} />
+    <Pawn x={53} yb={79} s={15} eyes gaze={2} className={empty ? "vls-source-look" : undefined} />
     <BrowserWindow x={94} y={14} w={172} h={67}>
       {empty ? <>
         <rect x={124} y={36} width={112} height={30} rx={4} fill="none" stroke={FAINT} strokeWidth={2} strokeDasharray="4 4" />
@@ -126,7 +136,7 @@ function SourceListHint({ theme, empty = false }: { theme: ComicTheme; empty?: b
           <rect x={x} y={35} width={37} height={29} rx={4} fill="var(--paper)" stroke="var(--ink)" strokeWidth={2} />
           <path d={`M${x + 6} 56l7-9 7 6 9-11`} fill="none" stroke={SKY} strokeWidth={2} />
         </g>)}
-        <path d="M179 52v18l5-5 5 8 4-2-5-8 8-1Z" fill="var(--paper)" stroke="var(--ink)" strokeWidth={1.8} />
+        <path className="vls-source-cursor" d="M179 52v18l5-5 5 8 4-2-5-8 8-1Z" fill="var(--paper)" stroke="var(--ink)" strokeWidth={1.8} />
       </>}
     </BrowserWindow>
   </>;

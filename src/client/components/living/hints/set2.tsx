@@ -21,6 +21,15 @@ import {
 } from "../Comic";
 import type { HintScene, Set2Kind } from "../../../ui/visual-kinds";
 
+// A settled card or held link rests in place; it does not repeat its operation.
+function RoomResultMotion() {
+  return <style>{`
+:where(svg[data-comic-motion="still"]) .vls-room-result{transform-box:fill-box;transform-origin:center;animation:vlsRoomResult var(--comic-duration,3.2s) ease-out 1 both}
+@keyframes vlsRoomResult{0%,8%{transform:translateY(-4px) rotate(-4deg)}30%,100%{transform:none}}
+${rmBlock(["vls-room-result"], [[".vls-room-result", "transform:none"]], false)}
+`}</style>;
+}
+
 /* LCD code card: pale body, dark screen, 4 abstract digit slots at +12/+27/
    +42/+57 inside the 78x46 body. */
 const SLOT_DX = [12, 27, 42, 57] as const;
@@ -133,6 +142,7 @@ function OpenDoorway({ x, y }: { x: number; y: number }) {
 /* ------------------------------------------------------------------ */
 const SceneCopyCode: HintScene = ({ theme }) => (
   <>
+    <RoomResultMotion />
     <style>{`
 .vls-copy-pawn{transform-box:fill-box;transform-origin:50% 100%;animation:vlsCopyLean var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-copy-ring{transform-box:fill-box;transform-origin:center;animation:vlsCopyRing var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
@@ -166,10 +176,10 @@ ${rmBlock(
     />
     <Pawn x={38} yb={76} s={9} eyes className="vls-copy-pawn" />
     <LcdBase x={210} y={18} />
-    <g className="vls-copy-front">
+    <g className="vls-room-result"><g className="vls-copy-front">
       <LcdBase x={190} y={32} />
       <LcdSlots x={190} y={32} />
-    </g>
+    </g></g>
     <Star x={292} y={22} r={7} className="vls-copy-star" baseOpacity={0} />
   </>
 );
@@ -179,6 +189,7 @@ ${rmBlock(
 /* ------------------------------------------------------------------ */
 const SceneShuffleCode: HintScene = ({ theme }) => (
   <>
+    <RoomResultMotion />
     <style>{`
 .vls-shuf-slots{opacity:.45}
 .vls-shuf-roll{animation:vlsShufRoll var(--comic-duration,3.2s) linear var(--comic-repeat,1) both}
@@ -197,6 +208,7 @@ ${rmBlock(
     <Frame x={164} w={152} theme={theme} result />
     <LcdBase x={41} y={25} />
     <LcdSlots x={41} y={25} />
+    <g className="vls-room-result">
     <LcdBase x={201} y={25} />
     <LcdSlots x={201} y={25} className="vls-shuf-slots" />
     <g className="vls-shuf-roll" fill={INK_STAGE} opacity={0.9}>
@@ -208,6 +220,7 @@ ${rmBlock(
         </g>
       ))}
     </g>
+    </g>
     <Spark x={288} y={30} className="vls-shuf-spark" />
   </>
 );
@@ -217,6 +230,7 @@ ${rmBlock(
 /* ------------------------------------------------------------------ */
 const SceneCopyInvite: HintScene = ({ theme }) => (
   <>
+    <RoomResultMotion />
     <style>{`
 .vls-cinv-eyes{transform-box:fill-box;transform-origin:center;animation:vlsCinvBlink var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-cinv-fly{animation:vlsCinvFly var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
@@ -250,9 +264,9 @@ ${rmBlock(
     />
     <Pawn x={196} yb={76} s={8.5} eyes host />
     <Pawn x={288} yb={76} s={8.5} eyes color={SKY} />
-    <g className="vls-cinv-fly" opacity={0}>
+    <g className="vls-room-result"><g className="vls-cinv-fly" opacity={0}>
       <LinkRing x={278} y={31.5} w={20} h={11} tilt={-12} />
-    </g>
+    </g></g>
     <Star x={288} y={16} r={6} className="vls-cinv-star" baseOpacity={0} />
   </>
 );
@@ -274,6 +288,7 @@ const HintClientLink: HintScene = ({ theme }) => (
 /* ------------------------------------------------------------------ */
 const SceneRotateInvite: HintScene = ({ theme }) => (
   <>
+    <RoomResultMotion />
     <style>{`
 .vls-rinv-ring{transform-box:view-box;transform-origin:240px 48px;animation:vlsRinvSpin var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-rinv-spark{transform-box:fill-box;transform-origin:center;animation:vlsRinvSpark var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
@@ -287,7 +302,7 @@ ${rmBlock(
     <Frame x={4} w={152} theme={theme} />
     <Frame x={164} w={152} theme={theme} result />
     <LinkRing x={65} y={40} w={30} h={16} tilt={-15} />
-    <LinkRing x={225} y={40} w={30} h={16} tilt={-15} />
+    <g className="vls-room-result"><LinkRing x={225} y={40} w={30} h={16} tilt={-15} /></g>
     <g
       className="vls-rinv-ring"
       stroke={SKY}
@@ -307,6 +322,7 @@ ${rmBlock(
 /* ------------------------------------------------------------------ */
 const SceneRevokeInvite: HintScene = ({ theme }) => (
   <>
+    <RoomResultMotion />
     <style>{`
 .vls-rev-l{transform-box:view-box;transform-origin:223px 52.5px;animation:vlsRevL var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-rev-r{transform-box:view-box;transform-origin:257px 52.5px;animation:vlsRevR var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
@@ -323,7 +339,7 @@ ${rmBlock(
     <Frame x={164} w={152} theme={theme} result />
     <LinkRing x={56} y={41} w={28} h={14} />
     <LinkRing x={76} y={41} w={28} h={14} />
-    <g className="vls-rev-l">
+    <g className="vls-room-result"><g className="vls-rev-l">
       <g transform="rotate(18 223 52.5)">
         <rect
           x={210}
@@ -351,6 +367,7 @@ ${rmBlock(
         />
       </g>
     </g>
+    </g>
     <RedX cx={240} cy={38} arm={5} className="vls-rev-x" />
   </>
 );
@@ -363,8 +380,11 @@ const ScenePolicyOpen: HintScene = ({ theme }) => (
     <style>{`
 .vls-open-p1{transform-box:fill-box;transform-origin:50% 100%;animation:vlsOpenHop var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-open-p2{transform-box:fill-box;transform-origin:50% 100%;animation:vlsOpenHop var(--comic-duration,3.2s) ease-in-out .2s var(--comic-repeat,1) both}
+:where(svg[data-comic-motion="still"]) .vls-open-p1{animation-name:vlsOpenWelcome}
 @keyframes vlsOpenHop{0%,6%{transform:translateY(0)}14%{transform:translateY(-5px)}22%{transform:translateY(0)}28%{transform:translateY(-3px)}34%,100%{transform:translateY(0)}}
-${rmBlock(["vls-open-p1", "vls-open-p2"], [])}
+@keyframes vlsOpenWelcome{0%,8%,38%,100%{transform:none}22%{transform:rotate(-7deg)}}
+${rmBlock(["vls-open-p2"], [])}
+${rmBlock(["vls-open-p1"], [[".vls-open-p1", "transform:none"]], false)}
 `}</style>
     <Frame x={4} w={152} theme={theme} />
     <Frame x={164} w={152} theme={theme} result />
@@ -393,12 +413,13 @@ const ScenePolicyPrivate: HintScene = ({ theme }) => (
 @keyframes vlsPrivLock{0%,24%{transform:translateY(-6px);opacity:0}34%{transform:translateY(1px);opacity:1}40%,100%{transform:none;opacity:1}}
 @keyframes vlsPrivClick{0%,32%{opacity:0;transform:scale(.45)}38%{opacity:1;transform:scale(1.12)}48%,100%{opacity:0;transform:scale(1)}}
 ${rmBlock(
-  ["vls-priv-eyes", "vls-priv-card", "vls-priv-door", "vls-priv-lock", "vls-priv-click"],
+  ["vls-priv-eyes", "vls-priv-door", "vls-priv-lock", "vls-priv-click"],
   [
-    [".vls-priv-card,.vls-priv-door,.vls-priv-lock", "transform:none;opacity:1"],
+    [".vls-priv-door,.vls-priv-lock", "transform:none;opacity:1"],
     [".vls-priv-click", "opacity:.65;transform:none"],
   ],
 )}
+${rmBlock(["vls-priv-card"], [[".vls-priv-card", "transform:none;opacity:1"]], false)}
 `}</style>
     <Frame x={4} w={152} theme={theme} />
     <Frame x={164} w={152} theme={theme} result />
@@ -454,6 +475,7 @@ ${rmBlock(
 /* ------------------------------------------------------------------ */
 const ScenePassword: HintScene = ({ theme }) => (
   <>
+    <RoomResultMotion />
     <style>{`
 .vls-pass-key{animation:vlsPassKey var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-pass-lines{animation:vlsPassLines var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
@@ -527,6 +549,7 @@ ${rmBlock(
       strokeLinejoin="round"
     />
     <circle cx={254} cy={46} r={1.8} fill="var(--ink)" />
+    <g className="vls-room-result">
     <rect
       x={186}
       y={44}
@@ -546,6 +569,7 @@ ${rmBlock(
       fill="none"
       strokeLinecap="round"
     />
+    </g>
   </>
 );
 

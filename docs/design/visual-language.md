@@ -165,7 +165,7 @@ possibility. A rejected PiP request is failure; lack of PiP support is a limitat
 | --- | --- |
 | Action demonstration (`demo`) | Play one meaningful transition when shown, then hold its result |
 | Work actually continuing (`progress`) | Repeat a gentle connection/recovery beat while that state exists |
-| Settled success, failure, limitation, pause or idle (`still`) | Keep the informative final pose; one brief entrance and eye gesture may add personality, without repeating the operation, retrying or celebrating |
+| Settled success, failure, limitation, pause or idle (`still`) | Keep the result readable while a related subject moves briefly, then holds; do not repeat the operation, retry or celebrate |
 
 Demonstrations and progress share the existing 3.2-second comic beat. The main
 action belongs in its first half, followed by a readable hold; small internal
@@ -179,11 +179,16 @@ result or shows a misleading starting pose. Static styling is scoped to its SVG;
 one still tooltip must not freeze another progress scene. New keyframes must end
 in the documented result rather than reset for an obsolete loop.
 
-Every comic surface, including overlays and error pages, shares a restrained
-entrance. Settled figures may blink once while their result remains unchanged.
+Every comic surface, including overlays and error pages, needs visible motion
+in its subject: a paused scene's steam rises, a loose cable sways, or packets
+advance toward a bottleneck. Whole-scene entrance, blinking or sparkle alone
+does not satisfy this. Settled result marks stay readable during that movement.
 Changing the comic's meaning starts its animation afresh; changing a caption,
 language or numeric value alone does not. The preview's reduced-motion setting
 uses the same explicit final poses as the system setting.
+Check scenes in isolation, including settled overrides and quick re-entry while
+a tooltip is exiting, so another mounted scene cannot hide missing CSS or a
+finished animation. Reduced-motion rules must outrank settled-motion overrides.
 
 The tooltip panel itself uses the same restrained entrance/exit for every tone.
 Replay belongs to opening/hovering/focusing the whole control, not just its SVG.

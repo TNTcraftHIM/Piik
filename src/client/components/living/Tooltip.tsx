@@ -25,6 +25,7 @@ import {
 import { Comic, type ComicKind } from "./Comic";
 import { HintComic, isHintKind, type HintKind } from "./hints";
 import { isCopyKey, say } from "../../ui/copy";
+import { replaySvgAnimations } from "../../ui/animation";
 import { comicStyle, getComicPresentation, type ComicTone, type ComicMotion } from "./comic-presentation";
 
 const LONG_PRESS_MS = 500;
@@ -101,11 +102,15 @@ export function Tooltip({
       ? say(rawDisabledTriggerLabel)
       : rawDisabledTriggerLabel;
 
-  const mountPanel = () => {
+  const mountPanel = (replay = false) => {
     if (panelUnmountTimer.current !== null) {
       window.clearTimeout(panelUnmountTimer.current);
       panelUnmountTimer.current = null;
     }
+    // A fresh gesture may reuse a panel still exiting or held by another input
+    // channel. Its finished animations need the same replay as a fresh mount.
+    const comic = replay && panelMounted ? tipRef.current?.querySelector("svg") : null;
+    if (comic) replaySvgAnimations(comic);
     setPanelMounted(true);
   };
 
@@ -263,7 +268,7 @@ export function Tooltip({
       onPointerEnter={(event) => {
         pickAlign();
         if (event.pointerType !== "touch") {
-          mountPanel();
+          mountPanel(true);
           setHoverOpen(true);
         }
       }}
@@ -273,7 +278,7 @@ export function Tooltip({
       onFocus={(event) => {
         pickAlign();
         if ((event.target as HTMLElement).matches(":focus-visible")) {
-          mountPanel();
+          mountPanel(true);
           setFocusOpen(true);
         }
       }}
@@ -295,7 +300,7 @@ export function Tooltip({
         pressTimer.current = window.setTimeout(() => {
           pressTimer.current = null;
           longPressed.current = true;
-          mountPanel();
+          mountPanel(true);
           pickAlign();
           setPressOpen(true);
         }, LONG_PRESS_MS);
@@ -361,7 +366,7 @@ export function Tooltip({
           setHoverOpen(false);
           setFocusOpen(false);
         } else {
-          mountPanel();
+          mountPanel(true);
           pickAlign();
           setPressOpen(true);
         }

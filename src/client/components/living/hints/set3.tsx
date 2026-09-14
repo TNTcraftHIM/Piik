@@ -15,25 +15,39 @@ import type { HintScene, Set3Kind } from "../../../ui/visual-kinds";
 
 // Settings explain a choice; they do not predict delivered quality.
 const hintQuality: HintScene = ({ theme }) => <>
+  <style>{`
+.vls-quality-choice{animation:vlsQualityChoice var(--comic-duration,3.2s) ease-in-out 1 both}
+.vls-quality-size{stroke-dasharray:1;animation:vlsQualitySize var(--comic-duration,3.2s) ease-out 1 both}
+@keyframes vlsQualityChoice{0%,8%{transform:translateX(-43px)}30%,100%{transform:none}}
+@keyframes vlsQualitySize{0%,18%{stroke-dashoffset:1}42%,100%{stroke-dashoffset:0}}
+${rmBlock(["vls-quality-choice"], [[".vls-quality-choice", "transform:none"]])}
+${rmBlock(["vls-quality-size"], [[".vls-quality-size", "stroke-dashoffset:0"]], false)}
+`}</style>
   <Frame x={4} w={152} theme={theme} /><Frame x={164} w={152} theme={theme} result />
   {[0, 1, 2].map(index => <g key={index} transform={`translate(${index * 43} 0)`} stroke="var(--ink)" fill="none" strokeWidth={2}>
     <rect x={20} y={25} width={32} height={43} rx={5} />
     {[0, 1, ...(index ? [2] : [])].map(line => <path key={line} d={`M26 ${35 + line * 7}h20`} />)}
     {index === 2 ? <path d="M25 59h15m-4-3 4 3-4 3" /> : null}
   </g>)}
-  <path d="M69 75h19" stroke="var(--ink)" strokeWidth={3} strokeLinecap="round" />
+  <path className="vls-quality-choice" d="M69 75h19" stroke="var(--ink)" strokeWidth={3} strokeLinecap="round" />
   <Pawn x={190} yb={80} s={9} eyes host gaze={2} />
   <MiniTv x={220} y={25} w={70} h={43} />
-  <path d="M220 79h70m-70-4v8m70-8v8M300 25v43m-4-43h8m-8 43h8" stroke="var(--ink)" strokeWidth={2} fill="none" />
+  <path className="vls-quality-size" pathLength={1} d="M220 79h70m-70-4v8m70-8v8M300 25v43m-4-43h8m-8 43h8" stroke="var(--ink)" strokeWidth={2} fill="none" />
 </>;
 
 const hintAudioQuality: HintScene = ({ theme }) => <>
+  <style>{`
+.vls-audio-quality-wave{stroke-dasharray:1;animation:vlsAudioQualityWave var(--comic-duration,3.2s) ease-out 1 both}
+@keyframes vlsAudioQualityWave{0%,8%{stroke-dashoffset:1}38%,100%{stroke-dashoffset:0}}
+${rmBlock(["vls-audio-quality-wave"], [[".vls-audio-quality-wave", "stroke-dashoffset:0"]], false)}
+`}</style>
   <Frame x={4} w={152} theme={theme} /><Frame x={164} w={152} theme={theme} result />
   {[0, 1].map(index => <g key={index} transform={`translate(${index * 160} 0)`}>
     <Pawn x={26} yb={81} s={8} eyes host />
     <path d="M45 33h8l13-9v34l-13-9h-8Z" fill="none" stroke="var(--ink)" strokeWidth={2} strokeLinejoin="round" />
     <path d="M76 36q7 5 0 10" fill="none" stroke="var(--ink)" strokeWidth={2} strokeLinecap="round" />
-    <path d="M93 44l8-12 9 24 8-12h15" fill="none" stroke="var(--ink)" strokeWidth={2}
+    <path className={index ? "vls-audio-quality-wave" : undefined} pathLength={index ? 1 : undefined}
+      d="M93 44l8-12 9 24 8-12h15" fill="none" stroke="var(--ink)" strokeWidth={2}
       strokeDasharray={index ? undefined : "3 4"} />
   </g>)}
   <text x={80} y={88} fill="var(--ink)" fontSize={11} textAnchor="middle">64 / 128 / 192</text>
@@ -46,6 +60,11 @@ function PreferenceHint({ theme, preference }: Parameters<HintScene>[0] & {
   const detail = preference === "resolution";
   const motion = preference === "framerate";
   return <>
+    <style>{`
+.vls-pref-${preference}{transform-box:view-box;transform-origin:237px 42px;animation:vlsPref${preference} var(--comic-duration,3.2s) ease-in-out 1 both}
+@keyframes vlsPref${preference}{0%,8%{transform:rotate(${detail ? 12 : -12}deg)}24%{transform:rotate(${motion ? 3 : -3}deg)}40%,100%{transform:none}}
+${rmBlock([`vls-pref-${preference}`], [[`.vls-pref-${preference}`, "transform:none"]])}
+`}</style>
     <Frame x={4} w={152} theme={theme} /><Frame x={164} w={152} theme={theme} result />
     <Pawn x={25} yb={81} s={8} eyes host />
     <path d="M83 79V40m-14 39h28M49 40h68m-68 0v12m68-12v12M39 52q10 12 20 0m48 0q10 12 20 0" stroke="var(--ink)" strokeWidth={2} fill="none" />
@@ -53,11 +72,11 @@ function PreferenceHint({ theme, preference }: Parameters<HintScene>[0] & {
     <path d="m44 37 5-7 6 7M105 27h15v13m-20-9h15v13m-20-9h15v13" stroke="var(--ink)" strokeWidth={1.5} fill="none" />
     <Pawn x={294} yb={81} s={8} eyes host />
     <path d="M237 79V42m-14 37h28" stroke="var(--ink)" strokeWidth={2} fill="none" />
-    <g transform={`rotate(${detail ? -12 : motion ? 12 : 0} 237 42)`} stroke="var(--ink)" strokeWidth={2} fill="none">
+    <g className={`vls-pref-${preference}`}><g transform={`rotate(${detail ? -12 : motion ? 12 : 0} 237 42)`} stroke="var(--ink)" strokeWidth={2} fill="none">
       <path d="M199 42h76m-76 0v14m76-14v14M189 56q10 12 20 0m56 0q10 12 20 0" />
       <rect x={190} y={27} width={18} height={15} rx={2} />
       <path d="m193 39 5-8 7 8M265 27h15v13m-20-9h15v13m-20-9h15v13" />
-    </g>
+    </g></g>
     <path d={detail ? "M188 19h22" : motion ? "M260 19h22" : "M229 22h16m-16 6h16"}
       stroke="var(--ink)" strokeWidth={3} strokeLinecap="round" />
   </>;
@@ -65,11 +84,18 @@ function PreferenceHint({ theme, preference }: Parameters<HintScene>[0] & {
 const hintDegradePref: HintScene = props => <PreferenceHint {...props} preference="balanced" />;
 
 const hintCodec: HintScene = ({ theme }) => <>
+  <style>{`
+.vls-codec-piece{animation:vlsCodecPiece var(--comic-duration,3.2s) ease-in-out 1 both}
+.vls-codec-packets{transform-box:fill-box;transform-origin:left;animation:vlsCodecPackets var(--comic-duration,3.2s) ease-out 1 both}
+@keyframes vlsCodecPiece{0%,8%{transform:translateX(-10px)}28%,100%{transform:none}}
+@keyframes vlsCodecPackets{0%,18%{transform:scaleX(0)}42%,100%{transform:none}}
+${rmBlock(["vls-codec-piece", "vls-codec-packets"], [[".vls-codec-piece,.vls-codec-packets", "transform:none"]])}
+`}</style>
   <Frame x={4} w={152} theme={theme} /><Frame x={164} w={152} theme={theme} result />
   <MiniTv x={28} y={24} w={60} h={39} />
   <path d="M97 32h10a4 4 0 1 0 8 0h10v10a4 4 0 1 0 0 8v10h-28Z" fill="var(--paper)" stroke="var(--ink)" strokeWidth={2} />
-  <path d="M183 33h10a4 4 0 1 0 8 0h10v10a4 4 0 1 0 0 8v10h-28Z" fill="var(--paper)" stroke="var(--ink)" strokeWidth={2} />
-  <path d="M227 36h60m-60 12h60m-60 12h60" stroke="var(--ink)" strokeWidth={2} strokeDasharray="9 6" />
+  <path className="vls-codec-piece" d="M183 33h10a4 4 0 1 0 8 0h10v10a4 4 0 1 0 0 8v10h-28Z" fill="var(--paper)" stroke="var(--ink)" strokeWidth={2} />
+  <path className="vls-codec-packets" d="M227 36h60m-60 12h60m-60 12h60" stroke="var(--ink)" strokeWidth={2} strokeDasharray="9 6" />
 </>;
 
 /** hint-advanced: closed cabinet door with a sliders glyph → door swings
