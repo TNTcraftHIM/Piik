@@ -5,7 +5,7 @@
   <a href="https://piik.tv/?lang=zh-CN">官网</a> ·
   <a href="https://github.com/TNTcraftHIM/Piik/releases">下载</a> ·
   <a href="https://gitee.com/TNTcraftHIM/Piik/releases">Gitee 镜像</a> ·
-  <a href="https://demo.piik.tv">在线演示</a> ·
+  <a href="https://demo.piik.tv">在线版</a> ·
   <a href="./docs/README.md">文档</a>
 </p>
 <p align="center">
@@ -48,11 +48,11 @@ Piik 是一个免费开源的屏幕共享工具，适合游戏围观、一起看
 
 **观看分享：** 打开朋友发来的邀请链接。画面没有自动播放时，点击**播放**即可。
 
-**分享画面：**
+**分享画面：** 推荐下载 **Piik App**。想免安装，也可以打开在线版直接创建房间。
 
 | 从这里开始 | 需要做什么 |
 | --- | --- |
-| [体验在线 Demo](https://demo.piik.tv) | 在电脑浏览器打开，开始分享。 |
+| [使用在线版](https://demo.piik.tv) | 在电脑浏览器打开，直接创建房间并分享。 |
 | [下载 Piik App](https://piik.tv/?lang=zh-CN#download) | 解压并启动客户端，选择**公网邀请**，点击**进入 Piik**，创建临时房间。 |
 | 使用已有 Piik 站点 | 打开朋友或管理员提供的地址。[自行部署](./docs/operations/self-hosting.zh-CN.md)属于进阶操作。 |
 
@@ -73,11 +73,11 @@ Piik 默认跟随系统语言，中文系统显示简体中文，其他语言显
 | `darwin-arm64` | Apple 芯片；原生采集需 macOS 13 及以上 |
 | `linux-amd64` | Linux x64 |
 
-[**完整使用教程 →**](./docs/guide/getting-started.zh-CN.md) · [**打开在线演示 →**](https://demo.piik.tv)
+[**完整使用教程 →**](./docs/guide/getting-started.zh-CN.md) · [**打开在线版 →**](https://demo.piik.tv)
 
 浏览器采集需要 HTTPS 或 `localhost`。目前主要测试 Windows 客户端和桌面浏览器分享。
 macOS 和 Linux 客户端尚未经过实机测试，欢迎有设备的朋友试用并[反馈问题](https://github.com/TNTcraftHIM/Piik/issues)。
-客户端公网邀请和演示站使用纯 P2P 连接，
+客户端公网邀请和在线版使用纯 P2P 连接，
 在受限网络下可能无法连通。
 
 ## 自行部署

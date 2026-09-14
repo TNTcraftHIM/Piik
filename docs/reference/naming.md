@@ -62,6 +62,10 @@ are optional. Keep App and Server package names distinguishable at download link
 Public platform notes say what has been tested and invite useful feedback;
 internal phrases such as “this phase's acceptance target” belong in status.
 
+Present the public online site as a usable entry for real rooms and sharing.
+Offer the App download first and direct browser use alongside it; keep the
+site's P2P-only deployment conditions in its detailed guide.
+
 Use progressive disclosure on the website and in the film:
 
 | Information layer | Reader's question | Content |

@@ -86,6 +86,10 @@ not establish better connection success or speed; this note adds no retry policy
    candidate. Reopen C=3 structural-intent retention, SFU failure during unrelated
    prepare and multi-child evidence ownership only with current-contract
    reproductions.
+   When related behavior changes, compare per-peer evidence/timer ownership and
+   the Browser/Native recovery budget. Expiry rules already have one owner;
+   extract shared lifecycle code only when it reduces total state and callback
+   wiring while preserving Native bridge versus network failure distinctions.
    No new revision namespace, failure-state mirror or topology queue by default.
 5. **Storage fault recovery.** Choose and verify a damaged-disk/COMMIT/ROLLBACK
    recovery policy before adding catch-and-continue or retries. This failure

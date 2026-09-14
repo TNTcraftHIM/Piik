@@ -5,7 +5,7 @@
   <a href="https://piik.tv">Website</a> ·
   <a href="https://github.com/TNTcraftHIM/Piik/releases">Download</a> ·
   <a href="https://gitee.com/TNTcraftHIM/Piik/releases">Gitee mirror</a> ·
-  <a href="https://demo.piik.tv">Try the demo</a> ·
+  <a href="https://demo.piik.tv">Use online</a> ·
   <a href="./docs/README.md">Documentation</a>
 </p>
 <p align="center">
@@ -50,11 +50,12 @@ watch in their browsers.
 **To watch:** open the invitation your friend sends you. Select **Play** if the
 picture does not start automatically.
 
-**To share:**
+**To share:** download **Piik App** to get started. To share without installing,
+you can also create a room in the online version.
 
 | Start here | What you need to do |
 | --- | --- |
-| [Try the online demo](https://demo.piik.tv) | Open it in a desktop browser and start sharing. |
+| [Use Piik online](https://demo.piik.tv) | Open it in a desktop browser to create a room and share. |
 | [Download Piik App](https://piik.tv/#download) | Extract and open the App, choose **Public invite**, then **Open Piik** to create a temporary room. |
 | Use an existing Piik site | Open the address your friend or administrator provides. [Hosting your own](./docs/operations/self-hosting.md) is an advanced option. |
 
@@ -76,13 +77,13 @@ Download a ZIP beginning with **`piik-app`**. The filename also identifies the p
 | `darwin-arm64` | Apple silicon; native capture requires macOS 13+ |
 | `linux-amd64` | Linux x64 |
 
-[**Full setup guide →**](./docs/guide/getting-started.md) · [**Open the demo →**](https://demo.piik.tv)
+[**Full setup guide →**](./docs/guide/getting-started.md) · [**Open online →**](https://demo.piik.tv)
 
 Browser capture requires HTTPS or `localhost`. Windows App and desktop browser
 sharing are the primary tested paths. The macOS and Linux apps have not yet been
 tested on physical devices; [test results and feedback are welcome](https://github.com/TNTcraftHIM/Piik/issues).
 P2P-only modes, including the App's temporary public
-link and the demo, may not connect on restrictive networks.
+link and the online version, may not connect on restrictive networks.
 
 ## Self-hosting
 

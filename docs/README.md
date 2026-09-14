@@ -6,7 +6,7 @@
 
 | Task | Guide |
 | --- | --- |
-| Try the online demo | [Online demo](https://demo.piik.tv) · [Demo steps](./guide/getting-started.md#try-the-online-demo) |
+| Use Piik online | [Open the online site](https://demo.piik.tv) · [Online sharing guide](./guide/getting-started.md#use-piik-online) |
 | Watch a friend or share my first screen | [Getting started](./guide/getting-started.md) |
 | Choose an App mode or fix sound and connection trouble | [First-use help](./guide/getting-started.md#choose-an-app-mode) |
 | Run Piik App, check platform requirements, or build a package | [App guide](../cmd/piik-app/README.md) · [中文 App 指南](../cmd/piik-app/README.zh-CN.md) |

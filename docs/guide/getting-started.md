@@ -3,17 +3,15 @@
 English · [简体中文](./getting-started.zh-CN.md) · [Back to Piik](../../README.md)
 
 Piik shares one person's screen with up to 20 invited viewers. This guide covers
-watching, trying the online demo, using Piik App and sharing through an existing site.
+watching, using Piik online, using Piik App and sharing through an existing site.
 
-[Join a room](#join-a-friends-room) · [Online demo](#try-the-online-demo) ·
+[Join a room](#join-a-friends-room) · [Use online](#use-piik-online) ·
 [Piik App](#share-with-piik-app) · [Existing site](#share-from-your-browser) ·
 [Troubleshooting](#when-something-gets-in-the-way)
 
-Viewers need a browser and an invitation. To try sharing, use the online demo
-or **Public invite** in Piik App.
-
-If Piik shows icons only, choose **EN** in the header to show the labels
-used below. **中** switches to Chinese; **✦** returns to the illustrations.
+Viewers need a browser and an invitation. To start sharing, download Piik App
+and choose **Public invite**. To share without installing, open
+[Piik online](https://demo.piik.tv) and create a room in your browser.
 
 ## Join a friend's room
 
@@ -46,7 +44,7 @@ you cannot join by code.
 If an old link no longer works, ask the host for the current invitation.
 App Local rooms and temporary public invitations end when that App run stops.
 
-## Try the online demo
+## Use Piik online
 
 1. Open [demo.piik.tv](https://demo.piik.tv) in a desktop browser that supports
    screen sharing.
@@ -56,7 +54,7 @@ App Local rooms and temporary public invitations end when that App run stops.
    second device or send it to a friend.
 4. Select **Stop sharing** when finished.
 
-The project hosts this site for you. It uses direct media connections (P2P);
+The online version is provided by the project. Media travels only between participants (P2P);
 restrictive networks may load the page but block video.
 
 ## Share with Piik App
@@ -102,7 +100,7 @@ The [App guide](../../cmd/piik-app/README.md#modes) explains the connection setu
 ## Share from your browser
 
 You need an existing HTTPS site running Piik Server, provided by a friend or
-administrator. If you do not have one, start with the [demo](#try-the-online-demo)
+administrator. You can also use [Piik online](#use-piik-online)
 or [Piik App](#share-with-piik-app). Hosting a site yourself is an advanced option:
 follow the [self-hosting guide](../operations/self-hosting.md) for server, HTTPS
 and network setup.
