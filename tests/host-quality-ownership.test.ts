@@ -22,7 +22,7 @@ const owners = new Set(["changeQuality", "commitQuality", "handleSignalMessage",
   "acquireNativeClient", "requestSharing", "startNativeShare", "startBrowserNativeIngress",
   "ownNativeClient", "discardNativeClient", "releaseUnusedNativeClient", "closeCaptureSourcePicker",
   "openCaptureSourcePicker", "startSharing", "beginRoomMutation", "finishRoomMutation",
-  "startPeer", "reconcileHostChildren", "setNotice", "setNoticeKey", "setNoticeError", "setNoticeErrorKey", "endSharing"]);
+  "startPeer", "reconcileHostChildren", "setNotice", "setNoticeKey", "setNoticeError", "setNoticeErrorKey", "endSharing", "copyInvite"]);
 const functions: string[] = [];
 function collect(node: ts.Node): void {
   if (ts.isFunctionDeclaration(node) && node.name && owners.has(node.name.text)) {
@@ -136,6 +136,62 @@ function fixture(launchedByClient = true) {
     switchSource: () => context.switchNativeSource(client, {}, false, {}),
   };
 }
+
+describe("Host invite copy feedback", () => {
+  function copyFixture() {
+    const current = fixture();
+    let copied = false;
+    let notice: unknown = null;
+    current.setCopied.mockImplementation((next: boolean) => { copied = next; });
+    current.setNoticeValue.mockImplementation((next: unknown) => {
+      notice = typeof next === "function" ? next(notice) : next;
+    });
+    const writeText = vi.fn(async (_value: string) => {});
+    Object.assign(current.context, {
+      room: { inviteUrl: "https://example.test/r/1234#invite=example" },
+      navigator: { clipboard: { writeText } },
+      copiedResetTimerRef: ref<number | null>(null),
+      window: { setTimeout: vi.fn(() => 1), clearTimeout: vi.fn() },
+    });
+    return { ...current, writeText, copied: () => copied, notice: () => notice,
+      copy: current.context.copyInvite as () => Promise<void> };
+  }
+
+  it("clears an earlier success when the next copy fails", async () => {
+    const current = copyFixture();
+    await current.copy();
+    expect(current.copied()).toBe(true);
+    current.writeText.mockRejectedValueOnce(new Error("clipboard denied"));
+    await current.copy();
+    expect(current.copied()).toBe(false);
+    expect(current.notice()).toMatchObject({ key: "host.invite.copyFailed", comic: "copy-failed", tone: "bad" });
+  });
+
+  it("clears its own failure after a successful retry", async () => {
+    const current = copyFixture();
+    current.writeText.mockRejectedValueOnce(new Error("clipboard denied"));
+    await current.copy();
+    expect(current.notice()).toMatchObject({ key: "host.invite.copyFailed" });
+    await current.copy();
+    expect(current.copied()).toBe(true);
+    expect(current.notice()).toBeNull();
+  });
+
+  it("preserves another notice that arrives while copying", async () => {
+    const current = copyFixture();
+    current.writeText.mockRejectedValueOnce(new Error("clipboard denied"));
+    await current.copy();
+    const pending = deferred<void>();
+    current.writeText.mockReturnValueOnce(pending.promise);
+    const copying = current.copy();
+    current.context.setNoticeErrorKey("host.accessFailed", "access-denied");
+    const newer = current.notice();
+    pending.resolve();
+    await copying;
+    expect(current.copied()).toBe(true);
+    expect(current.notice()).toBe(newer);
+  });
+});
 
 describe("Host quality ownership", () => {
   it.each(["browser", "app-browser", "native"])("keeps %s capture cancellation in the television status", async (entry) => {

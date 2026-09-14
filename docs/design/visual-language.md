@@ -146,6 +146,12 @@ prospective action is not proof of success: opening details, switching theme,
 adjusting volume or offering P2P stays neutral. Actual copy feedback can change
 that same hint to green or red, using the existing operation result.
 
+Review meaning at the call site. A current admission badge shows the credential
+accepted by [room access](../product/rooms-access.md), not the act of switching
+privacy. Password input is not proof of admission; copying writes to the local
+clipboard and does not send to a friend. An audio track's presence does not
+establish a locked control or delivery to another device.
+
 Two-panel comics always read before/context on the left and result/current
 condition on the right. Only the result carries the semantic accent; a single
 panel carries the current condition. Tooltip outline and caret use that same
@@ -189,6 +195,10 @@ uses the same explicit final poses as the system setting.
 Check scenes in isolation, including settled overrides and quick re-entry while
 a tooltip is exiting, so another mounted scene cannot hide missing CSS or a
 finished animation. Reduced-motion rules must outrank settled-motion overrides.
+Also check the actual controls together, in every relevant property combination.
+Judge motion at its displayed size: a changing transform on a tiny figure can
+still look frozen. The default scene catalogue does not cover a Pill's settled
+override or missing preview states by itself.
 
 The tooltip panel itself uses the same restrained entrance/exit for every tone.
 Replay belongs to opening/hovering/focusing the whole control, not just its SVG.

@@ -5,11 +5,11 @@
 // Paper idioms: var(--ink)/var(--wall-2)/var(--paper) carry the drawing;
 // room codes are always 4 abstract digit slots, never real digits.
 import {
+  BrowserWindow,
   Door,
   FAINT,
   Frame,
   INK_STAGE,
-  LIVE,
   Pawn,
   RedX,
   SKY,
@@ -226,62 +226,59 @@ ${rmBlock(
 );
 
 /* ------------------------------------------------------------------ */
-/* hint-copy-invite: pawn balancing a link → link arcs to a friend.    */
+/* Copy writes a link to this device's clipboard; it sends no invitation. */
 /* ------------------------------------------------------------------ */
 const SceneCopyInvite: HintScene = ({ theme }) => (
   <>
     <RoomResultMotion />
     <style>{`
-.vls-cinv-eyes{transform-box:fill-box;transform-origin:center;animation:vlsCinvBlink var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
-.vls-cinv-fly{animation:vlsCinvFly var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
-.vls-cinv-arc{animation:vlsCinvArc var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
-.vls-cinv-star{transform-box:fill-box;transform-origin:center;animation:vlsCinvStar var(--comic-duration,3.2s) cubic-bezier(.3,1.5,.5,1) var(--comic-repeat,1) both}
-@keyframes vlsCinvBlink{0%,60%,68%,100%{transform:scaleY(1)}64%{transform:scaleY(.12)}}
-@keyframes vlsCinvFly{0%,6%{transform:translate(-92px,0);opacity:0}10%{opacity:1}32%{transform:translate(-46px,-20px)}50%{transform:translate(0,0)}56%{transform:translate(0,-3px)}62%,100%{transform:translate(0,0)}}
-@keyframes vlsCinvArc{0%,10%{opacity:0}20%{opacity:.7}55%{opacity:.7}72%,100%{opacity:0}}
-@keyframes vlsCinvStar{0%,50%{opacity:0;transform:scale(0)}58%{opacity:1;transform:scale(1.25)}66%,100%{opacity:1;transform:scale(1)}}
-${rmBlock(
-  ["vls-cinv-eyes", "vls-cinv-fly", "vls-cinv-arc", "vls-cinv-star"],
-  [
-    [".vls-cinv-fly", "transform:none;opacity:1"],
-    [".vls-cinv-arc", "opacity:.35"],
-    [".vls-cinv-star", "opacity:1"],
-  ],
-)}
+.vls-cinv-copy{animation:vlsCinvCopy var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
+@keyframes vlsCinvCopy{0%,8%{transform:translate(-12px,-13px);opacity:.25}36%,100%{transform:none;opacity:1}}
+${rmBlock(["vls-cinv-copy"], [[".vls-cinv-copy", "transform:none;opacity:1"]])}
 `}</style>
     <Frame x={4} w={152} theme={theme} />
     <Frame x={164} w={152} theme={theme} result />
-    <Pawn x={62} yb={76} s={10} eyes host eyeClassName="vls-cinv-eyes" />
-    <LinkRing x={50} y={27.5} w={24} h={13} tilt={-12} />
-    <path
-      className="vls-cinv-arc"
-      d="M196 50 Q242 14 288 50"
-      stroke={FAINT}
-      strokeWidth={2}
-      strokeDasharray="4 4"
-      fill="none"
-      opacity={0}
-    />
-    <Pawn x={196} yb={76} s={8.5} eyes host />
-    <Pawn x={288} yb={76} s={8.5} eyes color={SKY} />
-    <g className="vls-room-result"><g className="vls-cinv-fly" opacity={0}>
-      <LinkRing x={278} y={31.5} w={20} h={11} tilt={-12} />
+    <BrowserWindow x={24} y={21} w={104} h={54}>
+      <rect x={34} y={39} width={84} height={24} rx={4} fill="var(--wall-2)" stroke={FAINT} strokeWidth={1.5} />
+      <LinkRing x={44} y={42} w={24} h={11} tilt={-25} />
+      <LinkRing x={58} y={50} w={24} h={11} tilt={-25} />
+      <path d="M93 51h15" stroke={FAINT} strokeWidth={2} strokeLinecap="round" />
+    </BrowserWindow>
+    <rect x={205} y={21} width={76} height={60} rx={7} fill="var(--wall-2)" stroke="var(--ink)" strokeWidth={2.5} />
+    <rect x={227} y={15} width={32} height={12} rx={4} fill="var(--paper)" stroke="var(--ink)" strokeWidth={2.5} />
+    <g className="vls-room-result"><g className="vls-cinv-copy">
+      <LinkRing x={219} y={43} w={24} h={11} tilt={-25} />
+      <LinkRing x={233} y={51} w={24} h={11} tilt={-25} />
     </g></g>
-    <Star x={288} y={16} r={6} className="vls-cinv-star" baseOpacity={0} />
   </>
 );
 
-// The App's public-link choice reuses the established invite animation and
-// adds one small globe mark so the destination is clear without text.
-const HintClientLink: HintScene = ({ theme }) => (
-  <>
-    <SceneCopyInvite theme={theme} />
-    <g fill="none" stroke={LIVE} strokeWidth={1.8}>
-      <circle cx={180} cy={18} r={7} />
-      <path d="M173 18h14M180 11c3 3 3 11 0 14M180 11c-3 3-3 11 0 14" />
-    </g>
-  </>
-);
+// A link identifies its room; the App mode also exposes a public web entry.
+// Neither diagram claims clipboard access, delivery to a friend or media relay.
+function InviteLinkHint({ theme, publicEntry = false }: Parameters<HintScene>[0] & { publicEntry?: boolean }) {
+  return <>
+    <style>{`
+.vls-link-address{animation:vlsLinkAddress var(--comic-duration,3.2s) ease-out 1 both}
+@keyframes vlsLinkAddress{0%,8%{transform:translateY(-7px)}34%,100%{transform:none}}
+${rmBlock(["vls-link-address"], [[".vls-link-address", "transform:none"]], false)}
+`}</style>
+    <Frame x={4} w={312} theme={theme} result />
+    <BrowserWindow x={24} y={22} w={123} h={53}>
+      <g className="vls-link-address">
+        <LinkRing x={39} y={43} w={24} h={11} tilt={-25} />
+        <LinkRing x={53} y={51} w={24} h={11} tilt={-25} />
+        <path d="M89 50h44m-44 10h32" stroke={FAINT} strokeWidth={2} strokeLinecap="round" />
+      </g>
+    </BrowserWindow>
+    <path d="M157 49h39" stroke={FAINT} strokeWidth={2} strokeDasharray="3 4" />
+    {publicEntry ? <g stroke="var(--ink)" strokeWidth={2.5} fill="none">
+      <circle cx={252} cy={49} r={27} />
+      <ellipse cx={252} cy={49} rx={12} ry={27} />
+      <path d="M225 49h54m-49-14h44m-44 28h44" />
+    </g> : <><LcdBase x={210} y={26} /><LcdSlots x={210} y={26} /></>}
+  </>;
+}
+const HintClientLink: HintScene = (props) => <InviteLinkHint {...props} publicEntry />;
 
 /* ------------------------------------------------------------------ */
 /* hint-rotate-invite: a link → the link spun fresh + spark.           */
@@ -471,105 +468,26 @@ ${rmBlock(["vls-priv-card"], [[".vls-priv-card", "transform:none;opacity:1"]], f
 );
 
 /* ------------------------------------------------------------------ */
-/* hint-password: key approaches the lock → shackle up, door ajar.     */
-/* ------------------------------------------------------------------ */
+/* Password entry/configuration uses the same field; no door opens until
+   the separate admission owner has accepted a credential. */
 const ScenePassword: HintScene = ({ theme }) => (
   <>
     <RoomResultMotion />
     <style>{`
-.vls-pass-key{animation:vlsPassKey var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
-.vls-pass-lines{animation:vlsPassLines var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
-.vls-pass-shackle{transform-box:view-box;transform-origin:190px 44px;animation:vlsPassShackle var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
-.vls-pass-glow{animation:vlsPassGlow var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
-@keyframes vlsPassKey{0%{transform:translateX(0);opacity:0}6%{opacity:1}30%,100%{transform:translateX(26px);opacity:1}}
-@keyframes vlsPassLines{0%,4%{opacity:0}10%{opacity:.9}24%{opacity:.9}32%,100%{opacity:0}}
-@keyframes vlsPassShackle{0%,8%{transform:rotate(34deg)}20%{transform:rotate(-6deg)}28%,100%{transform:rotate(0)}}
-@keyframes vlsPassGlow{0%,30%{opacity:.3}42%{opacity:.65}55%,100%{opacity:.3}}
-${rmBlock(
-  ["vls-pass-key", "vls-pass-lines", "vls-pass-shackle", "vls-pass-glow"],
-  [
-    [".vls-pass-key", "transform:translateX(26px);opacity:1"],
-    [".vls-pass-lines", "opacity:0"],
-    [".vls-pass-glow", "opacity:.45"],
-  ],
-)}
+.vls-pass-input{animation:vlsPassInput var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
+@keyframes vlsPassInput{0%,8%{transform:translateX(-12px);opacity:.2}34%,100%{transform:none;opacity:1}}
+${rmBlock(["vls-pass-input"], [[".vls-pass-input", "transform:none;opacity:1"]])}
 `}</style>
     <Frame x={4} w={152} theme={theme} />
     <Frame x={164} w={152} theme={theme} result />
-    <g className="vls-pass-lines" opacity={0}>
-      <path d="M42 42 l-7 -2 M42 52 l-7 2" stroke={FAINT} strokeWidth={2} strokeLinecap="round" />
-    </g>
-    <g className="vls-pass-key" opacity={0}>
-      <circle cx={52} cy={47} r={5} fill="var(--paper)" stroke="var(--ink)" strokeWidth={2.5} />
-      <path d="M57 47 h14 M66 47 v4 M70 47 v4" stroke="var(--ink)" strokeWidth={2.5} strokeLinecap="round" />
-    </g>
-    <path
-      d="M92 40 v-5 a6 6 0 0 1 12 0 v5"
-      stroke="var(--ink)"
-      strokeWidth={2.5}
-      fill="none"
-      strokeLinecap="round"
-    />
-    <rect
-      x={88}
-      y={40}
-      width={18}
-      height={14}
-      rx={3}
-      fill={STAR_GOLD}
-      stroke="var(--ink)"
-      strokeWidth={2}
-    />
-    <circle cx={97} cy={47} r={1.8} fill="var(--ink)" />
-    <rect
-      className="vls-pass-glow"
-      x={230}
-      y={16}
-      width={36}
-      height={58}
-      rx={5}
-      fill={SKY}
-      opacity={0.3}
-    />
-    <rect
-      x={230}
-      y={16}
-      width={36}
-      height={58}
-      rx={5}
-      fill="none"
-      stroke="var(--ink)"
-      strokeWidth={2.5}
-    />
-    <path
-      d="M230 16 L260 20 L260 70 L230 74 Z"
-      fill="var(--wall-2)"
-      stroke="var(--ink)"
-      strokeWidth={2.5}
-      strokeLinejoin="round"
-    />
-    <circle cx={254} cy={46} r={1.8} fill="var(--ink)" />
-    <g className="vls-room-result">
-    <rect
-      x={186}
-      y={44}
-      width={18}
-      height={14}
-      rx={3}
-      fill={STAR_GOLD}
-      stroke="var(--ink)"
-      strokeWidth={2}
-    />
-    <circle cx={195} cy={51} r={1.8} fill="var(--ink)" />
-    <path
-      className="vls-pass-shackle"
-      d="M190 44 v-5 a6 6 0 0 1 11.8 -2.2"
-      stroke="var(--ink)"
-      strokeWidth={2.5}
-      fill="none"
-      strokeLinecap="round"
-    />
-    </g>
+    {[24, 184].map((x, index) => <BrowserWindow key={x} x={x} y={19} w={112} h={61}>
+      <circle cx={x + 18} cy={38} r={4} fill="none" stroke="var(--ink)" strokeWidth={2} />
+      <path d={`M${x + 22} 38h14m-4 0v4`} stroke="var(--ink)" strokeWidth={2} fill="none" />
+      <rect x={x + 12} y={49} width={88} height={22} rx={5} fill="var(--paper)" stroke="var(--ink)" strokeWidth={2} />
+      {index ? <g className="vls-room-result"><g className="vls-pass-input" fill="var(--ink)">
+        {[23, 36, 49, 62, 75, 88].map(offset => <circle key={offset} cx={x + offset} cy={60} r={2.5} />)}
+      </g></g> : <path d={`M${x + 23} 55v10`} stroke="var(--ink)" strokeWidth={2} />}
+    </BrowserWindow>)}
   </>
 );
 
@@ -577,6 +495,7 @@ export const SET2_SCENES: Record<Set2Kind, HintScene> = {
   "hint-copy-code": SceneCopyCode,
   "hint-shuffle-code": SceneShuffleCode,
   "hint-copy-invite": SceneCopyInvite,
+  "hint-invite-link": (props) => <InviteLinkHint {...props} />,
   "hint-client-link": HintClientLink,
   "hint-rotate-invite": SceneRotateInvite,
   "hint-revoke-invite": SceneRevokeInvite,

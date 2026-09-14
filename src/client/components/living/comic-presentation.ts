@@ -62,6 +62,9 @@ export const COMIC_KINDS = Object.keys(STATES) as ComicKind[];
 
 const PRESENTATIONS: Partial<Record<ComicKind | HintKind, ComicPresentation>> = {
   ...STATES,
+  "hint-admission-code": { tone: "off", motion: "still" },
+  "hint-admission-password": { tone: "off", motion: "still" },
+  "hint-admission-invite": { tone: "off", motion: "still" },
   "hint-route-p2p-required": LIMITED,
   "hint-nat-unavailable": LIMITED,
   "hint-volume-basic": LIMITED,

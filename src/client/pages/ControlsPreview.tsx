@@ -84,7 +84,12 @@ export function ControlsPreview() {
                 aria-label={t(`host.policy.${value}`)} onClick={() => setPolicy(value)}>
                 <Glyph name={value === "open" ? "globe" : "lock"} size={19} />{vis ? null : <span className="lr-cap">{t(`host.policy.${value}`)}</span>}
               </button></Tooltip>)}
-          </span><RoomAdmissionBadge policy={policy} passwordEnabled={false} />
+          </span>
+        </div>
+        <div className="cp-tools">
+          <RoomAdmissionBadge policy="open" passwordEnabled={false} />
+          <RoomAdmissionBadge policy="private" passwordEnabled />
+          <RoomAdmissionBadge policy="private" passwordEnabled={false} />
         </div>
       </section>
       <section id="input-preview" className="cp-card">

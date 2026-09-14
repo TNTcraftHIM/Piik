@@ -19,7 +19,8 @@ history. A parked idea is not implementation authority.
   startup still fails.
 - [ ] **Tooltip placement around video.** After the current motion/meaning
   acceptance, review placement that keeps the picture visible, including
-  side placement and restrained translucency. Current behavior prefers above
+  side placement and restrained translucency. Keep neighbouring actions
+  reachable when a help popup remains open. Current behavior prefers above
   (below for header controls) and flips for viewport space. Discuss the design
   before changing placement rules.
 

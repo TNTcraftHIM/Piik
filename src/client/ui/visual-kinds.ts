@@ -59,6 +59,7 @@ export type Set2Kind =
   | "hint-copy-code"
   | "hint-shuffle-code"
   | "hint-copy-invite"
+  | "hint-invite-link"
   | "hint-client-link"
   | "hint-rotate-invite"
   | "hint-revoke-invite"
@@ -77,6 +78,11 @@ export type Set3Kind =
   | "hint-details"
   | "hint-debug-export"
   | "hint-more-metrics";
+
+export type AdmissionHintKind =
+  | "hint-admission-code"
+  | "hint-admission-password"
+  | "hint-admission-invite";
 
 export type Set4Kind =
   | "hint-topology"
@@ -118,6 +124,7 @@ export type ControlHintKind =
   | "hint-password-show"
   | "hint-password-hide"
   | "hint-password-remove"
+  | "hint-source-audio"
   | "hint-share-audio"
   | "hint-stop-audio"
   | "hint-share-audio-fixed"
@@ -136,6 +143,7 @@ export type HintKind =
   | Set2Kind
   | Set3Kind
   | Set4Kind
+  | AdmissionHintKind
   | PlaybackHintKind
   | MetricHintKind
   | ControlHintKind;

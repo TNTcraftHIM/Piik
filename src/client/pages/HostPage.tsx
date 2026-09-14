@@ -32,6 +32,7 @@ import { useMetricsExpanded } from "../components/living/Metrics";
 import { PawnDetail } from "../components/living/PawnDetail";
 import {
   RoomAdmissionBadge,
+  roomAdmission,
   RoomChip,
 } from "../components/living/RoomChip";
 import { RouteTree } from "../components/living/RouteTree";
@@ -2990,6 +2991,7 @@ export function HostPage({
     try {
       await navigator.clipboard.writeText(inviteUrl);
       setCopied(true);
+      setNoticeValue((current) => current?.kind === "key" && current.key === "host.invite.copyFailed" ? null : current);
       // One owner for the confirmation window: a second copy restarts it
       // instead of inheriting the first click's expiry.
       if (copiedResetTimerRef.current !== null) {
@@ -3000,6 +3002,7 @@ export function HostPage({
         setCopied(false);
       }, 1_500);
     } catch {
+      setCopied(false);
       setNoticeErrorKey("host.invite.copyFailed", "copy-failed");
     }
   }
@@ -3070,7 +3073,7 @@ export function HostPage({
           : response.viewerPasswordEnabled
             ? "host.policy.setPrivatePassword"
             : "host.policy.setPrivateInvite",
-        response.codeEntryPolicy === "open" ? "hint-policy-open" : response.viewerPasswordEnabled ? "hint-password" : "hint-policy-private",
+        roomAdmission(response.codeEntryPolicy, response.viewerPasswordEnabled).comic,
         "live",
       );
     } catch (error) {
@@ -3173,7 +3176,7 @@ export function HostPage({
           : hadPassword
             ? "host.password.updated"
             : "host.password.saved",
-        "hint-password", "live",
+        password === null ? "hint-password-remove" : "hint-password", "live",
       );
     } catch (error) {
       handleRoomAccessFailure(error, activeRoom);
@@ -3749,7 +3752,7 @@ export function HostPage({
                   <MetricCell label="stats.codec" value={resolvedVideoCodec?.toUpperCase() ?? (vis ? "—" : t("host.capture.codecPending"))} />
                   <MetricCell label="stats.audio" icon={details.hasAudio ? "speaker" : "speakerOff"}
                     value={t(details.hasAudio ? "host.capture.hasAudio" : "host.capture.noAudio")}
-                    hint={details.hasAudio ? "hint-share-audio-fixed" : "no-audio"}
+                    hint={details.hasAudio ? "hint-source-audio" : "no-audio"}
                     tone={details.hasAudio ? "off" : "warn"} glyphOnly />
                 </div>
               </div>
@@ -3829,7 +3832,7 @@ export function HostPage({
                 />
               </RowGroup>
               {room.inviteUrl ? (
-                <Tooltip kind="hint-copy-invite" text={room.inviteUrl} className="lr-invite-hint">
+                <Tooltip kind="hint-invite-link" text={room.inviteUrl} className="lr-invite-hint">
                   <input
                     className="lr-invite-url"
                     type="text"
@@ -3904,7 +3907,7 @@ export function HostPage({
                     </button>
                   </Tooltip>
                 ) : null}
-                {!room.inviteUrl ? (
+                {!room.inviteUrl && activeCodeEntryPolicy !== null ? (
                   <Pill
                     icon="link"
                     label={t(
@@ -3918,7 +3921,7 @@ export function HostPage({
                       activeCodeEntryPolicy === "private" &&
                       !viewerPasswordEnabled
                         ? "invalid-invite"
-                        : activeCodeEntryPolicy === "open" ? "hint-policy-open" : "hint-password"
+                        : roomAdmission(activeCodeEntryPolicy, viewerPasswordEnabled).comic
                     }
                   />
                 ) : null}

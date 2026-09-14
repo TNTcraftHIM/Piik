@@ -151,6 +151,28 @@ export function RoomChip({
   );
 }
 
+export function roomAdmission(policy: CodeEntryPolicy, passwordEnabled: boolean) {
+  return (
+    policy === "open"
+      ? {
+          icon: "globe" as const,
+          label: "host.policy.currentOpen" as const,
+          comic: "hint-admission-code" as const,
+        }
+      : passwordEnabled
+        ? {
+            icon: "key" as const,
+            label: "host.policy.currentPassword" as const,
+            comic: "hint-admission-password" as const,
+          }
+        : {
+            icon: "lock" as const,
+            label: "host.policy.currentInvite" as const,
+            comic: "hint-admission-invite" as const,
+          }
+  );
+}
+
 export function RoomAdmissionBadge({
   policy,
   passwordEnabled,
@@ -159,24 +181,7 @@ export function RoomAdmissionBadge({
   passwordEnabled: boolean;
 }) {
   const { t } = useCopy();
-  const presentation =
-    policy === "open"
-      ? {
-          icon: "globe" as const,
-          label: "host.policy.currentOpen" as const,
-          comic: "hint-policy-open" as const,
-        }
-      : passwordEnabled
-        ? {
-            icon: "key" as const,
-            label: "host.policy.currentPassword" as const,
-            comic: "hint-password" as const,
-          }
-        : {
-            icon: "lock" as const,
-            label: "host.policy.currentInvite" as const,
-            comic: "hint-policy-private" as const,
-          };
+  const presentation = roomAdmission(policy, passwordEnabled);
   return (
     <Pill
       icon={presentation.icon}

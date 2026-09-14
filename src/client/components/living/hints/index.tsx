@@ -15,6 +15,7 @@ import { SET4_SCENES } from "./set4";
 import { PLAYBACK_SCENES } from "./playback";
 import { CONTROL_SCENES } from "./controls";
 import { METRIC_SCENES } from "./metrics";
+import { ADMISSION_SCENES } from "./admission";
 import { comicStyle, getComicPresentation, type ComicTone, type ComicMotion } from "../comic-presentation";
 
 export type { HintKind, HintScene };
@@ -32,12 +33,16 @@ export const HINT_KINDS: readonly HintKind[] = [
   "hint-copy-code",
   "hint-shuffle-code",
   "hint-copy-invite",
+  "hint-invite-link",
   "hint-client-link",
   "hint-rotate-invite",
   "hint-revoke-invite",
   "hint-policy-open",
   "hint-policy-private",
   "hint-password",
+  "hint-admission-code",
+  "hint-admission-password",
+  "hint-admission-invite",
   "hint-quality",
   "hint-audio-quality",
   "hint-degrade-pref",
@@ -57,6 +62,7 @@ export const HINT_KINDS: readonly HintKind[] = [
   "hint-password-show",
   "hint-password-hide",
   "hint-password-remove",
+  "hint-source-audio",
   "hint-share-audio",
   "hint-stop-audio",
   "hint-share-audio-fixed",
@@ -98,6 +104,7 @@ export const HINT_SCENES: Record<HintKind, HintScene> = {
   ...PLAYBACK_SCENES,
   ...CONTROL_SCENES,
   ...METRIC_SCENES,
+  ...ADMISSION_SCENES,
 };
 
 const HINT_KIND_SET: ReadonlySet<string> = new Set(HINT_KINDS);

@@ -55,6 +55,24 @@ ${rmBlock(["vls-password-new", "vls-password-clear"], [[".vls-password-new", "op
   </>;
 }
 
+// A captured audio track is a source fact, not a locked setting or delivery proof.
+const SourceAudioHint: HintScene = ({ theme }) => <>
+  <style>{`
+.vls-source-audio-note{animation:vlsSourceAudioNote var(--comic-duration,3.2s) ease-out 1 both}
+@keyframes vlsSourceAudioNote{0%,8%{transform:translateY(5px)}32%,100%{transform:none}}
+${rmBlock(["vls-source-audio-note"], [[".vls-source-audio-note", "transform:none"]], false)}
+`}</style>
+  <Frame x={4} w={312} theme={theme} result />
+  <Pawn x={66} yb={81} s={13} eyes host gaze={2} />
+  <MiniTv x={112} y={24} w={98} h={55} />
+  <path d="M125 61l18-19 15 11 18-17 18 20" fill="none" stroke={SKY} strokeWidth={3} />
+  <g className="vls-source-audio-note">
+    <path d="M238 57V30l23-5v26M238 35l23-5" fill="none" stroke="var(--ink)" strokeWidth={3} strokeLinecap="round" />
+    <ellipse cx={233} cy={58} rx={6} ry={4} fill="var(--ink)" />
+    <ellipse cx={256} cy={52} rx={6} ry={4} fill="var(--ink)" />
+  </g>
+</>;
+
 // Source audio goes to the other viewer. This is deliberately not local mute.
 function ShareAudioHint({ theme, enabled, locked = false }: { theme: ComicTheme; enabled: boolean; locked?: boolean }) {
   return <>
@@ -150,6 +168,7 @@ export const CONTROL_SCENES: Record<ControlHintKind, HintScene> = {
   "hint-password-show": (props) => <PasswordHint {...props} action="show" />,
   "hint-password-hide": (props) => <PasswordHint {...props} action="hide" />,
   "hint-password-remove": (props) => <PasswordHint {...props} action="clear" />,
+  "hint-source-audio": SourceAudioHint,
   "hint-share-audio": (props) => <ShareAudioHint {...props} enabled />,
   "hint-stop-audio": (props) => <ShareAudioHint {...props} enabled={false} />,
   "hint-share-audio-fixed": (props) => <ShareAudioHint {...props} enabled locked />,

@@ -674,7 +674,7 @@ ${rmBlock(["vls-hp-steam1"], [[".vls-hp-steam1", "opacity:.55;transform:translat
       </g>
       <circle className="vls-hp-led" cx={80} cy={76} r={3.5} fill={WARN} />
       <Floor x1={176} x2={304} y={78} />
-      <Pawn x={216} yb={78} s={14} eyes eyeClassName="vls-hp-eyes" />
+      <Pawn x={216} yb={78} s={14} eyes host eyeClassName="vls-hp-eyes" />
       <rect x={240} y={66} width={12} height={12} rx={3} fill="#e4572e" />
       <path d="M252 69 a5 5 0 0 1 0 6" stroke="#e4572e" strokeWidth={2.5} fill="none" />
       <path className="vls-hp-steam1" d="M243 60 q3 -4 0 -8" stroke={LINE} strokeWidth={2} strokeLinecap="round" fill="none" opacity={0} />

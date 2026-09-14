@@ -249,23 +249,20 @@ ${rmBlock(["vls-sw-selected"], [[".vls-sw-selected", "transform:none"]], false)}
   </>
 );
 
-/* hint-reconnect: [Plug out of Socket, small Spark at the gap] → [Plug seats
-   with a wiggle, LIVE dot pops]. Same plug language as recovering. */
+/* Reconnect asks the transport to try again; this prospective action cannot
+   claim a successful connection or a delivered frame. */
 const SceneReconnect: HintScene = ({ theme }) => (
   <>
     <style>{`
 .vls-rj-spark{animation:vlsRjSpark var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-rj-plug{transform-box:fill-box;transform-origin:50% 100%;animation:vlsRjPlug var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
-.vls-rj-led{transform-box:fill-box;transform-origin:center;animation:vlsRjLed var(--comic-duration,3.2s) cubic-bezier(.3,1.5,.5,1) var(--comic-repeat,1) both}
 @keyframes vlsRjSpark{0%,100%{opacity:.55}15%{opacity:1}}
 @keyframes vlsRjPlug{0%{transform:translate(-2px,-8px) rotate(-6deg)}10%{transform:translate(-1px,-3px) rotate(4deg)}20%{transform:translate(0,-1px) rotate(-2deg)}28%,100%{transform:none}}
-@keyframes vlsRjLed{0%,24%{opacity:0;transform:scale(.4)}32%{opacity:1;transform:scale(1.3)}40%,100%{opacity:1;transform:scale(1)}}
 ${rmBlock(
-  ["vls-rj-spark", "vls-rj-plug", "vls-rj-led"],
+  ["vls-rj-spark", "vls-rj-plug"],
   [
     [".vls-rj-spark", "opacity:1"],
     [".vls-rj-plug", "transform:none"],
-    [".vls-rj-led", "opacity:1;transform:none"],
   ],
 )}
 `}</style>
@@ -278,7 +275,7 @@ ${rmBlock(
     <g className="vls-rj-plug">
       <Plug x={260} y={36} />
     </g>
-    <circle className="vls-rj-led" cx={284} cy={38} r={3.5} fill={LIVE} />
+    <path d="M281 24a8 8 0 1 1-7 12m0 0v-5m0 5h5" fill="none" stroke="var(--ink)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
   </>
 );
 
