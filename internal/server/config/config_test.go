@@ -84,7 +84,7 @@ func TestLoadDevelopmentDefaults(t *testing.T) {
 	if config.NATPredictionSTUNURLs != nil {
 		t.Errorf("NATPredictionSTUNURLs = %v, want nil (TS left it undefined)", config.NATPredictionSTUNURLs)
 	}
-	if config.MaxViewersPerRoom != 8 {
+	if config.MaxViewersPerRoom != 20 {
 		t.Errorf("MaxViewersPerRoom = %d", config.MaxViewersPerRoom)
 	}
 	if config.EndpointMediaCopyCapacity != 2 {
@@ -203,7 +203,7 @@ func TestLoadAccepts(t *testing.T) {
 		check func(*testing.T, Config)
 	}{
 		{"default viewer limit", map[string]string{}, func(t *testing.T, c Config) {
-			if c.MaxViewersPerRoom != 8 {
+			if c.MaxViewersPerRoom != 20 {
 				t.Errorf("MaxViewersPerRoom = %d", c.MaxViewersPerRoom)
 			}
 		}},

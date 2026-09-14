@@ -19,6 +19,28 @@ const DEFAULT_THEME: Record<ComicKind, ComicTheme> = {
   "signal-connecting": "paper",
   "signal-recovering": "paper",
   "signal-offline": "paper",
+  "signal-connected": "paper",
+  "signal-failed": "paper",
+  "media-playing": "stage",
+  "media-ready": "paper",
+  "share-live": "stage",
+  "share-ended": "stage",
+  "room-closed": "paper",
+  "room-code-invalid": "paper",
+  "page-refresh": "paper",
+  "site-access": "paper",
+  "source-switching": "stage",
+  "source-starting": "stage",
+  "preview-paused": "stage",
+  "update-available": "paper",
+  "debug-start": "paper",
+  "debug-export-failed": "paper",
+  "copy-failed": "paper",
+  "source-failed": "stage",
+  "settings-failed": "paper",
+  "name-invalid": "paper",
+  "participant-name": "paper",
+  "transport-connected": "paper",
   "tap-to-play": "stage",
   "host-paused": "stage",
   recovering: "stage",
@@ -120,7 +142,8 @@ export function Pawn({
   className?: string;
 }) {
   const scale = s / 16;
-  const inner = <g transform={`translate(${r2(x - 24 * scale)} ${r2(yb - 50 * scale)}) scale(${scale})`} fill={color}>
+  const inner = <g transform={`translate(${r2(x - 24 * scale)} ${r2(yb - 50 * scale)}) scale(${scale})`} fill={color}
+    style={{ "--comic-blink-delay": `${Math.round(x * .8)}ms` } as CSSProperties}>
     <PersonShape eyes={eyes} gaze={gaze} eyeClassName={eyeClassName} host={host} />
   </g>;
   return className ? <g className={className}>{inner}</g> : inner;
@@ -386,7 +409,7 @@ export function rmBlock(kills: string[], pins: Array<readonly [string, string]>)
   const block = (scope: string) => rules.map(([selectors, styles]) =>
     `${selectors.split(",").map((selector) => scope + selector.trim()).join(",")}{${styles}}`,
   ).join("");
-  return `${block('svg[data-comic-motion="still"] ')}@media (prefers-reduced-motion:reduce){${block("")}}`;
+  return `${block('svg[data-comic-motion="still"] ')}${block('[data-comic-reduced-motion] ')}@media (prefers-reduced-motion:reduce){${block("")}}`;
 }
 
 /* ------------------------------ scenes ------------------------------ */
@@ -505,11 +528,12 @@ ${rmBlock(kills, pins)}
 }
 
 /** The page's control link, not a media path: no TV or video packets here. */
-function SceneSignal({ theme, state }: {
+function SceneSignal({ theme, state, peer = false }: {
   theme: ComicTheme;
-  state: "connecting" | "recovering" | "offline";
+  state: "connecting" | "recovering" | "offline" | "connected" | "failed";
+  peer?: boolean;
 }) {
-  const color = state === "connecting" ? SKY : state === "recovering" ? WARN : FAINT;
+  const color = "var(--comic-tone, var(--ink))";
   return (
     <>
       <style>{`
@@ -527,7 +551,7 @@ ${rmBlock(["vls-signal-message", "vls-signal-retry"], [
         <circle cx={37} cy={43} r={3} fill={color} />
         <path d="M47 43h56 M34 55h36 M77 55h26 M34 64h69" stroke={LINE} strokeWidth={2} strokeLinecap="round" />
       </BrowserWindow>
-      <ServerBox x={254} y={25} w={42} h={46} />
+      {peer ? <BrowserWindow x={251} y={25} w={47} h={46} /> : <ServerBox x={254} y={25} w={42} h={46} />}
       <path
         d={state === "connecting" ? "M130 48H244" : "M130 48H164 M204 48H244"}
         stroke={color}
@@ -548,6 +572,10 @@ ${rmBlock(["vls-signal-message", "vls-signal-retry"], [
         <g className="vls-signal-retry" stroke={color} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" fill="none">
           <path d="M175 43a11 11 0 0 1 19-2l2 3 M190 44h6v-6 M193 53a11 11 0 0 1-19 2l-2-3 M178 52h-6v6" />
         </g>
+      ) : state === "connected" ? (
+        <path d="M174 48l7 7 14-17" stroke={color} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      ) : state === "failed" ? (
+        <RedX cx={184} cy={48} arm={8} />
       ) : (
         <g stroke={color} strokeWidth={2.5} strokeLinecap="round" fill="none">
           <path d="M174 43h5 M174 53h5 M189 43h5 M189 53h5 M176 59l16-22" />
@@ -1289,6 +1317,134 @@ ${rmBlock(
   );
 }
 
+function SceneMediaStatus({ theme, state }: {
+  theme: ComicTheme; state: "playing" | "ready" | "sharing" | "ended" | "preview-paused";
+}) {
+  const preview = state === "preview-paused";
+  const colour = "var(--comic-tone, var(--ink))";
+  return <>
+    <Frame x={4} w={312} theme={theme} result />
+    <Floor x1={24} x2={296} />
+    <Pawn x={54} yb={77} s={13} eyes host={state === "sharing" || state === "ended" || preview} gaze={2} />
+    {preview ? <>
+      <BrowserWindow x={92} y={18} w={106} h={60}>
+        <MiniTv x={115} y={38} w={60} h={30} />
+        <path d="M137 44v13m8-13v13" stroke={colour} strokeWidth={4} />
+      </BrowserWindow>
+      <path d="M207 49h17m-6-6 6 6-6 6" stroke={LINE} strokeWidth={2} fill="none" />
+      <MiniTv x={234} y={32} w={59} h={35} />
+      <path d="m258 41 13 8-13 8Z" fill={LIVE} />
+    </> : <>
+      <MiniTv x={130} y={21} w={124} h={53} />
+      {state === "ready"
+        ? <path d="m175 47 12 11 24-26" stroke={colour} strokeWidth={4} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+        : state === "ended"
+          ? <rect x={182} y={36} width={23} height={23} rx={3} fill={colour} />
+          : <path d="m183 32 27 16-27 16Z" fill={colour} />}
+    </>}
+  </>;
+}
+
+function SceneRoomEntry({ theme, state }: {
+  theme: ComicTheme; state: "closed" | "invalid" | "password";
+}) {
+  const colour = "var(--comic-tone, var(--ink))";
+  return <>
+    <Frame x={4} w={312} theme={theme} result />
+    <Floor x1={24} x2={296} />
+    <Pawn x={51} yb={76} s={12} eyes gaze={2} />
+    {state === "password" ? <BrowserWindow x={95} y={15} w={195} h={62}>
+      <rect x={154} y={44} width={30} height={24} rx={4} fill="var(--paper)" stroke={colour} strokeWidth={2.5} />
+      <path d="M161 44v-8a8 8 0 0 1 16 0v8" stroke={colour} strokeWidth={2.5} fill="none" />
+      <circle cx={215} cy={53} r={7} stroke={colour} strokeWidth={2.5} fill="none" />
+      <path d="M222 53h22m-5 0v6m-8-6v4" stroke={colour} strokeWidth={2.5} fill="none" />
+    </BrowserWindow> : state === "invalid" ? <>
+      {[104, 133, 162, 191].map((x, index) => <g key={x}>
+        <rect x={x} y={34} width={22} height={29} rx={4} fill="var(--paper)" stroke={index === 3 ? colour : LINE} strokeWidth={2} />
+        {index < 3 && <circle cx={x + 11} cy={48} r={3} fill={LINE} />}
+      </g>)}
+      <RedX cx={251} cy={48} arm={10} />
+    </> : <>
+      <Door x={166} y={18} />
+      <path d="M208 31h51" stroke={colour} strokeWidth={3} />
+      <rect x={221} y={41} width={24} height={24} rx={3} fill={colour} />
+    </>}
+  </>;
+}
+
+function SceneBrowserAction({ theme, action }: {
+  theme: ComicTheme; action: "refresh" | "update" | "debug" | "export-failed" | "copy-failed" | "settings-failed";
+}) {
+  const colour = "var(--comic-tone, var(--ink))";
+  return <>
+    <Frame x={4} w={152} theme={theme} />
+    <Frame x={164} w={152} theme={theme} result />
+    <BrowserWindow x={18} y={20} w={113} h={58}>
+      {action === "settings-failed" ? <>
+        <path d="M35 44h68M35 55h68M35 66h68" stroke={LINE} strokeWidth={2.5} />
+        <g fill="var(--paper)" stroke={LINE} strokeWidth={2.5}>
+          <circle cx={54} cy={44} r={4} /><circle cx={82} cy={55} r={4} /><circle cx={65} cy={66} r={4} />
+        </g>
+      </> : action === "debug" || action === "export-failed"
+        ? <path d="M37 63V51m17 12V41m17 22V48m17 15V37" stroke={LINE} strokeWidth={7} strokeLinecap="round" />
+        : <path d="M33 44h63M33 55h47M33 66h63" stroke={LINE} strokeWidth={3} strokeLinecap="round" />}
+    </BrowserWindow>
+    {action === "settings-failed" ? <BrowserWindow x={179} y={20} w={113} h={58}>
+      <path d="M197 44h67M197 55h67M197 66h67" stroke={LINE} strokeWidth={2.5} />
+      <g fill="var(--paper)" stroke={LINE} strokeWidth={2.5}>
+        <circle cx={216} cy={44} r={4} /><circle cx={244} cy={55} r={4} /><circle cx={227} cy={66} r={4} />
+      </g>
+      <RedX cx={280} cy={69} arm={9} />
+    </BrowserWindow> : action === "refresh" || action === "debug" ? <BrowserWindow x={179} y={20} w={113} h={58}>
+      {action === "refresh" ? <path d="M218 44a18 18 0 1 1-1 20m1-20h14m-14 0V31" stroke={colour} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" fill="none" /> : <>
+        <path d="M193 64V53m15 11V44m15 20V50" stroke={LINE} strokeWidth={6} strokeLinecap="round" />
+        <circle cx={262} cy={52} r={11} fill="none" stroke={colour} strokeWidth={2.5} />
+        <circle cx={262} cy={52} r={5} fill={colour} />
+      </>}
+    </BrowserWindow> : <>
+      <rect x={199} y={27} width={48} height={50} rx={5} fill="var(--paper)" stroke={LINE} strokeWidth={2.5} />
+      <rect x={217} y={15} width={48} height={50} rx={5} fill="var(--paper)" stroke={colour} strokeWidth={2.5} />
+      <path d="M226 31h28M226 42h20M226 53h28" stroke={LINE} strokeWidth={2.5} strokeLinecap="round" />
+      {action === "update"
+        ? <path d="M283 72V35m-8 8 8-8 8 8" stroke={colour} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+        : <RedX cx={273} cy={70} arm={10} />}
+    </>}
+  </>;
+}
+
+function SceneSourceSwitching({ theme, state = "switching" }: {
+  theme: ComicTheme; state?: "switching" | "starting" | "failed";
+}) {
+  return <>
+    <style>{`
+.vls-source-switch{animation:vlsSourceSwitch var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+@keyframes vlsSourceSwitch{0%,100%{opacity:.45}35%,70%{opacity:1}}
+${rmBlock(["vls-source-switch"], [[".vls-source-switch", "opacity:1"]])}
+`}</style>
+    <Frame x={4} w={312} theme={theme} result />
+    <Pawn x={39} yb={76} s={10} eyes host gaze={2} />
+    <BrowserWindow x={75} y={24} w={71} h={47}>
+      <path d="M87 61l18-23 11 14 8-8 12 17Z" fill={SKY} />
+    </BrowserWindow>
+    {state === "switching" ? <BrowserWindow x={225} y={24} w={71} h={47}>
+      <circle cx={260} cy={50} r={11} fill={SKY} />
+    </BrowserWindow> : <MiniTv x={225} y={26} w={71} h={43} />}
+    {state === "failed" ? <RedX cx={185} cy={51} arm={11} /> : <g className="vls-source-switch" stroke="var(--comic-tone, var(--action))" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" fill="none">
+      <path d={state === "switching" ? "M158 42h51m-9-8 9 8-9 8M209 61h-51m9-8-9 8 9 8" : "M158 51h51m-9-8 9 8-9 8"} />
+    </g>}
+  </>;
+}
+
+function SceneParticipantName({ theme, invalid = false }: { theme: ComicTheme; invalid?: boolean }) {
+  return <>
+    <Frame x={4} w={312} theme={theme} result />
+    <Pawn x={71} yb={76} s={16} eyes gaze={2} />
+    <rect x={125} y={27} width={136} height={39} rx={10} fill="var(--paper)" stroke={LINE} strokeWidth={2.5} />
+    <path d="M142 40h66M142 52h47" stroke={LINE} strokeWidth={3} strokeLinecap="round" />
+    {invalid && <RedX cx={246} cy={64} arm={10} />}
+  </>;
+}
+
 /* ------------------------------ component ------------------------------ */
 const SCENES: Record<ComicKind, (props: { theme: ComicTheme }) => ReactNode> = {
   "waiting-for-host": SceneWaiting,
@@ -1297,6 +1453,28 @@ const SCENES: Record<ComicKind, (props: { theme: ComicTheme }) => ReactNode> = {
   "signal-connecting": (p) => <SceneSignal {...p} state="connecting" />,
   "signal-recovering": (p) => <SceneSignal {...p} state="recovering" />,
   "signal-offline": (p) => <SceneSignal {...p} state="offline" />,
+  "signal-connected": (p) => <SceneSignal {...p} state="connected" />,
+  "transport-connected": (p) => <SceneSignal {...p} state="connected" peer />,
+  "signal-failed": (p) => <SceneSignal {...p} state="failed" />,
+  "media-playing": (p) => <SceneMediaStatus {...p} state="playing" />,
+  "media-ready": (p) => <SceneMediaStatus {...p} state="ready" />,
+  "share-live": (p) => <SceneMediaStatus {...p} state="sharing" />,
+  "share-ended": (p) => <SceneMediaStatus {...p} state="ended" />,
+  "preview-paused": (p) => <SceneMediaStatus {...p} state="preview-paused" />,
+  "room-closed": (p) => <SceneRoomEntry {...p} state="closed" />,
+  "room-code-invalid": (p) => <SceneRoomEntry {...p} state="invalid" />,
+  "site-access": (p) => <SceneRoomEntry {...p} state="password" />,
+  "page-refresh": (p) => <SceneBrowserAction {...p} action="refresh" />,
+  "update-available": (p) => <SceneBrowserAction {...p} action="update" />,
+  "debug-start": (p) => <SceneBrowserAction {...p} action="debug" />,
+  "debug-export-failed": (p) => <SceneBrowserAction {...p} action="export-failed" />,
+  "copy-failed": (p) => <SceneBrowserAction {...p} action="copy-failed" />,
+  "source-switching": SceneSourceSwitching,
+  "source-starting": (p) => <SceneSourceSwitching {...p} state="starting" />,
+  "source-failed": (p) => <SceneSourceSwitching {...p} state="failed" />,
+  "settings-failed": (p) => <SceneBrowserAction {...p} action="settings-failed" />,
+  "name-invalid": (p) => <SceneParticipantName {...p} invalid />,
+  "participant-name": SceneParticipantName,
   "tap-to-play": SceneTap,
   "host-paused": ScenePaused,
   recovering: SceneRecovering,
@@ -1344,6 +1522,7 @@ export const Comic = memo(function Comic({
   } as CSSProperties;
   return (
     <svg
+      key={kind}
       viewBox="0 0 320 96"
       style={style}
       data-comic-tone={resolvedTone}
@@ -1352,7 +1531,7 @@ export const Comic = memo(function Comic({
       focusable="false"
       xmlns="http://www.w3.org/2000/svg"
     >
-      {SCENES[kind]({ theme: resolvedTheme })}
+      <g className="lr-comic-content">{SCENES[kind]({ theme: resolvedTheme })}</g>
     </svg>
   );
 });

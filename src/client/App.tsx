@@ -21,7 +21,6 @@ import {
   takeClientLaunchBootstrap,
 } from "./lib/session";
 import { AppHeader } from "./components/living/Header";
-import { BrandLoader } from "./components/living/BrandMark";
 import { Btn, Pill } from "./components/living/primitives";
 import { Comic, type ComicKind } from "./components/living/Comic";
 import { Glyph } from "./ui/icons";
@@ -177,7 +176,7 @@ function AppRoute() {
   }
   return appRoute.kind === "malformed-room" ? (
     <StaticRoute
-      comic="room-not-found"
+      comic="room-code-invalid"
       titleKey="gate.malformed"
       hintKey="gate.malformedHint"
       action="join"
@@ -198,7 +197,7 @@ function RouteLoader() {
           role="status"
           aria-label={t("gate.checking")}
         >
-          <BrandLoader />
+          <Comic kind="signal-connecting" theme="paper" />
           {vis ? null : (
             <span
               className="lr-tv-msg"
@@ -230,7 +229,7 @@ function StaticRoute({
       <AppHeader />
       <main className="lr-join">
         <div className="lr-join-panel">
-          <Comic kind={comic} theme="paper" />
+          <Comic kind={comic} theme="paper" tone="bad" />
           {vis ? null : (
             <div className="lr-access-text">
               <h1>{t(titleKey)}</h1>
@@ -253,6 +252,7 @@ function StaticRoute({
               icon="refresh"
               title="common.refresh"
               cap="common.refresh"
+              hint="page-refresh"
               onClick={() => window.location.reload()}
             />
           ) : null}
@@ -413,7 +413,7 @@ function SiteAccessGate({
             role="status"
             aria-label={t("gate.checking")}
           >
-            <BrandLoader />
+            <Comic kind="signal-connecting" theme="paper" />
             {vis ? null : (
               <span className="lr-tv-msg" style={{ color: "var(--ink)", textShadow: "none" }}>
                 {t("gate.checking")}
@@ -422,9 +422,7 @@ function SiteAccessGate({
           </div>
         ) : access.kind === "unavailable" ? (
           <div className="lr-join-panel">
-            <span className="lr-tv-big" style={{ borderColor: "var(--ink)", color: "var(--ink)", background: "var(--paper)" }}>
-              <Glyph name="wifiOff" size={30} />
-            </span>
+            <Comic kind="signal-failed" theme="paper" />
             {vis ? (
               <span className="visually-hidden" role="alert">{access.message}</span>
             ) : (
@@ -433,13 +431,11 @@ function SiteAccessGate({
                 <p role="alert">{access.message}</p>
               </div>
             )}
-            <Btn icon="refresh" title="common.retry" cap="common.retry" onClick={() => void retry()} />
+            <Btn icon="refresh" title="common.retry" cap="common.retry" hint="signal-connecting" hintTone="off" hintMotion="demo" onClick={() => void retry()} />
           </div>
         ) : (
           <form className="lr-join-panel" onSubmit={(event) => void submit(event)}>
-            <span className="lr-tv-big" style={{ borderColor: "var(--ink)", color: "var(--ink)", background: "var(--paper)" }}>
-              <Glyph name="key" size={30} draw="gate-key" />
-            </span>
+            <Comic kind="site-access" theme="paper" />
             {vis ? null : (
               <div className="lr-access-text">
                 <h1>{t("gate.title")}</h1>
@@ -460,7 +456,7 @@ function SiteAccessGate({
               />
             </span>
             {access.error ? (
-              <Pill icon="alert" tone="bad" label={access.error} alert comic="warning" />
+              <Pill icon="lock" tone="bad" label={access.error} alert comic="access-denied" />
             ) : null}
             <Btn
               icon="arrowRight"

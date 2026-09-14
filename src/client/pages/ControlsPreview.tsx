@@ -5,6 +5,8 @@ import { CaptureSourcePicker, type NativeSourceList } from "../components/living
 import { LedStrip } from "../components/living/Header";
 import { StageTv } from "../components/living/Stage";
 import { PlaybackControls } from "../components/living/PlaybackControls";
+import { QualityTileGlyph } from "../components/living/QualityTileGlyph";
+import { QUALITY_PROFILES } from "../media/quality";
 import { Tooltip } from "../components/living/Tooltip";
 import { StatusIndicator } from "../components/living/StatusIndicator";
 import { deriveParticipantStatus } from "../ui/media-status";
@@ -64,10 +66,10 @@ export function ControlsPreview() {
       <section id="option-preview" className="cp-card">
         <header><span className="cp-number">02</span><h2>{en ? "Pick, toggle, adjust" : "选一个，再拨一下。"}</h2></header>
         <div className="lr-tiles" role="group" aria-label={t("host.quality")}>
-          {(["720p30", "1080p30", "1080p60"] as const).map((value, index) => <Tooltip key={value} kind="hint-quality" text={vis ? undefined : t(`host.quality.${value}`)}>
+          {(["720p30", "1080p30", "1080p60"] as const).map(value => <Tooltip key={value} kind="hint-quality" text={vis ? undefined : t(`host.quality.${value}`)}>
             <button type="button" className={`lr-tile${preset === value ? " is-selected" : ""}`} aria-pressed={preset === value}
               aria-label={t(`host.quality.${value}`)} onClick={() => setPreset(value)}>
-              <Glyph name={["mountain", "balance", "zap"][index]!} size={23} /><small>{value.replace("p", "p · ")}</small>
+              <QualityTileGlyph resolution={QUALITY_PROFILES[value].resolution} framerate={QUALITY_PROFILES[value].maxFramerate} /><small>{value.replace("p", "p · ")}</small>
             </button></Tooltip>)}
         </div>
         <div className="cp-tools">
@@ -110,11 +112,11 @@ export function ControlsPreview() {
       <section id="feedback-preview" className="cp-card">
         <header><span className="cp-number">04</span><h2>{en ? "Clear feedback" : "每种反馈，都说清楚。"}</h2></header>
         <div className="cp-tools">
-          <LedStrip state="live" label={t("state.signal.connected")} />
-          <LedStrip state="busy" label={t("state.signal.connecting")} />
-          <LedStrip state="bad" label={t("state.signal.offline")} />
+          <LedStrip state="live" label={t("state.signal.connected")} comic="signal-connected" />
+          <LedStrip state="busy" label={t("state.signal.connecting")} comic="signal-connecting" />
+          <LedStrip state="off" label={t("state.signal.offline")} comic="signal-offline" />
         </div>
-        <div className="cp-tools"><Pill icon="check" tone="good" label={t("common.copied")} comic="hint-copy-code" />
+        <div className="cp-tools"><Pill icon="check" tone="live" label={t("common.copied")} comic="hint-copy-code" />
           <Pill icon="lock" label={t("host.advanced.route.peerOnlyRequired")} comic="hint-route-p2p-required" />
           <Pill icon="alert" tone="bad" label={t("common.copyFailed")} comic="warning" /></div>
         <div className="cp-tools"><StatusIndicator status={deriveParticipantStatus({ upstream: { kind: "peer", peerId: "preview" }, mediaReady: true }, true)} />

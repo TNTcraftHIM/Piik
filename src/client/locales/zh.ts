@@ -365,10 +365,6 @@ export const zh = {
   "theme.dark.short": "暗色",
   "theme.light.short": "浅色",
 
-  "story.room": "找到房间",
-  "story.link": "建立连接",
-  "story.show": "接收画面",
-
   "gate.connectFailed": "无法连接站点访问服务，请重试",
   "gate.expired": "站点访问已失效，请重新验证",
   "gate.serviceUnavailable": "站点验证服务暂时不可用 ({status})",
@@ -501,6 +497,7 @@ export const zhTitleFrames = {
     "小客厅静悄悄",
   ],
   viewerReady: ["点击播放"],
+  viewerClosed: [zh["viewer.msg.closed"]],
   viewerUnavailable: ["暂不可用"],
   hostUnavailable: [zh["host.fail.start"]],
   viewerWaiting: [

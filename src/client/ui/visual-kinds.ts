@@ -7,6 +7,28 @@ export type ComicKind =
   | "signal-connecting"
   | "signal-recovering"
   | "signal-offline"
+  | "signal-connected"
+  | "signal-failed"
+  | "media-playing"
+  | "media-ready"
+  | "share-live"
+  | "share-ended"
+  | "room-closed"
+  | "room-code-invalid"
+  | "page-refresh"
+  | "site-access"
+  | "source-switching"
+  | "source-starting"
+  | "preview-paused"
+  | "update-available"
+  | "debug-start"
+  | "debug-export-failed"
+  | "copy-failed"
+  | "source-failed"
+  | "settings-failed"
+  | "name-invalid"
+  | "participant-name"
+  | "transport-connected"
   | "tap-to-play"
   | "host-paused"
   | "recovering"
@@ -48,6 +70,8 @@ export type Set3Kind =
   | "hint-quality"
   | "hint-audio-quality"
   | "hint-degrade-pref"
+  | "hint-prefer-resolution"
+  | "hint-prefer-framerate"
   | "hint-codec"
   | "hint-advanced"
   | "hint-details"
@@ -89,12 +113,23 @@ export type PlaybackHintKind =
 export type ControlHintKind =
   | "hint-collapse"
   | "hint-refresh-sources"
+  | "hint-source-picker"
+  | "hint-no-sources"
   | "hint-password-show"
   | "hint-password-hide"
+  | "hint-password-remove"
   | "hint-share-audio"
   | "hint-stop-audio"
   | "hint-share-audio-fixed"
   | "hint-silent-share-fixed";
+
+export type MetricHintKind = `hint-metric-${
+  | "resolution" | "fps" | "bitrate" | "loss" | "rtt" | "outgoing"
+  | "quality" | "capture" | "input-fps" | "encoder" | "encode-time"
+  | "jitter" | "dropped" | "decode-time" | "freezes" | "freeze-time"
+  | "audio-bitrate" | "audio-loss" | "audio-jitter" | "playout"
+  | "video-buffer" | "audio-buffer" | "concealment-rate" | "concealments"
+}`;
 
 export type HintKind =
   | Set1Kind
@@ -102,6 +137,7 @@ export type HintKind =
   | Set3Kind
   | Set4Kind
   | PlaybackHintKind
+  | MetricHintKind
   | ControlHintKind;
 
 export type ComicTheme = "stage" | "paper";

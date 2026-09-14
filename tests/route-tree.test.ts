@@ -335,7 +335,7 @@ describe("RouteTree", () => {
     expect(html).toContain(hostName);
   });
 
-  it("distinguishes ready, recovering, pending, and selected viewers", () => {
+  it("distinguishes ready, pending, and selected viewers", () => {
     const { host, viewers } = labelParticipantSnapshot([
       {
         role: "host",
@@ -352,8 +352,8 @@ describe("RouteTree", () => {
       },
       {
         role: "viewer",
-        peerId: "recovering",
-        displayName: "Recovering",
+        peerId: "awaiting-media",
+        displayName: "Awaiting media",
         upstream: { kind: "peer", peerId: "host" },
       },
       {
@@ -369,20 +369,20 @@ describe("RouteTree", () => {
         hostPeerId: host?.peerId ?? null,
         hostLabel: host?.label ?? "Host",
         viewers,
-        selectedPeerId: "recovering",
+        selectedPeerId: "awaiting-media",
       }),
     );
 
     expect(html).toContain('class="lr-route-edge is-p2p"');
-    expect(html).toContain('class="lr-route-edge is-p2p is-recovering"');
+    expect(html).toContain('class="lr-route-edge is-p2p is-pending"');
     expect(html).toContain('class="lr-route-edge is-pending"');
     expect(html).toContain(
-      'class="lr-route-node is-recovering is-selected"',
+      'class="lr-route-node is-pending is-selected"',
     );
     expect(html).toContain(
       'class="lr-route-selection" x="1" y="2" width="38" height="46" rx="8"',
     );
-    expect(html).toContain("Recovering");
+    expect(html).toContain("Awaiting media");
     expect(html).toContain("← Host");
   });
 

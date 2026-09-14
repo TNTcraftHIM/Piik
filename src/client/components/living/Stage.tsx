@@ -1,12 +1,11 @@
 // The TV stage: frame, screen, status slot. Pages render their own <video>
-// (stream binding stays with the page); overlays and the connecting
-// storyboard are provided here.
+// (stream binding stays with the page); shared overlays are provided here.
 import type { ReactNode } from "react";
 import { Glyph, type GlyphName } from "../../ui/icons";
-import { useCopy, type CopyKey } from "../../ui/copy";
+import { useCopy } from "../../ui/copy";
 import { Comic, type ComicKind } from "./Comic";
 import type { ComicTone } from "./comic-presentation";
-import { BrandLoader, BrandMark } from "./BrandMark";
+import { BrandLoader } from "./BrandMark";
 
 export function StageTv({
   hasEntry,
@@ -37,45 +36,6 @@ export function StageTv({
 
 export function StaticNoise() {
   return <div className="lr-tv-static" aria-hidden="true" />;
-}
-
-export function StoryBoard({
-  step,
-  showBrand = false,
-}: {
-  step: 0 | 1 | 2;
-  showBrand?: boolean;
-}) {
-  const { vis, t } = useCopy();
-  const panels: [GlyphName, CopyKey][] = [
-    ["door", "story.room"],
-    ["plug", "story.link"],
-    ["tv", "story.show"],
-  ];
-  return (
-    <div className="lr-storyboard" role="status" aria-label={t("host.starting")}>
-      {showBrand ? <BrandMark size={40} motion="loop" /> : null}
-      <div className="lr-story" aria-hidden="true">
-        {panels.map(([icon, key], index) => (
-          <span key={key} style={{ display: "contents" }}>
-            {index > 0 ? (
-              <span className={`lr-story-link${step > index - 1 ? " is-done" : ""}`} />
-            ) : null}
-            <span
-              className={`lr-story-item${step > index ? " is-done" : step === index ? " is-now" : ""}`}
-            >
-              <span
-                className={`lr-story-panel${step > index ? " is-done" : step === index ? " is-now" : ""}`}
-              >
-                <Glyph name={step > index ? "check" : icon} size={22} />
-              </span>
-              {vis ? null : <span className="lr-story-cap">{t(key)}</span>}
-            </span>
-          </span>
-        ))}
-      </div>
-    </div>
-  );
 }
 
 export function StageOverlay({

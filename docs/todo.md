@@ -17,6 +17,11 @@ history. A parked idea is not implementation authority.
   detailed launcher errors and Windows error-exit pause; those repairs do not
   establish resolution on the reporting machine. Use a current Debug report if
   startup still fails.
+- [ ] **Tooltip placement around video.** After the current motion/meaning
+  acceptance, review placement that keeps the picture visible, including
+  side placement and restrained translucency. Current behavior prefers above
+  (below for header controls) and flips for viewport space. Discuss the design
+  before changing placement rules.
 
 Keep fixes on a maintenance branch until acceptance. The public release is the
 compatibility baseline; private service deployment stays independent.

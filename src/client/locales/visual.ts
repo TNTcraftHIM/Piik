@@ -54,6 +54,7 @@ export const visualTitleFrames = {
     "💤 ✨",
   ],
   viewerReady: ["▶️"],
+  viewerClosed: ["⏹️"],
   viewerUnavailable: ["❗"],
   hostUnavailable: ["❗"],
   viewerWaiting: [

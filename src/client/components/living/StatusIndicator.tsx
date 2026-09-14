@@ -10,24 +10,19 @@ export function StatusIndicator({ status, label }: {
   label?: string;
 }) {
   const { vis, t } = useCopy();
-  const hint = status.tooltip ?? status.comic;
+  const hint = (status.tooltip ?? status.comic)!;
   const text = label ?? t(status.labelKey);
-  const wrapped = !vis || Boolean(hint);
-  const Trigger = wrapped ? "button" : "span";
   const indicator = (
-    <Trigger
-      type={wrapped ? "button" : undefined}
+    <button
+      type="button"
       className="lr-status-indicator"
       data-tone={status.tone}
       data-pulse={status.pulse || undefined}
-      role={wrapped ? undefined : "img"}
       aria-label={text}
     >
       <Glyph name={status.icon} size={17} />
-    </Trigger>
+    </button>
   );
-  return wrapped
-    ? <Tooltip toggleOnClick kind={hint} tone={status.tone} motion={status.pulse ? "progress" : undefined}
-        text={vis ? undefined : text}>{indicator}</Tooltip>
-    : indicator;
+  return <Tooltip toggleOnClick kind={hint} tone={status.tone} motion={status.pulse ? "progress" : "still"}
+    text={vis ? undefined : text}>{indicator}</Tooltip>;
 }

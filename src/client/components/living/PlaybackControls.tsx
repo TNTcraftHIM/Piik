@@ -152,7 +152,7 @@ export function PlaybackControls({
           hintTone={picture.failed ? "bad" : undefined}
           title={picture.failed ? "playback.pipFailed" : !picture.supported ? "playback.pipUnavailable"
             : picture.active ? "playback.exitPip" : !canPlay ? "playback.pipWaiting" : "playback.pip"}
-          hint={!picture.supported || picture.failed ? "hint-pip-unavailable" : picture.active ? "hint-pip-exit" : "hint-pip"}
+          hint={!picture.supported || picture.failed || (!picture.active && !canPlay) ? "hint-pip-unavailable" : picture.active ? "hint-pip-exit" : "hint-pip"}
           pressed={picture.active} disabled={!picture.supported || (!picture.active && !canPlay)}
           onClick={() => { void picture.toggle(); }} />
         {!fullscreen.active ? <Btn icon={theaterMode ? "theaterExit" : "theater"}

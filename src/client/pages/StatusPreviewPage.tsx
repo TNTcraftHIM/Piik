@@ -52,7 +52,7 @@ export function StatusPreviewPage() {
   }
 
   return (
-    <div className={`lr-app sp-page${reducedMotion ? " sp-reduced-motion" : ""}`}>
+    <div className={`lr-app sp-page${reducedMotion ? " sp-reduced-motion" : ""}`} data-comic-reduced-motion={reducedMotion || undefined}>
       <AppHeader homeHref="/__status-preview" />
       <main className="sp-main">
         <header className="sp-heading">
@@ -100,7 +100,7 @@ export function StatusPreviewPage() {
             </StageTv>
             <div className="lr-stage-notices" role="status" aria-live="polite">
               {status.notice ? <Pill icon={status.notice.icon} label={t(status.notice.labelKey)}
-                comic={status.notice.tooltip ?? status.notice.comic} tooltipTone={status.notice.tone} /> : null}
+                comic={(status.notice.tooltip ?? status.notice.comic)!} tone={status.notice.tone} /> : null}
             </div>
             <div className="sp-couch-preview">
               <div className="sp-couch-view" role="group" aria-label="沙发观察视角">

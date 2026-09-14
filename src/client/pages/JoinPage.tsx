@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from "react";
 import { AppHeader } from "../components/living/Header";
 import { Tooltip } from "../components/living/Tooltip";
+import { Comic } from "../components/living/Comic";
+import { HintComic } from "../components/living/hints";
 import { Glyph } from "../ui/icons";
 import { useCopy } from "../ui/copy";
 import { roomRouteForExplicitEntry } from "../lib/session";
@@ -45,7 +47,7 @@ export function JoinPage() {
             role="img"
             aria-label={t("join.title")}
           >
-            <Glyph name="door" size={96} draw="join-door" />
+            <HintComic kind="hint-join-go" size={280} />
           </span>
           {vis ? null : (
             <div className="lr-access-text">
@@ -82,11 +84,10 @@ export function JoinPage() {
             <>
               <span
                 key={rejectedAttempt}
-                className="lr-join-error"
                 role="alert"
                 aria-label={t("join.invalid")}
               >
-                <Glyph name="x" size={24} />
+                <Comic kind="room-code-invalid" size={240} />
               </span>
               {vis ? (
                 <span className="visually-hidden">{t("join.invalid")}</span>

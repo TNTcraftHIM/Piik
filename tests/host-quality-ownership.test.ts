@@ -22,7 +22,7 @@ const owners = new Set(["changeQuality", "commitQuality", "handleSignalMessage",
   "acquireNativeClient", "requestSharing", "startNativeShare", "startBrowserNativeIngress",
   "ownNativeClient", "discardNativeClient", "releaseUnusedNativeClient", "closeCaptureSourcePicker",
   "openCaptureSourcePicker", "startSharing", "beginRoomMutation", "finishRoomMutation",
-  "startPeer", "reconcileHostChildren", "setNoticeError", "endSharing"]);
+  "startPeer", "reconcileHostChildren", "setNotice", "setNoticeKey", "setNoticeError", "setNoticeErrorKey", "endSharing"]);
 const functions: string[] = [];
 function collect(node: ts.Node): void {
   if (ts.isFunctionDeclaration(node) && node.name && owners.has(node.name.text)) {
@@ -87,7 +87,8 @@ function fixture(launchedByClient = true) {
     peersRef: ref(new Map([["viewer", peer]])), hostProvisionalChildRef: ref(null), hostSfuRouteRef: ref(route),
     signalRef: ref({ setHostQualitySettings: vi.fn(), send: vi.fn() }),
     setQualitySettings: vi.fn(), setAdvancedQuality: vi.fn(), setChangingQuality: vi.fn(),
-    setNotice: vi.fn(), setNoticeError: vi.fn(), setDetails: vi.fn(), setNativeActive: vi.fn(),
+    setNoticeValue: vi.fn(), setNoticeError: vi.fn(), readableError: hostActionErrorNotice,
+    setDetails: vi.fn(), setNativeActive: vi.fn(),
     applyCaptureProfile: vi.fn(async (_stream: unknown, profile: QualitySettings) => { physical = profile; }),
     captureDetails: () => ({}), nativeCaptureDetails: () => ({}),
     qualitySettingsEqual, videoQualitySettingsEqual, resolveScreenAudioQuality, qualitySettingsLabel,
@@ -112,6 +113,7 @@ function fixture(launchedByClient = true) {
   const startChild = context.startPeer;
   const openPicker = context.openCaptureSourcePicker;
   const writeNoticeError = context.setNoticeError;
+  state.setNoticeError.mockImplementation(writeNoticeError);
   context.setNoticeError = state.setNoticeError;
   context.startSharing = state.startSharing;
   context.startPeer = state.startPeer;
@@ -149,9 +151,9 @@ describe("Host quality ownership", () => {
     current.nativeShareGenerationRef.current = null;
     current.client.startShare.mockRejectedValue(denied);
     await (entry === "native" ? current.start() : current.startBrowser());
-    expect(setNoticeValue).toHaveBeenCalledExactlyOnceWith({
+    expect(setNoticeValue).toHaveBeenLastCalledWith({
       kind: "text", text: hostActionErrorNotice(denied, "capture"),
-      target: "television", comic: "warning",
+      target: "television", comic: "source-failed", tone: "bad",
     });
     expect(current.setPhase).toHaveBeenLastCalledWith("error");
     expect(current.createRoom).not.toHaveBeenCalled();
@@ -168,23 +170,26 @@ describe("Host quality ownership", () => {
     });
     current.client.replaceShareSource.mockRejectedValue(denied);
     await current.switchSource();
-    expect(setNoticeValue).toHaveBeenCalledExactlyOnceWith({
+    expect(setNoticeValue).toHaveBeenLastCalledWith({
       kind: "text", text: hostActionErrorNotice(denied, "source"),
-      target: "operation", comic: "warning",
+      target: "operation", comic: "source-failed", tone: "bad",
     });
     expect(current.setPhase).not.toHaveBeenCalled();
     expect(current.track.stop).not.toHaveBeenCalled();
   });
 
-  it.each([null, "warning"])("keeps the share ending reason and tone together in the television: %s", (comic) => {
+  it.each([
+    { key: "host.stopNotice", comic: "share-ended", tone: "off" },
+    { key: "host.shareEnded", comic: "source-failed", tone: "bad" },
+  ])("keeps the share ending reason and tone together in the television: $tone", ({ key, comic, tone }) => {
     const current = fixture();
     const setNoticeValue = vi.fn();
     current.context.setNoticeValue = setNoticeValue;
     current.generationRef.current = 1;
-    current.context.endSharing({ key: "host.shareEnded" }, false, comic);
+    current.context.endSharing({ key }, false, comic, tone);
     expect(setNoticeValue).toHaveBeenCalledExactlyOnceWith({
-      kind: "key", key: "host.shareEnded", vars: undefined,
-      target: "television", comic,
+      kind: "key", key, vars: undefined,
+      target: "television", comic, tone,
     });
     expect(current.setPhase).toHaveBeenLastCalledWith("ended");
     expect(current.activeGenerationRef.current).toBeNull();
@@ -418,6 +423,34 @@ describe("Host quality ownership", () => {
     expect(current.signalRef.current.setHostQualitySettings).not.toHaveBeenCalled();
   });
 
+  it.each(["peer", "sfu"])("shows partial %s settings application as a limitation and clears it after success", async (failure) => {
+    const current = fixture();
+    if (failure === "peer") current.peer.updateCaptureProfile.mockResolvedValueOnce(false);
+    else current.route.updateProfile.mockResolvedValueOnce(false);
+    await current.change(lower);
+    expect(current.qualitySettingsRef.current).toEqual(lower);
+    expect(current.track.stop).not.toHaveBeenCalled();
+    expect(current.setNoticeValue).toHaveBeenLastCalledWith({
+      kind: "text", text: "host.notice.partialApply", target: "operation", comic: "settings-failed", tone: "warn",
+    });
+    await current.change(original);
+    expect(current.setNoticeValue).toHaveBeenLastCalledWith({
+      kind: "text", text: "host.notice.qualitySet", target: "operation", comic: "hint-quality", tone: "live",
+    });
+  });
+
+  it("keeps a committed Native source change with an SFU failure in recovery rather than success", async () => {
+    const current = fixture();
+    current.route.updateProfile.mockResolvedValueOnce(false);
+    await current.switchSource();
+    expect(current.client.replaceShareSource).toHaveBeenCalledOnce();
+    expect(current.setPhase).not.toHaveBeenCalled();
+    expect(current.track.stop).not.toHaveBeenCalled();
+    expect(current.setNoticeValue).toHaveBeenLastCalledWith({
+      kind: "text", text: "source-switch-result", target: "operation", comic: "connecting-sfu", tone: "warn",
+    });
+  });
+
   it("does not commit a capture completion after its share has ended", async () => {
     const current = fixture();
     const pending = deferred<void>();
@@ -476,11 +509,13 @@ describe("Host quality ownership", () => {
     await vi.waitFor(() => expect(current.route.updateProfile).toHaveBeenCalled());
     current.activeGenerationRef.current = 2;
     current.sourceSwitchRef.current = null;
-    current.setNotice("new-share");
+    current.context.setNotice("new-share", "share-live", "live");
     pending.resolve(true);
     await switching;
-    expect(current.setNotice).toHaveBeenLastCalledWith("new-share");
-    expect(current.setNotice).not.toHaveBeenCalledWith("source-switch-result");
+    expect(current.setNoticeValue).toHaveBeenLastCalledWith({
+      kind: "text", text: "new-share", target: "operation", comic: "share-live", tone: "live",
+    });
+    expect(current.setNoticeValue).not.toHaveBeenCalledWith(expect.objectContaining({ text: "source-switch-result" }));
   });
 
   it("uses the current committed profile when reauthentication SFU recovery finishes late", async () => {

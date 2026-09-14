@@ -36,7 +36,6 @@ import {
 } from "../components/living/Stage";
 import { StatusIndicator } from "../components/living/StatusIndicator";
 import { PlaybackControls } from "../components/living/PlaybackControls";
-import { BrandLoader } from "../components/living/BrandMark";
 import {
   Btn,
   FieldCap,
@@ -326,9 +325,9 @@ export function ViewerPage({
   useDocumentTitle(
     [
       accessState === "ready" ? roomId : null,
-      accessState === "ready" ? titleContent[0] : null,
+      titleContent[0],
     ],
-    accessState === "ready" ? titleContent.slice(1) : [],
+    titleContent.slice(1),
   );
   const peerConnectionIdentity = peerRef.current?.getConnectionIdentity() ?? null;
   const reconnectRoute = viewerReconnectRoute(
@@ -2174,17 +2173,7 @@ export function ViewerPage({
         "SESSION_REPLACED",
         "SIGNAL_TERMINATED",
       ].includes(failureCode);
-    const deniedComic: ComicKind =
-      failureCode === "ROOM_FULL"
-        ? "room-full"
-        : codeOnlyDenied
-          ? "access-denied"
-          : failureCode === "INVALID_TOKEN"
-            ? "invalid-invite"
-            : failureCode === "ROOM_NOT_FOUND" ||
-                failureCode === "ROOM_CLOSED"
-              ? "room-not-found"
-              : "warning";
+    const deniedComic: ComicKind = viewerStatus.activity.comic ?? "signal-failed";
     const deniedHintKey: CopyKey = codeOnlyDenied
       ? "viewer.hint.denied"
       : failureCode === "ROOM_NOT_FOUND" ||
@@ -2200,7 +2189,7 @@ export function ViewerPage({
         <AppHeader
           led={
             accessState === "checking" ? (
-              <LedStrip state="busy" label={t(presentation.messageKey)} />
+              <LedStrip state="busy" label={t(presentation.messageKey)} comic="signal-connecting" />
             ) : undefined
           }
         />
@@ -2212,7 +2201,7 @@ export function ViewerPage({
                 role="status"
                 aria-label={t(presentation.messageKey)}
               >
-                <BrandLoader />
+                <Comic kind="signal-connecting" theme="paper" />
               </span>
               {vis ? null : (
                 <span className="lr-tv-msg">{t(presentation.messageKey)}</span>
@@ -2283,6 +2272,7 @@ export function ViewerPage({
                   icon="refresh"
                   cap="common.refresh"
                   title="common.refresh"
+                  hint="page-refresh"
                   onClick={() => window.location.reload()}
                 />
               )}
@@ -2468,8 +2458,9 @@ export function ViewerPage({
               <Pill
                 icon={viewerStatus.notice.icon}
                 label={t(viewerStatus.notice.labelKey)}
-                comic={viewerStatus.notice.comic}
-                tooltipTone={viewerStatus.notice.tone}
+                comic={(viewerStatus.notice.comic ?? viewerStatus.notice.tooltip)!}
+                tone={viewerStatus.notice.tone}
+                motion={viewerStatus.notice.pulse ? "progress" : "still"}
               />
             )}
           </div>
@@ -2578,7 +2569,7 @@ export function ViewerPage({
                     tone="bad"
                     label={t("host.nameError")}
                     alert
-                    comic="warning"
+                    comic="name-invalid"
                   />
                 )}
               </form>

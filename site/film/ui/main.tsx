@@ -141,6 +141,7 @@ function Screen({ shot }: { shot: Shot }) {
           launcher ? undefined : (
             <LedStrip
               state={live ? "live" : "off"}
+              comic={live ? "signal-connected" : "signal-offline"}
               label={t(
                 live ? "state.presence.online" : "state.presence.offline",
               )}
@@ -232,23 +233,25 @@ function Screen({ shot }: { shot: Shot }) {
               </RowGroup>
               <span className="lr-spacer" />
               <NameTag name={shot === "viewer" ? names[0] : name} identity={shot === "viewer" ? guests[0] : host} />
-              <Btn icon="pencil" cap="common.edit" title="host.nameEdit" />
-              <Btn icon="gauge" cap="host.details" title="host.details" />
+              <Btn icon="pencil" cap="common.edit" title="host.nameEdit" hint="hint-rename" />
+              <Btn icon="gauge" cap="host.details" title="host.details" hint="hint-details" />
               <Btn
                 icon="network"
                 cap="host.topology"
                 title="host.topology.show"
+                hint="hint-topology"
               />
             </Row>
             {live && shot !== "viewer" ? (
               <>
                 <Row>
-                  <Btn icon="pause" cap="host.pause" title="host.pause" />
-                  <Btn icon="square" cap="host.stop" title="host.stop" />
+                  <Btn icon="pause" cap="host.pause" title="host.pause" hint="hint-pause" />
+                  <Btn icon="square" cap="host.stop" title="host.stop" hint="hint-share-stop" />
                   <Btn
                     icon="share"
                     cap="host.switchSource"
                     title="host.switchSource"
+                    hint="hint-switch-source"
                   />
                 </Row>
                 <Row label={t("host.invite")}>
@@ -259,16 +262,21 @@ function Screen({ shot }: { shot: Shot }) {
                       title={
                         shot === "copied" || chat ? "common.copied" : "host.invite.copy"
                       }
+                      hint="hint-copy-invite"
+                      hintTone={shot === "copied" || chat ? "live" : undefined}
+                      hintMotion={shot === "copied" || chat ? "still" : undefined}
                     />
                     <Btn
                       icon="refresh"
                       cap="host.invite.rotateShort"
                       title="host.invite.rotate"
+                      hint="hint-rotate-invite"
                     />
                     <Btn
                       icon="linkOff"
                       cap="host.invite.revokeShort"
                       title="host.invite.revoke"
+                      hint="hint-revoke-invite"
                     />
                   </RowGroup>
                   <input

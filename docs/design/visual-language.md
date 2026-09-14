@@ -58,11 +58,18 @@ owns both interactions; pages do not add their own open state or timers.
 Tooltips, state overlays and entry/error pages reuse the same illustrative scene
 in every mode.
 Chinese and English add a concise caption beneath it; pure-visual mode keeps the
-scene and its playful pictograms as an explicit alternative. Names, addresses and other literal
-values without a corresponding scene remain text. Illustration and caption
+scene and its playful pictograms as an explicit alternative. Literal names and
+addresses keep their exact text beside a matching identity or invitation scene.
+Do not substitute an unrelated action just to fill a tooltip. Illustration and caption
 explain the same action or current fact, with one tone and motion owner. Mount
 scenes only while their tooltip or overlay is shown; captions remain readable
 throughout.
+
+Metric icons and hints share the `metric-presentation.ts` definition in details
+and overview headings. Frames, packets, jitter and audio repair have distinct
+symbols; related time measurements keep a clock with a scene identifying the
+measured stage. Illustrations explain a metric, never invent its current value,
+threshold or quality verdict.
 
 Shared buttons and chips use pill shapes, a quiet lower edge and a short lift
 on hover or keyboard focus, then compress on press. Inputs and option tiles
@@ -158,7 +165,7 @@ possibility. A rejected PiP request is failure; lack of PiP support is a limitat
 | --- | --- |
 | Action demonstration (`demo`) | Play one meaningful transition when shown, then hold its result |
 | Work actually continuing (`progress`) | Repeat a gentle connection/recovery beat while that state exists |
-| Settled success, failure, limitation, pause or idle (`still`) | Show the informative final pose immediately; no repeated stamping, shaking, blinking or celebration |
+| Settled success, failure, limitation, pause or idle (`still`) | Keep the informative final pose; one brief entrance and eye gesture may add personality, without repeating the operation, retrying or celebrating |
 
 Demonstrations and progress share the existing 3.2-second comic beat. The main
 action belongs in its first half, followed by a readable hold; small internal
@@ -171,6 +178,12 @@ pose**. Disabling animation alone is insufficient if the base SVG hides the
 result or shows a misleading starting pose. Static styling is scoped to its SVG;
 one still tooltip must not freeze another progress scene. New keyframes must end
 in the documented result rather than reset for an obsolete loop.
+
+Every comic surface, including overlays and error pages, shares a restrained
+entrance. Settled figures may blink once while their result remains unchanged.
+Changing the comic's meaning starts its animation afresh; changing a caption,
+language or numeric value alone does not. The preview's reduced-motion setting
+uses the same explicit final poses as the system setting.
 
 The tooltip panel itself uses the same restrained entrance/exit for every tone.
 Replay belongs to opening/hovering/focusing the whole control, not just its SVG.

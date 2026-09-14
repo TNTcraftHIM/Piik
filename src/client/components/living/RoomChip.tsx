@@ -75,7 +75,7 @@ export function Lcd({ code }: { code: string }) {
           </span>
         ))}
       </span>
-      <Tooltip kind={copyState === "failed" ? "warning" : "hint-copy-code"}
+      <Tooltip kind={copyState === "failed" ? "copy-failed" : "hint-copy-code"}
         tone={copyState === "copied" ? "live" : copyState === "failed" ? "bad" : "off"}
         motion={copyState === "idle" ? "demo" : "still"}
         text={vis ? undefined : copyFeedback || t("common.copy")}>
@@ -164,26 +164,23 @@ export function RoomAdmissionBadge({
       ? {
           icon: "globe" as const,
           label: "host.policy.currentOpen" as const,
-          tone: "good" as const,
           comic: "hint-policy-open" as const,
         }
       : passwordEnabled
         ? {
             icon: "key" as const,
             label: "host.policy.currentPassword" as const,
-            tone: "good" as const,
             comic: "hint-password" as const,
           }
         : {
             icon: "lock" as const,
             label: "host.policy.currentInvite" as const,
-            tone: undefined,
             comic: "hint-policy-private" as const,
           };
   return (
     <Pill
       icon={presentation.icon}
-      tone={presentation.tone}
+      tone="off"
       label={t(presentation.label)}
       comic={presentation.comic}
     />

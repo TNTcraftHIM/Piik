@@ -134,7 +134,7 @@ export function LauncherForm({
         <fieldset className="lr-client-lan">
           <legend className={vis ? "visually-hidden" : undefined}>{t("client.launch.lanAddress")}</legend>
           {lan.addresses.length === 0 ? (
-            <Pill icon="alert" comic="warning" label={t("client.launch.lanUnavailable")} />
+            <Pill icon="wifiOff" tone="warn" comic="signal-offline" label={t("client.launch.lanUnavailable")} />
           ) : <>
             {vis ? null : <p className="lr-client-lan-hint">{t("client.launch.lanHint")}</p>}
             <div className="lr-client-lan-options">

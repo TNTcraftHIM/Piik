@@ -1,11 +1,12 @@
 import type { ConnectionMetrics } from "../../types";
 import { formatPacketLossPercent } from "../connection-details";
-import { Glyph, type GlyphName } from "../../ui/icons";
-import { useCopy, type CopyKey } from "../../ui/copy";
+import { Glyph } from "../../ui/icons";
+import { useCopy } from "../../ui/copy";
 import { PawnSvg } from "./Pawn";
 import { participantColor } from "./participant-color";
 import type { StatusDescriptor } from "../../ui/media-status";
 import { Tooltip } from "./Tooltip";
+import { METRIC_PRESENTATION, type MetricLabel } from "./metric-presentation";
 
 export interface ViewerOverviewEntry {
   key: string;
@@ -36,10 +37,12 @@ export function ViewerOverview({
     unit = "",
   ): string =>
     finite(value ?? null) ? `${value!.toFixed(digits)}${unit}` : unknown;
-  const heading = (key: CopyKey, icon: GlyphName) => (
-    <span aria-label={t(key)}>
-      {vis ? <Glyph name={icon} size={14} /> : t(key)}
-    </span>
+  const heading = (key: MetricLabel) => (
+    <Tooltip toggleOnClick kind={METRIC_PRESENTATION[key].hint} text={vis ? undefined : t(key)}>
+      <button type="button" aria-label={t(key)} style={{ border: 0, padding: 0, background: "none", color: "inherit", font: "inherit", cursor: "help" }}>
+        {vis ? <Glyph name={METRIC_PRESENTATION[key].icon} size={14} /> : t(key)}
+      </button>
+    </Tooltip>
   );
 
   return (
@@ -49,14 +52,14 @@ export function ViewerOverview({
       aria-label={t("host.viewerOverview")}
     >
       <div className="lr-viewer-overview-scroll">
-        <div className="lr-viewer-overview-head" aria-hidden="true">
+        <div className="lr-viewer-overview-head">
           <span>{vis ? <Glyph name="users" size={14} /> : t("common.viewers")}</span>
           <span>{vis ? <Glyph name="network" size={14} /> : t("host.topology")}</span>
-          {heading("stats.resolution", "expand")}
-          {heading("stats.fps", "wave")}
-          {heading("stats.bitrate", "gauge")}
-          {heading("stats.loss", "drop")}
-          {heading("stats.rtt", "clock")}
+          {heading("stats.resolution")}
+          {heading("stats.fps")}
+          {heading("stats.bitrate")}
+          {heading("stats.loss")}
+          {heading("stats.rtt")}
         </div>
         <div className="lr-viewer-overview-body">
           {entries.map((entry) => {

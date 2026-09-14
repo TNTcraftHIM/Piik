@@ -28,7 +28,7 @@ const (
 
 // Bounds and defaults for Hosted configuration.
 const (
-	defaultMaxViewersPerRoom = 8
+	defaultMaxViewersPerRoom = protocol.MaxViewersPerRoomLimit
 	defaultPort              = 8787
 	maxPort                  = 65_535
 )

@@ -19,14 +19,12 @@ export function LedStrip({
 }: {
   state: LedState;
   label: string;
-  comic?: ComicKind;
+  comic: ComicKind;
 }) {
   const { vis } = useCopy();
-  const wrapped = !vis || comic;
-  const Trigger = wrapped ? "button" : "span";
   const strip = (
-    <Trigger
-      type={wrapped ? "button" : undefined}
+    <button
+      type="button"
       className="lr-leds"
       data-state={state}
       aria-label={label}
@@ -35,15 +33,13 @@ export function LedStrip({
       <i />
       <i />
       {vis ? null : <span className="lr-leds-label">{label}</span>}
-    </Trigger>
+    </button>
   );
   return (
     <span role="status">
-      {wrapped ? (
-        <Tooltip toggleOnClick kind={comic} tone={state} text={vis ? undefined : label} place="below" align="start">
-          {strip}
-        </Tooltip>
-      ) : strip}
+      <Tooltip toggleOnClick kind={comic} tone={state} motion={state === "busy" || state === "warn" ? "progress" : "still"} text={vis ? undefined : label} place="below" align="start">
+        {strip}
+      </Tooltip>
     </span>
   );
 }
@@ -109,7 +105,9 @@ export function HeaderControls({ diagnosticControl }: { diagnosticControl?: Reac
         {themeButton}
       </Tooltip>
       {diagnosticControl !== null && <span className="lr-header-diagnostic">
-        {diagnosticControl === undefined ? <Tooltip kind={browserDebugEnabled ? "hint-debug-export" : "hint-details"}
+        {diagnosticControl === undefined ? <Tooltip kind={!browserDebugEnabled ? "debug-start" : debugExport === "failed" ? "debug-export-failed" : "hint-debug-export"}
+          tone={debugExport === "failed" ? "bad" : debugExport === "busy" ? "busy" : "off"}
+          motion={debugExport === "failed" ? "still" : debugExport === "busy" ? "progress" : "demo"}
           text={vis ? undefined : debugTitle} place="below" align="end">
           {debugButton}
         </Tooltip> : diagnosticControl}

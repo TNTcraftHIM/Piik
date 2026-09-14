@@ -23,6 +23,7 @@ interface TreeNode {
   via: string | null;
   sfu: boolean;
   you: boolean;
+  // Unready media is pending, including the initial connection.
   ready: boolean;
 }
 
@@ -95,7 +96,7 @@ function xForDepth(depth: number, layout: TopologyLayout): number {
 }
 
 function edgeClass(kind: "p2p" | "sfu", ready = true): string {
-  return `lr-route-edge is-${kind}${ready ? "" : " is-recovering"}`;
+  return `lr-route-edge is-${kind}${ready ? "" : " is-pending"}`;
 }
 
 export const RouteTree = memo(function RouteTree({
@@ -427,7 +428,7 @@ export const RouteTree = memo(function RouteTree({
           return (
             <g
               key={node.key}
-              className={`lr-route-node${node.ready ? "" : " is-recovering"}${hovered ? " is-hovered" : ""}${selected ? " is-selected" : ""}`}
+              className={`lr-route-node${node.ready ? "" : " is-pending"}${hovered ? " is-hovered" : ""}${selected ? " is-selected" : ""}`}
               transform={`translate(${centeredPawnX(point.x, PAWN_SCALE)}, ${centeredPawnY(point.y, PAWN_SCALE)}) scale(${PAWN_SCALE})`}
             >
               <PawnSvg color={participantColor(node.key)} identity={node.key} />
@@ -450,7 +451,7 @@ export const RouteTree = memo(function RouteTree({
           return (
             <g
               key={`pending-${point.viewer.peerId}`}
-              className={`lr-route-node is-recovering${hovered ? " is-hovered" : ""}${selected ? " is-selected" : ""}`}
+              className={`lr-route-node is-pending${hovered ? " is-hovered" : ""}${selected ? " is-selected" : ""}`}
               transform={`translate(${centeredPawnX(point.x, PAWN_SCALE)}, ${centeredPawnY(point.y, PAWN_SCALE)}) scale(${PAWN_SCALE})`}
             >
               <PawnSvg color={participantColor(point.viewer.peerId)} identity={point.viewer.peerId} />
@@ -488,7 +489,7 @@ export const RouteTree = memo(function RouteTree({
         {pendingPos.map((point) => (
           <text
             key={`label-pending-${point.viewer.peerId}`}
-            className={`lr-route-label is-recovering${hoveredPeerId === point.viewer.peerId ? " is-hovered" : ""}${selectedPeerId === point.viewer.peerId ? " is-selected" : ""}`}
+            className={`lr-route-label is-pending${hoveredPeerId === point.viewer.peerId ? " is-hovered" : ""}${selectedPeerId === point.viewer.peerId ? " is-selected" : ""}`}
             x={labelX(point)}
             y={labelY(point)}
             textAnchor={labelAnchor}

@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { z } from "zod";
 
-import { BrandLoader, BrandMark } from "../components/living/BrandMark";
+import { BrandMark } from "../components/living/BrandMark";
+import { Comic } from "../components/living/Comic";
 import { Tooltip } from "../components/living/Tooltip";
 import { AppHeader } from "../components/living/Header";
 import { LauncherForm, type AppMode } from "../components/living/LauncherForm";
@@ -139,7 +140,7 @@ export function AppLauncherPage() {
     <div className="lr-app">
       <AppHeader homeHref="/client" diagnosticControl={appDebug === undefined ? null : (
         <Btn icon="cpu" title="client.launch.debugHint" cap="client.launch.debug"
-          pressed={debug} tone={debug ? "on" : undefined} hint="hint-details"
+          pressed={debug} tone={debug ? "on" : undefined} hint="debug-start"
           disabled={appDebug || loading || starting || error !== null}
           onClick={() => setDebug((value) => !value)} />
       )} />
@@ -152,7 +153,7 @@ export function AppLauncherPage() {
               starting ? "client.launch.starting" : "gate.checking",
             )}
           >
-            <BrandLoader />
+            <Comic kind="signal-connecting" theme="paper" />
             {vis ? null : (
               <span className="lr-client-launch-status">
                 {t(starting ? "client.launch.starting" : "gate.checking")}
@@ -167,7 +168,7 @@ export function AppLauncherPage() {
               tone="bad"
               label={t(error.kind === "load" ? "client.launch.loadFailed" : "client.launch.error")}
               alert
-              comic="warning"
+              comic="signal-failed"
             />
             {error.kind === "launch" ? <>
               {error.detail && <p className="lr-client-launch-detail">{error.detail}</p>}
@@ -176,6 +177,7 @@ export function AppLauncherPage() {
               icon="refresh"
               title="common.refresh"
               cap="common.refresh"
+              hint="page-refresh"
               onClick={() => window.location.reload()}
             />}
           </div>
@@ -190,12 +192,7 @@ export function AppLauncherPage() {
             lan={lan && { ...lan, onChange: (selected) => setLan({ ...lan, selected }) }}
             onSubmit={launch}
           >
-            {updateLink &&
-              (vis ? (
-                updateLink
-              ) : (
-                <Tooltip text={updateText}>{updateLink}</Tooltip>
-              ))}
+            {update && updateLink && <Tooltip kind="update-available" text={vis ? update.version : updateText}>{updateLink}</Tooltip>}
           </LauncherForm>
         )}
       </main>

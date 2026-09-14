@@ -79,7 +79,7 @@ export function Btn({
   onClick?: () => void;
   type?: "button" | "submit";
   /** Shared hint comic; text modes add the localized caption. */
-  hint?: HintKind;
+  hint?: ComicKind | HintKind;
   hintTone?: ComicTone;
   hintMotion?: ComicMotion;
   /** Draw-in spot id for state-beat toggle icons (see Glyph). */
@@ -87,7 +87,7 @@ export function Btn({
 }) {
   const { t, vis } = useCopy();
   const label = t(title);
-  const wrapped = !vis || Boolean(hint);
+  const wrapped = Boolean(hint);
   const softDisabled = Boolean(wrapped && disabled);
   const button = (
     <button
@@ -122,7 +122,7 @@ export function Btn({
       {cap ? <Cap k={cap} /> : null}
     </button>
   );
-  return wrapped ? (
+  return hint ? (
     <Tooltip kind={hint} tone={hintTone} motion={hintMotion} text={vis ? undefined : label}>{button}</Tooltip>
   ) : (
     button
@@ -150,7 +150,7 @@ export function Chip({
   children: ReactNode;
 }) {
   const { vis } = useCopy();
-  const wrapped = !vis || Boolean(hint);
+  const wrapped = Boolean(hint);
   const softDisabled = Boolean(wrapped && disabled);
   const chip = (
     <button
@@ -177,7 +177,7 @@ export function Chip({
       {children}
     </button>
   );
-  return wrapped ? (
+  return hint ? (
     <Tooltip kind={hint} text={vis ? undefined : title}>{chip}</Tooltip>
   ) : (
     chip
@@ -220,33 +220,30 @@ export function Pill({
   label,
   alert,
   comic,
-  tooltipTone,
+  motion = "still",
 }: {
   icon: GlyphName;
-  tone?: "bad" | "good";
+  tone?: ComicTone;
   label: string;
   alert?: boolean;
-  comic?: ComicKind | HintKind;
-  tooltipTone?: ComicTone;
+  comic: ComicKind | HintKind;
+  motion?: ComicMotion;
 }) {
   const { vis } = useCopy();
-  const wrapped = !vis || Boolean(comic);
-  const Trigger = wrapped ? "button" : "span";
+  const resolvedTone = tone ?? "warn";
   const body = (
-    <Trigger
-      type={wrapped ? "button" : undefined}
-      className={`lr-pill${tone ? ` is-${tone}` : ""}`}
+    <button
+      type="button"
+      className={`lr-pill is-${resolvedTone === "live" ? "good" : resolvedTone}`}
     >
       <Glyph name={icon} size={16} />
       {vis ? <span className="visually-hidden">{label}</span> : <span>{label}</span>}
-    </Trigger>
+    </button>
   );
   return (
     <span role={alert ? "alert" : "status"}>
-      {wrapped ? (
-        <Tooltip toggleOnClick kind={comic} tone={tooltipTone ?? (tone === "good" ? "live" : tone === "bad" ? "bad" : "warn")}
-          motion={tone === "good" ? "still" : undefined} text={vis ? undefined : label}>{body}</Tooltip>
-      ) : body}
+      <Tooltip toggleOnClick kind={comic} tone={resolvedTone} motion={motion}
+        text={vis ? undefined : label}>{body}</Tooltip>
     </span>
   );
 }
@@ -272,7 +269,7 @@ export function SwitchItem({
   hint?: HintKind;
 }) {
   const { vis, t } = useCopy();
-  const wrapped = !vis || Boolean(hint);
+  const wrapped = Boolean(hint);
   const softDisabled = Boolean(wrapped && disabled);
   const description = note ? `${label} · ${note}` : label;
   const tooltipText = disabled || locked ? description
@@ -301,7 +298,7 @@ export function SwitchItem({
       {vis ? null : <span className="lr-cap">{label}</span>}
     </span>
   );
-  return wrapped ? (
+  return hint ? (
     <Tooltip kind={hint} text={vis ? undefined : tooltipText}>{item}</Tooltip>
   ) : (
     item
@@ -310,7 +307,7 @@ export function SwitchItem({
 
 export function NameTag({ name, identity }: { name: string; identity: string }) {
   return (
-    <Tooltip text={name} className="lr-name-hint">
+    <Tooltip kind="participant-name" text={name} className="lr-name-hint">
       <span className="lr-name-tag" tabIndex={0}>
         <i
           aria-hidden="true"

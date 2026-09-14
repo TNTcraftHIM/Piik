@@ -5,6 +5,7 @@ import { nativeCaptureTargetKey } from "../../native/capture-selection";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { Tooltip } from "./Tooltip";
+import { HintComic } from "./hints";
 import { Pill } from "./primitives";
 
 const SOURCE_TABS = ["browser", "window", "display"] as const;
@@ -290,7 +291,7 @@ export function CaptureSourcePicker({
               role="status"
               aria-label={t("host.sourcePicker.loading")}
             >
-              <Glyph name="loader" size={18} className="lr-spin" />
+              <HintComic kind="hint-refresh-sources" size={240} tone="busy" motion="progress" />
               {vis ? null : <span>{t("host.sourcePicker.loading")}</span>}
             </span>
           ) : sources.length === 0 ? (
@@ -299,7 +300,7 @@ export function CaptureSourcePicker({
               role="status"
               aria-label={t("host.sourcePicker.empty")}
             >
-              <Glyph name="eyeOff" size={22} />
+              <HintComic kind="hint-no-sources" size={240} />
               {vis ? null : t("host.sourcePicker.empty")}
             </span>
           ) : null}
@@ -370,7 +371,7 @@ function CaptureSourceOption({
         );
 
   return (
-    <Tooltip text={title} className="lr-source-option-hint">
+    <Tooltip kind={target.kind === "picker" ? "hint-source-picker" : target.kind === "display" ? "hint-capture-display" : "hint-capture-window"} text={title} className="lr-source-option-hint">
       <button
         ref={buttonRef}
         type="button"

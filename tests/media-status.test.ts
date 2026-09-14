@@ -5,7 +5,7 @@ import {
   reduceViewerPresentation,
   type ViewerPresentationAction,
 } from "../src/client/media/viewer-presentation";
-import { deriveHostStatus, deriveViewerStatus, peerConnectionStatus } from "../src/client/ui/media-status";
+import { deriveHostStatus, deriveParticipantStatus, deriveViewerStatus, peerConnectionStatus } from "../src/client/ui/media-status";
 
 const playingActions: ViewerPresentationAction[] = [
   { type: "access", access: "ready" },
@@ -86,5 +86,27 @@ describe("media status projection", () => {
     expect(failed.television.tone).toBe("bad");
     expect(failed.connection.tone).toBe("live");
     expect(failed.titleFrameKey).toBe("hostUnavailable");
+  });
+
+  it("keeps intentional closure and interrupted sharing distinct in the title and source indicator", () => {
+    const closed = deriveViewerStatus(presentation({ type: "access", access: "denied", failure: "ROOM_CLOSED" }), "offline");
+    expect(closed.activity).toMatchObject({ tone: "off", comic: "room-closed" });
+    expect(closed.titleFrameKey).toBe("viewerClosed");
+    expect(closed.titleMarker).toBeNull();
+    const ended = { phase: "ended", paused: false, signal: "connected", roomReady: true } as const;
+    expect(deriveHostStatus(ended).titleMarker).toBeNull();
+    const failed = deriveHostStatus({ ...ended, sourceNotice: { tone: "bad", tooltip: "source-failed" } });
+    expect(failed.television).toMatchObject({ tone: "bad", tooltip: "source-failed" });
+    expect(failed.titleFrameKey).toBe("hostEnded");
+    expect(failed.titleMarker).toBe("⚠️");
+  });
+
+  it("shows the assigned transport without claiming first-frame readiness during setup", () => {
+    expect(deriveParticipantStatus({ mediaReady: false, upstream: { kind: "sfu" } }, true))
+      .toMatchObject({ tone: "busy", comic: "connecting-sfu" });
+    expect(deriveParticipantStatus({ mediaReady: false, upstream: { kind: "none" } }, true))
+      .toMatchObject({ labelKey: "state.peer.routing", comic: "signal-connecting" });
+    expect(deriveParticipantStatus({ mediaReady: true, upstream: { kind: "sfu" } }, true))
+      .toMatchObject({ tone: "live", comic: "media-ready" });
   });
 });

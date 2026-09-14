@@ -1,5 +1,5 @@
 // Shared tooltip: the same comic in every mode, with a localized caption in
-// text modes. Literal names and values can stand alone. Hover and keyboard
+// text modes. Literal names and values retain their contextual scene. Hover and keyboard
 // focus show guidance; help-only controls also toggle it on click/tap.
 // Action controls keep their click and use a 500ms touch hold for guidance,
 // hiding 1.5s after release and suppressing the trailing synthetic click.
@@ -48,7 +48,7 @@ export function Tooltip({
   toggleOnClick = false,
   children,
 }: {
-  kind?: ComicKind | HintKind;
+  kind: ComicKind | HintKind;
   text?: string;
   tone?: ComicTone;
   motion?: ComicMotion;
@@ -381,13 +381,11 @@ export function Tooltip({
       <span ref={tipRef} id={tooltipId} popover="manual"
         data-tone={resolvedTone}
         style={{ ...comicStyle(resolvedTone, resolvedMotion), left: position.left, top: position.top, "--tooltip-caret": `${position.caret}px` } as CSSProperties}
-        className={`lr-comic-tip${text !== undefined ? " is-text" : ""}${kind ? " has-comic" : ""}${placeClass}`} role="tooltip" aria-hidden={!interactionOpen}>
+        className={`lr-comic-tip has-comic${text !== undefined ? " is-text" : ""}${placeClass}`} role="tooltip" aria-hidden={!interactionOpen}>
         {panelMounted ? <>
-          {kind
-            ? isHintKind(kind)
+          {isHintKind(kind)
               ? <HintComic kind={kind} size={240} tone={resolvedTone} motion={resolvedMotion} />
-              : <Comic kind={kind} theme="paper" size={240} tone={resolvedTone} motion={resolvedMotion} />
-            : null}
+              : <Comic kind={kind} theme="paper" size={240} tone={resolvedTone} motion={resolvedMotion} />}
           {text !== undefined ? <span className="lr-comic-tip-caption">{text}</span> : null}
         </> : null}
       </span>

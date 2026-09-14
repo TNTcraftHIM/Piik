@@ -78,7 +78,7 @@ export function Couch({
           aria-label={`${t("common.host")} · ${t("common.viewers")}`}
         >
           {host ? (
-            <span className="lr-seat" style={seatStyle(0)}><Tooltip text={vis ? host.name : hostLabel}>
+            <span className="lr-seat" style={seatStyle(0)}><Tooltip kind="participant-name" text={vis ? host.name : hostLabel}>
               {host.onSelect ? (
                   <button
                     type="button"

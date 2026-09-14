@@ -1,4 +1,4 @@
-import { FAINT, Frame, LIVE, MiniTv, Pawn, SKY, STAR_GOLD, rmBlock } from "../Comic";
+import { BrowserWindow, FAINT, Frame, LIVE, MiniTv, Pawn, SKY, STAR_GOLD, rmBlock } from "../Comic";
 import type { ComicTheme } from "../Comic";
 import type { ControlHintKind, HintScene } from "../../../ui/visual-kinds";
 
@@ -24,25 +24,32 @@ ${rmBlock(["vls-fold-body"], [[".vls-fold-body", "transform:scaleY(0);opacity:0"
   </>
 );
 
-function PasswordHint({ theme, reveal }: { theme: ComicTheme; reveal: boolean }) {
+function PasswordHint({ theme, action }: { theme: ComicTheme; action: "show" | "hide" | "clear" }) {
+  const clear = action === "clear";
   return <>
     <style>{`
-.vls-password-new{animation:vlsPasswordNew var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
+.vls-password-new,.vls-password-clear{animation:vlsPasswordNew var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
+.vls-password-clear{animation-name:vlsPasswordClear}
 @keyframes vlsPasswordNew{0%,14%{opacity:0}35%,100%{opacity:1}}
-${rmBlock(["vls-password-new"], [[".vls-password-new", "opacity:1"]])}
+@keyframes vlsPasswordClear{0%,14%{opacity:1}35%,100%{opacity:0}}
+${rmBlock(["vls-password-new", "vls-password-clear"], [[".vls-password-new", "opacity:1"], [".vls-password-clear", "opacity:0"]])}
 `}</style>
     {[4, 164].map((x, index) => {
-      const visible = index ? reveal : !reveal;
+      const visible = !clear && (index ? action === "show" : action === "hide");
       return <g key={x}>
         <Frame x={x} w={152} theme={theme} result={index === 1} />
         <rect x={x + 22} y={35} width={108} height={31} rx={7} fill="var(--wall-2)" stroke="var(--ink)" strokeWidth={2} />
-        <g className={index ? "vls-password-new" : undefined} fill="var(--ink)">
+        <g className={index ? clear ? "vls-password-clear" : "vls-password-new" : undefined}
+          opacity={clear && index ? 0 : undefined} fill="var(--ink)">
           {visible ? <text x={x + 76} y={57} textAnchor="middle" fontSize={21} fontFamily="monospace">1234</text>
             : [49, 67, 85, 103].map((cx) => <circle key={cx} cx={x + cx} cy={51} r={3.5} />)}
         </g>
-        <path d={`M${x + 63} 23 q13 -14 26 0 q-13 14 -26 0`} fill="none" stroke="var(--ink)" strokeWidth={2} />
-        {visible ? <circle cx={x + 76} cy={23} r={3} fill={LIVE} />
-          : <path d={`M${x + 66} 14 l20 18`} stroke="var(--ink)" strokeWidth={2.5} strokeLinecap="round" />}
+        {clear ? <path d={`M${x + 66} 24 l12 -12 10 10 -8 8 h-8 Z m7 -2 9 8 m-10 0 h18`}
+          fill="none" stroke="var(--ink)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /> : <>
+          <path d={`M${x + 63} 23 q13 -14 26 0 q-13 14 -26 0`} fill="none" stroke="var(--ink)" strokeWidth={2} />
+          {visible ? <circle cx={x + 76} cy={23} r={3} fill={LIVE} />
+            : <path d={`M${x + 66} 14 l20 18`} stroke="var(--ink)" strokeWidth={2.5} strokeLinecap="round" />}
+        </>}
       </g>;
     })}
   </>;
@@ -106,11 +113,33 @@ ${rmBlock(["vls-refresh-path", "vls-refresh-source"], [[".vls-refresh-path", "st
   </g>)}
 </>;
 
+function SourceListHint({ theme, empty = false }: { theme: ComicTheme; empty?: boolean }) {
+  return <>
+    <Frame x={4} w={312} theme={theme} result />
+    <Pawn x={53} yb={79} s={15} eyes gaze={2} />
+    <BrowserWindow x={94} y={14} w={172} h={67}>
+      {empty ? <>
+        <rect x={124} y={36} width={112} height={30} rx={4} fill="none" stroke={FAINT} strokeWidth={2} strokeDasharray="4 4" />
+        <path d="M172 51h16" stroke="var(--ink)" strokeWidth={2.5} strokeLinecap="round" />
+      </> : <>
+        {[111, 158, 205].map((x) => <g key={x}>
+          <rect x={x} y={35} width={37} height={29} rx={4} fill="var(--paper)" stroke="var(--ink)" strokeWidth={2} />
+          <path d={`M${x + 6} 56l7-9 7 6 9-11`} fill="none" stroke={SKY} strokeWidth={2} />
+        </g>)}
+        <path d="M179 52v18l5-5 5 8 4-2-5-8 8-1Z" fill="var(--paper)" stroke="var(--ink)" strokeWidth={1.8} />
+      </>}
+    </BrowserWindow>
+  </>;
+}
+
 export const CONTROL_SCENES: Record<ControlHintKind, HintScene> = {
   "hint-collapse": CollapseHint,
   "hint-refresh-sources": RefreshSourcesHint,
-  "hint-password-show": (props) => <PasswordHint {...props} reveal />,
-  "hint-password-hide": (props) => <PasswordHint {...props} reveal={false} />,
+  "hint-source-picker": (props) => <SourceListHint {...props} />,
+  "hint-no-sources": (props) => <SourceListHint {...props} empty />,
+  "hint-password-show": (props) => <PasswordHint {...props} action="show" />,
+  "hint-password-hide": (props) => <PasswordHint {...props} action="hide" />,
+  "hint-password-remove": (props) => <PasswordHint {...props} action="clear" />,
   "hint-share-audio": (props) => <ShareAudioHint {...props} enabled />,
   "hint-stop-audio": (props) => <ShareAudioHint {...props} enabled={false} />,
   "hint-share-audio-fixed": (props) => <ShareAudioHint {...props} enabled locked />,

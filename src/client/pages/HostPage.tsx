@@ -39,13 +39,16 @@ import {
   ViewerOverview,
   type ViewerOverviewEntry,
 } from "../components/living/ViewerOverview";
-import type { ComicKind } from "../components/living/Comic";
+import { Comic, type ComicKind } from "../components/living/Comic";
+import type { HintKind } from "../ui/visual-kinds";
+import type { ComicTone } from "../components/living/comic-presentation";
 import { Tooltip } from "../components/living/Tooltip";
+import { QualityTileGlyph } from "../components/living/QualityTileGlyph";
+import { MetricCell } from "../components/living/Metrics";
 import {
   StageOverlay,
   StageTv,
   StaticNoise,
-  StoryBoard,
 } from "../components/living/Stage";
 import { StatusIndicator } from "../components/living/StatusIndicator";
 import {
@@ -190,7 +193,8 @@ type NoticeValue = (
   | { kind: "key"; key: CopyKey; vars?: Record<string, string> }
 ) & {
   target: "television" | "operation";
-  comic: ComicKind | null;
+  comic: ComicKind | HintKind;
+  tone: ComicTone;
 };
 
 const QUALITY_PROFILE_CAPTIONS: Record<QualityProfileId, CopyKey> = {
@@ -225,36 +229,6 @@ const AUDIO_QUALITY_CAPTIONS: Record<ScreenAudioQuality, CopyKey> = {
   music: "host.advanced.audio.music",
   "very-high": "host.advanced.audio.veryHigh",
 };
-
-// Scanline glyph on each quality tile: denser scanlines (plus a motion wave
-// at 60 fps) read as a higher preset without any text.
-function QualityTileGlyph({ density }: { density: number }) {
-  const lines = [2, 3, 4][density] ?? 3;
-  return (
-    <svg width={28} height={38} viewBox="0 0 28 38" fill="none" aria-hidden="true">
-      <rect x={2} y={3} width={24} height={26} rx={4} stroke="currentColor" strokeWidth={2.2} />
-      {Array.from({ length: lines }, (_, index) => (
-        <path
-          key={index}
-          d={`M6 ${13 + index * 6}h16`}
-          stroke="currentColor"
-          strokeWidth={1.6}
-          strokeLinecap="round"
-          opacity={0.45 + index * 0.2}
-        />
-      ))}
-      {density === 2 ? (
-        <path
-          d="M7 25.5c1.4 0 1.4-2 2.8-2s1.4 2 2.8 2 1.4-2 2.8-2 1.4 2 2.8 2"
-          stroke="currentColor"
-          strokeWidth={1.6}
-          fill="none"
-          strokeLinecap="round"
-        />
-      ) : null}
-    </svg>
-  );
-}
 
 type ViewerQualityEvidence = Extract<
   ServerMessage,
@@ -477,26 +451,28 @@ export function HostPage({
   const [hostSfuQualityWarning, setHostSfuQualityWarning] = useState<
     MediaFailure[] | null
   >(null);
-  function setNotice(value: string | null, comic: ComicKind | null = null): void {
-    setNoticeValue(value ? { kind: "text", text: value, target: "operation", comic } : null);
+  function setNotice(value: string | null, comic: ComicKind | HintKind, tone: ComicTone): void {
+    setNoticeValue(value ? { kind: "text", text: value, target: "operation", comic, tone } : null);
   }
-  function setNoticeKey(key: CopyKey, vars?: Record<string, string>): void {
-    setNoticeValue({ kind: "key", key, vars, target: "operation", comic: null });
+  function setNoticeKey(key: CopyKey, comic: ComicKind | HintKind, tone: ComicTone, vars?: Record<string, string>): void {
+    setNoticeValue({ kind: "key", key, vars, target: "operation", comic, tone });
   }
   function setNoticeError(
     error: unknown,
     action: HostAction,
     target: NoticeValue["target"] = "operation",
   ): void {
-    setNoticeValue({ kind: "text", text: readableError(error, action), target,
-      comic: action === "connection" ? "route-failed" : "warning" });
+    setNoticeValue({ kind: "text", text: readableError(error, action), target, tone: "bad",
+      comic: action === "connection" ? "route-failed" : action === "capture" || action === "source"
+        ? "source-failed" : action === "quality" ? "settings-failed" : "warning" });
   }
   function setNoticeErrorKey(
     key: CopyKey,
     comic: ComicKind = "warning",
     vars?: Record<string, string>,
+    tone: ComicTone = "bad",
   ): void {
-    setNoticeValue({ kind: "key", key, vars, target: "operation", comic });
+    setNoticeKey(key, comic, tone, vars);
   }
   const [copied, setCopied] = useState(false);
   const copiedResetTimerRef = useRef<number | null>(null);
@@ -931,7 +907,8 @@ export function HostPage({
   function endSharing(
     message: string | { key: CopyKey; vars?: Record<string, string> },
     notifyServer = true,
-    comic: ComicKind | null = null,
+    comic: ComicKind = "share-ended",
+    tone: ComicTone = "off",
   ): void {
     const generation = activeGenerationRef.current;
     if (generation === null || generationRef.current !== generation) {
@@ -950,6 +927,7 @@ export function HostPage({
         : { kind: "key", key: message.key, vars: message.vars }),
       target: "television",
       comic,
+      tone,
     });
     setPhase("ended");
   }
@@ -991,7 +969,7 @@ export function HostPage({
       setViewerPasswordDraft(profile.roomPassword ?? "");
       setViewerPasswordVisible(false);
       if (!wasSharing) {
-        setNoticeKey("host.roomReplaced");
+        setNoticeKey("host.roomReplaced", "hint-shuffle-code", "live");
       }
       setPhase(wasSharing ? "ended" : "idle");
     } catch (error) {
@@ -1030,7 +1008,7 @@ export function HostPage({
             setViewerPasswordEnabled(profile.roomPassword !== null);
             setViewerPasswordDraft(profile.roomPassword ?? "");
             setViewerPasswordVisible(false);
-            setNoticeKey("host.roomReplaced");
+            setNoticeKey("host.roomReplaced", "hint-shuffle-code", "live");
             setPhase("idle");
             return;
           } catch (replacementError) {
@@ -1041,7 +1019,7 @@ export function HostPage({
         if (forgetRoom(activeRoom)) {
           // endSharing already stated the recovery path; the raw room error
           // would only overwrite it with the same 404 in server wording.
-          endSharing({ key: "host.roomInvalid" }, false, "warning");
+          endSharing({ key: "host.roomInvalid" }, false, "room-not-found", "bad");
           return;
         }
       }
@@ -1239,7 +1217,7 @@ export function HostPage({
             nativeMediaBridgeRef.current === bridge &&
             isCurrentShare(generation, shareGeneration)
           ) {
-            endSharing({ key: "host.shareEnded" }, true, "warning");
+            endSharing({ key: "host.shareEnded" }, true, "source-failed", "bad");
           }
         },
         started.audio,
@@ -1261,7 +1239,8 @@ export function HostPage({
           endSharing(
             { key: event.failed ? "host.shareEnded" : "host.stopNotice" },
             true,
-            event.failed ? "warning" : null,
+            event.failed ? "source-failed" : "share-ended",
+            event.failed ? "bad" : "off",
           );
         }
       });
@@ -1309,7 +1288,7 @@ export function HostPage({
       if (nativeMediaIngressRef.current) {
         recoverBrowserFanout(nativeMediaIngressRef.current);
       } else if (nativeModeRef.current && activeGenerationRef.current !== null) {
-        endSharing({ key: "host.shareEnded" }, true, "warning");
+        endSharing({ key: "host.shareEnded" }, true, "source-failed", "bad");
       }
     });
   }
@@ -1640,7 +1619,7 @@ export function HostPage({
     let failure: unknown;
     qualityChangeRef.current = token;
     setChangingQuality(true);
-    setNotice(null);
+    setNoticeValue(null);
     const videoChanged = !videoQualitySettingsEqual(
       previousProfile,
       nextProfile,
@@ -1746,7 +1725,9 @@ export function HostPage({
               : say("host.notice.qualitySet", {
                   label: qualitySettingsLabel(appliedProfile),
                 });
-        setNotice(connectionWarning ?? (sfuWarning ? null : successNotice));
+        setNotice(connectionWarning ?? (sfuWarning ? null : successNotice),
+          connectionWarning ? "settings-failed" : audioChanged && !videoChanged ? "hint-audio-quality" : "hint-quality",
+          connectionWarning ? "warn" : "live");
       }
     } catch (error) {
       failure = error;
@@ -1806,7 +1787,7 @@ export function HostPage({
             // rolls back to paused and restores the wire intent.
             void nativeClient.setPaused(nativeShareGeneration, true);
             signalRef.current?.confirmSharingPaused();
-            setNoticeErrorKey("host.pause.signalRecovering");
+            setNoticeErrorKey("host.pause.signalRecovering", "signal-recovering", undefined, "warn");
             return;
           }
           if (activeStream) {
@@ -1820,9 +1801,9 @@ export function HostPage({
           sharingPausedRef.current = nextPaused;
           setSharingPaused(nextPaused);
           if (!sent) {
-            setNoticeErrorKey("host.pause.signalRecovering");
+            setNoticeErrorKey("host.pause.signalRecovering", "signal-recovering", undefined, "warn");
           } else {
-            setNotice(null);
+            setNoticeValue(null);
           }
         })
         .catch((error: unknown) => {
@@ -1837,7 +1818,7 @@ export function HostPage({
     }
     if (sharingPausedRef.current) {
       if (!setMediaPaused(activeStream, false)) {
-        setNoticeErrorKey("host.pause.noTracksResume");
+        setNoticeErrorKey("host.pause.noTracksResume", "source-failed");
         return;
       }
       nativeMediaIngressRef.current?.setPaused(false);
@@ -1851,16 +1832,16 @@ export function HostPage({
         hostProvisionalChildRef.current?.setPaused(true);
         hostSfuRouteRef.current?.setPaused(true);
         signalRef.current?.confirmSharingPaused();
-        setNoticeErrorKey("host.pause.signalRecovering");
+        setNoticeErrorKey("host.pause.signalRecovering", "signal-recovering", undefined, "warn");
         return;
       }
       sharingPausedRef.current = false;
       setSharingPaused(false);
-      setNotice(null);
+      setNoticeValue(null);
       return;
     }
     if (!setMediaPaused(activeStream, true)) {
-      setNoticeErrorKey("host.pause.noTracksPause");
+      setNoticeErrorKey("host.pause.noTracksPause", "source-failed");
       return;
     }
     nativeMediaIngressRef.current?.setPaused(true);
@@ -1871,9 +1852,9 @@ export function HostPage({
     hostSfuRouteRef.current?.setPaused(true);
     discardPreparedHostChild();
     if (signalRef.current?.setSharingPaused(true) === true) {
-      setNotice(null);
+      setNoticeValue(null);
     } else {
-      setNoticeErrorKey("host.pause.signalRecovering");
+      setNoticeErrorKey("host.pause.signalRecovering", "signal-recovering", undefined, "warn");
     }
   }
 
@@ -2334,7 +2315,7 @@ export function HostPage({
       sharingPausedRef.current = true;
       setSharingPaused(true);
       signalRef.current?.confirmSharingPaused();
-      setNoticeErrorKey("host.pause.stillPaused");
+      setNoticeErrorKey("host.pause.stillPaused", "host-paused", undefined, "warn");
       return;
     }
     if (message.type === "route-update") {
@@ -2417,7 +2398,7 @@ export function HostPage({
       if (!forgetRoom(activeRoom)) {
         return;
       }
-      endSharing(say("host.roomClosed"), false, "warning");
+      endSharing(say("host.roomClosed"), false, "room-closed", "off");
       return;
     }
     if (message.type === "error") {
@@ -2425,17 +2406,17 @@ export function HostPage({
         if (!forgetRoom(activeRoom)) {
           return;
         }
-        endSharing({ key: "host.roomInvalid" }, false, "warning");
+        endSharing({ key: "host.roomInvalid" }, false, "room-not-found", "bad");
         return;
       }
       if (message.code === "AUTH_REQUIRED") {
         return;
       }
       if (message.code === "HOST_ALREADY_CONNECTED") {
-        endSharing(hostServerErrorNotice(message.code), false, "warning");
+        endSharing(hostServerErrorNotice(message.code), false, "signal-failed", "bad");
         return;
       }
-      setNotice(hostServerErrorNotice(message.code), "warning");
+      setNotice(hostServerErrorNotice(message.code), "signal-failed", "bad");
     }
   }
 
@@ -2458,7 +2439,7 @@ export function HostPage({
     generationRef.current = generation;
     activeGenerationRef.current = generation;
     shareGenerationRef.current = shareGeneration;
-    setNotice(null);
+    setNoticeValue(null);
     setCopied(false);
     setPhase("starting");
 
@@ -2588,7 +2569,7 @@ export function HostPage({
                 isCurrentShare(generation, shareGeneration) &&
                 signalRef.current === signal
               ) {
-                endSharing({ key: hostTerminationKey(reason) }, false, "warning");
+                endSharing({ key: hostTerminationKey(reason) }, false, "signal-failed", "bad");
                 if (reason === "SESSION_REPLACED") forgetRoom(activeRoom, true);
               }
             },
@@ -2597,7 +2578,7 @@ export function HostPage({
                 isCurrentShare(generation, shareGeneration) &&
                 signalRef.current === signal
               ) {
-                endSharing({ key: "gate.expired" }, false, "warning");
+                endSharing({ key: "gate.expired" }, false, "access-denied", "bad");
                 onAuthorizationRequired?.();
               }
             },
@@ -2751,7 +2732,7 @@ export function HostPage({
     const token = {};
     sourceSwitchRef.current = token;
     setSwitchingSource(true);
-    setNotice(null);
+    setNoticeValue(null);
     try {
       await nativePreviewTailRef.current;
       if (
@@ -2793,7 +2774,7 @@ export function HostPage({
       setNotice(sourceSwitchNotice({
         failedPeerCount: 0,
         sfuReplaced: sfuUpdated,
-      }));
+      }), sfuUpdated ? "hint-switch-source" : "connecting-sfu", sfuUpdated ? "live" : "warn");
     } catch (error) {
       if (
         isCurrentGeneration(generation) &&
@@ -2825,7 +2806,7 @@ export function HostPage({
     const token = {};
     sourceSwitchRef.current = token;
     setSwitchingSource(true);
-    setNotice(null);
+    setNoticeValue(null);
 
     let captured: MediaStream;
     try {
@@ -2853,7 +2834,7 @@ export function HostPage({
     const previousStream = streamRef.current;
     if (!previousStream) {
       captured.getTracks().forEach((track) => track.stop());
-      setNoticeKey("host.shareEnded");
+      setNoticeKey("host.shareEnded", "share-ended", "off");
       finishSourceSwitch(token);
       return;
     }
@@ -2987,8 +2968,9 @@ export function HostPage({
           sourceNotice,
           sourceNotice &&
             (sfuWarning || !sfuReplaced || failedPeerIds.length > 0)
-            ? "warning"
-            : null,
+            ? !sfuReplaced ? "connecting-sfu" : "recovering"
+            : "hint-switch-source",
+          sfuWarning || !sfuReplaced || failedPeerIds.length > 0 ? "warn" : "live",
         );
       }
     } finally {
@@ -3018,7 +3000,7 @@ export function HostPage({
         setCopied(false);
       }, 1_500);
     } catch {
-      setNoticeErrorKey("host.invite.copyFailed");
+      setNoticeErrorKey("host.invite.copyFailed", "copy-failed");
     }
   }
 
@@ -3036,7 +3018,7 @@ export function HostPage({
       return;
     }
     if (error instanceof ApiError) {
-      setNotice(error.message, "warning");
+      setNotice(error.message, "access-denied", "bad");
     } else {
       setNoticeErrorKey("host.accessFailed", "warning");
     }
@@ -3048,7 +3030,7 @@ export function HostPage({
       return;
     }
     if (activeRoom.codeEntryPolicy === policy) {
-      setNotice(null);
+      setNoticeValue(null);
       return;
     }
     const mutation = beginRoomMutation("access");
@@ -3088,6 +3070,8 @@ export function HostPage({
           : response.viewerPasswordEnabled
             ? "host.policy.setPrivatePassword"
             : "host.policy.setPrivateInvite",
+        response.codeEntryPolicy === "open" ? "hint-policy-open" : response.viewerPasswordEnabled ? "hint-password" : "hint-policy-private",
+        "live",
       );
     } catch (error) {
       handleRoomAccessFailure(error, activeRoom);
@@ -3131,6 +3115,7 @@ export function HostPage({
       setRoom(updatedRoom);
       setNoticeKey(
         response.inviteUrl ? "host.invite.updated" : "host.invite.revoked",
+        response.inviteUrl ? "hint-rotate-invite" : "hint-revoke-invite", "live",
       );
     } catch (error) {
       handleRoomAccessFailure(error, activeRoom);
@@ -3144,7 +3129,7 @@ export function HostPage({
       password !== null &&
       !viewerPasswordSchema.safeParse(password).success
     ) {
-      setNoticeErrorKey("host.password.rule", "warning", {
+      setNoticeErrorKey("host.password.rule", "settings-failed", {
         max: String(MAX_VIEWER_PASSWORD_LENGTH),
       });
       return;
@@ -3188,6 +3173,7 @@ export function HostPage({
           : hadPassword
             ? "host.password.updated"
             : "host.password.saved",
+        "hint-password", "live",
       );
     } catch (error) {
       handleRoomAccessFailure(error, activeRoom);
@@ -3210,7 +3196,7 @@ export function HostPage({
     setEditingDisplayName(false);
     setHasCustomDisplayName(readStoredDisplayName() !== null);
     if (!signalRef.current?.setDisplayName(saved)) {
-      setNoticeErrorKey("host.nameOffline");
+      setNoticeErrorKey("host.nameOffline", "signal-offline", undefined, "warn");
     }
   }
 
@@ -3319,19 +3305,16 @@ export function HostPage({
     : null;
   const hostSfuWarningText = resolveMediaFailure(hostSfuQualityWarning, copy);
 
+  const statusNotice = noticeValue?.target === "television" ? noticeValue : null;
   const hostStatus = deriveHostStatus({
     phase,
     paused: sharingPaused,
     signal: signalStatus,
     roomReady: Boolean(room),
+    sourceNotice: statusNotice ? { tone: statusNotice.tone, tooltip: statusNotice.comic } : undefined,
   });
   // Startup and termination reasons refine the source status. Independent
   // operation results may coexist with it; wording is not a status identity.
-  const statusNotice = noticeValue?.target === "television" ? noticeValue : null;
-  const televisionStatus = statusNotice?.comic
-    ? { ...hostStatus.television, tone: "bad" as const, icon: "alert" as const,
-      comic: statusNotice.comic }
-    : hostStatus.television;
   const titleContent = titleFrames(hostStatus.titleFrameKey).map((frame) =>
     [frame, hostStatus.titleMarker].filter(Boolean).join(" "),
   );
@@ -3360,16 +3343,14 @@ export function HostPage({
               phase === "idle" || phase === "ended" || phase === "error"
             }
             label={t("host.stageAria")}
-            indicator={<StatusIndicator status={televisionStatus}
+            indicator={<StatusIndicator status={hostStatus.television}
               label={statusNotice ? noticeText ?? undefined : undefined} />}
           >
             {stream ? (
               <video ref={videoRef} autoPlay muted playsInline />
             ) : null}
             {nativeActive && !stream && phase === "live" ? (
-              <div className="lr-tv-overlay" role="status" aria-label={t("host.starting")}>
-                <VisGlyph name="cast" size={42} draw="native-live" />
-              </div>
+              <StageOverlay icon="cast" comic="share-live" tone="live" message={t("host.live")} />
             ) : null}
             {nativeSources ? (
               <CaptureSourcePicker
@@ -3470,11 +3451,10 @@ export function HostPage({
                     {joinRoomError ? (
                       <>
                         <span
-                          className="lr-join-error"
                           role="alert"
                           aria-label={t("join.invalid")}
                         >
-                          <Glyph name="x" size={22} />
+                          <Comic kind="room-code-invalid" theme="stage" size={240} />
                         </span>
                         {vis ? null : (
                           <span className="lr-cap" style={{ color: "var(--danger)" }}>
@@ -3502,6 +3482,8 @@ export function HostPage({
             {nativeSources ? null : switchingSource ? (
               <StageOverlay
                 icon="refresh"
+                comic="source-switching"
+                tone="busy"
                 spin
                 dim
                 message={t("host.switchingSource")}
@@ -3511,17 +3493,13 @@ export function HostPage({
             ) : phase === "starting" ? (
               <>
                 <StaticNoise />
-                <div
-                  className="lr-tv-overlay"
-                  role="status"
-                  aria-label={t("host.starting")}
-                >
-                  <StoryBoard step={1} showBrand={stream !== null || nativeActive} />
-                </div>
+                <StageOverlay icon="cast" comic="source-starting" tone="busy" spin message={t("host.starting")} />
               </>
             ) : stream && localPreviewPaused ? (
               <StageOverlay
                 icon="eyeOff"
+                comic="preview-paused"
+                tone="warn"
                 dim
                 message={t("host.localPreviewPaused")}
               />
@@ -3529,15 +3507,15 @@ export function HostPage({
           </StageTv>
           <div className="lr-stage-notices" role="status" aria-live="polite">
             {!details?.hasAudio && stream ? (
-              <Pill icon="speaker" label={t("host.noAudio")} comic="no-audio" />
+              <Pill icon="speakerOff" label={t("host.noAudio")} comic="no-audio" />
             ) : null}
             {hostSfuWarningText ? (
               <Pill icon="alert" label={hostSfuWarningText} comic="warning" />
             ) : null}
             {noticeValue?.target === "operation" && noticeText ? (
-              <Pill icon={noticeValue.comic ? "alert" : "check"}
-                tone={noticeValue.comic ? undefined : "good"} label={noticeText}
-                comic={noticeValue.comic ?? undefined} />
+              <Pill icon={noticeValue.tone === "live" ? "check" : noticeValue.tone === "off" ? "stop" : "alert"}
+                tone={noticeValue.tone} label={noticeText} comic={noticeValue.comic}
+                motion={noticeValue.comic === "signal-recovering" || noticeValue.comic === "recovering" || noticeValue.comic === "connecting-sfu" ? "progress" : "still"} />
             ) : null}
           </div>
           <Couch
@@ -3664,7 +3642,7 @@ export function HostPage({
                     tone="bad"
                     label={displayNameError}
                     alert
-                    comic="warning"
+                    comic="name-invalid"
                   />
                 ) : null}
               </div>
@@ -3766,56 +3744,13 @@ export function HostPage({
                   role="group"
                   aria-label={t("host.captureAria")}
                 >
-                  <span
-                    className="lr-meter-cell"
-                  >
-                    <Glyph name="expand" size={16} />
-                    <b>
-                      {details.resolution ?? (vis ? "—" : t("stats.unknown"))}
-                    </b>
-                    {vis ? (
-                      <span className="visually-hidden">
-                        {t("stats.resolution")}
-                      </span>
-                    ) : null}
-                  </span>
-                  <span
-                    className="lr-meter-cell"
-                  >
-                    <Glyph name="wave" size={16} />
-                    <b>
-                      {details.frameRate
-                        ? `${details.frameRate.toFixed(0)} fps`
-                        : vis
-                          ? "—"
-                          : t("host.capture.fpsUnknown")}
-                    </b>
-                    {vis ? (
-                      <span className="visually-hidden">{t("stats.fps")}</span>
-                    ) : null}
-                  </span>
-                  <span
-                    className="lr-meter-cell"
-                  >
-                    <Glyph name="cpu" size={16} />
-                    <b>
-                      {resolvedVideoCodec?.toUpperCase() ??
-                        (vis ? "—" : t("host.capture.codecPending"))}
-                    </b>
-                    {vis ? (
-                      <span className="visually-hidden">{t("stats.codec")}</span>
-                    ) : null}
-                  </span>
-                  <span
-                    className="lr-meter-cell"
-                  >
-                    <Glyph name={details.hasAudio ? "speaker" : "speakerOff"} size={16} />
-                    <b className={vis ? "visually-hidden" : undefined}>
-                      {details.hasAudio
-                        ? t("host.capture.hasAudio")
-                        : t("host.capture.noAudio")}
-                    </b>
-                  </span>
+                  <MetricCell label="stats.resolution" value={details.resolution ?? t("stats.unknown")} />
+                  <MetricCell label="stats.fps" value={details.frameRate ? `${details.frameRate.toFixed(0)} fps` : vis ? "—" : t("host.capture.fpsUnknown")} />
+                  <MetricCell label="stats.codec" value={resolvedVideoCodec?.toUpperCase() ?? (vis ? "—" : t("host.capture.codecPending"))} />
+                  <MetricCell label="stats.audio" icon={details.hasAudio ? "speaker" : "speakerOff"}
+                    value={t(details.hasAudio ? "host.capture.hasAudio" : "host.capture.noAudio")}
+                    hint={details.hasAudio ? "hint-share-audio-fixed" : "no-audio"}
+                    tone={details.hasAudio ? "off" : "warn"} glyphOnly />
                 </div>
               </div>
             </Row>
@@ -3894,7 +3829,7 @@ export function HostPage({
                 />
               </RowGroup>
               {room.inviteUrl ? (
-                <Tooltip text={room.inviteUrl} className="lr-invite-hint">
+                <Tooltip kind="hint-copy-invite" text={room.inviteUrl} className="lr-invite-hint">
                   <input
                     className="lr-invite-url"
                     type="text"
@@ -3983,7 +3918,7 @@ export function HostPage({
                       activeCodeEntryPolicy === "private" &&
                       !viewerPasswordEnabled
                         ? "invalid-invite"
-                        : undefined
+                        : activeCodeEntryPolicy === "open" ? "hint-policy-open" : "hint-password"
                     }
                   />
                 ) : null}
@@ -4062,6 +3997,7 @@ export function HostPage({
                         icon="x"
                         tone="danger"
                         title="host.password.remove"
+                        hint="hint-password-remove"
                         disabled={roomMutating}
                         onClick={() => void changeViewerPassword(null)}
                       />
@@ -4100,7 +4036,7 @@ export function HostPage({
                             })
                           }
                         >
-                          <QualityTileGlyph density={index} />
+                          <QualityTileGlyph resolution={QUALITY_PROFILES[id].resolution} framerate={QUALITY_PROFILES[id].maxFramerate} />
                           <small>
                             {vis
                               ? `${QUALITY_PROFILES[id].resolution.replace("p", "")}·${QUALITY_PROFILES[id].maxFramerate}`
@@ -4175,26 +4111,28 @@ export function HostPage({
                     <span
                       className="lr-door-glyph"
                     >
-                      <VisGlyph name="wave" size={19} />
+                      <VisGlyph name="frames" size={19} />
                       <Cap k="host.advanced.framerate" />
                     </span>
-                    <span className="lr-slider">
-                      <input
-                        type="range"
-                        min={15}
-                        max={60}
-                        step={5}
-                        value={advancedQuality.maxFramerate}
-                        disabled={phase === "starting" || switchingSource}
-                        aria-label={t("host.advanced.framerate")}
-                        onChange={(event) =>
-                          changeAdvancedQuality({
-                            maxFramerate: Number(event.target.value),
-                          })
-                        }
-                      />
-                      <output>{advancedQuality.maxFramerate} fps</output>
-                    </span>
+                    <Tooltip kind="hint-metric-fps" text={vis ? undefined : t("host.advanced.framerate")} className="lr-slider-hint">
+                      <span className="lr-slider">
+                        <input
+                          type="range"
+                          min={15}
+                          max={60}
+                          step={5}
+                          value={advancedQuality.maxFramerate}
+                          disabled={phase === "starting" || switchingSource}
+                          aria-label={t("host.advanced.framerate")}
+                          onChange={(event) =>
+                            changeAdvancedQuality({
+                              maxFramerate: Number(event.target.value),
+                            })
+                          }
+                        />
+                        <output>{advancedQuality.maxFramerate} fps</output>
+                      </span>
+                      </Tooltip>
                   </div>
                   <div className="lr-door-group">
                     <span
@@ -4203,26 +4141,28 @@ export function HostPage({
                       <VisGlyph name="gauge" size={19} />
                       <Cap k="host.advanced.bitrate" />
                     </span>
-                    <span className="lr-slider">
-                      <input
-                        type="range"
-                        min={2000000}
-                        max={12000000}
-                        step={500000}
-                        value={advancedQuality.maxBitrate}
-                        disabled={phase === "starting" || switchingSource}
-                        aria-label={t("host.advanced.bitrate")}
-                        onChange={(event) =>
-                          changeAdvancedQuality({
-                            maxBitrate: Number(event.target.value),
-                          })
-                        }
-                      />
-                      <output>
-                        {(advancedQuality.maxBitrate / 1_000_000).toFixed(1)}{" "}
-                        Mbps
-                      </output>
-                    </span>
+                    <Tooltip kind="hint-metric-bitrate" text={vis ? undefined : t("host.advanced.bitrate")} className="lr-slider-hint">
+                      <span className="lr-slider">
+                        <input
+                          type="range"
+                          min={2000000}
+                          max={12000000}
+                          step={500000}
+                          value={advancedQuality.maxBitrate}
+                          disabled={phase === "starting" || switchingSource}
+                          aria-label={t("host.advanced.bitrate")}
+                          onChange={(event) =>
+                            changeAdvancedQuality({
+                              maxBitrate: Number(event.target.value),
+                            })
+                          }
+                        />
+                        <output>
+                          {(advancedQuality.maxBitrate / 1_000_000).toFixed(1)}{" "}
+                          Mbps
+                        </output>
+                      </span>
+                      </Tooltip>
                   </div>
                   <div className="lr-door-group">
                     <span
@@ -4250,7 +4190,7 @@ export function HostPage({
                           }
                           disabled={phase === "starting" || switchingSource}
                           title={`${t(PREFERENCE_PRESENTATION[preference].cap)} · ${t(PREFERENCE_PRESENTATION[preference].hint)}`}
-                          hint="hint-degrade-pref"
+                          hint={preference === "maintain-resolution" ? "hint-prefer-resolution" : preference === "maintain-framerate" ? "hint-prefer-framerate" : "hint-degrade-pref"}
                           onClick={() =>
                             changeAdvancedQuality({
                               degradationPreference: preference,
@@ -4368,7 +4308,7 @@ export function HostPage({
                     <span
                       className="lr-door-glyph"
                     >
-                      <VisGlyph name="cpu" size={19} />
+                      <VisGlyph name="puzzle" size={19} />
                       <Cap k="host.advanced.codec" />
                     </span>
                     <div

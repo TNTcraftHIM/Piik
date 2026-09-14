@@ -8,7 +8,6 @@ import {
   BrowserWindow,
   FAINT,
   Frame,
-  LIVE,
   MiniTv,
   Pawn,
   RedX,
@@ -27,7 +26,7 @@ const INK = "var(--ink)";
 const WALL2 = "var(--wall-2)";
 
 /* hint-topology: [one pawn with a Host badge] → [host with two leaf
-   pawns on live-green edges]. Demo: leaves hop in turn (8-20%, 26-38%),
+   pawns on neutral edges]. Demo: leaves hop in turn (8-20%, 26-38%),
    everyone blinks at 62%; rest >=55%. */
 const HintTopology: HintScene = ({ theme }) => (
   <>
@@ -46,7 +45,7 @@ ${rmBlock(
     <Frame x={4} w={152} theme={theme} />
     <Frame x={164} w={152} theme={theme} result />
     <Pawn x={80} yb={78} s={12} eyes host eyeClassName="vls-top-eyes" />
-    <g stroke={LIVE} strokeWidth={3} strokeLinecap="round" fill="none">
+    <g stroke={INK} strokeWidth={3} strokeLinecap="round" fill="none">
       <path d="M240 47 C231 50 218 52 210 56" />
       <path d="M240 47 C249 50 262 52 270 56" />
     </g>
@@ -249,7 +248,7 @@ ${rmBlock(
           </g>
           <path d="M198 76H282" stroke={INK} strokeWidth={2} strokeLinecap="round" />
           <rect x={222} y={78} width={36} height={3} rx={1.5} fill="var(--couch)" />
-          <g className="vls-th-arrows" stroke={LIVE} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" fill="none">
+          <g className="vls-th-arrows" stroke={INK} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" fill="none">
             <path d="M196 32l13 11m0-9v9h-9M284 32l-13 11m0-9v9h9M196 72l13-11m0 9v-9h-9M284 72l-13-11m0 9v-9h9" />
           </g>
         </>
@@ -261,7 +260,7 @@ ${rmBlock(
           <g className={stageClass}>
             <MiniTv x={188} y={32} w={104} h={44} />
           </g>
-          <g className="vls-th-arrows" stroke={LIVE} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" fill="none">
+          <g className="vls-th-arrows" stroke={INK} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" fill="none">
             <path d="M211 46l-13-12m0 9v-9h9M269 46l13-12m0 9v-9h-9M211 58l-13 12m0-9v9h9M269 58l13 12m0-9v9h-9" />
           </g>
         </>
@@ -278,8 +277,8 @@ const HintTheaterExit: HintScene = ({ theme }) => (
   <TheaterHint theme={theme} exit />
 );
 
-/* hint-route-p2p: [two pawns apart] → [direct live-green arc pawn→pawn,
-   live dot on the apex]. Demo: arc draws 6-28%, both pawns hop 30-42%,
+/* hint-route-p2p: [two pawns apart] → [direct neutral arc pawn→pawn,
+   route dot on the apex]. Demo: arc draws 6-28%, both pawns hop 30-42%,
    panel-1 pair blinks at 64%; rest ~58%. */
 const HintRouteP2p: HintScene = ({ theme }) => (
   <>
@@ -314,12 +313,12 @@ ${rmBlock(
       className="vls-p2p-arc"
       d="M213 58 Q240 30 267 58"
       pathLength={1}
-      stroke={LIVE}
+      stroke={INK}
       strokeWidth={3}
       strokeLinecap="round"
       fill="none"
     />
-    <circle cx={240} cy={44} r={3.5} fill={LIVE} />
+    <circle cx={240} cy={44} r={3.5} fill={INK} />
   </>
 );
 
@@ -332,8 +331,8 @@ const HintRouteP2pRequired: HintScene = ({ theme }) => (
   </>
 );
 
-/* hint-route-sfu: [two pawns apart] → [two live-green arcs detour up
-   through a lit server box]. Demo: left arc 6-24%, right arc 14-32%,
+/* hint-route-sfu: [two pawns apart] → [two neutral arcs detour up
+   through a server box]. Demo: left arc 6-24%, right arc 14-32%,
    both pawns hop 34-46%, panel-1 pair blinks at 64%; rest ~54%. */
 const HintRouteSfu: HintScene = ({ theme }) => (
   <>
@@ -362,7 +361,7 @@ ${rmBlock(
       <circle cx={74} cy={60} r={1.5} />
       <circle cx={88} cy={60} r={1.5} />
     </g>
-    <ServerBox x={228} y={12} lit />
+    <ServerBox x={228} y={12} />
     <g className="vls-sfu-hop">
       <Pawn x={200} yb={76} s={9} eyes />
       <Pawn x={280} yb={76} s={9} color={SKY} eyes />
@@ -371,7 +370,7 @@ ${rmBlock(
       className="vls-sfu-a1"
       d="M209 60 Q219 34 232 29"
       pathLength={1}
-      stroke={LIVE}
+      stroke={INK}
       strokeWidth={3}
       strokeLinecap="round"
       fill="none"
@@ -380,7 +379,7 @@ ${rmBlock(
       className="vls-sfu-a2"
       d="M271 60 Q261 34 248 29"
       pathLength={1}
-      stroke={LIVE}
+      stroke={INK}
       strokeWidth={3}
       strokeLinecap="round"
       fill="none"
@@ -392,7 +391,7 @@ ${rmBlock(
 const HintClientLocal: HintScene = ({ theme }) => (
   <>
     <HintRouteP2p theme={theme} />
-    <g fill="none" stroke={LIVE} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+    <g fill="none" stroke={INK} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
       <path d="M173 20 180 14 187 20v7h-14Z" />
       <path d="M178 27v-5h4v5" />
     </g>
@@ -461,7 +460,7 @@ ${rmBlock(
     <Pawn x={278} yb={76} s={9} color={SKY} eyes />
     <path d="M211 68 Q240 56 269 68" fill="none" stroke={FAINT} strokeWidth={2.5} strokeLinecap="round" />
     <g className={available ? "vls-nat-path" : undefined} fill="none"
-      stroke={available ? LIVE : FAINT} strokeWidth={2.5} strokeLinecap="round"
+      stroke={available ? INK : FAINT} strokeWidth={2.5} strokeLinecap="round"
       strokeDasharray={available ? undefined : "4 4"}>
       <path d="M211 58 Q240 10 269 58" pathLength={available ? 1 : undefined} />
       <path d="M211 58 Q240 30 269 58" pathLength={available ? 1 : undefined} />

@@ -367,10 +367,6 @@ export const en: Record<CopyKey, string> = {
   "theme.dark.short": "Dark",
   "theme.light.short": "Light",
 
-  "story.room": "Room found",
-  "story.link": "Linking up",
-  "story.show": "Receiving picture",
-
   "gate.connectFailed": "Cannot reach the site access service; try again",
   "gate.expired": "Site access expired; verify again",
   "gate.serviceUnavailable": "Site access service unavailable ({status})",
@@ -501,6 +497,7 @@ export const enTitleFrames = {
     "Quiet little room",
   ],
   viewerReady: ["Press Play"],
+  viewerClosed: [en["viewer.msg.closed"]],
   viewerUnavailable: ["Unavailable"],
   hostUnavailable: [en["host.fail.start"]],
   viewerWaiting: [

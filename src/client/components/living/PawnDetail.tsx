@@ -19,16 +19,16 @@ export function RouteGlyph({ route }: { route: "p2p" | "sfu" }) {
       tabIndex={0}
     >
       {route === "sfu" ? (
-        <svg width="36" height="16" viewBox="0 0 36 16" fill="none" stroke="#53676a" strokeWidth="2" aria-hidden="true">
-          <circle cx="4" cy="8" r="3" fill="#53676a" stroke="none" />
+        <svg width="36" height="16" viewBox="0 0 36 16" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+          <circle cx="4" cy="8" r="3" fill="currentColor" stroke="none" />
           <rect x="14" y="3" width="8" height="10" rx="2" />
-          <circle cx="32" cy="8" r="3" fill="#53676a" stroke="none" />
+          <circle cx="32" cy="8" r="3" fill="currentColor" stroke="none" />
           <path d="M7 8h7M22 8h7" />
         </svg>
       ) : (
-        <svg width="36" height="16" viewBox="0 0 36 16" fill="none" stroke="#53676a" strokeWidth="2" aria-hidden="true">
-          <circle cx="4" cy="8" r="3" fill="#53676a" stroke="none" />
-          <circle cx="32" cy="8" r="3" fill="#53676a" stroke="none" />
+        <svg width="36" height="16" viewBox="0 0 36 16" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+          <circle cx="4" cy="8" r="3" fill="currentColor" stroke="none" />
+          <circle cx="32" cy="8" r="3" fill="currentColor" stroke="none" />
           <path d="M7 8h22" />
         </svg>
       )}

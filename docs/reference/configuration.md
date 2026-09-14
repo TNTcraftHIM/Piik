@@ -27,7 +27,7 @@ service secret store or an untracked access-restricted environment file.
 | `ALLOWED_ORIGINS` | Comma-separated exact HTTP(S) origins; wildcard is invalid. |
 | `SITE_ACCESS_PASSWORD` | Optional in every environment. Unset or empty allows entry without a site password. A configured value is matched exactly, including spaces and Unicode; there are no password length or character rules. General HTTP request limits still apply. Room ownership and Viewer admission remain independent. |
 | `ROOM_DATABASE_PATH` | Hosted defaults to `rooms.sqlite` in its working directory when unset or blank. An explicit absolute file path selects another SQLite file; `:memory:` opts into process-memory room authority. App Local remains in memory. |
-| `MAX_VIEWERS_PER_ROOM` | `1..20`, default `8`. |
+| `MAX_VIEWERS_PER_ROOM` | `1..20`, default `20`; excludes the Host. |
 | `ENDPOINT_MEDIA_COPY_CAPACITY` | Shared endpoint steady-copy cap `1..3`, default `2`. |
 | `STUN_URLS` | Comma-separated advertised `stun:` discovery URLs; at least one is required in production. These are not local bind addresses and may use an unproxied DNS name separate from the Web origin. |
 | `STUN_LISTEN_HOST` | Hosted IPv4 STUN bind address, default `0.0.0.0` when `STUN_URLS` is configured; independent of HTTP `LISTEN_HOST`. Local App construction creates no STUN listeners. |
@@ -36,8 +36,8 @@ service secret store or an untracked access-restricted environment file.
 ### Room capacity
 
 `MAX_VIEWERS_PER_ROOM` counts authenticated Viewers per room, excluding the Host.
-Self-hosted Server accepts `1..20`; unset defaults to `8`, while the container
-and self-hosting examples explicitly use `20`. Apply changes by restarting the
+Self-hosted Server accepts `1..20` and defaults to `20`, matching the App and
+deployment examples. Apply changes by restarting the
 Server (with Compose, run `docker compose up -d` to recreate it after editing
 `.env`). Restart interrupts active connections; excess Viewers receive `ROOM_FULL`
 when joining again. App Local and public-invite modes stay fixed at `20`.
