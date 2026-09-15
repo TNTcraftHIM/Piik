@@ -3,8 +3,8 @@ import {
 } from "../Comic";
 import type { HintScene, PlaybackHintKind } from "../../../ui/visual-kinds";
 
-// Hold the result at both ends; reset hidden objects before replaying the action.
-// Reduced motion keeps the result.
+// Play the action forward, hold its result, then repeat while the hint is shown.
+// Reduced motion keeps the informative result.
 function PlaybackMotion() {
   return <style>{`
 .vls-pb-cue{transform-box:fill-box;transform-origin:center;animation:vlsPbCue var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
@@ -28,18 +28,18 @@ function PlaybackMotion() {
 .vls-pb-popin{animation:vlsPbPopin var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
 .vls-pb-unavailable{animation:vlsPbUnavailable var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 @keyframes vlsPbCue{0%,8%,34%,100%{transform:scale(1)}16%{transform:scale(.86)}25%{transform:scale(1.08)}}
-@keyframes vlsPbPlay{0%,40%,100%{transform:none;opacity:1}8%{transform:none;opacity:0}12%{transform:translateX(-12px);opacity:0}18%{transform:translateX(-12px);opacity:1}}
-@keyframes vlsPbFreeze{0%,26%,100%{transform:none;opacity:1}6%{transform:none;opacity:0}10%{transform:translateX(-12px);opacity:0}14%{transform:translateX(-12px);opacity:1}}
-@keyframes vlsPbWave{0%,32%,100%{stroke-dashoffset:0;opacity:1}8%{stroke-dashoffset:0;opacity:0}12%{stroke-dashoffset:1;opacity:0}18%{stroke-dashoffset:1;opacity:.2}}
-@keyframes vlsPbSilence{0%,32%,100%{stroke-dashoffset:1;opacity:0}12%{stroke-dashoffset:0;opacity:0}18%{stroke-dashoffset:0;opacity:1}}
+@keyframes vlsPbPlay{0%,18%{transform:translateX(-12px)}40%,100%{transform:none}}
+@keyframes vlsPbFreeze{0%{transform:translateX(-12px)}18%,100%{transform:none}}
+@keyframes vlsPbWave{0%,12%{stroke-dashoffset:1;opacity:.2}30%,100%{stroke-dashoffset:0;opacity:1}}
+@keyframes vlsPbSilence{0%,8%{stroke-dashoffset:0;opacity:1}26%,100%{stroke-dashoffset:1;opacity:0}}
 @keyframes vlsPbCross{0%,30%,100%{transform:none}14%{transform:scale(.82)}22%{transform:scale(1.05)}}
 @keyframes vlsPbListen{0%,26%,44%,100%{transform:rotate(0)}35%{transform:rotate(-5deg)}}
-@keyframes vlsPbExpand{0%,40%,100%{transform:none;opacity:1}8%{transform:none;opacity:0}12%{transform:translate(12px,9px) scale(.62);opacity:0}18%{transform:translate(12px,9px) scale(.62);opacity:1}}
-@keyframes vlsPbContract{0%,40%,100%{transform:translate(12px,9px) scale(.62);opacity:1}8%{transform:translate(12px,9px) scale(.62);opacity:0}12%{transform:none;opacity:0}18%{transform:none;opacity:1}}
-@keyframes vlsPbChromeOut{0%,12%,35%,100%{opacity:0}18%{opacity:1}}
-@keyframes vlsPbChromeIn{0%,36%,100%{opacity:1}8%,18%{opacity:0}}
-@keyframes vlsPbPopout{0%,40%,100%{transform:none;opacity:1}8%{transform:none;opacity:0}12%{transform:translate(-28px,-14px) scale(1.4);opacity:0}18%{transform:translate(-28px,-14px) scale(1.4);opacity:1}}
-@keyframes vlsPbPopin{0%,40%,100%{transform:none;opacity:1}8%{transform:none;opacity:0}12%{transform:translate(32px,16px) scale(.65);opacity:0}18%{transform:translate(32px,16px) scale(.65);opacity:1}}
+@keyframes vlsPbExpand{0%,8%{transform:translate(12px,9px) scale(.62)}34%,100%{transform:none}}
+@keyframes vlsPbContract{0%,8%{transform:none}34%,100%{transform:translate(12px,9px) scale(.62)}}
+@keyframes vlsPbChromeOut{0%,8%{opacity:1}27%,100%{opacity:0}}
+@keyframes vlsPbChromeIn{0%,8%{opacity:0}30%,100%{opacity:1}}
+@keyframes vlsPbPopout{0%,8%{transform:translate(-28px,-14px) scale(1.4)}34%,100%{transform:none}}
+@keyframes vlsPbPopin{0%,8%{transform:translate(32px,16px) scale(.65)}34%,100%{transform:none}}
 @keyframes vlsPbUnavailable{0%,8%,36%,100%{transform:none}16%{transform:translateX(-4px)}26%{transform:translateX(3px)}}
 ${rmBlock(
   ["vls-pb-cue", "vls-pb-play", "vls-pb-freeze", "vls-pb-waves .vls-pb-wave",

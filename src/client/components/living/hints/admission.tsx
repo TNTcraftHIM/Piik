@@ -47,7 +47,7 @@ const PasswordAdmission: HintScene = ({ theme }) => <>
 .vls-ad-pass-present{transform-box:fill-box;transform-origin:50% 100%;animation:vlsAdmissionPresent var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-ad-pass-enter{animation:vlsAdmissionEnter var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 @keyframes vlsAdmissionPresent{0%,8%,44%,100%{transform:none}20%{transform:rotate(7deg)}30%{transform:rotate(-3deg)}}
-@keyframes vlsAdmissionEnter{0%,8%,90%,100%{transform:translate(-39px,0)}20%{transform:translate(-21px,-11px)}32%,60%{transform:none}74%{transform:translate(-20px,-8px)}}
+@keyframes vlsAdmissionEnter{0%,8%{transform:translate(-39px,0)}20%{transform:translate(-21px,-11px)}32%,100%{transform:none}}
 ${rmBlock(["vls-ad-pass-present", "vls-ad-pass-enter"], [[".vls-ad-pass-present,.vls-ad-pass-enter", "transform:none"]], false)}
 `}</style>
   <Frame x={4} w={152} theme={theme} />

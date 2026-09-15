@@ -55,15 +55,14 @@ ${rmBlock(
   </>
 );
 
-/* hint-close: the open card fades in, then folds away.
-   The X keeps the result readable while the next demonstration resets. */
+/* hint-close: the card folds away, then the X marks the closed result. */
 const HintClose: HintScene = ({ theme }) => (
   <>
     <style>{`
 .vls-cls-card{transform-box:fill-box;transform-origin:center;animation:vlsClsCard var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-cls-x{transform-box:fill-box;transform-origin:center;animation:vlsClsX var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
-@keyframes vlsClsCard{0%,54%,100%{transform:rotate(-14deg) translate(-12px,20px) scale(.55);opacity:0}4%{transform:rotate(0);opacity:0}10%{transform:rotate(0);opacity:1}16%{transform:rotate(2.5deg)}22%{transform:rotate(-2.5deg)}28%,40%{transform:rotate(0);opacity:1}}
-@keyframes vlsClsX{0%,48%,66%,100%{opacity:1;transform:scale(1) rotate(8deg)}56%{transform:scale(1.2) rotate(8deg)}}
+@keyframes vlsClsCard{0%,10%{transform:rotate(0);opacity:1}16%{transform:rotate(2.5deg)}22%{transform:rotate(-2.5deg)}28%,40%{transform:rotate(0);opacity:1}52%,100%{transform:rotate(-14deg) translate(-12px,20px) scale(.55);opacity:0}}
+@keyframes vlsClsX{0%,56%{opacity:0;transform:scale(1.6) rotate(8deg)}62%,100%{opacity:1;transform:scale(1) rotate(8deg)}}
 ${rmBlock(
   ["vls-cls-card", "vls-cls-x"],
   [
@@ -90,17 +89,17 @@ ${rmBlock(
   </>
 );
 
-/* hint-rename: the pencil resets while faded, then writes forward on the
-   name tag and rests beside the completed line. */
+/* hint-rename: the pencil writes forward on the name tag, then rests beside
+   the completed line. */
 const HintRename: HintScene = ({ theme }) => (
   <>
     <style>{`
 .vls-rnm-line{stroke-dasharray:1;animation:vlsRnmLine var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-rnm-pencil{transform-box:fill-box;transform-origin:0% 100%;animation:vlsRnmPencil var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-rnm-spark{transform-box:fill-box;transform-origin:center;animation:vlsRnmSpark var(--comic-duration,3.2s) cubic-bezier(.3,1.5,.5,1) var(--comic-repeat,1) both}
-@keyframes vlsRnmLine{0%,4%,42%,100%{stroke-dashoffset:0;opacity:1}8%{stroke-dashoffset:0;opacity:0}10%,12%{stroke-dashoffset:1;opacity:0}14%{stroke-dashoffset:1;opacity:1}}
-@keyframes vlsRnmPencil{0%,4%,42%,100%{transform:translate(0,0) rotate(0);opacity:1}8%{transform:translate(0,0) rotate(0);opacity:0}10%,12%{transform:translate(-30px,0) rotate(0);opacity:0}14%{transform:translate(-30px,0) rotate(0);opacity:1}20%{transform:translate(-21px,0) rotate(-6deg)}26%{transform:translate(-13px,0) rotate(5deg)}32%{transform:translate(-6px,0) rotate(-5deg)}38%{transform:translate(-2px,0) rotate(4deg)}}
-@keyframes vlsRnmSpark{0%,42%,60%,100%{opacity:1;transform:scale(1)}48%{transform:scale(1.2)}54%{transform:scale(.94)}}
+@keyframes vlsRnmLine{0%,6%{stroke-dashoffset:1}34%,100%{stroke-dashoffset:0}}
+@keyframes vlsRnmPencil{0%,6%{transform:translate(-30px,0) rotate(0)}12%{transform:translate(-21px,0) rotate(-6deg)}18%{transform:translate(-13px,0) rotate(5deg)}24%{transform:translate(-6px,0) rotate(-5deg)}30%{transform:translate(-2px,0) rotate(4deg)}34%,100%{transform:translate(0,0) rotate(0)}}
+@keyframes vlsRnmSpark{0%,38%{opacity:0;transform:scale(.4)}44%{opacity:1;transform:scale(1.2)}50%,100%{opacity:1;transform:scale(1)}}
 ${rmBlock(
   ["vls-rnm-line", "vls-rnm-pencil", "vls-rnm-spark"],
   [
@@ -139,7 +138,7 @@ const ThemeHint = ({ theme, light }: { theme: ComicTheme; light: boolean }) => (
   <>
     <style>{`
 .vls-thm-next{transform-box:fill-box;transform-origin:center;animation:vlsThmNext var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
-@keyframes vlsThmNext{0%,40%,100%{opacity:1;transform:scale(1)}12%{opacity:.6;transform:scale(.85)}}
+@keyframes vlsThmNext{0%,12%{opacity:.15;transform:scale(.75)}36%,100%{opacity:1;transform:scale(1)}}
 ${rmBlock(
   ["vls-thm-next"],
   [[".vls-thm-next", "opacity:1;transform:none"]],
@@ -164,8 +163,8 @@ ${rmBlock(
   </>
 );
 
-/* hint-join-go: a visitor shows the room code, then hops through the door.
-   Each pass fades in outside and rests inside the room. */
+/* hint-join-go: a visitor shows the room code, then hops through the door
+   and rests inside the room. */
 const HintJoinGo: HintScene = ({ theme }) => (
   <>
     <style>{`
@@ -173,8 +172,8 @@ const HintJoinGo: HintScene = ({ theme }) => (
 .vls-jgo-hop{transform-box:fill-box;transform-origin:50% 100%;animation:vlsJgoHop var(--comic-duration,3.2s) cubic-bezier(.3,1.4,.5,1) var(--comic-repeat,1) both}
 .vls-jgo-star{transform-box:fill-box;transform-origin:center;animation:vlsJgoStar var(--comic-duration,3.2s) cubic-bezier(.3,1.5,.5,1) var(--comic-repeat,1) both}
 @keyframes vlsJgoBlink{0%,58%,66%,100%{transform:scaleY(1)}62%{transform:scaleY(.12)}}
-@keyframes vlsJgoHop{0%,4%,38%,100%{transform:translate(0,0);opacity:1}8%{transform:translate(0,0);opacity:0}10%{transform:translate(-38px,0);opacity:0}14%{transform:translate(-38px,0);opacity:1}24%{transform:translate(-18px,-10px);opacity:1}}
-@keyframes vlsJgoStar{0%,38%,56%,100%{opacity:1;transform:scale(1)}44%{transform:scale(1.25)}50%{transform:scale(.94)}}
+@keyframes vlsJgoHop{0%,8%{transform:translate(-38px,0)}16%{transform:translate(-18px,-10px)}24%,100%{transform:translate(0,0)}}
+@keyframes vlsJgoStar{0%,28%{opacity:0;transform:scale(0)}34%{opacity:1;transform:scale(1.25)}42%,100%{opacity:1;transform:scale(1)}}
 ${rmBlock(
   ["vls-jgo-eyes", "vls-jgo-hop", "vls-jgo-star"],
   [
@@ -222,9 +221,9 @@ function TheaterHint({
       <style>{`
 .${stageClass}{transform-box:fill-box;transform-origin:center;animation:${motion} var(--comic-duration,3.2s) cubic-bezier(.3,1.25,.5,1) var(--comic-repeat,1) both}
 .vls-th-arrows{animation:vlsThArrows var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
-@keyframes vlsThEnter{0%,36%,100%{transform:scale(1)}10%{transform:scale(.72)}}
-@keyframes vlsThExit{0%,36%,100%{transform:scale(1)}10%{transform:scale(1.28)}}
-@keyframes vlsThArrows{0%,8%,58%,100%{opacity:.38}20%,44%{opacity:1}}
+@keyframes vlsThEnter{0%,8%{transform:scale(.72)}28%,100%{transform:scale(1)}}
+@keyframes vlsThExit{0%,8%{transform:scale(1.28)}28%,100%{transform:scale(1)}}
+@keyframes vlsThArrows{0%,8%{opacity:0}20%,44%{opacity:1}58%,100%{opacity:.38}}
 ${rmBlock(
   [stageClass, "vls-th-arrows"],
   [
@@ -284,7 +283,7 @@ const HintRouteP2p: HintScene = ({ theme }) => (
 .vls-p2p-arc{stroke-dasharray:1;animation:vlsP2pArc var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-p2p-hop{animation:vlsP2pHop var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 @keyframes vlsP2pBlink{0%,60%,68%,100%{transform:scaleY(1)}64%{transform:scaleY(.12)}}
-@keyframes vlsP2pArc{0%,4%,40%,100%{stroke-dashoffset:0;opacity:1}8%{stroke-dashoffset:0;opacity:0}10%,12%{stroke-dashoffset:1;opacity:0}14%{stroke-dashoffset:1;opacity:1}32%{stroke-dashoffset:0;opacity:1}}
+@keyframes vlsP2pArc{0%,6%{stroke-dashoffset:1}28%,100%{stroke-dashoffset:0}}
 @keyframes vlsP2pHop{0%,30%{transform:translateY(0)}36%{transform:translateY(-4px)}42%,100%{transform:translateY(0)}}
 ${rmBlock(
   ["vls-p2p-eyes", "vls-p2p-arc", "vls-p2p-hop"],
@@ -346,8 +345,8 @@ const HintRouteSfu: HintScene = ({ theme }) => (
 .vls-sfu-a2{stroke-dasharray:1;animation:vlsSfuA2 var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-sfu-hop{animation:vlsSfuHop var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 @keyframes vlsSfuBlink{0%,60%,68%,100%{transform:scaleY(1)}64%{transform:scaleY(.12)}}
-@keyframes vlsSfuA1{0%,4%,40%,100%{stroke-dashoffset:0;opacity:1}8%{stroke-dashoffset:0;opacity:0}10%,12%{stroke-dashoffset:1;opacity:0}14%{stroke-dashoffset:1;opacity:1}30%{stroke-dashoffset:0;opacity:1}}
-@keyframes vlsSfuA2{0%,4%,50%,100%{stroke-dashoffset:0;opacity:1}8%{stroke-dashoffset:0;opacity:0}10%,26%{stroke-dashoffset:1;opacity:0}28%{stroke-dashoffset:1;opacity:1}44%{stroke-dashoffset:0;opacity:1}}
+@keyframes vlsSfuA1{0%,6%{stroke-dashoffset:1}24%,100%{stroke-dashoffset:0}}
+@keyframes vlsSfuA2{0%,14%{stroke-dashoffset:1}32%,100%{stroke-dashoffset:0}}
 @keyframes vlsSfuHop{0%,34%{transform:translateY(0)}40%{transform:translateY(-4px)}46%,100%{transform:translateY(0)}}
 ${rmBlock(
   ["vls-sfu-eyes", "vls-sfu-a1", "vls-sfu-a2", "vls-sfu-hop"],
@@ -407,8 +406,8 @@ const HintClientSite: HintScene = ({ theme }) => (
     <style>{`
 .vls-site-page{animation:vlsSitePage var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
 .vls-site-star{transform-box:fill-box;transform-origin:center;animation:vlsSiteStar var(--comic-duration,3.2s) cubic-bezier(.3,1.5,.5,1) var(--comic-repeat,1) both}
-@keyframes vlsSitePage{0%,4%,36%,100%{transform:none;opacity:1}10%{transform:none;opacity:0}12%{transform:translateY(4px);opacity:0}28%{transform:none;opacity:1}}
-@keyframes vlsSiteStar{0%,28%,50%,100%{opacity:1;transform:scale(1)}36%{transform:scale(1.2)}44%{transform:scale(.94)}}
+@keyframes vlsSitePage{0%,8%{transform:translateY(4px);opacity:0}28%,100%{transform:none;opacity:1}}
+@keyframes vlsSiteStar{0%,28%{opacity:0;transform:scale(0)}36%{opacity:1;transform:scale(1.2)}44%,100%{opacity:1;transform:scale(1)}}
 ${rmBlock(
   ["vls-site-page", "vls-site-star"],
   [[".vls-site-page,.vls-site-star", "transform:none;opacity:1"]],
@@ -438,7 +437,7 @@ const HintNatPrediction = ({ theme, available = true }: { theme: ComicTheme; ava
 .vls-nat-path{stroke-dasharray:1;animation:vlsNatPath var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-nat-dots{animation:vlsNatDots var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-nat-unavailable{transform-box:fill-box;transform-origin:center;animation:vlsNatUnavailable var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
-@keyframes vlsNatPath{0%,4%,42%,100%{stroke-dashoffset:0;opacity:1}8%{stroke-dashoffset:0;opacity:0}10%,12%{stroke-dashoffset:1;opacity:0}14%{stroke-dashoffset:1;opacity:1}34%{stroke-dashoffset:0;opacity:1}}
+@keyframes vlsNatPath{0%,8%{stroke-dashoffset:1}30%,100%{stroke-dashoffset:0}}
 @keyframes vlsNatDots{0%,32%,100%{opacity:.35}44%{opacity:1}}
 @keyframes vlsNatUnavailable{0%,36%,100%{transform:none}12%{transform:scale(1.15) rotate(-8deg)}}
 ${rmBlock(

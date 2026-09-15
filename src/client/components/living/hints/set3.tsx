@@ -18,8 +18,8 @@ const hintQuality: HintScene = ({ theme }) => <>
   <style>{`
 .vls-quality-choice{animation:vlsQualityChoice var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-quality-size{stroke-dasharray:1;animation:vlsQualitySize var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
-@keyframes vlsQualityChoice{0%,46%,100%{transform:none}16%{transform:translateX(-43px)}}
-@keyframes vlsQualitySize{0%,50%,100%{stroke-dashoffset:0}10%,18%{stroke-dashoffset:1}}
+@keyframes vlsQualityChoice{0%,8%{transform:translateX(-43px)}30%,100%{transform:none}}
+@keyframes vlsQualitySize{0%,18%{stroke-dashoffset:1}42%,100%{stroke-dashoffset:0}}
 ${rmBlock(["vls-quality-choice"], [[".vls-quality-choice", "transform:none"]])}
 ${rmBlock(["vls-quality-size"], [[".vls-quality-size", "stroke-dashoffset:0"]], false)}
 `}</style>
@@ -38,7 +38,7 @@ ${rmBlock(["vls-quality-size"], [[".vls-quality-size", "stroke-dashoffset:0"]], 
 const hintAudioQuality: HintScene = ({ theme }) => <>
   <style>{`
 .vls-audio-quality-wave{stroke-dasharray:1;animation:vlsAudioQualityWave var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
-@keyframes vlsAudioQualityWave{0%,46%,100%{stroke-dashoffset:0}10%{stroke-dashoffset:1}}
+@keyframes vlsAudioQualityWave{0%,8%{stroke-dashoffset:1}38%,100%{stroke-dashoffset:0}}
 ${rmBlock(["vls-audio-quality-wave"], [[".vls-audio-quality-wave", "stroke-dashoffset:0"]], false)}
 `}</style>
   <Frame x={4} w={152} theme={theme} /><Frame x={164} w={152} theme={theme} result />
@@ -62,7 +62,7 @@ function PreferenceHint({ theme, preference }: Parameters<HintScene>[0] & {
   return <>
     <style>{`
 .vls-pref-${preference}{transform-box:view-box;transform-origin:237px 42px;animation:vlsPref${preference} var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
-@keyframes vlsPref${preference}{0%,46%,100%{transform:none}14%{transform:rotate(${detail ? 12 : -12}deg)}30%{transform:rotate(${motion ? 3 : -3}deg)}}
+@keyframes vlsPref${preference}{0%,8%{transform:rotate(${detail ? 12 : -12}deg)}24%{transform:rotate(${motion ? 3 : -3}deg)}40%,100%{transform:none}}
 ${rmBlock([`vls-pref-${preference}`], [[`.vls-pref-${preference}`, "transform:none"]])}
 `}</style>
     <Frame x={4} w={152} theme={theme} /><Frame x={164} w={152} theme={theme} result />
@@ -87,8 +87,8 @@ const hintCodec: HintScene = ({ theme }) => <>
   <style>{`
 .vls-codec-piece{animation:vlsCodecPiece var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-codec-packets{transform-box:fill-box;transform-origin:left;animation:vlsCodecPackets var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
-@keyframes vlsCodecPiece{0%,36%,100%{transform:none}12%{transform:translateX(-10px)}}
-@keyframes vlsCodecPackets{0%,50%,100%{transform:none}10%,18%{transform:scaleX(.4)}}
+@keyframes vlsCodecPiece{0%,8%{transform:translateX(-10px)}28%,100%{transform:none}}
+@keyframes vlsCodecPackets{0%,18%{transform:scaleX(0)}42%,100%{transform:none}}
 ${rmBlock(["vls-codec-piece", "vls-codec-packets"], [[".vls-codec-piece,.vls-codec-packets", "transform:none"]])}
 `}</style>
   <Frame x={4} w={152} theme={theme} /><Frame x={164} w={152} theme={theme} result />
@@ -107,7 +107,7 @@ const hintAdvanced: HintScene = ({ theme }) => (
 .vls-adv-door{transform-box:fill-box;transform-origin:left center;animation:vlsAdvDoor var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-adv-hop{transform-box:fill-box;transform-origin:50% 100%;animation:vlsAdvHop var(--comic-duration,3.2s) cubic-bezier(.3,1.5,.5,1) var(--comic-repeat,1) both}
 @keyframes vlsAdvBlink{0%,52%,60%,100%{transform:scaleY(1)}56%{transform:scaleY(.12)}}
-@keyframes vlsAdvDoor{0%,40%,100%{transform:scaleX(.14)}10%{transform:scaleX(1)}30%{transform:scaleX(.09)}}
+@keyframes vlsAdvDoor{0%,8%{transform:scaleX(1)}26%{transform:scaleX(.09)}33%,100%{transform:scaleX(.14)}}
 @keyframes vlsAdvHop{0%,40%,62%,100%{transform:translateY(0)}46%{transform:translateY(-4.5px)}52%{transform:translateY(0)}57%{transform:translateY(-2px)}}
 ${rmBlock(
   ["vls-adv-blink", "vls-adv-door", "vls-adv-hop"],
@@ -153,7 +153,7 @@ const hintDetails: HintScene = ({ theme }) => (
     <style>{`
 .vls-dt-lens{transform-box:fill-box;transform-origin:center;animation:vlsDtLens var(--comic-duration,3.2s) cubic-bezier(.3,1.5,.5,1) var(--comic-repeat,1) both}
 .vls-dt-blink{transform-box:fill-box;transform-origin:center;animation:vlsDtBlink var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
-@keyframes vlsDtLens{0%,28%,100%{transform:scale(1);opacity:1}8%{transform:scale(.88);opacity:.7}18%{transform:scale(1.12);opacity:1}}
+@keyframes vlsDtLens{0%,6%{transform:scale(0);opacity:0}14%{transform:scale(1.12);opacity:1}20%,100%{transform:scale(1);opacity:1}}
 @keyframes vlsDtBlink{0%,56%,64%,100%{transform:scaleY(1)}60%{transform:scaleY(.12)}}
 ${rmBlock(
   ["vls-dt-lens", "vls-dt-blink"],
@@ -206,7 +206,7 @@ const hintMoreMetrics: HintScene = ({ theme }) => (
 .vls-mm-r2{animation:vlsMmIn var(--comic-duration,3.2s) cubic-bezier(.3,1.5,.5,1) var(--comic-repeat,1) both}
 .vls-mm-r3{animation:vlsMmIn var(--comic-duration,3.2s) cubic-bezier(.3,1.5,.5,1) .12s var(--comic-repeat,1) both}
 @keyframes vlsMmChev{0%,30%,100%{transform:translateY(0)}15%{transform:translateY(2.5px)}}
-@keyframes vlsMmIn{0%,4%,24%,100%{opacity:1;transform:translateY(0)}8%{opacity:.25;transform:translateY(-7px)}16%{opacity:1;transform:translateY(1px)}}
+@keyframes vlsMmIn{0%{opacity:0;transform:translateY(-7px)}8%{opacity:1;transform:translateY(1px)}14%,100%{opacity:1;transform:translateY(0)}}
 ${rmBlock(
   ["vls-mm-chev", "vls-mm-r2", "vls-mm-r3"],
   [
@@ -259,8 +259,8 @@ const hintDebugExport: HintScene = ({ theme }) => (
     <style>{`
 .vls-export-report{animation:vlsExportReport var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
 .vls-export-arrow{animation:vlsExportArrow var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
-@keyframes vlsExportReport{0%,4%,40%,100%{opacity:1;transform:none}10%{opacity:0;transform:none}12%{opacity:0;transform:translateY(-8px)}30%{opacity:1;transform:none}}
-@keyframes vlsExportArrow{0%,48%,100%{opacity:1}12%,26%{opacity:.25}}
+@keyframes vlsExportReport{0%,8%{opacity:0;transform:translateY(-8px)}30%,100%{opacity:1;transform:none}}
+@keyframes vlsExportArrow{0%,26%{opacity:0}42%,100%{opacity:1}}
 ${rmBlock(["vls-export-report", "vls-export-arrow"], [[".vls-export-report,.vls-export-arrow", "opacity:1;transform:none"]])}
 `}</style>
     <Frame x={4} w={152} theme={theme} />

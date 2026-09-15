@@ -93,7 +93,7 @@ const SceneCopyCode: HintScene = ({ theme }) => (
 @keyframes vlsCopyLean{0%,8%{transform:rotate(0)}18%,30%{transform:rotate(7deg)}42%,100%{transform:rotate(0)}}
 @keyframes vlsCopyRing{0%,14%{transform:scale(.6);opacity:0}20%{opacity:.8}38%,100%{transform:scale(1.7);opacity:0}}
 @keyframes vlsCopyHop{0%,12%{transform:translateY(0)}20%{transform:translateY(-2.5px)}30%,100%{transform:translateY(0)}}
-@keyframes vlsCopyStar{0%,14%,40%,100%{opacity:1;transform:scale(1)}24%{transform:scale(1.25)}32%{transform:scale(.94)}}
+@keyframes vlsCopyStar{0%,14%{opacity:0;transform:scale(0)}24%{opacity:1;transform:scale(1.25)}32%,100%{opacity:1;transform:scale(1)}}
 ${rmBlock(
   ["vls-copy-pawn", "vls-copy-ring", "vls-copy-front", "vls-copy-star"],
   [
@@ -175,7 +175,7 @@ const SceneCopyInvite: HintScene = ({ theme }) => (
     <RoomResultMotion />
     <style>{`
 .vls-cinv-copy{animation:vlsCinvCopy var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
-@keyframes vlsCinvCopy{0%,4%,40%,100%{transform:none;opacity:1}10%{transform:none;opacity:0}12%{transform:translate(-12px,-13px);opacity:0}36%{transform:none;opacity:1}}
+@keyframes vlsCinvCopy{0%,8%{transform:translate(-12px,-13px);opacity:.25}36%,100%{transform:none;opacity:1}}
 ${rmBlock(["vls-cinv-copy"], [[".vls-cinv-copy", "transform:none;opacity:1"]])}
 `}</style>
     <Frame x={4} w={152} theme={theme} />
@@ -278,7 +278,7 @@ const ScenePassword: HintScene = ({ theme }) => (
     <RoomResultMotion />
     <style>{`
 .vls-pass-input{animation:vlsPassInput var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
-@keyframes vlsPassInput{0%,4%,40%,100%{transform:none;opacity:1}10%{transform:none;opacity:0}12%{transform:translateX(-12px);opacity:0}34%{transform:none;opacity:1}}
+@keyframes vlsPassInput{0%,8%{transform:translateX(-12px);opacity:.2}34%,100%{transform:none;opacity:1}}
 ${rmBlock(["vls-pass-input"], [[".vls-pass-input", "transform:none;opacity:1"]])}
 `}</style>
     <Frame x={4} w={152} theme={theme} />

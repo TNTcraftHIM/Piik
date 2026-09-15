@@ -659,7 +659,7 @@ function ScenePaused({ theme }: { theme: ComicTheme }) {
 @keyframes vlsHpBars{0%,100%{opacity:.55}50%{opacity:1}}
 @keyframes vlsHpLed{0%,100%{opacity:1}50%{opacity:.3}}
 @keyframes vlsHpBlink{0%,44%,52%,100%{transform:scaleY(1)}48%{transform:scaleY(.12)}}
-@keyframes vlsHpSteam{0%,48%,100%{transform:none;opacity:.55}20%{transform:translateY(-4px);opacity:.9}}
+@keyframes vlsHpSteam{0%{transform:translateY(2px);opacity:.4}20%{opacity:.9}45%,100%{transform:translateY(-2px);opacity:.55}}
 ${rmBlock(
   ["vls-hp-bars", "vls-hp-led", "vls-hp-eyes", "vls-hp-steam2"],
   [
@@ -701,7 +701,7 @@ function SceneRecovering({ theme }: { theme: ComicTheme }) {
 .vls-rc-c2{animation:vlsRcC2 var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-rc-c3{animation:vlsRcC3 var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 @keyframes vlsRcSpark{0%,30%,100%{opacity:.55}10%{opacity:1}}
-@keyframes vlsRcPlug{0%,40%,100%{transform:none}12%{transform:translate(-4px,-9px) rotate(-6deg)}24%{transform:translate(-2px,-4px) rotate(5deg)}32%{transform:translate(0,-1px) rotate(-2deg)}}
+@keyframes vlsRcPlug{0%{transform:translate(-4px,-9px) rotate(-6deg)}12%{transform:translate(-2px,-4px) rotate(5deg)}22%{transform:translate(0,-1px) rotate(-2deg)}30%,100%{transform:translate(0,0) rotate(0)}}
 @keyframes vlsRcPlugLines{0%{opacity:0}6%{opacity:.9}28%,100%{opacity:0}}
 @keyframes vlsRcSweat{0%,53%{opacity:0;transform:translateY(0)}56%{opacity:1}72%,100%{opacity:0;transform:translateY(9px)}}
 @keyframes vlsRcC1{0%,24%{opacity:.25}32%,58%{opacity:1}66%,100%{opacity:.25}}
@@ -1149,8 +1149,8 @@ function SceneBandwidthLimited({ theme }: { theme: ComicTheme }) {
 .vls-bw-flow-b{animation:vlsBwFlowB var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-bw-throat{transform-box:fill-box;transform-origin:center;animation:vlsBwThroat var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-bw-small{transform-box:fill-box;transform-origin:center;animation:vlsBwSmall var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
-@keyframes vlsBwFlowA{0%,40%,100%{transform:none;opacity:1}12%{transform:translateX(-6px);opacity:.45}}
-@keyframes vlsBwFlowB{0%,50%,100%{transform:none;opacity:1}22%{transform:translateX(-5px);opacity:.45}}
+@keyframes vlsBwFlowA{0%,8%{transform:translateX(-6px);opacity:.45}36%,100%{transform:none;opacity:1}}
+@keyframes vlsBwFlowB{0%,18%{transform:translateX(-5px);opacity:.45}46%,100%{transform:none;opacity:1}}
 @keyframes vlsBwThroat{0%,30%,100%{transform:scaleY(1)}48%,76%{transform:scaleY(.62)}}
 @keyframes vlsBwSmall{0%,42%{transform:scale(1)}58%,100%{transform:scale(.82)}}
 ${rmBlock(
@@ -1209,7 +1209,7 @@ function SceneEncoderLimited({ theme }: { theme: ComicTheme }) {
 .vls-en-small{transform-box:fill-box;transform-origin:center;animation:vlsEnSmall var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 @keyframes vlsEnFlow{0%,12%{transform:translateX(-7px);opacity:0}28%,60%{transform:none;opacity:1}76%,100%{transform:translateX(8px);opacity:0}}
 @keyframes vlsEnDrop{0%,42%{transform:none;opacity:1}64%,100%{transform:translateY(16px) rotate(12deg);opacity:0}}
-@keyframes vlsEnHeat{0%,44%,100%{transform:none;opacity:1}14%{transform:translateY(3px);opacity:.4}}
+@keyframes vlsEnHeat{0%,8%{transform:translateY(3px);opacity:.4}36%,100%{transform:none;opacity:1}}
 @keyframes vlsEnSmall{0%,46%{transform:scale(1)}62%,100%{transform:scale(.82)}}
 ${rmBlock(
   ["vls-en-frame-a", "vls-en-frame-b", "vls-en-drop", "vls-en-small"],
@@ -1440,8 +1440,8 @@ function SceneSourceSwitching({ theme, state = "switching" }: {
 .vls-source-switch{animation:vlsSourceSwitch var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-source-return{animation-name:vlsSourceReturn}
 .vls-source-host{transform-origin:39px 76px;animation:vlsSourceHost var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
-@keyframes vlsSourceSwitch{0%,45%,100%{transform:none;opacity:1}12%{transform:translateX(-5px);opacity:.55}25%{transform:translateX(5px);opacity:1}}
-@keyframes vlsSourceReturn{0%,45%,100%{transform:none;opacity:1}12%{transform:translateX(5px);opacity:.55}25%{transform:translateX(-5px);opacity:1}}
+@keyframes vlsSourceSwitch{0%{transform:translateX(-5px);opacity:.55}25%{transform:translateX(5px);opacity:1}45%,100%{transform:none;opacity:1}}
+@keyframes vlsSourceReturn{0%{transform:translateX(5px);opacity:.55}25%{transform:translateX(-5px);opacity:1}45%,100%{transform:none;opacity:1}}
 @keyframes vlsSourceHost{0%,38%,100%{transform:none}12%{transform:translateX(4px) rotate(4deg)}}
 ${rmBlock(["vls-source-switch"], [[".vls-source-switch", "opacity:1"]])}
 ${rmBlock(["vls-source-host"], [], false)}

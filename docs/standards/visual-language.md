@@ -24,6 +24,10 @@ Keep playfulness restrained: clean silhouettes, balanced proportions, quiet
 expressions and brief gestures. Keep the interface approachable; avoid
 pushing ordinary characters toward infant proportions, exaggerated
 grins, dense cute decoration or children's picture-book styling.
+This balance applies to all comic hints, status overlays and entry/error scenes.
+Small floating round hands can make a greeting, a held object or a listening
+gesture clearer; use them where the action benefits, without adding detail to
+every character.
 
 Consistency governs meaning, cast and interaction, not identical compositions.
 Give each explanation a recognisable little scene: a welcoming hop, a curious
@@ -326,8 +330,11 @@ Reduced motion uses each scene's **explicit informative static pose**. Disabling
 animation alone is insufficient if the base SVG hides the result or shows a
 misleading starting pose. Settled facts stay visible during decorative movement.
 Static styling is scoped to its SVG; one still tooltip must not freeze another
-progress scene. Repeating gestures should return cleanly to their start; use a
-readable hold rather than a sudden position jump at the loop boundary.
+progress scene. Action demonstrations play forward, hold their result, then
+replay; a direct cut back to the opening pose is acceptable. Seamless loops are
+optional. Do not add a reverse action, extra bounce or fade just to match the
+first and last frames. Natural blinking, hopping and peeking can return to rest
+as part of the gesture. Keep movement brief and give the explanation quiet time.
 
 Every comic surface, including overlays and error pages, needs visible motion
 in its subject: a paused scene's steam rises, a loose cable sways, or packets

@@ -17,15 +17,15 @@ function MetricMotion() {
 .vls-metric-return{stroke-dasharray:1;animation:vlsMetricReturn var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
 .vls-metric-drop{animation:vlsMetricDrop var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-metric-lag{animation:vlsMetricLag var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
-@keyframes vlsMetricFlow{0%,44%,100%{transform:none}14%{transform:translateX(-12px)}}
+@keyframes vlsMetricFlow{0%,8%{transform:translateX(-12px)}36%,100%{transform:none}}
 @keyframes vlsMetricLoss{0%,42%,100%{transform:none}14%{transform:translateY(-4px)}}
-@keyframes vlsMetricSampling{0%,50%,100%{stroke-dashoffset:0}10%{stroke-dashoffset:1}}
+@keyframes vlsMetricSampling{0%,8%{stroke-dashoffset:1}42%,100%{stroke-dashoffset:0}}
 @keyframes vlsMetricMeasure{0%,46%,100%{transform:none}14%{transform:scale(.88)}}
-@keyframes vlsMetricHand{0%,8%{transform:rotate(-360deg)}46%,100%{transform:none}}
-@keyframes vlsMetricOutbound{0%,32%,100%{stroke-dashoffset:0}8%{stroke-dashoffset:1}}
-@keyframes vlsMetricReturn{0%,56%,100%{stroke-dashoffset:0}8%,24%{stroke-dashoffset:1}}
-@keyframes vlsMetricDrop{0%,46%,100%{transform:none}14%{transform:translateY(-14px)}}
-@keyframes vlsMetricLag{0%,52%,100%{transform:none}20%{transform:translateX(-57px)}}
+@keyframes vlsMetricHand{0%,8%{transform:rotate(-120deg)}46%,100%{transform:none}}
+@keyframes vlsMetricOutbound{0%,8%{stroke-dashoffset:1}24%,100%{stroke-dashoffset:0}}
+@keyframes vlsMetricReturn{0%,24%{stroke-dashoffset:1}49%,100%{stroke-dashoffset:0}}
+@keyframes vlsMetricDrop{0%,12%{transform:translateY(-14px)}38%,100%{transform:none}}
+@keyframes vlsMetricLag{0%,20%{transform:translateX(-57px)}48%,100%{transform:none}}
 ${rmBlock(["vls-metric-flow", "vls-metric-loss", "vls-metric-sampling", "vls-metric-measure", "vls-metric-hand", "vls-metric-outbound", "vls-metric-return", "vls-metric-drop", "vls-metric-lag"], [
   [".vls-metric-flow,.vls-metric-loss,.vls-metric-measure,.vls-metric-hand,.vls-metric-drop,.vls-metric-lag", "transform:none;opacity:1"],
   [".vls-metric-sampling,.vls-metric-outbound,.vls-metric-return", "stroke-dashoffset:0"],
