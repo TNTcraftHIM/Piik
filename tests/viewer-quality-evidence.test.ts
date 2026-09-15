@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { deriveParticipantStatus } from "../src/client/ui/media-status";
+import { ViewerQualityEvidenceStore } from "../src/client/media/viewer-quality-evidence-store";
 
 import type {
   ClientMessage,
@@ -113,6 +114,74 @@ function serverEvidence(
     metrics: { ...window.metrics, ...overrides.metrics },
   };
 }
+
+describe("received quality evidence lifetime", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("expires the latest observation without changing earlier render snapshots", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const changed = vi.fn();
+    const store = new ViewerQualityEvidenceStore(changed);
+    const first = presentViewerQualityEvidence(null, serverEvidence());
+    const peerId = first.evidence.viewerPeerId;
+    store.set(peerId, first);
+    const firstSnapshot = store.getSnapshot();
+    vi.advanceTimersByTime(VIEWER_QUALITY_EVIDENCE_EXPIRY_MS / 2);
+    const next = presentViewerQualityEvidence(first, serverEvidence({ sequence: 1 }));
+    store.set(peerId, next);
+    store.set(peerId, next);
+    expect(changed).toHaveBeenCalledTimes(2);
+    expect(vi.getTimerCount()).toBe(1);
+    vi.advanceTimersByTime(VIEWER_QUALITY_EVIDENCE_EXPIRY_MS / 2);
+    expect(store.getSnapshot().get(peerId)).toBe(next);
+    vi.advanceTimersByTime(VIEWER_QUALITY_EVIDENCE_EXPIRY_MS / 2);
+    expect(store.getSnapshot().get(peerId)).toEqual({ ...next, fresh: false });
+    expect(firstSnapshot.get(peerId)).toBe(first);
+    expect(first.fresh).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("retires departed peers and all their timers together, then accepts a new session", () => {
+    vi.useFakeTimers();
+    const changed = vi.fn();
+    const store = new ViewerQualityEvidenceStore(changed);
+    for (const viewerPeerId of ["viewer_a", "viewer_b", "viewer_c"]) {
+      store.set(viewerPeerId, presentViewerQualityEvidence(null, serverEvidence({ viewerPeerId })));
+    }
+    store.retain(new Set(["viewer_b", "viewer_c"]));
+    store.set("viewer_c", null);
+    expect([...store.getSnapshot().keys()]).toEqual(["viewer_b"]);
+    expect(vi.getTimerCount()).toBe(1);
+    store.clear();
+    const emptySnapshot = store.getSnapshot();
+    changed.mockClear();
+    vi.advanceTimersByTime(VIEWER_QUALITY_EVIDENCE_EXPIRY_MS * 2);
+    expect(changed).not.toHaveBeenCalled();
+    expect(emptySnapshot.size).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+    const current = presentViewerQualityEvidence(null, serverEvidence({ connectionId: "new-connection" }));
+    store.set(current.evidence.viewerPeerId, current);
+    expect(emptySnapshot.size).toBe(0);
+    expect(store.getSnapshot().get(current.evidence.viewerPeerId)).toBe(current);
+    store.clear();
+  });
+
+  it("rearms an early timer when the system clock moves backwards", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const store = new ViewerQualityEvidenceStore(() => {});
+    const current = presentViewerQualityEvidence(null, serverEvidence());
+    store.set(current.evidence.viewerPeerId, current);
+    vi.setSystemTime(-1_000);
+    vi.advanceTimersByTime(VIEWER_QUALITY_EVIDENCE_EXPIRY_MS);
+    expect(store.getSnapshot().get(current.evidence.viewerPeerId)?.fresh).toBe(true);
+    expect(vi.getTimerCount()).toBe(1);
+    vi.advanceTimersByTime(1_000);
+    expect(store.getSnapshot().get(current.evidence.viewerPeerId)?.fresh).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
 
 describe("viewer quality evidence", () => {
   it("annotates ready participants only with current receive-window freezes", () => {

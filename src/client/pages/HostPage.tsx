@@ -141,14 +141,12 @@ import {
 import {
   classifyHostViewerQualityEvidence,
   metricsFromQualityEvidence,
-  nextViewerQualityEvidencePresentationExpiryAt,
   presentViewerQualityEvidence,
   qualityEvidenceUpstreamMatches,
   reconcileViewerQualityEvidencePresentation,
-  refreshViewerQualityEvidencePresentation,
-  retainPresentViewerQualityEvidence,
   type ViewerQualityEvidencePresentation,
 } from "../media/viewer-quality-evidence";
+import { ViewerQualityEvidenceStore } from "../media/viewer-quality-evidence-store";
 import type {
   ConnectionMetrics,
   PeerSnapshot,
@@ -459,7 +457,7 @@ export function HostPage({
   const [displayNameError, setDisplayNameError] = useState<string | null>(null);
   const [editingDisplayName, setEditingDisplayName] = useState(false);
   const [viewerQualityEvidence, setViewerQualityEvidence] = useState<
-    Map<string, ViewerQualityEvidencePresentation>
+    ReadonlyMap<string, ViewerQualityEvidencePresentation>
   >(() => new Map());
   const [noticeValue, setNoticeValue] = useState<NoticeValue | null>(null);
   const [hostSfuQualityWarning, setHostSfuQualityWarning] = useState<
@@ -535,11 +533,8 @@ export function HostPage({
   const activeHostChildPeerIdsRef = useRef<string[]>([]);
   const endpointMediaCopyCapacityRef = useRef(MAX_ENDPOINT_MEDIA_CHILDREN);
   const hostPeerIdRef = useRef<string | null>(null);
-  const viewerQualityEvidenceRef = useRef(
-    new Map<string, ViewerQualityEvidencePresentation>(),
-  );
-  const viewerQualityEvidenceTimersRef = useRef(
-    new Map<string, number>(),
+  const [viewerQualityEvidenceStore] = useState(
+    () => new ViewerQualityEvidenceStore(scheduleViewerQualityEvidenceRender),
   );
   const viewerQualityEvidenceRenderFrameRef = useRef<number | null>(null);
   const activeRouteRevisionRef = useRef(0);
@@ -676,11 +671,7 @@ export function HostPage({
         copiedResetTimerRef.current = null;
       }
       copyInviteRequestRef.current = null;
-      viewerQualityEvidenceTimersRef.current.forEach((timer) =>
-        window.clearTimeout(timer),
-      );
-      viewerQualityEvidenceTimersRef.current.clear();
-      viewerQualityEvidenceRef.current.clear();
+      viewerQualityEvidenceStore.clear();
       cancelViewerQualityEvidenceRender();
       activeRouteRevisionRef.current = 0;
       void hostSfuRouteRef.current?.disconnect();
@@ -865,13 +856,9 @@ export function HostPage({
     setDetails(null);
     setPeerSnapshots(new Map());
     setParticipantPresence([]);
-    viewerQualityEvidenceTimersRef.current.forEach((timer) =>
-      window.clearTimeout(timer),
-    );
-    viewerQualityEvidenceTimersRef.current.clear();
+    viewerQualityEvidenceStore.clear();
     cancelViewerQualityEvidenceRender();
-    viewerQualityEvidenceRef.current = new Map();
-    setViewerQualityEvidence(new Map());
+    setViewerQualityEvidence(viewerQualityEvidenceStore.getSnapshot());
     activeRouteRevisionRef.current = 0;
     setSignalStatus("offline");
     setSwitchingSource(false);
@@ -1048,14 +1035,14 @@ export function HostPage({
   }
 
   function updatePeerSnapshot(snapshot: PeerSnapshot): void {
-    const presentation = viewerQualityEvidenceRef.current.get(snapshot.peerId);
+    const presentation = viewerQualityEvidenceStore.getSnapshot().get(snapshot.peerId);
     if (presentation) {
       const reconciled = reconcileViewerQualityEvidencePresentation(
         presentation,
         snapshot,
       );
       if (reconciled !== presentation) {
-        commitViewerQualityEvidence(snapshot.peerId, reconciled);
+        viewerQualityEvidenceStore.set(snapshot.peerId, reconciled);
       }
     }
     setPeerSnapshots((current) => {
@@ -1065,64 +1052,12 @@ export function HostPage({
     });
   }
 
-  function commitViewerQualityEvidence(
-    peerId: string,
-    presentation: ViewerQualityEvidencePresentation | null,
-  ): void {
-    const timer = viewerQualityEvidenceTimersRef.current.get(peerId);
-    if (timer !== undefined) {
-      window.clearTimeout(timer);
-      viewerQualityEvidenceTimersRef.current.delete(peerId);
-    }
-    const current = viewerQualityEvidenceRef.current.get(peerId);
-    if (presentation === null && current === undefined) {
-      return;
-    }
-    if (current !== presentation) {
-      const next = new Map(viewerQualityEvidenceRef.current);
-      if (presentation === null) {
-        next.delete(peerId);
-      } else {
-        next.set(peerId, presentation);
-      }
-      viewerQualityEvidenceRef.current = next;
-      scheduleViewerQualityEvidenceRender();
-    }
-    if (presentation === null) {
-      return;
-    }
-
-    const nowMs = Date.now();
-    const expiryAt = nextViewerQualityEvidencePresentationExpiryAt(
-      presentation,
-      nowMs,
-    );
-    if (expiryAt === null) {
-      return;
-    }
-    const expected = presentation;
-    const nextTimer = window.setTimeout(() => {
-      if (viewerQualityEvidenceRef.current.get(peerId) !== expected) {
-        return;
-      }
-      commitViewerQualityEvidence(
-        peerId,
-        refreshViewerQualityEvidencePresentation(expected),
-      );
-    }, Math.max(0, expiryAt - nowMs));
-    viewerQualityEvidenceTimersRef.current.set(peerId, nextTimer);
-  }
-
-  function clearViewerQualityEvidence(peerId: string): void {
-    commitViewerQualityEvidence(peerId, null);
-  }
-
   function scheduleViewerQualityEvidenceRender(): void {
     if (viewerQualityEvidenceRenderFrameRef.current !== null) return;
     viewerQualityEvidenceRenderFrameRef.current = window.requestAnimationFrame(
       () => {
         viewerQualityEvidenceRenderFrameRef.current = null;
-        setViewerQualityEvidence(viewerQualityEvidenceRef.current);
+        setViewerQualityEvidence(viewerQualityEvidenceStore.getSnapshot());
       },
     );
   }
@@ -1142,20 +1077,7 @@ export function HostPage({
         .filter((entry) => entry.role === "viewer")
         .map((entry) => entry.peerId),
     );
-    const current = viewerQualityEvidenceRef.current;
-    const retained = retainPresentViewerQualityEvidence(
-      current,
-      presentPeerIds,
-    );
-    if (retained === current) return;
-    for (const peerId of current.keys()) {
-      if (retained.has(peerId)) continue;
-      const timer = viewerQualityEvidenceTimersRef.current.get(peerId);
-      if (timer !== undefined) window.clearTimeout(timer);
-      viewerQualityEvidenceTimersRef.current.delete(peerId);
-    }
-    viewerQualityEvidenceRef.current = retained;
-    scheduleViewerQualityEvidenceRender();
+    viewerQualityEvidenceStore.retain(presentPeerIds);
   }
 
   function acceptViewerQualityEvidence(evidence: ViewerQualityEvidence): void {
@@ -1170,10 +1092,10 @@ export function HostPage({
     if (!evidenceSource) {
       return;
     }
-    commitViewerQualityEvidence(
+    viewerQualityEvidenceStore.set(
       evidence.viewerPeerId,
       presentViewerQualityEvidence(
-        viewerQualityEvidenceRef.current.get(evidence.viewerPeerId) ?? null,
+        viewerQualityEvidenceStore.getSnapshot().get(evidence.viewerPeerId) ?? null,
         evidence,
       ),
     );
@@ -1882,7 +1804,7 @@ export function HostPage({
   }
 
   function removePeer(peerId: string): void {
-    clearViewerQualityEvidence(peerId);
+    viewerQualityEvidenceStore.set(peerId, null);
     const peer = peersRef.current.get(peerId);
     if (peer) {
       peer.dispose();

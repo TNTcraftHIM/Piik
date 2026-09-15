@@ -30,8 +30,9 @@ history. A parked idea is not implementation authority.
 - [ ] **Windows launcher exit after opening the page.** A user reports that the
   mode-selection page opens, then the App console reports
   `Piik App could not open its launcher: exit status 0xc0000005`.
-  Investigation is deferred at the owner's request. Establish the affected build
-  and failing process before changing startup, browser handoff or exit behavior.
+  Recheck on the reporting machine after the browser-handoff repair. The Windows
+  URL-handler crash itself still needs the affected build and process/dump
+  evidence; local checks cannot establish its underlying cause.
 - [ ] **Tooltip placement around video.** After the current motion/meaning
   acceptance, review placement that keeps the picture visible, including
   side placement and restrained translucency. Keep neighbouring actions
@@ -86,10 +87,8 @@ not establish better connection success or speed; this note adds no retry policy
    candidate. Reopen C=3 structural-intent retention, SFU failure during unrelated
    prepare and multi-child evidence ownership only with current-contract
    reproductions.
-   When related behavior changes, compare per-peer evidence/timer ownership and
-   the Browser/Native recovery budget. Expiry rules already have one owner;
-   extract shared lifecycle code only when it reduces total state and callback
-   wiring while preserving Native bridge versus network failure distinctions.
+   When related behavior changes, compare the Browser/Native recovery budget;
+   preserve Native bridge versus network failure distinctions when sharing code.
    No new revision namespace, failure-state mirror or topology queue by default.
 5. **Storage fault recovery.** Choose and verify a damaged-disk/COMMIT/ROLLBACK
    recovery policy before adding catch-and-continue or retries. This failure

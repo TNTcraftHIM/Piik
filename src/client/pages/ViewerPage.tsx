@@ -72,14 +72,13 @@ import {
 import {
   freshViewerQualityEvidence,
   metricsFromQualityEvidence,
-  nextViewerQualityEvidencePresentationExpiryAt,
   presentViewerQualityEvidence,
   qualityEvidenceMatchesSnapshot,
   reconcileViewerQualityEvidencePresentation,
-  refreshViewerQualityEvidencePresentation,
   type ViewerQualityEvidencePresentation,
   ViewerQualityEvidenceReporter,
 } from "../media/viewer-quality-evidence";
+import { ViewerQualityEvidenceStore } from "../media/viewer-quality-evidence-store";
 import { ViewerMessageAuthority } from "../media/viewer-message-authority";
 import {
   INITIAL_VIEWER_PRESENTATION_STATE,
@@ -193,7 +192,7 @@ export function ViewerPage({
   } | null>(null);
   const [relaySnapshot, setRelaySnapshot] = useState<PeerSnapshot | null>(null);
   const [relayChildEvidence, setRelayChildEvidence] = useState<
-    Map<string, ViewerQualityEvidencePresentation>
+    ReadonlyMap<string, ViewerQualityEvidencePresentation>
   >(() => new Map());
   const [showConnectionDetails, setShowConnectionDetails] = useState(false);
   const [showTopology, setShowTopology] = useState(false);
@@ -491,11 +490,10 @@ export function ViewerPage({
     let pendingPeer: PendingPeerRoute | null = null;
     const decodedFrameStall = new DecodedFrameStallDetector();
     const messageAuthority = new ViewerMessageAuthority();
-    const relayChildEvidenceCurrent = new Map<
-      string,
-      ViewerQualityEvidencePresentation
-    >();
-    const relayChildEvidenceTimers = new Map<string, number>();
+    const relayChildEvidenceStore = new ViewerQualityEvidenceStore((values) => {
+      if (active) setRelayChildEvidence(values);
+    });
+    setRelayChildEvidence(relayChildEvidenceStore.getSnapshot());
     let sfuTransportConnected = false;
     let nativeClientPromise: Promise<NativeClient | null> | null = null;
     let nativeViewerAvailable = true;
@@ -714,58 +712,6 @@ export function ViewerPage({
       pendingRouteConnection = null;
     }
 
-    function commitRelayChildEvidence(
-      peerId: string,
-      presentation: ViewerQualityEvidencePresentation | null,
-    ): void {
-      const timer = relayChildEvidenceTimers.get(peerId);
-      if (timer !== undefined) {
-        window.clearTimeout(timer);
-        relayChildEvidenceTimers.delete(peerId);
-      }
-      const current = relayChildEvidenceCurrent.get(peerId) ?? null;
-      if (presentation === null) {
-        relayChildEvidenceCurrent.delete(peerId);
-      } else {
-        relayChildEvidenceCurrent.set(peerId, presentation);
-      }
-      if (current !== presentation) {
-        setRelayChildEvidence(new Map(relayChildEvidenceCurrent));
-      }
-      if (presentation === null) {
-        return;
-      }
-
-      const nowMs = Date.now();
-      const expiryAt = nextViewerQualityEvidencePresentationExpiryAt(
-        presentation,
-        nowMs,
-      );
-      if (expiryAt === null) {
-        return;
-      }
-      const expected = presentation;
-      relayChildEvidenceTimers.set(
-        peerId,
-        window.setTimeout(() => {
-          relayChildEvidenceTimers.delete(peerId);
-          if (relayChildEvidenceCurrent.get(peerId) !== expected) {
-            return;
-          }
-          commitRelayChildEvidence(
-            peerId,
-            refreshViewerQualityEvidencePresentation(expected),
-          );
-        }, Math.max(0, expiryAt - nowMs)),
-      );
-    }
-
-    function clearRelayChildEvidence(): void {
-      for (const peerId of [...relayChildEvidenceCurrent.keys()]) {
-        commitRelayChildEvidence(peerId, null);
-      }
-    }
-
     function acceptRelayChildEvidence(evidence: ViewerQualityEvidence): void {
       const relaySnapshot =
         viewerRelay?.getSnapshot(evidence.viewerPeerId) ?? null;
@@ -777,10 +723,10 @@ export function ViewerPage({
       ) {
         return;
       }
-      commitRelayChildEvidence(
+      relayChildEvidenceStore.set(
         evidence.viewerPeerId,
         presentViewerQualityEvidence(
-          relayChildEvidenceCurrent.get(evidence.viewerPeerId) ?? null,
+          relayChildEvidenceStore.getSnapshot().get(evidence.viewerPeerId) ?? null,
           evidence,
         ),
       );
@@ -866,7 +812,7 @@ export function ViewerPage({
             if (active) {
               setRelaySnapshot(snapshot);
               for (const [peerId, presentation] of [
-                ...relayChildEvidenceCurrent,
+                ...relayChildEvidenceStore.getSnapshot(),
               ]) {
                 const reconciled =
                   reconcileViewerQualityEvidencePresentation(
@@ -874,7 +820,7 @@ export function ViewerPage({
                     viewerRelay?.getSnapshot(peerId) ?? null,
                   );
                 if (reconciled !== presentation) {
-                  commitRelayChildEvidence(peerId, reconciled);
+                  relayChildEvidenceStore.set(peerId, reconciled);
                 }
               }
             }
@@ -931,7 +877,7 @@ export function ViewerPage({
           (peerId, index) => peerId !== nextChildPeerIds[index],
         );
       if (changed) {
-        clearRelayChildEvidence();
+        relayChildEvidenceStore.clear();
       }
       const relay = ensureViewerRelay();
       if (activeRevision === undefined) {
@@ -1354,7 +1300,7 @@ export function ViewerPage({
 
     function clearPeerState(clearMedia = false): void {
       clearUpstreamState(clearMedia);
-      clearRelayChildEvidence();
+      relayChildEvidenceStore.clear();
       viewerRelay?.stop();
     }
 
@@ -1596,7 +1542,7 @@ export function ViewerPage({
         dispatchPresentation({ type: "access", access: "ready" });
         setViewerPasswordDraft("");
         setViewerPasswordError(null);
-        clearRelayChildEvidence();
+        relayChildEvidenceStore.clear();
         currentPeerId = message.peerId;
         setSelfPeerId(message.peerId);
         endpointMediaCopyCapacity = message.endpointMediaCopyCapacity;
@@ -1610,7 +1556,7 @@ export function ViewerPage({
         currentRoutePolicy = message.routePolicy;
         const nextRouteRevision = message.routeRevision;
         if (nextRouteRevision !== currentRouteRevision) {
-          clearRelayChildEvidence();
+          relayChildEvidenceStore.clear();
         }
         currentRouteRevision = nextRouteRevision;
         activateRouteIdentity(
@@ -1727,7 +1673,7 @@ export function ViewerPage({
                   : null;
             if (result === "accepted") {
               if (message.revision !== currentRouteRevision) {
-                clearRelayChildEvidence();
+                relayChildEvidenceStore.clear();
               }
               activateRouteIdentity(
                 message.revision,
@@ -1972,7 +1918,7 @@ export function ViewerPage({
       if (qualityEvidenceReporterRef.current === qualityEvidenceReporter) {
         qualityEvidenceReporterRef.current = null;
       }
-      clearRelayChildEvidence();
+      relayChildEvidenceStore.clear();
       signal.stop();
       clearParticipantPresence();
       if (signalRef.current === signal) {

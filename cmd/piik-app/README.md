@@ -13,6 +13,9 @@ Linux, or `Piik App.app` on macOS. The launcher opens in the system Browser.
 Linux native capture uses the system dependencies described
 in the [Linux capture guide](../../native/capture/linux/README.md).
 
+If the page does not open automatically, open the address shown in the terminal
+or press **O** there to retry. Keep the App running while using that page.
+
 Windows App and browser sharing are the primary tested paths. The macOS and
 Linux apps have not yet been tested on physical devices; test results and
 [feedback](https://github.com/TNTcraftHIM/Piik/issues) are welcome. macOS native

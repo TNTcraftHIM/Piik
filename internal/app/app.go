@@ -16,7 +16,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/TNTcraftHIM/Piik/internal/app/browser"
 	appconfig "github.com/TNTcraftHIM/Piik/internal/app/config"
 	"github.com/TNTcraftHIM/Piik/internal/app/lan"
 	"github.com/TNTcraftHIM/Piik/internal/app/launcher"
@@ -251,9 +250,7 @@ func runLauncher(
 		launchAddress.Scheme+"://"+launchAddress.Host,
 	))
 	options.console.show(consoleView{state: "setup", entry: launch.URL()})
-	if err = browser.Open(launch.URL()); err != nil {
-		return fmt.Errorf("Piik App could not open its launcher: %w", err)
-	}
+	options.console.send(openBrowser(launch.URL()))
 
 	var selection launcher.Selection
 	select {
@@ -398,21 +395,17 @@ func runSite(site string, options Options, control *loopback.Server) error {
 	var err error
 	slog.Debug("piik-client", "event", "mode", "mode", "site")
 	targetURL := launchURL(site)
-	view := consoleView{mode: "site", state: "starting", entry: targetURL}
+	view := consoleView{mode: "site", state: "ready", entry: targetURL}
 	options.console.show(view)
 	if options.console.machine {
 		fmt.Printf("Piik Site: %s\n", site)
 	}
 	if !options.DisableBrowser {
-		if err = browser.Open(targetURL); err != nil {
-			return fmt.Errorf("Piik App could not open the Site: %w", err)
-		}
+		options.console.send(openBrowser(targetURL))
 	} else if options.Ready != nil {
 		options.Ready(targetURL)
 	}
-	view.state = "ready"
 	slog.Debug("piik-client", "event", "site-ready")
-	options.console.show(view)
 	if err = <-control.Done(); err != nil {
 		return fmt.Errorf("Piik App native control stopped unexpectedly: %w", err)
 	}
@@ -515,18 +508,16 @@ func runLocal(ctx context.Context, options Options, config appconfig.Config,
 		fmt.Sprintf("http://127.0.0.1:%d/", options.Port),
 		config.LocalAccessPassword,
 	)
-	if !options.DisableBrowser {
-		if err = browser.Open(launchURL); err != nil {
-			return fmt.Errorf("Piik App could not open the Local page: %w", err)
-		}
-	} else if options.Ready != nil {
-		options.Ready(launchURL)
-	}
 	view.state, view.entry, view.invite = "ready", launchURL, publicOrigin
 	if view.invite == "" {
 		view.invite = fmt.Sprintf("http://%s:%d", selectedAddress, options.Port)
 	}
 	options.console.show(view)
+	if !options.DisableBrowser {
+		options.console.send(openBrowser(launchURL))
+	} else if options.Ready != nil {
+		options.Ready(launchURL)
+	}
 	var tunnelDone <-chan struct{}
 	if tunnel != nil {
 		tunnelDone = tunnel.Done()

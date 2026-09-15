@@ -2,6 +2,8 @@ package app
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -18,9 +20,88 @@ import (
 
 	appconfig "github.com/TNTcraftHIM/Piik/internal/app/config"
 	"github.com/TNTcraftHIM/Piik/internal/app/lan"
+	"github.com/TNTcraftHIM/Piik/internal/app/launcher"
 	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
 	serverconfig "github.com/TNTcraftHIM/Piik/internal/server/config"
 )
+
+func TestBrowserOpenFailureKeepsTheAppAvailable(t *testing.T) {
+	// An empty launcher search path makes the real browser.Open fail on every
+	// supported platform without changing the user's default browser or opening it.
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("TERM", "dumb")
+	for _, mode := range []string{"launcher", "site"} {
+		t.Run(mode, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			control, err := loopback.Start(ctx, loopback.Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer control.Close()
+			console := newConsole(cancel, false)
+			options := Options{Port: 8787, console: console}
+			configPath := filepath.Join(t.TempDir(), "client.json")
+			config, err := appconfig.LoadOrCreate(configPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			done := make(chan error, 1)
+			go func() {
+				if mode == "site" {
+					done <- runSite("https://share.example", options, control)
+				} else {
+					done <- runLauncher(ctx, options, configPath, config, control,
+						func(*Options, appconfig.Config) error { return nil })
+				}
+			}()
+			t.Cleanup(func() {
+				cancel()
+				select {
+				case err := <-done:
+					if err != nil {
+						t.Errorf("App exit: %v", err)
+					}
+				case <-time.After(5 * time.Second):
+					t.Error("App did not stop after cancellation")
+				}
+			})
+			var view consoleView
+			deadline := time.After(3 * time.Second)
+			for view.browserError == nil {
+				console.mu.Lock()
+				view = console.plain.view
+				console.mu.Unlock()
+				select {
+				case <-deadline:
+					t.Fatal("browser failure was not reported")
+				case <-time.After(10 * time.Millisecond):
+				}
+			}
+			if view.entry == "" || view.state != "setup" && view.state != "ready" {
+				t.Fatalf("unusable App after browser failure: %+v", view)
+			}
+			if mode == "launcher" {
+				client := &http.Client{Timeout: 3 * time.Second}
+				origin := strings.TrimSuffix(view.entry, "/client")
+				response, err := client.Post(origin+"/api/client-launcher/launch", "application/json",
+					strings.NewReader(`{"mode":"site","language":"en","site":"https://share.example"}`))
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer response.Body.Close()
+				var result struct{ Target string }
+				if json.NewDecoder(response.Body).Decode(&result) != nil || response.StatusCode != http.StatusOK ||
+					result.Target != launchURL("https://share.example") {
+					t.Fatalf("manual launch failed: status=%d, target=%q", response.StatusCode, result.Target)
+				}
+				if saved, err := launcher.LoadMode(configPath); err != nil || saved != launcher.ModeSite {
+					t.Fatalf("manual selection was not saved: %q, %v", saved, err)
+				}
+			}
+		})
+	}
+}
 
 func TestSavedSiteAllowsBrowserOriginAtNativeControl(t *testing.T) {
 	for _, site := range []struct{ input, origin string }{

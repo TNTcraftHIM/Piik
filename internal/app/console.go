@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"math/rand/v2"
 	"net/url"
 	"os"
@@ -15,6 +16,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/TNTcraftHIM/Piik/internal/app/browser"
+	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/term"
@@ -24,13 +26,17 @@ type consoleView struct {
 	mode, state, entry, invite string
 	protected                  bool
 	problem                    string
+	browserError               error
 }
 
 type consoleLanguage string
 type consoleFinished struct{ err error }
 type consoleTick struct{}
 type consoleIdleWink struct{}
-type consoleOpenResult struct{ err error }
+type consoleOpenResult struct {
+	target string
+	err    error
+}
 type consoleDiagnostic string
 type consoleDebug struct {
 	logPath string
@@ -136,6 +142,16 @@ func (console *console) send(message tea.Msg) {
 func (console *console) show(view consoleView)       { console.send(view) }
 func (console *console) setLanguage(language string) { console.send(consoleLanguage(language)) }
 
+// Opening a page is a convenience action; the launcher and room services own
+// readiness and shutdown even when the system URL handler fails.
+func openBrowser(target string) consoleOpenResult {
+	err := browser.Open(target)
+	if err != nil {
+		slog.Warn("Could not open the system browser", diagnostics.Error(err))
+	}
+	return consoleOpenResult{target: target, err: err}
+}
+
 func (console *console) finish(err error) error {
 	console.send(consoleFinished{err})
 	if console.program != nil {
@@ -177,6 +193,7 @@ func (model consoleModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		model.language = string(value)
 	case consoleDiagnostic:
 		model.view.problem = string(value)
+		model.view.browserError = nil
 	case consoleDebug:
 		model.debug = value
 	case consoleExportResult:
@@ -200,12 +217,13 @@ func (model consoleModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			model.frame, model.idleWink = 8, true
 		}
 	case consoleOpenResult:
-		if value.err != nil {
-			model.view.problem = model.text("openFailed")
+		if value.target == model.view.entry && !model.finished && model.view.state != "stopping" {
+			model.view.browserError = value.err
 		}
 	case consoleFinished:
 		model.finished = true
 		model.view.entry, model.view.invite = "", ""
+		model.view.browserError = nil
 		model.view.state, model.view.problem = "stopped", ""
 		if value.err != nil {
 			model.view.state, model.view.problem = "failed", value.err.Error()
@@ -216,9 +234,9 @@ func (model consoleModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "ctrl+c":
 			model.view = consoleView{mode: model.view.mode, state: "stopping"}
 			model.cancel()
-		case "o":
+		case "o", "O":
 			if target := model.view.entry; target != "" {
-				return model, func() tea.Msg { return consoleOpenResult{browser.Open(launchURL(consoleAddress(target)))} }
+				return model, func() tea.Msg { return openBrowser(target) }
 			}
 		case "d", "D":
 			if model.debug.export != nil && !model.exporting && !model.finished && model.view.state != "stopping" {
@@ -360,8 +378,12 @@ func (model consoleModel) content(styled bool) string {
 			fmt.Fprintf(&out, "\n%s  %s\n", muted.Render(model.text("access")), model.text(access))
 		}
 	}
-	if model.view.problem != "" {
-		lines := strings.Split(ansi.Hardwrap(ansi.Strip(model.view.problem), width-4, true), "\n")
+	problem := model.view.problem
+	if model.view.browserError != nil {
+		problem = model.text("openFailed") + "\n" + model.view.browserError.Error()
+	}
+	if problem != "" {
+		lines := strings.Split(ansi.Hardwrap(ansi.Strip(problem), width-4, true), "\n")
 		if len(lines) > 3 {
 			lines = append(lines[:2], "...")
 		}
@@ -443,6 +465,8 @@ func consoleVisualToken(key string) string {
 		return "○"
 	case "failed", "error":
 		return "!"
+	case "openFailed":
+		return "! ↗"
 	case "open":
 		return "○"
 	case "password":

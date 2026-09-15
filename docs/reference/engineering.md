@@ -105,6 +105,7 @@ above rather than searching the tree.
 | --- | --- |
 | Host workflow, share lifecycle, notices | `src/client/pages/HostPage.tsx`, `src/client/pages/host-page-notices.ts` |
 | Viewer workflow, playback, status projection | `src/client/pages/ViewerPage.tsx`, `src/client/media/viewer-presentation.ts`, `src/client/ui/media-status.ts` |
+| Received viewer metrics and expiry | `src/client/media/viewer-quality-evidence.ts` owns evidence rules; `viewer-quality-evidence-store.ts` owns received entries and timers for Host and relay views |
 | Browser peer and route mechanics | `src/client/webrtc/host-peer.ts`, `viewer-peer.ts`, `viewer-relay.ts`, `src/client/media/host-sfu-route.ts`, `viewer-sfu-route.ts`, `route-transition.ts` |
 | Capture, profiles and sender parameters | `src/client/media/quality.ts`, `src/client/media/browser-encoding-pool.ts`, `browser-encoding-output.ts` |
 | SFU endpoints | `src/client/sfu/publisher.ts`, `subscriber.ts`, `peer.ts`, `internal/server/sfu` |

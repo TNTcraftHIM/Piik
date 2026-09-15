@@ -11,6 +11,9 @@ Windows 运行 `piik-app.exe`，Linux 运行 `./piik-app`，macOS 打开 `Piik A
 启动页会在系统浏览器中打开。Linux 原生采集所需的系统依赖见
 [Linux 采集指南](../../native/capture/linux/README.md)。
 
+网页没有自动打开时，可手动打开终端中显示的地址，或在终端按 **O** 重试。
+使用网页期间，请保持 App 运行。
+
 目前主要测试 Windows 客户端和浏览器分享。macOS 与 Linux 客户端尚未经过实机测试，
 欢迎试用并[反馈结果](https://github.com/TNTcraftHIM/Piik/issues)。macOS 原生采集需要
 Apple 芯片及 macOS 13 或更新版本。构建程序包与公开发布 Release 是两个独立步骤，

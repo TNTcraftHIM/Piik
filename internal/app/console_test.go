@@ -25,6 +25,42 @@ func TestConsoleStartsWithSystemLanguageAndAcceptsVisualSelection(t *testing.T) 
 	}
 }
 
+func TestBrowserOpenFeedbackBelongsToTheCurrentEntry(t *testing.T) {
+	target := "http://127.0.0.1:8787/#client-access=private-secret"
+	failure := consoleOpenResult{target: target, err: errors.New("exit status 0xc0000005")}
+	model := consoleModel{width: 80, language: "en", view: consoleView{state: "ready", entry: target}}
+	updated, _ := model.Update(failure)
+	model = updated.(consoleModel)
+	if model.finished || model.view.state != "ready" || model.view.entry != target {
+		t.Fatal("browser failure retired a ready App")
+	}
+	for _, language := range []string{"en", "zh", "vis"} {
+		updated, _ = model.Update(consoleLanguage(language))
+		model = updated.(consoleModel)
+		content := model.content(false)
+		if !strings.Contains(content, model.text("openFailed")) || !strings.Contains(content, "0xc0000005") ||
+			strings.Contains(content, "private-secret") {
+			t.Fatalf("browser feedback lost its current language/error or exposed a credential: %s", content)
+		}
+	}
+	updated, _ = model.Update(consoleOpenResult{target: target})
+	model = updated.(consoleModel)
+	if model.view.browserError != nil {
+		t.Fatal("successful retry retained the browser failure")
+	}
+	for _, next := range []tea.Msg{
+		consoleView{state: "setup", entry: "http://127.0.0.1:12345/client"},
+		consoleView{state: "stopping"},
+		consoleFinished{err: errors.New("service failed")},
+	} {
+		updated, _ = model.Update(next)
+		updated, _ = updated.(consoleModel).Update(failure)
+		if current := updated.(consoleModel); current.view.browserError != nil {
+			t.Fatal("late browser result overwrote the current App state")
+		}
+	}
+}
+
 func TestConsolePresentationAndShutdown(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
