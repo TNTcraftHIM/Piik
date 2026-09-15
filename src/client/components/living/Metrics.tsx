@@ -1,6 +1,6 @@
 // Connection metrics as living-room meter cells: glyph + value, plus the
 // label in text modes. Secondary metrics expand behind a chevron.
-import { useId, useState } from "react";
+import { useId } from "react";
 import { Glyph, type GlyphName } from "../../ui/icons";
 import { useCopy, type CopyKey } from "../../ui/copy";
 import { Tooltip } from "./Tooltip";
@@ -256,10 +256,4 @@ export function MetricCells({
       ))}
     </>
   );
-}
-
-// Standalone wrapper for pages that keep the expanded state themselves.
-export function useMetricsExpanded(): [boolean, (next: boolean) => void] {
-  const [expanded, setExpanded] = useState(false);
-  return [expanded, setExpanded];
 }

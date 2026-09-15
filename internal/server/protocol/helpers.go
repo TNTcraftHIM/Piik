@@ -24,8 +24,7 @@ const (
 var ErrEndpointMediaCopyCapacity = errors.New(
 	"Endpoint media copy capacity must be 1, 2, or 3")
 
-// EndpointMediaCopyLimit ports endpointMediaCopyLimit. It panics on an invalid
-// capacity, which is where the TypeScript throws.
+// EndpointMediaCopyLimit panics on an invalid capacity, where TypeScript throws.
 func EndpointMediaCopyLimit(capacity int, phase EndpointMediaCopyPhase) int {
 	if err := AssertEndpointMediaCopyCapacity(capacity); err != nil {
 		panic(err)
@@ -36,20 +35,17 @@ func EndpointMediaCopyLimit(capacity int, phase EndpointMediaCopyPhase) int {
 	return min(capacity+1, MaxEndpointMediaCopyCapacity)
 }
 
-// EndpointMediaCopyCountFits ports endpointMediaCopyCountFits.
 func EndpointMediaCopyCountFits(count, capacity int, phase EndpointMediaCopyPhase) bool {
 	return count >= 0 &&
 		IsEndpointMediaCopyCapacity(capacity) &&
 		count <= EndpointMediaCopyLimit(capacity, phase)
 }
 
-// IsEndpointMediaCopyCapacity ports isEndpointMediaCopyCapacity. The
-// TypeScript Number.isSafeInteger guard is implicit in Go's int.
+// Go's int makes the fractional-value part of Number.isSafeInteger implicit.
 func IsEndpointMediaCopyCapacity(capacity int) bool {
 	return capacity >= 1 && capacity <= MaxEndpointMediaCopyCapacity
 }
 
-// AssertEndpointMediaCopyCapacity ports assertEndpointMediaCopyCapacity.
 func AssertEndpointMediaCopyCapacity(capacity int) error {
 	if !IsEndpointMediaCopyCapacity(capacity) {
 		return ErrEndpointMediaCopyCapacity
@@ -76,8 +72,7 @@ var predictedCandidatePattern = regexp.MustCompile(
 	`(?i)^candidate:s[pm][0-9]+[\t\n\v\f\r \x{00a0}\x{1680}\x{2000}-\x{200a}` +
 		`\x{2028}\x{2029}\x{202f}\x{205f}\x{3000}\x{feff}]`)
 
-// CandidateSignalOriginOf ports candidateSignalOrigin. An empty string stands
-// in for the TypeScript null (both yield "end").
+// CandidateSignalOriginOf treats an empty string as TypeScript null (both yield "end").
 func CandidateSignalOriginOf(candidate string) CandidateSignalOrigin {
 	if strings.TrimFunc(candidate, IsJSWhitespace) == "" {
 		return CandidateOriginEnd
@@ -92,8 +87,8 @@ func CandidateSignalOriginOf(candidate string) CandidateSignalOrigin {
 // src/shared/packet-loss.ts
 // ---------------------------------------------------------------------------
 
-// PacketLossPercentFromDeltas ports packetLossPercentFromDeltas. A nil
-// argument is the TypeScript null; ok is false where it returns null.
+// PacketLossPercentFromDeltas maps nil arguments to TypeScript null;
+// ok is false where the shared calculation returns null.
 func PacketLossPercentFromDeltas(packetsReceivedDelta, packetsLostDelta *float64) (float64, bool) {
 	if packetsReceivedDelta == nil || packetsLostDelta == nil ||
 		*packetsReceivedDelta < 0 || *packetsLostDelta < 0 {
@@ -156,9 +151,8 @@ var videoCodecParameterRules = map[string]codecParameterRule{
 
 var videoMimeTypePattern = regexp.MustCompile(`(?i)^video/[A-Za-z0-9.+-]{1,32}$`)
 
-// IsCanonicalVideoCodecEvidence ports isCanonicalVideoCodecEvidence. Empty
-// strings are the TypeScript nulls; the schema rejects a genuinely empty codec
-// string before this refine runs.
+// IsCanonicalVideoCodecEvidence uses empty strings for TypeScript nulls;
+// the schema rejects an empty codec string before this refinement runs.
 func IsCanonicalVideoCodecEvidence(codec, codecProfile, codecParameters string) bool {
 	rule, ok := videoCodecParameterRules[strings.ToLower(codec)]
 	if codec == "" || !ok {

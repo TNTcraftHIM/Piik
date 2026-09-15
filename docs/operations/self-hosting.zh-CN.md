@@ -73,7 +73,7 @@ SITE_ACCESS_PASSWORD=
 
 `MAX_VIEWERS_PER_ROOM` 可设置每房观众上限，不含房主，支持 `1..20`，修改后重启生效。
 人数越多，对网络和转发资源的需求也可能增加。默认值及 App 房间的区别见
-[人数限制](../reference/configuration.md#room-capacity)。
+[人数限制](../standards/configuration.md#room-capacity)。
 
 ### 2. 配置 HTTPS
 
@@ -110,4 +110,4 @@ TCP 8787 仅供本机反向代理访问。STUN 域名需要直接解析到服务
 更新时保留 `.env` 和 `rooms.sqlite`：停止服务、备份房间数据、替换新版程序，再启动并检查健康状态和房间访问。
 涉及数据格式变化的版本，请先阅读发布说明。
 
-[全部配置与端口](../reference/configuration.md) · [维护者发版工具](../deployment.md)
+[全部配置与端口](../standards/configuration.md) · [维护者发版工具](../deployment.md)

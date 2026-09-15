@@ -2,8 +2,9 @@
 
 Reviewed and executed 2026-09-09 on Windows, Chrome 152.0.7977.82.
 [ADR-0014](../adr/0014-browser-node-local-encoding-pool.md) owns the selected
-design. [TODO](../todo.md) owns combined Debug, package and release acceptance.
-This branch has not been deployed.
+design. The observations below belong to that measured baseline;
+[status](../status.md) owns current adoption and release state, and
+[verification status](../verification-status.md) owns remaining physical limits.
 
 ## Result And Scope
 

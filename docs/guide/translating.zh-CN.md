@@ -12,7 +12,7 @@ Piik 目前提供简体中文和英文。欢迎改进按钮措辞、校对教程
 ## 从一处修改开始
 
 1. 先试用对应界面，看看附近有哪些操作。必要时对照中英文理解含义；
-   角色名称、术语与文风以[命名和文案规范](../reference/naming.md#voice-and-terminology)为准。
+   角色名称、术语与文风以[命名和文案规范](../standards/naming.md#voice-and-terminology)为准。
 2. Fork 仓库，从当前 `main` 创建工作分支，按[贡献流程](../../CONTRIBUTING.md#lean-workflow)修改。
    少量文字也可以通过 GitHub 文件编辑器提出修改。
 3. 在下表对应的文件里查找原文。语言文件中只修改冒号后的译文，保留键名和占位符。
@@ -41,7 +41,7 @@ Piik 目前提供简体中文和英文。欢迎改进按钮措辞、校对教程
 
 App 与 Server 使用同一套网页操作界面。请修改源码，构建目录和发布包由工具生成。
 应用词库中的修改不会自动翻译官网文案；操作名称变化时，也要检查相关教程。
-技术参考文档保留一份公共版本，详见[文档职责](../maintenance.md)。
+技术参考文档保留一份公共版本，详见[文档职责](../standards/documentation.md)。
 
 ## 翻译时保留什么
 
@@ -93,10 +93,10 @@ App 与 Server 使用同一套网页操作界面。请修改源码，构建目�
    首次使用先匹配已登记的标签或键名，再匹配基础语言；没有对应翻译时使用英文。
    用户保存的选择优先。
    App、Server 网页界面及官网对中文地区和文字变体的默认选择，遵循
-   [统一的系统语言规则](../product/presentation-lifecycle.md#visual-language)。
+   [统一的系统语言规则](../standards/presentation-lifecycle.md#visual-language)。
 3. 检查完整界面与启动流程。新增的界面语言在 App 终端中暂用英文；
    翻译终端时，还需同步启动服务和 loopback 对语言的校验，相关位置见
-   [App 模块地图](../reference/engineering.md#module-map)。
+   [App 模块地图](../standards/engineering.md#module-map)。
 4. 在 PR 中写清覆盖范围。官网、短片和文档可以分别翻译，新增语言时需同步各自的语言切换入口。
    从右向左书写的语言还需要验证文字方向与布局；仅有词库并不代表已支持 RTL 排版。
 

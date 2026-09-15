@@ -40,10 +40,10 @@ The [runtime Dockerfile](../../deploy/container/Dockerfile) wraps the verified
 Server archive, including its Web UI, license notices and `REVISION`.
 Its pinned [Distroless non-root base](https://github.com/GoogleContainerTools/distroless)
 includes CA certificates and has no shell or package manager. The
-[release workflow](../reference/versioning.md#container-distribution) owns
+[release workflow](../standards/versioning.md#container-distribution) owns
 building, checking and publishing the image.
 
-Use the existing [production configuration](../reference/configuration.md).
+Use the existing [production configuration](../standards/configuration.md).
 Keep `LISTEN_HOST=0.0.0.0` inside the container and retain the host's existing
 HTTPS/WebSocket proxy. With Docker port mapping, set `SFU_PUBLIC_IP` to the
 reachable server IPv4 address when SFU is enabled; container-private candidates
@@ -61,7 +61,7 @@ The image's `/home/nonroot` is owned by UID/GID `65532:65532` with mode `0700`.
 A new named volume inherits that directory; an existing volume or bind mount
 must already be writable by that identity. Keep this volume when replacing the
 container. Set `ROOM_DATABASE_PATH=:memory:` for memory-only room authority. Diagnostics
-remain opt-in and use `/home/nonroot/logs`; [export and retention](../reference/configuration.md#diagnostics)
+remain opt-in and use `/home/nonroot/logs`; [export and retention](../standards/configuration.md#diagnostics)
 remain the operator's responsibility. Do not mount application files writable.
 With diagnostics enabled, `docker compose kill --signal=SIGUSR1 piik` requests a local
 export without stopping the container; the ZIP remains in the mounted log directory.

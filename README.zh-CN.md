@@ -93,14 +93,14 @@ Piik Server 是一个内置网页界面的独立程序。
 再配置域名、HTTPS 反向代理和 STUN 地址。房间数据保存在 SQLite 中。
 也可以使用 [Docker Compose 部署](./docs/operations/self-hosting.zh-CN.md#使用-docker-compose)。
 
-[**部署自己的站点 →**](./docs/operations/self-hosting.zh-CN.md) · [配置参考](./docs/reference/configuration.md) · [从源码运行](./docs/README.md#run-from-source)
+[**部署自己的站点 →**](./docs/operations/self-hosting.zh-CN.md) · [配置参考](./docs/standards/configuration.md) · [从源码运行](./docs/README.md#run-from-source)
 
 ## 参与贡献
 
 欢迎反馈问题、参与翻译、改进文档或贡献代码。
 从[社区参与方式](./CONTRIBUTING.md#ways-to-help)或
 [翻译教程](./docs/guide/translating.zh-CN.md)开始，也可以从
-[项目目录说明](./docs/reference/engineering.md#repository-layout)了解代码结构。
+[项目目录说明](./docs/standards/engineering.md#repository-layout)了解代码结构。
 
 ## 许可
 

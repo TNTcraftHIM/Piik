@@ -1,6 +1,6 @@
 # GitHub Repository And Releases
 
-[Versioning](../reference/versioning.md) owns release meaning and compatibility;
+[Versioning](../standards/versioning.md) owns release meaning and compatibility;
 [CONTRIBUTING](../../CONTRIBUTING.md) owns review and local validation. This file
 owns the one-time GitHub settings. The source repository is public; automatic
 package publication has its own activation gate below.
@@ -33,7 +33,7 @@ not an environment variable for Piik App or Server.
 Subsequent accepted PRs merged to main use the existing CI workflow. Product
 changes calculate one version, validate, package Server and all App targets,
 and publish the same artifacts. Standalone website/docs changes validate without
-packaging or releasing; [versioning](../reference/versioning.md#automatic-publication)
+packaging or releasing; [versioning](../standards/versioning.md#automatic-publication)
 owns that boundary. Runs queue rather than overlap or cancel one another. Branches/PRs
 stay quiet; manual `client_checks` dispatch remains available for candidates.
 Writing a new version back to main is unnecessary and prohibited.
@@ -41,7 +41,7 @@ Writing a new version back to main is unnecessary and prohibited.
 For a complete publisher rehearsal, dispatch with `client_checks: true` and an
 explicit `candidate_version` such as `v1.0.0`. This builds genuine Server and
 native App artifacts under one revision and version without tagging or
-publishing. Prepare its [release-note section](../reference/versioning.md#release-notes)
+publishing. Prepare its [release-note section](../standards/versioning.md#release-notes)
 and inspect the generated preview in the run summary. For a local preview, run
 `node scripts/release-notes.mjs v1.0.0 FULL_SOURCE_SHA` from the checkout with
 full history and tags. Download that run's artifacts and pass their directory, version and
@@ -73,7 +73,7 @@ in its GitHub package settings; repository visibility alone does not do this.
 Verify both its version tag and `latest` with an anonymous pull before announcing
 the Docker download. Keep repository Actions access enabled for later releases.
 Image checks, version identity and retries follow
-[container distribution](../reference/versioning.md#container-distribution).
+[container distribution](../standards/versioning.md#container-distribution).
 
 ## Gitee Download Mirror
 
@@ -110,7 +110,7 @@ recovery procedure. See [artifact retention](../deployment.md#build-host).
 Use the release's actual version and full `target_commitish` SHA, with
 `GITEE_TOKEN` supplied through the publisher environment. `--dry-run` after the
 three arguments checks local identity, checksums and attachment sizes without
-publishing. The [release-source policy](../reference/versioning.md#release-sources)
+publishing. The [release-source policy](../standards/versioning.md#release-sources)
 owns provenance, selection and quota limits. The first public release passed
 complete matching Server and three-platform App mirror download acceptance.
 

@@ -128,7 +128,7 @@ Invitation links grant access to that room; share them with the people you want 
 | Sharing stops after sleep or suspension | Wake the device and return to the sharing tab; start sharing again if needed. Browser and OS suspension can interrupt capture or playback. |
 
 For a bug report, include the version, OS/browser, what you expected, and how
-to reproduce it. [Diagnostics and export](../reference/configuration.md#diagnostics)
+to reproduce it. [Diagnostics and export](../standards/configuration.md#diagnostics)
 explains how to collect a local report and what to review before sharing it.
 
 Ready to host a site for your group? Follow [self-hosting](../operations/self-hosting.md).

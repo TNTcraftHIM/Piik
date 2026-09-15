@@ -4,7 +4,7 @@ This is the single design requirement for Piik's shared Web/App interface:
 illustration, semantic colour, panel grammar, motion and tooltip presentation.
 New UI work follows this file and the local `/__tooltip-preview` catalogue.
 [Media status](./media-status.md) owns which facts justify each status;
-[presentation lifecycle](../product/presentation-lifecycle.md) owns interaction
+[presentation lifecycle](./presentation-lifecycle.md) owns interaction
 and playback. Neither an illustration nor its colour creates product state.
 
 Use one stroke language for single concepts, small panel comics for causes and
@@ -15,7 +15,7 @@ English and pure-visual modes, in both themes and at narrow widths.
 Piik's living room uses simple silhouettes, generous space, rounded controls
 and a small responsive bounce. Clear hierarchy and legible interaction keep
 the playful details easy to use.
-The [copy guide](../reference/naming.md#voice-and-terminology) owns its voice.
+The [copy guide](./naming.md#voice-and-terminology) owns its voice.
 The [public introduction guide](./public-introduction.md) owns website and film
 hierarchy: shared identity, current product demonstrations and promotional
 composition. It applies the copy guide's audience and technical-detail layers.
@@ -266,7 +266,7 @@ adjusting volume or offering P2P stays neutral. Actual copy feedback can change
 that same hint to green or red, using the existing operation result.
 
 Review meaning at the call site. A current admission badge shows the credential
-accepted by [room access](../product/rooms-access.md), not the act of switching
+accepted by [room access](./rooms-access.md), not the act of switching
 privacy. Password input is not proof of admission; copying writes to the local
 clipboard and does not send to a friend. An audio track's presence does not
 establish a locked control or delivery to another device.

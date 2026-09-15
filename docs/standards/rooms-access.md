@@ -88,9 +88,9 @@ code-only attempts and does not silently revoke invitations.
 - **Lightweight mode:** explicit `ROOM_DATABASE_PATH=:memory:` keeps room authority
   in process memory and all rooms disappear on restart.
 - **App Local mode:** the packaged App composes the same memory RoomStore
-  and ends every room when its local authority exits. It persists only its Site
-  choice and optional Local site-access password, not rooms or media state. A
-  blank password leaves that local site open.
+  and ends every room when its local authority exits. Saved Site/password and
+  last-confirmed mode preferences follow [App configuration](./configuration.md#piik-app-configuration);
+  rooms and media state remain process-only. A blank password leaves that site open.
 
 Persistence evidence, limits and the earlier cross-restart evaluation live in
 [cross-restart recovery research](../research/cross-restart-room-recovery.md).

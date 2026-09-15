@@ -25,7 +25,7 @@ import {
 import { AppHeader, LedStrip } from "../components/living/Header";
 import { Couch, type CouchEntry } from "../components/living/Couch";
 import { participantColor } from "../components/living/participant-color";
-import { MetricCells, useMetricsExpanded } from "../components/living/Metrics";
+import { MetricCells } from "../components/living/Metrics";
 import { PawnDetail, RouteGlyph } from "../components/living/PawnDetail";
 import { Lcd } from "../components/living/RoomChip";
 import { RouteTree } from "../components/living/RouteTree";
@@ -225,11 +225,11 @@ export function ViewerPage({
   // own peer id (mirrors the authenticated message for couch/route-tree).
   const [selectedPawn, setSelectedPawn] = useState<string | null>(null);
   const [selfPeerId, setSelfPeerId] = useState<string | null>(null);
-  const [routeMetricsExpanded, setRouteMetricsExpanded] = useMetricsExpanded();
-  const [relayMetricsExpanded, setRelayMetricsExpanded] = useMetricsExpanded();
+  const [routeMetricsExpanded, setRouteMetricsExpanded] = useState(false);
+  const [relayMetricsExpanded, setRelayMetricsExpanded] = useState(false);
   const [downstreamMetricsExpanded, setDownstreamMetricsExpanded] =
-    useMetricsExpanded();
-  const [pawnMetricsExpanded, setPawnMetricsExpanded] = useMetricsExpanded();
+    useState(false);
+  const [pawnMetricsExpanded, setPawnMetricsExpanded] = useState(false);
 
   const mediaProofGeneration = presentationState.media?.generation ?? null;
   const mediaProofEpoch = presentationState.media?.proofEpoch ?? null;

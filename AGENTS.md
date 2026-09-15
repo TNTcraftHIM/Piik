@@ -26,10 +26,10 @@
 - Piik is private screen sharing for one Host and up to 20 authenticated
   Viewers, with Web Host/Viewer/relay as the current product surface.
 - Current product truth is split by owner:
-  [rooms/access](./docs/product/rooms-access.md),
-  [routing/transport](./docs/product/routing-transport.md),
-  [media quality](./docs/product/media-quality.md), and
-  [presentation/lifecycle](./docs/product/presentation-lifecycle.md).
+  [rooms/access](./docs/standards/rooms-access.md),
+  [routing/transport](./docs/standards/routing-transport.md),
+  [media quality](./docs/standards/media-quality.md), and
+  [presentation/lifecycle](./docs/standards/presentation-lifecycle.md).
 - Media stays automatic and P2P-first; central services provide room authority,
   signaling, STUN, observability, and bounded embedded SFU/UDP fallback using
   mature LiveKit media components under [ADR-0013](./docs/adr/0013-embedded-node-local-media.md). Route
@@ -45,7 +45,8 @@
   [status](./docs/status.md), [TODO](./docs/todo.md), and only the relevant
   product module, ADR, research, or operations document. Then inspect branch,
   HEAD, status, staged diff, and worktrees.
-- Use the [documentation owner map](./docs/maintenance.md#owners): product
+- Use the [standards index](./docs/standards/README.md) and
+  [documentation owner map](./docs/standards/documentation.md#owners): product
   behavior, engineering, visual language, versions, evidence and operations each
   have one owner. TODO is the only work ledger; Git/PRs own completed history.
 - Give every durable fact one owner. Update memory or status only when its compact
@@ -81,19 +82,19 @@
 ## Engineering Defaults
 
 - Repeated meanings across code, UI, copy, configuration and lifecycle follow
-  one owned [contextual contract](./docs/reference/engineering.md#contextual-consistency).
+  one owned [contextual contract](./docs/standards/engineering.md#contextual-consistency).
   Check related producers and consumers before adding another local rule;
   preserve differences justified by authority, scope or user intent.
   Use the [consistency review skill](./.agents/skills/context-consistency/SKILL.md)
   for cross-cutting consistency work; ordinary changes check the affected family.
-- UI changes must follow the shared [visual language](./docs/design/visual-language.md):
+- UI changes must follow the shared [visual language](./docs/standards/visual-language.md):
   cast, semantic colours, result panels and motion have one owner. Extend the
   existing preview when adding a new meaning; do not invent scene-local rules.
-- Follow [engineering and interface boundaries](./docs/reference/engineering.md):
+- Follow [engineering and interface boundaries](./docs/standards/engineering.md):
   simple cohesive modules, clear state/resource owners, mature reuse and narrow
   contracts. After a material module, remove additions that the accepted result
   does not need; total complexity matters more than marginal performance gains.
-- [Versioning](./docs/reference/versioning.md) separates build identity, wire,
+- [Versioning](./docs/standards/versioning.md) separates build identity, wire,
   storage and live generations, and owns the public compatibility design.
   The declared public release is the compatibility baseline for subsequent work.
 - Use primary sources for non-trivial design and bugs. Add focused tests in

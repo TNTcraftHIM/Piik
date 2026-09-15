@@ -99,14 +99,14 @@ Open `http://localhost:8787` to try it locally. For a public site, configure you
 domain, HTTPS reverse proxy and STUN address. Room data is stored in SQLite.
 For containers, use the [Docker Compose setup](./docs/operations/self-hosting.md#docker-compose).
 
-[**Deploy your own site →**](./docs/operations/self-hosting.md) · [Configuration](./docs/reference/configuration.md) · [Run from source](./docs/README.md#run-from-source)
+[**Deploy your own site →**](./docs/operations/self-hosting.md) · [Configuration](./docs/standards/configuration.md) · [Run from source](./docs/README.md#run-from-source)
 
 ## Contributing
 
 Bug reports, translations, documentation improvements and pull requests are welcome.
 See [ways to contribute](./CONTRIBUTING.md#ways-to-help) or
 [help translate Piik](./docs/guide/translating.md). Use the
-[repository layout](./docs/reference/engineering.md#repository-layout) to find your way around.
+[repository layout](./docs/standards/engineering.md#repository-layout) to find your way around.
 
 ## License
 

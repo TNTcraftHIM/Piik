@@ -24,7 +24,7 @@ unpack the complete package and open the App, choose **Public invite**, select a
 source, then copy and send the invite through an external chat example before
 friends watch in a browser. Public invitations
 need Internet access and a temporary control tunnel. The public pages use the
-[copy guide's information layers](../../docs/reference/naming.md#voice-and-terminology).
+[copy guide's information layers](../../docs/standards/naming.md#voice-and-terminology).
 
 `ui/main.tsx` uses the product's actual launcher form, source picker, TV, sofa and
 control primitives with sample inputs. The build also supplies the current

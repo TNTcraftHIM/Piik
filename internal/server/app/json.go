@@ -35,7 +35,7 @@ type siteAccessBody struct {
 func sendJSON(writer http.ResponseWriter, status int, body any) {
 	var buffer bytes.Buffer
 	encoder := json.NewEncoder(&buffer)
-	// D9: JSON.stringify does not escape HTML either.
+	// JSON.stringify does not escape HTML either.
 	encoder.SetEscapeHTML(false)
 	if err := encoder.Encode(body); err != nil {
 		panic(err)
@@ -48,10 +48,8 @@ func sendJSON(writer http.ResponseWriter, status int, body any) {
 	_, _ = writer.Write(encoded)
 }
 
-// readJSONBody ports readJsonBody: the content type must be exactly
-// application/json once its parameters are cut, the body must be at most 1024
-// bytes and must not be empty. Every failure collapses to the route's 400, so
-// the messages only exist to keep the TS reasons readable.
+// readJSONBody requires application/json after removing parameters and a
+// nonempty body of at most 1024 bytes. Every failure maps to the route's 400.
 func readJSONBody(request *http.Request) ([]byte, error) {
 	contentType, _, _ := strings.Cut(request.Header.Get("Content-Type"), ";")
 	if strings.TrimSpace(contentType) != "application/json" {
@@ -70,7 +68,7 @@ func readJSONBody(request *http.Request) ([]byte, error) {
 	return body, nil
 }
 
-// hasRequestBody ports hasRequestBody. net/http parses Content-Length and moves
+// net/http parses Content-Length and moves
 // Transfer-Encoding out of Header, so a chunked body is ContentLength -1 and an
 // unparseable length never reaches a handler at all.
 func hasRequestBody(request *http.Request) bool {
@@ -96,7 +94,7 @@ func cookieHeader(request *http.Request) string {
 	return strings.Join(request.Header.Values("Cookie"), "; ")
 }
 
-// bearerToken ports readBearerToken: the prefix is case sensitive and an empty
+// bearerToken requires a case-sensitive prefix; an empty
 // token counts as absent.
 func bearerToken(request *http.Request) string {
 	authorization := request.Header.Get("Authorization")

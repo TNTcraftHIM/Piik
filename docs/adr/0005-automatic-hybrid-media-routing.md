@@ -19,7 +19,7 @@ bounded server fallback without exposing topology choices to users or turning
 every room into an SFU conference.
 
 This decision owns the route controller and resource model. The observable
-product contract is [routing and transport](../product/routing-transport.md);
+product contract is [routing and transport](../standards/routing-transport.md);
 physical evidence is in the routing research documents.
 
 ## Decision

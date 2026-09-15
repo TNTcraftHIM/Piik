@@ -30,24 +30,20 @@ publication are separate steps in [deployment](../../docs/deployment.md).
 - The launcher remembers the last mode confirmed with **Open Piik** and the saved
   Site address. Without a saved mode, it selects Site when an address is saved,
   otherwise Public invite; it waits for confirmation before starting.
-  [App configuration](../../docs/reference/configuration.md#piik-app-configuration)
-  owns the saved settings. The App RPC starts before this choice and accepts the saved Site
-  alongside the Local Host origin. An App-opened Site remembers the opt-in in that Browser
-  origin; later manually opened Host pages may reuse the running App.
+  The mode preference is stored beside the settings in `client.json.mode`;
+  [App configuration](../../docs/standards/configuration.md#piik-app-configuration)
+  covers saved preferences and custom paths.
 - The `--site`, `--local`, and `--link` flags select a mode for CI and development.
 - The default launcher checks official releases after it opens, using GitHub
   first and Gitee if GitHub is unavailable. It opens the matching platform ZIP
   when available, falling back to the release page. It does not install or replace the App.
 
-Local mode uses memory-only rooms, P2P relay, no SFU listener, and no public
-discovery. Ordinary Local works on a reachable LAN. The **Public invite** mode
-runs the packaged Cloudflare Tunnel sidecar for the existing HTTP/WebSocket
-control surface and
-uses one ordinary public STUN destination plus two bounded public survey
-destinations. Browser and Native edges share the same prediction rule; Native
-STUN, ICE checks, and media use one Pion UDP mux. Media does not
-travel through the HTTP tunnel, and a difficult media path still has no SFU or
-TURN fallback.
+Local rooms last for this App run and work on a reachable LAN. **Public invite**
+uses the packaged Cloudflare Tunnel helper to expose that same room service at a
+temporary HTTPS address. Picture and sound travel between participants (P2P),
+outside the tunnel. Both modes need a usable UDP media path and provide no
+media-server forwarding (SFU) or TURN relay fallback. The
+[routing reference](../../docs/standards/routing-transport.md) explains connection setup.
 
 For Local invitations, the App automatically selects a sole active address or
 sole private IPv4. If several addresses remain possible, choose an interface
@@ -56,44 +52,27 @@ When bypassing the launcher with `--local`, use `--lan-address <address>` to
 resolve an ambiguous choice. The selected address is checked again at startup;
 it affects Local invitation links, while ICE selects media paths independently.
 
-The system Browser remains the Host UI. An App-launched Host offers the
-Browser's standard capture picker and a list of exact platform capture targets;
-the user selects one explicitly. Windows offers the same VP8/Auto/H264 selector:
-VP8 uses the pinned WebRTC/libvpx encoder and H264 uses hardware Media Foundation
-inside WebRTC's output pipeline. Auto measures target-profile encoding work
-before choosing one codec for the share. Windows uses
-Graphics Capture and WASAPI; macOS
-uses ScreenCaptureKit, VideoToolbox, and AudioToolbox; Linux delegates selection
-to the ScreenCast Portal and uses the system PipeWire/GStreamer hardware path.
-Video and audio share the same room route and PeerConnection. Native capture
-starts with the Host's
-current resolution, frame-rate, video/audio bitrate, and quality preference;
-live changes replace only the capture/encoder generation behind those stable
-connections. A Native edge with public STUN also attempts one bounded PCP,
-UPnP, or NAT-PMP mapping for its Pion UDP socket; pure LAN does not. Routers
-without a mapping service continue with ordinary ICE/STUN. The mapping does not
-create a relay or carry media through the App control link. A configured Site
-may receive a direct Native publication from the shared encoded source;
-Local and one-link modes remain P2P-only. An ordinary Web Host keeps the
-Browser capture path without probing the App.
+Site mode uses the configured Site's rooms and any enabled SFU fallback.
+An App-opened Site remembers native activation, so later pages there may reuse
+the running App. Browser capture remains available without the App; see the
+[entry workflow](../../docs/standards/presentation-lifecycle.md#product-surface).
 
-Native P2P edges and embedded SFU use one shared Pion/LiveKit media adapter for
-feedback, forwarding allocation, bounded pacing and recovery. Native parents
-reuse suitable H.264/VP8 outputs and derive a missing lower output only for
-direct-child demand. Compatible children share that output; each edge receives
-only its selected representation. SFU publication combines its requested output
-prefix with one aggregate upstream budget. A lower-output constraint does not
-replace the original input or higher sibling outputs. The route controller owns
-persistent quality evidence and route replacement. See
-[media quality](../../docs/product/media-quality.md) for the implemented behavior
-and [status](../../docs/status.md) for its acceptance limits.
+The Host page offers Browser capture and available native windows or screens;
+select the source explicitly. Windows native capture offers VP8/Auto/H264;
+Auto chooses one codec for the share. macOS and Linux native capture require
+hardware H264. Source and audio support vary by platform; their setup is covered
+in the [Windows](../../native/capture/windows/README.md),
+[macOS](../../native/capture/darwin/README.md) and
+[Linux](../../native/capture/linux/README.md) capture guides.
+Native capture uses the Host's current quality settings. The
+[media-quality reference](../../docs/standards/media-quality.md) owns codec selection,
+live changes and encoding reuse; [verification status](../../docs/verification-status.md)
+keeps the measured limits.
 
 The App configuration keeps an optional Local site passphrase. Leave it
 blank for an open Local site, or enter a password in the launcher before
-starting. When present, the App passes it to its own
-Host page in a URL fragment; the page uses the existing SiteAccess endpoint and
-removes the fragment before continuing. Viewer invitations keep using the
-existing room-scoped grant.
+starting. Viewer invitations grant access to their room independently; see
+[rooms and access](../../docs/standards/rooms-access.md).
 
 The terminal shows the current mode, entry links and startup state; its language
 follows the launcher and App-enabled pages.
@@ -141,7 +120,7 @@ Use `--debug` for failures before the selector opens. Exporting does not stop
 the share or upload the archive. For Browser diagnostics, click the **Debug**
 chip icon after the theme control, confirm the reload, then use **Web report** to download.
 For cooperation failures, include both reports from the same reproduction. The
-[diagnostic reference](../../docs/reference/configuration.md#diagnostics) owns
+[diagnostic reference](../../docs/standards/configuration.md#diagnostics) owns
 log locations, export commands, retention and privacy boundaries.
 
 ## Development
@@ -194,26 +173,17 @@ IDR; Linux probes the Portal/PipeWire/GStreamer adapter. Real capture, GPU
 attribution, Browser decode, and public-network paths remain explicit physical
 gates rather than environment-dependent unit tests.
 
-The loopback service binds IPv4 loopback on the first available port from
-`39721` through `39730`. `/health` discovers the current process; `/control`
-admits at most two independent strict v9 control sessions. After `hello`, each
-session may list local capture choices, own one generation-fenced Host share,
-or receive one native Viewer source and its bounded encoded child edges. Closing
-one session retires only its resources. Its public `instanceToken`
-distinguishes the discovered process but is not authentication. The shared Go
-service owns room authority; the Browser owns the room protocol client and
-orchestrates native media through this control session. Viewer receive/relay remains
-available even when this machine has no accepted native capture encoder.
-Capture sidecars must match the App's current probe/encoded-output contract;
-the package-candidate wrapper validates that version before accepting its artifact.
+App and Hosted share the Go room service. The Browser UI coordinates native
+capture and Viewer receive/relay through the App's local control service;
+Viewer receive/relay remains available without a supported native capture encoder.
+Use the [module map](../../docs/standards/engineering.md#module-map) and
+[contract map](../../docs/standards/engineering.md#contract-map) to find the source owners.
+The candidate packager checks that capture helpers match the App's contract.
 
 Packaged builds report the product version and source SHA in the terminal and
-diagnostic context. The launcher uses that identity to distinguish a newer
-version, a different build of the same version, and an official release offered
-to a development build; the link never installs or interrupts a share.
-[Versioning](../../docs/reference/versioning.md)
-owns these meanings and [GitHub operations](../../docs/operations/github.md)
-owns automatic publication.
+diagnostics. [Versioning](../../docs/standards/versioning.md) explains build identity
+and update notices; [GitHub operations](../../docs/operations/github.md)
+describes automatic publication.
 
 ## Packaging
 
@@ -248,7 +218,7 @@ runtime/tunnel/cloudflared[.exe] # packages that support --link
 The executable embeds the Browser assets of the consumed application release and
 carries that same full Git revision as the package `REVISION`. App/Site
 interoperability follows the
-[public compatibility contract](../../docs/reference/versioning.md#public-compatibility-promise).
+[public compatibility contract](../../docs/standards/versioning.md#public-compatibility-promise).
 
 The Windows App embeds the shared Piik mark through the
 `cmd/piik-app/piik_windows_amd64.syso` resource; the platform
@@ -258,11 +228,8 @@ hicolor icon. macOS packages include a thin `Piik App.app` launcher
 with an ICNS resource; the raw Go executable remains available beside it.
 
 For a native Host smoke run, launch the App and select a window in the Host
-page. The App never guesses among multiple targets. The page still creates
-the room and sends the current SDP/ICE through the selected authority. A
-configured Site supplies its normal Internet routing and any enabled SFU fallback.
-Without a Site, the **Public invite** choice exposes the Local control surface while
-media remains P2P-only.
+page, then open its invitation on another device. Choose the mode for that
+network as described [above](#modes).
 
 ## Gates
 
@@ -323,8 +290,7 @@ PIIK_REMOTE_SSH_KEY=/path/to/key \
 npm run gate:client-link
 ```
 
-The loopback health response reports video, process-audio, system-audio, and
-hardware H.264 availability separately. The Windows media gate proves one hardware-H.264
+The Windows media gate proves one hardware-H.264
 capture generation, shared Pion source, Browser decode, PLI recovery, and STUN
 candidate gathering. The native Host gate proves room creation and native video
 delivery through the current route; native audio is included when the capability

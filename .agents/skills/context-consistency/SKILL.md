@@ -9,7 +9,7 @@ description: >
 
 # Context Consistency
 
-Apply the project's [contextual contract](../../../docs/reference/engineering.md#contextual-consistency).
+Apply the project's [contextual contract](../../../docs/standards/engineering.md#contextual-consistency).
 [AGENTS.md](../../../AGENTS.md) owns authority and
 [CONTRIBUTING.md](../../../CONTRIBUTING.md) owns delivery. This skill is a review
 method, not a second product specification or permission to change behavior.
@@ -17,7 +17,7 @@ method, not a second product specification or permission to change behavior.
 ## Scope And Sources
 
 Read the user's latest accepted decisions and the relevant entries in the
-[owner map](../../../docs/maintenance.md#owners). Follow their product, design,
+[owner map](../../../docs/standards/documentation.md#owners). Follow their product, design,
 engineering or operational owners; do not load every reference for a scoped fix.
 Treat desired rules, current implementation and verified behavior separately.
 An undocumented preference or an old audit is not an accepted contract.

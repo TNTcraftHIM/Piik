@@ -2,7 +2,7 @@ package route
 
 import "github.com/TNTcraftHIM/Piik/internal/server/protocol"
 
-// recordDemand ports 4633: replaces the peer's timing record wholesale.
+// recordDemand replaces the peer's timing record wholesale.
 func (c *Controller) recordDemand(childPeerID string, nowMs int64, reason DemandReason) {
 	c.routeTimings[childPeerID] = &routeTimingRecord{
 		demandAtMs:      nowMs,
@@ -12,14 +12,12 @@ func (c *Controller) recordDemand(childPeerID string, nowMs int64, reason Demand
 	}
 }
 
-// ensureDemand ports 4647.
 func (c *Controller) ensureDemand(childPeerID string, nowMs int64, reason DemandReason) {
 	if _, ok := c.routeTimings[childPeerID]; !ok {
 		c.recordDemand(childPeerID, nowMs, reason)
 	}
 }
 
-// startOperationTiming ports 4657.
 func (c *Controller) startOperationTiming(childPeerID string, nowMs int64) {
 	record := c.routeTimings[childPeerID]
 	if record == nil {
@@ -34,7 +32,6 @@ func (c *Controller) startOperationTiming(childPeerID string, nowMs int64) {
 	record.rejectionBucket = RejectionNone
 }
 
-// startCandidateTiming ports 4668.
 func (c *Controller) startCandidateTiming(childPeerID string, nowMs int64) {
 	record := c.routeTimings[childPeerID]
 	if record == nil {
@@ -48,14 +45,12 @@ func (c *Controller) startCandidateTiming(childPeerID string, nowMs int64) {
 	record.rejectionBucket = RejectionNone
 }
 
-// noteRejection ports 4678.
 func (c *Controller) noteRejection(childPeerID string, bucket RejectionBucket) {
 	if record := c.routeTimings[childPeerID]; record != nil {
 		record.rejectionBucket = bucket
 	}
 }
 
-// clearCandidateTiming ports 4686.
 func (c *Controller) clearCandidateTiming(childPeerID string) {
 	record := c.routeTimings[childPeerID]
 	if record == nil {
@@ -67,7 +62,6 @@ func (c *Controller) clearCandidateTiming(childPeerID string) {
 	record.finalRoute = FinalRouteWaiting
 }
 
-// finishTiming ports 4695.
 func (c *Controller) finishTiming(childPeerID string, nowMs int64, finalRoute FinalRoute, rejectionBucket RejectionBucket, firstDecodedFrame bool) {
 	record := c.routeTimings[childPeerID]
 	if record == nil {
@@ -83,12 +77,10 @@ func (c *Controller) finishTiming(childPeerID string, nowMs int64, finalRoute Fi
 	record.rejectionBucket = rejectionBucket
 }
 
-// usableRoute ports 4710.
 func (c *Controller) usableRoute(childPeerID string) bool {
 	return c.currentFinalRoute(childPeerID) != FinalRouteWaiting
 }
 
-// currentFinalRoute ports 4714.
 func (c *Controller) currentFinalRoute(childPeerID string) FinalRoute {
 	edge, _ := c.upstreamByViewer.Get(childPeerID)
 	if edge == nil || !edge.Usable || !edge.PhysicalActive {
@@ -108,7 +100,6 @@ func (c *Controller) currentFinalRoute(childPeerID string) FinalRoute {
 	return FinalRouteWaiting
 }
 
-// routeDemandReason ports 4729.
 func (c *Controller) routeDemandReason(childPeerID string) DemandReason {
 	edge, _ := c.upstreamByViewer.Get(childPeerID)
 	if edge == nil {
@@ -127,7 +118,6 @@ func (c *Controller) routeDemandReason(childPeerID string) DemandReason {
 	return DemandEdgeUnavailable
 }
 
-// diagnosticParent ports 4448.
 func (c *Controller) diagnosticParent(edge *CommittedEdge, ordinals map[string]int) protocol.RouteDiagnosticParent {
 	if edge == nil || !edge.Usable || !edge.PhysicalActive {
 		return protocol.RouteDiagnosticParent{Kind: "none"}
@@ -150,7 +140,7 @@ func (c *Controller) diagnosticParent(edge *CommittedEdge, ordinals map[string]i
 	return protocol.RouteDiagnosticParent{Kind: "viewer", Ordinal: protocol.Int(ordinal)}
 }
 
-// diagnosticQuality ports 4471: nil (TS null) unless the observation is
+// diagnosticQuality returns nil (TS null) unless the observation is
 // fresh, non-empty and still describes the current edge.
 func (c *Controller) diagnosticQuality(childPeerID string, edge *CommittedEdge, nowMs int64) *protocol.RouteDiagnosticQuality {
 	observation := c.qualityObservations[childPeerID]
@@ -180,7 +170,7 @@ func (c *Controller) diagnosticQuality(childPeerID string, edge *CommittedEdge, 
 	}
 }
 
-// elapsedMs ports 4964: nil (TS null) when the end precedes the start or
+// elapsedMs returns nil (TS null) when the end precedes the start or
 // the difference is not a safe integer; the inputs are integral so
 // Math.floor is the identity.
 func elapsedMs(startedAtMs, endedAtMs int64) *protocol.Int {

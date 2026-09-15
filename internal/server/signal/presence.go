@@ -19,10 +19,10 @@ import (
 // the same expression).
 func viewerKey(roomID, peerID string) string { return roomID + ":" + peerID }
 
-// sendViewerPresence ports sendViewerPresence (O12): the host entry first
+// sendViewerPresence lists the host entry first
 // when it has a display name, then viewers in store order; recipients are
 // the opted-in host first, then opted-in viewers in store order, deduped by
-// connection (hazard 11).
+// connection.
 func (s *Server) sendViewerPresence(roomID string) {
 	if _, deferred := s.deferredViewerPresenceRooms[roomID]; deferred {
 		return
@@ -108,7 +108,6 @@ func (s *Server) sendViewerPresence(roomID string) {
 	}
 }
 
-// broadcastHostStatus ports broadcastHostStatus (O10).
 func (s *Server) broadcastHostStatus(roomID string, online, paused bool) {
 	for _, viewer := range s.store.GetConnectedViewers(roomID) {
 		s.sendToSession(viewer.SessionID, protocol.HostStatusMessage{
@@ -119,8 +118,8 @@ func (s *Server) broadcastHostStatus(roomID string, online, paused bool) {
 	}
 }
 
-// handleDisconnect ports handleDisconnect. It runs once, from the reader
-// goroutine's exit (D6).
+// handleDisconnect runs once, from the reader
+// goroutine's exit.
 func (s *Server) handleDisconnect(sess *session) {
 	if !s.sessions.Has(sess) {
 		return
@@ -159,7 +158,7 @@ func (s *Server) handleDisconnect(sess *session) {
 
 	s.sendViewerPresence(disconnected.RoomID)
 
-	// T5: the viewer grace timer. The registered-pointer check stands in
+	// The viewer grace timer. The registered-pointer check stands in
 	// for clearTimeout; the store's removeDisconnectedViewer is the identity
 	// guard against a viewer that reconnected meanwhile.
 	roomID, peerID := disconnected.RoomID, disconnected.PeerID
@@ -180,8 +179,8 @@ func (s *Server) handleDisconnect(sess *session) {
 	s.viewerGraceTimers[key] = timer
 }
 
-// stopSharing ports stopSharing (O9: per viewer, sharing-stopped then
-// host-status). The share generation deliberately survives (hazard 2).
+// stopSharing sends sharing-stopped then host-status to each viewer.
+// The share generation deliberately survives.
 func (s *Server) stopSharing(roomID string) {
 	if current, ok := s.shares[roomID]; ok {
 		s.shares[roomID] = roomShare{generation: current.generation}
@@ -198,7 +197,7 @@ func (s *Server) stopSharing(roomID string) {
 	}
 }
 
-// abandonRoom ports abandonRoom; the store error is the caller's to map.
+// abandonRoom leaves store-error mapping to its caller.
 func (s *Server) abandonRoom(roomID string) error {
 	abandoned, err := s.store.AbandonRoom(roomID)
 	if err != nil {
@@ -228,7 +227,7 @@ func (s *Server) closeRoom(closed room.ClosedRoom) {
 	}
 }
 
-// revokeGrantViewers ports revokeGrantViewers (O5): three separate passes
+// revokeGrantViewers makes three separate passes
 // over the revoked viewers, with presence deferred until the end.
 func (s *Server) revokeGrantViewers(roomID string, update room.ViewerGrantUpdate) {
 	if len(update.RevokedViewers) == 0 {
@@ -262,7 +261,7 @@ func (s *Server) revokeGrantViewers(roomID string, update room.ViewerGrantUpdate
 	s.sendViewerPresence(roomID)
 }
 
-// closeRevokedViewerSession ports closeRevokedViewerSession: deauthorize
+// closeRevokedViewerSession deauthorizes
 // before the close so queued callbacks of the old generation cannot route
 // signaling after the persistent authorization commit.
 func (s *Server) closeRevokedViewerSession(sessionID string) {
@@ -280,7 +279,6 @@ func (s *Server) closeRevokedViewerSession(sessionID string) {
 	sess.close(websocket.StatusCode(protocol.SignalCloseViewerAccessRevoked), "Viewer access revoked")
 }
 
-// clearViewerGrace ports clearViewerGrace.
 func (s *Server) clearViewerGrace(roomID, peerID string) {
 	key := viewerKey(roomID, peerID)
 	if timer, ok := s.viewerGraceTimers[key]; ok {
@@ -289,14 +287,12 @@ func (s *Server) clearViewerGrace(roomID, peerID string) {
 	}
 }
 
-// clearViewerState ports clearViewerState.
 func (s *Server) clearViewerState(roomID, peerID string) {
 	s.clearViewerGrace(roomID, peerID)
 	s.clearViewerEvidence(roomID, peerID)
 }
 
-// clearRoomGraceTimers ports clearRoomGraceTimers (O13: prefix scan; Go
-// maps allow deletion during range).
+// clearRoomGraceTimers scans by room prefix; Go maps allow deletion during range.
 func (s *Server) clearRoomGraceTimers(roomID string) {
 	prefix := roomID + ":"
 	for key, timer := range s.viewerGraceTimers {
@@ -307,8 +303,6 @@ func (s *Server) clearRoomGraceTimers(roomID string) {
 	}
 }
 
-// clearRoomViewerEvidence ports clearRoomConnectionIds (O13) without the
-// connection-ID mirror it also cleared.
 func (s *Server) clearRoomViewerEvidence(roomID string) {
 	prefix := roomID + ":"
 	for key := range s.viewerQualityEvidenceGates {

@@ -54,9 +54,9 @@ type session struct {
 	lastSignalingChallengeAtMs int64
 	authenticated              *authenticatedSession
 
-	// authStop stops the authentication deadline (T3); authGeneration is
+	// authStop stops the authentication deadline; authGeneration is
 	// bumped whenever the TS cleared the timer so a callback that lost the
-	// Stop race sees it is stale (D5).
+	// Stop race sees it is stale.
 	authStop       func() bool
 	authGeneration uint64
 
@@ -135,8 +135,7 @@ func (sess *session) clearAuthenticationTimer() {
 	sess.authGeneration++
 }
 
-// accept ports accept(): the slot is counted here, the two goroutines start
-// here. mu must be held.
+// accept counts the slot and starts both goroutines. mu must be held.
 func (s *Server) accept(conn *websocket.Conn, siteAccessAuthenticated bool) *session {
 	if !s.hasConnectionCapacity() {
 		go func() { _ = conn.CloseNow() }()
@@ -152,7 +151,7 @@ func (s *Server) accept(conn *websocket.Conn, siteAccessAuthenticated bool) *ses
 	return sess
 }
 
-// armAuthenticationTimer is the setTimeout of accept() (T3). The TS timer
+// armAuthenticationTimer is the setTimeout of accept(). The TS timer
 // fired blind; the generation check stands in for clearTimeout.
 func (s *Server) armAuthenticationTimer(sess *session) {
 	generation := sess.authGeneration
@@ -169,7 +168,7 @@ func (s *Server) armAuthenticationTimer(sess *session) {
 }
 
 // readLoop is the "message" handler plus the "close" handler: it reads until
-// the connection fails and then runs handleDisconnect exactly once (D6).
+// the connection fails and then runs handleDisconnect exactly once.
 func (s *Server) readLoop(sess *session) {
 	defer func() {
 		defer close(sess.readerDone)
@@ -198,7 +197,7 @@ func (s *Server) handleIncoming(sess *session, kind websocket.MessageType, data 
 }
 
 // writeLoop drains the outbound queue. Conn.Write and Conn.Close are only
-// ever called here, never under mu (D4).
+// ever called here, never under mu.
 func (s *Server) writeLoop(sess *session) {
 	for {
 		s.mu.Lock()
@@ -240,8 +239,8 @@ func (sess *session) ping(timeout time.Duration) {
 	_ = sess.conn.Ping(ctx)
 }
 
-// heartbeat ports heartbeat() (O11: insertion order). It returns the
-// sessions to ping so the caller can do that after releasing mu.
+// heartbeat returns sessions in insertion order so the caller can ping
+// them after releasing mu.
 func (s *Server) heartbeat() []*session {
 	var pings []*session
 	for sess := range s.sessions.All() {
@@ -255,8 +254,8 @@ func (s *Server) heartbeat() []*session {
 	return pings
 }
 
-// send ports send(): drop unless open, terminate above the buffer bound,
-// otherwise queue the encoded message.
+// send drops unless open, terminates above the buffer bound,
+// and otherwise queues the encoded message.
 func (s *Server) send(sess *session, message protocol.ServerMessage) {
 	encoded, err := protocol.EncodeServerMessage(message)
 	if err != nil {
@@ -278,15 +277,13 @@ func (s *Server) sendEncoded(sess *session, encoded []byte) {
 	sess.enqueue(encoded)
 }
 
-// sendToSession ports sendToSession().
 func (s *Server) sendToSession(sessionID string, message protocol.ServerMessage) {
 	if sess := s.sessionsByID[sessionID]; sess != nil {
 		s.send(sess, message)
 	}
 }
 
-// sendEncodedToSession ports sendEncodedToSession(): the same bytes go to
-// every recipient (hazard 10).
+// sendEncodedToSession reuses the same encoded bytes for every recipient.
 func (s *Server) sendEncodedToSession(sessionID string, encoded []byte) {
 	if sess := s.sessionsByID[sessionID]; sess != nil {
 		s.sendEncoded(sess, encoded)
@@ -297,7 +294,6 @@ func (s *Server) sendError(sess *session, code, message string) {
 	s.send(sess, protocol.ErrorMessage{Type: "error", Code: code, Message: message})
 }
 
-// rejectInvalidMessage ports rejectInvalidMessage().
 func (s *Server) rejectInvalidMessage(sess *session) {
 	s.sendError(sess, "INVALID_MESSAGE", "Message is invalid")
 	sess.close(websocket.StatusPolicyViolation, "Invalid message")

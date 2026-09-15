@@ -76,9 +76,10 @@ because its example compiles. Keep test executables under the worktree's stable
   defaults. A demand-driven publisher contract equivalent to our current behavior
   has not yet been established. README feature lists alone do not close this gap.
 
-Reproduction uses `go test -c -o build/embedded-media/<name>.test.exe` for
-`./internal/server/stun` and `./internal/server/sfuprobe`, then executes each
-binary with `-test.v -test.timeout=15s`. Quote the dotted flags in PowerShell.
+Those results came from the evaluation revision; its `sfuprobe` package is not
+retained in current source. Do not run that
+old package path against current source. Current STUN and SFU validation uses
+the [maintained verification entry points](../../CONTRIBUTING.md#verification-entrypoints).
 
 ## Transport Direction
 

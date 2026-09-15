@@ -4,7 +4,7 @@
 - Status: retained Browser relay capability and measurement evidence
 
 Current product behavior is owned by
-[Routing and transport](../product/routing-transport.md). Controller and
+[Routing and transport](../standards/routing-transport.md). Controller and
 capacity decisions are owned by
 [ADR-0005](../adr/0005-automatic-hybrid-media-routing.md). This document does
 not define route selection, wire messages, UI, or current deployment state.

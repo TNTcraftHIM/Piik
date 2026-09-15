@@ -15,7 +15,7 @@ suggestion does not require a development environment.
 ## Make your first correction
 
 1. Try the affected screen and read the nearby controls. Check both existing
-   languages when helpful; the [terminology and voice guide](../reference/naming.md#voice-and-terminology)
+   languages when helpful; the [terminology and voice guide](../standards/naming.md#voice-and-terminology)
    owns names and writing style.
 2. Fork Piik and work on a branch from current `main`, following
    [Contributing](../../CONTRIBUTING.md#lean-workflow). Small text edits can also
@@ -51,7 +51,7 @@ The App and Server serve the same web UI. Edit source files; build output and
 release packages are generated. Translating an App message does not also
 translate a website caption. Update related instructions when an action name
 changes. Technical references keep one shared version; see
-[documentation ownership](../maintenance.md).
+[documentation ownership](../standards/documentation.md).
 
 ## Preserve meaning and syntax
 
@@ -113,12 +113,12 @@ layout questions, so contributors can coordinate work and review.
    language's short label appears on that slot, with its full name in the menu.
    Initial selection matches a registered tag or key, then its base language;
    unregistered languages use English. A saved choice takes precedence.
-   The shared [system-language policy](../product/presentation-lifecycle.md#visual-language)
+   The shared [system-language policy](../standards/presentation-lifecycle.md#visual-language)
    also covers Chinese script and region variants across App, Server UI and website.
 3. Check complete screens and the launch flow. New UI languages use English in
    the App console until its own translation is added. Console additions also
    require updating the launcher and loopback accepted-language checks together;
-   use the [App module map](../reference/engineering.md#module-map).
+   use the [App module map](../standards/engineering.md#module-map).
 4. State coverage in the PR. Website, film and documentation translations can be
    contributed separately; their existing language controls must be updated when
    adding a language there. For right-to-left scripts, include text direction and

@@ -259,7 +259,6 @@ func (c *Controller) ObserveSenderQualityEvidence(input SenderQualityEvidenceInp
 	return c.senderAccepted([]*Resource{})
 }
 
-// senderQualityRegenerationBlockMatches ports 4985.
 func senderQualityRegenerationBlockMatches(block senderQualityIdentity, childSessionID string, input SenderQualityEvidenceInput, senderIdentity string) bool {
 	return block.childSessionID == childSessionID &&
 		block.parentPeerID == input.ParentPeerID &&
@@ -271,7 +270,7 @@ func senderQualityRegenerationBlockMatches(block senderQualityIdentity, childSes
 // ObserveSfuPublisherQualityEvidence records a Host->SFU ingress sample,
 // settling a live sfu/reuse quality candidate; a nil commitReservation
 // always commits. Requires QualityConvergenceEnabled. Unlike the other two
-// observers it validates no numbers (TS asymmetry, map R13).
+// observers it validates no numbers.
 func (c *Controller) ObserveSfuPublisherQualityEvidence(input SfuPublisherQualityEvidenceInput, commitReservation func(CandidateReservation) bool) SenderQualityEvidenceResult {
 	if commitReservation == nil {
 		commitReservation = func(CandidateReservation) bool { return true }
@@ -386,7 +385,7 @@ func (c *Controller) ObserveSfuPublisherQualityEvidence(input SfuPublisherQualit
 	return c.senderAccepted([]*Resource{})
 }
 
-// settleCandidateQuality ports 1428: folds a sender sample into the live
+// settleCandidateQuality folds a sender sample into the live
 // candidate and fails or commits it. senderIdentity "" is the TS null.
 func (c *Controller) settleCandidateQuality(op *operation, att *attempt, state SenderQualityState, acceptedAtMs int64, senderIdentity string, sampleTimestampMs *int64, commitReservation func(CandidateReservation) bool) SenderQualityEvidenceResult {
 	if att.senderQualityState != state {
@@ -486,7 +485,7 @@ func (c *Controller) ResetSenderQuality(parentPeerID, parentSessionID string, no
 	if parent == nil || !parent.sessionIs(parentSessionID) {
 		return []*Resource{}
 	}
-	// Membership only (§4.5 #48): every affected child is deleted.
+	// Membership only: every affected child is deleted.
 	children := make(map[string]struct{})
 	for _, childPeerID := range c.childrenOf(parentPeerID) {
 		children[childPeerID] = struct{}{}
@@ -531,7 +530,6 @@ func (c *Controller) ResetSenderQuality(parentPeerID, parentSessionID string, no
 	return []*Resource{}
 }
 
-// senderQualityState ports 3012.
 func (c *Controller) senderQualityState(childPeerID string, edge *CommittedEdge, nowMs int64) SenderQualityState {
 	if edge.Kind != UpstreamPeer {
 		if c.sourceUsableForQuality(edge) {
@@ -554,7 +552,6 @@ func (c *Controller) senderQualityState(childPeerID string, edge *CommittedEdge,
 	return SenderQualityUnknown
 }
 
-// currentQualityOperationSource ports 3034.
 func (c *Controller) currentQualityOperationSource(childPeerID string) *senderQualityIdentity {
 	child, _ := c.participants.Get(childPeerID)
 	edge, _ := c.upstreamByViewer.Get(childPeerID)
@@ -578,7 +575,6 @@ func (c *Controller) currentQualityOperationSource(childPeerID string) *senderQu
 	}
 }
 
-// currentQualityOperationObservation ports 3061.
 func (c *Controller) currentQualityOperationObservation(op *operation) *senderQualityObservation {
 	source := op.qualitySource
 	current := c.currentQualityOperationSource(op.childPeerID)
@@ -588,7 +584,6 @@ func (c *Controller) currentQualityOperationObservation(op *operation) *senderQu
 	return c.senderQualityObservations[op.childPeerID]
 }
 
-// senderQualityRegenerationBlocked ports 3080.
 func (c *Controller) senderQualityRegenerationBlocked(childPeerID string, edge *CommittedEdge) bool {
 	block, ok := c.senderQualityRegenerationBlocks[childPeerID]
 	if !ok {
@@ -609,7 +604,6 @@ func (c *Controller) senderQualityRegenerationBlocked(childPeerID string, edge *
 	return true
 }
 
-// candidateSenderPersistentlyDegraded ports 3105.
 func (c *Controller) candidateSenderPersistentlyDegraded(att *attempt, nowMs int64) bool {
 	return att.senderQualityState == SenderQualityDegraded &&
 		att.senderQualityAcceptedAtMs != nil &&
@@ -617,7 +611,6 @@ func (c *Controller) candidateSenderPersistentlyDegraded(att *attempt, nowMs int
 		att.senderQualityConsecutiveDegradedWindows >= persistentDegradedWindows
 }
 
-// sfuPublisherQualityState ports 3120.
 func (c *Controller) sfuPublisherQualityState(publicationGeneration string, nowMs int64) SenderQualityState {
 	observation := c.sfuPublisherQualityObservation
 	if observation != nil &&
@@ -632,7 +625,6 @@ func (c *Controller) sfuPublisherQualityState(publicationGeneration string, nowM
 	return SenderQualityUnknown
 }
 
-// qualitySourcePathHealthy ports 3137.
 func (c *Controller) qualitySourcePathHealthy(peerID string, nowMs int64) bool {
 	if peerID == c.hostPeerID {
 		return true
@@ -662,7 +654,6 @@ func (c *Controller) qualitySourcePathHealthy(peerID string, nowMs int64) bool {
 	}
 }
 
-// decodedProgressFresh ports 3169.
 func (c *Controller) decodedProgressFresh(childPeerID string, edge *CommittedEdge, nowMs int64) bool {
 	observation := c.qualityObservations[childPeerID]
 	current, _ := c.participants.Get(childPeerID)
@@ -676,8 +667,8 @@ func (c *Controller) decodedProgressFresh(childPeerID string, edge *CommittedEdg
 		c.sourceUsableForQuality(edge)
 }
 
-// buildQualityCandidates ports 3190: clear peers, remaining peers, SFU
-// (only under Host fanout relief), same-parent regeneration (§4.4 #36),
+// buildQualityCandidates orders clear peers, remaining peers, SFU
+// (only under Host fanout relief), same-parent regeneration,
 // filtered by the per-observation consumed ledger.
 func (c *Controller) buildQualityCandidates(childPeerID string, nowMs int64) []CandidatePlan {
 	current, _ := c.upstreamByViewer.Get(childPeerID)
@@ -736,7 +727,6 @@ func (c *Controller) buildQualityCandidates(childPeerID string, nowMs int64) []C
 	return out
 }
 
-// selectQualityChild ports 3251.
 func (c *Controller) selectQualityChild(nowMs int64) string {
 	if !c.qualityConvergenceEnabled {
 		return ""
@@ -763,7 +753,6 @@ func (c *Controller) selectQualityChild(nowMs int64) string {
 	return targets[0].peerID
 }
 
-// senderQualityPersistentlyDegraded ports 3387.
 func (c *Controller) senderQualityPersistentlyDegraded(childPeerID string, edge *CommittedEdge, nowMs int64) bool {
 	observation := c.senderQualityObservations[childPeerID]
 	return c.senderQualityState(childPeerID, edge, nowMs) == SenderQualityDegraded &&
@@ -771,7 +760,6 @@ func (c *Controller) senderQualityPersistentlyDegraded(childPeerID string, edge 
 		observation.consecutiveDegradedWindows >= persistentDegradedWindows
 }
 
-// qualityOperationStillEligible ports 3401.
 func (c *Controller) qualityOperationStillEligible(op *operation, nowMs int64) bool {
 	currentEdge, _ := c.upstreamByViewer.Get(op.childPeerID)
 	observation := c.currentQualityOperationObservation(op)
@@ -787,7 +775,6 @@ func (c *Controller) qualityOperationStillEligible(op *operation, nowMs int64) b
 		(state == SenderQualityDegraded && c.hostFanoutNeedsSfuRelief(nowMs))
 }
 
-// hostFanoutNeedsSfuRelief ports 3431.
 func (c *Controller) hostFanoutNeedsSfuRelief(nowMs int64) bool {
 	count := 0
 	for childPeerID, edge := range c.upstreamByViewer.All() {
@@ -802,7 +789,6 @@ func (c *Controller) hostFanoutNeedsSfuRelief(nowMs int64) bool {
 	return count >= 2
 }
 
-// qualityUpstreamMatches ports 4506.
 func qualityUpstreamMatches(edge *CommittedEdge, upstream QualityUpstream) bool {
 	if edge.Kind == UpstreamPeer {
 		return upstream.Kind == UpstreamPeer && upstream.PeerID == edge.ParentPeerID
@@ -810,7 +796,7 @@ func qualityUpstreamMatches(edge *CommittedEdge, upstream QualityUpstream) bool 
 	return upstream.Kind == UpstreamSfu
 }
 
-// qualityObservationMatchesEdge ports 4515; upstreamPeerID "" is TS null.
+// qualityObservationMatchesEdge treats an empty upstreamPeerID as TypeScript null.
 func qualityObservationMatchesEdge(observation *routeQualityObservation, edge *CommittedEdge) bool {
 	if edge.Kind == UpstreamPeer {
 		return observation.upstreamKind == UpstreamPeer && observation.upstreamPeerID == edge.ParentPeerID
@@ -818,7 +804,6 @@ func qualityObservationMatchesEdge(observation *routeQualityObservation, edge *C
 	return observation.upstreamKind == UpstreamSfu && observation.upstreamPeerID == ""
 }
 
-// sourceUsableForQuality ports 4526.
 func (c *Controller) sourceUsableForQuality(edge *CommittedEdge) bool {
 	if edge.Kind == UpstreamPeer {
 		parent, _ := c.participants.Get(edge.ParentPeerID)
@@ -829,8 +814,8 @@ func (c *Controller) sourceUsableForQuality(edge *CommittedEdge) bool {
 		c.hostPublication.Generation == edge.PublicationGeneration
 }
 
-// clearQualityForParticipant ports 4541: the Host clears every child, a
-// viewer clears its subtree plus itself (§4.2 #21, §4.5 #50).
+// clearQualityForParticipant clears every child for the Host; a
+// viewer clears its subtree plus itself.
 func (c *Controller) clearQualityForParticipant(peerID string) {
 	var affected []string
 	if peerID == c.hostPeerID {
@@ -853,7 +838,7 @@ func (c *Controller) clearQualityForParticipant(peerID string) {
 	}
 }
 
-// requireSenderQualityBaseline ports 4609; a missing baseline reads as
+// In requireSenderQualityBaseline, a missing baseline reads as
 // false (`get(...) === true`).
 func (c *Controller) requireSenderQualityBaseline(peerID string, suppressFact bool) {
 	for _, childPeerID := range withSelf(c.descendantsOf(peerID), peerID) {
@@ -864,7 +849,6 @@ func (c *Controller) requireSenderQualityBaseline(peerID string, suppressFact bo
 	}
 }
 
-// clearSfuQuality ports 4624.
 func (c *Controller) clearSfuQuality() {
 	c.sfuPublisherQualityObservation = nil
 	for childPeerID, edge := range c.upstreamByViewer.All() {

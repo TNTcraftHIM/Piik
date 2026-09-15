@@ -83,8 +83,7 @@ var forbiddenDisplayNameCharacters = regexp.MustCompile(
 	`[\p{Cc}\p{Zl}\p{Zp}\x{061c}\x{200b}\x{200e}\x{200f}\x{202a}-\x{202e}` +
 		`\x{2060}\x{2066}-\x{2069}\x{feff}]`)
 
-// NormalizeDisplayName ports normalizeDisplayName. The second result is false
-// where the TypeScript returns null.
+// NormalizeDisplayName returns false where the shared TypeScript normalizer returns null.
 func NormalizeDisplayName(value string) (string, bool) {
 	if forbiddenDisplayNameCharacters.MatchString(value) {
 		return "", false

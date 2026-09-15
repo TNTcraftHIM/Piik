@@ -14,7 +14,7 @@ const section = (label, body) => `\n===== ${label} =====\n\n${body.trim()}\n`;
 // The packages the Vite bundle ships to the Browser. Nothing installs
 // node_modules at runtime any more, so this list is the notice contract rather
 // than package.json's dependencies field.
-const WEB_BUNDLE_PACKAGES = ["react", "react-dom", "sdp-transform", "zod"];
+const WEB_BUNDLE_PACKAGES = ["react", "react-dom", "sdp-transform", "semver", "zod"];
 
 // Both binaries embed the Web bundle, which serves its own notice file.
 const WEB_NOTICE_LINE = "Web dependencies: served at /third-party-licenses.txt\n";

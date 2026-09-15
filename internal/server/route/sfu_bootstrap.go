@@ -5,7 +5,6 @@ import (
 	"sort"
 )
 
-// peekSfuBootstrapCarrier ports 3597.
 func (c *Controller) peekSfuBootstrapCarrier() *sfuBootstrapCarrier {
 	intent := c.currentSfuBootstrapIntent()
 	if intent == nil {
@@ -22,7 +21,6 @@ func (c *Controller) peekSfuBootstrapCarrier() *sfuBootstrapCarrier {
 	}
 }
 
-// hasSfuBootstrapWork ports 3612.
 func (c *Controller) hasSfuBootstrapWork() bool {
 	if c.currentSfuBootstrapIntent() != nil {
 		return true
@@ -37,7 +35,6 @@ func (c *Controller) hasSfuBootstrapWork() bool {
 	return false
 }
 
-// takeSfuBootstrapCarrier ports 3623.
 func (c *Controller) takeSfuBootstrapCarrier(nowMs int64, failedPeerIDs *[]string) *sfuBootstrapCarrier {
 	if !c.sfuBootstrapGloballyNeeded() {
 		return nil
@@ -50,9 +47,9 @@ func (c *Controller) takeSfuBootstrapCarrier(nowMs int64, failedPeerIDs *[]strin
 	return nil
 }
 
-// currentSfuBootstrapIntent ports 3635: the sticky intent is revalidated on
-// every access and otherwise re-derived from the first exhausted viewer in
-// availableViewers order (§4.5 #43).
+// currentSfuBootstrapIntent revalidates the sticky intent on
+// every access and otherwise re-derives it from the first exhausted viewer in
+// availableViewers order.
 func (c *Controller) currentSfuBootstrapIntent() *sfuBootstrapIntent {
 	if current := c.sfuBootstrapIntent; current != nil {
 		demand, _ := c.participants.Get(current.demandPeerID)
@@ -78,7 +75,7 @@ func (c *Controller) currentSfuBootstrapIntent() *sfuBootstrapIntent {
 	return nil
 }
 
-// bootstrapOperationOwned ports 3663; checked first in validateOrAdvance
+// bootstrapOperationOwned is checked first in validateOrAdvance
 // so a bootstrap operation evaporates with its intent.
 func (c *Controller) bootstrapOperationOwned(op *operation) bool {
 	if op.reason != DemandSfuBootstrap {
@@ -94,7 +91,6 @@ func (c *Controller) bootstrapOperationOwned(op *operation) bool {
 	return slices.Contains(c.safeSfuBootstrapCarriers(op.demandPeerID), op.childPeerID)
 }
 
-// sfuBootstrapNeeded ports 3681.
 func (c *Controller) sfuBootstrapNeeded(demandPeerID string) bool {
 	if !c.sfuBootstrapGloballyNeeded() {
 		return false
@@ -105,7 +101,6 @@ func (c *Controller) sfuBootstrapNeeded(demandPeerID string) bool {
 		c.sfuOpportunityAvailable(demandPeerID)
 }
 
-// sfuOpportunityAvailable ports 3690.
 func (c *Controller) sfuOpportunityAvailable(demandPeerID string) bool {
 	return c.candidateOpportunityAvailable(demandPeerID, CandidatePlan{
 		Tuple:              CandidateTuple{Kind: UpstreamSfu, Publication: PublicationReuse},
@@ -113,12 +108,10 @@ func (c *Controller) sfuOpportunityAvailable(demandPeerID string) bool {
 	})
 }
 
-// sfuBootstrapGloballyNeeded ports 3697.
 func (c *Controller) sfuBootstrapGloballyNeeded() bool {
 	return c.sfuEnabled && c.hostPublication == nil && !c.hostHasPublicationSlot()
 }
 
-// safeSfuBootstrapCarriers ports 3705.
 func (c *Controller) safeSfuBootstrapCarriers(demandPeerID string) []string {
 	if !c.sfuBootstrapNeeded(demandPeerID) {
 		return []string{}
@@ -126,8 +119,8 @@ func (c *Controller) safeSfuBootstrapCarriers(demandPeerID string) []string {
 	return c.sfuBootstrapCarriers()
 }
 
-// sfuBootstrapCarriers ports 3712: the Host's usable direct children that
-// can create a publication, newest first (§4.5 #44).
+// sfuBootstrapCarriers returns the Host's usable direct children that
+// can create a publication, newest first.
 func (c *Controller) sfuBootstrapCarriers() []string {
 	tuple := CandidateTuple{Kind: UpstreamSfu, Publication: PublicationCreate}
 	carriers := []string{}
@@ -154,25 +147,22 @@ func (c *Controller) sfuBootstrapCarriers() []string {
 	return carriers
 }
 
-// sfuBootstrapOpportunityAvailable ports 3744.
 func (c *Controller) sfuBootstrapOpportunityAvailable(carrierPeerID string, plan CandidatePlan) bool {
 	consumed, ok := c.consumedSfuBootstrapOpportunities.Get(c.sfuBootstrapOpportunityBase(carrierPeerID, plan))
 	return !ok || endpointTransitionRank(plan.EndpointTransition) < consumed
 }
 
-// sfuBootstrapOpportunityBase ports 3757.
 func (c *Controller) sfuBootstrapOpportunityBase(carrierPeerID string, plan CandidatePlan) string {
 	return carrierPeerID + "\x00" + c.candidateOpportunityBase(carrierPeerID, plan)
 }
 
-// consumeSfuBootstrapOpportunity ports 3767.
 func (c *Controller) consumeSfuBootstrapOpportunity(carrierPeerID string, plan CandidatePlan) {
 	consumeOpportunity(&c.consumedSfuBootstrapOpportunities,
 		c.sfuBootstrapOpportunityBase(carrierPeerID, plan),
 		endpointTransitionRank(plan.EndpointTransition))
 }
 
-// completeSfuBootstrapCarrier ports 3778: consumes the carrier's attempt
+// completeSfuBootstrapCarrier consumes the carrier's attempt
 // and returns the failed demand peer only once no carrier is left.
 func (c *Controller) completeSfuBootstrapCarrier(carrierPeerID string, nowMs int64, bucket RejectionBucket, attemptedPlan *CandidatePlan) string {
 	intent := c.sfuBootstrapIntent
@@ -202,7 +192,7 @@ func (c *Controller) completeSfuBootstrapCarrier(carrierPeerID string, nowMs int
 	return intent.demandPeerID
 }
 
-// reportSfuBootstrapFailures ports 3808 (availableViewers order, §4.5 #43).
+// reportSfuBootstrapFailures follows availableViewers order.
 func (c *Controller) reportSfuBootstrapFailures(nowMs int64, failedPeerIDs *[]string) {
 	for _, demand := range c.availableViewers(true) {
 		if !demand.availabilityExhausted ||
@@ -217,7 +207,6 @@ func (c *Controller) reportSfuBootstrapFailures(nowMs int64, failedPeerIDs *[]st
 	}
 }
 
-// rememberUnavailableSfuBootstrap ports 3827.
 func (c *Controller) rememberUnavailableSfuBootstrap(demandPeerID string) {
 	if !c.sfuBootstrapNeeded(demandPeerID) {
 		return
@@ -230,7 +219,6 @@ func (c *Controller) rememberUnavailableSfuBootstrap(demandPeerID string) {
 	c.sfuBootstrapIntent = nil
 }
 
-// stageSfuBootstrap ports 3835.
 func (c *Controller) stageSfuBootstrap(op *operation) {
 	demand, _ := c.participants.Get(op.demandPeerID)
 	if demand == nil || demand.sessionID == "" || !c.sfuBootstrapNeeded(demand.peerID) {
@@ -247,7 +235,6 @@ func (c *Controller) stageSfuBootstrap(op *operation) {
 	c.sfuBootstrapIntent = &sfuBootstrapIntent{demandPeerID: demand.peerID, demandSessionID: demand.sessionID}
 }
 
-// clearSfuBootstrapForDemand ports 3854.
 func (c *Controller) clearSfuBootstrapForDemand(demandPeerID string) {
 	if demand, ok := c.participants.Get(demandPeerID); ok {
 		demand.sfuFirstAtNextRoute = false
@@ -257,7 +244,6 @@ func (c *Controller) clearSfuBootstrapForDemand(demandPeerID string) {
 	}
 }
 
-// bootstrapCandidateAvailable ports 4334.
 func (c *Controller) bootstrapCandidateAvailable(demandPeerID string) bool {
 	return len(c.safeSfuBootstrapCarriers(demandPeerID)) > 0
 }

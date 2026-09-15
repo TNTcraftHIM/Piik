@@ -67,13 +67,16 @@ const exactWarningBudgets = new Map([
   ["docs/project-memory.md", [120, 12_000]],
   ["docs/status.md", [120, 12_000]],
   ["docs/todo.md", [160, 16_000]],
+  ["docs/standards/README.md", [180, 16_000]],
+  ...["rooms-access", "routing-transport", "media-quality", "presentation-lifecycle"]
+    .map((name) => [`docs/standards/${name}.md`, [180, 16_000]]),
+  ...["configuration", "engineering", "naming", "versioning"]
+    .map((name) => [`docs/standards/${name}.md`, [250, 20_000]]),
 ]);
 const prefixWarningBudgets = [
-  ["docs/product/", 180, 16_000],
   ["docs/adr/", 350, 30_000],
   ["docs/research/", 650, 50_000],
   ["docs/operations/", 250, 20_000],
-  ["docs/reference/", 250, 20_000],
 ];
 
 for (const file of markdownFiles) {

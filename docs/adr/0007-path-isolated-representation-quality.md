@@ -8,7 +8,7 @@
 Dynacast-service and single-output Native assumptions for the current candidate.
 Browser source intent, codec selection and framework-owned adaptation remain.
 Historical evidence below is not acceptance of the shared Native/embedded-SFU
-implementation; [media quality](../product/media-quality.md) owns current behavior.
+implementation; [media quality](../standards/media-quality.md) owns current behavior.
 
 ## Context
 

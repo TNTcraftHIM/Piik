@@ -9,26 +9,39 @@ history. A parked idea is not implementation authority.
 
 - [ ] **Playful copy catalogs and lifecycle.** Unify website/App welcome,
   waiting captions and playful titles under the accepted
-  [presentation policy](./design/visual-language.md#playful-copy-lifecycle).
+  [presentation policy](./standards/visual-language.md#playful-copy-lifecycle).
   Remove the fixed-count and paired-index assumptions, complete the waiting
   surface inventory, and update the bilingual contribution guide and previews
   alongside implementation. Review mascot/comic/caption composition by user
   context before expanding it; existing combinations do not define the standard.
-- [ ] **Repository-wide contextual consistency audit.** Prepare one external
-  review using the [consistency skill](../.agents/skills/context-consistency/SKILL.md).
-  Start from the [existing owner map](./maintenance.md#owners), inventory normative
-  rules and their real consumers, then check repeated semantics, lifecycle,
-  interactions, copy, visuals, configuration and documentation across the repo.
-  Include the accepted playful-copy policy and the pending graphic-composition
-  decision. Group findings by root ownership gaps with evidence and scope.
-  Review repeated launch-request feedback, source confirmation during room
-  mutations, terminal failure as a shutdown authority, and diagnostic report
-  visibility after terminal restoration; distinguish policy choices from defects.
-  Plan consolidation of normative standards under `docs/standards/` after the
-  inventory, preserving domain owners, historical ADR status,
-  user-guide entry points and all code/tool/document references. Absorb useful
-  evidence rather than committing raw reports. Keep the current App lifecycle
-  audit isolated; this broader audit is a subsequent scope, not completed work.
+- [ ] **Current media and operation ownership.** Publish Native bridge failure
+  before its recovery deadline; recover/prepare relay children from the current
+  source after asynchronous work. Retire source selection on Stop and prevent
+  confirmations being lost during room mutations. Scope native source probes
+  to the requesting control lifetime, classify intentional startup cancellation
+  correctly, and retain the diagnostic report path after terminal restoration.
+- [ ] **Protocol and route consistency.** Align exact optional-member presence
+  with decoding/validation, correct escaped Unicode-name handling, preserve
+  explicit STUN ports, and use one eligibility rule for an ongoing P2P quality
+  trial through inconclusive incumbent evidence. Keep stronger SFU conditions
+  and all candidate proofs; do not add a second parser or route policy casually.
+- [ ] **Shared feedback boundaries.** Fence room-code copy results and timers
+  to their subject/request; apply tooltip focus priority to Header and playback
+  control groups, and restore sufficient contrast for light-theme metric labels.
+- [ ] **Native adapter boundaries.** Release Windows audio COM objects before
+  apartment teardown; validate stale activation failures against the actual
+  encoder generation. Align Linux encoder admission with its live bitrate
+  requirements and verify output-local failure containment on a supported
+  system. Preserve real fatal source/engine errors and primary diagnostic causes.
+- [ ] **Tooling naming and verification.** Name standalone packaging/checks
+  App, hosted artifacts Server and browser builds Web; preserve public wire,
+  storage and environment compatibility. Add the local App assembly's final
+  source-identity check and integrate the existing Linux headless regression
+  test into a documented runner.
+- [ ] **Website self-hosting tutorial.** Present the third tutorial as an
+  advanced self-hosted-site path, explain where to deploy it and how App can
+  connect to it, and link the complete guide. Describe the combination's enabled
+  capabilities without a universal performance or connectivity guarantee.
 - [ ] **Introduction motion and presentation boundaries.** Resolve the automatic
   hero-loop control requirement against the accepted design without restoring
   discarded gesture controls or silently removing animation. Review only the
@@ -73,7 +86,7 @@ local listener binding as proof of public reachability. The
 dependency and observation limits. Compare current P2P/SFU handoffs, including
 background P2P attempts behind working SFU media, before choosing changes.
 Preserve one graph and one operation under the
-[routing contract](./product/routing-transport.md) and
+[routing contract](./standards/routing-transport.md) and
 [ADR-0005](./adr/0005-automatic-hybrid-media-routing.md). Prior ownership audits do
 not establish better connection success or speed; this note adds no retry policy.
 
@@ -99,7 +112,7 @@ not establish better connection success or speed; this note adds no retry policy
 4. **Reachable ownership/refactor work.** Retain Host/Viewer page media-session
    extraction as a candidate alongside related behavior changes. Evaluate clear
    resource owners, fewer shared writers and a smaller change surface under
-   [engineering review](./reference/engineering.md#ablation-and-review); file
+   [engineering review](./standards/engineering.md#ablation-and-review); file
    size alone does not justify a split. The completed audits do not close this
    candidate. Reopen C=3 structural-intent retention, SFU failure during unrelated
    prepare and multi-child evidence ownership only with current-contract

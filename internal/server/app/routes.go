@@ -38,8 +38,7 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	}()
 
 	if !s.acceptingTraffic.Load() {
-		// Hazard 13: no traffic at all until the SignalingServer exists, so
-		// /healthz answers 503 while LiveKit reconciliation runs.
+		// No traffic is accepted until startup completes; /healthz also returns 503.
 		recorder.Header().Set("Cache-Control", "no-store")
 		recorder.Header().Set("Retry-After", "1")
 		sendJSON(recorder, http.StatusServiceUnavailable, errorBody{"Service starting"})
@@ -152,7 +151,7 @@ func (s *Server) handleSiteAccess(writer http.ResponseWriter, request *http.Requ
 		}
 		if status.Required && status.Authenticated {
 			// The Set-Cookie value is written verbatim, in the TS attribute
-			// order (D11).
+			// order.
 			writer.Header().Set("Set-Cookie", access.createCookie())
 		}
 		sendJSON(writer, http.StatusOK, status)
@@ -292,8 +291,8 @@ func (s *Server) handleRoomCreation(
 		sendJSON(writer, http.StatusForbidden, errorBody{"Forbidden"})
 		return
 	}
-	// Hazard 12: the cookie is the only room-creation credential. A
-	// `Bearer <site password>` header must still be 401.
+	// When site access requires a password, room creation uses its cookie;
+	// a `Bearer <site password>` header does not authorize it.
 	if !s.roomCreationAuthorized(request) {
 		sendJSON(writer, http.StatusUnauthorized, errorBody{"Unauthorized"})
 		return
@@ -353,9 +352,8 @@ func (s *Server) authorizedRoomHostToken(
 	return hostToken, true
 }
 
-// allowedRequestOrigin ports isStrictlyAllowedRequestOrigin: the header must be
-// present, must parse, must be exactly its own serialised origin (so
-// "http://allowed.test/path" is refused) and must be configured.
+// allowedRequestOrigin requires a present, parseable header equal to its own
+// serialised origin (so "http://allowed.test/path" is refused) and configured.
 func (s *Server) allowedRequestOrigin(request *http.Request) bool {
 	origin := request.Header.Get("Origin")
 	if origin == "" {
@@ -369,12 +367,11 @@ func (s *Server) allowedRequestOrigin(request *http.Request) bool {
 	return allowed
 }
 
-// roomCreationAuthorized ports isRoomCreationAuthorized.
 func (s *Server) roomCreationAuthorized(request *http.Request) bool {
 	return s.siteAccessForRequest(request).isAuthenticated(cookieHeader(request))
 }
 
-// createRoomResponse of app.ts. signal.InviteURL is the one owner of the invite
+// signal.InviteURL is the one owner of the invite
 // URL shape; the rotated-grant notification on the signaling side uses it too.
 func (s *Server) createRoomResponse(created room.CreatedRoom) protocol.CreateRoomResponse {
 	return protocol.CreateRoomResponse{

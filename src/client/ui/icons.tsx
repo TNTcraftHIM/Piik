@@ -5,7 +5,7 @@
 // changes; reconciled children stay put, so the draw only replays on a true
 // icon swap). pathLength={1} on every shape paces the draw-in evenly.
 // Meanings are shared across controls, comics and text placeholders; see
-// docs/design/visual-language.md#symbol-reference before adding a symbol.
+// docs/standards/visual-language.md#symbol-reference before adding a symbol.
 import { useEffect, useRef, type ReactNode } from "react";
 import { bindSvgReplayOnPointerEnter } from "./animation";
 

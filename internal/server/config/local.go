@@ -24,7 +24,6 @@ type LocalOptions struct {
 	NATPredictionSTUNURLs []string
 }
 
-// Local ports createLocalServerConfig.
 func Local(options LocalOptions) (Config, error) {
 	port := options.Port
 	if port == 0 {
@@ -118,7 +117,7 @@ func allValidStunURLs(values []string) bool {
 	return true
 }
 
-// publicHTTPSOrigin ports publicHTTPSOrigin: every failure shares one message.
+// publicHTTPSOrigin uses one error message for all invalid origins.
 func publicHTTPSOrigin(value string) (*url.URL, error) {
 	parsed, err := url.Parse(value)
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" ||
@@ -129,7 +128,7 @@ func publicHTTPSOrigin(value string) (*url.URL, error) {
 	return &url.URL{Scheme: "https", Host: normalizedHost(parsed), Path: "/"}, nil
 }
 
-// localIPv4 ports localIPv4. Node's isIP(value) === 4 accepts only a dotted
+// Node's isIP(value) === 4 accepts only a dotted
 // quad, so an IPv4-mapped IPv6 literal such as "::ffff:192.168.1.10" — which
 // net.ParseIP(...).To4() does resolve — is rejected here as well.
 func localIPv4(value string, name string) (string, error) {

@@ -78,7 +78,7 @@ Room invitations and access settings still apply.
 
 `MAX_VIEWERS_PER_ROOM` sets the room's Viewer limit, excluding the Host. Choose
 `1..20` and restart to apply it. More Viewers can require more network and relay
-resources. See [room capacity](../reference/configuration.md#room-capacity)
+resources. See [room capacity](../standards/configuration.md#room-capacity)
 for defaults and the difference from App rooms.
 
 ### 2. Enable HTTPS
@@ -119,5 +119,5 @@ Keep `.env` and `rooms.sqlite` across updates. Back up room data while the serve
 stopped, replace the executable with the new release, then restart and check
 health and room access. Read release notes before an upgrade that changes data formats.
 
-[All settings and ports](../reference/configuration.md) ·
+[All settings and ports](../standards/configuration.md) ·
 [Maintainer release tooling](../deployment.md)

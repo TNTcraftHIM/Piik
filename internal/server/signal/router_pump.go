@@ -43,25 +43,13 @@ type pumpCandidate struct {
 	result    prepareResult
 }
 
-// requestPump ports requestPump: the single-flight driver. Every caller
-// only sets requested; the pump that owns pumping drains it.
+// requestPump starts the single-flight driver while the caller holds mu.
+// Reconcile, candidate selection and admission reservations run synchronously
+// so later calls in the handler see the result and rooms reserve SFU capacity
+// in wake order. drivePump continues the remaining work in its goroutine.
 //
-// The TS driver was an async IIFE, so it ran synchronously inside the
-// caller up to its first await: the first pumpRoom iteration through the
-// synchronous prefix of prepareCandidate (reconcile, candidate selection,
-// the admission reservations). That
-// prefix is observable: the calls that follow requestPump in the same
-// handler see its reconcile, and two rooms woken by one drain reserve
-// SFU capacity in wake order (map O29). It therefore runs here in the
-// caller's critical section; everything after it ran in microtasks and
-// runs in drivePump's goroutine.
-//
-// Deviation: `pumping` is set before that prefix, where `room.pump` was
-// still undefined until the IIFE first suspended. A re-entrant requestPump
-// during the prefix therefore only sets `requested` here and is drained by
-// drivePump's loop, instead of starting a second overlapping pump as the
-// TypeScript would have. No work is lost and the single-operation model of
-// ADR-0005 is what a second pump would have put at risk.
+// Set pumping before that synchronous prefix: re-entrant requests only set
+// requested, which drivePump drains without starting an overlapping operation.
 func (r *router) requestPump(roomID string) {
 	rm, _ := r.rooms.Get(roomID)
 	if rm == nil || rm.controller == nil || r.closing {
@@ -83,8 +71,7 @@ func (r *router) requestPump(roomID string) {
 	go r.drivePump(roomID, rm, controller, broadcastRevision, pending, failed)
 }
 
-// recoverPump runs one pump segment; a panic is the TS rejection of the pump
-// promise (controller assertion failures panic with the TS messages, D11).
+// recoverPump reports a failed pump segment, including controller assertion panics.
 func (r *router) recoverPump(segment func()) (failed bool) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
@@ -409,9 +396,9 @@ func (r *router) prepareNewPublication(
 	}}
 }
 
-// sendPrepareMessages ports sendPrepareMessages (O24: fixed order). It sends
+// sendPrepareMessages preserves recipient order. It sends
 // nothing at all when the child is stale or the peer parent vanished; the
-// deadline timer then resolves the operation (hazard 7).
+// deadline timer then resolves the operation.
 func (r *router) sendPrepareMessages(
 	roomID string,
 	controller *route.Controller,
@@ -459,9 +446,9 @@ func (r *router) sendPrepareMessages(
 	}
 }
 
-// scheduleDeadline ports scheduleDeadline (T6). The callback verifies it is
+// scheduleDeadline registers a callback that verifies it is
 // still the registered deadline through the room's generation counter, which
-// clearDeadline bumps: a cleared TS timer never fired (D5).
+// clearDeadline bumps: a cleared TS timer never fired.
 func (r *router) scheduleDeadline(roomID string, rm *roomRuntime, operation *route.OperationSnapshot) {
 	r.clearDeadline(rm)
 	wakeInMs := max(int64(0), operation.WakeAtMs-r.now())
@@ -500,7 +487,7 @@ func (r *router) scheduleDeadline(roomID string, rm *roomRuntime, operation *rou
 	})
 }
 
-// clearDeadline ports clearDeadline; bumping the generation retires a
+// clearDeadline bumps the generation to retire a
 // callback that already lost the Stop race.
 func (r *router) clearDeadline(rm *roomRuntime) {
 	if rm.deadlineStop != nil {
@@ -521,8 +508,8 @@ func cursorGuard(operation *route.OperationSnapshot, plan route.CandidatePlan) r
 	}
 }
 
-// preparedRouteCandidate ports preparedRouteCandidate; connectionAttempt is
-// present only when the current attempt carries one.
+// preparedRouteCandidate includes connectionAttempt
+// only when the current attempt carries one.
 func preparedRouteCandidate(operation *route.OperationSnapshot, tuple route.CandidateTuple, connectionID string) protocol.PreparedRouteCandidate {
 	transport := "sfu"
 	if tuple.Kind == route.UpstreamPeer {

@@ -11,7 +11,6 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 )
 
-// File-local constants of room-route-controller.ts (lines 112-114).
 const (
 	maxDirectHeadStartMs      int64 = 5_000
 	maxNatConnectionAttempts        = 3
@@ -118,7 +117,7 @@ func (o *operation) planAt(index int) *CandidatePlan {
 }
 
 // planAtOrLast ports `operation.candidates[Math.min(cursor, length - 1)]`,
-// which is undefined (nil) for an empty array (map R8).
+// which is undefined (nil) for an empty array.
 func (o *operation) planAtOrLast() *CandidatePlan {
 	return o.planAt(min(o.cursor, len(o.candidates)-1))
 }
@@ -323,7 +322,7 @@ func (c *Controller) Publication() *HostPublication {
 // Snapshot returns a copy of the committed graph, the publication and the
 // operation snapshot; it mutates nothing.
 func (c *Controller) Snapshot() RouteSnapshot {
-	// Ordering site: the router iterates this map to build assignments (§4.2 #9).
+	// The router iterates this map to build assignments.
 	upstream := &ordered.Map[string, CommittedEdge]{}
 	for id, edge := range c.upstreamByViewer.All() {
 		upstream.Set(id, *edge)
@@ -513,7 +512,7 @@ func (c *Controller) RebindHostIdentity(peerID, sessionID string, nowMs *int64) 
 		panic(errors.New("Route Host identity is unavailable"))
 	}
 
-	// Ordering site §4.5 #38: aborted reservation, then SFU edges in map
+	// Aborted reservation, then SFU edges in map
 	// order, then the publication, deduplicated.
 	released := &resourceSet{}
 	if c.operation != nil {
@@ -541,7 +540,7 @@ func (c *Controller) RebindHostIdentity(peerID, sessionID string, nowMs *int64) 
 	c.sfuBootstrapIntent = nil
 	c.consumedSfuBootstrapOpportunities.Clear()
 	c.rootConvergenceRootPeerID = ""
-	// Ordering site §4.1 #2: demand is re-recorded in participants order.
+	// Demand is re-recorded in participants order.
 	for _, current := range c.participants.Values() {
 		current.availabilityExhausted = false
 		current.bootstrapFailureReported = false
@@ -552,7 +551,7 @@ func (c *Controller) RebindHostIdentity(peerID, sessionID string, nowMs *int64) 
 		}
 	}
 
-	// Ordering site §4.1 #1: delete + set moves the Host to the tail of the
+	// Delete + set moves the Host to the tail of the
 	// insertion order while it keeps its joinOrder.
 	c.participants.Delete(previousPeerID)
 	host.peerID = peerID
@@ -672,7 +671,7 @@ func (c *Controller) InvalidateEdge(guard EdgeGuard, nowMs *int64) bool {
 // InvalidateDirectEdgeFromParent invalidates the first committed direct edge
 // (insertion order) matching the parent-side guard.
 func (c *Controller) InvalidateDirectEdgeFromParent(input ParentEdgeGuard, nowMs *int64) bool {
-	// Ordering site §4.2 #10: first match in insertion order wins.
+	// First match in insertion order wins.
 	for childPeerID, edge := range c.upstreamByViewer.All() {
 		if edge.Kind == UpstreamPeer &&
 			edge.ParentPeerID == input.ParentPeerID &&
@@ -768,7 +767,7 @@ func (c *Controller) RetireHostPublication(guard PublicationGuard) []*Resource {
 		publication.ConnectionID != guard.ConnectionID {
 		return []*Resource{}
 	}
-	// Ordering site §4.2 #11: subscriptions in map order, then the publication.
+	// Subscriptions in map order, then the publication.
 	released := []*Resource{}
 	for viewerPeerID, edge := range c.upstreamByViewer.All() {
 		if edge.Kind == UpstreamSfu && edge.PublicationGeneration == publication.Generation {
@@ -814,7 +813,7 @@ func (c *Controller) SetPaused(paused bool, nowMs *int64) []*Resource {
 // Dispose clears all state, pauses the controller and returns the live
 // reservation's resources then every committed resource, deduplicated.
 func (c *Controller) Dispose() []*Resource {
-	// Ordering site §4.5 #39: reservation first, then committed resources.
+	// Reservation first, then committed resources.
 	resources := &resourceSet{}
 	if c.operation != nil && c.operation.current != nil {
 		resources.add(reservationResources(c.operation.current.reservation)...)
@@ -836,14 +835,13 @@ func (c *Controller) Dispose() []*Resource {
 	c.sfuBootstrapIntent = nil
 	c.consumedSfuBootstrapOpportunities.Clear()
 	c.rootConvergenceRootPeerID = ""
-	// nextJoinOrder, revision, latestRevision and factVersion survive (TS 2314-2339).
+	// nextJoinOrder, revision, latestRevision and factVersion survive.
 	c.paused = true
 	return resources.resources()
 }
 
-// abortOperation ports the private abortOperation (4050): finishes the
-// demand timing when nowMs is given, releases the live reservation and
-// clears the operation.
+// abortOperation finishes demand timing when nowMs is given, releases the live
+// reservation and clears the operation.
 func (c *Controller) abortOperation(nowMs *int64, bucket RejectionBucket) []*Resource {
 	if c.operation == nil {
 		return []*Resource{}
@@ -861,7 +859,6 @@ func (c *Controller) abortOperation(nowMs *int64, bucket RejectionBucket) []*Res
 	return released
 }
 
-// operationUsesParticipantSession ports 4072.
 func (c *Controller) operationUsesParticipantSession(peerID string) bool {
 	op := c.operation
 	if op == nil {
@@ -877,7 +874,7 @@ func (c *Controller) operationUsesParticipantSession(peerID string) bool {
 	return peerID == c.hostPeerID
 }
 
-// effectiveCapacity ports 4925: panics "Effective capacity is invalid" for
+// effectiveCapacity panics "Effective capacity is invalid" for
 // a negative or unsafe value and clamps to the endpoint capacity.
 func (c *Controller) effectiveCapacity(value int) int {
 	if !isSafeInteger(int64(value)) || value < 0 {
@@ -888,7 +885,7 @@ func (c *Controller) effectiveCapacity(value int) int {
 
 func (c *Controller) touchFacts() { c.factVersion++ }
 
-// allocateRevision ports 4932; the revision space is MAX_SAFE_INTEGER.
+// allocateRevision bounds revisions by MAX_SAFE_INTEGER.
 func (c *Controller) allocateRevision() int64 {
 	if c.latestRevision >= protocol.MaxMediaRouteRevision {
 		panic(errors.New("Media route revision space exhausted"))
@@ -902,8 +899,8 @@ func isSafeInteger(value int64) bool {
 	return value >= -maxSafeInteger && value <= maxSafeInteger
 }
 
-// compareParticipant ports 4939. joinOrder is allocated once per
-// participant (573-577) and preserved across rebindHostIdentity, so two live
+// joinOrder is allocated once per participant and preserved across
+// rebindHostIdentity, so two live
 // participants never share one and the TS localeCompare (ICU) tiebreak is
 // unreachable; strings.Compare stands in for it.
 func compareParticipant(left, right *participant) int {
@@ -916,7 +913,7 @@ func compareParticipant(left, right *participant) int {
 	return strings.Compare(left.peerID, right.peerID)
 }
 
-// stablePairRank ports 4955: the first 6 bytes, big-endian, of
+// stablePairRank returns the first 6 bytes, big-endian, of
 // sha256(child + "\0" + parent). Byte-exact: it breaks parent ties.
 func stablePairRank(childPeerID, parentPeerID string) int64 {
 	sum := sha256.Sum256([]byte(childPeerID + "\x00" + parentPeerID))
@@ -927,8 +924,8 @@ func stablePairRank(childPeerID, parentPeerID string) int64 {
 	return rank
 }
 
-// safeAdd ports 4969. JS Math.round is half-up while math.Round is
-// half-away-from-zero; they differ only for negative halves, which the
+// JS Math.round is half-up while math.Round is half-away-from-zero;
+// they differ only for negative halves, which the
 // `rounded < 0` branch drops either way. NaN and +/-Inf drop the window.
 func safeAdd(total int64, delta float64) int64 {
 	rounded := math.Round(delta)

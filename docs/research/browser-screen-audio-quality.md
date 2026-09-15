@@ -3,7 +3,7 @@
 - Reviewed: 2026-08-27
 - Scope: Browser display audio over direct, relay, and LiveKit paths
 - Status: evidence; current controls are owned by
-  [media quality](../product/media-quality.md)
+  [media quality](../standards/media-quality.md)
 
 ## Findings
 

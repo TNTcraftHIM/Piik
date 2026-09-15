@@ -11,13 +11,14 @@
 | Choose an App mode or fix sound and connection trouble | [First-use help](./guide/getting-started.md#choose-an-app-mode) |
 | Run Piik App, check platform requirements, or build a package | [App guide](../cmd/piik-app/README.md) · [中文 App 指南](../cmd/piik-app/README.zh-CN.md) |
 | Try or change the source code | [Run from source](#run-from-source) |
-| Find a directory or the module responsible for a behavior | [Repository layout and module map](./reference/engineering.md#repository-layout) |
+| Find a directory or the module responsible for a behavior | [Repository layout and module map](./standards/engineering.md#repository-layout) |
+| Find the shared product, design and lifecycle rules | [Standards index](./standards/README.md) |
 | Host a site for my group | [Self-hosting](./operations/self-hosting.md) · [中文部署](./operations/self-hosting.zh-CN.md) |
 | Keep a server running with systemd or Docker | [Service management](./operations/service-management.md) · [中文服务管理](./operations/service-management.zh-CN.md) |
-| Set passwords, ports, or room storage | [Configuration](./reference/configuration.md) |
+| Set passwords, ports, or room storage | [Configuration](./standards/configuration.md) |
 | Update my server | [Server updates](./operations/self-hosting.md#keep-it-running-and-update) |
 | Build, publish or recover a maintained release | [Maintainer release tooling](./deployment.md) |
-| Send a useful bug report | [Diagnostics and export](./reference/configuration.md#diagnostics) |
+| Send a useful bug report | [Diagnostics and export](./standards/configuration.md#diagnostics) |
 | Translate Piik or improve wording | [Translation guide](./guide/translating.md) · [中文翻译教程](./guide/translating.zh-CN.md) |
 | Check release and platform readiness | [Current status](./status.md) |
 
@@ -57,7 +58,7 @@ The fixed Windows executable path avoids repeated firewall prompts from `go run`
 Open [localhost:8787](http://localhost:8787), start sharing, and open the invitation
 in another browser tab to try watching. This localhost invitation stays on your
 computer; remote invitations need a reachable origin as described in
-[configuration](./reference/configuration.md).
+[configuration](./standards/configuration.md).
 Browser capture requires `localhost` or HTTPS.
 
 For the self-contained App, follow [App development](../cmd/piik-app/README.md#development)
@@ -74,22 +75,22 @@ npm run check
 npm run check:client
 ```
 
-Use the [naming and copy guide](./reference/naming.md) for product names,
+Use the [naming and copy guide](./standards/naming.md) for product names,
 commands, role labels and Chinese/English voice.
 Piik-owned code uses [MIT](../LICENSE); see the
 [licensing guide](../licenses/README.md) for third-party components.
 
-For the public website, see the [introduction design](./design/public-introduction.md)
+For the public website, see the [introduction design](./standards/public-introduction.md)
 and [website preview and publishing](./operations/website.md).
 
 ## Understand the product
 
 | Topic | Its reference |
 | --- | --- |
-| Invitations, room codes and passwords | [Rooms and access](./product/rooms-access.md) |
-| How viewers connect | [Routing and transport](./product/routing-transport.md) |
-| Screen capture, quality controls and sound | [Media quality](./product/media-quality.md) |
-| Host and viewer behavior | [Presentation and lifecycle](./product/presentation-lifecycle.md) |
+| Invitations, room codes and passwords | [Rooms and access](./standards/rooms-access.md) |
+| How viewers connect | [Routing and transport](./standards/routing-transport.md) |
+| Screen capture, quality controls and sound | [Media quality](./standards/media-quality.md) |
+| Host and viewer behavior | [Presentation and lifecycle](./standards/presentation-lifecycle.md) |
 | Why a design was chosen | [Architecture decisions](./adr/) |
 | Measurements and platform limits | [Research](./research/) and [verification status](./verification-status.md) |
 
@@ -97,13 +98,13 @@ and [website preview and publishing](./operations/website.md).
 
 | When changing… | Follow this owner |
 | --- | --- |
-| Module responsibilities or interfaces | [Engineering and contract map](./reference/engineering.md) |
-| Product/tool names, role labels or copy | [Naming and copy](./reference/naming.md) |
-| UI colour, illustration, motion or layout | [Visual language](./design/visual-language.md) |
-| Overlays, titles or state indicators | [Media status](./design/media-status.md) |
-| Releases, protocols or stored formats | [Versions and compatibility](./reference/versioning.md) |
+| Module responsibilities or interfaces | [Engineering and contract map](./standards/engineering.md) |
+| Product/tool names, role labels or copy | [Naming and copy](./standards/naming.md) |
+| UI colour, illustration, motion or layout | [Visual language](./standards/visual-language.md) |
+| Overlays, titles or state indicators | [Media status](./standards/media-status.md) |
+| Releases, protocols or stored formats | [Versions and compatibility](./standards/versioning.md) |
 | Main protection or automatic publishing | [GitHub operations](./operations/github.md) |
-| Documentation or a duplicated rule | [Documentation ownership](./maintenance.md) |
+| Documentation or a duplicated rule | [Documentation ownership](./standards/documentation.md) |
 | Checks, PRs, integration or cleanup | [Contributing](../CONTRIBUTING.md) |
 
 For ongoing work, use [TODO](./todo.md). [Project memory](./project-memory.md)

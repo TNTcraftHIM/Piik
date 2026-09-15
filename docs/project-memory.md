@@ -40,13 +40,13 @@ blank keeps the self-contained site open.
 
 ## Product Map
 
-- [Rooms and access](./product/rooms-access.md) owns room codes,
+- [Rooms and access](./standards/rooms-access.md) owns room codes,
   invitations, code entry, credentials, and lightweight/SQLite persistence.
-- [Routing and transport](./product/routing-transport.md) owns P2P-first
+- [Routing and transport](./standards/routing-transport.md) owns P2P-first
   distribution, endpoint capacity, SFU fallback, recovery, and privacy limits.
-- [Capture and media quality](./product/media-quality.md) owns Browser capture,
+- [Capture and media quality](./standards/media-quality.md) owns Browser capture,
   profiles, codec selection, audio, and framework adaptation.
-- [Presentation and lifecycle](./product/presentation-lifecycle.md) owns Host and
+- [Presentation and lifecycle](./standards/presentation-lifecycle.md) owns Host and
   Viewer workflows, playback authority, roster, state, and Browser lifecycle.
 
 Non-obvious decisions live in [ADRs](./adr/); reproducible evidence and platform
@@ -104,7 +104,7 @@ matching Browser and App artifacts, not only an application symlink.
 
 Current work is owned by the [TODO ledger](./todo.md). Open physical evidence is
 owned by [verification status](./verification-status.md). Environment and initial
-services are owned by [configuration](./reference/configuration.md) and
+services are owned by [configuration](./standards/configuration.md) and
 [self-hosting](./operations/self-hosting.md); application release is owned by
 [deployment](./deployment.md), with exact deployed identity retained in the
 release descriptor and deployment record.

@@ -116,9 +116,9 @@ long dialogue, borrowed brand slogans or a stream of unrelated memes. Match a
 celebration to a visible successful action; it must not precede the result.
 Keep reviewed pools local, without a quotation service.
 Playful pools may differ in content and length between languages. Their context
-and display lifecycle follow the [shared policy](../design/visual-language.md#playful-copy-lifecycle);
+and display lifecycle follow the [shared policy](./visual-language.md#playful-copy-lifecycle);
 operational messages retain corresponding meanings and placeholders.
-The [visual language](../design/visual-language.md) owns where these lines appear.
+The [visual language](./visual-language.md) owns where these lines appear.
 
 ## Product And Tool Names
 
@@ -150,6 +150,13 @@ revision; they are evidence rather than current command examples.
 The [engineering module map](./engineering.md#module-map) owns directory
 responsibilities. HTTP/WebSocket clients, signaling `clientId`, protocol clients
 and similar connection roles remain `client`; they do not name the standalone App.
+
+Build commands, workflow jobs, packaging helpers, messages and local variables
+that mean the standalone executable use `App`; hosted packages use `Server`,
+and browser assets use `Web` or `Browser UI`. Follow the subject through its
+callers before renaming an ambiguous `client` or `application`. Public storage,
+wire and environment identifiers retain their compatibility contract; list
+those exceptions at their owner instead of globally replacing the word.
 
 - Follow each language's semantics: lowercase Go packages, exported `PascalCase`
   and unexported `camelCase`; existing TypeScript component/type conventions.

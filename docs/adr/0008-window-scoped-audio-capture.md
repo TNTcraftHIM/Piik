@@ -26,7 +26,7 @@ platform probe and physical gate report it.
    Track presence does not prove its source or isolation.
 3. Returned screen-audio tracks use `contentHint = "music"`. Current bounded
    sender ceilings and narrow Opus stereo answer normalization are owned by
-   [media quality](../product/media-quality.md). There is no Web Audio mixer,
+   [media quality](../standards/media-quality.md). There is no Web Audio mixer,
    resampler, second representation, or independent audio clock.
 4. Browser source switching replaces the current screen-audio track in the same
    persistent media stream. Local Viewer play, mute, and volume stay inside the

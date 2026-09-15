@@ -205,7 +205,6 @@ func Load(env map[string]string) (Config, error) {
 	}, nil
 }
 
-// parseEnvironment ports parseEnvironment for PIIK_ENV.
 func parseEnvironment(env map[string]string) (Environment, error) {
 	value, present := env["PIIK_ENV"]
 	if !present {
@@ -218,7 +217,7 @@ func parseEnvironment(env map[string]string) (Environment, error) {
 	return "", errors.New("PIIK_ENV must be development or production")
 }
 
-// parseBoolean ports parseBoolean; every caller used a false fallback.
+// parseBoolean defaults an absent value to false.
 func parseBoolean(value string, name string) (bool, error) {
 	switch value {
 	case "", "false":
@@ -229,7 +228,7 @@ func parseBoolean(value string, name string) (bool, error) {
 	return false, fmt.Errorf("%s must be true or false", name)
 }
 
-// parsePositiveInteger ports parsePositiveInteger, including Number.isSafeInteger.
+// parsePositiveInteger preserves Number.isSafeInteger's bounds.
 func parsePositiveInteger(value string, fallback int64, name string) (int64, error) {
 	if value == "" {
 		return fallback, nil
@@ -241,7 +240,6 @@ func parsePositiveInteger(value string, fallback int64, name string) (int64, err
 	return int64(number), nil
 }
 
-// parseBoundedInteger ports parseBoundedInteger.
 func parseBoundedInteger(value string, fallback int64, name string, minimum, maximum int64) (int64, error) {
 	parsed, err := parsePositiveInteger(value, fallback, name)
 	if err != nil {
@@ -299,7 +297,6 @@ func parseSFU(env map[string]string) (*SFUConfig, error) {
 	}, nil
 }
 
-// parseURLList ports parseUrlList.
 func parseURLList(value string, name string) ([]string, error) {
 	if strings.TrimFunc(value, protocol.IsJSWhitespace) == "" {
 		return nil, nil
@@ -333,7 +330,6 @@ func parseStunURLList(value string, name string) ([]string, error) {
 	return values, nil
 }
 
-// parseOrigins ports parseOrigins.
 func parseOrigins(value string, fallback string) (map[string]struct{}, error) {
 	origins, err := parseURLList(value, "ALLOWED_ORIGINS")
 	if err != nil {

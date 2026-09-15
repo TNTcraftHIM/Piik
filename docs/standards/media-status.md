@@ -11,7 +11,7 @@ Frontend controls, names and details share `Tooltip`, following the
 containers, with viewport-relative placement. Hover, keyboard focus and touch
 hold share one visibility owner; Escape dismisses even a mouse-only hint.
 `/__tooltip-preview` shows the catalogue. Playback actions and their local audio
-ownership are defined in [presentation lifecycle](../product/presentation-lifecycle.md#playback-ownership);
+ownership are defined in [presentation lifecycle](./presentation-lifecycle.md#playback-ownership);
 `/__playback-preview` exercises the actual control bar with generated local media.
 
 ## Status Meaning

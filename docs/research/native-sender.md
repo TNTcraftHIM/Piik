@@ -4,7 +4,7 @@
 - Scope: Windows capture, one hardware H.264 encoder, bounded WebRTC fanout
 - Status: historical evidence; obsolete sender implementation deleted
 
-Current product scope is owned by [media quality](../product/media-quality.md).
+Current product scope is owned by [media quality](../standards/media-quality.md).
 [ADR-0006](../adr/0006-fixed-high-native-sender-canary.md) owns the stop line.
 
 ## Conclusion

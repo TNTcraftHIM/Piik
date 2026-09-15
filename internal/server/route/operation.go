@@ -6,8 +6,7 @@ import (
 	"sort"
 )
 
-// validation is the private validateOrAdvance result. The TS `exhausted`
-// flag was written (2454, 2588) but never read, so it is not ported.
+// validation is the private validateOrAdvance result.
 type validation struct {
 	released             []*Resource
 	exhaustedChildPeerID string // "" = undefined
@@ -15,7 +14,7 @@ type validation struct {
 	consumedGuard        bool
 }
 
-// failedPeerIDsFrom ports 4943: dedupe preserving argument order.
+// failedPeerIDsFrom deduplicates while preserving argument order.
 func failedPeerIDsFrom(results ...validation) []string {
 	ids := make([]string, 0, len(results))
 	for _, result := range results {
@@ -36,7 +35,7 @@ func isAvailabilityOperation(reason DemandReason) bool {
 	return reason != DemandSfuBootstrap && !isBackgroundConvergence(reason)
 }
 
-// operationRequiresNativeCandidateProof ports 3554 (nil-safe).
+// operationRequiresNativeCandidateProof returns false for a nil operation.
 func operationRequiresNativeCandidateProof(op *operation) bool {
 	if op == nil {
 		return false
@@ -45,7 +44,7 @@ func operationRequiresNativeCandidateProof(op *operation) bool {
 		(op.reason == DemandQualityConvergence && op.current != nil && op.current.tuple.Kind == UpstreamSfu)
 }
 
-// directHeadStartMs ports 3535: min(5000, max(1, floor(timeout / 2))).
+// directHeadStartMs bounds half the operation timeout to 1..5000 ms.
 func (c *Controller) directHeadStartMs() int64 {
 	return min(maxDirectHeadStartMs, max(1, c.operationTimeoutMs/2))
 }
@@ -75,7 +74,7 @@ func (c *Controller) Reconcile(nowMs int64) ReconcileResult {
 	}
 	removedPeerIDs := c.pruneDepartedLeaves(&released)
 
-	// The loop bound is a count, not an order (§4.1 #8).
+	// The loop bound is a count, not an order.
 	for remaining := c.participants.Len(); remaining > 0; remaining-- {
 		bootstrap := c.takeSfuBootstrapCarrier(nowMs, &failedPeerIDs)
 		routeChildPeerID := ""
@@ -141,7 +140,7 @@ func (c *Controller) Reconcile(nowMs int64) ReconcileResult {
 			candidates = c.buildCandidates(childPeerID, bootstrap != nil)
 		}
 		if bootstrap == nil && continuation == nil && demand.sfuFirstAtNextRoute {
-			// Ordering site §4.4 #30: the SFU candidate moves to the front.
+			// The SFU candidate moves to the front.
 			sfuIndex := slices.IndexFunc(candidates, func(candidate CandidatePlan) bool {
 				return candidate.Tuple.Kind == UpstreamSfu
 			})
@@ -154,7 +153,7 @@ func (c *Controller) Reconcile(nowMs int64) ReconcileResult {
 			}
 		}
 		if reason == DemandSfuBootstrap {
-			// Ordering site §4.4 #31: bootstrap sets drop bounded-gap candidates.
+			// Bootstrap sets drop bounded-gap candidates.
 			filtered := make([]CandidatePlan, 0, len(candidates))
 			for _, candidate := range candidates {
 				if candidate.EndpointTransition.Kind != TransitionBoundedGap {
@@ -514,8 +513,7 @@ func (c *Controller) CandidateReady(guard CandidateGuard, nowMs int64, commitRes
 		if (op.reason == DemandQualityConvergence &&
 			(currentEdge == nil || c.senderQualityState(op.childPeerID, currentEdge, nowMs) != SenderQualityDegraded)) ||
 			(op.reason == DemandRootConvergence && !c.rootConvergenceOperationStillEligible(op)) {
-			// TS 2086-2095: the object literal reads `activeRevision: this.revision`
-			// before `released: [...this.abortOperation(...)]` advances it.
+			// Preserve the active revision before abortOperation advances it.
 			activeRevision := c.revision
 			return SettleResult{
 				Accepted:       true,
@@ -612,7 +610,7 @@ func (c *Controller) CandidateReady(guard CandidateGuard, nowMs int64, commitRes
 		"child", c.debugPeer(op.childPeerID),
 		"candidate", c.debugTuple(att.tuple),
 		"revision", att.revision)
-	// Ordering site §4.2 #16: displaced SFU children in map order.
+	// Displaced SFU children in map order.
 	displacedSfuChildren := []string{}
 	if att.tuple.Kind == UpstreamSfu && att.tuple.Publication == PublicationReplace {
 		for childPeerID, edge := range c.upstreamByViewer.All() {
@@ -720,7 +718,7 @@ func (c *Controller) OperationExpired(nowMs int64) SettleResult {
 	}
 }
 
-// validateOrAdvance ports 2342: the single place that expires, replans and
+// validateOrAdvance is the single place that expires, replans and
 // clears the operation. failedGuard names an attempt the caller failed.
 func (c *Controller) validateOrAdvance(nowMs int64, failedGuard *CandidateGuard) validation {
 	activeRevisionAtStart := c.revision
@@ -910,7 +908,7 @@ func (c *Controller) validateOrAdvance(nowMs int64, failedGuard *CandidateGuard)
 }
 
 // expiredFinalRoute is the finalRoute expression shared by both
-// validateOrAdvance terminal branches (2434-2438, 2573-2577).
+// validateOrAdvance terminal branches.
 func (c *Controller) expiredFinalRoute(op *operation, backgroundConvergence, exhausted bool) FinalRoute {
 	if backgroundConvergence {
 		return c.currentFinalRoute(op.demandPeerID)
@@ -921,9 +919,9 @@ func (c *Controller) expiredFinalRoute(op *operation, backgroundConvergence, exh
 	return FinalRouteWaiting
 }
 
-// commitAttempt ports 2600: installs the attempt as the child's committed
+// commitAttempt installs the attempt as the child's committed
 // edge and returns the resources committed before but not after, plus the
-// overlap (§4.2 #14).
+// overlap.
 func (c *Controller) commitAttempt(op *operation, att *attempt) []*Resource {
 	before := &resourceSet{}
 	before.add(c.committedResources()...)
@@ -940,7 +938,7 @@ func (c *Controller) commitAttempt(op *operation, att *attempt) []*Resource {
 	c.clearQualityForParticipant(op.childPeerID)
 
 	if att.tuple.Kind == UpstreamSfu && att.tuple.Publication == PublicationReplace {
-		// The return value is discarded on purpose (2616): the before/after
+		// The return value is discarded on purpose: the before/after
 		// diff below picks those resources up.
 		c.removePublicationGeneration(c.hostPublication.Generation)
 	}
@@ -950,7 +948,7 @@ func (c *Controller) commitAttempt(op *operation, att *attempt) []*Resource {
 		if parent == nil || parent.sessionID == "" {
 			panic(errors.New("Candidate parent session is unavailable"))
 		}
-		// Map.set keeps an existing child's position (§4.2 #15).
+		// Map.set keeps an existing child's position.
 		c.upstreamByViewer.Set(op.childPeerID, &CommittedEdge{
 			Kind:            UpstreamPeer,
 			ChildSessionID:  op.childSessionID,
@@ -1013,7 +1011,7 @@ func (c *Controller) commitAttempt(op *operation, att *attempt) []*Resource {
 			remainingParentPeerIDs = append(remainingParentPeerIDs, op.deferredParentPeerIDs...)
 		}
 		if len(remainingParentPeerIDs) > 0 {
-			// Ordering site §4.3 #27: dedupe preserving first occurrence.
+			// Dedupe preserving first occurrence.
 			c.directContinuations.Set(op.childPeerID, &directContinuation{
 				childSessionID:        op.childSessionID,
 				sfuConnectionID:       att.connectionID,
@@ -1100,7 +1098,6 @@ func (c *Controller) commitAttempt(op *operation, att *attempt) []*Resource {
 	return released
 }
 
-// advanceActiveRevision ports 4088.
 func (c *Controller) advanceActiveRevision(op *operation) {
 	if op.reason == DemandQualityConvergence && op.current != nil {
 		producerPeerID := c.hostPeerID
@@ -1123,7 +1120,6 @@ func (c *Controller) advanceActiveRevision(op *operation) {
 	op.baseRevision = c.revision
 }
 
-// blockAndClear ports 4112.
 func (c *Controller) blockAndClear(op *operation, block bool, released *[]*Resource, revisionAdvanced bool) {
 	child, _ := c.participants.Get(op.childPeerID)
 	c.operation = nil
@@ -1143,10 +1139,9 @@ func (c *Controller) blockAndClear(op *operation, block bool, released *[]*Resou
 	child.availabilityExhausted = true
 }
 
-// replanRemaining ports 4164: re-plans the suffix from the cursor, forcing
+// replanRemaining replans the suffix from the cursor, forcing
 // firstTuple into the first slot and appending restoreTuple when absent.
 func (c *Controller) replanRemaining(op *operation, firstTuple, restoreTuple *CandidateTuple) {
-	// Ordering site §4.4 #34.
 	cursor := min(op.cursor, len(op.candidates))
 	prefix := append([]CandidatePlan{}, op.candidates[:cursor]...)
 	tuples := make([]CandidateTuple, 0, len(op.candidates)-cursor+2)
@@ -1177,7 +1172,7 @@ func (c *Controller) replanRemaining(op *operation, firstTuple, restoreTuple *Ca
 	op.builtAtFactVersion = c.factVersion
 }
 
-// operationSnapshot ports 4190: a deep copy plus the derived wakeAtMs;
+// operationSnapshot returns a deep copy plus the derived wakeAtMs;
 // Current omits ConnectionAttempt when undefined.
 func (c *Controller) operationSnapshot() *OperationSnapshot {
 	op := c.operation
@@ -1215,7 +1210,6 @@ func (c *Controller) operationSnapshot() *OperationSnapshot {
 	return snapshot
 }
 
-// advanceExpiredDirectHeadStart ports 4208.
 func (c *Controller) advanceExpiredDirectHeadStart(op *operation, nowMs int64, released *[]*Resource) bool {
 	currentTuple := op.currentTuple()
 	sfuIndex := c.foregroundSfuIndex(op)
@@ -1238,7 +1232,7 @@ func (c *Controller) advanceExpiredDirectHeadStart(op *operation, nowMs int64, r
 		op.current = nil
 		c.clearCandidateTiming(op.demandPeerID)
 	}
-	// Ordering site §4.4 #33: deferred parents keep candidate order.
+	// Deferred parents keep candidate order.
 	for _, candidate := range op.candidates[op.cursor:min(sfuIndex, len(op.candidates))] {
 		if candidate.Tuple.Kind == UpstreamPeer {
 			op.deferredParentPeerIDs = append(op.deferredParentPeerIDs, candidate.Tuple.ParentPeerID)
@@ -1254,7 +1248,6 @@ func (c *Controller) advanceExpiredDirectHeadStart(op *operation, nowMs int64, r
 	return true
 }
 
-// operationWakeAt ports 4258.
 func (c *Controller) operationWakeAt(op *operation) int64 {
 	currentTuple := op.currentTuple()
 	if currentTuple != nil && currentTuple.Kind == UpstreamPeer &&
@@ -1270,17 +1263,15 @@ func (c *Controller) operationWakeAt(op *operation) int64 {
 	return op.deadlineAtMs
 }
 
-// peerCandidateHasSuccessor ports 4281.
 func (c *Controller) peerCandidateHasSuccessor(op *operation) bool {
 	return op.cursor+1 < len(op.candidates) || c.foregroundSfuIndex(op) > op.cursor
 }
 
-// directHeadStartDeadlineAt ports 4290.
 func (c *Controller) directHeadStartDeadlineAt(op *operation) int64 {
 	return op.deadlineAtMs - c.operationTimeoutMs + c.directHeadStartMs()
 }
 
-// foregroundSfuIndex ports 4299: the index of the first SFU candidate at or
+// foregroundSfuIndex returns the index of the first SFU candidate at or
 // after the cursor, the candidate count when a bootstrap carrier exists, -1
 // otherwise (and always -1 for background convergence).
 func (c *Controller) foregroundSfuIndex(op *operation) int {
@@ -1298,7 +1289,6 @@ func (c *Controller) foregroundSfuIndex(op *operation) int {
 	return -1
 }
 
-// promoteNextDirectWithinHeadStart ports 4314 (§4.4 #32).
 func (c *Controller) promoteNextDirectWithinHeadStart(op *operation, nowMs int64) {
 	sfuIndex := c.foregroundSfuIndex(op)
 	if sfuIndex != op.cursor+1 || nowMs >= c.directHeadStartDeadlineAt(op) {
@@ -1319,13 +1309,11 @@ func (c *Controller) promoteNextDirectWithinHeadStart(op *operation, nowMs int64
 	op.candidates = slices.Insert(op.candidates, sfuIndex, nextDirect)
 }
 
-// guardMatches ports 4338.
 func (c *Controller) guardMatches(guard CandidateGuard, op *operation, att *attempt) bool {
 	return guard.ChildPeerID == op.childPeerID && guard.ChildSessionID == op.childSessionID &&
 		guard.Revision == att.revision && guard.ConnectionID == att.connectionID
 }
 
-// cursorGuardMatches ports 4343.
 func (c *Controller) cursorGuardMatches(guard CandidateCursorGuard, op *operation) bool {
 	plan := op.planAt(op.cursor)
 	return plan != nil &&
@@ -1335,8 +1323,8 @@ func (c *Controller) cursorGuardMatches(guard CandidateCursorGuard, op *operatio
 		candidatePlanEquals(guard.Plan, *plan)
 }
 
-// selectNextChild ports 3451: five priority buckets, first-occurrence
-// dedupe, then a STABLE sort by started attempts (§4.5 #42).
+// selectNextChild uses five priority buckets, first-occurrence deduplication,
+// then a stable sort by started attempts.
 func (c *Controller) selectNextChild() string {
 	viewers := c.availableViewers(false)
 	departedParents := []string{}
@@ -1378,7 +1366,7 @@ type directContinuationPick struct {
 	plan        CandidatePlan
 }
 
-// selectDirectContinuation ports 3477 (§4.3 #23-25): a stable sort over
+// selectDirectContinuation uses a stable sort over
 // the round-robin map order, then the first valid parent per child.
 func (c *Controller) selectDirectContinuation() *directContinuationPick {
 	type entry struct {
@@ -1432,9 +1420,9 @@ func (c *Controller) selectDirectContinuation() *directContinuationPick {
 	return nil
 }
 
-// consumeDirectContinuationCandidate ports 3564: removes the tried parent
+// consumeDirectContinuationCandidate removes the tried parent
 // from the retry order (re-appending it while NAT attempts remain) and
-// moves the continuation to the tail of the round-robin (§4.3 #24, #26).
+// moves the continuation to the tail of the round-robin.
 func (c *Controller) consumeDirectContinuationCandidate(op *operation) {
 	tuple := op.currentTuple()
 	if op.reason != DemandDirectConvergence || tuple == nil || tuple.Kind != UpstreamPeer {

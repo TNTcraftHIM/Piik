@@ -39,7 +39,7 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
-// Node HTTP server settings of app.ts, mapped in map section 3.3 / D11.
+// HTTP request, header and keep-alive deadlines.
 const (
 	requestTimeout   = 10 * time.Second // httpServer.requestTimeout
 	headersTimeout   = 15 * time.Second // httpServer.headersTimeout
@@ -55,7 +55,7 @@ type Options struct {
 	Listener *net.TCPListener
 	// Assets is the built Browser UI. A nil FS serves the API only, which is
 	// the TS frontend mode "none"; webassets.FS() returns nil the same way
-	// when no build was embedded (D3).
+	// when no build was embedded.
 	Assets fs.FS
 	// Now returns Unix milliseconds; nil uses the wall clock.
 	Now func() int64
@@ -69,7 +69,7 @@ type Options struct {
 	MaxUnauthenticatedSignalConnections int
 	SiteAccessTTLSeconds                int
 
-	// AfterFunc is the signaling timer factory (D5); nil uses time.AfterFunc.
+	// AfterFunc is the signaling timer factory; nil uses time.AfterFunc.
 	AfterFunc func(time.Duration, func()) func() bool
 	// RoomStore replaces the store this package would build from Config.
 	RoomStore *room.Store
@@ -92,9 +92,8 @@ type Server struct {
 	// STUN shares the same startup/shutdown owner, never the advertised ICE URLs.
 	stunServer *stun.Server
 
-	// acceptingTraffic and signaling are the two closure variables app.ts
-	// flipped together; both are read by request goroutines without a lock and
-	// written under mu (hazard 13).
+	// acceptingTraffic and signaling are read by request goroutines without
+	// a lock and written together under mu.
 	acceptingTraffic atomic.Bool
 	signaling        atomic.Pointer[signal.Server]
 
@@ -102,7 +101,7 @@ type Server struct {
 	closing          bool
 	startupRequested bool
 	// startupDone is closed when listen settles, which is what shutdown awaits
-	// so the listener stays owned until an in-flight startup finishes (A6).
+	// so the listener stays owned until an in-flight startup finishes.
 	startupDone chan struct{}
 
 	shutdownOnce sync.Once
@@ -221,9 +220,8 @@ func (s *Server) Listen(ctx context.Context) (int, error) {
 	s.startupRequested = true
 	s.mu.Unlock()
 
-	// Deferred: a rejected startupOperation still settled, so shutdown's wait
-	// on it ended (app.ts:219). A panic escaping start() must likewise release
-	// the latch, or every later Close blocks on it for good.
+	// Release the startup latch even when start panics, so a later Close
+	// cannot wait forever for startup to finish.
 	defer close(s.startupDone)
 	return s.start(ctx)
 }
@@ -273,11 +271,8 @@ func (s *Server) start(ctx context.Context) (int, error) {
 		})}
 	}
 	go func() {
-		// bindHttpServer removed its "error" listener once the server was
-		// listening (app.ts:315-333), so a later listener failure ended the
-		// Node process. Serve only returns something other than
-		// ErrServerClosed on a permanent accept failure, which nothing here
-		// causes; report it rather than serving nothing in silence.
+		// Report permanent accept failures so an unexpectedly stopped HTTP
+		// listener is visible to the operator.
 		if err := s.httpServer.Serve(listener); !errors.Is(err, http.ErrServerClosed) {
 			s.logger.Error("Piik HTTP server stopped unexpectedly", "errorType", fmt.Sprintf("%T", err))
 			s.logger.Debug("http-listener-failed", diagnostics.Error(err))
@@ -285,8 +280,8 @@ func (s *Server) start(ctx context.Context) (int, error) {
 	}()
 	port := listener.Addr().(*net.TCPAddr).Port
 
-	if err := s.reconcile(ctx); err != nil {
-		// A13: give the database and the listener back before reporting.
+	if err := s.reconcile(); err != nil {
+		// Give the database and the listener back before reporting.
 		var cleanup []error
 		if closeErr := s.store.Close(); closeErr != nil {
 			cleanup = append(cleanup, closeErr)
@@ -330,7 +325,7 @@ func (s *Server) stopServing(ctx context.Context) error {
 }
 
 // reconcile restores room authority and enables traffic unless shutdown has begun.
-func (s *Server) reconcile(ctx context.Context) error {
+func (s *Server) reconcile() error {
 	if err := s.store.Initialize(); err != nil {
 		return err
 	}
@@ -371,14 +366,14 @@ func (s *Server) shutdown(ctx context.Context, endRooms bool) error {
 }
 
 func (s *Server) runShutdown(ctx context.Context, endRooms bool) error {
-	// O35: stop traffic, mark closing, then wait for an in-flight startup.
+	// Stop traffic, mark closing, then wait for an in-flight startup.
 	s.mu.Lock()
 	s.acceptingTraffic.Store(false)
 	s.closing = true
 	awaitStartup := s.startupRequested
 	s.mu.Unlock()
 	if awaitStartup {
-		// A6: the listen caller owns the startup error; shutdown only waits.
+		// The listen caller owns the startup error; shutdown only waits.
 		<-s.startupDone
 	}
 

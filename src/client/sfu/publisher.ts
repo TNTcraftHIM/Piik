@@ -15,7 +15,6 @@ import {
   STARTUP_VIDEO_ENCODED_FRAMES,
   startupVideoProfile,
   videoQualitySettingsEqual,
-  type AudioSenderParameterReadback,
   type QualityProfile,
   type VideoSenderParameterReadback,
 } from "../media/quality";
@@ -72,7 +71,6 @@ export class SfuPublisher {
   private operationTail: Promise<void> = Promise.resolve();
   private failureStage: SfuPublisherFailureStage | null = null;
   private senderParameters: VideoSenderParameterReadback | null = null;
-  private audioSenderParameters: AudioSenderParameterReadback | null = null;
   private videoWarning: MediaFailure | null = null;
   private audioWarning: MediaFailure | null = null;
   private stats = createStatsAccumulator();
@@ -330,12 +328,6 @@ export class SfuPublisher {
   getFailureStage(): SfuPublisherFailureStage | null {
     return this.failureStage;
   }
-  getSenderParameters(): VideoSenderParameterReadback | null {
-    return this.senderParameters;
-  }
-  getAudioSenderParameters(): AudioSenderParameterReadback | null {
-    return this.audioSenderParameters;
-  }
 
   setPaused(paused: boolean): void {
     this.paused = paused;
@@ -483,7 +475,6 @@ export class SfuPublisher {
       this.videoWarning = senderParameterWarning(readback);
     }
     if (!this.audio || !this.audioSender) {
-      this.audioSenderParameters = null;
       this.audioWarning = null;
       return true;
     }
@@ -493,7 +484,6 @@ export class SfuPublisher {
         profile.screenAudioQuality,
       );
       if (this.peer !== peer) return false;
-      this.audioSenderParameters = audio;
       this.audioWarning = audioSenderParameterWarning(audio);
       return true;
     } catch {

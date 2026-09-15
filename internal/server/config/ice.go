@@ -35,7 +35,7 @@ func stunListenAddresses(host string, prediction bool) ([]string, error) {
 	return listeners, nil
 }
 
-// NATPredictionStunURLs ports natPredictionStunUrls: the two auxiliary
+// NATPredictionStunURLs returns the two auxiliary
 // listeners derived from the first ordinary STUN authority on UDP 3478.
 func NATPredictionStunURLs(stunURLs []string) []string {
 	for _, stunURL := range stunURLs {
@@ -72,7 +72,6 @@ func NATPredictionStunURLs(stunURLs []string) []string {
 	return nil
 }
 
-// IceConfig ports createIceConfig.
 func IceConfig(c Config) protocol.IceConfig {
 	// A configured empty list (Local without prediction) is kept as-is; only an
 	// absent one is derived, so nil and empty differ here.

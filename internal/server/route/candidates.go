@@ -8,7 +8,7 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 )
 
-// buildCandidates ports 2767: the full plan list filtered by the
+// buildCandidates filters the full plan list by the
 // availability opportunity ledger.
 func (c *Controller) buildCandidates(childPeerID string, sfuOnly bool) []CandidatePlan {
 	plans := c.buildCandidatePlans(childPeerID, sfuOnly, true)
@@ -21,10 +21,10 @@ func (c *Controller) buildCandidates(childPeerID string, sfuOnly bool) []Candida
 	return out
 }
 
-// buildCandidatePlans ports 2777: eligible parents sorted by (untried
+// buildCandidatePlans sorts eligible parents by (untried
 // attempts when preferUntried) then depth, remaining capacity descending,
 // stablePairRank, compareParticipant; the SFU tuple is spliced into index 1
-// (§4.4 #28) and the list is deduped by tupleKey (§4.4 #29).
+// and the list is deduped by tupleKey.
 func (c *Controller) buildCandidatePlans(childPeerID string, sfuOnly, preferUntried bool) []CandidatePlan {
 	descendants := c.descendantsOf(childPeerID)
 	parents := []*participant{}
@@ -98,11 +98,11 @@ func (c *Controller) buildCandidatePlans(childPeerID string, sfuOnly, preferUntr
 	return plans
 }
 
-// planCandidate ports 3947: decides none / overlap / bounded-gap from the
+// planCandidate decides none / overlap / bounded-gap from the
 // producer's copy budget; nil when the producer is gone or over budget.
 func (c *Controller) planCandidate(childPeerID string, tuple CandidateTuple) *CandidatePlan {
 	if tuple.Kind == UpstreamSfu && tuple.Publication == PublicationReuse {
-		// No producer on sfu/reuse (3949); endpointTransitionEquals compares it.
+		// No producer on sfu/reuse; endpointTransitionEquals compares it.
 		return &CandidatePlan{Tuple: tuple, EndpointTransition: EndpointTransition{Kind: TransitionNone}}
 	}
 	producerPeerID := c.hostPeerID
@@ -128,7 +128,6 @@ func (c *Controller) planCandidate(childPeerID string, tuple CandidateTuple) *Ca
 	return &CandidatePlan{Tuple: tuple, EndpointTransition: EndpointTransition{Kind: TransitionBoundedGap, ProducerPeerID: &producer0, Retire: retire}}
 }
 
-// retirementFor ports 3969.
 func (c *Controller) retirementFor(childPeerID, producerPeerID string, tuple CandidateTuple) *EndpointRetirement {
 	old, _ := c.upstreamByViewer.Get(childPeerID)
 	if old != nil && old.Kind == UpstreamPeer && old.ParentPeerID == producerPeerID && old.PhysicalActive {
@@ -159,7 +158,7 @@ func (c *Controller) retirementFor(childPeerID, producerPeerID string, tuple Can
 	}
 }
 
-// candidateValid ports 3903; att is the live attempt when validating it.
+// candidateValid receives att when validating a live attempt.
 func (c *Controller) candidateValid(childPeerID string, plan CandidatePlan, att *attempt) bool {
 	tuple := plan.Tuple
 	child, _ := c.participants.Get(childPeerID)
@@ -203,7 +202,6 @@ func (c *Controller) candidateValid(childPeerID string, plan CandidatePlan, att 
 	return currentPlan != nil && endpointTransitionEquals(currentPlan.EndpointTransition, plan.EndpointTransition)
 }
 
-// operationCandidateValid ports 3934.
 func (c *Controller) operationCandidateValid(op *operation, plan CandidatePlan, att *attempt) bool {
 	return c.candidateValid(op.childPeerID, plan, att) &&
 		((att != nil && att.connectionAttempt != nil) ||
@@ -211,7 +209,6 @@ func (c *Controller) operationCandidateValid(op *operation, plan CandidatePlan, 
 			c.candidateOpportunityAvailable(op.childPeerID, plan))
 }
 
-// physicalCopies ports 3999.
 func (c *Controller) physicalCopies(peerID string) int {
 	copies := 0
 	for _, edge := range c.upstreamByViewer.Values() {
@@ -225,7 +222,7 @@ func (c *Controller) physicalCopies(peerID string) int {
 	return copies
 }
 
-// assertReservation ports 4006: panics on a reservation kind that does not
+// assertReservation panics on a reservation kind that does not
 // match the tuple or a missing overlap for an overlap transition.
 func assertReservation(tuple CandidateTuple, reservation CandidateReservation, overlap bool) {
 	expected := ReservationSfuCreate
@@ -243,7 +240,7 @@ func assertReservation(tuple CandidateTuple, reservation CandidateReservation, o
 	}
 }
 
-// targetFits ports 4380; the parent must exist.
+// targetFits requires an existing parent.
 func (c *Controller) targetFits(parentPeerID, childPeerID string) bool {
 	parent, _ := c.participants.Get(parentPeerID)
 	edge, _ := c.upstreamByViewer.Get(childPeerID)
@@ -260,7 +257,6 @@ func (c *Controller) targetFits(parentPeerID, childPeerID string) bool {
 	return slots <= parent.effectiveDownstreamCapacity
 }
 
-// publicationFits ports 4390.
 func (c *Controller) publicationFits(childPeerID string, replacing bool) bool {
 	host, _ := c.participants.Get(c.hostPeerID)
 	edge, _ := c.upstreamByViewer.Get(childPeerID)
@@ -276,7 +272,6 @@ func (c *Controller) publicationFits(childPeerID string, replacing bool) bool {
 	return host != nil && host.sessionID != "" && !host.departureConfirmed && nextSlots <= host.effectiveDownstreamCapacity
 }
 
-// hostHasPublicationSlot ports 4400.
 func (c *Controller) hostHasPublicationSlot() bool {
 	host, _ := c.participants.Get(c.hostPeerID)
 	return host != nil && c.usedSlots(c.hostPeerID)+1 <= host.effectiveDownstreamCapacity
@@ -286,7 +281,7 @@ func (c *Controller) usedSlots(peerID string) int {
 	return c.physicalCopies(peerID)
 }
 
-// remaining ports 4409 and may be negative; the parent must exist.
+// remaining may be negative; the parent must exist.
 func (c *Controller) remaining(parentPeerID, childPeerID string) int64 {
 	parent, _ := c.participants.Get(parentPeerID)
 	edge, _ := c.upstreamByViewer.Get(childPeerID)
@@ -298,8 +293,8 @@ func (c *Controller) remaining(parentPeerID, childPeerID string) int64 {
 	return value
 }
 
-// depth ports 4416; a cycle yields MAX_SAFE_INTEGER (not MaxInt64) so the
-// comparator subtraction cannot overflow.
+// depth yields MAX_SAFE_INTEGER on a cycle, avoiding MaxInt64 so comparator
+// subtraction cannot overflow.
 func (c *Controller) depth(peerID string) int64 {
 	if peerID == c.hostPeerID {
 		return 1
@@ -323,8 +318,8 @@ func (c *Controller) depth(peerID string) int64 {
 	}
 }
 
-// childrenOf ports 4352: direct peer children in upstreamByViewer order
-// (§4.2 #17), the base order for every children-derived list.
+// childrenOf returns direct peer children in upstreamByViewer order,
+// the base order for every children-derived list.
 func (c *Controller) childrenOf(parentPeerID string) []string {
 	children := []string{}
 	for childPeerID, edge := range c.upstreamByViewer.All() {
@@ -335,8 +330,7 @@ func (c *Controller) childrenOf(parentPeerID string) []string {
 	return children
 }
 
-// descendantsOf ports 4356: a DFS (the TS queue is popped from the end,
-// §4.5 #49) returning the visit order without duplicates.
+// descendantsOf walks depth-first, returning visit order without duplicates.
 func (c *Controller) descendantsOf(peerID string) []string {
 	descendants := []string{}
 	seen := make(map[string]struct{})
@@ -357,7 +351,7 @@ func (c *Controller) descendantsOf(peerID string) []string {
 }
 
 // withSelf ports `this.descendantsOf(peerId).add(peerId)`: the peer itself
-// is appended last unless the walk already reached it (§4.5 #50).
+// is appended last unless the walk already reached it.
 func withSelf(descendants []string, peerID string) []string {
 	if slices.Contains(descendants, peerID) {
 		return descendants
@@ -365,7 +359,7 @@ func withSelf(descendants []string, peerID string) []string {
 	return append(descendants, peerID)
 }
 
-// sourceUsable ports 4365: the whole upstream path is usable and active.
+// sourceUsable checks that the whole upstream path is usable and active.
 func (c *Controller) sourceUsable(peerID string) bool {
 	if peerID == c.hostPeerID {
 		return true
@@ -391,12 +385,11 @@ func (c *Controller) sourceUsable(peerID string) bool {
 	}
 }
 
-// participantBlocked ports 3862.
 func (c *Controller) participantBlocked(current *participant) bool {
 	return current.availabilityExhausted && len(c.buildCandidates(current.peerID, false)) == 0
 }
 
-// availableViewers ports 3869: connected, non-departed viewers sorted by
+// availableViewers returns connected, non-departed viewers sorted by
 // compareParticipant (a total order, so the map order does not leak).
 func (c *Controller) availableViewers(includeBlocked bool) []*participant {
 	viewers := []*participant{}
@@ -410,8 +403,8 @@ func (c *Controller) availableViewers(includeBlocked bool) []*participant {
 	return viewers
 }
 
-// overflowChildren ports 3876: per parent in participants order, the
-// overflowing children newest-first (§4.1 #3).
+// overflowChildren visits parents in participant order and returns each
+// parent's overflowing children newest first.
 func (c *Controller) overflowChildren() []string {
 	result := []string{}
 	for _, parent := range c.participants.Values() {
@@ -428,8 +421,8 @@ func (c *Controller) overflowChildren() []string {
 	return result
 }
 
-// overflowPeerChildren ports 3889: the physically active direct children
-// beyond the parent's capacity, oldest first kept.
+// overflowPeerChildren keeps the oldest physically active direct children
+// within the parent's capacity and returns the overflow.
 func (c *Controller) overflowPeerChildren(parentPeerID string) []string {
 	parent, _ := c.participants.Get(parentPeerID)
 	if parent == nil {
@@ -457,7 +450,6 @@ func (c *Controller) overflowPeerChildren(parentPeerID string) []string {
 	return children[capacity:]
 }
 
-// tupleKey ports 4979.
 func tupleKey(tuple CandidateTuple) string {
 	if tuple.Kind == UpstreamPeer {
 		key := "peer:" + tuple.ParentPeerID
@@ -469,7 +461,6 @@ func tupleKey(tuple CandidateTuple) string {
 	return "sfu:" + string(tuple.Publication)
 }
 
-// edgeTupleKey ports 4999.
 func edgeTupleKey(edge *CommittedEdge) string {
 	if edge.Kind == UpstreamPeer {
 		return "peer:" + edge.ParentPeerID
@@ -477,7 +468,6 @@ func edgeTupleKey(edge *CommittedEdge) string {
 	return "sfu:reuse"
 }
 
-// endpointTransitionRank ports 5003.
 func endpointTransitionRank(transition EndpointTransition) int {
 	switch transition.Kind {
 	case TransitionNone:
@@ -489,7 +479,7 @@ func endpointTransitionRank(transition EndpointTransition) int {
 	}
 }
 
-// cloneCandidatePlan ports 5020 (deep copy of the retirement).
+// cloneCandidatePlan copies the plan and deeply copies its retirement data.
 func cloneCandidatePlan(plan CandidatePlan) CandidatePlan {
 	clone := plan
 	if plan.EndpointTransition.ProducerPeerID != nil {
@@ -503,7 +493,6 @@ func cloneCandidatePlan(plan CandidatePlan) CandidatePlan {
 	return clone
 }
 
-// candidatePlanEquals ports 5029.
 func candidatePlanEquals(left, right CandidatePlan) bool {
 	return tupleKey(left.Tuple) == tupleKey(right.Tuple) &&
 		endpointTransitionEquals(left.EndpointTransition, right.EndpointTransition)
@@ -516,7 +505,7 @@ func stringPtrEquals(left, right *string) bool {
 	return *left == *right
 }
 
-// endpointTransitionEquals ports 5034; `undefined !== HOST` matters for the
+// In endpointTransitionEquals, `undefined !== HOST` matters for the
 // none producer, hence the pointer comparison.
 func endpointTransitionEquals(left, right EndpointTransition) bool {
 	if left.Kind != right.Kind {
@@ -545,7 +534,7 @@ func endpointTransitionEquals(left, right EndpointTransition) bool {
 	return false
 }
 
-// reservationResources ports 5060 in order: edge (never for a borrowed
+// reservationResources returns resources in order: edge (never for a borrowed
 // sfu-reuse edge, which belongs to another holder), publication, overlap.
 func reservationResources(reservation CandidateReservation) []*Resource {
 	resources := []*Resource{}

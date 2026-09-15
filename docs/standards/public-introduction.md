@@ -6,7 +6,7 @@ This file owns the website and README content structure. The
 ## One story, three readers
 
 Lead with friends sharing something worth seeing: a game, a drawing, a film or
-travel photos. The [copy guide](../reference/naming.md#voice-and-terminology) owns
+travel photos. The [copy guide](./naming.md#voice-and-terminology) owns
 Chinese/English voice and role labels. A visitor should
 understand what Piik does, choose an entry and complete the first useful action.
 
@@ -49,7 +49,7 @@ site comes from; mark self-hosting as advanced and link its complete guide.
 Platform download cards share one App tutorial entry. Keep section navigation
 available on phones rather than hiding the only route to documentation.
 The film can use bolder composition, but must show real operations and concrete
-benefits before its closing action. The [copy guide](../reference/naming.md#voice-and-terminology)
+benefits before its closing action. The [copy guide](./naming.md#voice-and-terminology)
 owns technical disclosure; a dramatic heading does not exempt copy from it.
 
 Review whole Chinese phrases, English meaning and adjacent number labels in

@@ -13,7 +13,7 @@ fallback. Exit code zero requires all of these checks in one 360-frame run:
 
 - adapter-LUID-bound hardware H.264 enumeration;
 - asynchronous and D3D11-aware transform readback;
-- exact low-latency, CBR, 3 Mbps, one-frame VBV, and 60-frame GOP property
+- exact low-latency, CBR, 3 Mbps and 60-frame GOP property
   readback, plus Baseline media-type request/readback and output-order
   no-reordering checks;
 - 360 GPU-surface NV12 inputs and 360 ordered outputs;

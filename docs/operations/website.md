@@ -1,7 +1,7 @@
 # Public website
 
 The website source is `site/`. It explains Piik; it does not run rooms, signaling
-or media. The [public introduction guide](../design/public-introduction.md) owns
+or media. The [public introduction guide](../standards/public-introduction.md) owns
 its content and design boundary.
 
 ## Public Destinations
@@ -48,7 +48,7 @@ allow UDP 3478/3479/3480 and terminate HTTPS/WSS at Caddy. The demo uses the
 standard [systemd service](./service-management.md#systemd), with its release
 under `/opt/piik/current` and configuration at `/etc/piik/piik.env`. The service
 unit provides the SQLite state directory. Room ownership, invitations and private-room
-admission still apply. The [configuration reference](../reference/configuration.md)
+admission still apply. The [configuration reference](../standards/configuration.md)
 owns each setting and its bounds.
 
 For updates, follow the [application release boundary](../deployment.md#release-boundary)
@@ -84,7 +84,7 @@ Both links follow provider publication without a website rebuild or a release
 API request from the build or visitor. Platform buttons say “Download from GitHub” /
 “GitHub 下载”; the secondary link says “Download from Gitee” /
 “Gitee 国内镜像下载”. Keep versions and archive formats out of these labels.
-[Versioning](../reference/versioning.md#release-sources) owns package verification
+[Versioning](../standards/versioning.md#release-sources) owns package verification
 and completion of mirror publication. GitHub remains the primary source; the
 Gitee download can temporarily lag while a mirror publication completes.
 Verify the latest redirects and package checksums after releases.

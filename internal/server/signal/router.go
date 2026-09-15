@@ -60,7 +60,7 @@ type sfuFallback struct {
 }
 
 // routerHooks are the signaling server callbacks of HybridMediaRouterOptions.
-// Every hook is called with mu held and must not block (D11). shareGeneration
+// Every hook is called with mu held and must not block. shareGeneration
 // returns "" where the TS returned undefined; routesChanged may be nil.
 type routerHooks struct {
 	sendToSession   func(sessionID string, message protocol.ServerMessage)
@@ -68,8 +68,8 @@ type routerHooks struct {
 	routesChanged   func(roomID string)
 }
 
-// routerOptions is HybridMediaRouterOptions plus the shared mutex and the
-// timer factory of D5. now and afterFunc default to the wall clock.
+// routerOptions supplies the shared mutex and timer factory.
+// now and afterFunc default to the wall clock.
 type routerOptions struct {
 	mu                        *sync.Mutex
 	store                     *room.Store
@@ -142,11 +142,11 @@ type peerSignalDebugInput struct {
 
 // roomRuntime is RoomRuntime. pumping is the `pump` promise used as a
 // single-flight token; deadlineGeneration is bumped by every clearDeadline so
-// a callback that lost the Stop race sees it is stale (D5).
+// a callback that lost the Stop race sees it is stale.
 type roomRuntime struct {
 	hostPeerID string
 	controller *route.Controller
-	// O32: capacities survive stopRoom in insertion order.
+	// Capacities survive stopRoom in insertion order.
 	advertisedCapacityByViewer ordered.Map[string, int]
 	requested                  bool
 	pumping                    bool
@@ -164,7 +164,7 @@ type router struct {
 	now       func() int64
 	afterFunc func(time.Duration, func()) func() bool
 
-	// O14, O16, O29: rooms, drain tasks and waiters are walked in insertion
+	// Rooms, drain tasks and waiters are walked in insertion
 	// order.
 	rooms           ordered.Map[string, *roomRuntime]
 	resourceWaiters ordered.Map[string, struct{}]
@@ -257,7 +257,6 @@ func (r *router) close(ctx context.Context) error {
 	return nil
 }
 
-// connectParticipant ports connectParticipant.
 func (r *router) connectParticipant(input authenticatedRouteParticipant) hybridAuthenticationState {
 	rm := r.room(input.roomID)
 	if input.role == protocol.RoleHost {
@@ -298,7 +297,6 @@ func (r *router) connectParticipant(input authenticatedRouteParticipant) hybridA
 	return state
 }
 
-// completeAuthentication ports completeAuthentication.
 func (r *router) completeAuthentication(participant authenticatedRouteParticipant, _ hybridAuthenticationState) {
 	rm, _ := r.rooms.Get(participant.roomID)
 	if rm == nil || rm.controller == nil {
@@ -309,7 +307,6 @@ func (r *router) completeAuthentication(participant authenticatedRouteParticipan
 	r.requestPump(participant.roomID)
 }
 
-// setPaused ports setPaused.
 func (r *router) setPaused(roomID string, paused bool) {
 	rm, _ := r.rooms.Get(roomID)
 	if rm == nil || rm.controller == nil {
@@ -325,7 +322,6 @@ func (r *router) setPaused(roomID string, paused bool) {
 	}
 }
 
-// routeDiagnosticSnapshot ports routeDiagnosticSnapshot.
 func (r *router) routeDiagnosticSnapshot(roomID string) protocol.RouteDiagnosticSnapshot {
 	if rm, _ := r.rooms.Get(roomID); rm != nil && rm.controller != nil {
 		return rm.controller.RouteDiagnosticSnapshot(r.now())
@@ -333,8 +329,6 @@ func (r *router) routeDiagnosticSnapshot(roomID string) protocol.RouteDiagnostic
 	return protocol.RouteDiagnosticSnapshot{Children: []protocol.RouteDiagnosticChild{}, Operation: nil}
 }
 
-// observeQualityEvidence ports observeQualityEvidence; roomID is the TS
-// input's roomId and evidence the rest.
 func (r *router) observeQualityEvidence(roomID string, evidence route.RouteQualityEvidenceInput) route.RouteQualityEvidenceResult {
 	result := route.QualityEvidenceRejected
 	if rm, _ := r.rooms.Get(roomID); rm != nil && rm.controller != nil {
@@ -371,7 +365,6 @@ func (r *router) observeQualityEvidence(roomID string, evidence route.RouteQuali
 	return result
 }
 
-// observeSenderQualityEvidence ports observeSenderQualityEvidence.
 func (r *router) observeSenderQualityEvidence(participant authenticatedRouteParticipant, message protocol.SenderQualityEvidenceMessage) bool {
 	rm, _ := r.rooms.Get(participant.roomID)
 	if rm == nil || rm.controller == nil {
@@ -446,7 +439,6 @@ func (r *router) observeSenderQualityEvidence(participant authenticatedRoutePart
 	return result.Accepted
 }
 
-// observeSfuPublisherQualityEvidence ports observeSfuPublisherQualityEvidence.
 func (r *router) observeSfuPublisherQualityEvidence(participant authenticatedRouteParticipant, message protocol.SfuPublisherQualityEvidenceMessage) bool {
 	rm, _ := r.rooms.Get(participant.roomID)
 	if rm == nil || rm.controller == nil || participant.role != protocol.RoleHost {
@@ -513,7 +505,6 @@ func (r *router) observeSfuPublisherQualityEvidence(participant authenticatedRou
 	return result.Accepted
 }
 
-// resetSenderQuality ports resetSenderQuality.
 func (r *router) resetSenderQuality(participant authenticatedRouteParticipant) {
 	rm, _ := r.rooms.Get(participant.roomID)
 	if rm == nil || rm.controller == nil {
@@ -527,14 +518,12 @@ func (r *router) resetSenderQuality(participant authenticatedRouteParticipant) {
 	r.requestPump(participant.roomID)
 }
 
-// isActivePeerParentOf ports isActivePeerParentOf.
 func (r *router) isActivePeerParentOf(roomID, parentPeerID, childPeerID string) bool {
 	_, activeParent, ok := r.resolveActivePeerEdge(roomID, childPeerID)
 	return ok && activeParent == parentPeerID
 }
 
-// resolveActivePeerEdge ports resolveActivePeerEdge; ok is false where the
-// TS returned undefined.
+// resolveActivePeerEdge returns false when the child has no active Peer edge.
 func (r *router) resolveActivePeerEdge(roomID, childPeerID string) (revision int64, parentPeerID string, ok bool) {
 	edge, found := r.resolveActiveViewerMediaEdge(roomID, childPeerID)
 	if !found || edge.upstream.Kind != "peer" {
@@ -543,7 +532,6 @@ func (r *router) resolveActivePeerEdge(roomID, childPeerID string) (revision int
 	return edge.revision, edge.upstream.PeerID, true
 }
 
-// resolveActiveViewerMediaEdge ports resolveActiveViewerMediaEdge.
 func (r *router) resolveActiveViewerMediaEdge(roomID, childPeerID string) (activeViewerMediaEdge, bool) {
 	rm, _ := r.rooms.Get(roomID)
 	if rm == nil || rm.controller == nil {
@@ -565,7 +553,6 @@ func (r *router) resolveActiveViewerMediaEdge(roomID, childPeerID string) (activ
 	}, true
 }
 
-// getViewerRouteUpstream ports getViewerRouteUpstream.
 func (r *router) getViewerRouteUpstream(roomID, viewerPeerID string) protocol.MediaRouteUpstream {
 	rm, _ := r.rooms.Get(roomID)
 	if rm == nil || rm.controller == nil {
@@ -665,7 +652,6 @@ func (r *router) peerSignalAuthorization(input peerSignalInput) signalAuthorizat
 	return signalAuthorizationDenied
 }
 
-// debugPeerSignal ports debugPeerSignal.
 func (r *router) debugPeerSignal(input peerSignalDebugInput) {
 	if !routeDebugEnabled() {
 		return
@@ -690,7 +676,6 @@ func (r *router) debugPeerSignal(input peerSignalDebugInput) {
 		"authorization", authorization)
 }
 
-// setViewerRelayCapacity ports setViewerRelayCapacity.
 func (r *router) setViewerRelayCapacity(participant authenticatedRouteParticipant, downstreamEdges int) {
 	rm := r.room(participant.roomID)
 	r.debug(participant.roomID, "relay-capacity-received",
@@ -703,7 +688,6 @@ func (r *router) setViewerRelayCapacity(participant authenticatedRouteParticipan
 	}
 }
 
-// handleRouteReady ports handleRouteReady.
 func (r *router) handleRouteReady(participant authenticatedRouteParticipant, message protocol.RouteReadyMessage) {
 	if participant.role != protocol.RoleViewer || message.Phase != "prepare" {
 		return
@@ -748,7 +732,6 @@ func (r *router) handleRouteReady(participant authenticatedRouteParticipant, mes
 	r.requestPump(participant.roomID)
 }
 
-// handleRouteTransportConnected ports handleRouteTransportConnected.
 func (r *router) handleRouteTransportConnected(participant authenticatedRouteParticipant, message protocol.RouteTransportConnectedMessage) {
 	if participant.role != protocol.RoleViewer {
 		return
@@ -786,7 +769,6 @@ func (r *router) handleRouteTransportConnected(participant authenticatedRoutePar
 	}
 }
 
-// handleRouteMediaUnavailable ports handleRouteMediaUnavailable.
 func (r *router) handleRouteMediaUnavailable(participant authenticatedRouteParticipant, message protocol.RouteMediaUnavailableMessage) {
 	if participant.role != protocol.RoleViewer {
 		return
@@ -815,7 +797,6 @@ func (r *router) handleRouteMediaUnavailable(participant authenticatedRouteParti
 	r.requestPump(participant.roomID)
 }
 
-// handleRouteFailed ports handleRouteFailed.
 func (r *router) handleRouteFailed(participant authenticatedRouteParticipant, message protocol.RouteFailedMessage) {
 	connectionID := ""
 	if message.ConnectionID != nil {
@@ -939,7 +920,6 @@ func (r *router) refreshSfu(participant authenticatedRouteParticipant, revision 
 	}
 }
 
-// disconnectParticipant ports disconnectParticipant.
 func (r *router) disconnectParticipant(roomID, peerID, sessionID string) {
 	rm, _ := r.rooms.Get(roomID)
 	if rm == nil || rm.controller == nil || !rm.controller.DisconnectSession(peerID, sessionID) {
@@ -948,7 +928,6 @@ func (r *router) disconnectParticipant(roomID, peerID, sessionID string) {
 	r.requestPump(roomID)
 }
 
-// removeViewer ports removeViewer.
 func (r *router) removeViewer(roomID, peerID string) {
 	rm, _ := r.rooms.Get(roomID)
 	if rm != nil {
@@ -961,7 +940,7 @@ func (r *router) removeViewer(roomID, peerID string) {
 	}
 }
 
-// stopRoom ports stopRoom: advertised capacities survive the share (O32).
+// stopRoom preserves advertised capacities across shares.
 func (r *router) stopRoom(roomID string) {
 	type capacity struct {
 		peerID string
@@ -982,7 +961,6 @@ func (r *router) stopRoom(roomID string) {
 	}
 }
 
-// deleteRoom ports deleteRoom.
 func (r *router) deleteRoom(roomID string) {
 	r.clearRoom(roomID)
 }
@@ -996,8 +974,7 @@ func (r *router) room(roomID string) *roomRuntime {
 	return rm
 }
 
-// createController ports createController (O18: connected viewers in store
-// order).
+// createController connects viewers in store order.
 func (r *router) createController(roomID string, rm *roomRuntime, host authenticatedRouteParticipant) {
 	routePolicy := host.routePolicy
 	operationTimeoutMs := defaultRouteOperationTimeoutMs
@@ -1031,7 +1008,7 @@ func (r *router) createController(roomID string, rm *roomRuntime, host authentic
 	}
 }
 
-// clearRoom ports clearRoom (O31: admission publication order).
+// clearRoom drains publications in admission order.
 func (r *router) clearRoom(roomID string) {
 	rm, ok := r.rooms.Get(roomID)
 	if !ok {
@@ -1060,9 +1037,9 @@ type assignmentEdge struct {
 	publicationGeneration string
 }
 
-// assignments ports assignments(). candidate overlays the current attempt
-// (nil for the committed graph only). O19: peers are the host first, then
-// the store's viewer order; O20/O21: edges keep the snapshot's insertion
+// assignments overlays the current attempt when candidate is non-nil
+// and otherwise uses only the committed graph. Peers are the host first, then
+// the store's viewer order; edges keep the snapshot's insertion
 // order, which is the childPeerIds order on the wire.
 func (r *router) assignments(
 	roomID string,
@@ -1185,8 +1162,8 @@ func (r *router) assignments(
 	return assignments
 }
 
-// broadcastActive ports broadcastActive (O23: host first, then viewers in
-// store order; one routesChanged at the end).
+// broadcastActive sends to the host first, then viewers in store order,
+// with one routesChanged call at the end.
 func (r *router) broadcastActive(roomID string, rm *roomRuntime) {
 	if rm.controller == nil {
 		return
@@ -1232,7 +1209,6 @@ func (r *router) broadcastActive(roomID string, rm *roomRuntime) {
 	}
 }
 
-// pathIsPhysical ports pathIsPhysical.
 func (r *router) pathIsPhysical(roomID string, snapshot route.RouteSnapshot, childPeerID string) bool {
 	rm, _ := r.rooms.Get(roomID)
 	if rm == nil || rm.hostPeerID == "" {
@@ -1263,7 +1239,7 @@ func (r *router) pathIsPhysical(roomID string, snapshot route.RouteSnapshot, chi
 	return true
 }
 
-// childForPair ports childForPair; "" is the TS undefined.
+// childForPair returns an empty string when neither peer is the other's child.
 func childForPair(snapshot route.RouteSnapshot, firstPeerID, secondPeerID string) string {
 	if first, ok := snapshot.UpstreamByViewer.Get(firstPeerID); ok &&
 		first.Kind == route.UpstreamPeer && first.ParentPeerID == secondPeerID {
@@ -1276,7 +1252,6 @@ func childForPair(snapshot route.RouteSnapshot, firstPeerID, secondPeerID string
 	return ""
 }
 
-// connectedPeer ports connectedPeer.
 func (r *router) connectedPeer(roomID, peerID string) (room.ConnectedPeer, bool) {
 	if host, ok := r.store.GetConnectedHost(roomID); ok && host.PeerID == peerID {
 		return host, true
@@ -1284,7 +1259,6 @@ func (r *router) connectedPeer(roomID, peerID string) (room.ConnectedPeer, bool)
 	return r.store.GetConnectedViewer(roomID, peerID)
 }
 
-// debugPeer ports debugPeer.
 func (r *router) debugPeer(roomID, peerID string) string {
 	rm, _ := r.rooms.Get(roomID)
 	if rm != nil && peerID == rm.hostPeerID {
@@ -1332,7 +1306,7 @@ func (c qualityCopyContext) kv() []any {
 	}
 }
 
-// qualityCopyContext ports qualityCopyContext (O33: count only).
+// qualityCopyContext uses counts without depending on iteration order.
 func (r *router) qualityCopyContext(
 	snapshot route.RouteSnapshot,
 	hostPeerID string,
@@ -1421,7 +1395,6 @@ func (r *router) qualityCopyContext(
 	return context
 }
 
-// debugTuple ports debugTuple.
 func (r *router) debugTuple(roomID string, tuple route.CandidateTuple) string {
 	if tuple.Kind == route.UpstreamPeer {
 		label := "p2p:" + r.debugPeer(roomID, tuple.ParentPeerID)
@@ -1433,7 +1406,7 @@ func (r *router) debugTuple(roomID string, tuple route.CandidateTuple) string {
 	return "sfu:" + string(tuple.Publication)
 }
 
-// debug ports debug(): one sanitised slog event. details are key/value
+// debug emits one sanitised slog event. Details are key/value
 // pairs; never pass raw peer, session or connection IDs (use debugPeer).
 func (r *router) debug(roomID, event string, details ...any) {
 	if !routeDebugEnabled() {
@@ -1445,22 +1418,20 @@ func (r *router) debug(roomID, event string, details ...any) {
 	slog.Info("piik-route", args...)
 }
 
-// sendRoomError ports sendRoomError: only the connected host is told.
+// sendRoomError notifies only the connected host.
 func (r *router) sendRoomError(roomID, code, message string) {
 	if host, ok := r.store.GetConnectedHost(roomID); ok {
 		r.hooks.sendToSession(host.SessionID, protocol.ErrorMessage{Type: "error", Code: code, Message: message})
 	}
 }
 
-// sendViewerRouteStatus ports sendViewerRouteStatus.
 func (r *router) sendViewerRouteStatus(roomID, viewerPeerID string, message protocol.RouteStatusMessage) {
 	if viewer, ok := r.store.GetConnectedViewer(roomID, viewerPeerID); ok {
 		r.hooks.sendToSession(viewer.SessionID, message)
 	}
 }
 
-// sendRouteFailures ports sendRouteFailures (O27: deduplicated, first
-// occurrence wins).
+// sendRouteFailures deduplicates recipients; first occurrence wins.
 func (r *router) sendRouteFailures(roomID string, failedPeerIDs []string, revision int64) {
 	seen := map[string]struct{}{}
 	for _, peerID := range failedPeerIDs {
@@ -1497,7 +1468,7 @@ func assignmentFor(assignments map[string]protocol.ParticipantRouteAssignment, p
 	return emptyAssignment()
 }
 
-// opaqueID ports opaqueId(): 16 random bytes, base64url without padding.
+// opaqueID encodes 16 random bytes as base64url without padding.
 func opaqueID() string {
 	value := make([]byte, 16)
 	// crypto/rand.Read never fails; it panics if the operating system source does.

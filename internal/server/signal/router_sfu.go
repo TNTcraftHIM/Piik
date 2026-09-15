@@ -30,8 +30,7 @@ type drainOperation struct {
 	err  error
 }
 
-// commitReservation ports commitReservation (O30: drained generations in
-// admission order).
+// commitReservation drains generations in admission order.
 func (r *router) commitReservation(reservation route.CandidateReservation) bool {
 	if reservation.Kind == route.ReservationDirect {
 		return true
@@ -76,7 +75,7 @@ func (r *router) releaseResources(resources []*route.Resource) {
 	}
 }
 
-// releaseResource ports releaseResource: idempotent through Released.
+// releaseResource is idempotent through Released.
 func (r *router) releaseResource(resource *route.Resource) {
 	if resource.Released {
 		return
@@ -105,7 +104,7 @@ func (r *router) releaseSubscription(fence sfu.SubscriptionFence) bool {
 	return accepted
 }
 
-// wakeResourceWaiters ports wakeResourceWaiters (O29: snapshot order).
+// wakeResourceWaiters preserves the waiters' snapshot order.
 func (r *router) wakeResourceWaiters() {
 	roomIDs := r.resourceWaiters.Keys()
 	r.resourceWaiters.Clear()
@@ -153,8 +152,8 @@ func (r *router) sendFreshSfuConfig(participant authenticatedRouteParticipant) {
 	}
 }
 
-// scheduleSfuPublicationDrain ports scheduleSfuPublicationDrain (O28: the
-// sibling subscription tasks are deleted during the live iteration).
+// scheduleSfuPublicationDrain deletes sibling subscription tasks during
+// the live iteration.
 func (r *router) scheduleSfuPublicationDrain(fence sfu.ResourceFence) {
 	for key, task := range r.sfuDrainTasks.All() {
 		if task.kind == drainSubscription && task.fence.ResourceFence == fence {
@@ -164,7 +163,7 @@ func (r *router) scheduleSfuPublicationDrain(fence sfu.ResourceFence) {
 	r.scheduleSfuDrain(drainPublication, sfu.SubscriptionFence{ResourceFence: fence})
 }
 
-// scheduleSfuSubscriptionDrain ports scheduleSfuSubscriptionDrain: a pending
+// scheduleSfuSubscriptionDrain skips work when a pending
 // publication drain of the same room already removes every participant.
 func (r *router) scheduleSfuSubscriptionDrain(fence sfu.SubscriptionFence) {
 	if r.sfuDrainTasks.Has(sfu.SubscriptionFence{ResourceFence: fence.ResourceFence}) {
@@ -173,7 +172,6 @@ func (r *router) scheduleSfuSubscriptionDrain(fence sfu.SubscriptionFence) {
 	r.scheduleSfuDrain(drainSubscription, fence)
 }
 
-// scheduleSfuDrain ports scheduleSfuDrain.
 func (r *router) scheduleSfuDrain(kind drainKind, fence sfu.SubscriptionFence) {
 	if r.sfu == nil {
 		return
@@ -243,7 +241,7 @@ func (r *router) settleSfuDrain(key sfu.SubscriptionFence, task *sfuDrainTask, e
 }
 
 // awaitDrain is `await task.operation` inside close(): mu is released while
-// waiting and re-acquired before returning; ctx bounds the wait (D6).
+// waiting and re-acquired before returning; ctx bounds the wait.
 func (r *router) awaitDrain(ctx context.Context, operation *drainOperation) error {
 	var err error
 	r.io(func() {
@@ -257,7 +255,7 @@ func (r *router) awaitDrain(ctx context.Context, operation *drainOperation) erro
 	return err
 }
 
-// reservationResources ports reservationResources: a borrowed reuse edge
+// In reservationResources, a borrowed reuse edge
 // belongs to another holder and is not released.
 func reservationResources(reservation route.CandidateReservation) []*route.Resource {
 	var resources []*route.Resource

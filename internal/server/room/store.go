@@ -188,7 +188,7 @@ type Store struct {
 	maxRooms          int
 	maxViewersPerRoom int
 	// gate is per store; the TypeScript module-level gate was shared by every
-	// RoomStore in a process, of which there was one (D11).
+	// RoomStore in a process, of which there was one.
 	gate gate
 }
 
@@ -916,7 +916,7 @@ func (s *Store) takeRoomCode(preferredRoomID string) (string, error) {
 // uniformIndex draws a uniform index below count from 8 random bytes, rejecting
 // the values above the largest multiple of count. The TypeScript computed the
 // limit in BigInt as 2^64 - 2^64 % count; (MaxUint64 % count + 1) % count is
-// the same remainder without the uint64 wrap at a power-of-two count (D11).
+// the same remainder without the uint64 wrap at a power-of-two count.
 func uniformIndex(count int, random func(size int) []byte) (int, error) {
 	span := uint64(count)
 	remainder := (math.MaxUint64%span + 1) % span

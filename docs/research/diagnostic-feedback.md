@@ -1,6 +1,6 @@
 # Diagnostic Feedback
 
-Reviewed 2026-09-09. [Configuration](../reference/configuration.md#diagnostics)
+Reviewed 2026-09-09. [Configuration](../standards/configuration.md#diagnostics)
 owns current activation, contents, bounds and disclosure. This note records the
 references and integration decisions; it is not another logging API contract.
 

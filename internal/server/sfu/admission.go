@@ -88,7 +88,6 @@ func NewAdmission(options AdmissionOptions) *Admission {
 	}
 }
 
-// ReservePublication ports reservePublication.
 func (admission *Admission) ReservePublication(fence ResourceFence) bool {
 	assertFence(fence)
 	room, _ := admission.rooms.Get(fence.RoomID)
@@ -124,7 +123,6 @@ func (admission *Admission) ReservePublication(fence ResourceFence) bool {
 	return true
 }
 
-// ReserveSubscription ports reserveSubscription.
 func (admission *Admission) ReserveSubscription(fence SubscriptionFence) bool {
 	assertSubscriptionFence(fence)
 	publication := admission.publication(fence.ResourceFence)
@@ -147,8 +145,8 @@ func (admission *Admission) ReserveSubscription(fence SubscriptionFence) bool {
 	return true
 }
 
-// CommitPublication ports commitPublication. The second result is false where
-// the TypeScript returns null; an empty slice with true is its empty array.
+// CommitPublication returns false as its second result where TypeScript returns
+// null; an empty slice with true is its empty array.
 func (admission *Admission) CommitPublication(fence ResourceFence) ([]ResourceFence, bool) {
 	assertFence(fence)
 	room, _ := admission.rooms.Get(fence.RoomID)
@@ -193,7 +191,6 @@ func (admission *Admission) CommitPublication(fence ResourceFence) ([]ResourceFe
 	return draining, true
 }
 
-// CommitSubscription ports commitSubscription.
 func (admission *Admission) CommitSubscription(fence SubscriptionFence) bool {
 	assertSubscriptionFence(fence)
 	publication := admission.publication(fence.ResourceFence)
@@ -214,7 +211,6 @@ func (admission *Admission) CommitSubscription(fence SubscriptionFence) bool {
 	return true
 }
 
-// BeginSubscriptionDrain ports beginSubscriptionDrain.
 func (admission *Admission) BeginSubscriptionDrain(fence SubscriptionFence) bool {
 	assertSubscriptionFence(fence)
 	publication := admission.publication(fence.ResourceFence)
@@ -229,7 +225,6 @@ func (admission *Admission) BeginSubscriptionDrain(fence SubscriptionFence) bool
 	return true
 }
 
-// BeginDrain ports beginDrain.
 func (admission *Admission) BeginDrain(fence ResourceFence) bool {
 	assertFence(fence)
 	publication := admission.publication(fence)
@@ -270,7 +265,6 @@ func (admission *Admission) CompleteSubscriptionDrain(fence SubscriptionFence) b
 	return true
 }
 
-// CompleteDrain ports completeDrain.
 func (admission *Admission) CompleteDrain(fence ResourceFence) bool {
 	assertFence(fence)
 	room, _ := admission.rooms.Get(fence.RoomID)
@@ -294,7 +288,6 @@ func (admission *Admission) CompleteDrain(fence ResourceFence) bool {
 	return true
 }
 
-// BeginDrainRoom ports beginDrainRoom.
 func (admission *Admission) BeginDrainRoom(roomID string) []ResourceFence {
 	if roomID == "" {
 		panic("SFU resource room ID is invalid")
@@ -313,7 +306,6 @@ func (admission *Admission) BeginDrainRoom(roomID string) []ResourceFence {
 	return fences
 }
 
-// BeginDrainAll ports beginDrainAll.
 func (admission *Admission) BeginDrainAll() []ResourceFence {
 	var fences []ResourceFence
 	for _, roomID := range admission.rooms.Keys() {
@@ -322,7 +314,6 @@ func (admission *Admission) BeginDrainAll() []ResourceFence {
 	return fences
 }
 
-// Usage ports usage().
 func (admission *Admission) Usage() Usage {
 	return Usage{Ingress: admission.ingressInUse, Egress: admission.egressInUse}
 }
@@ -375,8 +366,7 @@ func assertSubscriptionFence(fence SubscriptionFence) {
 	}
 }
 
-// assertPositiveSafeInteger ports assertPositiveSafeInteger. Go's int makes the
-// TypeScript Number.isSafeInteger fractional case unrepresentable; only the
+// Go's int makes the Number.isSafeInteger fractional case unrepresentable; only the
 // range checks survive.
 func assertPositiveSafeInteger(value int, name string) {
 	if value <= 0 || int64(value) > protocol.MaxSafeInteger {

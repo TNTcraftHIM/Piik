@@ -2,7 +2,7 @@
 
 - Research date: 2026-08-26; permanent-room revision reviewed 2026-09-10
 - Status: SQLite authority verified; current behavior is owned by
-  [rooms/access](../product/rooms-access.md)
+  [rooms/access](../standards/rooms-access.md)
 
 ## Current Conclusion
 

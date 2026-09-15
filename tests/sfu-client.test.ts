@@ -313,7 +313,7 @@ describe("embedded SFU browser transport", () => {
         scaleResolutionDownBy: 1.5,
       }),
     ]);
-    expect(host.getAudioSenderParameters()?.appliedMaxBitrate).toBe(192_000);
+    expect(pc.transceivers[1]!.sender.parameters.encodings[0]!.maxBitrate).toBe(192_000);
     expect(send.mock.calls.at(-1)![0]).toMatchObject({
       kind: "media",
       media: { codec: "h264", audioBitrate: 192_000 },
@@ -532,7 +532,7 @@ describe("embedded SFU browser transport", () => {
     expect(pc.transceivers[0]!.sender.setParameters).toHaveBeenCalledTimes(
       parameters,
     );
-    expect(host.getAudioSenderParameters()?.appliedMaxBitrate).toBe(64_000);
+    expect(pc.transceivers[1]!.sender.parameters.encodings[0]!.maxBitrate).toBe(64_000);
   });
 
   it("closes every owned clone during in-flight replacement without stopping the sources", async () => {

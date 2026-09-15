@@ -2,8 +2,8 @@
 
 Reviewed: 2026-09-08. Source-backed review and synthetic VP8/H264 feasibility probes,
 not an accepted engine replacement. [ADR-0013](../adr/0013-embedded-node-local-media.md)
-still owns the direct-child/shared-output model; [TODO](../todo.md) owns work and
-the dependent release hold. The question is whether retaining mature encoder
+owns the direct-child/shared-output model. [Status](../status.md) owns current
+adoption; this investigation asks whether retaining mature encoder
 control while sharing compatible encoding work is smaller and more complete
 than extending the current Native fixed-output candidate.
 

@@ -28,7 +28,6 @@ import {
   CaptureSourcePicker,
   type NativeSourceList,
 } from "../components/living/CaptureSourcePicker";
-import { useMetricsExpanded } from "../components/living/Metrics";
 import { PawnDetail } from "../components/living/PawnDetail";
 import {
   RoomAdmissionBadge,
@@ -63,7 +62,6 @@ import {
   Row,
   RowGroup,
   SwitchItem,
-  VisGlyph,
 } from "../components/living/primitives";
 import { hasPeerRouteEvidence } from "../components/status-badge-model";
 import { Glyph, type GlyphName } from "../ui/icons";
@@ -503,7 +501,7 @@ export function HostPage({
   const [joinRejectedAttempt, setJoinRejectedAttempt] = useState(0);
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [metricsExpanded, setMetricsExpanded] = useMetricsExpanded();
+  const [metricsExpanded, setMetricsExpanded] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -3335,7 +3333,7 @@ export function HostPage({
                         disabled={roomMutating}
                         onClick={requestSharing}
                       >
-                        <VisGlyph name="cast" size={34} draw="entry-cast" />
+                        <Glyph name="cast" size={34} draw="entry-cast" />
                       </button>
                     </Tooltip>
                     {vis ? null : (
@@ -3352,7 +3350,7 @@ export function HostPage({
                         aria-controls="host-room-code-entry"
                         onClick={() => setJoiningRoom((current) => !current)}
                       >
-                        <VisGlyph name="door" size={30} draw="entry-door" />
+                        <Glyph name="door" size={30} draw="entry-door" />
                       </button>
                     </Tooltip>
                     {vis ? null : (
@@ -3773,7 +3771,7 @@ export function HostPage({
                       disabled={roomMutating}
                       onClick={() => void changeCodeEntryPolicy("open")}
                     >
-                      <VisGlyph name="globe" size={19} />
+                      <Glyph name="globe" size={19} />
                       <Cap k="host.policy.open" />
                     </button>
                   </Tooltip>
@@ -3791,7 +3789,7 @@ export function HostPage({
                       disabled={roomMutating}
                       onClick={() => void changeCodeEntryPolicy("private")}
                     >
-                      <VisGlyph name="lock" size={19} />
+                      <Glyph name="lock" size={19} />
                       <Cap k="host.policy.private" />
                     </button>
                   </Tooltip>
@@ -3807,7 +3805,7 @@ export function HostPage({
                       aria-controls="host-password-form"
                       onClick={() => setPasswordOpen((current) => !current)}
                     >
-                      <VisGlyph name="key" size={19} />
+                      <Glyph name="key" size={19} />
                       {viewerPasswordEnabled ? (
                         <i className="lr-chip-dot" aria-hidden="true" />
                       ) : null}
@@ -3955,7 +3953,7 @@ export function HostPage({
                     <span
                       className="lr-door-glyph"
                     >
-                      <VisGlyph name="expand" size={19} />
+                      <Glyph name="expand" size={19} />
                       <Cap k="host.advanced.resolution" />
                     </span>
                     <div
@@ -3985,7 +3983,7 @@ export function HostPage({
                     <span
                       className="lr-door-glyph"
                     >
-                      <VisGlyph name="frames" size={19} />
+                      <Glyph name="frames" size={19} />
                       <Cap k="host.advanced.framerate" />
                     </span>
                     <Tooltip kind="hint-metric-fps" text={vis ? undefined : t("host.advanced.framerate")} className="lr-slider-hint">
@@ -4012,7 +4010,7 @@ export function HostPage({
                     <span
                       className="lr-door-glyph"
                     >
-                      <VisGlyph name="gauge" size={19} />
+                      <Glyph name="gauge" size={19} />
                       <Cap k="host.advanced.bitrate" />
                     </span>
                     <Tooltip kind="hint-metric-bitrate" text={vis ? undefined : t("host.advanced.bitrate")} className="lr-slider-hint">
@@ -4042,7 +4040,7 @@ export function HostPage({
                     <span
                       className="lr-door-glyph"
                     >
-                      <VisGlyph name="mountain" size={19} />
+                      <Glyph name="mountain" size={19} />
                       <Cap k="host.advanced.preference" />
                     </span>
                     <div
@@ -4084,7 +4082,7 @@ export function HostPage({
                     <span
                       className="lr-door-glyph"
                     >
-                      <VisGlyph name="speaker" size={19} />
+                      <Glyph name="speaker" size={19} />
                       <Cap k="host.advanced.audio" />
                     </span>
                     <div
@@ -4126,7 +4124,7 @@ export function HostPage({
                     <span
                       className="lr-door-glyph"
                     >
-                      <VisGlyph name="branch" size={19} />
+                      <Glyph name="branch" size={19} />
                       <Cap k="host.advanced.route" />
                     </span>
                     <div className="lr-row-group">
@@ -4182,7 +4180,7 @@ export function HostPage({
                     <span
                       className="lr-door-glyph"
                     >
-                      <VisGlyph name="puzzle" size={19} />
+                      <Glyph name="puzzle" size={19} />
                       <Cap k="host.advanced.codec" />
                     </span>
                     <div

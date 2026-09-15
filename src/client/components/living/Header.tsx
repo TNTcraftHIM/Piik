@@ -1,7 +1,6 @@
 // App header: brand mark, LED connection state, language selection and theme.
 import { useState } from "react";
 import { browserDebugEnabled, debugError, downloadBrowserDebug, withBrowserDebug } from "../../lib/debug";
-import { VisGlyph } from "./primitives";
 import { BrandMark } from "./BrandMark";
 import { Tooltip } from "./Tooltip";
 import type { ComicKind } from "./Comic";
@@ -61,7 +60,7 @@ export function HeaderControls({ diagnosticControl }: { diagnosticControl?: Reac
         toggle();
       }}
     >
-      <VisGlyph name={theme === "dark" ? "sun" : "moon"} size={16} draw="theme-toggle" />
+      <Glyph name={theme === "dark" ? "sun" : "moon"} size={16} draw="theme-toggle" />
       {vis ? null : (
         <span className="lr-cap">
           {t(theme === "dark" ? "theme.light.short" : "theme.dark.short")}

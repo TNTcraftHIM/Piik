@@ -1,10 +1,10 @@
 # Documentation Ownership
 
 The repository is the durable source across sessions, devices and agents.
-Use [the documentation map](./README.md) to find a topic, then update its owner.
+Use [the documentation map](../README.md) to find a topic, then update its owner.
 Chat, agent summaries and an old branch do not replace current code, contracts
-and evidence. Task authority stays in [AGENTS.md](../AGENTS.md); delivery and
-verification procedures stay in [CONTRIBUTING.md](../CONTRIBUTING.md).
+and evidence. Task authority stays in [AGENTS.md](../../AGENTS.md); delivery and
+verification procedures stay in [CONTRIBUTING.md](../../CONTRIBUTING.md).
 
 ## Owners
 
@@ -12,16 +12,16 @@ verification procedures stay in [CONTRIBUTING.md](../CONTRIBUTING.md).
 | --- | --- | --- |
 | Universal constraints and navigation | `AGENTS.md` | Short mandatory boundaries and links; no procedure manual |
 | Branches, review, validation, PRs, releases and cleanup | `CONTRIBUTING.md` | Executable workflow |
-| Module boundaries, interface discipline and ablation | [Engineering](./reference/engineering.md) | Current responsibility map and shared coding rules |
-| Names, terminology and voice | [Naming and copy](./reference/naming.md) | Product/tool names, role labels and Chinese/English writing conventions |
-| Translation contributions | [Translation guide](./guide/translating.md) and its Chinese counterpart | Catalog editing, new-language registration and translation review |
-| Illustration, palette, motion and accessible layout | [Visual language](./design/visual-language.md) | Shared Browser/App design grammar |
-| Status projection | [Media status](./design/media-status.md) | Which facts each display surface may express |
-| Release identity and compatibility | [Versioning](./reference/versioning.md) | Version roles, protected interfaces and public-readiness boundary |
-| Current product behavior | `docs/product/` | One owner per domain; promises, boundaries and non-obvious invariants |
+| Module boundaries, interface discipline and ablation | [Engineering](./engineering.md) | Current responsibility map and shared coding rules |
+| Names, terminology and voice | [Naming and copy](./naming.md) | Product/tool names, role labels and Chinese/English writing conventions |
+| Translation contributions | [Translation guide](../guide/translating.md) and its Chinese counterpart | Catalog editing, new-language registration and translation review |
+| Illustration, palette, motion and accessible layout | [Visual language](./visual-language.md) | Shared Browser/App design grammar |
+| Status projection | [Media status](./media-status.md) | Which facts each display surface may express |
+| Release identity and compatibility | [Versioning](./versioning.md) | Version roles, protected interfaces and public-readiness boundary |
+| Current product behavior | [Rooms](./rooms-access.md), [routing](./routing-transport.md), [media](./media-quality.md), [lifecycle](./presentation-lifecycle.md) | One owner per domain; promises, boundaries and non-obvious invariants |
 | Architecture decisions | `docs/adr/` | Decision status, rationale and consequences; explicitly supersede changed clauses |
 | Measurements and external evidence | `docs/research/` | Date, sources, observations, inference, limits and license scope |
-| Deployment and configuration | `docs/deployment.md`, `docs/operations/`, `docs/reference/configuration.md` | Runnable operator reference; no per-release diary |
+| Deployment and configuration | `docs/deployment.md`, `docs/operations/`, `docs/standards/configuration.md` | Runnable operator reference; no per-release diary |
 | Compact product map | `docs/project-memory.md` | Stable summaries and domain navigation, not implementation inventories |
 | Current execution/deployment index | `docs/status.md` | Current boundaries and pointers; exact artifact identity stays in release metadata |
 | Remaining work and decisions | `docs/todo.md` | One task ledger, with executable work separated from parked ideas |
@@ -70,14 +70,14 @@ stale procedures and duplicated prescriptions; preserve still-consumed behavior,
 failure boundaries, reasoning and reproducible evidence. An ADR can retain a
 historical decision when its superseded status is clear.
 
-Document cost is part of [engineering ablation](./reference/engineering.md#ablation-and-review).
+Document cost is part of [engineering ablation](./engineering.md#ablation-and-review).
 Do not delete a product promise solely to shrink a file. Archive completed work
 in Git, keep candidate ideas out of active instructions, and never promote an
 agent suggestion to accepted policy simply by writing it in a checklist.
 
 The top-level context stays a map. Directory-specific instructions belong near
 the code only when that module exists and the rule is needed every time.
-The [context-governance research](./research/agent-context-governance.md) owns
+The [context-governance research](../research/agent-context-governance.md) owns
 the external rationale; the existing hygiene scripts own executable limits.
 Their gardening warnings invite review, not arbitrary compression; hard failures
 for broken links, required owners and instruction-loading limits remain binding.
@@ -86,7 +86,7 @@ for broken links, required owners and instruction-loading limits remain binding.
 
 For documentation work use the existing link, whitespace and repository-hygiene
 checks; do not rerun unrelated media benchmarks. The shared
-[`required-project-paths.txt`](../scripts/required-project-paths.txt) lists durable
+[`required-project-paths.txt`](../../scripts/required-project-paths.txt) lists durable
 owners for both hygiene entry points. No additional checker is needed for each
 new convention.
 

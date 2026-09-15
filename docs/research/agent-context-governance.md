@@ -3,7 +3,7 @@
 - Reviewed: 2026-08-27
 - Scope: repository context, durable memory, documentation types, and decisions
 - Status: evidence; repository policy is owned by
-  [maintenance](../maintenance.md)
+  [maintenance](../standards/documentation.md)
 
 ## Findings
 
@@ -72,4 +72,4 @@ map, parallel agent-context format, or separate RFC repository would add more
 ownership than it removes. The useful practices are bounded always-on context,
 one owner per fact, domain-shaped reference, evidence on demand, short ADRs,
 link checks, and Git-backed history. Exact repository policy remains in
-[maintenance](../maintenance.md), not in this research note.
+[maintenance](../standards/documentation.md), not in this research note.

@@ -222,9 +222,8 @@ func EncodeServerMessage(message ServerMessage) ([]byte, error) {
 	return marshalJSON(message)
 }
 
-// DecodeServerMessage ports decodeServerMessage. The server never reads its
-// own messages in production; this exists so the shared wire fixture can be
-// replayed from Go.
+// DecodeServerMessage supports replaying the shared wire fixture from Go.
+// The server never reads its own messages in production.
 func DecodeServerMessage(data []byte) (ServerMessage, error) {
 	messageType, err := typeOf(data, "type")
 	if err != nil {

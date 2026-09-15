@@ -27,7 +27,7 @@ checks the Browser, `scripts/tsconfig.json` checks tooling/tests, and root
 | `scripts/` | Development checks, browser/media gates, dependency assembly and release packaging/publishing tools |
 | `tests/` | TypeScript/tooling tests and cross-language fixtures; Go tests stay beside their packages |
 | `deploy/` | Operator scripts and container, proxy, service and certificate templates |
-| `docs/` | User guides, contracts, decisions and operations; [documentation ownership](../maintenance.md) defines each owner |
+| `docs/` | User guides, contracts, decisions and operations; [documentation ownership](./documentation.md) defines each owner |
 | `licenses/` | Third-party license texts, pinned notice sources and their redistribution reference |
 | `.github/`, `.githooks/`, `.agents/`, `.codex/` | Platform automation and scoped agent/tool integration |
 | `build/`, `node_modules/`, `coverage/` | Ignored local output and dependencies; never current product truth |
@@ -66,7 +66,7 @@ Directory names are a map, not a requirement to introduce another layer.
 | Boundary | Schema/validation owners |
 | --- | --- |
 | Room HTTP and Browser/Server signaling | `src/shared/protocol.ts` and `internal/server/protocol`; HTTP dispatch in `internal/server/app`, WS dispatch in `signal` |
-| Site access HTTP | `src/client/lib/api.ts` and `internal/server/app/json.go`; cookies and access behavior belong to [rooms/access](../product/rooms-access.md) |
+| Site access HTTP | `src/client/lib/api.ts` and `internal/server/app/json.go`; cookies and access behavior belong to [rooms/access](./rooms-access.md) |
 | Browser/App discovery and control | `src/client/native/wire.ts`, `internal/app/loopback/protocol.go`, `internal/app/nativecontrol/wire.go` |
 | App/capture sidecar | `internal/app/nativecapture` and each platform capture adapter; probe/commands and encoded-frame envelope are distinct formats |
 | Configuration and persistence | `internal/server/config`, `internal/app/config`, `internal/server/room/database.go`; operator semantics in [configuration](./configuration.md) |
@@ -168,8 +168,8 @@ above rather than searching the tree.
   request allowed behavior. The server enforces the policy even when a client
   requests more. The UI retains the same controls and explains locked choices.
   See [configuration](./configuration.md); avoid a second flag with the same job.
-- Browser/App/Server share [visual language](../design/visual-language.md) and
-  [status projection](../design/media-status.md). A new page, locale or deployment
+- Browser/App/Server share [visual language](./visual-language.md) and
+  [status projection](./media-status.md). A new page, locale or deployment
   does not invent a new palette, status model or user-role metaphor.
 - Keep package comments about current responsibilities and invariants. Historical
   migration paths belong in ADR/research unless they explain a surviving constraint.
@@ -189,7 +189,7 @@ above rather than searching the tree.
 Repeated meaning has one owned contract across code, interaction, wording,
 illustration, diagnostics and documentation. Shared components can still receive
 conflicting caller policies. Locate related producers, consumers and the existing
-[owner](../maintenance.md#owners), then make its relevant contract explicit:
+[owner](./documentation.md#owners), then make its relevant contract explicit:
 
 - **Meaning and evidence:** the subject, fact or action; who may assert it;
   its scope and generation; how unknown differs from failure or success.

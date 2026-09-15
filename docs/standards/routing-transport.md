@@ -2,7 +2,7 @@
 
 This file owns the user-visible routing and transport contract.
 [ADR-0005](../adr/0005-automatic-hybrid-media-routing.md) owns the controller
-algorithm and resource invariants; [configuration](../reference/configuration.md)
+algorithm and resource invariants; [configuration](./configuration.md)
 owns ports and [self-hosting](../operations/self-hosting.md) owns service setup.
 
 ## Topology

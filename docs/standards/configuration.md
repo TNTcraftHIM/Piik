@@ -77,9 +77,8 @@ Room authority has no idle expiry; the separate site-access cookie keeps its
 Removed access, room TTL/lease, endpoint-tier, room-rollout, and TURN variables fail
 startup even when blank. A present `NODE_ENV` fails the same way, so a stale
 environment file cannot silently drop a deployment out of production. The
-private deployment is upgraded atomically; there are no compatibility aliases or
-dual configuration readers. [Versioning](./versioning.md) owns the planned public
-upgrade promise and the work required before its first release.
+private deployment uses its scoped atomic updater. Supported public upgrades and
+any compatibility handling follow the active [versioning contract](./versioning.md).
 
 ## Piik App Configuration
 

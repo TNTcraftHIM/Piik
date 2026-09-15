@@ -7,7 +7,7 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 )
 
-// candidateOpportunityBase ports 2900: the NUL-joined ledger key. A session
+// candidateOpportunityBase returns the NUL-joined ledger key. A session
 // change erases the key because the session is part of it.
 func (c *Controller) candidateOpportunityBase(childPeerID string, plan CandidatePlan) string {
 	childSessionID := ""
@@ -28,7 +28,6 @@ func (c *Controller) candidateOpportunityBase(childPeerID string, plan Candidate
 	return sfuOpportunityPrefix + childSessionID + "\x00" + hostSessionID
 }
 
-// candidateOpportunityAvailable ports 2823.
 func (c *Controller) candidateOpportunityAvailable(childPeerID string, plan CandidatePlan) bool {
 	child, _ := c.participants.Get(childPeerID)
 	if child == nil {
@@ -43,7 +42,7 @@ func (c *Controller) candidateOpportunityAvailable(childPeerID string, plan Cand
 			consumed.startedAttempts < maxNatConnectionAttempts)
 }
 
-// startCandidateOpportunity ports 2842: counts one NAT attempt for a peer
+// startCandidateOpportunity counts one NAT attempt for a peer
 // candidate of an availability or direct-convergence operation.
 func (c *Controller) startCandidateOpportunity(op *operation, plan CandidatePlan) *ConnectionAttemptProgress {
 	if !c.natPredictionEnabled ||
@@ -64,13 +63,11 @@ func (c *Controller) startCandidateOpportunity(op *operation, plan CandidatePlan
 	if ok {
 		newRank = min(previous.rank, rank)
 	}
-	// The new entry has no `exhausted` (2859-2862).
 	opportunities.Set(key, candidateOpportunity{rank: newRank, startedAttempts: startedAttempts})
 	op.peerAttemptStarted = true
 	return &ConnectionAttemptProgress{Current: startedAttempts, Total: maxNatConnectionAttempts}
 }
 
-// peerAttemptsStarted ports 2867.
 func (c *Controller) peerAttemptsStarted(childPeerID, parentPeerID string) int {
 	if !c.natPredictionEnabled {
 		return 0
@@ -90,7 +87,7 @@ func (c *Controller) peerAttemptsStarted(childPeerID, parentPeerID string) int {
 	return 0
 }
 
-// viewerAttemptsStarted ports 2880: the sum over every peer key.
+// viewerAttemptsStarted sums the attempts over every peer key.
 func (c *Controller) viewerAttemptsStarted(peerID string) int {
 	if !c.natPredictionEnabled {
 		return 0
@@ -108,7 +105,6 @@ func (c *Controller) viewerAttemptsStarted(peerID string) int {
 	return started
 }
 
-// hasRemainingNatOpportunity ports 2890.
 func (c *Controller) hasRemainingNatOpportunity(op *operation) bool {
 	if !isAvailabilityOperation(op.reason) || !op.peerAttemptStarted {
 		return false
@@ -121,7 +117,7 @@ func (c *Controller) hasRemainingNatOpportunity(op *operation) bool {
 	return false
 }
 
-// consumeCandidateOpportunity ports 2916: exhausts the key at its best rank.
+// consumeCandidateOpportunity exhausts the key at its best rank.
 func (c *Controller) consumeCandidateOpportunity(childPeerID string, plan CandidatePlan) {
 	child, _ := c.participants.Get(childPeerID)
 	if child == nil {
@@ -138,7 +134,6 @@ func (c *Controller) consumeCandidateOpportunity(childPeerID string, plan Candid
 	child.consumedCandidateOpportunities.Set(key, entry)
 }
 
-// qualityCandidateOpportunityAvailable ports 2934.
 func (c *Controller) qualityCandidateOpportunityAvailable(childPeerID string, plan CandidatePlan) bool {
 	observation := c.senderQualityObservations[childPeerID]
 	if observation == nil {
@@ -148,7 +143,6 @@ func (c *Controller) qualityCandidateOpportunityAvailable(childPeerID string, pl
 	return !ok || endpointTransitionRank(plan.EndpointTransition) < consumed
 }
 
-// consumeQualityCandidateOpportunity ports 2949.
 func (c *Controller) consumeQualityCandidateOpportunity(op *operation, plan *CandidatePlan) {
 	if op.reason != DemandQualityConvergence || plan == nil {
 		return
@@ -162,7 +156,6 @@ func (c *Controller) consumeQualityCandidateOpportunity(op *operation, plan *Can
 		endpointTransitionRank(plan.EndpointTransition))
 }
 
-// consumeQualityOperationCandidates ports 2967.
 func (c *Controller) consumeQualityOperationCandidates(op *operation) {
 	for index := range op.candidates {
 		candidate := op.candidates[index]
@@ -170,8 +163,7 @@ func (c *Controller) consumeQualityOperationCandidates(op *operation) {
 	}
 }
 
-// consumeActiveEdgeOpportunity ports 2975: an invalidated active edge
-// exhausts its exact tuple at rank 0.
+// consumeActiveEdgeOpportunity exhausts the invalidated edge's exact tuple at rank 0.
 func (c *Controller) consumeActiveEdgeOpportunity(child *participant, edge *CommittedEdge) {
 	if edge.Kind == UpstreamPeer {
 		key := "peer:" + edge.ParentPeerID + "\x00" + child.sessionID + "\x00" + edge.ParentSessionID
@@ -189,7 +181,6 @@ func (c *Controller) consumeActiveEdgeOpportunity(child *participant, edge *Comm
 	})
 }
 
-// consumeAvailabilityOperation ports 2993.
 func (c *Controller) consumeAvailabilityOperation(op *operation) {
 	if !isAvailabilityOperation(op.reason) {
 		return
@@ -202,7 +193,6 @@ func (c *Controller) consumeAvailabilityOperation(op *operation) {
 	}
 }
 
-// consumeCurrentAvailabilityOpportunity ports 3003.
 func (c *Controller) consumeCurrentAvailabilityOpportunity(op *operation) {
 	if !isAvailabilityOperation(op.reason) {
 		return
@@ -216,8 +206,8 @@ func (c *Controller) consumeCurrentAvailabilityOpportunity(op *operation) {
 	}
 }
 
-// clearOpportunitiesForSessionChange ports 4561 (§4.1 #5, §4.5 #47): keys
-// are snapshotted before deletion, which JS defines as safe in place.
+// clearOpportunitiesForSessionChange snapshots keys before deletion,
+// preserving JavaScript's safe deletion during iteration.
 func (c *Controller) clearOpportunitiesForSessionChange(peerID string, role protocol.Role) {
 	if current, ok := c.participants.Get(peerID); ok {
 		current.consumedCandidateOpportunities.Clear()
@@ -248,7 +238,6 @@ func (c *Controller) clearOpportunitiesForSessionChange(peerID string, role prot
 	}
 }
 
-// clearSfuCandidateOpportunities ports 4597.
 func (c *Controller) clearSfuCandidateOpportunities() {
 	for _, current := range c.participants.Values() {
 		for _, key := range current.consumedCandidateOpportunities.Keys() {
@@ -261,7 +250,7 @@ func (c *Controller) clearSfuCandidateOpportunities() {
 	c.consumedSfuBootstrapOpportunities.Clear()
 }
 
-// consumeOpportunity ports 5011: keeps the best (lowest) rank.
+// consumeOpportunity keeps the best (lowest) rank.
 func consumeOpportunity(consumed *ordered.Map[string, int], base string, rank int) {
 	previous, ok := consumed.Get(base)
 	if !ok || rank < previous {

@@ -6,8 +6,8 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 )
 
-// pruneDepartedLeaves ports 4015: removes departed viewers without
-// children to a fixpoint, in participants order (§4.1 #4), and drops an
+// pruneDepartedLeaves removes departed viewers without
+// children to a fixpoint, in participants order, and drops an
 // orphaned publication.
 func (c *Controller) pruneDepartedLeaves(released *[]*Resource) []string {
 	removed := []string{}
@@ -49,7 +49,6 @@ func (c *Controller) pruneDepartedLeaves(released *[]*Resource) []string {
 	return removed
 }
 
-// retireInvalidOperationEdge ports 4133.
 func (c *Controller) retireInvalidOperationEdge(childPeerID string, released *[]*Resource) bool {
 	edge, _ := c.upstreamByViewer.Get(childPeerID)
 	if edge == nil || !c.edgeRequiresMove(childPeerID, edge) {
@@ -74,7 +73,6 @@ func (c *Controller) retireInvalidOperationEdge(childPeerID string, released *[]
 	return true
 }
 
-// edgeRequiresMove ports 4153.
 func (c *Controller) edgeRequiresMove(childPeerID string, edge *CommittedEdge) bool {
 	if !edge.Usable || !edge.PhysicalActive {
 		return true
@@ -95,11 +93,8 @@ func (c *Controller) edgeRequiresMove(childPeerID string, edge *CommittedEdge) b
 	return false
 }
 
-// rebindCommittedSession ports 4747: the reconnecting peer keeps its edges
-// and publication, which take its new session id. The TS `{released,
-// retired}` result is dropped because it was dead: nothing ever joined the
-// released set and retired was the constant false, so the caller's
-// `rebound.retired &&` branch was unreachable (map R12).
+// rebindCommittedSession preserves the reconnecting peer's edges and
+// publication, updating them to its new session ID.
 func (c *Controller) rebindCommittedSession(peerID, sessionID string) {
 	if ownEdge, ok := c.upstreamByViewer.Get(peerID); ok {
 		ownEdge.ChildSessionID = sessionID
@@ -115,7 +110,6 @@ func (c *Controller) rebindCommittedSession(peerID, sessionID string) {
 	}
 }
 
-// removePublicationGeneration ports 4766 (§4.2 #12).
 func (c *Controller) removePublicationGeneration(generation string) []*Resource {
 	released := []*Resource{}
 	for viewerPeerID, edge := range c.upstreamByViewer.All() {
@@ -140,7 +134,7 @@ func (c *Controller) retainsAnchor(viewerPeerID string) bool {
 	return len(c.childrenOf(viewerPeerID)) > 0
 }
 
-// retireSfuEdge ports 4780: releases the subscription only while it is
+// retireSfuEdge releases the subscription only while it is
 // still physically active, then keeps the edge as an anchor for attached
 // peer descendants or deletes it.
 func (c *Controller) retireSfuEdge(viewerPeerID string, edge *CommittedEdge, released *[]*Resource, retainAnchor bool) {
@@ -168,7 +162,6 @@ func (c *Controller) hasRetiringAnchor(generation string) bool {
 	return false
 }
 
-// pruneRetiringSfuAnchors ports 4797 (§4.2 #18, §4.5 #46).
 func (c *Controller) pruneRetiringSfuAnchors() {
 	removed := true
 	for removed {
@@ -190,8 +183,8 @@ func (c *Controller) pruneRetiringSfuAnchors() {
 	}
 }
 
-// assertGraph ports 4827: programming-error panics with the TS messages
-// (§4.2 #20, §4.1 #6 decide which violation is reported first).
+// assertGraph panics on programming errors. Edge insertion order and
+// participant order determine which violation is reported first.
 func (c *Controller) assertGraph() {
 	host, _ := c.participants.Get(c.hostPeerID)
 	if host == nil || host.role != protocol.RoleHost {
@@ -248,19 +241,16 @@ func (c *Controller) assertGraph() {
 	}
 }
 
-// assertViewer ports 4891.
 func (c *Controller) assertViewer(peerID string) {
 	if current, ok := c.participants.Get(peerID); !ok || current.role != protocol.RoleViewer {
 		panic(errors.New("Route child must be a Viewer"))
 	}
 }
 
-// hasSfuSubscribers ports 4431.
 func (c *Controller) hasSfuSubscribers() bool {
 	return c.sfuSubscriberCount() > 0
 }
 
-// sfuSubscriberCount ports 4435.
 func (c *Controller) sfuSubscriberCount() int {
 	count := 0
 	for _, edge := range c.upstreamByViewer.Values() {
@@ -271,8 +261,8 @@ func (c *Controller) sfuSubscriberCount() int {
 	return count
 }
 
-// committedResources ports 4439: SFU subscriptions in map order, then the
-// publication (§4.2 #13).
+// committedResources returns SFU subscriptions in map order, then the
+// publication.
 func (c *Controller) committedResources() []*Resource {
 	resources := []*Resource{}
 	for _, edge := range c.upstreamByViewer.Values() {

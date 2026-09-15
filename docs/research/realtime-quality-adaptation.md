@@ -3,7 +3,7 @@
 - Reviewed: 2026-08-30
 - Scope: Browser game capture, codecs, startup adaptation, relay, and LiveKit
 - Status: current evidence; product behavior is owned by
-  [media quality](../product/media-quality.md) and
+  [media quality](../standards/media-quality.md) and
   [ADR-0007](../adr/0007-path-isolated-representation-quality.md)
 
 ## Findings

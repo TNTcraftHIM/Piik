@@ -2,7 +2,7 @@
 
 This file owns routine immutable application releases. Initial service setup is
 in [self-hosting operations](./operations/self-hosting.md); environment and ports
-are in [configuration reference](./reference/configuration.md). Exact production
+are in [configuration reference](./standards/configuration.md). Exact production
 identity is owned by the immutable release descriptor, runtime `REVISION`, and
 deployment record. [Status](./status.md) owns only the compact current product
 and operational snapshot; it is not a per-release ledger.
@@ -120,12 +120,12 @@ install.
 Builds carry a product version plus full source revision. Packagers use one
 release plan or exact Git tag and inject its identity into Server, App and Web;
 untagged local candidates use `development`. Schema-2 package descriptors carry
-the same pair and artifact hashes. The [version policy](./reference/versioning.md)
+the same pair and artifact hashes. The [version policy](./standards/versioning.md)
 owns ordering and first-public-release readiness.
 
 The default App launcher starts immediately, then checks GitHub Releases in the
 background, falling back to the Gitee mirror if GitHub is unavailable. The
-[release-source policy](./reference/versioning.md#release-sources) owns selection
+[release-source policy](./standards/versioning.md#release-sources) owns selection
 and provenance checks. It shows a link only when
 the latest stable release is newer, the same version has a known different source
 SHA, or a development build can choose the official release. These notices are

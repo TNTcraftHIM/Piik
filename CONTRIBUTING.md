@@ -48,7 +48,7 @@ fix.
 2. Update only the single durable owner for changed semantics and any materially changed current snapshot. If semantics remain disputed, record a hold and stop dependent work.
 3. Implement and run repository hygiene, `npm run check`, the relevant browser/network gates, and review in proportion to the whole acceptance boundary.
 4. Keep accepted truth checkpoints and dependent candidates on branches until the phase is complete. Rebase or rebuild a retained candidate from exact `main` only when starting a new phase, preserving main's owning truth on conflicts and transplanting only approved scoped code, tests, and new facts.
-5. Open one pull request for the complete phase, resolve required review/checks, meet the [release approval boundary](./docs/reference/versioning.md#automatic-publication) before a publishing merge, squash-merge it once, deploy that merged revision when authorized, perform scoped postflight, then audit references and reparse safety before cleanup.
+5. Open one pull request for the complete phase, resolve required review/checks, meet the [release approval boundary](./docs/standards/versioning.md#automatic-publication) before a publishing merge, squash-merge it once, deploy that merged revision when authorized, perform scoped postflight, then audit references and reparse safety before cleanup.
 
 One coherent phase should leave one meaningful squash commit on `main`. Include
 its source, tests, owned semantic documentation, and materially changed status
@@ -64,7 +64,7 @@ history without explicit approval.
 
 For deployment work, a routine application-only release verifies a new immutable artifact, switches to it atomically, and guarantees the pre-cutover application release only through bounded health and postflight checks; it has no retention contract afterward and is not a maintained backup. Define recovery only for the infrastructure, configuration, secrets, persistent state, or irreversible surfaces the task actually touches, before changing them.
 
-Use the [version/compatibility policy](./docs/reference/versioning.md) to classify
+Use the [version/compatibility policy](./docs/standards/versioning.md) to classify
 release changes. An incompatible signaling cutover forces old pages to reload
 and ends Browser capture; follow the public compatibility promise and include
 that interruption in the accepted cutover. Compatible UI/internal work does not
@@ -74,10 +74,10 @@ Clean up worktrees and branches only after semantic review and integration are c
 
 ## Research Standard
 
-The [engineering reference](./docs/reference/engineering.md) owns module and
+The [engineering reference](./docs/standards/engineering.md) owns module and
 interface discipline, including the post-change ablation pass.
 
-Follow the [naming convention](./docs/reference/naming.md) for product copy,
+Follow the [naming convention](./docs/standards/naming.md) for product copy,
 commands, packages and code ownership. Keep display names separate from stable
 protocol identifiers; use normal language-specific identifier conventions.
 
@@ -120,7 +120,7 @@ does not establish coverage.
   diagnosing connection failures rather than changing global firewall rules.
 - CI, versioning and release automation belong to complete, accepted squash
   merges into `main`; ordinary branch pushes and PRs stay quiet. The
-  [versioning policy](./docs/reference/versioning.md) owns version selection,
+  [versioning policy](./docs/standards/versioning.md) owns version selection,
   publication and activation state. Package the merged SHA without writing
   version-record commits back to `main`.
 
@@ -138,7 +138,7 @@ commits should follow the same form where useful; no history rewrite is needed
 just to rename commits that will be squashed. Add `!` before the colon for a
 breaking change, such as `feat(protocol)!: replace the join handshake`, and
 explain its effect in the body. The final squash title and body supply release
-intent; the [versioning policy](./docs/reference/versioning.md) owns version
+intent; the [versioning policy](./docs/standards/versioning.md) owns version
 selection and publication behavior.
 
 Name branches `<type>/<short-kebab-case-description>`, using the same types;
@@ -153,7 +153,7 @@ Before a product-changing integration PR is accepted, fill its exact `## Release
 with concise public copy in Chinese and English: user-visible changes, fixes and
 required upgrade actions. Use `###` for subsections. Review this text as product
 copy; it is published automatically from the squash commit, without PR discussion
-or verification logs. The [release-note policy](./docs/reference/versioning.md#release-notes)
+or verification logs. The [release-note policy](./docs/standards/versioning.md#release-notes)
 owns aggregation and preview. Do not add a changelog file or release-note archive.
 Standalone website, documentation and maintenance phases do not need product
 release notes; their public description stays in the PR.

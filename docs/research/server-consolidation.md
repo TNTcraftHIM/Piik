@@ -32,7 +32,7 @@ remove.
    and exact direct/peer-relayed evidence sources.
 
 These are structural simplifications, not reproduced functional failures.
-The [engineering reference](../reference/engineering.md#ablation-and-review)
+The [engineering reference](../standards/engineering.md#ablation-and-review)
 requires a concrete ownership gain before further extraction.
 
 ## Product Choice

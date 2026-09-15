@@ -33,7 +33,7 @@ func (c *Controller) debug(event string, details ...any) {
 	c.debugLog("piik-route", args...)
 }
 
-// debugPeer ports 4895: "host", "viewer-<joinOrder>" or "viewer-unknown".
+// debugPeer returns "host", "viewer-<joinOrder>" or "viewer-unknown".
 func (c *Controller) debugPeer(peerID string) string {
 	current, _ := c.participants.Get(peerID)
 	if peerID == c.hostPeerID || (current != nil && current.role == protocol.RoleHost) {
@@ -45,7 +45,7 @@ func (c *Controller) debugPeer(peerID string) string {
 	return "viewer-" + strconv.FormatInt(current.joinOrder, 10)
 }
 
-// debugTuple ports 4903: "p2p:<label>[:regenerate]" or "sfu:<publication>".
+// debugTuple returns "p2p:<label>[:regenerate]" or "sfu:<publication>".
 func (c *Controller) debugTuple(tuple CandidateTuple) string {
 	if tuple.Kind == UpstreamPeer {
 		label := "p2p:" + c.debugPeer(tuple.ParentPeerID)

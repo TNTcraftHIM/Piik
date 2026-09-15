@@ -81,7 +81,7 @@ preserve their saved preferences when receiving those unmarked hints.
 The App console uses its own supported presentation languages and falls back
 to English for additional UI languages. Text modes use concise copy.
 
-The [visual language](../design/visual-language.md) is the single owner of
+The [visual language](./visual-language.md) is the single owner of
 illustrative roles and objects, semantic colour, panel grammar, motion,
 accessible input and responsive hierarchy.
 
@@ -108,7 +108,7 @@ Pause or unavailable playback keeps it visible. Control hover, keyboard focus,
 dragging and an open tooltip hold it open; mouse movement reveals it, and a
 touch tap on the picture toggles only visibility. One presentation-only idle
 timer owns visibility; it never changes playback or route state. Controls
-follow the shared [motion grammar](../design/visual-language.md#motion-grammar).
+follow the shared [motion grammar](./visual-language.md#motion-grammar).
 
 A desktop primary click on the picture toggles local playback after a brief
 double-click window; double-click toggles the available fullscreen action without
@@ -163,7 +163,7 @@ badge, status line, or overlay while committed media remains proved. A shared
 visual projection maps those facts to title, media status, notices and
 overlays. None of these views owns state for another. Connection availability,
 actual playback and quality limitation remain separate; raw transport snapshots
-do not prove playback or quality. The [status preview](../design/media-status.md)
+do not prove playback or quality. The [status preview](./media-status.md)
 records the visual vocabulary and the evidence needed for participant lamps.
 
 Excluding time spent in the Browser's capture/play authorization UI, a Viewer
@@ -172,11 +172,11 @@ must continuously show a truthful accessible connection stage rather than a
 black screen, ICE-connected state, or unproved `playing` event.
 
 - A proved current frame remains visible behind non-terminal recovery state.
-- The [status projection](../design/media-status.md#projection-rules) owns the
+- The [status projection](./media-status.md#projection-rules) owns the
   television, Header, notices, participant lamps and title. These consumers
   cannot turn an unproved frame into playback or ordinary quality into failure.
 - The Host's couch and Viewer overview share the
-  [participant projection](../design/media-status.md#projection-rules). The
+  [participant projection](./media-status.md#projection-rules). The
   Host's own pawn has no additional lamp. Committed `mediaReady` owns readiness;
   transport diagnostics and quality samples cannot override it in either direction.
 - Viewers do not infer another Viewer's quality or diagnose missing readiness
@@ -231,7 +231,7 @@ warning selected from the first limited child.
 Locally exposed selected-candidate addresses may be shown only on the Browser
 that owns that PeerConnection and are never uploaded, persisted, or used for
 identity or route selection. Explicit Debug mode can export a bounded diagnostic
-report through the separate [diagnostic owner](../reference/configuration.md#diagnostics);
+report through the separate [diagnostic owner](./configuration.md#diagnostics);
 ordinary connection details do not collect or expose that report.
 
 Current scope includes Web Host, Web Viewer, Browser relay, and optional Native

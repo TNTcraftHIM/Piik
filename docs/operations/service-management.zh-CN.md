@@ -35,9 +35,9 @@ STUN 和可选的 SFU 使用各自的公网 UDP 监听器。已有 nginx 时，�
 包括网页界面、许可证声明和 `REVISION`。固定版本的
 [Distroless 非 root 基础镜像](https://github.com/GoogleContainerTools/distroless)
 包含 CA 证书，没有 shell 或包管理器。镜像的构建、检查和发布由
-[发布流程](../reference/versioning.md#container-distribution)管理。
+[发布流程](../standards/versioning.md#container-distribution)管理。
 
-使用既有的[生产配置](../reference/configuration.md)。容器内保留 `LISTEN_HOST=0.0.0.0`，
+使用既有的[生产配置](../standards/configuration.md)。容器内保留 `LISTEN_HOST=0.0.0.0`，
 并继续使用主机已有的 HTTPS/WebSocket 代理。使用 Docker 端口映射且启用 SFU 时，
 将 `SFU_PUBLIC_IP` 设为外部可达的服务器 IPv4 地址；容器私网候选无法从互联网访问。
 公布的 STUN 域名必须解析到服务器公网地址，UDP 必须能直接到达容器。
@@ -51,7 +51,7 @@ STUN 和可选的 SFU 使用各自的公网 UDP 监听器。已有 nginx 时，�
 镜像中的 `/home/nonroot` 属于 UID/GID `65532:65532`，权限为 `0700`。
 新的命名数据卷继承该目录；已有数据卷或绑定挂载需要事先允许该身份写入。
 替换容器时保留这个数据卷。设置 `ROOM_DATABASE_PATH=:memory:` 可让房间权威状态只保存在内存中。
-诊断保持手动开启，使用 `/home/nonroot/logs`；[导出与保留](../reference/configuration.md#diagnostics)
+诊断保持手动开启，使用 `/home/nonroot/logs`；[导出与保留](../standards/configuration.md#diagnostics)
 由运维人员负责。不要将应用文件挂载为可写。
 启用诊断后，`docker compose kill --signal=SIGUSR1 piik` 会请求本地导出，不会停止容器；
 ZIP 保存在挂载的日志目录中。

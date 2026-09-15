@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	// The pure-Go driver: the port must build with CGO_ENABLED=0 (D2).
+	// The pure-Go driver supports builds with CGO_ENABLED=0.
 	_ "modernc.org/sqlite"
 
 	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
@@ -81,7 +81,7 @@ type StoredRoomAuthority struct {
 
 // Database is RoomDatabase: the SQLite stable authority. It holds one
 // connection for its lifetime, because `PRAGMA locking_mode = EXCLUSIVE` is a
-// connection property that a recycled pool connection would silently drop (D2).
+// connection property that a recycled pool connection would silently drop.
 type Database struct {
 	path string
 	db   *sql.DB

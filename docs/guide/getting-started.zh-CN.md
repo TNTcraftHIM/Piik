@@ -116,7 +116,7 @@ Linux 原生采集还需要[系统组件](../../native/capture/linux/README.md)�
 | 休眠或挂起后分享中断 | 唤醒设备，回到分享标签页，必要时重新开始分享。浏览器或系统挂起可能中断采集和播放。 |
 
 反馈问题时，请附上版本、系统与浏览器、预期结果和复现步骤。
-[诊断与导出](../reference/configuration.md#diagnostics)
+[诊断与导出](../standards/configuration.md#diagnostics)
 说明如何收集本地报告，以及分享前需要检查哪些内容。
 
 想为朋友搭一个站点？从 [部署指南](../operations/self-hosting.zh-CN.md) 开始。

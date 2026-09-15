@@ -22,8 +22,8 @@ import {
   RowGroup,
   NameTag,
   FieldCap,
-  VisGlyph,
 } from "../../../src/client/components/living/primitives";
+import { Glyph } from "../../../src/client/ui/icons";
 import { setCopy, useCopy } from "../../../src/client/ui/copy";
 import { deriveHostStatus, deriveParticipantStatus, deriveViewerStatus } from "../../../src/client/ui/media-status";
 import {
@@ -123,11 +123,11 @@ function Chat({shot}: {shot: Shot}) {
   const {lang} = useCopy();
   const zh = lang === "zh";
   return <section className="film-chat" aria-label={zh ? "聊天软件示意" : "Chat app example"}>
-    <header><span className="chat-avatar"><VisGlyph name="users" size={36} /></span><div><small>{zh ? "聊天软件示意" : "CHAT APP EXAMPLE"}</small><strong>{zh ? "周末小分队" : "Weekend crew"}</strong></div></header>
+    <header><span className="chat-avatar"><Glyph name="users" size={36} /></span><div><small>{zh ? "聊天软件示意" : "CHAT APP EXAMPLE"}</small><strong>{zh ? "周末小分队" : "Weekend crew"}</strong></div></header>
     <div className="chat-messages"><p className="chat-bubble">{zh ? "人呢？" : "You joining?"}</p>
       {shot === "sent" && <p className="chat-bubble chat-mine">{inviteUrl}<span>✓</span></p>}
     </div>
-    <div className="chat-compose"><input id="chat-draft" value={shot === "draft" ? inviteUrl : ""} readOnly aria-label={zh ? "消息" : "Message"} /><button id="chat-send" type="button"><VisGlyph name="arrowRight" size={24} />{zh ? "发送" : "Send"}</button></div>
+    <div className="chat-compose"><input id="chat-draft" value={shot === "draft" ? inviteUrl : ""} readOnly aria-label={zh ? "消息" : "Message"} /><button id="chat-send" type="button"><Glyph name="arrowRight" size={24} />{zh ? "发送" : "Send"}</button></div>
   </section>;
 }
 
@@ -220,7 +220,7 @@ function Screen({ shot }: { shot: Shot }) {
                           className={`lr-tv-big${i === 0 ? " is-action is-ripple" : ""}`}
                           aria-label={t(key)}
                         >
-                          <VisGlyph
+                          <Glyph
                             name={i === 0 ? "cast" : "door"}
                             size={i === 0 ? 34 : 30}
                             draw={i === 0 ? "entry-cast" : "entry-door"}

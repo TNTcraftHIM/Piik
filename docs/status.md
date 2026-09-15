@@ -9,7 +9,7 @@ and Git/PRs own completed history.
 ## Accepted Release Contract
 
 - Browser/server v23, Native control v9 and capture v7 form the current contract.
-  [Versioning](./reference/versioning.md#public-compatibility-promise) owns
+  [Versioning](./standards/versioning.md#public-compatibility-promise) owns
   compatibility between published Web/App/Server versions.
 - Hosted Server defaults to SQLite schema 2. Room authority has no inactivity
   expiry; explicit replacement/deletion or grant rotation/revocation ends the
@@ -18,7 +18,7 @@ and Git/PRs own completed history.
 - Browser/App entry lifecycle and current-edge reconnect ownership repairs
   are implemented. Browser node-local pooling and detailed local Debug export
   remain part of the accepted media surface. Product modules own their behavior;
-  [configuration](./reference/configuration.md#diagnostics) owns Debug activation,
+  [configuration](./standards/configuration.md#diagnostics) owns Debug activation,
   report contents and disclosure.
 
 ## Deployment
@@ -53,9 +53,9 @@ and bounded two-build interoperability have acceptance evidence. Accepted
 product changes publish automatically; standalone website and documentation
 changes validate and deploy the website without creating App/Server versions.
 GitHub/Gitee release comparison, mirror publishing and PR-sourced notes follow
-[versioning](./reference/versioning.md). [Verification status](./verification-status.md#candidate-evidence-boundary)
+[versioning](./standards/versioning.md). [Verification status](./verification-status.md#candidate-evidence-boundary)
 owns the remaining physical limits; shared lessons live in
-[engineering](./reference/engineering.md).
+[engineering](./standards/engineering.md).
 
 ## Media Evidence And Limits
 

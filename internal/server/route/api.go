@@ -459,13 +459,10 @@ type Options struct {
 	NatPredictionEnabled      bool
 }
 
-// Controller ports RoomRouteController. It never locks: the caller holds
-// signal.Server.mu around every call. The public methods live in the files
-// named after the TS helper clusters (controller.go, operation.go,
-// quality.go, ...); every signature below the types is unchanged.
+// Controller never locks: the caller holds signal.Server.mu around every call.
 type Controller struct {
 	// hostPeerID is its own mutable field because RebindHostIdentity
-	// reassigns it (TS: options.hostPeerId = peerId at line 660); the other
+	// reassigns it; the other
 	// options are copied once and never change.
 	hostPeerID                string
 	debugRoomID               string
@@ -477,7 +474,7 @@ type Controller struct {
 	natPredictionEnabled      bool
 
 	// Insertion order is load-bearing for participants, upstreamByViewer and
-	// directContinuations (map §4.1-4.3); the opportunity ledgers and the
+	// directContinuations; the opportunity ledgers and the
 	// retiring set are ordered for the same delete-while-iterating semantics.
 	participants                      ordered.Map[string, *participant]
 	upstreamByViewer                  ordered.Map[string, *CommittedEdge]

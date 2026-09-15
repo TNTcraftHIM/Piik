@@ -197,9 +197,8 @@ func (SetSharingPausedMessage) isClientMessage()            {}
 func (StopSharingMessage) isClientMessage()                 {}
 func (AbandonRoomMessage) isClientMessage()                 {}
 
-// DecodeClientMessage ports decodeClientMessage: JSON.parse followed by
-// clientMessageSchema.parse. Every member of the union carries a distinct
-// `type` literal, so the union is resolved by that key.
+// DecodeClientMessage parses JSON and validates the message schema.
+// Every member carries a distinct `type` literal, so that key resolves the union.
 func DecodeClientMessage(data []byte) (ClientMessage, error) {
 	messageType, err := typeOf(data, "type")
 	if err != nil {

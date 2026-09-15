@@ -206,6 +206,31 @@ remain unchanged. An exact tag does not move
 the changelog's starting point. Keep no `CHANGELOG.md`, versioned note directory
 or generated history commits. PRs and Git retain editorial provenance.
 
+Release notes introduce the release before listing changes. In each language,
+open with one or two sentences explaining its actual emphasis and who benefits:
+a maintenance update, a feature addition, or a compatibility-changing release.
+Match that description to the user-visible impact; an internal refactor alone
+does not justify calling a release breaking or major.
+
+Then group concrete changes under useful headings such as highlights, fixes,
+upgrade instructions or known limitations. Omit empty categories and routine
+implementation/test inventories. A small fix may need only its introduction and
+a few bullets. Required upgrade steps or interruptions must be easy to find.
+Chinese and English cover the same release facts with natural phrasing. Use
+`###` for language sections and `####` for categories when both are needed.
+
+The approved final description must read as one release when several unpublished
+commits are included. Preview the rendered aggregate; do not let repeated
+introductions or raw commit titles become its narrative. The existing pipeline
+preserves authored Markdown and appends identity/checksums; it does not infer an
+editorial summary from a version number. Keep provenance and the full changelog
+link after the user-facing explanation.
+
+Editorial references: [CC Switch releases](https://github.com/farion1231/cc-switch/releases)
+and [OBS Studio releases](https://github.com/obsproject/obs-studio/releases) show
+release introductions and grouped changes; Piik's exact scope and upgrade
+instructions must come from its own accepted changes.
+
 ## Release Sources
 
 GitHub Releases is the primary publication; Gitee is an optional official mirror

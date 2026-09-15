@@ -8,7 +8,7 @@ type rootConvergencePick struct {
 	plan        CandidatePlan
 }
 
-// stageRootConvergence ports 3272: staged from commitAttempt whenever a
+// stageRootConvergence is called from commitAttempt whenever a
 // child newly became a direct child of the Host.
 func (c *Controller) stageRootConvergence(rootPeerID string) {
 	if !c.qualityConvergenceEnabled {
@@ -25,7 +25,7 @@ func (c *Controller) stageRootConvergence(rootPeerID string) {
 		"child", c.debugPeer(convergence.childPeerID))
 }
 
-// takeRootConvergenceIntent ports 3284: one-shot (take = clear).
+// takeRootConvergenceIntent consumes the intent by clearing it.
 func (c *Controller) takeRootConvergenceIntent() *rootConvergencePick {
 	rootPeerID := c.rootConvergenceRootPeerID
 	c.rootConvergenceRootPeerID = ""
@@ -45,8 +45,8 @@ type rootConvergence struct {
 	plan        CandidatePlan
 }
 
-// rootConvergencePlan ports 3299: the busiest other Host root donates its
-// newest active direct child to the fresh root (§4.5 #45).
+// rootConvergencePlan makes the busiest other Host root donate its
+// newest active direct child to the fresh root.
 func (c *Controller) rootConvergencePlan(rootPeerID string) *rootConvergence {
 	root, _ := c.participants.Get(rootPeerID)
 	if root == nil || root.sessionID == "" ||
@@ -92,7 +92,6 @@ func (c *Controller) rootConvergencePlan(rootPeerID string) *rootConvergence {
 	return nil
 }
 
-// rootConvergenceOperationStillEligible ports 3350.
 func (c *Controller) rootConvergenceOperationStillEligible(op *operation) bool {
 	if op.reason != DemandRootConvergence {
 		return true
@@ -110,7 +109,6 @@ func (c *Controller) rootConvergenceOperationStillEligible(op *operation) bool {
 		len(c.activeDirectChildren(current.ParentPeerID)) >= 2
 }
 
-// isActiveHostRoot ports 3370.
 func (c *Controller) isActiveHostRoot(peerID string) bool {
 	edge, _ := c.upstreamByViewer.Get(peerID)
 	return edge != nil && edge.Kind == UpstreamPeer &&
@@ -119,7 +117,6 @@ func (c *Controller) isActiveHostRoot(peerID string) bool {
 		edge.PhysicalActive
 }
 
-// activeDirectChildren ports 3380.
 func (c *Controller) activeDirectChildren(parentPeerID string) []string {
 	children := []string{}
 	for _, childPeerID := range c.childrenOf(parentPeerID) {

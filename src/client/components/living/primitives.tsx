@@ -29,22 +29,6 @@ function blurAfterPointerClick(event: MouseEvent<HTMLButtonElement>): void {
   if (event.detail !== 0) event.currentTarget.blur();
 }
 
-// Renders the functional icon in every mode; vis mode never swaps icons for
-// script — controls stay identical to the text version, hints come from the
-// comic tooltip.
-export function VisGlyph({
-  name,
-  size = 18,
-  draw,
-}: {
-  name: GlyphName;
-  size?: number;
-  /** Draw-in spot id (state-beat icons only — see Glyph). */
-  draw?: string;
-}) {
-  return <Glyph name={name} size={size} draw={draw} />;
-}
-
 export function Cap({ k }: { k: CopyKey }) {
   const { vis, t } = useCopy();
   return vis ? null : <span className="lr-cap">{t(k)}</span>;
