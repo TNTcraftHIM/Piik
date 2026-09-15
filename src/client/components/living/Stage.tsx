@@ -6,6 +6,7 @@ import { useCopy } from "../../ui/copy";
 import { Comic, type ComicKind } from "./Comic";
 import type { ComicTone } from "./comic-presentation";
 import { BrandLoader } from "./BrandMark";
+import { WaitingCaption } from "./WaitingStatus";
 
 export function StageTv({
   hasEntry,
@@ -83,6 +84,7 @@ export function StageOverlay({
           </span>
         ) : <span className="lr-tv-msg">{message}</span>}
       </span>
+      {showMascot && !onActivate && <WaitingCaption key={comic} />}
     </>
   );
   if (onActivate) {

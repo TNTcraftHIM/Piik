@@ -106,6 +106,8 @@ Operational pages omit introductory sentences that repeat their controls.
 Helper text should explain a meaningful choice or prevent an error.
 
 Use short, contextual references in opening lines and illustration reactions.
+Waiting captions may invite a stretch or joke about the living room; they do not
+narrate fictional loading steps or replace the current operation's status.
 Prefer lasting expressions and genre conventions over current events or
 short-lived viral phrases; title decorations follow the same rule.
 A familiar expression may work when its ordinary meaning still makes sense to

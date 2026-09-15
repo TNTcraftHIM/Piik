@@ -4,6 +4,7 @@ import { AppHeader, LedStrip } from "../components/living/Header";
 import { StageOverlay, StageTv } from "../components/living/Stage";
 import { Couch } from "../components/living/Couch";
 import { StatusIndicator } from "../components/living/StatusIndicator";
+import { LoadingStatus, WAITING_LINES } from "../components/living/WaitingStatus";
 import { Pill } from "../components/living/primitives";
 import { deriveViewerPresentation } from "../media/viewer-presentation";
 import {
@@ -11,7 +12,7 @@ import {
   type StatusDescriptor,
 } from "../ui/media-status";
 import { Glyph } from "../ui/icons";
-import { useCopy } from "../ui/copy";
+import { useCopy, type CopyKey } from "../ui/copy";
 import { locales, type TitleFrameKey } from "../locales";
 import { composeDocumentTitle, useDocumentTitle } from "../ui/document-title";
 import { HOST_STATUS_SCENARIOS, STATUS_SCENARIOS } from "./status-preview-scenarios";
@@ -32,6 +33,7 @@ export function StatusPreviewPage() {
   const [selected, setSelected] = useState("playing");
   const [reducedMotion, setReducedMotion] = useState(false);
   const [couchView, setCouchView] = useState<"host" | "viewer">("viewer");
+  const [loadingLabel, setLoadingLabel] = useState<CopyKey | "">("client.launch.starting");
   const scenario = STATUS_SCENARIOS.find((item) => item.id === selected)!;
   const presentation = deriveViewerPresentation(scenario.state);
   const status = deriveViewerStatus(presentation, scenario.state.signal,
@@ -161,6 +163,23 @@ export function StatusPreviewPage() {
               <StatusIndicator status={item} /><span>{t(item.labelKey)}</span><code>{key}</code>
             </article>)}
           </div>
+        </section>
+        <section className="sp-catalog" id="waiting-preview">
+          <header><h2>加载与等待</h2>
+            <p>真实状态保留。等待超过 8 秒后显示短句，每 8 秒换一条；纯视觉模式保留循环漫画。切换上方场景可查看播放器中的等待反馈。</p>
+          </header>
+          <label>入口状态 <select value={loadingLabel} onChange={event => setLoadingLabel(event.target.value as CopyKey | "")}>
+            <option value="common.loading">页面加载</option>
+            <option value="gate.checking">站点检查</option>
+            <option value="client.launch.starting">App 启动</option>
+            <option value="">结束等待</option>
+          </select></label>
+          <div className="sp-loading-preview">
+            {loadingLabel ? <LoadingStatus label={loadingLabel} /> : <span>等待组件已卸载。</span>}
+          </div>
+          <details className="sp-title-catalog"><summary>等待短句 · {WAITING_LINES.length} 条</summary>
+            <ol>{WAITING_LINES.map(key => <li key={key}>{t(key)}</li>)}</ol>
+          </details>
         </section>
         <section className="sp-catalog">
           <header><h2>标题彩蛋词库</h2>

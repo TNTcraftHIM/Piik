@@ -23,6 +23,7 @@ import {
 import { AppHeader } from "./components/living/Header";
 import { Btn, Pill } from "./components/living/primitives";
 import { Comic, type ComicKind } from "./components/living/Comic";
+import { LoadingStatus } from "./components/living/WaitingStatus";
 import { Glyph } from "./ui/icons";
 import { applyLaunchCopy, useCopy } from "./ui/copy";
 import { consoleLanguage } from "./locales";
@@ -183,26 +184,11 @@ function AppRoute() {
 }
 
 function RouteLoader() {
-  const { t, vis } = useCopy();
   return (
     <div className="lr-app">
       <AppHeader />
       <main className="lr-join">
-        <div
-          className="lr-loading"
-          role="status"
-          aria-label={t("common.loading")}
-        >
-          <Comic kind="signal-connecting" theme="paper" />
-          {vis ? null : (
-            <span
-              className="lr-tv-msg"
-              style={{ color: "var(--ink)", textShadow: "none" }}
-            >
-              {t("common.loading")}
-            </span>
-          )}
-        </div>
+        <LoadingStatus label="common.loading" />
       </main>
     </div>
   );
@@ -404,18 +390,7 @@ function SiteAccessGate({
       <AppHeader />
       <main className="lr-join">
         {access.kind === "checking" ? (
-          <div
-            className="lr-loading"
-            role="status"
-            aria-label={t("gate.checking")}
-          >
-            <Comic kind="signal-connecting" theme="paper" />
-            {vis ? null : (
-              <span className="lr-tv-msg" style={{ color: "var(--ink)", textShadow: "none" }}>
-                {t("gate.checking")}
-              </span>
-            )}
-          </div>
+          <LoadingStatus label="gate.checking" />
         ) : access.kind === "unavailable" ? (
           <div className="lr-join-panel">
             <Comic kind="signal-failed" theme="paper" />

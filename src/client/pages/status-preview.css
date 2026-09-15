@@ -44,6 +44,7 @@
 .sp-surfaces .sp-kicker, .sp-surfaces .sp-caption { margin: 0; }
 .sp-catalog { margin-top: 36px; }
 .sp-catalog header { margin-bottom: 18px; }
+.sp-loading-preview { display: grid; place-items: center; min-height: 210px; margin-block: 18px; padding: 18px; background: var(--paper); border-radius: 18px; }
 .sp-title-catalog { padding: 12px 0; border-bottom: 1px solid color-mix(in srgb, var(--ink) 15%, transparent); }
 .sp-title-catalog summary { cursor: pointer; }
 .sp-title-catalog summary span { margin-inline-start: 12px; color: var(--muted); font-size: .75rem; }

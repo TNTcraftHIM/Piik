@@ -219,6 +219,16 @@ decoration once per cycle, interleaving the ordinary status; a changed title
 context starts a new cycle. Paused, ended, unavailable and playback-required
 titles stay literal and fixed. Product slogans remain fixed as well.
 
+Long-wait entry screens and passive waiting overlays retain their literal status
+and existing subject motion. After eight seconds, a shared secondary caption may
+rotate through the local waiting-copy catalog, without inventing work steps,
+remaining time or success. It is decorative and excluded from live announcements.
+Errors, paused playback, required actions and compact status controls keep their
+literal messages. Pure-visual mode keeps the animated scene. Title and caption
+rotation share `ui/text-rotation.ts`: each decoration appears once per cycle;
+hidden pages and reduced motion do not advance it. Unmounting the waiting
+surface ends its rotation; a new state starts a new cycle.
+
 ## Semantic Colour And Shape
 
 Use the existing theme tokens in `src/client/styles.css`. The shared

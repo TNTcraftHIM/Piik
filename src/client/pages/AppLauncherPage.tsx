@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { z } from "zod";
 
 import { BrandMark } from "../components/living/BrandMark";
-import { Comic } from "../components/living/Comic";
+import { LoadingStatus } from "../components/living/WaitingStatus";
 import { Tooltip } from "../components/living/Tooltip";
 import { AppHeader } from "../components/living/Header";
 import { LauncherForm, type AppMode } from "../components/living/LauncherForm";
@@ -153,20 +153,7 @@ export function AppLauncherPage() {
       )} />
       <main className="lr-client-launch">
         {loading || starting ? (
-          <div
-            className="lr-loading"
-            role="status"
-            aria-label={t(
-              starting ? "client.launch.starting" : "common.loading",
-            )}
-          >
-            <Comic kind="signal-connecting" theme="paper" />
-            {vis ? null : (
-              <span className="lr-client-launch-status">
-                {t(starting ? "client.launch.starting" : "common.loading")}
-              </span>
-            )}
-          </div>
+          <LoadingStatus label={starting ? "client.launch.starting" : "common.loading"} />
         ) : error ? (
           <div className="lr-client-launch-panel">
             <BrandMark size={68} motion="once" />

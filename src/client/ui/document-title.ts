@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { createTextCycle, startTextRotation } from "./text-rotation";
 
 const BRAND_TITLE = "Piik";
 const TITLE_VARIATION_INTERVAL_MS = 15_000;
@@ -21,44 +22,22 @@ export function useDocumentTitle(
   useEffect(() => {
     document.title = title;
     const currentPart = parts.at(-1);
-    const frames = currentPart ? [currentPart, ...variations] : [];
-    if (
-      frames.length < 2 ||
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches
-    ) {
+    if (!currentPart || variations.length === 0) {
       return () => {
         document.title = BRAND_TITLE;
       };
     }
 
     const prefix = parts.slice(0, -1);
-    let frameIndex = 0;
-    let lastVariation = 0;
-    const remaining: number[] = [];
-    const timer = window.setInterval(() => {
-      if (document.visibilityState !== "visible") {
-        return;
-      }
-      if (frameIndex === 0) {
-        // Exhaust the decorations before repeating; keep the ordinary status
-        // between them and avoid an immediate repeat across cycle boundaries.
-        if (remaining.length === 0) {
-          remaining.push(...frames.slice(1).map((_, index) => index + 1));
-        }
-        let index = Math.floor(Math.random() * remaining.length);
-        if (remaining.length > 1 && remaining[index] === lastVariation) {
-          index = (index + 1) % remaining.length;
-        }
-        frameIndex = remaining.splice(index, 1)[0]!;
-        lastVariation = frameIndex;
-      } else {
-        frameIndex = 0;
-      }
-      document.title = composeDocumentTitle(...prefix, frames[frameIndex]);
+    const next = createTextCycle(variations);
+    let ordinary = true;
+    const stop = startTextRotation(() => {
+      ordinary = !ordinary;
+      document.title = ordinary ? title : composeDocumentTitle(...prefix, next());
     }, TITLE_VARIATION_INTERVAL_MS);
 
     return () => {
-      window.clearInterval(timer);
+      stop();
       document.title = BRAND_TITLE;
     };
   }, [title, variationKey]);
