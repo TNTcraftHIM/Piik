@@ -89,8 +89,9 @@ The short comics illustrate choosing, inviting and joining, following the
 shared motion grammar and whole-control replay rule. The optional film starts
 only after an explicit action and has native buttons and a seek slider. Open it
 within the homepage, loading its single player on demand; closing it unloads
-playback. The standalone page serves recording and direct links. Fullscreen
-watching keeps touch controls available; hiding them is an explicit recording action.
+playback. Keep one homepage playback entry; the player document also supports
+local recording. Fullscreen watching keeps touch controls available; hiding
+them is an explicit recording action.
 Both READMEs share the friendly opening and room illustration. Their feature,
 limitation and setup sections use the factual register in the copy guide.
 
