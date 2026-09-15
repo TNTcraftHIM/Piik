@@ -17,6 +17,7 @@ import (
 	"sync"
 	"syscall"
 	"testing"
+	"time"
 )
 
 func TestRecorderRotationAndExport(t *testing.T) {
@@ -115,7 +116,7 @@ func TestRecorderRotationAndExport(t *testing.T) {
 		}
 	}
 	second, err := recorder.Export()
-	if err != nil || second == archivePath {
+	if err != nil || second == archivePath || recorder.LastExportPath() != second {
 		t.Fatalf("export must have a unique path: %q, %v", second, err)
 	}
 	_ = recorder.Close()
@@ -127,6 +128,92 @@ func TestRecorderRotationAndExport(t *testing.T) {
 	if reopened.log.retention()["earlierHistoryMayBeMissing"] != true {
 		t.Fatal("restart incorrectly claimed complete prior history")
 	}
+}
+
+func TestRecorderKeepsTheLastSuccessfulExportAfterFailureAndClose(t *testing.T) {
+	recorder, err := Open(t.TempDir(), "client", "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer recorder.Close()
+	if path := recorder.LastExportPath(); path != "" {
+		t.Fatalf("unexpected initial report: %q", path)
+	}
+	saved, err := recorder.Export()
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := recorder.log.path
+	// A regular file in the directory position makes archive creation fail on every OS.
+	recorder.log.path = filepath.Join(original, "unavailable", "client.log")
+	path, exportErr := recorder.Export()
+	recorder.log.path = original
+	if path != "" || exportErr == nil || recorder.LastExportPath() != saved {
+		t.Fatalf("failed export replaced the saved report: %q, %v", path, exportErr)
+	}
+	if err := recorder.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if path, err := recorder.Export(); path != "" || !errors.Is(err, os.ErrClosed) || recorder.LastExportPath() != saved {
+		t.Fatalf("closed recorder lost the saved report: %q, %v", path, err)
+	}
+	archive, err := zip.OpenReader(saved)
+	if err != nil {
+		t.Fatalf("saved report is unavailable or incomplete: %v", err)
+	}
+	_ = archive.Close()
+}
+
+type exportContext func() ([]byte, error)
+
+func (value exportContext) MarshalJSON() ([]byte, error) { return value() }
+
+func TestRecorderCloseWaitsForAnExportAlreadyInProgress(t *testing.T) {
+	recorder, err := Open(t.TempDir(), "client", "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = recorder.Close() })
+	started, release := make(chan struct{}), make(chan struct{})
+	resume := sync.OnceFunc(func() { close(release) })
+	defer resume()
+	recorder.context = map[string]any{"barrier": exportContext(func() ([]byte, error) {
+		close(started)
+		<-release
+		return []byte("null"), nil
+	})}
+	type result struct {
+		path string
+		err  error
+	}
+	exported := make(chan result, 1)
+	go func() {
+		path, err := recorder.Export()
+		exported <- result{path, err}
+	}()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("export did not reach the archive writer")
+	}
+	closing, closed := make(chan struct{}), make(chan error, 1)
+	go func() { close(closing); closed <- recorder.Close() }()
+	<-closing
+	select {
+	case err := <-closed:
+		t.Fatalf("Close returned before the archive finished: %v", err)
+	case <-time.After(25 * time.Millisecond):
+	}
+	resume()
+	completed := <-exported
+	if err := <-closed; err != nil || completed.err != nil || completed.path == "" || recorder.LastExportPath() != completed.path {
+		t.Fatalf("Close lost the completed report: %v, %v, %q", err, completed.err, completed.path)
+	}
+	archive, err := zip.OpenReader(completed.path)
+	if err != nil {
+		t.Fatalf("Close exposed an unfinished archive: %v", err)
+	}
+	_ = archive.Close()
 }
 
 func TestRecorderCloseAndFailures(t *testing.T) {

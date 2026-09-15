@@ -49,6 +49,7 @@ export function StageOverlay({
   tone,
   progress,
   onActivate,
+  still,
 }: {
   icon: GlyphName;
   message: string;
@@ -59,6 +60,7 @@ export function StageOverlay({
   tone?: ComicTone;
   progress?: string;
   onActivate?: () => void;
+  still?: boolean;
 }) {
   const { vis } = useCopy();
   const showMascot =
@@ -84,7 +86,7 @@ export function StageOverlay({
           </span>
         ) : <span className="lr-tv-msg">{message}</span>}
       </span>
-      {showMascot && !onActivate && <WaitingCaption key={comic} />}
+      {showMascot && !onActivate && <WaitingCaption context={comic ?? "transition"} still={still} />}
     </>
   );
   if (onActivate) {

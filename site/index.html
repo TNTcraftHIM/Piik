@@ -260,7 +260,7 @@
         <nav class="guide-links" aria-label="Guides">
           <a href="#demo"><span lang="en">Use online</span><span lang="zh-CN">在线版</span></a
           ><a href="#guide-app"><span lang="en">Piik App</span><span lang="zh-CN">客户端</span></a
-          ><a href="#guide-web"><span lang="en">Existing Piik site</span><span lang="zh-CN">已有 Piik 站点</span></a
+          ><a href="#guide-web"><span lang="en">Self-hosting</span><span lang="zh-CN">自行部署</span></a
           ><a href="#watch"><span lang="en">Join as a viewer</span><span lang="zh-CN">加入房间</span></a>
         </nav>
         <div class="guides">
@@ -485,10 +485,10 @@
             <summary>
               <span class="guide-number">03</span
               ><span class="guide-heading"
-                ><span lang="en">Share through an existing Piik site</span><span lang="zh-CN">通过已有 Piik 站点分享</span
+                ><span lang="en">Host your own Piik site</span><span lang="zh-CN">部署自己的 Piik 站点</span
                 ><small
-                  ><span lang="en">Requires an existing site running Piik Server</span
-                  ><span lang="zh-CN">需要一个已部署 Piik Server 的站点</span></small
+                  ><span lang="en">Advanced · your own domain and settings</span
+                  ><span lang="zh-CN">进阶使用 · 自己的域名与配置</span></small
                 ></span
               >
             </summary>
@@ -496,77 +496,62 @@
               <ol class="guide-steps">
                 <li>
                   <strong
-                    ><span lang="en">Open the site on a computer.</span
-                    ><span lang="zh-CN">在电脑上打开站点。</span></strong
+                    ><span lang="en">Prepare a server and domain.</span
+                    ><span lang="zh-CN">准备服务器与域名。</span></strong
                   >
                   <p>
                     <span lang="en"
-                      >Use the Piik address provided by your friend or administrator. Enter the site passphrase if
-                      required.</span
-                    ><span lang="zh-CN">使用朋友或管理员提供的 Piik 地址。如果站点设置了口令，先输入口令。</span>
+                      >Deploy Piik Server on a Linux x64 server using Docker Compose or the server package.
+                      Follow the deployment guide below to set up HTTPS and open the required ports.</span
+                    ><span lang="zh-CN">在 Linux x64 服务器上通过 Docker Compose 或服务端安装包部署 Piik Server，
+                      按下方部署指南配置 HTTPS 并开放所需端口。</span>
                   </p>
                 </li>
                 <li>
                   <strong
-                    ><span lang="en">Choose Start sharing.</span><span lang="zh-CN">点击「开始分享」。</span></strong
+                    ><span lang="en">Connect Piik App to your site.</span><span lang="zh-CN">用 Piik App 连接站点。</span></strong
                   >
                   <p>
                     <span lang="en"
-                      >Select a screen, window or tab in the browser’s capture dialog. Enable audio if the selected
-                      source supports it, then confirm.</span
+                      >Open Piik App, choose <strong>Connect to Site</strong> and enter your site’s HTTPS address.
+                      You can also open the site directly in a computer browser to share.</span
                     ><span lang="zh-CN"
-                      >在浏览器弹窗中选择屏幕、窗口或标签页；如需声音，勾选可用的音频选项，然后确认分享。</span
+                      >打开 Piik App，选择<strong>连接站点</strong>，输入站点的 HTTPS 地址。
+                      也可以直接用电脑浏览器打开站点，开始分享。</span
                     >
                   </p>
                 </li>
                 <li>
                   <strong
-                    ><span lang="en">Check the preview and invite a friend.</span
-                    ><span lang="zh-CN">确认预览，发送邀请。</span></strong
+                    ><span lang="en">Choose a picture and invite your friends.</span
+                    ><span lang="zh-CN">选好画面，发送邀请。</span></strong
                   >
                   <p>
                     <span lang="en"
-                      >Check the picture, then select <strong>Copy invite link</strong>. Send that link to the friends
-                      you want to invite.</span
+                      >Select <strong>Start sharing</strong>, choose a source, then use <strong>Copy invite link</strong>.
+                      Friends can open the link on a phone or computer to watch.</span
                     ><span lang="zh-CN"
-                      >确认画面无误后，点击<strong>复制邀请链接</strong>，将链接发给要邀请的朋友。</span
-                    >
-                  </p>
-                </li>
-                <li>
-                  <strong
-                    ><span lang="en">Keep the sharing tab open.</span
-                    ><span lang="zh-CN">分享期间保持标签页打开。</span></strong
-                  >
-                  <p>
-                    <span lang="en"
-                      >Use <strong>Switch source</strong> to change the picture, <strong>Pause sharing</strong> for a
-                      break, and <strong>Stop sharing</strong> to finish.</span
-                    ><span lang="zh-CN"
-                      >更换画面时点击<strong>切换来源</strong>，暂时中断时点击<strong>暂停分享</strong>，结束时点击<strong>停止分享</strong>。</span
+                      >点击<strong>开始分享</strong>并选择画面，再<strong>复制邀请链接</strong>发给朋友。
+                      朋友用手机或电脑打开链接即可观看。</span
                     >
                   </p>
                 </li>
               </ol>
               <aside class="guide-note">
-                <h3><span lang="en">Where does the site come from?</span><span lang="zh-CN">Piik 站点从哪里来？</span></h3>
+                <h3><span lang="en">App and site, together</span><span lang="zh-CN">App 与站点搭配使用</span></h3>
                 <p>
                   <span lang="en"
-                    >Use a site provided by a friend or administrator. Hosting your own is an advanced option: run Piik Server,
-                    configure HTTPS and open the required network ports. Follow the
-                    <a href="https://github.com/TNTcraftHIM/Piik/blob/main/docs/operations/self-hosting.md">self-hosting guide</a>.</span
+                    >Piik App provides native screen and audio capture. Your site gives you a permanent address
+                    and room management. Enable the site’s SFU media fallback to offer another route when a direct
+                    connection is unavailable.</span
                   ><span lang="zh-CN"
-                    >可以直接使用朋友或管理员提供的站点。自己部署属于进阶操作，需要运行 Piik Server、配置 HTTPS 并开放相应网络端口，
-                    具体步骤见<a href="https://github.com/TNTcraftHIM/Piik/blob/main/docs/operations/self-hosting.zh-CN.md">部署指南</a>。</span
+                    >Piik App 提供原生画面与声音采集，自托管站点提供固定访问地址与房间管理。
+                    在站点开启 SFU 媒体兜底后，直连不通时也有备用路线。</span
                   >
                 </p>
-                <p>
-                  <span lang="en">Share from a desktop browser on an HTTPS site. Sources and audio options vary by browser and operating system. No site yet? Start with the <a href="#demo">online site</a> or <a href="#guide-app">App</a>.</span
-                  ><span lang="zh-CN">请用支持屏幕共享的电脑浏览器访问 HTTPS 站点。可分享的画面和声音取决于浏览器及系统。还没有站点时，可以先用<a href="#demo">在线版</a> 或<a href="#guide-app">客户端</a>。</span>
-                </p>
-                <a href="https://github.com/TNTcraftHIM/Piik/blob/main/docs/guide/getting-started.md#share-from-your-browser" lang="en">Full browser guide →</a>
-                <a href="https://github.com/TNTcraftHIM/Piik/blob/main/docs/guide/getting-started.zh-CN.md#用浏览器分享" lang="zh-CN">完整网页版使用指南 →</a>
-                <a href="#docs"><span lang="en">Documentation &amp; deployment</span><span lang="zh-CN">文档中心与部署教程</span><span aria-hidden="true"> →</span></a>
+                <a href="https://github.com/TNTcraftHIM/Piik/blob/main/docs/operations/self-hosting.md" lang="en">Full deployment guide →</a>
+                <a href="https://github.com/TNTcraftHIM/Piik/blob/main/docs/operations/self-hosting.zh-CN.md" lang="zh-CN">完整部署指南 →</a>
+                <a href="#docs"><span lang="en">Documentation</span><span lang="zh-CN">文档中心</span><span aria-hidden="true"> →</span></a>
               </aside>
             </div>
           </details>

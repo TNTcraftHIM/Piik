@@ -23,12 +23,12 @@ import {
   withDeadline,
 } from "./browser-gate-harness";
 import {
-  decodeClientEndpoint,
-  type ClientEndpoint as Endpoint,
-} from "./client-gate-endpoint";
+  decodeAppEndpoint,
+  type AppEndpoint as Endpoint,
+} from "./app-gate-endpoint";
 
 const ROOT = resolve(import.meta.dirname, "..");
-const BUILD_ROOT = join(ROOT, "build", "client-check");
+const BUILD_ROOT = join(ROOT, "build", "go-check");
 export const SOURCE_TITLE = "Piik Native Gate Source";
 
 type GateMode = "local" | "cross-nat" | "one-link";
@@ -95,7 +95,7 @@ interface GateResult {
   sourceFailureEndedShare: boolean | null;
   replacementViewerConnected: boolean | null;
   replacementViewerFrames: number | null;
-  clientCrashEndedShare: boolean | null;
+  appCrashEndedShare: boolean | null;
   mode: GateMode;
   viewerLocation: "local-browser" | "public-url-browser" | "remote-peer";
   publicViewerPage: boolean;
@@ -489,7 +489,7 @@ async function waitForValue<T>(
   throw new Error("Native Host gate timed out");
 }
 
-async function readClientEndpoint(
+async function readAppEndpoint(
   child: ChildProcessWithoutNullStreams,
   requirePublicOrigin = false,
 ): Promise<{
@@ -512,7 +512,7 @@ async function readClientEndpoint(
           if (!line) continue;
           lines.push(line);
           try {
-            endpoint = decodeClientEndpoint(line);
+            endpoint = decodeAppEndpoint(line);
           } catch {
             // Informational lines are printed after the endpoint.
           }
@@ -539,7 +539,7 @@ async function readClientEndpoint(
       child.stdout.on("data", onData);
       child.once("error", rejectEndpoint);
       child.once("exit", (code) =>
-        rejectEndpoint(new Error("Client exited before readiness (" + String(code) + ")")),
+        rejectEndpoint(new Error("App exited before readiness (" + String(code) + ")")),
       );
     }),
     Date.now() + 15_000,
@@ -566,7 +566,7 @@ async function main(): Promise<void> {
   const crashGate =
     process.env.PIIK_CLIENT_NATIVE_HOST_CRASH_GATE === "true";
   if (crashGate && mode !== "local") {
-    throw new Error("Client crash gate requires local mode");
+    throw new Error("App crash gate requires local mode");
   }
   const sourceKind: "window" | "display" =
     process.env.PIIK_CLIENT_NATIVE_HOST_SOURCE === "display"
@@ -594,18 +594,18 @@ async function main(): Promise<void> {
   const appPort = await reservePort();
   const debugPort = await reservePort();
   const sourceDebugPort = await reservePort();
-  const clientConfig = join(profile, "client.json");
+  const appConfig = join(profile, "client.json");
   const captureBuild = BUILD_ROOT;
-  const clientBinary = join(BUILD_ROOT, "piik-app.exe");
+  const appBinary = join(BUILD_ROOT, "piik-app.exe");
   const captureBinary = join(captureBuild, "piik-capture.exe");
   const remoteBinary = join(BUILD_ROOT, "piik-peer-gate-linux");
   let source: { close(): Promise<void> } | null = null;
-  let client: ChildProcessWithoutNullStreams | null = null;
+  let app: ChildProcessWithoutNullStreams | null = null;
   let sourceChrome: ChildProcessWithoutNullStreams | null = null;
   let sourceCdp: CdpConnection | null = null;
   let chrome: ChildProcessWithoutNullStreams | null = null;
   let cdp: CdpConnection | null = null;
-  let clientPort = 0;
+  let nativePort = 0;
   let remoteTunnel: ChildProcess | null = null;
   let stage = "setup";
   const result: GateResult = {
@@ -638,7 +638,7 @@ async function main(): Promise<void> {
     sourceFailureEndedShare: mode === "local" ? false : null,
     replacementViewerConnected: mode === "local" ? false : null,
     replacementViewerFrames: mode === "local" ? 0 : null,
-    clientCrashEndedShare: crashGate ? false : null,
+    appCrashEndedShare: crashGate ? false : null,
     mode,
     viewerLocation: remote ? "remote-peer" : mode === "one-link" ? "public-url-browser" : "local-browser",
     publicViewerPage: false,
@@ -653,9 +653,9 @@ async function main(): Promise<void> {
     error: null,
   };
   try {
-    stage = "application-build";
+    stage = "web-build";
     run(process.env.ComSpec || "cmd.exe", [
-      "/d", "/s", "/c", "npm run build:client",
+      "/d", "/s", "/c", "npm run build:web",
     ]);
     stage = "source-server";
     source = await sourceServer(sourcePort);
@@ -667,9 +667,9 @@ async function main(): Promise<void> {
       "-OutputDirectory", captureBuild,
     ]);
     process.stderr.write(`${JSON.stringify({ stage, status: "finished", at: new Date().toISOString() })}\n`);
-    stage = "client-build";
+    stage = "app-build";
     run(go, [
-      "build", "-p", "1", "-trimpath", "-o", clientBinary, "./cmd/piik-app",
+      "build", "-p", "1", "-trimpath", "-o", appBinary, "./cmd/piik-app",
     ], ROOT, { ...process.env, GOMAXPROCS: "2" });
     if (remote) {
       stage = "remote-peer-build";
@@ -688,14 +688,14 @@ async function main(): Promise<void> {
       sourcePort,
     ));
     await waitForCaptureWindow(captureBinary);
-    stage = "client-start";
-    client = spawn(clientBinary, [
+    stage = "app-start";
+    app = spawn(appBinary, [
       mode === "one-link" ? "--link" : "--local",
       ...(mode === "one-link"
         ? ["--tunnel-process", tunnel]
         : []),
       "--capture-process", captureBinary,
-      "--config", clientConfig,
+      "--config", appConfig,
       "--port", String(appPort),
       "--debug", "--log-dir", diagnosticDirectory,
     ], {
@@ -705,17 +705,17 @@ async function main(): Promise<void> {
         ...process.env,
         PIIK_DEBUG: "",
         PIIK_CLIENT_GATE_NO_BROWSER: "true",
-        // STUN_URLS reaches only the Client's own Pion edge: the in-process
+        // STUN_URLS reaches only the App's own Pion edge: the in-process
         // room server never reads it, so the cross-NAT arm stays isolated.
         ...(mode === "cross-nat" && gateStunUrls
           ? { STUN_URLS: gateStunUrls }
           : {}),
       },
     });
-    client.stderr.resume();
-    stage = "client-ready";
-    const clientInfo = await readClientEndpoint(client, mode === "one-link");
-    clientPort = clientInfo.endpoint.port;
+    app.stderr.resume();
+    stage = "app-ready";
+    const appInfo = await readAppEndpoint(app, mode === "one-link");
+    nativePort = appInfo.endpoint.port;
     if (mode === "cross-nat" && remote) {
       stage = "signaling-tunnel";
       const tunnel = spawn(
@@ -760,7 +760,7 @@ async function main(): Promise<void> {
     const version = await waitForVersion(debugPort, chrome);
     cdp = await CdpConnection.connect(version.webSocketDebuggerUrl, Date.now() + 10_000);
     const hostBootstrap = new URLSearchParams({
-      ...(clientInfo.password ? { "client-access": clientInfo.password } : {}),
+      ...(appInfo.password ? { "client-access": appInfo.password } : {}),
       "piik-client": "1",
     }).toString();
     stage = "host-page";
@@ -871,10 +871,10 @@ async function main(): Promise<void> {
     if (remote) {
       stage = "remote-viewer";
       const signalUrl = mode === "one-link"
-        ? new URL("/signal", clientInfo.publicOrigin!).toString().replace(/^http/, "ws")
+        ? new URL("/signal", appInfo.publicOrigin!).toString().replace(/^http/, "ws")
         : `ws://127.0.0.1:${remote.signalPort}/signal`;
       const signalOrigin = mode === "one-link"
-        ? clientInfo.publicOrigin!
+        ? appInfo.publicOrigin!
         : `http://localhost:${appPort}`;
       const remoteResult = await runRemotePeerGate(
         remoteBinary,
@@ -900,7 +900,7 @@ async function main(): Promise<void> {
       const viewerURL = new URL(hostState.invite);
       if (mode === "local") viewerURL.hostname = "localhost";
       else {
-        if (viewerURL.protocol !== "https:" || viewerURL.origin !== clientInfo.publicOrigin) {
+        if (viewerURL.protocol !== "https:" || viewerURL.origin !== appInfo.publicOrigin) {
           throw new Error("One-link invitation does not use the actual public origin");
         }
         stage = "public-page-ready";
@@ -939,7 +939,7 @@ async function main(): Promise<void> {
       if (mode === "one-link") {
         result.codecPreserved = true;
         result.publicViewerPage = await evaluate<boolean>(cdp, viewer,
-          `location.origin === ${JSON.stringify(clientInfo.publicOrigin)} && location.pathname === ${JSON.stringify(viewerURL.pathname)}`,
+          `location.origin === ${JSON.stringify(appInfo.publicOrigin)} && location.pathname === ${JSON.stringify(viewerURL.pathname)}`,
           Date.now() + 5_000);
         result.publicViewerSignal = await evaluate<boolean>(cdp, viewer,
           "window.__piikGatePublicSignal()", Date.now() + 5_000);
@@ -1310,12 +1310,12 @@ async function main(): Promise<void> {
       );
 
       if (crashGate) {
-        stage = "client-crash";
-        if (!client || !(await stopChild(client))) {
-          throw new Error("Client did not terminate for crash gate");
+        stage = "app-crash";
+        if (!app || !(await stopChild(app))) {
+          throw new Error("App did not terminate for crash gate");
         }
-        client = null;
-        result.clientCrashEndedShare = await waitForValue(
+        app = null;
+        result.appCrashEndedShare = await waitForValue(
           (deadline) => evaluate<boolean>(
             cdp!,
             host,
@@ -1415,7 +1415,7 @@ async function main(): Promise<void> {
       }
     }
   } catch (error) {
-    // Client stderr can contain implementation diagnostics or URLs; keep gate
+    // App stderr can contain implementation diagnostics or URLs; keep gate
     // output independent of credentials and media-path identifiers.
     result.error = error instanceof Error ? error.message : String(error);
     result.stage = stage;
@@ -1432,11 +1432,11 @@ async function main(): Promise<void> {
     }
     result.cleanup = await cleanupRun({
       cdp,
-      native: client,
+      native: app,
       chrome,
       server: source,
       profile,
-      ports: [sourcePort, appPort, debugPort, ...(clientPort ? [clientPort] : [])],
+      ports: [sourcePort, appPort, debugPort, ...(nativePort ? [nativePort] : [])],
     });
     if (sourceProfile) {
       const sourceCleanup = await cleanupRun({
@@ -1473,7 +1473,7 @@ async function main(): Promise<void> {
         result.viewerWidth === 854 && result.viewerHeight === 480 &&
         result.nativeQualityEvidence &&
         (crashGate
-          ? result.clientCrashEndedShare === true
+          ? result.appCrashEndedShare === true
           : sourceKind === "display" ||
             (result.sourceFailureEndedShare === true &&
               result.replacementViewerConnected === true &&

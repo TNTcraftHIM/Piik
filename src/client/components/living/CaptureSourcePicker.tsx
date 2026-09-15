@@ -38,6 +38,7 @@ export function CaptureSourcePicker({
   initialTab = "window",
   initialAudio = true,
   audioLocked = false,
+  selectionDisabled = false,
 }: {
   nativeSources: NativeSourceList;
   onBrowser: () => void;
@@ -52,6 +53,7 @@ export function CaptureSourcePicker({
   initialTab?: SourceTab;
   initialAudio?: boolean;
   audioLocked?: boolean;
+  selectionDisabled?: boolean;
 }) {
   const { vis, t } = useCopy();
   const pickerId = useId();
@@ -233,6 +235,7 @@ export function CaptureSourcePicker({
                 type="button"
                 className="lr-source-option is-browser"
                 aria-label={t("host.sourcePicker.browser")}
+                disabled={selectionDisabled}
                 onClick={onBrowser}
               >
                 <span className="lr-source-option-icon" aria-hidden="true">
@@ -257,7 +260,7 @@ export function CaptureSourcePicker({
                     key={nativeCaptureTargetKey(target)}
                     target={target}
                     disabled={
-                      audioLocked && shareAudio && !supportsAudio(target)
+                      selectionDisabled || (audioLocked && shareAudio && !supportsAudio(target))
                     }
                     onPreview={onPreview}
                     onSelect={() =>

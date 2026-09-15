@@ -919,6 +919,7 @@ export function HostPage({
     }
     activeGenerationRef.current = null;
     generationRef.current += 1;
+    closeCaptureSourcePicker();
     const currentRoom = roomRef.current;
     if (notifyServer && currentRoom) {
       writePreferredRoom(currentRoom.roomId);
@@ -1400,7 +1401,6 @@ export function HostPage({
 
   function startBrowserShareFromPicker(): void {
     void startSharing({ kind: "browser" });
-    closeCaptureSourcePicker();
   }
 
   async function loadNativeSourcePreview(
@@ -1436,13 +1436,9 @@ export function HostPage({
     const path = nativeSourcePathRef.current;
     if (!client || !path) return;
     if (phase === "live" && nativeModeRef.current) {
-      closeCaptureSourcePicker();
       void switchNativeSource(client, target, audio, path);
       return;
     }
-    nativeSourceRequestRef.current = null;
-    nativeSourcePathRef.current = null;
-    setNativeSources(null);
     void startSharing({ kind: "native", client, target, audio, path });
   }
 
@@ -2382,6 +2378,7 @@ export function HostPage({
     generationRef.current = generation;
     activeGenerationRef.current = generation;
     shareGenerationRef.current = shareGeneration;
+    closeCaptureSourcePicker();
     setNoticeValue(null);
     setCopiedInviteUrl(null);
     setPhase("starting");
@@ -2674,6 +2671,7 @@ export function HostPage({
     }
     const token = {};
     sourceSwitchRef.current = token;
+    closeCaptureSourcePicker();
     setSwitchingSource(true);
     setNoticeValue(null);
     try {
@@ -3267,10 +3265,9 @@ export function HostPage({
   });
   // Startup and termination reasons refine the source status. Independent
   // operation results may coexist with it; wording is not a status identity.
-  const titleContent = titleFrames(hostStatus.titleFrameKey).map((frame) =>
-    [frame, hostStatus.titleMarker].filter(Boolean).join(" "),
-  );
-  useDocumentTitle([room?.roomId, titleContent[0]], titleContent.slice(1));
+  const titleContent = titleFrames(hostStatus.titleFrameKey);
+  useDocumentTitle([room?.roomId, titleContent.label, hostStatus.titleMarker], titleContent.variations,
+    `${lang}:${vis}:${hostStatus.titleFrameKey}:${room?.roomId ?? ""}`);
 
   return (
     <div className="lr-app">
@@ -3311,6 +3308,7 @@ export function HostPage({
                 onRefresh={openCaptureSourcePicker}
                 onCancel={closeCaptureSourcePicker}
                 browserAvailable={!nativeActive}
+                selectionDisabled={roomMutating || switchingSource || changingQuality}
                 initialAudio={
                   nativeActive
                     ? (streamRef.current?.getAudioTracks().length ?? 0) > 0

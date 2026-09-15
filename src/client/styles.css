@@ -1200,7 +1200,7 @@ html[data-theme="dark"] .lr-pill.is-good { background: #14291d; }
 .lr-meter-cell svg { color: #53676a; }
 html[data-theme="dark"] .lr-meter-cell svg { color: #7d92a8; }
 .lr-meter-text { display: grid; line-height: 1.18; }
-.lr-meter-text small { font-size: 9.5px; font-weight: 600; opacity: .62; }
+.lr-meter-text small { font-size: 9.5px; font-weight: 600; color: var(--muted); }
 .lr-meter-tag { display: inline-flex; align-items: center; padding: 9px 2px 9px 0; color: #53676a; }
 .lr-meter-tag .lr-cap { margin-left: 6px; font-size: 12px; }
 .lr-metrics-more { min-width: 40px; height: 40px; padding: 0 10px; }
@@ -1908,7 +1908,7 @@ svg[data-comic-motion="still"] .lr-person-eyes > ellipse {
      Scoped to the containers that hold adjacent wrapped triggers; the guard
      keys on the component-owned focus state, so plain mouse clicks (no panel
      held open) never suppress anything. */
-  :is(.lr-row-group, .lr-pawn-detail, .lr-entry-actions, .lr-pawns, .lr-route):has(.lr-comic-tip-wrap.is-focus-open)
+  :is(.lr-row-group, .lr-pawn-detail, .lr-entry-actions, .lr-pawns, .lr-route, .lr-header-controls, .lr-playback):has(.lr-comic-tip-wrap.is-focus-open)
     .lr-comic-tip-wrap:not(.is-focus-open).is-hover-open .lr-comic-tip {
     opacity: 0;
     pointer-events: none;

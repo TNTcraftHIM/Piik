@@ -6,8 +6,8 @@ on:
       - main
   workflow_dispatch:
     inputs:
-      client_checks:
-        description: Run the optional Piik App checks
+      app_checks:
+        description: Build and verify App and Server candidates
         required: false
         default: false
         type: boolean
@@ -60,8 +60,8 @@ jobs:
         env:
           PIIK_RELEASE_VERSION: ${{ steps.release.outputs.version }}
       # The Go build embeds internal/server/webassets/dist, so Vite runs first.
-      - name: Build the Browser client
-        run: npm run build:client
+      - name: Build the Web UI
+        run: npm run build:web
         env:
           PIIK_BUILD_VERSION: ${{ steps.release.outputs.version }}
           VITE_PIIK_VERSION: ${{ steps.release.outputs.version }}
@@ -72,9 +72,9 @@ jobs:
           go-version: 1.26.6
           cache-dependency-path: go.sum
       - name: Check Go core
-        run: npm run check:client-core
+        run: npm run check:go-core
       - name: Check NAT and media ownership with the race detector
-        run: npm run check:client-race
+        run: npm run check:go-race
       - name: Type-check and test
         run: npm run typecheck && npm test
         env:
@@ -82,11 +82,11 @@ jobs:
           VITE_PIIK_VERSION: ${{ steps.release.outputs.version }}
           VITE_PIIK_REVISION: ${{ github.sha }}
 
-  release-application:
+  release-server:
     needs: validate
     if: >-
       needs.validate.outputs.publish == 'true' ||
-      (github.event_name == 'workflow_dispatch' && inputs.client_checks == true)
+      (github.event_name == 'workflow_dispatch' && inputs.app_checks == true)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -106,9 +106,9 @@ jobs:
           cache-dependency-path: go.sum
       - name: Install dependencies
         run: npm ci
-      - name: Package application release
+      - name: Package Server release
         run: >-
-          node scripts/package-app-release.mjs "$RUNNER_TEMP/app-release"
+          node scripts/package-server-release.mjs "$RUNNER_TEMP/server-release"
           --container-image "piik-candidate:$GITHUB_SHA"
       - name: Check the container and deployment recipe
         run: npm run check:container -- "piik-candidate:$GITHUB_SHA" "$GITHUB_SHA"
@@ -121,21 +121,21 @@ jobs:
           path: ${{ runner.temp }}/piik-container.tar
           if-no-files-found: error
           retention-days: 14
-      - name: Upload application release
+      - name: Upload Server release
         uses: actions/upload-artifact@v7
         with:
           name: piik-server-${{ github.sha }}
-          path: ${{ runner.temp }}/app-release/*
+          path: ${{ runner.temp }}/server-release/*
           if-no-files-found: error
           retention-days: 14
 
-  release-clients:
+  release-apps:
     needs:
       - validate
-      - release-application
+      - release-server
     if: >-
       needs.validate.outputs.publish == 'true' ||
-      (github.event_name == 'workflow_dispatch' && inputs.client_checks == true)
+      (github.event_name == 'workflow_dispatch' && inputs.app_checks == true)
     strategy:
       fail-fast: false
       matrix:
@@ -163,7 +163,7 @@ jobs:
         with:
           go-version: 1.26.6
           cache-dependency-path: go.sum
-      # scripts/assemble-client.mjs runs `npm run build:client` for the Web
+      # scripts/assemble-app.mjs runs `npm run build:web` for the Web
       # assets the App binary embeds, so Vite and the license inputs must be
       # installed here too.
       - name: Install dependencies
@@ -180,22 +180,22 @@ jobs:
           gstreamer1.0-pipewire
           gstreamer1.0-plugins-bad
           gstreamer1.0-pulseaudio
-      - name: Download application release
+      - name: Download Server release
         uses: actions/download-artifact@v8
         with:
           name: piik-server-${{ github.sha }}
-          path: ${{ runner.temp }}/app-release
+          path: ${{ runner.temp }}/server-release
       - name: Build and verify App candidate
         run: >-
-          node scripts/package-client-candidate.mjs
-          "${{ runner.temp }}/app-release"
+          node scripts/package-app-candidate.mjs
+          "${{ runner.temp }}/server-release"
           "${{ matrix.target }}"
-          "${{ runner.temp }}/client-release"
+          "${{ runner.temp }}/app-release"
       - name: Upload App release candidate
         uses: actions/upload-artifact@v7
         with:
           name: piik-app-${{ matrix.target }}-${{ github.sha }}
-          path: ${{ runner.temp }}/client-release/*
+          path: ${{ runner.temp }}/app-release/*
           if-no-files-found: error
           compression-level: 0
           retention-days: 14
@@ -203,8 +203,8 @@ jobs:
   publish:
     needs:
       - validate
-      - release-application
-      - release-clients
+      - release-server
+      - release-apps
     if: needs.validate.outputs.publish == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -223,7 +223,7 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci --ignore-scripts
-      - name: Download application release
+      - name: Download Server release
         uses: actions/download-artifact@v8
         with:
           name: piik-server-${{ github.sha }}

@@ -805,6 +805,126 @@
       "schema": "client",
       "json": "{\"type\":\"sfu-signal\",\"revision\":9,\"publicationGeneration\":\"publication_12345678\",\"connectionId\":\"connection_12345678\",\"kind\":\"candidate\",\"description\":null}",
       "valid": false
+    },
+    {
+      "name": "set-quality-settings-folded-audio-invalid",
+      "schema": "client",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\",\"screenaudioquality\":\"invalid\"}}",
+      "valid": false
+    },
+    {
+      "name": "set-quality-settings-folded-audio-null",
+      "schema": "client",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\",\"screenaudioquality\":null}}",
+      "valid": false
+    },
+    {
+      "name": "set-quality-settings-folded-key-collision",
+      "schema": "client",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\",\"screenAudioQuality\":\"music\",\"screenaudioquality\":\"invalid\"}}",
+      "valid": false
+    },
+    {
+      "name": "set-quality-settings-exact-duplicate-last-valid",
+      "schema": "client",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":null,\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\"}}",
+      "valid": true
+    },
+    {
+      "name": "set-quality-settings-exact-duplicate-last-null",
+      "schema": "client",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":60,\"maxFramerate\":null,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\"}}",
+      "valid": false
+    },
+    {
+      "name": "authenticate-host-folded-generation",
+      "schema": "client",
+      "json": "{\"type\":\"authenticate\",\"protocol\":\"piik-v23\",\"roomId\":\"1234\",\"role\":\"host\",\"token\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"clientId\":\"client_12345678\",\"sharegeneration\":\"bad\"}",
+      "valid": false
+    },
+    {
+      "name": "authenticate-host-folded-default-policy",
+      "schema": "client",
+      "json": "{\"type\":\"authenticate\",\"protocol\":\"piik-v23\",\"roomId\":\"1234\",\"role\":\"host\",\"token\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"clientId\":\"client_12345678\",\"routepolicy\":{\"peerOnly\":false,\"topologyOptimization\":true,\"natPrediction\":false}}",
+      "valid": false
+    },
+    {
+      "name": "authenticate-viewer-folded-presence-false",
+      "schema": "client",
+      "json": "{\"type\":\"authenticate\",\"protocol\":\"piik-v23\",\"roomId\":\"1234\",\"role\":\"viewer\",\"clientId\":\"client_12345678\",\"viewerpresence\":false}",
+      "valid": false
+    },
+    {
+      "name": "authenticate-viewer-folded-password-null",
+      "schema": "client",
+      "json": "{\"type\":\"authenticate\",\"protocol\":\"piik-v23\",\"roomId\":\"1234\",\"role\":\"viewer\",\"clientId\":\"client_12345678\",\"viewerpassword\":null}",
+      "valid": false
+    },
+    {
+      "name": "route-ready-folded-approval-false",
+      "schema": "client",
+      "json": "{\"type\":\"route-ready\",\"revision\":7,\"phase\":\"prepare\",\"qualityapproved\":false}",
+      "valid": false
+    },
+    {
+      "name": "signal-folded-target-empty",
+      "schema": "client",
+      "json": "{\"type\":\"signal\",\"payload\":{\"kind\":\"candidate\",\"connectionId\":\"connection_12345678\",\"candidate\":null},\"targetpeerid\":\"\"}",
+      "valid": false
+    },
+    {
+      "name": "stop-sharing-folded-generation-empty",
+      "schema": "client",
+      "json": "{\"type\":\"stop-sharing\",\"sharegeneration\":\"\"}",
+      "valid": false
+    },
+    {
+      "name": "create-room-folded-preferred-null",
+      "schema": "createRoomRequest",
+      "json": "{\"codeEntryPolicy\":\"open\",\"preferredroomid\":null}",
+      "valid": false
+    },
+    {
+      "name": "set-display-name-literal-high-surrogate-text",
+      "schema": "client",
+      "json": "{\"type\":\"set-display-name\",\"displayName\":\"\\\\ud800\"}",
+      "valid": true
+    },
+    {
+      "name": "set-display-name-literal-low-surrogate-text",
+      "schema": "client",
+      "json": "{\"type\":\"set-display-name\",\"displayName\":\"\\\\udc00\"}",
+      "valid": true
+    },
+    {
+      "name": "set-display-name-escaped-surrogate-pair",
+      "schema": "client",
+      "json": "{\"type\":\"set-display-name\",\"displayName\":\"\\ud83d\\ude00\"}",
+      "valid": true
+    },
+    {
+      "name": "set-display-name-unpaired-high-surrogate",
+      "schema": "client",
+      "json": "{\"type\":\"set-display-name\",\"displayName\":\"\\ud800\"}",
+      "valid": false
+    },
+    {
+      "name": "set-display-name-unpaired-low-surrogate",
+      "schema": "client",
+      "json": "{\"type\":\"set-display-name\",\"displayName\":\"\\udc00\"}",
+      "valid": false
+    },
+    {
+      "name": "set-display-name-literal-high-followed-by-unpaired-low",
+      "schema": "client",
+      "json": "{\"type\":\"set-display-name\",\"displayName\":\"\\\\ud800\\udc00\"}",
+      "valid": false
+    },
+    {
+      "name": "set-display-name-escaped-slash-followed-by-surrogate-pair",
+      "schema": "client",
+      "json": "{\"type\":\"set-display-name\",\"displayName\":\"\\\\\\ud83d\\ude00\"}",
+      "valid": true
     }
   ],
   "serverMessages": [

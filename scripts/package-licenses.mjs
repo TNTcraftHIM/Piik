@@ -4,7 +4,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFi
 import { createRequire } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { clientGoEnvironment } from "./client-package-targets.mjs";
+import { goBuildEnvironment } from "./app-package-targets.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const pinned = JSON.parse(readFileSync(join(root, "licenses", "upstream.json"), "utf8"));
@@ -73,7 +73,7 @@ export function writeWebLicenseNotices(repositoryRoot, outputFile) {
 // without a recognised license filename fails closed.
 function goNotices(repositoryRoot, goCommand, target, command) {
   const options = { cwd: repositoryRoot, encoding: "utf8", windowsHide: true,
-    env: clientGoEnvironment(target) };
+    env: goBuildEnvironment(target) };
   const runGo = (args) => execFileSync(goCommand, args, options).trim();
   const goroot = runGo(["env", "GOROOT"]);
   const template = '{{if .Module}}{{if not .Module.Main}}[{{printf "%q" .Module.Path}},{{printf "%q" .Module.Version}},{{printf "%q" .Module.Dir}},{{printf "%q" .Dir}}]{{end}}{{end}}';
@@ -108,15 +108,15 @@ function moduleSections(modules) {
   return text;
 }
 
-// writeServerLicenseNotices produces the Hosted application release notice file,
+// writeServerLicenseNotices produces the Server release notice file,
 // which ships beside the single piik-server binary.
 export function writeServerLicenseNotices(repositoryRoot, outputFile, goCommand, target) {
   const notices = goNotices(repositoryRoot, goCommand, target, "./cmd/piik-server");
-  writeFileSync(outputFile, "Piik server third-party software notices\n" +
+  writeFileSync(outputFile, "Piik Server third-party software notices\n" +
     WEB_NOTICE_LINE + notices.toolchain + moduleSections(notices.modules));
 }
 
-export function writeClientLicenseNotices(repositoryRoot, packageRoot, goCommand, target, tunnelVersion) {
+export function writeAppLicenseNotices(repositoryRoot, packageRoot, goCommand, target, tunnelVersion) {
   copyFileSync(join(repositoryRoot, "LICENSE"), join(packageRoot, "LICENSE"));
   if (tunnelVersion) {
     writeFileSync(join(packageRoot, "runtime", "tunnel", "THIRD-PARTY-NOTICES.txt"),

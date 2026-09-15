@@ -1,6 +1,6 @@
 # Windows Capture Process
 
-This isolated Windows process is the capture candidate for Piik App. It
+This isolated Windows process provides native capture for Piik App. It
 enumerates local displays and visible top-level windows, binds each window to
 its PID and process creation time, and has independent modes for:
 
@@ -28,11 +28,14 @@ NV12 surface through one staging texture and uses the same encoded-frame
 boundary. The process has no network fallback. The App
 consumes the selected process or system-audio stream through its native media
 edge when the capability probe reports support. Build to the stable project
-`build/client-check` directory for a bounded capability run:
+`build/go-check` directory for a bounded capability run:
 
 ```powershell
-npm run check:client-capture
+npm run check:native
 ```
+
+The checks include synthetic output-worker replacement and failure cases using
+WARP and a test codec. They do not capture a screen or validate a physical encoder.
 
 The implementation follows Microsoft's MIT-licensed reference samples and
 official API contracts without copying their WIL framework. The retained MF

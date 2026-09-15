@@ -85,7 +85,7 @@ backups as room credentials. Keep the same Compose project/directory so the name
 volume is reused; `docker compose down --volumes` deletes that data. To roll back,
 restore the previous image setting and compatible configuration, then recreate
 the service. Read release notes before crossing a storage-format boundary.
-The bare-metal `release-app.sh` wrapper does not manage containers.
+The bare-metal `release-server.sh` wrapper does not manage containers.
 
 ## Operational Verification
 

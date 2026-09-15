@@ -130,7 +130,7 @@ The binary embeds the Browser assets, so build them from the repository root fir
 
 ```sh
 npm ci
-npm run build:client
+npm run build:web
 ```
 
 On Linux or macOS:
@@ -154,11 +154,11 @@ use `--capture-process` / `--tunnel-process` to select built helpers, or follow
 The repository-level entry used locally and by CI is:
 
 ```sh
-npm run check:client
+npm run check:go
 ```
 
 On Windows, its generated App, capture, and media-test executables are
-written to the ignored repository `build/client-check` directory and reused on
+written to the ignored repository `build/go-check` directory and reused on
 the next run. This keeps the executable identity stable for the system firewall;
 the files are local build output and are never packaged or committed.
 
@@ -192,8 +192,8 @@ candidate wrapper on its native operating system. The wrapper builds capture,
 verifies the pinned public-link helper, and assembles and checks the App:
 
 ```sh
-node scripts/package-app-release.mjs /outside/repository/app-release
-node scripts/package-client-candidate.mjs /outside/repository/app-release windows-amd64 /outside/repository/client-candidate
+node scripts/package-server-release.mjs /outside/repository/app-release
+node scripts/package-app-candidate.mjs /outside/repository/app-release windows-amd64 /outside/repository/client-candidate
 ```
 
 Supported targets are `windows-amd64`, `linux-amd64`, and `darwin-arm64`.
@@ -244,22 +244,22 @@ PIIK_CLIENT_LOCAL_GATE=true \
 CHROME_PATH=/path/to/chrome \
 PIIK_CLIENT_EXE=/path/to/piik-app \
 PIIK_CLIENT_GATE_LAN_ADDRESS=192.168.1.10 \
-npm run gate:client-local
+npm run gate:app-local
 
 PIIK_CLIENT_LOOPBACK_GATE=true \
 CHROME_PATH=/path/to/chrome \
 PIIK_CLIENT_EXE=/path/to/piik-app \
-npm run probe:client-loopback
+npm run probe:app-loopback
 
 PIIK_CLIENT_MEDIA_GATE=true \
 CHROME_PATH=/path/to/chrome \
 PIIK_CLIENT_GATE_STUN_URLS=stun:<stun-host>:3478 \
-npm run gate:client-media
+npm run gate:app-media
 
 PIIK_CLIENT_NATIVE_HOST_GATE=true \
 CHROME_PATH=/path/to/chrome \
 PIIK_GO=/path/to/go \
-npm run gate:client-native-host
+npm run gate:app-native-host
 
 PIIK_CLIENT_NATIVE_HOST_GATE=true \
 PIIK_CLIENT_CROSS_NAT_GATE=true \
@@ -269,7 +269,7 @@ PIIK_REMOTE_HOST=<public-test-host> \
 PIIK_REMOTE_USER=<ssh-user> \
 PIIK_REMOTE_SSH_KEY=/path/to/key \
 PIIK_CLIENT_GATE_STUN_URLS=stun:<stun-host>:3478 \
-npm run gate:client-native-host
+npm run gate:app-native-host
 
 PIIK_CLIENT_NATIVE_HOST_GATE=true \
 PIIK_CLIENT_LINK_MEDIA_GATE=true \
@@ -279,7 +279,7 @@ PIIK_CLOUDFLARED=/path/to/cloudflared \
 PIIK_REMOTE_HOST=<public-test-host> \
 PIIK_REMOTE_USER=<ssh-user> \
 PIIK_REMOTE_SSH_KEY=/path/to/key \
-npm run gate:client-native-host
+npm run gate:app-native-host
 
 PIIK_CLIENT_LINK_GATE=true \
 PIIK_GO=/path/to/go \
@@ -287,7 +287,7 @@ PIIK_CLOUDFLARED=/path/to/cloudflared \
 PIIK_REMOTE_HOST=<public-test-host> \
 PIIK_REMOTE_USER=<ssh-user> \
 PIIK_REMOTE_SSH_KEY=/path/to/key \
-npm run gate:client-link
+npm run gate:app-link
 ```
 
 The Windows media gate proves one hardware-H.264

@@ -1,13 +1,13 @@
-# Application Release And Recovery
+# Server Release And Recovery
 
-This file owns routine immutable application releases. Initial service setup is
+This file owns routine immutable Server releases. Initial service setup is
 in [self-hosting operations](./operations/self-hosting.md); environment and ports
 are in [configuration reference](./standards/configuration.md). Exact production
 identity is owned by the immutable release descriptor, runtime `REVISION`, and
 deployment record. [Status](./status.md) owns only the compact current product
 and operational snapshot; it is not a per-release ledger.
 
-The tracked `release-app.sh` updates an existing Go deployment with embedded
+The tracked `release-server.sh` updates an existing Go deployment with embedded
 media, bare-metal nginx, nftables, and application port 8787. It requires an
 existing running Go release. Another proxy, firewall owner, application port,
 first installation, or initial embedded-media cutover needs its own scoped
@@ -18,16 +18,16 @@ outside the cutover window. See [nft output options](https://netfilter.org/proje
 
 ## Release Boundary
 
-A routine application release changes only the built Piik server binary and
+A routine Server release changes only the built Piik server binary and
 the Browser assets it embeds. It does not change infrastructure,
 service units, proxy/firewall rules, secrets, media listener configuration, or
 persistent room state.
 
 Any task that touches one of those excluded surfaces must first record its exact
 pre-change value and a recovery procedure for that surface. Do not complicate the
-routine application wrapper with one-off infrastructure branches.
+routine Server wrapper with one-off infrastructure branches.
 
-The pre-cutover application release is guaranteed only through bounded health
+The pre-cutover Server release is guaranteed only through bounded health
 and postflight. It has no retention contract afterward and is not a maintained
 backup; Git and immutable artifacts own history.
 
@@ -38,7 +38,7 @@ Start from a clean exact revision with Node.js 24, npm 11, and Go 1.26:
 ```sh
 npm ci
 npm run check
-node scripts/package-app-release.mjs <output-directory-outside-repository>
+node scripts/package-server-release.mjs <output-directory-outside-repository>
 ```
 
 The packager refuses a dirty tree, builds the Browser assets and the
@@ -54,12 +54,12 @@ for later managed deployment or mirror retries: descriptors and manifests are
 available in CI artifacts for 14 days and are not public Release attachments.
 Do not rebuild an existing published version to replace missing metadata or bytes.
 
-The same application descriptor is also the App assembly input. On each
+The same Server descriptor is also the App assembly input. On each
 target platform, provide that platform's Go toolchain:
 
 ```sh
-PIIK_GO=/path/to/go node scripts/assemble-client.mjs \
-  /outside/repository/app-release/piik-<revision>.release.json \
+PIIK_GO=/path/to/go node scripts/assemble-app.mjs \
+  /outside/repository/server-release/piik-<revision>.release.json \
   /outside/repository/piik-app \
   --target windows-amd64 \
   --capture /path/to/platform-capture \
@@ -90,10 +90,10 @@ CI and local release-candidate builds use the same wrapper on the target's
 native operating system:
 
 ```sh
-node scripts/package-client-candidate.mjs \
-  /outside/repository/app-release \
+node scripts/package-app-candidate.mjs \
+  /outside/repository/server-release \
   windows-amd64 \
-  /outside/repository/client-candidate
+  /outside/repository/app-candidate
 ```
 
 The wrapper downloads the pinned public-link sidecar, verifies its digest,
@@ -104,7 +104,7 @@ Retain the descriptor and successful deployment output as release metadata. Do
 not create a follow-up source commit solely to duplicate their revision, asset,
 or hashes.
 
-Manual `client_checks=true` dispatch packages Server and three-platform App
+Manual `app_checks=true` dispatch packages Server and three-platform App
 candidates after validation. Once [automatic publication](./operations/github.md)
 is explicitly enabled, accepted main merges run that same pipeline and publish
 the verified artifacts. Candidate artifacts are retained for 14 days. Branches
@@ -166,7 +166,7 @@ Run the tracked server entry with the uploaded descriptor:
 
 ```sh
 sudo env PIIK_PUBLIC_ORIGIN=https://share.example.com \
-  bash /path/to/repository/deploy/release-app.sh \
+  bash /path/to/repository/deploy/release-server.sh \
   /opt/piik/uploads/piik-<revision>.release.json
 ```
 

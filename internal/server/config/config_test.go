@@ -275,6 +275,12 @@ func TestLoadAccepts(t *testing.T) {
 					t.Errorf("STUNURLs = %v", c.STUNURLs)
 				}
 			}},
+		{"ordinary STUN keeps an explicit non-default port", map[string]string{"STUN_URLS": "stun:stun.test:80"},
+			func(t *testing.T, c Config) {
+				if !slices.Equal(c.STUNURLs, []string{"stun:stun.test:80"}) || len(c.NATPredictionSTUNURLs) != 0 {
+					t.Fatalf("unexpected ICE configuration: %+v", IceConfig(c))
+				}
+			}},
 		{"NAT prediction with a base listener", map[string]string{
 			"STUN_URLS":              "stun:share.test:3478",
 			"NAT_PREDICTION_ENABLED": "true",
@@ -440,6 +446,9 @@ func TestLoadRejects(t *testing.T) {
 		// NAT prediction.
 		{"NAT prediction without STUN", map[string]string{"NAT_PREDICTION_ENABLED": "true"},
 			"NAT_PREDICTION_ENABLED requires a STUN_URLS entry on UDP 3478"},
+		{"NAT prediction cannot reinterpret explicit port 80", map[string]string{
+			"STUN_URLS": "stun:share.test:80", "NAT_PREDICTION_ENABLED": "true",
+		}, "NAT_PREDICTION_ENABLED requires a STUN_URLS entry on UDP 3478"},
 		{"NAT prediction off the base port", map[string]string{
 			"STUN_URLS": "stun:share.test:5349", "NAT_PREDICTION_ENABLED": "true",
 		}, "NAT_PREDICTION_ENABLED requires a STUN_URLS entry on UDP 3478"},

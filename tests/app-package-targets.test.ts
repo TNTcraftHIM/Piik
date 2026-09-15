@@ -1,17 +1,17 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  CLIENT_PACKAGE_TARGETS,
-  clientGoEnvironment,
-} from "../scripts/client-package-targets.mjs";
+  APP_PACKAGE_TARGETS,
+  goBuildEnvironment,
+} from "../scripts/app-package-targets.mjs";
 
-describe("client package targets", () => {
+describe("App package targets", () => {
   it("derives build and license discovery from one explicit cgo policy", () => {
     const previous = process.env.CGO_ENABLED;
     try {
       process.env.CGO_ENABLED = "unexpected-inherited-value";
-      const settings = CLIENT_PACKAGE_TARGETS.map((target) => {
-        const env = clientGoEnvironment(target);
+      const settings = APP_PACKAGE_TARGETS.map((target) => {
+        const env = goBuildEnvironment(target);
         const pathKey = Object.keys(process.env).find(
           (key) => key.toLowerCase() === "path",
         );

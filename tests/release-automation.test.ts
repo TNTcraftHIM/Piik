@@ -90,6 +90,7 @@ describe("release automation", () => {
       expect(plan()).toMatchObject({ version: "v1.0.0", publish: true });
       for (const path of ["site/film/art.js", "docs/deployment.md", "README.zh-CN.md",
         "scripts/build-website.mjs", "scripts/check-docs.mjs", "scripts/release-notes.mjs",
+        "scripts/app-gate-endpoint.ts", "scripts/client-gate-endpoint.ts",
         "tests/room.test.ts", ".agents/skills/ponytail/SKILL.md", ".github/workflows/website.yml"]) {
         mkdirSync(dirname(join(root, path)), { recursive: true });
         writeFileSync(join(root, path), "Peripheral content");
@@ -131,7 +132,7 @@ describe("release automation", () => {
       for (const path of ["src/client/styles.css", "src/shared/protocol.ts", "internal/server/app/app.go",
         "cmd/piik-app/piik.ico", "native/capture/windows/build.ps1", "public/guide.md",
         "licenses/NOTICE.md", "LICENSE", "package-lock.json", "go.mod",
-        "scripts/check-client.mjs", "scripts/client-package-targets.mjs", ".github/workflows/repository-hygiene.yml",
+        "scripts/check-go.mjs", "scripts/app-package-targets.mjs", ".github/workflows/repository-hygiene.yml",
         "new-product-input.json"]) {
         git("checkout", "--quiet", "--detach", "v1.0.0");
         mkdirSync(dirname(join(root, path)), { recursive: true });

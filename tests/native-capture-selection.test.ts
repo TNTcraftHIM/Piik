@@ -102,6 +102,18 @@ describe("native capture source selection", () => {
     expect(html).toContain('data-native-source="picker:1"');
     expect(html).toContain('aria-checked="true"');
   });
+
+  it.each(["browser", "window"] as const)("blocks %s confirmation during owning page work while retaining cancel", (initialTab) => {
+    setCopy({ lang: "en", vis: false });
+    const html = renderToStaticMarkup(createElement(CaptureSourcePicker, {
+      nativeSources: { kind: "ready", sources: [game], processAudio: false, systemAudio: false },
+      initialTab, selectionDisabled: true,
+      onBrowser: () => {}, onNative: () => {}, onPreview: async () => null,
+      onRefresh: () => {}, onCancel: () => {},
+    }));
+    expect(html).toMatch(/class="lr-source-option(?: is-browser)?"[^>]*disabled=""/);
+    expect(html).not.toMatch(/class="lr-source-picker-close"[^>]*disabled=""/);
+  });
 });
 
 describe("native adapter selection", () => {

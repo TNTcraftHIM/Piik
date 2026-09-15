@@ -20,6 +20,13 @@ import (
 )
 
 func TestMain(tests *testing.M) {
+	if marker := os.Getenv("PIIK_SOURCE_PROBE_FIXTURE"); marker != "" {
+		if err := os.WriteFile(marker, nil, 0600); err != nil {
+			os.Exit(1)
+		}
+		time.Sleep(10 * time.Second)
+		os.Exit(0)
+	}
 	if directory := os.Getenv("PIIK_QUIET_CAPTURE_FIXTURE"); directory != "" {
 		runQuietCaptureFixture(directory)
 		os.Exit(0)

@@ -12,10 +12,10 @@ const bash =
     : "/bin/bash";
 const testWithBash = bash && existsSync(bash) ? it : it.skip;
 
-describe("application release recovery", () => {
+describe("Server release recovery", () => {
   testWithBash("removes only the unactivated release owned by this run", () => {
     const script = fileURLToPath(
-      new URL("./release-app-recovery.sh", import.meta.url),
+      new URL("./release-server-recovery.sh", import.meta.url),
     );
     const result = spawnSync(bash!, [script], { encoding: "utf8" });
 

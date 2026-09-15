@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +16,97 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 )
+
+type observedProbeSession struct {
+	*Session
+	closed chan struct{}
+}
+
+func (session *observedProbeSession) Close() error {
+	err := session.Session.Close()
+	close(session.closed)
+	return err
+}
+
+func TestSourceProbesRetireWithTheirControlConnection(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, request := range []struct{ kind, fields string }{
+		{"list-sources", ""},
+		{"source-preview", `,"source":{"kind":"display","sourceId":"1","title":"Fixture"}`},
+	} {
+		for _, shutdown := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/shutdown=%v", request.kind, shutdown), func(t *testing.T) {
+				marker := filepath.Join(t.TempDir(), "probe-started")
+				t.Setenv("PIIK_SOURCE_PROBE_FIXTURE", marker)
+				ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+				defer cancel()
+				closed := make(chan struct{})
+				const origin = "https://site.example"
+				server, err := loopback.Start(ctx, loopback.Options{AllowedOrigins: []string{origin},
+					NewControl: func() loopback.ControlSession {
+						return &observedProbeSession{Session: New(executable, nativecapture.Capabilities{}, false), closed: closed}
+					}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer server.Close()
+				endpoint := server.Endpoint()
+				connection, _, err := websocket.Dial(ctx, strings.Replace(endpoint.URL, "http:", "ws:", 1)+"/control",
+					&websocket.DialOptions{HTTPHeader: http.Header{"Origin": {origin}},
+						Subprotocols: []string{loopback.ControlSubprotocol + "." + endpoint.InstanceToken}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer connection.CloseNow()
+				if err = wsjson.Write(ctx, connection, json.RawMessage(`{"version":9,"id":"request_hello","type":"hello"}`)); err != nil {
+					t.Fatal(err)
+				}
+				var ready struct{ Type string }
+				if err = wsjson.Read(ctx, connection, &ready); err != nil || ready.Type != "ready" {
+					t.Fatalf("hello: %+v, %v", ready, err)
+				}
+				defer func() {
+					_ = connection.CloseNow()
+					_ = server.Close()
+					select {
+					case <-closed:
+					case <-time.After(5 * time.Second):
+						t.Error("native probe fixture did not retire")
+					}
+				}()
+				payload := fmt.Sprintf(`{"version":9,"id":"request_probe","type":%q%s}`, request.kind, request.fields)
+				if err = wsjson.Write(ctx, connection, json.RawMessage(payload)); err != nil {
+					t.Fatal(err)
+				}
+				deadline := time.Now().Add(2 * time.Second)
+				for {
+					if _, err = os.Stat(marker); err == nil {
+						break
+					}
+					if time.Now().After(deadline) {
+						t.Fatal("source probe did not start")
+					}
+					time.Sleep(10 * time.Millisecond)
+				}
+				if shutdown {
+					if err = server.Close(); err != nil {
+						t.Fatalf("source probe exceeded ordered shutdown: %v", err)
+					}
+				} else {
+					_ = connection.CloseNow()
+				}
+				select {
+				case <-closed:
+				case <-time.After(2 * time.Second):
+					t.Fatal("source probe retained its native session after control closed")
+				}
+			})
+		}
+	}
+}
 
 func assertOperationFailure(t *testing.T, session *Session, payload string) {
 	t.Helper()

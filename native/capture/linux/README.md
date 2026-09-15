@@ -19,6 +19,13 @@ Build on a Linux desktop with development packages for libportal and GStreamer:
 sh native/capture/linux/build.sh /outside/repository/build
 ```
 
+Run `npm run check:native` on Linux to compile the sidecar, run the headless
+output-profile and retirement regression, and validate its probe/source list.
+The same check runs when the Linux CI job packages an App candidate. For the
+native build and regression alone, add `--check` to the command above. The test
+uses GStreamer's core synthetic elements and needs no display, Portal session,
+capture device or hardware encoder; physical capture remains a separate check.
+
 Runtime requirements are the desktop Portal/PipeWire services, a GStreamer
 PipeWire source, and an installed GStreamer hardware H.264 encoder. If any part
 is unavailable, the App reports no Linux Native path and the same Browser

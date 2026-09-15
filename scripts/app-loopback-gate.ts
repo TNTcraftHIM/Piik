@@ -13,9 +13,9 @@ import {
   waitForVersion,
 } from "./browser-gate-harness";
 import {
-  readClientEndpoint,
-  type ClientEndpoint as Endpoint,
-} from "./client-gate-endpoint";
+  readAppEndpoint,
+  type AppEndpoint as Endpoint,
+} from "./app-gate-endpoint";
 import {
   NATIVE_CLIENT_PORT_END,
   NATIVE_CLIENT_PORT_START,
@@ -31,7 +31,7 @@ interface GateReport {
   platform: NodeJS.Platform;
   browser: string | null;
   hostedExpectation: "blocked" | "connected";
-  clientStarted: boolean;
+  appStarted: boolean;
   localPageConnected: boolean;
   localPageError: string | null;
   localPageEvents: string[];
@@ -39,7 +39,7 @@ interface GateReport {
   hostedPageError: string | null;
   hostedPageEvents: string[];
   hostedPageBlockedByBrowser: boolean;
-  clientExited: boolean;
+  appExited: boolean;
   browserExited: boolean;
   profileRemoved: boolean;
 }
@@ -84,7 +84,7 @@ async function browserHandshake(
             clearTimeout(probeTimer);
           }
         }
-        throw new Error("Client not found");
+        throw new Error("App not found");
       };
       discover()
         .then((endpoint) => {
@@ -140,9 +140,9 @@ async function main(): Promise<void> {
     throw new Error("loopback gate was not explicitly enabled");
   }
   const browserPath = process.env.CHROME_PATH?.trim();
-  const clientPath = process.env.PIIK_CLIENT_EXE?.trim();
+  const appPath = process.env.PIIK_CLIENT_EXE?.trim();
   const pageUrl = process.env.PIIK_CLIENT_GATE_SITE_URL?.trim();
-  if (!browserPath || !clientPath || !pageUrl) {
+  if (!browserPath || !appPath || !pageUrl) {
     throw new Error("CHROME_PATH, PIIK_CLIENT_EXE and PIIK_CLIENT_GATE_SITE_URL are required");
   }
   const pageOrigin = new URL(pageUrl).origin;
@@ -156,7 +156,7 @@ async function main(): Promise<void> {
     platform: process.platform,
     browser: null,
     hostedExpectation: grantLoopback ? "connected" : "blocked",
-    clientStarted: false,
+    appStarted: false,
     localPageConnected: false,
     localPageError: null,
     localPageEvents: [],
@@ -164,18 +164,18 @@ async function main(): Promise<void> {
     hostedPageError: null,
     hostedPageEvents: [],
     hostedPageBlockedByBrowser: false,
-    clientExited: false,
+    appExited: false,
     browserExited: false,
     profileRemoved: false,
   };
   let profile: string | null = null;
-  let client: ChildProcessWithoutNullStreams | null = null;
+  let app: ChildProcessWithoutNullStreams | null = null;
   let browser: ChildProcessWithoutNullStreams | null = null;
   let cdp: CdpConnection | null = null;
   let debugPort = 0;
   try {
     profile = await mkdtemp(join(tmpdir(), "piik-client-loopback-"));
-    client = spawn(clientPath, [
+    app = spawn(appPath, [
       "--site", pageUrl,
       "--config", join(profile, "client.json"),
     ], {
@@ -183,9 +183,9 @@ async function main(): Promise<void> {
       windowsHide: true,
       env: { ...process.env, PIIK_CLIENT_GATE_NO_BROWSER: "true" },
     });
-    client.stderr.resume();
-    const endpoint = await readClientEndpoint(client, { timeoutMs: 8_000 });
-    report.clientStarted = true;
+    app.stderr.resume();
+    const endpoint = await readAppEndpoint(app, { timeoutMs: 8_000 });
+    report.appStarted = true;
 
     const portServer = createServer();
     debugPort = await new Promise<number>((resolvePort, rejectPort) => {
@@ -246,14 +246,14 @@ async function main(): Promise<void> {
   } finally {
     const cleanup = await cleanupRun({
       cdp,
-      native: client,
+      native: app,
       chrome: browser,
       server: null,
       profile,
       ports: debugPort > 0 ? [debugPort] : [],
     });
     report.browserExited = cleanup.browserExited;
-    report.clientExited = cleanup.nativeExited;
+    report.appExited = cleanup.nativeExited;
     if (profile) {
       report.profileRemoved = cleanup.profileRemoved;
       if (!report.profileRemoved) {
@@ -273,9 +273,9 @@ async function main(): Promise<void> {
   const hostedExpectationMet = grantLoopback
     ? report.hostedPageConnected
     : report.hostedPageBlockedByBrowser;
-  report.passed = report.clientStarted && report.localPageConnected &&
+  report.passed = report.appStarted && report.localPageConnected &&
     hostedExpectationMet &&
-    report.clientExited && report.browserExited && report.profileRemoved;
+    report.appExited && report.browserExited && report.profileRemoved;
   process.stdout.write(`${JSON.stringify(report)}\n`);
   if (!report.passed) process.exitCode = 1;
 }

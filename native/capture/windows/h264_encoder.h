@@ -14,6 +14,8 @@
 #include <mftransform.h>
 #include <wrl/client.h>
 
+#include "capture_error.h"
+
 #include <chrono>
 #include <iomanip>
 #include <optional>
@@ -73,22 +75,6 @@ struct VideoProfile final {
 };
 
 constexpr VideoProfile kDefaultVideoProfile{};
-
-class GateFailure final : public std::runtime_error {
- public:
-  GateFailure(std::string stage, std::string detail, HRESULT result = S_OK)
-      : std::runtime_error(detail), stage_(std::move(stage)), result_(result) {}
-
-  const std::string& stage() const noexcept { return stage_; }
-  HRESULT result() const noexcept { return result_; }
-
- private:
-  std::string stage_;
-  HRESULT result_;
-};
-
-[[noreturn]] void Fail(const std::string& stage, const std::string& detail);
-void Check(HRESULT result, const std::string& stage);
 
 struct Runtime final {
   Runtime() {

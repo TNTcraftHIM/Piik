@@ -1,6 +1,6 @@
 export const CLOUDFLARED_VERSION = "2026.8.3";
 
-export const CLIENT_PACKAGE_TARGETS = [
+export const APP_PACKAGE_TARGETS = [
   {
     id: "windows-amd64",
     nodePlatform: "win32",
@@ -8,7 +8,7 @@ export const CLIENT_PACKAGE_TARGETS = [
     goos: "windows",
     goarch: "amd64",
     cgo: false,
-    clientName: "piik-app.exe",
+    appName: "piik-app.exe",
     tunnelName: "cloudflared.exe",
     captureName: "piik-capture.exe",
     tunnelAsset: "cloudflared-windows-amd64.exe",
@@ -22,7 +22,7 @@ export const CLIENT_PACKAGE_TARGETS = [
     goos: "linux",
     goarch: "amd64",
     cgo: false,
-    clientName: "piik-app",
+    appName: "piik-app",
     tunnelName: "cloudflared",
     captureName: "piik-capture",
     tunnelAsset: "cloudflared-linux-amd64",
@@ -36,7 +36,7 @@ export const CLIENT_PACKAGE_TARGETS = [
     goos: "darwin",
     goarch: "arm64",
     cgo: true,
-    clientName: "piik-app",
+    appName: "piik-app",
     tunnelName: "cloudflared",
     captureName: "piik-capture",
     tunnelAsset: "cloudflared-darwin-arm64.tgz",
@@ -45,11 +45,11 @@ export const CLIENT_PACKAGE_TARGETS = [
   },
 ];
 
-export function clientPackageTarget(id) {
-  return CLIENT_PACKAGE_TARGETS.find((target) => target.id === id) ?? null;
+export function appPackageTarget(id) {
+  return APP_PACKAGE_TARGETS.find((target) => target.id === id) ?? null;
 }
 
-export function clientGoEnvironment(target) {
+export function goBuildEnvironment(target) {
   return {
     ...process.env,
     GOOS: target.goos,

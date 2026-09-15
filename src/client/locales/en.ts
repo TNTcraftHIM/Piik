@@ -1,4 +1,4 @@
-import type { CopyKey, TitleFrameCatalog } from "./zh";
+import type { CopyKey, PlayfulCatalog, TitleFrameCatalog } from "./zh";
 
 // Community translations are data-only and type-checked against zh.
 export const en: Record<CopyKey, string> = {
@@ -50,48 +50,6 @@ export const en: Record<CopyKey, string> = {
   "common.host": "Host",
   "common.name.viewerDefault": "Viewer",
   "common.name.hostDefault": "Host",
-
-  "welcome.seat": "Your seat is right here.",
-  "welcome.player": "Single-player story. Multiplayer audience.",
-  "welcome.cut": "Three, two, one… roll it.",
-  "welcome.quest": "Side quest: share a little joy.",
-  "welcome.snack": "Snacks optional. Good company recommended.",
-  "welcome.scene": "And now, your scene.",
-  "welcome.save": "Save your game. Stay a while.",
-  "welcome.achievement": "Unlocked: someone who gets it.",
-  "welcome.popcorn": "Big moment ahead. Bring snacks.",
-  "welcome.credits": "Stay for the credits. There might be a surprise.",
-  "welcome.replay": "Some moments deserve a second audience.",
-  "welcome.guide": "You lead. I'll bring the folding chair.",
-  "welcome.wander": "No main quest today. Let's wander.",
-  "welcome.witness": "Every great moment needs a witness.",
-  "welcome.discovery": "Made a little something. Come take a look.",
-  "welcome.party": "One screen. A very enthusiastic audience.",
-  "welcome.director": "What's on the shot list, director?",
-  "welcome.next": "Next level? Bring your people.",
-  "welcome.share": "Joy travels well.",
-  "welcome.seats": "Twenty seats. Plenty of stories.",
-
-  "waiting.seat": "Pull up a comfy chair.",
-  "waiting.snack": "The snack side quest is optional.",
-  "waiting.popcorn": "Sweet popcorn or salty?",
-  "waiting.stretch": "A fine moment for a stretch.",
-  "waiting.water": "Hydration check.",
-  "waiting.couch": "The couch isn't going anywhere.",
-  "waiting.quest": "Side quest: get comfortable.",
-  "waiting.audience": "Front-row energy, sofa comfort.",
-  "waiting.pixels": "Small pixels. Big personalities.",
-  "waiting.loot": "Legendary loot: one comfy chair.",
-  "waiting.scene": "There's a story off-screen, too.",
-  "waiting.cat": "Cats get the sofa. Keyboards get a break.",
-  "waiting.blink": "Blink if you can see the tiny TV.",
-  "waiting.calm": "Keep calm and pass the popcorn.",
-  "waiting.shells": "Remember to loot the snack bowl.",
-  "waiting.narrator": "Insert dramatic narration here.",
-  "waiting.daydream": "Passive skill: daydreaming.",
-  "waiting.break": "A little break in the action.",
-  "waiting.dance": "Dance break? Seated dancing counts.",
-  "waiting.save": "Checkpoint reached: the couch.",
 
   "client.launch.title": "Open Piik",
   "client.launch.local": "Local room",
@@ -457,8 +415,7 @@ export const en: Record<CopyKey, string> = {
 };
 
 export const enTitleFrames = {
-  hostActive: [
-    en["host.live"],
+  hostActive: { label: en["host.live"], variations: [
     "Screen's up",
     "Sending pixels",
     "Picture in motion",
@@ -478,9 +435,8 @@ export const enTitleFrames = {
     "Screening in progress",
     "Sharing the plot",
     "Behold, my screen",
-  ],
-  viewerActive: [
-    en["viewer.title.watching"],
+  ] },
+  viewerActive: { label: en["viewer.title.watching"], variations: [
     "Tuned in",
     "Pixels incoming",
     "Eyes on screen",
@@ -500,12 +456,9 @@ export const enTitleFrames = {
     "Just one more scene",
     "The plot thickens",
     "Show me the pixels",
-  ],
-  paused: [en["host.paused"]],
-  hostStarting: [
-    en["host.starting"],
-    "Linking up",
-    "Signals saying hello",
+  ] },
+  paused: { label: en["host.paused"], variations: [] },
+  hostStarting: { label: en["host.starting"], variations: [
     "Setting the stage",
     "Getting the pixels together",
     "Preparing the opening scene",
@@ -523,10 +476,9 @@ export const enTitleFrames = {
     "Preparing the big reveal",
     "Rolling out the tiny carpet",
     "Getting ready to roll",
-  ],
-  hostEnded: [en["host.ended"]],
-  hostReady: [
-    en["host.roomReady"],
+  ] },
+  hostEnded: { label: en["host.ended"], variations: [] },
+  hostReady: { label: en["host.roomReady"], variations: [
     "Couch is ready",
     "Ready when you are",
     "Tiny TV standing by",
@@ -546,9 +498,8 @@ export const enTitleFrames = {
     "Screen slot available",
     "The couch has entered the lobby",
     "All the room's a stage",
-  ],
-  hostIdle: [
-    en["host.notStarted"],
+  ] },
+  hostIdle: { label: en["host.notStarted"], variations: [
     "Tiny TV is resting",
     "Waiting for a screen",
     "Antenna taking a nap",
@@ -568,13 +519,12 @@ export const enTitleFrames = {
     "Daydreaming in widescreen",
     "The couch potato life",
     "Taking a long rest",
-  ],
-  viewerReady: ["Press Play"],
-  viewerClosed: [en["viewer.msg.closed"]],
-  viewerUnavailable: ["Unavailable"],
-  hostUnavailable: [en["host.fail.start"]],
-  viewerWaiting: [
-    en["viewer.title.waiting"],
+  ] },
+  viewerReady: { label: "Press Play", variations: [] },
+  viewerClosed: { label: en["viewer.msg.closed"], variations: [] },
+  viewerUnavailable: { label: "Unavailable", variations: [] },
+  hostUnavailable: { label: en["host.fail.start"], variations: [] },
+  viewerWaiting: { label: en["viewer.title.waiting"], variations: [
     "Waiting for showtime",
     "Getting the popcorn",
     "Front row reserved",
@@ -594,5 +544,53 @@ export const enTitleFrames = {
     "Waiting for act one",
     "Seat taken, screen pending",
     "The suspense is real",
-  ],
+  ] },
 } satisfies TitleFrameCatalog;
+
+// Local cultural references are independent entries, not translation keys.
+export const enPlayful: PlayfulCatalog = {
+  welcome: [
+    { text: "Your seat is right here.", symbols: ["couch", "heart"] },
+    { text: "Single-player story. Multiplayer audience.", symbols: ["gamepad", "users"] },
+    { text: "Three, two, one… roll it.", symbols: ["clock", "clapperboard"] },
+    { text: "Side quest: share a little joy.", symbols: ["branch", "heart"] },
+    { text: "Snacks optional. Good company recommended.", symbols: ["popcorn", "play"] },
+    { text: "And now, your scene.", symbols: ["clapperboard", "arrowRight"] },
+    { text: "Save your game. Stay a while.", symbols: ["save", "moon"] },
+    { text: "Unlocked: someone who gets it.", symbols: ["trophy", "heart"] },
+    { text: "Big moment ahead. Bring snacks.", symbols: ["zap", "popcorn"] },
+    { text: "Stay for the credits. There might be a surprise.", symbols: ["clapperboard", "gift"] },
+    { text: "Some moments deserve a second audience.", symbols: ["refresh", "users"] },
+    { text: "You lead. I'll bring the folding chair.", symbols: ["arrowRight", "couch"] },
+    { text: "No main quest today. Let's wander.", symbols: ["mountain", "branch"] },
+    { text: "Every great moment needs a witness.", symbols: ["tv", "eye"] },
+    { text: "Made a little something. Come take a look.", symbols: ["bulb", "eye"] },
+    { text: "One screen. A very enthusiastic audience.", symbols: ["cast", "users"] },
+    { text: "What's on the shot list, director?", symbols: ["clapperboard", "play"] },
+    { text: "Next level? Bring your people.", symbols: ["flag", "users"] },
+    { text: "Joy travels well.", symbols: ["cast", "heart"] },
+    { text: "Twenty seats. Plenty of stories.", symbols: ["couch", "users"] },
+  ],
+  waiting: [
+    "Pull up a comfy chair.",
+    "The snack side quest is optional.",
+    "Sweet popcorn or salty?",
+    "A fine moment for a stretch.",
+    "Hydration check.",
+    "The couch isn't going anywhere.",
+    "Side quest: get comfortable.",
+    "Front-row energy, sofa comfort.",
+    "Small pixels. Big personalities.",
+    "Legendary loot: one comfy chair.",
+    "There's a story off-screen, too.",
+    "Cats get the sofa. Keyboards get a break.",
+    "Blink if you can see the tiny TV.",
+    "Keep calm and pass the popcorn.",
+    "Remember to loot the snack bowl.",
+    "Insert dramatic narration here.",
+    "Passive skill: daydreaming.",
+    "A little break in the action.",
+    "Dance break? Seated dancing counts.",
+    "Checkpoint reached: the couch.",
+  ],
+};

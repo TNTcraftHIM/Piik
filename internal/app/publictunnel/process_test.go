@@ -4,24 +4,117 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
 
 func TestMain(tests *testing.M) {
 	if mode := os.Getenv("PIIK_TUNNEL_FIXTURE"); mode != "" {
-		if mode == "ready" {
+		if mode == "ready" || mode == "fail-after-ready" {
 			fmt.Println(`{"message":"https://test-room.trycloudflare.com"}`)
 			fmt.Println(`{"message":"Registered tunnel connection"}`)
+		}
+		if mode == "fail-after-ready" {
+			fmt.Println(`{"level":"fatal","message":"fixture exit failure"}`)
+			for {
+				if _, err := os.Stat(os.Getenv("PIIK_TUNNEL_FIXTURE_EXIT")); err == nil {
+					os.Exit(7)
+				}
+				time.Sleep(time.Millisecond)
+			}
 		}
 		for {
 			time.Sleep(time.Hour)
 		}
 	}
 	os.Exit(tests.Run())
+}
+
+type blockedTunnelLog struct {
+	slog.Handler
+	entered chan struct{}
+	release <-chan struct{}
+}
+
+func (handler blockedTunnelLog) Handle(ctx context.Context, record slog.Record) error {
+	blocked := false
+	record.Attrs(func(attr slog.Attr) bool {
+		blocked = blocked || attr.Key == "message" && attr.Value.String() == "fixture exit failure"
+		return true
+	})
+	if blocked {
+		close(handler.entered)
+		<-handler.release
+	}
+	return handler.Handler.Handle(ctx, record)
+}
+
+func TestCloseKeepsAnObservedFailureWhileLogsDrain(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	exit := filepath.Join(t.TempDir(), "exit")
+	t.Setenv("PIIK_TUNNEL_FIXTURE", "fail-after-ready")
+	t.Setenv("PIIK_TUNNEL_FIXTURE_EXIT", exit)
+	entered, release := make(chan struct{}), make(chan struct{})
+	resume := sync.OnceFunc(func() { close(release) })
+	previous := slog.Default()
+	slog.SetDefault(slog.New(blockedTunnelLog{
+		Handler: slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelDebug}),
+		entered: entered, release: release,
+	}))
+	defer slog.SetDefault(previous)
+	defer resume()
+	process, err := Start(t.Context(), executable, "http://127.0.0.1:8787")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { resume(); _ = process.Close() }()
+	select {
+	case <-entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("fixture did not enter its log writer")
+	}
+	if err := os.WriteFile(exit, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		process.mu.Lock()
+		observed := process.err
+		process.mu.Unlock()
+		if observed != nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("dependency exit was not recorded before draining its logs")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	canceled := make(chan struct{})
+	cancelProcess := process.cancel
+	process.cancel = func() { cancelProcess(); close(canceled) }
+	closed := make(chan error, 1)
+	go func() { closed <- process.Close() }()
+	<-canceled
+	resume()
+	select {
+	case err := <-closed:
+		var failure *exec.ExitError
+		if !errors.As(err, &failure) || failure.ExitCode() != 7 {
+			t.Fatalf("late owner cancellation lost the observed dependency failure: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("tunnel did not retire after its logs drained")
+	}
 }
 
 func TestReadyTunnelWaitsForItsExplicitOrderedClose(t *testing.T) {

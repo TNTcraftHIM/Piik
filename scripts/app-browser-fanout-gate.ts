@@ -6,13 +6,13 @@ import {
   CdpConnection, cleanupRun, createPage, evaluate, fetchJsonBefore, launchChrome, reservePort,
   waitForSample, waitForVersion, type PageHandle,
 } from "./browser-gate-harness";
-import { decodeClientEndpoint } from "./client-gate-endpoint";
+import { decodeAppEndpoint } from "./app-gate-endpoint";
 
 const ROOT = resolve(import.meta.dirname, "..");
-const BUILD_ROOT = join(ROOT, "build/client-check");
+const BUILD_ROOT = join(ROOT, "build/go-check");
 // A documentation-only LAN address: it makes the room server publish a LAN
 // invitation the gate rewrites to its loopback origins, exactly as the packaged
-// Client does on a real network.
+// App does on a real network.
 const LAN_ADDRESS = "192.0.2.1";
 
 const initialAudio = process.env.PIIK_CLIENT_GATE_AUDIO !== "false";
@@ -104,8 +104,8 @@ function build(command: string, args: string[]): void {
 }
 
 // startRoomServer builds and starts the Piik server the Browser pages and
-// both Clients share. PIIK_ENV stays development because production
-// requires an https public origin, a site password and STUN; the Web assets are
+// both Apps share. PIIK_ENV stays development because production
+// requires an HTTPS public origin and STUN; the Web assets are
 // embedded either way.
 async function startRoomServer(
   port: number,
@@ -114,7 +114,7 @@ async function startRoomServer(
   const go = process.env.PIIK_GO?.trim() || "go";
   await mkdir(BUILD_ROOT, { recursive: true });
   // The server embeds the Vite output, so the Web build precedes the Go build.
-  build(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", "npm run build:client"]);
+  build(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", "npm run build:web"]);
   const binary = join(BUILD_ROOT, "piik-server.exe");
   build(go, ["build", "-trimpath", "-o", binary, "./cmd/piik-server"]);
   const origins = [`http://localhost:${port}`, `http://127.0.0.1:${port}`, `http://${LAN_ADDRESS}:${port}`];
@@ -151,29 +151,29 @@ async function main(): Promise<void> {
   const profile = await mkdtemp(join(tmpdir(), "piik-client-media-"));
   const appPort = await reservePort(), debugPort = await reservePort();
   const origin = `http://localhost:${appPort}`;
-  let client: ChildProcessWithoutNullStreams | null = null;
-  let relayClient: ChildProcessWithoutNullStreams | null = null;
+  let app: ChildProcessWithoutNullStreams | null = null;
+  let relayApp: ChildProcessWithoutNullStreams | null = null;
   let chrome: ChildProcessWithoutNullStreams | null = null;
   let cdp: CdpConnection | null = null;
   let server: ChildProcessWithoutNullStreams | null = null;
-  let clientPort = 0;
+  let nativePort = 0;
   let relayPort = 0;
   const pages: PageHandle[] = [];
   const checks: Record<string, unknown> = {};
   let stage = "startup", error: string | null = null;
   try {
     server = await startRoomServer(appPort, profile);
-    client = spawn(process.env.PIIK_CLIENT_EXE || join(BUILD_ROOT, "piik-app.exe"), [
+    app = spawn(process.env.PIIK_CLIENT_EXE || join(BUILD_ROOT, "piik-app.exe"), [
       "--site", origin, "--config", join(profile, "client.json"),
       "--capture-process", join(BUILD_ROOT, "piik-capture.exe"),
     ], { windowsHide: true, stdio: "pipe", env: { ...process.env, PIIK_CLIENT_GATE_NO_BROWSER: "true" } });
-    client.stderr.resume();
+    app.stderr.resume();
     let output = "";
-    client.stdout.on("data", (chunk: Buffer) => {
+    app.stdout.on("data", (chunk: Buffer) => {
       output += chunk.toString();
-      if (!clientPort && output.includes("\n")) clientPort = decodeClientEndpoint(output.split("\n")[0]!).port;
+      if (!nativePort && output.includes("\n")) nativePort = decodeAppEndpoint(output.split("\n")[0]!).port;
     });
-    await waitForSample(async () => clientPort, (value) => value > 0, 15000);
+    await waitForSample(async () => nativePort, (value) => value > 0, 15000);
     chrome = launchChrome(chromePath, debugPort, profile, [
       "--headless=new",
       "--no-first-run", "--no-default-browser-check", "--no-proxy-server",
@@ -211,14 +211,14 @@ async function main(): Promise<void> {
     let invite = await evaluate<string>(cdp, host, "document.querySelector('.lr-invite-url').value", Date.now()+5000);
     const url = new URL(invite); url.host = `localhost:${appPort}`; invite = url.toString();
     const relayOrigin = `http://127.0.0.1:${appPort}`;
-    relayClient = spawn(process.env.PIIK_CLIENT_EXE || join(BUILD_ROOT,"piik-app.exe"), [
+    relayApp = spawn(process.env.PIIK_CLIENT_EXE || join(BUILD_ROOT,"piik-app.exe"), [
       "--site", relayOrigin, "--config", join(profile,"relay-client.json"),
       "--capture-process", join(BUILD_ROOT,"piik-capture.exe"),
     ], { windowsHide:true, stdio:"pipe", env:{...process.env,PIIK_CLIENT_GATE_NO_BROWSER:"true"} });
-    relayClient.stderr.resume(); let relayOutput="";
-    relayClient.stdout.on("data", (chunk:Buffer) => {
+    relayApp.stderr.resume(); let relayOutput="";
+    relayApp.stdout.on("data", (chunk:Buffer) => {
       relayOutput+=chunk.toString();
-      if (!relayPort && relayOutput.includes("\n")) relayPort=decodeClientEndpoint(relayOutput.split("\n")[0]!).port;
+      if (!relayPort && relayOutput.includes("\n")) relayPort=decodeAppEndpoint(relayOutput.split("\n")[0]!).port;
     });
     await waitForSample(async()=>relayPort,(value)=>value>0,15000);
     const viewers: PageHandle[] = [];
@@ -264,14 +264,14 @@ async function main(): Promise<void> {
     const beforeSource = await read(viewers[1]!);
     await waitForSample(() => read(viewers[1]!), (s) => s.width > 0 && s.frames >= beforeSource.frames+20 && s.audio===Number(!initialAudio), 25000);
     checks.sourceAudioChange = true;
-    stage = "client-exit";
-    client.stdin.write("\n");
+    stage = "app-exit";
+    app.stdin.write("\n");
     await waitForSample(() => read(host), (s) => !s.controlOpen && s.sharing && s.captureLive && s.outbound === 2, 25000);
     for (const viewer of viewers) {
       const prior = await read(viewer);
       await waitForSample(() => read(viewer), (s) => s.width > 0 && s.frames >= prior.frames+15, 30000);
     }
-    checks.clientExitRecovery = true;
+    checks.appExitRecovery = true;
     checks.finalHost = await read(host);
     if ((checks.finalHost as any).errors.length > 0) throw new Error("Browser reported an unhandled media error");
     await mkdir(BUILD_ROOT, {recursive:true});
@@ -284,8 +284,8 @@ async function main(): Promise<void> {
     if (cdp) checks.atFailure = await Promise.all(pages.map((page) =>
       evaluate(cdp!,page,"fanoutGate.sample()",Date.now()+5000).catch(()=>null)));
   } finally {
-    const relayCleanup = await cleanupRun({cdp:null,native:relayClient,chrome:null,server:null,profile:null,ports:relayPort?[relayPort]:[]});
-    const cleanup = await cleanupRun({cdp, native:client, chrome, server, profile, ports:[appPort,debugPort,...(clientPort?[clientPort]:[])]});
+    const relayCleanup = await cleanupRun({cdp:null,native:relayApp,chrome:null,server:null,profile:null,ports:relayPort?[relayPort]:[]});
+    const cleanup = await cleanupRun({cdp, native:app, chrome, server, profile, ports:[appPort,debugPort,...(nativePort?[nativePort]:[])]});
     const result = {passed: error===null && Object.values(cleanup).every(Boolean) && relayCleanup.nativeExited && relayCleanup.portsClosed, stage, checks, error, cleanup};
     await mkdir(BUILD_ROOT,{recursive:true});
     await writeFile(join(BUILD_ROOT,"browser-fanout.json"), JSON.stringify(result,null,2));

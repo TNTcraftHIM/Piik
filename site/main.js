@@ -1,5 +1,6 @@
 import { mountBrands } from './assets/brand.js';
 import { initialLanguage, rememberLanguage } from './assets/language.js';
+import { createTextCycle, startTextRotation } from '../src/client/ui/text-rotation.ts';
 mountBrands();
 // Content stays HTML; scripts only add preferences and replayable illustrations.
 const root = document.documentElement;
@@ -11,9 +12,17 @@ const film = document.getElementById('film-preview');
 const filmFrame = document.getElementById('website-film');
 const filmLink = document.querySelector('[data-film-link]');
 const welcomeLines = document.getElementById('welcome-lines')?.content.children;
-if (welcomeLines?.length) {
-  const line = Math.floor(Math.random() * welcomeLines.length);
-  document.getElementById('welcome-line').replaceChildren(welcomeLines[line].cloneNode(true));
+let stopWelcome = () => {};
+function syncWelcome() {
+  stopWelcome();
+  if (!welcomeLines) return;
+  const element = document.getElementById('welcome-line');
+  const pool = Array.from(welcomeLines).filter(line => line.lang === root.lang);
+  const next = createTextCycle(pool);
+  const show = () => element.replaceChildren(...(pool.length ? [next().cloneNode(true)] : []));
+  element.hidden = pool.length === 0;
+  show();
+  stopWelcome = pool.length > 1 ? startTextRotation(show, element) : () => {};
 }
 function syncFilmPreferences() {
   const target = new URL(filmLink.href);
@@ -50,6 +59,7 @@ function setLanguage(lang) {
   document.querySelector('.guide-links').setAttribute('aria-label', chinese ? '教程目录' : 'Guides');
   filmFrame.title = chinese ? 'Piik 宣传片' : 'Piik introduction';
   for (const option of theme.options) option.textContent = current.themes[option.value];
+  syncWelcome();
   syncFilmPreferences();
 }
 language.addEventListener('click', () => {

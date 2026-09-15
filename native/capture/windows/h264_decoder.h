@@ -1,5 +1,7 @@
 #pragma once
 
+#include "capture_error.h"
+
 #include "capture_input.h"
 
 #include <codecapi.h>
@@ -94,7 +96,7 @@ class H264Decoder final {
 
  private:
   static void Check(HRESULT result, const char* operation) {
-    if (FAILED(result)) throw std::runtime_error(std::string("H264 decoder ") + operation + " failed");
+    windows::Check(result, std::string("h264-decoder-") + operation);
   }
 
   void SelectOutput() {

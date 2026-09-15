@@ -419,6 +419,7 @@ class NativeViewerPeer implements ViewerMediaPeer {
     );
     if (
       this.disposed ||
+      this.failureNotified ||
       this.connectionId !== connectionId ||
       this.parentPeerId !== parentPeerId
     ) {
@@ -471,7 +472,7 @@ class NativeViewerPeer implements ViewerMediaPeer {
   }
 
   private onEvent(event: NativeClientEvent): void {
-    if (this.disposed || event.shareId !== this.sessionId) {
+    if (this.disposed || this.failureNotified || event.shareId !== this.sessionId) {
       return;
     }
     if (event.type === "share-ended") {
@@ -593,11 +594,16 @@ class NativeViewerPeer implements ViewerMediaPeer {
   }
 
   private handleBridgeFailure(connectionId: string): void {
-    if (this.disposed || this.connectionId !== connectionId) return;
-    this.disposeBridge();
-    if (this.failureNotified) return;
+    if (this.disposed || this.failureNotified || this.connectionId !== connectionId) return;
     this.failureNotified = true;
+    this.disposeBridge();
     this.sourceReady = false;
+    this.sourceCodec = null;
+    this.state = "failed";
+    this.clearDisconnectTimer();
+    // A retired local receiver cannot remain connected or regain that fact
+    // from an already queued App event. Existing recovery owns the next edge.
+    this.emit();
     void this.client.closeReceiver(this.sessionId, connectionId).catch(
       () => undefined,
     );

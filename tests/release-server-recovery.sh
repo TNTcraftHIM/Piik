@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-release_script="$repo_root/deploy/release-app.sh"
+release_script="$repo_root/deploy/release-server.sh"
 
 extract_function() {
   awk -v name="$1" '

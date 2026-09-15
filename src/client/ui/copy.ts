@@ -8,6 +8,7 @@ import {
   type CopyKey,
   type Lang,
   type TitleFrameKey,
+  type TitleContent,
 } from "../locales";
 
 export type { CopyKey, Lang, TitleFrameKey } from "../locales";
@@ -117,7 +118,7 @@ export function getTitleFrames(
   lang: Lang,
   visual: boolean,
   key: TitleFrameKey,
-): readonly string[] {
+): TitleContent {
   return visual ? visualTitleFrames[key] : locales[lang].titleFrames[key];
 }
 
@@ -145,7 +146,7 @@ export interface Copy {
   lang: Lang;
   vis: boolean;
   t: (key: CopyKey, vars?: Record<string, string>) => string;
-  titleFrames: (key: TitleFrameKey) => readonly string[];
+  titleFrames: (key: TitleFrameKey) => TitleContent;
   setLang: (lang: Lang) => void;
   setVis: (vis: boolean) => void;
 }

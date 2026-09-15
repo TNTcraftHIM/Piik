@@ -10,8 +10,8 @@ import {
   reservePort, waitForSample, waitForVersion, withDeadline, type PageHandle,
 } from "./browser-gate-harness";
 import type { snapshot } from "./embedded-sfu-page";
-import { readClientEndpoint } from "./client-gate-endpoint";
-import { SOURCE_TITLE, sourceServer, startSourceBrowser, waitForCaptureWindow } from "./client-native-host-gate";
+import { readAppEndpoint } from "./app-gate-endpoint";
+import { SOURCE_TITLE, sourceServer, startSourceBrowser, waitForCaptureWindow } from "./app-native-host-gate";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const BUILD_ROOT = join(ROOT, "build", "embedded-media");
@@ -70,10 +70,10 @@ async function main(): Promise<void> {
   }
   await mkdir(BUILD_ROOT, { recursive: true });
   const binary = join(BUILD_ROOT, `piik-server${process.platform === "win32" ? ".exe" : ""}`);
-  const clientBinary = join(BUILD_ROOT, "piik-app.exe");
+  const appBinary = join(BUILD_ROOT, "piik-app.exe");
   for (const command of nativeArm ? ["piik-server", "piik-app"] : ["piik-server"]) {
     const build = spawnSync(process.env.PIIK_GO?.trim() || "go", [
-      "build", "-p", "1", "-trimpath", "-o", command === "piik-server" ? binary : clientBinary, `./cmd/${command}`,
+      "build", "-p", "1", "-trimpath", "-o", command === "piik-server" ? binary : appBinary, `./cmd/${command}`,
     ], { cwd: ROOT, env: { ...process.env, GOMAXPROCS: "2" }, encoding: "utf8", windowsHide: true, timeout: 120_000 });
     if (build.error || build.status !== 0) throw build.error ?? new Error(build.stderr || `${command} build failed`);
   }
@@ -103,8 +103,8 @@ async function main(): Promise<void> {
   let secondHost: PageHandle | null = null;
   let secondViewer: PageHandle | null = null;
   let serverError = "";
-  let client: ChildProcessWithoutNullStreams | null = null;
-  let clientPort = 0;
+  let app: ChildProcessWithoutNullStreams | null = null;
+  let nativePort = 0;
   let sourceChrome: ChildProcessWithoutNullStreams | null = null;
   let sourceCdp: CdpConnection | null = null;
   let sourceHTTP: Awaited<ReturnType<typeof sourceServer>> | null = null;
@@ -154,14 +154,14 @@ async function main(): Promise<void> {
     });
     await vite.listen();
     if (nativeArm) {
-      result.stage = "native-client-start";
-      client = spawn(clientBinary, ["--site", origin, "--capture-process", captureBinary!,
+      result.stage = "native-app-start";
+      app = spawn(appBinary, ["--site", origin, "--capture-process", captureBinary!,
         "--config", join(profile, "client.json")], { cwd: ROOT, stdio: "pipe", windowsHide: true,
         env: { ...process.env, GOMAXPROCS: "2", PIIK_CLIENT_GATE_NO_BROWSER: "true" } });
-      processStarted("client", client);
-      client.stderr.resume();
-      clientPort = (await readClientEndpoint(client, { timeoutMs: 15_000, ignoreNonEndpointLines: true })).port;
-      client.stdout.resume();
+      processStarted("app", app);
+      app.stderr.resume();
+      nativePort = (await readAppEndpoint(app, { timeoutMs: 15_000, ignoreNonEndpointLines: true })).port;
+      app.stdout.resume();
       result.stage = "native-source-window";
       sourceHTTP = await sourceServer(sourcePort);
       ({ child: sourceChrome, cdp: sourceCdp } = await startSourceBrowser(chromePath, sourceProfile!, sourceDebugPort, sourcePort));
@@ -203,7 +203,7 @@ async function main(): Promise<void> {
     viewer = await createPage(cdp, `${origin}/embedded-sfu-gate`, AUDIO_PROBE);
     result.stage = "authenticate";
     const room = await call<CreateRoomResponse>(host, nativeArm
-      ? `gate.startHost(${JSON.stringify({ title: SOURCE_TITLE, port: clientPort })}, ${JSON.stringify(codec)})`
+      ? `gate.startHost(${JSON.stringify({ title: SOURCE_TITLE, port: nativePort })}, ${JSON.stringify(codec)})`
       : `gate.startHost(undefined, ${JSON.stringify(codec)})`);
     await until(host, (value) => value.authenticated);
     await call(viewer, `gate.startViewer(${JSON.stringify(room)})`);
@@ -214,7 +214,7 @@ async function main(): Promise<void> {
       secondHost = await createPage(cdp, `${origin}/embedded-sfu-gate`);
       secondViewer = await createPage(cdp, `${origin}/embedded-sfu-gate`, AUDIO_PROBE);
       const secondRoom = await call<CreateRoomResponse>(secondHost,
-        `gate.startHost(${JSON.stringify({ title: SOURCE_TITLE, port: clientPort })}, ${JSON.stringify(codec)})`);
+        `gate.startHost(${JSON.stringify({ title: SOURCE_TITLE, port: nativePort })}, ${JSON.stringify(codec)})`);
       if (secondRoom.roomId === room.roomId) throw new Error("Native sessions did not create independent rooms");
       await until(secondHost, (value) => value.authenticated);
       await call(secondViewer, `gate.startViewer(${JSON.stringify(secondRoom)})`);
@@ -278,8 +278,8 @@ async function main(): Promise<void> {
     const viteClosed = vite
       ? await withDeadline(() => vite!.close(), Date.now() + 5_000).then(() => true, () => false)
       : true;
-    const cleanup = await cleanupRun({ cdp, native: client, chrome, server, profile,
-      ports: [serverPort, vitePort, debugPort, ...(clientPort ? [clientPort] : [])] });
+    const cleanup = await cleanupRun({ cdp, native: app, chrome, server, profile,
+      ports: [serverPort, vitePort, debugPort, ...(nativePort ? [nativePort] : [])] });
     const sourceCleanup = sourceProfile ? await cleanupRun({ cdp: sourceCdp, native: null,
       chrome: sourceChrome, server: sourceHTTP, profile: sourceProfile, ports: [sourcePort, sourceDebugPort] }) : null;
     result.udpReleased = await withDeadline(() => udpPort(mediaPort), Date.now() + 3_000)

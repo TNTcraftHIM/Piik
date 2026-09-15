@@ -192,7 +192,7 @@ export async function startHost(nativeSource?: { title: string; port: number }, 
   const room = createRoomResponseSchema.parse(await response.json());
   if (nativeSource) {
     native = await NativeClient.connect();
-    if (!native || native.health.port !== nativeSource.port) throw new Error("Gate Client was not discovered");
+    if (!native || native.health.port !== nativeSource.port) throw new Error("Gate App was not discovered");
     const target = (await native.sources()).find((candidate) => candidate.kind === "window" && candidate.title === nativeSource.title);
     const path = defaultNativeCapturePath(await native.captureOptions(), codec, native.health.nativeMedia.softwareVP8);
     if (!target || !path) throw new Error("Native source is unavailable");

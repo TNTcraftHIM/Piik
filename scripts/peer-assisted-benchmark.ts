@@ -2272,10 +2272,10 @@ function buildServer(): string {
   const output = join(buildRoot,
     process.platform === "win32" ? "piik-server.exe" : "piik-server");
   if (process.platform === "win32") {
-    buildStep(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", "npm run build:client"],
-      "Browser client build failed");
+    buildStep(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", "npm run build:web"],
+      "Web UI build failed");
   } else {
-    buildStep("npm", ["run", "build:client"], "Browser client build failed");
+    buildStep("npm", ["run", "build:web"], "Web UI build failed");
   }
   buildStep(go, ["build", "-trimpath", "-o", output, "./cmd/piik-server"],
     "Piik server build failed");

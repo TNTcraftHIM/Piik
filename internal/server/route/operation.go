@@ -508,21 +508,8 @@ func (c *Controller) CandidateReady(guard CandidateGuard, nowMs int64, commitRes
 	}
 	nativeCandidateProof := operationRequiresNativeCandidateProof(op)
 	if relativeP2pApproved || relativeP2pPending || nativeCandidateProof {
+		// validateOrAdvance already owns the ongoing operation's eligibility.
 		att.mediaReady = true
-		currentEdge, _ := c.upstreamByViewer.Get(op.childPeerID)
-		if (op.reason == DemandQualityConvergence &&
-			(currentEdge == nil || c.senderQualityState(op.childPeerID, currentEdge, nowMs) != SenderQualityDegraded)) ||
-			(op.reason == DemandRootConvergence && !c.rootConvergenceOperationStillEligible(op)) {
-			// Preserve the active revision before abortOperation advances it.
-			activeRevision := c.revision
-			return SettleResult{
-				Accepted:       true,
-				Committed:      false,
-				FailedPeerIDs:  failedPeerIDsFrom(validation),
-				ActiveRevision: activeRevision,
-				Released:       concatResources(validation.released, c.abortOperation(&nowMs, RejectionAborted)),
-			}
-		}
 	}
 	if relativeP2pExpired {
 		// A one-shot client proof cannot be renewed by a late sender sample.

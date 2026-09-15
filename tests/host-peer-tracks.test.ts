@@ -517,6 +517,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -1968,6 +1969,79 @@ describe("ViewerRelay downstream ownership", () => {
     connectionId: `relay-candidate-${revision}`,
     transport: "direct" as const,
     qualityProbe: false,
+  });
+
+  it("prepares against the current source and codec after an in-flight probe is replaced", async () => {
+    let finishOld!: (codec: "vp8") => void;
+    let finishCurrent!: (codec: "h264") => void;
+    codecPreflight.probe
+      .mockImplementationOnce(() => new Promise((resolve) => { finishOld = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { finishCurrent = resolve; }));
+    const signals: SignalPayload[] = [];
+    const relay = new ViewerRelay({ iceServers: [] }, QUALITY_PROFILES["720p30"], {
+      sendSignal: (_peerId, payload) => { signals.push(payload); return true; },
+    });
+    const current = createTrack("video", "current-source");
+    try {
+      relay.setStream(createStream(createTrack("video", "old-source"), null));
+      expect(relay.prepareChild(7, routeCandidate(7, "child"), ["child"])).toBe(true);
+      relay.setStream(createStream(current, null));
+      finishOld("vp8");
+      await vi.waitFor(() => expect(codecPreflight.probe).toHaveBeenCalledTimes(2));
+      expect(FakePeerConnection.instances).toHaveLength(0);
+      finishCurrent("h264");
+      await vi.waitFor(() => expect(signals).toHaveLength(1));
+      expect(signals[0]?.connectionId).toBe("relay-candidate-7");
+      const connection = FakePeerConnection.latest!;
+      expect(connection.senders[0]!.track!.id).toContain("current-source");
+      expect(connection.codecPreferenceCalls[0]?.[0]?.mimeType.toLowerCase()).toBe("video/h264");
+      expect(relay.prepareChild(7, routeCandidate(7, "child"), ["child"])).toBe(true);
+      expect(FakePeerConnection.instances).toHaveLength(1);
+    } finally {
+      relay.dispose();
+    }
+  });
+
+  it.each(["discard", "stop", "dispose"] as const)("does not resurrect preparation after %s during a codec probe", async (action) => {
+    let finishProbe!: (codec: "vp8") => void;
+    codecPreflight.probe.mockImplementationOnce(() => new Promise((resolve) => { finishProbe = resolve; }));
+    const sendSignal = vi.fn(() => true);
+    const relay = new ViewerRelay({ iceServers: [] }, QUALITY_PROFILES["720p30"], { sendSignal });
+    relay.setStream(createStream(createTrack("video", "pending-source"), null));
+    expect(relay.prepareChild(7, routeCandidate(7, "child"), ["child"])).toBe(true);
+    if (action === "discard") relay.discardPreparedChild();
+    else relay[action]();
+    finishProbe("vp8");
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(FakePeerConnection.instances).toHaveLength(0);
+    expect(sendSignal).not.toHaveBeenCalled();
+    relay.dispose();
+  });
+
+  it("rebuilds a failed ICE restart from the source selected while it was pending", async () => {
+    let finishRestart!: (result: boolean) => void;
+    vi.spyOn(HostPeer.prototype, "restartIce").mockImplementationOnce(() =>
+      new Promise((resolve) => { finishRestart = resolve; }));
+    const signals: SignalPayload[] = [];
+    const relay = new ViewerRelay({ iceServers: [] }, QUALITY_PROFILES["720p30"], {
+      sendSignal: (_peerId, payload) => { signals.push(payload); return true; },
+    });
+    try {
+      relay.setChildren(["child"]);
+      relay.setStream(createStream(createTrack("video", "old-source"), null));
+      await vi.waitFor(() => expect(signals).toHaveLength(1));
+      const original = FakePeerConnection.latest!;
+      const recovery = relay.recover("child", signals[0]!.connectionId, false);
+      relay.setStream(createStream(createTrack("video", "current-source"), null));
+      await vi.waitFor(() => expect(original.senders[0]!.track!.id).toContain("current-source"));
+      finishRestart(false);
+      await recovery;
+      await vi.waitFor(() => expect(signals).toHaveLength(2));
+      expect(original.connectionState).toBe("closed");
+      expect(FakePeerConnection.latest!.senders[0]!.track!.id).toContain("current-source");
+    } finally {
+      relay.dispose();
+    }
   });
 
   it("keeps a completed H264 decision across source replacement", async () => {

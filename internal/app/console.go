@@ -47,6 +47,11 @@ type consoleExportResult struct {
 	err  error
 }
 
+type consoleResult struct {
+	model tea.Model
+	err   error
+}
+
 type consoleModel struct {
 	view        consoleView
 	language    string
@@ -71,7 +76,7 @@ type console struct {
 	machine  bool
 	finished bool
 	program  *tea.Program
-	done     chan error
+	done     chan consoleResult
 	plain    consoleModel
 	opening  bool
 	openURL  func(string) error
@@ -116,10 +121,10 @@ func newConsole(cancel context.CancelFunc, machine bool) *console {
 	}
 	if term.IsTerminal(os.Stdin.Fd()) && term.IsTerminal(os.Stdout.Fd()) && os.Getenv("TERM") != "dumb" {
 		console.program = tea.NewProgram(console.plain, tea.WithoutSignalHandler())
-		console.done = make(chan error, 1)
+		console.done = make(chan consoleResult, 1)
 		go func() {
-			_, err := console.program.Run()
-			console.done <- err
+			model, err := console.program.Run()
+			console.done <- consoleResult{model: model, err: err}
 			cancel()
 		}()
 	}
@@ -170,19 +175,29 @@ func (console *console) openBrowser(target string) {
 	}()
 }
 
-func (console *console) finish(err error) error {
-	console.send(consoleFinished{err})
-	if console.program != nil {
-		terminalErr := <-console.done
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "Piik App:", err)
-		}
-		if terminalErr != nil {
-			fmt.Fprintln(os.Stderr, "Piik App:", terminalErr)
-		}
-		return terminalErr
+func (console *console) stop(err error) error {
+	if console.program == nil {
+		return nil
 	}
-	return nil
+	console.send(consoleFinished{err})
+	result := <-console.done
+	if model, ok := result.model.(consoleModel); ok {
+		console.plain.language = model.language
+	}
+	return result.err
+}
+
+func (console *console) finish(err error, exportPath string) {
+	if console.program == nil {
+		console.send(consoleFinished{err})
+		return
+	}
+	if exportPath != "" {
+		fmt.Fprintln(os.Stderr, "Piik App:", console.plain.text("exported"), exportPath)
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Piik App:", err)
+	}
 }
 
 func (console *console) logWriter() io.Writer {

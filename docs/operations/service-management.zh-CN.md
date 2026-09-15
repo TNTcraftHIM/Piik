@@ -73,7 +73,7 @@ docker compose logs --tail=50 piik
 保留同一个 Compose 项目与目录，以便继续使用原命名数据卷；
 `docker compose down --volumes` 会删除这些数据。
 回滚时，恢复之前的镜像设置与兼容配置，再重新创建服务。
-跨越存储格式边界前，先阅读发布说明。裸机部署脚本 `release-app.sh` 不管理容器。
+跨越存储格式边界前，先阅读发布说明。裸机部署脚本 `release-server.sh` 不管理容器。
 
 ## 运行验证
 

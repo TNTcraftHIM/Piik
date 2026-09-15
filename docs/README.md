@@ -72,7 +72,7 @@ The main verification commands are:
 
 ```sh
 npm run check
-npm run check:client
+npm run check:go
 ```
 
 Use the [naming and copy guide](./standards/naming.md) for product names,

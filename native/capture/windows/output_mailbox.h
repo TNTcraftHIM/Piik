@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <stdexcept>
 #include <utility>
 
@@ -76,12 +77,13 @@ class OutputMailbox final {
     return !stopped_ && !failed_ && active_ && generation == generation_;
   }
 
-  bool Fail(bool recovery) {
+  bool Fail(std::optional<uint64_t> generation = std::nullopt) {
     std::lock_guard<std::mutex> lock(mutex_);
-    key_requested_ = key_requested_ || recovery;
+    if (stopped_ || failed_ ||
+        (generation && (!active_ || *generation != generation_))) return false;
     failed_ = true;
     pending_.reset();
-    return !stopped_;
+    return true;
   }
 
   void Stop() {

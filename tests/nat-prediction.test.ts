@@ -140,6 +140,32 @@ describe("NAT prediction ICE adapter", () => {
     expect(natPredictionSurveyUrls(servers)).toEqual(new Set());
   });
 
+  it.each([
+    ["stun:Share.TEST", "stun:share.test:3478"],
+    ["STUN:Share.TEST:03478", "stun:share.test:3478"],
+    ["stun:[2001:DB8::1]:3478", "stun:[2001:db8::1]:3478"],
+    ["stun:share.test:80", null],
+    ["stun:share.test:00080", null],
+    ["stun:share.test:443", null],
+  ] as const)("preserves the STUN port in survey membership for %s", (url, base) => {
+    const auxiliary = ["stun:survey.test:80", "stun:survey.test:443"];
+    expect(natPredictionSurveyUrls([{ urls: url }], auxiliary)).toEqual(
+      new Set(base ? [base, ...auxiliary] : []),
+    );
+  });
+
+  it("keeps a port-80 auxiliary distinct from the ordinary base endpoint", () => {
+    const servers = [{ urls: "stun:share.test:3478" }];
+    expect(iceServersWithNatPrediction(servers, true, [
+      "stun:share.test:00080",
+      "stun:share.test:3480",
+    ])).toEqual([
+      ...servers,
+      { urls: "stun:share.test:00080" },
+      { urls: "stun:share.test:3480" },
+    ]);
+  });
+
   it("does not duplicate already configured auxiliary listeners", () => {
     const servers = [
       { urls: "stun:share.example.test:3478" },

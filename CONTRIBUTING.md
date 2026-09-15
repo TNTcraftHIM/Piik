@@ -96,14 +96,18 @@ Confirm runner inclusion when adding or moving a test; a file's presence alone
 does not establish coverage.
 
 - `npm run check` owns deterministic Web type-check, unit, and build acceptance.
-- `npm run check:client` owns Go formatting, unit tests, vet, Windows/Linux
+- `npm run check:go` owns Go formatting, unit tests, vet, Windows/Linux
   builds, Darwin builds on macOS, and the current platform's capture compile/probe.
-  The server core is Go, so its acceptance runs here. It builds the Vite client first when
+  The server core is Go, so its acceptance runs here. It builds the Web UI first when
   that output is missing, because both binaries embed it. CI invokes these same
   package commands rather than rebuilding their steps in YAML.
-- `npm run check:client-race` checks port mapping, media-edge ownership and their
+- `npm run check:go-race` checks port mapping, media-edge ownership and their
   scoped NAT dependencies with Go's race detector. It requires a supported cgo
   toolchain; CI runs it on Linux.
+- `npm run check:native` runs only the current platform's capture compile/probe
+  and deterministic native regressions. The Linux App packaging job includes
+  its headless GStreamer output-profile and retirement test; this does not
+  establish physical screen/audio capture on that runner.
 - `npm run check:container -- <local-image> <full-SHA>` checks the Compose recipe
   against a packaged linux/amd64 image: embedded Web, P2P/STUN, optional SFU
   startup, room persistence across recreation, diagnostics and clean shutdown.
@@ -112,8 +116,9 @@ does not establish coverage.
 - `gate:*` commands are explicit physical or network acceptance. They must use
   isolated profiles, bounded deadlines, shared cleanup helpers, and a structured
   result. A manual diagnostic may locate a failure, but is not retained as pass
-  evidence.
-- On Windows, execute Client/Server and Go test binaries only from stable
+  evidence. Existing `PIIK_CLIENT_*` gate environment names retain their current
+  contract; renaming the tools does not change those overrides.
+- On Windows, execute App/Server and Go test binaries only from stable
   project build paths. Go's temporary compiler/cache files are not firewall
   identities; do not run network tests with a changing temporary executable
   path. Keep browser profiles isolated and consider the active firewall when

@@ -21,7 +21,7 @@ and services are not bundled; the package still carries the license texts for
 the linked capture path. Packages without native capture do not include these
 capture-specific notices.
 
-`npm run dev` and `npm run build:client` generate `/third-party-licenses.txt`
+`npm run dev` and `npm run build:web` generate `/third-party-licenses.txt`
 offline from installed, lockfile-matched Web runtime dependencies.
 The application release and App assembly each add the Go toolchain notice
 and the license files of the modules actually compiled into that binary; the

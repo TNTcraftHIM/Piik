@@ -34,7 +34,7 @@ import {
 } from "./browser-gate-harness";
 const root = resolve(import.meta.dirname, "..");
 const nginxConfigPath = resolve(root, "deploy/nginx/piik.conf.example");
-const serverExecutable = join(root, "build", "client-check",
+const serverExecutable = join(root, "build", "go-check",
   process.platform === "win32" ? "piik-server.exe" : "piik-server");
 // PIIK_ENV=production refuses to start without STUN. Nothing listens on
 // this address, so the gate still never leaves the loopback interface.

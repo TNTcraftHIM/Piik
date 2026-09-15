@@ -3,7 +3,7 @@
 The root `go.mod` replaces only these two modules with local source. They retain
 their original module paths and Apache-2.0 licenses. The checked-in source,
 upstream tests and focused regressions are built and tested by
-`npm run check:client`.
+`npm run check:go`.
 
 | Module | Source baseline | Local changes |
 | --- | --- | --- |
@@ -21,6 +21,6 @@ describes the runtime limits. Do not add a second gateway client in Piik.
 
 When maintained upstream revisions cover these fixes and the same regressions
 pass, replace both local module directives with version pins, remove their source
-directories and the extra dependency test patterns in `scripts/check-client.mjs`.
+directories and the extra dependency test patterns in `scripts/check-go.mjs`.
 Until then, review updates against the named baselines; do not edit Go's shared
 module cache or apply build-time patches.

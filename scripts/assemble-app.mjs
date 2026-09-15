@@ -20,11 +20,11 @@ import {
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { clientPackageTarget, clientGoEnvironment, CLOUDFLARED_VERSION } from "./client-package-targets.mjs";
-import { writeClientPlatformAssets } from "./client-icons.mjs";
-import { writeClientLicenseNotices } from "./package-licenses.mjs";
+import { appPackageTarget, goBuildEnvironment, CLOUDFLARED_VERSION } from "./app-package-targets.mjs";
+import { writeAppPlatformAssets } from "./app-icons.mjs";
+import { writeAppLicenseNotices } from "./package-licenses.mjs";
 import { tarExecutable } from "./archive-tool.mjs";
-import { resetBuildWorkspace } from "./build-workspace.mjs";
+import { assertCleanRevision, resetBuildWorkspace } from "./build-workspace.mjs";
 import { isReleaseVersion } from "./release-version.mjs";
 
 function fail(message) {
@@ -91,7 +91,7 @@ function executableMatchesTarget(path, target) {
 
 function assertTargetExecutable(path, target, label) {
   if (!lstatSync(path).isFile() || !executableMatchesTarget(path, target)) {
-    fail(`${label} does not match Client package target ${target.id}`);
+    fail(`${label} does not match App package target ${target.id}`);
   }
 }
 
@@ -112,7 +112,7 @@ function readDescriptor(path) {
   try {
     value = JSON.parse(readFileSync(path, "utf8"));
   } catch {
-    fail("Application release descriptor is invalid");
+    fail("Server release descriptor is invalid");
   }
   if (
     value?.schema !== 2 ||
@@ -122,7 +122,7 @@ function readDescriptor(path) {
     typeof value.artifactSha256 !== "string" ||
     !/^[0-9a-f]{64}$/.test(value.artifactSha256)
   ) {
-    fail("Application release descriptor is invalid");
+    fail("Server release descriptor is invalid");
   }
   return {
     version: value.version,
@@ -134,21 +134,21 @@ function readDescriptor(path) {
 
 function assertOutputDirectory(repositoryRoot, outputRoot, target) {
   const path = relative(repositoryRoot, outputRoot);
-  const candidateOutput = join(repositoryRoot, "build", "client-package", target.id,
+  const candidateOutput = join(repositoryRoot, "build", "app-package", target.id,
     "candidate", `piik-app-${target.id}`);
   if (outputRoot !== candidateOutput &&
       (path === "" || (path.split(/[\\/]/)[0] !== ".." && !isAbsolute(path)))) {
-    fail("Client output must be outside the repository or its exact candidate workspace");
+    fail("App output must be outside the repository or its exact candidate workspace");
   }
   if (outputRoot === candidateOutput) {
     for (let parent = dirname(outputRoot); parent !== repositoryRoot; parent = dirname(parent)) {
       const metadata = lstatSync(parent, { throwIfNoEntry: false });
       if (metadata && (!metadata.isDirectory() || metadata.isSymbolicLink() ||
-          realpathSync(parent) !== parent)) fail("Client candidate output must not contain links");
+          realpathSync(parent) !== parent)) fail("App candidate output must not contain links");
     }
   }
   if (existsSync(outputRoot)) {
-    fail("Client output directory must not already exist");
+    fail("App output directory must not already exist");
   }
 }
 
@@ -156,7 +156,7 @@ const positional = process.argv.slice(2, 4);
 const options = process.argv.slice(4);
 if (positional.length !== 2 || options.length % 2 !== 0) {
   fail(
-    "Usage: node scripts/assemble-client.mjs <app-release.json> <new-output-directory> --target <windows-amd64|linux-amd64|darwin-arm64> [--capture <executable>] [--tunnel <executable>]",
+    "Usage: node scripts/assemble-app.mjs <server-release.json> <new-output-directory> --target <windows-amd64|linux-amd64|darwin-arm64> [--capture <executable>] [--tunnel <executable>]",
   );
 }
 
@@ -170,7 +170,7 @@ for (let index = 0; index < options.length; index += 2) {
     !value ||
     (name !== "--target" && name !== "--capture" && name !== "--tunnel")
   ) {
-    fail("Client package option is invalid");
+    fail("App package option is invalid");
   }
   if (name === "--target" && targetArgument === null) {
     targetArgument = value;
@@ -179,13 +179,13 @@ for (let index = 0; index < options.length; index += 2) {
   } else if (name === "--tunnel" && tunnelArgument === null) {
     tunnelArgument = value;
   } else {
-    fail("Client package option is duplicated");
+    fail("App package option is duplicated");
   }
 }
-const target = clientPackageTarget(targetArgument);
-if (!target) fail("Client package target is invalid");
+const target = appPackageTarget(targetArgument);
+if (!target) fail("App package target is invalid");
 if (target.cgo && process.platform !== target.nodePlatform) {
-  fail(`Client target ${target.id} requires a native macOS runner with its SDK and cgo`);
+  fail(`App target ${target.id} requires a native macOS runner with its SDK and cgo`);
 }
 
 const repositoryRoot = realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), ".."));
@@ -195,7 +195,7 @@ const capturePath = captureArgument ? realpathSync(resolve(captureArgument)) : n
 const tunnelPath = tunnelArgument ? realpathSync(resolve(tunnelArgument)) : null;
 assertOutputDirectory(repositoryRoot, outputRoot, target);
 if (capturePath && !target.captureName) {
-  fail("Capture runtime is invalid for the Client package target");
+  fail("Capture runtime is invalid for the App package target");
 }
 if (capturePath) assertTargetExecutable(capturePath, target, "Capture runtime");
 if (tunnelPath) assertTargetExecutable(tunnelPath, target, "Public tunnel runtime");
@@ -204,33 +204,28 @@ const descriptor = readDescriptor(descriptorPath);
 const version = descriptor.version;
 process.env.VITE_PIIK_VERSION = version;
 process.env.VITE_PIIK_REVISION = descriptor.revision;
-const revision = run("git", ["rev-parse", "HEAD"], repositoryRoot).toLowerCase();
-if (revision !== descriptor.revision) {
-  fail("Client source and application release revisions do not match");
-}
-if (run("git", ["status", "--porcelain"], repositoryRoot) !== "") {
-  fail("Client assembly requires a clean Git checkout");
-}
+const revision = assertCleanRevision(repositoryRoot, descriptor.revision);
 const artifactPath = join(dirname(descriptorPath), descriptor.artifact);
 if (!existsSync(artifactPath) || sha256(artifactPath) !== descriptor.artifactSha256) {
-  fail("Application release artifact does not match its descriptor");
+  fail("Server release artifact does not match its descriptor");
 }
 
-const temporaryRoot = resetBuildWorkspace(repositoryRoot, "client-package", target.id, "assembly");
+const temporaryRoot = resetBuildWorkspace(repositoryRoot, "app-package", target.id, "assembly");
 const packageRoot = join(temporaryRoot, "package");
 const releaseRoot = join(temporaryRoot, "release");
+let outputOwned = false;
 try {
-  // The application release is consumed for its provenance only: the Client
+  // The Server release is consumed for its provenance only: the App
   // embeds the Web assets, so the revision, clean-tree and digest assertions
   // above plus this REVISION check tie the binary to that immutable release.
   mkdirSync(releaseRoot, { recursive: true });
   run(tarExecutable(), ["-xzf", artifactPath, "-C", releaseRoot], repositoryRoot);
   if (readFileSync(join(releaseRoot, "REVISION"), "ascii") !== `${revision}\n`) {
-    fail("Extracted application revision does not match the Client");
+    fail("Extracted Server revision does not match the App");
   }
   // Build the Web assets the Go binary embeds. The checkout is clean and at the
-  // release revision, so this reproduces that release's client.
-  runNpm(["run", "build:client"], repositoryRoot);
+  // release revision, so this reproduces that release's Web assets.
+  runNpm(["run", "build:web"], repositoryRoot);
   mkdirSync(packageRoot, { recursive: true });
 
   let packagedCapture = null;
@@ -252,8 +247,8 @@ try {
     chmodSync(packagedTunnel, 0o755);
   }
 
-  const clientName = target.clientName;
-  const clientPath = join(packageRoot, clientName);
+  const appName = target.appName;
+  const appPath = join(packageRoot, appName);
   const goCommand = process.env.PIIK_GO?.trim() || "go";
   run(goCommand, [
     "build",
@@ -261,14 +256,14 @@ try {
     "-ldflags",
     `-s -w -X github.com/TNTcraftHIM/Piik/internal/app.BuildRevision=${revision} -X github.com/TNTcraftHIM/Piik/internal/app.BuildVersion=${version}`,
     "-o",
-    clientPath,
+    appPath,
     "./cmd/piik-app",
-  ], repositoryRoot, clientGoEnvironment(target));
-  chmodSync(clientPath, 0o755);
-  assertTargetExecutable(clientPath, target, "Client executable");
-  writeClientLicenseNotices(repositoryRoot, packageRoot, goCommand, target,
+  ], repositoryRoot, goBuildEnvironment(target));
+  chmodSync(appPath, 0o755);
+  assertTargetExecutable(appPath, target, "App executable");
+  writeAppLicenseNotices(repositoryRoot, packageRoot, goCommand, target,
     packagedTunnel ? CLOUDFLARED_VERSION : null);
-  const platformAssets = writeClientPlatformAssets({
+  const platformAssets = writeAppPlatformAssets({
     packageRoot,
     target,
     version,
@@ -277,6 +272,10 @@ try {
   });
   writeFileSync(join(packageRoot, "REVISION"), `${revision}\n`, "ascii");
 
+  assertCleanRevision(repositoryRoot, revision);
+  mkdirSync(dirname(outputRoot), { recursive: true });
+  mkdirSync(outputRoot, { recursive: false, mode: 0o700 });
+  outputOwned = true;
   cpSync(packageRoot, outputRoot, {
     recursive: true,
     errorOnExist: true,
@@ -289,13 +288,16 @@ try {
     target: target.id,
     platform: target.goos,
     arch: target.goarch,
-    client: clientName,
+    app: appName,
     nativeCapture: packagedCapture ? `runtime/native/${target.captureName}` : null,
     publicTunnel: packagedTunnel
       ? `runtime/tunnel/${target.tunnelName}`
       : null,
     platformAssets,
   })}\n`);
+} catch (error) {
+  if (outputOwned) rmSync(outputRoot, { recursive: true, force: true });
+  throw error;
 } finally {
   rmSync(temporaryRoot, { recursive: true, force: true });
 }

@@ -13,7 +13,7 @@ export function stableTags(root, ...filter) {
 
 // Known standalone surfaces do not change the shipped App/Server. Everything
 // else stays eligible, including shared UI, public assets, licenses and build
-// inputs. In particular, check-client.mjs builds the bundled capture runtime.
+// inputs. In particular, check-go.mjs builds the bundled capture runtime.
 const nonProductPaths = [
   "site/**", "docs/**", "tests/**", ".agents/**", ".codex/**", ".githooks/**",
   "*.md", ".gitignore", ".env.example", "vitest.config.ts",
@@ -24,7 +24,7 @@ const nonProductPaths = [
   "scripts/required-project-paths.txt", "scripts/tsconfig.json",
   "scripts/release-*.mjs", "scripts/publish-release.mjs", "scripts/mirror-release.mjs",
   "scripts/*-gate.*", "scripts/*-probe.*", "scripts/browser-*", "scripts/encoded-*",
-  "scripts/client-gate-endpoint.ts", "scripts/embedded-sfu-page.ts", "scripts/peer-assisted-benchmark.ts",
+  "scripts/*-gate-endpoint.ts", "scripts/embedded-sfu-page.ts", "scripts/peer-assisted-benchmark.ts",
   "cmd/piik-peer-gate/**",
 ].map((path) => `:(top,glob,exclude)${path}`);
 

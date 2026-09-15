@@ -16,16 +16,16 @@ import {
   withDeadline,
 } from "./browser-gate-harness";
 import {
-  readClientEndpoint,
-  type ClientEndpoint as Endpoint,
-} from "./client-gate-endpoint";
+  readAppEndpoint,
+  type AppEndpoint as Endpoint,
+} from "./app-gate-endpoint";
 import {
   NATIVE_CLIENT_PROTOCOL,
   NATIVE_CLIENT_SUBPROTOCOL,
 } from "../src/client/native/wire";
 
 const ROOT = resolve(import.meta.dirname, "..");
-const BUILD_ROOT = join(ROOT, "build", "client-check");
+const BUILD_ROOT = join(ROOT, "build", "go-check");
 const SOURCE_TITLE = "Piik Native Gate Source";
 const GATE_STUN_URLS = process.env.PIIK_CLIENT_GATE_STUN_URLS?.trim();
 
@@ -306,7 +306,7 @@ async function browserMediaGate(input: {
       health.nativeMedia?.video !== true ||
       health.nativeMedia?.hardwareH264 !== true
     ) {
-      throw new Error("Native Client health is not ready");
+      throw new Error("Native App health is not ready");
     }
     result.audioAvailable = input.sourceKind === "window"
       ? health.nativeMedia.processAudio === true
@@ -678,9 +678,9 @@ async function main(): Promise<void> {
   let chrome: ChildProcessWithoutNullStreams | null = null;
   let capture: ChildProcessWithoutNullStreams | null = null;
   let audioCapture: ChildProcessWithoutNullStreams | null = null;
-  let client: ChildProcessWithoutNullStreams | null = null;
+  let app: ChildProcessWithoutNullStreams | null = null;
   let cdp: CdpConnection | null = null;
-  let clientPort = 0;
+  let nativePort = 0;
   let browser: string | null = null;
   const evidence: CaptureEvidence = {
     starting: false,
@@ -861,18 +861,18 @@ async function main(): Promise<void> {
       executable,
       join(nativeRoot, "piik-capture.exe"),
     );
-    const clientExecutable = join(packageRoot, "piik-app.exe");
+    const appExecutable = join(packageRoot, "piik-app.exe");
     const go = process.env.PIIK_GO?.trim() || "go";
-    // The Client embeds the Vite output, so the Web build precedes the Go build.
+    // The App embeds the Vite output, so the Web build precedes the Go build.
     run(process.env.ComSpec || "cmd.exe", [
-      "/d", "/s", "/c", "npm run build:client",
+      "/d", "/s", "/c", "npm run build:web",
     ], ROOT);
     run(
       go,
-      ["build", "-trimpath", "-o", clientExecutable, "./cmd/piik-app"],
+      ["build", "-trimpath", "-o", appExecutable, "./cmd/piik-app"],
       ROOT,
     );
-    client = spawn(clientExecutable, [
+    app = spawn(appExecutable, [
       "--site",
       "http://127.0.0.1:" + pagePort,
       "--config",
@@ -882,9 +882,9 @@ async function main(): Promise<void> {
       windowsHide: true,
       env: { ...process.env, PIIK_CLIENT_GATE_NO_BROWSER: "true" },
     });
-    client.stderr.resume();
-    const endpoint = await readClientEndpoint(client);
-    clientPort = endpoint.port;
+    app.stderr.resume();
+    const endpoint = await readAppEndpoint(app);
+    nativePort = endpoint.port;
     const controlPage = await createPage(
       cdp,
       "http://127.0.0.1:" + pagePort + "/control",
@@ -910,11 +910,11 @@ async function main(): Promise<void> {
   } finally {
     cleanup = await cleanupRun({
       cdp,
-      native: client ?? capture ?? audioCapture,
+      native: app ?? capture ?? audioCapture,
       chrome,
       server,
       profile,
-      ports: [pagePort, debugPort, ...(clientPort ? [clientPort] : [])],
+      ports: [pagePort, debugPort, ...(nativePort ? [nativePort] : [])],
     });
   }
   const passed = error === null && evidence.starting && evidence.active &&

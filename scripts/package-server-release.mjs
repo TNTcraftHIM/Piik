@@ -20,22 +20,22 @@ import { fileURLToPath } from "node:url";
 
 import { writeServerLicenseNotices } from "./package-licenses.mjs";
 import { tarExecutable } from "./archive-tool.mjs";
-import { resetBuildWorkspace } from "./build-workspace.mjs";
+import { assertCleanRevision, resetBuildWorkspace } from "./build-workspace.mjs";
 import { buildVersion } from "./release-version.mjs";
 
-// The Hosted deployment target. deploy/release-app.sh runs the archived binary
+// The Server deployment target. deploy/release-server.sh runs the archived binary
 // as the service user, so the release is always built for linux/amd64, and
 // CGO_ENABLED=0 keeps it self-contained.
 const SERVER_TARGET = { goos: "linux", goarch: "amd64" };
 const SERVER_NAME = "piik-server";
 
-// Everything the archive may contain. deploy/release-app.sh enforces the same
+// Everything the archive may contain. deploy/release-server.sh enforces the same
 // four names in its entry allowlist and manifest pattern; both change together.
 const RUNTIME_PATHS = ["REVISION", "LICENSE", "THIRD-PARTY-NOTICES.txt", SERVER_NAME];
 
 // The Vite output the server embeds. Its index.html names the main asset the
 // deployment postflight proves over HTTP.
-const CLIENT_DIST = "internal/server/webassets/dist";
+const WEB_DIST = "internal/server/webassets/dist";
 
 function fail(message) {
   throw new Error(message);
@@ -55,28 +55,16 @@ function run(command, args, cwd, environment = process.env) {
   return result.stdout.trim();
 }
 
-function buildClient(cwd) {
+function buildWebAssets(cwd) {
   if (process.platform === "win32") {
     run(
       process.env.ComSpec || "cmd.exe",
-      ["/d", "/s", "/c", "npm run build:client"],
+      ["/d", "/s", "/c", "npm run build:web"],
       cwd,
     );
     return;
   }
-  run("npm", ["run", "build:client"], cwd);
-}
-
-function assertCleanRevision(repositoryRoot, expectedRevision) {
-  const revision = run("git", ["rev-parse", "HEAD"], repositoryRoot).toLowerCase();
-  if (!/^[0-9a-f]{40}$/.test(revision)) fail("Git did not return a full revision");
-  if (expectedRevision && revision !== expectedRevision) {
-    fail("Repository revision changed during release packaging");
-  }
-  if (run("git", ["status", "--porcelain"], repositoryRoot) !== "") {
-    fail("Application releases require a clean Git checkout");
-  }
-  return revision;
+  run("npm", ["run", "build:web"], cwd);
 }
 
 function sha256(path) {
@@ -165,16 +153,16 @@ function validateArchiveEntries(entries) {
 function mainAssetOf(distributionRoot) {
   const html = readFileSync(join(distributionRoot, "index.html"), "utf8");
   const match = html.match(/<script[^>]+src="\/(assets\/index-[A-Za-z0-9_-]+\.js)"/);
-  if (!match) fail("Built client HTML has no unique main asset");
+  if (!match) fail("Built Web HTML has no unique main asset");
   if (!existsSync(join(distributionRoot, ...match[1].split("/")))) {
-    fail("Built client main asset is missing");
+    fail("Built Web main asset is missing");
   }
   return match[1];
 }
 
 if (process.argv.length !== 3 &&
     !(process.argv.length === 5 && process.argv[3] === "--container-image")) {
-  fail("Usage: node scripts/package-app-release.mjs <new-output-directory> [--container-image <tag>]");
+  fail("Usage: node scripts/package-server-release.mjs <new-output-directory> [--container-image <tag>]");
 }
 const containerImage = process.argv[4];
 if (containerImage && !/^[a-z0-9][a-z0-9._/:+-]*$/.test(containerImage)) {
@@ -195,14 +183,15 @@ process.env.VITE_PIIK_VERSION = version;
 process.env.VITE_PIIK_REVISION = revision;
 
 if (!existsSync(join(repositoryRoot, "LICENSE"))) fail("Missing release input: LICENSE");
-buildClient(repositoryRoot);
+buildWebAssets(repositoryRoot);
 assertCleanRevision(repositoryRoot, revision);
-const mainAsset = mainAssetOf(join(repositoryRoot, CLIENT_DIST));
+const mainAsset = mainAssetOf(join(repositoryRoot, WEB_DIST));
 
 const releaseId = revision.slice(0, 7);
-const temporaryRoot = resetBuildWorkspace(repositoryRoot, "app-package", "assembly");
+const temporaryRoot = resetBuildWorkspace(repositoryRoot, "server-package", "assembly");
 const runtimeRoot = join(temporaryRoot, "runtime");
 const verifyRoot = join(temporaryRoot, "verify");
+let outputOwned = false;
 
 try {
   mkdirSync(runtimeRoot, { recursive: true });
@@ -238,6 +227,7 @@ try {
   const artifactName = `piik-${releaseId}-runtime.tar.gz`;
   const descriptorName = `piik-${releaseId}.release.json`;
   mkdirSync(outputRoot, { recursive: false, mode: 0o700 });
+  outputOwned = true;
   const manifestPath = join(outputRoot, manifestName);
   const artifactPath = join(outputRoot, artifactName);
   const descriptorPath = join(outputRoot, descriptorName);
@@ -266,7 +256,6 @@ try {
     fileCount: records.length,
     mainAsset,
   };
-  writeFileSync(descriptorPath, `${JSON.stringify(descriptor, null, 2)}\n`, "ascii");
   if (containerImage) {
     // Reuse the verified, extracted release: no second Server or Web build.
     run("docker", [
@@ -278,7 +267,12 @@ try {
       "--tag", containerImage, verifyRoot,
     ], repositoryRoot);
   }
+  assertCleanRevision(repositoryRoot, revision);
+  writeFileSync(descriptorPath, `${JSON.stringify(descriptor, null, 2)}\n`, "ascii");
   process.stdout.write(`${JSON.stringify({ descriptor: descriptorPath, ...descriptor })}\n`);
+} catch (error) {
+  if (outputOwned) rmSync(outputRoot, { recursive: true, force: true });
+  throw error;
 } finally {
   rmSync(temporaryRoot, { recursive: true, force: true });
 }

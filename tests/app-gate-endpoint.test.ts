@@ -5,11 +5,11 @@ import { PassThrough } from "node:stream";
 import { describe, expect, it } from "vitest";
 
 import {
-  decodeClientEndpoint,
-  readClientEndpoint,
-} from "../scripts/client-gate-endpoint";
+  decodeAppEndpoint,
+  readAppEndpoint,
+} from "../scripts/app-gate-endpoint";
 
-describe("Client gate endpoint decoder", () => {
+describe("App gate endpoint decoder", () => {
   const endpoint = {
     url: "http://127.0.0.1:39721",
     host: "127.0.0.1:39721",
@@ -18,7 +18,7 @@ describe("Client gate endpoint decoder", () => {
   };
 
   it("accepts the one exact loopback endpoint shape", () => {
-    expect(decodeClientEndpoint(JSON.stringify(endpoint))).toEqual(endpoint);
+    expect(decodeAppEndpoint(JSON.stringify(endpoint))).toEqual(endpoint);
   });
 
   it("rejects partial, inconsistent, extended, and malformed endpoints", () => {
@@ -29,20 +29,20 @@ describe("Client gate endpoint decoder", () => {
       { ...endpoint, extra: true },
       { port: endpoint.port, instanceToken: endpoint.instanceToken },
     ]) {
-      expect(() => decodeClientEndpoint(JSON.stringify(value))).toThrow(
-        "Client endpoint is invalid",
+      expect(() => decodeAppEndpoint(JSON.stringify(value))).toThrow(
+        "App endpoint is invalid",
       );
     }
-    expect(() => decodeClientEndpoint("not-json")).toThrow(
-      "Client endpoint is invalid",
+    expect(() => decodeAppEndpoint("not-json")).toThrow(
+      "App endpoint is invalid",
     );
   });
 
-  it("reads an endpoint after optional client status lines", async () => {
+  it("reads an endpoint after optional App status lines", async () => {
     const stdout = new PassThrough();
     const child = Object.assign(new EventEmitter(), { stdout }) as unknown as
       ChildProcessWithoutNullStreams;
-    const result = readClientEndpoint(child, {
+    const result = readAppEndpoint(child, {
       ignoreNonEndpointLines: true,
     });
     stdout.write("Local access: open\n");

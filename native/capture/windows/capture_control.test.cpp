@@ -174,10 +174,14 @@ void CheckIndependentActivation() {
   assert(!extra.Accept(activated.generation) && original.Accept(original_frame.generation));
   assert(extra.Take().action == Mailbox::Action::retire);
   assert(extra.SetActive(true));
+  assert(!extra.Fail(activated.generation));
   extra.Submit(std::make_shared<int>(3));
   const auto replacement = extra.Take();
   assert(replacement.recovery && *replacement.input == 3 &&
       replacement.generation != activated.generation);
+  assert(extra.Fail(replacement.generation));
+  assert(!extra.SetActive(false) && !extra.SetActive(true));
+  assert(original.Accept(original_frame.generation));
   original.Stop();
   extra.Stop();
 }

@@ -45,12 +45,6 @@ func NATPredictionStunURLs(stunURLs []string) []string {
 			continue
 		}
 		port := authority.Port()
-		// The WHATWG parser drops a port equal to the scheme default, so
-		// "stun:host:80" reaches the TypeScript's `: NAT_PREDICTION_BASE_PORT`
-		// fallback and counts as a base listener.
-		if port == defaultSchemePort("http") {
-			port = ""
-		}
 		if port != "" {
 			number, err := strconv.Atoi(port)
 			if err != nil || number != natPredictionBasePort {

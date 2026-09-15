@@ -63,6 +63,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <syncstream>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -1326,7 +1327,6 @@ class OutputWorker final {
  private:
   void Run() noexcept {
     bool apartment = false;
-    bool recovery = false;
     auto initial = std::move(initial_);
     std::unique_ptr<AdaptiveEncoder> encoder;
     std::unique_ptr<FrameConverter> converter;
@@ -1345,29 +1345,43 @@ class OutputWorker final {
           continue;
         }
         const auto& input = work.input;
-        recovery = work.recovery;
         if (codec_generation != work.generation) {
           encoder.reset();
           initial.reset();
           converter.reset();
           codec_generation = work.generation;
         }
-        if (!encoder) {
-          encoder = std::make_unique<AdaptiveEncoder>(
-              kind_, profile_, device_.Get(), create_, std::move(initial), layer_);
-        }
-        auto output = encoder->Encode([&](UINT32 width, UINT32 height) {
-          if (!converter || converted_width != width || converted_height != height) {
-            auto selected = profile_;
-            selected.width = width;
-            selected.height = height;
-            converter = std::make_unique<FrameConverter>(device_.Get(), selected);
-            converted_width = width;
-            converted_height = height;
+        std::optional<AdaptiveAccessUnit> output;
+        try {
+          if (!encoder) {
+            encoder = std::make_unique<AdaptiveEncoder>(
+                kind_, profile_, device_.Get(), create_, std::move(initial), layer_);
           }
-          return converter->Convert(input->texture.Get(), input->width,
-                                    input->height, input->presentation);
-        }, profile_.width, profile_.height, input->timestamp, recovery, work.bitrate);
+          output = encoder->Encode([&](UINT32 width, UINT32 height) {
+            if (!converter || converted_width != width || converted_height != height) {
+              auto selected = profile_;
+              selected.width = width;
+              selected.height = height;
+              converter = std::make_unique<FrameConverter>(device_.Get(), selected);
+              converted_width = width;
+              converted_height = height;
+            }
+            return converter->Convert(input->texture.Get(), input->width,
+                                      input->height, input->presentation);
+          }, profile_.width, profile_.height, input->timestamp, work.recovery, work.bitrate);
+        } catch (...) {
+          // Device loss is current shared evidence; an old codec failure only
+          // retires its activation. No retry occurs without a new activation.
+          if (FAILED(device_->GetDeviceRemovedReason())) throw;
+          if (mailbox_.Fail(work.generation)) {
+            on_failure_(std::current_exception());
+            break;
+          }
+          encoder.reset();
+          initial.reset();
+          converter.reset();
+          continue;
+        }
         if (!output) continue;
         if (!mailbox_.Accept(work.generation)) continue;
         const auto& access_unit = output->access_unit;
@@ -1379,7 +1393,7 @@ class OutputWorker final {
         if (on_output_) on_output_();
       }
     } catch (...) {
-      if (mailbox_.Fail(recovery)) on_failure_(std::current_exception());
+      if (mailbox_.Fail()) on_failure_(std::current_exception());
     }
     encoder.reset();
     initial.reset();
@@ -1472,10 +1486,18 @@ std::vector<std::unique_ptr<OutputWorker>> CreateOutputWorkers(
   return workers;
 }
 
-std::string OutputFailureDetail(std::exception_ptr error) {
+std::string OutputFailureDetail(size_t layer, std::exception_ptr error) {
   try {
     std::rethrow_exception(error);
   } catch (const GateFailure& failed) {
+    std::osyncstream diagnostic(std::cerr);
+    diagnostic << "result=output-encoder-unavailable layer=" << layer
+               << " stage=" << failed.stage() << " detail=" << failed.what();
+    if (FAILED(failed.result())) {
+      diagnostic << " hresult=0x" << std::hex << std::setfill('0')
+                 << std::setw(8) << static_cast<UINT32>(failed.result());
+    }
+    diagnostic << '\n';
     return failed.stage();
   } catch (const std::exception& failed) {
     return failed.what();
@@ -1583,7 +1605,7 @@ void RunEncodedVideo(const ProductArguments& arguments) {
   auto workers = CreateOutputWorkers(arguments, adapter, device, writer, std::move(encoder),
       [&]() { if (!active.exchange(true)) WriteVideoActive(writer, arguments, hardware); },
       [&](size_t layer, std::exception_ptr error) {
-        (void)writer.WriteUnavailable(static_cast<UINT8>(layer), OutputFailureDetail(error));
+        (void)writer.WriteUnavailable(static_cast<UINT8>(layer), OutputFailureDetail(layer, error));
         if (failed.fetch_add(1) + 1 == arguments.outputs.size()) CancelSynchronousIo(input_thread.get());
       });
   auto cleanup = [&]() {
@@ -1770,7 +1792,7 @@ void RunVideoCapture(const ProductArguments& arguments) {
           fail_capture(error);
           return;
         }
-        if (FAILED(writer.WriteUnavailable(static_cast<UINT8>(layer), OutputFailureDetail(error)))) fail_capture(error);
+        if (FAILED(writer.WriteUnavailable(static_cast<UINT8>(layer), OutputFailureDetail(layer, error)))) fail_capture(error);
       });
     capture_session.StartCapture();
 

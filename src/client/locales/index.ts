@@ -1,13 +1,13 @@
-import { en, enTitleFrames } from "./en";
+import { en, enPlayful, enTitleFrames } from "./en";
 import { visualTitleFrames } from "./visual";
-import { zh, zhTitleFrames } from "./zh";
+import { zh, zhPlayful, zhTitleFrames } from "./zh";
 
-export type { CopyKey, TitleFrameKey } from "./zh";
+export type { CopyKey, TitleContent, TitleFrameKey, WelcomeEntry } from "./zh";
 
 // One registration supplies the menu, browser-language matching and copy.
 export const locales = {
-  zh: { name: "简体中文", short: "中", tag: "zh-CN", copy: zh, titleFrames: zhTitleFrames },
-  en: { name: "English", short: "EN", tag: "en", copy: en, titleFrames: enTitleFrames },
+  zh: { name: "简体中文", short: "中", tag: "zh-CN", copy: zh, titleFrames: zhTitleFrames, playful: zhPlayful },
+  en: { name: "English", short: "EN", tag: "en", copy: en, titleFrames: enTitleFrames, playful: enPlayful },
 };
 export type Lang = keyof typeof locales;
 

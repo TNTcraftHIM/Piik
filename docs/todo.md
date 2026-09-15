@@ -7,46 +7,21 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **Playful copy catalogs and lifecycle.** Unify website/App welcome,
-  waiting captions and playful titles under the accepted
-  [presentation policy](./standards/visual-language.md#playful-copy-lifecycle).
-  Remove the fixed-count and paired-index assumptions, complete the waiting
-  surface inventory, and update the bilingual contribution guide and previews
-  alongside implementation. Review mascot/comic/caption composition by user
-  context before expanding it; existing combinations do not define the standard.
-- [ ] **Current media and operation ownership.** Publish Native bridge failure
-  before its recovery deadline; recover/prepare relay children from the current
-  source after asynchronous work. Retire source selection on Stop and prevent
-  confirmations being lost during room mutations. Scope native source probes
-  to the requesting control lifetime, classify intentional startup cancellation
-  correctly, and retain the diagnostic report path after terminal restoration.
-- [ ] **Protocol and route consistency.** Align exact optional-member presence
-  with decoding/validation, correct escaped Unicode-name handling, preserve
-  explicit STUN ports, and use one eligibility rule for an ongoing P2P quality
-  trial through inconclusive incumbent evidence. Keep stronger SFU conditions
-  and all candidate proofs; do not add a second parser or route policy casually.
-- [ ] **Shared feedback boundaries.** Fence room-code copy results and timers
-  to their subject/request; apply tooltip focus priority to Header and playback
-  control groups, and restore sufficient contrast for light-theme metric labels.
-- [ ] **Native adapter boundaries.** Release Windows audio COM objects before
-  apartment teardown; validate stale activation failures against the actual
-  encoder generation. Align Linux encoder admission with its live bitrate
-  requirements and verify output-local failure containment on a supported
-  system. Preserve real fatal source/engine errors and primary diagnostic causes.
-- [ ] **Tooling naming and verification.** Name standalone packaging/checks
-  App, hosted artifacts Server and browser builds Web; preserve public wire,
-  storage and environment compatibility. Add the local App assembly's final
-  source-identity check and integrate the existing Linux headless regression
-  test into a documented runner.
-- [ ] **Website self-hosting tutorial.** Present the third tutorial as an
-  advanced self-hosted-site path, explain where to deploy it and how App can
-  connect to it, and link the complete guide. Describe the combination's enabled
-  capabilities without a universal performance or connectivity guarantee.
+- [ ] **Maintenance acceptance.** Review the current welcome/waiting/title
+  previews and self-hosting tutorial before integration. The
+  [playful-copy policy](./standards/visual-language.md#playful-copy-lifecycle)
+  owns timing and language pools; do not duplicate its rules here. Keep release
+  approval, version and bilingual release notes with the user.
+- [ ] **Linux output failure boundary.** Run the wired `build.sh --check` on a
+  supported Linux runner, including encoder admission and primary error checks.
+  Then verify and isolate output-local encoder failures while retaining fatal
+  shared source/engine errors. Windows checks do not establish this boundary.
 - [ ] **Introduction motion and presentation boundaries.** Resolve the automatic
   hero-loop control requirement against the accepted design without restoring
   discarded gesture controls or silently removing animation. Review only the
   remaining concrete layout/accessibility choices; distinguish decorative content
-  from functional symbols. Keep independent correctness repairs moving.
+  from functional symbols. Review mascot/comic/caption composition by context
+  before expanding it; existing combinations do not define the standard.
 - [ ] **Post-launch monitoring.** Collect App/Server feedback and verify the
   public downloads, container pulls and deployed services after product releases.
   Follow the [deployment runbook](./deployment.md) for the private service and keep public

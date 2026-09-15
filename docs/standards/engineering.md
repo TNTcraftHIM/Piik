@@ -142,6 +142,7 @@ above rather than searching the tree.
   retirement. After an await/callback, and inside cleanup, validate the original
   operation/resource identity before changing current state. Cancellation,
   failure, missing observation and success must retain distinct meanings.
+  Later cancellation must not erase a failure already observed before cleanup.
   A caller deadline does not cancel a dependency that ignores it. Keep late
   work bounded and serialize its cleanup; verify the dependency's actual lifetime.
   Ordered shutdown may require a ready auxiliary transport to outlive the stop

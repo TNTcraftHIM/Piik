@@ -104,16 +104,14 @@ func TestNATPredictionStunURLs(t *testing.T) {
 			[]string{"stun:share.test:3479", "stun:share.test:3480"}},
 		{"leading zeros in the port", []string{"stun:share.test:03478"},
 			[]string{"stun:share.test:3479", "stun:share.test:3480"}},
-		// WHATWG drops a port equal to the scheme default, so "http://host:80"
-		// reports no port and the TS fallback treats it as 3478.
-		{"HTTP default port reads as the base port", []string{"stun:share.test:80"},
-			[]string{"stun:share.test:3479", "stun:share.test:3480"}},
+		{"explicit port 80 is not the base port", []string{"stun:share.test:80"}, nil},
+		{"leading zero port 80 is not the base port", []string{"stun:share.test:00080"}, nil},
 		{"uppercase scheme and host", []string{"STUN:Share.TEST:3478"},
 			[]string{"stun:share.test:3479", "stun:share.test:3480"}},
 		{"IPv6 authority", []string{"stun:[2001:DB8::1]:3478"},
 			[]string{"stun:[2001:db8::1]:3479", "stun:[2001:db8::1]:3480"}},
 		{"first base listener wins",
-			[]string{"stun:a.test:5349", "stun:b.test:3478", "stun:c.test:3478"},
+			[]string{"stun:a.test:80", "stun:b.test:3478", "stun:c.test:3478"},
 			[]string{"stun:b.test:3479", "stun:b.test:3480"}},
 		{"no base listener", []string{"stun:a.test:5349", "stun:b.test:19302"}, nil},
 		// TS: indexOf(":") is -1, so the whole text becomes the authority.

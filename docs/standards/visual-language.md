@@ -211,13 +211,13 @@ Text-only surfaces retain the same meanings:
 | Unknown values | `—` means unavailable/unknown, never zero or a healthy result. Keep exact values and units whenever known. |
 | Capability values | `✓` / `✗` answer the adjacent boolean capability, not whether an entire route or share succeeded. |
 | Shortened text | `…` means truncation. Preserve the full nickname/URL for reading and copying; never turn an exact value into a decorative code. |
-| Welcome cipher | [WelcomeLine](../../src/client/components/living/WelcomeLine.tsx) owns the paired symbols and pixel words, tied to the same selected line. They are decoration, not hidden connection state. |
+| Welcome cipher | The locale entry owns its two meaningful symbols; [WelcomeLine](../../src/client/components/living/WelcomeLine.tsx) renders their pixel words. They are decoration, not hidden connection state. |
 
 ### Playful Copy Lifecycle
 
-The following rules are accepted design targets. The remaining alignment of
-current callers and catalogs is tracked in [TODO](../todo.md); their presence
-here does not establish completed implementation or acceptance.
+The shared [rotation owner](../../src/client/ui/text-rotation.ts) supplies the
+clock and visibility policy; its React adapter and the static website consume
+the same rule. Locale files own the independent pools.
 
 Website/App welcome lines, waiting captions and playful title variations share
 one lifecycle. Show an entry immediately, then change it every eight seconds
@@ -243,6 +243,14 @@ Waiting decorations never invent steps, remaining time or success; they are
 excluded from live status announcements. Small controls retain concise labels
 and their existing motion. Graphic composition still follows its own contextual
 review; this copy policy does not require a mascot or a new tooltip everywhere.
+
+| Existing surface | Copy coverage |
+| --- | --- |
+| Website welcome, App launcher, sharing entry | The current language's welcome pool; the App's visual mode renders that entry's cipher. |
+| Page loading, site access check, App preparation | A secondary waiting caption beside the literal operation. |
+| Player starting, switching source, waiting for the Host, reconnecting | The existing waiting overlay keeps its current scene and adds the same secondary caption. |
+| Browser tab | Sharing, watching, starting, ready-to-share, not-started and waiting states may append their own variations; room identity, literal activity and warnings remain visible. |
+| Error, pause, ended state, required action, tooltip, small control | Keep the existing literal message and contextual graphic; no rotating caption is added. |
 
 ## Semantic Colour And Shape
 

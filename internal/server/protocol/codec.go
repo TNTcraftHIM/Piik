@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"reflect"
+	"strings"
 )
 
 // fields holds the raw members of one JSON object. Validation reads it to tell
@@ -20,6 +22,22 @@ func decodeObject(data []byte, target any) (fields, error) {
 	var raw fields
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, err
+	}
+	// These wire structs declare every member with a JSON tag. Go's struct
+	// decoder also accepts case-folded names; reject those before they can
+	// disagree with the exact presence/null checks below.
+	targetType := reflect.TypeOf(target).Elem()
+	known := make(map[string]struct{}, targetType.NumField())
+	for index := range targetType.NumField() {
+		name, _, _ := strings.Cut(targetType.Field(index).Tag.Get("json"), ",")
+		if name != "" && name != "-" {
+			known[name] = struct{}{}
+		}
+	}
+	for name := range raw {
+		if _, ok := known[name]; !ok {
+			return nil, fmt.Errorf("unknown field %q", name)
+		}
 	}
 	// JSON.parse keeps only the last occurrence of a duplicate key, so the
 	// earlier ones must never reach the strict decode. Re-encoding the member

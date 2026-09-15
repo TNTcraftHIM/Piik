@@ -220,7 +220,8 @@ static gboolean factory_supports_constrained_baseline(
 static guint bitrate_divisor(GstElement *encoder) {
   GParamSpec *property =
       g_object_class_find_property(G_OBJECT_GET_CLASS(encoder), "bitrate");
-  if (property == NULL) return 0;
+  if (property == NULL || !(property->flags & G_PARAM_WRITABLE) ||
+      !(property->flags & GST_PARAM_MUTABLE_PLAYING)) return 0;
   GType type = G_PARAM_SPEC_VALUE_TYPE(property);
   if (type != G_TYPE_UINT && type != G_TYPE_INT && type != G_TYPE_UINT64 &&
       type != G_TYPE_INT64) {
@@ -837,13 +838,20 @@ static gboolean bus_message(GstBus *bus, GstMessage *message, gpointer data) {
     GError *error = NULL;
     char *debug = NULL;
     gst_message_parse_error(message, &error, &debug);
+    // Keep the bus cause before an output summary reaches the first-failure latch.
+    fail_run(run, error == NULL ? "GStreamer pipeline failed" : error->message);
+    if (error != NULL) {
+      fprintf(stderr, "Piik GStreamer error: source=%s domain=%s code=%d detail=%s\n",
+              GST_MESSAGE_SRC(message) == NULL ? "unknown" : GST_OBJECT_NAME(GST_MESSAGE_SRC(message)),
+              g_quark_to_string(error->domain), error->code, error->message);
+      if (debug != NULL) fprintf(stderr, "Piik GStreamer context: %s\n", debug);
+    }
     for (guint index = 0; index < run->output_count; ++index) {
       if (GST_MESSAGE_SRC(message) == GST_OBJECT(run->outputs[index].encoder)) {
         fail_output(&run->outputs[index], "hardware encoder output failed");
         break;
       }
     }
-    fail_run(run, error == NULL ? "GStreamer pipeline failed" : error->message);
     g_clear_error(&error);
     g_free(debug);
   } else if (GST_MESSAGE_TYPE(message) == GST_MESSAGE_EOS &&

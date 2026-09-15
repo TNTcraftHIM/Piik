@@ -33,7 +33,7 @@ Piik 目前提供简体中文和英文。欢迎改进按钮措辞、校对教程
 | 内容 | 修改位置 |
 | --- | --- |
 | App 启动页、网页端与 App 共用的操作界面，含 tooltip 和无障碍标签 | [英文词库](../../src/client/locales/en.ts)、[中文词库](../../src/client/locales/zh.ts) |
-| 随机欢迎语、浏览器标签页的轮换标题 | 同一语言文件中的 `welcome.*` 及文件末尾的标题词库 |
+| 欢迎语、等待短句、浏览器标签页的轮换标题 | 同一语言文件中的 `zhPlayful` / `enPlayful` 及标题词库；官网欢迎语共用这些词库 |
 | 官网 | [页面正文](../../site/index.html)和[交互文案](../../site/main.js)，按 `en`、`zh-CN` 成对组织 |
 | 宣传短片 | [短片源码说明](../../site/film/README.md)，字幕、插画和播放控件有各自的中英文内容 |
 | App 终端 | [console.go](../../internal/app/console.go) 中的 `consoleCopy`，每项按英文、中文、纯视觉排列；第三项即使为空也需保留 |
@@ -73,15 +73,17 @@ App 与 Server 使用同一套网页操作界面。请修改源码，构建目�
 先搜索是否已有相关 Issue 或 PR。准备翻译较多内容时，可以开一个 Issue，说明语言代码、
 翻译范围，以及术语或排版疑问，方便大家分工和校对。
 
-1. 复制 `src/client/locales/en.ts`，例如命名为 `fr.ts`。翻译正文和轮换标题，修改两个导出变量名，
-   保留从 `zh.ts` 引入的 `Record<CopyKey, string>`、`TitleFrameCatalog` 类型。
+1. 复制 `src/client/locales/en.ts`，例如命名为 `fr.ts`。翻译正文与标题标签，按语境编写
+   [俏皮话](#俏皮话)，修改三个导出变量名。
+   保留从 `zh.ts` 引入的 `Record<CopyKey, string>`、`TitleFrameCatalog`、`PlayfulCatalog` 类型。
    中文词库目前定义键名集合，理解内容时可以参考任一现有语言。
    请补全全部键名，不要用展开英文词库的方式填充缺失译文。
-2. 在 [locales/index.ts](../../src/client/locales/index.ts) 中导入两个导出变量，并添加一项登记。
-   例如，**完成这两个词库的翻译后**：
+2. 在 [locales/index.ts](../../src/client/locales/index.ts) 中导入三个导出变量，并添加一项登记。
+   例如，**完成词库翻译后**：
 
    ```ts
-   fr: { name: "Français", short: "FR", tag: "fr", copy: fr, titleFrames: frTitleFrames },
+   fr: { name: "Français", short: "FR", tag: "fr", copy: fr,
+     titleFrames: frTitleFrames, playful: frPlayful },
    ```
 
    文件名和键名使用 ASCII 语言代码，`name` 填写该语言自己的名称，`short` 填写按钮简称，
@@ -102,6 +104,28 @@ App 与 Server 使用同一套网页操作界面。请修改源码，构建目�
 
 纯视觉模式是可选的呈现方式，不是另一种待翻译语言。小漫画和文字模式共用，
 它们的文字标签与说明在普通词库中翻译，保留现有纯视觉选项即可。
+
+## 俏皮话
+
+各语言独立维护欢迎语、等待短句数组；可轮换标题由固定的 `label` 和 `variations` 数组组成。
+可以单独增删某种语言的条目，不要求与其他语言的数量、顺序或梗一一对应。
+空数组不显示装饰文案；只有一条时保持静止。操作键名和标题标签仍须完整翻译，
+错误、暂停、结束、必需操作提示及 slogan 保持固定。
+
+欢迎语每项包含 `text` 和两个 `symbols`，从现有的
+[图标词汇](../../src/client/ui/icons.tsx)中选择能表达这句话的图形，用于纯视觉暗号。例如：
+
+```ts
+{ text: "沙发给你留着呢。", symbols: ["couch", "heart"] },
+```
+
+等待短句直接写成字符串，例如 `"先搬个小板凳。"`。短句应简洁、自然、符合所在场景；
+避免时效热点、直接照搬台词，以及虚构进度、成功状态或剩余时间的说法。
+
+这些位置都会立即显示第一句，并遵循统一的
+[俏皮话生命周期](../standards/visual-language.md#playful-copy-lifecycle)，不要在词库或某个页面单独设置轮换时间。
+欢迎语及其暗号在 `/__tooltip-preview` 预览；等待短句与标题在 `/__status-preview` 预览。
+检查窄窗口和切换语言的效果。官网构建会自动使用更新后的欢迎语，其他官网文案单独维护。
 
 ## 预览与检查
 

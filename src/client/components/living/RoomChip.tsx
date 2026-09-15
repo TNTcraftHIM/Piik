@@ -9,26 +9,40 @@ import { Tooltip } from "./Tooltip";
 
 export function Lcd({ code }: { code: string }) {
   const { t, vis } = useCopy();
-  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">(
-    "idle",
-  );
+  const [copyResult, setCopyResult] = useState<{
+    code: string;
+    state: "copied" | "failed";
+  } | null>(null);
+  const copyState = copyResult?.code === code ? copyResult.state : "idle";
+  const copyRequestRef = useRef<object | null>(null);
   const timerRef = useRef<number | null>(null);
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    setCopyResult(null);
+    return () => {
+      copyRequestRef.current = null;
       if (timerRef.current !== null) window.clearTimeout(timerRef.current);
-    },
-    [],
-  );
+      timerRef.current = null;
+    };
+  }, [code]);
 
   async function copy(): Promise<void> {
+    const request = {};
+    copyRequestRef.current = request;
     if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+    setCopyResult(null);
+    let state: "copied" | "failed";
     try {
       await copyRoomCode(code, (value) => navigator.clipboard.writeText(value));
-      setCopyState("copied");
+      state = "copied";
     } catch {
-      setCopyState("failed");
+      state = "failed";
     }
-    timerRef.current = window.setTimeout(() => setCopyState("idle"), 1500);
+    if (copyRequestRef.current !== request) return;
+    setCopyResult({ code, state });
+    timerRef.current = window.setTimeout(() => {
+      timerRef.current = null;
+      if (copyRequestRef.current === request) setCopyResult(null);
+    }, 1500);
   }
 
   const copyFeedback =

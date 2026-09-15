@@ -20,9 +20,9 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 
-import { clientPackageTarget, CLOUDFLARED_VERSION } from "./client-package-targets.mjs";
+import { appPackageTarget, CLOUDFLARED_VERSION } from "./app-package-targets.mjs";
 import { createZip, extractZip, tarExecutable } from "./archive-tool.mjs";
-import { resetBuildWorkspace } from "./build-workspace.mjs";
+import { assertCleanRevision, resetBuildWorkspace } from "./build-workspace.mjs";
 
 function fail(message) {
   throw new Error(message);
@@ -48,18 +48,18 @@ function sha256(path) {
 function assertOutsideRepository(repositoryRoot, outputRoot) {
   const path = relative(repositoryRoot, outputRoot);
   if (path === "" || (path.split(/[\\/]/)[0] !== ".." && !isAbsolute(path))) {
-    fail("Client candidate output must be outside the repository");
+    fail("App candidate output must be outside the repository");
   }
   if (existsSync(outputRoot)) {
-    fail("Client candidate output directory must not already exist");
+    fail("App candidate output directory must not already exist");
   }
 }
 
-function applicationDescriptor(directory) {
+function serverDescriptor(directory) {
   const descriptors = readdirSync(directory)
     .filter((name) => name.endsWith(".release.json"));
   if (descriptors.length !== 1) {
-    fail("Application release directory must contain one descriptor");
+    fail("Server release directory must contain one descriptor");
   }
   return join(directory, descriptors[0]);
 }
@@ -83,7 +83,7 @@ async function reservePort() {
     server.listen(0, "127.0.0.1", () => {
       const address = server.address();
       if (!address || typeof address === "string") {
-        rejectPort(new Error("Client smoke port reservation failed"));
+        rejectPort(new Error("App smoke port reservation failed"));
         return;
       }
       server.close((error) =>
@@ -99,7 +99,7 @@ function smokeLANAddress() {
     .filter((entry) => entry.family === "IPv4" && !entry.internal)
     .map((entry) => entry.address)
     .sort();
-  if (addresses.length === 0) fail("Client smoke has no active LAN IPv4 address");
+  if (addresses.length === 0) fail("App smoke has no active LAN IPv4 address");
   return addresses[0];
 }
 
@@ -108,7 +108,7 @@ async function waitForExit(child, timeoutMs) {
   return await new Promise((resolveExit, rejectExit) => {
     const timer = setTimeout(() => {
       child.off("exit", onExit);
-      rejectExit(new Error("Packaged Client did not stop"));
+      rejectExit(new Error("Packaged App did not stop"));
     }, timeoutMs);
     const onExit = (code) => {
       clearTimeout(timer);
@@ -144,13 +144,13 @@ async function stopSmokeChild(child) {
 }
 
 async function verifyLocalPackage(root, target, temporaryRoot) {
-  const client = join(root, target.clientName);
+  const app = join(root, target.appName);
   const port = await reservePort();
   const healthURL = `http://127.0.0.1:${port}/healthz`;
   const noticeURL = `http://127.0.0.1:${port}/third-party-licenses.txt`;
-  const child = spawn(client, [
+  const child = spawn(app, [
     "--local",
-    "--config", join(temporaryRoot, "smoke-client.json"),
+    "--config", join(temporaryRoot, "smoke-app.json"),
     "--lan-address", smokeLANAddress(),
     "--port", String(port),
   ], {
@@ -162,7 +162,7 @@ async function verifyLocalPackage(root, target, temporaryRoot) {
   let spawnFailure = null;
   let stderr = "";
   let stdout = "";
-  let clientReady = false;
+  let appReady = false;
   child.once("error", (error) => {
     spawnFailure = error;
   });
@@ -170,7 +170,7 @@ async function verifyLocalPackage(root, target, temporaryRoot) {
   child.stdout.on("data", (chunk) => {
     stdout = `${stdout}${chunk.toString()}`.slice(-2_048);
     if (stdout.includes("Local access password: ") || stdout.includes("Local access: open")) {
-      clientReady = true;
+      appReady = true;
       stdout = "";
     }
   });
@@ -192,11 +192,11 @@ async function verifyLocalPackage(root, target, temporaryRoot) {
           healthReady = response.ok && (await response.json())?.status === "ok";
         } catch {}
       }
-      if (healthReady && clientReady) break;
+      if (healthReady && appReady) break;
       await delay(100);
     }
-    if (!healthReady || !clientReady) {
-      fail("Packaged Client Local health did not become ready");
+    if (!healthReady || !appReady) {
+      fail("Packaged App Local health did not become ready");
     }
     // The Web notices ship inside the binary; the embedded assets serve them.
     const notices = await fetch(noticeURL, {
@@ -204,7 +204,7 @@ async function verifyLocalPackage(root, target, temporaryRoot) {
       signal: AbortSignal.timeout(2_000),
     });
     if (!notices.ok || (await notices.text()).length === 0) {
-      fail("Packaged Client did not serve its Web third-party notices");
+      fail("Packaged App did not serve its Web third-party notices");
     }
     child.stdin.write("\n");
     const exitCode = await waitForExit(child, 10_000);
@@ -215,7 +215,7 @@ async function verifyLocalPackage(root, target, temporaryRoot) {
         .replace(/\s+/g, " ")
         .slice(-1_000);
       fail(
-        `Packaged Client did not stop cleanly (${exitCode ?? child.signalCode ?? "unknown"})${detail ? `: ${detail}` : ""}`,
+        `Packaged App did not stop cleanly (${exitCode ?? child.signalCode ?? "unknown"})${detail ? `: ${detail}` : ""}`,
       );
     }
     const closeDeadline = Date.now() + 5_000;
@@ -230,7 +230,7 @@ async function verifyLocalPackage(root, target, temporaryRoot) {
       }
       await delay(100);
     }
-    fail("Packaged Client left its Local server listening");
+    fail("Packaged App left its Local server listening");
   } finally {
     await stopSmokeChild(child);
   }
@@ -238,17 +238,17 @@ async function verifyLocalPackage(root, target, temporaryRoot) {
 
 async function verifyPackage(root, target, revision, temporaryRoot) {
   const packagedRevision = readFileSync(join(root, "REVISION"), "ascii").trim();
-  if (packagedRevision !== revision) fail("Client package revision mismatch");
+  if (packagedRevision !== revision) fail("App package revision mismatch");
   for (const file of ["LICENSE", "THIRD-PARTY-NOTICES.txt",
     "runtime/tunnel/THIRD-PARTY-NOTICES.txt"]) {
     if (!existsSync(join(root, file)) || readFileSync(join(root, file)).length === 0) {
-      fail(`Client package license text is missing: ${file}`);
+      fail(`App package license text is missing: ${file}`);
     }
   }
 
-  const client = join(root, target.clientName);
+  const app = join(root, target.appName);
   const tunnel = join(root, "runtime", "tunnel", target.tunnelName);
-  run(client, ["--help"], root);
+  run(app, ["--help"], root);
   run(tunnel, ["--version"], root);
   verifyPlatformAssets(root, target);
 
@@ -273,7 +273,7 @@ function verifyPlatformAssets(root, target) {
       "piik-app.png",
     );
     if (!existsSync(desktop) || !existsSync(icon)) {
-      fail("Linux Client icon assets are missing");
+      fail("Linux App icon assets are missing");
     }
     if (!readFileSync(desktop, "utf8").includes("Icon=piik-app\n")) {
       fail("Linux desktop entry does not name its icon");
@@ -281,7 +281,7 @@ function verifyPlatformAssets(root, target) {
     if (!readFileSync(icon).subarray(0, 8).equals(Buffer.from([
       0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
     ]))) {
-      fail("Linux Client icon is not PNG");
+      fail("Linux App icon is not PNG");
     }
   }
   if (target.goos === "darwin") {
@@ -290,17 +290,17 @@ function verifyPlatformAssets(root, target) {
     const plist = join(bundle, "Contents", "Info.plist");
     const icon = join(bundle, "Contents", "Resources", "piik.icns");
     if (!existsSync(launcher) || !existsSync(plist) || !existsSync(icon)) {
-      fail("macOS Client app icon assets are missing");
+      fail("macOS App app icon assets are missing");
     }
     if (!readFileSync(icon).subarray(0, 4).equals(Buffer.from("icns"))) {
-      fail("macOS Client icon is not ICNS");
+      fail("macOS App icon is not ICNS");
     }
     const plistText = readFileSync(plist, "utf8");
     if (
       !plistText.includes("<key>NSScreenCaptureUsageDescription</key>") ||
       !plistText.includes("<key>NSAudioCaptureUsageDescription</key>")
     ) {
-      fail("macOS Client capture usage descriptions are missing");
+      fail("macOS App capture usage descriptions are missing");
     }
     if (process.platform === "darwin") run(launcher, ["--help"], root);
   }
@@ -308,24 +308,25 @@ function verifyPlatformAssets(root, target) {
 
 if (process.argv.length !== 5) {
   fail(
-    "Usage: node scripts/package-client-candidate.mjs <app-release-directory> <target> <new-output-directory>",
+    "Usage: node scripts/package-app-candidate.mjs <server-release-directory> <target> <new-output-directory>",
   );
 }
 
 const repositoryRoot = realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), ".."));
-const applicationRoot = realpathSync(resolve(process.argv[2]));
-const target = clientPackageTarget(process.argv[3]);
+const serverRoot = realpathSync(resolve(process.argv[2]));
+const target = appPackageTarget(process.argv[3]);
 const outputRoot = resolve(process.cwd(), process.argv[4]);
-if (!target) fail("Client package target is invalid");
+if (!target) fail("App package target is invalid");
 if (process.platform !== target.nodePlatform || process.arch !== target.nodeArch) {
-  fail(`Client candidate ${target.id} requires its native runner`);
+  fail(`App candidate ${target.id} requires its native runner`);
 }
 assertOutsideRepository(repositoryRoot, outputRoot);
 
-const revision = run("git", ["rev-parse", "HEAD"], repositoryRoot).toLowerCase();
-const descriptorPath = applicationDescriptor(applicationRoot);
+const revision = assertCleanRevision(repositoryRoot);
+const descriptorPath = serverDescriptor(serverRoot);
 const { version } = JSON.parse(readFileSync(descriptorPath, "utf8"));
-const temporaryRoot = resetBuildWorkspace(repositoryRoot, "client-package", target.id, "candidate");
+const temporaryRoot = resetBuildWorkspace(repositoryRoot, "app-package", target.id, "candidate");
+let outputOwned = false;
 try {
   const tunnelDownload = join(temporaryRoot, target.tunnelAsset);
   await download(
@@ -348,15 +349,15 @@ try {
   if (target.captureName) {
     run(
       process.execPath,
-      [join(repositoryRoot, "scripts", "check-client.mjs"), "--capture-only"],
+      [join(repositoryRoot, "scripts", "check-go.mjs"), "--capture-only"],
       repositoryRoot,
     );
-    capture = join(repositoryRoot, "build", "client-check", target.captureName);
+    capture = join(repositoryRoot, "build", "go-check", target.captureName);
   }
 
   const packageRoot = join(temporaryRoot, `piik-app-${target.id}`);
   const assembleArguments = [
-    join(repositoryRoot, "scripts", "assemble-client.mjs"),
+    join(repositoryRoot, "scripts", "assemble-app.mjs"),
     descriptorPath,
     packageRoot,
     "--target",
@@ -368,6 +369,7 @@ try {
   run(process.execPath, assembleArguments, repositoryRoot);
 
   mkdirSync(outputRoot, { recursive: false, mode: 0o700 });
+  outputOwned = true;
   const archiveName = `piik-app-${target.id}.zip`;
   const archive = join(outputRoot, archiveName);
   createZip(packageRoot, archive);
@@ -387,6 +389,9 @@ try {
     archive,
     sha256: digest,
   })}\n`);
+} catch (error) {
+  if (outputOwned) rmSync(outputRoot, { recursive: true, force: true });
+  throw error;
 } finally {
   rmSync(temporaryRoot, { recursive: true, force: true });
 }

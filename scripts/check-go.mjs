@@ -9,12 +9,12 @@ import {
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { CLIENT_PACKAGE_TARGETS, clientPackageTarget, clientGoEnvironment } from "./client-package-targets.mjs";
+import { APP_PACKAGE_TARGETS, appPackageTarget, goBuildEnvironment } from "./app-package-targets.mjs";
 
 // Every Go command embeds the Vite output, so the build, vet and test steps all
-// fail without it. The Hosted binary is cross-built for its deployment target.
-const CLIENT_INDEX = join("internal", "server", "webassets", "dist", "index.html");
-const SERVER_TARGET = clientPackageTarget("linux-amd64");
+// fail without it. The Server binary is cross-built for its deployment target.
+const WEB_INDEX = join("internal", "server", "webassets", "dist", "index.html");
+const SERVER_TARGET = appPackageTarget("linux-amd64");
 // Local dependency repairs retain upstream tests, including PCPv6 composition.
 // Nested modules need explicit test patterns; remove these with the replacements.
 const GO_TEST_PACKAGES = ["./...", "github.com/netbirdio/go-nat/...", "github.com/jackpal/go-nat-pmp"];
@@ -24,7 +24,7 @@ const captureRoot = join(root, "native", "capture");
 const mode = process.argv[2] ?? "--all";
 
 if (!["--all", "--core", "--capture-only", "--race"].includes(mode)) {
-  throw new Error("Usage: node scripts/check-client.mjs [--all|--core|--capture-only|--race]");
+  throw new Error("Usage: node scripts/check-go.mjs [--all|--core|--capture-only|--race]");
 }
 
 function run(command, args, options = {}) {
@@ -45,12 +45,12 @@ function run(command, args, options = {}) {
 }
 
 function buildWebAssets() {
-  if (existsSync(join(root, CLIENT_INDEX))) return;
+  if (existsSync(join(root, WEB_INDEX))) return;
   if (process.platform === "win32") {
-    run(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", "npm run build:client"]);
+    run(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", "npm run build:web"]);
     return;
   }
-  run("npm", ["run", "build:client"]);
+  run("npm", ["run", "build:web"]);
 }
 
 function checkCore() {
@@ -63,12 +63,12 @@ function checkCore() {
   if (unformatted) {
     throw new Error(`Go source is not formatted:\n${unformatted}`);
   }
-  runClientTests(go);
+  runGoTests(go);
   run(go, ["vet", ...GO_TEST_PACKAGES]);
 
-  const buildRoot = join(root, "build", "client-check");
+  const buildRoot = join(root, "build", "go-check");
   mkdirSync(buildRoot, { recursive: true });
-  const buildTargets = CLIENT_PACKAGE_TARGETS.filter((target) => {
+  const buildTargets = APP_PACKAGE_TARGETS.filter((target) => {
     if (target.cgo && process.platform !== target.nodePlatform) {
       process.stderr.write(`Skipped ${target.id}: its cgo dependencies require a native macOS runner and SDK; Darwin acceptance remains pending.\n`);
       return false;
@@ -84,12 +84,12 @@ function checkCore() {
       ? `${command}.exe`
       : `${command}-${target.id}`;
     run(go, ["build", "-trimpath", "-o", join(buildRoot, outputName), `./cmd/${command}`], {
-      env: clientGoEnvironment(target),
+      env: goBuildEnvironment(target),
     });
   }
 }
 
-function runClientTests(go, packagesToTest = GO_TEST_PACKAGES, flags = []) {
+function runGoTests(go, packagesToTest = GO_TEST_PACKAGES, flags = []) {
   if (process.platform !== "win32") {
     run(go, ["test", ...flags, ...packagesToTest.filter((entry) => entry.startsWith("./"))]);
     // PCP and NAT-PMP both require port 5351. Serialize only their fixture
@@ -105,7 +105,7 @@ function runClientTests(go, packagesToTest = GO_TEST_PACKAGES, flags = []) {
     .map((value) => value.trim())
     .filter(Boolean)
     .map((value) => JSON.parse(value));
-  const stableRoot = join(root, "build", "client-check");
+  const stableRoot = join(root, "build", "go-check");
   mkdirSync(stableRoot, { recursive: true });
   for (const [entry, directory] of packages) {
     const binary = join(stableRoot, `${basename(entry)}.test.exe`);
@@ -121,7 +121,7 @@ function checkPlatformCapture() {
     }
     return;
   }
-  const buildRoot = join(root, "build", "client-check");
+  const buildRoot = join(root, "build", "go-check");
   mkdirSync(buildRoot, { recursive: true });
   let executable;
   if (process.platform === "win32") {
@@ -157,7 +157,7 @@ function checkPlatformCapture() {
     run("sh", [join(captureRoot, "darwin", "build.sh"), buildRoot]);
     executable = join(buildRoot, "piik-capture");
   } else {
-    run("sh", [join(captureRoot, "linux", "build.sh"), buildRoot]);
+    run("sh", [join(captureRoot, "linux", "build.sh"), buildRoot, "--check"]);
     executable = join(buildRoot, "piik-capture");
   }
   if (!existsSync(executable)) {
@@ -205,13 +205,13 @@ function checkPlatformCapture() {
     (target.kind === "picker" &&
       (target?.pid !== undefined || target?.creationTime !== undefined))
   )) {
-    throw new Error("Windows capture process returned an invalid source list");
+    throw new Error("Native capture process returned an invalid source list");
   }
 }
 
 if (mode === "--race") {
   buildWebAssets();
-  runClientTests(process.env.PIIK_GO?.trim() || "go", [
+  runGoTests(process.env.PIIK_GO?.trim() || "go", [
     "./internal/app/portmapping", "./internal/app/mediaedge",
     "github.com/netbirdio/go-nat/...", "github.com/jackpal/go-nat-pmp",
   ], ["-race", "-count=1", "-timeout=2m"]);
@@ -219,4 +219,4 @@ if (mode === "--race") {
   if (mode !== "--capture-only") checkCore();
   if (mode !== "--core") checkPlatformCapture();
 }
-process.stdout.write("Piik App checks passed.\n");
+process.stdout.write("Piik checks passed.\n");

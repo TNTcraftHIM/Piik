@@ -168,7 +168,12 @@ func ValidDisplayName(value string) bool {
 func hasUnpairedSurrogateEscape(token []byte) bool {
 	text := string(token)
 	for index := 0; index+6 <= len(text); index++ {
-		if text[index] != '\\' || text[index+1] != 'u' {
+		if text[index] != '\\' {
+			continue
+		}
+		if text[index+1] != 'u' {
+			// Consume the whole escape, including \\, before looking for \u.
+			index++
 			continue
 		}
 		unit, err := strconv.ParseUint(text[index+2:index+6], 16, 32)
@@ -187,6 +192,8 @@ func hasUnpairedSurrogateEscape(token []byte) bool {
 			index += 11
 		case unit >= 0xdc00 && unit <= 0xdfff:
 			return true
+		default:
+			index += 5
 		}
 	}
 	return false

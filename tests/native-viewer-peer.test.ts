@@ -2,15 +2,143 @@ import { afterEach, expect, it, vi } from "vitest";
 import type { SignalPayload } from "../src/shared/protocol";
 import type { NativeClient } from "../src/client/native/client";
 import { NativeMediaBridge } from "../src/client/native/media-bridge";
-import { ViewerPeer } from "../src/client/webrtc/viewer-peer";
+import { VIEWER_AUTOMATIC_RECOVERY_TIMEOUT_MS, ViewerPeer } from "../src/client/webrtc/viewer-peer";
+import { EMPTY_METRICS, type PeerSnapshot } from "../src/client/types";
+import type { NativeClientEvent } from "../src/client/native/wire";
 import {
   NativeCapableViewerPeer,
   offerHasNativeVideoCodec,
 } from "../src/client/native/native-viewer-peer";
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+});
+
+it.each(["viewer", "route"] as const)("retires a connected Native receiver on control loss (%s)", async (recoveryOwner) => {
+  vi.useFakeTimers();
+  vi.stubGlobal("window", globalThis);
+  vi.stubGlobal("MediaStream", class { getTracks() { return []; } });
+  vi.stubGlobal("RTCPeerConnection", class { close() {} });
+  vi.spyOn(NativeMediaBridge.prototype, "start").mockResolvedValue({} as MediaStream);
+  vi.spyOn(NativeMediaBridge.prototype, "collectMetrics").mockResolvedValue({ ...EMPTY_METRICS });
+  vi.spyOn(NativeMediaBridge.prototype, "decodedVideoFrames").mockResolvedValue(null);
+  let onEvent!: (event: NativeClientEvent) => void;
+  let onClose!: () => void;
+  const client = {
+    receiveOffer: async () => ({
+      answer: { type: "answer", sdp: "v=0\r\n" }, audio: false, codec: "vp8",
+    }),
+    onEvent: (handler: typeof onEvent) => { onEvent = handler; return () => undefined; },
+    onClose: (handler: typeof onClose) => { onClose = handler; return () => undefined; },
+    closeReceiver: vi.fn(async () => undefined),
+    closeEdge: vi.fn(async () => undefined),
+  } as unknown as NativeClient;
+  const unavailable = vi.fn();
+  const restart = vi.fn(() => true);
+  const exhausted = vi.fn(() => true);
+  const updates: PeerSnapshot[] = [];
+  const peer = new NativeCapableViewerPeer(
+    { iceServers: [] },
+    {
+      sendSignal: () => true, sendRestartRequest: restart,
+      onStream: () => undefined, onUpdate: (value) => updates.push(value),
+      onRecoveryExhausted: exhausted,
+    },
+    { recoveryOwner }, async () => client, unavailable, "session", 2,
+  );
+  try {
+    await peer.acceptSignal("parent", {
+      kind: "description", connectionId: "current",
+      description: { type: "offer", sdp: "v=0\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\na=sendonly\r\na=rtpmap:96 VP8/90000\r\n" },
+    });
+    const connected = {
+      version: 9, shareId: "session", connectionId: "current", type: "edge-state", state: "connected",
+    } as const;
+    onEvent(connected);
+    expect(peer.isConnected()).toBe(true);
+    expect(peer.nativeSource).not.toBeNull();
+
+    onClose();
+    expect(peer.isConnected()).toBe(false);
+    expect(peer.nativeSource).toBeNull();
+    expect(updates.at(-1)?.connectionState).toBe("failed");
+    // A queued event cannot revive the receiver that owns the dead bridge.
+    onEvent(connected);
+    onClose();
+    expect(peer.isConnected()).toBe(false);
+    expect(unavailable).toHaveBeenCalledOnce();
+    if (recoveryOwner === "viewer") {
+      expect(restart).toHaveBeenCalledExactlyOnceWith("parent", "current", true);
+      expect(exhausted).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(VIEWER_AUTOMATIC_RECOVERY_TIMEOUT_MS);
+    } else {
+      expect(restart).not.toHaveBeenCalled();
+    }
+    expect(exhausted).toHaveBeenCalledExactlyOnceWith("parent", "current");
+  } finally {
+    peer.dispose();
+  }
+});
+
+it.each([false, true])("ignores a late Native offer after control loss (disposed=%s)", async (disposeOnFailure) => {
+  vi.useFakeTimers();
+  vi.stubGlobal("window", globalThis);
+  vi.stubGlobal("MediaStream", class { getTracks() { return []; } });
+  vi.stubGlobal("RTCPeerConnection", class { close() {} });
+  const bridgeStart = vi.spyOn(NativeMediaBridge.prototype, "start").mockResolvedValue({} as MediaStream);
+  let resolveOffer!: (value: Awaited<ReturnType<NativeClient["receiveOffer"]>>) => void;
+  const receiveOffer = vi.fn(() => new Promise<Awaited<ReturnType<NativeClient["receiveOffer"]>>>((resolve) => {
+    resolveOffer = resolve;
+  }));
+  let onClose!: () => void;
+  const closeReceiver = vi.fn(async () => undefined);
+  const client = {
+    receiveOffer,
+    onEvent: () => () => undefined,
+    onClose: (handler: typeof onClose) => { onClose = handler; return () => undefined; },
+    closeReceiver, closeEdge: vi.fn(async () => undefined),
+  } as unknown as NativeClient;
+  const sendSignal = vi.fn(() => true);
+  const onStream = vi.fn();
+  const restart = vi.fn(() => true);
+  const unavailable = vi.fn();
+  const updates: PeerSnapshot[] = [];
+  let peer!: NativeCapableViewerPeer;
+  peer = new NativeCapableViewerPeer(
+    { iceServers: [] },
+    {
+      sendSignal, sendRestartRequest: restart, onStream,
+      onUpdate: (value) => {
+        updates.push(value);
+        if (disposeOnFailure && value.connectionState === "failed") peer.dispose();
+      },
+    },
+    {}, async () => client, unavailable, "session", 2,
+  );
+  try {
+    const accepting = peer.acceptSignal("parent", {
+      kind: "description", connectionId: "current",
+      description: { type: "offer", sdp: "v=0\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\na=sendonly\r\na=rtpmap:96 VP8/90000\r\n" },
+    });
+    await vi.waitFor(() => expect(receiveOffer).toHaveBeenCalledOnce());
+    onClose();
+    resolveOffer({ answer: { type: "answer", sdp: "v=0\r\n" }, audio: false, codec: "vp8" });
+    await accepting;
+
+    expect(updates.at(-1)?.connectionState).toBe("failed");
+    expect(peer.isConnected()).toBe(false);
+    expect(peer.nativeSource).toBeNull();
+    expect(closeReceiver).toHaveBeenCalledWith("session", "current");
+    expect(sendSignal).not.toHaveBeenCalled();
+    expect(onStream).not.toHaveBeenCalled();
+    expect(bridgeStart).not.toHaveBeenCalled();
+    expect(unavailable).toHaveBeenCalledOnce();
+    expect(restart).toHaveBeenCalledTimes(disposeOnFailure ? 0 : 1);
+  } finally {
+    peer.dispose();
+  }
 });
 
 it("admits one active sending H264 or VP8 video section, not unrelated SDP codec text", () => {

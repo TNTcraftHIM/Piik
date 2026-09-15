@@ -136,6 +136,8 @@ func TestValidStunURL(t *testing.T) {
 		{"STUN:[2001:db8::1]:3478", true},
 		{"stun:stun.test", true},
 		{"stun:stun.test/path", false},
+		{"stun:stun.test:80/", false},
+		{"stun:stun.test:3478/", false},
 		{"stun:stun.test?transport=udp", false},
 		{"stun:stun.test#fragment", false},
 		{"stun:", false},

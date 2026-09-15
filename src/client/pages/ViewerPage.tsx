@@ -312,15 +312,15 @@ export function ViewerPage({
     signalStatus,
     assignedRouteKind,
   );
-  const titleContent = titleFrames(viewerStatus.titleFrameKey).map((frame) =>
-    [frame, viewerStatus.titleMarker].filter(Boolean).join(" "),
-  );
+  const titleContent = titleFrames(viewerStatus.titleFrameKey);
   useDocumentTitle(
     [
       accessState === "ready" ? roomId : null,
-      titleContent[0],
+      titleContent.label,
+      viewerStatus.titleMarker,
     ],
-    titleContent.slice(1),
+    titleContent.variations,
+    `${lang}:${vis}:${viewerStatus.titleFrameKey}:${roomId}`,
   );
   const peerConnectionIdentity = peerRef.current?.getConnectionIdentity() ?? null;
   const reconnectRoute = viewerReconnectRoute(

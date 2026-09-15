@@ -22,14 +22,15 @@ import (
 const maxFileBytes = 8 << 20
 
 type Recorder struct {
-	exportMu  sync.Mutex
-	log       *rotatingLog
-	logger    *slog.Logger
-	component string
-	revision  string
-	started   time.Time
-	context   map[string]any
-	closed    bool
+	exportMu   sync.Mutex
+	log        *rotatingLog
+	logger     *slog.Logger
+	component  string
+	revision   string
+	started    time.Time
+	context    map[string]any
+	closed     bool
+	exportPath string
 }
 
 // Open appends to the component's current log, retaining one rotated backup.
@@ -72,6 +73,13 @@ func Open(directory, component, revision string) (*Recorder, error) {
 
 func (r *Recorder) Logger() *slog.Logger { return r.logger }
 func (r *Recorder) LogPath() string      { return r.log.path }
+
+// LastExportPath returns the latest successfully closed archive, including after Close.
+func (r *Recorder) LastExportPath() string {
+	r.exportMu.Lock()
+	defer r.exportMu.Unlock()
+	return r.exportPath
+}
 
 // Context snapshots explicitly selected startup facts; it never reads environment files.
 func (r *Recorder) Context(name string, value any) {
@@ -133,6 +141,8 @@ func (r *Recorder) Export() (path string, returnedErr error) {
 		if returnedErr != nil {
 			returnedErr = errors.Join(returnedErr, os.Remove(file.Name()))
 			path = ""
+		} else {
+			r.exportPath = path
 		}
 	}()
 	files := []string{}

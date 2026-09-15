@@ -1,3 +1,5 @@
+import type { GlyphName } from "../ui/icons";
+
 // Canonical catalog: add keys here first; every other locale must match it.
 export const zh = {
   "common.loading": "正在加载",
@@ -48,48 +50,6 @@ export const zh = {
   "common.host": "房主",
   "common.name.viewerDefault": "观众",
   "common.name.hostDefault": "房主",
-
-  "welcome.seat": "沙发给你留着呢。",
-  "welcome.player": "单人剧情，也能组队围观。",
-  "welcome.cut": "三、二、一……好戏开场。",
-  "welcome.quest": "支线任务：分享一点快乐。",
-  "welcome.snack": "零食就位，随时开场。",
-  "welcome.scene": "下一幕，轮到你了。",
-  "welcome.save": "存个档，歇一会儿。",
-  "welcome.achievement": "隐藏成就：有人懂你的快乐。",
-  "welcome.popcorn": "前方高能，请自备瓜子。",
-  "welcome.credits": "别急着走，片尾还有彩蛋。",
-  "welcome.replay": "这段精彩，值得喊个人来看。",
-  "welcome.guide": "大佬带路，我搬小板凳。",
-  "welcome.wander": "今天不赶主线，随便逛逛。",
-  "welcome.witness": "有些名场面，得有人见证。",
-  "welcome.discovery": "刚研究出个好东西，快来看看。",
-  "welcome.party": "一个敢分享，一群敢围观。",
-  "welcome.director": "导演，今天拍点什么？",
-  "welcome.next": "下一关，也叫上朋友吧。",
-  "welcome.share": "分享一下，快乐就多一份。",
-  "welcome.seats": "二十个座位，凑一场热闹。",
-
-  "waiting.seat": "先搬个小板凳。",
-  "waiting.snack": "瓜子花生矿泉水。",
-  "waiting.popcorn": "爆米花要甜的还是咸的？",
-  "waiting.stretch": "趁这会儿，伸个懒腰。",
-  "waiting.water": "先喝口水，吨吨吨。",
-  "waiting.couch": "沙发不会长腿跑掉。",
-  "waiting.quest": "支线任务：把自己坐舒服。",
-  "waiting.audience": "围观也要有仪式感。",
-  "waiting.pixels": "像素虽小，戏还挺多。",
-  "waiting.loot": "传说级装备：舒适的小板凳。",
-  "waiting.scene": "镜头之外，也有故事。",
-  "waiting.cat": "猫可以上沙发，键盘先放过。",
-  "waiting.blink": "眨眨眼，小电视也会。",
-  "waiting.calm": "稳住，小板凳已就位。",
-  "waiting.shells": "友情提示：瓜子壳记得扔。",
-  "waiting.narrator": "此处应有一段旁白。",
-  "waiting.daydream": "被动技能：发呆。",
-  "waiting.break": "忙里偷个闲。",
-  "waiting.dance": "不如跳舞？坐着也行。",
-  "waiting.save": "今日存档点：沙发。",
 
   "client.launch.title": "打开 Piik",
   "client.launch.local": "本地房间",
@@ -457,8 +417,7 @@ export const zh = {
 export type CopyKey = keyof typeof zh;
 
 export const zhTitleFrames = {
-  hostActive: [
-    zh["host.live"],
+  hostActive: { label: zh["host.live"], variations: [
     "屏幕已亮",
     "像素出发",
     "画面开跑",
@@ -478,9 +437,8 @@ export const zhTitleFrames = {
     "把快乐打在屏幕上",
     "今日份名场面",
     "承包这一屏快乐",
-  ],
-  viewerActive: [
-    zh["viewer.title.watching"],
+  ] },
+  viewerActive: { label: zh["viewer.title.watching"], variations: [
     "已经就座",
     "像素到站",
     "正在围观",
@@ -500,12 +458,9 @@ export const zhTitleFrames = {
     "我看得大受震撼",
     "围观也是参与",
     "好看，爱看",
-  ],
-  paused: [zh["host.paused"]],
-  hostStarting: [
-    zh["host.starting"],
-    "正在搭线",
-    "信号打招呼",
+  ] },
+  paused: { label: zh["host.paused"], variations: [] },
+  hostStarting: { label: zh["host.starting"], variations: [
     "开场准备中",
     "正在给画面搭台",
     "小电视准备上工",
@@ -523,10 +478,9 @@ export const zhTitleFrames = {
     "小电视热身中",
     "给大屏幕报个幕",
     "开场仪式准备中",
-  ],
-  hostEnded: [zh["host.ended"]],
-  hostReady: [
-    zh["host.roomReady"],
+  ] },
+  hostEnded: { label: zh["host.ended"], variations: [] },
+  hostReady: { label: zh["host.roomReady"], variations: [
     "沙发已摆好",
     "随时可以开场",
     "小电视待命",
@@ -546,9 +500,8 @@ export const zhTitleFrames = {
     "沙发有位，故事等你",
     "舞台交给你了",
     "随时开启围观副本",
-  ],
-  hostIdle: [
-    zh["host.notStarted"],
+  ] },
+  hostIdle: { label: zh["host.notStarted"], variations: [
     "小电视在休息",
     "等一块新屏幕",
     "天线在打盹",
@@ -568,13 +521,12 @@ export const zhTitleFrames = {
     "茶先泡着，画面待定",
     "不慌，先喝口茶",
     "待机，也是一种状态",
-  ],
-  viewerReady: ["点击播放"],
-  viewerClosed: [zh["viewer.msg.closed"]],
-  viewerUnavailable: ["暂不可用"],
-  hostUnavailable: [zh["host.fail.start"]],
-  viewerWaiting: [
-    zh["viewer.title.waiting"],
+  ] },
+  viewerReady: { label: "点击播放", variations: [] },
+  viewerClosed: { label: zh["viewer.msg.closed"], variations: [] },
+  viewerUnavailable: { label: "暂不可用", variations: [] },
+  hostUnavailable: { label: zh["host.fail.start"], variations: [] },
+  viewerWaiting: { label: zh["viewer.title.waiting"], variations: [
     "等待开场",
     "爆米花准备中",
     "小板凳已搬好",
@@ -594,11 +546,74 @@ export const zhTitleFrames = {
     "接下来，看房主的",
     "小电视还在候场",
     "围观群众等开席",
-  ],
+  ] },
 } as const;
 
 export type TitleFrameKey = keyof typeof zhTitleFrames;
 export type TitleFrameCatalog = Record<
   TitleFrameKey,
-  readonly [string, ...string[]]
+  TitleContent
 >;
+
+export interface TitleContent {
+  label: string;
+  variations: readonly string[];
+}
+
+export interface WelcomeEntry {
+  text: string;
+  symbols: readonly [GlyphName, GlyphName];
+}
+
+export interface PlayfulCatalog {
+  welcome: readonly WelcomeEntry[];
+  waiting: readonly string[];
+}
+
+// Local cultural references are independent entries, not translation keys.
+export const zhPlayful: PlayfulCatalog = {
+  welcome: [
+    { text: "沙发给你留着呢。", symbols: ["couch", "heart"] },
+    { text: "单人剧情，也能组队围观。", symbols: ["gamepad", "users"] },
+    { text: "三、二、一……好戏开场。", symbols: ["clock", "clapperboard"] },
+    { text: "支线任务：分享一点快乐。", symbols: ["branch", "heart"] },
+    { text: "零食就位，随时开场。", symbols: ["popcorn", "play"] },
+    { text: "下一幕，轮到你了。", symbols: ["clapperboard", "arrowRight"] },
+    { text: "存个档，歇一会儿。", symbols: ["save", "moon"] },
+    { text: "隐藏成就：有人懂你的快乐。", symbols: ["trophy", "heart"] },
+    { text: "前方高能，请自备瓜子。", symbols: ["zap", "popcorn"] },
+    { text: "别急着走，片尾还有彩蛋。", symbols: ["clapperboard", "gift"] },
+    { text: "这段精彩，值得喊个人来看。", symbols: ["refresh", "users"] },
+    { text: "大佬带路，我搬小板凳。", symbols: ["arrowRight", "couch"] },
+    { text: "今天不赶主线，随便逛逛。", symbols: ["mountain", "branch"] },
+    { text: "有些名场面，得有人见证。", symbols: ["tv", "eye"] },
+    { text: "刚研究出个好东西，快来看看。", symbols: ["bulb", "eye"] },
+    { text: "一个敢分享，一群敢围观。", symbols: ["cast", "users"] },
+    { text: "导演，今天拍点什么？", symbols: ["clapperboard", "play"] },
+    { text: "下一关，也叫上朋友吧。", symbols: ["flag", "users"] },
+    { text: "分享一下，快乐就多一份。", symbols: ["cast", "heart"] },
+    { text: "二十个座位，凑一场热闹。", symbols: ["couch", "users"] },
+  ],
+  waiting: [
+    "先搬个小板凳。",
+    "瓜子花生矿泉水。",
+    "爆米花要甜的还是咸的？",
+    "趁这会儿，伸个懒腰。",
+    "先喝口水，吨吨吨。",
+    "沙发不会长腿跑掉。",
+    "支线任务：把自己坐舒服。",
+    "围观也要有仪式感。",
+    "像素虽小，戏还挺多。",
+    "传说级装备：舒适的小板凳。",
+    "镜头之外，也有故事。",
+    "猫可以上沙发，键盘先放过。",
+    "眨眨眼，小电视也会。",
+    "稳住，小板凳已就位。",
+    "友情提示：瓜子壳记得扔。",
+    "此处应有一段旁白。",
+    "被动技能：发呆。",
+    "忙里偷个闲。",
+    "不如跳舞？坐着也行。",
+    "今日存档点：沙发。",
+  ],
+};

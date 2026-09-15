@@ -39,7 +39,7 @@ LiveKit Viewer received the default 1080p source, then 15 consecutive 854x480
 frames after one live Native/SFU profile change. The direct native P2P path,
 Browser, App, LiveKit process, ports, and profiles all cleaned up.
 
-The opt-in `gate:client-media` run proved, in order:
+The opt-in `gate:app-media` run proved, in order:
 
 - WGC capture and adapter-bound Media Foundation H.264 became active;
 - 30+ encoded 1280x720 frames crossed the bounded process protocol;

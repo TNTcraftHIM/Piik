@@ -1,9 +1,13 @@
 package app
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"errors"
+	"io"
+	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -11,8 +15,133 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
 	"github.com/charmbracelet/x/ansi"
 )
+
+func TestConsoleRetainsTheSavedDiagnosticPathAfterRestoration(t *testing.T) {
+	for _, scenario := range []string{"normal", "terminal-ended-before-export", "terminal-read-failed", "manual-result-after-terminal", "failed-export", "failed-export-keeps-path"} {
+		t.Run(scenario, func(t *testing.T) {
+			output, err := os.CreateTemp(t.TempDir(), "restored-terminal-")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer output.Close()
+			previous := os.Stderr
+			os.Stderr = output
+			defer func() { os.Stderr = previous }()
+			recorder, err := diagnostics.Open(t.TempDir(), "client", "test")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer recorder.Close()
+			previousLogger := slog.Default()
+			slog.SetDefault(recorder.Logger())
+			defer slog.SetDefault(previousLogger)
+			model := consoleModel{language: "en", width: 80, cancel: func() {}, view: consoleView{state: "ready"}}
+			exported, release, commandDone := make(chan struct{}), make(chan struct{}), make(chan struct{})
+			if scenario == "manual-result-after-terminal" {
+				model.debug = consoleDebug{export: func() (string, error) {
+					path, err := recorder.Export()
+					close(exported)
+					<-release
+					close(commandDone)
+					return path, err
+				}}
+			}
+			var input io.Reader
+			var failInput func()
+			readFailure := errors.New("fixture terminal read failed")
+			if scenario == "terminal-read-failed" {
+				reader, writer := io.Pipe()
+				defer reader.Close()
+				defer writer.Close()
+				input = reader
+				failInput = func() { _ = writer.CloseWithError(readFailure) }
+			}
+			var screen bytes.Buffer
+			console := &console{
+				program: tea.NewProgram(model, tea.WithInput(input), tea.WithOutput(&screen), tea.WithoutSignalHandler(), tea.WithoutRenderer()),
+				done:    make(chan consoleResult, 1),
+			}
+			terminalEnded := make(chan struct{})
+			go func() {
+				model, err := console.program.Run()
+				console.done <- consoleResult{model: model, err: err}
+				close(terminalEnded)
+			}()
+			defer console.program.Kill()
+			if scenario == "manual-result-after-terminal" {
+				console.send(tea.KeyPressMsg{Code: 'd'})
+				select {
+				case <-exported:
+				case <-time.After(5 * time.Second):
+					close(release)
+					t.Fatal("manual export did not start")
+				}
+			}
+			if scenario != "normal" {
+				if failInput != nil {
+					failInput()
+				} else {
+					console.program.Quit()
+				}
+				select {
+				case <-terminalEnded:
+				case <-time.After(time.Second):
+					close(release)
+					t.Fatal("terminal did not stop")
+				}
+			}
+			var failure error
+			if scenario == "terminal-ended-before-export" || strings.HasPrefix(scenario, "failed-export") {
+				failure = errors.New("local service failed")
+			}
+			if scenario == "normal" || scenario == "failed-export-keeps-path" {
+				path, err := recorder.Export()
+				if err != nil {
+					t.Fatal(err)
+				}
+				console.send(consoleExportResult{path: path})
+			}
+			if strings.HasPrefix(scenario, "failed-export") {
+				if err := recorder.Close(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if scenario == "manual-result-after-terminal" {
+				close(release)
+				<-commandDone
+			}
+			failure = finishRun(console, recorder, func() { slog.SetDefault(previousLogger) }, failure)
+			path := recorder.LastExportPath()
+			if (path == "") != (scenario == "failed-export") {
+				t.Fatalf("saved path %q does not match export outcome", path)
+			}
+			if scenario == "terminal-read-failed" {
+				if !errors.Is(failure, readFailure) {
+					t.Fatalf("terminal read failure was not retained: %v", failure)
+				}
+				archive, err := zip.OpenReader(path)
+				if err != nil {
+					t.Fatalf("terminal failure did not produce a complete diagnostic report: %v", err)
+				}
+				_ = archive.Close()
+				log, err := os.ReadFile(recorder.LogPath())
+				if err != nil || !strings.Contains(string(log), `"event":"stopped","failed":true`) ||
+					!strings.Contains(string(log), readFailure.Error()) {
+					t.Fatalf("final diagnostics missed the terminal error: %s, %v", log, err)
+				}
+			}
+			content, err := os.ReadFile(output.Name())
+			if err != nil || path != "" && strings.Count(string(content), path) != 1 ||
+				path == "" && strings.Contains(string(content), "Saved") ||
+				failure != nil && !strings.Contains(string(content), failure.Error()) {
+				t.Fatalf("restored terminal lost the saved path or App error: %s, %v", content, err)
+			}
+		})
+	}
+}
 
 func TestConsoleStartsWithSystemLanguageAndAcceptsVisualSelection(t *testing.T) {
 	console := newConsole(func() {}, true)

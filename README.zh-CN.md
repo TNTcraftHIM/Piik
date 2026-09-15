@@ -54,7 +54,7 @@ Piik 是一个免费开源的屏幕共享工具，适合游戏围观、一起看
 | --- | --- |
 | [使用在线版](https://demo.piik.tv) | 在电脑浏览器打开，直接创建房间并分享。 |
 | [下载 Piik App](https://piik.tv/?lang=zh-CN#download) | 解压并启动客户端，选择**公网邀请**，点击**进入 Piik**，创建临时房间。 |
-| 使用已有 Piik 站点 | 打开朋友或管理员提供的地址。[自行部署](./docs/operations/self-hosting.zh-CN.md)属于进阶操作。 |
+| [部署自己的站点](./docs/operations/self-hosting.zh-CN.md) | 进阶使用：在 Linux x64 服务器上部署 Piik Server、配置自己的域名，再用 Piik App 或浏览器连接。 |
 
 <p align="center"><img src="./docs/assets/quickstart.svg" width="640" alt="选择画面，发送邀请，一起观看。"></p>
 

@@ -35,10 +35,10 @@ changes calculate one version, validate, package Server and all App targets,
 and publish the same artifacts. Standalone website/docs changes validate without
 packaging or releasing; [versioning](../standards/versioning.md#automatic-publication)
 owns that boundary. Runs queue rather than overlap or cancel one another. Branches/PRs
-stay quiet; manual `client_checks` dispatch remains available for candidates.
+stay quiet; manual `app_checks` dispatch remains available for candidates.
 Writing a new version back to main is unnecessary and prohibited.
 
-For a complete publisher rehearsal, dispatch with `client_checks: true` and an
+For a complete publisher rehearsal, dispatch with `app_checks: true` and an
 explicit `candidate_version` such as `v1.0.0`. This builds genuine Server and
 native App artifacts under one revision and version without tagging or
 publishing. Prepare its [release-note section](../standards/versioning.md#release-notes)

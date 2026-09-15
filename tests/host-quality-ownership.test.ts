@@ -21,7 +21,8 @@ const owners = new Set(["changeQuality", "commitQuality", "handleSignalMessage",
   "switchNativeSource", "finishSourceSwitch", "recoverBrowserFanout", "disposeNativeShare",
   "acquireNativeClient", "requestSharing", "startNativeShare", "startBrowserNativeIngress",
   "ownNativeClient", "discardNativeClient", "releaseUnusedNativeClient", "closeCaptureSourcePicker",
-  "openCaptureSourcePicker", "startSharing", "beginRoomMutation", "finishRoomMutation",
+  "openCaptureSourcePicker", "startBrowserShareFromPicker", "startNativeShareFromPicker",
+  "startSharing", "beginRoomMutation", "finishRoomMutation",
   "startPeer", "reconcileHostChildren", "setNotice", "setNoticeKey", "setNoticeError", "setNoticeErrorKey", "endSharing", "copyInvite", "isCurrentRoomAuthority"]);
 const functions: string[] = [];
 function collect(node: ts.Node): void {
@@ -231,6 +232,59 @@ describe("Host invite copy feedback", () => {
 });
 
 describe("Host quality ownership", () => {
+  it.each(["browser", "native"] as const)("keeps the %s selection until room work permits capture", async (kind) => {
+    const current = fixture();
+    current.context.phase = "idle";
+    current.activeGenerationRef.current = null;
+    current.nativeShareGenerationRef.current = null;
+    const denied = new DOMException("cancelled", "NotAllowedError");
+    const capture = vi.fn(async () => { throw denied; });
+    current.context.captureDisplay = capture;
+    current.client.startShare.mockRejectedValue(denied);
+    await current.openPicker();
+    current.context.nativeSources = current.setNativeSources.mock.calls.at(-1)![0];
+    const request = current.nativeSourceRequestRef.current;
+    const path = current.nativeSourcePathRef.current;
+    const mutation = current.context.beginRoomMutation("access");
+    let starting: Promise<void> | undefined;
+    current.startSharing.mockImplementation(() => {
+      starting = kind === "native" ? current.start() : current.startBrowser();
+      return starting;
+    });
+    const confirm = () => kind === "native"
+      ? current.context.startNativeShareFromPicker({}, false)
+      : current.context.startBrowserShareFromPicker();
+    confirm();
+    await starting;
+    expect(current.nativeSourceRequestRef.current).toBe(request);
+    expect(current.nativeSourcePathRef.current).toBe(path);
+    expect(current.client.startShare).not.toHaveBeenCalled();
+    expect(capture).not.toHaveBeenCalled();
+
+    current.context.finishRoomMutation(mutation);
+    confirm();
+    // Browser capture must still begin synchronously in the accepting gesture.
+    if (kind === "browser") expect(capture).toHaveBeenCalledOnce();
+    expect(current.nativeSourceRequestRef.current).toBeNull();
+    await starting;
+    if (kind === "native") expect(current.client.startShare).toHaveBeenCalledOnce();
+  });
+
+  it("retires an open switch picker and its control when sharing ends", async () => {
+    const current = fixture();
+    current.generationRef.current = current.activeGenerationRef.current!;
+    current.nativeModeRef.current = true;
+    await current.openPicker();
+    expect(current.nativeSourceRequestRef.current).not.toBeNull();
+    current.disposeResources.mockImplementation(() => current.disposeNative());
+    current.context.endSharing({ key: "host.notice.stopped" });
+    expect(current.nativeSourceRequestRef.current).toBeNull();
+    expect(current.nativeSourcePathRef.current).toBeNull();
+    expect(current.setNativeSources).toHaveBeenLastCalledWith(null);
+    expect(current.client.close).toHaveBeenCalledOnce();
+    expect(current.activeGenerationRef.current).toBeNull();
+  });
+
   it.each(["browser", "app-browser", "native"])("keeps %s capture cancellation in the television status", async (entry) => {
     const current = fixture(entry !== "browser");
     const denied = new DOMException("private capture detail", "NotAllowedError");

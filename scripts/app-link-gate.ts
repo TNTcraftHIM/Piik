@@ -6,7 +6,7 @@ import { join, resolve } from "node:path";
 import { reservePort, withDeadline } from "./browser-gate-harness";
 
 const ROOT = resolve(import.meta.dirname, "..");
-const BUILD_ROOT = join(ROOT, "build", "client-check");
+const BUILD_ROOT = join(ROOT, "build", "go-check");
 
 interface GateResult {
   passed: boolean;
@@ -14,7 +14,7 @@ interface GateResult {
   invitationUsesLink: boolean;
   remotePage: boolean;
   remoteWebSocket: boolean;
-  clientExited: boolean;
+  appExited: boolean;
   linkClosed: boolean;
   error: string | null;
   stage: string;
@@ -51,13 +51,13 @@ class LineCapture {
       if (line) return line;
       if (this.child.exitCode !== null || this.child.signalCode !== null) {
         throw new Error(
-          `Client exited before readiness (${String(this.child.exitCode)})` +
+          `App exited before readiness (${String(this.child.exitCode)})` +
             (this.stderr.trim() ? `: ${this.stderr.trim()}` : ""),
         );
       }
       await new Promise((resolveWait) => setTimeout(resolveWait, 50));
     }
-    throw new Error("Client output timed out");
+    throw new Error("App output timed out");
   }
 }
 
@@ -155,7 +155,7 @@ async function createInvitation(port: number, password: string): Promise<string>
   return value.inviteUrl;
 }
 
-async function stopClient(child: ChildProcessWithoutNullStreams | null): Promise<boolean> {
+async function stopApp(child: ChildProcessWithoutNullStreams | null): Promise<boolean> {
   if (!child || child.exitCode !== null || child.signalCode !== null) return true;
   child.stdin.write("\n");
   try {
@@ -191,16 +191,16 @@ async function main(): Promise<void> {
   const transport = transportArgs(remote.key);
   const destination = `${remote.user}@${remote.host}`;
   const go = process.env.PIIK_GO?.trim() || "go";
-  const configuredClient = process.env.PIIK_CLIENT_EXE?.trim();
+  const configuredApp = process.env.PIIK_CLIENT_EXE?.trim();
   const tunnel = process.env.PIIK_CLOUDFLARED?.trim() ||
     join(BUILD_ROOT, process.platform === "win32" ? "cloudflared.exe" : "cloudflared");
   const profile = await mkdtemp(join(tmpdir(), "piik-client-link-"));
   const port = await reservePort();
-  const clientBinary = configuredClient || join(
+  const appBinary = configuredApp || join(
     BUILD_ROOT,
     process.platform === "win32" ? "piik-app.exe" : "piik-app",
   );
-  let client: ChildProcessWithoutNullStreams | null = null;
+  let app: ChildProcessWithoutNullStreams | null = null;
   let publicOrigin = "";
   const result: GateResult = {
     passed: false,
@@ -208,7 +208,7 @@ async function main(): Promise<void> {
     invitationUsesLink: false,
     remotePage: false,
     remoteWebSocket: false,
-    clientExited: false,
+    appExited: false,
     linkClosed: false,
     error: null,
     stage: "setup",
@@ -216,19 +216,19 @@ async function main(): Promise<void> {
   await mkdir(BUILD_ROOT, { recursive: true });
   try {
     result.stage = "build";
-    if (!configuredClient) {
-      // The Client embeds the Vite output, and this gate asserts on the page it
+    if (!configuredApp) {
+      // The App embeds the Vite output, and this gate asserts on the page it
       // serves over the public link, so the Web build precedes the Go build.
       if (process.platform === "win32") {
-        run(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", "npm run build:client"]);
+        run(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", "npm run build:web"]);
       } else {
-        run("npm", ["run", "build:client"]);
+        run("npm", ["run", "build:web"]);
       }
-      run(go, ["build", "-trimpath", "-o", clientBinary, "./cmd/piik-app"],
+      run(go, ["build", "-trimpath", "-o", appBinary, "./cmd/piik-app"],
         ROOT);
     }
-    result.stage = "client-start";
-    client = spawn(clientBinary, [
+    result.stage = "app-start";
+    app = spawn(appBinary, [
       "--link",
       "--config", join(profile, "client.json"),
       "--port", String(port),
@@ -239,7 +239,7 @@ async function main(): Promise<void> {
       stdio: "pipe",
       windowsHide: true,
     });
-    const output = new LineCapture(client);
+    const output = new LineCapture(app);
     const accessLine = await output.wait(
       (line) => line.startsWith("Local access password: ") || line === "Local access: open",
     );
@@ -296,10 +296,10 @@ async function main(): Promise<void> {
     result.error = error instanceof Error ? error.message : String(error);
   } finally {
     result.stage = result.passed ? "cleanup" : result.stage;
-    result.clientExited = await stopClient(client);
+    result.appExited = await stopApp(app);
     result.linkClosed = publicOrigin ? await waitUntilLinkCloses(publicOrigin) : true;
     await rm(profile, { recursive: true, force: true });
-    result.passed = result.passed && result.clientExited && result.linkClosed;
+    result.passed = result.passed && result.appExited && result.linkClosed;
     if (!result.passed && result.error === null) result.error = "cleanup failed";
     process.stdout.write(JSON.stringify(result) + "\n");
   }

@@ -81,7 +81,11 @@ function normalizedStunUrl(url: string): string | null {
     : parsed.hostname.includes(":")
       ? `[${parsed.hostname.toLowerCase()}]`
       : parsed.hostname.toLowerCase();
-  return `stun:${hostname}:${parsed.port || BASE_STUN_PORT}`;
+  // The HTTP parser normalizes the host but drops an explicit :80. STUN
+  // defaults to 3478 only when its authority omits the port (RFC 7064).
+  const explicitPort = /:(\d+)$/.exec(authority)?.[1];
+  const port = explicitPort === undefined ? BASE_STUN_PORT : Number(explicitPort);
+  return `stun:${hostname}:${port}`;
 }
 
 /** URLs whose same-socket observations may form the controlled port sequence. */

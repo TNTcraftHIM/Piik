@@ -2,7 +2,8 @@ import { useState } from "react";
 import { AppHeader } from "../components/living/Header";
 import { Tooltip } from "../components/living/Tooltip";
 import { ControlsPreview } from "./ControlsPreview";
-import { WelcomeLine, WelcomeCipher, WELCOME_LINES } from "../components/living/WelcomeLine";
+import { WelcomeLine, WelcomeCipher } from "../components/living/WelcomeLine";
+import { locales } from "../locales";
 import { HINT_KINDS, HintComic, isHintKind, type HintKind } from "../components/living/hints";
 import { Comic, type ComicKind } from "../components/living/Comic";
 import { COMIC_KINDS, getComicPresentation, type ComicTone, type ComicMotion } from "../components/living/comic-presentation";
@@ -74,16 +75,16 @@ export function TooltipPreviewPage() {
           <a href="#people-preview">{en ? "People & connections" : "人物、沙发与连接图"}</a><a href="#source-preview">{en ? "Source picker" : "画面选择"}</a>
           <a href="#playback-preview">{en ? "Playback" : "播放栏"}</a><a href="#comic-preview">{en ? "Tooltips & comics" : "提示与漫画"}</a>
           <a href="#metrics-preview">{en ? "Metrics" : "连接数据"}</a>
-          <a href="#welcome-preview">{en ? "20 opening lines" : "20 句开场白"}</a>
+          <a href="#welcome-preview">{en ? "Opening lines" : "开场白"}</a>
           <a href="/__status-preview">{en ? "Status gallery" : "完整状态预览"}</a>
         </nav>
         <ControlsPreview />
         <MetricPreview />
-        <WelcomeLine />
+        <WelcomeLine still={reducedMotion} />
         <details id="welcome-preview" className="lr-welcome-catalog" open>
-          <summary>20 句开场白 / 20 opening lines</summary>
-          <p>{en ? "One line per visit to the App launcher or the browser's sharing screen. Pure visual mode uses matching pictograms and pixel lettering; switching modes keeps the same line." : "进入 App 启动页或网页版的分享准备画面时，随机选一句。纯视觉模式显示对应的图形与像素暗号；切换模式还是同一句。"}</p>
-          <ol>{WELCOME_LINES.map(({ key }, index) => <li key={key}><span>{t(key)}</span><WelcomeCipher line={index} /></li>)}</ol>
+          <summary>{locales[lang].playful.welcome.length} {en ? "opening lines" : "句开场白"}</summary>
+          <p>{en ? "A line appears immediately, then changes every eight seconds while visible. Each language has its own pool. Pure visual mode uses that entry's pictograms and pixel lettering; switching modes keeps the same entry." : "短句立即出现，可见时每 8 秒换一条。各语言独立维护词库；纯视觉模式显示当前语句对应的图形与像素暗号，切换模式仍是同一句。"}</p>
+          <ol>{locales[lang].playful.welcome.map(({ text, symbols }) => <li key={text}><span>{text}</span><WelcomeCipher symbols={symbols} /></li>)}</ol>
         </details>
         <h2 id="comic-preview">语义规则 / Semantic grammar</h2>
         <p>{en ? "Aa pairs the scene with a caption; ✦ shows the pure-visual version." : "Aa 查看图示与文字说明，✦ 查看纯视觉版本。"}</p>

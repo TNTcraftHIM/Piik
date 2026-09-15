@@ -1,8 +1,7 @@
 import { useEffect } from "react";
-import { createTextCycle, startTextRotation } from "./text-rotation";
+import { useRotatingText } from "./use-text-rotation";
 
 const BRAND_TITLE = "Piik";
-const TITLE_VARIATION_INTERVAL_MS = 15_000;
 
 export function composeDocumentTitle(
   ...parts: Array<string | null | undefined>
@@ -15,30 +14,17 @@ export function composeDocumentTitle(
 
 export function useDocumentTitle(
   parts: Array<string | null | undefined>,
-  variations: readonly string[] = [],
-): void {
-  const title = composeDocumentTitle(...parts);
-  const variationKey = variations.join("\u001f");
+  variations: readonly string[],
+  context: string,
+  still = false,
+): string {
+  const decoration = useRotatingText(variations, context, undefined, still);
+  const title = composeDocumentTitle(...parts, decoration);
   useEffect(() => {
     document.title = title;
-    const currentPart = parts.at(-1);
-    if (!currentPart || variations.length === 0) {
-      return () => {
-        document.title = BRAND_TITLE;
-      };
-    }
-
-    const prefix = parts.slice(0, -1);
-    const next = createTextCycle(variations);
-    let ordinary = true;
-    const stop = startTextRotation(() => {
-      ordinary = !ordinary;
-      document.title = ordinary ? title : composeDocumentTitle(...prefix, next());
-    }, TITLE_VARIATION_INTERVAL_MS);
-
     return () => {
-      stop();
       document.title = BRAND_TITLE;
     };
-  }, [title, variationKey]);
+  }, [title]);
+  return title;
 }

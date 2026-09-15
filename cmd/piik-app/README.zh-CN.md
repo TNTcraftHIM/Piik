@@ -104,7 +104,7 @@ Node/npm/Go 版本见[从源码运行](../../docs/README.md#run-from-source)。
 
 ```sh
 npm ci
-npm run build:client
+npm run build:web
 ```
 
 Linux 或 macOS：
@@ -127,10 +127,10 @@ go build -o build/dev/piik-app.exe ./cmd/piik-app
 本地与 CI 共用的仓库级检查入口是：
 
 ```sh
-npm run check:client
+npm run check:go
 ```
 
-在 Windows 上，该入口将 App、采集及媒体测试程序写入已忽略的仓库 `build/client-check`
+在 Windows 上，该入口将 App、采集及媒体测试程序写入已忽略的仓库 `build/go-check`
 目录，并在下次运行时复用路径，保持系统防火墙识别的可执行文件身份稳定。
 这些文件是本地构建输出，不会打包或提交。
 
@@ -157,8 +157,8 @@ App 与托管站点共用 Go 房间服务。浏览器界面通过 App 的本地�
 脚本会构建采集程序、验证固定版本的公网链接辅助程序，并组装和检查 App：
 
 ```sh
-node scripts/package-app-release.mjs /outside/repository/app-release
-node scripts/package-client-candidate.mjs /outside/repository/app-release windows-amd64 /outside/repository/client-candidate
+node scripts/package-server-release.mjs /outside/repository/app-release
+node scripts/package-app-candidate.mjs /outside/repository/app-release windows-amd64 /outside/repository/client-candidate
 ```
 
 支持的目标为 `windows-amd64`、`linux-amd64` 和 `darwin-arm64`，请替换命令中的目标名称。
@@ -200,22 +200,22 @@ PIIK_CLIENT_LOCAL_GATE=true \
 CHROME_PATH=/path/to/chrome \
 PIIK_CLIENT_EXE=/path/to/piik-app \
 PIIK_CLIENT_GATE_LAN_ADDRESS=192.168.1.10 \
-npm run gate:client-local
+npm run gate:app-local
 
 PIIK_CLIENT_LOOPBACK_GATE=true \
 CHROME_PATH=/path/to/chrome \
 PIIK_CLIENT_EXE=/path/to/piik-app \
-npm run probe:client-loopback
+npm run probe:app-loopback
 
 PIIK_CLIENT_MEDIA_GATE=true \
 CHROME_PATH=/path/to/chrome \
 PIIK_CLIENT_GATE_STUN_URLS=stun:<stun-host>:3478 \
-npm run gate:client-media
+npm run gate:app-media
 
 PIIK_CLIENT_NATIVE_HOST_GATE=true \
 CHROME_PATH=/path/to/chrome \
 PIIK_GO=/path/to/go \
-npm run gate:client-native-host
+npm run gate:app-native-host
 
 PIIK_CLIENT_NATIVE_HOST_GATE=true \
 PIIK_CLIENT_CROSS_NAT_GATE=true \
@@ -225,7 +225,7 @@ PIIK_REMOTE_HOST=<public-test-host> \
 PIIK_REMOTE_USER=<ssh-user> \
 PIIK_REMOTE_SSH_KEY=/path/to/key \
 PIIK_CLIENT_GATE_STUN_URLS=stun:<stun-host>:3478 \
-npm run gate:client-native-host
+npm run gate:app-native-host
 
 PIIK_CLIENT_NATIVE_HOST_GATE=true \
 PIIK_CLIENT_LINK_MEDIA_GATE=true \
@@ -235,7 +235,7 @@ PIIK_CLOUDFLARED=/path/to/cloudflared \
 PIIK_REMOTE_HOST=<public-test-host> \
 PIIK_REMOTE_USER=<ssh-user> \
 PIIK_REMOTE_SSH_KEY=/path/to/key \
-npm run gate:client-native-host
+npm run gate:app-native-host
 
 PIIK_CLIENT_LINK_GATE=true \
 PIIK_GO=/path/to/go \
@@ -243,7 +243,7 @@ PIIK_CLOUDFLARED=/path/to/cloudflared \
 PIIK_REMOTE_HOST=<public-test-host> \
 PIIK_REMOTE_USER=<ssh-user> \
 PIIK_REMOTE_SSH_KEY=/path/to/key \
-npm run gate:client-link
+npm run gate:app-link
 ```
 
 Windows media gate 验证一个硬件 H.264 采集代次、共享 Pion 来源、浏览器解码、PLI 恢复和

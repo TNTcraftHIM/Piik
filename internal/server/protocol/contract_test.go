@@ -35,6 +35,27 @@ func TestRuntimeCapabilities(t *testing.T) {
 	}
 }
 
+func TestStrictMemberNamesCannotPopulateForbiddenOrOptionalFields(t *testing.T) {
+	for _, sample := range []struct {
+		name   string
+		data   string
+		target any
+	}{
+		{"none upstream with folded empty peer", `{"kind":"none","peerid":""}`, &MediaRouteUpstream{}},
+		{"host diagnostic with folded zero ordinal", `{"kind":"host","Ordinal":0}`, &RouteDiagnosticParent{}},
+		{"host presence with folded false ready", `{"role":"host","peerId":"host_12345678","displayName":"Host","upstream":{"kind":"none"},"mediaready":false}`, &ParticipantPresenceEntry{}},
+		{"viewer presence with folded false ready", `{"role":"viewer","peerId":"viewer_12345678","displayName":"Viewer","upstream":{"kind":"none"},"mediaready":false}`, &ParticipantPresenceEntry{}},
+	} {
+		t.Run(sample.name, func(t *testing.T) {
+			if err := json.Unmarshal([]byte(sample.data), sample.target); err == nil {
+				t.Fatal("a noncanonical member must not populate a schema field")
+			}
+		})
+	}
+	assertServerMessage(t, "folded route policy cannot be ignored by its default",
+		object(with(drop(authenticatedHost(), "routePolicy"), member{"routepolicy", testRoutePolicy})), false)
+}
+
 // member is one JSON object key with its raw encoded value, so the tests can
 // reproduce the exact wire shapes from tests/protocol.test.ts (including key
 // presence, which a Go map cannot express).

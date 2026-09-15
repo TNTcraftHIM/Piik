@@ -11,7 +11,7 @@ const PNG_SIGNATURE = Buffer.from([
 ]);
 
 function fail(message) {
-  throw new Error(`Client icon assets are invalid: ${message}`);
+  throw new Error(`App icon assets are invalid: ${message}`);
 }
 
 function readPngEntries(iconPath) {
@@ -162,7 +162,7 @@ function writeMacAssets(packageRoot, version, revision, entries) {
   chmodSync(launcher, 0o755);
 }
 
-export function writeClientPlatformAssets({
+export function writeAppPlatformAssets({
   packageRoot,
   target,
   version,

@@ -1225,6 +1225,12 @@ describe("server signaling protocol", () => {
     }
   });
   it("accepts only STUN URLs in the authenticated peer ICE config", () => {
+    for (const url of ["stun:stun.test:80/", "stun:stun.test:3478/"]) {
+      expect(serverMessageSchema.safeParse({
+        ...authenticatedMessage(20),
+        iceConfig: { iceServers: [{ urls: url }], natPredictionStunUrls: [] },
+      }).success).toBe(false);
+    }
     expect(
       serverMessageSchema.safeParse({
         type: "ice-config",

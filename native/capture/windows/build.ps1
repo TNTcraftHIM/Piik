@@ -56,12 +56,18 @@ Invoke-CaptureBuild ('{0} /out:"{1}" {2} "{3}" {4}' -f $linkCommand,$executableP
 if ($Check) {
     $vp8Object = Join-Path $outputPath 'vp8_encoder.obj'
     Invoke-CaptureBuild ('cl.exe {0} /DNDEBUG "{1}" /Fo:"{2}"' -f $compileFlags,(Join-Path $helperDirectory 'vp8_encoder.cpp'),$vp8Object)
-    foreach ($name in @('capture_geometry', 'capture_control')) {
+    foreach ($name in @('capture_geometry', 'capture_control', 'output_worker')) {
         $source = Join-Path $helperDirectory ($name + '.test.cpp')
         $object = Join-Path $outputPath ($name + '.test.obj')
         $executable = Join-Path $outputPath ($name + '.test.exe')
         Invoke-CaptureBuild ('cl.exe {0} "{1}" /Fo:"{2}"' -f $compileFlags,$source,$object)
         $codecObjects = if ($name -eq 'capture_control') { '"{0}" "{1}"' -f $vp8Object,$webrtc.Library } else { '' }
+        if ($name -eq 'output_worker') {
+            $codecObjects = (@('h264_encoder', 'process_audio', 'capture_target') | ForEach-Object {
+                '"{0}"' -f (Join-Path $outputPath ($_ + '.obj'))
+            }) -join ' '
+            $codecObjects += ' "{0}"' -f $webrtc.Library
+        }
         Invoke-CaptureBuild ('{0} /out:"{1}" "{2}" {3} {4}' -f $linkCommand,$executable,$object,$codecObjects,$systemLibraries)
         & $executable
         if ($LASTEXITCODE -ne 0) { throw "Capture check failed: $name" }

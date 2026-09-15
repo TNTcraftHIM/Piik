@@ -41,7 +41,7 @@ suggestion does not require a development environment.
 | Surface | Editable source |
 | --- | --- |
 | App launcher and shared Browser/App UI, including tooltips and accessible labels | [English](../../src/client/locales/en.ts), [Chinese](../../src/client/locales/zh.ts) |
-| Welcome lines and changing browser-tab titles | `welcome.*` messages and the title-frame catalog at the end of those same files |
+| Welcome lines, waiting captions and changing browser-tab titles | The `enPlayful` / `zhPlayful` pools and title-frame catalogs in those same files; website welcome lines reuse these pools |
 | Website | [Page markup](../../site/index.html) and [interactive labels](../../site/main.js); text is paired by `en` and `zh-CN` |
 | Introduction film | [Film sources](../../site/film/README.md); captions, artwork and playback labels have their own bilingual text |
 | App console window | `consoleCopy` in [console.go](../../internal/app/console.go); entries are ordered English, Chinese, visual; retain the third slot even when empty |
@@ -91,16 +91,18 @@ start an issue with its language tag, intended coverage and any terminology or
 layout questions, so contributors can coordinate work and review.
 
 1. Copy `src/client/locales/en.ts` to a file such as `fr.ts`. Translate the
-   messages and title frames, rename the two exports, and retain the
-   `Record<CopyKey, string>` and `TitleFrameCatalog` types imported from `zh.ts`.
+   messages and title labels, write natural [playful entries](#playful-copy), and
+   rename the three exports. Retain `Record<CopyKey, string>`, `TitleFrameCatalog`
+   and `PlayfulCatalog` from `zh.ts`.
    Chinese currently defines the key set; either existing language can provide
    context. Complete all keys rather than spreading an English catalog over
    missing translations.
 2. Import the exports in [locales/index.ts](../../src/client/locales/index.ts)
-   and add one registry entry. For example, **after translating** the two exports:
+   and add one registry entry. For example, **after translating** the catalogs:
 
    ```ts
-   fr: { name: "Français", short: "FR", tag: "fr", copy: fr, titleFrames: frTitleFrames },
+   fr: { name: "Français", short: "FR", tag: "fr", copy: fr,
+     titleFrames: frTitleFrames, playful: frPlayful },
    ```
 
    Use an ASCII locale filename/key, the language's own name in `name`, a compact
@@ -127,6 +129,34 @@ layout questions, so contributors can coordinate work and review.
 Pure-visual mode is an optional presentation, not another language to translate.
 The small visual scenes are shared with text modes; translate their labels and
 explanations in the normal catalog. Keep the visual option available.
+
+## Playful copy
+
+Each language owns its welcome and waiting arrays, and each playful title has a
+fixed `label` plus a `variations` array. Add or remove entries in that language
+without matching another language's count, order or references. An empty array
+omits the decoration; one entry stays static. Operational keys and title labels
+still require complete translations. Errors, pauses, endings, required actions
+and slogans stay fixed.
+
+Welcome entries carry `text` and two `symbols`, chosen from the existing
+[icon vocabulary](../../src/client/ui/icons.tsx) to express that sentence in the
+visual cipher. For example:
+
+```ts
+{ text: "Your seat is right here.", symbols: ["couch", "heart"] },
+```
+
+Waiting entries are plain strings such as `"Pull up a comfy chair."`. Keep them
+brief and natural in context. Avoid temporary trends, literal borrowed dialogue
+and statements that invent progress, success or remaining time.
+
+All these surfaces show a line immediately and share the
+[playful-copy lifecycle](../standards/visual-language.md#playful-copy-lifecycle).
+Keep timing in that owner. Preview welcome text and its cipher at
+`/__tooltip-preview`; use `/__status-preview` for waiting captions and titles.
+Check both narrow windows and language changes. The website's build picks up
+welcome edits automatically; its other copy remains separate.
 
 ## Preview and check
 

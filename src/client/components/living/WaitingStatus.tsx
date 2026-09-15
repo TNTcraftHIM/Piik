@@ -1,44 +1,28 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef } from "react";
+import { locales } from "../../locales";
 import { useCopy, type CopyKey } from "../../ui/copy";
-import { createTextCycle, startTextRotation } from "../../ui/text-rotation";
+import { useRotatingText } from "../../ui/use-text-rotation";
 import { Comic } from "./Comic";
 
-export const WAITING_LINES = [
-  "waiting.seat", "waiting.snack", "waiting.popcorn", "waiting.stretch",
-  "waiting.water", "waiting.couch", "waiting.quest", "waiting.audience",
-  "waiting.pixels", "waiting.loot", "waiting.scene", "waiting.cat",
-  "waiting.blink", "waiting.calm", "waiting.shells", "waiting.narrator",
-  "waiting.daydream", "waiting.break", "waiting.dance", "waiting.save",
-] as const satisfies readonly CopyKey[];
+const NO_CAPTIONS: readonly string[] = [];
 
 /** Decoration beside a literal status; it never describes operation progress. */
-export function WaitingCaption() {
-  const { t, vis } = useCopy();
-  const [line, setLine] = useState<CopyKey | null>(null);
+export function WaitingCaption({ context, still = false }: { context: string; still?: boolean }) {
+  const { lang, vis } = useCopy();
   const captionRef = useRef<HTMLSpanElement>(null);
-
-  useEffect(() => {
-    setLine(null);
-    if (vis) return;
-    const next = createTextCycle(WAITING_LINES);
-    return startTextRotation(() => {
-      if (!captionRef.current?.closest('[data-comic-reduced-motion="true"]')) {
-        setLine(next() ?? null);
-      }
-    }, 8_000);
-  }, [vis]);
-
-  if (vis) return null;
+  const line = useRotatingText(vis ? NO_CAPTIONS : locales[lang].playful.waiting,
+    `${lang}:${context}`, captionRef, still);
+  if (!line) return null;
   return <span className="lr-waiting-caption" ref={captionRef} aria-hidden="true">
-    {line !== null && <span key={line}>{t(line)}</span>}
+    <span key={line}>{line}</span>
   </span>;
 }
 
-export function LoadingStatus({ label }: { label: CopyKey }) {
+export function LoadingStatus({ label, still = false }: { label: CopyKey; still?: boolean }) {
   const { t, vis } = useCopy();
   return <div className="lr-loading" role="status" aria-label={t(label)}>
     <Comic kind="signal-connecting" theme="paper" />
     {vis ? null : <span>{t(label)}</span>}
-    <WaitingCaption key={label} />
+    <WaitingCaption context={label} still={still} />
   </div>;
 }

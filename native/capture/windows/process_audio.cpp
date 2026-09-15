@@ -251,6 +251,7 @@ HRESULT CaptureProcessAudio(DWORD pid, UINT64 expectedCreationTime,
   }
   if (completed != nullptr) CloseHandle(completed);
   if (process != nullptr) CloseHandle(process);
+  client.Reset();
   CoUninitialize();
   return result;
 }
@@ -266,6 +267,7 @@ HRESULT CaptureSystemAudio(HANDLE stop_event, const StopProbe& stop_probe,
     result = CaptureLoopbackAudio(client, nullptr, stop_event, stop_probe,
                                   ready_writer, writer);
   }
+  client.Reset();
   CoUninitialize();
   return result;
 }

@@ -15,20 +15,20 @@ import {
   waitForVersion,
 } from "./browser-gate-harness";
 import {
-  readClientEndpoint,
-} from "./client-gate-endpoint";
+  readAppEndpoint,
+} from "./app-gate-endpoint";
 
 interface GateReport {
   passed: boolean;
   platform: NodeJS.Platform;
   browser: string | null;
-  clientStarted: boolean;
+  appStarted: boolean;
   localServerReady: boolean;
   bootstrapAuthenticated: boolean;
   bootstrapRemoved: boolean;
   hostReady: boolean;
   lanInvite: boolean;
-  clientExited: boolean;
+  appExited: boolean;
   browserExited: boolean;
   portsClosed: boolean;
   profileRemoved: boolean;
@@ -53,12 +53,12 @@ const LOCAL_PAGE_STATE = `fetch('/api/site-access')
 
 async function main(): Promise<void> {
   if (process.env.PIIK_CLIENT_LOCAL_GATE !== "true") {
-    throw new Error("Local Client gate was not explicitly enabled");
+    throw new Error("Local App gate was not explicitly enabled");
   }
   const browserPath = process.env.CHROME_PATH?.trim();
-  const clientPath = process.env.PIIK_CLIENT_EXE?.trim();
+  const appPath = process.env.PIIK_CLIENT_EXE?.trim();
   const lanAddress = process.env.PIIK_CLIENT_GATE_LAN_ADDRESS?.trim();
-  if (!browserPath || !clientPath || !lanAddress) {
+  if (!browserPath || !appPath || !lanAddress) {
     throw new Error(
       "CHROME_PATH, PIIK_CLIENT_EXE, and PIIK_CLIENT_GATE_LAN_ADDRESS are required",
     );
@@ -68,13 +68,13 @@ async function main(): Promise<void> {
     passed: false,
     platform: process.platform,
     browser: null,
-    clientStarted: false,
+    appStarted: false,
     localServerReady: false,
     bootstrapAuthenticated: false,
     bootstrapRemoved: false,
     hostReady: false,
     lanInvite: false,
-    clientExited: false,
+    appExited: false,
     browserExited: false,
     portsClosed: false,
     profileRemoved: false,
@@ -84,12 +84,12 @@ async function main(): Promise<void> {
   const debugPort = await reservePort();
   const profile = await mkdtemp(join(tmpdir(), "piik-client-loopback-"));
   const configPath = join(profile, "client.json");
-  let client: ChildProcessWithoutNullStreams | null = null;
+  let app: ChildProcessWithoutNullStreams | null = null;
   let browser: ChildProcessWithoutNullStreams | null = null;
   let cdp: CdpConnection | null = null;
   let loopbackPort = 0;
   try {
-    client = spawn(clientPath, [
+    app = spawn(appPath, [
       "--local",
       "--config", configPath,
       "--lan-address", lanAddress,
@@ -99,10 +99,10 @@ async function main(): Promise<void> {
       windowsHide: true,
       env: { ...process.env, PIIK_CLIENT_GATE_NO_BROWSER: "true" },
     });
-    client.stderr.resume();
-    const endpoint = await readClientEndpoint(client);
+    app.stderr.resume();
+    const endpoint = await readAppEndpoint(app);
     loopbackPort = endpoint.port;
-    report.clientStarted = true;
+    report.appStarted = true;
     await waitForSample(
       (deadline) => fetchJsonBefore<{ status: string }>(
         `http://127.0.0.1:${appPort}/healthz`,
@@ -116,7 +116,7 @@ async function main(): Promise<void> {
       localAccessPassword?: unknown;
     };
     if (typeof config.localAccessPassword !== "string") {
-      throw new Error("Client access bootstrap is unavailable");
+      throw new Error("App access bootstrap is unavailable");
     }
     const localAccessPassword = config.localAccessPassword;
     const bootstrap = new URLSearchParams({
@@ -176,20 +176,20 @@ async function main(): Promise<void> {
   } finally {
     const cleanup = await cleanupRun({
       cdp,
-      native: client,
+      native: app,
       chrome: browser,
       server: null,
       profile,
       ports: [appPort, debugPort, ...(loopbackPort ? [loopbackPort] : [])],
     });
-    report.clientExited = cleanup.nativeExited;
+    report.appExited = cleanup.nativeExited;
     report.browserExited = cleanup.browserExited;
     report.portsClosed = cleanup.portsClosed;
     report.profileRemoved = cleanup.profileRemoved;
   }
-  report.passed = report.clientStarted && report.localServerReady &&
+  report.passed = report.appStarted && report.localServerReady &&
     report.bootstrapAuthenticated && report.bootstrapRemoved && report.hostReady &&
-    report.lanInvite && report.clientExited && report.browserExited &&
+    report.lanInvite && report.appExited && report.browserExited &&
     report.portsClosed && report.profileRemoved && report.error === null;
   process.stdout.write(`${JSON.stringify(report)}\n`);
   if (!report.passed) process.exitCode = 1;

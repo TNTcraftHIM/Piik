@@ -125,16 +125,7 @@ export class ViewerRelay {
     this.preparedRevision = revision;
     this.preparedCandidate = { ...candidate };
     this.plannedChildPeerIds = planned;
-    if (candidate.transport === "direct") {
-      const pendingProbe = this.codecProbePromise;
-      if (pendingProbe) {
-        void pendingProbe.then(() => {
-          this.startPreparedChildIfCurrent(revision, candidate, stream);
-        });
-      } else {
-        this.startPreparedChildIfCurrent(revision, candidate, stream);
-      }
-    }
+    this.startPreparedChildIfReady();
     return true;
   }
 
@@ -332,7 +323,7 @@ export class ViewerRelay {
     }
     if (this.peers.get(fromPeerId) === peer) {
       this.disposePeer(fromPeerId);
-      this.startPeer(fromPeerId, stream);
+      this.startPeer(fromPeerId, this.stream);
     }
   }
 
@@ -398,21 +389,19 @@ export class ViewerRelay {
       });
   }
 
-  private startPreparedChildIfCurrent(
-    revision: number,
-    candidate: PreparedRouteCandidate,
-    stream: MediaStream | null,
-  ): void {
+  private startPreparedChildIfReady(): void {
+    const revision = this.preparedRevision;
+    const candidate = this.preparedCandidate;
     if (
       this.disposed ||
-      this.stream !== stream ||
+      this.codecProbePromise ||
       this.preparedChild ||
-      this.preparedRevision !== revision ||
-      !sameCandidate(this.preparedCandidate, candidate)
+      revision === null ||
+      candidate?.transport !== "direct"
     ) {
       return;
     }
-    this.startPreparedChild(revision, candidate, stream);
+    this.startPreparedChild(revision, candidate, this.stream);
   }
 
   private async syncStream(
@@ -637,6 +626,7 @@ export class ViewerRelay {
         if (this.codecProbePromise === promise) {
           this.codecProbePromise = null;
           this.startCodecProbe();
+          this.startPreparedChildIfReady();
         }
       });
     this.codecProbePromise = promise;

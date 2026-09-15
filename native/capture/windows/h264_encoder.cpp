@@ -16,16 +16,6 @@ namespace {
 constexpr DWORD kMaxEncodedSampleBytes = 4 * 1024 * 1024;
 }
 
-[[noreturn]] void Fail(const std::string& stage, const std::string& detail) {
-  throw GateFailure(stage, detail);
-}
-
-void Check(HRESULT result, const std::string& stage) {
-  if (FAILED(result)) {
-    throw GateFailure(stage, "Windows API returned a failing HRESULT", result);
-  }
-}
-
 std::string NarrowAscii(const std::wstring& value) {
   std::string result;
   result.reserve(value.size());

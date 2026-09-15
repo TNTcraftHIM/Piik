@@ -123,7 +123,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 		if err := decodeStrict(payload, &request); err != nil || request.Type != envelope.Type {
 			return nil, protocolViolation("native list-sources request is invalid")
 		}
-		targets, err := nativecapture.ListSources(session.ctx, session.captureProcess)
+		targets, err := nativecapture.ListSources(ctx, session.captureProcess)
 		if err != nil {
 			return operationFailure(envelope, err), nil
 		}
@@ -137,7 +137,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 			return nil, protocolViolation("native source-preview request is invalid")
 		}
 		preview, err := nativecapture.PreviewSource(
-			session.ctx,
+			ctx,
 			session.captureProcess,
 			request.Source,
 		)

@@ -664,29 +664,77 @@ func TestAbandonsPendingQualityMoveWhenIncumbentRecovers(t *testing.T) {
 	eq(t, edge.ConnectionID, "a_from_host")
 }
 
-// TS 2086-2095: when candidateReady abandons a quality move because the
-// incumbent is no longer degraded, activeRevision is the revision that was
-// active before the abort (the TS literal reads this.revision before
-// abortOperation advances it), even though the abort itself advances it.
-func TestReportsPreAbortRevisionWhenCandidateReadyAbandonsQualityMove(t *testing.T) {
-	routes := newController(2, Options{QualityConvergenceEnabled: true})
-	addViewer(routes, A, 2, nil)
-	addViewer(routes, B, 2, nil)
-	routes.hydrateEdge(A, peerEdge(HOST, "a_from_host"))
-	routes.hydrateEdge(B, peerEdge(HOST, "b_from_host"))
-	observePersistentDegraded(t, routes, A, "a_from_host", 99)
-	routes.Reconcile(103)
-	begin := beginCandidate(t, routes, BeginInput{NowMs: 104, ConnectionID: "a_from_b", Reservation: direct()})
-	current := must(t, begin.Operation).Current
-	before := routes.Snapshot().Revision
-	eq(t, routes.ObserveSenderQualityEvidence(unknownSample(HOST, A, before, "a_from_host", 105), nil).Accepted, true)
-	settled := routes.CandidateReady(guardFor(A, current.Revision, "a_from_b"), 106, nil, CandidateProof{})
-	eq(t, settled.Accepted, true)
-	eq(t, settled.Committed, false)
-	noOperation(t, routes.Snapshot().Operation)
-	eq(t, settled.ActiveRevision, before)
-	if routes.Snapshot().Revision <= before {
-		t.Fatalf("expected the abort to advance the revision past %d, got %d", before, routes.Snapshot().Revision)
+func TestQualityReadinessKeepsInconclusiveIncumbentWithinTheSameOperation(t *testing.T) {
+	for _, unknownFirst := range []bool{true, false} {
+		t.Run(fmt.Sprintf("unknown before readiness=%v", unknownFirst), func(t *testing.T) {
+			routes := newController(2, Options{QualityConvergenceEnabled: true})
+			addViewer(routes, A, 2, nil)
+			addViewer(routes, B, 2, nil)
+			routes.hydrateEdge(A, peerEdge(HOST, "a_from_host"))
+			routes.hydrateEdge(B, peerEdge(HOST, "b_from_host"))
+			observePersistentDegraded(t, routes, A, "a_from_host", 99)
+			operation := must(t, routes.Reconcile(103).Operation)
+			begin := beginOperation(t, routes, BeginInput{NowMs: 104, ConnectionID: "a_from_b", Reservation: direct()})
+			guard := guardFor(A, begin.Current.Revision, "a_from_b")
+			unknown := func(at int64) {
+				eq(t, routes.ObserveSenderQualityEvidence(unknownSample(HOST, A, routes.Snapshot().Revision, "a_from_host", at), nil).Accepted, true)
+			}
+			ready := func(at int64) {
+				settled := routes.CandidateReady(guard, at, nil, CandidateProof{RelativeQualityApproved: true})
+				eq(t, settled.Accepted, true)
+				eq(t, settled.Committed, false)
+			}
+			if unknownFirst {
+				unknown(105)
+				ready(106)
+			} else {
+				ready(105)
+				unknown(106)
+			}
+			pending := must(t, routes.Snapshot().Operation)
+			eq(t, pending.Current.Revision, guard.Revision)
+			eq(t, pending.DeadlineAtMs, operation.DeadlineAtMs)
+			eq(t, edgeOf(t, routes, A).ConnectionID, "a_from_host")
+			settled := routes.ObserveSenderQualityEvidence(senderSample(
+				B, A, guard.Revision, guard.ConnectionID, "candidate-rtp\x00track", SenderQualityHealthy, 107), nil)
+			eq(t, settled.Committed, true)
+			noOperation(t, routes.Snapshot().Operation)
+			eq(t, edgeOf(t, routes, A).ConnectionID, "a_from_b")
+		})
+	}
+}
+
+func TestInconclusiveQualityOperationStillRequiresCurrentAuthority(t *testing.T) {
+	for _, cause := range []string{"healthy", "reset", "sender-replaced", "pause", "deadline"} {
+		t.Run(cause, func(t *testing.T) {
+			routes := newController(2, Options{QualityConvergenceEnabled: true})
+			addViewer(routes, A, 2, nil)
+			addViewer(routes, B, 2, nil)
+			routes.hydrateEdge(A, peerEdge(HOST, "a_from_host"))
+			routes.hydrateEdge(B, peerEdge(HOST, "b_from_host"))
+			observePersistentDegraded(t, routes, A, "a_from_host", 99)
+			operation := must(t, routes.Reconcile(103).Operation)
+			begin := beginOperation(t, routes, BeginInput{NowMs: 104, ConnectionID: "a_from_b", Reservation: direct()})
+			guard := guardFor(A, begin.Current.Revision, "a_from_b")
+			eq(t, routes.ObserveSenderQualityEvidence(unknownSample(HOST, A, routes.Snapshot().Revision, "a_from_host", 105), nil).Accepted, true)
+			eq(t, routes.CandidateReady(guard, 106, nil, CandidateProof{RelativeQualityApproved: true}).Accepted, true)
+			at := int64(107)
+			switch cause {
+			case "healthy":
+				observeSenderState(routes, senderState{childPeerID: A, connectionID: "a_from_host", state: SenderQualityHealthy, acceptedAtMs: at})
+			case "reset":
+				routes.ResetSenderQuality(HOST, "host_session", at)
+			case "sender-replaced":
+				observeSenderState(routes, senderState{childPeerID: A, connectionID: "a_from_host", senderIdentity: "replacement-rtp\x00track", state: SenderQualityDegraded, acceptedAtMs: at})
+			case "pause":
+				routes.SetPaused(true, &at)
+			case "deadline":
+				at = operation.DeadlineAtMs
+			}
+			eq(t, routes.CandidateReady(guard, at, nil, CandidateProof{RelativeQualityApproved: true}).Accepted, false)
+			noOperation(t, routes.Snapshot().Operation)
+			eq(t, edgeOf(t, routes, A).ConnectionID, "a_from_host")
+		})
 	}
 }
 
@@ -1015,34 +1063,37 @@ func TestRejectsSfuQualityCandidateOnDegradedPublisherEvidence(t *testing.T) {
 	eq(t, edge.ParentPeerID, HOST)
 }
 
-// TS 2297: abandons Host relief when another Host root recovers during the canary
-func TestAbandonsHostReliefWhenAnotherHostRootRecoversDuringCanary(t *testing.T) {
-	routes := newController(2, Options{SfuEnabled: true, QualityConvergenceEnabled: true})
-	addViewer(routes, A, 1, nil)
-	addViewer(routes, B, 0, nil)
-	routes.hydrateEdge(A, peerEdge(HOST, "a_from_host"))
-	routes.hydrateEdge(B, peerEdge(HOST, "b_from_host"))
-	observePersistentDegraded(t, routes, A, "a_from_host", 99)
-	observePersistentDegraded(t, routes, B, "b_from_host", 99)
-	routes.Reconcile(103)
-	begin := beginCandidate(t, routes, BeginInput{
-		NowMs:                   104,
-		ConnectionID:            "a_from_sfu",
-		Reservation:             sfuCreateOverlap("sfu-edge", "sfu-publication", "host-overlap"),
-		PublicationGeneration:   "publication_generation_12345678",
-		PublicationConnectionID: "publication_connection_12345678",
-		HostSessionID:           "host_session",
-	})
-	current := must(t, begin.Operation).Current
-	eq(t, observeSenderState(routes, senderState{
-		childPeerID: B, connectionID: "b_from_host", state: SenderQualityHealthy, acceptedAtMs: 105,
-	}).Accepted, true)
-	eq(t, routes.CandidateReady(guardFor(A, current.Revision, "a_from_sfu"), 106, nil, CandidateProof{}).Committed, false)
-	noOperation(t, routes.Snapshot().Operation)
-	edge := edgeOf(t, routes, A)
-	eq(t, edge.Kind, UpstreamPeer)
-	eq(t, edge.ParentPeerID, HOST)
-	eq(t, edge.ConnectionID, "a_from_host")
+func TestAbandonsHostReliefWhenAnotherHostRootIsNoLongerDegraded(t *testing.T) {
+	for _, state := range []SenderQualityState{SenderQualityHealthy, SenderQualityUnknown} {
+		t.Run(string(state), func(t *testing.T) {
+			routes := newController(2, Options{SfuEnabled: true, QualityConvergenceEnabled: true})
+			addViewer(routes, A, 1, nil)
+			addViewer(routes, B, 0, nil)
+			routes.hydrateEdge(A, peerEdge(HOST, "a_from_host"))
+			routes.hydrateEdge(B, peerEdge(HOST, "b_from_host"))
+			observePersistentDegraded(t, routes, A, "a_from_host", 99)
+			observePersistentDegraded(t, routes, B, "b_from_host", 99)
+			routes.Reconcile(103)
+			begin := beginCandidate(t, routes, BeginInput{
+				NowMs:                   104,
+				ConnectionID:            "a_from_sfu",
+				Reservation:             sfuCreateOverlap("sfu-edge", "sfu-publication", "host-overlap"),
+				PublicationGeneration:   "publication_generation_12345678",
+				PublicationConnectionID: "publication_connection_12345678",
+				HostSessionID:           "host_session",
+			})
+			current := must(t, begin.Operation).Current
+			eq(t, observeSenderState(routes, senderState{
+				childPeerID: B, connectionID: "b_from_host", state: state, acceptedAtMs: 105,
+			}).Accepted, true)
+			eq(t, routes.CandidateReady(guardFor(A, current.Revision, "a_from_sfu"), 106, nil, CandidateProof{}).Committed, false)
+			noOperation(t, routes.Snapshot().Operation)
+			edge := edgeOf(t, routes, A)
+			eq(t, edge.Kind, UpstreamPeer)
+			eq(t, edge.ParentPeerID, HOST)
+			eq(t, edge.ConnectionID, "a_from_host")
+		})
+	}
 }
 
 // TS 2350: uses SFU reuse only for multi-edge Host relief with healthy ingress

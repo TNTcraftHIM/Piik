@@ -57,7 +57,7 @@ you can also create a room in the online version.
 | --- | --- |
 | [Use Piik online](https://demo.piik.tv) | Open it in a desktop browser to create a room and share. |
 | [Download Piik App](https://piik.tv/#download) | Extract and open the App, choose **Public invite**, then **Open Piik** to create a temporary room. |
-| Use an existing Piik site | Open the address your friend or administrator provides. [Hosting your own](./docs/operations/self-hosting.md) is an advanced option. |
+| [Host your own site](./docs/operations/self-hosting.md) | Advanced: deploy Piik Server on a Linux x64 server with your own domain, then connect through Piik App or a browser. |
 
 <p align="center"><img src="./docs/assets/quickstart.svg" width="640" alt="Choose a screen, send an invitation, watch together."></p>
 
