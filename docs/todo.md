@@ -7,11 +7,6 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **Owner acceptance and release preparation.** Review the maintenance UI
-  and website, including entry preferences, sharing/playback, admission feedback,
-  and shared controls. Present the complete bilingual release notes and proposed
-  version before a product-changing merge or publication. Keep representative
-  device/network limits explicit; local checks do not close those deferrals.
 - [ ] **Introduction motion and presentation boundaries.** Resolve the automatic
   hero-loop control requirement against the accepted design without restoring
   discarded gesture controls or silently removing animation. Review only the

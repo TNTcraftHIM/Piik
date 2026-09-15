@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-09-12
+Last updated: 2026-09-15
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) owns unresolved physical limits,
@@ -9,8 +9,8 @@ and Git/PRs own completed history.
 ## Accepted Release Contract
 
 - Browser/server v23, Native control v9 and capture v7 form the current contract.
-  The coordinated brand/protocol cutover requires matching Web/App/Server
-  artifacts and a reload of incompatible active pages.
+  [Versioning](./reference/versioning.md#public-compatibility-promise) owns
+  compatibility between published Web/App/Server versions.
 - Hosted Server defaults to SQLite schema 2. Room authority has no inactivity
   expiry; explicit replacement/deletion or grant rotation/revocation ends the
   corresponding authority. Explicit memory mode and App Local end rooms at
@@ -24,12 +24,9 @@ and Git/PRs own completed history.
 ## Deployment
 
 Source, package identity, GitHub repository and local worktree paths use Piik.
-Runtime code keeps only the Piik wire labels and stored keys. The coordinated
-private cutover requires matching App/Server/Web packages; unavailable old
-Browser credentials cannot be reconstructed from stored digests.
+Runtime code keeps only the Piik wire labels and stored keys.
 The immutable release descriptor, runtime `REVISION` and operator deployment
-record own exact identity and postflight results. Old active pages reload at
-the signaling v23 boundary.
+record own exact identity and postflight results.
 
 The existing deployment uses one Go process for Web, room authority/signaling,
 Binding-only STUN on UDP 3478/3479/3480 and optional SFU on UDP 7882. nginx owns
