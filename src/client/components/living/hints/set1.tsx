@@ -37,7 +37,7 @@ function SourceWindow({ x, y, alternate = false }: { x: number; y: number; alter
 
 /* hint-share-start: [dark TV + pawn reaching toward it] → [TV bright, mint
    glow, rays + Star]. The after panel demonstrates one power-on beat
-   (CRT screen-on → rays → star → pawn hop), then rests lit ~60%. */
+   (screen brightens → rays → star → pawn hop), then rests lit. */
 const SceneShareStart: HintScene = ({ theme }) => (
   <>
     <style>{`
@@ -49,9 +49,9 @@ const SceneShareStart: HintScene = ({ theme }) => (
 .vls-hs-hop{animation:vlsHsHop var(--comic-duration,3.2s) cubic-bezier(.3,1.5,.5,1) var(--comic-repeat,1) both}
 @keyframes vlsHsReach{0%{transform:rotate(0)}10%{transform:rotate(7deg)}26%{transform:rotate(7deg)}40%,100%{transform:rotate(0)}}
 @keyframes vlsHsIntent{0%{opacity:0}10%{opacity:.9}26%{opacity:.9}40%,100%{opacity:0}}
-@keyframes vlsHsCrt{0%{transform:scaleY(.06);opacity:.5}12%,100%{transform:scaleY(1);opacity:1}}
-@keyframes vlsHsRays{0%,8%{opacity:0;transform:translateY(2px)}18%,100%{opacity:1;transform:translateY(0)}}
-@keyframes vlsHsStar{0%,18%{opacity:0;transform:scale(0)}26%{opacity:1;transform:scale(1.25)}33%,100%{opacity:1;transform:scale(1)}}
+@keyframes vlsHsCrt{0%,26%,100%{transform:scaleY(1);opacity:1}8%{transform:scaleY(.86);opacity:.55}16%{transform:scaleY(1.03);opacity:1}}
+@keyframes vlsHsRays{0%,24%,100%{opacity:1;transform:translateY(0)}8%{opacity:.3;transform:translateY(2px)}18%{opacity:1;transform:translateY(-1px)}}
+@keyframes vlsHsStar{0%,18%,40%,100%{opacity:1;transform:scale(1)}26%{transform:scale(1.25)}33%{transform:scale(.94)}}
 @keyframes vlsHsHop{0%,26%{transform:translateY(0)}33%{transform:translateY(-6px)}40%,100%{transform:translateY(0)}}
 ${rmBlock(
   ["vls-hs-reach", "vls-hs-intent", "vls-hs-crt", "vls-hs-rays", "vls-hs-star", "vls-hs-hop"],
@@ -100,9 +100,9 @@ const SceneShareStop: HintScene = ({ theme }) => (
 .vls-hx-moon{animation:vlsHxMoon var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-hx-settle{animation:vlsHxSettle var(--comic-duration,3.2s) cubic-bezier(.3,1.5,.5,1) var(--comic-repeat,1) both}
 @keyframes vlsHxBlink{0%,44%,52%,100%{transform:scaleY(1)}48%{transform:scaleY(.12)}}
-@keyframes vlsHxDim{0%{opacity:0}14%,100%{opacity:1}}
-@keyframes vlsHxLed{0%{opacity:1}14%,100%{opacity:0}}
-@keyframes vlsHxMoon{0%,16%{opacity:0;transform:translateY(3px)}28%{opacity:1;transform:translateY(0)}38%{transform:translateY(-2px)}50%,100%{opacity:1;transform:translateY(0)}}
+@keyframes vlsHxDim{0%,28%,100%{opacity:1}8%{opacity:.45}}
+@keyframes vlsHxLed{0%,28%,100%{opacity:0}8%{opacity:.45}}
+@keyframes vlsHxMoon{0%,16%,50%,100%{opacity:1;transform:translateY(0)}28%{transform:translateY(-3px)}38%{transform:translateY(1px)}}
 @keyframes vlsHxSettle{0%,48%{transform:translateY(0)}54%{transform:translateY(-2px)}60%,100%{transform:translateY(0)}}
 ${rmBlock(
   ["vls-hx-eyes", "vls-hx-dim", "vls-hx-led", "vls-hx-moon", "vls-hx-settle"],
@@ -148,9 +148,9 @@ const ScenePause: HintScene = ({ theme }) => (
 .vls-pz-bars{transform-box:fill-box;transform-origin:center;animation:vlsPzBars var(--comic-duration,3.2s) cubic-bezier(.3,1.5,.5,1) var(--comic-repeat,1) both}
 :where(svg[data-comic-motion="still"]) .vls-pz-bars{animation-name:vlsPzRest}
 @keyframes vlsPzFlick{0%{opacity:.5}10%{opacity:.9}20%{opacity:.2}32%{opacity:.85}44%,100%{opacity:.5}}
-@keyframes vlsPzHold{0%{opacity:0}12%,100%{opacity:1}}
-@keyframes vlsPzBars{0%,5%{opacity:0;transform:scale(1.45)}16%,100%{opacity:1;transform:scale(1)}}
-@keyframes vlsPzRest{0%,8%{transform:scale(1.15)}30%,100%{transform:none}}
+@keyframes vlsPzHold{0%,24%,100%{opacity:1}8%{opacity:.6}}
+@keyframes vlsPzBars{0%,6%,32%,100%{opacity:1;transform:scale(1)}16%{transform:scale(1.18)}24%{transform:scale(.96)}}
+@keyframes vlsPzRest{0%,36%,100%{transform:none}14%{transform:scale(1.15)}}
 ${rmBlock(
   ["vls-pz-flick", "vls-pz-hold"],
   [[".vls-pz-flick", "opacity:.5"], [".vls-pz-hold", "opacity:1;transform:none"]],
@@ -188,10 +188,10 @@ const SceneResume: HintScene = ({ theme }) => (
 .vls-rs-led{animation:vlsRsLed var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
 .vls-rs-flick{animation:vlsRsFlick var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 :where(svg[data-comic-motion="still"]) .vls-rs-play{animation-name:vlsRsRest}
-@keyframes vlsRsPlay{0%{transform:scale(.55);opacity:.5}14%{transform:scale(1.18);opacity:1}22%,100%{transform:scale(1);opacity:1}}
-@keyframes vlsRsLed{0%{opacity:.2}10%,100%{opacity:1}}
-@keyframes vlsRsFlick{0%,12%{opacity:0}20%{opacity:.9}30%{opacity:.25}40%{opacity:.85}54%,100%{opacity:.5}}
-@keyframes vlsRsRest{0%,8%{transform:translateX(-3px)}30%,100%{transform:none}}
+@keyframes vlsRsPlay{0%,30%,100%{transform:scale(1);opacity:1}8%{transform:scale(.8)}18%{transform:scale(1.18)}}
+@keyframes vlsRsLed{0%,22%,100%{opacity:1}8%{opacity:.4}}
+@keyframes vlsRsFlick{0%,12%,54%,100%{opacity:.5}20%{opacity:.9}30%{opacity:.25}40%{opacity:.85}}
+@keyframes vlsRsRest{0%,36%,100%{transform:none}14%{transform:translateX(-3px)}}
 ${rmBlock(
   ["vls-rs-led", "vls-rs-flick"],
   [[".vls-rs-led", "opacity:1;transform:none"], [".vls-rs-flick", "opacity:.5"]],
@@ -223,10 +223,10 @@ const SceneSwitchSource: HintScene = ({ theme }) => (
     <style>{`
 .vls-sw-d1{animation:vlsSwD1 var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-sw-d2{animation:vlsSwD2 var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
-:where(svg[data-comic-motion="still"]) .vls-sw-selected{animation:vlsSwSelected var(--comic-duration,3.2s) ease-out 1 both}
+:where(svg[data-comic-motion="still"]) .vls-sw-selected{animation:vlsSwSelected var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
 @keyframes vlsSwD1{0%{transform:translate(0,0);opacity:0}8%{opacity:1}22%{transform:translate(11px,-6px)}36%{transform:translate(22px,0);opacity:1}46%,100%{transform:translate(22px,0);opacity:0}}
 @keyframes vlsSwD2{0%{transform:translate(0,0);opacity:0}8%{opacity:1}22%{transform:translate(-11px,6px)}36%{transform:translate(-22px,0);opacity:1}46%,100%{transform:translate(-22px,0);opacity:0}}
-@keyframes vlsSwSelected{0%,8%{transform:translateY(-4px)}30%,100%{transform:none}}
+@keyframes vlsSwSelected{0%,38%,100%{transform:none}14%{transform:translateY(-4px)}}
 ${rmBlock(["vls-sw-d1", "vls-sw-d2"], [[".vls-sw-d1,.vls-sw-d2", "opacity:0;transform:none"]])}
 ${rmBlock(["vls-sw-selected"], [[".vls-sw-selected", "transform:none"]], false)}
 `}</style>
@@ -257,7 +257,7 @@ const SceneReconnect: HintScene = ({ theme }) => (
 .vls-rj-spark{animation:vlsRjSpark var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-rj-plug{transform-box:fill-box;transform-origin:50% 100%;animation:vlsRjPlug var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 @keyframes vlsRjSpark{0%,100%{opacity:.55}15%{opacity:1}}
-@keyframes vlsRjPlug{0%{transform:translate(-2px,-8px) rotate(-6deg)}10%{transform:translate(-1px,-3px) rotate(4deg)}20%{transform:translate(0,-1px) rotate(-2deg)}28%,100%{transform:none}}
+@keyframes vlsRjPlug{0%,40%,100%{transform:none}8%{transform:translate(-2px,-8px) rotate(-6deg)}18%{transform:translate(-1px,-3px) rotate(4deg)}28%{transform:translate(0,-1px) rotate(-2deg)}}
 ${rmBlock(
   ["vls-rj-spark", "vls-rj-plug"],
   [
@@ -283,7 +283,7 @@ function CaptureHint({ theme, target }: Parameters<HintScene>[0] & { target: "br
   return <>
     <style>{`
 .vls-capture-choice{animation:vlsCaptureChoice var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
-@keyframes vlsCaptureChoice{0%,10%{opacity:.35;transform:translate(3px,3px)}28%,100%{opacity:1;transform:none}}
+@keyframes vlsCaptureChoice{0%,36%,100%{opacity:1;transform:none}12%{opacity:.5;transform:translate(3px,3px)}}
 ${rmBlock(["vls-capture-choice"], [[".vls-capture-choice", "opacity:1;transform:none"]])}
 `}</style>
     <Frame x={4} w={152} theme={theme} />

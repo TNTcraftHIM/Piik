@@ -32,17 +32,17 @@ function PreviewCard({ kind, tone, motion, label, text }: {
     const scene = card.querySelector(".lr-tooltip-preview-art > svg");
     if (scene) replaySvgAnimations(scene);
   };
-  return <section className="lr-tooltip-preview-card"
+  return <section id={label ? undefined : kind} className="lr-tooltip-preview-card"
     onPointerEnter={(event) => { if (event.pointerType !== "touch") replay(event.currentTarget); }}
     onPointerDown={(event) => { if (event.pointerType === "touch") replay(event.currentTarget); }}
     onFocusCapture={(event) => replay(event.currentTarget)}>
     <header>
       <code>{label ?? kind}</code>
       <span className="lr-tooltip-preview-actions">
-        {text ? <Tooltip kind={kind} tone={tone} motion={motion} text={text} place="below">
+        {text ? <Tooltip toggleOnClick kind={kind} tone={tone} motion={motion} text={text} place="below">
           <button type="button" aria-label={`Text ${label ?? kind}`} className="lr-tooltip-preview-trigger">Aa</button>
         </Tooltip> : null}
-        <Tooltip kind={kind} tone={tone} motion={motion} place="below">
+        <Tooltip toggleOnClick kind={kind} tone={tone} motion={motion} place="below">
           <button type="button" aria-label={`Preview ${label ?? kind}`} className="lr-tooltip-preview-trigger">✦</button>
         </Tooltip>
       </span>
@@ -65,7 +65,7 @@ export function TooltipPreviewPage() {
       <main className="lr-room lr-tooltip-preview">
         <header className="lr-tooltip-preview-head">
           <h1>{en ? "Piik · UI catalogue" : "Piik · UI 控件大全"}</h1>
-          <p>{en ? "Actual components, sample data. Hover or tap a comic to replay it; use its corner button to open the tooltip." : "正式组件，示例数据。悬停或轻点漫画可重播，角上的按钮可查看实际提示。"}</p>
+          <p>{en ? "Actual components, sample data. Comics loop while displayed. Use the corner buttons to open the same tooltip on hover, focus or tap." : "正式组件，示例数据。漫画在展示期间循环；悬停、聚焦或点击角上的按钮，可查看实际提示。"}</p>
           <label><input type="checkbox" checked={reducedMotion} onChange={event => setReducedMotion(event.target.checked)} />
             {en ? "Reduced motion" : "减少动态效果"}</label>
         </header>
@@ -74,6 +74,7 @@ export function TooltipPreviewPage() {
           <a href="#input-preview">{en ? "Inputs" : "输入与房间号"}</a><a href="#feedback-preview">{en ? "Feedback" : "反馈"}</a>
           <a href="#people-preview">{en ? "People & connections" : "人物、沙发与连接图"}</a><a href="#source-preview">{en ? "Source picker" : "画面选择"}</a>
           <a href="#playback-preview">{en ? "Playback" : "播放栏"}</a><a href="#comic-preview">{en ? "Tooltips & comics" : "提示与漫画"}</a>
+          <a href="#hint-admission-code">{en ? "Room entry" : "房间准入"}</a>
           <a href="#metrics-preview">{en ? "Metrics" : "连接数据"}</a>
           <a href="#welcome-preview">{en ? "Opening lines" : "开场白"}</a>
           <a href="/__status-preview">{en ? "Status gallery" : "完整状态预览"}</a>

@@ -7,7 +7,7 @@ const CollapseHint: HintScene = ({ theme }) => (
   <>
     <style>{`
 .vls-fold-body{transform-box:fill-box;transform-origin:50% 0%;animation:vlsFoldBody var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
-@keyframes vlsFoldBody{0%,12%{transform:scaleY(1);opacity:1}40%,100%{transform:scaleY(0);opacity:0}}
+@keyframes vlsFoldBody{0%,40%,100%{transform:scaleY(0);opacity:0}12%{transform:scaleY(1);opacity:0}18%{transform:scaleY(1);opacity:1}}
 ${rmBlock(["vls-fold-body"], [[".vls-fold-body", "transform:scaleY(0);opacity:0"]])}
 `}</style>
     {[4, 164].map((x, index) => (
@@ -30,8 +30,8 @@ function PasswordHint({ theme, action }: { theme: ComicTheme; action: "show" | "
     <style>{`
 .vls-password-new,.vls-password-clear{animation:vlsPasswordNew var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
 .vls-password-clear{animation-name:vlsPasswordClear}
-@keyframes vlsPasswordNew{0%,14%{opacity:0}35%,100%{opacity:1}}
-@keyframes vlsPasswordClear{0%,14%{opacity:1}35%,100%{opacity:0}}
+@keyframes vlsPasswordNew{0%,35%,100%{opacity:1}14%{opacity:.25}}
+@keyframes vlsPasswordClear{0%,35%,100%{opacity:0}14%{opacity:1}}
 ${rmBlock(["vls-password-new", "vls-password-clear"], [[".vls-password-new", "opacity:1"], [".vls-password-clear", "opacity:0"]])}
 `}</style>
     {[4, 164].map((x, index) => {
@@ -58,8 +58,8 @@ ${rmBlock(["vls-password-new", "vls-password-clear"], [[".vls-password-new", "op
 // A captured audio track is a source fact, not a locked setting or delivery proof.
 const SourceAudioHint: HintScene = ({ theme }) => <>
   <style>{`
-.vls-source-audio-note{animation:vlsSourceAudioNote var(--comic-duration,3.2s) ease-out 1 both}
-@keyframes vlsSourceAudioNote{0%,8%{transform:translateY(5px)}32%,100%{transform:none}}
+.vls-source-audio-note{animation:vlsSourceAudioNote var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
+@keyframes vlsSourceAudioNote{0%,40%,100%{transform:none}14%{transform:translateY(5px)}}
 ${rmBlock(["vls-source-audio-note"], [[".vls-source-audio-note", "transform:none"]], false)}
 `}</style>
   <Frame x={4} w={312} theme={theme} result />
@@ -79,9 +79,9 @@ function ShareAudioHint({ theme, enabled, locked = false }: { theme: ComicTheme;
     <style>{`
 .vls-share-audio-change{animation:vlsShareAudioChange var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-share-audio-off{animation-name:vlsShareAudioOff}
-.vls-share-audio-lock{transform-box:fill-box;transform-origin:center;animation:vlsShareAudioLock var(--comic-duration,3.2s) ease-in-out 1 both}
-@keyframes vlsShareAudioChange{0%,12%{opacity:0}36%,100%{opacity:1}}
-@keyframes vlsShareAudioOff{0%,12%{opacity:1}36%,100%{opacity:0}}
+.vls-share-audio-lock{transform-box:fill-box;transform-origin:center;animation:vlsShareAudioLock var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+@keyframes vlsShareAudioChange{0%,36%,100%{opacity:1}12%{opacity:.25}}
+@keyframes vlsShareAudioOff{0%,36%,100%{opacity:0}12%{opacity:1}}
 @keyframes vlsShareAudioLock{0%,8%,34%,100%{transform:none}16%{transform:translateX(-3px) rotate(-12deg)}25%{transform:translateX(2px) rotate(8deg)}}
 ${rmBlock(["vls-share-audio-change"], [[".vls-share-audio-change", "opacity:1"], [".vls-share-audio-off", "opacity:0"]])}
 ${rmBlock(["vls-share-audio-lock"], [[".vls-share-audio-lock", "transform:none"]], false)}
@@ -113,8 +113,8 @@ const RefreshSourcesHint: HintScene = ({ theme }) => <>
   <style>{`
 .vls-refresh-path{stroke-dasharray:1;animation:vlsRefreshPath var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
 .vls-refresh-source{animation:vlsRefreshSource var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
-@keyframes vlsRefreshPath{0%,8%{stroke-dashoffset:1}24%,100%{stroke-dashoffset:0}}
-@keyframes vlsRefreshSource{0%,24%{opacity:0;transform:translateY(5px)}42%,100%{opacity:1;transform:none}}
+@keyframes vlsRefreshPath{0%,24%,100%{stroke-dashoffset:0;opacity:1}8%{stroke-dashoffset:0;opacity:0}12%{stroke-dashoffset:1;opacity:0}}
+@keyframes vlsRefreshSource{0%,42%,100%{opacity:1;transform:none}8%{opacity:0;transform:none}12%,24%{opacity:0;transform:translateY(5px)}}
 ${rmBlock(["vls-refresh-path", "vls-refresh-source"], [[".vls-refresh-path", "stroke-dashoffset:0"], [".vls-refresh-source", "opacity:1;transform:none"]])}
 `}</style>
   {[4, 164].map((x, index) => <g key={x}>
@@ -137,9 +137,9 @@ ${rmBlock(["vls-refresh-path", "vls-refresh-source"], [[".vls-refresh-path", "st
 function SourceListHint({ theme, empty = false }: { theme: ComicTheme; empty?: boolean }) {
   return <>
     <style>{`
-.vls-source-cursor{animation:vlsSourceCursor var(--comic-duration,3.2s) ease-in-out 1 both}
-.vls-source-look{transform-box:fill-box;transform-origin:50% 100%;animation:vlsSourceLook var(--comic-duration,3.2s) ease-in-out 1 both}
-@keyframes vlsSourceCursor{0%,8%{transform:translate(35px,9px)}30%,100%{transform:none}}
+.vls-source-cursor{animation:vlsSourceCursor var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-source-look{transform-box:fill-box;transform-origin:50% 100%;animation:vlsSourceLook var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+@keyframes vlsSourceCursor{0%,42%,100%{transform:none}16%{transform:translate(35px,9px)}}
 @keyframes vlsSourceLook{0%,8%,42%,100%{transform:none}22%{transform:rotate(7deg)}}
 ${rmBlock(["vls-source-cursor", "vls-source-look"], [[".vls-source-cursor,.vls-source-look", "transform:none"]], false)}
 `}</style>

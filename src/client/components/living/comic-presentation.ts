@@ -90,6 +90,7 @@ export function comicStyle(tone: ComicTone, motion: ComicMotion): CSSProperties 
   return {
     "--comic-tone": COLOURS[tone],
     "--comic-duration": "3.2s",
-    "--comic-repeat": motion === "progress" ? "infinite" : "1",
+    // Explanations inherit the tooltip's loop; standalone results play once.
+    "--comic-repeat": motion === "progress" ? "infinite" : undefined,
   } as CSSProperties;
 }

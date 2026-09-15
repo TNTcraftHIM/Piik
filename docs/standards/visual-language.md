@@ -25,6 +25,12 @@ expressions and brief gestures. Keep the interface approachable; avoid
 pushing ordinary characters toward infant proportions, exaggerated
 grins, dense cute decoration or children's picture-book styling.
 
+Consistency governs meaning, cast and interaction, not identical compositions.
+Give each explanation a recognisable little scene: a welcoming hop, a curious
+peek or a character leaning into an action. Anticipation, a soft landing and
+staggered responses make movement expressive. Reuse drawing primitives and motion
+ownership; do not reduce distinct situations to one layout with a swapped symbol.
+
 ## Layout And Input
 
 Present a small shared living room: the television is the media stage, the
@@ -34,6 +40,9 @@ model. Universal digits, transport symbols, URLs and measured values remain
 literal when the user needs the data.
 
 Functional controls use native buttons/inputs and localized accessible names.
+Pointer cursors identify clickable controls and links; text inputs use text
+cursors. A passive label, illustration or hover-only explanation keeps its
+ordinary cursor. A help button that actually toggles guidance is interactive.
 Hover, keyboard focus and touch receive equivalent guidance. Keep information
 order and interaction ownership consistent across languages, themes and viewport
 sizes. Reflow or bounded scrolling must not hide a primary action, truncate an
@@ -296,21 +305,29 @@ possibility. A rejected PiP request is failure; lack of PiP support is a limitat
 
 | Presentation | Rule |
 | --- | --- |
-| Action demonstration (`demo`) | Play one meaningful transition when shown, then hold its result |
+| Action demonstration (`demo`) | Explain an action with a short gesture and a readable hold; repeat while its tooltip is displayed |
 | Work actually continuing (`progress`) | Repeat a gentle connection/recovery beat while that state exists |
-| Settled success, failure, limitation, pause or idle (`still`) | Keep the result readable while a related subject moves briefly, then holds; do not repeat the operation, retry or celebrate |
+| Settled success, failure, limitation, pause or idle (`still`) | Keep the result readable while a related character or object moves; tooltip gestures loop without re-running the actual operation or changing the verdict |
 
 Demonstrations and progress share the existing 3.2-second comic beat. The main
 action belongs in its first half, followed by a readable hold; small internal
-staggering is allowed. At most two independent movers per panel. An explanatory
+staggering is allowed. Keep one focal gesture at a time; other characters can
+answer it with a delayed reaction. An explanatory
 slider describes purpose and available range, not its live numeric value.
 Decorative sparkle must support the pictured action, never fake current success.
 
-Reduced motion and settled states reuse each scene's **same explicit final
-pose**. Disabling animation alone is insufficient if the base SVG hides the
-result or shows a misleading starting pose. Static styling is scoped to its SVG;
-one still tooltip must not freeze another progress scene. New keyframes must end
-in the documented result rather than reset for an obsolete loop.
+The shared tooltip owns repetition for hover, keyboard focus and click/tap;
+scene animations inherit its repeat count instead of hard-coding one play.
+Closing guidance pauses and unmounts its scene. The panel entrance plays once;
+its characters and objects keep moving while shown. Standalone settled scenes
+retain their brief gesture, while real progress repeats for its state's lifetime.
+
+Reduced motion uses each scene's **explicit informative static pose**. Disabling
+animation alone is insufficient if the base SVG hides the result or shows a
+misleading starting pose. Settled facts stay visible during decorative movement.
+Static styling is scoped to its SVG; one still tooltip must not freeze another
+progress scene. Repeating gestures should return cleanly to their start; use a
+readable hold rather than a sudden position jump at the loop boundary.
 
 Every comic surface, including overlays and error pages, needs visible motion
 in its subject: a paused scene's steam rises, a loose cable sways, or packets

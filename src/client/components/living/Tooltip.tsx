@@ -196,10 +196,12 @@ export function Tooltip({
     const fits = order.find((a) => clipped(boxes[a]) === 0);
     const selected = fits ?? order.reduce((a, b) => (clipped(boxes[a]) <= clipped(boxes[b]) ? a : b));
     const left = Math.max(EDGE_MARGIN, Math.min(boxes[selected].left, vw - width - EDGE_MARGIN));
+    const border = tipRef.current ? parseFloat(getComputedStyle(tipRef.current).borderLeftWidth) || 0 : 0;
     setPosition({
       left,
       top: livePlace === "below" ? rect.bottom + EDGE_MARGIN : rect.top - panelHeight - EDGE_MARGIN,
-      caret: Math.max(14, Math.min(center - left, width - 14)),
+      // The caret's absolute position starts inside the panel's border.
+      caret: Math.max(14, Math.min(center - left, width - 14)) - border,
       below: livePlace === "below",
     });
   };
@@ -404,8 +406,8 @@ export function Tooltip({
           event.stopPropagation();
         }
       }}
-      onClick={(event) => {
-        if (!enabled || !toggleOnClick || disabledTrigger || tipRef.current?.contains(event.target as Node)) return;
+      onClick={enabled && toggleOnClick && !disabledTrigger ? (event) => {
+        if (tipRef.current?.contains(event.target as Node)) return;
         if (pressOpen) {
           setPressOpen(false);
           setHoverOpen(false);
@@ -415,7 +417,7 @@ export function Tooltip({
           pickAlign();
           setPressOpen(true);
         }
-      }}
+      } : undefined}
       onKeyDown={(event) => {
         if (!enabled) return;
         if (event.key !== "Escape" && (event.target as HTMLElement).matches(":focus-visible")) {
@@ -431,7 +433,7 @@ export function Tooltip({
       }) : children}
       <span ref={tipRef} id={tooltipId} popover="manual"
         data-tone={resolvedTone}
-        style={{ ...comicStyle(resolvedTone, resolvedMotion), left: position.left, top: position.top, "--tooltip-caret": `${position.caret}px` } as CSSProperties}
+        style={{ ...comicStyle(resolvedTone, resolvedMotion), "--comic-repeat": "infinite", left: position.left, top: position.top, "--tooltip-caret": `${position.caret}px` } as CSSProperties}
         className={`lr-comic-tip${kind ? " has-comic" : ""}${caption !== undefined ? " is-text" : ""}${placeClass}`} role="tooltip" aria-hidden={!interactionOpen}>
         {panelMounted ? <>
           {kind ? isHintKind(kind)

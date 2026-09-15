@@ -316,7 +316,7 @@ export function Spark({ x, y, className }: { x: number; y: number; className?: s
   );
 }
 
-/** Four-point success star; plays once, then holds. */
+/** Four-point success star; the containing scene owns its motion. */
 export function Star({
   x,
   y,
@@ -335,7 +335,7 @@ export function Star({
   return <path className={className} opacity={baseOpacity} d={d} fill={STAR_GOLD} />;
 }
 
-/** Red-X verdict stamp: stamped once, held forever; never pulses. */
+/** Unavailable verdict mark; keep it readable while the subject moves. */
 export function RedX({
   cx,
   cy,
@@ -431,10 +431,10 @@ function SceneWaiting({ theme }: { theme: ComicTheme }) {
   return (
     <>
       <style>{`
-.vls-wf-z1{animation:vlsWfZNear var(--comic-duration,3.2s) ease-out 1 both}
-.vls-wf-z2{animation:vlsWfZFar var(--comic-duration,3.2s) ease-out 1 both}
-@keyframes vlsWfZNear{0%{opacity:.85;transform:translate(-5px,10px)}42%,100%{opacity:.65;transform:none}}
-@keyframes vlsWfZFar{0%,6%{opacity:.75;transform:translate(-12px,14px)}48%,100%{opacity:.55;transform:none}}
+.vls-wf-z1{animation:vlsWfZNear var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
+.vls-wf-z2{animation:vlsWfZFar var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
+@keyframes vlsWfZNear{0%,52%,100%{opacity:.65;transform:none}24%{opacity:.85;transform:translate(2px,-4px)}}
+@keyframes vlsWfZFar{0%,6%{opacity:0;transform:translate(-12px,14px)}18%{opacity:.75}48%{opacity:.55;transform:none}76%,100%{opacity:0;transform:translate(6px,-8px)}}
 ${rmBlock(
   ["vls-wf-z1", "vls-wf-z2"],
   [[".vls-wf-z1", "opacity:.65;transform:none"], [".vls-wf-z2", "opacity:.55;transform:none"]],
@@ -484,7 +484,7 @@ ${sfu ? `.${k}-slots{animation:${k}Slots var(--comic-duration,3.2s) ease-in-out 
 .${k}-led{animation:${k}Led var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 @keyframes ${k}March{to{stroke-dashoffset:-16}}
 ${dotKf}
-@keyframes ${k}Warm{0%,52%{opacity:0}60%{opacity:.25}66%{opacity:.1}74%{opacity:.3}100%{opacity:.18}}
+@keyframes ${k}Warm{0%,52%,100%{opacity:0}60%{opacity:.25}66%{opacity:.1}74%{opacity:.3}}
 @keyframes ${k}Led{0%,100%{opacity:1}50%{opacity:.3}}
 ${rmBlock(kills, pins)}
 `}</style>
@@ -546,7 +546,7 @@ function SceneSignal({ theme, state, peer = false }: {
       <style>{`
 .vls-signal-message{animation:vlsSignalMessage var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-signal-retry{transform-box:fill-box;transform-origin:center;animation:vlsSignalRetry var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
-.vls-signal-result{transform-box:fill-box;transform-origin:center;animation:vlsSignalResult var(--comic-duration,3.2s) ease-out 1 both}
+.vls-signal-result{transform-box:fill-box;transform-origin:center;animation:vlsSignalResult var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
 @keyframes vlsSignalMessage{0%{transform:translateX(0);opacity:0}8%{opacity:1}40%{transform:translateX(82px);opacity:1}55%,100%{transform:translateX(82px);opacity:0}}
 @keyframes vlsSignalRetry{0%{transform:rotate(0)}55%,100%{transform:rotate(360deg)}}
 @keyframes vlsSignalResult{0%,8%,42%,100%{transform:none}20%{transform:scale(.9)}30%{transform:scale(1.04)}}
@@ -659,7 +659,7 @@ function ScenePaused({ theme }: { theme: ComicTheme }) {
 @keyframes vlsHpBars{0%,100%{opacity:.55}50%{opacity:1}}
 @keyframes vlsHpLed{0%,100%{opacity:1}50%{opacity:.3}}
 @keyframes vlsHpBlink{0%,44%,52%,100%{transform:scaleY(1)}48%{transform:scaleY(.12)}}
-@keyframes vlsHpSteam{0%{transform:translateY(2px);opacity:.4}20%{opacity:.9}45%,100%{transform:translateY(-2px);opacity:.55}}
+@keyframes vlsHpSteam{0%,48%,100%{transform:none;opacity:.55}20%{transform:translateY(-4px);opacity:.9}}
 ${rmBlock(
   ["vls-hp-bars", "vls-hp-led", "vls-hp-eyes", "vls-hp-steam2"],
   [
@@ -700,8 +700,8 @@ function SceneRecovering({ theme }: { theme: ComicTheme }) {
 .vls-rc-c1{animation:vlsRcC1 var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-rc-c2{animation:vlsRcC2 var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-rc-c3{animation:vlsRcC3 var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
-@keyframes vlsRcSpark{0%{opacity:0}10%{opacity:1}30%,100%{opacity:.55}}
-@keyframes vlsRcPlug{0%{transform:translate(-4px,-9px) rotate(-6deg)}12%{transform:translate(-2px,-4px) rotate(5deg)}22%{transform:translate(0,-1px) rotate(-2deg)}30%,100%{transform:translate(0,0) rotate(0)}}
+@keyframes vlsRcSpark{0%,30%,100%{opacity:.55}10%{opacity:1}}
+@keyframes vlsRcPlug{0%,40%,100%{transform:none}12%{transform:translate(-4px,-9px) rotate(-6deg)}24%{transform:translate(-2px,-4px) rotate(5deg)}32%{transform:translate(0,-1px) rotate(-2deg)}}
 @keyframes vlsRcPlugLines{0%{opacity:0}6%{opacity:.9}28%,100%{opacity:0}}
 @keyframes vlsRcSweat{0%,53%{opacity:0;transform:translateY(0)}56%{opacity:1}72%,100%{opacity:0;transform:translateY(9px)}}
 @keyframes vlsRcC1{0%,24%{opacity:.25}32%,58%{opacity:1}66%,100%{opacity:.25}}
@@ -755,7 +755,7 @@ function SceneRouteFailed({ theme }: { theme: ComicTheme }) {
 .vls-rf-p2{animation-delay:.2s}
 .vls-rf-march{animation:vlsRfMarch var(--comic-duration,3.2s) linear .4s var(--comic-repeat,1) both}
 .vls-rf-x{transform-box:fill-box;transform-origin:center;animation:vlsRfX var(--comic-duration,3.2s) ease-out .8s var(--comic-repeat,1) both}
-.vls-rf-sweat{animation:vlsRfSweat var(--comic-duration,3.2s) ease-in-out 1 both}
+.vls-rf-sweat{animation:vlsRfSweat var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 @keyframes vlsRfIn{from{opacity:0;transform:translateY(6px) scale(.9)}}
 @keyframes vlsRfMarch{from{stroke-dashoffset:0}to{stroke-dashoffset:-16}}
 @keyframes vlsRfX{from{opacity:0;transform:scale(1.5)}to{opacity:1;transform:scale(1)}}
@@ -1052,7 +1052,7 @@ function SceneInvalidInvite({ theme }: { theme: ComicTheme }) {
   return (
     <>
       <style>{`
-.vls-ii-link{animation:vlsIiLink var(--comic-duration,3.2s) ease-in-out 1 both}
+.vls-ii-link{animation:vlsIiLink var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 @keyframes vlsIiLink{0%,8%,36%,100%{transform:none}17%{transform:translateX(-4px)}26%{transform:translateX(3px)}}
 ${rmBlock(["vls-ii-link"], [[".vls-ii-link", "transform:none"]], false)}
 `}</style>
@@ -1149,8 +1149,8 @@ function SceneBandwidthLimited({ theme }: { theme: ComicTheme }) {
 .vls-bw-flow-b{animation:vlsBwFlowB var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-bw-throat{transform-box:fill-box;transform-origin:center;animation:vlsBwThroat var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-bw-small{transform-box:fill-box;transform-origin:center;animation:vlsBwSmall var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
-@keyframes vlsBwFlowA{0%,8%{transform:translateX(-6px);opacity:.45}36%,100%{transform:none;opacity:1}}
-@keyframes vlsBwFlowB{0%,18%{transform:translateX(-5px);opacity:.45}46%,100%{transform:none;opacity:1}}
+@keyframes vlsBwFlowA{0%,40%,100%{transform:none;opacity:1}12%{transform:translateX(-6px);opacity:.45}}
+@keyframes vlsBwFlowB{0%,50%,100%{transform:none;opacity:1}22%{transform:translateX(-5px);opacity:.45}}
 @keyframes vlsBwThroat{0%,30%,100%{transform:scaleY(1)}48%,76%{transform:scaleY(.62)}}
 @keyframes vlsBwSmall{0%,42%{transform:scale(1)}58%,100%{transform:scale(.82)}}
 ${rmBlock(
@@ -1209,7 +1209,7 @@ function SceneEncoderLimited({ theme }: { theme: ComicTheme }) {
 .vls-en-small{transform-box:fill-box;transform-origin:center;animation:vlsEnSmall var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 @keyframes vlsEnFlow{0%,12%{transform:translateX(-7px);opacity:0}28%,60%{transform:none;opacity:1}76%,100%{transform:translateX(8px);opacity:0}}
 @keyframes vlsEnDrop{0%,42%{transform:none;opacity:1}64%,100%{transform:translateY(16px) rotate(12deg);opacity:0}}
-@keyframes vlsEnHeat{0%,8%{transform:translateY(3px);opacity:.4}36%,100%{transform:none;opacity:1}}
+@keyframes vlsEnHeat{0%,44%,100%{transform:none;opacity:1}14%{transform:translateY(3px);opacity:.4}}
 @keyframes vlsEnSmall{0%,46%{transform:scale(1)}62%,100%{transform:scale(.82)}}
 ${rmBlock(
   ["vls-en-frame-a", "vls-en-frame-b", "vls-en-drop", "vls-en-small"],
@@ -1269,7 +1269,7 @@ function SceneWarning({ theme }: { theme: ComicTheme }) {
 .vls-wn-ray2{animation:vlsWnRay var(--comic-duration,3.2s) ease-out .25s var(--comic-repeat,1) both}
 .vls-wn-ray3{animation:vlsWnRay var(--comic-duration,3.2s) ease-out .5s var(--comic-repeat,1) both}
 .vls-wn-eyes{transform-box:fill-box;transform-origin:center;animation:vlsWnBlink var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
-@keyframes vlsWnRay{0%{opacity:0;transform:translateY(3px)}9%{opacity:1}24%{transform:translateY(-2px)}50%,100%{transform:translateY(-2px);opacity:1}}
+@keyframes vlsWnRay{0%,44%,100%{opacity:1;transform:none}12%{opacity:.7;transform:translateY(3px)}26%{opacity:1;transform:translateY(-2px)}}
 @keyframes vlsWnBlink{0%,66%,74%,100%{transform:scaleY(1)}70%{transform:scaleY(.12)}}
 ${rmBlock(
   ["vls-wn-ray1", "vls-wn-ray3", "vls-wn-eyes"],
@@ -1314,10 +1314,10 @@ function SceneMediaStatus({ theme, state }: {
   const colour = "var(--comic-tone, var(--ink))";
   return <>
     <style>{`
-.vls-media-watcher{transform-origin:54px 77px;animation:vlsMediaWatch var(--comic-duration,3.2s) ease-in-out 1 both}
+.vls-media-watcher{transform-origin:54px 77px;animation:vlsMediaWatch var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-media-ended{animation-name:vlsMediaRest}
 @keyframes vlsMediaWatch{0%{transform:none}18%{transform:translateX(3px) rotate(4deg)}42%,100%{transform:none}}
-@keyframes vlsMediaRest{0%{transform:translateX(5px) rotate(3deg)}28%,100%{transform:none}}
+@keyframes vlsMediaRest{0%,36%,100%{transform:none}12%{transform:translateX(5px) rotate(3deg)}}
 ${rmBlock(["vls-media-watcher"], [], false)}
 `}</style>
     <Frame x={4} w={312} theme={theme} result />
@@ -1349,12 +1349,12 @@ function SceneRoomEntry({ theme, state }: {
   const colour = "var(--comic-tone, var(--ink))";
   return <>
     <style>{`
-.vls-entry-closed{transform-origin:51px 76px;animation:vlsEntryStepBack var(--comic-duration,3.2s) ease-in-out 1 both}
-.vls-entry-invalid{animation:vlsEntryRefuse var(--comic-duration,3.2s) ease-in-out 1 both}
-.vls-entry-key{transform-origin:215px 53px;animation:vlsEntryKey var(--comic-duration,3.2s) ease-in-out 1 both}
-@keyframes vlsEntryStepBack{0%{transform:translateX(6px) rotate(4deg)}30%,100%{transform:none}}
+.vls-entry-closed{transform-origin:51px 76px;animation:vlsEntryStepBack var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-entry-invalid{animation:vlsEntryRefuse var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-entry-key{transform-origin:215px 53px;animation:vlsEntryKey var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+@keyframes vlsEntryStepBack{0%,38%,100%{transform:none}12%{transform:translateX(6px) rotate(4deg)}}
 @keyframes vlsEntryRefuse{0%{transform:none}10%{transform:translateX(-3px)}18%{transform:translateX(3px)}26%,100%{transform:none}}
-@keyframes vlsEntryKey{0%{transform:translateX(10px) rotate(8deg)}32%,100%{transform:none}}
+@keyframes vlsEntryKey{0%,40%,100%{transform:none}14%{transform:translateX(10px) rotate(8deg)}}
 ${rmBlock(["vls-entry-closed", "vls-entry-invalid", "vls-entry-key"], [], false)}
 `}</style>
     <Frame x={4} w={312} theme={theme} result />
@@ -1387,11 +1387,11 @@ function SceneBrowserAction({ theme, action }: {
   const colour = "var(--comic-tone, var(--ink))";
   return <>
     <style>{`
-.vls-browser-refresh{transform-origin:235px 55px;animation:vlsBrowserRefresh var(--comic-duration,3.2s) ease-in-out 1 both}
-.vls-browser-update,.vls-browser-debug{animation:vlsBrowserLift var(--comic-duration,3.2s) ease-in-out 1 both}
-.vls-browser-export-failed,.vls-browser-copy-failed,.vls-browser-settings-failed{animation:vlsBrowserRefuse var(--comic-duration,3.2s) ease-in-out 1 both}
-@keyframes vlsBrowserRefresh{0%{transform:rotate(-360deg) scale(.72)}32%{transform:rotate(-30deg) scale(.72)}44%,100%{transform:none}}
-@keyframes vlsBrowserLift{0%{transform:translateY(6px)}18%{transform:translateY(-2px)}34%,100%{transform:none}}
+.vls-browser-refresh{transform-origin:235px 55px;animation:vlsBrowserRefresh var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-browser-update,.vls-browser-debug{animation:vlsBrowserLift var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-browser-export-failed,.vls-browser-copy-failed,.vls-browser-settings-failed{animation:vlsBrowserRefuse var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+@keyframes vlsBrowserRefresh{0%{transform:rotate(-360deg)}12%{transform:rotate(-300deg) scale(.72)}32%{transform:rotate(-30deg) scale(.72)}44%,100%{transform:none}}
+@keyframes vlsBrowserLift{0%,40%,100%{transform:none}10%{transform:translateY(6px)}22%{transform:translateY(-2px)}}
 @keyframes vlsBrowserRefuse{0%{transform:none}10%{transform:translateX(-3px)}18%{transform:translateX(3px)}26%,100%{transform:none}}
 ${rmBlock(["vls-browser-refresh", "vls-browser-update", "vls-browser-debug", "vls-browser-export-failed", "vls-browser-copy-failed", "vls-browser-settings-failed"], [], false)}
 `}</style>
@@ -1439,10 +1439,10 @@ function SceneSourceSwitching({ theme, state = "switching" }: {
     <style>{`
 .vls-source-switch{animation:vlsSourceSwitch var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-source-return{animation-name:vlsSourceReturn}
-.vls-source-host{transform-origin:39px 76px;animation:vlsSourceHost var(--comic-duration,3.2s) ease-in-out 1 both}
-@keyframes vlsSourceSwitch{0%{transform:translateX(-5px);opacity:.55}25%{transform:translateX(5px);opacity:1}45%,100%{transform:none;opacity:1}}
-@keyframes vlsSourceReturn{0%{transform:translateX(5px);opacity:.55}25%{transform:translateX(-5px);opacity:1}45%,100%{transform:none;opacity:1}}
-@keyframes vlsSourceHost{0%{transform:translateX(4px) rotate(4deg)}30%,100%{transform:none}}
+.vls-source-host{transform-origin:39px 76px;animation:vlsSourceHost var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+@keyframes vlsSourceSwitch{0%,45%,100%{transform:none;opacity:1}12%{transform:translateX(-5px);opacity:.55}25%{transform:translateX(5px);opacity:1}}
+@keyframes vlsSourceReturn{0%,45%,100%{transform:none;opacity:1}12%{transform:translateX(5px);opacity:.55}25%{transform:translateX(-5px);opacity:1}}
+@keyframes vlsSourceHost{0%,38%,100%{transform:none}12%{transform:translateX(4px) rotate(4deg)}}
 ${rmBlock(["vls-source-switch"], [[".vls-source-switch", "opacity:1"]])}
 ${rmBlock(["vls-source-host"], [], false)}
 `}</style>
@@ -1464,7 +1464,7 @@ ${rmBlock(["vls-source-host"], [], false)}
 function SceneNameInvalid({ theme }: { theme: ComicTheme }) {
   return <>
     <style>{`
-.vls-name-card{animation:vlsNameRefuse var(--comic-duration,3.2s) ease-in-out 1 both}
+.vls-name-card{animation:vlsNameRefuse var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 @keyframes vlsNameRefuse{0%{transform:none}10%{transform:translateX(-3px)}18%{transform:translateX(3px)}26%,100%{transform:none}}
 ${rmBlock(["vls-name-card"], [], false)}
 `}</style>

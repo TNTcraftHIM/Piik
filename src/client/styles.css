@@ -346,7 +346,8 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-tooltip-preview-card > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
 .lr-tooltip-preview-card code, .lr-tooltip-preview-card small { font-size: .75rem; overflow-wrap: anywhere; opacity: .7; }
 .lr-tooltip-preview-actions { display: flex; gap: 4px; }
-.lr-tooltip-preview-trigger { width: 36px; height: 36px; padding: 0; border: 1px solid var(--wall-2); border-radius: 999px; background: transparent; color: var(--ink); cursor: help; }
+.lr-tooltip-preview-trigger { width: 36px; height: 36px; padding: 0; border: 1px solid var(--wall-2); border-radius: 999px; background: transparent; color: var(--ink); }
+.lr-tooltip-preview-card { --comic-repeat: infinite; }
 .lr-tooltip-preview-art { min-height: 106px; display: grid; place-items: center; overflow: hidden; }
 .lr-tooltip-preview-art svg { max-width: 100%; height: auto; }
 .lr-tv-overlay.has-comic {
@@ -1558,7 +1559,7 @@ html[data-theme="dark"] .lr-door-glyph { color: #7d92a8; }
   position: absolute;
   inset: 0;
   opacity: 0;
-  cursor: pointer;
+  cursor: text;
   font-size: 40px;
 }
 .lr-join-go {
@@ -1802,7 +1803,7 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
 svg[data-comic-motion="still"] .lr-person-eyes > ellipse {
   transform-box: fill-box;
   transform-origin: center;
-  animation: lrComicBlink 3.2s ease-in-out var(--comic-blink-delay, 0s) both;
+  animation: lrComicBlink 3.2s ease-in-out var(--comic-blink-delay, 0s) var(--comic-repeat, 1) both;
 }
 @keyframes lrComicArrive {
   from { opacity: .45; transform: translateY(-2px); }
@@ -1881,11 +1882,10 @@ svg[data-comic-motion="still"] .lr-person-eyes > ellipse {
   left: var(--tooltip-caret);
   width: 10px;
   height: 10px;
-  margin-left: -5px;
   background: var(--paper);
   border: solid var(--comic-tone, var(--ink));
   border-width: 0 2.5px 2.5px 0;
-  transform: rotate(45deg);
+  transform: translateX(-50%) rotate(45deg);
   pointer-events: none;
 }
 .lr-comic-tip.is-below::before {
@@ -1913,6 +1913,10 @@ svg[data-comic-motion="still"] .lr-person-eyes > ellipse {
     opacity: 0;
     pointer-events: none;
     transition-delay: 0s;
+  }
+  :is(.lr-row-group, .lr-pawn-detail, .lr-entry-actions, .lr-pawns, .lr-route, .lr-header-controls, .lr-playback):has(.lr-comic-tip-wrap.is-focus-open)
+    .lr-comic-tip-wrap:not(.is-focus-open).is-hover-open .lr-comic-tip * {
+    animation-play-state: paused !important;
   }
 }
 
