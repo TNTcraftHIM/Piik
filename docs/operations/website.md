@@ -51,12 +51,11 @@ unit provides the SQLite state directory. Room ownership, invitations and privat
 admission still apply. The [configuration reference](../reference/configuration.md)
 owns each setting and its bounds.
 
-For updates, verify the release descriptor and manifest before placing a new
-release under `/opt/piik/releases/`. Stop Piik, back up its SQLite state, switch
-`current` to the verified release, and restart. Check local/public health,
-WebSocket room access and STUN. Keep the previous release and state backup until
-acceptance; restore both with Piik stopped if rollback is needed. The nginx-specific
-maintainer wrapper does not manage this Caddy installation.
+For updates, follow the [application release boundary](../deployment.md#release-boundary)
+and its artifact verification, health checks and recovery rules. Routine application
+rollback restores the previous executable while keeping current room data. This
+Caddy installation needs a scoped updater; the nginx-specific maintainer wrapper
+does not manage it.
 
 ## Preview
 
