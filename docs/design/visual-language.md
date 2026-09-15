@@ -213,6 +213,12 @@ Text-only surfaces retain the same meanings:
 | Shortened text | `…` means truncation. Preserve the full nickname/URL for reading and copying; never turn an exact value into a decorative code. |
 | Welcome cipher | [WelcomeLine](../../src/client/components/living/WelcomeLine.tsx) owns the paired symbols and pixel words, tied to the same selected line. They are decoration, not hidden connection state. |
 
+Sharing, viewing, starting, room-ready, idle and waiting title catalogs each
+contain 20 entries per presentation, including the ordinary status. Draw each
+decoration once per cycle, interleaving the ordinary status; a changed title
+context starts a new cycle. Paused, ended, unavailable and playback-required
+titles stay literal and fixed. Product slogans remain fixed as well.
+
 ## Semantic Colour And Shape
 
 Use the existing theme tokens in `src/client/styles.css`. The shared

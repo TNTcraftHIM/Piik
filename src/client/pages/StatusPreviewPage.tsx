@@ -12,6 +12,7 @@ import {
 } from "../ui/media-status";
 import { Glyph } from "../ui/icons";
 import { useCopy } from "../ui/copy";
+import { locales, type TitleFrameKey } from "../locales";
 import { composeDocumentTitle, useDocumentTitle } from "../ui/document-title";
 import { HOST_STATUS_SCENARIOS, STATUS_SCENARIOS } from "./status-preview-scenarios";
 import "./status-preview.css";
@@ -40,9 +41,10 @@ export function StatusPreviewPage() {
     mediaReady: sourceActive, upstream: { kind: "peer", peerId: "preview-host" },
   }, sourceActive);
   const waitingParticipant = deriveParticipantStatus({ upstream: { kind: "none" } }, sourceActive);
-  const frame = titleFrames(status.titleFrameKey)[0];
-  const titleParts = ["6020", [frame, status.titleMarker].filter(Boolean).join(" ")];
-  useDocumentTitle(titleParts);
+  const titleContent = titleFrames(status.titleFrameKey).map(frame =>
+    [frame, status.titleMarker].filter(Boolean).join(" "));
+  const titleParts = ["6020", titleContent[0]];
+  useDocumentTitle(titleParts, reducedMotion ? [] : titleContent.slice(1));
 
   function choose(id: string) {
     setSelected(id);
@@ -159,6 +161,18 @@ export function StatusPreviewPage() {
               <StatusIndicator status={item} /><span>{t(item.labelKey)}</span><code>{key}</code>
             </article>)}
           </div>
+        </section>
+        <section className="sp-catalog">
+          <header><h2>标题彩蛋词库</h2>
+            <p>跟随右上角的语言选择。六类轮换标题各 20 条，普通状态穿插显示；本轮彩蛋抽完再重复。浏览器标签页按上方所选场景预览。</p>
+          </header>
+          {(Object.keys(locales.zh.titleFrames) as TitleFrameKey[]).map(key => {
+            const frames = titleFrames(key);
+            return <details key={key} className="sp-title-catalog">
+              <summary><strong>{frames[0]}</strong><span>{frames.length} 条 · {key}</span></summary>
+              <ol>{frames.map(frame => <li key={frame}>{frame}</li>)}</ol>
+            </details>;
+          })}
         </section>
         <footer className="sp-footnote">
           <p>这是开发预览：说明固定中文，控件和漫画跟随右上角中 / EN / ✦ 与明暗主题。</p>

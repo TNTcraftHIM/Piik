@@ -44,6 +44,11 @@
 .sp-surfaces .sp-kicker, .sp-surfaces .sp-caption { margin: 0; }
 .sp-catalog { margin-top: 36px; }
 .sp-catalog header { margin-bottom: 18px; }
+.sp-title-catalog { padding: 12px 0; border-bottom: 1px solid color-mix(in srgb, var(--ink) 15%, transparent); }
+.sp-title-catalog summary { cursor: pointer; }
+.sp-title-catalog summary span { margin-inline-start: 12px; color: var(--muted); font-size: .75rem; }
+.sp-title-catalog ol { columns: 18rem; padding-inline-start: 24px; }
+.sp-title-catalog li { break-inside: avoid; padding: 5px 8px; font-size: .85rem; }
 .sp-host-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(215px, 1fr)); gap: 12px; }
 .sp-host-grid article { border: 1px solid color-mix(in srgb, var(--ink) 20%, transparent); border-radius: 14px; padding: 17px; }
 .sp-host-grid h3 { margin: 0 0 10px; font-size: .9rem; }

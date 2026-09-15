@@ -33,14 +33,27 @@ export function useDocumentTitle(
 
     const prefix = parts.slice(0, -1);
     let frameIndex = 0;
+    let lastVariation = 0;
+    const remaining: number[] = [];
     const timer = window.setInterval(() => {
       if (document.visibilityState !== "visible") {
         return;
       }
-      frameIndex =
-        frameIndex === 0
-          ? 1 + Math.floor(Math.random() * (frames.length - 1))
-          : 0;
+      if (frameIndex === 0) {
+        // Exhaust the decorations before repeating; keep the ordinary status
+        // between them and avoid an immediate repeat across cycle boundaries.
+        if (remaining.length === 0) {
+          remaining.push(...frames.slice(1).map((_, index) => index + 1));
+        }
+        let index = Math.floor(Math.random() * remaining.length);
+        if (remaining.length > 1 && remaining[index] === lastVariation) {
+          index = (index + 1) % remaining.length;
+        }
+        frameIndex = remaining.splice(index, 1)[0]!;
+        lastVariation = frameIndex;
+      } else {
+        frameIndex = 0;
+      }
       document.title = composeDocumentTitle(...prefix, frames[frameIndex]);
     }, TITLE_VARIATION_INTERVAL_MS);
 

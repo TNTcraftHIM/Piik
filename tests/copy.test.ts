@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { initialLanguage, rememberLanguage } from "../site/assets/language.js";
-import { locales } from "../src/client/locales";
+import { locales, visualTitleFrames } from "../src/client/locales";
 
 import {
   getTitleFrames,
@@ -168,6 +168,21 @@ describe("copy catalog", () => {
       "Couch saved you a spot",
     );
     expect(getTitleFrames("zh", true, "hostReady")).toContain("🛋️ 🍵");
+  });
+
+  it("offers twenty distinct titles for playful states and fixed actionable states", () => {
+    const playful = new Set([
+      "hostActive", "viewerActive", "hostStarting", "hostReady", "hostIdle", "viewerWaiting",
+    ]);
+    for (const catalog of [locales.zh.titleFrames, locales.en.titleFrames, visualTitleFrames]) {
+      for (const [state, frames] of Object.entries(catalog)) {
+        expect(frames.length, state).toBe(playful.has(state) ? 20 : 1);
+        expect(new Set(frames).size, state).toBe(frames.length);
+      }
+    }
+    for (const frames of Object.values(visualTitleFrames)) {
+      expect(frames.every(frame => frame.startsWith(frames[0]))).toBe(true);
+    }
   });
 
   it("keeps the document language aligned with the selected catalog", () => {
