@@ -38,6 +38,8 @@ type Options struct {
 }
 
 type ControlSession interface {
+	// Errors reject protocol violations and close this control connection.
+	// Valid operation failures return a response instead of ending the session.
 	// A nil response with no error is completed later through Events, using the request ID.
 	Handle(context.Context, []byte) (any, error)
 	Events() <-chan any

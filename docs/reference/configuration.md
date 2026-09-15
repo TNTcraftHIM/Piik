@@ -100,6 +100,8 @@ changing saved settings. Older App versions ignore this file. Without a valid
 preference, a saved Site is selected when present; otherwise the public
 invitation link is selected. Choosing a mode does not start it until confirmed.
 Local mode remains available for the same network.
+Selecting Local or Public Link, including through the CLI, preserves the saved
+Site and its allowed App origin; only an explicit Site edit replaces it.
 For Local mode, the launcher selects a sole active address or sole private IPv4
 address automatically. With several choices it shows interface names and IPs;
 an ambiguous choice must be selected before launch. `--lan-address` preselects

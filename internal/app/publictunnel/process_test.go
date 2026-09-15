@@ -1,12 +1,78 @@
 package publictunnel
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
+
+func TestMain(tests *testing.M) {
+	if mode := os.Getenv("PIIK_TUNNEL_FIXTURE"); mode != "" {
+		if mode == "ready" {
+			fmt.Println(`{"message":"https://test-room.trycloudflare.com"}`)
+			fmt.Println(`{"message":"Registered tunnel connection"}`)
+		}
+		for {
+			time.Sleep(time.Hour)
+		}
+	}
+	os.Exit(tests.Run())
+}
+
+func TestReadyTunnelWaitsForItsExplicitOrderedClose(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PIIK_TUNNEL_FIXTURE", "ready")
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	process, err := Start(ctx, executable, "http://127.0.0.1:8787")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer process.Close()
+	cancel()
+	select {
+	case <-process.Done():
+		t.Fatal("parent cancellation killed the ready tunnel before its owner closed it")
+	case <-time.After(150 * time.Millisecond):
+	}
+	if err := process.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-process.Done():
+	default:
+		t.Fatal("Close returned with the tunnel still running")
+	}
+	if err := process.Close(); err != nil {
+		t.Fatalf("repeat Close: %v", err)
+	}
+}
+
+func TestStartupCancellationStillRetiresTheTunnel(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PIIK_TUNNEL_FIXTURE", "starting")
+	ctx, cancel := context.WithTimeout(t.Context(), 150*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	process, err := Start(ctx, executable, "http://127.0.0.1:8787")
+	if process != nil || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("cancelled startup: %v, %v", process, err)
+	}
+	if time.Since(started) > 2*time.Second {
+		t.Fatal("startup cancellation did not join its child promptly")
+	}
+}
 
 func TestMissingTunnelExplainsHowToRestoreThePackage(t *testing.T) {
 	_, err := Start(t.Context(), filepath.Join(t.TempDir(), "missing-tunnel"), "http://127.0.0.1:8787")

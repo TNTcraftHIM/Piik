@@ -133,6 +133,8 @@ above rather than searching the tree.
   connection readiness, requested settings, applied settings and observation.
   Derive presentation from facts; do not synchronize parallel booleans or let
   a cached failure outlive its evidence.
+  Selecting a runtime mode is not an edit to saved preferences; compare CLI,
+  launcher and page write paths against the same explicit user intent.
   Cumulative observations need a valid baseline for the resource generation
   they describe; missing measurements are not zero. Serialized recovery reads
   current committed intent when it executes rather than replaying a queued snapshot.
@@ -142,6 +144,9 @@ above rather than searching the tree.
   failure, missing observation and success must retain distinct meanings.
   A caller deadline does not cancel a dependency that ignores it. Keep late
   work bounded and serialize its cleanup; verify the dependency's actual lifetime.
+  Ordered shutdown may require a ready auxiliary transport to outlive the stop
+  request; its owner closes it after dependants retire. External convenience
+  actions must not block lifecycle handling, and repeated attempts stay bounded.
 - Keep decisions separate from effects. Respect documented lock ordering and
   revalidate after unlocked work. Local native capability never grants room
   authority; the shared Go service remains authoritative.
@@ -150,6 +155,9 @@ above rather than searching the tree.
 - Validate input at the boundary, keep domain error meanings stable, and map
   them into shared localized UI. [Versioning](./versioning.md) determines which
   extensions are compatible; an optional field is not automatically compatible.
+  Dispatch separates protocol rejection, per-request operation failure and an
+  already-satisfied teardown. Late teardown is idempotent and cannot retire a
+  replacement resource; retain strict validation before looking up its target.
   Retained media state carries failure facts; the presentation layer resolves
   localized copy during render. Keep raw exceptions in diagnostics. Transient
   event notices may resolve once when the event occurs.
@@ -179,13 +187,9 @@ above rather than searching the tree.
 ## Contextual Consistency
 
 Repeated meaning has one owned contract across code, interaction, wording,
-illustration, diagnostics and documentation. A shared component alone does not
-establish consistency if its callers select conflicting meanings or lifetimes.
-Before adding or changing an occurrence, locate its related producers and
-consumers and the applicable owner in the [documentation map](../maintenance.md#owners).
-
-For a repeated concept, its existing owner must make the following clear where
-they affect implementation or review:
+illustration, diagnostics and documentation. Shared components can still receive
+conflicting caller policies. Locate related producers, consumers and the existing
+[owner](../maintenance.md#owners), then make its relevant contract explicit:
 
 - **Meaning and evidence:** the subject, fact or action; who may assert it;
   its scope and generation; how unknown differs from failure or success.
@@ -196,10 +200,9 @@ they affect implementation or review:
 - **Representations:** permitted copy, icons, motion and feedback surfaces;
   truthful runtime/platform adapters; shared implementation and validation owners.
 
-Use the current module or design reference rather than creating a specification
-for every detail. A new shared rule needs repeated callers or a concrete public
-contract, a reason for the rule, and a proportionate example or check. Amend or
-retire the replaced rule and its consumers together.
+Use the current owner. New shared rules need repeated callers or a public
+contract, a reason, and proportionate evidence. Retire replaced rules and
+consumers together.
 
 Equal wording or appearance does not prove equal semantics. Compare authority,
 subject, scope, evidence, lifetime and intended outcome before merging paths.
@@ -210,8 +213,7 @@ such differences at their owner; do not hide them in caller-specific flags or
 force different authorities into a universal state manager.
 
 The [consistency skill](../../.agents/skills/context-consistency/SKILL.md) owns the
-review method and finding categories. Scoped changes check related consumers;
-they do not require a repository-wide audit or a new framework.
+review method; ordinary changes check their affected consumers.
 
 These boundaries align with [W3C consistent identification](https://www.w3.org/WAI/WCAG21/Understanding/consistent-identification.html),
 [GOV.UK contribution criteria](https://design-system.service.gov.uk/community/contribution-criteria/)

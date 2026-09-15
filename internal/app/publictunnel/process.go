@@ -63,6 +63,9 @@ func Start(
 	if parent == nil {
 		parent = context.Background()
 	}
+	if err := parent.Err(); err != nil {
+		return nil, err
+	}
 	if err := validateExecutable(executable); err != nil {
 		return nil, err
 	}
@@ -73,7 +76,10 @@ func Start(
 	if err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithCancel(parent)
+	// The caller cancels startup, then explicitly closes a ready tunnel after
+	// sending room-closed and draining its server. Root cancellation cannot
+	// kill that transport ahead of the ordered shutdown.
+	ctx, cancel := context.WithCancel(context.WithoutCancel(parent))
 	child := exec.CommandContext(
 		ctx,
 		executable,

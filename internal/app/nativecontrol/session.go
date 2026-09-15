@@ -83,6 +83,12 @@ func (session *Session) Events() <-chan any {
 	return session.events
 }
 
+type protocolViolation string
+
+func (err protocolViolation) Error() string { return string(err) }
+
+// Malformed commands close the control connection. Valid commands that cannot
+// complete fail only their request; an already-retired teardown target is ACKed.
 func (session *Session) Handle(ctx context.Context, payload []byte) (result any, returnedErr error) {
 	var envelope requestEnvelope
 	if err := decodeEnvelope(payload, &envelope); err != nil {
@@ -91,6 +97,11 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 	complete := session.traceRequest(envelope, payload)
 	asynchronous := false
 	defer func() {
+		var invalid protocolViolation
+		if returnedErr != nil && !errors.As(returnedErr, &invalid) {
+			result = operationFailure(envelope, returnedErr)
+			returnedErr = nil
+		}
 		if !asynchronous {
 			complete(result, returnedErr)
 		}
@@ -101,7 +112,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 	case "capture-options":
 		var request captureOptionsRequest
 		if err := decodeStrict(payload, &request); err != nil || request.Type != envelope.Type {
-			return nil, errors.New("native capture-options request is invalid")
+			return nil, protocolViolation("native capture-options request is invalid")
 		}
 		return captureOptionsResponse{
 			responseEnvelope: response(envelope, "capture-options"),
@@ -110,7 +121,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 	case "list-sources":
 		var request listSourcesRequest
 		if err := decodeStrict(payload, &request); err != nil || request.Type != envelope.Type {
-			return nil, errors.New("native list-sources request is invalid")
+			return nil, protocolViolation("native list-sources request is invalid")
 		}
 		targets, err := nativecapture.ListSources(session.ctx, session.captureProcess)
 		if err != nil {
@@ -123,7 +134,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 	case "source-preview":
 		var request sourcePreviewRequest
 		if err := decodeStrict(payload, &request); err != nil || request.Type != envelope.Type {
-			return nil, errors.New("native source-preview request is invalid")
+			return nil, protocolViolation("native source-preview request is invalid")
 		}
 		preview, err := nativecapture.PreviewSource(
 			session.ctx,
@@ -147,11 +158,11 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 		if err := decodeStrict(payload, &request); err != nil ||
 			request.Type != envelope.Type ||
 			!identityPattern.MatchString(request.ShareID) ||
+			!request.Source.Valid() ||
 			request.EdgeCapacity < 1 || request.EdgeCapacity > maxEdgeCapacity ||
 			(request.Codec != "auto" && request.Codec != "h264" && request.Codec != "vp8") ||
-			(request.Codec == "vp8" && !session.capabilities.SoftwareVP8) ||
 			!validQualitySettings(request.Profile) {
-			return nil, errors.New("native start-share request is invalid")
+			return nil, protocolViolation("native start-share request is invalid")
 		}
 		slog.Debug("piik-client", "event", "native-profile-requested", "requestId", envelope.ID,
 			"share", diagnostics.ID(request.ShareID), "profile", nativeQualityProfile(request.Profile), "codec", request.Codec, "audio", request.Audio,
@@ -163,7 +174,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 			request.Type != envelope.Type ||
 			!validIdentities(request.ShareID) ||
 			!validQualitySettings(request.Profile) {
-			return nil, errors.New("native update-share request is invalid")
+			return nil, protocolViolation("native update-share request is invalid")
 		}
 		profile := nativeQualityProfile(request.Profile)
 		slog.Debug("piik-client", "event", "native-profile-requested", "requestId", envelope.ID,
@@ -184,7 +195,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 		if err := decodeStrict(payload, &request); err != nil ||
 			request.Type != envelope.Type ||
 			!validIdentities(request.ShareID) || !request.Source.Valid() {
-			return nil, errors.New("native replace-share-source request is invalid")
+			return nil, protocolViolation("native replace-share-source request is invalid")
 		}
 		host := session.current(request.ShareID)
 		if host == nil {
@@ -221,7 +232,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 		if err := decodeStrict(payload, &request); err != nil ||
 			request.Type != envelope.Type ||
 			!validIdentities(request.ShareID, request.ConnectionID) {
-			return nil, errors.New("native prepare-edge request is invalid")
+			return nil, protocolViolation("native prepare-edge request is invalid")
 		}
 		return session.prepareEdge(envelope, request)
 	case "prepare-local-edge":
@@ -229,7 +240,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 		if err := decodeStrict(payload, &request); err != nil ||
 			request.Type != envelope.Type ||
 			!validIdentities(request.ShareID, request.ConnectionID) {
-			return nil, errors.New("native prepare-local-edge request is invalid")
+			return nil, protocolViolation("native prepare-local-edge request is invalid")
 		}
 		return session.prepareLocalEdge(envelope, request)
 	case "receive-offer":
@@ -239,7 +250,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 			!validIdentities(request.ShareID, request.ConnectionID) ||
 			request.EdgeCapacity < 1 || request.EdgeCapacity > maxEdgeCapacity ||
 			len(request.SDP) == 0 || len(request.SDP) > maxSDPBytes {
-			return nil, errors.New("native receive-offer request is invalid")
+			return nil, protocolViolation("native receive-offer request is invalid")
 		}
 		return session.receiveOffer(envelope, request)
 	case "receive-candidate":
@@ -248,7 +259,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 			request.Type != envelope.Type ||
 			!validIdentities(request.ShareID, request.ConnectionID) ||
 			!validCandidate(request.Candidate) {
-			return nil, errors.New("native receive-candidate request is invalid")
+			return nil, protocolViolation("native receive-candidate request is invalid")
 		}
 		viewer := session.currentViewer(request.ShareID)
 		if viewer == nil {
@@ -263,7 +274,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 		if err := decodeStrict(payload, &request); err != nil ||
 			request.Type != envelope.Type ||
 			!validIdentities(request.ShareID, request.ConnectionID) {
-			return nil, errors.New("native close-receiver request is invalid")
+			return nil, protocolViolation("native close-receiver request is invalid")
 		}
 		if viewer := session.currentViewer(request.ShareID); viewer != nil {
 			viewer.CloseReceiver(request.ConnectionID)
@@ -273,7 +284,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 		var request stopReceiveRequest
 		if err := decodeStrict(payload, &request); err != nil ||
 			request.Type != envelope.Type || !validIdentities(request.ShareID) {
-			return nil, errors.New("native stop-receive request is invalid")
+			return nil, protocolViolation("native stop-receive request is invalid")
 		}
 		session.stopViewer(request.ShareID)
 		return response(envelope, "receive-stopped"), nil
@@ -283,7 +294,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 			request.Type != envelope.Type ||
 			!validIdentities(request.ShareID, request.ConnectionID) ||
 			len(request.SDP) == 0 || len(request.SDP) > maxSDPBytes {
-			return nil, errors.New("native edge-answer request is invalid")
+			return nil, protocolViolation("native edge-answer request is invalid")
 		}
 		media := session.currentMedia(request.ShareID)
 		if media == nil {
@@ -302,7 +313,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 			request.Type != envelope.Type ||
 			!validIdentities(request.ShareID, request.ConnectionID) ||
 			!validCandidate(request.Candidate) {
-			return nil, errors.New("native edge-candidate request is invalid")
+			return nil, protocolViolation("native edge-candidate request is invalid")
 		}
 		media := session.currentMedia(request.ShareID)
 		if media == nil {
@@ -317,7 +328,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 		if err := decodeStrict(payload, &request); err != nil ||
 			request.Type != envelope.Type ||
 			!validIdentities(request.ShareID, request.ConnectionID) {
-			return nil, errors.New("native close-edge request is invalid")
+			return nil, protocolViolation("native close-edge request is invalid")
 		}
 		if media := session.currentMedia(request.ShareID); media != nil {
 			media.CloseEdge(request.ConnectionID)
@@ -328,7 +339,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 		if err := decodeStrict(payload, &request); err != nil ||
 			request.Type != envelope.Type ||
 			!identityPattern.MatchString(request.ShareID) {
-			return nil, errors.New("native stop-share request is invalid")
+			return nil, protocolViolation("native stop-share request is invalid")
 		}
 		err := session.stopShare(request.ShareID)
 		if err != nil {
@@ -340,7 +351,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 		if err := decodeStrict(payload, &request); err != nil ||
 			request.Type != envelope.Type ||
 			!validIdentities(request.ShareID) {
-			return nil, errors.New("native pause-share request is invalid")
+			return nil, protocolViolation("native pause-share request is invalid")
 		}
 		host := session.current(request.ShareID)
 		if host == nil {
@@ -351,7 +362,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 			"share", diagnostics.ID(request.ShareID), "paused", request.Paused)
 		return response(envelope, "share-paused"), nil
 	default:
-		return nil, errors.New("native control message is unsupported")
+		return nil, protocolViolation("native control message is unsupported")
 	}
 }
 
@@ -440,6 +451,9 @@ func (session *Session) startShare(
 	request startShareRequest,
 ) (any, error) {
 	profile := nativeQualityProfile(request.Profile)
+	if request.Codec == "vp8" && !session.capabilities.SoftwareVP8 {
+		return nil, errors.New("native VP8 encoding is unavailable")
+	}
 	session.mu.Lock()
 	if session.updateDone != nil {
 		session.mu.Unlock()
@@ -623,7 +637,7 @@ func (session *Session) stopShare(shareID string) error {
 	host := session.host
 	if host == nil || host.ShareID() != shareID {
 		session.mu.Unlock()
-		return errors.New("native share does not exist")
+		return nil
 	}
 	session.host = nil
 	updateDone := session.updateDone
@@ -841,17 +855,17 @@ func eventMessage(event nativehost.Event) any {
 
 func pionICEServers(values []iceServer) ([]webrtc.ICEServer, error) {
 	if len(values) > maxICEServers {
-		return nil, errors.New("native ICE server list is too large")
+		return nil, protocolViolation("native ICE server list is too large")
 	}
 	result := make([]webrtc.ICEServer, 0, len(values))
 	for _, server := range values {
 		if len(server.URLs) == 0 || len(server.URLs) > maxURLsPerServer {
-			return nil, errors.New("native ICE server is invalid")
+			return nil, protocolViolation("native ICE server is invalid")
 		}
 		urls := make([]string, 0, len(server.URLs))
 		for _, value := range server.URLs {
 			if !validSTUNURL(value) {
-				return nil, errors.New("native STUN URL is invalid")
+				return nil, protocolViolation("native STUN URL is invalid")
 			}
 			urls = append(urls, value)
 		}
@@ -916,7 +930,7 @@ func decodeEnvelope(payload []byte, envelope *requestEnvelope) error {
 	if err := decoder.Decode(envelope); err != nil || decoder.Decode(&struct{}{}) != io.EOF ||
 		envelope.Version != loopback.ProtocolVersion ||
 		!identityPattern.MatchString(envelope.ID) || envelope.Type == "" {
-		return errors.New("native control envelope is invalid")
+		return protocolViolation("native control envelope is invalid")
 	}
 	return nil
 }
@@ -925,7 +939,7 @@ func decodeStrict(payload []byte, value any) error {
 	decoder := json.NewDecoder(bytes.NewReader(payload))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(value); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
-		return errors.New("native control message is invalid")
+		return protocolViolation("native control message is invalid")
 	}
 	return nil
 }

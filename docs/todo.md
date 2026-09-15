@@ -21,6 +21,9 @@ history. A parked idea is not implementation authority.
   interactions, copy, visuals, configuration and documentation across the repo.
   Include the accepted playful-copy policy and the pending graphic-composition
   decision. Group findings by root ownership gaps with evidence and scope.
+  Review repeated launch-request feedback, source confirmation during room
+  mutations, terminal failure as a shutdown authority, and diagnostic report
+  visibility after terminal restoration; distinguish policy choices from defects.
   Plan consolidation of normative standards under `docs/standards/` after the
   inventory, preserving domain owners, historical ADR status,
   user-guide entry points and all code/tool/document references. Absorb useful

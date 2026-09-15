@@ -63,6 +63,7 @@ type consoleModel struct {
 	exporting   bool
 	exportPath  string
 	exportError bool
+	openBrowser func(string)
 }
 
 type console struct {
@@ -72,6 +73,8 @@ type console struct {
 	program  *tea.Program
 	done     chan error
 	plain    consoleModel
+	opening  bool
+	openURL  func(string) error
 }
 
 var consoleCopy = map[string][3]string{
@@ -103,9 +106,11 @@ var consoleCopy = map[string][3]string{
 func newConsole(cancel context.CancelFunc, machine bool) *console {
 	console := &console{
 		machine: machine,
+		openURL: browser.Open,
 		plain: consoleModel{view: consoleView{state: "starting"}, language: defaultConsoleLanguage(), width: 76, cancel: cancel,
 			colors: colorprofile.Detect(os.Stdout, os.Environ()) > colorprofile.ASCII},
 	}
+	console.plain.openBrowser = console.openBrowser
 	if machine {
 		return console
 	}
@@ -142,14 +147,27 @@ func (console *console) send(message tea.Msg) {
 func (console *console) show(view consoleView)       { console.send(view) }
 func (console *console) setLanguage(language string) { console.send(consoleLanguage(language)) }
 
-// Opening a page is a convenience action; the launcher and room services own
-// readiness and shutdown even when the system URL handler fails.
-func openBrowser(target string) consoleOpenResult {
-	err := browser.Open(target)
-	if err != nil {
-		slog.Warn("Could not open the system browser", diagnostics.Error(err))
+// One OS handoff may remain pending, but never blocks App readiness or exit.
+// Do not kill the handler on a timer: it may itself own the user's browser.
+func (console *console) openBrowser(target string) {
+	console.mu.Lock()
+	if console.finished || console.opening {
+		console.mu.Unlock()
+		return
 	}
-	return consoleOpenResult{target: target, err: err}
+	console.opening = true
+	openURL := console.openURL
+	console.mu.Unlock()
+	go func() {
+		err := openURL(target)
+		if err != nil {
+			slog.Debug("Could not open the system browser", diagnostics.Error(err))
+		}
+		console.send(consoleOpenResult{target: target, err: err})
+		console.mu.Lock()
+		console.opening = false
+		console.mu.Unlock()
+	}()
 }
 
 func (console *console) finish(err error) error {
@@ -235,8 +253,8 @@ func (model consoleModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			model.view = consoleView{mode: model.view.mode, state: "stopping"}
 			model.cancel()
 		case "o", "O":
-			if target := model.view.entry; target != "" {
-				return model, func() tea.Msg { return openBrowser(target) }
+			if target := model.view.entry; target != "" && model.openBrowser != nil {
+				return model, func() tea.Msg { model.openBrowser(target); return nil }
 			}
 		case "d", "D":
 			if model.debug.export != nil && !model.exporting && !model.finished && model.view.state != "stopping" {

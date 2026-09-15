@@ -333,9 +333,7 @@ func TestPrepareLocalEdgeOwnsOneStrictRequestShape(t *testing.T) {
 	session := New("missing-capture-process", nativecapture.Capabilities{}, false)
 	t.Cleanup(func() { _ = session.Close() })
 	valid := `{"version":9,"id":"request_local_edge","type":"prepare-local-edge","shareId":"share_123456","connectionId":"edge_1234567"}`
-	if _, err := session.Handle(t.Context(), []byte(valid)); err == nil || err.Error() != "native media source does not exist" {
-		t.Fatalf("valid local-edge request stopped at wrong boundary: %v", err)
-	}
+	assertOperationFailure(t, session, valid)
 	invalid := `{"version":9,"id":"request_local_edge","type":"prepare-local-edge","shareId":"share_123456","connectionId":"edge_1234567","iceServers":[]}`
 	if _, err := session.Handle(t.Context(), []byte(invalid)); err == nil || err.Error() != "native prepare-local-edge request is invalid" {
 		t.Fatalf("extended local-edge request was accepted: %v", err)
@@ -399,10 +397,7 @@ func TestUpdateShareRequiresTheCurrentStrictProfile(t *testing.T) {
 	session := New("missing-capture-process", nativecapture.Capabilities{}, false)
 	t.Cleanup(func() { _ = session.Close() })
 	valid := `{"version":9,"id":"request_update","type":"update-share","shareId":"share_123456","profile":{"resolution":"1080p","maxFramerate":30,"maxBitrate":5000000,"degradationPreference":"balanced","screenAudioQuality":"music"}}`
-	if _, err := session.Handle(t.Context(), []byte(valid)); err == nil ||
-		err.Error() != "native share does not exist" {
-		t.Fatalf("valid update stopped at wrong boundary: %v", err)
-	}
+	assertOperationFailure(t, session, valid)
 	invalid := `{"version":9,"id":"request_update","type":"update-share","shareId":"share_123456","profile":{"resolution":"1080p","maxFramerate":30,"maxBitrate":5000000,"degradationPreference":"balanced","screenAudioQuality":"music","extra":true}}`
 	if _, err := session.Handle(t.Context(), []byte(invalid)); err == nil ||
 		err.Error() != "native update-share request is invalid" {
@@ -414,10 +409,7 @@ func TestReplaceShareSourceKeepsOneStrictTargetShape(t *testing.T) {
 	session := New("missing-capture-process", nativecapture.Capabilities{}, false)
 	t.Cleanup(func() { _ = session.Close() })
 	valid := `{"version":9,"id":"request_source","type":"replace-share-source","shareId":"share_123456","source":{"kind":"picker","sourceId":"1","title":"Portal"},"audio":false,"adapterIndex":0,"encoderIndex":0}`
-	if _, err := session.Handle(t.Context(), []byte(valid)); err == nil ||
-		err.Error() != "native share does not exist" {
-		t.Fatalf("valid source replacement stopped at wrong boundary: %v", err)
-	}
+	assertOperationFailure(t, session, valid)
 	invalid := `{"version":9,"id":"request_source","type":"replace-share-source","shareId":"share_123456","source":{"kind":"picker","sourceId":"1","title":"Portal"},"audio":false,"adapterIndex":0,"encoderIndex":0,"extra":true}`
 	if _, err := session.Handle(t.Context(), []byte(invalid)); err == nil ||
 		err.Error() != "native replace-share-source request is invalid" {

@@ -559,10 +559,19 @@ func (session *Session) Close() error {
 		return nil
 	}
 	session.closed = true
-	source := session.source
-	stream := session.stream
-	audioStream := session.audioStream
 	session.edges = make(map[string]*mediaedge.Edge)
+	session.mu.Unlock()
+	session.retire()
+	_, _ = <-session.done
+	return nil
+}
+
+// Both explicit Close and source termination retire these idempotent owners.
+// Do not wait for run here: Close uses this to unblock run's readers.
+func (session *Session) retire() {
+	session.mu.Lock()
+	source, stream := session.source, session.stream
+	audioSource, audioStream := session.audioSource, session.audioStream
 	session.mu.Unlock()
 	if source != nil {
 		_ = source.Close()
@@ -571,12 +580,10 @@ func (session *Session) Close() error {
 	if audioStream != nil {
 		_ = audioStream.Close()
 	}
-	if session.audioSource != nil {
-		_ = session.audioSource.Close()
+	if audioSource != nil {
+		_ = audioSource.Close()
 	}
 	_ = session.engine.Close()
-	_, _ = <-session.done
-	return nil
 }
 
 func (session *Session) edge(connectionID string) *mediaedge.Edge {
@@ -625,29 +632,12 @@ func (session *Session) run() {
 	}
 	<-audioDone
 	<-qualityDone
-	defer func() {
-		if session.source != nil {
-			_ = session.source.Close()
-		}
-		if session.audioSource != nil {
-			_ = session.audioSource.Close()
-		}
-		_ = session.engine.Close()
-		session.mu.Lock()
-		stream := session.stream
-		audioStream := session.audioStream
-		session.mu.Unlock()
-		_ = stream.Close()
-		if audioStream != nil {
-			_ = audioStream.Close()
-		}
-		if slog.Default().Enabled(session.ctx, slog.LevelDebug) {
-			slog.Debug("piik-client", "event", "share-ended", "share", diagnostics.ID(session.shareID), "failed", result != nil, diagnostics.Error(result))
-		}
-		session.done <- result
-		close(session.done)
-	}()
-	return
+	session.retire()
+	if slog.Default().Enabled(session.ctx, slog.LevelDebug) {
+		slog.Debug("piik-client", "event", "share-ended", "share", diagnostics.ID(session.shareID), "failed", result != nil, diagnostics.Error(result))
+	}
+	session.done <- result
+	close(session.done)
 }
 
 func (session *Session) runVideo() error {

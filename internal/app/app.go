@@ -147,7 +147,7 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 		return err
 	}
 	slog.Debug("piik-client", "event", "configuration", "siteConfigured", config.Site != "", "localAccessProtected", config.LocalAccessPassword != "")
-	if options.SiteSet || options.Local {
+	if options.SiteSet {
 		if err = appconfig.Save(configPath, config); err != nil {
 			return fmt.Errorf("Piik App configuration is unavailable: %w", err)
 		}
@@ -225,7 +225,7 @@ func runLauncher(
 ) error {
 	mode, err := launcher.LoadMode(configPath)
 	if err != nil {
-		slog.Warn("Could not restore the last launcher mode", diagnostics.Error(err))
+		slog.Debug("Could not restore the last launcher mode", diagnostics.Error(err))
 	}
 	launch, err := launcher.Start(
 		ctx,
@@ -250,7 +250,7 @@ func runLauncher(
 		launchAddress.Scheme+"://"+launchAddress.Host,
 	))
 	options.console.show(consoleView{state: "setup", entry: launch.URL()})
-	options.console.send(openBrowser(launch.URL()))
+	options.console.openBrowser(launch.URL())
 
 	var selection launcher.Selection
 	select {
@@ -265,14 +265,13 @@ func runLauncher(
 	}
 	options.console.setLanguage(selection.Language)
 	if err := launcher.SaveMode(configPath, selection.Mode); err != nil {
-		slog.Warn("Could not save the launcher mode", diagnostics.Error(err))
+		slog.Debug("Could not save the launcher mode", diagnostics.Error(err))
 	}
 	if selection.Mode == launcher.ModeSite {
 		config.Site = selection.Site
 	} else {
 		config.LocalAccessPassword = selection.LocalAccessPassword
 	}
-	options.SiteSet = false
 	options.Local = selection.Mode == launcher.ModeLocal
 	options.Link = selection.Mode == launcher.ModeLink
 	options.Debug = options.Debug || selection.Debug
@@ -344,8 +343,6 @@ func applyMode(config appconfig.Config, options Options) (appconfig.Config, erro
 		if err != nil || config.Site == "" {
 			return appconfig.Config{}, errors.New("Piik Site must be an HTTP or HTTPS origin")
 		}
-	} else if options.Local {
-		config.Site = ""
 	}
 	return config, nil
 }
@@ -401,7 +398,7 @@ func runSite(site string, options Options, control *loopback.Server) error {
 		fmt.Printf("Piik Site: %s\n", site)
 	}
 	if !options.DisableBrowser {
-		options.console.send(openBrowser(targetURL))
+		options.console.openBrowser(targetURL)
 	} else if options.Ready != nil {
 		options.Ready(targetURL)
 	}
@@ -514,7 +511,7 @@ func runLocal(ctx context.Context, options Options, config appconfig.Config,
 	}
 	options.console.show(view)
 	if !options.DisableBrowser {
-		options.console.send(openBrowser(launchURL))
+		options.console.openBrowser(launchURL)
 	} else if options.Ready != nil {
 		options.Ready(launchURL)
 	}
@@ -532,6 +529,9 @@ func runLocal(ctx context.Context, options Options, config appconfig.Config,
 		}
 		return nil
 	case <-tunnelDone:
+		if ctx.Err() != nil {
+			return endLocalServer(localServer)
+		}
 		return errors.Join(errors.New("public invitation link stopped; reopen Piik to create a new link"), tunnel.Err())
 	}
 }

@@ -32,9 +32,10 @@ Browser picker and any exact App-owned native windows. It never chooses a
 window automatically. A reproduced Browser-window, capture, or background
 failure is required before introducing an embedded Web runtime.
 
-Failure to open the system Browser does not retire a ready App service. The
-console keeps its entry address and retry action; service failure and explicit
-exit still own shutdown. Browser-opening errors retain their underlying cause.
+Opening the system Browser is an asynchronous convenience action. One pending
+OS handoff is allowed; a slow or failed handler cannot block readiness or App
+exit. The console retains the entry address and reports the underlying error.
+The App does not terminate the user's browser to enforce a handoff deadline.
 
 Server and App share one control layout and vocabulary. Deployment capabilities
 may fix a control on or off, but do not remove its place in the interface;

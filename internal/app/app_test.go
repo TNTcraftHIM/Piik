@@ -18,12 +18,80 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	appconfig "github.com/TNTcraftHIM/Piik/internal/app/config"
 	"github.com/TNTcraftHIM/Piik/internal/app/lan"
 	"github.com/TNTcraftHIM/Piik/internal/app/launcher"
 	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
 	serverconfig "github.com/TNTcraftHIM/Piik/internal/server/config"
 )
+
+func TestHungBrowserHandoffDoesNotBlockLauncherOrSiteExit(t *testing.T) {
+	t.Setenv("TERM", "dumb")
+	for _, mode := range []string{"launcher", "site"} {
+		t.Run(mode, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			control, err := loopback.Start(ctx, loopback.Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer control.Close()
+			console := newConsole(cancel, false)
+			started, release := make(chan struct{}, 10), make(chan struct{})
+			defer close(release)
+			console.openURL = func(string) error { started <- struct{}{}; <-release; return errors.New("late browser result") }
+			options := Options{Port: 8787, console: console}
+			configPath := filepath.Join(t.TempDir(), "client.json")
+			config, err := appconfig.LoadOrCreate(configPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			done := make(chan error, 1)
+			go func() {
+				if mode == "site" {
+					done <- runSite("https://share.example", options, control)
+				} else {
+					done <- runLauncher(ctx, options, configPath, config, control, func(*Options, appconfig.Config) error { return nil })
+				}
+			}()
+			select {
+			case <-started:
+			case <-time.After(time.Second):
+				t.Fatal("browser handoff was not started")
+			}
+			console.mu.Lock()
+			model := console.plain
+			console.mu.Unlock()
+			if model.view.entry == "" {
+				t.Fatal("manual entry was not available while browser opening hung")
+			}
+			for range 5 {
+				_, command := model.Update(tea.KeyPressMsg{Code: 'o'})
+				if command != nil {
+					command()
+				}
+			}
+			select {
+			case <-started:
+				t.Fatal("repeated open queued another hung handler")
+			case <-time.After(50 * time.Millisecond):
+			}
+			model.Update(tea.KeyPressMsg{Code: 'q'})
+			select {
+			case err := <-done:
+				if err != nil {
+					t.Fatal(err)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("App exit waited for the browser handler")
+			}
+			if err := console.finish(nil); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
 
 func TestBrowserOpenFailureKeepsTheAppAvailable(t *testing.T) {
 	// An empty launcher search path makes the real browser.Open fail on every
@@ -365,14 +433,16 @@ func TestLinkModeKeepsOneLocalAuthority(t *testing.T) {
 		LocalAccessPassword: "abcdefghijklmnopqrstuvwxyzABCDEF",
 		Site:                "https://example.test",
 	}
-	selected, err := applyMode(config, Options{Link: true})
-	if err != nil || selected.Site != config.Site {
-		t.Fatalf("link mode = %+v, %v", selected, err)
+	for _, options := range []Options{{Link: true}, {Local: true}} {
+		selected, err := applyMode(config, options)
+		if err != nil || selected != config {
+			t.Fatalf("mode selection changed saved settings: %+v, %v", selected, err)
+		}
 	}
-	if err = validateMode(Options{Link: true, SiteSet: true}); err == nil {
+	if err := validateMode(Options{Link: true, SiteSet: true}); err == nil {
 		t.Fatal("link mode accepted a separate Site")
 	}
-	if err = validateMode(Options{Link: true, Local: true}); err == nil {
+	if err := validateMode(Options{Link: true, Local: true}); err == nil {
 		t.Fatal("link mode accepted a second Local selector")
 	}
 }
