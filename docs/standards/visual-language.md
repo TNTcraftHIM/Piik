@@ -25,9 +25,6 @@ expressions and brief gestures. Keep the interface approachable; avoid
 pushing ordinary characters toward infant proportions, exaggerated
 grins, dense cute decoration or children's picture-book styling.
 This balance applies to all comic hints, status overlays and entry/error scenes.
-Small floating round hands can make a greeting, a held object or a listening
-gesture clearer; use them where the action benefits, without adding detail to
-every character.
 
 Consistency governs meaning, cast and interaction, not identical compositions.
 Give each explanation a recognisable little scene: a welcoming hop, a curious
@@ -129,9 +126,12 @@ Room pawns, tooltip/status comics and introduction participants use
 a round head, half-oval body and two restrained eyes. Reuse the shared
 figure and face geometry in product illustrations so expressions stay inside
 the head as it scales. Larger scenes can add a small lean; small status panels
-may omit facial detail to keep the action clear. When a gesture needs hands,
-use small floating round shapes. A held gamepad is a scene prop; a separate role
-crown identifies the host and moves with the body. Its gold is an identity colour,
+may omit facial detail to keep the action clear. Compact comic pawns stay small
+and handless: use gaze, body lean and short hops to express their action. Keep
+their scale consistent with neighbouring scenes in the same family. Large
+introduction illustrations may use small floating round hands to hold a prop.
+A held gamepad is a scene prop; a separate role crown identifies the host and
+moves with the body. Its gold is an identity colour,
 not a warning or achievement. The share control retains its
 cast icon. The cast represents friends sharing games, drawings
 and other screen content. Exploratory figures are not alternate
@@ -265,6 +265,24 @@ review; this copy policy does not require a mascot or a new tooltip everywhere.
 | Browser tab | Sharing, watching, starting, ready-to-share, not-started and waiting states may append their own variations; room identity, literal activity and warnings remain visible. |
 | Error, pause, ended state, required action, tooltip, small control | Keep the existing literal message and contextual graphic; no rotating caption is added. |
 
+## Panel Composition
+
+Choose panels by what the explanation asks the reader to compare:
+
+| Composition | Use |
+| --- | --- |
+| Two panels | Default for action → effect or condition → outcome. The left supplies the action, credential or context; the right explains its consequence. Examples: copying an invitation, pausing playback, entering with a room code/password/invitation. |
+| One wide panel | One ongoing or settled scene without a before/after comparison, or a continuous spatial relationship that a divider would break. Examples: waiting for the Host, an unavailable source, a network round trip. Width alone is not a reason to use it. |
+
+Use the same composition and panel roles within a semantic family. Room-admission
+hints all use two panels: accepted credential on the left, access to the room on
+the right. The door scene explains admission; it does not claim that the user is
+changing privacy or has already joined. Vary the small gestures and useful props,
+not the reading order. Keep full-scene states and metric diagrams in one panel
+when splitting them would only duplicate the scene or interrupt its relationship.
+More than two panels require distinct steps of a real sequence that cannot be
+explained clearly in two; do not invent stages to fill extra panels.
+
 ## Semantic Colour And Shape
 
 Use the existing theme tokens in `src/client/styles.css`. The shared
@@ -292,11 +310,10 @@ privacy. Password input is not proof of admission; copying writes to the local
 clipboard and does not send to a friend. An audio track's presence does not
 establish a locked control or delivery to another device.
 
-Two-panel comics always read before/context on the left and result/current
-condition on the right. Only the result carries the semantic accent; a single
-panel carries the current condition. Tooltip outline and caret use that same
-tone in Chinese, English and visual modes. Neutral uses theme ink, not literal
-white. Keep paper fills quiet; do not tint the whole scene green/yellow/red.
+Only the result carries the semantic accent; a single panel carries the current
+condition. Tooltip outline and caret use that same tone in Chinese, English and
+visual modes. Neutral uses theme ink, not literal white. Keep paper fills quiet;
+do not tint the whole scene green/yellow/red.
 Meaning must also survive without colour through objects, symbols and accessible
 localized names. Never show celebration or a completed live path as the verdict
 of a failed or unavailable operation.
