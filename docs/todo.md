@@ -7,6 +7,25 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
+- [ ] **Playful copy catalogs and lifecycle.** Unify website/App welcome,
+  waiting captions and playful titles under the accepted
+  [presentation policy](./design/visual-language.md#playful-copy-lifecycle).
+  Remove the fixed-count and paired-index assumptions, complete the waiting
+  surface inventory, and update the bilingual contribution guide and previews
+  alongside implementation. Review mascot/comic/caption composition by user
+  context before expanding it; existing combinations do not define the standard.
+- [ ] **Repository-wide contextual consistency audit.** Prepare one external
+  review using the [consistency skill](../.agents/skills/context-consistency/SKILL.md).
+  Start from the [existing owner map](./maintenance.md#owners), inventory normative
+  rules and their real consumers, then check repeated semantics, lifecycle,
+  interactions, copy, visuals, configuration and documentation across the repo.
+  Include the accepted playful-copy policy and the pending graphic-composition
+  decision. Group findings by root ownership gaps with evidence and scope.
+  Plan consolidation of normative standards under `docs/standards/` after the
+  inventory, preserving domain owners, historical ADR status,
+  user-guide entry points and all code/tool/document references. Absorb useful
+  evidence rather than committing raw reports. Keep the current App lifecycle
+  audit isolated; this broader audit is a subsequent scope, not completed work.
 - [ ] **Introduction motion and presentation boundaries.** Resolve the automatic
   hero-loop control requirement against the accepted design without restoring
   discarded gesture controls or silently removing animation. Review only the

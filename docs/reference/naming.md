@@ -114,7 +114,10 @@ A familiar expression may work when its ordinary meaning still makes sense to
 someone who does not recognize it. Keep each language independent and avoid
 long dialogue, borrowed brand slogans or a stream of unrelated memes. Match a
 celebration to a visible successful action; it must not precede the result.
-Keep the small bilingual set local, without a quotation service.
+Keep reviewed pools local, without a quotation service.
+Playful pools may differ in content and length between languages. Their context
+and display lifecycle follow the [shared policy](../design/visual-language.md#playful-copy-lifecycle);
+operational messages retain corresponding meanings and placeholders.
 The [visual language](../design/visual-language.md) owns where these lines appear.
 
 ## Product And Tool Names

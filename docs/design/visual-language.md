@@ -213,21 +213,36 @@ Text-only surfaces retain the same meanings:
 | Shortened text | `…` means truncation. Preserve the full nickname/URL for reading and copying; never turn an exact value into a decorative code. |
 | Welcome cipher | [WelcomeLine](../../src/client/components/living/WelcomeLine.tsx) owns the paired symbols and pixel words, tied to the same selected line. They are decoration, not hidden connection state. |
 
-Sharing, viewing, starting, room-ready, idle and waiting title catalogs each
-contain 20 entries per presentation, including the ordinary status. Draw each
-decoration once per cycle, interleaving the ordinary status; a changed title
-context starts a new cycle. Paused, ended, unavailable and playback-required
-titles stay literal and fixed. Product slogans remain fixed as well.
+### Playful Copy Lifecycle
 
-Long-wait entry screens and passive waiting overlays retain their literal status
-and existing subject motion. After eight seconds, a shared secondary caption may
-rotate through the local waiting-copy catalog, without inventing work steps,
-remaining time or success. It is decorative and excluded from live announcements.
-Errors, paused playback, required actions and compact status controls keep their
-literal messages. Pure-visual mode keeps the animated scene. Title and caption
-rotation share `ui/text-rotation.ts`: each decoration appears once per cycle;
-hidden pages and reduced motion do not advance it. Unmounting the waiting
-surface ends its rotation; a new state starts a new cycle.
+The following rules are accepted design targets. The remaining alignment of
+current callers and catalogs is tracked in [TODO](../todo.md); their presence
+here does not establish completed implementation or acceptance.
+
+Website/App welcome lines, waiting captions and playful title variations share
+one lifecycle. Show an entry immediately, then change it every eight seconds
+while visible. Draw without replacement until the current pool is exhausted.
+An ordinary rerender or metric update does not restart the cycle. A new semantic
+context or language starts from that context's current-language pool; never
+reuse a cross-language array index. Hidden surfaces stop advancing. On return,
+keep the current line for a full interval; reduced motion retains a static line.
+Unmount or an ended context retires timers and listeners. Empty pools omit the
+decoration; one-entry pools stay static. Real completion never waits for copy
+or an animation to finish. This cadence is a product choice, not measured progress.
+
+Each language maintains independent contextual pools without equal counts,
+paired translation keys or a fixed total. Contributors can add a locally natural
+entry without inventing equivalents in other languages. Keep operational labels
+in the ordinary translation contract. Welcome ciphers attach meaningful symbols
+to the selected entry, rather than depending on a global numeric correspondence.
+Pure-visual waiting keeps the shared animated scene.
+
+Actual status, error reasons, paused/ended states, required actions and slogans
+remain literal. A title retains its primary activity and any applicable warning.
+Waiting decorations never invent steps, remaining time or success; they are
+excluded from live status announcements. Small controls retain concise labels
+and their existing motion. Graphic composition still follows its own contextual
+review; this copy policy does not require a mascot or a new tooltip everywhere.
 
 ## Semantic Colour And Shape
 

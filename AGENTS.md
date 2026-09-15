@@ -80,6 +80,12 @@
 
 ## Engineering Defaults
 
+- Repeated meanings across code, UI, copy, configuration and lifecycle follow
+  one owned [contextual contract](./docs/reference/engineering.md#contextual-consistency).
+  Check related producers and consumers before adding another local rule;
+  preserve differences justified by authority, scope or user intent.
+  Use the [consistency review skill](./.agents/skills/context-consistency/SKILL.md)
+  for cross-cutting consistency work; ordinary changes check the affected family.
 - UI changes must follow the shared [visual language](./docs/design/visual-language.md):
   cast, semantic colours, result panels and motion have one owner. Extend the
   existing preview when adding a new meaning; do not invent scene-local rules.

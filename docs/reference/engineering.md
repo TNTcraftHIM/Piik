@@ -176,6 +176,49 @@ above rather than searching the tree.
   resources or require explicit targets; they must not depend on a maintainer's
   workstation, private deployment or machine-specific infrastructure names.
 
+## Contextual Consistency
+
+Repeated meaning has one owned contract across code, interaction, wording,
+illustration, diagnostics and documentation. A shared component alone does not
+establish consistency if its callers select conflicting meanings or lifetimes.
+Before adding or changing an occurrence, locate its related producers and
+consumers and the applicable owner in the [documentation map](../maintenance.md#owners).
+
+For a repeated concept, its existing owner must make the following clear where
+they affect implementation or review:
+
+- **Meaning and evidence:** the subject, fact or action; who may assert it;
+  its scope and generation; how unknown differs from failure or success.
+- **Context and priority:** where it applies, where it does not, which user
+  action it supports, and which information takes precedence.
+- **Lifetime:** first appearance or acquisition, updates, replacement,
+  cancellation, recovery and retirement; visibility or persistence when relevant.
+- **Representations:** permitted copy, icons, motion and feedback surfaces;
+  truthful runtime/platform adapters; shared implementation and validation owners.
+
+Use the current module or design reference rather than creating a specification
+for every detail. A new shared rule needs repeated callers or a concrete public
+contract, a reason for the rule, and a proportionate example or check. Amend or
+retire the replaced rule and its consumers together.
+
+Equal wording or appearance does not prove equal semantics. Compare authority,
+subject, scope, evidence, lifetime and intended outcome before merging paths.
+Signaling readiness and visible media, requested and applied settings, and a
+retired operation versus its replacement must remain distinguishable. Runtime
+and layout adaptations may differ while preserving the same contract. Explain
+such differences at their owner; do not hide them in caller-specific flags or
+force different authorities into a universal state manager.
+
+The [consistency skill](../../.agents/skills/context-consistency/SKILL.md) owns the
+review method and finding categories. Scoped changes check related consumers;
+they do not require a repository-wide audit or a new framework.
+
+These boundaries align with [W3C consistent identification](https://www.w3.org/WAI/WCAG21/Understanding/consistent-identification.html),
+[GOV.UK contribution criteria](https://design-system.service.gov.uk/community/contribution-criteria/)
+and [bounded contexts](https://martinfowler.com/bliki/BoundedContext.html): keep
+repeated functions recognizable, justify shared patterns, and preserve real
+domain distinctions.
+
 ## Ablation And Review
 
 Judge a change by verified user value against implementation, maintenance,
