@@ -8,7 +8,7 @@ history. A parked idea is not implementation authority.
 ## Now
 
 - [ ] **Maintenance acceptance.** Review the current welcome/waiting/title
-  previews, room-entry comics, tooltip motion and self-hosting tutorial before integration. The
+  previews, tooltip motion and self-hosting tutorial before integration. The
   [playful-copy policy](./standards/visual-language.md#playful-copy-lifecycle)
   owns timing and language pools; do not duplicate its rules here. Keep release
   approval, version and bilingual release notes with the user.

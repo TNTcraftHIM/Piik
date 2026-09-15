@@ -128,8 +128,12 @@ figure and face geometry in product illustrations so expressions stay inside
 the head as it scales. Larger scenes can add a small lean; small status panels
 may omit facial detail to keep the action clear. Compact comic pawns stay small
 and handless: use gaze, body lean and short hops to express their action. Keep
-their scale consistent with neighbouring scenes in the same family. Large
-introduction illustrations may use small floating round hands to hold a prop.
+their scale consistent with neighbouring scenes in the same family. The relevant
+door, credential or media object carries the explanation; people provide scale
+and a response. Leave space around them so the action is legible. Use the
+room-admission examples in `/__tooltip-preview` as a reference for compact
+proportions and detail, while giving other subjects their own appropriate scene.
+Large introduction illustrations may use small floating round hands to hold a prop.
 A held gamepad is a scene prop; a separate role crown identifies the host and
 moves with the body. Its gold is an identity colour,
 not a warning or achievement. The share control retains its
@@ -333,8 +337,10 @@ possibility. A rejected PiP request is failure; lack of PiP support is a limitat
 Demonstrations and progress share the existing 3.2-second comic beat. The main
 action belongs in its first half, followed by a readable hold; small internal
 staggering is allowed. Keep one focal gesture at a time; other characters can
-answer it with a delayed reaction. An explanatory
-slider describes purpose and available range, not its live numeric value.
+answer it with a delayed reaction. A small action and a readable pause can carry
+the whole explanation; extra movement needs a purpose beyond making the scene
+busier. An explanatory slider describes purpose and available range, not its
+live numeric value.
 Decorative sparkle must support the pictured action, never fake current success.
 
 The shared tooltip owns repetition for hover, keyboard focus and click/tap;
@@ -416,7 +422,9 @@ precedence when space is tight.
 - For each changed scene inspect its start, transition and settled pose in
   both themes, reduced motion and narrow layouts. Compare success, failure,
   limitation and neutral neighbours in the catalogue. Code-level tests do not
-  establish visual clarity.
+  establish visual clarity. Judge the actual tooltip size, not only an enlarged
+  SVG. Improve staging, gaze and timing before enlarging figures or adding props
+  and effects; remove additions that do not help the meaning or the gesture.
 - Update this owner when accepting a new convention. Product documents link
   here instead of copying the palette, cast or animation table.
 
