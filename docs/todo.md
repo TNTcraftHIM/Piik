@@ -16,12 +16,17 @@ history. A parked idea is not implementation authority.
   supported Linux runner, including encoder admission and primary error checks.
   Then verify and isolate output-local encoder failures while retaining fatal
   shared source/engine errors. Windows checks do not establish this boundary.
-- [ ] **Introduction motion and presentation boundaries.** Resolve the automatic
+- [ ] **Feedback composition.** Define the mascot/comic/literal-status/rotating-caption
+  combination for page loading, media waiting/recovery, errors and small controls
+  in the [visual language](./standards/visual-language.md), then apply and review
+  it in the existing previews. The shared caption cadence is implemented; the
+  complete composition rule is not. Review caption eligibility separately from
+  mascot visibility, and generic loading separately from room signaling.
+- [ ] **Introduction motion.** Resolve the automatic
   hero-loop control requirement against the accepted design without restoring
   discarded gesture controls or silently removing animation. Review only the
   remaining concrete layout/accessibility choices; distinguish decorative content
-  from functional symbols. Review mascot/comic/caption composition by context
-  before expanding it; existing combinations do not define the standard.
+  from functional symbols.
 - [ ] **Post-launch monitoring.** Collect App/Server feedback and verify the
   public downloads, container pulls and deployed services after product releases.
   Follow the [deployment runbook](./deployment.md) for the private service and keep public

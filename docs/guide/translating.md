@@ -53,6 +53,13 @@ translate a website caption. Update related instructions when an action name
 changes. Technical references keep one shared version; see
 [documentation ownership](../standards/documentation.md).
 
+Language catalogs are bundled with the web assets; a new language also needs
+the registry import described below. Rebuild and publish the App or Server that
+serves the affected UI after an edit. Installed packages do not load external
+language files. When the App connects to a remote site, that site serves its UI,
+so updating the site's web translations does not require reinstalling the App.
+The website has its own build and deployment workflow.
+
 ## Preserve meaning and syntax
 
 Write naturally for the target audience. Use the shared glossary for role and
