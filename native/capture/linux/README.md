@@ -26,6 +26,14 @@ native build and regression alone, add `--check` to the command above. The test
 uses GStreamer's core synthetic elements and needs no display, Portal session,
 capture device or hardware encoder; physical capture remains a separate check.
 
+Output retirement already closes a branch's valve before stopping its elements.
+Encoder failures currently remain fatal to the capture run, including failures
+reported for one output. Isolating those failures also requires containing
+GStreamer queue/tee flow errors before they reach sibling branches; changing only
+the asynchronous bus handler is insufficient. Keep state retirement off streaming
+callbacks and verify sibling output, source failure and shutdown on Linux before
+changing this boundary. [TODO](../../../docs/todo.md) tracks that remaining work.
+
 Runtime requirements are the desktop Portal/PipeWire services, a GStreamer
 PipeWire source, and an installed GStreamer hardware H.264 encoder. If any part
 is unavailable, the App reports no Linux Native path and the same Browser

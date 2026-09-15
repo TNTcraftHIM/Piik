@@ -37,6 +37,7 @@ import {
 import { StatusIndicator } from "../components/living/StatusIndicator";
 import { Tooltip } from "../components/living/Tooltip";
 import { PlaybackControls } from "../components/living/PlaybackControls";
+import { LoadingStatus } from "../components/living/WaitingStatus";
 import {
   Btn,
   FieldCap,
@@ -2116,14 +2117,7 @@ export function ViewerPage({
         <main className="lr-join">
           {accessState === "checking" ? (
             <div className="lr-join-panel">
-              <span
-                className="lr-viewer-entry-brand"
-                role="status"
-                style={{ display: "grid", justifyItems: "center", gap: 14 }}
-              >
-                <Comic kind="signal-connecting" theme="paper" />
-                <span className={vis ? "visually-hidden" : "lr-tv-msg"}>{t(presentation.messageKey)}</span>
-              </span>
+              <LoadingStatus label={presentation.messageKey} />
             </div>
           ) : (
             <div className="lr-join-panel">
@@ -2330,7 +2324,7 @@ export function ViewerPage({
               <StageOverlay
                 dim
                 icon={viewerStatus.activity.icon}
-                transition={viewerStatus.activity.pulse}
+                waiting={viewerStatus.overlay?.waiting}
                 comic={viewerStatus.activity.comic}
                 tone={viewerStatus.activity.tone}
                 message={stageMessage}
@@ -2361,7 +2355,7 @@ export function ViewerPage({
                   tone={viewerStatus.activity.tone}
                   message={stageMessage}
                   progress={connectionProgress}
-                  spin={viewerStatus.activity.pulse}
+                  waiting={viewerStatus.overlay?.waiting}
                 />
               )}
           </StageTv>

@@ -2,7 +2,7 @@ import { useRef } from "react";
 import { locales } from "../../locales";
 import { useCopy, type CopyKey } from "../../ui/copy";
 import { useRotatingText } from "../../ui/use-text-rotation";
-import { Comic } from "./Comic";
+import { BrandLoader } from "./BrandMark";
 
 const NO_CAPTIONS: readonly string[] = [];
 
@@ -21,7 +21,7 @@ export function WaitingCaption({ context, still = false }: { context: string; st
 export function LoadingStatus({ label, still = false }: { label: CopyKey; still?: boolean }) {
   const { t, vis } = useCopy();
   return <div className="lr-loading" role="status" aria-label={t(label)}>
-    <Comic kind="signal-connecting" theme="paper" />
+    <BrandLoader still={still} />
     {vis ? null : <span>{t(label)}</span>}
     <WaitingCaption context={label} still={still} />
   </div>;

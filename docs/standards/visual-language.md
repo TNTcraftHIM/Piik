@@ -230,6 +230,32 @@ Text-only surfaces retain the same meanings:
 | Shortened text | `…` means truncation. Preserve the full nickname/URL for reading and copying; never turn an exact value into a decorative code. |
 | Welcome cipher | The locale entry owns its two meaningful symbols; [WelcomeLine](../../src/client/components/living/WelcomeLine.tsx) renders their pixel words. They are decoration, not hidden connection state. |
 
+### Feedback Composition
+
+Choose the illustration from the operation's scope and the caption from its
+actual state. Each feedback region has one principal illustration; a comic does
+not need a second mascot or decorative spinner. The header's brand mark remains
+navigation identity. Keep an actionable play symbol or an exact progress value
+when it helps the user proceed or understand the operation.
+
+| Context | Illustration and literal content | Playful caption |
+| --- | --- | --- |
+| Page loading, site access check, App preparation | The shared wink mascot with the actual loading operation; no room or media-path claim | The current language's waiting pool |
+| Source listing/start/switch, room joining, media setup/recovery, waiting for the Host | The corresponding comic with the current status; only the existing state owner can declare waiting | The same waiting pool while the wait exists |
+| Error, limitation, pause, ended room or required user action | The corresponding comic and clear reason/action; settled movement keeps that verdict readable | None |
+| Small controls, tooltips and inline results | Existing action/status icon and contextual guidance when needed; retain direct actions | None |
+
+The shared `LoadingStatus`, `StageOverlay` and `WaitingCaption` apply this
+composition; source selection reuses the caption beside its existing comic.
+Do not infer waiting from a chosen drawing, mascot visibility or animation flag.
+Healthy playback stays visible during control reconnection; this rule does not
+create another overlay. An idle room awaiting a new share differs from a closed
+room. In pure-visual mode keep the same illustration and accessible operation
+name, with no waiting text. Welcome ciphers retain their separate role.
+At compact player sizes, omit the optional caption before shrinking the comic
+or the actual status into illegibility. The existing visibility policy suspends
+hidden captions; viewport size does not become product state.
+
 ### Playful Copy Lifecycle
 
 The shared [rotation owner](../../src/client/ui/text-rotation.ts) supplies the
@@ -264,8 +290,7 @@ review; this copy policy does not require a mascot or a new tooltip everywhere.
 | Existing surface | Copy coverage |
 | --- | --- |
 | Website welcome, App launcher, sharing entry | The current language's welcome pool; the App's visual mode renders that entry's cipher. |
-| Page loading, site access check, App preparation | A secondary waiting caption beside the literal operation. |
-| Player starting, switching source, waiting for the Host, reconnecting | The existing waiting overlay keeps its current scene and adds the same secondary caption. |
+| Loading, source selection and media waiting | A secondary waiting caption according to [feedback composition](#feedback-composition). |
 | Browser tab | Sharing, watching, starting, ready-to-share, not-started and waiting states may append their own variations; room identity, literal activity and warnings remain visible. |
 | Error, pause, ended state, required action, tooltip, small control | Keep the existing literal message and contextual graphic; no rotating caption is added. |
 
@@ -404,9 +429,10 @@ for reduced motion. Product-state comics still follow the table above.
 Entry screens may carry one quiet, original welcome line in Chinese or English
 text mode. Pure-visual mode pairs familiar pictograms with static pixel
 pseudo-lettering tied to the same line. Hide that visual cipher from assistive
-technology; the ordinary text sentence remains readable. The selected line stays stable during that visit, including mode
-changes, and never replaces an action, error, loading message or connection
-progress. Keep it on one line, apart from the actions; primary controls take
+technology; the ordinary text sentence remains readable. Switching between text
+and visual mode preserves the selected welcome entry; rotation follows the
+[shared lifecycle](#playful-copy-lifecycle). The line never replaces an action,
+error, loading message or connection progress. Keep it on one line, apart from the actions; primary controls take
 precedence when space is tight.
 
 ## Ownership And Incremental Review
@@ -441,3 +467,8 @@ provides the native timeline alignment used by participant gestures.
 [Carbon tooltip guidance](https://carbondesignsystem.com/components/tooltip/usage/)
 supports concise, contextual help where it adds information; required instructions
 stay visible beside the action.
+
+[Carbon loading guidance](https://carbondesignsystem.com/components/loading/usage/)
+supports avoiding competing indicators and keeping required user actions distinct
+from passive loading. Piik's immediate captions and eight-second cadence are its
+own presentation choice.

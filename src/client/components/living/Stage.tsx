@@ -5,7 +5,6 @@ import { Glyph, type GlyphName } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
 import { Comic, type ComicKind } from "./Comic";
 import type { ComicTone } from "./comic-presentation";
-import { BrandLoader } from "./BrandMark";
 import { WaitingCaption } from "./WaitingStatus";
 
 export function StageTv({
@@ -43,8 +42,7 @@ export function StageOverlay({
   icon,
   message,
   dim,
-  transition,
-  spin,
+  waiting = false,
   comic,
   tone,
   progress,
@@ -54,8 +52,7 @@ export function StageOverlay({
   icon: GlyphName;
   message: string;
   dim?: boolean;
-  transition?: boolean;
-  spin?: boolean;
+  waiting?: boolean;
   comic?: ComicKind;
   tone?: ComicTone;
   progress?: string;
@@ -63,22 +60,17 @@ export function StageOverlay({
   still?: boolean;
 }) {
   const { vis } = useCopy();
-  const showMascot =
-    transition ||
-    (Boolean(comic) &&
-      (Boolean(spin) || comic === "waiting-for-host" || comic === "recovering"));
+  const isWaiting = waiting && !onActivate;
   const content = (
     <>
       {comic ? <Comic kind={comic} theme="stage" tone={tone}
-        motion={transition || spin ? "progress" : undefined} /> : null}
+        motion={isWaiting ? "progress" : undefined} /> : null}
       <span className="lr-tv-status-content">
-        {(showMascot || vis || !comic || onActivate) && (showMascot ? (
-          <BrandLoader />
-        ) : (
-          <span className={`lr-tv-big${spin ? " lr-spin" : ""}${onActivate ? " is-action is-ripple" : ""}`}>
+        {(!comic || onActivate) && (
+          <span className={`lr-tv-big${isWaiting ? " lr-spin" : ""}${onActivate ? " is-action is-ripple" : ""}`}>
             <Glyph name={icon} size={30} draw="stage-overlay" />
           </span>
-        ))}
+        )}
         {vis ? progress && (
           <span className="lr-tv-progress" aria-label={progress}>
             <Glyph name="refresh" size={17} className="lr-spin" />
@@ -86,7 +78,7 @@ export function StageOverlay({
           </span>
         ) : <span className="lr-tv-msg">{message}</span>}
       </span>
-      {showMascot && !onActivate && <WaitingCaption context={comic ?? "transition"} still={still} />}
+      {isWaiting && <WaitingCaption context={comic ?? "media"} still={still} />}
     </>
   );
   if (onActivate) {

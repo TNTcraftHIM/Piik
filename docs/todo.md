@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-09-15
+Last reviewed: 2026-09-16
 
 Only **Now** is executable. Product modules own behavior; Git/PRs own completed
 history. A parked idea is not implementation authority.
@@ -8,25 +8,17 @@ history. A parked idea is not implementation authority.
 ## Now
 
 - [ ] **Maintenance acceptance.** Review the current welcome/waiting/title
-  previews, tooltip motion and self-hosting tutorial before integration. The
+  previews, tooltip placement and self-hosting tutorial before integration. The
   [playful-copy policy](./standards/visual-language.md#playful-copy-lifecycle)
-  owns timing and language pools; do not duplicate its rules here. Keep release
-  approval, version and bilingual release notes with the user.
+  and [feedback composition](./standards/visual-language.md#feedback-composition)
+  own the presentation rules; do not duplicate them here. The website's
+  page-level reduced-motion preference and the player tooltip placement are
+  implemented and need final visual review. Keep release approval, version and
+  bilingual release notes with the user.
 - [ ] **Linux output failure boundary.** Run the wired `build.sh --check` on a
   supported Linux runner, including encoder admission and primary error checks.
   Then verify and isolate output-local encoder failures while retaining fatal
   shared source/engine errors. Windows checks do not establish this boundary.
-- [ ] **Feedback composition.** Define the mascot/comic/literal-status/rotating-caption
-  combination for page loading, media waiting/recovery, errors and small controls
-  in the [visual language](./standards/visual-language.md), then apply and review
-  it in the existing previews. The shared caption cadence is implemented; the
-  complete composition rule is not. Review caption eligibility separately from
-  mascot visibility, and generic loading separately from room signaling.
-- [ ] **Introduction motion.** Resolve the automatic
-  hero-loop control requirement against the accepted design without restoring
-  discarded gesture controls or silently removing animation. Review only the
-  remaining concrete layout/accessibility choices; distinguish decorative content
-  from functional symbols.
 - [ ] **Post-launch monitoring.** Collect App/Server feedback and verify the
   public downloads, container pulls and deployed services after product releases.
   Follow the [deployment runbook](./deployment.md) for the private service and keep public
@@ -43,12 +35,6 @@ history. A parked idea is not implementation authority.
   Recheck on the reporting machine after the browser-handoff repair. The Windows
   URL-handler crash itself still needs the affected build and process/dump
   evidence; local checks cannot establish its underlying cause.
-- [ ] **Tooltip placement around video.** After the current motion/meaning
-  acceptance, review placement that keeps the picture visible, including
-  side placement and restrained translucency. Keep neighbouring actions
-  reachable when a help popup remains open. Current behavior prefers above
-  (below for header controls) and flips for viewport space. Discuss the design
-  before changing placement rules.
 
 Keep fixes on a maintenance branch until acceptance. The public release is the
 compatibility baseline; private service deployment stays independent.

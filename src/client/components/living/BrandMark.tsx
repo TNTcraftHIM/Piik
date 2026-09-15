@@ -90,10 +90,10 @@ export function BrandMark({
   );
 }
 
-export function BrandLoader() {
+export function BrandLoader({ still = false }: { still?: boolean }) {
   return (
     <span className="lr-brand-loader" aria-hidden="true">
-      <BrandMark size={64} motion="loop" />
+      <BrandMark size={64} motion={still ? "static" : "loop"} />
     </span>
   );
 }

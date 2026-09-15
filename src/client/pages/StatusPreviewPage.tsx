@@ -95,8 +95,7 @@ export function StatusPreviewPage() {
               {status.overlay ? <StageOverlay icon={status.overlay.status.icon}
                 comic={status.overlay.status.comic} message={t(status.overlay.status.labelKey)}
                 tone={status.overlay.status.tone}
-                spin={status.overlay.status.pulse} dim={status.overlay.mode === "blocking"}
-                transition={status.overlay.status.pulse}
+                waiting={status.overlay.waiting} dim={status.overlay.mode === "blocking"}
                 still={reducedMotion}
                 onActivate={presentation.stage === "needs-play" ? () => choose("playing") : undefined} /> : null}
             </StageTv>
@@ -167,7 +166,7 @@ export function StatusPreviewPage() {
         </section>
         <section className="sp-catalog" id="waiting-preview">
           <header><h2>加载与等待</h2>
-            <p>真实状态保留，短句立即出现，每 8 秒换一条；隐藏时暂停，返回后保留完整阅读时间。纯视觉模式保留现有漫画。切换上方场景可查看播放器中的等待反馈。</p>
+            <p>通用加载用 mascot，具体媒体状态用对应漫画；文字模式保留真实状态与等待短句。短句立即出现，每 8 秒轮换，隐藏时暂停。切换上方场景可比较等待、错误和操作提示。</p>
           </header>
           <label>入口状态 <select value={loadingLabel} onChange={event => setLoadingLabel(event.target.value as CopyKey | "")}>
             <option value="common.loading">页面加载</option>

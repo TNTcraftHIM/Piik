@@ -63,6 +63,10 @@ samples during holds.
 After changing the artwork, run `node scripts/update-website-hero.mjs` from the
 repository root; `--check` detects an out-of-date hero. Its `#still` fragment
 and the system reduced-motion preference disable the loop.
+The homepage footer's **Display settings** disclosure can keep illustrations
+still and pause rotating captions, retaining the current line. This saved website
+preference supplements the system setting; neither setting is a film playback
+control. The film's own controls remain available for intentional playback.
 
 The poster waits for an explicit play action. System reduced-motion preferences
 keep a still preview, with manual playback available. System colour preference

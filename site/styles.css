@@ -185,6 +185,11 @@ details p { max-width: 610px; padding: 0 24px 23px 0; color: var(--muted); font-
 .footer-identity p { color: var(--muted); margin-left: 12px; font-size: 11px; font-weight: 400; letter-spacing: 0; }
 .footer-links { display: flex; flex-wrap: wrap; gap: 24px; margin-left: auto; font-size: 12px; }
 .footer-links a { display: inline-flex; align-items: center; min-height: 44px; text-decoration: none; }
+.display-settings { flex-basis: 100%; text-align: right; }
+.display-settings > summary { justify-content: flex-end; gap: 8px; min-height: 44px; padding: 0; font-size: 12px; font-weight: 400; }
+.display-settings label { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-height: 44px; font-size: 12px; }
+.display-settings input { accent-color: var(--green); width: 16px; height: 16px; margin: 0; }
+.display-settings p { max-width: none; padding: 0; font-size: 12px; }
 .footer-note { flex-basis: 100%; text-align: right; margin-top: 9px; color: var(--muted); font-size: 11px; }
 html[lang="zh-CN"] h1 { font-size: clamp(45px, 5.4vw, 72px); line-height: 1.24; letter-spacing: -.03em; }
 html[lang="zh-CN"] :is(h2, h3) { letter-spacing: -.025em; }
@@ -316,3 +321,6 @@ html[lang="zh-CN"] .eyebrow { letter-spacing: .13em; }
   *, *::before, *::after { transition: none !important; }
   .button:not(:disabled):is(:hover, :focus-visible, :active), .button:not(:disabled):is(:hover, :focus-visible) svg { transform: none; }
 }
+html[data-reduced-motion] { scroll-behavior: auto; }
+html[data-reduced-motion] *, html[data-reduced-motion] *::before, html[data-reduced-motion] *::after { animation: none !important; transition: none !important; }
+html[data-reduced-motion] :is(.button, .button svg, .film-play, .project-tv) { transform: none !important; }

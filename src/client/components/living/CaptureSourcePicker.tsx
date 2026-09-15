@@ -7,6 +7,7 @@ import { Glyph, type GlyphName } from "../../ui/icons";
 import { Tooltip } from "./Tooltip";
 import { HintComic } from "./hints";
 import { Pill } from "./primitives";
+import { WaitingCaption } from "./WaitingStatus";
 
 const SOURCE_TABS = ["browser", "window", "display"] as const;
 type SourceTab = (typeof SOURCE_TABS)[number];
@@ -300,6 +301,7 @@ export function CaptureSourcePicker({
             >
               <HintComic kind="hint-refresh-sources" size={240} tone="busy" motion="progress" />
               {vis ? null : <span>{t("host.sourcePicker.loading")}</span>}
+              <WaitingCaption context="host.sourcePicker.loading" />
             </span>
           ) : sources.length === 0 ? (
             <span

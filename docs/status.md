@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-09-15
+Last updated: 2026-09-16
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) owns unresolved physical limits,
@@ -20,6 +20,11 @@ and Git/PRs own completed history.
   remain part of the accepted media surface. Product modules own their behavior;
   [configuration](./standards/configuration.md#diagnostics) owns Debug activation,
   report contents and disclosure.
+- Shared feedback composition is implemented: generic loading uses the wink
+  mascot, concrete media waits use their owning comic, and waiting captions are
+  secondary to literal status. Website reduced-motion preference and player
+  tooltip placement follow the same presentation owners; final visual review is
+  tracked in [TODO](./todo.md).
 
 ## Deployment
 

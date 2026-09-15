@@ -148,7 +148,10 @@ export function deriveViewerStatus(
   }
   const overlay = presentation.overlay === "none"
     ? null
-    : { mode: presentation.overlay, status: activity };
+    : { mode: presentation.overlay, status: activity,
+      waiting: stage === "joining" || stage === "allocating" || stage === "waiting-host" ||
+        stage === "waiting-sfu" || stage === "preparing-p2p" || stage === "preparing-sfu" ||
+        stage === "receiving" || stage === "recovering" };
   const television = activity;
   const connection: StatusDescriptor = SIGNAL_VISUALS[signal];
   const titleFrameKey: TitleFrameKey = presentation.stage === "room-closed" ? "viewerClosed"

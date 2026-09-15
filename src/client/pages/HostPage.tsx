@@ -3387,7 +3387,7 @@ export function HostPage({
                 icon="refresh"
                 comic="source-switching"
                 tone="busy"
-                spin
+                waiting
                 dim
                 message={t("host.switchingSource")}
               />
@@ -3396,7 +3396,7 @@ export function HostPage({
             ) : phase === "starting" ? (
               <>
                 <StaticNoise />
-                <StageOverlay icon="cast" comic="source-starting" tone="busy" spin message={t("host.starting")} />
+                <StageOverlay icon="cast" comic="source-starting" tone="busy" waiting message={t("host.starting")} />
               </>
             ) : stream && localPreviewPaused ? (
               <StageOverlay

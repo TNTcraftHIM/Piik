@@ -6,7 +6,10 @@
 // Alignment: the align prop is a desktop-tuned preference; whenever a show
 // channel opens, the trigger's live viewport position is measured and
 // start/center/end is re-picked so the panel never clips off-screen (rows
-// wrap at narrow widths, so a static choice cannot hold). The native top layer
+// wrap at narrow widths, so a static choice cannot hold). Player controls may
+// use a complete left/right placement when the whole bar has empty space;
+// otherwise they use the same above/below fallback as every other control.
+// The native top layer
 // avoids clipping by scrolling lists; the caret points back to the trigger.
 // Styling in styles.css under "comic tooltip" / "glyph draw-in". SSR-safe:
 // handlers only run in the browser.
@@ -33,10 +36,12 @@ const TOUCH_HIDE_MS = 1500;
 const PANEL_EXIT_MS = 160;
 // Minimum clearance the re-picked alignment keeps to each viewport edge.
 const EDGE_MARGIN = 8;
+const HOVER_EXIT_GRACE_MS = 160;
 // Paper panel before it is measured: 240-wide comic strip plus its padding.
 const FALLBACK_PANEL_HEIGHT = 96;
 
 type Align = "center" | "start" | "end";
+type Placement = "above" | "below" | "left" | "right";
 // The selector identifies only the visible text, excluding icons and captions.
 type OverflowText = { text: string; selector: string };
 type TooltipContent =
@@ -74,6 +79,7 @@ export function Tooltip({
   const tipRef = useRef<HTMLSpanElement | null>(null);
   const pressTimer = useRef<number | null>(null);
   const hideTimer = useRef<number | null>(null);
+  const hoverExitTimer = useRef<number | null>(null);
   const panelUnmountTimer = useRef<number | null>(null);
   const longPressed = useRef(false);
   const pressPoint = useRef<{ x: number; y: number } | null>(null);
@@ -82,7 +88,7 @@ export function Tooltip({
   const [pressOpen, setPressOpen] = useState(false);
   const [panelMounted, setPanelMounted] = useState(false);
   const [overflowing, setOverflowing] = useState(false);
-  const [position, setPosition] = useState({ left: 0, top: 0, caret: 0, below: place === "below" });
+  const [position, setPosition] = useState({ left: 0, top: 0, caret: 0, placement: place as Placement });
   // True while the current gesture is a touch, so contextmenu can tell a
   // long-press from a mouse right-click without reading vendor event fields.
   const touchGesture = useRef(false);
@@ -138,6 +144,8 @@ export function Tooltip({
     pressTimer.current = null;
     if (hideTimer.current !== null) window.clearTimeout(hideTimer.current);
     hideTimer.current = null;
+    if (hoverExitTimer.current !== null) window.clearTimeout(hoverExitTimer.current);
+    hoverExitTimer.current = null;
     pressPoint.current = null;
   }, [enabled]);
 
@@ -163,6 +171,9 @@ export function Tooltip({
     const vw = window.innerWidth;
     if (!vw) return; // no layout (SSR/test): keep the prop alignment
     const rect = wrap.getBoundingClientRect();
+    const playback = wrap.closest<HTMLElement>(".lr-playback")?.getBoundingClientRect();
+    const avoid = playback ?? rect;
+    const player = wrap.closest<HTMLElement>(".lr-tv-screen")?.getBoundingClientRect();
     const measured = panelMounted ? (tipRef.current?.offsetWidth ?? 0) : 0;
     const width = Math.max(0, Math.min(measured || 320, vw - EDGE_MARGIN * 2));
     // Same idea vertically: a control scrolled near the top has no room above,
@@ -170,16 +181,33 @@ export function Tooltip({
     const vh = window.innerHeight;
     const panelHeight =
       (panelMounted ? tipRef.current?.offsetHeight : 0) || FALLBACK_PANEL_HEIGHT;
-    const fitsAbove = rect.top - panelHeight - EDGE_MARGIN >= 0;
-    const fitsBelow = !vh || rect.bottom + panelHeight + EDGE_MARGIN <= vh;
-    const livePlace =
-      place === "above"
+    const fitsAbove = avoid.top - panelHeight - EDGE_MARGIN >= EDGE_MARGIN;
+    const fitsBelow = !vh || avoid.bottom + panelHeight + EDGE_MARGIN <= vh - EDGE_MARGIN;
+    const preferredPlace = wrap.closest(".lr-tv-chin") ? "below" : place;
+    let livePlace: Placement =
+      preferredPlace === "above"
         ? fitsAbove || !fitsBelow
           ? "above"
           : "below"
         : fitsBelow || !fitsAbove
           ? "below"
           : "above";
+    const centerY = rect.top + rect.height / 2;
+    const sideTop = Math.max(EDGE_MARGIN, Math.min(centerY - panelHeight / 2, vh - panelHeight - EDGE_MARGIN));
+    const fitsSideVertically = sideTop >= EDGE_MARGIN && sideTop + panelHeight <= (vh || Infinity) - EDGE_MARGIN;
+    // Use empty side space only when the whole panel fits close to its control.
+    // Otherwise clear the entire playback bar, including its narrow second row.
+    if (playback) {
+      // The screen edge is the side boundary when available, so a side panel
+      // never hangs over the picture while clearing the bar.
+      const sideAvoid = player ?? avoid;
+      const nearLeft = rect.left - sideAvoid.left <= rect.width;
+      const nearRight = sideAvoid.right - rect.right <= rect.width;
+      const fitsLeft = nearLeft && sideAvoid.left - width - EDGE_MARGIN >= EDGE_MARGIN;
+      const fitsRight = nearRight && sideAvoid.right + width + EDGE_MARGIN <= vw - EDGE_MARGIN;
+      livePlace = fitsSideVertically && (fitsLeft || fitsRight) ? fitsLeft ? "left" : "right"
+        : fitsAbove || !fitsBelow ? "above" : "below";
+    }
     const center = rect.left + rect.width / 2;
     const boxes: Record<Align, { left: number; right: number }> = {
       center: { left: center - width / 2, right: center + width / 2 },
@@ -195,14 +223,25 @@ export function Tooltip({
     ];
     const fits = order.find((a) => clipped(boxes[a]) === 0);
     const selected = fits ?? order.reduce((a, b) => (clipped(boxes[a]) <= clipped(boxes[b]) ? a : b));
-    const left = Math.max(EDGE_MARGIN, Math.min(boxes[selected].left, vw - width - EDGE_MARGIN));
+    let left = Math.max(EDGE_MARGIN, Math.min(boxes[selected].left, vw - width - EDGE_MARGIN));
+    let top = livePlace === "below" ? avoid.bottom + EDGE_MARGIN : avoid.top - panelHeight - EDGE_MARGIN;
+    let caret = Math.max(14, Math.min(center - left, width - 14));
+    if (livePlace === "left") {
+      left = (player ?? avoid).left - width - EDGE_MARGIN;
+      top = sideTop;
+      caret = Math.max(14, Math.min(centerY - top, panelHeight - 14));
+    } else if (livePlace === "right") {
+      left = (player ?? avoid).right + EDGE_MARGIN;
+      top = sideTop;
+      caret = Math.max(14, Math.min(centerY - top, panelHeight - 14));
+    }
     const border = tipRef.current ? parseFloat(getComputedStyle(tipRef.current).borderLeftWidth) || 0 : 0;
     setPosition({
       left,
-      top: livePlace === "below" ? rect.bottom + EDGE_MARGIN : rect.top - panelHeight - EDGE_MARGIN,
+      top,
       // The caret's absolute position starts inside the panel's border.
-      caret: Math.max(14, Math.min(center - left, width - 14)) - border,
-      below: livePlace === "below",
+      caret: caret - border,
+      placement: livePlace,
     });
   };
 
@@ -248,6 +287,7 @@ export function Tooltip({
       // focused neighbour. Only visible guidance consumes the outer action.
       const style = tipRef.current && getComputedStyle(tipRef.current);
       if (style?.visibility === "visible" && style.pointerEvents !== "none") event.preventDefault();
+      cancelHoverExit();
       setHoverOpen(false);
       setPressOpen(false);
       setFocusOpen(false);
@@ -274,6 +314,7 @@ export function Tooltip({
     () => () => {
       if (pressTimer.current !== null) window.clearTimeout(pressTimer.current);
       if (hideTimer.current !== null) window.clearTimeout(hideTimer.current);
+      if (hoverExitTimer.current !== null) window.clearTimeout(hoverExitTimer.current);
       if (panelUnmountTimer.current !== null) {
         window.clearTimeout(panelUnmountTimer.current);
       }
@@ -286,6 +327,7 @@ export function Tooltip({
     if (!pressOpen) return;
     const dismiss = (event: PointerEvent) => {
       if (!wrapRef.current?.contains(event.target as Node)) {
+        cancelHoverExit();
         setPressOpen(false);
         setHoverOpen(false);
         setFocusOpen(false);
@@ -302,7 +344,13 @@ export function Tooltip({
     }
   };
 
-  const placeClass = position.below ? " is-below" : "";
+  const cancelHoverExit = () => {
+    if (hoverExitTimer.current !== null) {
+      window.clearTimeout(hoverExitTimer.current);
+      hoverExitTimer.current = null;
+    }
+  };
+  const placeClass = position.placement === "above" ? "" : ` is-${position.placement}`;
   return (
     <span
       ref={wrapRef}
@@ -312,14 +360,23 @@ export function Tooltip({
       aria-describedby={disabledTrigger && caption && interactionOpen ? tooltipId : undefined}
       onPointerEnter={(event) => {
         if (!enabled) return;
+        cancelHoverExit();
         pickAlign();
         if (event.pointerType !== "touch") {
-          mountPanel(true);
+          mountPanel(!hoverOpen);
           setHoverOpen(true);
         }
       }}
       onPointerLeave={(event) => {
-        if (event.pointerType !== "touch") setHoverOpen(false);
+        if (event.pointerType === "touch") return;
+        cancelHoverExit();
+        // A two-row playback bar lies between some triggers and their hint.
+        // A short grace lets the pointer cross it without an invisible hit
+        // target covering neighbouring buttons.
+        hoverExitTimer.current = window.setTimeout(() => {
+          hoverExitTimer.current = null;
+          setHoverOpen(false);
+        }, HOVER_EXIT_GRACE_MS);
       }}
       onFocus={(event) => {
         if (!enabled) return;
@@ -409,6 +466,7 @@ export function Tooltip({
       onClick={enabled && toggleOnClick && !disabledTrigger ? (event) => {
         if (tipRef.current?.contains(event.target as Node)) return;
         if (pressOpen) {
+          cancelHoverExit();
           setPressOpen(false);
           setHoverOpen(false);
           setFocusOpen(false);

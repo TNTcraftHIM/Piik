@@ -201,7 +201,8 @@ ul { margin: 0; padding: 0; list-style: none; }
   transform-origin: top right;
 }
 .lr-language-menu:popover-open { animation: lr-language-open 180ms var(--spring); }
-@keyframes lr-language-open { from { opacity: 0; transform: translateY(-5px) scale(.97); } }
+.lr-language-menu.is-above { transform-origin: bottom right; --language-offset: 5px; }
+@keyframes lr-language-open { from { opacity: 0; transform: translateY(var(--language-offset, -5px)) scale(.97); } }
 .lr-language-menu button {
   display: grid;
   grid-template-columns: 34px minmax(0, 1fr) 16px;
@@ -298,6 +299,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 }
 .lr-tv-screen {
   position: relative;
+  container: media-stage / inline-size;
   overflow: hidden;
   aspect-ratio: 16 / 9;
   border-radius: 14px 14px 8px 8px;
@@ -366,9 +368,11 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   max-width: 100%;
 }
 .lr-tv-overlay.has-comic .lr-tv-msg { line-height: 1.35; }
-.lr-tv-overlay.has-comic .lr-brand-loader,
 .lr-tv-overlay.has-comic .lr-tv-big { width: 40px; height: 40px; flex-shrink: 0; }
-.lr-tv-overlay.has-comic .lr-brand-mark { width: 32px; height: 32px; }
+@container media-stage (max-width: 260px) {
+  .lr-tv-overlay.has-comic { gap: 4px; padding: 4px; }
+  .lr-tv-overlay > .lr-waiting-caption { display: none; }
+}
 
 .lr-tv-big {
   position: relative;
@@ -1792,7 +1796,8 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
 
 /* Stateful hover/focus panel carrying a paper Comic above its trigger. The
    trigger stays focusable; when it is natively disabled, the wrapper owns the
-   explanation focus instead. Enter is delayed ~120ms, exit is immediate. Under
+   explanation focus instead. Enter is delayed ~120ms; hover exit gets a short
+   crossing grace without placing invisible targets over nearby controls. Under
    prefers-reduced-motion the global block collapses the transition to instant
    and the comic's own RM block pins its final frame. */
 /* Tooltip owns hover, keyboard focus and press. Help buttons toggle on tap;
@@ -1832,7 +1837,7 @@ svg[data-comic-motion="still"] .lr-person-eyes > ellipse {
   inset: auto;
   margin: 0;
   overflow: visible;
-  transform: translateY(var(--tooltip-offset, 4px));
+  transform: translate(var(--tooltip-offset-x, 0px), var(--tooltip-offset, 4px));
   width: max-content;
   max-width: 320px;
   z-index: 30;
@@ -1871,6 +1876,8 @@ svg[data-comic-motion="still"] .lr-person-eyes > ellipse {
   height: 10px;
 }
 .lr-comic-tip.is-below::after { inset: auto 0 100%; }
+.lr-comic-tip.is-left::after { inset: 0 auto 0 100%; width: 10px; height: auto; }
+.lr-comic-tip.is-right::after { inset: 0 100% 0 auto; width: 10px; height: auto; }
 .lr-comic-tip-wrap:is(.is-hover-open, .is-focus-open, .is-tip-open) > .lr-comic-tip {
   pointer-events: auto;
 }
@@ -1893,10 +1900,17 @@ svg[data-comic-motion="still"] .lr-person-eyes > ellipse {
   top: -7px;
   border-width: 2.5px 0 0 2.5px;
 }
+.lr-comic-tip:is(.is-left, .is-right)::before {
+  top: var(--tooltip-caret);
+  bottom: auto;
+  transform: translateY(-50%) rotate(45deg);
+}
+.lr-comic-tip.is-left::before { left: auto; right: -7px; border-width: 2.5px 2.5px 0 0; }
+.lr-comic-tip.is-right::before { left: -7px; border-width: 0 0 2.5px 2.5px; }
 
 /* channel 1: fine-pointer hover */
 @media (hover: hover) and (pointer: fine) {
-  .lr-comic-tip-wrap.is-hover-open .lr-comic-tip { opacity: 1; transform: translateY(0); transition-delay: .12s; }
+  .lr-comic-tip-wrap.is-hover-open .lr-comic-tip { opacity: 1; transform: translate(var(--tooltip-offset-x, 0px), 0); transition-delay: .12s; }
   .lr-comic-tip-wrap.is-hover-open .lr-comic-tip * { animation-play-state: running !important; }
 
   /* Panel mutex: keyboard focus (channel 2) can hold one wrap's panel open
@@ -1924,7 +1938,7 @@ svg[data-comic-motion="still"] .lr-person-eyes > ellipse {
 .lr-comic-tip-wrap.is-focus-open .lr-comic-tip,
 .lr-comic-tip-wrap.is-tip-open .lr-comic-tip {
   opacity: 1;
-  transform: translateY(0);
+  transform: translate(var(--tooltip-offset-x, 0px), 0);
   transition-delay: .12s;
 }
 .lr-comic-tip-wrap.is-focus-open .lr-comic-tip *,
@@ -1934,13 +1948,15 @@ svg[data-comic-motion="still"] .lr-person-eyes > ellipse {
 
 /* Below-placement: header controls sit at the viewport top. */
 .lr-comic-tip.is-below { --tooltip-offset: -4px; }
+.lr-comic-tip.is-left { --tooltip-offset: 0px; --tooltip-offset-x: 4px; }
+.lr-comic-tip.is-right { --tooltip-offset: 0px; --tooltip-offset-x: -4px; }
 
 /* Native popovers start at display:none, so their first visible style needs
    an explicit entrance baseline as well as the ordinary exit transition. */
 @starting-style {
   .lr-comic-tip-wrap:is(.is-hover-open, .is-focus-open, .is-tip-open) > .lr-comic-tip {
     opacity: 0;
-    transform: translateY(var(--tooltip-offset, 4px));
+    transform: translate(var(--tooltip-offset-x, 0px), var(--tooltip-offset, 4px));
   }
 }
 

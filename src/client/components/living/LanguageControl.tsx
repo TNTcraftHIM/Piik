@@ -24,8 +24,12 @@ export function LanguageControl() {
         menu.hidePopover();
         return;
       }
-      const top = Math.max(8, rect.bottom + 8);
-      menu.style.maxHeight = `${Math.max(0, Math.min(360, window.innerHeight - top - 8))}px`;
+      const below = Math.max(0, window.innerHeight - rect.bottom - 16);
+      const above = Math.max(0, rect.top - 16);
+      const openAbove = below < Math.min(menu.scrollHeight, 360) && above > below;
+      menu.style.maxHeight = `${Math.min(360, openAbove ? above : below)}px`;
+      menu.classList.toggle("is-above", openAbove);
+      const top = openAbove ? rect.top - menu.offsetHeight - 8 : Math.max(8, rect.bottom + 8);
       menu.style.left = `${Math.max(8, Math.min(rect.right - menu.offsetWidth, window.innerWidth - menu.offsetWidth - 8))}px`;
       menu.style.top = `${top}px`;
     };
