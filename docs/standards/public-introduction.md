@@ -27,8 +27,10 @@ and local search. The repository's [developer map](../README.md), standards,
 research and work ledgers remain separate from that reader navigation.
 
 Homepage FAQ answers questions before first use: installation, supported
-platforms, audience size, sound and sharing across networks. Keep material
-limitations beside those answers. Specific errors and recovery procedures
+platforms, audience size, sound and sharing across networks. Order them along
+the visitor's decisions: device and installation requirements, joining friends,
+shared media, then advanced hosting. Keep related questions together and place
+material limitations beside their answers. Specific errors and recovery procedures
 belong in the usage guides, reached through a short documentation link after
 the FAQ. Do not duplicate troubleshooting steps on the homepage.
 

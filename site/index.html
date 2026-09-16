@@ -623,10 +623,18 @@
         </div>
         <div class="questions">
           <details>
-            <summary><span lang="en">Do I need my own server?</span><span lang="zh-CN">需要自己搭服务器吗？</span></summary>
+            <summary>
+              <span lang="en">Which platforms are ready?</span><span lang="zh-CN">目前支持哪些平台？</span>
+            </summary>
             <p>
-              <span lang="en">No. Use <a href="#demo">Piik online</a>, or choose <strong>Public invite</strong> in Piik App to create a temporary room. You can also use a Piik site provided by someone else. For a permanent site under your own domain, see <a href="#docs">self-hosting below</a>.</span>
-              <span lang="zh-CN">不需要。可以直接用<a href="#demo">在线版</a>，或在 Piik App 中选择<strong>公网邀请</strong>创建临时房间，也可以使用别人提供的 Piik 站点。想用自己的域名长期运行一个站点，再看<a href="#docs">下方的自托管说明</a>。</span>
+              <span lang="en"
+                >Windows App and browser sharing are the primary tested paths. Viewers can use a computer or phone browser.
+                The macOS and Linux apps have not yet been tested on physical devices; if you have a device,
+                we'd welcome your test results and <a href="https://github.com/TNTcraftHIM/Piik/issues">feedback</a>.</span
+              ><span lang="zh-CN"
+                >目前主要测试 Windows 版 Piik App 和浏览器分享，观众可使用电脑或手机浏览器。
+                macOS 和 Linux 版 Piik App 尚未经过实机测试，欢迎有设备的朋友试用并<a href="https://github.com/TNTcraftHIM/Piik/issues">反馈问题</a>。</span
+              >
             </p>
           </details>
           <details>
@@ -641,6 +649,25 @@
               ><span lang="zh-CN"
                 >不需要。观众用电脑或手机浏览器就能看，无须安装。房主可以在已有 Piik
                 站点上，用支持屏幕共享的电脑浏览器开始分享，也可以通过 Piik App 创建房间。</span
+              >
+            </p>
+          </details>
+          <details>
+            <summary>
+              <span lang="en">Can we watch from different places?</span
+              ><span lang="zh-CN">不在同一个地方，也能一起看吗？</span>
+            </summary>
+            <p>
+              <span lang="en"
+                >Yes. Use Piik online, an Internet-accessible Piik site, or Public invite in the App. Public invite gives
+                your room a temporary address that can change or become unavailable; closing the App ends the room.
+                The online site and Public invite use direct media connections without server forwarding, so some networks
+                may load the page but block the video. You can also use a Piik site with media forwarding enabled
+                for a fallback connection.</span
+              ><span lang="zh-CN"
+                >可以使用在线版、能从外网访问的 Piik 站点，或 Piik App 的“公网邀请”。公网邀请的地址是临时的，可能中断或变化，退出 App 后房间也会结束。
+                在线版和公网邀请的画面靠设备间直连传输，没有服务器转发兜底；部分网络可能出现页面能打开、画面连不上的情况。
+                也可以使用已启用媒体转发兜底的 Piik 站点。</span
               >
             </p>
           </details>
@@ -673,37 +700,10 @@
             </p>
           </details>
           <details>
-            <summary>
-              <span lang="en">Can we watch from different places?</span
-              ><span lang="zh-CN">不在同一个地方，也能一起看吗？</span>
-            </summary>
+            <summary><span lang="en">Do I need my own server?</span><span lang="zh-CN">需要自己搭服务器吗？</span></summary>
             <p>
-              <span lang="en"
-                >Yes. Use Piik online, an Internet-accessible Piik site, or Public invite in the App. Public invite gives
-                your room a temporary address that can change or become unavailable; closing the App ends the room.
-                The online site and Public invite use direct media connections without server forwarding, so some networks
-                may load the page but block the video. You can also use a Piik site with media forwarding enabled
-                for a fallback connection.</span
-              ><span lang="zh-CN"
-                >可以使用在线版、能从外网访问的 Piik 站点，或 Piik App 的“公网邀请”。公网邀请的地址是临时的，可能中断或变化，退出 App 后房间也会结束。
-                在线版和公网邀请的画面靠设备间直连传输，没有服务器转发兜底；部分网络可能出现页面能打开、画面连不上的情况。
-                也可以使用已启用媒体转发兜底的 Piik 站点。</span
-              >
-            </p>
-          </details>
-          <details>
-            <summary>
-              <span lang="en">Which platforms are ready?</span><span lang="zh-CN">目前支持哪些平台？</span>
-            </summary>
-            <p>
-              <span lang="en"
-                >Windows App and browser sharing are the primary tested paths. Viewers can use a computer or phone browser.
-                The macOS and Linux apps have not yet been tested on physical devices; if you have a device,
-                we'd welcome your test results and <a href="https://github.com/TNTcraftHIM/Piik/issues">feedback</a>.</span
-              ><span lang="zh-CN"
-                >目前主要测试 Windows 版 Piik App 和浏览器分享，观众可使用电脑或手机浏览器。
-                macOS 和 Linux 版 Piik App 尚未经过实机测试，欢迎有设备的朋友试用并<a href="https://github.com/TNTcraftHIM/Piik/issues">反馈问题</a>。</span
-              >
+              <span lang="en">No. Use <a href="#demo">Piik online</a>, or choose <strong>Public invite</strong> in Piik App to create a temporary room. You can also use a Piik site provided by someone else. For a permanent site under your own domain, see <a href="#docs">self-hosting below</a>.</span>
+              <span lang="zh-CN">不需要。可以直接用<a href="#demo">在线版</a>，或在 Piik App 中选择<strong>公网邀请</strong>创建临时房间，也可以使用别人提供的 Piik 站点。想用自己的域名长期运行一个站点，再看<a href="#docs">下方的自托管说明</a>。</span>
             </p>
           </details>
           <div class="faq-more">
