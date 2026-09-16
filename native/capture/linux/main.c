@@ -637,7 +637,9 @@ static GstFlowReturn output_chain(GstPad *pad, GstObject *parent, GstBuffer *buf
 }
 
 static gboolean isolate_output(VideoOutput *output) {
-  GstPad *input = gst_element_get_static_pad(output->branch, "sink");
+  GstPad *source = gst_element_get_static_pad(output->gate, "src");
+  GstPad *input = source == NULL ? NULL : gst_pad_get_peer(source);
+  if (source != NULL) gst_object_unref(source);
   if (input == NULL) return FALSE;
   if (!GST_IS_GHOST_PAD(input)) {
     gst_object_unref(input);
