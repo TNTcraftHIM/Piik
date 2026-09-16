@@ -8,7 +8,7 @@ history. A parked idea is not implementation authority.
 ## Now
 
 - [ ] **Maintenance acceptance.** Review the current welcome/waiting/title
-  previews, tooltip placement and self-hosting tutorial before integration. The
+  previews, tooltip placement, site tutorials and connection help before integration. The
   [playful-copy policy](./standards/visual-language.md#playful-copy-lifecycle)
   and [feedback composition](./standards/visual-language.md#feedback-composition)
   own the presentation rules; do not duplicate them here. The website's

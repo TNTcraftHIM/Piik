@@ -3773,7 +3773,7 @@ export function HostPage({
                       <Cap k="host.policy.open" />
                     </button>
                   </Tooltip>
-                  <Tooltip kind={roomAdmission("private", viewerPasswordEnabled).comic}
+                  <Tooltip kind="hint-policy-private"
                     text={vis ? undefined : `${t("host.policy.private")} · ${t(viewerPasswordEnabled ? "host.policy.privatePasswordHint" : "host.policy.privateHint")}`}>
                     <button
                       type="button"

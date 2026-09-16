@@ -9,6 +9,7 @@
 | Use Piik online | [Open the online site](https://demo.piik.tv) · [Online sharing guide](./guide/getting-started.md#use-piik-online) |
 | Watch a friend or share my first screen | [Getting started](./guide/getting-started.md) |
 | Choose an App mode or fix sound and connection trouble | [First-use help](./guide/getting-started.md#choose-an-app-mode) |
+| Page opens but video will not connect / 网页能打开，画面连不上 | [Connection troubleshooting](./guide/getting-started.md#when-video-will-not-connect) · [中文排查](./guide/getting-started.zh-CN.md#画面连接不上) |
 | Run Piik App, check platform requirements, or build a package | [App guide](../cmd/piik-app/README.md) · [中文 App 指南](../cmd/piik-app/README.zh-CN.md) |
 | Try or change the source code | [Run from source](#run-from-source) |
 | Find a directory or the module responsible for a behavior | [Repository layout and module map](./standards/engineering.md#repository-layout) |

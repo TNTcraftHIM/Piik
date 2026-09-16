@@ -303,9 +303,9 @@ Choose panels by what the explanation asks the reader to compare:
 | Two panels | Default for action → effect or condition → outcome. The left supplies the action, credential or context; the right explains its consequence. Examples: copying an invitation, pausing playback, entering with a room code/password/invitation. |
 | One wide panel | One ongoing or settled scene without a before/after comparison, or a continuous spatial relationship that a divider would break. Examples: waiting for the Host, an unavailable source, a network round trip. Width alone is not a reason to use it. |
 
-Use the same composition and panel roles within a semantic family. Room-admission
-hints all use two panels: accepted credential on the left, access to the room on
-the right. The door scene explains admission; it does not claim that the user is
+Use the same composition and panel roles within a semantic family. Room-entry
+credential hints all use two panels: accepted credential on the left, access to
+the room on the right. The door scene explains admission; it does not claim that the user is
 changing privacy or has already joined. Vary the small gestures and useful props,
 not the reading order. Keep full-scene states and metric diagrams in one panel
 when splitting them would only duplicate the scene or interrupt its relationship.
@@ -334,9 +334,11 @@ adjusting volume or offering P2P stays neutral. Actual copy feedback can change
 that same hint to green or red, using the existing operation result.
 
 Review meaning at the call site. A current admission badge shows the credential
-accepted by [room access](./rooms-access.md), not the act of switching
-privacy. Password input is not proof of admission; copying writes to the local
-clipboard and does not send to a friend. An audio track's presence does not
+accepted by [room access](./rooms-access.md). The private-mode control instead
+shows restricted code-only entry with a closed door; its meaning must not change
+to an invitation action merely because no room password is set. This room-entry
+rule is separate from media-route privacy. Password input is not proof of
+admission; copying writes to the local clipboard and does not send to a friend. An audio track's presence does not
 establish a locked control or delivery to another device.
 
 Only the result carries the semantic accent; a single panel carries the current

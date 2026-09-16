@@ -17,7 +17,27 @@ function OpenDoorway({ x }: { x: number }) {
   </>;
 }
 
-// These explain accepted credentials, not a change to the room's policy.
+// Private restricts code-only entry, regardless of which credentials are enabled.
+const PrivatePolicy: HintScene = ({ theme }) => <>
+  <style>{`
+.vls-policy-private-guest{transform-box:fill-box;transform-origin:50% 100%;animation:vlsPrivateDoor var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+@keyframes vlsPrivateDoor{0%,8%,48%,100%{transform:none}18%{transform:translate(3px,-3px)}28%{transform:translateX(3px)}38%{transform:rotate(-5deg)}}
+${rmBlock(["vls-policy-private-guest"], [[".vls-policy-private-guest", "transform:none"]], false)}
+`}</style>
+  <Frame x={4} w={152} theme={theme} />
+  <Frame x={164} w={152} theme={theme} result />
+  <CodePlate x={20} y={29} />
+  <path d="M54 64h30m-4-4 4 4-4 4" fill="none" stroke="var(--ink)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+  <Door x={104} y={20} />
+  <Door x={224} y={20} />
+  <g className="vls-policy-private-lock" fill="var(--paper)" stroke="var(--ink)" strokeWidth={2} strokeLinejoin="round">
+    <path d="M235 46v-5a5 5 0 0 1 10 0v5" fill="none" />
+    <rect x={231} y={46} width={18} height={14} rx={3} />
+  </g>
+  <Pawn x={201} yb={78} s={6.5} eyes gaze={1} className="vls-policy-private-guest" />
+</>;
+
+// Credential hints explain a way into the room; policy controls explain limits.
 const OpenAdmission: HintScene = ({ theme }) => <>
   <style>{`
 .vls-ad-open-guest,.vls-ad-open-friend{transform-box:fill-box;transform-origin:50% 100%;animation:vlsAdmissionHop var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
@@ -83,6 +103,7 @@ ${rmBlock(["vls-ad-invite-guest", "vls-ad-invite-friend"], [[".vls-ad-invite-gue
 </>;
 
 export const ADMISSION_SCENES: Record<AdmissionHintKind, HintScene> = {
+  "hint-policy-private": PrivatePolicy,
   "hint-admission-code": OpenAdmission,
   "hint-admission-password": PasswordAdmission,
   "hint-admission-invite": InviteAdmission,

@@ -193,7 +193,7 @@ verifies the pinned public-link helper, and assembles and checks the App:
 
 ```sh
 node scripts/package-server-release.mjs /outside/repository/app-release
-node scripts/package-app-candidate.mjs /outside/repository/app-release windows-amd64 /outside/repository/client-candidate
+node scripts/package-app-candidate.mjs /outside/repository/app-release windows-amd64 /outside/repository/app-candidate
 ```
 
 Supported targets are `windows-amd64`, `linux-amd64`, and `darwin-arm64`.

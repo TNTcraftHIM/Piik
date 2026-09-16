@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { Btn, Chip, NameTag, Pill, SwitchItem } from "../components/living/primitives";
-import { RoomChip, RoomAdmissionBadge, roomAdmission } from "../components/living/RoomChip";
+import { RoomChip, RoomAdmissionBadge } from "../components/living/RoomChip";
 import { CaptureSourcePicker, type NativeSourceList } from "../components/living/CaptureSourcePicker";
 import { LedStrip } from "../components/living/Header";
 import { StageTv } from "../components/living/Stage";
@@ -75,7 +75,7 @@ export function ControlsPreview() {
         </div>
         <div className="cp-tools">
           <span className="lr-toggle" role="group" aria-label={t("host.policy")} data-selected={policy}>
-            {(["open", "private"] as const).map(value => <Tooltip key={value} kind={roomAdmission(value, roomPassword).comic}
+            {(["open", "private"] as const).map(value => <Tooltip key={value} kind={value === "open" ? "hint-admission-code" : "hint-policy-private"}
               text={vis ? undefined : `${t(`host.policy.${value}`)} · ${t(value === "private" && roomPassword ? "host.policy.privatePasswordHint" : `host.policy.${value}Hint`)}`}>
               <button type="button" className={policy === value ? "is-selected" : undefined} aria-pressed={policy === value}
                 aria-label={t(`host.policy.${value}`)} onClick={() => setPolicy(value)}>

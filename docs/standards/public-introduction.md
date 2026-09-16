@@ -13,7 +13,7 @@ understand what Piik does, choose an entry and complete the first useful action.
 | Surface | Reader's question | Content |
 | --- | --- | --- |
 | README, English and Chinese | What is this, and how do I start? | Brand introduction and interface preview, features, getting started, self-hosting, contribution and license |
-| `site/`, for GitHub Pages | What does using it feel like, and how do I start? | Room illustration and primary download link, illustrated steps, online/App/self-hosting walkthroughs, FAQ, platform downloads, documentation and source |
+| `site/`, for GitHub Pages | What does using it feel like, and how do I start? | Room illustration and primary download link, illustrated steps, online/App/existing-site walkthroughs, FAQ, platform downloads, self-hosting and documentation |
 | Getting-started guides | Which button or mode do I use? | Browser invitation, sharing, App setup and three mode choices |
 | Self-hosting guides | How do I put my own site online? | Run the binary, set the domain and HTTPS proxy, open ports and verify; service management remains a separate reference |
 | Developer and operations docs | How do I build or host it? | Existing configuration, deployment, architecture and diagnostic owners |
@@ -43,10 +43,15 @@ Homepage sections follow the visitor's decisions: understand Piik and find the
 primary download action, see the sharing steps, choose a short tutorial, resolve
 questions, then find platform downloads, detailed documentation and source.
 The primary download link lets returning visitors skip the tutorials. Guide
-choices run from the online site to App to self-hosting, with only the online
-entry expanded initially. Watching requires no installation. Mark self-hosting
-as advanced, name its server/domain requirements and link its complete guide.
-Explain how App connects to that site and what each provides; optional SFU
+choices run from the online site to App to an existing Piik site, with only the
+online entry expanded initially. The existing-site guide explains connecting the
+App to a site run by the reader or their group, and direct browser use. The App
+tutorial's mode descriptions link to that guide. When using the public site as an example,
+keep its P2P-only limitation beside the explanation of optional SFU fallback.
+Watching requires no installation. Self-hosting belongs in the bottom
+documentation section: mark it as advanced, name its server/domain requirements
+and link its complete guide. The existing-site guide links there for visitors
+who want to run their own site. Explain what App and site each provide; optional SFU
 fallback requires the site to enable it and is not a connectivity guarantee.
 Platform download cards share one App tutorial entry. Keep section navigation
 available on phones rather than hiding the only route to documentation.

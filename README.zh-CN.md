@@ -30,7 +30,7 @@ Piik 是一个免费开源的屏幕共享工具，适合游戏围观、一起看
 ## 功能
 
 - **观看无须安装。** 朋友通过邀请链接，用电脑或手机浏览器加入。
-- **用客户端或已有 Piik 站点分享。** 支持屏幕、窗口和浏览器标签页；可选来源与音频能力取决于平台。
+- **用 Piik App 或已有 Piik 站点分享。** 支持屏幕、窗口和浏览器标签页；可选来源与音频能力取决于平台。
 - **优先直接连接。** 画面优先在设备之间传输（P2P），自建站点可启用媒体转发（SFU）自动兜底。
 - **房间由你管理。** 支持邀请链接、房间号和可选的房间密码，一位房主、最多 20 位观众。
 - **灵活的观看方式。** 支持深浅主题、播放控制、画中画和连接拓扑查看。
@@ -53,7 +53,7 @@ Piik 是一个免费开源的屏幕共享工具，适合游戏围观、一起看
 | 从这里开始 | 需要做什么 |
 | --- | --- |
 | [使用在线版](https://demo.piik.tv) | 在电脑浏览器打开，直接创建房间并分享。 |
-| [下载 Piik App](https://piik.tv/?lang=zh-CN#download) | 解压并启动客户端，选择**公网邀请**，点击**进入 Piik**，创建临时房间。 |
+| [下载 Piik App](https://piik.tv/?lang=zh-CN#download) | 解压并启动 Piik App，选择**公网邀请**，点击**进入 Piik**，创建临时房间。 |
 | [部署自己的站点](./docs/operations/self-hosting.zh-CN.md) | 进阶使用：在 Linux x64 服务器上部署 Piik Server、配置自己的域名，再用 Piik App 或浏览器连接。 |
 
 <p align="center"><img src="./docs/assets/quickstart.svg" width="640" alt="选择画面，发送邀请，一起观看。"></p>
@@ -63,7 +63,7 @@ Piik 是一个免费开源的屏幕共享工具，适合游戏围观、一起看
 
 Piik 默认跟随系统语言，中文系统显示简体中文，其他语言显示英文。
 顶部的 **中 / EN / ✦** 可切换中英文或体验纯视觉模式。
-客户端提供本地房间、临时公网邀请和连接已有站点三种模式，分享期间需保持 App 运行。
+Piik App 提供本地房间、临时公网邀请和连接已有站点三种模式，分享期间需保持 App 运行。
 
 下载以 **`piik-app`** 开头的 ZIP 压缩包，再按文件名中的平台标识选择：
 
@@ -75,9 +75,9 @@ Piik 默认跟随系统语言，中文系统显示简体中文，其他语言显
 
 [**完整使用教程 →**](./docs/guide/getting-started.zh-CN.md) · [**打开在线版 →**](https://demo.piik.tv)
 
-浏览器采集需要 HTTPS 或 `localhost`。目前主要测试 Windows 客户端和桌面浏览器分享。
-macOS 和 Linux 客户端尚未经过实机测试，欢迎有设备的朋友试用并[反馈问题](https://github.com/TNTcraftHIM/Piik/issues)。
-客户端公网邀请和在线版使用纯 P2P 连接，
+浏览器采集需要 HTTPS 或 `localhost`。目前主要测试 Windows 版 Piik App 和桌面浏览器分享。
+macOS 和 Linux 版 Piik App 尚未经过实机测试，欢迎有设备的朋友试用并[反馈问题](https://github.com/TNTcraftHIM/Piik/issues)。
+Piik App 的公网邀请和在线版使用纯 P2P 连接，
 在受限网络下可能无法连通。
 
 ## 自行部署

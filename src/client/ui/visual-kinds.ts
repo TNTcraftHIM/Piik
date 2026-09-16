@@ -77,6 +77,7 @@ export type Set3Kind =
   | "hint-more-metrics";
 
 export type AdmissionHintKind =
+  | "hint-policy-private"
   | "hint-admission-code"
   | "hint-admission-password"
   | "hint-admission-invite";
