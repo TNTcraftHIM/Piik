@@ -17,8 +17,9 @@ history. A parked idea is not implementation authority.
   with the current App and page. Obtain OS/browser, version and paired Debug
   reports to distinguish discovery, capture capability and enumeration failures.
   Verify first-run local-network consent on a fresh browser profile and recovery
-  after granting access. Automated delayed-response checks do not establish the
-  real permission prompt or the reporting machine's cause.
+  after granting access. Include Viewer entry: a permission-stalled App discovery
+  delays Browser reception fallback until its deadline. Automated delayed-response
+  checks do not establish the real permission prompt or the reporting machine's cause.
 - [ ] **Linux output failure boundary.** Run the wired `build.sh --check` on a
   supported Linux runner, including encoder admission and primary error checks.
   Then verify and isolate output-local encoder failures while retaining fatal

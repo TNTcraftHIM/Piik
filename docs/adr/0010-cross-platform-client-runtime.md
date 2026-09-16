@@ -56,10 +56,11 @@ topologies and makes a saved Site unavailable while another room source runs.
    list local screen/window choices, request bounded previews, and own one share's generation-fenced SDP/ICE
    edges, including at most one loopback media bridge outside route-copy
    capacity; it carries no room password, Host token, Viewer grant, or route
-   policy. An activated participant tab opens this connection lazily on its first
-   native action, reuses it across successive media generations, and closes it
-   with the page; a picker, share, or room source does not own the socket. The
-   Browser forwards current signaling and remains the participant.
+   policy. The participant page owns this connection and opens it lazily for
+   native use. The [presentation lifecycle](../standards/presentation-lifecycle.md#product-surface)
+   owns acquisition and retirement, including releasing unused Host control.
+   Source replacement retains the connection; a new source or picker does not
+   create another participant. The Browser forwards current signaling.
 5. A platform package contains one Go executable carrying the same core and
    embedded Browser assets used by Hosted Piik. It may also carry one
    process-isolated capture binary and the pinned `cloudflared` sidecar. Those
