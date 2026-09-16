@@ -17,11 +17,11 @@ import { PeoplePreview } from "./PeoplePreview";
 import "./controls-preview.css";
 
 const POSTER = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360"><rect width="640" height="360" fill="#e8eee6"/><rect x="100" y="60" width="440" height="240" rx="20" fill="#fffdf6"/><path d="M100 100h440" stroke="#c9d7cf" stroke-width="2"/><circle cx="128" cy="81" r="6" fill="#ed9e65"/><circle cx="320" cy="190" r="46" fill="#65b099"/><path d="m310 191 9 9 16-22" fill="none" stroke="#fffdf6" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>')}`;
-const SOURCES: NativeSourceList = { kind: "ready", processAudio: true, systemAudio: true, sources: [
+const SOURCES = { kind: "ready", processAudio: true, systemAudio: true, hideCaptureBorder: true, sources: [
   { kind: "window", sourceId: "101", pid: 1, creationTime: "1", title: "Sketchbook" },
   { kind: "window", sourceId: "102", pid: 2, creationTime: "2", title: "A short film" },
   { kind: "display", sourceId: "103", title: "Display 1" },
-] };
+] } satisfies NativeSourceList;
 const previewSource = async () => POSTER;
 
 export function ControlsPreview() {
@@ -37,6 +37,8 @@ export function ControlsPreview() {
   const [invalid, setInvalid] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(false);
   const [sourceState, setSourceState] = useState<NativeSourceList["kind"]>("ready");
+  const [captureBorderAvailable, setCaptureBorderAvailable] = useState(true);
+  const [hideCaptureBorder, setHideCaptureBorder] = useState(false);
   const [roomCode, setRoomCode] = useState("6020");
   const [feedback, setFeedback] = useState("");
   const [dial, setDial] = useState("60");
@@ -130,11 +132,16 @@ export function ControlsPreview() {
         <p>{en ? "The actual source selector, with sample windows. Selection only updates this preview." : "正式的画面选择器，放入了几个示例窗口；选择只影响这张预览。"}</p></div></header>
       <div className="cp-tools">{(["ready", "loading", "unavailable", "incompatible"] as const).map((value, index) => <Chip key={value}
         title={value} selected={sourceState === value} onClick={() => { setSourceState(value); setSourceOpen(true); }}>
-        {en ? ["Available", "Loading", "App unavailable", "Update needed"][index] : ["正常", "读取中", "App 未连接", "需要更新"][index]}</Chip>)}</div>
+        {en ? ["Available", "Loading", "App unavailable", "Update needed"][index] : ["正常", "读取中", "App 未连接", "需要更新"][index]}</Chip>)}
+        <SwitchItem checked={captureBorderAvailable} onChange={setCaptureBorderAvailable}
+          label={en ? "Windows border control" : "Windows 边框控制"} />
+      </div>
       <div className="cp-stage"><StageTv hasEntry label={t("host.sourcePicker.title")}>
         <img className="cp-poster" src={POSTER} alt="" />
-        {sourceOpen ? <CaptureSourcePicker nativeSources={sourceState === "ready" ? SOURCES : { kind: sourceState }}
-          onBrowser={() => { setSourceOpen(false); notify(); }} onNative={() => { setSourceOpen(false); notify(); }}
+        {sourceOpen ? <CaptureSourcePicker nativeSources={sourceState === "ready" ? { ...SOURCES, hideCaptureBorder: captureBorderAvailable } : { kind: sourceState }}
+          initialHideCaptureBorder={hideCaptureBorder}
+          onBrowser={() => { setSourceOpen(false); notify(); }}
+          onNative={(_target, _audio, hideBorder) => { setHideCaptureBorder(hideBorder); setSourceOpen(false); notify(); }}
           onPreview={previewSource} onRefresh={() => setSourceState("ready")} onCancel={() => setSourceOpen(false)} />
           : <div className="cp-stage-action"><Btn icon="cast" tone="primary" title="host.start" cap="host.start" hint="hint-share-start" onClick={() => setSourceOpen(true)} /></div>}
       </StageTv></div>

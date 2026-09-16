@@ -55,6 +55,7 @@ export interface NativeShareInput {
   shareId: string;
   source: NativeCaptureTarget;
   audio: boolean;
+  hideCaptureBorder?: boolean;
   adapterIndex: number;
   encoderIndex: number;
   edgeCapacity: number;
@@ -246,9 +247,14 @@ export class NativeClient {
   async startShare(
     input: NativeShareInput,
   ): Promise<{ audio: boolean; codec: NativeVideoCodec }> {
+    // Older Apps reject unknown command fields.
+    const { hideCaptureBorder = false, ...shareInput } = input;
     const response = await this.request(
       "start-share",
-      input,
+      {
+        ...shareInput,
+        ...(this.health.nativeMedia.hideCaptureBorder ? { hideCaptureBorder } : {}),
+      },
       shareStartedResponseSchema,
       input.source.kind === "picker" ? null : REQUEST_TIMEOUT_MS,
     );
@@ -275,6 +281,7 @@ export class NativeClient {
     source: NativeCaptureTarget,
     audio: boolean,
     path: NativeCapturePath,
+    hideCaptureBorder = false,
   ): Promise<void> {
     const response = await this.request(
       "replace-share-source",
@@ -284,6 +291,7 @@ export class NativeClient {
         audio,
         adapterIndex: path.adapterIndex,
         encoderIndex: path.encoderIndex,
+        ...(this.health.nativeMedia.hideCaptureBorder ? { hideCaptureBorder } : {}),
       },
       shareSourceReplacedResponseSchema,
       source.kind === "picker" ? null : REQUEST_TIMEOUT_MS,

@@ -7,12 +7,13 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **Windows capture border preference.** After the current release, investigate
-  [#401](https://github.com/TNTcraftHIM/Piik/issues/401) with the packaged Native
-  helper. Verify Windows' permission-based `GraphicsCaptureAccess` /
-  `IsBorderRequired` flow and the available or denied cases before choosing a
-  setting. Keep ordinary capture working; Browser capture indicators remain
-  browser-owned.
+- [ ] **Windows capture border acceptance.** The opt-in source-picker setting for
+  [#401](https://github.com/TNTcraftHIM/Piik/issues/401) is implemented on the
+  maintenance branch. Windows 11 synthetic-window checks confirm visible/hidden
+  borders, resizing, concurrent capture and clean stop; command compatibility and
+  source/profile retention are covered. Complete user acceptance before release.
+  Unsupported Windows and actual permission denial remain device checks; do not
+  claim those physical paths from the supported-system result.
 - [ ] **App/Browser source discovery and feedback.** Investigate the report of
   missing window sources; confirm the exact message, screen, OS/browser and App
   version. The custom selector currently renders both App unavailability and a

@@ -107,6 +107,8 @@ export const zh = {
   "host.sourcePicker.tab.display": "屏幕",
   "host.sourcePicker.windowAudio": "应用声音",
   "host.sourcePicker.systemAudio": "系统声音",
+  "host.sourcePicker.hideCaptureBorder": "隐藏采集边框",
+  "host.sourcePicker.hideCaptureBorderHint": "需要 Windows 授权；其他采集可能仍会让边框显示。",
   "host.sourcePicker.empty": "暂无可用来源",
   "native.incompatible": "Piik App 与当前页面不兼容。请更新 Piik App 并刷新页面，或使用浏览器。",
   "native.fail.edge": "Piik App 媒体连接失败",

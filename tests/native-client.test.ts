@@ -242,16 +242,72 @@ describe("native App private wire", () => {
       ...health, futureDescription: "ignored", nativeMedia: { video: true, futureFeature: true },
     })).toEqual({
       ...health, nativeMedia: {
-        video: true, processAudio: false, systemAudio: false, hardwareH264: false, softwareVP8: false,
+        video: true, processAudio: false, systemAudio: false, hideCaptureBorder: false, hardwareH264: false, softwareVP8: false,
       },
     });
     expect(nativeHealthSchema.parse({ ...health, nativeMedia: undefined }).nativeMedia)
-      .toEqual({ video: false, processAudio: false, systemAudio: false, hardwareH264: false, softwareVP8: false });
+      .toEqual({ video: false, processAudio: false, systemAudio: false, hideCaptureBorder: false, hardwareH264: false, softwareVP8: false });
     for (const invalid of [
       { protocol: 0 }, { protocol: 9.5 }, { protocol: Number.MAX_SAFE_INTEGER + 1 },
       { service: "other" }, { port: NATIVE_CLIENT_PORT_END + 1 }, { instanceToken: "short" },
-      { nativeMedia: { softwareVP8: "true" } }, { nativeMedia: null },
+      { nativeMedia: { softwareVP8: "true" } }, { nativeMedia: { hideCaptureBorder: "true" } }, { nativeMedia: null },
     ]) expect(nativeHealthSchema.safeParse({ ...health, ...invalid }).success).toBe(false);
+  });
+
+  it.each([undefined, false, true])("gates capture-border commands on advertised support: %s", async (supported) => {
+    const requests: Record<string, unknown>[] = [];
+    class CaptureSocket extends EventTarget {
+      static readonly OPEN = 1;
+      static readonly CLOSING = 2;
+      readyState = CaptureSocket.OPEN;
+      protocol = `piik-client-v9.${health.instanceToken}`;
+      constructor() {
+        super();
+        queueMicrotask(() => this.dispatchEvent(new Event("open")));
+      }
+      close() { this.readyState = CaptureSocket.CLOSING; }
+      send(payload: string) {
+        const request = JSON.parse(payload) as Record<string, unknown>;
+        requests.push(request);
+        queueMicrotask(() => this.dispatchEvent(new MessageEvent("message", {
+          data: JSON.stringify({
+            version: NATIVE_CLIENT_PROTOCOL, id: request.id,
+            ...(request.type === "hello" ? { type: "ready" } : {
+              type: request.type === "start-share" ? "share-started" : "share-source-replaced",
+              shareId: request.shareId,
+              ...(request.type === "start-share" ? { audio: true, codec: "h264" } : {}),
+            }),
+          }),
+        })));
+      }
+    }
+    vi.stubGlobal("WebSocket", CaptureSocket);
+    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      ...health, nativeMedia: { ...health.nativeMedia, hideCaptureBorder: supported },
+    }))));
+    const client = await NativeClient.connect();
+    expect(client).not.toBeNull();
+    expect(client!.health.nativeMedia.hideCaptureBorder).toBe(supported ?? false);
+    const input = {
+      shareId: "share_123456", source: { kind: "display" as const, sourceId: "2", title: "Display 1" },
+      audio: true, adapterIndex: 0, encoderIndex: 0, edgeCapacity: 2,
+      profile: DEFAULT_QUALITY_SETTINGS, codec: "auto" as const,
+    };
+    try {
+      for (const hideCaptureBorder of [undefined, false, true]) {
+        await client!.startShare({ ...input, hideCaptureBorder });
+        await client!.replaceShareSource(input.shareId, input.source, input.audio, input, hideCaptureBorder);
+        const extension = supported ? { hideCaptureBorder: hideCaptureBorder ?? false } : {};
+        expect(requests.at(-2)).toEqual({
+          version: NATIVE_CLIENT_PROTOCOL, id: expect.any(String), type: "start-share", ...input, ...extension,
+        });
+        expect(requests.at(-1)).toEqual({
+          version: NATIVE_CLIENT_PROTOCOL, id: expect.any(String), type: "replace-share-source",
+          shareId: input.shareId, source: input.source, audio: true, adapterIndex: 0, encoderIndex: 0, ...extension,
+        });
+      }
+    } finally { client!.close(); }
   });
 
   it("keeps 64-bit Windows identities as exact decimal strings", () => {

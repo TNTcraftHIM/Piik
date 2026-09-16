@@ -15,6 +15,14 @@ The video command receives the current product resolution, frame-rate, bitrate,
 and quality preference. A replacement process applies live changes while the Go
 session retains its Pion source and connections.
 
+Border control is available when Windows exposes `IsBorderRequired` and
+`GraphicsCaptureAccess` (build 20348+, including Windows 11). The capability probe
+only checks API availability. An explicit `--hide-capture-border` request asks
+Windows for borderless access; the capture loop applies an allowed result without
+blocking capture or stop. Retirement cancels any pending request. Denial or failure
+retains ordinary capture, and another capture session may still require a border.
+The property value is a preference, not proof that the border is invisible.
+
 Video and audio run as separate bounded child processes. A source whose audio
 loopback cannot be initialized keeps video available and reports audio
 unavailable instead of failing the whole source. Process loopback is probed by
@@ -59,3 +67,5 @@ the package, not the SDK/toolchain or another runtime service.
 - <https://learn.microsoft.com/en-us/windows/uwp/audio-video-camera/screen-capture>
 - <https://learn.microsoft.com/en-us/windows/win32/api/windows.graphics.capture.interop/nf-windows-graphics-capture-interop-igraphicscaptureiteminterop-createforwindow>
 - <https://learn.microsoft.com/en-us/uwp/api/windows.graphics.capture.direct3d11captureframepool.createfreethreaded>
+- <https://learn.microsoft.com/en-us/uwp/api/windows.graphics.capture.graphicscapturesession.isborderrequired>
+- <https://github.com/microsoft/Windows.UI.Composition-Win32-Samples/issues/97#issuecomment-1015962518>
