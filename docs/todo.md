@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-09-16
+Last reviewed: 2026-09-17
 
 Only **Now** is executable. Product modules own behavior; Git/PRs own completed
 history. A parked idea is not implementation authority.
@@ -20,10 +20,11 @@ history. A parked idea is not implementation authority.
   after granting access. Include Viewer entry: a permission-stalled App discovery
   delays Browser reception fallback until its deadline. Automated delayed-response
   checks do not establish the real permission prompt or the reporting machine's cause.
-- [ ] **Linux output failure boundary.** Run the wired `build.sh --check` on a
-  supported Linux runner, including encoder admission and primary error checks.
-  Then verify and isolate output-local encoder failures while retaining fatal
-  shared source/engine errors. Windows checks do not establish this boundary.
+- [ ] **Windows 32-bit capture exploration.** Validate the same-revision x86
+  WebRTC SDK, compiler ABI, native capture/encoding and complete App packaging
+  in the isolated `spike/windows-x86-capture` branch. Keep the existing media
+  adaptation and source lifecycle. Successful compilation or execution on
+  64-bit Windows alone does not establish support on a 32-bit Windows device.
 - [ ] **Post-launch monitoring.** Collect App/Server feedback and verify the
   public downloads, container pulls and deployed services after product releases.
   Follow the [deployment runbook](./deployment.md) for the private service and keep public
@@ -108,16 +109,11 @@ not establish better connection success or speed; this note adds no retry policy
    documentation or App console translations as contributed; verify text
    direction and layout when a language requires it. Check contributed language
    names and rendered menu navigation when registering a new catalog.
-9. **32-bit App packages.** Deferred until suitable native capture dependencies
-    are available. Windows x86 core compilation alone does not establish App
-    support: the pinned capture SDK currently has no Windows x86 package.
-    Complete native packaging and real launch/capture acceptance before
-    advertising a 32-bit target.
-10. **Windows code signing.** Revisit after enrollment in a trusted signing
+9. **Windows code signing.** Revisit after enrollment in a trusted signing
     service. Sign Piik's executables before archive checksums are computed;
     signing improves publisher identity but does not guarantee that antivirus
     cloud scanning stops. Service selection and enrollment remain pending.
-11. **Gitee download-source warning.** Paused by the owner. Keep GitHub primary
+10. **Gitee download-source warning.** Paused by the owner. Keep GitHub primary
     and retain Gitee; do not add a self-hosted mirror. Chrome still blocks the
     Gitee attachment when Referer is removed. Reopen for new evidence or a
     provider review; the warning remains unresolved.
