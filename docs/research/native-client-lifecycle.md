@@ -237,6 +237,19 @@ starts at build 20348, beyond consumer Windows 10 build 19045. The current
 capture helper therefore retains the system border there. Browser capture
 indicators remain Browser-owned.
 
+An unofficial WGC-preserving option exists:
+[Windhawk's DWM Custom Projection Border](https://github.com/ramensoftware/windhawk-mods/blob/main/mods/dwm-custom-projection-border.wh.cpp)
+documents disabling the border on Windows 10 21H2. Source inspection confirms
+injection into `dwm.exe` and hooks of private `uDWM.dll`
+`CProjectionBorderVisual` drawing methods. Its disable flag has no per-app
+filter. This is a desktop-compositor modification, not a missing Piik session
+option; compatibility with private Windows methods is outside WGC's contract.
+It has not been locally verified on Windows 10 and is not a bundled dependency
+or automatic workaround. The official
+[border privacy policy](https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-privacy#letappsaccessgraphicscapturewithoutborder)
+applies to Windows 11 onward, so registry/policy recipes do not establish a
+supported Windows 10 solution.
+
 The official [Desktop Duplication API](https://learn.microsoft.com/en-us/windows/win32/direct3ddxgi/desktop-dup-api)
 is a borderless alternative for a selected display. It is not window-isolated
 capture: cropping the desktop can expose overlapping windows. Do not silently
