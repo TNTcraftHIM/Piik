@@ -100,10 +100,8 @@ not establish better connection success or speed; this note adds no retry policy
 8. **Additional languages.** Review community catalogs and their rendered UI
    following the [translation guide](./guide/translating.md). Add website,
    documentation or App console translations as contributed; verify text
-   direction and layout when a language requires it. Before registering the
-   first extra UI language, fix the overflow menu's placement near the viewport
-   bottom: it currently permits zero content height. Check native popover
-   expanded/collapsed accessibility state with the rendered menu.
+   direction and layout when a language requires it. Check contributed language
+   names and rendered menu navigation when registering a new catalog.
 9. **32-bit App packages.** Deferred until suitable native capture dependencies
     are available. Windows x86 core compilation alone does not establish App
     support: the pinned capture SDK currently has no Windows x86 package.
