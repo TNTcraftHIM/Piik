@@ -1,6 +1,7 @@
 // Shared tooltip: the same comic in every mode, with a localized caption in
 // text modes. Truncated literal text needs only its full value. Hover and keyboard
-// focus show guidance; help-only controls also toggle it on click/tap.
+// focus show guidance; help-only controls also toggle it on click/tap. Hover
+// waits for intent; clicking the panel dismisses it without activating below it.
 // Action controls keep their click and use a 500ms touch hold for guidance,
 // hiding 1.5s after release and suppressing the trailing synthetic click.
 // Alignment: the align prop is a desktop-tuned preference; whenever a show
@@ -8,7 +9,7 @@
 // start/center/end is re-picked so the panel never clips off-screen (rows
 // wrap at narrow widths, so a static choice cannot hold). Player controls may
 // use a complete left/right placement when the whole bar has empty space;
-// otherwise they use the same above/below fallback as every other control.
+// otherwise prefer below the television, then above the playback bar.
 // The native top layer
 // avoids clipping by scrolling lists; the caret points back to the trigger.
 // Styling in styles.css under "comic tooltip" / "glyph draw-in". SSR-safe:
@@ -34,10 +35,11 @@ import { comicStyle, getComicPresentation, type ComicTone, type ComicMotion } fr
 const LONG_PRESS_MS = 500;
 const TOUCH_HIDE_MS = 1500;
 const PANEL_EXIT_MS = 160;
+const HOVER_ENTER_MS = 400;
 // Minimum clearance the re-picked alignment keeps to each viewport edge.
 const EDGE_MARGIN = 8;
 const HOVER_EXIT_GRACE_MS = 160;
-// Paper panel before it is measured: 240-wide comic strip plus its padding.
+// Paper panel before its mounted content is measured.
 const FALLBACK_PANEL_HEIGHT = 96;
 
 type Align = "center" | "start" | "end";
@@ -63,7 +65,7 @@ export function Tooltip({
   tone?: ComicTone;
   motion?: ComicMotion;
   className?: string;
-  /** below = for controls pinned to the viewport top (header). */
+  /** Preferred side; use below when the working content is above the control. */
   place?: "above" | "below";
   /** Preferred alignment; re-picked at open time if it would clip off-screen. */
   align?: Align;
@@ -79,7 +81,7 @@ export function Tooltip({
   const tipRef = useRef<HTMLSpanElement | null>(null);
   const pressTimer = useRef<number | null>(null);
   const hideTimer = useRef<number | null>(null);
-  const hoverExitTimer = useRef<number | null>(null);
+  const hoverTimer = useRef<number | null>(null);
   const panelUnmountTimer = useRef<number | null>(null);
   const longPressed = useRef(false);
   const pressPoint = useRef<{ x: number; y: number } | null>(null);
@@ -137,15 +139,7 @@ export function Tooltip({
 
   useEffect(() => {
     if (enabled) return;
-    setHoverOpen(false);
-    setFocusOpen(false);
-    setPressOpen(false);
-    if (pressTimer.current !== null) window.clearTimeout(pressTimer.current);
-    pressTimer.current = null;
-    if (hideTimer.current !== null) window.clearTimeout(hideTimer.current);
-    hideTimer.current = null;
-    if (hoverExitTimer.current !== null) window.clearTimeout(hoverExitTimer.current);
-    hoverExitTimer.current = null;
+    dismissPanel();
     pressPoint.current = null;
   }, [enabled]);
 
@@ -171,9 +165,14 @@ export function Tooltip({
     const vw = window.innerWidth;
     if (!vw) return; // no layout (SSR/test): keep the prop alignment
     const rect = wrap.getBoundingClientRect();
-    const playback = wrap.closest<HTMLElement>(".lr-playback")?.getBoundingClientRect();
-    const avoid = playback ?? rect;
+    // A wrapped control row remains one working area, including on narrow screens.
+    const controlBar = wrap.closest<HTMLElement>(".lr-playback, .lr-source-picker-options");
+    const playback = controlBar?.classList.contains("lr-playback");
+    const avoid = controlBar?.getBoundingClientRect() ?? rect;
     const player = wrap.closest<HTMLElement>(".lr-tv-screen")?.getBoundingClientRect();
+    const below = playback
+      ? wrap.closest<HTMLElement>(".lr-tv")?.getBoundingClientRect().bottom ?? avoid.bottom
+      : avoid.bottom;
     const measured = panelMounted ? (tipRef.current?.offsetWidth ?? 0) : 0;
     const width = Math.max(0, Math.min(measured || 320, vw - EDGE_MARGIN * 2));
     // Same idea vertically: a control scrolled near the top has no room above,
@@ -182,7 +181,7 @@ export function Tooltip({
     const panelHeight =
       (panelMounted ? tipRef.current?.offsetHeight : 0) || FALLBACK_PANEL_HEIGHT;
     const fitsAbove = avoid.top - panelHeight - EDGE_MARGIN >= EDGE_MARGIN;
-    const fitsBelow = !vh || avoid.bottom + panelHeight + EDGE_MARGIN <= vh - EDGE_MARGIN;
+    const fitsBelow = !vh || below + panelHeight + EDGE_MARGIN <= vh - EDGE_MARGIN;
     const preferredPlace = wrap.closest(".lr-tv-chin") ? "below" : place;
     let livePlace: Placement =
       preferredPlace === "above"
@@ -205,8 +204,10 @@ export function Tooltip({
       const nearRight = sideAvoid.right - rect.right <= rect.width;
       const fitsLeft = nearLeft && sideAvoid.left - width - EDGE_MARGIN >= EDGE_MARGIN;
       const fitsRight = nearRight && sideAvoid.right + width + EDGE_MARGIN <= vw - EDGE_MARGIN;
+      // Prefer space below the television (including its status strip) to
+      // covering the picture. Fullscreen falls back above the entire bar.
       livePlace = fitsSideVertically && (fitsLeft || fitsRight) ? fitsLeft ? "left" : "right"
-        : fitsAbove || !fitsBelow ? "above" : "below";
+        : fitsBelow ? "below" : "above";
     }
     const center = rect.left + rect.width / 2;
     const boxes: Record<Align, { left: number; right: number }> = {
@@ -224,7 +225,7 @@ export function Tooltip({
     const fits = order.find((a) => clipped(boxes[a]) === 0);
     const selected = fits ?? order.reduce((a, b) => (clipped(boxes[a]) <= clipped(boxes[b]) ? a : b));
     let left = Math.max(EDGE_MARGIN, Math.min(boxes[selected].left, vw - width - EDGE_MARGIN));
-    let top = livePlace === "below" ? avoid.bottom + EDGE_MARGIN : avoid.top - panelHeight - EDGE_MARGIN;
+    let top = livePlace === "below" ? below + EDGE_MARGIN : avoid.top - panelHeight - EDGE_MARGIN;
     let caret = Math.max(14, Math.min(center - left, width - 14));
     if (livePlace === "left") {
       left = (player ?? avoid).left - width - EDGE_MARGIN;
@@ -287,10 +288,7 @@ export function Tooltip({
       // focused neighbour. Only visible guidance consumes the outer action.
       const style = tipRef.current && getComputedStyle(tipRef.current);
       if (style?.visibility === "visible" && style.pointerEvents !== "none") event.preventDefault();
-      cancelHoverExit();
-      setHoverOpen(false);
-      setPressOpen(false);
-      setFocusOpen(false);
+      dismissPanel();
     };
     document.addEventListener("keydown", dismiss);
     return () => document.removeEventListener("keydown", dismiss);
@@ -314,7 +312,7 @@ export function Tooltip({
     () => () => {
       if (pressTimer.current !== null) window.clearTimeout(pressTimer.current);
       if (hideTimer.current !== null) window.clearTimeout(hideTimer.current);
-      if (hoverExitTimer.current !== null) window.clearTimeout(hoverExitTimer.current);
+      if (hoverTimer.current !== null) window.clearTimeout(hoverTimer.current);
       if (panelUnmountTimer.current !== null) {
         window.clearTimeout(panelUnmountTimer.current);
       }
@@ -322,20 +320,17 @@ export function Tooltip({
     [],
   );
 
-  // A click/touch-open hint stays until dismissed or focus leaves its trigger.
+  // Clicking elsewhere dismisses guidance regardless of how it was opened.
   useEffect(() => {
-    if (!pressOpen) return;
+    if (!interactionOpen) return;
     const dismiss = (event: PointerEvent) => {
       if (!wrapRef.current?.contains(event.target as Node)) {
-        cancelHoverExit();
-        setPressOpen(false);
-        setHoverOpen(false);
-        setFocusOpen(false);
+        dismissPanel();
       }
     };
     document.addEventListener("pointerdown", dismiss);
     return () => document.removeEventListener("pointerdown", dismiss);
-  }, [pressOpen]);
+  }, [interactionOpen]);
 
   const cancelPress = () => {
     if (pressTimer.current !== null) {
@@ -344,11 +339,20 @@ export function Tooltip({
     }
   };
 
-  const cancelHoverExit = () => {
-    if (hoverExitTimer.current !== null) {
-      window.clearTimeout(hoverExitTimer.current);
-      hoverExitTimer.current = null;
+  const cancelHover = () => {
+    if (hoverTimer.current !== null) {
+      window.clearTimeout(hoverTimer.current);
+      hoverTimer.current = null;
     }
+  };
+  const dismissPanel = () => {
+    cancelHover();
+    cancelPress();
+    if (hideTimer.current !== null) window.clearTimeout(hideTimer.current);
+    hideTimer.current = null;
+    setHoverOpen(false);
+    setPressOpen(false);
+    setFocusOpen(false);
   };
   const placeClass = position.placement === "above" ? "" : ` is-${position.placement}`;
   return (
@@ -359,22 +363,29 @@ export function Tooltip({
       aria-label={disabledTriggerLabel ?? (focusableWrap ? trigger?.props["aria-label"] ?? overflow?.text : undefined)}
       aria-describedby={disabledTrigger && caption && interactionOpen ? tooltipId : undefined}
       onPointerEnter={(event) => {
-        if (!enabled) return;
-        cancelHoverExit();
-        pickAlign();
-        if (event.pointerType !== "touch") {
-          mountPanel(!hoverOpen);
+        if (!enabled || event.pointerType === "touch" || event.buttons !== 0) return;
+        cancelHover();
+        if (interactionOpen) {
           setHoverOpen(true);
+          return;
         }
+        // No mounted panel or invisible hit area while passing over a control.
+        hoverTimer.current = window.setTimeout(() => {
+          hoverTimer.current = null;
+          pickAlignRef.current();
+          mountPanel(true);
+          setHoverOpen(true);
+        }, HOVER_ENTER_MS);
       }}
       onPointerLeave={(event) => {
         if (event.pointerType === "touch") return;
-        cancelHoverExit();
+        cancelHover();
+        if (!hoverOpen) return;
         // A two-row playback bar lies between some triggers and their hint.
         // A short grace lets the pointer cross it without an invisible hit
         // target covering neighbouring buttons.
-        hoverExitTimer.current = window.setTimeout(() => {
-          hoverExitTimer.current = null;
+        hoverTimer.current = window.setTimeout(() => {
+          hoverTimer.current = null;
           setHoverOpen(false);
         }, HOVER_EXIT_GRACE_MS);
       }}
@@ -382,6 +393,7 @@ export function Tooltip({
         if (!enabled) return;
         pickAlign();
         if ((event.target as HTMLElement).matches(":focus-visible")) {
+          cancelHover();
           mountPanel(true);
           setFocusOpen(true);
         }
@@ -393,6 +405,10 @@ export function Tooltip({
         }
       }}
       onPointerDown={(event) => {
+        cancelHover();
+        if (event.pointerType !== "touch" && !toggleOnClick && !tipRef.current?.contains(event.target as Node)) {
+          dismissPanel();
+        }
         // A suppression token belongs only to the click synthesized for the
         // completed long-press. A later touch starts a new, actionable gesture.
         longPressed.current = false;
@@ -461,15 +477,21 @@ export function Tooltip({
           longPressed.current = false;
           event.preventDefault();
           event.stopPropagation();
+        } else if (tipRef.current?.contains(event.target as Node)) {
+          // This click only clears guidance; never pass it to a covered action.
+          event.stopPropagation();
+          // Dragging to select a caption or full nickname is still reading.
+          const selection = window.getSelection();
+          if (!selection?.isCollapsed && tipRef.current.contains(selection?.anchorNode ?? null)) return;
+          dismissPanel();
+        } else if (!toggleOnClick && event.detail !== 0) {
+          dismissPanel();
         }
       }}
       onClick={enabled && toggleOnClick && !disabledTrigger ? (event) => {
         if (tipRef.current?.contains(event.target as Node)) return;
         if (pressOpen) {
-          cancelHoverExit();
-          setPressOpen(false);
-          setHoverOpen(false);
-          setFocusOpen(false);
+          dismissPanel();
         } else {
           mountPanel(true);
           pickAlign();
@@ -495,8 +517,8 @@ export function Tooltip({
         className={`lr-comic-tip${kind ? " has-comic" : ""}${caption !== undefined ? " is-text" : ""}${placeClass}`} role="tooltip" aria-hidden={!interactionOpen}>
         {panelMounted ? <>
           {kind ? isHintKind(kind)
-              ? <HintComic kind={kind} size={240} tone={resolvedTone} motion={resolvedMotion} />
-              : <Comic kind={kind} theme="paper" size={240} tone={resolvedTone} motion={resolvedMotion} /> : null}
+              ? <HintComic kind={kind} size={200} tone={resolvedTone} motion={resolvedMotion} />
+              : <Comic kind={kind} theme="paper" size={200} tone={resolvedTone} motion={resolvedMotion} /> : null}
           {caption !== undefined ? <span className="lr-comic-tip-caption">{caption}</span> : null}
         </> : null}
       </span>

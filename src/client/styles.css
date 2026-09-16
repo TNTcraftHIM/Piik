@@ -1803,7 +1803,7 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
 
 /* Stateful hover/focus panel carrying a paper Comic above its trigger. The
    trigger stays focusable; when it is natively disabled, the wrapper owns the
-   explanation focus instead. Enter is delayed ~120ms; hover exit gets a short
+   explanation focus instead. Tooltip delays hover until intent; exit gets a short
    crossing grace without placing invisible targets over nearby controls. Under
    prefers-reduced-motion the global block collapses the transition to instant
    and the comic's own RM block pins its final frame. */
@@ -1868,7 +1868,7 @@ svg[data-comic-motion="still"] .lr-person-eyes > ellipse {
   overflow-wrap: anywhere;
   text-wrap: pretty;
 }
-.lr-comic-tip.has-comic.is-text { width: 272px; }
+.lr-comic-tip.has-comic.is-text { width: 252px; }
 .lr-comic-tip > svg {
   display: block;
   max-width: 100%;
@@ -1917,7 +1917,7 @@ svg[data-comic-motion="still"] .lr-person-eyes > ellipse {
 
 /* channel 1: fine-pointer hover */
 @media (hover: hover) and (pointer: fine) {
-  .lr-comic-tip-wrap.is-hover-open .lr-comic-tip { opacity: 1; transform: translate(var(--tooltip-offset-x, 0px), 0); transition-delay: .12s; }
+  .lr-comic-tip-wrap.is-hover-open .lr-comic-tip { opacity: 1; transform: translate(var(--tooltip-offset-x, 0px), 0); }
   .lr-comic-tip-wrap.is-hover-open .lr-comic-tip * { animation-play-state: running !important; }
 
   /* Panel mutex: keyboard focus (channel 2) can hold one wrap's panel open
@@ -1946,7 +1946,6 @@ svg[data-comic-motion="still"] .lr-person-eyes > ellipse {
 .lr-comic-tip-wrap.is-tip-open .lr-comic-tip {
   opacity: 1;
   transform: translate(var(--tooltip-offset-x, 0px), 0);
-  transition-delay: .12s;
 }
 .lr-comic-tip-wrap.is-focus-open .lr-comic-tip *,
 .lr-comic-tip-wrap.is-tip-open .lr-comic-tip * {
@@ -1973,7 +1972,6 @@ svg[data-comic-motion="still"] .lr-person-eyes > ellipse {
   .lr-group-actions .lr-comic-tip-wrap { flex: 1 1 0; min-width: 0; }
   .lr-group-actions .lr-comic-tip-wrap .lr-btn { width: 100%; }
   .lr-comic-tip { max-width: min(320px, 78vw); }
-  .lr-comic-tip svg { width: 100% !important; height: auto; }
 }
 
 .lr-comic-tip-caption {

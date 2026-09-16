@@ -65,6 +65,18 @@ second activation, outside tap, Escape or focus leaving. Action controls keep
 their direct click action and offer touch guidance on long-press. `Tooltip`
 owns both interactions; pages do not add their own open state or timers.
 
+Mouse hover opens after 400 ms of staying on the trigger; passing through or
+operating a control cancels that pending hint. Keyboard focus and explicit help
+activation do not wait. Keep the open panel hoverable for reading, with a short
+crossing grace; Escape, clicking the panel or clicking elsewhere dismisses it.
+A panel click only dismisses guidance and never activates an underlying control.
+Keep the comic compact without reducing caption legibility. Player hints prefer
+available space beside or below the television; when that does not fit, clear
+the whole playback bar. A wrapped option row is also one area to avoid. Status,
+headers and bottom-of-picker controls prefer below; other controls prefer above.
+Flip to fit the viewport and keep the caret aimed at the trigger. Placement and
+hover timing belong to the shared component.
+
 Add a tooltip when it explains an action, a limitation or a status that needs
 context. Plain names, decorative participants and self-explanatory text do not
 need another popup. Keep participant details on their existing click action and
@@ -469,6 +481,9 @@ provides the native timeline alignment used by participant gestures.
 [Carbon tooltip guidance](https://carbondesignsystem.com/components/tooltip/usage/)
 supports concise, contextual help where it adds information; required instructions
 stay visible beside the action.
+[W3C hover/focus guidance](https://www.w3.org/WAI/WCAG22/Understanding/content-on-hover-or-focus.html)
+supports panels remaining reachable for reading and being dismissible without
+moving the pointer away.
 
 [Carbon loading guidance](https://carbondesignsystem.com/components/loading/usage/)
 supports avoiding competing indicators and keeping required user actions distinct

@@ -287,7 +287,7 @@ export function CaptureSourcePicker({
                   <span aria-hidden="true"><Glyph name="window" size={19} /></span>
                   {vis ? null : <span>{t("host.sourcePicker.showCaptureBorder")}</span>}
                   <Tooltip kind={showCaptureBorder ? "hint-hide-capture-border" : "hint-show-capture-border"}
-                    text={vis ? undefined : t("host.sourcePicker.showCaptureBorderHint")}>
+                    text={vis ? undefined : t("host.sourcePicker.showCaptureBorderHint")} place="below">
                     <button
                       type="button"
                       className="lr-switch"
@@ -311,6 +311,7 @@ export function CaptureSourcePicker({
                       ? (shareAudio ? "hint-share-audio-fixed" : "hint-silent-share-fixed")
                       : shareAudio ? "hint-stop-audio" : "hint-share-audio"}
                     text={vis ? undefined : `${audioAction} · ${t("host.sourcePicker.audioHint")}`}
+                    place="below"
                   >
                     {audioSwitch}
                   </Tooltip>
