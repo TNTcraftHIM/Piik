@@ -7,13 +7,14 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **Maintenance acceptance.** Review the current welcome/waiting/title
+- [x] **Maintenance acceptance.** Reviewed the current welcome/waiting/title
   previews, tooltip placement, site tutorials and connection help before integration. The
   [playful-copy policy](./standards/visual-language.md#playful-copy-lifecycle)
   and [feedback composition](./standards/visual-language.md#feedback-composition)
   own the presentation rules; do not duplicate them here. The website's
-  page-level reduced-motion preference and the player tooltip placement are
-  implemented and need final visual review. Keep release approval, version and
+  page-level reduced-motion preference and player tooltip placement were checked
+  in English/Chinese at narrow and desktop widths. Website build, documentation
+  checks and the full Web suite pass. Keep release approval, version and
   bilingual release notes with the user.
 - [ ] **App/Browser source discovery and feedback.** Investigate the report of
   missing window sources; confirm the exact message, screen, OS/browser and App
