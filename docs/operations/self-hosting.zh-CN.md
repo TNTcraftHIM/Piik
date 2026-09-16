@@ -80,7 +80,7 @@ SITE_ACCESS_PASSWORD=
 如果已有 HTTPS 反向代理，将请求转发到 `127.0.0.1:8787`，并启用 WebSocket 支持。
 如果还没有，可以[安装 Caddy](https://caddyserver.com/docs/install)，在 Caddyfile 中加入：
 
-```caddyfile
+```text
 share.example.com {
     reverse_proxy 127.0.0.1:8787
 }
@@ -103,6 +103,8 @@ TCP 8787 仅供本机反向代理访问。STUN 域名需要直接解析到服务
 在 `.env` 中添加 `SFU_UDP_PORT=7882`，放行 UDP 7882，再重启 Piik，即可启用自动 SFU 兜底。
 如果服务器处于 NAT 后方，还需将 `SFU_PUBLIC_IP` 设置为外部可达的公网 IPv4 地址。
 这项功能由同一个服务端程序提供。
+房主需要在开始分享前关闭 **隐私模式**，才会允许使用这条线路。
+直连和 SFU 媒体都需要可用的 UDP 通路。
 
 ## 长期运行与更新
 

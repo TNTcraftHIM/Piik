@@ -37,7 +37,7 @@ Piik 目前提供简体中文和英文。欢迎改进按钮措辞、校对教程
 | 官网 | [页面正文](../../site/index.html)和[交互文案](../../site/main.js)，按 `en`、`zh-CN` 成对组织 |
 | 宣传短片 | [短片源码说明](../../site/film/README.md)，字幕、插画和播放控件有各自的中英文内容 |
 | App 终端 | [console.go](../../internal/app/console.go) 中的 `consoleCopy`，每项按英文、中文、纯视觉排列；第三项即使为空也需保留 |
-| README 与入门教程 | [README](../../README.md)、[使用指南](./getting-started.md)、[部署指南](../operations/self-hosting.md)，均有对应的 `.zh-CN.md` 文件 |
+| README 与读者文档 | [README](../../README.md)、[文档首页](./README.md)、[使用指南](./getting-started.md)、[问题排查](./troubleshooting.md)、[部署指南](../operations/self-hosting.md)，均有对应的 `.zh-CN.md` 文件 |
 
 App 与 Server 使用同一套网页操作界面。请修改源码，构建目录和发布包由工具生成。
 应用词库中的修改不会自动翻译官网文案；操作名称变化时，也要检查相关教程。
@@ -133,6 +133,10 @@ App 连接远程站点时使用站点提供的界面，因此该站点的网页�
 检查窄窗口和切换语言的效果。官网构建会自动使用更新后的欢迎语，其他官网文案单独维护。
 
 ## 预览与检查
+
+文档网站直接生成自仓库中的 Markdown。修改指南后，下次官网发布会同步更新对应网页。
+导航和搜索按钮的文字位于 `site/docs/`；正文仍只修改原始 Markdown 文件。
+使用[官网预览流程](../operations/website.md#preview)检查生成的网页，并核对 GitHub 上的 Markdown 展示。
 
 Node/npm 版本及本地启动方法见[从源码运行](../README.md#run-from-source)。
 修改应用词库后，在仓库根目录执行：

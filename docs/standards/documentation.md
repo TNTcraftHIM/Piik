@@ -35,6 +35,13 @@ use the product; technical details link to the relevant owner. English/Chinese
 entry guides are intentional translations and must change together; technical
 references keep one version.
 
+The public documentation website renders selected repository Markdown without
+owning another copy. Its [reader index](../guide/README.md) serves usage and support;
+the repository map remains the developer/maintainer entry. The
+[website runbook](../operations/website.md#documentation-build) owns generation and
+publication. Keep all troubleshooting procedures in their guide, with short links
+from introductions rather than duplicate answers.
+
 ## Updating A Rule
 
 1. Trace the current product contract, actual callers and relevant evidence.

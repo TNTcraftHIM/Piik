@@ -87,7 +87,7 @@ Use your existing HTTPS reverse proxy to forward to `127.0.0.1:8787` with
 WebSocket support. If you do not have one, [install Caddy](https://caddyserver.com/docs/install)
 and add this to its Caddyfile:
 
-```caddyfile
+```text
 share.example.com {
     reverse_proxy 127.0.0.1:8787
 }
@@ -111,6 +111,8 @@ configuration uses P2P media, so participants need a usable UDP path.
 Add `SFU_UDP_PORT=7882` to `.env`, allow UDP 7882, and restart Piik to enable
 automatic SFU fallback. When the server is behind NAT, also set `SFU_PUBLIC_IP`
 to its reachable public IPv4 address. The same binary provides the fallback.
+The Host must turn off **Privacy mode** before sharing to allow this route.
+Both direct and SFU media need a usable UDP connection.
 
 ## Keep it running and update
 

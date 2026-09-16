@@ -5,6 +5,7 @@ import { writeWebLicenseNotices } from "./package-licenses.mjs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { tsImport } from "tsx/esm/api";
+import { buildDocumentation } from "../site/docs/build.mjs";
 
 const source = new URL("../site/", import.meta.url);
 const output = new URL("../build/site/", import.meta.url);
@@ -13,6 +14,7 @@ await mkdir(output, { recursive: true });
 await cp(source, output, {
   recursive: true,
   filter: (path) =>
+    path !== fileURLToPath(new URL("docs", source)) &&
     !path.endsWith(".ts") &&
     !path.endsWith(".tsx") &&
     !path.endsWith("tsconfig.json") &&
@@ -88,6 +90,7 @@ await build({
     js: "const piikFilmBuild = { url: document.currentScript.src, env: { DEV: false } };",
   },
 });
+await buildDocumentation();
 console.log(
   "Website built in build/site (static files, including the shared product UI).",
 );

@@ -3,8 +3,7 @@
 The homepage expands this optional, 76-second introduction in an iframe loaded
 only on request. Closing it unloads playback; the frame follows the homepage's
 language and theme. The player document also supports local recording and
-focused checks. From the repository root, run `npm run build:website` and
-`npm run preview:website`, then open
+focused checks. Install and build with the [website preview steps](../../docs/operations/website.md#preview), then open
 `http://127.0.0.1:18890/film/`. Publish the static `build/site/` output. A project
 prefix such as `/Piik/film/` also works; GitHub Pages needs no application server.
 

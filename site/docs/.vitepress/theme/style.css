@@ -1,0 +1,39 @@
+:root {
+  --vp-font-family-base: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --vp-font-family-mono: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  --vp-c-brand-1: #256b47;
+  --vp-c-brand-2: #367b57;
+  --vp-c-brand-3: #256b47;
+  --vp-c-brand-soft: #256b4718;
+  --vp-c-bg: #fafaf3;
+  --vp-c-bg-alt: #e9f2ee;
+  --vp-c-bg-soft: #e9f2ee;
+  --vp-c-text-1: #22303e;
+  --vp-c-text-2: #52635e;
+  --vp-c-divider: #c6d6cc;
+  --vp-code-block-bg: #e9f2ee;
+}
+.dark {
+  --vp-c-brand-1: #9bdbb2;
+  --vp-c-brand-2: #b0e6c3;
+  --vp-c-brand-3: #9bdbb2;
+  --vp-c-brand-soft: #9bdbb218;
+  --vp-c-bg: #1b2d34;
+  --vp-c-bg-alt: #14232b;
+  --vp-c-bg-soft: #14232b;
+  --vp-c-text-1: #eef4eb;
+  --vp-c-text-2: #b3c4bd;
+  --vp-c-divider: #3b5155;
+  --vp-code-block-bg: #14232b;
+}
+.VPNavBarTitle .title { gap: 8px; font-size: 24px; font-weight: 800; letter-spacing: -.045em; }
+.VPNavBarTitle .title::after { content: "."; margin-left: -8px; color: #e4572e; }
+.VPNavBarTitle .mascot { width: 30px; height: 30px; }
+.vp-doc h1 { letter-spacing: -.035em; }
+.vp-doc p, .vp-doc li { line-height: 1.85; }
+.vp-doc summary { cursor: pointer; font-weight: 600; }
+.vp-doc a { text-underline-offset: 3px; }
+.vp-doc :is(p, a, td) { overflow-wrap: anywhere; }
+.docs-license { margin-top: 24px; color: var(--vp-c-text-2); font-size: 12px; }
+.docs-license a { text-decoration: underline; text-underline-offset: 3px; }
+html[data-reduced-motion] .identity * { animation: none !important; }

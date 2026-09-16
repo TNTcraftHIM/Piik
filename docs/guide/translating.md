@@ -45,7 +45,7 @@ suggestion does not require a development environment.
 | Website | [Page markup](../../site/index.html) and [interactive labels](../../site/main.js); text is paired by `en` and `zh-CN` |
 | Introduction film | [Film sources](../../site/film/README.md); captions, artwork and playback labels have their own bilingual text |
 | App console window | `consoleCopy` in [console.go](../../internal/app/console.go); entries are ordered English, Chinese, visual; retain the third slot even when empty |
-| README and entry guides | [README pair](../../README.md), [getting started](./getting-started.md) and [self-hosting](../operations/self-hosting.md), each with a `.zh-CN.md` counterpart |
+| README and entry guides | [README pair](../../README.md), [documentation home](./README.md), [getting started](./getting-started.md), [troubleshooting](./troubleshooting.md) and [self-hosting](../operations/self-hosting.md), each with a `.zh-CN.md` counterpart |
 
 The App and Server serve the same web UI. Edit source files; build output and
 release packages are generated. Translating an App message does not also
@@ -59,6 +59,10 @@ serves the affected UI after an edit. Installed packages do not load external
 language files. When the App connects to a remote site, that site serves its UI,
 so updating the site's web translations does not require reinstalling the App.
 The website has its own build and deployment workflow.
+The documentation website renders those same Markdown sources; editing a guide
+updates its web page on the next website publication. Its navigation and search
+labels live in `site/docs/`. Use the [website preview](../operations/website.md#preview)
+to check the generated page as well as GitHub's Markdown view.
 
 ## Preserve meaning and syntax
 

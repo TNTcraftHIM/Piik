@@ -18,10 +18,19 @@ understand what Piik does, choose an entry and complete the first useful action.
 | Self-hosting guides | How do I put my own site online? | Run the binary, set the domain and HTTPS proxy, open ports and verify; service management remains a separate reference |
 | Developer and operations docs | How do I build or host it? | Existing configuration, deployment, architecture and diagnostic owners |
 
-The [documentation map](../README.md) is the Wiki-style entry. Link it from the
+The [reader documentation](../guide/README.md) is the public help entry. Link it from the
 website navigation and footer, with direct self-hosting, configuration and
 update/recovery links in the documentation section. Keep the guides in this
 repository; do not maintain a second GitHub Wiki copy of the same instructions.
+The website build renders the selected guides at `/docs/`, with language navigation
+and local search. The repository's [developer map](../README.md), standards,
+research and work ledgers remain separate from that reader navigation.
+
+Homepage FAQ answers questions before first use: installation, supported
+platforms, audience size, sound and sharing across networks. Keep material
+limitations beside those answers. Specific errors and recovery procedures
+belong in the usage guides, reached through a short documentation link after
+the FAQ. Do not duplicate troubleshooting steps on the homepage.
 
 ## Presentation
 
@@ -126,8 +135,11 @@ uses Chinese copy, and other languages use English. An explicit language choice
 is shared between these two pages and remembered; linked language choices take
 precedence when following a link.
 
-Use static HTML, CSS, SVG and small scripts for the public pages; no router,
-CMS, translation dependency or new application backend. The film's isolated
+Use static HTML, CSS, SVG and small scripts for the homepage and film; no router,
+CMS, translation dependency or new application backend. The documentation section
+uses VitePress's standard navigation and search with Piik's colours and mascot.
+It compiles existing Markdown; [website operations](../operations/website.md#documentation-build)
+owns its publication list and build boundary. The film's isolated
 demonstration frame bundles the existing React product components and styles,
 using staged inputs. It cannot access storage, run capture or contact the room
 service. The film clock owns its actions and decorative CSS animation positions.

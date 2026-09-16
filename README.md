@@ -6,7 +6,7 @@
   <a href="https://github.com/TNTcraftHIM/Piik/releases">Download</a> ·
   <a href="https://gitee.com/TNTcraftHIM/Piik/releases">Gitee mirror</a> ·
   <a href="https://demo.piik.tv">Use online</a> ·
-  <a href="./docs/README.md">Documentation</a>
+  <a href="https://piik.tv/docs/?lang=en">Documentation</a>
 </p>
 <p align="center">
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-36564f?style=flat-square" alt="License: MIT"></a>

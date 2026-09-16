@@ -26,6 +26,10 @@ and Git/PRs own completed history.
   tooltip placement follow the same presentation owners; final visual review is
   tracked in [TODO](./todo.md).
 
+The maintenance candidate also includes a bilingual reader documentation center
+generated from the repository's guides alongside the homepage. It is available
+in local preview; integration and publication await the owner's final acceptance.
+
 ## Deployment
 
 Source, package identity, GitHub repository and local worktree paths use Piik.

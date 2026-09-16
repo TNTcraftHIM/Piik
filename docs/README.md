@@ -2,6 +2,10 @@
 
 [About Piik](../README.md) · [中文介绍](../README.zh-CN.md) · [中文上手指南](./guide/getting-started.zh-CN.md)
 
+For using Piik, troubleshooting or self-hosting, start with the
+[reader documentation](./guide/README.md) · [中文文档中心](./guide/README.zh-CN.md).
+This page also indexes developer and maintainer references.
+
 ## Guides And References
 
 | Task | Guide |

@@ -45,7 +45,7 @@
         <a href="#demo"><span lang="en">Use online</span><span lang="zh-CN">在线使用</span></a>
         <a href="#faq">FAQ</a>
         <a href="#download"><span lang="en">Download</span><span lang="zh-CN">下载</span></a>
-        <a href="#docs"><span lang="en">Docs</span><span lang="zh-CN">文档</span></a>
+        <a href="./docs/?lang=en" data-doc-page=""><span lang="en">Docs</span><span lang="zh-CN">文档</span></a>
       </nav>
       <div class="preferences" hidden>
         <button id="language" type="button" lang="zh-CN" aria-label="切换到简体中文">简体中文</button>
@@ -340,8 +340,8 @@
                   >
                 </p>
                 <p>
-                  <span lang="en">Self-hosted Piik sites can <a href="https://github.com/TNTcraftHIM/Piik/blob/main/docs/operations/self-hosting.md#optional-media-fallback">enable media forwarding (SFU)</a> as a fallback when a direct connection cannot be established.</span
-                  ><span lang="zh-CN">自行部署的 Piik 站点可以<a href="https://github.com/TNTcraftHIM/Piik/blob/main/docs/operations/self-hosting.zh-CN.md#可选启用媒体兜底">启用媒体转发（SFU）</a>，为直连失败提供兜底。</span>
+                  <span lang="en">Self-hosted Piik sites can <a href="./docs/self-hosting.html#optional-media-fallback">enable media forwarding (SFU)</a> as a fallback when a direct connection cannot be established.</span
+                  ><span lang="zh-CN">自行部署的 Piik 站点可以<a href="./docs/zh/self-hosting.html#可选启用媒体兜底">启用媒体转发（SFU）</a>，为直连失败提供兜底。</span>
                 </p>
                 <a class="button download-button" href="https://demo.piik.tv" aria-describedby="demo-status"
                   ><span lang="en">Use Piik online</span><span lang="zh-CN">直接在线使用</span
@@ -476,8 +476,8 @@
                     macOS 原生采集需要 Apple 芯片和 macOS 13 及以上；Linux 原生采集需要<a href="https://github.com/TNTcraftHIM/Piik/blob/main/native/capture/linux/README.md">额外系统组件</a>。也可以用浏览器采集。</span
                   >
                 </p>
-                <a href="https://github.com/TNTcraftHIM/Piik/blob/main/docs/guide/getting-started.md#share-with-piik-app" lang="en">Full App guide →</a>
-                <a href="https://github.com/TNTcraftHIM/Piik/blob/main/docs/guide/getting-started.zh-CN.md#用-piik-app-分享" lang="zh-CN">完整 Piik App 使用指南 →</a>
+                <a href="./docs/getting-started.html#share-with-piik-app" lang="en">Full App guide →</a>
+                <a href="./docs/zh/getting-started.html#用-piik-app-分享" lang="zh-CN">完整 Piik App 使用指南 →</a>
               </aside>
             </div>
           </details>
@@ -570,8 +570,8 @@
                   <span lang="zh-CN">也可以直接用电脑浏览器打开同一站点，点击<strong>开始分享</strong>。
                     可选画面和声音取决于浏览器与系统。</span>
                 </p>
-                <a href="https://github.com/TNTcraftHIM/Piik/blob/main/docs/guide/getting-started.md#share-with-piik-app" lang="en">Full usage guide →</a>
-                <a href="https://github.com/TNTcraftHIM/Piik/blob/main/docs/guide/getting-started.zh-CN.md#用-piik-app-分享" lang="zh-CN">完整使用指南 →</a>
+                <a href="./docs/getting-started.html#share-from-an-existing-site" lang="en">Full usage guide →</a>
+                <a href="./docs/zh/getting-started.html#使用已有站点分享" lang="zh-CN">完整使用指南 →</a>
                 <a href="#docs"><span lang="en">Host a site of your own</span><span lang="zh-CN">部署自己的站点</span><span aria-hidden="true"> ↓</span></a>
               </aside>
             </div>
@@ -693,43 +693,6 @@
           </details>
           <details>
             <summary>
-              <span lang="en">What if Piik says “No media route available”?</span>
-              <span lang="zh-CN">提示「没有可用的媒体线路」怎么办？</span>
-            </summary>
-            <p>
-              <span lang="en">The page is reachable, but Piik has not found a working connection for the picture.
-                NAT lets devices share an Internet address; some routers and providers restrict direct connections.
-                Firewalls or browser settings can also get in the way.</span>
-              <span lang="zh-CN">这表示网页能打开，但画面还没找到可用的连接。NAT 让多台设备共用一个上网地址，
-                有些路由器或运营商的网络限制会让设备难以直连。防火墙、浏览器设置也可能影响连接。</span>
-            </p>
-            <ol>
-              <li><span lang="en">Try <strong>Reconnect</strong> if available, or refresh the viewing page and let it finish connecting.
-                If one or two tries fail, move on to the network checks.</span>
-                <span lang="zh-CN">若<strong>重新连接</strong>按钮可用，先点它；也可以刷新观看页，等这一轮连接结束。
-                  试一两次仍不通，再换个方向排查。</span></li>
-              <li><span lang="en">Try another network, such as a phone hotspot. Enable IPv6 if your provider, router and devices support it.
-                The guide below also covers router settings.</span>
-                <span lang="zh-CN">换个网络（比如手机热点）试试；宽带、路由器和设备支持时，可以开启 IPv6。
-                  路由器设置的检查方法见下方指南。</span></li>
-              <li><span lang="en">Invite a friend on another network. If they can receive the picture, Piik may be able to forward it through them.</span>
-                <span lang="zh-CN">也可以叫另一网络的朋友加入。如果对方能正常看到画面，Piik 有机会通过对方转发给你。</span></li>
-              <li><span lang="en">Use a site with media forwarding (SFU) enabled, with the host's Privacy mode off.
-                <strong>demo.piik.tv and Public invite have no SFU fallback.</strong>
-                You can also <a href="#docs">host your own site</a>.</span>
-                <span lang="zh-CN">使用已启用媒体转发（SFU）的站点，并由房主在分享前关闭隐私模式。
-                  <strong>demo.piik.tv 和「公网邀请」没有 SFU 兜底。</strong>
-                  也可以<a href="#docs">自行部署站点</a>。</span></li>
-            </ol>
-            <p>
-              <a lang="en" href="https://github.com/TNTcraftHIM/Piik/blob/main/docs/guide/getting-started.md#when-video-will-not-connect">Connection troubleshooting →</a>
-              <a lang="zh-CN" href="https://github.com/TNTcraftHIM/Piik/blob/main/docs/guide/getting-started.zh-CN.md#画面连接不上">画面连接排查指南 →</a>
-              <span aria-hidden="true"> · </span>
-              <a href="https://github.com/TNTcraftHIM/Piik/blob/main/docs/README.md"><span lang="en">Documentation</span><span lang="zh-CN">文档中心</span></a>
-            </p>
-          </details>
-          <details>
-            <summary>
               <span lang="en">Which platforms are ready?</span><span lang="zh-CN">目前支持哪些平台？</span>
             </summary>
             <p>
@@ -743,6 +706,12 @@
               >
             </p>
           </details>
+          <div class="faq-more">
+            <p><span lang="en">More questions?</span><span lang="zh-CN">还有其他问题？</span></p>
+            <a class="text-link" href="./docs/?lang=en" data-doc-page="">
+              <span lang="en">Browse guides and troubleshooting</span><span lang="zh-CN">前往文档中心，查看详细教程与问题排查</span><span aria-hidden="true"> →</span>
+            </a>
+          </div>
         </div>
       </section>
 
@@ -867,11 +836,11 @@
               部署指南包含 Docker Compose、服务端程序、HTTPS 与网络配置。</span
             >
           </p>
-          <a class="docs-index" href="https://github.com/TNTcraftHIM/Piik/blob/main/docs/operations/self-hosting.md" lang="en">Start self-hosting<span aria-hidden="true"> ↗</span></a>
-          <a class="docs-index" href="https://github.com/TNTcraftHIM/Piik/blob/main/docs/operations/self-hosting.zh-CN.md" lang="zh-CN">查看部署指南<span aria-hidden="true"> ↗</span></a>
+          <a class="docs-index" href="./docs/self-hosting.html" lang="en">Start self-hosting<span aria-hidden="true"> ↗</span></a>
+          <a class="docs-index" href="./docs/zh/self-hosting.html" lang="zh-CN">查看部署指南<span aria-hidden="true"> ↗</span></a>
           <ul class="docs-links">
             <li>
-              <a href="https://github.com/TNTcraftHIM/Piik/blob/main/docs/README.md"><span lang="en">Documentation</span><span lang="zh-CN">文档中心</span><span aria-hidden="true"> ↗</span></a>
+              <a href="./docs/?lang=en" data-doc-page=""><span lang="en">Documentation</span><span lang="zh-CN">文档中心</span><span aria-hidden="true"> ↗</span></a>
               <p>
                 <span lang="en">Usage guides, troubleshooting and development</span
                 ><span lang="zh-CN">使用教程、故障排查与开发指南</span>
@@ -888,7 +857,7 @@
               </p>
             </li>
             <li>
-              <a href="https://github.com/TNTcraftHIM/Piik/blob/main/docs/operations/service-management.md"
+              <a href="./docs/service-management.html" data-doc-page="service-management.html"
                 ><span lang="en">Service management</span><span lang="zh-CN">长期运行与容器</span
                 ><span aria-hidden="true"> ↗</span></a
               >
@@ -900,9 +869,9 @@
           </ul>
           <p class="docs-note">
             <span lang="en"
-              >Guides are maintained on GitHub. Getting started and deployment are available in English and Chinese;
-              detailed technical references are in English.</span
-            ><span lang="zh-CN">文档在 GitHub 持续维护。使用和部署教程提供中英文版本，详细技术参考为英文。</span>
+              >Guides are available here in English and Chinese, with links to their source on GitHub.
+              Detailed technical references are in English.</span
+            ><span lang="zh-CN">使用和部署教程提供中英文版本，可直接在文档中心阅读，并前往 GitHub 参与修改。详细技术参考为英文。</span>
           </p>
         </div>
       </section>
@@ -915,7 +884,7 @@
         <p><span lang="en">Share the good stuff.</span><span lang="zh-CN">来，看点好康的。</span></p>
       </div>
       <div class="footer-links">
-        <a href="https://github.com/TNTcraftHIM/Piik/blob/main/docs/README.md"
+        <a href="./docs/?lang=en" data-doc-page=""
           ><span lang="en">Documentation</span><span lang="zh-CN">文档中心</span></a
         ><a href="https://github.com/TNTcraftHIM/Piik"
           ><span lang="en">Source on GitHub</span><span lang="zh-CN">GitHub 源码</span

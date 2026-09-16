@@ -12,9 +12,9 @@ its content and design boundary.
 | P2P-only demo on the separate US server | [demo.piik.tv](https://demo.piik.tv) |
 | App downloads and release notes | [GitHub Releases](https://github.com/TNTcraftHIM/Piik/releases) |
 | Download mirror for domestic access | [Gitee Releases](https://gitee.com/TNTcraftHIM/Piik/releases) |
-| Documentation index | [Repository documentation](../README.md) |
+| Documentation source | [Reader guides](../guide/README.md), with a separate [developer map](../README.md) |
 
-These public destinations are live. GitHub Pages serves `piik.tv` behind
+GitHub Pages serves `piik.tv` behind
 Cloudflare; both the GitHub origin and Cloudflare edge use HTTPS. Website DNS is
 proxied with strict origin TLS verification and origin cache headers respected.
 Demo DNS remains unproxied so its UDP listeners stay reachable.
@@ -62,6 +62,7 @@ does not manage it.
 With the repository's development dependencies installed:
 
 ```sh
+npm ci --prefix site/docs
 npm run build:website
 npm run preview:website
 ```
@@ -70,7 +71,40 @@ Open `http://127.0.0.1:18890`. Rebuild after editing source. The build bundles t
 film's real product components into an isolated demonstration frame; publishing
 `build/site/` needs no Node runtime or backend. Vite preview supplies HTTP byte
 ranges for seeking the soundtrack. Keep asset links relative so both a custom
-domain and GitHub's `/Piik/` project path work.
+domain and GitHub's `/Piik/` project path work. For a nested deployment, set
+`PIIK_DOCS_BASE=/Piik/docs/` when building; ordinary custom-domain builds use `/docs/`.
+
+## Documentation Build
+
+`site/docs/` configures VitePress; its isolated package and lockfile keep document
+tooling out of the App/Server dependency tree. The pinned Vite override follows the
+[VitePress maintainer's guidance](https://github.com/vuejs/vitepress/discussions/5072)
+to use the security-maintained Vite 6 line with stable VitePress 1. Remove the
+override when a stable upstream release supplies a maintained version directly.
+
+The explicit list in `site/docs/pages.mjs` maps original Markdown files to public
+routes and sidebar labels. `build.mjs` stages only those files under ignored
+`build/docs-source/`, then emits `build/site/docs/` as part of `build:website`.
+Edit the original Markdown, never a staged copy. Relative links between published
+pages become local web links; references outside the list continue to GitHub.
+Heading IDs reuse the repository checker's GitHub-style slug rule, so section
+links work in both views without a second set of anchors.
+The page edit link targets its original source. Developer context, TODO, research
+and operational release records are not automatically published as reader pages.
+
+The docs keep paired English/Chinese guides, shared site language preference,
+system/explicit appearance and the existing mascot. Search uses a local index
+and native word segmentation for Chinese and English, with no hosted search service.
+Technical configuration keeps its existing English owner on GitHub.
+
+Both homepage and documentation are uploaded in the same Pages artifact. Do not
+run a second Pages deployment that would overwrite the homepage. Website/docs
+sources and the nested package remain outside product-release paths; shared
+product code and App/Server build inputs still follow the release boundary.
+Check links, language switching, search, keyboard/mobile use and the static
+HTML fallback when changing the public documentation.
+
+## Downloads
 
 The Windows x64, macOS Apple silicon and Linux x64 cards use fixed filenames and
 each provider's native latest-attachment route:

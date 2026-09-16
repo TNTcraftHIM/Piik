@@ -4,6 +4,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, extname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { githubSlug } from "./markdown-slug.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryFiles = execFileSync("git", ["ls-files", "--cached"], {
@@ -322,28 +323,4 @@ function anchorsFor(path) {
   }
   anchorCache.set(path, anchors);
   return anchors;
-}
-
-function githubSlug(heading) {
-  return decodeHtmlEntities(heading)
-    .toLowerCase()
-    .replace(/<[^>]+>/gu, "")
-    .replace(/!?\[([^\]]+)\]\([^)]+\)/gu, "$1")
-    .replace(/[`*_~]/gu, "")
-    .replace(/[^\p{L}\p{M}\p{N}\s_-]/gu, "")
-    .trim()
-    .replace(/\s+/gu, "-");
-}
-
-function decodeHtmlEntities(value) {
-  const named = { amp: "&", apos: "'", gt: ">", lt: "<", quot: '"' };
-  return value.replace(/&(#x[0-9a-f]+|#\d+|amp|apos|gt|lt|quot);/giu, (match, entity) => {
-    if (entity[0] !== "#") return named[entity.toLowerCase()];
-    const radix = entity[1]?.toLowerCase() === "x" ? 16 : 10;
-    const digits = radix === 16 ? entity.slice(2) : entity.slice(1);
-    const codePoint = Number.parseInt(digits, radix);
-    return Number.isInteger(codePoint) && codePoint >= 0 && codePoint <= 0x10ffff
-      ? String.fromCodePoint(codePoint)
-      : match;
-  });
 }

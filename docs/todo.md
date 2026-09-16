@@ -7,15 +7,14 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [x] **Maintenance acceptance.** Reviewed the current welcome/waiting/title
-  previews, tooltip placement, site tutorials and connection help before integration. The
-  [playful-copy policy](./standards/visual-language.md#playful-copy-lifecycle)
-  and [feedback composition](./standards/visual-language.md#feedback-composition)
-  own the presentation rules; do not duplicate them here. The website's
-  page-level reduced-motion preference and player tooltip placement were checked
-  in English/Chinese at narrow and desktop widths. Website build, documentation
-  checks and the full Web suite pass. Keep release approval, version and
-  bilingual release notes with the user.
+- [ ] **Maintenance closure.** Present the current UI feedback previews, homepage
+  tutorials/FAQ and bilingual documentation center for the owner's final review,
+  together with the proposed version and complete Chinese/English release notes.
+  The [website runbook](./operations/website.md#documentation-build) owns the
+  generated documentation; [visual language](./standards/visual-language.md)
+  owns the accepted feedback rules. Finish applicable checks, then wait for
+  approval before integration, deployment or publication. Keep the unresolved
+  device reports and physical limits below explicit.
 - [ ] **App/Browser source discovery and feedback.** Investigate the report of
   missing window sources; confirm the exact message, screen, OS/browser and App
   version. The custom selector currently renders both App unavailability and a

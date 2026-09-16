@@ -71,6 +71,9 @@ function setLanguage(lang) {
   roomIllustration.alt = current.image;
   document.querySelector('.site-header nav').setAttribute('aria-label', chinese ? '主导航' : 'Main');
   document.querySelector('.guide-links').setAttribute('aria-label', chinese ? '教程目录' : 'Guides');
+  for (const link of document.querySelectorAll('[data-doc-page]')) {
+    link.href = `./docs/${chinese ? 'zh/' : ''}${link.dataset.docPage}${chinese ? '' : '?lang=en'}`;
+  }
   filmFrame.title = chinese ? 'Piik 宣传片' : 'Piik introduction';
   for (const option of theme.options) option.textContent = current.themes[option.value];
   syncWelcome();

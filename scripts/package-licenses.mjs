@@ -35,10 +35,10 @@ function noticesIn(directory) {
     .map((file) => file.name).sort();
 }
 
-export function writeWebLicenseNotices(repositoryRoot, outputFile) {
+export function writeWebLicenseNotices(repositoryRoot, outputFile, packages = WEB_BUNDLE_PACKAGES) {
   const packagePath = join(repositoryRoot, "package.json");
   const lock = JSON.parse(readFileSync(join(repositoryRoot, "package-lock.json"), "utf8"));
-  const queue = WEB_BUNDLE_PACKAGES.map((name) => [name, packagePath]);
+  const queue = packages.map((name) => [name, packagePath]);
   const visited = new Set();
   const entries = new Map();
   for (const [name, parent] of queue) {

@@ -38,7 +38,11 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            site/docs/package-lock.json
       - run: npm ci
+      - run: npm ci --prefix site/docs
       - run: npm run build:website
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4

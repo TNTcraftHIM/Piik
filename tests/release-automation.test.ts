@@ -88,8 +88,9 @@ describe("release automation", () => {
       git("tag", "v1.0.0");
       // The tag might belong to an unfinished draft: publication can resume.
       expect(plan()).toMatchObject({ version: "v1.0.0", publish: true });
-      for (const path of ["site/film/art.js", "docs/deployment.md", "README.zh-CN.md",
-        "scripts/build-website.mjs", "scripts/check-docs.mjs", "scripts/release-notes.mjs",
+      for (const path of ["site/film/art.js", "site/docs/package.json", "site/docs/package-lock.json",
+        "site/docs/.vitepress/config.mjs", "docs/guide/troubleshooting.md", "docs/deployment.md", "README.zh-CN.md",
+        "scripts/build-website.mjs", "scripts/check-docs.mjs", "scripts/markdown-slug.mjs", "scripts/release-notes.mjs",
         "scripts/app-gate-endpoint.ts", "scripts/client-gate-endpoint.ts",
         "tests/room.test.ts", ".agents/skills/ponytail/SKILL.md", ".github/workflows/website.yml"]) {
         mkdirSync(dirname(join(root, path)), { recursive: true });
