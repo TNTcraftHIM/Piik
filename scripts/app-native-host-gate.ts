@@ -10,6 +10,7 @@ import { mkdir, mkdtemp, readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { appPackageTarget, canRunAppTarget, goBuildEnvironment } from "./app-package-targets.mjs";
 
 import {
   CdpConnection,
@@ -66,6 +67,7 @@ const CODEC_PROBE = `(() => {
 })()`;
 
 interface GateResult {
+  target: string;
   passed: boolean;
   requestedCodec: VideoCodec | "auto";
   actualCodec: VideoCodec | null;
@@ -553,6 +555,10 @@ async function main(): Promise<void> {
   if (process.env.PIIK_CLIENT_NATIVE_HOST_GATE !== "true") {
     throw new Error("PIIK_CLIENT_NATIVE_HOST_GATE=true is required");
   }
+  const target = appPackageTarget(process.env.PIIK_CLIENT_NATIVE_HOST_TARGET?.trim() || "windows-amd64");
+  if (!target || target.goos !== "windows" || !canRunAppTarget(target)) {
+    throw new Error("PIIK_CLIENT_NATIVE_HOST_TARGET requires a runnable Windows App target");
+  }
   const crossNat = process.env.PIIK_CLIENT_CROSS_NAT_GATE === "true";
   const linkMedia = process.env.PIIK_CLIENT_LINK_MEDIA_GATE === "true";
   if (crossNat && linkMedia) {
@@ -609,6 +615,7 @@ async function main(): Promise<void> {
   let remoteTunnel: ChildProcess | null = null;
   let stage = "setup";
   const result: GateResult = {
+    target: target.id,
     passed: false,
     requestedCodec,
     actualCodec: null,
@@ -665,12 +672,13 @@ async function main(): Promise<void> {
       "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
       join(ROOT, "native", "capture", "windows", "build.ps1"),
       "-OutputDirectory", captureBuild,
+      "-Architecture", target.goarch === "386" ? "x86" : "x64",
     ]);
     process.stderr.write(`${JSON.stringify({ stage, status: "finished", at: new Date().toISOString() })}\n`);
     stage = "app-build";
     run(go, [
       "build", "-p", "1", "-trimpath", "-o", appBinary, "./cmd/piik-app",
-    ], ROOT, { ...process.env, GOMAXPROCS: "2" });
+    ], ROOT, { ...goBuildEnvironment(target), GOMAXPROCS: "2" });
     if (remote) {
       stage = "remote-peer-build";
       run(

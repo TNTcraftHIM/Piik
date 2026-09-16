@@ -20,11 +20,11 @@
 #include "api/video/video_adapter.h"
 #include "api/video/video_frame.h"
 #include "api/video/video_stream_encoder_settings.h"
-#include "api/video_codecs/builtin_video_encoder_factory.h"
 #include "api/video_codecs/video_encoder_factory.h"
 #include "call/video_send_stream.h"
 #include "libyuv/convert.h"
 #include "modules/video_coding/include/video_error_codes.h"
+#include "modules/video_coding/codecs/vp8/include/vp8.h"
 #include "system_wrappers/include/clock.h"
 #include "video/adaptation/overuse_frame_detector.h"
 #include "video/frame_cadence_adapter.h"
@@ -352,7 +352,7 @@ class AdaptiveEncoder::Impl final : public webrtc::VideoSourceInterface<webrtc::
        Factory create, std::unique_ptr<VideoEncoder> initial, int output_index)
       : kind_(kind), ceiling_(ceiling), output_index_(output_index), device_(device), create_(std::move(create)),
         initial_(std::move(initial)), env_(webrtc::CreateEnvironment()),
-        readback_(device, failure_), builtin_(webrtc::CreateBuiltinVideoEncoderFactory()),
+        readback_(device, failure_),
         allocator_(webrtc::CreateBuiltinVideoBitrateAllocatorFactory()),
         worker_(env_.task_queue_factory().CreateTaskQueue(
             "CaptureAdaptation", webrtc::TaskQueueFactory::Priority::kNormal)) {}
@@ -503,11 +503,12 @@ class AdaptiveEncoder::Impl final : public webrtc::VideoSourceInterface<webrtc::
         {"packetization-mode", "1"}, {"level-asymmetry-allowed", "1"}})};
   }
   std::unique_ptr<webrtc::VideoEncoder> Create(const webrtc::Environment& env,
-                                            const webrtc::SdpVideoFormat& format) override {
+                                            const webrtc::SdpVideoFormat&) override {
     try {
       if (kind_ == OutputKind::vp8) {
         initial_.reset();
-        auto encoder = builtin_->Create(env, format);
+        // Each output owns one stream; use WebRTC's VP8 encoder directly.
+        auto encoder = webrtc::CreateVp8Encoder(env);
         if (!encoder) Fail("adaptive-vp8-create", "WebRTC VP8 encoder is unavailable");
         return encoder;
       }
@@ -609,7 +610,6 @@ class AdaptiveEncoder::Impl final : public webrtc::VideoSourceInterface<webrtc::
   const webrtc::Environment env_;
   Failure failure_;
   Readback readback_;
-  std::unique_ptr<webrtc::VideoEncoderFactory> builtin_;
   std::unique_ptr<webrtc::VideoBitrateAllocatorFactory> allocator_;
   std::unique_ptr<webrtc::SendStatisticsProxy> stats_;
   std::unique_ptr<webrtc::TaskQueueBase, webrtc::TaskQueueDeleter> worker_;

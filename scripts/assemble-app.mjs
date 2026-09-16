@@ -77,7 +77,7 @@ function executableMatchesTarget(path, target) {
     }
     const pe = bytesAt(path, 6, header.readUInt32LE(0x3c));
     return pe.length === 6 && pe.subarray(0, 4).equals(Buffer.from("PE\0\0")) &&
-      pe.readUInt16LE(4) === 0x8664;
+      pe.readUInt16LE(4) === (target.goarch === "386" ? 0x14c : 0x8664);
   }
   if (target.goos === "linux") {
     return header.length >= 20 && header.subarray(0, 4).equals(
@@ -156,7 +156,7 @@ const positional = process.argv.slice(2, 4);
 const options = process.argv.slice(4);
 if (positional.length !== 2 || options.length % 2 !== 0) {
   fail(
-    "Usage: node scripts/assemble-app.mjs <server-release.json> <new-output-directory> --target <windows-amd64|linux-amd64|darwin-arm64> [--capture <executable>] [--tunnel <executable>]",
+    "Usage: node scripts/assemble-app.mjs <server-release.json> <new-output-directory> --target <target-id> [--capture <executable>] [--tunnel <executable>]",
   );
 }
 

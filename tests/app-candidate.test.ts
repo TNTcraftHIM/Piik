@@ -26,7 +26,8 @@ vi.mock("node:child_process", async (original) => ({
     return { status: 0, stdout: "", stderr: "" };
   },
 }));
-vi.mock("../scripts/app-package-targets.mjs", () => ({
+vi.mock("../scripts/app-package-targets.mjs", async (original) => ({
+  ...await original<typeof import("../scripts/app-package-targets.mjs")>(),
   CLOUDFLARED_VERSION: "fixture",
   appPackageTarget: () => ({
     id: "fixture", nodePlatform: process.platform, nodeArch: process.arch,

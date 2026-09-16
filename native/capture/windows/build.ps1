@@ -2,7 +2,8 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$OutputDirectory,
-    [switch]$Check
+    [switch]$Check,
+    [ValidateSet('x64', 'x86')][string]$Architecture = 'x64'
 )
 
 Set-StrictMode -Version Latest
@@ -28,7 +29,7 @@ if ([string]::IsNullOrWhiteSpace($installationPath)) {
 $developerCommand = Join-Path $installationPath 'Common7\Tools\VsDevCmd.bat'
 $executablePath = Join-Path $outputPath 'piik-capture.exe'
 New-Item -ItemType Directory -Path $outputPath -Force | Out-Null
-$webrtc = & (Join-Path $helperDirectory 'get-webrtc.ps1')
+$webrtc = & (Join-Path $helperDirectory 'get-webrtc.ps1') -Architecture $Architecture
 $includeFlags = @('', 'third_party\abseil-cpp', 'third_party\boringssl\src\include',
     'third_party\libyuv\include', 'third_party\libvpx\source\libvpx') | ForEach-Object {
     '/external:I "{0}"' -f (Join-Path $webrtc.Include $_).TrimEnd('\')
@@ -38,7 +39,7 @@ $systemLibraries = 'ole32.lib mmdevapi.lib runtimeobject.lib user32.lib gdi32.li
 $linkCommand = '"{0}" /nologo /libpath:"{1}"' -f $webrtc.Linker,$webrtc.RuntimeLibraries
 
 function Invoke-CaptureBuild([string]$command) {
-    & cmd.exe /d /s /c ('call "{0}" -arch=x64 -host_arch=x64 >nul && {1}' -f $developerCommand,$command) | Out-Host
+    & cmd.exe /d /s /c ('call "{0}" -arch={1} -host_arch=x64 >nul && {2}' -f $developerCommand,$Architecture,$command) | Out-Host
     if ($LASTEXITCODE -ne 0) {
         throw "Window-capture helper compilation failed with exit code $LASTEXITCODE."
     }
@@ -48,7 +49,12 @@ $objects = foreach ($name in @('main', 'process_audio', 'capture_target', 'h264_
     $source = Join-Path $helperDirectory ($name + '.cpp')
     $object = Join-Path $outputPath ($name + '.obj')
     $definitions = if ($name -eq 'adaptive_encoder') { '/DWEBRTC_WIN /DRTC_ENABLE_H265 /DNOMINMAX' } else { '' }
-    Invoke-CaptureBuild ('cl.exe {0} /DNDEBUG {1} "{2}" /Fo:"{3}"' -f $compileFlags,$definitions,$source,$object)
+    # The x86 SDK's C++ callback ABI requires Clang at the WebRTC boundary.
+    # Platform capture and WinRT keep the existing MSVC toolchain.
+    $compiler = if ($name -eq 'adaptive_encoder' -and $Architecture -eq 'x86') {
+        '"{0}" --target=i686-pc-windows-msvc' -f $webrtc.AdapterCompiler
+    } else { 'cl.exe' }
+    Invoke-CaptureBuild ('{0} {1} /DNDEBUG {2} "{3}" /Fo:"{4}"' -f $compiler,$compileFlags,$definitions,$source,$object)
     '"{0}"' -f $object
 }
 Invoke-CaptureBuild ('{0} /out:"{1}" {2} "{3}" {4}' -f $linkCommand,$executablePath,($objects -join ' '),$webrtc.Library,$systemLibraries)

@@ -161,7 +161,7 @@ describe("release automation", () => {
     const revision = "a".repeat(40);
     const run = () => spawnSync(process.execPath, [publisher, root, version, revision, "--dry-run"], { encoding: "utf8" });
     try {
-      for (const target of ["server", "windows-amd64", "linux-amd64", "darwin-arm64"]) {
+      for (const target of ["server", "windows-amd64", "windows-386", "linux-amd64", "darwin-arm64"]) {
         const artifact = `${target}.${target === "server" ? "tar.gz" : "zip"}`;
         writeFileSync(join(root, artifact), target);
         const descriptor = { schema: 2, version, revision, artifact, artifactSha256: sha(target),
@@ -172,8 +172,8 @@ describe("release automation", () => {
       }
       const complete = run();
       expect(complete.status, complete.stderr).toBe(0);
-      expect(JSON.parse(complete.stdout).targets).toHaveLength(4);
-      expect(JSON.parse(complete.stdout).files).toBe(4);
+      expect(JSON.parse(complete.stdout).targets).toHaveLength(5);
+      expect(JSON.parse(complete.stdout).files).toBe(5);
       const checksum = join(root, "windows-amd64.zip.sha256");
       const originalChecksum = readFileSync(checksum, "utf8");
       writeFileSync(checksum, "wrong checksum");

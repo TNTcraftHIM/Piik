@@ -142,6 +142,8 @@ jobs:
         include:
           - target: windows-amd64
             runner: windows-latest
+          - target: windows-386
+            runner: windows-latest
           - target: linux-amd64
             runner: ubuntu-latest
           - target: darwin-arm64

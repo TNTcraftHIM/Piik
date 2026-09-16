@@ -141,7 +141,8 @@ export function writeAppLicenseNotices(repositoryRoot, packageRoot, goCommand, t
       existsSync(join(packageRoot, "runtime", "native", target.captureName))) {
     const dependencies = JSON.parse(readFileSync(join(repositoryRoot, "native", "capture",
       "windows", "webrtc-dependencies.json"), "utf8"));
-    const name = `webrtc@${dependencies.webrtc.version}`;
+    const sdk = target.goarch === "386" ? dependencies.webrtcX86 : dependencies.webrtc;
+    const name = `webrtc@${sdk.version}`;
     text += section(name, pinnedNotice(name));
   }
   writeFileSync(join(packageRoot, "THIRD-PARTY-NOTICES.txt"), text + moduleSections(notices.modules));

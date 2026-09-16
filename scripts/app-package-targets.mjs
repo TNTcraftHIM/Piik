@@ -16,6 +16,20 @@ export const APP_PACKAGE_TARGETS = [
     tunnelArchive: false,
   },
   {
+    id: "windows-386",
+    nodePlatform: "win32",
+    nodeArch: "ia32",
+    goos: "windows",
+    goarch: "386",
+    cgo: false,
+    appName: "piik-app.exe",
+    tunnelName: "cloudflared.exe",
+    captureName: "piik-capture.exe",
+    tunnelAsset: "cloudflared-windows-386.exe",
+    tunnelSha256: "bdfab00122a3c2a0772d3f176445f6baf0271fed71656d0902cbc23a0eea7048",
+    tunnelArchive: false,
+  },
+  {
     id: "linux-amd64",
     nodePlatform: "linux",
     nodeArch: "x64",
@@ -47,6 +61,11 @@ export const APP_PACKAGE_TARGETS = [
 
 export function appPackageTarget(id) {
   return APP_PACKAGE_TARGETS.find((target) => target.id === id) ?? null;
+}
+
+export function canRunAppTarget(target, platform = process.platform, arch = process.arch) {
+  return platform === target.nodePlatform && (arch === target.nodeArch ||
+    (platform === "win32" && arch === "x64" && target.nodeArch === "ia32"));
 }
 
 export function goBuildEnvironment(target) {

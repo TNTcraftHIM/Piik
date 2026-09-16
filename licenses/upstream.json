@@ -13,5 +13,10 @@
     "file": "cloudflared-2026.8.3.txt",
     "source": "https://github.com/cloudflare/cloudflared/tree/fe70e951a3c52d92abf9f6c4248e32937b2f42fc",
     "sha256": "ef733450199fd982350bdadb89f5d0904232ba38412013776c72553cee7924b0"
+  },
+  "webrtc@m152.7977.0.0": {
+    "file": "webrtc-m152.7977.0.0.txt",
+    "source": "https://github.com/crow-misia/libwebrtc-bin/releases/tag/152.7977.0.0",
+    "sha256": "35287dc28e453f27d856375182749a836cd321bb24b75c8b188d7c85e0744d07"
   }
 }

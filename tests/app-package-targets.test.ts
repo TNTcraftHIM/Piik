@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   APP_PACKAGE_TARGETS,
+  canRunAppTarget,
   goBuildEnvironment,
 } from "../scripts/app-package-targets.mjs";
 
@@ -27,6 +28,7 @@ describe("App package targets", () => {
       });
       expect(settings).toEqual([
         ["windows-amd64", "windows", "amd64", "0"],
+        ["windows-386", "windows", "386", "0"],
         ["linux-amd64", "linux", "amd64", "0"],
         ["darwin-arm64", "darwin", "arm64", "1"],
       ]);
@@ -34,5 +36,13 @@ describe("App package targets", () => {
       if (previous === undefined) delete process.env.CGO_ENABLED;
       else process.env.CGO_ENABLED = previous;
     }
+  });
+
+  it("allows Windows x86 acceptance on x64 while rejecting incompatible runners", () => {
+    const x86 = APP_PACKAGE_TARGETS.find(target => target.id === "windows-386")!;
+    expect(canRunAppTarget(x86, "win32", "ia32")).toBe(true);
+    expect(canRunAppTarget(x86, "win32", "x64")).toBe(true);
+    expect(canRunAppTarget(x86, "linux", "x64")).toBe(false);
+    expect(canRunAppTarget(APP_PACKAGE_TARGETS[0]!, "win32", "ia32")).toBe(false);
   });
 });

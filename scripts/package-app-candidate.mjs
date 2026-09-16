@@ -20,7 +20,7 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 
-import { appPackageTarget, CLOUDFLARED_VERSION } from "./app-package-targets.mjs";
+import { appPackageTarget, canRunAppTarget, CLOUDFLARED_VERSION } from "./app-package-targets.mjs";
 import { createZip, extractZip, tarExecutable } from "./archive-tool.mjs";
 import { assertCleanRevision, resetBuildWorkspace } from "./build-workspace.mjs";
 
@@ -317,7 +317,7 @@ const serverRoot = realpathSync(resolve(process.argv[2]));
 const target = appPackageTarget(process.argv[3]);
 const outputRoot = resolve(process.cwd(), process.argv[4]);
 if (!target) fail("App package target is invalid");
-if (process.platform !== target.nodePlatform || process.arch !== target.nodeArch) {
+if (!canRunAppTarget(target)) {
   fail(`App candidate ${target.id} requires its native runner`);
 }
 assertOutsideRepository(repositoryRoot, outputRoot);
@@ -349,10 +349,10 @@ try {
   if (target.captureName) {
     run(
       process.execPath,
-      [join(repositoryRoot, "scripts", "check-go.mjs"), "--capture-only"],
+      [join(repositoryRoot, "scripts", "check-go.mjs"), "--capture-only", target.id],
       repositoryRoot,
     );
-    capture = join(repositoryRoot, "build", "go-check", target.captureName);
+    capture = join(repositoryRoot, "build", "go-check", target.id, target.captureName);
   }
 
   const packageRoot = join(temporaryRoot, `piik-app-${target.id}`);

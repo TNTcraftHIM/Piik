@@ -9,7 +9,7 @@ import {
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { APP_PACKAGE_TARGETS, appPackageTarget, goBuildEnvironment } from "./app-package-targets.mjs";
+import { APP_PACKAGE_TARGETS, appPackageTarget, canRunAppTarget, goBuildEnvironment } from "./app-package-targets.mjs";
 
 // Every Go command embeds the Vite output, so the build, vet and test steps all
 // fail without it. The Server binary is cross-built for its deployment target.
@@ -17,14 +17,17 @@ const WEB_INDEX = join("internal", "server", "webassets", "dist", "index.html");
 const SERVER_TARGET = appPackageTarget("linux-amd64");
 // Local dependency repairs retain upstream tests, including PCPv6 composition.
 // Nested modules need explicit test patterns; remove these with the replacements.
-const GO_TEST_PACKAGES = ["./...", "github.com/netbirdio/go-nat/...", "github.com/jackpal/go-nat-pmp"];
+// Only these directories own Go source; scanning ./... also walks downloaded SDKs.
+const GO_TEST_PACKAGES = ["./cmd/...", "./internal/...", "github.com/netbirdio/go-nat/...", "github.com/jackpal/go-nat-pmp"];
 
 const root = realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), ".."));
 const captureRoot = join(root, "native", "capture");
 const mode = process.argv[2] ?? "--all";
+const nativeTarget = process.argv[3] ? appPackageTarget(process.argv[3]) : undefined;
 
-if (!["--all", "--core", "--capture-only", "--race"].includes(mode)) {
-  throw new Error("Usage: node scripts/check-go.mjs [--all|--core|--capture-only|--race]");
+if (!["--all", "--core", "--capture-only", "--race"].includes(mode) || process.argv.length > 4 ||
+    (process.argv[3] && (mode !== "--capture-only" || !nativeTarget || !canRunAppTarget(nativeTarget)))) {
+  throw new Error("Usage: node scripts/check-go.mjs [--all|--core|--race|--capture-only [native-target]]");
 }
 
 function run(command, args, options = {}) {
@@ -59,7 +62,7 @@ function checkCore() {
   const goRoot = run(go, ["env", "GOROOT"], { capture: true });
   const gofmt = process.env.PIIK_GOFMT?.trim() ||
     join(goRoot, "bin", process.platform === "win32" ? "gofmt.exe" : "gofmt");
-  const unformatted = run(gofmt, ["-l", "."], { capture: true });
+  const unformatted = run(gofmt, ["-l", "cmd", "internal"], { capture: true });
   if (unformatted) {
     throw new Error(`Go source is not formatted:\n${unformatted}`);
   }
@@ -81,7 +84,7 @@ function checkCore() {
   builds.push({ target: SERVER_TARGET, command: "piik-server" });
   for (const { target, command } of builds) {
     const outputName = target.goos === "windows"
-      ? `${command}.exe`
+      ? `${command}${target.goarch === "amd64" ? "" : `-${target.id}`}.exe`
       : `${command}-${target.id}`;
     run(go, ["build", "-trimpath", "-o", join(buildRoot, outputName), `./cmd/${command}`], {
       env: goBuildEnvironment(target),
@@ -121,7 +124,7 @@ function checkPlatformCapture() {
     }
     return;
   }
-  const buildRoot = join(root, "build", "go-check");
+  const buildRoot = join(root, "build", "go-check", ...(nativeTarget ? [nativeTarget.id] : []));
   mkdirSync(buildRoot, { recursive: true });
   let executable;
   if (process.platform === "win32") {
@@ -151,6 +154,7 @@ function checkPlatformCapture() {
       "-OutputDirectory",
       buildRoot,
       "-Check",
+      ...(nativeTarget ? ["-Architecture", nativeTarget.goarch === "386" ? "x86" : "x64"] : []),
     ]);
     executable = join(buildRoot, "piik-capture.exe");
   } else if (process.platform === "darwin") {

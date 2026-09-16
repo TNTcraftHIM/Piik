@@ -221,8 +221,9 @@ interoperability follows the
 [public compatibility contract](../../docs/standards/versioning.md#public-compatibility-promise).
 
 The Windows App embeds the shared Piik mark through the
-`cmd/piik-app/piik_windows_amd64.syso` resource; the platform
-suffix keeps that Windows resource out of Linux and macOS builds.
+architecture-specific `cmd/piik-app/piik_windows_*.syso` resources; their suffixes
+keep each resource in its matching Windows build. Regenerate the x86 resource with
+`go run github.com/akavel/rsrc@v0.10.2 -arch 386 -ico cmd/piik-app/piik.ico -o cmd/piik-app/piik_windows_386.syso`.
 Linux packages include the standard `share/applications` desktop entry and
 hicolor icon. macOS packages include a thin `Piik App.app` launcher
 with an ICNS resource; the raw Go executable remains available beside it.

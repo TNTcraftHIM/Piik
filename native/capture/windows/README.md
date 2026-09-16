@@ -34,6 +34,24 @@ edge when the capability probe reports support. Build to the stable project
 npm run check:native
 ```
 
+The Windows x86 candidate uses the same capture and adaptation source:
+
+```powershell
+node scripts/check-go.mjs --capture-only windows-386
+```
+
+For the existing physical Host gate, set `PIIK_CLIENT_NATIVE_HOST_TARGET` to
+`windows-386`; it builds both the App and capture helper for that target.
+
+The x86 SDK is pinned to the same WebRTC source commit as x64. Its C++ callback
+ABI requires the matching Clang toolchain for `adaptive_encoder.cpp`; the Windows
+platform files continue to use MSVC. The dependency loader verifies archive and
+notice digests, and keeps both architectures' SDKs and runtime libraries separate.
+Each output uses WebRTC's single-stream VP8 encoder directly, while its existing
+`VideoStreamEncoder` owns adaptation. No separate 32-bit media implementation is
+used. Running this candidate under WOW64 does not establish capture support on
+a physical 32-bit Windows installation.
+
 The checks include synthetic output-worker replacement and failure cases using
 WARP and a test codec. They do not capture a screen or validate a physical encoder.
 

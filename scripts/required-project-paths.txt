@@ -51,6 +51,7 @@ cmd/piik-server/main.go
 cmd/piik-peer-gate/main.go
 cmd/piik-app/piik.ico
 cmd/piik-app/piik_windows_amd64.syso
+cmd/piik-app/piik_windows_386.syso
 internal/server/webassets/dist/.gitkeep
 deploy/release-server.sh
 deploy/check-release.sh

@@ -1,11 +1,17 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-09-16
+Last reviewed: 2026-09-17
 
 Only **Now** is executable. Product modules own behavior; Git/PRs own completed
 history. A parked idea is not implementation authority.
 
 ## Now
+
+- [ ] **Windows 32-bit candidate acceptance.** Complete App packaging and review
+  the x86 SDK/toolchain boundary in this isolated experiment. Before advertising
+  support, verify launch, physical capture/audio, source replacement and update
+  links on a 32-bit Windows device. WOW64 checks establish only that environment;
+  retain the current source/route/adaptation owners and check x64 for regressions.
 
 - [ ] **Windows capture border preference.** After the current release, investigate
   [#401](https://github.com/TNTcraftHIM/Piik/issues/401) with the packaged Native
@@ -114,16 +120,11 @@ not establish better connection success or speed; this note adds no retry policy
    documentation or App console translations as contributed; verify text
    direction and layout when a language requires it. Check contributed language
    names and rendered menu navigation when registering a new catalog.
-9. **32-bit App packages.** Deferred until suitable native capture dependencies
-    are available. Windows x86 core compilation alone does not establish App
-    support: the pinned capture SDK currently has no Windows x86 package.
-    Complete native packaging and real launch/capture acceptance before
-    advertising a 32-bit target.
-10. **Windows code signing.** Revisit after enrollment in a trusted signing
+9. **Windows code signing.** Revisit after enrollment in a trusted signing
     service. Sign Piik's executables before archive checksums are computed;
     signing improves publisher identity but does not guarantee that antivirus
     cloud scanning stops. Service selection and enrollment remain pending.
-11. **Gitee download-source warning.** Paused by the owner. Keep GitHub primary
+10. **Gitee download-source warning.** Paused by the owner. Keep GitHub primary
     and retain Gitee; do not add a self-hosted mirror. Chrome still blocks the
     Gitee attachment when Referer is removed. Reopen for new evidence or a
     provider review; the warning remains unresolved.

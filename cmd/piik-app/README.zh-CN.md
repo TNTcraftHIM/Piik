@@ -180,8 +180,9 @@ runtime/tunnel/cloudflared[.exe] # 支持 --link 的程序包
 App 内嵌所用应用发布产物的浏览器资源，程序内的完整 Git 版本与包内 `REVISION` 一致。
 App 与站点之间的互操作遵循[公开兼容规则](../../docs/standards/versioning.md#public-compatibility-promise)。
 
-Windows App 通过 `cmd/piik-app/piik_windows_amd64.syso` 资源内嵌共享的 Piik 标识；
-平台后缀使该 Windows 资源不参与 Linux 和 macOS 构建。
+Windows App 通过对应架构的 `cmd/piik-app/piik_windows_*.syso` 资源内嵌共享的 Piik 标识；
+文件后缀确保资源只参与对应的 Windows 构建。重新生成 x86 资源的命令为
+`go run github.com/akavel/rsrc@v0.10.2 -arch 386 -ico cmd/piik-app/piik.ico -o cmd/piik-app/piik_windows_386.syso`。
 Linux 程序包包含标准的 `share/applications` 桌面入口与 hicolor 图标。
 macOS 程序包包含一个带 ICNS 资源的轻量 `Piik App.app` 启动器，原始 Go 程序仍保留在它旁边。
 
