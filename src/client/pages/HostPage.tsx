@@ -337,6 +337,7 @@ type ShareSourceSelection =
       client: NativeClient;
       target: NativeCaptureTarget;
       audio: boolean;
+      showCaptureBorder: boolean;
       path: NativeCapturePath;
     };
 
@@ -371,6 +372,7 @@ export function HostPage({
     useState<SignalConnectionState>("offline");
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [nativeActive, setNativeActive] = useState(false);
+  const [showCaptureBorder, setShowCaptureBorder] = useState(false);
   const [nativeSources, setNativeSources] =
     useState<NativeSourceList | null>(null);
   const sourcePickerReturnRef = useRef<{ id: string; restore: boolean } | null>(null);
@@ -1123,7 +1125,7 @@ export function HostPage({
     shareGeneration: string,
     selection: Extract<ShareSourceSelection, { kind: "native" }>,
   ): Promise<MediaStream | null> {
-    const { client, target, audio, path } = selection;
+    const { client, target, audio, showCaptureBorder, path } = selection;
     let bridge: NativeMediaBridge | null = null;
     let shareStarted = false;
     try {
@@ -1135,6 +1137,7 @@ export function HostPage({
         shareId: shareGeneration,
         source: target,
         audio,
+        showCaptureBorder,
         adapterIndex: path.adapterIndex,
         encoderIndex: path.encoderIndex,
         edgeCapacity: MAX_ENDPOINT_MEDIA_CHILDREN,
@@ -1338,6 +1341,7 @@ export function HostPage({
         sources,
         processAudio: client.health.nativeMedia.processAudio,
         systemAudio: client.health.nativeMedia.systemAudio,
+        captureBorderControl: client.health.nativeMedia.captureBorderControl,
       });
     } catch {
       if (nativeSourceRequestRef.current !== request || nativeClientRef.current !== client) return;
@@ -1430,16 +1434,18 @@ export function HostPage({
   function startNativeShareFromPicker(
     target: NativeCaptureTarget,
     audio: boolean,
+    showCaptureBorder: boolean,
   ): void {
     if (nativeSources?.kind !== "ready") return;
     const client = nativeClientRef.current;
     const path = nativeSourcePathRef.current;
     if (!client || !path) return;
+    setShowCaptureBorder(showCaptureBorder);
     if (phase === "live" && nativeModeRef.current) {
-      void switchNativeSource(client, target, audio, path);
+      void switchNativeSource(client, target, audio, path, showCaptureBorder);
       return;
     }
-    void startSharing({ kind: "native", client, target, audio, path });
+    void startSharing({ kind: "native", client, target, audio, showCaptureBorder, path });
   }
 
   function disposeNativeShare(expectedShare = nativeShareGenerationRef.current): void {
@@ -2655,6 +2661,7 @@ export function HostPage({
     target: NativeCaptureTarget,
     audio: boolean,
     path: NativeCapturePath,
+    showCaptureBorder: boolean,
   ): Promise<void> {
     const generation = activeGenerationRef.current;
     const shareGeneration = nativeShareGenerationRef.current;
@@ -2686,6 +2693,7 @@ export function HostPage({
         target,
         audio,
         path,
+        showCaptureBorder,
       );
       if (
         !isCurrentGeneration(generation) ||
@@ -3315,6 +3323,7 @@ export function HostPage({
                     : true
                 }
                 audioLocked={nativeActive}
+                initialShowCaptureBorder={showCaptureBorder}
               />
             ) : !stream &&
               (phase === "idle" || phase === "ended" || phase === "error") ? (

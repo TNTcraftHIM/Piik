@@ -62,11 +62,12 @@ type Health struct {
 }
 
 type NativeMediaCapabilities struct {
-	Video        bool `json:"video"`
-	ProcessAudio bool `json:"processAudio"`
-	SystemAudio  bool `json:"systemAudio"`
-	HardwareH264 bool `json:"hardwareH264"`
-	SoftwareVP8  bool `json:"softwareVP8"`
+	Video                bool `json:"video"`
+	CaptureBorderControl bool `json:"captureBorderControl,omitempty"`
+	ProcessAudio         bool `json:"processAudio"`
+	SystemAudio          bool `json:"systemAudio"`
+	HardwareH264         bool `json:"hardwareH264"`
+	SoftwareVP8          bool `json:"softwareVP8"`
 }
 
 type Server struct {

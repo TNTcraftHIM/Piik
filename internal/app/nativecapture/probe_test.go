@@ -42,7 +42,24 @@ func TestSummaryDoesNotConflateVideoAudioAndEncoder(t *testing.T) {
 	}
 	summary := capabilities.Summary()
 	if !summary.Video || summary.ProcessAudio || !summary.SystemAudio ||
-		summary.HardwareH264 {
+		summary.HardwareH264 || summary.CaptureBorderControl {
 		t.Fatalf("summary = %+v", summary)
+	}
+}
+
+func TestCaptureBorderCapabilityRequiresCaptureAndExplicitSupport(t *testing.T) {
+	for _, supported := range []bool{false, true} {
+		payload := validProbe
+		if supported {
+			payload = strings.Replace(payload, `"videoCapture":true`, `"videoCapture":true,"captureBorderControl":true`, 1)
+		}
+		capabilities, err := decodeProbe([]byte(payload))
+		if err != nil || capabilities.Summary().CaptureBorderControl != supported {
+			t.Fatalf("capture border support = %v, error = %v", capabilities.Summary(), err)
+		}
+		capabilities.VideoCapture = false
+		if capabilities.Summary().CaptureBorderControl {
+			t.Fatal("border control was advertised without video capture")
+		}
 	}
 }

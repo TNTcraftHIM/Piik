@@ -26,6 +26,7 @@ export type NativeSourceList =
       sources: NativeCaptureTarget[];
       processAudio: boolean;
       systemAudio: boolean;
+      captureBorderControl?: boolean;
     };
 
 export function CaptureSourcePicker({
@@ -38,12 +39,13 @@ export function CaptureSourcePicker({
   browserAvailable = true,
   initialTab = "window",
   initialAudio = true,
+  initialShowCaptureBorder = false,
   audioLocked = false,
   selectionDisabled = false,
 }: {
   nativeSources: NativeSourceList;
   onBrowser: () => void;
-  onNative: (target: NativeCaptureTarget, audio: boolean) => void;
+  onNative: (target: NativeCaptureTarget, audio: boolean, showCaptureBorder: boolean) => void;
   onPreview: (
     target: NativeCaptureTarget,
     signal?: AbortSignal,
@@ -53,6 +55,7 @@ export function CaptureSourcePicker({
   browserAvailable?: boolean;
   initialTab?: SourceTab;
   initialAudio?: boolean;
+  initialShowCaptureBorder?: boolean;
   audioLocked?: boolean;
   selectionDisabled?: boolean;
 }) {
@@ -61,7 +64,9 @@ export function CaptureSourcePicker({
   const panelRef = useRef<HTMLDivElement>(null);
   const [tab, setTab] = useState<SourceTab>(initialTab);
   const [shareAudio, setShareAudio] = useState(initialAudio);
+  const [showCaptureBorder, setShowCaptureBorder] = useState(initialShowCaptureBorder);
   const activeTab = tab === "browser" && !browserAvailable ? "window" : tab;
+  const supportsCaptureBorder = nativeSources.kind === "ready" && nativeSources.captureBorderControl === true;
 
   useEffect(() => {
     const cancelOnEscape = (event: KeyboardEvent) => {
@@ -265,7 +270,8 @@ export function CaptureSourcePicker({
                     }
                     onPreview={onPreview}
                     onSelect={() =>
-                      onNative(target, shareAudio && supportsAudio(target))
+                      onNative(target, shareAudio && supportsAudio(target),
+                        supportsCaptureBorder && showCaptureBorder)
                     }
                   />
                 ))
@@ -275,7 +281,7 @@ export function CaptureSourcePicker({
           {activeTab !== "browser" &&
           nativeSources.kind === "ready" &&
           sources.length > 0 ? (
-            <div className="lr-source-picker-audio">
+            <div className="lr-source-picker-option">
               <span aria-hidden="true">
                 <Glyph name="speaker" size={19} />
               </span>
@@ -287,6 +293,25 @@ export function CaptureSourcePicker({
                 text={vis ? undefined : `${audioAction} · ${t("host.sourcePicker.audioHint")}`}
               >
                 {audioSwitch}
+              </Tooltip>
+            </div>
+          ) : null}
+
+          {activeTab !== "browser" && supportsCaptureBorder ? (
+            <div className="lr-source-picker-option">
+              <span aria-hidden="true"><Glyph name="window" size={19} /></span>
+              {vis ? null : <span>{t("host.sourcePicker.showCaptureBorder")}</span>}
+              <Tooltip kind={showCaptureBorder ? "hint-hide-capture-border" : "hint-show-capture-border"}
+                text={vis ? undefined : t("host.sourcePicker.showCaptureBorderHint")}>
+                <button
+                  type="button"
+                  className="lr-switch"
+                  role="switch"
+                  aria-checked={showCaptureBorder}
+                  aria-label={t("host.sourcePicker.showCaptureBorder")}
+                  aria-description={t("host.sourcePicker.showCaptureBorderHint")}
+                  onClick={() => setShowCaptureBorder((current) => !current)}
+                />
               </Tooltip>
             </div>
           ) : null}

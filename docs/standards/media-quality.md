@@ -23,11 +23,13 @@ production behavior and remaining acceptance.
   frame matches its desktop source dimensions. Other frames retain their own
   aspect ratio. This changes only the encoded presentation, never the game or
   display settings; vendor-private scaling is not inferred.
-- Windows native sharing and source previews request borderless capture
-  automatically where the OS supports it. Windows owns consent and final border
-  visibility; unsupported, pending, denied or failed access must leave ordinary
-  capture and stop controls usable. Other capture sessions can keep the border
-  visible. Browser indicators remain browser-owned.
+- Where Windows supports border control, the native source picker offers
+  **Show capture border**, off by default. The choice stays in the Host page and
+  follows native source and quality changes. Source previews request borderless
+  capture independently. Windows owns consent and final border visibility;
+  unsupported, pending, denied or failed access must leave ordinary capture and
+  stop controls usable. Other capture sessions can keep the border visible.
+  Browser indicators remain browser-owned.
 - Share and source-switch requests ask the Browser for available audio by
   default. Missing audio is reported clearly but does not block video-only
   sharing. Native screen capture can include system playback audio and native

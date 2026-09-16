@@ -7,9 +7,10 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **Windows capture border acceptance.** Automatic borderless sharing and
-  source previews for [#401](https://github.com/TNTcraftHIM/Piik/issues/401) are on
-  the maintenance branch. Complete user acceptance before release. Unsupported
+- [ ] **Windows capture border acceptance.** The source-picker **Show capture
+  border** switch (off by default) and borderless source previews for
+  [#401](https://github.com/TNTcraftHIM/Piik/issues/401) are on the maintenance
+  branch. Complete user acceptance before release. Unsupported
   Windows and actual permission denial remain device checks; do not claim those
   physical paths from the supported-system result.
 - [ ] **Windows 10 borderless capture feasibility.** WGC on consumer Windows 10

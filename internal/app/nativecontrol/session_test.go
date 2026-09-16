@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -35,6 +36,10 @@ func TestMain(tests *testing.M) {
 }
 
 func runQuietCaptureFixture(directory string) {
+	arguments, _ := json.Marshal(os.Args[1:])
+	if err := os.WriteFile(filepath.Join(directory, "arguments.json"), arguments, 0600); err != nil {
+		os.Exit(1)
+	}
 	var state nativehost.CaptureState
 	state.State, state.Codec = "starting", "vp8"
 	var adapter uint32
@@ -98,6 +103,69 @@ func runQuietCaptureFixture(directory string) {
 	state.State = "active"
 	status()
 	<-closed
+}
+
+func TestCaptureBorderPreferenceFollowsSourceAndProfile(t *testing.T) {
+	for _, supported := range []bool{false, true} {
+		t.Run(strconv.FormatBool(supported), func(t *testing.T) {
+			directory := t.TempDir()
+			t.Setenv("PIIK_QUIET_CAPTURE_FIXTURE", directory)
+			executable, err := os.Executable()
+			if err != nil {
+				t.Fatal(err)
+			}
+			session := New(executable, nativecapture.Capabilities{VideoCapture: true, SoftwareVP8: true, CaptureBorderControl: supported}, false)
+			t.Cleanup(func() { _ = session.Close() })
+			handle := func(request any) {
+				t.Helper()
+				payload, err := json.Marshal(request)
+				if err != nil {
+					t.Fatal(err)
+				}
+				value, err := session.Handle(t.Context(), payload)
+				if _, failed := value.(requestFailedResponse); err != nil || failed {
+					t.Fatalf("capture request failed: %v, %#v", err, value)
+				}
+			}
+			assertBorder := func(expected bool) {
+				t.Helper()
+				data, err := os.ReadFile(filepath.Join(directory, "arguments.json"))
+				var arguments []string
+				if err != nil || json.Unmarshal(data, &arguments) != nil {
+					t.Fatalf("capture arguments missing: %v", err)
+				}
+				if slices.Contains(arguments, "--show-capture-border") != expected {
+					t.Fatalf("capture border intent lost: %v", arguments)
+				}
+			}
+			start := startShareRequest{Version: 9, ID: "request_start", Type: "start-share", ShareID: "share_123456",
+				Source:            nativecapture.CaptureTarget{Kind: "display", SourceID: "1", Title: "Fixture"},
+				ShowCaptureBorder: true, EdgeCapacity: 1, Codec: "vp8",
+				Profile: qualitySettings{Resolution: "1080p", MaxFramerate: 30, MaxBitrate: 5_000_000, DegradationPreference: "balanced"}}
+			handle(start)
+			assertBorder(supported)
+			profile := start.Profile
+			profile.Resolution = "480p"
+			handle(updateShareRequest{Version: 9, ID: "request_update", Type: "update-share", ShareID: start.ShareID, Profile: profile})
+			session.mu.Lock()
+			done := session.updateDone
+			session.mu.Unlock()
+			if done != nil {
+				select {
+				case <-done:
+				case <-time.After(3 * time.Second):
+					t.Fatal("profile update did not settle")
+				}
+			}
+			assertBorder(supported)
+			for _, show := range []bool{false, true} {
+				handle(replaceShareSourceRequest{Version: 9, ID: "request_replace", Type: "replace-share-source", ShareID: start.ShareID,
+					Source: nativecapture.CaptureTarget{Kind: "display", SourceID: "2", Title: "Other fixture"}, ShowCaptureBorder: show})
+				assertBorder(show && supported)
+			}
+			handle(stopShareRequest{Version: 9, ID: "request_stop", Type: "stop-share", ShareID: start.ShareID})
+		})
+	}
 }
 
 func TestQuietHostUpdatePreservesControlAndCancelsCleanly(t *testing.T) {

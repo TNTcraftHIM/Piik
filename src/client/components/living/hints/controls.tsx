@@ -109,6 +109,28 @@ ${rmBlock(["vls-share-audio-lock"], [[".vls-share-audio-lock", "transform:none"]
   </>;
 }
 
+// This shows the requested border change, not proof of Windows permission.
+function CaptureBorderHint({ theme, show }: { theme: ComicTheme; show: boolean }) {
+  return <>
+  <style>{`
+.vls-capture-border-show,.vls-capture-border-hide{animation:vlsCaptureBorderShow var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
+.vls-capture-border-hide{animation-name:vlsCaptureBorderHide}
+@keyframes vlsCaptureBorderShow{0%,10%{opacity:0}36%,100%{opacity:1}}
+@keyframes vlsCaptureBorderHide{0%,10%{opacity:1}36%,100%{opacity:0}}
+${rmBlock(["vls-capture-border-show", "vls-capture-border-hide"], [[".vls-capture-border-show", "opacity:1"], [".vls-capture-border-hide", "opacity:0"]])}
+`}</style>
+  {[4, 164].map((x, index) => <g key={x}>
+    <Frame x={x} w={152} theme={theme} result={index === 1} />
+    <rect x={x + 30} y={25} width={92} height={56} rx={7} fill="none" stroke={STAR_GOLD} strokeWidth={3}
+      opacity={index ? (show ? 1 : 0) : (show ? 0 : 1)}
+      className={index ? (show ? "vls-capture-border-show" : "vls-capture-border-hide") : undefined} />
+    <rect x={x + 35} y={30} width={82} height={46} rx={3} fill="var(--paper)" stroke="var(--ink)" strokeWidth={2} />
+    <path d={`M${x + 35} 40h82 m-9 -7 4 4 m0-4-4 4`} fill="none" stroke="var(--ink)" strokeWidth={1.5} />
+    <path d={`M${x + 47} 67l17-19 15 12 11-9 14 16`} fill="none" stroke={SKY} strokeWidth={2.5} />
+  </g>)}
+  </>;
+}
+
 const RefreshSourcesHint: HintScene = ({ theme }) => <>
   <style>{`
 .vls-refresh-path{stroke-dasharray:1;animation:vlsRefreshPath var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
@@ -165,6 +187,8 @@ export const CONTROL_SCENES: Record<ControlHintKind, HintScene> = {
   "hint-refresh-sources": RefreshSourcesHint,
   "hint-source-picker": (props) => <SourceListHint {...props} />,
   "hint-no-sources": (props) => <SourceListHint {...props} empty />,
+  "hint-show-capture-border": (props) => <CaptureBorderHint {...props} show />,
+  "hint-hide-capture-border": (props) => <CaptureBorderHint {...props} show={false} />,
   "hint-password-show": (props) => <PasswordHint {...props} action="show" />,
   "hint-password-hide": (props) => <PasswordHint {...props} action="hide" />,
   "hint-password-remove": (props) => <PasswordHint {...props} action="clear" />,

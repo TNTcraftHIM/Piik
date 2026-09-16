@@ -214,9 +214,10 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 			"share", diagnostics.ID(request.ShareID), "sourceKind", request.Source.Kind, "audio", audio,
 			"adapterIndex", request.AdapterIndex, "encoderIndex", request.EncoderIndex)
 		err := host.ReplaceSource(ctx, nativecapture.VideoOptions{
-			Target:       request.Source,
-			AdapterIndex: request.AdapterIndex,
-			EncoderIndex: request.EncoderIndex,
+			Target:            request.Source,
+			ShowCaptureBorder: request.ShowCaptureBorder && session.capabilities.CaptureBorderControl,
+			AdapterIndex:      request.AdapterIndex,
+			EncoderIndex:      request.EncoderIndex,
 		}, audio)
 		if err != nil {
 			return operationFailure(envelope, err), nil
@@ -468,11 +469,12 @@ func (session *Session) startShare(
 		ShareID:        request.ShareID,
 		CaptureProcess: session.captureProcess,
 		Video: nativecapture.VideoOptions{
-			Target:       request.Source,
-			Codec:        request.Codec,
-			AdapterIndex: request.AdapterIndex,
-			EncoderIndex: request.EncoderIndex,
-			Profile:      profile.Video,
+			Target:            request.Source,
+			ShowCaptureBorder: request.ShowCaptureBorder && session.capabilities.CaptureBorderControl,
+			Codec:             request.Codec,
+			AdapterIndex:      request.AdapterIndex,
+			EncoderIndex:      request.EncoderIndex,
+			Profile:           profile.Video,
 		},
 		Profile:      profile,
 		EdgeCapacity: request.EdgeCapacity,

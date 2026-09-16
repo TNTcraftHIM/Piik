@@ -10,7 +10,7 @@
 
 namespace piik::capture {
 
-// Both sharing and source previews request borderless capture. Windows owns
+// Sharing defaults and source previews request borderless capture. Windows owns
 // consent and visibility; an optional access request must not delay frames/stop.
 class CaptureBorder final {
  public:
@@ -19,14 +19,22 @@ class CaptureBorder final {
   CaptureBorder& operator=(const CaptureBorder&) = delete;
   ~CaptureBorder() { Close(); }
 
-  void Start(const winrt::Windows::Graphics::Capture::GraphicsCaptureSession& session) {
+  static bool Supported() noexcept {
     using winrt::Windows::Foundation::Metadata::ApiInformation;
-    using namespace winrt::Windows::Graphics::Capture;
     try {
-      if (!ApiInformation::IsPropertyPresent(
-              L"Windows.Graphics.Capture.GraphicsCaptureSession", L"IsBorderRequired") ||
-          !ApiInformation::IsMethodPresent(
-              L"Windows.Graphics.Capture.GraphicsCaptureAccess", L"RequestAccessAsync")) return;
+      return ApiInformation::IsPropertyPresent(
+                 L"Windows.Graphics.Capture.GraphicsCaptureSession", L"IsBorderRequired") &&
+             ApiInformation::IsMethodPresent(
+                 L"Windows.Graphics.Capture.GraphicsCaptureAccess", L"RequestAccessAsync");
+    } catch (const winrt::hresult_error&) {
+      return false;
+    }
+  }
+
+  void Start(const winrt::Windows::Graphics::Capture::GraphicsCaptureSession& session) {
+    using namespace winrt::Windows::Graphics::Capture;
+    if (!Supported()) return;
+    try {
       access_ = GraphicsCaptureAccess::RequestAccessAsync(GraphicsCaptureAccessKind::Borderless);
       Apply(session);
     } catch (const winrt::hresult_error& error) {

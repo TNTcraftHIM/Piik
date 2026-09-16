@@ -107,6 +107,8 @@ export const en: Record<CopyKey, string> = {
   "host.sourcePicker.tab.display": "Screens",
   "host.sourcePicker.windowAudio": "Application sound",
   "host.sourcePicker.systemAudio": "System sound",
+  "host.sourcePicker.showCaptureBorder": "Show capture border",
+  "host.sourcePicker.showCaptureBorderHint": "Turn off to hide the border when Windows allows it. Other captures may keep it visible.",
   "host.sourcePicker.empty": "No sources available",
   "native.incompatible": "Piik App and this page are incompatible. Update Piik App and reload this page, or use Browser.",
   "native.fail.edge": "Piik App media connection failed",

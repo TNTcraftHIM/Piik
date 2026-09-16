@@ -35,6 +35,8 @@ export const nativeHealthSchema = nativeDiscoveryIdentitySchema.extend({
       video: z.boolean().default(false),
       processAudio: z.boolean().default(false),
       systemAudio: z.boolean().default(false),
+      // API availability, not Windows approval or observed border visibility.
+      captureBorderControl: z.boolean().default(false),
       hardwareH264: z.boolean().default(false),
       softwareVP8: z.boolean().default(false),
     })

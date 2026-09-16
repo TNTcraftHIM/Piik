@@ -15,9 +15,11 @@ The video command receives the current product resolution, frame-rate, bitrate,
 and quality preference. A replacement process applies live changes while the Go
 session retains its Pion source and connections.
 
-Sharing and source previews automatically request borderless access when Windows
+Sharing and source previews request borderless access by default when Windows
 exposes `IsBorderRequired` and `GraphicsCaptureAccess` (build 20348+, including
-Windows 11). One capture-local owner applies completed access without waiting
+Windows 11). The probe advertises API availability; the source-picker preference
+passes `--show-capture-border` when the Host wants the sharing border visible.
+One capture-local owner applies completed access without waiting
 for consent, and cancels pending access on retirement. Unsupported APIs, denial
 or failure retain ordinary capture; another capture session may still require a
 border. The property value is a preference, not proof that the border is invisible.

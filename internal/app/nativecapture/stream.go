@@ -45,13 +45,14 @@ type CaptureTarget struct {
 }
 
 type VideoOptions struct {
-	Target       CaptureTarget
-	Codec        string
-	AdapterIndex uint32
-	EncoderIndex uint32
-	Profile      VideoProfile
-	RestoreToken string
-	OutputGroups int
+	Target            CaptureTarget
+	Codec             string
+	AdapterIndex      uint32
+	EncoderIndex      uint32
+	Profile           VideoProfile
+	RestoreToken      string
+	OutputGroups      int
+	ShowCaptureBorder bool
 }
 
 type EncodedVideoOptions struct {
@@ -231,6 +232,9 @@ func StartVideo(parent context.Context, executable string, options VideoOptions)
 	arguments, err := appendOutputArguments(arguments, outputs)
 	if err != nil {
 		return nil, err
+	}
+	if options.ShowCaptureBorder {
+		arguments = append(arguments, "--show-capture-border")
 	}
 	stream, err := startStreamWithEnvironment(parent, executable, arguments, environment)
 	if err != nil {
