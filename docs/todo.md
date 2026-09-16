@@ -7,14 +7,12 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **Maintenance closure.** Present the current UI feedback previews, homepage
-  tutorials/FAQ and bilingual documentation center for the owner's final review,
-  together with the proposed version and complete Chinese/English release notes.
-  The [website runbook](./operations/website.md#documentation-build) owns the
-  generated documentation; [visual language](./standards/visual-language.md)
-  owns the accepted feedback rules. Finish applicable checks, then wait for
-  approval before integration, deployment or publication. Keep the unresolved
-  device reports and physical limits below explicit.
+- [ ] **Windows capture border preference.** After the current release, investigate
+  [#401](https://github.com/TNTcraftHIM/Piik/issues/401) with the packaged Native
+  helper. Verify Windows' permission-based `GraphicsCaptureAccess` /
+  `IsBorderRequired` flow and the available or denied cases before choosing a
+  setting. Keep ordinary capture working; Browser capture indicators remain
+  browser-owned.
 - [ ] **App/Browser source discovery and feedback.** Investigate the report of
   missing window sources; confirm the exact message, screen, OS/browser and App
   version. The custom selector currently renders both App unavailability and a
@@ -37,11 +35,12 @@ history. A parked idea is not implementation authority.
   Follow the [deployment runbook](./deployment.md) for the private service and keep public
   demo deployment separate. Preserve the owner's
   [device/network deferrals](./verification-status.md#candidate-evidence-boundary).
-- [ ] **App startup feedback.** Verify [#396](https://github.com/TNTcraftHIM/Piik/issues/396)
-  against the current release. Its older build predates the LAN selector,
-  detailed launcher errors and Windows error-exit pause; those repairs do not
-  establish resolution on the reporting machine. Use a current Debug report if
-  startup still fails.
+- [ ] **Public invitation startup timeout.** The reporter in
+  [#396](https://github.com/TNTcraftHIM/Piik/issues/396#issuecomment-5691465700)
+  confirmed Local startup is fixed, but separately reported that the public
+  invitation service did not connect within 30 seconds. Trace tunnel startup,
+  network reachability and the existing timeout/error feedback using a current
+  Debug report; the Local fix does not establish this separate failure's cause.
 - [ ] **Windows launcher exit after opening the page.** A user reports that the
   mode-selection page opens, then the App console reports
   `Piik App could not open its launcher: exit status 0xc0000005`.
@@ -128,9 +127,3 @@ not establish better connection success or speed; this note adds no retry policy
     and retain Gitee; do not add a self-hosted mirror. Chrome still blocks the
     Gitee attachment when Referer is removed. Reopen for new evidence or a
     provider review; the warning remains unresolved.
-12. **Windows capture border preference.** [#401](https://github.com/TNTcraftHIM/Piik/issues/401)
-    requests an optional borderless capture mode. First verify Windows'
-    permission-based `GraphicsCaptureAccess` / `IsBorderRequired` flow with the
-    packaged Native helper; keep ordinary capture working when unavailable or
-    denied. Browser capture indicators remain browser-owned. No new setting is
-    accepted yet.

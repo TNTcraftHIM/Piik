@@ -23,12 +23,11 @@ and Git/PRs own completed history.
 - Shared feedback composition is implemented: generic loading uses the wink
   mascot, concrete media waits use their owning comic, and waiting captions are
   secondary to literal status. Website reduced-motion preference and player
-  tooltip placement follow the same presentation owners; final visual review is
-  tracked in [TODO](./todo.md).
+  tooltip placement follow the same presentation owners.
 
-The maintenance candidate also includes a bilingual reader documentation center
-generated from the repository's guides alongside the homepage. It is available
-in local preview; integration and publication await the owner's final acceptance.
+Website delivery includes a bilingual reader documentation center generated
+from the repository's guides alongside the homepage, with search and detailed
+troubleshooting separate from the homepage FAQ.
 
 ## Deployment
 
