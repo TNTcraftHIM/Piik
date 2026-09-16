@@ -503,7 +503,7 @@ export function ViewerPage({
     const acquireNativeClient = async (): Promise<NativeClient | null> => {
       if (!active || !launchedByClient || !nativeViewerAvailable) return null;
       if (!nativeClientPromise) {
-        const connecting: Promise<NativeClient | null> = NativeClient.connect().catch(() => null).then((client) => {
+        const connecting: Promise<NativeClient | null> = NativeClient.connect({ waitForPermission: false }).catch(() => null).then((client) => {
           if (!client || !active) {
             if (nativeClientPromise === connecting) nativeClientPromise = null;
             client?.close();

@@ -31,6 +31,62 @@ describe("native App private wire", () => {
     nativeMedia: { video: true, hardwareH264: true },
   };
 
+  it.each(["prompt", "denied"] as const)("does not hold Viewer reception for %s permission and observes a later grant", async (state) => {
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: { hostname: "piik.example" } });
+    const query = vi.fn().mockResolvedValue({ state });
+    vi.stubGlobal("navigator", { permissions: { query } });
+    const fetcher = vi.fn(async () => new Response(JSON.stringify(health)));
+    vi.stubGlobal("fetch", fetcher);
+    const socket = vi.fn();
+    vi.stubGlobal("WebSocket", socket);
+
+    await expect(NativeClient.connect({ waitForPermission: false })).resolves.toBeNull();
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(socket).not.toHaveBeenCalled();
+    query.mockResolvedValue({ state: "granted" });
+    await expect(discoverNativeHealth({ waitForPermission: false })).resolves.toMatchObject({ port: health.port });
+  });
+
+  it("still lets explicit source discovery ask for local permission", async () => {
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: { hostname: "piik.example" } });
+    const query = vi.fn().mockResolvedValue({ state: "prompt" });
+    vi.stubGlobal("navigator", { permissions: { query } });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(health))));
+    await expect(discoverNativeHealth()).resolves.toMatchObject({ port: health.port });
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it.each(["localhost", "127.0.0.1", "[::1]"])("keeps App Local reception on %s available without cross-address-space consent", async (hostname) => {
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: { hostname } });
+    const query = vi.fn().mockResolvedValue({ state: "prompt" });
+    vi.stubGlobal("navigator", { permissions: { query } });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(health))));
+    await expect(discoverNativeHealth({ waitForPermission: false })).resolves.toMatchObject({ port: health.port });
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it("uses the older combined permission when split permission is unsupported", async () => {
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: { hostname: "piik.example" } });
+    const query = vi.fn().mockRejectedValueOnce(new TypeError("Unsupported permission"))
+      .mockResolvedValue({ state: "prompt" });
+    vi.stubGlobal("navigator", { permissions: { query } });
+    const fetcher = vi.fn();
+    vi.stubGlobal("fetch", fetcher);
+    await expect(discoverNativeHealth({ waitForPermission: false })).resolves.toBeNull();
+    expect(query).toHaveBeenLastCalledWith({ name: "local-network-access" });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it.each([undefined, { query: vi.fn().mockRejectedValue(new TypeError("Unsupported permission")) }])(
+    "retains ordinary discovery when local permissions cannot be queried",
+    async (permissions) => {
+      vi.stubGlobal("window", { setTimeout, clearTimeout, location: { hostname: "piik.example" } });
+      vi.stubGlobal("navigator", { permissions });
+      vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(health))));
+      await expect(discoverNativeHealth({ waitForPermission: false })).resolves.toMatchObject({ port: health.port });
+    },
+  );
+
   it.each([NATIVE_CLIENT_PROTOCOL - 1, NATIVE_CLIENT_PROTOCOL + 1])(
     "reports observed Piik App protocol %s without opening control or presentation",
     async (protocol) => {

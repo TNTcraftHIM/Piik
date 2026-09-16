@@ -7,29 +7,27 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **Windows capture border acceptance.** The source-picker **Show capture
-  border** switch (off by default) and borderless source previews for
-  [#401](https://github.com/TNTcraftHIM/Piik/issues/401) are on the maintenance
-  branch. Complete user acceptance before release. Unsupported
-  Windows and actual permission denial remain device checks; do not claim those
-  physical paths from the supported-system result.
+- [ ] **Maintenance release acceptance.** Complete the current checks, Windows
+  candidate package and UI preview on `fix/app-feedback`, then present the
+  proposed version and full bilingual release notes for owner acceptance before
+  integration/publication. Include the source-picker capture-border switch
+  (off by default, [#401](https://github.com/TNTcraftHIM/Piik/issues/401)),
+  source discovery and tooltip interactions. Keep the 32-bit experiment separate.
+  Physical limits remain in [verification status](./verification-status.md).
+
+## Awaiting Device Or Reporter Evidence
+
 - [ ] **App source-discovery field acceptance.** Retest the missing-window report
   with the current App and page. Obtain OS/browser, version and paired Debug
   reports to distinguish discovery, capture capability and enumeration failures.
-  Verify first-run local-network consent on a fresh browser profile and recovery
-  after granting access. Include Viewer entry: a permission-stalled App discovery
-  delays Browser reception fallback until its deadline. Automated delayed-response
-  checks do not establish the real permission prompt or the reporting machine's cause.
-- [ ] **Windows 32-bit candidate acceptance.** Review the isolated
-  `spike/windows-x86-capture` candidate's SDK/toolchain and scoped atomic alignment
-  repair before integration. Verify launch, capture/audio, memory pressure,
+  Local permission and recovery checks do not establish the reporting machine's
+  cause.
+- [ ] **Windows 32-bit candidate acceptance.** Verify the isolated
+  `spike/windows-x86-capture` candidate's launch, capture/audio, memory pressure,
   source replacement and update links on a 32-bit Windows device. WOW64
-  Host/media checks establish only that environment.
-- [ ] **Post-launch monitoring.** Collect App/Server feedback and verify the
-  public downloads, container pulls and deployed services after product releases.
-  Follow the [deployment runbook](./deployment.md) for the private service and keep public
-  demo deployment separate. Preserve the owner's
-  [device/network deferrals](./verification-status.md#candidate-evidence-boundary).
+  Host/media checks establish only that environment. Reconcile its scoped
+  SDK/toolchain and atomic-alignment changes with current main when accepted;
+  the experiment is not part of this maintenance release.
 - [ ] **Public invitation startup timeout.** The reporter in
   [#396](https://github.com/TNTcraftHIM/Piik/issues/396#issuecomment-5691465700)
   confirmed Local startup is fixed, but separately reported that the public
@@ -45,6 +43,14 @@ history. A parked idea is not implementation authority.
 
 Keep fixes on a maintenance branch until acceptance. The public release is the
 compatibility baseline; private service deployment stays independent.
+
+## After Release
+
+- [ ] **Post-launch monitoring.** Verify public downloads, container pulls and
+  deployed services, then collect App/Server feedback. Follow the
+  [deployment runbook](./deployment.md) for the private service and keep public
+  demo deployment separate. Preserve the owner's
+  [device/network deferrals](./verification-status.md#candidate-evidence-boundary).
 
 ## Next: P2P Connection And Feedback Evidence
 

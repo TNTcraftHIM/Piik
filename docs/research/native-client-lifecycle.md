@@ -1,6 +1,6 @@
 # Native App Lifecycle
 
-- Reviewed: 2026-09-16
+- Reviewed: 2026-09-17
 - Scope: Windows capture idle/border semantics, native loopback input isolation, and
   Browser visibility of an unexpected App disconnect.
 - Status: quiet-source, preview-queue and App-crash checks pass. The owner
@@ -19,6 +19,23 @@ virtual-time reproduction with three three-second previews made the real
 at nine seconds. The picker now sends one preview at a time, cancels unsent
 work when its source view is retired, and waits for the remaining preview before
 starting native media. Refresh and App replacement fence old results.
+
+### Browser Local-Network Consent
+
+[Chromium local-network access](https://developer.chrome.com/blog/local-network-access)
+can hold a public site's loopback fetch until the user answers a browser prompt.
+Its [split-permission implementation](https://chromium.googlesource.com/chromium/src.git/+/f7eb223f51392d3eeb51a7d4b32db0762bf70d02%5E%21/)
+exposes `loopback-network`, with the older `local-network-access` name retained
+for browsers using a combined permission. An unsupported permission query is
+unknown, not denial. A loopback page can report `prompt` even though its
+loopback-to-loopback request needs no consent.
+
+Fresh-profile Windows/Chrome 152 checks confirmed a real prompt, successful
+discovery after granting access, and source-list recovery by refreshing after
+the discovery deadline. Optional Viewer discovery consults the permission before
+waiting; later grants can be used by later connections without replacing healthy
+Browser media. These checks do not identify the original missing-window
+reporter's cause or establish other browsers' permission behavior.
 
 ## Scope Decisions
 

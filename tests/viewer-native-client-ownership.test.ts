@@ -56,6 +56,7 @@ it.each([false, true])("retries an absent or rejected App on the next offer: rej
   if (reject) current.connect.mockRejectedValueOnce(new Error("App unavailable"));
   await expect(current.acquire()).resolves.toBeNull();
   expect(current.connect).toHaveBeenCalledOnce();
+  expect(current.connect).toHaveBeenCalledWith({ waitForPermission: false });
   const client = control();
   current.connect.mockResolvedValue(client);
   await expect(current.acquire()).resolves.toBe(client);

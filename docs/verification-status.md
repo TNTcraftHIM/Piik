@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-09-13
+Last updated: 2026-09-17
 
 This file owns physical evidence limits that change how the product may be
 described. [Status](./status.md) owns the execution/deployment index.
@@ -31,6 +31,11 @@ Bounded current checks cover:
 The owner confirmed Windows 10 whole-display capture resolved. Chromium
 WebRTC/IP-handling policy explains the verified local-media failure; it is a
 Browser policy limitation, not a Vivaldi-specific transport workaround.
+
+The Windows capture-border control and borderless previews have physical
+Windows 11 evidence. Unsupported Windows and actual border-permission denial
+remain device checks. The optional Windows 10 Windhawk procedure is documented
+from its author and has not been tested with Piik on Windows 10.
 
 NAT traversal and Auto codec selection are implemented features, not unfinished
 functionality. On 2026-09-09 the owner confirmed that the new NAT traversal is

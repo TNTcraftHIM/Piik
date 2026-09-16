@@ -43,6 +43,25 @@ import {
 
 const REQUEST_TIMEOUT_MS = 8_000;
 
+interface NativeDiscoveryOptions {
+  waitForPermission?: boolean;
+}
+
+async function ungrantedLocalPermission(): Promise<PermissionState | null> {
+  // App Local already runs on loopback. Its permission can say "prompt" even
+  // though loopback-to-loopback requests do not need consent.
+  if (["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname)) return null;
+  for (const name of ["loopback-network", "local-network-access"]) {
+    try {
+      const { state } = await navigator.permissions.query({ name: name as PermissionName });
+      return state === "granted" ? null : state;
+    } catch {
+      // Older Chromium uses the combined name; other browsers may expose neither.
+    }
+  }
+  return null;
+}
+
 interface PendingRequest<T = unknown> {
   schema: z.ZodType<T>;
   resolve: (value: T) => void;
@@ -69,7 +88,16 @@ export class NativeCompatibilityError extends Error {
   }
 }
 
-export async function discoverNativeHealth(): Promise<NativeHealth | null> {
+export async function discoverNativeHealth(
+  { waitForPermission = true }: NativeDiscoveryOptions = {},
+): Promise<NativeHealth | null> {
+  if (!waitForPermission) {
+    const permission = await ungrantedLocalPermission();
+    if (permission) {
+      debugEvent("native", "unavailable", { stage: "permission", permission });
+      return null;
+    }
+  }
   const controller = new AbortController();
   // The first request may wait for browser permission. One shared deadline
   // bounds the scan; a silent port must not hide an App on another port.
@@ -150,8 +178,8 @@ export class NativeClient {
     socket.addEventListener("error", () => this.handleClose());
   }
 
-  static async connect(): Promise<NativeClient | null> {
-    const health = await discoverNativeHealth();
+  static async connect(options?: NativeDiscoveryOptions): Promise<NativeClient | null> {
+    const health = await discoverNativeHealth(options);
     if (!health) return null;
     const socket = new WebSocket(`ws://127.0.0.1:${health.port}/control`, [
       `${NATIVE_CLIENT_SUBPROTOCOL}.${health.instanceToken}`,
