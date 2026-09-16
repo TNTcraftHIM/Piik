@@ -1,7 +1,7 @@
 # Native App Lifecycle
 
-- Reviewed: 2026-09-09
-- Scope: Windows capture idle semantics, native loopback input isolation, and
+- Reviewed: 2026-09-16
+- Scope: Windows capture idle/border semantics, native loopback input isolation, and
   Browser visibility of an unexpected App disconnect.
 - Status: quiet-source, preview-queue and App-crash checks pass. The owner
   confirmed Windows 10 monitor sharing resolved; game-specific window replacement
@@ -228,6 +228,41 @@ Aspect references: [active display paths](https://learn.microsoft.com/en-us/wind
 [scaling modes](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ne-wingdi-displayconfig_scaling),
 [active signal size](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-displayconfig_video_signal_info),
 and [independent panel fitting/MPO](https://learn.microsoft.com/en-us/windows/win32/direct3ddxgi/for-best-performance--use-dxgi-flip-model).
+
+## Windows Capture Borders
+
+Consumer Windows 10 does not expose the WGC border-control API: Microsoft's
+[`IsBorderRequired`](https://learn.microsoft.com/en-us/uwp/api/windows.graphics.capture.graphicscapturesession.isborderrequired)
+starts at build 20348, beyond consumer Windows 10 build 19045. The current
+capture helper therefore retains the system border there. Browser capture
+indicators remain Browser-owned.
+
+The official [Desktop Duplication API](https://learn.microsoft.com/en-us/windows/win32/direct3ddxgi/desktop-dup-api)
+is a borderless alternative for a selected display. It is not window-isolated
+capture: cropping the desktop can expose overlapping windows. Do not silently
+substitute it for a selected window. [OBS's display capture implementation](https://github.com/obsproject/obs-studio/blob/master/plugins/win-capture/duplicator-monitor-capture.c)
+also retains distinct DXGI/WGC paths and selects WGC for some multi-adapter
+laptops; a mature implementation does not establish universal DXGI availability.
+OBS is a design reference, not source to copy into Piik's MIT implementation.
+
+The pinned WebRTC SDK already contains `ScreenCapturerWinDirectx` and
+`DesktopAndCursorComposer`. A bounded standalone probe on Windows 11 build 26200
+on 2026-09-16 linked that existing SDK and returned six 2560x1440 frames with
+cursor composition, then exited. These frames expose CPU data and no GPU
+texture. Piik's current capture/encoder boundary consumes D3D11 textures, so
+this reuse would add a readback/upload path; the probe establishes neither
+encoding throughput nor Windows 10 support. SDK build defines must match:
+`RTC_ENABLE_WIN_WGC` changes `DesktopCaptureOptions` layout even when selecting
+DXGI; omitting it caused heap corruption in the isolated probe. No product
+capture path was changed by this experiment.
+
+Before product integration, compare this reuse against the current GPU path
+under game motion and quiet scenes on Windows 10. Cover selected-output/GPU
+identity, cursor and rotation, source previews, display/fullscreen changes,
+and bounded cancellation. [DXGI requires the output's own adapter](https://learn.microsoft.com/en-us/windows/win32/api/dxgi1_2/nf-dxgi1_2-idxgioutput1-duplicateoutput);
+[access loss requires recreating the duplication object](https://learn.microsoft.com/en-us/windows/win32/api/dxgi1_2/nf-dxgi1_2-idxgioutputduplication-acquirenextframe).
+Preview capture must follow the same backend decision or it can still produce
+a WGC border. Retain window scope and the existing encoder/output/stop owners.
 
 ## Acceptance
 
