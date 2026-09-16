@@ -621,6 +621,13 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   gap: 8px;
   text-align: center;
 }
+.lr-source-picker-options {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px 24px;
+}
 .lr-source-picker-option {
   display: flex;
   min-height: 38px;

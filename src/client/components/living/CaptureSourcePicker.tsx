@@ -280,39 +280,42 @@ export function CaptureSourcePicker({
 
           {activeTab !== "browser" &&
           nativeSources.kind === "ready" &&
-          sources.length > 0 ? (
-            <div className="lr-source-picker-option">
-              <span aria-hidden="true">
-                <Glyph name="speaker" size={19} />
-              </span>
-              {vis ? null : <span>{audioLabel}</span>}
-              <Tooltip
-                kind={!anyNativeAudio ? "no-audio" : audioLocked
-                  ? (shareAudio ? "hint-share-audio-fixed" : "hint-silent-share-fixed")
-                  : shareAudio ? "hint-stop-audio" : "hint-share-audio"}
-                text={vis ? undefined : `${audioAction} · ${t("host.sourcePicker.audioHint")}`}
-              >
-                {audioSwitch}
-              </Tooltip>
-            </div>
-          ) : null}
-
-          {activeTab !== "browser" && supportsCaptureBorder ? (
-            <div className="lr-source-picker-option">
-              <span aria-hidden="true"><Glyph name="window" size={19} /></span>
-              {vis ? null : <span>{t("host.sourcePicker.showCaptureBorder")}</span>}
-              <Tooltip kind={showCaptureBorder ? "hint-hide-capture-border" : "hint-show-capture-border"}
-                text={vis ? undefined : t("host.sourcePicker.showCaptureBorderHint")}>
-                <button
-                  type="button"
-                  className="lr-switch"
-                  role="switch"
-                  aria-checked={showCaptureBorder}
-                  aria-label={t("host.sourcePicker.showCaptureBorder")}
-                  aria-description={t("host.sourcePicker.showCaptureBorderHint")}
-                  onClick={() => setShowCaptureBorder((current) => !current)}
-                />
-              </Tooltip>
+          (supportsCaptureBorder || sources.length > 0) ? (
+            <div className="lr-source-picker-options">
+              {supportsCaptureBorder ? (
+                <div className="lr-source-picker-option">
+                  <span aria-hidden="true"><Glyph name="window" size={19} /></span>
+                  {vis ? null : <span>{t("host.sourcePicker.showCaptureBorder")}</span>}
+                  <Tooltip kind={showCaptureBorder ? "hint-hide-capture-border" : "hint-show-capture-border"}
+                    text={vis ? undefined : t("host.sourcePicker.showCaptureBorderHint")}>
+                    <button
+                      type="button"
+                      className="lr-switch"
+                      role="switch"
+                      aria-checked={showCaptureBorder}
+                      aria-label={t("host.sourcePicker.showCaptureBorder")}
+                      aria-description={t("host.sourcePicker.showCaptureBorderHint")}
+                      onClick={() => setShowCaptureBorder((current) => !current)}
+                    />
+                  </Tooltip>
+                </div>
+              ) : null}
+              {sources.length > 0 ? (
+                <div className="lr-source-picker-option">
+                  <span aria-hidden="true">
+                    <Glyph name="speaker" size={19} />
+                  </span>
+                  {vis ? null : <span>{audioLabel}</span>}
+                  <Tooltip
+                    kind={!anyNativeAudio ? "no-audio" : audioLocked
+                      ? (shareAudio ? "hint-share-audio-fixed" : "hint-silent-share-fixed")
+                      : shareAudio ? "hint-stop-audio" : "hint-share-audio"}
+                    text={vis ? undefined : `${audioAction} · ${t("host.sourcePicker.audioHint")}`}
+                  >
+                    {audioSwitch}
+                  </Tooltip>
+                </div>
+              ) : null}
             </div>
           ) : null}
 
