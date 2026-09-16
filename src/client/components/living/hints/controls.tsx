@@ -1,7 +1,6 @@
 import { BrowserWindow, FAINT, Frame, LIVE, MiniTv, Pawn, SKY, STAR_GOLD, rmBlock } from "../Comic";
 import type { ComicTheme } from "../Comic";
 import type { ControlHintKind, HintScene } from "../../../ui/visual-kinds";
-import { Glyph } from "../../../ui/icons";
 
 // One folding idiom for every disclosure: keep the header, put its contents away.
 const CollapseHint: HintScene = ({ theme }) => (
@@ -110,30 +109,6 @@ ${rmBlock(["vls-share-audio-lock"], [[".vls-share-audio-lock", "transform:none"]
   </>;
 }
 
-// The dashed border is requested concealment; the lock keeps OS approval explicit.
-const HideCaptureBorderHint: HintScene = ({ theme }) => <>
-  <style>{`
-.vls-capture-border-request{animation:vlsCaptureBorderRequest var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
-@keyframes vlsCaptureBorderRequest{0%,10%{stroke-dasharray:1 0;opacity:1}36%,100%{stroke-dasharray:5 5;opacity:.55}}
-${rmBlock(["vls-capture-border-request"], [[".vls-capture-border-request", "stroke-dasharray:5 5;opacity:.55"]])}
-`}</style>
-  {[4, 164].map((x, index) => <g key={x}>
-    <Frame x={x} w={152} theme={theme} result={index === 1} />
-    <rect x={x + 30} y={25} width={92} height={56} rx={7} fill="none" stroke={STAR_GOLD} strokeWidth={3}
-      className={index ? "vls-capture-border-request" : undefined} />
-    <rect x={x + 35} y={30} width={82} height={46} rx={3} fill="var(--paper)" stroke="var(--ink)" strokeWidth={2} />
-    <path d={`M${x + 35} 40h82 m-9 -7 4 4 m0-4-4 4`} fill="none" stroke="var(--ink)" strokeWidth={1.5} />
-    <path d={`M${x + 47} 67l17-19 15 12 11-9 14 16`} fill="none" stroke={SKY} strokeWidth={2.5} />
-    {index ? <>
-      <g transform={`translate(${x + 64} 4)`} color="var(--ink)"><Glyph name="eyeOff" size={24} /></g>
-      <g transform={`translate(${x + 116} 57)`} color="var(--ink)">
-        <circle cx={12} cy={12} r={14} fill="var(--paper)" />
-        <Glyph name="lock" size={24} />
-      </g>
-    </> : null}
-  </g>)}
-</>;
-
 const RefreshSourcesHint: HintScene = ({ theme }) => <>
   <style>{`
 .vls-refresh-path{stroke-dasharray:1;animation:vlsRefreshPath var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
@@ -190,7 +165,6 @@ export const CONTROL_SCENES: Record<ControlHintKind, HintScene> = {
   "hint-refresh-sources": RefreshSourcesHint,
   "hint-source-picker": (props) => <SourceListHint {...props} />,
   "hint-no-sources": (props) => <SourceListHint {...props} empty />,
-  "hint-hide-capture-border": HideCaptureBorderHint,
   "hint-password-show": (props) => <PasswordHint {...props} action="show" />,
   "hint-password-hide": (props) => <PasswordHint {...props} action="hide" />,
   "hint-password-remove": (props) => <PasswordHint {...props} action="clear" />,

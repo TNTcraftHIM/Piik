@@ -74,7 +74,7 @@ function fixture(launchedByClient = true) {
     nativeClientCloseCleanupRef: ref<(() => void) | null>(null),
     sourcePickerReturnRef: ref<{ id: string; restore: boolean } | null>(null),
     nativeSourceRequestRef: ref<object | null>(null), nativeSourcePathRef: ref<unknown>(null),
-    setNativeSources: vi.fn(), setHideCaptureBorder: vi.fn(), defaultNativeCapturePath: () => ({ adapterIndex: 0, encoderIndex: 0 }),
+    setNativeSources: vi.fn(), defaultNativeCapturePath: () => ({ adapterIndex: 0, encoderIndex: 0 }),
     roomMutationRef: ref<object | null>(null), setRoomMutation: vi.fn(),
     generationRef: ref(0), shareGenerationRef: ref<string | null>("share"), createOpaqueId: () => "share",
     setCopiedInviteUrl: vi.fn(), setPhase: vi.fn(), roomInitializationRef: ref(Promise.resolve()), roomRef: ref(null),
@@ -232,29 +232,6 @@ describe("Host invite copy feedback", () => {
 });
 
 describe("Host quality ownership", () => {
-  it.each([false, true])("remembers the border preference and passes it to native capture: replacing %s", async (replacing) => {
-    const current = fixture();
-    current.context.phase = replacing ? "live" : "idle";
-    current.nativeModeRef.current = replacing;
-    Object.assign(current.client.health.nativeMedia, { hideCaptureBorder: true });
-    await current.openPicker();
-    current.context.nativeSources = current.setNativeSources.mock.calls.at(-1)![0];
-    const target = { kind: "display", sourceId: "2", title: "Display 1" };
-    current.context.startNativeShareFromPicker(target, false, true);
-    expect(current.setHideCaptureBorder).toHaveBeenCalledWith(true);
-    if (replacing) {
-      await vi.waitFor(() => expect(current.client.replaceShareSource).toHaveBeenCalledWith(
-        "share", target, false, { adapterIndex: 0, encoderIndex: 0 }, true,
-      ));
-    } else {
-      const selection = current.startSharing.mock.calls[0]![0];
-      expect(selection).toMatchObject({ kind: "native", target, audio: false, hideCaptureBorder: true });
-      current.client.startShare.mockRejectedValue(new Error("capture unavailable"));
-      await expect(current.context.startNativeShare(1, "share", selection)).rejects.toThrow("capture unavailable");
-      expect(current.client.startShare).toHaveBeenCalledWith(expect.objectContaining({ hideCaptureBorder: true }));
-    }
-  });
-
   it.each(["browser", "native"] as const)("keeps the %s selection until room work permits capture", async (kind) => {
     const current = fixture();
     current.context.phase = "idle";

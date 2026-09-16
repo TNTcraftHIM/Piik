@@ -621,7 +621,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   gap: 8px;
   text-align: center;
 }
-.lr-source-picker-option {
+.lr-source-picker-audio {
   display: flex;
   min-height: 38px;
   flex: 0 0 auto;
@@ -632,18 +632,18 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   font-size: 12px;
   font-weight: 650;
 }
-.lr-source-picker-option .lr-switch {
+.lr-source-picker-audio .lr-switch {
   width: 50px;
   height: 30px;
   border-color: rgba(223, 232, 242, .72);
   background: rgba(255, 255, 255, .06);
 }
-.lr-source-picker-option .lr-switch::after {
+.lr-source-picker-audio .lr-switch::after {
   width: 20px;
   height: 20px;
   background: #dfe8f2;
 }
-.lr-source-picker-option .lr-switch[aria-checked="true"]::after {
+.lr-source-picker-audio .lr-switch[aria-checked="true"]::after {
   transform: translateX(20px);
   background: #fff;
 }

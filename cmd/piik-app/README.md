@@ -69,10 +69,9 @@ Native capture uses the Host's current quality settings. The
 live changes and encoding reuse; [verification status](../../docs/verification-status.md)
 keeps the measured limits.
 
-On supported Windows versions, the **Apps / Windows** and **Screens** tabs offer
-**Hide capture border**. It is off by default and remembered while the Host page
-stays open. Windows must allow borderless capture; other active captures can keep
-the yellow border visible. Change the option when selecting or switching a source.
+On supported Windows versions, Piik automatically asks Windows to hide the yellow
+capture border. Windows 10, system policy or another active capture
+can keep the border visible; sharing remains available.
 
 The App configuration keeps an optional Local site passphrase. Leave it
 blank for an open Local site, or enter a password in the launcher before

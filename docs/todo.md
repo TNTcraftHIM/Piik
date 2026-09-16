@@ -7,13 +7,19 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **Windows capture border acceptance.** The opt-in source-picker setting for
-  [#401](https://github.com/TNTcraftHIM/Piik/issues/401) is implemented on the
-  maintenance branch. Windows 11 synthetic-window checks confirm visible/hidden
-  borders, resizing, concurrent capture and clean stop; command compatibility and
-  source/profile retention are covered. Complete user acceptance before release.
-  Unsupported Windows and actual permission denial remain device checks; do not
-  claim those physical paths from the supported-system result.
+- [ ] **Windows capture border acceptance.** Automatic borderless sharing and
+  source previews for [#401](https://github.com/TNTcraftHIM/Piik/issues/401) are on
+  the maintenance branch. Complete user acceptance before release. Unsupported
+  Windows and actual permission denial remain device checks; do not claim those
+  physical paths from the supported-system result.
+- [ ] **Windows 10 borderless capture feasibility.** WGC on consumer Windows 10
+  lacks border control. Evaluate the official
+  [Desktop Duplication API](https://learn.microsoft.com/en-us/windows/win32/direct3ddxgi/desktop-dup-api)
+  for explicitly selected displays, including GPU/output ownership, cursor,
+  rotation, display/fullscreen changes, quiet frames and bounded stop. Preserve
+  window-only capture scope; a desktop crop can include overlapping private
+  windows. Compare mature reuse and real Windows 10 behavior before adding a
+  capture backend. Do not silently replace window capture or add injection hooks.
 - [ ] **App/Browser source discovery and feedback.** Investigate the report of
   missing window sources; confirm the exact message, screen, OS/browser and App
   version. The custom selector currently renders both App unavailability and a

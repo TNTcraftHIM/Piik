@@ -119,7 +119,6 @@ export type ControlHintKind =
   | "hint-refresh-sources"
   | "hint-source-picker"
   | "hint-no-sources"
-  | "hint-hide-capture-border"
   | "hint-password-show"
   | "hint-password-hide"
   | "hint-password-remove"

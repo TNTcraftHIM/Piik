@@ -126,27 +126,6 @@ describe("native capture source selection", () => {
     expect(html).toMatch(/class="lr-source-option(?: is-browser)?"[^>]*disabled=""/);
     expect(html).not.toMatch(/class="lr-source-picker-close"[^>]*disabled=""/);
   });
-
-  it.each(["en", "zh", "vis"] as const)("offers the requested border preference only for supported native capture in %s", (mode) => {
-    const lang = mode === "zh" ? "zh" : "en";
-    setCopy({ lang, vis: mode === "vis" });
-    const render = (supported: boolean | undefined, initialTab: "window" | "display" | "browser", initialHideCaptureBorder?: boolean) =>
-      renderToStaticMarkup(createElement(CaptureSourcePicker, {
-        nativeSources: { kind: "ready", sources: [game], processAudio: true, systemAudio: true, hideCaptureBorder: supported },
-        initialTab, initialHideCaptureBorder,
-        onBrowser: () => {}, onNative: () => {}, onPreview: async () => null,
-        onRefresh: () => {}, onCancel: () => {},
-      }));
-    const label = t(lang, "host.sourcePicker.hideCaptureBorder");
-    for (const tab of ["window", "display"] as const) {
-      expect(render(true, tab)).toContain(`aria-checked="false" aria-label="${label}"`);
-      expect(render(true, tab, true)).toContain(`aria-checked="true" aria-label="${label}"`);
-      expect(render(true, tab)).toContain(`aria-description="${t(lang, "host.sourcePicker.hideCaptureBorderHint")}"`);
-      expect(render(false, tab, true)).not.toContain(label);
-      expect(render(undefined, tab, true)).not.toContain(label);
-    }
-    expect(render(true, "browser", true)).not.toContain(label);
-  });
 });
 
 describe("native adapter selection", () => {

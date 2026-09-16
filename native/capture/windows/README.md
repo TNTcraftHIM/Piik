@@ -15,13 +15,14 @@ The video command receives the current product resolution, frame-rate, bitrate,
 and quality preference. A replacement process applies live changes while the Go
 session retains its Pion source and connections.
 
-Border control is available when Windows exposes `IsBorderRequired` and
-`GraphicsCaptureAccess` (build 20348+, including Windows 11). The capability probe
-only checks API availability. An explicit `--hide-capture-border` request asks
-Windows for borderless access; the capture loop applies an allowed result without
-blocking capture or stop. Retirement cancels any pending request. Denial or failure
-retains ordinary capture, and another capture session may still require a border.
-The property value is a preference, not proof that the border is invisible.
+Sharing and source previews automatically request borderless access when Windows
+exposes `IsBorderRequired` and `GraphicsCaptureAccess` (build 20348+, including
+Windows 11). One capture-local owner applies completed access without waiting
+for consent, and cancels pending access on retirement. Unsupported APIs, denial
+or failure retain ordinary capture; another capture session may still require a
+border. The property value is a preference, not proof that the border is invisible.
+Consumer Windows 10 through build 19045 lacks this API; the current WGC capture
+path keeps its system border there.
 
 Video and audio run as separate bounded child processes. A source whose audio
 loopback cannot be initialized keeps video available and reports audio

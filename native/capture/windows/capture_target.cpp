@@ -15,6 +15,7 @@
 #include <wrl/client.h>
 
 #include "capture_target.h"
+#include "capture_border.h"
 #include "capture_geometry.h"
 
 #include <algorithm>
@@ -480,6 +481,7 @@ HRESULT CaptureWithWgc(TargetKind kind, UINT64 source_id,
   GraphicsCaptureItem item{nullptr};
   Direct3D11CaptureFramePool pool{nullptr};
   GraphicsCaptureSession session{nullptr};
+  CaptureBorder border;
   HANDLE frame_ready = CreateEventW(nullptr, FALSE, FALSE, nullptr);
   winrt::event_token frame_token{};
   bool subscribed = false;
@@ -502,8 +504,10 @@ HRESULT CaptureWithWgc(TargetKind kind, UINT64 source_id,
               if (frame_ready != nullptr) SetEvent(frame_ready);
             });
         subscribed = true;
+        border.Start(session);
         session.StartCapture();
         const DWORD wait = WaitForSingleObject(frame_ready, 1'500);
+        border.Apply(session);
         if (wait != WAIT_OBJECT_0) {
           result = wait == WAIT_TIMEOUT
                        ? HRESULT_FROM_WIN32(ERROR_TIMEOUT)
@@ -571,6 +575,7 @@ HRESULT CaptureWithWgc(TargetKind kind, UINT64 source_id,
     } catch (...) {
     }
   }
+  border.Close();
   try {
     session.Close();
   } catch (...) {

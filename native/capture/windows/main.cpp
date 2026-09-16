@@ -24,14 +24,13 @@
 #include <wrl/client.h>
 
 #include <winrt/Windows.Foundation.h>
-#include <winrt/Windows.Foundation.Metadata.h>
 #include <winrt/Windows.Graphics.Capture.h>
 #include <winrt/Windows.Graphics.DirectX.Direct3D11.h>
 #include <winrt/Windows.Graphics.DirectX.h>
-#include <winrt/Windows.Security.Authorization.AppCapabilityAccess.h>
 #include <winrt/base.h>
 
 #include "capture_target.h"
+#include "capture_border.h"
 #include "capture_geometry.h"
 #include "process_audio.h"
 #include "h264_encoder.h"
@@ -932,7 +931,6 @@ struct ProductArguments final {
   std::string codec = "auto";
   VideoProfile profile;
   std::vector<VideoProfile> outputs;
-  bool hide_capture_border = false;
 };
 
 DegradationPreference ParseDegradationPreference(const wchar_t* value) {
@@ -983,11 +981,6 @@ void ParseOutputProfiles(ProductArguments& arguments, int first, int count, wcha
 
 ProductArguments ParseProductArguments(int count, wchar_t** values) {
   ProductArguments arguments;
-  if (count > 2 && std::wstring(values[1]) == L"--capture-video" &&
-      std::wstring(values[count - 1]) == L"--hide-capture-border") {
-    arguments.hide_capture_border = true;
-    --count;
-  }
   if (count == 2 && std::wstring(values[1]) == L"--list") return arguments;
   if (count == 2 && std::wstring(values[1]) == L"--probe") {
     arguments.mode = ProductArguments::Mode::probe;
@@ -1135,18 +1128,6 @@ UINT32 WindowsBuild() {
   return version.dwBuildNumber;
 }
 
-bool CaptureBorderControlAvailable() noexcept {
-  using winrt::Windows::Foundation::Metadata::ApiInformation;
-  try {
-    return ApiInformation::IsPropertyPresent(
-               L"Windows.Graphics.Capture.GraphicsCaptureSession", L"IsBorderRequired") &&
-           ApiInformation::IsMethodPresent(
-               L"Windows.Graphics.Capture.GraphicsCaptureAccess", L"RequestAccessAsync");
-  } catch (const winrt::hresult_error&) {
-    return false;
-  }
-}
-
 void WriteCapabilityProbe() {
   constexpr UINT32 kCreateForWindowMinimumBuild = 18'362;
   constexpr UINT32 kProcessLoopbackMinimumBuild = 19'041;
@@ -1170,8 +1151,6 @@ void WriteCapabilityProbe() {
   output << "{\"protocol\":7,\"platform\":\"windows\",\"platformBuild\":"
          << JSONString(std::to_string(build))
          << ",\"videoCapture\":" << (window_capture ? "true" : "false")
-         << ",\"hideCaptureBorder\":"
-         << (window_capture && CaptureBorderControlAvailable() ? "true" : "false")
          << ",\"softwareVP8\":true"
          << ",\"processAudio\":"
          << (process_audio ? "true" : "false")
@@ -1747,27 +1726,7 @@ void RunVideoCapture(const ProductArguments& arguments) {
       initial_size);
   GraphicsCaptureSession capture_session = pool.CreateCaptureSession(item);
   EnableFastCaptureUpdates(capture_session);
-  using winrt::Windows::Foundation::AsyncStatus;
-  using winrt::Windows::Security::Authorization::AppCapabilityAccess::AppCapabilityAccessStatus;
-  winrt::Windows::Foundation::IAsyncOperation<AppCapabilityAccessStatus> border_access{nullptr};
-  auto apply_border_access = [&]() {
-    // Consent belongs to this capture generation; waiting must not hold up
-    // frames or stop commands. Windows still owns the final border visibility.
-    if (!border_access) return;
-    try {
-      if (border_access.Status() == AsyncStatus::Started) return;
-      const auto access = border_access.GetResults();
-      if (access == AppCapabilityAccessStatus::Allowed) {
-        capture_session.IsBorderRequired(false);
-      }
-      std::osyncstream(std::cerr) << "capture-border-access="
-          << (access == AppCapabilityAccessStatus::Allowed ? "allowed" : "not-allowed")
-          << " status=" << static_cast<int>(access) << '\n';
-    } catch (const winrt::hresult_error& error) {
-      std::osyncstream(std::cerr) << "capture-border-access-failed: " << winrt::to_string(error.message()) << '\n';
-    }
-    border_access = nullptr;
-  };
+  piik::capture::CaptureBorder border;
 
   UniqueHandle shutdown(CreateEventW(nullptr, TRUE, FALSE, nullptr));
   UniqueHandle frame_ready(CreateEventW(nullptr, FALSE, FALSE, nullptr));
@@ -1810,11 +1769,7 @@ void RunVideoCapture(const ProductArguments& arguments) {
       item.Closed(closed_token);
     } catch (...) {
     }
-    try {
-      if (border_access) border_access.Cancel();
-    } catch (...) {
-    }
-    border_access = nullptr;
+    border.Close();
     try {
       capture_session.Close();
     } catch (...) {
@@ -1842,14 +1797,7 @@ void RunVideoCapture(const ProductArguments& arguments) {
         }
         if (FAILED(writer.WriteUnavailable(static_cast<UINT8>(layer), OutputFailureDetail(layer, error)))) fail_capture(error);
       });
-    if (arguments.hide_capture_border && CaptureBorderControlAvailable()) {
-      try {
-        border_access = GraphicsCaptureAccess::RequestAccessAsync(GraphicsCaptureAccessKind::Borderless);
-        apply_border_access();
-      } catch (const winrt::hresult_error& error) {
-        std::osyncstream(std::cerr) << "capture-border-access-failed: " << winrt::to_string(error.message()) << '\n';
-      }
-    }
+    border.Start(capture_session);
     capture_session.StartCapture();
 
     UINT64 previous_timestamp = 0;
@@ -1882,7 +1830,7 @@ void RunVideoCapture(const ProductArguments& arguments) {
         ApplyOutputControl(control, workers);
         refresh_input = true;
       }
-      apply_border_access();
+      border.Apply(capture_session);
       DWORD wait = window_target
                        ? WaitForMultipleObjects(3, window_waits, FALSE, control_wait_ms)
                        : WaitForMultipleObjects(2, display_waits, FALSE, control_wait_ms);
