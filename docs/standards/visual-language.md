@@ -41,9 +41,11 @@ model. Universal digits, transport symbols, URLs and measured values remain
 literal when the user needs the data.
 
 Functional controls use native buttons/inputs and localized accessible names.
-Pointer cursors identify clickable controls and links; text inputs use text
-cursors. A passive label, illustration or hover-only explanation keeps its
-ordinary cursor. A help button that actually toggles guidance is interactive.
+Pointer cursors identify actions, navigation and controls that change a setting;
+text inputs use text cursors. Read-only status and metric indicators keep the
+ordinary arrow even when tapping reveals an explanation. Keep these help-only
+triggers as native buttons for keyboard and touch access. Passive labels and
+illustrations also keep their ordinary cursor.
 Hover, keyboard focus and touch receive equivalent guidance. Keep information
 order and interaction ownership consistent across languages, themes and viewport
 sizes. Reflow or bounded scrolling must not hide a primary action, truncate an
@@ -61,11 +63,13 @@ Use a globe and chevron for the unselected picker, and each language's own full
 name in the menu, following [W3C language-navigation guidance](https://www.w3.org/International/questions/qa-navigation-select).
 
 Help-only indicators toggle their guidance on click or tap and dismiss on a
-second activation, outside tap, Escape or focus leaving. Action controls keep
-their direct click action and offer touch guidance on long-press. `Tooltip`
-owns both interactions; pages do not add their own open state or timers.
+second activation, outside tap, Escape or focus leaving. Touch long-press opens
+guidance after a 500 ms hold on both help indicators and action controls,
+without triggering the action on release. Action controls keep their direct
+short-tap action. `Tooltip` owns these interactions; pages do not add their own
+open state or timers.
 
-Mouse hover opens after 400 ms of staying on the trigger; passing through or
+Mouse hover opens after 500 ms of staying on the trigger; passing through or
 operating a control cancels that pending hint. Keyboard focus and explicit help
 activation do not wait. Keep the open panel hoverable for reading, with a short
 crossing grace; Escape, clicking the panel or clicking elsewhere dismisses it.

@@ -1837,6 +1837,7 @@ svg[data-comic-motion="still"] .lr-person-eyes > ellipse {
   }
 }
 .lr-comic-tip-wrap { position: relative; display: inline-flex; }
+.lr-comic-tip-wrap.is-help-only > button:not(:disabled) { cursor: default; }
 .lr-slider-hint { flex: 1; min-width: 0; }
 .lr-comic-tip-wrap.is-disabled-trigger > :disabled { pointer-events: none; }
 .lr-comic-tip {

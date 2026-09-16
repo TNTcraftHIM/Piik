@@ -35,7 +35,7 @@ import { comicStyle, getComicPresentation, type ComicTone, type ComicMotion } fr
 const LONG_PRESS_MS = 500;
 const TOUCH_HIDE_MS = 1500;
 const PANEL_EXIT_MS = 160;
-const HOVER_ENTER_MS = 400;
+const HOVER_ENTER_MS = 500;
 // Minimum clearance the re-picked alignment keeps to each viewport edge.
 const EDGE_MARGIN = 8;
 const HOVER_EXIT_GRACE_MS = 160;
@@ -358,7 +358,7 @@ export function Tooltip({
   return (
     <span
       ref={wrapRef}
-      className={`lr-comic-tip-wrap${className ? ` ${className}` : ""}${disabledTrigger ? " is-disabled-trigger" : ""}${hoverOpen ? " is-hover-open" : ""}${focusOpen ? " is-focus-open" : ""}${pressOpen ? " is-tip-open" : ""}`}
+      className={`lr-comic-tip-wrap${className ? ` ${className}` : ""}${toggleOnClick ? " is-help-only" : ""}${disabledTrigger ? " is-disabled-trigger" : ""}${hoverOpen ? " is-hover-open" : ""}${focusOpen ? " is-focus-open" : ""}${pressOpen ? " is-tip-open" : ""}`}
       tabIndex={focusableWrap ? 0 : undefined}
       aria-label={disabledTriggerLabel ?? (focusableWrap ? trigger?.props["aria-label"] ?? overflow?.text : undefined)}
       aria-describedby={disabledTrigger && caption && interactionOpen ? tooltipId : undefined}
@@ -415,7 +415,6 @@ export function Tooltip({
         cancelPress();
         touchGesture.current = event.pointerType === "touch";
         if (!enabled || event.pointerType !== "touch") return;
-        if (toggleOnClick) return;
         pressPoint.current = { x: event.clientX, y: event.clientY };
         pressTimer.current = window.setTimeout(() => {
           pressTimer.current = null;

@@ -39,7 +39,7 @@ export function ViewerOverview({
     finite(value ?? null) ? `${value!.toFixed(digits)}${unit}` : unknown;
   const heading = (key: MetricLabel) => (
     <Tooltip toggleOnClick kind={METRIC_PRESENTATION[key].hint} text={vis ? undefined : t(key)}>
-      <button type="button" aria-label={t(key)} style={{ border: 0, padding: 0, background: "none", color: "inherit", font: "inherit", cursor: "help" }}>
+      <button type="button" aria-label={t(key)} style={{ border: 0, padding: 0, background: "none", color: "inherit", font: "inherit" }}>
         {vis ? <Glyph name={METRIC_PRESENTATION[key].icon} size={14} /> : t(key)}
       </button>
     </Tooltip>

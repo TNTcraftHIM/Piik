@@ -3661,7 +3661,7 @@ export function HostPage({
                     text={vis ? undefined : t(details.hasAudio ? "host.capture.hasAudio" : "host.capture.noAudio")}
                     tone={details.hasAudio ? "off" : "warn"}>
                     <button type="button" className="lr-meter-cell"
-                      style={{ border: 0, color: "inherit", font: "inherit", textAlign: "start", cursor: "help" }}
+                      style={{ border: 0, color: "inherit", font: "inherit", textAlign: "start" }}
                       aria-label={t(details.hasAudio ? "host.capture.hasAudio" : "host.capture.noAudio")}>
                       <Glyph name={details.hasAudio ? "speaker" : "speakerOff"} size={16} />
                       {!vis && <b>{t(details.hasAudio ? "host.capture.hasAudio" : "host.capture.noAudio")}</b>}

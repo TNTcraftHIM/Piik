@@ -164,7 +164,7 @@ export function MetricCell({ icon, label, value, glyphOnly, hint, tone = "off" }
     <Tooltip toggleOnClick kind={hint ?? METRIC_PRESENTATION[label].hint} tone={tone} motion={tone === "warn" ? "still" : "demo"}
       text={vis ? undefined : `${t(label)} · ${display}`}>
     <button type="button" className="lr-meter-cell" aria-label={`${t(label)} · ${display}`}
-      style={{ border: 0, color: "inherit", font: "inherit", textAlign: "start", cursor: "help" }}>
+      style={{ border: 0, color: "inherit", font: "inherit", textAlign: "start" }}>
       <Glyph name={icon ?? METRIC_PRESENTATION[label].icon} size={16} />
       {vis ? (
         <>
