@@ -834,8 +834,8 @@ async function main(): Promise<void> {
         }>(
           cdp!,
           host,
-          "(() => ({invite: document.querySelector('.lr-invite-url')?.value || null, " +
-            "native: Boolean(document.querySelector('.lr-tv-overlay [aria-label]')), " +
+          "(async () => ({invite: document.querySelector('.lr-invite-url')?.value || null, " +
+            "native: (await window.__piikGateVideoCodec()) !== null, " +
             "body: document.body.innerText.slice(0, 500)}))()",
           deadline,
         ),
