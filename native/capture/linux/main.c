@@ -51,6 +51,7 @@ typedef struct {
   VideoProfile profile;
   guint layer;
   gboolean enabled;
+  gboolean failed;
   gboolean decodable;
   guint64 key_requested;
   guint64 key_sent;
@@ -610,13 +611,49 @@ static void fail_run(CaptureRun *run, const char *message) {
 }
 
 static void fail_output(VideoOutput *output, const char *message) {
-  write_frame(6, 0, (guint8)output->layer, 0, 0, 0, 0,
-              (const guint8 *)message, MIN(strlen(message), 512));
-  fail_run(output->run, message);
+  // Streaming callbacks report to the bus; only its main-context owner retires
+  // branches. Stopping an encoder from its own streaming thread can deadlock.
+  GError *error = g_error_new_literal(GST_STREAM_ERROR, GST_STREAM_ERROR_ENCODE, message);
+  gst_element_post_message(output->encoder,
+      gst_message_new_error(GST_OBJECT(output->encoder), error, NULL));
+  g_error_free(error);
+}
+
+static GstFlowReturn output_chain(GstPad *pad, GstObject *parent, GstBuffer *buffer) {
+  VideoOutput *output = g_object_get_data(G_OBJECT(pad), "piik-output");
+  GstFlowReturn flow = gst_proxy_pad_chain_default(pad, parent, buffer);
+  if (flow >= GST_FLOW_OK) return flow;
+  // Bus errors arrive asynchronously. Contain the queue's failed flow here,
+  // before it reaches the shared tee, even when no encoder error was posted.
+  gboolean dropping = FALSE;
+  g_object_get(output->gate, "drop", &dropping, NULL);
+  g_object_set(output->gate, "drop", TRUE, NULL);
+  if (!dropping && !g_atomic_int_get(&output->run->stopping)) {
+    char *message = g_strdup_printf("GStreamer output stopped: %s", gst_flow_get_name(flow));
+    fail_output(output, message);
+    g_free(message);
+  }
+  return GST_FLOW_OK;
+}
+
+static gboolean isolate_output(VideoOutput *output) {
+  GstPad *input = gst_element_get_static_pad(output->branch, "sink");
+  if (input == NULL) return FALSE;
+  if (!GST_IS_GHOST_PAD(input)) {
+    gst_object_unref(input);
+    return FALSE;
+  }
+  g_object_set_data(G_OBJECT(input), "piik-output", output);
+  gst_pad_set_chain_function(input, output_chain);
+  gst_object_unref(input);
+  g_object_set(output->gate, "drop", TRUE, NULL);
+  gst_element_set_locked_state(output->branch, TRUE);
+  return TRUE;
 }
 
 static gboolean set_output_active(VideoOutput *output, gboolean enabled) {
   CaptureRun *run = output->run;
+  if (enabled && output->failed) return TRUE;
   g_mutex_lock(&run->lock);
   if (output->enabled == enabled) {
     g_mutex_unlock(&run->lock);
@@ -634,7 +671,12 @@ static gboolean set_output_active(VideoOutput *output, gboolean enabled) {
   gboolean applied = enabled
       ? gst_element_sync_state_with_parent(output->branch)
       : gst_element_set_state(output->branch, GST_STATE_NULL) != GST_STATE_CHANGE_FAILURE;
-  if (!applied) return FALSE;
+  if (!applied) {
+    gst_element_set_locked_state(output->branch, TRUE);
+    gst_element_set_state(output->branch, GST_STATE_NULL);
+    fail_output(output, "GStreamer output could not change state");
+    return TRUE;
+  }
   g_mutex_lock(&run->lock);
   output->enabled = enabled;
   g_mutex_unlock(&run->lock);
@@ -680,6 +722,7 @@ static gboolean apply_control(CaptureRun *run, char *line) {
     VideoOutput *output = &run->outputs[layer];
     guint bitrate = 0;
     if (!parse_uint(values[2], 1000, output->profile.bit_rate, &bitrate)) return FALSE;
+    if (output->failed) return TRUE;
     GParamSpec *property = g_object_class_find_property(
         G_OBJECT_GET_CLASS(output->encoder), "bitrate");
     if (property == NULL || !(property->flags & GST_PARAM_MUTABLE_PLAYING) ||
@@ -838,18 +881,31 @@ static gboolean bus_message(GstBus *bus, GstMessage *message, gpointer data) {
     GError *error = NULL;
     char *debug = NULL;
     gst_message_parse_error(message, &error, &debug);
-    // Keep the bus cause before an output summary reaches the first-failure latch.
-    fail_run(run, error == NULL ? "GStreamer pipeline failed" : error->message);
+    const char *cause = error == NULL ? "GStreamer pipeline failed" : error->message;
     if (error != NULL) {
       fprintf(stderr, "Piik GStreamer error: source=%s domain=%s code=%d detail=%s\n",
               GST_MESSAGE_SRC(message) == NULL ? "unknown" : GST_OBJECT_NAME(GST_MESSAGE_SRC(message)),
               g_quark_to_string(error->domain), error->code, error->message);
       if (debug != NULL) fprintf(stderr, "Piik GStreamer context: %s\n", debug);
     }
+    VideoOutput *failed = NULL;
     for (guint index = 0; index < run->output_count; ++index) {
-      if (GST_MESSAGE_SRC(message) == GST_OBJECT(run->outputs[index].encoder)) {
-        fail_output(&run->outputs[index], "hardware encoder output failed");
+      VideoOutput *output = &run->outputs[index];
+      if (output->branch != NULL && GST_MESSAGE_SRC(message) != NULL &&
+          (GST_MESSAGE_SRC(message) == GST_OBJECT(output->branch) ||
+           gst_object_has_as_ancestor(GST_MESSAGE_SRC(message), GST_OBJECT(output->branch)))) {
+        failed = output;
         break;
+      }
+    }
+    if (failed == NULL) {
+      fail_run(run, cause);
+    } else if (!failed->failed) {
+      failed->failed = TRUE;
+      set_output_active(failed, FALSE);
+      if (!write_frame(6, 0, (guint8)failed->layer, 0, 0, 0, 0,
+                       (const guint8 *)cause, MIN(strlen(cause), 512))) {
+        fail_run(run, "native media output closed");
       }
     }
     g_clear_error(&error);
@@ -998,9 +1054,18 @@ static int run_pipeline(CaptureRun *run, const char *starting_status) {
     fail_run(run, "GStreamer pipeline failed to start");
     goto stopped;
   }
+  for (guint index = 0; index < run->output_count; ++index) {
+    VideoOutput *output = &run->outputs[index];
+    gboolean enabled = output->enabled;
+    output->enabled = FALSE;
+    if (enabled) set_output_active(output, TRUE);
+  }
   g_main_loop_run(run->loop);
 stopped:
   g_source_remove(control_watch);
+  for (guint index = 0; index < run->output_count; ++index) {
+    set_output_active(&run->outputs[index], FALSE);
+  }
   gst_element_set_state(run->pipeline, GST_STATE_NULL);
   g_source_remove(bus_watch);
   g_byte_array_unref(run->input_payload);
@@ -1118,7 +1183,7 @@ static int capture_video(int count, char **values) {
     output->gate = gst_bin_get_by_name(GST_BIN(pipeline), name);
     g_free(name);
     if (output->branch == NULL || output->branch == pipeline || output->gate == NULL) goto cleanup;
-    gst_element_set_locked_state(output->branch, !output->enabled);
+    if (!isolate_output(output)) goto cleanup;
     name = g_strdup_printf("output%u", index);
     GstElement *sink = gst_bin_get_by_name(GST_BIN(pipeline), name);
     g_free(name);

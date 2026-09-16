@@ -26,13 +26,12 @@ native build and regression alone, add `--check` to the command above. The test
 uses GStreamer's core synthetic elements and needs no display, Portal session,
 capture device or hardware encoder; physical capture remains a separate check.
 
-Output retirement already closes a branch's valve before stopping its elements.
-Encoder failures currently remain fatal to the capture run, including failures
-reported for one output. Isolating those failures also requires containing
-GStreamer queue/tee flow errors before they reach sibling branches; changing only
-the asynchronous bus handler is insufficient. Keep state retirement off streaming
-callbacks and verify sibling output, source failure and shutdown on Linux before
-changing this boundary. [TODO](../../../docs/todo.md) tracks that remaining work.
+Each output bin contains its downstream flow failures before they reach the
+shared tee. The main-context bus handler reports that output as unavailable and
+closes its valve before stopping the branch. Failed outputs remain retired for
+the source generation; healthy siblings continue. Shared source, decoder and
+protocol-output failures still end the capture run. Streaming callbacks report
+errors through the bus and never stop their own branch.
 
 Runtime requirements are the desktop Portal/PipeWire services, a GStreamer
 PipeWire source, and an installed GStreamer hardware H.264 encoder. If any part
@@ -48,3 +47,5 @@ Primary references:
 - <https://libportal.org/libportal.html>
 - <https://pipewire.pages.freedesktop.org/pipewire/page_portal.html>
 - <https://gstreamer.freedesktop.org/documentation/>
+- <https://gstreamer.freedesktop.org/documentation/gstreamer/gstghostpad.html>
+- <https://gstreamer.freedesktop.org/documentation/coreelements/valve.html>
