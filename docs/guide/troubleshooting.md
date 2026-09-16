@@ -54,7 +54,7 @@ the border. Windows 10 does not provide this control for its capture API.
 ### Optional Windows 10 workaround
 
 [DWM Custom Projection Border](https://windhawk.net/mods/dwm-custom-projection-border)
-is a third-party Windhawk mod that can hide the border while keeping the same
+is a third-party Windhawk mod for x64 Windows that can hide the border while keeping the same
 capture method. It changes Windows' desktop compositor and affects other apps'
 capture indicators too. The author shows it working on Windows 10 21H2; this
 procedure has not been tested with Piik on a Windows 10 device.

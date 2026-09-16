@@ -20,11 +20,11 @@ history. A parked idea is not implementation authority.
   after granting access. Include Viewer entry: a permission-stalled App discovery
   delays Browser reception fallback until its deadline. Automated delayed-response
   checks do not establish the real permission prompt or the reporting machine's cause.
-- [ ] **Windows 32-bit capture exploration.** Validate the same-revision x86
-  WebRTC SDK, compiler ABI, native capture/encoding and complete App packaging
-  in the isolated `spike/windows-x86-capture` branch. Keep the existing media
-  adaptation and source lifecycle. Successful compilation or execution on
-  64-bit Windows alone does not establish support on a 32-bit Windows device.
+- [ ] **Windows 32-bit candidate acceptance.** Review the isolated
+  `spike/windows-x86-capture` candidate's SDK/toolchain and scoped atomic alignment
+  repair before integration. Verify launch, capture/audio, memory pressure,
+  source replacement and update links on a 32-bit Windows device. WOW64
+  Host/media checks establish only that environment.
 - [ ] **Post-launch monitoring.** Collect App/Server feedback and verify the
   public downloads, container pulls and deployed services after product releases.
   Follow the [deployment runbook](./deployment.md) for the private service and keep public

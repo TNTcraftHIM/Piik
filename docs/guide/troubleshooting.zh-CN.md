@@ -50,7 +50,7 @@ App 选源器提供 **显示采集边框** 开关，默认关闭；系统权限�
 ### Windows 10 可选处理方法
 
 [DWM Custom Projection Border](https://windhawk.net/mods/dwm-custom-projection-border)
-是 Windhawk 的第三方模组，可以在保持原有采集方式的情况下隐藏黄框。
+是适用于 x64（64 位）Windows 的 Windhawk 第三方模组，可以在保持原有采集方式的情况下隐藏黄框。
 它会修改 Windows 桌面合成器的行为，也会影响其他软件的采集提示。
 作者提供了 Windows 10 21H2 的效果示例；以下步骤尚未在 Windows 10 设备上配合 Piik 实测。
 
