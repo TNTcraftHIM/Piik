@@ -18,7 +18,7 @@ const SERVER_TARGET = appPackageTarget("linux-amd64");
 // Local dependency repairs retain upstream tests, including PCPv6 composition.
 // Nested modules need explicit test patterns; remove these with the replacements.
 // Only these directories own Go source; scanning ./... also walks downloaded SDKs.
-const GO_TEST_PACKAGES = ["./cmd/...", "./internal/...", "github.com/netbirdio/go-nat/...", "github.com/jackpal/go-nat-pmp"];
+const GO_TEST_PACKAGES = ["./cmd/...", "./internal/...", "github.com/netbirdio/go-nat/...", "github.com/jackpal/go-nat-pmp", "go.uber.org/atomic"];
 
 const root = realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), ".."));
 const captureRoot = join(root, "native", "capture");
@@ -92,7 +92,7 @@ function checkCore() {
   }
 }
 
-function runGoTests(go, packagesToTest = GO_TEST_PACKAGES, flags = []) {
+function runGoTests(go, packagesToTest = GO_TEST_PACKAGES, flags = [], target) {
   if (process.platform !== "win32") {
     run(go, ["test", ...flags, ...packagesToTest.filter((entry) => entry.startsWith("./"))]);
     // PCP and NAT-PMP both require port 5351. Serialize only their fixture
@@ -103,17 +103,18 @@ function runGoTests(go, packagesToTest = GO_TEST_PACKAGES, flags = []) {
 
   // Windows firewall permissions follow executable paths, including tests that
   // open sockets indirectly. Never execute a test from Go's temporary directory.
-  const packages = run(go, ["list", "-f", '{{if or .TestGoFiles .XTestGoFiles}}[{{printf "%q" .ImportPath}},{{printf "%q" .Dir}}]{{end}}', ...packagesToTest], { capture: true })
+  const env = target ? goBuildEnvironment(target) : process.env;
+  const packages = run(go, ["list", "-f", '{{if or .TestGoFiles .XTestGoFiles}}[{{printf "%q" .ImportPath}},{{printf "%q" .Dir}}]{{end}}', ...packagesToTest], { capture: true, env })
     .split(/\r?\n/)
     .map((value) => value.trim())
     .filter(Boolean)
     .map((value) => JSON.parse(value));
-  const stableRoot = join(root, "build", "go-check");
+  const stableRoot = join(root, "build", "go-check", ...(target ? [target.id] : []));
   mkdirSync(stableRoot, { recursive: true });
   for (const [entry, directory] of packages) {
     const binary = join(stableRoot, `${basename(entry)}.test.exe`);
-    run(go, ["test", ...flags, "-c", "-o", binary, entry]);
-    run(binary, flags.includes("-race") ? ["-test.timeout=2m"] : [], { cwd: directory });
+    run(go, ["test", ...flags, "-c", "-o", binary, entry], { env });
+    run(binary, target || flags.includes("-race") ? ["-test.timeout=2m"] : [], { cwd: directory });
   }
 }
 
@@ -126,6 +127,11 @@ function checkPlatformCapture() {
   }
   const buildRoot = join(root, "build", "go-check", ...(nativeTarget ? [nativeTarget.id] : []));
   mkdirSync(buildRoot, { recursive: true });
+  if (nativeTarget?.goarch === "386") {
+    runGoTests(process.env.PIIK_GO?.trim() || "go", [
+      "go.uber.org/atomic", "./internal/media/forwarding", "./internal/app/mediaedge",
+    ], [], nativeTarget);
+  }
   let executable;
   if (process.platform === "win32") {
     const systemPowerShell = join(
@@ -218,6 +224,7 @@ if (mode === "--race") {
   runGoTests(process.env.PIIK_GO?.trim() || "go", [
     "./internal/app/portmapping", "./internal/app/mediaedge",
     "github.com/netbirdio/go-nat/...", "github.com/jackpal/go-nat-pmp",
+    "go.uber.org/atomic",
   ], ["-race", "-count=1", "-timeout=2m"]);
 } else {
   if (mode !== "--capture-only") checkCore();

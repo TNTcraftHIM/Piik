@@ -7,11 +7,11 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **Windows 32-bit candidate acceptance.** Complete App packaging and review
-  the x86 SDK/toolchain boundary in this isolated experiment. Before advertising
-  support, verify launch, physical capture/audio, source replacement and update
-  links on a 32-bit Windows device. WOW64 checks establish only that environment;
-  retain the current source/route/adaptation owners and check x64 for regressions.
+- [ ] **Windows 32-bit device acceptance.** Before advertising support, verify
+  launch, physical capture/audio, memory pressure, source replacement and update
+  links on a 32-bit Windows device. WOW64 Host/media checks establish only that
+  environment. Review the extra SDK/toolchain and scoped atomic dependency repair
+  before integrating the isolated candidate.
 
 - [ ] **Windows capture border preference.** After the current release, investigate
   [#401](https://github.com/TNTcraftHIM/Piik/issues/401) with the packaged Native

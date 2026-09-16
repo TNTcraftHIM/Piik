@@ -50,7 +50,9 @@ notice digests, and keeps both architectures' SDKs and runtime libraries separat
 Each output uses WebRTC's single-stream VP8 encoder directly, while its existing
 `VideoStreamEncoder` owns adaptation. No separate 32-bit media implementation is
 used. Running this candidate under WOW64 does not establish capture support on
-a physical 32-bit Windows installation.
+a physical 32-bit Windows installation. The App's Go media path also uses the
+scoped [atomic alignment repair](../../../internal/thirdparty/README.md); a capture
+probe alone does not verify the App's forwarding path.
 
 The checks include synthetic output-worker replacement and failure cases using
 WARP and a test codec. They do not capture a screen or validate a physical encoder.
