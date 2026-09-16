@@ -73,6 +73,8 @@ On supported Windows versions, the **Apps / Windows** and **Screens** tabs offer
 **Show capture border**, off by default. Change it when selecting or switching a
 source; the Host page remembers your choice. Windows 10, system policy or another
 active capture can keep the yellow border visible; sharing remains available.
+See [capture-border troubleshooting](../../docs/guide/troubleshooting.md#yellow-capture-border-on-windows)
+for an optional Windows 10 workaround.
 
 The App configuration keeps an optional Local site passphrase. Leave it
 blank for an open Local site, or enter a password in the launcher before

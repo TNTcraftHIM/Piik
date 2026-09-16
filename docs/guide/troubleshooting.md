@@ -12,6 +12,7 @@ collect a diagnostic report if the problem persists.
 | Picture but no sound | Unmute the video. The host should choose a source with shareable audio; if sound was disabled, stop and start sharing with it enabled. App window/screen capture keeps that setting when switching sources. |
 | No screen picker | Allow the browser or App to record the screen when the OS asks. Browser capture needs HTTPS or `localhost`; try sharing from a desktop computer. |
 | No App windows or screens listed | Keep the App running and reopen its sharing page. Allow local-network access if asked, then refresh the source list. You can also choose **Browser** → **Browser picker** to use browser capture. If the problem persists, collect the Debug report described below. |
+| Yellow outline around the shared window or screen | This is Windows' capture indicator. See [capture borders](#yellow-capture-border-on-windows) for Windows 11 controls and an optional Windows 10 workaround. |
 | App startup fails | Read the reason on the page and in the terminal. Reopen the App and enable the chip-shaped **Debug launch** control after the theme button before trying again. A failed startup then exports a report; its path appears in the terminal. |
 | Local invitation will not open | Check that both devices are on the same network and can reach each other. Guest Wi-Fi or firewall rules can block local access. |
 | Page opens but video will not connect | Use **Reconnect** if available, or refresh the viewing page. See [connection troubleshooting](#when-video-will-not-connect) if it still fails. |
@@ -20,6 +21,36 @@ collect a diagnostic report if the problem persists.
 For a bug report, include the version, OS/browser, what you expected, and how
 to reproduce it. [Diagnostics and export](../../cmd/piik-app/README.md#diagnostics)
 explains how to collect a local report and what to review before sharing it.
+
+## Yellow capture border on Windows
+
+Windows draws this outline to identify the window or display being captured.
+On supported Windows versions, the App source picker offers **Show capture border**,
+off by default. Windows permissions or another active capture can still require
+the border. Windows 10 does not provide this control for its capture API.
+
+### Optional Windows 10 workaround
+
+[DWM Custom Projection Border](https://windhawk.net/mods/dwm-custom-projection-border)
+is a third-party Windhawk mod that can hide the border while keeping the same
+capture method. It changes Windows' desktop compositor and affects other apps'
+capture indicators too. The author shows it working on Windows 10 21H2; this
+procedure has not been tested with Piik on a Windows 10 device.
+
+1. Install [Windhawk](https://windhawk.net/) from its official website.
+2. In Windhawk's global **Settings → Advanced settings → More advanced settings**,
+   append `dwm.exe` to **Process inclusion list** and save. Keep existing entries.
+3. Find and install **DWM Custom Projection Border**. In the mod's settings,
+   turn on **Disable border** and save.
+4. Stop and restart sharing in Piik, then check whether the border disappears.
+
+To undo this, disable the mod and restart sharing. Remove the `dwm.exe` entry
+if you added it only for this mod. If desktop problems appear or a Windows
+update breaks compatibility, disable the mod first.
+
+See the [mod author's instructions](https://github.com/ramensoftware/windhawk-mods/blob/main/mods/dwm-custom-projection-border.wh.cpp)
+and [Windhawk's process settings](https://github.com/ramensoftware/windhawk/wiki/Injection-targets-and-critical-system-processes)
+for current setup details.
 
 ## When video will not connect
 

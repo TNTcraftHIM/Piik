@@ -12,6 +12,7 @@
 | 有画面，没声音 | 先取消视频静音。房主应选择支持分享声音的来源；如果开始时关闭了声音，请停止后重新开始并打开声音。通过 App 采集窗口或屏幕时，切换来源会保留原来的声音设置。 |
 | 没有屏幕选择弹窗 | 按系统提示允许浏览器或 App 录制屏幕。浏览器采集需要 HTTPS 或 `localhost`，请在电脑上尝试分享。 |
 | App 的窗口或屏幕列表为空 | 保持 App 运行，从 App 重新打开分享页面；浏览器询问本地网络权限时允许访问，再刷新来源列表。也可以选 **浏览器** → **浏览器选择器**，使用浏览器采集。仍然失败时，按下方说明收集诊断报告。 |
+| 分享的窗口或屏幕周围出现黄框 | 这是 Windows 的采集提示。查看[采集边框说明](#windows-分享时出现黄框)，了解 Windows 11 的开关和 Windows 10 的可选处理方法。 |
 | App 启动失败 | 先查看页面和终端中的具体原因。重新打开 App，在主题按钮后的芯片图标开启「诊断启动」再重试。启动失败时会自动导出报告，保存位置见终端。 |
 | 本地邀请打不开 | 确认两台设备在同一网络且可以互相访问。访客 Wi-Fi 或防火墙规则可能阻止本地连接。 |
 | 网页能打开，画面连不上 | **重新连接** 按钮可用时先点击，否则刷新观看页。仍然失败时，查看 [画面连接排查](#画面连接不上)。 |
@@ -20,6 +21,32 @@
 反馈问题时，请附上版本、系统与浏览器、预期结果和复现步骤。
 [诊断与导出](../../cmd/piik-app/README.zh-CN.md#诊断)
 说明如何收集本地报告，以及分享前需要检查哪些内容。
+
+## Windows 分享时出现黄框
+
+Windows 用黄色边框标出正在采集的窗口或屏幕。在支持的 Windows 版本上，
+App 选源器提供 **显示采集边框** 开关，默认关闭；系统权限或其他正在进行的采集
+仍可能要求显示边框。Windows 10 的采集接口没有这个开关。
+
+### Windows 10 可选处理方法
+
+[DWM Custom Projection Border](https://windhawk.net/mods/dwm-custom-projection-border)
+是 Windhawk 的第三方模组，可以在保持原有采集方式的情况下隐藏黄框。
+它会修改 Windows 桌面合成器的行为，也会影响其他软件的采集提示。
+作者提供了 Windows 10 21H2 的效果示例；以下步骤尚未在 Windows 10 设备上配合 Piik 实测。
+
+1. 从[官方网站](https://windhawk.net/)安装 Windhawk。
+2. 打开 Windhawk 全局的 **设置 → 高级设置 → 更多高级设置**，
+   在 **包含的进程列表（Process inclusion list）** 中追加一行 `dwm.exe` 并保存，保留已有条目。
+3. 搜索并安装 **DWM Custom Projection Border**，在模组设置中开启
+   **Disable border（关闭边框）** 并保存。
+4. 在 Piik 中停止后重新开始分享，检查黄框是否消失。
+
+恢复原状时，禁用该模组并重新开始分享。如果 `dwm.exe` 这一项是专门为该模组添加的，
+也可以移除。若桌面出现异常，或 Windows 更新后不再兼容，先禁用模组。
+
+最新操作说明见[模组作者说明](https://github.com/ramensoftware/windhawk-mods/blob/main/mods/dwm-custom-projection-border.wh.cpp)
+和 [Windhawk 进程设置文档](https://github.com/ramensoftware/windhawk/wiki/Injection-targets-and-critical-system-processes)（英文）。
 
 ## 画面连接不上
 

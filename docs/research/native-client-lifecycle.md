@@ -231,6 +231,12 @@ and [independent panel fitting/MPO](https://learn.microsoft.com/en-us/windows/wi
 
 ## Windows Capture Borders
 
+The accepted scope keeps WGC for Windows capture and previews. Piik does not
+add DXGI or inject into system processes to hide the border. The reader-facing
+[troubleshooting guide](../guide/troubleshooting.md#yellow-capture-border-on-windows)
+owns the optional external-mod procedure; the evidence below records its limits
+and the alternative's integration cost.
+
 Consumer Windows 10 does not expose the WGC border-control API: Microsoft's
 [`IsBorderRequired`](https://learn.microsoft.com/en-us/uwp/api/windows.graphics.capture.graphicscapturesession.isborderrequired)
 starts at build 20348, beyond consumer Windows 10 build 19045. The current
@@ -269,7 +275,7 @@ encoding throughput nor Windows 10 support. SDK build defines must match:
 DXGI; omitting it caused heap corruption in the isolated probe. No product
 capture path was changed by this experiment.
 
-Before product integration, compare this reuse against the current GPU path
+If DXGI is reconsidered, compare this reuse against the current GPU path
 under game motion and quiet scenes on Windows 10. Cover selected-output/GPU
 identity, cursor and rotation, source previews, display/fullscreen changes,
 and bounded cancellation. [DXGI requires the output's own adapter](https://learn.microsoft.com/en-us/windows/win32/api/dxgi1_2/nf-dxgi1_2-idxgioutput1-duplicateoutput);
