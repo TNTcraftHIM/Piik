@@ -18,6 +18,7 @@ import {
 } from "../src/client/native/wire";
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -63,7 +64,63 @@ describe("native App private wire", () => {
     await expect(discoverNativeHealth()).resolves.toMatchObject({
       protocol: NATIVE_CLIENT_PROTOCOL, port: NATIVE_CLIENT_PORT_START + 1,
     });
-    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher).toHaveBeenCalledTimes(NATIVE_CLIENT_PORT_END - NATIVE_CLIENT_PORT_START + 1);
+  });
+
+  it("keeps discovery alive while local access takes longer than 400 ms", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    vi.stubGlobal("fetch", vi.fn(async (url: string, options: RequestInit) => {
+      if (new URL(url).port !== String(health.port)) throw new TypeError("No listener");
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(resolve, 1_500);
+        options.signal!.addEventListener("abort", () => {
+          clearTimeout(timer);
+          reject(new DOMException("Aborted", "AbortError"));
+        }, { once: true });
+      });
+      return new Response(JSON.stringify(health));
+    }));
+    const discovery = discoverNativeHealth();
+    await vi.advanceTimersByTimeAsync(1_500);
+    await expect(discovery).resolves.toMatchObject({ port: health.port });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("finds a later App without waiting for a silent port and aborts the unused probe", async () => {
+    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    let silentSignal: AbortSignal | undefined;
+    vi.stubGlobal("fetch", vi.fn(async (url: string, options: RequestInit) => {
+      const port = Number(new URL(url).port);
+      if (port === health.port) {
+        silentSignal = options.signal!;
+        return new Promise<Response>((_resolve, reject) => {
+          silentSignal!.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
+        });
+      }
+      if (port !== health.port + 1) throw new TypeError("No listener");
+      return new Response(JSON.stringify({ ...health, port }));
+    }));
+    await expect(discoverNativeHealth()).resolves.toMatchObject({ port: health.port + 1 });
+    expect(silentSignal?.aborted).toBe(true);
+  });
+
+  it("bounds all silent discovery ports with one deadline", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    const signals: AbortSignal[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, options: RequestInit) => {
+      signals.push(options.signal!);
+      return new Promise<Response>((_resolve, reject) => {
+        options.signal!.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
+      });
+    }));
+    const discovery = discoverNativeHealth();
+    await vi.advanceTimersByTimeAsync(8_000);
+    await expect(discovery).resolves.toBeNull();
+    expect(signals).toHaveLength(NATIVE_CLIENT_PORT_END - NATIVE_CLIENT_PORT_START + 1);
+    expect(signals.every((signal) => signal.aborted)).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("identifies an incompatible App even when that protocol uses different token or media metadata", async () => {
@@ -113,7 +170,7 @@ describe("native App private wire", () => {
     const staleNotification = notifyNativePresentation("zh", stale.signal);
     stale.abort();
     await staleNotification;
-    expect(fetcher).toHaveBeenCalledOnce();
+    expect(fetcher).toHaveBeenCalledTimes(NATIVE_CLIENT_PORT_END - NATIVE_CLIENT_PORT_START + 1);
     expect(fetcher).toHaveBeenCalledWith("http://127.0.0.1:39721/health", expect.anything());
     const current = new AbortController();
     await notifyNativePresentation("vis", current.signal);

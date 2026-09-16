@@ -100,12 +100,15 @@ use a configured Site when persistent control availability or SFU fallback matte
 
 ### Chromium WebRTC Connections
 
-**Why can screen capture succeed while the media connection fails?**
+**Why can the page open, or screen capture succeed, while sharing or viewing fails?**
 
 Chromium-based Browsers can restrict WebRTC UDP through Browser settings,
 extensions or managed policies. Disabling non-proxied UDP can prevent even the
 local Browser-to-App media connection; successful capture or page loading
 does not prove that this separate connection is available.
+The viewing browser is affected too: this can lead to **No media route available**
+or another connection error. Hiding local IP addresses alone does not necessarily
+disable WebRTC; the effective transport policy matters.
 
 Check the Browser's WebRTC/IP-handling policy and any extension's WebRTC or
 IP-leak protection setting. Restore a policy that permits WebRTC UDP, reload

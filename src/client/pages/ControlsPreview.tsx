@@ -36,7 +36,7 @@ export function ControlsPreview() {
   const [name, setName] = useState("Piik friend");
   const [invalid, setInvalid] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(false);
-  const [sourceState, setSourceState] = useState<NativeSourceList["kind"]>("ready");
+  const [sourceState, setSourceState] = useState<NativeSourceList["kind"] | "empty">("ready");
   const [captureBorderAvailable, setCaptureBorderAvailable] = useState(true);
   const [showCaptureBorder, setShowCaptureBorder] = useState(false);
   const [roomCode, setRoomCode] = useState("6020");
@@ -130,15 +130,16 @@ export function ControlsPreview() {
     <section id="source-preview" className="cp-section">
       <header className="cp-section-head"><span className="cp-number">06</span><div><h2>{en ? "Choose a picture" : "挑一块画面。"}</h2>
         <p>{en ? "The actual source selector, with sample windows. Selection only updates this preview." : "正式的画面选择器，放入了几个示例窗口；选择只影响这张预览。"}</p></div></header>
-      <div className="cp-tools">{(["ready", "loading", "unavailable", "incompatible"] as const).map((value, index) => <Chip key={value}
+      <div className="cp-tools">{(["ready", "loading", "unavailable", "incompatible", "unsupported", "failed", "empty"] as const).map((value, index) => <Chip key={value}
         title={value} selected={sourceState === value} onClick={() => { setSourceState(value); setSourceOpen(true); }}>
-        {en ? ["Available", "Loading", "App unavailable", "Update needed"][index] : ["正常", "读取中", "App 未连接", "需要更新"][index]}</Chip>)}
+        {en ? ["Available", "Loading", "App unavailable", "Update needed", "Capture unavailable", "Read failed", "Empty list"][index] : ["正常", "读取中", "App 未连接", "需要更新", "无法采集", "读取失败", "空列表"][index]}</Chip>)}
         <SwitchItem checked={captureBorderAvailable} onChange={setCaptureBorderAvailable}
           label={en ? "Windows border control" : "Windows 边框控制"} />
       </div>
       <div className="cp-stage"><StageTv hasEntry label={t("host.sourcePicker.title")}>
         <img className="cp-poster" src={POSTER} alt="" />
-        {sourceOpen ? <CaptureSourcePicker nativeSources={sourceState === "ready" ? { ...SOURCES, captureBorderControl: captureBorderAvailable } : { kind: sourceState }}
+        {sourceOpen ? <CaptureSourcePicker nativeSources={sourceState === "empty" ? { ...SOURCES, sources: [], captureBorderControl: captureBorderAvailable }
+          : sourceState === "ready" ? { ...SOURCES, captureBorderControl: captureBorderAvailable } : { kind: sourceState }}
           initialShowCaptureBorder={showCaptureBorder}
           onBrowser={() => { setSourceOpen(false); notify(); }}
           onNative={(_target, _audio, showBorder) => { setShowCaptureBorder(showBorder); setSourceOpen(false); notify(); }}

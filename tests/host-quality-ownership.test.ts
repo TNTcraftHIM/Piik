@@ -440,6 +440,53 @@ describe("Host quality ownership", () => {
     current.closePicker();
   });
 
+  it("distinguishes absent App, missing capture capability, incompatible codec and an empty source list", async () => {
+    const absent = fixture();
+    absent.nativeClientRef.current = null;
+    await absent.openPicker();
+    expect(absent.setNativeSources).toHaveBeenLastCalledWith({ kind: "unavailable" });
+
+    const unsupported = fixture();
+    unsupported.client.health.nativeMedia.video = false;
+    await unsupported.openPicker();
+    expect(unsupported.setNativeSources).toHaveBeenLastCalledWith({ kind: "unsupported" });
+    expect(unsupported.client.sources).not.toHaveBeenCalled();
+
+    const codec = fixture();
+    codec.context.defaultNativeCapturePath = () => null;
+    await codec.openPicker();
+    expect(codec.setNativeSources).toHaveBeenLastCalledWith({ kind: "unsupported" });
+
+    const empty = fixture();
+    await empty.openPicker();
+    expect(empty.setNativeSources).toHaveBeenLastCalledWith(expect.objectContaining({ kind: "ready", sources: [] }));
+  });
+
+  it("reports listing failure separately and reconnects on refresh", async () => {
+    const current = fixture();
+    current.nativeShareGenerationRef.current = null;
+    current.client.sources.mockRejectedValueOnce(new Error("capture helper exited"));
+    await current.openPicker();
+    expect(current.setNativeSources).toHaveBeenLastCalledWith({ kind: "failed" });
+    expect(current.client.close).toHaveBeenCalledOnce();
+    const replacement = { ...current.client, close: vi.fn() };
+    current.NativeClient.connect.mockResolvedValue(replacement);
+    await current.openPicker();
+    expect(current.setNativeSources).toHaveBeenLastCalledWith(expect.objectContaining({ kind: "ready" }));
+    current.closePicker();
+    expect(replacement.close).toHaveBeenCalledOnce();
+  });
+
+  it("keeps a live Native share when source enumeration fails", async () => {
+    const current = fixture();
+    current.client.sources.mockRejectedValueOnce(new Error("list failed"));
+    await current.openPicker();
+    expect(current.setNativeSources).toHaveBeenLastCalledWith({ kind: "failed" });
+    expect(current.client.close).not.toHaveBeenCalled();
+    expect(current.client.stopShare).not.toHaveBeenCalled();
+    expect(current.nativeClientRef.current).toBe(current.client);
+  });
+
   it("ignores a cancelled discovery mismatch after another picker owns a compatible App", async () => {
     const current = fixture();
     current.nativeClientRef.current = null;

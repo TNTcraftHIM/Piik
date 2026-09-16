@@ -1174,6 +1174,7 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
   font-weight: 600;
   animation: lr-slide-in 240ms var(--spring);
 }
+.lr-pill > .lr-glyph { flex-shrink: 0; }
 .lr-pill.is-bad { background: rgba(214, 69, 65, .1); border-color: var(--danger); color: #a1332f; }
 .lr-pill.is-good { background: #e2f3e9; border-color: var(--live); color: #1f7a4a; }
 html[data-theme="dark"] .lr-pill { background: #2e2410; }

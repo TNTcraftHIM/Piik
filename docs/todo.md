@@ -13,19 +13,12 @@ history. A parked idea is not implementation authority.
   branch. Complete user acceptance before release. Unsupported
   Windows and actual permission denial remain device checks; do not claim those
   physical paths from the supported-system result.
-- [ ] **App/Browser source discovery and feedback.** Investigate the report of
-  missing window sources; confirm the exact message, screen, OS/browser and App
-  version. The custom selector currently renders both App unavailability and a
-  successfully loaded empty list as "No sources available". Distinguish these
-  outcomes using facts from the existing discovery/capture owners. Check prior
-  site activation versus a fresh Browser profile, configured-origin matching,
-  local-network permission timing (including the 400 ms discovery deadline),
-  protocol mismatch, occupied control sessions, helper/encoder capabilities and
-  source-list failures. Compare startup-only probing with list refresh and App
-  restart recovery; keep Browser capture usable and local media-bridge failures
-  separate. A generic fetch
-  failure cannot prove a permission denial. Confirm the reporting machine's
-  cause before claiming resolution.
+- [ ] **App source-discovery field acceptance.** Retest the missing-window report
+  with the current App and page. Obtain OS/browser, version and paired Debug
+  reports to distinguish discovery, capture capability and enumeration failures.
+  Verify first-run local-network consent on a fresh browser profile and recovery
+  after granting access. Automated delayed-response checks do not establish the
+  real permission prompt or the reporting machine's cause.
 - [ ] **Linux output failure boundary.** Run the wired `build.sh --check` on a
   supported Linux runner, including encoder admission and primary error checks.
   Then verify and isolate output-local encoder failures while retaining fatal

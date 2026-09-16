@@ -21,6 +21,8 @@ export type NativeSourceList =
   | { kind: "loading" }
   | { kind: "unavailable" }
   | { kind: "incompatible" }
+  | { kind: "unsupported" }
+  | { kind: "failed" }
   | {
       kind: "ready";
       sources: NativeCaptureTarget[];
@@ -67,6 +69,11 @@ export function CaptureSourcePicker({
   const [showCaptureBorder, setShowCaptureBorder] = useState(initialShowCaptureBorder);
   const activeTab = tab === "browser" && !browserAvailable ? "window" : tab;
   const supportsCaptureBorder = nativeSources.kind === "ready" && nativeSources.captureBorderControl === true;
+  const issueKey = nativeSources.kind === "incompatible" ? "native.incompatible"
+    : activeTab !== "browser" && (nativeSources.kind === "unavailable" ||
+      nativeSources.kind === "unsupported" || nativeSources.kind === "failed")
+      ? `host.sourcePicker.${nativeSources.kind}` as const
+      : null;
 
   useEffect(() => {
     const cancelOnEscape = (event: KeyboardEvent) => {
@@ -320,8 +327,8 @@ export function CaptureSourcePicker({
             </div>
           ) : null}
 
-          {nativeSources.kind === "incompatible" ? (
-            <Pill icon="alert" label={t("native.incompatible")} comic="warning" />
+          {issueKey ? (
+            <Pill icon="alert" label={t(issueKey)} comic="warning" />
           ) : activeTab === "browser" ? null : nativeSources.kind === "loading" ? (
             <span
               className="lr-source-picker-status"

@@ -41,7 +41,6 @@ import {
   type NativeVideoCodec,
 } from "./wire";
 
-const DISCOVERY_TIMEOUT_MS = 400;
 const REQUEST_TIMEOUT_MS = 8_000;
 
 interface PendingRequest<T = unknown> {
@@ -71,48 +70,51 @@ export class NativeCompatibilityError extends Error {
 }
 
 export async function discoverNativeHealth(): Promise<NativeHealth | null> {
-  let incompatible: NativeCompatibilityError | null = null;
-  for (
-    let port = NATIVE_CLIENT_PORT_START;
-    port <= NATIVE_CLIENT_PORT_END;
-    port += 1
-  ) {
-    const controller = new AbortController();
-    const timer = window.setTimeout(
-      () => controller.abort(),
-      DISCOVERY_TIMEOUT_MS,
-    );
-    try {
+  const controller = new AbortController();
+  // The first request may wait for browser permission. One shared deadline
+  // bounds the scan; a silent port must not hide an App on another port.
+  const timer = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    return await Promise.any(Array.from({
+      length: NATIVE_CLIENT_PORT_END - NATIVE_CLIENT_PORT_START + 1,
+    }, async (_, index) => {
+      const port = NATIVE_CLIENT_PORT_START + index;
       const response = await fetch(`http://127.0.0.1:${port}/health`, {
         cache: "no-store",
         signal: controller.signal,
         targetAddressSpace: "loopback",
       } as RequestInit);
-      if (!response.ok) continue;
+      if (!response.ok) throw new Error("Piik App discovery was not accepted");
       const body: unknown = await response.json();
       const identity = nativeDiscoveryIdentitySchema.safeParse(body);
-      if (!identity.success || identity.data.port !== port) continue;
-      if (identity.data.protocol !== NATIVE_CLIENT_PROTOCOL) {
-        incompatible ??= new NativeCompatibilityError(identity.data.protocol);
-        continue;
+      if (!identity.success || identity.data.port !== port) {
+        throw new Error("Not a Piik App discovery response");
       }
-      const health = nativeHealthSchema.safeParse(body);
-      if (health.success) return health.data;
-    } catch {
-      // An absent App and a denied local-network permission are both
-      // ordinary Browser-only operation.
-    } finally {
-      window.clearTimeout(timer);
+      if (identity.data.protocol !== NATIVE_CLIENT_PROTOCOL) {
+        throw new NativeCompatibilityError(identity.data.protocol);
+      }
+      const health = nativeHealthSchema.parse(body);
+      debugEvent("native", "discovered", { capabilities: health.nativeMedia });
+      return health;
+    }));
+  } catch (error) {
+    const incompatible = error instanceof AggregateError
+      ? error.errors.find((failure) => failure instanceof NativeCompatibilityError)
+      : undefined;
+    if (incompatible) {
+      debugEvent("native", "incompatible", {
+        expectedProtocol: NATIVE_CLIENT_PROTOCOL,
+        actualProtocol: incompatible.actualProtocol,
+      });
+      throw incompatible;
     }
+    // A failed fetch cannot distinguish an absent App from blocked local access.
+    debugEvent("native", "unavailable", { stage: "discovery", timedOut: controller.signal.aborted });
+    return null;
+  } finally {
+    window.clearTimeout(timer);
+    controller.abort();
   }
-  if (incompatible) {
-    debugEvent("native", "incompatible", {
-      expectedProtocol: NATIVE_CLIENT_PROTOCOL,
-      actualProtocol: incompatible.actualProtocol,
-    });
-    throw incompatible;
-  }
-  return null;
 }
 
 export async function notifyNativePresentation(
@@ -180,6 +182,7 @@ export class NativeClient {
       );
     });
     if (!opened) {
+      debugEvent("native", "unavailable", { stage: "control" });
       socket.close();
       return null;
     }

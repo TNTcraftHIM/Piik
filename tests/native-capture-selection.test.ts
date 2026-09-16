@@ -62,6 +62,25 @@ describe("native capture source selection", () => {
     ).toBe("display:2");
   });
 
+  it.each(["unavailable", "unsupported", "failed"] as const)("does not describe %s as an empty list or block Browser capture", (kind) => {
+    for (const mode of ["en", "zh", "vis"] as const) {
+      const lang = mode === "zh" ? "zh" : "en";
+      setCopy({ lang, vis: mode === "vis" });
+      const props = {
+        nativeSources: { kind }, onBrowser: () => {}, onNative: () => {},
+        onPreview: async () => null, onRefresh: () => {}, onCancel: () => {},
+      };
+      const nativeTab = renderToStaticMarkup(createElement(CaptureSourcePicker, props));
+      expect(nativeTab.replaceAll("&#x27;", "'")).toContain(t(lang, `host.sourcePicker.${kind}`));
+      expect(nativeTab).not.toContain(t(lang, "host.sourcePicker.empty"));
+      expect(nativeTab).not.toMatch(/class="lr-source-picker-refresh"[^>]*disabled=""/);
+      const browserTab = renderToStaticMarkup(createElement(CaptureSourcePicker, { ...props, initialTab: "browser" }));
+      expect(browserTab).toContain(`aria-label="${t(lang, "host.sourcePicker.browser")}"`);
+      expect(browserTab).not.toContain(t(lang, `host.sourcePicker.${kind}`));
+      expect(browserTab).not.toMatch(/class="lr-source-option is-browser"[^>]*disabled=""/);
+    }
+  });
+
   it.each(["browser", "window"] as const)("only adds waiting copy to the pending %s source list", initialTab => {
     setCopy({ lang: "en", vis: false });
     const html = renderToStaticMarkup(createElement(CaptureSourcePicker, {

@@ -1309,13 +1309,16 @@ export function HostPage({
     if (nativeSourceRequestRef.current !== request) {
       return;
     }
+    if (!client) {
+      setNativeSources({ kind: "unavailable" });
+      return;
+    }
     if (
-      !client ||
       !client.health.nativeMedia.video ||
       (!client.health.nativeMedia.hardwareH264 &&
         !client.health.nativeMedia.softwareVP8)
     ) {
-      setNativeSources({ kind: "unavailable" });
+      setNativeSources({ kind: "unsupported" });
       return;
     }
     try {
@@ -1323,16 +1326,18 @@ export function HostPage({
         client.captureOptions(),
         client.sources(),
       ]);
+      const codec = nativeModeRef.current ? videoCodecRef.current.primary : videoCodecModeRef.current;
       const path = defaultNativeCapturePath(
         adapters,
-        nativeModeRef.current ? videoCodecRef.current.primary : videoCodecModeRef.current,
+        codec,
         client.health.nativeMedia.softwareVP8,
       );
       if (nativeSourceRequestRef.current !== request || nativeClientRef.current !== client) {
         return;
       }
       if (!path) {
-        setNativeSources({ kind: "unavailable" });
+        debugEvent("native", "capture-unavailable", { codec });
+        setNativeSources({ kind: "unsupported" });
         return;
       }
       nativeSourcePathRef.current = path;
@@ -1343,12 +1348,13 @@ export function HostPage({
         systemAudio: client.health.nativeMedia.systemAudio,
         captureBorderControl: client.health.nativeMedia.captureBorderControl,
       });
-    } catch {
+    } catch (error) {
       if (nativeSourceRequestRef.current !== request || nativeClientRef.current !== client) return;
+      debugError("native", "source-list-failed", error);
       if (!nativeShareGenerationRef.current) {
         discardNativeClient(client);
       }
-      setNativeSources({ kind: "unavailable" });
+      setNativeSources({ kind: "failed" });
     }
   }
 
