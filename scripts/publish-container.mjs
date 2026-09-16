@@ -21,7 +21,8 @@ const release = gh(`releases/tags/${version}`);
 assert.equal(release.draft, false, "Container publication requires a published GitHub release");
 assert.equal(release.prerelease, false);
 assert.equal(release.target_commitish, revision);
-assert.equal(gh(`commits/${version}`).sha, revision, "Published source tag changed");
+assert.equal(run("gh", "api", `repos/${repository}/commits/${version}`,
+  "--header", "Accept: application/vnd.github.sha"), revision, "Published source tag changed");
 assert.equal(release.assets.find((asset) => asset.name === server.name)?.digest,
   `sha256:${server.sha256}`, "Container must wrap the published Server archive");
 

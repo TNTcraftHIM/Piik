@@ -9,7 +9,7 @@ const repository = "TNTcraftHIM/Piik", image = `piik-candidate:${revision}`;
 const tag = `ghcr.io/tntcrafthim/piik:${version}`;
 type Scenario = { existing?: boolean; draft?: boolean; badArchive?: boolean;
   wrongSource?: boolean; wrongImage?: boolean; remoteMismatch?: boolean;
-  registryError?: boolean; newerRelease?: boolean };
+  registryError?: boolean; newerRelease?: boolean; largeCommit?: boolean };
 
 async function publish(options: Scenario = {}) {
   vi.resetModules();
@@ -17,7 +17,10 @@ async function publish(options: Scenario = {}) {
   command.mockReset().mockImplementation((program: string, args: string[]) => {
     if (program === "gh") {
       if (args[1].endsWith("/commits/" + version)) {
-        return JSON.stringify({ sha: options.wrongSource ? "c".repeat(40) : revision });
+        const sha = options.wrongSource ? "c".repeat(40) : revision;
+        if (args.includes("Accept: application/vnd.github.sha")) return sha;
+        if (options.largeCommit) throw Object.assign(new Error("spawnSync gh ENOBUFS"), { code: "ENOBUFS" });
+        return JSON.stringify({ sha });
       }
       if (args[1].endsWith("/releases/latest")) {
         return JSON.stringify({ tag_name: options.newerRelease ? "v1.3.0" : version });
@@ -66,5 +69,9 @@ describe("container publication", () => {
   it("retains an existing version and cannot move latest backwards", async () => {
     await publish({ existing: true, newerRelease: true });
     expect(pushes()).toEqual([]);
+  });
+  it("checks tag identity without buffering a large commit's file patches", async () => {
+    await publish({ largeCommit: true });
+    expect(pushes()).toEqual([tag, "ghcr.io/tntcrafthim/piik:latest"]);
   });
 });

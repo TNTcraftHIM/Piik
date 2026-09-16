@@ -22,7 +22,7 @@ const nonProductPaths = [
   "scripts/build-website.mjs", "scripts/update-website-hero.mjs", "scripts/check-website-film.js",
   "scripts/check-docs.mjs", "scripts/markdown-slug.mjs", "scripts/check-project-state.*", "scripts/install-hooks.*",
   "scripts/required-project-paths.txt", "scripts/tsconfig.json",
-  "scripts/release-*.mjs", "scripts/publish-release.mjs", "scripts/mirror-release.mjs",
+  "scripts/release-*.mjs", "scripts/publish-release.mjs", "scripts/publish-container.mjs", "scripts/mirror-release.mjs",
   "scripts/*-gate.*", "scripts/*-probe.*", "scripts/browser-*", "scripts/encoded-*",
   "scripts/*-gate-endpoint.ts", "scripts/embedded-sfu-page.ts", "scripts/peer-assisted-benchmark.ts",
   "cmd/piik-peer-gate/**",
