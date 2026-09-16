@@ -93,10 +93,12 @@ See the [App guide](../../cmd/piik-app/README.md) for package and runtime detail
 
 For **Connect to Site**, enter the full site address, such as
 `https://demo.piik.tv`, add its passphrase if required, then choose **Open Piik**.
-Once that address is saved, you can also keep the App running and open the same
-site directly in your browser. Choosing **Start sharing** discovers an already-running
-App and its available capture sources. Allow local-network access if the browser asks.
-For a different site, update the address in the App first.
+After opening the site through the App once, the same browser remembers that
+entry. Keep the App running with that site configured and you can visit the
+address directly. **Start sharing** opens the selector; choose **Apps / Windows**
+or **Screens** for App capture. Allow local-network access if the browser asks.
+In another browser, in a private window, or after clearing site data, enter through
+the App again. For a different site, update the address in the App first.
 
 **A page that opens does not guarantee a video connection.** Public invite gives
 your room a temporary web address; picture and sound still travel between
@@ -129,6 +131,7 @@ Invitation links grant access to that room; share them with the people you want 
 | --- | --- |
 | Picture but no sound | Unmute the video. The host should choose a source with shareable audio; if sound was disabled, stop and start sharing with it enabled. App window/screen capture keeps that setting when switching sources. |
 | No screen picker | Allow the browser or App to record the screen when the OS asks. Browser capture needs HTTPS or `localhost`; try sharing from a desktop computer. |
+| No App windows or screens listed | Keep the App running and reopen its sharing page. Allow local-network access if asked, then refresh the source list. You can also choose **Browser** → **Browser picker** to use browser capture. If the problem persists, collect the Debug report described below. |
 | App startup fails | Read the reason on the page and in the terminal. Reopen the App and enable the chip-shaped **Debug launch** control after the theme button before trying again. A failed startup then exports a report; its path appears in the terminal. |
 | Local invitation will not open | Check that both devices are on the same network and can reach each other. Guest Wi-Fi or firewall rules can block local access. |
 | Page opens but video will not connect | Use **Reconnect** if available, or refresh the viewing page. See [connection troubleshooting](#when-video-will-not-connect) if it still fails. |

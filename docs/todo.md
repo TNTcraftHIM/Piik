@@ -15,6 +15,19 @@ history. A parked idea is not implementation authority.
   page-level reduced-motion preference and the player tooltip placement are
   implemented and need final visual review. Keep release approval, version and
   bilingual release notes with the user.
+- [ ] **App/Browser source discovery and feedback.** Investigate the report of
+  missing window sources; confirm the exact message, screen, OS/browser and App
+  version. The custom selector currently renders both App unavailability and a
+  successfully loaded empty list as "No sources available". Distinguish these
+  outcomes using facts from the existing discovery/capture owners. Check prior
+  site activation versus a fresh Browser profile, configured-origin matching,
+  local-network permission timing (including the 400 ms discovery deadline),
+  protocol mismatch, occupied control sessions, helper/encoder capabilities and
+  source-list failures. Compare startup-only probing with list refresh and App
+  restart recovery; keep Browser capture usable and local media-bridge failures
+  separate. A generic fetch
+  failure cannot prove a permission denial. Confirm the reporting machine's
+  cause before claiming resolution.
 - [ ] **Linux output failure boundary.** Run the wired `build.sh --check` on a
   supported Linux runner, including encoder admission and primary error checks.
   Then verify and isolate output-local encoder failures while retaining fatal
