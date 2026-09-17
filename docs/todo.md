@@ -14,6 +14,11 @@ deployments remain separate. Physical limits are owned by
 
 ## Awaiting Device Or Reporter Evidence
 
+- [ ] **Brief connection followed by repeated Viewer loss on v1.5.0.** One
+  Viewer reportedly drops just after connection details appear, while other
+  Viewers work; App public-link mode is suspected. Check signaling, first-frame
+  admission and current-edge recovery separately. The affected environment and
+  paired diagnostics are unavailable; no network or product cause is established.
 - [ ] **App source-discovery field acceptance.** Retest the missing-window report
   with the current App and page. Obtain OS/browser, version and paired Debug
   reports to distinguish discovery, capture capability and enumeration failures.
