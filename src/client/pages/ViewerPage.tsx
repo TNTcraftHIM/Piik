@@ -843,6 +843,8 @@ export function ViewerPage({
             }
           },
           onPreparedChildFailed: reportPreparedChildFailure,
+          onPreparedChildConnected: (revision, connectionId) =>
+            active && signal.send({ type: "route-transport-connected", revision, connectionId }),
         },
         endpointMediaCopyCapacity,
         currentRoutePolicy.natPrediction,

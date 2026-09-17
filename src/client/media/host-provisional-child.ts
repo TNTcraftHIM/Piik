@@ -47,6 +47,7 @@ interface HostProvisionalChildEvents {
   ) => void;
   onPromotedUpdate?: (peer: HostMediaPeer, snapshot: PeerSnapshot) => void;
   onPreparedChildFailed?: (revision: number, connectionId: string) => void;
+  onPreparedChildConnected?: (revision: number, connectionId: string) => boolean;
 }
 
 export type HostPreparedChildActivation =
@@ -58,6 +59,7 @@ interface PreparedHostChild {
   candidate: PreparedRouteCandidate;
   peer: HostMediaPeer;
   failed: boolean;
+  connectedSent: boolean;
   replacesConnectionId: string | null;
 }
 
@@ -119,6 +121,17 @@ export class HostProvisionalChild {
           : false,
       onUpdate: (snapshot: PeerSnapshot) => {
         if (this.prepared?.peer === peer) {
+          const prepared = this.prepared;
+          if (
+            !prepared.failed && !prepared.connectedSent &&
+            snapshot.connectionState === "connected" &&
+            snapshot.connectionId === candidate.connectionId &&
+            snapshot.peerId === candidate.childPeerId
+          ) {
+            prepared.connectedSent = this.events.onPreparedChildConnected?.(
+              revision, candidate.connectionId,
+            ) ?? false;
+          }
           if (snapshot.connectionState === "failed") {
             this.fail(peer);
           }
@@ -150,6 +163,7 @@ export class HostProvisionalChild {
       candidate: { ...candidate },
       peer,
       failed: false,
+      connectedSent: false,
       replacesConnectionId:
         this.events.activeConnectionId?.(candidate.childPeerId) ?? null,
     };

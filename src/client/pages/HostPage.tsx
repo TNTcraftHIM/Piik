@@ -1901,6 +1901,9 @@ export function HostPage({
       onPreparedChildFailed: (revision, connectionId) => {
         reportPreparedHostChildFailure(revision, connectionId, generation);
       },
+      onPreparedChildConnected: (revision, connectionId) =>
+        isCurrentGeneration(generation) && signalRef.current === signal &&
+        signal.send({ type: "route-transport-connected", revision, connectionId }),
       createPeer:
         nativeClient && nativeShareGeneration
           ? (candidate, input, events) => {

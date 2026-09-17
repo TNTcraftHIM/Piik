@@ -25,6 +25,7 @@ export interface ViewerRelayEvents {
   onUpdate?: (snapshot: PeerSnapshot | null) => void;
   onSenderUpdate?: (snapshot: PeerSnapshot, revision: number | null) => void;
   onPreparedChildFailed?: (revision: number, connectionId: string) => void;
+  onPreparedChildConnected?: (revision: number, connectionId: string) => boolean;
 }
 interface PreparedChild {
   revision: number;
@@ -32,6 +33,7 @@ interface PreparedChild {
   candidate: PreparedRouteCandidate;
   peer: HostMediaPeer;
   failed: boolean;
+  connectedSent: boolean;
   replacesConnectionId: string | null;
 }
 
@@ -376,6 +378,7 @@ export class ViewerRelay {
       candidate: { ...candidate },
       peer,
       failed: false,
+      connectedSent: false,
       replacesConnectionId:
         this.peers.get(candidate.childPeerId)?.connectionId ?? null,
     };
@@ -539,6 +542,17 @@ export class ViewerRelay {
           : false,
       onUpdate: (snapshot) => {
         if (this.preparedChild?.peer === peer) {
+          const prepared = this.preparedChild;
+          if (
+            !prepared.failed && !prepared.connectedSent &&
+            snapshot.connectionState === "connected" &&
+            snapshot.connectionId === prepared.candidate.connectionId &&
+            snapshot.peerId === prepared.childPeerId
+          ) {
+            prepared.connectedSent = this.events.onPreparedChildConnected?.(
+              prepared.revision, snapshot.connectionId,
+            ) ?? false;
+          }
           if (snapshot.connectionState === "failed") {
             this.failPreparedChild(peer);
           }

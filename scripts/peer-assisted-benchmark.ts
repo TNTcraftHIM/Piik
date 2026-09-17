@@ -153,7 +153,7 @@ interface FailurePageEvidence {
   connections: Array<{
     connectionState: string;
     iceConnectionState: string;
-    identity: "peer" | "unidentified";
+    identity: "peer" | "sfu" | "unidentified";
     hasOutboundVideo: boolean;
     hasInboundVideo: boolean;
     decoded: boolean;
@@ -788,9 +788,9 @@ function sanitizeFailurePageEvidence(
           ? connection.iceConnectionState
           : "unknown",
         identity:
-          connection.connectionId !== null || connection.remotePeerId !== null
+          connection.remotePeerId !== null
             ? "peer"
-            : "unidentified",
+            : connection.connectionId !== null ? "sfu" : "unidentified",
         hasOutboundVideo: connection.hasOutboundVideo,
         hasInboundVideo: connection.hasInboundVideo,
         decoded: (connection.receiveTotals?.framesTotal ?? 0) > 0,
@@ -850,7 +850,7 @@ function inspectSfuPublication(pages: readonly PageObservation[]) {
           ? connection.sendTotals
           : connection.receiveTotals;
       return (
-        connection.connectionId === null &&
+        connection.connectionId !== null &&
         connection.remotePeerId === null &&
         connection.connectionState === "connected" &&
         (direction === "send"
@@ -1170,7 +1170,7 @@ function committedReceiveMetrics(
       connection.receive !== null &&
       (upstream.kind === "peer"
         ? connection.remotePeerId === upstream.peerId
-        : connection.connectionId === null && connection.remotePeerId === null),
+        : connection.connectionId !== null && connection.remotePeerId === null),
   );
   return matching.length === 1 ? matching[0]!.receive : null;
 }
@@ -1825,7 +1825,7 @@ function buildBenchmarkInitScript(options: {
     }
 
     function recordDescription(message, direction) {
-      const payload = message && message.payload;
+      const payload = message.type === "sfu-signal" ? message : message.payload;
       if (!payload || payload.kind !== "description" || !payload.description) return;
       descriptions.push({
         peerId: direction === "out" ? message.targetPeerId : message.fromPeerId,
@@ -1833,6 +1833,7 @@ function buildBenchmarkInitScript(options: {
         sdpKey: sdpKey(payload.description.sdp),
       });
       if (descriptions.length > 128) descriptions.shift();
+      recordActiveOutboundEdges();
     }
 
     function sanitizeRouteTimingSamples(value) {
@@ -1912,7 +1913,7 @@ function buildBenchmarkInitScript(options: {
       ) {
         routeTimingSamples = sanitizeRouteTimingSamples(message.snapshot);
       }
-      if (message.type === "signal") recordDescription(message, direction);
+      if (message.type === "signal" || message.type === "sfu-signal") recordDescription(message, direction);
     }
 
     const NativeWebSocket = globalThis.WebSocket;
@@ -1974,7 +1975,7 @@ function buildBenchmarkInitScript(options: {
 
     const NativePeerConnection = globalThis.RTCPeerConnection;
     function recordActiveOutboundEdges() {
-      const active = connections.filter(({ connection }) =>
+      const active = networkConnections().filter(({ connection }) =>
         connection.connectionState !== "closed" &&
         connection.connectionState !== "failed" &&
         connection.getSenders().some((sender) => sender.track && sender.track.kind === "video")
@@ -2084,6 +2085,12 @@ function buildBenchmarkInitScript(options: {
       return { connectionId: null, remotePeerId: null };
     }
 
+    // Local codec probes and encoding-pool transports never cross room signaling.
+    // Count actual Peer/SFU media edges, not every RTCPeerConnection in the page.
+    function networkConnections() {
+      return connections.filter(({ connection }) => identify(connection).connectionId !== null);
+    }
+
     function totals(report, type) {
       let selected = null;
       report.forEach((raw) => {
@@ -2162,13 +2169,13 @@ function buildBenchmarkInitScript(options: {
     }
 
     async function sample() {
-      const sampledConnections = await Promise.all(connections.map(connectionSample));
+      const sampledConnections = await Promise.all(networkConnections().map(connectionSample));
       return { ...baseSnapshot(), connections: sampledConnections };
     }
 
     async function progress() {
       const values = [];
-      for (const record of connections) {
+      for (const record of networkConnections()) {
         const connection = record.connection;
         const hasOutboundVideo = connection.getSenders().some((sender) => sender.track && sender.track.kind === "video");
         const hasInboundVideo = connection.getReceivers().some((receiver) => receiver.track && receiver.track.kind === "video");
@@ -2195,7 +2202,7 @@ function buildBenchmarkInitScript(options: {
     function snapshot() {
       return {
         ...baseSnapshot(),
-        connections: connections.map((record) => ({
+        connections: networkConnections().map((record) => ({
           index: record.index,
           ...identify(record.connection),
           connectionState: record.connection.connectionState,

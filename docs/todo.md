@@ -7,18 +7,24 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-No additional implementation is scheduled. Routine release and postflight
-follow the [deployment runbook](./deployment.md); public demo and private service
-deployments remain separate. Physical limits are owned by
-[verification status](./verification-status.md).
+- [ ] **v1.5.2 release.** Review the bilingual release notes, integrate the
+  connection-progress repair and complete publication/postflight under the
+  release approval boundary. The original field report still requires matching
+  evidence.
+
+Release and postflight follow the [deployment runbook](./deployment.md); public
+demo and private service deployments remain separate. Physical limits are owned
+by [verification status](./verification-status.md).
 
 ## Awaiting Device Or Reporter Evidence
 
 - [ ] **Brief connection followed by repeated Viewer loss on v1.5.0.** One
   Viewer reportedly drops just after connection details appear, while other
   Viewers work; App public-link mode is suspected. Check signaling, first-frame
-  admission and current-edge recovery separately. The affected environment and
-  paired diagnostics are unavailable; no network or product cause is established.
+  admission and current-edge recovery separately. A delayed-confirmation
+  reproduction establishes one premature candidate replacement; the affected
+  environment and paired diagnostics are still unavailable, so the reporting
+  machine's cause remains unconfirmed.
 - [ ] **App source-discovery field acceptance.** Retest the missing-window report
   with the current App and page. Obtain OS/browser, version and paired Debug
   reports to distinguish discovery, capture capability and enumeration failures.
@@ -67,6 +73,9 @@ not establish better connection success or speed; this note adds no retry policy
    when directed, preserving the owner's platform deferrals. Correlate freezes
    with publisher/receiver evidence before changing media policy. Run physical
    workloads serially from stable executable paths with cleanup between runs.
+   Before using the optional `viewer-mbb` benchmark canary, align its injected
+   evidence and capacity assertions with the current sender-owned quality
+   contract; its old Viewer-only trigger is not a valid quality acceptance gate.
 2. **Broader quality work.** Reopen from measured benefit at acceptable complexity.
    Preserve chosen profiles, bitrate ceilings, endpoint capacity and P2P-first
    routing unless a new accepted decision supports changing them. No weighted

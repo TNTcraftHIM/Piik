@@ -92,6 +92,10 @@ fallback remains. It advances a silent Peer candidate instead of delaying the
 next available route; it is not interpreted as terminal ICE failure. The final
 or only Peer candidate remains until the unchanged total operation deadline.
 Transport-connected progress also retains a candidate through that deadline.
+Either exact preparing endpoint can report that progress, so a delayed Viewer
+confirmation does not discard a transport already observed by its parent.
+This cannot commit the route: first-frame readiness remains Viewer-owned, and
+progress never extends the total operation deadline.
 Consequently a working SFU route can carry media while its one-candidate direct
 convergence uses the full background operation, and peer-only acquisition does
 not abandon its only possible route at the foreground boundary.

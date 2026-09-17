@@ -1763,6 +1763,30 @@ function hostProvisionalInput(
 }
 
 describe("Host provisional child runtime ownership", () => {
+  it("reports connected preparation once, retries unsent progress and fences replacement", async () => {
+    const progress = vi.fn().mockReturnValueOnce(false).mockReturnValue(true);
+    const owner = new HostProvisionalChild({ sendSignal: () => true, onPreparedChildConnected: progress });
+    const stream = createStream(createTrack("video", "progress-video"), null);
+    owner.prepare(hostProvisionalInput(7, ["child"], stream));
+    const first = FakePeerConnection.latest!;
+    first.connectionState = "connected";
+    first.dispatchEvent(new Event("connectionstatechange"));
+    first.dispatchEvent(new Event("connectionstatechange"));
+    first.dispatchEvent(new Event("connectionstatechange"));
+    expect(progress).toHaveBeenCalledTimes(2);
+    expect(progress).toHaveBeenLastCalledWith(7, "candidate-connection-7");
+    owner.prepare(hostProvisionalInput(8, ["replacement"], stream));
+    first.dispatchEvent(new Event("connectionstatechange"));
+    expect(progress).toHaveBeenCalledTimes(2);
+    const second = FakePeerConnection.latest!;
+    second.connectionState = "connected";
+    second.dispatchEvent(new Event("connectionstatechange"));
+    expect(progress).toHaveBeenLastCalledWith(8, "candidate-connection-8");
+    owner.discard();
+    second.dispatchEvent(new Event("connectionstatechange"));
+    expect(progress).toHaveBeenCalledTimes(3);
+  });
+
   it("accepts only the exact connection and promotes the same peer", async () => {
     const signals: Array<{ peerId: string; connectionId: string }> = [];
     const promotedUpdates = vi.fn();
@@ -2311,6 +2335,34 @@ describe("ViewerRelay downstream ownership", () => {
     expect(stoppedProbe.connectionState).toBe("closed");
     relay.dispose();
     expect(onPreparedChildFailed).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports relay transport progress once and retires its reporting scope", async () => {
+    const progress = vi.fn().mockReturnValueOnce(false).mockReturnValue(true);
+    const relay = new ViewerRelay(
+      { iceServers: [] }, QUALITY_PROFILES["720p30"],
+      { sendSignal: () => true, onPreparedChildConnected: progress },
+    );
+    relay.setStream(createStream(createTrack("video", "relay-progress"), null));
+    relay.prepareChild(7, routeCandidate(7, "child"), ["child"]);
+    await vi.waitFor(() => expect(FakePeerConnection.latest).not.toBeNull());
+    const first = FakePeerConnection.latest!;
+    first.connectionState = "connected";
+    first.dispatchEvent(new Event("connectionstatechange"));
+    first.dispatchEvent(new Event("connectionstatechange"));
+    first.dispatchEvent(new Event("connectionstatechange"));
+    expect(progress).toHaveBeenCalledTimes(2);
+    expect(progress).toHaveBeenLastCalledWith(7, "relay-candidate-7");
+    relay.prepareChild(8, routeCandidate(8, "replacement"), ["replacement"]);
+    first.dispatchEvent(new Event("connectionstatechange"));
+    expect(progress).toHaveBeenCalledTimes(2);
+    const second = FakePeerConnection.latest!;
+    second.connectionState = "connected";
+    second.dispatchEvent(new Event("connectionstatechange"));
+    expect(progress).toHaveBeenLastCalledWith(8, "relay-candidate-8");
+    relay.dispose();
+    second.dispatchEvent(new Event("connectionstatechange"));
+    expect(progress).toHaveBeenCalledTimes(3);
   });
 
   it("reports a failed prepared transport once without blaming retained children", async () => {

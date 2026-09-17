@@ -21,6 +21,7 @@ package signal
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"reflect"
@@ -1513,6 +1514,73 @@ func TestRouterKeepsExactTransportConnectedDirectCandidatePastBoundary(t *testin
 		active, ok := h.activeAfter(viewer.sessionID, int64(direct.Revision)-1)
 		return ok && active.Assignment.Upstream.Kind == "peer"
 	})
+}
+
+func TestRouterAcceptsExactParentProgressWithoutGrantingReadiness(t *testing.T) {
+	for _, relayParent := range []bool{false, true} {
+		t.Run(fmt.Sprintf("relay=%v", relayParent), func(t *testing.T) {
+			h := newRouterHarness(t, routerHarnessOptions{capacity: 2, withSfu: true, prepareTimeoutMs: 300, fakeTimers: true})
+			created := h.createRoom()
+			host := h.connectHost(created, nil, "", "")
+			h.locked(func() { h.doComplete(host) })
+			parents := map[string]authenticatedRouteParticipant{host.peerID: host}
+			if relayParent {
+				for _, name := range []string{"root-a", "root-b"} {
+					root := h.connectViewer(created, name)
+					h.locked(func() { h.doComplete(root) })
+					prepared := h.waitPreparedTransport(root.sessionID, "direct")
+					h.routeReady(root, int64(prepared.Revision))
+					h.locked(func() { h.doRelay(root, 2) })
+					parents[root.peerID] = root
+				}
+			}
+			viewer := h.connectViewer(created, "delayed-feedback")
+			h.locked(func() { h.doComplete(viewer) })
+			direct := h.waitPreparedTransport(viewer.sessionID, "direct")
+			h.locked(func() {
+				rm, _ := h.router.rooms.Get(created.RoomID)
+				before := rm.controller.Operation()
+				parent := parents[before.Current.Tuple.ParentPeerID]
+				if (parent.role == protocol.RoleViewer) != relayParent {
+					t.Fatal("unexpected preparing parent")
+				}
+				message := protocol.RouteTransportConnectedMessage{Type: "route-transport-connected", Revision: direct.Revision, ConnectionID: direct.Candidate.ConnectionID}
+				stale := parent
+				stale.sessionID = "retired-session"
+				h.router.handleRouteTransportConnected(stale, message)
+				foreign := parent
+				foreign.peerID = "unrelated-peer"
+				h.router.handleRouteTransportConnected(foreign, message)
+				wrong := message
+				wrong.ConnectionID = "retired-connection"
+				h.router.handleRouteTransportConnected(parent, wrong)
+				wrong = message
+				wrong.Revision++
+				h.router.handleRouteTransportConnected(parent, wrong)
+				if rm.controller.Operation().WakeAtMs != before.WakeAtMs {
+					t.Fatal("unrelated progress changed candidate timing")
+				}
+				h.router.handleRouteTransportConnected(parent, message)
+				after := rm.controller.Operation()
+				if after == nil || after.DeadlineAtMs != before.DeadlineAtMs || after.WakeAtMs != before.DeadlineAtMs {
+					t.Fatal("parent progress did not retain the original total deadline")
+				}
+				h.doReady(parent, int64(direct.Revision))
+				if rm.controller.Operation() == nil {
+					t.Fatal("parent committed a route without Viewer readiness")
+				}
+			})
+			h.clock.advance(150)
+			if prepared, _ := h.preparedFor(viewer.sessionID); !reflect.DeepEqual(prepared, direct) {
+				t.Fatal("connected candidate was replaced before delayed Viewer readiness")
+			}
+			h.routeReady(viewer, int64(direct.Revision))
+			h.waitFor("the active peer edge", func() bool {
+				active, ok := h.activeAfter(viewer.sessionID, int64(direct.Revision)-1)
+				return ok && active.Assignment.Upstream.Kind == "peer"
+			})
+		})
+	}
 }
 
 func TestRouterUsesDirectBoundaryToBootstrapSfuWhenEveryHostSlotIsFull(t *testing.T) {

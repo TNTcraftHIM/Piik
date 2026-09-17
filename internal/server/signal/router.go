@@ -732,10 +732,21 @@ func (r *router) handleRouteReady(participant authenticatedRouteParticipant, mes
 	r.requestPump(participant.roomID)
 }
 
-func (r *router) handleRouteTransportConnected(participant authenticatedRouteParticipant, message protocol.RouteTransportConnectedMessage) {
-	if participant.role != protocol.RoleViewer {
-		return
+// Either endpoint may report transport progress or local failure. First-frame
+// readiness remains owned by the candidate Viewer in handleRouteReady.
+func (r *router) ownsCandidateEndpoint(participant authenticatedRouteParticipant, operation *route.OperationSnapshot) bool {
+	if participant.role == protocol.RoleViewer && participant.peerID == operation.ChildPeerID &&
+		participant.sessionID == operation.ChildSessionID {
+		return true
 	}
+	if operation.Current.Tuple.Kind == route.UpstreamPeer && participant.peerID == operation.Current.Tuple.ParentPeerID {
+		peer, ok := r.connectedPeer(participant.roomID, participant.peerID)
+		return ok && peer.SessionID == participant.sessionID
+	}
+	return false
+}
+
+func (r *router) handleRouteTransportConnected(participant authenticatedRouteParticipant, message protocol.RouteTransportConnectedMessage) {
 	rm, _ := r.rooms.Get(participant.roomID)
 	if rm == nil || rm.controller == nil {
 		return
@@ -744,17 +755,16 @@ func (r *router) handleRouteTransportConnected(participant authenticatedRoutePar
 	operation := controller.Operation()
 	revision := int64(message.Revision)
 	if operation == nil || operation.Current == nil ||
-		operation.ChildPeerID != participant.peerID ||
-		operation.ChildSessionID != participant.sessionID ||
 		operation.Current.Revision != revision ||
 		operation.Current.ConnectionID != message.ConnectionID ||
-		operation.Current.Tuple.Kind != route.UpstreamPeer {
+		operation.Current.Tuple.Kind != route.UpstreamPeer ||
+		!r.ownsCandidateEndpoint(participant, operation) {
 		return
 	}
 	before := controller.Revision()
 	progressed := controller.CandidateTransportConnected(route.CandidateGuard{
-		ChildPeerID:    participant.peerID,
-		ChildSessionID: participant.sessionID,
+		ChildPeerID:    operation.ChildPeerID,
+		ChildSessionID: operation.ChildSessionID,
 		Revision:       revision,
 		ConnectionID:   message.ConnectionID,
 	}, r.now())
@@ -821,21 +831,14 @@ func (r *router) handleRouteFailed(participant authenticatedRouteParticipant, me
 			return
 		}
 		current := operation.Current
-		ownsChild := participant.role == protocol.RoleViewer &&
-			participant.peerID == operation.ChildPeerID &&
-			participant.sessionID == operation.ChildSessionID
-		ownsParent := false
-		if current.Tuple.Kind == route.UpstreamPeer && participant.peerID == current.Tuple.ParentPeerID {
-			peer, ok := r.connectedPeer(participant.roomID, participant.peerID)
-			ownsParent = ok && peer.SessionID == participant.sessionID
-		}
+		ownsEndpoint := r.ownsCandidateEndpoint(participant, operation)
 		ownsPublication := false
 		if current.Tuple.Kind == route.UpstreamSfu && participant.role == protocol.RoleHost &&
 			participant.peerID == rm.hostPeerID {
 			host, ok := r.store.GetConnectedHost(participant.roomID)
 			ownsPublication = ok && host.SessionID == participant.sessionID
 		}
-		if !ownsChild && !ownsParent && !ownsPublication {
+		if !ownsEndpoint && !ownsPublication {
 			return
 		}
 		if connectionID != "" && connectionID != current.ConnectionID {
