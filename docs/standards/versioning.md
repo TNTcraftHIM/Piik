@@ -271,8 +271,16 @@ an up-to-date result, does not consult the mirror.
 
 Gitee currently documents 100 MB per attachment and 1 GB total repository
 attachments for ordinary projects. The mirror rejects files above 100,000,000
-bytes before writing. Check aggregate capacity before each release; exhausted
-storage leaves a pending preview rather than deleting older downloads.
+bytes before writing. GitHub retains published history; Gitee retains package
+attachments for the latest stable version and one preceding verified stable
+version. Order by semantic version, not update time; a preview cannot displace
+the fallback. Verify the new mirror completely before retiring older attachments,
+and verify that the fallback's packages remain downloadable and match GitHub.
+Delete only older mirror attachments with verified GitHub originals; retain
+release descriptions and tags. Unknown files or provenance require review.
+Check capacity before upload. Cleanup may reclaim versions outside the two
+retained stable versions; never delete either retained version to make an
+unverified replacement fit. Exhausted storage leaves a pending preview.
 Target authentication, uploads, anonymous metadata/CORS and the complete matching
 Server/three-platform App downloads and SHA-256 checks passed for the public release.
 Use API metadata in the Browser; ordinary asset-link redirects are not guaranteed

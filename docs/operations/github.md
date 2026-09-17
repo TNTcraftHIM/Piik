@@ -114,6 +114,15 @@ publishing. The [release-source policy](../standards/versioning.md#release-sourc
 owns provenance, selection and quota limits. The first public release passed
 complete matching Server and three-platform App mirror download acceptance.
 
+Release postflight applies the [two-version mirror retention policy](../standards/versioning.md#release-sources).
+After verifying the latest mirror and its fallback against GitHub, inventory
+older releases with `/releases/{id}/attach_files`, verify their GitHub originals,
+then remove only the reviewed attachments through
+`DELETE /releases/{id}/attach_files/{attachment_id}`. Recheck both retained
+versions and the anonymous `download/latest` links afterward. Keep deletion
+inventories and verification results with operator release records, not source
+history. The upload script does not itself delete older attachments.
+
 ## Platform References
 
 - [Protected branch availability](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches)
