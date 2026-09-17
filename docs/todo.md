@@ -7,10 +7,8 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **Review the connection-failure ownership candidate for release.**
-  Implementation and local acceptance are complete; release and deployment await
-  owner direction. Preserve the reporter/device limits below and follow the
-  [deployment runbook](./deployment.md) when publication is authorized.
+No implementation work is currently scheduled. Reporter/device follow-ups and
+evidence-dependent work remain below.
 
 ## Awaiting Device Or Reporter Evidence
 
