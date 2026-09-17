@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-09-16
+Last updated: 2026-09-17
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) owns unresolved physical limits,
@@ -48,7 +48,7 @@ HTTPS, runtime assets, all three STUN listeners and a bounded browser P2P
 sharing/stop check passed; the browser check used synthetic video on one network.
 The operator record owns exact identity and postflight evidence.
 
-[TODO](./todo.md) owns the current maintenance phase. The owner declared the first
+[TODO](./todo.md) owns remaining verification and follow-up work. The owner declared the first
 public release on 2026-09-12. Source is public, main protection is active, and
 `piik.tv` runs on GitHub Pages behind Cloudflare with HTTPS. The private service
 remains a separate deployment. Release descriptors and GitHub deployment records

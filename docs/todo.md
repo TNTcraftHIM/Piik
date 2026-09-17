@@ -7,13 +7,10 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **Maintenance release acceptance.** Complete the current checks, Windows
-  candidate package and UI preview on `fix/app-feedback`, then present the
-  proposed version and full bilingual release notes for owner acceptance before
-  integration/publication. Include the source-picker capture-border switch
-  (off by default, [#401](https://github.com/TNTcraftHIM/Piik/issues/401)),
-  source discovery and tooltip interactions. Keep the 32-bit experiment separate.
-  Physical limits remain in [verification status](./verification-status.md).
+No additional implementation is scheduled. Routine release and postflight
+follow the [deployment runbook](./deployment.md); public demo and private service
+deployments remain separate. Physical limits are owned by
+[verification status](./verification-status.md).
 
 ## Awaiting Device Or Reporter Evidence
 
@@ -40,17 +37,6 @@ history. A parked idea is not implementation authority.
   Recheck on the reporting machine after the browser-handoff repair. The Windows
   URL-handler crash itself still needs the affected build and process/dump
   evidence; local checks cannot establish its underlying cause.
-
-Keep fixes on a maintenance branch until acceptance. The public release is the
-compatibility baseline; private service deployment stays independent.
-
-## After Release
-
-- [ ] **Post-launch monitoring.** Verify public downloads, container pulls and
-  deployed services, then collect App/Server feedback. Follow the
-  [deployment runbook](./deployment.md) for the private service and keep public
-  demo deployment separate. Preserve the owner's
-  [device/network deferrals](./verification-status.md#candidate-evidence-boundary).
 
 ## Next: P2P Connection And Feedback Evidence
 
