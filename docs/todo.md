@@ -7,14 +7,10 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **v1.5.2 release.** Review the bilingual release notes, integrate the
-  connection-progress repair and complete publication/postflight under the
-  release approval boundary. The original field report still requires matching
-  evidence.
-
-Release and postflight follow the [deployment runbook](./deployment.md); public
-demo and private service deployments remain separate. Physical limits are owned
-by [verification status](./verification-status.md).
+No additional implementation is scheduled. Routine release and postflight
+follow the [deployment runbook](./deployment.md); public demo and private service
+deployments remain separate. Physical limits are owned by
+[verification status](./verification-status.md).
 
 ## Awaiting Device Or Reporter Evidence
 
