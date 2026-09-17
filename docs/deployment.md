@@ -100,6 +100,12 @@ The wrapper downloads the pinned public-link sidecar, verifies its digest,
 builds the target App and available capture process, executes every packaged
 runtime from the extracted ZIP, and emits one `.zip` plus its SHA-256 file.
 
+App ZIPs use ordinary Store/Deflate compression and relative entry names without
+`.` or `..` path segments; include hidden files and preserve executable modes on
+Unix. Windows packaging also checks every entry through Windows Explorer's ZIP
+reader. A successful extraction by the writer's own library does not establish
+compatibility with the user's default archive tool.
+
 Retain the descriptor and successful deployment output as release metadata. Do
 not create a follow-up source commit solely to duplicate their revision, asset,
 or hashes.

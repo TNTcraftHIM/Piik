@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { createZip, extractZip } from "../scripts/archive-tool.mjs";
+import { createZip, extractZip, tarExecutable } from "../scripts/archive-tool.mjs";
 
 describe("App ZIP distribution", () => {
   it("round-trips hidden files, spaced paths and executable permissions", () => {
@@ -28,6 +28,11 @@ describe("App ZIP distribution", () => {
       for (const name of executables) chmodSync(join(source, name), 0o755);
       createZip(source, archive);
       expect(readFileSync(archive).subarray(0, 4)).toEqual(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
+      const entries = execFileSync(process.platform === "linux" ? "unzip" : tarExecutable(),
+        process.platform === "linux" ? ["-Z", "-1", archive] : ["-tf", archive],
+        { encoding: "utf8", windowsHide: true }).trim().split(/\r?\n/);
+      expect(entries).toHaveLength(readdirSync(source, { recursive: true }).length);
+      for (const name of entries) expect(name).not.toMatch(/(^|\/)\.\.?($|\/)/);
       mkdirSync(extracted);
       extractZip(archive, extracted);
       expect(readdirSync(extracted, { recursive: true }).sort()).toEqual(
