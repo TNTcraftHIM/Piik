@@ -659,7 +659,16 @@ export class HostSfuRoute {
       return;
     }
     if (phase === "prepare") {
-      if (matchesPlannedRoute || wasActive) {
+      const activeRevision = this.route.getActiveRevision();
+      if (wasActive) {
+        if (
+          activeRevision !== null &&
+          this.route.getActiveAssignment()?.sfuPublicationGeneration ===
+            slot.publicationGeneration
+        ) {
+          this.routeFailed(activeRevision, "active", slot.connectionId);
+        }
+      } else if (matchesPlannedRoute) {
         this.routeFailed(revision, "prepare", null);
       }
       return;
@@ -667,7 +676,7 @@ export class HostSfuRoute {
     if (!matchesPlannedRoute) {
       return;
     }
-    this.requestRecovery(revision);
+    this.requestRecovery(revision, slot.connectionId);
   }
 
   private failPublisherSlot(slot: HostPublisherSlot): void {
@@ -678,7 +687,10 @@ export class HostSfuRoute {
     this.handleFailure(slot);
   }
 
-  private requestRecovery(revision: number): void {
+  private requestRecovery(
+    revision: number,
+    connectionId: string | null = null,
+  ): void {
     if (!this.recovery || this.recovery.revision !== revision) {
       this.recovery = { revision, refreshed: false };
     }
@@ -688,7 +700,7 @@ export class HostSfuRoute {
         return;
       }
     }
-    this.routeFailed(revision, "active", null);
+    this.routeFailed(revision, "active", connectionId);
   }
 
   private routeFailed(

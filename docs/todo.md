@@ -7,10 +7,10 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-No additional implementation is scheduled. Routine release and postflight
-follow the [deployment runbook](./deployment.md); public demo and private service
-deployments remain separate. Physical limits are owned by
-[verification status](./verification-status.md).
+- [ ] **Review the connection-failure ownership candidate for release.**
+  Implementation and local acceptance are complete; release and deployment await
+  owner direction. Preserve the reporter/device limits below and follow the
+  [deployment runbook](./deployment.md) when publication is authorized.
 
 ## Awaiting Device Or Reporter Evidence
 
@@ -89,9 +89,8 @@ not establish better connection success or speed; this note adds no retry policy
    resource owners, fewer shared writers and a smaller change surface under
    [engineering review](./standards/engineering.md#ablation-and-review); file
    size alone does not justify a split. The completed audits do not close this
-   candidate. Reopen C=3 structural-intent retention, SFU failure during unrelated
-   prepare and multi-child evidence ownership only with current-contract
-   reproductions.
+   candidate. Reopen C=3 structural-intent retention and multi-child evidence
+   ownership only with current-contract reproductions.
    When related behavior changes, compare the Browser/Native recovery budget;
    preserve Native bridge versus network failure distinctions when sharing code.
    No new revision namespace, failure-state mirror or topology queue by default.

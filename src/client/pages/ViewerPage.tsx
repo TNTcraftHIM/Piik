@@ -924,7 +924,7 @@ export function ViewerPage({
       identity: string,
       framesDecodedDelta: number | null,
       authorityRevision: number,
-      connectionId?: string,
+      connectionId: string,
     ): void {
       if (
         currentHostPaused ||
@@ -936,20 +936,12 @@ export function ViewerPage({
         decodedFrameStall.allowReportRetry();
         return;
       }
-      let sent = false;
-      if (route === "peer" && connectionId) {
-        sent = signal.send({
-          type: "route-failed",
-          revision: authorityRevision,
-          phase: "active",
-          connectionId,
-        });
-      } else if (route === "sfu") {
-        sent = signal.send({
-          type: "route-media-unavailable",
-          revision: authorityRevision,
-        });
-      }
+      const sent = signal.send({
+        type: "route-failed",
+        revision: authorityRevision,
+        phase: "active",
+        connectionId,
+      });
       if (!sent) decodedFrameStall.allowReportRetry();
     }
 
@@ -1127,6 +1119,7 @@ export function ViewerPage({
           framesDecodedDelta,
           revision,
           mediaIdentity,
+          connectionId,
         ) => {
           if (active && viewerSfuRoute === route) {
             observeActiveDecodedFrames(
@@ -1134,6 +1127,7 @@ export function ViewerPage({
               mediaIdentity,
               framesDecodedDelta,
               revision,
+              connectionId,
             );
           }
         },

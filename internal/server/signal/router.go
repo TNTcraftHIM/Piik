@@ -860,7 +860,11 @@ func (r *router) handleRouteFailed(participant authenticatedRouteParticipant, me
 		return
 	}
 
-	if snapshot.Revision != revision {
+	// A room revision can advance for another Viewer while this report is in
+	// flight. Only an exact still-owned connection may outlive that revision;
+	// identity-free reports retain their snapshot fence. Endpoint/session and
+	// connection checks below still reject retired resources.
+	if revision > snapshot.Revision || (revision != snapshot.Revision && connectionID == "") {
 		return
 	}
 	if participant.role == protocol.RoleHost {

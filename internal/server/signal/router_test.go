@@ -1150,6 +1150,12 @@ func TestRouterAcceptsActiveFailureForDirectConnectionAdoptedDuringRebuild(t *te
 		if adopted.revision != active.revision || adopted.connectionID != rebuiltConnectionID {
 			t.Fatalf("adopted edge = %+v", adopted)
 		}
+		h.doFailed(viewer, routeFailedMessage(active.revision, "active", active.connectionID))
+		rm, _ := h.router.rooms.Get(created.RoomID)
+		edge, ok := rm.controller.Snapshot().UpstreamByViewer.Get(viewer.peerID)
+		if !ok || !edge.Usable || edge.ConnectionID != rebuiltConnectionID {
+			t.Fatal("retired-connection failure affected its replacement")
+		}
 		h.doFailed(viewer, routeFailedMessage(active.revision, "active", rebuiltConnectionID))
 	})
 	h.waitFailed(viewer.sessionID)

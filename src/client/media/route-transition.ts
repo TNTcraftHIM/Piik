@@ -42,6 +42,8 @@ export class MediaRouteTransition {
   private phase: MediaRoutePhase | null = null;
   private plannedAssignment: ParticipantRouteAssignment | null = null;
   private activeAssignment: ParticipantRouteAssignment | null = null;
+  // Preparation advances the operation without replacing committed authority.
+  private activeRevision: number | null = null;
   private mediaAssignment: ParticipantRouteAssignment | null = null;
   private preparedCandidate: PreparedRouteCandidate | null = null;
   private generation = 0;
@@ -73,6 +75,7 @@ export class MediaRouteTransition {
       update.phase === "prepare" ? cloneCandidate(update.candidate) : null;
     if (update.phase === "active") {
       this.activeAssignment = cloneAssignment(update.assignment);
+      this.activeRevision = update.revision;
     }
     this.generation += 1;
     return "accepted";
@@ -123,6 +126,10 @@ export class MediaRouteTransition {
     return this.activeAssignment ? cloneAssignment(this.activeAssignment) : null;
   }
 
+  getActiveRevision(): number | null {
+    return this.activeRevision;
+  }
+
   getMediaAssignment(): ParticipantRouteAssignment | null {
     return this.mediaAssignment ? cloneAssignment(this.mediaAssignment) : null;
   }
@@ -138,6 +145,7 @@ export class MediaRouteTransition {
     this.phase = null;
     this.plannedAssignment = null;
     this.activeAssignment = null;
+    this.activeRevision = null;
     this.mediaAssignment = null;
     this.preparedCandidate = null;
     this.generation += 1;
@@ -169,9 +177,8 @@ export function reportActivePeerRouteFailure(
   send: (message: ClientMessage) => boolean,
 ): boolean {
   const assignment = route.getActiveAssignment();
-  const revision = route.getRevision();
+  const revision = route.getActiveRevision();
   if (
-    route.getPhase() !== "active" ||
     revision === null ||
     assignment?.upstream.kind !== "peer" ||
     assignment.upstream.peerId !== parentPeerId

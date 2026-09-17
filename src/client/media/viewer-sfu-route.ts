@@ -86,6 +86,7 @@ interface ViewerSfuRouteEvents {
     framesDecodedDelta: number | null,
     revision: number,
     mediaIdentity: string,
+    connectionId: string,
   ) => void;
   onSfuState?: (
     state: "connected" | "reconnecting",
@@ -474,6 +475,7 @@ export class ViewerSfuRoute {
             framesDecodedDelta,
             slot.revision,
             slot.mediaIdentity,
+            slot.connectionId,
           );
         }
       },
@@ -949,7 +951,17 @@ export class ViewerSfuRoute {
       return;
     }
     if (phase === "prepare") {
-      if (matchesPlannedRoute || wasActive) {
+      const activeRevision = this.route.getActiveRevision();
+      const activeAssignment = this.route.getActiveAssignment();
+      if (wasActive) {
+        if (
+          activeRevision !== null &&
+          activeAssignment?.upstream.kind === "sfu" &&
+          activeAssignment.sfuPublicationGeneration === slot.publicationGeneration
+        ) {
+          this.routeFailed(activeRevision, "active", slot.connectionId);
+        }
+      } else if (matchesPlannedRoute) {
         this.routeFailed(revision, "prepare");
       }
       return;
@@ -961,7 +973,7 @@ export class ViewerSfuRoute {
       this.recovery?.revision === revision &&
       this.recovery.refreshed
     ) {
-      this.routeFailed(revision, "active");
+      this.routeFailed(revision, "active", slot.connectionId);
       return;
     }
     this.requestRecovery(revision);
@@ -1007,12 +1019,16 @@ export class ViewerSfuRoute {
       : null;
   }
 
-  private routeFailed(revision: number, phase: MediaRoutePhase): boolean {
+  private routeFailed(
+    revision: number,
+    phase: MediaRoutePhase,
+    connectionId: string | null = null,
+  ): boolean {
     return this.events.send({
       type: "route-failed",
       revision,
       phase,
-      connectionId: null,
+      connectionId,
     });
   }
 

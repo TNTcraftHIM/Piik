@@ -367,6 +367,92 @@ describe("minimal route transition contracts", () => {
     ]);
   });
 
+  it("reports committed Peer failure during another preparation using active authority", () => {
+    const route = new MediaRouteTransition();
+    const send = vi.fn(() => false);
+    route.accept({ revision: 7, phase: "active", assignment: peerAssignment("parent") });
+    route.accept({
+      revision: 8, phase: "prepare",
+      assignment: peerAssignment("parent", ["child"]), candidate: candidate(8, "child"),
+    });
+
+    expect(reportActivePeerRouteFailure(route, "parent", "active-connection", send)).toBe(false);
+    expect(send).toHaveBeenLastCalledWith({
+      type: "route-failed", revision: 7, phase: "active", connectionId: "active-connection",
+    });
+    send.mockReturnValue(true);
+    expect(reportActivePeerRouteFailure(route, "parent", "active-connection", send)).toBe(true);
+
+    route.accept({ revision: 9, phase: "active", assignment: peerAssignment("replacement") });
+    send.mockClear();
+    expect(reportActivePeerRouteFailure(route, "parent", "active-connection", send)).toBe(true);
+    route.reset();
+    expect(reportActivePeerRouteFailure(route, "replacement", "new-connection", send)).toBe(true);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("reports the committed SFU publisher when a Peer child is preparing", async () => {
+    const send = vi.fn(() => true);
+    let fail!: () => void;
+    const route = new HostSfuRoute({
+      getStream: () => ({}) as MediaStream,
+      getProfile: () => QUALITY_PROFILES["720p30"],
+      getVideoCodec: () => "h264",
+      reconcileChildren: () => undefined,
+      send,
+      createPublisher: (onDisconnected) => {
+        fail = onDisconnected;
+        return createFakePublisher([], "active");
+      },
+    });
+    const config = sfuConfig(7);
+    await route.acceptAndWait({ revision: 7, phase: "active", assignment: hostAssignment(config.publicationGeneration) });
+    await route.acceptConfig(config);
+    send.mockClear();
+    route.accept({
+      revision: 8, phase: "prepare",
+      assignment: hostAssignment(config.publicationGeneration, ["child"]), candidate: candidate(8, "child"),
+    });
+    fail();
+    fail();
+    expect(send.mock.calls).toEqual([[{
+      type: "route-failed", revision: 7, phase: "active", connectionId: config.connectionId,
+    }]]);
+    await route.disconnect();
+  });
+
+  it("reports the committed SFU subscription when a downstream Peer is preparing", async () => {
+    const send = vi.fn(() => true);
+    const stream = vi.fn();
+    let events!: SubscriberEvents;
+    const route = new ViewerSfuRoute("viewer_12345678", {
+      activatePeer: () => true,
+      onSfuStream: stream,
+      send,
+      createSubscriber: (callbacks) => {
+        events = callbacks;
+        return createFakeSubscriber(callbacks, [], "active");
+      },
+    });
+    const config = sfuConfig(7);
+    route.accept({ revision: 7, phase: "active", assignment: viewerSfuAssignment() });
+    await route.acceptConfig(config);
+    events.onStream({} as MediaStream);
+    events.onFirstDecodedFrame();
+    await vi.waitFor(() => expect(stream).toHaveBeenCalledOnce());
+    send.mockClear();
+    route.accept({
+      revision: 8, phase: "prepare",
+      assignment: viewerSfuAssignment(["child"]), candidate: candidate(8, "child"),
+    });
+    events.onDisconnected();
+    events.onDisconnected();
+    expect(send.mock.calls).toEqual([[{
+      type: "route-failed", revision: 7, phase: "active", connectionId: config.connectionId,
+    }]]);
+    await route.disconnect();
+  });
+
   it("publishes SFU media during prepare and promotes before retiring old media", async () => {
     const log: string[] = [];
     const messages: ClientMessage[] = [];
@@ -970,6 +1056,7 @@ describe("minimal route transition contracts", () => {
       framesDecodedDelta: number | null;
       revision: number;
       mediaIdentity: string;
+      connectionId: string;
     }> = [];
     const subscribers: ReturnType<typeof createFakeSubscriber>[] = [];
     const route = new ViewerSfuRoute("viewer_12345678", {
@@ -980,7 +1067,8 @@ describe("minimal route transition contracts", () => {
         framesDecodedDelta,
         revision,
         mediaIdentity,
-      ) => decodedSamples.push({ framesDecodedDelta, revision, mediaIdentity }),
+        connectionId,
+      ) => decodedSamples.push({ framesDecodedDelta, revision, mediaIdentity, connectionId }),
       send: (message) => {
         messages.push(message);
         return true;
@@ -1012,6 +1100,7 @@ describe("minimal route transition contracts", () => {
         framesDecodedDelta: 3,
         revision: 1,
         mediaIdentity: expect.stringContaining("publication_generation_12345678:"),
+        connectionId: sfuConfig(1).connectionId,
       },
     ]);
 
@@ -1050,6 +1139,7 @@ describe("minimal route transition contracts", () => {
     expect(decodedSamples[1]).toMatchObject({
       framesDecodedDelta: null,
       revision: 2,
+      connectionId: sfuConfig(2).connectionId,
     });
     expect(decodedSamples[1]!.mediaIdentity).not.toBe(
       decodedSamples[0]!.mediaIdentity,

@@ -127,6 +127,12 @@ perform quality selection or choose another route.
 Current-edge P2P signaling remains valid during candidate overlap. Accepting a
 replacement from that parent cancels conflicting optional preparation so the
 replacement can complete; a retired candidate cannot take its place afterward.
+Failure reports belong to the failed physical connection, not another
+preparation's phase. A committed connection's identified failure remains valid
+across unrelated room revisions only while its endpoint session and connection
+identity still match; future revisions and retired connections are rejected.
+Preparation reports retain their exact operation fence. Reports without a
+connection identity retain their exact room-revision fence.
 
 ## SFU Fallback
 
