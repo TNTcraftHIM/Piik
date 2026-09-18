@@ -190,6 +190,38 @@ func TestBrowserOpenFeedbackBelongsToTheCurrentEntry(t *testing.T) {
 	}
 }
 
+func TestConsoleEntryKeepsAppActivationWithoutExposingCredentials(t *testing.T) {
+	model := consoleModel{width: 80, language: "en", view: consoleView{
+		mode: "link", state: "ready",
+		entry:  "http://user:private-secret@localhost:8787/?token=private-secret#client-access=private-secret&piik-client=1",
+		invite: "https://room.example/?token=private-secret#v=private-secret",
+	}}
+	want := []string{"http://localhost:8787/#piik-client=1", "https://room.example/"}
+	for _, styled := range []bool{false, true} {
+		content := model.content(styled)
+		var addresses []string
+		for _, field := range strings.Fields(ansi.Strip(content)) {
+			if strings.HasPrefix(field, "http") {
+				addresses = append(addresses, field)
+			}
+		}
+		if len(addresses) != len(want) {
+			t.Fatalf("styled=%v: copyable addresses = %q", styled, addresses)
+		}
+		for i, address := range want {
+			if addresses[i] != address {
+				t.Fatalf("styled=%v: copyable address = %q, want %q", styled, addresses[i], address)
+			}
+			if styled && !strings.Contains(content, ansi.SetHyperlink(address)) {
+				t.Fatalf("terminal hyperlink differs from copyable address %q", address)
+			}
+		}
+		if strings.Contains(content, "private-secret") || strings.Contains(content, "client-access") {
+			t.Fatal("console exposed an entry or invitation credential")
+		}
+	}
+}
+
 func TestConsolePresentationAndShutdown(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

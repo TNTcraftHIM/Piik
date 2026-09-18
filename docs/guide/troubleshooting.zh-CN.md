@@ -10,6 +10,7 @@
 | 你遇到的情况 | 可以先试什么 |
 | --- | --- |
 | 有画面，没声音 | 先取消视频静音。房主应选择支持分享声音的来源；如果开始时关闭了声音，请停止后重新开始并打开声音。通过 App 采集窗口或屏幕时，切换来源会保留原来的声音设置。 |
+| Mac 上没有声音选项 | 先区分浏览器选择器与 App 采集，查看 [macOS 声音选项](#macos-没有声音选项)。 |
 | 没有屏幕选择弹窗 | 按系统提示允许浏览器或 App 录制屏幕。浏览器采集需要 HTTPS 或 `localhost`，请在电脑上尝试分享。 |
 | App 的窗口或屏幕列表为空 | 先查看选源器中的提示，再按 [App 来源排查](#app-找不到窗口或屏幕) 操作；也可以选 **浏览器** → **浏览器选择器** 使用浏览器采集。 |
 | 分享的窗口或屏幕周围出现黄框 | 这是 Windows 的采集提示。查看[采集边框说明](#windows-分享时出现黄框)，了解 Windows 11 的开关和 Windows 10 的可选处理方法。 |
@@ -40,6 +41,23 @@
 
 本地网络权限用于让网页连接 App，与下文的 WebRTC 媒体设置不同。
 仅凭 App 未连接，不能确定是权限被拒绝。
+
+## macOS 没有声音选项
+
+**浏览器采集：** 可以先用最新版 Chrome 选择 **Chrome 标签页**，并打开 **分享标签页音频**。
+窗口和整个屏幕的声音需要较新的平台支持：Google 公布的条件是 **macOS 14.2 及以上、
+Chrome 142 及以上**。Safari 和 Firefox 目前不提供浏览器屏幕共享音频。
+详见 [Google 的版本要求](https://workspaceupdates.googleblog.com/2025/12/share-devices-audio-when-presenting.html)
+和 [浏览器音频支持情况](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getDisplayMedia#browser_compatibility)（英文）。
+
+**App 采集：** 保持 Piik App 运行，并通过它打开站点。在 Piik 选源器中选择应用／窗口或屏幕，
+来源列表加载后，底部会出现 **应用声音** 或 **系统声音** 开关。选 **浏览器** 分类时，
+声音由浏览器自己的弹窗选择。若 App 不可用或列表为空，先按 [App 来源排查](#app-找不到窗口或屏幕) 处理。
+Mac App 已有原生音频采集实现，实机测试仍待完成。
+
+在 **系统设置 → 隐私与安全性 → 屏幕与系统音频录制** 中，允许系统提示所指的浏览器或采集程序。
+如果系统要求退出并重新打开程序，照提示完成后再分享。旧版 macOS 的选项可能叫 **屏幕录制**。
+具体操作见 [Apple 权限说明](https://support.apple.com/zh-cn/guide/mac-help/mchld6aa7d23/mac)。
 
 ## Windows 分享时出现黄框
 

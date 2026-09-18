@@ -110,8 +110,9 @@ no separate remembered playback intent for source changes or reconnects.
 Adding, replacing or removing audio on the same video binding updates only its
 audio consumer; it preserves current-frame proof and Viewer-local playback.
 
-The bar spans the screen's lower edge. Narrow screens separate audio controls
-from window actions into two rows and retain 44px action targets. Playing video hides the bar
+The bar spans the screen's lower edge in one row. Narrow screens shorten the
+volume slider and compact horizontal spacing and button widths, retaining 44px
+control height and all actions; the percentage readout hides on narrow screens. Playing video hides the bar
 after two idle seconds, following [Media Chrome's default](https://github.com/muxinc/media-chrome/blob/main/docs/src/pages/docs/en/components/media-controller.md#autohide).
 Pause or unavailable playback keeps it visible. Control hover, keyboard focus,
 dragging and an open tooltip hold it open; mouse movement reveals it, and a

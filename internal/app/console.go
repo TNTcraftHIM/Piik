@@ -382,13 +382,12 @@ func (model consoleModel) content(styled bool) string {
 			continue
 		}
 		address := consoleAddress(item[1])
+		if item[0] == "entry" {
+			address = launchURL(address)
+		}
 		style := link
 		if styled {
-			target := address
-			if item[0] == "entry" {
-				target = launchURL(address)
-			}
-			style = style.Hyperlink(target)
+			style = style.Hyperlink(address)
 		}
 		if compactDebug {
 			fmt.Fprintf(&out, "\n%s\n", style.Render(address))
