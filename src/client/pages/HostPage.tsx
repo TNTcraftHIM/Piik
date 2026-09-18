@@ -376,6 +376,7 @@ export function HostPage({
   const [stream, setStream] = useState<MediaStream | null>(null);
   const hostAudioRef = useRef<HostAudio | null>(null);
   const [microphoneEnabled, setMicrophoneEnabled] = useState(false);
+  const [microphoneVolume, setMicrophoneVolume] = useState(1);
   const [microphonePending, setMicrophonePending] = useState(false);
   const [nativeActive, setNativeActive] = useState(false);
   const [showCaptureBorder, setShowCaptureBorder] = useState(false);
@@ -2833,6 +2834,7 @@ export function HostPage({
     setMicrophonePending(true);
     setNoticeValue(null);
     try {
+      audio.setMicrophoneVolume(microphoneVolume);
       const mixed = await audio.toggleMicrophone();
       if (!isCurrentGeneration(generation) || hostAudioRef.current !== audio) return;
       if (mixed) await replaceBrowserStream(mixed, generation, token);
@@ -3495,6 +3497,10 @@ export function HostPage({
           </StageTv>
           {phase === "live" && <HostMicrophone enabled={microphoneEnabled} pending={microphonePending}
             nativeCapture={nativeActive} disabled={switchingSource || changingQuality || sharingPaused}
+            volume={microphoneVolume} onVolume={volume => {
+              setMicrophoneVolume(volume);
+              hostAudioRef.current?.setMicrophoneVolume(volume);
+            }}
             onToggle={() => void toggleMicrophone()} />}
           <div className="lr-stage-notices" role="status" aria-live="polite">
             {!details?.hasAudio && stream ? (

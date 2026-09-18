@@ -1764,11 +1764,22 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
 .lr-stage-notices:empty { display: none; }
 .lr-host-microphone {
   display: flex;
-  justify-content: flex-end;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
   width: min(960px, 100%);
   margin: 8px auto 0;
 }
 .lr-host-microphone .lr-btn { min-height: 44px; }
+.lr-host-microphone-actions { display: flex; gap: 6px; }
+.lr-host-microphone-volume {
+  display: flex; align-items: center; gap: 12px;
+  width: min(360px, 100%); padding: 8px 14px;
+  background: var(--paper); border: 1px solid color-mix(in srgb, var(--ink) 18%, transparent); border-radius: 18px;
+}
+.lr-host-microphone-volume span { flex: none; font-size: 12px; }
+.lr-host-microphone-volume input { flex: 1; min-width: 32px; width: 0; height: 44px; padding: 0; accent-color: var(--action); cursor: pointer; }
+.lr-host-microphone-volume output { min-width: 4ch; font-variant-numeric: tabular-nums; text-align: right; font-size: 12px; }
 .lr-room.is-theater .lr-stage-notices {
   position: absolute;
   z-index: 3;

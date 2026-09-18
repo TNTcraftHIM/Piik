@@ -30,6 +30,7 @@ export function ControlsPreview() {
   const en = lang === "en";
   const [sound, setSound] = useState(true);
   const [microphone, setMicrophone] = useState(false);
+  const [microphoneVolume, setMicrophoneVolume] = useState(1);
   const [preset, setPreset] = useState<QualityProfileId>("1080p30");
   const [policy, setPolicy] = useState<"open" | "private">("open");
   const [roomPassword, setRoomPassword] = useState(false);
@@ -68,7 +69,8 @@ export function ControlsPreview() {
           <Btn icon="network" title="host.topology" hint="hint-topology" onClick={notify} />
           <Btn icon="sliders" title="host.advanced" hint="hint-advanced" onClick={notify} />
         </div>
-        <HostMicrophone enabled={microphone} onToggle={() => setMicrophone(value => !value)} />
+        <HostMicrophone enabled={microphone} volume={microphoneVolume} onVolume={setMicrophoneVolume}
+          onToggle={() => setMicrophone(value => !value)} />
       </section>
       <section id="option-preview" className="cp-card">
         <header><span className="cp-number">02</span><h2>{en ? "Pick, toggle, adjust" : "选一个，再拨一下。"}</h2></header>

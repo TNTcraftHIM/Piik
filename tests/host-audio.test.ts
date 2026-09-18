@@ -22,9 +22,18 @@ function setup() {
   class Context {
     output = new Stream([new Track("audio")]);
     inputs: Stream[] = [];
+    nodes: { connect: ReturnType<typeof vi.fn>; disconnect: ReturnType<typeof vi.fn> }[] = [];
+    currentTime = 0;
+    gain = { gain: { value: 1, setTargetAtTime: vi.fn() }, connect: vi.fn(), disconnect: vi.fn() };
     constructor() { contexts.push(this); }
     createMediaStreamDestination() { return { stream: this.output }; }
-    createMediaStreamSource(stream: Stream) { this.inputs.push(stream); return { connect: vi.fn(), disconnect: vi.fn() }; }
+    createGain() { return this.gain; }
+    createMediaStreamSource(stream: Stream) {
+      this.inputs.push(stream);
+      const node = { connect: vi.fn(), disconnect: vi.fn() };
+      this.nodes.push(node);
+      return node;
+    }
     resume = vi.fn(async () => {});
     close = vi.fn(async () => {});
   }
@@ -97,4 +106,28 @@ test("microphone denial leaves source audio/video alone; late permission cannot 
   expect(lateMicrophone.stop).toHaveBeenCalledOnce();
   expect(changed).not.toHaveBeenCalled();
   expect(contexts[1].close).toHaveBeenCalledOnce();
+});
+
+test("microphone volume changes only the microphone input without replacing the shared output", async () => {
+  const { contexts, getUserMedia } = setup();
+  const sound = new Track("audio"), microphone = new Track("audio");
+  const audio = new HostAudio(media(new Track("video"), sound), vi.fn());
+  audio.setMicrophoneVolume(0.5);
+  getUserMedia.mockResolvedValue(media(microphone));
+  const mixed = (await audio.toggleMicrophone())!;
+  const context = contexts[0];
+  expect(context.gain.gain.value).toBe(0.5);
+  expect(context.nodes[0].connect).not.toHaveBeenCalledWith(context.gain);
+  expect(context.nodes[1].connect).toHaveBeenCalledWith(context.gain);
+  audio.setMicrophoneVolume(1.5);
+  expect(context.gain.gain.setTargetAtTime).toHaveBeenLastCalledWith(1.5, 0, 0.01);
+  audio.setMicrophoneVolume(Number.NaN);
+  expect(context.gain.gain.setTargetAtTime).toHaveBeenCalledOnce();
+  await audio.toggleMicrophone();
+  const changed = audio.attach(media(new Track("video")));
+  expect(changed.getAudioTracks()).toEqual(mixed.getAudioTracks());
+  expect(microphone.enabled).toBe(false);
+  expect(getUserMedia).toHaveBeenCalledOnce();
+  audio.dispose();
+  expect(context.gain.disconnect).toHaveBeenCalledOnce();
 });

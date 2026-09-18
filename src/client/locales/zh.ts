@@ -107,6 +107,8 @@ export const zh = {
   "host.camera.unavailable": "暂时无法使用摄像头，请检查连接，以及是否正被其他应用占用。",
   "host.microphone.enable": "开启麦克风",
   "host.microphone.label": "麦克风",
+  "host.microphone.settings": "调整麦克风音量",
+  "host.microphone.volume": "麦克风音量",
   "host.microphone.mute": "关闭麦克风",
   "host.microphone.pending": "正在开启麦克风",
   "host.microphone.browserOnly": "当前预览中，浏览器采集和摄像头分享支持麦克风。",

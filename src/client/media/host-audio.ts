@@ -6,6 +6,8 @@ export class HostAudio {
   private context: AudioContext | null = null;
   private destination: MediaStreamAudioDestinationNode | null = null;
   private inputs: MediaStreamAudioSourceNode[] = [];
+  private microphoneGain: GainNode | null = null;
+  private microphoneVolume = 1;
   private closed = false;
 
   constructor(source: MediaStream, private changed: (enabled: boolean) => void) {
@@ -20,6 +22,14 @@ export class HostAudio {
     return output;
   }
 
+  setMicrophoneVolume(volume: number) {
+    if (this.closed || !Number.isFinite(volume)) return;
+    this.microphoneVolume = Math.max(0, Math.min(2, volume));
+    if (this.microphoneGain && this.context) {
+      this.microphoneGain.gain.setTargetAtTime(this.microphoneVolume, this.context.currentTime, 0.01);
+    }
+  }
+
   async toggleMicrophone(): Promise<MediaStream | null> {
     if (this.closed) return null;
     if (this.microphone) {
@@ -31,6 +41,9 @@ export class HostAudio {
     if (!this.context) {
       this.context = new AudioContext();
       this.destination = this.context.createMediaStreamDestination();
+      this.microphoneGain = this.context.createGain();
+      this.microphoneGain.gain.value = this.microphoneVolume;
+      this.microphoneGain.connect(this.destination);
     }
     const resumed = this.context.resume().then(() => true, () => false);
     let stream: MediaStream | null = null;
@@ -69,7 +82,9 @@ export class HostAudio {
       .filter((track): track is MediaStreamTrack => !!track && track.readyState === "live")
       .map((track) => {
         const input = this.context!.createMediaStreamSource(new MediaStream([track]));
-        input.connect(this.destination!); // Never monitor microphone through local speakers.
+        // Only the microphone follows the input-volume control. Source audio
+        // and the Viewer's playback volume have separate owners.
+        input.connect(track === this.microphone ? this.microphoneGain! : this.destination!);
         return input;
       });
     const audio = this.destination.stream.getAudioTracks()[0]!;
@@ -80,6 +95,8 @@ export class HostAudio {
   private closeMixer() {
     this.inputs.forEach((input) => input.disconnect());
     this.inputs = [];
+    this.microphoneGain?.disconnect();
+    this.microphoneGain = null;
     this.destination?.stream.getTracks().forEach((track) => track.stop());
     void this.context?.close().catch(() => {});
     this.context = null;

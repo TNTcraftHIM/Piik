@@ -107,6 +107,8 @@ export const en: Record<CopyKey, string> = {
   "host.camera.unavailable": "The camera is unavailable. Check that it is connected and not in use by another app.",
   "host.microphone.enable": "Turn on microphone",
   "host.microphone.label": "Microphone",
+  "host.microphone.settings": "Adjust microphone volume",
+  "host.microphone.volume": "Microphone volume",
   "host.microphone.mute": "Mute microphone",
   "host.microphone.pending": "Opening microphone",
   "host.microphone.browserOnly": "Microphone is available with browser or camera capture in this preview.",

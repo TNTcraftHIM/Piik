@@ -31,6 +31,10 @@ remain prerequisites for declaring broader support.
 This scope adds no room messages, ports, chat, Viewer microphone or emoji
 interactions. The microphone control stays near the capture preview, with the
 same action and state in Chinese, English and pure-visual modes.
+The adjacent disclosure adjusts microphone input from 0–200% through a smoothed
+Web Audio gain. It does not change source audio or Viewer playback volume,
+reopen permission, or replace the outgoing track. Its value lasts for the Host
+page lifetime; new page loads use 100%. Mute remains a separate direct action.
 
 ## Local Review
 
@@ -42,6 +46,11 @@ microphone tests. Browser-emulated mobile layout and synthetic devices do not
 establish actual iOS/Android permission, orientation, background or audio behavior.
 
 ## Primary Technical References
+
+- [Google Meet audio controls](https://support.google.com/meet/answer/10409699?hl=en)
+  keeps microphone settings next to the frequent mute action.
+- [OBS audio mixer](https://obsproject.com/kb/audio-mixer-guide) separates source
+  volume, mute and monitoring; Piik uses only the controls needed for commentary.
 
 - [Web Audio stream destination](https://www.w3.org/TR/webaudio-1.0/#MediaStreamAudioDestinationNode)
   produces a single audio track from the audio graph.
