@@ -43,6 +43,10 @@ const PlaybackPreviewPage = import.meta.env.DEV
   ? lazy(() => import("./pages/PlaybackPreviewPage").then((module) => ({ default: module.PlaybackPreviewPage })))
   : null;
 
+const InteractionPreviewPage = import.meta.env.DEV
+  ? lazy(() => import("./prototypes/interactions/InteractionPreviewPage").then((module) => ({ default: module.InteractionPreviewPage })))
+  : null;
+
 const appRoute = parseAppRoute(window.location.pathname);
 const clientLaunchBootstrap =
   appRoute.kind === "host" || appRoute.kind === "viewer"
@@ -149,6 +153,9 @@ function AppRoute() {
   useEffect(() => {
     if (appRoute.kind === "viewer") return watchViewerInvites(setViewerRoute);
   }, []);
+  if (InteractionPreviewPage && window.location.pathname === "/__interaction-preview") {
+    return <InteractionPreviewPage />;
+  }
   if (PlaybackPreviewPage && window.location.pathname === "/__playback-preview") {
     return <PlaybackPreviewPage />;
   }
