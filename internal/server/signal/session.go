@@ -22,6 +22,8 @@ type authenticatedSession struct {
 	shareGeneration string
 	displayName     *string
 	viewerPresence  bool
+	reactions       bool
+	lastReaction    time.Time
 }
 
 // outbound is one queue item: a text frame or the close frame that ends the

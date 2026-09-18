@@ -12,7 +12,6 @@
     "build": "npm run build:web",
     "build:website": "node scripts/update-website-hero.mjs --check && node scripts/build-website.mjs",
     "preview:website": "vite preview --outDir build/site --host 127.0.0.1 --port 18890",
-    "preview:interactions": "tsx scripts/interaction-preview.ts",
     "build:web": "node scripts/package-licenses.mjs public/third-party-licenses.txt && node --input-type=module -e \"import { readdirSync, rmSync } from 'node:fs'; const dir = 'internal/server/webassets/dist'; for (const entry of readdirSync(dir)) { if (entry !== '.gitkeep') rmSync(dir + '/' + entry, { recursive: true, force: true }); }\" && vite build",
     "package:app": "node scripts/assemble-app.mjs",
     "package:app-candidate": "node scripts/package-app-candidate.mjs",

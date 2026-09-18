@@ -46,11 +46,11 @@ versions of the product UI.
 
 A remembered App activation permits discovery when choosing a source or
 receiving media; it does not make App a prerequisite for sharing. Idle Host
-pages hold no App control session. Ordinary Web entry opens the Browser picker
-directly. Activated origins offer the shared source selector, initially on its
-Browser tab unless App is already connected. Discovery never blocks Browser
-selection or changes the chosen tab. Native tabs and refresh remain reachable
-after absence or disconnection; pending attempts are shared, completed failures
+pages hold no App control session. The shared source selector orders Browser,
+Camera, Window and Screen, defaulting to Window after App detection. Without an
+App it shows only Browser and Camera, defaulting to Browser. Discovery never
+blocks Browser selection or overrides an explicitly chosen tab. Refresh remains
+reachable after failed App discovery; pending attempts are shared, completed failures
 do not suppress later discovery. Cancelling the selector or ending a share
 releases its unused control session; an obsolete operation cannot install or
 retire another operation's media. Optional native ingress uses an already

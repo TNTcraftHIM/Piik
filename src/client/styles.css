@@ -489,7 +489,6 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-source-picker-close:active { transform: scale(.92); }
 .lr-source-picker-tabs {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 4px;
   border-bottom: 1px solid rgba(223, 232, 242, .35);
 }
@@ -511,6 +510,9 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   transition: color 120ms ease, background 120ms ease;
 }
 .lr-source-picker-tabs button svg { flex: 0 0 auto; }
+@media (max-width: 520px) {
+  .lr-source-picker-tabs button { flex-direction: column; gap: 3px; padding-inline: 0; font-size: 11px; }
+}
 .lr-source-picker-tabs button:hover { background: rgba(255, 255, 255, .06); }
 .lr-source-picker-tabs button[aria-selected="true"] {
   border-bottom-color: #9de8bf;

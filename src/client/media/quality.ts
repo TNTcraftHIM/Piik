@@ -185,9 +185,7 @@ function captureConstraints(profile: QualityProfile): MediaTrackConstraints {
   };
 }
 
-export async function captureDisplay(
-  profile: QualityProfile,
-): Promise<MediaStream> {
+export async function captureDisplay(profile: QualityProfile): Promise<MediaStream> {
   if (!navigator.mediaDevices?.getDisplayMedia) {
     throw new Error("getDisplayMedia unavailable");
   }
@@ -195,7 +193,9 @@ export async function captureDisplay(
   const complete = debugOperation("capture", "display", { requested: profile });
   let stream: MediaStream;
   try {
-    stream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions(captureConstraints(profile)));
+    stream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions({
+      ...captureConstraints(profile),
+    }));
   } catch (error) {
     complete("failed", {}, error);
     throw error;
@@ -216,6 +216,25 @@ export async function captureDisplay(
     debugTrack(track, { event: "started" });
     for (const event of ["mute", "unmute", "ended"]) track.addEventListener(event, () => debugTrack(track, { event }));
   }
+  return stream;
+}
+
+export type BrowserCaptureSource = "browser" | "camera";
+
+export async function captureBrowserSource(profile: QualityProfile, source: BrowserCaptureSource): Promise<MediaStream> {
+  if (source !== "camera") return captureDisplay(profile);
+  const resolution = QUALITY_RESOLUTIONS[profile.resolution];
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: {
+    facingMode: { ideal: "environment" },
+    width: { ideal: resolution.width }, height: { ideal: resolution.height },
+    frameRate: { ideal: profile.maxFramerate, max: profile.maxFramerate },
+  } });
+  const track = stream.getVideoTracks()[0];
+  if (!track || track.readyState === "ended") {
+    stream.getTracks().forEach((track) => track.stop());
+    throw new Error("Camera capture produced no live video track");
+  }
+  track.contentHint = "motion";
   return stream;
 }
 

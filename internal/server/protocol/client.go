@@ -209,6 +209,10 @@ func DecodeClientMessage(data []byte) (ClientMessage, error) {
 		return decodeAuthenticate(data)
 	case "signaling-challenge":
 		return decodeSignalingChallenge(data)
+	case "subscribe-reactions":
+		return decodeEmptyClientMessage(data, SubscribeReactionsMessage{Type: messageType})
+	case "reaction":
+		return decodeClientReaction(data)
 	case "signal":
 		return decodeClientSignal(data)
 	case "restart-request":

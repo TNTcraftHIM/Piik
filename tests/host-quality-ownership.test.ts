@@ -22,7 +22,7 @@ const owners = new Set(["changeQuality", "commitQuality", "handleSignalMessage",
   "acquireNativeClient", "requestSharing", "startNativeShare", "startBrowserNativeIngress",
   "ownNativeClient", "discardNativeClient", "releaseUnusedNativeClient", "closeCaptureSourcePicker",
   "openCaptureSourcePicker", "startBrowserShareFromPicker", "startNativeShareFromPicker",
-  "startSharing", "beginRoomMutation", "finishRoomMutation",
+  "startSharing", "beginRoomMutation", "finishRoomMutation", "setCaptureError",
   "startPeer", "reconcileHostChildren", "setNotice", "setNoticeKey", "setNoticeError", "setNoticeErrorKey", "endSharing", "copyInvite", "isCurrentRoomAuthority"]);
 const functions: string[] = [];
 function collect(node: ts.Node): void {
@@ -65,7 +65,7 @@ function fixture(launchedByClient = true) {
     stopReceive: vi.fn(async () => undefined), stopShare: vi.fn(async () => undefined) };
   const route = { updateProfile: vi.fn(async () => true), resyncAuthoritative: vi.fn(async (): Promise<void> => undefined) };
   const state = {
-    debugError, debugEvent, debugOperation, NativeCompatibilityError, isCapturePermissionFailure,
+    debugError, debugEvent, debugOperation, NativeCompatibilityError, isCapturePermissionFailure, DOMException,
     launchedByClient, NativeClient: { connect: vi.fn(async (): Promise<typeof client | null> => null) },
     nativeClientConnectRef: ref<Promise<typeof client | null> | null>(null),
     ownNativeClient: vi.fn(), setJoiningRoom: vi.fn(), startSharing: vi.fn(), openCaptureSourcePicker: vi.fn(),
@@ -262,7 +262,7 @@ describe("Host quality ownership", () => {
     current.nativeShareGenerationRef.current = null;
     const denied = new DOMException("cancelled", "NotAllowedError");
     const capture = vi.fn(async () => { throw denied; });
-    current.context.captureDisplay = capture;
+    current.context.captureBrowserSource = capture;
     current.client.startShare.mockRejectedValue(denied);
     await current.openPicker();
     current.context.nativeSources = current.setNativeSources.mock.calls.at(-1)![0];
@@ -315,7 +315,7 @@ describe("Host quality ownership", () => {
     Object.assign(current.context, {
       phase: "idle", setNoticeValue, setNoticeError: current.writeNoticeError,
       readableError: hostActionErrorNotice,
-      captureDisplay: vi.fn(async () => { throw denied; }),
+      captureBrowserSource: vi.fn(async () => { throw denied; }),
     });
     current.activeGenerationRef.current = null;
     current.nativeShareGenerationRef.current = null;
@@ -394,12 +394,14 @@ describe("Host quality ownership", () => {
     expect(createPeer).toHaveBeenCalledOnce();
   });
 
-  it("keeps Browser capture immediate and App selection reachable after absent discovery", async () => {
+  it("opens the same source picker for Browser and App without probing localhost on the Browser path", async () => {
     const browser = fixture(false);
     browser.nativeClientRef.current = null;
     browser.requestShare();
-    expect(browser.startSharing).toHaveBeenCalledWith({ kind: "browser" });
-    expect(browser.openCaptureSourcePicker).not.toHaveBeenCalled();
+    expect(browser.startSharing).not.toHaveBeenCalled();
+    expect(browser.openCaptureSourcePicker).toHaveBeenCalledOnce();
+    await browser.openPicker();
+    expect(browser.setNativeSources).toHaveBeenLastCalledWith({ kind: "browser" });
     expect(browser.NativeClient.connect).not.toHaveBeenCalled();
 
     const current = fixture();
@@ -425,6 +427,7 @@ describe("Host quality ownership", () => {
 
   it("shows App incompatibility in the picker and clears it on a successful refresh", async () => {
     const current = fixture();
+    current.context.phase = "idle";
     current.nativeClientRef.current = null;
     current.nativeShareGenerationRef.current = null;
     current.NativeClient.connect.mockRejectedValueOnce(new NativeCompatibilityError(8));
@@ -442,28 +445,33 @@ describe("Host quality ownership", () => {
 
   it("distinguishes absent App, missing capture capability, incompatible codec and an empty source list", async () => {
     const absent = fixture();
+    absent.context.phase = "idle";
     absent.nativeClientRef.current = null;
     await absent.openPicker();
     expect(absent.setNativeSources).toHaveBeenLastCalledWith({ kind: "unavailable" });
 
     const unsupported = fixture();
+    unsupported.context.phase = "idle";
     unsupported.client.health.nativeMedia.video = false;
     await unsupported.openPicker();
     expect(unsupported.setNativeSources).toHaveBeenLastCalledWith({ kind: "unsupported" });
     expect(unsupported.client.sources).not.toHaveBeenCalled();
 
     const codec = fixture();
+    codec.context.phase = "idle";
     codec.context.defaultNativeCapturePath = () => null;
     await codec.openPicker();
     expect(codec.setNativeSources).toHaveBeenLastCalledWith({ kind: "unsupported" });
 
     const empty = fixture();
+    empty.context.phase = "idle";
     await empty.openPicker();
     expect(empty.setNativeSources).toHaveBeenLastCalledWith(expect.objectContaining({ kind: "ready", sources: [] }));
   });
 
   it("reports listing failure separately and reconnects on refresh", async () => {
     const current = fixture();
+    current.context.phase = "idle";
     current.nativeShareGenerationRef.current = null;
     current.client.sources.mockRejectedValueOnce(new Error("capture helper exited"));
     await current.openPicker();
@@ -479,6 +487,7 @@ describe("Host quality ownership", () => {
 
   it("keeps a live Native share when source enumeration fails", async () => {
     const current = fixture();
+    current.nativeModeRef.current = true;
     current.client.sources.mockRejectedValueOnce(new Error("list failed"));
     await current.openPicker();
     expect(current.setNativeSources).toHaveBeenLastCalledWith({ kind: "failed" });
@@ -489,6 +498,7 @@ describe("Host quality ownership", () => {
 
   it("ignores a cancelled discovery mismatch after another picker owns a compatible App", async () => {
     const current = fixture();
+    current.context.phase = "idle";
     current.nativeClientRef.current = null;
     current.nativeShareGenerationRef.current = null;
     const discovery = deferred<void>();
@@ -533,6 +543,7 @@ describe("Host quality ownership", () => {
 
   it("retires discovery after picker cancellation and allows a later attempt", async () => {
     const current = fixture();
+    current.context.phase = "idle";
     current.nativeClientRef.current = null;
     current.nativeShareGenerationRef.current = null;
     const discovery = deferred<typeof current.client>();
@@ -572,6 +583,7 @@ describe("Host quality ownership", () => {
 
   it("ignores a stale listing failure after a newer picker owns the App", async () => {
     const current = fixture();
+    current.context.phase = "idle";
     current.nativeShareGenerationRef.current = null;
     const listing = deferred<never>();
     current.client.sources.mockReturnValueOnce(listing.promise.then(() => { throw new Error("old listing failed"); }));

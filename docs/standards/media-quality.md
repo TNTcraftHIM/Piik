@@ -12,12 +12,19 @@ production behavior and remaining acceptance.
 
 ## Capture And Controls
 
-- The Web Host may share a display, application window, or Browser tab and may
+- The Web Host may share a display, application window, Browser tab or camera and may
   stop, synchronously pause/resume audio and video, or switch source.
 - An App-launched Host explicitly chooses either that Browser capture path or
   one native screen/window enumerated by the packaged platform capture boundary. The
   latter uses one supported native codec path and never infers a target from
   a title. An ordinary Web Host does not probe localhost.
+- Camera is a peer source choice in the same picker, including on phones. Only
+  the chosen source requests permission. Browser/camera Host microphone capture
+  is explicit and uses voice processing separately from screen audio; its mixer
+  produces one audio output for the existing media routes. Muting or losing the
+  microphone must not stop healthy video. Share retirement releases its devices
+  and rejects late permission results. Native App capture must provide mixing
+  at its own source boundary; Browser preview audio is not that implementation.
 - Windows native capture follows an explicitly stretched active display path
   for an entire display or a window covering that display, when the captured
   frame matches its desktop source dimensions. Other frames retain their own

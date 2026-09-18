@@ -10,6 +10,8 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { bindSvgReplayOnPointerEnter } from "./animation";
 
 const PATHS = {
+  camera: { body: (<><rect pathLength={1} x="2" y="6" width="14" height="12" rx="3"/><path pathLength={1} d="m16 10 6-3v10l-6-3"/></>) },
+  microphone: { body: (<><rect pathLength={1} x="9" y="2" width="6" height="13" rx="3"/><path pathLength={1} d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3m-4 0h8"/></>) },
   couch: { body: (<><path pathLength={1} d="M5 12V8a3 3 0 0 1 3-3h8a3 3 0 0 1 3 3v4M6 19v2m12-2v2"/><path pathLength={1} d="M5 15h14v-3a2 2 0 0 1 4 0v5a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2v-5a2 2 0 0 1 4 0Z"/></>) },
   gamepad: { body: (<><path pathLength={1} d="M8 7h8c3 0 4 2 5 6l1 5c.3 2-2 3-3.5 1.5L16 17H8l-2.5 2.5C4 21 1.7 20 2 18l1-5c1-4 2-6 5-6Z"/><path pathLength={1} d="M6 12h4m-2-2v4m8-3h.01M18 14h.01"/></>) },
   save: { body: (<><path pathLength={1} d="M5 3h12l4 4v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path pathLength={1} d="M7 3v6h9V3M7 21v-7h10v7"/></>) },

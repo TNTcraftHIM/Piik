@@ -7,6 +7,7 @@ import { NAT_TRAVERSAL_PATHS } from "./nat-candidate.js";
 export const MAX_VIEWERS_PER_ROOM_LIMIT = 20;
 export const MAX_PARTICIPANTS_PER_ROOM_LIMIT = MAX_VIEWERS_PER_ROOM_LIMIT + 1;
 export const MAX_SIGNAL_BYTES = 64 * 1024;
+export const REACTION_COOLDOWN_MS = 1_200;
 export const SIGNALING_PROTOCOL = "piik-v23";
 export const SIGNAL_CLOSE_CODES = {
   serviceRestart: 1012,
@@ -220,6 +221,7 @@ export const DEFAULT_ROUTE_POLICY = {
 export const runtimeCapabilitiesSchema = z.object({
   sfu: z.boolean().default(false),
   natPrediction: z.boolean().default(false),
+  reactions: z.boolean().default(false),
 });
 export type RuntimeCapabilities = z.infer<typeof runtimeCapabilitiesSchema>;
 
@@ -840,7 +842,17 @@ const signalingChallengeSequenceSchema = z
   .min(0)
   .max(Number.MAX_SAFE_INTEGER);
 
+export const reactionKinds = ["tomato", "poop", "heart"] as const;
+const reactionKindSchema = z.enum(reactionKinds);
+const reactionMessageSchema = z.object({
+  type: z.literal("reaction"), id: opaqueIdSchema, fromPeerId: opaqueIdSchema,
+  targetPeerId: opaqueIdSchema, prop: reactionKindSchema,
+}).strict();
+export type ReactionMessage = z.infer<typeof reactionMessageSchema>;
+
 export const clientMessageSchema = z.union([
+  z.object({ type: z.literal("subscribe-reactions") }).strict(),
+  z.object({ type: z.literal("reaction"), targetPeerId: opaqueIdSchema, prop: reactionKindSchema }).strict(),
   authenticateMessageSchema,
   z
     .object({
@@ -1006,6 +1018,7 @@ const authenticatedMessageSchema = z.union([
 ]);
 
 export const serverMessageSchema = z.union([
+  reactionMessageSchema,
   authenticatedMessageSchema,
   z
     .object({

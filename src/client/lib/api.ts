@@ -68,9 +68,10 @@ export async function getSiteAccess(): Promise<SiteAccessStatus> {
   return parseSiteAccessStatus(body);
 }
 
-export async function getRuntimeCapabilities(): Promise<RuntimeCapabilities> {
+export async function getRuntimeCapabilities(signal?: AbortSignal): Promise<RuntimeCapabilities> {
   const response = await fetch("/api/capabilities", {
     headers: { Accept: "application/json" },
+    ...(signal ? { signal } : {}),
   });
   const body = await responseBody(response);
   if (!response.ok) {

@@ -51,6 +51,9 @@ export type Set1Kind =
   | "hint-switch-source"
   | "hint-reconnect"
   | "hint-capture-browser"
+  | "hint-capture-camera"
+  | "hint-microphone-on"
+  | "hint-microphone-off"
   | "hint-capture-window"
   | "hint-capture-display";
 

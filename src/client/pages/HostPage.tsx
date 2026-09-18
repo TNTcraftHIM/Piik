@@ -24,6 +24,8 @@ import {
 import { AppHeader, LedStrip } from "../components/living/Header";
 import { WelcomeLine } from "../components/living/WelcomeLine";
 import { Couch, type CouchEntry } from "../components/living/Couch";
+import { HostAudio } from "../media/host-audio";
+import { Reactions } from "../components/living/Reactions";
 import {
   CaptureSourcePicker,
   type NativeSourceList,
@@ -110,7 +112,8 @@ import {
 import { labelParticipantSnapshot } from "../lib/viewer-presence";
 import {
   applyCaptureProfile,
-  captureDisplay,
+  captureBrowserSource,
+  type BrowserCaptureSource,
   matchingQualityProfileId,
   QUALITY_PROFILES,
   DEGRADATION_PREFERENCE_KEYS,
@@ -331,7 +334,7 @@ interface HostPageProps {
 }
 
 type ShareSourceSelection =
-  | { kind: "browser" }
+  | { kind: "browser"; source?: BrowserCaptureSource }
   | {
       kind: "native";
       client: NativeClient;
@@ -371,6 +374,9 @@ export function HostPage({
   const [signalStatus, setSignalStatus] =
     useState<SignalConnectionState>("offline");
   const [stream, setStream] = useState<MediaStream | null>(null);
+  const hostAudioRef = useRef<HostAudio | null>(null);
+  const [microphoneEnabled, setMicrophoneEnabled] = useState(false);
+  const [microphonePending, setMicrophonePending] = useState(false);
   const [nativeActive, setNativeActive] = useState(false);
   const [showCaptureBorder, setShowCaptureBorder] = useState(false);
   const [nativeSources, setNativeSources] =
@@ -684,6 +690,8 @@ export function HostPage({
       nativeClientConnectRef.current = null;
       nativeClientRef.current?.close();
       nativeClientRef.current = null;
+      hostAudioRef.current?.dispose();
+      hostAudioRef.current = null;
       streamRef.current?.getTracks().forEach((track) => track.stop());
       retiringStreamRef.current?.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
@@ -847,6 +855,10 @@ export function HostPage({
     hostPeerIdRef.current = null;
     void hostSfuRouteRef.current?.disconnect();
     hostSfuRouteRef.current = null;
+    hostAudioRef.current?.dispose();
+    hostAudioRef.current = null;
+    setMicrophoneEnabled(false);
+    setMicrophonePending(false);
     streamRef.current?.getTracks().forEach((track) => track.stop());
     retiringStreamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
@@ -1106,12 +1118,13 @@ export function HostPage({
     captured: MediaStream,
     generation: number,
   ): void {
-    captured.getVideoTracks()[0]?.addEventListener(
+    const track = captured.getVideoTracks()[0];
+    track?.addEventListener(
       "ended",
       () => {
         if (
           isCurrentGeneration(generation) &&
-          streamRef.current === captured
+          streamRef.current?.getVideoTracks()[0] === track
         ) {
           endSharing({ key: "host.stopNotice" });
         }
@@ -1295,6 +1308,10 @@ export function HostPage({
     const request = {};
     nativeSourceRequestRef.current = request;
     nativeSourcePathRef.current = null;
+    if (!launchedByClient || (phase === "live" && !nativeModeRef.current)) {
+      setNativeSources({ kind: "browser" });
+      return;
+    }
     setNativeSources({ kind: "loading" });
 
     let client: NativeClient | null;
@@ -1402,15 +1419,12 @@ export function HostPage({
 
   function requestSharing(): void {
     setJoiningRoom(false);
-    if (!launchedByClient) {
-      void startSharing({ kind: "browser" });
-      return;
-    }
     void openCaptureSourcePicker();
   }
 
-  function startBrowserShareFromPicker(): void {
-    void startSharing({ kind: "browser" });
+  function startBrowserShareFromPicker(source: BrowserCaptureSource): void {
+    if (phase === "live") void switchSource(source);
+    else void startSharing({ kind: "browser", source });
   }
 
   async function loadNativeSourcePreview(
@@ -2410,7 +2424,7 @@ export function HostPage({
         nativeStarted = true;
       } else {
         // This must remain the first awaited operation in the button gesture.
-        captured = await captureDisplay(qualitySettingsRef.current);
+        captured = await captureBrowserSource(qualitySettingsRef.current, selection.source ?? "browser");
       }
     } catch (error) {
       if (!isCurrentShare(generation, shareGeneration)) {
@@ -2419,7 +2433,7 @@ export function HostPage({
       }
       activeGenerationRef.current = null;
       shareGenerationRef.current = null;
-      setNoticeError(error, "capture", "television");
+      setCaptureError(error, selection.kind === "browser" ? selection.source : undefined, "capture");
       setPhase(isCapturePermissionFailure(error, "capture") ? "idle" : "error");
       return;
     }
@@ -2430,6 +2444,7 @@ export function HostPage({
       return;
     }
     if (captured) {
+      if (selection.kind === "browser") hostAudioRef.current = new HostAudio(captured, setMicrophoneEnabled);
       streamRef.current = captured;
       setStream(captured);
       watchCaptureEnd(captured, generation);
@@ -2745,7 +2760,7 @@ export function HostPage({
     }
   }
 
-  async function switchSource(): Promise<void> {
+  async function switchSource(source?: BrowserCaptureSource): Promise<void> {
     const generation = activeGenerationRef.current;
     if (
       phase !== "live" ||
@@ -2756,26 +2771,28 @@ export function HostPage({
     ) {
       return;
     }
-    if (nativeModeRef.current) {
+    if (!source) {
       await openCaptureSourcePicker();
       return;
     }
+    if (nativeModeRef.current) return;
 
     const token = {};
     sourceSwitchRef.current = token;
+    closeCaptureSourcePicker();
     setSwitchingSource(true);
     setNoticeValue(null);
 
     let captured: MediaStream;
     try {
       // Like initial capture, changing source must begin in this button gesture.
-      captured = await captureDisplay(qualitySettingsRef.current);
+      captured = await captureBrowserSource(qualitySettingsRef.current, source);
     } catch (error) {
       if (
         isCurrentGeneration(generation) &&
         sourceSwitchRef.current === token
       ) {
-        setNoticeError(error, "source");
+        setCaptureError(error, source, "source");
       }
       finishSourceSwitch(token);
       return;
@@ -2789,6 +2806,49 @@ export function HostPage({
       return;
     }
 
+    try {
+      captured = hostAudioRef.current?.attach(captured) ?? captured;
+      await replaceBrowserStream(captured, generation, token);
+    } catch (error) {
+      if (isCurrentGeneration(generation)) setNoticeError(error, "source");
+      finishSourceSwitch(token);
+    }
+  }
+
+  function setCaptureError(error: unknown, source: BrowserCaptureSource | undefined, action: "source" | "capture") {
+    if (source !== "camera") {
+      setNoticeError(error, action, "television");
+      return;
+    }
+    setNoticeValue({ kind: "key", key: error instanceof DOMException && error.name === "NotAllowedError"
+      ? "host.camera.denied" : "host.camera.unavailable", target: "television", comic: "source-failed", tone: "warn" });
+  }
+
+  async function toggleMicrophone(): Promise<void> {
+    const audio = hostAudioRef.current;
+    const generation = activeGenerationRef.current;
+    if (!audio || generation === null || sourceSwitchRef.current || qualityChangeRef.current || sharingPausedRef.current) return;
+    const token = {};
+    sourceSwitchRef.current = token;
+    setMicrophonePending(true);
+    setNoticeValue(null);
+    try {
+      const mixed = await audio.toggleMicrophone();
+      if (!isCurrentGeneration(generation) || hostAudioRef.current !== audio) return;
+      if (mixed) await replaceBrowserStream(mixed, generation, token);
+    } catch (error) {
+      if (isCurrentGeneration(generation) && hostAudioRef.current === audio) {
+        debugError("capture", "microphone-failed", error);
+        setNoticeValue({ kind: "key", key: error instanceof DOMException && error.name === "NotAllowedError"
+          ? "host.microphone.denied" : "host.microphone.unavailable", target: "television", comic: "warning", tone: "warn" });
+      }
+    } finally {
+      if (sourceSwitchRef.current === token) finishSourceSwitch(token);
+      if (hostAudioRef.current === audio) setMicrophonePending(false);
+    }
+  }
+
+  async function replaceBrowserStream(captured: MediaStream, generation: number, token: object): Promise<void> {
     const previousStream = streamRef.current;
     if (!previousStream) {
       captured.getTracks().forEach((track) => track.stop());
@@ -2798,15 +2858,19 @@ export function HostPage({
     }
 
     retiringStreamRef.current = previousStream;
-    invalidateSenderQualityEvidence();
-    if (routePolicyRef.current.topologyOptimization) {
+    const videoChanged = captured.getVideoTracks()[0] !== previousStream.getVideoTracks()[0];
+    const retirePrevious = () => previousStream.getTracks().forEach((track) => {
+      if (!captured.getTracks().includes(track)) track.stop();
+    });
+    if (videoChanged) invalidateSenderQualityEvidence();
+    if (videoChanged && routePolicyRef.current.topologyOptimization) {
       signalRef.current?.send({ type: "reset-sender-quality" });
     }
     setMediaPaused(captured, sharingPausedRef.current);
     streamRef.current = captured;
     setStream(captured);
     setDetails(captureDetails(captured));
-    watchCaptureEnd(captured, generation);
+    if (videoChanged) watchCaptureEnd(captured, generation);
 
     try {
       const ingress = nativeMediaIngressRef.current;
@@ -2884,7 +2948,7 @@ export function HostPage({
         activeSfuRoute && hostSfuRouteRef.current === activeSfuRoute
           ? syncHostSfuQualityWarning(activeSfuRoute, generation)
           : null;
-      previousStream.getTracks().forEach((track) => track.stop());
+      retirePrevious();
       if (retiringStreamRef.current === previousStream) {
         retiringStreamRef.current = null;
       }
@@ -2912,7 +2976,7 @@ export function HostPage({
       );
 
       if (
-        isCurrentGeneration(generation) &&
+        videoChanged && isCurrentGeneration(generation) &&
         sourceSwitchRef.current === token
       ) {
         const sourceNotice =
@@ -2932,7 +2996,7 @@ export function HostPage({
         );
       }
     } finally {
-      previousStream.getTracks().forEach((track) => track.stop());
+      retirePrevious();
       if (retiringStreamRef.current === previousStream) {
         retiringStreamRef.current = null;
       }
@@ -3318,13 +3382,14 @@ export function HostPage({
             {nativeSources ? (
               <CaptureSourcePicker
                 nativeSources={nativeSources}
-                initialTab={nativeClientRef.current ? "window" : "browser"}
-                onBrowser={startBrowserShareFromPicker}
+                onBrowser={() => startBrowserShareFromPicker("browser")}
+                onCamera={() => startBrowserShareFromPicker("camera")}
                 onNative={startNativeShareFromPicker}
                 onPreview={loadNativeSourcePreview}
                 onRefresh={openCaptureSourcePicker}
                 onCancel={closeCaptureSourcePicker}
-                browserAvailable={!nativeActive}
+                browserAvailable={!nativeActive && !!navigator.mediaDevices?.getDisplayMedia}
+                cameraAvailable={!nativeActive && !!navigator.mediaDevices?.getUserMedia}
                 selectionDisabled={roomMutating || switchingSource || changingQuality}
                 initialAudio={
                   nativeActive
@@ -3468,6 +3533,8 @@ export function HostPage({
             onSelect={(key) =>
               setSelectedPawn((current) => (current === key ? null : key))
             }
+            actions={<Reactions signal={signalRef.current} active={phase === "live" && signalStatus === "connected"}
+              selfPeerId={hostPeerId} participants={[{ key: hostIdentity, name: labeledHostPresence?.label ?? displayName }, ...couchEntries]} />}
           />
         </div>
 
@@ -3610,7 +3677,7 @@ export function HostPage({
                         title={sharingPaused ? "host.resume" : "host.pause"}
                         hint={sharingPaused ? "hint-resume" : "hint-pause"}
                         draw="host-share-toggle"
-                        disabled={switchingSource || changingQuality}
+                        disabled={switchingSource || changingQuality || microphonePending}
                         onClick={toggleSharingPause}
                       />
                       <Btn
@@ -3619,8 +3686,19 @@ export function HostPage({
                         cap={switchingSource ? "host.switching" : "host.switchSource"}
                         title="host.switchSource"
                         hint="hint-switch-source"
-                        disabled={switchingSource || changingQuality}
+                        disabled={switchingSource || changingQuality || microphonePending}
                         onClick={() => void switchSource()}
+                      />
+                      <Btn
+                        icon="microphone"
+                        cap={microphonePending ? "host.microphone.pending" : microphoneEnabled ? "host.microphone.mute" : "host.microphone.enable"}
+                        title={nativeActive ? "host.microphone.browserOnly" : microphoneEnabled ? "host.microphone.mute" : "host.microphone.enable"}
+                        hint={microphoneEnabled ? "hint-microphone-off" : "hint-microphone-on"}
+                        pressed={microphoneEnabled}
+                        busy={microphonePending}
+                        tone={microphoneEnabled ? "on" : undefined}
+                        disabled={nativeActive || switchingSource || changingQuality || microphonePending || sharingPaused}
+                        onClick={() => void toggleMicrophone()}
                       />
                       <Btn
                         icon="stop"

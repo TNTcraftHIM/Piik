@@ -24,7 +24,6 @@
     "../site/film/ui/main.tsx",
     "../site/film/ui/website.ts",
     "access-privacy-gate.ts",
-    "interaction-preview.ts",
     "browser-local-pool-probe.ts",
     "app-browser-fanout-gate.ts",
     "app-media-gate.ts",

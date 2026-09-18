@@ -24,6 +24,7 @@ import {
   rmBlock,
 } from "../Comic";
 import type { HintScene, Set1Kind } from "../../../ui/visual-kinds";
+import { Glyph } from "../../../ui/icons";
 
 function SourceWindow({ x, y, alternate = false }: { x: number; y: number; alternate?: boolean }) {
   return <>
@@ -279,7 +280,7 @@ ${rmBlock(
   </>
 );
 
-function CaptureHint({ theme, target }: Parameters<HintScene>[0] & { target: "browser" | "window" | "display" }) {
+function CaptureHint({ theme, target }: Parameters<HintScene>[0] & { target: "browser" | "window" | "display" | "camera" }) {
   return <>
     <style>{`
 .vls-capture-choice{animation:vlsCaptureChoice var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
@@ -297,6 +298,9 @@ ${rmBlock(["vls-capture-choice"], [[".vls-capture-choice", "opacity:1;transform:
     </> : target === "window" ? <>
       <g opacity={.35}><SourceWindow x={38} y={24} alternate /></g>
       <SourceWindow x={60} y={41} />
+    </> : target === "camera" ? <>
+      <g transform="translate(30 31)"><Glyph name="camera" size={32} /></g>
+      <Pawn x={91} yb={73} s={13} eyes color={SKY} />
     </> : <>
       <rect x={29} y={21} width={100} height={54} rx={4} fill="var(--paper)" stroke="var(--ink)" strokeWidth={2} />
       <path d="M79 75v9m-16 0h32" stroke="var(--ink)" strokeWidth={2.5} strokeLinecap="round" />
@@ -311,12 +315,34 @@ ${rmBlock(["vls-capture-choice"], [[".vls-capture-choice", "opacity:1;transform:
       <path d="M225 34h4m-4 6h4m-4 6h4" stroke={SKY} strokeWidth={2.5} />
       <rect x={237} y={34} width={37} height={23} rx={2} fill={TV_SCREEN} stroke={SKY} strokeWidth={1.5} />
       <path d="M237 39h37 M243 53l7-10 5 6 4-4 7 8Z" stroke={SKY} strokeWidth={1} fill={SKY} />
-    </g> : <path className="vls-capture-choice" d="M229 54l10-14 7 8 5-5 8 11Z" fill={SKY} />}
+    </g> : target === "camera" ? <g className="vls-capture-choice"><Pawn x={251} yb={63} s={10} eyes color={SKY} /></g>
+      : <path className="vls-capture-choice" d="M229 54l10-14 7 8 5-5 8 11Z" fill={SKY} />}
     <Pawn x={190} yb={78} s={8} eyes host />
   </>;
 }
 
+function MicrophoneHint({ theme, muted }: Parameters<HintScene>[0] & { muted: boolean }) {
+  return <>
+    <style>{`
+.vls-mic-voice{animation:vlsMicVoice var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
+@keyframes vlsMicVoice{0%,10%{opacity:0;transform:translateX(-3px)}24%,48%{opacity:1;transform:none}68%,100%{opacity:0;transform:translateX(3px)}}
+${rmBlock(["vls-mic-voice"], [[".vls-mic-voice", "opacity:1;transform:none"]])}
+`}</style>
+    <Frame x={4} w={152} theme={theme} />
+    <Frame x={164} w={152} theme={theme} result />
+    {[0, 160].map((x, index) => <g key={x} transform={`translate(${x} 0)`}>
+      <Pawn x={53} yb={76} s={14} color={MINT} eyes host />
+      <g transform="translate(78 38)"><Glyph name="microphone" size={27} /></g>
+      {(index === 0 ? !muted : muted)
+        ? <path d="m77 67 31-33" stroke={WARN} strokeWidth={3} strokeLinecap="round" />
+        : <path className="vls-mic-voice" d="M113 44q7 8 0 16m7-21q12 13 0 26" stroke={MINT} strokeWidth={2.5} strokeLinecap="round" fill="none" />}
+    </g>)}
+  </>;
+}
+
 export const SET1_SCENES: Record<Set1Kind, HintScene> = {
+  "hint-microphone-on": (props) => <MicrophoneHint {...props} muted={false} />,
+  "hint-microphone-off": (props) => <MicrophoneHint {...props} muted />,
   "hint-share-start": SceneShareStart,
   "hint-share-stop": SceneShareStop,
   "hint-pause": ScenePause,
@@ -324,6 +350,7 @@ export const SET1_SCENES: Record<Set1Kind, HintScene> = {
   "hint-switch-source": SceneSwitchSource,
   "hint-reconnect": SceneReconnect,
   "hint-capture-browser": (props) => <CaptureHint {...props} target="browser" />,
+  "hint-capture-camera": (props) => <CaptureHint {...props} target="camera" />,
   "hint-capture-window": (props) => <CaptureHint {...props} target="window" />,
   "hint-capture-display": (props) => <CaptureHint {...props} target="display" />,
 };

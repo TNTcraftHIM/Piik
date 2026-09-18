@@ -1218,6 +1218,10 @@ func (s *Server) handleAuthenticatedMessage(sess *session, authenticated *authen
 		name := string(m.DisplayName)
 		authenticated.displayName = &name
 		s.sendViewerPresence(authenticated.roomID)
+	case protocol.SubscribeReactionsMessage:
+		authenticated.reactions = true
+	case protocol.ClientReactionMessage:
+		s.handleReaction(authenticated, m)
 	case protocol.SetSharingPausedMessage:
 		if authenticated.role != protocol.RoleHost {
 			s.sendError(sess, "FORBIDDEN", "只有当前房主可以暂停分享")

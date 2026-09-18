@@ -234,6 +234,8 @@ func DecodeServerMessage(data []byte) (ServerMessage, error) {
 		return decodeAuthenticated(data)
 	case "signaling-challenge-response":
 		return decodeChallengeResponse(data)
+	case "reaction":
+		return decodeServerReaction(data)
 	case "signal":
 		return decodeServerSignal(data)
 	case "restart-request":

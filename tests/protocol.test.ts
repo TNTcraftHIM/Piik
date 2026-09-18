@@ -36,18 +36,19 @@ const qualitySettings = {
 
 describe("runtime capabilities", () => {
   it("defaults missing capabilities off and ignores unknown descriptors", () => {
-    expect(runtimeCapabilitiesSchema.parse({})).toEqual({ sfu: false, natPrediction: false });
+    expect(runtimeCapabilitiesSchema.parse({})).toEqual({ sfu: false, natPrediction: false, reactions: false });
     expect(runtimeCapabilitiesSchema.parse({ sfu: true, extra: { enabled: true } }))
-      .toEqual({ sfu: true, natPrediction: false });
+      .toEqual({ sfu: true, natPrediction: false, reactions: false });
     expect(runtimeCapabilitiesSchema.parse({ natPrediction: true, SFU: true }))
-      .toEqual({ sfu: false, natPrediction: true });
+      .toEqual({ sfu: false, natPrediction: true, reactions: false });
     expect(runtimeCapabilitiesSchema.parse({ sfu: true, natPrediction: true }))
-      .toEqual({ sfu: true, natPrediction: true });
+      .toEqual({ sfu: true, natPrediction: true, reactions: false });
+    expect(runtimeCapabilitiesSchema.parse({ reactions: true }).reactions).toBe(true);
   });
 
   it("rejects malformed known capabilities and non-object responses", () => {
     for (const value of [null, [], true, { sfu: null }, { sfu: "true" },
-      { natPrediction: null }, { natPrediction: 1 }]) {
+      { natPrediction: null }, { natPrediction: 1 }, { reactions: null }, { reactions: "true" }]) {
       expect(runtimeCapabilitiesSchema.safeParse(value).success).toBe(false);
     }
   });
