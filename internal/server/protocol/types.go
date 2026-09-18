@@ -170,7 +170,6 @@ func (v *RoutePolicy) UnmarshalJSON(data []byte) error {
 type RuntimeCapabilities struct {
 	Sfu           bool `json:"sfu"`
 	NatPrediction bool `json:"natPrediction"`
-	Reactions     bool `json:"reactions"`
 }
 
 // UnmarshalJSON implements json.Unmarshaler.
@@ -183,12 +182,11 @@ func (v *RuntimeCapabilities) UnmarshalJSON(data []byte) error {
 	if present == nil {
 		return errors.New("runtime capabilities must be an object")
 	}
-	if err := present.optional("sfu", "natPrediction", "reactions"); err != nil {
+	if err := present.optional("sfu", "natPrediction"); err != nil {
 		return err
 	}
 	for key, target := range map[string]*bool{
 		"sfu": &v.Sfu, "natPrediction": &v.NatPrediction,
-		"reactions": &v.Reactions,
 	} {
 		if value, ok := present[key]; ok {
 			if err := json.Unmarshal(value, target); err != nil {

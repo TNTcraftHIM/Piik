@@ -130,7 +130,7 @@ Participant characters should leave room for that distinctive presence.
 | Shared or watched media | Small television, including antenna, body and feet |
 | Browser application | Browser chrome around content; not a second design of television |
 | A captured window or display | Window title bar or display stand, with the shared media metaphor kept distinct |
-| A camera source or Host commentary | `camera` identifies the alternative picture source; `microphone` identifies the Host voice input. Neither replaces the speaker metaphor for source/playback sound. |
+| A camera source or Host commentary | `camera` identifies the alternative picture source; `microphone` identifies the enabled Host voice input and `microphoneOff` its muted state. Neither replaces the speaker metaphor for source/playback sound. |
 | Server forwarding media | A server on the media path; opening a Site alone does not imply SFU |
 
 These are **identity/object colours**, not status. A green pawn remains green

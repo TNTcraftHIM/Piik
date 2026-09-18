@@ -46,7 +46,8 @@ npm run check:native
 ```
 
 The checks include synthetic output-worker replacement and failure cases using
-WARP and a test codec. They do not capture a screen or validate a physical encoder.
+WARP and a test codec, plus preview cleanup when WGC rejects a hidden test window.
+They do not capture a user screen or validate a physical encoder.
 
 The implementation follows Microsoft's MIT-licensed reference samples and
 official API contracts without copying their WIL framework. The retained MF

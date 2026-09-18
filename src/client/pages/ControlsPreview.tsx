@@ -4,6 +4,7 @@ import { RoomChip, RoomAdmissionBadge } from "../components/living/RoomChip";
 import { CaptureSourcePicker, type NativeSourceList } from "../components/living/CaptureSourcePicker";
 import { LedStrip } from "../components/living/Header";
 import { StageTv } from "../components/living/Stage";
+import { HostMicrophone } from "../components/living/HostMicrophone";
 import { PlaybackControls } from "../components/living/PlaybackControls";
 import { QualityPresets } from "../components/living/QualityPresets";
 import { RoomCodeInput } from "../components/living/RoomCodeInput";
@@ -28,6 +29,7 @@ export function ControlsPreview() {
   const { t, lang, vis } = useCopy();
   const en = lang === "en";
   const [sound, setSound] = useState(true);
+  const [microphone, setMicrophone] = useState(false);
   const [preset, setPreset] = useState<QualityProfileId>("1080p30");
   const [policy, setPolicy] = useState<"open" | "private">("open");
   const [roomPassword, setRoomPassword] = useState(false);
@@ -66,6 +68,7 @@ export function ControlsPreview() {
           <Btn icon="network" title="host.topology" hint="hint-topology" onClick={notify} />
           <Btn icon="sliders" title="host.advanced" hint="hint-advanced" onClick={notify} />
         </div>
+        <HostMicrophone enabled={microphone} onToggle={() => setMicrophone(value => !value)} />
       </section>
       <section id="option-preview" className="cp-card">
         <header><span className="cp-number">02</span><h2>{en ? "Pick, toggle, adjust" : "选一个，再拨一下。"}</h2></header>

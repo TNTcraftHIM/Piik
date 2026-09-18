@@ -1,6 +1,5 @@
 // The roster sits in responsive couch rows. UUIDs own identity and gestures;
 // self carries the green pointer, and the Host wears the gold crown.
-import type { ReactNode } from "react";
 import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
 import { useElementWidth } from "../../lib/use-element-width";
@@ -32,14 +31,12 @@ export function Couch({
   entries,
   selectedKey,
   onSelect,
-  actions,
 }: {
   view: "host" | "viewer";
   host?: CouchHostEntry | null;
   entries: CouchEntry[];
   selectedKey?: string | null;
   onSelect?: (key: string) => void;
-  actions?: ReactNode;
 }) {
   const { t } = useCopy();
   const [couchRef, containerWidth] = useElementWidth();
@@ -79,7 +76,7 @@ export function Couch({
           aria-label={`${t("common.host")} · ${t("common.viewers")}`}
         >
           {host ? (
-            <span className="lr-seat" data-participant-key={host.key} style={seatStyle(0)}><Tooltip overflow={{ text: host.name, selector: ".lr-pawn-name" }}>
+            <span className="lr-seat" style={seatStyle(0)}><Tooltip overflow={{ text: host.name, selector: ".lr-pawn-name" }}>
               {host.onSelect ? (
                   <button
                     type="button"
@@ -140,7 +137,7 @@ export function Couch({
               </button>
             );
             return (
-              <span key={entry.key} data-participant-key={entry.key} className="lr-seat" style={seatStyle(index + (host ? 1 : 0))}><Tooltip overflow={{ text: entry.name, selector: ".lr-pawn-name" }}>
+              <span key={entry.key} className="lr-seat" style={seatStyle(index + (host ? 1 : 0))}><Tooltip overflow={{ text: entry.name, selector: ".lr-pawn-name" }}>
                 {pawn}
               </Tooltip></span>
             );
@@ -151,7 +148,6 @@ export function Couch({
         <span className="lr-couch-count" role="img" aria-label={`${t("common.viewers")} ${entries.length}`}>
           <Glyph name="users" size={14} /><b>{entries.length}</b>
         </span>
-        {actions}
       </div>
       {entries.length === 0 && !host ? (
         <div

@@ -24,7 +24,6 @@ import {
 } from "../components/status-badge-model";
 import { AppHeader, LedStrip } from "../components/living/Header";
 import { Couch, type CouchEntry } from "../components/living/Couch";
-import { Reactions } from "../components/living/Reactions";
 import { participantColor } from "../components/living/participant-color";
 import { MetricCells } from "../components/living/Metrics";
 import { PawnDetail, RouteGlyph } from "../components/living/PawnDetail";
@@ -2382,9 +2381,6 @@ export function ViewerPage({
             onSelect={(key) =>
               setSelectedPawn((current) => (current === key ? null : key))
             }
-            actions={<Reactions signal={signalRef.current} active={signalStatus === "connected" && (presentationState.host === "online" || presentationState.host === "paused")}
-              selfPeerId={selfPeerId} participants={labeledHostPresence
-                ? [{ key: labeledHostPresence.peerId, name: labeledHostPresence.label }, ...couchEntries] : couchEntries} />}
           />
         </div>
         <div className="lr-deck">

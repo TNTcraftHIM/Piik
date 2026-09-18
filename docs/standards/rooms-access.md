@@ -31,15 +31,6 @@ the storage decision; implementation detail belongs in code and tests.
   authority and allocates another code when that code is unavailable. The store
   remains bounded by 9,000 codes; it rejects new rooms when full.
 
-## Room Interactions
-
-Share-time preset reactions reuse authenticated room membership and signaling.
-The server derives the sender, validates current-room targets and sends only
-to capability subscribers. Effects are bounded and transient, with no history
-or offline replay; they do not establish presence or alter media routes. An
-absent `reactions` capability disables the feature, preserving older peers.
-Recheck that capability on authenticated reconnection before resubscribing.
-
 ## Admission Paths
 
 Three independent authorities exist:

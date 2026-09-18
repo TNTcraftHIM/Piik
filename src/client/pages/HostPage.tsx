@@ -24,8 +24,8 @@ import {
 import { AppHeader, LedStrip } from "../components/living/Header";
 import { WelcomeLine } from "../components/living/WelcomeLine";
 import { Couch, type CouchEntry } from "../components/living/Couch";
+import { HostMicrophone } from "../components/living/HostMicrophone";
 import { HostAudio } from "../media/host-audio";
-import { Reactions } from "../components/living/Reactions";
 import {
   CaptureSourcePicker,
   type NativeSourceList,
@@ -2859,7 +2859,9 @@ export function HostPage({
 
     retiringStreamRef.current = previousStream;
     const videoChanged = captured.getVideoTracks()[0] !== previousStream.getVideoTracks()[0];
-    const retirePrevious = () => previousStream.getTracks().forEach((track) => {
+    // HostAudio owns raw inputs and mixed output. Adding a mixer must not stop
+    // the old stream's audio: that track is still feeding the new output.
+    const retirePrevious = () => previousStream.getVideoTracks().forEach((track) => {
       if (!captured.getTracks().includes(track)) track.stop();
     });
     if (videoChanged) invalidateSenderQualityEvidence();
@@ -3491,6 +3493,9 @@ export function HostPage({
               />
             ) : null}
           </StageTv>
+          {phase === "live" && <HostMicrophone enabled={microphoneEnabled} pending={microphonePending}
+            nativeCapture={nativeActive} disabled={switchingSource || changingQuality || sharingPaused}
+            onToggle={() => void toggleMicrophone()} />}
           <div className="lr-stage-notices" role="status" aria-live="polite">
             {!details?.hasAudio && stream ? (
               <Pill icon="speakerOff" label={t("host.noAudio")} comic="no-audio" />
@@ -3533,8 +3538,6 @@ export function HostPage({
             onSelect={(key) =>
               setSelectedPawn((current) => (current === key ? null : key))
             }
-            actions={<Reactions signal={signalRef.current} active={phase === "live" && signalStatus === "connected"}
-              selfPeerId={hostPeerId} participants={[{ key: hostIdentity, name: labeledHostPresence?.label ?? displayName }, ...couchEntries]} />}
           />
         </div>
 
@@ -3688,17 +3691,6 @@ export function HostPage({
                         hint="hint-switch-source"
                         disabled={switchingSource || changingQuality || microphonePending}
                         onClick={() => void switchSource()}
-                      />
-                      <Btn
-                        icon="microphone"
-                        cap={microphonePending ? "host.microphone.pending" : microphoneEnabled ? "host.microphone.mute" : "host.microphone.enable"}
-                        title={nativeActive ? "host.microphone.browserOnly" : microphoneEnabled ? "host.microphone.mute" : "host.microphone.enable"}
-                        hint={microphoneEnabled ? "hint-microphone-off" : "hint-microphone-on"}
-                        pressed={microphoneEnabled}
-                        busy={microphonePending}
-                        tone={microphoneEnabled ? "on" : undefined}
-                        disabled={nativeActive || switchingSource || changingQuality || microphonePending || sharingPaused}
-                        onClick={() => void toggleMicrophone()}
                       />
                       <Btn
                         icon="stop"

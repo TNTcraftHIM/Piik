@@ -5,13 +5,11 @@ import {
   type ClientMessage,
   type DisplayName,
   type QualitySettings,
-  type ReactionMessage,
   type ServerMessage,
 } from "../../shared/protocol";
 import type { SignalConnectionState } from "../types";
 import { qualitySettingsEqual } from "../media/quality";
 import { debugEvent } from "./debug";
-import { getRuntimeCapabilities } from "./api";
 
 type WithoutProtocolEnvelope<T> = T extends {
   type: string;
@@ -92,8 +90,6 @@ export class SignalingClient {
   private previousChallenge: PendingSignalingChallenge | null = null;
   private visibilityListenerAttached = false;
   private hostQualityIntent: HostQualityIntent | null = null;
-  private reactionsEnabled = false;
-  private reactionListeners = new Map<(message: ReactionMessage) => void, (available: boolean) => void>();
 
   constructor(
     private readonly identity: SignalingIdentity,
@@ -149,30 +145,6 @@ export class SignalingClient {
     }
     this.identity.displayName = displayName;
     return this.send({ type: "set-display-name", displayName });
-  }
-
-  // Capabilities belong to the current connection: a deployment rollback must
-  // not let an optional effect send an unknown command and end healthy media.
-  subscribeReactions(listener: (message: ReactionMessage) => void, availability: (available: boolean) => void): () => void {
-    this.reactionListeners.set(listener, availability);
-    availability(this.reactionsEnabled);
-    if (!this.reactionsEnabled) void this.enableReactions();
-    return () => { this.reactionListeners.delete(listener); };
-  }
-
-  private async enableReactions(): Promise<void> {
-    if (!this.authenticated || !this.reactionListeners.size) return;
-    const generation = this.socketGeneration;
-    const capabilities = await getRuntimeCapabilities(AbortSignal.timeout(5_000)).catch(() => null);
-    if (generation !== this.socketGeneration || !this.authenticated || !this.reactionListeners.size) return;
-    if (capabilities?.reactions && !this.reactionsEnabled) {
-      this.reactionsEnabled = this.send({ type: "subscribe-reactions" });
-    }
-    this.reactionListeners.forEach((availability) => availability(this.reactionsEnabled));
-  }
-
-  sendReaction(targetPeerId: string, prop: ReactionMessage["prop"]): boolean {
-    return this.reactionsEnabled && this.send({ type: "reaction", targetPeerId, prop });
   }
 
   setSharingPaused(paused: boolean): boolean {
@@ -333,13 +305,6 @@ export class SignalingClient {
         this.events.onStatus("connected");
         debugEvent("signal", "authenticated", { role: this.identity.role, generation });
         this.refreshSignalingWatchdog();
-        this.reactionsEnabled = false;
-        this.reactionListeners.forEach((availability) => availability(false));
-        void this.enableReactions();
-      }
-      if (message.type === "reaction") {
-        this.reactionListeners.forEach((_availability, listener) => listener(message));
-        return;
       }
       if (
         message.type === "host-status" &&

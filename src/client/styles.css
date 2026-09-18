@@ -1762,6 +1762,13 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
   margin: 10px auto 0;
 }
 .lr-stage-notices:empty { display: none; }
+.lr-host-microphone {
+  display: flex;
+  justify-content: flex-end;
+  width: min(960px, 100%);
+  margin: 8px auto 0;
+}
+.lr-host-microphone .lr-btn { min-height: 44px; }
 .lr-room.is-theater .lr-stage-notices {
   position: absolute;
   z-index: 3;
