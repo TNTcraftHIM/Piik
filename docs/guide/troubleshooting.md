@@ -10,7 +10,6 @@ collect a diagnostic report if the problem persists.
 | What you see | Try this |
 | --- | --- |
 | Picture but no sound | Unmute the video. The host should choose a source with shareable audio; if sound was disabled, stop and start sharing with it enabled. App window/screen capture keeps that setting when switching sources. |
-| No audio option on a Mac | Check whether you are using the browser picker or App capture. See [macOS audio options](#no-audio-option-on-macos). |
 | No screen picker | Allow the browser or App to record the screen when the OS asks. Browser capture needs HTTPS or `localhost`; try sharing from a desktop computer. |
 | No App windows or screens listed | Check the message in the source picker, then follow [App source troubleshooting](#app-windows-or-screens-are-missing). **Browser** → **Browser picker** also offers browser capture. |
 | Yellow outline around the shared window or screen | This is Windows' capture indicator. See [capture borders](#yellow-capture-border-on-windows) for Windows 11 controls and an optional Windows 10 workaround. |
@@ -44,28 +43,6 @@ The source picker distinguishes these outcomes:
 Local-network permission lets the page contact the App. It is separate from
 the WebRTC media settings described below. An unreachable App alone does not
 prove that permission was denied.
-
-## No audio option on macOS
-
-**Browser capture:** try an up-to-date Chrome, select a **Chrome tab**, and enable
-**Share tab audio**. Window and entire-screen audio need newer platform support:
-Google documents **macOS 14.2 or later and Chrome 142 or later** for that feature.
-Safari and Firefox currently do not provide screen-share audio through the
-browser picker. See [Google's requirements](https://workspaceupdates.googleblog.com/2025/12/share-devices-audio-when-presenting.html)
-and [browser audio support](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getDisplayMedia#browser_compatibility).
-
-**App capture:** keep Piik App running and open the site through it. Choose an
-application/window or screen in Piik's source picker; **Application sound** or
-**System sound** appears below a loaded source list. The **Browser** tab instead
-leaves audio selection to the browser's own dialog. For an unavailable App or
-empty list, follow [App source troubleshooting](#app-windows-or-screens-are-missing).
-The Mac App includes native audio capture, but physical Mac testing is still pending.
-
-In **System Settings → Privacy & Security → Screen & System Audio Recording**,
-allow the browser or capture app named by the system prompt. Follow any request
-to quit and reopen it, then share again. Older macOS versions may call this
-**Screen Recording**. [Apple's permission guide](https://support.apple.com/guide/mac-help/mchld6aa7d23/mac)
-explains these settings.
 
 ## Yellow capture border on Windows
 

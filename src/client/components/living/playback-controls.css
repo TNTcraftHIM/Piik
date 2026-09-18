@@ -3,6 +3,7 @@
   inset: auto 0 0;
   z-index: 4;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   padding: 6px 12px max(6px, env(safe-area-inset-bottom));
@@ -27,7 +28,7 @@
 .lr-playback .lr-btn:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]) { transform: translateY(-2px); background: var(--wall-2); }
 .lr-playback .lr-btn:active:not(:disabled):not([aria-disabled="true"]) { transform: translateY(2px) scale(.95); transition-duration: 80ms; }
 .lr-playback .lr-btn[aria-pressed="true"] { background: var(--wall-2); }
-.lr-playback-audio { display: flex; align-items: center; flex: 1; gap: 8px; min-width: 0; }
+.lr-playback-audio { display: flex; align-items: center; flex: 1; gap: 8px; min-width: min-content; }
 .lr-playback-separator { flex: none; width: 1px; height: 20px; background: currentColor; opacity: .22; }
 .lr-playback-volume { flex: 0 1 144px; min-width: 32px; }
 .lr-playback-volume input { width: 100%; min-width: 0; height: 44px; padding: 0; margin: 0; accent-color: var(--action); cursor: pointer; }
