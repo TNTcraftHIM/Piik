@@ -54,6 +54,7 @@ export type SfuPublisherFailureStage =
 export class SfuPublisher {
   private peer: SfuPeer | null = null;
   private video: MediaStreamTrack | null = null;
+  private sourceVideo: MediaStreamTrack | null = null;
   private audio: MediaStreamTrack | null = null;
   private videoSender: RTCRtpSender | null = null;
   private audioSender: RTCRtpSender | null = null;
@@ -144,13 +145,15 @@ export class SfuPublisher {
       let video: MediaStreamTrack | null = null;
       try {
         this.failureStage = "source";
-        video = this.ownTrack(cloneSenderVideoTrack(requiredVideo(stream)));
+        const sourceVideo = requiredVideo(stream);
+        video = this.ownTrack(cloneSenderVideoTrack(sourceVideo));
         await applyVideoCaptureProfile(video, profile);
         if (this.peer !== peer) {
           this.releaseTrack(video);
           return false;
         }
         this.video = video;
+        this.sourceVideo = sourceVideo;
         this.audio = this.ownTrack(stream.getAudioTracks()[0]?.clone() ?? null);
         this.setPaused(this.paused);
         const dimensions = video.getSettings();
@@ -223,35 +226,41 @@ export class SfuPublisher {
       const audioSender = this.audioSender;
       if (!peer || !profile || !previousVideo || !videoSender || !audioSender)
         return false;
-      const nextVideo = this.ownTrack(
-        cloneSenderVideoTrack(requiredVideo(stream)),
-      );
+      const sourceVideo = requiredVideo(stream);
+      const videoChanged = sourceVideo !== this.sourceVideo;
+      const nextVideo = videoChanged
+        ? this.ownTrack(cloneSenderVideoTrack(sourceVideo)) : previousVideo;
       const nextAudio = this.ownTrack(
         stream.getAudioTracks()[0]?.clone() ?? null,
       );
       let retained = false;
-      this.resetStats();
+      const previousStartup = this.startupPending;
+      const previousBaseline = this.startupFramesBaseline;
+      if (videoChanged) this.resetStats();
       try {
-        await applyVideoCaptureProfile(nextVideo, profile);
+        if (videoChanged) await applyVideoCaptureProfile(nextVideo, profile);
         if (this.peer !== peer) return false;
         nextVideo.enabled = !this.paused;
         if (nextAudio) {
           nextAudio.enabled = !this.paused;
           nextAudio.contentHint = "music";
         }
-        await videoSender.replaceTrack(nextVideo);
+        if (videoChanged) await videoSender.replaceTrack(nextVideo);
         await audioSender.replaceTrack(nextAudio);
         if (this.peer !== peer) return false;
         this.video = nextVideo;
         this.audio = nextAudio;
-        this.startupPending = needsStartupVideoProfile(profile);
-        this.startupFramesBaseline = null;
-        await this.configure(profile);
+        if (videoChanged) {
+          this.startupPending = needsStartupVideoProfile(profile);
+          this.startupFramesBaseline = null;
+        }
+        await this.configure(profile, videoChanged);
         if (this.peer !== peer) return false;
         if (!peer.send({ kind: "media", media: this.media(profile) }))
           throw new Error("SFU signaling is unavailable");
         retained = true;
-        this.releaseTrack(previousVideo);
+        this.sourceVideo = sourceVideo;
+        if (videoChanged) this.releaseTrack(previousVideo);
         this.releaseTrack(previousAudio);
         this.setPaused(this.paused);
         return true;
@@ -260,10 +269,14 @@ export class SfuPublisher {
         if (this.peer !== peer) return false;
         this.video = previousVideo;
         this.audio = previousAudio;
+        if (videoChanged) {
+          this.startupPending = previousStartup;
+          this.startupFramesBaseline = previousBaseline;
+        }
         try {
-          await videoSender.replaceTrack(previousVideo);
+          if (videoChanged) await videoSender.replaceTrack(previousVideo);
           await audioSender.replaceTrack(previousAudio);
-          await this.configure(profile);
+          await this.configure(profile, videoChanged);
           this.videoWarning = { key: "host.fail.sfuSwitch" };
           return false;
         } catch {
@@ -272,7 +285,7 @@ export class SfuPublisher {
         }
       } finally {
         if (!retained) {
-          this.releaseTrack(nextVideo);
+          if (videoChanged) this.releaseTrack(nextVideo);
           this.releaseTrack(nextAudio);
         }
       }
@@ -345,6 +358,7 @@ export class SfuPublisher {
     peer?.close();
     for (const track of this.ownedTracks) this.releaseTrack(track);
     this.video = null;
+    this.sourceVideo = null;
     this.audio = null;
     this.videoSender = null;
     this.audioSender = null;

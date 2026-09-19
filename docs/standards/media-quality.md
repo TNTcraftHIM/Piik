@@ -25,6 +25,9 @@ production behavior and remaining acceptance.
   microphone must not stop healthy video. Share retirement releases its devices
   and rejects late permission results. Native App capture must provide mixing
   at its own source boundary; Browser preview audio is not that implementation.
+- An audio-only update with the same capture video preserves the Browser video
+  sender, encoding state and startup evidence on both direct and SFU paths.
+  A new video source owns a new startup baseline; audio changes do not.
 - Windows native capture follows an explicitly stretched active display path
   for an entire display or a window covering that display, when the captured
   frame matches its desktop source dimensions. Other frames retain their own

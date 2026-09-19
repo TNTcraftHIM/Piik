@@ -322,6 +322,56 @@ describe("embedded SFU browser transport", () => {
     expect(pc.createOffer).toHaveBeenCalledOnce();
   });
 
+  it.each([false, true])("keeps established SFU video through audio-only addition and removal (initial audio=%s)", async (audio) => {
+    const { publisher: host, pc, video, send } = await publisher(audio);
+    const sender = pc.transceivers[0]!.sender;
+    const ownedVideo = video.clones[0]!;
+    feedVideoStats(pc, ownedVideo.id, 6);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(sender.parameters.degradationPreference).toBe("balanced");
+    const parameters = sender.setParameters.mock.calls.length;
+    const constraints = ownedVideo.applyConstraints.mock.calls.length;
+    const voice = new FakeTrack("audio");
+    for (const tracks of [[voice], []]) {
+      expect(await host.replaceStream(stream(video, ...tracks))).toBe(true);
+      expect(sender.track).toBe(ownedVideo);
+      expect(sender.replaceTrack).not.toHaveBeenCalled();
+      expect(sender.setParameters).toHaveBeenCalledTimes(parameters);
+      expect(ownedVideo.applyConstraints).toHaveBeenCalledTimes(constraints);
+      expect(ownedVideo.stop).not.toHaveBeenCalled();
+      expect(sender.parameters.degradationPreference).toBe("balanced");
+      expect(send).toHaveBeenLastCalledWith(expect.objectContaining({ kind: "media", media: expect.objectContaining({ audio: tracks.length > 0 }) }));
+    }
+    expect(video.clones).toHaveLength(1);
+    expect(pc.createOffer).toHaveBeenCalledOnce();
+    expect(voice.clones[0]!.stop).toHaveBeenCalledOnce();
+    await host.disconnect();
+    expect(ownedVideo.stop).toHaveBeenCalledOnce();
+    expect(video.stop).not.toHaveBeenCalled();
+  });
+
+  it("rolls back a rejected audio-only update without mutating the video", async () => {
+    const { publisher: host, pc, video, sound, send } = await publisher();
+    const videoSender = pc.transceivers[0]!.sender;
+    const audioSender = pc.transceivers[1]!.sender;
+    const ownedVideo = video.clones[0]!;
+    const previousAudio = sound.clones[0]!;
+    feedVideoStats(pc, ownedVideo.id, 6);
+    await vi.advanceTimersByTimeAsync(2_000);
+    const parameters = videoSender.setParameters.mock.calls.length;
+    const voice = new FakeTrack("audio");
+    send.mockReturnValueOnce(false);
+    expect(await host.replaceStream(stream(video, voice))).toBe(false);
+    expect(videoSender.track).toBe(ownedVideo);
+    expect(videoSender.replaceTrack).not.toHaveBeenCalled();
+    expect(videoSender.setParameters).toHaveBeenCalledTimes(parameters);
+    expect(ownedVideo.stop).not.toHaveBeenCalled();
+    expect(audioSender.track).toBe(previousAudio);
+    expect(previousAudio.stop).not.toHaveBeenCalled();
+    expect(voice.clones[0]!.stop).toHaveBeenCalledOnce();
+    expect(videoSender.parameters.degradationPreference).toBe("balanced");
+  });
+
   it("reuses the audio transceiver when source audio appears and retires clones only", async () => {
     const { publisher: host, pc, video, send } = await publisher(false);
     const nextVideo = new FakeTrack("video");
@@ -412,16 +462,22 @@ describe("embedded SFU browser transport", () => {
   });
 
   it("rolls back a failed source replacement and releases its unused clone", async () => {
-    const { publisher: host, pc, video } = await publisher();
-    pc.transceivers[0]!.sender.replaceTrack.mockRejectedValueOnce(
-      new Error("replace rejected"),
-    );
+    const { publisher: host, pc, video, send } = await publisher();
+    const videoSender = pc.transceivers[0]!.sender;
+    feedVideoStats(pc, video.clones[0]!.id, 6);
+    await vi.advanceTimersByTimeAsync(2_000);
+    send.mockReturnValueOnce(false);
     const replacement = new FakeTrack("video");
     expect(await host.replaceStream(stream(replacement))).toBe(false);
     expect(pc.transceivers[0]!.sender.track).toBe(video.clones[0]);
     expect(video.clones[0]!.stop).not.toHaveBeenCalled();
     expect(replacement.clones[0]!.stop).toHaveBeenCalledOnce();
+    expect(videoSender.parameters.degradationPreference).toBe("balanced");
     expect(pc.close).not.toHaveBeenCalled();
+    const replacements = videoSender.replaceTrack.mock.calls.length;
+    expect(await host.replaceStream(stream(video, new FakeTrack("audio")))).toBe(true);
+    expect(videoSender.replaceTrack).toHaveBeenCalledTimes(replacements);
+    expect(video.clones).toHaveLength(1);
   });
 
   it("preserves media during a signaling outage and updates only the route fence", async () => {
