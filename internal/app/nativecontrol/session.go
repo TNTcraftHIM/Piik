@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"math"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -43,7 +44,6 @@ type Session struct {
 	ctx            context.Context
 	cancel         context.CancelFunc
 	events         chan any
-	hostEvents     chan nativehost.Event
 	viewerEvents   chan nativeviewer.Event
 
 	mu         sync.Mutex
@@ -72,7 +72,6 @@ func New(
 		ctx:            ctx,
 		cancel:         cancel,
 		events:         make(chan any, 256),
-		hostEvents:     make(chan nativehost.Event, 256),
 		viewerEvents:   make(chan nativeviewer.Event, 256),
 	}
 	go session.relayEvents()
@@ -168,6 +167,33 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 			"share", diagnostics.ID(request.ShareID), "profile", nativeQualityProfile(request.Profile), "codec", request.Codec, "audio", request.Audio,
 			"sourceKind", request.Source.Kind, "adapterIndex", request.AdapterIndex, "encoderIndex", request.EncoderIndex)
 		return session.startShare(ctx, envelope, request)
+	case "set-microphone":
+		var request microphoneRequest
+		if err := decodeStrict(payload, &request); err != nil || !validIdentities(request.ShareID) ||
+			(request.Enabled == nil && request.Volume == nil) ||
+			(request.Volume != nil && (math.IsNaN(*request.Volume) || math.IsInf(*request.Volume, 0) || *request.Volume < 0 || *request.Volume > 2)) {
+			return nil, protocolViolation("native microphone request is invalid")
+		}
+		host := session.current(request.ShareID)
+		if host == nil {
+			return nil, errors.New("native share does not exist")
+		}
+		// Commit gain in command order; asynchronous device setup must not later
+		// overwrite a newer slider value received while permission was pending.
+		if request.Volume != nil {
+			if err := host.SetMicrophone(nil, request.Volume); err != nil {
+				return nil, err
+			}
+		}
+		if request.Enabled == nil {
+			return response(envelope, "microphone-set"), nil
+		}
+		result = session.runHostOperation(host, envelope, func() (any, error) {
+			err := host.SetMicrophone(request.Enabled, nil)
+			return response(envelope, "microphone-set"), err
+		}, complete)
+		asynchronous = result == nil
+		return result, nil
 	case "update-share":
 		var request updateShareRequest
 		if err := decodeStrict(payload, &request); err != nil ||
@@ -394,22 +420,33 @@ func (session *Session) Close() error {
 }
 
 func (session *Session) updateHost(host *nativehost.Session, request requestEnvelope, shareID string, profile nativehost.QualityProfile, complete func(any, error)) any {
+	return session.runHostOperation(host, request, func() (any, error) {
+		err := host.UpdateProfile(profile)
+		return session.shareUpdateResult(request, shareID, profile, err), err
+	}, complete)
+}
+
+// Quality and microphone setup share one bounded operation slot. Stop remains
+// synchronous and cancels the owning share before joining this completion.
+func (session *Session) runHostOperation(host *nativehost.Session, request requestEnvelope, operation func() (any, error), complete func(any, error)) any {
 	session.mu.Lock()
 	if session.closed || session.host != host || session.updateDone != nil {
 		session.mu.Unlock()
-		return operationFailure(request, errors.New("native quality update is unavailable or already active"))
+		return operationFailure(request, errors.New("native share operation is unavailable or already active"))
 	}
 	done := make(chan struct{})
 	session.updateDone = done
 	session.mu.Unlock()
 	go func() {
-		err := host.UpdateProfile(profile)
+		result, err := operation()
 		session.mu.Lock()
 		current := !session.closed && session.host == host
 		if !current && err == nil {
-			err = errors.New("native share stopped during quality update")
+			err = errors.New("native share stopped during operation")
 		}
-		result := session.shareUpdateResult(request, shareID, profile, err)
+		if err != nil {
+			result = operationFailure(request, err)
+		}
 		complete(result, err)
 		close(done)
 		if session.closed {
@@ -476,13 +513,20 @@ func (session *Session) startShare(
 			EncoderIndex:      request.EncoderIndex,
 			Profile:           profile.Video,
 		},
-		Profile:      profile,
-		EdgeCapacity: request.EdgeCapacity,
+		MicrophoneMixing: request.MicrophoneMixing && session.capabilities.Microphone,
+		Profile:          profile,
+		EdgeCapacity:     request.EdgeCapacity,
 		AudioEnabled: request.Audio && session.capabilities.Summary().AudioFor(
 			request.Source.Kind,
 		),
 		PortMapping: session.portMapping,
-		Events:      session.hostEvents,
+		Events: func(ctx context.Context, event nativehost.Event) {
+			select {
+			case session.events <- eventMessage(event):
+			case <-ctx.Done():
+			case <-session.ctx.Done():
+			}
+		},
 	})
 	if err != nil {
 		return nil, err
@@ -503,6 +547,7 @@ func (session *Session) startShare(
 		responseEnvelope: response(envelope, "share-started"),
 		ShareID:          request.ShareID,
 		Audio:            host.HasAudio(),
+		SourceAudio:      host.SourceAudio(),
 		Codec:            codec,
 	}, nil
 }
@@ -758,12 +803,6 @@ func (session *Session) watchHost(host *nativehost.Session) {
 func (session *Session) relayEvents() {
 	for {
 		select {
-		case event := <-session.hostEvents:
-			var value any = eventMessage(event)
-			if event.Current != nil {
-				value = loopback.ControlEvent{Value: value, Current: event.Current}
-			}
-			session.emit(value)
 		case event := <-session.viewerEvents:
 			session.emit(loopback.ControlEvent{Value: viewerEventMessage(event), Current: event.Current})
 		case <-session.ctx.Done():
@@ -829,6 +868,8 @@ func eventMessage(event nativehost.Event) any {
 		PublicationGeneration: event.PublicationGeneration,
 	}
 	switch event.Type {
+	case "audio-state":
+		return audioStateEvent{eventEnvelope: base, SourceAudio: event.SourceAudio, Microphone: event.Microphone, Failed: event.Failed}
 	case "publication-quality":
 		return publicationQualityEvent{eventEnvelope: base, PublicationQualitySample: *event.PublicationQuality}
 	case "edge-candidate", "publication-candidate":

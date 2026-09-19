@@ -920,7 +920,7 @@ piik::capture::TargetKind ParseTargetKind(const wchar_t* value) {
 }
 
 struct ProductArguments final {
-  enum class Mode { list, probe, preview, audio, video, encoded } mode = Mode::list;
+  enum class Mode { list, probe, preview, audio, microphone, video, encoded } mode = Mode::list;
   piik::capture::TargetKind target_kind =
       piik::capture::TargetKind::window;
   DWORD pid = 0;
@@ -1003,6 +1003,10 @@ ProductArguments ParseProductArguments(int count, wchar_t** values) {
     arguments.pid = static_cast<DWORD>(pid);
     arguments.creation_time =
         ParseNonNegativeUint64(values[5], "argument-creation-time");
+    return arguments;
+  }
+  if (count == 2 && std::wstring(values[1]) == L"--capture-microphone") {
+    arguments.mode = ProductArguments::Mode::microphone;
     return arguments;
   }
   if (count == 5 && std::wstring(values[1]) == L"--capture-audio") {
@@ -1105,6 +1109,9 @@ HRESULT RunAudioCapture(const ProductArguments& arguments) {
                         piik::capture::kAudioChunkDuration100ns, data,
                         size);
   };
+  if (arguments.mode == ProductArguments::Mode::microphone) {
+    return piik::capture::CaptureMicrophone(stop.get(), should_stop, ready, pcm);
+  }
   if (arguments.target_kind == piik::capture::TargetKind::display) {
     return piik::capture::CaptureSystemAudio(
         stop.get(), should_stop, ready, pcm);
@@ -1159,7 +1166,7 @@ void WriteCapabilityProbe() {
          << ",\"videoCapture\":" << (window_capture ? "true" : "false")
          << ",\"captureBorderControl\":"
          << (window_capture && piik::capture::CaptureBorder::Supported() ? "true" : "false")
-         << ",\"softwareVP8\":true"
+         << ",\"microphone\":true,\"softwareVP8\":true"
          << ",\"processAudio\":"
          << (process_audio ? "true" : "false")
          << ",\"systemAudio\":" << (system_audio ? "true" : "false")
@@ -2081,7 +2088,7 @@ int wmain(int argc, wchar_t** argv) {
             "capture-preview");
       return 0;
     }
-    if (arguments.mode == ProductArguments::Mode::audio) {
+    if (arguments.mode == ProductArguments::Mode::audio || arguments.mode == ProductArguments::Mode::microphone) {
       Check(RunAudioCapture(arguments), "process-audio-capture");
       return 0;
     }

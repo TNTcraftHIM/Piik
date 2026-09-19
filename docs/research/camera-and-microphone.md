@@ -21,12 +21,26 @@ retiring the share closes audio resources and discards late permission results.
 The Host preview stays muted. Viewers receive the combined sound with their
 existing volume control and never request microphone permission.
 
-App native screen/window capture encodes before reaching the Browser. Its
-microphone integration is **not implemented** by this Browser mixer. The
-candidate disables microphone for that capture path rather than re-encoding a
-local native preview. Browser/camera capture opened from the App can use it.
-Native source mixing, actual phone capture and real audio-level/echo acceptance
-remain prerequisites for declaring broader support.
+App native screen/window capture mixes default-device microphone PCM with source
+audio before the existing Opus encoder. Windows uses WASAPI, macOS uses
+AVAudioEngine and Linux uses PulseAudio/PipeWire through GStreamer. Platform
+converters supply 48 kHz stereo PCM; one 20 ms output clock consumes each input
+once, with a bounded queue and silence for missing samples. This bounds backlog;
+it does not replace platform resampling or establish long-term clock-drift and
+echo-cancellation performance.
+
+New App/page pairs opt into a stable mixed audio track from share startup, even
+with source sound disabled. Opening or muting the microphone and replacing the
+source preserve that track, encoder, preview and route owners. Source sound and
+microphone availability remain separate reported facts. Old Apps/pages retain
+the existing capture contract through capability negotiation; microphone capture
+starts only after an explicit action. Permission waiting is cancellable and does
+not hold the control reader. Device loss retires only that audio input.
+
+Windows native capture and the App-to-Viewer path have local acceptance evidence.
+macOS/Linux microphone compilation and device acceptance, real audio-level/echo
+checks and actual phone capture remain release boundaries; synthetic tests do
+not establish those results. The Host preview remains muted on every path.
 
 This scope adds no room messages, ports, chat, Viewer microphone or emoji
 interactions. Microphone, pause, source replacement and stop share one action
@@ -36,8 +50,7 @@ Source-sound details describe the raw capture input; microphone intent and
 Viewer playback volume are separate facts. Pausing the share silences the mixed
 output and temporarily disables microphone toggling without clearing its intent.
 The adjacent arrow expands an in-flow row that adjusts microphone input from
-0–200% through a smoothed
-Web Audio gain. It does not change source audio or Viewer playback volume,
+0–200% through smoothed input gain. It does not change source audio or Viewer playback volume,
 reopen permission, or replace the outgoing track. Its value lasts for the Host
 page lifetime; new page loads use 100%. Mute remains a separate direct action.
 Opening volume settings makes room below the dock without covering the picture
@@ -70,3 +83,7 @@ establish actual iOS/Android permission, orientation, background or audio behavi
   have separate permissions, capabilities and secure-context requirements.
 - [WebRTC track replacement](https://developer.mozilla.org/en-US/docs/Web/API/RTCRtpSender/replaceTrack)
   describes reuse of negotiated media slots and when renegotiation is required.
+- [WASAPI shared capture](https://learn.microsoft.com/en-us/windows/win32/api/audioclient/nf-audioclient-iaudioclient-initialize),
+  [AVAudioConverter resampling](https://developer.apple.com/documentation/technotes/tn3136-avaudioconverter-performing-sample-rate-conversions)
+  and [GStreamer audio mixing](https://gstreamer.freedesktop.org/documentation/audiomixer/audiomixer.html)
+  define the platform conversion and PCM mixing boundaries.

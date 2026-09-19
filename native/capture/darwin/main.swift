@@ -1,3 +1,4 @@
+import AVFoundation
 import AudioToolbox
 import CoreMedia
 import CoreVideo
@@ -76,6 +77,7 @@ private struct Probe: Codable {
     let platformBuild: String
     let videoCapture: Bool
     let processAudio: Bool
+    let microphone = true
     let systemAudio: Bool
     let softwareVP8 = false
     let adapters: [AdapterProbe]
@@ -282,6 +284,12 @@ private final class StopSignal {
         failure = error
         lock.unlock()
         semaphore.signal()
+    }
+
+    var isStopped: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return stopped
     }
 
     func wait() throws {
@@ -1178,6 +1186,14 @@ private final class AudioCaptureOutput: NSObject, SCStreamOutput, SCStreamDelega
         }
     }
 
+    // Microphone conversion and ScreenCaptureKit audio use the same PCM framing.
+    func appendPCM(_ buffer: AVAudioPCMBuffer) throws {
+        guard !done.isStopped, let samples = buffer.int16ChannelData else { return }
+        pending.append(UnsafeRawPointer(samples[0]).assumingMemoryBound(to: UInt8.self),
+                       count: Int(buffer.frameLength) * 4)
+        try flushFrames()
+    }
+
     private func flushFrames() throws {
         let frameBytes = 960 * 2 * MemoryLayout<Int16>.size
         while pending.count >= frameBytes {
@@ -1697,6 +1713,97 @@ private func capture(_ arguments: [String]) async throws {
     try await stream.stopCapture()
 }
 
+// AVAudioEngine callbacks never wait on stdout. Four copied buffers bound the
+// worker; the persistent platform converter owns resampling between callbacks.
+private func captureMicrophone() throws {
+    let done = StopSignal()
+    let control = DispatchQueue(label: "piik.microphone.control")
+    let worker = DispatchQueue(label: "piik.microphone.pcm")
+    let slots = DispatchSemaphore(value: 4)
+    let output = AudioCaptureOutput(writer: ProtocolWriter(), done: done)
+    var engine: AVAudioEngine?
+    var observer: NSObjectProtocol?
+    var tapped = false
+    readInput(done: done)
+    defer {
+        control.sync {
+            if let observer { NotificationCenter.default.removeObserver(observer) }
+            if tapped { engine?.inputNode.removeTap(onBus: 0) }
+            engine?.stop()
+            engine = nil
+        }
+        worker.sync {} // Queued work observes stopped; no tail audio is flushed.
+    }
+    let permitted: (Bool) -> Void = { allowed in
+        control.async {
+            guard !done.isStopped else { return }
+            guard allowed else {
+                done.signal(CaptureFailure(description: "microphone permission denied"))
+                return
+            }
+            do {
+                let capture = AVAudioEngine()
+                engine = capture
+                let input = capture.inputNode
+                let format = input.outputFormat(forBus: 0)
+                guard format.sampleRate > 0, format.channelCount > 0,
+                      let target = AVAudioFormat(commonFormat: .pcmFormatInt16,
+                                                sampleRate: 48_000, channels: 2, interleaved: true),
+                      let converter = AVAudioConverter(from: format, to: target) else {
+                    throw CaptureFailure(description: "microphone format is unavailable")
+                }
+                converter.channelMap = [0, format.channelCount > 1 ? 1 : 0]
+                observer = NotificationCenter.default.addObserver(
+                    forName: .AVAudioEngineConfigurationChange, object: capture, queue: nil
+                ) { _ in done.signal(CaptureFailure(description: "microphone device changed")) }
+                input.installTap(onBus: 0, bufferSize: 960, format: format) { buffer, _ in
+                    guard !done.isStopped, buffer.frameLength > 0,
+                          slots.wait(timeout: .now()) == .success else { return }
+                    guard let copy = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: buffer.frameLength) else {
+                        slots.signal()
+                        return
+                    }
+                    copy.frameLength = buffer.frameLength
+                    let source = UnsafeMutableAudioBufferListPointer(buffer.mutableAudioBufferList)
+                    let destination = UnsafeMutableAudioBufferListPointer(copy.mutableAudioBufferList)
+                    for index in 0..<source.count {
+                        if let src = source[index].mData, let dst = destination[index].mData {
+                            memcpy(dst, src, min(Int(source[index].mDataByteSize), Int(destination[index].mDataByteSize)))
+                        }
+                    }
+                    worker.async {
+                        defer { slots.signal() }
+                        guard !done.isStopped else { return }
+                        let capacity = AVAudioFrameCount(ceil(Double(copy.frameLength) * 48_000 / format.sampleRate)) + 64
+                        guard let converted = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: capacity) else { return }
+                        var supplied = false
+                        var error: NSError?
+                        let status = converter.convert(to: converted, error: &error) { _, state in
+                            if supplied { state.pointee = .noDataNow; return nil }
+                            supplied = true
+                            state.pointee = .haveData
+                            return copy
+                        }
+                        if status == .error {
+                            done.signal(error ?? CaptureFailure(description: "microphone conversion failed") as NSError)
+                            return
+                        }
+                        do { try output.appendPCM(converted) } catch { done.signal(error) }
+                    }
+                }
+                tapped = true
+                try capture.start()
+            } catch { done.signal(error) }
+        }
+    }
+    switch AVCaptureDevice.authorizationStatus(for: .audio) {
+    case .authorized: permitted(true)
+    case .notDetermined: AVCaptureDevice.requestAccess(for: .audio, completionHandler: permitted)
+    default: permitted(false)
+    }
+    try done.wait()
+}
+
 private func captureAudio(_ arguments: [String]) async throws {
     guard arguments.count == 5,
           arguments[1] == "--capture-audio",
@@ -1763,6 +1870,8 @@ private struct PiikCapture {
                 try selfTest()
             } else if arguments.count == 2, arguments[1] == "--list" {
                 try await listSources()
+            } else if arguments.count == 2, arguments[1] == "--capture-microphone" {
+                try captureMicrophone()
             } else if arguments.count > 1, arguments[1] == "--capture-audio" {
                 try await captureAudio(arguments)
             } else if arguments.count > 1, arguments[1] == "--encoded-video" {

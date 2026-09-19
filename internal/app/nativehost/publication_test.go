@@ -1,6 +1,7 @@
 package nativehost
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -25,7 +26,12 @@ func TestPublicationGenerationFencesNativeControl(t *testing.T) {
 		t.Fatal(err)
 	}
 	events := make(chan Event, 64)
-	session := &Session{shareID: "share_12345678", engine: engine, source: source, ctx: t.Context(), events: events}
+	session := &Session{shareID: "share_12345678", engine: engine, source: source, ctx: t.Context(), events: func(ctx context.Context, event Event) {
+		select {
+		case events <- event:
+		case <-ctx.Done():
+		}
+	}}
 	_, media, err := session.PreparePublication("generation_12345678", "connection_12345678", nil)
 	if err != nil || media.Codec != "vp8" || len(media.Layers) != 1 {
 		t.Fatalf("publication did not reuse capture metadata: %+v %v", media, err)

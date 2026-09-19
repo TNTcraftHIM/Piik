@@ -72,6 +72,7 @@ type NativeMediaCapabilities struct {
 	ReceiverReuse        bool `json:"receiverReuse,omitempty"`
 	Video                bool `json:"video"`
 	CaptureBorderControl bool `json:"captureBorderControl,omitempty"`
+	Microphone           bool `json:"microphone,omitempty"`
 	ProcessAudio         bool `json:"processAudio"`
 	SystemAudio          bool `json:"systemAudio"`
 	HardwareH264         bool `json:"hardwareH264"`

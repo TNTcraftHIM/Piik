@@ -36,6 +36,7 @@ export const nativeHealthSchema = nativeDiscoveryIdentitySchema.extend({
       video: z.boolean().default(false),
       processAudio: z.boolean().default(false),
       systemAudio: z.boolean().default(false),
+      microphone: z.boolean().default(false),
       // API availability, not Windows approval or observed border visibility.
       captureBorderControl: z.boolean().default(false),
       hardwareH264: z.boolean().default(false),
@@ -155,6 +156,7 @@ export const shareStartedResponseSchema = z
     type: z.literal("share-started"),
     shareId: opaqueIdentifierSchema,
     audio: z.boolean(),
+    sourceAudio: z.boolean().optional(),
     codec: nativeVideoCodecSchema,
   })
   .strict();
@@ -227,6 +229,7 @@ export const nativeAckResponseSchema = z
       "receive-stopped",
       "share-stopped",
       "share-paused",
+      "microphone-set",
       "publication-answer-accepted",
       "publication-candidate-accepted",
       "publication-layers-accepted",
@@ -241,6 +244,7 @@ const eventBase = {
 };
 
 export const nativeEventSchema = z.discriminatedUnion("type", [
+  z.object({ ...eventBase, type: z.literal("audio-state"), sourceAudio: z.boolean(), microphone: z.boolean(), failed: z.boolean() }).strict(),
   z
     .object({
       ...eventBase,

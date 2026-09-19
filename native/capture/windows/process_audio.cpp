@@ -77,13 +77,13 @@ HRESULT ActivateProcessLoopback(DWORD pid, HANDLE completed,
   return result;
 }
 
-HRESULT ActivateSystemLoopback(ComPtr<IAudioClient>* client) {
+HRESULT ActivateEndpoint(ComPtr<IAudioClient>* client, bool microphone = false) {
   ComPtr<IMMDeviceEnumerator> enumerator;
   HRESULT result = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr,
                                     CLSCTX_ALL, IID_PPV_ARGS(&enumerator));
   ComPtr<IMMDevice> device;
   if (SUCCEEDED(result)) {
-    result = enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device);
+    result = enumerator->GetDefaultAudioEndpoint(microphone ? eCapture : eRender, microphone ? eCommunications : eConsole, &device);
   }
   if (SUCCEEDED(result)) {
     result = device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr,
@@ -92,7 +92,7 @@ HRESULT ActivateSystemLoopback(ComPtr<IAudioClient>* client) {
   return result;
 }
 
-HRESULT CaptureLoopbackAudio(ComPtr<IAudioClient> client, HANDLE process,
+HRESULT CaptureAudioFrames(ComPtr<IAudioClient> client, HANDLE process, bool loopback,
                              HANDLE stop_event, const StopProbe& stop_probe,
                              const ReadyWriter& ready_writer,
                              const PCMWriter& writer) {
@@ -115,7 +115,7 @@ HRESULT CaptureLoopbackAudio(ComPtr<IAudioClient> client, HANDLE process,
   format.nAvgBytesPerSec = kAudioSampleRate * format.nBlockAlign;
   if (SUCCEEDED(result)) {
     result = client->Initialize(AUDCLNT_SHAREMODE_SHARED,
-        AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
+        (loopback ? AUDCLNT_STREAMFLAGS_LOOPBACK : 0) | AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
             AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
         0, 0, &format, nullptr);
   }
@@ -221,7 +221,7 @@ bool ProcessAudioAvailable() {
 
 bool SystemAudioAvailable() {
   ComPtr<IAudioClient> client;
-  return SUCCEEDED(ActivateSystemLoopback(&client)) && client != nullptr;
+  return SUCCEEDED(ActivateEndpoint(&client)) && client != nullptr;
 }
 
 HRESULT CaptureProcessAudio(DWORD pid, UINT64 expectedCreationTime,
@@ -246,7 +246,7 @@ HRESULT CaptureProcessAudio(DWORD pid, UINT64 expectedCreationTime,
     result = ActivateProcessLoopback(pid, completed, &client);
   }
   if (SUCCEEDED(result)) {
-    result = CaptureLoopbackAudio(client, process, stop_event, stop_probe,
+    result = CaptureAudioFrames(client, process, true, stop_event, stop_probe,
                                   ready_writer, writer);
   }
   if (completed != nullptr) CloseHandle(completed);
@@ -262,10 +262,24 @@ HRESULT CaptureSystemAudio(HANDLE stop_event, const StopProbe& stop_probe,
   HRESULT com_result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
   if (FAILED(com_result)) return com_result;
   ComPtr<IAudioClient> client;
-  HRESULT result = ActivateSystemLoopback(&client);
+  HRESULT result = ActivateEndpoint(&client);
   if (SUCCEEDED(result)) {
-    result = CaptureLoopbackAudio(client, nullptr, stop_event, stop_probe,
+    result = CaptureAudioFrames(client, nullptr, true, stop_event, stop_probe,
                                   ready_writer, writer);
+  }
+  client.Reset();
+  CoUninitialize();
+  return result;
+}
+
+HRESULT CaptureMicrophone(HANDLE stop_event, const StopProbe& stop_probe,
+                           const ReadyWriter& ready_writer, const PCMWriter& writer) {
+  HRESULT result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+  if (FAILED(result)) return result;
+  ComPtr<IAudioClient> client;
+  result = ActivateEndpoint(&client, true);
+  if (SUCCEEDED(result)) {
+    result = CaptureAudioFrames(client, nullptr, false, stop_event, stop_probe, ready_writer, writer);
   }
   client.Reset();
   CoUninitialize();

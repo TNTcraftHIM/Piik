@@ -9,8 +9,8 @@ collect a diagnostic report if the problem persists.
 
 | What you see | Try this |
 | --- | --- |
-| Picture but no source sound | Unmute the video. The host should choose a source with shareable audio; if source sound was disabled, stop and start sharing with it enabled. App window/screen capture keeps that setting when switching sources. |
-| Cannot hear the host's voice | With Browser or Camera sharing, the host can enable **Microphone** while sharing and check its input volume and browser permission. Native App window/screen capture does not yet mix microphone audio. |
+| Picture but no source sound | Unmute the video. The host should choose a source with shareable audio and enable sound in the source picker. |
+| Cannot hear the host's voice | The host can enable **Microphone** below the picture and check its input volume, device connection and microphone permission. App window/screen capture uses the system's default microphone. If the control is unavailable, update the App and refresh the page. |
 | No screen picker | Allow the browser or App to record the screen when the OS asks. Browser capture needs HTTPS or `localhost`; try sharing from a desktop computer. |
 | No App windows or screens listed | Check the message in the source picker, then follow [App source troubleshooting](#app-windows-or-screens-are-missing). **Browser** → **Browser picker** also offers browser capture. |
 | Yellow outline around the shared window or screen | This is Windows' capture indicator. See [capture borders](#yellow-capture-border-on-windows) for Windows 11 controls and an optional Windows 10 workaround. |

@@ -624,6 +624,7 @@ func discoverNativeMedia(ctx context.Context, configuredPath string) nativeRunti
 			ReceiverReuse:        true,
 			Video:                summary.Video,
 			CaptureBorderControl: summary.CaptureBorderControl,
+			Microphone:           summary.Microphone,
 			ProcessAudio:         summary.ProcessAudio,
 			SystemAudio:          summary.SystemAudio,
 			HardwareH264:         summary.HardwareH264,

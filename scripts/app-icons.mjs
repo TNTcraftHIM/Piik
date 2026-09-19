@@ -139,6 +139,7 @@ function writeMacAssets(packageRoot, version, revision, entries) {
       "<key>CFBundlePackageType</key><string>APPL</string>",
       `<key>CFBundleShortVersionString</key><string>${bundleVersion}</string>`,
       "<key>NSScreenCaptureUsageDescription</key><string>Share a screen or application selected by you.</string>",
+      "<key>NSMicrophoneUsageDescription</key><string>Include your voice while sharing.</string>",
       "<key>NSAudioCaptureUsageDescription</key><string>Share sound from the selected screen or application.</string>",
       `<key>CFBundleVersion</key><string>${bundleVersion}</string>`,
       `<key>PiikSourceRevision</key><string>${revision}</string>`,

@@ -356,11 +356,11 @@ describe("native App private wire", () => {
     })).toEqual({
       ...health, nativeMedia: {
         receiverReuse: false,
-        video: true, processAudio: false, systemAudio: false, captureBorderControl: false, hardwareH264: false, softwareVP8: false,
+        video: true, processAudio: false, systemAudio: false, microphone: false, captureBorderControl: false, hardwareH264: false, softwareVP8: false,
       },
     });
     expect(nativeHealthSchema.parse({ ...health, nativeMedia: undefined }).nativeMedia)
-      .toEqual({ receiverReuse: false, video: false, processAudio: false, systemAudio: false, captureBorderControl: false, hardwareH264: false, softwareVP8: false });
+      .toEqual({ receiverReuse: false, video: false, processAudio: false, systemAudio: false, microphone: false, captureBorderControl: false, hardwareH264: false, softwareVP8: false });
     for (const invalid of [
       { protocol: 0 }, { protocol: 9.5 }, { protocol: Number.MAX_SAFE_INTEGER + 1 },
       { service: "other" }, { port: NATIVE_CLIENT_PORT_END + 1 }, { instanceToken: "short" },
@@ -422,6 +422,59 @@ describe("native App private wire", () => {
         });
       }
     } finally { client!.close(); }
+  });
+
+  it.each([false, true])("gates microphone mixing and coalesces volume without delaying Stop (%s)", async (supported) => {
+    const requests: Record<string, unknown>[] = [];
+    let socket!: Socket;
+    class Socket extends EventTarget {
+      static readonly OPEN = 1;
+      static readonly CLOSING = 2;
+      readyState = Socket.OPEN;
+      protocol = `piik-client-v9.${health.instanceToken}`;
+      constructor() { super(); socket = this; queueMicrotask(() => this.dispatchEvent(new Event("open"))); }
+      close() { this.readyState = Socket.CLOSING; }
+      ack(request: Record<string, unknown>, type: string, fields = {}) {
+        this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({ version: 9, id: request.id, type, ...fields }) }));
+      }
+      send(payload: string) {
+        const request = JSON.parse(payload) as Record<string, unknown>;
+        requests.push(request);
+        if (request.type === "set-microphone") return;
+        queueMicrotask(() => this.ack(request,
+          request.type === "hello" ? "ready" : request.type === "start-share" ? "share-started" : "share-stopped",
+          request.type === "start-share" ? { shareId: request.shareId, audio: supported, codec: "vp8", ...(supported ? { sourceAudio: false } : {}) } : {}));
+      }
+    }
+    vi.stubGlobal("WebSocket", Socket);
+    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      ...health, nativeMedia: { ...health.nativeMedia, ...(supported ? { microphone: true } : {}) },
+    }))));
+    const client = (await NativeClient.connect())!;
+    try {
+      const started = await client.startShare({ shareId: "share_123456", audio: false,
+        source: { kind: "display", sourceId: "1", title: "Screen" }, adapterIndex: 0, encoderIndex: 0,
+        edgeCapacity: 1, profile: DEFAULT_QUALITY_SETTINGS, codec: "vp8" });
+      expect(requests.at(-1)?.microphoneMixing).toBe(supported ? true : undefined);
+      expect(started.audio).toBe(supported);
+      if (!supported) {
+        await expect(client.setMicrophone("share_123456", true, 1)).rejects.toThrow();
+        expect(requests.some(request => request.type === "set-microphone")).toBe(false);
+        return;
+      }
+      const pending = client.setMicrophoneVolume("share_123456", 0.1);
+      for (let value = 2; value <= 20; value++) expect(client.setMicrophoneVolume("share_123456", value / 10)).toBe(pending);
+      expect(requests.filter(request => request.type === "set-microphone")).toHaveLength(1);
+      socket.ack(requests.at(-1)!, "microphone-set");
+      await vi.waitFor(() => expect(requests.at(-1)?.volume).toBe(2));
+      const last = requests.at(-1)!;
+      expect(last).not.toHaveProperty("enabled");
+      await client.stopShare("share_123456");
+      socket.ack(last, "microphone-set");
+      await pending;
+      expect(requests.at(-1)?.type).toBe("stop-share");
+    } finally { client.close(); }
   });
 
   it.each([false, true])("requests receiver reuse only from a capable App (%s)", async (supported) => {

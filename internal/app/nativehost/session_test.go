@@ -66,7 +66,7 @@ func TestCaptureCommitWaitsForReaderMetadataOrTermination(t *testing.T) {
 			publication, err := engine.NewPublication(source, mediaedge.EdgeOptions{ConnectionID: "metadata-fixture"})
 			check(err)
 			session := &Session{ctx: ctx, cancel: cancel, engine: engine, source: source, stream: previous,
-				edgeCapacity: 1, ready: make(chan error, 1), done: make(chan error, 1), events: make(chan Event, 16)}
+				edgeCapacity: 1, ready: make(chan error, 1), done: make(chan error, 1), events: func(context.Context, Event) {}}
 			options.Profile.Width, options.Profile.Height = 854, 480
 			replacement, err := nativecapture.StartVideo(ctx, executable, options)
 			check(err)

@@ -316,10 +316,10 @@ static int write_probe(void) {
   g_string_append_printf(
       json,
       "{\"protocol\":%d,\"platform\":\"linux\",\"platformBuild\":%s,"
-      "\"videoCapture\":%s,\"softwareVP8\":false,\"processAudio\":false,\"systemAudio\":%s,"
+      "\"videoCapture\":%s,\"softwareVP8\":false,\"processAudio\":false,\"systemAudio\":%s,\"microphone\":%s,"
       "\"adapters\":[",
       kCaptureProtocol, build, video ? "true" : "false",
-      audio ? "true" : "false");
+      audio ? "true" : "false", audio ? "true" : "false");
   g_free(build);
   if (encoders->len > 0) {
     g_string_append(json,
@@ -1235,21 +1235,24 @@ cleanup:
 }
 
 static int capture_audio(int count, char **values) {
-  if (count != 5 || strcmp(values[1], "--capture-audio") != 0 ||
+  gboolean microphone = count == 2 && strcmp(values[1], "--capture-microphone") == 0;
+  if (!microphone && (count != 5 || strcmp(values[1], "--capture-audio") != 0 ||
       (strcmp(values[2], "picker") != 0 &&
        strcmp(values[2], "display") != 0) ||
       strcmp(values[3], "0") != 0 ||
-      strcmp(values[4], "0") != 0 || !audio_stack_available()) {
+      strcmp(values[4], "0") != 0)) {
     return 2;
   }
   GError *error = NULL;
-  GstElement *pipeline = gst_parse_launch(
-      "pulsesrc device=@DEFAULT_MONITOR@ do-timestamp=true ! "
+  if (!audio_stack_available()) return 2;
+  gchar *description = g_strconcat(
+      microphone ? "pulsesrc do-timestamp=true ! " : "pulsesrc device=@DEFAULT_MONITOR@ do-timestamp=true ! ",
       "queue max-size-buffers=4 max-size-bytes=0 max-size-time=0 "
       "leaky=downstream ! audioconvert ! audioresample ! "
       "audio/x-raw,format=S16LE,rate=48000,channels=2,layout=interleaved ! "
-      "appsink name=output emit-signals=true sync=false max-buffers=4 drop=true",
-      &error);
+      "appsink name=output emit-signals=true sync=false max-buffers=4 drop=true", NULL);
+  GstElement *pipeline = gst_parse_launch(description, &error);
+  g_free(description);
   if (pipeline == NULL || error != NULL) {
     g_clear_error(&error);
     if (pipeline != NULL) gst_object_unref(pipeline);
@@ -1282,7 +1285,7 @@ int main(int argc, char **argv) {
   if (argc > 1 && (strcmp(argv[1], "--capture-video") == 0 || strcmp(argv[1], "--encoded-video") == 0)) {
     return capture_video(argc, argv);
   }
-  if (argc > 1 && strcmp(argv[1], "--capture-audio") == 0) {
+  if (argc > 1 && (strcmp(argv[1], "--capture-audio") == 0 || strcmp(argv[1], "--capture-microphone") == 0)) {
     return capture_audio(argc, argv);
   }
   fprintf(stderr, "Piik capture unavailable: unsupported command\n");

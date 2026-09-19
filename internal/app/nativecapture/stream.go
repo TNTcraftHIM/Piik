@@ -298,7 +298,15 @@ func StartSystemAudio(parent context.Context, executable string) (*Stream, error
 	})
 }
 
+func StartMicrophone(parent context.Context, executable string) (*Stream, error) {
+	return startAudioStreamWithTimeout(parent, executable, []string{"--capture-microphone"}, time.Minute)
+}
+
 func startAudioStream(parent context.Context, executable string, arguments []string) (*Stream, error) {
+	return startAudioStreamWithTimeout(parent, executable, arguments, probeTimeout)
+}
+
+func startAudioStreamWithTimeout(parent context.Context, executable string, arguments []string, timeout time.Duration) (*Stream, error) {
 	if parent == nil {
 		parent = context.Background()
 	}
@@ -315,7 +323,7 @@ func startAudioStream(parent context.Context, executable string, arguments []str
 		}
 		ready <- validateAudioReadyFrame(frame)
 	}()
-	timer := time.NewTimer(probeTimeout)
+	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 	select {
 	case readyErr := <-ready:

@@ -241,7 +241,7 @@ interface CaptureDetails {
   hasSourceAudio: boolean;
 }
 
-function captureDetails(stream: MediaStream, native = false): CaptureDetails {
+function captureDetails(stream: MediaStream, native = false, sourceAudio?: boolean): CaptureDetails {
   // A Native preview is a received track, not an observation of raw capture.
   const settings = native ? undefined : stream.getVideoTracks()[0]?.getSettings();
   return {
@@ -250,7 +250,7 @@ function captureDetails(stream: MediaStream, native = false): CaptureDetails {
         ? `${settings.width}x${settings.height}`
         : null,
     frameRate: settings?.frameRate ?? null,
-    hasSourceAudio: stream.getAudioTracks().length > 0,
+    hasSourceAudio: sourceAudio ?? stream.getAudioTracks().length > 0,
   };
 }
 
@@ -570,6 +570,7 @@ export function HostPage({
   const nativeEventCleanupRef = useRef<(() => void) | null>(null);
   const nativeClientCloseCleanupRef = useRef<(() => void) | null>(null);
   const nativeModeRef = useRef(false);
+  const nativeSourceAudioRef = useRef<boolean | undefined>(undefined);
   const nativeSourceRequestRef = useRef<object | null>(null);
   const nativePreviewTailRef = useRef<Promise<void>>(Promise.resolve());
   const nativeSourcePathRef = useRef<NativeCapturePath | null>(null);
@@ -1142,11 +1143,31 @@ export function HostPage({
     const { client, target, audio, showCaptureBorder, path } = selection;
     let bridge: NativeMediaBridge | null = null;
     let shareStarted = false;
+    let nativeEventCleanup: (() => void) | null = null;
     try {
       await nativeShareCleanupRef.current;
       await nativePreviewTailRef.current;
       if (!isCurrentShare(generation, shareGeneration)) return null;
       if (nativeClientRef.current !== client) throw new Error("Piik App is unavailable");
+      nativeSourceAudioRef.current = undefined;
+      nativeEventCleanup = client.onEvent((event) => {
+        if (event.shareId !== shareGeneration || !isCurrentShare(generation, shareGeneration) || nativeClientRef.current !== client) return;
+        if (event.type === "audio-state") {
+          nativeSourceAudioRef.current = event.sourceAudio;
+          setMicrophoneEnabled(event.microphone);
+          setDetails(previous => previous ? { ...previous, hasSourceAudio: event.sourceAudio } : previous);
+          if (event.failed) setNoticeValue({ kind: "key", key: "host.microphone.unavailable", target: "operation", comic: "warning", tone: "warn" });
+        }
+        if (event.type === "share-ended") {
+          endSharing(
+            { key: event.failed ? "host.shareEnded" : "host.stopNotice" },
+            true,
+            event.failed ? "source-failed" : "share-ended",
+            event.failed ? "bad" : "off",
+          );
+        }
+      });
+      nativeEventCleanupRef.current = nativeEventCleanup;
       const started = await client.startShare({
         shareId: shareGeneration,
         source: target,
@@ -1164,6 +1185,7 @@ export function HostPage({
         return null;
       }
       if (nativeClientRef.current !== client) throw new Error("Piik App is unavailable");
+      nativeSourceAudioRef.current ??= started.sourceAudio ?? started.audio;
       videoCodecRef.current = manualVideoCodecPreference(started.codec);
       bridge = new NativeMediaBridge(
         shareGeneration,
@@ -1185,22 +1207,6 @@ export function HostPage({
       nativeMediaBridgeRef.current = bridge;
       nativeModeRef.current = true;
       setNativeActive(true);
-      const nativeEventCleanup = client.onEvent((event) => {
-        if (
-          event.type === "share-ended" &&
-          event.shareId === shareGeneration &&
-          isCurrentShare(generation, shareGeneration) &&
-          nativeClientRef.current === client
-        ) {
-          endSharing(
-            { key: event.failed ? "host.shareEnded" : "host.stopNotice" },
-            true,
-            event.failed ? "source-failed" : "share-ended",
-            event.failed ? "bad" : "off",
-          );
-        }
-      });
-      nativeEventCleanupRef.current = nativeEventCleanup;
       const stream = await bridge.start();
       if (!isCurrentShare(generation, shareGeneration)) {
         if (nativeMediaBridgeRef.current === bridge) disposeNativeShare();
@@ -1209,6 +1215,8 @@ export function HostPage({
       }
       return stream;
     } catch (error) {
+      nativeEventCleanup?.();
+      if (nativeEventCleanupRef.current === nativeEventCleanup) nativeEventCleanupRef.current = null;
       if (
         nativeClientRef.current === client &&
         nativeShareGenerationRef.current === shareGeneration
@@ -1482,6 +1490,7 @@ export function HostPage({
     nativeEventCleanupRef.current = null;
     nativeShareGenerationRef.current = null;
     nativeModeRef.current = false;
+    nativeSourceAudioRef.current = undefined;
     setNativeActive(false);
     if (!client || !shareGeneration) {
       releaseUnusedNativeClient();
@@ -1629,7 +1638,7 @@ export function HostPage({
       debugEvent("quality", "committed", { generation, applied: appliedProfile });
       outcome = "applied";
       if (nativeUpdate) {
-        setDetails(captureDetails(activeStream, true));
+        setDetails(captureDetails(activeStream, true, nativeSourceAudioRef.current));
       } else if (captureChanged) {
         setDetails(captureDetails(hostAudioRef.current?.sourceStream ?? activeStream));
       }
@@ -2454,7 +2463,7 @@ export function HostPage({
       watchCaptureEnd(captured, generation);
       if (selection.kind === "native") {
         setDetails(
-          captureDetails(captured, true),
+          captureDetails(captured, true, nativeSourceAudioRef.current),
         );
       } else {
         setDetails(captureDetails(captured));
@@ -2737,7 +2746,7 @@ export function HostPage({
       const activeStream = streamRef.current;
       if (activeStream) {
         setDetails(
-          captureDetails(activeStream, true),
+          captureDetails(activeStream, true, nativeSourceAudioRef.current),
         );
       }
       const sfuUpdated = await hostSfuRouteRef.current?.updateProfile(qualitySettingsRef.current) ?? true;
@@ -2832,25 +2841,34 @@ export function HostPage({
   async function toggleMicrophone(): Promise<void> {
     const audio = hostAudioRef.current;
     const generation = activeGenerationRef.current;
-    if (!audio || generation === null || sourceSwitchRef.current || qualityChangeRef.current || sharingPausedRef.current) return;
+    const client = nativeModeRef.current ? nativeClientRef.current : null;
+    const shareId = nativeShareGenerationRef.current;
+    if ((!audio && !(client?.health.nativeMedia.microphone && shareId)) || generation === null || sourceSwitchRef.current || qualityChangeRef.current || sharingPausedRef.current) return;
     const token = {};
     sourceSwitchRef.current = token;
     setMicrophonePending(true);
     setNoticeValue(null);
     try {
+      if (client && shareId) {
+        await client.setMicrophone(shareId, !microphoneEnabled, microphoneVolume);
+        return;
+      }
+      if (!audio) return;
       audio.setMicrophoneVolume(microphoneVolume);
       const mixed = await audio.toggleMicrophone();
       if (!isCurrentGeneration(generation) || hostAudioRef.current !== audio) return;
       if (mixed) await replaceBrowserStream(mixed, generation, token);
     } catch (error) {
-      if (isCurrentGeneration(generation) && hostAudioRef.current === audio) {
+      if (isCurrentGeneration(generation) && sourceSwitchRef.current === token) {
         debugError("capture", "microphone-failed", error);
         setNoticeValue({ kind: "key", key: error instanceof DOMException && error.name === "NotAllowedError"
           ? "host.microphone.denied" : "host.microphone.unavailable", target: "operation", comic: "warning", tone: "warn" });
       }
     } finally {
-      if (sourceSwitchRef.current === token) finishSourceSwitch(token);
-      if (hostAudioRef.current === audio) setMicrophonePending(false);
+      if (sourceSwitchRef.current === token) {
+        setMicrophonePending(false);
+        finishSourceSwitch(token);
+      }
     }
   }
 
@@ -3401,10 +3419,10 @@ export function HostPage({
                 selectionDisabled={roomMutating || switchingSource || changingQuality}
                 initialAudio={
                   nativeActive
-                    ? (streamRef.current?.getAudioTracks().length ?? 0) > 0
+                    ? nativeSourceAudioRef.current ?? false
                     : true
                 }
-                audioLocked={nativeActive}
+                audioLocked={nativeActive && !nativeClientRef.current?.health.nativeMedia.microphone}
                 initialShowCaptureBorder={showCaptureBorder}
               />
             ) : !stream &&
@@ -3504,10 +3522,20 @@ export function HostPage({
               {phase === "live" ? (
                 <>
                   <HostMicrophone enabled={microphoneEnabled} pending={microphonePending}
-                    nativeCapture={nativeActive} paused={sharingPaused} disabled={switchingSource || changingQuality}
+                    unavailable={nativeActive && !nativeClientRef.current?.health.nativeMedia.microphone} paused={sharingPaused} disabled={switchingSource || changingQuality}
                     volume={microphoneVolume} onVolume={volume => {
                       setMicrophoneVolume(volume);
                       hostAudioRef.current?.setMicrophoneVolume(volume);
+                      const client = nativeClientRef.current;
+                      const shareId = nativeShareGenerationRef.current;
+                      if (nativeModeRef.current && client && shareId) {
+                        void client.setMicrophoneVolume(shareId, volume).catch(error => {
+                          if (nativeClientRef.current === client && nativeShareGenerationRef.current === shareId) {
+                            debugError("capture", "microphone-volume-failed", error);
+                            setNoticeValue({ kind: "key", key: "host.microphone.unavailable", target: "operation", comic: "warning", tone: "warn" });
+                          }
+                        });
+                      }
                     }}
                     onToggle={() => void toggleMicrophone()} />
                   <Btn

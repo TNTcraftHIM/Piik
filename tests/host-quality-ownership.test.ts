@@ -59,6 +59,7 @@ function fixture(launchedByClient = true) {
     isConnected: vi.fn(() => true) };
   const client = { updateShare: vi.fn(async () => undefined), replaceShareSource: vi.fn(async () => undefined),
     startShare: vi.fn(async (): Promise<{ audio: boolean; codec: "h264" }> => ({ audio: false, codec: "h264" })),
+    onEvent: vi.fn((_listener: (event: unknown) => void) => () => undefined),
     close: vi.fn(), onClose: vi.fn(() => () => undefined),
     health: { nativeMedia: { video: true, hardwareH264: true, softwareVP8: true } },
     captureOptions: vi.fn(async () => []), sources: vi.fn(async () => []),
@@ -84,6 +85,7 @@ function fixture(launchedByClient = true) {
     phase: "live", qualitySettingsRef: ref<QualitySettings>(original), advancedQualityRef: ref<QualitySettings>(original),
     qualityChangeRef: ref<object | null>(null), pendingQualityChangeRef: ref<QualitySettings | null>(null),
     activeGenerationRef: ref<number | null>(1), streamRef: ref<typeof stream | null>(stream), sourceSwitchRef: ref<object | null>(null),
+    nativeSourceAudioRef: ref<boolean | undefined>(undefined), setMicrophoneEnabled: vi.fn(),
     nativeModeRef: ref(false), nativeClientRef: ref<typeof client | null>(client), nativeShareGenerationRef: ref<string | null>("share"),
     hostAudioRef: ref<{ sourceStream: MediaStream } | null>(null),
     nativeMediaIngressRef: ref<ReturnType<typeof ingress> | null>(null), nativeMediaBridgeRef: ref(null),
@@ -618,7 +620,7 @@ describe("Host quality ownership", () => {
     expect(replacement.close).toHaveBeenCalledOnce();
   });
 
-  it("retires a cancelled start ACK before publishing codec or bridge state", async () => {
+  it("retires a cancelled start ACK before publishing audio, codec or bridge state", async () => {
     const current = fixture();
     current.nativeShareGenerationRef.current = null;
     const started = deferred<{ audio: boolean; codec: "h264" }>();
@@ -629,6 +631,7 @@ describe("Host quality ownership", () => {
     started.resolve({ audio: false, codec: "h264" });
     await expect(starting).resolves.toBeNull();
     expect(current.client.stopShare).toHaveBeenCalledWith("share");
+    expect(current.nativeSourceAudioRef.current).toBeUndefined();
     expect(current.manualVideoCodecPreference).not.toHaveBeenCalled();
     expect(current.NativeMediaBridge).not.toHaveBeenCalled();
     expect(current.setNativeActive).not.toHaveBeenCalled();

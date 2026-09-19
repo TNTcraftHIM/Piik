@@ -43,6 +43,9 @@ type CaptureState struct {
 
 type Event struct {
 	Current               func() bool
+	SourceAudio           bool
+	Microphone            bool
+	Failed                bool
 	Type                  string
 	ShareID               string
 	ConnectionID          string
@@ -57,15 +60,16 @@ type Event struct {
 }
 
 type Options struct {
-	ShareID        string
-	CaptureProcess string
-	Video          nativecapture.VideoOptions
-	Profile        QualityProfile
-	AudioEnabled   bool
-	EdgeCapacity   int
-	BindAddress    string
-	PortMapping    bool
-	Events         chan<- Event
+	ShareID          string
+	CaptureProcess   string
+	Video            nativecapture.VideoOptions
+	Profile          QualityProfile
+	AudioEnabled     bool
+	MicrophoneMixing bool
+	EdgeCapacity     int
+	BindAddress      string
+	PortMapping      bool
+	Events           func(context.Context, Event)
 }
 
 type Session struct {
@@ -79,7 +83,8 @@ type Session struct {
 	engine         *mediaedge.Engine
 	source         *mediaedge.Source
 	audioSource    *mediaedge.AudioSource
-	events         chan<- Event
+	mixer          *audioMix
+	events         func(context.Context, Event)
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -151,18 +156,30 @@ func Start(parent context.Context, options Options) (*Session, error) {
 		edges:          make(map[string]*mediaedge.Edge),
 		audioChanged:   make(chan struct{}, 1),
 	}
-	if audioStream != nil {
+	if audioStream != nil || options.MicrophoneMixing {
 		audioSource, audioErr := engine.NewAudioSource(
 			options.EdgeCapacity, options.Profile.AudioBitrate,
 		)
 		if audioErr != nil {
 			slog.DebugContext(ctx, "piik-client", "event", "capture-audio-source-failed", "share", diagnostics.ID(options.ShareID), diagnostics.Error(audioErr))
-			_ = audioStream.Close()
+			if audioStream != nil {
+				_ = audioStream.Close()
+			}
 			audioStream = nil
 			session.audioStream = nil
 		} else {
 			session.audioSource = audioSource
 		}
+	}
+	if options.MicrophoneMixing {
+		if session.audioSource == nil {
+			cancel()
+			_ = stream.Close()
+			_ = engine.Close()
+			return nil, errors.New("native mixed audio could not start")
+		}
+		session.mixer = &audioMix{ctx: ctx, output: session.audioSource, emit: session.emit, shareID: session.shareID, gain: 1}
+		session.mixer.setSource(audioStream)
 	}
 	go session.run()
 	var timeout <-chan time.Time
@@ -308,6 +325,9 @@ func (session *Session) SetPaused(paused bool) {
 		return
 	}
 	session.paused = paused
+	if session.mixer != nil {
+		session.mixer.setPaused(paused)
+	}
 	source := session.source
 	session.mu.Unlock()
 	if !paused {
@@ -391,7 +411,7 @@ func (session *Session) ReplaceSource(
 	options.OutputGroups = session.edgeCapacity
 	hasAudio := session.audioSource != nil && session.audioStream != nil
 	session.mu.Unlock()
-	if audioEnabled != hasAudio {
+	if session.mixer == nil && audioEnabled != hasAudio {
 		return errors.New("native source audio availability cannot change while sharing")
 	}
 	options.Profile = profile.Video
@@ -401,7 +421,7 @@ func (session *Session) ReplaceSource(
 		return err
 	}
 	var replacementAudio *nativecapture.Stream
-	if hasAudio {
+	if audioEnabled {
 		replacementAudio, err = startAudioCapture(
 			ctx,
 			session.captureProcess,
@@ -418,7 +438,7 @@ func (session *Session) ReplaceSource(
 		replacement,
 		state,
 		replacementAudio,
-		hasAudio,
+		true,
 	)
 }
 
@@ -500,6 +520,9 @@ func (session *Session) commitCapture(
 	session.profile = profile
 	session.mu.Unlock()
 
+	if replaceAudio && session.mixer != nil {
+		session.mixer.setSource(replacementAudio)
+	}
 	_ = replacement.RequestKeyFrame(-1)
 	_ = previous.Close()
 	if replaceAudio && previousAudio != nil {
@@ -513,9 +536,6 @@ func (session *Session) commitCapture(
 	if err := session.ctx.Err(); err != nil {
 		return err
 	}
-	session.emit(Event{
-		Type: "capture-state", ShareID: session.shareID, State: "active",
-	})
 	return nil
 }
 
@@ -532,6 +552,7 @@ func (session *Session) installCapture(next *nativecapture.Stream) error {
 		session.captureApplied = nil
 	}
 	session.mu.Unlock()
+	session.emit(Event{Type: "capture-state", ShareID: session.shareID, State: "active"})
 	return nil
 }
 
@@ -607,7 +628,9 @@ func (session *Session) run() {
 		session.runQuality()
 		close(qualityDone)
 	}()
-	if session.audioStream == nil {
+	if session.mixer != nil {
+		go func() { session.mixer.run(); close(audioDone) }()
+	} else if session.audioStream == nil {
 		close(audioDone)
 	} else {
 		go func() {
@@ -1016,6 +1039,7 @@ func (session *Session) runQuality() {
 	}
 }
 
+// Public shares without the microphone opt-in retain their original audio shape.
 func (session *Session) runAudio() {
 	current := session.currentAudioStream()
 	for current != nil {
@@ -1065,9 +1089,8 @@ func (session *Session) emit(event Event) {
 	if session.events == nil {
 		return
 	}
-	select {
-	case session.events <- event:
-	case <-session.ctx.Done():
+	if session.ctx.Err() == nil {
+		session.events(session.ctx, event)
 	}
 }
 
@@ -1113,4 +1136,26 @@ func validH264ProfileLevelID(value string) bool {
 	default:
 		return false
 	}
+}
+
+// Optional facts are emitted only to a page which opted into mixed audio.
+func (session *Session) SourceAudio() *bool {
+	if session.mixer == nil {
+		return nil
+	}
+	session.mixer.mu.Lock()
+	defer session.mixer.mu.Unlock()
+	available := session.mixer.source != nil
+	return &available
+}
+
+func (session *Session) SetMicrophone(enabled *bool, gain *float64) error {
+	if enabled != nil {
+		session.updateMu.Lock()
+		defer session.updateMu.Unlock()
+	}
+	if session.mixer == nil || session.ctx.Err() != nil {
+		return errors.New("native microphone is unavailable")
+	}
+	return session.mixer.setMicrophone(session.captureProcess, enabled, gain)
 }

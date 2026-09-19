@@ -47,6 +47,7 @@ type Capabilities struct {
 	PlatformBuild        string    `json:"platformBuild"`
 	VideoCapture         bool      `json:"videoCapture"`
 	CaptureBorderControl bool      `json:"captureBorderControl,omitempty"`
+	Microphone           bool      `json:"microphone,omitempty"`
 	ProcessAudio         bool      `json:"processAudio"`
 	SystemAudio          bool      `json:"systemAudio"`
 	SoftwareVP8          bool      `json:"softwareVP8"`
@@ -56,6 +57,7 @@ type Capabilities struct {
 type Summary struct {
 	Video                bool
 	CaptureBorderControl bool
+	Microphone           bool
 	ProcessAudio         bool
 	SystemAudio          bool
 	HardwareH264         bool
@@ -66,6 +68,7 @@ func (capabilities Capabilities) Summary() Summary {
 	summary := Summary{
 		Video:                capabilities.VideoCapture,
 		CaptureBorderControl: capabilities.VideoCapture && capabilities.CaptureBorderControl,
+		Microphone:           capabilities.Microphone,
 		ProcessAudio:         capabilities.ProcessAudio,
 		SystemAudio:          capabilities.SystemAudio,
 		SoftwareVP8:          capabilities.SoftwareVP8,

@@ -94,6 +94,10 @@ func (engine *Engine) NewRelayedAudioSource(capacity int) (*AudioSource, error) 
 }
 
 func (source *AudioSource) WritePCM(pcm []byte, duration time.Duration) error {
+	return source.WritePCMWithDropped(pcm, duration, 0)
+}
+
+func (source *AudioSource) WritePCMWithDropped(pcm []byte, duration time.Duration, dropped uint16) error {
 	if source == nil || source.encoder == nil || duration <= 0 {
 		return errors.New("native PCM sample is invalid")
 	}
@@ -110,7 +114,7 @@ func (source *AudioSource) WritePCM(pcm []byte, duration time.Duration) error {
 		return err
 	}
 	source.bytes.Add(uint64(len(packet)))
-	return source.samples.WriteSample(media.Sample{Data: packet, Duration: duration})
+	return source.samples.WriteSample(media.Sample{Data: packet, Duration: duration, PrevDroppedPackets: dropped})
 }
 
 func (source *AudioSource) WriteRTP(packet *rtp.Packet) error {

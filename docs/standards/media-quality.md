@@ -23,8 +23,11 @@ production behavior and remaining acceptance.
   is explicit and uses voice processing separately from screen audio; its mixer
   produces one audio output for the existing media routes. Muting or losing the
   microphone must not stop healthy video. Share retirement releases its devices
-  and rejects late permission results. Native App capture must provide mixing
-  at its own source boundary; Browser preview audio is not that implementation.
+  and rejects late permission results. Native App capture mixes source and
+  microphone PCM before its existing Opus encoder, preserving one output track
+  through mute, pause and source replacement. A capable App/page pair opts into
+  this output at startup; source sound and microphone state remain independent
+  facts. Browser preview audio never becomes the native mixing source.
 - An audio-only update with the same capture video preserves the Browser video
   sender, encoding state and startup evidence on both direct and SFU paths.
   A new video source owns a new startup baseline; audio changes do not.

@@ -166,6 +166,7 @@ export class NativeClient {
   private readonly listeners = new Set<(event: NativeClientEvent) => void>();
   private readonly closeListeners = new Set<() => void>();
   private closed = false;
+  private microphoneVolumeUpdate: { shareId: string; volume: number; done: Promise<void> } | null = null;
 
   private constructor(
     readonly health: NativeHealth,
@@ -277,13 +278,14 @@ export class NativeClient {
 
   async startShare(
     input: NativeShareInput,
-  ): Promise<{ audio: boolean; codec: NativeVideoCodec }> {
+  ): Promise<{ audio: boolean; codec: NativeVideoCodec; sourceAudio?: boolean }> {
     // Older Apps reject unknown command fields.
     const { showCaptureBorder = false, ...shareInput } = input;
     const response = await this.request(
       "start-share",
       {
         ...shareInput,
+        ...(this.health.nativeMedia.microphone ? { microphoneMixing: true } : {}),
         ...(this.health.nativeMedia.captureBorderControl ? { showCaptureBorder } : {}),
       },
       shareStartedResponseSchema,
@@ -292,7 +294,7 @@ export class NativeClient {
     if (response.shareId !== input.shareId) {
       throw new Error("Native share identity changed");
     }
-    return { audio: response.audio, codec: response.codec };
+    return { audio: response.audio, codec: response.codec, sourceAudio: response.sourceAudio };
   }
 
   async updateShare(shareId: string, profile: QualitySettings): Promise<void> {
@@ -582,7 +584,31 @@ export class NativeClient {
     );
   }
 
+  async setMicrophone(shareId: string, enabled: boolean, volume: number): Promise<void> {
+    if (!this.health.nativeMedia.microphone) throw new Error("Piik App microphone is unavailable");
+    await this.request("set-microphone", { shareId, enabled, volume }, nativeAckResponseSchema, null);
+  }
+
+  // Dragging keeps at most one request in flight and one latest value. It cannot
+  // queue dozens of slider events ahead of Stop or reopen a lost microphone.
+  setMicrophoneVolume(shareId: string, volume: number): Promise<void> {
+    if (!this.health.nativeMedia.microphone) return Promise.reject(new Error("Piik App microphone is unavailable"));
+    const active = this.microphoneVolumeUpdate;
+    if (active?.shareId === shareId) { active.volume = volume; return active.done; }
+    const update = { shareId, volume, done: Promise.resolve() };
+    this.microphoneVolumeUpdate = update;
+    update.done = (async () => {
+      do {
+        const sent = update.volume;
+        await this.request("set-microphone", { shareId, volume: sent }, nativeAckResponseSchema);
+        if (sent === update.volume) break;
+      } while (this.microphoneVolumeUpdate === update && !this.closed);
+    })().finally(() => { if (this.microphoneVolumeUpdate === update) this.microphoneVolumeUpdate = null; });
+    return update.done;
+  }
+
   async stopShare(shareId: string): Promise<void> {
+    if (this.microphoneVolumeUpdate?.shareId === shareId) this.microphoneVolumeUpdate = null;
     await this.request("stop-share", { shareId }, nativeAckResponseSchema);
   }
 
@@ -597,6 +623,7 @@ export class NativeClient {
   close(): void {
     if (this.closed) return;
     this.closed = true;
+    this.microphoneVolumeUpdate = null;
     this.rejectPending();
     this.listeners.clear();
     this.closeListeners.clear();

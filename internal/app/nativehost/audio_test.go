@@ -42,7 +42,15 @@ func runAudioRecoveryCapture() {
 			os.Exit(1)
 		}
 	}
-	audio := len(os.Args) > 1 && os.Args[1] == "--capture-audio"
+	microphone := len(os.Args) > 1 && os.Args[1] == "--capture-microphone"
+	if microphone {
+		if marker := os.Getenv("PIIK_MICROPHONE_WAIT"); marker != "" {
+			_ = os.WriteFile(marker, nil, 0600)
+			<-stopped
+			return
+		}
+	}
+	audio := microphone || (len(os.Args) > 1 && os.Args[1] == "--capture-audio")
 	period := time.Second / 30
 	status := []byte(`{"state":"active","audio":true}`)
 	if audio {
@@ -92,7 +100,12 @@ func TestAudioEOFWaitsForExplicitSourceReplacement(t *testing.T) {
 		Target: nativecapture.CaptureTarget{Kind: "display", SourceID: "1", Title: "Audio fixture"}}
 	session, err := Start(ctx, Options{ShareID: "audio-recovery", CaptureProcess: executable,
 		Video: options, Profile: QualityProfile{Video: options.Profile, AudioBitrate: 64_000},
-		AudioEnabled: true, EdgeCapacity: 1, BindAddress: "127.0.0.1:0", Events: events})
+		AudioEnabled: true, EdgeCapacity: 1, BindAddress: "127.0.0.1:0", Events: func(_ context.Context, event Event) {
+			select {
+			case events <- event:
+			case <-ctx.Done():
+			}
+		}})
 	check(err)
 	defer session.Close()
 	if !session.HasAudio() {

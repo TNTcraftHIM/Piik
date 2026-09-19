@@ -48,12 +48,27 @@ type startShareRequest struct {
 	ShareID           string                      `json:"shareId"`
 	Source            nativecapture.CaptureTarget `json:"source"`
 	Audio             bool                        `json:"audio"`
+	MicrophoneMixing  bool                        `json:"microphoneMixing,omitempty"`
 	ShowCaptureBorder bool                        `json:"showCaptureBorder,omitempty"`
 	AdapterIndex      uint32                      `json:"adapterIndex"`
 	EncoderIndex      uint32                      `json:"encoderIndex"`
 	EdgeCapacity      int                         `json:"edgeCapacity"`
 	Profile           qualitySettings             `json:"profile"`
 	Codec             string                      `json:"codec"`
+}
+
+type microphoneRequest struct {
+	requestEnvelope
+	ShareID string   `json:"shareId"`
+	Enabled *bool    `json:"enabled,omitempty"`
+	Volume  *float64 `json:"volume,omitempty"`
+}
+
+type audioStateEvent struct {
+	eventEnvelope
+	SourceAudio bool `json:"sourceAudio"`
+	Microphone  bool `json:"microphone"`
+	Failed      bool `json:"failed"`
 }
 
 type updateShareRequest struct {
@@ -195,9 +210,10 @@ type captureOptionsResponse struct {
 
 type shareStartedResponse struct {
 	responseEnvelope
-	ShareID string `json:"shareId"`
-	Audio   bool   `json:"audio"`
-	Codec   string `json:"codec"`
+	ShareID     string `json:"shareId"`
+	Audio       bool   `json:"audio"`
+	SourceAudio *bool  `json:"sourceAudio,omitempty"`
+	Codec       string `json:"codec"`
 }
 
 type shareUpdatedResponse struct {

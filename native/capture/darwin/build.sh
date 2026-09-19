@@ -13,10 +13,12 @@ xcrun swiftc \
   -parse-as-library \
   -swift-version 5 \
   -target arm64-apple-macos13.0 \
+  -framework AVFoundation \
   -framework AudioToolbox \
   -framework CoreMedia \
   -framework CoreVideo \
   -framework ScreenCaptureKit \
   -framework VideoToolbox \
+  -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __info_plist -Xlinker "$(dirname "$0")/Info.plist" \
   "$(dirname "$0")/main.swift" \
   -o "$output/piik-capture"

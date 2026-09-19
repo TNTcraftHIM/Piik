@@ -111,6 +111,11 @@ func runQuietCaptureFixture(directory string) {
 		_, _ = os.Stdout.Write(payload)
 	}
 	status := func() { payload, _ := json.Marshal(state); write(nativecapture.FrameStatus, payload, 0) }
+	if len(os.Args) == 2 && os.Args[1] == "--capture-microphone" {
+		write(nativecapture.FrameStatus, []byte(`{"state":"active","audio":true}`), 0)
+		_, _ = io.Copy(io.Discard, os.Stdin)
+		return
+	}
 	status()
 	closed := make(chan struct{})
 	go func() { _, _ = io.Copy(io.Discard, os.Stdin); close(closed) }()
@@ -142,6 +147,65 @@ func runQuietCaptureFixture(directory string) {
 	state.State = "active"
 	status()
 	<-closed
+}
+
+func TestMicrophoneOptInPreservesLegacyAndOrdersStateBeforeCompletion(t *testing.T) {
+	for _, optIn := range []bool{false, true} {
+		t.Run(strconv.FormatBool(optIn), func(t *testing.T) {
+			t.Setenv("PIIK_QUIET_CAPTURE_FIXTURE", t.TempDir())
+			executable, err := os.Executable()
+			if err != nil {
+				t.Fatal(err)
+			}
+			session := New(executable, nativecapture.Capabilities{VideoCapture: true, SoftwareVP8: true, Microphone: true}, false)
+			defer session.Close()
+			request := startShareRequest{Version: 9, ID: "request_start", Type: "start-share", ShareID: "share_123456",
+				Source:           nativecapture.CaptureTarget{Kind: "display", SourceID: "1", Title: "Fixture"},
+				MicrophoneMixing: optIn, EdgeCapacity: 1, Codec: "vp8",
+				Profile: qualitySettings{Resolution: "1080p", MaxFramerate: 30, MaxBitrate: 5_000_000, DegradationPreference: "balanced"}}
+			payload, _ := json.Marshal(request)
+			result, err := session.Handle(t.Context(), payload)
+			started, ok := result.(shareStartedResponse)
+			if err != nil || !ok {
+				t.Fatalf("start failed: %v %#v", err, result)
+			}
+			encoded, _ := json.Marshal(started)
+			if started.Audio != optIn || bytes.Contains(encoded, []byte(`"sourceAudio"`)) != optIn {
+				t.Fatalf("mixed output leaked across opt-in: %s", encoded)
+			}
+			result, err = session.Handle(t.Context(), []byte(`{"version":9,"id":"request_mic","type":"set-microphone","shareId":"share_123456","enabled":true,"volume":1}`))
+			if !optIn {
+				if _, failed := result.(requestFailedResponse); err != nil || !failed {
+					t.Fatalf("non-opted share admitted mic: %v %#v", err, result)
+				}
+				return
+			}
+			if err != nil || result != nil {
+				t.Fatalf("device setup was not asynchronous: %v %#v", err, result)
+			}
+			stateSeen := false
+			for {
+				select {
+				case event := <-session.Events():
+					switch value := event.(type) {
+					case audioStateEvent:
+						stateSeen = value.Microphone && !value.SourceAudio
+					case responseEnvelope:
+						if value.Type == "microphone-set" {
+							if !stateSeen {
+								t.Fatal("completion overtook microphone state")
+							}
+							return
+						}
+					case requestFailedResponse:
+						t.Fatalf("microphone failed: %#v", value)
+					}
+				case <-time.After(2 * time.Second):
+					t.Fatal("microphone did not complete")
+				}
+			}
+		})
+	}
 }
 
 func TestCaptureBorderPreferenceFollowsSourceAndProfile(t *testing.T) {

@@ -133,14 +133,14 @@ sharing to allow that fallback. The project's online site uses P2P only.
 
 ## Add your voice
 
-During Browser or Camera sharing, select **Microphone** below the picture and
+While sharing, select **Microphone** below the picture and
 allow microphone access. Select it again to mute. The arrow beside it opens
 the input-volume control; 100% is the default and up to 200% is available.
 Source audio and your voice reach viewers together. The Host preview stays muted.
 
-Camera sharing does not enable the microphone automatically. Piik App can use
-these controls with Browser or Camera capture; native **Apps / Windows** and
-**Screens** capture do not yet support microphone mixing.
+Camera sharing does not enable the microphone automatically. App **Apps / Windows**
+and **Screens** capture use the system's default microphone through the same
+controls. Use headphones to keep speaker sound from feeding back into the microphone.
 
 ## When something gets in the way
 
