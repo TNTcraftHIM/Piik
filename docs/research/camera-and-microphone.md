@@ -35,13 +35,15 @@ Their order and meaning stay the same in Chinese, English and pure-visual modes.
 Source-sound details describe the raw capture input; microphone intent and
 Viewer playback volume are separate facts. Pausing the share silences the mixed
 output and temporarily disables microphone toggling without clearing its intent.
-The adjacent arrow opens a native popover that adjusts microphone input from
+The adjacent arrow expands an in-flow row that adjusts microphone input from
 0–200% through a smoothed
 Web Audio gain. It does not change source audio or Viewer playback volume,
 reopen permission, or replace the outgoing track. Its value lasts for the Host
 page lifetime; new page loads use 100%. Mute remains a separate direct action.
-Opening volume settings does not move the room layout. Native dismissal and
-focus behavior keep keyboard, touch and pointer control equivalent.
+Opening volume settings makes room below the dock without covering the picture
+or participants. Its arrow toggles the row; Escape from the slider closes it and
+returns focus to the arrow. The microphone-volume comic describes outgoing
+commentary, separately from the Viewer's local listening volume.
 
 ## Local Review
 

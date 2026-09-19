@@ -54,6 +54,7 @@ export type Set1Kind =
   | "hint-capture-camera"
   | "hint-microphone-on"
   | "hint-microphone-off"
+  | "hint-microphone-volume"
   | "hint-capture-window"
   | "hint-capture-display";
 
