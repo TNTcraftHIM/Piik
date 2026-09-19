@@ -117,6 +117,12 @@ share softer corners. Keep a distinct focus ring and a persistent selected
 state; disabled controls must not pretend to activate. Reduced motion keeps
 the colour, outline and selected position without decorative displacement.
 
+Sharing and local playback controls use the same quiet, compact button treatment.
+The Host's persistent dock stays below the picture; the Viewer's playback bar
+belongs to the video. Their similar appearance does not equate broadcast pause
+with local playback pause. Microphone settings stay attached to the microphone,
+and stopping a share remains visually separated from frequent actions.
+
 ## Cast And Objects
 
 The brand mascot keeps its own identity, separate from ordinary participants.

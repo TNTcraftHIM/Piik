@@ -114,7 +114,7 @@ export function PlaybackControls({
   const percent = Math.round(audio.level * 100);
 
   return (
-    <div ref={controlsRef} className={`lr-playback${hidden ? " is-hidden" : ""}`} data-can-play={canPlay} role="group" aria-label={t("playback.controls")}>
+    <div ref={controlsRef} className={`lr-playback lr-media-controls${hidden ? " is-hidden" : ""}`} data-can-play={canPlay} role="group" aria-label={t("playback.controls")}>
       <span className="lr-playback-audio">
         <Btn icon={paused ? "play" : "pause"}
           draw="playback-state"

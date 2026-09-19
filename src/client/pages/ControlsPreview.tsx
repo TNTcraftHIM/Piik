@@ -69,7 +69,7 @@ export function ControlsPreview() {
           <Btn icon="network" title="host.topology" hint="hint-topology" onClick={notify} />
           <Btn icon="sliders" title="host.advanced" hint="hint-advanced" onClick={notify} />
         </div>
-        <div className="lr-host-share-controls" role="group" aria-label={t("host.shareControls")}>
+        <div className="lr-host-share-controls lr-media-controls" role="group" aria-label={t("host.shareControls")}>
           <HostMicrophone enabled={microphone} paused={paused} volume={microphoneVolume} onVolume={setMicrophoneVolume}
             onToggle={() => setMicrophone(value => !value)} />
           <Btn icon={paused ? "play" : "pause"} title={paused ? "host.resume" : "host.pause"} cap={paused ? "host.resume" : "host.pause"}

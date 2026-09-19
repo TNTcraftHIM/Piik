@@ -21,13 +21,7 @@
 .lr-playback .lr-btn {
   display: grid; place-items: center; flex: none;
   min-width: 0; width: 44px; height: 44px; padding: 0;
-  border: 0; border-radius: 10px; box-shadow: none;
-  background: transparent; color: inherit; cursor: pointer;
-  transition: transform 260ms var(--spring), background-color 140ms ease;
 }
-.lr-playback .lr-btn:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]) { transform: translateY(-2px); background: var(--wall-2); }
-.lr-playback .lr-btn:active:not(:disabled):not([aria-disabled="true"]) { transform: translateY(2px) scale(.95); transition-duration: 80ms; }
-.lr-playback .lr-btn[aria-pressed="true"] { background: var(--wall-2); }
 .lr-playback-audio { display: flex; align-items: center; flex: 1; gap: 8px; min-width: min-content; }
 .lr-playback-separator { flex: none; width: 1px; height: 20px; background: currentColor; opacity: .22; }
 .lr-playback-volume { flex: 0 1 144px; min-width: 32px; }

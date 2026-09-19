@@ -3500,7 +3500,7 @@ export function HostPage({
             ) : null}
           </StageTv>
           {phase === "live" || phase === "starting" ? (
-            <div className="lr-host-share-controls" role="group" aria-label={t("host.shareControls")}>
+            <div className="lr-host-share-controls lr-media-controls" role="group" aria-label={t("host.shareControls")}>
               {phase === "live" ? (
                 <>
                   <HostMicrophone enabled={microphoneEnabled} pending={microphonePending}
