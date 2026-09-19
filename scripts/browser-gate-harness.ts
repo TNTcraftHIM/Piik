@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { once } from "node:events";
 import { lstat, readdir, rm } from "node:fs/promises";
 import { createConnection, createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -142,14 +143,14 @@ export class CdpConnection {
 }
 
 // launchChrome starts an isolated Chrome process with the shared CDP flags.
-export function launchChrome(
+export async function launchChrome(
   executable: string,
   debugPort: number,
   profile: string,
   flags: string[] = [],
   options: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
-): ChildProcessWithoutNullStreams {
-  return spawn(executable, [
+): Promise<ChildProcessWithoutNullStreams> {
+  const child = spawn(executable, [
     `--remote-debugging-port=${debugPort}`,
     `--user-data-dir=${profile}`,
     ...flags,
@@ -160,6 +161,8 @@ export function launchChrome(
     stdio: "pipe",
     windowsHide: true,
   });
+  await once(child, "spawn");
+  return child;
 }
 
 export function withDeadline<T>(
@@ -361,6 +364,7 @@ export async function cleanupRun(
     ? await stopProcessTree(resources.chrome)
     : true;
   if (resources.native && processRunning(resources.native)) {
+    resources.native.stdin.once("error", () => {}); // Exit may race the stop request (EPIPE).
     try {
       resources.native.stdin.write("\n");
     } catch {}
@@ -396,7 +400,7 @@ export async function cleanupRun(
 }
 
 function processRunning(child: ChildProcessWithoutNullStreams): boolean {
-  return child.exitCode === null && child.signalCode === null;
+  return child.pid !== undefined && child.exitCode === null && child.signalCode === null;
 }
 
 async function stopProcessTree(

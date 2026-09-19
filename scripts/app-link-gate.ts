@@ -1,4 +1,5 @@
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { once } from "node:events";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -66,12 +67,16 @@ function run(
   args: string[],
   cwd = ROOT,
   environment: NodeJS.ProcessEnv = process.env,
+  timeoutMs = 120_000,
 ): string {
   const result = spawnSync(command, args, {
     cwd,
     env: environment,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
+    timeout: timeoutMs,
+    killSignal: "SIGKILL",
+    windowsHide: true,
   });
   if (result.error) throw result.error;
   if (result.status !== 0) {
@@ -121,8 +126,9 @@ async function waitForRemotePage(
     const result = spawnSync(ssh, [
       ...transport,
       destination,
-      "curl", "--fail", "--silent", url,
-    ], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+      "curl", "--fail", "--silent", "--connect-timeout", "5", "--max-time", "8", url,
+    ], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], windowsHide: true,
+      timeout: Math.max(1, Math.min(10_000, deadline - Date.now())), killSignal: "SIGKILL" });
     if (result.status === 0 && result.stdout.includes('<div id="root"></div>')) {
       return result.stdout;
     }
@@ -134,12 +140,14 @@ async function waitForRemotePage(
 async function createInvitation(port: number, password: string): Promise<string> {
   const origin = `http://localhost:${port}`;
   const access = await fetch(`${origin}/api/site-access`, {
+    signal: AbortSignal.timeout(5_000),
     method: "POST",
     headers: { Authorization: `Bearer ${password}`, Origin: origin },
   });
   const cookie = access.headers.get("set-cookie")?.split(";", 1)[0];
   if (!access.ok) throw new Error("Local access authentication failed");
   const room = await fetch(`${origin}/api/rooms`, {
+    signal: AbortSignal.timeout(5_000),
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -156,15 +164,15 @@ async function createInvitation(port: number, password: string): Promise<string>
 }
 
 async function stopApp(child: ChildProcessWithoutNullStreams | null): Promise<boolean> {
-  if (!child || child.exitCode !== null || child.signalCode !== null) return true;
-  child.stdin.write("\n");
+  if (!child?.pid || child.exitCode !== null || child.signalCode !== null) return true;
+  const exited = once(child, "exit");
+  child.stdin.once("error", () => {}); // Exit may race the stop request (EPIPE).
   try {
-    await withDeadline(
-      () => new Promise<void>((resolveExit) => child.once("exit", () => resolveExit())),
-      Date.now() + 8_000,
-    );
+    child.stdin.end("\n");
+    await withDeadline(() => exited, Date.now() + 8_000);
   } catch {
-    child.kill();
+    child.kill("SIGKILL");
+    await withDeadline(() => exited, Date.now() + 3_000).catch(() => undefined);
   }
   return child.exitCode !== null || child.signalCode !== null;
 }
@@ -172,11 +180,13 @@ async function stopApp(child: ChildProcessWithoutNullStreams | null): Promise<bo
 async function waitUntilLinkCloses(origin: string): Promise<boolean> {
   const deadline = Date.now() + 15_000;
   while (Date.now() < deadline) {
+    const signal = AbortSignal.timeout(Math.max(1, Math.min(5_000, deadline - Date.now())));
     try {
-      const response = await fetch(`${origin}/healthz`, { cache: "no-store" });
+      const response = await fetch(`${origin}/healthz`, { cache: "no-store", signal });
       if (!response.ok) return true;
     } catch {
-      return true;
+      // A silent request is not proof that the invitation was retired.
+      if (!signal.aborted) return true;
     }
     await new Promise((resolveWait) => setTimeout(resolveWait, 250));
   }
@@ -239,6 +249,7 @@ async function main(): Promise<void> {
       stdio: "pipe",
       windowsHide: true,
     });
+    await once(app, "spawn");
     const output = new LineCapture(app);
     const accessLine = await output.wait(
       (line) => line.startsWith("Local access password: ") || line === "Local access: open",
@@ -283,7 +294,7 @@ async function main(): Promise<void> {
         ...transport,
         destination,
         websocketProbe,
-      ]);
+      ], ROOT, process.env, Math.max(1, Math.min(10_000, websocketDeadline - Date.now())));
       result.remoteWebSocket = upgrade.includes("101 Switching Protocols");
       if (!result.remoteWebSocket) {
         await new Promise((resolveWait) => setTimeout(resolveWait, 250));

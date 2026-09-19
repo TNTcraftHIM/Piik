@@ -743,7 +743,7 @@ async function main(): Promise<void> {
     }
 
     server = await startPageServer(pagePort);
-    chrome = launchChrome(chromePath, debugPort, profile, [
+    chrome = await launchChrome(chromePath, debugPort, profile, [
       "--no-first-run",
       "--no-default-browser-check",
       "--disable-extensions",

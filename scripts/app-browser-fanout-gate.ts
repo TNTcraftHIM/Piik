@@ -1,4 +1,5 @@
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { once } from "node:events";
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -6,7 +7,7 @@ import {
   CdpConnection, cleanupRun, createPage, evaluate, fetchJsonBefore, launchChrome, reservePort,
   waitForSample, waitForVersion, type PageHandle,
 } from "./browser-gate-harness";
-import { decodeAppEndpoint } from "./app-gate-endpoint";
+import { readAppEndpoint } from "./app-gate-endpoint";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const BUILD_ROOT = join(ROOT, "build/go-check");
@@ -96,7 +97,8 @@ const probe = String.raw`(() => {
 })()`;
 
 function build(command: string, args: string[]): void {
-  const result = spawnSync(command, args, { cwd: ROOT, encoding: "utf8", windowsHide: true });
+  const result = spawnSync(command, args, { cwd: ROOT, encoding: "utf8", windowsHide: true,
+    timeout: 120_000, killSignal: "SIGKILL" });
   if (result.error) throw result.error;
   if (result.status !== 0) {
     throw new Error((result.stderr || result.stdout).trim() || command + " failed");
@@ -136,12 +138,18 @@ async function startRoomServer(
   });
   child.stdout.resume();
   child.stderr.resume();
-  await waitForSample(
-    (deadline) => fetchJsonBefore<{ status: string }>(`http://127.0.0.1:${port}/healthz`, deadline),
-    (value) => value.status === "ok",
-    20000,
-  );
-  return child;
+  try {
+    await once(child, "spawn");
+    await waitForSample(
+      (deadline) => fetchJsonBefore<{ status: string }>(`http://127.0.0.1:${port}/healthz`, deadline),
+      (value) => value.status === "ok",
+      20000,
+    );
+    return child;
+  } catch (error) {
+    await cleanupRun({ server: child, chrome: null, native: null, cdp: null, profile: null, ports: [port] });
+    throw error;
+  }
 }
 
 async function main(): Promise<void> {
@@ -167,14 +175,11 @@ async function main(): Promise<void> {
       "--site", origin, "--config", join(profile, "client.json"),
       "--capture-process", join(BUILD_ROOT, "piik-capture.exe"),
     ], { windowsHide: true, stdio: "pipe", env: { ...process.env, PIIK_CLIENT_GATE_NO_BROWSER: "true" } });
+    await once(app, "spawn");
     app.stderr.resume();
-    let output = "";
-    app.stdout.on("data", (chunk: Buffer) => {
-      output += chunk.toString();
-      if (!nativePort && output.includes("\n")) nativePort = decodeAppEndpoint(output.split("\n")[0]!).port;
-    });
-    await waitForSample(async () => nativePort, (value) => value > 0, 15000);
-    chrome = launchChrome(chromePath, debugPort, profile, [
+    nativePort = (await readAppEndpoint(app)).port;
+    app.stdout.resume();
+    chrome = await launchChrome(chromePath, debugPort, profile, [
       "--headless=new",
       "--no-first-run", "--no-default-browser-check", "--no-proxy-server",
       "--autoplay-policy=no-user-gesture-required", "--disable-background-timer-throttling",
@@ -215,12 +220,10 @@ async function main(): Promise<void> {
       "--site", relayOrigin, "--config", join(profile,"relay-client.json"),
       "--capture-process", join(BUILD_ROOT,"piik-capture.exe"),
     ], { windowsHide:true, stdio:"pipe", env:{...process.env,PIIK_CLIENT_GATE_NO_BROWSER:"true"} });
-    relayApp.stderr.resume(); let relayOutput="";
-    relayApp.stdout.on("data", (chunk:Buffer) => {
-      relayOutput+=chunk.toString();
-      if (!relayPort && relayOutput.includes("\n")) relayPort=decodeAppEndpoint(relayOutput.split("\n")[0]!).port;
-    });
-    await waitForSample(async()=>relayPort,(value)=>value>0,15000);
+    await once(relayApp, "spawn");
+    relayApp.stderr.resume();
+    relayPort = (await readAppEndpoint(relayApp)).port;
+    relayApp.stdout.resume();
     const viewers: PageHandle[] = [];
     for (let index=0; index<2; index++) {
       stage = `viewer-${index+1}`;

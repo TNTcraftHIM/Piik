@@ -199,7 +199,7 @@ async function main(): Promise<void> {
         portServer.close((error) => error ? rejectPort(error) : resolvePort(address.port));
       });
     });
-    browser = launchChrome(browserPath, debugPort, profile, [
+    browser = await launchChrome(browserPath, debugPort, profile, [
       "--headless=new",
       ...(disposableNoSandbox ? ["--no-sandbox"] : []),
       "--no-first-run",

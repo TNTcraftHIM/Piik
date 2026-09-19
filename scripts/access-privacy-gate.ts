@@ -329,7 +329,7 @@ async function main(): Promise<void> {
       throw new Error("Room preparation did not enable the Viewer password");
     }
     report.roomPrepared = true;
-    chrome = launchChrome(chromePath, debugPort, profile, [
+    chrome = await launchChrome(chromePath, debugPort, profile, [
       "--headless=new", "--no-first-run", "--disable-extensions",
       "--disable-logging",
     ], { cwd: root });

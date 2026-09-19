@@ -124,7 +124,7 @@ async function main(): Promise<void> {
       "piik-client": "1",
     }).toString();
 
-    browser = launchChrome(browserPath, debugPort, profile, [
+    browser = await launchChrome(browserPath, debugPort, profile, [
       "--headless=new",
       ...(process.env.PIIK_CLIENT_GATE_NO_SANDBOX === "true"
         ? ["--no-sandbox"]

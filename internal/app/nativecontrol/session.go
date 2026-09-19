@@ -538,8 +538,12 @@ func (session *Session) startShare(
 		),
 		PortMapping: session.portMapping,
 		Events: func(ctx context.Context, event nativehost.Event) {
+			var value any = eventMessage(event)
+			if event.Current != nil {
+				value = loopback.ControlEvent{Value: value, Current: event.Current}
+			}
 			select {
-			case session.events <- eventMessage(event):
+			case session.events <- value:
 			case <-ctx.Done():
 			case <-session.ctx.Done():
 			}

@@ -61,7 +61,7 @@ describe("release automation", () => {
         expect(() => releaseNotes(root, "v1.1.1", invalid, "fixture/Piik")).toThrow("one nonempty");
       }
     } finally { rmSync(root, { recursive: true, force: true }); }
-  });
+  }, 15_000); // Real Git subprocesses share the runner with the rest of the suite.
 
   it("plans from immutable tags and all unreleased main changes without editing version files", () => {
     const root = mkdtempSync(join(tmpdir(), "piik-release-plan-"));

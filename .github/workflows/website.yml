@@ -20,7 +20,10 @@ jobs:
   deploy:
     if: >-
       github.ref == 'refs/heads/main' &&
-      (github.event_name == 'workflow_dispatch' || github.event.workflow_run.event == 'push')
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == 'main' &&
+        github.event.workflow_run.conclusion == 'success'))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -33,7 +36,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: main
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - uses: actions/setup-node@v6
         with:
           node-version-file: .node-version
@@ -49,5 +52,16 @@ jobs:
         with:
           path: build/site
           retention-days: 1
+      - name: Keep older runs from replacing the current website
+        id: current
+        shell: bash
+        run: |
+          git fetch --no-tags origin main
+          if [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ]; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Skipped an outdated website build. Run Website again for current main." >> "$GITHUB_STEP_SUMMARY"
+          fi
       - uses: actions/deploy-pages@v4
+        if: steps.current.outputs.deploy == 'true'
         id: deployment

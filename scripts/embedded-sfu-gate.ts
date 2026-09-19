@@ -180,7 +180,7 @@ async function main(): Promise<void> {
       })()`, Date.now() + 5_000);
       if (audioState !== "running") throw new Error("Native source tone did not start");
     }
-    chrome = launchChrome(chromePath, debugPort, profile, [
+    chrome = await launchChrome(chromePath, debugPort, profile, [
       "--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
       "--disable-extensions", "--disable-background-networking", "--autoplay-policy=no-user-gesture-required",
       "--disable-background-timer-throttling", "--disable-backgrounding-occluded-windows",

@@ -66,7 +66,7 @@ const server = createServer((request, response) => {
 await new Promise<void>(r => server.listen(0, '127.0.0.1', r));
 const port = (server.address() as { port: number }).port, debugPort = await reservePort();
 const profile = await mkdtemp(join(tmpdir(), 'piik-client-media-'));
-const chrome = launchChrome(process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe', debugPort, profile,
+const chrome = await launchChrome(process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe', debugPort, profile,
     ['--headless=new', '--no-first-run', '--autoplay-policy=no-user-gesture-required',
         ...(background ? [] : ['--disable-background-timer-throttling', '--disable-renderer-backgrounding']),
         ...(nativeSource ? ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] : [])]);
