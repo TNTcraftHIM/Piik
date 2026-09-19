@@ -3,12 +3,15 @@ import { Btn } from "./primitives";
 import { Tooltip } from "./Tooltip";
 import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
+import type { CaptureDevice } from "../../media/capture-devices";
+import { CaptureDeviceSelect } from "./CaptureDeviceSelect";
 
-export function HostMicrophone({ enabled, pending, disabled, paused, unavailable, volume, onVolume, onToggle }: {
+export function HostMicrophone({ enabled, pending, disabled, paused, unavailable, volume, onVolume, onToggle, deviceId, onDevice, loadDevices, native }: {
   enabled: boolean; pending?: boolean; disabled?: boolean;
   paused?: boolean;
   volume: number; onVolume: (volume: number) => void;
   unavailable?: boolean; onToggle: () => void;
+  deviceId: string; onDevice: (id: string) => void; loadDevices: () => Promise<CaptureDevice[]>; native?: boolean;
 }) {
   const { t, vis } = useCopy();
   const actionsRef = useRef<HTMLDivElement>(null);
@@ -23,14 +26,17 @@ export function HostMicrophone({ enabled, pending, disabled, paused, unavailable
         : paused ? "host.microphone.paused" : disabled ? "host.microphone.busy"
         : enabled && volume === 0 ? "host.microphone.zeroVolume"
         : enabled ? "host.microphone.mute" : "host.microphone.enable"}
-      hint={paused ? "host-paused" : enabled ? "hint-microphone-off" : "hint-microphone-on"}
+      hint={unavailable ? "hint-capture-browser" : paused ? "host-paused" : enabled ? "hint-microphone-off" : "hint-microphone-on"}
+      hintTone={unavailable ? "warn" : pending || disabled ? "busy" : undefined}
+      hintMotion={pending || disabled ? "progress" : undefined}
       pressed={enabled} busy={pending} tone={enabled ? "on" : undefined}
       disabled={unavailable || pending || disabled || paused} onClick={onToggle} />
     <Btn icon="chevron" title={unavailable ? "host.microphone.browserOnly" : "host.microphone.settings"}
-      hint="hint-microphone-volume" expanded={expanded && !unavailable} controls={id}
+      hint={unavailable ? "hint-capture-browser" : "hint-microphone-volume"} hintTone={unavailable ? "warn" : undefined}
+      expanded={expanded && !unavailable} controls={id}
       disabled={unavailable} onClick={() => setExpanded(!expanded)} />
     </div>
-    <div id={id} hidden={!expanded || unavailable} role="group" aria-label={t("host.microphone.volume")}
+    <div id={id} hidden={!expanded || unavailable} role="group" aria-label={t("host.microphone.settings")}
       className="lr-host-microphone-volume"
       onKeyDown={event => {
         if (event.key !== "Escape") return;
@@ -38,6 +44,8 @@ export function HostMicrophone({ enabled, pending, disabled, paused, unavailable
         setExpanded(false);
         actionsRef.current?.querySelector<HTMLButtonElement>("[aria-controls]")?.focus();
       }}>
+      {expanded && !unavailable && <CaptureDeviceSelect kind="microphone" value={deviceId} load={loadDevices}
+        onChange={onDevice} disabled={pending || disabled || paused} revision={enabled} browser={!native} />}
       <label htmlFor={`${id}-level`}>
         <span>{vis ? <Glyph name="microphone" size={18} /> : t("host.microphone.volume")}</span>
         <output htmlFor={`${id}-level`}>{percent}%</output>

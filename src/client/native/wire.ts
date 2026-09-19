@@ -141,6 +141,10 @@ export const sourceListResponseSchema = z
     sources: z.array(nativeCaptureTargetSchema).max(1024),
   })
   .strict();
+export const microphoneListResponseSchema = z.object({
+  ...responseBase, type: z.literal("microphone-list"),
+  devices: z.array(z.object({ id: z.string().min(1).max(512), label: z.string().min(1).max(512) }).strict()).max(64),
+}).strict();
 export const sourcePreviewResponseSchema = z
   .object({
     ...responseBase,

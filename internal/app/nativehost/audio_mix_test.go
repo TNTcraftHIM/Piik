@@ -103,13 +103,32 @@ func TestNativeMicrophonePreservesMediaOwnersAcrossInputChanges(t *testing.T) {
 	check(err)
 	edge, source := session.edge("mixed_edge"), session.audioSource
 	enabled, gain := true, 1.0
-	check(session.SetMicrophone(&enabled, &gain))
+	check(session.SetMicrophone(&enabled, &gain, nil))
 	session.mixer.mu.Lock()
 	microphone := session.mixer.microphone
 	session.mixer.mu.Unlock()
 	if microphone == nil {
 		t.Fatal("microphone did not start")
 	}
+	device := "missing"
+	if session.SetMicrophone(nil, nil, &device) == nil {
+		t.Fatal("missing microphone accepted")
+	}
+	session.mixer.mu.Lock()
+	retained := session.mixer.microphone == microphone
+	session.mixer.mu.Unlock()
+	if !retained {
+		t.Fatal("failed device switch retired healthy microphone")
+	}
+	device = "headset"
+	check(session.SetMicrophone(nil, nil, &device))
+	session.mixer.mu.Lock()
+	replaced := session.mixer.microphone
+	session.mixer.mu.Unlock()
+	if replaced == nil || replaced == microphone || session.audioSource != source || session.edge("mixed_edge") != edge {
+		t.Fatal("device change failed to replace only the input")
+	}
+	microphone = replaced
 	options.Target.SourceID = "2"
 	check(session.ReplaceSource(t.Context(), options, true))
 	session.mixer.mu.Lock()
@@ -141,7 +160,7 @@ func TestNativeMicrophonePreservesMediaOwnersAcrossInputChanges(t *testing.T) {
 				t.Fatal("input loss damaged healthy media")
 			}
 			enabled = false
-			check(session.SetMicrophone(&enabled, nil))
+			check(session.SetMicrophone(&enabled, nil, nil))
 			return
 		case <-timer.C:
 			t.Fatal("microphone loss was not reported")
@@ -154,7 +173,7 @@ func TestStopCancelsPendingMicrophoneWithoutRevivingShare(t *testing.T) {
 	t.Setenv("PIIK_MICROPHONE_WAIT", marker)
 	session, _, _ := startMixedFixture(t)
 	result := make(chan error, 1)
-	go func() { enabled := true; result <- session.SetMicrophone(&enabled, nil) }()
+	go func() { enabled := true; result <- session.SetMicrophone(&enabled, nil, nil) }()
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		if _, err := os.Stat(marker); err == nil {
@@ -208,7 +227,7 @@ func TestAudioNotificationBackpressureDoesNotBlockPauseOrGain(t *testing.T) {
 	go func() {
 		mix.setPaused(true)
 		gain := 1.5
-		if err := mix.setMicrophone("", nil, &gain); err != nil {
+		if err := mix.setMicrophone("", nil, &gain, nil); err != nil {
 			t.Error(err)
 		}
 		close(controlled)

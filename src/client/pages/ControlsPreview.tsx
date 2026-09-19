@@ -24,6 +24,7 @@ const SOURCES = { kind: "ready", processAudio: true, systemAudio: true, captureB
   { kind: "display", sourceId: "103", title: "Display 1" },
 ] } satisfies NativeSourceList;
 const previewSource = async () => POSTER;
+const previewMicrophones = async () => [{ id: "headset", label: "USB Headset" }, { id: "desk", label: "Desk Microphone" }];
 
 export function ControlsPreview() {
   const { t, lang, vis } = useCopy();
@@ -31,6 +32,7 @@ export function ControlsPreview() {
   const [sound, setSound] = useState(true);
   const [microphone, setMicrophone] = useState(false);
   const [microphoneVolume, setMicrophoneVolume] = useState(1);
+  const [microphoneDevice, setMicrophoneDevice] = useState("");
   const [preset, setPreset] = useState<QualityProfileId>("1080p30");
   const [policy, setPolicy] = useState<"open" | "private">("open");
   const [roomPassword, setRoomPassword] = useState(false);
@@ -70,7 +72,7 @@ export function ControlsPreview() {
           <Btn icon="sliders" title="host.advanced" hint="hint-advanced" onClick={notify} />
         </div>
         <div className="lr-host-share-controls lr-media-controls" role="group" aria-label={t("host.shareControls")}>
-          <HostMicrophone enabled={microphone} paused={paused} volume={microphoneVolume} onVolume={setMicrophoneVolume}
+          <HostMicrophone deviceId={microphoneDevice} onDevice={setMicrophoneDevice} loadDevices={previewMicrophones} native enabled={microphone} paused={paused} volume={microphoneVolume} onVolume={setMicrophoneVolume}
             onToggle={() => setMicrophone(value => !value)} />
           <Btn icon={paused ? "play" : "pause"} title={paused ? "host.resume" : "host.pause"} cap={paused ? "host.resume" : "host.pause"}
             hint={paused ? "hint-resume" : "hint-pause"} onClick={() => setPaused(!paused)} />

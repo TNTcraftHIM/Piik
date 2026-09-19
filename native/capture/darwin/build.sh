@@ -15,6 +15,7 @@ xcrun swiftc \
   -target arm64-apple-macos13.0 \
   -framework AVFoundation \
   -framework AudioToolbox \
+  -framework CoreAudio \
   -framework CoreMedia \
   -framework CoreVideo \
   -framework ScreenCaptureKit \

@@ -1,6 +1,8 @@
 #define NOMINMAX
 #include <windows.h>
 #include <dwmapi.h>
+#include <mmdeviceapi.h>
+#include <functiondiscoverykeys_devpkey.h>
 #include <shellapi.h>
 #include <d3d11.h>
 #include <dxgi1_2.h>
@@ -920,6 +922,41 @@ HRESULT CapturePreview(TargetKind kind, UINT64 source_id,
 }
 
 }  // namespace
+
+int WriteMicrophoneList() {
+  if (FAILED(CoInitializeEx(nullptr, COINIT_MULTITHREADED))) return 2;
+  const int result = []() {
+    ComPtr<IMMDeviceEnumerator> enumerator;
+    ComPtr<IMMDeviceCollection> devices;
+    if (FAILED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&enumerator))) ||
+        FAILED(enumerator->EnumAudioEndpoints(eCapture, DEVICE_STATE_ACTIVE, &devices))) return 2;
+    UINT count = 0;
+    if (FAILED(devices->GetCount(&count)) || count > 64) return 2;
+    std::cout << '[';
+    bool first = true;
+    for (UINT index = 0; index < count; ++index) {
+      ComPtr<IMMDevice> device;
+      ComPtr<IPropertyStore> properties;
+      if (FAILED(devices->Item(index, &device)) || FAILED(device->OpenPropertyStore(STGM_READ, &properties))) continue;
+      LPWSTR id = nullptr;
+      PROPVARIANT name;
+      PropVariantInit(&name);
+      if (SUCCEEDED(device->GetId(&id)) && SUCCEEDED(properties->GetValue(PKEY_Device_FriendlyName, &name)) &&
+          name.vt == VT_LPWSTR && name.pwszVal != nullptr) {
+        if (!first) std::cout << ',';
+        first = false;
+        std::cout << "{\"id\":" << JsonString(Utf8(id))
+                  << ",\"label\":" << JsonString(Utf8(name.pwszVal)) << '}';
+      }
+      CoTaskMemFree(id);
+      PropVariantClear(&name);
+    }
+    std::cout << ']';
+    return std::cout.good() ? 0 : 2;
+  }();
+  CoUninitialize();
+  return result;
+}
 
 int WriteSourceList() {
   std::vector<SourceTarget> targets;

@@ -59,9 +59,10 @@ type startShareRequest struct {
 
 type microphoneRequest struct {
 	requestEnvelope
-	ShareID string   `json:"shareId"`
-	Enabled *bool    `json:"enabled,omitempty"`
-	Volume  *float64 `json:"volume,omitempty"`
+	ShareID  string   `json:"shareId"`
+	Enabled  *bool    `json:"enabled,omitempty"`
+	Volume   *float64 `json:"volume,omitempty"`
+	DeviceID *string  `json:"deviceId,omitempty"`
 }
 
 type audioStateEvent struct {

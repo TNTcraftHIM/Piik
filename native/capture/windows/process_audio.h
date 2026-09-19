@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <string>
 
 namespace piik::capture {
 
@@ -22,7 +23,7 @@ using StopProbe = std::function<bool()>;
 
 bool ProcessAudioAvailable();
 bool SystemAudioAvailable();
-HRESULT CaptureMicrophone(HANDLE stop_event, const StopProbe& stop_probe,
+HRESULT CaptureMicrophone(const std::wstring& device_id, HANDLE stop_event, const StopProbe& stop_probe,
                          const ReadyWriter& ready_writer, const PCMWriter& writer);
 HRESULT CaptureProcessAudio(DWORD pid, UINT64 expected_creation_time,
                             HANDLE stop_event, const StopProbe& stop_probe,

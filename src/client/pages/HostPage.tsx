@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -21,6 +22,7 @@ import {
   type CodeEntryPolicy,
   type RoutePolicy,
 } from "../../shared/protocol";
+import { browserCaptureDevices } from "../media/capture-devices";
 import { AppHeader, LedStrip } from "../components/living/Header";
 import { WelcomeLine } from "../components/living/WelcomeLine";
 import { Couch, type CouchEntry } from "../components/living/Couch";
@@ -334,7 +336,7 @@ interface HostPageProps {
 }
 
 type ShareSourceSelection =
-  | { kind: "browser"; source?: BrowserCaptureSource }
+  | { kind: "browser"; source?: BrowserCaptureSource; deviceId?: string }
   | {
       kind: "native";
       client: NativeClient;
@@ -378,6 +380,12 @@ export function HostPage({
   const [microphoneEnabled, setMicrophoneEnabled] = useState(false);
   const [microphoneVolume, setMicrophoneVolume] = useState(1);
   const [microphonePending, setMicrophonePending] = useState(false);
+  const [microphoneDevices, setMicrophoneDevices] = useState({ browser: "", native: "" });
+  const [cameraDevice, setCameraDevice] = useState("");
+  const loadMicrophones = useCallback(() => {
+    const client = nativeModeRef.current ? nativeClientRef.current : null;
+    return client ? client.microphones() : browserCaptureDevices("audioinput");
+  }, []);
   const [nativeActive, setNativeActive] = useState(false);
   const [showCaptureBorder, setShowCaptureBorder] = useState(false);
   const [nativeSources, setNativeSources] =
@@ -547,7 +555,7 @@ export function HostPage({
   const activeRouteRevisionRef = useRef(0);
   const generationRef = useRef(0);
   const activeGenerationRef = useRef<number | null>(null);
-  const sourceSwitchRef = useRef<object | null>(null);
+  const sourceSwitchRef = useRef<{ replacingVideo?: MediaStreamTrack } | null>(null);
   const qualityChangeRef = useRef<object | null>(null);
   const pendingQualityChangeRef = useRef<QualitySettings | null>(null);
   const qualitySettingsRef = useRef<QualitySettings>(DEFAULT_QUALITY_SETTINGS);
@@ -1126,7 +1134,8 @@ export function HostPage({
       () => {
         if (
           isCurrentGeneration(generation) &&
-          streamRef.current?.getVideoTracks()[0] === track
+          streamRef.current?.getVideoTracks()[0] === track &&
+          sourceSwitchRef.current?.replacingVideo !== track
         ) {
           endSharing({ key: "host.stopNotice" });
         }
@@ -1431,9 +1440,9 @@ export function HostPage({
     void openCaptureSourcePicker();
   }
 
-  function startBrowserShareFromPicker(source: BrowserCaptureSource): void {
-    if (phase === "live") void switchSource(source);
-    else void startSharing({ kind: "browser", source });
+  function startBrowserShareFromPicker(source: BrowserCaptureSource, deviceId = ""): void {
+    if (phase === "live") void switchSource(source, deviceId);
+    else void startSharing({ kind: "browser", source, deviceId });
   }
 
   async function loadNativeSourcePreview(
@@ -2437,7 +2446,7 @@ export function HostPage({
         nativeStarted = true;
       } else {
         // This must remain the first awaited operation in the button gesture.
-        captured = await captureBrowserSource(qualitySettingsRef.current, selection.source ?? "browser");
+        captured = await captureBrowserSource(qualitySettingsRef.current, selection.source ?? "browser", selection.deviceId);
       }
     } catch (error) {
       if (!isCurrentShare(generation, shareGeneration)) {
@@ -2457,7 +2466,10 @@ export function HostPage({
       return;
     }
     if (captured) {
-      if (selection.kind === "browser") hostAudioRef.current = new HostAudio(captured, setMicrophoneEnabled);
+      if (selection.kind === "browser") {
+        hostAudioRef.current = new HostAudio(captured, setMicrophoneEnabled, selection.source ?? "browser");
+        if (selection.source === "camera") setCameraDevice(selection.deviceId ?? "");
+      }
       streamRef.current = captured;
       setStream(captured);
       watchCaptureEnd(captured, generation);
@@ -2773,7 +2785,7 @@ export function HostPage({
     }
   }
 
-  async function switchSource(source?: BrowserCaptureSource): Promise<void> {
+  async function switchSource(source?: BrowserCaptureSource, deviceId = ""): Promise<void> {
     const generation = activeGenerationRef.current;
     if (
       phase !== "live" ||
@@ -2790,7 +2802,10 @@ export function HostPage({
     }
     if (nativeModeRef.current) return;
 
-    const token = {};
+    // Some browsers retire the old camera while opening the new one. That
+    // transition belongs to this replacement, not the share-ended observer.
+    const token = { replacingVideo: source === "camera" && hostAudioRef.current?.sourceKind === "camera"
+      ? streamRef.current?.getVideoTracks()[0] : undefined };
     sourceSwitchRef.current = token;
     closeCaptureSourcePicker();
     setSwitchingSource(true);
@@ -2799,13 +2814,17 @@ export function HostPage({
     let captured: MediaStream;
     try {
       // Like initial capture, changing source must begin in this button gesture.
-      captured = await captureBrowserSource(qualitySettingsRef.current, source);
+      captured = await captureBrowserSource(qualitySettingsRef.current, source, deviceId);
     } catch (error) {
       if (
         isCurrentGeneration(generation) &&
         sourceSwitchRef.current === token
       ) {
-        setCaptureError(error, source, "source");
+        if (token.replacingVideo?.readyState === "ended") {
+          endSharing({ key: "host.shareEnded" }, true, "source-failed", "bad");
+        } else {
+          setCaptureError(error, source, "source");
+        }
       }
       finishSourceSwitch(token);
       return;
@@ -2820,7 +2839,8 @@ export function HostPage({
     }
 
     try {
-      captured = hostAudioRef.current?.attach(captured) ?? captured;
+      if (source === "camera") setCameraDevice(deviceId);
+      captured = hostAudioRef.current?.attach(captured, source) ?? captured;
       await replaceBrowserStream(captured, generation, token);
     } catch (error) {
       if (isCurrentGeneration(generation)) setNoticeError(error, "source");
@@ -2838,7 +2858,7 @@ export function HostPage({
       ? "host.camera.denied" : "host.camera.unavailable", target, comic: "source-failed", tone: "warn" });
   }
 
-  async function toggleMicrophone(): Promise<void> {
+  async function changeMicrophone(enabled: boolean, deviceId: string): Promise<void> {
     const audio = hostAudioRef.current;
     const generation = activeGenerationRef.current;
     const client = nativeModeRef.current ? nativeClientRef.current : null;
@@ -2850,13 +2870,17 @@ export function HostPage({
     setNoticeValue(null);
     try {
       if (client && shareId) {
-        await client.setMicrophone(shareId, !microphoneEnabled, microphoneVolume);
+        await client.setMicrophone(shareId, enabled, microphoneVolume, deviceId);
+        if (isCurrentGeneration(generation) && nativeClientRef.current === client && sourceSwitchRef.current === token) {
+          setMicrophoneDevices(previous => ({ ...previous, native: deviceId }));
+        }
         return;
       }
       if (!audio) return;
       audio.setMicrophoneVolume(microphoneVolume);
-      const mixed = await audio.toggleMicrophone();
+      const mixed = await audio.setMicrophone(enabled, deviceId);
       if (!isCurrentGeneration(generation) || hostAudioRef.current !== audio) return;
+      setMicrophoneDevices(previous => ({ ...previous, browser: deviceId }));
       if (mixed) await replaceBrowserStream(mixed, generation, token);
     } catch (error) {
       if (isCurrentGeneration(generation) && sourceSwitchRef.current === token) {
@@ -3409,7 +3433,8 @@ export function HostPage({
               <CaptureSourcePicker
                 nativeSources={nativeSources}
                 onBrowser={() => startBrowserShareFromPicker("browser")}
-                onCamera={() => startBrowserShareFromPicker("camera")}
+                onCamera={deviceId => startBrowserShareFromPicker("camera", deviceId)}
+                initialCamera={cameraDevice}
                 onNative={startNativeShareFromPicker}
                 onPreview={loadNativeSourcePreview}
                 onRefresh={openCaptureSourcePicker}
@@ -3537,7 +3562,10 @@ export function HostPage({
                         });
                       }
                     }}
-                    onToggle={() => void toggleMicrophone()} />
+                    native={nativeActive} loadDevices={loadMicrophones}
+                    deviceId={microphoneDevices[nativeActive ? "native" : "browser"]}
+                    onDevice={deviceId => void changeMicrophone(microphoneEnabled, deviceId)}
+                    onToggle={() => void changeMicrophone(!microphoneEnabled, microphoneDevices[nativeActive ? "native" : "browser"])} />
                   <Btn
                     icon={sharingPaused ? "play" : "pause"}
                     cap={sharingPaused ? "host.resume" : "host.pause"}

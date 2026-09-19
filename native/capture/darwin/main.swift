@@ -1,5 +1,6 @@
 import AVFoundation
 import AudioToolbox
+import CoreAudio
 import CoreMedia
 import CoreVideo
 import Darwin
@@ -1715,7 +1716,42 @@ private func capture(_ arguments: [String]) async throws {
 
 // AVAudioEngine callbacks never wait on stdout. Four copied buffers bound the
 // worker; the persistent platform converter owns resampling between callbacks.
-private func captureMicrophone() throws {
+private func audioDeviceString(_ device: AudioDeviceID, _ selector: AudioObjectPropertySelector) -> String? {
+    var address = AudioObjectPropertyAddress(mSelector: selector, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+    var value: CFString?
+    var size = UInt32(MemoryLayout<CFString?>.size)
+    guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, &value) == noErr else { return nil }
+    return value as String?
+}
+
+private func microphoneDevices() throws -> [(id: AudioDeviceID, uid: String, name: String)] {
+    var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+    var size: UInt32 = 0
+    guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size) == noErr,
+          size <= 4096 else { throw CaptureFailure(description: "microphone list is unavailable") }
+    var devices = [AudioDeviceID](repeating: 0, count: Int(size) / MemoryLayout<AudioDeviceID>.size)
+    if devices.isEmpty { return [] }
+    let status = devices.withUnsafeMutableBytes { buffer in
+        AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, buffer.baseAddress!)
+    }
+    guard status == noErr else { throw CaptureFailure(description: "microphone list is unavailable") }
+    return devices.compactMap { device in
+        var input = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreams, mScope: kAudioDevicePropertyScopeInput, mElement: kAudioObjectPropertyElementMain)
+        var bytes: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(device, &input, 0, nil, &bytes) == noErr, bytes > 0,
+              let uid = audioDeviceString(device, kAudioDevicePropertyDeviceUID),
+              let name = audioDeviceString(device, kAudioObjectPropertyName) else { return nil }
+        return (id: device, uid: uid, name: name)
+    }
+}
+
+private func listMicrophones() throws {
+    let devices = try microphoneDevices().map { ["id": $0.uid, "label": $0.name] }
+    guard devices.count <= 64 else { throw CaptureFailure(description: "too many microphones") }
+    FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject: devices))
+}
+
+private func captureMicrophone(deviceUID: String = "") throws {
     let done = StopSignal()
     let control = DispatchQueue(label: "piik.microphone.control")
     let worker = DispatchQueue(label: "piik.microphone.pcm")
@@ -1745,6 +1781,15 @@ private func captureMicrophone() throws {
                 let capture = AVAudioEngine()
                 engine = capture
                 let input = capture.inputNode
+                if !deviceUID.isEmpty {
+                    guard let selected = try microphoneDevices().first(where: { $0.uid == deviceUID }),
+                          let unit = input.audioUnit else { throw CaptureFailure(description: "selected microphone is unavailable") }
+                    var device = selected.id
+                    guard AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0,
+                                               &device, UInt32(MemoryLayout<AudioDeviceID>.size)) == noErr else {
+                        throw CaptureFailure(description: "selected microphone could not open")
+                    }
+                }
                 let format = input.outputFormat(forBus: 0)
                 guard format.sampleRate > 0, format.channelCount > 0,
                       let target = AVAudioFormat(commonFormat: .pcmFormatInt16,
@@ -1870,8 +1915,12 @@ private struct PiikCapture {
                 try selfTest()
             } else if arguments.count == 2, arguments[1] == "--list" {
                 try await listSources()
+            } else if arguments.count == 2, arguments[1] == "--list-microphones" {
+                try listMicrophones()
             } else if arguments.count == 2, arguments[1] == "--capture-microphone" {
                 try captureMicrophone()
+            } else if arguments.count == 4, arguments[1] == "--capture-microphone", arguments[2] == "--device", !arguments[3].isEmpty, arguments[3].utf8.count <= 512 {
+                try captureMicrophone(deviceUID: arguments[3])
             } else if arguments.count > 1, arguments[1] == "--capture-audio" {
                 try await captureAudio(arguments)
             } else if arguments.count > 1, arguments[1] == "--encoded-video" {

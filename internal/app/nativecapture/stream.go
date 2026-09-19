@@ -298,8 +298,15 @@ func StartSystemAudio(parent context.Context, executable string) (*Stream, error
 	})
 }
 
-func StartMicrophone(parent context.Context, executable string) (*Stream, error) {
-	return startAudioStreamWithTimeout(parent, executable, []string{"--capture-microphone"}, time.Minute)
+func StartMicrophone(parent context.Context, executable, deviceID string) (*Stream, error) {
+	if !ValidDeviceID(deviceID) {
+		return nil, errors.New("microphone device is invalid")
+	}
+	arguments := []string{"--capture-microphone"}
+	if deviceID != "" {
+		arguments = append(arguments, "--device", deviceID)
+	}
+	return startAudioStreamWithTimeout(parent, executable, arguments, time.Minute)
 }
 
 func startAudioStream(parent context.Context, executable string, arguments []string) (*Stream, error) {

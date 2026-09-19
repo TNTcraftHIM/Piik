@@ -221,11 +221,11 @@ export async function captureDisplay(profile: QualityProfile): Promise<MediaStre
 
 export type BrowserCaptureSource = "browser" | "camera";
 
-export async function captureBrowserSource(profile: QualityProfile, source: BrowserCaptureSource): Promise<MediaStream> {
+export async function captureBrowserSource(profile: QualityProfile, source: BrowserCaptureSource, deviceId = ""): Promise<MediaStream> {
   if (source !== "camera") return captureDisplay(profile);
   const resolution = QUALITY_RESOLUTIONS[profile.resolution];
   const stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: {
-    facingMode: { ideal: "environment" },
+    ...(deviceId ? { deviceId: { exact: deviceId } } : { facingMode: { ideal: "environment" } }),
     width: { ideal: resolution.width }, height: { ideal: resolution.height },
     frameRate: { ideal: profile.maxFramerate, max: profile.maxFramerate },
   } });

@@ -117,6 +117,22 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 			responseEnvelope: response(envelope, "capture-options"),
 			Adapters:         session.capabilities.Adapters,
 		}, nil
+	case "list-microphones":
+		var request requestEnvelope
+		if err := decodeStrict(payload, &request); err != nil {
+			return nil, protocolViolation("native microphone list request is invalid")
+		}
+		if !session.capabilities.Microphone {
+			return operationFailure(envelope, errors.New("native microphone is unavailable")), nil
+		}
+		devices, err := nativecapture.ListMicrophones(ctx, session.captureProcess)
+		if err != nil {
+			return operationFailure(envelope, err), nil
+		}
+		return struct {
+			responseEnvelope
+			Devices []nativecapture.Microphone `json:"devices"`
+		}{response(envelope, "microphone-list"), devices}, nil
 	case "list-sources":
 		var request listSourcesRequest
 		if err := decodeStrict(payload, &request); err != nil || request.Type != envelope.Type {
@@ -170,7 +186,8 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 	case "set-microphone":
 		var request microphoneRequest
 		if err := decodeStrict(payload, &request); err != nil || !validIdentities(request.ShareID) ||
-			(request.Enabled == nil && request.Volume == nil) ||
+			(request.Enabled == nil && request.Volume == nil && request.DeviceID == nil) ||
+			(request.DeviceID != nil && !nativecapture.ValidDeviceID(*request.DeviceID)) ||
 			(request.Volume != nil && (math.IsNaN(*request.Volume) || math.IsInf(*request.Volume, 0) || *request.Volume < 0 || *request.Volume > 2)) {
 			return nil, protocolViolation("native microphone request is invalid")
 		}
@@ -181,15 +198,15 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 		// Commit gain in command order; asynchronous device setup must not later
 		// overwrite a newer slider value received while permission was pending.
 		if request.Volume != nil {
-			if err := host.SetMicrophone(nil, request.Volume); err != nil {
+			if err := host.SetMicrophone(nil, request.Volume, nil); err != nil {
 				return nil, err
 			}
 		}
-		if request.Enabled == nil {
+		if request.Enabled == nil && request.DeviceID == nil {
 			return response(envelope, "microphone-set"), nil
 		}
 		result = session.runHostOperation(host, envelope, func() (any, error) {
-			err := host.SetMicrophone(request.Enabled, nil)
+			err := host.SetMicrophone(request.Enabled, nil, request.DeviceID)
 			return response(envelope, "microphone-set"), err
 		}, complete)
 		asynchronous = result == nil

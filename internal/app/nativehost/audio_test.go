@@ -44,6 +44,9 @@ func runAudioRecoveryCapture() {
 	}
 	microphone := len(os.Args) > 1 && os.Args[1] == "--capture-microphone"
 	if microphone {
+		if len(os.Args) == 4 && os.Args[2] == "--device" && os.Args[3] == "missing" {
+			os.Exit(2)
+		}
 		if marker := os.Getenv("PIIK_MICROPHONE_WAIT"); marker != "" {
 			_ = os.WriteFile(marker, nil, 0600)
 			<-stopped

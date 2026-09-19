@@ -1,3 +1,5 @@
+import type { BrowserCaptureSource } from "./quality";
+
 // The Host session owns capture and lifetime. This helper owns only the raw
 // audio inputs and mixer; transports borrow its single output track.
 export class HostAudio {
@@ -8,18 +10,22 @@ export class HostAudio {
   private inputs: MediaStreamAudioSourceNode[] = [];
   private microphoneGain: GainNode | null = null;
   private microphoneVolume = 1;
+  private microphoneDevice = "";
   private closed = false;
 
-  constructor(source: MediaStream, private changed: (enabled: boolean) => void) {
+  constructor(source: MediaStream, private changed: (enabled: boolean) => void,
+    private kind: BrowserCaptureSource = "browser") {
     this.source = source;
   }
 
   /** Capture facts come from the input, never the mixer destination track. */
   get sourceStream(): MediaStream { return this.source; }
+  get sourceKind(): BrowserCaptureSource { return this.kind; }
 
-  attach(source: MediaStream): MediaStream {
+  attach(source: MediaStream, kind = this.kind): MediaStream {
     const previous = this.source;
     this.source = source;
+    this.kind = kind;
     const output = this.compose();
     if (previous !== source) previous.getAudioTracks().forEach((track) => track.stop());
     return output;
@@ -33,11 +39,21 @@ export class HostAudio {
     }
   }
 
-  async toggleMicrophone(): Promise<MediaStream | null> {
+  toggleMicrophone(deviceId = this.microphoneDevice): Promise<MediaStream | null> {
+    return this.setMicrophone(!this.microphone?.enabled, deviceId);
+  }
+
+  async setMicrophone(enabled: boolean, deviceId: string): Promise<MediaStream | null> {
     if (this.closed) return null;
-    if (this.microphone) {
-      this.microphone.enabled = !this.microphone.enabled;
-      this.changed(this.microphone.enabled);
+    if (!enabled || (this.microphone && deviceId === this.microphoneDevice)) {
+      if (this.microphone && deviceId !== this.microphoneDevice) {
+        this.microphone.stop();
+        this.microphone = null;
+        this.compose();
+      }
+      this.microphoneDevice = deviceId;
+      if (this.microphone) this.microphone.enabled = enabled;
+      this.changed(enabled);
       return null;
     }
     const hadContext = !!this.context;
@@ -53,13 +69,16 @@ export class HostAudio {
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: {
         echoCancellation: true, noiseSuppression: true, autoGainControl: true,
+        ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
       } });
       if (this.closed) return null;
       if (!await resumed) throw new Error("Audio context unavailable");
       if (this.closed) return null;
       const microphone = stream.getAudioTracks()[0];
       if (!microphone || microphone.readyState === "ended") throw new Error("No live microphone");
+      const previous = this.microphone;
       this.microphone = microphone;
+      this.microphoneDevice = deviceId;
       microphone.onended = () => {
         if (this.closed || this.microphone !== microphone) return;
         this.microphone = null;
@@ -67,9 +86,12 @@ export class HostAudio {
         this.changed(false);
       };
       const output = this.compose();
+      previous?.stop();
       stream = null;
       this.changed(true);
-      return output;
+      // Existing senders already borrow this destination. A device change is
+      // local input work, not another media/route replacement.
+      return hadContext ? null : output;
     } catch (error) {
       if (!hadContext && !this.microphone) this.closeMixer();
       throw error;

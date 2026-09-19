@@ -21,7 +21,7 @@ retiring the share closes audio resources and discards late permission results.
 The Host preview stays muted. Viewers receive the combined sound with their
 existing volume control and never request microphone permission.
 
-App native screen/window capture mixes default-device microphone PCM with source
+App native screen/window capture mixes selected-device microphone PCM with source
 audio before the existing Opus encoder. Windows uses WASAPI, macOS uses
 AVAudioEngine and Linux uses PulseAudio/PipeWire through GStreamer. Platform
 converters supply 48 kHz stereo PCM; one 20 ms output clock consumes each input
@@ -49,7 +49,21 @@ Their order and meaning stay the same in Chinese, English and pure-visual modes.
 Source-sound details describe the raw capture input; microphone intent and
 Viewer playback volume are separate facts. Pausing the share silences the mixed
 output and temporarily disables microphone toggling without clearing its intent.
-The adjacent arrow expands an in-flow row that adjusts microphone input from
+The adjacent arrow expands an in-flow row with the microphone selector and input gain.
+The default follows the system; an explicit selection never silently falls back
+to another device. Browser capture and native capture keep separate device IDs
+for the page lifetime. Enumeration does not request permission. Browser labels
+may appear only after the first grant; refresh and device-change events update
+the list. A missing selected device stays visible as unavailable.
+Switching an active microphone prepares the new input before retiring the old
+one; failure leaves the old input running. The mixed output stays unchanged.
+Camera selection belongs in the existing Camera tab. Camera-to-camera replacement
+owns the old camera's automatic end event until the pending capture settles;
+failure with an already-ended old camera retires sharing normally. This does
+not suppress a user's screen-share Stop action. Some phones require releasing
+the old camera before opening another; seamless switching is not established.
+
+The input-volume control adjusts microphone input from
 0–200% through smoothed input gain. It does not change source audio or Viewer playback volume,
 reopen permission, or replace the outgoing track. Its value lasts for the Host
 page lifetime; new page loads use 100%. Mute remains a separate direct action.

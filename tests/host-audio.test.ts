@@ -157,3 +157,35 @@ test("microphone volume changes only the microphone input without replacing the 
   audio.dispose();
   expect(context.gain.disconnect).toHaveBeenCalledOnce();
 });
+
+test("switching microphone preserves output and leaves the old input on failure", async () => {
+  const { getUserMedia } = setup();
+  const video = new Track("video"), first = new Track("audio"), second = new Track("audio");
+  const audio = new HostAudio(media(video), vi.fn());
+  getUserMedia.mockResolvedValueOnce(media(first));
+  const output = (await audio.setMicrophone(true, "first"))!;
+  getUserMedia.mockRejectedValueOnce(new DOMException("missing", "NotFoundError"));
+  await expect(audio.setMicrophone(true, "missing")).rejects.toThrow("missing");
+  expect(first.stop).not.toHaveBeenCalled();
+  expect(video.stop).not.toHaveBeenCalled();
+  getUserMedia.mockResolvedValueOnce(media(second));
+  const replacement = await audio.setMicrophone(true, "second");
+  expect(getUserMedia).toHaveBeenLastCalledWith({ audio: expect.objectContaining({ deviceId: { exact: "second" } }) });
+  expect(replacement).toBeNull(); // No transport update for an input-only change.
+  expect(output.getAudioTracks()[0].readyState).toBe("live");
+  expect(first.stop).toHaveBeenCalledOnce();
+  first.onended!(); // Retired input cannot mute its replacement.
+  expect(second.enabled).toBe(true);
+  await audio.setMicrophone(false, "first");
+  expect(second.stop).toHaveBeenCalledOnce();
+  expect(getUserMedia).toHaveBeenCalledTimes(3); // Selecting while muted never captures.
+  audio.dispose();
+});
+
+test("camera selection requests one exact device without microphone permission", async () => {
+  const { getUserMedia } = setup();
+  getUserMedia.mockResolvedValue(media(new Track("video")));
+  await captureBrowserSource(QUALITY_PROFILES["1080p30"], "camera", "front-camera");
+  expect(getUserMedia).toHaveBeenCalledWith({ audio: false, video: expect.objectContaining({ deviceId: { exact: "front-camera" } }) });
+  expect(getUserMedia.mock.calls[0][0].video).not.toHaveProperty("facingMode");
+});

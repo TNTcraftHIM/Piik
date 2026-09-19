@@ -64,8 +64,8 @@ you can also create a room in the online version.
 1. Select **Start sharing**, then choose the picture and audio to share.
 2. Select **Copy invite link** and send it to your friends. Keep the sharing tab open.
 
-With Browser or Camera capture, you can also turn on the **Microphone** for commentary.
-Native App window/screen capture does not yet support microphone mixing.
+Turn on the **Microphone** for commentary; its settings let you choose the input
+device and adjust your voice volume.
 
 Piik follows your system language: Chinese or English, with English as the fallback.
 Use **中 / EN / ✦** in the header to switch language or try the visual mode.

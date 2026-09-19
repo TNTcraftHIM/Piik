@@ -32,6 +32,7 @@ import {
   shareSourceReplacedResponseSchema,
   shareUpdatedResponseSchema,
   sourceListResponseSchema,
+  microphoneListResponseSchema,
   sourcePreviewResponseSchema,
   type NativeAdapter,
   type NativeClientEvent,
@@ -584,9 +585,14 @@ export class NativeClient {
     );
   }
 
-  async setMicrophone(shareId: string, enabled: boolean, volume: number): Promise<void> {
+  async microphones(): Promise<{ id: string; label: string }[]> {
     if (!this.health.nativeMedia.microphone) throw new Error("Piik App microphone is unavailable");
-    await this.request("set-microphone", { shareId, enabled, volume }, nativeAckResponseSchema, null);
+    return (await this.request("list-microphones", {}, microphoneListResponseSchema)).devices;
+  }
+
+  async setMicrophone(shareId: string, enabled: boolean, volume: number, deviceId = ""): Promise<void> {
+    if (!this.health.nativeMedia.microphone) throw new Error("Piik App microphone is unavailable");
+    await this.request("set-microphone", { shareId, enabled, volume, deviceId }, nativeAckResponseSchema, null);
   }
 
   // Dragging keeps at most one request in flight and one latest value. It cannot

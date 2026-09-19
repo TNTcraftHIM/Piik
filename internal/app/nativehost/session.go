@@ -1149,13 +1149,13 @@ func (session *Session) SourceAudio() *bool {
 	return &available
 }
 
-func (session *Session) SetMicrophone(enabled *bool, gain *float64) error {
-	if enabled != nil {
+func (session *Session) SetMicrophone(enabled *bool, gain *float64, deviceID *string) error {
+	if enabled != nil || deviceID != nil {
 		session.updateMu.Lock()
 		defer session.updateMu.Unlock()
 	}
 	if session.mixer == nil || session.ctx.Err() != nil {
 		return errors.New("native microphone is unavailable")
 	}
-	return session.mixer.setMicrophone(session.captureProcess, enabled, gain)
+	return session.mixer.setMicrophone(session.captureProcess, enabled, gain, deviceID)
 }

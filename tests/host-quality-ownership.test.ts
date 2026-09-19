@@ -18,11 +18,11 @@ const source = ts.createSourceFile("HostPage.tsx", readFileSync(
   new URL("../src/client/pages/HostPage.tsx", import.meta.url), "utf8",
 ), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 const owners = new Set(["changeQuality", "commitQuality", "handleSignalMessage",
-  "switchNativeSource", "finishSourceSwitch", "recoverBrowserFanout", "disposeNativeShare",
+  "switchSource", "watchCaptureEnd", "switchNativeSource", "finishSourceSwitch", "recoverBrowserFanout", "disposeNativeShare",
   "acquireNativeClient", "requestSharing", "startNativeShare", "startBrowserNativeIngress",
   "ownNativeClient", "discardNativeClient", "releaseUnusedNativeClient", "closeCaptureSourcePicker",
   "openCaptureSourcePicker", "startBrowserShareFromPicker", "startNativeShareFromPicker",
-  "startSharing", "beginRoomMutation", "finishRoomMutation", "setCaptureError", "toggleMicrophone", "toggleSharingPause",
+  "startSharing", "beginRoomMutation", "finishRoomMutation", "setCaptureError", "changeMicrophone", "toggleSharingPause",
   "startPeer", "reconcileHostChildren", "setNotice", "setNoticeKey", "setNoticeError", "setNoticeErrorKey", "endSharing", "copyInvite", "isCurrentRoomAuthority"]);
 const functions: string[] = [];
 function collect(node: ts.Node): void {
@@ -142,6 +142,54 @@ function fixture(launchedByClient = true) {
     switchSource: () => context.switchNativeSource(client, {}, false, {}),
   };
 }
+
+describe("Camera replacement ownership", () => {
+  it("keeps a screen Stop authoritative while a camera picker is pending", async () => {
+    const current = fixture();
+    let ended!: () => void;
+    const track = { readyState: "live", addEventListener: (_event: string, callback: () => void) => { ended = callback; } };
+    const previous = { getVideoTracks: () => [track] };
+    const pending = deferred<unknown>();
+    const endSharing = vi.fn(() => { current.context.sourceSwitchRef.current = null; });
+    Object.assign(current.context, {
+      streamRef: ref(previous), captureBrowserSource: () => pending.promise,
+      closeCaptureSourcePicker: vi.fn(), hostAudioRef: ref({ sourceKind: "browser" }), endSharing,
+    });
+    current.context.watchCaptureEnd(previous, 1);
+    const switching = current.context.switchSource("camera", "second");
+    track.readyState = "ended";
+    ended();
+    expect(endSharing).toHaveBeenCalledOnce();
+    const stop = vi.fn();
+    pending.resolve({ getTracks: () => [{ stop }] });
+    await switching;
+    expect(stop).toHaveBeenCalledOnce();
+  });
+  it.each(["success", "failed-live", "failed-ended"])("owns old camera retirement while switching: %s", async outcome => {
+    const current = fixture();
+    let ended!: () => void;
+    const track = { readyState: "live", addEventListener: (_event: string, callback: () => void) => { ended = callback; } };
+    const previous = { getVideoTracks: () => [track] };
+    const replacement = { getTracks: () => [], getVideoTracks: () => [{ readyState: "live" }] };
+    const pending = deferred<unknown>();
+    const endSharing = vi.fn(), replaceBrowserStream = vi.fn(async () => {}), setCaptureError = vi.fn();
+    Object.assign(current.context, {
+      streamRef: ref(previous), captureBrowserSource: () => pending.promise, closeCaptureSourcePicker: vi.fn(),
+      hostAudioRef: ref({ sourceKind: "camera", attach: (stream: unknown) => stream }),
+      endSharing, replaceBrowserStream, setCaptureError, setCameraDevice: vi.fn(),
+    });
+    current.context.watchCaptureEnd(previous, 1);
+    const switching = current.context.switchSource("camera", "second");
+    if (outcome !== "failed-live") { track.readyState = "ended"; ended(); }
+    expect(endSharing).not.toHaveBeenCalled();
+    if (outcome === "success") pending.resolve(replacement);
+    else pending.reject(new Error("camera unavailable"));
+    await switching;
+    expect(replaceBrowserStream).toHaveBeenCalledTimes(outcome === "success" ? 1 : 0);
+    expect(endSharing).toHaveBeenCalledTimes(outcome === "failed-ended" ? 1 : 0);
+    expect(setCaptureError).toHaveBeenCalledTimes(outcome === "failed-live" ? 1 : 0);
+  });
+});
 
 describe("Host invite copy feedback", () => {
   function copyFixture() {
@@ -373,12 +421,12 @@ describe("Host quality ownership", () => {
   it("keeps microphone denial as operation feedback without retiring video", async () => {
     const current = fixture();
     Object.assign(current.context, {
-      hostAudioRef: ref({ setMicrophoneVolume: vi.fn(), toggleMicrophone: vi.fn(async () => {
+      hostAudioRef: ref({ setMicrophoneVolume: vi.fn(), setMicrophone: vi.fn(async () => {
         throw new DOMException("denied", "NotAllowedError");
       }) }),
       sharingPausedRef: ref(false), microphoneVolume: 1, setMicrophonePending: vi.fn(),
     });
-    await current.context.toggleMicrophone();
+    await current.context.changeMicrophone(true, "");
     expect(current.setNoticeValue).toHaveBeenLastCalledWith(expect.objectContaining({ key: "host.microphone.denied", target: "operation" }));
     expect(current.setPhase).not.toHaveBeenCalled();
     expect(current.track.stop).not.toHaveBeenCalled();

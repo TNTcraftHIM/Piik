@@ -7,6 +7,8 @@ import { Glyph, type GlyphName } from "../../ui/icons";
 import { Tooltip } from "./Tooltip";
 import { HintComic } from "./hints";
 import { Pill } from "./primitives";
+import { CaptureDeviceSelect } from "./CaptureDeviceSelect";
+import { browserCameras } from "../../media/capture-devices";
 
 const SOURCE_TABS = ["browser", "camera", "window", "display"] as const;
 type SourceTab = (typeof SOURCE_TABS)[number];
@@ -43,6 +45,7 @@ export function CaptureSourcePicker({
   browserAvailable = true,
   cameraAvailable = !!onCamera,
   initialTab = "window",
+  initialCamera = "",
   initialAudio = true,
   initialShowCaptureBorder = false,
   audioLocked = false,
@@ -50,7 +53,8 @@ export function CaptureSourcePicker({
 }: {
   nativeSources: NativeSourceList;
   onBrowser: () => void;
-  onCamera?: () => void;
+  onCamera?: (deviceId: string) => void;
+  initialCamera?: string;
   onNative: (target: NativeCaptureTarget, audio: boolean, showCaptureBorder: boolean) => void;
   onPreview: (
     target: NativeCaptureTarget,
@@ -70,6 +74,7 @@ export function CaptureSourcePicker({
   const pickerId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   const [tab, setTab] = useState<SourceTab | null>(null);
+  const [camera, setCamera] = useState(initialCamera);
   const [shareAudio, setShareAudio] = useState(initialAudio);
   const [showCaptureBorder, setShowCaptureBorder] = useState(initialShowCaptureBorder);
   const appDetected = nativeSources.kind === "ready" || nativeSources.kind === "failed" ||
@@ -256,6 +261,7 @@ export function CaptureSourcePicker({
           id={`${pickerId}-panel`}
           aria-labelledby={`${pickerId}-${activeTab}`}
         >
+          {activeTab === "camera" && <CaptureDeviceSelect kind="camera" value={camera} load={browserCameras} onChange={setCamera} disabled={selectionDisabled} />}
           <div className="lr-source-picker-list">
             {browserCapture || activeTab === "camera" ? (
               <button
@@ -263,7 +269,7 @@ export function CaptureSourcePicker({
                 className="lr-source-option is-browser"
                 aria-label={t(activeTab === "browser" ? "host.sourcePicker.browser" : `host.sourcePicker.tab.${activeTab}`)}
                 disabled={selectionDisabled || !tabAvailable(activeTab)}
-                onClick={() => activeTab === "camera" ? onCamera?.() : onBrowser()}
+                onClick={() => activeTab === "camera" ? onCamera?.(camera) : onBrowser()}
               >
                 <span className="lr-source-option-icon" aria-hidden="true">
                   <Glyph name={SOURCE_ICONS[activeTab]} size={23} />

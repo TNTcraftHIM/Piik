@@ -441,6 +441,10 @@ describe("native App private wire", () => {
         const request = JSON.parse(payload) as Record<string, unknown>;
         requests.push(request);
         if (request.type === "set-microphone") return;
+        if (request.type === "list-microphones") {
+          queueMicrotask(() => this.ack(request, "microphone-list", { devices: [{ id: "headset", label: "USB Headset" }] }));
+          return;
+        }
         queueMicrotask(() => this.ack(request,
           request.type === "hello" ? "ready" : request.type === "start-share" ? "share-started" : "share-stopped",
           request.type === "start-share" ? { shareId: request.shareId, audio: supported, codec: "vp8", ...(supported ? { sourceAudio: false } : {}) } : {}));
@@ -460,9 +464,16 @@ describe("native App private wire", () => {
       expect(started.audio).toBe(supported);
       if (!supported) {
         await expect(client.setMicrophone("share_123456", true, 1)).rejects.toThrow();
+        await expect(client.microphones()).rejects.toThrow();
         expect(requests.some(request => request.type === "set-microphone")).toBe(false);
         return;
       }
+      expect(await client.microphones()).toEqual([{ id: "headset", label: "USB Headset" }]);
+      const choosing = client.setMicrophone("share_123456", true, 1, "headset");
+      expect(requests.at(-1)).toMatchObject({ type: "set-microphone", deviceId: "headset", enabled: true });
+      socket.ack(requests.at(-1)!, "microphone-set");
+      await choosing;
+      requests.length = 0;
       const pending = client.setMicrophoneVolume("share_123456", 0.1);
       for (let value = 2; value <= 20; value++) expect(client.setMicrophoneVolume("share_123456", value / 10)).toBe(pending);
       expect(requests.filter(request => request.type === "set-microphone")).toHaveLength(1);

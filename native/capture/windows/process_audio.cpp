@@ -77,13 +77,22 @@ HRESULT ActivateProcessLoopback(DWORD pid, HANDLE completed,
   return result;
 }
 
-HRESULT ActivateEndpoint(ComPtr<IAudioClient>* client, bool microphone = false) {
+HRESULT ActivateEndpoint(ComPtr<IAudioClient>* client, bool microphone = false, const std::wstring& device_id = L"") {
   ComPtr<IMMDeviceEnumerator> enumerator;
   HRESULT result = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr,
                                     CLSCTX_ALL, IID_PPV_ARGS(&enumerator));
   ComPtr<IMMDevice> device;
   if (SUCCEEDED(result)) {
-    result = enumerator->GetDefaultAudioEndpoint(microphone ? eCapture : eRender, microphone ? eCommunications : eConsole, &device);
+    result = device_id.empty()
+        ? enumerator->GetDefaultAudioEndpoint(microphone ? eCapture : eRender, microphone ? eCommunications : eConsole, &device)
+        : enumerator->GetDevice(device_id.c_str(), &device);
+    if (SUCCEEDED(result) && microphone) {
+      ComPtr<IMMEndpoint> endpoint;
+      EDataFlow flow = eAll;
+      result = device.As(&endpoint);
+      if (SUCCEEDED(result)) result = endpoint->GetDataFlow(&flow);
+      if (SUCCEEDED(result) && flow != eCapture) result = E_INVALIDARG;
+    }
   }
   if (SUCCEEDED(result)) {
     result = device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr,
@@ -272,12 +281,12 @@ HRESULT CaptureSystemAudio(HANDLE stop_event, const StopProbe& stop_probe,
   return result;
 }
 
-HRESULT CaptureMicrophone(HANDLE stop_event, const StopProbe& stop_probe,
+HRESULT CaptureMicrophone(const std::wstring& device_id, HANDLE stop_event, const StopProbe& stop_probe,
                            const ReadyWriter& ready_writer, const PCMWriter& writer) {
   HRESULT result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
   if (FAILED(result)) return result;
   ComPtr<IAudioClient> client;
-  result = ActivateEndpoint(&client, true);
+  result = ActivateEndpoint(&client, true, device_id);
   if (SUCCEEDED(result)) {
     result = CaptureAudioFrames(client, nullptr, false, stop_event, stop_probe, ready_writer, writer);
   }

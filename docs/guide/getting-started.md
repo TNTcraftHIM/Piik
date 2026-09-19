@@ -135,12 +135,15 @@ sharing to allow that fallback. The project's online site uses P2P only.
 
 While sharing, select **Microphone** below the picture and
 allow microphone access. Select it again to mute. The arrow beside it opens
-the input-volume control; 100% is the default and up to 200% is available.
+microphone settings, where you can choose an input device and adjust its volume.
+The default volume is 100%, with up to 200% available.
 Source audio and your voice reach viewers together. The Host preview stays muted.
 
 Camera sharing does not enable the microphone automatically. App **Apps / Windows**
-and **Screens** capture use the system's default microphone through the same
-controls. Use headphones to keep speaker sound from feeding back into the microphone.
+and **Screens** capture use the same controls. Leave the device on **Default device**
+or choose a specific microphone. The **Camera** source tab also lets you choose a
+camera. Browsers may show device names only after you grant access.
+Use headphones to keep speaker sound from feeding back into the microphone.
 
 ## When something gets in the way
 

@@ -1234,8 +1234,41 @@ cleanup:
   return result;
 }
 
+static int write_microphones(void) {
+  GstDeviceMonitor *monitor = gst_device_monitor_new();
+  gst_device_monitor_add_filter(monitor, "Audio/Source", NULL);
+  if (!gst_device_monitor_start(monitor)) { gst_object_unref(monitor); return 2; }
+  GList *devices = gst_device_monitor_get_devices(monitor);
+  GString *json = g_string_new("[");
+  guint count = 0;
+  for (GList *item = devices; item != NULL && count < 64; item = item->next) {
+    GstElement *source = gst_device_create_element(GST_DEVICE(item->data), NULL);
+    GstElementFactory *factory = source == NULL ? NULL : gst_element_get_factory(source);
+    if (factory != NULL && strcmp(gst_plugin_feature_get_name(GST_PLUGIN_FEATURE(factory)), "pulsesrc") == 0) {
+      gchar *device = NULL;
+      g_object_get(source, "device", &device, NULL);
+      if (device != NULL && device[0] != '\0') {
+        gchar *name = gst_device_get_display_name(GST_DEVICE(item->data));
+        gchar *id_json = json_string(device), *name_json = json_string(name);
+        g_string_append_printf(json, "%s{\"id\":%s,\"label\":%s}", count++ == 0 ? "" : ",", id_json, name_json);
+        g_free(id_json); g_free(name_json); g_free(name);
+      }
+      g_free(device);
+    }
+    if (source != NULL) gst_object_unref(source);
+  }
+  g_string_append_c(json, ']');
+  fputs(json->str, stdout);
+  g_string_free(json, TRUE);
+  g_list_free_full(devices, gst_object_unref);
+  gst_device_monitor_stop(monitor);
+  gst_object_unref(monitor);
+  return ferror(stdout) ? 2 : 0;
+}
+
 static int capture_audio(int count, char **values) {
-  gboolean microphone = count == 2 && strcmp(values[1], "--capture-microphone") == 0;
+  gboolean microphone = (count == 2 || (count == 4 && strcmp(values[2], "--device") == 0 &&
+      values[3][0] != '\0' && strlen(values[3]) <= 512)) && strcmp(values[1], "--capture-microphone") == 0;
   if (!microphone && (count != 5 || strcmp(values[1], "--capture-audio") != 0 ||
       (strcmp(values[2], "picker") != 0 &&
        strcmp(values[2], "display") != 0) ||
@@ -1246,7 +1279,7 @@ static int capture_audio(int count, char **values) {
   GError *error = NULL;
   if (!audio_stack_available()) return 2;
   gchar *description = g_strconcat(
-      microphone ? "pulsesrc do-timestamp=true ! " : "pulsesrc device=@DEFAULT_MONITOR@ do-timestamp=true ! ",
+      microphone ? "pulsesrc name=microphone do-timestamp=true ! " : "pulsesrc device=@DEFAULT_MONITOR@ do-timestamp=true ! ",
       "queue max-size-buffers=4 max-size-bytes=0 max-size-time=0 "
       "leaky=downstream ! audioconvert ! audioresample ! "
       "audio/x-raw,format=S16LE,rate=48000,channels=2,layout=interleaved ! "
@@ -1257,6 +1290,12 @@ static int capture_audio(int count, char **values) {
     g_clear_error(&error);
     if (pipeline != NULL) gst_object_unref(pipeline);
     return 2;
+  }
+  if (microphone && count == 4) {
+    GstElement *input = gst_bin_get_by_name(GST_BIN(pipeline), "microphone");
+    if (input == NULL) { gst_object_unref(pipeline); return 2; }
+    g_object_set(input, "device", values[3], NULL);
+    gst_object_unref(input);
   }
   CaptureRun run = {
       .loop = g_main_loop_new(NULL, FALSE),
@@ -1279,9 +1318,11 @@ static int capture_audio(int count, char **values) {
 }
 
 int main(int argc, char **argv) {
-  gst_init(&argc, &argv);
+  // Piik owns this CLI. Opaque device IDs must never become GStreamer flags.
+  gst_init(NULL, NULL);
   if (argc == 2 && strcmp(argv[1], "--probe") == 0) return write_probe();
   if (argc == 2 && strcmp(argv[1], "--list") == 0) return write_sources();
+  if (argc == 2 && strcmp(argv[1], "--list-microphones") == 0) return write_microphones();
   if (argc > 1 && (strcmp(argv[1], "--capture-video") == 0 || strcmp(argv[1], "--encoded-video") == 0)) {
     return capture_video(argc, argv);
   }

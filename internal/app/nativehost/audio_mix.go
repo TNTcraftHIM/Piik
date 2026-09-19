@@ -56,6 +56,7 @@ type audioMix struct {
 	source, microphone *audioInput
 	paused             bool
 	gain, appliedGain  float64
+	microphoneDevice   string
 }
 
 func (mix *audioMix) stateLocked(failed bool) Event {
@@ -144,7 +145,10 @@ func (mix *audioMix) inputEnded(input *audioInput, microphone bool) {
 	mix.emit(state)
 }
 
-func (mix *audioMix) setMicrophone(executable string, enabled *bool, gain *float64) error {
+func (mix *audioMix) setMicrophone(executable string, enabled *bool, gain *float64, deviceID *string) error {
+	if deviceID != nil && !nativecapture.ValidDeviceID(*deviceID) {
+		return errors.New("microphone device is invalid")
+	}
 	if gain != nil && (math.IsNaN(*gain) || math.IsInf(*gain, 0) || *gain < 0 || *gain > 2) {
 		return errors.New("microphone volume is invalid")
 	}
@@ -152,15 +156,23 @@ func (mix *audioMix) setMicrophone(executable string, enabled *bool, gain *float
 	if gain != nil {
 		mix.gain = *gain
 	}
-	unchanged := enabled == nil || *enabled == (mix.microphone != nil)
+	wanted := mix.microphone != nil
+	if enabled != nil {
+		wanted = *enabled
+	}
+	device := mix.microphoneDevice
+	if deviceID != nil {
+		device = *deviceID
+	}
+	unchanged := wanted == (mix.microphone != nil) && device == mix.microphoneDevice
 	mix.mu.Unlock()
 	if unchanged {
 		return nil
 	}
 	var stream *nativecapture.Stream
-	if *enabled {
+	if wanted {
 		var err error
-		stream, err = nativecapture.StartMicrophone(mix.ctx, executable)
+		stream, err = nativecapture.StartMicrophone(mix.ctx, executable, device)
 		if err != nil {
 			return err
 		}
@@ -176,6 +188,7 @@ func (mix *audioMix) setMicrophone(executable string, enabled *bool, gain *float
 		return mix.ctx.Err()
 	}
 	previous := mix.microphone
+	mix.microphoneDevice = device
 	mix.microphone = nil
 	if stream != nil {
 		mix.microphone = &audioInput{stream: stream}

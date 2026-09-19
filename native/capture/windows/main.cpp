@@ -920,9 +920,10 @@ piik::capture::TargetKind ParseTargetKind(const wchar_t* value) {
 }
 
 struct ProductArguments final {
-  enum class Mode { list, probe, preview, audio, microphone, video, encoded } mode = Mode::list;
+  enum class Mode { list, microphones, probe, preview, audio, microphone, video, encoded } mode = Mode::list;
   piik::capture::TargetKind target_kind =
       piik::capture::TargetKind::window;
+  std::wstring microphone_device;
   DWORD pid = 0;
   UINT64 creation_time = 0;
   UINT64 source_id = 0;
@@ -1005,7 +1006,15 @@ ProductArguments ParseProductArguments(int count, wchar_t** values) {
         ParseNonNegativeUint64(values[5], "argument-creation-time");
     return arguments;
   }
-  if (count == 2 && std::wstring(values[1]) == L"--capture-microphone") {
+  if (count == 2 && std::wstring(values[1]) == L"--list-microphones") {
+    arguments.mode = ProductArguments::Mode::microphones;
+    return arguments;
+  }
+  if ((count == 2 || (count == 4 && std::wstring(values[2]) == L"--device")) && std::wstring(values[1]) == L"--capture-microphone") {
+    if (count == 4) {
+      arguments.microphone_device = values[3];
+      if (arguments.microphone_device.empty() || arguments.microphone_device.size() > 512) Fail("argument-device", "microphone device is invalid");
+    }
     arguments.mode = ProductArguments::Mode::microphone;
     return arguments;
   }
@@ -1110,7 +1119,7 @@ HRESULT RunAudioCapture(const ProductArguments& arguments) {
                         size);
   };
   if (arguments.mode == ProductArguments::Mode::microphone) {
-    return piik::capture::CaptureMicrophone(stop.get(), should_stop, ready, pcm);
+    return piik::capture::CaptureMicrophone(arguments.microphone_device, stop.get(), should_stop, ready, pcm);
   }
   if (arguments.target_kind == piik::capture::TargetKind::display) {
     return piik::capture::CaptureSystemAudio(
@@ -2070,6 +2079,7 @@ int wmain(int argc, wchar_t** argv) {
 int wmain(int argc, wchar_t** argv) {
   try {
     ProductArguments arguments = ParseProductArguments(argc, argv);
+    if (arguments.mode == ProductArguments::Mode::microphones) return piik::capture::WriteMicrophoneList();
     if (arguments.mode == ProductArguments::Mode::list) {
       return piik::capture::WriteSourceList();
     }
