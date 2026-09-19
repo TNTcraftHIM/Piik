@@ -331,7 +331,7 @@ ${rmBlock(["vls-mic-voice"], [[".vls-mic-voice", "opacity:1;transform:none"]])}
     <Frame x={4} w={152} theme={theme} />
     <Frame x={164} w={152} theme={theme} result />
     {[0, 160].map((x, index) => <g key={x} transform={`translate(${x} 0)`}>
-      <Pawn x={53} yb={76} s={14} color={MINT} eyes host />
+      <Pawn x={53} yb={76} s={14} eyes host />
       <g transform="translate(78 38)"><Glyph name="microphone" size={27} /></g>
       {(index === 0 ? !muted : muted)
         ? <path d="m77 67 31-33" stroke={WARN} strokeWidth={3} strokeLinecap="round" />

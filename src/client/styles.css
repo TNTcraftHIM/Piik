@@ -1772,13 +1772,26 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
 }
 .lr-host-microphone .lr-btn { min-height: 44px; }
 .lr-host-microphone-actions { display: flex; gap: 6px; }
+.lr-host-microphone-actions [popovertarget] { min-width: 40px; padding-inline: 10px; }
+.lr-host-microphone-actions [popovertarget] .lr-glyph { transition: transform 180ms var(--spring); }
+.lr-host-microphone:has(.lr-host-microphone-volume:popover-open) [popovertarget] .lr-glyph { transform: rotate(180deg); }
 .lr-host-microphone-volume {
-  display: flex; align-items: center; gap: 12px;
-  width: min(360px, 100%); padding: 8px 14px;
-  background: var(--paper); border: 1px solid color-mix(in srgb, var(--ink) 18%, transparent); border-radius: 18px;
+  display: none; position: fixed; inset: auto; margin: 0; gap: 8px;
+  width: min(292px, calc(100vw - 16px)); padding: 12px 16px;
+  background: var(--paper); color: var(--ink); border: 2px solid var(--control-edge); border-radius: var(--control-radius);
+  box-shadow: var(--control-shadow), 0 8px 24px rgb(16 26 44 / .16);
+  opacity: 0; transform: translateY(var(--microphone-offset, -5px)) scale(.98); transform-origin: top right;
+  transition: opacity 160ms ease, transform 180ms var(--spring), display 180ms allow-discrete, overlay 180ms allow-discrete;
+  pointer-events: none;
 }
+.lr-host-microphone-volume:popover-open { display: grid; opacity: 1; transform: none; pointer-events: auto; }
+.lr-host-microphone-volume.is-above { --microphone-offset: 5px; transform-origin: bottom right; }
+@starting-style {
+  .lr-host-microphone-volume:popover-open { opacity: 0; transform: translateY(var(--microphone-offset, -5px)) scale(.98); }
+}
+.lr-host-microphone-volume label { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .lr-host-microphone-volume span { flex: none; font-size: 12px; }
-.lr-host-microphone-volume input { flex: 1; min-width: 32px; width: 0; height: 44px; padding: 0; accent-color: var(--action); cursor: pointer; }
+.lr-host-microphone-volume input { width: 100%; min-width: 32px; height: 36px; padding: 0; accent-color: var(--action); cursor: pointer; }
 .lr-host-microphone-volume output { min-width: 4ch; font-variant-numeric: tabular-nums; text-align: right; font-size: 12px; }
 .lr-room.is-theater .lr-stage-notices {
   position: absolute;

@@ -31,10 +31,13 @@ remain prerequisites for declaring broader support.
 This scope adds no room messages, ports, chat, Viewer microphone or emoji
 interactions. The microphone control stays near the capture preview, with the
 same action and state in Chinese, English and pure-visual modes.
-The adjacent disclosure adjusts microphone input from 0–200% through a smoothed
+The adjacent arrow opens a native popover that adjusts microphone input from
+0–200% through a smoothed
 Web Audio gain. It does not change source audio or Viewer playback volume,
 reopen permission, or replace the outgoing track. Its value lasts for the Host
 page lifetime; new page loads use 100%. Mute remains a separate direct action.
+Opening volume settings does not move the room layout. Native dismissal and
+focus behavior keep keyboard, touch and pointer control equivalent.
 
 ## Local Review
 

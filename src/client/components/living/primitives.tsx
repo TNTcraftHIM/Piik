@@ -45,6 +45,7 @@ export function Btn({
   pressed,
   expanded,
   controls,
+  popoverTarget,
   onClick,
   type = "button",
   hint,
@@ -62,6 +63,7 @@ export function Btn({
   pressed?: boolean;
   expanded?: boolean;
   controls?: string;
+  popoverTarget?: string;
   onClick?: () => void;
   type?: "button" | "submit";
   /** Shared hint comic; text modes add the localized caption. */
@@ -87,6 +89,7 @@ export function Btn({
       aria-pressed={pressed}
       aria-expanded={expanded}
       aria-controls={controls}
+      popoverTarget={popoverTarget}
       style={softDisabled ? SOFT_DISABLED_STYLE : undefined}
       onClick={
         softDisabled

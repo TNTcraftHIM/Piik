@@ -31,7 +31,7 @@ watch in their browsers.
 ## Features
 
 - **Watch without installing.** Friends join by invitation in a desktop or mobile browser.
-- **Share from Piik App or an existing Piik site.** Capture a screen, window or browser tab; available sources and audio depend on the platform.
+- **Share from Piik App or an existing Piik site.** Choose a screen, window, browser tab or camera; available sources and audio depend on the platform.
 - **Direct connections first.** Media travels between participants where possible (P2P). A self-hosted server can provide automatic media forwarding (SFU) as a fallback.
 - **Rooms you control.** Invitations, room codes and optional room passwords, for one host and up to 20 viewers.
 - **Flexible viewing.** Light and dark themes, playback controls, picture-in-picture and a connection topology view.
@@ -55,7 +55,7 @@ you can also create a room in the online version.
 
 | Start here | What you need to do |
 | --- | --- |
-| [Use Piik online](https://demo.piik.tv) | Open it in a desktop browser to create a room and share. |
+| [Use Piik online](https://demo.piik.tv) | Share from a desktop browser, or choose Camera on a phone with browser camera support. |
 | [Download Piik App](https://piik.tv/#download) | Extract and open the App, choose **Public invite**, then **Open Piik** to create a temporary room. |
 | [Host your own site](./docs/operations/self-hosting.md) | Advanced: deploy Piik Server on a Linux x64 server with your own domain, then connect through Piik App or a browser. |
 
@@ -63,6 +63,9 @@ you can also create a room in the online version.
 
 1. Select **Start sharing**, then choose the picture and audio to share.
 2. Select **Copy invite link** and send it to your friends. Keep the sharing tab open.
+
+With Browser or Camera capture, you can also turn on the **Microphone** for commentary.
+Native App window/screen capture does not yet support microphone mixing.
 
 Piik follows your system language: Chinese or English, with English as the fallback.
 Use **中 / EN / ✦** in the header to switch language or try the visual mode.

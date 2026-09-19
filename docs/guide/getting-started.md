@@ -46,10 +46,10 @@ App Local rooms and temporary public invitations end when that App run stops.
 
 ## Use Piik online
 
-1. Open [demo.piik.tv](https://demo.piik.tv) in a desktop browser that supports
-   screen sharing.
-2. Select **Start sharing**, choose a screen, window or tab, and enable audio if
-   needed and offered by the browser.
+1. Open [demo.piik.tv](https://demo.piik.tv) in your browser.
+2. Select **Start sharing**, then **Browser** for a screen, window or tab, or
+   **Camera** where your computer or phone browser supports it. Enable source
+   audio if the picker offers it.
 3. Confirm the preview and select **Copy invite link**. Open that link on a
    second device or send it to a friend.
 4. Select **Stop sharing** when finished.
@@ -67,7 +67,7 @@ restrictive networks may load the page but block video.
    The launcher opens in your system browser.
 3. Choose **Public invite** for friends outside your local network, then select
    **Open Piik**. Other modes are explained below.
-4. Choose **Start sharing**, then select **Browser**, **Apps / Windows**, or
+4. Choose **Start sharing**, then select **Browser**, **Camera**, **Apps / Windows**, or
    **Screens** as available. Pick the actual source and sound option.
 5. Copy and send the room invitation. Keep both the App and sharing tab open.
 
@@ -114,9 +114,10 @@ or [Piik App](#share-with-piik-app). Hosting a site yourself is an advanced opti
 follow the [self-hosting guide](../operations/self-hosting.md) for server, HTTPS
 and network setup.
 
-1. Open your group's Piik site on your computer. Enter its site passphrase if asked.
-2. Choose **Start sharing**. In the browser picker, select the screen, window or
-   tab you want friends to see, and enable audio if offered.
+1. Open your group's Piik site. Enter its site passphrase if asked.
+2. Choose **Start sharing**, then **Browser** to select a screen, window or tab
+   in the browser picker, or **Camera** where your computer or phone browser supports it.
+   Enable source audio if the picker offers it.
 3. Check the preview, then choose **Copy invite link** and send it to your friends.
 4. Keep the sharing tab open. Use **Pause sharing**, **Switch source**, or
    **Stop sharing** when you need them.
@@ -129,6 +130,17 @@ To use App capture on that same site, follow [Connect to Site](#choose-an-app-mo
 The site manages rooms and invitations; the App supplies native capture.
 If its operator has enabled SFU forwarding, turn off **Privacy mode** before
 sharing to allow that fallback. The project's online site uses P2P only.
+
+## Add your voice
+
+During Browser or Camera sharing, select **Microphone** below the picture and
+allow microphone access. Select it again to mute. The arrow beside it opens
+the input-volume control; 100% is the default and up to 200% is available.
+Source audio and your voice reach viewers together. The Host preview stays muted.
+
+Camera sharing does not enable the microphone automatically. Piik App can use
+these controls with Browser or Camera capture; native **Apps / Windows** and
+**Screens** capture do not yet support microphone mixing.
 
 ## When something gets in the way
 
