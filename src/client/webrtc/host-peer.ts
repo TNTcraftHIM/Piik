@@ -233,7 +233,8 @@ export class HostPeer {
         return false;
       }
 
-      const nextVideoTrack = cloneSenderVideoTrack(nextSourceVideoTrack);
+      const videoChanged = this.stream.getVideoTracks()[0] !== nextSourceVideoTrack;
+      const nextVideoTrack = videoChanged ? cloneSenderVideoTrack(nextSourceVideoTrack) : previousVideoTrack;
       let retainedNextVideoTrack = false;
       const nextAudioTrack = nextStream.getAudioTracks()[0] ?? null;
       const nextAudioDirection = nextAudioTrack ? "sendonly" : "inactive";
@@ -244,19 +245,21 @@ export class HostPeer {
       this.replacementAudioTrack = nextAudioTrack;
       this.applyPausedState(nextVideoTrack, nextAudioTrack);
       const previousAudioTrack = audioSender.track;
-      this.statsSamplingBlocked = true;
-      this.statsAccumulator = createStatsAccumulator();
+      if (videoChanged) {
+        this.statsSamplingBlocked = true;
+        this.statsAccumulator = createStatsAccumulator();
+      }
 
       try {
         try {
-          await videoSender.replaceTrack(nextVideoTrack);
+          if (videoChanged) await videoSender.replaceTrack(nextVideoTrack);
           await audioSender.replaceTrack(nextAudioTrack);
           if (audioDirectionChanged) {
             audioTransceiver.direction = nextAudioDirection;
           }
         } catch (error) {
           const [videoRollback] = await Promise.allSettled([
-            videoSender.replaceTrack(previousVideoTrack),
+            videoChanged ? videoSender.replaceTrack(previousVideoTrack) : Promise.resolve(),
             audioSender.replaceTrack(previousAudioTrack),
           ]);
           if (audioDirectionChanged) {
@@ -276,34 +279,36 @@ export class HostPeer {
         this.senderVideoTrack = nextVideoTrack;
         this.stream = nextStream;
         retainedNextVideoTrack = true;
-        this.pooledVideo?.dispose();
-        this.pooledVideo = null;
-        this.attachVideoPool(nextSourceVideoTrack);
-        if (previousVideoTrack !== this.encodedOutput?.track) previousVideoTrack.stop();
-        this.startupVideoProfilePending = needsStartupVideoProfile(
-          this.desiredProfile,
-        );
-        this.startupFramesBaseline = null;
-        this.snapshot = { ...this.snapshot, metrics: { ...EMPTY_METRICS } };
+        if (videoChanged) {
+          this.pooledVideo?.dispose();
+          this.pooledVideo = null;
+          this.attachVideoPool(nextSourceVideoTrack);
+          if (previousVideoTrack !== this.encodedOutput?.track) previousVideoTrack.stop();
+          this.startupVideoProfilePending = needsStartupVideoProfile(this.desiredProfile);
+          this.startupFramesBaseline = null;
+          this.snapshot = { ...this.snapshot, metrics: { ...EMPTY_METRICS } };
+        }
         await this.configureSender(videoSender, audioSender, {
           profile: startupVideoProfile(this.desiredProfile),
           profileRevision: this.profileRevision,
-          video: this.connection.connectionState === "connected",
+          video: videoChanged && this.connection.connectionState === "connected",
           audio: true,
         });
         this.snapshot = { ...this.snapshot, error: null };
         this.emit();
         return !audioDirectionChanged || (await this.createOffer(false));
       } finally {
-        if (!retainedNextVideoTrack) {
+        if (videoChanged && !retainedNextVideoTrack) {
           nextVideoTrack.stop();
         }
         if (this.replacementVideoTrack === nextVideoTrack) {
           this.replacementVideoTrack = null;
           this.replacementAudioTrack = null;
         }
-        this.statsAccumulator = createStatsAccumulator();
-        this.statsSamplingBlocked = false;
+        if (videoChanged) {
+          this.statsAccumulator = createStatsAccumulator();
+          this.statsSamplingBlocked = false;
+        }
       }
     });
   }

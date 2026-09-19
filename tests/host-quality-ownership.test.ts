@@ -22,7 +22,7 @@ const owners = new Set(["changeQuality", "commitQuality", "handleSignalMessage",
   "acquireNativeClient", "requestSharing", "startNativeShare", "startBrowserNativeIngress",
   "ownNativeClient", "discardNativeClient", "releaseUnusedNativeClient", "closeCaptureSourcePicker",
   "openCaptureSourcePicker", "startBrowserShareFromPicker", "startNativeShareFromPicker",
-  "startSharing", "beginRoomMutation", "finishRoomMutation", "setCaptureError",
+  "startSharing", "beginRoomMutation", "finishRoomMutation", "setCaptureError", "toggleMicrophone",
   "startPeer", "reconcileHostChildren", "setNotice", "setNoticeKey", "setNoticeError", "setNoticeErrorKey", "endSharing", "copyInvite", "isCurrentRoomAuthority"]);
 const functions: string[] = [];
 function collect(node: ts.Node): void {
@@ -328,6 +328,29 @@ describe("Host quality ownership", () => {
     expect(current.setPhase).toHaveBeenLastCalledWith("idle");
     expect(current.createRoom).not.toHaveBeenCalled();
     expect(current.roomMutationRef.current).toBeNull();
+  });
+
+  it.each(["camera", "browser"])("keeps a rejected %s source change out of healthy media status", (source) => {
+    const current = fixture();
+    current.context.setCaptureError(new DOMException("denied", "NotAllowedError"), source, "source");
+    expect(current.setNoticeValue).toHaveBeenLastCalledWith(expect.objectContaining({ target: "operation", tone: "warn" }));
+    expect(current.setPhase).not.toHaveBeenCalled();
+    expect(current.track.stop).not.toHaveBeenCalled();
+  });
+
+  it("keeps microphone denial as operation feedback without retiring video", async () => {
+    const current = fixture();
+    Object.assign(current.context, {
+      hostAudioRef: ref({ setMicrophoneVolume: vi.fn(), toggleMicrophone: vi.fn(async () => {
+        throw new DOMException("denied", "NotAllowedError");
+      }) }),
+      sharingPausedRef: ref(false), microphoneVolume: 1, setMicrophonePending: vi.fn(),
+    });
+    await current.context.toggleMicrophone();
+    expect(current.setNoticeValue).toHaveBeenLastCalledWith(expect.objectContaining({ key: "host.microphone.denied", target: "operation" }));
+    expect(current.setPhase).not.toHaveBeenCalled();
+    expect(current.track.stop).not.toHaveBeenCalled();
+    expect(current.sourceSwitchRef.current).toBeNull();
   });
 
   it("keeps a rejected source change as operation feedback while the current share stays live", async () => {

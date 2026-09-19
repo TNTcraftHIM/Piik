@@ -862,6 +862,30 @@ describe("HostPeer source replacement", () => {
     expect(nextSenderVideo?.stop).toHaveBeenCalledOnce();
   });
 
+  it.each([false, true])("keeps the video sender and quality when only audio changes (failure=%s)", async (fail) => {
+    const video = createTrack("video", "same-video");
+    const peer = createPeer(createStream(video, null));
+    await peer.start();
+    await acceptPeerAnswer(peer);
+    const connection = FakePeerConnection.latest!;
+    const videoSender = connection.senders[0]!;
+    const audioSender = connection.senders[1]!;
+    const clone = videoSender.track!;
+    const parametersBefore = videoSender.setParameters.mock.calls.length;
+    const offersBefore = connection.createOfferCallCount;
+    audioSender.failNextReplace = fail;
+    const audio = createTrack("audio", "mixed-audio");
+    expect(await peer.replaceStream(createStream(video, audio))).toBe(!fail);
+    expect(videoSender.replaceTrack).not.toHaveBeenCalled();
+    expect(videoSender.setParameters).toHaveBeenCalledTimes(parametersBefore);
+    expect(videoSender.track).toBe(clone);
+    expect(clone.stop).not.toHaveBeenCalled();
+    expect(video.clone).toHaveBeenCalledOnce();
+    expect(audioSender.track).toBe(fail ? null : audio);
+    expect(connection.createOfferCallCount).toBe(offersBefore + (fail ? 0 : 1));
+    peer.dispose();
+  });
+
   it("keeps capture controls on the sender-owned video clone", async () => {
     const sourceVideo = createConfiguredVideoTrack(
       "capture-video",

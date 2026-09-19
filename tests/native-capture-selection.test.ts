@@ -135,6 +135,16 @@ describe("native capture source selection", () => {
     expect(html).not.toMatch(/data-source-tab="camera"[^>]*disabled=""/);
   });
 
+  it("selects a focusable Camera tab when Browser sharing is unavailable", () => {
+    const html = renderToStaticMarkup(createElement(CaptureSourcePicker, {
+      nativeSources: { kind: "browser" }, browserAvailable: false,
+      onBrowser: () => {}, onCamera: () => {}, onNative: () => {},
+      onPreview: async () => null, onRefresh: () => {}, onCancel: () => {},
+    }));
+    expect(html).toMatch(/data-source-tab="camera"[^>]*aria-selected="true"[^>]*tabindex="0"/);
+    expect(html).toMatch(/data-source-tab="browser"[^>]*tabindex="-1"[^>]*disabled=""/);
+  });
+
   it("retains the platform-owned combined source picker", () => {
     const html = renderToStaticMarkup(createElement(CaptureSourcePicker, {
       nativeSources: {

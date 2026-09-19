@@ -76,11 +76,12 @@ export function CaptureSourcePicker({
     nativeSources.kind === "unsupported" || nativeSources.kind === "incompatible";
   const tabs = SOURCE_TABS.filter((value) => appDetected || value === "browser" || value === "camera");
   const preferredTab = tab ?? initialTab;
-  const activeTab = tabs.includes(preferredTab) ? preferredTab : "browser";
-  const nativeTab = activeTab === "window" || activeTab === "display";
-  const browserCapture = activeTab === "browser";
   const tabAvailable = (value: SourceTab) => value === "camera" ? cameraAvailable
     : value === "browser" || nativeSources.kind === "browser" ? browserAvailable : true;
+  const activeTab = tabs.includes(preferredTab) && tabAvailable(preferredTab)
+    ? preferredTab : tabs.find(tabAvailable) ?? "browser";
+  const nativeTab = activeTab === "window" || activeTab === "display";
+  const browserCapture = activeTab === "browser";
   const supportsCaptureBorder = nativeTab && nativeSources.kind === "ready" && nativeSources.captureBorderControl === true;
   const issueKey = nativeSources.kind === "incompatible" ? "native.incompatible" : !nativeTab ? null
     : (nativeSources.kind === "unavailable" ||

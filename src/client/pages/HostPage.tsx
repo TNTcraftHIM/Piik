@@ -2817,12 +2817,13 @@ export function HostPage({
   }
 
   function setCaptureError(error: unknown, source: BrowserCaptureSource | undefined, action: "source" | "capture") {
+    const target = action === "source" ? "operation" : "television";
     if (source !== "camera") {
-      setNoticeError(error, action, "television");
+      setNoticeError(error, action, target);
       return;
     }
     setNoticeValue({ kind: "key", key: error instanceof DOMException && error.name === "NotAllowedError"
-      ? "host.camera.denied" : "host.camera.unavailable", target: "television", comic: "source-failed", tone: "warn" });
+      ? "host.camera.denied" : "host.camera.unavailable", target, comic: "source-failed", tone: "warn" });
   }
 
   async function toggleMicrophone(): Promise<void> {
@@ -2842,7 +2843,7 @@ export function HostPage({
       if (isCurrentGeneration(generation) && hostAudioRef.current === audio) {
         debugError("capture", "microphone-failed", error);
         setNoticeValue({ kind: "key", key: error instanceof DOMException && error.name === "NotAllowedError"
-          ? "host.microphone.denied" : "host.microphone.unavailable", target: "television", comic: "warning", tone: "warn" });
+          ? "host.microphone.denied" : "host.microphone.unavailable", target: "operation", comic: "warning", tone: "warn" });
       }
     } finally {
       if (sourceSwitchRef.current === token) finishSourceSwitch(token);
