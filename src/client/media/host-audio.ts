@@ -14,6 +14,9 @@ export class HostAudio {
     this.source = source;
   }
 
+  /** Capture facts come from the input, never the mixer destination track. */
+  get sourceStream(): MediaStream { return this.source; }
+
   attach(source: MediaStream): MediaStream {
     const previous = this.source;
     this.source = source;

@@ -3,8 +3,9 @@ import { Btn } from "./primitives";
 import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
 
-export function HostMicrophone({ enabled, pending, disabled, nativeCapture, volume, onVolume, onToggle }: {
+export function HostMicrophone({ enabled, pending, disabled, paused, nativeCapture, volume, onVolume, onToggle }: {
   enabled: boolean; pending?: boolean; disabled?: boolean;
+  paused?: boolean;
   volume: number; onVolume: (volume: number) => void;
   nativeCapture?: boolean; onToggle: () => void;
 }) {
@@ -21,12 +22,13 @@ export function HostMicrophone({ enabled, pending, disabled, nativeCapture, volu
       if (!panel.matches(":popover-open")) return;
       const rect = trigger.getBoundingClientRect();
       if (rect.bottom <= 0 || rect.top >= window.innerHeight) { panel.hidePopover(); return; }
-      const below = window.innerHeight - rect.bottom - 16;
-      const above = rect.top - 16;
+      const controls = trigger.closest(".lr-host-share-controls")?.getBoundingClientRect() ?? rect;
+      const below = window.innerHeight - controls.bottom - 16;
+      const above = controls.top - 16;
       const openAbove = below < panel.offsetHeight && above > below;
       panel.classList.toggle("is-above", openAbove);
       panel.style.left = `${Math.max(8, Math.min(rect.right - panel.offsetWidth, window.innerWidth - panel.offsetWidth - 8))}px`;
-      panel.style.top = `${Math.max(8, openAbove ? rect.top - panel.offsetHeight - 8 : rect.bottom + 8)}px`;
+      panel.style.top = `${Math.max(8, openAbove ? controls.top - panel.offsetHeight - 8 : controls.bottom + 8)}px`;
     };
     const opened = () => {
       if (!panel.matches(":popover-open")) return;
@@ -47,10 +49,12 @@ export function HostMicrophone({ enabled, pending, disabled, nativeCapture, volu
     <Btn icon={enabled ? "microphone" : "microphoneOff"}
       cap="host.microphone.label"
       title={nativeCapture ? "host.microphone.browserOnly" : pending ? "host.microphone.pending"
+        : paused ? "host.microphone.paused" : disabled ? "host.microphone.busy"
+        : enabled && volume === 0 ? "host.microphone.zeroVolume"
         : enabled ? "host.microphone.mute" : "host.microphone.enable"}
-      hint={enabled ? "hint-microphone-off" : "hint-microphone-on"}
+      hint={paused ? "host-paused" : enabled ? "hint-microphone-off" : "hint-microphone-on"}
       pressed={enabled} busy={pending} tone={enabled ? "on" : undefined}
-      disabled={nativeCapture || pending || disabled} onClick={onToggle} />
+      disabled={nativeCapture || pending || disabled || paused} onClick={onToggle} />
     <Btn icon="chevron" title="host.microphone.settings" popoverTarget={id} disabled={nativeCapture} />
     </div>
     <div id={id} ref={panelRef} popover="auto" role="group" aria-label={t("host.microphone.volume")}

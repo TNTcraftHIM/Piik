@@ -166,7 +166,7 @@ export function Tooltip({
     if (!vw) return; // no layout (SSR/test): keep the prop alignment
     const rect = wrap.getBoundingClientRect();
     // A wrapped control row remains one working area, including on narrow screens.
-    const controlBar = wrap.closest<HTMLElement>(".lr-playback, .lr-source-picker-options");
+    const controlBar = wrap.closest<HTMLElement>(".lr-playback, .lr-source-picker-options, .lr-host-share-controls");
     const playback = controlBar?.classList.contains("lr-playback");
     const avoid = controlBar?.getBoundingClientRect() ?? rect;
     const player = wrap.closest<HTMLElement>(".lr-tv-screen")?.getBoundingClientRect();
@@ -182,7 +182,7 @@ export function Tooltip({
       (panelMounted ? tipRef.current?.offsetHeight : 0) || FALLBACK_PANEL_HEIGHT;
     const fitsAbove = avoid.top - panelHeight - EDGE_MARGIN >= EDGE_MARGIN;
     const fitsBelow = !vh || below + panelHeight + EDGE_MARGIN <= vh - EDGE_MARGIN;
-    const preferredPlace = wrap.closest(".lr-tv-chin") ? "below" : place;
+    const preferredPlace = wrap.closest(".lr-tv-chin, .lr-host-share-controls") ? "below" : place;
     let livePlace: Placement =
       preferredPlace === "above"
         ? fitsAbove || !fitsBelow

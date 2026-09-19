@@ -71,6 +71,7 @@ test("mixing and source changes retain one audio track, microphone intent and th
   expect(change).toHaveBeenLastCalledWith(false);
   const camera = new Track("video");
   const replaced = audio.attach(media(camera));
+  expect(audio.sourceStream.getAudioTracks()).toHaveLength(0);
   expect(replaced.getAudioTracks()).toEqual(mixed.getAudioTracks());
   expect(replaced.getVideoTracks()).toEqual([camera]);
   expect(sound.stop).toHaveBeenCalledOnce();
@@ -84,6 +85,31 @@ test("mixing and source changes retain one audio track, microphone intent and th
   audio.dispose();
   expect(contexts[0].close).toHaveBeenCalledOnce();
   expect(mixed.getAudioTracks()[0].readyState).toBe("ended");
+});
+
+test("source audio facts are independent of mixed voice, mute, volume and share pause", async () => {
+  const { getUserMedia } = setup();
+  const camera = new Track("video"), microphone = new Track("audio");
+  const source = media(camera);
+  const audio = new HostAudio(source, vi.fn());
+  getUserMedia.mockResolvedValue(media(microphone));
+  const mixed = (await audio.toggleMicrophone())!;
+  expect(mixed.getAudioTracks()).toHaveLength(1);
+  expect(audio.sourceStream).toBe(source);
+  expect(audio.sourceStream.getAudioTracks()).toHaveLength(0);
+  await audio.toggleMicrophone();
+  audio.setMicrophoneVolume(0);
+  mixed.getTracks().forEach(track => { track.enabled = false; });
+  expect(audio.sourceStream.getAudioTracks()).toHaveLength(0);
+  const sourceSound = new Track("audio");
+  sourceSound.enabled = false;
+  const nextSource = media(new Track("video"), sourceSound);
+  audio.attach(nextSource);
+  expect(audio.sourceStream).toBe(nextSource);
+  expect(audio.sourceStream.getAudioTracks()).toHaveLength(1);
+  expect(microphone.enabled).toBe(false);
+  audio.dispose();
+  expect(sourceSound.stop).toHaveBeenCalledOnce();
 });
 
 test("microphone denial leaves source audio/video alone; late permission cannot revive a retired share", async () => {

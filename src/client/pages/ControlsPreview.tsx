@@ -69,8 +69,14 @@ export function ControlsPreview() {
           <Btn icon="network" title="host.topology" hint="hint-topology" onClick={notify} />
           <Btn icon="sliders" title="host.advanced" hint="hint-advanced" onClick={notify} />
         </div>
-        <HostMicrophone enabled={microphone} volume={microphoneVolume} onVolume={setMicrophoneVolume}
-          onToggle={() => setMicrophone(value => !value)} />
+        <div className="lr-host-share-controls" role="group" aria-label={t("host.shareControls")}>
+          <HostMicrophone enabled={microphone} paused={paused} volume={microphoneVolume} onVolume={setMicrophoneVolume}
+            onToggle={() => setMicrophone(value => !value)} />
+          <Btn icon={paused ? "play" : "pause"} title={paused ? "host.resume" : "host.pause"} cap={paused ? "host.resume" : "host.pause"}
+            hint={paused ? "hint-resume" : "hint-pause"} onClick={() => setPaused(!paused)} />
+          <Btn icon="switchSource" title="host.switchSource" cap="host.switchSource" hint="hint-switch-source" onClick={notify} />
+          <Btn id="host-stop-share" icon="stop" tone="danger" title="host.stop" cap="host.stop" hint="hint-share-stop" onClick={notify} />
+        </div>
       </section>
       <section id="option-preview" className="cp-card">
         <header><span className="cp-number">02</span><h2>{en ? "Pick, toggle, adjust" : "选一个，再拨一下。"}</h2></header>

@@ -238,7 +238,7 @@ interface CaptureDetails {
    *  mode never see a baked-in string from capture time. */
   resolution: string | null;
   frameRate: number | null;
-  hasAudio: boolean;
+  hasSourceAudio: boolean;
 }
 
 function captureDetails(stream: MediaStream, native = false): CaptureDetails {
@@ -250,7 +250,7 @@ function captureDetails(stream: MediaStream, native = false): CaptureDetails {
         ? `${settings.width}x${settings.height}`
         : null,
     frameRate: settings?.frameRate ?? null,
-    hasAudio: stream.getAudioTracks().length > 0,
+    hasSourceAudio: stream.getAudioTracks().length > 0,
   };
 }
 
@@ -1631,7 +1631,7 @@ export function HostPage({
       if (nativeUpdate) {
         setDetails(captureDetails(activeStream, true));
       } else if (captureChanged) {
-        setDetails(captureDetails(activeStream));
+        setDetails(captureDetails(hostAudioRef.current?.sourceStream ?? activeStream));
       }
       signalRef.current?.setHostQualitySettings(appliedProfile);
       const ingress = nativeMediaIngressRef.current;
@@ -1802,6 +1802,9 @@ export function HostPage({
         return;
       }
       sharingPausedRef.current = false;
+      // Before the mixer existed, source audio itself was the paused output.
+      // Restore it only on an accepted resume, never during permission handoff.
+      if (hostAudioRef.current) setMediaPaused(hostAudioRef.current.sourceStream, false);
       setSharingPaused(false);
       setNoticeValue(null);
       return;
@@ -2874,7 +2877,7 @@ export function HostPage({
     setMediaPaused(captured, sharingPausedRef.current);
     streamRef.current = captured;
     setStream(captured);
-    setDetails(captureDetails(captured));
+    setDetails(captureDetails(hostAudioRef.current?.sourceStream ?? captured));
     if (videoChanged) watchCaptureEnd(captured, generation);
 
     try {
@@ -3496,16 +3499,61 @@ export function HostPage({
               />
             ) : null}
           </StageTv>
-          {phase === "live" && <HostMicrophone enabled={microphoneEnabled} pending={microphonePending}
-            nativeCapture={nativeActive} disabled={switchingSource || changingQuality || sharingPaused}
-            volume={microphoneVolume} onVolume={volume => {
-              setMicrophoneVolume(volume);
-              hostAudioRef.current?.setMicrophoneVolume(volume);
-            }}
-            onToggle={() => void toggleMicrophone()} />}
+          {phase === "live" || phase === "starting" ? (
+            <div className="lr-host-share-controls" role="group" aria-label={t("host.shareControls")}>
+              {phase === "live" ? (
+                <>
+                  <HostMicrophone enabled={microphoneEnabled} pending={microphonePending}
+                    nativeCapture={nativeActive} paused={sharingPaused} disabled={switchingSource || changingQuality}
+                    volume={microphoneVolume} onVolume={volume => {
+                      setMicrophoneVolume(volume);
+                      hostAudioRef.current?.setMicrophoneVolume(volume);
+                    }}
+                    onToggle={() => void toggleMicrophone()} />
+                  <Btn
+                    icon={sharingPaused ? "play" : "pause"}
+                    cap={sharingPaused ? "host.resume" : "host.pause"}
+                    title={sharingPaused ? "host.resume" : "host.pause"}
+                    hint={sharingPaused ? "hint-resume" : "hint-pause"}
+                    draw="host-share-toggle"
+                    disabled={switchingSource || changingQuality || microphonePending}
+                    onClick={toggleSharingPause}
+                  />
+                  <Btn
+                    id="host-switch-source"
+                    icon="switchSource"
+                    cap={switchingSource ? "host.switching" : "host.switchSource"}
+                    title="host.switchSource"
+                    hint="hint-switch-source"
+                    disabled={switchingSource || changingQuality || microphonePending}
+                    onClick={() => void switchSource()}
+                  />
+                  <Btn
+                    id="host-stop-share"
+                    icon="stop"
+                    tone="danger"
+                    cap="host.stop"
+                    title="host.stop"
+                    hint="hint-share-stop"
+                    onClick={() => endSharing({ key: "host.stopNotice" })}
+                  />
+                </>
+              ) : (
+                <Btn
+                  id="host-cancel-share"
+                  icon="x"
+                  tone="danger"
+                  cap="host.cancelStart"
+                  title="host.cancelStart"
+                  hint="hint-close"
+                  onClick={() => endSharing({ key: "host.startCancelled" })}
+                />
+              )}
+            </div>
+          ) : null}
           <div className="lr-stage-notices" role="status" aria-live="polite">
-            {!details?.hasAudio && stream ? (
-              <Pill icon="speakerOff" label={t("host.noAudio")} comic="no-audio" />
+            {!details?.hasSourceAudio && stream ? (
+              <Pill icon="speakerOff" label={t("host.noAudio")} comic="no-audio" tone="off" />
             ) : null}
             {hostSfuWarningText ? (
               <Pill icon="alert" label={hostSfuWarningText} comic="warning" />
@@ -3677,50 +3725,7 @@ export function HostPage({
                   onClick={() => setShowTopology((current) => !current)}
                 />
               </div>
-              {phase === "live" || phase === "starting" ? (
-                <div className="lr-row-group lr-group-actions lr-host-share-slot">
-                  {phase === "live" ? (
-                    <>
-                      <Btn
-                        icon={sharingPaused ? "play" : "pause"}
-                        cap={sharingPaused ? "host.resume" : "host.pause"}
-                        title={sharingPaused ? "host.resume" : "host.pause"}
-                        hint={sharingPaused ? "hint-resume" : "hint-pause"}
-                        draw="host-share-toggle"
-                        disabled={switchingSource || changingQuality || microphonePending}
-                        onClick={toggleSharingPause}
-                      />
-                      <Btn
-                        id="host-switch-source"
-                        icon="switchSource"
-                        cap={switchingSource ? "host.switching" : "host.switchSource"}
-                        title="host.switchSource"
-                        hint="hint-switch-source"
-                        disabled={switchingSource || changingQuality || microphonePending}
-                        onClick={() => void switchSource()}
-                      />
-                      <Btn
-                        icon="stop"
-                        tone="danger"
-                        cap="host.stop"
-                        title="host.stop"
-                        hint="hint-share-stop"
-                        onClick={() => endSharing({ key: "host.stopNotice" })}
-                      />
-                    </>
-                  ) : (
-                    <Btn
-                      id="host-cancel-share"
-                      icon="x"
-                      tone="danger"
-                      cap="host.cancelStart"
-                      title="host.cancelStart"
-                      hint="hint-close"
-                      onClick={() => endSharing({ key: "host.startCancelled" })}
-                    />
-                  )}
-                </div>
-              ) : null}
+
             </div>
           </Row>
 
@@ -3743,14 +3748,14 @@ export function HostPage({
                   <MetricCell label="stats.resolution" value={details.resolution ?? t("stats.unknown")} />
                   <MetricCell label="stats.fps" value={details.frameRate ? `${details.frameRate.toFixed(0)} fps` : vis ? "—" : t("host.capture.fpsUnknown")} />
                   <MetricCell label="stats.codec" value={resolvedVideoCodec?.toUpperCase() ?? (vis ? "—" : t("host.capture.codecPending"))} />
-                  <Tooltip toggleOnClick kind={details.hasAudio ? "hint-source-audio" : "no-audio"}
-                    text={vis ? undefined : t(details.hasAudio ? "host.capture.hasAudio" : "host.capture.noAudio")}
-                    tone={details.hasAudio ? "off" : "warn"}>
+                  <Tooltip toggleOnClick kind={details.hasSourceAudio ? "hint-source-audio" : "no-audio"}
+                    text={vis ? undefined : t(details.hasSourceAudio ? "host.capture.hasAudio" : "host.capture.noAudio")}
+                    tone="off">
                     <button type="button" className="lr-meter-cell"
                       style={{ border: 0, color: "inherit", font: "inherit", textAlign: "start" }}
-                      aria-label={t(details.hasAudio ? "host.capture.hasAudio" : "host.capture.noAudio")}>
-                      <Glyph name={details.hasAudio ? "speaker" : "speakerOff"} size={16} />
-                      {!vis && <b>{t(details.hasAudio ? "host.capture.hasAudio" : "host.capture.noAudio")}</b>}
+                      aria-label={t(details.hasSourceAudio ? "host.capture.hasAudio" : "host.capture.noAudio")}>
+                      <Glyph name={details.hasSourceAudio ? "speaker" : "speakerOff"} size={16} />
+                      {!vis && <b>{t(details.hasSourceAudio ? "host.capture.hasAudio" : "host.capture.noAudio")}</b>}
                     </button>
                   </Tooltip>
                 </div>

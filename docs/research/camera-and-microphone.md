@@ -29,8 +29,12 @@ Native source mixing, actual phone capture and real audio-level/echo acceptance
 remain prerequisites for declaring broader support.
 
 This scope adds no room messages, ports, chat, Viewer microphone or emoji
-interactions. The microphone control stays near the capture preview, with the
-same action and state in Chinese, English and pure-visual modes.
+interactions. Microphone, pause, source replacement and stop share one action
+row below the picture, outside the playback controls and television status.
+Their order and meaning stay the same in Chinese, English and pure-visual modes.
+Source-sound details describe the raw capture input; microphone intent and
+Viewer playback volume are separate facts. Pausing the share silences the mixed
+output and temporarily disables microphone toggling without clearing its intent.
 The adjacent arrow opens a native popover that adjusts microphone input from
 0–200% through a smoothed
 Web Audio gain. It does not change source audio or Viewer playback volume,

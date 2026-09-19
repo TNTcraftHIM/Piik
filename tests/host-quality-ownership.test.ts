@@ -22,7 +22,7 @@ const owners = new Set(["changeQuality", "commitQuality", "handleSignalMessage",
   "acquireNativeClient", "requestSharing", "startNativeShare", "startBrowserNativeIngress",
   "ownNativeClient", "discardNativeClient", "releaseUnusedNativeClient", "closeCaptureSourcePicker",
   "openCaptureSourcePicker", "startBrowserShareFromPicker", "startNativeShareFromPicker",
-  "startSharing", "beginRoomMutation", "finishRoomMutation", "setCaptureError", "toggleMicrophone",
+  "startSharing", "beginRoomMutation", "finishRoomMutation", "setCaptureError", "toggleMicrophone", "toggleSharingPause",
   "startPeer", "reconcileHostChildren", "setNotice", "setNoticeKey", "setNoticeError", "setNoticeErrorKey", "endSharing", "copyInvite", "isCurrentRoomAuthority"]);
 const functions: string[] = [];
 function collect(node: ts.Node): void {
@@ -85,6 +85,7 @@ function fixture(launchedByClient = true) {
     qualityChangeRef: ref<object | null>(null), pendingQualityChangeRef: ref<QualitySettings | null>(null),
     activeGenerationRef: ref<number | null>(1), streamRef: ref<typeof stream | null>(stream), sourceSwitchRef: ref<object | null>(null),
     nativeModeRef: ref(false), nativeClientRef: ref<typeof client | null>(client), nativeShareGenerationRef: ref<string | null>("share"),
+    hostAudioRef: ref<{ sourceStream: MediaStream } | null>(null),
     nativeMediaIngressRef: ref<ReturnType<typeof ingress> | null>(null), nativeMediaBridgeRef: ref(null),
     nativeEventCleanupRef: ref(null), nativeShareCleanupRef: ref(Promise.resolve()),
     peersRef: ref(new Map([["viewer", peer]])), hostProvisionalChildRef: ref(null), hostSfuRouteRef: ref(route),
@@ -232,6 +233,35 @@ describe("Host invite copy feedback", () => {
 });
 
 describe("Host quality ownership", () => {
+  it.each([true, false])("resumes the former raw audio input only after an accepted mixed-output resume: %s", (accepted) => {
+    const current = fixture(false);
+    const source = {} as MediaStream;
+    current.hostAudioRef.current = { sourceStream: source };
+    current.peersRef.current.clear();
+    current.context.hostSfuRouteRef.current = null;
+    const setMediaPaused = vi.fn(() => true);
+    Object.assign(current.context, {
+      sharingPausedRef: ref(true), setSharingPaused: vi.fn(), setMediaPaused,
+      signalRef: ref({ setSharingPaused: () => accepted, confirmSharingPaused: vi.fn() }),
+      setNoticeErrorKey: vi.fn(),
+    });
+    current.context.toggleSharingPause();
+    expect(setMediaPaused).toHaveBeenCalledWith(current.streamRef.current, false);
+    if (accepted) expect(setMediaPaused).toHaveBeenCalledWith(source, false);
+    else {
+      expect(setMediaPaused).not.toHaveBeenCalledWith(source, false);
+      expect(setMediaPaused).toHaveBeenLastCalledWith(current.streamRef.current, true);
+    }
+  });
+  it("refreshes source details from the capture input after microphone mixing", async () => {
+    const current = fixture(false);
+    const source = {} as MediaStream;
+    current.hostAudioRef.current = { sourceStream: source };
+    const captureDetails = vi.fn(() => ({}));
+    current.context.captureDetails = captureDetails;
+    await current.change(lower);
+    expect(captureDetails).toHaveBeenCalledWith(source);
+  });
   it.each([false, true])("remembers the border preference and passes it to native capture: replacing %s", async (replacing) => {
     const current = fixture();
     current.context.phase = replacing ? "live" : "idle";
