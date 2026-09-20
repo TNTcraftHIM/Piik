@@ -1,17 +1,35 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-09-17
+Last reviewed: 2026-09-20
 
 Only **Now** is executable. Product modules own behavior; Git/PRs own completed
 history. A parked idea is not implementation authority.
 
 ## Now
 
-No implementation work is currently scheduled. Reporter/device follow-ups and
-evidence-dependent work remain below.
+- [ ] **Review camera and Host microphone in the separate capture candidate.**
+  Keep device selection in the existing source/settings surfaces. Finish control
+  grouping, dark-theme feedback and microphone volume presentation; verify native
+  mixing, device replacement and mobile camera behavior before acceptance.
+  These features are excluded from the bug-fix release.
+- [ ] **Refine the isolated room-interaction prototype.** Review chat, optional
+  danmaku and participant-targeted reactions for usability, placement and intended
+  cross-view synchronization. Preserve room authorization and media-route owners.
+  This experiment does not authorize integration or publication.
 
 ## Awaiting Device Or Reporter Evidence
 
+- [ ] **Interruption during established viewing.** A Viewer reportedly returns
+  to P2P connecting after watching for a while. Native receiver renegotiation,
+  retired event delivery and SFU replacement have locally reproduced defects
+  and regression checks, but paired diagnostics and device/network details are
+  still needed to establish this reporter's cause. Include an upstream relay's
+  report when present. The existing five-second Viewer membership grace during
+  signaling loss is unchanged. This is distinct from the first-frame report below.
+- [ ] **Windows 11 capture border remains visible.** Identify the App/Browser
+  capture path, Windows build and capture-border permission result. A local
+  Windows 11 request succeeded; the reported failure remains unconfirmed. Check
+  system consent and other active captures before changing the WGC path.
 - [ ] **Brief connection followed by repeated Viewer loss on v1.5.0.** One
   Viewer reportedly drops just after connection details appear, while other
   Viewers work; App public-link mode is suspected. Check signaling, first-frame
@@ -98,21 +116,16 @@ not establish better connection success or speed; this note adds no retry policy
 6. **Platform output.** Reopen for a registered receiver acting as an ordinary
    Viewer only after the [platform-output gate](./research/platform-output.md)
    passes.
-7. **Full UI themes.** After the base version, research themes that can change
-   layout, composition and motion, including a restrained graphic/cinematic
-   direction with original Piik assets. Assess extension boundaries and cost
-   before scheduling any theme/plugin API. Design experiments remain in Git
-   history, outside the main source tree.
-8. **Additional languages.** Review community catalogs and their rendered UI
+7. **Additional languages.** Review community catalogs and their rendered UI
    following the [translation guide](./guide/translating.md). Add website,
    documentation or App console translations as contributed; verify text
    direction and layout when a language requires it. Check contributed language
    names and rendered menu navigation when registering a new catalog.
-9. **Windows code signing.** Revisit after enrollment in a trusted signing
+8. **Windows code signing.** Revisit after enrollment in a trusted signing
     service. Sign Piik's executables before archive checksums are computed;
     signing improves publisher identity but does not guarantee that antivirus
     cloud scanning stops. Service selection and enrollment remain pending.
-10. **Gitee download-source warning.** Paused by the owner. Keep GitHub primary
+9. **Gitee download-source warning.** Paused by the owner. Keep GitHub primary
     and retain Gitee; do not add a self-hosted mirror. Chrome still blocks the
     Gitee attachment when Referer is removed. Reopen for new evidence or a
     provider review; the warning remains unresolved.

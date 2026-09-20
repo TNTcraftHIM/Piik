@@ -4,6 +4,47 @@ import type { NativeClientEvent } from "../src/client/native/wire";
 import type { SfuSignalMessage } from "../src/shared/protocol";
 
 describe("Native SFU publication", () => {
+  it.each(["transport", "pending-prepare"])("retires once before recovery: %s", async mode => {
+    const config = { revision: 3, publicationGeneration: "publication_generation", connectionId: "publication_connection" };
+    const media = { codec: "vp8" as const, layers: [{ rid: "", width: 320, height: 180, bitrate: 300_000 }], audio: false, audioBitrate: 0 };
+    let finishClose!: () => void, finishPrepare!: () => void;
+    const closing = new Promise<void>(resolve => { finishClose = resolve; });
+    const preparing = new Promise<void>(resolve => { finishPrepare = resolve; });
+    let listener: ((event: NativeClientEvent) => void) | null = null;
+    const control = {
+      preparePublication: vi.fn(async () => {
+        if (mode === "pending-prepare") await preparing;
+        return { description: { type: "offer" as const, sdp: "v=0\r\n" }, media };
+      }),
+      publicationMedia: vi.fn(async () => media), acceptPublicationSignal: vi.fn(async () => {}),
+      closePublication: vi.fn(() => closing),
+      onEvent: vi.fn((callback: (event: NativeClientEvent) => void) => {
+        listener = callback;
+        return () => { listener = null; };
+      }),
+    };
+    const onDisconnected = vi.fn();
+    const publisher = new NativeSfuPublisher(control, "native_share", { iceServers: [] }, { send: () => true, onDisconnected });
+    await publisher.connect(config);
+    expect(control.onEvent).not.toHaveBeenCalled();
+    const activation = publisher.activate();
+    if (mode === "transport") {
+      await activation;
+      listener!({ version: 9, type: "publication-state", shareId: "native_share", ...config, state: "failed" });
+    }
+    const firstClose = publisher.disconnect();
+    expect(publisher.disconnect()).toBe(firstClose);
+    finishPrepare();
+    await Promise.resolve();
+    expect(onDisconnected).not.toHaveBeenCalled();
+    expect(control.closePublication).toHaveBeenCalledOnce();
+    finishClose();
+    await firstClose;
+    await activation;
+    await Promise.resolve();
+    expect(control.closePublication).toHaveBeenCalledOnce();
+    expect(onDisconnected).toHaveBeenCalledTimes(mode === "transport" ? 1 : 0);
+  });
   it("forwards existing Native media with exact identity and bounded signaling replay", async () => {
     const config = {
       revision: 3,
@@ -136,7 +177,7 @@ describe("Native SFU publication", () => {
       ...config,
       state: "failed",
     });
-    expect(onDisconnected).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(onDisconnected).toHaveBeenCalledOnce());
     expect(control.closePublication).toHaveBeenCalledWith(
       "native_share",
       config.publicationGeneration,

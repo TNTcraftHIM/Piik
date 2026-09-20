@@ -613,13 +613,15 @@ func discoverNativeMedia(ctx context.Context, configuredPath string) nativeRunti
 	}
 	capabilities, err := nativecapture.Discover(ctx, path)
 	if err != nil {
-		return nativeRuntime{captureProcess: path, discoveryErr: err}
+		return nativeRuntime{captureProcess: path, discoveryErr: err,
+			capabilities: loopback.NativeMediaCapabilities{ReceiverReuse: true}}
 	}
 	summary := capabilities.Summary()
 	return nativeRuntime{
 		captureProcess: path,
 		capture:        capabilities,
 		capabilities: loopback.NativeMediaCapabilities{
+			ReceiverReuse:        true,
 			Video:                summary.Video,
 			CaptureBorderControl: summary.CaptureBorderControl,
 			ProcessAudio:         summary.ProcessAudio,

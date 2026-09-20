@@ -54,7 +54,7 @@ export class NativeCapableViewerPeer implements ViewerMediaPeer {
   constructor(
     iceConfig: PeerIceConfig,
     private readonly events: ViewerPeerEvents,
-    private readonly options: ViewerPeerOptions,
+    private options: ViewerPeerOptions,
     private readonly acquireNativeClient: () => Promise<NativeClient | null>,
     private readonly onNativeUnavailable: () => void,
     private readonly nativeSessionId: string,
@@ -146,7 +146,11 @@ export class NativeCapableViewerPeer implements ViewerMediaPeer {
       : null;
   }
   stopDecodedFrameProof(): void { this.backend?.stopDecodedFrameProof(); }
-  activatePreparedRoute(): void { this.backend?.activatePreparedRoute(); }
+  activatePreparedRoute(): void {
+    // Promotion belongs to this route, including any later replacement backend.
+    this.options = { ...this.options, recoveryOwner: "viewer" };
+    this.backend?.activatePreparedRoute();
+  }
 
   dispose(): void {
     if (this.disposed) return;
@@ -206,6 +210,7 @@ class NativeViewerPeer implements ViewerMediaPeer {
   private sourceGeneration = 0;
   private sourceReady = false;
   private sourceCodec: NativeVideoCodec | null = null;
+  private pendingOffer: { bridge: NativeMediaBridge | null; bridgeFailed: boolean } | null = null;
 
   get source(): NativeViewerSource | null {
     return this.connectionId && this.sourceReady && this.sourceCodec
@@ -345,6 +350,8 @@ class NativeViewerPeer implements ViewerMediaPeer {
     const connectionId = payload.connectionId;
     const identityChanged =
       this.parentPeerId !== parentPeerId || this.connectionId !== connectionId;
+    const retainSource = !identityChanged && this.sourceReady && !this.failureNotified &&
+      this.client.health?.nativeMedia.receiverReuse === true;
     if (identityChanged) {
       const previous = this.connectionId;
       this.disposeBridge();
@@ -357,24 +364,26 @@ class NativeViewerPeer implements ViewerMediaPeer {
       this.parentPeerId = parentPeerId;
       this.connectionId = connectionId;
       this.resetAutomaticRecovery();
-    } else {
+    } else if (!retainSource) {
       this.disposeBridge();
-      this.localCandidates?.discard();
     }
-    this.state = "connecting";
-    this.failureNotified = false;
-    this.sourceGeneration += 1;
-    this.sourceReady = false;
-    this.sourceCodec = null;
-    this.statsAccumulator = createStatsAccumulator();
-    this.snapshot = {
-      peerId: parentPeerId,
-      connectionId,
-      connectionState: "connecting",
-      iceConnectionState: "checking",
-      metrics: { ...EMPTY_METRICS },
-      error: null,
-    };
+    this.localCandidates?.discard();
+    if (!retainSource) {
+      this.state = "connecting";
+      this.failureNotified = false;
+      this.sourceGeneration += 1;
+      this.sourceReady = false;
+      this.sourceCodec = null;
+      this.statsAccumulator = createStatsAccumulator();
+      this.snapshot = {
+        peerId: parentPeerId,
+        connectionId,
+        connectionState: "connecting",
+        iceConnectionState: "checking",
+        metrics: { ...EMPTY_METRICS },
+        error: null,
+      };
+    }
     const predictionEnabled =
       this.natPredictionEnabled &&
       natPredictionSurveyUrls(
@@ -410,13 +419,16 @@ class NativeViewerPeer implements ViewerMediaPeer {
       : null;
     this.localCandidates = candidates;
     this.emit();
-    const result = await this.client.receiveOffer(
-      this.sessionId,
-      connectionId,
-      payload.description,
-      nativeIceConfig,
-      this.edgeCapacity,
-    );
+    const pending = { bridge: retainSource ? this.bridge : null, bridgeFailed: false };
+    this.pendingOffer = pending;
+    let result: Awaited<ReturnType<NativeClient["receiveOffer"]>>;
+    try {
+      result = await this.client.receiveOffer(
+        this.sessionId, connectionId, payload.description, nativeIceConfig, this.edgeCapacity,
+      );
+    } finally {
+      if (this.pendingOffer === pending) this.pendingOffer = null;
+    }
     if (
       this.disposed ||
       this.failureNotified ||
@@ -427,6 +439,26 @@ class NativeViewerPeer implements ViewerMediaPeer {
         () => undefined,
       );
       return;
+    }
+    if (retainSource && result.reused) {
+      // Renegotiation belongs to the current receiver. Network ICE recovery
+      // may pause upstream RTP, but it does not retire playback or relay edges.
+      if (pending.bridgeFailed) {
+        this.handleBridgeFailure(connectionId);
+      } else if (!this.events.sendSignal(parentPeerId, {
+        kind: "description", connectionId, description: result.answer,
+      })) {
+        this.scheduleRecoveryDeadline();
+      }
+      return;
+    }
+    if (retainSource) {
+      // The App replaced an incompatible media shape. Old bridge failure
+      // during that decision must not close the newly installed receiver.
+      this.disposeBridge();
+      this.sourceGeneration += 1;
+      this.statsAccumulator = createStatsAccumulator();
+      if (this.snapshot) this.snapshot = { ...this.snapshot, metrics: { ...EMPTY_METRICS } };
     }
     this.sourceCodec = result.codec;
     this.sourceReady = true;
@@ -454,7 +486,7 @@ class NativeViewerPeer implements ViewerMediaPeer {
     const bridge = new NativeMediaBridge(
       this.sessionId,
       this.client,
-      () => this.handleBridgeFailure(connectionId),
+      () => this.handlePlaybackFailure(bridge, connectionId),
       result.audio,
       connectionId,
     );
@@ -467,8 +499,14 @@ class NativeViewerPeer implements ViewerMediaPeer {
       this.events.onStream(stream);
       this.startObservation(bridge, connectionId);
     }).catch(() => {
-      if (this.bridge === bridge) this.handleBridgeFailure(connectionId);
+      this.handlePlaybackFailure(bridge, connectionId);
     });
+  }
+
+  private handlePlaybackFailure(bridge: NativeMediaBridge, connectionId: string): void {
+    if (this.bridge !== bridge) return;
+    if (this.pendingOffer?.bridge === bridge) this.pendingOffer.bridgeFailed = true;
+    else this.handleBridgeFailure(connectionId);
   }
 
   private onEvent(event: NativeClientEvent): void {

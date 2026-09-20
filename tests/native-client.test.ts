@@ -355,11 +355,12 @@ describe("native App private wire", () => {
       ...health, futureDescription: "ignored", nativeMedia: { video: true, futureFeature: true },
     })).toEqual({
       ...health, nativeMedia: {
+        receiverReuse: false,
         video: true, processAudio: false, systemAudio: false, captureBorderControl: false, hardwareH264: false, softwareVP8: false,
       },
     });
     expect(nativeHealthSchema.parse({ ...health, nativeMedia: undefined }).nativeMedia)
-      .toEqual({ video: false, processAudio: false, systemAudio: false, captureBorderControl: false, hardwareH264: false, softwareVP8: false });
+      .toEqual({ receiverReuse: false, video: false, processAudio: false, systemAudio: false, captureBorderControl: false, hardwareH264: false, softwareVP8: false });
     for (const invalid of [
       { protocol: 0 }, { protocol: 9.5 }, { protocol: Number.MAX_SAFE_INTEGER + 1 },
       { service: "other" }, { port: NATIVE_CLIENT_PORT_END + 1 }, { instanceToken: "short" },
@@ -421,6 +422,42 @@ describe("native App private wire", () => {
         });
       }
     } finally { client!.close(); }
+  });
+
+  it.each([false, true])("requests receiver reuse only from a capable App (%s)", async (supported) => {
+    const requests: Record<string, unknown>[] = [];
+    class Socket extends EventTarget {
+      static readonly OPEN = 1;
+      static readonly CLOSING = 2;
+      readyState = Socket.OPEN;
+      protocol = `piik-client-v9.${health.instanceToken}`;
+      constructor() { super(); queueMicrotask(() => this.dispatchEvent(new Event("open"))); }
+      close() { this.readyState = Socket.CLOSING; }
+      send(payload: string) {
+        const request = JSON.parse(payload) as Record<string, unknown>;
+        requests.push(request);
+        queueMicrotask(() => this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({
+          version: 9, id: request.id, ...(request.type === "hello" ? { type: "ready" } : {
+            type: "receive-answer", shareId: request.shareId, connectionId: request.connectionId,
+            sdp: "answer", audio: false, codec: "vp8", ...(supported ? { reused: true } : {}),
+          }),
+        }) })));
+      }
+    }
+    vi.stubGlobal("WebSocket", Socket);
+    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      ...health, nativeMedia: { ...health.nativeMedia, ...(supported ? { receiverReuse: true } : {}) },
+    }))));
+    const client = (await NativeClient.connect())!;
+    try {
+      const result = await client.receiveOffer("share_123456", "connection_1234", { type: "offer", sdp: "offer" }, { iceServers: [] }, 2);
+      expect(requests.at(-1)).toEqual({ version: 9, id: expect.any(String), type: "receive-offer",
+        shareId: "share_123456", connectionId: "connection_1234", sdp: "offer", iceServers: [], edgeCapacity: 2,
+        ...(supported ? { reuseReceiver: true } : {}),
+      });
+      expect(result.reused).toBe(supported);
+    } finally { client.close(); }
   });
 
   it("keeps 64-bit Windows identities as exact decimal strings", () => {

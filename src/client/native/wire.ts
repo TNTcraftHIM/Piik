@@ -32,6 +32,7 @@ export const nativeHealthSchema = nativeDiscoveryIdentitySchema.extend({
     .regex(/^[A-Za-z0-9_-]+$/),
   nativeMedia: z
     .object({
+      receiverReuse: z.boolean().default(false),
       video: z.boolean().default(false),
       processAudio: z.boolean().default(false),
       systemAudio: z.boolean().default(false),
@@ -195,6 +196,7 @@ export const receiveAnswerResponseSchema = z
       .max(48 * 1024),
     audio: z.boolean(),
     codec: nativeVideoCodecSchema,
+    reused: z.boolean().optional(),
   })
   .strict();
 

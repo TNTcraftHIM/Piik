@@ -577,11 +577,11 @@ HRESULT CaptureWithWgc(TargetKind kind, UINT64 source_id,
   }
   border.Close();
   try {
-    session.Close();
+    if (session) session.Close();
   } catch (...) {
   }
   try {
-    pool.Close();
+    if (pool) pool.Close();
   } catch (...) {
   }
   // Release all WinRT/D3D wrappers before leaving the COM apartment. Their

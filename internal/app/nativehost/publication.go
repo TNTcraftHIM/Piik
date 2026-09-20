@@ -20,15 +20,23 @@ func (session *Session) PreparePublication(generation, connectionID string, serv
 	}
 	source, audio := session.source, session.audioSource
 	session.mu.Unlock()
-	publication, err := session.engine.NewPublication(source, mediaedge.EdgeOptions{
+	var publication *mediaedge.Publication
+	current := func() bool {
+		session.mu.Lock()
+		defer session.mu.Unlock()
+		return !session.closed && publication != nil && session.publications[key] == publication
+	}
+	created, err := session.engine.NewPublication(source, mediaedge.EdgeOptions{
 		ConnectionID: connectionID, ICEServers: servers, Audio: audio,
 		Events: mediaedge.EdgeEvents{
 			LocalCandidate: func(candidate *webrtc.ICECandidateInit) {
 				session.emit(Event{Type: "publication-candidate", ShareID: session.shareID,
+					Current:               current,
 					PublicationGeneration: generation, ConnectionID: connectionID, Candidate: candidate})
 			},
 			ConnectionState: func(state webrtc.PeerConnectionState, _ *mediaedge.SelectedPair) {
 				session.emit(Event{Type: "publication-state", ShareID: session.shareID,
+					Current:               current,
 					PublicationGeneration: generation, ConnectionID: connectionID, State: state.String()})
 			},
 		},
@@ -39,12 +47,13 @@ func (session *Session) PreparePublication(generation, connectionID string, serv
 	session.mu.Lock()
 	if session.closed || len(session.publications) >= 2 || session.publications[key] != nil {
 		session.mu.Unlock()
-		_ = publication.Close()
+		_ = created.Close()
 		return webrtc.SessionDescription{}, mediaedge.PublicationMedia{}, errors.New("native publication changed")
 	}
 	if session.publications == nil {
 		session.publications = make(map[publicationKey]*mediaedge.Publication)
 	}
+	publication = created
 	session.publications[key] = publication
 	session.mu.Unlock()
 	offer, err := publication.CreateOffer()
@@ -53,6 +62,14 @@ func (session *Session) PreparePublication(generation, connectionID string, serv
 		return webrtc.SessionDescription{}, mediaedge.PublicationMedia{}, err
 	}
 	return offer, publication.Media(), nil
+}
+
+func (session *Session) ownsPublication(key publicationKey, publication *mediaedge.Publication) bool {
+	session.mu.Lock()
+	defer session.mu.Unlock()
+	// A current encoder failure still needs its terminal event. Retirement is
+	// determined by map ownership, not by the transport's closed state.
+	return !session.closed && publication != nil && session.publications[key] == publication
 }
 
 func (session *Session) Publication(generation, connectionID string) (*mediaedge.Publication, error) {

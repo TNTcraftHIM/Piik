@@ -110,6 +110,10 @@ connection-attempt budget after rollback. The waiting display uses the actual
 server-issued attempt ordinal; it never counts time as an attempted connection.
 Committed Browser P2P recovery first restarts ICE on the same connection, then
 rebuilds that connection if necessary, within the existing two-request budget.
+Capable Native receivers also renegotiate that connection while retaining the
+encoded source, local playback and downstream edges when its codec/audio shape
+is unchanged. Pion owns ICE restart; each actual gathering owns fresh supplemental
+candidates. A changed media shape replaces the source and its dependent edges.
 It does not require NAT prediction or reopen the route candidate. A prepared
 candidate instead follows its current route operation's failure path, without
 an independent restart loop.

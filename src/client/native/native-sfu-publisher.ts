@@ -26,6 +26,7 @@ export class NativeSfuPublisher implements HostPublisherTransport {
   private unsubscribe: (() => void) | null = null;
   private prepared = false;
   private closed = false;
+  private closing: Promise<void> | null = null;
   private failure: SfuPublisherFailureStage | null = null;
 
   constructor(
@@ -42,7 +43,6 @@ export class NativeSfuPublisher implements HostPublisherTransport {
   async connect(config: SfuConnectionConfig): Promise<boolean> {
     if (this.config || this.closed) return false;
     this.config = config;
-    this.unsubscribe = this.client.onEvent((event) => this.onEvent(event));
     return true;
   }
 
@@ -58,7 +58,13 @@ export class NativeSfuPublisher implements HostPublisherTransport {
 
   async activate(): Promise<boolean> {
     const config = this.config;
-    if (!config || this.prepared || this.closed) return false;
+    if (!config || this.prepared || this.closed) {
+      await this.closing?.catch(() => undefined);
+      return false;
+    }
+    // Activation runs after the route's retirement barrier. Subscribing in
+    // connect would let an old same-key publication reach this new instance.
+    this.unsubscribe = this.client.onEvent((event) => this.onEvent(event));
     try {
       const result = await this.client.preparePublication(
         this.shareId,
@@ -67,11 +73,7 @@ export class NativeSfuPublisher implements HostPublisherTransport {
         this.iceConfig,
       );
       if (this.closed) {
-        await this.client.closePublication(
-          this.shareId,
-          config.publicationGeneration,
-          config.connectionId,
-        );
+        await this.disconnect();
         return false;
       }
       this.pending.unshift({ kind: "description", ...result });
@@ -79,7 +81,7 @@ export class NativeSfuPublisher implements HostPublisherTransport {
       this.flush();
       return !this.closed;
     } catch {
-      this.fail("video-publish");
+      await this.fail("video-publish");
       return false;
     }
   }
@@ -94,26 +96,32 @@ export class NativeSfuPublisher implements HostPublisherTransport {
     try {
       await this.client.acceptPublicationSignal(this.shareId, message);
     } catch {
-      this.fail("transport");
+      await this.fail("transport");
     }
   }
 
   async updateProfile(): Promise<boolean> {
     const config = this.config;
-    if (!config || !this.prepared || this.closed) return false;
+    if (!config || !this.prepared || this.closed) {
+      await this.closing?.catch(() => undefined);
+      return false;
+    }
     try {
       const media = await this.client.publicationMedia(
         this.shareId,
         config.publicationGeneration,
         config.connectionId,
       );
-      if (this.closed) return false;
+      if (this.closed) {
+        await this.closing?.catch(() => undefined);
+        return false;
+      }
       this.pending = this.pending.filter(({ kind }) => kind !== "media");
       this.pending.push({ kind: "media", media });
       this.flush();
       return !this.closed;
     } catch {
-      this.fail("source");
+      await this.fail("source");
       return false;
     }
   }
@@ -130,19 +138,19 @@ export class NativeSfuPublisher implements HostPublisherTransport {
     return true;
   }
 
-  async disconnect(): Promise<void> {
-    if (this.closed) return;
+  disconnect(): Promise<void> {
+    if (this.closing) return this.closing;
     this.closed = true;
     this.unsubscribe?.();
     this.unsubscribe = null;
     this.pending = [];
     const config = this.config;
-    if (config)
-      await this.client.closePublication(
+    this.closing = config ? this.client.closePublication(
         this.shareId,
         config.publicationGeneration,
         config.connectionId,
-      );
+      ) : Promise.resolve();
+    return this.closing;
   }
 
   private onEvent(event: NativeClientEvent): void {
@@ -179,7 +187,7 @@ export class NativeSfuPublisher implements HostPublisherTransport {
       });
     } else if (event.type === "publication-candidate" && event.candidate) {
       if (this.pending.length >= 64) {
-        this.fail("transport");
+        void this.fail("transport");
         return;
       }
       this.pending.push({ kind: "candidate", candidate: event.candidate });
@@ -190,7 +198,7 @@ export class NativeSfuPublisher implements HostPublisherTransport {
         event.state === "failed" ||
         event.state === "closed")
     ) {
-      this.fail("transport");
+      void this.fail("transport");
     }
   }
 
@@ -211,10 +219,13 @@ export class NativeSfuPublisher implements HostPublisherTransport {
     }
   }
 
-  private fail(stage: SfuPublisherFailureStage): void {
-    if (this.closed || this.failure) return;
+  private async fail(stage: SfuPublisherFailureStage): Promise<void> {
+    if (this.closed || this.failure) {
+      await this.closing?.catch(() => undefined);
+      return;
+    }
     this.failure = stage;
-    void this.disconnect().catch(() => undefined);
+    await this.disconnect().catch(() => undefined);
     this.events.onDisconnected();
   }
 }

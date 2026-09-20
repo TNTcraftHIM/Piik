@@ -142,6 +142,9 @@ above rather than searching the tree.
   retirement. After an await/callback, and inside cleanup, validate the original
   operation/resource identity before changing current state. Cancellation,
   failure, missing observation and success must retain distinct meanings.
+  Queued events retain physical-owner validity until the final serialized write;
+  reused logical IDs do not identify a replacement instance. New subscriptions
+  follow the old owner's retirement, including repeated cleanup callers.
   Later cancellation must not erase a failure already observed before cleanup.
   A caller deadline does not cancel a dependency that ignores it. Keep late
   work bounded and serialize its cleanup; verify the dependency's actual lifetime.

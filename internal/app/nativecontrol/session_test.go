@@ -18,7 +18,46 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
 	"github.com/TNTcraftHIM/Piik/internal/app/nativehost"
+	"github.com/pion/webrtc/v4"
 )
+
+func TestReceiveOfferReusePreservesLegacyResponseShape(t *testing.T) {
+	peer, err := webrtc.NewPeerConnection(webrtc.Configuration{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = peer.Close() })
+	if _, err = peer.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo,
+		webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionSendonly}); err != nil {
+		t.Fatal(err)
+	}
+	offer, err := peer.CreateOffer(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := New("", nativecapture.Capabilities{}, false)
+	t.Cleanup(func() { _ = session.Close() })
+	for _, reuse := range []bool{false, true} {
+		request := receiveOfferRequest{Version: 9, ID: "request_offer", Type: "receive-offer", ShareID: "viewer_session",
+			ConnectionID: "connection_1234", EdgeCapacity: 2, SDP: offer.SDP, ReuseReceiver: reuse}
+		payload, _ := json.Marshal(request)
+		value, err := session.Handle(t.Context(), payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		answer, ok := value.(receiveAnswerResponse)
+		if !ok {
+			t.Fatalf("receive offer returned %#v", value)
+		}
+		encoded, _ := json.Marshal(answer)
+		if bytes.Contains(encoded, []byte(`"reused"`)) != reuse {
+			t.Fatalf("new response field leaked across opt-in: %s", encoded)
+		}
+		if reuse && (answer.Reused == nil || !*answer.Reused) {
+			t.Fatal("opted-in answer did not retain its receiver")
+		}
+	}
+}
 
 func TestMain(tests *testing.M) {
 	if marker := os.Getenv("PIIK_SOURCE_PROBE_FIXTURE"); marker != "" {

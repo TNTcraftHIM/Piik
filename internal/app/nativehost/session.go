@@ -42,6 +42,7 @@ type CaptureState struct {
 }
 
 type Event struct {
+	Current               func() bool
 	Type                  string
 	ShareID               string
 	ConnectionID          string
@@ -1005,6 +1006,7 @@ func (session *Session) runQuality() {
 			for key, publication := range publications {
 				if sample, ok := publication.QualitySample(now); ok {
 					session.emit(Event{Type: "publication-quality", ShareID: session.shareID,
+						Current:               func() bool { return session.ownsPublication(key, publication) },
 						PublicationGeneration: key.generation, ConnectionID: key.connectionID, PublicationQuality: &sample})
 				}
 			}

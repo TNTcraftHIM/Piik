@@ -13,8 +13,9 @@ import (
 )
 
 type ReceiverEvents struct {
-	LocalCandidate  func(*webrtc.ICECandidateInit)
-	ConnectionState func(webrtc.PeerConnectionState, *SelectedPair)
+	// The final consumer must check current again after any event queues.
+	LocalCandidate  func(candidate *webrtc.ICECandidateInit, current func() bool)
+	ConnectionState func(state webrtc.PeerConnectionState, pair *SelectedPair, current func() bool)
 }
 
 type ReceiverOptions struct {
@@ -29,11 +30,16 @@ type ReceiverOptions struct {
 // ordinary bounded Sources. Consumers can attach local playback and downstream
 // P2P edges without adding a decoder or encoder.
 type Receiver struct {
+	engine          *Engine
 	connection      *webrtc.PeerConnection
 	source          *Source
 	audioSource     *AudioSource
 	events          ReceiverEvents
 	localCandidates *localCandidateGathering
+	iceServers      []webrtc.ICEServer
+	prepareMapping  func() int
+	offerMu         sync.Mutex
+	candidateMu     sync.Mutex
 
 	mu        sync.Mutex
 	closed    bool
@@ -49,7 +55,7 @@ func (engine *Engine) NewReceiver(options ReceiverOptions) (*Receiver, webrtc.Se
 		return nil, webrtc.SessionDescription{}, err
 	}
 	var prepareMapping func() int
-	if engine.portMapping != nil && len(options.ICEServers) > 0 {
+	if engine.portMapping != nil {
 		prepareMapping = engine.portMapping.Prepare
 	}
 	connection, err := engine.api.NewPeerConnection(webrtc.Configuration{})
@@ -66,8 +72,11 @@ func (engine *Engine) NewReceiver(options ReceiverOptions) (*Receiver, webrtc.Se
 		return nil, webrtc.SessionDescription{}, err
 	}
 	receiver := &Receiver{
-		connection: connection,
-		events:     options.Events,
+		engine:         engine,
+		connection:     connection,
+		events:         options.Events,
+		iceServers:     options.ICEServers,
+		prepareMapping: prepareMapping,
 	}
 	layers := 1
 	if _, supported := relayBackend(videoCodec, options.Relay); supported {
@@ -89,14 +98,18 @@ func (engine *Engine) NewReceiver(options ReceiverOptions) (*Receiver, webrtc.Se
 			return nil, webrtc.SessionDescription{}, err
 		}
 	}
-	receiver.localCandidates = newLocalCandidateGathering(
-		engine,
-		options.ICEServers,
-		prepareMapping,
-		options.Events.LocalCandidate,
-	)
-	connection.OnICECandidate(receiver.localCandidates.addPion)
+	// Pion announces gathering before emitting candidates, including when a
+	// remote ICE restart starts inside SetRemoteDescription. Ordinary SDP
+	// renegotiation leaves this collector and its completion fence alone.
+	connection.OnICEGatheringStateChange(func(state webrtc.ICEGatheringState) {
+		if state == webrtc.ICEGatheringStateGathering {
+			receiver.beginGathering()
+		}
+	})
 	connection.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+		if !receiver.active() {
+			return
+		}
 		debug := slog.Default().Enabled(engine.ctx, slog.LevelDebug)
 		if debug {
 			slog.Debug("piik-client", "event", "media-connection-state", "direction", "inbound", "state", state.String())
@@ -112,7 +125,7 @@ func (engine *Engine) NewReceiver(options ReceiverOptions) (*Receiver, webrtc.Se
 			}
 		}
 		if receiver.events.ConnectionState != nil {
-			receiver.events.ConnectionState(state, selected)
+			receiver.events.ConnectionState(state, selected, receiver.active)
 		}
 	})
 	connection.OnTrack(func(track *webrtc.TrackRemote, rtpReceiver *webrtc.RTPReceiver) {
@@ -132,6 +145,76 @@ func (receiver *Receiver) AudioSource() *AudioSource { return receiver.audioSour
 func (receiver *Receiver) HasAudio() bool            { return receiver.audioSource != nil }
 func (receiver *Receiver) Codec() string             { return receiver.source.Codec() }
 
+func (receiver *Receiver) active() bool {
+	receiver.mu.Lock()
+	defer receiver.mu.Unlock()
+	return !receiver.closed
+}
+
+// Renegotiate keeps the encoded source and its consumers when the offer still
+// describes the same media shape. A changed codec/audio shape needs replacement.
+func (receiver *Receiver) Renegotiate(offer webrtc.SessionDescription, servers []webrtc.ICEServer) (webrtc.SessionDescription, bool, error) {
+	receiver.offerMu.Lock()
+	defer receiver.offerMu.Unlock()
+	if offer.Type != webrtc.SDPTypeOffer || offer.SDP == "" {
+		return webrtc.SessionDescription{}, false, errors.New("native media receiver input is invalid")
+	}
+	hasAudio, err := offerSendsCodec(offer.SDP, "audio", "opus")
+	if err != nil {
+		return webrtc.SessionDescription{}, false, err
+	}
+	sameVideo, err := offerSendsCodec(offer.SDP, "video", receiver.Codec())
+	if err != nil || !sameVideo || hasAudio != receiver.HasAudio() {
+		return webrtc.SessionDescription{}, false, err
+	}
+	receiver.mu.Lock()
+	closed := receiver.closed
+	receiver.iceServers = servers
+	receiver.mu.Unlock()
+	if closed {
+		return webrtc.SessionDescription{}, false, errors.New("native media receiver is closed")
+	}
+	if err = receiver.connection.SetRemoteDescription(offer); err != nil {
+		return webrtc.SessionDescription{}, false, err
+	}
+	answer, err := receiver.createAnswer()
+	return answer, err == nil, err
+}
+
+func (receiver *Receiver) beginGathering() {
+	// Serialize candidate delivery with collector replacement, without holding
+	// the receiver state lock across the caller's event delivery.
+	receiver.candidateMu.Lock()
+	defer receiver.candidateMu.Unlock()
+	receiver.mu.Lock()
+	if receiver.closed {
+		receiver.mu.Unlock()
+		return
+	}
+	previous := receiver.localCandidates
+	var gathering *localCandidateGathering
+	current := func() bool {
+		receiver.mu.Lock()
+		defer receiver.mu.Unlock()
+		return !receiver.closed && receiver.localCandidates == gathering
+	}
+	gathering = newLocalCandidateGathering(receiver.engine, receiver.iceServers, receiver.prepareMapping,
+		func(candidate *webrtc.ICECandidateInit) {
+			receiver.candidateMu.Lock()
+			defer receiver.candidateMu.Unlock()
+			if current() && receiver.events.LocalCandidate != nil {
+				receiver.events.LocalCandidate(candidate, current)
+			}
+		})
+	receiver.localCandidates = gathering
+	receiver.mu.Unlock()
+	if previous != nil {
+		previous.close()
+	}
+	receiver.connection.OnICECandidate(gathering.addPion)
+	gathering.start()
+}
+
 func (receiver *Receiver) createAnswer() (webrtc.SessionDescription, error) {
 	receiver.mu.Lock()
 	if receiver.closed {
@@ -146,7 +229,6 @@ func (receiver *Receiver) createAnswer() (webrtc.SessionDescription, error) {
 	if err = receiver.connection.SetLocalDescription(answer); err != nil {
 		return webrtc.SessionDescription{}, err
 	}
-	receiver.localCandidates.start()
 	if receiver.connection.LocalDescription() == nil {
 		return webrtc.SessionDescription{}, errors.New("native media receiver produced no SDP answer")
 	}

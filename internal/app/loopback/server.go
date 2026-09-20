@@ -46,6 +46,13 @@ type ControlSession interface {
 	Close() error
 }
 
+// ControlEvent retains a physical owner's validity through asynchronous queues.
+// Current must only inspect ownership; it runs under the WebSocket write lock.
+type ControlEvent struct {
+	Value   any
+	Current func() bool
+}
+
 type Endpoint struct {
 	URL           string `json:"url"`
 	Host          string `json:"host"`
@@ -62,6 +69,7 @@ type Health struct {
 }
 
 type NativeMediaCapabilities struct {
+	ReceiverReuse        bool `json:"receiverReuse,omitempty"`
 	Video                bool `json:"video"`
 	CaptureBorderControl bool `json:"captureBorderControl,omitempty"`
 	ProcessAudio         bool `json:"processAudio"`
@@ -318,12 +326,18 @@ func (server *Server) handleControl(response http.ResponseWriter, request *http.
 	}
 	var writeMutex sync.Mutex
 	write := func(ctx context.Context, value any) error {
+		writeMutex.Lock()
+		defer writeMutex.Unlock()
+		if event, ok := value.(ControlEvent); ok {
+			if event.Current != nil && !event.Current() {
+				return nil
+			}
+			value = event.Value
+		}
 		encoded, encodeErr := encodeMessage(value)
 		if encodeErr != nil {
 			return encodeErr
 		}
-		writeMutex.Lock()
-		defer writeMutex.Unlock()
 		return connection.Write(ctx, websocket.MessageText, encoded)
 	}
 	if err = write(server.ctx, controlMessage{

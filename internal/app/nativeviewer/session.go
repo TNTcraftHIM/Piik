@@ -12,6 +12,7 @@ import (
 )
 
 type Event struct {
+	Current          func() bool
 	Type             string
 	ShareID          string
 	ConnectionID     string
@@ -104,19 +105,36 @@ func (session *Session) UpdateProfile(profile nativecapture.VideoProfile) error 
 	return nil
 }
 
+type OfferResult struct {
+	Answer webrtc.SessionDescription
+	Audio  bool
+	Codec  string
+	Reused bool
+}
+
 func (session *Session) AcceptOffer(
 	connectionID string,
 	offer webrtc.SessionDescription,
 	iceServers []webrtc.ICEServer,
-) (webrtc.SessionDescription, bool, string, error) {
+	reuse bool,
+) (OfferResult, error) {
 	if connectionID == "" || len(connectionID) > 256 {
-		return webrtc.SessionDescription{}, false, "", errors.New("native Viewer receiver identity is invalid")
+		return OfferResult{}, errors.New("native Viewer receiver identity is invalid")
 	}
 	session.mu.Lock()
 	closed := session.closed
 	session.mu.Unlock()
 	if closed {
-		return webrtc.SessionDescription{}, false, "", errors.New("native Viewer session is closed")
+		return OfferResult{}, errors.New("native Viewer session is closed")
+	}
+	if receiver := session.receiver(connectionID); reuse && receiver != nil {
+		answer, reused, err := receiver.Renegotiate(offer, iceServers)
+		if err != nil {
+			return OfferResult{}, err
+		}
+		if reused {
+			return OfferResult{Answer: answer, Audio: receiver.HasAudio(), Codec: receiver.Codec(), Reused: true}, nil
+		}
 	}
 	session.CloseReceiver(connectionID)
 	receiver, answer, err := session.engine.NewReceiver(mediaedge.ReceiverOptions{
@@ -125,20 +143,23 @@ func (session *Session) AcceptOffer(
 		EdgeCapacity: session.edgeCapacity,
 		Relay:        session.relay,
 		Events: mediaedge.ReceiverEvents{
-			LocalCandidate: func(candidate *webrtc.ICECandidateInit) {
+			LocalCandidate: func(candidate *webrtc.ICECandidateInit, current func() bool) {
 				session.emit(Event{
-					Type: "edge-candidate", ShareID: session.shareID,
+					Current: current,
+					Type:    "edge-candidate", ShareID: session.shareID,
 					ConnectionID: connectionID, Candidate: candidate,
 				})
 			},
-			ConnectionState: func(state webrtc.PeerConnectionState, pair *mediaedge.SelectedPair) {
+			ConnectionState: func(state webrtc.PeerConnectionState, pair *mediaedge.SelectedPair, current func() bool) {
 				session.emit(Event{
-					Type: "edge-state", ShareID: session.shareID,
+					Current: current,
+					Type:    "edge-state", ShareID: session.shareID,
 					ConnectionID: connectionID, State: state.String(),
 				})
 				if pair != nil {
 					session.emit(Event{
-						Type: "edge-path", ShareID: session.shareID,
+						Current: current,
+						Type:    "edge-path", ShareID: session.shareID,
 						ConnectionID:     connectionID,
 						LocalType:        pair.Local.String(),
 						RemoteType:       pair.Remote.String(),
@@ -149,24 +170,24 @@ func (session *Session) AcceptOffer(
 		},
 	})
 	if err != nil {
-		return webrtc.SessionDescription{}, false, "", err
+		return OfferResult{}, err
 	}
 	session.mu.Lock()
 	if session.closed || session.receivers[connectionID] != nil {
 		session.mu.Unlock()
 		_ = receiver.Close()
-		return webrtc.SessionDescription{}, false, "", errors.New("native Viewer receiver is unavailable")
+		return OfferResult{}, errors.New("native Viewer receiver is unavailable")
 	}
 	if session.profile != nil {
 		if err = receiver.Source().SetRelayProfile(*session.profile); err != nil {
 			session.mu.Unlock()
 			_ = receiver.Close()
-			return webrtc.SessionDescription{}, false, "", err
+			return OfferResult{}, err
 		}
 	}
 	session.receivers[connectionID] = receiver
 	session.mu.Unlock()
-	return answer, receiver.HasAudio(), receiver.Codec(), nil
+	return OfferResult{Answer: answer, Audio: receiver.HasAudio(), Codec: receiver.Codec()}, nil
 }
 
 func (session *Session) AddReceiverCandidate(

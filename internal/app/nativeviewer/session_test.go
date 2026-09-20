@@ -4,7 +4,67 @@ import (
 	"testing"
 
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
+	"github.com/pion/webrtc/v4"
 )
+
+func TestOfferReuseKeepsSourceAndChildOwnership(t *testing.T) {
+	offer := func(audio bool) webrtc.SessionDescription {
+		t.Helper()
+		peer, err := webrtc.NewPeerConnection(webrtc.Configuration{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = peer.Close() })
+		if _, err = peer.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo,
+			webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionSendonly}); err != nil {
+			t.Fatal(err)
+		}
+		if audio {
+			if _, err = peer.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio,
+				webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionSendonly}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		value, err := peer.CreateOffer(nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return value
+	}
+	for _, reuse := range []bool{false, true} {
+		session, err := Start(t.Context(), Options{ShareID: "viewer-session", EdgeCapacity: 2})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = session.Close() })
+		for _, audio := range []bool{false, true, false} {
+			input := offer(audio)
+			result, err := session.AcceptOffer("upstream", input, nil, reuse)
+			if err != nil || result.Reused || result.Audio != audio {
+				t.Fatalf("new media shape: %+v, %v", result, err)
+			}
+			if session.edge("local-playback") != nil {
+				t.Fatal("incompatible source retained its old edge")
+			}
+			receiver := session.receiver("upstream")
+			if _, err = session.PrepareLocalEdge("upstream", "local-playback"); err != nil {
+				t.Fatal(err)
+			}
+			child := session.edge("local-playback")
+			result, err = session.AcceptOffer("upstream", input, nil, reuse)
+			if err != nil || result.Reused != reuse {
+				t.Fatalf("repeat offer: %+v, %v", result, err)
+			}
+			if reuse {
+				if session.receiver("upstream") != receiver || session.edge("local-playback") != child {
+					t.Fatal("compatible offer retired the existing source or child")
+				}
+			} else if session.receiver("upstream") == receiver || session.edge("local-playback") != nil {
+				t.Fatal("legacy request did not retain its replacement behavior")
+			}
+		}
+	}
+}
 
 func TestViewerProfileHasNoImplicitCaptureDefault(t *testing.T) {
 	session := &Session{}

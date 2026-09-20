@@ -112,6 +112,10 @@ func testReceiverForwarding(t *testing.T, codec string) {
 	var receiverCandidates []*webrtc.ICECandidateInit
 	var candidateMu sync.Mutex
 	remoteReady := false
+	completed := make(chan struct{}, 4)
+	gatheringCurrent := make(chan func() bool, 4)
+	surveyCandidates := 0
+	servers := []webrtc.ICEServer{{URLs: []string{localSurveyServer(t)}}}
 	upstream.OnICECandidate(func(candidate *webrtc.ICECandidate) {
 		if candidate == nil {
 			return
@@ -139,13 +143,19 @@ func testReceiverForwarding(t *testing.T, codec string) {
 
 	nativeReceiver, answer, err := engine.NewReceiver(ReceiverOptions{
 		Offer:        *upstream.LocalDescription(),
+		ICEServers:   servers,
 		EdgeCapacity: 1,
 		Events: ReceiverEvents{
-			LocalCandidate: func(candidate *webrtc.ICECandidateInit) {
+			LocalCandidate: func(candidate *webrtc.ICECandidateInit, current func() bool) {
 				if candidate == nil {
+					gatheringCurrent <- current
+					completed <- struct{}{}
 					return
 				}
 				candidateMu.Lock()
+				if strings.Contains(candidate.Candidate, "candidate:ns") {
+					surveyCandidates++
+				}
 				ready := remoteReady
 				if !ready {
 					receiverCandidates = append(receiverCandidates, candidate)
@@ -265,6 +275,89 @@ func testReceiverForwarding(t *testing.T, codec string) {
 		}
 		if string(packet.Payload) != string(next.Payload) {
 			t.Fatalf("stream %d stopped delivering media after padding", index)
+		}
+	}
+	waitSignal(t, completed, "initial receiver gathering")
+	firstGatheringCurrent := <-gatheringCurrent
+	if !firstGatheringCurrent() {
+		t.Fatal("current receiver gathering lost delivery authority")
+	}
+	defer func() {
+		_ = nativeReceiver.Close()
+		if nativeReceiver.active() || firstGatheringCurrent() {
+			t.Error("retired receiver still authorizes queued events")
+		}
+	}()
+	source, audio := nativeReceiver.Source(), nativeReceiver.AudioSource()
+	for _, restart := range []bool{false, true} {
+		previousGathering := nativeReceiver.localCandidates
+		candidateMu.Lock()
+		remoteReady = false
+		candidateMu.Unlock()
+		offer, offerErr := upstream.CreateOffer(&webrtc.OfferOptions{ICERestart: restart})
+		if offerErr != nil {
+			t.Fatal(offerErr)
+		}
+		if err = upstream.SetLocalDescription(offer); err != nil {
+			t.Fatal(err)
+		}
+		answer, reused, renegotiateErr := nativeReceiver.Renegotiate(offer, servers)
+		if renegotiateErr != nil || !reused {
+			t.Fatalf("receiver renegotiation: reused=%v, %v", reused, renegotiateErr)
+		}
+		if err = upstream.SetRemoteDescription(answer); err != nil {
+			t.Fatal(err)
+		}
+		candidateMu.Lock()
+		remoteReady = true
+		pendingUpstream, pendingReceiver = upstreamCandidates, receiverCandidates
+		upstreamCandidates, receiverCandidates = nil, nil
+		candidateMu.Unlock()
+		for _, candidate := range pendingUpstream {
+			_ = nativeReceiver.AddRemoteCandidate(candidate)
+		}
+		for _, candidate := range pendingReceiver {
+			_ = upstream.AddICECandidate(*candidate)
+		}
+		waitConnected(t, upstream, "renegotiated receiver")
+		if (previousGathering != nativeReceiver.localCandidates) != restart {
+			t.Fatalf("collector replaced=%v, ICE restart=%v", previousGathering != nativeReceiver.localCandidates, restart)
+		}
+		if restart {
+			waitSignal(t, completed, "restarted receiver gathering")
+			if firstGatheringCurrent() || !(<-gatheringCurrent)() {
+				t.Fatal("queued candidates did not retain their gathering owner")
+			}
+			previousGathering.addPion(nil)
+			select {
+			case <-completed:
+				t.Fatal("retired collector emitted completion")
+			default:
+			}
+			candidateMu.Lock()
+			count := surveyCandidates
+			candidateMu.Unlock()
+			if count != 2 {
+				t.Fatalf("STUN survey candidates=%d, want one per gathering", count)
+			}
+		}
+		if nativeReceiver.Source() != source || nativeReceiver.AudioSource() != audio ||
+			downstream.connection.ConnectionState() != webrtc.PeerConnectionStateConnected {
+			t.Fatal("renegotiation retired the source or its healthy downstream")
+		}
+		for _, input := range []struct {
+			track   *webrtc.TrackLocalStaticRTP
+			media   *rtp.Packet
+			packets <-chan *rtp.Packet
+		}{{track, want, packets}, {audioTrack, wantAudio, audioPackets}} {
+			input.media.SequenceNumber += 10
+			input.media.Timestamp += 90_000
+			if err = input.track.WriteRTP(input.media); err != nil {
+				t.Fatal(err)
+			}
+			if packet := waitPacket(t, input.packets); string(packet.Payload) != string(input.media.Payload) {
+				t.Fatal("media did not resume on the retained downstream")
+			}
 		}
 	}
 }

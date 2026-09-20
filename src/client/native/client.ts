@@ -495,6 +495,7 @@ export class NativeClient {
     answer: { type: "answer"; sdp: string };
     audio: boolean;
     codec: NativeVideoCodec;
+    reused: boolean;
   }> {
     if (offer.type !== "offer" || !offer.sdp) {
       throw new Error("Native receiver requires an SDP offer");
@@ -504,6 +505,7 @@ export class NativeClient {
       {
         shareId,
         connectionId,
+        ...(this.health.nativeMedia.receiverReuse ? { reuseReceiver: true } : {}),
         edgeCapacity,
         iceServers: iceConfig.iceServers.map((server) => ({
           urls: Array.isArray(server.urls) ? server.urls : [server.urls],
@@ -522,6 +524,7 @@ export class NativeClient {
       answer: { type: "answer", sdp: response.sdp },
       audio: response.audio,
       codec: response.codec,
+      reused: response.reused === true,
     };
   }
 

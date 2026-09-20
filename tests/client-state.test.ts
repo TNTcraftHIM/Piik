@@ -33,6 +33,7 @@ import {
   readPreferredRoomId,
   readViewerGrant,
   readViewerRoute,
+  watchViewerInvites,
   replaceViewerInvite,
   roomRouteForExplicitEntry,
   roomRouteFromInput,
@@ -562,6 +563,47 @@ describe("client session identity", () => {
     expect(readViewerRoute()).toEqual({ roomId: "1234", viewerGrant: grant });
     expect(readViewerGrant("1234")).toBe(grant);
     expect(replaceState).not.toHaveBeenCalled();
+  });
+
+  it("consumes renewed same-page invitations and ignores unrelated fragments", () => {
+    const events = new EventTarget();
+    const values = new Map<string, string>();
+    const location = new URL("https://share.test/r/1234");
+    vi.stubGlobal("window", {
+      location,
+      addEventListener: events.addEventListener.bind(events),
+      removeEventListener: events.removeEventListener.bind(events),
+      history: { state: null, replaceState: (_state: unknown, _unused: string, url: string) => {
+        location.href = new URL(url, location).href;
+      } },
+      sessionStorage: {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => values.set(key, value),
+        removeItem: (key: string) => values.delete(key),
+      },
+    });
+    const changed = vi.fn();
+    const stop = watchViewerInvites(changed);
+    const first = `${"g".repeat(21)}g`;
+    const renewed = `${"h".repeat(21)}w`;
+    for (const grant of [first, renewed]) {
+      location.hash = `v=${grant}`;
+      events.dispatchEvent(new Event("hashchange"));
+      expect(changed).toHaveBeenLastCalledWith({ roomId: "1234", viewerGrant: grant });
+      expect(readViewerGrant("1234")).toBe(grant);
+      expect(location.hash).toBe("");
+    }
+    location.hash = "section";
+    events.dispatchEvent(new Event("hashchange"));
+    expect(changed).toHaveBeenCalledTimes(2);
+    location.hash = "v=invalid";
+    events.dispatchEvent(new Event("hashchange"));
+    expect(changed).toHaveBeenLastCalledWith({ roomId: "1234", invalidGrant: true });
+    expect(readViewerGrant("1234")).toBeNull();
+    stop();
+    location.hash = `v=${renewed}`;
+    events.dispatchEvent(new Event("hashchange"));
+    expect(changed).toHaveBeenCalledTimes(3);
   });
 
   it("persists a rotated Viewer invitation across reload and clears it on revoke", () => {

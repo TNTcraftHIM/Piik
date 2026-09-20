@@ -593,7 +593,8 @@ export class HostSfuRoute {
     const pending = this.pending;
     this.pending = null;
     pending.failed = true;
-    void disconnectPublisher(pending.publisher);
+    const closing = disconnectPublisher(pending.publisher);
+    void this.queueTransition(() => closing);
   }
 
   private async retireActive(except?: HostPublisherSlot): Promise<void> {

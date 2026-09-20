@@ -115,14 +115,15 @@ type prepareLocalEdgeRequest struct {
 }
 
 type receiveOfferRequest struct {
-	Version      int         `json:"version"`
-	ID           string      `json:"id"`
-	Type         string      `json:"type"`
-	ShareID      string      `json:"shareId"`
-	ConnectionID string      `json:"connectionId"`
-	EdgeCapacity int         `json:"edgeCapacity"`
-	ICEServers   []iceServer `json:"iceServers"`
-	SDP          string      `json:"sdp"`
+	Version       int         `json:"version"`
+	ID            string      `json:"id"`
+	Type          string      `json:"type"`
+	ShareID       string      `json:"shareId"`
+	ConnectionID  string      `json:"connectionId"`
+	EdgeCapacity  int         `json:"edgeCapacity"`
+	ICEServers    []iceServer `json:"iceServers"`
+	SDP           string      `json:"sdp"`
+	ReuseReceiver bool        `json:"reuseReceiver,omitempty"`
 }
 
 type receiveCandidateRequest struct {
@@ -223,6 +224,7 @@ type receiveAnswerResponse struct {
 	SDP          string `json:"sdp"`
 	Audio        bool   `json:"audio"`
 	Codec        string `json:"codec"`
+	Reused       *bool  `json:"reused,omitempty"`
 }
 
 type eventEnvelope struct {

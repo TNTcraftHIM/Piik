@@ -18,7 +18,9 @@ import type { RuntimeCapabilities } from "../shared/protocol";
 import {
   parseAppRoute,
   readViewerRoute,
+  watchViewerInvites,
   takeClientLaunchBootstrap,
+  type ViewerRoute,
 } from "./lib/session";
 import { AppHeader } from "./components/living/Header";
 import { Btn, Pill } from "./components/living/primitives";
@@ -53,7 +55,7 @@ if (clientLaunchBootstrap?.presentation) {
     clientLaunchBootstrap.presentation.explicit?.includes("copy") ?? false);
 }
 const clientAccessBootstrap = clientLaunchBootstrap?.accessToken ?? null;
-const viewerRoute = appRoute.kind === "viewer" ? readViewerRoute() : null;
+const initialViewerRoute = appRoute.kind === "viewer" ? readViewerRoute() : null;
 const hostPageModule =
   appRoute.kind === "host" ? import("./pages/HostPage") : null;
 const joinPageModule =
@@ -143,6 +145,10 @@ class RouteBoundary extends Component<
 }
 
 function AppRoute() {
+  const [viewerRoute, setViewerRoute] = useState(initialViewerRoute);
+  useEffect(() => {
+    if (appRoute.kind === "viewer") return watchViewerInvites(setViewerRoute);
+  }, []);
   if (PlaybackPreviewPage && window.location.pathname === "/__playback-preview") {
     return <PlaybackPreviewPage />;
   }
@@ -158,11 +164,13 @@ function AppRoute() {
   if (appRoute.kind === "viewer" && viewerRoute) {
     return viewerRoute.viewerGrant ? (
       <ViewerPage
+        key={viewerRoute.viewerGrant}
         {...viewerRoute}
         launchedByClient={clientLaunchBootstrap?.launchedByClient}
       />
     ) : (
-      <SiteAccessGate surface="viewer" invalidInvite={viewerRoute.invalidGrant} />
+      <SiteAccessGate key={viewerRoute.invalidGrant ? "invalid" : "code"}
+        surface="viewer" viewerRoute={viewerRoute} />
     );
   }
   if (appRoute.kind === "host") {
@@ -246,11 +254,10 @@ function StaticRoute({
 
 function SiteAccessGate({
   surface,
-  invalidInvite,
+  viewerRoute,
 }: {
   surface: "host" | "join" | "viewer";
-  /** The URL carried an invite fragment that could not be used. */
-  invalidInvite?: boolean;
+  viewerRoute?: ViewerRoute;
 }) {
   const { t, vis } = useCopy();
   const [access, setAccess] = useState<AccessState>({ kind: "checking" });
@@ -274,7 +281,7 @@ function SiteAccessGate({
         setCapabilities(nextCapabilities);
         const next = stateFromStatus(status);
         setAccess(
-          next.kind === "required" && invalidInvite
+          next.kind === "required" && viewerRoute?.invalidGrant
             ? { kind: "required", error: t("viewer.msg.invalidInvite") }
             : next,
         );

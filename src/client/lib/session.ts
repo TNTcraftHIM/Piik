@@ -488,6 +488,18 @@ export function readViewerRoute(): ViewerRoute | null {
   return { roomId };
 }
 
+// Following another invitation to this page is a fragment navigation, not a
+// document load. Consume it through the same authority owner as initial entry.
+export function watchViewerInvites(changed: (route: ViewerRoute) => void): () => void {
+  const onHashChange = () => {
+    if (!window.location.hash.startsWith("#v=")) return;
+    const route = readViewerRoute();
+    if (route) changed(route);
+  };
+  window.addEventListener("hashchange", onHashChange);
+  return () => window.removeEventListener("hashchange", onHashChange);
+}
+
 export function replaceViewerInvite(
   roomId: string,
   inviteUrl: string | null,

@@ -975,6 +975,35 @@ describe("minimal route transition contracts", () => {
     expect(publishers[2]?.activate).toHaveBeenCalledOnce();
   });
 
+  it("waits for pending retirement before activating a same-key replacement", async () => {
+    let finishClose!: () => void;
+    const closing = new Promise<void>(resolve => { finishClose = resolve; });
+    const publishers: ReturnType<typeof createFakePublisher>[] = [];
+    const route = new HostSfuRoute({
+      getStream: () => ({}) as MediaStream,
+      getProfile: () => QUALITY_PROFILES["720p30"], getVideoCodec: () => "vp8",
+      reconcileChildren: () => {}, send: () => true,
+      createPublisher: () => {
+        const publisher = createFakePublisher([], `publisher-${publishers.length}`);
+        if (!publishers.length) publisher.disconnect.mockImplementation(() => closing);
+        publishers.push(publisher);
+        return publisher;
+      },
+    });
+    route.accept({ revision: 1, phase: "prepare", assignment: hostAssignment("publication"),
+      candidate: candidate(1, "viewer_12345678", "sfu") });
+    await route.acceptConfig(sfuConfig(1, "publication"));
+    route.setPaused(true);
+    route.setPaused(false);
+    const replacement = route.acceptConfig(sfuConfig(1, "publication"));
+    await vi.waitFor(() => expect(publishers[1]?.connect).toHaveBeenCalledOnce());
+    expect(publishers[1]?.activate).not.toHaveBeenCalled();
+    finishClose();
+    await replacement;
+    expect(publishers[1]?.activate).toHaveBeenCalledOnce();
+    await route.disconnect();
+  });
+
   it("ignores a retired subscriber failure after same-generation resync", async () => {
     let releaseOldConnect!: () => void;
     const oldConnectGate = new Promise<void>((resolve) => {

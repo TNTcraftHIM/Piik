@@ -616,22 +616,27 @@ func (session *Session) receiveOffer(
 	if err != nil {
 		return nil, err
 	}
-	answer, audio, codec, err := viewer.AcceptOffer(
+	result, err := viewer.AcceptOffer(
 		request.ConnectionID,
 		webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: request.SDP},
 		servers,
+		request.ReuseReceiver,
 	)
 	if err != nil {
 		return nil, err
 	}
-	return receiveAnswerResponse{
+	response := receiveAnswerResponse{
 		responseEnvelope: response(envelope, "receive-answer"),
 		ShareID:          request.ShareID,
 		ConnectionID:     request.ConnectionID,
-		SDP:              answer.SDP,
-		Audio:            audio,
-		Codec:            codec,
-	}, nil
+		SDP:              result.Answer.SDP,
+		Audio:            result.Audio,
+		Codec:            result.Codec,
+	}
+	if request.ReuseReceiver {
+		response.Reused = &result.Reused
+	}
+	return response, nil
 }
 
 func (session *Session) stopShare(shareID string) error {
@@ -754,9 +759,13 @@ func (session *Session) relayEvents() {
 	for {
 		select {
 		case event := <-session.hostEvents:
-			session.emit(eventMessage(event))
+			var value any = eventMessage(event)
+			if event.Current != nil {
+				value = loopback.ControlEvent{Value: value, Current: event.Current}
+			}
+			session.emit(value)
 		case event := <-session.viewerEvents:
-			session.emit(viewerEventMessage(event))
+			session.emit(loopback.ControlEvent{Value: viewerEventMessage(event), Current: event.Current})
 		case <-session.ctx.Done():
 			return
 		}

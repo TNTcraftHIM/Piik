@@ -245,6 +245,21 @@ func TestControlSessionSharesOneBoundedSocketForResponsesAndEvents(t *testing.T)
 	writeControl(t, connection, requestJSON("request_hello", "hello"))
 	var ready controlMessage
 	readControl(t, connection, &ready)
+	// The old owner's event was queued while valid, but retired before delivery.
+	current := true
+	retired := ControlEvent{Value: controlMessage{Version: ProtocolVersion, Type: "retired-event"},
+		Current: func() bool { return current }}
+	current = false
+	extension.events <- retired
+	extension.events <- ControlEvent{
+		Value:   controlMessage{Version: ProtocolVersion, Type: "current-event"},
+		Current: func() bool { return true },
+	}
+	var currentEvent controlMessage
+	readControl(t, connection, &currentEvent)
+	if currentEvent.Type != "current-event" {
+		t.Fatalf("retired event escaped the delivery fence: %+v", currentEvent)
+	}
 	extension.events <- controlMessage{
 		Version: ProtocolVersion, ID: "event_123456", Type: "extension-event",
 	}
