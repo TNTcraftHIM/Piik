@@ -120,11 +120,18 @@ the colour, outline and selected position without decorative displacement.
 Sharing and local playback controls use the same quiet, compact button treatment.
 The Host's persistent dock stays below the picture; the Viewer's playback bar
 belongs to the video. Their similar appearance does not equate broadcast pause
-with local playback pause. Microphone mute stays in that dock; its device and
-input gain belong in the existing advanced settings with the other media settings.
-Stopping a share remains visually separated from frequent actions. Settings do
-not cover the television or couch. Their comic depicts Host commentary gain; the
-Viewer's listening-volume comic remains a different action.
+with local playback pause. Microphone mute, sharing pause, source replacement and
+stop remain direct actions; stopping stays visually separated from frequent actions.
+The Host's quality presets and sharing-settings disclosure belong in the same
+area below the television and above the couch, with quality available before
+sharing starts. Expanded settings reuse the existing picture/audio controls and
+microphone device/input gain, pushing later content down instead of covering the
+picture or participants. Keep detailed parameters collapsed initially and retain
+the distinction between media inputs and the existing route/codec options; the
+whole panel is not merely picture settings. Narrow layouts must not compress all
+settings into one toolbar. The microphone comic depicts Host commentary gain;
+the Viewer's listening-volume comic remains a different action. Remaining rollout
+of this accepted grouping is tracked in [TODO](../todo.md#now).
 
 ## Cast And Objects
 

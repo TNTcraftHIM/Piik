@@ -8,9 +8,15 @@ history. A parked idea is not implementation authority.
 ## Now
 
 - [ ] **Review camera and Host microphone in the separate capture candidate.**
-  Review the current source/settings grouping in both themes and on narrow screens;
-  see the [capture assessment](./research/camera-and-microphone.md). Accept real
-  audio levels/echo, native mixing and device replacement on the target systems,
+  Next implement the accepted [sharing-settings layout](./standards/visual-language.md):
+  move the existing quality presets and settings disclosure beside the sharing
+  actions, below the television and above the couch. This relocation is not yet
+  implemented; the current microphone details remain in the lower advanced panel.
+  Preserve pre-share quality access and existing setting/resource owners. Review
+  both themes, Chinese/English/visual modes, narrow screens and a full couch;
+  verify expanded settings and tooltips leave neighbouring controls reachable.
+  The [capture assessment](./research/camera-and-microphone.md) owns current behavior.
+  Accept real audio levels/echo, native mixing and device replacement on target systems,
   and mobile camera permission, orientation and background behavior before release.
 - [ ] **Refine the isolated room-interaction prototype.** Review chat, optional
   danmaku and participant-targeted reactions for usability, placement and intended
