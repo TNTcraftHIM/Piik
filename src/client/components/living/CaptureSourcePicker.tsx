@@ -7,8 +7,9 @@ import { Glyph, type GlyphName } from "../../ui/icons";
 import { Tooltip } from "./Tooltip";
 import { HintComic } from "./hints";
 import { Pill } from "./primitives";
-import { CaptureDeviceSelect } from "./CaptureDeviceSelect";
-import { browserCameras } from "../../media/capture-devices";
+import { CameraSources, useCameraSources } from "./CameraSources";
+import { CaptureSourceCard } from "./CaptureSourceCard";
+import type { loadCameraPreviews } from "../../media/camera-previews";
 
 const SOURCE_TABS = ["browser", "camera", "window", "display"] as const;
 type SourceTab = (typeof SOURCE_TABS)[number];
@@ -46,6 +47,8 @@ export function CaptureSourcePicker({
   cameraAvailable = !!onCamera,
   initialTab = "window",
   initialCamera = "",
+  activeCameraVideo,
+  loadCameras,
   initialAudio = true,
   initialShowCaptureBorder = false,
   audioLocked = false,
@@ -55,6 +58,8 @@ export function CaptureSourcePicker({
   onBrowser: () => void;
   onCamera?: (deviceId: string) => void;
   initialCamera?: string;
+  activeCameraVideo?: HTMLVideoElement | null;
+  loadCameras?: typeof loadCameraPreviews;
   onNative: (target: NativeCaptureTarget, audio: boolean, showCaptureBorder: boolean) => void;
   onPreview: (
     target: NativeCaptureTarget,
@@ -74,7 +79,6 @@ export function CaptureSourcePicker({
   const pickerId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   const [tab, setTab] = useState<SourceTab | null>(null);
-  const [camera, setCamera] = useState(initialCamera);
   const [shareAudio, setShareAudio] = useState(initialAudio);
   const [showCaptureBorder, setShowCaptureBorder] = useState(initialShowCaptureBorder);
   const appDetected = nativeSources.kind === "ready" || nativeSources.kind === "failed" ||
@@ -87,6 +91,7 @@ export function CaptureSourcePicker({
     ? preferredTab : tabs.find(tabAvailable) ?? "browser";
   const nativeTab = activeTab === "window" || activeTab === "display";
   const browserCapture = activeTab === "browser";
+  const cameraSources = useCameraSources(activeTab === "camera", activeCameraVideo, loadCameras);
   const supportsCaptureBorder = nativeTab && nativeSources.kind === "ready" && nativeSources.captureBorderControl === true;
   const issueKey = nativeSources.kind === "incompatible" ? "native.incompatible" : !nativeTab ? null
     : (nativeSources.kind === "unavailable" ||
@@ -117,7 +122,8 @@ export function CaptureSourcePicker({
       ? nativeSources.processAudio
       : nativeSources.systemAudio);
   const anyNativeAudio = sources.some(supportsAudio);
-  const refreshLabel = t(nativeSources.kind === "loading" ? "host.sourcePicker.loading" : "host.sourcePicker.refresh");
+  const refreshing = activeTab === "camera" ? cameraSources.busy : nativeSources.kind === "loading";
+  const refreshLabel = t(refreshing ? "host.sourcePicker.loading" : "host.sourcePicker.refresh");
   const audioAction = t(!anyNativeAudio ? "host.noAudio" : audioLocked
     ? "host.sourcePicker.audioLocked"
     : shareAudio ? "host.sourcePicker.audioOff" : "host.sourcePicker.audioOn");
@@ -131,10 +137,10 @@ export function CaptureSourcePicker({
       type="button"
       className="lr-source-picker-refresh"
       aria-label={refreshLabel}
-      disabled={nativeSources.kind === "loading"}
-      onClick={onRefresh}
+      disabled={refreshing}
+      onClick={activeTab === "camera" ? cameraSources.refresh : onRefresh}
     >
-      <Glyph name="refresh" size={18} className={nativeSources.kind === "loading" ? "lr-spin" : undefined} />
+      <Glyph name="refresh" size={18} className={refreshing ? "lr-spin" : undefined} />
     </button>
   );
   const closeButton = (
@@ -177,9 +183,9 @@ export function CaptureSourcePicker({
               <strong>{t("host.sourcePicker.title")}</strong>
             </span>
           )}
-          {nativeSources.kind !== "browser" ? <Tooltip kind="hint-refresh-sources" text={vis ? undefined : refreshLabel}
-            tone={nativeSources.kind === "loading" ? "busy" : undefined}
-            motion={nativeSources.kind === "loading" ? "progress" : undefined}
+          {activeTab === "camera" || nativeSources.kind !== "browser" ? <Tooltip kind="hint-refresh-sources" text={vis ? undefined : refreshLabel}
+            tone={refreshing ? "busy" : undefined}
+            motion={refreshing ? "progress" : undefined}
             place="below" align="end">
             {refreshButton}
           </Tooltip> : null}
@@ -261,15 +267,16 @@ export function CaptureSourcePicker({
           id={`${pickerId}-panel`}
           aria-labelledby={`${pickerId}-${activeTab}`}
         >
-          {activeTab === "camera" && <CaptureDeviceSelect kind="camera" value={camera} load={browserCameras} onChange={setCamera} disabled={selectionDisabled} />}
+          {activeTab === "camera" ? <CameraSources {...cameraSources} selected={initialCamera}
+            disabled={selectionDisabled} onSelect={id => onCamera?.(id)} /> : <>
           <div className="lr-source-picker-list">
-            {browserCapture || activeTab === "camera" ? (
+            {browserCapture ? (
               <button
                 type="button"
                 className="lr-source-option is-browser"
-                aria-label={t(activeTab === "browser" ? "host.sourcePicker.browser" : `host.sourcePicker.tab.${activeTab}`)}
+                aria-label={t("host.sourcePicker.browser")}
                 disabled={selectionDisabled || !tabAvailable(activeTab)}
-                onClick={() => activeTab === "camera" ? onCamera?.(camera) : onBrowser()}
+                onClick={onBrowser}
               >
                 <span className="lr-source-option-icon" aria-hidden="true">
                   <Glyph name={SOURCE_ICONS[activeTab]} size={23} />
@@ -281,7 +288,7 @@ export function CaptureSourcePicker({
                 ) : (
                   <span className="lr-source-option-copy">
                     <strong>{t(`host.sourcePicker.tab.${activeTab}`)}</strong>
-                    <small>{t(activeTab === "camera" ? "host.sourcePicker.cameraHint" : "host.sourcePicker.browserHint")}</small>
+                    <small>{t("host.sourcePicker.browserHint")}</small>
                   </span>
                 )}
               </button>
@@ -304,6 +311,7 @@ export function CaptureSourcePicker({
                 ))
               : null}
           </div>
+          </>}
 
           {nativeTab &&
           nativeSources.kind === "ready" &&
@@ -425,30 +433,9 @@ function CaptureSourceOption({
           { title },
         );
 
-  return (
-    <Tooltip kind={target.kind === "picker" ? "hint-source-picker" : target.kind === "display" ? "hint-capture-display" : "hint-capture-window"} text={title} className="lr-source-option-hint">
-      <button
-        ref={buttonRef}
-        type="button"
-        className="lr-source-option"
-        data-native-source={nativeCaptureTargetKey(target)}
-        aria-label={action}
-        disabled={disabled}
-        onMouseEnter={requestPreview}
-        onFocus={requestPreview}
-        onClick={onSelect}
-      >
-        <span className="lr-source-option-copy">
-          <strong>{title}</strong>
-        </span>
-        <span className="lr-source-option-preview" aria-hidden="true">
-          {preview ? (
-            <img src={preview} alt="" />
-          ) : (
-            <Glyph name={target.kind === "picker" ? "share" : target.kind} size={23} />
-          )}
-        </span>
-      </button>
-    </Tooltip>
-  );
+  return <CaptureSourceCard title={title} action={action}
+    icon={target.kind === "picker" ? "share" : target.kind}
+    hint={target.kind === "picker" ? "hint-source-picker" : target.kind === "display" ? "hint-capture-display" : "hint-capture-window"}
+    preview={preview} nativeKey={nativeCaptureTargetKey(target)} buttonRef={buttonRef}
+    disabled={disabled} onPreview={requestPreview} onSelect={onSelect} />;
 }

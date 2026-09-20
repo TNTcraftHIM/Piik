@@ -141,8 +141,9 @@ Source audio and your voice reach viewers together. The Host preview stays muted
 
 Camera sharing does not enable the microphone automatically. App **Apps / Windows**
 and **Screens** capture use the same controls. Leave the device on **Default device**
-or choose a specific microphone. The **Camera** source tab also lets you choose a
-camera. Browsers may show device names only after you grant access.
+or choose a specific microphone. In the **Camera** tab, allow access if asked,
+then select a picture card to start sharing. Device names and previews depend on
+browser permissions; while a camera is shared, other cameras are listed by name.
 Use headphones to keep speaker sound from feeding back into the microphone.
 
 ## When something gets in the way

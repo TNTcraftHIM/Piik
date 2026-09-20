@@ -10,6 +10,7 @@ import { SharingSettings } from "../components/living/SharingSettings";
 import { QualityPresets } from "../components/living/QualityPresets";
 import { RoomCodeInput } from "../components/living/RoomCodeInput";
 import type { QualityProfileId } from "../media/quality";
+import type { loadCameraPreviews } from "../media/camera-previews";
 import { Tooltip } from "../components/living/Tooltip";
 import { StatusIndicator } from "../components/living/StatusIndicator";
 import { deriveParticipantStatus } from "../ui/media-status";
@@ -25,6 +26,10 @@ const SOURCES = { kind: "ready", processAudio: true, systemAudio: true, captureB
   { kind: "display", sourceId: "103", title: "Display 1" },
 ] } satisfies NativeSourceList;
 const previewSource = async () => POSTER;
+const previewCameras: typeof loadCameraPreviews = async (_signal, publish) => publish([
+  { id: "built-in", label: "Built-in camera", preview: `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180"><rect width="320" height="180" fill="#dce9e5"/><rect x="216" y="16" width="82" height="102" rx="7" fill="#fbfcf3"/><path d="M257 16v102M216 66h82" stroke="#b2cbc2" stroke-width="4"/><path d="M106 147q0-62 54-62t54 62" fill="#449986"/><circle cx="160" cy="57" r="29" fill="#449986"/><path d="M151 55v4m18-4v4" stroke="#203c3a" stroke-width="5" stroke-linecap="round"/><path d="M0 151h320v29H0" fill="#d8b898"/><rect x="232" y="131" width="21" height="23" rx="5" fill="#fff7e9"/></svg>')}` },
+  { id: "usb", label: "USB Camera", preview: `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180"><rect width="320" height="180" fill="#e2c5a8"/><path d="M0 25h320M0 157h320" stroke="#cda987" stroke-width="2"/><rect x="53" y="27" width="163" height="124" rx="5" fill="#fffaf0" transform="rotate(-8 135 89)"/><path d="m97 112 30-35 23 25 18-12 18 19" fill="none" stroke="#689b8a" stroke-width="5" stroke-linejoin="round"/><circle cx="166" cy="57" r="11" fill="#ebbd63"/><path d="m245 64 8 77" stroke="#477b73" stroke-width="7" stroke-linecap="round"/><circle cx="266" cy="35" r="19" fill="#f9f5df"/><circle cx="266" cy="35" r="12" fill="#8c6651"/></svg>')}` },
+]);
 const previewMicrophones = async () => [{ id: "headset", label: "USB Headset" }, { id: "desk", label: "Desk Microphone" }];
 
 export function ControlsPreview() {
@@ -151,7 +156,7 @@ export function ControlsPreview() {
     <PeoplePreview />
     <section id="source-preview" className="cp-section">
       <header className="cp-section-head"><span className="cp-number">06</span><div><h2>{en ? "Choose a picture" : "挑一块画面。"}</h2>
-        <p>{en ? "The actual source selector, with sample windows. Selection only updates this preview." : "正式的画面选择器，放入了几个示例窗口；选择只影响这张预览。"}</p></div></header>
+        <p>{en ? "The actual source selector, with sample windows and cameras. Selection only updates this preview." : "正式的画面选择器，放入了示例窗口和摄像头；选择只影响这张预览。"}</p></div></header>
       <div className="cp-tools">{(["ready", "loading", "unavailable", "incompatible", "unsupported", "failed", "empty"] as const).map((value, index) => <Chip key={value}
         title={value} selected={sourceState === value} onClick={() => { setSourceState(value); setSourceOpen(true); }}>
         {en ? ["Available", "Loading", "App unavailable", "Update needed", "Capture unavailable", "Read failed", "Empty list"][index] : ["正常", "读取中", "App 未连接", "需要更新", "无法采集", "读取失败", "空列表"][index]}</Chip>)}
@@ -165,6 +170,7 @@ export function ControlsPreview() {
           initialShowCaptureBorder={showCaptureBorder}
           onBrowser={() => { setSourceOpen(false); notify(); }}
           onCamera={() => { setSourceOpen(false); notify(); }}
+          loadCameras={previewCameras}
           onNative={(_target, _audio, showBorder) => { setShowCaptureBorder(showBorder); setSourceOpen(false); notify(); }}
           onPreview={previewSource} onRefresh={() => setSourceState("ready")} onCancel={() => setSourceOpen(false)} />
           : <div className="cp-stage-action"><Btn icon="cast" tone="primary" title="host.start" cap="host.start" hint="hint-share-start" onClick={() => setSourceOpen(true)} /></div>}

@@ -53,7 +53,9 @@ blocks Browser selection or overrides an explicitly chosen tab. Refresh remains
 reachable after failed App discovery; pending attempts are shared, completed failures
 do not suppress later discovery. Cancelling the selector or ending a share
 releases its unused control session; an obsolete operation cannot install or
-retire another operation's media. Optional native ingress uses an already
+retire another operation's media. Camera thumbnails own only temporary preview
+inputs; leaving their tab or picker retires them. An active shared camera is
+borrowed, never reopened or stopped by preview. Optional native ingress uses an already
 available connection without another scan. If it is not ready at Browser
 startup, that share keeps Browser senders.
 

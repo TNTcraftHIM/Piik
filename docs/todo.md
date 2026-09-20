@@ -17,6 +17,8 @@ history. A parked idea is not implementation authority.
   and room-action order. Complete full-room and actual-device acceptance; keep
   pre-share quality access and existing setting/resource owners. Verify expanded
   settings and tooltips leave neighbouring controls reachable in actual device use.
+  Accept the camera thumbnail cards alongside window/display selection; check
+  permissions, multiple devices and cancellation on actual phones and desktops.
   The [capture assessment](./research/camera-and-microphone.md) owns current behavior.
   Accept real audio levels/echo, native mixing and device replacement on target systems,
   and mobile camera permission, orientation and background behavior before release.

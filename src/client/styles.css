@@ -563,6 +563,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   transform: translateY(-2px);
 }
 .lr-source-option:active:not(:disabled) { transform: scale(.98); }
+.lr-source-option[aria-current="true"] { border-color: #dfe8f2; background: rgba(223, 232, 242, .18); }
 .lr-source-option:not(.is-browser) {
   display: grid;
   align-items: stretch;
@@ -593,8 +594,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 }
 .lr-source-option-preview {
   width: 100%;
-  aspect-ratio: 16 / 9;
-  height: auto;
+  height: 144px;
   overflow: hidden;
   border-radius: 8px;
   background: rgba(255, 255, 255, .1);

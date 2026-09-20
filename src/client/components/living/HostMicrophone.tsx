@@ -4,7 +4,7 @@ import { Tooltip } from "./Tooltip";
 import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
 import type { CaptureDevice } from "../../media/capture-devices";
-import { CaptureDeviceSelect } from "./CaptureDeviceSelect";
+import { MicrophoneDeviceSelect } from "./MicrophoneDeviceSelect";
 
 export function HostMicrophone({ enabled, pending, disabled, paused, unavailable, volume, onToggle }: {
   enabled: boolean; pending?: boolean; disabled?: boolean;
@@ -34,7 +34,7 @@ export function HostMicrophoneSettings({ enabled, disabled, volume, onVolume, de
   const id = useId();
   const percent = Math.round(volume * 100);
   return <div className="lr-door-group lr-microphone-settings" role="group" aria-label={t("host.microphone.settings")}>
-      <CaptureDeviceSelect kind="microphone" value={deviceId} load={loadDevices}
+      <MicrophoneDeviceSelect value={deviceId} load={loadDevices}
         onChange={onDevice} disabled={disabled} revision={enabled} browser={!native} />
       <label htmlFor={id}>
         <span>{vis ? <Glyph name="microphone" size={18} /> : t("host.microphone.volume")}</span>

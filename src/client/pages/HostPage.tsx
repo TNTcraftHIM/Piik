@@ -3436,6 +3436,7 @@ export function HostPage({
                 onBrowser={() => startBrowserShareFromPicker("browser")}
                 onCamera={deviceId => startBrowserShareFromPicker("camera", deviceId)}
                 initialCamera={cameraDevice}
+                activeCameraVideo={hostAudioRef.current?.sourceKind === "camera" ? videoRef.current : null}
                 onNative={startNativeShareFromPicker}
                 onPreview={loadNativeSourcePreview}
                 onRefresh={openCaptureSourcePicker}

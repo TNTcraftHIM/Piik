@@ -4,8 +4,8 @@ import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 
 // Shared presentation only: capture and replacement stay with the Host owner.
-export function CaptureDeviceSelect({ kind, value, load, onChange, disabled, revision, browser = true }: {
-  kind: "camera" | "microphone"; value: string; load: () => Promise<CaptureDevice[]>;
+export function MicrophoneDeviceSelect({ value, load, onChange, disabled, revision, browser = true }: {
+  value: string; load: () => Promise<CaptureDevice[]>;
   onChange: (id: string) => void; disabled?: boolean; revision?: unknown; browser?: boolean;
 }) {
   const { t, vis } = useCopy();
@@ -36,14 +36,14 @@ export function CaptureDeviceSelect({ kind, value, load, onChange, disabled, rev
   }, [load, refresh, revision, browser]);
   const missing = value !== "" && !devices.some(device => device.id === value);
   return <div className="lr-capture-device">
-    <label htmlFor={id}>{vis ? <Glyph name={kind} size={18} /> : t(`host.device.${kind}`)}</label>
+    <label htmlFor={id}>{vis ? <Glyph name="microphone" size={18} /> : t("host.device.microphone")}</label>
     <div className="lr-capture-device-controls">
-      <select id={id} value={value} disabled={disabled || busy} aria-label={t(`host.device.${kind}`)}
+      <select id={id} value={value} disabled={disabled || busy} aria-label={t("host.device.microphone")}
         onChange={event => onChange(event.target.value)}>
         <option value="">{t("host.device.default")}</option>
         {missing && <option value={value} disabled>{t("host.device.missing")}</option>}
         {devices.map((device, index) => <option key={device.id} value={device.id}>
-          {device.label || `${t(`host.device.${kind}`)} ${index + 1}`}
+          {device.label || `${t("host.device.microphone")} ${index + 1}`}
         </option>)}
       </select>
       <button type="button" className="lr-btn lr-device-refresh" disabled={busy || disabled}
@@ -52,6 +52,6 @@ export function CaptureDeviceSelect({ kind, value, load, onChange, disabled, rev
       </button>
     </div>
     {failed ? <small role="status">{t("host.device.listFailed")}</small>
-      : !vis && browser && !busy && devices.every(device => !device.label) ? <small>{t(`host.device.permission.${kind}`)}</small> : null}
+      : !vis && browser && !busy && devices.every(device => !device.label) ? <small>{t("host.device.permission.microphone")}</small> : null}
   </div>;
 }

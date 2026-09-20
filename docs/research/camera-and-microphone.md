@@ -61,7 +61,16 @@ may appear only after the first grant; refresh and device-change events update
 the list. A missing selected device stays visible as unavailable.
 Switching an active microphone prepares the new input before retiring the old
 one; failure leaves the old input running. The mixed output stays unchanged.
-Camera selection belongs in the existing Camera tab. Camera-to-camera replacement
+Camera selection belongs in the existing Camera tab and uses the same named
+thumbnail cards as window/display selection. Entering the
+Camera tab may request camera permission for local previews; it never requests
+microphone access or starts a room. Preview inputs open serially and stop after
+one bounded thumbnail. Leaving the tab or cancelling the picker stops owned
+inputs and discards late permission results. Images last only for that picker.
+While already sharing a camera, preview borrows the current video frame and
+lists other devices without opening them, because some phones retire an active
+camera when another opens. Missing thumbnails do not disable a known device.
+The Host's existing source-replacement operation
 owns the old camera's automatic end event until the pending capture settles;
 failure with an already-ended old camera retires sharing normally. This does
 not suppress a user's screen-share Stop action. Some phones require releasing

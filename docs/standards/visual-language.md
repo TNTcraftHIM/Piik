@@ -143,6 +143,11 @@ shared presentation separate from the existing setting/resource owners.
 The microphone comic depicts Host commentary gain;
 the Viewer's listening-volume comic remains a different action.
 
+Visual source choices (windows, screens and cameras) share named thumbnail cards,
+including their focus, hover and refresh treatment. Microphone selection uses
+device names in a compact selector. Shared enumeration does not make these two
+selection tasks visually interchangeable.
+
 ## Cast And Objects
 
 The brand mascot keeps its own identity, separate from ordinary participants.
