@@ -8,8 +8,8 @@ history. A parked idea is not implementation authority.
 ## Now
 
 - [ ] **Review camera and Host microphone in the separate capture candidate.**
-  Obtain user acceptance of the [sharing-settings layout](./standards/visual-language.md)
-  below the television and above the couch, including a full room. Keep the current
+  The owner accepts the current [sharing-settings layout](./standards/visual-language.md)
+  and room-action order. Complete full-room and actual-device acceptance; keep
   pre-share quality access and existing setting/resource owners. Verify expanded
   settings and tooltips leave neighbouring controls reachable in actual device use.
   The [capture assessment](./research/camera-and-microphone.md) owns current behavior.
@@ -22,6 +22,9 @@ history. A parked idea is not implementation authority.
   picture, interaction with participants and room actions before diagnostics.
   Evaluate chat expansion on wide and narrow screens without hiding invitations
   or blocking sharing controls; keep chat available independently of sharing.
+  Retain current room creation: the first share creates a room, an existing room
+  can resume, and stopping media keeps the opted-in interaction session. Do not
+  add visit-triggered creation or a separate pre-share room-creation entry.
   This experiment does not authorize integration or publication.
 
 ## Awaiting Device Or Reporter Evidence
