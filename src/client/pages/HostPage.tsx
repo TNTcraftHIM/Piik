@@ -4043,11 +4043,7 @@ export function HostPage({
               <div className="lr-row-group lr-group-actions lr-host-diagnostics-slot">
                 <Btn
                   icon="gauge"
-                  cap={
-                    showConnectionDetails
-                      ? "host.details.hide"
-                      : "host.details"
-                  }
+                  cap="host.details"
                   title={
                     showConnectionDetails
                       ? "host.details.hide"

@@ -21,7 +21,7 @@ export function HostMicrophone({ enabled, pending, disabled, paused, unavailable
       hint={unavailable ? "hint-capture-browser" : paused ? "host-paused" : enabled ? "hint-microphone-off" : "hint-microphone-on"}
       hintTone={unavailable ? "warn" : pending || disabled ? "busy" : undefined}
       hintMotion={pending || disabled ? "progress" : undefined}
-      pressed={enabled} busy={pending} tone={enabled ? "on" : undefined}
+      pressed={enabled} busy={pending}
       disabled={unavailable || pending || disabled || paused} onClick={onToggle} />;
 }
 

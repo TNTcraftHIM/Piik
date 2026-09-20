@@ -116,6 +116,11 @@ on hover or keyboard focus, then compress on press. Inputs and option tiles
 share softer corners. Keep a distinct focus ring and a persistent selected
 state; disabled controls must not pretend to activate. Reduced motion keeps
 the colour, outline and selected position without decorative displacement.
+The shared button uses the same pressed value for `aria-pressed` and its selected
+treatment; active state remains distinct from hover in both themes.
+Disclosure buttons keep a stable visible caption, while their expanded state and
+accessible action describe opening or closing. Neutral panel borders stay quieter
+than the controls inside them; nested diagnostic panels retain their softer fill.
 
 Sharing and local playback controls use the same quiet, compact button treatment.
 The Host's persistent dock stays below the picture; the Viewer's playback bar

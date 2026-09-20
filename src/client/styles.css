@@ -492,7 +492,10 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-source-picker-tabs {
   display: grid;
   gap: 4px;
-  border-bottom: 1px solid rgba(223, 232, 242, .35);
+  padding: 4px;
+  border: 1px solid rgba(223, 232, 242, .24);
+  border-radius: 16px;
+  background: rgba(0, 0, 0, .12);
 }
 .lr-source-picker-tabs > span { min-width: 0; }
 .lr-source-picker-tabs button {
@@ -504,7 +507,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   gap: 7px;
   padding: 8px 4px;
   border: 0;
-  border-bottom: 3px solid transparent;
+  border-radius: 12px;
   background: transparent;
   color: #9aa8bb;
   font-size: 12px;
@@ -515,10 +518,10 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 @media (max-width: 520px) {
   .lr-source-picker-tabs button { flex-direction: column; gap: 3px; padding-inline: 0; font-size: 11px; }
 }
-.lr-source-picker-tabs button:is(:hover, :focus-visible):not(:disabled) { background: rgba(255, 255, 255, .06); }
+.lr-source-picker-tabs button:is(:hover, :focus-visible):not(:disabled):not([aria-selected="true"]) { background: rgba(255, 255, 255, .1); }
 .lr-source-picker-tabs button[aria-selected="true"] {
-  border-bottom-color: #9de8bf;
-  color: #9de8bf;
+  background: #dfe8f2;
+  color: #22303e;
 }
 .lr-source-picker-body {
   display: flex;
@@ -794,8 +797,8 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   align-items: center;
   gap: 12px;
   padding: 15px 18px;
-  border: 2.5px solid var(--ink);
-  border-radius: var(--radius);
+  border: 1px solid var(--control-edge);
+  border-radius: 24px;
   background: var(--paper);
 }
 .lr-row.is-sub { background: var(--wall-2); border-color: transparent; }
@@ -972,7 +975,6 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
   border: 0; border-radius: 12px; box-shadow: none;
   background: transparent; color: inherit;
 }
-.lr-media-controls .lr-btn[aria-pressed="true"]:not(.is-on) { background: var(--control-hover); }
 .lr-media-controls .lr-btn.is-danger { color: var(--danger); }
 
 /* Diagnostics stay quiet until explicitly enabled; keep the shared input feedback. */

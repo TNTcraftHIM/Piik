@@ -125,7 +125,7 @@ export function ControlsPreview() {
             placeholder={t("join.password")} aria-label={t("join.password")} aria-invalid={invalid} aria-describedby={invalid ? "preview-input-error" : undefined} autoComplete="off" />
           </label>
           <Btn icon={passwordVisible ? "eyeOff" : "eye"} title={passwordVisible ? "host.password.hide" : "host.password.show"}
-            hint={passwordVisible ? "hint-password-hide" : "hint-password-show"} onClick={() => setPasswordVisible(!passwordVisible)} />
+            pressed={passwordVisible} hint={passwordVisible ? "hint-password-hide" : "hint-password-show"} onClick={() => setPasswordVisible(!passwordVisible)} />
           <SwitchItem checked={invalid} onChange={setInvalid} label={en ? "Show error" : "看看错误态"} />
         </div>
         {invalid ? <p id="preview-input-error" className="cp-input-error" role="alert">{en ? "That password did not match. Try again." : "密码没对上，再试一次。"}</p> : null}

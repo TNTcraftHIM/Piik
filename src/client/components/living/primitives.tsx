@@ -77,11 +77,12 @@ export function Btn({
   const label = t(title);
   const wrapped = Boolean(hint);
   const softDisabled = Boolean(wrapped && disabled);
+  const activeTone = tone ?? (pressed ? "on" : undefined);
   const button = (
     <button
       id={id}
       type={type}
-      className={`lr-btn${tone ? ` is-${tone}` : ""}`}
+      className={`lr-btn${activeTone ? ` is-${activeTone}` : ""}`}
       aria-label={label}
       disabled={disabled && !softDisabled}
       aria-disabled={softDisabled || undefined}
