@@ -7,6 +7,14 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
+- [ ] **Keep waiting feedback clear of playback controls.** At a 360px viewport,
+  the waiting caption overlaps the persistent Viewer playback bar. Reconcile the
+  shared TV overlay and playback layout, including wrapped status text; preserve
+  reachable controls and one owner for their available space. Separately verify
+  the empty video's screen-reader output: Chromium exposes an unavailable-media
+  description despite the literal shared-picture label and no media error. Also
+  review accessible naming on disabled tooltip wrappers and the UI catalogue's
+  paired-character example; automated checks leave those for manual review.
 - [ ] **Review camera and Host microphone in the separate capture candidate.**
   The owner accepts the current [sharing-settings layout](./standards/visual-language.md)
   and room-action order. Complete full-room and actual-device acceptance; keep
