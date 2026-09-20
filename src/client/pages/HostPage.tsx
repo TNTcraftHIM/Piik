@@ -26,6 +26,7 @@ import { browserCaptureDevices } from "../media/capture-devices";
 import { AppHeader, LedStrip } from "../components/living/Header";
 import { WelcomeLine } from "../components/living/WelcomeLine";
 import { Couch, type CouchEntry } from "../components/living/Couch";
+import { SharingSettings } from "../components/living/SharingSettings";
 import { HostMicrophone, HostMicrophoneSettings } from "../components/living/HostMicrophone";
 import { HostAudio } from "../media/host-audio";
 import {
@@ -3542,55 +3543,64 @@ export function HostPage({
               />
             ) : null}
           </StageTv>
-          {phase === "live" || phase === "starting" ? (
-            <div className="lr-host-share-controls lr-media-controls" role="group" aria-label={t("host.shareControls")}>
-              {phase === "live" ? (
-                <>
-                  <HostMicrophone enabled={microphoneEnabled} pending={microphonePending}
-                    unavailable={nativeActive && !nativeClientRef.current?.health.nativeMedia.microphone} paused={sharingPaused} disabled={switchingSource || changingQuality}
-                    volume={microphoneVolume}
-                    onToggle={() => void changeMicrophone(!microphoneEnabled, microphoneDevices[nativeActive ? "native" : "browser"])} />
-                  <Btn
-                    icon={sharingPaused ? "play" : "pause"}
-                    cap={sharingPaused ? "host.resume" : "host.pause"}
-                    title={sharingPaused ? "host.resume" : "host.pause"}
-                    hint={sharingPaused ? "hint-resume" : "hint-pause"}
-                    draw="host-share-toggle"
-                    disabled={switchingSource || changingQuality || microphonePending}
-                    onClick={toggleSharingPause}
-                  />
-                  <Btn
-                    id="host-switch-source"
-                    icon="switchSource"
-                    cap={switchingSource ? "host.switching" : "host.switchSource"}
-                    title="host.switchSource"
-                    hint="hint-switch-source"
-                    disabled={switchingSource || changingQuality || microphonePending}
-                    onClick={() => void switchSource()}
-                  />
-                  <Btn
-                    id="host-stop-share"
-                    icon="stop"
-                    tone="danger"
-                    cap="host.stop"
-                    title="host.stop"
-                    hint="hint-share-stop"
-                    onClick={() => endSharing({ key: "host.stopNotice" })}
-                  />
-                </>
-              ) : (
-                <Btn
-                  id="host-cancel-share"
-                  icon="x"
-                  tone="danger"
-                  cap="host.cancelStart"
-                  title="host.cancelStart"
-                  hint="hint-close"
-                  onClick={() => endSharing({ key: "host.startCancelled" })}
-                />
-              )}
-            </div>
-          ) : null}
+          <div className="lr-host-share-controls lr-media-controls" role="group" aria-label={t("host.shareControls")}>
+            {phase === "live" ? <>
+              <HostMicrophone enabled={microphoneEnabled} pending={microphonePending}
+                unavailable={nativeActive && !nativeClientRef.current?.health.nativeMedia.microphone} paused={sharingPaused} disabled={switchingSource || changingQuality}
+                volume={microphoneVolume}
+                onToggle={() => void changeMicrophone(!microphoneEnabled, microphoneDevices[nativeActive ? "native" : "browser"])} />
+              <Btn
+                icon={sharingPaused ? "play" : "pause"}
+                cap={sharingPaused ? "host.resume" : "host.pause"}
+                title={sharingPaused ? "host.resume" : "host.pause"}
+                hint={sharingPaused ? "hint-resume" : "hint-pause"}
+                draw="host-share-toggle"
+                disabled={switchingSource || changingQuality || microphonePending}
+                onClick={toggleSharingPause}
+              />
+              <Btn
+                id="host-switch-source"
+                icon="switchSource"
+                cap={switchingSource ? "host.switching" : "host.switchSource"}
+                title="host.switchSource"
+                hint="hint-switch-source"
+                disabled={switchingSource || changingQuality || microphonePending}
+                onClick={() => void switchSource()}
+              />
+            </> : null}
+            <Btn
+              icon="sliders"
+              busy={changingQuality}
+              cap="host.advanced"
+              title={showAdvanced ? "host.advanced.hide" : "host.advanced"}
+              hint={showAdvanced ? "hint-collapse" : "hint-advanced"}
+              tone={showAdvanced ? "on" : undefined}
+              expanded={showAdvanced}
+              controls="host-advanced-door"
+              onClick={() => setShowAdvanced((current) => !current)}
+            />
+            {phase === "live" ? (
+              <Btn
+                id="host-stop-share"
+                icon="stop"
+                tone="danger"
+                cap="host.stop"
+                title="host.stop"
+                hint="hint-share-stop"
+                onClick={() => endSharing({ key: "host.stopNotice" })}
+              />
+            ) : phase === "starting" ? (
+              <Btn
+                id="host-cancel-share"
+                icon="x"
+                tone="danger"
+                cap="host.cancelStart"
+                title="host.cancelStart"
+                hint="hint-close"
+                onClick={() => endSharing({ key: "host.startCancelled" })}
+              />
+            ) : null}
+          </div>
           <div className="lr-stage-notices" role="status" aria-live="polite">
             {!details?.hasSourceAudio && stream ? (
               <Pill icon="speakerOff" label={t("host.noAudio")} comic="no-audio" tone="off" />
@@ -3604,333 +3614,308 @@ export function HostPage({
                 motion={noticeValue.comic === "signal-recovering" || noticeValue.comic === "recovering" || noticeValue.comic === "connecting-sfu" ? "progress" : "still"} />
             ) : null}
           </div>
-          <section className="lr-host-settings" aria-label={t("host.advanced")}>
-            <Row label={t("host.quality")}>
-              <RowGroup>
-                <QualityPresets selected={selectedQualityProfileId} busy={changingQuality}
-                  disabled={phase === "starting" || switchingSource}
-                  onSelect={id => void changeQuality({ ...QUALITY_PROFILES[id],
-                    screenAudioQuality: resolveScreenAudioQuality(advancedQualityRef.current.screenAudioQuality),
-                  })} />
-              </RowGroup>
-              <span className="lr-spacer" />
-              {/* Keep the tooltip trigger compact when mobile rows stretch. */}
-              <span style={{ display: "flex", justifyContent: "flex-end" }}>
-                <Btn
-                  icon="sliders"
-                  busy={changingQuality}
-                  cap="host.advanced"
-                  title={showAdvanced ? "host.advanced.hide" : "host.advanced"}
-                  hint={showAdvanced ? "hint-collapse" : "hint-advanced"}
-                  tone={showAdvanced ? "on" : undefined}
-                  expanded={showAdvanced}
-                  controls="host-advanced-door"
-                  onClick={() => setShowAdvanced((current) => !current)}
-                />
-              </span>
-            </Row>
-            <div
-              id="host-advanced-door"
-              className={`lr-door-reveal${showAdvanced ? " is-open" : ""}`}
-            >
-              <div>
-                {showAdvanced ? (
-                  <div
-                    className="lr-door-body"
-                    role="group"
-                    aria-label={t("host.advanced")}
-                    aria-busy={changingQuality}
-                  >
-                    <div className="lr-door-group">
-                      <span
-                        className="lr-door-glyph"
-                      >
-                        <Glyph name="expand" size={19} />
-                        <Cap k="host.advanced.resolution" />
-                      </span>
-                      <div
-                        className="lr-row-group"
-                        role="group"
-                        aria-label={t("host.advanced.resolution")}
-                      >
-                        {(
-                          Object.keys(QUALITY_RESOLUTIONS) as QualityResolution[]
-                        ).map((resolution) => (
-                          <Chip
-                            key={resolution}
-                            selected={advancedQuality.resolution === resolution}
-                            disabled={phase === "starting" || switchingSource}
-                            title={QUALITY_RESOLUTIONS[resolution].label}
-                            hint="hint-quality"
-                            onClick={() =>
-                              changeAdvancedQuality({ resolution })
-                            }
-                          >
-                            {QUALITY_RESOLUTIONS[resolution].label}
-                          </Chip>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="lr-door-group">
-                      <span
-                        className="lr-door-glyph"
-                      >
-                        <Glyph name="frames" size={19} />
-                        <Cap k="host.advanced.framerate" />
-                      </span>
-                      <Tooltip kind="hint-metric-fps" text={vis ? undefined : t("host.advanced.framerate")} className="lr-slider-hint">
-                        <span className="lr-slider">
-                          <input
-                            type="range"
-                            min={15}
-                            max={60}
-                            step={5}
-                            value={advancedQuality.maxFramerate}
-                            disabled={phase === "starting" || switchingSource}
-                            aria-label={t("host.advanced.framerate")}
-                            onChange={(event) =>
-                              changeAdvancedQuality({
-                                maxFramerate: Number(event.target.value),
-                              })
-                            }
-                          />
-                          <output>{advancedQuality.maxFramerate} fps</output>
-                        </span>
-                        </Tooltip>
-                    </div>
-                    <div className="lr-door-group">
-                      <span
-                        className="lr-door-glyph"
-                      >
-                        <Glyph name="gauge" size={19} />
-                        <Cap k="host.advanced.bitrate" />
-                      </span>
-                      <Tooltip kind="hint-metric-bitrate" text={vis ? undefined : t("host.advanced.bitrate")} className="lr-slider-hint">
-                        <span className="lr-slider">
-                          <input
-                            type="range"
-                            min={2000000}
-                            max={12000000}
-                            step={500000}
-                            value={advancedQuality.maxBitrate}
-                            disabled={phase === "starting" || switchingSource}
-                            aria-label={t("host.advanced.bitrate")}
-                            onChange={(event) =>
-                              changeAdvancedQuality({
-                                maxBitrate: Number(event.target.value),
-                              })
-                            }
-                          />
-                          <output>
-                            {(advancedQuality.maxBitrate / 1_000_000).toFixed(1)}{" "}
-                            Mbps
-                          </output>
-                        </span>
-                        </Tooltip>
-                    </div>
-                    <div className="lr-door-group">
-                      <span
-                        className="lr-door-glyph"
-                      >
-                        <Glyph name="mountain" size={19} />
-                        <Cap k="host.advanced.preference" />
-                      </span>
-                      <div
-                        className="lr-row-group"
-                        role="group"
-                        aria-label={t("host.advanced.preference")}
-                      >
-                        {(
-                          Object.keys(
-                            PREFERENCE_PRESENTATION,
-                          ) as DegradationPreference[]
-                        ).map((preference) => (
-                          <Chip
-                            key={preference}
-                            name="degradationPreference"
-                            value={preference}
-                            selected={
-                              advancedQuality.degradationPreference === preference
-                            }
-                            disabled={phase === "starting" || switchingSource}
-                            title={`${t(DEGRADATION_PREFERENCE_KEYS[preference])} · ${t(PREFERENCE_PRESENTATION[preference].hint)}`}
-                            hint={preference === "maintain-resolution" ? "hint-prefer-resolution" : preference === "maintain-framerate" ? "hint-prefer-framerate" : "hint-degrade-pref"}
-                            onClick={() =>
-                              changeAdvancedQuality({
-                                degradationPreference: preference,
-                              })
-                            }
-                          >
-                            <Glyph
-                              name={PREFERENCE_PRESENTATION[preference].icon}
-                              size={18}
-                            />
-                            <Cap k={DEGRADATION_PREFERENCE_KEYS[preference]} />
-                          </Chip>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="lr-door-group">
-                      <span
-                        className="lr-door-glyph"
-                      >
-                        <Glyph name="speaker" size={19} />
-                        <Cap k="host.advanced.audio" />
-                      </span>
-                      <div
-                        className="lr-row-group"
-                        role="group"
-                        aria-label={t("host.advanced.audio")}
-                      >
-                        {(
-                          Object.keys(
-                            AUDIO_QUALITY_CAPTIONS,
-                          ) as ScreenAudioQuality[]
-                        ).map((audioQuality) => (
-                          <Chip
-                            key={audioQuality}
-                            selected={
-                              resolveScreenAudioQuality(
-                                advancedQuality.screenAudioQuality,
-                              ) === audioQuality
-                            }
-                            disabled={phase === "starting" || switchingSource}
-                            title={t("host.audio.title", {
-                              label: t(AUDIO_QUALITY_CAPTIONS[audioQuality]),
-                              kbps: String(
-                                SCREEN_AUDIO_BITRATES[audioQuality] / 1_000,
-                              ),
-                            })}
-                            hint="hint-audio-quality"
-                            onClick={() => changeScreenAudioQuality(audioQuality)}
-                          >
-                            <Cap k={AUDIO_QUALITY_CAPTIONS[audioQuality]} />
-                            <small className="lr-audio-rate">
-                              {SCREEN_AUDIO_BITRATES[audioQuality] / 1_000}
-                            </small>
-                          </Chip>
-                        ))}
-                      </div>
-                    </div>
-                    {phase === "live" && (!nativeActive || nativeClientRef.current?.health.nativeMedia.microphone) ? (
-                      <HostMicrophoneSettings enabled={microphoneEnabled}
-                        disabled={microphonePending || switchingSource || changingQuality || sharingPaused}
-                        volume={microphoneVolume} onVolume={volume => {
-                          setMicrophoneVolume(volume);
-                          hostAudioRef.current?.setMicrophoneVolume(volume);
-                          const client = nativeClientRef.current;
-                          const shareId = nativeShareGenerationRef.current;
-                          if (nativeModeRef.current && client && shareId) {
-                            void client.setMicrophoneVolume(shareId, volume).catch(error => {
-                              if (nativeClientRef.current === client && nativeShareGenerationRef.current === shareId) {
-                                debugError("capture", "microphone-volume-failed", error);
-                                setNoticeValue({ kind: "key", key: "host.microphone.unavailable", target: "operation", comic: "warning", tone: "warn" });
-                              }
-                            });
-                          }
-                        }}
-                        native={nativeActive} loadDevices={loadMicrophones}
-                        deviceId={microphoneDevices[nativeActive ? "native" : "browser"]}
-                        onDevice={deviceId => void changeMicrophone(microphoneEnabled, deviceId)}
-                      />
-                    ) : null}
-                    <div className="lr-door-group">
-                      <span
-                        className="lr-door-glyph"
-                      >
-                        <Glyph name="branch" size={19} />
-                        <Cap k="host.advanced.route" />
-                      </span>
-                      <div className="lr-row-group">
-                        <SwitchItem
-                          checked={routePolicy.topologyOptimization}
-                          disabled={phase === "starting" || phase === "live"}
-                          onChange={(checked) =>
-                            changeRoutePolicy({ topologyOptimization: checked })
-                          }
-                          label={t("host.advanced.route.topo")}
-                          note={t("host.advanced.route.topoHint")}
-                          hint="hint-topology"
-                        />
-                        <SwitchItem
-                          checked={routePolicy.natPrediction}
-                          disabled={
-                            !natPredictionAvailable || phase === "starting" || phase === "live"
-                          }
-                          locked={!natPredictionAvailable}
-                          onChange={(checked) =>
-                            changeRoutePolicy({ natPrediction: checked })
-                          }
-                          label={t("host.advanced.route.natPrediction")}
-                          note={t(
-                            natPredictionAvailable
-                              ? "host.advanced.route.natPredictionHint"
-                              : "host.advanced.route.natPredictionUnavailable",
-                          )}
-                          hint={
-                            natPredictionAvailable ? "hint-nat-prediction" : "hint-nat-unavailable"
-                          }
-                        />
-                        <SwitchItem
-                          checked={routePolicy.peerOnly}
-                          disabled={
-                            !sfuAvailable || phase === "starting" || phase === "live"
-                          }
-                          locked={!sfuAvailable}
-                          onChange={(checked) =>
-                            changeRoutePolicy({ peerOnly: checked })
-                          }
-                          label={t("host.advanced.route.peerOnly")}
-                          note={t(
-                            sfuAvailable
-                              ? "host.advanced.route.peerOnlyHint"
-                              : "host.advanced.route.peerOnlyRequired",
-                          )}
-                          hint={sfuAvailable ? "hint-route-p2p" : "hint-route-p2p-required"}
-                        />
-                      </div>
-                    </div>
-                    <div className="lr-door-group">
-                      <span
-                        className="lr-door-glyph"
-                      >
-                        <Glyph name="puzzle" size={19} />
-                        <Cap k="host.advanced.codec" />
-                      </span>
-                      <div
-                        className="lr-row-group"
-                        role="group"
-                        aria-label={t("host.advanced.codec")}
-                      >
-                        {(["vp8", "auto", "h264"] as const).map((mode) => (
-                          <Chip
-                            key={mode}
-                            selected={displayedVideoCodecMode === mode}
-                            disabled={phase === "starting" || phase === "live"}
-                            title={
-                              mode === "auto"
-                                ? resolvedVideoCodec
-                                  ? `${t("host.advanced.codec.auto")} · ${resolvedVideoCodec.toUpperCase()}`
-                                  : `${t("host.advanced.codec.auto")} · ${t("host.advanced.codec.autoHint")}`
-                                : `${mode.toUpperCase()} · ${t(
-                                    mode === "vp8"
-                                      ? "host.advanced.codec.vp8Hint"
-                                      : "host.advanced.codec.h264Hint",
-                                  )}`
-                            }
-                            hint="hint-codec"
-                            onClick={() => changeVideoCodecMode(mode)}
-                          >
-                            {mode.toUpperCase()}
-                          </Chip>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
+          <SharingSettings id="host-advanced-door" open={showAdvanced} busy={changingQuality}
+            presets={
+              <QualityPresets selected={selectedQualityProfileId} busy={changingQuality}
+                disabled={phase === "starting" || switchingSource}
+                onSelect={id => void changeQuality({ ...QUALITY_PROFILES[id],
+                  screenAudioQuality: resolveScreenAudioQuality(advancedQualityRef.current.screenAudioQuality),
+                })} />
+            }
+            picture={<>
+              <div className="lr-door-group">
+                <span
+                  className="lr-door-glyph"
+                >
+                  <Glyph name="expand" size={19} />
+                  <Cap k="host.advanced.resolution" />
+                </span>
+                <div
+                  className="lr-row-group"
+                  role="group"
+                  aria-label={t("host.advanced.resolution")}
+                >
+                  {(
+                    Object.keys(QUALITY_RESOLUTIONS) as QualityResolution[]
+                  ).map((resolution) => (
+                    <Chip
+                      key={resolution}
+                      selected={advancedQuality.resolution === resolution}
+                      disabled={phase === "starting" || switchingSource}
+                      title={QUALITY_RESOLUTIONS[resolution].label}
+                      hint="hint-quality"
+                      onClick={() =>
+                        changeAdvancedQuality({ resolution })
+                      }
+                    >
+                      {QUALITY_RESOLUTIONS[resolution].label}
+                    </Chip>
+                  ))}
+                </div>
               </div>
-            </div>
-          </section>
+              <div className="lr-sharing-limits">
+                <div className="lr-door-group">
+                  <span
+                    className="lr-door-glyph"
+                  >
+                    <Glyph name="frames" size={19} />
+                    <Cap k="host.advanced.framerate" />
+                  </span>
+                  <Tooltip kind="hint-metric-fps" text={vis ? undefined : t("host.advanced.framerate")} className="lr-slider-hint">
+                    <span className="lr-slider">
+                      <input
+                        type="range"
+                        min={15}
+                        max={60}
+                        step={5}
+                        value={advancedQuality.maxFramerate}
+                        disabled={phase === "starting" || switchingSource}
+                        aria-label={t("host.advanced.framerate")}
+                        onChange={(event) =>
+                          changeAdvancedQuality({
+                            maxFramerate: Number(event.target.value),
+                          })
+                        }
+                      />
+                      <output>{advancedQuality.maxFramerate} fps</output>
+                    </span>
+                    </Tooltip>
+                </div>
+                <div className="lr-door-group">
+                  <span
+                    className="lr-door-glyph"
+                  >
+                    <Glyph name="gauge" size={19} />
+                    <Cap k="host.advanced.bitrate" />
+                  </span>
+                  <Tooltip kind="hint-metric-bitrate" text={vis ? undefined : t("host.advanced.bitrate")} className="lr-slider-hint">
+                    <span className="lr-slider">
+                      <input
+                        type="range"
+                        min={2000000}
+                        max={12000000}
+                        step={500000}
+                        value={advancedQuality.maxBitrate}
+                        disabled={phase === "starting" || switchingSource}
+                        aria-label={t("host.advanced.bitrate")}
+                        onChange={(event) =>
+                          changeAdvancedQuality({
+                            maxBitrate: Number(event.target.value),
+                          })
+                        }
+                      />
+                      <output>
+                        {(advancedQuality.maxBitrate / 1_000_000).toFixed(1)}{" "}
+                        Mbps
+                      </output>
+                    </span>
+                    </Tooltip>
+                </div>
+              </div>
+              <div className="lr-door-group">
+                <span
+                  className="lr-door-glyph"
+                >
+                  <Glyph name="mountain" size={19} />
+                  <Cap k="host.advanced.preference" />
+                </span>
+                <div
+                  className="lr-row-group"
+                  role="group"
+                  aria-label={t("host.advanced.preference")}
+                >
+                  {(
+                    Object.keys(
+                      PREFERENCE_PRESENTATION,
+                    ) as DegradationPreference[]
+                  ).map((preference) => (
+                    <Chip
+                      key={preference}
+                      name="degradationPreference"
+                      value={preference}
+                      selected={
+                        advancedQuality.degradationPreference === preference
+                      }
+                      disabled={phase === "starting" || switchingSource}
+                      title={`${t(DEGRADATION_PREFERENCE_KEYS[preference])} · ${t(PREFERENCE_PRESENTATION[preference].hint)}`}
+                      hint={preference === "maintain-resolution" ? "hint-prefer-resolution" : preference === "maintain-framerate" ? "hint-prefer-framerate" : "hint-degrade-pref"}
+                      onClick={() =>
+                        changeAdvancedQuality({
+                          degradationPreference: preference,
+                        })
+                      }
+                    >
+                      <Glyph
+                        name={PREFERENCE_PRESENTATION[preference].icon}
+                        size={18}
+                      />
+                      <Cap k={DEGRADATION_PREFERENCE_KEYS[preference]} />
+                    </Chip>
+                  ))}
+                </div>
+              </div>
+            </>}
+            audio={<>
+              {phase === "live" && (!nativeActive || nativeClientRef.current?.health.nativeMedia.microphone) ? (
+                <HostMicrophoneSettings enabled={microphoneEnabled}
+                disabled={microphonePending || switchingSource || changingQuality || sharingPaused}
+                  volume={microphoneVolume} onVolume={volume => {
+                    setMicrophoneVolume(volume);
+                    hostAudioRef.current?.setMicrophoneVolume(volume);
+                    const client = nativeClientRef.current;
+                    const shareId = nativeShareGenerationRef.current;
+                    if (nativeModeRef.current && client && shareId) {
+                      void client.setMicrophoneVolume(shareId, volume).catch(error => {
+                        if (nativeClientRef.current === client && nativeShareGenerationRef.current === shareId) {
+                          debugError("capture", "microphone-volume-failed", error);
+                          setNoticeValue({ kind: "key", key: "host.microphone.unavailable", target: "operation", comic: "warning", tone: "warn" });
+                        }
+                      });
+                    }
+                  }}
+                  native={nativeActive} loadDevices={loadMicrophones}
+                  deviceId={microphoneDevices[nativeActive ? "native" : "browser"]}
+                  onDevice={deviceId => void changeMicrophone(microphoneEnabled, deviceId)}
+                />
+              ) : null}
+              <div className="lr-door-group">
+                <span
+                  className="lr-door-glyph"
+                >
+                  <Glyph name="speaker" size={19} />
+                  <Cap k="host.advanced.audio" />
+                </span>
+                <div
+                  className="lr-row-group"
+                  role="group"
+                  aria-label={t("host.advanced.audio")}
+                >
+                  {(
+                    Object.keys(
+                      AUDIO_QUALITY_CAPTIONS,
+                    ) as ScreenAudioQuality[]
+                  ).map((audioQuality) => (
+                    <Chip
+                      key={audioQuality}
+                      selected={
+                        resolveScreenAudioQuality(
+                          advancedQuality.screenAudioQuality,
+                        ) === audioQuality
+                      }
+                      disabled={phase === "starting" || switchingSource}
+                      title={t("host.audio.title", {
+                        label: t(AUDIO_QUALITY_CAPTIONS[audioQuality]),
+                        kbps: String(
+                          SCREEN_AUDIO_BITRATES[audioQuality] / 1_000,
+                        ),
+                      })}
+                      hint="hint-audio-quality"
+                      onClick={() => changeScreenAudioQuality(audioQuality)}
+                    >
+                      <Cap k={AUDIO_QUALITY_CAPTIONS[audioQuality]} />
+                      <small className="lr-audio-rate">
+                        {SCREEN_AUDIO_BITRATES[audioQuality] / 1_000}
+                      </small>
+                    </Chip>
+                  ))}
+                </div>
+              </div>
+            </>}
+            technical={<>
+              <div className="lr-door-group">
+                <span
+                  className="lr-door-glyph"
+                >
+                  <Glyph name="branch" size={19} />
+                  <Cap k="host.advanced.route" />
+                </span>
+                <div className="lr-row-group">
+                  <SwitchItem
+                    checked={routePolicy.topologyOptimization}
+                    disabled={phase === "starting" || phase === "live"}
+                    onChange={(checked) =>
+                      changeRoutePolicy({ topologyOptimization: checked })
+                    }
+                    label={t("host.advanced.route.topo")}
+                    note={t("host.advanced.route.topoHint")}
+                    hint="hint-topology"
+                  />
+                  <SwitchItem
+                    checked={routePolicy.natPrediction}
+                    disabled={
+                      !natPredictionAvailable || phase === "starting" || phase === "live"
+                    }
+                    locked={!natPredictionAvailable}
+                    onChange={(checked) =>
+                      changeRoutePolicy({ natPrediction: checked })
+                    }
+                    label={t("host.advanced.route.natPrediction")}
+                    note={t(
+                      natPredictionAvailable
+                        ? "host.advanced.route.natPredictionHint"
+                        : "host.advanced.route.natPredictionUnavailable",
+                    )}
+                    hint={
+                      natPredictionAvailable ? "hint-nat-prediction" : "hint-nat-unavailable"
+                    }
+                  />
+                  <SwitchItem
+                    checked={routePolicy.peerOnly}
+                    disabled={
+                      !sfuAvailable || phase === "starting" || phase === "live"
+                    }
+                    locked={!sfuAvailable}
+                    onChange={(checked) =>
+                      changeRoutePolicy({ peerOnly: checked })
+                    }
+                    label={t("host.advanced.route.peerOnly")}
+                    note={t(
+                      sfuAvailable
+                        ? "host.advanced.route.peerOnlyHint"
+                        : "host.advanced.route.peerOnlyRequired",
+                    )}
+                    hint={sfuAvailable ? "hint-route-p2p" : "hint-route-p2p-required"}
+                  />
+                </div>
+              </div>
+              <div className="lr-door-group">
+                <span
+                  className="lr-door-glyph"
+                >
+                  <Glyph name="puzzle" size={19} />
+                  <Cap k="host.advanced.codec" />
+                </span>
+                <div
+                  className="lr-row-group"
+                  role="group"
+                  aria-label={t("host.advanced.codec")}
+                >
+                  {(["vp8", "auto", "h264"] as const).map((mode) => (
+                    <Chip
+                      key={mode}
+                      selected={displayedVideoCodecMode === mode}
+                      disabled={phase === "starting" || phase === "live"}
+                      title={
+                        mode === "auto"
+                          ? resolvedVideoCodec
+                            ? `${t("host.advanced.codec.auto")} · ${resolvedVideoCodec.toUpperCase()}`
+                            : `${t("host.advanced.codec.auto")} · ${t("host.advanced.codec.autoHint")}`
+                          : `${mode.toUpperCase()} · ${t(
+                              mode === "vp8"
+                                ? "host.advanced.codec.vp8Hint"
+                                : "host.advanced.codec.h264Hint",
+                            )}`
+                      }
+                      hint="hint-codec"
+                      onClick={() => changeVideoCodecMode(mode)}
+                    >
+                      {mode.toUpperCase()}
+                    </Chip>
+                  ))}
+                </div>
+              </div>
+            </>}
+          />
           <Couch
             view="host"
             host={{

@@ -49,9 +49,10 @@ Their order and meaning stay the same in Chinese, English and pure-visual modes.
 Source-sound details describe the raw capture input; microphone intent and
 Viewer playback volume are separate facts. Pausing the share silences the mixed
 output and temporarily disables microphone toggling without clearing its intent.
-Sharing settings below the picture group video presets and picture/audio parameters
-with the microphone selector and input gain. The disclosure expands in page flow,
-pushing the couch down; video presets remain available before capture starts.
+Sharing settings open from the action dock. Picture presets/parameters and sound
+form separate groups, with microphone device/input gain under sound and a further
+disclosure for connection/codec options. The panel expands in page flow, pushing
+the couch down; video presets remain available before capture starts.
 The dock keeps only its frequent mute action; camera selection stays with source selection.
 The default follows the system; an explicit selection never silently falls back
 to another device. Browser capture and native capture keep separate device IDs

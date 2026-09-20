@@ -1,11 +1,12 @@
 import { useRef, useState } from "react";
-import { Btn, Chip, NameTag, Pill, Row, RowGroup, SwitchItem } from "../components/living/primitives";
+import { Btn, Chip, NameTag, Pill, SwitchItem } from "../components/living/primitives";
 import { RoomChip, RoomAdmissionBadge } from "../components/living/RoomChip";
 import { CaptureSourcePicker, type NativeSourceList } from "../components/living/CaptureSourcePicker";
 import { LedStrip } from "../components/living/Header";
 import { StageTv } from "../components/living/Stage";
 import { HostMicrophone, HostMicrophoneSettings } from "../components/living/HostMicrophone";
 import { PlaybackControls } from "../components/living/PlaybackControls";
+import { SharingSettings } from "../components/living/SharingSettings";
 import { QualityPresets } from "../components/living/QualityPresets";
 import { RoomCodeInput } from "../components/living/RoomCodeInput";
 import type { QualityProfileId } from "../media/quality";
@@ -78,23 +79,16 @@ export function ControlsPreview() {
           <Btn icon={paused ? "play" : "pause"} title={paused ? "host.resume" : "host.pause"} cap={paused ? "host.resume" : "host.pause"}
             hint={paused ? "hint-resume" : "hint-pause"} onClick={() => setPaused(!paused)} />
           <Btn icon="switchSource" title="host.switchSource" cap="host.switchSource" hint="hint-switch-source" onClick={notify} />
+          <Btn icon="sliders" cap="host.advanced" title={sharingSettings ? "host.advanced.hide" : "host.advanced"}
+            hint={sharingSettings ? "hint-collapse" : "hint-advanced"} tone={sharingSettings ? "on" : undefined}
+            expanded={sharingSettings} controls="preview-sharing-settings" onClick={() => setSharingSettings(value => !value)} />
           <Btn id="host-stop-share" icon="stop" tone="danger" title="host.stop" cap="host.stop" hint="hint-share-stop" onClick={notify} />
         </div>
-        <section className="lr-host-settings" aria-label={t("host.advanced")}>
-          <Row label={t("host.quality")}>
-            <RowGroup><QualityPresets selected={preset} onSelect={setPreset} /></RowGroup>
-            <span className="lr-spacer" />
-            <Btn icon="sliders" cap="host.advanced" title={sharingSettings ? "host.advanced.hide" : "host.advanced"}
-              hint={sharingSettings ? "hint-collapse" : "hint-advanced"} tone={sharingSettings ? "on" : undefined}
-              expanded={sharingSettings} controls="preview-sharing-settings" onClick={() => setSharingSettings(value => !value)} />
-          </Row>
-          <div id="preview-sharing-settings" className={`lr-door-reveal${sharingSettings ? " is-open" : ""}`}><div>
-            {sharingSettings ? <div className="lr-door-body">
-              <HostMicrophoneSettings deviceId={microphoneDevice} onDevice={setMicrophoneDevice} loadDevices={previewMicrophones}
-                native enabled={microphone} disabled={paused} volume={microphoneVolume} onVolume={setMicrophoneVolume} />
-            </div> : null}
-          </div></div>
-        </section>
+        <SharingSettings id="preview-sharing-settings" open={sharingSettings}
+          presets={<QualityPresets selected={preset} onSelect={setPreset} />}
+          audio={<HostMicrophoneSettings deviceId={microphoneDevice} onDevice={setMicrophoneDevice} loadDevices={previewMicrophones}
+            native enabled={microphone} disabled={paused} volume={microphoneVolume} onVolume={setMicrophoneVolume} />}
+        />
       </section>
       <section id="option-preview" className="cp-card">
         <header><span className="cp-number">02</span><h2>{en ? "Pick, toggle, adjust" : "选一个，再拨一下。"}</h2></header>

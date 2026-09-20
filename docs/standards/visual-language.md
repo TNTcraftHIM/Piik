@@ -122,14 +122,15 @@ The Host's persistent dock stays below the picture; the Viewer's playback bar
 belongs to the video. Their similar appearance does not equate broadcast pause
 with local playback pause. Microphone mute, sharing pause, source replacement and
 stop remain direct actions; stopping stays visually separated from frequent actions.
-The Host's quality presets and sharing-settings disclosure belong in the same
-area below the television and above the couch, with quality available before
-sharing starts. Expanded settings reuse the existing picture/audio controls and
-microphone device/input gain, pushing later content down instead of covering the
-picture or participants. Keep detailed parameters collapsed initially and retain
-the distinction between media inputs and the existing route/codec options; the
-whole panel is not merely picture settings. Narrow layouts must not compress all
-settings into one toolbar. The microphone comic depicts Host commentary gain;
+One compact dock combines direct actions and the sharing-settings entry below
+the television, above the couch. Its disclosure groups quality presets and picture
+parameters with sound and microphone settings; presets remain available before
+sharing starts. Separate the less frequent connection/codec options in a nested
+disclosure. Expand in page flow, pushing later content down instead of covering
+the picture or participants. Use two content groups on wide screens and stack
+them on narrow screens; avoid another permanent row of settings cards. Keep
+shared presentation separate from the existing setting/resource owners.
+The microphone comic depicts Host commentary gain;
 the Viewer's listening-volume comic remains a different action.
 
 ## Cast And Objects
