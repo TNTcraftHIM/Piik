@@ -51,7 +51,7 @@ func TestLauncherServesStateAndCompletesOneSelection(t *testing.T) {
 		response, err := http.Post(
 			origin+"/api/client-launcher/launch",
 			"application/json",
-			bytes.NewBufferString(`{"mode":"link","language":"vis","debug":true}`),
+			bytes.NewBufferString(`{"mode":"local","language":"vis","debug":true}`),
 		)
 		if err != nil {
 			requestErr <- err
@@ -62,7 +62,7 @@ func TestLauncherServesStateAndCompletesOneSelection(t *testing.T) {
 
 	select {
 	case selection := <-server.Selection():
-		if selection != (Selection{Mode: ModeLink, Language: "vis", Debug: true}) {
+		if selection != (Selection{Mode: ModeLocal, Language: "vis", Debug: true}) {
 			t.Fatalf("selection = %+v", selection)
 		}
 		server.SetResult("http://localhost:8787/#piik-client=1", nil)
@@ -104,7 +104,7 @@ func TestLauncherIncludesTheInjectedBuildVersionAndRevision(t *testing.T) {
 	}
 	if response.StatusCode != http.StatusOK || json.NewDecoder(response.Body).Decode(&state) != nil ||
 		state.Version != version || state.Revision != revision ||
-		state.PackageTarget != runtime.GOOS+"-"+runtime.GOARCH || state.DefaultMode != ModeLink {
+		state.PackageTarget != runtime.GOOS+"-"+runtime.GOARCH || state.DefaultMode != ModeLocal {
 		t.Fatalf("launcher build = %d, %+v", response.StatusCode, state)
 	}
 }
@@ -264,8 +264,6 @@ func TestLauncherRejectsInvalidSelections(t *testing.T) {
 		"lan-type":         `{"mode":"local","language":"en","lanAddress":123}`,
 		"lan-invalid":      `{"mode":"local","language":"en","lanAddress":"bad-address"}`,
 		"lan-ipv6":         `{"mode":"local","language":"en","lanAddress":"::1"}`,
-		"link-lan":         `{"mode":"link","language":"en","lanAddress":"192.168.1.4"}`,
-		"link-lan-empty":   `{"mode":"link","language":"en","lanAddress":""}`,
 		"site-lan":         `{"mode":"site","language":"en","site":"https://share.example","lanAddress":"192.168.1.4"}`,
 		"missing-language": `{"mode":"local"}`,
 		"unknown-language": `{"mode":"local","language":"other"}`,
@@ -309,9 +307,9 @@ func TestLauncherReportsSafeBoundedFailureDetails(t *testing.T) {
 		t.Fatalf("CLI debug was not advertised: %+v, %v", state, err)
 	}
 	_ = response.Body.Close()
-	server.SetResult("", errors.New("public tunnel failed: token=private-secret "+strings.Repeat("network unavailable ", 200)))
+	server.SetResult("", errors.New("local server failed: token=private-secret "+strings.Repeat("network unavailable ", 200)))
 	response, err = http.Post(origin+"/api/client-launcher/launch", "application/json",
-		strings.NewReader(`{"mode":"link","language":"en"}`))
+		strings.NewReader(`{"mode":"local","language":"en"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,7 +318,7 @@ func TestLauncherReportsSafeBoundedFailureDetails(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&failure); err != nil || response.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("failure response = %d, %v", response.StatusCode, err)
 	}
-	if failure.Error != "Piik App could not start" || !strings.Contains(failure.Detail, "public tunnel failed") ||
+	if failure.Error != "Piik App could not start" || !strings.Contains(failure.Detail, "local server failed") ||
 		strings.Contains(failure.Detail, "private-secret") || len([]rune(failure.Detail)) > 2051 {
 		t.Fatalf("unsafe or missing failure detail: %+v", failure)
 	}

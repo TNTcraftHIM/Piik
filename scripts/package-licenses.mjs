@@ -116,16 +116,11 @@ export function writeServerLicenseNotices(repositoryRoot, outputFile, goCommand,
     WEB_NOTICE_LINE + notices.toolchain + moduleSections(notices.modules));
 }
 
-export function writeAppLicenseNotices(repositoryRoot, packageRoot, goCommand, target, tunnelVersion) {
+export function writeAppLicenseNotices(repositoryRoot, packageRoot, goCommand, target) {
   copyFileSync(join(repositoryRoot, "LICENSE"), join(packageRoot, "LICENSE"));
-  if (tunnelVersion) {
-    writeFileSync(join(packageRoot, "runtime", "tunnel", "THIRD-PARTY-NOTICES.txt"),
-      pinnedNotice(`cloudflared@${tunnelVersion}`));
-  }
   const notices = goNotices(repositoryRoot, goCommand, target, "./cmd/piik-app");
   let text = "Piik App third-party software notices\n" +
     WEB_NOTICE_LINE +
-    (tunnelVersion ? "Cloudflared: runtime/tunnel/THIRD-PARTY-NOTICES.txt\n" : "") +
     notices.toolchain;
   const linuxCapture = target.goos === "linux" && target.captureName &&
     existsSync(join(packageRoot, "runtime", "native", target.captureName));

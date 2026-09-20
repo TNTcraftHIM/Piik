@@ -59,7 +59,6 @@ export type Set2Kind =
   | "hint-shuffle-code"
   | "hint-copy-invite"
   | "hint-invite-link"
-  | "hint-client-link"
   | "hint-rotate-invite"
   | "hint-revoke-invite"
   | "hint-password";

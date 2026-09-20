@@ -21,7 +21,7 @@ import {
 const launcherStateSchema = z.object({
   site: z.string(),
   localAccessPassword: z.string(),
-  defaultMode: z.enum(["local", "link", "site"]),
+  defaultMode: z.enum(["local", "site"]),
   revision: z.string(),
   version: z.string().default("development"),
   packageTarget: z.string().optional(),
@@ -38,7 +38,7 @@ export function AppLauncherPage() {
   const { lang, vis, t } = useCopy();
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
-  const [mode, setMode] = useState<AppMode>("link");
+  const [mode, setMode] = useState<AppMode>("local");
   const [site, setSite] = useState("");
   const [localAccessPassword, setLocalAccessPassword] = useState("");
   const [error, setError] = useState<{ kind: "load" | "launch"; detail?: string } | null>(null);

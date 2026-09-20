@@ -31,7 +31,7 @@ const ROOT = resolve(import.meta.dirname, "..");
 const BUILD_ROOT = join(ROOT, "build", "go-check");
 export const SOURCE_TITLE = "Piik Native Gate Source";
 
-type GateMode = "local" | "cross-nat" | "one-link";
+type GateMode = "local" | "cross-nat";
 type VideoCodec = "h264" | "vp8";
 
 const CODEC_PROBE = `(() => {
@@ -97,9 +97,7 @@ interface GateResult {
   replacementViewerFrames: number | null;
   appCrashEndedShare: boolean | null;
   mode: GateMode;
-  viewerLocation: "local-browser" | "public-url-browser" | "remote-peer";
-  publicViewerPage: boolean;
-  publicViewerSignal: boolean;
+  viewerLocation: "local-browser" | "remote-peer";
   cleanup: Awaited<ReturnType<typeof cleanupRun>>;
   error: string | null;
   stage?: string;
@@ -554,11 +552,7 @@ async function main(): Promise<void> {
     throw new Error("PIIK_CLIENT_NATIVE_HOST_GATE=true is required");
   }
   const crossNat = process.env.PIIK_CLIENT_CROSS_NAT_GATE === "true";
-  const linkMedia = process.env.PIIK_CLIENT_LINK_MEDIA_GATE === "true";
-  if (crossNat && linkMedia) {
-    throw new Error("Cross-NAT and one-link gate modes are mutually exclusive");
-  }
-  const mode: GateMode = linkMedia ? "one-link" : crossNat ? "cross-nat" : "local";
+  const mode: GateMode = crossNat ? "cross-nat" : "local";
   const gateStunUrls = process.env.PIIK_CLIENT_GATE_STUN_URLS?.trim();
   if (mode === "cross-nat" && !gateStunUrls) {
     throw new Error("PIIK_CLIENT_GATE_STUN_URLS is required for the cross-NAT gate");
@@ -576,16 +570,10 @@ async function main(): Promise<void> {
   if (requestedCodec !== "auto" && requestedCodec !== "h264" && requestedCodec !== "vp8") {
     throw new Error("PIIK_CLIENT_NATIVE_HOST_CODEC must be auto, h264, or vp8");
   }
-  const remote = mode === "cross-nat" || mode === "one-link" &&
-    Boolean(process.env.PIIK_REMOTE_HOST?.trim() || process.env.PIIK_REMOTE_SSH_KEY?.trim())
-      ? remoteOptions() : null;
+  const remote = mode === "cross-nat" ? remoteOptions() : null;
   const chromePath = process.env.CHROME_PATH?.trim();
   if (!chromePath) throw new Error("CHROME_PATH is required");
   const go = process.env.PIIK_GO?.trim() || "go";
-  const tunnel = process.env.PIIK_CLOUDFLARED?.trim() || join(
-    BUILD_ROOT,
-    "cloudflared.exe",
-  );
   const profile = await mkdtemp(join(tmpdir(), "piik-client-media-"));
   const sourceProfile = await mkdtemp(join(tmpdir(), "piik-client-media-"));
   await mkdir(BUILD_ROOT, { recursive: true });
@@ -640,9 +628,7 @@ async function main(): Promise<void> {
     replacementViewerFrames: mode === "local" ? 0 : null,
     appCrashEndedShare: crashGate ? false : null,
     mode,
-    viewerLocation: remote ? "remote-peer" : mode === "one-link" ? "public-url-browser" : "local-browser",
-    publicViewerPage: false,
-    publicViewerSignal: false,
+    viewerLocation: remote ? "remote-peer" : "local-browser",
     cleanup: {
       browserExited: false,
       nativeExited: false,
@@ -690,10 +676,7 @@ async function main(): Promise<void> {
     await waitForCaptureWindow(captureBinary);
     stage = "app-start";
     app = spawn(appBinary, [
-      mode === "one-link" ? "--link" : "--local",
-      ...(mode === "one-link"
-        ? ["--tunnel-process", tunnel]
-        : []),
+      "--local",
       "--capture-process", captureBinary,
       "--config", appConfig,
       "--port", String(appPort),
@@ -714,7 +697,7 @@ async function main(): Promise<void> {
     });
     app.stderr.resume();
     stage = "app-ready";
-    const appInfo = await readAppEndpoint(app, mode === "one-link");
+    const appInfo = await readAppEndpoint(app);
     nativePort = appInfo.endpoint.port;
     if (mode === "cross-nat" && remote) {
       stage = "signaling-tunnel";
@@ -870,12 +853,8 @@ async function main(): Promise<void> {
     }
     if (remote) {
       stage = "remote-viewer";
-      const signalUrl = mode === "one-link"
-        ? new URL("/signal", appInfo.publicOrigin!).toString().replace(/^http/, "ws")
-        : `ws://127.0.0.1:${remote.signalPort}/signal`;
-      const signalOrigin = mode === "one-link"
-        ? appInfo.publicOrigin!
-        : `http://localhost:${appPort}`;
+      const signalUrl = `ws://127.0.0.1:${remote.signalPort}/signal`;
+      const signalOrigin = `http://localhost:${appPort}`;
       const remoteResult = await runRemotePeerGate(
         remoteBinary,
         remote,
@@ -898,17 +877,7 @@ async function main(): Promise<void> {
       }
     } else {
       const viewerURL = new URL(hostState.invite);
-      if (mode === "local") viewerURL.hostname = "localhost";
-      else {
-        if (viewerURL.protocol !== "https:" || viewerURL.origin !== appInfo.publicOrigin) {
-          throw new Error("One-link invitation does not use the actual public origin");
-        }
-        stage = "public-page-ready";
-        await waitForValue(async (deadline) => {
-          const response = await fetch(viewerURL, { signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())) });
-          return response.ok;
-        }, Boolean, 20_000);
-      }
+      viewerURL.hostname = "localhost";
       stage = "viewer-page";
       const viewer = await createPage(cdp, viewerURL.toString(), CODEC_PROBE, true);
       stage = "viewer-media";
@@ -936,14 +905,6 @@ async function main(): Promise<void> {
       result.viewerWidth = viewerState.width;
       result.viewerHeight = viewerState.height;
       await assertVideoCodec(cdp, viewer, actualCodec);
-      if (mode === "one-link") {
-        result.codecPreserved = true;
-        result.publicViewerPage = await evaluate<boolean>(cdp, viewer,
-          `location.origin === ${JSON.stringify(appInfo.publicOrigin)} && location.pathname === ${JSON.stringify(viewerURL.pathname)}`,
-          Date.now() + 5_000);
-        result.publicViewerSignal = await evaluate<boolean>(cdp, viewer,
-          "window.__piikGatePublicSignal()", Date.now() + 5_000);
-      } else {
       await evaluate<boolean>(
         cdp,
         viewer,
@@ -1412,7 +1373,6 @@ async function main(): Promise<void> {
         result.replacementViewerConnected = null;
         result.replacementViewerFrames = null;
       }
-      }
     }
   } catch (error) {
     // App stderr can contain implementation diagnostics or URLs; keep gate
@@ -1460,10 +1420,7 @@ async function main(): Promise<void> {
       ? result.remoteViewerConnected && result.remoteViewerPackets >= 30 &&
         result.remoteNatPath && result.remotePeerExited === true &&
         (mode !== "cross-nat" || result.reverseSignalTunnelClosed === true)
-      : mode === "one-link"
-        ? result.publicViewerPage && result.publicViewerSignal && result.viewerConnected &&
-          result.viewerFrames >= 30 && result.viewerWidth === 1920 && result.viewerHeight === 1080 && result.codecPreserved
-        : result.viewerConnected && result.viewerFrames >= 30 &&
+      : result.viewerConnected && result.viewerFrames >= 30 &&
         result.qualityControlsEnabled && result.liveQualityChanged &&
         result.backgroundProfileRecovery !== false &&
         result.livePresetChanges === 2 &&

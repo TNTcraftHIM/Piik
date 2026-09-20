@@ -6,7 +6,7 @@ import { Btn, Pill } from "./primitives";
 import type { HintKind } from "./hints";
 import { Glyph, type GlyphName } from "../../ui/icons";
 import { useCopy, type CopyKey } from "../../ui/copy";
-export type AppMode = "local" | "link" | "site";
+export type AppMode = "local" | "site";
 
 const MODES: Array<{
   mode: AppMode;
@@ -21,13 +21,6 @@ const MODES: Array<{
     label: "client.launch.local",
     hint: "client.launch.localHint",
     comic: "hint-client-local",
-  },
-  {
-    mode: "link",
-    icon: "globe",
-    label: "client.launch.link",
-    hint: "client.launch.linkHint",
-    comic: "hint-client-link",
   },
   {
     mode: "site",

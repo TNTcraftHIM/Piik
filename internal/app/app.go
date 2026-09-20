@@ -22,7 +22,6 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecontrol"
-	"github.com/TNTcraftHIM/Piik/internal/app/publictunnel"
 	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
 	serverapp "github.com/TNTcraftHIM/Piik/internal/server/app"
 	serverconfig "github.com/TNTcraftHIM/Piik/internal/server/config"
@@ -31,10 +30,8 @@ import (
 )
 
 const (
-	DefaultLocalPort            = 8787
-	publicSTUNURL               = "stun:stun.cloudflare.com:3478"
-	publicNATPredictionSTUNURLA = "stun:stun.miwifi.com:3478"
-	publicNATPredictionSTUNURLB = "stun:stun.chat.bilibili.com:3478"
+	DefaultLocalPort = 8787
+	publicSTUNURL    = "stun:stun.cloudflare.com:3478"
 	// localShutdownTimeout bounds the ordered Local stop. The packaged smoke
 	// allows 10 s between the stop request and the exit, so it stays well
 	// inside that budget.
@@ -56,7 +53,6 @@ type Options struct {
 	Site           string
 	SiteSet        bool
 	Local          bool
-	Link           bool
 	ConfigPath     string
 	LANAddress     string
 	Port           int
@@ -64,7 +60,6 @@ type Options struct {
 	Debug          bool
 	LogDir         string
 	CaptureProcess string
-	TunnelProcess  string
 	Ready          func(string)
 	console        *console
 	logger         *slog.Logger
@@ -148,7 +143,7 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 			return
 		}
 		recorder.Context("configuration", map[string]any{"siteConfigured": config.Site != "", "local": selected.Local,
-			"link": selected.Link, "port": selected.Port, "lanAddress": selected.LANAddress,
+			"port": selected.Port, "lanAddress": selected.LANAddress,
 			"localAccessProtected": config.LocalAccessPassword != ""})
 		recorder.Context("capture", nativeMedia.capture)
 		recorder.Binary("captureExecutable", nativeMedia.captureProcess)
@@ -208,7 +203,7 @@ func finishRun(console *console, recorder *diagnostics.Recorder, restoreLogger f
 }
 
 func explicitMode(options Options) bool {
-	return options.SiteSet || options.Local || options.Link || options.DisableBrowser
+	return options.SiteSet || options.Local || options.DisableBrowser
 }
 
 func runConfigured(
@@ -217,7 +212,7 @@ func runConfigured(
 	config appconfig.Config,
 	control *loopback.Server,
 ) error {
-	if config.Site != "" && !options.Local && !options.Link {
+	if config.Site != "" && !options.Local {
 		return runSite(config.Site, options, control)
 	}
 	return runLocal(ctx, options, config, control)
@@ -281,7 +276,6 @@ func runLauncher(
 		config.LocalAccessPassword = selection.LocalAccessPassword
 	}
 	options.Local = selection.Mode == launcher.ModeLocal
-	options.Link = selection.Mode == launcher.ModeLink
 	options.Debug = options.Debug || selection.Debug
 	if selection.LANAddress != nil {
 		options.LANAddress = *selection.LANAddress
@@ -357,9 +351,6 @@ func applyMode(config appconfig.Config, options Options) (appconfig.Config, erro
 }
 
 func validateMode(options Options) error {
-	if options.Link && (options.SiteSet || options.Local) {
-		return errors.New("--link is a self-contained Local mode")
-	}
 	return nil
 }
 
@@ -422,9 +413,6 @@ func runLocal(ctx context.Context, options Options, config appconfig.Config,
 	control *loopback.Server,
 ) (returnedErr error) {
 	view := consoleView{mode: "local", state: "starting", protected: config.LocalAccessPassword != ""}
-	if options.Link {
-		view.mode = "link"
-	}
 	slog.Debug("piik-client", "event", "mode", "mode", view.mode)
 	options.console.show(view)
 	listener, err := net.ListenTCP("tcp4", &net.TCPAddr{IP: net.IPv4zero, Port: options.Port})
@@ -441,42 +429,14 @@ func runLocal(ctx context.Context, options Options, config appconfig.Config,
 	if lanErr == nil {
 		selectedAddress, lanErr = lan.Select(addresses, options.LANAddress)
 	}
-	// A public invitation only needs the tunnel origin; keep any resolved LAN
-	// addresses as allowed local origins but never block link startup on LAN
-	// selection (multi-interface hosts may not have one obvious address).
-	if lanErr != nil && !options.Link {
+	if lanErr != nil {
 		return lanErr
 	}
-	var tunnel *publictunnel.Process
-	publicOrigin := ""
-	if options.Link {
-		tunnel, err = publictunnel.Start(
-			ctx,
-			tunnelExecutable(options.TunnelProcess),
-			fmt.Sprintf("http://127.0.0.1:%d", options.Port),
-		)
-		if err != nil {
-			// Only the caller's clean cancellation is a normal stopped outcome.
-			// A startup or retirement failure racing cancellation remains an error.
-			if err == context.Canceled && ctx.Err() == context.Canceled {
-				return nil
-			}
-			return err
-		}
-		defer func() { returnedErr = errors.Join(returnedErr, tunnel.Close()) }()
-		publicOrigin = tunnel.Origin()
-		slog.Debug("piik-client", "event", "public-link-ready")
-	}
-
-	stunURLs, natPredictionStunURLs := localSTUNURLs(options.Link)
 	localConfig, err := serverconfig.Local(serverconfig.LocalOptions{
-		Port:                  options.Port,
-		PublicAddress:         selectedAddress,
-		PublicOrigin:          publicOrigin,
-		AllowedAddresses:      addresses,
-		SiteAccessPassword:    config.LocalAccessPassword,
-		STUNURLs:              stunURLs,
-		NATPredictionSTUNURLs: natPredictionStunURLs,
+		Port:               options.Port,
+		PublicAddress:      selectedAddress,
+		AllowedAddresses:   addresses,
+		SiteAccessPassword: config.LocalAccessPassword,
 	})
 	if err != nil {
 		return err
@@ -499,39 +459,29 @@ func runLocal(ctx context.Context, options Options, config appconfig.Config,
 	if _, err = localServer.Listen(ctx); err != nil {
 		return err
 	}
-	slog.Debug("piik-client", "event", "local-server-ready", "port", options.Port, "publicLink", publicOrigin != "")
+	slog.Debug("piik-client", "event", "local-server-ready", "port", options.Port)
 
-	// The readiness lines follow the listener, which the packaged smoke and the
-	// public-link gate both read from stdout before they probe the port.
+	// The readiness lines follow the listener, which the packaged smoke reads
+	// from stdout before it probes the port.
 	if options.console.machine {
 		if config.LocalAccessPassword == "" {
 			fmt.Println("Local access: open")
 		} else {
 			fmt.Printf("Local access password: %s\n", config.LocalAccessPassword)
 		}
-		if publicOrigin != "" {
-			fmt.Printf("Public invitation origin: %s\n", publicOrigin)
-		} else {
-			fmt.Printf("LAN invitation origin: http://%s:%d\n", selectedAddress, options.Port)
-		}
+		fmt.Printf("LAN invitation origin: http://%s:%d\n", selectedAddress, options.Port)
 	}
 	launchURL := launchURLWithLocalAccess(
 		fmt.Sprintf("http://127.0.0.1:%d/", options.Port),
 		config.LocalAccessPassword,
 	)
-	view.state, view.entry, view.invite = "ready", launchURL, publicOrigin
-	if view.invite == "" {
-		view.invite = fmt.Sprintf("http://%s:%d", selectedAddress, options.Port)
-	}
+	view.state, view.entry, view.invite = "ready", launchURL,
+		fmt.Sprintf("http://%s:%d", selectedAddress, options.Port)
 	options.console.show(view)
 	if !options.DisableBrowser {
 		options.console.openBrowser(launchURL)
 	} else if options.Ready != nil {
 		options.Ready(launchURL)
-	}
-	var tunnelDone <-chan struct{}
-	if tunnel != nil {
-		tunnelDone = tunnel.Done()
 	}
 
 	select {
@@ -542,11 +492,6 @@ func runLocal(ctx context.Context, options Options, config appconfig.Config,
 			return fmt.Errorf("Piik App native control stopped unexpectedly: %w", err)
 		}
 		return nil
-	case <-tunnelDone:
-		if ctx.Err() != nil {
-			return nil
-		}
-		return errors.New("public invitation link stopped; reopen Piik to create a new link")
 	}
 }
 
@@ -632,22 +577,9 @@ func discoverNativeMedia(ctx context.Context, configuredPath string) nativeRunti
 	}
 }
 
-// localSTUNURLs is the Local room authority's ICE configuration. Only --link
-// has a public path, so only --link configures public STUN and the bounded NAT
-// prediction survey. The lists are literals on purpose: a gate that sets
-// STUN_URLS is configuring the App's own Pion edge, and that value must not
-// reach the room server (which is why serverconfig.Local reads no environment).
-func localSTUNURLs(link bool) (stunURLs []string, natPredictionSTUNURLs []string) {
-	if !link {
-		return nil, nil
-	}
-	return []string{publicSTUNURL},
-		[]string{publicNATPredictionSTUNURLA, publicNATPredictionSTUNURLB}
-}
-
 // endLocalServer is step 1 of the ADR-0010 item 12 unwind: every room ends,
 // signaling closes, the listener drains and the room store closes, all before
-// the tunnel and the loopback server go away. serverapp.End is memoised, so the
+// the loopback server goes away. serverapp.End is memoised, so the
 // deferred call after an explicit stop is a no-op. A serve loop or a drain that
 // was already stopping reports http.ErrServerClosed or context.Canceled;
 // neither is an App failure, and Run turns any error into exit status 1,
@@ -660,13 +592,6 @@ func endLocalServer(server *serverapp.Server) error {
 		return nil
 	}
 	return err
-}
-
-func tunnelExecutable(configured string) string {
-	if path := strings.TrimSpace(configured); path != "" {
-		return filepath.Clean(path)
-	}
-	return publictunnel.PackagedExecutable()
 }
 
 func printEndpoint(endpoint loopback.Endpoint) error {

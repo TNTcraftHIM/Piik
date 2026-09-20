@@ -1,6 +1,6 @@
 // Command piik-app is the self-contained Piik App: it opens a
 // configured Piik Site, or runs the Local room authority in-process
-// (--local / --link) together with the loopback capability service and the
+// (--local) together with the loopback capability service and the
 // native media edge. Flags select the mode; app owns every mode's
 // lifecycle.
 package main
@@ -33,11 +33,9 @@ func run(args []string) int {
 		return nil
 	})
 	flags.BoolVar(&options.Local, "local", false, "use the self-contained Local room authority")
-	flags.BoolVar(&options.Link, "link", false, "create one public Viewer invitation link")
 	flags.BoolVar(&options.Debug, "debug", false, "save opt-in App diagnostics to rotated files")
 	flags.StringVar(&options.LogDir, "log-dir", "", "diagnostic directory (overrides PIIK_LOG_DIR)")
 	flags.StringVar(&options.CaptureProcess, "capture-process", "", "path to the platform native capture process")
-	flags.StringVar(&options.TunnelProcess, "tunnel-process", "", "path to the packaged public tunnel process")
 	flags.StringVar(&options.ConfigPath, "config", "", "path to the App configuration file")
 	flags.StringVar(&options.LANAddress, "lan-address", "", "LAN IPv4 address used in Local invitations")
 	flags.IntVar(&options.Port, "port", app.DefaultLocalPort, "Local Piik server port")

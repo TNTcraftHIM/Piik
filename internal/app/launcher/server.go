@@ -33,7 +33,6 @@ type Mode string
 
 const (
 	ModeLocal Mode = "local"
-	ModeLink  Mode = "link"
 	ModeSite  Mode = "site"
 )
 
@@ -247,7 +246,7 @@ func (server *Server) handleState(response http.ResponseWriter, request *http.Re
 			if server.site != "" {
 				return ModeSite
 			}
-			return ModeLink
+			return ModeLocal
 		}(),
 	})
 }
@@ -372,7 +371,7 @@ func decodeSelection(reader io.Reader) (Selection, error) {
 		selection.LANAddress = &value
 	}
 	switch selection.Mode {
-	case ModeLocal, ModeLink:
+	case ModeLocal:
 		if strings.TrimSpace(selection.Site) != "" {
 			return Selection{}, errors.New("local launch cannot include a Site")
 		}

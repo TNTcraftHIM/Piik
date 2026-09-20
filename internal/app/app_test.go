@@ -24,130 +24,10 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/app/lan"
 	"github.com/TNTcraftHIM/Piik/internal/app/launcher"
 	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
-	serverconfig "github.com/TNTcraftHIM/Piik/internal/server/config"
 )
 
 func TestMain(tests *testing.M) {
-	if mode := os.Getenv("PIIK_APP_TUNNEL_FIXTURE"); mode != "" {
-		if err := os.WriteFile(os.Getenv("PIIK_APP_TUNNEL_STARTED"), nil, 0600); err != nil {
-			os.Exit(1)
-		}
-		if mode == "failed" {
-			os.Exit(7)
-		}
-		if mode == "ready" || mode == "ready-failed" {
-			fmt.Println(`{"message":"https://test-room.trycloudflare.com"}`)
-			fmt.Println(`{"message":"Registered tunnel connection"}`)
-		}
-		if mode == "ready-failed" {
-			for {
-				if _, err := os.Stat(os.Getenv("PIIK_APP_TUNNEL_EXIT")); err == nil {
-					os.Exit(7)
-				}
-				time.Sleep(time.Millisecond)
-			}
-		}
-		time.Sleep(10 * time.Second)
-		os.Exit(0)
-	}
 	os.Exit(tests.Run())
-}
-
-func TestPublicLinkStartupDistinguishesCancellationFromFailure(t *testing.T) {
-	executable, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PIIK_DEBUG", "")
-	for _, mode := range []string{"starting", "ready", "failed", "ready-failed"} {
-		t.Run(mode, func(t *testing.T) {
-			directory := t.TempDir()
-			marker := filepath.Join(directory, "tunnel-started")
-			exit := filepath.Join(directory, "tunnel-exit")
-			t.Setenv("PIIK_APP_TUNNEL_FIXTURE", mode)
-			t.Setenv("PIIK_APP_TUNNEL_STARTED", marker)
-			t.Setenv("PIIK_APP_TUNNEL_EXIT", exit)
-			listener, err := net.Listen("tcp4", "127.0.0.1:0")
-			if err != nil {
-				t.Fatal(err)
-			}
-			port := listener.Addr().(*net.TCPAddr).Port
-			if err = listener.Close(); err != nil {
-				t.Fatal(err)
-			}
-			ctx, cancel := context.WithCancel(t.Context())
-			defer cancel()
-			ready := false
-			done := make(chan error, 1)
-			joined := false
-			defer func() {
-				cancel()
-				if !joined {
-					select {
-					case <-done:
-					case <-time.After(5 * time.Second):
-						t.Error("App tunnel fixture did not retire")
-					}
-				}
-			}()
-			go func() {
-				done <- Run(ctx, Options{
-					Link: true, DisableBrowser: true, Debug: true, LogDir: filepath.Join(directory, "logs"),
-					ConfigPath: filepath.Join(directory, "client.json"), Port: port,
-					CaptureProcess: filepath.Join(directory, "missing-capture"), TunnelProcess: executable,
-					Ready: func(string) {
-						ready = true
-						if mode == "ready-failed" {
-							if err := os.WriteFile(exit, nil, 0600); err != nil {
-								t.Error(err)
-								cancel()
-							}
-						} else {
-							cancel()
-						}
-					},
-				})
-			}()
-			if mode == "starting" {
-				deadline := time.Now().Add(3 * time.Second)
-				for {
-					if _, err = os.Stat(marker); err == nil {
-						break
-					}
-					if time.Now().After(deadline) {
-						t.Fatal("public link startup did not reach its tunnel")
-					}
-					time.Sleep(10 * time.Millisecond)
-				}
-				cancel()
-			}
-			select {
-			case err = <-done:
-				joined = true
-				if mode == "failed" {
-					if err == nil || !strings.Contains(err.Error(), "service exited before connecting") {
-						t.Fatalf("startup failure was lost: %v", err)
-					}
-				} else if mode == "ready-failed" {
-					if err == nil || !strings.Contains(err.Error(), "public invitation link stopped") ||
-						strings.Count(err.Error(), "exit status 7") != 1 {
-						t.Fatalf("ready tunnel failure must be retained once: %v", err)
-					}
-				} else if err != nil {
-					t.Fatalf("intentional %s stop became an App failure: %v", mode, err)
-				}
-				if ready != (mode == "ready" || mode == "ready-failed") {
-					t.Fatalf("startup readiness = %v for %s", ready, mode)
-				}
-			case <-time.After(5 * time.Second):
-				t.Fatal("App did not retire its local authority and tunnel")
-			}
-			content, err := os.ReadFile(filepath.Join(directory, "logs", "client.log"))
-			if err != nil || !strings.Contains(string(content), fmt.Sprintf(`"event":"stopped","failed":%v`, mode == "failed" || mode == "ready-failed")) {
-				t.Fatalf("diagnostics misclassified the App outcome: %s, %v", content, err)
-			}
-		})
-	}
 }
 
 type launcherRuntimeLog struct {
@@ -221,7 +101,7 @@ func TestLauncherRetainsItsRuntimeFailureDuringCancellation(t *testing.T) {
 				defer close(requestDone)
 				client := &http.Client{Timeout: 3 * time.Second}
 				response, err := client.Post(strings.TrimSuffix(target, "/client")+"/api/client-launcher/launch",
-					"application/json", strings.NewReader(`{"mode":"link","language":"en"}`))
+					"application/json", strings.NewReader(`{"mode":"local","language":"en"}`))
 				if err != nil {
 					if !cancelBeforeFailure {
 						t.Error(err)
@@ -467,19 +347,19 @@ func TestSavedSiteAllowsBrowserOriginAtNativeControl(t *testing.T) {
 	}
 }
 
-func TestOccupiedPortRejectsLinkBeforeStartingATunnel(t *testing.T) {
+func TestOccupiedPortRejectsLocalLaunch(t *testing.T) {
 	listener, err := net.ListenTCP("tcp4", &net.TCPAddr{IP: net.IPv4zero})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer listener.Close()
 	err = runLocal(t.Context(), Options{
-		Link: true, Port: listener.Addr().(*net.TCPAddr).Port,
-		TunnelProcess: "missing-tunnel-process", console: &console{machine: true},
+		Local: true, Port: listener.Addr().(*net.TCPAddr).Port,
+		console: &console{machine: true},
 	}, appconfig.Config{}, nil)
 	var bindError *net.OpError
 	if !errors.As(err, &bindError) || bindError.Op != "listen" {
-		t.Fatalf("occupied port must fail before tunnel work: %v", err)
+		t.Fatalf("occupied port must fail before local work: %v", err)
 	}
 }
 
@@ -535,7 +415,7 @@ func TestAppDiagnosticsUseFilesOnlyWhenEnabled(t *testing.T) {
 	for _, enabled := range []bool{false, true} {
 		output.Reset()
 		directory := t.TempDir()
-		err := Run(t.Context(), Options{Debug: enabled, LogDir: directory, DisableBrowser: true, Local: true, Link: true})
+		err := Run(t.Context(), Options{Debug: enabled, LogDir: directory, DisableBrowser: true, Local: true, SiteSet: true, Site: "https://share.example"})
 		if err == nil {
 			t.Fatal("invalid mode must stop before starting capture or services")
 		}
@@ -673,67 +553,14 @@ func TestLaunchURLEncodesAndClearsOptionalLocalAccess(t *testing.T) {
 	}
 }
 
-func TestLinkModeKeepsOneLocalAuthority(t *testing.T) {
+func TestLocalModeKeepsSavedSettings(t *testing.T) {
 	config := appconfig.Config{
 		Version:             1,
 		LocalAccessPassword: "abcdefghijklmnopqrstuvwxyzABCDEF",
 		Site:                "https://example.test",
 	}
-	for _, options := range []Options{{Link: true}, {Local: true}} {
-		selected, err := applyMode(config, options)
-		if err != nil || selected != config {
-			t.Fatalf("mode selection changed saved settings: %+v, %v", selected, err)
-		}
-	}
-	if err := validateMode(Options{Link: true, SiteSet: true}); err == nil {
-		t.Fatal("link mode accepted a separate Site")
-	}
-	if err := validateMode(Options{Link: true, Local: true}); err == nil {
-		t.Fatal("link mode accepted a second Local selector")
-	}
-}
-
-// The Local room authority owns its ICE configuration: a STUN_URLS meant for
-// the App's own Pion edge must not reach it, and only --link is public.
-func TestLocalServerOwnsItsSTUNConfiguration(t *testing.T) {
-	t.Setenv("STUN_URLS", "stun:inherited.example:3478")
-	for _, testCase := range []struct {
-		name                  string
-		link                  bool
-		stunURLs              []string
-		natPredictionSTUNURLs []string
-	}{
-		{name: "local"},
-		{
-			name: "link", link: true,
-			stunURLs: []string{publicSTUNURL},
-			natPredictionSTUNURLs: []string{
-				publicNATPredictionSTUNURLA, publicNATPredictionSTUNURLB,
-			},
-		},
-	} {
-		t.Run(testCase.name, func(t *testing.T) {
-			stunURLs, natPredictionSTUNURLs := localSTUNURLs(testCase.link)
-			if !slices.Equal(stunURLs, testCase.stunURLs) ||
-				!slices.Equal(natPredictionSTUNURLs, testCase.natPredictionSTUNURLs) {
-				t.Fatalf("Local STUN selection = %v, %v", stunURLs, natPredictionSTUNURLs)
-			}
-			config, err := serverconfig.Local(serverconfig.LocalOptions{
-				Port:                  8787,
-				PublicAddress:         "192.168.1.2",
-				AllowedAddresses:      []string{"192.168.1.2"},
-				SiteAccessPassword:    "abcdefghijklmnopqrstuvwxyzABCDEF",
-				STUNURLs:              stunURLs,
-				NATPredictionSTUNURLs: natPredictionSTUNURLs,
-			})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !slices.Equal(config.STUNURLs, testCase.stunURLs) ||
-				config.NATPredictionEnabled != testCase.link {
-				t.Fatalf("Local server config = %v, NAT prediction %t",
-					config.STUNURLs, config.NATPredictionEnabled)
-			}
-		})
+	selected, err := applyMode(config, Options{Local: true})
+	if err != nil || selected != config {
+		t.Fatalf("mode selection changed saved settings: %+v, %v", selected, err)
 	}
 }

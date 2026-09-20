@@ -3,8 +3,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
-  chmodSync,
-  createWriteStream,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -16,12 +14,10 @@ import {
 import { networkInterfaces } from "node:os";
 import { createServer } from "node:net";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 
-import { appPackageTarget, CLOUDFLARED_VERSION } from "./app-package-targets.mjs";
-import { createZip, extractZip, tarExecutable } from "./archive-tool.mjs";
+import { appPackageTarget } from "./app-package-targets.mjs";
+import { createZip, extractZip } from "./archive-tool.mjs";
 import { assertCleanRevision, resetBuildWorkspace } from "./build-workspace.mjs";
 
 function fail(message) {
@@ -62,14 +58,6 @@ function serverDescriptor(directory) {
     fail("Server release directory must contain one descriptor");
   }
   return join(directory, descriptors[0]);
-}
-
-async function download(url, path) {
-  const response = await fetch(url);
-  if (!response.ok || !response.body) {
-    fail(`Public-link runtime download failed with HTTP ${response.status}`);
-  }
-  await pipeline(Readable.fromWeb(response.body), createWriteStream(path));
 }
 
 function delay(ms) {
@@ -239,17 +227,14 @@ async function verifyLocalPackage(root, target, temporaryRoot) {
 async function verifyPackage(root, target, revision, temporaryRoot) {
   const packagedRevision = readFileSync(join(root, "REVISION"), "ascii").trim();
   if (packagedRevision !== revision) fail("App package revision mismatch");
-  for (const file of ["LICENSE", "THIRD-PARTY-NOTICES.txt",
-    "runtime/tunnel/THIRD-PARTY-NOTICES.txt"]) {
+  for (const file of ["LICENSE", "THIRD-PARTY-NOTICES.txt"]) {
     if (!existsSync(join(root, file)) || readFileSync(join(root, file)).length === 0) {
       fail(`App package license text is missing: ${file}`);
     }
   }
 
   const app = join(root, target.appName);
-  const tunnel = join(root, "runtime", "tunnel", target.tunnelName);
   run(app, ["--help"], root);
-  run(tunnel, ["--version"], root);
   verifyPlatformAssets(root, target);
 
   if (target.captureName) {
@@ -328,23 +313,6 @@ const { version } = JSON.parse(readFileSync(descriptorPath, "utf8"));
 const temporaryRoot = resetBuildWorkspace(repositoryRoot, "app-package", target.id, "candidate");
 let outputOwned = false;
 try {
-  const tunnelDownload = join(temporaryRoot, target.tunnelAsset);
-  await download(
-    `https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/${target.tunnelAsset}`,
-    tunnelDownload,
-  );
-  if (sha256(tunnelDownload) !== target.tunnelSha256) {
-    fail("Public-link runtime digest does not match the pinned release");
-  }
-
-  let tunnel = tunnelDownload;
-  if (target.tunnelArchive) {
-    run(tarExecutable(), ["-xzf", tunnelDownload, "-C", temporaryRoot], repositoryRoot);
-    tunnel = join(temporaryRoot, target.tunnelName);
-  }
-  if (!existsSync(tunnel)) fail("Public-link runtime is missing");
-  if (process.platform !== "win32") chmodSync(tunnel, 0o755);
-
   let capture = null;
   if (target.captureName) {
     run(
@@ -362,8 +330,6 @@ try {
     packageRoot,
     "--target",
     target.id,
-    "--tunnel",
-    tunnel,
   ];
   if (capture) assembleArguments.push("--capture", capture);
   run(process.execPath, assembleArguments, repositoryRoot);

@@ -54,8 +54,6 @@ export const zh = {
   "client.launch.title": "打开 Piik",
   "client.launch.local": "本地房间",
   "client.launch.localHint": "同一局域网内使用",
-  "client.launch.link": "公网邀请",
-  "client.launch.linkHint": "生成一个临时公网邀请链接",
   "client.launch.site": "连接站点",
   "client.launch.siteHint": "使用已有的 Piik 站点",
   "client.launch.siteAddress": "Piik 站点地址",

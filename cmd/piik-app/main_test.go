@@ -11,7 +11,7 @@ func TestCommandExitStatus(t *testing.T) {
 		{"help", []string{"--help"}, 0},
 		{"unknown flag", []string{"--not-a-piik-option"}, 2},
 		{"invalid port", []string{"--port", "invalid"}, 2},
-		{"startup failure", []string{"--local", "--link"}, 1},
+		{"startup failure", []string{"--local", "--site", "https://share.example"}, 1},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Setenv("PIIK_CLIENT_GATE_NO_BROWSER", "true")

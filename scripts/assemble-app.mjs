@@ -20,7 +20,7 @@ import {
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { appPackageTarget, goBuildEnvironment, CLOUDFLARED_VERSION } from "./app-package-targets.mjs";
+import { appPackageTarget, goBuildEnvironment } from "./app-package-targets.mjs";
 import { writeAppPlatformAssets } from "./app-icons.mjs";
 import { writeAppLicenseNotices } from "./package-licenses.mjs";
 import { tarExecutable } from "./archive-tool.mjs";
@@ -156,19 +156,18 @@ const positional = process.argv.slice(2, 4);
 const options = process.argv.slice(4);
 if (positional.length !== 2 || options.length % 2 !== 0) {
   fail(
-    "Usage: node scripts/assemble-app.mjs <server-release.json> <new-output-directory> --target <windows-amd64|linux-amd64|darwin-arm64> [--capture <executable>] [--tunnel <executable>]",
+    "Usage: node scripts/assemble-app.mjs <server-release.json> <new-output-directory> --target <windows-amd64|linux-amd64|darwin-arm64> [--capture <executable>]",
   );
 }
 
 let targetArgument = null;
 let captureArgument = null;
-let tunnelArgument = null;
 for (let index = 0; index < options.length; index += 2) {
   const name = options[index];
   const value = options[index + 1];
   if (
     !value ||
-    (name !== "--target" && name !== "--capture" && name !== "--tunnel")
+    (name !== "--target" && name !== "--capture")
   ) {
     fail("App package option is invalid");
   }
@@ -176,8 +175,6 @@ for (let index = 0; index < options.length; index += 2) {
     targetArgument = value;
   } else if (name === "--capture" && captureArgument === null) {
     captureArgument = value;
-  } else if (name === "--tunnel" && tunnelArgument === null) {
-    tunnelArgument = value;
   } else {
     fail("App package option is duplicated");
   }
@@ -192,13 +189,11 @@ const repositoryRoot = realpathSync(resolve(dirname(fileURLToPath(import.meta.ur
 const descriptorPath = realpathSync(resolve(positional[0]));
 const outputRoot = resolve(process.cwd(), positional[1]);
 const capturePath = captureArgument ? realpathSync(resolve(captureArgument)) : null;
-const tunnelPath = tunnelArgument ? realpathSync(resolve(tunnelArgument)) : null;
 assertOutputDirectory(repositoryRoot, outputRoot, target);
 if (capturePath && !target.captureName) {
   fail("Capture runtime is invalid for the App package target");
 }
 if (capturePath) assertTargetExecutable(capturePath, target, "Capture runtime");
-if (tunnelPath) assertTargetExecutable(tunnelPath, target, "Public tunnel runtime");
 
 const descriptor = readDescriptor(descriptorPath);
 const version = descriptor.version;
@@ -237,16 +232,6 @@ try {
     chmodSync(packagedCapture, 0o755);
   }
 
-  let packagedTunnel = null;
-  if (tunnelPath) {
-    const tunnelRoot = join(packageRoot, "runtime", "tunnel");
-    mkdirSync(tunnelRoot, { recursive: true });
-    const tunnelName = target.tunnelName;
-    packagedTunnel = join(tunnelRoot, tunnelName);
-    copyFileSync(tunnelPath, packagedTunnel);
-    chmodSync(packagedTunnel, 0o755);
-  }
-
   const appName = target.appName;
   const appPath = join(packageRoot, appName);
   const goCommand = process.env.PIIK_GO?.trim() || "go";
@@ -262,7 +247,7 @@ try {
   chmodSync(appPath, 0o755);
   assertTargetExecutable(appPath, target, "App executable");
   writeAppLicenseNotices(repositoryRoot, packageRoot, goCommand, target,
-    packagedTunnel ? CLOUDFLARED_VERSION : null);
+    null);
   const platformAssets = writeAppPlatformAssets({
     packageRoot,
     target,
@@ -290,9 +275,6 @@ try {
     arch: target.goarch,
     app: appName,
     nativeCapture: packagedCapture ? `runtime/native/${target.captureName}` : null,
-    publicTunnel: packagedTunnel
-      ? `runtime/tunnel/${target.tunnelName}`
-      : null,
     platformAssets,
   })}\n`);
 } catch (error) {

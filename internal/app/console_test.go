@@ -192,7 +192,7 @@ func TestBrowserOpenFeedbackBelongsToTheCurrentEntry(t *testing.T) {
 
 func TestConsoleEntryKeepsAppActivationWithoutExposingCredentials(t *testing.T) {
 	model := consoleModel{width: 80, language: "en", view: consoleView{
-		mode: "link", state: "ready",
+		mode: "local", state: "ready",
 		entry:  "http://user:private-secret@localhost:8787/?token=private-secret#client-access=private-secret&piik-client=1",
 		invite: "https://room.example/?token=private-secret#v=private-secret",
 	}}
@@ -226,7 +226,7 @@ func TestConsolePresentationAndShutdown(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	model := consoleModel{cancel: cancel, view: consoleView{
-		mode: "link", state: "ready", protected: true,
+		mode: "local", state: "ready", protected: true,
 		entry:  "http://localhost:8787/#client-access=private-secret",
 		invite: "https://a-long-public-link-name.example.test/",
 	}}

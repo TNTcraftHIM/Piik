@@ -54,8 +54,6 @@ export const en: Record<CopyKey, string> = {
   "client.launch.title": "Open Piik",
   "client.launch.local": "Local room",
   "client.launch.localHint": "Use on the same local network",
-  "client.launch.link": "Public invite",
-  "client.launch.linkHint": "Create one temporary public invitation link",
   "client.launch.site": "Connect to Site",
   "client.launch.siteHint": "Use an existing Piik Site",
   "client.launch.siteAddress": "Piik Site address",

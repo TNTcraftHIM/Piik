@@ -85,7 +85,6 @@ type console struct {
 var consoleCopy = map[string][3]string{
 	"mode":         {"Mode", "模式", ""},
 	"local":        {"Local network", "局域网", "□"},
-	"link":         {"Public link", "公网链接", "↗"},
 	"site":         {"Piik Site", "Piik 站点", "@"},
 	"setup":        {"Choose a mode in the browser", "在浏览器中选择模式", "?"},
 	"starting":     {"Starting", "正在启动", "…"},
@@ -399,7 +398,7 @@ func (model consoleModel) content(styled bool) string {
 		}
 	}
 	accessPicture := ""
-	if !compact && model.view.entry != "" && (model.view.mode == "local" || model.view.mode == "link") {
+	if !compact && model.view.entry != "" && model.view.mode == "local" {
 		access := "open"
 		if model.view.protected {
 			access = "password"
@@ -481,8 +480,6 @@ func consoleVisualToken(key string) string {
 	switch key {
 	case "local":
 		return "□"
-	case "link":
-		return "↗"
 	case "site":
 		return "@"
 	case "setup":

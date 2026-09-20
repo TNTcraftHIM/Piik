@@ -36,7 +36,6 @@ export const HINT_KINDS: readonly HintKind[] = [
   "hint-shuffle-code",
   "hint-copy-invite",
   "hint-invite-link",
-  "hint-client-link",
   "hint-rotate-invite",
   "hint-revoke-invite",
   "hint-password",

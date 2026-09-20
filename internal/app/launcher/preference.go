@@ -31,5 +31,5 @@ func SaveMode(configPath string, mode Mode) error {
 }
 
 func validMode(mode Mode) bool {
-	return mode == ModeLocal || mode == ModeLink || mode == ModeSite
+	return mode == ModeLocal || mode == ModeSite
 }

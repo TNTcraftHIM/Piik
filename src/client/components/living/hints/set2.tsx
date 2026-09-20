@@ -217,7 +217,6 @@ ${rmBlock(["vls-link-address"], [[".vls-link-address", "transform:none"]], false
     </g> : <><LcdBase x={210} y={26} /><LcdSlots x={210} y={26} /></>}
   </>;
 }
-const HintClientLink: HintScene = (props) => <InviteLinkHint {...props} publicEntry />;
 
 /* ------------------------------------------------------------------ */
 /* hint-rotate-invite: a link → the link spun fresh + spark.           */
@@ -299,7 +298,6 @@ export const SET2_SCENES: Record<Set2Kind, HintScene> = {
   "hint-shuffle-code": SceneShuffleCode,
   "hint-copy-invite": SceneCopyInvite,
   "hint-invite-link": (props) => <InviteLinkHint {...props} />,
-  "hint-client-link": HintClientLink,
   "hint-rotate-invite": SceneRotateInvite,
   "hint-revoke-invite": SceneRevokeInvite,
   "hint-password": ScenePassword,
