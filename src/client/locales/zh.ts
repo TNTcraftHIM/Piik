@@ -63,7 +63,7 @@ export const zh = {
   "client.launch.lanHint": "选择与朋友处于同一网络的地址。",
   "client.launch.lanUnavailable": "没有可用的局域网地址，请连接网络后刷新页面",
   "client.launch.localAccess": "站点口令（可选）",
-  "client.launch.localAccessHint": "设置后，访问此站点需要先输入口令。",
+  "client.launch.localAccessHint": "设置后，开房或凭房间号加入需要口令。邀请链接可直接进入对应房间。",
   "client.launch.go": "进入 Piik",
   "client.launch.starting": "正在准备 Piik",
   "client.launch.error": "Piik 启动失败",
@@ -87,7 +87,7 @@ export const zh = {
   "gate.unavailableRoute": "无法访问",
 
   "join.title": "加入房间",
-  "join.hint": "输入房主发来的房间号",
+  "join.hint": "输入 {site} 的房间号",
   "join.field": "房间号",
   "join.submit": "加入",
   "join.invalid": "请输入 1000 至 9999 的四位房间号",
@@ -187,7 +187,7 @@ export const zh = {
 
   "host.invite": "邀请链接",
   "host.invite.copy": "复制邀请链接",
-  "host.invite.copyFailed": "无法复制邀请链接，请稍后重试",
+  "host.invite.copyFailed": "无法复制链接，请稍后重试",
   "host.invite.rotate": "更新邀请链接；使用旧链接的观众需要重新加入",
   "host.invite.revoke": "撤销邀请链接，并断开通过该链接加入的观众",
   "host.invite.rotateShort": "更新链接",
@@ -195,6 +195,11 @@ export const zh = {
   "host.invite.updated": "邀请链接已更新",
   "host.invite.revoked": "邀请链接已撤销",
   "host.invite.emptyOpen": "暂无邀请链接，仍可凭房间号加入",
+  "host.invite.address": "房间地址",
+  "host.invite.copyAddress": "复制房间地址",
+  "host.invite.includeCredential": "携带凭证",
+  "host.invite.credentialHint": "链接自带此房间的观看权限",
+  "host.invite.credentialRequired": "当前仅限邀请，请开启携带凭证",
   "host.invite.emptyPassword": "暂无邀请链接，仍可凭房间号和密码加入",
   "host.invite.emptyPrivate": "暂无邀请链接，请先更新链接再邀请他人",
 
@@ -363,7 +368,7 @@ export const zh = {
   "viewer.notice.mediaRecovering": "媒体连接正在恢复",
   "viewer.notice.hostOffline": "房主连接已中断，画面可能停住",
   "viewer.hint.denied": "请使用房主发来的邀请链接，或输入房间密码。",
-  "viewer.hint.notFound": "请确认房间号，或让房主重新发送邀请链接。",
+  "viewer.hint.notFound": "请确认这是 {site} 的房间号，或打开房主的邀请链接。",
   "viewer.hint.invite": "请让房主重新发送邀请链接。",
   "viewer.hint.generic": "请检查入口后重试。",
 

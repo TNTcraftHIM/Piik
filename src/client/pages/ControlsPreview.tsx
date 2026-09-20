@@ -43,6 +43,8 @@ export function ControlsPreview() {
   const [preset, setPreset] = useState<QualityProfileId>("1080p30");
   const [policy, setPolicy] = useState<"open" | "private">("open");
   const [roomPassword, setRoomPassword] = useState(false);
+  const [includeCredential, setIncludeCredential] = useState(true);
+  const roomLink = `https://piik.example/r/9527${includeCredential ? "#v=preview" : ""}`;
   const [paused, setPaused] = useState(false);
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [name, setName] = useState("Piik friend");
@@ -118,6 +120,18 @@ export function ControlsPreview() {
           <RoomAdmissionBadge policy="private" passwordEnabled />
           <RoomAdmissionBadge policy="private" passwordEnabled={false} />
         </div>
+        <div className="lr-invite-field">
+          <Tooltip kind="hint-invite-link" text={roomLink} className="lr-invite-hint">
+            <input className="lr-invite-url" readOnly dir="ltr" value={roomLink}
+              aria-label={t(includeCredential ? "host.invite" : "host.invite.address")} />
+          </Tooltip>
+          <span className="lr-row-group"><Glyph name="key" size={17} />
+            <SwitchItem checked={includeCredential} onChange={setIncludeCredential}
+              label={t("host.invite.includeCredential")} note={t("host.invite.credentialHint")} hint="hint-invite-link" />
+          </span>
+        </div>
+        {!includeCredential && policy === "private" && !roomPassword ? <Pill icon="lock" tone="warn"
+          comic="hint-policy-private" label={t("host.invite.credentialRequired")} /> : null}
       </section>
       <section id="input-preview" className="cp-card">
         <header><span className="cp-number">03</span><h2>{en ? "Names, codes and small details" : "名字、房间号，还有小细节。"}</h2></header>

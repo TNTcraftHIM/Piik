@@ -1,12 +1,20 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-09-20
+Last reviewed: 2026-09-21
 
 Only **Now** is executable. Product modules own behavior; Git/PRs own completed
 history. A parked idea is not implementation authority.
 
 ## Now
 
+- [ ] **Investigate repeated App public-invitation startup failures.** Trace App
+  startup, tunnel readiness and link creation with bounded failure injection and
+  existing diagnostics; distinguish local lifecycle defects from provider/network
+  failures before changing timeouts or retries. A new report describes frequent
+  creation failures without version or logs. The earlier
+  [#396 report](https://github.com/TNTcraftHIM/Piik/issues/396#issuecomment-5691465700)
+  described a 30-second timeout after Local startup was fixed; do not assume the
+  same cause. Check actionable error feedback and cancellation/resource cleanup.
 - [ ] **Complete manual accessible-name review.** Verify the empty video's
   screen-reader output: Chromium exposes an unavailable-media
   description despite the literal shared-picture label and no media error. Also
@@ -65,12 +73,6 @@ history. A parked idea is not implementation authority.
   Host/media checks establish only that environment. Reconcile its scoped
   SDK/toolchain and atomic-alignment changes with current main when accepted;
   the experiment is not part of this maintenance release.
-- [ ] **Public invitation startup timeout.** The reporter in
-  [#396](https://github.com/TNTcraftHIM/Piik/issues/396#issuecomment-5691465700)
-  confirmed Local startup is fixed, but separately reported that the public
-  invitation service did not connect within 30 seconds. Trace tunnel startup,
-  network reachability and the existing timeout/error feedback using a current
-  Debug report; the Local fix does not establish this separate failure's cause.
 - [ ] **Windows launcher exit after opening the page.** A user reports that the
   mode-selection page opens, then the App console reports
   `Piik App could not open its launcher: exit status 0xc0000005`.

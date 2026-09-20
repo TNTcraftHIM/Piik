@@ -63,7 +63,7 @@ export const en: Record<CopyKey, string> = {
   "client.launch.lanHint": "Choose an address on the same network as your friends.",
   "client.launch.lanUnavailable": "No local network address is available. Connect to a network and refresh this page.",
   "client.launch.localAccess": "Site passphrase (optional)",
-  "client.launch.localAccessHint": "If set, visitors enter this passphrase before accessing your site.",
+  "client.launch.localAccessHint": "If set, required to create rooms or join by code. Invite links grant access to their room.",
   "client.launch.go": "Open Piik",
   "client.launch.starting": "Preparing Piik",
   "client.launch.error": "Piik could not start",
@@ -87,7 +87,7 @@ export const en: Record<CopyKey, string> = {
   "gate.unavailableRoute": "Unavailable",
 
   "join.title": "Join a room",
-  "join.hint": "Enter the four-digit room code from your friend",
+  "join.hint": "Enter a room code for {site}",
   "join.field": "Room code",
   "join.submit": "Join",
   "join.invalid": "Enter a four-digit room code between 1000 and 9999",
@@ -187,7 +187,7 @@ export const en: Record<CopyKey, string> = {
 
   "host.invite": "Invite link",
   "host.invite.copy": "Copy invite link",
-  "host.invite.copyFailed": "Could not copy the invite link; try again",
+  "host.invite.copyFailed": "Could not copy the link; try again",
   "host.invite.rotate": "Rotate invite link; viewers using the old link will need to rejoin",
   "host.invite.revoke": "Revoke invite link and disconnect viewers who joined with it",
   "host.invite.rotateShort": "Rotate link",
@@ -195,6 +195,11 @@ export const en: Record<CopyKey, string> = {
   "host.invite.updated": "Invite link rotated",
   "host.invite.revoked": "Invite link revoked",
   "host.invite.emptyOpen": "No invite link; the room code still works",
+  "host.invite.address": "Room address",
+  "host.invite.copyAddress": "Copy room address",
+  "host.invite.includeCredential": "Include access",
+  "host.invite.credentialHint": "The link grants access to this room",
+  "host.invite.credentialRequired": "This room is invite-only; enable Include access",
   "host.invite.emptyPassword": "No invite link; room code plus password still works",
   "host.invite.emptyPrivate": "No invite link; rotate one before inviting",
 
@@ -363,7 +368,7 @@ export const en: Record<CopyKey, string> = {
   "viewer.notice.mediaRecovering": "Media connection recovering",
   "viewer.notice.hostOffline": "Host connection lost; picture may freeze",
   "viewer.hint.denied": "Use the host's invite link, or try the room password.",
-  "viewer.hint.notFound": "Check the room code, or ask the host for a new invite link.",
+  "viewer.hint.notFound": "Check that the room code belongs to {site}, or open the host’s invite link.",
   "viewer.hint.invite": "Ask the host for a new invite link.",
   "viewer.hint.generic": "Check your entry point and try again.",
 

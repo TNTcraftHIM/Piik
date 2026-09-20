@@ -2119,12 +2119,12 @@ export function ViewerPage({
             <div className="lr-join-panel">
               <Comic kind={deniedComic} theme="paper" tone={viewerStatus.activity.tone} />
               <span className="visually-hidden" role="alert">
-                {t(deniedMessageKey)} · {t(deniedHintKey)}
+                {t(deniedMessageKey)} · {t(deniedHintKey, { site: window.location.host })}
               </span>
               {vis ? null : (
                 <div className="lr-access-text">
                   <h1>{t(deniedMessageKey)}</h1>
-                  <p>{t(deniedHintKey)}</p>
+                  <p className="lr-join-site">{t(deniedHintKey, { site: window.location.host })}</p>
                 </div>
               )}
               {codeOnlyDenied && (

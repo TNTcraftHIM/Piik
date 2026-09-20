@@ -503,10 +503,13 @@ export function HostPage({
   ): void {
     setNoticeKey(key, comic, tone, vars);
   }
-  const [copiedInviteUrl, setCopiedInviteUrl] = useState<string | null>(null);
-  const copied = copiedInviteUrl !== null && copiedInviteUrl === room?.inviteUrl;
+  const [includeInviteCredential, setIncludeInviteCredential] = useState(true);
+  const roomLink = includeInviteCredential ? room?.inviteUrl : room?.canonicalUrl;
+  const roomLinkBlocked = !includeInviteCredential && room?.codeEntryPolicy === "private" && !viewerPasswordEnabled;
+  const [copiedRoomLink, setCopiedRoomLink] = useState<string | null>(null);
+  const copied = copiedRoomLink !== null && copiedRoomLink === roomLink;
   const copiedResetTimerRef = useRef<number | null>(null);
-  const copyInviteRequestRef = useRef<object | null>(null);
+  const copyRoomLinkRequestRef = useRef<object | null>(null);
   const [switchingSource, setSwitchingSource] = useState(false);
   const [changingQuality, setChangingQuality] = useState(false);
   const [sharingPaused, setSharingPaused] = useState(false);
@@ -687,7 +690,7 @@ export function HostPage({
         window.clearTimeout(copiedResetTimerRef.current);
         copiedResetTimerRef.current = null;
       }
-      copyInviteRequestRef.current = null;
+      copyRoomLinkRequestRef.current = null;
       viewerQualityEvidenceStore.clear();
       cancelViewerQualityEvidenceRender();
       activeRouteRevisionRef.current = 0;
@@ -905,7 +908,7 @@ export function HostPage({
     clearHostRoom(keepResumeHint);
     roomRef.current = null;
     setRoom(null);
-    setCopiedInviteUrl(null);
+    setCopiedRoomLink(null);
     setViewerPasswordDraft(creationProfileRef.current.roomPassword ?? "");
     setViewerPasswordVisible(false);
     return true;
@@ -993,7 +996,7 @@ export function HostPage({
       writePreferredRoom(replacement.roomId);
       roomRef.current = replacement;
       setRoom(replacement);
-      setCopiedInviteUrl(null);
+      setCopiedRoomLink(null);
       setViewerPasswordEnabled(profile.roomPassword !== null);
       setViewerPasswordDraft(profile.roomPassword ?? "");
       setViewerPasswordVisible(false);
@@ -1033,7 +1036,7 @@ export function HostPage({
             writePreferredRoom(replacement.roomId);
             roomRef.current = replacement;
             setRoom(replacement);
-            setCopiedInviteUrl(null);
+            setCopiedRoomLink(null);
             setViewerPasswordEnabled(profile.roomPassword !== null);
             setViewerPasswordDraft(profile.roomPassword ?? "");
             setViewerPasswordVisible(false);
@@ -2432,7 +2435,7 @@ export function HostPage({
     shareGenerationRef.current = shareGeneration;
     closeCaptureSourcePicker();
     setNoticeValue(null);
-    setCopiedInviteUrl(null);
+    setCopiedRoomLink(null);
     setPhase("starting");
 
     let captured: MediaStream | null = null;
@@ -3055,20 +3058,21 @@ export function HostPage({
     }
   }
 
-  async function copyInvite(): Promise<void> {
+  async function copyRoomLink(): Promise<void> {
     const activeRoom = roomRef.current;
-    const inviteUrl = activeRoom?.inviteUrl;
-    if (!inviteUrl) {
+    const link = includeInviteCredential ? activeRoom?.inviteUrl : activeRoom?.canonicalUrl;
+    if (!activeRoom || !link || roomLinkBlocked || roomMutating) {
       return;
     }
     const request = {};
-    copyInviteRequestRef.current = request;
-    const current = () => copyInviteRequestRef.current === request &&
-      isCurrentRoomAuthority(activeRoom) && roomRef.current?.inviteUrl === inviteUrl;
+    copyRoomLinkRequestRef.current = request;
+    const current = () => copyRoomLinkRequestRef.current === request &&
+      isCurrentRoomAuthority(activeRoom) &&
+      (includeInviteCredential ? roomRef.current?.inviteUrl : roomRef.current?.canonicalUrl) === link;
     try {
-      await navigator.clipboard.writeText(inviteUrl);
+      await navigator.clipboard.writeText(link);
       if (!current()) return;
-      setCopiedInviteUrl(inviteUrl);
+      setCopiedRoomLink(link);
       setNoticeValue((current) => current?.kind === "key" && current.key === "host.invite.copyFailed" ? null : current);
       // One owner for the confirmation window: a second copy restarts it
       // instead of inheriting the first click's expiry.
@@ -3077,11 +3081,11 @@ export function HostPage({
       }
       copiedResetTimerRef.current = window.setTimeout(() => {
         copiedResetTimerRef.current = null;
-        setCopiedInviteUrl(null);
+        setCopiedRoomLink(null);
       }, 1_500);
     } catch {
       if (!current()) return;
-      setCopiedInviteUrl(null);
+      setCopiedRoomLink(null);
       setNoticeErrorKey("host.invite.copyFailed", "copy-failed");
     }
   }
@@ -3499,6 +3503,7 @@ export function HostPage({
                     style={{ gap: 12 }}
                     onSubmit={joinRoomFromStage}
                   >
+                    {!vis && <span className="lr-cap lr-join-site">{t("join.hint", { site: window.location.host })}</span>}
                     <RoomCodeInput value={joinRoomCode} rejectedAttempt={joinRejectedAttempt} autoFocus
                       onChange={value => { setJoinRoomCode(value); setJoinRejectedAttempt(0); }} />
                     <RoomCodeError attempt={joinRejectedAttempt} theme="stage" />
@@ -4084,12 +4089,13 @@ export function HostPage({
                 <Btn
                   icon={copied ? "check" : "link"}
                   cap="common.copy"
-                  title={copied ? "common.copied" : "host.invite.copy"}
-                  hint="hint-copy-invite"
-                  hintTone={copied ? "live" : undefined}
+                  title={copied ? "common.copied" : roomLinkBlocked ? "host.invite.credentialRequired"
+                    : includeInviteCredential ? "host.invite.copy" : "host.invite.copyAddress"}
+                  hint={roomLinkBlocked ? "hint-policy-private" : "hint-copy-invite"}
+                  hintTone={copied ? "live" : roomLinkBlocked ? "warn" : undefined}
                   hintMotion={copied ? "still" : undefined}
-                  disabled={!room.inviteUrl || roomMutating}
-                  onClick={() => void copyInvite()}
+                  disabled={!roomLink || roomMutating || roomLinkBlocked}
+                  onClick={() => void copyRoomLink()}
                 />
                 <Btn
                   icon="refresh"
@@ -4109,20 +4115,35 @@ export function HostPage({
                   onClick={() => void changeViewerGrant("revoke")}
                 />
               </RowGroup>
-              {room.inviteUrl ? (
-                <Tooltip kind="hint-invite-link" text={room.inviteUrl} className="lr-invite-hint">
-                  <input
-                    className="lr-invite-url"
-                    type="text"
-                    dir="ltr"
-                    value={room.inviteUrl}
-                    readOnly
-                    spellCheck={false}
-                    aria-label={t("host.invite")}
-                    onFocus={(event) => event.currentTarget.select()}
-                  />
-                </Tooltip>
-              ) : null}
+              <div className="lr-invite-field">
+                {roomLink ? (
+                  <Tooltip kind="hint-invite-link" text={roomLink} className="lr-invite-hint">
+                    <input
+                      className="lr-invite-url"
+                      type="text"
+                      dir="ltr"
+                      value={roomLink}
+                      readOnly
+                      spellCheck={false}
+                      aria-label={t(includeInviteCredential ? "host.invite" : "host.invite.address")}
+                      onFocus={(event) => event.currentTarget.select()}
+                    />
+                  </Tooltip>
+                ) : null}
+                <span className="lr-row-group">
+                  <Glyph name="key" size={17} />
+                  <SwitchItem checked={includeInviteCredential} disabled={roomMutating}
+                    label={t("host.invite.includeCredential")} hint="hint-invite-link"
+                    note={t("host.invite.credentialHint")}
+                    onChange={checked => {
+                      copyRoomLinkRequestRef.current = null;
+                      setCopiedRoomLink(null);
+                      setIncludeInviteCredential(checked);
+                    }} />
+                </span>
+              </div>
+              {roomLinkBlocked ? <Pill icon="lock" tone="warn" comic="hint-policy-private"
+                label={t("host.invite.credentialRequired")} /> : null}
               <span className="lr-divider" aria-hidden="true" />
               <RowGroup>
                 <span

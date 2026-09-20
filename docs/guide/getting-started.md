@@ -41,6 +41,10 @@ With just a four-digit room code, open the same Piik site and choose
 The host decides whether code entry is available; ask for an invitation link if
 you cannot join by code.
 
+Hosts can turn off **Include access** beside the link to copy the ordinary room
+address. Visitors follow the site's and room's access checks; invite-only rooms
+require the invitation credential. This switch does not revoke existing invites.
+
 If an old link no longer works, ask the host for the current invitation.
 App Local rooms and temporary public invitations end when that App run stops.
 

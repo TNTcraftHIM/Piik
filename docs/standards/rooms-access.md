@@ -8,7 +8,8 @@ the storage decision; implementation detail belongs in code and tests.
 
 - A room has one Host and at most 20 authenticated Viewers.
 - Room codes are random free four-digit values from `1000..9999`. A code locates
-  a room; it is not a secret or permanent identity.
+  a room within its site authority; it is not globally unique, a secret or a
+  permanent identity. App public-link rooms belong to that App's local authority.
 - Every room has a 256-bit Host token. The server stores only its digest; the
   owning Browser keeps the raw token locally.
 - Each Host tab retains its current room in session storage. The origin keeps
@@ -59,6 +60,12 @@ the same tab preserves it. It is not intentionally persisted across independent
 tabs or Browser sessions; tab duplication and opener initialization remain
 Browser behavior. The grant has no independent TTL and ends with the room or
 when the Host rotates or revokes it.
+
+The Host can omit the grant from the displayed/copied link. This page-local
+choice defaults to including it and does not change admission policy, revoke
+existing invitations or clear a recipient's valid authorization. The ordinary
+room address retains the server-provided site and room path; it follows site
+access and code-entry rules. An invite-only room has no ordinary-address entry.
 
 Code-only admission is independent of invitations:
 

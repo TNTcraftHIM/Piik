@@ -50,7 +50,7 @@ export function JoinPage() {
           {vis ? null : (
             <div className="lr-access-text">
               <h1>{t("join.title")}</h1>
-              <p>{t("join.hint")}</p>
+              <p className="lr-join-site">{t("join.hint", { site: window.location.host })}</p>
             </div>
           )}
           <RoomCodeInput value={roomId} rejectedAttempt={rejectedAttempt} autoFocus
