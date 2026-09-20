@@ -134,7 +134,7 @@ sharing to allow that fallback. The project's online site uses P2P only.
 ## Add your voice
 
 While sharing, select **Microphone** below the picture and
-allow microphone access. Select it again to mute. Open **Advanced settings**
+allow microphone access. Select it again to mute. Open **Sharing settings** below the picture
 to choose a microphone and adjust its input volume.
 The default volume is 100%, with up to 200% available.
 Source audio and your voice reach viewers together. The Host preview stays muted.

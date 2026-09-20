@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Btn, Chip, NameTag, Pill, SwitchItem } from "../components/living/primitives";
+import { Btn, Chip, NameTag, Pill, Row, RowGroup, SwitchItem } from "../components/living/primitives";
 import { RoomChip, RoomAdmissionBadge } from "../components/living/RoomChip";
 import { CaptureSourcePicker, type NativeSourceList } from "../components/living/CaptureSourcePicker";
 import { LedStrip } from "../components/living/Header";
@@ -33,6 +33,7 @@ export function ControlsPreview() {
   const [microphone, setMicrophone] = useState(false);
   const [microphoneVolume, setMicrophoneVolume] = useState(1);
   const [microphoneDevice, setMicrophoneDevice] = useState("");
+  const [sharingSettings, setSharingSettings] = useState(false);
   const [preset, setPreset] = useState<QualityProfileId>("1080p30");
   const [policy, setPolicy] = useState<"open" | "private">("open");
   const [roomPassword, setRoomPassword] = useState(false);
@@ -79,12 +80,24 @@ export function ControlsPreview() {
           <Btn icon="switchSource" title="host.switchSource" cap="host.switchSource" hint="hint-switch-source" onClick={notify} />
           <Btn id="host-stop-share" icon="stop" tone="danger" title="host.stop" cap="host.stop" hint="hint-share-stop" onClick={notify} />
         </div>
+        <section className="lr-host-settings" aria-label={t("host.advanced")}>
+          <Row label={t("host.quality")}>
+            <RowGroup><QualityPresets selected={preset} onSelect={setPreset} /></RowGroup>
+            <span className="lr-spacer" />
+            <Btn icon="sliders" cap="host.advanced" title={sharingSettings ? "host.advanced.hide" : "host.advanced"}
+              hint={sharingSettings ? "hint-collapse" : "hint-advanced"} tone={sharingSettings ? "on" : undefined}
+              expanded={sharingSettings} controls="preview-sharing-settings" onClick={() => setSharingSettings(value => !value)} />
+          </Row>
+          <div id="preview-sharing-settings" className={`lr-door-reveal${sharingSettings ? " is-open" : ""}`}><div>
+            {sharingSettings ? <div className="lr-door-body">
+              <HostMicrophoneSettings deviceId={microphoneDevice} onDevice={setMicrophoneDevice} loadDevices={previewMicrophones}
+                native enabled={microphone} disabled={paused} volume={microphoneVolume} onVolume={setMicrophoneVolume} />
+            </div> : null}
+          </div></div>
+        </section>
       </section>
       <section id="option-preview" className="cp-card">
         <header><span className="cp-number">02</span><h2>{en ? "Pick, toggle, adjust" : "选一个，再拨一下。"}</h2></header>
-        <QualityPresets selected={preset} onSelect={setPreset} />
-        <HostMicrophoneSettings deviceId={microphoneDevice} onDevice={setMicrophoneDevice} loadDevices={previewMicrophones}
-          native enabled={microphone} disabled={paused} volume={microphoneVolume} onVolume={setMicrophoneVolume} />
         <div className="cp-tools">
           <SwitchItem checked={sound} onChange={setSound} label={t("host.sourcePicker.audioOn")} hint="hint-share-audio" />
           <SwitchItem checked disabled locked onChange={() => undefined} label={t("host.advanced.route.peerOnly")}

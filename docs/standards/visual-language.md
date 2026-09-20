@@ -130,8 +130,7 @@ picture or participants. Keep detailed parameters collapsed initially and retain
 the distinction between media inputs and the existing route/codec options; the
 whole panel is not merely picture settings. Narrow layouts must not compress all
 settings into one toolbar. The microphone comic depicts Host commentary gain;
-the Viewer's listening-volume comic remains a different action. Remaining rollout
-of this accepted grouping is tracked in [TODO](../todo.md#now).
+the Viewer's listening-volume comic remains a different action.
 
 ## Cast And Objects
 

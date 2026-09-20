@@ -8,13 +8,10 @@ history. A parked idea is not implementation authority.
 ## Now
 
 - [ ] **Review camera and Host microphone in the separate capture candidate.**
-  Next implement the accepted [sharing-settings layout](./standards/visual-language.md):
-  move the existing quality presets and settings disclosure beside the sharing
-  actions, below the television and above the couch. This relocation is not yet
-  implemented; the current microphone details remain in the lower advanced panel.
-  Preserve pre-share quality access and existing setting/resource owners. Review
-  both themes, Chinese/English/visual modes, narrow screens and a full couch;
-  verify expanded settings and tooltips leave neighbouring controls reachable.
+  Obtain user acceptance of the [sharing-settings layout](./standards/visual-language.md)
+  below the television and above the couch, including a full room. Keep the current
+  pre-share quality access and existing setting/resource owners. Verify expanded
+  settings and tooltips leave neighbouring controls reachable in actual device use.
   The [capture assessment](./research/camera-and-microphone.md) owns current behavior.
   Accept real audio levels/echo, native mixing and device replacement on target systems,
   and mobile camera permission, orientation and background behavior before release.

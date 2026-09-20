@@ -1002,6 +1002,7 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
 .lr-chip .lr-cap { font-family: var(--font); letter-spacing: 0; }
 .lr-chip small { margin-left: 5px; font-size: 10.5px; opacity: .6; }
 .lr-chip .lr-audio-rate {
+  opacity: .85;
   min-width: 3ch;
   margin-left: 0;
   text-align: center;
@@ -1767,6 +1768,10 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
   margin: 10px auto 0;
 }
 .lr-stage-notices:empty { display: none; }
+.lr-host-settings {
+  display: grid; width: min(960px, 100%); min-width: 0; margin: 16px auto 0;
+}
+.lr-host-settings .lr-door-body { margin-top: 12px; }
 .lr-host-share-controls {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px;
   width: fit-content; max-width: 100%; margin: 12px auto 0; padding: 6px;

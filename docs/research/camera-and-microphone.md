@@ -49,7 +49,9 @@ Their order and meaning stay the same in Chinese, English and pure-visual modes.
 Source-sound details describe the raw capture input; microphone intent and
 Viewer playback volume are separate facts. Pausing the share silences the mixed
 output and temporarily disables microphone toggling without clearing its intent.
-The existing advanced settings contain the microphone selector and input gain.
+Sharing settings below the picture group video presets and picture/audio parameters
+with the microphone selector and input gain. The disclosure expands in page flow,
+pushing the couch down; video presets remain available before capture starts.
 The dock keeps only its frequent mute action; camera selection stays with source selection.
 The default follows the system; an explicit selection never silently falls back
 to another device. Browser capture and native capture keep separate device IDs
