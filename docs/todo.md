@@ -7,11 +7,8 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **Keep waiting feedback clear of playback controls.** At a 360px viewport,
-  the waiting caption overlaps the persistent Viewer playback bar. Reconcile the
-  shared TV overlay and playback layout, including wrapped status text; preserve
-  reachable controls and one owner for their available space. Separately verify
-  the empty video's screen-reader output: Chromium exposes an unavailable-media
+- [ ] **Complete manual accessible-name review.** Verify the empty video's
+  screen-reader output: Chromium exposes an unavailable-media
   description despite the literal shared-picture label and no media error. Also
   review accessible naming on disabled tooltip wrappers and the UI catalogue's
   paired-character example; automated checks leave those for manual review.
@@ -26,10 +23,10 @@ history. A parked idea is not implementation authority.
 - [ ] **Refine the isolated room-interaction prototype.** Review chat, optional
   danmaku and participant-targeted reactions for usability, placement and intended
   cross-view synchronization. Preserve room authorization and media-route owners.
-  Reconcile its layout with the capture candidate: keep sharing settings with the
-  picture, interaction with participants and room actions before diagnostics.
-  Evaluate chat expansion on wide and narrow screens without hiding invitations
-  or blocking sharing controls; keep chat available independently of sharing.
+  Accept its combined layout: sharing settings with the picture, wide-screen chat
+  beside participants, stacked chat on narrow screens and room actions before
+  diagnostics. Check its theater chat entry and participant menu on real devices;
+  keep chat available independently of sharing.
   Retain current room creation: the first share creates a room, an existing room
   can resume, and stopping media keeps the opted-in interaction session. Do not
   add visit-triggered creation or a separate pre-share room-creation entry.

@@ -14,6 +14,13 @@
   transition: opacity 180ms ease, transform 220ms var(--spring);
 }
 .lr-playback.is-hidden { opacity: 0; transform: translateY(6px); pointer-events: none; }
+/* Let the bar's actual height (including wrapping) reserve overlay space. */
+.lr-tv-screen:has(> .lr-playback) { display: grid; width: 100%; grid-template: minmax(0, 1fr) auto / minmax(0, 1fr); }
+/* Keep the primary status readable when narrow controls wrap to a second row. */
+.lr-tv-screen:has(> .lr-playback):has(> .lr-tv-overlay) { min-height: 168px; }
+.lr-tv-screen:has(> .lr-playback) > video { grid-area: 1 / 1 / -1 / -1; min-height: 0; }
+.lr-tv-screen > .lr-playback { position: relative; inset: auto; grid-area: 2 / 1; }
+.lr-tv-screen:has(> .lr-playback) > .lr-tv-overlay { grid-area: 1 / 1 / 2 / 2; }
 .lr-tv-screen:has(> .lr-playback[data-can-play="true"]) > video { cursor: pointer; }
 .lr-tv-screen:has(> .lr-playback.is-hidden) > video { cursor: none; }
 /* The video's own focus outline is clipped by the screen; mark its container. */
@@ -32,6 +39,9 @@
 .lr-tv-screen:fullscreen { width: 100%; height: 100%; border: 0; border-radius: 0; }
 .lr-tv-screen:has(> .lr-playback) { container-type: inline-size; }
 @container (max-width: 440px) {
+  .lr-tv-screen > .lr-tv-overlay.has-comic { gap: 4px; padding: 6px; }
+  .lr-tv-overlay > .lr-waiting-caption { min-height: 1.4em; }
+  .lr-tv-overlay > .lr-waiting-caption > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .lr-playback { gap: 6px; padding: 4px 8px max(4px, env(safe-area-inset-bottom)); }
   .lr-playback .lr-btn { width: clamp(32px, 11cqw, 44px); }
   .lr-playback-audio { gap: 4px; }

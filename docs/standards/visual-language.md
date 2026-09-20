@@ -127,8 +127,11 @@ and connection details, so inspecting a route does not displace room actions.
 Sharing and local playback controls use the same quiet, compact button treatment.
 The Host's persistent dock stays below the picture; the Viewer's playback bar
 belongs to the video. Their similar appearance does not equate broadcast pause
-with local playback pause. Microphone mute, sharing pause, source replacement and
-stop remain direct actions; stopping stays visually separated from frequent actions.
+with local playback pause. Waiting overlays use the space above the actual
+playback bar, including when it wraps. Keep the primary status readable on
+narrow screens; optional waiting copy yields first. Microphone mute, sharing
+pause, source replacement and stop remain direct actions; stopping stays
+visually separated from frequent actions.
 One compact dock combines direct actions and the sharing-settings entry below
 the television, above the couch. Its disclosure groups quality presets and picture
 parameters with sound and microphone settings; presets remain available before
