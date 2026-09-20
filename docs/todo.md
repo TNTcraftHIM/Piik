@@ -18,6 +18,10 @@ history. A parked idea is not implementation authority.
 - [ ] **Refine the isolated room-interaction prototype.** Review chat, optional
   danmaku and participant-targeted reactions for usability, placement and intended
   cross-view synchronization. Preserve room authorization and media-route owners.
+  Reconcile its layout with the capture candidate: keep sharing settings with the
+  picture, interaction with participants and room actions before diagnostics.
+  Evaluate chat expansion on wide and narrow screens without hiding invitations
+  or blocking sharing controls; keep chat available independently of sharing.
   This experiment does not authorize integration or publication.
 
 ## Awaiting Device Or Reporter Evidence

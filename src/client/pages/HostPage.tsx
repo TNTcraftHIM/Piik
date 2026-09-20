@@ -4077,81 +4077,6 @@ export function HostPage({
             </div>
           </Row>
 
-          {showConnectionDetails && details && (stream || nativeActive) ? (
-            <Row sub>
-              <div id="host-details-panel" style={{ display: "contents" }}>
-                <span
-                  className="lr-meter-tag"
-                >
-                  <Glyph name="share" size={17} />
-                  {vis ? null : (
-                    <span className="lr-cap">{t("stats.capture")}</span>
-                  )}
-                </span>
-                <div
-                  className="lr-meter"
-                  role="group"
-                  aria-label={t("host.captureAria")}
-                >
-                  <MetricCell label="stats.resolution" value={details.resolution ?? t("stats.unknown")} />
-                  <MetricCell label="stats.fps" value={details.frameRate ? `${details.frameRate.toFixed(0)} fps` : vis ? "—" : t("host.capture.fpsUnknown")} />
-                  <MetricCell label="stats.codec" value={resolvedVideoCodec?.toUpperCase() ?? (vis ? "—" : t("host.capture.codecPending"))} />
-                  <Tooltip toggleOnClick kind={details.hasSourceAudio ? "hint-source-audio" : "no-audio"}
-                    text={vis ? undefined : t(details.hasSourceAudio ? "host.capture.hasAudio" : "host.capture.noAudio")}
-                    tone="off">
-                    <button type="button" className="lr-meter-cell"
-                      style={{ border: 0, color: "inherit", font: "inherit", textAlign: "start" }}
-                      aria-label={t(details.hasSourceAudio ? "host.capture.hasAudio" : "host.capture.noAudio")}>
-                      <Glyph name={details.hasSourceAudio ? "speaker" : "speakerOff"} size={16} />
-                      {!vis && <b>{t(details.hasSourceAudio ? "host.capture.hasAudio" : "host.capture.noAudio")}</b>}
-                    </button>
-                  </Tooltip>
-                </div>
-              </div>
-            </Row>
-          ) : null}
-          {showConnectionDetails && viewerOverviewEntries.length > 0 ? (
-            <ViewerOverview
-              entries={viewerOverviewEntries}
-              selectedKey={selectedPawn}
-              onSelect={(peerId) =>
-                setSelectedPawn((current) =>
-                  current === peerId ? null : peerId,
-                )
-              }
-            />
-          ) : null}
-          {selectedViewer && selectedDetail ? (
-            <PawnDetail
-              pawnKey={selectedViewer.peerId}
-              name={selectedViewer.label}
-              route={selectedDetail.route}
-              metrics={selectedDetail.metrics}
-              direction={selectedDetail.direction}
-              tag={selectedDetail.tag}
-              error={selectedDetail.error}
-              expanded={metricsExpanded}
-              onToggleMetrics={setMetricsExpanded}
-              onClose={() => setSelectedPawn(null)}
-            />
-          ) : null}
-          {showTopology ? (
-            <Row sub>
-              <RouteTree
-                hostPeerId={hostPeerId}
-                hostIdentity={hostIdentity}
-                hostLabel={labeledHostPresence?.label ?? displayName}
-                viewers={viewers}
-                selectedPeerId={selectedPawn}
-                onSelectPeer={(peerId) =>
-                  setSelectedPawn((current) =>
-                    current === peerId ? null : peerId,
-                  )
-                }
-              />
-            </Row>
-          ) : null}
-
           {room ? (
             <Row label={t("host.policy")}>
               <RowGroup actions>
@@ -4356,6 +4281,81 @@ export function HostPage({
                   </form>
                 </RowGroup>
               ) : null}
+            </Row>
+          ) : null}
+
+          {showConnectionDetails && details && (stream || nativeActive) ? (
+            <Row sub>
+              <div id="host-details-panel" style={{ display: "contents" }}>
+                <span
+                  className="lr-meter-tag"
+                >
+                  <Glyph name="share" size={17} />
+                  {vis ? null : (
+                    <span className="lr-cap">{t("stats.capture")}</span>
+                  )}
+                </span>
+                <div
+                  className="lr-meter"
+                  role="group"
+                  aria-label={t("host.captureAria")}
+                >
+                  <MetricCell label="stats.resolution" value={details.resolution ?? t("stats.unknown")} />
+                  <MetricCell label="stats.fps" value={details.frameRate ? `${details.frameRate.toFixed(0)} fps` : vis ? "—" : t("host.capture.fpsUnknown")} />
+                  <MetricCell label="stats.codec" value={resolvedVideoCodec?.toUpperCase() ?? (vis ? "—" : t("host.capture.codecPending"))} />
+                  <Tooltip toggleOnClick kind={details.hasSourceAudio ? "hint-source-audio" : "no-audio"}
+                    text={vis ? undefined : t(details.hasSourceAudio ? "host.capture.hasAudio" : "host.capture.noAudio")}
+                    tone="off">
+                    <button type="button" className="lr-meter-cell"
+                      style={{ border: 0, color: "inherit", font: "inherit", textAlign: "start" }}
+                      aria-label={t(details.hasSourceAudio ? "host.capture.hasAudio" : "host.capture.noAudio")}>
+                      <Glyph name={details.hasSourceAudio ? "speaker" : "speakerOff"} size={16} />
+                      {!vis && <b>{t(details.hasSourceAudio ? "host.capture.hasAudio" : "host.capture.noAudio")}</b>}
+                    </button>
+                  </Tooltip>
+                </div>
+              </div>
+            </Row>
+          ) : null}
+          {showConnectionDetails && viewerOverviewEntries.length > 0 ? (
+            <ViewerOverview
+              entries={viewerOverviewEntries}
+              selectedKey={selectedPawn}
+              onSelect={(peerId) =>
+                setSelectedPawn((current) =>
+                  current === peerId ? null : peerId,
+                )
+              }
+            />
+          ) : null}
+          {selectedViewer && selectedDetail ? (
+            <PawnDetail
+              pawnKey={selectedViewer.peerId}
+              name={selectedViewer.label}
+              route={selectedDetail.route}
+              metrics={selectedDetail.metrics}
+              direction={selectedDetail.direction}
+              tag={selectedDetail.tag}
+              error={selectedDetail.error}
+              expanded={metricsExpanded}
+              onToggleMetrics={setMetricsExpanded}
+              onClose={() => setSelectedPawn(null)}
+            />
+          ) : null}
+          {showTopology ? (
+            <Row sub>
+              <RouteTree
+                hostPeerId={hostPeerId}
+                hostIdentity={hostIdentity}
+                hostLabel={labeledHostPresence?.label ?? displayName}
+                viewers={viewers}
+                selectedPeerId={selectedPawn}
+                onSelectPeer={(peerId) =>
+                  setSelectedPawn((current) =>
+                    current === peerId ? null : peerId,
+                  )
+                }
+              />
             </Row>
           ) : null}
         </div>

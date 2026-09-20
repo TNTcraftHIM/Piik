@@ -121,6 +121,8 @@ treatment; active state remains distinct from hover in both themes.
 Disclosure buttons keep a stable visible caption, while their expanded state and
 accessible action describe opening or closing. Neutral panel borders stay quieter
 than the controls inside them; nested diagnostic panels retain their softer fill.
+Keep room identity, invitation and admission controls ahead of expanded topology
+and connection details, so inspecting a route does not displace room actions.
 
 Sharing and local playback controls use the same quiet, compact button treatment.
 The Host's persistent dock stays below the picture; the Viewer's playback bar
