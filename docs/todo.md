@@ -8,10 +8,10 @@ history. A parked idea is not implementation authority.
 ## Now
 
 - [ ] **Review camera and Host microphone in the separate capture candidate.**
-  Keep device selection in the existing source/settings surfaces. Finish control
-  grouping, dark-theme feedback and microphone volume presentation; verify native
-  mixing, device replacement and mobile camera behavior before acceptance.
-  These features are excluded from the bug-fix release.
+  Review the current source/settings grouping in both themes and on narrow screens;
+  see the [capture assessment](./research/camera-and-microphone.md). Accept real
+  audio levels/echo, native mixing and device replacement on the target systems,
+  and mobile camera permission, orientation and background behavior before release.
 - [ ] **Refine the isolated room-interaction prototype.** Review chat, optional
   danmaku and participant-targeted reactions for usability, placement and intended
   cross-view synchronization. Preserve room authorization and media-route owners.

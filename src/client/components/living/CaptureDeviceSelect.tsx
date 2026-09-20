@@ -46,7 +46,7 @@ export function CaptureDeviceSelect({ kind, value, load, onChange, disabled, rev
           {device.label || `${t(`host.device.${kind}`)} ${index + 1}`}
         </option>)}
       </select>
-      <button type="button" className="lr-source-picker-refresh" disabled={busy || disabled}
+      <button type="button" className="lr-btn lr-device-refresh" disabled={busy || disabled}
         aria-label={t("host.device.refresh")} onClick={() => setRefresh(value => value + 1)}>
         <Glyph name="refresh" size={16} className={busy ? "lr-spin" : undefined} />
       </button>

@@ -4,7 +4,7 @@ import { RoomChip, RoomAdmissionBadge } from "../components/living/RoomChip";
 import { CaptureSourcePicker, type NativeSourceList } from "../components/living/CaptureSourcePicker";
 import { LedStrip } from "../components/living/Header";
 import { StageTv } from "../components/living/Stage";
-import { HostMicrophone } from "../components/living/HostMicrophone";
+import { HostMicrophone, HostMicrophoneSettings } from "../components/living/HostMicrophone";
 import { PlaybackControls } from "../components/living/PlaybackControls";
 import { QualityPresets } from "../components/living/QualityPresets";
 import { RoomCodeInput } from "../components/living/RoomCodeInput";
@@ -72,7 +72,7 @@ export function ControlsPreview() {
           <Btn icon="sliders" title="host.advanced" hint="hint-advanced" onClick={notify} />
         </div>
         <div className="lr-host-share-controls lr-media-controls" role="group" aria-label={t("host.shareControls")}>
-          <HostMicrophone deviceId={microphoneDevice} onDevice={setMicrophoneDevice} loadDevices={previewMicrophones} native enabled={microphone} paused={paused} volume={microphoneVolume} onVolume={setMicrophoneVolume}
+          <HostMicrophone enabled={microphone} paused={paused} volume={microphoneVolume}
             onToggle={() => setMicrophone(value => !value)} />
           <Btn icon={paused ? "play" : "pause"} title={paused ? "host.resume" : "host.pause"} cap={paused ? "host.resume" : "host.pause"}
             hint={paused ? "hint-resume" : "hint-pause"} onClick={() => setPaused(!paused)} />
@@ -83,6 +83,8 @@ export function ControlsPreview() {
       <section id="option-preview" className="cp-card">
         <header><span className="cp-number">02</span><h2>{en ? "Pick, toggle, adjust" : "选一个，再拨一下。"}</h2></header>
         <QualityPresets selected={preset} onSelect={setPreset} />
+        <HostMicrophoneSettings deviceId={microphoneDevice} onDevice={setMicrophoneDevice} loadDevices={previewMicrophones}
+          native enabled={microphone} disabled={paused} volume={microphoneVolume} onVolume={setMicrophoneVolume} />
         <div className="cp-tools">
           <SwitchItem checked={sound} onChange={setSound} label={t("host.sourcePicker.audioOn")} hint="hint-share-audio" />
           <SwitchItem checked disabled locked onChange={() => undefined} label={t("host.advanced.route.peerOnly")}

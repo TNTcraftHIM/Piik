@@ -26,7 +26,7 @@ import { browserCaptureDevices } from "../media/capture-devices";
 import { AppHeader, LedStrip } from "../components/living/Header";
 import { WelcomeLine } from "../components/living/WelcomeLine";
 import { Couch, type CouchEntry } from "../components/living/Couch";
-import { HostMicrophone } from "../components/living/HostMicrophone";
+import { HostMicrophone, HostMicrophoneSettings } from "../components/living/HostMicrophone";
 import { HostAudio } from "../media/host-audio";
 import {
   CaptureSourcePicker,
@@ -2844,6 +2844,7 @@ export function HostPage({
       await replaceBrowserStream(captured, generation, token);
     } catch (error) {
       if (isCurrentGeneration(generation)) setNoticeError(error, "source");
+    } finally {
       finishSourceSwitch(token);
     }
   }
@@ -2897,11 +2898,11 @@ export function HostPage({
   }
 
   async function replaceBrowserStream(captured: MediaStream, generation: number, token: object): Promise<void> {
+    // The caller retires its operation; this function owns only stream resources.
     const previousStream = streamRef.current;
     if (!previousStream) {
       captured.getTracks().forEach((track) => track.stop());
       setNoticeKey("host.shareEnded", "share-ended", "off");
-      finishSourceSwitch(token);
       return;
     }
 
@@ -3050,7 +3051,6 @@ export function HostPage({
       if (retiringStreamRef.current === previousStream) {
         retiringStreamRef.current = null;
       }
-      finishSourceSwitch(token);
     }
   }
 
@@ -3548,23 +3548,7 @@ export function HostPage({
                 <>
                   <HostMicrophone enabled={microphoneEnabled} pending={microphonePending}
                     unavailable={nativeActive && !nativeClientRef.current?.health.nativeMedia.microphone} paused={sharingPaused} disabled={switchingSource || changingQuality}
-                    volume={microphoneVolume} onVolume={volume => {
-                      setMicrophoneVolume(volume);
-                      hostAudioRef.current?.setMicrophoneVolume(volume);
-                      const client = nativeClientRef.current;
-                      const shareId = nativeShareGenerationRef.current;
-                      if (nativeModeRef.current && client && shareId) {
-                        void client.setMicrophoneVolume(shareId, volume).catch(error => {
-                          if (nativeClientRef.current === client && nativeShareGenerationRef.current === shareId) {
-                            debugError("capture", "microphone-volume-failed", error);
-                            setNoticeValue({ kind: "key", key: "host.microphone.unavailable", target: "operation", comic: "warning", tone: "warn" });
-                          }
-                        });
-                      }
-                    }}
-                    native={nativeActive} loadDevices={loadMicrophones}
-                    deviceId={microphoneDevices[nativeActive ? "native" : "browser"]}
-                    onDevice={deviceId => void changeMicrophone(microphoneEnabled, deviceId)}
+                    volume={microphoneVolume}
                     onToggle={() => void changeMicrophone(!microphoneEnabled, microphoneDevices[nativeActive ? "native" : "browser"])} />
                   <Btn
                     icon={sharingPaused ? "play" : "pause"}
@@ -4274,6 +4258,28 @@ export function HostPage({
                       ))}
                     </div>
                   </div>
+                  {phase === "live" && (!nativeActive || nativeClientRef.current?.health.nativeMedia.microphone) ? (
+                    <HostMicrophoneSettings enabled={microphoneEnabled}
+                      disabled={microphonePending || switchingSource || changingQuality || sharingPaused}
+                      volume={microphoneVolume} onVolume={volume => {
+                        setMicrophoneVolume(volume);
+                        hostAudioRef.current?.setMicrophoneVolume(volume);
+                        const client = nativeClientRef.current;
+                        const shareId = nativeShareGenerationRef.current;
+                        if (nativeModeRef.current && client && shareId) {
+                          void client.setMicrophoneVolume(shareId, volume).catch(error => {
+                            if (nativeClientRef.current === client && nativeShareGenerationRef.current === shareId) {
+                              debugError("capture", "microphone-volume-failed", error);
+                              setNoticeValue({ kind: "key", key: "host.microphone.unavailable", target: "operation", comic: "warning", tone: "warn" });
+                            }
+                          });
+                        }
+                      }}
+                      native={nativeActive} loadDevices={loadMicrophones}
+                      deviceId={microphoneDevices[nativeActive ? "native" : "browser"]}
+                      onDevice={deviceId => void changeMicrophone(microphoneEnabled, deviceId)}
+                    />
+                  ) : null}
                   <div className="lr-door-group">
                     <span
                       className="lr-door-glyph"

@@ -49,7 +49,8 @@ Their order and meaning stay the same in Chinese, English and pure-visual modes.
 Source-sound details describe the raw capture input; microphone intent and
 Viewer playback volume are separate facts. Pausing the share silences the mixed
 output and temporarily disables microphone toggling without clearing its intent.
-The adjacent arrow expands an in-flow row with the microphone selector and input gain.
+The existing advanced settings contain the microphone selector and input gain.
+The dock keeps only its frequent mute action; camera selection stays with source selection.
 The default follows the system; an explicit selection never silently falls back
 to another device. Browser capture and native capture keep separate device IDs
 for the page lifetime. Enumeration does not request permission. Browser labels
@@ -67,9 +68,8 @@ The input-volume control adjusts microphone input from
 0–200% through smoothed input gain. It does not change source audio or Viewer playback volume,
 reopen permission, or replace the outgoing track. Its value lasts for the Host
 page lifetime; new page loads use 100%. Mute remains a separate direct action.
-Opening volume settings makes room below the dock without covering the picture
-or participants. Its arrow toggles the row; Escape from the slider closes it and
-returns focus to the arrow. The microphone-volume comic describes outgoing
+Volume settings use the existing settings disclosure without covering the picture
+or participants. The microphone-volume comic describes outgoing
 commentary, separately from the Viewer's local listening volume.
 
 ## Local Review

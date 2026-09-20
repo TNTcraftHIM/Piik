@@ -42,6 +42,7 @@
   --radius: 16px;
   --control-radius: 18px;
   --control-edge: color-mix(in srgb, var(--ink) 62%, var(--paper));
+  --control-hover: var(--wall-2);
   --control-shadow: 0 3px 0 color-mix(in srgb, var(--ink) 13%, transparent);
   --spring: cubic-bezier(.3, 1.45, .45, 1);
   --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "PingFang SC",
@@ -55,6 +56,7 @@ html[data-theme="dark"] {
   --wall-2: #0e1620;
   --ink: #dde8f3;
   --paper: #22303e;
+  --control-hover: #2b3d4f;
   --frame: #0a111a;
   --action: #4a84f2;
   --action-deep: #3a70d8;
@@ -483,10 +485,10 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 }
 .lr-source-picker-refresh { margin-left: auto; }
 .lr-source-picker-head > .lr-comic-tip-wrap:has(> .lr-source-picker-refresh) { margin-left: auto; }
-.lr-source-picker-refresh:hover,
-.lr-source-picker-close:hover { background: rgba(255, 255, 255, .1); }
-.lr-source-picker-refresh:active,
-.lr-source-picker-close:active { transform: scale(.92); }
+.lr-source-picker-refresh:is(:hover, :focus-visible):not(:disabled),
+.lr-source-picker-close:is(:hover, :focus-visible):not(:disabled) { background: rgba(255, 255, 255, .1); }
+.lr-source-picker-refresh:active:not(:disabled),
+.lr-source-picker-close:active:not(:disabled) { transform: scale(.92); }
 .lr-source-picker-tabs {
   display: grid;
   gap: 4px;
@@ -513,7 +515,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 @media (max-width: 520px) {
   .lr-source-picker-tabs button { flex-direction: column; gap: 3px; padding-inline: 0; font-size: 11px; }
 }
-.lr-source-picker-tabs button:hover { background: rgba(255, 255, 255, .06); }
+.lr-source-picker-tabs button:is(:hover, :focus-visible):not(:disabled) { background: rgba(255, 255, 255, .06); }
 .lr-source-picker-tabs button[aria-selected="true"] {
   border-bottom-color: #9de8bf;
   color: #9de8bf;
@@ -552,13 +554,12 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   text-align: left;
   transition: transform 150ms var(--spring), border-color 120ms ease, background 120ms ease;
 }
-.lr-source-option:hover,
-.lr-source-option:focus-visible {
+.lr-source-option:is(:hover, :focus-visible):not(:disabled) {
   border-color: var(--action);
   background: rgba(47, 111, 237, .2);
   transform: translateY(-2px);
 }
-.lr-source-option:active { transform: scale(.98); }
+.lr-source-option:active:not(:disabled) { transform: scale(.98); }
 .lr-source-option:not(.is-browser) {
   display: grid;
   align-items: stretch;
@@ -955,7 +956,7 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
   transition: transform 260ms var(--spring), background-color 140ms ease, border-color 140ms ease;
 }
 .lr-btn:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]) { transform: translateY(-2px); }
-.lr-btn:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]):not(.is-primary):not(.is-on):not(.is-danger) { background: var(--wall-2); border-color: var(--ink); }
+.lr-btn:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]):not(.is-primary):not(.is-on):not(.is-danger) { background: var(--control-hover); border-color: var(--ink); }
 .lr-btn:active:not(:disabled):not([aria-disabled="true"]) { transform: translateY(2px) scale(.95); box-shadow: none; transition-duration: 80ms; }
 .lr-btn.is-primary { border-color: var(--action-deep); background: var(--action-deep); color: #fff; }
 .lr-btn.is-primary:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]) { background: color-mix(in srgb, var(--action-deep) 88%, #000); }
@@ -966,13 +967,12 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
 .lr-cap { font-size: 12.5px; font-weight: 600; color: inherit; white-space: nowrap; }
 
 /* Sharing and local playback have distinct owners, but one control grammar. */
-.lr-media-controls .lr-btn {
+:where(.lr-media-controls) .lr-btn {
   min-width: 44px; height: 44px; padding: 0 12px;
   border: 0; border-radius: 12px; box-shadow: none;
   background: transparent; color: inherit;
 }
-.lr-media-controls .lr-btn:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]) { background: var(--wall-2); }
-.lr-media-controls .lr-btn[aria-pressed="true"] { background: var(--wall-2); }
+.lr-media-controls .lr-btn[aria-pressed="true"]:not(.is-on) { background: var(--control-hover); }
 .lr-media-controls .lr-btn.is-danger { color: var(--danger); }
 
 /* Diagnostics stay quiet until explicitly enabled; keep the shared input feedback. */
@@ -1658,7 +1658,6 @@ html[data-theme="dark"] .lr-join-go:disabled { background: #1a2634; color: #4860
 
 /* ---------- dark theme refinements ---------- */
 
-html[data-theme="dark"] .lr-btn:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]):not(.is-primary):not(.is-on):not(.is-danger) { background: #2b3d4f; }
 html[data-theme="dark"] .lr-btn.is-on { background: var(--ink); color: #22303e; }
 html[data-theme="dark"] .lr-btn.is-danger:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]) { background: #3d2626; }
 html[data-theme="dark"] .lr-chip:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]):not(.is-selected),
@@ -1775,27 +1774,13 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
   border-radius: 20px; box-shadow: 0 3px 0 color-mix(in srgb, var(--ink) 8%, transparent);
 }
 .lr-host-share-controls > .lr-comic-tip-wrap:has(#host-stop-share) { margin-inline-start: 4px; padding-inline-start: 8px; border-inline-start: 1px solid var(--control-edge); }
-.lr-host-microphone {
-  display: contents;
-}
-.lr-host-microphone .lr-btn { min-height: 44px; }
-.lr-host-microphone-actions { display: flex; gap: 0; background: var(--wall); border-radius: 14px; }
-.lr-host-microphone-actions > .lr-comic-tip-wrap:first-child { border-inline-end: 1px solid color-mix(in srgb, var(--control-edge) 45%, transparent); }
-.lr-host-microphone-actions [aria-controls] { min-width: 44px; padding-inline: 10px; }
-.lr-host-microphone-actions [aria-controls] .lr-glyph { transition: transform 180ms var(--spring); }
-.lr-host-microphone-actions [aria-expanded="true"] .lr-glyph { transform: rotate(180deg); }
-.lr-host-microphone-volume {
-  display: grid; order: 1; flex-basis: 100%; min-width: 0; contain: inline-size; gap: 2px;
-  padding: 10px 0 2px; margin-top: 2px;
-  border-top: 1px solid color-mix(in srgb, var(--control-edge) 40%, transparent);
-  animation: lr-microphone-settings-in 180ms ease-out;
-}
-@keyframes lr-microphone-settings-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
-.lr-host-microphone-volume label { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-inline: 10px; }
-.lr-host-microphone-volume > .lr-comic-tip-wrap { display: flex; width: 100%; padding-inline: 10px; }
-.lr-host-microphone-volume span { flex: none; font-size: 12px; }
-.lr-host-microphone-volume input { width: 100%; min-width: 32px; height: 36px; padding: 0; accent-color: var(--action); cursor: pointer; }
-.lr-host-microphone-volume output { min-width: 4ch; font-variant-numeric: tabular-nums; text-align: right; font-size: 12px; }
+.lr-microphone-settings { min-width: 0; max-width: 440px; gap: 6px; }
+.lr-microphone-settings .lr-capture-device { padding: 0; }
+.lr-microphone-settings > label { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; color: var(--muted); }
+.lr-microphone-settings > .lr-comic-tip-wrap { display: flex; width: 100%; }
+.lr-microphone-settings input { width: 100%; min-width: 32px; height: 36px; padding: 0; accent-color: var(--action); cursor: pointer; }
+.lr-microphone-settings input:disabled { cursor: default; }
+.lr-microphone-settings output { min-width: 4ch; font-variant-numeric: tabular-nums; text-align: right; }
 .lr-capture-device { display: grid; gap: 6px; min-width: 0; padding: 4px 10px 10px; }
 .lr-capture-device label { font-size: 12px; padding: 0; color: var(--muted); }
 .lr-capture-device-controls { display: flex; align-items: center; gap: 6px; min-width: 0; }
@@ -1803,11 +1788,15 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
   flex: 1; min-width: 0; width: 100%; min-height: 40px; padding: 8px 12px;
   border: 1px solid var(--control-edge); border-radius: 12px;
   background: var(--wall); color: var(--ink); font: inherit; font-size: 13px; cursor: pointer;
+  transition: background-color 140ms ease, border-color 140ms ease;
 }
+.lr-capture-device select:is(:hover, :focus-visible):not(:disabled) { background: var(--control-hover); border-color: var(--ink); }
+.lr-capture-device .lr-device-refresh { min-width: 40px; width: 40px; height: 40px; padding: 0; border-width: 1px; }
 .lr-capture-device select:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
 .lr-capture-device select:disabled { opacity: .55; cursor: default; }
 .lr-capture-device small { color: var(--muted); font-size: 11px; line-height: 1.5; }
 .lr-source-picker-body > .lr-capture-device { margin-bottom: 10px; }
+.lr-source-picker .lr-capture-device :is(label, small) { color: #9aa8bb; }
 @media (max-width: 580px) {
   .lr-host-share-controls { gap: 2px; }
   .lr-host-share-controls .lr-btn { width: 44px; padding: 0; }
@@ -2052,7 +2041,7 @@ svg[data-comic-motion="still"] .lr-person-eyes > ellipse {
     transition-duration: 0.01ms !important;
   }
   .lr-tv-static { animation: none; opacity: .35; }
-  .lr-btn, .lr-chip, .lr-tile, .lr-client-mode, .lr-toggle button, .lr-lang > button, .lr-language-menu button { transform: none !important; }
+  .lr-btn, .lr-chip, .lr-tile, .lr-client-mode, .lr-toggle button, .lr-lang > button, .lr-language-menu button, .lr-source-option, .lr-source-picker-refresh, .lr-source-picker-close { transform: none !important; }
   .lr-route-edge.is-pending { animation: none; }
 }
 

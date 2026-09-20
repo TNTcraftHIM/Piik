@@ -120,10 +120,10 @@ the colour, outline and selected position without decorative displacement.
 Sharing and local playback controls use the same quiet, compact button treatment.
 The Host's persistent dock stays below the picture; the Viewer's playback bar
 belongs to the video. Their similar appearance does not equate broadcast pause
-with local playback pause. Microphone settings stay attached to the microphone,
-and stopping a share remains visually separated from frequent actions.
-Expanded microphone settings occupy their own row in the dock so they do not
-cover the television or couch. Their comic depicts Host commentary gain; the
+with local playback pause. Microphone mute stays in that dock; its device and
+input gain belong in the existing advanced settings with the other media settings.
+Stopping a share remains visually separated from frequent actions. Settings do
+not cover the television or couch. Their comic depicts Host commentary gain; the
 Viewer's listening-volume comic remains a different action.
 
 ## Cast And Objects

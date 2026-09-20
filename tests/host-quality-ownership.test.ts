@@ -18,7 +18,7 @@ const source = ts.createSourceFile("HostPage.tsx", readFileSync(
   new URL("../src/client/pages/HostPage.tsx", import.meta.url), "utf8",
 ), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 const owners = new Set(["changeQuality", "commitQuality", "handleSignalMessage",
-  "switchSource", "watchCaptureEnd", "switchNativeSource", "finishSourceSwitch", "recoverBrowserFanout", "disposeNativeShare",
+  "switchSource", "watchCaptureEnd", "switchNativeSource", "finishSourceSwitch", "replaceBrowserStream", "recoverBrowserFanout", "disposeNativeShare",
   "acquireNativeClient", "requestSharing", "startNativeShare", "startBrowserNativeIngress",
   "ownNativeClient", "discardNativeClient", "releaseUnusedNativeClient", "closeCaptureSourcePicker",
   "openCaptureSourcePicker", "startBrowserShareFromPicker", "startNativeShareFromPicker",
@@ -416,6 +416,41 @@ describe("Host quality ownership", () => {
     expect(current.setNoticeValue).toHaveBeenLastCalledWith(expect.objectContaining({ target: "operation", tone: "warn" }));
     expect(current.setPhase).not.toHaveBeenCalled();
     expect(current.track.stop).not.toHaveBeenCalled();
+  });
+
+  it.each(["success", "replace-failed", "stopped"])("retires the whole microphone operation after stream replacement: %s", async outcome => {
+    const current = fixture();
+    const permission = deferred<MediaStream>();
+    const video = { stop: vi.fn() };
+    const raw = { getVideoTracks: () => [video], getAudioTracks: () => [], getTracks: () => [video] };
+    const mixed = { ...raw, getAudioTracks: () => [{}] } as unknown as MediaStream;
+    const pending = vi.fn();
+    Object.assign(current.context, {
+      hostAudioRef: ref({ sourceStream: raw, setMicrophoneVolume: vi.fn(), setMicrophone: () => permission.promise }),
+      streamRef: ref(raw), retiringStreamRef: ref(null), sharingPausedRef: ref(false),
+      microphoneVolume: 1, setMicrophonePending: pending, setMicrophoneDevices: vi.fn(),
+      setStream: vi.fn(), setMediaPaused: vi.fn(), peersRef: ref(new Map()),
+      hostSfuRouteRef: ref(outcome === "replace-failed" ? { replaceStream: async () => { throw Error("replacement failed"); } } : null),
+    });
+    const changing = current.context.changeMicrophone(true, "");
+    expect(pending).toHaveBeenLastCalledWith(true);
+    if (outcome === "stopped") {
+      current.activeGenerationRef.current = null;
+      current.sourceSwitchRef.current = {};
+      pending.mockClear();
+    }
+    permission.resolve(mixed);
+    await changing;
+    if (outcome === "stopped") {
+      expect(pending).not.toHaveBeenCalled();
+      expect(current.context.setStream).not.toHaveBeenCalled();
+    } else {
+      expect(pending).toHaveBeenLastCalledWith(false);
+      expect(current.sourceSwitchRef.current).toBeNull();
+      expect(video.stop).not.toHaveBeenCalled();
+      if (outcome === "replace-failed") expect(current.setNoticeValue).toHaveBeenLastCalledWith(
+        expect.objectContaining({ key: "host.microphone.unavailable", target: "operation" }));
+    }
   });
 
   it("keeps microphone denial as operation feedback without retiring video", async () => {

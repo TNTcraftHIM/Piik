@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from "react";
+import { useId } from "react";
 import { Btn } from "./primitives";
 import { Tooltip } from "./Tooltip";
 import { Glyph } from "../../ui/icons";
@@ -6,21 +6,13 @@ import { useCopy } from "../../ui/copy";
 import type { CaptureDevice } from "../../media/capture-devices";
 import { CaptureDeviceSelect } from "./CaptureDeviceSelect";
 
-export function HostMicrophone({ enabled, pending, disabled, paused, unavailable, volume, onVolume, onToggle, deviceId, onDevice, loadDevices, native }: {
+export function HostMicrophone({ enabled, pending, disabled, paused, unavailable, volume, onToggle }: {
   enabled: boolean; pending?: boolean; disabled?: boolean;
   paused?: boolean;
-  volume: number; onVolume: (volume: number) => void;
+  volume: number;
   unavailable?: boolean; onToggle: () => void;
-  deviceId: string; onDevice: (id: string) => void; loadDevices: () => Promise<CaptureDevice[]>; native?: boolean;
 }) {
-  const { t, vis } = useCopy();
-  const actionsRef = useRef<HTMLDivElement>(null);
-  const [expanded, setExpanded] = useState(false);
-  const id = useId();
-  const percent = Math.round(volume * 100);
-  return <div className="lr-host-microphone">
-    <div className="lr-host-microphone-actions" ref={actionsRef}>
-    <Btn icon={enabled ? "microphone" : "microphoneOff"}
+  return <Btn icon={enabled ? "microphone" : "microphoneOff"}
       cap="host.microphone.label"
       title={unavailable ? "host.microphone.browserOnly" : pending ? "host.microphone.pending"
         : paused ? "host.microphone.paused" : disabled ? "host.microphone.busy"
@@ -30,31 +22,28 @@ export function HostMicrophone({ enabled, pending, disabled, paused, unavailable
       hintTone={unavailable ? "warn" : pending || disabled ? "busy" : undefined}
       hintMotion={pending || disabled ? "progress" : undefined}
       pressed={enabled} busy={pending} tone={enabled ? "on" : undefined}
-      disabled={unavailable || pending || disabled || paused} onClick={onToggle} />
-    <Btn icon="chevron" title={unavailable ? "host.microphone.browserOnly" : "host.microphone.settings"}
-      hint={unavailable ? "hint-capture-browser" : "hint-microphone-volume"} hintTone={unavailable ? "warn" : undefined}
-      expanded={expanded && !unavailable} controls={id}
-      disabled={unavailable} onClick={() => setExpanded(!expanded)} />
-    </div>
-    <div id={id} hidden={!expanded || unavailable} role="group" aria-label={t("host.microphone.settings")}
-      className="lr-host-microphone-volume"
-      onKeyDown={event => {
-        if (event.key !== "Escape") return;
-        event.stopPropagation();
-        setExpanded(false);
-        actionsRef.current?.querySelector<HTMLButtonElement>("[aria-controls]")?.focus();
-      }}>
-      {expanded && !unavailable && <CaptureDeviceSelect kind="microphone" value={deviceId} load={loadDevices}
-        onChange={onDevice} disabled={pending || disabled || paused} revision={enabled} browser={!native} />}
-      <label htmlFor={`${id}-level`}>
+      disabled={unavailable || pending || disabled || paused} onClick={onToggle} />;
+}
+
+export function HostMicrophoneSettings({ enabled, disabled, volume, onVolume, deviceId, onDevice, loadDevices, native }: {
+  enabled: boolean; disabled?: boolean; native?: boolean;
+  volume: number; onVolume: (volume: number) => void;
+  deviceId: string; onDevice: (id: string) => void; loadDevices: () => Promise<CaptureDevice[]>;
+}) {
+  const { t, vis } = useCopy();
+  const id = useId();
+  const percent = Math.round(volume * 100);
+  return <div className="lr-door-group lr-microphone-settings" role="group" aria-label={t("host.microphone.settings")}>
+      <CaptureDeviceSelect kind="microphone" value={deviceId} load={loadDevices}
+        onChange={onDevice} disabled={disabled} revision={enabled} browser={!native} />
+      <label htmlFor={id}>
         <span>{vis ? <Glyph name="microphone" size={18} /> : t("host.microphone.volume")}</span>
-        <output htmlFor={`${id}-level`}>{percent}%</output>
+        <output htmlFor={id}>{percent}%</output>
       </label>
-      {expanded && !unavailable && <Tooltip kind="hint-microphone-volume" text={vis ? undefined : t("host.microphone.settings")}>
-        <input id={`${id}-level`} type="range" min={0} max={200} step={1} value={percent}
+      <Tooltip kind="hint-microphone-volume" text={vis ? undefined : t("host.microphone.settings")}>
+        <input id={id} type="range" min={0} max={200} step={1} value={percent} disabled={disabled}
           aria-label={t("host.microphone.volume")} aria-valuetext={`${percent}%`}
           onChange={event => onVolume(Number(event.target.value) / 100)} />
-      </Tooltip>}
-    </div>
+      </Tooltip>
   </div>;
 }
