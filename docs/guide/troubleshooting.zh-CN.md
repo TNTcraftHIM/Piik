@@ -48,6 +48,19 @@ Windows 用黄色边框标出正在采集的窗口或屏幕。在支持的 Windo
 App 选源器提供 **显示采集边框** 开关，默认关闭；系统权限或其他正在进行的采集
 仍可能要求显示边框。Windows 10 的采集接口没有这个开关。
 
+### Windows 11 关闭开关后仍有黄框
+
+1. 从 Piik 的 **程序 / 窗口** 或 **屏幕** 列表选源，保持 **显示采集边框** 关闭。
+   通过浏览器选源时，采集标识由浏览器管理。
+2. 停止其他软件或标签页对同一窗口、屏幕的采集，再重新开始分享。
+3. 如果之前拒绝了无边框采集权限，在 Windows 隐私设置中检查 **屏幕截图边框**。
+   支持该设置页的系统也可以按 **Win+R**，输入 `ms-settings:privacy-graphicscapturewithoutborder` 打开。
+
+Windows 需要用户授权；其他采集要求显示边框时，边框仍会保留
+（[微软接口说明](https://learn.microsoft.com/en-us/uwp/api/windows.graphics.capture.graphicscapturesession.isborderrequired)，英文）。
+仍未解决时，反馈中请附上 Windows 版本、选源方式和
+[App 诊断报告](../../cmd/piik-app/README.zh-CN.md#诊断)。
+
 ### Windows 10 可选处理方法
 
 [DWM Custom Projection Border](https://windhawk.net/mods/dwm-custom-projection-border)

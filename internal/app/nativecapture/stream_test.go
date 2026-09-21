@@ -7,9 +7,79 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
+
+func TestCaptureStopHelper(t *testing.T) {
+	mode := os.Getenv("PIIK_CAPTURE_STOP_FIXTURE")
+	if mode == "" {
+		return
+	}
+	if err := writeFrame(os.Stdout, Frame{Kind: FrameStatus, Data: []byte("ready")}); err != nil {
+		os.Exit(2)
+	}
+	if mode == "unresponsive" {
+		time.Sleep(10 * time.Second)
+		os.Exit(3)
+	}
+	frame, err := readFrame(os.Stdin)
+	if err != nil || frame.Kind != FrameControl || string(frame.Data) != "Q" {
+		os.Exit(4)
+	}
+	// A platform capture must get time to release its session before process exit.
+	time.Sleep(50 * time.Millisecond)
+	if err := os.WriteFile(os.Getenv("PIIK_CAPTURE_STOP_MARKER"), []byte("released"), 0600); err != nil {
+		os.Exit(5)
+	}
+	os.Exit(0)
+}
+
+func TestCaptureStopUsesOneBoundedRetirementPath(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, mode := range []string{"explicit", "parent", "both", "unresponsive"} {
+		t.Run(mode, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			marker := filepath.Join(t.TempDir(), "released")
+			stream, err := startStreamWithEnvironment(ctx, executable,
+				[]string{"-test.run=^TestCaptureStopHelper$"},
+				[]string{"PIIK_CAPTURE_STOP_FIXTURE=" + mode, "PIIK_CAPTURE_STOP_MARKER=" + marker})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer stream.Close()
+			if _, err := stream.Read(); err != nil {
+				t.Fatal(err)
+			}
+			if mode != "explicit" {
+				cancel()
+			}
+			if mode == "explicit" || mode == "both" {
+				go stream.Close()
+			}
+			select {
+			case <-stream.Done():
+			case <-time.After(captureStopTimeout + 3*time.Second):
+				t.Fatal("capture retirement exceeded its stop budget")
+			}
+			_, err = os.Stat(marker)
+			if mode == "unresponsive" {
+				if !os.IsNotExist(err) {
+					t.Fatalf("unresponsive capture unexpectedly released: %v", err)
+				}
+			} else if err != nil {
+				t.Fatalf("capture was killed before receiving its stop command: %v", err)
+			}
+		})
+	}
+}
 
 func TestDiagnosticStderrOverflowDoesNotStopTheChildReader(t *testing.T) {
 	for _, discard := range []bool{false, true} {

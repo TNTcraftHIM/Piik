@@ -52,6 +52,20 @@ On supported Windows versions, the App source picker offers **Show capture borde
 off by default. Windows permissions or another active capture can still require
 the border. Windows 10 does not provide this control for its capture API.
 
+### Windows 11: the border is still visible
+
+1. Select **Apps / Windows** or **Screens** in Piik and leave **Show capture border**
+   off. A Browser-selected source uses the browser's own capture indicator.
+2. Stop other apps or tabs capturing the same window/display, then restart sharing.
+3. If Windows denied borderless capture, review **Screenshot borders** in Windows
+   privacy settings. Its settings page can also be opened with
+   `ms-settings:privacy-graphicscapturewithoutborder` from **Win+R**, when available.
+
+Windows requires consent and can retain the border when another capture requests
+it ([Microsoft's API documentation](https://learn.microsoft.com/en-us/uwp/api/windows.graphics.capture.graphicscapturesession.isborderrequired)).
+If it persists, include the Windows version, selected source type and an
+[App diagnostic report](../../cmd/piik-app/README.md#diagnostics) with your feedback.
+
 ### Optional Windows 10 workaround
 
 [DWM Custom Projection Border](https://windhawk.net/mods/dwm-custom-projection-border)

@@ -52,9 +52,11 @@ history. A parked idea is not implementation authority.
   report when present. The existing five-second Viewer membership grace during
   signaling loss is unchanged. This is distinct from the first-frame report below.
 - [ ] **Windows 11 capture border remains visible.** Identify the App/Browser
-  capture path, Windows build and capture-border permission result. A local
-  Windows 11 request succeeded; the reported failure remains unconfirmed. Check
-  system consent and other active captures before changing the WGC path.
+  capture path, Windows build and capture-border permission result. Local checks
+  reproduced a border surviving forced process termination; parent cancellation
+  now uses bounded graceful retirement. [Capture evidence](./research/native-client-lifecycle.md#windows-capture-borders)
+  verifies the repair and concurrent-capture behavior on Windows 11. The
+  reporter's cause remains unconfirmed; check consent and other active captures.
 - [ ] **Brief connection followed by repeated Viewer loss on v1.5.0.** One
   Viewer reportedly drops just after connection details appear, while other
   Viewers work; App public-link mode is suspected. Check signaling, first-frame
@@ -62,11 +64,12 @@ history. A parked idea is not implementation authority.
   reproduction establishes one premature candidate replacement; the affected
   environment and paired diagnostics are still unavailable, so the reporting
   machine's cause remains unconfirmed.
-- [ ] **App source-discovery field acceptance.** Retest the missing-window report
-  with the current App and page. Obtain OS/browser, version and paired Debug
-  reports to distinguish discovery, capture capability and enumeration failures.
-  Local permission and recovery checks do not establish the reporting machine's
-  cause.
+- [ ] **App discovery and share-start field acceptance.** Retest the missing-window
+  report, an unreachable App despite its process running, and generic share-start
+  failure with the current App and page. OS/browser, version, selected source and
+  paired Debug reports are still unavailable. Distinguish site authorization,
+  browser permission, control capacity, enumeration and capture-start failures;
+  local permission and recovery checks do not establish the reporters' causes.
 - [ ] **Windows 32-bit candidate acceptance.** Verify the isolated
   `spike/windows-x86-capture` candidate's launch, capture/audio, memory pressure,
   source replacement and update links on a 32-bit Windows device. WOW64

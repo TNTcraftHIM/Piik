@@ -260,6 +260,24 @@ starts at build 20348, beyond consumer Windows 10 build 19045. The current
 capture helper therefore retains the system border there. Browser capture
 indicators remain Browser-owned.
 
+On Windows 11 build 26200, a 2026-09-21 controlled native-window check confirmed
+borderless permission was allowed and the default capture had no border. A
+second session explicitly requiring a border made it visible; gracefully ending
+that session cleared it while borderless capture continued. Force-killing the
+bordered capture instead left the outline behind in this fixture, even after
+the remaining capture ended.
+
+The stream owner previously connected parent cancellation directly to
+`exec.CommandContext`, killing the child before its existing bounded stop
+sequence could release the platform session. Parent cancellation now enters
+that same `Stream.Close` sequence; an unresponsive process still has the existing
+one-second kill deadline. Subprocess regression checks cover explicit stop,
+parent cancellation, concurrent stop and an unresponsive child. A real WGC
+capture cancelled through this Go owner exited normally and cleared the border.
+This establishes a retirement defect and its local repair, not the cause of
+every reported Windows 11 border: denied consent and other active captures
+remain distinct Windows-owned limits.
+
 An unofficial WGC-preserving option exists:
 [Windhawk's DWM Custom Projection Border](https://github.com/ramensoftware/windhawk-mods/blob/main/mods/dwm-custom-projection-border.wh.cpp)
 documents disabling the border on Windows 10 21H2. Source inspection confirms

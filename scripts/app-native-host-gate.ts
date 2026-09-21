@@ -812,6 +812,7 @@ async function main(): Promise<void> {
       5_000,
     );
     stage = "pre-share-codec";
+    await clickHostControl(cdp, host, `document.querySelector('.lr-sharing-technical > summary')`);
     await clickHostControl(cdp, host,
       `([...document.querySelectorAll('button.lr-chip')].find((button) =>
         button.textContent?.trim() === ${JSON.stringify(requestedCodec.toUpperCase())}))`,
@@ -967,6 +968,9 @@ async function main(): Promise<void> {
         Date.now() + 5_000,
       );
       stage = "native-quality-presets";
+      await clickHostControl(cdp, host,
+        `document.querySelector('button[aria-controls="host-advanced-door"]')`,
+      );
       for (const [index, width, height] of [[0, 1280, 720], [1, 1920, 1080]] as const) {
         await clickHostControl(cdp, host, `document.querySelectorAll('button.lr-tile')[${index}]`);
         await waitForValue(
@@ -985,12 +989,6 @@ async function main(): Promise<void> {
         result.livePresetChanges += 1;
       }
       stage = "native-quality-controls";
-      await evaluate<void>(
-        cdp,
-        host,
-        `document.querySelector('button[aria-controls="host-advanced-door"]')?.click()`,
-        Date.now() + 5_000,
-      );
       await waitForValue(
         (deadline) => evaluate<boolean>(
           cdp!,
@@ -1201,7 +1199,7 @@ async function main(): Promise<void> {
             Date.now() + 5_000,
           );
           await waitForValue((deadline) => evaluate<boolean>(cdp!, host,
-            `Boolean(document.querySelector('#host-advanced-door .lr-door-body[aria-busy="true"]'))`,
+            `Boolean(document.querySelector('#host-advanced-door .lr-sharing-panel[aria-busy="true"]'))`,
             deadline,
           ), Boolean, 5_000);
         } finally {
@@ -1230,7 +1228,7 @@ async function main(): Promise<void> {
             })()`, deadline,
           ), Boolean, 20_000);
           await waitForValue((deadline) => evaluate<boolean>(cdp!, host,
-            `Boolean(document.querySelector('#host-advanced-door .lr-door-body[aria-busy="false"]'))`,
+            `Boolean(document.querySelector('#host-advanced-door .lr-sharing-panel[aria-busy="false"]'))`,
             deadline,
           ), Boolean, 5_000);
         }
@@ -1272,11 +1270,8 @@ async function main(): Promise<void> {
         10_000,
       );
       const framesBeforeSourceChange = resumed.frames;
-      await evaluate<void>(
-        cdp,
-        host,
-        `document.querySelector('[role="dialog"] button[data-native-source]')?.click()`,
-        Date.now() + 5_000,
+      await selectNativeSource(cdp, host, sourceKind,
+        sourceKind === "window" ? SOURCE_TITLE : undefined,
       );
       stage = "native-source-replaced";
       result.nativeSourceChanged = await waitForValue(
