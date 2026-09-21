@@ -88,6 +88,10 @@ func Start(
 		"--no-autoupdate",
 		"--loglevel", "info",
 		"--output", "json",
+		// Quick Tunnels otherwise force QUIC. Let cloudflared try TCP after
+		// the first failed edge attempt, within our bounded startup window.
+		"--protocol", "auto",
+		"--max-edge-addr-retries", "0",
 		"--url", localOrigin,
 	)
 	hideWindow(child)

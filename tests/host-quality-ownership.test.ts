@@ -23,7 +23,7 @@ const owners = new Set(["changeQuality", "commitQuality", "handleSignalMessage",
   "ownNativeClient", "discardNativeClient", "releaseUnusedNativeClient", "closeCaptureSourcePicker",
   "openCaptureSourcePicker", "startBrowserShareFromPicker", "startNativeShareFromPicker",
   "startSharing", "beginRoomMutation", "finishRoomMutation", "setCaptureError", "changeMicrophone", "toggleSharingPause",
-  "startPeer", "reconcileHostChildren", "setNotice", "setNoticeKey", "setNoticeError", "setNoticeErrorKey", "endSharing", "copyInvite", "isCurrentRoomAuthority"]);
+  "startPeer", "reconcileHostChildren", "setNotice", "setNoticeKey", "setNoticeError", "setNoticeErrorKey", "endSharing", "copyRoomLink", "isCurrentRoomAuthority"]);
 const functions: string[] = [];
 function collect(node: ts.Node): void {
   if (ts.isFunctionDeclaration(node) && node.name && owners.has(node.name.text)) {
@@ -78,7 +78,7 @@ function fixture(launchedByClient = true) {
     setNativeSources: vi.fn(), setShowCaptureBorder: vi.fn(), defaultNativeCapturePath: () => ({ adapterIndex: 0, encoderIndex: 0 }),
     roomMutationRef: ref<object | null>(null), setRoomMutation: vi.fn(),
     generationRef: ref(0), shareGenerationRef: ref<string | null>("share"), createOpaqueId: () => "share",
-    setCopiedInviteUrl: vi.fn(), setPhase: vi.fn(), roomInitializationRef: ref(Promise.resolve()), roomRef: ref(null),
+    setCopiedRoomLink: vi.fn(), setPhase: vi.fn(), roomInitializationRef: ref(Promise.resolve()), roomRef: ref(null),
     createRoom: vi.fn(async () => { throw new Error("must not create an empty room"); }),
     readPreferredRoomId: () => null, disposeResources: vi.fn(), ApiError: class extends Error {},
     NativeMediaBridge: vi.fn(), manualVideoCodecPreference: vi.fn(),
@@ -191,13 +191,14 @@ describe("Camera replacement ownership", () => {
   });
 });
 
-describe("Host invite copy feedback", () => {
-  function copyFixture() {
+describe("Host room-link copy feedback", () => {
+  function copyFixture(includeInviteCredential = true) {
     const current = fixture();
     let copiedUrl: string | null = null;
     let notice: unknown = null;
-    current.setCopiedInviteUrl.mockImplementation((next: string | null) => { copiedUrl = next; });
-    const room = { roomId: "1234", hostToken: "host-token", inviteUrl: "https://example.test/r/1234#v=example" };
+    current.setCopiedRoomLink.mockImplementation((next: string | null) => { copiedUrl = next; });
+    const room = { roomId: "1234", hostToken: "host-token", inviteUrl: "https://example.test/r/1234#v=example",
+      canonicalUrl: "https://example.test/r/1234" };
     Object.assign(current.roomRef, { current: room });
     current.setNoticeValue.mockImplementation((next: unknown) => {
       notice = typeof next === "function" ? next(notice) : next;
@@ -207,13 +208,30 @@ describe("Host invite copy feedback", () => {
 
       navigator: { clipboard: { writeText } },
       copiedResetTimerRef: ref<number | null>(null),
-      copyInviteRequestRef: ref<object | null>(null),
+      copyRoomLinkRequestRef: ref<object | null>(null),
+      includeInviteCredential, roomLinkBlocked: false, roomMutating: false,
       window: { setTimeout: vi.fn(() => 1), clearTimeout: vi.fn() },
     });
-    return { ...current, writeText, copied: () => copiedUrl !== null && copiedUrl === current.context.roomRef.current?.inviteUrl,
+    return { ...current, writeText, copied: () => copiedUrl !== null && copiedUrl === (current.context.includeInviteCredential
+      ? current.context.roomRef.current?.inviteUrl : current.context.roomRef.current?.canonicalUrl),
       replaceInvite: (inviteUrl: string | null) => { current.context.roomRef.current = { ...room, inviteUrl }; }, notice: () => notice,
-      copy: current.context.copyInvite as () => Promise<void> };
+      copy: current.context.copyRoomLink as () => Promise<void> };
   }
+
+  it("copies the canonical room URL when password-free invitation is off", async () => {
+    const current = copyFixture(false);
+    await current.copy();
+    expect(current.writeText).toHaveBeenCalledWith("https://example.test/r/1234");
+    expect(current.copied()).toBe(true);
+  });
+
+  it("does not copy a plain link that cannot admit a Viewer", async () => {
+    const current = copyFixture(false);
+    current.context.roomLinkBlocked = true;
+    await current.copy();
+    expect(current.writeText).not.toHaveBeenCalled();
+    expect(current.copied()).toBe(false);
+  });
 
   it("clears an earlier success when the next copy fails", async () => {
     const current = copyFixture();

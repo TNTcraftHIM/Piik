@@ -158,6 +158,26 @@ totals as its portable core proof. Detailed Piik quality metrics enrich a
 development run when its source module is served, but their absence on a static
 deployment no longer erases valid native RTCStats.
 
+### Public Invitation Startup
+
+The pinned cloudflared Quick Tunnel defaults to explicit QUIC, which disables
+its HTTP/2 fallback. Piik requests `--protocol auto` and
+`--max-edge-addr-retries 0`: try QUIC once, then let cloudflared fall back within
+the existing 30-second startup budget. This affects HTTP/WebSocket control only;
+media routes, tunnel identity and ordered shutdown keep their existing owners.
+DNS failures, API rejection and networks blocking both transports can still fail.
+
+A 2026-09-21 Windows check used the packaged binary with an isolated UDP sink and
+TCP forwarder. The previous arguments timed out at 30 seconds without trying TCP.
+The candidate connected in about 11 seconds, served the public page and echoed a
+WebSocket message, then joined the child on close. A separate ordinary-network
+run registered in about five seconds but this host's public HTTPS/WSS requests
+ended with EOF; end-to-end access on that path remains unverified. These checks
+do not establish the cause of reports without matching diagnostics. Upstream
+[Quick Tunnel setup](https://github.com/cloudflare/cloudflared/blob/2026.8.3/cmd/cloudflared/tunnel/quick_tunnel.go)
+and [protocol fallback](https://github.com/cloudflare/cloudflared/blob/2026.8.3/supervisor/tunnel.go)
+own the dependency behavior; Piik adds no separate retry loop.
+
 ## Remaining Gates
 
 - Run the exact clean-revision package on macOS; Linux amd64 is proved.

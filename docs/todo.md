@@ -7,14 +7,6 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **Investigate repeated App public-invitation startup failures.** Trace App
-  startup, tunnel readiness and link creation with bounded failure injection and
-  existing diagnostics; distinguish local lifecycle defects from provider/network
-  failures before changing timeouts or retries. A new report describes frequent
-  creation failures without version or logs. The earlier
-  [#396 report](https://github.com/TNTcraftHIM/Piik/issues/396#issuecomment-5691465700)
-  described a 30-second timeout after Local startup was fixed; do not assume the
-  same cause. Check actionable error feedback and cancellation/resource cleanup.
 - [ ] **Complete manual accessible-name review.** Verify the empty video's
   screen-reader output: Chromium exposes an unavailable-media
   description despite the literal shared-picture label and no media error. Also
@@ -44,6 +36,14 @@ history. A parked idea is not implementation authority.
 
 ## Awaiting Device Or Reporter Evidence
 
+- [ ] **App public-invitation startup field acceptance.** Retest the frequent
+  creation-failure report and the earlier
+  [#396 timeout](https://github.com/TNTcraftHIM/Piik/issues/396#issuecomment-5691465700)
+  with the candidate. A controlled UDP-blocked/TCP-available reproduction confirms
+  a dependency configuration defect; the existing tunnel now uses cloudflared's
+  bounded protocol fallback. [Runtime evidence](./research/cross-platform-client-runtime.md#public-invitation-startup)
+  separates this fix from DNS, provider and remote access failures. The reporting
+  environments still need version and diagnostic evidence before assigning a cause.
 - [ ] **Interruption during established viewing.** A Viewer reportedly returns
   to P2P connecting after watching for a while. Native receiver renegotiation,
   retired event delivery and SFU replacement have locally reproduced defects
@@ -148,3 +148,10 @@ not establish better connection success or speed; this note adds no retry policy
     and retain Gitee; do not add a self-hosted mirror. Chrome still blocks the
     Gitee attachment when Referer is removed. Reopen for new evidence or a
     provider review; the warning remains unresolved.
+10. **4K in advanced sharing settings.** Deferred until after the current capture
+    maintenance phase. Add 3840x2160 without changing the default or recommended
+    presets. Extend the existing capture, decode and relay bounds together; verify
+    H.264 level negotiation for 4K at 60 fps. Current strict quality messages reject
+    `2160p`, so preserve published Browser/App/Server compatibility through explicit
+    receiving-end support before exposing or sending the new setting. Include
+    source replacement, lower outputs and resource limits in acceptance.

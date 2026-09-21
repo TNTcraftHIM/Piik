@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -17,7 +18,18 @@ import (
 
 func TestMain(tests *testing.M) {
 	if mode := os.Getenv("PIIK_TUNNEL_FIXTURE"); mode != "" {
-		if mode == "ready" || mode == "fail-after-ready" {
+		if mode == "tcp-only" {
+			// Model the pinned Quick Tunnel's opt-in protocol fallback. Without
+			// both flags, an unavailable UDP edge consumes Piik's startup budget.
+			for name, want := range map[string]string{"--protocol": "auto", "--max-edge-addr-retries": "0"} {
+				index := slices.Index(os.Args, name)
+				if index < 0 || index+1 >= len(os.Args) || os.Args[index+1] != want {
+					fmt.Fprintln(os.Stderr, "UDP unavailable; TCP fallback not enabled within startup budget")
+					os.Exit(7)
+				}
+			}
+		}
+		if mode == "ready" || mode == "fail-after-ready" || mode == "tcp-only" {
 			fmt.Println(`{"message":"https://test-room.trycloudflare.com"}`)
 			fmt.Println(`{"message":"Registered tunnel connection"}`)
 		}
@@ -35,6 +47,23 @@ func TestMain(tests *testing.M) {
 		}
 	}
 	os.Exit(tests.Run())
+}
+
+func TestStartupEnablesCloudflaredProtocolFallback(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PIIK_TUNNEL_FIXTURE", "tcp-only")
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	process, err := Start(ctx, executable, "http://127.0.0.1:8787")
+	if err != nil {
+		t.Fatalf("tunnel with TCP available: %v", err)
+	}
+	if err := process.Close(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 type blockedTunnelLog struct {
