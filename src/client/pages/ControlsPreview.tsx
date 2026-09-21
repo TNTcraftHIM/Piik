@@ -7,6 +7,7 @@ import { StageTv } from "../components/living/Stage";
 import { HostMicrophone, HostMicrophoneSettings } from "../components/living/HostMicrophone";
 import { PlaybackControls } from "../components/living/PlaybackControls";
 import { SharingSettings } from "../components/living/SharingSettings";
+import { LauncherForm, type AppMode } from "../components/living/LauncherForm";
 import { QualityPresets } from "../components/living/QualityPresets";
 import { RoomCodeInput } from "../components/living/RoomCodeInput";
 import type { QualityProfileId } from "../media/quality";
@@ -40,6 +41,9 @@ export function ControlsPreview() {
   const [microphoneVolume, setMicrophoneVolume] = useState(1);
   const [microphoneDevice, setMicrophoneDevice] = useState("");
   const [sharingSettings, setSharingSettings] = useState(false);
+  const [launchMode, setLaunchMode] = useState<AppMode>("link");
+  const [launchSite, setLaunchSite] = useState("https://piik.example");
+  const [launchPassword, setLaunchPassword] = useState("");
   const [preset, setPreset] = useState<QualityProfileId>("1080p30");
   const [policy, setPolicy] = useState<"open" | "private">("open");
   const [roomPassword, setRoomPassword] = useState(false);
@@ -198,6 +202,15 @@ export function ControlsPreview() {
           onToggleTheater={() => setTheater(!theater)} onReconnect={notify} reconnectAvailable />
       </StageTv></div>
       <p><a href="/__playback-preview">{en ? "Open the full playback preview" : "进入完整播放预览"} →</a></p>
+    </section>
+    <section id="launcher-preview" className="cp-section">
+      <header className="cp-section-head"><span className="cp-number">08</span><h2>{t("client.launch.title")}</h2></header>
+      <div className="lr-client-launch">
+        <LauncherForm mode={launchMode} onModeChange={setLaunchMode}
+          site={launchSite} onSiteChange={setLaunchSite}
+          localAccessPassword={launchPassword} onLocalAccessPasswordChange={setLaunchPassword}
+          onSubmit={event => event.preventDefault()} />
+      </div>
     </section>
   </>;
 }

@@ -63,6 +63,8 @@ export const zh = {
   "client.launch.lanHint": "选择与朋友处于同一网络的地址。",
   "client.launch.lanUnavailable": "没有可用的局域网地址，请连接网络后刷新页面",
   "client.launch.localAccess": "站点口令（可选）",
+  "client.launch.accessSettings": "站点口令",
+  "client.launch.accessSet": "已设置",
   "client.launch.localAccessHint": "设置后，开房或凭房间号加入需要口令。邀请链接可直接进入对应房间。",
   "client.launch.go": "进入 Piik",
   "client.launch.starting": "正在准备 Piik",

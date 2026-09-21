@@ -1537,14 +1537,21 @@ html[data-theme="dark"] .lr-door-glyph { color: #7d92a8; }
 .lr-client-lan-option strong { font-size: 13px; overflow-wrap: anywhere; }
 .lr-client-lan-option small { font: 12px var(--mono); }
 .lr-client-lan-option:has(:focus-visible) { outline: 3px solid var(--action); outline-offset: 1px; }
-/* Only the wrapped access field spans the panel width; a wrapped pill or
-   button keeps its own size so the grid can center it. */
-.lr-client-launch-panel > .lr-comic-tip-wrap:has(> .lr-client-access) {
-  width: min(460px, 100%);
+.lr-client-access-options { width: min(460px, 100%); min-width: 0; }
+.lr-client-access-options > summary {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: fit-content; max-width: 100%; min-height: 40px; margin: 0 auto; padding: 8px 12px;
+  border-radius: 12px; color: var(--muted); font-size: 12px; font-weight: 600; cursor: pointer;
+  list-style: none; transition: background-color 140ms ease, color 140ms ease;
 }
-.lr-client-launch-panel > .lr-comic-tip-wrap > .lr-client-access {
-  width: 100%;
-}
+.lr-client-access-options > summary::-webkit-details-marker { display: none; }
+.lr-client-access-options > summary:is(:hover, :focus-visible) { background: var(--control-hover); color: var(--ink); }
+.lr-client-access-options > summary:focus-visible { outline: 3px solid var(--action); outline-offset: 2px; }
+.lr-client-access-options > summary > svg:last-child { transition: transform 160ms ease; }
+.lr-client-access-options[open] > summary > svg:last-child { transform: rotate(180deg); }
+.lr-client-access-set { display: inline-flex; align-items: center; gap: 4px; color: var(--ink); }
+.lr-client-access-options .lr-client-access { width: 100%; margin-top: 8px; }
+.lr-client-access-hint { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
 
 .lr-join {
   flex: 1;

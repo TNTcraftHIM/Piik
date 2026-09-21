@@ -1,4 +1,4 @@
-import type { FormEvent, ReactNode } from "react";
+import { useId, type FormEvent, type ReactNode } from "react";
 import { BrandMark } from "./BrandMark";
 import { Tooltip } from "./Tooltip";
 import { WelcomeLine } from "./WelcomeLine";
@@ -65,6 +65,7 @@ export function LauncherForm({
   children?: ReactNode;
 }) {
   const { vis, t } = useCopy();
+  const accessHintId = useId();
   const accessField = (
     <label className="lr-input lr-client-access">
       <Glyph name="key" size={18} />
@@ -75,6 +76,7 @@ export function LauncherForm({
         spellCheck={false}
         placeholder={vis ? "" : t("client.launch.localAccess")}
         aria-label={t("client.launch.localAccess")}
+        aria-describedby={accessHintId}
         onChange={(event) => {
           onLocalAccessPasswordChange(event.target.value);
         }}
@@ -177,12 +179,21 @@ export function LauncherForm({
       ) : null}
 
       {mode !== "site" ? (
-        <Tooltip
-          kind="hint-password"
-          text={vis ? undefined : t("client.launch.localAccessHint")}
-        >
+        <details className="lr-client-access-options">
+          <summary>
+            <Glyph name="key" size={17} />
+            <span className={vis ? "visually-hidden" : undefined}>{t("client.launch.accessSettings")}</span>
+            {localAccessPassword && <span className="lr-client-access-set">
+              <Glyph name="check" size={14} />
+              <span className={vis ? "visually-hidden" : undefined}>{t("client.launch.accessSet")}</span>
+            </span>}
+            <Glyph name="chevron" size={15} />
+          </summary>
           {accessField}
-        </Tooltip>
+          <p id={accessHintId} className={vis ? "visually-hidden" : "lr-client-access-hint"}>
+            {t("client.launch.localAccessHint")}
+          </p>
+        </details>
       ) : null}
 
       <Btn

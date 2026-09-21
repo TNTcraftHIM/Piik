@@ -63,6 +63,8 @@ export const en: Record<CopyKey, string> = {
   "client.launch.lanHint": "Choose an address on the same network as your friends.",
   "client.launch.lanUnavailable": "No local network address is available. Connect to a network and refresh this page.",
   "client.launch.localAccess": "Site passphrase (optional)",
+  "client.launch.accessSettings": "Site passphrase",
+  "client.launch.accessSet": "Set",
   "client.launch.localAccessHint": "If set, required to create rooms or join by code. Invite links grant access to their room.",
   "client.launch.go": "Open Piik",
   "client.launch.starting": "Preparing Piik",
