@@ -3577,7 +3577,7 @@ export function HostPage({
             <Btn
               icon="sliders"
               busy={changingQuality}
-              cap="host.advanced"
+              cap="host.settings.button"
               title={showAdvanced ? "host.advanced.hide" : "host.advanced"}
               hint={showAdvanced ? "hint-collapse" : "hint-advanced"}
               tone={showAdvanced ? "on" : undefined}

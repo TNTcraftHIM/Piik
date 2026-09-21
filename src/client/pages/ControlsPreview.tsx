@@ -7,7 +7,7 @@ import { StageTv } from "../components/living/Stage";
 import { HostMicrophone, HostMicrophoneSettings } from "../components/living/HostMicrophone";
 import { PlaybackControls } from "../components/living/PlaybackControls";
 import { SharingSettings } from "../components/living/SharingSettings";
-import { LauncherForm, type AppMode } from "../components/living/LauncherForm";
+import { LauncherForm, SUGGESTED_SITE, type AppMode } from "../components/living/LauncherForm";
 import { QualityPresets } from "../components/living/QualityPresets";
 import { RoomCodeInput } from "../components/living/RoomCodeInput";
 import type { QualityProfileId } from "../media/quality";
@@ -42,7 +42,7 @@ export function ControlsPreview() {
   const [microphoneDevice, setMicrophoneDevice] = useState("");
   const [sharingSettings, setSharingSettings] = useState(false);
   const [launchMode, setLaunchMode] = useState<AppMode>("link");
-  const [launchSite, setLaunchSite] = useState("https://piik.example");
+  const [launchSite, setLaunchSite] = useState(SUGGESTED_SITE);
   const [launchPassword, setLaunchPassword] = useState("");
   const [preset, setPreset] = useState<QualityProfileId>("1080p30");
   const [policy, setPolicy] = useState<"open" | "private">("open");
@@ -90,7 +90,7 @@ export function ControlsPreview() {
           <Btn icon={paused ? "play" : "pause"} title={paused ? "host.resume" : "host.pause"} cap={paused ? "host.resume" : "host.pause"}
             hint={paused ? "hint-resume" : "hint-pause"} onClick={() => setPaused(!paused)} />
           <Btn icon="switchSource" title="host.switchSource" cap="host.switchSource" hint="hint-switch-source" onClick={notify} />
-          <Btn icon="sliders" cap="host.advanced" title={sharingSettings ? "host.advanced.hide" : "host.advanced"}
+          <Btn icon="sliders" cap="host.settings.button" title={sharingSettings ? "host.advanced.hide" : "host.advanced"}
             hint={sharingSettings ? "hint-collapse" : "hint-advanced"} tone={sharingSettings ? "on" : undefined}
             expanded={sharingSettings} controls="preview-sharing-settings" onClick={() => setSharingSettings(value => !value)} />
           <Btn id="host-stop-share" icon="stop" tone="danger" title="host.stop" cap="host.stop" hint="hint-share-stop" onClick={notify} />

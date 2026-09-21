@@ -239,6 +239,7 @@ export const en: Record<CopyKey, string> = {
   "host.quality.1080p30": "1080p · 30 fps",
   "host.quality.1080p60": "1080p · 60 fps",
   "host.advanced": "Sharing settings",
+  "host.settings.button": "Settings",
   "host.settings.picture": "Picture",
   "host.settings.sound": "Sound",
   "host.settings.technical": "Connection & encoding",

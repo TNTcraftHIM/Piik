@@ -5,7 +5,7 @@ import { BrandMark } from "../components/living/BrandMark";
 import { LoadingStatus } from "../components/living/WaitingStatus";
 import { Tooltip } from "../components/living/Tooltip";
 import { AppHeader } from "../components/living/Header";
-import { LauncherForm, type AppMode } from "../components/living/LauncherForm";
+import { LauncherForm, SUGGESTED_SITE, type AppMode } from "../components/living/LauncherForm";
 import { Btn, Pill } from "../components/living/primitives";
 import { Glyph } from "../ui/icons";
 import { hasCopyPreference, useCopy, type CopyKey } from "../ui/copy";
@@ -57,7 +57,7 @@ export function AppLauncherPage() {
       .then((state) => {
         if (!current) return;
         setMode(state.defaultMode);
-        setSite(state.site);
+        setSite(state.site || SUGGESTED_SITE);
         setLocalAccessPassword(state.localAccessPassword);
         setAppDebug(state.debug);
         setDebug(state.debug === true || browserDebugEnabled);

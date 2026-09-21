@@ -239,6 +239,7 @@ export const zh = {
   "host.quality.1080p30": "1080p · 30 帧",
   "host.quality.1080p60": "1080p · 60 帧",
   "host.advanced": "分享设置",
+  "host.settings.button": "设置",
   "host.settings.picture": "画面",
   "host.settings.sound": "声音",
   "host.settings.technical": "连接与编码",
