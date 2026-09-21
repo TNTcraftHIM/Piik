@@ -34,10 +34,11 @@ share generation:
 - native-edge topology convergence is enabled by default. The Host may disable
   it before sharing; when disabled, quality evidence stays diagnostic and
   availability routing is unchanged;
-- NAT traversal requires an exact three-destination STUN survey: a Site may use
-  self-hosted 3478/3479/3480, Public Link uses its bounded public survey, and
+- NAT traversal enhancement requires an exact three-destination STUN survey:
+  a Site may use self-hosted 3478/3479/3480, Public Link uses its bounded public survey, and
   pure LAN supplies none. Its default-on Host switch augments Browser and Native
-  P2P edges. Native uses one media socket for IPv4 and, where available, IPv6
+  P2P edges. This gate leaves ordinary ICE and Native gateway mapping enabled.
+  Native uses one media socket for IPv4 and, where available, IPv6
   direct connections; its STUN survey and best-effort gateway mapping use IPv4.
   Availability and background direct acquisition share a bounded budget of
   three actual connection attempts per eligible parent/session opportunity.
@@ -105,8 +106,8 @@ begins only after that exact candidate commits as the active route.
 Either preparing endpoint reports local rejection or connection-start failure
 to that same operation immediately; it does not wait out a silent candidate's
 deadline or start an independent recovery loop.
-When NAT traversal is enabled, another operation may use the remaining
-connection-attempt budget after rollback. The waiting display uses the actual
+When NAT traversal enhancement is enabled, another operation may use the
+remaining connection-attempt budget after rollback. The waiting display uses the actual
 server-issued attempt ordinal; it never counts time as an attempted connection.
 Committed Browser P2P recovery first restarts ICE on the same connection, then
 rebuilds that connection if necessary, within the existing two-request budget.

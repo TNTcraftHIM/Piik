@@ -73,9 +73,9 @@ describe("copy catalog", () => {
     expect(t("en", "join.title")).toBe("Join a room");
     expect(t("zh", "host.advanced.route.peerOnly")).toBe("隐私模式");
     expect(t("en", "host.advanced.route.peerOnly")).toBe("Privacy mode");
-    expect(t("zh", "host.advanced.route.natPrediction")).toBe("NAT 穿透");
+    expect(t("zh", "host.advanced.route.natPrediction")).toBe("NAT 穿透增强");
     expect(t("en", "host.advanced.route.natPrediction")).toBe(
-      "NAT traversal",
+      "Enhanced NAT traversal",
     );
     expect(isCopyKey("viewer.reconnect")).toBe(true);
     expect(isCopyKey("Reconnect media")).toBe(false);

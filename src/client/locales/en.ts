@@ -265,11 +265,11 @@ export const en: Record<CopyKey, string> = {
     "Share over peer-to-peer (P2P) connections only. Viewers cannot watch if those connections fail",
   "host.advanced.route.peerOnlyRequired":
     "This service supports peer-to-peer (P2P) media only, so Privacy mode is always on",
-  "host.advanced.route.natPrediction": "NAT traversal",
+  "host.advanced.route.natPrediction": "Enhanced NAT traversal",
   "host.advanced.route.natPredictionHint":
-    "Use extra STUN observations to try more direct paths",
+    "Use extra probes and retries to help connect across some restricted networks. Available in browsers and the App",
   "host.advanced.route.natPredictionUnavailable":
-    "Extra NAT traversal is not enabled on this service; ordinary P2P remains available",
+    "This service has not enabled the enhancement. Standard P2P connections are still attempted",
   "host.advanced.codec": "Video codec",
   "host.advanced.codec.auto": "Auto",
   "host.advanced.codec.autoHint": "Pick automatically",

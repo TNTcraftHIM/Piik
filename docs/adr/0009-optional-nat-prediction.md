@@ -19,10 +19,10 @@ connection acquisition reuses the route controller's existing opportunity ledger
 
 ## Decision
 
-1. `NAT_PREDICTION_ENABLED` defaults to `false`. A disabled deployment does not
-   expose the Host control and the server rejects NAT prediction in the room
-   policy. An enabled deployment exposes `NAT traversal`; the pre-share switch
-   defaults on, remains Host-controllable, locks while sharing, and is not
+1. `NAT_PREDICTION_ENABLED` defaults to `false`. A disabled deployment shows the
+   Host control locked off and the server rejects NAT prediction in the room
+   policy. An enabled deployment exposes `Enhanced NAT traversal`; the pre-share
+   switch defaults on, remains Host-controllable, locks while sharing, and is not
    persisted beyond that share generation.
 2. An enabled Site derives ports 3479 and 3480 from its first ordinary STUN
    authority on UDP 3478. Public-link App mode instead supplies one ordinary

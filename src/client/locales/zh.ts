@@ -265,11 +265,11 @@ export const zh = {
     "仅通过设备间连接（P2P）传输画面。连接不通时，观众将无法观看",
   "host.advanced.route.peerOnlyRequired":
     "当前服务仅支持设备间连接（P2P），隐私模式无法关闭",
-  "host.advanced.route.natPrediction": "NAT 穿透",
+  "host.advanced.route.natPrediction": "NAT 穿透增强",
   "host.advanced.route.natPredictionHint":
-    "借助额外 STUN 探测，尝试更多直连路径",
+    "借助额外探测和重试，帮助部分受限网络建立直连。浏览器和 App 均可使用",
   "host.advanced.route.natPredictionUnavailable":
-    "当前服务未启用额外 NAT 穿透，仍可使用普通 P2P 连接",
+    "当前服务未启用此增强，仍会尝试常规 P2P 连接",
   "host.advanced.codec": "视频编码",
   "host.advanced.codec.auto": "自动",
   "host.advanced.codec.autoHint": "自动选择",
