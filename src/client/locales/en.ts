@@ -197,9 +197,9 @@ export const en: Record<CopyKey, string> = {
   "host.invite.emptyOpen": "No invite link; the room code still works",
   "host.invite.address": "Room address",
   "host.invite.copyAddress": "Copy room address",
-  "host.invite.includeCredential": "Include access",
-  "host.invite.credentialHint": "The link grants access to this room",
-  "host.invite.credentialRequired": "This room is invite-only; enable Include access",
+  "host.invite.includeCredential": "Skip passwords",
+  "host.invite.credentialHint": "Anyone with this link can join the room",
+  "host.invite.credentialRequired": "This room is invite-only; turn on Skip passwords",
   "host.invite.emptyPassword": "No invite link; room code plus password still works",
   "host.invite.emptyPrivate": "No invite link; rotate one before inviting",
 

@@ -197,9 +197,9 @@ export const zh = {
   "host.invite.emptyOpen": "暂无邀请链接，仍可凭房间号加入",
   "host.invite.address": "房间地址",
   "host.invite.copyAddress": "复制房间地址",
-  "host.invite.includeCredential": "携带凭证",
-  "host.invite.credentialHint": "链接自带此房间的观看权限",
-  "host.invite.credentialRequired": "当前仅限邀请，请开启携带凭证",
+  "host.invite.includeCredential": "免密邀请",
+  "host.invite.credentialHint": "收到链接即可加入此房间",
+  "host.invite.credentialRequired": "当前仅限邀请，请开启免密邀请",
   "host.invite.emptyPassword": "暂无邀请链接，仍可凭房间号和密码加入",
   "host.invite.emptyPrivate": "暂无邀请链接，请先更新链接再邀请他人",
 
