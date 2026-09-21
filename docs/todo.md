@@ -12,16 +12,6 @@ history. A parked idea is not implementation authority.
   description despite the literal shared-picture label and no media error. Also
   review accessible naming on disabled tooltip wrappers and the UI catalogue's
   paired-character example; automated checks leave those for manual review.
-- [ ] **Review camera and Host microphone in the separate capture candidate.**
-  The owner accepts the current [sharing-settings layout](./standards/visual-language.md)
-  and room-action order. Complete full-room and actual-device acceptance; keep
-  pre-share quality access and existing setting/resource owners. Verify expanded
-  settings and tooltips leave neighbouring controls reachable in actual device use.
-  Accept the camera thumbnail cards alongside window/display selection; check
-  permissions, multiple devices and cancellation on actual phones and desktops.
-  The [capture assessment](./research/camera-and-microphone.md) owns current behavior.
-  Accept real audio levels/echo, native mixing and device replacement on target systems,
-  and mobile camera permission, orientation and background behavior before release.
 - [ ] **Refine the isolated room-interaction prototype.** Review chat, optional
   danmaku and participant-targeted reactions for usability, placement and intended
   cross-view synchronization. Preserve room authorization and media-route owners.
@@ -36,10 +26,17 @@ history. A parked idea is not implementation authority.
 
 ## Awaiting Device Or Reporter Evidence
 
+- [ ] **Camera and Host microphone device coverage.** The owner accepted the
+  sharing layout and authorized release with these physical limits recorded.
+  Verify real audio levels/echo, multiple-device replacement and native mixing on
+  target systems, plus phone camera permission, orientation and background use.
+  Keep the existing capture and route owners. The
+  [capture assessment](./research/camera-and-microphone.md) owns behavior and
+  separates bounded Windows/browser checks from untested device combinations.
 - [ ] **App public-invitation startup field acceptance.** Retest the frequent
   creation-failure report and the earlier
   [#396 timeout](https://github.com/TNTcraftHIM/Piik/issues/396#issuecomment-5691465700)
-  with the candidate. A controlled UDP-blocked/TCP-available reproduction confirms
+  with the updated App. A controlled UDP-blocked/TCP-available reproduction confirms
   a dependency configuration defect; the existing tunnel now uses cloudflared's
   bounded protocol fallback. [Runtime evidence](./research/cross-platform-client-runtime.md#public-invitation-startup)
   separates this fix from DNS, provider and remote access failures. The reporting

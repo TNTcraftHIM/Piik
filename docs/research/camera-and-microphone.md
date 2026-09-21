@@ -1,7 +1,7 @@
 # Camera And Host Microphone
 
-Status: unpublished candidate integrated into the ordinary Host UI.
-Remaining acceptance belongs to [TODO](../todo.md#now).
+Status: integrated into the ordinary Host UI and accepted for release.
+Remaining device coverage belongs to [TODO](../todo.md#awaiting-device-or-reporter-evidence).
 
 ## Scope And Ownership
 
@@ -38,9 +38,11 @@ starts only after an explicit action. Permission waiting is cancellable and does
 not hold the control reader. Device loss retires only that audio input.
 
 Windows native capture and the App-to-Viewer path have local acceptance evidence.
-macOS/Linux microphone compilation and device acceptance, real audio-level/echo
-checks and actual phone capture remain release boundaries; synthetic tests do
-not establish those results. The Host preview remains muted on every path.
+macOS/Linux microphone compilation is checked by native-platform packaging.
+Real audio-level/echo checks, macOS/Linux device acceptance and actual phone
+capture remain physical evidence limits; synthetic tests do not establish
+those results. The owner authorized release with those limits retained. The
+Host preview remains muted on every path.
 
 This scope adds no room messages, ports, chat, Viewer microphone or emoji
 interactions. Microphone, pause, source replacement and stop share one action

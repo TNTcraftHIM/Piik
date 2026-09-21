@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-09-17
+Last updated: 2026-09-21
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) owns unresolved physical limits,
@@ -24,6 +24,11 @@ and Git/PRs own completed history.
   mascot, concrete media waits use their owning comic, and waiting captions are
   secondary to literal status. Website reduced-motion preference and player
   tooltip placement follow the same presentation owners.
+- Camera sharing and Host microphone commentary are accepted product features.
+  Both Browser and native App audio use the existing media routes; device
+  selection and sharing settings keep their current resource owners. The
+  [capture assessment](./research/camera-and-microphone.md) owns platform behavior
+  and the remaining physical evidence limits.
 
 Website delivery includes a bilingual reader documentation center generated
 from the repository's guides alongside the homepage, with search and detailed
