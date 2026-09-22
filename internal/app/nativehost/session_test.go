@@ -17,6 +17,13 @@ import (
 )
 
 func TestMain(tests *testing.M) {
+	if os.Getenv("PIIK_NATIVEHOST_PIPE_FIXTURE") == "backend" {
+		for _, key := range []string{"PIIK_CAPTURE_STARTING", "PIIK_CAPTURE_ACTIVE"} {
+			writeCaptureFixtureFrame(nativecapture.Frame{Kind: nativecapture.FrameStatus, Data: []byte(os.Getenv(key))})
+		}
+		_, _ = io.Copy(io.Discard, os.Stdin)
+		os.Exit(0)
+	}
 	if os.Getenv("PIIK_NATIVEHOST_PIPE_FIXTURE") == "audio-recovery" {
 		runAudioRecoveryCapture()
 		os.Exit(0)
@@ -72,9 +79,11 @@ func TestCaptureCommitWaitsForReaderMetadataOrTermination(t *testing.T) {
 			check(err)
 			defer replacement.Close()
 			committed := make(chan error, 1)
+			adapter, encoder := uint32(1), uint32(2)
 			go func() {
 				session.updateMu.Lock()
-				err := session.commitCapture(options, QualityProfile{Video: options.Profile, AudioBitrate: 64_000}, replacement, CaptureState{}, nil, false)
+				err := session.commitCapture(options, QualityProfile{Video: options.Profile, AudioBitrate: 64_000}, replacement,
+					CaptureState{AdapterIndex: &adapter, EncoderIndex: &encoder}, nil, false)
 				session.updateMu.Unlock()
 				committed <- err
 			}()
@@ -101,6 +110,9 @@ func TestCaptureCommitWaitsForReaderMetadataOrTermination(t *testing.T) {
 					t.Fatal("installed metadata did not acknowledge update")
 				}
 				media := publication.Media()
+				if session.videoOptions.AdapterIndex != adapter || session.videoOptions.EncoderIndex != encoder {
+					t.Fatal("capture replacement discarded its selected hardware backend")
+				}
 				if media.Layers[1].Width != 854 || media.Layers[1].Height != 480 || media.Layers[1].Bitrate != 2_000_000 {
 					t.Fatalf("acknowledged stale metadata: %+v", media)
 				}
@@ -139,6 +151,33 @@ func TestCaptureCommitWaitsForReaderMetadataOrTermination(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestCaptureProfileRetainsSelectedBackendFromStarting(t *testing.T) {
+	t.Setenv("PIIK_NATIVEHOST_PIPE_FIXTURE", "backend")
+	t.Setenv("PIIK_CAPTURE_STARTING", string(captureStatePayload(t,
+		`{"state":"starting","hardwareOnly":true,"codec":"h264","adapterIndex":1,"adapterName":"GPU","adapterIdentity":"0:1","encoderIndex":2,"encoderName":"H264","encoderIdentity":"encoder"}`)))
+	t.Setenv("PIIK_CAPTURE_ACTIVE", string(captureStatePayload(t,
+		`{"state":"active","hardwareOnly":true,"codec":"h264","profileLevelId":"42c01f","width":1280,"height":720,"fps":30}`)))
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := nativecapture.VideoProfile{Width: 1280, Height: 720, Framerate: 30, Bitrate: 3_000_000, Preference: "balanced"}
+	stream, err := nativecapture.StartVideo(t.Context(), executable, nativecapture.VideoOptions{
+		Target: nativecapture.CaptureTarget{Kind: "display", SourceID: "1", Title: "Fixture"}, Codec: "h264", Profile: profile, OutputGroups: 4,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Close()
+	state, err := waitForCaptureProfile(t.Context(), stream, profile, "h264", false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.AdapterIndex == nil || *state.AdapterIndex != 1 || state.EncoderIndex == nil || *state.EncoderIndex != 2 {
+		t.Fatalf("active profile lost the actual hardware selection: %+v", state)
 	}
 }
 

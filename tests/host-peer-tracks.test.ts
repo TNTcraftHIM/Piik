@@ -1142,6 +1142,28 @@ describe("HostPeer source replacement", () => {
     peer.dispose();
   });
 
+  it("drains valid restart candidates after an old-generation candidate is rejected", async () => {
+    const peer = createPeer(createStream(createTrack("video", "video"), null));
+    await peer.start();
+    const connection = FakePeerConnection.latest!;
+    await peer.acceptSignal({ kind: "description", connectionId: peer.connectionId,
+      description: { type: "answer", sdp: "previous-answer" } });
+    await peer.restartIce();
+    const stale = { candidate: "stale-candidate", sdpMid: "0", usernameFragment: "previous" };
+    const current = { candidate: "current-candidate", sdpMid: "0", usernameFragment: "current" };
+    for (const candidate of [stale, current]) {
+      await peer.acceptSignal({ kind: "candidate", connectionId: peer.connectionId, candidate });
+    }
+    vi.spyOn(connection, "addIceCandidate").mockRejectedValueOnce(
+      new DOMException("Unknown ICE username fragment", "OperationError"),
+    );
+    await peer.acceptSignal({ kind: "description", connectionId: peer.connectionId,
+      description: { type: "answer", sdp: "current-answer" } });
+    expect(connection.addedIceCandidates).toEqual([current]);
+    expect(peer.getSnapshot().error).toBeNull();
+    peer.dispose();
+  });
+
   it("enables the selected balanced profile after startup frames", async () => {
     const video = createTrack("video", "video");
     const peer = createPeer(createStream(video, createTrack("audio", "audio")));

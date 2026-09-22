@@ -1265,31 +1265,96 @@ struct VideoEncoderSelection final {
   std::unique_ptr<VideoEncoder> initial;
 };
 
-VideoEncoderSelection SelectVideoEncoder(
-    const ProductArguments& arguments, const Adapter& adapter,
-    const DeviceContext& device) {
-  const auto create = [&]() -> std::unique_ptr<VideoEncoder> {
-    ActivationList activations = EnumerateHardwareEncoders(adapter);
-    auto selected = ActivateTransform(activations, arguments.mft_index, device.manager.Get());
-    return std::make_unique<LiveEncoder>(std::move(selected), arguments.profile);
-  };
-  if (arguments.codec == "vp8") return {};
-  if (arguments.codec == "h264") return {OutputKind::h264, create()};
+using EncoderCandidate = std::pair<UINT, UINT>;
 
+void LogEncoderRejection(EncoderCandidate candidate, const GateFailure& error) {
+  std::osyncstream output(std::cerr);
+  output << "result=encoder-candidate-rejected adapter=" << candidate.first
+         << " encoder=" << candidate.second << " stage=" << error.stage();
+  if (FAILED(error.result())) output << " hresult=0x" << std::hex << error.result();
+  output << '\n';
+}
+
+// Only pre-publication setup tries another hardware candidate. A live worker
+// keeps its selected device/encoder; source replacement owns any later change.
+template <typename Prepare>
+EncoderCandidate SelectEncoderCandidate(std::vector<EncoderCandidate> candidates,
+    EncoderCandidate preferred, EncoderClock::time_point deadline, Prepare prepare) {
+  const auto first = std::find(candidates.begin(), candidates.end(), preferred);
+  if (first != candidates.end()) std::rotate(candidates.begin(), first, first + 1);
+  std::exception_ptr failure;
+  for (const auto& candidate : candidates) {
+    RequireEncoderTime(deadline);
+    try {
+      prepare(candidate);
+      RequireEncoderTime(deadline);
+      return candidate;
+    } catch (const GateFailure& error) {
+      LogEncoderRejection(candidate, error);
+      failure = std::current_exception();
+    }
+  }
+  if (failure) std::rethrow_exception(failure);
+  Fail("mft-hardware-enumeration", "no usable hardware H264 encoder was found");
+}
+
+VideoEncoderSelection SelectVideoEncoder(
+    ProductArguments& arguments, const std::vector<Adapter>& adapters,
+    DeviceContext& device) {
+  if (arguments.codec == "vp8") {
+    device = CreateDevice(SelectAdapter(adapters, arguments.adapter_index));
+    return {};
+  }
   const auto began = EncoderClock::now();
   const auto budget = std::chrono::seconds(4);
   const auto deadline = began + budget;
+  const auto hardware_deadline = arguments.codec == "auto" ? began + budget / 2 : deadline;
   std::optional<double> hardware_work;
+  std::unique_ptr<VideoEncoder> hardware;
   try {
-    auto hardware = create();
-    hardware_work = MeasureEncoderWork(hardware.get(), device.device.Get(),
-                                      arguments.profile, began + budget / 2);
-    if (*hardware_work <= 1.0 / arguments.profile.frame_rate)
+    std::vector<EncoderCandidate> candidates;
+    for (const auto& adapter : adapters) {
+      RequireEncoderTime(hardware_deadline);
+      try {
+        const auto encoders = EnumerateHardwareEncoders(adapter, false);
+        for (UINT index = 0; index < encoders.count; ++index)
+          candidates.emplace_back(adapter.index, index);
+      } catch (const GateFailure& error) {
+        LogEncoderRejection({adapter.index, 0}, error);
+      }
+    }
+    const auto chosen = SelectEncoderCandidate(candidates,
+        {arguments.adapter_index, arguments.mft_index}, hardware_deadline,
+        [&](EncoderCandidate candidate) {
+          const auto& adapter = SelectAdapter(adapters, candidate.first);
+          auto next_device = CreateDevice(adapter);
+          const auto encoders = EnumerateHardwareEncoders(adapter);
+          auto selected = ActivateTransform(encoders, candidate.second, next_device.manager.Get());
+          auto next = std::make_unique<LiveEncoder>(std::move(selected), arguments.profile);
+          if (arguments.codec == "auto") {
+            hardware_work = MeasureEncoderWork(next.get(), next_device.device.Get(),
+                                               arguments.profile, hardware_deadline);
+          } else {
+            // Enumeration and activation alone do not prove usable H264 output.
+            const auto texture = CreateSyntheticTexture(next_device.device.Get(), 0, arguments.profile);
+            next->Encode(texture.Get(), 0, true, hardware_deadline);
+          }
+          RequireEncoderTime(hardware_deadline);
+          device = std::move(next_device);
+          hardware = std::move(next);
+        });
+    arguments.adapter_index = chosen.first;
+    arguments.mft_index = chosen.second;
+    if (arguments.codec == "h264" || *hardware_work <= 1.0 / arguments.profile.frame_rate)
       return {OutputKind::h264, std::move(hardware)};
-  } catch (const std::exception&) {
-    // No media has been published; a failed hardware probe may try software.
+  } catch (const GateFailure&) {
+    if (arguments.codec == "h264") throw;
+    hardware_work.reset();
+    hardware.reset();
+    device = DeviceContext{};
   }
   RequireEncoderTime(deadline);
+  if (!device.device) device = CreateDevice(SelectAdapter(adapters, arguments.adapter_index));
   try {
     const double software_work = MeasureEncoderWork(nullptr, device.device.Get(),
                                                     arguments.profile, deadline);
@@ -1297,8 +1362,6 @@ VideoEncoderSelection SelectVideoEncoder(
   } catch (const std::exception&) {
     if (!hardware_work) throw;
   }
-  RequireEncoderTime(deadline);
-  auto hardware = create();
   RequireEncoderTime(deadline);
   return {OutputKind::h264, std::move(hardware)};
 }
@@ -1613,11 +1676,11 @@ ComPtr<ID3D11Texture2D> OwnDecodedTexture(const DeviceContext& device, IMFSample
   return UploadDecodedNV12(device, pixels.data(), width, height);
 }
 
-void RunEncodedVideo(const ProductArguments& arguments) {
+void RunEncodedVideo(ProductArguments arguments) {
   auto adapters = EnumerateAdapters();
+  DeviceContext device;
+  auto encoder = SelectVideoEncoder(arguments, adapters, device);
   const auto& adapter = SelectAdapter(adapters, arguments.adapter_index);
-  const auto device = CreateDevice(adapter);
-  auto encoder = SelectVideoEncoder(arguments, adapter, device);
   const bool hardware = arguments.codec == "h264";
   ProtocolWriter writer;
   WriteVideoStarting(writer, arguments, adapter, encoder);
@@ -1694,7 +1757,7 @@ void RunEncodedVideo(const ProductArguments& arguments) {
   }
 }
 
-void RunVideoCapture(const ProductArguments& arguments) {
+void RunVideoCapture(ProductArguments arguments) {
   const bool window_target =
       arguments.target_kind == piik::capture::TargetKind::window;
   HRESULT identity = window_target
@@ -1706,9 +1769,9 @@ void RunVideoCapture(const ProductArguments& arguments) {
   Check(identity, "target-identity");
 
   std::vector<Adapter> adapters = EnumerateAdapters();
+  DeviceContext device;
+  auto encoder = SelectVideoEncoder(arguments, adapters, device);
   const Adapter& adapter = SelectAdapter(adapters, arguments.adapter_index);
-  DeviceContext device = CreateDevice(adapter);
-  auto encoder = SelectVideoEncoder(arguments, adapter, device);
   const bool hardware = encoder.kind == OutputKind::h264;
   piik::capture::CapturePresentation presentation(arguments.target_kind,
                                                       arguments.source_id);

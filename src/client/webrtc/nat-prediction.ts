@@ -1,5 +1,6 @@
 import type { SignalPayload } from "../../shared/protocol";
 import { candidateSignalOrigin } from "../../shared/nat-candidate";
+import { debugError } from "../lib/debug";
 
 export type SignalCandidate = Extract<
   SignalPayload,
@@ -28,11 +29,17 @@ export async function addRemoteIceCandidate(
   try {
     await connection.addIceCandidate(candidate);
   } catch (error) {
+    // A stale/rejected candidate is disposable input, not failed SDP or a dead
+    // transport. Keep draining this generation; ICE state owns route failure.
     if (
+      !(error instanceof DOMException && error.name === "OperationError") &&
       candidateSignalOrigin(candidate?.candidate ?? null) !== "predicted"
     ) {
       throw error;
     }
+    debugError("webrtc", "remote-candidate-rejected", error, {
+      origin: candidateSignalOrigin(candidate?.candidate ?? null),
+    });
   }
 }
 

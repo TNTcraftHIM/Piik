@@ -170,13 +170,21 @@ DNS failures, API rejection and networks blocking both transports can still fail
 A 2026-09-21 Windows check used the packaged binary with an isolated UDP sink and
 TCP forwarder. The previous arguments timed out at 30 seconds without trying TCP.
 The candidate connected in about 11 seconds, served the public page and echoed a
-WebSocket message, then joined the child on close. A separate ordinary-network
-run registered in about five seconds but this host's public HTTPS/WSS requests
-ended with EOF; end-to-end access on that path remains unverified. These checks
-do not establish the cause of reports without matching diagnostics. Upstream
+WebSocket message, then joined the child on close. The ordinary-network App link
+gate also serves the invitation page and upgrades its WebSocket from an external
+US host, then confirms App exit and link retirement. These bounded checks do not
+establish regional reachability, uninterrupted connector availability or the
+cause of reports without matching diagnostics. Upstream
 [Quick Tunnel setup](https://github.com/cloudflare/cloudflared/blob/2026.8.3/cmd/cloudflared/tunnel/quick_tunnel.go)
 and [protocol fallback](https://github.com/cloudflare/cloudflared/blob/2026.8.3/supervisor/tunnel.go)
 own the dependency behavior; Piik adds no separate retry loop.
+
+[HTTP 1033](https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-1xxx-errors/error-1033/)
+means Cloudflare cannot find a healthy tunnel connector. App readiness requires
+both the assigned origin and a registered connection; later reconnection belongs
+to cloudflared, while process exit ends that App's public-link runtime. This
+HTTP failure precedes WebRTC candidate exchange and is distinct from media-route
+exhaustion on an already reachable site.
 
 ## Remaining Gates
 

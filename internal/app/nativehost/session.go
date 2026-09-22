@@ -408,6 +408,8 @@ func (session *Session) ReplaceSource(
 	}
 	profile := session.profile
 	options.Codec = session.videoOptions.Codec
+	options.AdapterIndex = session.videoOptions.AdapterIndex
+	options.EncoderIndex = session.videoOptions.EncoderIndex
 	options.OutputGroups = session.edgeCapacity
 	hasAudio := session.audioSource != nil && session.audioStream != nil
 	session.mu.Unlock()
@@ -506,6 +508,7 @@ func (session *Session) commitCapture(
 	if state.RestoreToken != "" {
 		options.RestoreToken = state.RestoreToken
 	}
+	state.applyBackend(&options)
 	session.stream = replacement
 	applied := make(chan struct{})
 	session.captureApplied = applied
@@ -754,6 +757,7 @@ func (session *Session) runVideo() error {
 					session.videoOptions.RestoreToken = status.RestoreToken
 				}
 			}
+			status.applyBackend(&session.videoOptions)
 			session.mu.Unlock()
 			slog.Debug("piik-client", "event", "capture-state", "state", status.State, "codec", status.Codec,
 				"share", diagnostics.ID(session.shareID), "width", status.Width, "height", status.Height, "fps", status.FPS,
@@ -910,6 +914,7 @@ func waitForCaptureProfile(
 			}
 		}
 		inputSeen := false
+		var starting CaptureState
 		for {
 			frame, err := stream.Read()
 			if err != nil {
@@ -952,9 +957,11 @@ func waitForCaptureProfile(
 					send(result{stage: "profile-mismatch", err: errors.New("native capture profile was not applied")})
 					return
 				}
+				state.AdapterIndex, state.EncoderIndex = starting.AdapterIndex, starting.EncoderIndex
 				send(result{state: state})
 				return
 			}
+			starting = state
 			if !send(result{state: state}) {
 				return
 			}
@@ -1127,6 +1134,17 @@ func decodeCaptureState(payload []byte) (CaptureState, error) {
 		return CaptureState{}, errors.New("native capture active state is incomplete")
 	}
 	return state, nil
+}
+
+// Selected hardware is a capture fact, not the page's enumeration preference.
+// Keep it for quality/source replacement without changing the wire contract.
+func (state CaptureState) applyBackend(options *nativecapture.VideoOptions) {
+	if state.AdapterIndex != nil {
+		options.AdapterIndex = *state.AdapterIndex
+	}
+	if state.EncoderIndex != nil {
+		options.EncoderIndex = *state.EncoderIndex
+	}
 }
 
 func validH264ProfileLevelID(value string) bool {

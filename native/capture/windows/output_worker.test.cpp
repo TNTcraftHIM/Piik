@@ -114,7 +114,43 @@ void CheckPrimaryFailureDetails() {
   assert(rejected);
 }
 
+void CheckEncoderCandidates() {
+  const std::vector<EncoderCandidate> candidates{{0, 0}, {1, 0}, {1, 1}, {2, 0}};
+  const EncoderCandidate preferred{1, 0};
+  std::vector<EncoderCandidate> tried;
+  const auto deadline = EncoderClock::now() + std::chrono::seconds(1);
+  const auto chosen = SelectEncoderCandidate(candidates, preferred, deadline,
+      [&](EncoderCandidate candidate) {
+        tried.push_back(candidate);
+        if (candidate != EncoderCandidate{1, 1})
+          throw GateFailure("fixture-activation", "candidate is not usable", E_FAIL);
+      });
+  assert((chosen == EncoderCandidate{1, 1}));
+  assert((tried == std::vector<EncoderCandidate>{{1, 0}, {0, 0}, {1, 1}}));
+  tried.clear();
+  try {
+    SelectEncoderCandidate(candidates, chosen, deadline, [&](EncoderCandidate candidate) {
+      tried.push_back(candidate);
+      throw GateFailure("fixture-all-failed", "no working candidate", E_FAIL);
+    });
+    assert(false);
+  } catch (const GateFailure& error) {
+    assert(error.stage() == "fixture-all-failed");
+  }
+  assert(tried.size() == candidates.size() && tried.front() == chosen);
+  tried.clear();
+  try {
+    SelectEncoderCandidate(candidates, preferred, EncoderClock::now(),
+        [&](EncoderCandidate candidate) { tried.push_back(candidate); });
+    assert(false);
+  } catch (const GateFailure& error) {
+    assert(error.stage() == "codec-probe-timeout");
+  }
+  assert(tried.empty());
+}
+
 int main() {
+  CheckEncoderCandidates();
   CheckPrimaryFailureDetails();
   ComPtr<ID3D11Device> device;
   Check(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0,

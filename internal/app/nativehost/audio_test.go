@@ -16,6 +16,23 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
+func writeCaptureFixtureFrame(frame nativecapture.Frame) {
+	var header [32]byte
+	copy(header[:], "SMED")
+	header[4], header[5], header[7] = 2, byte(frame.Kind), byte(frame.Layer)
+	if frame.KeyFrame {
+		header[6] = 1
+	}
+	binary.BigEndian.PutUint64(header[8:16], uint64(frame.Timestamp/(100*time.Nanosecond)))
+	binary.BigEndian.PutUint64(header[16:24], uint64(frame.Duration/(100*time.Nanosecond)))
+	binary.BigEndian.PutUint16(header[24:26], uint16(frame.Width))
+	binary.BigEndian.PutUint16(header[26:28], uint16(frame.Height))
+	binary.BigEndian.PutUint32(header[28:32], uint32(len(frame.Data)))
+	if _, err := os.Stdout.Write(append(header[:], frame.Data...)); err != nil {
+		os.Exit(1)
+	}
+}
+
 func audioRecoveryProfile() nativecapture.VideoProfile {
 	return nativecapture.VideoProfile{Width: 1280, Height: 720, Framerate: 30,
 		Bitrate: 2_000_000, Preference: "balanced"}
@@ -26,22 +43,7 @@ func audioRecoveryProfile() nativecapture.VideoProfile {
 func runAudioRecoveryCapture() {
 	stopped := make(chan struct{})
 	go func() { _, _ = io.Copy(io.Discard, os.Stdin); close(stopped) }()
-	write := func(frame nativecapture.Frame) {
-		var header [32]byte
-		copy(header[:], "SMED")
-		header[4], header[5], header[7] = 2, byte(frame.Kind), byte(frame.Layer)
-		if frame.KeyFrame {
-			header[6] = 1
-		}
-		binary.BigEndian.PutUint64(header[8:16], uint64(frame.Timestamp/(100*time.Nanosecond)))
-		binary.BigEndian.PutUint64(header[16:24], uint64(frame.Duration/(100*time.Nanosecond)))
-		binary.BigEndian.PutUint16(header[24:26], uint16(frame.Width))
-		binary.BigEndian.PutUint16(header[26:28], uint16(frame.Height))
-		binary.BigEndian.PutUint32(header[28:32], uint32(len(frame.Data)))
-		if _, err := os.Stdout.Write(append(header[:], frame.Data...)); err != nil {
-			os.Exit(1)
-		}
-	}
+	write := writeCaptureFixtureFrame
 	microphone := len(os.Args) > 1 && os.Args[1] == "--capture-microphone"
 	if microphone {
 		if len(os.Args) == 4 && os.Args[2] == "--device" && os.Args[3] == "missing" {

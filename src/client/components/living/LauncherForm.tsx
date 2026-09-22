@@ -7,7 +7,6 @@ import type { HintKind } from "./hints";
 import { Glyph, type GlyphName } from "../../ui/icons";
 import { useCopy, type CopyKey } from "../../ui/copy";
 export type AppMode = "local" | "link" | "site";
-export const SUGGESTED_SITE = "https://demo.piik.tv";
 
 const MODES: Array<{
   mode: AppMode;
@@ -170,7 +169,7 @@ export function LauncherForm({
             value={site}
             spellCheck={false}
             inputMode="url"
-            placeholder={SUGGESTED_SITE}
+            placeholder="https://piik.example.com"
             aria-label={t("client.launch.siteAddress")}
             onChange={(event) => {
               onSiteChange(event.target.value);

@@ -58,7 +58,7 @@ describe("NAT prediction ICE adapter", () => {
     expect(isNativeNatSurveyCandidate(hostCandidate())).toBe(false);
   });
 
-  it("ignores only rejected predicted candidates", async () => {
+  it("keeps unexpected ordinary-candidate failures visible", async () => {
     const error = new Error("candidate rejected");
     const connection = {
       addIceCandidate: vi.fn(async () => {
@@ -80,6 +80,15 @@ describe("NAT prediction ICE adapter", () => {
       addRemoteIceCandidate(connection, candidate(40_000)),
     ).rejects.toBe(error);
     await expect(addRemoteIceCandidate(connection, null)).rejects.toBe(error);
+  });
+
+  it("isolates candidate rejection without hiding a missing remote description", async () => {
+    const connection = { addIceCandidate: vi.fn() } as unknown as RTCPeerConnection;
+    vi.mocked(connection.addIceCandidate).mockRejectedValueOnce(new DOMException("Rejected", "OperationError"));
+    await expect(addRemoteIceCandidate(connection, candidate(40_000))).resolves.toBeUndefined();
+    const error = new DOMException("Remote description is missing", "InvalidStateError");
+    vi.mocked(connection.addIceCandidate).mockRejectedValueOnce(error);
+    await expect(addRemoteIceCandidate(connection, candidate(40_000))).rejects.toBe(error);
   });
 
   it("leaves the configured servers unchanged when disabled", () => {

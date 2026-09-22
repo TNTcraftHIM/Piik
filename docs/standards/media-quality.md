@@ -121,7 +121,13 @@ does not by itself prove hardware acceleration, and Web content cannot select a
 specific MFT, NVENC, AMF, or QSV implementation.
 
 Windows native capture uses the same VP8/Auto/H264 controls. H264 selects the
-hardware path and VP8 the bundled libvpx encoder. Auto measures encoding work
+hardware path and VP8 the bundled libvpx encoder. Hardware enumeration is only
+a candidate list: startup tries the preferred encoder first, then remaining
+adapter/encoder candidates within the shared selection budget. Manual H264
+requires actual H264 output and never changes codec on failure. The selected
+device owns capture and output workers; its identity is retained as the first
+choice for quality/source replacement. Native relay encoding uses the same
+selection owner. Auto measures encoding work
 for synthetic NV12 frames at the selected dimensions and frame rate, with a
 bounded warmup and sample. If H264 sustains the target it is selected; otherwise
 VP8 is measured within the remaining four-second budget. This is a throughput

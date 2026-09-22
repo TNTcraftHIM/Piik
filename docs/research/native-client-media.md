@@ -148,6 +148,10 @@ The retained hardware fixture also changed one live NVIDIA MFT through
 produced about `1.00 MB -> 0.68 MB -> 0.97 MB`, while ordered 30 fps output and
 the pinned profile remained intact. Both AMD MFT candidates failed activation
 before this probe, so the evidence is not a cross-vendor dynamic-rate contract.
+With the failing AMD candidate preferred, bounded product selection now reaches
+the working NVIDIA H264 encoder without changing codec. A local native Host gate
+also passes decoded Viewer output, quality changes and source replacement. This
+establishes the selection defect and repair, not the unknown reporter's cause.
 The product therefore observes GCC for routing but does not yet apply one edge's
 target globally to the shared encoder.
 

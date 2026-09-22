@@ -7,7 +7,7 @@ import { StageTv } from "../components/living/Stage";
 import { HostMicrophone, HostMicrophoneSettings } from "../components/living/HostMicrophone";
 import { PlaybackControls } from "../components/living/PlaybackControls";
 import { SharingSettings } from "../components/living/SharingSettings";
-import { LauncherForm, SUGGESTED_SITE, type AppMode } from "../components/living/LauncherForm";
+import { LauncherForm, type AppMode } from "../components/living/LauncherForm";
 import { QualityPresets } from "../components/living/QualityPresets";
 import { RoomCodeInput } from "../components/living/RoomCodeInput";
 import type { QualityProfileId } from "../media/quality";
@@ -42,7 +42,7 @@ export function ControlsPreview() {
   const [microphoneDevice, setMicrophoneDevice] = useState("");
   const [sharingSettings, setSharingSettings] = useState(false);
   const [launchMode, setLaunchMode] = useState<AppMode>("link");
-  const [launchSite, setLaunchSite] = useState(SUGGESTED_SITE);
+  const [launchSite, setLaunchSite] = useState("");
   const [launchPassword, setLaunchPassword] = useState("");
   const [preset, setPreset] = useState<QualityProfileId>("1080p30");
   const [policy, setPolicy] = useState<"open" | "private">("open");

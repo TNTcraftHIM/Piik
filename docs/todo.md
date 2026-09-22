@@ -1,12 +1,17 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-09-21
+Last reviewed: 2026-09-22
 
 Only **Now** is executable. Product modules own behavior; Git/PRs own completed
 history. A parked idea is not implementation authority.
 
 ## Now
 
+- [ ] **Passive App attachment: design hold.** Site mode authorizes one selected
+  origin and supplies native media without starting a local room server. A
+  passive replacement needs an accepted site-consent/discovery flow; it must not
+  admit arbitrary sites or add another runtime owner. Keep Site mode until that
+  decision; removal of the Demo prefill does not authorize changing site trust.
 - [ ] **Complete manual accessible-name review.** Verify the empty video's
   screen-reader output: Chromium exposes an unavailable-media
   description despite the literal shared-picture label and no media error. Also
@@ -26,6 +31,12 @@ history. A parked idea is not implementation authority.
 
 ## Awaiting Device Or Reporter Evidence
 
+- [ ] **No available media route.** Obtain matched Host/Viewer diagnostics from
+  a failed attempt, with version and mode. Inspect candidate exchange, selected
+  paths, first-frame admission and route rejection separately. The Browser
+  candidate-queue rejection defect is repaired and regression-tested; current
+  STUN reachability and route-lifecycle checks do not establish these reporters'
+  causes. HTTP 1033 belongs to the public-link item below, before media routing.
 - [ ] **Camera and Host microphone device coverage.** The owner accepted the
   sharing layout and authorized release with these physical limits recorded.
   Verify real audio levels/echo, multiple-device replacement and native mixing on
@@ -41,6 +52,9 @@ history. A parked idea is not implementation authority.
   bounded protocol fallback. [Runtime evidence](./research/cross-platform-client-runtime.md#public-invitation-startup)
   separates this fix from DNS, provider and remote access failures. The reporting
   environments still need version and diagnostic evidence before assigning a cause.
+  Demo access failures and public-link HTTP 1033 also remain unconfirmed: current
+  Demo health/assets and an external-host public-link HTTP/WebSocket gate pass.
+  Check connector reachability separately from WebRTC media availability.
 - [ ] **Interruption during established viewing.** A Viewer reportedly returns
   to P2P connecting after watching for a while. Native receiver renegotiation,
   retired event delivery and SFU replacement have locally reproduced defects
@@ -67,6 +81,8 @@ history. A parked idea is not implementation authority.
   paired Debug reports are still unavailable. Distinguish site authorization,
   browser permission, control capacity, enumeration and capture-start failures;
   local permission and recovery checks do not establish the reporters' causes.
+  Manual H264 returning immediately to idle also needs reporter diagnostics;
+  bounded selection past an unusable hardware encoder is locally verified.
 - [ ] **Windows 32-bit candidate acceptance.** Verify the isolated
   `spike/windows-x86-capture` candidate's launch, capture/audio, memory pressure,
   source replacement and update links on a 32-bit Windows device. WOW64

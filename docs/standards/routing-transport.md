@@ -139,6 +139,12 @@ identity still match; future revisions and retired connections are rejected.
 Preparation reports retain their exact operation fence. Reports without a
 connection identity retain their exact room-revision fence.
 
+An individually rejected ICE candidate is disposable input. Browser
+`addIceCandidate` candidate-processing errors are recorded without aborting the
+remaining queue or SDP answer; missing-description/lifecycle errors remain
+visible. Native input follows the same boundary. Actual transport state and the
+route operation's deadline own failure, not one rejected candidate.
+
 ## SFU Fallback
 
 The only application fallback is one admitted embedded SFU publication from the

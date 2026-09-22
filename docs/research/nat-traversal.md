@@ -87,6 +87,15 @@ An earlier remote description is not readiness for a new generation's candidates
 Native event delivery can precede its offer/answer response; the existing
 negotiation queue retains those candidates until the matching answer is applied.
 
+The Browser queue must also isolate a candidate-processing `OperationError`.
+Fault injection showed that one rejection formerly skipped later candidates in
+both Host and Viewer queues and could prevent the Viewer's SDP answer. Chrome
+152 independently rejected a mismatched media identifier while the connection
+still succeeded with valid candidates. The shared receiver now records that
+individual rejection and continues; missing-description errors are not hidden.
+This agrees with [WebRTC candidate processing](https://www.w3.org/TR/webrtc/#dom-peerconnection-addicecandidate)
+and does not establish the cause of undiagnosed field route failures.
+
 ### Native Shared-Socket Preflight
 
 Native requests one dual-stack wildcard UDP socket through Go and Pion's existing

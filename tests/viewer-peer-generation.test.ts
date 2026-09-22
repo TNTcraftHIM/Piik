@@ -241,6 +241,24 @@ afterEach(() => {
 });
 
 describe("ViewerPeer connection generations", () => {
+  it("answers after a rejected queued candidate and still applies later candidates", async () => {
+    const signals: SignalPayload[] = [];
+    const snapshots: PeerSnapshot[] = [];
+    const peer = createPeer(signals, snapshots);
+    await peer.acceptSignal("host", candidate("queued", "stale-candidate"));
+    const current = candidate("queued", "current-candidate");
+    await peer.acceptSignal("host", current);
+    const answering = peer.acceptSignal("host", offer("queued"));
+    const connection = FakePeerConnection.instances[0]!;
+    connection.addIceCandidate.mockRejectedValueOnce(new DOMException("Unknown ICE username fragment", "OperationError"));
+    await answering;
+    expect(connection.addIceCandidate).toHaveBeenCalledTimes(2);
+    expect(signals).toHaveLength(1);
+    expect(signals[0]).toMatchObject({ kind: "description", description: { type: "answer" } });
+    expect(snapshots.at(-1)?.error).toBeNull();
+    peer.dispose();
+  });
+
   it("keeps separately delivered audio and video on one remote stream", async () => {
     const streams: MediaStream[] = [];
     const peer = new ViewerPeer(
